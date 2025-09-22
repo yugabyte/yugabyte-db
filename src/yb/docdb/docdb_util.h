@@ -257,7 +257,7 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
   std::shared_ptr<ManualHistoryRetentionPolicy> retention_policy_ {
       std::make_shared<ManualHistoryRetentionPolicy>() };
   std::shared_ptr<rocksdb::CompactionFileFilterFactory> compaction_file_filter_factory_;
-  std::shared_ptr<std::function<bool(const rocksdb::FileMetaData&)>> exclude_from_compaction_;
+  rocksdb::CompactionFileExcluderPtr exclude_from_compaction_;
 
   rocksdb::WriteOptions write_options_;
   std::optional<TransactionId> current_txn_id_;

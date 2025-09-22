@@ -858,8 +858,7 @@ auto MakeMemTableFlushFilterFactory(const F& f) {
 
 template <class F>
 auto MakeExcludeFromCompactionFunction(const F& f) {
-  using ExcludeFromCompaction = decltype(std::declval<rocksdb::Options>().exclude_from_compaction);
-  return std::make_shared<typename ExcludeFromCompaction::element_type>(f);
+  return std::make_shared<rocksdb::CompactionFileExcluder>(f);
 }
 
 struct Tablet::IntentsDbFlushFilterState {
@@ -4568,7 +4567,7 @@ Result<std::string> Tablet::GetEncodedMiddleSplitKey(std::string *partition_spli
   // to have two child tablets with alive user records after the splitting, but the split
   // by the internal record will lead to a case when one tablet will consist of internal records
   // only and these records will be compacted out at some point making an empty tablet.
-  if (PREDICT_FALSE(dockv::IsInternalRecordKeyType(dockv::DecodeKeyEntryType(middle_key[0])))) {
+  if (PREDICT_FALSE(dockv::IsMetaKeyType(dockv::DecodeKeyEntryType(middle_key[0])))) {
     return STATUS_FORMAT(
         IllegalState, "$0: got internal record \"$1\"",
         error_prefix(), Slice(middle_key).ToDebugHexString());

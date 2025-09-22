@@ -172,6 +172,12 @@ Result<vector_index::VectorId> DecodeDocVectorKey(Slice* input) {
   return vector_id;
 }
 
+Result<size_t> EncodedDocVectorKeySize(Slice key) {
+  const auto key_begin = key.data();
+  RETURN_NOT_OK(dockv::DecodeDocVectorKey(&key, /* vector_id */ nullptr));
+  return key.data() - key_begin;
+}
+
 std::string DocVectorIdToString(const Uuid& vector_id) {
   return Format("VectorId($0)", vector_id.ToString());
 }
@@ -186,6 +192,13 @@ std::string DocVectorKeyToString(const vector_index::VectorId& vector_id) {
 
 std::string DocVectorKeyToString(const vector_index::VectorId& vector_id, const DocHybridTime& ht) {
   return FormatVectorKey(vector_id, ht.ToString());
+}
+
+Result<std::string> DocVectorMetaKeyToString(Slice input) {
+  auto vector_id = VERIFY_RESULT(DecodeDocVectorKey(&input));
+  auto doc_ht = VERIFY_RESULT_PREPEND(
+      DocHybridTime::DecodeFromEnd(input), DocVectorKeyToString(vector_id));
+  return DocVectorKeyToString(vector_id, doc_ht);
 }
 
 } // namespace yb::dockv
