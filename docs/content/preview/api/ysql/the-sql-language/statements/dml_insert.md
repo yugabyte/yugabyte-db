@@ -104,7 +104,7 @@ The requirements depend on which conflict action you're using:
 
 ### *conflict_action*
 
-The `conflict_action` specifies what to do when a conflict occurs with `ON CONFLICT`. You have two options:
+The `conflict_action` specifies what to do when a conflict occurs with `ON CONFLICT`. You have the following two options:
 
 - `DO NOTHING` - Simply ignore the conflicting row and don't insert it
 - `DO UPDATE` - Perform an update operation on the existing row instead
