@@ -83,7 +83,7 @@ You'll primarily find this useful for getting values supplied by defaults, like 
 However, you can use any expression that uses the table's columns. 
 The syntax for the `RETURNING` list is identical to the output list of `SELECT`.
 
-Only rows that were successfully inserted or updated will be returned. For example, if a row was locked but not updated because an `ON CONFLICT DO UPDATE ... WHERE` clause condition wasn't satisfied, that row won't be returned.
+Only rows that are successfully inserted or updated are returned. For example, if a row is locked but not updated because an `ON CONFLICT DO UPDATE ... WHERE` clause condition wasn't satisfied, that row won't be returned.
 
 ### *column_values*
 
