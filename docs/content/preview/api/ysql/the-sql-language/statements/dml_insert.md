@@ -106,7 +106,7 @@ The requirements depend on which conflict action you're using:
 
 The `conflict_action` specifies what to do when a conflict occurs with `ON CONFLICT`. You have the following two options:
 
-- `DO NOTHING` - Simply ignore the conflicting row and don't insert it
+- `DO NOTHING` - Simply ignore the conflicting row and don't insert it.
 - `DO UPDATE` - Perform an update operation on the existing row instead
 
 When you use `DO UPDATE`, you'll need to specify the exact details of the `UPDATE` action. In the `SET` and `WHERE` clauses of `ON CONFLICT DO UPDATE`, you can access:
