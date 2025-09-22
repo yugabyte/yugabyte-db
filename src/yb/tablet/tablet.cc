@@ -853,12 +853,9 @@ auto MakeMemTableFlushFilterFactory(const F& f) {
 }
 
 template <class F>
-auto MakeMaxFileSizeWithTableTTLFunction(const F& f) {
-  // Trick to get type of max_file_size_for_compaction field.
-  using MaxFileSizeWithTableTTLFunction =
-      typename decltype(static_cast<rocksdb::Options*>(nullptr)
-                            ->max_file_size_for_compaction)::element_type;
-  return std::make_shared<MaxFileSizeWithTableTTLFunction>(f);
+auto MakeExcludeFromCompactionFunction(const F& f) {
+  using ExcludeFromCompaction = decltype(std::declval<rocksdb::Options>().exclude_from_compaction);
+  return std::make_shared<typename ExcludeFromCompaction::element_type>(f);
 }
 
 struct Tablet::IntentsDbFlushFilterState {
@@ -1089,12 +1086,30 @@ Result<rocksdb::Options> Tablet::CommonRocksDBOptions() {
 
   // Use a function that checks the table TTL before returning a value for max file size
   // for compactions.
-  rocksdb_options.max_file_size_for_compaction = MakeMaxFileSizeWithTableTTLFunction([this] {
-    if (HasActiveTTLFileExpiration()) {
-      return FLAGS_rocksdb_max_file_size_for_compaction;
+  rocksdb_options.exclude_from_compaction = MakeExcludeFromCompactionFunction(
+    [this](const rocksdb::FileMetaData& file) {
+      if (!HasActiveTTLFileExpiration()) {
+        return false;
+      }
+
+      auto status = docdb::CheckTtlFileExpirationConsistency(
+          file, retention_policy_->GetRetentionDirective().table_ttl);
+      if (!status.ok()) {
+        LOG_WITH_PREFIX(INFO)
+            << "File TTL expiry cannot be applied for the file "
+            << file.ToString() << ", status: " << status;
+        return false;
+      }
+
+      // Exclude based on file size.
+      const auto max_file_size = FLAGS_rocksdb_max_file_size_for_compaction;
+      const bool need_exclude = max_file_size && (file.fd.GetTotalFileSize() > max_file_size);
+      LOG_IF_WITH_PREFIX(INFO, need_exclude)
+          << "File " << file.ToString() << " excluded from the compaction based on "
+          << "File TTL expiration and max file size of " << max_file_size << " bytes";
+      return need_exclude;
     }
-    return std::numeric_limits<uint64_t>::max();
-  });
+  );
 
   rocksdb_options.disable_auto_compactions = true;
   rocksdb_options.level0_slowdown_writes_trigger = std::numeric_limits<int>::max();
@@ -1648,13 +1663,13 @@ Result<std::unique_ptr<docdb::DocRowwiseIterator>> Tablet::NewUninitializedDocRo
   const auto table_info = VERIFY_RESULT(metadata_->GetTableInfo(table_id));
 
   auto txn_op_ctx = VERIFY_RESULT(CreateTransactionOperationContext(
-      /* transaction_id */ boost::none,
+      /* transaction_id */ std::nullopt,
       table_info->schema().table_properties().is_ysql_catalog_table()));
   docdb::ReadOperationData read_operation_data = {
-    .deadline = deadline,
-    .read_time = read_hybrid_time
-        ? read_hybrid_time
-        : ReadHybridTime::SingleTime(VERIFY_RESULT(SafeTime(RequireLease::kFalse))),
+      .deadline = deadline,
+      .read_time = read_hybrid_time
+                       ? read_hybrid_time
+                       : ReadHybridTime::SingleTime(VERIFY_RESULT(SafeTime(RequireLease::kFalse))),
   };
   return std::make_unique<DocRowwiseIterator>(
       projection, table_info->doc_read_context, txn_op_ctx, doc_db(), read_operation_data,
@@ -2165,13 +2180,14 @@ const std::string* Tablet::NextReadPartitionKey(
   }
   if (pgsql_read_request.is_forward_scan()) {
     // Scan bound by hash code (always inclusive)
-    if (schema()->num_hash_key_columns() > 0 && pgsql_read_request.has_max_hash_code()) {
-      auto hash_code = dockv::PartitionSchema::DecodeMultiColumnHashValue(partition_key);
-      if (pgsql_read_request.max_hash_code() < hash_code) {
-        return nullptr;
+    if (schema()->num_hash_key_columns() > 0) {
+      if (pgsql_read_request.has_max_hash_code()) {
+        auto hash_code = dockv::PartitionSchema::DecodeMultiColumnHashValue(partition_key);
+        if (pgsql_read_request.max_hash_code() < hash_code) {
+          return nullptr;
+        }
       }
-    }
-    if (pgsql_read_request.has_upper_bound()) {
+    } else if (pgsql_read_request.has_upper_bound()) {
       if (pgsql_read_request.upper_bound().is_inclusive()) {
         if (pgsql_read_request.upper_bound().key() < partition_key) {
           return nullptr;
@@ -2183,14 +2199,15 @@ const std::string* Tablet::NextReadPartitionKey(
       }
     }
   } else { // backward
-    if (schema()->num_hash_key_columns() > 0 && pgsql_read_request.has_hash_code()) {
-      auto hash_code = dockv::PartitionSchema::DecodeMultiColumnHashValue(partition_key);
-      if (pgsql_read_request.hash_code() >= hash_code) {
-        return nullptr;
+    if (schema()->num_hash_key_columns() > 0) {
+      if (pgsql_read_request.has_hash_code()) {
+        auto hash_code = dockv::PartitionSchema::DecodeMultiColumnHashValue(partition_key);
+        if (pgsql_read_request.hash_code() >= hash_code) {
+          return nullptr;
+        }
       }
-    }
-    if (pgsql_read_request.has_lower_bound() &&
-        pgsql_read_request.lower_bound().key() >= partition_key) {
+    } else if (pgsql_read_request.has_lower_bound() &&
+               pgsql_read_request.lower_bound().key() >= partition_key) {
       return nullptr;
     }
   }
@@ -2320,6 +2337,7 @@ Status Tablet::WaitForFlush() {
   TRACE_EVENT0("tablet", "Tablet::WaitForFlush");
 
   RETURN_NOT_OK(VectorIndexList(vector_indexes_->List()).WaitForFlush());
+
   if (regular_db_) {
     RETURN_NOT_OK(regular_db_->WaitForFlush());
   }
@@ -2394,12 +2412,11 @@ Status Tablet::RemoveIntentsImpl(
   rocksdb::WriteBatch intents_write_batch;
   HybridTime min_running_ht = CHECK_NOTNULL(transaction_participant_)->MinRunningHybridTime();
   for (const auto& id : ids) {
-    boost::optional<docdb::ApplyTransactionState> apply_state;
+    std::optional<docdb::ApplyTransactionState> apply_state;
     for (;;) {
       docdb::RemoveIntentsContext context(id, static_cast<uint8_t>(reason));
       docdb::IntentsWriter writer(
-          apply_state ? apply_state->key : Slice(), min_running_ht,
-          intents_db_.get(), &context);
+          apply_state ? apply_state->key : Slice(), min_running_ht, intents_db_.get(), &context);
       intents_write_batch.SetDirectWriter(&writer);
       docdb::ConsensusFrontiers frontiers;
       InitFrontiers(data, frontiers);
@@ -2435,15 +2452,14 @@ Status Tablet::RemoveAdvisoryLock(
   auto scoped_read_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
   RETURN_NOT_OK(scoped_read_operation);
 
-  RSTATUS_DCHECK(transaction_participant_, IllegalState,
-                 "Transaction participant is not initialized");
+  RSTATUS_DCHECK(
+      transaction_participant_, IllegalState, "Transaction participant is not initialized");
   HybridTime min_running_ht = transaction_participant_->MinRunningHybridTime();
-  boost::optional<docdb::ApplyTransactionState> apply_state;
+  std::optional<docdb::ApplyTransactionState> apply_state;
   dockv::KeyBytes advisory_lock_key(key);
   advisory_lock_key.AppendKeyEntryType(dockv::KeyEntryType::kIntentTypeSet);
   advisory_lock_key.AppendIntentTypeSet(intent_types);
-  docdb::RemoveIntentsContext context(
-      transaction_id, static_cast<uint8_t>(RemoveReason::kUnlock));
+  docdb::RemoveIntentsContext context(transaction_id, static_cast<uint8_t>(RemoveReason::kUnlock));
   docdb::IntentsWriter writer(
       Slice(), min_running_ht,
       intents_db_.get(), &context, /* ignore_metadata= */ true, advisory_lock_key);
@@ -2463,12 +2479,12 @@ Status Tablet::RemoveAdvisoryLocks(const TransactionId& id, rocksdb::DirectWrite
   RSTATUS_DCHECK(transaction_participant_, IllegalState,
                  "Transaction participant is not initialized");
   HybridTime min_running_ht = transaction_participant_->MinRunningHybridTime();
-  boost::optional<docdb::ApplyTransactionState> apply_state;
+  std::optional<docdb::ApplyTransactionState> apply_state;
   for (;;) {
     docdb::RemoveIntentsContext context(id, static_cast<uint8_t>(RemoveReason::kUnlock));
     docdb::IntentsWriter writer(
-        apply_state ? apply_state->key : Slice(), min_running_ht,
-        intents_db_.get(), &context, /* ignore_metadata */ true);
+        apply_state ? apply_state->key : Slice(), min_running_ht, intents_db_.get(), &context,
+        /* ignore_metadata */ true);
     RETURN_NOT_OK(writer.Apply(handler));
 
     if (!context.apply_state().active()) {
@@ -4296,16 +4312,15 @@ Result<TransactionOperationContext> Tablet::CreateTransactionOperationContext(
     auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(
         transaction_metadata.transaction_id()));
     return CreateTransactionOperationContext(
-        boost::make_optional(txn_id), is_ysql_catalog_table, subtransaction_metadata);
+        std::make_optional(txn_id), is_ysql_catalog_table, subtransaction_metadata);
   } else {
     return CreateTransactionOperationContext(
-        /* transaction_id */ boost::none, is_ysql_catalog_table, subtransaction_metadata);
+        /* transaction_id */ std::nullopt, is_ysql_catalog_table, subtransaction_metadata);
   }
 }
 
 Result<TransactionOperationContext> Tablet::CreateTransactionOperationContext(
-    const boost::optional<TransactionId>& transaction_id,
-    bool is_ysql_catalog_table,
+    const std::optional<TransactionId>& transaction_id, bool is_ysql_catalog_table,
     const SubTransactionMetadataPB* subtransaction_metadata) const {
   if (!txns_enabled_) {
     return TransactionOperationContext();
@@ -4313,8 +4328,8 @@ Result<TransactionOperationContext> Tablet::CreateTransactionOperationContext(
 
   const TransactionId* txn_id = nullptr;
 
-  if (transaction_id.is_initialized()) {
-    txn_id = transaction_id.get_ptr();
+  if (transaction_id.has_value()) {
+    txn_id = &transaction_id.value();
   } else if (metadata_->schema()->table_properties().is_transactional() || is_ysql_catalog_table) {
     // deadbeef-dead-beef-dead-beef00000075
     static const TransactionId kArbitraryTxnIdForNonTxnReads(
@@ -4660,25 +4675,35 @@ Status Tablet::TriggerAdminFullCompactionIfNeeded(const AdminCompactionOptions& 
 
   auto token = std::make_shared<ActiveCompactionToken>(num_active_full_compactions_);
   return admin_full_compaction_task_pool_token_->SubmitFunc([this, token, options]() {
-    // TODO(vector_index): since full vector index compaction is not optimized and may take a
-    // significant amount of time, let's trigger it separately from regular manual compaction.
-    // This logic should be revised later.
     Status status;
-    if (options.vector_index_ids) {
-      TriggerVectorIndexCompactionSync(*options.vector_index_ids);
-    } else {
+
+    // Since full vector index compaction is not optimized and may take a significant amount of
+    // time, it could be trigger separately from RocksDB manual compaction (default behavior now).
+    const bool compact_vector_index_only = options.vector_index_ids && options.vector_index_only;
+    if (!compact_vector_index_only) {
       status = TriggerManualCompactionSyncUnsafe(
           rocksdb::CompactionReason::kAdminCompaction, options.skip_corrupt_data_blocks_unsafe);
     }
+
+    if (options.vector_index_ids) {
+      auto s = TriggerVectorIndexCompactionSync(*options.vector_index_ids);
+      status = status.ok() ? s : status.CloneAndAppend(s.ToString());
+    }
+
     if (options.compaction_completion_callback) {
       options.compaction_completion_callback(status);
     }
   });
 }
 
-void Tablet::TriggerVectorIndexCompactionSync(const TableIds& vector_index_ids) {
+Status Tablet::TriggerVectorIndexCompactionSync(const TableIds& vector_index_ids) {
   LOG_WITH_PREFIX_AND_FUNC(INFO) << "vectors index ids: " << AsString(vector_index_ids);
-  tablet::VectorIndexList{ vector_indexes().Collect(vector_index_ids) }.Compact();
+  tablet::VectorIndexList vector_index_list { vector_indexes().Collect(vector_index_ids) };
+  vector_index_list.Compact();
+  auto status = vector_index_list.WaitForCompaction();
+  WARN_WITH_PREFIX_NOT_OK(
+      status, Format("$0: Failed vector index compaction", log_prefix_suffix_));
+  return status;
 }
 
 Status Tablet::TriggerManualCompactionSyncUnsafe(

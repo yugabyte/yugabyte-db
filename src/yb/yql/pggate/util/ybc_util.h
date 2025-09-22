@@ -136,6 +136,7 @@ const char* YBCGetWaitEventName(uint32_t wait_event_info);
 const char* YBCGetWaitEventClass(uint32_t wait_event_info);
 const char* YBCGetWaitEventComponent(uint32_t wait_event_info);
 const char* YBCGetWaitEventType(uint32_t wait_event_info);
+const char* YBCGetWaitEventAuxDescription(uint32_t wait_event_info);
 uint8_t YBCGetConstQueryId(YbcAshConstQueryIdType type);
 uint32_t YBCWaitEventForWaitingOnTServer();
 int YBCGetRandomUniformInt(int a, int b);
@@ -146,9 +147,15 @@ uint32_t YBCAshNormalizeComponentForTServerEvents(uint32_t code, bool component_
 
 int YBCGetCallStackFrames(void** result, int max_depth, int skip_count);
 
+bool YBCIsInitDbModeEnvVarSet();
+
 bool YBIsMajorUpgradeInitDb();
 
 const char *YBCGetOutFuncName(YbcPgOid typid);
+
+typedef void (*YbcUpdateInitPostgresMetricsFn)(void);
+void YBCSetUpdateInitPostgresMetricsFn(YbcUpdateInitPostgresMetricsFn foo);
+void YBCUpdateInitPostgresMetrics();
 
 #ifdef __cplusplus
 } // extern "C"

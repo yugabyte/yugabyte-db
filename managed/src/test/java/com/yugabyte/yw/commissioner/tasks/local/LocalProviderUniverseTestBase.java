@@ -60,7 +60,6 @@ import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseResp;
-import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -1052,19 +1051,8 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
 
   protected Map<String, String> getVarz(
       NodeDetails nodeDetails, Universe universe, UniverseTaskBase.ServerType serverType) {
-    UniverseTaskParams.CommunicationPorts ports = universe.getUniverseDetails().communicationPorts;
-    int port =
-        serverType == UniverseTaskBase.ServerType.MASTER
-            ? ports.masterHttpPort
-            : ports.tserverHttpPort;
-    JsonNode varz =
-        nodeUIApiHelper.getRequest(
-            "http://" + nodeDetails.cloudInfo.private_ip + ":" + port + "/api/v1/varz");
-    Map<String, String> result = new HashMap<>();
-    for (JsonNode flag : varz.get("flags")) {
-      result.put(flag.get("name").asText(), flag.get("value").asText());
-    }
-    return result;
+    return GFlagsUtil.getActualGFlags(
+        nodeDetails, serverType, universe, true, null, nodeUIApiHelper, false);
   }
 
   public Map<String, String> getDiskFlags(

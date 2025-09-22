@@ -195,6 +195,15 @@ import-data:
 
 | Specifies how to handle errors when processing and importing rows to the target YugabyteDB database during the snapshot phase. Errors can arise from reading data from file, transforming rows, or ingesting them into YugabyteDB. <br> Accepted parameters: <ul><li> `abort` (Default) - Immediately aborts the process.</li><li> `stash-and-continue` - Stashes the errored rows to a file and continues the import.</li></ul> |
 
+| --max-retries-streaming |
+
+```yaml{.nocopy}
+import-data:
+  max-retries-streaming:
+```
+
+| Maximum number of retries for failed event batch during live migration. <br>Default: 15 |
+
 | -e, --export-dir |
 
 ```yaml{.nocopy}
@@ -507,6 +516,16 @@ import-data-to-source:
 ```
 
 |Number of parallel jobs to use while importing data. <br>Default: 16(Oracle) |
+
+| --max-retries-streaming |
+
+```yaml{.nocopy}
+import-data-to-source:
+  max-retries-streaming:
+```
+
+| Maximum number of retries for failed event batch during live migration. <br>Default: 15 |
+
 | -e, --export-dir |
 
 ```yaml{.nocopy}
@@ -522,6 +541,7 @@ send-diagnostics:
 ```
 
 |Enable or disable sending [diagnostics](../../../reference/diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
+
 | --source-db-password |
 
 ```yaml{.nocopy}
@@ -605,6 +625,16 @@ import-data-to-source-replica:
 ```
 
 | Truncate tables on target YugabyteDB database before importing data. This option is only valid if `--start-clean` is set to true. <br>Default: false |
+
+| --max-retries-streaming |
+
+```yaml{.nocopy}
+import-data-to-source-replica:
+  max-retries-streaming:
+```
+
+| Maximum number of retries for failed event batch during live migration. <br>Default: 15 |
+
 | -e, --export-dir |
 
 ```yaml {.nocopy}
@@ -619,6 +649,7 @@ send-diagnostics:
 ```
 
 | Enable or disable sending [diagnostics](../../../reference/diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
+
 | --source-replica-db-host |
 
 ```yaml {.nocopy}

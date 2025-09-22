@@ -16,7 +16,7 @@ import { IBackup } from '..';
 import { YBModalForm } from '../../common/forms';
 // import { assignStorageConfig } from '../../backupv2';
 import { assignStorageConfig } from '../../backupv2/common/BackupAPI';
-import { IStorageConfig } from '../common/IBackup';
+import { CustomerConfig } from '../common/IBackup';
 
 import './AssignBackupStorageConfig.scss';
 
@@ -31,9 +31,9 @@ export const AssignBackupStorageConfig: FC<BackupStorageConfigProps> = ({
   onHide,
   backup
 }) => {
-  const configs: IStorageConfig[] = useSelector((state: any) => state.customer.configs.data);
+  const configs: CustomerConfig[] = useSelector((state: any) => state.customer.configs.data);
 
-  const [selectedConfig, setSelectedConfig] = useState<IStorageConfig | null>(null);
+  const [selectedConfig, setSelectedConfig] = useState<CustomerConfig | null>(null);
   const [showErrMsg, setshowErrMsg] = useState(false);
   const doAssignConfig = useMutation(() => assignStorageConfig(backup!, selectedConfig!), {
     onSuccess: () => {

@@ -229,7 +229,7 @@ void RunningTransaction::ScheduleRemoveIntents(
   }
 }
 
-boost::optional<TransactionStatus> RunningTransaction::GetStatusAt(
+std::optional<TransactionStatus> RunningTransaction::GetStatusAt(
     HybridTime time, HybridTime last_known_status_hybrid_time,
     TransactionStatus last_known_status) {
   switch (last_known_status) {
@@ -244,13 +244,13 @@ boost::optional<TransactionStatus> RunningTransaction::GetStatusAt(
       if (last_known_status_hybrid_time >= time) {
         return TransactionStatus::PENDING;
       }
-      return boost::none;
+      return std::nullopt;
     case TransactionStatus::CREATED: {
       // This can happen in case of transaction promotion. The first status request to the old
       // status tablet could have arrived and the transaction could have undergone promoted in
       // the interim. In that case, we just return the past known status (which could be CREATED
       // if this was the first ever txn status request).
-      return boost::none;
+      return std::nullopt;
     }
     default:
       FATAL_INVALID_ENUM_VALUE(TransactionStatus, last_known_status);
@@ -662,7 +662,7 @@ const TabletId& RunningTransaction::status_tablet() const {
 void RunningTransaction::UpdateTransactionStatusLocation(const TabletId& new_status_tablet) {
   metadata_.old_status_tablet = std::move(metadata_.status_tablet);
   metadata_.status_tablet = new_status_tablet;
-  metadata_.locality = TransactionLocality::GLOBAL;
+  metadata_.locality = TransactionFullLocality::Global();
 }
 
 void RunningTransaction::UpdateAbortCheckHT(HybridTime now, UpdateAbortCheckHTMode mode) {

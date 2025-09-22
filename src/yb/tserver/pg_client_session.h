@@ -106,7 +106,7 @@ class PgClientSession final {
 
  public:
   using TransactionBuilder = std::function<client::YBTransactionPtr(
-      IsDDL, client::ForceGlobalTransaction, CoarseTimePoint, client::ForceCreateTransaction)>;
+      IsDDL, TransactionFullLocality, CoarseTimePoint, client::ForceCreateTransaction)>;
 
   PgClientSession(
       TransactionBuilder&& transaction_builder, SharedThisSource shared_this_source,

@@ -465,11 +465,17 @@ function getSelectionOptionsFromTables(
     // Filter out index tables because we will add them as a field under the main table.
     if (!xClusterTable.isIndexTable) {
       // Add associated index tables if the current source table is a main table.
+      // The indexTableIDs array may contain ids for colocated child tables.
+      // These tables are not returned by the list tables API when we specify for xCluster
+      // usage. The UI ignores these ids as we only work with parent tables when interacting with the
+      // API
       const indexTables = [] as IndexTableRestartReplicationCandidate[];
+      const indexTableIds = [] as string[];
       let indexTableTotalSize = 0;
-      xClusterTable.indexTableIDs?.forEach((indexTableUuid) => {
-        const indexTable = tableUuidToConfigTable[indexTableUuid];
+      xClusterTable.indexTableIDs?.forEach((indexTableId) => {
+        const indexTable = tableUuidToConfigTable[indexTableId];
         if (indexTable) {
+          indexTableIds.push(indexTableId);
           indexTables.push(indexTable);
           indexTableTotalSize += indexTable.sizeBytes;
         }
@@ -477,6 +483,7 @@ function getSelectionOptionsFromTables(
 
       const mainTableRestartReplicationCandidate: MainTableRestartReplicationCandidate = {
         ...xClusterTable,
+        indexTableIDs: indexTableIds,
         tableUUID: getTableUuid(xClusterTable),
         indexTables
       };

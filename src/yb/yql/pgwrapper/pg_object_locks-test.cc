@@ -16,6 +16,7 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_local_lock_manager.h"
+#include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/master/catalog_manager.h"
@@ -154,7 +155,9 @@ class PgObjectLocksTestRF1 : public PgMiniTestBase {
 
     CreateTestTable();
     auto conn1 = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn1.ExecuteFormat("SET yb_locks_min_txn_age='0s'"));
     auto conn2 = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn2.ExecuteFormat("SET yb_locks_min_txn_age='0s'"));
     for (const auto& lock_types : kBlockingPairs) {
       VerifyBlockingBehavior(conn1, conn2, lock_types.first, lock_types.second, test_pg_locks);
       VerifyBlockingBehavior(conn1, conn2, lock_types.second, lock_types.first, test_pg_locks);
@@ -889,10 +892,8 @@ TEST_P(PgObjecLocksTestOutOfOrderMessageHandling, TestOutOfOrderMessageHandling)
       cluster_->SetFlag(ts2, "TEST_release_blocked_acquires_to_simulate_out_of_order", "true"));
   ASSERT_OK(log_waiter2.WaitFor(kTimeout));
 
-  auto get_locks_count_on_tserver = [&conn2]() -> Result<int64_t> {
-    return conn2.FetchRow<int64_t>(
-        "SELECT COUNT(relname) FROM pg_locks l, pg_class c "
-        "WHERE l.relation = c.oid AND relname = 'test_table';");
+  auto get_locks_count_on_tserver = [&ts2, this]() -> Result<int64_t> {
+    return VERIFY_RESULT(cluster_->GetObjectLockStatus(*ts2)).object_lock_infos_size();
   };
 
   auto kGracePeriod = MonoDelta::FromMilliseconds(500);

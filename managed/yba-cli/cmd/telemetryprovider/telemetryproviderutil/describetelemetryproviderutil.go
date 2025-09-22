@@ -24,6 +24,9 @@ func DescribeTelemetryProviderUtil(
 	telemetryProviderType string,
 ) {
 	authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
+
+	VersionCheck(authAPI)
+
 	callSite := "Telemetry Provider"
 	if !util.IsEmptyString(commandCall) {
 		callSite = fmt.Sprintf("%s: %s", callSite, commandCall)

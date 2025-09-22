@@ -106,6 +106,8 @@ class SnapshotState : public StateWithTablets {
     return ShouldBlockObjectCleanup() && AllInState(SysSnapshotEntryPB::DELETING);
   }
 
+  bool ShouldRemoveNamespaceAnchor() const;
+
   Result<tablet::CreateSnapshotData> SysCatalogSnapshotData(
       const tablet::SnapshotOperation& operation) const;
 

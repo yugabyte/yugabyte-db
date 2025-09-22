@@ -6,7 +6,7 @@ linkTitle:
 description: Describes the syntax and semantics of Loop, exit, and continue statements. [YSQL]
 image: /images/section_icons/api/subsection.png
 menu:
-  v2.20:
+  v2.20_api:
     identifier: loop-exit-continue
     parent: compound-statements
     weight: 40

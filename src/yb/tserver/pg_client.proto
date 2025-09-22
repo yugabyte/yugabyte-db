@@ -743,6 +743,8 @@ message PgPerformOptionsPB {
   bool ddl_use_regular_transaction_block = 25;
   uint64 txn_serial_no = 4;
   uint64 read_time_serial_no = 20;
+  uint64 read_time_serial_no_history_min = 27;
+
 
   // See ReadHybridTimePB for information about in_txn_limit_ht.
   OptionalFixed64PB in_txn_limit_ht = 5;
@@ -753,7 +755,6 @@ message PgPerformOptionsPB {
   ReadTimeManipulation read_time_manipulation = 10;
   ReadHybridTimePB read_time = 11;
   bool use_catalog_session = 12;
-  bool force_global_transaction = 13;
   string namespace_id = 14;
   bool use_xcluster_database_consistency = 15;
   uint32 active_sub_transaction_id = 16;
@@ -764,6 +765,9 @@ message PgPerformOptionsPB {
   int64 pg_txn_start_us = 22;
 
   reserved 23; // ASH metadata is now passed in RequestHeader PB
+
+  bool force_global_transaction = 13;
+  bool is_all_region_local = 28;
 
   // When set,
   // - Sets the read time locally.
@@ -779,6 +783,7 @@ message PgPerformRequestPB {
   PgPerformOptionsPB options = 2;
   repeated PgPerformOpPB ops = 3;
   fixed64 write_time = 4;
+  uint64 serial_no = 5;
 }
 
 message PgPerformResponsePB {

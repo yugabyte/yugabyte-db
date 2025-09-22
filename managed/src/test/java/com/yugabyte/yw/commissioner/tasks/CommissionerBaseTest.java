@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
@@ -17,6 +18,8 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 
@@ -27,6 +30,8 @@ import com.google.common.net.HostAndPort;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.cloud.aws.AWSInitializer;
+import com.yugabyte.yw.cloud.azu.AZUClientFactory;
+import com.yugabyte.yw.cloud.azu.AZUResourceGroupApiClient;
 import com.yugabyte.yw.cloud.gcp.GCPInitializer;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.CallHome;
@@ -35,9 +40,11 @@ import com.yugabyte.yw.commissioner.DefaultExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.ExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.tasks.local.LocalProviderUniverseTestBase;
+import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckFollowerLag;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckLeaderlessTablets;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckUnderReplicatedTablets;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DoCapacityReservation;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.CloudQueryHelper;
@@ -100,6 +107,7 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.CustomerTask.TargetType;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
 import com.yugabyte.yw.models.Universe;
@@ -110,6 +118,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -117,11 +126,13 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import kamon.instrumentation.play.GuiceModule;
 import lombok.extern.slf4j.Slf4j;
 import org.jboss.logging.MDC;
 import org.junit.Before;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.play.CallbackController;
@@ -211,6 +222,10 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected ReleaseManager.ReleaseMetadata releaseMetadata;
   protected ReleaseContainer releaseContainer;
   protected ImageBundleUtil imageBundleUtil;
+  protected AZUClientFactory azuClientFactory = mock(AZUClientFactory.class);
+  protected AZUResourceGroupApiClient azuResourceGroupApiClient =
+      mock(AZUResourceGroupApiClient.class);
+  protected CloudAPI cloudAPI = mock(CloudAPI.class);
 
   @Before
   public void setUp() {
@@ -234,6 +249,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     imageBundleUtil = app.injector().instanceOf(ImageBundleUtil.class);
     mockCloudUtilFactory = mock(CloudUtilFactory.class);
     mockReleasesUtils = mock(ReleasesUtils.class);
+    lenient().when(azuClientFactory.getClient(any())).thenReturn(azuResourceGroupApiClient);
+    lenient().when(mockCloudAPIFactory.get(any())).thenReturn(cloudAPI);
 
     // Enable custom hooks in tests
     factory = app.injector().instanceOf(SettableRuntimeConfigFactory.class);
@@ -306,6 +323,53 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
             })
         .when(mockNodeAgentManager)
         .create(any(), anyBoolean());
+    Map<String, Set<String>> reservationsByGroup = new HashMap<>();
+    lenient()
+        .when(
+            azuResourceGroupApiClient.createCapacityReservationGroup(
+                anyString(), anyString(), any(Set.class)))
+        .thenAnswer(
+            invocation -> {
+              String groupName = invocation.getArgument(0);
+              reservationsByGroup.put(groupName, new HashSet<>());
+              return groupName;
+            });
+    lenient()
+        .when(
+            azuResourceGroupApiClient.createCapacityReservation(
+                anyString(),
+                anyString(),
+                anyString(),
+                anyString(),
+                anyString(),
+                any(Integer.class)))
+        .thenAnswer(
+            invocation -> {
+              String groupName = invocation.getArgument(0);
+              String reservationName = invocation.getArgument(3);
+              reservationsByGroup
+                  .computeIfAbsent(groupName, x -> new HashSet<>())
+                  .add(reservationName);
+              return reservationName;
+            });
+    lenient()
+        .when(azuResourceGroupApiClient.listCapacityReservationGroups())
+        .thenAnswer(invocation -> reservationsByGroup.keySet());
+    lenient()
+        .when(azuResourceGroupApiClient.listCapacityReservations(anyString()))
+        .thenAnswer(
+            invocation ->
+                reservationsByGroup.getOrDefault(invocation.getArgument(0), new HashSet<>()));
+    lenient()
+        .when(
+            cloudAPI.createCapacityReservation(
+                any(), anyString(), anyString(), anyString(), anyString(), any(Integer.class)))
+        .thenAnswer(
+            invocation -> {
+              String reservationName = invocation.getArgument(1);
+              return reservationName;
+            });
+    lenient().when(cloudAPI.isValidCreds(any())).thenReturn(true);
   }
 
   @Override
@@ -394,6 +458,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                 .overrides(bind(NodeAgentClient.class).toInstance(mockNodeAgentClient))
                 .overrides(bind(SoftwareUpgradeHelper.class).toInstance(mockSoftwareUpgradeHelper))
                 .overrides(bind(GFlagsAuditHandler.class).toInstance(mockGFlagsAuditHandler))
+                .overrides(bind(AZUClientFactory.class).toInstance(azuClientFactory))
                 .overrides(
                     bind(PrometheusConfigManager.class).toInstance(mockPrometheusConfigManager))
                 .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager)))
@@ -966,6 +1031,112 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       when(mockClient.listLiveTabletServers()).thenReturn(listLiveTabletServersResponse);
     } catch (Exception e) {
       fail();
+    }
+  }
+
+  protected void verifyCapacityReservationAZU(
+      UUID universeUUID,
+      Region region,
+      Map<String, Map<String, List<String>>> instanceTypeToZonesAndNodes) {
+    String regionGroup =
+        DoCapacityReservation.getCapacityReservationGroupName(universeUUID, region.getCode());
+
+    Set<String> allZones =
+        instanceTypeToZonesAndNodes.values().stream()
+            .flatMap(zs -> zs.keySet().stream())
+            .collect(Collectors.toSet());
+
+    verify(azuResourceGroupApiClient)
+        .createCapacityReservationGroup(
+            Mockito.eq(regionGroup), Mockito.eq(region.getCode()), Mockito.eq(allZones));
+
+    instanceTypeToZonesAndNodes.forEach(
+        (instanceType, map) -> {
+          map.forEach(
+              (zone, nodes) -> {
+                String instanceTypeRes =
+                    DoCapacityReservation.getInstanceReservationName(instanceType, zone);
+                verify(azuResourceGroupApiClient)
+                    .createCapacityReservation(
+                        Mockito.eq(regionGroup),
+                        Mockito.eq(region.getCode()),
+                        Mockito.eq(zone),
+                        Mockito.eq(instanceTypeRes),
+                        Mockito.eq(instanceType),
+                        Mockito.eq(Integer.valueOf(nodes.size())));
+
+                verify(azuResourceGroupApiClient)
+                    .deleteCapacityReservation(
+                        Mockito.eq(regionGroup),
+                        Mockito.eq(instanceTypeRes),
+                        Mockito.eq(new HashSet<>(nodes)));
+              });
+        });
+
+    verify(azuResourceGroupApiClient).deleteCapacityReservationGroup(Mockito.eq(regionGroup));
+  }
+
+  protected void verifyCapacityReservationAws(
+      UUID universeUUID, Map<String, Map<String, ZoneData>> instanceTypeToZonesAndNodes) {
+
+    instanceTypeToZonesAndNodes.forEach(
+        (instanceType, map) -> {
+          map.forEach(
+              (zone, zoneData) -> {
+                String instanceTypeRes =
+                    DoCapacityReservation.getZoneInstanceCapacityReservationName(
+                        universeUUID, "az-" + zone, instanceType);
+                verify(cloudAPI)
+                    .createCapacityReservation(
+                        Mockito.eq(defaultProvider),
+                        Mockito.eq(instanceTypeRes),
+                        Mockito.eq(zoneData.region),
+                        Mockito.eq("az-" + zone),
+                        Mockito.eq(instanceType),
+                        Mockito.eq(Integer.valueOf(zoneData.nodes.size())));
+
+                verify(cloudAPI)
+                    .deleteCapacityReservation(
+                        Mockito.eq(defaultProvider),
+                        Mockito.eq(zoneData.region),
+                        Mockito.eq(instanceTypeRes));
+              });
+        });
+  }
+
+  protected void verifyNodeInteractionsCapacityReservation(
+      int numberOfInvocations,
+      NodeManager.NodeCommandType commandType,
+      Function<NodeTaskParams, String> capacityExtractor,
+      Map<String, List<String>> reservationToNodes) {
+    ArgumentCaptor<NodeManager.NodeCommandType> typeArgumentCaptor =
+        ArgumentCaptor.forClass(NodeManager.NodeCommandType.class);
+    ArgumentCaptor<NodeTaskParams> nodeTaskParamCaptor =
+        ArgumentCaptor.forClass(NodeTaskParams.class);
+
+    verify(mockNodeManager, times(numberOfInvocations))
+        .nodeCommand(typeArgumentCaptor.capture(), nodeTaskParamCaptor.capture());
+
+    int j = 0;
+    List<NodeTaskParams> allParams = nodeTaskParamCaptor.getAllValues();
+    for (NodeManager.NodeCommandType allValue : typeArgumentCaptor.getAllValues()) {
+      if (allValue == commandType) {
+        NodeTaskParams nodeTaskParams = allParams.get(j);
+        String reservation = capacityExtractor.apply(nodeTaskParams);
+        assertNotNull(reservation);
+        assertTrue(reservationToNodes.get(reservation).contains(nodeTaskParams.nodeName));
+      }
+      j++;
+    }
+  }
+
+  protected class ZoneData {
+    public final String region;
+    public final List<String> nodes;
+
+    public ZoneData(String region, List<String> nodes) {
+      this.region = region;
+      this.nodes = nodes;
     }
   }
 }

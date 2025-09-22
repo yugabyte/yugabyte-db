@@ -62,6 +62,7 @@ import com.yugabyte.yba.v2.client.models.XClusterInfo;
 import com.yugabyte.yba.v2.client.models.YCQLAuditConfig;
 import com.yugabyte.yba.v2.client.models.YCQLSpec;
 import com.yugabyte.yba.v2.client.models.YSQLAuditConfig;
+import com.yugabyte.yba.v2.client.models.YSQLQueryLogConfig;
 import com.yugabyte.yba.v2.client.models.YSQLSpec;
 import com.yugabyte.yba.v2.client.models.YbSoftwareDetails;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
@@ -918,6 +919,8 @@ public class UniverseTestBase extends UniverseControllerTestBase {
           v2QueryLogConfig.getUniverseLogsExporterConfig().get(i),
           dbQueryLogConfig.getUniverseLogsExporterConfig().get(i));
     }
+    validateYsqlQueryLogConfig(
+        v2QueryLogConfig.getYsqlQueryLogConfig(), dbQueryLogConfig.getYsqlQueryLogConfig());
   }
 
   private void validateUniverseLogsExportedConfig(
@@ -990,6 +993,52 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     assertThat(v2YsqlAuditConfig.getLogRows(), is(dbYsqlAuditConfig.isLogRows()));
     assertThat(v2YsqlAuditConfig.getLogStatement(), is(dbYsqlAuditConfig.isLogStatement()));
     assertThat(v2YsqlAuditConfig.getLogStatementOnce(), is(dbYsqlAuditConfig.isLogStatementOnce()));
+  }
+
+  private void validateYsqlQueryLogConfig(
+      YSQLQueryLogConfig v2YsqlQueryLogConfig,
+      com.yugabyte.yw.models.helpers.exporters.query.YSQLQueryLogConfig dbYsqlQueryLogConfig) {
+    if (v2YsqlQueryLogConfig == null) {
+      assertThat(dbYsqlQueryLogConfig, is(nullValue()));
+      return;
+    }
+    assertThat(v2YsqlQueryLogConfig.getEnabled(), is(dbYsqlQueryLogConfig.isEnabled()));
+    if (v2YsqlQueryLogConfig.getLogStatement() == null) {
+      assertThat(dbYsqlQueryLogConfig.getLogStatement().name(), is("NONE"));
+    } else {
+      assertThat(
+          v2YsqlQueryLogConfig.getLogStatement().getValue(),
+          is(dbYsqlQueryLogConfig.getLogStatement().name()));
+    }
+    if (v2YsqlQueryLogConfig.getLogMinErrorStatement() == null) {
+      assertThat(dbYsqlQueryLogConfig.getLogMinErrorStatement().name(), is("ERROR"));
+    } else {
+      assertThat(
+          v2YsqlQueryLogConfig.getLogMinErrorStatement().getValue(),
+          is(dbYsqlQueryLogConfig.getLogMinErrorStatement().name()));
+    }
+    if (v2YsqlQueryLogConfig.getLogErrorVerbosity() == null) {
+      assertThat(dbYsqlQueryLogConfig.getLogErrorVerbosity().name(), is("DEFAULT"));
+    } else {
+      assertThat(
+          v2YsqlQueryLogConfig.getLogErrorVerbosity().getValue(),
+          is(dbYsqlQueryLogConfig.getLogErrorVerbosity().name()));
+    }
+    assertThat(v2YsqlQueryLogConfig.getLogDuration(), is(dbYsqlQueryLogConfig.isLogDuration()));
+    assertThat(
+        v2YsqlQueryLogConfig.getDebugPrintPlan(), is(dbYsqlQueryLogConfig.isDebugPrintPlan()));
+    assertThat(
+        v2YsqlQueryLogConfig.getLogConnections(), is(dbYsqlQueryLogConfig.isLogConnections()));
+    assertThat(
+        v2YsqlQueryLogConfig.getLogDisconnections(),
+        is(dbYsqlQueryLogConfig.isLogDisconnections()));
+    if (v2YsqlQueryLogConfig.getLogMinDurationStatement() == null) {
+      assertThat(dbYsqlQueryLogConfig.getLogMinDurationStatement(), is(-1));
+    } else {
+      assertThat(
+          v2YsqlQueryLogConfig.getLogMinDurationStatement(),
+          is(dbYsqlQueryLogConfig.getLogMinDurationStatement()));
+    }
   }
 
   private void validateYcqlAuditConfig(

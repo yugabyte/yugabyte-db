@@ -135,5 +135,5 @@ func init() {
 	listTableCmd.Flags().Bool("include-colocated-parent-tables", true,
 		"[Optional] Include colocated parent tables.")
 	listTableCmd.Flags().Bool("xcluster-supported-only", false,
-		"[Optional] Include only XCluster supported tables. (default false)")
+		"[Optional] Include only xCluster supported tables. (default false)")
 }

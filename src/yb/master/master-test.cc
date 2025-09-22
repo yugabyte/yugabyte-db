@@ -2604,11 +2604,8 @@ TEST_P(NamespaceTest, RenameNamespace) {
   const NamespaceName other_ns_new_name = "testns_newname";
   {
     AlterNamespaceResponsePB resp;
-    ASSERT_OK(AlterNamespace(other_ns_name,
-                             other_ns_id,
-                             boost::none /* database_type */,
-                             other_ns_new_name,
-                             &resp));
+    ASSERT_OK(AlterNamespace(
+        other_ns_name, other_ns_id, std::nullopt /* database_type */, other_ns_new_name, &resp));
   }
   {
     ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));

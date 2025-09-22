@@ -86,6 +86,19 @@ type CipherTrustConfigField struct {
 	KeySize      float64 `json:"KEY_SIZE"`
 }
 
+// ConvertListToKMSConfig converts a list of maps to a slice of KMSConfig structs
+func ConvertListToKMSConfig(r []map[string]interface{}) ([]KMSConfig, error) {
+	var kmsConfigs []KMSConfig
+	for _, k := range r {
+		kmsConfig, err := ConvertToKMSConfig(k)
+		if err != nil {
+			return nil, err
+		}
+		kmsConfigs = append(kmsConfigs, kmsConfig)
+	}
+	return kmsConfigs, nil
+}
+
 // ConvertToKMSConfig converts the kms config map to KMSConfig struct
 func ConvertToKMSConfig(r map[string]interface{}) (KMSConfig, error) {
 

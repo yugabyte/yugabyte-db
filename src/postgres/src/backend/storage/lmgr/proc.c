@@ -56,6 +56,9 @@
 #include "utils/timeout.h"
 #include "utils/timestamp.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 /* GUC variables */
 int			DeadlockTimeout = 1000;
 int			StatementTimeout = 0;
@@ -909,6 +912,9 @@ ProcKill(int code, Datum arg)
 	proc = MyProc;
 	MyProc = NULL;
 	DisownLatch(&proc->procLatch);
+
+	if (IsYugaByteEnabled())
+		YBOnPostgresBackendShutdown();
 
 	ReleaseProcToFreeList(proc);
 

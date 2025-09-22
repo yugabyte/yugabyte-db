@@ -152,7 +152,7 @@ var restartXClusterCmd = &cobra.Command{
 		rTask, response, err := authAPI.RestartXClusterConfig(uuid).
 			XclusterReplicationRestartFormData(req).IsForceDelete(forceDelete).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "XCluster", "Restart")
+			errMessage := util.ErrorFromHTTPResponse(response, err, "xCluster", "Restart")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
@@ -176,8 +176,8 @@ var restartXClusterCmd = &cobra.Command{
 				errMessage := util.ErrorFromHTTPResponse(
 					response,
 					err,
-					"XCluster",
-					"Restart - Get XCluster",
+					"xCluster",
+					"Restart - Get xCluster",
 				)
 				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 			}

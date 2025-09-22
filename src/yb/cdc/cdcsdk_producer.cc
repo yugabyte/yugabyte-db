@@ -35,6 +35,7 @@
 
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/packed_value.h"
+#include "yb/dockv/reader_projection.h"
 
 #include "yb/master/master_client.pb.h"
 
@@ -289,7 +290,7 @@ Result<bool> ShouldPopulateNewInsertRecord(
         VERIFY_RESULT(dockv::DocKey::EncodedSize(next_key, dockv::DocKeyPart::kWholeDocKey));
 
     dockv::KeyEntryValue next_column_id;
-    boost::optional<dockv::KeyEntryValue> next_column_id_opt;
+    std::optional<dockv::KeyEntryValue> next_column_id_opt;
     Slice next_key_column = next_key.WithoutPrefix(next_key_size);
     if (!next_key_column.empty()) {
       RETURN_NOT_OK(dockv::KeyEntryValue::DecodeKey(&next_key_column, &next_column_id));
@@ -587,16 +588,17 @@ Status PopulateBeforeImage(
       tablet_peer, commit_time.Decremented(), row_message, cdc_sdk_safe_time,
       std::forward<Args>(args)...);
   if (!status.ok()) {
-    LOG(DFATAL) << "Failed to get the BeforeImage for tablet: " << tablet_peer->tablet_id()
-                << " with read time: " << commit_time
-                << " for change record type: " << row_message->op()
-                << " row_message: " << row_message->DebugString()
-                << " with error status: " << status;
+    LOG(WARNING) << "Failed to get the BeforeImage for tablet: " << tablet_peer->tablet_id()
+                 << " with read time: " << commit_time
+                 << " for change record type: " << row_message->op()
+                 << " row_message: " << row_message->DebugString()
+                 << " with error status: " << status;
+  } else {
+    VLOG(2) << "Successfully got the BeforeImage for tablet: " << tablet_peer->tablet_id()
+            << " with read time: " << commit_time
+            << " for change record type: " << row_message->op()
+            << " row_message: " << row_message->DebugString();
   }
-  VLOG(2) << "Successfully got the BeforeImage for tablet: " << tablet_peer->tablet_id()
-          << " with read time: " << commit_time
-          << " for change record type: " << row_message->op()
-          << " row_message: " << row_message->DebugString();
   return status;
 }
 
@@ -954,7 +956,7 @@ Status PopulateCDCSDKIntentRecord(
         VERIFY_RESULT(dockv::DocKey::EncodedSize(key, dockv::DocKeyPart::kWholeDocKey));
 
     dockv::KeyEntryValue column_id;
-    boost::optional<dockv::KeyEntryValue> column_id_opt;
+    std::optional<dockv::KeyEntryValue> column_id_opt;
     Slice key_column = key.WithoutPrefix(key_size);
     if (!key_column.empty()) {
       RETURN_NOT_OK(dockv::KeyEntryValue::DecodeKey(&key_column, &column_id));

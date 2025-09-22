@@ -61,7 +61,7 @@ The configuration specific to simple bind mode.
 
 ## Search + Bind Mode
 
-In `Search + Bind` mode, YB-Tserver will bind to the LDAP directory with a fixed username and password, specified with `ycql_ldap_bind_dn` and `ycql_ldap_bind_passwd`, and performs a search for the user trying to log in to the database. This mode is commonly used by LDAP authentication schemes in other software.
+In `Search + Bind` mode, YB-TServer will bind to the LDAP directory with a fixed username and password, specified with `ycql_ldap_bind_dn` and `ycql_ldap_bind_passwd`, and performs a search for the user trying to log in to the database. This mode is commonly used by LDAP authentication schemes in other software.
 
 For Searching the LDAP directory if no fixed username and password is configured at YB-TServer, an anonymous bind will be attempted to the directory. The search will be performed over the subtree at `ycql_ldap_base_dn`, and will try to do an exact match of the attribute specified in `ycql_ldap_search_attribute`. After the user has been found in this search, the server disconnects and re-binds to the directory as this user, using the password specified by the client, to verify that the login is correct.
 
@@ -87,17 +87,17 @@ The configurations supported for search + bind mode.
 
 To use LDAP password authentication on a new YugabyteDB cluster, follow these steps:
 
-1. Use TServer gflags to enable LDAP authentication on YB-TServer in simple bind mode. Use the below configuration to start a YugabyteDB cluster.
+1. Use TServer flags to enable LDAP authentication on YB-TServer in simple bind mode. Use the following configuration to start a YugabyteDB universe.
 
     ```sh
     --use_cassandra_authentication=true --ycql_use_ldap=true --ycql_ldap_server=ldap://ldap.forumsys.com:389 --ycql_ldap_user_prefix=uid= --ycql_ldap_user_suffix=, dc=example, dc=com --ycql_ldap_users_to_skip_csv=cassandra
     ```
 
     {{< note title="Note" >}}
-In the above sample configuration, we are using an [online LDAP test server](https://www.forumsys.com/tutorials/integration-how-to/ldap/online-ldap-test-server/) for setting up the LDAP authentication with YugabyteDB.
+This sample configuration uses an [online LDAP test server](https://www.forumsys.com/tutorials/integration-how-to/ldap/online-ldap-test-server/) for setting up the LDAP authentication with YugabyteDB.
     {{< /note >}}
 
-    The `--ycql_ldap_users_to_skip_csv=cassandra` gflag allows access to the user `cassandra` with password authentication. This allows the administrator to log in for setting up the roles (and permissions) for the LDAP users.
+    The `--ycql_ldap_users_to_skip_csv=cassandra` flag allows access to the user `cassandra` with password authentication. This allows the administrator to log in for setting up the roles (and permissions) for the LDAP users.
 
 1. Start the YugabyteDB cluster.
 

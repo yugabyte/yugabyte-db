@@ -132,10 +132,10 @@ DEFINE_RUNTIME_string(ysql_pg_conf_csv, "",
     "Check https://www.postgresql.org/docs/current/view-pg-settings.html for information about "
     "which parameters take effect at runtime.");
 
-DEFINE_NON_RUNTIME_string(ysql_hba_conf_csv, "",
+DEFINE_RUNTIME_string(ysql_hba_conf_csv, "",
               "CSV formatted line represented list of postgres hba rules (in order)");
 TAG_FLAG(ysql_hba_conf_csv, sensitive_info);
-DEFINE_NON_RUNTIME_string(ysql_ident_conf_csv, "",
+DEFINE_RUNTIME_string(ysql_ident_conf_csv, "",
               "CSV formatted line represented list of postgres ident map rules (in order)");
 
 DEFINE_NON_RUNTIME_string(ysql_pg_conf, "",
@@ -292,6 +292,11 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_allow_block_based_sampling_algorithm,
 DEFINE_RUNTIME_AUTO_PG_FLAG(
     bool, yb_allow_separate_requests_for_sampling_stages, kLocalVolatile, false, true,
     "Allow using separate requests for block-based sampling stages");
+
+DEFINE_RUNTIME_AUTO_PG_FLAG(
+    bool, yb_allow_dockey_bounds, kLocalVolatile, false, true,
+    "If true, allow lower_bound/upper_bound fields of PgsqlReadRequestPB to be DocKeys. Only "
+    "applicable for hash-sharded tables.");
 
 DEFINE_RUNTIME_PG_FLAG(
     string, yb_default_replica_identity, "CHANGE",
@@ -946,7 +951,9 @@ Status PgWrapper::ReloadConfig() {
 }
 
 Status PgWrapper::UpdateAndReloadConfig() {
-  VERIFY_RESULT(WritePostgresConfig(conf_));
+  RETURN_NOT_OK(WritePostgresConfig(conf_));
+  RETURN_NOT_OK(WritePgHbaConfig(conf_));
+  RETURN_NOT_OK(WritePgIdentConfig(conf_));
   return ReloadConfig();
 }
 
@@ -1420,7 +1427,7 @@ Status PgSupervisor::UpdateAndReloadConfig() {
   return Status::OK();
 }
 
-Status PgSupervisor::RegisterReloadPgConfigCallback(const void* flag_ptr) {
+Status PgSupervisor::RegisterReloadConfigCallback(const void* flag_ptr) {
   // DeRegisterForPgFlagChangeNotifications is called before flag_callbacks_ is destroyed, so its
   // safe to bind to this.
   flag_callbacks_.emplace_back(VERIFY_RESULT(RegisterFlagUpdateCallback(
@@ -1438,11 +1445,13 @@ Status PgSupervisor::RegisterPgFlagChangeNotifications() {
     std::unordered_set<FlagTag> tags;
     GetFlagTags(flag.name, &tags);
     if (tags.contains(FlagTag::kPg)) {
-      RETURN_NOT_OK(RegisterReloadPgConfigCallback(flag.flag_ptr));
+      RETURN_NOT_OK(RegisterReloadConfigCallback(flag.flag_ptr));
     }
   }
 
-  RETURN_NOT_OK(RegisterReloadPgConfigCallback(&FLAGS_ysql_pg_conf_csv));
+  RETURN_NOT_OK(RegisterReloadConfigCallback(&FLAGS_ysql_pg_conf_csv));
+  RETURN_NOT_OK(RegisterReloadConfigCallback(&FLAGS_ysql_hba_conf_csv));
+  RETURN_NOT_OK(RegisterReloadConfigCallback(&FLAGS_ysql_ident_conf_csv));
 
   return Status::OK();
 }

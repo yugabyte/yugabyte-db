@@ -22,7 +22,7 @@ Use the `DROP MATERIALIZED VIEW` statement to drop a materialized view.
 
 ## Semantics
 
-Drop a materialized view named *matview_name*. If `matview_name` already exists in the specified database, an error will be raised unless the `IF NOT EXISTS` clause is used.
+Drop a materialized view named *matview_name*. If `matview_name` doesn't exist in the specified database, an error will be raised unless the `IF EXISTS` clause is used.
 
 ### RESTRICT / CASCADE
 

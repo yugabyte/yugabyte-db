@@ -152,6 +152,39 @@ kiwi_fe_read_parameter(char *data, uint32_t size, char **name,
 }
 
 KIWI_API static inline int
+kiwi_fe_read_yb_parameter(char *data, uint32_t size, char **name,
+			  uint32_t *name_len, char **value, uint32_t *value_len,
+			  char *flags)
+{
+	kiwi_header_t *header = (kiwi_header_t *)data;
+	uint32_t len;
+	int rc = kiwi_read(&len, &data, &size);
+	if (kiwi_unlikely(rc != 0))
+		return -1;
+	if (kiwi_unlikely(header->type != KIWI_BE_PARAMETER_STATUS) &&
+	    kiwi_unlikely(header->type != YB_CONN_MGR_PARAMETER_STATUS))
+		return -1;
+	uint32_t pos_size = len;
+	char *pos = kiwi_header_data(header);
+	/* name */
+	*name = pos;
+	rc = kiwi_readsz(&pos, &pos_size);
+	if (kiwi_unlikely(rc == -1))
+		return -1;
+	*name_len = pos - *name;
+	/* value */
+	*value = pos;
+	rc = kiwi_readsz(&pos, &pos_size);
+	if (kiwi_unlikely(rc == -1))
+		return -1;
+	*value_len = pos - *value;
+	rc = kiwi_read8(flags, &pos, &pos_size);
+	if (kiwi_unlikely(rc == -1))
+		return -1;
+	return 0;
+}
+
+KIWI_API static inline int
 kiwi_fe_read_error_or_notice(char *data, uint32_t size, kiwi_fe_error_t *error,
 			     kiwi_be_type_t expected_packet_type)
 {

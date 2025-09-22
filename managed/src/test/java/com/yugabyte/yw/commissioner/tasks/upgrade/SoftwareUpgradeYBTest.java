@@ -168,6 +168,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     mockUpgrade
         .precheckTasks(getPrecheckTasks(true))
         .addTasks(TaskType.UpdateUniverseState)
+        .addTasks(TaskType.DisablePitrConfig)
         .addSimultaneousTasks(TaskType.AnsibleConfigureServers, defaultUniverse.getMasters().size())
         .addSimultaneousTasks(
             TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
@@ -235,6 +236,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     mockUpgrade
         .precheckTasks(getPrecheckTasks(true))
         .addTasks(TaskType.UpdateUniverseState)
+        .addTasks(TaskType.DisablePitrConfig)
         .addSimultaneousTasks(TaskType.AnsibleConfigureServers, defaultUniverse.getMasters().size())
         .addSimultaneousTasks(
             TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
@@ -258,7 +260,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         .addTasks(TaskType.UpdateUniverseState)
         .addTasks(TaskType.PromoteAutoFlags)
         .addTasks(TaskType.RunYsqlUpgrade)
-        .addTasks(TaskType.UpdatePitrConfigIntermittentMinRecoverTime)
+        .addTasks(TaskType.EnablePitrConfig)
         .addTasks(TaskType.UpdateUniverseState)
         .verifyTasks(taskInfo.getSubTasks());
 
@@ -317,6 +319,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     mockUpgrade
         .precheckTasks(enableYSQL, getPrecheckTasks(true))
         .addTasks(TaskType.UpdateUniverseState)
+        .addTasks(TaskType.DisablePitrConfig)
         .addSimultaneousTasks(TaskType.AnsibleConfigureServers, defaultUniverse.getMasters().size())
         .addSimultaneousTasks(
             TaskType.AnsibleConfigureServers, defaultUniverse.getTServersInPrimaryCluster().size())
@@ -372,6 +375,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     mockUpgrade
         .precheckTasks(getPrecheckTasks(false))
         .addTasks(TaskType.UpdateUniverseState)
+        .addTasks(TaskType.DisablePitrConfig)
         .addSimultaneousTasks(TaskType.AnsibleConfigureServers, defaultUniverse.getMasters().size())
         .addSimultaneousTasks(
             TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
@@ -445,6 +449,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     mockUpgrade
         .precheckTasks(getPrecheckTasks(false))
         .addTasks(TaskType.UpdateUniverseState)
+        .addTasks(TaskType.DisablePitrConfig)
         .addSimultaneousTasks(TaskType.AnsibleConfigureServers, defaultUniverse.getMasters().size())
         .addSimultaneousTasks(
             TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
@@ -552,6 +557,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     mockUpgrade
         .precheckTasks(getPrecheckTasks(false))
         .addTasks(TaskType.UpdateUniverseState)
+        .addTasks(TaskType.DisablePitrConfig)
         .addSimultaneousTasks(TaskType.AnsibleConfigureServers, defaultUniverse.getMasters().size())
         .addSimultaneousTasks(
             TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
@@ -674,6 +680,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     mockUpgrade
         .precheckTasks(getPrecheckTasks(false))
         .addTasks(TaskType.UpdateUniverseState)
+        .addTasks(TaskType.DisablePitrConfig)
         .addSimultaneousTasks(TaskType.AnsibleConfigureServers, defaultUniverse.getMasters().size())
         .addSimultaneousTasks(
             TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
@@ -892,6 +899,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         .precheckTasks(
             TaskType.CheckUpgrade, TaskType.CheckMemory, TaskType.CheckLocale, TaskType.CheckGlibc)
         .addTasks(TaskType.UpdateUniverseState)
+        .addTasks(TaskType.DisablePitrConfig)
         .addSimultaneousTasks(TaskType.AnsibleConfigureServers, defaultUniverse.getMasters().size())
         .addSimultaneousTasks(
             TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())

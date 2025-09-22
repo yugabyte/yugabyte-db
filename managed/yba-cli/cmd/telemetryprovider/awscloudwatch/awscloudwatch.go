@@ -26,7 +26,7 @@ var AWSCloudWatchTelemetryProviderCmd = &cobra.Command{
 }
 
 func init() {
-	// AWSCloudWatchTelemetryProviderCmd.AddCommand(createAWSCloudWatchTelemetryProviderCmd)
+	AWSCloudWatchTelemetryProviderCmd.AddCommand(createAWSCloudWatchTelemetryProviderCmd)
 	AWSCloudWatchTelemetryProviderCmd.AddCommand(listAWSCloudWatchTelemetryProviderCmd)
 	AWSCloudWatchTelemetryProviderCmd.AddCommand(describeAWSCloudWatchTelemetryProviderCmd)
 	AWSCloudWatchTelemetryProviderCmd.AddCommand(deleteAWSCloudWatchTelemetryProviderCmd)

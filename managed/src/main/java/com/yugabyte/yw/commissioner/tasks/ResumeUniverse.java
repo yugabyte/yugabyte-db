@@ -17,8 +17,10 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.utils.CapacityReservationUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -61,16 +63,27 @@ public class ResumeUniverse extends UniverseDefinitionTaskBase {
 
   @Override
   public void run() {
+    boolean deleteCapacityReservation = false;
     try {
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
       Universe universe = lockAndFreezeUniverseForUpdate(-1, null /* Txn callback */);
-
+      deleteCapacityReservation =
+          createCapacityReservationsIfNeeded(
+              universe.getUniverseDetails().nodeDetailsSet,
+              CapacityReservationUtil.OperationType.RESUME,
+              node ->
+                  node.state == NodeDetails.NodeState.Stopped
+                      || node.state == NodeDetails.NodeState.InstanceStopped);
       createResumeUniverseTasks(
           universe,
           params().customerUUID,
           !runtimeInfo.certsUpdated,
           u -> updateRuntimeInfo(RuntimeInfo.class, info -> info.certsUpdated = true));
+
+      if (deleteCapacityReservation) {
+        createDeleteReservationTask();
+      }
 
       createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
 

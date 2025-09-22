@@ -741,7 +741,10 @@ extern void RelationDecrementReferenceCount(Relation rel);
 typedef struct YbParitionedTableOptions
 {
 	int32		vl_len_;		/* varlena header (do not touch directly!) */
+
+	/* YB additions. */
 	Oid			colocation_id;
+	bool		colocation;
 } YbParitionedTableOptions;
 
 #endif							/* REL_H */

@@ -17,8 +17,6 @@
 
 #pragma once
 
-#include <boost/optional.hpp>
-
 #include "yb/common/common_fwd.h"
 #include "yb/common/ql_datatype.h"
 #include "yb/qlexpr/ql_name.h"
@@ -1429,8 +1427,8 @@ class PTBindVar : public PTExpr {
 
  private:
   // 0-based position.
-  PTConstVarInt::SharedPtr user_pos_; // pos used for parsing.
-  boost::optional<int64_t> pos_; // pos after parsing is done.
+  PTConstVarInt::SharedPtr user_pos_;  // pos used for parsing.
+  std::optional<int64_t> pos_;         // pos after parsing is done.
   // Variable name.
   MCSharedPtr<MCString> name_;
   MCSharedPtr<MCVector<MCSharedPtr<MCString>>> alternative_names_;

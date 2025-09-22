@@ -1,5 +1,4 @@
 SET yb_fetch_row_limit TO 1024;
-SET yb_explain_hide_non_deterministic_fields TO true;
 --
 -- Tests to validate index updates in a table with no primary key.
 --
@@ -1800,13 +1799,14 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t_simple SET k1 = k1 + 10, k2 = k2 + 1
 (13 rows)
 
 EXPLAIN (VERBOSE) /*+ IndexOnlyScan(t_simple multi_include) */ SELECT v1, v2, v3, v4 FROM t_simple ORDER BY (v1, v2);
-WARNING:  GUC yb_explain_hide_non_deterministic_fields disables EXPLAIN option VERBOSE
-                                          QUERY PLAN                                           
------------------------------------------------------------------------------------------------
+                                              QUERY PLAN                                              
+------------------------------------------------------------------------------------------------------
  Sort  (cost=163.83..166.33 rows=1000 width=48)
-   Sort Key: (ROW(v1, v2))
-   ->  Index Only Scan using multi_include on t_simple  (cost=0.00..114.00 rows=1000 width=48)
-(3 rows)
+   Output: v1, v2, v3, v4, (ROW(v1, v2))
+   Sort Key: (ROW(t_simple.v1, t_simple.v2))
+   ->  Index Only Scan using multi_include on public.t_simple  (cost=0.00..114.00 rows=1000 width=48)
+         Output: v1, v2, v3, v4, ROW(v1, v2)
+(5 rows)
 
 /*+ IndexOnlyScan(t_simple multi_include) */ SELECT v1, v2, v3, v4 FROM t_simple ORDER BY (v1, v2);
  v1 | v2 | v3 | v4 
@@ -1824,13 +1824,14 @@ WARNING:  GUC yb_explain_hide_non_deterministic_fields disables EXPLAIN option V
 (10 rows)
 
 EXPLAIN (VERBOSE) /*+ IndexScan(multi_include) */ SELECT * FROM t_simple ORDER BY (v1, v2);
-WARNING:  GUC yb_explain_hide_non_deterministic_fields disables EXPLAIN option VERBOSE
-                             QUERY PLAN                             
---------------------------------------------------------------------
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
  Sort  (cost=149.83..152.33 rows=1000 width=56)
-   Sort Key: (ROW(v1, v2))
-   ->  Seq Scan on t_simple  (cost=0.00..100.00 rows=1000 width=56)
-(3 rows)
+   Output: k1, k2, v1, v2, v3, v4, (ROW(v1, v2))
+   Sort Key: (ROW(t_simple.v1, t_simple.v2))
+   ->  Seq Scan on public.t_simple  (cost=0.00..100.00 rows=1000 width=56)
+         Output: k1, k2, v1, v2, v3, v4, ROW(v1, v2)
+(5 rows)
 
 /*+ IndexScan(multi_include) */ SELECT * FROM t_simple ORDER BY (v1, v2);
  k1 | k2 | v1 | v2 | v3 | v4 

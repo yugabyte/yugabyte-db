@@ -4,7 +4,7 @@ linkTitle: Copy the .csv files to staging tables
 headerTitle: Copy each of the COVIDcast data .csv files to a dedicated staging table
 description: Copy each of the COVIDcast data .csv files to a dedicated staging table for analysis using YSQL functions for linear regression analysis
 menu:
-  v2.20:
+  v2.20_api:
     identifier: stage-the-csv-files
     parent: ingest-the-covidcast-data
     weight: 20
@@ -64,7 +64,7 @@ Now take an inventory of your tables with the `\d` meta-command. You should see 
 
 The [`COPY`](../../../../../the-sql-language/statements/cmd_copy) SQL statement is designed to ingest data from a file "as is". However, its simple use requires that the to-be-read (or to-be-written) file resides _server-side_ on the local filesystem of the YB-TServer that you connect to. If you specify `stdin` as the argument of `COPY FROM`, then these input and output channels are defined client-side in the environment of the client where you run `ysqlsh`. This sounds promising. But the snag is that you must include the text of the `COPY FROM` statement at the start of the file that contains the data that you intend to ingest. This is described in the [stdin and stdout](../../../../../the-sql-language/statements/cmd_copy/#stdin-and-stdout) section of the documentation for the `COPY` statement.
 
-The preferred option for the present case study, because [`ysqlsh`](../../../../../../../admin/ysqlsh/) is chosen for running all the SQL statements, is to use the [`\copy`](../../../../../../../admin/ysqlsh-meta-commands/#copy-table-column-list-query-from-to-filename-program-command-stdin-stdout-pstdin-pstdout-with-option) meta-command.
+The preferred option for the present case study, because [`ysqlsh`](../../../../../../../api/ysqlsh/) is chosen for running all the SQL statements, is to use the [`\copy`](../../../../../../../api/ysqlsh-meta-commands/#copy-table-column-list-query-from-to-filename-program-command-stdin-stdout-pstdin-pstdout-with-option) meta-command.
 
 Because the three `.csv` files all have the same format, as do their three dedicated staging tables, the `copy` command will have the same form for each of its invocations, thus:
 

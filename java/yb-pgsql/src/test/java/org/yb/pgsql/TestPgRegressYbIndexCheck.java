@@ -12,6 +12,7 @@
 //
 package org.yb.pgsql;
 
+import java.util.Map;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
@@ -27,7 +28,14 @@ public class TestPgRegressYbIndexCheck extends BasePgRegressTest {
   }
 
   @Test
-  public void testPgRegressFeature() throws Exception {
+  public void testPgRegressYbIndexCheck() throws Exception {
     runPgRegressTest("yb_index_check_schedule");
+  }
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    appendToYsqlPgConf(flagMap, "yb_test_index_check_num_batches_per_snapshot=1");
+    return flagMap;
   }
 }

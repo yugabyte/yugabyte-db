@@ -4,7 +4,7 @@ linkTitle: Code example conventions
 summary: Code example conventions
 description: Code example conventions for JSON functions and operators.
 menu:
-  v2.20:
+  v2.20_api:
     identifier: code-example-conventions
     parent: api-ysql-datatypes-json
     weight: 30

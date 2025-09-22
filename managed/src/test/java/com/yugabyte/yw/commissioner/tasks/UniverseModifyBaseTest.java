@@ -202,27 +202,29 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
             result.getUniverseUUID(),
             ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
     if (providerType == Common.CloudType.onprem) {
-      Universe.saveDetails(
-          result.getUniverseUUID(),
-          u -> {
-            String instanceType = u.getNodes().iterator().next().cloudInfo.instance_type;
-            Map<UUID, Set<String>> onpremAzToNodes = new HashMap<>();
-            for (NodeDetails node : u.getNodes()) {
-              Set<String> nodeNames = onpremAzToNodes.getOrDefault(node.azUuid, new HashSet<>());
-              nodeNames.add(node.nodeName);
-              onpremAzToNodes.put(node.azUuid, nodeNames);
-            }
-            Cluster primaryCluster = u.getUniverseDetails().getPrimaryCluster();
-            Map<String, NodeInstance> nodeMap =
-                NodeInstance.pickNodes(primaryCluster.uuid, onpremAzToNodes, instanceType);
-            for (NodeDetails node : u.getNodes()) {
-              NodeInstance nodeInstance = nodeMap.get(node.nodeName);
-              if (nodeInstance != null) {
-                node.nodeUuid = nodeInstance.getNodeUuid();
-              }
-            }
-          },
-          false);
+      result =
+          Universe.saveDetails(
+              result.getUniverseUUID(),
+              u -> {
+                String instanceType = u.getNodes().iterator().next().cloudInfo.instance_type;
+                Map<UUID, Set<String>> onpremAzToNodes = new HashMap<>();
+                for (NodeDetails node : u.getNodes()) {
+                  Set<String> nodeNames =
+                      onpremAzToNodes.getOrDefault(node.azUuid, new HashSet<>());
+                  nodeNames.add(node.nodeName);
+                  onpremAzToNodes.put(node.azUuid, nodeNames);
+                }
+                Cluster primaryCluster = u.getUniverseDetails().getPrimaryCluster();
+                Map<String, NodeInstance> nodeMap =
+                    NodeInstance.pickNodes(primaryCluster.uuid, onpremAzToNodes, instanceType);
+                for (NodeDetails node : u.getNodes()) {
+                  NodeInstance nodeInstance = nodeMap.get(node.nodeName);
+                  if (nodeInstance != null) {
+                    node.nodeUuid = nodeInstance.getNodeUuid();
+                  }
+                }
+              },
+              false);
     }
 
     return result;

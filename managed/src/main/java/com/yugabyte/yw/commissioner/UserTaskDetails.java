@@ -299,7 +299,10 @@ public class UserTaskDetails {
     PersistUseClockbound,
 
     // Support bundle component download
-    SupportBundleComponentDownload
+    SupportBundleComponentDownload,
+
+    // Persist immutable YBC
+    PersistYbdbInbuiltYbc
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -695,6 +698,10 @@ public class UserTaskDetails {
       case PersistUseClockbound:
         title = "Persist useClockbound";
         description = "Persist useClockbound true/false in userIntent";
+        break;
+      case PersistYbdbInbuiltYbc:
+        title = "Persist useYbdbInbuiltYbc";
+        description = "Persist useYbdbInbuiltYbc in userIntent";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);

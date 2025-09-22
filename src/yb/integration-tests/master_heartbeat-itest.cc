@@ -184,39 +184,42 @@ TEST_F(MasterHeartbeatITest, IgnorePeerNotInConfig) {
   ASSERT_OK(itest::FindTabletLeader(ts_map, tablet->id(), timeout, &leader_ts));
 
   // Add the tablet to the new tserver to start the RBS (it will get stuck before starting).
-  ASSERT_OK(itest::AddServer(leader_ts, tablet->id(), new_ts,
-                             consensus::PeerMemberType::PRE_OBSERVER, boost::none, timeout));
+  ASSERT_OK(itest::AddServer(
+      leader_ts, tablet->id(), new_ts, consensus::PeerMemberType::PRE_OBSERVER, std::nullopt,
+      timeout));
   ASSERT_OK(itest::WaitForTabletConfigChange(tablet, new_ts_uuid, consensus::ADD_SERVER));
 
   // Remove the tablet from the new tserver and let the remote bootstrap proceed.
-  ASSERT_OK(itest::RemoveServer(leader_ts, tablet->id(), new_ts, boost::none, timeout));
+  ASSERT_OK(itest::RemoveServer(leader_ts, tablet->id(), new_ts, std::nullopt, timeout));
   ASSERT_OK(itest::WaitForTabletConfigChange(tablet, new_ts_uuid, consensus::REMOVE_SERVER));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_remote_bootstrap) = false;
 
-  ASSERT_OK(WaitFor([&]() {
-    auto replica_locations = tablet->GetReplicaLocations();
-    int leaders = 0, followers = 0;
-    LOG(INFO) << Format("Replica locations after new tserver heartbeat: $0", *replica_locations);
-    if (replica_locations->size() != 3) {
-      return false;
-    }
-    for (auto& p : *replica_locations) {
-      if (p.first == new_ts_uuid ||
-          p.second.state != tablet::RaftGroupStatePB::RUNNING ||
-          p.second.member_type != consensus::VOTER) {
-        return false;
-      }
-      if (p.second.role == LEADER) {
-        ++leaders;
-      } else if (p.second.role == FOLLOWER) {
-        ++followers;
-      }
-    }
-    if (leaders != 1 || followers != 2) {
-      return false;
-    }
-    return true;
-  }, FLAGS_heartbeat_interval_ms * 5ms, "Wait for proper replica locations."));
+  ASSERT_OK(WaitFor(
+      [&]() {
+        auto replica_locations = tablet->GetReplicaLocations();
+        int leaders = 0, followers = 0;
+        LOG(INFO) << Format(
+            "Replica locations after new tserver heartbeat: $0", *replica_locations);
+        if (replica_locations->size() != 3) {
+          return false;
+        }
+        for (auto& p : *replica_locations) {
+          if (p.first == new_ts_uuid || p.second.state != tablet::RaftGroupStatePB::RUNNING ||
+              p.second.member_type != consensus::VOTER) {
+            return false;
+          }
+          if (p.second.role == LEADER) {
+            ++leaders;
+          } else if (p.second.role == FOLLOWER) {
+            ++followers;
+          }
+        }
+        if (leaders != 1 || followers != 2) {
+          return false;
+        }
+        return true;
+      },
+      FLAGS_heartbeat_interval_ms * 5ms, "Wait for proper replica locations."));
 }
 
 // This test verifies the master doesn't corrupt its tablet metadata when receiving out-of-order

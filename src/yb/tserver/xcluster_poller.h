@@ -148,6 +148,8 @@ class XClusterPoller : public XClusterAsyncExecutor {
 
   Status InitializeWaitState(const std::string& ts_uuid);
 
+  void IncrementPollFailures();
+
   const xcluster::ProducerTabletInfo producer_tablet_info_;
   const xcluster::ConsumerTabletInfo consumer_tablet_info_;
   const NamespaceId consumer_namespace_id_;

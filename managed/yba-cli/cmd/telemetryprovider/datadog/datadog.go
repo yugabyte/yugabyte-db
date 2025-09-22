@@ -25,7 +25,7 @@ var DataDogTelemetryProviderCmd = &cobra.Command{
 }
 
 func init() {
-	// DataDogTelemetryProviderCmd.AddCommand(createDataDogTelemetryProviderCmd)
+	DataDogTelemetryProviderCmd.AddCommand(createDataDogTelemetryProviderCmd)
 	DataDogTelemetryProviderCmd.AddCommand(listDataDogTelemetryProviderCmd)
 	DataDogTelemetryProviderCmd.AddCommand(describeDataDogTelemetryProviderCmd)
 	DataDogTelemetryProviderCmd.AddCommand(deleteDataDogTelemetryProviderCmd)

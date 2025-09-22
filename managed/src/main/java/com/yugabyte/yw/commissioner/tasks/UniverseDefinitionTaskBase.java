@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner.tasks;
 import static com.yugabyte.yw.commissioner.UpgradeTaskBase.SPLIT_FALLBACK;
 import static com.yugabyte.yw.commissioner.UpgradeTaskBase.isBatchRollEnabled;
 import static com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType.RotatingCert;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
@@ -33,7 +34,11 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.CheckClusterConsistency;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckLeaderlessTablets;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodesAreSafeToTakeDown;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckUnderReplicatedTablets;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteCapacityReservation;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteClusterFromUniverse;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DisablePitrConfig;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DoCapacityReservation;
+import com.yugabyte.yw.commissioner.tasks.subtasks.EnablePitrConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceExistCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageCatalogUpgradeSuperUser.Action;
@@ -41,6 +46,8 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.PersistUseClockbound;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PreflightNodeCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetupYNP;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert.UpdateRootCertAction;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistAuditLoggingConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterAPIDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseCommunicationPorts;
@@ -56,6 +63,7 @@ import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.ShellProcessContext;
@@ -72,6 +80,7 @@ import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
+import com.yugabyte.yw.common.utils.CapacityReservationUtil;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.ConfigureDBApiParams;
 import com.yugabyte.yw.forms.RollMaxBatchSize;
@@ -108,6 +117,7 @@ import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeStat
 import java.io.File;
 import java.io.IOException;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -124,6 +134,7 @@ import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -1105,6 +1116,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           GFlagsUtil.getGFlagsForNode(
               node, serverType, cluster, universe.getUniverseDetails().clusters);
       params.useSystemd = userIntent.useSystemd;
+      params.cgroupSize = getCGroupSize(node);
       if (paramsCustomizer != null) {
         paramsCustomizer.accept(params);
       }
@@ -2140,9 +2152,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * Create preflight node check tasks for on-prem nodes in the clusters if the nodes are in
    * ToBeAdded state.
    *
+   * @param universe the universe
    * @param clusters the clusters
    */
-  public void createPreflightNodeCheckTasks(Collection<Cluster> clusters) {
+  public void createPreflightNodeCheckTasks(Universe universe, Collection<Cluster> clusters) {
     Set<Cluster> onPremClusters =
         clusters.stream()
             .filter(cluster -> cluster.userIntent.providerType == CloudType.onprem)
@@ -2156,6 +2169,26 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     if (CollectionUtils.isNotEmpty(nodesToProvision)) {
       createPreflightNodeCheckTasks(
           clusters, nodesToProvision, null /*rootCA*/, null /*clientRootCA*/);
+    }
+    Set<NodeDetails> nodesToBeRemoved =
+        PlacementInfoUtil.getNodesToBeRemoved(taskParams().nodeDetailsSet);
+    if (CollectionUtils.isNotEmpty(nodesToBeRemoved)) {
+      for (NodeDetails node : nodesToBeRemoved) {
+        NodeDetails universeNode = universe.getNode(node.nodeName);
+        if (universeNode == null) {
+          log.warn(
+              "Node {} is not found in the universe {}", node.nodeName, universe.getUniverseUUID());
+          continue;
+        }
+        NodeInstance.maybeGetByName(universeNode.nodeName, universeNode.nodeUuid)
+            .orElseThrow(
+                () ->
+                    new PlatformServiceException(
+                        BAD_REQUEST,
+                        String.format(
+                            "Node instance %s with UUID %s does not exist",
+                            node.nodeName, node.nodeUuid)));
+      }
     }
   }
 
@@ -3144,6 +3177,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // Add testing flag.
     params.itestS3PackagePath = taskParams().itestS3PackagePath;
     params.gflags = gflags;
+    params.cgroupSize = getCGroupSize(node);
     return params;
   }
 
@@ -3537,7 +3571,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     List<String> command =
         ImmutableList.<String>builder()
             .add("pgrep")
-            .add("-flu")
+            .add("-xlu")
             .add("yugabyte")
             .add(processName)
             .add("2>/dev/null")
@@ -3860,13 +3894,37 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       log.info("Skipping upgrade finalization for universe : " + universe.getUniverseUUID());
     }
 
-    // Update PITR configs to set intermittentMinRecoverTimeInMillis to current time
-    // as PITR configs are only valid from the completion of software upgrade finalization
-    createUpdatePitrConfigIntermittentMinRecoverTimeTask();
+    // Re-enable PITR configs after successful upgrade finalization
+    // This also updates intermittentMinRecoverTimeInMillis for all PITR configs
+    createEnablePitrConfigTask();
 
     createUpdateUniverseSoftwareUpgradeStateTask(
         UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
         false /* isSoftwareRollbackAllowed */);
+  }
+
+  protected void createEnablePitrConfigTask() {
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup("EnablePitrConfig", SubTaskGroupType.ConfigureUniverse);
+    EnablePitrConfig.Params params = new EnablePitrConfig.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+
+    EnablePitrConfig task = createTask(EnablePitrConfig.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  public void createDisablePitrConfigTask() {
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup("DisablePitrConfig", SubTaskGroupType.ConfigureUniverse);
+    DisablePitrConfig.Params params = new DisablePitrConfig.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.ignoreErrors = true; // Ignore errors to not block upgrade if PITR configs don't exist
+    DisablePitrConfig task = createTask(DisablePitrConfig.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
   protected void createSetYBMajorVersionUpgradeCompatibility(
@@ -3946,6 +4004,111 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     subTaskGroup.setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  protected void createUniverseUpdateRootCertTask(UpdateRootCertAction updateAction) {
+    createUniverseUpdateRootCertTask(updateAction, null /* temporaryRootCAUUID */);
+  }
+
+  protected void createUniverseUpdateRootCertTask(
+      UpdateRootCertAction updateAction, UUID temporaryRootCAUUID) {
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup("UniverseUpdateRootCert", SubTaskGroupType.ConfigureUniverse);
+    UniverseUpdateRootCert.Params params = new UniverseUpdateRootCert.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.rootCA = taskParams().rootCA;
+    params.action = updateAction;
+    params.temporaryRootCAUUID = temporaryRootCAUUID;
+    UniverseUpdateRootCert task = createTask(UniverseUpdateRootCert.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  protected boolean createCapacityReservationsIfNeeded(
+      Set<NodeDetails> nodeDetailsSet,
+      CapacityReservationUtil.OperationType operationType,
+      Predicate<NodeDetails> nodeFilter) {
+    // There is no sense in using capacity reservation for a single node.
+    if (nodeDetailsSet.size() < 2) {
+      return false;
+    }
+    Universe universe = getUniverse();
+    AtomicBoolean result = new AtomicBoolean();
+    Map<UUID, List<NodeDetails>> nodesByProvider =
+        nodeDetailsSet.stream()
+            .collect(
+                Collectors.groupingBy(
+                    n -> {
+                      Cluster cluster = taskParams().getClusterByUuid(n.placementUuid);
+                      if (cluster == null) {
+                        cluster = universe.getCluster(n.placementUuid);
+                      }
+                      return UUID.fromString(cluster.userIntent.provider);
+                    }));
+    nodesByProvider.forEach(
+        (providerUUID, nodes) -> {
+          Provider provider = Provider.getOrBadRequest(providerUUID);
+          if (CapacityReservationUtil.isReservationSupported(confGetter, provider, operationType)) {
+            Set<NodeDetails> currentlyAffectedNodes =
+                findNodesInUniverse(universe, new HashSet<>(nodes))
+                    .filter(nodeFilter)
+                    .collect(Collectors.toSet());
+            if (!currentlyAffectedNodes.isEmpty()) {
+              // If current nodes are already in target state (that's a retry),
+              // we don't need to create/update capacity reservations.
+              Map<String, String> nodeToInstanceTypeMap =
+                  nodeDetailsSet.stream()
+                      .collect(
+                          Collectors.toMap(
+                              n -> n.nodeName,
+                              n -> {
+                                Cluster cluster = taskParams().getClusterByUuid(n.placementUuid);
+                                if (cluster == null) {
+                                  cluster = universe.getCluster(n.placementUuid);
+                                }
+                                return cluster.userIntent.getInstanceTypeForNode(n);
+                              }));
+              createCapacityReservationTask(providerUUID, nodeToInstanceTypeMap, nodes);
+            }
+            // But still need to release capacity reservations though.
+            result.set(true);
+          }
+        });
+    return result.get();
+  }
+
+  protected void createCapacityReservationTask(
+      UUID providerUUID,
+      Map<String, String> nodeToInstanceType,
+      Collection<NodeDetails> nodesToProvision) {
+    TaskExecutor.SubTaskGroup subTaskGroup = createSubTaskGroup("CapacityReservation");
+    DoCapacityReservation.Params params = new DoCapacityReservation.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.providerUUID = providerUUID;
+    params.nodeToInstanceType = nodeToInstanceType;
+    params.nodes = new ArrayList<>(nodesToProvision);
+    // Create the task.
+    DoCapacityReservation task = createTask(DoCapacityReservation.class);
+    task.initialize(params);
+    // Add it to the task list.
+    subTaskGroup.addSubTask(task);
+    // Add the task list to the task queue.
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  protected void createDeleteReservationTask() {
+    TaskExecutor.SubTaskGroup subTaskGroup = createSubTaskGroup("ReleaseCapacityReservation");
+    DeleteCapacityReservation.Params params = new DeleteCapacityReservation.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    // Create the task.
+    DeleteCapacityReservation task = createTask(DeleteCapacityReservation.class);
+    task.initialize(params);
+    // Add it to the task list.
+    subTaskGroup.addSubTask(task);
+    // Add the task list to the task queue.
     getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 }

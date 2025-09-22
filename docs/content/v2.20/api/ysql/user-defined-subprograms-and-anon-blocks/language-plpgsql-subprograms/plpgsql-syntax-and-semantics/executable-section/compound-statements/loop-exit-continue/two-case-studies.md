@@ -6,7 +6,7 @@ headerTitle: >
 linkTitle: Two case studies
 description: Two case studies to demonstrate the use of the "for" loop (over a range of integers), the "for" loop (over the results of a query), the "foreach" loop, the "infinite" loop, the "exit" statement, and the "continue" statement [YSQL].
 menu:
-  v2.20:
+  v2.20_api:
     identifier: two-case-studies
     parent: loop-exit-continue
     weight: 60

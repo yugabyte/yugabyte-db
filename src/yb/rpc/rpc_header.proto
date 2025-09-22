@@ -77,6 +77,9 @@ message RequestHeader {
   repeated fixed32 sidecar_offsets = 4 [packed = true];
 
   optional AshMetadataPB metadata = 5;
+
+  // CRC32C for message body.
+  optional fixed32 crc = 6;
 }
 
 message ResponseHeader {
@@ -92,6 +95,7 @@ message ResponseHeader {
   // is the first byte after the bytes for this protobuf.
   repeated uint32 sidecar_offsets = 3;
 
+  optional fixed32 crc = 4;
 }
 
 // An emtpy message. Since CQL RPC server bypasses protobuf to handle requests and responses but

@@ -42,6 +42,7 @@ import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
+import com.yugabyte.yw.forms.KubernetesToggleImmutableYbcParams;
 import com.yugabyte.yw.forms.MetricsExportConfigParams;
 import com.yugabyte.yw.forms.QueryLogConfigParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
@@ -58,6 +59,8 @@ import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.VMImageUpgradeParams;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
+import com.yugabyte.yw.forms.YbcGflagsTaskParams;
+import com.yugabyte.yw.forms.YbcThrottleTaskParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Customer;
@@ -867,13 +870,26 @@ public class CustomerTaskManager {
         taskParams = Json.fromJson(oldTaskParams, ThirdpartySoftwareUpgradeParams.class);
         break;
       case CertsRotate:
+      case CertsRotateKubernetesUpgrade:
         taskParams = Json.fromJson(oldTaskParams, CertsRotateParams.class);
         break;
       case TlsToggle:
+      case TlsToggleKubernetes:
         taskParams = Json.fromJson(oldTaskParams, TlsToggleParams.class);
         break;
       case SystemdUpgrade:
         taskParams = Json.fromJson(oldTaskParams, SystemdUpgradeParams.class);
+        break;
+      case KubernetesToggleImmutableYbc:
+        taskParams = Json.fromJson(oldTaskParams, KubernetesToggleImmutableYbcParams.class);
+        break;
+      case UpdateK8sYbcThrottleFlags:
+      case UpdateYbcThrottleFlags:
+        taskParams = Json.fromJson(oldTaskParams, YbcThrottleTaskParams.class);
+        break;
+      case UpgradeYbcGFlags:
+      case UpgradeKubernetesYbcGFlags:
+        taskParams = Json.fromJson(oldTaskParams, YbcGflagsTaskParams.class);
         break;
       case ModifyAuditLoggingConfig:
         taskParams = Json.fromJson(oldTaskParams, AuditLogConfigParams.class);

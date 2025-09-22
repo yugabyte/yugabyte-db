@@ -1,5 +1,3 @@
-SET yb_explain_hide_non_deterministic_fields TO true;
-
 DROP TABLE IF EXISTS t0_gen;
 DROP TABLE IF EXISTS t1_gen;
 CREATE TABLE t0_gen (k INT PRIMARY KEY, v1 INT, v2 INT, v1_gen TEXT GENERATED ALWAYS AS ('Text ' || v1::text) STORED);

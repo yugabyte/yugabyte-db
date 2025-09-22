@@ -55,10 +55,6 @@ properties:
     description: 'Log disconnections, causes session terminations to be logged. The log output provides information similar to log_connections, plus the duration of the session.'
     type: boolean
     default: false
-  log_line_prefix:
-    description: Log line prefix. This would be applied to both audit and query logs.
-    type: string
-    x-yba-api-visibility: internal
   log_min_duration_statement:
     description: 'Log min duration statement, causes the duration of each completed statement to be logged if the statement ran for at least the specified amount of time.'
     type: integer

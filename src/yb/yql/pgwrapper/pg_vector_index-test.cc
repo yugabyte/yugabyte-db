@@ -532,10 +532,12 @@ void PgVectorIndexTest::VerifyRead(PGConn& conn, size_t limit, AddFilter add_fil
 
 void PgVectorIndexTest::TestManyRows(AddFilter add_filter, Backfill backfill) {
   constexpr size_t kNumRows = RegularBuildVsSanitizers(2000, 64);
-  const size_t query_limit = add_filter ? 1 : 5;
 
   auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows, backfill));
-  ASSERT_NO_FATALS(VerifyRead(conn, query_limit, add_filter));
+  ASSERT_NO_FATALS(VerifyRows(conn, add_filter, ExpectedRows(add_filter ? 2 : 5), /* limit= */ 5));
+  if (add_filter) {
+    ASSERT_NO_FATALS(VerifyRead(conn, /* limit= */ 1, add_filter));
+  }
 }
 
 TEST_P(PgVectorIndexTest, Split) {

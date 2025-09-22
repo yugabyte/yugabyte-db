@@ -32,6 +32,8 @@ public class XClusterConfigNeedBootstrapPerTableResponse {
   }
 
   private void computeFinalIsBootstrapRequired() {
+    boolean isDrConfigAutomaticDdl =
+        reasons.contains(XClusterNeedBootstrapReason.DR_CONFIG_AUTOMATIC_DDL);
     boolean hasMissingOnTarget =
         reasons.contains(XClusterNeedBootstrapReason.TABLE_MISSING_ON_TARGET);
     boolean hasData = reasons.contains(XClusterNeedBootstrapReason.TABLE_HAS_DATA);
@@ -73,11 +75,18 @@ public class XClusterConfigNeedBootstrapPerTableResponse {
       description =
           "The table has data and the existing data must be replicated through bootstrapping.";
     }
+    if (isDrConfigAutomaticDdl) {
+      isBootstrapRequired = true;
+      description =
+          "The table must be bootstrapped because it is being replicated as part of a"
+              + " DR configuration with automatic DDL replication enabled.";
+    }
   }
 
   public enum XClusterNeedBootstrapReason {
     TABLE_MISSING_ON_TARGET,
     TABLE_HAS_DATA,
-    BIDIRECTIONAL_REPLICATION;
+    BIDIRECTIONAL_REPLICATION,
+    DR_CONFIG_AUTOMATIC_DDL;
   }
 }

@@ -477,6 +477,14 @@ public class NodeAgentRpcPayload {
 
     installOtelCollectorInputBuilder.setRemoteTmp(customTmpDirectory);
     installOtelCollectorInputBuilder.setYbHomeDir(provider.getYbHome());
+
+    // Set memory limit for OTel collector
+    int otelColMaxMemory =
+        confGetter.getConfForScope(universe, UniverseConfKeys.otelCollectorMaxMemory);
+    if (otelColMaxMemory > 0) {
+      installOtelCollectorInputBuilder.setOtelColMaxMemory(otelColMaxMemory);
+    }
+
     String otelCollectorPackagePath =
         getThirdpartyPackagePath()
             + "/"
@@ -518,7 +526,8 @@ public class NodeAgentRpcPayload {
                   queryLogConfig,
                   metricsExportConfig,
                   GFlagsUtil.getLogLinePrefix(gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
-                  NodeManager.getOtelColMetricsPort(taskParams))
+                  NodeManager.getOtelColMetricsPort(taskParams),
+                  nodeAgent)
               .toAbsolutePath()
               .toString();
       nodeAgentClient.uploadFile(
@@ -670,10 +679,11 @@ public class NodeAgentRpcPayload {
     UserIntent userIntent = nodeManager.getUserIntentFromParams(universe, taskParams);
     ServerGFlagsInput.Builder builder =
         ServerGFlagsInput.newBuilder().setServerHome(serverHome).setServerName(serverName);
+
     Map<String, String> gflags =
         new HashMap<>(
             GFlagsUtil.getAllDefaultGFlags(
-                taskParams, universe, userIntent, useHostname, appConfig, confGetter));
+                taskParams, universe, userIntent, useHostname, confGetter));
     if (processType.equals(ServerType.CONTROLLER.toString())) {
       // TODO Is the check taskParam.isEnableYbc() required here?
       Map<String, String> ybcFlags =

@@ -722,7 +722,7 @@ fi
 export BUILD_TYPE=$build_type
 
 if [[ -z "${use_google_tcmalloc:-}" ]]; then
-  if is_linux && [[ ! ${build_type} =~ ^(asan|tsan)$ ]]; then
+  if is_linux && ! is_sanitizer ; then
     use_google_tcmalloc=true
   else
     use_google_tcmalloc=false

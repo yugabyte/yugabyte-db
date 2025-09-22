@@ -109,16 +109,6 @@ var createAWSProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		sshUser, err := cmd.Flags().GetString("ssh-user")
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-
-		sshPort, err := cmd.Flags().GetInt("ssh-port")
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-
 		ntpServers, err := cmd.Flags().GetStringArray("ntp-servers")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -190,8 +180,6 @@ var createAWSProviderCmd = &cobra.Command{
 			Regions:       awsRegions,
 			Details: &ybaclient.ProviderDetails{
 				AirGapInstall: util.GetBoolPointer(airgapInstall),
-				SshPort:       util.GetInt32Pointer(int32(sshPort)),
-				SshUser:       util.GetStringPointer(sshUser),
 				NtpServers:    util.StringSliceFromString(ntpServers),
 				CloudInfo: &ybaclient.CloudInfo{
 					Aws: &awsCloudInfo,
@@ -288,13 +276,6 @@ func init() {
 			" Each image bundle override can be added using separate --image-bundle-region-override flag. "+
 			"Example: --image-bundle-region-override image-bundle-name=<name>::"+
 			"region-name=<region-name>::machine-image=<machine-image>")
-
-	createAWSProviderCmd.Flags().String("ssh-user", "ec2-user",
-		"[Optional] SSH User to access the YugabyteDB nodes.")
-	createAWSProviderCmd.Flags().Int("ssh-port", 22,
-		"[Optional] SSH Port to access the YugabyteDB nodes.")
-	createAWSProviderCmd.Flags().MarkDeprecated("ssh-port", "Use --image-bundle instead.")
-	createAWSProviderCmd.Flags().MarkDeprecated("ssh-user", "Use --image-bundle instead.")
 
 	createAWSProviderCmd.Flags().String("custom-ssh-keypair-name", "",
 		"[Optional] Provide custom key pair name to access YugabyteDB nodes. "+

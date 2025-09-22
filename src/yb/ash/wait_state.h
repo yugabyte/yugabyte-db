@@ -308,6 +308,8 @@ struct WaitStatesDescription {
 
 WaitStateType GetWaitStateType(WaitStateCode code);
 
+const char* GetWaitStateAuxDescription(WaitStateCode code);
+
 struct AshMetadata {
   Uuid root_request_id = Uuid::Nil();
   Uuid top_level_node_id = Uuid::Nil();

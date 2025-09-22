@@ -104,6 +104,7 @@ func (ftp *FullTelemetryProviderContext) Write() error {
 			return err
 		}
 		ftp.PostFormat(tmpl, NewTelemetryProviderContext())
+		ftp.Output.Write([]byte("\n"))
 	case util.DataDogTelemetryProviderType:
 		tmpl, err = ftp.startSubsection(dataDogType)
 		if err != nil {
@@ -135,12 +136,13 @@ func (ftp *FullTelemetryProviderContext) Write() error {
 			logrus.Errorf("%s", err.Error())
 			return err
 		}
-		ftp.subSection("Splunk Telemetry Provider Details")
+		ftp.Output.Write([]byte("\n"))
 		if err := ftp.ContextFormat(tmpl, ftpc.TelemetryProvider); err != nil {
 			logrus.Errorf("%s", err.Error())
 			return err
 		}
 		ftp.PostFormat(tmpl, NewTelemetryProviderContext())
+		ftp.Output.Write([]byte("\n"))
 	case util.AWSCloudWatchTelemetryProviderType:
 		tmpl, err = ftp.startSubsection(awsType1)
 		if err != nil {
@@ -159,6 +161,7 @@ func (ftp *FullTelemetryProviderContext) Write() error {
 			logrus.Errorf("%s", err.Error())
 			return err
 		}
+		ftp.Output.Write([]byte("\n"))
 		if err := ftp.ContextFormat(tmpl, ftpc.TelemetryProvider); err != nil {
 			logrus.Errorf("%s", err.Error())
 			return err
@@ -170,11 +173,13 @@ func (ftp *FullTelemetryProviderContext) Write() error {
 			logrus.Errorf("%s", err.Error())
 			return err
 		}
+		ftp.Output.Write([]byte("\n"))
 		if err := ftp.ContextFormat(tmpl, ftpc.TelemetryProvider); err != nil {
 			logrus.Errorf("%s", err.Error())
 			return err
 		}
 		ftp.PostFormat(tmpl, NewTelemetryProviderContext())
+		ftp.Output.Write([]byte("\n"))
 	case util.LokiTelemetryProviderType:
 		tmpl, err = ftp.startSubsection(lokiType1)
 		if err != nil {
@@ -188,16 +193,23 @@ func (ftp *FullTelemetryProviderContext) Write() error {
 		}
 		ftp.PostFormat(tmpl, NewTelemetryProviderContext())
 
-		tmpl, err = ftp.startSubsection(lokiType2)
-		if err != nil {
-			logrus.Errorf("%s", err.Error())
-			return err
+		authType := config.GetAuthType()
+		switch authType {
+		case util.BasicLokiAuthType:
+			tmpl, err = ftp.startSubsection(lokiType2)
+			if err != nil {
+				logrus.Errorf("%s", err.Error())
+				return err
+			}
+			ftp.Output.Write([]byte("\n"))
+			if err := ftp.ContextFormat(tmpl, ftpc.TelemetryProvider); err != nil {
+				logrus.Errorf("%s", err.Error())
+				return err
+			}
+			ftp.PostFormat(tmpl, NewTelemetryProviderContext())
 		}
-		if err := ftp.ContextFormat(tmpl, ftpc.TelemetryProvider); err != nil {
-			logrus.Errorf("%s", err.Error())
-			return err
-		}
-		ftp.PostFormat(tmpl, NewTelemetryProviderContext())
+
+		ftp.Output.Write([]byte("\n"))
 	}
 
 	return nil

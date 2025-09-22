@@ -32,6 +32,7 @@ class YQLScanSpec;
 
 struct IndexColumn;
 struct QLTableColumn;
+struct ScanBounds;
 
 template <class Val>
 class ExprResultWriter;

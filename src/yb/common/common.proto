@@ -452,6 +452,9 @@ message TransactionMetadataPB {
   // for backwards compatability.
   optional TransactionLocality locality = 7;
 
+  // Stores tablespace oid for TABLESPACE_LOCAL locality.
+  optional uint32 locality_tablespace_oid = 10;
+
   // Reserved for deprecated xcluster field external_transaction.
   reserved 8;
 }

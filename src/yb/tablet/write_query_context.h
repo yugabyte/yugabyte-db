@@ -16,8 +16,12 @@
 #include "yb/common/hybrid_time.h"
 
 #include "yb/tablet/tablet_fwd.h"
+#include "yb/util/status_callback.h"
 
 namespace yb {
+
+struct OpId;
+
 namespace tablet {
 
 class WriteQueryContext {
@@ -25,6 +29,10 @@ class WriteQueryContext {
   // When operation completes, its callback is executed.
   virtual void Submit(std::unique_ptr<Operation> operation, int64_t term) = 0;
   virtual Result<HybridTime> ReportReadRestart() = 0;
+
+  virtual void RegisterAsyncWrite(const OpId& async_write_op_id) = 0;
+  virtual void RegisterAsyncWriteCompletion(
+      const OpId& async_write_op_id, StdStatusCallback&& callback) = 0;
 
   virtual ~WriteQueryContext() {}
 };

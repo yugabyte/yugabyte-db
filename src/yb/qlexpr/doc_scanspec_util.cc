@@ -98,10 +98,8 @@ dockv::KeyEntryValues GetRangeKeyScanSpec(
   return range_components;
 }
 
-const boost::optional<QLScanRange::QLBound> &GetQLRangeBound(
-    const QLScanRange::QLRange& ql_range,
-    SortingType sorting_type,
-    bool lower_bound) {
+const std::optional<QLScanRange::QLBound>& GetQLRangeBound(
+    const QLScanRange::QLRange& ql_range, SortingType sorting_type, bool lower_bound) {
   const auto sort_order = dockv::SortOrderFromColumnSchemaSortingType(sorting_type);
 
   // lower bound for ASC column and upper bound for DESC column -> min value

@@ -46,7 +46,7 @@ If you are only using the YCQL API, you must turn off [YSQL memory optimization]
 
 ### YSQL Connection Manager
 
-If you want to use [YSQL Connection Manager](../../../explore/going-beyond-sql/connection-mgr-ysql/) for connection pooling, add the following to `--tserver_flags`:
+If you want to use [YSQL Connection Manager](../../../additional-features/connection-manager-ysql/) for connection pooling, add the following to `--tserver_flags`:
 
 ```sh
 --tserver_flags "enable_ysql_conn_mgr=true"
@@ -120,6 +120,8 @@ To create a secure multi-zone cluster:
         --fault_tolerance=zone \
         --tserver_flags="enable_ysql_conn_mgr=true"
     ```
+
+The credentials for the universe, including password, are output to a credentials file, and the location of the credentials file is output to the console.
 
 For more information on the yugabyted start command, refer to [start](../../../reference/configuration/yugabyted/#start).
 

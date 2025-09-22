@@ -80,6 +80,7 @@ import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
@@ -269,15 +270,20 @@ public class NodeManager extends DevopsBase {
     }
 
     if (userIntent.providerType.equals(Common.CloudType.onprem)) {
+      ObjectNode detailsJson = Json.newObject();
+      // NodeInstance may not yet be assigned to a universe in these prechecks.
+      boolean maybeNodeInstanceUnassigned =
+          (type == NodeCommandType.Precheck || type == NodeCommandType.Verify_Certs);
+      Optional<NodeInstance> optional =
+          maybeNodeInstanceUnassigned
+              ? NodeInstance.maybeGet(nodeTaskParam.nodeUuid)
+              : NodeInstance.maybeGetByName(nodeTaskParam.nodeName, nodeTaskParam.nodeUuid);
       // Instance may not be present if it is deleted from NodeInstance table after a release
       // action.
-      ObjectNode detailsJson = Json.newObject();
-      Optional<NodeInstance> optional = NodeInstance.maybeGet(nodeTaskParam.nodeUuid);
       if (optional.isPresent()) {
         NodeInstanceData instanceData = optional.get().getDetails();
         detailsJson = (ObjectNode) Json.toJson(instanceData);
-        if ((type == NodeCommandType.Precheck || type == NodeCommandType.Verify_Certs)
-            && StringUtils.isEmpty(instanceData.nodeName)) {
+        if (maybeNodeInstanceUnassigned && StringUtils.isEmpty(instanceData.nodeName)) {
           detailsJson.put("nodeName", nodeTaskParam.nodeName);
         }
       }
@@ -900,16 +906,10 @@ public class NodeManager extends DevopsBase {
     allowOverrideAll |= config.getBoolean("yb.cloud.enabled");
 
     GFlagsUtil.processUserGFlags(
-        universe,
         node,
         gflags,
         GFlagsUtil.getAllDefaultGFlags(
-            taskParam,
-            universe,
-            getUserIntentFromParams(taskParam),
-            useHostname,
-            appConfig,
-            confGetter),
+            taskParam, universe, getUserIntentFromParams(taskParam), useHostname, confGetter),
         allowOverrideAll,
         confGetter,
         taskParam);
@@ -1465,7 +1465,6 @@ public class NodeManager extends DevopsBase {
                     universe,
                     getUserIntentFromParams(taskParam),
                     useHostname,
-                    config,
                     confGetter))));
     return subcommand;
   }
@@ -1769,7 +1768,7 @@ public class NodeManager extends DevopsBase {
     if (userIntent.providerType.equals(Common.CloudType.onprem)) {
       Optional<NodeInstance> nodeInstanceOp =
           nodeTaskParam.nodeUuid == null
-              ? NodeInstance.maybeGetByName(nodeTaskParam.getNodeName())
+              ? NodeInstance.maybeGetByName(nodeTaskParam.getNodeName(), nodeTaskParam.nodeUuid)
               : NodeInstance.maybeGet(nodeTaskParam.nodeUuid);
       if (nodeInstanceOp.isPresent()) {
         nodeIp = nodeInstanceOp.get().getDetails().ip;
@@ -1909,6 +1908,11 @@ public class NodeManager extends DevopsBase {
           Common.CloudType cloudType = userIntent.providerType;
           if (!cloudType.equals(Common.CloudType.onprem)) {
             addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, false);
+            if (taskParam.capacityReservation != null) {
+              commandArgs.add("--capacity_reservation");
+              commandArgs.add(taskParam.capacityReservation);
+            }
+
             commandArgs.add("--cloud_subnet");
             commandArgs.add(taskParam.subnetId);
 
@@ -2310,6 +2314,10 @@ public class NodeManager extends DevopsBase {
           }
           ResumeServer.Params taskParam = (ResumeServer.Params) nodeTaskParam;
           addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, true);
+          if (taskParam.capacityReservation != null) {
+            commandArgs.add("--capacity_reservation");
+            commandArgs.add(taskParam.capacityReservation);
+          }
           if (!Strings.isNullOrEmpty(taskParam.nodeIP)) {
             commandArgs.add("--node_ip");
             commandArgs.add(taskParam.nodeIP);
@@ -2454,6 +2462,10 @@ public class NodeManager extends DevopsBase {
             commandArgs.add(Integer.toString(taskParam.cgroupSize));
           }
 
+          if (taskParam.capacityReservation != null) {
+            commandArgs.add("--capacity_reservation");
+            commandArgs.add(taskParam.capacityReservation);
+          }
           if (taskParam.force) {
             commandArgs.add("--force");
           }
@@ -3023,6 +3035,20 @@ public class NodeManager extends DevopsBase {
     if (OtelCollectorUtil.isAuditLogExportEnabledInUniverse(auditLogConfig)
         || OtelCollectorUtil.isQueryLogExportEnabledInUniverse(queryLogConfig)
         || OtelCollectorUtil.isMetricsExportEnabledInUniverse(metricsExportConfig)) {
+      // Get the node agent for the node if its present.
+      Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID());
+      NodeDetails nodeDetails = universe.getNode(taskParams.nodeName);
+      NodeAgent nodeAgent =
+          getNodeAgentClient()
+              .maybeGetNodeAgent(nodeDetails.cloudInfo.private_ip, provider, universe)
+              .orElse(null);
+
+      int otelColMaxMemory =
+          confGetter.getConfForScope(universe, UniverseConfKeys.otelCollectorMaxMemory);
+      if (otelColMaxMemory > 0) {
+        commandArgs.add("--otel_col_max_memory");
+        commandArgs.add(Integer.toString(otelColMaxMemory));
+      }
       commandArgs.add("--otel_col_config_file");
       commandArgs.add(
           otelCollectorConfigGenerator
@@ -3034,7 +3060,8 @@ public class NodeManager extends DevopsBase {
                   queryLogConfig,
                   metricsExportConfig,
                   logLinePrefix,
-                  getOtelColMetricsPort(taskParams))
+                  getOtelColMetricsPort(taskParams),
+                  nodeAgent)
               .toAbsolutePath()
               .toString());
 

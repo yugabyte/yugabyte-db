@@ -80,21 +80,16 @@ struct ObjectLockedBatchEntry;
 
 namespace {
 
-// Below are the two different scenarios where we fail requests with TryAgain in case
+// Below are the two different scenarios where we fail requests with ShutdownInProgress in case
 // of the lock manager shutting down.
 // 1. upon ysql lease changes
 // 2. on shutdown of the tserver node
 //
-// Using error code TryAgain here since we want the master leader to retry lock requests
-// in case of 1 as opposed to failing them. This leadds to uneccessary retries for 2, but
-// that should be ok since the tserver would eventually loose the lease and the master
-// leader would stop retrying the request.
-//
-// For local lock being resumed with this error, the ref count of the lock manager would
-// eventually drop to 0 in both cases, and the request would end up failing, which is the
-// desired behavior.
+// Master leader retries failed lock requests with code ShutdownInProgress until either the retry
+// attempts are exhausted or the tserver looses it lease. This is the desired behavior as it
+// achieves resiliency for DDL lock requests amidst cluster membership changes.
 const Status kShuttingDownError = STATUS(
-    TryAgain, "Object Lock Manager shutting down");
+    ShutdownInProgress, "Object Lock Manager shutting down");
 
 const Status kTryAgain = STATUS(
     TryAgain, "Failed to acquire object locks within deadline");
@@ -1140,9 +1135,9 @@ void ObjectLockManagerImpl::RegisterWaiters(ObjectLockedBatchEntry* locked_batch
         WARN_NOT_OK(
             item->waiter_registration->Register(
                 item->txn_id(), -1 /* request id */, std::move(item->blockers),
-                item->status_tablet(), boost::none /* pg_session_req_version */),
-            Format("Failed to register blockers of waiter $0",
-                   AsString(item->object_lock_owner())));
+                item->status_tablet(), std::nullopt /* pg_session_req_version */),
+            Format(
+                "Failed to register blockers of waiter $0", AsString(item->object_lock_owner())));
       }
       item->blockers = nullptr;
     });

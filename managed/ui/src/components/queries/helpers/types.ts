@@ -42,7 +42,7 @@ export interface YsqlLiveQuery {
   queryStartTime: string;
   sessionStatus: string;
   leader_pid: number;
-  query_id: number;
+  query_id: string;
 }
 
 export interface YcqlLiveQuery {

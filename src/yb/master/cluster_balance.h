@@ -354,6 +354,7 @@ class ClusterLoadBalancer {
   PerTableLoadState* state_ = nullptr;
 
   std::unique_ptr<GlobalLoadState> global_state_;
+  std::unique_ptr<PerRunState> per_run_state_;
 
   // The catalog manager of the Master that actually has the Tablet and TS state. The object is not
   // managed by this class, but by the Master's unique_ptr.
@@ -363,7 +364,7 @@ class ClusterLoadBalancer {
   scoped_refptr<AtomicGauge<uint32_t>> tablets_in_wrong_placement_metric_;
   scoped_refptr<AtomicGauge<uint32_t>> blacklisted_leaders_metric_;
   scoped_refptr<AtomicGauge<uint32_t>> total_table_load_difference_metric_;
-  scoped_refptr<AtomicGauge<uint32_t>> estimated_data_to_balance_bytes_metric_;
+  scoped_refptr<AtomicGauge<uint64_t>> estimated_data_to_balance_bytes_metric_;
 
   std::shared_ptr<YsqlTablespaceManager> tablespace_manager_;
 
@@ -436,6 +437,8 @@ class ClusterLoadBalancer {
   // skipped_tables_ is set at the end of each LB run using
   // skipped_tables_per_run_.
   std::vector<scoped_refptr<TableInfo>> skipped_tables_per_run_;
+
+  void UpdatePerRunMetrics();
 
   LeaderEpoch epoch_;
 

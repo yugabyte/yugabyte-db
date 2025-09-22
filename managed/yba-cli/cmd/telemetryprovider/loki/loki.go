@@ -28,6 +28,7 @@ func init() {
 	LokiTelemetryProviderCmd.AddCommand(listLokiTelemetryProviderCmd)
 	LokiTelemetryProviderCmd.AddCommand(describeLokiTelemetryProviderCmd)
 	LokiTelemetryProviderCmd.AddCommand(deleteLokiTelemetryProviderCmd)
+	LokiTelemetryProviderCmd.AddCommand(createLokiTelemetryProviderCmd)
 
 	LokiTelemetryProviderCmd.PersistentFlags().StringP("name", "n", "",
 		fmt.Sprintf("[Optional] The name of the provider for the action. %s",

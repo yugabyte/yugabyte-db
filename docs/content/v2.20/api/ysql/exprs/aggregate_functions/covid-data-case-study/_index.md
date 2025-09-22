@@ -8,7 +8,7 @@ headerTitle: >
 description: Case study—using the YSQL regr_r2(), regr_slope(), regr_intercept() to examine the correlation between COVID-like symptoms and mask-wearing using data from Carnegie Mellon's COVIDcast.
 image: /images/section_icons/api/subsection.png
 menu:
-  v2.20:
+  v2.20_api:
     identifier: covid-data-case-study
     parent: aggregate-functions
     weight: 110

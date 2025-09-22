@@ -1,5 +1,4 @@
 SET yb_fetch_row_limit TO 1024;
-SET yb_explain_hide_non_deterministic_fields TO true;
 SET yb_update_num_cols_to_compare TO 50;
 SET yb_update_max_cols_size_to_compare TO 10240;
 

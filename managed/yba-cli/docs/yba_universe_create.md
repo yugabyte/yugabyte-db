@@ -85,10 +85,8 @@ yba universe create -n <universe-name> --provider-code <provider-code> \
       --enable-yedis                                     [Optional] Enable YEDIS endpoint. (default false)
       --enable-node-to-node-encrypt                      [Optional] Enable Node-to-Node encryption to use TLS enabled connections for communication between different Universe nodes. (default true)
       --enable-client-to-node-encrypt                    [Optional] Enable Client-to-Node encryption to use TLS enabled connection for communication between a client (ex: Database application, ysqlsh, ycqlsh) and the Universe YSQL -or- YCQL endpoint. (default true)
-      --root-ca string                                   [Optional] Root Certificate name for Encryption in Transit, defaults to creating new certificate for the universe if encryption in transit in enabled.
-      --client-root-ca string                            [Optional] Client Root Certificate name for Encryption in Transit, defaults to creating new certificate for the universe if encryption in transit in enabled.
-      --enable-volume-encryption                         [Optional] Enable encryption for data stored on the tablet servers. (default false)
-      --kms-config string                                [Optional] Key management service config name. Required when enable-volume-encryption is set to true.
+      --root-ca string                                   [Optional] Root Certificate name for Encryption in Transit, defaults to creating new certificate for the universe if encryption in transit in enabled. Run "yba eit list" to check the list of available certificates.
+      --client-root-ca string                            [Optional] Client Root Certificate name for Encryption in Transit, defaults to creating new certificate for the universe if encryption in transit in enabled. Run "yba eit list" to check the list of available certificates.
       --enable-ipv6                                      [Optional] Enable IPV6 networking for connections between the DB Servers, supported only for Kubernetes universes. (default false)
       --yb-db-version string                             [Optional] YugabyteDB Software Version, defaults to the latest available version. Run "yba yb-db-version list" to find the latest version.
       --use-systemd                                      [Optional] Use SystemD. (default true)
@@ -110,6 +108,8 @@ yba universe create -n <universe-name> --provider-code <provider-code> \
       --ysql-server-rpc-port int                         [Optional] YSQL Server RPC Port. (default 5433)
       --connection-pooling string                        This is a preview flag (may change in future). [Optional] Connection Pooling setting for the universe. Enable "yb.universe.allow_connection_pooling" runtime configuration to allow enabling connection pooling in universes. Allowed values: enable, disable. (default "disable")
       --internal-ysql-server-rpc-port int                This is a preview flag (may change in future). [Optional] Internal YSQL Server RPC Port used when connection pooling is enabled. (default 6433)
+      --cloud-volume-encryption-kms-config string        This is a preview flag (may change in future). [Optional] Key management service config name to enable cloud volume encryption, supported only for AWS. Run "yba ear list" to check the list of available kms configurations.
+      --encryption-at-rest-kms-config string             This is a preview flag (may change in future). [Optional] Key management service config name to enable YugabyteDB Anywhere's own encryption at rest. Run "yba ear list" to check the list of available kms configurations.
   -h, --help                                             help for create
 ```
 

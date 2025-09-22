@@ -21,9 +21,11 @@ If you are upgrading a YugabyteDB Anywhere installation with high availability e
 
 If you are running YugabyteDB Anywhere on a [deprecated OS](../../../reference/configuration/operating-systems/), you need to update your OS before you can upgrade YugabyteDB Anywhere to the next major release.
 
-## Python
+## Python for YugabyteDB Anywhere
 
-YugabyteDB Anywhere v25.1 and later requires Python v3.10-3.12. If you are running YugabyteDB Anywhere on a system with Python earlier than 3.10, you will need to update Python on your system before you can upgrade YugabyteDB Anywhere to v25.1 or later.
+YugabyteDB Anywhere v2024.2 requires Python v3.6 to v3.11. YugabyteDB Anywhere v25.1 and later requires Python v3.10-3.11. If you are running YugabyteDB Anywhere on a system with an earlier Python, you will need to update Python on your system before you can upgrade YugabyteDB Anywhere to v2024.2 or later.
+
+In addition, both python and python3 must symbolically link to Python 3. Refer to [Prerequisites to deploy YBA on a VM](../../prepare/server-yba/).
 
 ## cron-based universes
 

@@ -98,6 +98,7 @@
 #include "utils/relcache.h"
 #include "utils/syscache.h"
 #include "yb/yql/pggate/ybc_gflags.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 #include "yb_tcmalloc_utils.h"
 #include "yb_ysql_conn_mgr_helper.h"
 #include <arpa/inet.h>
@@ -1100,6 +1101,84 @@ pg_plan_queries(List *querytrees, const char *query_string, int cursorOptions,
 	return stmt_list;
 }
 
+void
+YbCollectCommitStats(DestReceiver *receiver, int16 *format)
+{
+	Portal yb_portal;
+
+	/*
+	 * Printing commit stats may involve catalog lookups. Start a no-op txn
+	 * to facilitate this.
+	 */
+	yb_start_xact_command_internal(yb_skip_read_committed_internal_savepoint(CMDTAG_EXPLAIN));
+
+	/*
+	 * Create a portal to publish the stats. The portal cannot be "started" as
+	 * no query will be run in it.
+	 */
+	yb_portal = CreatePortal("YB_COMMIT_STATS", false /* allowDup */, false /* dupSilent */ );
+	SetRemoteDestReceiverParams(receiver, yb_portal);
+	PortalSetResultFormat(yb_portal, 1, format);
+	YbExplainCommitStats(receiver);
+
+	/* Finally, destroy the receiver */
+	receiver->rDestroy(receiver);
+
+	PortalDrop(yb_portal, false);
+
+	/* Commit the no-op transaction */
+	finish_xact_command();
+}
+
+static bool
+YbShouldCollectCommitStats(CommandTag command_tag, bool is_implict_block,
+						   bool is_last_stmt_in_block)
+{
+	/*
+	 * A query may be executed within the following transaction contexts:
+	 * 1. Outside of an explicit transaction block with autocommit turned off -
+	 *    the statement is not committed, so no stats need to be collected.
+	 * 2. As a single statement outside an explicit transaction block, with
+	 *    autocommit turned on - the statement is committed automatically, so
+	 *    commit stats should be collected if the statement is an EXPLAIN.
+	 * 3. As part of a multi-statement query outside an explicit transaction
+	 *    block, with autocommit turned on - commit stats should be collected
+	 *    only for the last statement in the block if it is an EXPLAIN.
+	 * 4. Inside an explicit transaction block - commit stats need not be
+	 *    collected as the last statement in the block will always be a
+	 *    COMMIT/ABORT statement which cannot be invoked with EXPLAIN.
+	 *
+	 * Notes:
+	 *  - Postgres does not provide an API to detect when autocommit is turned
+	 *    off. So, this is determined at the time of EXPLAINing the stats by
+	 *    checking if any stats have been collected (that is if any stats are
+	 *    non-zero).
+	 *  - When a multi-statement query uses the simple query protocol, the
+	 *    client encloses the statements with an implicit BEGIN and COMMIT.
+	 *    However, unlike an explicit transaction block, we know that the
+	 *    transaction is about to be imminently committed, so we can enable
+	 *    commit stats collection for the last statement in the block.
+	 *  - The EXPLAIN options (which determine whether commit stats are to be
+	 *    displayed) is parsed downstream. So, it is possible this function
+	 *    evaluates to true and commit stats are not requested. The EXPLAIN
+	 *    module is responsible for handling this case.
+	 */
+
+	if (command_tag != CMDTAG_EXPLAIN)
+		return false;
+
+	/* Single statement outside an explicit transaction block */
+	if (!IsTransactionBlock())
+		return true;
+
+	/* Last statement in a multi-statement query outside a transaction block */
+	if (is_implict_block && is_last_stmt_in_block)
+		return true;
+
+	/* Inside an explicit transaction block */
+	return false;
+}
+
 
 /*
  * exec_simple_query
@@ -1209,6 +1288,7 @@ exec_simple_query(const char *query_string)
 		Portal		portal;
 		DestReceiver *receiver;
 		int16		format;
+		bool		yb_collect_commit_stats = false;
 
 		pgstat_report_query_id(0, true);
 
@@ -1369,6 +1449,14 @@ exec_simple_query(const char *query_string)
 		 */
 		MemoryContextSwitchTo(oldcontext);
 
+		yb_collect_commit_stats =
+			YbShouldCollectCommitStats(command_tag,
+									   use_implicit_block,
+									   (lnext(parsetree_list, parsetree_item) == NULL));
+
+		if (yb_collect_commit_stats)
+			YbToggleCommitStatsCollection(true);
+
 		/*
 		 * Run the portal to completion, and then drop it (and the receiver).
 		 */
@@ -1380,7 +1468,13 @@ exec_simple_query(const char *query_string)
 						 receiver,
 						 &qc);
 
-		receiver->rDestroy(receiver);
+		/*
+		 * YB: The receiver is allocated in the MessageContext and needs to
+		 * outlive the current transaction if commit stats need to be collected.
+		 * We will use the same receiver to publish the commit stats.
+		 */
+		if (!yb_collect_commit_stats)
+			receiver->rDestroy(receiver);
 
 		PortalDrop(portal, false);
 
@@ -1398,6 +1492,13 @@ exec_simple_query(const char *query_string)
 			if (use_implicit_block)
 				EndImplicitTransactionBlock();
 			finish_xact_command();
+
+			if (yb_collect_commit_stats)
+			{
+				/* Note that this will also drop the receiver */
+				YbCollectCommitStats(receiver, &format);
+				YbToggleCommitStatsCollection(false);
+			}
 		}
 		else if (IsA(parsetree->stmt, TransactionStmt))
 		{
@@ -4096,7 +4197,10 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
 			case 'b':
 				/* Undocumented flag used for binary upgrades */
 				if (secure)
+				{
 					IsBinaryUpgrade = true;
+					YBCSetBinaryUpgrade(true);
+				}
 				break;
 
 			case 'C':
@@ -4809,10 +4913,7 @@ yb_is_dml_command(const char *query_string)
 static bool
 yb_check_retry_allowed(const char *query_string)
 {
-	/*
-	 * TODO: Allow retries when object locking is on once #24877 is addressed.
-	 */
-	return yb_is_dml_command(query_string) && !*YBCGetGFlags()->enable_object_locking_for_table_locks;
+	return yb_is_dml_command(query_string);
 }
 
 static void
@@ -5146,12 +5247,6 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 		return false;
 	}
 
-	if (*YBCGetGFlags()->enable_object_locking_for_table_locks)
-	{
-		elog(LOG, "query layer retries disabled as object locking is on, refer #24877 for details.");
-		return false;
-	}
-
 	return true;
 }
 
@@ -5337,7 +5432,10 @@ yb_restart_portal_after_clear(Portal portal)
 	/*
 	 * No need for GetCachedPlan + PortalDefineQuery routine, everything is in
 	 * place already.
+	 *
+	 * But we would still need to acquire all necessary object locks again.
 	 */
+	YBAcquireExecutorLocksForRetry(portal->stmts);
 	portal->status = PORTAL_DEFINED;
 	PortalStart(portal, portal->portalParams, 0 /* eflags */ , InvalidSnapshot);
 
@@ -5432,6 +5530,8 @@ yb_restart_transaction(int attempt, bool is_read_restart)
 	 * The txn might or might not have performed writes. Reset the state in
 	 * either case to avoid checking/tracking if a write could have been
 	 * performed.
+	 *
+	 * TODO (#28196): Explore if we can do a full reset of the PG-side transaction state.
 	 */
 	YBCRestartWriteTransaction();
 
@@ -5677,7 +5777,7 @@ static void
 yb_exec_simple_query(const char *query_string, MemoryContext exec_context)
 {
 	YBQueryRetryData retry_data = {
-		.portal_name = NULL,
+		.portal_name = "", /* unnamed portal is used in simple query protocol */
 		.query_string = query_string,
 		.command_tag = YbParseCommandTag(query_string),
 	};
@@ -5724,14 +5824,6 @@ yb_exec_execute_message(long max_rows,
 
 	yb_exec_query_wrapper(exec_context, restart_data,
 						  &yb_exec_execute_message_impl, &ctx);
-
-	/*
-	 * Fetch the updated session execution stats at the end of each query, so
-	 * that stats don't accumulate across queries. The stats collected here
-	 * typically correspond to completed flushes, reads associated with triggers
-	 * etc.
-	 */
-	YbRefreshSessionStatsDuringExecution();
 }
 
 static void
@@ -5958,8 +6050,7 @@ PostgresMain(const char *dbname, const char *username)
 				 username, InvalidOid,	/* role to connect as */
 				 !am_walsender, /* honor session_preload_libraries? */
 				 false,			/* don't ignore datallowconn */
-				 NULL,			/* no out_dbname */
-				 NULL);			/* session id */
+				 NULL			/* no out_dbname */ );
 
 	/*
 	 * If the PostmasterContext is still around, recycle the space; we don't
@@ -6929,6 +7020,10 @@ PostgresMain(const char *dbname, const char *username)
 
 			case 'S':			/* sync */
 				{
+					/*
+					 * TODO(kramanathan): Display commit stats for the extended
+					 * query protocol. (#28409)
+					 */
 					pq_getmsgend(&input_message);
 					MemoryContext oldcontext = CurrentMemoryContext;
 
@@ -6946,6 +7041,14 @@ PostgresMain(const char *dbname, const char *username)
 						ThrowErrorData(edata);
 					}
 					PG_END_TRY();
+					/*
+					 * Fetch the updated session execution stats at the end of each query, so
+					 * that stats don't accumulate across queries. The stats collected here
+					 * typically correspond to completed flushes, reads associated with triggers
+					 * etc. This is put here for the extended query protocol where the last
+					 * packet is 'S'.
+					 */
+					YbRefreshSessionStatsDuringExecution();
 					send_ready_for_query = true;
 				}
 				break;

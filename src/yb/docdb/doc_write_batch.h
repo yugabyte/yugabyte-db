@@ -288,8 +288,7 @@ class DocWriteBatch {
 
   std::reference_wrapper<const ScopedRWOperation> pending_op() { return pending_op_; }
 
-  boost::optional<DocWriteBatchCache::Entry> LookupCache(
-      const dockv::KeyBytes& encoded_key_prefix) {
+  std::optional<DocWriteBatchCache::Entry> LookupCache(const dockv::KeyBytes& encoded_key_prefix) {
     return cache_.Get(encoded_key_prefix);
   }
 
@@ -314,14 +313,8 @@ class DocWriteBatch {
   }
 
   // See SetPrimitive above.
-  IntraTxnWriteId ReserveWriteId() {
-    put_batch_.emplace_back();
-    return narrow_cast<IntraTxnWriteId>(put_batch_.size()) - 1;
-  }
-
-  void RollbackReservedWriteId() {
-    put_batch_.pop_back();
-  }
+  IntraTxnWriteId ReserveWriteId();
+  void RollbackReservedWriteId(IntraTxnWriteId write_id);
 
   void SetDocReadContext(const DocReadContextPtr& doc_read_context) {
     doc_read_context_ = doc_read_context;

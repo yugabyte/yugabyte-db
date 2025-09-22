@@ -929,8 +929,12 @@ public class BackupsController extends AuthenticatedController {
     backup.updateStorageConfigUUID(taskParams.storageConfigUUID);
   }
 
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2025.2.0.0")
   @ApiOperation(
-      value = "Set throttle params in YB-Controller",
+      value = "Set throttle params in YB-Controller - deprecated",
+      notes =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2025.2.0.0.</b></p>"
+              + "Use 'Set throttle params in YB-Controller( async )' instead.",
       nickname = "setThrottleParams",
       response = YBPSuccess.class)
   @ApiImplicitParams(
@@ -964,6 +968,10 @@ public class BackupsController extends AuthenticatedController {
     if (!universe.isYbcEnabled()) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot set throttle params, universe does not have YB-Controller setup.");
+    }
+    if (universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot set throttle params for universe using inbuilt YBC");
     }
     YbcThrottleParameters throttleParams =
         parseJsonAndValidate(request, YbcThrottleParameters.class);

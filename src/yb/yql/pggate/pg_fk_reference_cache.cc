@@ -43,8 +43,10 @@ void Erase(Container& container, const Key& key) {
 
 class PgFKReferenceCache::Impl {
  public:
-  Impl(YbctidReaderProvider& reader_provider, const BufferingSettings& buffering_settings)
-      : reader_provider_(reader_provider), buffering_settings_(buffering_settings) {
+  Impl(YbctidReaderProvider& reader_provider, const BufferingSettings& buffering_settings,
+       const TablespaceMap& tablespace_map)
+      : reader_provider_(reader_provider), buffering_settings_(buffering_settings),
+        tablespace_map_(tablespace_map) {
   }
 
   void Clear() {
@@ -75,49 +77,29 @@ class PgFKReferenceCache::Impl {
       return true;
     }
 
-    auto reader = reader_provider_();
-    auto residual_capacity = std::min<size_t>(intents_->size(), buffering_settings_.max_batch_size);
-    reader.Reserve(residual_capacity);
-
     // Check existence of required FK intent.
-    const auto intents_end = intents_->end();
-    if (const auto it = intents_->find(key); it == intents_end) {
+    auto requested_key_intent_it = intents_->find(key);
+    if (requested_key_intent_it == intents_->end()) {
       if (!IsDeferredTriggersProcessingStarted()) {
         // In case of processing non deferred intents absence means the key was checked by previous
         // batched request and was not found. We don't need to call the reader in this case.
         return false;
       }
       // In case of processing deferred intents absence of intent could be caused by
-      // subtxnransaction rollback. In this case we have to make a read attempt.
-    } else {
-      intents_->erase(it);
+      // subtransaction rollback. In this case we have to make a read attempt.
+      requested_key_intent_it = intents_->emplace(key.table_id, key.ybctid).first;
     }
-    reader.Add(LightweightTableYbctid{key.table_id, key.ybctid});
-    --residual_capacity;
-
-    auto it = intents_->begin();
-    for (; it != intents_end && residual_capacity; --residual_capacity, ++it) {
-      reader.Add(*it);
-    }
-    ScopeExit intents_cleanup([this, erase_end = it] {
-      intents_->erase(intents_->begin(), erase_end);
-    });
-    // Add the keys found in docdb to the FK cache.
-    auto ybctids = VERIFY_RESULT(reader.Read(
-        database_id, region_local_tables_,
-        make_lw_function([](YbcPgExecParameters& params) { params.rowmark = ROW_MARK_KEYSHARE; })));
-    for (const auto& ybctid : ybctids) {
-      references_.emplace(ybctid.table_id, ybctid.ybctid);
-    }
+    RETURN_NOT_OK(ReadBatch(database_id, requested_key_intent_it));
     return references_.contains(key);
   }
 
-  void AddIntent(const LightweightTableYbctid& key, const IntentOptions& options) {
+  Status AddIntent(
+      PgOid database_id, const LightweightTableYbctid& key, const IntentOptions& options) {
     LOG_IF(DFATAL, IsDeferredTriggersProcessingStarted())
         << "AddIntent is not expected after deferred trigger processing start";
 
     if (references_.contains(key)) {
-        return;
+        return Status::OK();
     }
 
     if (options.is_region_local) {
@@ -125,8 +107,15 @@ class PgFKReferenceCache::Impl {
     }
     LOG_IF(DFATAL, !options.is_region_local && region_local_tables_.contains(key.table_id))
         << "The " << key.table_id << " table was previously reported as region local";
-    (options.is_deferred ? &deferred_intents_ : &regular_intents_)->emplace(
-        key.table_id, std::string(key.ybctid));
+    if (!options.is_deferred) {
+      regular_intents_.emplace(key.table_id, key.ybctid);
+      if (intents_->size() >= buffering_settings_.max_batch_size) {
+        return ReadBatch(database_id, intents_->begin());
+      }
+    } else {
+      deferred_intents_.emplace(key.table_id, key.ybctid);
+    }
+    return Status::OK();
   }
 
   void OnDeferredTriggersProcessingStarted() {
@@ -138,24 +127,75 @@ class PgFKReferenceCache::Impl {
   }
 
  private:
+  Status ReadBatch(
+      PgOid database_id, const MemoryOptimizedTableYbctidSet::iterator& mandatory_intent_it) {
+    DCHECK(!intents_->empty() && mandatory_intent_it != intents_->end());
+    auto reader = reader_provider_();
+    const auto read_count_limit =
+        std::min<size_t>(intents_->size(), buffering_settings_.max_batch_size);
+    reader.Reserve(read_count_limit);
+    reader.Add(*mandatory_intent_it);
+    size_t requested_read_count = 1;
+
+    auto it = intents_->begin();
+    auto* mandatory_intent_it_ptr_for_separate_handling = &mandatory_intent_it;
+    for (auto end = intents_->end(); it != end && requested_read_count < read_count_limit; ++it) {
+      if (it != mandatory_intent_it) {
+        reader.Add(*it);
+        ++requested_read_count;
+      } else {
+        mandatory_intent_it_ptr_for_separate_handling = nullptr;
+      }
+    }
+    const auto requested_intents_end_it = it;
+    CancelableScopeExit intents_cleanup(
+        [this, &requested_intents_end_it, mandatory_intent_it_ptr_for_separate_handling] {
+          intents_->erase(intents_->begin(), requested_intents_end_it);
+          if (mandatory_intent_it_ptr_for_separate_handling) {
+            intents_->erase(*mandatory_intent_it_ptr_for_separate_handling);
+          }
+    });
+    const auto ybctids = VERIFY_RESULT(reader.Read(
+        database_id, region_local_tables_, tablespace_map_,
+        make_lw_function([](YbcPgExecParameters& params) { params.rowmark = ROW_MARK_KEYSHARE; })));
+    // In case all FK has been read successfully it is reasonable to move requested intents into
+    // references instead of cleanup intents and create new elements in references.
+    if (ybctids.size() == requested_read_count) {
+      intents_cleanup.Cancel();
+      for (auto i = intents_->begin(); i != requested_intents_end_it;) {
+          references_.insert(intents_->extract(i++));
+      }
+      if (mandatory_intent_it_ptr_for_separate_handling) {
+        references_.insert(intents_->extract(*mandatory_intent_it_ptr_for_separate_handling));
+      }
+    } else {
+      for (const auto& ybctid : ybctids) {
+        references_.emplace(ybctid.table_id, ybctid.ybctid);
+      }
+    }
+    return Status::OK();
+  }
+
   [[nodiscard]] bool IsDeferredTriggersProcessingStarted() const {
     return intents_ == &deferred_intents_;
   }
 
   YbctidReaderProvider& reader_provider_;
   const BufferingSettings& buffering_settings_;
+  const TablespaceMap& tablespace_map_;
   MemoryOptimizedTableYbctidSet references_;
-  TableYbctidSet regular_intents_;
-  TableYbctidSet deferred_intents_;
-  TableYbctidSet* intents_ = &regular_intents_;
+  MemoryOptimizedTableYbctidSet regular_intents_;
+  MemoryOptimizedTableYbctidSet deferred_intents_;
+  MemoryOptimizedTableYbctidSet* intents_ = &regular_intents_;
   OidSet region_local_tables_;
   std::optional<size_t> references_cache_limit_;
 };
 
 PgFKReferenceCache::PgFKReferenceCache(
     YbctidReaderProvider& reader_provider,
-    std::reference_wrapper<const BufferingSettings> buffering_settings)
-    : impl_(new Impl(reader_provider, buffering_settings)) {}
+    std::reference_wrapper<const BufferingSettings> buffering_settings,
+    std::reference_wrapper<const TablespaceMap> tablespace_map)
+    : impl_(new Impl(reader_provider, buffering_settings, tablespace_map)) {}
 
 PgFKReferenceCache::~PgFKReferenceCache() = default;
 
@@ -176,9 +216,9 @@ Result<bool> PgFKReferenceCache::IsReferenceExists(
   return impl_->IsReferenceExists(database_id, key);
 }
 
-void PgFKReferenceCache::AddIntent(
-    const LightweightTableYbctid& key, const IntentOptions& options) {
-  impl_->AddIntent(key, options);
+Status PgFKReferenceCache::AddIntent(
+    PgOid database_id, const LightweightTableYbctid& key, const IntentOptions& options) {
+  return impl_->AddIntent(database_id, key, options);
 }
 
 void PgFKReferenceCache::OnDeferredTriggersProcessingStarted() {

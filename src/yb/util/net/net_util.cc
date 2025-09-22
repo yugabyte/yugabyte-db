@@ -259,7 +259,7 @@ Result<std::unique_ptr<addrinfo, AddrinfoDeleter>> HostToInetAddrInfo(const std:
 
 template <typename F>
 Status ResolveInetAddresses(const std::string& host, F func) {
-  boost::optional<IpAddress> fast_resolve = TryFastResolve(host);
+  std::optional<IpAddress> fast_resolve = TryFastResolve(host);
   if (fast_resolve) {
     func(*fast_resolve);
     VLOG(4) << "Fast resolved " << host << " to " << fast_resolve->to_string();
@@ -691,7 +691,7 @@ void TEST_SetFailToFastResolveAddress(const std::string& address) {
   LOG(INFO) << "Setting fail_to_fast_resolve_address to: " << address;
 }
 
-boost::optional<IpAddress> TryFastResolve(const std::string& host) {
+std::optional<IpAddress> TryFastResolve(const std::string& host) {
   auto result = ParseIpAddress(host);
   if (result.ok()) {
     return *result;
@@ -703,18 +703,17 @@ boost::optional<IpAddress> TryFastResolve(const std::string& host) {
     {
       std::lock_guard lock(fail_to_fast_resolve_address_mutex);
       if (PREDICT_FALSE(host == fail_to_fast_resolve_address)) {
-        return boost::none;
+        return std::nullopt;
       }
     }
     boost::system::error_code ec;
-    auto address = IpAddress::from_string(
-        host.substr(0, host.length() - kYbIpSuffix.length()), ec);
+    auto address = IpAddress::from_string(host.substr(0, host.length() - kYbIpSuffix.length()), ec);
     if (!ec) {
       return address;
     }
   }
 
-  return boost::none;
+  return std::nullopt;
 }
 
-} // namespace yb
+}  // namespace yb

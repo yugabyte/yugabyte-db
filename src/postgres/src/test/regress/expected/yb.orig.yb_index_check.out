@@ -1,16 +1,14 @@
-SET yb_explain_hide_non_deterministic_fields = true;
--- Setup
-CREATE TABLE abcd(a int primary key, b int, c int, d int);
+SET yb_bnl_batch_size = 3;
+-- Basic test
+CREATE TABLE abcd(a int primary key, b int, c int, d int) SPLIT INTO 1 TABLETS;
 CREATE INDEX abcd_b_c_d_idx ON abcd (b ASC) INCLUDE (c, d);
 INSERT INTO abcd SELECT i, i, i, i FROM generate_series(1, 10) i;
--- Basic test
-SET yb_bnl_batch_size = 3;
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF) SELECT yb_index_check('abcd_b_c_d_idx'::regclass::oid);
                QUERY PLAN                
 -----------------------------------------
  Result *RESULT* (actual rows=1 loops=1)
    Storage Table Read Requests: 5
-   Storage Table Read Ops: 11
+   Storage Table Read Ops: 5
    Storage Table Rows Scanned: 20
    Storage Index Read Requests: 1
    Storage Index Read Ops: 1
@@ -23,15 +21,13 @@ SELECT yb_index_check('abcd_b_c_d_idx'::regclass::oid);
  
 (1 row)
 
-RESET yb_bnl_batch_size;
--- Insert more data
-INSERT INTO abcd SELECT i, i, i, i FROM generate_series(11, 2000) i;
-INSERT INTO abcd values (2001, NULL, NULL, NULL);
-INSERT INTO abcd values (2002, 2002, 1, 2);
-INSERT INTO abcd values (2003, 2003, 3, NULL);
-INSERT INTO abcd values (2004, 2004, NULL, 4);
+DROP TABLE abcd;
+-- Set up
+CREATE TABLE abcd(a int primary key, b int, c int, d int);
+CREATE INDEX abcd_b_c_d_idx ON abcd (b ASC) INCLUDE (c, d);
+INSERT INTO abcd SELECT i, i, i, i FROM generate_series(1, 10) i;
 -- Partial index
-CREATE INDEX abcd_b_c_idx ON abcd(b) INCLUDE (c) WHERE d > 50;
+CREATE INDEX abcd_b_c_idx ON abcd(b) INCLUDE (c) WHERE d > 5;
 SELECT yb_index_check('abcd_b_c_idx'::regclass::oid);
  yb_index_check 
 ----------------
@@ -44,7 +40,7 @@ BEGIN
     RETURN input_value * 2;
 END;
 $$ LANGUAGE plpgsql IMMUTABLE;
-CREATE INDEX abcd_b_c_idx1 ON abcd(b) INCLUDE (c) WHERE double_value(d) > 50;
+CREATE INDEX abcd_b_c_idx1 ON abcd(b) INCLUDE (c) WHERE double_value(d) > 5;
 SELECT yb_index_check('abcd_b_c_idx1'::regclass::oid);
  yb_index_check 
 ----------------
@@ -97,7 +93,7 @@ SELECT yb_index_check('abcd_pkey'::regclass::oid);
 -- Non-LSM index
 CREATE TEMP TABLE mytemp(a int unique);
 SELECT yb_index_check('mytemp_a_key'::regclass::oid);
-ERROR:  This operation is not supported for index with access method 403
+ERROR:  This operation is not supported for index with btree access method
 -- Non index relation oid
 SELECT yb_index_check('abcd'::regclass::oid);
 ERROR:  Object is not an index
@@ -134,15 +130,15 @@ $force_cache_refresh$ AS force_cache_refresh \gset
 -- Missing Index Row
 UPDATE pg_index SET indisready = FALSE, indisvalid = FALSE, indislive = FALSE WHERE indexrelid = 'abcd_b_c_d_idx'::regclass;
 :force_cache_refresh
-INSERT INTO abcd VALUES (2005, 2005, 2005, 2005);
+INSERT INTO abcd VALUES (11, 11, 11, 11);
 SELECT yb_index_check('abcd_b_c_d_idx'::regclass::oid);
 ERROR:  Index 'abcd_b_c_d_idx' is marked invalid
 UPDATE pg_index SET indisready = TRUE, indisvalid = TRUE, indislive = TRUE WHERE indexrelid = 'abcd_b_c_d_idx'::regclass;
 :force_cache_refresh
 SELECT yb_index_check('abcd_b_c_d_idx'::regclass::oid);
-ERROR:  index is missing some rows: expected 2005, actual 2004
+ERROR:  index is missing some rows: expected 11, actual 10
 DETAIL:  index: 'abcd_b_c_d_idx'
-DELETE FROM abcd WHERE a = 2005; -- Reset
+DELETE FROM abcd WHERE a = 11; -- Reset
 SELECT yb_index_check('abcd_b_c_d_idx'::regclass::oid);
  yb_index_check 
 ----------------
@@ -166,15 +162,16 @@ SELECT yb_index_check('abcd_b_c_d_idx'::regclass::oid);
 (1 row)
 
 -- Spurious Index Row with NULL Index Attributes
+INSERT INTO abcd VALUES (11, NULL, NULL, NULL);
 UPDATE pg_index SET indisready = FALSE, indisvalid = FALSE, indislive = FALSE WHERE indexrelid = 'abcd_b_c_d_idx'::regclass;
 :force_cache_refresh
-DELETE FROM abcd WHERE a = 2001;
+DELETE FROM abcd WHERE a = 11;
 UPDATE pg_index SET indisready = TRUE, indisvalid = TRUE, indislive = TRUE WHERE indexrelid = 'abcd_b_c_d_idx'::regclass;
 :force_cache_refresh
 SELECT yb_index_check('abcd_b_c_d_idx'::regclass::oid);
 ERROR:  index contains spurious row
-DETAIL:  index: 'abcd_b_c_d_idx', ybbasectid: '\x4751cf48800007d12121'
-INSERT INTO abcd VALUES (2001, NULL, NULL, NULL);
+DETAIL:  index: 'abcd_b_c_d_idx', ybbasectid: '\x471c99488000000b2121'
+INSERT INTO abcd VALUES (11, NULL, NULL, NULL); -- Reset
 SELECT yb_index_check('abcd_b_c_d_idx'::regclass::oid);
  yb_index_check 
 ----------------
@@ -216,13 +213,13 @@ SELECT yb_index_check('abcd_b_c_d_idx'::regclass::oid);
 -- Spurious Row Due to Partial Index
 UPDATE pg_index SET indisready = FALSE, indisvalid = FALSE, indislive = FALSE WHERE indexrelid = 'abcd_b_c_idx'::regclass;
 :force_cache_refresh
-UPDATE abcd SET d = 50 WHERE a = 51;
+UPDATE abcd SET d = 5 WHERE a = 6;
 UPDATE pg_index SET indisready = TRUE, indisvalid = TRUE, indislive = TRUE WHERE indexrelid = 'abcd_b_c_idx'::regclass;
 :force_cache_refresh
 SELECT yb_index_check('abcd_b_c_idx'::regclass::oid);
 ERROR:  index contains spurious row
-DETAIL:  index: 'abcd_b_c_idx', ybbasectid: '\x47512248800000332121'
-UPDATE abcd SET d = 51 WHERE a = 51;
+DETAIL:  index: 'abcd_b_c_idx', ybbasectid: '\x474e5848800000062121'
+UPDATE abcd SET d = 6 WHERE a = 6;
 SELECT yb_index_check('abcd_b_c_idx'::regclass::oid);
  yb_index_check 
 ----------------
@@ -232,18 +229,18 @@ SELECT yb_index_check('abcd_b_c_idx'::regclass::oid);
 -- Index of a partitioned table
 CREATE TABLE part(a int, b int, c int, d int) PARTITION BY RANGE(a);
 CREATE INDEX ON part(b) include (c, d);
-CREATE TABLE part_1_2k PARTITION OF part FOR VALUES FROM(1) TO(2000);
-CREATE TABLE part_2 PARTITION OF part FOR VALUES FROM(2000) TO(6000) PARTITION BY RANGE(a);
-CREATE TABLE part_2k_4k PARTITION OF part_2 FOR VALUES FROM(2000) TO(4000);
-CREATE TABLE part_4k_6k PARTITION OF part_2 FOR VALUES FROM(4000) TO(6000);
-INSERT INTO part SELECT i, i, i, i FROM generate_series(1, 5999) i;
+CREATE TABLE part_1_20 PARTITION OF part FOR VALUES FROM(1) TO (20);
+CREATE TABLE part_2 PARTITION OF part FOR VALUES FROM(20) TO (60) PARTITION BY RANGE(a);
+CREATE TABLE part_20_40 PARTITION OF part_2 FOR VALUES FROM(20) TO (40);
+CREATE TABLE part_40_60 PARTITION OF part_2 FOR VALUES FROM(40) TO (60);
+INSERT INTO part SELECT i, i, i, i FROM generate_series(1, 59) i;
 SELECT yb_index_check('part_b_c_d_idx'::regclass::oid);
  yb_index_check 
 ----------------
  
 (1 row)
 
-SELECT yb_index_check('part_1_2k_b_c_d_idx'::regclass::oid);
+SELECT yb_index_check('part_1_20_b_c_d_idx'::regclass::oid);
  yb_index_check 
 ----------------
  
@@ -255,13 +252,13 @@ SELECT yb_index_check('part_2_b_c_d_idx'::regclass::oid);
  
 (1 row)
 
-SELECT yb_index_check('part_2k_4k_b_c_d_idx'::regclass::oid);
+SELECT yb_index_check('part_20_40_b_c_d_idx'::regclass::oid);
  yb_index_check 
 ----------------
  
 (1 row)
 
-SELECT yb_index_check('part_4k_6k_b_c_d_idx'::regclass::oid);
+SELECT yb_index_check('part_40_60_b_c_d_idx'::regclass::oid);
  yb_index_check 
 ----------------
  
@@ -284,32 +281,11 @@ SELECT yb_index_check('matview_b_idx'::regclass);
  
 (1 row)
 
--- Index of a colocated relation
-CREATE DATABASE colocateddb COLOCATION = TRUE;
-\c colocateddb
-CREATE TABLE abcd1(a int primary key, b int, c int, d int);
-CREATE INDEX abcd1_b_c_d_idx ON abcd1(b ASC) INCLUDE (c, d);
-INSERT INTO abcd1 SELECT i, i, i, i FROM generate_series(1, 1000) i;
-CREATE TABLE abcd2(a int primary key, b int, c int, d int);
-CREATE INDEX abcd2_b_c_d_idx ON abcd2(b ASC) INCLUDE (c, d);
-INSERT INTO abcd2 SELECT i, i, i, i FROM generate_series(1, 2000) i;
-SELECT yb_index_check('abcd1_b_c_d_idx'::regclass::oid);
- yb_index_check 
-----------------
- 
-(1 row)
-
-SELECT yb_index_check('abcd2_b_c_d_idx'::regclass::oid);
- yb_index_check 
-----------------
- 
-(1 row)
-
 -- GIN indexes (not support yet)
 CREATE TABLE vectors (i serial PRIMARY KEY, v tsvector);
 CREATE INDEX ON vectors USING ybgin (v) where i > 5;
 SELECT yb_index_check('vectors_v_idx'::regclass::oid);
-ERROR:  This operation is not supported for index with access method 8021
+ERROR:  This operation is not supported for index with ybgin access method
 -- Variable length data type
 CREATE TABLE test_bytea(a int primary key, b int, c bytea);
 CREATE INDEX test_bytea_b_c_idx ON test_bytea (b ASC) INCLUDE (c);
@@ -323,6 +299,49 @@ SELECT yb_index_check('test_bytea_b_c_idx'::regclass::oid);
 (1 row)
 
 SELECT yb_index_check('test_bytea_c_b_idx'::regclass::oid);
+ yb_index_check 
+----------------
+ 
+(1 row)
+
+-- Inside a transaction block
+BEGIN;
+SELECT yb_index_check('abcd_b_c_d_idx'::regclass::oid);
+NOTICE:  yb_index_check() is prone to 'Restart read required' erorrs when executed from within a transaction block.
+ yb_index_check 
+----------------
+ 
+(1 row)
+
+COMMIT;
+-- Test with more data
+INSERT INTO abcd SELECT i, i, i, i FROM generate_series(12, 2000) i;
+INSERT INTO abcd values (2002, 2002, 1, 2);
+INSERT INTO abcd values (2003, 2003, 3, NULL);
+INSERT INTO abcd values (2004, 2004, NULL, 4);
+SELECT yb_index_check('abcd_b_c_idx'::regclass::oid);
+ yb_index_check 
+----------------
+ 
+(1 row)
+
+-- Index of a colocated relation
+CREATE DATABASE colocateddb COLOCATION = TRUE;
+\c colocateddb
+SET yb_bnl_batch_size = 3;
+CREATE TABLE abcd1(a int primary key, b int, c int, d int);
+CREATE INDEX abcd1_b_c_d_idx ON abcd1(b ASC) INCLUDE (c, d);
+INSERT INTO abcd1 SELECT i, i, i, i FROM generate_series(1, 1000) i;
+CREATE TABLE abcd2(a int primary key, b int, c int, d int);
+CREATE INDEX abcd2_b_c_d_idx ON abcd2(b ASC) INCLUDE (c, d);
+INSERT INTO abcd2 SELECT i, i, i, i FROM generate_series(1, 1000) i;
+SELECT yb_index_check('abcd1_b_c_d_idx'::regclass::oid);
+ yb_index_check 
+----------------
+ 
+(1 row)
+
+SELECT yb_index_check('abcd2_b_c_d_idx'::regclass::oid);
  yb_index_check 
 ----------------
  

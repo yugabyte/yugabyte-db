@@ -257,6 +257,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     public int newPlacementAzMasterCount = 0;
     public Map<ServerType, String> previousGflagsChecksumMap = new HashMap<>();
     public boolean usePreviousGflagsChecksum = false;
+    public String previousCertChecksum = null;
+    public boolean usePreviousCertChecksum = false;
     public boolean createNamespacedService = false;
     public Set<String> deleteServiceNames;
     // Opentelemetry collector related params
@@ -766,6 +768,16 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
   }
 
+  private void populatePreviousCertChecksum() {
+    if (taskParams().usePreviousCertChecksum && taskParams().previousCertChecksum == null) {
+      taskParams().previousCertChecksum =
+          kubernetesManagerFactory
+              .getManager()
+              .getCertChecksum(
+                  taskParams().namespace, taskParams().helmReleaseName, taskParams().config);
+    }
+  }
+
   private String generateHelmOverride() {
     Map<String, Object> overrides = new HashMap<String, Object>();
     Yaml yaml = new Yaml(new SkipNullRepresenter());
@@ -1032,7 +1044,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                 + taskUniverseDetails.getUniverseUUID()
                 + " readcluster: "
                 + taskParams().isReadOnlyCluster
-                + " Using deafult values.");
+                + " Using default values.");
         userIntent.masterK8SNodeResourceSpec = new UserIntent.K8SNodeResourceSpec();
       }
       if (userIntent.tserverK8SNodeResourceSpec == null) {
@@ -1041,7 +1053,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                 + taskUniverseDetails.getUniverseUUID()
                 + " readcluster: "
                 + taskParams().isReadOnlyCluster
-                + " Using deafult values.");
+                + " Using default values.");
         userIntent.tserverK8SNodeResourceSpec = new UserIntent.K8SNodeResourceSpec();
       }
       masterResource.put(
@@ -1116,6 +1128,17 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       tlsInfo.put("nodeToNode", primaryClusterIntent.enableNodeToNodeEncrypt);
       tlsInfo.put("clientToServer", primaryClusterIntent.enableClientToNodeEncrypt);
       tlsInfo.put("insecure", taskUniverseDetails.allowInsecure);
+      // Certificate checksum override
+      if (taskParams().usePreviousCertChecksum) {
+        if (taskParams().previousCertChecksum == null) {
+          populatePreviousCertChecksum();
+        }
+        String certChecksum =
+            taskParams().previousCertChecksum != null ? taskParams().previousCertChecksum : "";
+        if (StringUtils.isNotEmpty(certChecksum)) {
+          tlsInfo.put("rootCAChecksum", certChecksum);
+        }
+      }
       String rootCert;
       String rootKey;
 
@@ -1123,9 +1146,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           taskParams().rootCA == null ? taskUniverseDetails.rootCA : taskParams().rootCA;
 
       UUID clientRootCAUUID =
-          taskUniverseDetails.rootAndClientRootCASame
-              ? rootCAUUID
-              : taskUniverseDetails.getClientRootCA();
+          (taskUniverseDetails.rootAndClientRootCASame
+              ? (rootCAUUID != null ? rootCAUUID : taskUniverseDetails.getClientRootCA())
+              : taskUniverseDetails.getClientRootCA());
       if (rootCAUUID != null) {
         rootCert = CertificateHelper.getCertPEM(rootCAUUID);
         rootKey = CertificateHelper.getKeyPEM(rootCAUUID);
@@ -1409,6 +1432,17 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       gflagOverrides.put("tserver", tserverGFlags);
     }
 
+    if (primaryClusterIntent.isUseYbdbInbuiltYbc()) {
+      Map<String, String> ybcGflags = new HashMap<>();
+      String hardwareConcurrencyStr =
+          Long.toString(
+              (long) Math.ceil(Double.parseDouble(tserverResource.get("cpu").toString())));
+      ybcGflags.putAll(
+          GFlagsUtil.getCommonYbcGflags(confGetter, universeFromDB, hardwareConcurrencyStr));
+      ybcGflags.putAll(primaryClusterIntent.ybcFlags);
+      gflagOverrides.put("ybc", ybcGflags);
+    }
+
     if (!gflagOverrides.isEmpty()) {
       overrides.put("gflags", gflagOverrides);
     }
@@ -1497,9 +1531,18 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
 
     overrides.put("yugabytedUi", yugabytedUiInfo);
 
-    Map<String, Object> ybcInfo = new HashMap<>();
-    ybcInfo.put("enabled", taskParams().isEnableYbc());
-    overrides.put("ybc", ybcInfo);
+    // YBC overrides
+    Map<String, Object> ybcOverrides = new HashMap<>();
+    ybcOverrides.put("enabled", taskParams().isEnableYbc());
+    ybcOverrides.put("useYBDBImage", primaryClusterIntent.isUseYbdbInbuiltYbc());
+    if (taskParams().usePreviousGflagsChecksum) {
+      // Map is already populated from above where master/tserver gflags checksums
+      // are added to overrides.
+      String ybcGflagsChecksum =
+          taskParams().previousGflagsChecksumMap.getOrDefault(ServerType.CONTROLLER, "");
+      ybcOverrides.put("gflagsChecksum", ybcGflagsChecksum);
+    }
+    overrides.put("ybc", ybcOverrides);
 
     // The overrides specified in the provider. These can be at
     // provider, region, or zone level. There is no merging of these

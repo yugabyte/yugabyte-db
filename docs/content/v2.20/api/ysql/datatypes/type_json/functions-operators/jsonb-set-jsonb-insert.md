@@ -4,7 +4,7 @@ headerTitle: jsonb_set() and jsonb_insert()
 linkTitle: jsonb_set() and jsonb_insert()
 description: Change a JSON value using jsonb_set() and insert a value using jsonb_insert().
 menu:
-  v2.20:
+  v2.20_api:
     identifier: jsonb-set-jsonb-insert
     parent: json-functions-operators
     weight: 210

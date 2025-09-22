@@ -20,6 +20,7 @@
 #include <initializer_list>
 #include <iterator>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 
 #include <ev++.h>
@@ -48,6 +49,7 @@
 #include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
+#include "yb/util/alignment.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/enums.h"
 #include "yb/util/format.h"
@@ -430,6 +432,11 @@ Result<bool> RetrieveYbctidsImpl(
       });
 }
 
+[[nodiscard]] bool ShouldEnableTableLocks() {
+  return FLAGS_enable_object_locking_for_table_locks && !YBCIsInitDbModeEnvVarSet() &&
+         !YBCIsBinaryUpgrade();
+}
+
 } // namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -552,7 +559,7 @@ Result<dockv::KeyBytes> PgApiImpl::TupleIdBuilder::Build(
     }
 
     if (attr->is_null) {
-      values->emplace_back(dockv::KeyEntryType::kNullLow);
+      values->emplace_back(dockv::KeyEntryValue::NullValue(column.desc().sorting_type()));
       continue;
     }
     if (attr->attr_num == std::to_underlying(PgSystemAttrNum::kYBRowId)) {
@@ -587,11 +594,62 @@ Result<dockv::KeyBytes> PgApiImpl::TupleIdBuilder::Build(
   return doc_key_.Encode();
 }
 
+struct PgApiImpl::PgSharedData {
+  std::atomic<uint64_t> next_perform_op_serial_no{0};
+};
+
+static_assert(std::is_trivially_destructible_v<PgApiImpl::PgSharedData>);
+
+struct PgApiImpl::SignedPgSharedData {
+  std::atomic<uint64_t> signature{kMagicSignature};
+  PgSharedData data;
+
+  ~SignedPgSharedData() {
+    signature.store(0, std::memory_order_release);
+  }
+
+  constexpr static uint64_t kMagicSignature = 0x0112031404130211;
+};
+
+static_assert(
+    sizeof(PgApiImpl::SignedPgSharedData) + alignof(PgApiImpl::SignedPgSharedData)
+        <= sizeof(YbcPgSharedDataPlaceholder));
+
+PgApiImpl::PgSharedDataHolder::PgSharedDataHolder(
+    YbcPgSharedDataPlaceholder& raw_data, bool is_owner)
+    : is_owner_(is_owner) {
+  auto* placeholder = pointer_cast<char*>(&raw_data);
+  auto* aligned_placeholder = align_up(placeholder, alignof(SignedPgSharedData));
+  // Paranoid check
+  DCHECK_LE(
+      aligned_placeholder + sizeof(SignedPgSharedData),
+      placeholder + sizeof(YbcPgSharedDataPlaceholder));
+  if (is_owner_) {
+    signed_data_ = new (aligned_placeholder) SignedPgSharedData{};
+    CHECK(signed_data_->data.next_perform_op_serial_no.is_lock_free());
+  } else {
+    signed_data_ = pointer_cast<SignedPgSharedData*>(aligned_placeholder);
+    CHECK_EQ(
+        signed_data_->signature.load(std::memory_order_acquire),
+        SignedPgSharedData::kMagicSignature);
+  }
+}
+
+PgApiImpl::PgSharedDataHolder::~PgSharedDataHolder() {
+  if (is_owner_) {
+    signed_data_->~SignedPgSharedData();
+  }
+}
+
+PgApiImpl::PgSharedData* PgApiImpl::PgSharedDataHolder::operator->() {
+  return &signed_data_->data;
+}
+
 //--------------------------------------------------------------------------------------------------
 
 PgApiImpl::PgApiImpl(
     YbcPgTypeEntities type_entities, const YbcPgCallbacks& callbacks,
-    std::optional<uint64_t> session_id, YbcPgAshConfig& ash_config)
+    const YbcPgInitPostgresInfo& init_postgres_info, YbcPgAshConfig& ash_config)
     : pg_types_(type_entities),
       metric_registry_(new MetricRegistry()),
       metric_entity_(METRIC_ENTITY_server.Instantiate(metric_registry_.get(), "yb.pggate")),
@@ -606,13 +664,15 @@ PgApiImpl::PgApiImpl(
               ash::WaitStateCode wait_event, ash::PggateRPC pggate_rpc) {
             return PgWaitEventWatcher{starter, wait_event, pggate_rpc};
       }),
-      pg_client_(wait_event_watcher_),
+      pg_shared_data_(
+          *init_postgres_info.shared_data, !init_postgres_info.parallel_leader_session_id),
+      pg_client_(wait_event_watcher_, pg_shared_data_->next_perform_op_serial_no),
       clock_(new server::HybridClock()),
-      enable_table_locking_(FLAGS_enable_object_locking_for_table_locks),
+      enable_table_locking_(ShouldEnableTableLocks()),
       pg_txn_manager_(new PgTxnManager(&pg_client_, clock_, pg_callbacks_, enable_table_locking_)),
       ybctid_reader_provider_(pg_session_),
-      fk_reference_cache_(ybctid_reader_provider_, buffering_settings_),
-      explicit_row_lock_buffer_(ybctid_reader_provider_) {
+      fk_reference_cache_(ybctid_reader_provider_, buffering_settings_, tablespace_map_),
+      explicit_row_lock_buffer_(ybctid_reader_provider_, tablespace_map_) {
   PgBackendSetupSharedMemory();
   // This is an RCU object, but there are no concurrent updates on PG side, only on tserver, so
   // it's safe to just save the pointer.
@@ -627,7 +687,9 @@ PgApiImpl::PgApiImpl(
 
   CHECK_OK(pg_client_.Start(
       proxy_cache_.get(), &messenger_holder_.messenger->scheduler(),
-      *tserver_shared_object_, session_id));
+      *tserver_shared_object_,
+      init_postgres_info.parallel_leader_session_id
+          ? std::optional(*init_postgres_info.parallel_leader_session_id) : std::nullopt));
 }
 
 PgApiImpl::~PgApiImpl() {
@@ -1142,6 +1204,28 @@ Status PgApiImpl::SetCatalogCacheVersion(
   return Status::OK();
 }
 
+Status PgApiImpl::SetTablespaceOid(
+    PgStatement* handle, uint32_t tablespace_oid) {
+  VERIFY_RESULT_REF(GetStatementAs<PgDml>(handle, {
+          StatementTag<PgInsert>(),
+          StatementTag<PgUpdate>(),
+          StatementTag<PgDelete>(),
+          StatementTag<PgSelect>()
+      })).SetTablespaceOid(tablespace_oid);
+  return Status::OK();
+}
+
+#ifndef NDEBUG
+void PgApiImpl::CheckTablespaceOid(
+    uint32_t db_oid, uint32_t table_oid, uint32_t tablespace_oid) {
+  PgObjectId id(db_oid, table_oid);
+  CHECK(id.IsValid());
+  auto it = tablespace_map_.find(id);
+  CHECK(it != tablespace_map_.end());
+  CHECK_EQ(it->second, tablespace_oid);
+}
+#endif
+
 Result<client::TableSizeInfo> PgApiImpl::GetTableDiskSize(const PgObjectId& table_oid) {
   return pg_session_->GetTableDiskSize(table_oid);
 }
@@ -1349,6 +1433,14 @@ Status PgApiImpl::DmlBindRange(
       lower_bound, lower_bound_inclusive, upper_bound, upper_bound_inclusive);
 }
 
+Status PgApiImpl::DmlBindBounds(
+    PgStatement* handle, const Slice lower_bound, bool lower_bound_inclusive,
+    const Slice upper_bound, bool upper_bound_inclusive) {
+  VERIFY_RESULT_REF(GetStatementAs<PgDmlRead>(handle))
+      .BindBounds(lower_bound, lower_bound_inclusive, upper_bound, upper_bound_inclusive);
+  return Status::OK();
+}
+
 Status PgApiImpl::DmlBindTable(PgStatement* handle) {
   return VERIFY_RESULT_REF(GetStatementAs<PgDml>(handle)).BindTable();
 }
@@ -1384,8 +1476,8 @@ void PgApiImpl::ResetOperationsBuffering() {
   pg_session_->ResetOperationsBuffering();
 }
 
-Status PgApiImpl::FlushBufferedOperations() {
-  return ResultToStatus(pg_session_->FlushBufferedOperations());
+Status PgApiImpl::FlushBufferedOperations(const YbcFlushDebugContext& context) {
+  return ResultToStatus(pg_session_->FlushBufferedOperations(context));
 }
 
 Status PgApiImpl::AdjustOperationsBuffering(int multiple) {
@@ -1543,11 +1635,6 @@ Status PgApiImpl::SetForwardScan(PgStatement* handle, bool is_forward_scan) {
 Status PgApiImpl::SetDistinctPrefixLength(PgStatement* handle, int distinct_prefix_length) {
   VERIFY_RESULT_REF(GetStatementAs<PgSelect>(handle)).SetDistinctPrefixLength(
       distinct_prefix_length);
-  return Status::OK();
-}
-
-Status PgApiImpl::SetHashBounds(PgStatement* handle, uint16_t low_bound, uint16_t high_bound) {
-  VERIFY_RESULT_REF(GetStatementAs<PgSelect>(handle)).SetHashBounds(low_bound, high_bound);
   return Status::OK();
 }
 
@@ -1941,7 +2028,11 @@ Status PgApiImpl::CommitPlainTransaction(const std::optional<PgDdlCommitInfo>& d
       pg_session_->IsInsertOnConflictBufferEmpty(),
       IllegalState, "Expected INSERT ... ON CONFLICT buffer to be empty");
   fk_reference_cache_.Clear();
-  RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
+
+  YbcFlushDebugContext debug_context;
+  debug_context.reason = YbcFlushReason::YB_COMMIT_TRANSACTION;
+  debug_context.oidarg = ddl_commit_info.has_value() ? ddl_commit_info->db_oid : kInvalidOid;
+  RETURN_NOT_OK(pg_session_->FlushBufferedOperations(debug_context));
   return pg_txn_manager_->CommitPlainTransaction(ddl_commit_info);
 }
 
@@ -1985,7 +2076,7 @@ Status PgApiImpl::SetDdlStateInPlainTransaction() {
 
 Status PgApiImpl::EnterSeparateDdlTxnMode() {
   // Flush all buffered operations as ddl txn use its own transaction session.
-  RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
+  RETURN_NOT_OK(pg_session_->FlushBufferedOperations(YB_ENTER_DDL_TRANSACTION_MODE));
   pg_session_->ResetHasCatalogWriteOperationsInDdlMode();
   return pg_txn_manager_->EnterSeparateDdlTxnMode();
 }
@@ -1996,7 +2087,7 @@ bool PgApiImpl::HasWriteOperationsInDdlTxnMode() const {
 
 Status PgApiImpl::ExitSeparateDdlTxnMode(PgOid db_oid, bool is_silent_modification) {
   // Flush all buffered operations as ddl txn use its own transaction session.
-  RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
+  RETURN_NOT_OK(pg_session_->FlushBufferedOperations(YB_EXIT_DDL_TRANSACTION_MODE));
   RETURN_NOT_OK(pg_txn_manager_->ExitSeparateDdlTxnModeWithCommit(db_oid, is_silent_modification));
   // Next reads from catalog tables have to see changes made by the DDL transaction.
   ResetCatalogReadTime();
@@ -2010,13 +2101,16 @@ Status PgApiImpl::ClearSeparateDdlTxnMode() {
 
 Status PgApiImpl::SetActiveSubTransaction(SubTransactionId id) {
   VLOG_WITH_FUNC(4) << "id: " << id;
+  YbcFlushDebugContext debug_context;
+  debug_context.reason = YbcFlushReason::YB_ACTIVATE_SUBTRANSACTION;
+  debug_context.uintarg = id;
   // It's required that we flush all buffered operations before changing the SubTransactionMetadata
   // used by the underlying batcher and RPC logic, as this will snapshot the current
   // SubTransactionMetadata for use in construction of RPCs for already-queued operations, thereby
   // ensuring that previous operations use previous SubTransactionMetadata. If we do not flush here,
   // already queued operations may incorrectly use this newly modified SubTransactionMetadata when
   // they are eventually sent to DocDB.
-  RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
+  RETURN_NOT_OK(pg_session_->FlushBufferedOperations(debug_context));
   pg_txn_manager_->SetActiveSubTransactionId(id);
   return Status::OK();
 }
@@ -2093,9 +2187,11 @@ Result<bool> PgApiImpl::ForeignKeyReferenceExists(
       database_id, LightweightTableYbctid{table_id, ybctid});
 }
 
-void PgApiImpl::AddForeignKeyReferenceIntent(
-    PgOid table_id, const Slice& ybctid, const PgFKReferenceCache::IntentOptions& options) {
-  fk_reference_cache_.AddIntent(LightweightTableYbctid{table_id, ybctid}, options);
+Status PgApiImpl::AddForeignKeyReferenceIntent(
+    PgOid table_id, const Slice& ybctid, const PgFKReferenceCache::IntentOptions& options,
+    PgOid database_id) {
+  return fk_reference_cache_.AddIntent(
+      database_id, LightweightTableYbctid{table_id, ybctid}, options);
 }
 
 void PgApiImpl::DeleteForeignKeyReference(PgOid table_id, const Slice& ybctid) {
@@ -2363,7 +2459,10 @@ YbcReadPointHandle PgApiImpl::GetCurrentReadPoint() const {
 }
 
 Status PgApiImpl::RestoreReadPoint(YbcReadPointHandle read_point) {
-  RETURN_NOT_OK(FlushBufferedOperations());
+  YbcFlushDebugContext debug_context;
+  debug_context.reason = YbcFlushReason::YB_CHANGE_TRANSACTION_SNAPSHOT;
+  debug_context.uintarg = read_point;
+  RETURN_NOT_OK(FlushBufferedOperations(debug_context));
   return pg_txn_manager_->RestoreReadPoint(read_point);
 }
 
@@ -2407,17 +2506,39 @@ Status PgApiImpl::AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLoc
 
 Result<std::string> PgApiImpl::ExportSnapshot(
     const YbcPgTxnSnapshot& snapshot, std::optional<YbcReadPointHandle> explicit_read_time) {
+  YbcFlushDebugContext debug_context;
+  debug_context.reason = YbcFlushReason::YB_EXPORT_SNAPSHOT;
+  debug_context.uintarg = explicit_read_time.has_value() ? *explicit_read_time : 0;
+  debug_context.oidarg = snapshot.db_id;
   return pg_txn_manager_->ExportSnapshot(
-      VERIFY_RESULT(pg_session_->FlushBufferedOperations()), snapshot, explicit_read_time);
+      VERIFY_RESULT(pg_session_->FlushBufferedOperations(debug_context)), snapshot,
+          explicit_read_time);
 }
 
 Result<YbcPgTxnSnapshot> PgApiImpl::ImportSnapshot(std::string_view snapshot_id) {
+  YbcFlushDebugContext debug_context;
+  debug_context.reason = YbcFlushReason::YB_IMPORT_SNAPSHOT;
+  debug_context.strarg1 = snapshot_id.data();
   return pg_txn_manager_->ImportSnapshot(
-      VERIFY_RESULT(pg_session_->FlushBufferedOperations()), snapshot_id);
+      VERIFY_RESULT(pg_session_->FlushBufferedOperations(debug_context)), snapshot_id);
 }
 
 bool PgApiImpl::HasExportedSnapshots() const { return pg_txn_manager_->has_exported_snapshots(); }
 
 void PgApiImpl::ClearExportedTxnSnapshots() { pg_txn_manager_->ClearExportedTxnSnapshots(); }
+
+void PgApiImpl::RecordTablespaceOid(uint32_t db_oid, uint32_t table_oid, uint32_t tablespace_oid) {
+  PgObjectId id(db_oid, table_oid);
+  CHECK(id.IsValid());
+  VLOG(1) << __func__ << ": " << yb::ToString(id) << ", tablespace_oid: " << tablespace_oid;
+  tablespace_map_[id] = tablespace_oid;
+}
+
+void PgApiImpl::ClearTablespaceOid(uint32_t db_oid, uint32_t table_oid) {
+  PgObjectId id(db_oid, table_oid);
+  CHECK(id.IsValid());
+  VLOG(1) << __func__ << ": " << yb::ToString(id);
+  CHECK_EQ(tablespace_map_.erase(id), 1) << yb::ToString(id);
+}
 
 } // namespace yb::pggate

@@ -27,6 +27,8 @@ StandardError=journal
 LimitCORE=infinity
 LimitNOFILE=1048576
 LimitNPROC=12000
+# Hard Memory limit
+MemoryMax={{otel_col_max_memory}}M
 
 Environment="AWS_PROFILE=otel-collector"
 Environment="GOOGLE_APPLICATION_CREDENTIALS={{yb_home_dir}}/otel-collector/gcp_creds"

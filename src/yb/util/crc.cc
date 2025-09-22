@@ -61,5 +61,10 @@ uint32_t Crc32c(const void* data, size_t length) {
   return static_cast<uint32_t>(crc32); // Only uses lower 32 bits.
 }
 
+uint64_t Crc64c(const void* data, size_t length, uint64_t start) {
+  GetCrc32cInstance()->Compute(data, length, &start);
+  return start;
+}
+
 } // namespace crc
 } // namespace yb

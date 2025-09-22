@@ -4,7 +4,7 @@ linkTitle: jsonb_array_length()
 headerTitle: jsonb_array_length() and json_array_length()
 description: Return the count of values in an array using jsonb_array_length() and json_array_length().
 menu:
-  v2.20:
+  v2.20_api:
     identifier: jsonb-array-length
     parent: json-functions-operators
     weight: 80

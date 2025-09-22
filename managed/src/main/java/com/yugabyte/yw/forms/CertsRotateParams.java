@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
@@ -55,7 +56,9 @@ public class CertsRotateParams extends UpgradeTaskParams {
     if (!userIntent.providerType.equals(CloudType.kubernetes)) {
       verifyParamsForNormalUpgrade(universe, isFirstTry);
     } else {
-      verifyParamsForKubernetesUpgrade(universe);
+      // TODO: Fix rotate certs api for VM universes and add this validation for VM universes.
+      commonValidation(universe);
+      verifyParamsForKubernetesUpgrade(universe, isFirstTry);
     }
   }
 
@@ -74,6 +77,28 @@ public class CertsRotateParams extends UpgradeTaskParams {
           Status.BAD_REQUEST,
           "Your node-to-node certificates have expired, so a rolling upgrade will not work. Retry"
               + " using the non-rolling option at a suitable time");
+    }
+  }
+
+  private void commonValidation(Universe universe) {
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
+    if (!userIntent.enableClientToNodeEncrypt
+        && !userIntent.enableNodeToNodeEncrypt
+        && (rootCA != null || clientRootCA != null)) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST,
+          "Cannot rotate rootCA or clientRootCA when encryption-in-transit is disabled.");
+    }
+    if (!userIntent.enableClientToNodeEncrypt && selfSignedClientCertRotate) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST,
+          "Cannot rotate client certificate when client to node encryption is disabled.");
+    }
+    if (!userIntent.enableNodeToNodeEncrypt && selfSignedServerCertRotate) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST,
+          "Cannot rotate server certificate when node to node encryption is disabled.");
     }
   }
 
@@ -301,7 +326,7 @@ public class CertsRotateParams extends UpgradeTaskParams {
     }
   }
 
-  private void verifyParamsForKubernetesUpgrade(Universe universe) {
+  private void verifyParamsForKubernetesUpgrade(Universe universe, boolean isFirstTry) {
     if (rootCA == null) {
       throw new PlatformServiceException(
           Status.BAD_REQUEST, "rootCA is null. Cannot perform any upgrade.");
@@ -319,25 +344,49 @@ public class CertsRotateParams extends UpgradeTaskParams {
           Status.BAD_REQUEST, "rootAndClientRootCASame cannot be false for Kubernetes universes.");
     }
 
-    if (upgradeOption != UpgradeOption.ROLLING_UPGRADE) {
-      throw new PlatformServiceException(
-          Status.BAD_REQUEST,
-          "Certificate rotation for kubernetes universes cannot be Non-Rolling or Non-Restart.");
-    }
-
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     UUID currentRootCA = universe.getUniverseDetails().rootCA;
 
-    if (!(userIntent.enableNodeToNodeEncrypt || userIntent.enableClientToNodeEncrypt)) {
-      throw new PlatformServiceException(
-          Status.BAD_REQUEST,
-          "Encryption-in-Transit is disabled for this universe. "
-              + "Cannot perform certificate rotation.");
+    // Check if certs are managed through Kubernetes cert manager
+    if (currentRootCA != null) {
+      CertificateInfo certInfo = CertificateInfo.get(currentRootCA);
+      if (certInfo != null && certInfo.getCertType() == CertConfigType.K8SCertManager) {
+        throw new PlatformServiceException(
+            Status.BAD_REQUEST,
+            "Certificate rotation is not supported for Kubernetes cert manager managed"
+                + " certificates.");
+      }
     }
 
-    if (currentRootCA.equals(rootCA)) {
+    if (rootCA != null) {
+      CertificateInfo newCertInfo = CertificateInfo.get(rootCA);
+      if (newCertInfo != null && newCertInfo.getCertType() == CertConfigType.K8SCertManager) {
+        throw new PlatformServiceException(
+            Status.BAD_REQUEST,
+            "Certificate rotation is not supported for Kubernetes cert manager managed"
+                + " certificates.");
+      }
+    }
+
+    // Allow non-restart upgrade for Kubernetes universes if cert reload is supported
+    if (upgradeOption == UpgradeOption.NON_RESTART_UPGRADE) {
+      String softwareVersion = userIntent.ybSoftwareVersion;
+      if (Util.compareYBVersions(softwareVersion, "2025.2.0.0-b0", "2.27.0.0-b0", true) < 0) {
+        throw new PlatformServiceException(
+            Status.BAD_REQUEST,
+            "Non-restart certificate rotation is not supported for Kubernetes universe with"
+                + " software version: "
+                + softwareVersion);
+      }
+    }
+
+    if (currentRootCA != null
+        && currentRootCA.equals(rootCA)
+        && !selfSignedServerCertRotate
+        && !selfSignedClientCertRotate) {
       throw new PlatformServiceException(
-          Status.BAD_REQUEST, "Universe is already assigned to the provided rootCA: " + rootCA);
+          Status.BAD_REQUEST,
+          "No changes in rootCA or server certificate rotation has been requested.");
     }
 
     CertificateInfo rootCert = CertificateInfo.get(rootCA);
@@ -350,6 +399,28 @@ public class CertsRotateParams extends UpgradeTaskParams {
       throw new PlatformServiceException(
           Status.BAD_REQUEST,
           "Kubernetes universes supports only SelfSigned or HashicorpVault certificates.");
+    }
+
+    if (isFirstTry) {
+      // Set additional task parameters for Kubernetes universes
+      setAdditionalTaskParamsForKubernetes(universe);
+    }
+  }
+
+  // Sets additional task params for Kubernetes universes
+  private void setAdditionalTaskParamsForKubernetes(Universe universe) {
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    UUID currentRootCA = universeDetails.rootCA;
+
+    if ((rootCA != null && !rootCA.equals(currentRootCA))) {
+      rootCARotationType = CertRotationType.RootCert;
+    } else if (selfSignedServerCertRotate && selfSignedClientCertRotate) {
+      rootCARotationType = CertRotationType.ServerCert;
+    } else if (selfSignedServerCertRotate || selfSignedClientCertRotate) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST,
+          "Cannot rotate only one of server or client certificates at a time. "
+              + "Both must be rotated together for Kubernetes universes.");
     }
   }
 

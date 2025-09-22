@@ -547,7 +547,7 @@ YbTidNext(TidScanState *node)
 	{
 		TidScan *plan = (TidScan *) node->ss.ps.plan;
 		YbPushdownExprs *rel_pushdown =
-			YbInstantiatePushdownParams(&plan->yb_rel_pushdown, estate);
+			YbInstantiatePushdownExprs(&plan->yb_rel_pushdown, estate);
 		if (node->yb_tss_aggrefs)
 		{
 			TupleDesc	tupdesc = CreateTemplateTupleDesc(list_length(node->yb_tss_aggrefs));

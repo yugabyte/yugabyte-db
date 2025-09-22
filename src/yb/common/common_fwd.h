@@ -51,6 +51,7 @@ struct DeletedColumn;
 struct OpId;
 struct PgObjectId;
 struct ReadHybridTime;
+struct TransactionFullLocality;
 struct TransactionMetadata;
 struct TransactionOperationContext;
 struct TransactionStatusResult;

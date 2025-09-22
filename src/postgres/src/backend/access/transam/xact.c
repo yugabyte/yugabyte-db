@@ -2124,20 +2124,50 @@ YBGetEffectivePggateIsolationLevel()
 	return mapped_pg_isolation_level;
 }
 
-void
-YBInitializeTransaction(void)
+static YbcPgInitTransactionData
+YBBuildInitTransactionData()
+{
+	return (YbcPgInitTransactionData)
+	{
+		.xact_start_timestamp = xactStartTimestamp,
+		.xact_read_only = XactReadOnly,
+		.xact_deferrable = XactDeferrable,
+		.enable_tracing = YBEnableTracing(),
+		.effective_pggate_isolation_level = YBGetEffectivePggateIsolationLevel(),
+		.read_from_followers_enabled = YBReadFromFollowersEnabled(),
+		.follower_read_staleness_ms = YBFollowerReadStalenessMs()
+	};
+}
+
+static void
+YBRunWithInitTransactionData(YbcStatus (*Callback)(const YbcPgInitTransactionData *))
 {
 	if (YBTransactionsEnabled())
 	{
-		HandleYBStatus(YBCPgBeginTransaction(xactStartTimestamp));
-
-		HandleYBStatus(YBCPgSetTransactionIsolationLevel(YBGetEffectivePggateIsolationLevel()));
-		HandleYBStatus(YBCPgUpdateFollowerReadsConfig(YBReadFromFollowersEnabled(),
-													  YBFollowerReadStalenessMs()));
-		HandleYBStatus(YBCPgSetTransactionReadOnly(XactReadOnly));
-		HandleYBStatus(YBCPgSetEnableTracing(YBEnableTracing()));
-		HandleYBStatus(YBCPgSetTransactionDeferrable(XactDeferrable));
+		const YbcPgInitTransactionData data =
+			{
+				.xact_start_timestamp = xactStartTimestamp,
+				.xact_read_only = XactReadOnly,
+				.xact_deferrable = XactDeferrable,
+				.enable_tracing = YBEnableTracing(),
+				.effective_pggate_isolation_level = YBGetEffectivePggateIsolationLevel(),
+				.read_from_followers_enabled = YBReadFromFollowersEnabled(),
+				.follower_read_staleness_ms = YBFollowerReadStalenessMs()
+			};
+		HandleYBStatus((*Callback)(&data));
 	}
+}
+
+void
+YBInitializeTransaction(void)
+{
+	YBRunWithInitTransactionData(&YBCInitTransaction);
+}
+
+void
+YBCommitTransactionIntermediate(void)
+{
+	YBRunWithInitTransactionData(&YBCCommitTransactionIntermediate);
 }
 
 /*
@@ -2317,7 +2347,20 @@ YBCRestartWriteTransaction()
 	 */
 	PopAllActiveSnapshots();
 
+	if (TopTransactionResourceOwner != NULL)
+	{
+		ResourceOwnerRelease(TopTransactionResourceOwner,
+							 RESOURCE_RELEASE_BEFORE_LOCKS,
+							 false, true);
+		ResourceOwnerRelease(TopTransactionResourceOwner,
+							 RESOURCE_RELEASE_LOCKS,
+							 false, true);
+		ResourceOwnerRelease(TopTransactionResourceOwner,
+							 RESOURCE_RELEASE_AFTER_LOCKS,
+							 false, true);
+	}
 	AtEOXact_SPI(false /* isCommit */ );
+	AtEOXact_Snapshot(false, true); /* and release the transaction's snapshots */
 
 	/*
 	 * Recreate the global state present for triggers that would have changed
@@ -2338,6 +2381,12 @@ CommitTransaction(void)
 	TransactionState s = CurrentTransactionState;
 	TransactionId latestXid;
 	bool		is_parallel_worker;
+	instr_time	yb_commit_starttime;
+	instr_time	yb_commit_endtime;
+	uint64		elapsed_time;
+
+	if (YbIsCommitStatsCollectionEnabled() && YbIsSessionStatsTimerEnabled())
+		INSTR_TIME_SET_CURRENT(yb_commit_starttime);
 
 	is_parallel_worker = (s->blockState == TBLOCK_PARALLEL_INPROGRESS);
 
@@ -2602,6 +2651,14 @@ CommitTransaction(void)
 	 * default
 	 */
 	s->state = TRANS_DEFAULT;
+
+	if (YbIsCommitStatsCollectionEnabled() && YbIsSessionStatsTimerEnabled())
+	{
+		INSTR_TIME_SET_CURRENT(yb_commit_endtime);
+		INSTR_TIME_SUBTRACT(yb_commit_endtime, yb_commit_starttime);
+		elapsed_time = INSTR_TIME_GET_MICROSEC(yb_commit_endtime);
+		YbRecordCommitLatency(elapsed_time);
+	}
 
 	RESUME_INTERRUPTS();
 }
@@ -4947,7 +5004,12 @@ BeginInternalSubTransaction(const char *name)
 	 * An error thrown while/after switching over to a new subtransaction
 	 * would lead to a fatal error or unpredictable behavior.
 	 */
-	YBFlushBufferedOperations();
+	YBFlushBufferedOperations((YbcFlushDebugContext)
+		{
+			.reason = YB_BEGIN_SUBTRANSACTION,
+			.uintarg = CurrentTransactionState->subTransactionId,
+			.strarg1 = name,
+		});
 	TransactionState s = CurrentTransactionState;
 
 	/*
@@ -5025,7 +5087,12 @@ void
 YbBeginInternalSubTransactionForReadCommittedStatement()
 {
 
-	YBFlushBufferedOperations();
+	YBFlushBufferedOperations((YbcFlushDebugContext)
+		{
+			.reason = YB_BEGIN_SUBTRANSACTION,
+			.uintarg = CurrentTransactionState->subTransactionId,
+			.strarg1 = "read committed transaction",
+		});
 	TransactionState s = CurrentTransactionState;
 
 	Assert(s->blockState == TBLOCK_SUBINPROGRESS ||
@@ -5087,7 +5154,11 @@ ReleaseCurrentSubTransaction(void)
 	 * An error thrown while/after commiting/releasing it would lead to a
 	 * fatal error or unpredictable behavior.
 	 */
-	YBFlushBufferedOperations();
+	YBFlushBufferedOperations((YbcFlushDebugContext)
+		{
+			.reason = YB_END_SUBTRANSACTION,
+			.uintarg = CurrentTransactionState->subTransactionId,
+		});
 	TransactionState s = CurrentTransactionState;
 
 	/*

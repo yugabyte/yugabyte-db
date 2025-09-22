@@ -35,7 +35,7 @@ class TransactionStatusCache {
  private:
   struct GetCommitDataResult;
 
-  boost::optional<TransactionLocalState> GetLocalCommitData(const TransactionId& transaction_id);
+  std::optional<TransactionLocalState> GetLocalCommitData(const TransactionId& transaction_id);
   Result<GetCommitDataResult> DoGetCommitData(const TransactionId& transaction_id);
 
   const TransactionOperationContext& txn_context_opt_;

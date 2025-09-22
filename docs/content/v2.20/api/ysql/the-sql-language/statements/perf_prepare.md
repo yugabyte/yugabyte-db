@@ -4,7 +4,7 @@ headerTitle: PREPARE
 linkTitle: PREPARE
 description: Use the PREPARE statement to create a handle to a prepared statement by parsing, analyzing, and rewriting (but not executing) the target statement.
 menu:
-  v2.20:
+  v2.20_api:
     identifier: perf_prepare
     parent: statements
 type: docs

@@ -913,7 +913,7 @@ ALTER ROLE test_role;
 SET yb_non_ddl_txn_for_sys_tables_allowed=1;
 DELETE FROM pg_yb_invalidation_messages;
 SET yb_non_ddl_txn_for_sys_tables_allowed=0;
-\set display_all 'SELECT * FROM pg_yb_catalog_version; SELECT db_oid, current_version, messages FROM pg_yb_invalidation_messages'
+\set display_all 'SELECT datname, current_version, last_breaking_version FROM pg_yb_catalog_version JOIN pg_database ON db_oid = oid ORDER BY datname; SELECT datname, current_version, messages FROM pg_yb_invalidation_messages JOIN pg_database ON db_oid = oid ORDER BY datname'
 SET yb_non_ddl_txn_for_sys_tables_allowed TO on;
 SET yb_disable_catalog_version_check TO on;
 -- Messages expire after 10 seconds.
@@ -924,19 +924,19 @@ SELECT yb_increment_db_catalog_version_with_inval_messages(:db_oid, false, '', 1
 (1 row)
 
 :display_all;
- db_oid | current_version | last_breaking_version 
---------+-----------------+-----------------------
-      1 |              14 |                    14
-      4 |              14 |                    14
-      5 |              14 |                    14
-  13515 |           10057 |                 10056
-  13516 |              14 |                    14
-  16389 |              11 |                    11
+     datname      | current_version | last_breaking_version 
+------------------+-----------------+-----------------------
+ cv_test_database |              11 |                    11
+ postgres         |              14 |                    14
+ system_platform  |              14 |                    14
+ template0        |              14 |                    14
+ template1        |              14 |                    14
+ yugabyte         |           10057 |                 10056
 (6 rows)
 
- db_oid | current_version | messages 
---------+-----------------+----------
-  13515 |           10057 | \x
+ datname  | current_version | messages 
+----------+-----------------+----------
+ yugabyte |           10057 | \x
 (1 row)
 
 SELECT yb_increment_db_catalog_version_with_inval_messages(:db_oid, false, null, 10);
@@ -946,20 +946,20 @@ SELECT yb_increment_db_catalog_version_with_inval_messages(:db_oid, false, null,
 (1 row)
 
 :display_all;
- db_oid | current_version | last_breaking_version 
---------+-----------------+-----------------------
-      1 |              14 |                    14
-      4 |              14 |                    14
-      5 |              14 |                    14
-  13515 |           10058 |                 10056
-  13516 |              14 |                    14
-  16389 |              11 |                    11
+     datname      | current_version | last_breaking_version 
+------------------+-----------------+-----------------------
+ cv_test_database |              11 |                    11
+ postgres         |              14 |                    14
+ system_platform  |              14 |                    14
+ template0        |              14 |                    14
+ template1        |              14 |                    14
+ yugabyte         |           10058 |                 10056
 (6 rows)
 
- db_oid | current_version | messages 
---------+-----------------+----------
-  13515 |           10057 | \x
-  13515 |           10058 | 
+ datname  | current_version | messages 
+----------+-----------------+----------
+ yugabyte |           10057 | \x
+ yugabyte |           10058 | 
 (2 rows)
 
 SELECT yb_increment_db_catalog_version_with_inval_messages(:db_oid, true, '', 10);
@@ -969,21 +969,21 @@ SELECT yb_increment_db_catalog_version_with_inval_messages(:db_oid, true, '', 10
 (1 row)
 
 :display_all;
- db_oid | current_version | last_breaking_version 
---------+-----------------+-----------------------
-      1 |              14 |                    14
-      4 |              14 |                    14
-      5 |              14 |                    14
-  13515 |           10059 |                 10059
-  13516 |              14 |                    14
-  16389 |              11 |                    11
+     datname      | current_version | last_breaking_version 
+------------------+-----------------+-----------------------
+ cv_test_database |              11 |                    11
+ postgres         |              14 |                    14
+ system_platform  |              14 |                    14
+ template0        |              14 |                    14
+ template1        |              14 |                    14
+ yugabyte         |           10059 |                 10059
 (6 rows)
 
- db_oid | current_version | messages 
---------+-----------------+----------
-  13515 |           10057 | \x
-  13515 |           10058 | 
-  13515 |           10059 | \x
+ datname  | current_version | messages 
+----------+-----------------+----------
+ yugabyte |           10057 | \x
+ yugabyte |           10058 | 
+ yugabyte |           10059 | \x
 (3 rows)
 
 SELECT yb_increment_db_catalog_version_with_inval_messages(:db_oid, true, null, 10);
@@ -993,22 +993,22 @@ SELECT yb_increment_db_catalog_version_with_inval_messages(:db_oid, true, null, 
 (1 row)
 
 :display_all;
- db_oid | current_version | last_breaking_version 
---------+-----------------+-----------------------
-      1 |              14 |                    14
-      4 |              14 |                    14
-      5 |              14 |                    14
-  13515 |           10060 |                 10060
-  13516 |              14 |                    14
-  16389 |              11 |                    11
+     datname      | current_version | last_breaking_version 
+------------------+-----------------+-----------------------
+ cv_test_database |              11 |                    11
+ postgres         |              14 |                    14
+ system_platform  |              14 |                    14
+ template0        |              14 |                    14
+ template1        |              14 |                    14
+ yugabyte         |           10060 |                 10060
 (6 rows)
 
- db_oid | current_version | messages 
---------+-----------------+----------
-  13515 |           10057 | \x
-  13515 |           10058 | 
-  13515 |           10059 | \x
-  13515 |           10060 | 
+ datname  | current_version | messages 
+----------+-----------------+----------
+ yugabyte |           10057 | \x
+ yugabyte |           10058 | 
+ yugabyte |           10059 | \x
+ yugabyte |           10060 | 
 (4 rows)
 
 -- Wait for the old message row to expire.
@@ -1025,19 +1025,19 @@ SELECT yb_increment_db_catalog_version_with_inval_messages(:db_oid, false, '', 1
 (1 row)
 
 :display_all;
- db_oid | current_version | last_breaking_version 
---------+-----------------+-----------------------
-      1 |              14 |                    14
-      4 |              14 |                    14
-      5 |              14 |                    14
-  13515 |           10061 |                 10060
-  13516 |              14 |                    14
-  16389 |              11 |                    11
+     datname      | current_version | last_breaking_version 
+------------------+-----------------+-----------------------
+ cv_test_database |              11 |                    11
+ postgres         |              14 |                    14
+ system_platform  |              14 |                    14
+ template0        |              14 |                    14
+ template1        |              14 |                    14
+ yugabyte         |           10061 |                 10060
 (6 rows)
 
- db_oid | current_version | messages 
---------+-----------------+----------
-  13515 |           10061 | \x
+ datname  | current_version | messages 
+----------+-----------------+----------
+ yugabyte |           10061 | \x
 (1 row)
 
 SELECT yb_increment_db_catalog_version_with_inval_messages(:db_oid, true, '', 10);
@@ -1047,20 +1047,20 @@ SELECT yb_increment_db_catalog_version_with_inval_messages(:db_oid, true, '', 10
 (1 row)
 
 :display_all;
- db_oid | current_version | last_breaking_version 
---------+-----------------+-----------------------
-      1 |              14 |                    14
-      4 |              14 |                    14
-      5 |              14 |                    14
-  13515 |           10062 |                 10062
-  13516 |              14 |                    14
-  16389 |              11 |                    11
+     datname      | current_version | last_breaking_version 
+------------------+-----------------+-----------------------
+ cv_test_database |              11 |                    11
+ postgres         |              14 |                    14
+ system_platform  |              14 |                    14
+ template0        |              14 |                    14
+ template1        |              14 |                    14
+ yugabyte         |           10062 |                 10062
 (6 rows)
 
- db_oid | current_version | messages 
---------+-----------------+----------
-  13515 |           10061 | \x
-  13515 |           10062 | \x
+ datname  | current_version | messages 
+----------+-----------------+----------
+ yugabyte |           10061 | \x
+ yugabyte |           10062 | \x
 (2 rows)
 
 -- Wait for the old message row to expire.
@@ -1078,24 +1078,24 @@ SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, false, 
 (1 row)
 
 :display_all;
- db_oid | current_version | last_breaking_version 
---------+-----------------+-----------------------
-      1 |              15 |                    14
-      4 |              15 |                    14
-      5 |              15 |                    14
-  13515 |           10063 |                 10062
-  13516 |              15 |                    14
-  16389 |              12 |                    11
+     datname      | current_version | last_breaking_version 
+------------------+-----------------+-----------------------
+ cv_test_database |              12 |                    11
+ postgres         |              15 |                    14
+ system_platform  |              15 |                    14
+ template0        |              15 |                    14
+ template1        |              15 |                    14
+ yugabyte         |           10063 |                 10062
 (6 rows)
 
- db_oid | current_version | messages 
---------+-----------------+----------
-      1 |              15 | \x
-      4 |              15 | \x
-      5 |              15 | \x
-  13515 |           10063 | \x
-  13516 |              15 | \x
-  16389 |              12 | \x
+     datname      | current_version | messages 
+------------------+-----------------+----------
+ cv_test_database |              12 | \x
+ postgres         |              15 | \x
+ system_platform  |              15 | \x
+ template0        |              15 | \x
+ template1        |              15 | \x
+ yugabyte         |           10063 | \x
 (6 rows)
 
 SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, false, null, 10);
@@ -1105,30 +1105,30 @@ SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, false, 
 (1 row)
 
 :display_all;
- db_oid | current_version | last_breaking_version 
---------+-----------------+-----------------------
-      1 |              16 |                    14
-      4 |              16 |                    14
-      5 |              16 |                    14
-  13515 |           10064 |                 10062
-  13516 |              16 |                    14
-  16389 |              13 |                    11
+     datname      | current_version | last_breaking_version 
+------------------+-----------------+-----------------------
+ cv_test_database |              13 |                    11
+ postgres         |              16 |                    14
+ system_platform  |              16 |                    14
+ template0        |              16 |                    14
+ template1        |              16 |                    14
+ yugabyte         |           10064 |                 10062
 (6 rows)
 
- db_oid | current_version | messages 
---------+-----------------+----------
-      1 |              15 | \x
-      1 |              16 | 
-      4 |              15 | \x
-      4 |              16 | 
-      5 |              15 | \x
-      5 |              16 | 
-  13515 |           10063 | \x
-  13515 |           10064 | 
-  13516 |              15 | \x
-  13516 |              16 | 
-  16389 |              12 | \x
-  16389 |              13 | 
+     datname      | current_version | messages 
+------------------+-----------------+----------
+ cv_test_database |              13 | 
+ cv_test_database |              12 | \x
+ postgres         |              15 | \x
+ postgres         |              16 | 
+ system_platform  |              15 | \x
+ system_platform  |              16 | 
+ template0        |              15 | \x
+ template0        |              16 | 
+ template1        |              15 | \x
+ template1        |              16 | 
+ yugabyte         |           10064 | 
+ yugabyte         |           10063 | \x
 (12 rows)
 
 SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, true, '', 10);
@@ -1138,36 +1138,36 @@ SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, true, '
 (1 row)
 
 :display_all;
- db_oid | current_version | last_breaking_version 
---------+-----------------+-----------------------
-      1 |              17 |                    17
-      4 |              17 |                    17
-      5 |              17 |                    17
-  13515 |           10065 |                 10065
-  13516 |              17 |                    17
-  16389 |              14 |                    14
+     datname      | current_version | last_breaking_version 
+------------------+-----------------+-----------------------
+ cv_test_database |              14 |                    14
+ postgres         |              17 |                    17
+ system_platform  |              17 |                    17
+ template0        |              17 |                    17
+ template1        |              17 |                    17
+ yugabyte         |           10065 |                 10065
 (6 rows)
 
- db_oid | current_version | messages 
---------+-----------------+----------
-      1 |              15 | \x
-      1 |              16 | 
-      1 |              17 | \x
-      4 |              15 | \x
-      4 |              16 | 
-      4 |              17 | \x
-      5 |              15 | \x
-      5 |              16 | 
-      5 |              17 | \x
-  13515 |           10063 | \x
-  13515 |           10064 | 
-  13515 |           10065 | \x
-  13516 |              15 | \x
-  13516 |              16 | 
-  13516 |              17 | \x
-  16389 |              12 | \x
-  16389 |              13 | 
-  16389 |              14 | \x
+     datname      | current_version | messages 
+------------------+-----------------+----------
+ cv_test_database |              14 | \x
+ cv_test_database |              12 | \x
+ cv_test_database |              13 | 
+ postgres         |              15 | \x
+ postgres         |              16 | 
+ postgres         |              17 | \x
+ system_platform  |              15 | \x
+ system_platform  |              17 | \x
+ system_platform  |              16 | 
+ template0        |              15 | \x
+ template0        |              16 | 
+ template0        |              17 | \x
+ template1        |              15 | \x
+ template1        |              16 | 
+ template1        |              17 | \x
+ yugabyte         |           10065 | \x
+ yugabyte         |           10064 | 
+ yugabyte         |           10063 | \x
 (18 rows)
 
 SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, true, null, 10);
@@ -1177,42 +1177,42 @@ SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, true, n
 (1 row)
 
 :display_all;
- db_oid | current_version | last_breaking_version 
---------+-----------------+-----------------------
-      1 |              18 |                    18
-      4 |              18 |                    18
-      5 |              18 |                    18
-  13515 |           10066 |                 10066
-  13516 |              18 |                    18
-  16389 |              15 |                    15
+     datname      | current_version | last_breaking_version 
+------------------+-----------------+-----------------------
+ cv_test_database |              15 |                    15
+ postgres         |              18 |                    18
+ system_platform  |              18 |                    18
+ template0        |              18 |                    18
+ template1        |              18 |                    18
+ yugabyte         |           10066 |                 10066
 (6 rows)
 
- db_oid | current_version | messages 
---------+-----------------+----------
-      1 |              15 | \x
-      1 |              16 | 
-      1 |              17 | \x
-      1 |              18 | 
-      4 |              15 | \x
-      4 |              16 | 
-      4 |              17 | \x
-      4 |              18 | 
-      5 |              15 | \x
-      5 |              16 | 
-      5 |              17 | \x
-      5 |              18 | 
-  13515 |           10063 | \x
-  13515 |           10064 | 
-  13515 |           10065 | \x
-  13515 |           10066 | 
-  13516 |              15 | \x
-  13516 |              16 | 
-  13516 |              17 | \x
-  13516 |              18 | 
-  16389 |              12 | \x
-  16389 |              13 | 
-  16389 |              14 | \x
-  16389 |              15 | 
+     datname      | current_version | messages 
+------------------+-----------------+----------
+ cv_test_database |              15 | 
+ cv_test_database |              12 | \x
+ cv_test_database |              13 | 
+ cv_test_database |              14 | \x
+ postgres         |              15 | \x
+ postgres         |              16 | 
+ postgres         |              17 | \x
+ postgres         |              18 | 
+ system_platform  |              15 | \x
+ system_platform  |              18 | 
+ system_platform  |              17 | \x
+ system_platform  |              16 | 
+ template0        |              15 | \x
+ template0        |              16 | 
+ template0        |              17 | \x
+ template0        |              18 | 
+ template1        |              15 | \x
+ template1        |              16 | 
+ template1        |              17 | \x
+ template1        |              18 | 
+ yugabyte         |           10066 | 
+ yugabyte         |           10065 | \x
+ yugabyte         |           10064 | 
+ yugabyte         |           10063 | \x
 (24 rows)
 
 -- Wait for the old message row to expire.
@@ -1229,24 +1229,24 @@ SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, false, 
 (1 row)
 
 :display_all;
- db_oid | current_version | last_breaking_version 
---------+-----------------+-----------------------
-      1 |              19 |                    18
-      4 |              19 |                    18
-      5 |              19 |                    18
-  13515 |           10067 |                 10066
-  13516 |              19 |                    18
-  16389 |              16 |                    15
+     datname      | current_version | last_breaking_version 
+------------------+-----------------+-----------------------
+ cv_test_database |              16 |                    15
+ postgres         |              19 |                    18
+ system_platform  |              19 |                    18
+ template0        |              19 |                    18
+ template1        |              19 |                    18
+ yugabyte         |           10067 |                 10066
 (6 rows)
 
- db_oid | current_version | messages 
---------+-----------------+----------
-      1 |              19 | \x
-      4 |              19 | \x
-      5 |              19 | \x
-  13515 |           10067 | \x
-  13516 |              19 | \x
-  16389 |              16 | \x
+     datname      | current_version | messages 
+------------------+-----------------+----------
+ cv_test_database |              16 | \x
+ postgres         |              19 | \x
+ system_platform  |              19 | \x
+ template0        |              19 | \x
+ template1        |              19 | \x
+ yugabyte         |           10067 | \x
 (6 rows)
 
 SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, true, '', 10);
@@ -1256,29 +1256,29 @@ SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, true, '
 (1 row)
 
 :display_all;
- db_oid | current_version | last_breaking_version 
---------+-----------------+-----------------------
-      1 |              20 |                    20
-      4 |              20 |                    20
-      5 |              20 |                    20
-  13515 |           10068 |                 10068
-  13516 |              20 |                    20
-  16389 |              17 |                    17
+     datname      | current_version | last_breaking_version 
+------------------+-----------------+-----------------------
+ cv_test_database |              17 |                    17
+ postgres         |              20 |                    20
+ system_platform  |              20 |                    20
+ template0        |              20 |                    20
+ template1        |              20 |                    20
+ yugabyte         |           10068 |                 10068
 (6 rows)
 
- db_oid | current_version | messages 
---------+-----------------+----------
-      1 |              19 | \x
-      1 |              20 | \x
-      4 |              19 | \x
-      4 |              20 | \x
-      5 |              19 | \x
-      5 |              20 | \x
-  13515 |           10067 | \x
-  13515 |           10068 | \x
-  13516 |              19 | \x
-  13516 |              20 | \x
-  16389 |              16 | \x
-  16389 |              17 | \x
+     datname      | current_version | messages 
+------------------+-----------------+----------
+ cv_test_database |              17 | \x
+ cv_test_database |              16 | \x
+ postgres         |              19 | \x
+ postgres         |              20 | \x
+ system_platform  |              19 | \x
+ system_platform  |              20 | \x
+ template0        |              19 | \x
+ template0        |              20 | \x
+ template1        |              19 | \x
+ template1        |              20 | \x
+ yugabyte         |           10068 | \x
+ yugabyte         |           10067 | \x
 (12 rows)
 

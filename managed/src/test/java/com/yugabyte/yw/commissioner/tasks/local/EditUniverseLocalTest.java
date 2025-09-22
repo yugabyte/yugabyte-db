@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks.local;
 
+import static com.yugabyte.yw.common.gflags.GFlagsUtil.POSTMASTER_CGROUP;
 import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType.CREATE;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
@@ -64,6 +65,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
   public void testExpand() throws InterruptedException {
     UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
     userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
+    userIntent.setCgroupSize(100);
     Universe universe =
         createUniverse(
             userIntent,
@@ -84,6 +86,10 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     initYSQL(universe);
     initAndStartPayload(universe);
     verifyMasterLBStatus(customer, universe, true /*enabled*/, true /*idle*/);
+    Map<String, String> varz =
+        getVarz(
+            universe.getNodes().iterator().next(), universe, UniverseTaskBase.ServerType.TSERVER);
+    assertEquals(GFlagsUtil.YSQL_CGROUP_PATH, varz.get(POSTMASTER_CGROUP));
 
     changeNumberOfNodesInPrimary(universe, 2);
     UUID taskID =
@@ -156,6 +162,10 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
     userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
     Universe universe = createUniverse(userIntent);
+    Map<String, String> varz =
+        getVarz(
+            universe.getNodes().iterator().next(), universe, UniverseTaskBase.ServerType.TSERVER);
+    assertEquals("", varz.get(POSTMASTER_CGROUP));
     initYSQL(universe);
     RuntimeConfigEntry.upsert(universe, "yb.checks.node_disk_size.target_usage_percentage", "0");
     UniverseDefinitionTaskParams.Cluster cluster =

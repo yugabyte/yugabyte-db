@@ -46,6 +46,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -472,32 +473,23 @@ public class NodeInstance extends Model {
     }
   }
 
-  @Deprecated
-  public static NodeInstance get(UUID nodeUuid) {
-    NodeInstance node = NodeInstance.find.byId(nodeUuid);
-    return node;
-  }
-
   public static Optional<NodeInstance> maybeGet(UUID nodeUuid) {
-    return Optional.ofNullable(get(nodeUuid));
+    return Optional.ofNullable(NodeInstance.find.byId(nodeUuid));
   }
 
   public static NodeInstance getOrBadRequest(UUID nodeUuid) {
-    NodeInstance node = get(nodeUuid);
-    if (node == null) {
-      throw new PlatformServiceException(BAD_REQUEST, "Invalid node UUID: " + nodeUuid);
-    }
-    return node;
-  }
-
-  // TODO: this is a temporary hack until we manage to plumb through the node UUID through the task
-  // framework.
-  public static NodeInstance getByName(String name) {
-    return maybeGetByName(name)
-        .orElseThrow(() -> new RuntimeException("Expecting to find a node with name: " + name));
+    return maybeGet(nodeUuid)
+        .orElseThrow(
+            () -> new PlatformServiceException(BAD_REQUEST, "Invalid node UUID: " + nodeUuid));
   }
 
   public static Optional<NodeInstance> maybeGetByName(String name) {
+    return maybeGetByName(name, null /*expectedNodeUuid*/);
+  }
+
+  // This also verifies that the given node UUID is same as that of the record.
+  public static Optional<NodeInstance> maybeGetByName(
+      String name, @Nullable UUID expectedNodeUuid) {
     List<NodeInstance> nodes = NodeInstance.find.query().where().eq("node_name", name).findList();
     if (CollectionUtils.isEmpty(nodes)) {
       return Optional.empty();
@@ -505,7 +497,14 @@ public class NodeInstance extends Model {
     if (nodes.size() > 1) {
       throw new RuntimeException("Expecting to find a single node with name: " + name);
     }
-    return Optional.of(nodes.get(0));
+    NodeInstance instance = nodes.get(0);
+    if (expectedNodeUuid != null && !expectedNodeUuid.equals(instance.getNodeUuid())) {
+      throw new RuntimeException(
+          String.format(
+              "Expected node UUID %s, but found %s for node instance %s",
+              expectedNodeUuid, instance.getNodeUuid(), name));
+    }
+    return Optional.of(instance);
   }
 
   public static List<NodeInstance> listByUuids(Collection<UUID> nodeUuids) {

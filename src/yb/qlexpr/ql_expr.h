@@ -8,8 +8,6 @@
 
 #include <boost/container/small_vector.hpp>
 
-#include <boost/optional/optional.hpp>
-
 #include "yb/bfql/tserver_opcodes.h"
 #include "yb/bfpg/tserver_opcodes.h"
 
@@ -179,10 +177,10 @@ class QLTableRow {
   Status GetWriteTime(ColumnIdRep col_id, int64_t *write_time) const;
 
   // Copy the column value of the given ID to output parameter "column".
-  Status GetValue(ColumnIdRep col_id, QLValue *column) const;
-  Status GetValue(const ColumnId& col, QLValue *column) const;
-  boost::optional<const QLValuePB&> GetValue(ColumnIdRep col_id) const;
-  boost::optional<const QLValuePB&> GetValue(const ColumnId& col) const {
+  Status GetValue(ColumnIdRep col_id, QLValue* column) const;
+  Status GetValue(const ColumnId& col, QLValue* column) const;
+  std::optional<std::reference_wrapper<const QLValuePB>> GetValue(ColumnIdRep col_id) const;
+  std::optional<std::reference_wrapper<const QLValuePB>> GetValue(const ColumnId& col) const {
     return GetValue(col.rep());
   }
 

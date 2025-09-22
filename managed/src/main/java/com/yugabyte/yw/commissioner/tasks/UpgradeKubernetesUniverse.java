@@ -296,23 +296,27 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
           Set<NodeDetails> replicaTservers =
               new HashSet<NodeDetails>(
                   universe.getNodesInCluster(taskParams().getReadOnlyClusters().get(0).uuid));
-          installYbcOnThePods(
-              replicaTservers,
-              true,
-              ybcSoftwareVersion,
-              taskParams().getReadOnlyClusters().get(0).userIntent.ybcFlags);
-          performYbcAction(replicaTservers, true, "stop");
+          if (!universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc()) {
+            installYbcOnThePods(
+                replicaTservers,
+                true,
+                ybcSoftwareVersion,
+                taskParams().getReadOnlyClusters().get(0).userIntent.ybcFlags);
+            performYbcAction(replicaTservers, true, "stop");
+          }
           createWaitForYbcServerTask(replicaTservers);
         } else {
           Set<NodeDetails> primaryTservers =
               new HashSet<NodeDetails>(
                   universe.getNodesInCluster(taskParams().getPrimaryCluster().uuid));
-          installYbcOnThePods(
-              primaryTservers,
-              false,
-              ybcSoftwareVersion,
-              universe.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags);
-          performYbcAction(primaryTservers, true, "stop");
+          if (!universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc()) {
+            installYbcOnThePods(
+                primaryTservers,
+                false,
+                ybcSoftwareVersion,
+                universe.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags);
+            performYbcAction(primaryTservers, true, "stop");
+          }
           createWaitForYbcServerTask(primaryTservers);
         }
       }

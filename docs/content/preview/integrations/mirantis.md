@@ -177,7 +177,7 @@ helm install yb-demo yugabytedb/yugabyte \
 
 ### Check cluster status with `kubectl`
 
-Run the following command to verify that you have two services with one running pod in each: one YB-Master pod (yb-master-0) and one YB-Tserver pod (yb-tserver-0):
+Run the following command to verify that you have two services with one running pod in each: one YB-Master pod (yb-master-0) and one YB-TServer pod (yb-tserver-0):
 
 ```sh
 kubectl --namespace yb-demo get pods

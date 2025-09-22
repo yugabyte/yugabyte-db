@@ -52,8 +52,8 @@ class YBNamespaceAlterer {
 
   Status status_;
 
-  boost::optional<std::string> rename_to_;
-  boost::optional<YQLDatabase> database_type_;
+  std::optional<std::string> rename_to_;
+  std::optional<YQLDatabase> database_type_;
 
   DISALLOW_COPY_AND_ASSIGN(YBNamespaceAlterer);
 };

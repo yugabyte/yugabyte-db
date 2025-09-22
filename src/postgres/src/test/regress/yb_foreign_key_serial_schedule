@@ -1,8 +1,0 @@
-# src/test/regress/yb_foreign_key_serial_schedule
-#
-####################################################################################################
-# Postgres Testsuites: Porting from PostgreSQL original tests.
-# This includes tests for foreign key constraints.
-####################################################################################################
-test: yb.orig.foreign_key
-test: yb.port.foreign_key

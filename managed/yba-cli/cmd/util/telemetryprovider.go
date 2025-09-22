@@ -52,6 +52,8 @@ type TelemetryProviderConfig struct {
 	// GCPCloudMonitoring
 	// Project ID
 	Project *string `json:"project,omitempty"`
+	// Credentials
+	// Credentials map[string]interface{} `json:"credentials"`
 
 	// Datadog
 	// API Key
@@ -617,6 +619,29 @@ func (o *TelemetryProviderConfig) SetProject(v string) {
 	o.Project = &v
 }
 
+// // GetCredentials returns the Credentials field value
+// func (o *TelemetryProviderConfig) GetCredentials() map[string]interface{} {
+// 	if o == nil {
+// 		var ret map[string]interface{}
+// 		return ret
+// 	}
+// 	return o.Credentials
+// }
+
+// // GetCredentialsOk returns a tuple with the Credentials field value
+// // and a boolean to check if the value has been set.
+// func (o *TelemetryProviderConfig) GetCredentialsOk() (*map[string]interface{}, bool) {
+// 	if o == nil {
+// 		return nil, false
+// 	}
+// 	return &o.Credentials, true
+// }
+
+// // SetCredentials sets field value
+// func (o *TelemetryProviderConfig) SetCredentials(v map[string]interface{}) {
+// 	o.Credentials = v
+// }
+
 // GetApiKey returns the ApiKey field value if set, zero value otherwise.
 func (o *TelemetryProviderConfig) GetApiKey() string {
 	if o == nil || o.ApiKey == nil {
@@ -927,6 +952,9 @@ func (o TelemetryProviderConfig) MarshalJSON() ([]byte, error) {
 	if o.Project != nil {
 		toSerialize["project"] = o.Project
 	}
+	// if o.Credentials != nil {
+	// 	toSerialize["credentials"] = o.Credentials
+	// }
 	if o.ApiKey != nil {
 		toSerialize["apiKey"] = o.ApiKey
 	}

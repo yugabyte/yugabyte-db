@@ -86,6 +86,7 @@ YB_STRONGLY_TYPED_BOOL(DisableFlushOnShutdown);
 YB_STRONGLY_TYPED_BOOL(IsSysCatalogTablet);
 YB_STRONGLY_TYPED_BOOL(ShouldAbortActiveTransactions);
 YB_STRONGLY_TYPED_BOOL(TransactionsEnabled);
+YB_STRONGLY_TYPED_BOOL(VectorIndexOnly);
 
 enum class FlushFlags {
   kNone = 0,

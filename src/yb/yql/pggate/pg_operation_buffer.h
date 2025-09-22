@@ -55,13 +55,14 @@ class BufferableOperations {
 
 class PgOperationBuffer {
  public:
-  using Flusher = std::function<Result<FlushFuture>(BufferableOperations&&, bool)>;
+  using Flusher = std::function<Result<FlushFuture>(
+      BufferableOperations&&, bool, const YbcFlushDebugContext&)>;
 
   PgOperationBuffer(Flusher&& flusher, const BufferingSettings& buffering_settings);
   ~PgOperationBuffer();
   Status Add(const PgTableDesc& table, PgsqlWriteOpPtr op, bool transactional);
-  Status Flush();
-  Result<BufferableOperations> Take(bool transactional);
+  Status Flush(const YbcFlushDebugContext& context);
+  Result<BufferableOperations> Take(bool transactional, const YbcFlushDebugContext& context);
   bool IsEmpty() const;
   size_t Size() const;
   void Clear();

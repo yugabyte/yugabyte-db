@@ -237,12 +237,13 @@ extern bool CachedPlanIsValid(CachedPlanSource *plansource);
 
 extern List *CachedPlanGetTargetList(CachedPlanSource *plansource,
 									 QueryEnvironment *queryEnv);
-
 extern CachedPlan *GetCachedPlan(CachedPlanSource *plansource,
 								 ParamListInfo boundParams,
 								 ResourceOwner owner,
 								 QueryEnvironment *queryEnv);
 extern void ReleaseCachedPlan(CachedPlan *plan, ResourceOwner owner);
+
+extern void YBAcquireExecutorLocksForRetry(List *stmt_list);
 
 extern bool CachedPlanAllowsSimpleValidityCheck(CachedPlanSource *plansource,
 												CachedPlan *plan,

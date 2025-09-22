@@ -39,8 +39,6 @@
 #include <utility>
 #include <vector>
 
-#include <boost/optional/optional_fwd.hpp>
-
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/opid.h"
 
@@ -172,14 +170,13 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   Status RequestVote(const VoteRequestPB* request,
                      VoteResponsePB* response) override;
 
-  Status ChangeConfig(const ChangeConfigRequestPB& req,
-                      const StdStatusCallback& client_cb,
-                      boost::optional<tserver::TabletServerErrorPB::Code>* error_code)
-                      override;
+  Status ChangeConfig(
+      const ChangeConfigRequestPB& req, const StdStatusCallback& client_cb,
+      std::optional<tserver::TabletServerErrorPB::Code>* error_code) override;
 
   Status UnsafeChangeConfig(
       const UnsafeChangeConfigRequestPB& req,
-      boost::optional<tserver::TabletServerErrorPB::Code>* error_code) override;
+      std::optional<tserver::TabletServerErrorPB::Code>* error_code) override;
 
   std::vector<FollowerCommunicationTime> GetFollowerCommunicationTimes() override;
 

@@ -384,7 +384,7 @@ else
   # $iteration is 0
   # This is the top-level invocation spawning parallel execution of many iterations.
 
-  if [[ $build_type == "tsan" ]]; then
+  if is_tsan ; then
     default_parallelism=$DEFAULT_REPEATED_TEST_PARALLELISM_TSAN
   else
     default_parallelism=$DEFAULT_REPEATED_TEST_PARALLELISM

@@ -322,8 +322,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     assertTrue(nodeJson.isObject());
 
     UUID uuid = UUID.fromString(nodeJson.get("nodeUuid").asText());
-    NodeInstance dbNode = NodeInstance.get(uuid);
-    assertTrue(dbNode != null);
+    NodeInstance dbNode = NodeInstance.getOrBadRequest(uuid);
     checkNodesMatch(nodeJson, dbNode);
     assertAuditEntry(1, customer.getUuid());
   }

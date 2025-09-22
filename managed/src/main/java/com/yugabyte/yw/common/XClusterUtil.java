@@ -142,22 +142,24 @@ public class XClusterUtil {
     }
   }
 
-  public static void ensureYsqlMajorUpgradeIsComplete(
-      SoftwareUpgradeHelper softwareUpgradeHelper,
-      Universe sourceUniverse,
-      Universe targetUniverse) {
-    if (softwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(sourceUniverse)) {
+  public static void ensureUpgradeIsComplete(Universe sourceUniverse, Universe targetUniverse) {
+    if (!sourceUniverse
+        .getUniverseDetails()
+        .softwareUpgradeState
+        .equals(SoftwareUpgradeState.Ready)) {
       throw new PlatformServiceException(
           BAD_REQUEST,
-          "Cannot configure XCluster/DR config because YSQL major version upgrade on source"
-              + " universe is in progress.");
+          "Cannot configure XCluster/DR config because source universe is not in ready software"
+              + " upgrade state.");
     }
-
-    if (softwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(targetUniverse)) {
+    if (!targetUniverse
+        .getUniverseDetails()
+        .softwareUpgradeState
+        .equals(SoftwareUpgradeState.Ready)) {
       throw new PlatformServiceException(
           BAD_REQUEST,
-          "Cannot configure XCluster/DR config because YSQL major version upgrade on target"
-              + " universe is in progress.");
+          "Cannot configure XCluster/DR config because target universe is not in ready software"
+              + " upgrade state.");
     }
   }
 }

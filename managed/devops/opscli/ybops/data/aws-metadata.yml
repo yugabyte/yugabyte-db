@@ -96,6 +96,10 @@ regions:
     arm_image: ami-03da06dc6e3abc333
     cidr_prefix: '10.101'
     image: ami-0481085d153c9a850
+  mx-central-1:
+    arm_image: ami-0e71391098daf4a69
+    cidr_prefix: '172.31'
+    image: ami-01d24238cc4e53ade
   us-gov-east-1:
     cidr_prefix: '10.114'
     image: ami-00c6b007ba906a530

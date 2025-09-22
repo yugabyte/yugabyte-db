@@ -3,7 +3,6 @@
 --
 CREATE DATABASE colo WITH colocation = true;
 \c colo;
-SET yb_explain_hide_non_deterministic_fields = true;
 SET yb_enable_bitmapscan = true;
 SET enable_bitmapscan = true;
 CREATE TABLE simple (k INT PRIMARY KEY, ind_a INT, ind_b INT);
@@ -2013,5 +2012,4 @@ ANALYZE test_and;
 (10 rows)
 
 RESET yb_enable_base_scans_cost_model;
-RESET yb_explain_hide_non_deterministic_fields;
 RESET enable_bitmapscan;

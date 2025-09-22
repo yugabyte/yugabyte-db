@@ -338,9 +338,6 @@ static std::unordered_map<std::string, OptionTypeInfo> db_options_type_info = {
     {"initial_seqno",
      {offsetof(struct DBOptions, initial_seqno), OptionType::kUInt64T,
       OptionVerificationType::kNormal}},
-    {"max_file_size_for_compaction",
-     {offsetof(struct DBOptions, max_file_size_for_compaction),
-      OptionType::kUInt64T, OptionVerificationType::kNormal}},
 };
 
 static std::unordered_map<std::string, OptionTypeInfo> cf_options_type_info = {

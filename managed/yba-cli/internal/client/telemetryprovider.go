@@ -37,6 +37,19 @@ func (a *AuthAPIClient) DeleteTelemetryProvider(
 	return a.APIClient.TelemetryProviderApi.DeleteTelemetryProvider(a.ctx, a.CustomerUUID, tpUUID)
 }
 
+// TelemetryProviderYBAVersionCheck checks if the new TelemetryProvider management API can be used
+func (a *AuthAPIClient) TelemetryProviderYBAVersionCheck() (bool, string, error) {
+	allowedVersions := YBAMinimumVersion{
+		Stable:  util.YBAAllowTelemetryProviderMinStableVersion,
+		Preview: util.YBAAllowTelemetryProviderMinPreviewVersion,
+	}
+	allowed, version, err := a.CheckValidYBAVersion(allowedVersions)
+	if err != nil {
+		return false, "", err
+	}
+	return allowed, version, err
+}
+
 // ListTelemetryProvidersRest uses REST API to call list schedule functionality
 func (a *AuthAPIClient) ListTelemetryProvidersRest(
 	callSite,

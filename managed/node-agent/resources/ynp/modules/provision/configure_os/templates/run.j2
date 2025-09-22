@@ -71,7 +71,7 @@ fi
 
 if [[ "$is_cloud" == "True" ]]; then
   # Define paths and directories
-  DUMP_DIR="{{ yb_home_dir }}/cores/"
+  DUMP_DIR="{{ yb_home_dir }}/cores"
 
   # Ensure the cores directory exists with proper permissions
   mkdir -p "$DUMP_DIR"
@@ -81,11 +81,11 @@ if [[ "$is_cloud" == "True" ]]; then
   # Create core dump compression script
   cat << 'EOF' > "$bin_path/compress_core.sh"
 #!/bin/bash
-DUMP_DIR="/home/yugabyte/cores/"
+DUMP_DIR="{{ yb_home_dir }}/cores"
 CORE_FILE="$DUMP_DIR/$(basename $1).$$.gz"
 GZIP_PATH=$(PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" which gzip)
 if [[ -z "$GZIP_PATH" ]]; then
-  echo "gzip not found, aborting." >> /home/yugabyte/cores/custom_core_dump.log
+  echo "gzip not found, aborting." >> "$DUMP_DIR/custom_core_dump.log"
   exit 1
 fi
 /usr/bin/gzip >> "$CORE_FILE"

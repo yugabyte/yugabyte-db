@@ -101,11 +101,9 @@ class CDCSDKTestBase : public YBTest {
     std::unique_ptr<YBClient> client_;
     std::unique_ptr<yb::pgwrapper::PgSupervisor> pg_supervisor_;
     HostPort pg_host_port_;
-    boost::optional<client::TransactionManager> txn_mgr_;
+    std::optional<client::TransactionManager> txn_mgr_;
 
-    Result<pgwrapper::PGConn> Connect() {
-      return ConnectToDB(std::string() /* dbname */);
-    }
+    Result<pgwrapper::PGConn> Connect() { return ConnectToDB(std::string() /* dbname */); }
 
     Result<pgwrapper::PGConn> ConnectToDB(const std::string& dbname) {
       return pgwrapper::PGConnBuilder({
@@ -159,13 +157,9 @@ class CDCSDKTestBase : public YBTest {
     return test_cluster_.mini_cluster_.get();
   }
 
-  client::TransactionManager* test_cluster_txn_mgr() {
-    return test_cluster_.txn_mgr_.get_ptr();
-  }
+  client::TransactionManager* test_cluster_txn_mgr() { return &test_cluster_.txn_mgr_.value(); }
 
-  YBClient* test_client() {
-    return test_cluster_.client_.get();
-  }
+  YBClient* test_client() { return test_cluster_.client_.get(); }
 
   Status CreateDatabase(
       PostgresMiniCluster* cluster, const std::string& namespace_name = kNamespaceName,

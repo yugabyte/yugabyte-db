@@ -55,7 +55,7 @@ To set up disaster recovery for a cluster, do the following:
 
 1. Select the databases to be copied to the Target for disaster recovery.
 
-    Colocated tables on the Source and Target should be created with the same colocation ID if they already exist on both the Source and Target prior to DR setup. Refer to [xCluster and colocation](../../../../explore/colocation/#xcluster-and-colocation).
+    Colocated tables on the Source and Target should be created with the same colocation ID if they already exist on both the Source and Target prior to DR setup. Refer to [xCluster and colocation](../../../../additional-features/colocation/#xcluster-and-colocation).
 
     YugabyteDB Aeon checks whether or not data needs to be copied to the Target for the selected databases and their tables.
 
@@ -195,7 +195,7 @@ To add a database to DR, do the following:
 
 1. Select the databases to be copied to the Target for disaster recovery.
 
-    You can add databases containing colocated tables to the DR configuration. Colocated tables on the Source and Target should be created with the same colocation ID if they already exist on both the Source and Target prior to DR setup. Refer to [xCluster and colocation](../../../../explore/colocation/#xcluster-and-colocation).
+    You can add databases containing colocated tables to the DR configuration. Colocated tables on the Source and Target should be created with the same colocation ID if they already exist on both the Source and Target prior to DR setup. Refer to [xCluster and colocation](../../../../additional-features/colocation/#xcluster-and-colocation).
 
 1. Click **Add Databases**.
 

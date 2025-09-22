@@ -16,19 +16,21 @@
 
 #include "yb/common/transaction.h"
 
+#include "yb/cdc/cdc_service.pb.h"
+#include "yb/cdc/cdc_types.h"
+
 #include "yb/docdb/consensus_frontier.h"
-#include "yb/dockv/doc_key.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.pb.h"
+#include "yb/docdb/intent_format.h"
+#include "yb/docdb/rocksdb_writer.h"
+
+#include "yb/dockv/doc_key.h"
 #include "yb/dockv/key_bytes.h"
 #include "yb/dockv/packed_row.h"
-#include "yb/docdb/rocksdb_writer.h"
 
 #include "yb/tserver/xcluster_write_interface.h"
 #include "yb/tserver/tserver.pb.h"
-
-#include "yb/cdc/cdc_service.pb.h"
-#include "yb/cdc/cdc_types.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/size_literals.h"
@@ -129,13 +131,11 @@ Status CombineExternalIntents(
       return involved_tablet_;
     }
 
-    const Status& GetOutcome() {
-      return status;
-    }
+    const Status& GetOutcome() { return status; }
 
-    boost::optional<std::pair<Slice, Slice>> Next() override {
+    std::optional<std::pair<Slice, Slice>> Next() override {
       if (next_idx_ >= pairs_.size()) {
-        return boost::none;
+        return std::nullopt;
       }
 
       const auto& input = pairs_[next_idx_];
@@ -146,7 +146,7 @@ Status CombineExternalIntents(
       status = UpdatePackedRow(key, value, schema_versions_map, &updated_value);
       if (!status.ok()) {
         LOG(WARNING) << "Could not update packed row with consumer schema version";
-        return boost::none;
+        return std::nullopt;
       }
 
       return std::pair(key, updated_value.AsSlice());

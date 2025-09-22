@@ -420,6 +420,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
 
     Map<String, Object> ybcOverrides = new HashMap<>();
     ybcOverrides.put("enabled", false);
+    ybcOverrides.put("useYBDBImage", defaultUserIntent.isUseYbdbInbuiltYbc());
     expectedOverrides.put("ybc", ybcOverrides);
 
     expectedOverrides.put("defaultServiceScope", "AZ");

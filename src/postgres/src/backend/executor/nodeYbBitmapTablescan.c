@@ -263,7 +263,7 @@ CreateYbBitmapTableScanDesc(YbBitmapTableScanState *scanstate)
 	if (!scanstate->recheck_local_quals)
 		plan.recheck_local_quals = NULL;
 
-	yb_pushdown = YbInstantiatePushdownParams((scanstate->work_mem_exceeded ?
+	yb_pushdown = YbInstantiatePushdownExprs((scanstate->work_mem_exceeded ?
 											   &plan.fallback_pushdown :
 											   &plan.rel_pushdown),
 											  scanstate->ss.ps.state);
@@ -294,7 +294,7 @@ CreateYbBitmapTableScanDesc(YbBitmapTableScanState *scanstate)
 
 	if (scanstate->recheck_required && !scanstate->work_mem_exceeded)
 	{
-		YbPushdownExprs *recheck_pushdown = YbInstantiatePushdownParams(&plan.recheck_pushdown,
+		YbPushdownExprs *recheck_pushdown = YbInstantiatePushdownExprs(&plan.recheck_pushdown,
 																		scanstate->ss.ps.state);
 
 		if (recheck_pushdown)

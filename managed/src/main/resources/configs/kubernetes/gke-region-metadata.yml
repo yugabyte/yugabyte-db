@@ -145,6 +145,11 @@ northamerica-northeast2:
   latitude: 43.653226
   longitude: -79.383184
 
+northamerica-south1:
+  name: Queretaro
+  latitude: 20.5888
+  longitude: -100.3899
+
 southamerica-west1:
   name: Chile
   latitude: 35.6751

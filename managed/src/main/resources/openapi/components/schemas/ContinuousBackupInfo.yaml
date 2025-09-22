@@ -4,6 +4,8 @@ description: |
 
   These are read-only system generated properties of a continuous backup configuration. Returned as part of the Continuous Backup resource.
 type: object
+required:
+  - uuid
 properties:
   uuid:
     description: UUID of the Continuous Backup Config

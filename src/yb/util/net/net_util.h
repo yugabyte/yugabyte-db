@@ -36,7 +36,6 @@
 #include <memory>
 
 #include <boost/container/small_vector.hpp>
-#include <boost/optional/optional_fwd.hpp>
 
 #include "yb/util/flags.h"
 
@@ -218,11 +217,10 @@ static std::string HostPortPBToString(const PB& pb) {
 }
 
 Status HostToAddresses(
-    const std::string& host,
-    boost::container::small_vector_base<IpAddress>* addresses);
+    const std::string& host, boost::container::small_vector_base<IpAddress>* addresses);
 
 Result<IpAddress> HostToAddress(const std::string& host);
-boost::optional<IpAddress> TryFastResolve(const std::string& host);
+std::optional<IpAddress> TryFastResolve(const std::string& host);
 Result<IpAddress> ParseIpAddress(const std::string& host);
 
 // Returns true if host_str is 0.0.0.0 or [::]

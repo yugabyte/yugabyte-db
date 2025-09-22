@@ -38,8 +38,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include <boost/optional/optional.hpp>
-
 #include "yb/common/hybrid_time.h"
 
 #include "yb/consensus/consensus_fwd.h"
@@ -131,7 +129,7 @@ struct ElectionResult {
   ElectionVote decision = ElectionVote::kUnknown;
 
   // At least one voter had a higher term than the candidate.
-  boost::optional<ConsensusTerm> higher_term;
+  std::optional<ConsensusTerm> higher_term;
 
   // Human-readable explanation of the vote result, if any.
   std::string message;

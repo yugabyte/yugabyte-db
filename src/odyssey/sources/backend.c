@@ -220,6 +220,22 @@ static int yb_read_client_id_from_notice_pkt(od_client_t *client,
 	return 0;
 }
 
+static inline int yb_send_parameter_status(od_io_t *io, char *name,
+					   int name_len, char *value,
+					   int value_len)
+{
+	machine_msg_t *msg = kiwi_be_write_parameter_status(
+		NULL, name, name_len, value, value_len);
+	if (msg == NULL) {
+		return -1;
+	}
+	int rc = od_write(io, msg);
+	if (rc != 0) {
+		return -1;
+	}
+	return 0;
+}
+
 static inline int od_backend_startup(od_server_t *server,
 				     kiwi_params_t *route_params,
 				     od_client_t *client)
@@ -377,17 +393,21 @@ static inline int od_backend_startup(od_server_t *server,
 				return -1;
 			}
 			break;
-		/* fallthrough */
-		case YB_CONN_MGR_PARAMETER_STATUS:
-		case KIWI_BE_PARAMETER_STATUS: {
+		case KIWI_BE_PARAMETER_STATUS:
+			od_error(
+				&instance->logger, "startup", NULL, server,
+				"Did not expect ParameterStatus 'S' packet from Postgres, refusing to parse");
+			return -1;
+		case YB_CONN_MGR_PARAMETER_STATUS: {
 			char *name;
 			uint32_t name_len;
 			char *value;
 			uint32_t value_len;
-			rc = kiwi_fe_read_parameter(machine_msg_data(msg),
-						    machine_msg_size(msg),
-						    &name, &name_len, &value,
-						    &value_len);
+			char flags;
+			rc = kiwi_fe_read_yb_parameter(machine_msg_data(msg),
+						       machine_msg_size(msg),
+						       &name, &name_len, &value,
+						       &value_len, &flags);
 			if (rc == -1) {
 				machine_msg_free(msg);
 				od_error(
@@ -397,12 +417,12 @@ static inline int od_backend_startup(od_server_t *server,
 				return -1;
 			}
 
-			if (is_authenticating)
-				od_debug(&instance->logger, "auth", NULL, server,
-			 			 "name: %s, value: %s", name, value);
-			else
-				od_debug(&instance->logger, "startup", NULL, server,
-			 			 "name: %s, value: %s", name, value);
+			od_debug(
+				&instance->logger,
+				is_authenticating ? "auth" : "startup", NULL,
+				server,
+				"Received YbParameterStatus, name: %.*s, value: %.*s, flags: 0x%X",
+				name_len, name, value_len, value, flags);
 
 			/* Parse the yb_logical_client_version to store it in server */
 			if (strlen(name) == 25 && strcmp("yb_logical_client_version", name) == 0) {
@@ -443,6 +463,11 @@ static inline int od_backend_startup(od_server_t *server,
 				yb_kiwi_vars_set_if_not_exists(
 					&client->yb_external_client->vars, name,
 					name_len, value, value_len);
+
+				/*
+				 * TODO(arpit.saxena, #27723): Send ParameterStatus directly here after we
+				 * start forwarding startup packet to authentication backend
+				 */
 			} else if ((name_len != sizeof("session_authorization") ||
 				strncmp(name, "session_authorization", name_len))) {
 				// set server parameters, ignore startup session_authorization
@@ -924,14 +949,26 @@ int od_backend_update_parameter(od_server_t *server, char *context, char *data,
 	uint32_t name_len;
 	char *value;
 	uint32_t value_len;
+	char flags = 0;
 
 	int rc;
-	rc = kiwi_fe_read_parameter(data, size, &name, &name_len, &value,
-				    &value_len);
+	rc = kiwi_fe_read_yb_parameter(data, size, &name, &name_len, &value,
+				       &value_len, &flags);
 	if (rc == -1) {
 		od_error(&instance->logger, context, NULL, server,
 			 "failed to parse ParameterStatus message");
 		return -1;
+	}
+
+	if (!server_only && flags & YB_PARAM_STATUS_REPORT_ENABLED) {
+		/* Send ParameterStatus to client if GUC_REPORT is enabled */
+		int rc = yb_send_parameter_status(&client->io, name, name_len,
+						  value, value_len);
+		if (rc != 0) {
+			od_error(&instance->logger, context, NULL, server,
+				 "Unable to send ParameterStatus to client");
+			return -1;
+		}
 	}
 
 	/* connection manager does not track role-dependent parameters */
@@ -975,7 +1012,13 @@ int od_backend_ready_wait(od_server_t *server, char *context, int count,
 		od_debug(&instance->logger, context, server->client, server,
 			 "%s", kiwi_be_type_to_string(type));
 
-		if (type == KIWI_BE_PARAMETER_STATUS || type == YB_CONN_MGR_PARAMETER_STATUS) {
+		if (type == KIWI_BE_PARAMETER_STATUS) {
+			od_error(
+				&instance->logger, context, server->client,
+				server,
+				"Unexpected ParameterStatus packet 'S' from postgres, refusing to parse");
+			continue;
+		} else if (type == YB_CONN_MGR_PARAMETER_STATUS) {
 			/* update server parameter */
 			int rc;
 			rc = od_backend_update_parameter(server, context,

@@ -8,18 +8,16 @@ import { RouteComponentProps } from 'react-router-dom';
 import { fetchGlobalRunTimeConfigs } from '../../api/admin';
 import { YBTabsPanel, YBTabsWithLinksPanel } from '../panels';
 import { isAvailable, showOrRedirect } from '../../utils/LayoutUtils';
-import { HAReplication } from '../ha';
 import { AlertConfigurationContainer } from '../alerts';
 import { UserManagementContainer } from '../users';
 import { RuntimeConfigContainer } from '../advanced';
-import { HAInstancesContainer } from '../ha/instances/HAInstanceContainer';
-import { HaMetrics } from '../ha/HaMetrics';
 import ListCACerts from '../customCACerts/ListCACerts';
 import { RBACContainer } from '../../redesign/features/rbac/RBACContainer';
 import { RbacValidator } from '../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../redesign/features/rbac/ApiAndUserPermMapping';
 import { isRbacEnabled } from '../../redesign/features/rbac/common/RbacUtils';
-import { useLoadHAConfiguration } from '../ha/hooks/useLoadHAConfiguration';
+import { ContinuousBackup } from '../../redesign/features/continuous-backup/ContinuousBackup';
+import { PlatformHa } from '../../redesign/features/platform-ha/PlatformHa';
 
 import './Administration.scss';
 
@@ -36,35 +34,33 @@ interface Store {
   };
 }
 
-interface FetureFlags {
+interface FeatureFlags {
   released: any;
   test: any;
 }
 
 interface FeatureStore {
-  featureFlags: FetureFlags;
+  featureFlags: FeatureFlags;
 }
 
-// string values will be used in URL
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-enum AdministrationTabs {
-  HA = 'ha',
-  AC = 'alertConfig'
-}
+const AdministrationTabs = {
+  HA: 'ha',
+  AC: 'alertConfig'
+} as const;
+type AdministrationTabs = typeof AdministrationTabs[keyof typeof AdministrationTabs];
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-enum HighAvailabilityTabs {
-  REPLICATION = 'replication',
-  INSTANCES = 'instances',
-  METRICS = 'metrics'
-}
+const PlatformHaAndBackupsTabs = {
+  PLATFORM_HA: 'platformHa',
+  CONTINUOUS_BACKUP: 'continuousBackup'
+} as const;
+type PlatformHaAndBackupsTabs = typeof PlatformHaAndBackupsTabs[keyof typeof PlatformHaAndBackupsTabs];
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-enum AlertConfigurationTabs {
-  Creation = 'alertCreation'
-}
+const AlertConfigurationTabs = {
+  Creation: 'alertCreation'
+} as const;
+type AlertConfigurationTabs = typeof AlertConfigurationTabs[keyof typeof AlertConfigurationTabs];
 
-const USER_MANAGAEMENT_TAB = {
+const USER_MANAGEMENT_TAB = {
   title: 'User Management',
   id: 'user-management',
   defaultTab: 'users'
@@ -78,11 +74,11 @@ const ADVANCED_TAB = {
 
 interface RouteParams {
   tab: AdministrationTabs;
-  section: HighAvailabilityTabs | AlertConfigurationTabs;
+  section: PlatformHaAndBackupsTabs | AlertConfigurationTabs;
 }
 
 const customerSelector: Selector<Store, Customer> = (state) => state.customer.currentCustomer;
-const featureFlags: Selector<FeatureStore, FetureFlags> = (state) => state.featureFlags;
+const featureFlags: Selector<FeatureStore, FeatureFlags> = (state) => state.featureFlags;
 
 export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ params }) => {
   const currentCustomer = useSelector(customerSelector);
@@ -90,11 +86,8 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
   const globalRuntimeConfigs = useQuery(['globalRuntimeConfigs'], () =>
     fetchGlobalRunTimeConfigs(true).then((res: any) => res.data)
   );
-  const { config, isNoHAConfigExists } = useLoadHAConfiguration({
-    loadSchedule: false,
-    autoRefresh: true
-  });
-  const isCongifUIEnabled =
+
+  const isRuntimeConfigUiEnabled =
     globalRuntimeConfigs?.data?.configEntries?.find(
       (c: any) => c.key === 'yb.runtime_conf_ui.enable_for_all'
     )?.value === 'true' ||
@@ -131,54 +124,36 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
     ) : null;
   };
 
-  const currentInstance = config?.instances.find((instance) => instance.is_local);
+  const isContinuousBackupsUiEnable =
+    globalRuntimeConfigs?.data?.configEntries?.find(
+      (runtimeConfig: any) =>
+        runtimeConfig.key === 'yb.ui.feature_flags.continuous_platform_backups'
+    )?.value === 'true';
   const getHighAvailabilityTab = () => {
     return isAvailable(currentCustomer.data.features, 'administration.highAvailability') ? (
-      <Tab eventKey="ha" title="High Availability" key="high-availability" unmountOnExit>
+      <Tab eventKey="ha" title="Platform HA and Backups" key="high-availability" unmountOnExit>
         <RbacValidator accessRequiredOn={ApiPermissionMap.GET_HA_CONFIG}>
           <YBTabsPanel
-            defaultTab={HighAvailabilityTabs.REPLICATION}
+            defaultTab={PlatformHaAndBackupsTabs.PLATFORM_HA}
             activeTab={params.section}
             routePrefix={`/admin/${AdministrationTabs.HA}/`}
             id="administration-ha-subtab"
             className="config-tabs"
           >
             <Tab
-              eventKey={HighAvailabilityTabs.REPLICATION}
-              title={
-                <span>
-                  <i className="fa fa-clone tab-logo" aria-hidden="true" /> Replication
-                  Configuration
-                </span>
-              }
+              eventKey={PlatformHaAndBackupsTabs.PLATFORM_HA}
+              title="Platform High Availability"
               unmountOnExit
             >
-              <HAReplication />
+              <PlatformHa />
             </Tab>
-            <Tab
-              eventKey={HighAvailabilityTabs.INSTANCES}
-              title={
-                <span>
-                  <i className="fa fa-codepen tab-logo" aria-hidden="true"></i> Instance
-                  Configuration
-                </span>
-              }
-              unmountOnExit
-            >
-              <HAInstancesContainer />
-            </Tab>
-            {currentInstance?.is_leader && !isNoHAConfigExists && (
+            {isContinuousBackupsUiEnable && (
               <Tab
-                eventKey={HighAvailabilityTabs.METRICS}
-                title={
-                  <span>
-                    <i className="fa fa-line-chart tab-logo" aria-hidden="true" />
-                    Metrics
-                  </span>
-                }
+                eventKey={PlatformHaAndBackupsTabs.CONTINUOUS_BACKUP}
+                title="Automated Platform Backups"
                 unmountOnExit
               >
-                <HaMetrics />
+                <ContinuousBackup />
               </Tab>
             )}
           </YBTabsPanel>
@@ -188,7 +163,7 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
   };
 
   const getUserManagementTab = () => {
-    const { id, title, defaultTab } = USER_MANAGAEMENT_TAB;
+    const { id, title, defaultTab } = USER_MANAGEMENT_TAB;
     return (
       <Tab eventKey={id} title={title} key={id} unmountOnExit>
         <UserManagementContainer
@@ -231,7 +206,7 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
 
   return (
     <div>
-      <h2 className="content-title">Platform Configuration</h2>
+      <h2 className="content-title">Platform Administration</h2>
       <YBTabsWithLinksPanel
         defaultTab={defaultTab}
         activeTab={params.tab}
@@ -243,7 +218,7 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
         {getAlertTab()}
         {!isRbacEnabled() && getUserManagementTab()}
         {getCustomCACertsTab()}
-        {isCongifUIEnabled && getAdvancedTab()}
+        {isRuntimeConfigUiEnabled && getAdvancedTab()}
         {isRbacEnabled() && getRbacTab()}
       </YBTabsWithLinksPanel>
     </div>

@@ -344,8 +344,6 @@ $body$;
 -- Test to validate that PL/pgSQL function triggers can be executed without
 -- additional flushes.
 --
-SET yb_explain_hide_non_deterministic_fields TO true;
-
 CREATE TABLE t_test (k INT PRIMARY KEY, v INT);
 CREATE TABLE t_audit (k INT);
 
