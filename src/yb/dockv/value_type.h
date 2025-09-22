@@ -248,24 +248,26 @@ constexpr inline bool IsCollectionType(const ValueEntryType value_type) {
   return IsObjectType(value_type) || value_type == ValueEntryType::kArray;
 }
 
-constexpr inline bool IsRegulaDBInternalRecordKeyType(const KeyEntryType value_type) {
+constexpr inline bool IsRegularDBMetaKeyType(const KeyEntryType key_entry_type) {
   // For regular db:
+  // - vector index metadata for reverse mapping.
   // - transaction apply state records.
-  return value_type == KeyEntryType::kVectorIndexMetadata ||
-         value_type == KeyEntryType::kTransactionApplyState;
+  // NB! Consider updating GetLiveRanges() functionality if new key entries are supposed to be
+  // a part of regular db metadata section with the code greater than kTransactionApplyState.
+  return key_entry_type == KeyEntryType::kVectorIndexMetadata ||
+         key_entry_type == KeyEntryType::kTransactionApplyState;
 }
 
-constexpr inline bool IsIntentsDBInternalRecordKeyType(const KeyEntryType value_type) {
+constexpr inline bool IsIntentsDBMetaKeyType(const KeyEntryType key_entry_type) {
   // For intents db:
   // - reverse index from transaction id to keys of write intents belonging to that transaction.
   // - external transaction records (transactions that originated on a CDC producer).
-  return value_type == KeyEntryType::kExternalTransactionId ||
-         value_type == KeyEntryType::kTransactionId;
+  return key_entry_type == KeyEntryType::kExternalTransactionId ||
+         key_entry_type == KeyEntryType::kTransactionId;
 }
 
-constexpr inline bool IsInternalRecordKeyType(const KeyEntryType value_type) {
-  return IsRegulaDBInternalRecordKeyType(value_type) ||
-         IsIntentsDBInternalRecordKeyType(value_type);
+constexpr inline bool IsMetaKeyType(const KeyEntryType value_type) {
+  return IsRegularDBMetaKeyType(value_type) || IsIntentsDBMetaKeyType(value_type);
 }
 
 constexpr inline bool IsPrimitiveValueType(const ValueEntryType value_type) {
@@ -304,6 +306,10 @@ inline KeyEntryType DecodeKeyEntryType(const Slice& value) {
 
 constexpr inline KeyEntryType DecodeKeyEntryType(char value_type_byte) {
   return static_cast<KeyEntryType>(value_type_byte);
+}
+
+constexpr inline KeyEntryType DecodeKeyEntryType(std::span<char> value) {
+  return value.empty() ? KeyEntryType::kInvalid : DecodeKeyEntryType(value.front());
 }
 
 inline KeyEntryType ConsumeKeyEntryType(Slice* slice) {

@@ -345,6 +345,11 @@ class ColumnFamilyData {
   void RecalculateWriteStallConditions(
       const MutableCFOptions& mutable_cf_options);
 
+  // Used in testing to replace current exclude_from_compaction functor. Returns current functor.
+  // Must be triggered under DBs mutex.
+  CompactionFileExcluderPtr TEST_SetExcludeFromCompaction(
+      CompactionFileExcluderPtr exclude_from_compaction);
+
  private:
   friend class ColumnFamilySet;
   ColumnFamilyData(uint32_t id, const std::string& name,

@@ -837,6 +837,9 @@ using IteratorReplacer =
 using CompactionContextFactory = std::function<CompactionContextPtr(
     CompactionFeed* feed, const CompactionContextOptions& options)>;
 
+using CompactionFileExcluder = std::function<bool(const FileMetaData&)>;
+using CompactionFileExcluderPtr = std::shared_ptr<CompactionFileExcluder>;
+
 struct DBOptions {
   // Some functions that make it easier to optimize RocksDB
 
@@ -1339,7 +1342,7 @@ struct DBOptions {
   // Function that check if file is not eligible for a compaction. Actively used by
   // File TTL expiration to check max file size for compaction.
   // Supported only for level0 of universal style compactions.
-  std::shared_ptr<std::function<bool(const FileMetaData&)>> exclude_from_compaction;
+  std::shared_ptr<CompactionFileExcluder> exclude_from_compaction;
 
   // Invoked after memtable switched.
   std::shared_ptr<std::function<MemTableFilter()>> mem_table_flush_filter_factory;

@@ -15,8 +15,7 @@
 
 #include <string>
 
-namespace yb {
-namespace util {
+namespace yb::util {
 
 constexpr char kWhitespaceCharacters[] = " \t\f\n\r\v";
 
@@ -64,5 +63,8 @@ std::string TrimCppComments(const std::string& s);
 // line of it and returns the resulting multi-line piece of text as a string.
 std::string TrimTrailingWhitespaceFromEveryLine(std::string s);
 
-}  // namespace util
-}  // namespace yb
+// Treats the given string as a multi-line piece of text; for every line, trims all leading and
+// trailing whitespace symbols.
+std::string TrimWhitespaceFromEveryLine(std::string str);
+
+} // namespace yb::util

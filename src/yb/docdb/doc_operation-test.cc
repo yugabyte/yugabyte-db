@@ -135,10 +135,7 @@ class DiscardUntilFileFilterFactory : public rocksdb::CompactionFileFilterFactor
 // rocksdb_max_file_size_for_compaction flag if it is set to a positive number, and returns
 // the max uint64 otherwise. It does NOT take the schema's table TTL into consideration.
 auto MakeExcludeFromCompactionFunction() {
-  using ExcludeFromCompaction = decltype(std::declval<rocksdb::Options>().exclude_from_compaction);
-  using ExcludeFromCompactionFunction = typename ExcludeFromCompaction::element_type;
-
-  return std::make_shared<ExcludeFromCompactionFunction>([](const rocksdb::FileMetaData& file) {
+  return std::make_shared<rocksdb::CompactionFileExcluder>([](const rocksdb::FileMetaData& file) {
     if (FLAGS_rocksdb_max_file_size_for_compaction > 0) {
       return file.fd.GetTotalFileSize() > FLAGS_rocksdb_max_file_size_for_compaction;
     }
