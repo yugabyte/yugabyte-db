@@ -252,6 +252,8 @@ The following deployment scenarios are not yet supported:
 
   Table columns whose types involve row types are not supported.
 
+- [pgvector](../../../additional-features/pg-extensions/extension-pgvector/) indexes are not supported.
+
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
 <li>
     <a href="#ysql-transactional" class="nav-link active" id="ysql-transactional-tab" data-bs-toggle="tab"
