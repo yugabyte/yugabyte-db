@@ -3160,8 +3160,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     try {
       result.addAll(receiveMessage(stream, 12));
     } catch (PSQLException e) {
-      assertTrue(e.getMessage().contains("replica identity CHANGE is not supported for output"
-        + " plugin pgoutput"));
+      assertTrue(e.getMessage().contains("replica identity CHANGE"));
+      assertTrue(e.getMessage().contains("is not supported for output plugin pgoutput"));
     }
   }
 
@@ -4589,6 +4589,82 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     }
     assertTrue("Should have found DDL message for the table", foundDdlMessage);
 
+    stream.close();
+    conn.close();
+  }
+
+  @Test
+  public void testPgoutputWithChangeReplicaIdentityNotInPublication() throws Exception {
+    final String slotName = "test_pgoutput_and_change_slot";
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS test_table_1");
+      stmt.execute("DROP TABLE IF EXISTS test_table_2");
+      stmt.execute("CREATE TABLE test_table_1 (id int primary key, name text)");
+      stmt.execute("CREATE TABLE test_table_2 (id int primary key, name text)");
+      stmt.execute("ALTER TABLE test_table_1 REPLICA IDENTITY DEFAULT");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE test_table_1");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, slotName, PG_OUTPUT_PLUGIN_NAME);
+
+    // Sleep to ensure that pub refresh record is sent to the walsender before any DMLs.
+    Thread.sleep(kPublicationRefreshIntervalSec * 2 * 1000);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO test_table_1 VALUES (1, 'abc')");
+      stmt.execute("UPDATE test_table_1 SET name = 'def' WHERE id = 1");
+      stmt.execute("DELETE FROM test_table_1 WHERE id = 1");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+      .logical()
+      .withSlotName(slotName)
+      .withStartPosition(LogSequenceNumber.valueOf(0L))
+      .withSlotOption("proto_version", 1)
+      .withSlotOption("publication_names", "pub")
+      .start();
+
+    List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
+    result.addAll(receiveMessage(stream, 10));
+    List<PgOutputMessage> expectedResult = new ArrayList<PgOutputMessage>() {
+      {
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/4"), 2));
+        add(PgOutputRelationMessage.CreateForComparison("public", "test_table_1", 'd',
+          Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("id", 23),
+            PgOutputRelationMessageColumn.CreateForComparison("name", 25))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+          Arrays.asList(
+            new PgOutputMessageTupleColumnValue("1"),
+            new PgOutputMessageTupleColumnValue("abc")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+          LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/5")));
+
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/7"), 3));
+        add(PgOutputUpdateMessage.CreateForComparison(
+          // No before image in DEFAULT, so old tuple comes out as null.
+          null,
+          new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+              new PgOutputMessageTupleColumnValue("1"),
+              new PgOutputMessageTupleColumnValue("def")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+          LogSequenceNumber.valueOf("0/7"), LogSequenceNumber.valueOf("0/8")));
+
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/A"), 4));
+        add(PgOutputDeleteMessage.CreateForComparison(/* hasKey */ true,
+          new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+              new PgOutputMessageTupleColumnValue("1"),
+              new PgOutputMessageTupleColumnNull()))));
+        add(PgOutputCommitMessage.CreateForComparison(
+          LogSequenceNumber.valueOf("0/A"), LogSequenceNumber.valueOf("0/B")));
+      }
+    };
+    assertEquals(expectedResult, result);
+
+    // Close this stream and the connection.
     stream.close();
     conn.close();
   }
