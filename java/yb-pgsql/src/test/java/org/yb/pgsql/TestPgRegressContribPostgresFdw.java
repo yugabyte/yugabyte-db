@@ -15,16 +15,25 @@ package org.yb.pgsql;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.client.TestUtils;
+import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.YBTestRunner;
 
 import java.io.File;
-import java.util.Map;
 
 @RunWith(value=YBTestRunner.class)
 public class TestPgRegressContribPostgresFdw extends BasePgRegressTestPorted {
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;
+  }
+
+  @Override
+  protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
+    super.customizeMiniClusterBuilder(builder);
+    // TODO(28543): Remove once transactional ddl is enabled by default.
+    builder.addCommonTServerFlag("ysql_yb_ddl_transaction_block_enabled", "true");
+    builder.addCommonTServerFlag(
+        "allowed_preview_flags_csv", "ysql_yb_ddl_transaction_block_enabled");
   }
 
   @Test
