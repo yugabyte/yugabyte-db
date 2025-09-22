@@ -41,7 +41,7 @@ YugabyteDB is an open source PostgreSQL-compatible distributed database for clou
     title="Connect using drivers and ORMs"
     description="Connect applications to your database using familiar third-party divers and ORMs and YugabyteDB Smart Drivers."
     buttonText="Connect"
-    buttonUrl="/v2024.2/drivers-orms/"
+    buttonUrl="/preview/develop/drivers-orms/"
   >}}
 
   {{< sections/3-box-card
