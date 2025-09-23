@@ -9,7 +9,7 @@ Before installing YugabyteDB, ensure that you have the following available:
 
 1. One of the [supported operating systems](/preview/reference/configuration/operating-systems/).
 
-1. Python 3.11 or earlier. To check the version, execute the following command:
+1. Python 3.11. To check the version, execute the following command:
 
     ```sh
     python --version
