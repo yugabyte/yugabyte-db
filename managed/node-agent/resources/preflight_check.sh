@@ -241,20 +241,6 @@ preflight_configure_check() {
   ulimit_user_processes=$(ulimit -u)
   update_result_json "ulimit_user_processes" "$ulimit_user_processes"
 
-  # Check systemd sudoers.
-  # TODO change the check name appropriately.
-  timeout 5 sudo -n /bin/systemctl --no-ask-password enable yb-master
-  if [[ "$?" = 0 ]]; then
-    update_result_json "systemd_sudoer_entry" true
-  else
-    timeout 5 systemctl --user --no-ask-password enable yb-master
-    if [[ "$?" = 0 ]]; then
-      update_result_json "systemd_sudoer_entry" true
-    else
-      update_result_json "systemd_sudoer_entry" false
-    fi
-  fi
-
   # Check virtual memory max map limit.
   vm_max_map_count=$(cat /proc/sys/vm/max_map_count 2> /dev/null)
   update_result_json "vm_max_map_count" "${vm_max_map_count:-0}"
