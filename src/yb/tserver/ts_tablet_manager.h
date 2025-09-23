@@ -247,7 +247,12 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
       const std::optional<int64_t>& cas_config_opid_index_less_or_equal, bool hide_only,
       bool keep_data, std::optional<TabletServerErrorPB::Code>* error_code);
 
-  // Lookup the given tablet peer by its ID. Returns nullptr if the tablet is not found.
+  // Lookup the given tablet peer by its ID. Returns nullptr if the tablet peer is not found.
+  //
+  // WARNING: Just because a tablet peer is found does not mean that the associated tablet has not
+  //          already been deleted. Be prepared for the associated tablet (e.g., from
+  //          TabletPeer::shared_tablet()) to not exist. The common scenario when this happens is
+  //          when a tablet replica has been moved off of a node after that node (re-)started.
   tablet::TabletPeerPtr LookupTablet(const TabletId& tablet_id) const;
   tablet::TabletPeerPtr LookupTablet(const Slice& tablet_id) const;
 
