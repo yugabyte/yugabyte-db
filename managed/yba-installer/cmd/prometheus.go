@@ -30,12 +30,27 @@ type prometheusDirectories struct {
 	DataDir             string
 	PromDir             string
 	LogDir              string
+	HttpsCertPath       string
+	HttpsKeyPath        string
 }
 
 func newPrometheusDirectories() prometheusDirectories {
 	logDir := "/var/log"
 	if !common.HasSudoAccess() {
 		logDir = common.GetBaseInstall() + "/data/logs"
+	}
+
+	// If prometheus or the "global" certs are provided, use them. Otherwise, fall back to self
+	// signed certs.
+	certPath := viper.GetString("prometheus.httpsCertPath")
+	if certPath == "" {
+		log.Debug("no prometheus https cert path provided, using self signed.")
+		certPath = common.GetSelfSignedServerCertPath()
+	}
+	keyPath := viper.GetString("prometheus.httpsKeyPath")
+	if keyPath == "" {
+		log.Debug("no prometheus https key path provided, using self signed.")
+		keyPath = common.GetSelfSignedServerKeyPath()
 	}
 	return prometheusDirectories{
 		SystemdFileLocation: common.SystemdDir + "/prometheus.service",
@@ -45,6 +60,8 @@ func newPrometheusDirectories() prometheusDirectories {
 		DataDir:             common.GetBaseInstall() + "/data/prometheus",
 		PromDir:             common.GetSoftwareRoot() + "/prometheus",
 		LogDir:              logDir,
+		HttpsCertPath:       certPath,
+		HttpsKeyPath:        keyPath,
 	}
 }
 
@@ -530,4 +547,18 @@ func (prom Prometheus) migrateReplicatedDirs() error {
 	}
 
 	return nil
+}
+
+// UpdateCerts will ensure the correct certs are set during the reconfigure workflow.
+func (prom *Prometheus) UpdateCerts() {
+	certPath := viper.GetString("prometheus.httpsCertPath")
+	if certPath == "" {
+		certPath = common.GetSelfSignedServerCertPath()
+	}
+	keyPath := viper.GetString("prometheus.httpsKeyPath")
+	if keyPath == "" {
+		keyPath = common.GetSelfSignedServerKeyPath()
+	}
+	prom.prometheusDirectories.HttpsCertPath = certPath
+	prom.prometheusDirectories.HttpsKeyPath = keyPath
 }

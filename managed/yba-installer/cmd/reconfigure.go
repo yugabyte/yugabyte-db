@@ -83,6 +83,10 @@ var reconfigureCmd = &cobra.Command{
 
 		for _, name := range serviceOrder {
 			log.Info("Regenerating config for service " + name)
+			if name == PrometheusServiceName {
+				prom := services[name].(Prometheus)
+				prom.UpdateCerts()
+			}
 			config.GenerateTemplate(services[name])
 			if name == PrometheusServiceName {
 				// Fix up basic auth
@@ -90,6 +94,7 @@ var reconfigureCmd = &cobra.Command{
 				if err := prom.FixBasicAuth(); err != nil {
 					log.Fatal("failed to edit basic auth: " + err.Error())
 				}
+				prom.UpdateCerts()
 			}
 			if name == PostgresServiceName {
 				// Make sure postgres is configured correctly
