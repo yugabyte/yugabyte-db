@@ -2840,6 +2840,20 @@
       "assignedUniverses": "Assigned Universes",
       "modalTitle": "Create Export Configuration",
       "viewExportTelemetryProviderModalTitle": "Export Configuration",
+      "telemetryProviderOption": {
+        "label": {
+          "datadog": "Datadog",
+          "loki": "Loki",
+          "splunk": "Splunk",
+          "awsCloudWatch": "AWS CloudWatch",
+          "gcpCloudMonitoring": "GCP Cloud Logging",
+          "dynatrace": "Dynatrace"
+        },
+        "exportSupport": {
+          "metrics": "Metrics",
+          "logs": "Logs"
+        }
+      },
       "submitLabel": "Validate and Create Configuration",
       "dataDogApiKey": "Datadog API Key",
       "dataDogURLPlaceholder": "Custom Datadog URL",
@@ -2870,8 +2884,11 @@
       "gcpDescription": "Only JSON Files allowed. <br /><br />Find your GCP service account key under Service Accounts<br /> in Google Cloud console.",
       "dynatrace": {
         "endpointUrl": "Dynatrace Endpoint URL",
-        "apiToken": "Dynatrace Access Token",
+        "endpointUrlTooltip": "Check the <bold>browser URL</bold> of your Dynatrace to see the endpoint URL.<br/><br/>Note: Your environment ID can also be found in Account Management > Settings > Environments, under the environment column.",
         "endpointUrlValidationError": "Invalid endpoint format. Must be a valid URL.",
+        "apiToken": "Dynatrace Access Token",
+        "apiTokenTooltip": "Create an access token with <bold>ingest metrics</bold>,  <bold>ingest logs</bold>, <bold>ingest OpenTelemetry traces</bold> and <bold>read API tokens</bold> scope in Manage > Access Tokens in your Dynatrace.",
+        "apiTokenHelper": "The access policy token needs <bold>ingest metrics</bold>, <bold>ingest logs</bold>, <bold>ingest OpenTelemetry traces</bold> and <bold>read API tokens</bold> scope.",
         "apiTokenValidationError": "The access token should start with 6-character prefix, followed by 24-character public identifier, and 64-character string secret portion."
       },
       "deleteModalTitle": "Delete Export Configuration",

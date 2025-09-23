@@ -72,5 +72,25 @@ export const useExportTelemetryStyles = makeStyles((theme) => ({
     '& li': {
       listStyleType: 'disc'
     }
+  },
+  telemetryRadioOptionLabel: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1)
+  },
+  pillContainer: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5)
+  },
+  exportSupportPill: {
+    height: 17
+  },
+  ybLabel: {
+    display: 'flex',
+    gap: theme.spacing(1),
+    alignItems: 'center',
+
+    width: 'fit-content'
   }
 }));

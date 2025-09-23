@@ -10,33 +10,6 @@ export const TP_FRIENDLY_NAMES = {
   [TelemetryProviderType.DYNATRACE]: 'Dynatrace'
 };
 
-export const TELEMETRY_PROVIDER_OPTIONS = [
-  {
-    label: 'Datadog',
-    value: TelemetryProviderType.DATA_DOG
-  },
-  {
-    label: 'Splunk',
-    value: TelemetryProviderType.SPLUNK
-  },
-  {
-    label: 'AWS CloudWatch',
-    value: TelemetryProviderType.AWS_CLOUDWATCH
-  },
-  {
-    label: 'GCP Cloud Logging',
-    value: TelemetryProviderType.GCP_CLOUD_MONITORING
-  },
-  {
-    label: 'Loki',
-    value: TelemetryProviderType.LOKI
-  },
-  {
-    label: 'Dynatrace',
-    value: TelemetryProviderType.DYNATRACE
-  }
-];
-
 export const DATADOG_SITES = [
   { name: 'US1', value: 'datadoghq.com' },
   { name: 'US3', value: 'us3.datadoghq.com' },
