@@ -66,25 +66,12 @@ To set the maintenance exclusion period for a cluster:
 
 The impact of maintenance on a cluster depends on its topology and [fault tolerance](../../cloud-basics/create-clusters-overview/#fault-tolerance).
 
+For information on database upgrades, refer to [Database upgrade](../database-upgrade/).
+
 | Fault&nbsp;tolerance | Details | Restart |
 | :--- | :--- | :--- |
 | None | Clusters with no fault tolerance (for example, single node and sandbox clusters) will be briefly unavailable while the node is patched and then restarted. This is because the data is not [replicated](../../../architecture/key-concepts/#replication-factor-rf); if any node is down, all writes and reads must stop. | Yes |
 | Node, Zone, Region | Yugabyte performs rolling maintenance and upgrades on fault tolerant clusters with zero downtime. However, the cluster is still subject to the following:<ul><li>Dropped connections - Connections to the stopped node are dropped. For example, if you have a multi-region cluster with 3 nodes across 3 regions, as the rolling update progresses, each region will be briefly unavailable as each node is patched and restarted. Verify your connection pool, driver, and application to ensure they handle dropped connections correctly. Any failures need to be retried.</li><li>Less bandwidth - During maintenance, traffic is diverted to the running nodes. To mitigate this, set your maintenance window to a low traffic period. You can also add nodes (scale out) prior to the upgrade.</li><li>May not be [highly available](../../../explore/fault-tolerance/) - During maintenance, one node is always offline. Depending on the fault tolerance of the cluster, an outage of an additional fault domain could result in downtime.</li></ul> | Rolling |
-
-### Database upgrades
-
-YugabyteDB Aeon manages database upgrades for clusters automatically. During an upgrade, in addition to the usual cluster [operation locking](../#locking-operations), note the following:
-
-- [Backups](../backup-clusters/)
-  - Backups taken on a newer version cannot be restored to clusters running a previous version.
-  - Backups taken during the upgrade cannot be restored to clusters running a previous version.
-  - Backups taken before the upgrade can be used for restore to the new version.
-- [Point-in-time-restore](../aeon-pitr/) (PITR)
-  - If you have PITR enabled, you must disable it before performing an upgrade. Re-enable it only after the upgrade is either finalized or rolled back.
-  - After the upgrade, PITR cannot be done to a time before the upgrade.
-- [xCluster Disaster Recovery](../disaster-recovery/) (DR)
-  - While upgradng the DR target, failover is not available.
-  - While upgradng the DR source or target, switchover is not available.
 
 ## Critical maintenance
 
