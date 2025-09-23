@@ -294,9 +294,9 @@ CREATE TABLE num_check (n1 decimal);
 
 ---
 
-### Indexes
+## Indexes
 
-#### A unique index which is also a primary key is not migrated
+### A unique index which is also a primary key is not migrated
 
 **GitHub**: [Issue #571](https://github.com/yugabyte/yb-voyager/issues/571)
 
@@ -320,7 +320,7 @@ Suggested change to the schema is to manually add the unique index to the export
 CREATE UNIQUE INDEX email_unique ON public.employees USING btree (email);
 ```
 
-#### Issue in some unsupported cases of GIN indexes
+### Issue in some unsupported cases of GIN indexes
 
 **GitHub**: [Issue #724](https://github.com/yugabyte/yb-voyager/issues/724)
 
@@ -370,9 +370,9 @@ ERROR: data type character has no default operator class for access method "ybgi
 
 ---
 
-### Migration process and tooling issues
+## Migration process and tooling issues
 
-#### Exporting data with names for tables/functions/procedures using special characters/whitespaces fails
+### Exporting data with names for tables/functions/procedures using special characters/whitespaces fails
 
 **GitHub**: [Issue #636](https://github.com/yugabyte/yb-voyager/issues/636), [Issue #688](https://github.com/yugabyte/yb-voyager/issues/688), [Issue #702](https://github.com/yugabyte/yb-voyager/issues/702)
 
@@ -401,7 +401,7 @@ The preceding example may hang or result in an error.
 
 ---
 
-#### Issue with importing data from tables with reserved keyword datatypes matching table names
+### Issue with importing data from tables with reserved keyword datatypes matching table names
 
 **GitHub**: [Issue #1505](https://github.com/yugabyte/yb-voyager/issues/1505)
 
@@ -456,7 +456,7 @@ COPY number (id) FROM STDIN;
 
 ---
 
-#### Importing with case-sensitive schema names
+### Importing with case-sensitive schema names
 
 **GitHub**: [Issue #422](https://github.com/yugabyte/yb-voyager/issues/422)
 
@@ -504,7 +504,7 @@ Suggested changes to the schema can be done using the following steps:
 
 ---
 
-#### Error in CREATE VIEW DDL in synonym.sql
+### Error in CREATE VIEW DDL in synonym.sql
 
 **GitHub**: [Issue #673](https://github.com/yugabyte/yb-voyager/issues/673)
 
@@ -547,9 +547,9 @@ OR
 
 ---
 
-### Server programming
+## Server programming
 
-#### %TYPE syntax is unsupported
+### %TYPE syntax is unsupported
 
 **GitHub**: [Issue #23619](https://github.com/yugabyte/yugabyte-db/issues/23619)
 
@@ -608,7 +608,7 @@ $$;
 
 ---
 
-#### TRANSLATE USING is unsupported
+### TRANSLATE USING is unsupported
 
 **GitHub**: [Issue #1146](https://github.com/yugabyte/yb-voyager/issues/1146)
 
@@ -624,9 +624,9 @@ $$;
 
 ---
 
-### Performance Optimization
+## Performance Optimization
 
-#### Index on timestamp column should be imported as ASC (Range) index to avoid sequential scans
+### Index on timestamp column should be imported as ASC (Range) index to avoid sequential scans
 
 **GitHub**: [Issue #49](https://github.com/yugabyte/yb-voyager/issues/49)
 
