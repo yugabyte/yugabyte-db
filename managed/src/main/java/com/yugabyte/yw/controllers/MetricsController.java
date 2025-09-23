@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.controllers;
 
@@ -17,27 +17,22 @@ import io.prometheus.client.exporter.common.TextFormat;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
+import java.io.BufferedWriter;
 import java.io.ByteArrayOutputStream;
 import java.io.OutputStreamWriter;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Date;
-import java.util.List;
-import java.util.Map;
-import java.util.TreeMap;
+import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import java.util.zip.GZIPOutputStream;
 import javax.inject.Inject;
 import kamon.Kamon;
 import kamon.module.Module;
 import kamon.prometheus.PrometheusReporter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import play.mvc.Controller;
-import play.mvc.Result;
-import play.mvc.Results;
+import play.mvc.*;
 
 @Api(value = "Metrics", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 @Slf4j
@@ -63,18 +58,16 @@ public class MetricsController extends Controller {
       response = String.class,
       nickname = "MetricsDetail")
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.8.0.0")
-  public Result index() {
-    try (ByteArrayOutputStream response = new ByteArrayOutputStream(1 << 20);
-        OutputStreamWriter osw = new OutputStreamWriter(response)) {
-      // Write runtime metrics
-      TextFormat.write004(osw, CollectorRegistry.defaultRegistry.metricFamilySamples());
-      // Write persisted metrics
-      TextFormat.write004(osw, Collections.enumeration(getPrecalculatedMetrics()));
-      // Write Kamon metrics
-      osw.write(getKamonMetrics());
-      osw.flush();
-      response.flush();
-      return Results.status(OK, response.toString());
+  public Result index(Http.Request request) {
+    try (ByteArrayOutputStream response = new ByteArrayOutputStream(1 << 20)) {
+      Optional<String> acceptEncoding = request.header("Accept-Encoding");
+      if (acceptEncoding.isPresent() && acceptEncoding.get().contains("gzip")) {
+        try (GZIPOutputStream gzipStream = new GZIPOutputStream(response)) {
+          return writeMetrics(response, gzipStream);
+        }
+      } else {
+        return writeMetrics(response, null);
+      }
     } catch (Exception e) {
       if (lastErrorPrinted == null
           || lastErrorPrinted.before(CommonUtils.nowMinus(1, ChronoUnit.HOURS))) {
@@ -82,6 +75,33 @@ public class MetricsController extends Controller {
         lastErrorPrinted = new Date();
       }
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
+    }
+  }
+
+  private Result writeMetrics(ByteArrayOutputStream response, GZIPOutputStream gzipStream)
+      throws Exception {
+    boolean isGzip = gzipStream != null;
+    try (OutputStreamWriter osw = new OutputStreamWriter(isGzip ? gzipStream : response);
+        BufferedWriter bw = new BufferedWriter(osw, 1 << 20)) {
+      // Write runtime metrics
+      TextFormat.write004(bw, CollectorRegistry.defaultRegistry.metricFamilySamples());
+      // Write persisted metrics
+      TextFormat.write004(bw, Collections.enumeration(getPrecalculatedMetrics()));
+      // Write Kamon metrics
+      bw.write(getKamonMetrics());
+      bw.flush();
+      osw.flush();
+      if (isGzip) {
+        gzipStream.finish();
+      }
+      response.flush();
+      if (isGzip) {
+        return Results.status(OK)
+            .sendBytes(response.toByteArray(), Optional.of("text/plain"))
+            .withHeaders("Content-Encoding", "gzip");
+      } else {
+        return Results.status(OK, response.toString());
+      }
     }
   }
 

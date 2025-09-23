@@ -22,6 +22,8 @@ spec:
             x-kubernetes-validations:
               - message: replicationFactor <= numNodes
                 rule: self.replicationFactor <= self.numNodes
+              - message: placementInfo cannot be removed once set.
+                rule: has(self.placementInfo) || !has(oldSelf.placementInfo)
             properties:
               universeName:
                 type: string
@@ -38,6 +40,38 @@ spec:
                 x-kubernetes-validations:
                 - message: Replication Factor is cannot be changed
                   rule: self == oldSelf
+              placementInfo:
+                description: Placement information for the universe.
+                type: object
+                properties:
+                  defaultRegion:
+                    type: string
+                    description: Default region for the universe.
+                  regions:
+                    type: array
+                    description: Regions for the universe.
+                    items:
+                      type: object
+                      properties:
+                        code:
+                          type: string
+                          description: Code for the region.
+                        zones:
+                          type: array
+                          description: Zones for the region.
+                          items:
+                            type: object
+                            properties:
+                              code:
+                                type: string
+                                description: Code for the zone.
+                              numNodes:
+                                type: integer
+                                description: Number of nodes for the zone.
+                              preferred:
+                                type: boolean
+                                description: Whether the zone is preferred. Defaults to true.
+                                default: true
               gFlags:
                 description: >
                   Configuration flags for the universe.

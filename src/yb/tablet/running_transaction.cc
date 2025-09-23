@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -662,7 +662,7 @@ const TabletId& RunningTransaction::status_tablet() const {
 void RunningTransaction::UpdateTransactionStatusLocation(const TabletId& new_status_tablet) {
   metadata_.old_status_tablet = std::move(metadata_.status_tablet);
   metadata_.status_tablet = new_status_tablet;
-  metadata_.locality = TransactionLocality::GLOBAL;
+  metadata_.locality = TransactionFullLocality::Global();
 }
 
 void RunningTransaction::UpdateAbortCheckHT(HybridTime now, UpdateAbortCheckHTMode mode) {

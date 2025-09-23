@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -341,15 +341,15 @@ METRIC_DEFINE_event_stats(server, op_apply_queue_length, "Operation Apply Queue 
                         "High queue lengths indicate that the server is unable to process "
                         "operations as fast as they are being written to the WAL.");
 
-METRIC_DEFINE_event_stats(server, op_apply_queue_time, "Operation Apply Queue Time",
-                        MetricUnit::kMicroseconds,
-                        "Time that operations spent waiting in the apply queue before being "
-                        "processed. High queue times indicate that the server is unable to "
-                        "process operations as fast as they are being written to the WAL.");
+METRIC_DEFINE_event_stats(server, op_apply_queue_time,
+    "Operation Apply Queue Time", MetricUnit::kMicroseconds,
+    "Time (microseconds) that operations spent waiting in the apply queue before being "
+    "processed. High queue times indicate that the server is unable to "
+    "process operations as fast as they are being written to the WAL.");
 
 METRIC_DEFINE_event_stats(server, op_apply_run_time, "Operation Apply Run Time",
                         MetricUnit::kMicroseconds,
-                        "Time that operations spent being applied to the tablet. "
+                        "Time (microseconds) that operations spent being applied to the tablet. "
                         "High values may indicate that the server is under-provisioned or "
                         "that operations consist of very large batches.");
 
@@ -359,25 +359,25 @@ METRIC_DEFINE_event_stats(server, op_read_queue_length, "Operation Read op Queue
                             "High queue lengths indicate that the server is unable to process "
                             "operations as fast as they are being written to the WAL.");
 
-METRIC_DEFINE_event_stats(server, op_read_queue_time, "Operation Read op Queue Time",
-                        MetricUnit::kMicroseconds,
-                        "Time that operations spent waiting in the read queue before being "
-                            "processed. High queue times indicate that the server is unable to "
-                            "process operations as fast as they are being written to the WAL.");
+METRIC_DEFINE_event_stats(server, op_read_queue_time,
+    "Operation Read op Queue Time", MetricUnit::kMicroseconds,
+    "Time (microseconds) that operations spent waiting in the read queue before being "
+    "processed. High queue times indicate that the server is unable to "
+    "process operations as fast as they are being written to the WAL.");
 
-METRIC_DEFINE_event_stats(server, op_read_run_time, "Operation Read op Run Time",
-                        MetricUnit::kMicroseconds,
-                        "Time that operations spent being applied to the tablet. "
-                            "High values may indicate that the server is under-provisioned or "
-                            "that operations consist of very large batches.");
+METRIC_DEFINE_event_stats(server, op_read_run_time,
+    "Operation Read op Run Time", MetricUnit::kMicroseconds,
+    "Time (microseconds) that operations spent being applied to the tablet. "
+    "High values may indicate that the server is under-provisioned or "
+    "that operations consist of very large batches.");
 
-METRIC_DEFINE_event_stats(server, ts_bootstrap_time, "TServer Bootstrap Time",
-                        MetricUnit::kMicroseconds,
-                        "Time that the tablet server takes to bootstrap all of its tablets.");
+METRIC_DEFINE_event_stats(server, ts_bootstrap_time,
+    "TServer Bootstrap Time", MetricUnit::kMicroseconds,
+    "Time (microseconds) that the tablet server takes to bootstrap all of its tablets.");
 
 METRIC_DEFINE_gauge_uint64(server, ts_open_metadata_time_us, "TServer Open Meta Time",
-                        MetricUnit::kMicroseconds,
-                        "Time that the tablet server takes to open all of its tablets' metadata.");
+    MetricUnit::kMicroseconds,
+    "Time (microseconds) that the tablet server takes to open all of its tablets' metadata.");
 
 METRIC_DEFINE_gauge_uint64(server, ts_split_op_apply, "Split Apply",
                         MetricUnit::kOperations,

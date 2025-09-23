@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -1844,6 +1844,16 @@ Result<tserver::CheckTserverTabletHealthResponsePB> ExternalMiniCluster::GetTabl
 
   tserver::CheckTserverTabletHealthResponsePB resp;
   RETURN_NOT_OK(GetProxy<TabletServerServiceProxy>(&ts).CheckTserverTabletHealth(req, &resp, &rpc));
+  return CheckedResponse(resp);
+}
+
+Result<tserver::GetObjectLockStatusResponsePB> ExternalMiniCluster::GetObjectLockStatus(
+    const ExternalTabletServer& ts) {
+  auto rpc = DefaultRpcController();
+  tserver::GetObjectLockStatusRequestPB req;
+
+  tserver::GetObjectLockStatusResponsePB resp;
+  RETURN_NOT_OK(GetProxy<TabletServerServiceProxy>(&ts).GetObjectLockStatus(req, &resp, &rpc));
   return CheckedResponse(resp);
 }
 

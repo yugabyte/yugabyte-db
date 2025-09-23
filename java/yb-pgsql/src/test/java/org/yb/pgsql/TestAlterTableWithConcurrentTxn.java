@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -32,6 +32,16 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
   protected Map<String, String> getMasterFlags() {
     Map<String, String> flagMap = super.getMasterFlags();
     flagMap.put("TEST_yb_test_table_rewrite_keep_old_table", "true");
+    return flagMap;
+  }
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    // The test suite asserts for DML failing when run in concurrent to ALTER,
+    // and doesn't expect proper wait-on behavior for DML-DDL interaction.
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("allowed_preview_flags_csv", "enable_object_locking_for_table_locks");
+    flagMap.put("enable_object_locking_for_table_locks", "false");
     return flagMap;
   }
 

@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -601,13 +601,14 @@ DEFINE_test_flag(int32, system_table_num_tablets, -1,
     "Number of tablets to use when creating the system tables. "
     "If -1, the number of tablets will follow the value provided in the CreateTable request.");
 
-DEFINE_test_flag(bool, enable_tablespace_based_transaction_placement, false,
-                 "Enable support for tablespace-based transaction locality.");
+DEFINE_RUNTIME_AUTO_bool(enable_tablespace_based_transaction_placement, kLocalPersisted,
+                         false, true,
+                         "Enable support for tablespace-based transaction locality.");
 
 DECLARE_bool(enable_pg_cron);
 DECLARE_bool(enable_truncate_cdcsdk_table);
 DECLARE_bool(ysql_yb_enable_replica_identity);
-DECLARE_bool(TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication);
+DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 
 namespace yb::master {
 
@@ -5147,7 +5148,7 @@ Status CatalogManager::GetPlacementLocalTransactionStatusTablets(
     return Status::OK();
   }
   SharedLock lock(mutex_);
-  const bool add_tablespace_tablets = FLAGS_TEST_enable_tablespace_based_transaction_placement;
+  const bool add_tablespace_tablets = FLAGS_enable_tablespace_based_transaction_placement;
   for (const auto& [tablespace_oid, tablespace_info] : local_tables.tablespaces) {
     if (tablespace_info.tables.empty()) {
       continue;
@@ -7708,9 +7709,16 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     table_pb.set_updates_only_index_permissions(false);
   }
   table_pb.set_next_column_id(next_col_id);
-  l.mutable_data()->set_state(
-      SysTablesEntryPB::ALTERING,
-      Substitute("Alter table version=$0 ts=$1", table_pb.version(), LocalTimeAsString()));
+
+  // Do not set the state to ALTERING when setting retention barriers on sys catalog tablet in
+  // create CDC stream context.
+  auto tablets = VERIFY_RESULT(table->GetTablets());
+  if (!req->has_cdc_sdk_stream_id() || tablets.size() != 1 ||
+      tablets[0]->tablet_id() != master::kSysCatalogTabletId) {
+    l.mutable_data()->set_state(
+        SysTablesEntryPB::ALTERING,
+        Substitute("Alter table version=$0 ts=$1", table_pb.version(), LocalTimeAsString()));
+  }
 
   RETURN_NOT_OK(UpdateSysCatalogWithNewSchema(
       table, ddl_log_entries, namespace_id, new_table_name, epoch, resp));
@@ -10850,32 +10858,12 @@ Status CatalogManager::SendAlterTableRequestInternal(
     if (req && req->has_cdc_sdk_stream_id()) {
       LOG(INFO) << " CDC stream id context : " << req->cdc_sdk_stream_id();
       xrepl::StreamId stream_id =
-          VERIFY_RESULT(xrepl::StreamId::FromString(req->cdc_sdk_stream_id()));
-      // TODO(#26423): The AsyncAlterTable fails for master tablet with peer not found error as this
-      // RPC goes to tservers. As a workaround we simply set the retention barriers on master tablet
-      // and return. This is a temporary workaround and sets the retention barriers only on the
-      // leader master.
+        VERIFY_RESULT(xrepl::StreamId::FromString(req->cdc_sdk_stream_id()));
       auto tablets = VERIFY_RESULT(table->GetTablets());
-      if (tablets.size() > 0 && tablets[0]->tablet_id() == master::kSysCatalogTabletId &&
-          FLAGS_TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
-        auto tablet_peer = sys_catalog_->tablet_peer();
-        tablet::RemoveIntentsData data;
-        RETURN_NOT_OK(tablet_peer->GetLastReplicatedData(&data));
-        OpIdPB safe_op_id;
-        safe_op_id.set_term(data.op_id.term);
-        safe_op_id.set_index(data.op_id.index);
-
-        RETURN_NOT_OK(ResultToStatus(tablet_peer->SetAllInitialCDCSDKRetentionBarriers(
-            data.op_id, master_->clock()->Now(), false /* require_history_cutoff */)));
-
-        // Here instead of kInitial we could've sent last replicated time. But it will
-        // anyway get overridden.
-        RETURN_NOT_OK(PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails(
-            table, sys_catalog_->tablet_id(), stream_id, safe_op_id,
-            HybridTime::kInitial /* proposed_snapshot_time */,
-            req->cdc_sdk_require_history_cutoff()));
-
-        continue;
+      if (tablets.size() == 1 && tablets[0]->tablet_id() == master::kSysCatalogTabletId &&
+          FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
+        RETURN_NOT_OK(SetAllInitialCDCSDKRetentionBarriersOnCatalogTable(table, stream_id));
+        return Status::OK();
       }
       call = std::make_shared<AsyncAlterTable>(
           master_, AsyncTaskPool(), tablet, table, txn_id, epoch, stream_id,
@@ -13953,21 +13941,122 @@ Status CatalogManager::RegisterFlagCallbacks() {
   if (!flag_callbacks_.empty()) {
     return Status::OK();
   }
-  LOG(INFO) << this << ": register";
   flag_callbacks_.emplace_back(VERIFY_RESULT(RegisterFlagUpdateCallback(
-      &FLAGS_TEST_enable_tablespace_based_transaction_placement,
+      &FLAGS_enable_tablespace_based_transaction_placement,
       Format(
           "CatalogManager($0): Increment transaction tables version when "
           "enable_tablespace_based_transaction_placement enabled.",
           static_cast<void*>(this)),
       [this] {
-        auto status = IncrementTransactionTablesVersion();
+        if (!transaction_tables_config_.get()) {
+          // This happens if callback is called during startup. Safe to just skip since in this
+          // case the autoflag wasn't promoted -- it was already set from the start.
+          return;
+        }
+        Status status = background_tasks_thread_pool_->SubmitFunc(
+            [this] {
+              auto status = IncrementTransactionTablesVersion();
+              if (!status.ok()) {
+                LOG(DFATAL)
+                    << "Failed to increment transaction tables version, tablespace-based "
+                       "transaction placement may not be available until next increment or "
+                       "restart: " << status;
+              }
+            });
         if (!status.ok()) {
           LOG(DFATAL)
-              << "Failed to increment transaction tables version, tablespace-based transaction "
-                 "placement may be available until next increment or restart: " << status;
+              << "Failed to schedule task to increment transaction tables version, "
+                 "tablespace-based transaction placement may not be available until next increment "
+                 "or restart: " << status;
         }
       })));
+  return Status::OK();
+}
+
+Status CatalogManager::GetTabletsMetadata(const GetTabletsMetadataRequestPB* req,
+    GetTabletsMetadataResponsePB* resp) {
+  auto tables = GetTables(GetTablesMode::kAll);
+
+  for (const auto& table : tables) {
+    auto tablets = table->GetTablets();
+
+    if (!tablets.ok()) {
+      continue;
+    }
+
+    for (const auto& tablet : tablets.get()) {
+      std::vector<std::string> replica_addresses;
+      std::string leader_address;
+      auto tablet_metadata = resp->add_tablet_metadatas();
+
+      tablet_metadata->set_namespace_name(GetNamespaceName(table->namespace_id()));
+      tablet_metadata->set_table_name(table->name());
+      tablet_metadata->set_tablet_id(tablet->tablet_id());
+      tablet_metadata->set_table_id(table->id());
+
+      {
+        auto table_lock = table->LockForRead();
+        tablet_metadata->set_table_type(table_lock->pb.table_type());
+
+        // Set table distribution info (hash vs range partitioning)
+        tablet_metadata->set_is_hash_partitioned(dockv::PartitionSchema::IsHashPartitioning(
+            table_lock->pb.partition_schema()));
+      }
+
+      auto replica_locations = tablet->GetReplicaLocations();
+      for (const auto& [ts_uuid, replica] : *replica_locations) {
+        // Get tablet server info to extract IP address and PostgreSQL port
+        auto ts_desc_result = master_->ts_manager()->LookupTSByUUID(ts_uuid);
+
+        if (!ts_desc_result.ok()) {
+          continue;
+        }
+
+        auto ts_desc = *ts_desc_result;
+        // Get IP from registration info and PostgreSQL port
+        const auto& registration = ts_desc->GetRegistration();
+        std::string host;
+
+        // Use private RPC address if available, otherwise use broadcast address
+        // Keeping the same logic as yb_servers()
+        if (registration.private_rpc_addresses_size() > 0) {
+          host = registration.private_rpc_addresses(0).host();
+        } else if (registration.broadcast_addresses_size() > 0) {
+          host = registration.broadcast_addresses(0).host();
+        }
+
+        if (!host.empty()) {
+          const auto server_address = Format("$0:$1", host, registration.pg_port());
+
+          if (replica.role == PeerRole::LEADER) {
+            leader_address = server_address;
+          } else {
+            tablet_metadata->add_replicas(server_address);
+          }
+        }
+      }
+
+      // Add leader as the last replica
+      if (!leader_address.empty()) {
+        tablet_metadata->add_replicas(leader_address);
+      }
+
+      // last_status is a required field in the PB
+      tablet_metadata->set_last_status("");
+
+      auto tablet_lock = tablet->LockForRead();
+      if (!tablet_lock->pb.has_partition()) {
+        continue;
+      }
+
+      const auto& partition = tablet_lock->pb.partition();
+      tablet_metadata->mutable_partition()->set_partition_key_start(
+          partition.partition_key_start());
+      tablet_metadata->mutable_partition()->set_partition_key_end(
+          partition.partition_key_end());
+    }
+  }
+
   return Status::OK();
 }
 

@@ -1,4 +1,4 @@
-# Copyright (c) Yugabyte, Inc.
+# Copyright (c) YugabyteDB, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 # in compliance with the License.  You may obtain a copy of the License at
@@ -58,6 +58,10 @@ JSON_INDENTATION = 2
 _YB_THIRDPARTY_DIR = os.path.realpath(
         os.environ.get("YB_THIRDPARTY_DIR", os.path.join(YB_SRC_ROOT, 'thirdparty')))
 
+_YB_LLVM_TOOLCHAIN_DIR = (
+        os.path.realpath(os.environ.get("YB_LLVM_TOOLCHAIN_DIR", ""))
+        if os.environ.get("YB_LLVM_TOOLCHAIN_DIR") is not None else None)
+
 GLOBAL_DOWNLOAD_CACHE_DIR = '/opt/yb-build/download_cache'
 attempted_to_create_download_cache_dir = False
 
@@ -71,6 +75,17 @@ def set_thirdparty_dir(thirdparty_dir: str) -> None:
     global _YB_THIRDPARTY_DIR
     _YB_THIRDPARTY_DIR = thirdparty_dir
     os.environ["YB_THIRDPARTY_DIR"] = thirdparty_dir
+
+
+def get_llvm_toolchain_dir() -> Optional[str]:
+    global _YB_LLVM_TOOLCHAIN_DIR
+    return _YB_LLVM_TOOLCHAIN_DIR
+
+
+def set_llvm_toolchain_dir(llvm_toolchain_dir: str) -> None:
+    global _YB_LLVM_TOOLCHAIN_DIR
+    _YB_LLVM_TOOLCHAIN_DIR = llvm_toolchain_dir
+    os.environ["YB_LLVM_TOOLCHAIN_DIR"] = llvm_toolchain_dir
 
 
 def sorted_grouped_by(

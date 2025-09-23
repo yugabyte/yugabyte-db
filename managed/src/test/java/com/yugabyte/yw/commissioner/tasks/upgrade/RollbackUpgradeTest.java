@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
@@ -301,6 +301,7 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
     if (isFinalStep) {
       commonNodeTasks.addAll(
           ImmutableList.of(
+              TaskType.EnablePitrConfig,
               TaskType.CheckSoftwareVersion,
               TaskType.UpdateSoftwareVersion,
               TaskType.UpdateUniverseState,
@@ -544,7 +545,7 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
         .addSimultaneousTasks(
             TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
         .addTasks(TaskType.CleanUpPGUpgradeDataDir)
-        .addTasks(TaskType.UpdatePitrConfigIntermittentMinRecoverTime)
+        .addTasks(TaskType.EnablePitrConfig)
         .addSimultaneousTasks(TaskType.CheckSoftwareVersion, defaultUniverse.getTServers().size())
         .addTasks(TaskType.UpdateSoftwareVersion)
         .addTasks(TaskType.UpdateUniverseState)

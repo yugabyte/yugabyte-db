@@ -1,4 +1,4 @@
-# Copyright (c) YugaByte, Inc.
+# Copyright (c) YugabyteDB, Inc.
 # Prometheus metrics query, and related params
 ---
 cpu_usage_user:
@@ -2449,8 +2449,8 @@ tserver_async_replication_lag_micros:
         "async_replication_sent_lag_micros": "Sent Lag"
         "async_replication_committed_lag_micros": "Committed Lag"
 
-cdcsdk_sent_lag_micros:
-  metric: "cdcsdk_sent_lag_micros"
+cdcsdk_flush_lag:
+  metric: "cdcsdk_flush_lag"
   operator: "/ 1000"
   function: "max by (saved_name)"
   panel_group: "Tablet Server"
@@ -2461,7 +2461,7 @@ cdcsdk_sent_lag_micros:
     yaxis:
       ticksuffix: "&nbsp;ms"
       alias:
-        "cdcsdk_sent_lag_micros": "Current Lag"
+        "cdcsdk_flush_lag": "Current Lag"
 
 cdcsdk_expiry_time_mins:
   metric: "cdcsdk_expiry_time_ms"
@@ -3242,6 +3242,7 @@ table_write_latency:
   range: true
   filters:
     export_type: "tserver_export"
+    table_id: ".+"
   layout:
     title: "Write Op Latency (Avg)"
     xaxis:
@@ -3257,6 +3258,7 @@ table_write_rps:
   range: true
   filters:
     export_type: "tserver_export"
+    table_id: ".+"
   layout:
     title: "Write Ops / Sec"
     xaxis:
@@ -3271,6 +3273,7 @@ table_read_latency:
   range: true
   filters:
     export_type: "tserver_export"
+    table_id: ".+"
   layout:
     title: "Read Op Latency (Avg)"
     xaxis:
@@ -3286,6 +3289,7 @@ table_read_rps:
   range: true
   filters:
     export_type: "tserver_export"
+    table_id: ".+"
   layout:
     title: "Read Ops / Sec"
     xaxis:
@@ -3300,6 +3304,7 @@ table_write_lock_latency:
   range: true
   filters:
     export_type: "tserver_export"
+    table_id: ".+"
   layout:
     title: "Write Lock Latency"
     xaxis:
@@ -3320,6 +3325,7 @@ table_mem_tracker_db_memtable:
       mem_tracker_server_PerTablet_IntentsDB_MemTable|\
       mem_tracker_server_Tablets_overhead_PerTablet_RegularDB_MemTable|\
       mem_tracker_server_Tablets_overhead_PerTablet_IntentsDB_MemTable"
+    table_id: ".+"
   group_by: "saved_name"
   layout:
     title: "Memtable Size"
@@ -3340,6 +3346,7 @@ table_log_latency:
   range: true
   filters:
     export_type: "tserver_export"
+    table_id: ".+"
   layout:
     title: "WAL Latency"
     xaxis:
@@ -3358,6 +3365,7 @@ table_log_ops_second:
   filters:
     export_type: "tserver_export"
     saved_name: "log_group_commit_latency_count|log_append_latency_count|log_sync_latency_count"
+    table_id: ".+"
   group_by: "saved_name"
   layout:
     title: "WAL Ops / Sec"
@@ -3375,6 +3383,7 @@ table_log_bytes_written:
   range: true
   filters:
     export_type: "tserver_export"
+    table_id: ".+"
   layout:
     title: "WAL Bytes Written / Sec"
     xaxis:
@@ -3390,6 +3399,7 @@ table_seek_next_prev:
   filters:
     export_type: "tserver_export"
     saved_name: "rocksdb_number_db_seek|rocksdb_number_db_next|rocksdb_number_db_prev"
+    table_id: ".+"
   group_by: "saved_name"
   layout:
     title: "LSM-DB Seek/Next/Prev Ops / Sec"
@@ -3408,6 +3418,7 @@ table_ops_in_flight:
   filters:
     export_type: "tserver_export"
     saved_name: "all_operations_inflight|write_operations_inflight"
+    table_id: ".+"
   group_by: "saved_name"
   layout:
     title: "Operations Inflight"
@@ -3424,6 +3435,7 @@ table_write_rejections:
   range: true
   filters:
     export_type: "tserver_export"
+    table_id: ".+"
   layout:
     title: "Write Rejections"
     xaxis:
@@ -3439,6 +3451,7 @@ table_memory_rejections:
   filters:
     export_type: "tserver_export"
     saved_name: "leader_memory_pressure_rejections|follower_memory_pressure_rejections|operation_memory_pressure_rejections"
+    table_id: ".+"
   group_by: "saved_name"
   layout:
     title: "Memory Pressure Rejections"
@@ -3458,6 +3471,7 @@ table_compaction:
   filters:
     export_type: "tserver_export"
     saved_name: "rocksdb_compact_read_bytes|rocksdb_compact_write_bytes"
+    table_id: ".+"
   group_by: "saved_name"
   layout:
     title: "Compaction"
@@ -3475,6 +3489,7 @@ table_block_cache_hit_miss:
   range: true
   filters:
     saved_name: "rocksdb_block_cache_hit|rocksdb_block_cache_miss"
+    table_id: ".+"
     export_type: "tserver_export"
   group_by: "saved_name"
   layout:
@@ -3485,6 +3500,24 @@ table_block_cache_hit_miss:
       alias:
         "rocksdb_block_cache_hit": "Hit"
         "rocksdb_block_cache_miss": "Miss"
+
+table_rocksdb_blooms_checked_and_useful:
+  metric: ""
+  function: "rate|sum by (saved_name, namespace_name, table_id, table_name)|avg"
+  range: true
+  filters:
+    export_type: "tserver_export"
+    saved_name: "rocksdb_bloom_filter_checked|rocksdb_bloom_filter_useful"
+    table_id: ".+"
+  group_by: "saved_name"
+  layout:
+    title: "LSM-DB Blooms usefulness"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb_bloom_filter_checked": "Blooms Checked"
+        "rocksdb_bloom_filter_useful": "Blooms Useful"
 
 tablet_splitting_stats:
   metric: ""

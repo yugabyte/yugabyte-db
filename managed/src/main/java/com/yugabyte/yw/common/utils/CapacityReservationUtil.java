@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.common.utils;
 
@@ -6,15 +6,99 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.common.config.ConfKeyInfo;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.Provider;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 
 @Slf4j
 public class CapacityReservationUtil {
   public static final String CAPACITY_RESERVATION_KEY = "CapacityReservationKey";
+
+  public static final Pattern AZURE_VM_PATTERN =
+      Pattern.compile("^([A-Za-z_]+?)(\\d+)([0-9a-zA-Z_-]*?)(_v\\d+)?$");
+
+  public static final String[][] AZURE_SUPPORTED_VERSIONS = {
+    {"A", "", "2"},
+    {"B", "", ""},
+    {"B", "ps", "2"},
+    {"B", "s,as", "2"},
+    {"D", "", "2+"},
+    {"DS", "", "2+"},
+    {"D", "s", "3+"},
+    {"D", "ads", "5,6"},
+    {"D", "a", "4"},
+    {"D", "as", "4+"},
+    {"D", "d", "4,5"},
+    {"D", "ds", "4+"},
+    {"D", "ls,lds", "5+"},
+    {"DC", "s", "2"},
+    {"DC", "as,ads", "5"},
+    {"DC", "es,eds", "5"},
+    {"EC", "as,ads", "5"},
+    {"EC", "es,eds", "5"},
+    {"D", "pls,ps,pds,plds", "5+"},
+    {"E", "ps,pds", "5+"},
+    {"E", "", ""},
+    {"E", "a,as", "4"},
+    {"E", "as,ads", "5+"},
+    {"E", "bds,bs", "5"},
+    {"E", "d,ds", "4+"},
+    {"F", "", ""},
+    {"F", "x", ""},
+    {"L", "s,as", "3"},
+  };
+
+  public static boolean azureCheckInstanceTypeIsSupported(String instanceType) {
+    try {
+      Matcher matcher = AZURE_VM_PATTERN.matcher(instanceType);
+      if (matcher.find()) {
+        String family = matcher.group(1);
+        String suffix = matcher.group(3);
+        String vNumber = matcher.group(4);
+        for (String[] parts : AZURE_SUPPORTED_VERSIONS) {
+          if (azureVersionMatches(family, suffix, vNumber, parts)) {
+            return true;
+          }
+        }
+      }
+    } catch (Exception e) {
+      log.error("Failed to check instance type", e);
+    }
+    log.debug("Instance type {} is not supported", instanceType);
+    return false;
+  }
+
+  private static boolean azureVersionMatches(
+      String family, String suffix, String vNumber, String[] parts) {
+    boolean result = false;
+    if (family.split("_")[1].equals(parts[0])) {
+      for (String sub : parts[1].split(",")) {
+        if (suffix.split("_")[0].equals(sub)) {
+          int version = 0;
+          if (vNumber != null) {
+            version = Integer.parseInt(vNumber.substring(2));
+          }
+          for (String subV : parts[2].split(",")) {
+            if (subV.endsWith("+")) {
+              int desired = Integer.parseInt(subV.substring(0, subV.length() - 1));
+              result = result || version >= desired;
+            } else if (subV.isBlank()) {
+              result = true;
+            } else {
+              result = result || version == Integer.parseInt(subV);
+            }
+          }
+        }
+      }
+    }
+    return result;
+  }
 
   public static String getReservationIfPresent(
       TaskExecutor.TaskCache taskCache, Common.CloudType cloudType, String nodeName) {
@@ -36,7 +120,8 @@ public class CapacityReservationUtil {
                 regionReservation.getReservationsByType().values()) {
               for (UniverseDefinitionTaskParams.ZonedReservation zonedReservation :
                   perInstanceType.getZonedReservation().values()) {
-                if (zonedReservation.getVmNames().contains(nodeName)) {
+                if (zonedReservation.getReservationName() != null
+                    && zonedReservation.getVmNames().contains(nodeName)) {
                   log.debug(
                       "Using azure capacity reservation {}", zonedReservation.getReservationName());
                   return regionReservation.getGroupName();
@@ -98,23 +183,23 @@ public class CapacityReservationUtil {
   }
 
   public static boolean isReservationSupported(
-      RuntimeConfGetter confGetter, Common.CloudType cloudType, OperationType operationType) {
+      RuntimeConfGetter confGetter, Provider provider, OperationType operationType) {
     ConfKeyInfo<Boolean> enabledFlag = null;
     ConfKeyInfo<List> operationsList = null;
-    switch (cloudType) {
+    switch (provider.getCloudCode()) {
       case azu:
-        enabledFlag = GlobalConfKeys.enableCapacityReservationAzure;
+        enabledFlag = ProviderConfKeys.enableCapacityReservationAzure;
         operationsList = GlobalConfKeys.capacityReservationOperationsAzure;
         break;
       case aws:
-        enabledFlag = GlobalConfKeys.enableCapacityReservationAws;
+        enabledFlag = ProviderConfKeys.enableCapacityReservationAws;
         operationsList = GlobalConfKeys.capacityReservationOperationsAws;
         break;
     }
     if (enabledFlag == null) {
       return false;
     }
-    if (!confGetter.getGlobalConf(enabledFlag)) {
+    if (!confGetter.getConfForScope(provider, enabledFlag)) {
       return false;
     }
     if (operationsList != null) {

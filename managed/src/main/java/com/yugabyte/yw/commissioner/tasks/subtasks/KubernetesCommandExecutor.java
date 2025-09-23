@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 YugaByte, Inc. and Contributors
+ * Copyright 2019 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -1044,7 +1044,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                 + taskUniverseDetails.getUniverseUUID()
                 + " readcluster: "
                 + taskParams().isReadOnlyCluster
-                + " Using deafult values.");
+                + " Using default values.");
         userIntent.masterK8SNodeResourceSpec = new UserIntent.K8SNodeResourceSpec();
       }
       if (userIntent.tserverK8SNodeResourceSpec == null) {
@@ -1053,7 +1053,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                 + taskUniverseDetails.getUniverseUUID()
                 + " readcluster: "
                 + taskParams().isReadOnlyCluster
-                + " Using deafult values.");
+                + " Using default values.");
         userIntent.tserverK8SNodeResourceSpec = new UserIntent.K8SNodeResourceSpec();
       }
       masterResource.put(
@@ -1432,6 +1432,17 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       gflagOverrides.put("tserver", tserverGFlags);
     }
 
+    if (primaryClusterIntent.isUseYbdbInbuiltYbc()) {
+      Map<String, String> ybcGflags = new HashMap<>();
+      String hardwareConcurrencyStr =
+          Long.toString(
+              (long) Math.ceil(Double.parseDouble(tserverResource.get("cpu").toString())));
+      ybcGflags.putAll(
+          GFlagsUtil.getCommonYbcGflags(confGetter, universeFromDB, hardwareConcurrencyStr));
+      ybcGflags.putAll(primaryClusterIntent.ybcFlags);
+      gflagOverrides.put("ybc", ybcGflags);
+    }
+
     if (!gflagOverrides.isEmpty()) {
       overrides.put("gflags", gflagOverrides);
     }
@@ -1520,9 +1531,18 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
 
     overrides.put("yugabytedUi", yugabytedUiInfo);
 
-    Map<String, Object> ybcInfo = new HashMap<>();
-    ybcInfo.put("enabled", taskParams().isEnableYbc());
-    overrides.put("ybc", ybcInfo);
+    // YBC overrides
+    Map<String, Object> ybcOverrides = new HashMap<>();
+    ybcOverrides.put("enabled", taskParams().isEnableYbc());
+    ybcOverrides.put("useYBDBImage", primaryClusterIntent.isUseYbdbInbuiltYbc());
+    if (taskParams().usePreviousGflagsChecksum) {
+      // Map is already populated from above where master/tserver gflags checksums
+      // are added to overrides.
+      String ybcGflagsChecksum =
+          taskParams().previousGflagsChecksumMap.getOrDefault(ServerType.CONTROLLER, "");
+      ybcOverrides.put("gflagsChecksum", ybcGflagsChecksum);
+    }
+    overrides.put("ybc", ybcOverrides);
 
     // The overrides specified in the provider. These can be at
     // provider, region, or zone level. There is no merging of these

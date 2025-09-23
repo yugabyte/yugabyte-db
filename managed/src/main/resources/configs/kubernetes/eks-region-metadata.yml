@@ -1,4 +1,4 @@
-# Copyright (c) YugaByte, Inc.
+# Copyright (c) YugabyteDB, Inc.
 
 us-east-1:
   name: "US East (N. Virginia)"
@@ -19,6 +19,11 @@ us-west-2:
   name: "US West (Oregon)"
   latitude: 45.5051
   longitude: -122.6750
+
+mx-central-1:
+ name: Queretaro (Mexico)
+ latitude: 20.5888
+ longitude: -100.3899
 
 ap-east-1:
   name: "Asia Pacific (Hong Kong)"

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  */
 
 package xcluster
@@ -53,8 +53,8 @@ var updateXClusterCmd = &cobra.Command{
 			errMessage := util.ErrorFromHTTPResponse(
 				response,
 				err,
-				"XCluster",
-				"Update - Get XCluster")
+				"xCluster",
+				"Update - Get xCluster")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 		validStatesForConfig := util.TableStatesInXClusterConfig()
@@ -259,7 +259,7 @@ var updateXClusterCmd = &cobra.Command{
 		rTask, response, err := authAPI.EditXClusterConfig(uuid).
 			XclusterReplicationEditFormData(req).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "XCluster", "Update")
+			errMessage := util.ErrorFromHTTPResponse(response, err, "xCluster", "Update")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
@@ -287,8 +287,8 @@ var updateXClusterCmd = &cobra.Command{
 				errMessage := util.ErrorFromHTTPResponse(
 					response,
 					err,
-					"XCluster",
-					"Update - Get XCluster")
+					"xCluster",
+					"Update - Get xCluster")
 				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 			}
 			r := make([]ybaclient.XClusterConfigGetResp, 0)

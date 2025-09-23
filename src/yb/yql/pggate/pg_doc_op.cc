@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -1494,9 +1494,8 @@ Result<bool> PgDocReadOp::SetScanPartitionBoundary() {
   // TODO(tsplit): what if table partition is changed during PgDocReadOp lifecycle before or after
   // the following line?
   const auto& partition_keys = table_->GetPartitionList();
-  const auto& partition_key = std::find(partition_keys.begin(),
-                                        partition_keys.end(),
-                                        a2b_hex(exec_params_.partition_key));
+  auto partition_key = std::find(
+      partition_keys.begin(), partition_keys.end(), a2b_hex(exec_params_.partition_key));
   RSTATUS_DCHECK(
       partition_key != partition_keys.end(), InvalidArgument, "invalid partition key given");
 

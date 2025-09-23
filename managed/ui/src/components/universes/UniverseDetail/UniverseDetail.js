@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 import { Component } from 'react';
 import { Link, withRouter, browserHistory } from 'react-router';
@@ -525,8 +525,7 @@ class UniverseDetail extends Component {
       currentUniverse.data?.universeDetails?.isKubernetesOperatorControlled;
     // isKubernetesOperatorControlled can be undefined in older universes and
     // hence using double exclamation to have a boolean value
-    const isK8ActionsDisabled =
-      isKubernetesUniverse && isK8OperatorBlocked && !!isKubernetesOperatorControlled;
+    const isK8ActionsDisabled = isK8OperatorBlocked && !!isKubernetesOperatorControlled;
     const isUpgradeSoftwareDisabled =
       isUniverseStatusPending ||
       [SoftwareUpgradeState.PRE_FINALIZE].includes(upgradeState) ||
@@ -1618,8 +1617,6 @@ class UniverseDetail extends Component {
                       editTLSAvailability={editTLSAvailability}
                       showManageKeyModal={showManageKeyModal}
                       manageKeyAvailability={manageKeyAvailability}
-                      isEncryptionAtTransitEnabled={isEncryptionAtTransitEnabled}
-                      isItKubernetesUniverse={isKubernetesUniverse}
                     />
                   </>
                 )
@@ -1659,7 +1656,7 @@ class UniverseDetail extends Component {
             (visibleModal === 'gFlagsModal' ||
               visibleModal === 'softwareUpgradesModal' ||
               visibleModal === 'vmImageUpgradeModal' ||
-              (visibleModal === 'tlsConfigurationModal' && !isCACertRotationEnabled) ||
+              // (visibleModal === 'tlsConfigurationModal' && !isCACertRotationEnabled) ||
               visibleModal === 'rollingRestart' ||
               visibleModal === 'thirdpartyUpgradeModal' ||
               visibleModal === 'systemdUpgrade')
@@ -1737,7 +1734,7 @@ class UniverseDetail extends Component {
           universe={currentUniverse.data}
           type="primary"
         />
-        {isCACertRotationEnabled && showModal && visibleModal === 'tlsConfigurationModal' && (
+        {showModal && visibleModal === 'tlsConfigurationModal' && (
           <EncryptionInTransit
             open={showModal && visibleModal === 'tlsConfigurationModal'}
             onClose={() => {
@@ -1746,6 +1743,7 @@ class UniverseDetail extends Component {
               this.props.fetchCustomerTasks();
             }}
             universe={currentUniverse.data}
+            isItKubernetesUniverse={isKubernetesUniverse}
           />
         )}
         {isMKREnabled ? (

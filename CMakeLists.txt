@@ -15,9 +15,9 @@
 # specific language governing permissions and limitations
 # under the License.
 #
-# The following only applies to changes made to this file as part of YugaByte development.
+# The following only applies to changes made to this file as part of YugabyteDB development.
 #
-# Portions Copyright (c) YugaByte, Inc.
+# Portions Copyright (c) YugabyteDB, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 # in compliance with the License.  You may obtain a copy of the License at
@@ -234,8 +234,8 @@ endif()
 include(CompilerInfo)
 
 # This helps find the right third-party build directory.
-if ("${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$")
-  set(THIRDPARTY_INSTRUMENTATION_TYPE "${YB_BUILD_TYPE}")
+if (IS_SANITIZER)
+  string(REGEX REPLACE "\\_.*$" "" THIRDPARTY_INSTRUMENTATION_TYPE ${YB_BUILD_TYPE})
 elseif (IS_CLANG OR IS_GCC)
   set(THIRDPARTY_INSTRUMENTATION_TYPE "uninstrumented")
 else()
@@ -461,6 +461,8 @@ endif()
 #   -fno-omit-frame-pointer
 #       use frame pointers to allow simple stack frame walking for backtraces.
 #       This has a small perf hit but worth it for the ability to profile in production
+# For CMAKE_BUILD_TYPE=ReleaseAsserts
+#   Same as RELEASE, except NDEBUG is not set.
 # For profile guided optimization (PGO) builds, in addition to the flags for release builds:
 #   1. Build first with CMAKE_BUILD_TYPE_PROFILE_GEN:
 #     -fprofile-generate: Indicates compiler should insert profile guided optimization events
@@ -470,6 +472,7 @@ endif()
 set(CXX_FLAGS_DEBUG "-ggdb")
 set(CXX_FLAGS_FASTDEBUG "-ggdb -O1 -fno-omit-frame-pointer -DFASTDEBUG")
 set(CXX_FLAGS_RELEASE "-O3 -g -DNDEBUG -fno-omit-frame-pointer")
+set(CXX_FLAGS_RELEASE_ASSERTS "-O3 -g -fno-omit-frame-pointer")
 
 # Nullify CMake's predefined flags since we are handling different build types on our own.
 # Without this change CMake will add flags from these variables and
@@ -493,9 +496,11 @@ if ("${CMAKE_BUILD_TYPE}" STREQUAL "DEBUG")
 elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "FASTDEBUG")
   ADD_CXX_FLAGS("${CXX_FLAGS_FASTDEBUG}")
   # We specify RocksDB debug level that corresponds to the -O1 optimization level, the same as
-  # the rest of YB code in the "fastdebug" mode (used for ASAN/TSAN).
+  # the rest of YB code in the "fastdebug" mode.
 elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "RELEASE")
   ADD_CXX_FLAGS("${CXX_FLAGS_RELEASE}")
+elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "RELEASE_ASSERTS")
+  ADD_CXX_FLAGS("${CXX_FLAGS_RELEASE_ASSERTS}")
 elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "PROFILE_GEN")
   ADD_CXX_FLAGS("${CXX_FLAGS_PROFILE_GEN}")
 elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "PROFILE_BUILD")
@@ -550,7 +555,7 @@ yb_find_third_party_installed_dir()
 
 if(IS_CLANG)
   YB_SETUP_CLANG()
-  if ("${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$")
+  if (IS_SANITIZER)
     YB_SETUP_SANITIZER()
   endif()
 endif()
@@ -568,7 +573,7 @@ endif()
 # - disable 'vptr' because it currently crashes somewhere in boost::intrusive::list code
 # - disable 'alignment' because unaligned access is really OK on Nehalem and we do it
 #   all over the place.
-if ("${YB_BUILD_TYPE}" STREQUAL "asan")
+if (IS_ASAN)
   set(CXX_NO_SANITIZE_FLAG "")
   add_cxx_no_sanitize_flag("alignment")
   if(NOT APPLE)
@@ -582,7 +587,7 @@ if ("${YB_BUILD_TYPE}" STREQUAL "asan")
   ADD_CXX_FLAGS("-fsanitize-recover=float-cast-overflow")
 endif ()
 
-if ("${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$")
+if (IS_SANITIZER)
   if(IS_CLANG)
     ADD_CXX_FLAGS("-fsanitize-blacklist=${BUILD_SUPPORT_DIR}/sanitize-blacklist.txt")
   else()
@@ -741,8 +746,7 @@ yb_find_third_party_dependencies()
 set(TCMALLOC_STATIC_LIB_LD_FLAGS "")
 
 # Set flags based on whether we are using tcmalloc.
-if ("${YB_TCMALLOC_ENABLED}" STREQUAL "1" OR
-    "${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$")
+if ("${YB_TCMALLOC_ENABLED}" STREQUAL "1" OR IS_SANITIZER)
   message("Allowing undefined symbols "
           "(YB_TCMALLOC_ENABLED=${YB_TCMALLOC_ENABLED}, build type is ${YB_BUILD_TYPE})")
   if(APPLE)

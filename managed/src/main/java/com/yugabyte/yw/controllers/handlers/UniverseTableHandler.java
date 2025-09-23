@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.controllers.handlers;
 
@@ -588,7 +588,7 @@ public class UniverseTableHandler {
   }
 
   // Query prometheus for table sizes.
-  private Map<String, TableSizes> getTableSizesOrEmpty(Universe universe) {
+  public Map<String, TableSizes> getTableSizesOrEmpty(Universe universe) {
     try {
       return queryTableSizes(universe.getUniverseDetails().nodePrefix);
     } catch (RuntimeException e) {
@@ -601,7 +601,7 @@ public class UniverseTableHandler {
   }
 
   private Map<String, TableSizes> queryTableSizes(String nodePrefix) {
-    HashMap<String, TableSizes> result = new HashMap<>();
+    Map<String, TableSizes> result = new HashMap<>();
     queryAndAppendTableSizeMetric(
         result, "rocksdb_current_version_sst_files_size", nodePrefix, TableSizes::setSstSizeBytes);
     queryAndAppendTableSizeMetric(result, "log_wal_size", nodePrefix, TableSizes::setWalSizeBytes);
@@ -621,10 +621,7 @@ public class UniverseTableHandler {
 
     for (final MetricQueryResponse.Entry entry : metricValues) {
       String tableID = entry.labels.get("table_id");
-      if (tableID == null
-          || tableID.isEmpty()
-          || entry.values == null
-          || entry.values.size() == 0) {
+      if (tableID == null || tableID.isEmpty() || entry.values == null || entry.values.isEmpty()) {
         continue;
       }
       fieldSetter.accept(

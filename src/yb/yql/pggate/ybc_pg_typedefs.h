@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -820,13 +820,24 @@ typedef struct {
   const char* table_id;
   const char* namespace_name;
   const char* table_type;
-  const char* pgschema_name;
   const char* partition_key_start;
   size_t partition_key_start_len;
   const char* partition_key_end;
   size_t partition_key_end_len;
-  const char* tablet_data_state;
 } YbcPgTabletsDescriptor;
+
+typedef struct {
+  YbcPgTabletsDescriptor tablet_descriptor;
+  const char* tablet_data_state;
+  const char* pgschema_name;
+} YbcPgLocalTabletsDescriptor;
+
+typedef struct {
+  YbcPgTabletsDescriptor tablet_descriptor;
+  const char** replicas;
+  size_t replicas_count;
+  bool is_hash_partitioned;
+} YbcPgGlobalTabletsDescriptor;
 
 typedef struct {
   const char* name;
@@ -1027,6 +1038,16 @@ typedef struct {
   const uint64_t *parallel_leader_session_id;
   YbcPgSharedDataPlaceholder *shared_data;
 } YbcPgInitPostgresInfo;
+
+typedef struct {
+  int64_t xact_start_timestamp;
+  bool xact_read_only;
+  bool xact_deferrable;
+  bool enable_tracing;
+  int effective_pggate_isolation_level;
+  bool read_from_followers_enabled;
+  int32_t follower_read_staleness_ms;
+} YbcPgInitTransactionData;
 
 #ifdef __cplusplus
 }  // extern "C"

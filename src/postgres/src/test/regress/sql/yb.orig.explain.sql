@@ -1,5 +1,3 @@
-SET yb_explain_hide_non_deterministic_fields TO true;
-
 CREATE TABLE p1 (k INT PRIMARY KEY);
 CREATE TABLE p2 (k INT PRIMARY KEY);
 CREATE TABLE t_test (k INT PRIMARY KEY,

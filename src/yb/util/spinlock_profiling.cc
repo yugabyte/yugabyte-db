@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -32,25 +32,15 @@
 
 #include "yb/util/spinlock_profiling.h"
 
-#include <functional>
-#include <string>
-#include <vector>
-
-#include "yb/util/logging.h"
-
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/bind.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/once.h"
 #include "yb/gutil/spinlock.h"
-#include "yb/gutil/strings/fastmem.h"
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/sysinfo.h"
 
-#include "yb/util/enums.h"
-#include "yb/util/flags.h"
 #include "yb/util/metrics.h"
-#include "yb/util/slice.h"
 #include "yb/util/stack_trace.h"
 #include "yb/util/striped64.h"
 #include "yb/util/trace.h"
@@ -62,9 +52,9 @@ DEFINE_UNKNOWN_int32(lock_contention_trace_threshold_cycles,
              "stack trace is logged to the trace buffer.");
 TAG_FLAG(lock_contention_trace_threshold_cycles, hidden);
 
-METRIC_DEFINE_gauge_uint64(server, spinlock_contention_time,
-    "Spinlock Contention Time", yb::MetricUnit::kMicroseconds,
-    "Amount of time consumed by contention on internal spinlocks since the server "
+METRIC_DEFINE_gauge_uint64(server, spinlock_contention_time, "Spinlock Contention Time",
+    yb::MetricUnit::kMicroseconds,
+    "Amount of time (microseconds) consumed by contention on internal spinlocks since the server "
     "started. If this increases rapidly, it may indicate a performance issue in YB "
     "internals triggered by a particular workload and warrant investigation.",
     yb::EXPOSE_AS_COUNTER);

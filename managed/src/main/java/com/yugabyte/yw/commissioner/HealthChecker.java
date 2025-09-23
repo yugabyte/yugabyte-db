@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 YugaByte, Inc. and Contributors
+ * Copyright 2019 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -867,6 +867,13 @@ public class HealthChecker {
         }
         nodeInfo.setClockboundEnabled(
             params.universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseClockbound());
+        nodeInfo.setYbdbInbuiltYbc(
+            params
+                .universe
+                .getUniverseDetails()
+                .getPrimaryCluster()
+                .userIntent
+                .isUseYbdbInbuiltYbc());
         nodeMetadata.add(nodeInfo);
       }
     }
@@ -1030,7 +1037,8 @@ public class HealthChecker {
     String nodeToRunDdlAtomicityCheck = null;
     String masterLeaderUrl = null;
 
-    if (ddlAtomicityCheckEnabled) {
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    if (ddlAtomicityCheckEnabled && userIntent.enableYSQL) {
       int ddlAtomicityIntervalSec =
           confGetter.getConfForScope(universe, UniverseConfKeys.ddlAtomicityIntervalSec);
       nodeCheckTimeoutSec =
@@ -1038,8 +1046,7 @@ public class HealthChecker {
 
       Instant lastDdlAtomicitySuccessfulCheckTimestamp =
           ddlAtomicitySuccessfulCheckTimestamp.get(universe.getUniverseUUID());
-      String ybDbRelease =
-          universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+      String ybDbRelease = userIntent.ybSoftwareVersion;
       boolean ddlAtomicityCheckSupported =
           CommonUtils.isReleaseBetween(DDL_ATOMICITY_CHECK_RELEASE, "2.19.0.0-b0", ybDbRelease)
               || CommonUtils.isReleaseEqualOrAfter(
@@ -1339,6 +1346,7 @@ public class HealthChecker {
     private int topKOtherProcesses;
     private int topKMemThresholdPercent;
     private boolean checkTHP;
+    private boolean ybdbInbuiltYbc = false;
     @JsonIgnore @EqualsAndHashCode.Exclude private NodeDetails nodeDetails;
     private boolean earlyoomEnabled = false;
   }

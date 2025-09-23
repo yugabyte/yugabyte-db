@@ -3,7 +3,7 @@
  * yb_fdw.c
  *		  Foreign-data wrapper for YugabyteDB.
  *
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License.  You may obtain a copy of the License at
@@ -387,6 +387,7 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 	ybc_state->is_exec_done = false;
 
 	YbSetCatalogCacheVersion(ybc_state->handle, YbGetCatalogCacheVersion());
+	YbMaybeSetNonSystemTablespaceOid(ybc_state->handle, relation);
 }
 
 /*

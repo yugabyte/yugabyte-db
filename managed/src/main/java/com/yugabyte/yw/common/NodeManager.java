@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 YugaByte, Inc. and Contributors
+ * Copyright 2019 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -615,7 +615,7 @@ public class NodeManager extends DevopsBase {
         UUID kmsConfigUUID = params.deviceInfo.cloudVolumeEncryption.kmsConfigUUID;
         String cmkId = AwsEARServiceUtil.getCMKId(kmsConfigUUID);
         if (cmkId != null) {
-          String cmkArn = AwsEARServiceUtil.getCMK(kmsConfigUUID, cmkId).getKeyArn();
+          String cmkArn = AwsEARServiceUtil.getCMK(kmsConfigUUID, cmkId).keyArn();
           args.add("--cmk_res_name");
           args.add(cmkArn);
         }
@@ -3043,6 +3043,12 @@ public class NodeManager extends DevopsBase {
               .maybeGetNodeAgent(nodeDetails.cloudInfo.private_ip, provider, universe)
               .orElse(null);
 
+      int otelColMaxMemory =
+          confGetter.getConfForScope(universe, UniverseConfKeys.otelCollectorMaxMemory);
+      if (otelColMaxMemory > 0) {
+        commandArgs.add("--otel_col_max_memory");
+        commandArgs.add(Integer.toString(otelColMaxMemory));
+      }
       commandArgs.add("--otel_col_config_file");
       commandArgs.add(
           otelCollectorConfigGenerator

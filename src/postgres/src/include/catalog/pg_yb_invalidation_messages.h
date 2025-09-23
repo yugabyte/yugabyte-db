@@ -4,7 +4,7 @@
  *
  *	  definition of the "YSQL invalidation messages" system catalog (pg_yb_invalidation_messages)
  *
- * Portions Copyright (c) YugaByte, Inc.
+ * Portions Copyright (c) YugabyteDB, Inc.
  *
  * src/include/catalog/pg_yb_invalidation_messages.h
  *

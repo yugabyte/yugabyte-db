@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc
+// Copyright (c) YugabyteDB, Inc
 
 package com.yugabyte.yw.commissioner;
 
@@ -46,6 +46,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.yb.client.YbcClient;
 import org.yb.ybc.ControllerStatus;
 import org.yb.ybc.ShutdownRequest;
@@ -303,10 +304,11 @@ public class YbcUpgrade {
 
   public boolean canUpgradeYBCOnK8s(Universe universe, String ybcVersion) {
     return universe.isYbcEnabled()
+        && !universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc()
         && !universe.getUniverseDetails().universePaused
         && (!universe.getUniverseDetails().updateInProgress
             || SAFE_TO_UPGRADE_YBC_TASKS.contains(universe.getUniverseDetails().updatingTask))
-        && !universe.getUniverseDetails().getYbcSoftwareVersion().equals(ybcVersion)
+        && !StringUtils.equals(universe.getUniverseDetails().getYbcSoftwareVersion(), ybcVersion)
         && !failedYBCUpgradeUniverseSetOnK8s.contains(universe.getUniverseUUID());
   }
 
@@ -355,6 +357,11 @@ public class YbcUpgrade {
       return;
     } else {
       setYBCUpgradeProcessOnK8s(universeUUID);
+    }
+
+    if (universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc()) {
+      log.debug("Skipping YBC upgrade for universe {} as it uses inbuilt YBC", universeUUID);
+      return;
     }
 
     try {

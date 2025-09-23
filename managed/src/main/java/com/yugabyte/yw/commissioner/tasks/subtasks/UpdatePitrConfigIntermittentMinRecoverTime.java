@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
@@ -7,7 +7,6 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Universe;
-import java.util.Date;
 import java.util.List;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -16,7 +15,11 @@ import lombok.extern.slf4j.Slf4j;
  * Subtask to update intermittentMinRecoverTimeInMillis for all PITR configs associated with a
  * universe. This is used during software upgrade and rollback operations to ensure PITR configs are
  * only valid from the completion of these operations.
+ *
+ * @deprecated This functionality has been merged into EnablePitrConfig task. Use EnablePitrConfig
+ *     instead.
  */
+@Deprecated
 @Slf4j
 public class UpdatePitrConfigIntermittentMinRecoverTime extends UniverseTaskBase {
 
@@ -52,9 +55,7 @@ public class UpdatePitrConfigIntermittentMinRecoverTime extends UniverseTaskBase
           currentTimeInMillis);
 
       for (PitrConfig pitrConfig : pitrConfigs) {
-        pitrConfig.setIntermittentMinRecoverTimeInMillis(currentTimeInMillis);
-        pitrConfig.setUpdateTime(new Date());
-        pitrConfig.update();
+        pitrConfig.updateIntermittentMinRecoverTimeInMillis(currentTimeInMillis);
         log.debug(
             "Updated PITR config {} with intermittentMinRecoverTimeInMillis={}",
             pitrConfig.getUuid(),

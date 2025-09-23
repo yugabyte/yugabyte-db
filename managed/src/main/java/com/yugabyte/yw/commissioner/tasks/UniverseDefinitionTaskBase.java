@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks;
 
@@ -36,7 +36,9 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodesAreSafeToTakeDown;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckUnderReplicatedTablets;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteCapacityReservation;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteClusterFromUniverse;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DisablePitrConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DoCapacityReservation;
+import com.yugabyte.yw.commissioner.tasks.subtasks.EnablePitrConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceExistCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageCatalogUpgradeSuperUser.Action;
@@ -2371,7 +2373,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    *
    * @param nodes a collection of nodes to be processed.
    */
-  public SubTaskGroup createYNPProvisioningTask(Universe universe, Collection<NodeDetails> nodes) {
+  public SubTaskGroup createYNPProvisioningTask(
+      Universe universe, Collection<NodeDetails> nodes, boolean isYbPrebuiltImage) {
     Map<UUID, Provider> nodeUuidProviderMap = new HashMap<>();
     SubTaskGroup subTaskGroup =
         createSubTaskGroup(YNPProvisioning.class.getSimpleName(), SubTaskGroupType.Provisioning);
@@ -2403,6 +2406,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           params.setUniverseUUID(universe.getUniverseUUID());
           params.nodeAgentInstallDir = installPath;
           params.remotePackagePath = taskParams().remotePackagePath;
+          params.isYbPrebuiltImage = isYbPrebuiltImage;
           if (StringUtils.isNotEmpty(n.sshUserOverride)) {
             params.sshUser = n.sshUserOverride;
           }
@@ -2414,6 +2418,33 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       getRunnableTask().addSubTaskGroup(subTaskGroup);
     }
     return subTaskGroup;
+  }
+
+  /**
+   * Checks if the DB software should be installed based on the custom image properties.
+   *
+   * @param universe the universe.
+   * @param ignoreUseCustomImageConfig flag which is used only when vmUpgradeTaskType is not set.
+   * @param vmUpgradeTaskType VM image upgrade type if set.
+   * @return true if software needs to be installed else false.
+   */
+  public boolean shouldInstallDbSoftware(
+      Universe universe,
+      boolean ignoreUseCustomImageConfig,
+      @Nullable VmUpgradeTaskType vmUpgradeTaskType) {
+    // This is ported from NodeManager.
+    if (vmUpgradeTaskType == VmUpgradeTaskType.VmUpgradeWithCustomImages) {
+      return false;
+    }
+    if (vmUpgradeTaskType == VmUpgradeTaskType.None
+        && !ignoreUseCustomImageConfig
+        && universe
+            .getConfig()
+            .getOrDefault(Universe.USE_CUSTOM_IMAGE, "false")
+            .equalsIgnoreCase("true")) {
+      return false;
+    }
+    return true;
   }
 
   /**
@@ -2492,7 +2523,15 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                 createSetupYNPTask(universe, filteredNodes)
                     .setSubTaskGroupType(SubTaskGroupType.Provisioning);
                 if (!useAnsibleProvisioning) {
-                  createYNPProvisioningTask(universe, filteredNodes)
+                  // TODO hack to get the custom params.
+                  AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
+                  if (setupParamsCustomizer != null) {
+                    setupParamsCustomizer.accept(params);
+                  }
+                  boolean isYbPrebuiltImage =
+                      !shouldInstallDbSoftware(
+                          universe, params.ignoreUseCustomImageConfig, params.vmUpgradeTaskType);
+                  createYNPProvisioningTask(universe, filteredNodes, isYbPrebuiltImage)
                       .setSubTaskGroupType(SubTaskGroupType.Provisioning);
                 }
               }
@@ -2569,6 +2608,18 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               createConfigureServerTasks(filteredNodes, installSoftwareParamsCustomizer)
                   .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
             });
+
+    String softwareVersion = taskParams().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    // Validate GFlags through RPC
+    boolean skipRuntimeGflagValidation =
+        confGetter.getGlobalConf(GlobalConfKeys.skipRuntimeGflagValidation);
+    if (!skipRuntimeGflagValidation) {
+      if (Util.compareYBVersions(
+              softwareVersion, "2024.2.0.0-b1", "2.27.0.0-b1", true /* suppressFormatError */)
+          >= 0) {
+        createValidateGFlagsTask(null /* newClusters */, true /* useCLIBinary */, softwareVersion);
+      }
+    }
 
     // GFlags Task for masters.
     // State remains as SoftwareInstalled, so it is fine to call this one by one for master,
@@ -3892,13 +3943,37 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       log.info("Skipping upgrade finalization for universe : " + universe.getUniverseUUID());
     }
 
-    // Update PITR configs to set intermittentMinRecoverTimeInMillis to current time
-    // as PITR configs are only valid from the completion of software upgrade finalization
-    createUpdatePitrConfigIntermittentMinRecoverTimeTask();
+    // Re-enable PITR configs after successful upgrade finalization
+    // This also updates intermittentMinRecoverTimeInMillis for all PITR configs
+    createEnablePitrConfigTask();
 
     createUpdateUniverseSoftwareUpgradeStateTask(
         UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
         false /* isSoftwareRollbackAllowed */);
+  }
+
+  protected void createEnablePitrConfigTask() {
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup("EnablePitrConfig", SubTaskGroupType.ConfigureUniverse);
+    EnablePitrConfig.Params params = new EnablePitrConfig.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+
+    EnablePitrConfig task = createTask(EnablePitrConfig.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  public void createDisablePitrConfigTask() {
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup("DisablePitrConfig", SubTaskGroupType.ConfigureUniverse);
+    DisablePitrConfig.Params params = new DisablePitrConfig.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.ignoreErrors = true; // Ignore errors to not block upgrade if PITR configs don't exist
+    DisablePitrConfig task = createTask(DisablePitrConfig.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
   protected void createSetYBMajorVersionUpgradeCompatibility(
@@ -4025,8 +4100,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     nodesByProvider.forEach(
         (providerUUID, nodes) -> {
           Provider provider = Provider.getOrBadRequest(providerUUID);
-          if (CapacityReservationUtil.isReservationSupported(
-              confGetter, provider.getCloudCode(), operationType)) {
+          if (CapacityReservationUtil.isReservationSupported(confGetter, provider, operationType)) {
             Set<NodeDetails> currentlyAffectedNodes =
                 findNodesInUniverse(universe, new HashSet<>(nodes))
                     .filter(nodeFilter)
@@ -4074,7 +4148,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
-  protected void createDeleteReservationTask() {
+  protected void createDeleteCapacityReservationTask() {
     TaskExecutor.SubTaskGroup subTaskGroup = createSubTaskGroup("ReleaseCapacityReservation");
     DeleteCapacityReservation.Params params = new DeleteCapacityReservation.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());

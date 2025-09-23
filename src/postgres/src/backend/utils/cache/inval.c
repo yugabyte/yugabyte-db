@@ -933,6 +933,7 @@ AcceptInvalidationMessages(void)
 				 */
 				yb_refresh_cache_in_progress = true;
 
+				YBCPgResetCatalogReadTime();
 				if (YBRefreshCacheUsingInvalMsgs())
 				{
 					elog(DEBUG1,

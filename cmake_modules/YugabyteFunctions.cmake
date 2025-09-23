@@ -1,4 +1,4 @@
-# Copyright (c) Yugabyte, Inc.
+# Copyright (c) YugabyteDB, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 # in compliance with the License.  You may obtain a copy of the License at
@@ -537,7 +537,7 @@ macro(YB_SETUP_SANITIZER)
   if(APPLE)
     message(FATAL_ERROR "Sanitizers not supported on macOS")
   endif()
-  if("${YB_BUILD_TYPE}" STREQUAL "asan")
+  if(IS_ASAN)
     if(IS_CLANG)
       ADD_CXX_FLAGS("-mllvm -asan-use-private-alias=1")
       ADD_LINKER_FLAGS("-lunwind")
@@ -565,7 +565,7 @@ macro(YB_SETUP_SANITIZER)
       ADD_EXE_LINKER_FLAGS("-lubsan -ldl")
       ADD_CXX_FLAGS("-Wno-error=maybe-uninitialized")
     endif()
-  elseif("${YB_BUILD_TYPE}" STREQUAL "tsan")
+  elseif(IS_TSAN)
     ADD_CXX_FLAGS("-fsanitize=thread")
 
     # Enables dynamic_annotations.h to actually generate code

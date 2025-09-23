@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -2721,6 +2721,18 @@ public class TestYbBackup extends BasePgSQLTest {
       "expected/yb.orig.backup_restore.out",
       "sql/yb.orig.backup_restore_describe.sql",
       "expected/yb.orig.backup_restore_describe.out"
+    );
+  }
+
+  @Test
+  public void testBackupRoleParameter() throws Exception {
+    testPgRegressStyleUtil(
+      "yb.orig.backup_role_parameter",
+      "sql/yb.orig.backup_role_parameter.sql",
+      "db2",
+      "expected/yb.orig.backup_role_parameter.out",
+      "sql/yb.orig.backup_role_parameter_describe.sql",
+      "expected/yb.orig.backup_role_parameter_describe.out"
     );
   }
 

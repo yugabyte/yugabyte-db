@@ -56,6 +56,7 @@
 #include "yb/yql/pggate/pg_sys_table_prefetcher.h"
 #include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pg_type.h"
+#include "yb/yql/pggate/pg_txn_manager.h"
 #include "yb/yql/pggate/pg_ybctid_reader_provider.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pggate/ybc_pggate.h"
@@ -378,6 +379,11 @@ class PgApiImpl {
   Status SetCatalogCacheVersion(
       PgStatement *handle, uint64_t version, std::optional<PgOid> db_oid = std::nullopt);
 
+  Status SetTablespaceOid(PgStatement *handle, uint32_t tablespace_oid);
+#ifndef NDEBUG
+  void CheckTablespaceOid(uint32_t db_oid, uint32_t table_oid, uint32_t tablespace_oid);
+#endif
+
   Result<client::TableSizeInfo> GetTableDiskSize(const PgObjectId& table_oid);
 
   //------------------------------------------------------------------------------------------------
@@ -541,7 +547,7 @@ class PgApiImpl {
   Status StartOperationsBuffering();
   Status StopOperationsBuffering();
   void ResetOperationsBuffering();
-  Status FlushBufferedOperations(const YbcFlushDebugContext& context);
+  Status FlushBufferedOperations(const YbcFlushDebugContext& debug_context);
   Status AdjustOperationsBuffering(int multiple = 1);
 
   //------------------------------------------------------------------------------------------------
@@ -666,7 +672,8 @@ class PgApiImpl {
   Status EnsureReadPoint();
   Status RestartReadPoint();
   bool IsRestartReadPointRequested();
-  Status CommitPlainTransaction(const std::optional<PgDdlCommitInfo>& ddl_commit_info);
+  Status CommitPlainTransaction(
+        const std::optional<PgDdlCommitInfo>& ddl_commit_info = std::nullopt);
   Status AbortPlainTransaction();
   Status SetTransactionIsolationLevel(int isolation);
   Status SetTransactionReadOnly(bool read_only);
@@ -855,7 +862,7 @@ class PgApiImpl {
   Result<tserver::PgYCQLStatementStatsResponsePB> YCQLStatementStats();
   Result<tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory();
 
-  Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata();
+  Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata(bool local_only);
 
   Result<tserver::PgServersMetricsResponsePB> ServersMetrics();
 
@@ -868,6 +875,9 @@ class PgApiImpl {
   Result<YbcReadPointHandle> RegisterSnapshotReadTime(uint64_t read_time, bool use_read_time);
 
   void DdlEnableForceCatalogModification();
+
+  void RecordTablespaceOid(uint32_t db_oid, uint32_t table_oid, uint32_t tablespace_oid);
+  void ClearTablespaceOid(uint32_t db_oid, uint32_t table_oid);
 
   //----------------------------------------------------------------------------------------------
   // Advisory Locks.
@@ -882,6 +892,10 @@ class PgApiImpl {
   // Table Locks.
   //----------------------------------------------------------------------------------------------
   Status AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLockMode mode);
+
+  auto TemporaryDisableReadTimeHistoryCutoff() {
+    return pg_txn_manager_->TemporaryDisableReadTimeHistoryCutoff();
+  }
 
   struct PgSharedData;
   struct SignedPgSharedData;
@@ -954,6 +968,7 @@ class PgApiImpl {
   TupleIdBuilder tuple_id_builder_;
   BufferingSettings buffering_settings_;
   YbctidReaderProvider ybctid_reader_provider_;
+  TablespaceMap tablespace_map_;
   PgFKReferenceCache fk_reference_cache_;
   ExplicitRowLockBuffer explicit_row_lock_buffer_;
 

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks;
 
@@ -342,7 +342,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                 anyString(),
                 anyString(),
                 anyString(),
-                any(Integer.class)))
+                any(Integer.class),
+                any(Map.class)))
         .thenAnswer(
             invocation -> {
               String groupName = invocation.getArgument(0);
@@ -1063,7 +1064,13 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                         Mockito.eq(zone),
                         Mockito.eq(instanceTypeRes),
                         Mockito.eq(instanceType),
-                        Mockito.eq(Integer.valueOf(nodes.size())));
+                        Mockito.eq(Integer.valueOf(nodes.size())),
+                        Mockito.eq(
+                            Map.of(
+                                "universe-name",
+                                "universe-test",
+                                "universe-uuid",
+                                universeUUID.toString())));
 
                 verify(azuResourceGroupApiClient)
                     .deleteCapacityReservation(

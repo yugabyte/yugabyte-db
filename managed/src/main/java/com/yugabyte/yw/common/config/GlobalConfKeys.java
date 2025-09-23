@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 YugaByte, Inc. and Contributors
+ * Copyright 2022 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -484,6 +484,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ScopeType.GLOBAL,
           "Allow Loki Exporter in Telemetry Provider",
           "Allow the usage of Loki Exporter in Telemetry Provider.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> telemetryAllowS3 =
+      new ConfKeyInfo<>(
+          "yb.telemetry.allow_s3",
+          ScopeType.GLOBAL,
+          "Allow S3 Exporter in Telemetry Provider",
+          "Allow the usage of S3 Exporter in Telemetry Provider.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Integer> hcvTokenRenewPercent =
@@ -1769,7 +1777,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Allows enabling the volume encryption feature for new universes. Currently only"
               + " supported for AWS universes.",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableYbcBackgroundUpgrade =
       new ConfKeyInfo<>(
           "ybc.upgrade.enable_background_upgrade",
@@ -1802,15 +1810,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Skip Runtime GFlag validation before cluster operations.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> enableCapacityReservationAzure =
-      new ConfKeyInfo<>(
-          "yb.task.enable_capacity_reservation_azure",
-          ScopeType.GLOBAL,
-          "Enable capacity reservations for azure",
-          "Enable capacity reservations for azure for tasks that need new nodes",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
-
   public static final ConfKeyInfo<List> capacityReservationOperationsAzure =
       new ConfKeyInfo<>(
           "yb.task.capacity_reservation_supported_operations_azure",
@@ -1827,16 +1826,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Timeout for backup success marker download from backup lcoation",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-
-  public static final ConfKeyInfo<Boolean> enableCapacityReservationAws =
-      new ConfKeyInfo<>(
-          "yb.task.enable_capacity_reservation_aws",
-          ScopeType.GLOBAL,
-          "Enable capacity reservations for AWS",
-          "Enable capacity reservations for AWS for tasks that need new nodes",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
-
   public static final ConfKeyInfo<List> capacityReservationOperationsAws =
       new ConfKeyInfo<>(
           "yb.task.capacity_reservation_supported_operations_aws",
@@ -1868,6 +1857,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable new YBA platform backup and restore UI",
           "Exposes a new subtab on the platform administration page where users can enable"
               + " automated platform backups.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableSigningRegion =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.enable_signing_region",
+          ScopeType.GLOBAL,
+          "Enable Signing Region",
+          "Enable AWS signing region for S3 access",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 }

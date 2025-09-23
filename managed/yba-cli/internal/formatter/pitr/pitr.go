@@ -1,5 +1,5 @@
 /*
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  */
 
 package pitr
@@ -33,7 +33,7 @@ const (
 	createTimeHeader       = "Create Time"
 	updateTimeHeader       = "Update Time"
 	createdForDrHeader     = "Created For DR"
-	usedForXClusterHeader  = "Used For XCluster"
+	usedForXClusterHeader  = "Used For xCluster"
 )
 
 // Context for pitr outputs

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Copyright (c) YugaByte, Inc.
+# Copyright (c) YugabyteDB, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 # in compliance with the License.  You may obtain a copy of the License at
@@ -29,6 +29,7 @@ from yugabyte.release_util import ReleaseUtil, check_for_local_changes
 from yugabyte.common_util import (
     init_logging,
     get_build_type_from_build_root,
+    set_llvm_toolchain_dir,
     set_thirdparty_dir,
     YB_SRC_ROOT,
     create_temp_dir,
@@ -274,6 +275,16 @@ def validate_thirdparty_dir(thirdparty_dir: str) -> None:
     set_thirdparty_dir(thirdparty_dir)
 
 
+def find_llvm_toolchain_dir(build_root: str) -> None:
+    llvm_path_file = build_root + '/llvm_path.txt'
+    try:
+        with open(llvm_path_file, 'rt') as f:
+            set_llvm_toolchain_dir(f.read().strip())
+    except FileNotFoundError:
+        # This is not a Clang build.
+        pass
+
+
 def create_library_packager(
         build_root: str,
         seed_executable_patterns: List[str],
@@ -372,6 +383,8 @@ def main() -> None:
 
     thirdparty_dir = build_desc["thirdparty_dir"]
     validate_thirdparty_dir(thirdparty_dir)
+
+    find_llvm_toolchain_dir(build_root)
 
     # This is not a "target" in terms of Make / CMake, but a target directory.
     build_target_dir = args.build_target

@@ -125,6 +125,7 @@ class PrecastRequestSender {
 
 Result<std::span<LightweightTableYbctid>> YbctidReaderProvider::Reader::DoRead(
     PgOid database_id, const OidSet& region_local_tables,
+    const TablespaceMap& tablespace_map,
     const ExecParametersMutator& exec_params_mutator) {
   // Group the items by the table ID.
   std::sort(ybctids_.begin(), ybctids_.end(), [](const auto& a, const auto& b) {
@@ -154,6 +155,10 @@ Result<std::span<LightweightTableYbctid>> YbctidReaderProvider::Reader::DoRead(
     auto read_op = SharedField(read_op_with_table, &read_op_with_table->read_op);
     auto* expr_pb = read_op->read_request().add_targets();
     expr_pb->set_column_id(std::to_underlying(PgSystemAttrNum::kYBTupleId));
+    auto tsp_it = tablespace_map.find(PgObjectId(database_id, table_id));
+    if (tsp_it != tablespace_map.end()) {
+      read_op->read_request().set_tablespace_oid(tsp_it->second);
+    }
     doc_ops.push_back(std::make_unique<PgDocReadOp>(
         session_, &read_op_with_table->table, std::move(read_op), request_sender));
     auto& doc_op = *doc_ops.back();

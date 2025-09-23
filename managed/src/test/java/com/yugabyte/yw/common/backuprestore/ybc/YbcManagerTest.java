@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.common.backuprestore.ybc;
 
@@ -229,7 +229,7 @@ public class YbcManagerTest extends FakeDBApplication {
             .filter(nD -> nD.isTserver)
             .collect(Collectors.toList());
     spyYbcManager.populateControllerThrottleParamsMap(
-        u, tsNodes, new HashMap<>(), c, paramBuilder, paramsToModify, false /* resetToDefaults */);
+        u, tsNodes, new HashMap<>(), paramBuilder, paramsToModify, false /* resetToDefaults */);
     // Assert new values
     assertEquals(123456789l, paramBuilder.getDiskFlags().getDiskReadBytesPerSec());
     assertEquals(5, paramBuilder.getThrottleParams().getMaxConcurrentUploads());
@@ -280,7 +280,7 @@ public class YbcManagerTest extends FakeDBApplication {
             .filter(nD -> nD.isTserver)
             .collect(Collectors.toList());
     spyYbcManager.populateControllerThrottleParamsMap(
-        u, tsNodes, new HashMap<>(), c, paramBuilder, paramsToModify, true /* resetToDefaults */);
+        u, tsNodes, new HashMap<>(), paramBuilder, paramsToModify, true /* resetToDefaults */);
     // Assert new values in builder
     assertEquals(diskReadBytesDefault, paramBuilder.getDiskFlags().getDiskReadBytesPerSec());
     assertEquals(diskWriteBytesDefault, paramBuilder.getDiskFlags().getDiskWriteBytesPerSec());

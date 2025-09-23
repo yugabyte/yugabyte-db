@@ -1,5 +1,5 @@
 
-# Copyright 2019 YugaByte, Inc. and Contributors
+# Copyright 2019 YugabyteDB, Inc. and Contributors
 #
 # Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
 # may not use this file except in compliance with the License. You
@@ -238,6 +238,14 @@ regions:
     - c
   northamerica-northeast2:
     cidr_prefix: '10.225'
+    image: almalinux-9-v20250212
+    project: almalinux-cloud
+    zones:
+    - a
+    - b
+    - c
+  northamerica-south1:
+    cidr_prefix: '10.224'
     image: almalinux-9-v20250212
     project: almalinux-cloud
     zones:

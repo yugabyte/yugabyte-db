@@ -1,4 +1,4 @@
-// Copyright (c) Yugabyte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;

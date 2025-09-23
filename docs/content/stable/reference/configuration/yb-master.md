@@ -206,7 +206,7 @@ Default: `true`
 
 ##### --enable_pg_cron
 
-Set this flag to true on all YB-Masters and YB-TServers to add the [pg_cron extension](../../../explore/ysql-language-features/pg-extensions/extension-pgcron/).
+Set this flag to true on all YB-Masters and YB-TServers to add the [pg_cron extension](../../../additional-features/pg-extensions/extension-pgcron/).
 
 Default: `false`
 
@@ -1078,7 +1078,7 @@ Enables advisory locking.
 
 This value must match on all yb-master and yb-tserver configurations of a YugabyteDB cluster.
 
-Default: false
+Default: true
 
 ## Advanced flags
 

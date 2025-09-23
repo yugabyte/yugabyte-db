@@ -18,7 +18,7 @@ import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
 
 @RunWith(value=YBTestRunner.class)
-public class TestPgRegressForeignKey extends BasePgRegressTestPorted {
+public class TestPgRegressForeignKey extends BasePgRegressTest {
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
@@ -30,11 +30,11 @@ public class TestPgRegressForeignKey extends BasePgRegressTestPorted {
 
   @Override
   public int getTestMethodTimeoutSec() {
-    return 1800;
+    return 900;
   }
 
   @Test
   public void testPgRegress() throws Exception {
-    runPgRegressTest("yb_foreign_key_serial_schedule");
+    runPgRegressTest("yb_foreign_key_schedule");
   }
 }

@@ -13,8 +13,6 @@ import { CONTINUOUS_BACKUP_QUERY_KEY } from '../../helpers/api';
 interface DeleteContinuousBackupConfigModalProps {
   continuousBackupConfigUuid: string | undefined;
   modalProps: YBModalProps;
-
-  redirectUrl?: string;
 }
 
 const MODAL_NAME = 'DeleteContinuousBackupConfigModal';

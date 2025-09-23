@@ -1,4 +1,4 @@
-// Copyright (c) Yugabyte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -616,6 +616,27 @@ class PgCatalogVersionTest : public LibPqTestBase {
       }
     }
     ASSERT_EQ(count, 2);
+  }
+
+  int64_t GetInt64MetricsHelper(const string& metric_name) {
+    auto json_metrics = GetJsonMetrics();
+
+    for (const auto& metric : json_metrics) {
+      if (metric.name.find(metric_name) != std::string::npos) {
+        LOG(INFO) << metric_name << ":" << metric.value;
+        return metric.value;
+      }
+    }
+    LOG(INFO) << metric_name << " not found";
+    return -1;
+  }
+
+  int64_t GetNumRelCachePreloads() {
+    return GetInt64MetricsHelper("RelCachePreload");
+  }
+
+  int64_t GetNumAuthorizedConnections() {
+    return GetInt64MetricsHelper("AuthorizedConnection");
   }
 
   // This function is extracted and adapted from ysql_upgrade.cc.
@@ -1765,7 +1786,6 @@ TEST_F(PgCatalogVersionTest, NonIncrementingDDLMode) {
   ASSERT_EQ(new_version, version);
 
   ASSERT_OK(conn.Execute("SET yb_make_next_ddl_statement_nonincrementing TO TRUE"));
-  // TODO(#28412): The below hits a TRAP on ysql, seems related to transactional DDL.
   ASSERT_OK(conn.Execute("CREATE INDEX idx3 ON t1(a)"));
   new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
   // By default CREATE INDEX runs concurrently and its algorithm requires to bump up catalog
@@ -1829,8 +1849,10 @@ TEST_F(PgCatalogVersionTest, NonIncrementingDDLMode) {
   ASSERT_OK(conn.Execute("CREATE TEMP TABLE temp_demo (a INT, b INT)"));
   ASSERT_OK(conn.Execute("ALTER TABLE temp_demo ADD COLUMN c INT"));
   ASSERT_OK(conn.Execute("CREATE INDEX temp_idx ON temp_demo(c)"));
-  ASSERT_OK(conn.Execute("DROP INDEX temp_idx"));
-  ASSERT_OK(conn.Execute("DROP TABLE temp_demo"));
+  ASSERT_OK(conn.Execute("ALTER TABLE temp_demo RENAME TO temp_demo_new"));
+  ASSERT_OK(conn.Execute("ALTER INDEX temp_idx RENAME TO temp_idx_new"));
+  ASSERT_OK(conn.Execute("DROP INDEX temp_idx_new"));
+  ASSERT_OK(conn.Execute("DROP TABLE temp_demo_new"));
   new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
   ASSERT_EQ(new_version, version);
 }
@@ -2141,44 +2163,44 @@ TEST_F(PgCatalogVersionTest, InvalMessageSanityTest) {
   auto query = "SELECT current_version, encode(messages, 'hex') "
                "FROM pg_yb_invalidation_messages"s;
   auto expected_result0 =
-      "2, 5000000000000000cb34000040c1eb0a00000000000000004f00000000000000cb340"
-      "0005ac4b85300000000000000005000000000000000cb34000047a2537b0000000000000"
-      "0004f00000000000000cb34000021e2d2ca00000000000000000700000000000000cb340"
-      "0004a34179b00000000000000000600000000000000cb3400003239589f0000000000000"
-      "0000700000000000000cb340000849f9c1300000000000000000600000000000000cb340"
-      "00002517d2400000000000000000700000000000000cb340000d519492c0000000000000"
-      "0000600000000000000cb340000532bd64f00000000000000000700000000000000cb340"
-      "0000ce84cf300000000000000000600000000000000cb340000f1f7a7e80000000000000"
-      "0000700000000000000cb340000ecbba96500000000000000000600000000000000cb340"
-      "00084a01e3000000000000000000700000000000000cb3400003f53cbc60000000000000"
-      "0000600000000000000cb3400001310debc00000000000000000700000000000000cb340"
-      "000c76e67a200000000000000000600000000000000cb340000f3cf9e8c0000000000000"
-      "0000700000000000000cb34000017e0201d00000000000000000600000000000000cb340"
-      "0004ba32d1e00000000000000003700000000000000cb340000465708530000000000000"
-      "0003600000000000000cb34000021e2d2ca0000000000000000fb00000000000000cb340"
-      "000300a00000000000000000000fb00000000000000cb340000300a00000000000000000"
-      "000fe00000000000000cb340000004000000000000000000000fb00000000000000cb340"
+      "2, 5000000000000000d034000040c1eb0a00000000000000004f00000000000000d0340"
+      "0005ac4b85300000000000000005000000000000000d034000047a2537b0000000000000"
+      "0004f00000000000000d034000021e2d2ca00000000000000000700000000000000d0340"
+      "0004a34179b00000000000000000600000000000000d03400003239589f0000000000000"
+      "0000700000000000000d0340000849f9c1300000000000000000600000000000000d0340"
+      "00002517d2400000000000000000700000000000000d0340000d519492c0000000000000"
+      "0000600000000000000d0340000532bd64f00000000000000000700000000000000d0340"
+      "0000ce84cf300000000000000000600000000000000d0340000f1f7a7e80000000000000"
+      "0000700000000000000d0340000ecbba96500000000000000000600000000000000d0340"
+      "00084a01e3000000000000000000700000000000000d03400003f53cbc60000000000000"
+      "0000600000000000000d03400001310debc00000000000000000700000000000000d0340"
+      "000c76e67a200000000000000000600000000000000d0340000f3cf9e8c0000000000000"
+      "0000700000000000000d034000017e0201d00000000000000000600000000000000d0340"
+      "0004ba32d1e00000000000000003700000000000000d0340000465708530000000000000"
+      "0003600000000000000d034000021e2d2ca0000000000000000fb00000000000000d0340"
+      "000300a00000000000000000000fb00000000000000d0340000300a00000000000000000"
+      "000fe00000000000000d0340000004000000000000000000000fb00000000000000d0340"
       "000300a00000000000000000000";
   auto expected_result1 =
-      "2, 5000000000000000cb34000040c1eb0a00000000000000004f00000000000000cb340"
-      "0005ac4b85300000000000000005000000000000000cb34000047a2537b0000000000000"
-      "0004f00000000000000cb34000021e2d2ca00000000000000000700000000000000cb340"
-      "0004a34179b00000000000000000600000000000000cb3400003239589f0000000000000"
-      "0000700000000000000cb340000849f9c1300000000000000000600000000000000cb340"
-      "00002517d2400000000000000000700000000000000cb340000d519492c0000000000000"
-      "0000600000000000000cb340000532bd64f00000000000000000700000000000000cb340"
-      "0000ce84cf300000000000000000600000000000000cb340000f1f7a7e80000000000000"
-      "0000700000000000000cb340000ecbba96500000000000000000600000000000000cb340"
-      "00084a01e3000000000000000000700000000000000cb3400003f53cbc60000000000000"
-      "0000600000000000000cb3400001310debc00000000000000000700000000000000cb340"
-      "000c76e67a200000000000000000600000000000000cb340000f3cf9e8c0000000000000"
-      "0000700000000000000cb34000017e0201d00000000000000000600000000000000cb340"
-      "00006e6784000000000000000000700000000000000cb3400007651cba70000000000000"
-      "0000600000000000000cb340000bdf7d7b600000000000000003700000000000000cb340"
-      "0004657085300000000000000003600000000000000cb34000021e2d2ca0000000000000"
-      "000fb00000000000000cb340000300a00000000000000000000fb00000000000000cb340"
-      "000300a00000000000000000000fe00000000000000cb340000004000000000000000000"
-      "000fb00000000000000cb340000300a00000000000000000000";
+      "2, 5000000000000000d034000040c1eb0a00000000000000004f00000000000000d0340"
+      "0005ac4b85300000000000000005000000000000000d034000047a2537b0000000000000"
+      "0004f00000000000000d034000021e2d2ca00000000000000000700000000000000d0340"
+      "0004a34179b00000000000000000600000000000000d03400003239589f0000000000000"
+      "0000700000000000000d0340000849f9c1300000000000000000600000000000000d0340"
+      "00002517d2400000000000000000700000000000000d0340000d519492c0000000000000"
+      "0000600000000000000d0340000532bd64f00000000000000000700000000000000d0340"
+      "0000ce84cf300000000000000000600000000000000d0340000f1f7a7e80000000000000"
+      "0000700000000000000d0340000ecbba96500000000000000000600000000000000d0340"
+      "00084a01e3000000000000000000700000000000000d03400003f53cbc60000000000000"
+      "0000600000000000000d03400001310debc00000000000000000700000000000000d0340"
+      "000c76e67a200000000000000000600000000000000d0340000f3cf9e8c0000000000000"
+      "0000700000000000000d034000017e0201d00000000000000000600000000000000d0340"
+      "00006e6784000000000000000000700000000000000d03400007651cba70000000000000"
+      "0000600000000000000d0340000bdf7d7b600000000000000003700000000000000d0340"
+      "0004657085300000000000000003600000000000000d034000021e2d2ca0000000000000"
+      "000fb00000000000000d0340000300a00000000000000000000fb00000000000000d0340"
+      "000300a00000000000000000000fe00000000000000d0340000004000000000000000000"
+      "000fb00000000000000d0340000300a00000000000000000000";
   auto result = ASSERT_RESULT(conn.FetchAllAsString(query));
   if (choice) {
     ASSERT_EQ(result, expected_result1);
@@ -2595,7 +2617,7 @@ DROP TABLE tempTable2;
   LOG(INFO) << "result.size(): " << result.size();
   LOG(INFO) << "fingerprint: " << fingerprint;
   ASSERT_EQ(result.size(), 54564U);
-  ASSERT_EQ(fingerprint, 11398401310271930677UL);
+  ASSERT_EQ(fingerprint, 11276843017411745442UL);
 }
 
 TEST_F(PgCatalogVersionTest, InvalMessageAlterTableRefreshTest) {
@@ -2878,7 +2900,12 @@ TEST_F(PgCatalogVersionTest, InvalMessageYsqlUpgradeCommit3) {
   // The migrate sql is run under YSQL upgrade mode. Therefore its COMMIT is
   // considered as a DDL. There are two COMMIT statements. The first COMMIT
   // has got invalidation messages so it causes catalog version to increment
-  // from 1 to 2. Then the DROP VIEW statement causes catalog version to
+  // from 1 to 2.
+  //
+  // For the second transaction block:
+  // If Transactional DDL is enabled: the COMMIT is counted as a DDL and causes
+  // catalog version to increment from 2 to 3.
+  // Otherwise, the DROP VIEW statement causes catalog version to
   // increment from 2 to 3, the next CREATE OR REPLACE VIEW statement causes
   // catalog version to increment from 3 to 4. The last COMMIT statement got
   // 1 invalidation messages because even though there is no catalog table
@@ -2887,10 +2914,10 @@ TEST_F(PgCatalogVersionTest, InvalMessageYsqlUpgradeCommit3) {
   // captured by the call itself. Therefore the last COMMIT still causes
   // catalog version to increment.
   v = ASSERT_RESULT(GetCatalogVersion(&conn_yugabyte));
-  ASSERT_EQ(v, 5);
+  ASSERT_EQ(v, IsTransactionalDdlEnabled() ? 3 : 5);
   const auto count = ASSERT_RESULT(conn_yugabyte.FetchRow<PGUint64>(
       "SELECT COUNT(*) FROM pg_yb_invalidation_messages"));
-  ASSERT_EQ(count, 4);
+  ASSERT_EQ(count, IsTransactionalDdlEnabled() ? 2 : 4);
   auto query = "SELECT encode(messages, 'hex') FROM pg_yb_invalidation_messages "
                "WHERE current_version=$0"s;
 
@@ -2900,15 +2927,17 @@ TEST_F(PgCatalogVersionTest, InvalMessageYsqlUpgradeCommit3) {
 
   // version 3 messages.
   auto result3 = ASSERT_RESULT(conn_yugabyte.FetchAllAsString(Format(query, 3)));
-  ASSERT_EQ(result3.size(), 1248U);
+  ASSERT_EQ(result3.size(), IsTransactionalDdlEnabled() ? 2544U : 1248U);
 
-  // version 4 messages.
-  auto result4 = ASSERT_RESULT(conn_yugabyte.FetchAllAsString(Format(query, 4)));
-  ASSERT_EQ(result4.size(), 1344U);
+  if (!IsTransactionalDdlEnabled()) {
+    // version 4 messages.
+    auto result4 = ASSERT_RESULT(conn_yugabyte.FetchAllAsString(Format(query, 4)));
+    ASSERT_EQ(result4.size(), 1344U);
 
-  // version 5 messages.
-  auto result5 = ASSERT_RESULT(conn_yugabyte.FetchAllAsString(Format(query, 5)));
-  ASSERT_EQ(result5.size(), 48U);
+    // version 5 messages.
+    auto result5 = ASSERT_RESULT(conn_yugabyte.FetchAllAsString(Format(query, 5)));
+    ASSERT_EQ(result5.size(), 48U);
+  }
 }
 
 TEST_F(PgCatalogVersionTest, InvalMessageYsqlUpgradeCommit4) {
@@ -3533,6 +3562,58 @@ TEST_P(PgCatalogVersionConnManagerTest,
     // see the expected error immediately.
     ASSERT_NOK_STR_CONTAINS(ConnectToDBAsUser("test_db", "test_user"), expected_error);
   }
+}
+
+TEST_F(PgCatalogVersionTest, NewConnectionRelCachePreloadTest) {
+  // Wait a bit for the webserver background process to get ready to serve curl request.
+  SleepFor(2s);
+  auto conn_yugabyte = ASSERT_RESULT(Connect());
+  auto initialCount = GetNumRelCachePreloads();
+  LOG(INFO) << "initialCount: " << initialCount;
+  ASSERT_GT(initialCount, 0);
+  ASSERT_OK(conn_yugabyte.Execute("CREATE TABLE foo(id int)"));
+  // We should see the same number of relcache preloads.
+  ASSERT_EQ(GetNumRelCachePreloads(), initialCount);
+  const int loop_count = 10;
+  auto version = ASSERT_RESULT(GetCatalogVersion(&conn_yugabyte));
+  for (int i = 1; i <= loop_count; i++) {
+    ASSERT_OK(BumpCatalogVersion(1, &conn_yugabyte, i % 2 ? "NOSUPERUSER" : "SUPERUSER"));
+    auto new_version = ASSERT_RESULT(GetCatalogVersion(&conn_yugabyte));
+    ASSERT_EQ(new_version, version + i);
+    // Next connection is a new connection after a DDL, it needs to rebuild relcache.
+    auto conn = ASSERT_RESULT(Connect());
+    // Therefore the relcache rebuild counter should increment.
+    ASSERT_EQ(GetNumRelCachePreloads(), initialCount + i) << i;
+    // Next connection is a subsequent connection after a DDL, it does not rebuild relcache.
+    conn = ASSERT_RESULT(Connect());
+    // Therefore the relcache rebuild counter does not change.
+    ASSERT_EQ(GetNumRelCachePreloads(), initialCount + i);
+  }
+
+  // At this point, we have seen initialCount + loop_count relcache preloads.
+  ASSERT_EQ(GetNumRelCachePreloads(), initialCount + loop_count);
+  // Execute another DDL that increments the catalog version.
+  ASSERT_OK(BumpCatalogVersion(1, &conn_yugabyte, "NOSUPERUSER"));
+
+  // Concurrently creates a number of connections.
+  TestThreadHolder thread_holder;
+  for (int i = 0; i < loop_count; i++) {
+    thread_holder.AddThreadFunctor([this] {
+      auto conn = ASSERT_RESULT(Connect());
+    });
+  }
+  thread_holder.Stop();
+
+  // Some of them (we assert more than half) will all trying to do relcache preloads. Others will
+  // find relcache init file already rebuilt by other concurrent connections and is now valid so
+  // they will not do relcache preloads.
+  auto relcache_preloads = GetNumRelCachePreloads();
+  ASSERT_GE(relcache_preloads, initialCount + loop_count + loop_count / 2);
+  auto authorized_connections = GetNumAuthorizedConnections();
+  LOG(INFO) << "authorized_connections: " << authorized_connections;
+  // Total authorized connections should also include those "subsequent" connections that did
+  // not trigger relcache preload, so the number should be more than relcache_preloads.
+  ASSERT_GT(authorized_connections, relcache_preloads);
 }
 
 } // namespace pgwrapper

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.controllers.handlers;
 
@@ -7,6 +7,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
@@ -15,6 +16,7 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.YbcGflagsTaskParams;
+import com.yugabyte.yw.forms.YbcThrottleTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Universe;
@@ -176,13 +178,53 @@ public class YbcHandler {
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     taskParams.setUniverseUUID(universeUUID);
     taskParams.customerUUID = customerUUID;
-    UUID taskUUID = commissioner.submit(TaskType.UpgradeYbcGFlags, taskParams);
+    taskParams.verifyParams(universe, true /* isFirstTry */);
+    boolean isK8s =
+        universe
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .providerType
+            .equals(Common.CloudType.kubernetes);
+    UUID taskUUID =
+        commissioner.submit(
+            isK8s ? TaskType.UpgradeKubernetesYbcGFlags : TaskType.UpgradeYbcGFlags, taskParams);
     CustomerTask.create(
         customer,
         universeUUID,
         taskUUID,
         CustomerTask.TargetType.Universe,
-        CustomerTask.TaskType.UpgradeYbcGFlags,
+        isK8s
+            ? CustomerTask.TaskType.UpgradeKubernetesYbcGFlags
+            : CustomerTask.TaskType.UpgradeYbcGFlags,
+        universe.getName());
+    return taskUUID;
+  }
+
+  public UUID createSetThrottleParamsTask(
+      UUID customerUUID, UUID universeUUID, YbcThrottleTaskParams taskParams) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
+    taskParams.verifyParams(universe, true /* isFirstTry */);
+    boolean isK8s =
+        universe
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .providerType
+            .equals(Common.CloudType.kubernetes);
+    UUID taskUUID =
+        commissioner.submit(
+            isK8s ? TaskType.UpdateK8sYbcThrottleFlags : TaskType.UpdateYbcThrottleFlags,
+            taskParams);
+    CustomerTask.create(
+        customer,
+        universeUUID,
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        isK8s
+            ? CustomerTask.TaskType.UpdateK8sYbcThrottleFlags
+            : CustomerTask.TaskType.UpdateYbcThrottleFlags,
         universe.getName());
     return taskUUID;
   }

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.common;
 
@@ -113,51 +113,37 @@ public class XClusterUtil {
     }
   }
 
-  public static void dbScopedXClusterPreChecks(
-      Universe sourceUniverse, Universe targetUniverse, Set<String> dbIds) {
-    checkDbScopedXClusterSupported(sourceUniverse, targetUniverse);
-    checkDbScopedNonEmptyDbs(dbIds);
-
-    // TODO: Validate dbIds passed in exist on source universe.
-    // TODO: Validate namespace names exist on both source and target universe.
-  }
-
   public static XClusterTableConfig.Status dbStatusToTableStatus(
       XClusterNamespaceConfig.Status namespaceStatus) {
-    switch (namespaceStatus) {
-      case Failed:
-        return XClusterTableConfig.Status.Failed;
-      case Warning:
-        return XClusterTableConfig.Status.Warning;
-      case Updating:
-        return XClusterTableConfig.Status.Updating;
-      case Bootstrapping:
-        return XClusterTableConfig.Status.Bootstrapping;
-      case Validated:
-        return XClusterTableConfig.Status.Validated;
-      case Running:
-        return XClusterTableConfig.Status.Running;
-      default:
-        return XClusterTableConfig.Status.Error;
-    }
+    return switch (namespaceStatus) {
+      case Failed -> XClusterTableConfig.Status.Failed;
+      case Warning -> XClusterTableConfig.Status.Warning;
+      case Updating -> XClusterTableConfig.Status.Updating;
+      case Bootstrapping -> XClusterTableConfig.Status.Bootstrapping;
+      case Validated -> XClusterTableConfig.Status.Validated;
+      case Running -> XClusterTableConfig.Status.Running;
+      default -> XClusterTableConfig.Status.Error;
+    };
   }
 
-  public static void ensureYsqlMajorUpgradeIsComplete(
-      SoftwareUpgradeHelper softwareUpgradeHelper,
-      Universe sourceUniverse,
-      Universe targetUniverse) {
-    if (softwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(sourceUniverse)) {
+  public static void ensureUpgradeIsComplete(Universe sourceUniverse, Universe targetUniverse) {
+    if (!sourceUniverse
+        .getUniverseDetails()
+        .softwareUpgradeState
+        .equals(SoftwareUpgradeState.Ready)) {
       throw new PlatformServiceException(
           BAD_REQUEST,
-          "Cannot configure XCluster/DR config because YSQL major version upgrade on source"
-              + " universe is in progress.");
+          "Cannot configure XCluster/DR config because source universe is not in ready software"
+              + " upgrade state.");
     }
-
-    if (softwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(targetUniverse)) {
+    if (!targetUniverse
+        .getUniverseDetails()
+        .softwareUpgradeState
+        .equals(SoftwareUpgradeState.Ready)) {
       throw new PlatformServiceException(
           BAD_REQUEST,
-          "Cannot configure XCluster/DR config because YSQL major version upgrade on target"
-              + " universe is in progress.");
+          "Cannot configure XCluster/DR config because target universe is not in ready software"
+              + " upgrade state.");
     }
   }
 }

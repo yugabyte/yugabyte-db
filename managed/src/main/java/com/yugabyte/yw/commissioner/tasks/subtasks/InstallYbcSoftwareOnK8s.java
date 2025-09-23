@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
@@ -36,29 +36,33 @@ public class InstallYbcSoftwareOnK8s extends KubernetesTaskBase {
       Set<NodeDetails> allTservers = new HashSet<>();
       Set<NodeDetails> primaryTservers =
           new HashSet<NodeDetails>(universe.getTServersInPrimaryCluster());
+      Set<NodeDetails> replicaTservers = new HashSet<>();
       allTservers.addAll(primaryTservers);
-      /* This calls kubectl cp, it is idempotent */
-      installYbcOnThePods(
-          primaryTservers,
-          false,
-          taskParams().getYbcSoftwareVersion(),
-          universe.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags);
 
-      if (universe.getUniverseDetails().getReadOnlyClusters().size() != 0) {
-        Set<NodeDetails> replicaTservers =
-            new HashSet<NodeDetails>(
-                universe.getNodesInCluster(
-                    universe.getUniverseDetails().getReadOnlyClusters().get(0).uuid));
-        allTservers.addAll(replicaTservers);
+      if (!universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc()) {
+        /* This calls kubectl cp, it is idempotent */
         installYbcOnThePods(
-            replicaTservers,
-            true,
+            primaryTservers,
+            false,
             taskParams().getYbcSoftwareVersion(),
-            universe.getUniverseDetails().getReadOnlyClusters().get(0).userIntent.ybcFlags);
-        performYbcAction(replicaTservers, true, "stop");
-      }
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags);
+        performYbcAction(primaryTservers, false, "stop");
 
-      performYbcAction(primaryTservers, false, "stop");
+        if (universe.getUniverseDetails().getReadOnlyClusters().size() != 0) {
+          replicaTservers =
+              new HashSet<NodeDetails>(
+                  universe.getNodesInCluster(
+                      universe.getUniverseDetails().getReadOnlyClusters().get(0).uuid));
+          installYbcOnThePods(
+              replicaTservers,
+              true,
+              taskParams().getYbcSoftwareVersion(),
+              universe.getUniverseDetails().getReadOnlyClusters().get(0).userIntent.ybcFlags);
+          performYbcAction(replicaTservers, true, "stop");
+        }
+      }
+      allTservers.addAll(replicaTservers);
+
       createWaitForYbcServerTask(allTservers);
       createUpdateYbcTask(taskParams().getYbcSoftwareVersion())
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);

@@ -15,9 +15,9 @@
 # specific language governing permissions and limitations
 # under the License.
 #
-# The following only applies to changes made to this file as part of YugaByte development.
+# The following only applies to changes made to this file as part of YugabyteDB development.
 #
-# Portions Copyright (c) YugaByte, Inc.
+# Portions Copyright (c) YugabyteDB, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 # in compliance with the License.  You may obtain a copy of the License at
@@ -412,7 +412,7 @@ ADD_YB_TEST(rolling_log-test)
 ADD_YB_TEST(rw_mutex-test)
 ADD_YB_TEST(rw_semaphore-test)
 ADD_YB_TEST(rwc_lock-test)
-if (NOT "${YB_BUILD_TYPE}" STREQUAL "asan")
+if (NOT IS_ASAN)
   # We disable this test when Undefined Behavior Sanitizer turned on (which is enabled in ASAN
   # builds). This test involves some integer overflows.
   ADD_YB_TEST(safe_math-test)

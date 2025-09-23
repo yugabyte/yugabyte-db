@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks;
 
@@ -23,13 +23,14 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DoCapacityReservation;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -100,15 +101,17 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
   private void setupUniverse(Provider provider, boolean updateInProgress, int numOfNodes) {
     Region r = Region.create(provider, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
+    String instanceType =
+        provider.getCloudCode() == Common.CloudType.azu ? "Standard_D4as_v4" : "c3.xlarge";
     InstanceType i =
         InstanceType.upsert(
-            provider.getUuid(), "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+            provider.getUuid(), instanceType, 10, 5.5, new InstanceType.InstanceTypeDetails());
     UniverseDefinitionTaskParams.UserIntent userIntent =
         getTestUserIntent(r, provider, i, numOfNodes);
     userIntent.replicationFactor = numOfNodes;
     userIntent.masterGFlags = new HashMap<>();
     userIntent.tserverGFlags = new HashMap<>();
-    userIntent.universeName = "demo-universe";
+    userIntent.universeName = "universe-test";
 
     defaultUniverse =
         createUniverse(userIntent.universeName, defaultCustomer.getId(), provider.getCloudCode());
@@ -251,7 +254,8 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
 
   @Test
   public void testResumeUniverseWithCRAzureSuccess() {
-    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.enableCapacityReservationAzure.getKey(), "true");
+    RuntimeConfigEntry.upsertGlobal(
+        ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
     setupUniverse(azuProvider, false, 3);
     ResumeUniverse.Params taskParams = new ResumeUniverse.Params();
     taskParams.customerUUID = defaultCustomer.getUuid();
@@ -279,7 +283,7 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
 
   @Test
   public void testResumeUniverseWithCRAwsSuccess() {
-    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.enableCapacityReservationAws.getKey(), "true");
+    RuntimeConfigEntry.upsertGlobal(ProviderConfKeys.enableCapacityReservationAws.getKey(), "true");
     setupUniverse(defaultProvider, false, 3);
     ResumeUniverse.Params taskParams = new ResumeUniverse.Params();
     taskParams.customerUUID = defaultCustomer.getUuid();

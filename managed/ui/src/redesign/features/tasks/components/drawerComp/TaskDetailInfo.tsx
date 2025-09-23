@@ -1,7 +1,7 @@
 /*
  * Created on Wed Dec 20 2023
  *
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License")
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
@@ -17,7 +17,7 @@ import { fetchRootSubTaskDetails, getAuditLog } from '../diffComp/api';
 import { ybFormatDate } from '../../../../helpers/DateUtils';
 import { Badge_Types, StatusBadge } from '../../../../../components/common/badge/StatusBadge';
 import { TaskDrawerCompProps } from './dtos';
-import { Task, TaskStates, TaskType } from '../../dtos';
+import { Task, TaskState, TaskType } from '../../dtos';
 
 const useStyles = makeStyles((theme) => ({
   detailsInfo: {
@@ -67,18 +67,18 @@ type TaskInfo = {
 
 const getBadgeType = (status: Task['status']): Badge_Types => {
   switch (status) {
-    case TaskStates.CREATED:
-    case TaskStates.INITIALIZING:
-    case TaskStates.RUNNING:
+    case TaskState.CREATED:
+    case TaskState.INITIALIZING:
+    case TaskState.RUNNING:
       return Badge_Types.IN_PROGRESS;
-    case TaskStates.UNKNOWN:
+    case TaskState.UNKNOWN:
       return Badge_Types.SKIPPED;
-    case TaskStates.SUCCESS:
+    case TaskState.SUCCESS:
       return Badge_Types.SUCCESS;
-    case TaskStates.FAILURE:
+    case TaskState.FAILURE:
       return Badge_Types.FAILED;
-    case TaskStates.ABORTED:
-    case TaskStates.ABORT:
+    case TaskState.ABORTED:
+    case TaskState.ABORT:
       return Badge_Types.STOPPED;
   }
 };

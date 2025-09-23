@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -80,6 +80,8 @@ struct ReadOperationData;
 
 using DocKeyHash = uint16_t;
 using DocReadContextPtr = std::shared_ptr<const DocReadContext>;
+using DocRowwiseIteratorPtr = std::unique_ptr<DocRowwiseIterator>;
+
 template <typename LockManager>
 using LockBatchEntries = std::vector<LockBatchEntry<LockManager>>;
 // Lock state stores the number of locks acquired for each intent type.

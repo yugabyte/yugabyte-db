@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 import { Fragment, Component } from 'react';
 import { Row, Col, Alert } from 'react-bootstrap';

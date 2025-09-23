@@ -273,8 +273,8 @@ set pg_hint_plan.yb_use_query_id_for_hinting to on;
 
 delete from hint_plan.hints;
 
--- Query id is expected to be 662787253122415527 for 'select * from information_schema.columns'.
-INSERT INTO hint_plan.hints (norm_query_string, application_name, hints) VALUES ('6627872531224155272', '', 'Leading(((dep seq) ((co nco) (nt (((((c a) t) (bt nbt)) ad) nc))))) set(yb_prefer_bnl false) set(yb_enable_batchednl false) Set(from_collapse_limit 12) Set(join_collapse_limit 12) Set(geqo false)');
+-- Query id is expected to be 520905088486409542 for 'select * from information_schema.columns'.
+INSERT INTO hint_plan.hints (norm_query_string, application_name, hints) VALUES ('520905088486409542', '', 'Leading(((dep seq) ((co nco) (nt (((((c a) t) (bt nbt)) ad) nc))))) set(yb_prefer_bnl false) set(yb_enable_batchednl false) Set(from_collapse_limit 12) Set(join_collapse_limit 12) Set(geqo false)');
 
 select * from hint_plan.hints;
 
@@ -362,6 +362,11 @@ set yb_prefer_bnl to off;
  order by a1;
 
 reset yb_prefer_bnl;
+
+-- GH28072 - Make sure the internal hint test passes.
+set yb_enable_parallel_append = on;
+explain (hints on, costs off) SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.b = 0 ORDER BY t1.a, t2.b;
+reset yb_enable_parallel_append;
 
 -- NEGATIVE TESTS
 

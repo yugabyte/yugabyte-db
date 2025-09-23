@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -167,7 +167,7 @@ void CQLServer::CQLNodeListRefresh(const boost::system::error_code &ec) {
 
     // Queue NEW_NODE event for all the live tservers.
     for (const master::TSInformationPB& ts_info : live_tservers) {
-      const auto& hostport_pb = DesiredHostPort(ts_info.registration().common(), CloudInfoPB());
+      auto hostport_pb = DesiredHostPort(ts_info.registration().common(), CloudInfoPB());
       if (hostport_pb.host().empty()) {
         LOG (WARNING) << "Skipping TS since it doesn't have any rpc address: "
                       << ts_info.DebugString();

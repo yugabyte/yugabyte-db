@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2019 YugaByte, Inc. and Contributors
+# Copyright 2019 YugabyteDB, Inc. and Contributors
 #
 # Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
 # may not use this file except in compliance with the License. You
@@ -13,7 +13,7 @@ import logging
 import os
 import socket
 import subprocess
-
+import time
 import boto3
 from botocore.exceptions import ClientError
 from botocore.utils import InstanceMetadataFetcher
@@ -487,6 +487,34 @@ class AwsCloud(AbstractCloud):
     def create_instance(self, args):
         create_instance(args)
 
+    def _release_elastic_ip(self, client, elastic_ip):
+        max_attempts = 20
+        sleep_time_between_attempts = 3
+        try:
+            if "AssociationId" in elastic_ip:
+                # Idempotent operation, ignore if disassociate fails
+                client.disassociate_address(
+                    AssociationId=elastic_ip["AssociationId"]
+                )
+
+            client.release_address(
+                AllocationId=elastic_ip["AllocationId"]
+            )
+            for attempt in range(max_attempts):
+                time.sleep(sleep_time_between_attempts)
+                response = client.describe_addresses(
+                    AllocationIds=[elastic_ip["AllocationId"]]
+                )
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'InvalidAllocationId.NotFound':
+                logging.info(f"Elastic IP {elastic_ip['AllocationId']} released successfully")
+                return True
+            else:
+                logging.error(f"Error releasing elastic ip {elastic_ip['AllocationId']}: {e}")
+                return False
+        logging.error(f"Timed out releasing elastic ip {elastic_ip['AllocationId']}")
+        return False
+
     def delete_instance(self, region, instance_id, has_elastic_ip=False):
         logging.info("[app] Deleting AWS instance {} in region {}".format(
             instance_id, region))
@@ -503,12 +531,9 @@ class AwsCloud(AbstractCloud):
                         Filters=[{'Name': 'public-ip', 'Values': [public_ip_address]}]
                     )["Addresses"]
                     for elastic_ip in elastic_ip_list:
-                        client.disassociate_address(
-                            AssociationId=elastic_ip["AssociationId"]
-                        )
-                        client.release_address(
-                            AllocationId=elastic_ip["AllocationId"]
-                        )
+                        if not self._release_elastic_ip(client, elastic_ip):
+                            logging.warning("Failed to release Elastic IP {}".format(
+                                elastic_ip['AllocationId']))
                 logging.info("[app] Deleted elastic ip {}".format(public_ip_address))
 
         # persistent spot requests might have more than one instance associated with them

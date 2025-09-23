@@ -5824,14 +5824,6 @@ yb_exec_execute_message(long max_rows,
 
 	yb_exec_query_wrapper(exec_context, restart_data,
 						  &yb_exec_execute_message_impl, &ctx);
-
-	/*
-	 * Fetch the updated session execution stats at the end of each query, so
-	 * that stats don't accumulate across queries. The stats collected here
-	 * typically correspond to completed flushes, reads associated with triggers
-	 * etc.
-	 */
-	YbRefreshSessionStatsDuringExecution();
 }
 
 static void
@@ -7049,6 +7041,14 @@ PostgresMain(const char *dbname, const char *username)
 						ThrowErrorData(edata);
 					}
 					PG_END_TRY();
+					/*
+					 * Fetch the updated session execution stats at the end of each query, so
+					 * that stats don't accumulate across queries. The stats collected here
+					 * typically correspond to completed flushes, reads associated with triggers
+					 * etc. This is put here for the extended query protocol where the last
+					 * packet is 'S'.
+					 */
+					YbRefreshSessionStatsDuringExecution();
 					send_ready_for_query = true;
 				}
 				break;

@@ -172,6 +172,7 @@ message InstallOtelCollectorInput {
     string otelColAwsSecretKey = 7;
     string otelColGcpCredsFile = 8;
     string remoteTmp = 9;
+    uint32 otelColMaxMemory = 10;
 }
 
 message InstallOtelCollectorOutput {

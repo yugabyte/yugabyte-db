@@ -17,8 +17,6 @@ import {
 import { formatDatetime } from '../../helpers/DateUtils';
 import { DeleteContinuousBackupConfigModal } from './DeleteContinuousBackupConfigModal';
 
-const TRANSLATION_KEY_PREFIX = 'continuousBackup.continuousBackupCard';
-
 interface ContinuousBackupCardProps {
   continuousBackupConfig: ContinuousBackup;
 }
@@ -100,6 +98,7 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 const RECENT_BACKUP_THRESHOLD_HOURS = 24;
+const TRANSLATION_KEY_PREFIX = 'continuousBackup.continuousBackupCard';
 
 export const ContinuousBackupCard = ({ continuousBackupConfig }: ContinuousBackupCardProps) => {
   const [isConfigureContinuousBackupModalOpen, setIsConfigureContinuousBackupModalOpen] = useState(

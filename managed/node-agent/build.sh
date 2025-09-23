@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright (c) YugaByte, Inc.
+# Copyright (c) YugabyteDB, Inc.
 
 set -euo pipefail
 

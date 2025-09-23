@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 import LogoFull from './images/yb_yblogo_darkbg.svg';
 import LogoMonochrome from './images/yb_yblogo_whitebg.svg';

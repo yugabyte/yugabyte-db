@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Copyright (c) YugaByte, Inc.
+# Copyright (c) YugabyteDB, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 # in compliance with the License.  You may obtain a copy of the License at
@@ -484,7 +484,7 @@ class PostgresBuilder(YbBuildToolBase):
                 if self.is_gcc():
                     additional_c_cxx_flags += ['-Wno-error=strict-overflow']
 
-            if self.build_type == 'asan':
+            if self.build_type in ['asan', 'asan_release']:
                 additional_c_cxx_flags += [
                     '-fsanitize-recover=signed-integer-overflow',
                     '-fsanitize-recover=shift-base',
@@ -556,7 +556,7 @@ class PostgresBuilder(YbBuildToolBase):
             self.thirdparty_dir, 'installed', 'common', 'bin')
         os.environ['PATH'] = ':'.join([thirdparty_installed_common_bin_path] + self.original_path)
 
-        if self.build_type == 'tsan':
+        if self.build_type == 'tsan' or self.build_type == 'tsan_release':
             self.set_env_var('TSAN_OPTIONS', os.getenv('TSAN_OPTIONS', '') + ' report_bugs=0')
             logging.info("TSAN_OPTIONS for Postgres build: %s", os.getenv('TSAN_OPTIONS'))
 
@@ -640,11 +640,12 @@ class PostgresBuilder(YbBuildToolBase):
             configure_cmd_line.append('--config-cache')
 
         # We get readline-related errors in ASAN/TSAN, so let's disable readline there.
-        if self.build_type in ['asan', 'tsan']:
+        if self.build_type in ['asan', 'asan_release', 'tsan', 'tsan_slow', 'tsan_release']:
             # TODO: do we still need this limitation?
             configure_cmd_line += ['--without-readline']
 
-        if self.build_type not in ['release', 'prof_gen', 'prof_use']:
+        if self.build_type not in \
+                ['asan_release', 'tsan_release', 'release', 'prof_gen', 'prof_use']:
             configure_cmd_line += ['--enable-cassert']
         # Unset YB_SHOW_COMPILER_COMMAND_LINE when configuring postgres to avoid unintended side
         # effects from additional compiler output.

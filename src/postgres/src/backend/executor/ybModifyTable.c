@@ -3,7 +3,7 @@
  * ybModifyTable.c
  *        YB routines to stmt_handle ModifyTable nodes.
  *
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License.  You may obtain a copy of the License at
@@ -237,6 +237,7 @@ YBCExecWriteStmt(YbcPgStatement ybc_stmt,
 				 int *rows_affected_count)
 {
 	YbSetCatalogCacheVersion(ybc_stmt, YbGetCatalogCacheVersion());
+	YbMaybeSetNonSystemTablespaceOid(ybc_stmt, rel);
 
 	bool		is_syscatalog_version_inc = YbMarkStatementIfCatalogVersionIncrement(ybc_stmt, rel);
 

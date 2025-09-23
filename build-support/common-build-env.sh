@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Copyright (c) YugaByte, Inc.
+# Copyright (c) YugabyteDB, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 # in compliance with the License.  You may obtain a copy of the License at
@@ -202,11 +202,13 @@ YB_NFS_DOWNLOAD_CACHE_DIR=${YB_NFS_DOWNLOAD_CACHE_DIR:-$YB_JENKINS_NFS_HOME_DIR/
 
 readonly -a VALID_BUILD_TYPES=(
   asan
+  asan_release
   compilecmds
   debug
   fastdebug
   release
   tsan
+  tsan_release
   tsan_slow
   pvs
   prof_gen
@@ -219,13 +221,13 @@ make_regex_from_list VALID_BUILD_TYPES "${VALID_BUILD_TYPES[@]}"
 readonly -a VALID_CMAKE_BUILD_TYPES=(
   debug
   fastdebug
+  release_asserts
   release
 )
 make_regex_from_list VALID_CMAKE_BUILD_TYPES "${VALID_CMAKE_BUILD_TYPES[@]}"
 
 readonly -a VALID_COMPILER_TYPES=(
   gcc
-  gcc11
   gcc12
   gcc13
   clang
@@ -567,23 +569,32 @@ set_default_compiler_type() {
 }
 
 is_clang() {
-  if [[ $YB_COMPILER_TYPE == clang* ]]; then
-    return 0
-  else
-    return 1
-  fi
+  expect_vars_to_be_set YB_COMPILER_TYPE
+  [[ $YB_COMPILER_TYPE == clang* ]]
 }
 
 is_gcc() {
-  if [[ $YB_COMPILER_TYPE == "gcc" ]]; then
-    return 0
-  else
-    return 1
-  fi
+  expect_vars_to_be_set YB_COMPILER_TYPE
+  [[ $YB_COMPILER_TYPE == gcc* ]]
 }
 
 is_ubuntu() {
   [[ -f /etc/issue ]] && grep -q Ubuntu /etc/issue
+}
+
+is_sanitizer() {
+  expect_vars_to_be_set build_type
+  [[ $build_type =~ ^(asan|tsan) ]]
+}
+
+is_asan() {
+  expect_vars_to_be_set build_type
+  [[ $build_type =~ ^asan ]]
+}
+
+is_tsan() {
+  expect_vars_to_be_set build_type
+  [[ $build_type =~ ^tsan ]]
 }
 
 set_compiler_type_based_on_jenkins_job_name() {
@@ -676,7 +687,10 @@ set_cmake_build_type_and_compiler_type() {
 
   case "$build_type" in
     asan)
-      cmake_build_type=fastdebug
+      cmake_build_type=release_asserts
+    ;;
+    asan_release)
+      cmake_build_type=release
     ;;
     compilecmds)
       cmake_build_type=debug
@@ -690,7 +704,10 @@ set_cmake_build_type_and_compiler_type() {
       export YB_REMOTE_COMPILATION=0
     ;;
     tsan)
-      cmake_build_type=fastdebug
+      cmake_build_type=release_asserts
+    ;;
+    tsan_release)
+      cmake_build_type=release
     ;;
     tsan_slow)
       cmake_build_type=debug
@@ -710,7 +727,7 @@ set_cmake_build_type_and_compiler_type() {
   readonly YB_COMPILER_TYPE
   export YB_COMPILER_TYPE
 
-  if [[ $build_type =~ ^(asan|tsan|tsan_slow)$ && $YB_COMPILER_TYPE == gcc* ]]; then
+  if is_sanitizer && is_gcc ; then
     fatal "Build type $build_type not supported with compiler type $YB_COMPILER_TYPE." \
           "Sanitizers are only supported with Clang."
   fi
@@ -1318,7 +1335,7 @@ download_toolchain() {
     else
       local llvm_major_version=${YB_LLVM_MAJOR_VERSION_FOR_GCC}
     fi
-    if [[ ${build_type} =~ ^(asan|tsan)$ ]]; then
+    if is_sanitizer ; then
       # For ASAN and possibly TSAN builds, we need to use the same LLVM toolchain that was used
       # to build the third-party dependencies, so that the compiler-rt libraries match.
       local thirdparty_llvm_url_file_path=${YB_THIRDPARTY_DIR}/toolchain_url.txt
@@ -2594,7 +2611,7 @@ set_prebuilt_thirdparty_url() {
         # Transform "thin-lto" or "full-lto" into "thin" or "full" respectively.
         thirdparty_tool_cmd_line+=( "--lto=${YB_LINKING_TYPE%%-lto}" )
       fi
-      if [[ ! ${build_type} =~ ^(asan|tsan)$ && ${YB_COMPILER_TYPE} == clang* ]]; then
+      if ! is_sanitizer && is_clang ; then
         thirdparty_tool_cmd_line+=( "--allow-older-os" )
       fi
       "${thirdparty_tool_cmd_line[@]}"

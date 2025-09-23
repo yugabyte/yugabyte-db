@@ -2348,7 +2348,7 @@
         }
       }
     },
-    "copyright": "Copyright {{year}} YugaByte, Inc. All rights reserved.",
+    "copyright": "Copyright {{year}} YugabyteDB, Inc. All rights reserved.",
     "weekday": {
       "short": {
         "Sun": "S",

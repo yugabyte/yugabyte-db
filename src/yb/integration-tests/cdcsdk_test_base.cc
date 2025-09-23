@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -563,6 +563,7 @@ Result<GetChangesResponsePB> CDCSDKTestBase::GetChangesFromMaster(
   change_req.set_tablet_id(master::kSysCatalogTabletId);
   change_req.set_wal_segment_index(0);
   change_req.set_safe_hybrid_time(-1);
+  change_req.set_cdcsdk_request_source(CDCSDKRequestSource::WALSENDER);
 
   rpc::RpcController change_rpc;
   change_rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));

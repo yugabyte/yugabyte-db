@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks;
 
@@ -23,7 +23,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.DoCapacityReservation;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -206,8 +206,9 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
 
   @Test
   public void testCreateRRWithCapacityReservationAzureSuccess() {
-    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.enableCapacityReservationAzure.getKey(), "true");
-    String rrInstanceType = "m5.superlarge";
+    RuntimeConfigEntry.upsertGlobal(
+        ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
+    String rrInstanceType = "Standard_D4as_v4";
     Region region = Region.create(azuProvider, "region-1", "region-1", "yb-image");
     Universe universe = createUniverseForProvider("universe-test", azuProvider);
     UniverseConfigureTaskParams taskParams = new UniverseConfigureTaskParams();
@@ -258,7 +259,7 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
 
   @Test
   public void testCreateRRWithCapacityReservationAwsSuccess() {
-    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.enableCapacityReservationAws.getKey(), "true");
+    RuntimeConfigEntry.upsertGlobal(ProviderConfKeys.enableCapacityReservationAws.getKey(), "true");
     String rrInstanceType = "m5.superlarge";
     Region region = Region.getByCode(defaultProvider, "region-1");
     Universe universe = createUniverseForProvider("universe-test", defaultProvider);

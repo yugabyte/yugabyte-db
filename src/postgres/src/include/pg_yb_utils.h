@@ -4,7 +4,7 @@
  * Utilities for YugaByte/PostgreSQL integration that have to be defined on the
  * PostgreSQL side.
  *
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License.  You may obtain a copy
@@ -196,6 +196,11 @@ extern bool IsYBBackedRelation(Relation relation);
  */
 extern bool YbIsTempRelation(Relation relation);
 
+/*
+ * Returns true if the relation has temp persistence.
+ * Returns false for all other relations, or if they are not found.
+ */
+extern bool YbIsRangeVarTempRelation(const RangeVar *relation);
 /*
  * Returns whether a relation's attribute is a real column in the backing
  * YugaByte table. (It implies we can both read from and write to it).
@@ -802,6 +807,11 @@ extern bool yb_xcluster_automatic_mode_target_ddl;
 extern bool yb_user_ddls_preempt_auto_analyze;
 
 /*
+* If true, enable RPC execution time stats for pg_stat_statements.
+ */
+extern bool yb_enable_pg_stat_statements_rpc_stats;
+
+/*
  * See also ybc_util.h which contains additional such variable declarations for
  * variables that are (also) used in the pggate layer.
  * Currently: yb_debug_log_docdb_requests.
@@ -865,12 +875,6 @@ typedef enum YbSysCatalogModificationAspect
 	YB_SYS_CAT_MOD_ASPECT_ALTERING_EXISTING_DATA = 1,
 	YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT = 2,
 	YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE = 4,
-	/*
-	 * Indicates if the statement runs in an autonomous transaction when
-	 * transactional DDL support is enabled.
-	 * Always unset if yb_ddl_transaction_block_enabled is false.
-	 */
-	YB_SYS_CAT_MOD_ASPECT_AUTONOMOUS_TRANSACTION_CHANGE = 8,
 } YbSysCatalogModificationAspect;
 
 typedef enum YbDdlMode
@@ -885,11 +889,6 @@ typedef enum YbDdlMode
 	YB_DDL_MODE_BREAKING_CHANGE = (YB_SYS_CAT_MOD_ASPECT_ALTERING_EXISTING_DATA |
 								   YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT |
 								   YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE),
-
-	YB_DDL_MODE_AUTONOMOUS_TRANSACTION_CHANGE_VERSION_INCREMENT =
-		(YB_SYS_CAT_MOD_ASPECT_ALTERING_EXISTING_DATA |
-		 YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT |
-		 YB_SYS_CAT_MOD_ASPECT_AUTONOMOUS_TRANSACTION_CHANGE),
 } YbDdlMode;
 
 void		YBIncrementDdlNestingLevel(YbDdlMode mode);
@@ -906,13 +905,14 @@ typedef struct YbDdlModeOptional
 
 extern YbDdlMode YBGetCurrentDdlMode();
 extern YbDdlModeOptional YbGetDdlMode(PlannedStmt *pstmt,
-									  ProcessUtilityContext context);
+									  ProcessUtilityContext context,
+									  bool *requires_autonomous_transaction);
 void		YBAddModificationAspects(YbDdlMode mode);
 
 extern void YBBeginOperationsBuffering();
 extern void YBEndOperationsBuffering();
 extern void YBResetOperationsBuffering();
-extern void YBFlushBufferedOperations(YbcFlushDebugContext debug_context);
+extern void YBFlushBufferedOperations(YbcFlushDebugContext *debug_context);
 extern void YBAdjustOperationsBuffering(int multiple);
 
 bool		YBEnableTracing();
@@ -1183,6 +1183,8 @@ void		YbSetMetricsCaptureType(YbcPgMetricsCaptureType metrics_capture);
 extern void YBCheckServerAccessIsAllowed();
 
 void		YbSetCatalogCacheVersion(YbcPgStatement handle, uint64_t version);
+
+extern void	YbMaybeSetNonSystemTablespaceOid(YbcPgStatement handle, Relation rel);
 
 uint64_t	YbGetSharedCatalogVersion();
 uint32_t	YbGetNumberOfDatabases();

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -72,7 +72,7 @@ DECLARE_bool(TEST_export_wait_state_names);
 DECLARE_bool(ysql_enable_db_catalog_version_mode);
 DECLARE_int32(ysql_yb_ash_sample_size);
 DECLARE_bool(ysql_yb_enable_consistent_replication_from_hash_range);
-DECLARE_bool(TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication);
+DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 
 extern int yb_locks_min_txn_age;
 extern int yb_locks_max_transactions;
@@ -1485,7 +1485,7 @@ class PgClient::Impl : public BigDataFetcher {
       *req.add_table_id() = table_id.GetYbTableId();
     }
 
-    if (FLAGS_TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
+    if (FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
       for (const auto& publication_oid : publication_oids) {
         req.add_publication_oid(publication_oid);
       }
@@ -1578,8 +1578,9 @@ class PgClient::Impl : public BigDataFetcher {
     return resp;
   }
 
-  Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata() {
+  Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata(bool local_only) {
     tserver::PgTabletsMetadataRequestPB req;
+    req.set_local_only(local_only);
     tserver::PgTabletsMetadataResponsePB resp;
 
     RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::TabletsMetadata,
@@ -2051,8 +2052,8 @@ Result<cdc::UpdateAndPersistLSNResponsePB> PgClient::UpdateAndPersistLSN(
   return impl_->UpdateAndPersistLSN(stream_id, restart_lsn, confirmed_flush);
 }
 
-Result<tserver::PgTabletsMetadataResponsePB> PgClient::TabletsMetadata() {
-  return impl_->TabletsMetadata();
+Result<tserver::PgTabletsMetadataResponsePB> PgClient::TabletsMetadata(bool local_only) {
+  return impl_->TabletsMetadata(local_only);
 }
 
 Result<tserver::PgServersMetricsResponsePB> PgClient::ServersMetrics() {

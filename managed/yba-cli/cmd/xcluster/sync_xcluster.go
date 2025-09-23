@@ -1,5 +1,5 @@
 /*
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  */
 
 package xcluster
@@ -56,7 +56,7 @@ var syncXClusterCmd = &cobra.Command{
 
 		rTask, response, err := authAPI.SyncXClusterConfig(uuid).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "XCluster", "Sync")
+			errMessage := util.ErrorFromHTTPResponse(response, err, "xCluster", "Sync")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
@@ -79,8 +79,8 @@ var syncXClusterCmd = &cobra.Command{
 				errMessage := util.ErrorFromHTTPResponse(
 					response,
 					err,
-					"XCluster",
-					"Sync - Get XCluster",
+					"xCluster",
+					"Sync - Get xCluster",
 				)
 				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 			}

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.common.audit.otel;
 
@@ -65,7 +65,14 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
   public void setUp() {
     new File(OTEL_COL_TMP_PATH).mkdir();
     generator = app.injector().instanceOf(OtelCollectorConfigGenerator.class);
+
+    // Configure mockTelemetryProviderService with proper behavior
     doNothing().when(mockTelemetryProviderService).validateBean(any());
+
+    // Configure save to return the input provider (like a real save would)
+    when(mockTelemetryProviderService.save(any(TelemetryProvider.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+
     customer = ModelFactory.testCustomer();
     provider = ModelFactory.awsProvider(customer);
     universe =
@@ -115,6 +122,10 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     telemetryProvider.setTags(tags);
     telemetryProvider.setConfig(config);
     mockTelemetryProviderService.save(telemetryProvider);
+
+    // Mock getOrBadRequest to return this provider when requested by UUID
+    when(mockTelemetryProviderService.getOrBadRequest(uuid)).thenReturn(telemetryProvider);
+
     return telemetryProvider;
   }
 
@@ -585,7 +596,7 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     metricsExporterConfig.setSendBatchSize(500);
     metricsExporterConfig.setSendBatchMaxSize(1000);
     metricsExporterConfig.setSendBatchTimeoutSeconds(5);
-    metricsExporterConfig.setMetricsPrefix("ybdb.");
+    metricsExporterConfig.setMetricsPrefix("");
 
     generateAndAssertConfig(null, null, metricsExportConfig, "audit/metrics_datadog_config.yml");
   }
@@ -700,5 +711,63 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
 
     generateAndAssertConfig(
         null, null, metricsExportConfig, "audit/metrics_minimal_level_config.yml");
+  }
+
+  @Test
+  public void generateOtelColConfigMetricsWithDynatrace() {
+    TelemetryProvider telemetryProvider = new TelemetryProvider();
+    telemetryProvider.setUuid(new UUID(0, 0));
+    telemetryProvider.setCustomerUUID(customer.getUuid());
+    telemetryProvider.setName("Dynatrace");
+    telemetryProvider.setTags(ImmutableMap.of("tag", "value"));
+    DynatraceConfig config = new DynatraceConfig();
+    config.setType(ProviderType.DYNATRACE);
+    config.setEndpoint("https://test.live.dynatrace.com");
+    config.setApiToken("dynatrace-api-token");
+    telemetryProvider.setConfig(config);
+    mockTelemetryProviderService.save(telemetryProvider);
+
+    // Mock the getOrBadRequest method to return our telemetry provider
+    when(mockTelemetryProviderService.getOrBadRequest(telemetryProvider.getUuid()))
+        .thenReturn(telemetryProvider);
+
+    MetricsExportConfig metricsExportConfig = new MetricsExportConfig();
+    metricsExportConfig.setScrapeIntervalSeconds(15);
+    metricsExportConfig.setScrapeTimeoutSeconds(10);
+    metricsExportConfig.setCollectionLevel(MetricCollectionLevel.NORMAL);
+
+    UniverseMetricsExporterConfig metricsExporterConfig = new UniverseMetricsExporterConfig();
+    metricsExporterConfig.setExporterUuid(telemetryProvider.getUuid());
+    metricsExporterConfig.setAdditionalTags(ImmutableMap.of("env", "prod", "region", "us-west"));
+    metricsExporterConfig.setSendBatchSize(500);
+    metricsExporterConfig.setSendBatchMaxSize(1000);
+    metricsExporterConfig.setSendBatchTimeoutSeconds(5);
+    metricsExporterConfig.setMetricsPrefix("ybdb.");
+
+    metricsExportConfig.setUniverseMetricsExporterConfig(ImmutableList.of(metricsExporterConfig));
+
+    generateAndAssertConfig(null, null, metricsExportConfig, "audit/dt_config.yml");
+  }
+
+  @Test
+  public void testDynatraceEndpointTrailingSlashHandling() {
+    // Test that trailing slashes are handled correctly
+    DynatraceConfig config = new DynatraceConfig();
+    config.setEndpoint("https://test.live.dynatrace.com/");
+
+    // Should return endpoint without trailing slash
+    assertThat(config.getCleanEndpoint(), equalTo("https://test.live.dynatrace.com"));
+
+    // Test with no trailing slash
+    config.setEndpoint("https://test.live.dynatrace.com");
+    assertThat(config.getCleanEndpoint(), equalTo("https://test.live.dynatrace.com"));
+
+    // Test with multiple trailing slashes
+    config.setEndpoint("https://test.live.dynatrace.com///");
+    assertThat(config.getCleanEndpoint(), equalTo("https://test.live.dynatrace.com"));
+
+    // Test with null endpoint
+    config.setEndpoint(null);
+    assertThat(config.getCleanEndpoint(), equalTo(null));
   }
 }

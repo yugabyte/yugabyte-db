@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Copyright (c) YugaByte, Inc.
+# Copyright (c) YugabyteDB, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 # in compliance with the License.  You may obtain a copy of the License at
@@ -14,7 +14,7 @@
 #
 
 """
-Copyright (c) YugaByte, Inc.
+Copyright (c) YugabyteDB, Inc.
 
 Finds all Linux dynamic libraries that have to be packaged with the YugabyteDB distribution tarball
 by starting from a small set of executables and walking the dependency graph. Creates a
@@ -38,6 +38,7 @@ from queue import Queue
 
 from yugabyte.command_util import run_program, mkdir_p, copy_deep
 from yugabyte.common_util import (
+    get_llvm_toolchain_dir,
     get_thirdparty_dir,
     sorted_grouped_by,
     YB_SRC_ROOT,
@@ -111,6 +112,9 @@ class DependencyCategory(enum.Enum):
     # Binaries built as part of yugabyte-db-thirdparty
     YB_THIRDPARTY = 'yb-thirdparty'
 
+    # Binaries built as part of llvm-installer (only used for sanitizers)
+    LLVM_INSTALLER = 'llvm-installer'
+
     LINUXBREW = 'linuxbrew'
 
     # Libraries residing in system-wide library directories. We do not copy these.
@@ -133,6 +137,7 @@ class DependencyCategory(enum.Enum):
 CATEGORIES_FOR_RPATH = [
     DependencyCategory.YB,
     DependencyCategory.YB_THIRDPARTY,
+    DependencyCategory.LLVM_INSTALLER,
     DependencyCategory.POSTGRES
 ]
 
@@ -187,10 +192,13 @@ class Dependency:
             return self.category
 
         linuxbrew_home = get_linuxbrew_home()
+        llvm_toolchain_dir = get_llvm_toolchain_dir()
         if linuxbrew_home is not None and linuxbrew_home.path_is_in_linuxbrew_dir(self.target):
             self.category = DependencyCategory.LINUXBREW
         elif self.target.startswith(get_thirdparty_dir() + '/'):
             self.category = DependencyCategory.YB_THIRDPARTY
+        elif llvm_toolchain_dir and self.target.startswith(llvm_toolchain_dir + '/'):
+            self.category = DependencyCategory.LLVM_INSTALLER
         elif self.target.startswith(self.context.build_dir + '/postgres/'):
             self.category = DependencyCategory.POSTGRES
         elif self.target.startswith(self.context.build_dir + '/'):
@@ -218,6 +226,7 @@ class Dependency:
              "(yugabyte / yb-thirdparty / linuxbrew / system): '{}'. "
              "Does not reside in the Linuxbrew directory ({}), "
              "YB third-party directory ('{}'), "
+             "YB llvm-installer directory ('{}'), "
              "YB build directory ('{}'), "
              "YB general-purpose script directory ('{}'), "
              "YB build support script directory ('{}'), "
@@ -226,6 +235,7 @@ class Dependency:
                 self.target,
                 linuxbrew_dir_str,
                 get_thirdparty_dir(),
+                llvm_toolchain_dir,
                 self.context.build_dir,
                 YB_SCRIPT_BIN_DIR,
                 YB_BUILD_SUPPORT_DIR,

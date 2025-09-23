@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -147,9 +147,19 @@ uint32_t YBCAshNormalizeComponentForTServerEvents(uint32_t code, bool component_
 
 int YBCGetCallStackFrames(void** result, int max_depth, int skip_count);
 
+bool YBCIsInitDbModeEnvVarSet();
+
 bool YBIsMajorUpgradeInitDb();
 
 const char *YBCGetOutFuncName(YbcPgOid typid);
+
+typedef void (*YbcUpdateInitPostgresMetricsFn)(void);
+void YBCSetUpdateInitPostgresMetricsFn(YbcUpdateInitPostgresMetricsFn foo);
+void YBCUpdateInitPostgresMetrics();
+
+// Partition key hash decoding helpers
+uint16_t YBCDecodeMultiColumnHashLeftBound(const char* partition_key, size_t key_len);
+uint16_t YBCDecodeMultiColumnHashRightBound(const char* partition_key, size_t key_len);
 
 #ifdef __cplusplus
 } // extern "C"

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
@@ -107,8 +107,7 @@ public class FinalizeUpgradeTest extends UpgradeTaskTest {
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseState);
     assertTaskType(subTasksByPosition.get(position++), TaskType.PromoteAutoFlags);
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunYsqlUpgrade);
-    assertTaskType(
-        subTasksByPosition.get(position++), TaskType.UpdatePitrConfigIntermittentMinRecoverTime);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.EnablePitrConfig);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseState);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UniverseUpdateSucceeded);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
@@ -136,8 +135,7 @@ public class FinalizeUpgradeTest extends UpgradeTaskTest {
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseState);
     assertTaskType(subTasksByPosition.get(position++), TaskType.PromoteAutoFlags);
-    assertTaskType(
-        subTasksByPosition.get(position++), TaskType.UpdatePitrConfigIntermittentMinRecoverTime);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.EnablePitrConfig);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseState);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UniverseUpdateSucceeded);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
@@ -176,8 +174,7 @@ public class FinalizeUpgradeTest extends UpgradeTaskTest {
     assertTaskType(subTasksByPosition.get(position++), TaskType.PromoteAutoFlags);
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunYsqlUpgrade);
     assertTaskType(subTasksByPosition.get(position++), TaskType.ManageCatalogUpgradeSuperUser);
-    assertTaskType(
-        subTasksByPosition.get(position++), TaskType.UpdatePitrConfigIntermittentMinRecoverTime);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.EnablePitrConfig);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseState);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UniverseUpdateSucceeded);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);

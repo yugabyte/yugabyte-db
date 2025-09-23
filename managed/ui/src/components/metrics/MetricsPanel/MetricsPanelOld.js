@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 // TODO: Entire file needs to be removed once Top K metrics is tested and integrated fully
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';

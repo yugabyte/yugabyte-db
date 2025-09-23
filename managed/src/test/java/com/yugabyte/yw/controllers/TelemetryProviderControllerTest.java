@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -16,6 +16,7 @@ import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doNothing;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
@@ -32,6 +33,8 @@ import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TelemetryProviderServiceTest;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -54,13 +57,24 @@ public class TelemetryProviderControllerTest extends FakeDBApplication {
     authToken = user.createAuthToken();
     RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.dbAuditLoggingEnabled.getKey(), "true");
     RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.telemetryAllowLoki.getKey(), "true");
+    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.telemetryAllowS3.getKey(), "true");
 
-    doNothing().when(mockTelemetryProviderService).validateBean(any());
-    doNothing().when(mockTelemetryProviderService).validateTelemetryProvider(any());
     doNothing().when(mockTelemetryProviderService).throwExceptionIfRuntimeFlagDisabled();
+    doNothing().when(mockTelemetryProviderService).validateTelemetryProvider(any());
+    doCallRealMethod().when(mockTelemetryProviderService).list(any(UUID.class));
+    doCallRealMethod().when(mockTelemetryProviderService).list(any(Set.class));
+    doCallRealMethod().when(mockTelemetryProviderService).save(any());
+    doCallRealMethod()
+        .when(mockTelemetryProviderService)
+        .checkIfExists(any(UUID.class), any(UUID.class));
+    doCallRealMethod().when(mockTelemetryProviderService).getOrBadRequest(any(), any());
+    doCallRealMethod().when(mockTelemetryProviderService).getOrBadRequest(any(UUID.class));
+    doCallRealMethod().when(mockTelemetryProviderService).get(any(UUID.class));
+    doCallRealMethod().when(mockTelemetryProviderService).isProviderInUse(any(), any());
+    doCallRealMethod().when(mockTelemetryProviderService).delete(any(UUID.class));
     doNothing()
         .when(mockTelemetryProviderService)
-        .throwExceptionIfLokiExporterRuntimeFlagDisabled(any());
+        .throwRuntimeFlagDisabledForExporterTypeException(any());
   }
 
   @Test

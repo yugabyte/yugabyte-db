@@ -27,8 +27,10 @@
 
 namespace yb::pggate {
 
-ExplicitRowLockBuffer::ExplicitRowLockBuffer(YbctidReaderProvider& reader_provider)
-    : reader_provider_(reader_provider) {}
+ExplicitRowLockBuffer::ExplicitRowLockBuffer(
+    YbctidReaderProvider& reader_provider,
+    const TablespaceMap& tablespace_map)
+    : reader_provider_(reader_provider), tablespace_map_(tablespace_map) {}
 
 Status ExplicitRowLockBuffer::Add(
     const Info& info, const LightweightTableYbctid& key, bool is_region_local,
@@ -79,7 +81,7 @@ Status ExplicitRowLockBuffer::DoFlushImpl() {
     reader.Add(intent);
   }
   const auto existing_ybctids_count = VERIFY_RESULT(reader.Read(
-      info_->database_id, region_local_tables_,
+      info_->database_id, region_local_tables_, tablespace_map_,
       make_lw_function(
           [&info = *info_](YbcPgExecParameters& params) {
             params.rowmark = info.rowmark;

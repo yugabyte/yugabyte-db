@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 YugaByte, Inc. and Contributors
+ * Copyright 2019 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -56,6 +56,7 @@ import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.yb.CommonTypes.TableType;
 import play.libs.Json;
 
@@ -127,12 +128,16 @@ public class CreateBackup extends UniverseTaskBase {
         // Clear any previous subtasks if any.
         getRunnableTask().reset();
 
-        if (isFirstTry()) {
-          if (ybcBackup && universe.isYbcEnabled()) {
-            if (!universe
+        if (isFirstTry()
+            && !universe
                 .getUniverseDetails()
-                .getYbcSoftwareVersion()
-                .equals(ybcManager.getStableYbcVersion())) {
+                .getPrimaryCluster()
+                .userIntent
+                .isUseYbdbInbuiltYbc()) {
+          if (ybcBackup && universe.isYbcEnabled()) {
+            if (!StringUtils.equals(
+                universe.getUniverseDetails().getYbcSoftwareVersion(),
+                ybcManager.getStableYbcVersion())) {
               if (universe
                   .getUniverseDetails()
                   .getPrimaryCluster()

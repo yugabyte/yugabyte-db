@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import java.security.Security;

@@ -26,6 +26,7 @@ export interface YBModalProps extends DialogProps {
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'fit';
   overrideHeight?: string | number;
   overrideWidth?: string | number;
+  minHeight?: string | number;
   isSidePanel?: boolean;
   titleSeparator?: boolean;
   titleIcon?: React.ReactNode;
@@ -60,27 +61,33 @@ SlideTransition.displayName = 'SlideTransition';
 const useStyles = makeStyles<Theme, Partial<YBModalProps>>((theme) => ({
   dialogSm: {
     width: ({ overrideWidth }) => overrideWidth ?? 608,
-    height: ({ overrideHeight }) => overrideHeight ?? 400
+    height: ({ overrideHeight }) => overrideHeight ?? 400,
+    minHeight: ({ minHeight }) => minHeight
   },
   dialogMd: {
     width: ({ overrideWidth }) => overrideWidth ?? 800,
-    height: ({ overrideHeight }) => overrideHeight ?? 600
+    height: ({ overrideHeight }) => overrideHeight ?? 600,
+    minHeight: ({ minHeight }) => minHeight
   },
   dialogXs: {
     width: ({ overrideWidth }) => overrideWidth ?? 480,
-    height: ({ overrideHeight }) => overrideHeight ?? 272
+    height: ({ overrideHeight }) => overrideHeight ?? 272,
+    minHeight: ({ minHeight }) => minHeight
   },
   dialogLg: {
     width: ({ overrideWidth }) => overrideWidth ?? 800,
-    height: ({ overrideHeight }) => overrideHeight ?? 800
+    height: ({ overrideHeight }) => overrideHeight ?? 800,
+    minHeight: ({ minHeight }) => minHeight
   },
   dialogXl: {
     width: ({ overrideWidth }) => overrideWidth ?? 1125,
-    height: ({ overrideHeight }) => overrideHeight ?? 900
+    height: ({ overrideHeight }) => overrideHeight ?? 900,
+    minHeight: ({ minHeight }) => minHeight
   },
   dialogFit: {
     width: ({ overrideWidth }) => overrideWidth ?? 'fit-content',
-    height: ({ overrideHeight }) => overrideHeight ?? 'fit-content'
+    height: ({ overrideHeight }) => overrideHeight ?? 'fit-content',
+    minHeight: ({ minHeight }) => minHeight
   },
   form: {
     display: 'flex',

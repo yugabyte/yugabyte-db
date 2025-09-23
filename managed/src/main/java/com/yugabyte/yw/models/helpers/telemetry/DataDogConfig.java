@@ -6,6 +6,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.datadog.api.client.ApiClient;
 import com.datadog.api.client.v1.api.AuthenticationApi;
 import com.datadog.api.client.v1.model.AuthenticationValidationResponse;
+import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -31,7 +32,7 @@ public class DataDogConfig extends TelemetryProviderConfig {
   }
 
   @Override
-  public void validate() {
+  public void validate(ApiHelper apiHelper) {
     ApiClient dataDogApiClient = new ApiClient();
     dataDogApiClient.setServerVariables(Collections.singletonMap("site", site));
     dataDogApiClient.configureApiKeys(Collections.singletonMap("apiKeyAuth", apiKey));

@@ -70,6 +70,7 @@
 
 /* YB includes */
 #include "commands/yb_tablegroup.h"
+#include "pg_yb_utils.h"
 
 static Oid	AlterObjectNamespace_internal(Relation rel, Oid objid, Oid nspOid);
 
@@ -334,6 +335,10 @@ AlterObjectRename_internal(Relation rel, Oid objectId, const char *new_name)
 ObjectAddress
 ExecRenameStmt(RenameStmt *stmt)
 {
+	if (IsYugaByteEnabled() && stmt->relation &&
+		YbIsRangeVarTempRelation(stmt->relation))
+		YBCRecordTempRelationDDL();
+
 	switch (stmt->renameType)
 	{
 		case OBJECT_TABCONSTRAINT:

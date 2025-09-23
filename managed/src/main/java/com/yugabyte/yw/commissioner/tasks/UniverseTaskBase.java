@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks;
 
@@ -109,6 +109,7 @@ import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
+import com.yugabyte.yw.forms.YbcThrottleParameters;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Backup;
@@ -202,6 +203,7 @@ import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterTypes;
 import org.yb.util.PeerInfo;
 import org.yb.util.TabletServerInfo;
+import org.yb.ybc.ControllerFlagsSetRequest;
 import play.libs.Json;
 import play.mvc.Http;
 import reactor.core.Exceptions;
@@ -312,7 +314,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.EditBackupScheduleKubernetes,
           TaskType.DeleteBackupSchedule,
           TaskType.DeleteBackupScheduleKubernetes,
-          TaskType.EnableNodeAgentInUniverse);
+          TaskType.EnableNodeAgentInUniverse,
+          TaskType.UpdateYbcThrottleFlags,
+          TaskType.UpdateK8sYbcThrottleFlags);
 
   private static final Set<TaskType> SKIP_CONSISTENCY_CHECK_TASKS =
       ImmutableSet.of(
@@ -337,7 +341,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.ReadOnlyClusterDelete,
           TaskType.FailoverDrConfig,
           TaskType.ResumeUniverse,
-          TaskType.MigrateUniverse);
+          TaskType.MigrateUniverse,
+          TaskType.UpdateYbcThrottleFlags,
+          TaskType.UpdateK8sYbcThrottleFlags);
 
   private static final Set<TaskType> RERUNNABLE_PLACEMENT_MODIFICATION_TASKS =
       ImmutableSet.of(
@@ -1363,12 +1369,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   /** Create a task to validate gflags for universe */
   public SubTaskGroup createValidateGFlagsTask(
-      List<UniverseDefinitionTaskParams.Cluster> newClusters) {
+      List<UniverseDefinitionTaskParams.Cluster> newClusters,
+      boolean useCLIBinary,
+      String ybSoftwareVersion) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("ValidateGFlags");
     ValidateGFlags task = createTask(ValidateGFlags.class);
     ValidateGFlags.Params params = new ValidateGFlags.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.newClusters = newClusters;
+    params.useCLIBinary = useCLIBinary;
+    params.ybSoftwareVersion = ybSoftwareVersion;
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
@@ -4398,7 +4408,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   /**
-   * Create subtask for copying YBC package on K8s pod and add to subtask group.
+   * Create subtask for copying YBC package on K8s pod and add to subtask group. Callsite should
+   * check if this does not need to be run for some universes, for eg: Universes using inbuilt YBC
+   * in K8s.
    *
    * @param subTaskGroup
    * @param node
@@ -4463,7 +4475,73 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     subTaskGroup.addSubTask(task);
   }
 
+  @FunctionalInterface
+  public interface PreInMemoryApplyTask {
+    public void runPreApply(Universe u, Map<String, String> gflags);
+  }
+
+  protected void createSetYbcThrottleParamsSubTasks(
+      Universe universe, YbcThrottleParameters throttleParams, YbcManager ybcManager) {
+    createSetYbcThrottleParamsSubTasks(
+        universe, throttleParams, ybcManager, null /* preInMemoryApplyTask */);
+  }
+
+  protected void createSetYbcThrottleParamsSubTasks(
+      Universe universe,
+      YbcThrottleParameters throttleParams,
+      YbcManager ybcManager,
+      @Nullable PreInMemoryApplyTask preInMemoryApplyTask) {
+    Map<String, String> currentYbcFlagsMap =
+        new HashMap<>(universe.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags);
+    ControllerFlagsSetRequest controllerFlagsSetRequest =
+        ybcManager.prepareFlagsSetRequest(universe, throttleParams, currentYbcFlagsMap);
+
+    List<SubTaskGroup> inMemoryGflagsUpgrades = new ArrayList<>();
+    for (Cluster c : universe.getUniverseDetails().clusters) {
+      List<NodeDetails> nodes = universe.getTserversInCluster(c.uuid);
+      inMemoryGflagsUpgrades.add(
+          createSetYbcThrottleParamsInMemory(universe, nodes, controllerFlagsSetRequest));
+    }
+    // For universe using in-built YBC, run helm upgrade with new ybc gflags
+    if (preInMemoryApplyTask != null) {
+      preInMemoryApplyTask.runPreApply(universe, currentYbcFlagsMap);
+    }
+    // Apply YBC gflags in memory
+    inMemoryGflagsUpgrades.stream().forEach(sTG -> getRunnableTask().addSubTaskGroup(sTG));
+
+    createUpdateYbcGFlagInTheUniverseDetailsTask(currentYbcFlagsMap)
+        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+  }
+
+  /**
+   * Create subtask to set controller flags in-memory on YB-Controller servers.
+   *
+   * @param universe
+   * @param nodes
+   * @param controllerFlagsRequest
+   */
+  public SubTaskGroup createSetYbcThrottleParamsInMemory(
+      Universe universe,
+      List<NodeDetails> nodes,
+      ControllerFlagsSetRequest controllerFlagsRequest) {
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup("SetYbcThrottleParamsInMemory", SubTaskGroupType.UpdatingYbcGFlags);
+    SetYbcThrottleParamsInMemory.Params params = new SetYbcThrottleParamsInMemory.Params();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.setNodes(nodes);
+    params.setControllerFlagsRequest(controllerFlagsRequest);
+    SetYbcThrottleParamsInMemory task = createTask(SetYbcThrottleParamsInMemory.class);
+    task.initialize(params);
+    task.setUserTaskUUID(getUserTaskUUID());
+    subTaskGroup.addSubTask(task);
+    return subTaskGroup;
+  }
+
   public void handleUnavailableYbcServers(Universe universe, YbcManager ybcManager) {
+    if (universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc()) {
+      log.debug("Skipping configure YBC as 'useYBDBInbuiltYbc' is enabled");
+      return;
+    }
     String cert = universe.getCertificateNodetoNode();
     int ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
     Map<String, String> ybcGflags =

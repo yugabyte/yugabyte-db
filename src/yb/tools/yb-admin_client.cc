@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -1874,16 +1874,25 @@ Status ClusterAdminClient::GetLoadBalancerState() {
 
 namespace {
 
+auto StringifyIndexes(bool add_indexes, bool add_vector_indexes) {
+  std::vector<std::string> indexes;
+  indexes.reserve(add_indexes + add_vector_indexes);
+  if (add_indexes) {
+    indexes.push_back("indexes");
+  }
+  if (add_vector_indexes) {
+    indexes.push_back("vector indexes");
+  }
+  return indexes;
+}
+
 void ReportFlushedOrCompacted(
     const std::string& tables_info, bool add_indexes, bool add_vector_indexes, bool is_compaction) {
-  bool has_associated_indexes = add_indexes || add_vector_indexes;
-  std::cout << (is_compaction ? "Compacted" : "Flushed")
-            << " " << tables_info << " tables "
-            << (has_associated_indexes ? "and associated " : "")
-            << (add_indexes ? "indexes" : "")
-            << (add_indexes && add_vector_indexes? " and " : "")
-            << (add_vector_indexes ? "vector indexes" : "")
-            << "." << std::endl;
+  std::cout << (is_compaction ? "Compacted" : "Flushed") << " " << tables_info << " tables";
+  if (auto indexes = StringifyIndexes(add_indexes, add_vector_indexes); !indexes.empty()) {
+    std::cout << " and associated " << JoinStrings(indexes, " and ");
+  }
+  std::cout << "." << std::endl;
 }
 
 } // namespace

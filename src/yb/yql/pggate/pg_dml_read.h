@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -118,6 +118,9 @@ class PgDmlRead : public PgDml {
 
   void SetCatalogCacheVersion(std::optional<PgOid> db_oid, uint64_t version) override {
     DoSetCatalogCacheVersion(read_req_.get(), db_oid, version);
+  }
+  void SetTablespaceOid(uint32_t tablespace_oid) override {
+    DoSetTablespaceOid(read_req_.get(), tablespace_oid);
   }
 
   void UpgradeDocOp(PgDocOp::SharedPtr doc_op);

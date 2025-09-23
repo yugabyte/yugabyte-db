@@ -3343,6 +3343,11 @@ create_projection_path(PlannerInfo *root,
 
 	pathnode->subpath = subpath;
 
+	if (IsYugaByteEnabled() && subpath->ybIsHinted)
+	{
+		pathnode->path.ybIsHinted = true;
+	}
+
 	/*
 	 * We might not need a separate Result node.  If the input plan node type
 	 * can project, we can just tell it to project something else.  Or, if it

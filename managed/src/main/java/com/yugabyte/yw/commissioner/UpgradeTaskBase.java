@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner;
 
@@ -1277,5 +1277,6 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     Consumer<NodeDetails> postAction;
     YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState;
     UUID rootCAUUID;
+    Boolean useYBDBInbuiltYbc;
   }
 }

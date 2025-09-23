@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks;
 
@@ -39,7 +39,7 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -345,10 +345,21 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
 
   @Test
   public void testExpandWithCapacityReservationAzureSuccess() {
-    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.enableCapacityReservationAzure.getKey(), "true");
+    RuntimeConfigEntry.upsertGlobal(
+        ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
     Region region = Region.create(azuProvider, "region-1", "region-1", "yb-image");
     Universe universe = createUniverseForProvider("universe-test", azuProvider);
-    UniverseDefinitionTaskParams taskParams = performExpand(universe);
+
+    UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
+    taskParams.creatingUser = defaultUser;
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
+    taskParams.getPrimaryCluster().userIntent.numNodes += 2;
+    taskParams.getPrimaryCluster().placementInfo.azStream().findFirst().get().numNodesInAZ += 2;
+    taskParams.userAZSelected = true;
+    PlacementInfoUtil.updateUniverseDefinition(
+        taskParams, defaultCustomer.getId(), taskParams.getPrimaryCluster().uuid, EDIT);
+    updateIPs(taskParams);
+    taskParams.expectedUniverseVersion = 2;
     RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
     TaskInfo taskInfo = submitTask(taskParams);
 
@@ -374,7 +385,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
 
   @Test
   public void testExpandWithCapacityReservationAwsSuccess() {
-    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.enableCapacityReservationAws.getKey(), "true");
+    RuntimeConfigEntry.upsertGlobal(ProviderConfKeys.enableCapacityReservationAws.getKey(), "true");
     Region region = Region.create(defaultProvider, "region-2", "region-2", "yb-image");
     Universe universe = createUniverseForProvider("universe-test", defaultProvider);
     UniverseDefinitionTaskParams taskParams = performExpand(universe);
@@ -755,14 +766,17 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     taskParams.getPrimaryCluster().userIntent = newUserIntent;
     PlacementInfoUtil.updateUniverseDefinition(
         taskParams, defaultCustomer.getId(), primaryCluster.uuid, EDIT);
+    updateIPs(taskParams);
+    return taskParams;
+  }
 
+  private void updateIPs(UniverseDefinitionTaskParams taskParams) {
     int iter = 1;
     for (NodeDetails node : taskParams.nodeDetailsSet) {
       node.cloudInfo.private_ip = "10.9.22." + iter;
       node.tserverRpcPort = 3333;
       iter++;
     }
-    return taskParams;
   }
 
   private void mockMetrics(

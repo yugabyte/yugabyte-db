@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -26,6 +26,17 @@ public class TestPgRegressMatview extends BasePgRegressTest {
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;
+  }
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flags = super.getTServerFlags();
+    // TODO(#26734): Enable transactional DDL (& table locks) once savepoint for DDLs are supported.
+    flags.put("ysql_yb_ddl_transaction_block_enabled", "false");
+    flags.put("enable_object_locking_for_table_locks", "false");
+    flags.put("allowed_preview_flags_csv",
+              "enable_object_locking_for_table_locks,ysql_yb_ddl_transaction_block_enabled");
+    return flags;
   }
 
   @Test

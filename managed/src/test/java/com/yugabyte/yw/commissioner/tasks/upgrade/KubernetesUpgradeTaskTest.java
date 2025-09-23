@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
@@ -119,7 +119,7 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
         when(mockKubernetesManager.getPodObject(any(), any(), any())).thenReturn(testPod);
       } catch (Exception e) {
       }
-      when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
+      lenient().when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
       when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
       GFlagsValidation.AutoFlagsPerServer autoFlagsPerServer =
           new GFlagsValidation.AutoFlagsPerServer();

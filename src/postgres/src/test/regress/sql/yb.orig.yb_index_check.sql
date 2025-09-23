@@ -1,4 +1,3 @@
-SET yb_explain_hide_non_deterministic_fields = true;
 SET yb_bnl_batch_size = 3;
 
 -- Basic test
@@ -186,6 +185,11 @@ INSERT INTO test_bytea (a, b, c)  VALUES (1, 42, E'\\x48656c6c6f20576f726c64');
 INSERT INTO test_bytea (a, b, c)  VALUES (2, 42, 'test');
 SELECT yb_index_check('test_bytea_b_c_idx'::regclass::oid);
 SELECT yb_index_check('test_bytea_c_b_idx'::regclass::oid);
+
+-- Inside a transaction block
+BEGIN;
+SELECT yb_index_check('abcd_b_c_d_idx'::regclass::oid);
+COMMIT;
 
 -- Test with more data
 INSERT INTO abcd SELECT i, i, i, i FROM generate_series(12, 2000) i;

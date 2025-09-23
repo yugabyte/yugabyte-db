@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Copyright (c) YugaByte, Inc.
+# Copyright (c) YugabyteDB, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 # in compliance with the License.  You may obtain a copy of the License at
@@ -1131,7 +1131,7 @@ set_sanitizer_runtime_options() {
     fi
   fi
 
-  if [[ $build_root_basename =~ ^asan- ]]; then
+  if [[ $build_root_basename =~ ^asan ]]; then
     # Enable leak detection even under LLVM 3.4, where it was disabled by default.
     # This flag only takes effect when running an ASAN build.
     export ASAN_OPTIONS="detect_leaks=1 disable_coredump=0"
@@ -1308,7 +1308,7 @@ find_spark_submit_cmd() {
     return
   fi
 
-  if [[ $build_type == "tsan" || $build_type == "asan" ]]; then
+  if is_sanitizer ; then
     spark_submit_cmd_path=${YB_ASAN_TSAN_PY3_SPARK_SUBMIT_CMD:-"NoSpark"}
     return
   fi
@@ -1359,7 +1359,7 @@ run_tests_on_spark() {
     time "$spark_submit_cmd_path" \
       --driver-cores "$INITIAL_SPARK_DRIVER_CORES" \
       "$YB_SCRIPT_PATH_RUN_TESTS_ON_SPARK" \
-      "${run_tests_args[@]}" "$@" 2>&1 | \
+      "${run_tests_args[@]}" 2>&1 | \
       grep -Ev "TaskSetManager: (Starting task|Finished task .* \([0-9]+[1-9]/[0-9]+\))" \
            --line-buffered
     exit "${PIPESTATUS[0]}"

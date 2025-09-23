@@ -1,4 +1,4 @@
-# Copyright (c) YugaByte, Inc.
+# Copyright (c) YugabyteDB, Inc.
 us-west-1:
   name: US West (N. California)
   latitude: 36.778261
@@ -19,6 +19,11 @@ us-east-2:
   latitude: 40.367474
   longitude: -82.996216
   availabilty_zones: [us-east-2a, us-east-2b, us-east-2c]
+mx-central-1:
+  name: Queretaro (Mexico)
+  latitude: 20.5888
+  longitude: -100.3899
+  availabilty_zones: [mx-central-1a, mx-central-1b, mx-central-1c]
 eu-west-1:
   name: Europe (Ireland)
   latitude: 53.412910

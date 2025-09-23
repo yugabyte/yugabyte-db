@@ -499,6 +499,7 @@ extern void YbInitPostgres(const char *in_dbname, Oid dboid,
 						 bool override_allow_connections,
 						 char *out_dbname,
 						 const YbcPgInitPostgresInfo *yb_info);
+extern long YbGetAuthorizedConnections();
 
 extern void BaseInit(void);
 

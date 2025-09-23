@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 YugaByte, Inc. and Contributors
+ * Copyright 2022 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -514,4 +514,20 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Set the connection draining timeout for the GCP load balancer.",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableCapacityReservationAzure =
+      new ConfKeyInfo<>(
+          "yb.task.enable_capacity_reservation_azure",
+          ScopeType.PROVIDER,
+          "Enable capacity reservations for azure",
+          "Enable capacity reservations for azure for tasks that need new nodes",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableCapacityReservationAws =
+      new ConfKeyInfo<>(
+          "yb.task.enable_capacity_reservation_aws",
+          ScopeType.PROVIDER,
+          "Enable capacity reservations for AWS",
+          "Enable capacity reservations for AWS for tasks that need new nodes",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

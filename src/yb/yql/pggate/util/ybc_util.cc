@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -20,10 +20,13 @@
 
 #include "yb/ash/wait_state.h"
 
+#include "yb/common/entity_ids.h"
 #include "yb/common/init.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
+
+#include "yb/dockv/partition.h"
 
 #include "yb/gutil/stringprintf.h"
 
@@ -542,6 +545,19 @@ int YBCGetCallStackFrames(void** result, int max_depth, int skip_count) {
   return google::GetStackTrace(result, max_depth, skip_count);
 }
 
+bool YBCIsInitDbModeEnvVarSet() {
+  static bool cached_value = false;
+  static bool cached = false;
+
+  if (!cached) {
+    const char* initdb_mode_env_var_value = getenv("YB_PG_INITDB_MODE");
+    cached_value = initdb_mode_env_var_value && strcmp(initdb_mode_env_var_value, "1") == 0;
+    cached = true;
+  }
+
+  return cached_value;
+}
+
 bool YBIsMajorUpgradeInitDb() {
   static int cached_value = -1;
   if (cached_value == -1) {
@@ -850,6 +866,35 @@ const char *YBCGetOutFuncName(YbcPgOid typid) {
     default:
       return NULL;
   }
+}
+
+namespace {
+YbcUpdateInitPostgresMetricsFn update_init_postgres_metrics_fn = nullptr;
+}  // namespace
+
+void
+YBCSetUpdateInitPostgresMetricsFn(YbcUpdateInitPostgresMetricsFn update_init_postgres_metrics) {
+  CHECK_NOTNULL(update_init_postgres_metrics);
+  update_init_postgres_metrics_fn = update_init_postgres_metrics;
+}
+
+void YBCUpdateInitPostgresMetrics() {
+  if (update_init_postgres_metrics_fn) {
+    update_init_postgres_metrics_fn();
+  } else {
+    // At initdb time we do not load yb_pg_metrics extension.
+    DCHECK(YBCIsInitDbModeEnvVarSet());
+  }
+}
+
+uint16_t YBCDecodeMultiColumnHashLeftBound(const char* partition_key, size_t key_len) {
+  yb::Slice slice(partition_key, key_len);
+  return dockv::PartitionSchema::DecodeMultiColumnHashLeftBound(slice);
+}
+
+uint16_t YBCDecodeMultiColumnHashRightBound(const char* partition_key, size_t key_len) {
+  yb::Slice slice(partition_key, key_len);
+  return dockv::PartitionSchema::DecodeMultiColumnHashRightBound(slice);
 }
 
 } // extern "C"

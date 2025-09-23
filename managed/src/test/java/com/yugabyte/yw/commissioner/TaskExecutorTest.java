@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner;
 
@@ -34,6 +34,8 @@ import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.TaskExecutor.TaskCache;
 import com.yugabyte.yw.commissioner.TaskExecutor.TaskExecutionListener;
+import com.yugabyte.yw.commissioner.TaskExecutorTest.AbortableTask;
+import com.yugabyte.yw.commissioner.TaskExecutorTest.NonAbortableTask;
 import com.yugabyte.yw.common.CustomWsClientFactory;
 import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
@@ -159,7 +161,12 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.SetTablesDrConfig,
           TaskType.DecommissionNode,
           TaskType.PauseUniverse,
-          TaskType.ResumeUniverse);
+          TaskType.ResumeUniverse,
+          TaskType.UpgradeYbcGFlags,
+          TaskType.UpgradeKubernetesYbcGFlags,
+          TaskType.UpdateYbcThrottleFlags,
+          TaskType.UpdateK8sYbcThrottleFlags,
+          TaskType.KubernetesToggleImmutableYbc);
 
   @Override
   protected Application provideApplication() {

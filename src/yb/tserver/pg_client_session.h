@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -106,7 +106,7 @@ class PgClientSession final {
 
  public:
   using TransactionBuilder = std::function<client::YBTransactionPtr(
-      IsDDL, client::ForceGlobalTransaction, CoarseTimePoint, client::ForceCreateTransaction)>;
+      IsDDL, TransactionFullLocality, CoarseTimePoint, client::ForceCreateTransaction)>;
 
   PgClientSession(
       TransactionBuilder&& transaction_builder, SharedThisSource shared_this_source,

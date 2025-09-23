@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Copyright (c) YugaByte, Inc.
+# Copyright (c) YugabyteDB, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 # in compliance with the License.  You may obtain a copy of the License at
@@ -284,7 +284,7 @@ def init_spark_context(details: List[str] = []) -> None:
         if is_macos():
             logging.info("This is macOS, using the macOS Spark cluster")
             spark_master_url = SPARK_URLS['macos']
-        elif build_type in ['asan', 'tsan']:
+        elif build_type in ['asan', 'asan_release', 'tsan', 'tsan_release', 'tsan_slow']:
             logging.info("Using a separate Spark cluster for ASAN and TSAN tests")
             spark_master_url = SPARK_URLS['linux_asan_tsan']
         else:
@@ -668,41 +668,17 @@ def initialize_remote_task() -> yb_dist_tests.GlobalTestConfig:
     return global_conf
 
 
-def parallel_list_test_descriptors(rel_test_path: str) -> Tuple[List[str], float]:
+def list_test_descriptors(rel_test_path: str) -> List[str]:
     """
-    This is invoked in parallel to list all individual tests within our C++ test programs. Without
-    this, listing all gtest tests across 330 test programs might take about 5 minutes on TSAN and 2
-    minutes in debug.
+    This function lists all individual tests within a C++ test program.
     """
-    # TODO: We should change this from a parallel spark-job stage to just do it serially on the
-    # jenkins worker host.
-    # Rationale: The time may be longer than when the above comment was written, since we have more
-    # tests, but it is still a good trade-off.
-    # To run the tasks on spark workers, the workspace archive has to be copied over and unpacked,
-    # which takes a couple minutes by itself. That cost will have to be paid anyway when second
-    # stage comes to run the tests, but some of the nodes are re-assigned to other jobs while stage
-    # 0 is being completed, and the cost is wasted for those nodes.
-    # Having nodes shuffled off the job while last few tasks of stage 0 are running means that
-    # resources are assigned somewhat out of order and require more switching overhead.
-    # Changing the jobs from 2 stages to a single stage allows much better knowledge of how many
-    # tasks the job is actually going to run, instead of finding out only after stage 0 is complete.
-    # This would allow much easier cluster scaling calculations.
-    # Finally, the submitting node is generally doing nothing but waiting in a spark queue, during
-    # that waiting time stage 0 could already be done and reduce the resource contintion of the
-    # spark cluster workers.
-
-    start_time_sec = time.time()
-
-    from yugabyte import yb_dist_tests, command_util
-    global_conf = initialize_remote_task()
-
+    global_conf = yb_dist_tests.get_global_conf()
     os.environ['BUILD_ROOT'] = global_conf.build_root
     if not os.path.isdir(os.environ['YB_THIRDPARTY_DIR']):
         find_or_download_thirdparty_script_path = os.path.join(
             global_conf.yb_src_root, 'build-support', 'find_or_download_thirdparty.sh')
         subprocess.check_call(find_or_download_thirdparty_script_path)
 
-    wait_for_path_to_exist(global_conf.build_root)
     list_tests_cmd_line = [
             os.path.join(global_conf.build_root, rel_test_path), '--gtest_list_tests']
 
@@ -748,7 +724,7 @@ def parallel_list_test_descriptors(rel_test_path: str) -> Tuple[List[str], float
         else:
             current_test = trimmed_line
 
-    return test_descriptors, time.time() - start_time_sec
+    return test_descriptors
 
 
 def get_username() -> str:
@@ -1015,26 +991,14 @@ def collect_cpp_tests(
     else:
         app_name_details = ['{} test programs'.format(len(all_test_programs))]
 
-    init_spark_context(app_name_details)
-    set_global_conf_for_spark_jobs()
-
-    # Use fewer "slices" (tasks) than there are test programs, in hope to get some batching.
-    num_slices = (len(test_programs) + 1) / 2
-    assert spark_context is not None
-    test_descriptor_lists_and_times: List[Tuple[List[str], float]] = run_spark_action(
-        lambda: spark_context.parallelize(  # type: ignore
-            test_programs, numSlices=num_slices).map(parallel_list_test_descriptors).collect()
-    )
-    total_elapsed_time_sec = sum([t[1] for t in test_descriptor_lists_and_times])
+    test_descriptor_strs = one_shot_test_programs
+    for test_program in test_programs:
+        test_descriptor_strs.extend(list_test_descriptors(test_program))
 
     elapsed_time_sec = time.time() - start_time_sec
-    test_descriptor_strs = one_shot_test_programs + functools.reduce(
-        operator.add, [t[0] for t in test_descriptor_lists_and_times], [])
     logging.info(
         f"Collected the list of {len(test_descriptor_strs)} gtest tests in "
-        f"{elapsed_time_sec:.2f} sec wallclock time, total time spent on Spark workers: "
-        f"{total_elapsed_time_sec:.2f} sec, average time per test program: "
-        f"{total_elapsed_time_sec / len(test_programs):.2f} sec")
+        f"{elapsed_time_sec:.2f} sec wallclock time")
     for test_descriptor_str in test_descriptor_strs:
         if 'YB_DISABLE_TEST_IN_' in test_descriptor_str:
             raise RuntimeError(
@@ -1128,7 +1092,7 @@ def collect_tests(args: argparse.Namespace) -> List[yb_dist_tests.TestDescriptor
 
 
 def load_test_list(test_list_path: str) -> List[yb_dist_tests.TestDescriptor]:
-    logging.info("Loading the list of tests to run from %s", test_list_path)
+    logging.info("Loading test list from %s", test_list_path)
     test_descriptors = []
     with open(test_list_path, 'r') as input_file:
         for line in input_file:
@@ -1171,6 +1135,41 @@ def run_spark_action(action: Any) -> Any:
     return results
 
 
+def report_skipped_test(test_descriptor: yb_dist_tests.TestDescriptor) -> None:
+    suite_var_name = 'YB_CSI_' + test_descriptor.language
+    skip_time = time.time()
+    os.environ[suite_var_name] = propagated_env_vars[suite_var_name]
+    csi_id = csi_report.create_test(test_descriptor, skip_time, 0)
+    csi_report.close_item(csi_id, skip_time, 'skipped', ['muted'])
+
+
+def skip_disabled_tests(test_descriptors: List[yb_dist_tests.TestDescriptor],
+                        disable_list_path: str) -> List[yb_dist_tests.TestDescriptor]:
+
+    from yugabyte.test_descriptor import SimpleTestDescriptor
+
+    logging.info("Loading simple test list from %s", disable_list_path)
+    disabled_tests = []
+    with open(disable_list_path, 'r') as input_file:
+        for line in input_file:
+            line = line.strip()
+            if line:
+                disabled_tests.append(SimpleTestDescriptor.parse(line))
+    logging.info("Loaded %d disabled tests from %s", len(disabled_tests), disable_list_path)
+
+    enabled = []
+    for td in test_descriptors:
+        simple = SimpleTestDescriptor.parse(td.descriptor_str)
+        for disabled in disabled_tests:
+            if disabled.matches(simple):
+                report_skipped_test(td)
+                break
+        else:
+            enabled.append(td)
+    logging.info("Remaining enabled tests: %d", len(enabled))
+    return enabled
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description='Run tests on Spark.')
@@ -1186,6 +1185,17 @@ def main() -> None:
                         metavar='TEST_LIST_FILE',
                         help='A file with a list of tests to run. Useful when e.g. re-running '
                              'failed tests using a file produced with --failed_test_list.')
+    parser.add_argument('--ignore_list',
+                        metavar='TEST_LIST_FILE',
+                        help='A file with a list of tests to ignore. '
+                             'These tests will not be run or reported. Useful to avoid '
+                             're-running passed tests of an incomplete run.')
+    parser.add_argument('--disable_list',
+                        metavar='TEST_LIST_FILE',
+                        help='A file with a list of tests to skip. '
+                             'Uses test class/name, and may omit cxx_rel_test_binary. '
+                             'These tests will not be run but will report as skipped. '
+                             'Useful to avoid running known flakey/broken tests.')
     parser.add_argument('--build-root', dest='build_root', required=True,
                         help='Build root (e.g. ~/code/yugabyte/build/debug-gcc-dynamic-community)')
     parser.add_argument('--max-tests', type=int, dest='max_tests',
@@ -1287,6 +1297,16 @@ def main() -> None:
         fatal_error("File specified by --test_list does not exist or is not a file: '{}'".format(
             test_list_path))
 
+    ignore_list_path = args.ignore_list
+    if ignore_list_path and not os.path.isfile(ignore_list_path):
+        fatal_error("File specified by --ignore_list does not exist or is not a file: '{}'".format(
+            ignore_list_path))
+
+    disable_list_path = args.disable_list
+    if disable_list_path and not os.path.isfile(disable_list_path):
+        fatal_error("File specified by --disable_list does not exist or is not a file: '{}'".format(
+            disable_list_path))
+
     global_conf = yb_dist_tests.get_global_conf()
     if ('YB_MVN_LOCAL_REPO' not in os.environ and
             args.run_java_tests and
@@ -1323,8 +1343,42 @@ def main() -> None:
     # Start the timer.
     global_start_time = time.time()
 
-    # This needs to be done before Spark context initialization, which will happen as we try to
-    # collect all gtest tests in all C++ test programs.
+    propagate_env_vars()
+    collect_tests_time_sec: Optional[float] = None
+    if test_list_path:
+        test_descriptors = load_test_list(test_list_path)
+    else:
+        collect_tests_start_time_sec = time.time()
+        test_descriptors = collect_tests(args)
+        collect_tests_time_sec = time.time() - collect_tests_start_time_sec
+
+    # Includes ignored tests, assuming they already ran/passed.
+    initial_num = len(test_descriptors)
+    logging.info("Initial number of tests: %d", initial_num)
+    num_repetitions = args.num_repetitions
+    # For now, we are just dividing test reports into two suites by language.
+    # Total number per suite planned also includes ignored & disabled tests.
+    num_planned_by_language: Dict[str, int] = defaultdict(int)
+    for td in test_descriptors:
+        if td.attempt_index == 1:
+            num_planned_by_language[td.language] += 1
+
+    if args.save_report_to_build_dir:
+        planned_report_paths = []
+        planned_report_paths.append(os.path.join(global_conf.build_root, 'planned_tests.json'))
+        planned = []
+        for td in test_descriptors:
+            planned.append(td.descriptor_str)
+        save_json_to_paths('planned tests', planned, planned_report_paths, should_gzip=False)
+
+    if ignore_list_path:
+        ignored_tests = load_test_list(ignore_list_path)
+        test_descriptors = [td for td in test_descriptors if td not in ignored_tests]
+        logging.info("Ignoring %d tests from ignore list %s", initial_num - len(test_descriptors),
+                     ignore_list_path)
+
+    # This needs to be done before Spark context initialization.
+    # And before the no-tests-to-run check, so that archive can be pre-built.
     if args.send_archive_to_workers:
         archive_exists = (
             global_conf.archive_for_workers is not None and
@@ -1346,36 +1400,54 @@ def main() -> None:
         else:
             yb_dist_tests.compute_archive_sha256sum()
 
-    propagate_env_vars()
-    collect_tests_time_sec: Optional[float] = None
-    if test_list_path:
-        test_descriptors = load_test_list(test_list_path)
-    else:
-        collect_tests_start_time_sec = time.time()
-        test_descriptors = collect_tests(args)
-        collect_tests_time_sec = time.time() - collect_tests_start_time_sec
-
     if not test_descriptors and not args.allow_no_tests:
         logging.info("No tests to run")
         return
 
-    num_tests = len(test_descriptors)
+    # If CSI is enabled, we need suites created before reporting any disabled tests.
+    if test_descriptors:
+        csi_suites: Dict[str, str] = {}
+        propagated_env_vars['YB_CSI_REPS'] = str(num_repetitions)
+        logging.info("Propagating env var %s (value: %s) to Spark workers",
+                     'YB_CSI_REPS', num_repetitions)
+        csi_lqid = csi_report.launch_qid()
+        propagated_env_vars['YB_CSI_QID'] = csi_lqid
+        logging.info("Propagating env var %s (value: %s) to Spark workers",
+                     'YB_CSI_QID', csi_lqid)
+        for suite_name, num_tests in num_planned_by_language.items():
+            if args.test_filter_re:
+                method = "RegEx"
+            elif args.test_list:
+                method = "Requested"
+            else:
+                method = "All"
+            (csi_var_name, csi_var_value) = csi_report.create_suite(
+                csi_lqid, suite_name, os.getenv('YB_CSI_SUITE', ''), method, num_tests,
+                num_repetitions, time.time())
+            csi_suites[suite_name] = csi_var_value
+            propagated_env_vars[csi_var_name] = csi_var_value
+            logging.info("Propagating env var %s (value: %s) to Spark workers",
+                         csi_var_name, csi_var_value)
 
-    if args.max_tests and num_tests > args.max_tests:
+    if disable_list_path:
+        test_descriptors = skip_disabled_tests(test_descriptors, disable_list_path)
+
+    # Actual number to be run after ignored & disabled.
+    spark_test_cnt = len(test_descriptors)
+    if args.max_tests and spark_test_cnt > args.max_tests:
         logging.info("Randomly selecting {} tests out of {} possible".format(
-                args.max_tests, num_tests))
+                args.max_tests, spark_test_cnt))
         random.shuffle(test_descriptors)
         test_descriptors = test_descriptors[:args.max_tests]
-        num_tests = len(test_descriptors)
+        spark_test_cnt = len(test_descriptors)
 
     if args.verbose:
         for test_descriptor in test_descriptors:
             logging.info("Will run test: {}".format(test_descriptor))
 
-    num_repetitions = args.num_repetitions
-    total_num_tests = num_tests * num_repetitions
+    total_num_tests = spark_test_cnt * num_repetitions
     logging.info("Running {} tests on Spark, {} times each, for a total of {} tests".format(
-        num_tests, num_repetitions, total_num_tests))
+        spark_test_cnt, num_repetitions, total_num_tests))
 
     if num_repetitions > 1:
         test_descriptors = [
@@ -1384,17 +1456,9 @@ def main() -> None:
             for i in range(1, num_repetitions + 1)
         ]
 
-    if args.save_report_to_build_dir:
-        planned_report_paths = []
-        planned_report_paths.append(os.path.join(global_conf.build_root, 'planned_tests.json'))
-        planned = []
-        for td in test_descriptors:
-            planned.append(td.descriptor_str)
-        save_json_to_paths('planned tests', planned, planned_report_paths, should_gzip=False)
-
     app_name_details = ['{} tests total'.format(total_num_tests)]
     if num_repetitions > 1:
-        app_name_details += ['{} repetitions of {} tests'.format(num_repetitions, num_tests)]
+        app_name_details += ['{} repetitions of {} tests'.format(num_repetitions, spark_test_cnt)]
     init_spark_context(app_name_details)
 
     set_global_conf_for_spark_jobs()
@@ -1438,35 +1502,6 @@ def main() -> None:
             "total_num_tests={}, len(test_descriptors)={}".format(
                     total_num_tests, len(test_descriptors))
         test_phase_start_time = time.time()
-
-        # For now, we are just dividing test reports into two suites by language.
-        num_planned_by_language: Dict[str, int] = defaultdict(int)
-        for td in test_descriptors:
-            if td.attempt_index == 1:
-                num_planned_by_language[td.language] += 1
-
-        csi_suites: Dict[str, str] = {}
-        propagated_env_vars['YB_CSI_REPS'] = str(num_repetitions)
-        logging.info("Propagating env var %s (value: %s) to Spark workers",
-                     'YB_CSI_REPS', num_repetitions)
-        csi_lqid = csi_report.launch_qid()
-        propagated_env_vars['YB_CSI_QID'] = csi_lqid
-        logging.info("Propagating env var %s (value: %s) to Spark workers",
-                     'YB_CSI_QID', csi_lqid)
-        for suite_name, num_tests in num_planned_by_language.items():
-            if args.test_filter_re:
-                method = "RegEx"
-            elif args.test_list:
-                method = "Requested"
-            else:
-                method = "All"
-            (csi_var_name, csi_var_value) = csi_report.create_suite(
-                csi_lqid, suite_name, os.getenv('YB_CSI_SUITE', ''), method, num_tests,
-                num_repetitions, test_phase_start_time)
-            csi_suites[suite_name] = csi_var_value
-            propagated_env_vars[csi_var_name] = csi_var_value
-            logging.info("Propagating env var %s (value: %s) to Spark workers",
-                         csi_var_name, csi_var_value)
 
         # Randomize test order to avoid any kind of skew.
         random.shuffle(test_descriptors)

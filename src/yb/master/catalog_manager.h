@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -751,6 +751,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Status GetObjectLockStatus(
       const GetObjectLockStatusRequestPB* req, GetObjectLockStatusResponsePB* resp);
+
+  Status GetTabletsMetadata(
+      const GetTabletsMetadataRequestPB* req, GetTabletsMetadataResponsePB* resp);
 
   Status UpdateCDCProducerOnTabletSplit(
       const TableId& producer_table_id, const SplitTabletIds& split_tablet_ids) override;
@@ -2811,6 +2814,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const CreateCDCStreamRequestPB& req, rpc::RpcContext* rpc, const LeaderEpoch& epoch,
       const std::vector<TableId>& table_ids, const xrepl::StreamId& stream_id,
       const bool has_consistent_snapshot_option, bool require_history_cutoff);
+
+  Status SetAllInitialCDCSDKRetentionBarriersOnCatalogTable(
+      const TableInfoPtr& table, const xrepl::StreamId& stream_id);
 
   Status ReplicationSlotValidateName(const std::string& replication_slot_name);
 

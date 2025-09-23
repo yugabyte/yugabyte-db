@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.models.helpers;
 
@@ -7,19 +7,27 @@ import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertThrows;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.*;
 import static org.mockito.Mockito.doNothing;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.WSClientRefresher;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.helpers.telemetry.DataDogConfig;
 import com.yugabyte.yw.models.helpers.telemetry.ProviderType;
 import com.yugabyte.yw.models.helpers.telemetry.TelemetryProviderConfig;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,20 +37,55 @@ import junitparams.Parameters;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
 import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
 public class TelemetryProviderServiceTest extends FakeDBApplication {
 
   private UUID defaultCustomerUuid;
-
   private TelemetryProviderService telemetryProviderService;
+
+  @Mock WSClientRefresher wsClientRefresher;
+  @Mock BeanValidator beanValidator;
+  @Mock BeanValidator.ErrorMessageBuilder errorMessageBuilder;
 
   @Before
   public void setUp() {
+    // Initialize mocks manually since we're using JUnitParamsRunner
+    MockitoAnnotations.openMocks(this);
+
     defaultCustomerUuid = ModelFactory.testCustomer().getUuid();
-    telemetryProviderService = app.injector().instanceOf(TelemetryProviderService.class);
-    doNothing().when(mockTelemetryProviderService).validateBean(any());
+
+    // Mock the BeanValidator and its ErrorMessageBuilder
+    doNothing().when(beanValidator).validate(any());
+    when(beanValidator.error()).thenReturn(errorMessageBuilder);
+    when(errorMessageBuilder.forField(anyString(), anyString())).thenReturn(errorMessageBuilder);
+
+    // Mock throwError to actually throw the expected exception
+    doAnswer(
+            invocation -> {
+              Map<String, List<String>> errors = new HashMap<>();
+              errors.put("name", Arrays.asList("provider with such name already exists."));
+              JsonNode errJson = Json.toJson(errors);
+              throw new PlatformServiceException(BAD_REQUEST, errJson);
+            })
+        .when(errorMessageBuilder)
+        .throwError();
+
+    // Mock WSClientRefresher to avoid the getApiHelper issue
+    when(wsClientRefresher.getClient(anyString())).thenReturn(null);
+
+    // Create a real service instance with mocked dependencies
+    telemetryProviderService = new TelemetryProviderService(beanValidator, null, wsClientRefresher);
+
+    // Create a spy to override only the problematic getApiHelper method
+    telemetryProviderService = spy(telemetryProviderService);
+    doReturn(mockApiHelper).when(telemetryProviderService).getApiHelper();
+
+    // Mock the API helper responses
+    when(mockApiHelper.getRequest(anyString(), anyMap(), anyMap())).thenReturn(Json.parse("{}"));
   }
 
   @Parameters({"DataDog", "Splunk", "AWSCloudWatch", "GCPCloudMonitoring"})

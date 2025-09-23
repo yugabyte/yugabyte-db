@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Copyright (c) YugaByte, Inc.
+# Copyright (c) YugabyteDB, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 # in compliance with the License.  You may obtain a copy of the License at
@@ -346,7 +346,7 @@ while [[ $# -gt 0 ]]; do
       # even if they have plausible extensions.
       if [[ ! $1 =~ ^[-] ]]; then
         input_files+=( "$1" )
-        if [[ $1 =~ ^(.*/|)[a-zA-Z0-9_]*(yb|YB)[a-zA-Z0-9_]*[.]c$ ]]; then
+        if [[ $1 =~ ^(.*/)?[a-zA-Z0-9_]*(yb|YB)[a-zA-Z0-9_]*[.]c$ ]]; then
           # We will use this later to add custom compilation flags to PostgreSQL source files that
           # we contributed, e.g. for stricter error checking.
           has_yb_c_files=true
@@ -630,7 +630,7 @@ if [[ $output_file == libyb_pgbackend* || $output_file == postgres ]]; then
   echo "${compiler_args[*]}" >"link_cmd_${output_file}.txt"
 fi
 
-if [[ ${build_type:-} == "asan" &&
+if [[ ${build_type:-} =~ ^asan &&
       $PWD == */postgres_build/src/backend/utils/adt &&
       # Turn off UBSAN instrumentation in a number of PostgreSQL source files determined by the
       # $NO_UBSAN_RE regular expression. See the definition of NO_UBSAN_RE for details.

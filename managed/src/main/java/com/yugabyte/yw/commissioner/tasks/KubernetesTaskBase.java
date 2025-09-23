@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks;
 
@@ -38,6 +38,7 @@ import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeStat
 import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -749,6 +750,25 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                     isReadOnlyCluster,
                     config);
               }
+              // When changing strategy back to Rolling, we need to keep partition for
+              // server which was "not" upgraded to num_pods, as keeping partition to 0
+              // will lead to unexpected restarts for server types for which we don't need
+              // restarts. For eg. Setting Immutable YBC after non-restart gflags upgrade on
+              // master.
+              int masterPartition =
+                  Arrays.asList(
+                              UniverseTaskBase.ServerType.MASTER,
+                              UniverseTaskBase.ServerType.EITHER)
+                          .contains(sType)
+                      ? 0
+                      : numMasters;
+              int tserverPartition =
+                  Arrays.asList(
+                              UniverseTaskBase.ServerType.EITHER,
+                              UniverseTaskBase.ServerType.TSERVER)
+                          .contains(sType)
+                      ? 0
+                      : numTservers;
               restoreUpdateStrategy.addSubTask(
                   getSingleKubernetesExecutorTaskForServerTypeTask(
                       universeName,
@@ -759,8 +779,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                       softwareVersion,
                       sType,
                       config,
-                      0,
-                      0,
+                      masterPartition,
+                      tserverPartition,
                       universeOverrides,
                       azOverrides,
                       isReadOnlyCluster,
@@ -911,6 +931,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
               String azOverridesStr =
                   azsOverrides.get(PlacementInfoUtil.getAZNameFromUUID(provider, azUUID));
               Map<String, Object> azOverrides = HelmUtils.convertYamlToMap(azOverridesStr);
+              // Master and Tserver partition are equal to num_pods for non-restart helm upgrade.
+              // They will be reset on next rolling upgrade for both server types.
+              // This is to prevent unexpected restarts due to diverged values.
               helmUpgrade.addSubTask(
                   getSingleNonRestartKubernetesExecutorTaskForServerTypeTask(
                       universeName,
@@ -919,6 +942,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                       masterAddresses,
                       softwareVersion,
                       sType,
+                      numMasters /* masterPartition */,
+                      numTservers /* tserverPartition */,
                       config,
                       universeOverrides,
                       azOverrides,
@@ -1620,6 +1645,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   }
 
   // Create Kubernetes Executor task for copying YBC package and conf file to the pod
+  // If this task should not be performed on a universe, eg: Universe using inbuilt
+  // YBC, check for that in callsite.
   public void createKubernetesYbcCopyPackageTask(
       SubTaskGroup subTaskGroup,
       Set<NodeDetails> servers,
@@ -1627,9 +1654,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       String ybcSoftwareVersion,
       Map<String, String> ybcGflags,
       @Nullable KubernetesPlacement placement) {
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     for (NodeDetails node : servers) {
       Cluster primaryCluster = taskParams().getPrimaryCluster();
-      Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
       if (primaryCluster == null) {
         primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
       }
@@ -2402,6 +2429,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       String masterAddresses,
       String ybSoftwareVersion,
       ServerType serverType,
+      int masterPartition,
+      int tserverPartition,
       Map<String, String> config,
       Map<String, Object> universeOverrides,
       Map<String, Object> azOverrides,
@@ -2459,6 +2488,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       params.ysqlMajorVersionUpgradeState = ysqlMajorVersionUpgradeState;
     }
     params.serverType = serverType;
+    params.masterPartition = masterPartition;
+    params.tserverPartition = tserverPartition;
     params.isReadOnlyCluster = isReadOnlyCluster;
     params.setEnableYbc(enableYbc);
     params.usePreviousGflagsChecksum = true; /* using true always */

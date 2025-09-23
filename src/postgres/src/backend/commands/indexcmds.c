@@ -2200,11 +2200,7 @@ DefineIndex(Oid relationId,
 
 		StartTransactionCommand();
 
-		YbDdlMode	ddl_mode = (YBIsDdlTransactionBlockEnabled()) ?
-			YB_DDL_MODE_AUTONOMOUS_TRANSACTION_CHANGE_VERSION_INCREMENT :
-			YB_DDL_MODE_VERSION_INCREMENT;
-
-		YBIncrementDdlNestingLevel(ddl_mode);
+		YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
 
 		/* Wait for all backends to have up-to-date version. */
 		YbWaitForBackendsCatalogVersion();
@@ -2234,7 +2230,7 @@ DefineIndex(Oid relationId,
 										"concurrent index backfill");
 
 		StartTransactionCommand();
-		YBIncrementDdlNestingLevel(ddl_mode);
+		YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
 
 		/* Wait for all backends to have up-to-date version. */
 		YbWaitForBackendsCatalogVersion();

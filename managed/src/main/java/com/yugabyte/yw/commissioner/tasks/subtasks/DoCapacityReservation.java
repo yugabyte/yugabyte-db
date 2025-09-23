@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
@@ -57,6 +57,7 @@ public class DoCapacityReservation extends ServerSubTaskBase {
 
   @Override
   public void run() {
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     if (taskParams().nodes == null || taskParams().nodes.isEmpty()) {
       return;
     }
@@ -72,6 +73,10 @@ public class DoCapacityReservation extends ServerSubTaskBase {
             capacityReservationState.getAzureReservationInfo();
         Map<UUID, AvailabilityZone> zones = new HashMap<>();
         for (NodeDetails node : taskParams().nodes) {
+          String instanceType = taskParams().nodeToInstanceType.get(node.nodeName);
+          if (!CapacityReservationUtil.azureCheckInstanceTypeIsSupported(instanceType)) {
+            continue;
+          }
           AvailabilityZone zone =
               zones.computeIfAbsent(
                   node.azUuid, uuid -> AvailabilityZone.getOrBadRequest(node.azUuid));
@@ -92,7 +97,7 @@ public class DoCapacityReservation extends ServerSubTaskBase {
                       });
 
           regionReservation.getZones().add(extractZoneNumber(zone.getCode()).toString());
-          String instanceType = taskParams().nodeToInstanceType.get(node.nodeName);
+
           UniverseDefinitionTaskParams.PerInstanceTypeReservation perType =
               regionReservation.getReservationsByType().get(instanceType);
           if (perType == null) {
@@ -139,7 +144,12 @@ public class DoCapacityReservation extends ServerSubTaskBase {
                               zoneID,
                               getInstanceReservationName(instanceType, zoneID),
                               instanceType,
-                              count);
+                              count,
+                              Map.of(
+                                  "universe-name",
+                                  universe.getName(),
+                                  "universe-uuid",
+                                  universe.getUniverseUUID().toString()));
                       log.info("Created reservation {} for {}", capacityReservation, instanceType);
                       reservation.setReservationName(capacityReservation);
                     });
@@ -224,8 +234,8 @@ public class DoCapacityReservation extends ServerSubTaskBase {
     } finally {
       Universe.saveDetails(
           taskParams().getUniverseUUID(),
-          universe -> {
-            universe.getUniverseDetails().setCapacityReservationState(capacityReservationState);
+          u -> {
+            u.getUniverseDetails().setCapacityReservationState(capacityReservationState);
           });
       getTaskCache().put(CAPACITY_RESERVATION_KEY, Json.toJson(capacityReservationState));
     }

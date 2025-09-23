@@ -298,6 +298,8 @@ static bool check_yb_enable_advisory_locks(bool *newval, void **extra, GucSource
 
 static void assign_yb_silence_advisory_locks_not_supported_error(bool newval, void *extra);
 
+static void assign_yb_enable_pg_stat_statements_rpc_stats(bool newval, void *extra);
+
 /* Private functions in guc-file.l that need to be called from guc.c */
 static ConfigVariable *ProcessConfigFileInternal(GucContext context,
 												 bool applySettings, int elevel);
@@ -3558,6 +3560,17 @@ static struct config_bool ConfigureNamesBool[] =
 		&yb_allow_dockey_bounds,
 		true,
 		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_pg_stat_statements_rpc_stats", PGC_SUSET, STATS_MONITORING,
+			gettext_noop("If true, enable RPC execution time stats for pg_stat_statements."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_pg_stat_statements_rpc_stats,
+		false,
+		NULL, assign_yb_enable_pg_stat_statements_rpc_stats, NULL
 	},
 
 	/* End-of-list marker */
@@ -7153,11 +7166,7 @@ static struct config_enum ConfigureNamesEnum[] =
 			NULL
 		},
 		&Password_encryption,
-		/*
-		 * YB_TODO: Change encryption method back to 'scram-sha-256' from 'md5'.
-		 * Currently YSQL Connection Manager times out when using scram passwords for unknown reasons.
-		 */
-		PASSWORD_TYPE_MD5, password_encryption_options,
+		PASSWORD_TYPE_SCRAM_SHA_256, password_encryption_options,
 		NULL, NULL, NULL
 	},
 
@@ -16217,6 +16226,12 @@ assign_yb_silence_advisory_locks_not_supported_error(bool newval, void *extra)
 						"without actually executing the lock request. It was added to avoid disruption for users who were "
 						"already using advisory locks but seeing success messages without the lock really being acquired.")));
 	}
+}
+
+static void
+assign_yb_enable_pg_stat_statements_rpc_stats(bool newval, void *extra)
+{
+	YbToggleSessionStatsTimer(newval);
 }
 
 #include "guc-file.c"

@@ -31,6 +31,9 @@ CONFIG_INPUT_FILE_NAME:=$(CURDIR)/yba-ctl.yml.reference
 CONFIG_EMBEDED_NAME:=$(CURDIR)/pkg/config/yba-ctl.yml
 VERSION_METADATA_JSON:=$(CURDIR)/version_metadata.json
 
+# get the perf advisor version from the tarball if it exists
+PERF_ADVISOR_TARBALL ?= $(shell ls $(CURDIR)/perf_advisor-*.tar.gz 2>/dev/null | head -1)
+PERF_ADVISOR_VERSION ?= $(if $(PERF_ADVISOR_TARBALL),$(shell basename $(PERF_ADVISOR_TARBALL) | sed -E 's/perf_advisor-([0-9a-zA-Z\.\-]+)\.tar\.gz/\1/'),)
 
 #pre-reqs
 PREREQS_DIR := ${TOP_BUILDDIR}/prereqs
@@ -83,7 +86,8 @@ ${BIN_DIR}/${BIN_NAME}:
 	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components/ybactl.Version=${VERSION}' \
 	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components/ybactl.BuildID=${BUILD_ID}' \
 	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/cmd.PostgresVersion=${POSTGRES_VERSION}' \
-	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/cmd.PrometheusVersion=${PROMETHEUS_VERSION}'"
+	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/cmd.PrometheusVersion=${PROMETHEUS_VERSION}' \
+	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/cmd.PerfAdvisorVersion=${PERF_ADVISOR_VERSION}'"
 
 
 package: ${PACKAGE_NAME}

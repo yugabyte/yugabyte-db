@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -1312,19 +1312,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
       std::unique_lock<std::mutex> lock(managed_mutex_);
       const auto& index = managed_transactions_.get<FirstTouchTag>();
       for (auto it = index.begin(); it != index.end(); ++it) {
-        if (static_cast<uint32_t>(resp->txn_size()) >= req->max_num_txns()) {
-          break;
-        }
         if (it->status() != TransactionStatus::PENDING || !it->first_touch()) {
-          continue;
-        }
-        // TODO(pglocks): The coordinator could end up tracking txns with no involved tablets.
-        // Skip such transactions since they don't contribute to pg_locks output.
-        //
-        // Remove the below once https://github.com/yugabyte/yugabyte-db/issues/18787 is addressed.
-        if (it->pending_involved_tablets().empty()) {
-          LOG_WITH_PREFIX_AND_FUNC(WARNING) << "Ignoring old transaction " << it->id().ToString()
-                                            << " with no pending involved tablets.";
           continue;
         }
 

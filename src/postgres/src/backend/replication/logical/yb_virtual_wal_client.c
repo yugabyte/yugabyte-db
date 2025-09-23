@@ -3,7 +3,7 @@
  * yb_virtual_wal_client.c
  *        Commands for readings records from the YB Virtual WAL exposed by the CDC service.
  *
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License.  You may obtain a copy of the License at
@@ -106,7 +106,8 @@ static XLogRecPtr CalculateRestartLSN(XLogRecPtr confirmed_flush);
 static void CleanupAckedTransactions(XLogRecPtr confirmed_flush);
 
 static Oid *YBCGetTableOids(List *tables);
-static void YBCRefreshReplicaIdentities();
+static void YBCRefreshReplicaIdentities(Oid *table_oids, int num_tables);
+static void ValidateReplicaIdentities(Oid *table_oids, int num_tables);
 
 void
 YBCInitVirtualWal(List *yb_publication_names)
@@ -220,11 +221,11 @@ InitVirtualWal(List *publication_names,
 	bool		yb_is_pub_all_tables = false;
 
 	/*
-	 * YB_TODO(#27686): Using the value of TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication
+	 * YB_TODO(#27686): Using the value of ysql_yb_enable_implicit_dynamic_tables_logical_replication
 	 * for decision making here will yield improper behaviour when streams with pub refresh
 	 * mechanism are upgraded to a version where the flag is true by default.
 	 */
-	if (*YBCGetGFlags()->TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication)
+	if (*YBCGetGFlags()->ysql_yb_enable_implicit_dynamic_tables_logical_replication)
 	{
 		elog(DEBUG2,
 			"Setting yb_read_time to initial_record_commit_time for %" PRIu64,
@@ -261,30 +262,14 @@ InitVirtualWal(List *publication_names,
 	 * Throw an error if the plugin being used is pgoutput and there exist a
 	 * table in publication with YB specific replica identity (CHANGE).
 	 */
-	if (strcmp(MyReplicationSlot->data.plugin.data, PG_OUTPUT_PLUGIN) == 0)
-	{
-		for (int i = 0; i < list_length(tables); i++)
-		{
-			YbcPgReplicaIdentityDescriptor *value = hash_search(MyReplicationSlot->data.yb_replica_identities,
-																&table_oids[i],
-																HASH_FIND,
-																NULL);
-
-			Assert(value);
-			if (value->identity_type == YBC_YB_REPLICA_IDENTITY_CHANGE)
-				ereport(ERROR,
-						(errmsg("replica identity CHANGE is not supported for output "
-								"plugin pgoutput"),
-						 errhint("Consider using output plugin yboutput instead.")));
-		}
-	}
+	ValidateReplicaIdentities(table_oids, list_length(tables));
 
 	YBCInitVirtualWalForCDC(MyReplicationSlot->data.yb_stream_id, table_oids,
 							list_length(tables), slot_hash_range, MyProcPid,
 							yb_publication_oids, list_length(publication_names),
 							yb_is_pub_all_tables);
 
-	if (!*YBCGetGFlags()->TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication)
+	if (!*YBCGetGFlags()->ysql_yb_enable_implicit_dynamic_tables_logical_replication)
 	{
 		elog(DEBUG2,
 			"Setting yb_read_time to initial_record_commit_time for %" PRIu64,
@@ -362,12 +347,12 @@ YBCReadRecord(XLogReaderState *state, List *publication_names, char **errormsg)
 			YBCUpdatePublicationTableList(MyReplicationSlot->data.yb_stream_id,
 										  table_oids, list_length(tables));
 
+			/* Refresh the replica identities. */
+			YBCRefreshReplicaIdentities(table_oids, list_length(tables));
+
 			pfree(table_oids);
 			list_free(tables);
 			AbortCurrentTransaction();
-
-			/* Refresh the replica identities. */
-			YBCRefreshReplicaIdentities();
 
 			needs_publication_table_list_refresh = false;
 		}
@@ -676,13 +661,14 @@ YBCGetTableOids(List *tables)
 }
 
 static void
-YBCRefreshReplicaIdentities()
+YBCRefreshReplicaIdentities(Oid *table_oids, int num_tables)
 {
 	YbcReplicationSlotDescriptor *yb_replication_slot;
 	int			replica_identity_idx = 0;
 
 	YBCGetReplicationSlot(MyReplicationSlot->data.name.data, &yb_replication_slot);
 
+	/* Populate the replica identities for new tables in MyReplicationSlot. */
 	for (replica_identity_idx = 0;
 		 replica_identity_idx <
 		 yb_replication_slot->replica_identities_count;
@@ -694,23 +680,18 @@ YBCRefreshReplicaIdentities()
 		desc =
 			&yb_replication_slot->replica_identities[replica_identity_idx];
 
-		/*
-		 * Throw an error if the plugin being used is pgoutput and there exist a
-		 * table with YB specific replica identity (CHANGE).
-		 */
-		if (strcmp(MyReplicationSlot->data.plugin.data, PG_OUTPUT_PLUGIN) == 0
-			&& desc->identity_type == YBC_YB_REPLICA_IDENTITY_CHANGE)
-			ereport(ERROR,
-					(errmsg("replica identity CHANGE is not supported for output "
-							"plugin pgoutput"),
-					 errhint("Consider using output plugin yboutput instead.")));
-
 		value =
 			hash_search(MyReplicationSlot->data.yb_replica_identities,
 						&desc->table_oid, HASH_ENTER, NULL);
 		value->table_oid = desc->table_oid;
 		value->identity_type = desc->identity_type;
 	}
+
+	/*
+	 * Throw an error if the plugin being used is pgoutput and a table has been
+	 * added to the publication with YB specific replica identity (CHANGE).
+	 */
+	ValidateReplicaIdentities(table_oids, num_tables);
 }
 
 void
@@ -818,4 +799,30 @@ YBCGetTableHashRange(List **options)
 
 	if (option_values != NIL)
 		list_free(option_values);
+}
+
+/*
+ * This function validates that none of the tables passed to it have replica
+ * identity CHANGE when we are using pgoutput plugin.
+ */
+static void
+ValidateReplicaIdentities(Oid *table_oids, int num_tables)
+{
+	if (strcmp(MyReplicationSlot->data.plugin.data, PG_OUTPUT_PLUGIN) != 0)
+		return;
+
+	for (int i = 0; i < num_tables; i++)
+	{
+		YbcPgReplicaIdentityDescriptor *value = hash_search(MyReplicationSlot->data.yb_replica_identities,
+															&table_oids[i],
+															HASH_FIND,
+															NULL);
+
+		Assert(value);
+		if (value->identity_type == YBC_YB_REPLICA_IDENTITY_CHANGE)
+			ereport(ERROR,
+					(errmsg("replica identity CHANGE (for table: %u) is not supported for output "
+							"plugin pgoutput", table_oids[i]),
+					 errhint("Consider using output plugin yboutput instead. ")));
+	}
 }

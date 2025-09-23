@@ -1,4 +1,4 @@
-// Copyright (c) Yugabyte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
@@ -81,7 +81,9 @@ public class ManageOtelCollector extends NodeTaskBase {
       log.info("Configuring otel-collector using node-agent");
       if (taskParams().otelCollectorEnabled) {
         if (OtelCollectorUtil.isAuditLogEnabledInUniverse(taskParams().auditLogConfig)
-            || OtelCollectorUtil.isQueryLogEnabledInUniverse(taskParams().queryLogConfig)) {
+            || OtelCollectorUtil.isQueryLogEnabledInUniverse(taskParams().queryLogConfig)
+            || OtelCollectorUtil.isMetricsExportEnabledInUniverse(
+                taskParams().metricsExportConfig)) {
           nodeAgentClient.runInstallOtelCollector(
               optional.get(),
               nodeAgentRpcPayload.setupInstallOtelCollectorBits(
@@ -90,6 +92,7 @@ public class ManageOtelCollector extends NodeTaskBase {
         }
       }
     } else {
+      log.info("Configuring otel-collector using ansible");
       getNodeManager()
           .nodeCommand(NodeManager.NodeCommandType.Manage_Otel_Collector, taskParams())
           .processErrors();

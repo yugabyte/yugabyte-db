@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 YugaByte, Inc. and Contributors
+ * Copyright 2019 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you may not use this file
  * except in compliance with the License. You may obtain a copy of the License at
@@ -251,7 +251,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
             gFlagsParams.masterJoinExistingCluster = false;
           });
       if (deleteCapacityReservation) {
-        createDeleteReservationTask();
+        createDeleteCapacityReservationTask();
       }
 
       Set<NodeDetails> primaryNodes = taskParams().getNodesInCluster(primaryCluster.uuid);

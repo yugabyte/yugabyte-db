@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -43,6 +43,11 @@
 #include "yb/master/xcluster_consumer_registry_service.h"
 #include "yb/master/xcluster_rpc_tasks.h"
 #include "yb/master/ysql/ysql_manager_if.h"
+
+#include "yb/tablet/operations/change_metadata_operation.h"
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/transaction_participant.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/debug-util.h"
@@ -154,7 +159,7 @@ DECLARE_uint32(max_replication_slots);
 DECLARE_uint64(cdc_intent_retention_ms);
 DECLARE_uint32(cdcsdk_tablet_not_of_interest_timeout_secs);
 DECLARE_bool(cdcsdk_enable_dynamic_table_addition_with_table_cleanup);
-DECLARE_bool(TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication);
+DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 
 #define RETURN_ACTION_NOT_OK(expr, action) \
   RETURN_NOT_OK_PREPEND((expr), Format("An error occurred while $0", action))
@@ -851,7 +856,7 @@ Status CatalogManager::CreateNewCDCStreamForNamespace(
 
   // We add the pg_class and pg_publication_rel catalog tables to the stream metadata as we will
   // poll them to figure out changes to the publications. This will not be done for gRPC streams.
-  if (FLAGS_TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication &&
+  if (FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication &&
       req.has_cdcsdk_ysql_replication_slot_name()) {
     auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
     table_ids.push_back(GetPgsqlTableId(database_oid, kPgClassTableOid));
@@ -1356,7 +1361,6 @@ Status CatalogManager::SetAllCDCSDKRetentionBarriers(
   const std::vector<TableId>& table_ids, const xrepl::StreamId& stream_id,
   const bool has_consistent_snapshot_option, const bool require_history_cutoff) {
   VLOG_WITH_FUNC(4) << "Setting All retention barriers for stream: " << stream_id;
-  std::unordered_set<TableId> system_table_ids;
 
   for (const auto& table_id : table_ids) {
     auto table = VERIFY_RESULT(FindTableById(table_id));
@@ -1367,10 +1371,6 @@ Status CatalogManager::SetAllCDCSDKRetentionBarriers(
             NotFound, "Table does not exist", table_id,
             MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
       }
-    }
-
-    if (table->is_system()) {
-      system_table_ids.insert(table_id);
     }
 
     AlterTableRequestPB alter_table_req;
@@ -1396,16 +1396,85 @@ Status CatalogManager::SetAllCDCSDKRetentionBarriers(
     auto deadline = rpc->GetClientDeadline();
     // TODO(#18934): Handle partial failures by rolling back all changes.
     for (const auto& table_id : table_ids) {
-      // TODO(#26423): The check WaitForAlterTableToFinish fails for catalog tables because we do
-      // not perform a RAFT operation yet to set the retention barriers on catalog tables.
-      if (system_table_ids.contains(table_id)) {
-        continue;
-      }
       RETURN_NOT_OK(WaitForAlterTableToFinish(table_id, deadline));
     }
     RETURN_NOT_OK(WaitForSnapshotSafeOpIdToBePopulated(stream_id, table_ids, deadline));
   }
 
+  return Status::OK();
+}
+
+// This function sets the initial retention barriers on the sys catalog tablet. This is called only
+// in the CreateCDCStream context, i.e this will be always called on the master leader. It follows
+// the following steps:
+//    Step 1: Get the last committed OpId (safe_op_id) from the sys catalog tablet.
+//    Step 2: Create and submit a CHANGE_METADATA_OP. The retention barriers will be set on all the
+//    peers when this OP is applied.
+//    Step 3: Populate the safe_op_id in the cdc_state table upon successful apply of the
+//    CHANGE_METADATA_OP in the callback.
+Status CatalogManager::SetAllInitialCDCSDKRetentionBarriersOnCatalogTable(
+    const TableInfoPtr& table, const xrepl::StreamId& stream_id) {
+  auto tablet_peer = sys_catalog_->tablet_peer();
+
+  tablet::RemoveIntentsData data;
+  RETURN_NOT_OK(tablet_peer->GetLastReplicatedData(&data));
+  OpIdPB safe_op_id;
+  safe_op_id.set_term(data.op_id.term);
+  safe_op_id.set_index(data.op_id.index);
+
+  // Perform a raft operation (CHANGE_METADATA_OP) to set retention barriers. The barriers will be
+  // set in the ChangeMetadataOperation::Apply() path.
+  tablet::ChangeMetadataRequestPB cm_req;
+  tserver::ChangeMetadataResponsePB resp;
+  {
+    auto l = table->LockForRead();
+
+    cm_req.set_schema_version(l->pb.version());
+    cm_req.set_dest_uuid(master_->permanent_uuid());
+    cm_req.set_tablet_id(sys_catalog_->tablet_id());
+    cm_req.set_alter_table_id(table->id());
+    cm_req.mutable_schema()->CopyFrom(l->pb.schema());
+
+    if (l->pb.has_wal_retention_secs()) {
+      cm_req.set_wal_retention_secs(l->pb.wal_retention_secs());
+    }
+
+    cm_req.set_retention_requester_id(stream_id.ToString());
+
+    // TODO(#26427): Here we are setting the history retention barriers on the sys catalog tablet.
+    // However these barriers will not be moved by UpdatePeersAndMetrics thread but instead will be
+    // governed by the flag timestamp_syscatalog_history_retention_interval_sec.
+    cm_req.set_cdc_sdk_require_history_cutoff(true);
+  }
+  auto sys_catalog_tablet = VERIFY_RESULT(sys_catalog_->Tablet());
+  auto operation =
+      std::make_unique<tablet::ChangeMetadataOperation>(sys_catalog_tablet, tablet_peer->log());
+  auto request = operation->AllocateRequest();
+  request->CopyFrom(cm_req);
+
+  operation->set_completion_callback([this, table, stream_id, safe_op_id](Status s) {
+    // If the apply of CHANGE_METADATA_OP has returned non-ok status, then do not populate the state
+    // table entry for the sys catalog tablet. If safe_op_id is not populated in the state table
+    // then WaitForSnapshotSafeOpIdToBePopulated() will fail, hence failing stream creation.
+    if (!s.ok()) {
+      LOG(WARNING) << "Failed to set retention barriers on the sys catalog tablet. Will not "
+                      "populate its state table entry for stream: "
+                   << stream_id.ToString();
+      return;
+    }
+
+    WARN_NOT_OK(
+        PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails(
+            table, sys_catalog_->tablet_id(), stream_id, safe_op_id,
+            master_->clock()->Now() /* proposed_snapshot_time */,
+            true /* require_history_cutoff */),
+        "Failed to populate the CDC state table entry for the sys catalog tablet. Will fail stream "
+        "creation for the stream: " + stream_id.ToString());
+  });
+
+  // Submit the CHANGE_METADATA_OP and return. We wait in the CreateCDCStream processing for all
+  // retention barriers to be set.
+  tablet_peer->Submit(std::move(operation), tablet_peer->LeaderTerm());
   return Status::OK();
 }
 
@@ -3243,6 +3312,9 @@ Status CatalogManager::ListCDCStreams(
       stream->set_cdcsdk_disable_dynamic_table_addition(
           ltm->pb.cdcsdk_disable_dynamic_table_addition());
     }
+
+    auto replica_identity_map = ltm->pb.replica_identity_map();
+    stream->mutable_replica_identity_map()->swap(replica_identity_map);
   }
   return Status::OK();
 }

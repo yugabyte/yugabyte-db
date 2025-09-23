@@ -11,9 +11,9 @@
  *	  src/backend/commands/tablecmds.c
  *
  * The following only applies to changes made to this file as part of
- * YugaByte development.
+ * YugabyteDB development.
  *
- * Portions Copyright (c) YugaByte, Inc.
+ * Portions Copyright (c) YugabyteDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you
  * may not use this file except in compliance with the License.
@@ -3728,6 +3728,8 @@ SetRelationTableSpace(Relation rel,
 	otid = tuple->t_self;
 	rd_rel = (Form_pg_class) GETSTRUCT(tuple);
 
+	Oid yb_old_reltablespace = rd_rel->reltablespace;
+
 	/* Update the pg_class row. */
 	rd_rel->reltablespace = (newTableSpaceId == MyDatabaseTableSpace) ?
 		InvalidOid : newTableSpaceId;
@@ -3746,6 +3748,22 @@ SetRelationTableSpace(Relation rel,
 		IsYBRelation(rel))
 		changeDependencyOnTablespace(RelationRelationId, reloid,
 									 rd_rel->reltablespace);
+
+	if (IsYugaByteEnabled() && OidIsValid(MyDatabaseId))
+	{
+		/*
+		 * YB: Clear the old tablespace if needed.
+		 */
+		if (yb_old_reltablespace >= FirstNormalObjectId &&
+			rd_rel->reltablespace < FirstNormalObjectId)
+			YBCClearTablespaceOid(MyDatabaseId, reloid);
+
+		/*
+		 * YB: Record the new tablespace if needed.
+		 */
+		if (rd_rel->reltablespace >= FirstNormalObjectId)
+			YBCRecordTablespaceOid(MyDatabaseId, reloid, rd_rel->reltablespace);
+	}
 
 	heap_freetuple(tuple);
 	table_close(pg_class, RowExclusiveLock);

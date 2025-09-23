@@ -46,6 +46,7 @@
 #include "yb/server/clockbound_clock.h"
 #include "yb/server/skewed_clock.h"
 
+#include "yb/tablet/tablet.pb.h"
 #include "yb/tserver/pg_client.pb.h"
 #include "yb/util/atomic.h"
 #include "yb/util/curl_util.h"
@@ -449,6 +450,40 @@ ReadHybridTime MakeReadHybridTime(const YbcReadHybridTime& read_time) {
       .global_limit = HybridTime(read_time.global_limit),
       .in_txn_limit = HybridTime(read_time.in_txn_limit),
       .serial_no = read_time.serial_no
+  };
+}
+
+// YugabyteDB-specific binary upgrade flag
+static bool yb_is_binary_upgrade = false;
+
+
+Status YBCInitTransactionImpl(const YbcPgInitTransactionData& data) {
+  RETURN_NOT_OK(pgapi->BeginTransaction(data.xact_start_timestamp));
+  RETURN_NOT_OK(pgapi->SetTransactionIsolationLevel(data.effective_pggate_isolation_level));
+  RETURN_NOT_OK(pgapi->UpdateFollowerReadsConfig(
+      data.read_from_followers_enabled, data.follower_read_staleness_ms));
+  RETURN_NOT_OK(pgapi->SetTransactionReadOnly(data.xact_read_only));
+  RETURN_NOT_OK(pgapi->SetEnableTracing(data.enable_tracing));
+  return pgapi->SetTransactionDeferrable(data.xact_deferrable);
+}
+
+Status YBCCommitTransactionIntermediateImpl(const YbcPgInitTransactionData& data) {
+  const auto history_cutoff_guard = pgapi->TemporaryDisableReadTimeHistoryCutoff();
+  RETURN_NOT_OK(pgapi->CommitPlainTransaction());
+  return YBCInitTransactionImpl(data);
+}
+
+YbcPgTabletsDescriptor MakeYbcPgTabletsDescriptor(const tablet::TabletStatusPB& tablet_status) {
+  return {
+    .tablet_id = YBCPAllocStdString(tablet_status.tablet_id()),
+    .table_name = YBCPAllocStdString(tablet_status.table_name()),
+    .table_id = YBCPAllocStdString(tablet_status.table_id()),
+    .namespace_name = YBCPAllocStdString(tablet_status.namespace_name()),
+    .table_type = YBCPAllocStdString(HumanReadableTableType(tablet_status.table_type())),
+    .partition_key_start = YBCPAllocStdString(tablet_status.partition().partition_key_start()),
+    .partition_key_start_len = tablet_status.partition().partition_key_start().size(),
+    .partition_key_end = YBCPAllocStdString(tablet_status.partition().partition_key_end()),
+    .partition_key_end_len = tablet_status.partition().partition_key_end().size()
   };
 }
 
@@ -1175,6 +1210,16 @@ YbcStatus YBCPgSetDBCatalogCacheVersion(
   return ToYBCStatus(pgapi->SetCatalogCacheVersion(handle, version, db_oid));
 }
 
+YbcStatus YBCPgSetTablespaceOid(YbcPgStatement handle, uint32_t tablespace_oid) {
+  return ToYBCStatus(pgapi->SetTablespaceOid(handle, tablespace_oid));
+}
+
+#ifndef NDEBUG
+void YBCPgCheckTablespaceOid(uint32_t db_oid, uint32_t table_oid, uint32_t tablespace_oid) {
+  pgapi->CheckTablespaceOid(db_oid, table_oid, tablespace_oid);
+}
+#endif
+
 YbcStatus YBCPgDmlModifiesRow(YbcPgStatement handle, bool *modifies_row) {
   return ExtractValueFromResult(pgapi->DmlModifiesRow(handle), modifies_row);
 }
@@ -1486,8 +1531,8 @@ void YBCPgResetOperationsBuffering() {
   pgapi->ResetOperationsBuffering();
 }
 
-YbcStatus YBCPgFlushBufferedOperations(YbcFlushDebugContext context) {
-  return ToYBCStatus(pgapi->FlushBufferedOperations(context));
+YbcStatus YBCPgFlushBufferedOperations(YbcFlushDebugContext *debug_context) {
+  return ToYBCStatus(pgapi->FlushBufferedOperations(*debug_context));
 }
 
 YbcStatus YBCPgAdjustOperationsBuffering(int multiple) {
@@ -1865,7 +1910,7 @@ bool YBCIsRestartReadPointRequested() {
 }
 
 YbcStatus YBCPgCommitPlainTransaction() {
-  return ToYBCStatus(pgapi->CommitPlainTransaction(std::nullopt /* ddl_commit_info */));
+  return ToYBCStatus(pgapi->CommitPlainTransaction());
 }
 
 YbcStatus YBCPgCommitPlainTransactionContainingDDL(
@@ -2078,19 +2123,6 @@ uint64_t YBCPgGetInsertOnConflictKeyCount(void* state) {
 }
 
 //--------------------------------------------------------------------------------------------------
-
-bool YBCIsInitDbModeEnvVarSet() {
-  static bool cached_value = false;
-  static bool cached = false;
-
-  if (!cached) {
-    const char* initdb_mode_env_var_value = getenv("YB_PG_INITDB_MODE");
-    cached_value = initdb_mode_env_var_value && strcmp(initdb_mode_env_var_value, "1") == 0;
-    cached = true;
-  }
-
-  return cached_value;
-}
 
 void YBCInitFlags() {
   SetAtomicFlag(GetAtomicFlag(&FLAGS_pggate_num_connections_to_server),
@@ -2868,34 +2900,65 @@ YbcStatus YBCPgUpdateAndPersistLSN(
   return YBCStatusOK();
 }
 
-YbcStatus YBCLocalTablets(YbcPgTabletsDescriptor** tablets, size_t* count) {
-  const auto result = pgapi->TabletsMetadata();
+YbcStatus YBCLocalTablets(YbcPgLocalTabletsDescriptor** tablets, size_t* count) {
+  const auto result = pgapi->TabletsMetadata(/* local_only= */ true);
   if (!result.ok()) {
     return ToYBCStatus(result.status());
   }
   const auto& local_tablets = result.get().tablets();
   *count = local_tablets.size();
   if (!local_tablets.empty()) {
-    *tablets = static_cast<YbcPgTabletsDescriptor*>(
-        YBCPAlloc(sizeof(YbcPgTabletsDescriptor) * local_tablets.size()));
-    YbcPgTabletsDescriptor* dest = *tablets;
+    *tablets = static_cast<YbcPgLocalTabletsDescriptor*>(
+        YBCPAlloc(sizeof(YbcPgLocalTabletsDescriptor) * local_tablets.size()));
+    YbcPgLocalTabletsDescriptor* dest = *tablets;
     for (const auto& tablet : local_tablets) {
-      new (dest) YbcPgTabletsDescriptor {
-        .tablet_id = YBCPAllocStdString(tablet.tablet_id()),
-        .table_name = YBCPAllocStdString(tablet.table_name()),
-        .table_id = YBCPAllocStdString(tablet.table_id()),
-        .namespace_name = YBCPAllocStdString(tablet.namespace_name()),
-        .table_type = YBCPAllocStdString(HumanReadableTableType(tablet.table_type())),
-        .pgschema_name = YBCPAllocStdString(tablet.pgschema_name()),
-        .partition_key_start = YBCPAllocStdString(tablet.partition().partition_key_start()),
-        .partition_key_start_len = tablet.partition().partition_key_start().size(),
-        .partition_key_end = YBCPAllocStdString(tablet.partition().partition_key_end()),
-        .partition_key_end_len = tablet.partition().partition_key_end().size(),
-        .tablet_data_state = YBCPAllocStdString(TabletDataState_Name(tablet.tablet_data_state()))
+      new (dest) YbcPgLocalTabletsDescriptor {
+        .tablet_descriptor = MakeYbcPgTabletsDescriptor(tablet),
+        .tablet_data_state = YBCPAllocStdString(TabletDataState_Name(tablet.tablet_data_state())),
+        .pgschema_name = YBCPAllocStdString(tablet.pgschema_name())
       };
       ++dest;
     }
   }
+  return YBCStatusOK();
+}
+
+YbcStatus YBCTabletsMetadata(YbcPgGlobalTabletsDescriptor** tablets, size_t* count) {
+  const auto result = pgapi->TabletsMetadata(/* local_only= */ false);
+
+  if (!result.ok())
+    return ToYBCStatus(result.status());
+
+  const auto& tablet_metadatas = result.get().tablets();
+  *count = tablet_metadatas.size();
+
+  if (!tablet_metadatas.empty()) {
+    *tablets = static_cast<YbcPgGlobalTabletsDescriptor*>(
+        YBCPAlloc(sizeof(YbcPgGlobalTabletsDescriptor) * tablet_metadatas.size()));
+    YbcPgGlobalTabletsDescriptor* dest = *tablets;
+
+    for (const auto& tablet_metadata : tablet_metadatas) {
+      const char** replicas_array = nullptr;
+
+      if (!tablet_metadata.replicas().empty()) {
+        replicas_array = static_cast<const char**>(
+            YBCPAlloc(tablet_metadata.replicas().size() * sizeof(const char*)));
+
+        for (int i = 0; i < tablet_metadata.replicas().size(); ++i) {
+          replicas_array[i] = YBCPAllocStdString(tablet_metadata.replicas(i));
+        }
+      }
+
+      new (dest) YbcPgGlobalTabletsDescriptor {
+        .tablet_descriptor = MakeYbcPgTabletsDescriptor(tablet_metadata),
+        .replicas = replicas_array,
+        .replicas_count = static_cast<size_t>(tablet_metadata.replicas().size()),
+        .is_hash_partitioned = tablet_metadata.is_hash_partitioned()
+      };
+      ++dest;
+    }
+  }
+
   return YBCStatusOK();
 }
 
@@ -3064,17 +3127,28 @@ bool YBCPgYsqlMajorVersionUpgradeInProgress() {
   return yb_major_version_upgrade_compatibility > 0 || !yb_upgrade_to_pg15_completed;
 }
 
-namespace {
-// YugabyteDB-specific binary upgrade flag
-static bool yb_is_binary_upgrade = false;
-}  // namespace
-
 bool YBCIsBinaryUpgrade() {
   return yb_is_binary_upgrade;
 }
 
 void YBCSetBinaryUpgrade(bool value) {
   yb_is_binary_upgrade = value;
+}
+
+void YBCRecordTablespaceOid(YbcPgOid db_oid, YbcPgOid table_oid, YbcPgOid tablespace_oid) {
+  pgapi->RecordTablespaceOid(db_oid, table_oid, tablespace_oid);
+}
+
+void YBCClearTablespaceOid(YbcPgOid db_oid, YbcPgOid table_oid) {
+  pgapi->ClearTablespaceOid(db_oid, table_oid);
+}
+
+YbcStatus YBCInitTransaction(const YbcPgInitTransactionData *data) {
+  return ToYBCStatus(YBCInitTransactionImpl(*data));
+}
+
+YbcStatus YBCCommitTransactionIntermediate(const YbcPgInitTransactionData *data) {
+  return ToYBCStatus(YBCCommitTransactionIntermediateImpl(*data));
 }
 
 } // extern "C"

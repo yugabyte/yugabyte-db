@@ -1,5 +1,5 @@
 /*
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  */
 
 package xcluster
@@ -82,7 +82,7 @@ var fullCopyXClusterCmd = &cobra.Command{
 				errMessage := util.ErrorFromHTTPResponse(
 					response,
 					err,
-					"XCluster",
+					"xCluster",
 					fmt.Sprintf("%s - List Tables", operation))
 				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 			}
@@ -108,7 +108,7 @@ var fullCopyXClusterCmd = &cobra.Command{
 		r, response, err := authAPI.NeedBootstrapTable(sourceUniverseUUID).
 			XclusterNeedBootstrapFormData(req).IncludeDetails(true).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "XCluster", operation)
+			errMessage := util.ErrorFromHTTPResponse(response, err, "xCluster", operation)
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 

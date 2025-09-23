@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -30,7 +30,8 @@ class CDCSDKConsistentSnapshotTest : public CDCSDKYsqlTest {
 
   void TestCSStreamSnapshotEstablishment(
       bool use_replication_slot, bool enable_replication_commands);
-  void TestCSStreamFailureRollback(std::string sync_point, std::string expected_error);
+  void TestCSStreamFailureRollback(
+      std::string sync_point, std::string expected_error, bool poll_catalog_tables = false);
 };
 
 void CDCSDKConsistentSnapshotTest::TestCSStreamSnapshotEstablishment(
@@ -120,10 +121,12 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestSnapshotNameFromCreateReplicationSlot) 
 }
 
 void CDCSDKConsistentSnapshotTest::TestCSStreamFailureRollback(
-    std::string sync_point, std::string expected_error) {
+    std::string sync_point, std::string expected_error, bool poll_catalog_tables) {
   // Make UpdatePeersAndMetrics and Catalog Manager background tasks run frequently.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) = poll_catalog_tables;
 
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
   auto tablet_peer =
@@ -223,6 +226,15 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestCSStreamFailureRollbackFailureAfterRete
   TestCSStreamFailureRollback(
       "CreateCDCSDKStream::kAfterRetentionBarriers",
       "Test failure for sync point CreateCDCSDKStream::kAfterRetentionBarriers.");
+}
+
+TEST_F(
+    CDCSDKConsistentSnapshotTest,
+    TestCSStreamFailureRollbackFailureAfterRetentionBarriersWithCatalogTables) {
+  TestCSStreamFailureRollback(
+      "CreateCDCSDKStream::kAfterRetentionBarriers",
+      "Test failure for sync point CreateCDCSDKStream::kAfterRetentionBarriers.",
+      true /* poll_catalog_tables */);
 }
 
 TEST_F(

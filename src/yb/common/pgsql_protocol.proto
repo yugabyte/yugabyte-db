@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -318,6 +318,9 @@ message PgsqlWriteRequestPB {
 
   // What metric changes to return in response.
   optional PgsqlMetricsCaptureType metrics_capture = 28;
+
+  // Table space oid of the table specified by table_id.
+  optional uint32 tablespace_oid = 29;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -590,6 +593,9 @@ message PgsqlReadRequestPB {
   optional GetTabletKeyRangesEmbeddedRequestPB get_tablet_key_ranges_request = 41;
 
   optional PgVectorReadOptionsPB vector_idx_options = 42;
+
+  // Table space oid of the table specified by table_id.
+  optional uint32 tablespace_oid = 45;
 }
 
 //--------------------------------------------------------------------------------------------------

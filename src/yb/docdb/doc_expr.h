@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // This module defines and executes expression-related operations in DocDB.
 //--------------------------------------------------------------------------------------------------

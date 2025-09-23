@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 import { PureComponent } from 'react';
 import { toast } from 'react-toastify';

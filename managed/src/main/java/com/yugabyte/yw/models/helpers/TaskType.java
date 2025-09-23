@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.models.helpers;
 
@@ -512,6 +512,21 @@ public enum TaskType {
       CustomerTask.TaskType.UpgradeYbcGFlags,
       CustomerTask.TargetType.Universe),
 
+  UpgradeKubernetesYbcGFlags(
+      com.yugabyte.yw.commissioner.tasks.upgrade.UpgradeKubernetesYbcGFlags.class,
+      CustomerTask.TaskType.UpgradeKubernetesYbcGFlags,
+      CustomerTask.TargetType.Universe),
+
+  UpdateYbcThrottleFlags(
+      com.yugabyte.yw.commissioner.tasks.upgrade.UpdateYbcThrottleFlags.class,
+      CustomerTask.TaskType.UpdateYbcThrottleFlags,
+      CustomerTask.TargetType.Universe),
+
+  UpdateK8sYbcThrottleFlags(
+      com.yugabyte.yw.commissioner.tasks.upgrade.UpdateK8sYbcThrottleFlags.class,
+      CustomerTask.TaskType.UpdateK8sYbcThrottleFlags,
+      CustomerTask.TargetType.Universe),
+
   DisableYbc(
       com.yugabyte.yw.commissioner.tasks.DisableYbc.class,
       CustomerTask.TaskType.DisableYbc,
@@ -690,6 +705,11 @@ public enum TaskType {
       CustomerTask.TaskType.MigrateUniverse,
       CustomerTask.TargetType.Universe),
 
+  KubernetesToggleImmutableYbc(
+      com.yugabyte.yw.commissioner.tasks.upgrade.KubernetesToggleImmutableYbc.class,
+      CustomerTask.TaskType.KubernetesToggleImmutableYbc,
+      CustomerTask.TargetType.Universe),
+
   /* Subtasks start here */
 
   KubernetesCheckVolumeExpansion(
@@ -811,6 +831,9 @@ public enum TaskType {
 
   UpdateUniverseYbcGflagsDetails(
       com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseYbcGflagsDetails.class),
+
+  SetYbcThrottleParamsInMemory(
+      com.yugabyte.yw.commissioner.tasks.subtasks.SetYbcThrottleParamsInMemory.class),
 
   VerifyNodeSSHAccess(com.yugabyte.yw.commissioner.tasks.subtasks.VerifyNodeSSHAccess.class),
 
@@ -1229,7 +1252,14 @@ public enum TaskType {
   DoCapacityReservation(com.yugabyte.yw.commissioner.tasks.subtasks.DoCapacityReservation.class),
 
   DeleteCapacityReservation(
-      com.yugabyte.yw.commissioner.tasks.subtasks.DeleteCapacityReservation.class);
+      com.yugabyte.yw.commissioner.tasks.subtasks.DeleteCapacityReservation.class),
+
+  DisablePitrConfig(com.yugabyte.yw.commissioner.tasks.subtasks.DisablePitrConfig.class),
+
+  EnablePitrConfig(com.yugabyte.yw.commissioner.tasks.subtasks.EnablePitrConfig.class),
+
+  UpdateAndPersistKubernetesImmutableYbc(
+      com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistKubernetesImmutableYbc.class);
 
   private final Class<? extends ITask> taskClass;
 
@@ -1290,6 +1320,10 @@ public enum TaskType {
           .put(ModifyKubernetesAuditLoggingConfig, 56)
           .put(ModifyQueryLoggingConfig, 57)
           .put(ModifyMetricsExportConfig, 58)
+          .put(KubernetesToggleImmutableYbc, 59)
+          .put(UpgradeKubernetesYbcGFlags, 60)
+          .put(UpdateYbcThrottleFlags, 61)
+          .put(UpdateK8sYbcThrottleFlags, 62)
           // Node operations (70-89):
           .put(AddNodeToUniverse, 70)
           .put(DeleteNodeFromUniverse, 71)

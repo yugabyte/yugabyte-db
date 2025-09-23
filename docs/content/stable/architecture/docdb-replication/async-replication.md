@@ -252,6 +252,8 @@ The following deployment scenarios are not yet supported:
 
   Table columns whose types involve row types are not supported.
 
+- [pgvector](../../../additional-features/pg-extensions/extension-pgvector/) indexes are not supported.
+
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
 <li>
     <a href="#ysql-transactional" class="nav-link active" id="ysql-transactional-tab" data-bs-toggle="tab"
@@ -301,7 +303,7 @@ Improper use can compromise replication consistency and lead to data divergence.
 - Rewinding of sequences (for example, restarting a sequence so it will repeat values) is discouraged because it may not be fully rolled back during unplanned failovers.
 - The `TRUNCATE` command is only supported in v2025.1.1 and later.
 - While Automatic mode is active, you can only `CREATE`, `DROP`, or `ALTER` the following extensions: file_fdw, fuzzystrmatch, pgcrypto, postgres_fdw, sslinfo, uuid-ossp, hypopg, pg_stat_monitor, and pgaudit. All other extensions must be created _before_ setting up automatic mode.
-- If using pg_partman on v2025.1.0 or earlier, enable the cron job on the source cluster only. After switchover or failover, move the cron job to the new primary. Refer to pg_partman [Limitations](../../../explore/ysql-language-features/pg-extensions/extension-pgpartman/#xcluster).
+- If using pg_partman on v2025.1.0 or earlier, enable the cron job on the source cluster only. After switchover or failover, move the cron job to the new primary. Refer to pg_partman [Limitations](../../../additional-features/pg-extensions/extension-pgpartman/#xcluster).
 
 #### Transactional Semi-Automatic and Manual mode
 
@@ -317,7 +319,7 @@ Improper use can compromise replication consistency and lead to data divergence.
 
 - While xCluster is active, user-defined composite, enum, and range types and arrays of those types should not be created, altered, or dropped. Create these types before xCluster is set up. If you need to modify these types, you must first drop xCluster replication, make the necessary changes, and then re-enable xCluster via [bootstrap](#replication-bootstrapping).
 
-- pg_partman requires additional setup in Semi-Automatic mode. Refer to pg_partman [Limitations](../../../explore/ysql-language-features/pg-extensions/extension-pgpartman/#xcluster).
+- pg_partman requires additional setup in Semi-Automatic mode. Refer to pg_partman [Limitations](../../../additional-features/pg-extensions/extension-pgpartman/#xcluster).
 
   pg_partman is not supported in Manual mode.
 
@@ -341,7 +343,7 @@ Improper use can compromise replication consistency and lead to data divergence.
 
 - pg_partman
 
-    pg_partman is supported but not recommended. Refer to pg_partman [Limitations](../../../explore/ysql-language-features/pg-extensions/extension-pgpartman/#xcluster).
+    pg_partman is supported but not recommended. Refer to pg_partman [Limitations](../../../additional-features/pg-extensions/extension-pgpartman/#xcluster).
 
 #### Uni-directional
 

@@ -3,7 +3,6 @@ package cmd
 import (
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -196,35 +195,19 @@ func (perf PerfAdvisor) createSoftwareDirectories() error {
 }
 
 func (perf PerfAdvisor) untarAndSetupPerfAdvisorPackages() error {
-	// Get the absolute path to the pa.tar.gz bundle
-	paPath := common.AbsoluteBundlePath("pa.tar.gz")
+	// Get the absolute path to the perf_advisor tarball with version in the filename
+	paTarball := fmt.Sprintf("perf_advisor-%s.tar.gz", perf.version)
+	paPath := common.AbsoluteBundlePath(paTarball)
 	targetDir := common.GetSoftwareRoot() + "/perf-advisor"
 
 	// Untar pa.tar.gz into perf-advisor
 	rExtract, err := os.Open(paPath)
 	if err != nil {
-		return fmt.Errorf("failed to open %s: %w", paPath, err)
+			return fmt.Errorf("failed to open %s: %w", paPath, err)
 	}
 	defer rExtract.Close()
 	if err := tar.Untar(rExtract, targetDir, tar.WithMaxUntarSize(-1)); err != nil {
-		return fmt.Errorf("failed to extract %s: %w", paPath, err)
-	}
-	// Look for a directory named "pa" inside targetDir
-	paDir := filepath.Join(targetDir, "pa")
-	subEntries, err := os.ReadDir(paDir)
-	if err != nil {
-		return fmt.Errorf("failed to read pa subdir: %w", err)
-	}
-	for _, entry := range subEntries {
-		oldPath := filepath.Join(paDir, entry.Name())
-		newPath := filepath.Join(targetDir, entry.Name())
-		log.Debug(fmt.Sprintf("Renaming %s to %s", oldPath, newPath))
-		if err := os.Rename(oldPath, newPath); err != nil {
-			return fmt.Errorf("failed to move %s to %s: %w", oldPath, newPath, err)
-		}
-	}
-	if err := os.Remove(paDir); err != nil {
-		return fmt.Errorf("failed to remove pa subdir: %w", err)
+			return fmt.Errorf("failed to extract %s: %w", paPath, err)
 	}
 
 	// Now check that backend and ui/frontend exist
@@ -232,27 +215,26 @@ func (perf PerfAdvisor) untarAndSetupPerfAdvisorPackages() error {
 	frontendDir := filepath.Join(targetDir, "ui")
 
 	if stat, err := os.Stat(backendDir); err != nil || !stat.IsDir() {
-		return fmt.Errorf("backend directory not found in %s after extraction", targetDir)
+			return fmt.Errorf("backend directory not found in %s after extraction", targetDir)
 	}
 	if stat, err := os.Stat(frontendDir); err != nil || !stat.IsDir() {
-		return fmt.Errorf("ui directory not found in %s after extraction", targetDir)
+			return fmt.Errorf("ui directory not found in %s after extraction", targetDir)
 	}
 
-	// Move override.properties into perf-advisor/config
-	overrideSrc := filepath.Join(targetDir, "override.properties")
 	overrideDst := filepath.Join(targetDir, "config", "override.properties")
-	input, err := os.Open(overrideSrc)
-	if err != nil {
-		return fmt.Errorf("failed to open %s: %w", overrideSrc, err)
-	}
-	defer input.Close()
-	output, err := os.Create(overrideDst)
-	if err != nil {
-		return fmt.Errorf("failed to create %s: %w", overrideDst, err)
-	}
-	defer output.Close()
-	if _, err := io.Copy(output, input); err != nil {
-		return fmt.Errorf("failed to copy override.properties: %w", err)
+	propertiesContent := fmt.Sprintf(
+		"spring.web.resources.static-locations=file://%s/perf-advisor/ui\n"+
+			"pa.security.api.token.secret=''\n"+
+			"spring.datasource.username=postgres\n"+
+			"pa.security.cors.origin=*\n"+
+			"pa.security.cors.origin.dev=*\n"+
+			"pa.prometheus.url=http://localhost:9090\n"+
+			"spring.datasource.url=jdbc:postgresql://localhost:5432/ts\n"+
+			"spring.datasource.password=''\n",
+		common.GetSoftwareRoot(),
+	)
+	if err := os.WriteFile(overrideDst, []byte(propertiesContent), 0644); err != nil {
+			return fmt.Errorf("failed to write override.properties: %w", err)
 	}
 
 	if common.HasSudoAccess() {

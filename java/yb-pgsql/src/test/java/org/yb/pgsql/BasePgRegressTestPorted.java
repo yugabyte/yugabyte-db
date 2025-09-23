@@ -28,6 +28,9 @@ public class BasePgRegressTestPorted extends BasePgRegressTest {
     flagMap.put("TEST_generate_ybrowid_sequentially", "true");
     flagMap.put("yb_enable_read_committed_isolation", "true");
     appendToYsqlPgConf(flagMap, "yb_use_hash_splitting_by_default=false");
+    // Turn non-deterministic field hiding back off because ported tests have tricks to hide
+    // non-deterministic portions (like memory usage) using functions that censor the explain text.
+    appendToYsqlPgConf(flagMap, "yb_explain_hide_non_deterministic_fields=off");
     return flagMap;
   }
 }

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.models.helpers;
 
@@ -119,8 +119,6 @@ public class NodeConfig {
     ULIMIT_OPEN_FILES("Maximum number of open file descriptors"),
 
     ULIMIT_USER_PROCESSES("Maximum number of processes available to a single user"),
-
-    SYSTEMD_SUDOER_ENTRY("Systemd Sudoer entry"),
 
     SSH_ACCESS("Ability to ssh into node as yugabyte user with key supplied in provider"),
 

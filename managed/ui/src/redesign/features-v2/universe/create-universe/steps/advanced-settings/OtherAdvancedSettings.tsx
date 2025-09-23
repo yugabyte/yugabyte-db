@@ -1,7 +1,7 @@
 /*
  * Created on Tue Mar 25 2025
  *
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License")
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
@@ -33,7 +33,7 @@ const { Box } = mui;
 
 export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
   const [
-    { generalSettings, databaseSettings },
+    { generalSettings, databaseSettings, otherAdvancedSettings },
     { moveToNextPage, moveToPreviousPage, saveOtherAdvancedSettings }
   ] = (useContext(CreateUniverseContext) as unknown) as CreateUniverseContextMethods;
 
@@ -48,8 +48,10 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
           name: '',
           value: ''
         }
-      ]
-    }
+      ],
+      ...otherAdvancedSettings
+    },
+    mode: 'onChange'
   });
 
   useImperativeHandle(

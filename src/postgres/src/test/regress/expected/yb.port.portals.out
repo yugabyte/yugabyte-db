@@ -1163,7 +1163,11 @@ INSERT INTO cursor VALUES (1);
 FETCH ALL FROM c1;
 ERROR:  cursor "c1" does not exist
 COMMIT;
+/* YB: The below DROP TABLE is commented because the above FETCH ALL command fails
+in YB, so the transaction aborts and the table 'cursor' is rolled back.
+This isn't the case in PG.
 DROP TABLE cursor;
+*/ -- YB
 -- Check rewinding a cursor containing a stable function in LIMIT,
 -- per bug report in 8336843.9833.1399385291498.JavaMail.root@quick
 begin;

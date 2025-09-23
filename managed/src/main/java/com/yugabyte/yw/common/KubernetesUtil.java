@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.common;
 
@@ -71,6 +71,8 @@ public class KubernetesUtil {
   public static String MIN_VERSION_CUSTOM_ISSUER_SUPPORT_STABLE = "2024.2.2.0-b1";
   public static String MIN_VERSION_OTEL_SUPPORT_STABLE = "2025.1.0.0-b0";
   public static String MIN_VERSION_OTEL_SUPPORT_PREVIEW = "2.25.1.0-b133";
+  public static String MIN_VERSION_YBDB_INBUILT_YBC_SUPPORT_PREVIEW = "2.27.0.0-b999";
+  public static String MIN_VERSION_YBDB_INBUILT_YBC_SUPPORT_STABLE = "2025.2.0.0-b1";
 
   public static boolean isNonRestartGflagsUpgradeSupported(String universeSoftwareVersion) {
     return Util.compareYBVersions(
@@ -104,6 +106,15 @@ public class KubernetesUtil {
             universeSoftwareVersion,
             MIN_VERSION_OTEL_SUPPORT_STABLE,
             MIN_VERSION_OTEL_SUPPORT_PREVIEW,
+            true)
+        >= 0;
+  }
+
+  public static boolean isUseYbdbInbuiltYbcSupported(String universeSoftwareVersion) {
+    return Util.compareYBVersions(
+            universeSoftwareVersion,
+            MIN_VERSION_YBDB_INBUILT_YBC_SUPPORT_STABLE,
+            MIN_VERSION_YBDB_INBUILT_YBC_SUPPORT_PREVIEW,
             true)
         >= 0;
   }

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 package com.yugabyte.yw.common.alerts;
 
 import static com.yugabyte.yw.common.TestUtils.replaceFirstChar;

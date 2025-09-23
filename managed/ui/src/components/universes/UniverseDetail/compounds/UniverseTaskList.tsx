@@ -36,15 +36,14 @@ export const UniverseTaskList = ({
 
   const universeTasksQuery = useQuery(
     taskQueryKey.universe(universeUuid),
-    () => api.fetchUniverseTasks(universeUuid),
+    () => api.fetchCustomerTasks(universeUuid),
     {
       refetchInterval: TASK_SHORT_TIMEOUT,
-      select: data => data.data,
       onSuccess(data) {
         // patch the current universe tasks to the store's list of tasks.
         // used to synchronize the react query data with redux data
         dispatch(patchTasksForCustomer(universeUuid, data));
-      },
+      }
     }
   );
 

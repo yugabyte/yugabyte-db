@@ -28,6 +28,7 @@
 
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/util/debug-util.h"
 #include "yb/util/lw_function.h"
 #include "yb/util/result.h"
 
@@ -282,7 +283,7 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
   Result<yb::tserver::PgYCQLStatementStatsResponsePB> YCQLStatementStats();
   Result<yb::tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory();
 
-  Result<yb::tserver::PgTabletsMetadataResponsePB> TabletsMetadata();
+  Result<yb::tserver::PgTabletsMetadataResponsePB> TabletsMetadata(bool local_only);
 
   Result<yb::tserver::PgServersMetricsResponsePB> ServersMetrics();
 
@@ -301,8 +302,8 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
       const PgObjectId& table_id, bool fail_on_cache_hit,
       master::IncludeHidden include_hidden = master::IncludeHidden::kFalse);
   Result<FlushFuture> FlushOperations(
-      BufferableOperations&& ops, bool transactional, const YbcFlushDebugContext& context);
-  std::string FlushReasonToString(const YbcFlushDebugContext& context) const;
+      BufferableOperations&& ops, bool transactional, const YbcFlushDebugContext& debug_context);
+  std::string FlushReasonToString(const YbcFlushDebugContext& debug_context) const;
 
   const std::string LogPrefix() const;
 

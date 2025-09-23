@@ -1206,12 +1206,12 @@ create extension if not exists pg_hint_plan;
 set pg_hint_plan.enable_hint_table to on;
 set pg_hint_plan.yb_use_query_id_for_hinting to on;
 delete from hint_plan.hints;
--- Query id is expected to be 662787253122415527 for 'select * from information_schema.columns'.
-INSERT INTO hint_plan.hints (norm_query_string, application_name, hints) VALUES ('6627872531224155272', '', 'Leading(((dep seq) ((co nco) (nt (((((c a) t) (bt nbt)) ad) nc))))) set(yb_prefer_bnl false) set(yb_enable_batchednl false) Set(from_collapse_limit 12) Set(join_collapse_limit 12) Set(geqo false)');
+-- Query id is expected to be 520905088486409542 for 'select * from information_schema.columns'.
+INSERT INTO hint_plan.hints (norm_query_string, application_name, hints) VALUES ('520905088486409542', '', 'Leading(((dep seq) ((co nco) (nt (((((c a) t) (bt nbt)) ad) nc))))) set(yb_prefer_bnl false) set(yb_enable_batchednl false) Set(from_collapse_limit 12) Set(join_collapse_limit 12) Set(geqo false)');
 select * from hint_plan.hints;
- id |  norm_query_string  | application_name |                                                                                                hints                                                                                                
-----+---------------------+------------------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-  1 | 6627872531224155272 |                  | Leading(((dep seq) ((co nco) (nt (((((c a) t) (bt nbt)) ad) nc))))) set(yb_prefer_bnl false) set(yb_enable_batchednl false) Set(from_collapse_limit 12) Set(join_collapse_limit 12) Set(geqo false)
+ id | norm_query_string  | application_name |                                                                                                hints                                                                                                
+----+--------------------+------------------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  1 | 520905088486409542 |                  | Leading(((dep seq) ((co nco) (nt (((((c a) t) (bt nbt)) ad) nc))))) set(yb_prefer_bnl false) set(yb_enable_batchednl false) Set(from_collapse_limit 12) Set(join_collapse_limit 12) Set(geqo false)
 (1 row)
 
 explain (hints on, costs off, verbose on) select * from information_schema.columns;
@@ -1648,6 +1648,31 @@ set yb_prefer_bnl to off;
 (7 rows)
 
 reset yb_prefer_bnl;
+-- GH28072 - Make sure the internal hint test passes.
+set yb_enable_parallel_append = on;
+explain (hints on, costs off) SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.b = 0 ORDER BY t1.a, t2.b;
+                                                                                                                                                                                                                                                                              QUERY PLAN                                                                                                                                                                                                                                                                               
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Sort Key: t1.a
+   ->  Hash Join
+         Hash Cond: (t1.a = t2.b)
+         ->  Append
+               ->  Seq Scan on prt1_p1 t1_1
+                     Storage Filter: (b = 0)
+               ->  Seq Scan on prt1_p2 t1_2
+                     Storage Filter: (b = 0)
+               ->  Seq Scan on prt1_p3 t1_3
+                     Storage Filter: (b = 0)
+         ->  Hash
+               ->  Append
+                     ->  Seq Scan on prt2_p1 t2_1
+                     ->  Seq Scan on prt2_p2 t2_2
+                     ->  Seq Scan on prt2_p3 t2_3
+ Generated hints: /*+ Leading((t1 t2)) HashJoin(t1 t2) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+(17 rows)
+
+reset yb_enable_parallel_append;
 -- NEGATIVE TESTS
 -- Try to use a bad index. Should get warnings.
 /*+ Leading((t2 t1)) SeqScan(t2) IndexScan(t1 badIndex) YbBatchedNL(t2 t1) */ explain (hints off, costs off) select * from t1, t2 where a1=1 and b1=b2;

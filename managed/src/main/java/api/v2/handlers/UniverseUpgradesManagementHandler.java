@@ -1,4 +1,4 @@
-// Copyright (c) Yugabyte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 package api.v2.handlers;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
@@ -64,6 +64,7 @@ import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Release;
+import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.extended.FinalizeUpgradeInfoResponse;
 import com.yugabyte.yw.models.extended.SoftwareUpgradeInfoRequest;
@@ -71,6 +72,7 @@ import com.yugabyte.yw.models.extended.SoftwareUpgradeInfoResponse;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
 import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig;
+import com.yugabyte.yw.models.helpers.telemetry.ProviderType;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -408,6 +410,19 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
               String.format(
                   "Exporter config UUID '%s' is invalid for universe '%s'.",
                   exporterUUID, universe.getUniverseUUID());
+          log.error(errorMessage);
+          throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+        }
+
+        // Verify if the exporter is allowed for metrics export.
+        TelemetryProvider telemetryProvider = telemetryProviderService.get(exporterUUID);
+        ProviderType providerType = telemetryProvider.getConfig().getType();
+        if (!providerType.isAllowedForMetrics) {
+          String errorMessage =
+              String.format(
+                  "Exporter config provider type '%s' is not allowed for metrics export on universe"
+                      + " '%s'.",
+                  providerType, universe.getUniverseUUID());
           log.error(errorMessage);
           throw new PlatformServiceException(BAD_REQUEST, errorMessage);
         }

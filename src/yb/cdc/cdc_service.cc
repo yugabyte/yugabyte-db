@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -2622,8 +2622,14 @@ void CDCServiceImpl::ProcessEntryForCdcsdk(
   HybridTime cdc_sdk_safe_time = HybridTime::kInvalid;
   // We will only populate the "cdc_sdk_safe_time" when before image is active or when we are in
   // taking the snapshot of any table.
+  // TODO(#26427): We will also set the cdc_sdk_safe_time for sys catalog tablet but this will not
+  // govern its history barriers. Instead the flag
+  // timestamp_syscatalog_history_retention_interval_sec will be used until all the streams have
+  // been upgraded to use sys catalog for implicitly reflecting the changes made to the
+  // publication's tables list.
   auto namespace_id = stream_metadata.GetNamespaceId();
-  if ((is_before_image_active || entry.snapshot_key.has_value())) {
+  if ((is_before_image_active || entry.snapshot_key.has_value() ||
+       tablet_peer->tablet_metadata()->IsSysCatalog())) {
     // For replication slot consumption we can set the cdc_sdk_safe_time to the minimum
     // acknowledged commit time among all the slots on the namespace.
     if (IsReplicationSlotStream(stream_metadata) &&
@@ -4683,7 +4689,8 @@ void CDCServiceImpl::RemoveXReplTabletMetrics(
   }
   auto tablet = tablet_peer->shared_tablet_maybe_null();
   if (tablet == nullptr) {
-    LOG_WITH_FUNC(WARNING) << "Could not find tablet for tablet peer: " << tablet_peer->tablet_id();
+    YB_LOG_EVERY_N_SECS_OR_VLOG(WARNING, 300, 4)
+        << "Could not find tablet for tablet peer: " << tablet_peer->tablet_id();
     return;
   }
 
