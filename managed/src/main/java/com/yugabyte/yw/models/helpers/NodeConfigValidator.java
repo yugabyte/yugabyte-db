@@ -308,7 +308,6 @@ public class NodeConfigValidator {
       case PROMETHEUS_NO_NODE_EXPORTER:
       case HOME_DIR_EXISTS:
       case NODE_EXPORTER_RUNNING:
-      case SYSTEMD_SUDOER_ENTRY:
       case SUDO_ACCESS:
       case SSH_ACCESS:
       case OPENSSL:
@@ -371,7 +370,6 @@ public class NodeConfigValidator {
       case GSUTIL:
       case S3CMD:
       case SWAPPINESS:
-      case SYSTEMD_SUDOER_ENTRY:
       case YB_HOME_DIR_CLEAN:
         {
           return false;
