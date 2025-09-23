@@ -37,6 +37,8 @@ export enum QUERY_KEY {
   editYCQL = 'editYCQL',
   rotateDBPassword = 'rotateDBPassword',
   updateTLS = 'updateTLS',
+  upgradeCerts = 'upgradeCerts',
+  upgradeTLS = 'upgradeTLS',
   getCertificates = 'getCertificates',
   getFinalizeInfo = 'getFinalizeInfo',
   getReplicationSlots = 'getReplicationSlots',
@@ -99,6 +101,19 @@ class ApiService {
   updateTLS = (universeId: string, values: Partial<EncryptionInTransitFormValues>) => {
     const cUUID = localStorage.getItem('customerId');
     return axios.post(`${ROOT_URL}/customers/${cUUID}/universes/${universeId}/update_tls`, values);
+  };
+
+  upgradeCerts = (universeId: string, values: Partial<EncryptionInTransitFormValues>) => {
+    const cUUID = localStorage.getItem('customerId');
+    return axios.post(
+      `${ROOT_URL}/customers/${cUUID}/universes/${universeId}/upgrade/certs`,
+      values
+    );
+  };
+
+  upgradeTLS = (universeId: string, values: Partial<EncryptionInTransitFormValues>) => {
+    const cUUID = localStorage.getItem('customerId');
+    return axios.post(`${ROOT_URL}/customers/${cUUID}/universes/${universeId}/upgrade/tls`, values);
   };
 
   getCertificates = (): Promise<Certificate[]> => {
