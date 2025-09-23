@@ -3311,6 +3311,9 @@ Status CatalogManager::ListCDCStreams(
       stream->set_cdcsdk_disable_dynamic_table_addition(
           ltm->pb.cdcsdk_disable_dynamic_table_addition());
     }
+
+    auto replica_identity_map = ltm->pb.replica_identity_map();
+    stream->mutable_replica_identity_map()->swap(replica_identity_map);
   }
   return Status::OK();
 }
