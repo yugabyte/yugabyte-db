@@ -7,6 +7,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.google.common.collect.ImmutableSet;
 import com.typesafe.config.Config;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -32,6 +33,8 @@ public class YBAUpgradePrecheck {
   private static final String DATABASE_CONNECT_URL_PARAM = "db.default.url";
   private static final String DATABASE_USERNAME_PARAM = "db.default.username";
   private static final String DATABASE_PASSWORD_PARAM = "db.default.password";
+  private static final Set<String> ELIGIBLE_PROVIDERS =
+      ImmutableSet.of("onprem", "aws", "gcp", "azu");
 
   private final Config config;
 
@@ -94,24 +97,38 @@ public class YBAUpgradePrecheck {
           continue;
         }
         JsonNode clusters = univDetails.get("clusters");
-        if (clusters != null && clusters.isArray()) {
-          Iterator<JsonNode> iter = clusters.iterator();
-          while (iter.hasNext()) {
-            JsonNode cluster = iter.next();
-            JsonNode userIntent = cluster.get("userIntent");
-            if (userIntent == null || userIntent.isNull()) {
-              continue;
-            }
-            JsonNode useSystemd = userIntent.get("useSystemd");
-            boolean systemdEnabled =
-                useSystemd != null && !useSystemd.isNull() && useSystemd.asBoolean();
-            univConfigs.computeIfAbsent(univUuid, k -> new UniverseConfig()).systemdEnabled =
-                systemdEnabled;
-          }
+        if (clusters == null || !clusters.isArray()) {
+          continue;
         }
-        Iterator<JsonNode> iter = nodeDetailsSet.iterator();
-        while (iter.hasNext()) {
-          JsonNode nodeDetails = iter.next();
+        boolean skipUniverse = true;
+        Iterator<JsonNode> clusterIter = clusters.iterator();
+        while (clusterIter.hasNext()) {
+          JsonNode cluster = clusterIter.next();
+          JsonNode userIntent = cluster.get("userIntent");
+          if (userIntent == null || userIntent.isNull()) {
+            break;
+          }
+          JsonNode providerType = userIntent.get("providerType");
+          if (providerType == null || providerType.isNull()) {
+            break;
+          }
+          if (!ELIGIBLE_PROVIDERS.contains(providerType.asText())) {
+            break;
+          }
+          skipUniverse = false;
+          JsonNode useSystemd = userIntent.get("useSystemd");
+          boolean systemdEnabled =
+              useSystemd != null && !useSystemd.isNull() && useSystemd.asBoolean();
+          univConfigs.computeIfAbsent(univUuid, k -> new UniverseConfig()).systemdEnabled =
+              systemdEnabled;
+        }
+        if (skipUniverse) {
+          log.debug("Skipping universe: {}", univUuid);
+          continue;
+        }
+        Iterator<JsonNode> nodeIter = nodeDetailsSet.iterator();
+        while (nodeIter.hasNext()) {
+          JsonNode nodeDetails = nodeIter.next();
           JsonNode cloudInfo = nodeDetails.get("cloudInfo");
           if (cloudInfo == null || !cloudInfo.isObject()) {
             continue;
