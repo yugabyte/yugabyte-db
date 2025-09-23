@@ -1078,7 +1078,7 @@ Enables advisory locking.
 
 This value must match on all yb-master and yb-tserver configurations of a YugabyteDB cluster.
 
-Default: false
+Default: true
 
 ## Advanced flags
 
