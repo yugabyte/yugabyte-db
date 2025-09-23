@@ -3382,6 +3382,45 @@ TEST_P(PgCatalogVersionConnManagerTest,
 }
 
 TEST_P(PgCatalogVersionConnManagerTest,
+       YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestConnectionManagerRelCacheInitRpcCount)) {
+  const bool enable_ysql_conn_mgr = GetParam();
+  RestartClusterWithInvalMessageEnabled({ "--ysql_use_relcache_file=false" });
+  // Create the first logical connection to warm up the tserver cache
+  // for later auth backends to use.
+  auto conn = ASSERT_RESULT(Connect());
+
+  auto master_read_count_before = ASSERT_RESULT(GetMasterReadRPCCount());
+
+  // This triggers a pg auth backend to create a second logical connection.
+  auto conn2 = ASSERT_RESULT(Connect());
+  auto master_read_count_after = ASSERT_RESULT(GetMasterReadRPCCount());
+  LOG(INFO) << ", master_read_count_before: " << master_read_count_before
+            << ", master_read_count_after: " << master_read_count_after;
+  auto expected_count = (enable_ysql_conn_mgr ? 1 : 2) + 1;
+  ASSERT_EQ(master_read_count_after - master_read_count_before, expected_count);
+
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table(id int)"));
+  // Increase the catalog version to invalidate relcache init file.
+  // Increment more 200 times so that a backend see heartbeat propagated a newer
+  // shared catalog version like 131, when the master catalog version is already 201.
+  for (int i = 1; i <= 200; i++) {
+    ASSERT_OK(IncrementAllDBCatalogVersions(conn, IsBreakingCatalogVersionChange::kFalse));
+  }
+
+  // This triggers a new pg auth backend, it needs to rebuild relcache init file.
+  pg_ts = cluster_->tablet_server(1);
+  master_read_count_before = ASSERT_RESULT(GetMasterReadRPCCount());
+  auto conn3 = ASSERT_RESULT(Connect());
+  master_read_count_after = ASSERT_RESULT(GetMasterReadRPCCount());
+  LOG(INFO) << ", master_read_count_before: " << master_read_count_before
+            << ", master_read_count_after: " << master_read_count_after;
+  // Because latest master catalog version is used to do prefetch when rebuilding
+  // relcache init file, we see the same number of master RPCs regardless of
+  // whether connection manager is used or not.
+  ASSERT_EQ(master_read_count_after - master_read_count_before, 7);
+}
+
+TEST_P(PgCatalogVersionConnManagerTest,
        YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestConnectionManagerChangePassword)) {
   // Create a test user with password.
   auto conn = ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "yugabyte"));
