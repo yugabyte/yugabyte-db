@@ -2202,7 +2202,7 @@ To learn about advisory locks, see [Advisory locks](../../../explore/transaction
 
 {{% tags/wrap %}}
 {{<tags/feature/t-server>}}
-Default: `false`
+Default: `true`
 {{% /tags/wrap %}}
 
 Enables advisory locking.
