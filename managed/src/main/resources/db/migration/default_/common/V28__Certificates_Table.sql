@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 create table certificate_info (
   uuid                          uuid not null,
   customer_uuid                 uuid not null,

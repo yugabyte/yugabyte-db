@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 delete from alert_definition where uuid in
   (select uuid from

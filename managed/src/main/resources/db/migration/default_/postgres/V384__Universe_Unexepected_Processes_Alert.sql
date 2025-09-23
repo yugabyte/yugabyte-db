@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 -- Found unexpected masters
  insert into alert_configuration

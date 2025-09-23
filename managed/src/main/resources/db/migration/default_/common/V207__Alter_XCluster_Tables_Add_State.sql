@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 -- Add status column to the xcluster_table_config table.
 ALTER TABLE IF EXISTS xcluster_table_config

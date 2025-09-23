@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 -- Modify duplicate certificate labels per customer uuid by appending a unique suffix to it's end.
 CREATE VIEW helper AS 

@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 -- json type wont work with combination of h2 and ebeans.
 -- So we to create  JSON_ALIAS which will just map to json type on postgres
 -- and TEXT type on H2.

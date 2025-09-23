@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 CREATE TABLE IF NOT EXISTS role_binding (
   uuid uuid NOT NULL,

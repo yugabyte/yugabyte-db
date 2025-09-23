@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 -- Encrypt the details column in the provider tables
 ALTER TABLE telemetry_provider 

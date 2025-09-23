@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 -- Update DB_QUEUES_OVERFLOW alert threshold
 UPDATE alert_configuration

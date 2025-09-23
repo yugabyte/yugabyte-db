@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 -- Add automaticDdlMode column to the xcluster_config table.
 ALTER TABLE IF EXISTS xcluster_config

@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 UPDATE alert SET next_notification_time = current_timestamp
   WHERE next_notification_time is null
     AND target_state in ('ACTIVE','RESOLVED')

@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 alter table alert add column if not exists name varchar(4000);
 update alert set name = (select value from alert_label

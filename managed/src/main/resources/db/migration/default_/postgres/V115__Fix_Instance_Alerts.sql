@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 CREATE OR REPLACE FUNCTION replace_configuration_query(alertTemplate text, queryTemplate text)
  RETURNS boolean

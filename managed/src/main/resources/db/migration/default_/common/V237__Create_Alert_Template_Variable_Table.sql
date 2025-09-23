@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 CREATE TABLE IF NOT EXISTS alert_template_variable(
   uuid                  UUID NOT NULL,

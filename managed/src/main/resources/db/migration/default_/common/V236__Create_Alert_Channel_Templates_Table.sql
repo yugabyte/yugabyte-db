@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 CREATE TABLE IF NOT EXISTS alert_channel_templates (
   type                  VARCHAR(25) NOT NULL,
   customer_uuid         UUID NOT NULL,

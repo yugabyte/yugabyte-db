@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 create table if not exists metric (
   uuid                          uuid primary key,
   name                          varchar(4000) not null,

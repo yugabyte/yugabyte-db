@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 -- DB_WRITE_READ_TEST_ERROR
 select replace_configuration_query(

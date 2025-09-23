@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 -- Delete subtasks for CreateBackupSchedule where parent task is complete but subtasks are in 'Created' state.
 DELETE FROM task_info t1 WHERE EXISTS 

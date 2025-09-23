@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) Yugabyte, Inc.
 
 ALTER TABLE customer_config ALTER COLUMN data TYPE binary varying;
 

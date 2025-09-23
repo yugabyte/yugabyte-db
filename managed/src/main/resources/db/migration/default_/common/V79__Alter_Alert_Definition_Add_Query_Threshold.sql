@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 alter table alert_definition add column if not exists query_threshold double precision;
 
 -- In case value is stored in universe runtime config

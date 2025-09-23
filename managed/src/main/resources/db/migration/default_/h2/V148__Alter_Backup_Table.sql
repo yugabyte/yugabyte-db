@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 -- Adding the universe_uuid column to backup table.
 ALTER TABLE backup ADD COLUMN universe_uuid uuid;

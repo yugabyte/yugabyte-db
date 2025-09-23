@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 CREATE table scoped_runtime_config (
   uuid                          UUID NOT NULL,
   -- At most one of the following foreign keys can be non null:

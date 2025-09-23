@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 -- MASTER_UNDER_REPLICATED
 insert into alert_configuration

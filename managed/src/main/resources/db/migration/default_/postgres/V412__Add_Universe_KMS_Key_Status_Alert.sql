@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 -- Universe KMS Key Failed Validation Alert
 INSERT INTO alert_configuration

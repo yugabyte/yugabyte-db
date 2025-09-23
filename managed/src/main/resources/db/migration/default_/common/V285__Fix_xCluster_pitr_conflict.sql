@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 ALTER TABLE IF EXISTS xcluster_pitr
     DROP CONSTRAINT IF EXISTS fk_xcluster_pitr_xcluster_uuid;

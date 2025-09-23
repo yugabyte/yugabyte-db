@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 -- special case because of constraint name scope is per database in h2
 ALTER TABLE alert DROP CONSTRAINT fk_alert_definition_uuid;
 ALTER TABLE alert ADD CONSTRAINT fk_a_alert_definition_uuid FOREIGN KEY (definition_uuid) references alert_definition (uuid)  ON DELETE CASCADE ON UPDATE CASCADE;

@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 -- DB_MEMORY_OVERLOAD
 insert into alert_configuration

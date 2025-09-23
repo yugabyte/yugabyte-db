@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 -- Add replication_setup_time for basic and txn replication.
 ALTER TABLE IF EXISTS xcluster_table_config

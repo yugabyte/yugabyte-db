@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 -- ENCRYPTION_AT_REST_CONFIG_EXPIRY
 select replace_configuration_query(

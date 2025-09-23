@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 ALTER TABLE IF EXISTS restore DROP CONSTRAINT IF EXISTS restore_task_uuid_key;
 ALTER TABLE IF EXISTS xcluster_table_config ADD COLUMN IF NOT EXISTS restore_uuid UUID;

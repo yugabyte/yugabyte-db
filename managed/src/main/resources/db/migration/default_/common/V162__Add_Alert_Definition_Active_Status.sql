@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 ALTER TABLE alert_definition ADD COLUMN IF NOT EXISTS active boolean DEFAULT TRUE NOT NULL;
 

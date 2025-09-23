@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 alter table task_info drop constraint ck_task_info_task_type;
 alter table task_info drop constraint ck_task_info_task_state;

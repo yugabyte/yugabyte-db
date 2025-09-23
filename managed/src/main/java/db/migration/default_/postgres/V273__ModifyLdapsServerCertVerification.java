@@ -1,4 +1,4 @@
-// Copyright (c) YugabyteDB, Inc.
+// Copyright (c) YugaByte, Inc.
 
 package db.migration.default_.postgres;
 

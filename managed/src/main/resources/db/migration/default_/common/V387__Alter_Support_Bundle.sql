@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 alter table if exists support_bundle drop constraint if exists ck_support_bundle_status;
 

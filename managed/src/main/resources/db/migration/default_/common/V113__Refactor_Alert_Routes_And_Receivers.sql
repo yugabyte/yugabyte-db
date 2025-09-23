@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 UPDATE alert_definition
   SET query = replace(query, 'ybp_alert_manager_receiver_status', 'ybp_alert_manager_channel_status')

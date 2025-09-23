@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 -- To make sure we GC all the old resolved alerts at some point
 update alert set resolved_time = create_time where state = 'RESOLVED' and resolved_time is null;

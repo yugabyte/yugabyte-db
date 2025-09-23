@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 -- Add fields host_vpc_id, dest_vpc_id, host_vpc_region
 ALTER TABLE IF EXISTS provider

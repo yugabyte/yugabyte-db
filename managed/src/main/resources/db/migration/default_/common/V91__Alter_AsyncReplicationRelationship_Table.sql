@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 alter table if exists async_replication_relationship alter source_table_uuid type varchar;
 alter table if exists async_replication_relationship alter target_table_uuid type varchar;

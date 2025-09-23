@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 ALTER TABLE IF EXISTS xcluster_config
     DROP CONSTRAINT IF EXISTS ck_xcluster_config_type;

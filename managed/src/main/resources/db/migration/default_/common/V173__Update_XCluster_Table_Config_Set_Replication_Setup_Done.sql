@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 -- Set replication_setup_done to true for existing tables in replication that did not need
 -- bootstrap.

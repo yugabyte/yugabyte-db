@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 create table if not exists alert_definition_label (
   definition_uuid               uuid not null,
   name                          VARCHAR(4000) not null,

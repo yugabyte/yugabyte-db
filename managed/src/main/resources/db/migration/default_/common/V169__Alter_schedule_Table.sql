@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 ALTER TABLE schedule ADD COLUMN IF NOT EXISTS next_schedule_task_time timestamp;
 

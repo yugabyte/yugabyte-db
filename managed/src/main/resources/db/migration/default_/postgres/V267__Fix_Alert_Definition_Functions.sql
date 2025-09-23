@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 DROP FUNCTION IF EXISTS create_universe_alert_definitions(text,text);
 CREATE OR REPLACE FUNCTION create_universe_alert_definitions(configurationName text)

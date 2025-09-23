@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 alter table alert add column if not exists group_uuid uuid;
 alter table alert add constraint fk_alert_group_uuid foreign key (group_uuid) references alert_definition_group (uuid)
   on delete cascade on update cascade;

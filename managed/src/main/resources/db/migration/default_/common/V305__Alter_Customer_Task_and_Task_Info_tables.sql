@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 -- Add unique constraint(task_uuid) to customer_task
 ALTER TABLE customer_task ADD CONSTRAINT uk_task_uuid UNIQUE (task_uuid);

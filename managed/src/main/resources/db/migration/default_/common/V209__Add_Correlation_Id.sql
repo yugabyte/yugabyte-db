@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 -- Add correlation id column to customer task table
 ALTER TABLE IF EXISTS customer_task

@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 DROP FUNCTION create_customer_alert_definitions(text,text,boolean);
 CREATE FUNCTION create_customer_alert_definitions(configurationName text, queryTemplate text, skipTargetLabels boolean)

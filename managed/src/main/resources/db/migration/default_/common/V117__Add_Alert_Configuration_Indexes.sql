@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 drop index if exists ix_alert_configuration_customer_target_type;
 create index ix_alert_configuration_customer_target_type on alert_configuration (customer_uuid, target_type);

@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 -- SSH_KEY_ROTATION_FAILURE
 insert into alert_configuration

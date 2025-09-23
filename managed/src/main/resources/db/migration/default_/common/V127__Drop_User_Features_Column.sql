@@ -1,3 +1,3 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 ALTER TABLE users DROP COLUMN IF EXISTS features;

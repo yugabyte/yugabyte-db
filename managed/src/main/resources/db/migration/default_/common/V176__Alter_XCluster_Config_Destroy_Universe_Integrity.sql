@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 -- Add UniverseDeleted to the possible states for xcluster_config.status.
 ALTER TABLE IF EXISTS xcluster_config

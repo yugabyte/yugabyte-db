@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 CREATE TABLE IF NOT EXISTS troubleshooting_platform (
   uuid                     uuid NOT NULL,

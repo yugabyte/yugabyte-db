@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 UPDATE alert_configuration
 SET threshold_unit = 'MINUTE',

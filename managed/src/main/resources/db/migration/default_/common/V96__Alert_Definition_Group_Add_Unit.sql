@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 alter table alert_definition_group add column if not exists threshold_unit text;
 alter table alert_definition_group add constraint ck_adg_threshold_unit check (threshold_unit in ('PERCENT','MILLISECOND'));

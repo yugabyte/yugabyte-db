@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 ALTER TABLE IF EXISTS xcluster_config
     ADD COLUMN IF NOT EXISTS source_universe_state VARCHAR(512);

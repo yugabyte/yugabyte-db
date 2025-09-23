@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 delete from alert_label;
 
 insert into alert_label (alert_uuid, name, value)

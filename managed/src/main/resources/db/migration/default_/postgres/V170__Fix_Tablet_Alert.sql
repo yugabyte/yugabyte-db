@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 update alert_configuration
 set thresholds = '{"SEVERE":{"condition":"GREATER_THAN","threshold":300.0}}',

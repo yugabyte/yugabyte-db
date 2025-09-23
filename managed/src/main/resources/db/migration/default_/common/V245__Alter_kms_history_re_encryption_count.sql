@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 ALTER TABLE IF EXISTS kms_history ADD COLUMN IF NOT EXISTS re_encryption_count INT DEFAULT 0 NOT NULL;
 

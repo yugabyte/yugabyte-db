@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 insert into alert_definition_label (definition_uuid, name, value)
 select uuid, 'universe_uuid', cast(universe_uuid as text) from alert_definition;
 

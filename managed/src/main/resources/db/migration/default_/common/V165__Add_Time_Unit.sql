@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 ALTER TABLE backup ADD COLUMN IF NOT EXISTS expiry_time_unit varchar(50);
 UPDATE backup SET expiry_time_unit = 'Days' WHERE expiry IS NOT NULL;

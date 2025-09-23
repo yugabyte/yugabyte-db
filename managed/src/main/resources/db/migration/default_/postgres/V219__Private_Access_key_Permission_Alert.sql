@@ -1,4 +1,4 @@
--- Copyright (c) YugabyteDB, Inc.
+-- Copyright (c) YugaByte, Inc.
 
 -- PRIVATE_ACCESS_KEY_STATUS
 insert into alert_configuration
