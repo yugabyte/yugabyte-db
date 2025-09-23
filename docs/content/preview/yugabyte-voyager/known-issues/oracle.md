@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-Review limitations and implement suggested workarounds to successfully migrate data from Oracle to YugabyteDB.
+When migrating data from Oracle to YugabyteDB, you must address specific limitations and implement necessary workarounds. Some features, like multi-column partition by list, certain DDL operations and constraint types, are unsupported. You will also encounter compatibility issues with data types and functions. This page helps you navigate these challenges by offering advice on schema adjustments, handling unsupported features, and optimizing performance for a successful migration.
 
 {{< warning title="Unsupported features">}}
 Cluster, Domain, Bitmap join, IOT indexes, and reverse indexes are not exported.
