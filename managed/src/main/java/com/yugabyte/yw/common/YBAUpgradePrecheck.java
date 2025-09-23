@@ -129,6 +129,13 @@ public class YBAUpgradePrecheck {
         Iterator<JsonNode> nodeIter = nodeDetailsSet.iterator();
         while (nodeIter.hasNext()) {
           JsonNode nodeDetails = nodeIter.next();
+          JsonNode state = nodeDetails.get("state");
+          if (state == null || !state.isTextual()) {
+            continue;
+          }
+          if (!"Live".equalsIgnoreCase(state.asText())) {
+            continue;
+          }
           JsonNode cloudInfo = nodeDetails.get("cloudInfo");
           if (cloudInfo == null || !cloudInfo.isObject()) {
             continue;
@@ -153,16 +160,22 @@ public class YBAUpgradePrecheck {
         conn.createStatement()
             .executeQuery(
                 "SELECT node_instance.node_uuid as node_uuid, node_instance.instance_name as"
-                    + " instance_name, node_details_json::jsonb->>'ip' as ip, region.provider_uuid"
-                    + " as provider from node_instance LEFT JOIN (availability_zone  INNER JOIN"
-                    + " region ON availability_zone.region_uuid = region.uuid) ON"
-                    + " node_instance.zone_uuid = availability_zone.uuid")) {
+                    + " instance_name, node_details_json::jsonb->>'ip' as ip, provider.uuid as"
+                    + " provider, pgp_sym_decrypt(provider.details,"
+                    + " 'provider::details')::json->>'skipProvisioning' as manual from"
+                    + " node_instance LEFT JOIN (availability_zone  INNER JOIN (region INNER JOIN"
+                    + " provider ON region.provider_uuid = provider.uuid) ON"
+                    + " availability_zone.region_uuid = region.uuid) ON node_instance.zone_uuid ="
+                    + " availability_zone.uuid")) {
       while (resultSet.next()) {
         String instanceUuid = resultSet.getString("node_uuid");
         String instanceName = resultSet.getString("instance_name");
         String ip = resultSet.getString("ip");
         String provider = resultSet.getString("provider");
-        if (StringUtils.isNotBlank(ip)) {
+        String manual = resultSet.getString("manual");
+        // Process only the on-prem manual nodes. Non-manual nodes are picked for node-agent
+        // installation later in the tasks.
+        if (StringUtils.isNotBlank(ip) && "true".equalsIgnoreCase(manual)) {
           NodeInstanceConfig nodeInstanceConfig = new NodeInstanceConfig();
           nodeInstanceConfig.instanceName = instanceName;
           nodeInstanceConfig.ip = ip;
