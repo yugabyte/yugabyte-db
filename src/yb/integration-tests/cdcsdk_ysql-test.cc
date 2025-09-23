@@ -12004,7 +12004,7 @@ TEST_F(CDCSDKYsqlTest, TestPollingPgCatalogTables) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_dynamic_table_support) = false;
   ANNOTATE_UNPROTECTED_WRITE(
-      FLAGS_TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication) = true;
+      FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) = true;
 
   ASSERT_OK(SetUpWithParams(3, 3));
   xrepl::StreamId stream_id =
@@ -12057,7 +12057,7 @@ TEST_F(CDCSDKYsqlTest, TestStreamIndependenceWhilePollingCatalogTablet) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_dynamic_table_support) = false;
   ANNOTATE_UNPROTECTED_WRITE(
-      FLAGS_TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication) = true;
+    FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) = true;
 
   ASSERT_OK(SetUpWithParams(1, 1));
 
@@ -12109,7 +12109,7 @@ TEST_F(CDCSDKYsqlTest, TestStreamIndependenceWhilePollingCatalogTablet) {
 TEST_F(CDCSDKYsqlTest, TestPollingPgCatalogTablesAfterLeaderStepDown) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
   ANNOTATE_UNPROTECTED_WRITE(
-      FLAGS_TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication) = true;
+    FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) = true;
 
   ASSERT_OK(SetUpWithParams(3, 3, false));
 
@@ -12161,7 +12161,7 @@ TEST_F(CDCSDKYsqlTest, TestPollingPgCatalogTablesAfterLeaderStepDown) {
 TEST_F(CDCSDKYsqlTest, TestFailSettingRetentionBarriersOnApplyForCatalogTable) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
   ANNOTATE_UNPROTECTED_WRITE(
-      FLAGS_TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication) = true;
+    FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_master_interval_secs) = 0;
 
   // Set the test flag to fail setting retention barriers on apply of change metadata operation.
@@ -12190,7 +12190,7 @@ TEST_F(CDCSDKYsqlTest, TestFailSettingRetentionBarriersOnApplyForCatalogTable) {
 TEST_F(CDCSDKYsqlTest, TestConcurrentStreamCreationOnCatalogTables) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
   ANNOTATE_UNPROTECTED_WRITE(
-      FLAGS_TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication) = true;
+    FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) = true;
 
   ASSERT_OK(SetUpWithParams(1, 1));
 

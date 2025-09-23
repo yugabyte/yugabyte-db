@@ -195,11 +195,11 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_scram_channel_binding, false,
 DECLARE_bool(TEST_ash_debug_aux);
 DECLARE_bool(TEST_generate_ybrowid_sequentially);
 DECLARE_bool(TEST_ysql_log_perdb_allocated_new_objectid);
-DECLARE_bool(TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 
 DECLARE_bool(use_fast_backward_scan);
 DECLARE_uint32(ysql_max_invalidation_message_queue_size);
 DECLARE_uint32(max_replication_slots);
+DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 
 /* Constants for replication slot LSN types */
 const std::string YBC_LSN_TYPE_SEQUENCE = "SEQUENCE";
@@ -2335,8 +2335,8 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_max_invalidation_message_queue_size =
           &FLAGS_ysql_max_invalidation_message_queue_size,
       .ysql_max_replication_slots                = &FLAGS_max_replication_slots,
-      .TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication =
-          &FLAGS_TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication,
+      .ysql_yb_enable_implicit_dynamic_tables_logical_replication =
+          &FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication,
       .ysql_enable_read_request_cache_for_connection_auth =
           &FLAGS_ysql_enable_read_request_cache_for_connection_auth,
       .ysql_enable_scram_channel_binding = &FLAGS_ysql_enable_scram_channel_binding,

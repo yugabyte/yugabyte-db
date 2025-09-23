@@ -948,11 +948,19 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   public void setFlagsForDynamicTablesTest(Map<String, String> tserverFlags,
                                           Map<String, String> masterFlags,
                                           Boolean usePubRefresh) throws Exception {
+    tserverFlags.put(
+        "allowed_preview_flags_csv",
+        "ysql_yb_enable_implicit_dynamic_tables_logical_replication"
+    );
     tserverFlags.put("cdcsdk_enable_dynamic_table_support", "" + usePubRefresh);
-    tserverFlags.put("TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication",
+    tserverFlags.put("ysql_yb_enable_implicit_dynamic_tables_logical_replication",
                         "" + !usePubRefresh);
 
-    masterFlags.put("TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication",
+    masterFlags.put(
+      "allowed_preview_flags_csv",
+      "ysql_yb_enable_implicit_dynamic_tables_logical_replication"
+    );
+    masterFlags.put("ysql_yb_enable_implicit_dynamic_tables_logical_replication",
                         "" + !usePubRefresh);
 
     restartClusterWithFlags(masterFlags, tserverFlags);
