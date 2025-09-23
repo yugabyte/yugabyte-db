@@ -336,6 +336,7 @@ void AshCopyTServerSample(
   cb_metadata->pid = tserver_metadata.pid() ? tserver_metadata.pid()
                                             : pgapi->GetLocalTServerPid();
   cb_metadata->database_id = tserver_metadata.database_id();
+  cb_metadata->user_id = tserver_metadata.user_id();
   cb_sample->rpc_request_id = tserver_metadata.rpc_request_id();
   cb_sample->encoded_wait_event_code =
       ash::WaitStateInfo::AshEncodeWaitStateCodeWithComponent(

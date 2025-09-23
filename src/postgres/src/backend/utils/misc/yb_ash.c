@@ -62,6 +62,7 @@
 #define ACTIVE_SESSION_HISTORY_COLS_V3 14
 #define ACTIVE_SESSION_HISTORY_COLS_V4 15
 #define ACTIVE_SESSION_HISTORY_COLS_V5 16
+#define ACTIVE_SESSION_HISTORY_COLS_V6 17
 
 #define MAX_NESTED_QUERY_LEVEL 64
 
@@ -563,6 +564,9 @@ YbAshSetMetadata(void)
 	Assert(MyProc->yb_is_ash_metadata_set == false);
 
 	YBCGenerateAshRootRequestId(MyProc->yb_ash_metadata.root_request_id);
+
+	/* Populate current effective user id into ASH metadata */
+	MyProc->yb_ash_metadata.user_id = GetUserId();
 }
 
 void
@@ -979,7 +983,7 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 	int			i;
 	static int	ncols = 0;
 
-	if (ncols < ACTIVE_SESSION_HISTORY_COLS_V5)
+	if (ncols < ACTIVE_SESSION_HISTORY_COLS_V6)
 		ncols = YbGetNumberOfFunctionOutputColumns(F_YB_ACTIVE_SESSION_HISTORY);
 
 	/* ASH must be loaded first */
@@ -1108,6 +1112,9 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 
 		if (ncols >= ACTIVE_SESSION_HISTORY_COLS_V5)
 			values[j++] = Int64GetDatum(metadata->pss_mem_bytes);
+
+		if (ncols >= ACTIVE_SESSION_HISTORY_COLS_V6)
+			values[j++] = ObjectIdGetDatum(metadata->user_id);
 
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 	}
@@ -1344,11 +1351,11 @@ FormatAshSampleAsCsv(YbcAshSample *ash_data_buffer, int total_elements_to_dump,
 
 	if (total_elements_to_dump)
 		appendStringInfoString(output_buffer,
-							   "sample_time,root_request_id,rpc_request_id,"
-							   "wait_event_component,wait_event_class,wait_event,"
-							   "top_level_node_id,query_id,pid,"
-							   "client_node_ip,wait_event_aux,sample_weight,"
-							   "wait_event_type,ysql_dbid,wait_event_code\n");
+						   "sample_time,root_request_id,rpc_request_id,"
+						   "wait_event_component,wait_event_class,wait_event,"
+						   "top_level_node_id,query_id,pid,"
+						   "client_node_ip,wait_event_aux,sample_weight,"
+						   "wait_event_type,ysql_dbid,wait_event_code,ysql_userid\n");
 
 	for (int i = 0; i < total_elements_to_dump; ++i)
 	{
@@ -1376,7 +1383,7 @@ FormatAshSampleAsCsv(YbcAshSample *ash_data_buffer, int total_elements_to_dump,
 
 		/* Top level node id */
 		PrintUuidToBuffer(output_buffer, sample->top_level_node_id);
-		appendStringInfo(output_buffer, ",%ld,%d,%s,%s,%f,%s,%d,%d\n",
+		appendStringInfo(output_buffer, ",%ld,%d,%s,%s,%f,%s,%d,%d,%d\n",
 						 (int64) sample->metadata.query_id,
 						 sample->metadata.pid,
 						 client_node_ip,
@@ -1384,6 +1391,7 @@ FormatAshSampleAsCsv(YbcAshSample *ash_data_buffer, int total_elements_to_dump,
 						 sample->sample_weight,
 						 pgstat_get_wait_event_type(sample->encoded_wait_event_code),
 						 sample->metadata.database_id,
-						 YBCAshNormalizeComponentForTServerEvents(sample->encoded_wait_event_code, true));
+						 YBCAshNormalizeComponentForTServerEvents(sample->encoded_wait_event_code, true),
+						 sample->metadata.user_id);
 	}
 }
