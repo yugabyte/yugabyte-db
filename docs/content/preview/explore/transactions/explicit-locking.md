@@ -112,11 +112,13 @@ In PostgreSQL, if an advisory lock is taken on one session, all sessions should 
 
 ### Enable advisory locks
 
-To use advisory locks, enable and configure the following flags for your cluster:
+To use advisory locks, enable and configure the following flags for each node of your cluster.
 
-- [ysql_yb_enable_advisory_locks](../../../reference/configuration/yb-tserver/#ysql-yb-enable-advisory-locks)
-- [num_advisory_locks_tablets](../../../reference/configuration/yb-tserver/#num-advisory-locks-tablets)
-- [allowed_preview_flags_csv](../../../reference/configuration/yb-tserver/#allowed-preview-flags-csv) - Set the value of this flag in both YB-Master YB-TServer and to include `ysql_yb_enable_advisory_locks` (that is, `--master_flags=allowed_preview_flags_csv=ysql_yb_enable_advisory_locks`, `--tserver_flags=allowed_preview_flags_csv=ysql_yb_enable_advisory_locks`). |
+| Flag | Description |
+| :--- | :---------- |
+| ysql_yb_enable_advisory_locks | Enables advisory locking. <br>Default: false. The flag must have the same value across all yb-master and yb-tserver nodes. |
+| num_advisory_locks_tablets | Number of tablets used for the advisory locks table. It must be set before `ysql_yb_enable_advisory_locks` is set to true on the cluster.<br>Default: 1 |
+| [allowed_preview_flags_csv](../../../reference/configuration/yb-tserver/#allowed-preview-flags-csv) | Set the value of this flag to include `ysql_yb_enable_query_diagnostics`. |
 
 ### Using advisory locks
 
