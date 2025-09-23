@@ -168,6 +168,12 @@ bool		criticalSharedRelcachesBuilt = false;
 static long relcacheInvalsReceived = 0L;
 
 /*
+ * Set only when this is a pg auth backend that needs to rebuild the relcache
+ * init file.
+ */
+static bool YbNeedNewCacheFileForPgAuthBackend = false;
+
+/*
  * eoxact_list[] stores the OIDs of relations that (might) need AtEOXact
  * cleanup work.  This list intentionally has limited size; if it overflows,
  * we fall back to scanning the whole hashtable.  There is no value in a very
@@ -2567,7 +2573,15 @@ YbRunWithPrefetcher(
 	YBCPgLastKnownCatalogVersionInfo catalog_version = {};
 	uint64_t	shared_catalog_version;
 	HandleYBStatus(YBCGetSharedCatalogVersion(&shared_catalog_version));
-	const bool	use_tserver_cache_for_auth = YbUseTserverResponseCacheForAuth(shared_catalog_version);
+	/*
+	 * If YbNeedNewCacheFileForPgAuthBackend is set then this is a pg auth
+	 * backend that needs to preload rel cache in order to rebuild relcache
+	 * init file. Because relcache init file is also used by regular backends,
+	 * we want to rebuild it using the freshest catalog data based upon the
+	 * latest master catalog version instead of the shared catalog version.
+	 */
+	const bool	use_tserver_cache_for_auth =
+		YbUseTserverResponseCacheForAuth(shared_catalog_version) && !YbNeedNewCacheFileForPgAuthBackend;
 	YBCPgSysTablePrefetcherCacheMode trust_mode =
 		use_tserver_cache_for_auth ? YB_YQL_PREFETCHER_TRUST_CACHE_AUTH
 								   : YB_YQL_PREFETCHER_TRUST_CACHE;
@@ -5767,6 +5781,25 @@ RelationCacheInitializePhase3(void)
 			YBCIsInitDbModeEnvVarSet() ||
 			YbNeedAdditionalCatalogTables() ||
 			!*YBCGetGFlags()->ysql_use_relcache_file;
+		if (preload_rel_cache)
+		{
+			uint64_t	shared_catalog_version;
+			HandleYBStatus(YBCGetSharedCatalogVersion(&shared_catalog_version));
+			if (YbUseTserverResponseCacheForAuth(shared_catalog_version))
+			{
+				if (needNewCacheFile)
+					YbNeedNewCacheFileForPgAuthBackend = true;
+				else
+					/*
+					 * The relcache init file does not need to be rebuilt.
+					 * In this case we know the current backend is a pg auth
+					 * backend. We do not need to preload relcache (which
+					 * causes memory spike) for a pg auth backend to complete
+					 * the rest of its connection authentication work.
+					 */
+					preload_rel_cache = false;
+			}
+		}
 
 		YbPrefetchRequiredData(preload_rel_cache);
 
