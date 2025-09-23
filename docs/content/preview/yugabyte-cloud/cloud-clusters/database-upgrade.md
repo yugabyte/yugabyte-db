@@ -1,6 +1,6 @@
 ---
 title: Database upgrades in YugabyteDB Aeon
-headingTitle: Database upgrade
+headerTitle: Database upgrade
 linkTitle: Database upgrade
 description: Manage database upgrades for clusters in YugabyteDB Aeon.
 headcontent: Upgrade the YugabyteDB software on your cluster
@@ -60,7 +60,7 @@ If your cluster is not fully compatible with the YSQL major upgrade, the pre-che
 
 After a successful upgrade precheck, you can proceed with the usual database upgrade.
 
-## Monitor the universe
+## Monitor the cluster
 
 Once all the nodes have been upgraded, monitor the cluster to ensure it is healthy:
 
