@@ -51,15 +51,16 @@
 #include "yb/rpc/proxy_context.h"
 #include "yb/rpc/scheduler.h"
 
-#include "yb/util/metrics_fwd.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/async_util.h"
 #include "yb/util/atomic.h"
 #include "yb/util/locks.h"
+#include "yb/util/metrics_fwd.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/sockaddr.h"
+#include "yb/util/one_time_bool.h"
 #include "yb/util/operation_counter.h"
 #include "yb/util/stack_trace.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
@@ -367,7 +368,7 @@ class Messenger : public ProxyContext {
 
   // RPC services that handle inbound requests.
   mutable RWOperationCounter rpc_services_counter_;
-  std::atomic_bool rpc_services_counter_stopped_ = false;
+  OneTimeBool rpc_services_stopped_;
   std::unordered_multimap<std::string, RpcServicePtr> rpc_services_;
   RpcEndpointMap rpc_endpoints_;
 

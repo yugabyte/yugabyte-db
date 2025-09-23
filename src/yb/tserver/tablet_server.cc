@@ -783,10 +783,6 @@ void TabletServer::Shutdown() {
     xcluster_consumer->Shutdown();
   }
 
-  if (cdc_service_) {
-    cdc_service_->Shutdown();
-  }
-
   maintenance_manager_->Shutdown();
   WARN_NOT_OK(heartbeater_->Stop(), "Failed to stop TS Heartbeat thread");
   WARN_NOT_OK(ysql_lease_poller_->Stop(), "Failed to stop ysql lease client thread");

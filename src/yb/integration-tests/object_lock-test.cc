@@ -227,7 +227,6 @@ class ExternalObjectLockTest : public YBMiniClusterTestBase<ExternalMiniCluster>
   virtual ExternalMiniClusterOptions MakeExternalMiniClusterOptions();
   virtual int ReplicationFactor() { return 3; }
   virtual size_t NumberOfTabletServers() { return 3; }
-  Result<pgwrapper::PGConn> ConnectToTabletServer(ExternalTabletServer* ts, size_t timeout_seconds);
   ExternalTabletServer* tablet_server(size_t index);
   Status WaitForTServerLeaseToExpire(const std::string& ts_uuid, MonoDelta timeout);
   Status WaitForTServerLease(const std::string& ts_uuid, MonoDelta timeout);
@@ -1676,16 +1675,6 @@ ExternalMiniClusterOptions ExternalObjectLockTest::MakeExternalMiniClusterOption
       Format("--ysql_lease_refresher_interval_ms=$0", kDefaultYSQLLeaseRefreshIntervalMilli),
       "--TEST_olm_skip_sending_wait_for_probes=false"};
   return opts;
-}
-
-Result<pgwrapper::PGConn> ExternalObjectLockTest::ConnectToTabletServer(
-    ExternalTabletServer* ts, size_t timeout_seconds) {
-  auto settings = pgwrapper::PGConnSettings{
-      .host = ts->bind_host(),
-      .port = ts->ysql_port(),
-      .dbname = "yugabyte",
-      .connect_timeout = timeout_seconds};
-  return pgwrapper::PGConnBuilder(settings).Connect(/* simple_query_protocol */ false);
 }
 
 ExternalTabletServer* ExternalObjectLockTest::tablet_server(size_t index) {
