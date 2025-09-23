@@ -29,7 +29,7 @@ Get started with step-by-step guides for building scalable and fault-tolerant ap
   >}}
 
   {{< sections/3-box-card
-    title="Artificial intelligence"
+    title="AI"
     description="Add a scalable and highly-available database to your AI projects."
     buttonText="Explore"
     buttonUrl="tutorials/ai/"
