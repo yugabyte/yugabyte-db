@@ -7649,6 +7649,14 @@ YBCUpdateYbReadTimeAndInvalidateRelcache(uint64_t read_time_ht)
 	YbRelationCacheInvalidate();
 }
 
+void
+YBCResetYbReadTimeAndInvalidateRelcache()
+{
+	elog(DEBUG1, "Setting yb_read_time to 0");
+	assign_yb_read_time("0", NULL);
+	YbRelationCacheInvalidate();
+}
+
 uint64_t
 YbCalculateTimeDifferenceInMicros(TimestampTz yb_start_time)
 {

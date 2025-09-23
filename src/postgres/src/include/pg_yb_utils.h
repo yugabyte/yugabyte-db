@@ -1379,6 +1379,8 @@ extern Relation YbGetRelationWithOverwrittenReplicaIdentity(Oid relid,
 
 extern void YBCUpdateYbReadTimeAndInvalidateRelcache(uint64_t read_time);
 
+extern void YBCResetYbReadTimeAndInvalidateRelcache();
+
 extern uint64_t YbCalculateTimeDifferenceInMicros(TimestampTz yb_start_time);
 
 static inline bool

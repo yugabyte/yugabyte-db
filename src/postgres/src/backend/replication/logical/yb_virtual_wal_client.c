@@ -96,6 +96,9 @@ static List *unacked_transactions = NIL;
 static YbcReplicationSlotHashRange *slot_hash_range = NULL;
 
 static List *YBCGetTables(List *publication_names, bool *yb_is_pub_all_tables);
+static List *YBCGetTablesWithRetryIfNeeded(List *publication_names,
+										   bool *yb_is_pub_all_tables,
+										   bool *skip_setting_yb_read_time);
 static void InitVirtualWal(List *publication_names,
 						   const YbcReplicationSlotHashRange *slot_hash_range);
 
@@ -211,6 +214,45 @@ YBCGetTables(List *publication_names, bool *yb_is_pub_all_tables)
 	return tables;
 }
 
+static List *
+YBCGetTablesWithRetryIfNeeded(List *publication_names, bool *yb_is_pub_all_tables,
+							  bool *skip_setting_yb_read_time)
+{
+	List	   *tables;
+	MemoryContext caller_context = CurrentMemoryContext;
+
+	PG_TRY();
+	{
+		tables = YBCGetTables(publication_names, yb_is_pub_all_tables);
+	}
+	PG_CATCH();
+	{
+		MemoryContext error_context = MemoryContextSwitchTo(caller_context);
+		ErrorData *edata = CopyErrorData();
+
+		if (!yb_ignore_read_time_in_walsender || edata->sqlerrcode != ERRCODE_UNDEFINED_OBJECT)
+		{
+			MemoryContextSwitchTo(error_context);
+			PG_RE_THROW();
+		}
+
+		/* Clean up the error state before retrying. */
+		FlushErrorState();
+		FreeErrorData(edata);
+
+		elog(DEBUG1, "Encountered an error while trying to fetch tables by "
+					 "setting yb_read_time. Will retry by resetting it.");
+		YBCResetYbReadTimeAndInvalidateRelcache();
+		if (skip_setting_yb_read_time)
+			*skip_setting_yb_read_time = true;
+
+		tables = YBCGetTables(publication_names, yb_is_pub_all_tables);
+	}
+	PG_END_TRY();
+
+	return tables;
+}
+
 static void
 InitVirtualWal(List *publication_names,
 			   const YbcReplicationSlotHashRange *slot_hash_range)
@@ -219,6 +261,7 @@ InitVirtualWal(List *publication_names,
 	Oid		   *table_oids;
 	Oid		   *yb_publication_oids;
 	bool		yb_is_pub_all_tables = false;
+	bool		skip_setting_yb_read_time = false;
 
 	/*
 	 * YB_TODO(#27686): Using the value of ysql_yb_enable_implicit_dynamic_tables_logical_replication
@@ -241,9 +284,21 @@ InitVirtualWal(List *publication_names,
 		YBCUpdateYbReadTimeAndInvalidateRelcache(MyReplicationSlot->data.yb_last_pub_refresh_time);
 	}
 
-	tables = YBCGetTables(publication_names, &yb_is_pub_all_tables);
-	yb_publication_oids = YBGetPublicationOidsByNames(publication_names);
+	/*
+	 * We may encounter a failure prompting a retry in 2 cases:
+	 *   1. When publication was created after the slot creation.
+	 *   2. After PG 15 upgrade if last_pub_refresh_time lies in the period
+	 * 		where YB was running PG 11.
+	 * In the first case we do not expect yb_ignore_read_time_in_walsender
+	 * to be true and we should error out without retrying.
+	 * In the second case, the only way to proceed is to query
+	 * the tables in the publication as of now. So, yb_ignore_read_time_in_walsender
+	 * should be set and we will fetch the tables in publication as of now.
+	 */
+	tables = YBCGetTablesWithRetryIfNeeded(publication_names, &yb_is_pub_all_tables,
+										   &skip_setting_yb_read_time);
 
+	yb_publication_oids = YBGetPublicationOidsByNames(publication_names);
 	if (yb_enable_consistent_replication_from_hash_range &&
 		slot_hash_range != NULL)
 	{
@@ -269,7 +324,8 @@ InitVirtualWal(List *publication_names,
 							yb_publication_oids, list_length(publication_names),
 							yb_is_pub_all_tables);
 
-	if (!*YBCGetGFlags()->ysql_yb_enable_implicit_dynamic_tables_logical_replication)
+	if (!*YBCGetGFlags()->ysql_yb_enable_implicit_dynamic_tables_logical_replication &&
+		!skip_setting_yb_read_time)
 	{
 		elog(DEBUG2,
 			"Setting yb_read_time to initial_record_commit_time for %" PRIu64,
@@ -341,8 +397,15 @@ YBCReadRecord(XLogReaderState *state, List *publication_names, char **errormsg)
 				 publication_refresh_time);
 			YBCUpdateYbReadTimeAndInvalidateRelcache(publication_refresh_time);
 
-			/* Get tables in publication and call UpdatePublicationTableList. */
-			tables = YBCGetTables(publication_names, &yb_is_pub_all_tables);
+			/*
+			 * We will need a retry post PG 15 upgrade, when the publication_refresh_time
+			 * lies in the period where YB was running PG 11.
+			 * If yb_ignore_read_time_in_walsender is set then try to fetch the tables
+			 * in publication as of now upon retry.
+			 */
+			tables = YBCGetTablesWithRetryIfNeeded(publication_names,
+												   &yb_is_pub_all_tables, NULL);
+
 			table_oids = YBCGetTableOids(tables);
 			YBCUpdatePublicationTableList(MyReplicationSlot->data.yb_stream_id,
 										  table_oids, list_length(tables));
