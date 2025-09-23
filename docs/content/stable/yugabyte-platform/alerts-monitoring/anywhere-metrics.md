@@ -74,7 +74,7 @@ You can display metrics based on different criteria:
 
   Note that **Selected Node average** in the graph means the average of all the nodes that you have selected. For example, if you have filtered by region, then the selected node average would be average of all nodes in the selected region.
 
-- You can view metrics for up to seven top or bottom outlier tables, including both system and user tables. For example, to .display graphs for two tables with the highest read latency, you would select **Outlier Tables**, then **Top**, and then **2 tables**. The graph also includes the average for all tables.
+- You can view metrics for up to seven top or bottom outlier tables, including both system and user tables. For example, to display graphs for two tables with the highest read latency, you would select **Outlier Tables**, then **Top**, and then **2 tables**. The graph also includes the average for all tables.
 
   Note that the namespace name is appended with the table name and separated by a `.` (dot) operator.
 
