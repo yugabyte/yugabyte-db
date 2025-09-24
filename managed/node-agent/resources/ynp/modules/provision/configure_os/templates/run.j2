@@ -50,8 +50,10 @@ ulimit -u {{ nproc_limit }}
 
 # Configure kernel settings
 # Set and persist vm.swappiness
-if ! grep -q "^vm.swappiness=" /etc/sysctl.conf; then
+if ! grep -q "^vm.swappiness" /etc/sysctl.conf; then
   echo "vm.swappiness={{ vm_swappiness }}" >> /etc/sysctl.conf
+else
+  sed -i "s/^vm.swappiness.*/vm.swappiness={{ vm_swappiness }}/" /etc/sysctl.conf
 fi
 sysctl -w vm.swappiness={{ vm_swappiness }}
 
