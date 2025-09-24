@@ -145,7 +145,7 @@ This confirms that the password for `John` will expire in approximately 4 hours.
 
 ### What exactly does the upgrade with rollback feature do?
 
-The feature upgrades the binaries and enables new features that do not change the data format on disk.
+The feature upgrades the binaries and enables new features that do not change the data format on disk. Features that do require changes to the format of data sent over the network, or stored on disk, are not enabled until you finalize the upgrade.
 
 {{<lead link="../../yugabyte-platform/manage-deployments/upgrade-software-install/">}}
 For detailed information, see [Upgrade YugabyteDB](../../manage/upgrade-deployment/).
@@ -157,19 +157,23 @@ A universe can run as long as needed while the application is being validated. H
 
 ### Are new YugabyteDB features disabled until the upgrade is finalized?
 
-New features that change the data format on disk are disabled. Because these data-format-changing features are new, they generally aren't being used in production environments yet, so their temporary disablement has no impact on current operations. 90% of code changes are validated from the new binary itself. The aim of rollback capabilities is to catch regressions to existing features or query plans and handle them quickly (by reverting to the previous binary without any data corruption).
+New features that change the data format on disk are disabled. Because these data-format-changing features are new, they generally aren't being used in production environments yet, so disabling them temporarily has no impact on current operations. 90% of code changes are validated from the new binary itself. The aim of rollback is to catch regressions to existing features or query plans and handle them quickly (by reverting to the previous binary without any data corruption).
 
 ### Is it possible to run DDL operations during the upgrade (before finalize)?
 
-DDL operations are allowed for v2.20 to v2024.2 upgrades. DDL operations are only _blocked_ when the PostgreSQL version is upgraded, such as from v2024.2 (PostgreSQL 11) to v2025.1 (PostgreSQL 15).
+DDL operations are allowed during regular upgrades (v2.20 through v2024.2). DDL operations are only _blocked_ during YSQL major upgrades, where the PostgreSQL version is also upgraded, such as from v2024.2 (PostgreSQL 11) to v2025.1 (PostgreSQL 15).
 
-### Assuming rollback is not possible post-finalize, what happens if issues are observed in the application after finalization?
+### Assuming rollback is not possible post-finalize, what do I do if I discover problems after finalization?
 
-YugabyteDB performs extensive testing to ensure there are no issues. For customers that are extremely risk averse, the recommendation is to upgrade and finalize a development environment and DR replicas (if any) first. After the data format on disk has changed, you cannot go back to old binaries—this is a technical limitation of any software that stores data to disk. The only way to rollback after finalize is to restore from a backup that was taken before the finalization (with loss of data).
+Yugabyte performs extensive testing to ensure there are no issues. After the data format on disk has changed, you cannot go back to old binaries; this is a technical limitation of any software that stores data to disk. The only way to roll back after finalize is to restore from a backup that was taken before the finalization (with loss of data).
 
-### How does the rollback feature interact with bidirectional xCluster setups?
+For customers that are extremely risk averse, the recommendation is to upgrade and finalize a development environment and DR replicas (if any) first. After the data format on disk has changed, you cannot go back to old binaries—this is a technical limitation of any software that stores data to disk. The only way to rollback after finalize is to restore from a backup that was taken before the finalization (with loss of data).
 
-xCluster can only replicate from an old version to the new version. The target universe should be finalized before the source universe. If the source is finalized before the target, then xCluster automatically pauses itself (this only happens in certain versions that have an external data format change, such as v2024.2). For bidirectional setups, if writes are only happening on one side, then it's acceptable to upgrade and finalize the other side first and then upgrade the writing side. If both sides are taking writes, then both should be finalized at the same time; otherwise, replication in the new-to-old direction will not happen.
+### How does rollback interact with bidirectional xCluster setups?
+
+xCluster can only replicate from an old version to the new version. You should finalize the target universe before the source universe. If the source is finalized before the target, then xCluster automatically pauses itself (this only happens in certain versions that have an external data format change, such as v2024.2).
+
+For bidirectional setups, if writes are only happening on one side, then you can upgrade and finalize the other side first and then upgrade the writing side. If both sides are taking writes, then both should be finalized at the same time; otherwise, replication in the new-to-old direction will not happen.
 
 {{<lead link="../../yugabyte-platform/manage-deployments/xcluster-replication/bidirectional-replication/">}}
 For more information about bidirectional xCluster replication, see [Bidirectional replication using xCluster](../../yugabyte-platform/manage-deployments/xcluster-replication/bidirectional-replication/).
@@ -189,7 +193,7 @@ For detailed information about AutoFlags, see [AutoFlags](https://github.com/yug
 
 ### If not all new features are required immediately, is there a way to selectively enable them post-finalize?
 
-Features have dedicated knobs to allow you to tune or disable them. For example, Cost-based Optimizer has a flag that lets you pick the mode, and tablet split has threshold flags that can be set.
+Features have dedicated flags to allow you to tune or disable them. For example, cost-based optimizer has a flag that lets you pick the mode, and tablet split has threshold flags that can be set.
 
 ### What happens to custom flags set at the universe level?
 
