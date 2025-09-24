@@ -136,7 +136,7 @@ s3://user_bucket
 | Creation time | The time the backup was started. |
 | Backup name and subtask UUID | The name of the backup and YBA-generated subtask UUID. This folder contains the backup files (metadata and success) and subfolders (tablet components). |
 
-You can also use [yba-cli](../../anywhere-automation/anywhere-cli/) to list the backups and then the specific backup's details as follows:
+You can also use [yba-cli](../../anywhere-automation/anywhere-cli/) to get a list of backups and then a specific backup's details as follows:
 
 ```sh
 yba-cli backup list
