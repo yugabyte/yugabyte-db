@@ -44,7 +44,7 @@ class ScanChoices {
 
   static ScanChoicesPtr Create(
       const Schema& schema, const qlexpr::YQLScanSpec& doc_spec,
-      const qlexpr::ScanBounds& bounds);
+      const qlexpr::ScanBounds& bounds, Slice table_key_prefix);
 
   static ScanChoicesPtr CreateEmpty();
 };

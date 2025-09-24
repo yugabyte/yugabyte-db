@@ -61,7 +61,8 @@ class EmptyScanChoices : public ScanChoices {
 };
 
 ScanChoicesPtr ScanChoices::Create(
-    const Schema& schema, const qlexpr::YQLScanSpec& doc_spec, const qlexpr::ScanBounds& bounds) {
+    const Schema& schema, const qlexpr::YQLScanSpec& doc_spec, const qlexpr::ScanBounds& bounds,
+    Slice table_key_prefix) {
   auto prefixlen = doc_spec.prefix_length();
   auto num_hash_cols = schema.num_hash_key_columns();
   auto num_key_cols = schema.num_key_columns();
@@ -89,7 +90,8 @@ ScanChoicesPtr ScanChoices::Create(
   // bounds.trivial means that we just need lower and upper bounds for the scan.
   // So could use empty scan choices in case of the trivial range scan.
   if (doc_spec.options() || (doc_spec.range_bounds() && !bounds.trivial) || valid_prefixlen) {
-    return std::make_unique<HybridScanChoices>(schema, doc_spec, bounds.lower, bounds.upper);
+    return std::make_unique<HybridScanChoices>(
+        schema, doc_spec, bounds.lower, bounds.upper, table_key_prefix);
   }
 
   return CreateEmpty();

@@ -215,7 +215,8 @@ Status DocRowwiseIterator::Init(
       bounds.lower = bound_key_;
     }
   }
-  scan_choices_ = ScanChoices::Create(*schema_, doc_spec, bounds);
+  scan_choices_ = ScanChoices::Create(
+      *schema_, doc_spec, bounds, doc_read_context_.table_key_prefix());
   if (!skip_seek) {
     if (is_forward_scan_) {
       Seek(bounds.lower);
