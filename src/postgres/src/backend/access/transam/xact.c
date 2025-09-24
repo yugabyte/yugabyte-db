@@ -2368,6 +2368,12 @@ CommitTransaction(void)
 	TransactionState s = CurrentTransactionState;
 	TransactionId latestXid;
 	bool		is_parallel_worker;
+	instr_time	yb_commit_starttime;
+	instr_time	yb_commit_endtime;
+	uint64		elapsed_time;
+
+	if (YbIsCommitStatsCollectionEnabled() && YbIsSessionStatsTimerEnabled())
+		INSTR_TIME_SET_CURRENT(yb_commit_starttime);
 
 	is_parallel_worker = (s->blockState == TBLOCK_PARALLEL_INPROGRESS);
 
@@ -2631,6 +2637,14 @@ CommitTransaction(void)
 	 * default
 	 */
 	s->state = TRANS_DEFAULT;
+
+	if (YbIsCommitStatsCollectionEnabled() && YbIsSessionStatsTimerEnabled())
+	{
+		INSTR_TIME_SET_CURRENT(yb_commit_endtime);
+		INSTR_TIME_SUBTRACT(yb_commit_endtime, yb_commit_starttime);
+		elapsed_time = INSTR_TIME_GET_MICROSEC(yb_commit_endtime);
+		YbRecordCommitLatency(elapsed_time);
+	}
 
 	RESUME_INTERRUPTS();
 }

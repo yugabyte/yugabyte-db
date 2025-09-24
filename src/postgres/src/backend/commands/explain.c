@@ -703,6 +703,19 @@ const char *yb_metric_event_label[] = {
 
 #undef BUILD_METRIC_LABEL
 
+typedef struct {
+	bool is_required;
+	bool is_dist;
+	ExplainFormat format;
+} YbExplainCommitStatState;
+
+/*
+ * YB: Commit stats are collected after the end of the query, and need to outlive
+ * both the query and the transaction. Therefore, store information in a static
+ * scoped global variable.
+ */
+static YbExplainCommitStatState yb_explain_commit_stat_state = {0};
+
 /* Explains a single stat with no associated timing */
 static void
 YbExplainStatWithoutTiming(YbExplainState *yb_es, YbStatLabel label,
@@ -953,6 +966,8 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt,
 		/* YB */
 		else if (strcmp(opt->defname, "debug") == 0)
 			es->yb_debug = defGetBoolean(opt);
+		else if (strcmp(opt->defname, "commit") == 0)
+			es->yb_commit = defGetBoolean(opt);
 		else if (strcmp(opt->defname, "timing") == 0)
 		{
 			timing_set = true;
@@ -1046,6 +1061,11 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("EXPLAIN option DIST requires ANALYZE")));
 
+	if (es->yb_commit && !es->analyze)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("EXPLAIN option COMMIT requires ANALYZE")));
+
 	/* Turn on timing of RPC requests in accordance to the flags passed */
 	YbToggleSessionStatsTimer(es->timing);
 	if (es->yb_debug)
@@ -1111,11 +1131,125 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt,
 	end_tup_output(tstate);
 
 	/*
+	 * YB: If commit stats are to be collected and explained, copy over the
+	 * necessary options to the global variable as the ExplainState will be lost
+	 * after this function returns.
+	 */
+	if (YbIsCommitStatsCollectionEnabled() && es->yb_commit)
+	{
+		yb_explain_commit_stat_state.is_required = (es->analyze && es->summary);
+		yb_explain_commit_stat_state.is_dist = es->rpc;
+		yb_explain_commit_stat_state.format = es->format;
+	}
+	else
+	{
+		/*
+		 * YB: Turn off timing RPC requests and metrics capture so that future
+		 * queries are not timed and metrics are not sent by default.
+		 * Also turn off commit stats collection if 'COMMIT' is not specified
+		 * as an EXPLAIN option.
+		 */
+		YbToggleSessionStatsTimer(false);
+		YbToggleCommitStatsCollection(false);
+	}
+
+	YbSetMetricsCaptureType(YB_YQL_METRICS_CAPTURE_NONE);
+	pfree(es->str->data);
+}
+
+void
+YbExplainCommitStats(DestReceiver *dest)
+{
+	/* Nothing to explain if statement is not run with ANALYZE */
+	if (!yb_explain_commit_stat_state.is_required)
+		return;
+
+	/* No stats to be printed */
+	if (!yb_explain_commit_stat_state.is_dist &&
+		(!YbIsSessionStatsTimerEnabled() || yb_explain_hide_non_deterministic_fields))
+		return;
+
+	ExplainState *es = NewExplainState();
+	TupOutputState *tstate = NULL;
+	TupleDesc tupdesc;
+	YbInstrumentation yb_instr = {0};
+
+	es->rpc = yb_explain_commit_stat_state.is_dist;
+	es->format = yb_explain_commit_stat_state.format;
+	es->timing = YbIsSessionStatsTimerEnabled();
+
+	/* DocDB stats are currently not collected for COMMIT */
+	es->yb_debug = false;
+
+	/* Collect the stats */
+	YbUpdateSessionStats(&yb_instr);
+	YbAggregateExplainableRPCRequestStat(es, &yb_instr);
+
+	/*
+	 * Postgres does not provide an API to detect if autocommit is turned on/off
+	 * in the given connection. Therefore the commit wait is used to estimate
+	 * this. A wait of 0 ns implies that either:
+	 * - the transaction commit has not yet run (OR)
+	 * - the commit has run but with timing disabled.
+	 * In both cases, ensure that there is something to print before proceeding
+	 * further.
+	 */
+	if (!(yb_instr.commit_wait ||
+		  es->yb_stats.read.count || es->yb_stats.flush.count ||
+		  (es->yb_stats.catalog_read.count && !yb_explain_hide_non_deterministic_fields)))
+	{
+		YbToggleSessionStatsTimer(false);
+		pfree(es);
+		return;
+	}
+
+	tupdesc = CreateTemplateTupleDesc(1);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "COMMIT STATS",
+					   TEXTOID, -1, 0);
+
+	ExplainBeginOutput(es);
+	ExplainOpenGroup("Commit", NULL, true, es);
+
+	if (es->rpc)
+	{
+		YbExplainState yb_es = {es, false /* display_zero */ };
+
+		YbExplainRpcRequestStat(&yb_es, YB_STAT_LABEL_CATALOG_READ,
+								es->yb_stats.catalog_read.count,
+								es->yb_stats.catalog_read.wait_time);
+
+		YbExplainRpcRequestStat(&yb_es, YB_STAT_LABEL_STORAGE_READ,
+								es->yb_stats.read.count,
+								es->yb_stats.read.wait_time);
+
+		YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_STORAGE_WRITE,
+								   es->yb_stats.write_count);
+
+		YbExplainRpcRequestStat(&yb_es, YB_STAT_LABEL_STORAGE_FLUSH,
+								es->yb_stats.flush.count,
+								es->yb_stats.flush.wait_time);
+	}
+
+	if (es->timing && !yb_explain_hide_non_deterministic_fields)
+		ExplainPropertyFloat("Commit Execution Time", "ms",
+							 (double) yb_instr.commit_wait / 1000.0, 3, es);
+
+	ExplainCloseGroup("Commit", NULL, true, es);
+	ExplainEndOutput(es);
+
+	/* output tuples */
+	tstate = begin_tup_output_tupdesc(dest, tupdesc, &TTSOpsVirtual);
+	if (es->format == EXPLAIN_FORMAT_TEXT)
+		do_text_output_multiline(tstate, es->str->data);
+	else
+		do_text_output_oneline(tstate, es->str->data);
+	end_tup_output(tstate);
+
+	/*
 	 * YB: Turn off timing RPC requests and metrics capture so that future
 	 * queries are not timed and metrics are not sent by default
 	 */
 	YbToggleSessionStatsTimer(false);
-	YbSetMetricsCaptureType(YB_YQL_METRICS_CAPTURE_NONE);
 	pfree(es->str->data);
 }
 

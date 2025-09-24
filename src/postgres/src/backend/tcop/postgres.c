@@ -1101,6 +1101,84 @@ pg_plan_queries(List *querytrees, const char *query_string, int cursorOptions,
 	return stmt_list;
 }
 
+void
+YbCollectCommitStats(DestReceiver *receiver, int16 *format)
+{
+	Portal yb_portal;
+
+	/*
+	 * Printing commit stats may involve catalog lookups. Start a no-op txn
+	 * to facilitate this.
+	 */
+	yb_start_xact_command_internal(yb_skip_read_committed_internal_savepoint(CMDTAG_EXPLAIN));
+
+	/*
+	 * Create a portal to publish the stats. The portal cannot be "started" as
+	 * no query will be run in it.
+	 */
+	yb_portal = CreatePortal("YB_COMMIT_STATS", false /* allowDup */, false /* dupSilent */ );
+	SetRemoteDestReceiverParams(receiver, yb_portal);
+	PortalSetResultFormat(yb_portal, 1, format);
+	YbExplainCommitStats(receiver);
+
+	/* Finally, destroy the receiver */
+	receiver->rDestroy(receiver);
+
+	PortalDrop(yb_portal, false);
+
+	/* Commit the no-op transaction */
+	finish_xact_command();
+}
+
+static bool
+YbShouldCollectCommitStats(CommandTag command_tag, bool is_implict_block,
+						   bool is_last_stmt_in_block)
+{
+	/*
+	 * A query may be executed within the following transaction contexts:
+	 * 1. Outside of an explicit transaction block with autocommit turned off -
+	 *    the statement is not committed, so no stats need to be collected.
+	 * 2. As a single statement outside an explicit transaction block, with
+	 *    autocommit turned on - the statement is committed automatically, so
+	 *    commit stats should be collected if the statement is an EXPLAIN.
+	 * 3. As part of a multi-statement query outside an explicit transaction
+	 *    block, with autocommit turned on - commit stats should be collected
+	 *    only for the last statement in the block if it is an EXPLAIN.
+	 * 4. Inside an explicit transaction block - commit stats need not be
+	 *    collected as the last statement in the block will always be a
+	 *    COMMIT/ABORT statement which cannot be invoked with EXPLAIN.
+	 *
+	 * Notes:
+	 *  - Postgres does not provide an API to detect when autocommit is turned
+	 *    off. So, this is determined at the time of EXPLAINing the stats by
+	 *    checking if any stats have been collected (that is if any stats are
+	 *    non-zero).
+	 *  - When a multi-statement query uses the simple query protocol, the
+	 *    client encloses the statements with an implicit BEGIN and COMMIT.
+	 *    However, unlike an explicit transaction block, we know that the
+	 *    transaction is about to be imminently committed, so we can enable
+	 *    commit stats collection for the last statement in the block.
+	 *  - The EXPLAIN options (which determine whether commit stats are to be
+	 *    displayed) is parsed downstream. So, it is possible this function
+	 *    evaluates to true and commit stats are not requested. The EXPLAIN
+	 *    module is responsible for handling this case.
+	 */
+
+	if (command_tag != CMDTAG_EXPLAIN)
+		return false;
+
+	/* Single statement outside an explicit transaction block */
+	if (!IsTransactionBlock())
+		return true;
+
+	/* Last statement in a multi-statement query outside a transaction block */
+	if (is_implict_block && is_last_stmt_in_block)
+		return true;
+
+	/* Inside an explicit transaction block */
+	return false;
+}
+
 
 /*
  * exec_simple_query
@@ -1210,6 +1288,7 @@ exec_simple_query(const char *query_string)
 		Portal		portal;
 		DestReceiver *receiver;
 		int16		format;
+		bool		yb_collect_commit_stats = false;
 
 		pgstat_report_query_id(0, true);
 
@@ -1370,6 +1449,14 @@ exec_simple_query(const char *query_string)
 		 */
 		MemoryContextSwitchTo(oldcontext);
 
+		yb_collect_commit_stats =
+			YbShouldCollectCommitStats(command_tag,
+									   use_implicit_block,
+									   (lnext(parsetree_list, parsetree_item) == NULL));
+
+		if (yb_collect_commit_stats)
+			YbToggleCommitStatsCollection(true);
+
 		/*
 		 * Run the portal to completion, and then drop it (and the receiver).
 		 */
@@ -1381,7 +1468,13 @@ exec_simple_query(const char *query_string)
 						 receiver,
 						 &qc);
 
-		receiver->rDestroy(receiver);
+		/*
+		 * YB: The receiver is allocated in the MessageContext and needs to
+		 * outlive the current transaction if commit stats need to be collected.
+		 * We will use the same receiver to publish the commit stats.
+		 */
+		if (!yb_collect_commit_stats)
+			receiver->rDestroy(receiver);
 
 		PortalDrop(portal, false);
 
@@ -1399,6 +1492,13 @@ exec_simple_query(const char *query_string)
 			if (use_implicit_block)
 				EndImplicitTransactionBlock();
 			finish_xact_command();
+
+			if (yb_collect_commit_stats)
+			{
+				/* Note that this will also drop the receiver */
+				YbCollectCommitStats(receiver, &format);
+				YbToggleCommitStatsCollection(false);
+			}
 		}
 		else if (IsA(parsetree->stmt, TransactionStmt))
 		{
@@ -6892,6 +6992,10 @@ PostgresMain(const char *dbname, const char *username)
 
 			case 'S':			/* sync */
 				{
+					/*
+					 * TODO(kramanathan): Display commit stats for the extended
+					 * query protocol. (#28409)
+					 */
 					pq_getmsgend(&input_message);
 					MemoryContext oldcontext = CurrentMemoryContext;
 					PG_TRY();

@@ -539,6 +539,7 @@ typedef struct {
   YbcPgExecStorageMetrics write_metrics;
 
   uint64_t rows_removed_by_recheck;
+  uint64_t commit_wait;
 } YbcPgExecStats;
 
 // Make sure this is in sync with PgsqlMetricsCaptureType in pgsql_protocol.proto.
@@ -550,6 +551,7 @@ typedef enum {
 typedef struct {
   YbcPgExecStats stats;
   bool is_timing_required;
+  bool is_commit_stats_required;
   YbcPgMetricsCaptureType metrics_capture;
 } YbcPgExecStatsState;
 

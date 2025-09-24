@@ -372,7 +372,7 @@ SELECT * FROM c ORDER BY k;
 
 -- check distributed storage counters in case of multiple foreign keys
 TRUNCATE c;
-EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
+EXPLAIN (ANALYZE ON, DIST ON, COMMIT ON, COSTS OFF)
 INSERT INTO c VALUES(1, 1, 1, 1, 1);
 
 CREATE TABLE parent(k INT PRIMARY KEY, v INT UNIQUE);
