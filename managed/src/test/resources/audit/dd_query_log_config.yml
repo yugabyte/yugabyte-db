@@ -15,6 +15,7 @@ processors:
     - {action: upsert, key: ddsource, value: yugabyte}
     - {action: upsert, key: service, value: yb-otel-collector}
     - {action: upsert, key: host, value: test-node}
+    - {action: upsert, key: yugabyte.node_name, value: test-node}
     - {action: upsert, key: yugabyte.cloud, value: ''}
     - {action: upsert, key: yugabyte.universe_uuid, value: 00000000-0000-0000-0000-000000000000}
     - {action: upsert, key: yugabyte.node_type, value: PRIMARY}
