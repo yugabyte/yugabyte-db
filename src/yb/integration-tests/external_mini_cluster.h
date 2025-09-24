@@ -110,6 +110,9 @@ void AppendCsvFlagValue(
     std::vector<std::string>& flag_list, const std::string& flag_name,
     const std::string& value_to_add);
 
+void AppendFlagToAllowedPreviewFlagsCsv(
+    std::vector<std::string>& flag_list, const std::string& flag_to_add);
+
 struct ExternalClusterPGConnectionOptions {
   std::string db_name = "yugabyte";
   std::string user = "postgres";

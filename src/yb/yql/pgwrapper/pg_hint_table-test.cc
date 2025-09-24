@@ -266,8 +266,30 @@ void FailIfNotConcurrentDDLErrors(const Status& status) {
   }
 }
 
+class PgHintTableTestTableLocksDisabled : public PgHintTableTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    // TODO(#28742): Enabling ysql_yb_ddl_transaction_block_enabled causes the test to fail with
+    // "could not serialize access due to concurrent update" errors.
+    PgHintTableTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
+    AppendFlagToAllowedPreviewFlagsCsv(
+        options->extra_tserver_flags, "enable_object_locking_for_table_locks");
+    options->extra_master_flags.push_back("--enable_object_locking_for_table_locks=false");
+    AppendFlagToAllowedPreviewFlagsCsv(
+        options->extra_master_flags, "enable_object_locking_for_table_locks");
+
+    options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=false");
+    AppendFlagToAllowedPreviewFlagsCsv(
+        options->extra_tserver_flags, "ysql_yb_ddl_transaction_block_enabled");
+    options->extra_master_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=false");
+    AppendFlagToAllowedPreviewFlagsCsv(
+        options->extra_master_flags, "ysql_yb_ddl_transaction_block_enabled");
+  }
+};
+
 // Test that hints work correctly when ANALYZE is running concurrently
-TEST_F(PgHintTableTest, HintWithConcurrentAnalyze) {
+TEST_F_EX(PgHintTableTest, HintWithConcurrentAnalyze, PgHintTableTestTableLocksDisabled) {
   // ----------------------------------------------------------------------------------------------
   // 1. Run concurrent ANALYZE and hint insertion
   // ----------------------------------------------------------------------------------------------
