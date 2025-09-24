@@ -292,7 +292,7 @@ class LockablePgClientSession {
 
 using TransactionBuilder = std::function<
     client::YBTransactionPtr(
-        TxnAssignment* dest, IsDDL, client::ForceGlobalTransaction, CoarseTimePoint,
+        TxnAssignment* dest, IsDDL, TransactionFullLocality, CoarseTimePoint,
         client::ForceCreateTransaction)>;
 
 class SessionInfo {
@@ -2622,10 +2622,10 @@ class PgClientServiceImpl::Impl : public SessionProvider {
   }
 
   [[nodiscard]] client::YBTransactionPtr BuildTransaction(
-      TxnAssignment* dest, IsDDL is_ddl, client::ForceGlobalTransaction force_global,
+      TxnAssignment* dest, IsDDL is_ddl, TransactionFullLocality locality,
       CoarseTimePoint deadline, client::ForceCreateTransaction force_create_txn) {
     auto watcher = std::make_shared<client::YBTransactionPtr>(
-        transaction_pool_provider_().Take(force_global, deadline, force_create_txn));
+        transaction_pool_provider_().Take(locality, deadline, force_create_txn));
     dest->Assign(watcher, is_ddl);
     auto* txn = &**watcher;
     return {std::move(watcher), txn};

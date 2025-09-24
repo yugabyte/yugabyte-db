@@ -111,7 +111,9 @@ Result<YBTransactionPtr> QLEnv::NewTransaction(const YBTransactionPtr& transacti
     }
   }
   auto result = transaction_pool_->Take(
-      client::ForceGlobalTransaction(!FLAGS_ycql_use_local_transaction_tables), deadline);
+      FLAGS_ycql_use_local_transaction_tables
+          ? TransactionFullLocality::RegionLocal() : TransactionFullLocality::Global(),
+      deadline);
   RETURN_NOT_OK(result->Init(isolation_level));
   return result;
 }

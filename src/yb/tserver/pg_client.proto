@@ -746,7 +746,6 @@ message PgPerformOptionsPB {
   ReadTimeManipulation read_time_manipulation = 10;
   ReadHybridTimePB read_time = 11;
   bool use_catalog_session = 12;
-  bool force_global_transaction = 13;
   string namespace_id = 14;
   bool use_xcluster_database_consistency = 15;
   uint32 active_sub_transaction_id = 16;
@@ -757,6 +756,9 @@ message PgPerformOptionsPB {
   int64 pg_txn_start_us = 22;
 
   AshMetadataPB ash_metadata = 23;
+
+  bool force_global_transaction = 13;
+  bool is_all_region_local = 28;
 
   // When set,
   // - Sets the read time locally.

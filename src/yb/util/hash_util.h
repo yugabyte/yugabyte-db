@@ -100,11 +100,11 @@ class HashUtil {
     boost::hash_combine(_seed, obj_name.elem);
 
 #define YB_STRUCT_HASHER(...) \
-    ([] (const auto& _obj) { \
+    ([] (const auto& _struct) { \
       size_t _seed = 0; \
       BOOST_PP_SEQ_FOR_EACH( \
           YB_STRUCT_HASH_VALUE_HELPER, \
-          _obj, \
+          _struct, \
           BOOST_PP_VARIADIC_TO_SEQ(__VA_ARGS__)) \
       return _seed; \
     })
