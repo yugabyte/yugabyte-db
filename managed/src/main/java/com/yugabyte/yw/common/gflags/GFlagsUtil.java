@@ -156,6 +156,7 @@ public class GFlagsUtil {
 
   public static final String K8S_MNT_PATH = "/mnt/disk0";
   public static final String K8S_YBC_DATA = "/ybc-data";
+  public static final String K8S_HOME_DIR_FOR_GFLAG_OVERRIDES = "/tmp/yugabyte";
   public static final String K8S_YBC_LOG_SUBDIR = K8S_MNT_PATH + K8S_YBC_DATA + YBC_LOG_SUBDIR;
   public static final String K8S_YBC_CORES_DIR = K8S_MNT_PATH + CORES_DIR_PATH;
 
