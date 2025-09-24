@@ -189,7 +189,7 @@ For detailed information about AutoFlags, see [AutoFlags](https://github.com/yug
 
 ### If not all new features are required immediately, is there a way to selectively enable them post-finalize?
 
-No. Features have dedicated knobs to allow you to tune or disable them. For example, Cost-based Optimizer has a flag that lets you pick the mode. Tablet split has threshold flags that can be set.
+Features have dedicated knobs to allow you to tune or disable them. For example, Cost-based Optimizer has a flag that lets you pick the mode, and tablet split has threshold flags that can be set.
 
 ### What happens to custom flags set at the universe level?
 
