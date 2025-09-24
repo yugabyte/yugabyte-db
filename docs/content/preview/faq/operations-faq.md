@@ -157,7 +157,7 @@ A universe can run as long as needed while the application is being validated. H
 
 ### Are new YugabyteDB features disabled until the upgrade is finalized?
 
-New features that change the data format on disk are disabled. These are usually rare, and they are not used by customers anyway (as they are new features). 90% of code changes are validated from the new binary itself. The aim of rollback capabilities is to catch regressions to existing features or query plans and handle them quickly.
+New features that change the data format on disk are disabled. Because these data-format-changing features are new, they generally aren't being used in production environments yet, so their temporary disablement has no impact on current operations. 90% of code changes are validated from the new binary itself. The aim of rollback capabilities is to catch regressions to existing features or query plans and handle them quickly (by reverting to the previous binary without any data corruption).
 
 ### Is it possible to run DDL operations during the upgrade (before finalize)?
 
