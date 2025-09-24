@@ -47,18 +47,19 @@ For more information, refer to [Querying Prometheus](https://prometheus.io/docs/
 
 ## Metrics collection level
 
-The metrics collection level setting controls how many database metrics are collected and stored. It helps balance system performance with monitoring needs, allowing administrators to optimize resource usage based on their specific observability requirements.
+The metrics collection level setting controls how many database metrics are collected and stored. It helps balance system performance with monitoring needs, so that you can optimize resource usage based on your specific observability requirements.
 
-The metrics collection level can be set via the **Metrics Collection Level** Universe Runtime Configuration option (config key `yb.metrics.collection_level`) to true. Refer to [Manage runtime configuration settings](../../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set universe runtime configuration flags.
+Set the metrics collection level by using the **Metrics Collection Level** Universe Runtime Configuration option (config key `yb.metrics.collection_level`). Refer to [Manage runtime configuration settings](../../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/).
 
-The flag supports four distinct collection levels as described in the following table:
+You can set the collection level to the following:
 
 | Level | Description |
 |:-------|:---------|
-| ALL | Collects all metrics from the database. |
+| ALL | Collects all metrics from the database. Not recommended for large databases with a lot of tables, as it can overload the YugabyteDB Anywhere (YBA) Prometheus instance and cause Out of Memory (OOM) errors on the YBA node.  |
 | NORMAL (default) | Collects all server-level metrics, and essential table-level metrics (required for YugabyteDB Anywhere UI and alerts). |
 | MINIMAL | Collects limited list of server-level metrics (required for YugabyteDB Anywhere UI and alerts), and very limited table-level metrics (required for alerts and table size display). |
-| OFF | Completely disables metric collection. |
+| OFF | Disables metric collection. |
+| TABLE_OFF | Collects only server-level metrics. |
 
 The collection level directly affects what data appears in monitoring interfaces. With NORMAL level, all UI components display full metrics. However, when MINIMAL is configured, most per-table monitoring screens display "No Data" messages, though table size information and essential alerts continue functioning. This provides a way to reduce monitoring overhead while maintaining core operational visibility.
 
