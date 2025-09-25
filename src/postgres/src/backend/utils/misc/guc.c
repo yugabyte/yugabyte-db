@@ -680,6 +680,7 @@ static const struct config_enum_entry yb_cost_model_options[] = {
 	{"legacy_stats_mode", YB_COST_MODEL_LEGACY_STATS, false},
 	{"legacy_bnl_mode", YB_COST_MODEL_LEGACY_BNL, false},
 	{"legacy_stats_bnl_mode", YB_COST_MODEL_LEGACY_STATS_BNL, false},
+	{"legacy_ignore_stats_bnl_mode", YB_COST_MODEL_LEGACY_IGNORE_STATS_BNL, false},
 	{"true", YB_COST_MODEL_ON, true},
 	{"false", YB_COST_MODEL_OFF, true},
 	{"yes", YB_COST_MODEL_ON, true},
@@ -16023,6 +16024,11 @@ assign_yb_enable_cbo(int new_value, void *extra)
 		case YB_COST_MODEL_LEGACY_STATS_BNL:
 			yb_enable_optimizer_statistics = true;
 			yb_legacy_bnl_cost = true;
+			break;
+
+		case YB_COST_MODEL_LEGACY_IGNORE_STATS_BNL:
+			yb_legacy_bnl_cost = true;
+			yb_ignore_stats = true;
 			break;
 	}
 }
