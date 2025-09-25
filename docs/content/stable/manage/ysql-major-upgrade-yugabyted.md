@@ -31,6 +31,13 @@ The upgrade is fully online. While the upgrade is in progress, you have full and
     </a>
   </li>
 
+  <li>
+    <a href="../ysql-major-upgrade-logical-replication/" class="nav-link">
+      <i class="icon-shell"></i>
+      Upgrade Logical Replication
+    </a>
+  </li>
+
 </ul>
 
 ## Before you begin
