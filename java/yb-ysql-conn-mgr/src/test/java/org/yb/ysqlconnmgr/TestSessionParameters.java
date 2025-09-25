@@ -30,6 +30,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
+import com.yugabyte.PGConnection;
 
 @RunWith(value = YBTestRunnerYsqlConnMgr.class)
 public class TestSessionParameters extends BaseYsqlConnMgr {
@@ -560,6 +561,61 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
             expectedValue, parameterName, fetchedValue),
             expectedValue.equals(fetchedValue));
       }
+    }
+  }
+
+  @Test
+  public void testTimeZoneSetting() throws Exception {
+    try (Connection conn =
+        getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .withOptions("-c TimeZone=Asia/Kolkata").connect()) {
+      PGConnection pgConn = (PGConnection) conn;
+      Map<String, String> params = new HashMap<>(pgConn.getParameterStatuses());
+
+      // Get the timezone directly
+      String backendTimeZone = params.get("TimeZone");
+      assertTrue("Backend timezone should be set correctly from startup packet",
+          backendTimeZone.equals("Asia/Kolkata"));
+    }
+
+    try (Connection conn =
+        getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .withOptions("-c timezone=Asia/Kolkata").connect()) {
+      PGConnection pgConn = (PGConnection) conn;
+      Map<String, String> params = new HashMap<>(pgConn.getParameterStatuses());
+
+      // Get the timezone directly
+      String backendTimeZone = params.get("TimeZone");
+      assertTrue("Backend timezone should be set correctly from startup packet",
+          backendTimeZone.equals("Asia/Kolkata"));
+    }
+
+    try (
+        Connection conn = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR).connect();
+        Statement stmt = conn.createStatement()) {
+      stmt.execute("SET TimeZone = 'Asia/Kolkata'");
+      PGConnection pgConn = (PGConnection) conn;
+      Map<String, String> params = new HashMap<>(pgConn.getParameterStatuses());
+
+      // Get the timezone directly
+      String backendTimeZone = params.get("TimeZone");
+      assertTrue("Backend timezone should be set correctly from SET command",
+          backendTimeZone.equals("Asia/Kolkata"));
+    }
+
+    try (
+        Connection conn = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR).connect();
+        Statement stmt = conn.createStatement()) {
+      stmt.execute("SET timezone = 'Asia/Kolkata'");
+      PGConnection pgConn = (PGConnection) conn;
+      Map<String, String> params = new HashMap<>(pgConn.getParameterStatuses());
+
+      // Get the timezone directly
+      String backendTimeZone = params.get("TimeZone");
+      assertTrue("Backend timezone should be set correctly from SET command",
+          backendTimeZone.equals("Asia/Kolkata"));
     }
   }
 }

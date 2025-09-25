@@ -176,9 +176,14 @@ static inline void yb_kiwi_var_push(kiwi_vars_t *vars, char *name, int name_len,
 		vars->vars = realloc(vars->vars, vars->size * sizeof(kiwi_var_t));
 
 	kiwi_var_t *var = &vars->vars[vars->size - 1];
-	char *yb_lowercase_name = yb_lowercase_str(name);
-	memcpy(var->name, yb_lowercase_name, name_len);
-	free(yb_lowercase_name);
+	if (name_len == sizeof("TimeZone") && strcmp(name, "TimeZone") == 0)
+		memcpy(var->name, name, name_len);
+	else {
+		char *yb_lowercase_name = yb_lowercase_str(name);
+		memcpy(var->name, yb_lowercase_name, name_len);
+		free(yb_lowercase_name);
+	}
+
 	var->name_len = name_len;
 	memcpy(var->value, value, value_len);
 	var->value_len = value_len;
