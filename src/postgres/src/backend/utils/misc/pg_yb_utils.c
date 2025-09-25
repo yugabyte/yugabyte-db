@@ -3085,7 +3085,8 @@ YBCommitTransactionContainingDDL()
 
 				if (nmsgs > max_allowed)
 				{
-					elog(LOG, "too many messages: %d, max allowed %d", nmsgs, max_allowed);
+					elog(LOG, "too many invalidation messages: %d, max allowed %d",
+						 nmsgs, max_allowed);
 					/*
 					 * If we have too many invalidation messages, write PG null into
 					 * messages so that we fall back to do catalog cache refresh.
@@ -3112,10 +3113,10 @@ YBCommitTransactionContainingDDL()
 			}
 			else
 				Assert(nmsgs == 0);
-			YBC_LOG_INFO("pg null=%d, nmsgs=%d", !currentInvalMessages, nmsgs);
+			YBC_LOG_INFO("DEBUG: pg null=%d, nmsgs=%d", !currentInvalMessages, nmsgs);
 		}
 		else if (ddl_transaction_state.num_committed_pg_txns > 0)
-			YBC_LOG_INFO("num_committed_pg_txns: %d",
+			YBC_LOG_INFO("DEBUG: num_committed_pg_txns: %d",
 						 ddl_transaction_state.num_committed_pg_txns);
 
 		/* Clear yb_sender_pid for unit test to have a stable result. */
@@ -3254,8 +3255,8 @@ YBCommitTransactionContainingDDL()
 	}
 	YBClearDdlHandles();
 	if (increment_done)
-		YBC_LOG_INFO("%s: got %d messages, local catalog version %" PRIu64,
-					 __func__, nmsgs, yb_catalog_cache_version);
+		YBC_LOG_INFO("%s: got %d invalidation messages, local catalog version %" PRIu64,
+			 __func__, nmsgs, yb_catalog_cache_version);
 }
 
 void
