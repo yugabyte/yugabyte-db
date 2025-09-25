@@ -24,7 +24,7 @@ Currently, the scopes can be categorized as follows:
 
 | Scope | Description |
 |:--- |:--- | :--- |
-| Global | Applies to the entire platform, persists across installs and any value defined in this scope overrides the defaults. You must be a Super Admin to set universe global configuration flags. |
+| Global | Applies to the entire platform, persists across installs and any value defined in this scope overrides the defaults. Only the Super Admin can set global runtime configuration settings. |
 | Customer | Applies to a specific customer, persists across installs and any value defined in this scope overrides defaults in Global scope. |
 | Provider | Applies to a specific provider, persists across installs and any value defined in this scope overrides defaults in Customer scope. |
 | Universe | Applies to a specific universe, persists across installs and any value defined in this scope overrides defaults in Customer scope. |

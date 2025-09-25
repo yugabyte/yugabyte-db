@@ -55,7 +55,7 @@ You can set the collection level to the following:
 
 | Level | Description |
 |:-------|:---------|
-| ALL | Collects all metrics from the database. Not recommended for large databases with a lot of tables, as it can overload the YugabyteDB Anywhere (YBA) Prometheus instance and cause Out of Memory (OOM) errors on the YBA node.  |
+| ALL | Collects all metrics from the database. Not recommended for large databases with a lot of tables, as it can overload the YugabyteDB Anywhere Prometheus instance and cause Out of Memory (OOM) errors on the node where YugabyteDB Anywhere is installed. |
 | NORMAL (default) | Collects all server-level metrics, and essential table-level metrics (required for YugabyteDB Anywhere UI and alerts). |
 | MINIMAL | Collects limited list of server-level metrics (required for YugabyteDB Anywhere UI and alerts), and very limited table-level metrics (required for alerts and table size display). |
 | OFF | Disables metric collection. |
