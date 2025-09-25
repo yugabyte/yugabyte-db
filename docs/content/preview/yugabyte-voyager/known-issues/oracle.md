@@ -370,7 +370,7 @@ ERROR: data type character has no default operator class for access method "ybgi
 
 ---
 
-## Migration process and tooling issues
+## Migration process and tooling
 
 ### Exporting data with names for tables/functions/procedures using special characters/whitespaces fails
 
@@ -624,7 +624,7 @@ $$;
 
 ---
 
-## Performance Optimization
+## Performance optimization
 
 ### Index on timestamp column should be imported as ASC (Range) index to avoid sequential scans
 
