@@ -17,7 +17,7 @@ const (
 	PostgresServiceName    string = "postgres"
 	PrometheusServiceName  string = "prometheus"
 	YbdbServiceName        string = "ybdb"
-	PerfAdvisorServiceName string = "performance-advisor"
+	PerfAdvisorServiceName string = "yb-perf-advisor"
 	LogRotateServiceName   string = "yb-logrotate"
 )
 

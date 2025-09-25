@@ -19,7 +19,6 @@ type perfAdvisorDirectories struct {
 	SystemdFileLocation string
 	templateFileName    string
 	PABin               string
-	ConfigLocation      string
 	PALogDir            string
 }
 
@@ -36,7 +35,6 @@ func newPerfAdvisorDirectories(version string) perfAdvisorDirectories {
 		templateFileName:    "yb-installer-perf-advisor.yml",
 		// GetSoftwareRoot returns /opt/yugabyte/software/
 		PABin:          common.GetSoftwareRoot() + "/perf-advisor/backend/bin",
-		ConfigLocation: common.GetSoftwareRoot() + "/perf-advisor/config/override.properties",
 		PALogDir:       common.GetBaseInstall() + "/data/logs",
 	}
 }
@@ -45,7 +43,7 @@ func newPerfAdvisorDirectories(version string) perfAdvisorDirectories {
 func NewPerfAdvisor(version string) PerfAdvisor {
 
 	return PerfAdvisor{
-		name:                   "performance-advisor",
+		name:                   "yb-perf-advisor",
 		version:                version,
 		perfAdvisorDirectories: newPerfAdvisorDirectories(version),
 	}
@@ -219,22 +217,6 @@ func (perf PerfAdvisor) untarAndSetupPerfAdvisorPackages() error {
 	}
 	if stat, err := os.Stat(frontendDir); err != nil || !stat.IsDir() {
 			return fmt.Errorf("ui directory not found in %s after extraction", targetDir)
-	}
-
-	overrideDst := filepath.Join(targetDir, "config", "override.properties")
-	propertiesContent := fmt.Sprintf(
-		"spring.web.resources.static-locations=file://%s/perf-advisor/ui\n"+
-			"pa.security.api.token.secret=''\n"+
-			"spring.datasource.username=postgres\n"+
-			"pa.security.cors.origin=*\n"+
-			"pa.security.cors.origin.dev=*\n"+
-			"pa.prometheus.url=http://localhost:9090\n"+
-			"spring.datasource.url=jdbc:postgresql://localhost:5432/ts\n"+
-			"spring.datasource.password=''\n",
-		common.GetSoftwareRoot(),
-	)
-	if err := os.WriteFile(overrideDst, []byte(propertiesContent), 0644); err != nil {
-			return fmt.Errorf("failed to write override.properties: %w", err)
 	}
 
 	if common.HasSudoAccess() {
