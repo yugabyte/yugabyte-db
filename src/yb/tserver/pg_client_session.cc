@@ -3652,9 +3652,14 @@ class PgClientSession::Impl {
   }
 
   TransactionFullLocality GetTargetTransactionLocality(const PgPerformRequestPB& request) const {
-    if (!FLAGS_use_tablespace_based_transaction_placement) {
+    if (!FLAGS_use_tablespace_based_transaction_placement &&
+        !request.options().force_tablespace_locality()) {
       return request.options().is_all_region_local()
           ? TransactionFullLocality::RegionLocal() : TransactionFullLocality::Global();
+    }
+
+    if (auto oid = request.options().force_tablespace_locality_oid()) {
+      return TransactionFullLocality::TablespaceLocal(oid);
     }
 
     PgTablespaceOid tablespace_oid = kInvalidOid;

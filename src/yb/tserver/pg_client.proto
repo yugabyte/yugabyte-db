@@ -767,6 +767,8 @@ message PgPerformOptionsPB {
   reserved 23; // ASH metadata is now passed in RequestHeader PB
 
   bool force_global_transaction = 13;
+  bool force_tablespace_locality = 29;
+  uint32 force_tablespace_locality_oid = 30;
   bool is_all_region_local = 28;
 
   // When set,

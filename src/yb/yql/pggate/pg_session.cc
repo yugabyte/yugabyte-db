@@ -934,6 +934,8 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
   }
 
   options.set_force_global_transaction(yb_force_global_transaction);
+  options.set_force_tablespace_locality(yb_force_tablespace_locality);
+  options.set_force_tablespace_locality_oid(yb_force_tablespace_locality_oid);
   options.set_is_all_region_local(std::all_of(
           ops.operations().begin(), ops.operations().end(),
           [](const auto& op) { return op->is_region_local(); }));

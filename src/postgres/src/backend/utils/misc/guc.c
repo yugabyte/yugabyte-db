@@ -2861,6 +2861,16 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_force_tablespace_locality", PGC_USERSET, UNGROUPED,
+			gettext_noop("Forces use of tablespace-based locality over region locality."),
+			NULL
+		},
+		&yb_force_tablespace_locality,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_disable_transactional_writes", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Sets the boolean flag to disable transaction writes."),
 			NULL
@@ -5588,6 +5598,17 @@ static struct config_int ConfigureNamesInt[] =
 
 static struct yb_config_oid ConfigureNamesOid[] =
 {
+	{
+		{"yb_force_tablespace_locality_oid", PGC_USERSET, UNGROUPED,
+			gettext_noop("Tablespace used for tablespace-based locality. Picked automatically "
+						 "if InvalidOid (default)."),
+			NULL
+		},
+		&yb_force_tablespace_locality_oid,
+		InvalidOid, 0, OID_MAX,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, 0, 0, NULL, NULL, NULL
