@@ -643,7 +643,7 @@
   [preview_integrations.params]
     showSection = true
 
-########## Menus (in preview) for Tutorials
+########## Menus (in preview) for Develop
 
 # [[preview_develop]]
 #   name = "Docs Home"
@@ -998,14 +998,6 @@
     classes = "separator"
     showSection = true
     hideLink = true
-
-# [[preview_yugabyte-cloud]]
-#   name = "What's New"
-#   weight = 4
-#   identifier = "yugabytedb-managed-releases"
-#   url = "/preview/yugabyte-cloud/release-notes/"
-#   [preview_yugabyte-cloud.params]
-#     showSection = true
 
 ########## Menus (in preview) for YB Voyager section
 
