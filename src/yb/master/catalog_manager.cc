@@ -5957,6 +5957,13 @@ Status CatalogManager::RefreshYsqlLease(const RefreshYsqlLeaseRequestPB* req,
   return object_lock_info_manager_->RefreshYsqlLease(*req, *resp, *rpc, epoch);
 }
 
+Status CatalogManager::RelinquishYsqlLease(const RelinquishYsqlLeaseRequestPB* req,
+                                           RelinquishYsqlLeaseResponsePB* resp,
+                                           rpc::RpcContext* rpc,
+                                           const LeaderEpoch& epoch) {
+  return object_lock_info_manager_->RelinquishYsqlLease(*req, *resp, *rpc, epoch);
+}
+
 Status CatalogManager::TruncateTable(const TableId& table_id,
                                      TruncateTableResponsePB* resp,
                                      rpc::RpcContext* rpc,

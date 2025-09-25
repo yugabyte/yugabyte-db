@@ -1360,9 +1360,24 @@ std::string DdlLogEntry::id() const {
 // ObjectLockInfo
 // ================================================================================================
 
-std::variant<ObjectLockInfo::WriteLock, SysObjectLockEntryPB::LeaseInfoPB>
+Result<std::variant<ObjectLockInfo::WriteLock, SysObjectLockEntryPB::LeaseInfoPB>>
 ObjectLockInfo::RefreshYsqlOperationLease(const NodeInstancePB& instance, MonoDelta lease_ttl) {
   auto l = LockForWrite();
+  auto& current_lease_info = l->pb.lease_info();
+  if (instance.instance_seqno() < current_lease_info.instance_seqno()) {
+    return STATUS_FORMAT(
+        IllegalState,
+        "Cannot grant lease, instance seqno of requestor $0 is lower than instance seqno of a "
+        "previously granted lease $1",
+        instance.instance_seqno(), current_lease_info.instance_seqno());
+  }
+  if (current_lease_info.lease_relinquished() &&
+      instance.instance_seqno() <= current_lease_info.instance_seqno()) {
+    return STATUS_FORMAT(
+        IllegalState,
+        "Cannot grant lease, lease has been relinquished by instance_seqno $0 already",
+        current_lease_info.instance_seqno());
+  }
   {
     std::lock_guard l(mutex_);
     // When doing this mutation we cannot be sure the tserver receives the response.
@@ -1377,6 +1392,7 @@ ObjectLockInfo::RefreshYsqlOperationLease(const NodeInstancePB& instance, MonoDe
   lease_info.set_live_lease(true);
   lease_info.set_lease_epoch(lease_info.lease_epoch() + 1);
   lease_info.set_instance_seqno(instance.instance_seqno());
+  lease_info.set_lease_relinquished(false);
   return std::move(l);
 }
 

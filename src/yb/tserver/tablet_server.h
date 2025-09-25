@@ -77,6 +77,7 @@
 #include "yb/util/locks.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
+#include "yb/util/one_time_bool.h"
 #include "yb/util/status_fwd.h"
 
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
@@ -673,6 +674,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   tserver::TSLocalLockManagerPtr ts_local_lock_manager_ GUARDED_BY(lock_);
 
   std::unique_ptr<docdb::ObjectLockSharedStateManager> object_lock_shared_state_manager_;
+  OneTimeBool shutting_down_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletServer);
 };

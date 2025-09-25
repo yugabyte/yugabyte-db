@@ -198,9 +198,15 @@ class ObjectLockInfoManager::Impl {
       EXCLUDES(mutex_);
   bool IsDdlVerificationInProgress(const TransactionId& txn) const;
 
-  Status RefreshYsqlLease(const RefreshYsqlLeaseRequestPB& req, RefreshYsqlLeaseResponsePB& resp,
+  Status RefreshYsqlLease(const RefreshYsqlLeaseRequestPB& req,
+                          RefreshYsqlLeaseResponsePB& resp,
                           rpc::RpcContext& rpc,
                           const LeaderEpoch& epoch);
+
+  Status RelinquishYsqlLease(const RelinquishYsqlLeaseRequestPB& req,
+                             RelinquishYsqlLeaseResponsePB& resp,
+                             rpc::RpcContext& rpc,
+                             const LeaderEpoch& epoch);
 
   std::shared_ptr<CountDownLatch> ReleaseLocksHeldByExpiredLeaseEpoch(
       const std::string& tserver_uuid, uint64 max_lease_epoch_to_release,
@@ -611,6 +617,12 @@ Status ObjectLockInfoManager::RefreshYsqlLease(
     const RefreshYsqlLeaseRequestPB& req, RefreshYsqlLeaseResponsePB& resp, rpc::RpcContext& rpc,
     const LeaderEpoch& epoch) {
   return impl_->RefreshYsqlLease(req, resp, rpc, epoch);
+}
+
+Status ObjectLockInfoManager::RelinquishYsqlLease(
+    const RelinquishYsqlLeaseRequestPB& req, RelinquishYsqlLeaseResponsePB& resp,
+    rpc::RpcContext& rpc, const LeaderEpoch& epoch) {
+  return impl_->RelinquishYsqlLease(req, resp, rpc, epoch);
 }
 
 tserver::DdlLockEntriesPB ObjectLockInfoManager::ExportObjectLockInfo() {
@@ -1113,8 +1125,8 @@ Status ObjectLockInfoManager::Impl::RefreshYsqlLease(
   // Sanity check that the tserver has already registered with the same instance_seqno.
   RETURN_NOT_OK(master_.ts_manager()->LookupTS(req.instance()));
   auto object_lock_info = GetOrCreateObjectLockInfo(req.instance().permanent_uuid());
-  auto lock_variant = object_lock_info->RefreshYsqlOperationLease(
-      req.instance(), MonoDelta::FromMilliseconds(master_ttl));
+  auto lock_variant = VERIFY_RESULT(object_lock_info->RefreshYsqlOperationLease(
+      req.instance(), MonoDelta::FromMilliseconds(master_ttl)));
   if (auto* lease_info = std::get_if<SysObjectLockEntryPB::LeaseInfoPB>(&lock_variant)) {
     resp.mutable_info()->set_lease_epoch(lease_info->lease_epoch());
     if (!req.has_current_lease_epoch() || lease_info->lease_epoch() != req.current_lease_epoch()) {
@@ -1143,6 +1155,27 @@ Status ObjectLockInfoManager::Impl::RefreshYsqlLease(
   LOG(INFO) << Format(
       "Granting a new ysql op lease to TS $0 ($1). Lease epoch $2", req.instance().permanent_uuid(),
       req.instance().instance_seqno(), resp.info().lease_epoch());
+  return Status::OK();
+}
+
+Status ObjectLockInfoManager::Impl::RelinquishYsqlLease(
+    const RelinquishYsqlLeaseRequestPB& req, RelinquishYsqlLeaseResponsePB& resp,
+    rpc::RpcContext& rpc, const LeaderEpoch& epoch) {
+  auto object_lock_info = GetOrCreateObjectLockInfo(req.instance().permanent_uuid());
+  auto l = object_lock_info->LockForWrite();
+  auto& lease_info = l.data().pb.lease_info();
+  if (lease_info.instance_seqno() > req.instance().instance_seqno()) {
+    // This is a relinquish lease request from a prior instance of the tserver process. Reject.
+    return STATUS_FORMAT(
+        InvalidArgument,
+        "Relinquish lease request for a replaced tserver instance. Instance in request $0, "
+        "existing lease info $1",
+        req.instance().DebugString(), lease_info.DebugString());
+  }
+  l.mutable_data()->pb.mutable_lease_info()->set_lease_relinquished(true);
+  l.mutable_data()->pb.mutable_lease_info()->set_live_lease(false);
+  RETURN_NOT_OK(catalog_manager_.sys_catalog()->Upsert(epoch, object_lock_info));
+  l.Commit();
   return Status::OK();
 }
 

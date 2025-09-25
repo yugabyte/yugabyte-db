@@ -771,7 +771,20 @@ Status TabletServer::Start() {
 }
 
 void TabletServer::Shutdown() {
+  if (!shutting_down_.Set()) {
+    return;
+  }
   LOG(INFO) << "TabletServer shutting down...";
+
+  // Best effort to give up our ysql lease.
+  // todo(zdrudi): there's lifetime issues trying to access the pg_supervisor here through
+  // callbacks. Probably due to the way the MiniCluster sets up the PgSupervisor.
+  // Fix them and ensure PG is stopped here.
+  std::optional<std::future<Status>> relinquish_lease_future;
+  if (ysql_lease_poller_) {
+    WARN_NOT_OK(ysql_lease_poller_->Stop(), "Failed to stop ysql lease poller");
+    relinquish_lease_future = ysql_lease_poller_->RelinquishLease();
+  }
 
   bool expected = true;
   if (!initted_.compare_exchange_strong(expected, false, std::memory_order_acq_rel)) {
@@ -803,6 +816,10 @@ void TabletServer::Shutdown() {
   client()->RequestAbortAllRpcs();
 
   tablet_manager_->StartShutdown();
+  if (relinquish_lease_future.has_value()) {
+    WARN_NOT_OK(relinquish_lease_future->get(), "Couldn't relinquish ysql lease");
+  }
+
   DbServerBase::Shutdown();
   RpcAndWebServerBase::Shutdown();
   tablet_manager_->CompleteShutdown();
