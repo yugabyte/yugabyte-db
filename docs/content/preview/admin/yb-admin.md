@@ -19,7 +19,7 @@ It invokes the [yb-master](../../reference/configuration/yb-master/) and [yb-tse
 
 yb-admin is intended to be used to administer manually created and managed universes only.
 
-If you are using [YugabyteDB Anywhere](../../yugabyte-platform/) or [YugabyteDB Aeon](../../yugabyte-cloud/), administer your universes using the respective UI, or, to use automation, use the respective API or CLI. For more information, refer to [YugabyteDB Anywhere automation](../../yugabyte-platform/anywhere-automation/) and [YugabyteDB Aeon automation](../../yugabyte-cloud/managed-automation/).
+If you are using [YugabyteDB Anywhere](../../yugabyte-platform/) or [YugabyteDB Aeon](/preview/yugabyte-cloud/), administer your universes using the respective UI, or, to use automation, use the respective API or CLI. For more information, refer to [YugabyteDB Anywhere automation](../../yugabyte-platform/anywhere-automation/) and [YugabyteDB Aeon automation](/preview/yugabyte-cloud/managed-automation/).
 
 **If you perform tasks on a YugabyteDB Anywhere-managed universe using yb-admin, the changes may not be reflected in YugabyteDB Anywhere.**
 
