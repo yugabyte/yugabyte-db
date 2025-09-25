@@ -11943,8 +11943,11 @@ Status CatalogManager::MaybeCreateLocalTransactionTable(
 Result<int> CatalogManager::CalculateNumTabletsForTableCreation(
     const CreateTableRequestPB& request, const Schema& schema,
     const PlacementInfoPB& placement_info) {
+  // Stateful service should only have one tablet.
   if (PREDICT_FALSE(FLAGS_TEST_system_table_num_tablets >= 0 &&
-                    request.namespace_().name() == kSystemNamespaceName)) {
+                    request.namespace_().name() == kSystemNamespaceName &&
+                    request.name() !=
+                        GetStatefulServiceTableName(StatefulServiceKind::PG_AUTO_ANALYZE))) {
     return FLAGS_TEST_system_table_num_tablets;
   }
   // Calculate number of tablets to be used. Priorities:

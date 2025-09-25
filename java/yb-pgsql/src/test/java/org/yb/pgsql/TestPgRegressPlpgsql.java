@@ -28,6 +28,13 @@ public class TestPgRegressPlpgsql extends BasePgRegressTestPorted {
     return 1800;
   }
 
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    // (Auto-Analyze #28393) error output is flaky.
+    flagMap.put("ysql_enable_auto_analyze", "false");
+    return flagMap;
+  }
+
   @Test
   public void testPgRegressPlpgsql() throws Exception {
     runPgRegressTest("yb_pg_plpgsql_schedule");

@@ -58,6 +58,7 @@ DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 DECLARE_bool(TEST_tserver_enable_ysql_lease_refresh);
 DECLARE_int64(olm_poll_interval_ms);
 DECLARE_string(vmodule);
+DECLARE_bool(ysql_enable_auto_analyze);
 
 using namespace std::literals;
 
@@ -81,6 +82,7 @@ class PgObjectLocksTestRF1 : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_check_broadcast_address) = false;  // GH #26281
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
     PgMiniTestBase::SetUp();
     Init();
   }
@@ -541,6 +543,9 @@ class PgObjectLocksTest : public LibPqTestBase {
     opts->extra_tserver_flags.emplace_back("--TEST_tserver_enable_ysql_lease_refresh=true");
     opts->extra_tserver_flags.emplace_back(
         Format("--ysql_lease_refresher_interval_ms=$0", kDefaultYSQLLeaseRefreshIntervalMilli));
+    // yb_user_ddls_preempt_auto_analyze works only if enable_object_locking_for_table_locks is off,
+    // so disable auto analyze in this test suite.
+    opts->extra_tserver_flags.emplace_back("--ysql_enable_auto_analyze=false");
 
     opts->extra_master_flags.emplace_back("--enable_ysql_operation_lease=true");
     opts->extra_master_flags.emplace_back(

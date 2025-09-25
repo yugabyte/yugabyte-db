@@ -29,6 +29,7 @@ using namespace std::literals;
 
 DECLARE_string(vmodule);
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 METRIC_DECLARE_counter(handler_latency_yb_tserver_PgClientService_OpenTable);
 METRIC_DECLARE_counter(handler_latency_yb_master_MasterDdl_GetTableSchema);
@@ -3135,9 +3136,11 @@ TEST_F(PgCatalogVersionTest, InvalMessageMinimalRetention) {
 
 // https://github.com/yugabyte/yugabyte-db/issues/27822
 TEST_F(PgCatalogVersionTest, InvalMessageWaitOnVersionGap) {
+  // Disable auto analyze in this test because it introduce flakiness of metrics.
   RestartClusterWithInvalMessageEnabled(
       { "--heartbeat_interval_ms=10000",
-        "--ysql_pg_conf_csv=log_statement=all" });
+        "--ysql_pg_conf_csv=log_statement=all",
+        "--ysql_enable_auto_analyze=false" });
   // Create a test table.
   auto conn = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
   ASSERT_OK(conn.Execute("CREATE TABLE test_table(id int)"));
@@ -3260,11 +3263,13 @@ TEST_F(PgCatalogVersionTest, TestAlterRoleSetGUCHasGlobalImpact) {
 
 TEST_F(PgCatalogVersionTest, InvalMessageDeltaTableLoad) {
   for (int i = 0; i < 2; i++) {
+    // Disable auto analyze in this test because it introduce flakiness of metrics.
     if (i == 0) {
-      RestartClusterWithInvalMessageEnabled();
+      RestartClusterWithInvalMessageEnabled({ "--ysql_enable_auto_analyze=false" });
     } else {
       RestartClusterWithInvalMessageEnabled(
-          { "--ysql_yb_enable_invalidate_table_cache_entry=false" });
+          { "--ysql_yb_enable_invalidate_table_cache_entry=false",
+            "--ysql_enable_auto_analyze=false" });
     }
     auto conn = CHECK_RESULT(Connect());
     ASSERT_OK(conn.ExecuteFormat("create table test_table$0(id int)", i));
@@ -3565,6 +3570,8 @@ TEST_P(PgCatalogVersionConnManagerTest,
 }
 
 TEST_F(PgCatalogVersionTest, NewConnectionRelCachePreloadTest) {
+  // Disable auto analyze because it makes the number of the metric: RelCachePreload flaky.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = "libpq_utils=1";
   // Wait a bit for the webserver background process to get ready to serve curl request.
   SleepFor(2s);
   auto conn_yugabyte = ASSERT_RESULT(Connect());

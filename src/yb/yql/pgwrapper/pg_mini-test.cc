@@ -95,6 +95,7 @@ DECLARE_bool(use_bootstrap_intent_ht_filter);
 DECLARE_bool(ysql_allow_duplicating_repeatable_read_queries);
 DECLARE_bool(ysql_yb_enable_ash);
 DECLARE_bool(ysql_yb_enable_replica_identity);
+DECLARE_bool(ysql_enable_auto_analyze);
 
 DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
@@ -561,6 +562,8 @@ class PgMiniTestTracing : public PgMiniTest, public ::testing::WithParamInterfac
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tracing) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_tracing_level) = 1;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_use_shared_memory) = GetParam();
+    // Disable auto analyze because it introduces flakiness for query plans and metrics.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
     PgMiniTest::SetUp();
   }
 };

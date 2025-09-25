@@ -4782,8 +4782,9 @@ YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 					 errmsg("%s", edata->message),
 					 edata->detail ? errdetail("%s", edata->detail) : 0,
 					 edata->hint ? errhint("%s", edata->hint) : 0,
-					 errcontext("Catalog Version Mismatch: A DDL occurred "
-								"while processing this query. Try again.")));
+					 !(*YBCGetGFlags()->TEST_hide_details_for_pg_regress) ?
+					 (errcontext("Catalog Version Mismatch: A DDL occurred "
+								"while processing this query. Try again.")) : 0));
 		}
 		else
 		{

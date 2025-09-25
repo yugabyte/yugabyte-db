@@ -45,6 +45,9 @@ public class TestPgConnection extends BasePgSQLTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("ysql_max_connections", String.valueOf(MAX_CONNECTIONS));
+    // Disable auto analyze for this test suite because auto analyze sets up
+    // PG connections to fetch unknown reltuples causing tests' flakyness.
+    flagMap.put("ysql_enable_auto_analyze", "false");
     return flagMap;
   }
 

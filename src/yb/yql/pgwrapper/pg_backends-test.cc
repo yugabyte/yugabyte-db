@@ -71,12 +71,14 @@ class PgBackendsTest : public LibPqTestBase {
           "--replication_factor=1",
           "--TEST_master_ui_redirect_to_leader=false",
         });
+    // Disable auto analyze because it introduces flakiness in catalog version-related tests.
     options->extra_tserver_flags.insert(
         options->extra_tserver_flags.end(),
         {
-          "--allowed_preview_flags_csv=master_ts_ysql_catalog_lease_ms",
+          "--allowed_preview_flags_csv=master_ts_ysql_catalog_lease_ms,ysql_enable_auto_analyze",
           Format("--master_ts_ysql_catalog_lease_ms=$0", kCatalogLeaseSec * 1000),
           "--ysql_yb_disable_wait_for_backends_catalog_version=false",
+          "--ysql_enable_auto_analyze=false"
         });
     if (FLAGS_verbose) {
       options->extra_master_flags.insert(

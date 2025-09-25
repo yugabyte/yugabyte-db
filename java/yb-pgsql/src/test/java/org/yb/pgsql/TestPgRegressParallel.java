@@ -37,6 +37,8 @@ public class TestPgRegressParallel extends BasePgRegressTest {
     flags.put("enable_object_locking_for_table_locks", "false");
     flags.put("allowed_preview_flags_csv",
               "enable_object_locking_for_table_locks,ysql_yb_ddl_transaction_block_enabled");
+    // (Auto-Analyze #28057) Query plans change after enabling auto analyze.
+    flags.put("ysql_enable_auto_analyze", "false");
     return flags;
   }
 

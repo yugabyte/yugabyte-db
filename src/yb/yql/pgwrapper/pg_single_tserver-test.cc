@@ -56,6 +56,7 @@ DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
 DECLARE_bool(ysql_use_packed_row_v2);
 DECLARE_bool(ysql_yb_enable_alter_table_rewrite);
+DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_int32(TEST_pause_and_skip_apply_intents_task_loop_ms);
 DECLARE_int32(max_prevs_to_avoid_seek);
@@ -90,6 +91,8 @@ class PgSingleTServerTest : public PgMiniTestBase {
 
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_alter_table_rewrite) = false;
+    // Disable auto analyze to prevent query plan from changing.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
     PgMiniTestBase::SetUp();
   }
 
