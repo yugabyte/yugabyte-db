@@ -108,8 +108,12 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
     // on the master leader node.
     NodeDetails node =
         isK8sUniverse || isDedicatedNodeUniverse
-            ? universe.getTServersInPrimaryCluster().stream().findAny().get()
+            ? universe.getLiveTServersInPrimaryCluster().stream().findAny().get()
             : universe.getMasterLeaderNode();
+
+    if (node == null && !isK8sUniverse && !isDedicatedNodeUniverse) {
+      node = universe.getLiveTServersInPrimaryCluster().stream().findAny().get();
+    }
 
     try {
       // Clean up the downloaded package from the node.
