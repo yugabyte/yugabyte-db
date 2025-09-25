@@ -116,6 +116,12 @@ DEFINE_NON_RUNTIME_bool(
     "as connection manager does not support SCRAM with channel binding and enabling it would "
     "cause different behaviour vis-a-vis direct connections to postgres.");
 
+DEFINE_NON_RUNTIME_bool(ysql_enable_relcache_init_optimization, true,
+    "If applicable, new connections that need to rebuild relcache init file will not "
+    "do it directly which can cause memory spike on such a new connection until it is "
+    "disconnected. Instead an internal super user connection is made to perform the "
+    "relcache init file rebuild.");
+
 DECLARE_bool(ysql_enable_colocated_tables_with_tablespaces);
 DECLARE_bool(TEST_ysql_enable_db_logical_client_version_mode);
 DECLARE_bool(TEST_ysql_yb_enable_ddl_savepoint_support);
@@ -224,6 +230,7 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
           &FLAGS_timestamp_history_retention_interval_sec,
       .ysql_enable_scram_channel_binding = &FLAGS_ysql_enable_scram_channel_binding,
       .TEST_ysql_conn_mgr_auth_delay_ms = &FLAGS_TEST_ysql_conn_mgr_auth_delay_ms,
+      .ysql_enable_relcache_init_optimization = &FLAGS_ysql_enable_relcache_init_optimization,
   };
   // clang-format on
   return &accessor;

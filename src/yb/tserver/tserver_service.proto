@@ -169,6 +169,9 @@ service TabletServerService {
 
   rpc GetTserverCatalogMessageLists(GetTserverCatalogMessageListsRequestPB)
       returns (GetTserverCatalogMessageListsResponsePB);
+
+  rpc TriggerRelcacheInitConnection(TriggerRelcacheInitConnectionRequestPB)
+      returns (TriggerRelcacheInitConnectionResponsePB);
 }
 
 // Note: Either among transactions_by_tablet or transaction_ids should be set. Both the fields
@@ -583,6 +586,15 @@ message GetTserverCatalogMessageListsResponsePB {
   // Error message, if any.
   optional TabletServerErrorPB error = 1;
   repeated TServerDBCatalogMessageListInfo entries = 2;
+}
+
+message TriggerRelcacheInitConnectionRequestPB {
+  optional string database_name = 1;
+}
+
+message TriggerRelcacheInitConnectionResponsePB {
+  // Error message, if any.
+  optional TabletServerErrorPB error = 1;
 }
 
 message CancelTransactionRequestPB {

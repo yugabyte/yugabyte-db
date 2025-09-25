@@ -1352,6 +1352,15 @@ class PgClient::Impl : public BigDataFetcher {
     return resp;
   }
 
+  Status TriggerRelcacheInitConnection(std::string dbname) {
+    tserver::PgTriggerRelcacheInitConnectionRequestPB req;
+    tserver::PgTriggerRelcacheInitConnectionResponsePB resp;
+    req.set_database_name(dbname);
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::TriggerRelcacheInitConnection,
+        req, resp, PggateRPC::kTriggerRelcacheInitConnection));
+    return ResponseStatus(resp);
+  }
+
   #define YB_PG_CLIENT_SIMPLE_METHOD_IMPL(r, data, method) \
   Status method( \
       tserver::BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)* req, \
@@ -1967,6 +1976,10 @@ Result<tserver::PgSetTserverCatalogMessageListResponsePB> PgClient::SetTserverCa
     uint64_t new_catalog_version, const std::optional<std::string>& message_list) {
   return impl_->SetTserverCatalogMessageList(db_oid, is_breaking_change,
                                              new_catalog_version, message_list);
+}
+
+Status PgClient::TriggerRelcacheInitConnection(const std::string& dbname) {
+  return impl_->TriggerRelcacheInitConnection(dbname);
 }
 
 Status PgClient::EnumerateActiveTransactions(

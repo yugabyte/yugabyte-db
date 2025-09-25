@@ -879,6 +879,8 @@ class PgApiImpl {
   void RecordTablespaceOid(uint32_t db_oid, uint32_t table_oid, uint32_t tablespace_oid);
   void ClearTablespaceOid(uint32_t db_oid, uint32_t table_oid);
 
+  Status TriggerRelcacheInitConnection(const std::string& dbname);
+
   //----------------------------------------------------------------------------------------------
   // Advisory Locks.
   //----------------------------------------------------------------------------------------------

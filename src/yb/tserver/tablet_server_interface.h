@@ -86,6 +86,10 @@ class TabletServerIf : public LocalTabletServer {
       uint32_t db_oid, bool is_breaking_change, uint64_t new_catalog_version,
       const std::optional<std::string>& message_list) = 0;
 
+  virtual Status TriggerRelcacheInitConnection(
+      const tserver::TriggerRelcacheInitConnectionRequestPB& req,
+      tserver::TriggerRelcacheInitConnectionResponsePB *resp) = 0;
+
   virtual const scoped_refptr<MetricEntity>& MetricEnt() const = 0;
 
   virtual client::TransactionPool& TransactionPool() = 0;

@@ -727,6 +727,12 @@ Status Master::SetTserverCatalogMessageList(
   return Status::OK();
 }
 
+Status Master::TriggerRelcacheInitConnection(
+    const tserver::TriggerRelcacheInitConnectionRequestPB& req,
+    tserver::TriggerRelcacheInitConnectionResponsePB *resp) {
+  return STATUS_FORMAT(NotSupported, "Unexpected call of $0", __FUNCTION__);
+}
+
 void Master::EnableCDCService() {
   master_tablet_server_->EnableCDCService();
 }

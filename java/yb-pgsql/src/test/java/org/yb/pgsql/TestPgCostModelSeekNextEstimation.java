@@ -169,6 +169,10 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
       expected_table_roundtrips,expected_docdb_result_width);
 }
 
+  private void WarmupCatalogCache(Statement stmt, String query) throws Exception {
+      testExplainDebug(stmt, query, null);
+  }
+
   private void testSeekAndNextEstimationIndexScanHelper(
       Statement stmt, String query,
       String table_name, String index_name,
@@ -421,6 +425,17 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute(String.format("CREATE DATABASE %s WITH COLOCATION = true", DATABASE_NAME));
     }
+    // If --ysql_enable_relcache_init_optimization=false, then connection2 is the first
+    // connection to the test database and it needs to take care of buliding the relinit
+    // file. As part of that it will preload a set of catalog tables.
+    // If --ysql_enable_relcache_init_optimization=true, then connection2 will be
+    // the second connection to the test database because there will be an internal
+    // connection comes first which takes care of building the relinit file. In this
+    // case connection2 will only preload a few core catalog tables.
+    // Because the test result depends upon some catalog caches beyond the core catalog
+    // tables being preloaded, we use catalog cache warmup to make up the difference
+    // (see WarmupCatalogCache).
+    Connection tmpConnection = getConnectionBuilder().withDatabase(DATABASE_NAME).connect();
 
     this.connection2 = getConnectionBuilder().withDatabase(DATABASE_NAME).connect();
 
@@ -525,16 +540,14 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
       setUp();
     }
     try (Statement stmt = this.connection2.createStatement()) {
-      // Warmup the cache when Connection Manager is enabled.
-      // Additionally warmup all backends in round-robin mode.
-      if (isConnMgr) {
-        testExplainDebug(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
-        + "FROM %s WHERE k1 IN (4, 8)", T1_NAME, T1_NAME), null);
-        if (isConnMgrWarmupRoundRobinMode()) {
-          for (int i = 0; i < CONN_MGR_WARMUP_BACKEND_COUNT - 1; i++) {
-            testExplainDebug(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
-            + "FROM %s WHERE k1 IN (4, 8)", T1_NAME, T1_NAME), null);
-          }
+      String query = String.format("/*+IndexScan(%s)*/ SELECT * "
+          + "FROM %s WHERE k1 IN (4, 8)", T1_NAME, T1_NAME);
+      WarmupCatalogCache(stmt, query);
+      testExplainDebug(stmt, query, null);
+      // Warmup all backends in round-robin mode when Connection Manager is enabled.
+      if (isConnMgrWarmupRoundRobinMode()) {
+        for (int i = 0; i < CONN_MGR_WARMUP_BACKEND_COUNT - 1; i++) {
+          WarmupCatalogCache(stmt, query);
         }
       }
       testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
@@ -729,16 +742,13 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
     }
     try (Statement stmt = this.connection2.createStatement()) {
       stmt.execute("SET work_mem TO '1GB'"); /* avoid getting close to work_mem */
-      // Warmup the cache when Connection Manager is enabled.
-      // Additionally warmup all backends in round-robin mode.
-      if (isConnMgr) {
-        testExplainDebug(stmt, String.format("/*+BitmapScan(%s)*/ SELECT * "
-        + "FROM %s WHERE k1 IN (4, 8)", T1_NAME, T1_NAME), null);
-        if (isConnMgrWarmupRoundRobinMode()) {
-          for (int i = 0; i < CONN_MGR_WARMUP_BACKEND_COUNT - 1; i++) {
-            testExplainDebug(stmt, String.format("/*+BitmapScan(%s)*/ SELECT * "
-            + "FROM %s WHERE k1 IN (4, 8)", T1_NAME, T1_NAME), null);
-          }
+      String query = String.format("/*+BitmapScan(%s)*/ SELECT * "
+          + "FROM %s WHERE k1 IN (4, 8)", T1_NAME, T1_NAME);
+      WarmupCatalogCache(stmt, query);
+      // Warmup all backends in round-robin mode when Connection Manager is enabled.
+      if (isConnMgrWarmupRoundRobinMode()) {
+        for (int i = 0; i < CONN_MGR_WARMUP_BACKEND_COUNT - 1; i++) {
+          WarmupCatalogCache(stmt, query);
         }
       }
       testSeekAndNextEstimationBitmapScanHelper(stmt, String.format("/*+BitmapScan(%s)*/ SELECT * "

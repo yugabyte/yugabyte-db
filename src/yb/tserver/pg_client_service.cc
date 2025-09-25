@@ -2105,6 +2105,18 @@ class PgClientServiceImpl::Impl : public SessionProvider {
         db_oid, is_breaking_change, new_catalog_version, message_list);
   }
 
+  Status TriggerRelcacheInitConnection(
+      const PgTriggerRelcacheInitConnectionRequestPB& req,
+      PgTriggerRelcacheInitConnectionResponsePB* resp,
+      rpc::RpcContext* context) {
+    TriggerRelcacheInitConnectionRequestPB request;
+    TriggerRelcacheInitConnectionResponsePB response;
+    const auto& database_name = req.database_name();
+    request.set_database_name(database_name);
+    return const_cast<TabletServerIf&>(tablet_server_).TriggerRelcacheInitConnection(
+        request, &response);
+  }
+
   Status IsObjectPartOfXRepl(
     const PgIsObjectPartOfXReplRequestPB& req, PgIsObjectPartOfXReplResponsePB* resp,
     rpc::RpcContext* context) {

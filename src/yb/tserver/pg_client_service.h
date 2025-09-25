@@ -72,6 +72,7 @@ class TserverXClusterContextIf;
     (GetTablePartitionList) \
     (GetTserverCatalogMessageLists) \
     (SetTserverCatalogMessageList) \
+    (TriggerRelcacheInitConnection) \
     (GetTserverCatalogVersionInfo) \
     (GetXClusterRole) \
     (Heartbeat) \

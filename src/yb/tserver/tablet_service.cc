@@ -3410,6 +3410,18 @@ void TabletServiceImpl::GetTserverCatalogMessageLists(
   context.RespondSuccess();
 }
 
+void TabletServiceImpl::TriggerRelcacheInitConnection(
+    const TriggerRelcacheInitConnectionRequestPB* req,
+    TriggerRelcacheInitConnectionResponsePB* resp,
+    rpc::RpcContext context) {
+  auto status = server_->TriggerRelcacheInitConnection(*req, resp);
+  if (!status.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), status, &context);
+    return;
+  }
+  context.RespondSuccess();
+}
+
 void TabletServiceImpl::ListMasterServers(const ListMasterServersRequestPB* req,
                                           ListMasterServersResponsePB* resp,
                                           rpc::RpcContext context) {

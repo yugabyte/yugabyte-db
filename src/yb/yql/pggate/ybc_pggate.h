@@ -1046,6 +1046,8 @@ void YBCClearTablespaceOid(YbcPgOid db_oid, YbcPgOid table_oid);
 YbcStatus YBCInitTransaction(const YbcPgInitTransactionData *data);
 YbcStatus YBCCommitTransactionIntermediate(const YbcPgInitTransactionData *data);
 
+YbcStatus YBCTriggerRelcacheInitConnection(const char* dbname);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

@@ -942,7 +942,7 @@ TEST_F_EX(PgBackendsTest, LostHeartbeats, PgBackendsTestRf3TableLocksDisabled) {
 // An unresponsive tserver that expires lease should be considered resolved.
 // TODO(#13369): a lease expiration should cause that tserver to block its backends, but that is
 // currently not done, so the test asserts the opposite of correctness (the user whose permission
-// was revoked is able to select).
+// was revoked sees permission denied error).
 Status PgBackendsTestRf3::TestTserverUnresponsive(bool keep_alive) {
   constexpr auto kUser = "eve";
   RETURN_NOT_OK(conn_->ExecuteFormat("CREATE USER $0", kUser));
@@ -954,6 +954,18 @@ Status PgBackendsTestRf3::TestTserverUnresponsive(bool keep_alive) {
   LOG(INFO) << "Selected ts index " << ts_idx << " (zero-indexed)";
 
   ExternalTabletServer* ts = cluster_->tserver_daemons()[ts_idx];
+
+  auto value = VERIFY_RESULT(ts->GetFlag("ysql_enable_relcache_init_optimization"));
+  if (value == "false") {
+    // Make an initial connection to DB "yugabyte" so that the next connection
+    // conn_user is not the first connection after the above ALTER TABLE statement
+    // which would have the side effect of preloading the catalog cache and docdb
+    // (table) cache entry for the newly created table before the first query is
+    // executed on conn_user.
+    LOG(INFO) << "Making the first connection after DDL to ts index " << ts_idx;
+    auto conn_after_alter = VERIFY_RESULT(ConnectToTs(*ts));
+  }
+
   PGConn conn_user = VERIFY_RESULT(PGConnBuilder({
         .host = ts->bind_host(),
         .port = ts->ysql_port(),
@@ -1018,12 +1030,22 @@ Status PgBackendsTestRf3::TestTserverUnresponsive(bool keep_alive) {
 
   if (keep_alive) {
     LOG(INFO) << "Check that old connection on unresponsive tserver is blocked";
-    auto res = conn_user.FetchFormat("SELECT * FROM $0tab", kUser);
     LOG(INFO) << "Actually, old connection should not be blocked yet.  See first task of"
-              << " issue #13369.  Also, it works because ALTER TABLE is not a breaking catalog"
+              << " issue #13369. Also, it works because ALTER TABLE is not a breaking catalog"
               << " change.";
-    // TODO(#13369): change to SCHECK(!status.ok()), check status type, status msg.
-    RETURN_NOT_OK(res);
+    // Confirm that the connection is still performing as usual.
+    RETURN_NOT_OK(conn_user.Fetch("SELECT oid FROM pg_class"));
+    auto res = conn_user.FetchFormat("SELECT * FROM $0tab", kUser);
+    // TODO(#13369): check status type, status msg. We are getting permission denied error
+    // which means the connection is still performing as usual. If the connection is
+    // blocked, we should see a different error indicating that.
+    SCHECK(!res.ok(), IllegalState, "should not have permission");
+    Status s = res.status();
+    if (!s.IsNetworkError() ||
+        (s.message().ToBuffer().find(Format("permission denied for table $0tab", kUser)) ==
+         std::string::npos)) {
+      return s;
+    }
   }
 
   LOG(INFO) << "Make new connection in case conn_'s node was selected to be unresponsive";

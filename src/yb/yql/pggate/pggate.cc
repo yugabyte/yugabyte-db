@@ -2541,4 +2541,8 @@ void PgApiImpl::ClearTablespaceOid(uint32_t db_oid, uint32_t table_oid) {
   CHECK_EQ(tablespace_map_.erase(id), 1) << yb::ToString(id);
 }
 
+Status PgApiImpl::TriggerRelcacheInitConnection(const std::string& dbname) {
+  return pg_client_.TriggerRelcacheInitConnection(dbname);
+}
+
 } // namespace yb::pggate

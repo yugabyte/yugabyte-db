@@ -3714,5 +3714,56 @@ TEST_F(PgCatalogVersionTest, NewConnectionRelCachePreloadTest) {
   ASSERT_GT(authorized_connections, relcache_preloads);
 }
 
+TEST_F(PgCatalogVersionTest, ConcurrentNonSuperuserNewConnectionsTest) {
+  const int num_databases = ReleaseVsDebugVsAsanVsTsanVsApple(10, 10, 10, 4, 3);
+  const int connections_perdb = 10;
+  // TSAN build needs more max allowed connections.
+  RestartClusterWithInvalMessageEnabled(
+      { Format("--ysql_max_connections=$0", connections_perdb * 2),
+        "--ysql_enable_relcache_init_optimization=true",
+        "--ysql_enable_auto_analyze=false",
+        "--ysql_pg_conf_csv=log_connections=1,log_disconnections=1",
+        "--vmodule=tablet_server=1" });
+  // Wait a bit for the webserver background process to get ready to serve curl request.
+  SleepFor(2s);
+  auto conn_yugabyte = ASSERT_RESULT(Connect());
+  constexpr auto* kTestUser = "test_user";
+  std::vector<string> dbnames;
+  for (int i = 0; i < num_databases; i++) {
+    dbnames.push_back(Format("$0_$1", kTestDatabase, i));
+  }
+  ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE USER $0", kTestUser));
+  for (int i = 0; i < num_databases; i++) {
+    ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE DATABASE $0", dbnames[i]));
+  }
+
+  auto initialCount = GetNumRelCachePreloads();
+  LOG(INFO) << "initialCount: " << initialCount;
+  ASSERT_GT(initialCount, 0);
+
+  // Increments the catalog version.
+  ASSERT_OK(IncrementAllDBCatalogVersions(conn_yugabyte, IsBreakingCatalogVersionChange::kFalse));
+
+  // Concurrently creates a number of connections.
+  TestThreadHolder thread_holder;
+  for (int i = 0; i < num_databases; i++) {
+    for (int j = 0; j < connections_perdb; j++) {
+      thread_holder.AddThreadFunctor([this, dbname = dbnames[i]] {
+        // It appears that the libpq connection library automatically retries
+        // until a timeout of 60s. That's why we can have a max connections only
+        // 10 but serving these 100 connections.
+        auto conn_test = ASSERT_RESULT(ConnectToDBAsUser(dbname, kTestUser));
+      });
+    }
+  }
+  thread_holder.Stop();
+
+  auto relcache_preloads = GetNumRelCachePreloads();
+  ASSERT_EQ(relcache_preloads, initialCount + num_databases);
+  auto authorized_connections = GetNumAuthorizedConnections();
+  LOG(INFO) << "authorized_connections: " << authorized_connections;
+  ASSERT_GT(authorized_connections, relcache_preloads);
+}
+
 } // namespace pgwrapper
 } // namespace yb
