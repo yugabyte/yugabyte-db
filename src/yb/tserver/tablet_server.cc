@@ -1291,6 +1291,69 @@ Status TabletServer::SetTserverCatalogMessageList(
   return Status::OK();
 }
 
+Status TabletServer::TriggerRelcacheInitConnection(
+    const TriggerRelcacheInitConnectionRequestPB& req,
+    TriggerRelcacheInitConnectionResponsePB *resp) {
+  const std::string dbname = req.database_name();
+  std::shared_future<Status> future_for_this_request;
+
+  bool started_superuser_connection = false;
+  {
+    std::lock_guard l(lock_);
+    auto it = in_flight_superuser_connections_.find(dbname);
+
+    if (it != in_flight_superuser_connections_.end()) {
+      LOG(INFO) << "Relcache init connection request to database " << dbname << " in progress";
+      future_for_this_request = it->second;
+    } else {
+      // In case there are multiple concurrent racing threads, this thread is the winner.
+      started_superuser_connection = true;
+      LOG(INFO) << "Relcache init connection request to database " << dbname << " starting";
+
+      auto p = std::make_shared<std::promise<Status>>();
+      future_for_this_request = p->get_future().share();
+      in_flight_superuser_connections_[dbname] = future_for_this_request;
+
+      messenger()->scheduler().Schedule(
+        [this, p, dbname](const Status& status) {
+          if (!status.ok()) {
+            LOG(INFO) << status;
+            p->set_value(status);
+            return;
+          }
+          MakeRelcacheInitConnection(p.get(), dbname);
+        }, std::chrono::steady_clock::duration(0));
+    }
+  }
+  auto timeout = default_client_timeout();
+  std::future_status status = future_for_this_request.wait_for(timeout.ToSteadyDuration());
+
+  // Clean up dbname from the map so that next winner can create superuser connection.
+  if (started_superuser_connection) {
+    std::lock_guard l(lock_);
+    in_flight_superuser_connections_.erase(dbname);
+  }
+  if (status == std::future_status::ready) {
+    return future_for_this_request.get();
+  }
+  return STATUS_FORMAT(TimedOut, "Relcache init connection request to database $0 timed out",
+                       dbname);
+}
+
+void TabletServer::MakeRelcacheInitConnection(std::promise<Status>* p, const std::string& dbname) {
+  auto deadline = CoarseMonoClock::Now() + default_client_timeout();
+  // We assume CreateInternalPGConn connects as "postgres". If not the unit test
+  // ConcurrentNonSuperuserNewConnectionsTest will fail.
+  auto status = ResultToStatus(CreateInternalPGConn(dbname, deadline));
+  if (status.ok()) {
+    LOG(INFO) << "Relcache init connection to database " << dbname << " succeeded";
+  } else {
+    LOG(INFO) << "Relcache init connection to database " << dbname << " failed: " << status;
+  }
+  // Fulfill the promise, unblocking all waiting threads for this task.
+  p->set_value(status);
+}
+
 void TabletServer::SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_breaking_version) {
   {
     std::lock_guard l(lock_);

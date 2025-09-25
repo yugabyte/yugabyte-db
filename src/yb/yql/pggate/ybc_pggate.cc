@@ -3156,6 +3156,10 @@ YbcStatus YBCCommitTransactionIntermediate(const YbcPgInitTransactionData *data)
   return ToYBCStatus(YBCCommitTransactionIntermediateImpl(*data));
 }
 
+YbcStatus YBCTriggerRelcacheInitConnection(const char* dbname) {
+  return ToYBCStatus(pgapi->TriggerRelcacheInitConnection(dbname));
+}
+
 } // extern "C"
 
 } // namespace yb::pggate

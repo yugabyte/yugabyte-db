@@ -157,6 +157,9 @@ service PgClientService {
 
   rpc SetTserverCatalogMessageList(PgSetTserverCatalogMessageListRequestPB)
       returns (PgSetTserverCatalogMessageListResponsePB);
+
+  rpc TriggerRelcacheInitConnection(PgTriggerRelcacheInitConnectionRequestPB)
+      returns (PgTriggerRelcacheInitConnectionResponsePB);
 }
 
 // TODO: Remove the OptionalUint32PB helper message after updating protobuf generator to allow
@@ -1344,3 +1347,9 @@ message PgClearExportedTxnSnapshotsRequestPB {
 }
 
 message PgClearExportedTxnSnapshotsResponsePB { AppStatusPB status = 1; }
+
+message PgTriggerRelcacheInitConnectionRequestPB {
+  string database_name = 1;
+}
+
+message PgTriggerRelcacheInitConnectionResponsePB { AppStatusPB status = 1; }

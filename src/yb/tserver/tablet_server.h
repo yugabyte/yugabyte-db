@@ -343,7 +343,11 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Status SetTserverCatalogMessageList(
       uint32_t db_oid, bool is_breaking_change, uint64_t new_catalog_version,
-      const std::optional<std::string>& message_list) override;
+      const std::optional<std::string>& message_list) EXCLUDES(lock_) override;
+
+  Status TriggerRelcacheInitConnection(
+      const tserver::TriggerRelcacheInitConnectionRequestPB& req,
+      tserver::TriggerRelcacheInitConnectionResponsePB* resp) EXCLUDES(lock_) override;
 
   void UpdateTransactionTablesVersion(uint64_t new_version);
 
@@ -637,6 +641,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
       InvalidationMessagesQueue *db_message_lists,
       uint64_t debug_id) REQUIRES(lock_);
 
+  void MakeRelcacheInitConnection(std::promise<Status>* p, const std::string& dbname);
+
   std::string log_prefix_;
 
   // Bind address of postgres proxy under this tserver.
@@ -675,6 +681,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   std::unique_ptr<docdb::ObjectLockSharedStateManager> object_lock_shared_state_manager_;
   OneTimeBool shutting_down_;
+
+  std::map<std::string, std::shared_future<Status>> in_flight_superuser_connections_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletServer);
 };

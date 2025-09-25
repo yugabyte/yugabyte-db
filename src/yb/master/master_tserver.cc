@@ -223,6 +223,11 @@ Status MasterTabletServer::SetTserverCatalogMessageList(
                                                new_catalog_version, message_list);
 }
 
+Status MasterTabletServer::TriggerRelcacheInitConnection(
+    const tserver::TriggerRelcacheInitConnectionRequestPB& req,
+    tserver::TriggerRelcacheInitConnectionResponsePB *resp) {
+  return master_->TriggerRelcacheInitConnection(req, resp);
+}
 const std::shared_future<client::YBClient*>& MasterTabletServer::client_future() const {
   return master_->client_future();
 }
