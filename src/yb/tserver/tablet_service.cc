@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -1051,6 +1051,14 @@ void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* 
   if (!req->has_wal_retention_secs() && schema_version == req->schema_version()) {
 
     if (req_schema.Equals(tablet_schema)) {
+      context.RespondSuccess();
+      return;
+    }
+
+    // If the request is to insert a packed schema, respond as succeeded.
+    // TODO(#28326): Need to validate that we do have the intermediate schema instead of just
+    // returning success.
+    if (req->insert_packed_schema()) {
       context.RespondSuccess();
       return;
     }

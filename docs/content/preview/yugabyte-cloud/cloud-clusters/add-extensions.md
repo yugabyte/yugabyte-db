@@ -11,11 +11,11 @@ menu:
 type: docs
 ---
 
-YugabyteDB includes a number of [pre-bundled PostgreSQL extensions](../../../explore/ysql-language-features/pg-extensions/), tested to work with YSQL, that you can use to extend the functionality of your database.
+YugabyteDB includes a number of [pre-bundled PostgreSQL extensions](../../../additional-features/pg-extensions/), tested to work with YSQL, that you can use to extend the functionality of your database.
 
 {{< note title="Extensions must be pre-bundled" >}}
 
-YugabyteDB Aeon only supports extensions that are pre-bundled in YugabyteDB. You cannot install new extensions in YugabyteDB Aeon. Refer to [PostgreSQL extensions](../../../explore/ysql-language-features/pg-extensions/) for the list of pre-bundled extensions.
+YugabyteDB Aeon only supports extensions that are pre-bundled in YugabyteDB. You cannot install new extensions in YugabyteDB Aeon. Refer to [PostgreSQL extensions](../../../additional-features/pg-extensions/) for the list of pre-bundled extensions.
 
 {{< /note >}}
 
@@ -41,6 +41,6 @@ For more information on roles in YugabyteDB Aeon, refer to [Database authorizati
 
 ## Learn more
 
-- [PostgreSQL extensions](../../../explore/ysql-language-features/pg-extensions/)
+- [PostgreSQL extensions](../../../additional-features/pg-extensions/)
 - [Database authorization in YugabyteDB Aeon clusters](../../cloud-secure-clusters/cloud-users/)
 - [Manage Users and Roles in YSQL](../../../secure/authorization/create-roles/)

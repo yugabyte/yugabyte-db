@@ -15,9 +15,9 @@
 # specific language governing permissions and limitations
 # under the License.
 #
-# The following only applies to changes made to this file as part of YugaByte development.
+# The following only applies to changes made to this file as part of YugabyteDB development.
 #
-# Portions Copyright (c) YugaByte, Inc.
+# Portions Copyright (c) YugabyteDB, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 # in compliance with the License.  You may obtain a copy of the License at
@@ -55,6 +55,15 @@ add_custom_target(xcluster_ddl_replication_sql
     ${CMAKE_BINARY_DIR}/test_xcluster_ddl_replication_sql/sql
   DEPENDS ${CMAKE_SOURCE_DIR}/src/yb/integration-tests/xcluster/sql
   COMMENT "Copying SQL files for xcluster_ddl_replication_pgregress-test.cc")
+
+add_custom_target(conflict_resolve_keys_verification_sql
+  COMMAND ${CMAKE_COMMAND} -E remove_directory
+    ${CMAKE_BINARY_DIR}/test_conflict_resolve_keys_verification_sql
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_SOURCE_DIR}/src/yb/integration-tests/conflict_resolve_keys_verification/sql
+    ${CMAKE_BINARY_DIR}/test_conflict_resolve_keys_verification_sql/sql
+  DEPENDS ${CMAKE_SOURCE_DIR}/src/yb/integration-tests/conflict_resolve_keys_verification/sql
+  COMMENT "Copying SQL files for conflict_resolve_keys_verification-itest.cc.cc")
 
 configure_file(
   ${CMAKE_SOURCE_DIR}/src/yb/integration-tests/upgrade-tests/builds.xml
@@ -134,7 +143,8 @@ add_dependencies(integration-tests
   fips_install
   xcluster_ddl_replication_sql
   upgrade_test_builds_tar
-  update_ysql_migrations)
+  update_ysql_migrations
+  conflict_resolve_keys_verification_sql)
 
 ADD_YB_TEST_LIBRARY(
     cql_test_util
@@ -288,6 +298,7 @@ ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_matview-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_rpcs-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_stats_import-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade-test)
+ADD_YB_TEST(conflict_resolve_keys_verification/conflict_resolve_keys_verification-itest)
 
 set(YB_TEST_LINK_LIBS_SAVED ${YB_TEST_LINK_LIBS})
 set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS} cassandra)
@@ -333,5 +344,8 @@ ADD_YB_PG_TEST(minicluster-snapshot-test)
 ADD_YB_PG_TEST(sequence_utility-itest)
 ADD_YB_PG_TEST(upgrade-tests/ysql_ddl_whitelist-test)
 ADD_YB_PG_TEST(upgrade-tests/ysql_major_upgrade_role_profiles-test)
+
+ADD_YB_TEST(yql-test)
+YB_TEST_TARGET_LINK_LIBRARIES(yql-test yb-cql pg_wrapper_test_base)
 
 set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS_SAVED})

@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -39,16 +39,16 @@ DECLARE_bool(ycql_require_drop_privs_for_truncate);
 
 METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_ParseRequest,
-    "Time spent parsing the SQL query", yb::MetricUnit::kMicroseconds,
-    "Time spent parsing the SQL query", 60000000LU, 2);
+    "Time (microseconds) spent parsing the SQL query", yb::MetricUnit::kMicroseconds,
+    "Time (microseconds) spent parsing the SQL query", 60000000LU, 2);
 METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_AnalyzeRequest,
-    "Time spent to analyze the parsed SQL query", yb::MetricUnit::kMicroseconds,
-    "Time spent to analyze the parsed SQL query", 60000000LU, 2);
+    "Time (microseconds) spent to analyze the parsed SQL query", yb::MetricUnit::kMicroseconds,
+    "Time (microseconds) spent to analyze the parsed SQL query", 60000000LU, 2);
 METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_ExecuteRequest,
-    "Time spent executing the parsed SQL query", yb::MetricUnit::kMicroseconds,
-    "Time spent executing the parsed SQL query", 60000000LU, 2);
+    "Time (microseconds) spent executing the parsed SQL query", yb::MetricUnit::kMicroseconds,
+    "Time (microseconds) spent executing the parsed SQL query", 60000000LU, 2);
 METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_NumRoundsToAnalyze,
     "Number of rounds to successfully parse a SQL query", yb::MetricUnit::kOperations,
@@ -63,33 +63,34 @@ METRIC_DEFINE_histogram(
     "Number of flushes to successfully execute a SQL query", 60000000LU, 2);
 METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_SelectStmt,
-    "Time spent processing a SELECT statement", yb::MetricUnit::kMicroseconds,
-    "Time spent processing a SELECT statement", 60000000LU, 2);
+    "Time (microseconds) spent processing a SELECT statement", yb::MetricUnit::kMicroseconds,
+    "Time (microseconds) spent processing a SELECT statement", 60000000LU, 2);
 METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_InsertStmt,
-    "Time spent processing an INSERT statement", yb::MetricUnit::kMicroseconds,
-    "Time spent processing an INSERT statement", 60000000LU, 2);
+    "Time (microseconds) spent processing an INSERT statement", yb::MetricUnit::kMicroseconds,
+    "Time (microseconds) spent processing an INSERT statement", 60000000LU, 2);
 METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_UpdateStmt,
-    "Time spent processing an UPDATE statement", yb::MetricUnit::kMicroseconds,
-    "Time spent processing an UPDATE statement", 60000000LU, 2);
+    "Time (microseconds) spent processing an UPDATE statement", yb::MetricUnit::kMicroseconds,
+    "Time (microseconds) spent processing an UPDATE statement", 60000000LU, 2);
 METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_DeleteStmt,
-    "Time spent processing a DELETE statement", yb::MetricUnit::kMicroseconds,
-    "Time spent processing a DELETE statement", 60000000LU, 2);
+    "Time (microseconds) spent processing a DELETE statement", yb::MetricUnit::kMicroseconds,
+    "Time (microseconds) spent processing a DELETE statement", 60000000LU, 2);
 METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_UseStmt,
-    "Time spent processing a USE statement", yb::MetricUnit::kMicroseconds,
-    "Time spent processing a USE statement", 60000000LU, 2);
+    "Time (microseconds) spent processing a USE statement", yb::MetricUnit::kMicroseconds,
+    "Time (microseconds) spent processing a USE statement", 60000000LU, 2);
 METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_OtherStmts,
-    "Time spent processing any statement other than SELECT/INSERT/UPDATE/DELETE",
+    "Time (microseconds) spent processing any statement other than SELECT/INSERT/UPDATE/DELETE",
     yb::MetricUnit::kMicroseconds,
-    "Time spent processing any statement other than SELECT/INSERT/UPDATE/DELETE", 60000000LU, 2);
+    "Time (microseconds) spent processing any statement other than SELECT/INSERT/UPDATE/DELETE",
+    60000000LU, 2);
 METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_Transaction,
-    "Time spent processing a transaction", yb::MetricUnit::kMicroseconds,
-    "Time spent processing a transaction", 60000000LU, 2);
+    "Time (microseconds) spent processing a transaction", yb::MetricUnit::kMicroseconds,
+    "Time (microseconds) spent processing a transaction", 60000000LU, 2);
 METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_ResponseSize,
     "Size of the returned response blob (in bytes)", yb::MetricUnit::kBytes,
@@ -101,8 +102,7 @@ METRIC_DEFINE_counter(
     yb::MetricUnit::kUnits,
     "Number of times a timestamp with non-zero microseconds precision is used");
 
-namespace yb {
-namespace ql {
+namespace yb::ql {
 
 using std::shared_ptr;
 using std::string;
@@ -171,8 +171,7 @@ QLProcessor::QLProcessor(client::YBClient* client,
       parser_pool_(parser_pool ? parser_pool : &default_parser_pool) {
 }
 
-QLProcessor::~QLProcessor() {
-}
+QLProcessor::~QLProcessor() = default;
 
 Status QLProcessor::Parse(const string& stmt, ParseTree::UniPtr* parse_tree,
                           const bool reparsed, const MemTrackerPtr& mem_tracker,
@@ -496,5 +495,4 @@ CoarseTimePoint QLProcessor::GetDeadline() const {
   return CoarseMonoClock::now() + MonoDelta::FromSeconds(60);
 }
 
-}  // namespace ql
-}  // namespace yb
+} // namespace yb::ql

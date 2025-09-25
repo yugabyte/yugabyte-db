@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.common;
 
@@ -8,44 +8,6 @@ import static play.mvc.Http.Status.EXPECTATION_FAILED;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.mvc.Http.Status.PRECONDITION_FAILED;
 
-import com.amazonaws.ClientConfiguration;
-import com.amazonaws.SDKGlobalConfiguration;
-import com.amazonaws.SdkClientException;
-import com.amazonaws.auth.AWSCredentials;
-import com.amazonaws.auth.AWSCredentialsProvider;
-import com.amazonaws.auth.AWSSessionCredentials;
-import com.amazonaws.auth.AWSStaticCredentialsProvider;
-import com.amazonaws.auth.BasicAWSCredentials;
-import com.amazonaws.client.builder.AwsClientBuilder.EndpointConfiguration;
-import com.amazonaws.regions.DefaultAwsRegionProviderChain;
-import com.amazonaws.services.cloudtrail.AWSCloudTrail;
-import com.amazonaws.services.cloudtrail.model.Event;
-import com.amazonaws.services.cloudtrail.model.LookupAttribute;
-import com.amazonaws.services.cloudtrail.model.LookupAttributeKey;
-import com.amazonaws.services.cloudtrail.model.LookupEventsRequest;
-import com.amazonaws.services.cloudtrail.model.LookupEventsResult;
-import com.amazonaws.services.ec2.AmazonEC2;
-import com.amazonaws.services.ec2.AmazonEC2ClientBuilder;
-import com.amazonaws.services.ec2.model.DescribeInstancesRequest;
-import com.amazonaws.services.ec2.model.DescribeInstancesResult;
-import com.amazonaws.services.ec2.model.DescribeSpotPriceHistoryRequest;
-import com.amazonaws.services.ec2.model.DescribeSpotPriceHistoryResult;
-import com.amazonaws.services.ec2.model.Filter;
-import com.amazonaws.services.ec2.model.Instance;
-import com.amazonaws.services.ec2.model.SpotPrice;
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.AmazonS3ClientBuilder;
-import com.amazonaws.services.s3.model.AmazonS3Exception;
-import com.amazonaws.services.s3.model.Bucket;
-import com.amazonaws.services.s3.model.DeleteObjectsRequest;
-import com.amazonaws.services.s3.model.DeleteObjectsRequest.KeyVersion;
-import com.amazonaws.services.s3.model.GetBucketLocationRequest;
-import com.amazonaws.services.s3.model.GetObjectRequest;
-import com.amazonaws.services.s3.model.ListObjectsV2Request;
-import com.amazonaws.services.s3.model.ListObjectsV2Result;
-import com.amazonaws.services.s3.model.PutObjectRequest;
-import com.amazonaws.services.s3.model.S3Object;
-import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.cloud.aws.AWSCloudImpl;
@@ -68,15 +30,15 @@ import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data.RegionLoc
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.File;
 import java.io.FileOutputStream;
-import java.io.IOException;
 import java.io.InputStream;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyStore;
 import java.security.SecureRandom;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -104,6 +66,47 @@ import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
 import org.yb.ybc.CloudStoreSpec;
 import org.yb.ybc.CloudType;
 import org.yb.ybc.ProxySpec;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.AwsCredentials;
+import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.core.ResponseBytes;
+import software.amazon.awssdk.core.ResponseInputStream;
+import software.amazon.awssdk.core.exception.SdkClientException;
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.http.apache.ApacheHttpClient;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.regions.providers.DefaultAwsRegionProviderChain;
+import software.amazon.awssdk.services.cloudtrail.CloudTrailClient;
+import software.amazon.awssdk.services.cloudtrail.model.Event;
+import software.amazon.awssdk.services.cloudtrail.model.LookupAttribute;
+import software.amazon.awssdk.services.cloudtrail.model.LookupAttributeKey;
+import software.amazon.awssdk.services.cloudtrail.model.LookupEventsRequest;
+import software.amazon.awssdk.services.cloudtrail.model.LookupEventsResponse;
+import software.amazon.awssdk.services.ec2.Ec2Client;
+import software.amazon.awssdk.services.ec2.model.DescribeInstancesRequest;
+import software.amazon.awssdk.services.ec2.model.DescribeInstancesResponse;
+import software.amazon.awssdk.services.ec2.model.DescribeSpotPriceHistoryRequest;
+import software.amazon.awssdk.services.ec2.model.DescribeSpotPriceHistoryResponse;
+import software.amazon.awssdk.services.ec2.model.Filter;
+import software.amazon.awssdk.services.ec2.model.Instance;
+import software.amazon.awssdk.services.ec2.model.InstanceType;
+import software.amazon.awssdk.services.ec2.model.SpotPrice;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.Bucket;
+import software.amazon.awssdk.services.s3.model.Delete;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.DeleteObjectsRequest;
+import software.amazon.awssdk.services.s3.model.GetBucketLocationRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
+import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
+import software.amazon.awssdk.services.s3.model.ListObjectsV2Response;
+import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
+import software.amazon.awssdk.services.s3.model.ObjectIdentifier;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.model.S3Exception;
+import software.amazon.awssdk.services.s3.model.S3Object;
 
 @Singleton
 @Slf4j
@@ -140,19 +143,25 @@ public class AWSUtil implements CloudUtil {
     public String signingRegion;
   }
 
-  private void tryListObjects(AmazonS3 s3Client, String bucketName, String prefix)
+  private void tryListObjects(S3Client s3Client, String bucketName, String prefix)
       throws SdkClientException {
-    Boolean doesBucketExist = s3Client.doesBucketExistV2(bucketName);
-    if (!doesBucketExist) {
-      throw new RuntimeException(String.format("No S3 bucket found with name %s", bucketName));
+    // HeadBucket to check if bucket exists (doesBucketExistV2 is not available in SDK v2)
+    try {
+      s3Client.headBucket(builder -> builder.bucket(bucketName));
+    } catch (S3Exception e) {
+      if (e.statusCode() == play.mvc.Http.Status.NOT_FOUND) {
+        // Bucket does not exist
+        throw new RuntimeException(String.format("No S3 bucket found with name %s", bucketName));
+      } else {
+        throw e; // rethrow other errors
+      }
     }
-    ListObjectsV2Result result;
-    if (StringUtils.isBlank(prefix)) {
-      result = s3Client.listObjectsV2(bucketName);
-    } else {
-      result = s3Client.listObjectsV2(bucketName, prefix);
+    ListObjectsV2Request.Builder requestBuilder = ListObjectsV2Request.builder().bucket(bucketName);
+    if (StringUtils.isNotBlank(prefix)) {
+      requestBuilder.prefix(prefix);
     }
-    if (result.getKeyCount() == 0) {
+    ListObjectsV2Response result = s3Client.listObjectsV2(requestBuilder.build());
+    if (result.keyCount() == 0) {
       log.debug("No objects exists within bucket {}", bucketName);
     }
   }
@@ -170,8 +179,7 @@ public class AWSUtil implements CloudUtil {
       for (Map.Entry<String, String> entry : regionLocationsMap.entrySet()) {
         String region = entry.getKey();
         String backupLocation = entry.getValue();
-        AmazonS3 s3Client = createS3Client(s3Data, region);
-        try {
+        try (S3Client s3Client = createS3Client(s3Data, region)) {
           CloudLocationInfo cLInfo = getCloudLocationInfo(region, configData, backupLocation);
           String bucketName = cLInfo.bucket;
           String prefix = cLInfo.cloudPath;
@@ -183,9 +191,6 @@ public class AWSUtil implements CloudUtil {
         }
       }
       return true;
-    } catch (SdkClientException e) {
-      log.error("Failed to create S3 client", e.getMessage());
-      return false;
     } finally {
       maybeEnableCertVerification();
     }
@@ -203,13 +208,13 @@ public class AWSUtil implements CloudUtil {
           regionPrefixesMap.entrySet()) {
         String region = regionPrefix.getKey();
         if (configRegions.containsKey(region)) {
-          AmazonS3 s3Client = createS3Client((CustomerConfigStorageS3Data) configData, region);
           // Use "cloudDir" of success marker as object prefix
           String prefix = regionPrefix.getValue().cloudDir;
           // Use config's bucket for bucket name
           String bucketName = getCloudLocationInfo(regionPrefix.getKey(), configData, null).bucket;
           log.debug("Trying object listing with S3 bucket {} and prefix {}", bucketName, prefix);
-          try {
+          CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
+          try (S3Client s3Client = createS3Client(s3Data, region)) {
             tryListObjects(s3Client, bucketName, prefix);
           } catch (SdkClientException e) {
             String msg =
@@ -235,25 +240,37 @@ public class AWSUtil implements CloudUtil {
     CloudLocationInfo cLInfo =
         getCloudLocationInfo(
             YbcBackupUtil.DEFAULT_REGION_STRING, configData, defaultBackupLocation);
+
     String bucketName = cLInfo.bucket;
     String objectPrefix = cLInfo.cloudPath;
     String keyLocation =
         objectPrefix.substring(0, objectPrefix.lastIndexOf('/')) + KEY_LOCATION_SUFFIX;
+
+    S3Client s3Client = null;
     try {
       maybeDisableCertVerification();
-      AmazonS3 s3Client = createS3Client((CustomerConfigStorageS3Data) configData);
-      ListObjectsV2Result listObjectsResult = s3Client.listObjectsV2(bucketName, keyLocation);
-      if (listObjectsResult.getKeyCount() == 0) {
+      s3Client = createS3Client((CustomerConfigStorageS3Data) configData);
+
+      ListObjectsV2Request listReq =
+          ListObjectsV2Request.builder().bucket(bucketName).prefix(keyLocation).build();
+
+      ListObjectsV2Response listResp = s3Client.listObjectsV2(listReq);
+
+      if (listResp.keyCount() == 0) {
         log.info("Specified Location " + keyLocation + " does not contain objects");
       } else {
         log.debug("Retrieved blobs info for bucket " + bucketName + " with prefix " + keyLocation);
-        retrieveAndDeleteObjects(listObjectsResult, bucketName, s3Client);
+        retrieveAndDeleteObjects(listResp, bucketName, s3Client);
       }
+
     } catch (Exception e) {
       log.error("Error while deleting key object at location: {}", keyLocation, e);
       return false;
     } finally {
       maybeEnableCertVerification();
+      if (s3Client != null) {
+        s3Client.close(); // Clean up resources
+      }
     }
     return true;
   }
@@ -279,10 +296,11 @@ public class AWSUtil implements CloudUtil {
 
   @Override
   public boolean uploadYbaBackup(CustomerConfigData configData, File backup, String backupDir) {
+    S3Client s3Client = null;
     try {
       maybeDisableCertVerification();
       CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
-      AmazonS3 client = createS3Client(s3Data);
+      s3Client = createS3Client(s3Data);
       CloudLocationInfo cLInfo =
           getCloudLocationInfo(YbcBackupUtil.DEFAULT_REGION_STRING, s3Data, "");
       // Construct full path to upload like (s3://bucket/)cloudPath/backupDir/backupName.tar.gz
@@ -291,8 +309,13 @@ public class AWSUtil implements CloudUtil {
               .filter(s -> !s.isEmpty())
               .collect(Collectors.joining("/"));
 
-      PutObjectRequest request = new PutObjectRequest(cLInfo.bucket, keyName, backup);
-      client.putObject(request);
+      PutObjectRequest request =
+          PutObjectRequest.builder()
+              .bucket(cLInfo.bucket)
+              .key(keyName)
+              .contentType("application/octet-stream")
+              .build();
+      s3Client.putObject(request, RequestBody.fromFile(backup));
 
       // Construct full path to marker file s3://bucket/cloudPath/backupDir/.yba_backup_marker
       File markerFile = File.createTempFile("backup_marker", ".txt");
@@ -301,13 +324,19 @@ public class AWSUtil implements CloudUtil {
           Stream.of(stripSlash(cLInfo.cloudPath), backupDir, YBA_BACKUP_MARKER)
               .filter(s -> !s.isEmpty())
               .collect(Collectors.joining("/"));
-      PutObjectRequest markerRequest = new PutObjectRequest(cLInfo.bucket, markerKey, markerFile);
-      client.putObject(markerRequest);
+
+      // Upload the file to S3
+      PutObjectRequest markerRequest =
+          PutObjectRequest.builder().bucket(cLInfo.bucket).key(markerKey).build();
+      s3Client.putObject(markerRequest, RequestBody.fromFile(markerFile));
       return true;
     } catch (Exception e) {
       log.error("Error uploading backup: {}", e);
     } finally {
       maybeEnableCertVerification();
+      if (s3Client != null) {
+        s3Client.close();
+      }
     }
     return false;
   }
@@ -317,7 +346,6 @@ public class AWSUtil implements CloudUtil {
     try {
       maybeDisableCertVerification();
       CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
-      AmazonS3 client = createS3Client(s3Data);
       CloudLocationInfo cLInfo =
           getCloudLocationInfo(YbcBackupUtil.DEFAULT_REGION_STRING, s3Data, "");
       String location =
@@ -335,10 +363,11 @@ public class AWSUtil implements CloudUtil {
 
   @Override
   public List<String> getYbaBackupDirs(CustomerConfigData configData) {
+    S3Client s3Client = null;
     try {
       maybeDisableCertVerification();
       CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
-      AmazonS3 client = createS3Client(s3Data);
+      s3Client = createS3Client(s3Data);
       CloudLocationInfo cLInfo =
           getCloudLocationInfo(YbcBackupUtil.DEFAULT_REGION_STRING, s3Data, "");
 
@@ -347,19 +376,20 @@ public class AWSUtil implements CloudUtil {
               .filter(s -> !s.isEmpty())
               .collect(Collectors.joining("/"));
       ListObjectsV2Request request =
-          new ListObjectsV2Request().withBucketName(cLInfo.bucket).withPrefix(prefix);
+          ListObjectsV2Request.builder().bucket(cLInfo.bucket).prefix(prefix).build();
 
       Set<String> backupDirs = new HashSet<>();
 
       String nextContinuationToken = null;
       do {
+        ListObjectsV2Request req = request;
         if (StringUtils.isNotBlank(nextContinuationToken)) {
-          request.withContinuationToken(nextContinuationToken);
+          req = request.toBuilder().continuationToken(nextContinuationToken).build();
         }
-        ListObjectsV2Result result = client.listObjectsV2(request);
-        nextContinuationToken = result.isTruncated() ? result.getNextContinuationToken() : null;
-        for (S3ObjectSummary objectSummary : result.getObjectSummaries()) {
-          String key = objectSummary.getKey();
+        ListObjectsV2Response result = s3Client.listObjectsV2(req);
+        nextContinuationToken = result.isTruncated() ? result.nextContinuationToken() : null;
+        for (S3Object object : result.contents()) {
+          String key = object.key();
           String backupDir = extractBackupDirFromKey(key, stripSlash(cLInfo.cloudPath));
           if (StringUtils.isNotBlank(backupDir)) {
             backupDirs.add(backupDir);
@@ -372,6 +402,9 @@ public class AWSUtil implements CloudUtil {
       log.error("Error retrieving backup directories: {}", e);
     } finally {
       maybeEnableCertVerification();
+      if (s3Client != null) {
+        s3Client.close();
+      }
     }
     return Collections.emptyList();
   }
@@ -379,10 +412,11 @@ public class AWSUtil implements CloudUtil {
   @Override
   public boolean uploadYBDBRelease(
       CustomerConfigData configData, File release, String backupDir, String version) {
+    S3Client s3Client = null;
     try {
       maybeDisableCertVerification();
       CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
-      AmazonS3 client = createS3Client(s3Data);
+      s3Client = createS3Client(s3Data);
       CloudLocationInfo cLInfo =
           getCloudLocationInfo(YbcBackupUtil.DEFAULT_REGION_STRING, s3Data, "");
       String keyName =
@@ -395,8 +429,14 @@ public class AWSUtil implements CloudUtil {
               .filter(s -> !s.isEmpty())
               .collect(Collectors.joining("/"));
       long startTime = System.nanoTime();
-      PutObjectRequest request = new PutObjectRequest(cLInfo.bucket, keyName, release);
-      client.putObject(request);
+
+      PutObjectRequest request =
+          PutObjectRequest.builder()
+              .bucket(cLInfo.bucket)
+              .key(keyName)
+              .contentType("application/octet-stream")
+              .build();
+      s3Client.putObject(request, RequestBody.fromFile(release));
       long endTime = System.nanoTime();
       // Calculate duration in seconds
       double durationInSeconds = (endTime - startTime) / 1_000_000_000.0;
@@ -410,16 +450,20 @@ public class AWSUtil implements CloudUtil {
       return false;
     } finally {
       maybeEnableCertVerification();
+      if (s3Client != null) {
+        s3Client.close();
+      }
     }
     return true;
   }
 
   @Override
   public Set<String> getRemoteReleaseVersions(CustomerConfigData configData, String backupDir) {
+    S3Client s3Client = null;
     try {
       maybeDisableCertVerification();
       CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
-      AmazonS3 client = createS3Client(s3Data);
+      s3Client = createS3Client(s3Data);
       CloudLocationInfo cLInfo =
           getCloudLocationInfo(YbcBackupUtil.DEFAULT_REGION_STRING, s3Data, "");
 
@@ -431,25 +475,25 @@ public class AWSUtil implements CloudUtil {
             Stream.of(stripSlash(cLInfo.cloudPath), backupDir, YBDB_RELEASES)
                 .filter(s -> !s.isEmpty())
                 .collect(Collectors.joining("/"));
-        ListObjectsV2Request request =
-            new ListObjectsV2Request().withBucketName(cLInfo.bucket).withPrefix(prefix);
+        ListObjectsV2Request.Builder reqBuilder =
+            ListObjectsV2Request.builder().bucket(cLInfo.bucket).prefix(prefix);
         if (StringUtils.isNotBlank(nextContinuationToken)) {
-          request.withContinuationToken(nextContinuationToken);
+          reqBuilder.continuationToken(nextContinuationToken);
         }
-        ListObjectsV2Result listObjectsResult;
-        listObjectsResult = client.listObjectsV2(request);
+        ListObjectsV2Response listObjectsResult;
+        listObjectsResult = s3Client.listObjectsV2(reqBuilder.build());
 
-        if (listObjectsResult.getKeyCount() == 0) {
+        if (listObjectsResult.keyCount() == 0) {
           break;
         }
         nextContinuationToken = null;
         if (listObjectsResult.isTruncated()) {
-          nextContinuationToken = listObjectsResult.getNextContinuationToken();
+          nextContinuationToken = listObjectsResult.nextContinuationToken();
         }
         // Parse out release version from result
-        List<S3ObjectSummary> releases = listObjectsResult.getObjectSummaries();
-        for (S3ObjectSummary release : releases) {
-          String version = extractReleaseVersion(release.getKey(), backupDir, cLInfo.cloudPath);
+        List<S3Object> releases = listObjectsResult.contents();
+        for (S3Object release : releases) {
+          String version = extractReleaseVersion(release.key(), backupDir, cLInfo.cloudPath);
           if (version != null) {
             releaseVersions.add(version);
           }
@@ -457,12 +501,15 @@ public class AWSUtil implements CloudUtil {
       } while (nextContinuationToken != null);
 
       return releaseVersions;
-    } catch (AmazonS3Exception e) {
-      log.error("AWS Error occurred while listing releases in S3: {}", e.getErrorMessage());
+    } catch (S3Exception e) {
+      log.error("AWS Error occurred while listing releases in S3: {}", e.getMessage());
     } catch (Exception e) {
       log.error("Unexpected exception while listing releases in S3: {}", e.getMessage());
     } finally {
       maybeEnableCertVerification();
+      if (s3Client != null) {
+        s3Client.close();
+      }
     }
     return new HashSet<>();
   }
@@ -488,10 +535,11 @@ public class AWSUtil implements CloudUtil {
       }
 
       // Find the exact S3 file paths (x86 and aarch64) matching the version
+      S3Client s3Client = null;
       try {
         maybeDisableCertVerification();
         CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
-        AmazonS3 client = createS3Client(s3Data);
+        s3Client = createS3Client(s3Data);
         CloudLocationInfo cLInfo =
             getCloudLocationInfo(YbcBackupUtil.DEFAULT_REGION_STRING, s3Data, "");
 
@@ -504,39 +552,40 @@ public class AWSUtil implements CloudUtil {
                   .filter(s -> !s.isEmpty())
                   .collect(Collectors.joining("/"));
           // List objects with prefix matching version number
-          ListObjectsV2Request request =
-              new ListObjectsV2Request().withBucketName(cLInfo.bucket).withPrefix(prefix);
+          ListObjectsV2Request.Builder requestBuilder =
+              ListObjectsV2Request.builder().bucket(cLInfo.bucket).prefix(prefix);
 
           if (StringUtils.isNotBlank(nextContinuationToken)) {
-            request.withContinuationToken(nextContinuationToken);
+            requestBuilder.continuationToken(nextContinuationToken);
           }
 
-          ListObjectsV2Result listObjectsResult;
-          listObjectsResult = client.listObjectsV2(request);
+          ListObjectsV2Response listObjectsResult;
+          listObjectsResult = s3Client.listObjectsV2(requestBuilder.build());
 
-          if (listObjectsResult.getKeyCount() == 0) {
+          if (listObjectsResult.keyCount() == 0) {
             // No releases found for a specified version (best effort, might work later)
             continue;
           }
 
           nextContinuationToken =
-              listObjectsResult.isTruncated() ? listObjectsResult.getNextContinuationToken() : null;
+              listObjectsResult.isTruncated() ? listObjectsResult.nextContinuationToken() : null;
 
-          List<S3ObjectSummary> releases = listObjectsResult.getObjectSummaries();
+          List<S3Object> releases = listObjectsResult.contents();
           // Download found releases individually (same version, different arch)
-          for (S3ObjectSummary release : releases) {
+          for (S3Object release : releases) {
 
             // Name the local file same as S3 key basename (yugabyte-version-arch.tar.gz)
             File localRelease =
                 versionPath
-                    .resolve(release.getKey().substring(release.getKey().lastIndexOf('/') + 1))
+                    .resolve(release.key().substring(release.key().lastIndexOf('/') + 1))
                     .toFile();
 
-            log.info("Attempting to download from S3 {} to {}", release.getKey(), localRelease);
+            log.info("Attempting to download from S3 {} to {}", release.key(), localRelease);
 
-            GetObjectRequest getRequest = new GetObjectRequest(cLInfo.bucket, release.getKey());
-            try (S3Object releaseObject = client.getObject(getRequest);
-                InputStream inputStream = releaseObject.getObjectContent();
+            GetObjectRequest getRequest =
+                GetObjectRequest.builder().bucket(cLInfo.bucket).key(release.key()).build();
+            try (ResponseInputStream<GetObjectResponse> inputStream =
+                    s3Client.getObject(getRequest);
                 FileOutputStream outputStream = new FileOutputStream(localRelease)) {
               byte[] buffer = new byte[1024];
               int bytesRead;
@@ -546,20 +595,23 @@ public class AWSUtil implements CloudUtil {
 
             } catch (Exception e) {
               log.error(
-                  "Error downloading {} to {}: {}", release.getKey(), localRelease, e.getMessage());
+                  "Error downloading {} to {}: {}", release.key(), localRelease, e.getMessage());
               return false;
             }
           }
         } while (nextContinuationToken != null);
 
-      } catch (AmazonS3Exception e) {
-        log.error("AWS Error occurred while downloading releases from S3: {}", e.getErrorMessage());
+      } catch (S3Exception e) {
+        log.error("AWS Error occurred while downloading releases from S3: {}", e.getMessage());
         return false;
       } catch (Exception e) {
         log.error("Unexpected exception while downloading releases from S3: {}", e.getMessage());
         return false;
       } finally {
         maybeEnableCertVerification();
+        if (s3Client != null) {
+          s3Client.close();
+        }
       }
     }
     return true;
@@ -567,61 +619,65 @@ public class AWSUtil implements CloudUtil {
 
   @Override
   public File downloadYbaBackup(CustomerConfigData configData, String backupDir, Path localDir) {
+    S3Client client = null;
     try {
       maybeDisableCertVerification();
       CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
-      AmazonS3 client = createS3Client(s3Data);
+      client = createS3Client(s3Data);
       CloudLocationInfo cLInfo =
           getCloudLocationInfo(YbcBackupUtil.DEFAULT_REGION_STRING, s3Data, "");
+
       log.info(
           "Downloading most recent backup in s3://{}/{}{}",
           cLInfo.bucket,
           StringUtils.isBlank(cLInfo.cloudPath) ? "" : stripSlash(cLInfo.cloudPath) + "/",
           backupDir);
 
-      // Get all the backups in the specified bucket/directory
-      List<S3ObjectSummary> allBackups = new ArrayList<>();
+      List<S3Object> allBackups = new ArrayList<>();
       String nextContinuationToken = null;
+
       do {
         String prefix =
             Stream.of(stripSlash(cLInfo.cloudPath), backupDir)
                 .filter(s -> !s.isEmpty())
                 .collect(Collectors.joining("/"));
-        ListObjectsV2Request request =
-            new ListObjectsV2Request().withBucketName(cLInfo.bucket).withPrefix(prefix);
-        if (StringUtils.isNotBlank(nextContinuationToken)) {
-          request.withContinuationToken(nextContinuationToken);
-        }
-        ListObjectsV2Result listObjectsResult;
-        listObjectsResult = client.listObjectsV2(request);
 
-        if (listObjectsResult.getKeyCount() == 0) {
+        ListObjectsV2Request.Builder listBuilder =
+            ListObjectsV2Request.builder().bucket(cLInfo.bucket).prefix(prefix);
+
+        if (StringUtils.isNotBlank(nextContinuationToken)) {
+          listBuilder.continuationToken(nextContinuationToken);
+        }
+
+        ListObjectsV2Response listResp = client.listObjectsV2(listBuilder.build());
+
+        if (listResp.keyCount() == 0) {
           break;
         }
         nextContinuationToken = null;
-        if (listObjectsResult.isTruncated()) {
-          nextContinuationToken = listObjectsResult.getNextContinuationToken();
+        if (listResp.isTruncated()) {
+          nextContinuationToken = listResp.nextContinuationToken();
         }
-        allBackups.addAll(listObjectsResult.getObjectSummaries());
+        allBackups.addAll(listResp.contents());
       } while (nextContinuationToken != null);
 
       // Sort backups by last modified date (most recent first)
-      List<S3ObjectSummary> sortedBackups =
+      List<S3Object> sortedBackups =
           allBackups.stream()
-              .sorted((o1, o2) -> o2.getLastModified().compareTo(o1.getLastModified()))
+              .sorted((o1, o2) -> o2.lastModified().compareTo(o1.lastModified()))
               .collect(Collectors.toList());
       if (sortedBackups.isEmpty()) {
         log.error("Could not find any backups to restore");
         return null;
       }
       // Iterate through until we find a backup
-      S3ObjectSummary backup = null;
+      S3Object backup = null;
       Matcher match = null;
       Pattern backupPattern = Pattern.compile("backup_.*\\.tgz");
-      for (S3ObjectSummary bkp : sortedBackups) {
-        match = backupPattern.matcher(bkp.getKey());
+      for (S3Object bkp : sortedBackups) {
+        match = backupPattern.matcher(bkp.key());
         if (match.find()) {
-          log.info("Downloading backup s3://{}/{}", bkp.getBucketName(), bkp.getKey());
+          log.info("Downloading backup s3://{}/{}", cLInfo.bucket, bkp.key());
           backup = bkp;
           break;
         }
@@ -634,12 +690,13 @@ public class AWSUtil implements CloudUtil {
 
       // Construct full local filepath with same name as remote backup
       File localFile = localDir.resolve(match.group()).toFile();
+
       // Create directory at platformReplication/<storageConfigUUID> if necessary
       Files.createDirectories(localFile.getParentFile().toPath());
-      GetObjectRequest getRequest = new GetObjectRequest(cLInfo.bucket, backup.getKey());
-      client.getObject(getRequest);
-      try (S3Object s3Object = client.getObject(getRequest);
-          InputStream inputStream = s3Object.getObjectContent();
+      GetObjectRequest getRequest =
+          GetObjectRequest.builder().bucket(cLInfo.bucket).key(backup.key()).build();
+
+      try (ResponseInputStream<GetObjectResponse> inputStream = client.getObject(getRequest);
           FileOutputStream outputStream = new FileOutputStream(localFile)) {
 
         // Write the object content to the local file
@@ -653,28 +710,35 @@ public class AWSUtil implements CloudUtil {
         log.error("Error writing S3 object to file: {}", e.getMessage());
         return null;
       }
+
       if (!localFile.exists() || localFile.length() == 0) {
         log.error("Local file does not exist or is empty, aborting restore.");
         return null;
       }
+
       log.info("Downloaded file from S3 to {}", localFile.getCanonicalPath());
       return localFile;
-    } catch (AmazonS3Exception e) {
-      log.error("Error occurred while getting object in S3: {}", e.getErrorMessage());
+    } catch (S3Exception e) {
+      log.error(
+          "Error occurred while getting object in S3: {}", e.awsErrorDetails().errorMessage());
     } catch (Exception e) {
       log.error("Unexpected exception while getting object in S3: {}", e.getMessage());
     } finally {
       maybeEnableCertVerification();
+      if (client != null) {
+        client.close();
+      }
     }
     return null;
   }
 
   @Override
   public boolean cleanupUploadedBackups(CustomerConfigData configData, String backupDir) {
+    S3Client s3Client = null;
     try {
       maybeDisableCertVerification();
       CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
-      AmazonS3 client = createS3Client(s3Data);
+      s3Client = createS3Client(s3Data);
       CloudLocationInfo cLInfo =
           getCloudLocationInfo(YbcBackupUtil.DEFAULT_REGION_STRING, s3Data, "");
       log.info(
@@ -684,40 +748,39 @@ public class AWSUtil implements CloudUtil {
           backupDir);
 
       // Get all the backups in the specified bucket/directory
-      List<S3ObjectSummary> allBackups = new ArrayList<>();
+      List<S3Object> allBackups = new ArrayList<>();
       String nextContinuationToken = null;
+
       do {
         String prefix =
             Stream.of(stripSlash(cLInfo.cloudPath), backupDir)
                 .filter(s -> !s.isEmpty())
                 .collect(Collectors.joining("/"));
-        ListObjectsV2Request request =
-            new ListObjectsV2Request().withBucketName(cLInfo.bucket).withPrefix(prefix);
+        ListObjectsV2Request.Builder requestBuilder =
+            ListObjectsV2Request.builder().bucket(cLInfo.bucket).prefix(prefix);
         if (StringUtils.isNotBlank(nextContinuationToken)) {
-          request.withContinuationToken(nextContinuationToken);
+          requestBuilder.continuationToken(nextContinuationToken);
         }
-        ListObjectsV2Result listObjectsResult;
-        listObjectsResult = client.listObjectsV2(request);
+        ListObjectsV2Response listObjectsResp;
+        listObjectsResp = s3Client.listObjectsV2(requestBuilder.build());
 
-        if (listObjectsResult.getKeyCount() == 0) {
+        if (listObjectsResp.keyCount() == 0) {
           break;
         }
         nextContinuationToken = null;
-        if (listObjectsResult.isTruncated()) {
-          nextContinuationToken = listObjectsResult.getNextContinuationToken();
+        if (listObjectsResp.isTruncated()) {
+          nextContinuationToken = listObjectsResp.nextContinuationToken();
         }
-        allBackups.addAll(listObjectsResult.getObjectSummaries());
+        allBackups.addAll(listObjectsResp.contents());
       } while (nextContinuationToken != null);
 
       Pattern backupPattern = Pattern.compile("backup_.*\\.tgz");
       // Sort backups by last modified date (most recent first)
-      List<S3ObjectSummary> sortedBackups =
+      List<S3Object> sortedBackups =
           allBackups.stream()
               .filter(
-                  o ->
-                      !o.getKey().contains(YBDB_RELEASES)
-                          && backupPattern.matcher(o.getKey()).find())
-              .sorted((o1, o2) -> o2.getLastModified().compareTo(o1.getLastModified()))
+                  o -> !o.key().contains(YBDB_RELEASES) && backupPattern.matcher(o.key()).find())
+              .sorted((o1, o2) -> o2.lastModified().compareTo(o1.lastModified()))
               .collect(Collectors.toList());
 
       // Only keep the n most recent backups
@@ -733,26 +796,30 @@ public class AWSUtil implements CloudUtil {
             numKeepBackups);
         return true;
       }
-      List<S3ObjectSummary> backupsToDelete =
-          sortedBackups.subList(numKeepBackups, sortedBackups.size());
-      // Prepare the delete request
+
+      // Prepare list of ObjectIdentifiers from sortedBackups
+      List<ObjectIdentifier> backupsToDelete =
+          sortedBackups.subList(numKeepBackups, sortedBackups.size()).stream()
+              .map(o -> ObjectIdentifier.builder().key(o.key()).build())
+              .collect(Collectors.toList());
+
+      // Prepare delete request
       DeleteObjectsRequest deleteRequest =
-          new DeleteObjectsRequest(cLInfo.bucket)
-              .withKeys(
-                  backupsToDelete.stream()
-                      .map(o -> new KeyVersion(o.getKey()))
-                      .collect(Collectors.toList()));
+          DeleteObjectsRequest.builder()
+              .bucket(cLInfo.bucket)
+              .delete(Delete.builder().objects(backupsToDelete).build())
+              .build();
 
       // Delete the old backups
-      client.deleteObjects(deleteRequest);
+      s3Client.deleteObjects(deleteRequest);
       log.info(
           "Deleted {} old backup(s) from s3://{}/{}{}",
           backupsToDelete.size(),
           cLInfo.bucket,
           StringUtils.isBlank(cLInfo.cloudPath) ? "" : stripSlash(cLInfo.cloudPath) + "/",
           backupDir);
-    } catch (AmazonS3Exception e) {
-      log.warn("Error occured while deleted objects in S3: {}", e.getErrorMessage());
+    } catch (S3Exception e) {
+      log.warn("Error occured while deleted objects in S3: {}", e.getMessage());
       return false;
     } catch (Exception e) {
       log.warn(
@@ -760,6 +827,9 @@ public class AWSUtil implements CloudUtil {
       return false;
     } finally {
       maybeEnableCertVerification();
+      if (s3Client != null) {
+        s3Client.close();
+      }
     }
     return true;
   }
@@ -783,7 +853,7 @@ public class AWSUtil implements CloudUtil {
     String region = fallbackRegion;
     if (StringUtils.isBlank(region)) {
       try {
-        region = new DefaultAwsRegionProviderChain().getRegion();
+        region = new DefaultAwsRegionProviderChain().getRegion().id();
       } catch (SdkClientException e) {
         log.trace("No region found in Default region chain.");
       }
@@ -791,7 +861,7 @@ public class AWSUtil implements CloudUtil {
     return StringUtils.isBlank(region) ? "us-east-1" : region;
   }
 
-  public AmazonS3 createS3Client(CustomerConfigStorageS3Data s3Data)
+  public S3Client createS3Client(CustomerConfigStorageS3Data s3Data)
       throws SdkClientException, PlatformServiceException {
     return createS3Client(s3Data, YbcBackupUtil.DEFAULT_REGION_STRING);
   }
@@ -805,18 +875,19 @@ public class AWSUtil implements CloudUtil {
    * @throws SdkClientException
    * @throws PlatformServiceException
    */
-  public AmazonS3 createS3Client(CustomerConfigStorageS3Data s3Data, String region)
+  public S3Client createS3Client(CustomerConfigStorageS3Data s3Data, String region)
       throws SdkClientException, PlatformServiceException {
-    AmazonS3 client = null;
-    AmazonS3ClientBuilder s3ClientBuilder = AmazonS3ClientBuilder.standard();
+    S3Client client = null;
+    var builder = S3Client.builder();
+
     if (s3Data.isIAMInstanceProfile) {
       // Using credential chaining here.
       // This first looks for K8s service account IAM role,
       // then IAM user,
       // then falls back to the Node/EC2 IAM role.
       try {
-        s3ClientBuilder.withCredentials(
-            new AWSStaticCredentialsProvider(
+        builder.credentialsProvider(
+            StaticCredentialsProvider.create(
                 (new IAMTemporaryCredentialsProvider(runtimeConfGetter))
                     .getTemporaryCredentials(s3Data)));
       } catch (Exception e) {
@@ -826,13 +897,13 @@ public class AWSUtil implements CloudUtil {
     } else {
       String key = s3Data.awsAccessKeyId;
       String secret = s3Data.awsSecretAccessKey;
-      AWSCredentials credentials = new BasicAWSCredentials(key, secret);
-      AWSCredentialsProvider creds = new AWSStaticCredentialsProvider(credentials);
-      s3ClientBuilder.withCredentials(creds);
+      AwsBasicCredentials credentials = AwsBasicCredentials.create(key, secret);
+      builder.credentialsProvider(StaticCredentialsProvider.create(credentials));
     }
     if (s3Data.isPathStyleAccess) {
-      s3ClientBuilder.withPathStyleAccessEnabled(true);
+      builder.forcePathStyle(true);
     }
+
     //  Use region specific hostbase
     AWSHostBase hostBase = getRegionHostBaseMap(s3Data).get(region);
     String endpoint = hostBase.awsHostBase;
@@ -840,16 +911,15 @@ public class AWSUtil implements CloudUtil {
     String clientRegion = getClientRegion(hostBase.signingRegion);
     if (globalFlag && (StringUtils.isBlank(endpoint) || isHostBaseS3Standard(endpoint))) {
       // Use global bucket access only for standard S3.
-      s3ClientBuilder.withForceGlobalBucketAccessEnabled(true);
+      builder.crossRegionAccessEnabled(true);
     }
     if (StringUtils.isNotBlank(endpoint)) {
-      // Need to set region because region-chaining may
-      // fail if correct environment variables not found.
-      s3ClientBuilder.withEndpointConfiguration(new EndpointConfiguration(endpoint, clientRegion));
-    } else {
-      s3ClientBuilder.withRegion(clientRegion);
+      builder.endpointOverride(URI.create("https://" + endpoint));
     }
-    ClientConfiguration clientConfig = null;
+    // Need to set region because region-chaining may
+    // fail if correct environment variables not found.
+    builder.region(Region.of(clientRegion));
+
     try {
       Boolean caStoreEnabled = customCAStoreManager.isEnabled();
       Boolean caCertUploaded = customCAStoreManager.areCustomCAsPresent();
@@ -875,11 +945,11 @@ public class AWSUtil implements CloudUtil {
           } else {
             sslSocketFactory = new SSLConnectionSocketFactory(sslContext);
           }
-          if (clientConfig == null) {
-            clientConfig = new ClientConfiguration();
-          }
-          clientConfig.getApacheHttpClientConfig().setSslSocketFactory(sslSocketFactory);
-          client = s3ClientBuilder.withClientConfiguration(clientConfig).build();
+
+          ApacheHttpClient.Builder httpClientBuilder =
+              ApacheHttpClient.builder().socketFactory(sslSocketFactory);
+
+          client = builder.httpClientBuilder(httpClientBuilder).build();
         } catch (Exception e) {
           log.error("Could not create S3 client", e);
           throw new PlatformServiceException(
@@ -890,7 +960,7 @@ public class AWSUtil implements CloudUtil {
         if (caStoreEnabled && !certVerificationEnforced) {
           log.warn("CA store feature is enabled but certificate verification is not enforced.");
         }
-        client = s3ClientBuilder.build();
+        client = builder.build();
       }
       // First bucket region fetch may fail, so call and skip.
       try {
@@ -933,26 +1003,36 @@ public class AWSUtil implements CloudUtil {
   public String getBucketRegion(
       String bucketName, CustomerConfigStorageS3Data s3Data, String region)
       throws SdkClientException {
+    S3Client s3Client = null;
     try {
       maybeDisableCertVerification();
-      AmazonS3 client = createS3Client(s3Data, region);
-      return getBucketRegion(bucketName, client);
+      s3Client = createS3Client(s3Data, region);
+      return getBucketRegion(bucketName, s3Client);
     } finally {
       maybeEnableCertVerification();
+      if (s3Client != null) {
+        s3Client.close();
+      }
     }
   }
 
   // For reusing already created client, as in listBuckets function
   // Cert-check is not disabled here, since the scope above this, where the S3 client is created,
   // should disable it.
-  private String getBucketRegion(String bucketName, AmazonS3 s3Client) throws SdkClientException {
+  private String getBucketRegion(String bucketName, S3Client s3Client) throws SdkClientException {
     try {
-      GetBucketLocationRequest locationRequest = new GetBucketLocationRequest(bucketName);
-      String bucketRegion = s3Client.getBucketLocation(locationRequest);
-      if (bucketRegion.equals("US")) {
-        bucketRegion = AWS_DEFAULT_REGION;
+      GetBucketLocationRequest request =
+          GetBucketLocationRequest.builder().bucket(bucketName).build();
+      String region = s3Client.getBucketLocation(request).locationConstraintAsString();
+      // AWS SDK v2 returns null or "null" (or "us-east-1") for legacy "US"
+      // Buckets in Region us-east-1 have a LocationConstraint of null.
+      // Buckets with a LocationConstraint of EU reside in eu-west-1.
+      if (StringUtils.isBlank(region) || region.equalsIgnoreCase("null") || region.equals("US")) {
+        region = AWS_DEFAULT_REGION;
+      } else if (region.equals("EU")) {
+        region = "eu-west-1";
       }
-      return bucketRegion;
+      return region;
     } catch (SdkClientException e) {
       log.error(String.format("Fetching bucket region for %s failed", bucketName), e.getMessage());
       throw e;
@@ -960,9 +1040,7 @@ public class AWSUtil implements CloudUtil {
   }
 
   public String createBucketRegionSpecificHostBase(String bucketName, String bucketRegion) {
-    String regionSpecificHostBase =
-        String.format(AWS_REGION_SPECIFIC_HOST_BASE_FORMAT, bucketRegion);
-    return regionSpecificHostBase;
+    return String.format(AWS_REGION_SPECIFIC_HOST_BASE_FORMAT, bucketRegion);
   }
 
   public boolean isHostBaseS3Standard(String hostBase) {
@@ -985,10 +1063,11 @@ public class AWSUtil implements CloudUtil {
       CustomerConfigData configData, Map<String, List<String>> backupRegionLocationsMap) {
     for (Map.Entry<String, List<String>> backupRegionLocations :
         backupRegionLocationsMap.entrySet()) {
+      S3Client s3Client = null;
       try {
         maybeDisableCertVerification();
         String region = backupRegionLocations.getKey();
-        AmazonS3 s3Client = createS3Client((CustomerConfigStorageS3Data) configData, region);
+        s3Client = createS3Client((CustomerConfigStorageS3Data) configData, region);
         for (String backupLocation : backupRegionLocations.getValue()) {
           CloudLocationInfo cLInfo = getCloudLocationInfo(region, configData, backupLocation);
           String bucketName = cLInfo.bucket;
@@ -996,26 +1075,26 @@ public class AWSUtil implements CloudUtil {
           String nextContinuationToken = null;
           try {
             do {
-              ListObjectsV2Result listObjectsResult;
-              ListObjectsV2Request request =
-                  new ListObjectsV2Request().withBucketName(bucketName).withPrefix(objectPrefix);
-              if (StringUtils.isNotBlank(nextContinuationToken)) {
-                request.withContinuationToken(nextContinuationToken);
-              }
-              listObjectsResult = s3Client.listObjectsV2(request);
+              ListObjectsV2Request.Builder request =
+                  ListObjectsV2Request.builder().bucket(bucketName).prefix(objectPrefix);
 
-              if (listObjectsResult.getKeyCount() == 0) {
+              if (StringUtils.isNotBlank(nextContinuationToken)) {
+                request.continuationToken(nextContinuationToken);
+              }
+              ListObjectsV2Response listObjectsResult = s3Client.listObjectsV2(request.build());
+
+              if (listObjectsResult.keyCount() == 0) {
                 break;
               }
               nextContinuationToken = null;
               if (listObjectsResult.isTruncated()) {
-                nextContinuationToken = listObjectsResult.getNextContinuationToken();
+                nextContinuationToken = listObjectsResult.nextContinuationToken();
               }
               log.debug(
                   "Retrieved blobs info for bucket " + bucketName + " with prefix " + objectPrefix);
               retrieveAndDeleteObjects(listObjectsResult, bucketName, s3Client);
             } while (nextContinuationToken != null);
-          } catch (AmazonS3Exception e) {
+          } catch (S3Exception e) {
             log.error(
                 "Error occured while deleting objects at location {}. Error {}",
                 backupLocation,
@@ -1023,11 +1102,14 @@ public class AWSUtil implements CloudUtil {
             throw e;
           }
         }
-      } catch (AmazonS3Exception e) {
-        log.error(" Error occured while deleting objects in S3: {}", e.getErrorMessage());
+      } catch (S3Exception e) {
+        log.error(" Error occured while deleting objects in S3: {}", e.getMessage());
         return false;
       } finally {
         maybeEnableCertVerification();
+        if (s3Client != null) {
+          s3Client.close();
+        }
       }
     }
     return true;
@@ -1037,21 +1119,27 @@ public class AWSUtil implements CloudUtil {
   // This method is in use by ReleaseManager code, which does not contain config location in
   // CustomerConfigData object. Such case would not be allowed for UI generated customer config.
   public InputStream getCloudFileInputStream(CustomerConfigData configData, String cloudPath) {
+    S3Client s3Client = null;
     try {
       maybeDisableCertVerification();
       CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
-      AmazonS3 s3Client = createS3Client(s3Data);
+      s3Client = createS3Client(s3Data);
       String[] splitLocation = getSplitLocationValue(cloudPath);
       String bucketName = splitLocation[0];
       String objectPrefix = splitLocation[1];
-      S3Object object = s3Client.getObject(bucketName, objectPrefix);
-      if (object == null) {
+      GetObjectRequest getObjectRequest =
+          GetObjectRequest.builder().bucket(bucketName).key(objectPrefix).build();
+      ResponseInputStream<GetObjectResponse> objectStream = s3Client.getObject(getObjectRequest);
+      if (objectStream == null) {
         throw new PlatformServiceException(
             INTERNAL_SERVER_ERROR, "No object was found at the specified location: " + cloudPath);
       }
-      return object.getObjectContent();
+      return objectStream;
     } finally {
       maybeEnableCertVerification();
+      if (s3Client != null) {
+        s3Client.close();
+      }
     }
   }
 
@@ -1061,9 +1149,11 @@ public class AWSUtil implements CloudUtil {
       Set<String> locations,
       String fileName,
       boolean checkExistsOnAll) {
-    try {
-      maybeDisableCertVerification();
-      AmazonS3 s3Client = createS3Client((CustomerConfigStorageS3Data) configData);
+
+    // TODO: Note other invocations of this function are in the try block
+    // s3Client could not be declared outside try block as it is used in the map function
+    maybeDisableCertVerification();
+    try (S3Client s3Client = createS3Client((CustomerConfigStorageS3Data) configData)) {
       AtomicInteger count = new AtomicInteger(0);
       return locations.stream()
           .map(
@@ -1080,8 +1170,10 @@ public class AWSUtil implements CloudUtil {
                     StringUtils.isNotBlank(cLInfo.cloudPath)
                         ? BackupUtil.getPathWithPrefixSuffixJoin(cLInfo.cloudPath, fileName)
                         : fileName;
-                ListObjectsV2Result listResult = s3Client.listObjectsV2(bucketName, objectSuffix);
-                if (listResult.getKeyCount() > 0) {
+                ListObjectsV2Request request =
+                    ListObjectsV2Request.builder().bucket(bucketName).prefix(objectSuffix).build();
+                ListObjectsV2Response listResult = s3Client.listObjectsV2(request);
+                if (listResult.keyCount() > 0) {
                   count.incrementAndGet();
                 }
                 return count;
@@ -1095,13 +1187,18 @@ public class AWSUtil implements CloudUtil {
   }
 
   public void retrieveAndDeleteObjects(
-      ListObjectsV2Result listObjectsResult, String bucketName, AmazonS3 s3Client)
-      throws AmazonS3Exception {
-    List<S3ObjectSummary> objectSummary = listObjectsResult.getObjectSummaries();
-    List<DeleteObjectsRequest.KeyVersion> objectKeys =
-        objectSummary.stream().map(o -> new KeyVersion(o.getKey())).collect(Collectors.toList());
+      ListObjectsV2Response listObjectsResult, String bucketName, S3Client s3Client)
+      throws SdkClientException {
+    List<S3Object> objectSummary = listObjectsResult.contents();
+    List<ObjectIdentifier> objectIdentifiers =
+        objectSummary.stream()
+            .map(o -> ObjectIdentifier.builder().key(o.key()).build())
+            .collect(Collectors.toList());
     DeleteObjectsRequest deleteRequest =
-        new DeleteObjectsRequest(bucketName).withKeys(objectKeys).withQuiet(false);
+        DeleteObjectsRequest.builder()
+            .bucket(bucketName)
+            .delete(builder -> builder.objects(objectIdentifiers))
+            .build();
     s3Client.deleteObjects(deleteRequest);
   }
 
@@ -1198,13 +1295,13 @@ public class AWSUtil implements CloudUtil {
   private void fillMapWithIAMCreds(
       Map<String, String> s3CredsMap, CustomerConfigStorageS3Data s3Data) {
     try {
-      AWSCredentials creds =
+      AwsCredentials creds =
           (new IAMTemporaryCredentialsProvider(runtimeConfGetter)).getTemporaryCredentials(s3Data);
-      s3CredsMap.put(YBC_AWS_ACCESS_KEY_ID_FIELDNAME, creds.getAWSAccessKeyId());
-      s3CredsMap.put(YBC_AWS_SECRET_ACCESS_KEY_FIELDNAME, creds.getAWSSecretKey());
-      if (creds instanceof AWSSessionCredentials) {
+      s3CredsMap.put(YBC_AWS_ACCESS_KEY_ID_FIELDNAME, creds.accessKeyId());
+      s3CredsMap.put(YBC_AWS_SECRET_ACCESS_KEY_FIELDNAME, creds.secretAccessKey());
+      if (creds instanceof AwsSessionCredentials) {
         s3CredsMap.put(
-            YBC_AWS_ACCESS_TOKEN_FIELDNAME, ((AWSSessionCredentials) creds).getSessionToken());
+            YBC_AWS_ACCESS_TOKEN_FIELDNAME, ((AwsSessionCredentials) creds).sessionToken());
       }
     } catch (Exception e) {
       throw new PlatformServiceException(
@@ -1243,32 +1340,32 @@ public class AWSUtil implements CloudUtil {
   @Override
   public Map<String, String> listBuckets(CustomerConfigData configData) {
     Map<String, String> bucketHostBaseMap = new HashMap<>();
-    try {
-      maybeDisableCertVerification();
-      CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
-      if ((StringUtils.isBlank(s3Data.awsAccessKeyId)
-              || StringUtils.isBlank(s3Data.awsSecretAccessKey))
-          && s3Data.isIAMInstanceProfile == false) {
-        return bucketHostBaseMap;
-      }
-      final boolean useOriginalHostBase =
-          StringUtils.isNotBlank(s3Data.awsHostBase) && !isHostBaseS3Standard(s3Data.awsHostBase);
-      // don't use standard host base with regions, conflicting regions will lead to authorization
-      // errors.
-      if (!useOriginalHostBase) {
-        s3Data.awsHostBase = null;
-      }
-      AmazonS3 client = createS3Client(s3Data);
-      List<Bucket> buckets = client.listBuckets();
+    CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
+    if ((StringUtils.isBlank(s3Data.awsAccessKeyId)
+            || StringUtils.isBlank(s3Data.awsSecretAccessKey))
+        && s3Data.isIAMInstanceProfile == false) {
+      return bucketHostBaseMap;
+    }
+    final boolean useOriginalHostBase =
+        StringUtils.isNotBlank(s3Data.awsHostBase) && !isHostBaseS3Standard(s3Data.awsHostBase);
+    // don't use standard host base with regions, conflicting regions will lead to authorization
+    // errors.
+    if (!useOriginalHostBase) {
+      s3Data.awsHostBase = null;
+    }
+    // TODO: Note - other invocations of this fuction are in try block.
+    maybeDisableCertVerification();
+    try (S3Client client = createS3Client(s3Data)) {
+      List<Bucket> buckets = client.listBuckets().buckets();
       buckets.stream()
           .forEach(
               b ->
                   bucketHostBaseMap.put(
-                      b.getName(),
+                      b.name(),
                       useOriginalHostBase
                           ? s3Data.awsHostBase
                           : createBucketRegionSpecificHostBase(
-                              b.getName(), getBucketRegion(b.getName(), client))));
+                              b.name(), getBucketRegion(b.name(), client))));
     } catch (SdkClientException e) {
       log.error("Error while listing S3 buckets {}", e.getMessage());
     } finally {
@@ -1283,7 +1380,9 @@ public class AWSUtil implements CloudUtil {
     if (CollectionUtils.isNotEmpty(s3Data.regionLocations)) {
       s3Data.regionLocations.stream().forEach(rL -> regionLocationsMap.put(rL.region, rL.location));
     }
+
     regionLocationsMap.put(YbcBackupUtil.DEFAULT_REGION_STRING, s3Data.backupLocation);
+
     return regionLocationsMap;
   }
 
@@ -1291,26 +1390,26 @@ public class AWSUtil implements CloudUtil {
       String zone, String instanceType, String providerUUID, String region) {
     try {
       Provider p = Provider.getOrBadRequest(UUID.fromString(providerUUID));
-      AWSCredentials creds =
-          new BasicAWSCredentials(
+      AwsBasicCredentials credentials =
+          AwsBasicCredentials.create(
               p.getDetails().getCloudInfo().getAws().awsAccessKeyID,
               p.getDetails().getCloudInfo().getAws().awsAccessKeySecret);
-      AmazonEC2 ec2Client =
-          AmazonEC2ClientBuilder.standard()
-              .withCredentials(new AWSStaticCredentialsProvider(creds))
-              .withRegion(region)
+      Ec2Client ec2Client =
+          Ec2Client.builder()
+              .region(Region.of(region))
+              .credentialsProvider(StaticCredentialsProvider.create(credentials))
               .build();
       DescribeSpotPriceHistoryRequest request =
-          new DescribeSpotPriceHistoryRequest()
-              .withAvailabilityZone(zone)
-              .withInstanceTypes(instanceType)
-              .withProductDescriptions("Linux/UNIX")
-              .withStartTime(new Date())
-              .withEndTime(new Date());
-
-      DescribeSpotPriceHistoryResult result = ec2Client.describeSpotPriceHistory(request);
-      List<SpotPrice> prices = result.getSpotPriceHistory();
-      Double spotPrice = Double.parseDouble(prices.get(0).getSpotPrice());
+          DescribeSpotPriceHistoryRequest.builder()
+              .availabilityZone(zone)
+              .instanceTypes(InstanceType.fromValue(instanceType))
+              .productDescriptions("Linux/UNIX")
+              .startTime(Instant.now())
+              .endTime(Instant.now())
+              .build();
+      DescribeSpotPriceHistoryResponse result = ec2Client.describeSpotPriceHistory(request);
+      List<SpotPrice> prices = result.spotPriceHistory();
+      Double spotPrice = Double.parseDouble(prices.get(0).spotPrice());
       log.info(
           "Current aws spot price for instance type {} in zone {} = {}",
           instanceType,
@@ -1329,13 +1428,13 @@ public class AWSUtil implements CloudUtil {
     // Dell ECS are provided and custom certs are needed to connect
     // Reference: https://yugabyte.atlassian.net/browse/PLAT-2497
     if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.enforceCertVerificationBackupRestore)) {
-      System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "true");
+      System.setProperty("com.amazonaws.sdk.disableCertChecking", "true");
     }
   }
 
   public void maybeEnableCertVerification() {
     if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.enforceCertVerificationBackupRestore)) {
-      System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "false");
+      System.setProperty("com.amazonaws.sdk.disableCertChecking", "false");
     }
   }
 
@@ -1355,13 +1454,17 @@ public class AWSUtil implements CloudUtil {
       }
     }
 
-    AmazonS3 s3Client = null;
+    S3Client s3Client = null;
     String exceptionMsg = null;
     try {
       s3Client = createS3Client(s3data);
-    } catch (AmazonS3Exception s3Exception) {
-      exceptionMsg = s3Exception.getErrorMessage();
+    } catch (SdkClientException s3Exception) {
+      exceptionMsg = s3Exception.getMessage();
       throw new RuntimeException(exceptionMsg);
+    } finally {
+      if (s3Client != null) {
+        s3Client.close();
+      }
     }
 
     validateOnLocation(s3Client, YbcBackupUtil.DEFAULT_REGION_STRING, configData, permissions);
@@ -1372,20 +1475,25 @@ public class AWSUtil implements CloudUtil {
           throw new PlatformServiceException(
               BAD_REQUEST, "Region of RegionLocation: " + location.location + " is empty.");
         }
+        s3Client = null;
         try {
           s3Client = createS3Client(s3data, location.region);
+          validateOnLocation(s3Client, location.region, configData, permissions);
         } catch (SdkClientException e) {
           exceptionMsg = e.getMessage();
           throw new RuntimeException(exceptionMsg);
+        } finally {
+          if (s3Client != null) {
+            s3Client.close();
+          }
         }
-        validateOnLocation(s3Client, location.region, configData, permissions);
       }
     }
   }
 
   /** Validates S3 configuration on a specific location */
   private void validateOnLocation(
-      AmazonS3 client,
+      S3Client client,
       String region,
       CustomerConfigData configData,
       List<ExtraPermissionToValidate> permissions) {
@@ -1398,7 +1506,7 @@ public class AWSUtil implements CloudUtil {
    * specified.
    */
   public void validateOnBucket(
-      AmazonS3 client,
+      S3Client client,
       String bucketName,
       String prefix,
       List<ExtraPermissionToValidate> permissions) {
@@ -1438,14 +1546,20 @@ public class AWSUtil implements CloudUtil {
     log.debug("S3: Test object deleted");
   }
 
-  private void createObject(AmazonS3 client, String bucketName, String content, String fileName) {
-    client.putObject(bucketName, fileName, content);
+  private void createObject(S3Client client, String bucketName, String content, String fileName) {
+    PutObjectRequest request =
+        PutObjectRequest.builder()
+            .bucket(bucketName)
+            .key(fileName)
+            .contentType("text/plain")
+            .build();
+    client.putObject(request, RequestBody.fromString(content));
   }
 
   private void validateReadObject(
-      AmazonS3 client, String bucketName, String objectName, String content) {
+      S3Client client, String bucketName, String objectName, String content) {
     String readString = readObject(client, bucketName, objectName, content.getBytes().length);
-    if (!readString.equals(content)) {
+    if (!content.equals(readString)) {
       throw new PlatformServiceException(
           EXPECTATION_FAILED,
           "Error reading test object "
@@ -1459,26 +1573,24 @@ public class AWSUtil implements CloudUtil {
   }
 
   private String readObject(
-      AmazonS3 client, String bucketName, String objectName, int bytesToRead) {
-    S3Object object = client.getObject(bucketName, objectName);
-    if (object == null) {
+      S3Client client, String bucketName, String objectName, int bytesToRead) {
+    try {
+      GetObjectRequest request =
+          GetObjectRequest.builder().bucket(bucketName).key(objectName).build();
+      ResponseBytes<GetObjectResponse> responseBytes = client.getObjectAsBytes(request);
+      return responseBytes.asUtf8String();
+    } catch (NoSuchKeyException e) {
       throw new PlatformServiceException(
           EXPECTATION_FAILED,
           "Created object " + objectName + " was not found in bucket " + bucketName);
-    }
-    byte[] data = new byte[bytesToRead];
-    try (InputStream ois = object.getObjectContent()) {
-      ois.read(data);
-    } catch (IOException e) {
+    } catch (S3Exception e) {
       throw new PlatformServiceException(
           EXPECTATION_FAILED,
           "Error reading test object " + objectName + ", exception occurred: " + getStackTrace(e));
     }
-
-    return new String(data);
   }
 
-  private void validateListObjects(AmazonS3 client, String bucketName, String objectName) {
+  private void validateListObjects(S3Client client, String bucketName, String objectName) {
     if (!listContainsObject(client, bucketName, objectName)) {
       throw new PlatformServiceException(
           EXPECTATION_FAILED,
@@ -1490,19 +1602,18 @@ public class AWSUtil implements CloudUtil {
     }
   }
 
-  private boolean listContainsObject(AmazonS3 client, String bucketName, String objectName) {
-    Optional<S3ObjectSummary> objSum;
-    ListObjectsV2Result objListing = client.listObjectsV2(bucketName, objectName);
-    objSum =
-        objListing.getObjectSummaries().stream()
-            .filter(oS -> oS.getKey().equals(objectName))
-            .findAny();
-    return objSum.isPresent();
+  private boolean listContainsObject(S3Client client, String bucketName, String objectName) {
+    ListObjectsV2Request request =
+        ListObjectsV2Request.builder().bucket(bucketName).prefix(objectName).build();
+    ListObjectsV2Response response = client.listObjectsV2(request);
+    return response.contents().stream().anyMatch(object -> object.key().equals(objectName));
   }
 
-  private void validateDeleteObject(AmazonS3 client, String bucketName, String objectName) {
-    client.deleteObject(bucketName, objectName);
-    if (client.doesObjectExist(bucketName, objectName)) {
+  private void validateDeleteObject(S3Client client, String bucketName, String objectName) {
+    DeleteObjectRequest request =
+        DeleteObjectRequest.builder().bucket(bucketName).key(objectName).build();
+    client.deleteObject(request);
+    if (listContainsObject(client, bucketName, objectName)) {
       throw new PlatformServiceException(
           EXPECTATION_FAILED, "Test object " + objectName + " was found in bucket " + bucketName);
     }
@@ -1540,24 +1651,26 @@ public class AWSUtil implements CloudUtil {
   private boolean isSpotInstanceInterrupted(NodeDetails nodeDetails, Provider provider) {
     try {
       String instanceID = getInstanceIDFromName(nodeDetails, provider, nodeDetails.getRegion());
-      AWSCloudTrail client = awsCloudImpl.getCloudTrailClient(provider, nodeDetails.getRegion());
+      CloudTrailClient client = awsCloudImpl.getCloudTrailClient(provider, nodeDetails.getRegion());
       LookupEventsRequest request =
-          new LookupEventsRequest()
-              .withLookupAttributes(
-                  new LookupAttribute()
-                      .withAttributeKey(LookupAttributeKey.ResourceName)
-                      .withAttributeValue(instanceID));
-      LookupEventsResult response;
+          LookupEventsRequest.builder()
+              .lookupAttributes(
+                  LookupAttribute.builder()
+                      .attributeKey(LookupAttributeKey.RESOURCE_NAME)
+                      .attributeValue(instanceID)
+                      .build())
+              .build();
+      LookupEventsResponse response;
       do {
         response = client.lookupEvents(request);
-        for (Event event : response.getEvents()) {
-          if (event.getEventName().equalsIgnoreCase("StopInstances")
-              && event.getUsername().equalsIgnoreCase("InstanceTermination")) {
+        for (Event event : response.events()) {
+          if (event.eventName().equalsIgnoreCase("StopInstances")
+              && event.username().equalsIgnoreCase("InstanceTermination")) {
             return true;
           }
         }
-        request = request.withNextToken(response.getNextToken());
-      } while (response.getNextToken() != null);
+        request = request.toBuilder().nextToken(response.nextToken()).build();
+      } while (response.nextToken() != null);
     } catch (Exception e) {
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR,
@@ -1568,22 +1681,23 @@ public class AWSUtil implements CloudUtil {
 
   private String getInstanceIDFromName(NodeDetails nodeDetails, Provider provider, String region) {
     try {
-      AmazonEC2 ec2Client = awsCloudImpl.getEC2Client(provider, region);
+      Ec2Client ec2Client = awsCloudImpl.getEC2Client(provider, region);
       DescribeInstancesRequest request =
-          new DescribeInstancesRequest()
-              .withFilters(new Filter().withName("tag:Name").withValues(nodeDetails.getNodeName()));
-      DescribeInstancesResult response = ec2Client.describeInstances(request);
-      if (response.getReservations().isEmpty()) {
+          DescribeInstancesRequest.builder()
+              .filters(Filter.builder().name("tag:Name").values(nodeDetails.getNodeName()).build())
+              .build();
+      DescribeInstancesResponse response = ec2Client.describeInstances(request);
+      if (response.reservations().isEmpty()) {
         throw new PlatformServiceException(
             BAD_REQUEST,
-            String.format("No AWS instance found with name : ", nodeDetails.getNodeName()));
+            String.format("No AWS instance found with name : %s", nodeDetails.getNodeName()));
       }
-      List<Instance> instances = response.getReservations().get(0).getInstances();
+      List<Instance> instances = response.reservations().get(0).instances();
       String result = "";
       // Choose instance with same IP
       for (Instance instance : instances) {
-        if (instance.getPrivateIpAddress().equals(nodeDetails.cloudInfo.private_ip)) {
-          result = instance.getInstanceId();
+        if (instance.privateIpAddress().equals(nodeDetails.cloudInfo.private_ip)) {
+          result = instance.instanceId();
           break;
         }
       }

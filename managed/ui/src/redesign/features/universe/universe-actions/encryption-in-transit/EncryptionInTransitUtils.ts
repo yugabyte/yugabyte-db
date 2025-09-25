@@ -105,7 +105,10 @@ export const FORM_RESET_VALUES = {
   rootAndClientRootCASame: false
 };
 
-export const getInitialFormValues = (universeDetails: UniverseDetails) => {
+export const getInitialFormValues = (
+  universeDetails: UniverseDetails,
+  isItKubernetesUniverse: boolean
+) => {
   const cluster = getPrimaryCluster(universeDetails.clusters);
   return {
     enableUniverseEncryption: !!(
@@ -121,7 +124,9 @@ export const getInitialFormValues = (universeDetails: UniverseDetails) => {
       : null,
     createNewRootCA: false,
     createNewClientRootCA: false,
-    rootAndClientRootCASame: !!universeDetails?.rootAndClientRootCASame,
+    rootAndClientRootCASame: isItKubernetesUniverse
+      ? true
+      : !!universeDetails?.rootAndClientRootCASame,
     rollingUpgrade: true,
     upgradeDelay: 240
   };

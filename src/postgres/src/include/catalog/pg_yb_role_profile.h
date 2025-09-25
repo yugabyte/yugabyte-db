@@ -4,7 +4,7 @@
  *	  definition of the "role_profile" system catalog (pg_yb_role_profile)
  *
  *
- * Copyright (c) Yugabyte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  *
  * src/include/catalog/pg_yb_role_profile.h
  *

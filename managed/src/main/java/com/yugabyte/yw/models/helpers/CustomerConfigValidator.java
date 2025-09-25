@@ -1,12 +1,10 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.models.helpers;
 
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME;
 import static play.mvc.Http.Status.CONFLICT;
 
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.model.AmazonS3Exception;
 import com.azure.storage.blob.BlobContainerClient;
 import com.azure.storage.blob.models.BlobStorageException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -33,6 +31,8 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import org.apache.commons.lang3.StringUtils;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.S3Exception;
 
 @Singleton
 public class CustomerConfigValidator extends BaseBeanValidator {
@@ -183,8 +183,7 @@ public class CustomerConfigValidator extends BaseBeanValidator {
     }
 
     @Override
-    public AmazonS3 createS3Client(CustomerConfigStorageS3Data configData)
-        throws AmazonS3Exception {
+    public S3Client createS3Client(CustomerConfigStorageS3Data configData) throws S3Exception {
       return awsUtil.createS3Client(configData);
     }
   }

@@ -1,3 +1,3 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 export { default as YBConfirmModal } from './YBConfirmModal';

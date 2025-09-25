@@ -19,6 +19,7 @@ properties:
       The level of metrics collection. Allowed values are:
         - ALL: Collect all available metrics.
         - NORMAL: Collect standard set of metrics.
+        - TABLE_OFF: Disable table level metrics collection.
         - MINIMAL: Collect minimal set of metrics.
         - OFF: Disable metrics collection.
     type: string
@@ -27,6 +28,7 @@ properties:
     enum:
       - ALL
       - NORMAL
+      - TABLE_OFF
       - MINIMAL
       - 'OFF'
   scrape_config_targets:

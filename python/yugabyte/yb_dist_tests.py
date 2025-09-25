@@ -1,4 +1,4 @@
-# Copyright (c) YugaByte, Inc.
+# Copyright (c) YugabyteDB, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 # in compliance with the License.  You may obtain a copy of the License at
@@ -196,6 +196,7 @@ ARCHIVED_PATHS_IN_BUILD_DIR = [
     'upgrade_test_builds',
     'gflag_allowlist.txt',
     'test_xcluster_ddl_replication_sql',
+    'test_conflict_resolve_keys_verification_sql',
     f'{POSTGRES_BUILD_SUBDIR}/contrib',
     f'{POSTGRES_BUILD_SUBDIR}/src/test/modules',
     f'{POSTGRES_BUILD_SUBDIR}/src/test/regress',

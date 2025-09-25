@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 import { reduxForm } from 'redux-form';
 import { connect } from 'react-redux';

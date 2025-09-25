@@ -180,7 +180,11 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
     userIntent.accessKeyCode = "default-key";
     userIntent.replicationFactor = 3;
     userIntent.regionList = ImmutableList.of(region.getUuid());
-    userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
+    if (provider.getCloudCode() == Common.CloudType.azu) {
+      userIntent.instanceType = "Standard_D2as_v4";
+    } else {
+      userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
+    }
     Common.CloudType providerType = Common.CloudType.valueOf(provider.getCode());
     userIntent.providerType = providerType;
     userIntent.provider = provider.getUuid().toString();

@@ -9,7 +9,7 @@ export const ConfigTabKey = {
   BACKUP_NEW: 'newBackupConfig',
   SECURITY: 'security',
   PERF_ADVISOR: 'perfAdvisor',
-  LOG: 'log'
+  EXPORT_TELEMETRY: 'exportTelemetry'
 } as const;
 export type ConfigTabKey = typeof ConfigTabKey[keyof typeof ConfigTabKey];
 

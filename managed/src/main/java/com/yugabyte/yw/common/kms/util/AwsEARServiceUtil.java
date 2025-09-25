@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 YugaByte, Inc. and Contributors
+ * Copyright 2019 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -10,43 +10,12 @@
 
 package com.yugabyte.yw.common.kms.util;
 
-import com.amazonaws.auth.AWSCredentials;
-import com.amazonaws.auth.AWSStaticCredentialsProvider;
-import com.amazonaws.auth.BasicAWSCredentials;
-import com.amazonaws.client.builder.AwsClientBuilder.EndpointConfiguration;
-import com.amazonaws.services.identitymanagement.AmazonIdentityManagement;
-import com.amazonaws.services.identitymanagement.AmazonIdentityManagementClientBuilder;
-import com.amazonaws.services.identitymanagement.model.GetRoleRequest;
-import com.amazonaws.services.identitymanagement.model.GetRoleResult;
-import com.amazonaws.services.identitymanagement.model.Role;
-import com.amazonaws.services.kms.AWSKMS;
-import com.amazonaws.services.kms.AWSKMSClientBuilder;
-import com.amazonaws.services.kms.model.AliasListEntry;
-import com.amazonaws.services.kms.model.CreateAliasRequest;
-import com.amazonaws.services.kms.model.CreateKeyRequest;
-import com.amazonaws.services.kms.model.CreateKeyResult;
-import com.amazonaws.services.kms.model.DecryptRequest;
-import com.amazonaws.services.kms.model.DeleteAliasRequest;
-import com.amazonaws.services.kms.model.DescribeKeyRequest;
-import com.amazonaws.services.kms.model.DescribeKeyResult;
-import com.amazonaws.services.kms.model.EncryptRequest;
-import com.amazonaws.services.kms.model.EncryptResult;
-import com.amazonaws.services.kms.model.GenerateDataKeyWithoutPlaintextRequest;
-import com.amazonaws.services.kms.model.KeyListEntry;
-import com.amazonaws.services.kms.model.ListAliasesRequest;
-import com.amazonaws.services.kms.model.ListAliasesResult;
-import com.amazonaws.services.kms.model.ListKeysRequest;
-import com.amazonaws.services.kms.model.ListKeysResult;
-import com.amazonaws.services.kms.model.UpdateAliasRequest;
-import com.amazonaws.services.securitytoken.AWSSecurityTokenService;
-import com.amazonaws.services.securitytoken.AWSSecurityTokenServiceClientBuilder;
-import com.amazonaws.services.securitytoken.model.GetCallerIdentityRequest;
-import com.amazonaws.services.securitytoken.model.GetCallerIdentityResult;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
+import java.net.URI;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.List;
@@ -56,6 +25,20 @@ import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.Environment;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.AwsCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.core.SdkBytes;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.iam.IamClient;
+import software.amazon.awssdk.services.iam.model.GetRoleRequest;
+import software.amazon.awssdk.services.iam.model.GetRoleResponse;
+import software.amazon.awssdk.services.iam.model.Role;
+import software.amazon.awssdk.services.kms.KmsClient;
+import software.amazon.awssdk.services.kms.model.*;
+import software.amazon.awssdk.services.sts.StsClient;
+import software.amazon.awssdk.services.sts.model.GetCallerIdentityRequest;
+import software.amazon.awssdk.services.sts.model.GetCallerIdentityResponse;
 
 public class AwsEARServiceUtil {
   private static final String CMK_POLICY = "default_cmk_policy.json";
@@ -103,84 +86,81 @@ public class AwsEARServiceUtil {
 
   private static final Logger LOG = LoggerFactory.getLogger(AwsEARServiceUtil.class);
 
-  private static AWSCredentials getCredentials(ObjectNode authConfig) {
-
+  private static AwsCredentials getCredentials(ObjectNode authConfig) {
     if (!StringUtils.isBlank(
             authConfig.path(AwsKmsAuthConfigField.ACCESS_KEY_ID.fieldName).asText())
         && !StringUtils.isBlank(
             authConfig.path(AwsKmsAuthConfigField.SECRET_ACCESS_KEY.fieldName).asText())) {
 
-      return new BasicAWSCredentials(
+      return AwsBasicCredentials.create(
           authConfig.get(AwsKmsAuthConfigField.ACCESS_KEY_ID.fieldName).asText(),
           authConfig.get(AwsKmsAuthConfigField.SECRET_ACCESS_KEY.fieldName).asText());
     }
     return null;
   }
 
-  public static AWSKMS getKMSClient(UUID configUUID) {
+  public static KmsClient getKMSClient(UUID configUUID) {
     ObjectNode authConfig = EncryptionAtRestUtil.getAuthConfig(configUUID);
     return getKMSClient(configUUID, authConfig);
   }
 
-  public static AWSKMS getKMSClient(UUID configUUID, ObjectNode authConfig) {
+  public static KmsClient getKMSClient(UUID configUUID, ObjectNode authConfig) {
     if (authConfig == null) {
       authConfig = EncryptionAtRestUtil.getAuthConfig(configUUID);
     }
 
-    AWSCredentials awsCredentials = getCredentials(authConfig);
+    AwsCredentials awsCredentials = getCredentials(authConfig);
+    String region = authConfig.get(AwsKmsAuthConfigField.REGION.fieldName).asText();
 
-    if (awsCredentials == null
-        || StringUtils.isBlank(authConfig.path(AwsKmsAuthConfigField.REGION.fieldName).asText())) {
-
-      return AWSKMSClientBuilder.defaultClient();
+    if (awsCredentials == null || StringUtils.isBlank(region)) {
+      return KmsClient.builder().build();
     }
 
     if (authConfig.path(AwsKmsAuthConfigField.ENDPOINT.fieldName).isMissingNode()
         || StringUtils.isBlank(
             authConfig.path(AwsKmsAuthConfigField.ENDPOINT.fieldName).asText())) {
-      return AWSKMSClientBuilder.standard()
-          .withCredentials(new AWSStaticCredentialsProvider(awsCredentials))
-          .withRegion(authConfig.get(AwsKmsAuthConfigField.REGION.fieldName).asText())
+      return KmsClient.builder()
+          .credentialsProvider(StaticCredentialsProvider.create(awsCredentials))
+          .region(Region.of(region))
           .build();
     }
-
-    return AWSKMSClientBuilder.standard()
-        .withCredentials(new AWSStaticCredentialsProvider(awsCredentials))
-        .withEndpointConfiguration(
-            new EndpointConfiguration(
-                authConfig.path(AwsKmsAuthConfigField.ENDPOINT.fieldName).asText(),
-                authConfig.get(AwsKmsAuthConfigField.REGION.fieldName).asText()))
+    return KmsClient.builder()
+        .credentialsProvider(StaticCredentialsProvider.create(awsCredentials))
+        .region(Region.of(region))
+        .endpointOverride(
+            URI.create(
+                "https://" + authConfig.path(AwsKmsAuthConfigField.ENDPOINT.fieldName).asText()))
         .build();
   }
 
-  public static AmazonIdentityManagement getIAMClient(UUID configUUID) {
+  public static IamClient getIAMClient(UUID configUUID) {
     ObjectNode authConfig = EncryptionAtRestUtil.getAuthConfig(configUUID);
 
-    AWSCredentials awsCredentials = getCredentials(authConfig);
+    AwsCredentials awsCredentials = getCredentials(authConfig);
 
     if (awsCredentials == null
         || StringUtils.isBlank(authConfig.path(AwsKmsAuthConfigField.REGION.fieldName).asText())) {
-
-      return AmazonIdentityManagementClientBuilder.defaultClient();
+      return IamClient.builder().build();
     }
-    return AmazonIdentityManagementClientBuilder.standard()
-        .withCredentials(new AWSStaticCredentialsProvider(awsCredentials))
-        .withRegion(authConfig.get(AwsKmsAuthConfigField.REGION.fieldName).asText())
+
+    return IamClient.builder()
+        .credentialsProvider(StaticCredentialsProvider.create(awsCredentials))
+        .region(Region.of(authConfig.get(AwsKmsAuthConfigField.REGION.fieldName).asText()))
         .build();
   }
 
-  public static AWSSecurityTokenService getSTSClient(UUID configUUID) {
+  public static StsClient getSTSClient(UUID configUUID) {
     ObjectNode authConfig = EncryptionAtRestUtil.getAuthConfig(configUUID);
 
-    AWSCredentials awsCredentials = getCredentials(authConfig);
+    AwsCredentials awsCredentials = getCredentials(authConfig);
     if (awsCredentials == null
         || StringUtils.isBlank(authConfig.path(AwsKmsAuthConfigField.REGION.fieldName).asText())) {
-
-      return AWSSecurityTokenServiceClientBuilder.defaultClient();
+      return StsClient.builder().build();
     }
-    return AWSSecurityTokenServiceClientBuilder.standard()
-        .withCredentials(new AWSStaticCredentialsProvider(awsCredentials))
-        .withRegion(authConfig.get(AwsKmsAuthConfigField.REGION.fieldName).asText())
+
+    return StsClient.builder()
+        .credentialsProvider(StaticCredentialsProvider.create(awsCredentials))
+        .region(Region.of(authConfig.get(AwsKmsAuthConfigField.REGION.fieldName).asText()))
         .build();
   }
 
@@ -214,8 +194,8 @@ public class AwsEARServiceUtil {
     return (ObjectNode) policyBase.set(statementField, statements);
   }
 
-  private static GetCallerIdentityResult getCallerIdentity(UUID configUUID) {
-    GetCallerIdentityRequest req = new GetCallerIdentityRequest();
+  private static GetCallerIdentityResponse getCallerIdentity(UUID configUUID) {
+    GetCallerIdentityRequest req = GetCallerIdentityRequest.builder().build();
     return getSTSClient(configUUID).getCallerIdentity(req);
   }
 
@@ -225,15 +205,15 @@ public class AwsEARServiceUtil {
 
   public static String generateDefaultPolicy(UUID configUUID) {
     ObjectNode policyBase = getPolicyBase();
-    GetCallerIdentityResult callerIdentity = getCallerIdentity(configUUID);
+    GetCallerIdentityResponse callerIdentity = getCallerIdentity(configUUID);
     if (callerIdentity != null) {
-      String credentialsArn = callerIdentity.getArn();
+      String credentialsArn = callerIdentity.arn();
       if (credentialsArn.contains(":assumed-role/")) {
-        credentialsArn = getRole(configUUID, getResourceNameFromArn(credentialsArn)).getArn();
+        credentialsArn = getRole(configUUID, getResourceNameFromArn(credentialsArn)).arn();
       } else if (!credentialsArn.contains(":user/")) {
         throw new RuntimeException("Credentials provided are not associated to a user or role");
       }
-      String rootArn = String.format("arn:aws:iam::%s:root", callerIdentity.getAccount());
+      String rootArn = String.format("arn:aws:iam::%s:root", callerIdentity.account());
       return bindParamsToPolicyBase(policyBase, credentialsArn, rootArn).toString();
     } else {
       LOG.error("Could not get AWS caller identity from provided credentials");
@@ -243,70 +223,68 @@ public class AwsEARServiceUtil {
 
   private static void createAlias(UUID configUUID, String kId, String aliasName) {
     final CreateAliasRequest req =
-        new CreateAliasRequest().withAliasName(aliasName).withTargetKeyId(kId);
+        CreateAliasRequest.builder().aliasName(aliasName).targetKeyId(kId).build();
     AwsEARServiceUtil.getKMSClient(configUUID).createAlias(req);
   }
 
   private static void updateAlias(UUID configUUID, String kId, String aliasName) {
     final UpdateAliasRequest req =
-        new UpdateAliasRequest().withAliasName(aliasName).withTargetKeyId(kId);
+        UpdateAliasRequest.builder().aliasName(aliasName).targetKeyId(kId).build();
     AwsEARServiceUtil.getKMSClient(configUUID).updateAlias(req);
   }
 
   public static void deleteAlias(UUID configUUID, String aliasName) {
-    final DeleteAliasRequest req = new DeleteAliasRequest().withAliasName(aliasName);
+    final DeleteAliasRequest req = DeleteAliasRequest.builder().aliasName(aliasName).build();
     AwsEARServiceUtil.getKMSClient(configUUID).deleteAlias(req);
   }
 
   public static AliasListEntry getAlias(UUID configUUID, String aliasName) {
-    ListAliasesRequest req = new ListAliasesRequest().withLimit(100);
+    ListAliasesRequest req = ListAliasesRequest.builder().limit(100).build();
     AliasListEntry uniAlias = null;
     boolean done = false;
-    AWSKMS client = AwsEARServiceUtil.getKMSClient(configUUID);
+    KmsClient client = AwsEARServiceUtil.getKMSClient(configUUID);
     while (!done) {
-      ListAliasesResult result = client.listAliases(req);
-      for (AliasListEntry alias : result.getAliases()) {
-        if (alias.getAliasName().equals(aliasName)) {
+      ListAliasesResponse result = client.listAliases(req);
+      for (AliasListEntry alias : result.aliases()) {
+        if (alias.aliasName().equals(aliasName)) {
           uniAlias = alias;
           done = true;
           break;
         }
       }
-      req.setMarker(result.getNextMarker());
-      if (!result.getTruncated()) done = true;
+      req = ListAliasesRequest.builder().limit(100).marker(result.nextMarker()).build();
+      if (!result.truncated()) done = true;
     }
     return uniAlias;
   }
 
   private static Role getRole(UUID configUUID, String roleName) {
-    GetRoleRequest req = new GetRoleRequest().withRoleName(roleName);
-    GetRoleResult result = getIAMClient(configUUID).getRole(req);
-    return result.getRole();
+    GetRoleRequest req = GetRoleRequest.builder().roleName(roleName).build();
+    GetRoleResponse result = getIAMClient(configUUID).getRole(req);
+    return result.role();
   }
 
-  public static DescribeKeyResult describeKey(ObjectNode authConfig, String cmkId) {
-    AWSKMS client = AwsEARServiceUtil.getKMSClient(null, authConfig);
-    DescribeKeyRequest request = new DescribeKeyRequest().withKeyId(cmkId);
-    DescribeKeyResult response = client.describeKey(request);
-    return response;
+  public static DescribeKeyResponse describeKey(ObjectNode authConfig, String cmkId) {
+    final DescribeKeyRequest req = DescribeKeyRequest.builder().keyId(cmkId).build();
+    return getKMSClient(null, authConfig).describeKey(req);
   }
 
   public static KeyListEntry getCMK(UUID configUUID, String cmkId) {
     KeyListEntry cmk = null;
-    ListKeysRequest req = new ListKeysRequest().withLimit(1000);
+    ListKeysRequest.Builder reqBuilder = ListKeysRequest.builder().limit(1000);
     boolean done = false;
-    AWSKMS client = AwsEARServiceUtil.getKMSClient(configUUID);
+    KmsClient client = getKMSClient(configUUID);
     while (!done) {
-      ListKeysResult result = client.listKeys(req);
-      for (KeyListEntry key : result.getKeys()) {
-        if (key.getKeyId().equals(cmkId)) {
+      ListKeysResponse result = client.listKeys(reqBuilder.build());
+      for (KeyListEntry key : result.keys()) {
+        if (key.keyId().equals(cmkId)) {
           cmk = key;
           done = true;
           break;
         }
       }
-      req.setMarker(result.getNextMarker());
-      if (!result.getTruncated()) done = true;
+      reqBuilder.marker(result.nextMarker());
+      if (!result.truncated()) done = true;
     }
     return cmk;
   }
@@ -339,69 +317,63 @@ public class AwsEARServiceUtil {
    * @return the encrypted universe key.
    */
   public static byte[] encryptUniverseKey(UUID configUUID, byte[] plainTextUniverseKey) {
-    AWSKMS client = AwsEARServiceUtil.getKMSClient(configUUID);
-    String cmkId = AwsEARServiceUtil.getCMKId(configUUID);
-    EncryptRequest request =
-        new EncryptRequest().withKeyId(cmkId).withPlaintext(ByteBuffer.wrap(plainTextUniverseKey));
-    EncryptResult response = client.encrypt(request);
-    return getByteArrayFromBuffer(response.getCiphertextBlob());
+    ObjectNode authConfig = EncryptionAtRestUtil.getAuthConfig(configUUID);
+    return encryptUniverseKey(configUUID, plainTextUniverseKey, authConfig);
   }
 
   public static byte[] encryptUniverseKey(
       UUID configUUID, byte[] plainTextUniverseKey, ObjectNode authConfig) {
-    AWSKMS client = AwsEARServiceUtil.getKMSClient(configUUID, authConfig);
-    String cmkId = AwsEARServiceUtil.getCMKId(authConfig);
-    EncryptRequest request =
-        new EncryptRequest().withKeyId(cmkId).withPlaintext(ByteBuffer.wrap(plainTextUniverseKey));
-    EncryptResult response = client.encrypt(request);
-    return getByteArrayFromBuffer(response.getCiphertextBlob());
+    String cmkId = getCMKId(authConfig);
+    final EncryptRequest req =
+        EncryptRequest.builder()
+            .keyId(cmkId)
+            .plaintext(SdkBytes.fromByteArray(plainTextUniverseKey))
+            .build();
+    final EncryptResponse result = getKMSClient(configUUID, authConfig).encrypt(req);
+    return result.ciphertextBlob().asByteArray();
   }
 
   public static byte[] decryptUniverseKey(
       UUID configUUID, byte[] encryptedUniverseKey, ObjectNode config) {
     if (encryptedUniverseKey == null) return null;
-    ByteBuffer encryptedKeyBuffer = ByteBuffer.wrap(encryptedUniverseKey);
-    encryptedKeyBuffer.rewind();
-    final DecryptRequest req = new DecryptRequest().withCiphertextBlob(encryptedKeyBuffer);
-    ByteBuffer decryptedKeyBuffer =
-        AwsEARServiceUtil.getKMSClient(configUUID, config).decrypt(req).getPlaintext();
-    decryptedKeyBuffer.rewind();
-    byte[] decryptedUniverseKey = new byte[decryptedKeyBuffer.remaining()];
-    decryptedKeyBuffer.get(decryptedUniverseKey);
-    return decryptedUniverseKey;
+    final DecryptRequest req =
+        DecryptRequest.builder()
+            .ciphertextBlob(SdkBytes.fromByteArray(encryptedUniverseKey))
+            .build();
+    final DecryptResponse result = getKMSClient(configUUID, config).decrypt(req);
+    return result.plaintext().asByteArray();
   }
 
   public static byte[] generateDataKey(
       UUID configUUID, String cmkId, String algorithm, int keySize) {
-    return generateDataKey(configUUID, null, cmkId, algorithm, keySize);
+    ObjectNode authConfig = EncryptionAtRestUtil.getAuthConfig(configUUID);
+    return generateDataKey(configUUID, authConfig, cmkId, algorithm, keySize);
   }
 
   public static byte[] generateDataKey(
       UUID configUUID, ObjectNode authConfig, String cmkId, String algorithm, int keySize) {
     final String keySpecBase = "%s_%s";
-    final GenerateDataKeyWithoutPlaintextRequest dataKeyRequest =
-        new GenerateDataKeyWithoutPlaintextRequest()
-            .withKeyId(cmkId)
-            .withKeySpec(String.format(keySpecBase, algorithm, Integer.toString(keySize)));
-    ByteBuffer encryptedKeyBuffer =
-        AwsEARServiceUtil.getKMSClient(configUUID, authConfig)
-            .generateDataKeyWithoutPlaintext(dataKeyRequest)
-            .getCiphertextBlob();
-    encryptedKeyBuffer.rewind();
-    byte[] encryptedKeyBytes = new byte[encryptedKeyBuffer.remaining()];
-    encryptedKeyBuffer.get(encryptedKeyBytes);
-    return encryptedKeyBytes;
+    final GenerateDataKeyWithoutPlaintextRequest req =
+        GenerateDataKeyWithoutPlaintextRequest.builder()
+            .keyId(cmkId)
+            .keySpec(String.format(keySpecBase, algorithm, keySize))
+            .build();
+    final GenerateDataKeyWithoutPlaintextResponse result =
+        getKMSClient(configUUID, authConfig).generateDataKeyWithoutPlaintext(req);
+    return result.ciphertextBlob().asByteArray();
   }
 
-  public static CreateKeyResult createCMK(UUID configUUID, String description, String policy) {
-    CreateKeyRequest req = new CreateKeyRequest();
-    if (description != null) req = req.withDescription(description);
-    if (policy != null && policy.length() > 0) {
-      req = req.withPolicy(policy);
-    } else {
-      req = req.withPolicy(AwsEARServiceUtil.generateDefaultPolicy(configUUID));
+  public static CreateKeyResponse createCMK(UUID configUUID, String description, String policy) {
+    CreateKeyRequest.Builder builder = CreateKeyRequest.builder();
+    if (description != null) {
+      builder.description(description);
     }
-    return AwsEARServiceUtil.getKMSClient(configUUID).createKey(req);
+    if (policy != null && policy.length() > 0) {
+      builder.policy(policy);
+    } else {
+      builder.policy(generateDefaultPolicy(configUUID));
+    }
+    return getKMSClient(configUUID).createKey(builder.build());
   }
 
   public static void createOrUpdateCMKAlias(UUID configUUID, String cmkId, String aliasBaseName) {
@@ -409,7 +381,7 @@ public class AwsEARServiceUtil {
     AliasListEntry existingAlias = getAlias(configUUID, aliasName);
     if (existingAlias == null) {
       createAlias(configUUID, cmkId, aliasName);
-    } else if (!existingAlias.getTargetKeyId().equals(cmkId)) {
+    } else if (!existingAlias.targetKeyId().equals(cmkId)) {
       updateAlias(configUUID, cmkId, aliasName);
     }
   }

@@ -1,5 +1,5 @@
 """
-Copyright (c) Yugabyte, Inc.
+Copyright (c) YugabyteDB, Inc.
 
 This module provides utilities for generating and publishing release.
 """

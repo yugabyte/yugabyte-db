@@ -24,6 +24,19 @@
 
 namespace yb::docdb {
 
+YB_STRONGLY_TYPED_BOOL(AddInfinity);
+
+YB_DEFINE_ENUM(BoundComp, (kOut)(kIn)(kAtBound));
+
+struct RangeMatch {
+  BoundComp lower;
+  BoundComp upper;
+
+  BoundComp Last(bool is_forward) const {
+    return is_forward ? upper : lower;
+  }
+};
+
 // This class combines the notions of option filters (col1 IN (1,2,3)) and
 // singular range bound filters (col1 < 4 AND col1 >= 1) into a single notion of
 // lists of options of ranges, each encoded by an OptionRange instance as
@@ -89,31 +102,32 @@ namespace yb::docdb {
 class OptionRange {
  public:
   OptionRange(
-      dockv::KeyEntryValue lower, bool lower_inclusive,
-      dockv::KeyEntryValue upper, bool upper_inclusive)
-      : OptionRange(std::move(lower),
-                    lower_inclusive,
-                    std::move(upper),
-                    upper_inclusive,
-                    0 /* begin_idx_ */,
-                    0 /* end_idx_ */) {}
-
-  OptionRange(
-      dockv::KeyEntryValue lower, bool lower_inclusive,
-      dockv::KeyEntryValue upper, bool upper_inclusive,
+      const dockv::KeyEntryValue& lower, bool lower_inclusive,
+      const dockv::KeyEntryValue& upper, bool upper_inclusive,
       size_t begin_idx, size_t end_idx)
-      : lower_(std::move(lower)),
+      : lower_(lower),
         lower_inclusive_(lower_inclusive),
-        upper_(std::move(upper)),
+        upper_(upper),
         upper_inclusive_(upper_inclusive),
         begin_idx_(begin_idx),
-        end_idx_(end_idx) {}
+        end_idx_(end_idx),
+        fixed_point_(lower_inclusive && upper_inclusive && lower == upper) {}
+
+  OptionRange(
+      const dockv::KeyEntryValue& single, size_t begin_idx, size_t end_idx)
+      : lower_(single),
+        lower_inclusive_(true),
+        upper_(single),
+        upper_inclusive_(true),
+        begin_idx_(begin_idx),
+        end_idx_(end_idx),
+        fixed_point_(true) {}
 
   // Convenience constructors for testing
   OptionRange(int begin, int end, SortOrder sort_order = SortOrder::kAscending)
       : OptionRange(
             {dockv::KeyEntryValue::Int32(begin, sort_order)}, true,
-            {dockv::KeyEntryValue::Int32(end, sort_order)}, true) {}
+            {dockv::KeyEntryValue::Int32(end, sort_order)}, true, 0, 0) {}
 
   OptionRange(int value, SortOrder sort_order = SortOrder::kAscending) // NOLINT
       : OptionRange(value, value, sort_order) {}
@@ -125,35 +139,48 @@ class OptionRange {
             !upper,
             {upper ? dockv::KeyEntryValue::Int32(bound, sort_order)
                    : dockv::KeyEntryValue(dockv::KeyEntryType::kNullHigh)},
-            upper) {}
+            upper, 0, 0) {}
+
   OptionRange()
       : OptionRange(
             {dockv::KeyEntryValue(dockv::KeyEntryType::kLowest)},
             false,
             {dockv::KeyEntryValue(dockv::KeyEntryType::kHighest)},
-            false) {}
+            false, 0, 0) {}
 
   const dockv::KeyEntryValue& lower() const { return lower_; }
   bool lower_inclusive() const { return lower_inclusive_; }
   const dockv::KeyEntryValue& upper() const { return upper_; }
   bool upper_inclusive() const { return upper_inclusive_; }
 
+  bool fixed_point() const {
+    return fixed_point_;
+  }
+
+  const dockv::KeyEntryValue& first_bound(bool is_forward) const {
+    return is_forward ? lower_ : upper_;
+  }
+
+  bool first_bound_inclusive(bool is_forward) const {
+    return is_forward ? lower_inclusive_ : upper_inclusive_;
+  }
+
+  const dockv::KeyEntryValue& last_bound(bool is_forward) const {
+    return is_forward ? upper_ : lower_;
+  }
+
+  size_t first_idx(bool is_forward) const {
+    return is_forward ? begin_idx_ : end_idx_ - 1;
+  }
+
   size_t begin_idx() const { return begin_idx_; }
   size_t end_idx() const { return end_idx_; }
 
   bool HasIndex(size_t opt_index) const { return begin_idx_ <= opt_index && opt_index < end_idx_; }
 
-  static bool upper_lt(const OptionRange& range1, const OptionRange& range2) {
-    return range1.upper_ < range2.upper_;
-  }
-
-  static bool lower_gt(const OptionRange& range1, const OptionRange& range2) {
-    return range1.lower_ > range2.lower_;
-  }
-
-  static bool end_idx_leq(const OptionRange& range1, const OptionRange& range2) {
-    return range1.end_idx_ <= range2.end_idx_;
-  }
+  bool Match(const dockv::KeyEntryValue& value) const;
+  RangeMatch MatchEx(const dockv::KeyEntryValue& value) const;
+  bool SatisfiesInclusivity(RangeMatch match) const;
 
   std::string ToString() const;
 
@@ -162,9 +189,9 @@ class OptionRange {
   bool lower_inclusive_;
   dockv::KeyEntryValue upper_;
   bool upper_inclusive_;
-
   size_t begin_idx_;
   size_t end_idx_;
+  bool fixed_point_;
 
   friend class ScanChoicesTest;
   bool operator==(const OptionRange& other) const {
@@ -177,6 +204,53 @@ class OptionRange {
 inline std::ostream& operator<<(std::ostream& str, const OptionRange& opt) {
   return str << opt.ToString();
 }
+
+class ScanTarget {
+ public:
+  ScanTarget(Slice table_key_prefix, bool is_forward, size_t last_hash_column, size_t num_keys);
+
+  bool Match(Slice row_key) const;
+
+  Slice AsSlice() const;
+  Slice WithoutPrefix() const;
+  Slice Prefix() const;
+  size_t PrefixSize() const;
+  bool IsExtremal(size_t column_idx) const;
+  bool NeedGroupEnd(size_t column_idx) const;
+
+  std::string ToString() const;
+
+  void Reset();
+  void Truncate(size_t column_idx, bool add_inf);
+  void Append(
+      Slice target, BoundComp upper_match, AddInfinity add_infinity = AddInfinity::kFalse);
+
+  void Append(
+      const dockv::KeyEntryValue& target, BoundComp upper_match,
+      AddInfinity add_infinity = AddInfinity::kFalse);
+
+  void Append(const OptionRange& option);
+
+ private:
+  void FixTail(bool add_inf);
+  template <class Value>
+  void DoAppend(const Value& value, BoundComp upper_match, AddInfinity add_infinity);
+
+  size_t table_key_prefix_size_;
+  bool is_forward_;
+  size_t last_hash_column_;
+  size_t num_keys_;
+  dockv::KeyBytes value_;
+
+  bool has_inf_ = false;
+
+  struct ColumnInfo {
+    size_t end;
+    bool extremal;
+  };
+
+  boost::container::small_vector<ColumnInfo, 0x10> columns_;
+};
 
 class HybridScanChoices : public ScanChoices {
  public:
@@ -194,13 +268,15 @@ class HybridScanChoices : public ScanChoices {
       const std::shared_ptr<std::vector<qlexpr::OptionList>>& options,
       const qlexpr::QLScanRange* range_bounds,
       const ColGroupHolder& col_groups,
-      const size_t prefix_length);
+      const size_t prefix_length,
+      Slice table_key_prefix);
 
   HybridScanChoices(
       const Schema& schema,
       const qlexpr::YQLScanSpec& doc_spec,
       const dockv::KeyBytes& lower_doc_key,
-      const dockv::KeyBytes& upper_doc_key);
+      const dockv::KeyBytes& upper_doc_key,
+      Slice table_key_prefix);
 
   bool Finished() const override {
     return finished_;
@@ -214,20 +290,15 @@ class HybridScanChoices : public ScanChoices {
  private:
   friend class ScanChoicesTest;
 
-  // Sets current_scan_target_ to the first tuple in the filter space that is >= new_target.
+  using OptionRangeIterator = std::vector<OptionRange>::const_iterator;
+
+  // Sets scan_target_ to the first tuple in the filter space that is >= new_target.
   Result<bool> SkipTargetsUpTo(Slice new_target);
   Result<bool> DoneWithCurrentTarget(bool current_row_skipped = false);
   void SeekToCurrentTarget(IntentAwareIterator* db_iter);
 
-  bool CurrentTargetMatchesKey(Slice curr);
   // Also updates the checkpoint to latest seen ht from iter.
   bool CurrentTargetMatchesKey(Slice curr, IntentAwareIterator* iter);
-
-  // Append KeyEntryValue to target. After every append, we need to check if it is the last hash key
-  // column. Subsequently, we need to add a kGroundEnd after that if it is the last hash key column.
-  // Hence, appending to scan target should always be done using this function.
-  void AppendToScanTarget(const dockv::KeyEntryValue& target, size_t col_idx);
-  void AppendInfToScanTarget(size_t col_idx);
 
   // Utility function for (multi)key scans. Updates the target scan key by
   // incrementing the option index for an OptionList. Will handle overflow by setting current
@@ -237,27 +308,20 @@ class HybridScanChoices : public ScanChoices {
 
   // Utility function for testing
   std::vector<OptionRange> TEST_GetCurrentOptions();
-  Result<bool> ValidateHashGroup(const dockv::KeyBytes& scan_target) const;
+  Result<bool> ValidateHashGroup() const;
 
   // Utility method to return a column corresponding to idx in the schema.
   // This may be different from schema.column_id in the presence of the hash_code column.
   ColumnId GetColumnId(const Schema& schema, size_t idx) const;
 
-  Status DecodeKey(
-      dockv::DocKeyDecoder* decoder, dockv::KeyEntryValue* target_value = nullptr) const;
-
-  // Returns an iterator reference to the lowest option in the current search
+  // Returns a pair of iterators to the lowest and exclusive highest option in the current search
   // space of this option list index. See comment for OptionRange.
-  std::vector<OptionRange>::const_iterator GetSearchSpaceLowerBound(size_t opt_list_idx) const;
-
-  // Returns an iterator reference to the exclusive highest option range in the current search
-  // space of this option list index. See comment for OptionRange.
-  std::vector<OptionRange>::const_iterator GetSearchSpaceUpperBound(size_t opt_list_idx) const;
+  std::pair<OptionRangeIterator, OptionRangeIterator> GetSearchSpaceBounds(
+      size_t opt_list_idx) const;
 
   // Gets the option range that corresponds to the given option index at the given
   // option list index.
-  std::vector<OptionRange>::const_iterator GetOptAtIndex(size_t opt_list_idx,
-                                                         size_t opt_index) const;
+  OptionRangeIterator GetOptAtIndex(size_t opt_list_idx, size_t opt_index) const;
 
   // Sets the option that corresponds to the given option index at the given
   // logical option list index.
@@ -266,10 +330,8 @@ class HybridScanChoices : public ScanChoices {
   // Sets an entire group to a particular logical option index.
   void SetGroup(size_t opt_list_idx, size_t opt_index);
 
-  std::string DebugDumpCurrentScanTarget() const;
-
   const bool is_forward_scan_;
-  dockv::KeyBytes current_scan_target_;
+  ScanTarget scan_target_;
   bool finished_ = false;
   bool has_hash_columns_ = false;
   size_t num_hash_cols_;
@@ -284,12 +346,10 @@ class HybridScanChoices : public ScanChoices {
   // The following encodes the list of option we are iterating over
   std::vector<std::vector<OptionRange>> scan_options_;
 
-  // Vector of references to currently active elements being used
-  // in range_cols_scan_options_
+  // Vector of references to currently active elements being used in scan_options_.
   // current_scan_target_ranges_[i] gives us the current OptionRange
-  // column i is iterating over of the elements in
-  // range_cols_scan_options_[i]
-  mutable std::vector<std::vector<OptionRange>::const_iterator> current_scan_target_ranges_;
+  // column i is iterating over of the elements in scan_options_[i]
+  mutable std::vector<OptionRangeIterator> current_scan_target_ranges_;
 
   bool is_options_done_ = false;
 
@@ -309,7 +369,7 @@ class HybridScanChoices : public ScanChoices {
   // If we received a filter of the form (r1,r3) IN ((1,3), (2,5)) AND r2 IN (4,6)
   // We would have groups [[0,2], [1]]
   // The scan keys we would iterate over would be
-  // (1,4,3), (1,6,3), (2,4,3), (2,6,3)
+  // (1,4,3), (1,6,3), (2,4,5), (2,6,5)
   ColGroupHolder col_groups_;
 
   size_t prefix_length_ = 0;

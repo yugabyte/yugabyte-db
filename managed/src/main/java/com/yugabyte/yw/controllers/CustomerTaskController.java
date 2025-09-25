@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.controllers;
 
@@ -347,7 +347,7 @@ public class CustomerTaskController extends AuthenticatedController {
       query.between("create_time", filter.getDateRangeStart(), filter.getDateRangeEnd());
     }
     if (!CollectionUtils.isEmpty(filter.getStatus())) {
-      appendInClause(query, "status", filter.getStatus());
+      appendInClause(query, "taskInfo.taskState", filter.getStatus());
     }
     return query;
   }

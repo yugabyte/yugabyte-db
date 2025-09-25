@@ -1,3 +1,6 @@
+-- Set password encryption to MD5 for deterministic password hashes in tests
+SET password_encryption = 'md5';
+
 CREATE PROFILE profile_3_failed LIMIT FAILED_LOGIN_ATTEMPTS 3;
 CREATE PROFILE profile_2_failed LIMIT FAILED_LOGIN_ATTEMPTS 2;
 

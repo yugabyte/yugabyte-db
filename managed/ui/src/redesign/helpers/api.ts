@@ -40,6 +40,11 @@ import {
 } from '../../components/xcluster/disasterRecovery/dtos';
 import { XClusterConfigType } from '../../components/xcluster/constants';
 import { CustomerConfig } from '../../components/backupv2';
+import { ExportLogPayload } from '../features/export-telemetry/types';
+import { AuditLogPayload } from '../features/universe/universe-tabs/db-audit-logs/utils/types';
+import { TelemetryProvider } from '../features/export-telemetry/dtos';
+import { Task, TaskState } from '../features/tasks/dtos';
+import { SortDirection } from '../utils/dtos';
 
 /**
  * @deprecated Use query key factories for more flexable key organization
@@ -79,7 +84,11 @@ export const taskQueryKey = {
   customer: (customerUuid: string) => [...taskQueryKey.ALL, 'customer', customerUuid],
   universe: (universeUuid: string) => [...taskQueryKey.ALL, 'universe', universeUuid],
   provider: (providerUuid: string) => [...taskQueryKey.ALL, 'provider', providerUuid],
-  xCluster: (xClusterUuid: string) => [...taskQueryKey.ALL, 'xCluster', xClusterUuid]
+  xCluster: (xClusterUuid: string) => [...taskQueryKey.ALL, 'xCluster', xClusterUuid],
+  paged: (getPagedCustomerTaskRequest: GetPagedCustomerTaskRequest) => [
+    ...taskQueryKey.ALL,
+    getPagedCustomerTaskRequest
+  ]
 };
 
 export const providerQueryKey = {
@@ -198,6 +207,12 @@ export const alertTemplateQueryKey = {
 
 export const CUSTOMER_CONFIG_QUERY_KEY = 'customerConfig';
 
+export const telemetryProviderQueryKey = {
+  ALL: ['telemetryProvider'],
+  list: () => [...telemetryProviderQueryKey.ALL, 'list'],
+  detail: (telemetryProviderId: string) => [...telemetryProviderQueryKey.ALL, telemetryProviderId]
+};
+
 // --------------------------------------------------------------------------------------
 // API Constants
 // --------------------------------------------------------------------------------------
@@ -290,6 +305,60 @@ export type EditHaConfigRequest = CreateHaConfigRequest;
 
 export interface PromoteHaInstanceRequest {
   backup_file: string;
+}
+
+export interface GetPagedCustomerTaskRequest {
+  direction: SortDirection;
+  // 'createTime' is the only supported field on the backend right now.
+  sortBy?: 'createTime';
+  offset?: number;
+  limit?: number;
+  needTotalCount?: boolean;
+  filter?: {
+    /**
+     * The start date to filter paged query.
+     * @example "2022-12-12T13:07:18Z"
+     */
+    dateRangeStart?: string;
+
+    /**
+     * The end date to filter paged query.
+     * @example "2022-12-12T13:07:18Z"
+     */
+    dateRangeEnd?: string;
+
+    /**
+     * List of target types to filter by
+     */
+    targetList?: string[];
+
+    /**
+     * List of target UUIDs to filter by
+     */
+    targetUUIDList?: string[];
+
+    /**
+     * List of task types to filter by
+     */
+    typeList?: string[];
+
+    /**
+     * List of task type names to filter by
+     */
+    typeNameList?: string[];
+
+    /**
+     * List of task statuses to filter by
+     */
+    status?: TaskState[];
+  };
+}
+export interface GetPagedCustomerTaskResponse {
+  entities: Task[];
+  hasNext: boolean;
+  hasPrev: boolean;
+
+  totalCount?: number;
 }
 
 class ApiService {
@@ -727,11 +796,24 @@ class ApiService {
     return axios.delete<any>(requestUrl).then((res) => res.data);
   };
 
-  fetchUniverseTasks = (universeUuid: string): Promise<any> => {
+  fetchCustomerTasks = (universeUuid?: string): Promise<Task[]> => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/tasks_list`;
-    return axios.get<any>(requestUrl, { params: { uUUID: universeUuid } });
+    return axios
+      .get<Task[]>(requestUrl, { params: universeUuid })
+      .then((response) => response.data);
   };
 
+  fetchPagedCustomerTasks = (
+    getPagedCustomerTaskRequest: GetPagedCustomerTaskRequest
+  ): Promise<GetPagedCustomerTaskResponse> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/tasks_list/page`;
+    return axios
+      .post<GetPagedCustomerTaskResponse>(requestUrl, {
+        sortBy: 'createTime',
+        ...getPagedCustomerTaskRequest
+      })
+      .then((response) => response.data);
+  };
   getAlerts = (
     offset: number,
     limit: number,
@@ -790,6 +872,31 @@ class ApiService {
   rollbackTask = (taskUuid: string) => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/tasks/${taskUuid}/rollback`;
     return axios.post(requestUrl).then((response: any) => response.data);
+  };
+
+  fetchTelemetryProviderList = (): Promise<TelemetryProvider[]> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/telemetry_provider`;
+    return axios.get<TelemetryProvider[]>(requestUrl).then((response) => response.data);
+  };
+
+  fetchTelemetryProvider = (telementryProviderUuid: string): Promise<TelemetryProvider> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/telemetry_provider/${telementryProviderUuid}`;
+    return axios.get<TelemetryProvider>(requestUrl).then((response) => response.data);
+  };
+
+  createTelemetryProvider = (data: ExportLogPayload): Promise<YBPTask> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/telemetry_provider`;
+    return axios.post<YBPTask>(requestUrl, data).then((response) => response.data);
+  };
+
+  createAuditLogConfig = (universeId: string, data: AuditLogPayload) => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeId}/audit_log_config`;
+    return axios.post(requestUrl, data).then((response) => response.data);
+  };
+
+  deleteTelemetryProvider = (telemetryProviderUuid: string) => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/telemetry_provider/${telemetryProviderUuid}`;
+    return axios.delete(requestUrl).then((response) => response.data);
   };
 }
 

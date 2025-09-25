@@ -3573,6 +3573,24 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, assign_yb_enable_pg_stat_statements_rpc_stats, NULL
 	},
 
+	{
+		{"yb_ignore_read_time_in_walsender", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("When set, walsender will fetch the publication as of current time if "
+						 "it encounters any failures while reading the catalog tables as of yb_read_time"),
+			gettext_noop("This GUC should be set carefully and only till the time "
+									"the process of upgrading logical replication streams is "
+									"complete (i.e till the yb_restart_time of all the streams "
+									"crosses the time of upgrade completion). Moreover this GUC "
+									"should be set only after ensuring that no more DDLs "
+									"(including ALTER PUBLICATION) will be encountered by the "
+									"walsender"),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_ignore_read_time_in_walsender,
+		false,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL
@@ -7166,11 +7184,7 @@ static struct config_enum ConfigureNamesEnum[] =
 			NULL
 		},
 		&Password_encryption,
-		/*
-		 * YB_TODO: Change encryption method back to 'scram-sha-256' from 'md5'.
-		 * Currently YSQL Connection Manager times out when using scram passwords for unknown reasons.
-		 */
-		PASSWORD_TYPE_MD5, password_encryption_options,
+		PASSWORD_TYPE_SCRAM_SHA_256, password_encryption_options,
 		NULL, NULL, NULL
 	},
 

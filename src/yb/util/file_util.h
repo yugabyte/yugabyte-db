@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -17,6 +17,7 @@
 
 #include <chrono>
 #include <cstdarg>
+#include <fstream>
 #include <sstream>
 #include <string>
 #include <type_traits>
@@ -128,6 +129,33 @@ template <class TEnv>
 Status CopyDirectory(
     TEnv* env, const std::string& src_dir, const std::string& dest_dir) {
   return CopyDirectory(env, src_dir, dest_dir, CopyOption::kRecursive);
+}
+
+inline Status TEST_DumpStringToFile(const std::string& desc,
+                                    const std::string& content,
+                                    const std::string& path) {
+  // TODO: The Env doesn't support atomic append by multiple threads, so use ofstream for now.
+  std::ofstream file(path, std::ios::app);
+  if (!file.is_open()) {
+    return STATUS(IOError, path, "File not found");
+  }
+  std::string msg = Format("$0:\n$1\n", desc, content);
+  file << msg << std::endl;
+  file.close();
+  return Status::OK();
+}
+
+template <class Collection, class Transform>
+Status TEST_DumpCollectionToFile(const std::string& desc,
+                                 const Collection& collection,
+                                 const Transform& transform,
+                                 const std::string& path) {
+  std::string content;
+  for (const auto& item : collection) {
+    content += AsString(transform(item));
+    content += "\n";
+  }
+  return TEST_DumpStringToFile(desc, content, path);
 }
 
 }  // namespace yb

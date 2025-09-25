@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -154,7 +154,7 @@ DECLARE_int32(master_ts_rpc_timeout_ms);
 
 DECLARE_bool(ysql_enable_db_catalog_version_mode);
 
-DECLARE_bool(TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication);
+DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 
 namespace yb {
 namespace master {
@@ -310,7 +310,7 @@ Status Master::RegisterServices() {
       FLAGS_master_tserver_svc_queue_length,
       std::make_shared<MasterTabletServiceImpl>(master_tablet_server_.get(), this)));
 
-  if (FLAGS_TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
+  if (FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
     auto cdc_service = master_tablet_server_->CreateCDCService(
         metric_entity(), client_future(), metric_registry());
     RETURN_NOT_OK(RegisterService(FLAGS_master_xrepl_svc_queue_length, cdc_service));

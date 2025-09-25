@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -80,15 +80,18 @@ class TSLocalLockManagerTest : public TabletServerTestBase {
     TabletServerTestBase::SetUp();
     StartTabletServer();
     auto& server = *mini_server_->server();
+    lm_ = CHECK_NOTNULL(server.ts_local_lock_manager()).get();
+    BeforeSharedMemorySetup();
+    lm_->TEST_MarkBootstrapped();
     // Skip shared mem negotiation since there is no pg supervisor managing conections,
     // and hence the negotiation callback never happens.
     ASSERT_OK(server.SkipSharedMemoryNegotiation());
     shared_mem_state_ = server.shared_mem_manager()->SharedData()->object_lock_state();
     shared_manager_ = server.ObjectLockSharedStateManager();
     lock_owner_registry_ = &shared_manager_->registry();
-    lm_ = CHECK_NOTNULL(server.ts_local_lock_manager()).get();
-    lm_->TEST_MarkBootstrapped();
   }
+
+  virtual void BeforeSharedMemorySetup() {}
 
   Status LockRelations(
       const ObjectLockOwner& owner, uint32_t database_id, const std::vector<uint32_t>& relation_ids,
@@ -618,6 +621,40 @@ TEST_F(TSLocalLockManagerTest, YB_LINUX_DEBUG_ONLY_TEST(TestFastpathCrash)) {
   ASSERT_EQ(WaitingLocksSize(), 0);
 
   ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+}
+
+class TSLocalLockManagerBootstrappedLocksTest : public TSLocalLockManagerTest {
+ public:
+  void BeforeSharedMemorySetup() override {
+    DdlLockEntriesPB entries;
+    auto* lock_request = entries.mutable_lock_entries()->Add();
+    lock_request->set_txn_id(kTxn1.txn_id.data(), kTxn1.txn_id.size());
+    lock_request->set_subtxn_id(kTxn1.subtxn_id);
+    auto* lock = lock_request->mutable_object_locks()->Add();
+    lock->set_database_oid(kDatabase1);
+    lock->set_relation_oid(kObject1);
+    lock->set_object_oid(kDefaultObjectId);
+    lock->set_object_sub_oid(kDefaultObjectSubId);
+    lock->set_lock_type(TableLockType::EXCLUSIVE);
+    ASSERT_OK(lm_->BootstrapDdlObjectLocks(entries));
+  }
+
+  void TearDown() override {
+    ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+    ASSERT_EQ(GrantedLocksSize(), 0);
+    ASSERT_EQ(WaitingLocksSize(), 0);
+    TSLocalLockManagerTest::TearDown();
+  }
+};
+
+TEST_F(TSLocalLockManagerBootstrappedLocksTest, TestSimple) {
+  ASSERT_GE(GrantedLocksSize(), 1);
+  ASSERT_EQ(WaitingLocksSize(), 0);
+
+  auto txn2 = lock_owner_registry_->Register(kTxn2.txn_id, TabletId());
+  ASSERT_FALSE(ASSERT_RESULT(LockRelationPgFastpath(
+      txn2.tag(), kTxn2.subtxn_id, kDatabase1, kObject1,
+      ObjectLockFastpathLockType::kRowExclusive)));
 }
 
 } // namespace yb::tserver

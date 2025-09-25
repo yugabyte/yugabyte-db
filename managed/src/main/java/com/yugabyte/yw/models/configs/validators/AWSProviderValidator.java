@@ -1,14 +1,9 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.models.configs.validators;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
-import com.amazonaws.services.ec2.model.Image;
-import com.amazonaws.services.ec2.model.IpPermission;
-import com.amazonaws.services.ec2.model.SecurityGroup;
-import com.amazonaws.services.ec2.model.Subnet;
-import com.amazonaws.util.CollectionUtils;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.SetMultimap;
 import com.google.inject.Singleton;
@@ -29,7 +24,12 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import javax.inject.Inject;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
+import software.amazon.awssdk.services.ec2.model.Image;
+import software.amazon.awssdk.services.ec2.model.IpPermission;
+import software.amazon.awssdk.services.ec2.model.SecurityGroup;
+import software.amazon.awssdk.services.ec2.model.Subnet;
 
 @Singleton
 public class AWSProviderValidator extends ProviderFieldsValidator {
@@ -205,7 +205,7 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
       try {
         Image image = awsCloudImpl.describeImageOrBadRequest(provider, region, imageId);
         List<String> errorList = new ArrayList<>();
-        String arch = image.getArchitecture().toLowerCase();
+        String arch = image.architecture().toString().toLowerCase();
         List<String> supportedArch =
             runtimeConfigGetter.getStaticConf().getStringList("yb.aws.supported_arch_types");
         if (!supportedArch.contains(arch)) {
@@ -213,14 +213,14 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
         }
         List<String> supportedRootDeviceType =
             runtimeConfigGetter.getStaticConf().getStringList("yb.aws.supported_root_device_type");
-        String rootDeviceType = image.getRootDeviceType().toLowerCase();
+        String rootDeviceType = image.rootDeviceType().name().toLowerCase();
         if (!supportedRootDeviceType.contains(rootDeviceType)) {
           errorList.add(
               rootDeviceType + " root device type on image " + imageId + " is not supported");
         }
         List<String> supportedPlatform =
             runtimeConfigGetter.getStaticConf().getStringList("yb.aws.supported_platform");
-        String platformDetails = image.getPlatformDetails().toLowerCase();
+        String platformDetails = image.platformDetails().toLowerCase();
         if (supportedPlatform.stream().noneMatch(platformDetails::contains)) {
           errorList.add(platformDetails + " platform on image " + imageId + " is not supported");
         }
@@ -272,11 +272,11 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
             awsCloudImpl.describeSecurityGroupsOrBadRequest(provider, region);
         List<String> errorList = new ArrayList<>();
         for (SecurityGroup securityGroup : securityGroupList) {
-          if (StringUtils.isEmpty(securityGroup.getVpcId())) {
-            errorList.add("No vpc is attached to SG: " + securityGroup.getGroupId());
-          } else if (!securityGroup.getVpcId().equals(region.getVnetName())) {
+          if (StringUtils.isEmpty(securityGroup.vpcId())) {
+            errorList.add("No vpc is attached to SG: " + securityGroup.groupId());
+          } else if (!securityGroup.vpcId().equals(region.getVnetName())) {
             errorList.add(
-                securityGroup.getGroupId() + " is not attached to vpc: " + region.getVnetName());
+                securityGroup.groupId() + " is not attached to vpc: " + region.getVnetName());
           }
         }
         if (errorList.size() != 0) {
@@ -303,10 +303,10 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
           awsCloudImpl.describeSecurityGroupsOrBadRequest(provider, region);
       for (SecurityGroup securityGroup : securityGroupList) {
         boolean portOpen = false;
-        if (!CollectionUtils.isNullOrEmpty(securityGroup.getIpPermissions())) {
-          for (IpPermission ipPermission : securityGroup.getIpPermissions()) {
-            Integer fromPort = ipPermission.getFromPort();
-            Integer toPort = ipPermission.getToPort();
+        if (!CollectionUtils.isEmpty(securityGroup.ipPermissions())) {
+          for (IpPermission ipPermission : securityGroup.ipPermissions()) {
+            Integer fromPort = ipPermission.fromPort();
+            Integer toPort = ipPermission.toPort();
             if (fromPort == null && toPort == null) {
               portOpen = true;
               break;
@@ -321,8 +321,7 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
           }
         }
         if (!portOpen) {
-          String errorMsg =
-              sshPort + " is not open on security group " + securityGroup.getGroupId();
+          String errorMsg = sshPort + " is not open on security group " + securityGroup.groupId();
           validationErrorsMap.put(fieldDetails, errorMsg);
         }
       }
@@ -345,17 +344,17 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
         List<String> errorList = new ArrayList<>();
         Set<String> cidrBlocks = new HashSet<>();
         for (Subnet subnet : subnets) {
-          AvailabilityZone az = getAzBySubnetFromRegion(region, subnet.getSubnetId());
-          if (!az.getCode().equals(subnet.getAvailabilityZone())) {
-            errorList.add("Invalid AZ code for subnet: " + subnet.getSubnetId());
+          AvailabilityZone az = getAzBySubnetFromRegion(region, subnet.subnetId());
+          if (!az.getCode().equals(subnet.availabilityZone())) {
+            errorList.add("Invalid AZ code for subnet: " + subnet.subnetId());
           }
-          if (!subnet.getVpcId().equals(regionVnetName)) {
-            errorList.add(subnet.getSubnetId() + " is not associated with " + regionVnetName);
+          if (!subnet.vpcId().equals(regionVnetName)) {
+            errorList.add(subnet.subnetId() + " is not associated with " + regionVnetName);
           }
-          if (cidrBlocks.contains(subnet.getCidrBlock())) {
+          if (cidrBlocks.contains(subnet.cidrBlock())) {
             errorList.add("Please provide non-overlapping CIDR blocks subnets");
           }
-          cidrBlocks.add(subnet.getCidrBlock());
+          cidrBlocks.add(subnet.cidrBlock());
         }
         if (errorList.size() != 0) {
           validationErrorsMap.putAll(fieldDetails, errorList);

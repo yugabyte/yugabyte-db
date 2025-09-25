@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 import { useEffect, useState, useRef } from 'react';
 import * as Yup from 'yup';

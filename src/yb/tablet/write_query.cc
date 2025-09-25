@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -29,6 +29,7 @@
 #include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/cql_operation.h"
+#include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/docdb_statistics.h"
 #include "yb/docdb/pgsql_operation.h"
@@ -457,7 +458,7 @@ Result<bool> WriteQuery::PrepareExecute() {
     }
 
     if (client_request_->has_write_batch() && client_request_->has_external_hybrid_time()) {
-      return false;
+      return ExternalWritePrepareExecute();
     }
   } else {
     const auto* request = operation().request();
@@ -645,6 +646,37 @@ Result<bool> WriteQuery::PgsqlPrepareLock() {
     doc_ops_.emplace_back(std::move(lock_op));
   }
   return client_request_->pgsql_lock_batch().begin()->is_lock();
+}
+
+Result<bool> WriteQuery::ExternalWritePrepareExecute() {
+  auto& write_batch = client_request_->write_batch();
+  if (write_batch.xcluster_used_schema_versions().empty()) {
+    return false;
+  }
+
+  auto tablet = VERIFY_RESULT(tablet_safe());
+  auto& metadata = *tablet->metadata();
+  // Verify that the schema versions used in the write batch are present in the tablet metadata.
+  for (const auto& used_schema_version : write_batch.xcluster_used_schema_versions()) {
+    auto table_info_res = metadata.GetTableInfo(used_schema_version.colocation_id());
+    if (!table_info_res.ok()) {
+      if (used_schema_version.colocation_id() != kColocationIdNotSet) {
+        // This is expected for colocated tables that are not yet created on the target.
+        continue;
+      }
+      return table_info_res.status();
+    }
+    const auto table_info = *table_info_res;
+    const auto& schema_packing_storage = table_info->doc_read_context->schema_packing_storage;
+    for (const auto& schema_version : used_schema_version.schema_versions()) {
+      SCHECK(
+          schema_packing_storage.HasVersion(schema_version), IllegalState,
+          Format(
+              "Schema version $0 not found in schema packing storage: $1", schema_version,
+              schema_packing_storage.VersionsToString()));
+    }
+  }
+  return false;
 }
 
 void WriteQuery::Execute(std::unique_ptr<WriteQuery> query) {

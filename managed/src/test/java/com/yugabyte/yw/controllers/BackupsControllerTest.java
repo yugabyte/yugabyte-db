@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.controllers;
 
@@ -51,7 +51,7 @@ import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PrevYBSoftwareConfig;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.forms.YbcThrottleParametersResponse;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupState;
@@ -1067,22 +1067,15 @@ public class BackupsControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testRestoreWhenYsqlMajorVersionUpgradeInMonitoringPhase() {
+  public void testRestoreWhenSoftwareUpgradeInProgress() {
     // This test runs only on V1 Restore backup API.
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST");
     defaultUniverse =
         Universe.saveDetails(
             defaultUniverse.getUniverseUUID(),
             universe -> {
-              universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion =
-                  "2025.1.0.0-b1";
-              universe.getUniverseDetails().prevYBSoftwareConfig = new PrevYBSoftwareConfig();
-              universe
-                  .getUniverseDetails()
-                  .prevYBSoftwareConfig
-                  .setSoftwareVersion("2024.2.3.0-b1");
+              universe.getUniverseDetails().softwareUpgradeState = SoftwareUpgradeState.Upgrading;
             });
-    when(mockSoftwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(any())).thenReturn(true);
     BackupTableParams bp = new BackupTableParams();
     when(mockBackupHelper.createRestoreTask(any(), any())).thenCallRealMethod();
     bp.storageConfigUUID = customerConfig.getConfigUUID();
@@ -1097,7 +1090,44 @@ public class BackupsControllerTest extends FakeDBApplication {
     Result result =
         assertPlatformException(
             () -> restoreBackup(defaultUniverse.getUniverseUUID(), bodyJson, null));
-    assertBadRequest(result, "Cannot restore backup with major version upgrade is in progress");
+    assertBadRequest(result, "Cannot restore backup while software upgrade is in progress");
+    assertAuditEntry(0, defaultCustomer.getUuid());
+  }
+
+  @Test
+  @Parameters({
+    "UpgradeFailed",
+    "PreFinalize",
+    "Finalizing",
+    "FinalizeFailed",
+    "RollingBack",
+    "RollbackFailed"
+  })
+  @TestCaseName("testRestoreWhenSoftwareUpgradeState:{0}")
+  public void testRestoreWhenSoftwareUpgradeState(SoftwareUpgradeState state) {
+    // This test runs only on V1 Restore backup API.
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST");
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            universe -> {
+              universe.getUniverseDetails().softwareUpgradeState = state;
+            });
+    BackupTableParams bp = new BackupTableParams();
+    when(mockBackupHelper.createRestoreTask(any(), any())).thenCallRealMethod();
+    bp.storageConfigUUID = customerConfig.getConfigUUID();
+    bp.setUniverseUUID(UUID.randomUUID());
+    Backup b = Backup.create(defaultCustomer.getUuid(), bp);
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("keyspace", "mock_ks");
+    bodyJson.put("tableName", "mock_table");
+    bodyJson.put("actionType", "RESTORE");
+    bodyJson.put("storageConfigUUID", bp.storageConfigUUID.toString());
+    bodyJson.put("storageLocation", b.getBackupInfo().storageLocation);
+    Result result =
+        assertPlatformException(
+            () -> restoreBackup(defaultUniverse.getUniverseUUID(), bodyJson, null));
+    assertBadRequest(result, "Cannot restore backup while software upgrade is in progress");
     assertAuditEntry(0, defaultCustomer.getUuid());
   }
 

@@ -4,7 +4,7 @@
  * Values of flag bits that are sent by Postgres to YB Connection Manager
  * This file is also included by YSQL Connection Manager
  *
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License.  You may obtain a copy

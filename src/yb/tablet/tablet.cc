@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -111,6 +111,7 @@
 
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
+#include "yb/util/file_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -229,6 +230,9 @@ DEFINE_test_flag(bool, tablet_verify_flushed_frontier_after_modifying, false,
 
 DEFINE_test_flag(bool, docdb_log_write_batches, false,
                  "Dump write batches being written to RocksDB");
+
+DEFINE_test_flag(string, file_to_dump_docdb_writes, "",
+    "Dump write batches being written to RocksDB to a file");
 
 DEFINE_NON_RUNTIME_bool(export_intentdb_metrics, true,
                     "Dump intentsdb statistics to prometheus metrics");
@@ -1565,6 +1569,10 @@ TabletScopedRWOperationPauses Tablet::StartShutdownStorages(
     return op_pause;
   };
 
+  // Triggering vector indexes shutting down before RocksDB to let vector indexes release
+  // ScopedRWOperation instances if any.
+  vector_indexes_->StartShutdown();
+
   op_pauses.blocking_rocksdb_shutdown_start = pause(BlockingRocksDbShutdownStart::kTrue);
 
   bool expected = false;
@@ -1641,7 +1649,7 @@ Status Tablet::DeleteStorages(const std::vector<std::string>& db_paths) {
   return status;
 }
 
-Result<std::unique_ptr<docdb::DocRowwiseIterator>> Tablet::NewUninitializedDocRowIterator(
+Result<docdb::DocRowwiseIteratorPtr> Tablet::NewUninitializedDocRowIterator(
     const dockv::ReaderProjection& projection,
     const ReadHybridTime& read_hybrid_time,
     const TableId& table_id,
@@ -1879,10 +1887,17 @@ void Tablet::WriteToRocksDB(
   }
 
   if (FLAGS_TEST_docdb_log_write_batches) {
-    LOG_WITH_PREFIX(INFO)
-        << "Wrote " << formatter->Count()
-        << " key/value pairs to " << storage_db_type
-        << " RocksDB:\n" << formatter->str();
+    std::ostringstream oss;
+    oss << "Wrote " << formatter->Count()
+      << " key/value pairs to " << storage_db_type
+      << " RocksDB:\n" << formatter->str();
+    LOG_WITH_PREFIX(INFO) << oss.str();
+    if (!FLAGS_TEST_file_to_dump_docdb_writes.empty()) {
+      const std::string desc =
+        storage_db_type == StorageDbType::kIntents ? "intent_write" : "regular_write";
+      WARN_NOT_OK(TEST_DumpStringToFile(
+          desc, oss.str(), FLAGS_TEST_file_to_dump_docdb_writes), "failed to dump");
+    }
   }
 }
 

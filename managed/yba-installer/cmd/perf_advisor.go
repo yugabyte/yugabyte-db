@@ -3,7 +3,6 @@ package cmd
 import (
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -222,21 +221,20 @@ func (perf PerfAdvisor) untarAndSetupPerfAdvisorPackages() error {
 			return fmt.Errorf("ui directory not found in %s after extraction", targetDir)
 	}
 
-	// Move override.properties into perf-advisor/config
-	overrideSrc := filepath.Join(targetDir, "override.properties")
 	overrideDst := filepath.Join(targetDir, "config", "override.properties")
-	input, err := os.Open(overrideSrc)
-	if err != nil {
-			return fmt.Errorf("failed to open %s: %w", overrideSrc, err)
-	}
-	defer input.Close()
-	output, err := os.Create(overrideDst)
-	if err != nil {
-			return fmt.Errorf("failed to create %s: %w", overrideDst, err)
-	}
-	defer output.Close()
-	if _, err := io.Copy(output, input); err != nil {
-			return fmt.Errorf("failed to copy override.properties: %w", err)
+	propertiesContent := fmt.Sprintf(
+		"spring.web.resources.static-locations=file://%s/perf-advisor/ui\n"+
+			"pa.security.api.token.secret=''\n"+
+			"spring.datasource.username=postgres\n"+
+			"pa.security.cors.origin=*\n"+
+			"pa.security.cors.origin.dev=*\n"+
+			"pa.prometheus.url=http://localhost:9090\n"+
+			"spring.datasource.url=jdbc:postgresql://localhost:5432/ts\n"+
+			"spring.datasource.password=''\n",
+		common.GetSoftwareRoot(),
+	)
+	if err := os.WriteFile(overrideDst, []byte(propertiesContent), 0644); err != nil {
+			return fmt.Errorf("failed to write override.properties: %w", err)
 	}
 
 	if common.HasSudoAccess() {

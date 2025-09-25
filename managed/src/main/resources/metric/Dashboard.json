@@ -12723,7 +12723,7 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Current Lag",
-      "expr" : "max by (saved_name)(cdcsdk_sent_lag_micros{node_prefix=~\"$dbcluster\"}) / 1000",
+      "expr" : "max by (saved_name)(cdcsdk_flush_lag{node_prefix=~\"$dbcluster\"}) / 1000",
       "refId" : "A"
     } ],
     "gridPos" : {

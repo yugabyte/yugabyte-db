@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 import React, { Component } from 'react';
 import { isObject } from 'lodash';

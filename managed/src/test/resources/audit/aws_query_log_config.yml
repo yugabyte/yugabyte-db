@@ -46,6 +46,10 @@ processors:
     - {action: upsert, key: additionalTag, value: queryValue}
   batch/query_logs_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$BatchProcessor {
     send_batch_max_size: 1000, send_batch_size: 100, timeout: 10s}
+  transform/replace: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$TransformProcessor
+    log_statements:
+    - context: log
+      statements: ['replace_pattern(body, "^otho8Aut", "")']
 receivers:
   filelog/query_logs_ysql: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$FileLogReceiver
     attributes: {yugabyte.query_log_type: ysql}
@@ -75,7 +79,8 @@ service:
   pipelines:
     logs/query_logs_00000000-0000-0000-0000-000000000000:
       exporters: [awscloudwatchlogs/query_logs_00000000-0000-0000-0000-000000000000]
-      processors: [attributes/query_logs_00000000-0000-0000-0000-000000000000, batch/query_logs_00000000-0000-0000-0000-000000000000]
+      processors: [attributes/query_logs_00000000-0000-0000-0000-000000000000, batch/query_logs_00000000-0000-0000-0000-000000000000,
+        transform/replace]
       receivers: [filelog/query_logs_ysql]
   telemetry:
     logs:

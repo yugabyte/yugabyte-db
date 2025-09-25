@@ -36,7 +36,7 @@ ARG YBC_VERSION=Unknown
 
 LABEL name="YugabyteDB" \
     maintainer="YugaByte" \
-    vendor="Yugabyte Inc" \
+    vendor="YugabyteDB, Inc" \
     release=$RELEASE \
     version=$VERSION \
     summary="YugabytDB Image" \

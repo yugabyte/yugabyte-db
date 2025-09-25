@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 import React, { Component } from 'react';
 import { Button, OverlayTrigger, Tooltip, DropdownButton, MenuItem } from 'react-bootstrap';
 import PropTypes from 'prop-types';

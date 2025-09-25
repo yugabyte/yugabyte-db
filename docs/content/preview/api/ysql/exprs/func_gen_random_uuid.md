@@ -17,7 +17,7 @@ Use the `gen_random_uuid()` function to generate a UUID.
 
 This function returns a version 4 (random) UUID. This is the most commonly used type of UUID and is appropriate for most applications.
 
-The [uuid-ossp](../../../../explore/ysql-language-features/pg-extensions/extension-uuid-ossp) and [pgcrypto](../../../../explore/ysql-language-features/pg-extensions/extension-pgcrypto) modules provide additional functions that implement other standard algorithms for generating UUIDs.
+The [uuid-ossp](../../../../additional-features/pg-extensions/extension-uuid-ossp) and [pgcrypto](../../../../additional-features/pg-extensions/extension-pgcrypto) modules provide additional functions that implement other standard algorithms for generating UUIDs.
 
 ## Example
 
@@ -37,4 +37,4 @@ You will get an output similar to:
 
 ## Learn more
 
-- [uuid-ossp](../../../../explore/ysql-language-features/pg-extensions/extension-uuid-ossp) module
+- [uuid-ossp](../../../../additional-features/pg-extensions/extension-uuid-ossp) module

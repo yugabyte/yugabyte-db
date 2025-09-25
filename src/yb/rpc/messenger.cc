@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -451,17 +451,17 @@ void Messenger::ShutdownThreadPools() {
 }
 
 void Messenger::UnregisterAllServices() {
-  if (!rpc_services_counter_stopped_) {
-    CHECK_OK(rpc_services_counter_.DisableAndWaitForOps(CoarseTimePoint::max(), Stop::kTrue));
-    rpc_services_counter_.UnlockExclusiveOpMutex();
-    rpc_services_counter_stopped_ = true;
+  if (!rpc_services_stopped_.Set()) {
+    return;
   }
+  CHECK_OK(rpc_services_counter_.DisableAndWaitForOps(CoarseTimePoint::max(), Stop::kTrue));
+  rpc_services_counter_.UnlockExclusiveOpMutex();
 
-  for (const auto& p : rpc_services_) {
-    p.second->StartShutdown();
+  for (const auto& [_, rpc_service]  : rpc_services_) {
+    rpc_service->StartShutdown();
   }
-  for (const auto& p : rpc_services_) {
-    p.second->CompleteShutdown();
+  for (const auto& [_, rpc_service] : rpc_services_) {
+    rpc_service->CompleteShutdown();
   }
 
   rpc_endpoints_.clear();

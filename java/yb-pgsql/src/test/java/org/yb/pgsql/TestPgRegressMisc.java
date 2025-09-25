@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -27,6 +27,15 @@ public class TestPgRegressMisc extends BasePgRegressTest {
   protected Map<String, String> getMasterFlags() {
     Map<String, String> flagMap = super.getMasterFlags();
     flagMap.put("TEST_sequential_colocation_ids", "true");
+    return flagMap;
+  }
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    // TODO(28543): Remove once transactional ddl is enabled by default.
+    flagMap.put("ysql_yb_ddl_transaction_block_enabled", "true");
+    flagMap.put("allowed_preview_flags_csv", "ysql_yb_ddl_transaction_block_enabled");
     return flagMap;
   }
 

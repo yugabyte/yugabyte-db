@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
 // Portions Copyright (c) YugabyteDB, Inc.
 //

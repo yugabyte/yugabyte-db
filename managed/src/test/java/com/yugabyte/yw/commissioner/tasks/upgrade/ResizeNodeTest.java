@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
@@ -1498,8 +1498,10 @@ public class ResizeNodeTest extends UpgradeTaskTest {
   public void testChangingInstanceRRWithCRAzu() {
     RuntimeConfigEntry.upsertGlobal(
         ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
-    createInstanceType(azuProvider.getUuid(), DEFAULT_INSTANCE_TYPE);
-    createInstanceType(azuProvider.getUuid(), NEW_INSTANCE_TYPE);
+    String defaultInstanceType = "Standard_EC2as_v5";
+    String newInstanceType = "Standard_EC4as_v5";
+    createInstanceType(azuProvider.getUuid(), defaultInstanceType);
+    createInstanceType(azuProvider.getUuid(), newInstanceType);
     Region region1 = Region.create(azuProvider, "region-1", "region-1", "img");
     AvailabilityZone az1 = AvailabilityZone.getOrCreate(region1, "az-1", "az 1", "subn");
     Region region2 = Region.create(azuProvider, "region-2", "region-2", "img");
@@ -1509,12 +1511,11 @@ public class ResizeNodeTest extends UpgradeTaskTest {
 
     UniverseDefinitionTaskParams.UserIntent userIntent =
         createIntent(
-            Common.CloudType.azu,
-            DEFAULT_INSTANCE_TYPE,
-            PublicCloudConstants.StorageType.Persistent);
+            Common.CloudType.azu, defaultInstanceType, PublicCloudConstants.StorageType.Persistent);
     userIntent.numNodes = 3;
     userIntent.ybSoftwareVersion = "2.21.1.1-b1";
     userIntent.accessKeyCode = "demo-access";
+    userIntent.universeName = "universe-test";
     userIntent.regionList = ImmutableList.of(region1.getUuid(), region2.getUuid());
     PlacementInfo pi = new PlacementInfo();
     PlacementInfoUtil.addPlacementZone(az1.getUuid(), pi, 1, 1, false);
@@ -1531,9 +1532,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
 
     UniverseDefinitionTaskParams.UserIntent rrIntent =
         createIntent(
-            Common.CloudType.azu,
-            DEFAULT_INSTANCE_TYPE,
-            PublicCloudConstants.StorageType.Persistent);
+            Common.CloudType.azu, defaultInstanceType, PublicCloudConstants.StorageType.Persistent);
     rrIntent.numNodes = 2;
     rrIntent.ybSoftwareVersion = "2.21.1.1-b1";
     rrIntent.accessKeyCode = "demo-access";
@@ -1587,11 +1586,11 @@ public class ResizeNodeTest extends UpgradeTaskTest {
 
     ResizeNodeParams resizeNodeParams = createResizeParams();
     resizeNodeParams.clusters = defaultUniverse.getUniverseDetails().clusters;
-    resizeNodeParams.clusters.forEach(c -> c.userIntent.instanceType = NEW_INSTANCE_TYPE);
+    resizeNodeParams.clusters.forEach(c -> c.userIntent.instanceType = newInstanceType);
     resizeNodeParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet;
     TaskInfo taskInfo = submitTask(resizeNodeParams);
     assertEquals(Success, taskInfo.getTaskState());
-    assertUniverseData(false, true, true, true);
+    assertUniverseData(false, true, true, true, defaultInstanceType, newInstanceType);
 
     MockUpgrade mockUpgrade = initMockUpgrade();
     mockUpgrade
@@ -1616,14 +1615,13 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         defaultUniverse.getUniverseUUID(),
         region1,
         Map.of(
-            NEW_INSTANCE_TYPE,
-            Map.of("1", Arrays.asList(nodesByAZ.get("1"), rrNodesByAZ.get("1")))));
+            newInstanceType, Map.of("1", Arrays.asList(nodesByAZ.get("1"), rrNodesByAZ.get("1")))));
 
     verifyCapacityReservationAZU(
         defaultUniverse.getUniverseUUID(),
         region2,
         Map.of(
-            NEW_INSTANCE_TYPE,
+            newInstanceType,
             Map.of(
                 "2",
                 Arrays.asList(nodesByAZ.get("2")),
@@ -1794,10 +1792,26 @@ public class ResizeNodeTest extends UpgradeTaskTest {
       boolean changeInstance,
       boolean primaryChanged,
       boolean readonlyChanged) {
+    assertUniverseData(
+        increaseVolume,
+        changeInstance,
+        primaryChanged,
+        readonlyChanged,
+        DEFAULT_INSTANCE_TYPE,
+        NEW_INSTANCE_TYPE);
+  }
+
+  private void assertUniverseData(
+      boolean increaseVolume,
+      boolean changeInstance,
+      boolean primaryChanged,
+      boolean readonlyChanged,
+      String defaultInstanceType,
+      String newInstanceType) {
     // false false means changing throughput or/and iops
     boolean lastVolumeUpdateTimeChanged = increaseVolume || (!increaseVolume && !changeInstance);
     int volumeSize = increaseVolume ? NEW_VOLUME_SIZE : DEFAULT_VOLUME_SIZE;
-    String instanceType = changeInstance ? NEW_INSTANCE_TYPE : DEFAULT_INSTANCE_TYPE;
+    String instanceType = changeInstance ? newInstanceType : defaultInstanceType;
     Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     UniverseDefinitionTaskParams.Cluster primaryCluster =
         universe.getUniverseDetails().getPrimaryCluster();
@@ -1831,9 +1845,9 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         }
       } else {
         assertEquals(DEFAULT_VOLUME_SIZE, readonlyIntent.deviceInfo.volumeSize.intValue());
-        assertEquals(DEFAULT_INSTANCE_TYPE, readonlyIntent.instanceType);
+        assertEquals(defaultInstanceType, readonlyIntent.instanceType);
         for (NodeDetails nodeDetails : universe.getNodesInCluster(readonlyCluster.uuid)) {
-          assertEquals(DEFAULT_INSTANCE_TYPE, nodeDetails.cloudInfo.instance_type);
+          assertEquals(defaultInstanceType, nodeDetails.cloudInfo.instance_type);
           assertNull(nodeDetails.lastVolumeUpdateTime);
         }
       }

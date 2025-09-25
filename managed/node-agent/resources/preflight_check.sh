@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright 2020 YugaByte, Inc. and Contributors
+# Copyright 2020 YugabyteDB, Inc. and Contributors
 #
 # Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
 # may not use this file except in compliance with the License. You
@@ -278,20 +278,6 @@ preflight_configure_check() {
   update_result_json "ulimit_open_files" "$ulimit_open_files"
   ulimit_user_processes=$(ulimit -u)
   update_result_json "ulimit_user_processes" "$ulimit_user_processes"
-
-  # Check systemd sudoers.
-  # TODO change the check name appropriately.
-  timeout 5 sudo -n /bin/systemctl --no-ask-password enable yb-master
-  if [[ "$?" = 0 ]]; then
-    update_result_json "systemd_sudoer_entry" true
-  else
-    timeout 5 systemctl --user --no-ask-password enable yb-master
-    if [[ "$?" = 0 ]]; then
-      update_result_json "systemd_sudoer_entry" true
-    else
-      update_result_json "systemd_sudoer_entry" false
-    fi
-  fi
 
   # Check virtual memory max map limit.
   vm_max_map_count=$(cat /proc/sys/vm/max_map_count 2> /dev/null)

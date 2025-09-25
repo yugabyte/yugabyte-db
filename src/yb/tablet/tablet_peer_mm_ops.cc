@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -32,12 +32,7 @@
 
 #include "yb/tablet/tablet_peer_mm_ops.h"
 
-#include <algorithm>
-#include <map>
-#include <mutex>
 #include <string>
-
-#include "yb/util/flags.h"
 
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/tablet/tablet.h"
@@ -53,10 +48,9 @@ METRIC_DEFINE_gauge_uint32(table, log_gc_running,
 METRIC_DEFINE_event_stats(table, log_gc_duration,
                         "Log GC Duration",
                         yb::MetricUnit::kMilliseconds,
-                        "Time spent garbage collecting the logs.");
+                        "Time (milliseconds) spent garbage collecting the logs.");
 
-namespace yb {
-namespace tablet {
+namespace yb::tablet {
 
 //
 // LogGCOp.
@@ -112,5 +106,4 @@ scoped_refptr<AtomicGauge<uint32_t> > LogGCOp::RunningGauge() const {
   return log_gc_running_;
 }
 
-}  // namespace tablet
-}  // namespace yb
+} // namespace yb::tablet

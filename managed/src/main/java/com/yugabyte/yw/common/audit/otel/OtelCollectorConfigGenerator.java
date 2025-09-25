@@ -94,6 +94,7 @@ public class OtelCollectorConfigGenerator {
   private static final String PROCESSOR_PREFIX_ATTRIBUTES = "attributes/";
   private static final String PROCESSOR_PREFIX_BATCH = "batch/";
   private static final String PROCESSOR_PREFIX_MEMORY_LIMITER = "memory_limiter/";
+  private static final String PROCESSOR_PREFIX_TRANSFORM = "transform/";
 
   // Pipeline prefixes
   private static final String PIPELINE_PREFIX_LOGS = "logs/";
@@ -1312,6 +1313,9 @@ public class OtelCollectorConfigGenerator {
     List<String> processorNames = new ArrayList<>(currentProcessors);
     processorNames.add(processorName);
 
+    // Add common transform processor
+    addCommonTransformProcessor(collectorConfig);
+
     OtelCollectorConfigFormat.Pipeline pipeline = new OtelCollectorConfigFormat.Pipeline();
     List<String> receivers = new ArrayList<>(collectorConfig.getReceivers().keySet());
     List<String> auditReceivers =
@@ -1324,7 +1328,10 @@ public class OtelCollectorConfigGenerator {
     // Filter processors to only include those with audit_log in their name
     List<String> auditProcessors =
         processors.stream()
-            .filter(processor -> processor.contains(exporterTypeAndUUIDString))
+            .filter(
+                processor ->
+                    processor.contains(exporterTypeAndUUIDString)
+                        || processor.contains(PROCESSOR_PREFIX_TRANSFORM))
             .collect(Collectors.toList());
 
     pipeline.setProcessors(auditProcessors);
@@ -1446,6 +1453,9 @@ public class OtelCollectorConfigGenerator {
     collectorConfig.getProcessors().put(batchProcessorName, batchProcessor);
     processorNames.add(batchProcessorName);
 
+    // Add common transform processor
+    addCommonTransformProcessor(collectorConfig);
+
     OtelCollectorConfigFormat.Pipeline pipeline = new OtelCollectorConfigFormat.Pipeline();
     List<String> receivers = new ArrayList<>(collectorConfig.getReceivers().keySet());
     List<String> queryReceivers =
@@ -1455,11 +1465,15 @@ public class OtelCollectorConfigGenerator {
     pipeline.setReceivers(queryReceivers);
 
     List<String> processors = new ArrayList<>(collectorConfig.getProcessors().keySet());
-    // Filter processors to only include those with query_log
+    // Filter processors to only include those with query_log, plus the common transform processor
     List<String> queryProcessors =
         processors.stream()
-            .filter(processor -> processor.contains(exportTypeAndUUIDString))
+            .filter(
+                processor ->
+                    processor.contains(exportTypeAndUUIDString)
+                        || processor.contains(PROCESSOR_PREFIX_TRANSFORM))
             .collect(Collectors.toList());
+
     pipeline.setProcessors(queryProcessors);
     pipeline.setExporters(ImmutableList.of(exporterName));
     // Use unique pipeline key for query logs
@@ -1709,6 +1723,22 @@ public class OtelCollectorConfigGenerator {
                   encodedCredentials));
         }
         break;
+    }
+  }
+
+  private void addCommonTransformProcessor(OtelCollectorConfigFormat collectorConfig) {
+    String transformProcessorName = PROCESSOR_PREFIX_TRANSFORM + "replace";
+
+    // Only add the transform processor if it doesn't already exist
+    if (!collectorConfig.getProcessors().containsKey(transformProcessorName)) {
+      OtelCollectorConfigFormat.TransformProcessor transformProcessor =
+          new OtelCollectorConfigFormat.TransformProcessor();
+      OtelCollectorConfigFormat.LogStatement logStatement =
+          new OtelCollectorConfigFormat.LogStatement();
+      logStatement.setContext("log");
+      logStatement.setStatements(ImmutableList.of("replace_pattern(body, \"^otho8Aut\", \"\")"));
+      transformProcessor.setLog_statements(ImmutableList.of(logStatement));
+      collectorConfig.getProcessors().put(transformProcessorName, transformProcessor);
     }
   }
 

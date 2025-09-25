@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 import { useEffect } from 'react';
 import { Row, Col } from 'react-bootstrap';

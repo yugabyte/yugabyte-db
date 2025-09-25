@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -18,12 +18,15 @@ import static org.yb.AssertionWrappers.*;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.sql.Statement;
@@ -86,10 +89,12 @@ public class TestYsqlDump extends BasePgSQLTest {
     return flagMap;
   }
 
-  // The following logic is needed to remove the dependency on the exact version number from
-  // the ysql_dump output part that looks like this:
-  // -- Dumped from database version 11.2-YB-1.3.2.0-b0
-  // -- Dumped by ysql_dump version 11.2-YB-1.3.2.0-b0
+  /*
+   * The following logic is needed to remove the dependency on the exact version number from
+   * the ysql_dump output part that looks like this:
+   * -- Dumped from database version 11.2-YB-1.3.2.0-b0
+   * -- Dumped by ysql_dump version 11.2-YB-1.3.2.0-b0
+   */
 
   private static Pattern VERSION_NUMBER_PATTERN = Pattern.compile(
       " version [0-9]+[.][0-9]+-YB-([0-9]+[.]){3}[0-9]+-b[0-9]+");
@@ -100,8 +105,22 @@ public class TestYsqlDump extends BasePgSQLTest {
   private static String postprocessOutputLine(String s) {
     if (s == null)
       return null;
-    return StringUtil.expandTabsAndRemoveTrailingSpaces(
-      VERSION_NUMBER_PATTERN.matcher(s).replaceAll(VERSION_NUMBER_REPLACEMENT_STR));
+
+    // First handle version number replacement
+    String processed = VERSION_NUMBER_PATTERN.matcher(s).replaceAll(VERSION_NUMBER_REPLACEMENT_STR);
+
+    /*
+      Handle SCRAM password wildcards - replace specific SCRAM hashes with '*' to match expected
+      files.
+      SCRAM format: SCRAM-SHA-256$4096:salt$storedkey:serverkey
+      We replace the salt, storedkey, and serverkey parts with '*' to match the wildcard in
+      expected files
+     */
+    processed = processed.replaceAll(
+        "SCRAM-SHA-256\\$4096:[a-zA-Z0-9+/=]+\\$[a-zA-Z0-9+/=]+:[a-zA-Z0-9+/=]+",
+        "SCRAM-SHA-256\\$4096:*");
+
+    return StringUtil.expandTabsAndRemoveTrailingSpaces(processed);
   }
 
   @Test
@@ -159,6 +178,17 @@ public class TestYsqlDump extends BasePgSQLTest {
 
   @Test
   public void ysqlDumpAllWithYbMetadata() throws Exception {
+    // Configure MD5 password encryption to maintain compatibility with expected output
+    restartClusterWithClusterBuilder(cb -> {
+      cb.addCommonTServerFlag("ysql_pg_conf_csv", "password_encryption=md5");
+    });
+
+    // Force yugabyte user to use MD5 password format (since default is now SCRAM)
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("SET password_encryption = 'md5'");
+      stmt.execute("ALTER ROLE yugabyte PASSWORD 'yugabyte'");
+    }
+
     // Note that we're using the same describe input as for regular ysql_dump!
     ysqlDumpTester(
         "ysql_dumpall" /* binaryName */,
@@ -183,16 +213,25 @@ public class TestYsqlDump extends BasePgSQLTest {
 
   @Test
   public void ysqlDumpAllWithDumpRoleChecks() throws Exception {
-    // Note that we're using the same describe input as for regular ysql_dump!
+    // Configure MD5 password encryption to maintain compatibility with expected output
+    restartClusterWithClusterBuilder(cb -> {
+      cb.addCommonTServerFlag("ysql_pg_conf_csv", "password_encryption=md5");
+    });
+
+    // Force yugabyte user to use MD5 password format (since default is now SCRAM)
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("SET password_encryption = 'md5'");
+      stmt.execute("ALTER ROLE yugabyte PASSWORD 'yugabyte'");
+    }
+
     ysqlDumpTester(
         "ysql_dumpall" /* binaryName */,
         "" /* dumpedDatabaseName */,
         "sql/yb.orig.ysql_dumpall.sql" /* inputFileRelativePath */,
-        "data/yb_ysql_dumpall_with_dump_role_checks.data.sql" /* expectedDumpRelativePath */,
+        "data/yb_ysql_dumpall.data.sql" /* expectedDumpRelativePath */,
         "results/yb.orig.ysql_dumpall.out" /* outputFileRelativePath */,
         IncludeYbMetadata.ON,
-        NoTableSpaces.OFF,
-        DumpRoleChecks.ON);
+        NoTableSpaces.OFF);
 
     // ysql_dumpall cannot be imported as it has DDL that cannot be repeated
     // like CREATE ROLE postgres
@@ -207,15 +246,22 @@ public class TestYsqlDump extends BasePgSQLTest {
   }
 
   @Test
-  public void ysqlDumpAllRoleProfiles() throws Exception {
+  public void ysqlDumpAllRoleProfilesWithMD5Passwords() throws Exception {
     restartClusterWithClusterBuilder(cb -> {
       cb.addCommonFlag("ysql_enable_profile", "true");
+      cb.addCommonTServerFlag("ysql_pg_conf_csv", "password_encryption=md5");
       cb.addCommonTServerFlag("ysql_hba_conf_csv",
           "host all yugabyte_test 0.0.0.0/0 trust," +
           "host all yugabyte 0.0.0.0/0 trust," +
           "host all all 0.0.0.0/0 md5");
     });
     LOG.info("created mini cluster");
+
+    // Force yugabyte user to use MD5 password format (since default is now SCRAM)
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("SET password_encryption = 'md5'");
+      stmt.execute("ALTER ROLE yugabyte PASSWORD 'yugabyte'");
+    }
 
     ysqlDumpTester(
         "ysql_dumpall" /* binaryName */,
@@ -241,6 +287,52 @@ public class TestYsqlDump extends BasePgSQLTest {
       "expected/yb.orig.ysql_dumpall_describe_profile_and_role_profiles.out"
       /* expectedDescribeFileRelativePath */,
       "results/yb.orig.ysql_dumpall_describe_profile_and_role_profiles.out"
+      /* outputDescribeFileRelativePath */
+    );
+  }
+
+  @Test
+  public void ysqlDumpAllRoleProfilesWithSCRAMPasswords() throws Exception {
+    restartClusterWithClusterBuilder(cb -> {
+      cb.addCommonFlag("ysql_enable_profile", "true");
+      cb.addCommonTServerFlag("ysql_hba_conf_csv",
+          "host all yugabyte_test 0.0.0.0/0 trust," +
+          "host all yugabyte 0.0.0.0/0 trust," +
+          "host all all 0.0.0.0/0 scram-sha-256");
+    });
+    LOG.info("created mini cluster");
+
+    // Force yugabyte user to use SCRAM password format with fixed hash
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("ALTER ROLE yugabyte PASSWORD '" +
+          "SCRAM-SHA-256$4096:VLK4RMaQLCvNtQ==$6YtlR4t69SguDiwFvbVgVZtuz6gpJQQqUMZ7IQJK5yI=:" +
+          "ps75jrHeYU4lXCcXI4O8oIdJ3eO8o2jirjruw9phBTo='");
+    }
+
+    ysqlDumpTester(
+        "ysql_dumpall" /* binaryName */,
+        "" /* dumpedDatabaseName */,
+        "sql/yb.orig.ysql_dumpall_profile_and_role_profiles_scram.sql"
+        /* inputFileRelativePath */,
+        "data/yb_ysql_dumpall_profile_and_role_profiles_scram.data.sql"
+        /* expectedDumpRelativePath */,
+        "results/yb.orig.ysql_dumpall_profile_and_role_profiles_scram.out"
+        /* outputFileRelativePath */,
+        IncludeYbMetadata.ON,
+        NoTableSpaces.ON);
+
+    // ysql_dumpall cannot be imported as it has DDL that cannot be repeated
+    // like CREATE ROLE postgres
+    verifyYsqlDump(
+      false /*importDump*/,
+      "" /* verifyDbName */,
+      "results/yb.orig.ysql_dumpall_profile_and_role_profiles_scram.out"
+      /* outputFileRelativePath */,
+      "sql/yb.orig.ysql_dumpall_describe_profile_and_role_profiles.sql"
+      /* inputDescribeFileRelativePath */,
+      "expected/yb.orig.ysql_dumpall_describe_profile_and_role_profiles.out"
+      /* expectedDescribeFileRelativePath */,
+      "results/yb.orig.ysql_dumpall_describe_profile_and_role_profiles_scram.out"
       /* outputDescribeFileRelativePath */
     );
   }
@@ -276,7 +368,17 @@ public class TestYsqlDump extends BasePgSQLTest {
 
   @Test
   public void ysqlDumpAllWithoutYbMetadata() throws Exception {
-    // Note that we're using the same describe input as for regular ysql_dump!
+    // Configure MD5 password encryption to maintain compatibility with expected output
+    restartClusterWithClusterBuilder(cb -> {
+      cb.addCommonTServerFlag("ysql_pg_conf_csv", "password_encryption=md5");
+    });
+
+    // Force yugabyte user to use MD5 password format (since default is now SCRAM)
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("SET password_encryption = 'md5'");
+      stmt.execute("ALTER ROLE yugabyte PASSWORD 'yugabyte'");
+    }
+
     ysqlDumpTester(
         "ysql_dumpall" /* binaryName */,
         "" /* dumpedDatabaseName */,

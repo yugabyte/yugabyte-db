@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
@@ -313,7 +313,7 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
             taskParams().getNewVersionsOfClusters(universe);
         List<UniverseDefinitionTaskParams.Cluster> newClustersList =
             new ArrayList<>(newClustersMap.values());
-        createValidateGFlagsTask(newClustersList);
+        createValidateGFlagsTask(newClustersList, true /* useCLIBinary */, softwareVersion);
       }
     }
 

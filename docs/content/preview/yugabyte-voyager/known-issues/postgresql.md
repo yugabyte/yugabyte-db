@@ -931,7 +931,7 @@ yugabyte=# \d test
 
 ### PostgreSQL extensions are not supported by target YugabyteDB
 
-**Documentation**: [PostgreSQL extensions](../../../explore/ysql-language-features/pg-extensions/)
+**Documentation**: [PostgreSQL extensions](../../../additional-features/pg-extensions/)
 
 **Description**: If you have any PostgreSQL extension that is not supported by the target YugabyteDB, they result in the following errors during import schema:
 

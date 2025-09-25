@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.common;
 
@@ -191,6 +191,7 @@ public class ApiUtils {
                   idx,
                   NodeDetails.NodeState.Live,
                   markMasters && idx <= userIntent.replicationFactor);
+          node.cloudInfo.instance_type = userIntent.instanceType;
           node.placementUuid = universeDetails.getPrimaryCluster().uuid;
           if (azUUIDList != null) {
             int azIndex = (idx - 1) % azUUIDList.size();

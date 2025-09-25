@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.common;
 
@@ -313,6 +313,12 @@ public class RedactingService {
     // Pattern 6: Handle quoted format (pattern="value")
     String quotedValuePattern = "\\b(" + pattern + "\\s*=\\s*\")([^\"]+)(\")";
     output = output.replaceAll(quotedValuePattern, "$1" + SECRET_REPLACEMENT + "$3");
+
+    // Pattern 7: Handle CLI flag format (--pattern, value) and Python list format ('--pattern',
+    // 'value')
+    String cliFlagPattern =
+        "((?:,\\s*)?['\"]?--" + pattern + "['\"]?(?:,\\s*|\\s+))['\"]?([^\\s,\\n'\"\\]\\}]+)['\"]?";
+    output = output.replaceAll(cliFlagPattern, "$1" + SECRET_REPLACEMENT);
 
     return output;
   }

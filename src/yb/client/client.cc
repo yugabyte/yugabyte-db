@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -167,6 +167,8 @@ using yb::master::GetTableLocationsResponsePB;
 using yb::master::GetTableSchemaFromSysCatalogRequestPB;
 using yb::master::GetTabletLocationsRequestPB;
 using yb::master::GetTabletLocationsResponsePB;
+using yb::master::GetTabletsMetadataRequestPB;
+using yb::master::GetTabletsMetadataResponsePB;
 using yb::master::GetTransactionStatusTabletsRequestPB;
 using yb::master::GetTransactionStatusTabletsResponsePB;
 using yb::master::GetUDTypeInfoRequestPB;
@@ -644,6 +646,17 @@ Status YBClient::GetIndexBackfillProgress(
   }
   *rows_processed_entries = std::move(resp.rows_processed_entries());
   return Status::OK();
+}
+
+Result<google::protobuf::RepeatedPtrField<tablet::TabletStatusPB>> YBClient::GetTabletsMetadata() {
+  master::GetTabletsMetadataRequestPB req;
+  master::GetTabletsMetadataResponsePB resp;
+
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Client, req, resp, GetTabletsMetadata);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return resp.tablet_metadatas();
 }
 
 Result<master::GetBackfillStatusResponsePB> YBClient::GetBackfillStatus(

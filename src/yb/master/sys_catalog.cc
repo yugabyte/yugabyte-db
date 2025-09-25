@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -2300,7 +2300,7 @@ Result<ColumnId> PgTableReadData::ColumnByName(const std::string& name) const {
   return schema().ColumnIdByName(name);
 }
 
-Result<std::unique_ptr<docdb::DocRowwiseIterator>> PgTableReadData::NewUninitializedIterator(
+Result<docdb::DocRowwiseIteratorPtr> PgTableReadData::NewUninitializedIterator(
     const dockv::ReaderProjection& projection) const {
   return tablet->NewUninitializedDocRowIterator(projection, read_hybrid_time, table_id);
 }

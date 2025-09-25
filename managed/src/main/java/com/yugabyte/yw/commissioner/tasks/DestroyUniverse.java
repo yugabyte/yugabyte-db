@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 YugaByte, Inc. and Contributors
+ * Copyright 2019 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -25,7 +25,6 @@ import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.SupportBundle;
@@ -48,7 +47,7 @@ import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
-public class DestroyUniverse extends UniverseTaskBase {
+public class DestroyUniverse extends UniverseDefinitionTaskBase {
 
   private final XClusterUniverseService xClusterUniverseService;
   private final SupportBundleUtil supportBundleUtil;
@@ -63,7 +62,7 @@ public class DestroyUniverse extends UniverseTaskBase {
     this.supportBundleUtil = supportBundleUtil;
   }
 
-  public static class Params extends UniverseTaskParams {
+  public static class Params extends UniverseDefinitionTaskParams {
     public UUID customerUUID;
     public Boolean isForceDelete;
     public Boolean isDeleteBackups;
@@ -180,6 +179,10 @@ public class DestroyUniverse extends UniverseTaskBase {
                 true /* deleteRootVolumes */,
                 true /* skipDestroyPrecheck */)
             .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
+      }
+      if (universe.getUniverseDetails().getCapacityReservationState() != null
+          && !universe.getUniverseDetails().getCapacityReservationState().isEmpty()) {
+        createDeleteCapacityReservationTask();
       }
 
       // Create tasks to remove the universe entry from the Universe table.

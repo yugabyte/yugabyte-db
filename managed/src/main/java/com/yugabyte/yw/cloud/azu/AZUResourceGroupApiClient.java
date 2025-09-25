@@ -9,6 +9,7 @@ import com.azure.core.http.policy.RetryOptions;
 import com.azure.core.http.rest.PagedIterable;
 import com.azure.core.management.AzureEnvironment;
 import com.azure.core.management.SubResource;
+import com.azure.core.management.exception.ManagementException;
 import com.azure.core.management.profile.AzureProfile;
 import com.azure.core.util.Context;
 import com.azure.resourcemanager.AzureResourceManager;
@@ -170,23 +171,41 @@ public class AZUResourceGroupApiClient {
 
   public void deleteCapacityReservation(String groupName, String reservationName, Set<String> vms) {
     ComputeManagementClient client = azureResourceManager.computeSkus().manager().serviceClient();
-    client
-        .getCapacityReservations()
-        .update(
-            resourceGroup,
-            groupName,
-            reservationName,
-            new CapacityReservationUpdate().withSku(new Sku().withCapacity(0L)));
+    log.debug("Delete reservation {}", reservationName);
+    CapacityReservationInner reservation =
+        client.getCapacityReservations().get(resourceGroup, groupName, reservationName);
+    if (reservation.sku().capacity() > 0
+        && !reservation.provisioningState().equalsIgnoreCase("Failed")) {
+      try {
+        client
+            .getCapacityReservations()
+            .update(
+                resourceGroup,
+                groupName,
+                reservationName,
+                new CapacityReservationUpdate().withSku(new Sku().withCapacity(0L)));
+      } catch (ManagementException e) {
+        log.error("Failed to update reservation to 0", e);
+        throw new RuntimeException(e.getValue().getMessage());
+      }
+    }
     for (String vm : vms) {
       try {
         VirtualMachine byId =
             azureResourceManager.virtualMachines().getByResourceGroup(resourceGroup, vm);
-        byId.update().withCapacityReservationGroup(null).apply();
+        if (byId.capacityReservationGroupId() != null) {
+          byId.update().withCapacityReservationGroup(null).apply();
+        }
       } catch (Exception e) {
         log.error("Failed to load vm " + vm, e);
       }
     }
-    client.getCapacityReservations().delete(resourceGroup, groupName, reservationName);
+    try {
+      client.getCapacityReservations().delete(resourceGroup, groupName, reservationName);
+    } catch (ManagementException e) {
+      log.error("Failed to delete reservation", e);
+      throw new RuntimeException(e.getValue().getMessage());
+    }
   }
 
   public String createCapacityReservation(
@@ -195,18 +214,28 @@ public class AZUResourceGroupApiClient {
       String zone,
       String reservationName,
       String instanceType,
-      Integer count) {
+      Integer count,
+      Map<String, String> tags) {
     ComputeManagementClient client = azureResourceManager.computeSkus().manager().serviceClient();
     CapacityReservationInner params =
         new CapacityReservationInner()
             .withLocation(region)
             .withZones(Collections.singletonList(zone))
+            .withTags(tags)
             .withSku(new Sku().withCapacity(count.longValue()).withName(instanceType));
+    try {
+      CapacityReservationInner reservation =
+          client
+              .getCapacityReservations()
+              .createOrUpdate(resourceGroup, groupName, reservationName, params);
+    } catch (ManagementException e) {
+      log.error("Failed to create reservation", e);
+      if (e.getValue().getMessage().contains("Capacity Reservation is not supported")) {
+        return null;
+      }
+      throw new RuntimeException(e.getValue().getMessage());
+    }
 
-    CapacityReservationInner reservation =
-        client
-            .getCapacityReservations()
-            .createOrUpdate(resourceGroup, groupName, reservationName, params);
     return reservationName;
   }
 
