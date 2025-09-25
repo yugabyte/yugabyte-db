@@ -1243,6 +1243,11 @@ class PgConcurrentDDLAnalyzeTest : public LibPqTestBase {
     // we want to trigger ANALYZE explicitly similar to what auto analyze would have
     options->extra_tserver_flags.push_back("--ysql_enable_auto_analyze=false");
     options->extra_tserver_flags.push_back("--ysql_yb_user_ddls_preempt_auto_analyze=true");
+    // The test verifies a long ANALYZE can be interrupted by another DDL. However, table lock
+    // prevents this so we're disabling it to keep the test's original intent.
+    options->extra_tserver_flags.emplace_back(
+        "--allowed_preview_flags_csv=enable_object_locking_for_table_locks");
+    options->extra_tserver_flags.emplace_back("--enable_object_locking_for_table_locks=false");
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vmodule) = "libpqutils*=1";
   }
 };
