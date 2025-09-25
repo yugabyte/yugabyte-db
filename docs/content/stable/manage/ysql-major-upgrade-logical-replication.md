@@ -43,9 +43,11 @@ Some special considerations need to be taken care of by the users who are using 
 </ul>
 
 ## Before you begin
-1. Determine a time (say **stop_ddl_time**), after which there will be no DDLs performed on the tables being replicated by logical replication. Moreover no changes should be made to any of the publications after **stop_ddl_time**.
+1. Logical replication streams can be upgraded to PG 15 YugabyteDB versions `2025.1.1` and above. 
 
-2. Ensure that restart time of all the replication slots has crossed the **stop_ddl_time**. The following query can be used to find the restart time of a slot:
+2. Determine a time (say **stop_ddl_time**), after which there will be no DDLs performed on the tables being replicated by logical replication. Moreover no changes should be made to any of the publications after **stop_ddl_time**.
+
+3. Ensure that restart time of all the replication slots has crossed the **stop_ddl_time**. The following query can be used to find the restart time of a slot:
 
 ```
 yugabyte=# select to_timestamp((yb_restart_commit_ht / 4096) / 1000000) as yb_restart_time from pg_replication_slots;
@@ -56,7 +58,7 @@ yugabyte=# select to_timestamp((yb_restart_commit_ht / 4096) / 1000000) as yb_re
 ```
 
 
-3. Once the `yb_restart_time` for all the slots has crossed **stop_ddl_time**, delete the connector and start the upgrade process.
+4. Once the `yb_restart_time` for all the slots has crossed **stop_ddl_time**, delete the connector and start the upgrade process.
 
 
 ## After finalizing the upgrade
