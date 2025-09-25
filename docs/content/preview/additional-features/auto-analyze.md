@@ -27,10 +27,12 @@ Before you can use the feature, you must enable it by setting `ysql_enable_auto_
 For example, to create a single-node [yugabyted](../../reference/configuration/yugabyted/) cluster with Auto Analyze enabled, use the following command:
 
 ```sh
-./bin/yugabyted start --master_flags "ysql_enable_auto_analyze_service=true" --tserver_flags "ysql_enable_auto_analyze_service=true,ysql_enable_table_mutation_counter=true"
+./bin/yugabyted start \
+    --master_flags "ysql_enable_auto_analyze_service=true" \
+    --tserver_flags "ysql_enable_auto_analyze_service=true,ysql_enable_table_mutation_counter=true"
 ```
 
-To enable Auto Analyze on an existing cluster, a rolling restart is required to set `ysql_enable_auto_analyze_service` and `ysql_enable_table_mutation_counter` to true.
+Enabling Auto Analyze on an existing cluster requires a rolling restart to set `ysql_enable_auto_analyze_service` and `ysql_enable_table_mutation_counter` to true.
 
 ## Configure Auto Analyze
 
@@ -75,7 +77,11 @@ SELECT reltuples FROM pg_class WHERE relname = 'test';
 
 ```sql
 INSERT INTO test SELECT i, i FROM generate_series(1, 100) i;
--- Wait for few seconds
+```
+
+Wait for few seconds.
+
+```sql
 SELECT reltuples FROM pg_class WHERE relname = 'test';
 ```
 
