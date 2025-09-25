@@ -72,7 +72,7 @@ Learn more about [YB-TServer logs](/preview/explore/observability/logging/).
 To create optimal plans for queries, the query planner needs accurate and up-to-date statistics related to tables and their columns. ANALYZE collects statistics about the contents of tables in the database, and stores the results in the `pg_statistic` system catalog. Similar to [PostgreSQL autovacuum](https://www.postgresql.org/docs/current/routine-vacuuming.html#AUTOVACUUM), the YugabyteDB Auto Analyze service automates the execution of ANALYZE commands for any table where rows have changed more than a configurable threshold for the table. This ensures table statistics are always up-to-date.
 
 {{<lead link="./auto-analyze/">}}
-To learn more, see [Auto Analyze service](./auto-analyze/).
+To learn more, see [Auto Analyze service](../../../additional-features/auto-analyze/).
 {{</lead>}}
 
 ## Export query diagnostics
