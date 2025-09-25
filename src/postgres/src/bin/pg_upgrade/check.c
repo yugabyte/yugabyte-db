@@ -1842,9 +1842,9 @@ yb_check_invalid_indexes()
 				db_used = true;
 			}
 			yb_fprintf_and_log(script, "  %s.%s (oid=%s)\n",
-					PQgetvalue(res, rowno, i_schemaname),
-					PQgetvalue(res, rowno, i_indexname),
-					PQgetvalue(res, rowno, i_indexrelid));
+							   PQgetvalue(res, rowno, i_schemaname),
+							   PQgetvalue(res, rowno, i_indexname),
+							   PQgetvalue(res, rowno, i_indexrelid));
 			yb_fprintf_and_log(script, "    \\c %s\n", active_db->db_name);
 			yb_fprintf_and_log(script, "    DROP INDEX %s.%s;\n", schemaname, indexname);
 		}

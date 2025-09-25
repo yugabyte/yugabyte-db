@@ -2617,6 +2617,7 @@ YbRunWithPrefetcher(YbcStatus (*func) (YbRunWithPrefetcherContext *),
 {
 	YbcPgLastKnownCatalogVersionInfo catalog_version = {};
 	uint64_t	shared_catalog_version;
+
 	HandleYBStatus(YBCGetSharedCatalogVersion(&shared_catalog_version));
 	/*
 	 * If YbNeedNewCacheFileForPgAuthBackend is set then this is a pg auth
@@ -2629,7 +2630,7 @@ YbRunWithPrefetcher(YbcStatus (*func) (YbRunWithPrefetcherContext *),
 		YbUseTserverResponseCacheForAuth(shared_catalog_version) && !YbNeedNewCacheFileForPgAuthBackend;
 	YbcPgSysTablePrefetcherCacheMode trust_mode =
 		use_tserver_cache_for_auth ? YB_YQL_PREFETCHER_TRUST_CACHE_AUTH
-								   : YB_YQL_PREFETCHER_TRUST_CACHE;
+		: YB_YQL_PREFETCHER_TRUST_CACHE;
 	YbPrefetcherStarterWithCache trust_cache = MakeStarterWithCache(trust_mode, &catalog_version);
 	YbPrefetcherStarterWithCache renew_soft = MakeStarterWithCache(YB_YQL_PREFETCHER_RENEW_CACHE_SOFT,
 																   &catalog_version);
@@ -2666,13 +2667,18 @@ YbRunWithPrefetcher(YbcStatus (*func) (YbRunWithPrefetcherContext *),
 	{
 		starter_idx = 0;
 		if (use_tserver_cache_for_auth)
-			catalog_version =
-				(YbcPgLastKnownCatalogVersionInfo)
-				{
-					.version = shared_catalog_version,
-					.version_read_time = {},
-					.is_db_catalog_version_mode = YBIsDBCatalogVersionMode(),
-				};
+		{
+			/*
+			 * yb_pgindent does not like struct assigned to struct, so assign
+			 * fields one-by-one.
+			 */
+			catalog_version.version = shared_catalog_version;
+			memset(&catalog_version.version_read_time,
+				   0,
+				   sizeof(catalog_version.version_read_time));
+			catalog_version.is_db_catalog_version_mode =
+				YBIsDBCatalogVersionMode();
+		}
 		else
 			catalog_version = YbGetCatalogCacheVersionForTablePrefetching();
 	}
@@ -6392,9 +6398,11 @@ RelationCacheInitializePhase3(void)
 										 YBCIsInitDbModeEnvVarSet() ||
 										 YbNeedAdditionalCatalogTables() ||
 										 !*YBCGetGFlags()->ysql_use_relcache_file);
+
 		if (preload_rel_cache)
 		{
 			uint64_t	shared_catalog_version;
+
 			HandleYBStatus(YBCGetSharedCatalogVersion(&shared_catalog_version));
 			if (YbUseTserverResponseCacheForAuth(shared_catalog_version))
 			{
@@ -9283,7 +9291,8 @@ YbSharedRelationIdNeedsGlobalImpact(Oid relationId)
 Relation
 YbRelationIdCacheLookup(Oid relid)
 {
-	Relation rel;
+	Relation	rel;
+
 	RelationIdCacheLookup(relid, rel);
 	return rel;
 }

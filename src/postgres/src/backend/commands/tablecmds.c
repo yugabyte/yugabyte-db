@@ -1956,7 +1956,7 @@ ExecuteTruncate(TruncateStmt *stmt, bool yb_is_top_level, List **yb_relids)
 	List	   *relids = NIL;
 	List	   *relids_logged = NIL;
 	ListCell   *cell;
-	bool yb_only_temp_tables = true;
+	bool		yb_only_temp_tables = true;
 
 	/*
 	 * Open, exclusive-lock, and check all the explicitly-specified relations
@@ -3728,7 +3728,7 @@ SetRelationTableSpace(Relation rel,
 	otid = tuple->t_self;
 	rd_rel = (Form_pg_class) GETSTRUCT(tuple);
 
-	Oid yb_old_reltablespace = rd_rel->reltablespace;
+	Oid			yb_old_reltablespace = rd_rel->reltablespace;
 
 	/* Update the pg_class row. */
 	rd_rel->reltablespace = (newTableSpaceId == MyDatabaseTableSpace) ?
@@ -3779,7 +3779,7 @@ SetRelationTableSpace(Relation rel,
 	{
 		List	   *indexIds = RelationGetIndexList(rel);
 		ListCell   *lc;
-		Oid newPrimaryKeyTableSpaceId = (newTableSpaceId == MyDatabaseTableSpace) ?
+		Oid			newPrimaryKeyTableSpaceId = (newTableSpaceId == MyDatabaseTableSpace) ?
 			InvalidOid : newTableSpaceId;
 
 		foreach(lc, indexIds)
@@ -3787,17 +3787,19 @@ SetRelationTableSpace(Relation rel,
 			Oid			idxOid = lfirst_oid(lc);
 			Relation	idxRel = RelationIdGetRelation(idxOid);
 			bool		isPrimaryIndex = (idxRel != NULL &&
-										 idxRel->rd_index &&
-										 idxRel->rd_index->indisprimary);
+										  idxRel->rd_index &&
+										  idxRel->rd_index->indisprimary);
+
 			RelationClose(idxRel);
 
 			if (!isPrimaryIndex)
 				continue;
 
 			Relation	idx_pg_class = table_open(RelationRelationId,
-													RowExclusiveLock);
+												  RowExclusiveLock);
 			HeapTuple	idx_tuple = SearchSysCacheCopy1(RELOID,
-													ObjectIdGetDatum(idxOid));
+														ObjectIdGetDatum(idxOid));
+
 			if (!HeapTupleIsValid(idx_tuple))
 				elog(ERROR, "cache lookup failed for relation %u", idxOid);
 			Form_pg_class idx_rd_rel = (Form_pg_class) GETSTRUCT(idx_tuple);
@@ -3809,7 +3811,7 @@ SetRelationTableSpace(Relation rel,
 
 			/* Update PK's pg_shdepend entry */
 			changeDependencyOnTablespace(RelationRelationId, idxOid,
-				newPrimaryKeyTableSpaceId);
+										 newPrimaryKeyTableSpaceId);
 
 			heap_freetuple(idx_tuple);
 			table_close(idx_pg_class, RowExclusiveLock);

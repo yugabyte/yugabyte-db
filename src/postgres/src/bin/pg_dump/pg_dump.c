@@ -4208,6 +4208,7 @@ dumpPolicy(Archive *fout, const PolicyInfo *polinfo)
 	if (dopt->include_yb_metadata && polinfo->polroles != NULL)
 	{
 		PQExpBuffer yb_source_sql = query;
+
 		query = createPQExpBuffer();
 		appendPQExpBufferStr(query, "\\if :use_roles\n");
 

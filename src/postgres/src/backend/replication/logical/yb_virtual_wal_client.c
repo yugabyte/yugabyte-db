@@ -228,7 +228,7 @@ YBCGetTablesWithRetryIfNeeded(List *publication_names, bool *yb_is_pub_all_table
 	PG_CATCH();
 	{
 		MemoryContext error_context = MemoryContextSwitchTo(caller_context);
-		ErrorData *edata = CopyErrorData();
+		ErrorData  *edata = CopyErrorData();
 
 		if (!yb_ignore_read_time_in_walsender || edata->sqlerrcode != ERRCODE_UNDEFINED_OBJECT)
 		{
@@ -241,7 +241,7 @@ YBCGetTablesWithRetryIfNeeded(List *publication_names, bool *yb_is_pub_all_table
 		FreeErrorData(edata);
 
 		elog(DEBUG1, "Encountered an error while trying to fetch tables by "
-					 "setting yb_read_time. Will retry by resetting it.");
+			 "setting yb_read_time. Will retry by resetting it.");
 		YBCResetYbReadTimeAndInvalidateRelcache();
 		if (skip_setting_yb_read_time)
 			*skip_setting_yb_read_time = true;
@@ -271,16 +271,16 @@ InitVirtualWal(List *publication_names,
 	if (*YBCGetGFlags()->ysql_yb_enable_implicit_dynamic_tables_logical_replication)
 	{
 		elog(DEBUG2,
-			"Setting yb_read_time to initial_record_commit_time for %" PRIu64,
-			MyReplicationSlot->data.yb_initial_record_commit_time_ht);
+			 "Setting yb_read_time to initial_record_commit_time for %" PRIu64,
+			 MyReplicationSlot->data.yb_initial_record_commit_time_ht);
 		YBCUpdateYbReadTimeAndInvalidateRelcache(MyReplicationSlot->data.yb_initial_record_commit_time_ht);
 	}
 	else
 	{
 		elog(DEBUG2,
-			"Setting yb_read_time to last_pub_refresh_time for "
-			"InitVirtualWal: %" PRIu64,
-			MyReplicationSlot->data.yb_last_pub_refresh_time);
+			 "Setting yb_read_time to last_pub_refresh_time for "
+			 "InitVirtualWal: %" PRIu64,
+			 MyReplicationSlot->data.yb_last_pub_refresh_time);
 		YBCUpdateYbReadTimeAndInvalidateRelcache(MyReplicationSlot->data.yb_last_pub_refresh_time);
 	}
 
@@ -328,8 +328,8 @@ InitVirtualWal(List *publication_names,
 		!skip_setting_yb_read_time)
 	{
 		elog(DEBUG2,
-			"Setting yb_read_time to initial_record_commit_time for %" PRIu64,
-			MyReplicationSlot->data.yb_initial_record_commit_time_ht);
+			 "Setting yb_read_time to initial_record_commit_time for %" PRIu64,
+			 MyReplicationSlot->data.yb_initial_record_commit_time_ht);
 		YBCUpdateYbReadTimeAndInvalidateRelcache(MyReplicationSlot->data.yb_initial_record_commit_time_ht);
 	}
 

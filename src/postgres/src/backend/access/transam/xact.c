@@ -2130,31 +2130,32 @@ YBBuildInitTransactionData()
 	return (YbcPgInitTransactionData)
 	{
 		.xact_start_timestamp = xactStartTimestamp,
-		.xact_read_only = XactReadOnly,
-		.xact_deferrable = XactDeferrable,
-		.enable_tracing = YBEnableTracing(),
-		.effective_pggate_isolation_level = YBGetEffectivePggateIsolationLevel(),
-		.read_from_followers_enabled = YBReadFromFollowersEnabled(),
-		.follower_read_staleness_ms = YBFollowerReadStalenessMs()
+			.xact_read_only = XactReadOnly,
+			.xact_deferrable = XactDeferrable,
+			.enable_tracing = YBEnableTracing(),
+			.effective_pggate_isolation_level = YBGetEffectivePggateIsolationLevel(),
+			.read_from_followers_enabled = YBReadFromFollowersEnabled(),
+			.follower_read_staleness_ms = YBFollowerReadStalenessMs()
 	};
 }
 
 static void
-YBRunWithInitTransactionData(YbcStatus (*Callback)(const YbcPgInitTransactionData *))
+YBRunWithInitTransactionData(YbcStatus (*Callback) (const YbcPgInitTransactionData *))
 {
 	if (YBTransactionsEnabled())
 	{
 		const YbcPgInitTransactionData data =
-			{
-				.xact_start_timestamp = xactStartTimestamp,
-				.xact_read_only = XactReadOnly,
-				.xact_deferrable = XactDeferrable,
-				.enable_tracing = YBEnableTracing(),
-				.effective_pggate_isolation_level = YBGetEffectivePggateIsolationLevel(),
-				.read_from_followers_enabled = YBReadFromFollowersEnabled(),
-				.follower_read_staleness_ms = YBFollowerReadStalenessMs()
-			};
-		HandleYBStatus((*Callback)(&data));
+		{
+			.xact_start_timestamp = xactStartTimestamp,
+			.xact_read_only = XactReadOnly,
+			.xact_deferrable = XactDeferrable,
+			.enable_tracing = YBEnableTracing(),
+			.effective_pggate_isolation_level = YBGetEffectivePggateIsolationLevel(),
+			.read_from_followers_enabled = YBReadFromFollowersEnabled(),
+			.follower_read_staleness_ms = YBFollowerReadStalenessMs()
+		};
+
+		HandleYBStatus((*Callback) (&data));
 	}
 }
 

@@ -862,15 +862,15 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 	{
 		if (found_temp)
 			ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				errmsg("unsupported mix of temporary and persisted objects in DDL command"),
-				errdetail("%s", kManualReplicationErrorMsg)));
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("unsupported mix of temporary and persisted objects in DDL command"),
+					 errdetail("%s", kManualReplicationErrorMsg)));
 
 		if (found_matview)
 			ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				errmsg("unsupported mix of materialized view and other DDL commands"),
-				errdetail("%s", kManualReplicationErrorMsg)));
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("unsupported mix of materialized view and other DDL commands"),
+					 errdetail("%s", kManualReplicationErrorMsg)));
 	}
 
 	ProcessNewRelationsList(state, &new_rel_list);
@@ -920,7 +920,7 @@ ProcessSourceEventTriggerTableRewrite()
 }
 
 bool
-ProcessSourceEventTriggerDroppedObjects(CommandTag	tag)
+ProcessSourceEventTriggerDroppedObjects(CommandTag tag)
 {
 	/*
 	 * Matview related DDLs are not replicated.

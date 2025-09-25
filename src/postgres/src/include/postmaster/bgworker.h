@@ -156,7 +156,7 @@ extern void BackgroundWorkerInitializeConnectionByOid(Oid dboid, Oid useroid, ui
  * YB: Just like the above, but specifying session to share with main backend.
  */
 extern void YbBackgroundWorkerInitializeConnectionByOid(Oid dboid, Oid useroid, uint32 flags,
-											const YbcPgInitPostgresInfo *yb_init_info);
+														const YbcPgInitPostgresInfo *yb_init_info);
 
 /*
  * Flags to BackgroundWorkerInitializeConnection et al

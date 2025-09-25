@@ -715,6 +715,7 @@ CatCacheInvalidate(CatCache *cache, uint32 hashValue)
 					Oid			relfilenode = classForm->relfilenode;
 					Oid			dbid = classForm->relisshared ? Template1DbOid : MyDatabaseId;
 					Oid			table_relfilenode_oid = OidIsValid(relfilenode) ? relfilenode : relid;
+
 					elog(DEBUG1, "catcache removing tuple for relation %u:%u", dbid, relid);
 					YBCPgRemoveTableCacheEntry(dbid, table_relfilenode_oid);
 				}

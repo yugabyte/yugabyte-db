@@ -2002,10 +2002,14 @@ pgss_store(const char *query, uint64 queryId,
 			e->counters.jit_emission_time += INSTR_TIME_GET_MILLISEC(jitusage->emission_counter);
 		}
 
-		/* These stats are collected for both regular and utility statements, unlike EXPLAIN */
+		/*
+		 * YB: These stats are collected for both regular and utility
+		 * statements, unlike EXPLAIN
+		 */
 		if (kind == PGSS_EXEC)
 		{
 			YbInstrumentation yb_instr = {0};
+
 			YbUpdateSessionStats((YbInstrumentation *) &yb_instr);
 			e->counters.yb_counters.counters[YB_INT_DOCDB_READ_RPCS] +=
 				yb_instr.tbl_reads.count + yb_instr.index_reads.count;
@@ -2022,7 +2026,7 @@ pgss_store(const char *query, uint64 queryId,
 				(yb_instr.catalog_reads.wait_time) / 1000000.0;
 			e->counters.yb_counters.counters_dbl[YB_DBL_DOCDB_WAIT_TIME_MS] +=
 				(yb_instr.tbl_reads.wait_time + yb_instr.write_flushes.wait_time +
-				yb_instr.index_reads.wait_time) / 1000000.0;
+				 yb_instr.index_reads.wait_time) / 1000000.0;
 		}
 
 		SpinLockRelease(&e->mutex);

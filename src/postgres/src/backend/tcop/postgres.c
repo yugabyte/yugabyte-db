@@ -1104,7 +1104,7 @@ pg_plan_queries(List *querytrees, const char *query_string, int cursorOptions,
 void
 YbCollectCommitStats(DestReceiver *receiver, int16 *format)
 {
-	Portal yb_portal;
+	Portal		yb_portal;
 
 	/*
 	 * Printing commit stats may involve catalog lookups. Start a no-op txn
@@ -1116,7 +1116,7 @@ YbCollectCommitStats(DestReceiver *receiver, int16 *format)
 	 * Create a portal to publish the stats. The portal cannot be "started" as
 	 * no query will be run in it.
 	 */
-	yb_portal = CreatePortal("YB_COMMIT_STATS", false /* allowDup */, false /* dupSilent */ );
+	yb_portal = CreatePortal("YB_COMMIT_STATS", false /* allowDup */ , false /* dupSilent */ );
 	SetRemoteDestReceiverParams(receiver, yb_portal);
 	PortalSetResultFormat(yb_portal, 1, format);
 	YbExplainCommitStats(receiver);
@@ -4533,7 +4533,7 @@ YBRefreshCacheWrapperImpl(uint64_t catalog_master_version, bool is_retry,
 		{
 			YbNumCatalogCacheDeltaRefreshes++;
 			elog(yb_debug_log_catcache_events ? LOG : DEBUG1,
-				"full cache refresh skipped after applying %d message lists, "
+				 "full cache refresh skipped after applying %d message lists, "
 				 "updating local catalog version from %" PRIu64 " to %" PRIu64
 				 " for database %u",
 				 message_lists.num_lists,
@@ -4784,7 +4784,7 @@ YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 					 edata->hint ? errhint("%s", edata->hint) : 0,
 					 !(*YBCGetGFlags()->TEST_hide_details_for_pg_regress) ?
 					 (errcontext("Catalog Version Mismatch: A DDL occurred "
-								"while processing this query. Try again.")) : 0));
+								 "while processing this query. Try again.")) : 0));
 		}
 		else
 		{
@@ -5778,7 +5778,8 @@ static void
 yb_exec_simple_query(const char *query_string, MemoryContext exec_context)
 {
 	YBQueryRetryData retry_data = {
-		.portal_name = "", /* unnamed portal is used in simple query protocol */
+		.portal_name = "",		/* unnamed portal is used in simple query
+								 * protocol */
 		.query_string = query_string,
 		.command_tag = YbParseCommandTag(query_string),
 	};
@@ -6051,7 +6052,7 @@ PostgresMain(const char *dbname, const char *username)
 				 username, InvalidOid,	/* role to connect as */
 				 !am_walsender, /* honor session_preload_libraries? */
 				 false,			/* don't ignore datallowconn */
-				 NULL			/* no out_dbname */ );
+				 NULL);			/* no out_dbname */
 
 	/*
 	 * If the PostmasterContext is still around, recycle the space; we don't

@@ -186,8 +186,8 @@ bool
 YbCanTryInvalidateTableCacheEntry()
 {
 	return IsYugaByteEnabled() &&
-		   yb_enable_invalidate_table_cache_entry &&
-		   !yb_need_invalidate_all_table_cache;
+		yb_enable_invalidate_table_cache_entry &&
+		!yb_need_invalidate_all_table_cache;
 }
 
 uint64_t
@@ -255,7 +255,7 @@ SendLogicalClientCacheVersionToFrontend()
 			 yb_logical_client_cache_version);
 	pq_sendstring(&buf, yb_logical_client_cache_version_str);	/* Value */
 	/* No flags are needed for this variable */
-	pq_sendbyte(&buf, 0); /* flags */
+	pq_sendbyte(&buf, 0);		/* flags */
 
 	pq_endmessage(&buf);
 
@@ -726,6 +726,7 @@ YBIsDBCatalogVersionMode()
 			.reason = YB_SWITCH_TO_DB_CATALOG_VERSION_MODE,
 			.oidarg = MyDatabaseId,
 		};
+
 		cached_is_db_catalog_version_mode = true;
 		/*
 		 * If MyDatabaseId is not resolved, the caller is going to set up the
@@ -1124,8 +1125,9 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 			.parallel_leader_session_id = NULL,
 			.shared_data = &MyProc->yb_shared_data
 		};
+
 		YBCInitPgGate(YbGetTypeTable(), &callbacks,
-					init_info ? init_info : &default_init_info, &ash_config);
+					  init_info ? init_info : &default_init_info, &ash_config);
 		YBCInstallTxnDdlHook();
 
 		/*
@@ -1273,7 +1275,7 @@ typedef struct YbDatabaseAndRelfileNodeId
 {
 	Oid			database_oid;
 	Oid			relfilenode_id;
-}			YbDatabaseAndRelfileNodeOid;
+} YbDatabaseAndRelfileNodeOid;
 
 typedef struct
 {
@@ -3139,7 +3141,8 @@ YBCommitTransactionContainingDDL()
 			GetCommandTagName(ddl_transaction_state.current_stmt_ddl_command_tag);
 
 		is_breaking_change = mode & YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE;
-		bool increment_for_conn_mgr_needed = false;
+		bool		increment_for_conn_mgr_needed = false;
+
 		if (YbIsYsqlConnMgrEnabled())
 		{
 			/* We should not come here on auth backend. */
@@ -3849,7 +3852,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 				break;
 			}
 
-		/* ALTER .. RENAME TO syntax gets parsed into a T_RenameStmt node. */
+			/* ALTER .. RENAME TO syntax gets parsed into a T_RenameStmt node. */
 		case T_RenameStmt:
 			{
 				const RenameStmt *const stmt = castNode(RenameStmt, parsetree);
@@ -4081,7 +4084,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 		aspects |= YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE;
 
 	*requires_autonomous_transaction = YBIsDdlTransactionBlockEnabled() &&
-									   should_run_in_autonomous_transaction;
+		should_run_in_autonomous_transaction;
 
 	return (YbDdlModeOptional)
 	{
@@ -4166,7 +4169,7 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 					   QueryCompletion *qc)
 {
 
-	bool should_run_in_autonomous_transaction = false;
+	bool		should_run_in_autonomous_transaction = false;
 	const YbDdlModeOptional ddl_mode =
 		YbGetDdlMode(pstmt, context, &should_run_in_autonomous_transaction);
 
@@ -4178,7 +4181,7 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 	 * - If we were asked to by YbGetDdlMode. Currently, only done for
 	 * CREATE INDEX outside of explicit transaction block.
 	 */
-	const bool use_separate_ddl_transaction =
+	const bool	use_separate_ddl_transaction =
 		is_ddl && (should_run_in_autonomous_transaction ||
 				   !YBIsDdlTransactionBlockEnabled());
 
@@ -6984,7 +6987,8 @@ YbGetNonSystemTablespaceOid(Relation rel)
 void
 YbMaybeSetNonSystemTablespaceOid(YbcPgStatement handle, Relation rel)
 {
-	Oid tablespace_oid = YbGetNonSystemTablespaceOid(rel);
+	Oid			tablespace_oid = YbGetNonSystemTablespaceOid(rel);
+
 	if (OidIsValid(tablespace_oid))
 	{
 		YBCPgSetTablespaceOid(handle, tablespace_oid);
@@ -7735,7 +7739,9 @@ YbOptionalReadPointHandle
 YbResetTransactionReadPoint()
 {
 	if (YbSkipPgSnapshotManagement())
-		return (YbOptionalReadPointHandle) {};
+		return (YbOptionalReadPointHandle)
+	{
+	};
 
 	/*
 	 * If this is a query layer retry for a kReadRestart error, avoid resetting the read point.
@@ -7754,7 +7760,7 @@ YbResetTransactionReadPoint()
 		HandleYBStatus(YBCPgResetTransactionReadPoint());
 	}
 
-  return YbMakeReadPointHandle(YBCPgGetCurrentReadPoint());
+	return YbMakeReadPointHandle(YBCPgGetCurrentReadPoint());
 }
 
 /*
@@ -8195,6 +8201,7 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 		YbcPgTabletsDescriptor *tablet_descriptor = &tablet->tablet_descriptor;
 		Datum		values[ncols];
 		bool		nulls[ncols];
+
 		memset(values, 0, sizeof(values));
 		memset(nulls, 0, sizeof(nulls));
 
@@ -8208,10 +8215,11 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 		{
 			values[5] =
 				UInt16GetDatum(YBCDecodeMultiColumnHashLeftBound(tablet_descriptor->partition_key_start,
-					tablet_descriptor->partition_key_start_len)); /* start_hash is inclusive */
+																 tablet_descriptor->partition_key_start_len));	/* start_hash is
+																												 * inclusive */
 			values[6] =
 				UInt16GetDatum(YBCDecodeMultiColumnHashRightBound(tablet_descriptor->partition_key_end,
-					tablet_descriptor->partition_key_end_len) + 1); /* end_hash is exclusive */
+																  tablet_descriptor->partition_key_end_len) + 1);	/* end_hash is exclusive */
 		}
 		else
 		{
@@ -8231,7 +8239,7 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 			List	   *replicas_list = NIL;
 
 			for (size_t idx = 0; idx < tablet->replicas_count; idx++)
-				replicas_list = lappend(replicas_list, (char *)tablet->replicas[idx]);
+				replicas_list = lappend(replicas_list, (char *) tablet->replicas[idx]);
 
 			/*
 			 * Sort the list lexicographically for consistency, so that all rows
