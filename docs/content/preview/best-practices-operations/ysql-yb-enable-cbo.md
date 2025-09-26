@@ -96,8 +96,8 @@ If your tables are analyzed, do the following:
 
 ## ANALYZE and Auto Analyze service
 
-Use the [YugabyteDB Auto Analyze service](../../explore/query-1-performance/auto-analyze/) {{<tags/feature/ea idea="590">}} to automate the execution of ANALYZE commands for any table where rows have changed more than a configurable threshold. This ensures table statistics are always up-to-date.
+Use the [YugabyteDB Auto Analyze service](../../additional-features/auto-analyze/) {{<tags/feature/ea idea="590">}} to automate the execution of ANALYZE commands for any table where rows have changed more than a configurable threshold. This ensures table statistics are always up-to-date.
 
 Even with the Auto Analyze service, for the CBO to create optimal execution plans, you should still run ANALYZE manually on user tables after data load, as well as in other circumstances.
 
-For more information, refer to [Auto Analyze](../../explore/query-1-performance/auto-analyze/).
+For more information, refer to [Auto Analyze](../../additional-features/auto-analyze/).

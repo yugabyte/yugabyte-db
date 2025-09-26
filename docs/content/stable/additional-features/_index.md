@@ -38,4 +38,10 @@ type: indexpage
     href="pg-extensions/"
     icon="fa-thin fa-puzzle">}}
 
+  {{<index/item
+    title="Auto Analyze service"
+    body="Automate execution of ANALYZE commands."
+    href="auto-analyze/"
+    icon="fa-thin fa-microscope">}}
+
 {{</index/block>}}
