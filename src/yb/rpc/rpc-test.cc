@@ -1184,6 +1184,7 @@ void TestMaxSizeRpcResponse(CalculatorServiceProxy* proxy) {
   ResponseHeader resp_header;
   resp_header.set_call_id(1);
   resp_header.set_is_error(false);
+  resp_header.set_crc(0);
 
   const size_t header_pb_len = resp_header.ByteSize();
   const size_t header_tot_len = OutboundCall::HeaderTotalLength(header_pb_len);

@@ -60,7 +60,7 @@ class Status;
 
 namespace rpc {
 
-Result<RefCntBuffer> SerializeRequest(
+Result<std::pair<RefCntBuffer, size_t>> SerializeResponse(
     size_t body_size, size_t additional_size, const google::protobuf::Message& header,
     AnyMessageConstPtr body);
 
@@ -104,6 +104,9 @@ struct ParsedRemoteMethod {
 Result<ParsedRemoteMethod> ParseRemoteMethod(const Slice& buf);
 Status ParseMetadata(Slice buf, AnyMessagePtr out);
 Status ParseMetadataFromSharedMemory(uint8_t** input, size_t length, AnyMessagePtr out);
+
+void StoreCrc(
+    const RefCntBuffer& buffer, size_t header_size, size_t message_size, Sidecars* sidecars);
 
 }  // namespace rpc
 }  // namespace yb
