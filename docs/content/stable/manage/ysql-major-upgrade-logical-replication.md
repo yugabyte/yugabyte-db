@@ -32,66 +32,74 @@ Some special considerations need to be taken care of by the users who are using 
       Manual
     </a>
   </li>
-  
+
   <li>
     <a href="../ysql-major-upgrade-logical-replication/" class="nav-link active">
       <i class="icon-shell"></i>
-      Upgrade Logical Replication
+      Logical Replication
     </a>
   </li>
 
 </ul>
 
+Logical replication streams can be upgraded to PG 15 YugabyteDB v2025.1.1 and later.
+
+When performing a YSQL major upgrade on a universe with CDC using logical replication, perform the following additional steps.
+
 ## Before you begin
-1. Logical replication streams can be upgraded to PG 15 YugabyteDB versions `2025.1.1` and above. 
 
-2. Determine a time (say **stop_ddl_time**), after which there will be no DDLs performed on the tables being replicated by logical replication. Moreover no changes should be made to any of the publications after **stop_ddl_time**.
+1. Determine a time (say `stop_ddl_time`), after which be no DDLs will be performed on the tables being replicated using logical replication.
 
-3. Ensure that restart time of all the replication slots has crossed the **stop_ddl_time**. The following query can be used to find the restart time of a slot:
+    {{< warning title="Do not make DDL changes" >}}
+Do not perform any DDLs on relevant tables or modify the publication(s) between `stop_ddl_time` and completing the upgrade of logical replication streams. Any such DDL will render the slot useless, and you will need to create a new slot, potentially requiring an initial snapshot.
+    {{< /warning >}}
 
-```
-yugabyte=# select to_timestamp((yb_restart_commit_ht / 4096) / 1000000) as yb_restart_time from pg_replication_slots;
-    yb_restart_time     
-------------------------
- 2025-09-15 19:58:26+00
-(1 row)
-```
+1. Ensure that restart time of all the replication slots has crossed the `stop_ddl_time`. You can use the following query to find the restart time of a slot:
 
+    ```sql
+    SELECT to_timestamp((yb_restart_commit_ht / 4096) / 1000000) \
+      AS yb_restart_time FROM pg_replication_slots;
+    ```
 
-4. Once the `yb_restart_time` for all the slots has crossed **stop_ddl_time**, delete the connector and start the upgrade process.
+    ```output
+        yb_restart_time     
+    ------------------------
+    2025-09-15 19:58:26+00
+    (1 row)
+    ```
 
+1. After the `yb_restart_time` for all the slots has crossed `stop_ddl_time`, delete the connector and start the upgrade process.
 
 ## After finalizing the upgrade
-1. Once the upgrade is finalized and complete, note down the time at which this process was completed. Lets say this time is **upgrade_complete_time**.
 
-2. Now, redeploy the connector but this time add the below config to the existing list of configs:
+After the upgrade is finalized and complete, do the following:
 
-```
-"ysql.major.upgrade":"true"
-```
+1. Note down the time at which the process was completed. Call it `upgrade_complete_time`.
 
-3. If the connector is deployed without this config, the below error will be encountered. 
+1. Redeploy the connector, but add the following configuration to the existing list of configurations:
 
-```
-ERROR:  catalog version for database 16640 was not found.       
-HINT:  Database might have been dropped by another user         
-STATEMENT:  START_REPLICATION SLOT "test_slot" LOGICAL 0/2D3B0 ("proto_version" '1', "publication_names" 'test_pub', "messages" 'true')
-```
+    ```yaml
+    "ysql.major.upgrade":"true"
+    ```
 
-   However, this is fine as long as you deploy the connector with the above property before the stream expires. The duration between killing the connector before upgrade and then redeploying it with the above property should be lesser than the expiry period.
+    If the connector is deployed without this configuration, you will see the following error:
 
-4. The connector will start streaming the records and covering up the lag which it had accumulated during the PG 11 era. As the connector streams records, the restart time will move forward for the slot.
+    ```output
+    ERROR:  catalog version for database 16640 was not found.       
+    HINT:  Database might have been dropped by another user         
+    STATEMENT:  START_REPLICATION SLOT "test_slot" LOGICAL 0/2D3B0 ("proto_version" '1', "publication_names" 'test_pub', "messages" 'true')
+    ```
 
-5. Once the restart time of all the replication slots has exceeded **upgrade_complete_time**, the connector should be restarted with:
+    This is not a problem as long as you deploy the connector with the specified configuration before the stream expires. The duration between killing the connector before upgrade and then redeploying it with the new configuration should be less than the expiry period.
 
-```
-"ysql.major.upgrade":"false"
-```
-This marks the successful upgradation of the logical replication streams.
+    The connector will start streaming the records and covering up the lag which it accumulated. As the connector streams records, the restart time will move forward for the slot.
 
-6. After this you can resume the DDLs and make changes to the publications as desired. 
+1. After the restart time of all the replication slots has exceeded `upgrade_complete_time`, restart the connector using the following:
 
+    ```yaml
+    "ysql.major.upgrade":"false"
+    ```
 
-{{< warning title="Important" >}}
-Do not perform any DDLs on relevant tables or modify the publication(s) between **stop_ddl_time** and successful completion of logical replication streams upgrade process. Any such DDL will render the slot useless, warranting the creation of a new slot and potentially requiring an initial snapshot again.
-{{< /warning >}}
+    This marks the successful upgrade of the logical replication streams.
+
+1. Resume the DDLs and make changes to the publications as desired.

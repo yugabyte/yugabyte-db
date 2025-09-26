@@ -36,7 +36,7 @@ Some special considerations need to be taken care of by the users who are using 
   <li>
     <a href="../ysql-major-upgrade-logical-replication/" class="nav-link">
       <i class="icon-shell"></i>
-      Upgrade Logical Replication
+      Logical Replication
     </a>
   </li>
 
