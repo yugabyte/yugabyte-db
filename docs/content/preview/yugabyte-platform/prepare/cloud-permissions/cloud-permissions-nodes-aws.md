@@ -1,8 +1,8 @@
 ---
-title: Cloud setup for deploying YugabyteDB Anywhere
+title: Cloud setup for deploying universe nodes on AWS
 headerTitle: To deploy nodes
 linkTitle: To deploy nodes
-description: Prepare your cloud for deploying YugabyteDB universe nodes.
+description: Prepare your cloud for deploying universe nodes using an AWS provider configuration.
 headContent: Prepare your cloud for deploying YugabyteDB universe nodes
 menu:
   preview_yugabyte-platform:
@@ -46,7 +46,7 @@ type: docs
   </li>
 </ul>
 
-For YugabyteDB Anywhere (YBA) to be able to deploy and manage YugabyteDB universes using an AWS [cloud provider configuration](../../yba-overview/#public-cloud), you need to provide YBA with privileges on your cloud infrastructure to create, delete, and modify VMs, mount and unmount disk volumes, and so on. The more permissions that you can provide, the more YBA can automate.
+For YugabyteDB Anywhere (YBA) to be able to deploy and manage YugabyteDB universes using an AWS [cloud provider configuration](../../../yba-overview/#public-cloud), you need to provide YBA with privileges on your cloud infrastructure to create, delete, and modify VMs, mount and unmount disk volumes, and so on. The more permissions that you can provide, the more YBA can automate.
 
 {{<tip>}}
 If you can't provide YBA with the necessary permissions, you can still deploy to AWS using an [on-premises provider](../cloud-permissions-nodes/).
@@ -119,8 +119,6 @@ To grant the required access, you do one of the following:
 - Create a service account with the permissions. You'll later provide YBA with the service account Access key ID and Secret Access Key when creating the AWS provider configuration.
 - Attach an IAM role with the required permissions to the EC2 VM instance where YugabyteDB Anywhere will be running.
 - Attach an IAM role with the required permissions to the EC2 VM instances you will use for universe nodes.
-
-For more information, refer to [Enable IAM roles for service accounts](https://docs.aws.amazon.com/eks/latest/userguide/enable-iam-roles-for-service-accounts.html) in the AWS documentation.
 
 ### Service account
 

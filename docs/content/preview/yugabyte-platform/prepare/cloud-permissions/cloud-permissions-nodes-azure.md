@@ -1,8 +1,8 @@
 ---
-title: Cloud setup for deploying YugabyteDB Anywhere
+title: Cloud setup for deploying universe nodes on Azure
 headerTitle: To deploy nodes
 linkTitle: To deploy nodes
-description: Prepare your cloud for deploying YugabyteDB universe nodes.
+description: Prepare your cloud for deploying universe nodes using an Azure provider configuration.
 headContent: Prepare your cloud for deploying YugabyteDB universe nodes
 menu:
   preview_yugabyte-platform:
@@ -46,7 +46,7 @@ type: docs
   </li>
 </ul>
 
-For YugabyteDB Anywhere (YBA) to be able to deploy and manage YugabyteDB clusters using an Azure [cloud provider configuration](../../yba-overview/#public-cloud), you need to provide YBA with privileges on your cloud infrastructure to create, delete, and modify VMs, mount and unmount disk volumes, and so on. The more permissions that you can provide, the more YBA can automate.
+For YugabyteDB Anywhere (YBA) to be able to deploy and manage YugabyteDB clusters using an Azure [cloud provider configuration](../../../yba-overview/#public-cloud), you need to provide YBA with privileges on your cloud infrastructure to create, delete, and modify VMs, mount and unmount disk volumes, and so on. The more permissions that you can provide, the more YBA can automate.
 
 {{<tip>}}
 If you can't provide YBA with the necessary permissions, you can still deploy to Azure using an [on-premises provider](../cloud-permissions-nodes/).

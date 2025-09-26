@@ -52,6 +52,6 @@ Because you are creating the VMs manually (on a private cloud, bare metal, or cl
 
 With an on-premises provider, permissions against your infrastructure are generally not needed to deploy VMs, modify VMs, and so on.
 
-Provisioning VMs requires root accress, but after VMs have been provisioned with the operating system, required software, and node agent, root and sudo access is no longer required.
+Provisioning VMs requires root access, but after VMs have been provisioned with the operating system, required software, and node agent, root and sudo access is no longer required.
 
 For more information, refer to [Automatically provision on-premises nodes](../../server-nodes-software/software-on-prem/).
