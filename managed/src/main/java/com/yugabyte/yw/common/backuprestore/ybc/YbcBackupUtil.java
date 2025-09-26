@@ -117,7 +117,6 @@ public class YbcBackupUtil {
   public static final String YBC_SUCCESS_MARKER_FILE_NAME = "success";
   public static final String YBDB_AUTOFLAG_BACKUP_SUPPORT_VERSION = "2.19.3.0-b1";
   // YBDB Version that implements https://github.com/yugabyte/yugabyte-db/issues/25877
-  // TODO: Update the version once the change is landed
   public static final String YBDB_STABLE_GRANT_SAFETY_VERSION = "2025.1.0.0-b1";
   public static final String YBDB_PREVIEW_GRANT_SAFETY_VERSION = "2.25.2.0-b275";
 

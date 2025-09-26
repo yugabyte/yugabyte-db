@@ -384,9 +384,7 @@ public class BackupHelper {
     // Set error management flags based on runtime config
     Boolean ignoreErrors =
         confGetter.getConfForScope(universe, UniverseConfKeys.ignoreRestoreErrors);
-    log.debug(
-        "Configured ignoreErrors: {}, errorIfRolesExists: {}, errorIfTablespacesExists: {}",
-        ignoreErrors);
+    log.debug("Configured ignoreErrors: {}", ignoreErrors);
     for (BackupStorageInfo backupStorageInfo : taskParams.backupStorageInfoList) {
       backupStorageInfo.setIgnoreErrors(ignoreErrors || backupStorageInfo.getIgnoreErrors());
     }
