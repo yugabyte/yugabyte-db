@@ -233,7 +233,7 @@ For detailed steps for configuring other popular third party tools, see [GUI cli
 
 Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). Before you can connect an application, you need to install the correct driver and configure it with the required connection parameters. You can also connect to YugabyteDB Aeon clusters using smart drivers.
 
-For information on drivers supported by YugabyteDB, refer to [Drivers and ORMs](../../drivers-orms/). For sample applications using popular drivers, refer to [Build an application](/preview/tutorials/build-apps/).
+For information on drivers supported by YugabyteDB, refer to [Drivers and ORMs](/preview/develop/drivers-orms/). For sample applications using popular drivers, refer to [Build an application](/preview/develop/tutorials/build-apps/).
 
 For information on obtaining the connection parameters for your cluster, refer to [Connect applications](../../yugabyte-cloud/cloud-connect/connect-applications/).
 

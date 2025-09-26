@@ -60,8 +60,7 @@ class MasterLeaderPollerInterface {
 
 class MasterLeaderPollScheduler {
  public:
-  MasterLeaderPollScheduler(
-      MasterLeaderFinder& connector, std::unique_ptr<MasterLeaderPollerInterface> poller);
+  MasterLeaderPollScheduler(MasterLeaderFinder& connector, MasterLeaderPollerInterface& poller);
   Status Start();
   Status Stop();
   void TriggerASAP();

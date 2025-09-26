@@ -20,6 +20,9 @@ import org.yb.YBTestRunner;
 
 import java.io.File;
 
+import java.util.Map;
+
+
 @RunWith(value=YBTestRunner.class)
 public class TestPgRegressContribPostgresFdw extends BasePgRegressTestPorted {
   @Override
@@ -34,6 +37,14 @@ public class TestPgRegressContribPostgresFdw extends BasePgRegressTestPorted {
     builder.addCommonTServerFlag("ysql_yb_ddl_transaction_block_enabled", "true");
     builder.addCommonTServerFlag(
         "allowed_preview_flags_csv", "ysql_yb_ddl_transaction_block_enabled");
+  }
+
+  // (Auto-Analyze) proactively disable auto analyze because the test
+  // checks query plan.
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("ysql_enable_auto_analyze", "false");
+    return flagMap;
   }
 
   @Test

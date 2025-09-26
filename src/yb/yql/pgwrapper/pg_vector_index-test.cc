@@ -54,6 +54,8 @@ DECLARE_bool(vector_index_no_deletions_skip_filter_check);
 DECLARE_bool(vector_index_use_hnswlib);
 DECLARE_bool(vector_index_use_yb_hnsw);
 DECLARE_bool(ysql_enable_packed_row);
+DECLARE_bool(ysql_enable_auto_analyze);
+DECLARE_bool(ysql_enable_auto_analyze_infra);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_uint32(vector_index_concurrent_reads);
 DECLARE_uint32(vector_index_concurrent_writes);
@@ -116,6 +118,12 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
         FLAGS_vector_index_use_yb_hnsw = false;
         break;
     }
+    // Disable auto analyze in this test suite because auto analyze runs
+    // analyze which can violate the check used in this test suite:
+    // !TEST_fail_on_seq_scan_with_vector_indexes || pgsql_read_request.has_ybctid_column_value()
+    FLAGS_ysql_enable_auto_analyze = false;
+    // (Auto-Analyze #28666)
+    FLAGS_ysql_enable_auto_analyze_infra = false;
     itest::SetupQuickSplit(1_KB);
 
     PgMiniTestBase::SetUp();

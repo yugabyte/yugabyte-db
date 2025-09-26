@@ -949,11 +949,13 @@ ybpgm_InitPostgres()
 	/* Authorized connections metric */
 	long		current_authorized_connections = YbGetAuthorizedConnections();
 	long		total_delta = current_authorized_connections - last_authorized_connection_val;
+
 	last_authorized_connection_val = current_authorized_connections;
 	ybpgm_StoreCount(AuthorizedConnection, 0, total_delta);
 
 	/* Relcache preloads metric */
 	long		current_relcache_preloads = YbGetRelCachePreloads();
+
 	total_delta = current_relcache_preloads - last_relcache_preload_val;
 	last_relcache_preload_val = current_relcache_preloads;
 	ybpgm_StoreCount(RelCachePreload, 0, total_delta);
@@ -1297,7 +1299,7 @@ ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 		INSTR_TIME_SET_CURRENT(end);
 		INSTR_TIME_SUBTRACT(end, start);
 
-		bool requires_autonomous_transaction = false;
+		bool		requires_autonomous_transaction = false;
 		YbDdlModeOptional ddl_mode =
 			YbGetDdlMode(pstmt, context, &requires_autonomous_transaction);
 

@@ -108,9 +108,9 @@
     imageUrl = "/images/migrate/migration-icon.svg"
 
 [[main]]
-  name = "Tutorials"
+  name = "Develop"
   weight = 2
-  url = "/preview/tutorials/"
+  url = "/preview/develop/"
   [main.params]
     excludeVersion = true
 
@@ -475,24 +475,6 @@
   [preview.params]
     showSection = true
 
-# [[preview]]
-#   name = "Key benefits"
-#   weight = 3
-#   identifier = "features"
-#   url = "/preview/features/"
-#   [preview.params]
-#     showSection = true
-#     hideChildren = true
-
-# [[preview]]
-#   name = "Resource guide"
-#   weight = 4
-#   identifier = "get-started-guide"
-#   url = "/preview/get-started-guide/"
-#   [preview.params]
-#     showSection = true
-#     hideChildren = true
-
 [[preview]]
   name = "Quick Start"
   weight = 5
@@ -507,14 +489,6 @@
   weight = 6
   identifier = "explore"
   url = "/preview/explore/"
-  [preview.params]
-    showSection = true
-
-[[preview]]
-  name = "Develop"
-  weight = 7
-  identifier = "develop"
-  url = "/preview/develop/"
   [preview.params]
     classes = "separator"
     showSection = true
@@ -669,94 +643,137 @@
   [preview_integrations.params]
     showSection = true
 
-########## Menus (in preview) for Tutorials
+########## Menus (in preview) for Develop
 
-# [[preview_tutorials]]
+# [[preview_develop]]
 #   name = "Docs Home"
 #   weight = 1
 #   identifier = "home"
 #   url = "/"
-#   [preview_tutorials.params]
+#   [preview_develop.params]
 #     showSection = true
 
-[[preview_tutorials]]
-  name = "Tutorials"
-  weight = 3
-  identifier = "tutorials"
-  url = "/preview/tutorials/"
-  [preview_tutorials.params]
+[[preview_develop]]
+  name = "Develop"
+  weight = 2
+  identifier = "develop"
+  url = "/preview/develop/"
+  [preview_develop.params]
+    showSection = true
+
+[[preview_develop]]
+  name = "Learn app development"
+  weight = 5
+  identifier = "learn"
+  url = "/preview/develop/learn/"
+  [preview_develop.params]
+    showSection = true
+
+[[preview_develop]]
+  name = "Drivers and ORMs"
+  weight = 6
+  identifier = "drivers-orms"
+  url = "/preview/develop/drivers-orms/"
+  [preview_develop.params]
+    showSection = true
+
+[[preview_develop]]
+  name = "Data modeling"
+  weight = 7
+  identifier = "data-modeling"
+  url = "/preview/develop/data-modeling/"
+  [preview_develop.params]
+    showSection = true
+
+[[preview_develop]]
+  name = "Build global applications"
+  weight = 8
+  identifier = "build-global-apps"
+  url = "/preview/develop/build-global-apps/"
+  [preview_develop.params]
+    showSection = true
+
+[[preview_develop]]
+  name = "Build Multi-cloud Applications"
+  weight = 9
+  identifier = "build-multicloud-apps"
+  url = "/preview/develop/multi-cloud/"
+  [preview_develop.params]
+    showSection = true
+
+[[preview_develop]]
+  name = "Best practices"
+  weight = 10
+  identifier = "best-practices-develop"
+  url = "/preview/develop/best-practices-develop/"
+  [preview_develop.params]
+    showSection = true
+
+[[preview_develop]]
+  name = "Quality of service"
+  weight = 11
+  identifier = "develop-quality-of-service"
+  url = "/preview/develop/quality-of-service/"
+  [preview_develop.params]
+    showSection = true
+
+[[preview_develop]]
+  name = "Cloud-native development"
+  weight = 12
+  identifier = "gitdev"
+  url = "/preview/develop/gitdev/"
+  [preview_develop.params]
     classes = "separator"
     showSection = true
 
-# [[preview_tutorials]]
-#   name = "Quick Start"
-#   weight = 4
-#   identifier = "quick-start"
-#   url = "/preview/quick-start-yugabytedb-managed/"
-#   [preview_tutorials.params]
-#     showSection = true
-#     hideChildren = true
 
-[[preview_tutorials]]
-  name = "Hello world"
-  weight = 5
-  identifier = "build-apps"
-  url = "/preview/tutorials/build-apps/"
-  [preview_tutorials.params]
+[[preview_develop]]
+  name = "Tutorials"
+  weight = 3
+  identifier = "tutorials"
+  url = "/preview/develop/tutorials/"
+  [preview_develop.params]
+    classes = "separator"
     showSection = true
 
-[[preview_tutorials]]
-  name = "Build and learn"
-  weight = 10
-  identifier = "tutorials-build-and-learn"
-  url = "/preview/tutorials/build-and-learn/"
-  [preview_tutorials.params]
-    showSection = true
-
-[[preview_tutorials]]
-  name = "AI"
-  weight = 20
-  identifier = "tutorials-ai"
-  url = "/preview/tutorials/ai/"
-  [preview_tutorials.params]
-    showSection = true
-
-[[preview_tutorials]]
+[[preview_develop]]
   name = "RAG"
   weight = 10
-  identifier = "tutorials-ai-rag"
   parent = "tutorials-ai"
-  [preview_tutorials.params]
+  identifier = "tutorials-ai-rag"
+  [preview_develop.params]
     showSection = true
 
-[[preview_tutorials]]
+[[preview_develop]]
   name = "Vector basics"
   weight = 20
-  identifier = "tutorials-ai-vector"
   parent = "tutorials-ai"
-  [preview_tutorials.params]
+  identifier = "tutorials-ai-vector"
+  [preview_develop.params]
     showSection = true
 
-[[preview_tutorials]]
+[[preview_develop]]
   name = "Agentic"
   weight = 30
-  identifier = "tutorials-ai-agentic"
   parent = "tutorials-ai"
-  [preview_tutorials.params]
+  identifier = "tutorials-ai-agentic"
+  [preview_develop.params]
     showSection = true
 
-[[preview_tutorials]]
+[[preview_develop]]
   name = "Cloud"
-  weight = 30
+  weight = 40
+  parent = "tutorials"
   identifier = "tutorials-cloud"
-  [preview_tutorials.params]
+  [preview_develop.params]
     showSection = true
 
-[[preview_tutorials]]
+[[preview_develop]]
   name = "CDC"
-  weight = 40
+  weight = 50
+  parent = "tutorials"
   identifier = "tutorials-cdc"
-  [preview_tutorials.params]
+  [preview_develop.params]
     showSection = true
 
 ########## Menus (in preview) for APIs
@@ -982,14 +999,6 @@
     showSection = true
     hideLink = true
 
-# [[preview_yugabyte-cloud]]
-#   name = "What's New"
-#   weight = 4
-#   identifier = "yugabytedb-managed-releases"
-#   url = "/preview/yugabyte-cloud/release-notes/"
-#   [preview_yugabyte-cloud.params]
-#     showSection = true
-
 ########## Menus (in preview) for YB Voyager section
 
 [[preview_yugabyte-voyager]]
@@ -1080,31 +1089,8 @@
   identifier = "explore"
   url = "/stable/explore/"
   [stable.params]
-    showSection = true
-
-[[stable]]
-  name = "Develop"
-  weight = 6
-  identifier = "develop"
-  url = "/preview/develop/"
-  [stable.params]
     classes = "separator"
     showSection = true
-
-#[[stable]]
-#  name = "Tutorials"
-#  weight = 7
-#  identifier = "tutorials"
-#  [stable.params]
-#    showSection = true
-
-# [[stable]]
-#  name = "Migrate"
-#  weight = 6
-#  identifier = "migrate"
-#  url = "/stable/migrate/"
-#  [stable.params]
-#    showSection = true
 
 [[stable]]
   name = "Secure"
@@ -1275,14 +1261,6 @@
   identifier = "explore"
   url = "/v2024.2/explore/"
   ["v2024.2".params]
-    showSection = true
-
-[["v2024.2"]]
-  name = "Develop"
-  weight = 6
-  identifier = "develop"
-  url = "/preview/develop/"
-  ["v2024.2".params]
     classes = "separator"
     showSection = true
 
@@ -1436,14 +1414,6 @@
   weight = 5
   identifier = "explore"
   url = "/v2024.1/explore/"
-  ["v2024.1".params]
-    showSection = true
-
-[["v2024.1"]]
-  name = "Develop"
-  weight = 6
-  identifier = "develop"
-  url = "/preview/develop/"
   ["v2024.1".params]
     classes = "separator"
     showSection = true
@@ -1600,14 +1570,6 @@
   identifier = "explore"
   url = "/v2025.1/explore/"
   ["v2025.1".params]
-    showSection = true
-
-[["v2025.1"]]
-  name = "Develop"
-  weight = 6
-  identifier = "develop"
-  url = "/preview/develop/"
-  ["v2025.1".params]
     classes = "separator"
     showSection = true
 
@@ -1761,14 +1723,6 @@
   weight = 5
   identifier = "explore"
   url = "/v2.20/explore/"
-  ["v2.20".params]
-    showSection = true
-
-[["v2.20"]]
-  name = "Develop"
-  weight = 6
-  identifier = "develop"
-  url = "/preview/develop/"
   ["v2.20".params]
     classes = "separator"
     showSection = true

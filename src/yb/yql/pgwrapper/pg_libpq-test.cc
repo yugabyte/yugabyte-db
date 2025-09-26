@@ -1073,6 +1073,8 @@ class PgLibPqReadFromSysCatalogTest : public PgLibPqTest {
     PgLibPqTest::UpdateMiniClusterOptions(options);
     options->extra_master_flags.push_back(
         "--TEST_get_ysql_catalog_version_from_sys_catalog=true");
+    // Disable auto analyze for catalog version tests.
+    options->extra_tserver_flags.push_back("--ysql_enable_auto_analyze=false");
   }
 
   Status ReadLatestCatalogVersion() {

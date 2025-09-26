@@ -29,6 +29,14 @@ public class TestPgRegressPgMisc extends BasePgRegressTestPorted {
     return 1800;
   }
 
+  // Disable auto analyze likely because of issue #27973.
+  // This may not be related to auto analyze at all.
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("ysql_enable_auto_analyze", "false");
+    return flagMap;
+  }
+
   @Test
   public void testPgRegressPgMisc() throws Exception {
     runPgRegressTest("yb_pg_misc_serial_schedule");

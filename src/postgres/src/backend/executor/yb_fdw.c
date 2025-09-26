@@ -556,7 +556,7 @@ ybcIterateForeignScan(ForeignScanState *node)
 		.colrefs = foreignScan->fdw_private,
 	};
 	YbPushdownExprs *pushdown = YbInstantiatePushdownExprs(&orig_pushdown,
-															estate);
+														   estate);
 
 	/*
 	 * Execute the select statement one time.

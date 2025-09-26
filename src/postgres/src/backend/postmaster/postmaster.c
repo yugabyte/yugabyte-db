@@ -6166,7 +6166,7 @@ BackgroundWorkerInitializeConnection(const char *dbname, const char *username, u
 				 username, InvalidOid,	/* role to connect as */
 				 false,			/* never honor session_preload_libraries */
 				 (flags & BGWORKER_BYPASS_ALLOWCONN) != 0,	/* ignore datallowconn? */
-				 NULL			/* no out_dbname */ );
+				 NULL /* no out_dbname */ );
 
 	if (yb_enable_ash)
 		YbAshSetMetadataForBgworkers();
@@ -6183,7 +6183,7 @@ BackgroundWorkerInitializeConnection(const char *dbname, const char *username, u
  */
 void
 YbBackgroundWorkerInitializeConnectionByOid(Oid dboid, Oid useroid, uint32 flags,
-								const YbcPgInitPostgresInfo *yb_init_info)
+											const YbcPgInitPostgresInfo *yb_init_info)
 {
 	BackgroundWorker *worker = MyBgworkerEntry;
 
@@ -6193,12 +6193,12 @@ YbBackgroundWorkerInitializeConnectionByOid(Oid dboid, Oid useroid, uint32 flags
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 				 errmsg("database connection requirement not indicated during registration")));
 
-	YbInitPostgres(NULL, dboid,	/* database to connect to */
-				 NULL, useroid, /* role to connect as */
-				 false,			/* never honor session_preload_libraries */
-				 (flags & BGWORKER_BYPASS_ALLOWCONN) != 0,	/* ignore datallowconn? */
-				 NULL,			/* no out_dbname */
-				 yb_init_info);
+	YbInitPostgres(NULL, dboid, /* database to connect to */
+				   NULL, useroid,	/* role to connect as */
+				   false,		/* never honor session_preload_libraries */
+				   (flags & BGWORKER_BYPASS_ALLOWCONN) != 0,	/* ignore datallowconn? */
+				   NULL,		/* no out_dbname */
+				   yb_init_info);
 
 	if (yb_enable_ash)
 		YbAshSetMetadataForBgworkers();

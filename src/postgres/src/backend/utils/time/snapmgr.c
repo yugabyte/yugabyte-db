@@ -311,13 +311,14 @@ YBCOnActiveSnapshotChange()
 	const SnapshotData *snap = ActiveSnapshot ? ActiveSnapshot->as_snap : NULL;
 
 	if (snap &&
-			snap->yb_read_point_handle.has_value)
+		snap->yb_read_point_handle.has_value)
 	{
 		YbcReadPointHandle current_read_point = YBCPgGetCurrentReadPoint();
+
 		if (snap->yb_read_point_handle.value == current_read_point)
 		{
 			elog(YbSnapshotMgmtLogLevel(),
-					 "Avoid restoring read point since it is already set to %" PRIu64, current_read_point);
+				 "Avoid restoring read point since it is already set to %" PRIu64, current_read_point);
 			return;
 		}
 		HandleYBStatus(YBCPgRestoreReadPoint(snap->yb_read_point_handle.value));
@@ -328,11 +329,11 @@ void
 YbLogSnapshotData(const char *msg, SnapshotData *snap, bool log_stack_trace)
 {
 	elog(YbSnapshotMgmtLogLevel(),
-		"%s read point: %" PRIu64 ", effective isolation level: %d. %s",
-		msg,
-		snap->yb_read_point_handle.has_value ? snap->yb_read_point_handle.value : 0,
-		YBGetEffectivePggateIsolationLevel(),
-		log_stack_trace ? YBCGetStackTrace() : "");
+		 "%s read point: %" PRIu64 ", effective isolation level: %d. %s",
+		 msg,
+		 snap->yb_read_point_handle.has_value ? snap->yb_read_point_handle.value : 0,
+		 YBGetEffectivePggateIsolationLevel(),
+		 log_stack_trace ? YBCGetStackTrace() : "");
 }
 
 static void
@@ -840,7 +841,7 @@ PushActiveSnapshotWithLevel(Snapshot snap, int snap_level)
 		OldestActiveSnapshot = ActiveSnapshot;
 
 	YbLogActiveSnapshot("Pushed new active snapshot: ",
-		ActiveSnapshot, yb_debug_log_snapshot_mgmt /* log_stack_trace */ );
+						ActiveSnapshot, yb_debug_log_snapshot_mgmt /* log_stack_trace */ );
 	YBCOnActiveSnapshotChange();
 }
 
@@ -905,7 +906,7 @@ PopActiveSnapshot(void)
 	Assert(ActiveSnapshot->as_snap->active_count > 0);
 
 	YbLogActiveSnapshot("Pop active snapshot: ",
-		ActiveSnapshot, yb_debug_log_snapshot_mgmt /* log_stack_trace */ );
+						ActiveSnapshot, yb_debug_log_snapshot_mgmt /* log_stack_trace */ );
 
 	ActiveSnapshot->as_snap->active_count--;
 
@@ -1137,7 +1138,7 @@ AtSubAbort_Snapshot(int level)
 		ActiveSnapshot->as_snap->active_count -= 1;
 
 		YbLogActiveSnapshot("Pop active snapshot for subtransaction abort",
-			ActiveSnapshot, yb_debug_log_snapshot_mgmt /* log_stack_trace */ );
+							ActiveSnapshot, yb_debug_log_snapshot_mgmt /* log_stack_trace */ );
 
 		if (ActiveSnapshot->as_snap->active_count == 0 &&
 			ActiveSnapshot->as_snap->regd_count == 0)
@@ -1151,7 +1152,7 @@ AtSubAbort_Snapshot(int level)
 			OldestActiveSnapshot = NULL;
 
 		YbLogActiveSnapshot("Active after pop for subtransaction abort",
-			ActiveSnapshot, false /* log_stack_trace */ );
+							ActiveSnapshot, false /* log_stack_trace */ );
 	}
 
 	SnapshotResetXmin();
@@ -1329,8 +1330,8 @@ ExportSnapshot(Snapshot snapshot)
 
 	if (IsYugaByteEnabled())
 		return YBCExportSnapshot(snapshot->yb_is_built_for_export &&
-			snapshot->yb_read_point_handle.has_value ?
-				&snapshot->yb_read_point_handle.value : NULL);
+								 snapshot->yb_read_point_handle.has_value ?
+								 &snapshot->yb_read_point_handle.value : NULL);
 	/*
 	 * We do however allow previous committed subtransactions to exist.
 	 * Importers of the snapshot must see them as still running, so get their

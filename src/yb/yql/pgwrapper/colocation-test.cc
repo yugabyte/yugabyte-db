@@ -345,6 +345,13 @@ class ColocationConcurrencyTest : public ColocatedDBTest {
   void InsertDataIntoTable(yb::pgwrapper::PGConn* conn, std::string table_name, int num_rows = 50);
 
   void FKTestHelper(bool use_txn_block);
+
+  // Disable auto analyze to prevent query plan from changing.
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    ColocatedDBTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.emplace_back(
+        "--ysql_enable_auto_analyze=false");
+  }
 };
 
 void ColocationConcurrencyTest::CreateTables(yb::pgwrapper::PGConn* conn, const int num_tables) {

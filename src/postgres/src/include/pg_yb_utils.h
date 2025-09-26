@@ -201,6 +201,7 @@ extern bool YbIsTempRelation(Relation relation);
  * Returns false for all other relations, or if they are not found.
  */
 extern bool YbIsRangeVarTempRelation(const RangeVar *relation);
+
 /*
  * Returns whether a relation's attribute is a real column in the backing
  * YugaByte table. (It implies we can both read from and write to it).
@@ -1138,37 +1139,37 @@ extern void yb_assign_max_replication_slots(int newval, void *extra);
  * Refreshes the session stats snapshot with the collected stats. This function
  * is to be invoked before the query has started its execution.
  */
-extern void		YbRefreshSessionStatsBeforeExecution();
+extern void YbRefreshSessionStatsBeforeExecution();
 
 /*
  * Refreshes the session stats snapshot with the collected stats. This function
  * is to be invoked when during/after query execution.
  */
-extern void		YbRefreshSessionStatsDuringExecution();
+extern void YbRefreshSessionStatsDuringExecution();
 
 /*
  * Updates the global flag indicating whether RPC requests to the underlying
  * storage layer need to be timed.
  */
-extern void		YbToggleSessionStatsTimer(bool timing_on);
+extern void YbToggleSessionStatsTimer(bool timing_on);
 
 /* Indicates whether timing of RPC requests is enabled. */
-extern bool		YbIsSessionStatsTimerEnabled();
+extern bool YbIsSessionStatsTimerEnabled();
 
 /*
  * Updates the global flag indicating whether stats need to be collected at the
  * time of transaction commit for EXPLAIN.
  */
-extern void		YbToggleCommitStatsCollection(bool enable);
+extern void YbToggleCommitStatsCollection(bool enable);
 
 /* Indicates whether commit stats collection is enabled. */
-extern bool		YbIsCommitStatsCollectionEnabled();
+extern bool YbIsCommitStatsCollectionEnabled();
 
 /*
  * Records the latency of the last transaction commit operation in a global
  * variable.
  */
-extern void		YbRecordCommitLatency(uint64_t latency_us);
+extern void YbRecordCommitLatency(uint64_t latency_us);
 
 /**
  * Update the global flag indicating what metric changes to capture and return
@@ -1184,7 +1185,7 @@ extern void YBCheckServerAccessIsAllowed();
 
 void		YbSetCatalogCacheVersion(YbcPgStatement handle, uint64_t version);
 
-extern void	YbMaybeSetNonSystemTablespaceOid(YbcPgStatement handle, Relation rel);
+extern void YbMaybeSetNonSystemTablespaceOid(YbcPgStatement handle, Relation rel);
 
 uint64_t	YbGetSharedCatalogVersion();
 uint32_t	YbGetNumberOfDatabases();

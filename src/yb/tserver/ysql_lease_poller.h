@@ -30,6 +30,7 @@ class YsqlLeaseClient {
 
   Status Start();
   Status Stop();
+  std::future<Status> RelinquishLease();
   void set_master_addresses(server::MasterAddressesPtr master_addresses);
 
   ~YsqlLeaseClient();

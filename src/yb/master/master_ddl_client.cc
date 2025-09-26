@@ -93,6 +93,17 @@ Result<RefreshYsqlLeaseInfoPB> MasterDDLClient::RefreshYsqlLease(
   return resp.info();
 }
 
+Status MasterDDLClient::RelinquishYsqlLease(
+    const std::string& permanent_uuid, int64_t instance_seqno) {
+  RelinquishYsqlLeaseRequestPB req;
+  req.mutable_instance()->set_permanent_uuid(permanent_uuid);
+  req.mutable_instance()->set_instance_seqno(instance_seqno);
+  RelinquishYsqlLeaseResponsePB resp;
+  rpc::RpcController rpc;
+  RETURN_NOT_OK(proxy_.RelinquishYsqlLease(req, &resp, &rpc));
+  return ResponseStatus(resp);
+}
+
 Status MasterDDLClient::DeleteTable(const TableId& id, MonoDelta timeout) {
   DeleteTableRequestPB req;
   req.mutable_table()->set_table_id(id);

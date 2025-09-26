@@ -16,6 +16,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
 
+import java.util.Collections;
 import java.util.Map;
 
 /**
@@ -36,6 +37,8 @@ public class TestPgRegressMisc extends BasePgRegressTest {
     // TODO(28543): Remove once transactional ddl is enabled by default.
     flagMap.put("ysql_yb_ddl_transaction_block_enabled", "true");
     flagMap.put("allowed_preview_flags_csv", "ysql_yb_ddl_transaction_block_enabled");
+    // (Auto-Analyze #28057) Query plans change after enabling auto analyze.
+    flagMap.put("ysql_enable_auto_analyze", "false");
     return flagMap;
   }
 
@@ -46,6 +49,10 @@ public class TestPgRegressMisc extends BasePgRegressTest {
 
   @Test
   public void testPgRegressMiscIndependent() throws Exception {
+    // Disable auto analyze for catalog version tests.
+    restartClusterWithFlags(Collections.emptyMap(),
+                            Collections.singletonMap("ysql_enable_auto_analyze",
+                                                     "false"));
     runPgRegressTest("yb_misc_independent_schedule");
   }
 

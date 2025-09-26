@@ -11,13 +11,25 @@ menu:
 type: docs
 ---
 
-The `yb-admin` utility, located in the `bin` directory of YugabyteDB home, provides a command line interface for administering clusters.
+The yb-admin utility, located in the `bin` directory of YugabyteDB home, provides a command line interface for administering clusters.
 
-It invokes the [`yb-master`](../../reference/configuration/yb-master/) and [`yb-tserver`](../../reference/configuration/yb-tserver/) servers to perform the necessary administration.
+It invokes the [yb-master](../../reference/configuration/yb-master/) and [yb-tserver](../../reference/configuration/yb-tserver/) servers to perform the necessary administration.
+
+{{< note title="Using YugabyteDB Anywhere or YugabyteDB Aeon?" >}}
+
+yb-admin is intended to be used to administer manually created and managed universes only.
+
+If you are using [YugabyteDB Anywhere](../../yugabyte-platform/) or [YugabyteDB Aeon](/preview/yugabyte-cloud/), administer your universes using the respective UI, or, to use automation, use the respective API or CLI. For more information, refer to [YugabyteDB Anywhere automation](../../yugabyte-platform/anywhere-automation/) and [YugabyteDB Aeon automation](/preview/yugabyte-cloud/managed-automation/).
+
+**If you perform tasks on a YugabyteDB Anywhere-managed universe using yb-admin, the changes may not be reflected in YugabyteDB Anywhere.**
+
+If you are unsure whether a particular functionality in yb-admin is available in YugabyteDB Anywhere, contact {{% support-platform %}}.
+
+{{< /note >}}
 
 ## Syntax
 
-To use the `yb-admin` utility from the YugabyteDB home directory, run `./bin/yb-admin` using the following syntax.
+To use yb-admin from the YugabyteDB home directory, run `./bin/yb-admin` using the following syntax.
 
 ```sh
 yb-admin \
@@ -1437,7 +1449,7 @@ Having all tablet leaders reside in a single region reduces the number of networ
 
 * Tablespaces don't inherit cluster-level placement information, leader preference, or read replica configurations.
 
-* If the client application uses a smart driver, set the [topology keys](/preview/drivers-orms/smart-drivers/#topology-aware-load-balancing) to target the preferred zones.
+* If the client application uses a smart driver, set the [topology keys](/preview/develop/drivers-orms/smart-drivers/#topology-aware-load-balancing) to target the preferred zones.
 
 {{< /note >}}
 
