@@ -514,7 +514,8 @@ public class NodeManager extends DevopsBase {
           subCommand.add(providerDetails.sshUser);
         }
       }
-
+      subCommand.add("--yb_home_dir");
+      subCommand.add(provider.getYbHome());
       if (providerDetails.setUpChrony) {
         subCommand.add("--skip_ntp_check");
       }

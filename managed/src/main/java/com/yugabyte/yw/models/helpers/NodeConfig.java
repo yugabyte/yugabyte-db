@@ -62,6 +62,8 @@ public class NodeConfig {
 
     HOME_DIR_EXISTS("Home directory exists"),
 
+    HOME_DIR_MATCHES("Home directory matches"),
+
     RAM_SIZE("Total RAM size in MB"),
 
     INTERNET_CONNECTION("Internet connectivity"),

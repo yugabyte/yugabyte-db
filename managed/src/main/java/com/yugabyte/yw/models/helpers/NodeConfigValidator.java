@@ -308,6 +308,7 @@ public class NodeConfigValidator {
       case INTERNET_CONNECTION:
       case PROMETHEUS_NO_NODE_EXPORTER:
       case HOME_DIR_EXISTS:
+      case HOME_DIR_MATCHES:
       case NODE_EXPORTER_RUNNING:
       case SUDO_ACCESS:
       case SSH_ACCESS:
