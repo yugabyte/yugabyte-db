@@ -138,7 +138,7 @@ public class BackupLocalTest extends LocalProviderUniverseTestBase {
     taskUUID = backupHelper.createRestoreTask(customer.getUuid(), rParams);
     taskInfo = waitForTask(taskUUID, source, target);
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
-    verifyYSQL(target);
+    verifyYSQL(target, false, db2Name);
     verifyPayload();
   }
 
