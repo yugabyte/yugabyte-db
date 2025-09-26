@@ -11,7 +11,9 @@ menu:
 type: docs
 ---
 
-When migrating data from MySQL to YugabyteDB, you must address specific limitations and implement necessary workarounds. Some features, like multi-column partition by list, certain DDL operations and constraint types, are unsupported. You will also encounter compatibility issues with data types and functions. This page helps you navigate these challenges by offering advice on schema adjustments, handling unsupported features, and optimizing performance for a successful migration.
+When migrating data from MySQL to YugabyteDB, you may need to address limitations and incompatibilities by implementing workarounds. Some features, like multi-column partition by list, some DDL operations, and some constraint types, are unsupported. You may also encounter compatibility issues with data types and functions.
+
+The following sections provide guidance on how to adjust your schema, handle unsupported features, and optimize performance for a successful migration.
 
 ## Data definition
 
@@ -414,7 +416,7 @@ Suggested changes:
 
 ---
 
-## Migration process and tooling issues
+## Migration process and tooling
 
 ### Exporting data from MySQL when table names include quotes
 
@@ -478,13 +480,13 @@ Suggested workaround is as follows:
 
 ---
 
-### Exporting data with names for tables/functions/procedures using special characters/whitespaces fails
+### Exporting data with names using special characters fails
 
 **GitHub**: [Issue #636](https://github.com/yugabyte/yb-voyager/issues/636), [Issue #688](https://github.com/yugabyte/yb-voyager/issues/688), [Issue #702](https://github.com/yugabyte/yb-voyager/issues/702)
 
-**Description**: If you define complex names for your source database tables/functions/procedures using backticks or double quotes for example, \`abc xyz\` , \`abc@xyz\`, or "abc@123", the migration hangs during the export data step.
+**Description**: If you define complex names for your source database tables, functions, or procedures using backticks or double quotes (for example, \`abc xyz\` , \`abc@xyz\`, or "abc@123"), the migration hangs during the export data step.
 
-**Workaround**: Rename the objects (tables/functions/procedures) on the source database to a name without special characters.
+**Workaround**: Rename the objects on the source database to a name without special characters.
 
 **Example**
 
@@ -566,7 +568,7 @@ yb-voyager import schema --target-db-name voyager
     --target-db-schema "\"Test\""
 ```
 
-The preceding example will result in an error as follows:
+The import will fail with the following error:
 
 ```output
 ERROR: no schema has been selected to create in (SQLSTATE 3F000)
