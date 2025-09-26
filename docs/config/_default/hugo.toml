@@ -30,3 +30,7 @@ enableGitInfo = true
     getenv = [
       'RUDDERSTACK_API_KEY'
     ]
+
+[services]
+  [services.rss]
+    limit = 20
