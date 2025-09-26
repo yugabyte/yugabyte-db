@@ -145,6 +145,8 @@ For more information, see [Configure the instance metadata service](https://docs
 
 If you are intending to back up to S3 or S3-compatible storage, the IAM role used should also have sufficient permissions to access S3; refer to [Permissions to back up and restore](../cloud-permissions-storage/).
 
+For information on using IAM roles for EC2, refer to [IAM roles for Amazon EC2](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html).
+
 ### Provide access to AWS AMIs
 
 In addition to AWS cloud permissions, to create VMs on AWS YBA needs access the operating system disk images, known as AMIs.
@@ -176,7 +178,7 @@ If needed, be sure to do this in every region where you intend to deploy databas
 
 ## Managing SSH keys for VMs
 
-When creating VMs on the public cloud, YugabyteDB requires SSH keys to access the VM. You can manage the SSH keys for VMs in two ways:
+When creating VMs on the public cloud using a [cloud provider configuration](../../../yba-overview/#public-cloud), YugabyteDB requires SSH keys to access the VM. You can manage the SSH keys for VMs in two ways:
 
 - YBA managed keys. When YBA creates VMs, it will generate and manage the SSH key pair.
 - Provide a custom key pair. Create your own custom SSH keys and upload the SSH keys when you create the provider.

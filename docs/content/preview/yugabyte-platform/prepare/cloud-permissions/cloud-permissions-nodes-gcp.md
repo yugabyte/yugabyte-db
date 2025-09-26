@@ -76,7 +76,7 @@ Then use one of the following methods:
 
 ## Managing SSH keys for VMs
 
-When creating VMs on the public cloud, YugabyteDB requires SSH keys to access the VM. You can manage the SSH keys for VMs in two ways:
+When creating VMs on the public cloud using a [cloud provider configuration](../../../yba-overview/#public-cloud), YugabyteDB requires SSH keys to access the VM. You can manage the SSH keys for VMs in two ways:
 
 - YBA managed keys. When YBA creates VMs, it will generate and manage the SSH key pair.
 - Provide a custom key pair. Create your own custom SSH keys and upload the SSH keys when you create the provider.
