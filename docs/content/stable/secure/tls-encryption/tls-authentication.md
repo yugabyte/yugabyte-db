@@ -159,7 +159,6 @@ Type "help" for help.
 
 The other modes (that is, `sslmode=require` or `disable`) behave analogously.
 
-<!-- TODO for v2025.1.1
 ### TLS with SCRAM-based password authentication
 
 This configuration (also known as SCRAM-SHA-256-PLUS) enables authentication with SCRAM using TLS channel-binding as described in [RFC 7677](https://tools.ietf.org/html/rfc7677). When enabled, information about the TLS channel is encoded in the authentication messages exchanged; this ensures the client and server share the same TLS channel (that is, binding the channel to the authentication mechanism).
@@ -178,7 +177,6 @@ $ ./bin/yugabyted destroy && \
 Note that this configuration requires the client to use client-to-server encryption.
 
 For more information on enabling SCRAM-SHA-256 password encryption, refer to [Password authentication](../../../secure/authentication/password-authentication/#scram-sha-256).
--->
 
 ### TLS with authentication via certificate
 
