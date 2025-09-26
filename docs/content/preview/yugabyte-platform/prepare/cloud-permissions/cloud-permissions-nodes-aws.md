@@ -46,7 +46,7 @@ type: docs
   </li>
 </ul>
 
-For YugabyteDB Anywhere (YBA) to be able to deploy and manage YugabyteDB clusters, you need to provide YBA with privileges on your cloud infrastructure to create, delete, and modify VMs, mount and unmount disk volumes, and so on. The more permissions that you can provide, the more YBA can automate.
+For YugabyteDB Anywhere (YBA) to be able to deploy and manage YugabyteDB universes using an AWS [cloud provider configuration](../../yba-overview/#public-cloud), you need to provide YBA with privileges on your cloud infrastructure to create, delete, and modify VMs, mount and unmount disk volumes, and so on. The more permissions that you can provide, the more YBA can automate.
 
 {{<tip>}}
 If you can't provide YBA with the necessary permissions, you can still deploy to AWS using an [on-premises provider](../cloud-permissions-nodes/).
@@ -118,10 +118,15 @@ To grant the required access, you do one of the following:
 
 - Create a service account with the permissions. You'll later provide YBA with the service account Access key ID and Secret Access Key when creating the AWS provider configuration.
 - Attach an IAM role with the required permissions to the EC2 VM instance where YugabyteDB Anywhere will be running.
+- Attach an IAM role with the required permissions to the EC2 VM instances you will use for universe nodes.
+
+For more information, refer to [Enable IAM roles for service accounts](https://docs.aws.amazon.com/eks/latest/userguide/enable-iam-roles-for-service-accounts.html) in the AWS documentation.
 
 ### Service account
 
 If using a service account, record the following two pieces of information about your service account. You will need to provide this information later to YBA.
+
+If you are intending to back up to S3 or S3-compatible storage, the service account should also have sufficient permissions to access S3; refer to [Permissions to back up and restore](../cloud-permissions-storage/).
 
 | Save for later | To configure |
 | :--- | :--- |
@@ -130,7 +135,7 @@ If using a service account, record the following two pieces of information about
 
 ### IAM role
 
-If attaching an IAM role to the YBA EC2 VM, you must also execute the following command to change metadata options:
+If attaching an IAM role to the EC2 VM instance where YugabyteDB Anywhere will be running, you must also execute the following command to change metadata options:
 
 ```sh
 aws ec2 modify-instance-metadata-options --instance-id i-NNNNNNN --http-put-response-hop-limit 3 --http-endpoint enabled --region us-west-2
@@ -139,6 +144,8 @@ aws ec2 modify-instance-metadata-options --instance-id i-NNNNNNN --http-put-resp
 Replace NNNNNNN with the instance ID and us-west-2 with the region in which this EC2 VM is deployed.
 
 For more information, see [Configure the instance metadata service](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-instance-metadata-service.html) in the AWS documentation.
+
+If you are intending to back up to S3 or S3-compatible storage, the IAM role used should also have sufficient permissions to access S3; refer to [Permissions to back up and restore](../cloud-permissions-storage/).
 
 ### Provide access to AWS AMIs
 
