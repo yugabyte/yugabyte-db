@@ -118,6 +118,8 @@ class WritableFileImpl : public WritableFile {
 
   uint64_t Size() const override { return file_->Size(); }
 
+  Result<uint64_t> SizeOnDisk() const override { return file_->Size(); }
+
   const string& filename() const override {
     return file_->filename();
   }
@@ -173,9 +175,8 @@ class RWFileImpl : public RWFile {
     return Status::OK();
   }
 
-  Status Size(uint64_t* size) const override {
-    *size = file_->Size();
-    return Status::OK();
+  Result<uint64_t> Size() const override {
+    return file_->Size();
   }
 
   const string& filename() const override {
