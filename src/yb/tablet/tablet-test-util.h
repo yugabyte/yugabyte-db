@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -37,7 +37,7 @@
 
 #include "yb/docdb/docdb_fwd.h"
 
-#include "yb/tablet/tablet-harness.h"
+#include "yb/tablet/tablet-test-harness.h"
 
 #include "yb/util/test_util.h"
 
@@ -91,7 +91,7 @@ class YBTabletTest : public YBTest {
     return harness_->tablet();
   }
 
-  TabletHarness* harness() {
+  TabletTestHarness* harness() {
     return harness_.get();
   }
 
@@ -100,7 +100,7 @@ class YBTabletTest : public YBTest {
   const Schema client_schema_;
   TableType table_type_;
 
-  std::unique_ptr<TabletHarness> harness_;
+  std::unique_ptr<TabletTestHarness> harness_;
 };
 
 Status IterateToStringList(

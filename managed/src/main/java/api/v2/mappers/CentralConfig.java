@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 package api.v2.mappers;
 
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License.  You may obtain a copy
@@ -286,6 +286,8 @@ extern bool yb_ddl_transaction_block_enabled;
 extern bool yb_disable_ddl_transaction_block_for_read_committed;
 
 extern bool yb_allow_dockey_bounds;
+
+extern bool yb_ignore_read_time_in_walsender;
 
 // Should be in sync with YsqlSamplingAlgorithm protobuf.
 typedef enum {

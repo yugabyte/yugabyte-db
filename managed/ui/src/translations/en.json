@@ -139,6 +139,18 @@
       "useSystemdReminderBanner": {
         "primaryText": "Some of your universes use cron to manage nodes.",
         "additionalDetailText": "<paragraph>Cron-based universes will no longer be supported in YugabyteDB Anywhere v2025.2 and later. Before you can upgrade to v2025.2, you must upgrade cron-based universes to systemd.</paragraph><paragraph>To do this, navigate to the universe and choose <bold>Actions>Upgrade to Systemd</bold></paragraph>"
+      },
+      "onboardingPanel": {
+        "welcomeTo": "Weclome to",
+        "yugabyteDbAnywhere": "YugabyteDB Anywhere",
+        "newUserCard": {
+          "title": "I'm new to YugabyteDB Anywhere",
+          "buttonText": "Configure Cloud Provider"
+        },
+        "restoreBackupCard": {
+          "title": "I want to restore a previous backup of YugabyteDB Anywhere",
+          "buttonText": "Restore a Platform Backup"
+        }
       }
     },
     "universeActions": {
@@ -1892,6 +1904,17 @@
         "multiRegionSupport": "Multi-region support"
       }
     },
+    "telemetryProviderConfigSelect": {
+      "noMatchingMetricsTelemetryConfiguration": "No matches found",
+      "noMetricsTelemetryConfigurations": "You do not have any export configurations for metrics",
+      "createTelemetryConfiguration": "Create export configuration",
+      "redirectModal": {
+        "title": "You are about to leave this page",
+        "message": "To create an export configuration, you will be redirected to <bold>Integrations / Logs & Metrics Export</bold>. Are you sure you want to continue?",
+        "submitButton": "Continue",
+        "cancelButton": "Stay on this page"
+      }
+    },
     "customCACerts": {
       "listing": {
         "header": "Trusted CA Certificates",
@@ -2255,6 +2278,11 @@
         "copyBackupLocation": "Copy backup location",
         "copied": "Copied",
         "restoreFailed": "Restore Failed"
+      },
+      "globalModal": {
+        "title": "Restoring Platform...",
+        "restoringPlatform": "Restoring Platform...",
+        "ybaWillBeAvailable": "YBA will become available after the restoration completes."
       }
     },
     "linuxVersion": {
@@ -2555,8 +2583,8 @@
         "backup": {
           "tabLabel": "Backup"
         },
-        "log": {
-          "tabLabel": "Log"
+        "exportTelemetry": {
+          "tabLabel": "Logs & Metrics Export"
         },
         "security": {
           "tabLabel": "Security"
@@ -2610,7 +2638,8 @@
         "backupUniverseTip": "To back up universes, navigate to your universe and choose Backups."
       },
       "actionBar": {
-        "oneTimeBackup": "One-Time Platform Export"
+        "oneTimeBackup": "One-Time Platform Export",
+        "advancedRestore": "Advanced Restore"
       },
       "continuousBackupCard": {
         "title": "Automated Platform Backups",
@@ -2691,6 +2720,40 @@
           "createBackupTaskSuccess": "One-time platform export created.",
           "createBackupTaskFailed": "One-time platform export failed."
         }
+      },
+      "restoreYbaBackupModal": {
+        "title": "Restore Platform Backup",
+        "instructions": "Choose how you want to restore your platform backup",
+        "option": {
+          "localBackup": "Local Backup",
+          "cloudBackup": "Cloud Backup"
+        },
+        "localBackup": {
+          "provideBackupFilePath": "Provide the backup file path",
+          "filePath": "File Path",
+          "filePathPlaceholder": "/opt/yugabyte/oneTimeBackup"
+        },
+        "cloudBackup": {
+          "configureBackupStorageConfigPrompt": {
+            "beforeYouStart": "Before you start...",
+            "configureBackupStorage": "To restore from a cloud backup, you need to first configure the backup storage.",
+            "configureBackupStorageButton": "Configure Backup Storage"
+          },
+          "selectStorageConfig": "Select the storage config that contains the backup",
+          "storageConfig": "Storage config",
+          "selectBackupFolder": "Specify the backup folder",
+          "folder": "Folder",
+          "backupFolderHelperText": "The most recent backup from this folder will be used for the restore."
+        },
+        "submitButton": "Restore",
+        "error": {
+          "backupTypeRequired": "Please select a backup type"
+        },
+        "toast": {
+          "restoreBackupTaskSuccess": "Restore platform backup completed",
+          "restoreBackupTaskFailed": "Restore platform backup failed",
+          "restoreBackupRequestFailedLabel": "Restore platform backup request failed"
+        }
       }
     },
     "dbAuitLog": {
@@ -2743,7 +2806,7 @@
         "editAuditLog": "Edit Database Audit Logging",
         "confirmationDialogMsg": "{{typeVal}} database audit logging requires a <strong>rolling restart</strong> of a universe <strong>{{universeName}}</strong>. The universe will remain online and available throughout.",
         "leavePageModalTitle": "You are about to leave this page",
-        "leaveModalSubmit": "Navigate to Integrations > Log Export"
+        "leaveModalSubmit": "Navigate to Integrations > Logs & Metrics Export"
       },
       "tooltips": {
         "logCatalog": "Log statements for the PostgreSQL system catalog relations in pg_catalog. Disable this option to reduce noise in the log.",
@@ -2757,11 +2820,11 @@
         "logRow": "Include the rows retrieved or affected by a statement.",
         "exportLog": "Forward audit log to your preferred 3rd party log management tool such as Datadog, Splunk, AWS CloudWatch, or GCP Cloud Logging. The audit logs are always available for download using the API regardless of whether export is enabled or otherwise."
       },
-      "exportNavDialogMsg": "To create an export configuration for logs, navigate to <strong>Integrations > Log Export</strong>.",
-      "exportNavLink": "<strong>Note!</strong> To export database audit logs to a third party tool, you need an export configuration in <1>Integrations > Log export</1>."
+      "exportNavDialogMsg": "To create an export configuration for logs, navigate to <strong>Integrations > Logs & Metrics Export</strong>.",
+      "exportNavLink": "<strong>Note!</strong> To export database audit logs to a third party tool, you need an export configuration in <1>Integrations > Logs & Metrics Export</1>."
     },
-    "exportAuditLog": {
-      "exportConfigForLogs": "Export Configurations for Logs",
+    "exportTelemetry": {
+      "heading": "Export Configurations for Logs & Metrics",
       "createExport": "Create Export Configuration",
       "emptyMsg1": "Export logs and/or metrics to your preferred 3rd party monitoring tool.",
       "learnExport": "Learn more about <1>exporting logs</1>.",
@@ -2770,11 +2833,27 @@
       "deleteConfiguration": "Delete Configuration",
       "exportName": "Export Configuration name",
       "exportTo": "Export to",
-      "usageHeader": "Usage",
+      "logsExportUsage": "Logs Export",
+      "metricsExportUsage": "Metrics Export",
       "inUse": "In Use",
       "notInUse": "Not in Use",
       "assignedUniverses": "Assigned Universes",
-      "modalTitle": "Create Export Configuration for Logs",
+      "modalTitle": "Create Export Configuration",
+      "viewExportTelemetryProviderModalTitle": "Export Configuration",
+      "telemetryProviderOption": {
+        "label": {
+          "datadog": "Datadog",
+          "loki": "Loki",
+          "splunk": "Splunk",
+          "awsCloudWatch": "AWS CloudWatch",
+          "gcpCloudMonitoring": "GCP Cloud Logging",
+          "dynatrace": "Dynatrace"
+        },
+        "exportSupport": {
+          "metrics": "Metrics",
+          "logs": "Logs"
+        }
+      },
       "submitLabel": "Validate and Create Configuration",
       "dataDogApiKey": "Datadog API Key",
       "dataDogURLPlaceholder": "Custom Datadog URL",
@@ -2803,11 +2882,41 @@
       "gcpProject": "Project (Optional)",
       "uploadGCPCredentails": "Upload GCP credentails",
       "gcpDescription": "Only JSON Files allowed. <br /><br />Find your GCP service account key under Service Accounts<br /> in Google Cloud console.",
+      "dynatrace": {
+        "endpointUrl": "Dynatrace Endpoint URL",
+        "endpointUrlTooltip": "Check the <bold>browser URL</bold> of your Dynatrace to see the endpoint URL.<br/><br/>Note: Your environment ID can also be found in Account Management > Settings > Environments, under the environment column.",
+        "endpointUrlValidationError": "Invalid endpoint format. Must be a valid URL.",
+        "apiToken": "Dynatrace Access Token",
+        "apiTokenTooltip": "Create an access token with <bold>ingest metrics</bold>,  <bold>ingest logs</bold>, <bold>ingest OpenTelemetry traces</bold> and <bold>read API tokens</bold> scope in Manage > Access Tokens in your Dynatrace.",
+        "apiTokenHelper": "The access policy token needs <bold>ingest metrics</bold>, <bold>ingest logs</bold>, <bold>ingest OpenTelemetry traces</bold> and <bold>read API tokens</bold> scope.",
+        "apiTokenValidationError": "The access token should start with 6-character prefix, followed by 24-character public identifier, and 64-character string secret portion."
+      },
       "deleteModalTitle": "Delete Export Configuration",
       "deleteModalMsg": "Are you sure you want to delete <strong>{{name}}</strong> ?",
       "deleteModalSubmitLabel": "Delete Export Configuration",
       "deleteConfirmMsg": "{{name}} export configuration got deleted succesfully",
-      "deleteConfig": "Delete Configuration"
+      "deleteConfig": "Delete Configuration",
+      "universeExportMetricModal": {
+        "title": "Export Metrics",
+        "exportMetricsToggle": {
+          "label": "Export Metrics from this Universe",
+          "infoText": "Export metrics to your preferred 3rd party monitoring tool."
+        },
+        "exportConfigSelect": {
+          "label": "Export Configuration"
+        },
+        "toast": {
+          "enableSuccess": "Metrics export successfully enabled.",
+          "disableSuccess": "Metrics export successfully disabled.",
+          "updateSuccess": "Metrics export successfully updated.",
+          "enableFailed": "Failed to enable metrics export.",
+          "disableFailed": "Failed to disable metrics export.",
+          "updateFailed": "Failed to update metrics export.",
+          "enableRequestFailed": "Metrics export enable request failed:",
+          "disableRequestFailed": "Metrics export disable request failed:",
+          "updateRequestFailed": "Metrics export update request failed:"
+        }
+      }
     },
     "userAuth": {
       "disableModal": {
@@ -3150,10 +3259,8 @@
           "activeKMS": "Active",
           "usedDuringBackup": "Used during backup",
           "parallelThreads": "Parallel threads (Optional)",
-          "tablespaceConflictResolution": "The target universe has tablespaces with the same name as tablespaces in the backup. In cases where the placement policy differs between the target and backup tablespaces, <b>the target policy will be used.</b> <a>View logs for details.</a>",
-          "tablespaceUnsupportedText1": "<b>Tablespace restore is unavailable.</b> This is because the topology of the target universe is not the same as the topology of the backup. <a>View logs for details.</a>",
-          "tablespaceUnsupportedText2": "If you proceed to restore without tablespaces, all data will be restored to the primary region, and after the restore you will need to recreate your tablespaces.",
-          "tablespaceUnsupportedText3": "Learn about tablespace restore <a>requirements.</a>"
+          "tablespacePlacementConflict": "<b>Tablespace Placement Conflict.</b> Some tablespaces in the backup have a placement policy that conflicts with the target universe. <a>View logs for details.</a><br/>If you proceed, the restore may fail. if it does, you can retry the restore without tablespaces. <a2>Learn more about restoring tablespaces.</a2>",
+          "tablespaceNameConflict": "<b>Tablespace Name Conflict.</b> The target universe has tablespaces with the same name as tablespaces in the backup. In cases where the placement policy differs between the target and backup tablespaces, <b>the target policy will be used.</b> <a>View logs for details</a>"
         },
         "validationErrMsg": {
           "keyspacesAlreadyExists": "Keyspace already exists in the target Universe",
@@ -3171,7 +3278,7 @@
       "starUsOn": "Star us on",
       "github": "GitHub",
       "freeTShirtAt": "Free t-shirt at",
-      "yugabyteInc": "Yugabyte, Inc."
+      "yugabyteInc": "YugabyteDB, Inc."
     },
     "createUniverseV2": {
       "title": "Create Universe",

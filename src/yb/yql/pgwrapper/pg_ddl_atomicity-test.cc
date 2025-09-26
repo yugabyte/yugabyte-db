@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -73,9 +73,26 @@ class PgDdlAtomicityTest : public PgDdlAtomicityTestBase {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_master_flags.push_back("--ysql_transaction_bg_task_wait_ms=5000");
     options->extra_tserver_flags.push_back("--ysql_pg_conf_csv=log_statement=all");
-    options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
+    options->extra_tserver_flags.push_back(
+        Format("--ysql_yb_ddl_transaction_block_enabled=$0", TransactionalDdlEnabled()));
     AppendCsvFlagValue(options->extra_tserver_flags, "allowed_preview_flags_csv",
                        "ysql_yb_ddl_transaction_block_enabled");
+    options->extra_tserver_flags.push_back(
+        Format("--enable_object_locking_for_table_locks=$0", TableLocksEnabled()));
+    AppendCsvFlagValue(options->extra_tserver_flags, "allowed_preview_flags_csv",
+                       "enable_object_locking_for_table_locks");
+
+  }
+
+  virtual bool TransactionalDdlEnabled() const {
+    return true;
+  }
+
+  virtual bool TableLocksEnabled() const {
+    // The tests assert for transaction verification errors in case of concurrent/conflicting DDLs.
+    // But with object locks, conflicting DDLs get serialized, and the latter one times out with
+    // various potential errors. Hence disabling table locking for this test.
+    return false;
   }
 
   void CreateTable(const string& tablename) {
@@ -307,8 +324,14 @@ TEST_F(PgDdlAtomicityTest, FailureRecoveryTestWithAbortedTxn) {
 class PgDdlAtomicitySanityTest : public PgDdlAtomicityTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgDdlAtomicityTest::UpdateMiniClusterOptions(options);
     // TODO (#19975): Enable read committed isolation
     options->extra_tserver_flags.push_back("--yb_enable_read_committed_isolation=false");
+  }
+
+  bool TransactionalDdlEnabled() const override {
+    // Tests toggle ddl atomicity flag, which transactional ddl depends on.
+    return false;
   }
 };
 
@@ -1006,15 +1029,16 @@ class PgDdlAtomicitySanityTestWithTableLocks : public PgDdlAtomicitySanityTest,
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     PgDdlAtomicitySanityTest::UpdateMiniClusterOptions(options);
     options->extra_tserver_flags.push_back(
-        yb::Format("--enable_object_locking_for_table_locks=$0", EnableTableLocks()));
+        yb::Format("--enable_object_locking_for_table_locks=$0", TableLocksEnabled()));
     options->extra_tserver_flags.push_back(
-        yb::Format("--ysql_yb_ddl_transaction_block_enabled=$0", EnableTableLocks()));
+        yb::Format("--ysql_yb_ddl_transaction_block_enabled=$0", TableLocksEnabled()));
     AppendCsvFlagValue(
         options->extra_tserver_flags, "allowed_preview_flags_csv",
         "enable_object_locking_for_table_locks,ysql_yb_ddl_transaction_block_enabled");
   }
 
-  bool EnableTableLocks() const { return GetParam(); }
+  bool TransactionalDdlEnabled() const override { return true; }
+  bool TableLocksEnabled() const override { return GetParam(); }
 };
 
 TEST_P(PgDdlAtomicitySanityTestWithTableLocks, DmlWithAddColTest) {
@@ -1036,7 +1060,7 @@ TEST_P(PgDdlAtomicitySanityTestWithTableLocks, DmlWithAddColTest) {
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "true"));
   ASSERT_OK(conn2.Execute("SET statement_timeout = 8"));
 
-  if (EnableTableLocks()) {
+  if (TableLocksEnabled()) {
     // Conn2 will have to fail because it cannot get the table locks held by conn1.
     ASSERT_NOK(conn2.TestFailDdl(AddColumnStmt(table)));
     ASSERT_OK(conn1.Execute("ABORT"));
@@ -1552,6 +1576,11 @@ class PgLibPqTableRewrite:
       options->extra_tserver_flags.push_back("--ysql_yb_ddl_rollback_enabled=true");
     }
   }
+
+  bool TransactionalDdlEnabled() const override {
+    return GetParam();
+  }
+
  protected:
   void SetupTestData() {
     auto conn = ASSERT_RESULT(Connect());

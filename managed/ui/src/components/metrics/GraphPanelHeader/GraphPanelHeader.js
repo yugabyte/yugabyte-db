@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 import React, { Component } from 'react';
 import { jsPDF } from 'jspdf';
@@ -40,6 +40,8 @@ import { OutlierSelector } from '../OutlierSelector/OutlierSelector';
 import { GraphPanelHeaderTimezone } from './GraphPanelHeaderTimezone';
 import { YBFormatDate, ybFormatDate, YBTimeFormats } from '../../../redesign/helpers/DateUtils';
 import { DEFAULT_TIMEZONE, RuntimeConfigKey } from '../../../redesign/helpers/constants';
+import { UniverseMetricsExportConfigModal } from '@app/redesign/features/export-telemetry/UniverseMetricsExportConfigModal';
+
 import './GraphPanelHeader.scss';
 
 require('react-widgets/dist/css/react-widgets.css');
@@ -143,6 +145,7 @@ class GraphPanelHeader extends Component {
       metricMeasure: metricMeasureTypes[DEFAULT_METRIC_MEASURE_KEY].value,
       outlierType: outlierTypes[DEFAULT_OUTLIER_TYPE].value,
       outlierNumNodes: DEFAULT_OUTLIER_NUM_NODES,
+      isUniverseMetricsExportModalOpen: false,
       isSingleNodeSelected: false,
       openPreviewMetricsModal: false,
       pdfDownloadInProgress: false,
@@ -618,6 +621,10 @@ class GraphPanelHeader extends Component {
       runtimeConfigs?.data?.configEntries?.find(
         (config) => config.key === RuntimeConfigKey.ENABLE_METRICS_TZ
       )?.value === 'true';
+    const isMetricsExportEnabled =
+      runtimeConfigs?.data?.configEntries?.find(
+        (config) => config.key === RuntimeConfigKey.METRICS_EXPORT_FEATURE_FLAG
+      )?.value === 'true';
 
     const self = this;
     const menuItems = filterTypes.map((filter, idx) => {
@@ -671,7 +678,6 @@ class GraphPanelHeader extends Component {
       `/universes/${this.state.currentSelectedUniverse.universeUUID}/queries?nodeName=${this.state.nodeName}`;
     const isDedicatedNodes = isDedicatedNodePlacement(this.state.currentSelectedUniverse);
     const isK8Universe = getIsKubernetesUniverse(this.state.currentSelectedUniverse);
-
     return (
       <div className="graph-panel-header">
         <YBPanelItem
@@ -798,10 +804,6 @@ class GraphPanelHeader extends Component {
                             <i className="graph-settings-icon fa fa-cog"></i>
                           </Dropdown.Toggle>
                           <Dropdown.Menu>
-                            <MenuItem className="dropdown-header" header>
-                              VIEW OPTIONS
-                            </MenuItem>
-                            <MenuItem divider />
                             <MenuItem onSelect={self.props.togglePrometheusQuery}>
                               {prometheusQueryEnabled
                                 ? 'Disable Prometheus query'
@@ -840,6 +842,17 @@ class GraphPanelHeader extends Component {
                             >
                               {'Download Grafana JSON'}
                             </MenuItem>
+                            {isMetricsExportEnabled && (
+                              <MenuItem
+                                onSelect={() => {
+                                  this.setState({
+                                    isUniverseMetricsExportModalOpen: true
+                                  });
+                                }}
+                              >
+                                Export Metrics
+                              </MenuItem>
+                            )}
                           </Dropdown.Menu>
                         </Dropdown>
                       </div>
@@ -892,6 +905,19 @@ class GraphPanelHeader extends Component {
                       )}
                   </FlexGrow>
                 </FlexContainer>
+                {this.state.isUniverseMetricsExportModalOpen && (
+                  <UniverseMetricsExportConfigModal
+                    universeUuid={this.props.universe.currentUniverse.data.universeUUID}
+                    modalProps={{
+                      open: this.state.isUniverseMetricsExportModalOpen,
+                      onClose: () => {
+                        this.setState({
+                          isUniverseMetricsExportModalOpen: false
+                        });
+                      }
+                    }}
+                  />
+                )}
                 <YBModal
                   open={this.state.openPreviewMetricsModal}
                   size="fit"

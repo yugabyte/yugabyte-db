@@ -22,4 +22,16 @@ public class UniverseQueryLogsExporterConfig extends UniverseExporterConfig {
       value = "Maximum batch timeout for query logs exporter in seconds",
       accessMode = READ_WRITE)
   Integer sendBatchTimeoutSeconds = 10;
+
+  @ApiModelProperty(
+      value = "Memory limit in MiB for the OpenTelemetry Collector process in the config file.",
+      accessMode = READ_WRITE,
+      example = "2048")
+  private Integer memoryLimitMib = 2048;
+
+  @ApiModelProperty(
+      value = "Check interval in seconds for the MemoryLimiterProcessor.",
+      accessMode = READ_WRITE,
+      example = "10")
+  private Integer memoryLimitCheckIntervalSeconds = 10;
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 YugaByte, Inc. and Contributors
+ * Copyright 2019 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -84,8 +84,8 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
               : config.get(AwsKmsAuthConfigField.CMK_POLICY.fieldName).asText();
       final String cmkId =
           AwsEARServiceUtil.createCMK(configUUID, description, inputtedCMKPolicy)
-              .getKeyMetadata()
-              .getKeyId();
+              .keyMetadata()
+              .keyId();
       if (cmkId != null) {
         config.remove(AwsKmsAuthConfigField.CMK_POLICY.fieldName);
         config.put(AwsKmsAuthConfigField.CMK_ID.fieldName, cmkId);
@@ -117,7 +117,7 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
       switch (config.type) {
         case CMK:
           result =
-              new EncryptionKey(AwsEARServiceUtil.getCMK(configUUID, cmkId).getKeyArn().getBytes());
+              new EncryptionKey(AwsEARServiceUtil.getCMK(configUUID, cmkId).keyArn().getBytes());
           break;
         default:
         case DATA_KEY:

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -215,7 +215,8 @@ Status DocRowwiseIterator::Init(
       bounds.lower = bound_key_;
     }
   }
-  scan_choices_ = ScanChoices::Create(*schema_, doc_spec, bounds);
+  scan_choices_ = ScanChoices::Create(
+      *schema_, doc_spec, bounds, doc_read_context_.table_key_prefix());
   if (!skip_seek) {
     if (is_forward_scan_) {
       Seek(bounds.lower);
@@ -874,6 +875,11 @@ Result<Slice> DocRowwiseIterator::FetchDirect(Slice key) {
   db_iter_->UpdateFilterKey(key);
   db_iter_->Seek(key, SeekFilter::kAll, Full::kTrue);
   auto fetch_result = VERIFY_RESULT_REF(db_iter_->Fetch());
+
+  // TODO(vector_index): as opposite to compare the key, the better approach would be to
+  // set db_iter_ upper bound (and restore it on leaving the scope, refer to
+  // IntentAwareIteratorUpperboundScope) to return from Seek prematurely, avoiding unnecessary
+  // nexts and seeks in some edge cases.
   return fetch_result.key == key ? fetch_result.value : Slice();
 }
 

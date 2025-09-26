@@ -1,9 +1,10 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.forms.filters;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.filters.TaskFilter;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Date;
@@ -31,7 +32,7 @@ public class TaskApiFilter {
   private Set<UUID> targetUUIDList;
   private Set<CustomerTask.TaskType> typeList;
   private Set<String> typeNameList;
-  private Set<String> status;
+  private Set<TaskInfo.State> status;
 
   public TaskFilter toFilter() {
     TaskFilter.TaskFilterBuilder builder = TaskFilter.builder();

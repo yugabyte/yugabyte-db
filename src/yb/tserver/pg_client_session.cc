@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -1951,10 +1951,10 @@ class PgClientSession::Impl {
     }
 
     RSTATUS_DCHECK(transaction->HasSubTransaction(subtxn_id), InvalidArgument,
-                  Format("Transaction of kind $0 doesn't have sub transaction $1",
+                  Format("Transaction $0 of kind $1 doesn't have sub transaction $2",
+                          transaction->id(),
                           kind == PgClientSessionKind::kPlain ? "kPlain" : "kDdl",
                           subtxn_id));
-
     const auto deadline = context->GetClientDeadline();
     RETURN_NOT_OK(transaction->RollbackToSubTransaction(subtxn_id, deadline));
     return ReleaseObjectLocksIfNecessary(transaction, kind, deadline, subtxn_id);
@@ -2515,16 +2515,20 @@ class PgClientSession::Impl {
     VLOG(2) << "Servicing AcquireAdvisoryLock: " << req.ShortDebugString();
     SCHECK(FLAGS_ysql_yb_enable_advisory_locks, NotSupported, "advisory locks are disabled");
     const auto deadline = context->GetClientDeadline();
-    auto* primary_session_data = &GetSessionData(PgClientSessionKind::kPlain);
+    auto* primary_session_data = &GetSessionData(GetSessionKindBasedOnDDLOptions(
+        req.has_options() && req.options().ddl_mode(),
+        req.has_options() && req.options().ddl_use_regular_transaction_block()));
     auto* background_session_data = &GetSessionData(PgClientSessionKind::kPgSession);
     if (req.session()) {
+      // Update subtxn of host transaction as it is required for retries with statement rollbacks.
+      if (const auto& txn = primary_session_data->transaction; txn) {
+        txn->SetActiveSubTransaction(req.options().active_sub_transaction_id());
+      }
       std::swap(primary_session_data, background_session_data);
       const auto& pg_session_data = VERIFY_RESULT_REF(BeginPgSessionLevelTxnIfNecessary(deadline));
       DCHECK(&pg_session_data == primary_session_data) << "Expected session of kind kPgSession.";
     } else {
-      RSTATUS_DCHECK(
-          VERIFY_RESULT(SetupSession(req.options(), deadline)).is_plain,
-          IllegalState, "Expected session of kind kPlain.");
+      RETURN_NOT_OK(SetupSession(req.options(), deadline));
     }
     RSTATUS_DCHECK(
         primary_session_data->session && primary_session_data->transaction,
@@ -3083,6 +3087,11 @@ class PgClientSession::Impl {
       } else if (IsReadPointResetRequested(options) ||
                 options.use_catalog_session() ||
                 (is_plain_session && (read_time_serial_no_ != read_time_serial_no))) {
+                  VLOG_WITH_PREFIX(3) << "Resetting read point for session kind " << kind
+                  << " read point reset requested: " << IsReadPointResetRequested(options)
+                  << " use catalog session: " << options.use_catalog_session()
+                  << " change in read time serial number "
+                  << read_time_serial_no_ << ", " << read_time_serial_no;
         ResetReadPoint(kind);
       } else {
         VLOG_WITH_PREFIX(3) << "Keep read time: " << session.read_point()->GetReadTime();
@@ -3582,12 +3591,10 @@ class PgClientSession::Impl {
       plain_session_has_exclusive_object_locks_.store(false);
       DEBUG_ONLY_TEST_SYNC_POINT("PlainTxnStateReset");
     }
-    auto txn_meta_res = txn
-        ? txn->GetMetadata(deadline).get()
-        : NextObjectLockingTxnMeta(deadline, is_final_release);
-    RETURN_NOT_OK(txn_meta_res);
-    return DoReleaseObjectLocks(
-        txn_meta_res->transaction_id, subtxn_id, deadline, has_exclusive_locks);
+    auto txn_id = txn
+        ? txn->id()
+        : VERIFY_RESULT(NextObjectLockingTxnMeta(deadline, is_final_release)).transaction_id;
+    return DoReleaseObjectLocks(txn_id, subtxn_id, deadline, has_exclusive_locks);
   }
 
   Status DoReleaseObjectLocks(

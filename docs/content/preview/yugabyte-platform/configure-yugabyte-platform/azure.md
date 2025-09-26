@@ -261,6 +261,8 @@ The preceding setting specifies the resource group as `different-rg` and the DNS
 
 You can use shared image galleries as an alternative to using marketplace image URNs. A gallery allows you to provide your own custom image to use for creating universe instances. For more information on shared image galleries, refer to [Store and share images in an Azure Compute Gallery](https://docs.microsoft.com/en-us/azure/virtual-machines/shared-image-galleries).
 
+Note: If your image does not have a purchase plan set or has an incorrect plan set, set the **Ignore VM plan information** Provider Runtime Configuration option (config key `yb.azure.vm.ignore_plan`) to true, otherwise you may not be able to create universes using the image. Refer to [Manage runtime configuration settings](../../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/).
+
 You set up a shared gallery image on Azure as follows:
 
 1. On the Azure portal, create a shared image gallery.

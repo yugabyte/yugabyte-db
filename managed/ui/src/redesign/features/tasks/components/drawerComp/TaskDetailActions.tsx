@@ -1,7 +1,7 @@
 /*
  * Created on Wed Dec 20 2023
  *
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License")
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
@@ -21,7 +21,7 @@ import { fetchUniverseInfo, fetchUniverseInfoResponse } from '../../../../../act
 import { abortTask, retryTasks } from './api';
 import { doesTaskSupportsDiffData } from '../../TaskUtils';
 import { TaskDrawerCompProps } from './dtos';
-import { TaskStates } from '../../dtos';
+import { TaskState } from '../../dtos';
 
 const useStyles = makeStyles(() => ({
   root: {
@@ -104,7 +104,7 @@ export const TaskDetailActions: FC<TaskDrawerCompProps> = ({ currentTask }) => {
           {t('retry')}
         </YBButton>
       )}
-      {currentTask?.abortable && currentTask?.status !== TaskStates.ABORT && (
+      {currentTask?.abortable && currentTask?.status !== TaskState.ABORT && (
         <YBButton
           variant="secondary"
           onClick={() => {

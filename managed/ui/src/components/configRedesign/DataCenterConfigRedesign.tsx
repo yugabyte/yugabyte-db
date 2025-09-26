@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 YugaByte, Inc. and Contributors
+ * Copyright 2022 YugabyteDB, Inc. and Contributors
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License")
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
@@ -30,7 +30,7 @@ import { LocationShape } from 'react-router/lib/PropTypes';
 import { NewStorageConfiguration } from '../config/Storage/StorageConfigurationNew';
 import { ProviderView } from './providerRedesign/providerView/ProviderView';
 import { StorageConfigurationContainer } from '../config';
-import { ExportLog } from '../../redesign/features/export-log/ExportLog';
+import { ExportTelemetryConfigurations } from '../../redesign/features/export-telemetry/ExportTelemetryConfiguration';
 import { YBErrorIndicator } from '../common/indicators';
 import { YBTabsPanel, YBTabsWithLinksPanel } from '../panels';
 import { assertUnreachableCase } from '../../utils/errorHandlingUtils';
@@ -231,8 +231,12 @@ export const DataCenterConfigRedesign = ({
           )}
 
           {isExportLogEnabled && (
-            <Tab eventKey={ConfigTabKey.LOG} title={t('tab.log.tabLabel')} key="log">
-              <ExportLog />
+            <Tab
+              eventKey={ConfigTabKey.EXPORT_TELEMETRY}
+              title={t('tab.exportTelemetry.tabLabel')}
+              key="exportTelemetry"
+            >
+              <ExportTelemetryConfigurations />
             </Tab>
           )}
 

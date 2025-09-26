@@ -58,5 +58,5 @@ yugabyte=# CREATE FOREIGN TABLE mytable (col1 int, col2 int)
 
 The following foreign data wrappers are bundled with YugabyteDB:
 
-- [postgres_fdw](../../pg-extensions/extension-postgres-fdw/)
-- [file_fdw](../../pg-extensions/extension-file-fdw/)
+- [postgres_fdw](../../../../additional-features/pg-extensions/extension-postgres-fdw/)
+- [file_fdw](../../../../additional-features/pg-extensions/extension-file-fdw/)

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 import { isNonEmptyArray, isNullOrEmpty, isDefinedNotNull } from '../utils/ObjectUtils';
 import _ from 'lodash';
 import { Enum } from 'enumify';

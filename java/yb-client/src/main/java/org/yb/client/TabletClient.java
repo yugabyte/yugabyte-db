@@ -25,9 +25,9 @@
  */
 
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -346,8 +346,9 @@ public class TabletClient extends ReplayingDecoder<Void> {
     }
     final int rpcid = header.getCallId();
 
+    // Check for presence of the ID first before removing as decode can be called again.
     @SuppressWarnings("rawtypes")
-    final YRpc rpc = rpcs_inflight.remove(rpcid);
+    final YRpc rpc = rpcs_inflight.get(rpcid);
 
     if (rpc == null) {
       final String msg = getPeerUuidLoggingString() + "Invalid rpcid: " + rpcid + " found in "
@@ -387,6 +388,8 @@ public class TabletClient extends ReplayingDecoder<Void> {
         exception = ex;
       }
     }
+    // Remove it after decoding.
+    rpcs_inflight.remove(rpcid);
     if (LOG.isDebugEnabled()) {
       LOG.debug(getPeerUuidLoggingString() + "rpcid=" + rpcid
           + ", response size=" + (buf.readerIndex() - rdx) + " bytes"

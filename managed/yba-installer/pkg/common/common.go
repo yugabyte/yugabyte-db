@@ -1,5 +1,5 @@
 /*
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  */
 
 package common
@@ -611,6 +611,9 @@ func RegenerateSelfSignedCerts() error {
 
 // WaitForYBAReady waits for a YBA to be running with specified version
 func WaitForYBAReady(version string) error {
+	if viper.GetBool("perfAdvisor.enabled") {
+		return nil
+	}
 	log.Info("Waiting for YBA ready.")
 
 	// Needed to access https URL without x509: certificate signed by unknown authority error

@@ -41,6 +41,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
@@ -369,6 +370,78 @@ public class OperatorUtils {
     return specificGFlags;
   }
 
+  public boolean checkIfPlacementInfoChanged(
+      PlacementInfo oldPlacementInfo, YBUniverse ybUniverse) {
+    // If placement info is not set in the CR, return false
+    if (ybUniverse.getSpec().getPlacementInfo() == null) {
+      return false;
+    }
+    JsonNode oldPlacementCloud = objectMapper.valueToTree(oldPlacementInfo.cloudList.get(0));
+    JsonNode newPlacementCloud = objectMapper.valueToTree(ybUniverse.getSpec().getPlacementInfo());
+    if (oldPlacementCloud
+        .path("defaultRegion")
+        .asText()
+        .equals(newPlacementCloud.path("defaultRegion").asText())) {
+      return true;
+    }
+    Map<String, JsonNode> oldRegions = mapByCode(oldPlacementCloud.path("regionList"));
+    Map<String, JsonNode> newRegions = mapByCode(newPlacementCloud.path("regions"));
+
+    // Detect region changes
+    if (!oldRegions.keySet().equals(newRegions.keySet())) {
+      log.info("region mismatch for universe: {}", ybUniverse.getMetadata().getName());
+      return true;
+    }
+
+    // For each region, compare zones
+    for (String region : oldRegions.keySet()) {
+      // Need to map by name for zones
+      Map<String, JsonNode> oldZones = mapByName(oldRegions.get(region).path("azList"));
+      Map<String, JsonNode> newZones = mapByCode(newRegions.get(region).path("zones"));
+
+      if (!oldZones.keySet().equals(newZones.keySet())) {
+        log.info("az list mismatch for universe: {}", ybUniverse.getMetadata().getName());
+        return true;
+      }
+
+      // Compare zone fields
+      for (String zone : oldZones.keySet()) {
+        JsonNode oldZone = oldZones.get(zone);
+        JsonNode newZone = newZones.get(zone);
+
+        if (oldZone.path("numNodesInAZ").asInt(-1) != newZone.path("numNodes").asInt(-1)) {
+          return true;
+        }
+        if (oldZone.path("isAffinitized").asBoolean(false)
+            != newZone.path("preferred").asBoolean(false)) {
+          return true;
+        }
+      }
+    }
+    return false; // no changes
+  }
+
+  private static Map<String, JsonNode> mapByCode(JsonNode array) {
+    return mapByKey(array, "code");
+  }
+
+  private static Map<String, JsonNode> mapByName(JsonNode array) {
+    return mapByKey(array, "name");
+  }
+
+  private static Map<String, JsonNode> mapByKey(JsonNode array, String key) {
+    Map<String, JsonNode> map = new HashMap<>();
+    if (array != null && array.isArray()) {
+      for (JsonNode elem : array) {
+        String code = elem.path(key).asText(null);
+        if (code != null) {
+          map.put(code, elem);
+        }
+      }
+    }
+    return map;
+  }
+
   public DeviceInfo mapDeviceInfo(io.yugabyte.operator.v1alpha1.ybuniversespec.DeviceInfo spec) {
     DeviceInfo di = new DeviceInfo();
 
@@ -491,6 +564,11 @@ public class OperatorUtils {
                     .specificGFlags /*Current gflags */,
                 specGFlags);
     log.trace("gflags mismatch: {}", mismatch);
+    mismatch =
+        mismatch
+            || checkIfPlacementInfoChanged(
+                u.getUniverseDetails().getPrimaryCluster().placementInfo, ybUniverse);
+    log.trace("placement info mismatch: {}", mismatch);
     mismatch =
         mismatch
             || shouldUpdateYbUniverse(

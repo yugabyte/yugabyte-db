@@ -6919,12 +6919,17 @@ yb_hint_plan_cache_invalidate(PG_FUNCTION_ARGS)
 	 * Send an invalidation message marking the hint table relcache entry as
 	 * invalid.
 	 */
-	YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
+	bool yb_use_regular_txn_block = YBIsDdlTransactionBlockEnabled();
+	if (yb_use_regular_txn_block)
+		YBAddDdlTxnState(YB_DDL_MODE_VERSION_INCREMENT);
+	else
+		YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
 
 	YbInvalidateHintCache();
 
 	YbForceSendInvalMessages();
-	YBDecrementDdlNestingLevel();
+	if (!yb_use_regular_txn_block)
+		YBDecrementDdlNestingLevel();
 
 	PG_RETURN_DATUM(PointerGetDatum(NULL));
 }

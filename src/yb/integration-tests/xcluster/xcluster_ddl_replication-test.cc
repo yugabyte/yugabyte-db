@@ -40,7 +40,20 @@
 #include "yb/util/sync_point.h"
 #include "yb/util/tsan_util.h"
 
+DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
+DECLARE_bool(enable_pg_cron);
+DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_int32(xcluster_ddl_queue_max_retries_per_ddl);
+DECLARE_uint32(xcluster_consistent_wal_safe_time_frequency_ms);
+DECLARE_uint32(xcluster_max_old_schema_versions);
+DECLARE_string(ysql_cron_database_name);
+DECLARE_bool(ysql_enable_packed_row);
+DECLARE_uint32(ysql_oid_cache_prefetch_size);
+DECLARE_string(ysql_pg_conf_csv);
+DECLARE_int32(ysql_sequence_cache_minval);
+
 DECLARE_bool(TEST_force_get_checkpoint_from_cdc_state);
+DECLARE_string(TEST_skip_async_insert_packed_schema_for_tablet_id);
 DECLARE_bool(TEST_skip_oid_advance_on_restore);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_end);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_start);
@@ -791,6 +804,61 @@ TEST_F(XClusterDDLReplicationTest, DDLsWithinTransaction) {
       GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name*/ "", "test_table_2"))));
 
   InsertRowsIntoProducerTableAndVerifyConsumer(producer_table->name());
+}
+
+TEST_F(XClusterDDLReplicationTest, FailAsyncInsertPackedSchema) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE test_table_1 (key int PRIMARY KEY) SPLIT INTO 2 TABLETS;"));
+
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Get the target tablet ids.
+  auto target_table = ASSERT_RESULT(
+      GetYsqlTable(&consumer_cluster_, namespace_name, /*schema_name*/ "", "test_table_1"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> target_tablet_locations;
+  ASSERT_OK(consumer_cluster_.client_->GetTabletsFromTableId(
+      target_table.table_id(), 0, &target_tablet_locations));
+  ASSERT_EQ(target_tablet_locations.size(), 2);
+  std::vector<TabletId> target_tablet_ids{
+      target_tablet_locations[0].tablet_id(), target_tablet_locations[1].tablet_id()};
+
+  // Fail InsertPackedSchemaForXClusterTarget requests for the first tablet. This will cause the
+  // first tablet to miss schema versions that the second tablet has.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_async_insert_packed_schema_for_tablet_id) =
+      target_tablet_ids[0];
+
+  // Run many ALTER TABLEs to cause many InsertPackedSchemaForXClusterTarget requests.
+  ASSERT_OK(producer_conn_->Execute("ALTER TABLE test_table_1 ADD COLUMN a int;"));
+  ASSERT_OK(producer_conn_->Execute(
+      "INSERT INTO test_table_1 SELECT i, i FROM generate_series(0, 10) as i"));
+
+  // Small delay.
+  SleepFor(3s);
+
+  // Allow the first tablet to make progress now.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_async_insert_packed_schema_for_tablet_id) = "";
+
+  // Perform some leader stepdowns on the target. This will cause new heartbeats to be sent to the
+  // master, which will notice the incorrect schema versions and force an update.
+  for (const auto& tablet_id : target_tablet_ids) {
+    ASSERT_OK(
+        WaitUntilTabletHasLeader(consumer_cluster(), tablet_id, CoarseMonoClock::Now() + kTimeout));
+    const auto leader_peer = ASSERT_RESULT(GetLeaderPeerForTablet(consumer_cluster(), tablet_id));
+    ASSERT_OK(StepDown(leader_peer, /*new_leader_uuid=*/"", ForceStepDown::kTrue));
+  }
+  // After the stepdown, the first tablet should try to rerun InsertPackedSchemaForXClusterTarget.
+
+  // Ensure that we don't get a FATAL.
+  ASSERT_NOK(WaitForSafeTimeToAdvanceToNow());
+  LOG(INFO) << "SELECT result: "
+            << ASSERT_RESULT(consumer_conn_->FetchAllAsString("SELECT * FROM test_table_1"));
+
+  // TODO(#28326): replace this with VerifyWrittenRecords.
+  // ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  // ASSERT_OK(VerifyWrittenRecords({"test_table_1"}));
 }
 
 TEST_F(XClusterDDLReplicationTest, PauseTargetOnRepeatedFailures) {

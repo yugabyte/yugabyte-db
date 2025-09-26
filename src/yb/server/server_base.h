@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -68,7 +68,7 @@ class ServerStatusPB;
 // a YB tablet server and master.
 class RpcServerBase {
  public:
-  const RpcServer *rpc_server() const { return rpc_server_.get(); }
+  const RpcServer* rpc_server() const { return rpc_server_.get(); }
   rpc::Messenger* messenger() const { return messenger_.get(); }
   rpc::ProxyCache& proxy_cache() { return *proxy_cache_; }
 

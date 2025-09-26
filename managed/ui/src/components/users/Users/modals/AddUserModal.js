@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 import * as Yup from 'yup';
 import { isSSOEnabled } from '../../../../config';

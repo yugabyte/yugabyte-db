@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -25,6 +25,7 @@
 
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_kv_util.h"
+#include "yb/dockv/doc_vector_id.h"
 #include "yb/dockv/intent.h"
 #include "yb/dockv/packed_value.h"
 #include "yb/dockv/schema_packing.h"
@@ -38,8 +39,7 @@
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 
-namespace yb {
-namespace docdb {
+namespace yb::docdb {
 
 Result<std::string> DocDBKeyToDebugStr(
     Slice key_slice, StorageDbType db_type, dockv::HybridTimeRequired ht_required) {
@@ -85,6 +85,12 @@ Result<std::string> DocDBKeyToDebugStr(
     case KeyType::kApplyState:
       RETURN_NOT_OK(key_slice.consume_byte(dockv::KeyEntryTypeAsChar::kTransactionApplyState));
       return Format("TXN APPLY STATE $0", VERIFY_RESULT(DecodeTransactionId(&key_slice)));
+    case KeyType::kVectorIndexMetadata:
+      auto vector_id = VERIFY_RESULT(dockv::DecodeDocVectorKey(&key_slice));
+      auto doc_ht = VERIFY_RESULT_PREPEND(
+          DocHybridTime::DecodeFromEnd(key_slice),
+          dockv::DocVectorKeyToString(vector_id));
+      return dockv::DocVectorKeyToString(vector_id, doc_ht);
   }
   return STATUS_FORMAT(Corruption, "Invalid KeyType: $0", yb::ToString(key_type));
 }
@@ -265,6 +271,19 @@ Result<std::string> DocDBValueToDebugStr(
       return ApplyStateWithCommitInfo::FromPB(pb).ToString();
     }
 
+    case KeyType::kVectorIndexMetadata: {
+      // There are only two possible type of values: tombstone or ybctid.
+      if (value.starts_with(dockv::ValueEntryTypeAsChar::kTombstone)) {
+        SCHECK_EQ(value.size(), 1, Corruption, "kTombstone should have no extra data");
+        return dockv::PrimitiveValue::kTombstone.ToString();
+      }
+
+      // The value must be a valid ybctid.
+      dockv::DocKey ybctid;
+      RETURN_NOT_OK(ybctid.DecodeFrom(value));
+      return ybctid.ToString(dockv::AutoDecodeKeys::kTrue);
+    }
+
     case KeyType::kExternalIntents: {
       std::vector<std::string> intents;
       dockv::SubDocKey sub_doc_key;
@@ -315,5 +334,4 @@ Result<std::string> DocDBValueToDebugStr(
   FATAL_INVALID_ENUM_VALUE(KeyType, key_type);
 }
 
-}  // namespace docdb
-}  // namespace yb
+} // namespace yb::docdb

@@ -25,6 +25,35 @@ if [[ "$1" == */yb_typedefs.list ]]; then
   grep -Env "$pattern" "$1" \
     | sed 's/^/error:missing_yb_in_type_name:'\
 'Types in yb_typedefs.list should have "yb":/'
+
+  grep -no '^Form_[a-zA-Z0-9_]*' "$1" \
+    | while IFS=: read -r lineno form; do
+    formdata="FormData_${form#Form_}"
+    if ! grep -q "^$formdata$" "$1"; then
+      echo "error:missing_formdata:$formdata is missing for $form:$lineno:"
+    fi
+  done
+
+  grep -no '^FormData_[a-zA-Z0-9_]*' "$1" \
+    | while IFS=: read -r lineno formdata; do
+    form="Form_${formdata#FormData_}"
+    if ! grep -q "^$form$" "$1"; then
+      echo "error:missing_form:$form is missing for $formdata:$lineno:"
+    fi
+  done
+  
+  # Find all header files in pggate that contain YB_DEFINE_HANDLE_TYPE
+  git grep -l YB_DEFINE_HANDLE_TYPE src/yb/yql/pggate | \
+    # Extract the handle type names
+    xargs grep -ho 'YB_DEFINE_HANDLE_TYPE([A-Z][a-zA-Z0-9_]*)' | \
+    # Remove the macro name and parentheses
+    sed 's/YB_DEFINE_HANDLE_TYPE(//' | sed 's/)//' | sort -u | while read -r handle_type; do
+      transformed_type="Ybc${handle_type}"
+      if ! grep -q "^$transformed_type$" "$1"; then
+        echo "error:missing_handle_type:Missing $transformed_type \
+for YB_DEFINE_HANDLE_TYPE($handle_type):1:"
+      fi
+    done
 else
   grep -En "$pattern" "$1" \
     | sed 's/^/error:bad_yb_in_type_name:'\

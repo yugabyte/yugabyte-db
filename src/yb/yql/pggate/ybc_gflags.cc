@@ -122,12 +122,12 @@ DECLARE_bool(TEST_ysql_yb_enable_ddl_savepoint_support);
 
 DECLARE_bool(TEST_generate_ybrowid_sequentially);
 DECLARE_bool(TEST_ysql_log_perdb_allocated_new_objectid);
-DECLARE_bool(TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 
 DECLARE_bool(use_fast_backward_scan);
 DECLARE_uint32(ysql_max_invalidation_message_queue_size);
 DECLARE_uint32(max_replication_slots);
 DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 
 namespace {
 
@@ -218,8 +218,8 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
           &FLAGS_ysql_conn_mgr_stats_interval,
       .ysql_enable_read_request_cache_for_connection_auth =
           &FLAGS_ysql_enable_read_request_cache_for_connection_auth,
-      .TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication =
-          &FLAGS_TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication,
+      .ysql_yb_enable_implicit_dynamic_tables_logical_replication =
+          &FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication,
       .timestamp_history_retention_interval_sec =
           &FLAGS_timestamp_history_retention_interval_sec,
       .ysql_enable_scram_channel_binding = &FLAGS_ysql_enable_scram_channel_binding,

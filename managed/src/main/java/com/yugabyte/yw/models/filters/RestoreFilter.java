@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc
+// Copyright (c) YugabyteDB, Inc
 package com.yugabyte.yw.models.filters;
 
 import com.yugabyte.yw.models.Restore;

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -47,6 +47,7 @@
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_metrics.h"
 
+#include "yb/util/file_util.h"
 #include "yb/util/lazy_invoke.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
@@ -64,6 +65,12 @@ using namespace std::placeholders;
 
 DEFINE_RUNTIME_bool(docdb_ht_filter_conflict_with_committed, true,
     "Use hybrid time SST filter when checking for conflicts with committed transactions.");
+
+DEFINE_test_flag(string, file_to_dump_keys_checked_for_conflict_in_intents_db, "",
+    "Dump the keys used to check for conflicts in intents db into the file if specified.");
+
+DEFINE_test_flag(string, file_to_dump_keys_checked_for_conflict_in_regular_db, "",
+    "Dump the keys used to check for conflicts in regular db into the file if specified.");
 
 namespace yb::docdb {
 
@@ -919,6 +926,9 @@ class StrongConflictChecker {
 
   Status Check(
       Slice intent_key, bool strong, ConflictManagementPolicy conflict_management_policy) {
+    if (PREDICT_FALSE(!FLAGS_TEST_file_to_dump_keys_checked_for_conflict_in_regular_db.empty())) {
+      RETURN_NOT_OK(TEST_DumpRegularDbKeyToCheck(intent_key));
+    }
     if (!value_iter_.Initialized()) {
       auto hybrid_time_file_filter =
           FLAGS_docdb_ht_filter_conflict_with_committed ? CreateHybridTimeFileFilter(read_time_)
@@ -1008,6 +1018,14 @@ class StrongConflictChecker {
     return Format("$0: ", transaction_id_);
   }
 
+  Status TEST_DumpRegularDbKeyToCheck(const Slice& intent_key) {
+    dockv::SubDocKey sub_doc_key;
+    CHECK_OK(sub_doc_key.FullyDecodeFrom(intent_key, dockv::HybridTimeRequired::kFalse));
+    std::string desc = "regular_check";
+    return TEST_DumpStringToFile(desc, sub_doc_key.ToString(),
+                                 FLAGS_TEST_file_to_dump_keys_checked_for_conflict_in_regular_db);
+  }
+
   const TransactionId& transaction_id_;
   const HybridTime read_time_;
   ConflictResolver& resolver_;
@@ -1095,6 +1113,17 @@ class ConflictResolverContextBase : public ConflictResolverContext {
     fetched_metadata_for_transactions_ = true;
 
     return Status::OK();
+  }
+
+  Status TEST_DumpIntentsCheckKeys(const IntentTypesContainer& locks, const std::string& path) {
+    auto transform = [] (const auto& entry) {
+      dockv::SubDocKey sub_doc_key;
+      CHECK_OK(sub_doc_key.FullyDecodeFrom(
+            entry.first.AsSlice(), dockv::HybridTimeRequired::kFalse));
+      return std::make_pair(sub_doc_key.ToString(), entry.second.types);
+    };
+    std::string desc = "intent_check";
+    return TEST_DumpCollectionToFile(desc, locks, transform, path);
   }
 
  private:
@@ -1223,6 +1252,10 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
 
     VLOG_WITH_PREFIX_AND_FUNC(4) << "Check txn's conflicts for following intents: "
                                  << AsString(container);
+    if (PREDICT_FALSE(!FLAGS_TEST_file_to_dump_keys_checked_for_conflict_in_intents_db.empty())) {
+      RETURN_NOT_OK(TEST_DumpIntentsCheckKeys(
+          container, FLAGS_TEST_file_to_dump_keys_checked_for_conflict_in_intents_db));
+    }
 
     StrongConflictChecker checker(
         *transaction_id_, read_time_, resolver, GetTabletMetrics(), &buffer);
@@ -1406,6 +1439,10 @@ class OperationConflictResolverContext : public ConflictResolverContextBase {
     for (const auto& [key, intent_data] : container) {
       buffer.Reset(key.AsSlice());
       RETURN_NOT_OK(resolver->ReadIntentConflicts(intent_data.types, &buffer));
+    }
+    if (PREDICT_FALSE(!FLAGS_TEST_file_to_dump_keys_checked_for_conflict_in_intents_db.empty())) {
+      return TEST_DumpIntentsCheckKeys(
+          container, FLAGS_TEST_file_to_dump_keys_checked_for_conflict_in_intents_db);
     }
     return Status::OK();
   }

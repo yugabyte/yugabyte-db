@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks;
 
@@ -1369,12 +1369,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   /** Create a task to validate gflags for universe */
   public SubTaskGroup createValidateGFlagsTask(
-      List<UniverseDefinitionTaskParams.Cluster> newClusters) {
+      List<UniverseDefinitionTaskParams.Cluster> newClusters,
+      boolean useCLIBinary,
+      String ybSoftwareVersion) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("ValidateGFlags");
     ValidateGFlags task = createTask(ValidateGFlags.class);
     ValidateGFlags.Params params = new ValidateGFlags.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.newClusters = newClusters;
+    params.useCLIBinary = useCLIBinary;
+    params.ybSoftwareVersion = ybSoftwareVersion;
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);

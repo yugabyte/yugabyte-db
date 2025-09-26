@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -159,7 +159,7 @@ DECLARE_uint32(max_replication_slots);
 DECLARE_uint64(cdc_intent_retention_ms);
 DECLARE_uint32(cdcsdk_tablet_not_of_interest_timeout_secs);
 DECLARE_bool(cdcsdk_enable_dynamic_table_addition_with_table_cleanup);
-DECLARE_bool(TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication);
+DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 
 #define RETURN_ACTION_NOT_OK(expr, action) \
   RETURN_NOT_OK_PREPEND((expr), Format("An error occurred while $0", action))
@@ -856,7 +856,7 @@ Status CatalogManager::CreateNewCDCStreamForNamespace(
 
   // We add the pg_class and pg_publication_rel catalog tables to the stream metadata as we will
   // poll them to figure out changes to the publications. This will not be done for gRPC streams.
-  if (FLAGS_TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication &&
+  if (FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication &&
       req.has_cdcsdk_ysql_replication_slot_name()) {
     auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
     table_ids.push_back(GetPgsqlTableId(database_oid, kPgClassTableOid));
@@ -3312,6 +3312,9 @@ Status CatalogManager::ListCDCStreams(
       stream->set_cdcsdk_disable_dynamic_table_addition(
           ltm->pb.cdcsdk_disable_dynamic_table_addition());
     }
+
+    auto replica_identity_map = ltm->pb.replica_identity_map();
+    stream->mutable_replica_identity_map()->swap(replica_identity_map);
   }
   return Status::OK();
 }

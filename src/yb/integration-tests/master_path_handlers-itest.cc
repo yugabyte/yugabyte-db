@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -1934,7 +1934,7 @@ TEST_F(MasterPathHandlersItest, HeapProfile) {
 }
 
 TEST_F(MasterPathHandlersItest, TabletLimitsSkipDeadTServers) {
-  const std::string kTargetHeader = "Tablet Peer Limit";
+  const std::string kTargetHeader = "Tablet Peer Limit (Unenforced)";
   auto cols =
       ASSERT_RESULT(GetHtmlTableColumn("/tablet-servers", "universe_summary", kTargetHeader));
   ASSERT_FALSE(cols.empty());
@@ -1954,7 +1954,7 @@ TEST_F(MasterPathHandlersItest, TabletLimitsSkipDeadTServers) {
 }
 
 TEST_F(MasterPathHandlersItest, TabletLimitsSkipBlacklistedTServers) {
-  const std::string kTargetHeader = "Tablet Peer Limit";
+  const std::string kTargetHeader = "Tablet Peer Limit (Unenforced)";
   auto cols =
       ASSERT_RESULT(GetHtmlTableColumn("/tablet-servers", "universe_summary", kTargetHeader));
   ASSERT_FALSE(cols.empty());

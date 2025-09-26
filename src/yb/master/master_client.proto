@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -23,6 +23,7 @@ import "yb/common/wire_protocol.proto";
 import "yb/consensus/metadata.proto";
 import "yb/master/master_types.proto";
 import "yb/rpc/service.proto";
+import "yb/tablet/tablet.proto";
 import "yb/tablet/tablet_types.proto";
 
 // Info about a single tablet server, returned to the client as part
@@ -257,6 +258,13 @@ message GetStatefulServiceLocationResponsePB {
   optional StatefulServiceInfoPB service_info = 2;
 }
 
+message GetTabletsMetadataRequestPB {}
+
+message GetTabletsMetadataResponsePB {
+  optional MasterErrorPB error = 1;
+  repeated tablet.TabletStatusPB tablet_metadatas = 2;
+}
+
 service MasterClient {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -267,6 +275,8 @@ service MasterClient {
 
   rpc GetTransactionStatusTablets(GetTransactionStatusTabletsRequestPB)
       returns (GetTransactionStatusTabletsResponsePB);
+
+  rpc GetTabletsMetadata(GetTabletsMetadataRequestPB) returns (GetTabletsMetadataResponsePB);
 
   // For Postgres:
   rpc ReservePgsqlOids(ReservePgsqlOidsRequestPB) returns (ReservePgsqlOidsResponsePB);

@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -121,6 +121,7 @@ DEFINE_test_flag(int32, sleep_before_reporting_lb_ui_ms, 0,
                  "Sleep before reporting tasks in the load balancer UI, to give tasks a chance to "
                  "complete.");
 
+DECLARE_bool(enforce_tablet_replica_limits);
 DECLARE_int32(ysql_tablespace_info_refresh_secs);
 DECLARE_string(webserver_ca_certificate_file);
 DECLARE_string(webserver_certificate_file);
@@ -609,19 +610,26 @@ void MasterPathHandlers::DisplayUniverseSummary(
   auto universe_counts = CalculateUniverseTabletCounts(
       tablet_map, all_descs, blacklist, hide_dead_node_threshold_mins);
 
-  // auto include_placement_uuids = universe_counts.per_placement_cluster_counts.size() > 1;
-  // auto placement_uuid_header = include_placement_uuids ? "<th>Cluster UUID</th>\n" : "";
+  auto tablet_peer_limit_col_name =
+      Format("Tablet Peer Limit $0", FLAGS_enforce_tablet_replica_limits ? "" : "(Unenforced)");
   auto html_table = html_print_helper.CreateTablePrinter(
-      "universe_summary", {"Cluster UUID", "Total Live TServers", "Total Blacklisted TServers",
-                           "Total Dead TServers", "User Tablet-Peers", "System Tablet-Peers",
-                           "Hidden Tablet-Peers", "Active Tablet-Peers", "Tablet Peer Limit"});
+      "universe_summary",
+      {"Cluster UUID", "Total Live TServers", "Total Blacklisted TServers", "Total Dead TServers",
+       "User Tablet-Peers", "System Tablet-Peers", "Hidden Tablet-Peers", "Active Tablet-Peers",
+       tablet_peer_limit_col_name});
   for (const auto& [placement_uuid, cluster_counts] :
        universe_counts.per_placement_cluster_counts) {
     auto placement_uuid_entry = Format(
         "$0 $1", placement_uuid == live_id ? "Primary Cluster" : "Read Replica", placement_uuid);
-    auto limit_entry = cluster_counts.tablet_replica_limit.has_value()
-                           ? Format("$0", *cluster_counts.tablet_replica_limit)
-                           : "N/A";
+    std::string limit_entry = "N/A";
+    if (cluster_counts.tablet_replica_limit.has_value()) {
+      limit_entry = Format(
+          cluster_counts.active_tablet_peer_count > *cluster_counts.tablet_replica_limit
+              ? "<b><font color=\"red\">$0</font></b>"
+              : "$0",
+          *cluster_counts.tablet_replica_limit);
+    }
+
     auto user_total =
         cluster_counts.counts.user_tablet_followers + cluster_counts.counts.user_tablet_leaders;
     auto system_total =

@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // This module defines the opcodes to instruct tablet-servers on how to operate a request when the
 // operations are beyond the scope of this library. For example, this library won't execute an

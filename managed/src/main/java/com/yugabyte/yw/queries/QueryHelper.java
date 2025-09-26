@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 package com.yugabyte.yw.queries;
 
 import static play.mvc.Http.Status.SERVICE_UNAVAILABLE;

@@ -1,11 +1,7 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.models.configs.validators;
 
-import com.amazonaws.SDKGlobalConfiguration;
-import com.amazonaws.SdkClientException;
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.model.AmazonS3Exception;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.AWSUtil;
 import com.yugabyte.yw.common.BeanValidator;
@@ -25,6 +21,9 @@ import java.util.List;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import software.amazon.awssdk.core.exception.SdkClientException;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.S3Exception;
 
 @Slf4j
 public class CustomerConfigStorageS3Validator extends CustomerConfigStorageValidator {
@@ -68,21 +67,13 @@ public class CustomerConfigStorageS3Validator extends CustomerConfigStorageValid
             "Aws credentials are null and IAM profile is not used.");
       }
     }
+    S3Client s3Client = null;
     try {
       if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.enforceCertVerificationBackupRestore)) {
-        System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "true");
+        System.setProperty("com.amazonaws.sdk.disableCertChecking", "true");
       }
 
-      AmazonS3 s3Client = null;
-      String exceptionMsg = null;
-      try {
-        s3Client = factory.createS3Client(s3data);
-      } catch (AmazonS3Exception s3Exception) {
-        exceptionMsg = s3Exception.getErrorMessage();
-        throwBeanConfigDataValidatorError(
-            CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME, exceptionMsg);
-      }
-
+      s3Client = factory.createS3Client(s3data);
       validateBucket(
           s3Client,
           CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME,
@@ -102,17 +93,23 @@ public class CustomerConfigStorageS3Validator extends CustomerConfigStorageValid
               s3Client, CustomerConfigConsts.REGION_LOCATION_FIELDNAME, s3data, location.region);
         }
       }
-
+    } catch (S3Exception e) {
+      throwBeanConfigDataValidatorError(
+          CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME, e.getMessage());
     } finally {
       // Re-enable cert checking as it applies globally
       if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.enforceCertVerificationBackupRestore)) {
-        System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "false");
+        System.setProperty("com.amazonaws.sdk.disableCertChecking", "false");
+      }
+      // Close S3 client to release resources.
+      if (s3Client != null) {
+        s3Client.close();
       }
     }
   }
 
   private void validateBucket(
-      AmazonS3 client, String fieldName, CustomerConfigStorageS3Data s3Data, String region) {
+      S3Client client, String fieldName, CustomerConfigStorageS3Data s3Data, String region) {
     String s3UriPath = awsUtil.getRegionLocationsMap(s3Data).get(region);
     // Assuming bucket name will always start with s3:// otherwise that will be
     // invalid.
@@ -125,8 +122,8 @@ public class CustomerConfigStorageS3Validator extends CustomerConfigStorageValid
             awsUtil.getCloudLocationInfo(region, s3Data, s3UriPath);
         awsUtil.validateOnBucket(
             client, configLocationInfo.bucket, configLocationInfo.cloudPath, permissions);
-      } catch (AmazonS3Exception s3Exception) {
-        String exceptionMsg = s3Exception.getErrorMessage();
+      } catch (S3Exception s3Exception) {
+        String exceptionMsg = s3Exception.getMessage();
         if (exceptionMsg.contains("Denied") || exceptionMsg.contains("bucket"))
           exceptionMsg += " " + s3UriPath;
         throwBeanConfigDataValidatorError(fieldName, exceptionMsg);

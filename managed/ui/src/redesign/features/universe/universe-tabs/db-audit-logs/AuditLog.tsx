@@ -11,7 +11,6 @@ import { AuditLogSettings } from './components/AuditLogSettings';
 import { DisableLogDialog } from './components/DisableLogDialog';
 import { DisableExportDialog } from './components/DisableExportDialog';
 import { YBLoadingCircleIcon } from '../../../../../components/common/indicators';
-import { api, QUERY_KEY } from '../../../../utils/api';
 import { disableLogPayload } from './utils/helper';
 import { getPrimaryCluster } from '../../universe-form/utils/helpers';
 import { createErrorMessage } from '../../universe-form/utils/helpers';
@@ -24,9 +23,9 @@ import {
 } from '../../../../../actions/tasks';
 import { AuditLogPayload } from './utils/types';
 import { Universe } from '../../universe-form/utils/dto';
-import { ExportLogResponse } from '../../../export-log/utils/types';
-import { TP_FRIENDLY_NAMES } from '../../../export-log/utils/constants';
+import { TP_FRIENDLY_NAMES } from '../../../export-telemetry/constants';
 import { MODIFY_AUDITLOG_TASK_TYPE } from './utils/constants';
+import { api, telemetryProviderQueryKey } from '@app/redesign/helpers/api';
 
 //styles
 import { auditLogStyles } from './utils/AuditLogStyles';
@@ -68,9 +67,9 @@ export const AuditLog: FC<AuditLogProps> = ({ universeData, universePaused }) =>
   const isExportEnabled = auditLogInfo?.exportActive;
   const exporterID = _.get(auditLogInfo, 'universeLogsExporterConfig[0].exporterUuid');
 
-  const { data: exportLogData, isLoading } = useQuery<ExportLogResponse>(
-    [QUERY_KEY.getTelemetryProviderByID],
-    () => api.getTelemetryProviderByID(exporterID)
+  const { data: exportLogData, isLoading } = useQuery(
+    telemetryProviderQueryKey.detail(exporterID),
+    () => api.fetchTelemetryProvider(exporterID)
   );
 
   const updateAuditLogConfig = useMutation(

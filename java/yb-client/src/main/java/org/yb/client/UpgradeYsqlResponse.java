@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 package org.yb.client;
 
 import org.yb.annotations.InterfaceAudience;

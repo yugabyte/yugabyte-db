@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -23,9 +23,8 @@ namespace yb {
 // integer is a member of in constant time.
 class ColGroupHolder {
  public:
-
   explicit ColGroupHolder(size_t num_cols) {
-    col_to_group_.resize(num_cols, -1);
+    col_to_group_.resize(num_cols, std::numeric_limits<size_t>::max());
     groups_.clear();
   }
 
@@ -34,24 +33,23 @@ class ColGroupHolder {
   void BeginNewGroup() {
     DCHECK(groups_.size() == 0 ||
            groups_.back().size() > 0);
-    groups_.push_back({});
+    groups_.emplace_back();
   }
 
   // Adds idx to the latest group that was created as a result of BeginNewGroup.
   void AddToLatestGroup(size_t idx) {
     DCHECK(std::find(groups_.back().begin(), groups_.back().end(), idx) ==
            groups_.back().end());
-    DCHECK_LT(col_to_group_[idx], 0);
+    DCHECK_EQ(col_to_group_[idx], std::numeric_limits<size_t>::max());
 
-    col_to_group_[idx] = static_cast<int>(groups_.size() - 1);
+    col_to_group_[idx] = groups_.size() - 1;
     groups_.back().push_back(idx);
   }
 
   // Returns a reference to the group idx is a part of. idx must have been
   // added to a group in this ColGroupHolder.
-  const std::vector<size_t> &GetGroup(size_t idx) const {
+  const std::vector<size_t>& GetGroup(size_t idx) const {
     DCHECK_LT(idx, col_to_group_.size());
-    DCHECK_GE(col_to_group_[idx], 0);
     DCHECK_LT(col_to_group_[idx], groups_.size());
     return groups_[col_to_group_[idx]];
   }
@@ -60,7 +58,7 @@ class ColGroupHolder {
   std::vector<std::vector<size_t>> groups_;
 
   // If col_to_group_[i] < 0 then i is not in any group.
-  std::vector<int> col_to_group_;
+  std::vector<size_t> col_to_group_;
 };
 
 };  // namespace yb

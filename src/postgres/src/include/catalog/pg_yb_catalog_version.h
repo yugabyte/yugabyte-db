@@ -4,7 +4,7 @@
  *
  *	  definition of the "YSQL catalog version" system catalog (pg_yb_catalog_version)
  *
- * Portions Copyright (c) YugaByte, Inc.
+ * Portions Copyright (c) YugabyteDB, Inc.
  *
  * src/include/catalog/pg_yb_catalog_version.h
  *

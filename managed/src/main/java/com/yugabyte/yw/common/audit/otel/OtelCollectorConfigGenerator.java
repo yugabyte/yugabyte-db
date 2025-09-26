@@ -94,6 +94,7 @@ public class OtelCollectorConfigGenerator {
   private static final String PROCESSOR_PREFIX_ATTRIBUTES = "attributes/";
   private static final String PROCESSOR_PREFIX_BATCH = "batch/";
   private static final String PROCESSOR_PREFIX_MEMORY_LIMITER = "memory_limiter/";
+  private static final String PROCESSOR_PREFIX_TRANSFORM = "transform/";
 
   // Pipeline prefixes
   private static final String PIPELINE_PREFIX_LOGS = "logs/";
@@ -1230,78 +1231,20 @@ public class OtelCollectorConfigGenerator {
 
     exporterName =
         appendExporterConfig(telemetryProvider, exporters, attributeActions, ExportType.AUDIT_LOGS);
-    // Add some common collector labels.
-    attributeActions.add(
-        new OtelCollectorConfigFormat.AttributeAction("host", nodeName, "upsert", null));
-    attributeActions.add(
-        new OtelCollectorConfigFormat.AttributeAction(
-            "yugabyte.cloud",
-            StringUtils.defaultString(nodeDetails.cloudInfo.cloud, ""),
-            "upsert",
-            null));
-    attributeActions.add(
-        new OtelCollectorConfigFormat.AttributeAction(
-            "yugabyte.universe_uuid", universe.getUniverseUUID().toString(), "upsert", null));
-    attributeActions.add(
-        new OtelCollectorConfigFormat.AttributeAction(
-            "yugabyte.node_type",
-            universe.getCluster(nodeDetails.placementUuid).clusterType.toString(),
-            "upsert",
-            null));
-    attributeActions.add(
-        new OtelCollectorConfigFormat.AttributeAction(
-            "yugabyte.region",
-            StringUtils.defaultString(nodeDetails.cloudInfo.region, ""),
-            "upsert",
-            null));
-    attributeActions.add(
-        new OtelCollectorConfigFormat.AttributeAction(
-            "yugabyte.zone",
-            StringUtils.defaultString(nodeDetails.cloudInfo.az, ""),
-            "upsert",
-            null));
-    attributeActions.add(
-        new OtelCollectorConfigFormat.AttributeAction(
-            "yugabyte.purpose",
-            telemetryProvider.getConfig().getType().toString() + "_LOG_EXPORT",
-            "upsert",
-            null));
 
-    // Rename the attributes to organise under the key yugabyte.
-    List<RenamePair> renamePairs = new ArrayList<RenamePair>();
-    renamePairs.add(new RenamePair("log.file.name", ATTR_PREFIX_YUGABYTE + "log.file.name"));
-    renamePairs.add(new RenamePair("log_level", ATTR_PREFIX_YUGABYTE + "log_level"));
-    renamePairs.add(new RenamePair("audit_type", ATTR_PREFIX_YUGABYTE + "audit_type"));
-    renamePairs.add(new RenamePair("statement_id", ATTR_PREFIX_YUGABYTE + "statement_id"));
-    renamePairs.add(new RenamePair("substatement_id", ATTR_PREFIX_YUGABYTE + "substatement_id"));
-    renamePairs.add(new RenamePair("class", ATTR_PREFIX_YUGABYTE + "class"));
-    renamePairs.add(new RenamePair("command", ATTR_PREFIX_YUGABYTE + "command"));
-    renamePairs.add(new RenamePair("object_type", ATTR_PREFIX_YUGABYTE + "object_type"));
-    renamePairs.add(new RenamePair("object_name", ATTR_PREFIX_YUGABYTE + "object_name"));
-    renamePairs.add(new RenamePair("statement", ATTR_PREFIX_YUGABYTE + "statement"));
-    renamePairs.forEach(rp -> attributeActions.addAll(rp.getRenameAttributeActions()));
-
-    // Rename the log prefix extracted attributes to come under the key yugabyte.
+    // Add common log attributes, log prefix extraction, and tags
     AuditLogRegexGenerator.LogRegexResult regexResult =
         auditLogRegexGenerator.generateAuditLogRegex(logLinePrefix, /*onlyPrefix*/ true);
-    regexResult
-        .getTokens()
-        .forEach(
-            token -> {
-              RenamePair rp =
-                  new RenamePair(token.getAttributeName(), token.getYugabyteAttributeName());
-              attributeActions.addAll(rp.getRenameAttributeActions());
-            });
-
-    // Override or add tags from the exporter config.
-    if (MapUtils.isNotEmpty(telemetryProvider.getTags())) {
-      attributeActions.addAll(getTagsToAttributeActions(telemetryProvider.getTags()));
-    }
-
-    // Override or add additional tags from the audit log config payload.
-    if (MapUtils.isNotEmpty(logsExporterConfig.getAdditionalTags())) {
-      attributeActions.addAll(getTagsToAttributeActions(logsExporterConfig.getAdditionalTags()));
-    }
+    addCommonLogAttributes(
+        attributeActions,
+        nodeName,
+        nodeDetails,
+        universe,
+        telemetryProvider,
+        "_LOG_EXPORT",
+        true,
+        regexResult,
+        logsExporterConfig.getAdditionalTags());
 
     attributesProcessor.setActions(attributeActions);
 
@@ -1311,6 +1254,9 @@ public class OtelCollectorConfigGenerator {
     collectorConfig.getProcessors().put(processorName, attributesProcessor);
     List<String> processorNames = new ArrayList<>(currentProcessors);
     processorNames.add(processorName);
+
+    // Add common transform processor
+    addCommonTransformProcessor(collectorConfig);
 
     OtelCollectorConfigFormat.Pipeline pipeline = new OtelCollectorConfigFormat.Pipeline();
     List<String> receivers = new ArrayList<>(collectorConfig.getReceivers().keySet());
@@ -1324,7 +1270,10 @@ public class OtelCollectorConfigGenerator {
     // Filter processors to only include those with audit_log in their name
     List<String> auditProcessors =
         processors.stream()
-            .filter(processor -> processor.contains(exporterTypeAndUUIDString))
+            .filter(
+                processor ->
+                    processor.contains(exporterTypeAndUUIDString)
+                        || processor.contains(PROCESSOR_PREFIX_TRANSFORM))
             .collect(Collectors.toList());
 
     pipeline.setProcessors(auditProcessors);
@@ -1356,9 +1305,104 @@ public class OtelCollectorConfigGenerator {
     exporterName =
         appendExporterConfig(telemetryProvider, exporters, attributeActions, ExportType.QUERY_LOGS);
 
+    // Add common log attributes, log prefix extraction, and tags
+    AuditLogRegexGenerator.LogRegexResult regexResult =
+        queryLogRegexGenerator.generateQueryLogRegex(logLinePrefix, /*onlyPrefix*/ true);
+    addCommonLogAttributes(
+        attributeActions,
+        nodeName,
+        nodeDetails,
+        universe,
+        telemetryProvider,
+        "_QUERY_LOG_EXPORT",
+        false,
+        regexResult,
+        logsExporterConfig.getAdditionalTags());
+
+    attributesProcessor.setActions(attributeActions);
+
+    String exportTypeAndUUIDString =
+        exportTypeAndUUID(telemetryProvider.getUuid(), ExportType.QUERY_LOGS);
+    String processorName = PROCESSOR_PREFIX_ATTRIBUTES + exportTypeAndUUIDString;
+    collectorConfig.getProcessors().put(processorName, attributesProcessor);
+    List<String> processorNames = new ArrayList<>(currentProcessors);
+    processorNames.add(processorName);
+
+    OtelCollectorConfigFormat.BatchProcessor batchProcessor =
+        new OtelCollectorConfigFormat.BatchProcessor();
+    batchProcessor.setSend_batch_max_size(logsExporterConfig.getSendBatchMaxSize());
+    batchProcessor.setSend_batch_size(logsExporterConfig.getSendBatchSize());
+    batchProcessor.setTimeout(logsExporterConfig.getSendBatchTimeoutSeconds().toString() + "s");
+    String batchProcessorName = PROCESSOR_PREFIX_BATCH + exportTypeAndUUIDString;
+    collectorConfig.getProcessors().put(batchProcessorName, batchProcessor);
+    processorNames.add(batchProcessorName);
+
+    String memoryLimiterProcessorName = PROCESSOR_PREFIX_MEMORY_LIMITER + exportTypeAndUUIDString;
+    OtelCollectorConfigFormat.MemoryLimiterProcessor memoryLimiterProcessor =
+        new OtelCollectorConfigFormat.MemoryLimiterProcessor();
+    memoryLimiterProcessor.setCheck_interval(
+        logsExporterConfig.getMemoryLimitCheckIntervalSeconds().toString() + "s");
+    memoryLimiterProcessor.setLimit_mib(logsExporterConfig.getMemoryLimitMib());
+    collectorConfig.getProcessors().put(memoryLimiterProcessorName, memoryLimiterProcessor);
+    processorNames.add(memoryLimiterProcessorName);
+
+    // Add common transform processor
+    addCommonTransformProcessor(collectorConfig);
+
+    OtelCollectorConfigFormat.Pipeline pipeline = new OtelCollectorConfigFormat.Pipeline();
+    List<String> receivers = new ArrayList<>(collectorConfig.getReceivers().keySet());
+    List<String> queryReceivers =
+        receivers.stream()
+            .filter(receiver -> receiver.contains("query_logs"))
+            .collect(Collectors.toList());
+    pipeline.setReceivers(queryReceivers);
+
+    List<String> processors = new ArrayList<>(collectorConfig.getProcessors().keySet());
+    // Filter processors to only include those with query_log, plus the common transform processor
+    List<String> queryProcessors =
+        processors.stream()
+            .filter(
+                processor ->
+                    processor.contains(exportTypeAndUUIDString)
+                        || processor.contains(PROCESSOR_PREFIX_TRANSFORM))
+            .collect(Collectors.toList());
+
+    pipeline.setProcessors(queryProcessors);
+    pipeline.setExporters(ImmutableList.of(exporterName));
+    // Use unique pipeline key for query logs
+    collectorConfig
+        .getService()
+        .getPipelines()
+        .put(PIPELINE_PREFIX_LOGS + exportTypeAndUUIDString, pipeline);
+  }
+
+  private List<OtelCollectorConfigFormat.AttributeAction> getTagsToAttributeActions(
+      Map<String, String> tags) {
+    return tags.entrySet().stream()
+        .map(
+            e ->
+                new OtelCollectorConfigFormat.AttributeAction(
+                    e.getKey(), e.getValue(), "upsert", null))
+        .toList();
+  }
+
+  private void addCommonLogAttributes(
+      List<OtelCollectorConfigFormat.AttributeAction> attributeActions,
+      String nodeName,
+      NodeDetails nodeDetails,
+      Universe universe,
+      TelemetryProvider telemetryProvider,
+      String purposeSuffix,
+      boolean includeAuditType,
+      AuditLogRegexGenerator.LogRegexResult regexResult,
+      Map<String, String> additionalTags) {
     // Add some common collector labels.
     attributeActions.add(
         new OtelCollectorConfigFormat.AttributeAction("host", nodeName, "upsert", null));
+    attributeActions.add(
+        new OtelCollectorConfigFormat.AttributeAction(
+            "yugabyte.node_name", nodeName, "upsert", null));
+
     attributeActions.add(
         new OtelCollectorConfigFormat.AttributeAction(
             "yugabyte.cloud",
@@ -1389,26 +1433,28 @@ public class OtelCollectorConfigGenerator {
     attributeActions.add(
         new OtelCollectorConfigFormat.AttributeAction(
             "yugabyte.purpose",
-            telemetryProvider.getConfig().getType().toString() + "_QUERY_LOG_EXPORT",
+            telemetryProvider.getConfig().getType().toString() + purposeSuffix,
             "upsert",
             null));
 
-    // Rename the attributes to organise under the key yugabyte.
-    List<RenamePair> renamePairs = new ArrayList<RenamePair>();
-    renamePairs.add(new RenamePair("log.file.name", ATTR_PREFIX_YUGABYTE + "log.file.name"));
-    renamePairs.add(new RenamePair("log_level", ATTR_PREFIX_YUGABYTE + "log_level"));
-    renamePairs.add(new RenamePair("statement_id", ATTR_PREFIX_YUGABYTE + "statement_id"));
-    renamePairs.add(new RenamePair("substatement_id", ATTR_PREFIX_YUGABYTE + "substatement_id"));
-    renamePairs.add(new RenamePair("class", ATTR_PREFIX_YUGABYTE + "class"));
-    renamePairs.add(new RenamePair("command", ATTR_PREFIX_YUGABYTE + "command"));
-    renamePairs.add(new RenamePair("object_type", ATTR_PREFIX_YUGABYTE + "object_type"));
-    renamePairs.add(new RenamePair("object_name", ATTR_PREFIX_YUGABYTE + "object_name"));
-    renamePairs.add(new RenamePair("statement", ATTR_PREFIX_YUGABYTE + "statement"));
-    renamePairs.forEach(rp -> attributeActions.addAll(rp.getRenameAttributeActions()));
+    // Rename the common attributes to organise under the key yugabyte.
+    List<RenamePair> commonRenamePairs = new ArrayList<RenamePair>();
+    commonRenamePairs.add(new RenamePair("log.file.name", ATTR_PREFIX_YUGABYTE + "log.file.name"));
+    commonRenamePairs.add(new RenamePair("log_level", ATTR_PREFIX_YUGABYTE + "log_level"));
+    if (includeAuditType) {
+      commonRenamePairs.add(new RenamePair("audit_type", ATTR_PREFIX_YUGABYTE + "audit_type"));
+    }
+    commonRenamePairs.add(new RenamePair("statement_id", ATTR_PREFIX_YUGABYTE + "statement_id"));
+    commonRenamePairs.add(
+        new RenamePair("substatement_id", ATTR_PREFIX_YUGABYTE + "substatement_id"));
+    commonRenamePairs.add(new RenamePair("class", ATTR_PREFIX_YUGABYTE + "class"));
+    commonRenamePairs.add(new RenamePair("command", ATTR_PREFIX_YUGABYTE + "command"));
+    commonRenamePairs.add(new RenamePair("object_type", ATTR_PREFIX_YUGABYTE + "object_type"));
+    commonRenamePairs.add(new RenamePair("object_name", ATTR_PREFIX_YUGABYTE + "object_name"));
+    commonRenamePairs.add(new RenamePair("statement", ATTR_PREFIX_YUGABYTE + "statement"));
+    commonRenamePairs.forEach(rp -> attributeActions.addAll(rp.getRenameAttributeActions()));
 
     // Rename the log prefix extracted attributes to come under the key yugabyte.
-    AuditLogRegexGenerator.LogRegexResult regexResult =
-        queryLogRegexGenerator.generateQueryLogRegex(logLinePrefix, /*onlyPrefix*/ true);
     regexResult
         .getTokens()
         .forEach(
@@ -1423,60 +1469,10 @@ public class OtelCollectorConfigGenerator {
       attributeActions.addAll(getTagsToAttributeActions(telemetryProvider.getTags()));
     }
 
-    // Override or add additional tags from the query log config payload.
-    if (MapUtils.isNotEmpty(logsExporterConfig.getAdditionalTags())) {
-      attributeActions.addAll(getTagsToAttributeActions(logsExporterConfig.getAdditionalTags()));
+    // Override or add additional tags from the log config payload.
+    if (MapUtils.isNotEmpty(additionalTags)) {
+      attributeActions.addAll(getTagsToAttributeActions(additionalTags));
     }
-
-    attributesProcessor.setActions(attributeActions);
-
-    String exportTypeAndUUIDString =
-        exportTypeAndUUID(telemetryProvider.getUuid(), ExportType.QUERY_LOGS);
-    String processorName = PROCESSOR_PREFIX_ATTRIBUTES + exportTypeAndUUIDString;
-    collectorConfig.getProcessors().put(processorName, attributesProcessor);
-    List<String> processorNames = new ArrayList<>(currentProcessors);
-    processorNames.add(processorName);
-
-    OtelCollectorConfigFormat.BatchProcessor batchProcessor =
-        new OtelCollectorConfigFormat.BatchProcessor();
-    batchProcessor.setSend_batch_max_size(logsExporterConfig.getSendBatchMaxSize());
-    batchProcessor.setSend_batch_size(logsExporterConfig.getSendBatchSize());
-    batchProcessor.setTimeout(logsExporterConfig.getSendBatchTimeoutSeconds().toString() + "s");
-    String batchProcessorName = PROCESSOR_PREFIX_BATCH + exportTypeAndUUIDString;
-    collectorConfig.getProcessors().put(batchProcessorName, batchProcessor);
-    processorNames.add(batchProcessorName);
-
-    OtelCollectorConfigFormat.Pipeline pipeline = new OtelCollectorConfigFormat.Pipeline();
-    List<String> receivers = new ArrayList<>(collectorConfig.getReceivers().keySet());
-    List<String> queryReceivers =
-        receivers.stream()
-            .filter(receiver -> receiver.contains("query_logs"))
-            .collect(Collectors.toList());
-    pipeline.setReceivers(queryReceivers);
-
-    List<String> processors = new ArrayList<>(collectorConfig.getProcessors().keySet());
-    // Filter processors to only include those with query_log
-    List<String> queryProcessors =
-        processors.stream()
-            .filter(processor -> processor.contains(exportTypeAndUUIDString))
-            .collect(Collectors.toList());
-    pipeline.setProcessors(queryProcessors);
-    pipeline.setExporters(ImmutableList.of(exporterName));
-    // Use unique pipeline key for query logs
-    collectorConfig
-        .getService()
-        .getPipelines()
-        .put(PIPELINE_PREFIX_LOGS + exportTypeAndUUIDString, pipeline);
-  }
-
-  private List<OtelCollectorConfigFormat.AttributeAction> getTagsToAttributeActions(
-      Map<String, String> tags) {
-    return tags.entrySet().stream()
-        .map(
-            e ->
-                new OtelCollectorConfigFormat.AttributeAction(
-                    e.getKey(), e.getValue(), "upsert", null))
-        .toList();
   }
 
   private String appendExporterConfig(
@@ -1709,6 +1705,22 @@ public class OtelCollectorConfigGenerator {
                   encodedCredentials));
         }
         break;
+    }
+  }
+
+  private void addCommonTransformProcessor(OtelCollectorConfigFormat collectorConfig) {
+    String transformProcessorName = PROCESSOR_PREFIX_TRANSFORM + "replace";
+
+    // Only add the transform processor if it doesn't already exist
+    if (!collectorConfig.getProcessors().containsKey(transformProcessorName)) {
+      OtelCollectorConfigFormat.TransformProcessor transformProcessor =
+          new OtelCollectorConfigFormat.TransformProcessor();
+      OtelCollectorConfigFormat.LogStatement logStatement =
+          new OtelCollectorConfigFormat.LogStatement();
+      logStatement.setContext("log");
+      logStatement.setStatements(ImmutableList.of("replace_pattern(body, \"^otho8Aut\", \"\")"));
+      transformProcessor.setLog_statements(ImmutableList.of(logStatement));
+      collectorConfig.getProcessors().put(transformProcessorName, transformProcessor);
     }
   }
 

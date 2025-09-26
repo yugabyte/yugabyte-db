@@ -1476,8 +1476,8 @@ void PgApiImpl::ResetOperationsBuffering() {
   pg_session_->ResetOperationsBuffering();
 }
 
-Status PgApiImpl::FlushBufferedOperations(const YbcFlushDebugContext& context) {
-  return ResultToStatus(pg_session_->FlushBufferedOperations(context));
+Status PgApiImpl::FlushBufferedOperations(const YbcFlushDebugContext& debug_context) {
+  return ResultToStatus(pg_session_->FlushBufferedOperations(debug_context));
 }
 
 Status PgApiImpl::AdjustOperationsBuffering(int multiple) {
@@ -2430,8 +2430,8 @@ Result<tserver::PgActiveSessionHistoryResponsePB> PgApiImpl::ActiveSessionHistor
   return pg_session_->ActiveSessionHistory();
 }
 
-Result<tserver::PgTabletsMetadataResponsePB> PgApiImpl::TabletsMetadata() {
-  return pg_session_->TabletsMetadata();
+Result<tserver::PgTabletsMetadataResponsePB> PgApiImpl::TabletsMetadata(bool local_only) {
+  return pg_session_->TabletsMetadata(local_only);
 }
 
 Result<tserver::PgServersMetricsResponsePB> PgApiImpl::ServersMetrics() {

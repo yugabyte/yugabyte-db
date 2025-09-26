@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -48,7 +48,6 @@
 #include <functional>
 #include <map>
 #include <memory>
-#include <set>
 #include <vector>
 
 #include <boost/intrusive/list.hpp>
@@ -56,8 +55,8 @@
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/bind.h"
 #include "yb/gutil/dynamic_annotations.h"
-#include "yb/gutil/once.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/debug-util.h"
 #include "yb/util/errno.h"
 #include "yb/util/format.h"
@@ -87,13 +86,13 @@ METRIC_DEFINE_gauge_uint64(server, threads_running,
 METRIC_DEFINE_gauge_uint64(server, cpu_utime,
                            "User CPU Time",
                            yb::MetricUnit::kMilliseconds,
-                           "Total user CPU time of the process",
+                           "Total user CPU time (milliseconds) of the process",
                            yb::EXPOSE_AS_COUNTER);
 
 METRIC_DEFINE_gauge_uint64(server, cpu_stime,
                            "System CPU Time",
                            yb::MetricUnit::kMilliseconds,
-                           "Total system CPU time of the process",
+                           "Total system CPU time (milliseconds) of the process",
                            yb::EXPOSE_AS_COUNTER);
 
 METRIC_DEFINE_gauge_uint64(server, voluntary_context_switches,
@@ -370,7 +369,8 @@ Status ThreadMgr::StartInstrumentation(const scoped_refptr<MetricEntity>& metric
 
   WebCallbackRegistry::PathHandlerCallback thread_callback =
       std::bind(&ThreadMgr::ThreadPathHandler, this, _1, _2);
-  DCHECK_NOTNULL(web)->RegisterPathHandler("/threadz", "Threads", thread_callback, true, false);
+  DCHECK_NOTNULL(web)->RegisterPathHandler(
+      "/threadz", "Threads", thread_callback, /*is_styled=*/true, /*is_on_nav_bar=*/false);
   return Status::OK();
 }
 
@@ -773,7 +773,7 @@ Status ThreadJoiner::Join() {
       // Unconditionally join before returning, to guarantee that any TLS
       // has been destroyed (pthread_key_create() destructors only run
       // after a pthread's user method has returned).
-      int ret = pthread_join(thread_->thread_, NULL);
+      int ret = pthread_join(thread_->thread_, nullptr);
       CHECK_EQ(ret, 0);
       thread_->joinable_ = false;
       return Status::OK();
@@ -946,7 +946,7 @@ void* Thread::SuperviseThread(void* arg) {
   t->functor_();
   pthread_cleanup_pop(true);
 
-  return NULL;
+  return nullptr;
 }
 
 void Thread::Join() {

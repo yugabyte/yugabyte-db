@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -36,21 +36,17 @@
 #include <mutex>
 
 #include "yb/consensus/consensus.messages.h"
-#include "yb/consensus/consensus_util.h"
 #include "yb/consensus/log.messages.h"
 #include "yb/consensus/log_index.h"
 #include "yb/consensus/log_util.h"
 
 #include "yb/gutil/dynamic_annotations.h"
 
-#include "yb/util/env_util.h"
-#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
-#include "yb/util/std_util.h"
 
 using std::string;
 
@@ -93,8 +89,7 @@ DEFINE_test_flag(int32, get_changes_read_loop_delay_ms, 0,
                  "Amount of time to sleep for between each iteration of the loop in "
                  "ReadReplicatesInRange. This is used to test the return of partial results.");
 
-namespace yb {
-namespace log {
+namespace yb::log {
 
 namespace {
 struct LogSegmentSeqnoComparator {
@@ -109,15 +104,14 @@ using strings::Substitute;
 
 const int64_t LogReader::kNoSizeLimit = -1;
 
-Status LogReader::Open(Env *env,
-                       const scoped_refptr<LogIndex>& index,
-                       std::string log_prefix,
-                       const std::string& tablet_wal_path,
-                       const scoped_refptr<MetricEntity>& table_metric_entity,
-                       const scoped_refptr<MetricEntity>& tablet_metric_entity,
-                       std::unique_ptr<LogReader> *reader) {
+Status LogReader::Open(
+    Env* env, const scoped_refptr<LogIndex>& index, std::string log_prefix,
+    const std::string& tablet_wal_path, const scoped_refptr<MetricEntity>& table_metric_entity,
+    const scoped_refptr<MetricEntity>& tablet_metric_entity,
+    std::shared_ptr<MemTracker> read_wal_mem_tracker, std::unique_ptr<LogReader>* reader) {
   std::unique_ptr<LogReader> log_reader(new LogReader(
-      env, index, std::move(log_prefix), table_metric_entity, tablet_metric_entity));
+      env, index, std::move(log_prefix), table_metric_entity, tablet_metric_entity,
+      std::move(read_wal_mem_tracker)));
 
   RETURN_NOT_OK(log_reader->Init(tablet_wal_path));
   *reader = std::move(log_reader);
@@ -128,10 +122,12 @@ LogReader::LogReader(Env* env,
                      const scoped_refptr<LogIndex>& index,
                      std::string log_prefix,
                      const scoped_refptr<MetricEntity>& table_metric_entity,
-                     const scoped_refptr<MetricEntity>& tablet_metric_entity)
+                     const scoped_refptr<MetricEntity>& tablet_metric_entity,
+                     std::shared_ptr<MemTracker> read_wal_mem_tracker)
     : env_(env),
       log_index_(index),
       log_prefix_(std::move(log_prefix)),
+      read_wal_mem_tracker_(std::move(read_wal_mem_tracker)),
       state_(kLogReaderInitialized) {
   if (table_metric_entity) {
     read_batch_latency_ = METRIC_log_reader_read_batch_latency.Instantiate(table_metric_entity);
@@ -149,8 +145,7 @@ LogReader::LogReader(Env* env,
   }
 }
 
-LogReader::~LogReader() {
-}
+LogReader::~LogReader() = default;
 
 Status LogReader::Init(const string& tablet_wal_path) {
   {
@@ -178,8 +173,9 @@ Status LogReader::Init(const string& tablet_wal_path) {
     }
 
     string fqp = JoinPathSegments(tablet_wal_path, potential_log_file);
-    auto segment = VERIFY_RESULT_PREPEND(ReadableLogSegment::Open(env_, fqp),
-                                         Format("Unable to open readable log segment: $0", fqp));
+    auto segment = VERIFY_RESULT_PREPEND(
+        ReadableLogSegment::Open(env_, fqp, read_wal_mem_tracker_),
+        Format("Unable to open readable log segment: $0", fqp));
     if (!segment) {
       LOG_WITH_PREFIX(INFO) << "Log segment w/o header: " << fqp << ", skipping";
       continue;
@@ -732,5 +728,4 @@ Result<LogIndexEntry> LogReader::TEST_GetIndexEntry(const int64_t index) const {
   return GetIndexEntry(index);
 }
 
-}  // namespace log
-}  // namespace yb
+} // namespace yb::log

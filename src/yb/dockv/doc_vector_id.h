@@ -64,5 +64,13 @@ bool IsNull(const DocVectorValue& v);
 KeyBytes DocVectorKey(vector_index::VectorId vector_id);
 std::array<Slice, 3> DocVectorKeyAsParts(Slice id, Slice encoded_write_time);
 
+Status DecodeDocVectorKey(Slice* input, vector_index::VectorId* vector_id);
+Result<vector_index::VectorId> DecodeDocVectorKey(Slice* input);
+
+std::string DocVectorIdToString(const Uuid& vector_id);
+std::string DocVectorIdToString(const vector_index::VectorId& vector_id);
+
+std::string DocVectorKeyToString(const vector_index::VectorId& vector_id);
+std::string DocVectorKeyToString(const vector_index::VectorId& vector_id, const DocHybridTime& ht);
 
 } // namespace yb::dockv

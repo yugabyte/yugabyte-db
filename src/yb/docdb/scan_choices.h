@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -44,7 +44,7 @@ class ScanChoices {
 
   static ScanChoicesPtr Create(
       const Schema& schema, const qlexpr::YQLScanSpec& doc_spec,
-      const qlexpr::ScanBounds& bounds);
+      const qlexpr::ScanBounds& bounds, Slice table_key_prefix);
 
   static ScanChoicesPtr CreateEmpty();
 };

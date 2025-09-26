@@ -931,15 +931,12 @@ VectorLSM<Vector, DistanceResult>::~VectorLSM() {
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::DoCheckRunning(
     const char* file_name, int line_number) const {
-  {
-    SharedLock lock(mutex_);
-    if (!stopping_) {
-      return Status::OK();
-    }
+  if (shutdown_controller_.IsRunning()) {
+    return Status::OK();
   }
 
-  auto status = Status(Status::kShutdownInProgress,
-                       file_name, line_number, "Vector LSM is shutting down");
+  Status status {
+      Status::kShutdownInProgress, file_name, line_number, "VectorLSM is shutting down" };
   LOG_WITH_PREFIX(INFO) << status;
   return status;
 }
@@ -954,13 +951,20 @@ bool VectorLSM<Vector, DistanceResult>::IsShuttingDown() const {
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 void VectorLSM<Vector, DistanceResult>::StartShutdown() {
-  std::lock_guard lock(mutex_);
-  stopping_ = true;
+  auto scope = shutdown_controller_.StartShutdown();
+  if (!scope) {
+    LOG_IF_WITH_PREFIX(DFATAL, !scope.status().IsShutdownInProgress()) << scope.status();
+    return;
+  }
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 void VectorLSM<Vector, DistanceResult>::CompleteShutdown() {
-  LOG_IF_WITH_PREFIX(DFATAL, RUNNING_STATUS().ok()) << "Vector LSM is not shutting down";
+  auto scope = shutdown_controller_.CompleteShutdown();
+  if (!scope) {
+    LOG_IF_WITH_PREFIX(DFATAL, !scope.status().IsShutdownInProgress()) << scope.status();
+    return;
+  }
 
   if (!insert_registry_) {
     return; // Was not opened.
@@ -1039,6 +1043,10 @@ inline void VectorLSM<Vector, DistanceResult>::CheckFailure(const Status& status
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
+  // Explicitly set the state of the controller for the cases when vector index can be reopened
+  // after being shutdown.
+  RETURN_NOT_OK(shutdown_controller_.Start());
+
   std::lock_guard lock(mutex_);
 
   options_ = std::move(options);
@@ -1522,6 +1530,7 @@ Status VectorLSM<Vector, DistanceResult>::DoSaveChunk(const ImmutableChunkPtr& c
 
   WritableFile* manifest_file = nullptr;
   ImmutableChunkPtr writing_chunk;
+  const bool stopping = !shutdown_controller_.IsRunning();
   {
     std::lock_guard lock(mutex_);
     if (new_index) {
@@ -1530,7 +1539,7 @@ Status VectorLSM<Vector, DistanceResult>::DoSaveChunk(const ImmutableChunkPtr& c
       chunk->index = new_index;
     }
     chunk->state = ImmutableChunkState::kOnDisk;
-    if (stopping_ && FLAGS_TEST_vector_index_skip_manifest_update_during_shutdown) {
+    if (stopping && FLAGS_TEST_vector_index_skip_manifest_update_during_shutdown) {
       return TEST_SkipManifestUpdateDuringShutdown();
     }
 
@@ -2386,7 +2395,7 @@ VectorLSM<Vector, DistanceResult>::DoCompactChunks(const ImmutableChunkPtrs& inp
 
     RSTATUS_DCHECK(options_.vector_merge_filter_factory,
                    IllegalState, "Vector merge filter factory must be specified");
-    auto merge_filter = options_.vector_merge_filter_factory();
+    auto merge_filter = VERIFY_RESULT(options_.vector_merge_filter_factory());
 
     FilteringIterator<Vector, DistanceResult> iterator(indexes, *merge_filter);
 
@@ -2542,6 +2551,10 @@ void VectorLSM<Vector, DistanceResult>::ScheduleBackgroundCompaction() {
     return;
   }
 
+  if (!RUNNING_STATUS().ok()) {
+    return;
+  }
+
   // TODO(vector_index): this logic should be replaced with compaction_score calculation with
   // triggering on the following conditions: 1) immutable chunk's state becomes kInManifest, 2)
   // a chunk is being deleted from immutable_chunks_ collection. The following formula should be
@@ -2550,9 +2563,6 @@ void VectorLSM<Vector, DistanceResult>::ScheduleBackgroundCompaction() {
   size_t num_manifested_chunks_on_disk = 0;
   {
     SharedLock lock(mutex_);
-    if (stopping_) {
-      return;
-    }
 
     num_manifested_chunks_on_disk = std::ranges::count_if(
         immutable_chunks_,

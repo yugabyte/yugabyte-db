@@ -1,7 +1,8 @@
-// Copyright (c) YugaByte, Inc
+// Copyright (c) YugabyteDB, Inc
 package com.yugabyte.yw.models.filters;
 
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.TaskInfo;
 import java.util.Date;
 import java.util.Set;
 import java.util.UUID;
@@ -17,6 +18,6 @@ public class TaskFilter {
   Set<UUID> targetUUIDList;
   Set<CustomerTask.TaskType> typeList;
   Set<String> typeNameList;
-  Set<String> status;
+  Set<TaskInfo.State> status;
   UUID customerUUID;
 }

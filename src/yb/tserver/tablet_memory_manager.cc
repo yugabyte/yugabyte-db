@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -18,7 +18,6 @@
 #include "yb/consensus/raft_consensus.h"
 
 #include "yb/gutil/bits.h"
-#include "yb/gutil/casts.h"
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/sysinfo.h"
 
@@ -197,6 +196,8 @@ TabletMemoryManager::TabletMemoryManager(
   // See #20667 for why removing this limit temporarily was necessary.
   tablets_overhead_mem_tracker_ = MemTracker::FindOrCreateTracker(
       /*no limit*/ -1, "Tablets_overhead", server_mem_tracker_);
+  read_wal_mem_tracker_ = MemTracker::FindOrCreateTracker(
+     /*no limit*/ -1, "Log Reader Memory", server_mem_tracker_);
 
   InitBlockCache(metrics, default_block_cache_size_percentage, options);
   InitLogCacheGC();
@@ -219,6 +220,10 @@ void TabletMemoryManager::Shutdown() {
 
 std::shared_ptr<MemTracker> TabletMemoryManager::block_based_table_mem_tracker() {
   return block_based_table_mem_tracker_;
+}
+
+std::shared_ptr<MemTracker> TabletMemoryManager::read_wal_mem_tracker() {
+  return read_wal_mem_tracker_;
 }
 
 std::shared_ptr<MemTracker> TabletMemoryManager::tablets_overhead_mem_tracker() {

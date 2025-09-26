@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 YugaByte, Inc. and Contributors
+ * Copyright 2019 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -10,7 +10,6 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import com.amazonaws.SDKGlobalConfiguration;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.CloudUtil;
 import com.yugabyte.yw.common.CloudUtilFactory;
@@ -76,7 +75,7 @@ public class DeleteCustomerConfig extends UniverseTaskBase {
   public void run() {
     try {
       if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.enforceCertVerificationBackupRestore)) {
-        System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "true");
+        System.setProperty("com.amazonaws.sdk.disableCertChecking", "true");
       }
       CustomerConfig customerConfig =
           CustomerConfig.get(params().customerUUID, params().configUUID);
@@ -149,7 +148,7 @@ public class DeleteCustomerConfig extends UniverseTaskBase {
       customerConfig.delete();
       // Re-enable cert checking as it applies globally
       if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.enforceCertVerificationBackupRestore)) {
-        System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "false");
+        System.setProperty("com.amazonaws.sdk.disableCertChecking", "false");
       }
     }
     log.info("Finished {} task.", getName());

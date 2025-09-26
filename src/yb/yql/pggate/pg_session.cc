@@ -495,8 +495,9 @@ PgSession::PgSession(
       buffering_settings_(buffering_settings),
       buffer_(
           [this](
-              BufferableOperations&& ops, bool transactional, const YbcFlushDebugContext& context) {
-            return FlushOperations(std::move(ops), transactional, context);
+              BufferableOperations&& ops, bool transactional,
+              const YbcFlushDebugContext& debug_context) {
+            return FlushOperations(std::move(ops), transactional, debug_context);
           },
           buffering_settings_),
       is_major_pg_version_upgrade_(is_pg_binary_upgrade),
@@ -738,39 +739,41 @@ void PgSession::ResetOperationsBuffering() {
   buffering_enabled_ = false;
 }
 
-std::string PgSession::FlushReasonToString(const YbcFlushDebugContext& context) const {
-  switch (context.reason) {
+std::string PgSession::FlushReasonToString(const YbcFlushDebugContext& debug_context) const {
+  switch (debug_context.reason) {
     // Transaction control
     case YbcFlushReason::YB_BEGIN_SUBTRANSACTION:
       return Format("due to begin of new subtransaction for $0 (current SubTransactionId: $1)",
-                    context.strarg1 ? context.strarg1 : "unnamed txn", context.uintarg);
+                    debug_context.strarg1 ? debug_context.strarg1 : "unnamed txn",
+                    debug_context.uintarg);
     case YbcFlushReason::YB_END_SUBTRANSACTION:
-      return Format("due to end of subtransaction with SubTransactionId $0", context.uintarg);
+      return Format("due to end of subtransaction with SubTransactionId $0", debug_context.uintarg);
     case YbcFlushReason::YB_ACTIVATE_SUBTRANSACTION:
       return Format("due to activation of subtransaction with SubTransactionId $0",
-                    context.uintarg);
+                    debug_context.uintarg);
     case YbcFlushReason::YB_ROLLBACK_TO_SUBTRANSACTION:
-      return Format("due to rollback to subtransaction with SubTransactionId $0", context.uintarg);
+      return Format("due to rollback to subtransaction with SubTransactionId $0",
+                    debug_context.uintarg);
     case YbcFlushReason::YB_COMMIT_TRANSACTION:
       return Format("due to commit of plain transaction ($0)",
-                    context.oidarg == kInvalidOid ?
+                    debug_context.oidarg == kInvalidOid ?
                     "contains no DDL ops" :
-                    Format("contains DDL on database with OID $0", context.oidarg));
+                    Format("contains DDL on database with OID $0", debug_context.oidarg));
 
     // Snapshot management
     case YbcFlushReason::YB_GET_TRANSACTION_SNAPSHOT:
       return Format("before getting a new transaction snapshot (current read point: $0) in "
-                    "Read Committed isolation", context.uintarg);
+                    "Read Committed isolation", debug_context.uintarg);
     case YbcFlushReason::YB_CHANGE_TRANSACTION_SNAPSHOT:
       return Format("before restoring transaction snapshot corresponding to read point $0",
-                    context.uintarg);
+                    debug_context.uintarg);
     case YbcFlushReason::YB_EXPORT_SNAPSHOT:
       return Format("before exporting transaction snapshot (current read point: $0) on database "
                     "with OID $1",
-                    context.uintarg ? std::to_string(context.uintarg) : "unspecified",
-                    context.oidarg);
+                    debug_context.uintarg ? std::to_string(debug_context.uintarg) : "unspecified",
+                    debug_context.oidarg);
     case YbcFlushReason::YB_IMPORT_SNAPSHOT:
-      return Format("before importing snapshot '$0'", context.strarg1);
+      return Format("before importing snapshot '$0'", debug_context.strarg1);
 
     // DDLs
     case YbcFlushReason::YB_ENTER_DDL_TRANSACTION_MODE:
@@ -782,28 +785,28 @@ std::string PgSession::FlushReasonToString(const YbcFlushDebugContext& context) 
 
     // Lock acquisition
     case YbcFlushReason::YB_ACQUIRE_OBJECT_LOCK:
-      return Format("before acquiring lock on $0", context.strarg1);
+      return Format("before acquiring lock on $0", debug_context.strarg1);
     case YbcFlushReason::YB_ACQUIRE_ADVISORY_LOCK:
-      return Format("before acquiring lock on $0", context.strarg1);
+      return Format("before acquiring lock on $0", debug_context.strarg1);
 
     // Functions, stored procedures and utilities
     case YbcFlushReason::YB_UNBATCHABLE_SQL_STMT_IN_SQL_FUNCTION:
       return Format("before executing non-DML statement $0 (see CmdType in nodes.h) "
-                    "in SQL function '$1'", context.uintarg, context.strarg1);
+                    "in SQL function '$1'", debug_context.uintarg, debug_context.strarg1);
     case YbcFlushReason::YB_UNBATCHABLE_PL_STMT:
       return Format("before executing PL statement of type '$0' in function '$1'",
-                    context.strarg1, context.strarg2);
+                    debug_context.strarg1, debug_context.strarg2);
     case YbcFlushReason::YB_UNBATCHABLE_SQL_STMT_IN_PL_FUNCTION:
       return Format("before executing SQL statement with command tag '$0' in PL function '$1'",
-                    context.strarg1, context.strarg2);
+                    debug_context.strarg1, debug_context.strarg2);
     case YbcFlushReason::YB_COPY_BATCH:
       return Format("after copying batch of tuples for table '$0' (total tuples processed: $1)",
-                    context.strarg1, context.uintarg);
+                    debug_context.strarg1, debug_context.uintarg);
 
     // Miscellaneous reasons
     case YbcFlushReason::YB_SWITCH_TO_DB_CATALOG_VERSION_MODE:
       return Format("switch from global to per-database catalog version mode "
-                    "(current DB OID: $0)", context.oidarg);
+                    "(current DB OID: $0)", debug_context.oidarg);
     case YbcFlushReason::YB_CATALOG_TABLE_PREFETCH:
       return "before prefetching catalog tables";
     case YbcFlushReason::YB_END_OF_TOP_LEVEL_STMT:
@@ -813,14 +816,14 @@ std::string PgSession::FlushReasonToString(const YbcFlushDebugContext& context) 
 
     // Internal buffer control
     case YbcFlushReason::YB_BUFFER_FULL:
-      return Format("due to buffer being full (ops size: $0 bytes)", context.uintarg);
+      return Format("due to buffer being full (ops size: $0 bytes)", debug_context.uintarg);
     case YbcFlushReason::YB_CONFLICTING_KEY_WRITE:
       return Format("before enqueueing a conflicting write operation on table '$0' with OID $1$2",
-                    context.strarg1, context.oidarg,
-                    context.strarg2 ? Format(" (key: $0)", context.strarg2) : "");
+                    debug_context.strarg1, debug_context.oidarg,
+                    debug_context.strarg2 ? Format(" (key: $0)", debug_context.strarg2) : "");
     case YbcFlushReason::YB_CONFLICTING_READ:
       return Format("before performing a non-bufferable read operation on table '$0' with OID $1",
-                    context.strarg1, context.oidarg);
+                    debug_context.strarg1, debug_context.oidarg);
   }
 
   return "for unknown reason"; // keep compiler happy
@@ -879,9 +882,9 @@ Result<bool> PgSession::IsInitDbDone() {
 }
 
 Result<FlushFuture> PgSession::FlushOperations(
-    BufferableOperations&& ops, bool transactional, const YbcFlushDebugContext& context) {
+    BufferableOperations&& ops, bool transactional, const YbcFlushDebugContext& debug_context) {
   if (PREDICT_FALSE(yb_debug_log_docdb_requests)) {
-    LOG_WITH_PREFIX(INFO) << "Flushing buffered operations " << FlushReasonToString(context)
+    LOG_WITH_PREFIX(INFO) << "Flushing buffered operations " << FlushReasonToString(debug_context)
                           << " using " << (transactional ? "transactional" : "non-transactional")
                           << " session (num ops: " << ops.Size() << ")";
   }
@@ -1303,8 +1306,8 @@ const std::string PgSession::LogPrefix() const {
   return Format("Session id $0: ", pg_client_.SessionID());
 }
 
-Result<yb::tserver::PgTabletsMetadataResponsePB> PgSession::TabletsMetadata() {
-  return pg_client_.TabletsMetadata();
+Result<tserver::PgTabletsMetadataResponsePB> PgSession::TabletsMetadata(bool local_only) {
+  return pg_client_.TabletsMetadata(local_only);
 }
 
 Result<yb::tserver::PgServersMetricsResponsePB> PgSession::ServersMetrics() {
@@ -1326,20 +1329,20 @@ Status PgSession::AcquireAdvisoryLock(
   tserver::PgAcquireAdvisoryLockRequestPB req;
   AdvisoryLockRequestInitCommon(req, pg_client_.SessionID(), lock_id, mode);
   req.set_wait(wait);
-  // No need to populate the txn metadata for session level advisory locks.
   if (session) {
     req.set_session(session);
-  } else {
-    auto& options = *req.mutable_options();
-    // If isolation level is READ_COMMITTED, set priority of the transaction to kHighestPriority.
-    RETURN_NOT_OK(pg_txn_manager_->CalculateIsolation(
-      false /* read_only */,
-      pg_txn_manager_->GetTxnPriorityRequirement(RowMarkType::ROW_MARK_ABSENT)));
-    RETURN_NOT_OK(SetupPerformOptions(&options));
-    // TODO(advisory-lock): Fully validate that the optimization of local txn will not be applied,
-    // then it should be safe to skip set_force_global_transaction.
-    options.set_force_global_transaction(true);
   }
+  // Populate the options even in case session level lock requests, as it would set relevant
+  // state on pg_client_session necessary for retries on statement rollback.
+  auto& options = *req.mutable_options();
+  // If isolation level is READ_COMMITTED, set priority of the transaction to kHighestPriority.
+  RETURN_NOT_OK(pg_txn_manager_->CalculateIsolation(
+    false /* read_only */,
+    pg_txn_manager_->GetTxnPriorityRequirement(RowMarkType::ROW_MARK_ABSENT)));
+  RETURN_NOT_OK(SetupPerformOptions(&options));
+  // TODO(advisory-lock): Fully validate that the optimization of local txn will not be applied,
+  // then it should be safe to skip set_force_global_transaction.
+  options.set_force_global_transaction(true);
   return pg_client_.AcquireAdvisoryLock(&req, CoarseTimePoint());
 }
 

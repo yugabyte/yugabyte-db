@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
@@ -295,7 +295,7 @@ public class ResizeNode extends UpgradeTaskBase {
                 .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ChangeInstanceType);
           }
           if (deleteCapacityReservation) {
-            createDeleteReservationTask();
+            createDeleteCapacityReservationTask();
           }
           // Need to run gflag upgrades for the nodes that weren't updated.
           if (flagsProvided) {

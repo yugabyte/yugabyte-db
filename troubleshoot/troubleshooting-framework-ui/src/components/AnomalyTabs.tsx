@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 YugaByte, Inc. and Contributors
+ * Copyright 2024 YugabyteDB, Inc. and Contributors
  */
 import { useState } from 'react';
 import clsx from 'clsx';
