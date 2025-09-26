@@ -29,7 +29,8 @@ azure-mgmt-resource==19.0.0
 boto==2.49.0
 boto3==1.34.23
 botocore==1.34.23
-deepdiff==5.5.0
+deepdiff==8.6.1;python_version>='3.9'
+deepdiff==5.5.0;python_version<'3.9'
 distro==1.5.0
 fabric==2.2.1
 google-api-python-client==1.10.0
