@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.common.Util.HTTPS_SCHEME;
 import static org.apache.commons.lang3.exception.ExceptionUtils.getStackTrace;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.EXPECTATION_FAILED;
@@ -32,6 +33,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyStore;
@@ -903,24 +905,27 @@ public class AWSUtil implements CloudUtil {
     if (s3Data.isPathStyleAccess) {
       builder.forcePathStyle(true);
     }
-
-    //  Use region specific hostbase
-    AWSHostBase hostBase = getRegionHostBaseMap(s3Data).get(region);
-    String endpoint = hostBase.awsHostBase;
-    boolean globalFlag = hostBase.globalBucketAccess;
-    String clientRegion = getClientRegion(hostBase.signingRegion);
-    if (globalFlag && (StringUtils.isBlank(endpoint) || isHostBaseS3Standard(endpoint))) {
-      // Use global bucket access only for standard S3.
-      builder.crossRegionAccessEnabled(true);
-    }
-    if (StringUtils.isNotBlank(endpoint)) {
-      builder.endpointOverride(URI.create("https://" + endpoint));
-    }
-    // Need to set region because region-chaining may
-    // fail if correct environment variables not found.
-    builder.region(Region.of(clientRegion));
-
     try {
+      //  Use region specific hostbase
+      AWSHostBase hostBase = getRegionHostBaseMap(s3Data).get(region);
+      String endpoint = hostBase.awsHostBase;
+      boolean globalFlag = hostBase.globalBucketAccess;
+      String clientRegion = getClientRegion(hostBase.signingRegion);
+      if (globalFlag && (StringUtils.isBlank(endpoint) || isHostBaseS3Standard(endpoint))) {
+        // Use global bucket access only for standard S3.
+        builder.crossRegionAccessEnabled(true);
+      }
+      if (StringUtils.isNotBlank(endpoint)) {
+        URI uri = new URI(endpoint);
+        if (uri.getScheme() == null) {
+          uri = new URI(HTTPS_SCHEME + endpoint);
+        }
+        builder.endpointOverride(uri);
+      }
+      // Need to set region because region-chaining may
+      // fail if correct environment variables not found.
+      builder.region(Region.of(clientRegion));
+
       Boolean caStoreEnabled = customCAStoreManager.isEnabled();
       Boolean caCertUploaded = customCAStoreManager.areCustomCAsPresent();
       // Adding enforce certification check as well so customers don't fail scheduled backups
@@ -976,7 +981,7 @@ public class AWSUtil implements CloudUtil {
         log.trace("Skipping first bucket region fetch error: {}", e.getMessage());
       }
       return client;
-    } catch (SdkClientException e) {
+    } catch (SdkClientException | URISyntaxException e) {
       throw new PlatformServiceException(
           BAD_REQUEST, String.format("Failed to create S3 client, error: %s", e.getMessage()));
     }
