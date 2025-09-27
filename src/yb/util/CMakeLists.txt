@@ -347,6 +347,7 @@ ADD_YB_TEST(bytes_formatter-test)
 ADD_YB_TEST(callback_bind-test)
 ADD_YB_TEST(countdown_latch-test)
 ADD_YB_TEST(crc-test RUN_SERIAL true) # has a benchmark
+YB_TEST_TARGET_LINK_LIBRARIES(crc-test.cc rocksdb yb_ash)
 ADD_YB_TEST(crypt-test)
 ADD_YB_TEST(date_time-test)
 ADD_YB_TEST(debug-util-test)

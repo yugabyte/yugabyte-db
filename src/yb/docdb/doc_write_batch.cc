@@ -896,6 +896,17 @@ void DocWriteBatch::TEST_CopyToWriteBatchPB(LWKeyValueWriteBatchPB *kv_pb) const
   }
 }
 
+IntraTxnWriteId DocWriteBatch::ReserveWriteId() {
+  put_batch_.emplace_back();
+  return narrow_cast<IntraTxnWriteId>(put_batch_.size()) - 1;
+}
+
+void DocWriteBatch::RollbackReservedWriteId(IntraTxnWriteId write_id) {
+  LOG_IF(DFATAL, write_id != narrow_cast<IntraTxnWriteId>(put_batch_.size()) - 1)
+      << "Rollback unexpected write ID: " << write_id << ", expected: " << put_batch_.size() - 1;
+  put_batch_.pop_back();
+}
+
 // ------------------------------------------------------------------------------------------------
 // Converting a RocksDB write batch to a string.
 // ------------------------------------------------------------------------------------------------
