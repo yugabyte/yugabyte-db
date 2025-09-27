@@ -214,8 +214,10 @@ The following statuses [trigger an alert](#set-up-replication-lag-alerts).
 | Warning | The table is in replication, but the replication lag is more than the [maximum acceptable lag](#set-up-replication-lag-alerts), or the lag is not being reported. |
 | Dropped From Source | The table was in replication, but dropped from the Source without first being [removed from replication](../xcluster-replication-ddl/#remove-a-table-from-replication). If you are using Manual mode, you need to remove it manually from the configuration. In Semi-automatic mode, you don't need to remove it manually. |
 | Dropped From Target | The table was in replication, but was dropped from the Target without first being [removed from replication](../xcluster-replication-ddl/#remove-a-table-from-replication). If you are using Manual mode, you need to remove it manually from the configuration. In Semi-automatic mode, you don't need to remove it manually. |
+| Dropped From Database | The table was in replication, but doesn't exist on either the DR primary or DR replica. If you are using Manual mode, you need to remove it manually from the configuration. |
 | Extra Table On Source | The table is newly created on the Source but is not in replication yet. |
 | Extra Table On Target | The table is newly created on the Target but it is not in replication yet. |
+| Table Info Missing | The system is unable to fetch table info from either the DR primary or the DR replica. |
 | Missing op ID | The replication is broken and cannot continue because the write-ahead-logs are garbage collected before they were replicated to the other universe and you will need to [restart replication](#restart-replication).|
 | Schema&nbsp;mismatch | The schema was updated on the table (on either of the universes) and replication is paused until the same schema change is made to the other universe. |
 | Missing table | For colocated tables, only the parent table is in the replication group; any child table that is part of the colocation will also be replicated. This status is displayed for a parent colocated table if a child table only exists on the Source. Create the same table on the Target. |
