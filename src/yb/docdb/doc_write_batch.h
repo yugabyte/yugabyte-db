@@ -314,14 +314,8 @@ class DocWriteBatch {
   }
 
   // See SetPrimitive above.
-  IntraTxnWriteId ReserveWriteId() {
-    put_batch_.emplace_back();
-    return narrow_cast<IntraTxnWriteId>(put_batch_.size()) - 1;
-  }
-
-  void RollbackReservedWriteId() {
-    put_batch_.pop_back();
-  }
+  IntraTxnWriteId ReserveWriteId();
+  void RollbackReservedWriteId(IntraTxnWriteId write_id);
 
   void SetDocReadContext(const DocReadContextPtr& doc_read_context) {
     doc_read_context_ = doc_read_context;

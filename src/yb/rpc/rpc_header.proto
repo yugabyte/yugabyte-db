@@ -54,6 +54,8 @@ message RemoteMethodPB {
 
 // The header for the RPC request frame.
 message RequestHeader {
+  reserved 6;
+
   // A sequence number that is sent back in the Response. Hadoop specifies a uint32 and
   // casts it to a signed int. That is counterintuitive, so we use an int32 instead.
   // Allowed values (inherited from Hadoop):
@@ -73,9 +75,14 @@ message RequestHeader {
   optional uint32 timeout_millis = 3;
 
   repeated fixed32 sidecar_offsets = 4 [packed = true];
+
+  // CRC32C for message body and header without CRC field. Use 15 as max 1 byte tag.
+  optional fixed32 crc = 15;
 }
 
 message ResponseHeader {
+  reserved 4;
+
   required int32 call_id = 1;
 
   // If this is set, then this is an error response and the
@@ -88,6 +95,8 @@ message ResponseHeader {
   // is the first byte after the bytes for this protobuf.
   repeated uint32 sidecar_offsets = 3;
 
+  // CRC32C for message body and header without CRC field. Use 15 as max 1 byte tag.
+  optional fixed32 crc = 15;
 }
 
 // An emtpy message. Since CQL RPC server bypasses protobuf to handle requests and responses but

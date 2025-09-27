@@ -844,8 +844,8 @@ TEST_F(RpcStubTest, ExpireInQueue) {
 }
 
 TEST_F(RpcStubTest, TrafficMetrics) {
-  constexpr std::pair<size_t, size_t> kRequestBounds = std::make_pair(1, 64);
-  constexpr std::pair<size_t, size_t> kResponseBounds = std::make_pair(1_KB, 1_KB + 64);
+  constexpr std::pair<size_t, size_t> kRequestBounds = std::make_pair(1, 72);
+  constexpr std::pair<size_t, size_t> kResponseBounds = std::make_pair(1_KB, 1_KB + 72);
 
   CalculatorServiceProxy proxy(proxy_cache_.get(), server_hostport_);
 

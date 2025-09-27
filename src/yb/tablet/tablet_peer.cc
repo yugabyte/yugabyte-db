@@ -1409,9 +1409,10 @@ std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::LWReplicateMsg
     case consensus::UNKNOWN_OP: FALLTHROUGH_INTENDED;
     case consensus::NO_OP: FALLTHROUGH_INTENDED;
     case consensus::CHANGE_CONFIG_OP:
-      FATAL_INVALID_ENUM_VALUE(consensus::OperationType, replicate_msg->op_type());
+      break;
   }
-  FATAL_INVALID_ENUM_VALUE(consensus::OperationType, replicate_msg->op_type());
+  LOG(DFATAL) << "Invalid replicate message: " << replicate_msg->ShortDebugString();
+  return nullptr;
 }
 
 Status TabletPeer::StartReplicaOperation(
@@ -1424,6 +1425,11 @@ Status TabletPeer::StartReplicaOperation(
   auto* replicate_msg = round->replicate_msg().get();
   DCHECK(replicate_msg->has_hybrid_time());
   auto operation = CreateOperation(replicate_msg);
+  if (!operation) {
+    auto status = STATUS_FORMAT(InvalidArgument, "Wrong operation: $0", round->ToString());
+    LOG(DFATAL) << status;
+    return status;
+  }
 
   // TODO(todd) Look at wiring the stuff below on the driver
   // It's imperative that we set the round here on any type of operation, as this

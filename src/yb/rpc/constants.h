@@ -34,11 +34,9 @@
 
 #include <stdint.h>
 
-namespace yb {
-namespace rpc {
+namespace yb::rpc {
 
 // There is a 4-byte length prefix before any packet.
-const uint8_t kMsgLengthPrefixLength = 4;
+constexpr size_t kMsgLengthPrefixLength = 4;
 
-} // namespace rpc
-} // namespace yb
+} // namespace yb::rpc
