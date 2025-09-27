@@ -3280,6 +3280,9 @@ Status CatalogManager::RestoreSnapshotSchedule(
   HybridTime ht = HybridTime(req->restore_ht());
   auto deadline = rpc->GetClientDeadline();
 
+  LOG(INFO) << "Servicing RestoreSnapshotSchedule request: " << id
+            << " to restore to time " << ht;
+
   RETURN_NOT_OK(master_->tablet_split_manager().PrepareForPitr(deadline));
 
   return master_->snapshot_coordinator().RestoreSnapshotSchedule(
