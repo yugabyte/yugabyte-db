@@ -8382,7 +8382,7 @@ class ControlScript(object):
                 action="store_true", default=None
                 )
             cur_parser.add_argument(
-                "--retention", help="Specify the retention period of the snapshots.",
+                "--retention", help="Specify the retention period for snapshots in days (from the time they were created), after which they will be automatically deleted.",
                 metavar=""
                 )
             cur_parser.add_argument(
