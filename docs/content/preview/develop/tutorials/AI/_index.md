@@ -39,6 +39,17 @@ cascade:
 
 {{</index/block>}}
 
+## MCP server
+
+{{<index/block>}}
+{{<index/item
+    title="YugabyteDB MCP Server"
+    body="Get LLMs to interact directly with YugabyteDB."
+    href="mcp-server/"
+    icon="fa-thin fa-comment">}}
+
+{{</index/block>}}
+
 ## Vector basics
 
 {{<index/block>}}
