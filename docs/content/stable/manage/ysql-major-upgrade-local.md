@@ -16,6 +16,8 @@ Upgrading YugabyteDB from a version based on PostgreSQL 11 (all versions prior t
 
 The upgrade is fully online. While the upgrade is in progress, you have full and uninterrupted read and write access to your cluster.
 
+Some special considerations need to be taken care of by the users who are using CDC via logical replication model and upgrading to a YugabyteDB version that supports PG 15. These are listed in a separate section below.
+
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
     <a href="../ysql-major-upgrade-yugabyted/" class="nav-link">
@@ -28,6 +30,13 @@ The upgrade is fully online. While the upgrade is in progress, you have full and
     <a href="../ysql-major-upgrade-local/" class="nav-link active">
       <i class="icon-shell"></i>
       Manual
+    </a>
+  </li>
+
+  <li>
+    <a href="../ysql-major-upgrade-logical-replication/" class="nav-link">
+      <i class="icon-shell"></i>
+      Logical Replication
     </a>
   </li>
 
