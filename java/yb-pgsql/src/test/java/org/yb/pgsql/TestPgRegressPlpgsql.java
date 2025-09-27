@@ -12,11 +12,11 @@
 //
 package org.yb.pgsql;
 
+import java.util.Map;
+
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
-
-import java.util.Map;
 
 /**
  * Runs the pg_regress test suite on YB code.
@@ -32,6 +32,10 @@ public class TestPgRegressPlpgsql extends BasePgRegressTestPorted {
     Map<String, String> flagMap = super.getTServerFlags();
     // (Auto-Analyze #28393) error output is flaky.
     flagMap.put("ysql_enable_auto_analyze", "false");
+    // TODO(28543): Remove once transactional ddl is enabled by default.
+    flagMap.put("ysql_yb_ddl_transaction_block_enabled", "true");
+    flagMap.put(
+        "allowed_preview_flags_csv", "ysql_yb_ddl_transaction_block_enabled");
     return flagMap;
   }
 

@@ -146,7 +146,8 @@ uint64_t
 YBGetActiveCatalogCacheVersion()
 {
 	if (yb_catalog_version_type == CATALOG_VERSION_CATALOG_TABLE &&
-		YBGetDdlNestingLevel() > 0)
+		(YBGetDdlNestingLevel() > 0 ||
+		 (YBIsDdlTransactionBlockEnabled() && YBIsCurrentStmtDdl())))
 		return yb_catalog_cache_version + 1;
 
 	return yb_catalog_cache_version;
