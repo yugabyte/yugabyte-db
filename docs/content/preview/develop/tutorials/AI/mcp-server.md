@@ -18,15 +18,9 @@ The YugabyteDB MCP Server is a lightweight Python-based server that allows LLMs 
 
 ## What is MCP?
 
-MCP is a new standard that enables large language models (LLMs) to interact with existing enterprise services in a consistent and standardized way.
+One challenge current AI applications face is that they are only as effective as the data they are trained on, and can only produce results by generating text, audio, or video. What happens if a large language model (LLM) (as part of an AI application) needs to access more current data, or company-specific data? And what happens if an AI application needs to issue an email, schedule an event in a calendar, or otherwise take action? In short, how can an AI application access existing services?
 
-Services may be data providers (such as YugabyteDB or file servers), actuators (such as email servers), or both. A deep-dive is beyond the scope of this post, but this high-level overview helps illustrate why MCP is such a valuable development.
-
-One challenge current AI applications face is that they are only as effective as the data they were trained on, and can only produce results by generating text, audio, or video.
-
-However, what happens if an LLM (as part of an AI application) needs to access more current data, or company-specific data? And what happens if an AI application needs to issue an email, schedule an event in a calendar, or otherwise take action? In short, how can an AI application access existing services?
-
-In the past, every LLM and framework (such as LangChain) has had its own way of doing this. This lack of a standard, consistent interface to services created complexity for AI application development and slowed progress.
+In the past, every LLM and framework (such as LangChain) has had its own way of accessing existing services. This lack of a standard, consistent interface to services creates complexity for AI application development.
 
 MCP directly addresses this problem by standardizing how AI applications use existing services.
 
@@ -34,17 +28,17 @@ Here's how it works:
 
 - Existing services are encapsulated (or fronted by) MCP Servers
 - Your app (the Host) incorporates an MCP Client.
-- Your app's MCP Client is configured to connect with one (or more) MCP Servers
-- The client discovers available tools that the MCP Server advertises. Tools are analogous to API endpoints, representing discrete functionality that the MCP Server (and backing service) provides.
+- The host MCP Client is configured to connect with one (or more) MCP Servers
+- The MCP Client discovers available tools that the MCP Server advertises.
 
-The tools are also described in a structured manner so that the LLM can understand in detail advertised functionality; that is, so that the LLM knows what each function can do and how to call it.
+These tools are analogous to API endpoints, representing discrete functionality that the MCP Server (and backing service) provides. The tools are described in a structured manner so that the LLM can understand, in detail, the advertised functionality. In short, the LLM knows what each function can do and how to call it.
 
 MCP Servers can be local (communicating via standard input/output) or remote (communicating via SSE over the network).
 Each tool is like a function with arguments and (optionally) a return value. MCP makes tool-augmented LLMs scalable, consistent, and composable.
 
-## Why Choose the YugabyteDB MCP Server?
+### YugabyteDB MCP Server
 
-The YugabyteDB MCP Server bridges the gap between your AI application (and its LLM) and your YugabyteDB data, enabling seamless, natural language interaction with live, structured datasets.
+The YugabyteDB MCP Server bridges the gap between your AI application (and its LLM) and the data in YugabyteDB, enabling seamless, natural language interaction with live, structured datasets.
 
 The YugabyteDB MCP server:
 
@@ -53,18 +47,18 @@ The YugabyteDB MCP server:
 - Supports tools like Claude Desktop, Cursor, and Windsurf out-of-the-box.
 - Helps interact with live data using natural language.
 
-Using MCP, you can standardize tool integration and perform intuitive data exploration, without needing to write a single line of SQL.
+Using YugabyteDB MCP, you can standardize tool integration and perform intuitive data exploration, without needing to write a single line of SQL.
 
-The following tutorial uses a YugabyteDB cluster running the [Northwind dataset](../../../../sample-data/northwind/). You will connect Claude to this database using the MCP protocol, then explore it using natural language prompts.
+The following tutorial uses a YugabyteDB cluster running the [Northwind dataset](../../../../sample-data/northwind/). You connect Claude to this database using the MCP protocol, then explore it using natural language prompts.
 
 ## Prerequisites
 
 - YugabyteDB v2.25.1 or later
 - Python 3.10+
-- uv for dependency management
+- [uv](https://docs.astral.sh/uv/) for dependency management
 - [Claude Desktop](https://claude.ai/download)
 
-## Set up the YugabyteDB MCP Server
+## Set up YugabyteDB MCP Server
 
 Clone the repo and install dependencies:
 
@@ -94,17 +88,17 @@ uv sync
 
     ```json
     {
-    "mcpServers": {
-        "yugabytedb-mcp": {
-            "command": "uv",
-            "args": [
-                "--directory",
-                "/path/to/cloned/yugabytedb-mcp-server/",
-                "run",
-                "src/server.py"
+        "mcpServers": {
+            "yugabytedb-mcp": {
+                "command": "uv",
+                "args": [
+                    "--directory",
+                    "/path/to/cloned/yugabytedb-mcp-server/",
+                    "run",
+                    "src/server.py"
                 ],
-            "env": {
-                "YUGABYTEDB_URL": "dbname=northwind host=localhost port=5433 user=yugabyte password=yugabyte load_balance=true"
+                "env": {
+                    "YUGABYTEDB_URL": "dbname=northwind host=localhost port=5433 user=yugabyte password=yugabyte"
                 }
             }
         }
@@ -158,4 +152,5 @@ All with no SQL required.
 
 ## Read more
 
+- [YugabyteDB MCP Server](https://github.com/yugabyte/yugabytedb-mcp-server)
 - [Architecting GenAI and RAG Apps with YugabyteDB](https://www.yugabyte.com/ai/)
