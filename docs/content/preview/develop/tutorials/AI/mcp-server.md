@@ -26,9 +26,9 @@ MCP directly addresses this problem by standardizing how AI applications use exi
 
 Here's how it works:
 
-- Existing services are encapsulated (or fronted by) MCP Servers
+- Existing services are encapsulated (or fronted) by MCP Servers.
 - Your app (the Host) incorporates an MCP Client.
-- The host MCP Client is configured to connect with one (or more) MCP Servers
+- The MCP Client is configured to connect with one (or more) MCP Servers.
 - The MCP Client discovers available tools that the MCP Server advertises.
 
 These tools are analogous to API endpoints, representing discrete functionality that the MCP Server (and backing service) provides. The tools are described in a structured manner so that the LLM can understand, in detail, the advertised functionality. In short, the LLM knows what each function can do and how to call it.
@@ -107,11 +107,6 @@ uv sync
 
 1. Restart Claude to apply changes.
 
-You can view logs in the following location:
-
-- macOS: ~/Library/Logs/Claude
-- Linux: 
-
 ## Prompt 1: Summarize the database
 
 Prompt:
@@ -122,9 +117,9 @@ Summarize the database you are connected to.
 
 Claude does the following:
 
-- Calls `summarize_database`
-- Lists all tables with schema and row counts
-- Describes what it sees in plain English
+- Calls `summarize_database`.
+- Lists all tables with schema and row counts.
+- Describes what it sees in plain English.
 
 Example output:
 
@@ -144,9 +139,9 @@ Build a dashboard with 3 visualizations:
 
 Claude does the following:
 
-- Executes safe, read-only SQL queries
-- Aggregates and structures the results
-- Creates an interactive dashboard for the results
+- Executes safe, read-only SQL queries.
+- Aggregates and structures the results.
+- Creates an interactive dashboard for the results.
 
 All with no SQL required.
 
