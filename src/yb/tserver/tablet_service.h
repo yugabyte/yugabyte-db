@@ -375,6 +375,10 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
       const GetPgSocketDirRequestPB* req, GetPgSocketDirResponsePB* resp,
       rpc::RpcContext context) override;
 
+  void ClearCache(const ClearCacheRequestPB* req,
+                  ClearCacheResponsePB* resp,
+                  rpc::RpcContext context) override;
+
  private:
   TabletServer* const server_;
 
