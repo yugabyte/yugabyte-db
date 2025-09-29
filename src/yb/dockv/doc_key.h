@@ -614,8 +614,8 @@ class SubDocKey {
   //
   // We don't use Result<...> to be able to reuse memory allocated by out.
   //
-  // When key does not start with a hash component, the returned prefix would start with the first
-  // range component.
+  // When key does not start with a hash component, the returned prefix would start with the
+  // cotable/ colocation id if one exists. Else, it would start with the first range component.
   //
   // For instance, for a (hash_value, h1, h2, r1, r2, s1) doc key the following values will be
   // returned:
@@ -659,6 +659,11 @@ class SubDocKey {
   // If out is not empty, then it will be interpreted as partial result for this decoding operation
   // and the appropriate prefix will be skipped.
   static Status DecodeDocKeyAndSubKeyEnds(
+      Slice slice, boost::container::small_vector_base<size_t>* out);
+
+  // Similar to DecodePrefixLengths, but excludes the intermediate prefix keys. Only keep row key,
+  // subkeys and the top level key (if it includes kColocationId or kTableId).
+  static Status DecodePrefixLengthsWithSkipPrefix(
       Slice slice, boost::container::small_vector_base<size_t>* out);
 
   // Attempts to decode a subkey at the beginning of the given slice, consuming the corresponding

@@ -23,6 +23,8 @@
 #include <utility>
 #include <vector>
 
+#include <boost/logic/tribool.hpp>
+
 #include "yb/common/common.pb.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/entity_ids.h"
@@ -260,18 +262,18 @@ class IntentInserter {
   explicit IntentInserter(LWKeyValueWriteBatchPB* out)
       : out_(*out) {}
 
-  void Add(Slice encoded_key, const IntentMode& mode) {
+  void Add(Slice encoded_key, bool pk_is_known, const IntentMode& mode) {
     if (mode.regular_read()) {
-      Add(encoded_key);
+      Add(encoded_key, pk_is_known);
     } else if (mode.key_only_read()) {
       auto& buf = buffer();
       buf.Clear();
       DocKeyColumnPathBuilder doc_key_builder(&buf, encoded_key);
-      Add(doc_key_builder.Build(dockv::SystemColumnIds::kLivenessColumn));
+      Add(doc_key_builder.Build(dockv::SystemColumnIds::kLivenessColumn), pk_is_known);
     }
 
     if (mode.row_lock()) {
-      Add(encoded_key, /*row_lock=*/ true);
+      Add(encoded_key, pk_is_known, /*row_lock=*/ true);
     }
   }
 
@@ -283,13 +285,14 @@ class IntentInserter {
     return *buffer_;
   }
 
-  void Add(Slice encoded_key, bool is_row_lock = false) {
+  void Add(Slice encoded_key, bool pk_is_known, bool is_row_lock = false) {
     auto& pair = *out_.add_read_pairs();
     pair.dup_key(encoded_key);
     pair.dup_value(Slice(
         is_row_lock ? &dockv::ValueEntryTypeAsChar::kRowLock
                     : &dockv::ValueEntryTypeAsChar::kNullLow,
         1));
+    pair.set_pk_is_known(pk_is_known);
   }
 
   std::optional<dockv::KeyBytes> buffer_;
@@ -316,6 +319,11 @@ class DocKeyAccessor {
   Result<DocKey&> GetDecoded(std::reference_wrapper<const yb::PgsqlWriteRequestPB> req) {
     RETURN_NOT_OK(Apply(req.get()));
     return Decoded();
+  }
+
+  // Should be invoked only after GetEncoded or GetDecoded
+  bool pk_is_known() {
+    return pk_is_known_;
   }
 
  private:
@@ -353,6 +361,10 @@ class DocKeyAccessor {
         req.partition_column_values(), schema_, 0 /* start_idx */));
     auto range_components = VERIFY_RESULT(qlexpr::InitKeyColumnPrimitiveValues(
         req.range_column_values(), schema_, schema_.num_hash_key_columns()));
+    // A SELECT on the unique index column currently takes a strong lock on the top-level key at the
+    // serializable isolation level. TODO: Optimize with weak lock.
+    pk_is_known_ = schema_.num_hash_key_columns() == hashed_components.size() &&
+                   schema_.num_range_key_columns() == range_components.size();
     if (hashed_components.empty()) {
       source_.emplace<DocKey>(schema_, std::move(range_components));
     } else {
@@ -366,6 +378,7 @@ class DocKeyAccessor {
     const auto& value = ybctid.value().binary_value();
     SCHECK(!value.empty(), InternalError, "empty ybctid");
     source_.emplace<Slice>(value);
+    pk_is_known_ = true;
     return Status::OK();
   }
 
@@ -417,6 +430,9 @@ class DocKeyAccessor {
   const Schema& schema_;
   std::variant<std::nullopt_t, Slice, DocKey> source_;
   std::variant<std::nullopt_t, EncodedKey, DocKey> result_holder_;
+
+  // Whether the assoicated key includes a PK. It is valid only after GetEncoded or GetDecoded.
+  bool pk_is_known_ = false;
 };
 
 Result<YQLRowwiseIteratorIf::UniPtr> CreateIterator(
@@ -1173,11 +1189,13 @@ Status PgsqlWriteOperation::Init(PgsqlResponsePB* response) {
     // other places.
     doc_key_ = dockv::DocKey(doc_read_context_->schema());
     encoded_doc_key_ = doc_key_.EncodeAsRefCntPrefix();
+    pk_is_known_ = true;
   } else {
     DocKeyAccessor accessor(doc_read_context_->schema());
     doc_key_ = std::move(VERIFY_RESULT_REF(accessor.GetDecoded(request_)));
     encoded_doc_key_ = doc_key_.EncodeAsRefCntPrefix(
         Slice(&dockv::KeyEntryTypeAsChar::kHighest, 1));
+    pk_is_known_ = accessor.pk_is_known();
   }
 
   encoded_doc_key_.Resize(encoded_doc_key_.size() - 1);
@@ -1314,6 +1332,7 @@ Result<HybridTime> PgsqlWriteOperation::FindOldestOverwrittenTimestamp(
 Status PgsqlWriteOperation::Apply(const DocOperationApplyData& data) {
   VLOG(4) << "Write, read time: " << data.read_time() << ", txn: " << txn_op_context_;
 
+  data.doc_write_batch->SetIncludesPk(pk_is_known_);
   RETURN_NOT_OK(VerifyNoColsMarkedForDeletion(doc_read_context_->schema(), request_));
 
   auto scope_exit = ScopeExit([this] {
@@ -3185,19 +3204,24 @@ Status GetIntents(
 
   DocKeyAccessor accessor(schema);
   if (!(has_batch_arguments || request.has_ybctid_column_value())) {
-    inserter.Add(
-        VERIFY_RESULT(accessor.GetEncoded(request)), {level, row_mark, KeyOnlyRequested::kFalse});
+    auto slice = VERIFY_RESULT(accessor.GetEncoded(request));
+    bool inlcudes_pk = static_cast<bool>(accessor.pk_is_known());
+    inserter.Add(slice, inlcudes_pk, {level, row_mark, KeyOnlyRequested::kFalse});
     return Status::OK();
   }
 
   const IntentMode mode{
       level, row_mark, KeyOnlyRequested(IsOnlyKeyColumnsRequested(schema, request))};
   for (const auto& batch_argument : request.batch_arguments()) {
-    inserter.Add(VERIFY_RESULT(accessor.GetEncoded(batch_argument.ybctid())), mode);
+    auto slice = VERIFY_RESULT(accessor.GetEncoded(batch_argument.ybctid()));
+    bool inlcudes_pk = static_cast<bool>(accessor.pk_is_known());
+    inserter.Add(slice, inlcudes_pk, mode);
   }
   if (!has_batch_arguments) {
     DCHECK(request.has_ybctid_column_value());
-    inserter.Add(VERIFY_RESULT(accessor.GetEncoded(request.ybctid_column_value())), mode);
+    auto slice = VERIFY_RESULT(accessor.GetEncoded(request.ybctid_column_value()));
+    bool inlcudes_pk = static_cast<bool>(accessor.pk_is_known());
+    inserter.Add(slice, inlcudes_pk, mode);
   }
   return Status::OK();
 }

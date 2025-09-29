@@ -15,6 +15,8 @@
 
 #include "yb/bfql/tserver_opcodes.h"
 
+#include <boost/logic/tribool.hpp>
+
 #include "yb/common/constants.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/pgsql_protocol.pb.h"
@@ -165,6 +167,7 @@ YB_STRONGLY_TYPED_BOOL(HasAncestor);
 struct DocWriteBatchEntry {
   std::string key;
   std::string value;
+  boost::tribool pk_is_known = boost::indeterminate;
 };
 
 struct DocLockBatchEntry {
@@ -324,6 +327,10 @@ class DocWriteBatch {
     delete_vector_ids_.Append(id.AsSlice());
   }
 
+  void SetIncludesPk(bool pk_is_known) {
+    pk_is_known_ = pk_is_known;
+  }
+
  private:
   struct LazyIterator;
 
@@ -386,6 +393,7 @@ class DocWriteBatch {
 
   MonoDelta ttl_;
   ValueBuffer delete_vector_ids_;
+  boost::tribool pk_is_known_ = boost::indeterminate;
 };
 
 // A helper handler for converting a RocksDB write batch to a string.
