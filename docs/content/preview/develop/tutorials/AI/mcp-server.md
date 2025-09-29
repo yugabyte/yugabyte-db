@@ -92,6 +92,8 @@ uv sync
     }
     ```
 
+    Replace the path, and database user and password as appropriate.
+
 1. Restart Claude to apply changes.
 
 ## Prompt 1: Summarize the database
@@ -110,7 +112,37 @@ Claude does the following:
 
 Example output:
 
-Summarize database
+```output
+This appears to be the classic Northwind database, a sample database commonly used for demos and tutorials. Here's a summary:
+
+Database Overview
+This is a typical e-commerce/trading company database with 14 tables and approximately 3,400 total rows of data.
+
+Core Business Tables:
+
+- orders (830 rows) - Customer orders with shipping details
+- order_details (2,155 rows) - Line items for each order with pricing and quantities
+- products (77 rows) - Product catalog with pricing and inventory
+- customers (91 rows) - Customer information and contact details
+- categories (8 rows) - Product categories
+
+Supporting Tables:
+
+- employees (9 rows) - Employee information including hierarchy (reports_to)
+- suppliers (29 rows) - Product suppliers
+- shippers (6 rows) - Shipping companies
+- territories (53 rows) - Sales territories
+- region (4 rows) - Geographic regions
+- us_states (51 rows) - US state reference data
+
+Junction Tables:
+
+- employee_territories (49 rows) - Maps employees to territories
+- customer_demographics (0 rows) - Empty demographic data
+- customer_customer_demo (0 rows) - Empty customer-demographic mapping
+
+This database supports typical business operations like order management, inventory tracking, employee territories, and supplier relationships. Would you like me to run any specific queries or analysis on this data?
+```
 
 ## Prompt 2: Build a dashboard
 
@@ -131,6 +163,25 @@ Claude does the following:
 - Creates an interactive dashboard for the results.
 
 All with no SQL required.
+
+Example output:
+
+```output
+I've created an interactive sales dashboard with all three visualizations you requested:
+
+1. Monthly Sales Trend - A line chart showing revenue progression from July 1996 to May 1998. You can see a clear upward trend with revenue growing from ~$27k to peaks of ~$123k per month.
+2. Top 10 Customers by Revenue - A horizontal bar chart showing QUICK-Stop, Ernst Handel, and Save-a-lot Markets as the top three customers, each generating over $100k in revenue.
+3. Sales by Country - A scrollable horizontal bar chart displaying all 21 countries, with USA and Germany leading at $245k and $230k respectively.
+
+The dashboard features:
+
+- Interactive tooltips showing exact values when you hover over data points
+- Clean, modern design with a professional color scheme
+- Responsive layout that adapts to different screen sizes
+- Currency formatting for easy readability
+
+All data is pulled directly from your Northwind database and shows real sales patterns over the ~2-year period covered by the dataset.
+```
 
 ## Read more
 
