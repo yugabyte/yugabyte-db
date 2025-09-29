@@ -3592,6 +3592,21 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+
+
+	{
+		{"yb_make_all_ddl_statements_incrementing", PGC_SIGHUP, CUSTOM_OPTIONS,
+			gettext_noop("When set, all DDL statements will cause the "
+						 "catalog version to increment. This mainly affects "
+						 "CREATE commands such as CREATE TABLE, CREATE VIEW, "
+						 "and CREATE SEQUENCE."),
+			NULL
+		},
+		&yb_make_all_ddl_statements_incrementing,
+		false,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL
@@ -7366,6 +7381,7 @@ static const char *const YbDbAdminVariables[] = {
 	"yb_binary_restore",
 	"yb_speculatively_execute_pl_statements",
 	"yb_whitelist_extra_statements_for_pl_speculative_execution",
+	"yb_make_all_ddl_statements_incrementing",
 };
 
 

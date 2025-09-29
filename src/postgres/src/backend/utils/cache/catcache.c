@@ -1930,6 +1930,14 @@ YbAllowNegativeCacheEntries(int cache_id,
 							Oid namespace_id,
 							bool implicit_prefetch_entries)
 {
+	/*
+	 * If yb_make_all_ddl_statements_incrementing is true, negative cache entries
+	 * are always okay, because if a negative entry needs to be invalidated, the
+	 * catalog version will be incremented.
+	 */
+	if (yb_make_all_ddl_statements_incrementing)
+		return true;
+
 	switch (cache_id)
 	{
 		case CASTSOURCETARGET:

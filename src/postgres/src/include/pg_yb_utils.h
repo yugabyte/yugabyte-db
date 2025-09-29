@@ -782,6 +782,11 @@ extern bool yb_enable_invalidate_table_cache_entry;
 extern int	yb_invalidation_message_expiration_secs;
 extern int	yb_max_num_invalidation_messages;
 
+/*
+ * If set to true, all DDL statements will cause the catalog version to increment.
+ */
+extern bool yb_make_all_ddl_statements_incrementing;
+
 typedef struct YBUpdateOptimizationOptions
 {
 	bool		has_infra;

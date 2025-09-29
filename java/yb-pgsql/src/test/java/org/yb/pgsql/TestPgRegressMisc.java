@@ -39,6 +39,7 @@ public class TestPgRegressMisc extends BasePgRegressTest {
     flagMap.put("allowed_preview_flags_csv", "ysql_yb_ddl_transaction_block_enabled");
     // (Auto-Analyze #28057) Query plans change after enabling auto analyze.
     flagMap.put("ysql_enable_auto_analyze", "false");
+    flagMap.put("ysql_enable_profile", "true");
     return flagMap;
   }
 
@@ -79,5 +80,18 @@ public class TestPgRegressMisc extends BasePgRegressTest {
   @Test
   public void testPgRegressMiscSerial5() throws Exception {
     runPgRegressTest("yb_misc_serial5_schedule");
+  }
+
+  @Test
+  public void makeAllDdlStatementsIncrementing() throws Exception {
+    // Disable auto analyze for catalog version tests.
+    restartClusterWithFlags(
+        Collections.emptyMap(),
+        Collections.singletonMap(
+            "ysql_pg_conf_csv",
+            "yb_make_all_ddl_statements_incrementing=true"
+        )
+    );
+    runPgRegressTest("yb_misc_catalog_version_increment_schedule");
   }
 }

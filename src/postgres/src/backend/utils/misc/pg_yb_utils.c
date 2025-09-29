@@ -2237,6 +2237,7 @@ bool		yb_enable_invalidation_messages = true;
 bool		yb_enable_invalidate_table_cache_entry = true;
 int			yb_invalidation_message_expiration_secs = 10;
 int			yb_max_num_invalidation_messages = 4096;
+bool        yb_make_all_ddl_statements_incrementing = false;
 
 /* DEPRECATED */
 bool		yb_enable_advisory_locks = true;
@@ -4114,6 +4115,12 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 	 */
 	if (yb_make_next_ddl_statement_nonbreaking)
 		is_breaking_change = false;
+	/*
+	 * If yb_make_all_ddl_statements_incrementing is true, we should be incrementing
+	 * the catalog version for all DDL statements.
+	 */
+	if (yb_make_all_ddl_statements_incrementing)
+		is_version_increment = true;
 	/*
 	 * If yb_make_next_ddl_statement_nonincrementing is true, then no DDL statement
 	 * will cause a catalog version to increment. Note that we also disable breaking
