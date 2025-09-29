@@ -84,14 +84,7 @@ public class HAController extends AuthenticatedController {
       nickname = "getHAConfig",
       value = "Get high availability config",
       response = HAConfigGetResp.class)
-  @AuthzPath({
-    @RequiredPermissionOnResource(
-        requiredPermission =
-            @PermissionAttribute(
-                resourceType = ResourceType.OTHER,
-                action = Action.SUPER_ADMIN_ACTIONS),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
-  })
+  @AuthzPath
   public Result getHAConfig() {
     try {
       Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.get();

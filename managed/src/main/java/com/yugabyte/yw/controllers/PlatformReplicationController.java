@@ -121,14 +121,7 @@ public class PlatformReplicationController extends AuthenticatedController {
     }
   }
 
-  @AuthzPath({
-    @RequiredPermissionOnResource(
-        requiredPermission =
-            @PermissionAttribute(
-                resourceType = ResourceType.OTHER,
-                action = Action.SUPER_ADMIN_ACTIONS),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
-  })
+  @AuthzPath
   public Result getBackupInfo(UUID configUUID) {
     try {
       Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.maybeGet(configUUID);
@@ -147,14 +140,7 @@ public class PlatformReplicationController extends AuthenticatedController {
     }
   }
 
-  @AuthzPath({
-    @RequiredPermissionOnResource(
-        requiredPermission =
-            @PermissionAttribute(
-                resourceType = ResourceType.OTHER,
-                action = Action.SUPER_ADMIN_ACTIONS),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
-  })
+  @AuthzPath
   public Result listBackups(UUID configUUID, String leaderAddr) {
     try {
       if (StringUtils.isBlank(leaderAddr)) {
