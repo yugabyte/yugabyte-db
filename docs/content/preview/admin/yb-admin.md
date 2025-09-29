@@ -1320,7 +1320,7 @@ The filter expression is a list of acceptable objects, which can be either raw t
 
 **Example**
 
-Edit a snapshot schedule to take a snapshot the YSQL database `yugabyte` once per minute, and retain each snapshot for 15 minutes:
+Edit a snapshot schedule to take a snapshot the YSQL database `yugabyte` once per minute, and retain each snapshot for 20 minutes:
 
 ```sh
 ./bin/yb-admin \
