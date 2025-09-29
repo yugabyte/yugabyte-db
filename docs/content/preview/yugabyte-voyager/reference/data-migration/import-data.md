@@ -95,7 +95,7 @@ import-data:
   table-list:
 ```
 
-| Comma-separated list of names of source database tables whose data is to be imported. Table names can also be glob patterns containing wildcard characters, such as an asterisk (*) (matches zero or more characters) or question mark (?) (matches one character). To use a glob pattern for table names, enclose the list in single quotes ('').<br> For example, `--table-list '"Products", order*'`.<br> This argument is unsupported for live migration. |
+| Comma-separated list of names of source database tables whose data is to be imported. Table names can also be glob patterns containing wildcard characters, such as an asterisk (\\*) (matches zero or more characters) or question mark (?) (matches one character). To use a glob pattern for table names, enclose the list in single quotes ('').<br> For example, `--table-list '"Products", order*'`.<br> This argument is unsupported for live migration. |
 | --exclude-table-list |
 
 ```yaml{.nocopy}
@@ -120,14 +120,14 @@ import-data:
 ```
 
 | Path of the file containing the list of names of source database tables (comma separated or line separated) to exclude while importing data of those exported tables. Table names follow the same convention as `--table-list`. |
-| --enable-adaptive-parallelism |
+| --adaptive-parallelism |
 
 ```yaml{.nocopy}
 import-data:
-  enable-adaptive-parallelism:
+  adaptive-parallelism:
 ```
 
-| Adapt parallelism based on the resource usage (CPU, memory) of the target YugabyteDB cluster. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| Adapt parallelism based on the resource usage (CPU, memory) of the target YugabyteDB cluster. Choose from the following accepted modes: <ul><li> `balanced` (Default): Operate with moderate thresholds. Recommended when there are other workloads running on the cluster.</li><li>`aggressive`: Operate with aggressive max-CPU thresholds for better performance. Recommended when there are no other workloads running on the cluster.</li><li> `disabled`: Disable adaptive parallelism. </ul> |
 | --adaptive-parallelism-max |
 
 ```yaml{.nocopy}
@@ -388,6 +388,7 @@ export-dir:
 |Path to the export directory. This directory is a workspace used to keep the exported schema, data, state, and logs.|
 | -h, --help | — |Command line help. |
 | -y, --yes | — |Answer yes to all prompts during the import data operation. <br>Default: false |
+| --output-format | — | Format in which the report file is generated. <br>Accepted parameters: <ul><li> `json`: JSON format report file is generated.</li><li> `table` (Default): UI table is generated on the console as the report.</li></ul> |
 
 {{</table>}}
 
@@ -460,6 +461,7 @@ target:
 
 |Password to connect to the target YugabyteDB database. Alternatively, you can also specify the password by setting the environment variable `TARGET_DB_PASSWORD`. If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose the password in single quotes. |
 | -h, --help | — | Command line help. |
+| --output-format | — | Format in which the report file is generated. <br>Accepted parameters: <ul><li> `json`: JSON format report file is generated.</li><li> `table` (Default): UI table is generated on the console as the report.</li></ul> |
 
 {{</table>}}
 

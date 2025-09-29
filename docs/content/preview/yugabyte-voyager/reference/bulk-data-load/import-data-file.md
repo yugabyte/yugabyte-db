@@ -66,14 +66,14 @@ import-data-file:
 
 | Use this argument to disable progress bar or statistics during data import. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1|
 
-| --enable-adaptive-parallelism |
+| --adaptive-parallelism |
 
 ```yaml{.nocopy}
 import-data-file:
-  enable-adaptive-parallelism:
+  adaptive-parallelism:
 ```
 
-| Adapt parallelism based on the resource usage (CPU, memory) of the target YugabyteDB cluster. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| Adapt parallelism based on the resource usage (CPU, memory) of the target YugabyteDB cluster. Choose from the following accepted modes: <ul><li> `balanced` (Default): Operate with moderate thresholds. Recommended when there are other workloads running on the cluster.</li><li>`aggressive`: Operate with aggressive max-CPU thresholds for better performance. Recommended when there are no other workloads running on the cluster.</li><li> `disabled`: Disable adaptive parallelism. </ul> |
 
 | --adaptive-parallelism-max |
 

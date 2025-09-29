@@ -93,7 +93,7 @@ export-data:
   table-list:
 ```
 
-| Comma-separated list of the tables to export data. Table names can also be glob patterns containing wildcard characters, such as an asterisk (*) (matches zero or more characters) or question mark (?) (matches one character). To use a glob pattern for table names, enclose the list in single quotes ('').<br> For example, `--table-list '"Products", order*'`. |
+| Comma-separated list of the tables to export data. Table names can also be glob patterns containing wildcard characters, such as an asterisk (\\*) (matches zero or more characters) or question mark (?) (matches one character). To use a glob pattern for table names, enclose the list in single quotes ('').<br> For example, `--table-list '"Products", order*'`. |
 | --exclude-table-list |
 
 ```yaml{.nocopy}
@@ -118,6 +118,7 @@ export-data:
 ```
 
 | Path of the file containing the list of table names (comma-separated or line-separated) to exclude while exporting data. Table names follow the same convention as `--table-list`. |
+
 | -e, --export-dir |
 
 ```yaml{.nocopy}
@@ -277,6 +278,15 @@ source:
 ```
 
 | TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server. Oracle migrations only. |
+
+| --allow-oracle-clob-data-export |
+
+```yaml{.nocopy}
+source:
+  allow-oracle-clob-data-export:
+```
+
+| [Experimental] Allow exporting data of CLOB columns in offline migration. Oracle migrations only. The flag is _not supported_ for live migrations or BETA_FAST_DATA_EXPORT. <br> Default: false <br> Accepted parameters: true, false |
 | --start-clean | — | Starts a fresh data export after clearing all data from the `data` directory. <br> Default: false <br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -h, --help | — | Command line help. |
 | -y, --yes | — | Answer yes to all prompts during the export schema operation. <br>Default: false |
@@ -360,6 +370,7 @@ export-dir:
 
 | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | — | Command line help. |
+| --output-format | — | Format in which the report file is generated. <br>Accepted parameters: <ul><li> `json`: JSON format report file is generated.</li><li> `table` (Default): UI table is generated on the console as the report.</li></ul> |
 
 {{</table>}}
 
@@ -483,7 +494,7 @@ export-data-from-target:
   table-list:
 ```
 
-| Comma-separated list of the tables to export data. Table names can also be glob patterns containing wildcard characters, such as an asterisk (*) (matches zero or more characters) or question mark (?) (matches one character). To use a glob pattern for table names, enclose the list in single quotes ('').<br> For example, `--table-list '"Products", order*'`. |
+| Comma-separated list of the tables to export data. Table names can also be glob patterns containing wildcard characters, such as an asterisk (\\*) (matches zero or more characters) or question mark (?) (matches one character). To use a glob pattern for table names, enclose the list in single quotes ('').<br> For example, `--table-list '"Products", order*'`. |
 | --exclude-table-list |
 
 ```yaml{.nocopy}
