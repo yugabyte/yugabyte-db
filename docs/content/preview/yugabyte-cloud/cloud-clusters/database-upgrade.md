@@ -31,11 +31,10 @@ In addition to the usual cluster [operation locking](../#locking-operations), be
   - Backups taken during the upgrade cannot be restored to clusters running a previous version.
   - Backups taken before the upgrade can be used for restore to the new version.
 - [Point-in-time-restore](../aeon-pitr/) (PITR)
-  - If you have PITR enabled, you must disable it before performing an upgrade. Re-enable it only after the upgrade is either finalized or rolled back.
   - After the upgrade, PITR cannot be done to a time before the upgrade.
 - [xCluster Disaster Recovery](../disaster-recovery/) (DR)
-  - While upgradng the DR target, failover is not available.
-  - While upgradng the DR source or target, switchover is not available.
+  - While upgrading the DR target, failover is not available.
+  - While upgrading the DR source or target, switchover is not available.
 - [YSQL major upgrade](#ysql-major-upgrade)
   - All DDL statements, except ones related to Temporary table and Refresh Materialized View are blocked for the duration of the upgrade. Consider executing all DDLs before the upgrade, and pause any jobs that might run DDLs. DMLs are allowed.
   - You should also upgrade your application client drivers to the new version. The client drivers are backwards compatible, and work with both the old and new versions of the database.
