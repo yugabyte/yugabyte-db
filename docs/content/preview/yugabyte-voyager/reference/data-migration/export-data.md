@@ -442,6 +442,7 @@ target:
 
 |Password to connect to the target YugabyteDB database. Alternatively, you can also specify the password by setting the environment variable `TARGET_DB_PASSWORD`. If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose the password in single quotes. |
 | -h, --help | — | Command line help. |
+| --output-format | — | Format in which the report file is generated. <br>Accepted parameters: <ul><li> `json`: JSON format report file is generated.</li><li> `table` (Default): UI table is generated on the console as the report.</li></ul> |
 
 {{</table>}}
 
