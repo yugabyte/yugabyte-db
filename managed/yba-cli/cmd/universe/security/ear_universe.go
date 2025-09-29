@@ -228,7 +228,7 @@ func getKMSConfigUUID(authAPI *client.AuthAPIClient, configName string) (string,
 		return "", err
 	}
 	kmsConfigs := earutil.KMSConfigNameAndCodeFilter(configName, "", kmsConfigsList)
-	if len(kmsConfigs) > 1 {
+	if len(kmsConfigs) > 0 {
 		return kmsConfigs[0].ConfigUUID, nil
 	}
 	return "", fmt.Errorf("No configurations with name: %s found\n", configName)
