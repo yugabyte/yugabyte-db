@@ -186,4 +186,5 @@ All data is pulled directly from your Northwind database and shows real sales pa
 ## Read more
 
 - [YugabyteDB MCP Server](https://github.com/yugabyte/yugabytedb-mcp-server)
+- [Unlock AI-Driven Data Experiences with YugabyteDB MCP Server on AWS Marketplace](https://www.yugabyte.com/blog/yugabytedb-mcp-server-on-aws-marketplace/)
 - [Architecting GenAI and RAG Apps with YugabyteDB](https://www.yugabyte.com/ai/)
