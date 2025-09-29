@@ -14,31 +14,20 @@ type: docs
 
 This tutorial walks you through using the Model Context Protocol (MCP) to allow an AI application to access, query, analyze, and interpret data in your YugabyteDB database, using only natural language prompts.
 
+The tutorial uses a YugabyteDB cluster running the [Northwind dataset](../../../../sample-data/northwind/). You connect Claude to this database using MCP, then explore it using natural language prompts.
+
+## YugabyteDB MCP Server
+
+MCP servers provide a standardized way for external tools, data sources, or services to talk to an AI model. Instead of giving a model static context or manually copy-pasting data, an MCP server acts as a bridge between the model and a system, whether a database, API, filesystem, or application.
+
+- Existing services are encapsulated (or fronted) by an MCP server. MCP servers can be local or remote.
+- The application accessing those services incorporates an MCP client.
+- The MCP client is configured to connect with one (or more) MCP servers.
+- The MCP client discovers available tools that the MCP server advertises.
+
+These tools represent discrete functionality that the MCP server (and backing service) provides. The tools are described in a structured manner so that the LLM can understand, in detail, the advertised functionality. In short, the LLM knows what each function can do and how to call it.
+
 The YugabyteDB MCP Server is a lightweight Python-based server that allows LLMs like Anthropic's Claude to interact directly with your YugabyteDB database.
-
-## What is MCP?
-
-One challenge current AI applications face is that they are only as effective as the data they are trained on, and can only produce results by generating text, audio, or video. What happens if a large language model (LLM) (as part of an AI application) needs to access more current data, or company-specific data? And what happens if an AI application needs to issue an email, schedule an event in a calendar, or otherwise take action? In short, how can an AI application access existing services?
-
-In the past, every LLM and framework (such as LangChain) has had its own way of accessing existing services. This lack of a standard, consistent interface to services creates complexity for AI application development.
-
-MCP directly addresses this problem by standardizing how AI applications use existing services.
-
-Here's how it works:
-
-- Existing services are encapsulated (or fronted) by MCP Servers.
-- Your app (the Host) incorporates an MCP Client.
-- The MCP Client is configured to connect with one (or more) MCP Servers.
-- The MCP Client discovers available tools that the MCP Server advertises.
-
-These tools are analogous to API endpoints, representing discrete functionality that the MCP Server (and backing service) provides. The tools are described in a structured manner so that the LLM can understand, in detail, the advertised functionality. In short, the LLM knows what each function can do and how to call it.
-
-MCP Servers can be local (communicating via standard input/output) or remote (communicating via SSE over the network).
-Each tool is like a function with arguments and (optionally) a return value. MCP makes tool-augmented LLMs scalable, consistent, and composable.
-
-### YugabyteDB MCP Server
-
-The YugabyteDB MCP Server bridges the gap between your AI application (and its LLM) and the data in YugabyteDB, enabling seamless, natural language interaction with live, structured datasets.
 
 The YugabyteDB MCP server:
 
@@ -48,8 +37,6 @@ The YugabyteDB MCP server:
 - Helps interact with live data using natural language.
 
 Using YugabyteDB MCP, you can standardize tool integration and perform intuitive data exploration, without needing to write a single line of SQL.
-
-The following tutorial uses a YugabyteDB cluster running the [Northwind dataset](../../../../sample-data/northwind/). You connect Claude to this database using the MCP protocol, then explore it using natural language prompts.
 
 ## Prerequisites
 
