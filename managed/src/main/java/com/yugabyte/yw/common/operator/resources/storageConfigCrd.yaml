@@ -94,6 +94,11 @@ spec:
                         Use path style access for S3 bucket configuration. Valid for S3 compatible
                         storages.
                       type: boolean
+                    SIGNING_REGION:
+                      description: |
+                        Signing region to be used for S3 clients when accessing storage bucket. Use
+                        for S3 compatible storages / private S3 endpoints.
+                      type: string
                   required:
                   - BACKUP_LOCATION
                 awsSecretAccessKeySecret:
