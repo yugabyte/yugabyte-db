@@ -31,8 +31,6 @@ The valid *arguments* for compare performance are described in the following tab
 | <div style="width:120px">CLI flag</div> | Config file parameter | Description |
 | :--- | :-------- | :---------- |
 
-| -c, --config-file | — | Path to a [configiration file](../configuration-file). |
-
 | -e, --export-dir |
 
 ```yaml {.nocopy}
@@ -161,6 +159,8 @@ target:
 | -h, --help | — | Command line help. |
 
 | -y, --yes | — | Answer yes to all prompts during migration. <br>Default: false |
+
+| -c, --config-file | — | Path to a [configuration file](../configuration-file). |
 
 {{</table>}}
 

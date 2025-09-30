@@ -180,6 +180,7 @@ log-level:
 
 | -h, --help | — | Command line help. |
 | -y, --yes | — | Answer yes to all prompts during the export schema operation. <br>Default: false |
+| -c, --config-file | — | Path to a [configuration file](../configuration-file). |
 
 {{</table>}}
 
