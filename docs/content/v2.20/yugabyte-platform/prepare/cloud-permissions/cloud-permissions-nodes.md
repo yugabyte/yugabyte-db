@@ -1,5 +1,5 @@
 ---
-title: Cloud setup for deploying YugabyteDB Anywhere
+title: Cloud setup for deploying universe nodes
 headerTitle: To deploy nodes
 linkTitle: To deploy nodes
 description: Prepare your cloud for deploying YugabyteDB universe nodes.
@@ -52,6 +52,6 @@ Because you are creating the VMs manually, nodes for on-premises providers don't
 
 With an on-premises provider, permissions against your infrastructure are generally not needed to deploy VMs, modify VMs, and so on.
 
-Provisioning VMs requires root accress, but after VMs have been provisioned with the operating system, required software, and node agent, root and sudo access is no longer required.
+Provisioning VMs requires root access, but after VMs have been provisioned with the operating system, required software, and node agent, root and sudo access is no longer required.
 
 For more information, refer to [Automatically provision on-premises nodes](../../server-nodes-software/software-on-prem/).
