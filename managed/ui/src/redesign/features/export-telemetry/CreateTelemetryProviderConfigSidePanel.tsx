@@ -78,7 +78,7 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
     },
     {
       onSuccess: (data: any) => {
-        toast.success('Create export configuration', data?.name);
+        toast.success('Created export configuration', data?.name);
         onClose();
       },
       onError: (error) => {
