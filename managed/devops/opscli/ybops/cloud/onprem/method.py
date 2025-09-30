@@ -326,7 +326,7 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
                                       if p is not None])
             cmd = "{}/preflight_checks.sh --type {} --yb_home_dir {} --mount_points {} " \
                 "--ports_to_check {} --sudo_pass_file {} --tmp_dir {} --cleanup".format(
-                    args.remote_tmp_dir, args.precheck_type, args.home_dir,
+                    args.remote_tmp_dir, args.precheck_type, args.yb_home_dir,
                     self.cloud.get_mount_points_csv(args),
                     ports_to_check, sudo_pass_file, args.remote_tmp_dir)
             if args.install_node_exporter:
