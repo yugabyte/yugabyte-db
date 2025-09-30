@@ -27,13 +27,13 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
 
 ### New features
 
-- Added the [compare-performance](../reference/compare-performance/) command to analyze, compare, and summarize workload query performance between the source database and the target YugabyteDB database. It generates both HTML and JSON reports for easy comparison.
+- Added the ability to analyze, compare, and summarize workload query performance between the source database and the target YugabyteDB database using the [compare-performance](../reference/compare-performance/) command. The command generates both HTML and JSON reports for easy comparison.
 
 ### Enhancements
 
 - Improved import data to skip retrying errors that the `pgx` driver identifies as non‑retryable, enhancing stability.
-- Introduced adaptive parallelism modes controlled using the `--adaptive-parallelism` flag with options to choose from `disabled`, `balanced` (default), or `aggressive`. Replaces the `--enable-adaptive-parallelism` flag.
-- Added an `--output-format` flag to the `export data status`, `import data status`, and `get data-migration-report` commands to generate structured JSON reports. `end-migration` now saves the JSON versions of these reports as well.
+- Added the ability to manage adaptive parallelism using the `--adaptive-parallelism` flag. Options include `disabled`, `balanced` (default), or `aggressive`. Replaces the `--enable-adaptive-parallelism` flag.
+- Added an `--output-format` flag to the `export data status`, `import data status`, and `get data-migration-report` commands to generate structured JSON reports. `end migration` now saves the JSON versions of these reports as well.
 
 ### Bug fixes
 

@@ -43,11 +43,11 @@ Use one or more of the following techniques to improve import data performance:
 
 Available flags:
 
-- By default, adaptive parallelism operates under moderate thresholds (`--adaptive-parallelism balanced`). For example, the number of parallel connections are throttled if the CPU usage of any node breaches 80%. To further push the parallelism, you can specify `–adaptive-parallelism aggressive`, which uses aggressive max-CPU thresholds to optimize for performance.
+    By default, adaptive parallelism operates under moderate thresholds (`--adaptive-parallelism balanced`), where Voyager throttles the number of parallel connections if the CPU usage of any node exceeds 80%. To maximize CPU use for faster performance, you can use the `aggressive` flag; this is only recommended if you don't have any other running workloads.
 
-- By default, the upper bound of N is set to half the total number of cores in the YugabyteDB cluster. Use the `--adaptive-parallelism-max` flag to override this default value.
+- By default, the upper bound for the number of parallel connections is set to half the total number of cores in the YugabyteDB cluster. Use the `--adaptive-parallelism-max` flag to override this value.
 
-- To disable adaptive parallelism and specify a static value of N, use `--adaptive-parallelism disabled –parallel-jobs N`.
+- To disable adaptive parallelism and specify a static number of connections, use `--adaptive-parallelism disabled --parallel-jobs N`.
 
 - **Increase batch size**. The default [--batch-size](../../reference/data-migration/import-data/#arguments) is 20000 rows or approximately 200 MB of data, depending on whichever is reached first while preparing the batch. Normally this is considered a good default value. However, if the rows are too small, then you may consider increasing the batch size for greater throughput. Increasing the batch size to a very high value is not recommended as the whole batch is executed in one transaction.
 
