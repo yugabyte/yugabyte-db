@@ -78,7 +78,7 @@ Proxy::Proxy(ProxyContext* context,
              const MonoDelta& resolve_cache_timeout)
     : context_(context),
       remote_(remote),
-      protocol_(protocol ? protocol : context_->DefaultProtocol()),
+      protocol_(protocol ? protocol : &context_->DefaultProtocol()),
       outbound_call_metrics_(context_->metric_entity() ?
           std::make_shared<OutboundCallMetrics>(context_->metric_entity()) : nullptr),
       call_local_service_(remote == HostPort()),

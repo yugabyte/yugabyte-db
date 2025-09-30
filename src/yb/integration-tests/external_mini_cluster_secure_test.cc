@@ -15,35 +15,49 @@
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/cql_test_util.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/secure_stream.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/file_util.h"
 #include "yb/util/env_util.h"
 #include "yb/util/string_util.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/tostring.h"
 
+DECLARE_bool(allow_insecure_connections);
+DECLARE_bool(enable_stream_compression);
+DECLARE_bool(node_to_node_encryption_use_client_certificates);
 DECLARE_bool(use_client_to_server_encryption);
 DECLARE_bool(use_node_to_node_encryption);
-DECLARE_bool(allow_insecure_connections);
-DECLARE_bool(node_to_node_encryption_use_client_certificates);
+DECLARE_int32(stream_compression_algo);
 DECLARE_string(certs_dir);
 DECLARE_string(ysql_hba_conf_csv);
 
 namespace yb {
 
+#define YB_FORWARD_FLAG(flag_name) \
+  "--" BOOST_PP_STRINGIZE(flag_name) "="s + FlagToString(BOOST_PP_CAT(FLAGS_, flag_name))
+
+
+std::string FlagToString(bool flag) {
+  return flag ? "true" : "false";
+}
+
+std::string FlagToString(int32_t flag) {
+  return std::to_string(flag);
+}
+
+const std::string& FlagToString(const std::string& flag) {
+  return flag;
+}
+
 class ExternalMiniClusterSecureTest :
     public MiniClusterTestWithClient<ExternalMiniCluster> {
  public:
-
-  void SetUp(bool enable_ysql) {
-    enable_ysql_ = enable_ysql;
-    ExternalMiniClusterSecureTest::SetUp();
-  }
-
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_node_to_node_encryption) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_client_to_server_encryption) = true;
@@ -60,7 +74,8 @@ class ExternalMiniClusterSecureTest :
 
     MiniClusterTestWithClient::SetUp();
 
-    ASSERT_NO_FATALS(StartSecure(&cluster_, &secure_context_, &messenger_, enable_ysql_));
+    ExternalMiniClusterOptions opts = CreateExternalMiniClusterOptions();
+    ASSERT_NO_FATALS(StartSecure(&cluster_, &secure_context_, &messenger_, opts));
 
     ASSERT_OK(CreateClient());
 
@@ -68,6 +83,26 @@ class ExternalMiniClusterSecureTest :
   }
 
   virtual void SetUpFlags() {
+  }
+
+  virtual ExternalMiniClusterOptions CreateExternalMiniClusterOptions() {
+    ExternalMiniClusterOptions opts;
+    opts.extra_tserver_flags = {
+        YB_FORWARD_FLAG(allow_insecure_connections),
+        YB_FORWARD_FLAG(certs_dir),
+        YB_FORWARD_FLAG(node_to_node_encryption_use_client_certificates),
+        YB_FORWARD_FLAG(use_client_to_server_encryption),
+        YB_FORWARD_FLAG(use_node_to_node_encryption),
+        YB_FORWARD_FLAG(ysql_hba_conf_csv),
+        YB_FORWARD_FLAG(enable_stream_compression),
+        YB_FORWARD_FLAG(stream_compression_algo)
+    };
+    opts.extra_master_flags = opts.extra_tserver_flags;
+    opts.num_tablet_servers = 3;
+    opts.use_even_ips = true;
+    opts.enable_ysql = true;
+    opts.enable_ysql_auth = true;
+    return opts;
   }
 
   void DoTearDown() override {
@@ -143,7 +178,6 @@ class ExternalMiniClusterSecureTest :
   std::unique_ptr<rpc::Messenger> messenger_;
   std::unique_ptr<CppCassandraDriver> driver_;
   client::TableHandle table_;
-  bool enable_ysql_ = true;
 };
 
 TEST_F(ExternalMiniClusterSecureTest, Simple) {
@@ -189,7 +223,13 @@ class ExternalMiniClusterSecureWithClientCertsTest : public ExternalMiniClusterS
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_node_to_node_encryption_use_client_certificates) = true;
     // TODO: enable ysql after #26138 is fixed
-    ExternalMiniClusterSecureTest::SetUp(false);
+    ExternalMiniClusterSecureTest::SetUp();
+  }
+
+  ExternalMiniClusterOptions CreateExternalMiniClusterOptions() override {
+    auto opts = ExternalMiniClusterSecureTest::CreateExternalMiniClusterOptions();
+    opts.enable_ysql = false;
+    return opts;
   }
 };
 
@@ -210,6 +250,12 @@ class ExternalMiniClusterSecureReloadTest : public ExternalMiniClusterSecureTest
         CopyOption::kCreateIfMissing, CopyOption::kKeepPermissions));
 
     LOG(INFO) << "Copied certs from " << src_certs_dir << " to " << FLAGS_certs_dir;
+  }
+
+  ExternalMiniClusterOptions CreateExternalMiniClusterOptions() override {
+    auto opts = ExternalMiniClusterSecureTest::CreateExternalMiniClusterOptions();
+    opts.enable_ysql = false;
+    return opts;
   }
 
   void SetupCql() {
@@ -334,6 +380,67 @@ TEST_F_EX(ExternalMiniClusterSecureTest, YbIntermediateInCACert,
 TEST_F_EX(ExternalMiniClusterSecureTest, YbIntermediateInServerCert,
   ExternalMiniClusterSecureWithInterCAServerCertTest) {
   VerifyToolsAndYsqlsh();
+}
+
+class ExternalMiniClusterSecureRbsTest : public ExternalMiniClusterSecureTest,
+                                         public ::testing::WithParamInterface<bool> {
+ public:
+  void SetUpFlags() override {
+    bool use_compression = GetParam();
+    if (use_compression) {
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_stream_compression) = true;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_stream_compression_algo) = 1;
+    }
+  }
+
+  ExternalMiniClusterOptions CreateExternalMiniClusterOptions() override {
+    auto opts = ExternalMiniClusterSecureTest::CreateExternalMiniClusterOptions();
+    opts.num_tablet_servers = 4;
+    return opts;
+  }
+};
+
+INSTANTIATE_TEST_SUITE_P(, ExternalMiniClusterSecureRbsTest, ::testing::Bool());
+
+// This test takes longer to shut down than necessary because of interactions between RBSs
+// and shutdown (see GitHub issue #28614).
+TEST_P(ExternalMiniClusterSecureRbsTest, RemoteBootstrap) {
+  // Test that we can remote bootstrap tablets when encryption (and potentially compression) is
+  // enabled. We specifically generate SSTs in this test to verify that they copy successfully,
+  // because they use an uncompressed (but still encrypted) stream.
+  client::kv_table_test::CreateTable(
+      client::Transactional::kFalse, CalcNumTablets(3), client_.get(), &table_);
+  {
+    // Insert 100 values within a YCQL transaction.
+    auto session = NewSession();
+    for (int32_t key = 1; key <= 100; ++key) {
+      ASSERT_RESULT(client::kv_table_test::WriteRow(&table_, session, key, key + 1));
+    }
+  }
+
+  // Flush the table to generate SST files.
+  ASSERT_OK(CompactTablets(cluster_.get()));
+
+  // Blacklist ts-4 and wait for no tablets to be running.
+  auto* master_leader = cluster_->GetLeaderMaster();
+  auto* ts_to_blacklist = cluster_->tablet_server(3);
+  ASSERT_OK(cluster_->AddTServerToBlacklist(master_leader, ts_to_blacklist));
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto tablets = VERIFY_RESULT(itest::GetTabletsOnTsAccordingToMaster(
+        cluster_.get(), ts_to_blacklist->uuid(), table_.name(), 10s,
+        RequireTabletsRunning::kTrue));
+    return tablets.empty();
+  }, 30s, "Wait for no tablets on ts-4"));
+
+  // Remove ts-4 from the blacklist and verify some tablet is successfully remote bootstrapped and
+  // starts running.
+  ASSERT_OK(cluster_->ClearBlacklist(master_leader));
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto tablets = VERIFY_RESULT(itest::GetTabletsOnTsAccordingToMaster(
+        cluster_.get(), ts_to_blacklist->uuid(), table_.name(), 10s,
+        RequireTabletsRunning::kTrue));
+    return !tablets.empty();
+  }, 30s, "Wait for some tablet running on ts-4"));
 }
 
 } // namespace yb

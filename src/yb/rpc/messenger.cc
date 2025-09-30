@@ -121,6 +121,7 @@ MessengerBuilder::MessengerBuilder(std::string name)
       connection_keepalive_time_(FLAGS_rpc_default_keepalive_time_ms * 1ms),
       coarse_timer_granularity_(100ms),
       listen_protocol_(TcpStream::StaticProtocol()),
+      uncompressed_protocol_(TcpStream::StaticProtocol()),
       workers_limit_(FLAGS_rpc_workers_limit),
       num_connections_to_server_(GetAtomicFlag(&FLAGS_num_connections_to_server)) {
   AddStreamFactory(TcpStream::StaticProtocol(), TcpStream::Factory());
@@ -577,7 +578,8 @@ Messenger::Messenger(const MessengerBuilder &bld)
     : name_(bld.name_),
       connection_context_factory_(bld.connection_context_factory_),
       stream_factories_(bld.stream_factories_),
-      listen_protocol_(bld.listen_protocol_),
+      listen_protocol_(*bld.listen_protocol_),
+      uncompressed_protocol_(*bld.uncompressed_protocol_),
       rpc_services_counter_(name_ + " endpoints"),
       metric_entity_(bld.metric_entity_),
       io_thread_pool_(name_, FLAGS_io_thread_pool_size),
