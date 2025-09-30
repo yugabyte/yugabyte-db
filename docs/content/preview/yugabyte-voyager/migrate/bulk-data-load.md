@@ -462,7 +462,7 @@ For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/y
 
 ### Validate query performance
 
-You can compare query performance between the source database and the target YugabyteDB database using the [yb-voyager compare-performance](../../reference/compare-performance/) command.
+{{<tags/feature/tp>}} You can compare query performance between the source database and the target YugabyteDB database using the [yb-voyager compare-performance](../../reference/compare-performance/) command.
 
 This command analyzes statistics collected during [assess migration](../assess-migration/) from the source database and compares it with statistics collected from the target YugabyteDB database.
 
@@ -475,6 +475,8 @@ To compare query performance, verify you have done the following:
 - A [migration assessment](../../migrate/assess-migration/) using the [assess-migration](../reference/assess-migration/#assess-migration) command and have the statistics from the source database.
 - Ran a source workload on both the source and target YugabyteDB databases.
 - Statistics collection ([pg_stat_statements](../../../additional-features/pg-extensions/extension-pgstatstatements/)) is enabled on the target YugabyteDB database.
+
+Run the command as follows:
 
 {{< tabpane text=true >}}
 

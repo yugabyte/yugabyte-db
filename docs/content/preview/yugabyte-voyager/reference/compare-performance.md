@@ -23,7 +23,7 @@ This command analyzes statistics collected during [assess migration](../assess-m
 Usage: yb-voyager compare-performance [ <arguments> ... ]
 ```
 
-## Arguments
+### Arguments
 
 The valid *arguments* for compare performance are described in the following table:
 
@@ -164,7 +164,7 @@ target:
 
 {{</table>}}
 
-## Example
+### Example
 
 Configuration file:
 
