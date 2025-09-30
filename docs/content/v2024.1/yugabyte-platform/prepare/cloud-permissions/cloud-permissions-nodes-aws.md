@@ -1,8 +1,8 @@
 ---
-title: Cloud setup for deploying YugabyteDB Anywhere
+title: Cloud setup for deploying universe nodes on AWS
 headerTitle: To deploy nodes
 linkTitle: To deploy nodes
-description: Prepare your cloud for deploying YugabyteDB universe nodes.
+description: Prepare your cloud for deploying universe nodes using an AWS provider configuration.
 headContent: Prepare your cloud for deploying YugabyteDB universe nodes
 menu:
   v2024.1_yugabyte-platform:
@@ -167,7 +167,7 @@ If needed, be sure to do this in every region where you intend to deploy databas
 
 ## Managing SSH keys for VMs
 
-When creating VMs on the public cloud, YugabyteDB requires SSH keys to access the VM. You can manage the SSH keys for VMs in two ways:
+When creating VMs on the public cloud using a [cloud provider configuration](../../../yba-overview/#public-cloud), YugabyteDB requires SSH keys to access the VM. You can manage the SSH keys for VMs in two ways:
 
 - YBA managed keys. When YBA creates VMs, it will generate and manage the SSH key pair.
 - Provide a custom key pair. Create your own custom SSH keys and upload the SSH keys when you create the provider.

@@ -1,5 +1,5 @@
 ---
-title: Cloud setup for deploying YugabyteDB Anywhere
+title: Cloud setup for deploying universe nodes
 headerTitle: To deploy nodes
 linkTitle: To deploy nodes
 description: Prepare your cloud for deploying YugabyteDB universe nodes.

@@ -1,8 +1,8 @@
 ---
-title: Cloud setup for deploying YugabyteDB Anywhere
+title: Cloud setup for deploying universe nodes on Kubernetes
 headerTitle: To deploy nodes
 linkTitle: To deploy nodes
-description: Prepare your cloud for deploying YugabyteDB universe nodes.
+description: Prepare your cloud for deploying universe nodes using a Kubernetes provider configuration.
 headContent: Prepare your cloud for deploying YugabyteDB universe nodes
 menu:
   stable_yugabyte-platform:

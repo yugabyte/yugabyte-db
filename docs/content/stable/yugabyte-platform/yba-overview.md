@@ -90,6 +90,19 @@ YBA supports three major types of provider configurations:
 | Permissions for YBA | Minimal sudo access during provisioning | Cloud and OS permissions | As required for Kubernetes |
 | Node&nbsp;provisioning | Manually created, with fully manual to automatic provisioning | Automatically created and provisioned | Via Helm |
 
+### On-premises
+
+Unlike the Kubernetes and cloud providers, where YBA has privileges and creates the VMs (or pods) automatically, with an on-premises provider *you* create the server VMs manually.
+
+Use this option for any of the following situations:
+
+- You are deploying YugabyteDB clusters truly on-premises (for example, on VMware or Nutanix).
+- You are deploying YugabyteDB clusters to public cloud, but (due to security policies or other restrictions) you can't provide YBA with cloud permissions or SSH access to cloud VMs. In this case, you must create your VMs and/or deploy your Linux OS manually in the cloud.
+- You are deploying a single [stretched cluster across multiple clouds](../create-deployments/create-universe-multi-cloud/) (for example, one cluster with some nodes on AWS, others on GCP, and/or others on Azure).
+- Any other cases where you must retain control over creating the VMs and/or Linux OS, and can't give this control to YBA.
+
+With the on-premises provider, after creating VMs manually (that is, outside of YBA), you will add them to your on-premises provider's free pool of servers. Subsequently, when creating the universe, database nodes are taken from the on-premises provider's free pool of servers and added to the universe.
+
 ### Public cloud
 
 If you are deploying a universe to a public cloud (AWS, Azure, or GCP) and want maximum automation when managing clusters (creating them, scaling them, patching the OS, and so on), use a public cloud provider configuration. This approach does require that you provide YBA with cloud and OS privileges.
@@ -100,19 +113,6 @@ For example:
 - YBA must initially have root-level SSH login access to that VM for initial installation of a management agent. After installation of the agent, SSH access can be removed.
 
 This approach allows for maximum automation. Also, you do have the option to specify a custom OS image that otherwise meets all other enterprise security rules.
-
-### On-premises
-
-For all other cases, use an on-premises provider. Unlike the Kubernetes and cloud providers, where YBA has privileges and creates the VMs (or pods) automatically, with an on-premises provider *you* create the server VMs manually.
-
-Use this option for any of the following situations:
-
-- You are deploying YugabyteDB clusters truly on-premises (for example, on VMware or Nutanix).
-- You are deploying YugabyteDB clusters to public cloud, but (due to security policies or other restrictions) you can't provide YBA with cloud permissions or SSH access to cloud VMs. In this case, you must create your VMs and/or deploy your Linux OS manually in the cloud.
-- You are deploying a single [stretched cluster across multiple clouds](../create-deployments/create-universe-multi-cloud/) (for example, one cluster with some nodes on AWS, others on GCP, and/or others on Azure).
-- Any other cases where you must retain control over creating the VMs and/or Linux OS, and can't give this control to YBA.
-
-With the on-premises provider, after creating VMs manually (that is, outside of YBA), you will add them to your on-premises provider's free pool of servers. Subsequently, when creating the universe, database nodes are taken from the on-premises provider's free pool of servers and added to the universe.
 
 ### Kubernetes
 
