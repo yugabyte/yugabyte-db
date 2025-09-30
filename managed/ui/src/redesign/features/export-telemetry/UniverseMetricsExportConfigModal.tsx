@@ -104,6 +104,9 @@ export const UniverseMetricsExportConfigModal = ({
   const configureMetricsExportMutation = useMutation(
     (formValues: FormValues) => {
       const requestBody: ConfigureMetricsExportReqBody = {
+        install_otel_collector:
+          formValues.shouldExportMetrics &&
+          !universeQuery.data?.universeDetails.otelCollectorEnabled,
         metrics_export_config: {
           universe_metrics_exporter_config: formValues.shouldExportMetrics
             ? [{ exporter_uuid: formValues.telemetryConfigUuid ?? '' }]
