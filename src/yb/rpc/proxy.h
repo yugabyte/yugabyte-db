@@ -220,6 +220,8 @@ class ProxyCache {
 
   ProxyMetricsPtr GetMetrics(const std::string& service_name, ProxyMetricsFactory factory);
 
+  ProxyContext* GetContext() const { return context_; }
+
  private:
   typedef std::pair<HostPort, const Protocol*> ProxyKey;
 

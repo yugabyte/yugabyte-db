@@ -108,6 +108,7 @@ class RemoteClientBase {
   bool fetch_phase_active_ = false;
 
   std::shared_ptr<RemoteBootstrapServiceProxy> proxy_;
+  std::shared_ptr<RemoteBootstrapServiceProxy> uncompressed_proxy_;
   std::unique_ptr<tablet::RaftGroupReplicaSuperBlockPB> superblock_;
 
   int64_t start_time_micros_ = 0;
