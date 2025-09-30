@@ -366,6 +366,7 @@ public class OtelCollectorConfigGenerator {
       // additional tags.
       for (UniverseMetricsExporterConfig exporterConfig :
           metricsExportConfig.getUniverseMetricsExporterConfig()) {
+        List<String> processorNames = new ArrayList<>();
         // Create a new pipeline for metrics export.
         OtelCollectorConfigFormat.Pipeline pipeline = new OtelCollectorConfigFormat.Pipeline();
 
@@ -379,9 +380,14 @@ public class OtelCollectorConfigGenerator {
 
         // Add AttributesProcessor for metrics.
         String attributesProcessorName = PROCESSOR_PREFIX_ATTRIBUTES + exportTypeAndUUIDString;
-        collectorConfigFormat
-            .getProcessors()
-            .put(attributesProcessorName, createAttributesProcessor(exporterConfig));
+        OtelCollectorConfigFormat.AttributesProcessor attributesProcessor =
+            createMetricsExporterAttributesProcessor(exporterConfig);
+        if (attributesProcessor != null
+            && !CollectionUtils.isEmpty(attributesProcessor.getActions())) {
+          collectorConfigFormat.getProcessors().put(attributesProcessorName, attributesProcessor);
+          // Add AttributesProcessor to the pipeline
+          processorNames.add(attributesProcessorName);
+        }
 
         // Add BatchProcessor for metrics.
         String batchProcessorName = PROCESSOR_PREFIX_BATCH + exportTypeAndUUIDString;
@@ -391,6 +397,8 @@ public class OtelCollectorConfigGenerator {
         batchProcessor.setSend_batch_max_size(exporterConfig.getSendBatchMaxSize());
         batchProcessor.setTimeout(exporterConfig.getSendBatchTimeoutSeconds().toString() + "s");
         collectorConfigFormat.getProcessors().put(batchProcessorName, batchProcessor);
+        // Add BatchProcessor to the pipeline
+        processorNames.add(batchProcessorName);
 
         // Add MemoryLimiterProcessor for metrics.
         String memoryLimiterProcessorName =
@@ -403,11 +411,7 @@ public class OtelCollectorConfigGenerator {
         collectorConfigFormat
             .getProcessors()
             .put(memoryLimiterProcessorName, memoryLimiterProcessor);
-
-        // Add all the processor names to the pipeline
-        List<String> processorNames = new ArrayList<>();
-        processorNames.add(attributesProcessorName);
-        processorNames.add(batchProcessorName);
+        // Add MemoryLimiterProcessor to the pipeline
         processorNames.add(memoryLimiterProcessorName);
 
         if (!StringUtils.isBlank(exporterConfig.getMetricsPrefix())) {
@@ -429,6 +433,7 @@ public class OtelCollectorConfigGenerator {
           collectorConfigFormat
               .getProcessors()
               .put(metricTransformProcessorName, metricTransformProcessor);
+          // Add MetricTransformProcessor to the pipeline
           processorNames.add(metricTransformProcessorName);
         }
 
@@ -441,10 +446,11 @@ public class OtelCollectorConfigGenerator {
           collectorConfigFormat
               .getProcessors()
               .put(cumulativetodeltaProcessorName, cumulativetodeltaProcessor);
+          // Add CumulativeToDeltaProcessor to the pipeline
           processorNames.add(cumulativetodeltaProcessorName);
         }
 
-        // Add processors to the pipeline
+        // Add all the processor names to the pipeline
         pipeline.setProcessors(processorNames);
 
         // Add metrics exporter for each active exporter config
@@ -1108,14 +1114,20 @@ public class OtelCollectorConfigGenerator {
     return scrapeConfig;
   }
 
-  private OtelCollectorConfigFormat.AttributesProcessor createAttributesProcessor(
+  private OtelCollectorConfigFormat.AttributesProcessor createMetricsExporterAttributesProcessor(
       UniverseMetricsExporterConfig exporterConfig) {
-    // Add additional tags from the exporter config.
+    TelemetryProvider telemetryProvider =
+        telemetryProviderService.getOrBadRequest(exporterConfig.getExporterUuid());
+
     List<OtelCollectorConfigFormat.AttributeAction> attributeActions = new ArrayList<>();
-    for (Map.Entry<String, String> entry : exporterConfig.getAdditionalTags().entrySet()) {
-      attributeActions.add(
-          new OtelCollectorConfigFormat.AttributeAction(
-              entry.getKey(), entry.getValue(), "upsert", null));
+    // Override or add tags from the exporter config.
+    if (MapUtils.isNotEmpty(telemetryProvider.getTags())) {
+      attributeActions.addAll(getTagsToAttributeActions(telemetryProvider.getTags()));
+    }
+
+    // Override or add additional tags from the log config payload.
+    if (MapUtils.isNotEmpty(exporterConfig.getAdditionalTags())) {
+      attributeActions.addAll(getTagsToAttributeActions(exporterConfig.getAdditionalTags()));
     }
 
     OtelCollectorConfigFormat.AttributesProcessor processor =
