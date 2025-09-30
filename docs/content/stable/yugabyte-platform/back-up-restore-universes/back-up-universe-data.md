@@ -111,7 +111,7 @@ YugabyteDB Anywhere universe backups are stored using the following folder struc
       /<backup-series-name>-<backup-series-uuid>
         /<backup-type>
           /<creation-time>
-            /<backup-name>_<subtask-uuid>
+            /<backup-name>_<uuid>
 ```
 
 For example:
@@ -134,9 +134,9 @@ s3://user_bucket
 | Backup series name and UUID | The name of the backup series and YBA-generated UUID. The UUID ensures that YBA can correctly identify the appropriate folder. |
 | Backup type | `full` or `incremental`. Indicates whether the subfolders contain full or incremental backups. |
 | Creation time | The time the backup was started. |
-| Backup name and subtask UUID | The name of the backup and YBA-generated subtask UUID. This folder contains the backup files (metadata and success) and subfolders (tablet components). |
+| Backup name and UUID | The name of the backup and YBA-generated UUID that uniquely identifies the backup object. This folder contains the backup files (metadata and success) and subfolders (tablet components). |
 
-You can also use [yba-cli](../../anywhere-automation/anywhere-cli/) to get a list of backups and then a specific backup's details as follows:
+You can also use [yba-cli](../../anywhere-automation/anywhere-cli/) to get a list of backups and their details as follows:
 
 ```sh
 yba-cli backup list
