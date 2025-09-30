@@ -156,7 +156,7 @@ target:
 
 | Path to a file containing target SSL certificate authority (CA) certificate(s). |
 
-| --start-clean | — | Cleans up the project directory for schema or data files depending on the export command. <br>Default: false <br> Accepted parameters: true, false, yes, no, 0, 1. |
+| --start-clean | — |  Cleans up existing performance comparison reports before generating new ones. <br>Default: false <br> Accepted parameters: true, false, yes, no, 0, 1. |
 
 | -h, --help | — | Command line help. |
 

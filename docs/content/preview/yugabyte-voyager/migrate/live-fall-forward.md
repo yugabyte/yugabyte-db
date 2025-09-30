@@ -1545,9 +1545,9 @@ The command generates both HTML and JSON reports and provides insight into how y
 
 To compare query performance, verify you have done the following:
 
-- A [migration assessment](../../migrate/assess-migration/) using the [assess-migration](../reference/assess-migration/#assess-migration) command and have the statistics from the source database.
-- Ran a source workload on both the source and target YugabyteDB databases.
-- Statistics collection ([pg_stat_statements](../../../additional-features/pg-extensions/extension-pgstatstatements/)) is enabled on the target YugabyteDB database.
+- Performed a [migration assessment](../../migrate/assess-migration/) using the [assess-migration](../reference/assess-migration/#assess-migration) command, and have the statistics from the source database.
+- Run a source workload on both the source and target YugabyteDB databases.
+- Enabled statistics collection ([pg_stat_statements](../../../additional-features/pg-extensions/extension-pgstatstatements/)) on the target YugabyteDB database.
 
 Run the command as follows:
 

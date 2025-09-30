@@ -25,9 +25,9 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
 
 ## v2025.9.3 - September 30, 2025
 
-### New features
+### New feature
 
-- Added the ability to analyze, compare, and summarize workload query performance between the source database and the target YugabyteDB database using the [compare-performance](../reference/compare-performance/) command. The command generates both HTML and JSON reports for easy comparison.
+- {{<tags/feature/tp>}} Added the ability to analyze, compare, and summarize workload query performance between the source database and the target YugabyteDB database using the [compare-performance](../reference/compare-performance/) command. The command generates both HTML and JSON reports for easy comparison.
 
 ### Enhancements
 
@@ -38,7 +38,7 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
 ### Bug fixes
 
 - Fixed offline import data failing with accelerated data export mode when some tables are not created in the target database and excluded via table-list flags.
-- Fixed import data failing with error `failed to prepare table to column` in the upgrade scenario where export data is perfomed on releases prior to v2025.9.2, and then upgraded Voyager to v2025.9.2 for import data.
+- Fixed an issue where data exported using older versions (before v2025.9.2) could not be imported after upgrading Voyager to v2025.9.2. Import data would previously fail with the error `failed to prepare table to column`.
 - Fixed a nil pointer error when an unknown table name is included in the table list passed to the `import data` command.
 
 ## v2025.9.2 - September 16, 2025

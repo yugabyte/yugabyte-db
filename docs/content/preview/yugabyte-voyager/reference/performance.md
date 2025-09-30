@@ -41,13 +41,13 @@ Use one or more of the following techniques to improve import data performance:
 
 - **Load data in parallel**. yb-voyager imports batches from multiple tables at any given time using parallel connections. On YugabyteDB v2.20 and later, yb-voyager adjusts the number of connections based on the resource use (CPU and memory) of the cluster, with the goal of maintaining stability while optimizing CPU.
 
-Available flags:
+  Available flags:
 
-    By default, adaptive parallelism operates under moderate thresholds (`--adaptive-parallelism balanced`), where Voyager throttles the number of parallel connections if the CPU usage of any node exceeds 80%. To maximize CPU use for faster performance, you can use the `aggressive` flag; this is only recommended if you don't have any other running workloads.
+  - By default, adaptive parallelism operates under moderate thresholds (`--adaptive-parallelism balanced`), where Voyager throttles the number of parallel connections if the CPU usage of any node exceeds 80%. To maximize CPU use for faster performance, you can use the `aggressive` flag; this is only recommended if you don't have any other running workloads.
 
-- By default, the upper bound for the number of parallel connections is set to half the total number of cores in the YugabyteDB cluster. Use the `--adaptive-parallelism-max` flag to override this value.
+  - By default, the upper bound for the number of parallel connections is set to half the total number of cores in the YugabyteDB cluster. Use the `--adaptive-parallelism-max` flag to override this value.
 
-- To disable adaptive parallelism and specify a static number of connections, use `--adaptive-parallelism disabled --parallel-jobs N`.
+  - To disable adaptive parallelism and specify a static number of connections, use `--adaptive-parallelism disabled --parallel-jobs N`.
 
 - **Increase batch size**. The default [--batch-size](../../reference/data-migration/import-data/#arguments) is 20000 rows or approximately 200 MB of data, depending on whichever is reached first while preparing the batch. Normally this is considered a good default value. However, if the rows are too small, then you may consider increasing the batch size for greater throughput. Increasing the batch size to a very high value is not recommended as the whole batch is executed in one transaction.
 

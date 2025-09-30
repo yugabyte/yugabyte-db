@@ -119,6 +119,15 @@ export-data:
 
 | Path of the file containing the list of table names (comma-separated or line-separated) to exclude while exporting data. Table names follow the same convention as `--table-list`. |
 
+| --allow-oracle-clob-data-export |
+
+```yaml{.nocopy}
+export-data:
+  allow-oracle-clob-data-export:
+```
+
+| [Experimental] Allow exporting data of CLOB columns in offline migration. Oracle migrations only. The flag is _not supported_ for live migrations or [BETA_FAST_DATA_EXPORT](../../../migrate/migrate-steps/#accelerate-data-export-for-mysql-and-oracle). <br> Default: false <br> Accepted parameters: true, false |
+
 | -e, --export-dir |
 
 ```yaml{.nocopy}
@@ -134,6 +143,14 @@ send-diagnostics:
 ```
 
 | Enable or disable sending [diagnostics](../../../reference/diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
+
+| -l, --log-level |
+
+```yaml {.nocopy}
+log-level:
+```
+
+| Log level for yb-voyager. <br>Accepted values: trace, debug, info, warn, error, fatal, panic <br>Default: info |
 | --source-db-host |
 
 ```yaml{.nocopy}
@@ -279,14 +296,6 @@ source:
 
 | TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server. Oracle migrations only. |
 
-| --allow-oracle-clob-data-export |
-
-```yaml{.nocopy}
-source:
-  allow-oracle-clob-data-export:
-```
-
-| [Experimental] Allow exporting data of CLOB columns in offline migration. Oracle migrations only. The flag is _not supported_ for live migrations or [BETA_FAST_DATA_EXPORT](../../../migrate/migrate-steps/#accelerate-data-export-for-mysql-and-oracle). <br> Default: false <br> Accepted parameters: true, false |
 | --start-clean | — | Starts a fresh data export after clearing all data from the `data` directory. <br> Default: false <br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -h, --help | — | Command line help. |
 | -y, --yes | — | Answer yes to all prompts during the export schema operation. <br>Default: false |
@@ -417,6 +426,14 @@ export-dir:
 ```
 
 |Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
+
+| -l, --log-level |
+
+```yaml {.nocopy}
+log-level:
+```
+
+| Log level for yb-voyager. <br>Accepted values: trace, debug, info, warn, error, fatal, panic <br>Default: info |
 | --source-db-password |
 
 ```yaml{.nocopy}
@@ -534,6 +551,14 @@ send-diagnostics:
 ```
 
 | Enable or disable sending [diagnostics](../../../reference/diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
+
+| -l, --log-level |
+
+```yaml {.nocopy}
+log-level:
+```
+
+| Log level for yb-voyager. <br>Accepted values: trace, debug, info, warn, error, fatal, panic <br>Default: info |
 | --target-db-password |
 
 ```yaml{.nocopy}
