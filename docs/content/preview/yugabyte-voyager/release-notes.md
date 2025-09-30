@@ -29,6 +29,8 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
 
 - {{<tags/feature/tp>}} Added the ability to analyze, compare, and summarize workload query performance between the source database and the target YugabyteDB database using the [compare-performance](../reference/compare-performance/) command. The command generates both HTML and JSON reports for easy comparison.
 
+  Note that this feature is supported only for YugabyteDB release [v2025.1](/preview/releases/ybdb-releases/v2025.1/#v2025.1.0.0) and later.
+
 ### Enhancements
 
 - Improved import data to skip retrying errors that the `pgx` driver identifies as non‑retryable, enhancing stability.
