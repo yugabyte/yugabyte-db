@@ -39,7 +39,7 @@ yb-voyager only disables the constraint checks and triggers in the internal sess
 
 Use one or more of the following techniques to improve import data performance:
 
-- **Load data in parallel**. yb-voyager imports batches from multiple tables at any given time using N parallel connections. On YugabyteDB v2.20 and above, yb-voyager adapts the value of N depending on the resource usage (CPU/memory) of the cluster, with the goal of maintaining stability and an optimal CPU usage.
+- **Load data in parallel**. yb-voyager imports batches from multiple tables at any given time using parallel connections. On YugabyteDB v2.20 and later, yb-voyager adjusts the number of connections based on the resource use (CPU and memory) of the cluster, with the goal of maintaining stability while optimizing CPU.
 
 Available flags:
 

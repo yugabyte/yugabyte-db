@@ -31,7 +31,7 @@ The valid *arguments* for compare performance are described in the following tab
 | <div style="width:120px">CLI flag</div> | Config file parameter | Description |
 | :--- | :-------- | :---------- |
 
-| -c, --config-file | — | Path to the configiration file which is used to set the various parameters for yb-voyager commands. |
+| -c, --config-file | — | Path to a [configiration file](../configuration-file). |
 
 | -e, --export-dir |
 

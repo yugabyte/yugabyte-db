@@ -127,7 +127,7 @@ import-data:
   adaptive-parallelism:
 ```
 
-| Adapt parallelism based on the resource usage (CPU, memory) of the target YugabyteDB cluster. Choose from the following accepted modes: <ul><li> `balanced` (Default): Operate with moderate thresholds. Recommended when there are other workloads running on the cluster.</li><li>`aggressive`: Operate with aggressive max-CPU thresholds for better performance. Recommended when there are no other workloads running on the cluster.</li><li> `disabled`: Disable adaptive parallelism. </ul> |
+| Adjust parallelism based on the resource usage (CPU, memory) of the target YugabyteDB cluster. Choose from the following modes: <ul><li> `balanced` (Default): Run with moderate thresholds. Recommended when other workloads are running on the cluster.</li><li>`aggressive`: Run with maximum CPU thresholds for better performance. Recommended when no other workloads are running on the cluster.</li><li> `disabled`: Disable adaptive parallelism. </ul> |
 | --adaptive-parallelism-max |
 
 ```yaml{.nocopy}
@@ -388,7 +388,7 @@ export-dir:
 |Path to the export directory. This directory is a workspace used to keep the exported schema, data, state, and logs.|
 | -h, --help | — |Command line help. |
 | -y, --yes | — |Answer yes to all prompts during the import data operation. <br>Default: false |
-| --output-format | — | Format in which the report file is generated. <br>Accepted parameters: <ul><li> `json`: JSON format report file is generated.</li><li> `table` (Default): UI table is generated on the console as the report.</li></ul> |
+| --output-format | — | Format for the status report. <br>Accepted parameters: <ul><li> `json`: Generate a JSON format output file.</li><li> `table` (Default): Output the report to the console.</li></ul> |
 
 {{</table>}}
 
@@ -461,7 +461,7 @@ target:
 
 |Password to connect to the target YugabyteDB database. Alternatively, you can also specify the password by setting the environment variable `TARGET_DB_PASSWORD`. If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose the password in single quotes. |
 | -h, --help | — | Command line help. |
-| --output-format | — | Format in which the report file is generated. <br>Accepted parameters: <ul><li> `json`: JSON format report file is generated.</li><li> `table` (Default): UI table is generated on the console as the report.</li></ul> |
+| --output-format | — | Format for the status report. <br>Accepted parameters: <ul><li> `json`: Generate a JSON format output file.</li><li> `table` (Default): Output the report to the console.</li></ul> |
 
 {{</table>}}
 

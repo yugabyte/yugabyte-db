@@ -73,7 +73,7 @@ import-data-file:
   adaptive-parallelism:
 ```
 
-| Adapt parallelism based on the resource usage (CPU, memory) of the target YugabyteDB cluster. Choose from the following accepted modes: <ul><li> `balanced` (Default): Operate with moderate thresholds. Recommended when there are other workloads running on the cluster.</li><li>`aggressive`: Operate with aggressive max-CPU thresholds for better performance. Recommended when there are no other workloads running on the cluster.</li><li> `disabled`: Disable adaptive parallelism. </ul> |
+| Adjust parallelism based on the resource usage (CPU, memory) of the target YugabyteDB cluster. Choose from the following modes: <ul><li> `balanced` (Default): Run with moderate thresholds. Recommended when other workloads are running on the cluster.</li><li>`aggressive`: Run with maximum CPU thresholds for better performance. Recommended when no other workloads are running on the cluster.</li><li> `disabled`: Disable adaptive parallelism. </ul> |
 
 | --adaptive-parallelism-max |
 

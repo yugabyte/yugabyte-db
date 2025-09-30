@@ -286,7 +286,7 @@ source:
   allow-oracle-clob-data-export:
 ```
 
-| [Experimental] Allow exporting data of CLOB columns in offline migration. Oracle migrations only. The flag is _not supported_ for live migrations or BETA_FAST_DATA_EXPORT. <br> Default: false <br> Accepted parameters: true, false |
+| [Experimental] Allow exporting data of CLOB columns in offline migration. Oracle migrations only. The flag is _not supported_ for live migrations or [BETA_FAST_DATA_EXPORT](../../../migrate/migrate-steps/#accelerate-data-export-for-mysql-and-oracle). <br> Default: false <br> Accepted parameters: true, false |
 | --start-clean | — | Starts a fresh data export after clearing all data from the `data` directory. <br> Default: false <br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -h, --help | — | Command line help. |
 | -y, --yes | — | Answer yes to all prompts during the export schema operation. <br>Default: false |
@@ -370,7 +370,7 @@ export-dir:
 
 | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | — | Command line help. |
-| --output-format | — | Format in which the report file is generated. <br>Accepted parameters: <ul><li> `json`: JSON format report file is generated.</li><li> `table` (Default): UI table is generated on the console as the report.</li></ul> |
+| --output-format | — | Format for the status report. <br>Accepted parameters: <ul><li> `json`: Generate a JSON format output file.</li><li> `table` (Default): Output the report to the console.</li></ul> |
 
 {{</table>}}
 
@@ -442,7 +442,7 @@ target:
 
 |Password to connect to the target YugabyteDB database. Alternatively, you can also specify the password by setting the environment variable `TARGET_DB_PASSWORD`. If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose the password in single quotes. |
 | -h, --help | — | Command line help. |
-| --output-format | — | Format in which the report file is generated. <br>Accepted parameters: <ul><li> `json`: JSON format report file is generated.</li><li> `table` (Default): UI table is generated on the console as the report.</li></ul> |
+| --output-format | — | Format for the status report. <br>Accepted parameters: <ul><li> `json`: Generate a JSON format output file.</li><li> `table` (Default): Output the report to the console.</li></ul> |
 
 {{</table>}}
 

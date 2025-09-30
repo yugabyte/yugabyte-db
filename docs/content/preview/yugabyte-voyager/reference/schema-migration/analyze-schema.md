@@ -36,7 +36,7 @@ analyze-schema:
   output-format:
 ```
 
-|Format in which the report file is generated. One of `html`, `txt`, `json`, or `xml`. If not provided, reports are generated in both `json` and `html` formats by default. |
+|Format for the status report. One of `html`, `txt`, `json`, or `xml`. If not provided, reports are generated in both `json` and `html` formats by default. |
 | --target-db-version |
 
 ```yaml{.nocopy}
