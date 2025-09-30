@@ -29,7 +29,7 @@ set yb_prefer_bnl = off;
 -- hash pk
 explain (costs off, summary off)
 select * from t1 join t2 on t1.a = t2.k1;
-              QUERY PLAN              
+              QUERY PLAN
 --------------------------------------
  Nested Loop
    ->  Seq Scan on t1
@@ -40,7 +40,7 @@ select * from t1 join t2 on t1.a = t2.k1;
 -- unique secondary hash index
 explain (costs off, summary off)
 select * from t1 join t2 on t1.a = t2.k2;
-              QUERY PLAN              
+              QUERY PLAN
 --------------------------------------
  Nested Loop
    ->  Seq Scan on t1
@@ -51,7 +51,7 @@ select * from t1 join t2 on t1.a = t2.k2;
 -- non-unique secondary hash index
 explain (costs off, summary off)
 select * from t1 join t2 on t1.a = t2.k3;
-          QUERY PLAN          
+          QUERY PLAN
 ------------------------------
  Merge Join
    Merge Cond: (t1.a = t2.k3)
@@ -66,7 +66,7 @@ select * from t1 join t2 on t1.a = t2.k3;
 -- unique secondary hash index partial key match
 explain (costs off, summary off)
 select * from t1 join t2 on t1.a = t2.k4;
-          QUERY PLAN          
+          QUERY PLAN
 ------------------------------
  Merge Join
    Merge Cond: (t1.a = t2.k4)
@@ -81,7 +81,7 @@ select * from t1 join t2 on t1.a = t2.k4;
 -- pk
 explain (costs off, summary off)
 select * from t1 join t2r t2 on t1.a = t2.k1;
-                QUERY PLAN                 
+                QUERY PLAN
 -------------------------------------------
  Nested Loop
    ->  Seq Scan on t1
@@ -92,7 +92,7 @@ select * from t1 join t2r t2 on t1.a = t2.k1;
 -- unique secondary index
 explain (costs off, summary off)
 select * from t1 join t2r t2 on t1.a = t2.k2;
-                QUERY PLAN                 
+                QUERY PLAN
 -------------------------------------------
  Nested Loop
    ->  Seq Scan on t1
@@ -103,7 +103,7 @@ select * from t1 join t2r t2 on t1.a = t2.k2;
 -- non-unique secondary index
 explain (costs off, summary off)
 select * from t1 join t2r t2 on t1.a = t2.k3;
-                QUERY PLAN                 
+                QUERY PLAN
 -------------------------------------------
  Merge Join
    Merge Cond: (t2.k3 = t1.a)
@@ -116,7 +116,7 @@ select * from t1 join t2r t2 on t1.a = t2.k3;
 -- unique secondary index partial key match
 explain (costs off, summary off)
 select * from t1 join t2r t2 on t1.a = t2.k4;
-                 QUERY PLAN                  
+                 QUERY PLAN
 ---------------------------------------------
  Merge Join
    Merge Cond: (t2.k4 = t1.a)
@@ -133,7 +133,7 @@ set yb_prefer_bnl = on;
 -- hash pk
 explain (costs off, summary off)
 select * from t1 join t2 on t1.a = t2.k1;
-                            QUERY PLAN                            
+                            QUERY PLAN
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.k1)
@@ -145,7 +145,7 @@ select * from t1 join t2 on t1.a = t2.k1;
 -- unique secondary hash index
 explain (costs off, summary off)
 select * from t1 join t2 on t1.a = t2.k2;
-                            QUERY PLAN                            
+                            QUERY PLAN
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.k2)
@@ -157,7 +157,7 @@ select * from t1 join t2 on t1.a = t2.k2;
 -- non-unique secondary hash index
 explain (costs off, summary off)
 select * from t1 join t2 on t1.a = t2.k3;
-                            QUERY PLAN                            
+                            QUERY PLAN
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.k3)
@@ -169,7 +169,7 @@ select * from t1 join t2 on t1.a = t2.k3;
 -- unique secondary hash index partial key match
 explain (costs off, summary off)
 select * from t1 join t2 on t1.a = t2.k4;
-                            QUERY PLAN                            
+                            QUERY PLAN
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.k4)
@@ -181,7 +181,7 @@ select * from t1 join t2 on t1.a = t2.k4;
 -- pk
 explain (costs off, summary off)
 select * from t1 join t2r t2 on t1.a = t2.k1;
-                            QUERY PLAN                            
+                            QUERY PLAN
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.k1)
@@ -193,7 +193,7 @@ select * from t1 join t2r t2 on t1.a = t2.k1;
 -- unique secondary index
 explain (costs off, summary off)
 select * from t1 join t2r t2 on t1.a = t2.k2;
-                            QUERY PLAN                            
+                            QUERY PLAN
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.k2)
@@ -205,7 +205,7 @@ select * from t1 join t2r t2 on t1.a = t2.k2;
 -- non-unique secondary index
 explain (costs off, summary off)
 select * from t1 join t2r t2 on t1.a = t2.k3;
-                            QUERY PLAN                            
+                            QUERY PLAN
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.k3)
@@ -217,7 +217,7 @@ select * from t1 join t2r t2 on t1.a = t2.k3;
 -- unique secondary index partial key match
 explain (costs off, summary off)
 select * from t1 join t2r t2 on t1.a = t2.k4;
-                            QUERY PLAN                            
+                            QUERY PLAN
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.k4)
@@ -237,7 +237,7 @@ set yb_prefer_bnl = on;
 -- hash pk
 explain (costs off, summary off)
 select * from t1 join t2 on t1.a = t2.k1;
-                            QUERY PLAN                            
+                            QUERY PLAN
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.k1)
@@ -249,7 +249,7 @@ select * from t1 join t2 on t1.a = t2.k1;
 -- unique secondary hash index
 explain (costs off, summary off)
 select * from t1 join t2 on t1.a = t2.k2;
-                            QUERY PLAN                            
+                            QUERY PLAN
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.k2)
@@ -261,7 +261,7 @@ select * from t1 join t2 on t1.a = t2.k2;
 -- non-unique secondary hash index
 explain (costs off, summary off)
 select * from t1 join t2 on t1.a = t2.k3;
-          QUERY PLAN          
+          QUERY PLAN
 ------------------------------
  Merge Join
    Merge Cond: (t1.a = t2.k3)
@@ -276,7 +276,7 @@ select * from t1 join t2 on t1.a = t2.k3;
 -- unique secondary hash index partial key match
 explain (costs off, summary off)
 select * from t1 join t2 on t1.a = t2.k4;
-          QUERY PLAN          
+          QUERY PLAN
 ------------------------------
  Merge Join
    Merge Cond: (t1.a = t2.k4)
@@ -291,7 +291,7 @@ select * from t1 join t2 on t1.a = t2.k4;
 -- pk
 explain (costs off, summary off)
 select * from t1 join t2r t2 on t1.a = t2.k1;
-                            QUERY PLAN                            
+                            QUERY PLAN
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.k1)
@@ -303,7 +303,7 @@ select * from t1 join t2r t2 on t1.a = t2.k1;
 -- unique secondary index
 explain (costs off, summary off)
 select * from t1 join t2r t2 on t1.a = t2.k2;
-                            QUERY PLAN                            
+                            QUERY PLAN
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.k2)
@@ -315,7 +315,7 @@ select * from t1 join t2r t2 on t1.a = t2.k2;
 -- non-unique secondary index
 explain (costs off, summary off)
 select * from t1 join t2r t2 on t1.a = t2.k3;
-                QUERY PLAN                 
+                QUERY PLAN
 -------------------------------------------
  Merge Join
    Merge Cond: (t2.k3 = t1.a)
@@ -328,7 +328,7 @@ select * from t1 join t2r t2 on t1.a = t2.k3;
 -- unique secondary index partial key match
 explain (costs off, summary off)
 select * from t1 join t2r t2 on t1.a = t2.k4;
-                 QUERY PLAN                  
+                 QUERY PLAN
 ---------------------------------------------
  Merge Join
    Merge Cond: (t2.k4 = t1.a)
@@ -353,7 +353,7 @@ set yb_enable_cbo = legacy_bnl_mode;
 -- hash pk
 explain (costs off, summary off)
 select * from t1 join t2 on t1.a = t2.k1;
-              QUERY PLAN              
+              QUERY PLAN
 --------------------------------------
  Nested Loop
    ->  Seq Scan on t1
@@ -364,7 +364,7 @@ select * from t1 join t2 on t1.a = t2.k1;
 -- unique secondary hash index
 explain (costs off, summary off)
 select * from t1 join t2 on t1.a = t2.k2;
-              QUERY PLAN              
+              QUERY PLAN
 --------------------------------------
  Nested Loop
    ->  Seq Scan on t1
@@ -375,7 +375,7 @@ select * from t1 join t2 on t1.a = t2.k2;
 -- non-unique secondary hash index
 explain (costs off, summary off)
 select * from t1 join t2 on t1.a = t2.k3;
-         QUERY PLAN          
+         QUERY PLAN
 -----------------------------
  Hash Join
    Hash Cond: (t2.k3 = t1.a)
@@ -387,7 +387,7 @@ select * from t1 join t2 on t1.a = t2.k3;
 -- unique secondary hash index partial key match
 explain (costs off, summary off)
 select * from t1 join t2 on t1.a = t2.k4;
-         QUERY PLAN          
+         QUERY PLAN
 -----------------------------
  Hash Join
    Hash Cond: (t2.k4 = t1.a)
@@ -399,7 +399,7 @@ select * from t1 join t2 on t1.a = t2.k4;
 -- pk
 explain (costs off, summary off)
 select * from t1 join t2r t2 on t1.a = t2.k1;
-                QUERY PLAN                 
+                QUERY PLAN
 -------------------------------------------
  Nested Loop
    ->  Seq Scan on t1
@@ -410,7 +410,7 @@ select * from t1 join t2r t2 on t1.a = t2.k1;
 -- unique secondary index
 explain (costs off, summary off)
 select * from t1 join t2r t2 on t1.a = t2.k2;
-                QUERY PLAN                 
+                QUERY PLAN
 -------------------------------------------
  Nested Loop
    ->  Seq Scan on t1
@@ -421,7 +421,7 @@ select * from t1 join t2r t2 on t1.a = t2.k2;
 -- non-unique secondary index
 explain (costs off, summary off)
 select * from t1 join t2r t2 on t1.a = t2.k3;
-                QUERY PLAN                 
+                QUERY PLAN
 -------------------------------------------
  Merge Join
    Merge Cond: (t2.k3 = t1.a)
@@ -434,7 +434,109 @@ select * from t1 join t2r t2 on t1.a = t2.k3;
 -- unique secondary index partial key match
 explain (costs off, summary off)
 select * from t1 join t2r t2 on t1.a = t2.k4;
-                 QUERY PLAN                  
+                 QUERY PLAN
+---------------------------------------------
+ Merge Join
+   Merge Cond: (t2.k4 = t1.a)
+   ->  Index Scan using i_t2r_k4k5 on t2r t2
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+(6 rows)
+
+set yb_enable_cbo = legacy_ignore_stats_bnl_mode;
+\i sql/yb_legacy_join_plan_queries.sql
+-- hash pk
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k1;
+              QUERY PLAN
+--------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (k1 = t1.a)
+(4 rows)
+
+-- unique secondary hash index
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k2;
+              QUERY PLAN
+--------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2_k2 on t2
+         Index Cond: (k2 = t1.a)
+(4 rows)
+
+-- non-unique secondary hash index
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k3;
+          QUERY PLAN
+------------------------------
+ Merge Join
+   Merge Cond: (t1.a = t2.k3)
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+   ->  Sort
+         Sort Key: t2.k3
+         ->  Seq Scan on t2
+(8 rows)
+
+-- unique secondary hash index partial key match
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k4;
+          QUERY PLAN
+------------------------------
+ Merge Join
+   Merge Cond: (t1.a = t2.k4)
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+   ->  Sort
+         Sort Key: t2.k4
+         ->  Seq Scan on t2
+(8 rows)
+
+-- pk
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k1;
+                QUERY PLAN
+-------------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+   ->  Index Scan using t2r_pkey on t2r t2
+         Index Cond: (k1 = t1.a)
+(4 rows)
+
+-- unique secondary index
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k2;
+                QUERY PLAN
+-------------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2r_k2 on t2r t2
+         Index Cond: (k2 = t1.a)
+(4 rows)
+
+-- non-unique secondary index
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k3;
+                QUERY PLAN
+-------------------------------------------
+ Merge Join
+   Merge Cond: (t2.k3 = t1.a)
+   ->  Index Scan using i_t2r_k3 on t2r t2
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+(6 rows)
+
+-- unique secondary index partial key match
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k4;
+                 QUERY PLAN
 ---------------------------------------------
  Merge Join
    Merge Cond: (t2.k4 = t1.a)
@@ -449,7 +551,7 @@ set yb_enable_cbo = legacy_stats_bnl_mode;
 -- hash pk
 explain (costs off, summary off)
 select * from t1 join t2 on t1.a = t2.k1;
-              QUERY PLAN              
+              QUERY PLAN
 --------------------------------------
  Nested Loop
    ->  Seq Scan on t1
@@ -460,7 +562,7 @@ select * from t1 join t2 on t1.a = t2.k1;
 -- unique secondary hash index
 explain (costs off, summary off)
 select * from t1 join t2 on t1.a = t2.k2;
-              QUERY PLAN              
+              QUERY PLAN
 --------------------------------------
  Nested Loop
    ->  Seq Scan on t1
@@ -471,7 +573,7 @@ select * from t1 join t2 on t1.a = t2.k2;
 -- non-unique secondary hash index
 explain (costs off, summary off)
 select * from t1 join t2 on t1.a = t2.k3;
-              QUERY PLAN              
+              QUERY PLAN
 --------------------------------------
  Nested Loop
    ->  Seq Scan on t1
@@ -482,7 +584,7 @@ select * from t1 join t2 on t1.a = t2.k3;
 -- unique secondary hash index partial key match
 explain (costs off, summary off)
 select * from t1 join t2 on t1.a = t2.k4;
-               QUERY PLAN               
+               QUERY PLAN
 ----------------------------------------
  Nested Loop
    ->  Seq Scan on t1
@@ -493,7 +595,7 @@ select * from t1 join t2 on t1.a = t2.k4;
 -- pk
 explain (costs off, summary off)
 select * from t1 join t2r t2 on t1.a = t2.k1;
-                QUERY PLAN                 
+                QUERY PLAN
 -------------------------------------------
  Merge Join
    Merge Cond: (t2.k1 = t1.a)
@@ -506,7 +608,7 @@ select * from t1 join t2r t2 on t1.a = t2.k1;
 -- unique secondary index
 explain (costs off, summary off)
 select * from t1 join t2r t2 on t1.a = t2.k2;
-                QUERY PLAN                 
+                QUERY PLAN
 -------------------------------------------
  Merge Join
    Merge Cond: (t2.k2 = t1.a)
@@ -519,7 +621,7 @@ select * from t1 join t2r t2 on t1.a = t2.k2;
 -- non-unique secondary index
 explain (costs off, summary off)
 select * from t1 join t2r t2 on t1.a = t2.k3;
-                QUERY PLAN                 
+                QUERY PLAN
 -------------------------------------------
  Merge Join
    Merge Cond: (t2.k3 = t1.a)
@@ -532,7 +634,7 @@ select * from t1 join t2r t2 on t1.a = t2.k3;
 -- unique secondary index partial key match
 explain (costs off, summary off)
 select * from t1 join t2r t2 on t1.a = t2.k4;
-                 QUERY PLAN                  
+                 QUERY PLAN
 ---------------------------------------------
  Merge Join
    Merge Cond: (t2.k4 = t1.a)
@@ -550,7 +652,7 @@ set yb_enable_cbo = legacy_bnl_mode;
 -- hash pk
 explain (costs off, summary off)
 select * from t1 join t2 on t1.a = t2.k1;
-                            QUERY PLAN                            
+                            QUERY PLAN
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.k1)
@@ -562,7 +664,7 @@ select * from t1 join t2 on t1.a = t2.k1;
 -- unique secondary hash index
 explain (costs off, summary off)
 select * from t1 join t2 on t1.a = t2.k2;
-                            QUERY PLAN                            
+                            QUERY PLAN
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.k2)
@@ -574,7 +676,7 @@ select * from t1 join t2 on t1.a = t2.k2;
 -- non-unique secondary hash index
 explain (costs off, summary off)
 select * from t1 join t2 on t1.a = t2.k3;
-                            QUERY PLAN                            
+                            QUERY PLAN
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.k3)
@@ -586,7 +688,7 @@ select * from t1 join t2 on t1.a = t2.k3;
 -- unique secondary hash index partial key match
 explain (costs off, summary off)
 select * from t1 join t2 on t1.a = t2.k4;
-                            QUERY PLAN                            
+                            QUERY PLAN
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.k4)
@@ -598,7 +700,7 @@ select * from t1 join t2 on t1.a = t2.k4;
 -- pk
 explain (costs off, summary off)
 select * from t1 join t2r t2 on t1.a = t2.k1;
-                            QUERY PLAN                            
+                            QUERY PLAN
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.k1)
@@ -610,7 +712,7 @@ select * from t1 join t2r t2 on t1.a = t2.k1;
 -- unique secondary index
 explain (costs off, summary off)
 select * from t1 join t2r t2 on t1.a = t2.k2;
-                            QUERY PLAN                            
+                            QUERY PLAN
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.k2)
@@ -622,7 +724,7 @@ select * from t1 join t2r t2 on t1.a = t2.k2;
 -- non-unique secondary index
 explain (costs off, summary off)
 select * from t1 join t2r t2 on t1.a = t2.k3;
-                            QUERY PLAN                            
+                            QUERY PLAN
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.k3)
@@ -634,7 +736,105 @@ select * from t1 join t2r t2 on t1.a = t2.k3;
 -- unique secondary index partial key match
 explain (costs off, summary off)
 select * from t1 join t2r t2 on t1.a = t2.k4;
-                            QUERY PLAN                            
+                            QUERY PLAN
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k4)
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2r_k4k5 on t2r t2
+         Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+set yb_enable_cbo = legacy_ignore_stats_bnl_mode;
+\i sql/yb_legacy_join_plan_queries.sql
+-- hash pk
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k1;
+                            QUERY PLAN
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k1)
+   ->  Seq Scan on t1
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+-- unique secondary hash index
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k2;
+                            QUERY PLAN
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k2)
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2_k2 on t2
+         Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+-- non-unique secondary hash index
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k3;
+                            QUERY PLAN
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k3)
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2_k3 on t2
+         Index Cond: (k3 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+-- unique secondary hash index partial key match
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k4;
+                            QUERY PLAN
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k4)
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2_k4k5 on t2
+         Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+-- pk
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k1;
+                            QUERY PLAN
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k1)
+   ->  Seq Scan on t1
+   ->  Index Scan using t2r_pkey on t2r t2
+         Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+-- unique secondary index
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k2;
+                            QUERY PLAN
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k2)
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2r_k2 on t2r t2
+         Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+-- non-unique secondary index
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k3;
+                            QUERY PLAN
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k3)
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2r_k3 on t2r t2
+         Index Cond: (k3 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+-- unique secondary index partial key match
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k4;
+                            QUERY PLAN
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.k4)
@@ -648,7 +848,7 @@ set yb_enable_cbo = legacy_stats_bnl_mode;
 -- hash pk
 explain (costs off, summary off)
 select * from t1 join t2 on t1.a = t2.k1;
-                            QUERY PLAN                            
+                            QUERY PLAN
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.k1)
@@ -660,7 +860,7 @@ select * from t1 join t2 on t1.a = t2.k1;
 -- unique secondary hash index
 explain (costs off, summary off)
 select * from t1 join t2 on t1.a = t2.k2;
-                            QUERY PLAN                            
+                            QUERY PLAN
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.k2)
@@ -672,7 +872,7 @@ select * from t1 join t2 on t1.a = t2.k2;
 -- non-unique secondary hash index
 explain (costs off, summary off)
 select * from t1 join t2 on t1.a = t2.k3;
-                            QUERY PLAN                            
+                            QUERY PLAN
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.k3)
@@ -684,7 +884,7 @@ select * from t1 join t2 on t1.a = t2.k3;
 -- unique secondary hash index partial key match
 explain (costs off, summary off)
 select * from t1 join t2 on t1.a = t2.k4;
-                            QUERY PLAN                            
+                            QUERY PLAN
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.k4)
@@ -696,7 +896,7 @@ select * from t1 join t2 on t1.a = t2.k4;
 -- pk
 explain (costs off, summary off)
 select * from t1 join t2r t2 on t1.a = t2.k1;
-                            QUERY PLAN                            
+                            QUERY PLAN
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.k1)
@@ -708,7 +908,7 @@ select * from t1 join t2r t2 on t1.a = t2.k1;
 -- unique secondary index
 explain (costs off, summary off)
 select * from t1 join t2r t2 on t1.a = t2.k2;
-                            QUERY PLAN                            
+                            QUERY PLAN
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.k2)
@@ -720,7 +920,7 @@ select * from t1 join t2r t2 on t1.a = t2.k2;
 -- non-unique secondary index
 explain (costs off, summary off)
 select * from t1 join t2r t2 on t1.a = t2.k3;
-                            QUERY PLAN                            
+                            QUERY PLAN
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.k3)
@@ -732,7 +932,7 @@ select * from t1 join t2r t2 on t1.a = t2.k3;
 -- unique secondary index partial key match
 explain (costs off, summary off)
 select * from t1 join t2r t2 on t1.a = t2.k4;
-                            QUERY PLAN                            
+                            QUERY PLAN
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.k4)
@@ -752,7 +952,7 @@ set yb_enable_cbo = legacy_mode;
 -- hash pk
 explain (costs off, summary off)
 select * from t1 join t2 on t1.a = t2.k1;
-                            QUERY PLAN                            
+                            QUERY PLAN
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.k1)
@@ -764,7 +964,7 @@ select * from t1 join t2 on t1.a = t2.k1;
 -- unique secondary hash index
 explain (costs off, summary off)
 select * from t1 join t2 on t1.a = t2.k2;
-                            QUERY PLAN                            
+                            QUERY PLAN
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.k2)
@@ -776,7 +976,7 @@ select * from t1 join t2 on t1.a = t2.k2;
 -- non-unique secondary hash index
 explain (costs off, summary off)
 select * from t1 join t2 on t1.a = t2.k3;
-         QUERY PLAN          
+         QUERY PLAN
 -----------------------------
  Hash Join
    Hash Cond: (t2.k3 = t1.a)
@@ -788,7 +988,7 @@ select * from t1 join t2 on t1.a = t2.k3;
 -- unique secondary hash index partial key match
 explain (costs off, summary off)
 select * from t1 join t2 on t1.a = t2.k4;
-         QUERY PLAN          
+         QUERY PLAN
 -----------------------------
  Hash Join
    Hash Cond: (t2.k4 = t1.a)
@@ -800,7 +1000,7 @@ select * from t1 join t2 on t1.a = t2.k4;
 -- pk
 explain (costs off, summary off)
 select * from t1 join t2r t2 on t1.a = t2.k1;
-                            QUERY PLAN                            
+                            QUERY PLAN
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.k1)
@@ -812,7 +1012,7 @@ select * from t1 join t2r t2 on t1.a = t2.k1;
 -- unique secondary index
 explain (costs off, summary off)
 select * from t1 join t2r t2 on t1.a = t2.k2;
-                            QUERY PLAN                            
+                            QUERY PLAN
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.k2)
@@ -824,7 +1024,7 @@ select * from t1 join t2r t2 on t1.a = t2.k2;
 -- non-unique secondary index
 explain (costs off, summary off)
 select * from t1 join t2r t2 on t1.a = t2.k3;
-                QUERY PLAN                 
+                QUERY PLAN
 -------------------------------------------
  Merge Join
    Merge Cond: (t2.k3 = t1.a)
@@ -837,7 +1037,7 @@ select * from t1 join t2r t2 on t1.a = t2.k3;
 -- unique secondary index partial key match
 explain (costs off, summary off)
 select * from t1 join t2r t2 on t1.a = t2.k4;
-                 QUERY PLAN                  
+                 QUERY PLAN
 ---------------------------------------------
  Merge Join
    Merge Cond: (t2.k4 = t1.a)
@@ -852,7 +1052,7 @@ set yb_enable_cbo = legacy_stats_mode;
 -- hash pk
 explain (costs off, summary off)
 select * from t1 join t2 on t1.a = t2.k1;
-                            QUERY PLAN                            
+                            QUERY PLAN
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.k1)
@@ -864,7 +1064,7 @@ select * from t1 join t2 on t1.a = t2.k1;
 -- unique secondary hash index
 explain (costs off, summary off)
 select * from t1 join t2 on t1.a = t2.k2;
-                            QUERY PLAN                            
+                            QUERY PLAN
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.k2)
@@ -876,7 +1076,7 @@ select * from t1 join t2 on t1.a = t2.k2;
 -- non-unique secondary hash index
 explain (costs off, summary off)
 select * from t1 join t2 on t1.a = t2.k3;
-                            QUERY PLAN                            
+                            QUERY PLAN
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.k3)
@@ -888,7 +1088,7 @@ select * from t1 join t2 on t1.a = t2.k3;
 -- unique secondary hash index partial key match
 explain (costs off, summary off)
 select * from t1 join t2 on t1.a = t2.k4;
-                            QUERY PLAN                            
+                            QUERY PLAN
 ------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.k4)
@@ -900,7 +1100,7 @@ select * from t1 join t2 on t1.a = t2.k4;
 -- pk
 explain (costs off, summary off)
 select * from t1 join t2r t2 on t1.a = t2.k1;
-                QUERY PLAN                 
+                QUERY PLAN
 -------------------------------------------
  Merge Join
    Merge Cond: (t2.k1 = t1.a)
@@ -913,7 +1113,7 @@ select * from t1 join t2r t2 on t1.a = t2.k1;
 -- unique secondary index
 explain (costs off, summary off)
 select * from t1 join t2r t2 on t1.a = t2.k2;
-                QUERY PLAN                 
+                QUERY PLAN
 -------------------------------------------
  Merge Join
    Merge Cond: (t2.k2 = t1.a)
@@ -926,7 +1126,7 @@ select * from t1 join t2r t2 on t1.a = t2.k2;
 -- non-unique secondary index
 explain (costs off, summary off)
 select * from t1 join t2r t2 on t1.a = t2.k3;
-                QUERY PLAN                 
+                QUERY PLAN
 -------------------------------------------
  Merge Join
    Merge Cond: (t2.k3 = t1.a)
@@ -939,7 +1139,7 @@ select * from t1 join t2r t2 on t1.a = t2.k3;
 -- unique secondary index partial key match
 explain (costs off, summary off)
 select * from t1 join t2r t2 on t1.a = t2.k4;
-                 QUERY PLAN                  
+                 QUERY PLAN
 ---------------------------------------------
  Merge Join
    Merge Cond: (t2.k4 = t1.a)
@@ -957,7 +1157,7 @@ set yb_enable_cbo = legacy_mode;
 -- hash pk
 explain (costs off, summary off)
 select * from t1 join t2 on t1.a = t2.k1;
-              QUERY PLAN              
+              QUERY PLAN
 --------------------------------------
  Nested Loop
    ->  Seq Scan on t1
@@ -968,7 +1168,7 @@ select * from t1 join t2 on t1.a = t2.k1;
 -- unique secondary hash index
 explain (costs off, summary off)
 select * from t1 join t2 on t1.a = t2.k2;
-              QUERY PLAN              
+              QUERY PLAN
 --------------------------------------
  Nested Loop
    ->  Seq Scan on t1
@@ -979,7 +1179,7 @@ select * from t1 join t2 on t1.a = t2.k2;
 -- non-unique secondary hash index
 explain (costs off, summary off)
 select * from t1 join t2 on t1.a = t2.k3;
-         QUERY PLAN          
+         QUERY PLAN
 -----------------------------
  Hash Join
    Hash Cond: (t2.k3 = t1.a)
@@ -991,7 +1191,7 @@ select * from t1 join t2 on t1.a = t2.k3;
 -- unique secondary hash index partial key match
 explain (costs off, summary off)
 select * from t1 join t2 on t1.a = t2.k4;
-         QUERY PLAN          
+         QUERY PLAN
 -----------------------------
  Hash Join
    Hash Cond: (t2.k4 = t1.a)
@@ -1003,7 +1203,7 @@ select * from t1 join t2 on t1.a = t2.k4;
 -- pk
 explain (costs off, summary off)
 select * from t1 join t2r t2 on t1.a = t2.k1;
-                QUERY PLAN                 
+                QUERY PLAN
 -------------------------------------------
  Nested Loop
    ->  Seq Scan on t1
@@ -1014,7 +1214,7 @@ select * from t1 join t2r t2 on t1.a = t2.k1;
 -- unique secondary index
 explain (costs off, summary off)
 select * from t1 join t2r t2 on t1.a = t2.k2;
-                QUERY PLAN                 
+                QUERY PLAN
 -------------------------------------------
  Nested Loop
    ->  Seq Scan on t1
@@ -1025,7 +1225,7 @@ select * from t1 join t2r t2 on t1.a = t2.k2;
 -- non-unique secondary index
 explain (costs off, summary off)
 select * from t1 join t2r t2 on t1.a = t2.k3;
-                QUERY PLAN                 
+                QUERY PLAN
 -------------------------------------------
  Merge Join
    Merge Cond: (t2.k3 = t1.a)
@@ -1038,7 +1238,7 @@ select * from t1 join t2r t2 on t1.a = t2.k3;
 -- unique secondary index partial key match
 explain (costs off, summary off)
 select * from t1 join t2r t2 on t1.a = t2.k4;
-                 QUERY PLAN                  
+                 QUERY PLAN
 ---------------------------------------------
  Merge Join
    Merge Cond: (t2.k4 = t1.a)
@@ -1053,7 +1253,7 @@ set yb_enable_cbo = legacy_stats_mode;
 -- hash pk
 explain (costs off, summary off)
 select * from t1 join t2 on t1.a = t2.k1;
-              QUERY PLAN              
+              QUERY PLAN
 --------------------------------------
  Nested Loop
    ->  Seq Scan on t1
@@ -1064,7 +1264,7 @@ select * from t1 join t2 on t1.a = t2.k1;
 -- unique secondary hash index
 explain (costs off, summary off)
 select * from t1 join t2 on t1.a = t2.k2;
-              QUERY PLAN              
+              QUERY PLAN
 --------------------------------------
  Nested Loop
    ->  Seq Scan on t1
@@ -1075,7 +1275,7 @@ select * from t1 join t2 on t1.a = t2.k2;
 -- non-unique secondary hash index
 explain (costs off, summary off)
 select * from t1 join t2 on t1.a = t2.k3;
-              QUERY PLAN              
+              QUERY PLAN
 --------------------------------------
  Nested Loop
    ->  Seq Scan on t1
@@ -1086,7 +1286,7 @@ select * from t1 join t2 on t1.a = t2.k3;
 -- unique secondary hash index partial key match
 explain (costs off, summary off)
 select * from t1 join t2 on t1.a = t2.k4;
-               QUERY PLAN               
+               QUERY PLAN
 ----------------------------------------
  Nested Loop
    ->  Seq Scan on t1
@@ -1097,7 +1297,7 @@ select * from t1 join t2 on t1.a = t2.k4;
 -- pk
 explain (costs off, summary off)
 select * from t1 join t2r t2 on t1.a = t2.k1;
-                QUERY PLAN                 
+                QUERY PLAN
 -------------------------------------------
  Merge Join
    Merge Cond: (t2.k1 = t1.a)
@@ -1110,7 +1310,7 @@ select * from t1 join t2r t2 on t1.a = t2.k1;
 -- unique secondary index
 explain (costs off, summary off)
 select * from t1 join t2r t2 on t1.a = t2.k2;
-                QUERY PLAN                 
+                QUERY PLAN
 -------------------------------------------
  Merge Join
    Merge Cond: (t2.k2 = t1.a)
@@ -1123,7 +1323,7 @@ select * from t1 join t2r t2 on t1.a = t2.k2;
 -- non-unique secondary index
 explain (costs off, summary off)
 select * from t1 join t2r t2 on t1.a = t2.k3;
-                QUERY PLAN                 
+                QUERY PLAN
 -------------------------------------------
  Merge Join
    Merge Cond: (t2.k3 = t1.a)
@@ -1136,7 +1336,7 @@ select * from t1 join t2r t2 on t1.a = t2.k3;
 -- unique secondary index partial key match
 explain (costs off, summary off)
 select * from t1 join t2r t2 on t1.a = t2.k4;
-                 QUERY PLAN                  
+                 QUERY PLAN
 ---------------------------------------------
  Merge Join
    Merge Cond: (t2.k4 = t1.a)

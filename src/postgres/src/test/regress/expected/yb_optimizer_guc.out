@@ -17,7 +17,8 @@ declare
                          '{"(off, off, off)"}'::text[] || /* legacy ignore stats */
                          '{"(legacy_stats_mode, off, on)"}'::text[] ||
                          '{"(legacy_bnl_mode, off, off)"}'::text[] ||
-                         '{"(legacy_stats_bnl_mode, off, on)"}'::text[];
+                         '{"(legacy_stats_bnl_mode, off, on)"}'::text[] ||
+                         '{"(legacy_ignore_stats_bnl_mode, off, off)"}'::text[];
 begin
     execute 'show yb_enable_cbo' into cbo;
     execute 'show yb_enable_base_scans_cost_model' into bscm;
@@ -34,7 +35,7 @@ reset yb_enable_cbo;
 reset yb_enable_base_scans_cost_model;
 reset yb_enable_optimizer_statistics;
 select check_optimizer_guc() "(cbo, bscm, stats)";
-   (cbo, bscm, stats)    
+   (cbo, bscm, stats)
 -------------------------
  (legacy_mode, off, off)
 (1 row)
@@ -44,112 +45,154 @@ select check_optimizer_guc() "(cbo, bscm, stats)";
 --------------------------
 set yb_enable_cbo = on;
 select check_optimizer_guc() "(cbo, bscm, stats)";
- (cbo, bscm, stats) 
+ (cbo, bscm, stats)
 --------------------
  (on, on, off)
 (1 row)
 
 set yb_enable_cbo = legacy_stats_mode;
 select check_optimizer_guc() "(cbo, bscm, stats)";
-      (cbo, bscm, stats)      
+      (cbo, bscm, stats)
 ------------------------------
  (legacy_stats_mode, off, on)
 (1 row)
 
 set yb_enable_cbo = on;
 select check_optimizer_guc() "(cbo, bscm, stats)";
- (cbo, bscm, stats) 
+ (cbo, bscm, stats)
 --------------------
  (on, on, off)
 (1 row)
 
 set yb_enable_cbo = legacy_mode;
 select check_optimizer_guc() "(cbo, bscm, stats)";
-   (cbo, bscm, stats)    
+   (cbo, bscm, stats)
 -------------------------
  (legacy_mode, off, off)
 (1 row)
 
 set yb_enable_cbo = on;
 select check_optimizer_guc() "(cbo, bscm, stats)";
- (cbo, bscm, stats) 
+ (cbo, bscm, stats)
 --------------------
  (on, on, off)
 (1 row)
 
 set yb_enable_cbo = legacy_bnl_mode;
 select check_optimizer_guc() "(cbo, bscm, stats)";
-     (cbo, bscm, stats)      
+     (cbo, bscm, stats)
 -----------------------------
  (legacy_bnl_mode, off, off)
 (1 row)
 
 set yb_enable_cbo = on;
 select check_optimizer_guc() "(cbo, bscm, stats)";
- (cbo, bscm, stats) 
+ (cbo, bscm, stats)
 --------------------
  (on, on, off)
 (1 row)
 
 set yb_enable_cbo = off;
 select check_optimizer_guc() "(cbo, bscm, stats)";
- (cbo, bscm, stats) 
+ (cbo, bscm, stats)
 --------------------
  (off, off, off)
 (1 row)
 
 set yb_enable_cbo = legacy_mode;
 select check_optimizer_guc() "(cbo, bscm, stats)";
-   (cbo, bscm, stats)    
+   (cbo, bscm, stats)
 -------------------------
  (legacy_mode, off, off)
 (1 row)
 
 set yb_enable_cbo = off;
 select check_optimizer_guc() "(cbo, bscm, stats)";
- (cbo, bscm, stats) 
+ (cbo, bscm, stats)
 --------------------
  (off, off, off)
 (1 row)
 
 set yb_enable_cbo = legacy_stats_mode;
 select check_optimizer_guc() "(cbo, bscm, stats)";
-      (cbo, bscm, stats)      
+      (cbo, bscm, stats)
 ------------------------------
  (legacy_stats_mode, off, on)
 (1 row)
 
 set yb_enable_cbo = legacy_mode;
 select check_optimizer_guc() "(cbo, bscm, stats)";
-   (cbo, bscm, stats)    
+   (cbo, bscm, stats)
 -------------------------
  (legacy_mode, off, off)
 (1 row)
 
 set yb_enable_cbo = legacy_stats_mode;
 select check_optimizer_guc() "(cbo, bscm, stats)";
-      (cbo, bscm, stats)      
+      (cbo, bscm, stats)
 ------------------------------
  (legacy_stats_mode, off, on)
 (1 row)
 
 set yb_enable_cbo = on;
 select check_optimizer_guc() "(cbo, bscm, stats)";
- (cbo, bscm, stats) 
+ (cbo, bscm, stats)
 --------------------
  (on, on, off)
 (1 row)
 
 set yb_enable_cbo = legacy_bnl_mode;
 select check_optimizer_guc() "(cbo, bscm, stats)";
-     (cbo, bscm, stats)      
+     (cbo, bscm, stats)
 -----------------------------
  (legacy_bnl_mode, off, off)
 (1 row)
 
 set yb_enable_cbo = off;
 select check_optimizer_guc() "(cbo, bscm, stats)";
- (cbo, bscm, stats) 
+ (cbo, bscm, stats)
+--------------------
+ (off, off, off)
+(1 row)
+
+set yb_enable_cbo = on;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+ (cbo, bscm, stats)
+--------------------
+ (on, on, off)
+(1 row)
+
+set yb_enable_cbo = legacy_stats_bnl_mode;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+        (cbo, bscm, stats)
+----------------------------------
+ (legacy_stats_bnl_mode, off, on)
+(1 row)
+
+set yb_enable_cbo = off;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+ (cbo, bscm, stats)
+--------------------
+ (off, off, off)
+(1 row)
+
+set yb_enable_cbo = on;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+ (cbo, bscm, stats)
+--------------------
+ (on, on, off)
+(1 row)
+
+set yb_enable_cbo = legacy_ignore_stats_bnl_mode;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+            (cbo, bscm, stats)
+------------------------------------------
+ (legacy_ignore_stats_bnl_mode, off, off)
+(1 row)
+
+set yb_enable_cbo = off;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+ (cbo, bscm, stats)
 --------------------
  (off, off, off)
 (1 row)
@@ -160,7 +203,7 @@ select check_optimizer_guc() "(cbo, bscm, stats)";
 -- (bscm, stats) off, off -> stats = on
 set yb_enable_optimizer_statistics = on;
 select check_optimizer_guc() "(cbo, bscm, stats)";
-      (cbo, bscm, stats)      
+      (cbo, bscm, stats)
 ------------------------------
  (legacy_stats_mode, off, on)
 (1 row)
@@ -168,7 +211,7 @@ select check_optimizer_guc() "(cbo, bscm, stats)";
 -- (bscm, stats) off, on -> bscm = on
 set yb_enable_base_scans_cost_model = on;
 select check_optimizer_guc() "(cbo, bscm, stats)";
- (cbo, bscm, stats) 
+ (cbo, bscm, stats)
 --------------------
  (on, on, on)
 (1 row)
@@ -176,7 +219,7 @@ select check_optimizer_guc() "(cbo, bscm, stats)";
 -- (bscm, stats) on, on -> bscm = off
 set yb_enable_base_scans_cost_model = off;
 select check_optimizer_guc() "(cbo, bscm, stats)";
-      (cbo, bscm, stats)      
+      (cbo, bscm, stats)
 ------------------------------
  (legacy_stats_mode, off, on)
 (1 row)
@@ -184,7 +227,7 @@ select check_optimizer_guc() "(cbo, bscm, stats)";
 -- (bscm, stats) off, on -> stats = off
 set yb_enable_optimizer_statistics = off;
 select check_optimizer_guc() "(cbo, bscm, stats)";
-   (cbo, bscm, stats)    
+   (cbo, bscm, stats)
 -------------------------
  (legacy_mode, off, off)
 (1 row)
@@ -192,7 +235,7 @@ select check_optimizer_guc() "(cbo, bscm, stats)";
 -- (bscm, stats) off, off -> bscm = on
 set yb_enable_base_scans_cost_model = on;
 select check_optimizer_guc() "(cbo, bscm, stats)";
- (cbo, bscm, stats) 
+ (cbo, bscm, stats)
 --------------------
  (on, on, off)
 (1 row)
@@ -200,7 +243,7 @@ select check_optimizer_guc() "(cbo, bscm, stats)";
 -- (bscm, stats) on, off -> stats = on
 set yb_enable_optimizer_statistics = on;
 select check_optimizer_guc() "(cbo, bscm, stats)";
- (cbo, bscm, stats) 
+ (cbo, bscm, stats)
 --------------------
  (on, on, on)
 (1 row)
@@ -208,7 +251,7 @@ select check_optimizer_guc() "(cbo, bscm, stats)";
 -- (bscm, stats) on, on -> stats = off
 set yb_enable_optimizer_statistics = off;
 select check_optimizer_guc() "(cbo, bscm, stats)";
- (cbo, bscm, stats) 
+ (cbo, bscm, stats)
 --------------------
  (on, on, off)
 (1 row)
@@ -216,122 +259,178 @@ select check_optimizer_guc() "(cbo, bscm, stats)";
 -- (bscm, stats) on, off -> bscm = off
 set yb_enable_base_scans_cost_model = off;
 select check_optimizer_guc() "(cbo, bscm, stats)";
-   (cbo, bscm, stats)    
+   (cbo, bscm, stats)
 -------------------------
  (legacy_mode, off, off)
 (1 row)
 
---------------------------------------------------------------------
--- no legacy_(stats_)bnl_mode after changing either bscm or stats --
---------------------------------------------------------------------
+-----------------------------------------------------------------------------
+-- no legacy_((ignore_)stats_)bnl_mode after changing either bscm or stats --
+-----------------------------------------------------------------------------
 set yb_enable_cbo = legacy_bnl_mode;
 select check_optimizer_guc() "(cbo, bscm, stats)";
-     (cbo, bscm, stats)      
+     (cbo, bscm, stats)
 -----------------------------
  (legacy_bnl_mode, off, off)
 (1 row)
 
 set yb_enable_base_scans_cost_model = on;
 select check_optimizer_guc() "(cbo, bscm, stats)";
- (cbo, bscm, stats) 
+ (cbo, bscm, stats)
 --------------------
  (on, on, off)
 (1 row)
 
 set yb_enable_cbo = legacy_bnl_mode;
 select check_optimizer_guc() "(cbo, bscm, stats)";
-     (cbo, bscm, stats)      
+     (cbo, bscm, stats)
 -----------------------------
  (legacy_bnl_mode, off, off)
 (1 row)
 
 set yb_enable_base_scans_cost_model = off;
 select check_optimizer_guc() "(cbo, bscm, stats)";
-   (cbo, bscm, stats)    
+   (cbo, bscm, stats)
 -------------------------
  (legacy_mode, off, off)
 (1 row)
 
 set yb_enable_cbo = legacy_bnl_mode;
 select check_optimizer_guc() "(cbo, bscm, stats)";
-     (cbo, bscm, stats)      
+     (cbo, bscm, stats)
 -----------------------------
  (legacy_bnl_mode, off, off)
 (1 row)
 
 set yb_enable_optimizer_statistics = on;
 select check_optimizer_guc() "(cbo, bscm, stats)";
-      (cbo, bscm, stats)      
+      (cbo, bscm, stats)
 ------------------------------
  (legacy_stats_mode, off, on)
 (1 row)
 
 set yb_enable_cbo = legacy_bnl_mode;
 select check_optimizer_guc() "(cbo, bscm, stats)";
-     (cbo, bscm, stats)      
+     (cbo, bscm, stats)
 -----------------------------
  (legacy_bnl_mode, off, off)
 (1 row)
 
 set yb_enable_optimizer_statistics = off;
 select check_optimizer_guc() "(cbo, bscm, stats)";
-   (cbo, bscm, stats)    
+   (cbo, bscm, stats)
 -------------------------
  (legacy_mode, off, off)
 (1 row)
 
 set yb_enable_cbo = legacy_stats_bnl_mode;
 select check_optimizer_guc() "(cbo, bscm, stats)";
-        (cbo, bscm, stats)        
+        (cbo, bscm, stats)
 ----------------------------------
  (legacy_stats_bnl_mode, off, on)
 (1 row)
 
 set yb_enable_base_scans_cost_model = on;
 select check_optimizer_guc() "(cbo, bscm, stats)";
- (cbo, bscm, stats) 
+ (cbo, bscm, stats)
 --------------------
  (on, on, on)
 (1 row)
 
 set yb_enable_cbo = legacy_stats_bnl_mode;
 select check_optimizer_guc() "(cbo, bscm, stats)";
-        (cbo, bscm, stats)        
+        (cbo, bscm, stats)
 ----------------------------------
  (legacy_stats_bnl_mode, off, on)
 (1 row)
 
 set yb_enable_base_scans_cost_model = off;
 select check_optimizer_guc() "(cbo, bscm, stats)";
-      (cbo, bscm, stats)      
+      (cbo, bscm, stats)
 ------------------------------
  (legacy_stats_mode, off, on)
 (1 row)
 
 set yb_enable_cbo = legacy_stats_bnl_mode;
 select check_optimizer_guc() "(cbo, bscm, stats)";
-        (cbo, bscm, stats)        
+        (cbo, bscm, stats)
 ----------------------------------
  (legacy_stats_bnl_mode, off, on)
 (1 row)
 
 set yb_enable_optimizer_statistics = on;
 select check_optimizer_guc() "(cbo, bscm, stats)";
-      (cbo, bscm, stats)      
+      (cbo, bscm, stats)
 ------------------------------
  (legacy_stats_mode, off, on)
 (1 row)
 
 set yb_enable_cbo = legacy_stats_bnl_mode;
 select check_optimizer_guc() "(cbo, bscm, stats)";
-        (cbo, bscm, stats)        
+        (cbo, bscm, stats)
 ----------------------------------
  (legacy_stats_bnl_mode, off, on)
 (1 row)
 
 set yb_enable_optimizer_statistics = off;
 select check_optimizer_guc() "(cbo, bscm, stats)";
-   (cbo, bscm, stats)    
+   (cbo, bscm, stats)
+-------------------------
+ (legacy_mode, off, off)
+(1 row)
+
+set yb_enable_cbo = legacy_ignore_stats_bnl_mode;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+            (cbo, bscm, stats)
+------------------------------------------
+ (legacy_ignore_stats_bnl_mode, off, off)
+(1 row)
+
+set yb_enable_base_scans_cost_model = on;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+ (cbo, bscm, stats)
+--------------------
+ (on, on, off)
+(1 row)
+
+set yb_enable_cbo = legacy_ignore_stats_bnl_mode;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+            (cbo, bscm, stats)
+------------------------------------------
+ (legacy_ignore_stats_bnl_mode, off, off)
+(1 row)
+
+set yb_enable_base_scans_cost_model = off;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+   (cbo, bscm, stats)
+-------------------------
+ (legacy_mode, off, off)
+(1 row)
+
+set yb_enable_cbo = legacy_ignore_stats_bnl_mode;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+            (cbo, bscm, stats)
+------------------------------------------
+ (legacy_ignore_stats_bnl_mode, off, off)
+(1 row)
+
+set yb_enable_optimizer_statistics = on;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+      (cbo, bscm, stats)
+------------------------------
+ (legacy_stats_mode, off, on)
+(1 row)
+
+set yb_enable_cbo = legacy_ignore_stats_bnl_mode;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+            (cbo, bscm, stats)
+------------------------------------------
+ (legacy_ignore_stats_bnl_mode, off, off)
+(1 row)
+
+set yb_enable_optimizer_statistics = off;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+   (cbo, bscm, stats)
 -------------------------
  (legacy_mode, off, off)
 (1 row)
@@ -341,42 +440,42 @@ select check_optimizer_guc() "(cbo, bscm, stats)";
 ---------------------
 set yb_enable_cbo = true;
 show yb_enable_cbo;
- yb_enable_cbo 
+ yb_enable_cbo
 ---------------
  on
 (1 row)
 
 set yb_enable_cbo = false;
 show yb_enable_cbo;
- yb_enable_cbo 
+ yb_enable_cbo
 ---------------
  off
 (1 row)
 
 set yb_enable_cbo = yes;
 show yb_enable_cbo;
- yb_enable_cbo 
+ yb_enable_cbo
 ---------------
  on
 (1 row)
 
 set yb_enable_cbo = no;
 show yb_enable_cbo;
- yb_enable_cbo 
+ yb_enable_cbo
 ---------------
  off
 (1 row)
 
 set yb_enable_cbo = 1;
 show yb_enable_cbo;
- yb_enable_cbo 
+ yb_enable_cbo
 ---------------
  on
 (1 row)
 
 set yb_enable_cbo = 0;
 show yb_enable_cbo;
- yb_enable_cbo 
+ yb_enable_cbo
 ---------------
  off
 (1 row)
@@ -386,4 +485,4 @@ show yb_enable_cbo;
 -----------
 set yb_enable_cbo = oui;
 ERROR:  invalid value for parameter "yb_enable_cbo": "oui"
-HINT:  Available values: off, on, legacy_mode, legacy_stats_mode, legacy_bnl_mode, legacy_stats_bnl_mode.
+HINT:  Available values: off, on, legacy_mode, legacy_stats_mode, legacy_bnl_mode, legacy_stats_bnl_mode, legacy_ignore_stats_bnl_mode.
