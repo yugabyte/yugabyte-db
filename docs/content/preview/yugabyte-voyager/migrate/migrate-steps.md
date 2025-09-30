@@ -727,7 +727,7 @@ For more details, refer to GitHub issue [#360](https://github.com/yugabyte/yb-vo
 
 ### Validate query performance
 
-{{<tags/feature/tp>}} You can compare query performance between the source database and the target YugabyteDB database (supported for YugabyteDB v2025.1 and later) using the [yb-voyager compare-performance](../../reference/compare-performance/) command.
+{{<tags/feature/tp>}} You can compare query performance between the source database and the target YugabyteDB database (supported only for YugabyteDB releases [v2025.1](/preview/releases/ybdb-releases/v2025.1/) and later) using the [yb-voyager compare-performance](../../reference/compare-performance/) command.
 
 This command analyzes statistics collected during [assess migration](../assess-migration/) from the source database and compares it with statistics collected from the target YugabyteDB database.
 
