@@ -20,7 +20,7 @@ type: docs
 
 Databases can be resource-intensive, consuming a lot of memory, CPU, IO, and network resources. By optimizing your YCQL, you can minimize resource use. The `ycql_stat_statements` module helps you track execution statistics for all the YCQL statements executed by a server.
 
-This view is accessible only via YSQL and provides YCQL statement metrics (similar to pg_stat_statements) that are also present on `<yb-tserver-ip>:12000/statements`. The view can be joined with YCQL wait events in the [yb_active_session_history](../../../launch-and-manage/monitor-and-alert/active-session-history-monitor/#yb-active-session-history) view on the query ID.
+This view is accessible only via YSQL and provides YCQL statement metrics (similar to pg_stat_statements) that are also present on `<yb-tserver-ip>:12000/statements`. The view can be joined with YCQL wait events in the [yb_active_session_history](../../active-session-history-monitor/#yb-active-session-history) view on the query ID.
 
 This view is added in a YSQL extension `yb_ycql_utils`, which is not enabled by default.
 
@@ -42,7 +42,7 @@ The columns of the `ycql_stat_statements` view are described in the following ta
 
 {{% setup/local %}}
 
-Note that as this view is accessible via YSQL, run your examples using [ysqlsh](../../../api/ysqlsh/#starting-ysqlsh).
+Note that as this view is accessible via YSQL, run your examples using [ysqlsh](../../../../api/ysqlsh/#starting-ysqlsh).
 
 ### Describe the columns in the view
 
@@ -75,7 +75,7 @@ Note that as this view is accessible via YSQL, run your examples using [ysqlsh](
 
 ### Get basic information
 
-The following example uses a [YCQL workload generator](../../../benchmark/key-value-workload-ycql/) to run YCQL queries in the background and then uses YSQL to query `ycql_stat_statements`.
+The following example uses a [YCQL workload generator](../../../../benchmark/key-value-workload-ycql/) to run YCQL queries in the background and then uses YSQL to query `ycql_stat_statements`.
 
 ```sql
 yugabyte=# SELECT * FROM ycql_stat_statements;

@@ -476,5 +476,5 @@ ed) desc limit $1
 
 ## Learn more
 
-- [Latency histogram and P99 latencies](../../../yugabyte-platform/alerts-monitoring/latency-histogram/) in YugabyteDB Anywhere
-- [Active Session History](../../observability/active-session-history)
+- [Latency histogram and P99 latencies](../../../../yugabyte-platform/alerts-monitoring/latency-histogram/) in YugabyteDB Anywhere
+- [Active Session History](../../../../explore/observability/active-session-history)

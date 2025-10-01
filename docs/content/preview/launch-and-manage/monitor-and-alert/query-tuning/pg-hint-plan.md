@@ -47,7 +47,7 @@ To enable pg_hint_plan, run the following command (if hints are not already enab
 yugabyte=# SET pg_hint_plan.enable_hint=ON;
 ```
 
-For more information on setting configuration parameters, refer to [Configuration parameters](../../../reference/configuration/yb-tserver/#postgresql-configuration-parameters).
+For more information on setting configuration parameters, refer to [Configuration parameters](../../../../reference/configuration/yb-tserver/#postgresql-configuration-parameters).
 
 ### Turn on debug output
 
@@ -110,7 +110,7 @@ yugabyte=# EXPLAIN (COSTS off) SELECT COUNT(*) FROM t1, t2 WHERE t1.id = t2.id A
 ```
 
 ```output
-                        QUERY PLAN                        
+                        QUERY PLAN
 ----------------------------------------------------------
  Aggregate
    ->  Hash Join
@@ -155,7 +155,7 @@ set pg_hint_plan.yb_bad_hint_mode to warn;
 ```output
 WARNING:  no valid method found for join with UID 5
 WARNING:  unused hints, and/or hints causing errors, exist
-             QUERY PLAN             
+             QUERY PLAN
 ------------------------------------
  Nested Loop (UID 5)
    Join Filter: (t1.id > t2.id)
@@ -178,7 +178,7 @@ set pg_hint_plan.yb_bad_hint_mode to warn;
 WARNING:  bad index hint name "badindex" for table t1
 WARNING:  unused hint: IndexScan(t1 badindex)
 WARNING:  unused hints, and/or hints causing errors, exist
- count 
+ count
 -------
      4
 (1 row)
@@ -265,7 +265,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 
 ```output
 
-          QUERY PLAN          
+          QUERY PLAN
 ------------------------------
  Hash Join
    Hash Cond: (t1.id = t2.id)
@@ -283,7 +283,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 ```
 
 ```output
-                            QUERY PLAN                             
+                            QUERY PLAN
 -------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.id = t2.id)
@@ -301,7 +301,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 ```
 
 ```output
-          QUERY PLAN          
+          QUERY PLAN
 ------------------------------
  Hash Join
    Hash Cond: (t1.id = t2.id)
@@ -337,7 +337,7 @@ EXPLAIN (COSTS false) SELECT * FROM t3 WHERE t3.id = 1;
 ```
 
 ```output
-          QUERY PLAN           
+          QUERY PLAN
 -------------------------------
  Index Scan using t3_id2 on t3
    Index Cond: (id = 1)
@@ -358,7 +358,7 @@ EXPLAIN (COSTS false) SELECT * FROM t3 WHERE t3.id = 1;
 WARNING:  bad index hint name "no_exist" for table t3
 WARNING:  unused hint: IndexScan(t3 no_exist)
 WARNING:  unused hints, and/or hints causing errors, exist
-           QUERY PLAN           
+           QUERY PLAN
 --------------------------------
  Index Scan using t3_pkey on t3
    Index Cond: (id = 1)
@@ -373,7 +373,7 @@ EXPLAIN (COSTS false) SELECT * FROM t3 WHERE t3.id = 1;
 ```
 
 ```output
-          QUERY PLAN           
+          QUERY PLAN
 -------------------------------
  Index Scan using t3_id2 on t3
    Index Cond: (id = 1)
@@ -405,7 +405,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 ```
 
 ```output
-          QUERY PLAN          
+          QUERY PLAN
 ------------------------------
  Hash Join
    Hash Cond: (t1.id = t2.id)
@@ -419,14 +419,14 @@ For the same query, this hint forces a nested loop join:
 
 ```sql
 // Turn BNL off to simplify this example.
-set yb_prefer_bnl to off; 
+set yb_prefer_bnl to off;
 set yb_enable_batchednl to off;
 /*+ NestLoop(t1 t2) */
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 ```
 
 ```output
-              QUERY PLAN              
+              QUERY PLAN
 --------------------------------------
  Nested Loop
    ->  Seq Scan on t2
@@ -446,7 +446,7 @@ WHERE t1.id = t2.id AND t1.id = t3.id;
 ```
 
 ```output
-              QUERY PLAN              
+              QUERY PLAN
 --------------------------------------
  Nested Loop
    ->  Hash Join
@@ -509,7 +509,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t1.id = t
 ```
 
 ```output
-             QUERY PLAN             
+             QUERY PLAN
 ------------------------------------
  Hash Join
    Hash Cond: (t1.id = t3.id)
@@ -531,7 +531,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t1.id = t
 ```
 
 ```output
-                               QUERY PLAN                                
+                               QUERY PLAN
 -------------------------------------------------------------------------
  Hash Join
    Hash Cond: (t1.id = t3.id)
@@ -599,7 +599,7 @@ not used hint:
 duplication hint:
 error hint:
 
-          QUERY PLAN          
+          QUERY PLAN
 ------------------------------
  Hash Join
    Hash Cond: (t1.id = t2.id)
@@ -691,7 +691,7 @@ not used hint:
 duplication hint:
 error hint:
 
-         QUERY PLAN         
+         QUERY PLAN
 ----------------------------
  Seq Scan on t1
    Storage Filter: (id = 7)
@@ -712,7 +712,7 @@ not used hint:
 duplication hint:
 error hint:
 
-           QUERY PLAN           
+           QUERY PLAN
 --------------------------------
  Index Scan using t1_pkey on t1
    Index Cond: (id = 7)
@@ -726,7 +726,7 @@ yugabyte=# EXPLAIN (COSTS false) SELECT * FROM t1 WHERE  t1.id = 7;
 ```
 
 ```output
-           QUERY PLAN           
+           QUERY PLAN
 --------------------------------
  Index Scan using t1_pkey on t1
    Index Cond: (id = 7)
@@ -740,7 +740,7 @@ yugabyte=# SELECT * FROM t1 WHERE t1.id = 7;
 ```
 
 ```output
- id | val 
+ id | val
 ----+-----
   7 |   7
 (1 row)
@@ -771,7 +771,7 @@ not used hint:
 duplication hint:
 error hint:
 
- id | val 
+ id | val
 ----+-----
   7 |   7
 (1 row)
@@ -784,7 +784,7 @@ yugabyte=# EXPLAIN (VERBOSE true, COSTS off) SELECT * FROM t1 WHERE t1.val = 9;
 ```
 
 ```output
-               QUERY PLAN               
+               QUERY PLAN
 ----------------------------------------
  Index Scan using t1_val on public.t1
    Output: id, val
@@ -812,7 +812,7 @@ yugabyte=# SELECT norm_query_string, hints FROM hint_plan.hints ORDER BY id;
 ```
 
 ```output
-                    norm_query_string                     |     hints     
+                    norm_query_string                     |     hints
 ----------------------------------------------------------+---------------
  EXPLAIN (COSTS false) SELECT * FROM t1 WHERE t1.id = ?;  | SeqScan(t1)
  EXPLAIN (COSTS false) SELECT id FROM t1 WHERE t1.id = ?; | IndexScan(t1)
@@ -835,7 +835,7 @@ not used hint:
 duplication hint:
 error hint:
 
-               QUERY PLAN               
+               QUERY PLAN
 ----------------------------------------
  Seq Scan on public.t1
    Output: id, val
@@ -858,7 +858,7 @@ not used hint:
 duplication hint:
 error hint:
 
-  id  | val 
+  id  | val
 ------+-----
  8109 |   9
  3909 |   9
@@ -881,7 +881,7 @@ not used hint:
 duplication hint:
 error hint:
 
-  id  | val 
+  id  | val
 ------+-----
  8109 |   9
  3909 |   9
@@ -900,7 +900,7 @@ yugabyte=# EXPLAIN (COSTS off) SELECT COUNT(*) FROM t1, t2 WHERE t1.id = t2.id A
 ```
 
 ```output
-                                   QUERY PLAN                                    
+                                   QUERY PLAN
 ---------------------------------------------------------------------------------
  Aggregate
    InitPlan 1 (returns $1024)
@@ -945,7 +945,7 @@ not used hint:
 duplication hint:
 error hint:
 
-                      QUERY PLAN                      
+                      QUERY PLAN
 ------------------------------------------------------
  Aggregate
    InitPlan 1 (returns $0)
@@ -980,7 +980,7 @@ yugabyte=# EXPLAIN (COSTS off, HINTS on, VERBOSE on) SELECT COUNT(*) FROM t1, t2
 ```
 
 ```output
-                                        QUERY PLAN                                         
+                                        QUERY PLAN
 ------------------------------------------------------------------------------------------------
  Aggregate
    Output: count(*)
@@ -1020,7 +1020,7 @@ EXPLAIN (HINTS on, COSTS off) SELECT * FROM information_schema.columns;
 ```
 
 ```output
-                                        QUERY PLAN                                         
+                                        QUERY PLAN
 ------------------------------------------------------------------------------------------------
   Nested Loop Left Join
    Join Filter: ((dep.refobjid = c.oid) AND (dep.refobjsubid = a.attnum))
@@ -1088,6 +1088,6 @@ This hint set is complex and difficult to write from scratch. Using the generate
 ## Learn more
 
 - Refer to [Get query statistics using pg_stat_statements](../pg-stat-statements/) to track planning and execution of all the SQL statements.
-- Refer to [View live queries with pg_stat_activity](../../observability/pg-stat-activity/) to analyze live queries.
-- Refer to [View COPY progress with pg_stat_progress_copy](../../observability/pg-stat-progress-copy/) to track the COPY operation status.
+- Refer to [View live queries with pg_stat_activity](../../../../explore/observability/pg-stat-activity/) to analyze live queries.
+- Refer to [View COPY progress with pg_stat_progress_copy](../../../../explore/observability/pg-stat-progress-copy/) to track the COPY operation status.
 - Refer to [Analyze queries with EXPLAIN](../explain-analyze/) to optimize YSQL's EXPLAIN and EXPLAIN ANALYZE queries.

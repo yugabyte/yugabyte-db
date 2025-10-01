@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-[pg_stats](../../../architecture/system-catalog#data-statistics) is a system view that provides statistical information about columns in tables. Use it to view data distributions of column values, which can help in query optimization and tuning. To generate the statistics, run the [ANALYZE](../../../api/ysql/the-sql-language/statements/cmd_analyze/) command.
+[pg_stats](../../../../architecture/system-catalog#data-statistics) is a system view that provides statistical information about columns in tables. Use it to view data distributions of column values, which can help in query optimization and tuning. To generate the statistics, run the [ANALYZE](../../../../api/ysql/the-sql-language/statements/cmd_analyze/) command.
 
 ## Key statistics
 

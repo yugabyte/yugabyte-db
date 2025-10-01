@@ -33,7 +33,7 @@ Query diagnostics collects the following information:
 | :--- | :---------- |
 | ysql_yb_enable_query_diagnostics | Enable or disable query diagnostics. <br>Default: false. Changing this flag requires a VM restart. |
 | yb_query_diagnostics_circular_buffer_size | Size (in KB) of query diagnostics circular buffer that stores statuses of bundles.<br>Default: 64. Changing this flag requires a VM restart. |
-| [allowed_preview_flags_csv](../../../reference/configuration/yb-tserver/#allowed-preview-flags-csv) | Set the value of this flag to include `ysql_yb_enable_query_diagnostics`. |
+| [allowed_preview_flags_csv](../../../../reference/configuration/yb-tserver/#allowed-preview-flags-csv) | Set the value of this flag to include `ysql_yb_enable_query_diagnostics`. |
 
 ## Export diagnostics
 
@@ -129,7 +129,7 @@ For more information, see [Get query statistics using pg_stat_statements](../pg-
 
 Provides information about the columns and indexes associated with unique tables mentioned in the query being diagnosed.
 
-The output is the same as that obtained using the [\d+ meta-command](../../../api/ysqlsh-meta-commands/#d-s-pattern-patterns).
+The output is the same as that obtained using the [\d+ meta-command](../../../../api/ysqlsh-meta-commands/#d-s-pattern-patterns).
 
 Output file: schema_details.txt
 
@@ -166,7 +166,7 @@ Outputs the data from the `yb_active_session_history` view, for the diagnostics 
 
 Output file: active_session_history.csv
 
-For more information on active session history, see [Active Session History](../../observability/active-session-history/).
+For more information on active session history, see [Active Session History](../../../../explore/observability/active-session-history/).
 
 ### Explain plans
 
