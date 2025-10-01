@@ -8,7 +8,7 @@ import { AxiosError } from 'axios';
 import { YBModal, YBModalProps } from '../../components/YBModal/YBModal';
 import { YBToggleField } from '../../components';
 import { api, universeQueryKey } from '@app/redesign/helpers/api';
-import { getUniverseMetricsExportConfig } from './utils';
+import { getIsMetricsExportSupported, getUniverseMetricsExportConfig } from './utils';
 import { configureMetricsExport } from '@app/v2/api/universe/universe';
 import { ConfigureMetricsExportReqBody } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { TelemetryProviderConfigSelectField } from './telemetryProviderConfigSelect/TelemetryProviderConfigSelectField';
@@ -228,6 +228,7 @@ export const UniverseMetricsExportConfigModal = ({
                     rules: { required: t('formFieldRequired', { keyPrefix: 'common' }) }
                   }}
                   isDisabled={isFormDisabled}
+                  telemetryProviderFilter={getIsMetricsExportSupported}
                 />
               </div>
             </div>
