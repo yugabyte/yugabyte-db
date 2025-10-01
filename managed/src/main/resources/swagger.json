@@ -3691,6 +3691,10 @@
           "description" : "Use local timezone for Cron Expression, otherwise use UTC",
           "type" : "boolean"
         },
+        "useRoles" : {
+          "description" : "Backup global ysql roles",
+          "type" : "boolean"
+        },
         "useTablespaces" : {
           "description" : "Is tablespaces information included",
           "type" : "boolean"
@@ -3827,6 +3831,10 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "useRoles" : {
+          "description" : "WARNING: This is a preview API that could change. Indicates if role objects were backed up",
+          "type" : "boolean"
+        },
         "useTablespaces" : {
           "type" : "boolean"
         }
@@ -3945,6 +3953,10 @@
           ],
           "type" : "string"
         },
+        "errorIfRolesExists" : {
+          "description" : "WARNING: This is a preview API that could change. Fail if roles exist with same names.Only applicable with new roles behavior.",
+          "type" : "boolean"
+        },
         "errorIfTablespacesExists" : {
           "description" : "WARNING: This is a preview API that could change. Fail if tablespaces exist with same names. Only applicable with new roles behavior.",
           "type" : "boolean"
@@ -3983,6 +3995,10 @@
             "type" : "string"
           },
           "type" : "array"
+        },
+        "useRoles" : {
+          "description" : "Restore global ysql roles",
+          "type" : "boolean"
         },
         "useTablespaces" : {
           "description" : "Use tablespaces during restore",
@@ -4324,6 +4340,10 @@
           "description" : "Associated universe UUID",
           "format" : "uuid",
           "type" : "string"
+        },
+        "useRoles" : {
+          "description" : "Backup global ysql roles",
+          "type" : "boolean"
         },
         "useTablespaces" : {
           "description" : "Is tablespaces information included",
@@ -12552,6 +12572,10 @@
           "description" : "Associated universe UUID",
           "format" : "uuid",
           "type" : "string"
+        },
+        "useRoles" : {
+          "description" : "Backup global ysql roles",
+          "type" : "boolean"
         },
         "useTablespaces" : {
           "description" : "Is tablespaces information included",
