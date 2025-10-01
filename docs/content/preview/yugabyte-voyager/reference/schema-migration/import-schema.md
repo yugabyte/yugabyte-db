@@ -221,7 +221,7 @@ log-level:
 | --refresh-mviews | — |**[Deprecated]** Refreshes the materialized views on target during the post-import-data phase. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -y, --yes | —  | Answer yes to all prompts during the export schema operation. <br>Default: false |
 | -h, --help | —  | Command line help. |
-| -c, --config-file | — | Path to a [configuration file](../configuration-file). |
+| -c, --config-file | — | Path to a [configuration file](../../configuration-file). |
 
 {{</table>}}
 
