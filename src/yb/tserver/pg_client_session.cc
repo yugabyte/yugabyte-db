@@ -3021,10 +3021,12 @@ class PgClientSession::Impl {
       txn = transaction_provider_.Take<kSessionKind>(deadline);
       txn->SetLogPrefixTag(kTxnLogPrefixTag, id_);
       txn->InitPgSessionRequestVersion();
+      // Set the start time before initializing the transaction to allow start time to be
+      // propagated to txn coordinator.
+      RETURN_NOT_OK(txn->SetPgTxnStart(MonoTime::Now().ToUint64()));
       // Isolation level doesn't matter but we need to set it for conflict resolution to not treat
       // it as a single shard/fast-path transaction.
       RETURN_NOT_OK(txn->Init(IsolationLevel::READ_COMMITTED));
-      RETURN_NOT_OK(txn->SetPgTxnStart(MonoTime::Now().ToUint64()));
       session_data.session->SetTransaction(txn);
     }
     return session_data;

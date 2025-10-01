@@ -1085,6 +1085,52 @@ TEST_F(
       status_future.get().ToString(), "could not serialize access due to concurrent update");
 }
 
+class PgWaitQueuesTestWithObjectLocking : public PgWaitQueuesTest {
+ protected:
+  void InitFlags() override {
+    PgWaitQueuesTest::InitFlags();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
+  }
+};
+
+TEST_F(
+    PgWaitQueuesTestWithObjectLocking, YB_DISABLE_TEST_IN_TSAN(TestDeadlockDetectionAbort)) {
+  // Test verifies that the deadlock detector correctly identifies and aborts session 2 when:
+  // - Session 1 updates row 1, then blocks on row 2
+  // - Session 2 updates row 2, then blocks on row 1
+  // This creates a deadlock cycle that should be detected and resolved by aborting session 2.
+  auto conn1 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.Execute(
+      "CREATE TABLE t_123 (id INT PRIMARY KEY, balance INT)"));
+  ASSERT_OK(conn1.Execute(
+      "INSERT INTO t_123 (id, balance) VALUES (1, 1000), (2, 2000)"));
+  ASSERT_OK(conn1.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+
+  auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn2.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+
+  ASSERT_OK(conn1.Execute("UPDATE t_123 SET balance = balance - 100 WHERE id = 1"));
+  ASSERT_OK(conn2.Execute("UPDATE t_123 SET balance = balance - 200 WHERE id = 2"));
+  std::this_thread::sleep_for(2us * FLAGS_transaction_heartbeat_usec * kTimeMultiplier);
+  auto status_future = ASSERT_RESULT(
+      ExpectBlockedAsync(&conn1, "UPDATE t_123 SET balance = balance + 200 WHERE id = 2"));
+  // Session 2: Try to update row 1 (blocks on session 1's lock, creating a deadlock)
+  // This should trigger deadlock detection and abort session 2
+  auto conn2_status = conn2.Execute("UPDATE t_123 SET balance = balance + 100 WHERE id = 1");
+  ASSERT_NOK(conn2_status);
+  ASSERT_STR_CONTAINS(conn2_status.ToUserMessage(true /*include_code*/), "Deadlock");
+
+  // After session 2 is aborted, session 1's blocked operation should complete successfully
+  ASSERT_OK(status_future.get());
+  ASSERT_OK(conn1.CommitTransaction());
+
+  // Verify final state: only session 1's changes are applied
+  auto result = ASSERT_RESULT(conn1.FetchRow<int>("SELECT balance FROM t_123 WHERE id = 1"));
+  ASSERT_EQ(result, 900);
+  result = ASSERT_RESULT(conn1.FetchRow<int>("SELECT balance FROM t_123 WHERE id = 2"));
+  ASSERT_EQ(result, 2200);
+}
+
 void PgWaitQueuesTest::TestParallelUpdatesDetectDeadlock() const {
   // Tests that wait-for dependencies of a distributed waiter txn waiting at different tablets, and
   // possibly different tablet servers, are not overwritten at the deadlock detector.
