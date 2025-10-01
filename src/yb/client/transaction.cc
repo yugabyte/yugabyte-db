@@ -1298,9 +1298,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     } else {
       metadata_.start_time = read_point_.Now();
     }
-    // TODO(wait-queues): Consider using metadata_.pg_txn_start_us here for consistency with
-    // wait queues. https://github.com/yugabyte/yugabyte-db/issues/20976
-    SetStartTimeIfNecessary();
+    // Time when the BEGIN statement was executed.
+    start_.store(metadata_.pg_txn_start_us, std::memory_order_release);
   }
 
   void SetReadTimeIfNeeded(bool do_it) {
