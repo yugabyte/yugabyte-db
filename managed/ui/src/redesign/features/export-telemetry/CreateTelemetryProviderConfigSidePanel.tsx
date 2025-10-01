@@ -523,7 +523,7 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
             disabled={isViewMode}
             descriptionText={
               <span>
-                <Trans i18nKey={'gcpDescription'} />
+                <Trans i18nKey={`${TRANSLATION_KEY_PREFIX}.gcpDescription`} />
               </span>
             }
           />
