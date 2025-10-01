@@ -122,7 +122,7 @@ Configuration parameters: `yb_enable_parallel_append=true` `yb_parallel_range_ro
 Enables the use of [PostgreSQL parallel queries](https://www.postgresql.org/docs/15/parallel-query.html). Using parallel queries, the query planner can devise plans that leverage multiple CPUs to answer queries faster. Currently, YugabyteDB supports parallel query for colocated tables. Support for hash- and range-sharded tables is planned. Parallel query provides feature compatibility and improved performance parity.
 
 {{<lead link="../../../additional-features/parallel-query/">}}
-To learn about parallel queries, see [Parallel queries](../../../additional-features/advanced-features/parallel-query/).
+To learn about parallel queries, see [Parallel queries](../../../additional-features/parallel-query/).
 {{</lead>}}
 
 ## Enable EPCM
