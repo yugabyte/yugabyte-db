@@ -1740,7 +1740,18 @@ TEST_F(PgCatalogVersionTest, NonBreakingDDLMode) {
   ASSERT_OK(conn1.Execute("ABORT"));
 }
 
-TEST_F(PgCatalogVersionTest, NonIncrementingDDLMode) {
+class PgCatalogVersionNonIncrementingDDLModeTest
+    : public PgCatalogVersionTest,
+      public ::testing::WithParamInterface<bool> {
+};
+
+INSTANTIATE_TEST_CASE_P(, PgCatalogVersionNonIncrementingDDLModeTest,
+                        ::testing::Values(false, true));
+
+TEST_P(PgCatalogVersionNonIncrementingDDLModeTest, NonIncrementingDDLMode) {
+  const bool enable_inval_messages = GetParam();
+  enable_inval_messages ? RestartClusterWithInvalMessageEnabled()
+                        : RestartClusterWithInvalMessageDisabled();
   const string kDatabaseName = "yugabyte";
 
   auto conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
@@ -1776,36 +1787,56 @@ TEST_F(PgCatalogVersionTest, NonIncrementingDDLMode) {
 
   // Let's start over, but this time use yb_make_next_ddl_statement_nonincrementing to suppress
   // incrementing catalog version.
+  // If invalidation messages are enabled, then yb_make_next_ddl_statement_nonincrementing
+  // should not have any effect at all.
   ASSERT_OK(conn.Execute("SET yb_make_next_ddl_statement_nonincrementing TO TRUE"));
   ASSERT_OK(conn.Execute("REVOKE SELECT ON t1 FROM public"));
   new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
-  ASSERT_EQ(new_version, version);
+  if (enable_inval_messages) {
+    ASSERT_EQ(new_version, version + 1);
+  } else {
+    ASSERT_EQ(new_version, version);
+  }
 
   ASSERT_OK(conn.Execute("SET yb_make_next_ddl_statement_nonincrementing TO TRUE"));
   ASSERT_OK(conn.Execute("GRANT SELECT ON t1 TO public"));
   new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
-  ASSERT_EQ(new_version, version);
+  if (enable_inval_messages) {
+    ASSERT_EQ(new_version, version + 2);
+  } else {
+    ASSERT_EQ(new_version, version);
+  }
 
   ASSERT_OK(conn.Execute("SET yb_make_next_ddl_statement_nonincrementing TO TRUE"));
   ASSERT_OK(conn.Execute("CREATE INDEX idx3 ON t1(a)"));
   new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
   // By default CREATE INDEX runs concurrently and its algorithm requires to bump up catalog
   // version 3 times, only the first bump is suppressed.
-  ASSERT_EQ(new_version, version + 2);
+  if (enable_inval_messages) {
+    ASSERT_EQ(new_version, version + 5);
+  } else {
+    ASSERT_EQ(new_version, version + 2);
+  }
   version = new_version;
 
   ASSERT_OK(conn.Execute("SET yb_make_next_ddl_statement_nonincrementing TO TRUE"));
   ASSERT_OK(conn.Execute("CREATE INDEX NONCONCURRENTLY idx4 ON t1(a)"));
   new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
-  ASSERT_EQ(new_version, version);
+  if (enable_inval_messages) {
+    ASSERT_EQ(new_version, version + 1);
+  } else {
+    ASSERT_EQ(new_version, version);
+  }
 
-  // Verify that the session variable yb_make_next_ddl_statement_nonbreaking auto-resets to false.
+  // Verify that the session variable yb_make_next_ddl_statement_nonincrementing auto-resets
+  // to false.
+  version = new_version;
   ASSERT_OK(conn.Execute("REVOKE SELECT ON t1 FROM public"));
   new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
   ASSERT_EQ(new_version, version + 1);
   version = new_version;
 
-  // Since yb_make_next_ddl_statement_nonbreaking auto-resets to false, we should see catalog
+  // Since yb_make_next_ddl_statement_nonincrementing auto-resets to false, we should see catalog
   // version gets bumped up as before.
   ASSERT_OK(conn.Execute("GRANT SELECT ON t1 TO public"));
   new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
@@ -1823,7 +1854,7 @@ TEST_F(PgCatalogVersionTest, NonIncrementingDDLMode) {
   version = new_version;
 
   // Now test the scenario where we create a new table, followed by create index nonconcurrently
-  // on the new table. Use yb_make_next_ddl_statement_nonbreaking to suppress catalog version
+  // on the new table. Use yb_make_next_ddl_statement_nonincrementing to suppress catalog version
   // increment on the create index statement.
   // First create a second connection conn2.
   auto conn2 = ASSERT_RESULT(ConnectToDB(kDatabaseName));
@@ -1832,7 +1863,11 @@ TEST_F(PgCatalogVersionTest, NonIncrementingDDLMode) {
   ASSERT_OK(conn.Execute("SET yb_make_next_ddl_statement_nonincrementing TO TRUE"));
   ASSERT_OK(conn.Execute("CREATE INDEX NONCONCURRENTLY a_idx ON demo (a)"));
   new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
-  ASSERT_EQ(new_version, version);
+  if (enable_inval_messages) {
+    ASSERT_EQ(new_version, version + 1);
+  } else {
+    ASSERT_EQ(new_version, version);
+  }
 
   // Sanity test on conn2 write, count, select and delete on the new table created on conn.
   ASSERT_OK(conn2.Execute("INSERT INTO demo SELECT n, n FROM generate_series(1,100) n"));
