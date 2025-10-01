@@ -3503,6 +3503,18 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_allow_dockey_bounds", PGC_SUSET, CUSTOM_OPTIONS,
+			gettext_noop("If true, allow lower_bound/upper_bound fields of PgsqlReadRequestPB "
+						 "to be DocKeys. Only applicable for hash-sharded tables."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_allow_dockey_bounds,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_ignore_read_time_in_walsender", PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("When set, walsender will fetch the publication as of current time if "
 						 "it encounters any failures while reading the catalog tables as of yb_read_time"),

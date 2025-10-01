@@ -73,9 +73,6 @@ class PgDmlRead : public PgDml {
   // Set prefix length, in columns, of distinct index scans.
   void SetDistinctPrefixLength(int distinct_prefix_length);
 
-  // Set scan bounds
-  void SetHashBounds(uint16_t low_bound, uint16_t high_bound);
-
   // Bind a range column with a BETWEEN condition.
   Status BindColumnCondBetween(
       int attr_num, PgExpr* attr_value, bool start_inclusive,
@@ -94,6 +91,10 @@ class PgDmlRead : public PgDml {
   // remaining from the previous range scan.
   Status BindRange(
       Slice lower_bound, bool lower_bound_inclusive, Slice upper_bound, bool upper_bound_inclusive);
+
+  void BindBounds(
+      const Slice lower_bound, bool lower_bound_inclusive, const Slice upper_bound,
+      bool upper_bound_inclusive);
 
   // Add a lower bound to the scan. If a lower bound has already been added
   // this call will set the lower bound to the stricter of the two bounds.

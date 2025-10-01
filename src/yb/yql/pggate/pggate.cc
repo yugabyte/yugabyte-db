@@ -1342,6 +1342,14 @@ Status PgApiImpl::DmlBindRange(
       lower_bound, lower_bound_inclusive, upper_bound, upper_bound_inclusive);
 }
 
+Status PgApiImpl::DmlBindBounds(
+    PgStatement* handle, const Slice lower_bound, bool lower_bound_inclusive,
+    const Slice upper_bound, bool upper_bound_inclusive) {
+  VERIFY_RESULT_REF(GetStatementAs<PgDmlRead>(handle))
+      .BindBounds(lower_bound, lower_bound_inclusive, upper_bound, upper_bound_inclusive);
+  return Status::OK();
+}
+
 Status PgApiImpl::DmlBindTable(PgStatement* handle) {
   return VERIFY_RESULT_REF(GetStatementAs<PgDml>(handle)).BindTable();
 }
@@ -1536,11 +1544,6 @@ Status PgApiImpl::SetForwardScan(PgStatement* handle, bool is_forward_scan) {
 Status PgApiImpl::SetDistinctPrefixLength(PgStatement* handle, int distinct_prefix_length) {
   VERIFY_RESULT_REF(GetStatementAs<PgSelect>(handle)).SetDistinctPrefixLength(
       distinct_prefix_length);
-  return Status::OK();
-}
-
-Status PgApiImpl::SetHashBounds(PgStatement* handle, uint16_t low_bound, uint16_t high_bound) {
-  VERIFY_RESULT_REF(GetStatementAs<PgSelect>(handle)).SetHashBounds(low_bound, high_bound);
   return Status::OK();
 }
 

@@ -278,10 +278,10 @@ class PartitionSchema {
   static uint16_t DecodeMultiColumnHashRightBound(Slice partition_key);
 
   // Does [partition_key_start, partition_key_end] form a valid range.
-  static Status IsValidHashPartitionRange(const std::string& partition_key_start,
-                                          const std::string& partition_key_end);
+  static Status IsValidHashPartitionRange(const Slice partition_key_start,
+                                          const Slice partition_key_end);
 
-  static bool IsValidHashPartitionKeyBound(const std::string& partition_key);
+  static bool IsValidHashPartitionKeyBound(const Slice partition_key);
 
   // Returns the lexicographically ordered middle key between two key bounds.
   static Result<std::string> GetLexicographicMiddleKey(

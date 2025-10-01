@@ -1545,6 +1545,15 @@ YbcStatus YBCPgDmlBindHashCodes(
   return ToYBCStatus(pgapi->DmlBindHashCode(handle, start, end));
 }
 
+YbcStatus YBCPgDmlBindBounds(
+    YbcPgStatement handle, const char* lower_bound, size_t lower_bound_len,
+    bool lower_bound_inclusive, const char* upper_bound, size_t upper_bound_len,
+    bool upper_bound_inclusive) {
+  return ToYBCStatus(pgapi->DmlBindBounds(
+      handle, Slice(lower_bound, lower_bound_len), lower_bound_inclusive,
+      Slice(upper_bound, upper_bound_len), upper_bound_inclusive));
+}
+
 YbcStatus YBCPgDmlBindRange(YbcPgStatement handle,
                             const char *lower_bound, size_t lower_bound_len,
                             const char *upper_bound, size_t upper_bound_len) {
@@ -1752,10 +1761,6 @@ YbcStatus YBCPgSetForwardScan(YbcPgStatement handle, bool is_forward_scan) {
 
 YbcStatus YBCPgSetDistinctPrefixLength(YbcPgStatement handle, int distinct_prefix_length) {
   return ToYBCStatus(pgapi->SetDistinctPrefixLength(handle, distinct_prefix_length));
-}
-
-YbcStatus YBCPgSetHashBounds(YbcPgStatement handle, uint16_t low_bound, uint16_t high_bound) {
-  return ToYBCStatus(pgapi->SetHashBounds(handle, low_bound, high_bound));
 }
 
 YbcStatus YBCPgExecSelect(YbcPgStatement handle, const YbcPgExecParameters *exec_params) {
