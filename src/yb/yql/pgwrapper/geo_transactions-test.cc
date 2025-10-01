@@ -31,6 +31,8 @@ DECLARE_bool(enable_tablespace_based_transaction_placement);
 DECLARE_bool(force_global_transactions);
 DECLARE_bool(use_tablespace_based_transaction_placement);
 DECLARE_bool(transaction_tables_use_preferred_zones);
+DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 
 using namespace std::literals;
 
@@ -275,6 +277,15 @@ class GeoTransactionsTest : public GeoTransactionsTestBase {
   }
 
   uint64_t next_insert_value_ = 0;
+};
+
+class GeoTransactionsTestTableLocksDisabled : public GeoTransactionsTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = false;
+    GeoTransactionsTest::SetUp();
+  }
 };
 
 TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionTabletSelection)) {
@@ -831,7 +842,11 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestPromotionAfterTablespace
       InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
 }
 
-TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestAlterTableSetTablespaceMidTxn)) {
+// This test is for testing the behavior when table-level locks are disabled (checks that
+// catalog version mismatch error happens), so doesn't make sense to run with them enabled.
+TEST_F_EX(
+    GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestAlterTableSetTablespaceMidTxn),
+    GeoTransactionsTestTableLocksDisabled) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_promote_nonlocal_transactions_to_global) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = false;
