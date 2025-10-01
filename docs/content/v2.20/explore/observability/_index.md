@@ -64,9 +64,9 @@ The following table describes views in YSQL you can use to monitor and tune quer
 | [yb_terminated_queries](./yb-pg-stat-get-queries/) | Identify terminated queries |
 | [pg_stat_progress_copy](./pg-stat-progress-copy) | Get the status of a COPY command execution |
 | [pg_locks](./pg-locks) | Get information on locks held by a transaction  |
-| [pg_stat_statements](../query-1-performance/pg-stat-statements) | Get query statistics (such as the _time spent by a query_) |
+| [pg_stat_statements](../../launch-and-manage/monitor-and-alert/query-tuning/pg-stat-statements) | Get query statistics (such as the _time spent by a query_) |
 
-To get more details about the various steps of a query execution, use the [Explain Analyze](../query-1-performance/explain-analyze) command.
+To get more details about the various steps of a query execution, use the [Explain Analyze](../../launch-and-manage/monitor-and-alert/query-tuning/explain-analyze) command.
 
 ## Learn more
 
@@ -110,7 +110,7 @@ To get more details about the various steps of a query execution, use the [Expla
   {{<index/item
       title="Query statistics using pg_stat_statements"
       body="Track planning and execution metrics for SQL statements"
-      href="../query-1-performance/pg-stat-statements"
+      href="../../launch-and-manage/monitor-and-alert/query-tuning/pg-stat-statements"
       icon="fa-thin fa-signal">}}
 
   {{<index/item

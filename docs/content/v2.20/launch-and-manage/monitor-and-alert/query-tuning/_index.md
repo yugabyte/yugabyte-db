@@ -7,7 +7,7 @@ headcontent: Tuning and optimizing query performance
 menu:
   v2.20:
     identifier: query-tuning
-    parent: explore
+    parent: monitor-and-alert
     weight: 300
 type: indexpage
 ---

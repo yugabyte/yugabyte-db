@@ -4,12 +4,10 @@ headerTitle: Query tuning
 linkTitle: Query tuning
 description: Tuning and optimizing query performance
 headcontent: Optimize query performance
-aliases:
-  - /preview/explore/query-1-performance/query-tuning-intro/
 menu:
-  preview:
+  stable:
     identifier: query-tuning
-    parent: explore
+    parent: monitor-and-alert
     weight: 300
 type: indexpage
 showRightNav: true
@@ -71,8 +69,8 @@ Learn more about [YB-TServer logs](/preview/explore/observability/logging/).
 
 To create optimal plans for queries, the query planner needs accurate and up-to-date statistics related to tables and their columns. ANALYZE collects statistics about the contents of tables in the database, and stores the results in the `pg_statistic` system catalog. Similar to [PostgreSQL autovacuum](https://www.postgresql.org/docs/current/routine-vacuuming.html#AUTOVACUUM), the YugabyteDB Auto Analyze service automates the execution of ANALYZE commands for any table where rows have changed more than a configurable threshold for the table. This ensures table statistics are always up-to-date.
 
-{{<lead link="../../additional-features/auto-analyze/">}}
-To learn more, see [Auto Analyze service](../../additional-features/auto-analyze/).
+{{<lead link="../../../additional-features/auto-analyze/">}}
+To learn more, see [Auto Analyze service](../../../additional-features/auto-analyze/).
 {{</lead>}}
 
 ## Export query diagnostics

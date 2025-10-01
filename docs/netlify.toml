@@ -678,6 +678,23 @@
   to = "/preview/troubleshoot/:splat"
   force = true
 
+# Redirect query tuning from explore to monitor-and-alert
+
+[[redirects]]
+  from = "/:version/explore/query-1-performance/*"
+  to = "/:version/launch-and-manage/monitor-and-alert/query-tuning/:splat"
+  force = true
+
+[[redirects]]
+  from = "/preview/explore/query-1-performance/*"
+  to = "/preview/launch-and-manage/monitor-and-alert/query-tuning/:splat"
+  force = true
+
+[[redirects]]
+  from = "/stable/explore/query-1-performance/*"
+  to = "/stable/launch-and-manage/monitor-and-alert/query-tuning/:splat"
+  force = true
+
 # YBA High availability
 
 [[redirects]]
