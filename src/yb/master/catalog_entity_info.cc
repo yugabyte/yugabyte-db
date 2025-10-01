@@ -590,6 +590,18 @@ bool TableInfo::IsBeingDroppedDueToDdlTxn(const std::string& pb_txn_id, bool txn
          (l->is_being_deleted_by_ysql_ddl_txn() && txn_success);
 }
 
+bool TableInfo::IsBeingDroppedDueToSubTxnRollback(
+    const std::string& pb_txn_id, const SubTransactionId sub_transaction_id) const {
+  auto l = LockForRead();
+  if (l->pb_transaction_id() != pb_txn_id) {
+    return false;
+  }
+
+  auto idx = l->ysql_first_ddl_state_at_or_after_sub_txn(sub_transaction_id);
+  return idx < l->ysql_ddl_txn_verifier_state().size() &&
+         l->ysql_ddl_txn_verifier_state()[idx].contains_create_table_op();
+}
+
 Status TableInfo::AddTablet(const TabletInfoPtr& tablet) {
   std::lock_guard l(lock_);
   return AddTabletUnlocked(tablet);
@@ -1148,6 +1160,30 @@ std::vector<TransactionId> TableInfo::EraseDdlTxnsWaitingForSchemaVersion(int sc
   ddl_txns_waiting_for_schema_version_.erase(
       ddl_txns_waiting_for_schema_version_.begin(), upper_bound_iter);
   return txns;
+}
+
+void TableInfo::AddDdlTxnForRollbackToSubTxnWaitingForSchemaVersion(
+    int schema_version, const TransactionId& txn) {
+  std::lock_guard l(lock_);
+  auto res = ddl_txns_for_subtxn_rollback_waiting_for_schema_version_.emplace(schema_version, txn);
+  // There should never have existed an entry for this schema version already as only one
+  // DDL transaction is allowed on an entity at a given time.
+  LOG_IF(DFATAL, !res.second) << "Found existing entry for schema version " << schema_version
+                              << " for table " << table_id_ << " with txn " << txn
+                              << " previous transaction " << res.first->second;
+}
+
+TransactionId TableInfo::EraseDdlTxnForRollbackToSubTxnWaitingForSchemaVersion(
+    int schema_version) {
+  std::lock_guard l(lock_);
+  TransactionId txn;
+
+  auto itr = ddl_txns_for_subtxn_rollback_waiting_for_schema_version_.find(schema_version);
+  if (itr != ddl_txns_for_subtxn_rollback_waiting_for_schema_version_.end()) {
+    txn = itr->second;
+    ddl_txns_for_subtxn_rollback_waiting_for_schema_version_.erase(itr);
+  }
+  return txn;
 }
 
 bool TableInfo::IsUserCreated() const {

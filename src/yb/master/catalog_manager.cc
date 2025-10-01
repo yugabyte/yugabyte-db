@@ -609,6 +609,7 @@ DECLARE_bool(enable_pg_cron);
 DECLARE_bool(enable_truncate_cdcsdk_table);
 DECLARE_bool(ysql_yb_enable_replica_identity);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
+DECLARE_bool(TEST_ysql_yb_enable_ddl_savepoint_support);
 
 namespace yb::master {
 
@@ -1548,6 +1549,7 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
   {
     LockGuard l(ddl_txn_verifier_mutex_);
     ysql_ddl_txn_verfication_state_map_.clear();
+    ysql_ddl_txn_undergoing_subtransaction_rollback_map_.clear();
   }
 
   ysql_manager_->Clear();
@@ -7788,9 +7790,10 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   }
   // Update the in-memory state.
   TRACE("Committing in-memory state");
+  VLOG_WITH_FUNC(3) << "SysTablesEntryPB for " << table->id()
+                    << " after the after table operation is: " << table_pb.DebugString();
   l.Commit();
   lock.unlock();
-  VLOG_WITH_FUNC(3) << "SysTablesEntryPB for " << table->id() << " is: " << table_pb.DebugString();
 
   if (need_remove_ddl_state) {
     RemoveDdlTransactionState(table->id(), {txn_id});
@@ -11319,6 +11322,11 @@ Status CatalogManager::HandleTabletSchemaVersionReport(
 
   // Clean up any DDL verification state that is waiting for this Alter to complete.
   RemoveDdlTransactionState(table->id(), table->EraseDdlTxnsWaitingForSchemaVersion(version));
+
+  if (FLAGS_TEST_ysql_yb_enable_ddl_savepoint_support) {
+    RemoveDdlRollbackToSubTxnState(
+        table->id(), table->EraseDdlTxnForRollbackToSubTxnWaitingForSchemaVersion(version));
+  }
 
   return MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(this, table, version, epoch);
 }

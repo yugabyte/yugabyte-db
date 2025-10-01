@@ -481,6 +481,18 @@ class YBClient::Data {
 
   Status WaitForDdlVerificationToFinish(const TransactionMetadata& txn, CoarseTimePoint deadline);
 
+  Status RollbackDocdbSchemaToSubtxn(
+      const TransactionMetadata& txn, SubTransactionId sub_txn_id, const CoarseTimePoint& deadline);
+
+  Status IsRollbackDocdbSchemaToSubtxnInProgress(
+    const TransactionMetadata& txn,
+    SubTransactionId sub_txn_id,
+    CoarseTimePoint deadline,
+    bool *rollback_to_sub_txn_in_progress);
+
+  Status WaitForRollbackDocdbSchemaToSubtxnToFinish(
+      const TransactionMetadata& txn, SubTransactionId sub_txn_id, CoarseTimePoint deadline);
+
   Result<bool> CheckIfPitrActive(CoarseTimePoint deadline);
 
   // Get xCluster streams by source table names + pg schema names.
