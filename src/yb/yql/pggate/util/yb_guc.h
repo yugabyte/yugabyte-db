@@ -231,6 +231,8 @@ extern bool yb_debug_log_catcache_events;
 
 extern bool yb_mixed_mode_saop_pushdown;
 
+extern bool yb_allow_dockey_bounds;
+
 extern int yb_fk_references_cache_limit;
 
 #ifdef __cplusplus

@@ -531,6 +531,11 @@ YBCStatus YBCPgDmlBindHashCodes(
     YBCPgBoundType start_type, uint16_t start_value,
     YBCPgBoundType end_type, uint16_t end_value);
 
+YBCStatus YBCPgDmlBindBounds(
+    YBCPgStatement handle, const char* lower_bound, size_t lower_bound_len,
+    bool lower_bound_inclusive, const char* upper_bound, size_t upper_bound_len,
+    bool upper_bound_inclusive);
+
 // For parallel scan only, limit fetch to specified range of ybctids
 YBCStatus YBCPgDmlBindRange(YBCPgStatement handle,
                             const char *lower_bound, size_t lower_bound_len,
@@ -661,8 +666,6 @@ YBCStatus YBCPgSetForwardScan(YBCPgStatement handle, bool is_forward_scan);
 
 // Set prefix length for distinct index scans.
 YBCStatus YBCPgSetDistinctPrefixLength(YBCPgStatement handle, int distinct_prefix_length);
-
-YBCStatus YBCPgSetHashBounds(YBCPgStatement handle, uint16_t low_bound, uint16_t high_bound);
 
 YBCStatus YBCPgExecSelect(YBCPgStatement handle, const YBCPgExecParameters *exec_params);
 

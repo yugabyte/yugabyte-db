@@ -95,4 +95,6 @@ bool yb_debug_log_catcache_events = false;
 
 bool yb_mixed_mode_saop_pushdown = false;
 
+bool yb_allow_dockey_bounds = true;
+
 int yb_fk_references_cache_limit = 65535;

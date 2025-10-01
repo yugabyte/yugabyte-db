@@ -487,6 +487,12 @@ class PgApiImpl {
                       Slice upper_bound,
                       bool upper_bound_inclusive);
 
+  Status DmlBindBounds(YBCPgStatement handle,
+                       const Slice lower_bound,
+                       bool lower_bound_inclusive,
+                       const Slice upper_bound,
+                       bool upper_bound_inclusive);
+
   Status DmlAddRowUpperBound(YBCPgStatement handle,
                              int n_col_values,
                              YBCPgExpr *col_values,
@@ -599,8 +605,6 @@ class PgApiImpl {
   Status SetForwardScan(PgStatement *handle, bool is_forward_scan);
 
   Status SetDistinctPrefixLength(PgStatement *handle, int distinct_prefix_length);
-
-  Status SetHashBounds(PgStatement *handle, uint16_t low_bound, uint16_t high_bound);
 
   Status ExecSelect(PgStatement *handle, const PgExecParameters *exec_params);
   Status RetrieveYbctids(PgStatement *handle, const YBCPgExecParameters *exec_params, int natts,

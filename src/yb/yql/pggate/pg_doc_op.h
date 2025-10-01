@@ -735,4 +735,15 @@ class PgDocWriteOp : public PgDocOp {
 PgDocOp::SharedPtr MakeDocReadOpWithData(
     const PgSession::ScopedRefPtr& pg_session, PrefetchedDataHolder data);
 
+
+bool ApplyBounds(LWPgsqlReadRequestPB& req,
+                 const Slice lower_bound,
+                 bool lower_bound_is_inclusive,
+                 const Slice upper_bound,
+                 bool upper_bound_is_inclusive);
+void ApplyLowerBound(LWPgsqlReadRequestPB& req, const Slice lower_bound, bool is_inclusive);
+void ApplyUpperBound(LWPgsqlReadRequestPB& req, const Slice upper_bound, bool is_inclusive);
+dockv::DocKey HashCodeToDocKeyBound(
+    const Schema& schema, uint16_t hash, bool is_inclusive, bool is_lower);
+
 }  // namespace yb::pggate

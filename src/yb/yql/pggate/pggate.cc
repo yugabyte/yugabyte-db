@@ -1268,6 +1268,14 @@ Status PgApiImpl::DmlBindRange(YBCPgStatement handle,
       lower_bound, lower_bound_inclusive, upper_bound, upper_bound_inclusive);
 }
 
+Status PgApiImpl::DmlBindBounds(
+    YBCPgStatement handle, const Slice lower_bound, bool lower_bound_inclusive,
+    const Slice upper_bound, bool upper_bound_inclusive) {
+  down_cast<PgDmlRead*>(handle)->BindBounds(lower_bound, lower_bound_inclusive, upper_bound,
+                                            upper_bound_inclusive);
+  return Status::OK();
+}
+
 Status PgApiImpl::DmlBindTable(PgStatement *handle) {
   return down_cast<PgDml*>(handle)->BindTable();
 }
@@ -1560,15 +1568,6 @@ Status PgApiImpl::SetDistinctPrefixLength(PgStatement *handle, int distinct_pref
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
   down_cast<PgDmlRead*>(handle)->SetDistinctPrefixLength(distinct_prefix_length);
-  return Status::OK();
-}
-
-Status PgApiImpl::SetHashBounds(PgStatement *handle, uint16_t low_bound, uint16_t high_bound) {
-  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SELECT)) {
-    // Invalid handle.
-    return STATUS(InvalidArgument, "Invalid statement handle");
-  }
-  down_cast<PgDmlRead*>(handle)->SetHashBounds(low_bound, high_bound);
   return Status::OK();
 }
 

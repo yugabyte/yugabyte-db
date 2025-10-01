@@ -40,12 +40,15 @@
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
+#include "yb/common/pgsql_protocol.messages.h"
+
 #include "yb/dockv/partial_row.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/retryable_request.h"
 #include "yb/common/transaction.pb.h"
 
 #include "yb/docdb/docdb_fwd.h"
+#include "yb/dockv/partition.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -617,6 +620,16 @@ bool IsTolerantToPartitionsChange(const YBOperation& op);
 
 Result<const PartitionKey&> TEST_FindPartitionKeyByUpperBound(
     const TablePartitionList& partitions, const PgsqlReadRequestPB& request);
+
+template <typename Req>
+inline bool AreBoundsHashCode(const Req& request) {
+  return (request.has_lower_bound() &&
+          dockv::PartitionSchema::IsValidHashPartitionKeyBound(request.lower_bound().key())) ||
+         (request.has_upper_bound() &&
+          dockv::PartitionSchema::IsValidHashPartitionKeyBound(request.upper_bound().key()));
+}
+
+template bool AreBoundsHashCode(const LWPgsqlReadRequestPB& request);
 
 }  // namespace client
 }  // namespace yb

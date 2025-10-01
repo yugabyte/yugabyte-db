@@ -21,6 +21,8 @@
 #include "yb/common/ql_protocol.pb.h"
 
 #include "yb/dockv/doc_key.h"
+#include "yb/dockv/partition.h"
+
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/doc_ql_scanspec.h"
@@ -222,7 +224,9 @@ Status QLRocksDBStorage::GetIterator(
     // Construct the scan spec basing on the HASH condition.
 
     DocKey lower_doc_key(schema);
-    if (request.has_lower_bound() && schema.num_hash_key_columns() == 0) {
+    if (request.has_lower_bound() &&
+        (schema.num_hash_key_columns() == 0 ||
+         !dockv::PartitionSchema::IsValidHashPartitionKeyBound(request.lower_bound().key()))) {
         Slice lower_key_slice = request.lower_bound().key();
         RETURN_NOT_OK(lower_doc_key.DecodeFrom(
             &lower_key_slice, dockv::DocKeyPart::kWholeDocKey, dockv::AllowSpecial::kTrue));
@@ -233,7 +237,9 @@ Status QLRocksDBStorage::GetIterator(
     }
 
     DocKey upper_doc_key(schema);
-    if (request.has_upper_bound() && schema.num_hash_key_columns() == 0) {
+    if (request.has_upper_bound() &&
+        (schema.num_hash_key_columns() == 0 ||
+         !dockv::PartitionSchema::IsValidHashPartitionKeyBound(request.upper_bound().key()))) {
         Slice upper_key_slice = request.upper_bound().key();
         RETURN_NOT_OK(upper_doc_key.DecodeFrom(
             &upper_key_slice, dockv::DocKeyPart::kWholeDocKey, dockv::AllowSpecial::kTrue));
