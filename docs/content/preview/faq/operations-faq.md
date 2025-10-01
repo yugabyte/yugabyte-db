@@ -145,7 +145,7 @@ This confirms that the password for `John` will expire in approximately 4 hours.
 
 ### What exactly does the upgrade with rollback feature do?
 
-The feature upgrades the binaries and enables new features that do not change the data format on disk. Features that do require changes to the format of data sent over the network, or stored on disk, are not enabled until you finalize the upgrade.
+The feature upgrades the binaries and enables new features that do not change the data format on disk. Features that do require changes to the format of data sent over the network, or stored on disk, are not enabled until you finalize the upgrade. The vast majority of new changes do not modify data format, and most changes that do so are from new features that are not yet in use. So, this allows you to monitor the new binary for a while to make sure there is no impact to your application and rollback to the previous version if needed.
 
 {{<lead link="../../yugabyte-platform/manage-deployments/upgrade-software-install/">}}
 For detailed information, see [Upgrade YugabyteDB](../../manage/upgrade-deployment/).
@@ -153,7 +153,7 @@ For detailed information, see [Upgrade YugabyteDB](../../manage/upgrade-deployme
 
 ### How long can a universe run after the upgrade but before the finalize step?
 
-A universe can run as long as needed while the application is being validated. However, it is recommended to finalize within 3 days. Operations like flag changes are disabled during the monitoring phase.
+A universe can run as long as needed while the application is being validated. However, it is recommended to finalize within 2 days. Operations like flag changes are disabled during the monitoring phase.
 
 ### Are new YugabyteDB features disabled until the upgrade is finalized?
 
@@ -161,19 +161,19 @@ New features that change the data format on disk are disabled. Because these dat
 
 ### Is it possible to run DDL operations during the upgrade (before finalize)?
 
-DDL operations are allowed during regular upgrades (v2.20 through v2024.2). DDL operations are only _blocked_ during YSQL major upgrades, where the PostgreSQL version is also upgraded, such as from v2024.2 (PostgreSQL 11) to v2025.1 (PostgreSQL 15).
+DDL operations are allowed during regular upgrades (major and minor). DDL operations are only _blocked_ during YSQL major upgrades, where the PostgreSQL version is also upgraded, such as from v2024.2 (PostgreSQL 11) to v2025.1 (PostgreSQL 15).
 
 ### Assuming rollback is not possible post-finalize, what do I do if I discover problems after finalization?
 
 Yugabyte performs extensive testing to ensure there are no issues. After the data format on disk has changed, you cannot go back to old binaries; this is a technical limitation of any software that stores data to disk. The only way to roll back after finalize is to restore from a backup that was taken before the finalization (with loss of data).
 
-For customers that are extremely risk averse, the recommendation is to upgrade and finalize a development environment and DR replicas (if any) first. After the data format on disk has changed, you cannot go back to old binaries—this is a technical limitation of any software that stores data to disk. The only way to rollback after finalize is to restore from a backup that was taken before the finalization (with loss of data).
+For customers that are extremely risk averse, the recommendation is to upgrade and finalize a development environment and DR replicas (if any) first.
 
-### How does rollback interact with bidirectional xCluster setups?
+### How does rollback interact with xCluster setups?
 
-xCluster can only replicate from an old version to the new version. You should finalize the target universe before the source universe. If the source is finalized before the target, then xCluster automatically pauses itself (this only happens in certain versions that have an external data format change, such as v2024.2).
+xCluster can only replicate from an old binary version to the new binary version. You should finalize the target universe before the source universe. If the source is finalized before the target, then xCluster automatically pauses itself (this only happens in certain versions that have an external data format change, such as v2024.2).
 
-For bidirectional setups, if writes are only happening on one side, then you can upgrade and finalize the other side first and then upgrade the writing side. If both sides are taking writes, then both should be finalized at the same time; otherwise, replication in the new-to-old direction will not happen.
+For bidirectional setups, if writes are only happening on one side, then you can upgrade and finalize the other side first and then upgrade the writing side. If both sides are taking writes, then both should be finalized at the same time; otherwise, replication in the new-to-old direction will be paused.
 
 {{<lead link="../../yugabyte-platform/manage-deployments/xcluster-replication/bidirectional-replication/">}}
 For more information about bidirectional xCluster replication, see [Bidirectional replication using xCluster](../../yugabyte-platform/manage-deployments/xcluster-replication/bidirectional-replication/).
@@ -183,7 +183,7 @@ For more information about bidirectional xCluster replication, see [Bidirectiona
 
 Yes.
 
-### What is the behavior of AutoFlags during the upgrade process?
+### What is the behavior of AutoFlags during an upgrade?
 
 YugabyteDB Anywhere enables Volatile AutoFlags after all nodes are running the new binary version (before finalize). Only Persisted and External AutoFlags are enabled after finalization.
 
@@ -197,7 +197,7 @@ Features have dedicated flags to allow you to tune or disable them. For example,
 
 ### What happens to custom flags set at the universe level?
 
-Custom flags set at the universe level persist across the upgrade and finalize steps. User overrides always take precedence over AutoFlags.
+Custom flags set at the universe level persist across the upgrade and finalize steps.
 
 {{<lead link="../../yugabyte-platform/manage-deployments/edit-config-flags/">}}
 For information about editing configuration flags, see [Edit configuration flags](../../yugabyte-platform/manage-deployments/edit-config-flags/).
