@@ -2970,7 +2970,7 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"yb_make_next_ddl_statement_nonincrementing", PGC_SUSET, CUSTOM_OPTIONS,
-			gettext_noop("When set, the next ddl statement will not cause "
+			gettext_noop("DEPRECATED - When set, the next ddl statement will not cause "
 						 "catalog version to increment. This only affects "
 						 "the next ddl statement and resets automatically."),
 			NULL
