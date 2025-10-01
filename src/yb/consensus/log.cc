@@ -40,7 +40,6 @@
 #include <mutex>
 #include <thread>
 #include <vector>
-#include <shared_mutex>
 
 #include <boost/algorithm/string/predicate.hpp>
 
@@ -60,24 +59,19 @@
 #include "yb/fs/fs_manager.h"
 
 #include "yb/gutil/bind.h"
-#include "yb/gutil/map-util.h"
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
 
 #include "yb/util/async_util.h"
 #include "yb/util/callsite_profiling.h"
-#include "yb/util/countdown_latch.h"
-#include "yb/util/crc.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/env_util.h"
 #include "yb/util/fault_injection.h"
-#include "yb/util/file_util.h"
-#include "yb/util/flags.h"
 #include "yb/util/flag_validators.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
@@ -88,9 +82,9 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
-#include "yb/util/status.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/taskstream.h"
 #include "yb/util/trace.h"
@@ -276,8 +270,7 @@ DEFINE_RUNTIME_AUTO_bool(store_last_wal_op_log_ht, kLocalPersisted, false, true,
 static std::string kSegmentPlaceholderFilePrefix = ".tmp.newsegment";
 static std::string kSegmentPlaceholderFileTemplate = kSegmentPlaceholderFilePrefix + "XXXXXX";
 
-namespace yb {
-namespace log {
+namespace yb::log {
 
 using env_util::OpenFileForRandom;
 using std::shared_ptr;
@@ -629,6 +622,7 @@ Status Log::Open(const LogOptions &options,
                  uint32_t schema_version,
                  const scoped_refptr<MetricEntity>& table_metric_entity,
                  const scoped_refptr<MetricEntity>& tablet_metric_entity,
+                 std::shared_ptr<MemTracker> read_wal_mem_tracker,
                  ThreadPool* append_thread_pool,
                  ThreadPool* allocation_thread_pool,
                  ThreadPool* background_sync_threadpool,
@@ -651,6 +645,7 @@ Status Log::Open(const LogOptions &options,
                                      schema_version,
                                      table_metric_entity,
                                      tablet_metric_entity,
+                                     std::move(read_wal_mem_tracker),
                                      append_thread_pool,
                                      allocation_thread_pool,
                                      background_sync_threadpool,
@@ -672,6 +667,7 @@ Log::Log(
     uint32_t schema_version,
     const scoped_refptr<MetricEntity>& table_metric_entity,
     const scoped_refptr<MetricEntity>& tablet_metric_entity,
+    std::shared_ptr<MemTracker> read_wal_mem_tracker,
     ThreadPool* append_thread_pool,
     ThreadPool* allocation_thread_pool,
     ThreadPool* background_sync_threadpool,
@@ -702,6 +698,7 @@ Log::Log(
       allocation_state_(SegmentAllocationState::kAllocationNotStarted),
       table_metric_entity_(table_metric_entity),
       tablet_metric_entity_(tablet_metric_entity),
+      read_wal_mem_tracker_(std::move(read_wal_mem_tracker)),
       on_disk_size_(0),
       log_prefix_(consensus::MakeTabletLogPrefix(tablet_id_, peer_uuid_)),
       create_new_segment_at_start_(create_new_segment),
@@ -737,6 +734,7 @@ Status Log::Init() {
                                 wal_dir_,
                                 table_metric_entity_.get(),
                                 tablet_metric_entity_.get(),
+                                read_wal_mem_tracker_,
                                 &reader_));
 
   // The case where we are continuing an existing log.  We must pick up where the previous WAL left
@@ -749,16 +747,20 @@ Status Log::Init() {
     RETURN_NOT_OK(reader_->GetSegmentsSnapshot(&segments));
     const ReadableLogSegmentPtr& active_segment = VERIFY_RESULT(segments.back());
     active_segment_sequence_number_ = active_segment->header().sequence_number();
+    active_segment_ondisk_size_ = active_segment->file_size();
     LOG_WITH_PREFIX(INFO) << "Opened existing logs. Last segment is " << active_segment->path();
 
     // In case where TServer process reboots, we need to reload the wal file size into the metric,
     // otherwise we do nothing
     if (metrics_ && metrics_->wal_size->value() == 0) {
-      std::for_each(segments.begin(), segments.end(),
-                    [this](const auto& segment) {
-                    this->metrics_->wal_size->IncrementBy(segment->file_size());});
+      for (const auto& segment : segments) {
+        int64_t size = segment->file_size();
+        this->metrics_->wal_size->IncrementBy(size);
+        VLOG_WITH_PREFIX(4)
+            << "Incremented wal size by " << size
+            << " to " << this->metrics_->wal_size->value();
+      }
     }
-
   }
 
   if (durable_wal_write_) {
@@ -817,9 +819,6 @@ Status Log::CloseCurrentSegment() {
                                                            &footer_builder_);
   }
 
-  if (status.ok() && metrics_) {
-      metrics_->wal_size->IncrementBy(active_segment_->Size());
-  }
   return status;
 }
 
@@ -988,17 +987,23 @@ Status Log::DoAppend(LogEntryBatch* entry_batch, SkipWalWrite skip_wal_write) {
     }
 
     // If the size of this entry overflows the current segment, get a new one.
+    bool segment_will_overflow =
+      active_segment_->Size() + entry_batch_bytes + kEntryHeaderSize > cur_max_segment_size_;
     if (allocation_state() == SegmentAllocationState::kAllocationNotStarted) {
-      if (active_segment_->Size() + entry_batch_bytes + kEntryHeaderSize > cur_max_segment_size_) {
+      if (segment_will_overflow) {
         LOG_WITH_PREFIX(INFO) << "Max segment size " << cur_max_segment_size_ << " reached. "
                               << "Starting new segment allocation.";
         RETURN_NOT_OK(AsyncAllocateSegment());
         if (!options_.async_preallocate_segments) {
           RETURN_NOT_OK(RollOver());
+          // Rollover prevents potential overflow.
+          segment_will_overflow = false;
         }
       }
     } else if (allocation_state() == SegmentAllocationState::kAllocationFinished) {
       RETURN_NOT_OK(RollOver());
+      // Rollover prevents potential overflow.
+      segment_will_overflow = false;
     } else {
       VLOG_WITH_PREFIX(1) << "Segment allocation already in progress...";
     }
@@ -1015,6 +1020,19 @@ Status Log::DoAppend(LogEntryBatch* entry_batch, SkipWalWrite skip_wal_write) {
 
     if (metrics_) {
       metrics_->bytes_logged->IncrementBy(active_segment_->written_offset() - start_offset);
+      VLOG_WITH_PREFIX(4) << "Total bytes logged: " << metrics_->bytes_logged->value();
+
+      // Check if append grew log file beyond pre-allocated size.
+      if (segment_will_overflow) {
+        int64_t size_on_disk = VERIFY_RESULT(active_segment_->SizeOnDisk());
+        if (size_on_disk != active_segment_ondisk_size_) {
+          metrics_->wal_size->IncrementBy(size_on_disk - active_segment_ondisk_size_);
+          VLOG_WITH_PREFIX(4)
+              << "Incremented wal size by " << (size_on_disk - active_segment_ondisk_size_)
+              << " to " << metrics_->wal_size->value();
+          active_segment_ondisk_size_ = size_on_disk;
+        }
+      }
     }
 
     // Populate the offset and sequence number for the entry batch if we did a WAL write.
@@ -1141,6 +1159,7 @@ Result<bool> Log::ReuseAsActiveSegment(const scoped_refptr<ReadableLogSegment>& 
     std::lock_guard lock(active_segment_mutex_);
     active_segment_ = std::move(new_segment);
   }
+  active_segment_ondisk_size_ = VERIFY_RESULT(active_segment_->SizeOnDisk());
   LOG(INFO) << "Successfully restored footer_builder_ and log_index_ for segment: "
             << recover_segment->path() << ". Reopen the file for write with starting offset: "
             << file_size;
@@ -1356,8 +1375,8 @@ Status Log::Sync() {
         break;
       }
       fsync_task_in_queue_.store(true, std::memory_order_release);
-      auto status = background_sync_threadpool_token_->SubmitFunc(
-          std::bind(&Log::DoSyncAndResetTaskInQueue, this));
+      auto status =
+          background_sync_threadpool_token_->SubmitFunc([this] { DoSyncAndResetTaskInQueue(); });
       if (!status.ok()) {
         LOG_WITH_PREFIX(WARNING) << "Pushing sync operation to log-sync queue failed with "
                                  << "status " << status;
@@ -1614,6 +1633,9 @@ Status Log::GC(int64_t min_op_idx, int32_t* num_gced) {
 
       if (metrics_) {
         metrics_->wal_size->IncrementBy(-1 * segment->file_size());
+        VLOG_WITH_PREFIX(4)
+            << "Decremented wal size by " << segment->file_size()
+            << " to " << metrics_->wal_size->value();
       }
     }
 
@@ -2051,11 +2073,22 @@ Status Log::SwitchToAllocatedSegment() {
   std::unique_ptr<RandomAccessFile> readable_file;
   RETURN_NOT_OK(get_env()->NewRandomAccessFile(new_segment_path, &readable_file));
 
-  scoped_refptr<ReadableLogSegment> readable_segment(
-    new ReadableLogSegment(new_segment_path,
-                           shared_ptr<RandomAccessFile>(readable_file.release())));
+  scoped_refptr<ReadableLogSegment> readable_segment(new ReadableLogSegment(
+      new_segment_path, shared_ptr<RandomAccessFile>(readable_file.release()),
+      read_wal_mem_tracker_));
   RETURN_NOT_OK(readable_segment->Init(header, new_segment->first_entry_offset()));
   RETURN_NOT_OK(reader_->AppendEmptySegment(readable_segment));
+
+  if (metrics_) {
+    // Add the pre-allocated segment size to metric.
+    int64_t segment_size = VERIFY_RESULT(new_segment->SizeOnDisk());
+    metrics_->wal_size->IncrementBy(segment_size);
+    active_segment_ondisk_size_ = segment_size;
+    VLOG_WITH_PREFIX(4)
+        << "Incremented wal size by " << segment_size
+        << " to " << metrics_->wal_size->value();
+  }
+
   // Now set 'active_segment_' to the new segment.
   {
     std::lock_guard lock(active_segment_mutex_);
@@ -2079,11 +2112,22 @@ Status Log::ReplaceSegmentInReaderUnlocked() {
       get_env(), active_segment_->path(), &readable_file));
 
   scoped_refptr<ReadableLogSegment> readable_segment(
-      new ReadableLogSegment(active_segment_->path(), readable_file));
+      new ReadableLogSegment(active_segment_->path(), readable_file, read_wal_mem_tracker_));
   // Note: active_segment->header() will only contain an initialized PB if we wrote the header out.
   RETURN_NOT_OK(readable_segment->Init(active_segment_->header(),
                                        active_segment_->footer(),
                                        active_segment_->first_entry_offset()));
+
+  if (metrics_) {
+    // The log may grow or truncate during close, hence update the log size metric before switching
+    // to the new segment.
+    int64_t size_on_disk = readable_segment->file_size();
+    metrics_->wal_size->IncrementBy(size_on_disk - active_segment_ondisk_size_);
+    VLOG_WITH_PREFIX(4)
+        << "Incremented wal size by " << (size_on_disk - active_segment_ondisk_size_)
+        << " to " << metrics_->wal_size->value();
+    active_segment_ondisk_size_ = 0;
+  }
 
   return reader_->ReplaceLastSegment(readable_segment);
 }
@@ -2311,5 +2355,4 @@ void Log::UpdateMinStartTimeRunningTxnsFromGCSegments(const SegmentSequence& seg
   }
 }
 
-}  // namespace log
-}  // namespace yb
+} // namespace yb::log

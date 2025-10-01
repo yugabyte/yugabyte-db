@@ -4,6 +4,8 @@ import { useMutation, useQuery } from 'react-query';
 import { useTranslation, Trans } from 'react-i18next';
 import { useForm, FormProvider } from 'react-hook-form';
 import { Box, Typography, MenuItem, Divider } from '@material-ui/core';
+import clsx from 'clsx';
+
 import {
   YBSidePanel,
   YBLabel,
@@ -11,9 +13,9 @@ import {
   YBRadioGroupField,
   RadioGroupOrientation,
   YBSelect,
-  YBTooltip
+  YBTooltip,
+  YBPasswordField
 } from '../../components';
-
 import { YBDropZoneField } from '../../../components/configRedesign/providerRedesign/components/YBDropZone/YBDropZoneField';
 import { createErrorMessage } from '../universe/universe-form/utils/helpers';
 import { readFileAsText } from '../../../components/configRedesign/providerRedesign/forms/utils';
@@ -23,7 +25,7 @@ import {
   ExportLogPayload,
   TelemetryProviderItem
 } from './types';
-import { TELEMETRY_PROVIDER_OPTIONS, DATADOG_SITES, LOKI_AUTH_TYPES } from './constants';
+import { DATADOG_SITES, LOKI_AUTH_TYPES } from './constants';
 import { api, runtimeConfigQueryKey } from '../../helpers/api';
 //RBAC
 import { RuntimeConfigKey } from '../../helpers/constants';
@@ -34,6 +36,7 @@ import { RBAC_ERR_MSG_NO_PERM } from '../rbac/common/validator/ValidatorUtils';
 //styles
 import { useExportTelemetryStyles } from './styles';
 import InfoIcon from '../../assets/info-message.svg';
+import { usePillStyles } from '@app/redesign/styles/styles';
 
 interface CreateTelemetryProviderConfigSidePanelProps {
   open: boolean;
@@ -49,6 +52,7 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
   formProps
 }) => {
   const classes = useExportTelemetryStyles();
+  const pillClasses = usePillStyles();
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
   const isViewMode = formProps !== null;
   const formDefaultValues = isViewMode
@@ -540,7 +544,19 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
     return (
       <>
         <Box display={'flex'} flexDirection={'column'} mt={3} width="100%">
-          <YBLabel>{t('dynatrace.endpointUrl')}</YBLabel>
+          <YBLabel className={classes.ybLabel}>
+            {t('dynatrace.endpointUrl')}
+            <YBTooltip
+              title={
+                <Trans
+                  i18nKey={`${TRANSLATION_KEY_PREFIX}.dynatrace.endpointUrlTooltip`}
+                  components={{ bold: <b /> }}
+                />
+              }
+            >
+              <img src={InfoIcon} />
+            </YBTooltip>
+          </YBLabel>
           <YBInputField
             control={control}
             name="config.endpointUrl"
@@ -550,6 +566,7 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
               'data-testid': 'DynatraceForm-EndpointUrl'
             }}
             required={true}
+            placeholder="https://<ENVIRONMENT_ID>.live.dynatrace.com/"
             rules={{
               required: 'This field is required',
               validate: {
@@ -572,8 +589,20 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
           />
         </Box>
         <Box display="flex" flexDirection="column" width="100%" mt={3}>
-          <YBLabel>{t('dynatrace.apiToken')}</YBLabel>
-          <YBInputField
+          <YBLabel className={classes.ybLabel}>
+            {t('dynatrace.apiToken')}
+            <YBTooltip
+              title={
+                <Trans
+                  i18nKey={`${TRANSLATION_KEY_PREFIX}.dynatrace.apiTokenTooltip`}
+                  components={{ bold: <b /> }}
+                />
+              }
+            >
+              <img src={InfoIcon} />
+            </YBTooltip>
+          </YBLabel>
+          <YBPasswordField
             control={control}
             name="config.apiToken"
             fullWidth
@@ -590,6 +619,14 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
               }
             }}
           />
+          <Box marginTop={1}>
+            <Typography variant="subtitle1">
+              <Trans
+                i18nKey={`${TRANSLATION_KEY_PREFIX}.dynatrace.apiTokenHelper`}
+                components={{ bold: <b /> }}
+              />
+            </Typography>
+          </Box>
         </Box>
       </>
     );
@@ -597,6 +634,93 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
 
   const canCreateTelemetryProvider = hasNecessaryPerm(ApiPermissionMap.CREATE_TELEMETRY_PROVIDER);
 
+  const TELEMETRY_PROVIDER_OPTIONS = [
+    {
+      label: (
+        <div className={classes.telemetryRadioOptionLabel}>
+          <Typography variant="body2">{t('telemetryProviderOption.label.datadog')}</Typography>
+          <div className={classes.pillContainer}>
+            <div className={clsx(pillClasses.pill, classes.exportSupportPill)}>
+              {t('telemetryProviderOption.exportSupport.metrics')}
+            </div>
+            <div className={clsx(pillClasses.pill, classes.exportSupportPill)}>
+              {t('telemetryProviderOption.exportSupport.logs')}
+            </div>
+          </div>
+        </div>
+      ),
+      value: TelemetryProviderType.DATA_DOG
+    },
+    {
+      label: (
+        <div className={classes.telemetryRadioOptionLabel}>
+          <Typography variant="body2">{t('telemetryProviderOption.label.splunk')}</Typography>
+          <div className={classes.pillContainer}>
+            <div className={clsx(pillClasses.pill, classes.exportSupportPill)}>
+              {t('telemetryProviderOption.exportSupport.logs')}
+            </div>
+          </div>
+        </div>
+      ),
+      value: TelemetryProviderType.SPLUNK
+    },
+    {
+      label: (
+        <div className={classes.telemetryRadioOptionLabel}>
+          <Typography variant="body2">
+            {t('telemetryProviderOption.label.awsCloudWatch')}
+          </Typography>
+          <div className={classes.pillContainer}>
+            <div className={clsx(pillClasses.pill, classes.exportSupportPill)}>
+              {t('telemetryProviderOption.exportSupport.logs')}
+            </div>
+          </div>
+        </div>
+      ),
+      value: TelemetryProviderType.AWS_CLOUDWATCH
+    },
+    {
+      label: (
+        <div className={classes.telemetryRadioOptionLabel}>
+          <Typography variant="body2">
+            {t('telemetryProviderOption.label.gcpCloudMonitoring')}
+          </Typography>
+          <div className={classes.pillContainer}>
+            <div className={clsx(pillClasses.pill, classes.exportSupportPill)}>
+              {t('telemetryProviderOption.exportSupport.logs')}
+            </div>
+          </div>
+        </div>
+      ),
+      value: TelemetryProviderType.GCP_CLOUD_MONITORING
+    },
+    {
+      label: (
+        <div className={classes.telemetryRadioOptionLabel}>
+          <Typography variant="body2">{t('telemetryProviderOption.label.loki')}</Typography>
+          <div className={classes.pillContainer}>
+            <div className={clsx(pillClasses.pill, classes.exportSupportPill)}>
+              {t('telemetryProviderOption.exportSupport.logs')}
+            </div>
+          </div>
+        </div>
+      ),
+      value: TelemetryProviderType.LOKI
+    },
+    {
+      label: (
+        <div className={classes.telemetryRadioOptionLabel}>
+          <Typography variant="body2">{t('telemetryProviderOption.label.dynatrace')}</Typography>
+          <div className={classes.pillContainer}>
+            <div className={clsx(pillClasses.pill, classes.exportSupportPill)}>
+              {t('telemetryProviderOption.exportSupport.metrics')}
+            </div>
+          </div>
+        </div>
+      ),
+      value: TelemetryProviderType.DYNATRACE
+    }
+  ];
   return (
     <YBSidePanel
       open={open}

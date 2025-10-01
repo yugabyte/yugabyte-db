@@ -265,7 +265,7 @@ All nodes (YB-TServers) in the cluster are identical and are capable of handling
 
 - **Load balancer**: Use a load balancer to front all the nodes of the cluster. The load balancer should be set to round-robin all requests across the nodes in the cluster.
 
-- **Smart driver**: YugabyteDB ships a [smart driver](../../../drivers-orms/smart-drivers/) in multiple languages that can automatically distribute connections to the various nodes in the cluster with minimum configuration.
+- **Smart driver**: YugabyteDB ships a [smart driver](/preview/develop/drivers-orms/smart-drivers/) in multiple languages that can automatically distribute connections to the various nodes in the cluster with minimum configuration.
 
 ### Increase throughput
 

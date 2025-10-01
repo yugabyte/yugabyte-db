@@ -288,6 +288,8 @@ export interface Universe {
   universeUUID: string;
   version: number;
   rollMaxBatchSize: RollMaxBatchSize;
+  drConfigUuidsAsSource: string[];
+  drConfigUuidsAsTarget: string[];
 }
 
 //-------------------------------------------------------- Payload related Types - Ends -------------------------------------------------------------------

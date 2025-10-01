@@ -8,6 +8,7 @@ import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DoCapacityReservation;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageOtelCollector;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeState;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterUserIntent;
@@ -262,6 +263,8 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     }
     checkUniverseVersion();
     lockAndFreezeUniverseForUpdate(taskParams().expectedUniverseVersion, firstRunTxnCallback);
+    boolean rollbackPerformed = false;
+    Throwable error = null;
     try {
       Set<NodeDetails> nodeList = fetchAllNodes(taskParams().upgradeOption);
 
@@ -282,9 +285,10 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {} with error: ", getName(), t);
-
+      error = t;
+      Universe universe = getUniverse();
+      clearCapacityReservationOnError(t, Universe.getOrBadRequest(universe.getUniverseUUID()));
       if (taskParams().getUniverseSoftwareUpgradeStateOnFailure() != null) {
-        Universe universe = getUniverse();
         if (!UniverseDefinitionTaskParams.IN_PROGRESS_UNIV_SOFTWARE_UPGRADE_STATES.contains(
             universe.getUniverseDetails().softwareUpgradeState)) {
           log.debug("Skipping universe upgrade state as actual task was not started.");
@@ -311,6 +315,16 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         onFailureTask.run();
         log.info("Finished on failure upgrade task");
       }
+
+      boolean isCapacityFail =
+          t instanceof DoCapacityReservation.CapacityReservationException
+              || t.getCause() instanceof DoCapacityReservation.CapacityReservationException;
+      if (isCapacityFail && (isFirstTry() || universe.getUniverseDetails().autoRollbackPerformed)) {
+        // Capacity reservation is run as a first task, so if we fail we can easily do rollback.
+        // If current run is a retry - we need to check if previous run was rolled back
+        // (because in prev run execution could go much further)
+        rollbackPerformed = true;
+      }
       throw t;
     } finally {
       try {
@@ -322,7 +336,10 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         try {
           unlockXClusterUniverses(lockedXClusterUniversesUuidSet, false /* ignoreErrors */);
         } finally {
-          unlockUniverseForUpdate();
+          unlockUniverseForUpdate(
+              taskParams().getUniverseUUID(),
+              error == null ? null : error.getMessage(),
+              rollbackPerformed);
         }
       }
     }

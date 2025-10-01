@@ -68,10 +68,8 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
   private KmsConfig testKMSConfig;
   private int expectedUniverseVersion = 2;
 
-  @Override
   @Before
   public void setUp() {
-    super.setUp();
     YBClient mockClient = mock(YBClient.class);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);

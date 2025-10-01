@@ -55,17 +55,16 @@
 static inline bool
 IsCTIDVar(Var *var, RelOptInfo *rel)
 {
+	bool		yb_is_tidvar;
+
 	/* The vartype check is strictly paranoia */
-	bool is_tidvar;
 	if (rel->is_yb_relation)
-	{
-		is_tidvar = (var->varattno == YBTupleIdAttributeNumber && var->vartype == BYTEAOID);
-	}
+		yb_is_tidvar = (var->varattno == YBTupleIdAttributeNumber &&
+						var->vartype == BYTEAOID);
 	else
-	{
-		is_tidvar = (var->varattno == SelfItemPointerAttributeNumber && var->vartype == TIDOID);
-	}
-	if (is_tidvar &&
+		yb_is_tidvar = (var->varattno == SelfItemPointerAttributeNumber &&
+						var->vartype == TIDOID);
+	if (yb_is_tidvar &&
 		var->varno == rel->relid &&
 		var->varlevelsup == 0)
 		return true;

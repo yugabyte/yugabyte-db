@@ -15,6 +15,7 @@ processors:
     - {action: upsert, key: ddsource, value: yugabyte}
     - {action: upsert, key: service, value: yb-otel-collector}
     - {action: upsert, key: host, value: test-node}
+    - {action: upsert, key: yugabyte.node_name, value: test-node}
     - {action: upsert, key: yugabyte.cloud, value: ''}
     - {action: upsert, key: yugabyte.universe_uuid, value: 00000000-0000-0000-0000-000000000000}
     - {action: upsert, key: yugabyte.node_type, value: PRIMARY}
@@ -45,6 +46,8 @@ processors:
     - {action: upsert, key: additionalTag, value: otherValue}
   batch/query_logs_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$BatchProcessor {
     send_batch_max_size: 1000, send_batch_size: 100, timeout: 10s}
+  memory_limiter/query_logs_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$MemoryLimiterProcessor {
+    check_interval: 10s, limit_mib: 2048}
   transform/replace: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$TransformProcessor
     log_statements:
     - context: log
@@ -79,7 +82,7 @@ service:
     logs/query_logs_00000000-0000-0000-0000-000000000000:
       exporters: [datadog/query_logs_00000000-0000-0000-0000-000000000000]
       processors: [attributes/query_logs_00000000-0000-0000-0000-000000000000, batch/query_logs_00000000-0000-0000-0000-000000000000,
-        transform/replace]
+        memory_limiter/query_logs_00000000-0000-0000-0000-000000000000, transform/replace]
       receivers: [filelog/query_logs_ysql]
   telemetry:
     logs:

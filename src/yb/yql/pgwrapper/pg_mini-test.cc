@@ -95,6 +95,8 @@ DECLARE_bool(use_bootstrap_intent_ht_filter);
 DECLARE_bool(ysql_allow_duplicating_repeatable_read_queries);
 DECLARE_bool(ysql_yb_enable_ash);
 DECLARE_bool(ysql_yb_enable_replica_identity);
+DECLARE_bool(ysql_enable_auto_analyze);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 
 DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
@@ -561,6 +563,8 @@ class PgMiniTestTracing : public PgMiniTest, public ::testing::WithParamInterfac
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tracing) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_tracing_level) = 1;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_use_shared_memory) = GetParam();
+    // Disable auto analyze because it introduces flakiness for query plans and metrics.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
     PgMiniTest::SetUp();
   }
 };
@@ -2912,6 +2916,10 @@ class PgRecursiveAbortTest : public PgMiniTestSingleNode {
     PgMiniTest::SetUp();
   }
 
+  bool IsTransactionalDdlEnabled() const {
+    return ANNOTATE_UNPROTECTED_READ(FLAGS_ysql_yb_ddl_transaction_block_enabled);
+  }
+
   template <class F>
   tserver::PgClientServiceMockImpl::Handle MockFinishTransaction(const F& mock) {
     auto* client = cluster_->mini_tablet_server(0)->server()->TEST_GetPgClientServiceMock();
@@ -2929,8 +2937,21 @@ TEST_F(PgRecursiveAbortTest, AbortOnTserverFailure) {
   ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1)"));
   auto handle = MockFinishTransaction(MockAbortFailure);
   auto status = conn.Execute("CREATE TABLE t2 (k INT)");
+  // With transactional DDL enabled, "CREATE TABLE t2" won't auto-commit. So we need to explicitly
+  // commit to trigger our expected failure.
+  // This also means that the connection `conn` remains as `CONNECTION_OK` as the transaction gets
+  // aborted due to the failure during COMMIT.
+  if (IsTransactionalDdlEnabled()) {
+    status = conn.Execute("COMMIT");
+    ASSERT_EQ(conn.ConnStatus(), CONNECTION_OK);
+  } else {
+    ASSERT_EQ(conn.ConnStatus(), CONNECTION_BAD);
+  }
   ASSERT_TRUE(status.IsNetworkError());
-  ASSERT_EQ(conn.ConnStatus(), CONNECTION_BAD);
+
+  // Insert will fail since the table 't2' doesn't exist.
+  conn = ASSERT_RESULT(Connect());
+  ASSERT_NOK(conn.Execute("INSERT INTO t2 VALUES (1)"));
 }
 
 TEST_F(PgRecursiveAbortTest, MockAbortFailure) {

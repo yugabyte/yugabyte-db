@@ -455,6 +455,8 @@ message TransactionMetadataPB {
   // Stores tablespace oid for TABLESPACE_LOCAL locality.
   optional uint32 locality_tablespace_oid = 10;
 
+  optional bool skip_prefix_locks = 11 [default = false];
+
   // Reserved for deprecated xcluster field external_transaction.
   reserved 8;
 }

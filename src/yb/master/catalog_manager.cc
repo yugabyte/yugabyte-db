@@ -5957,6 +5957,13 @@ Status CatalogManager::RefreshYsqlLease(const RefreshYsqlLeaseRequestPB* req,
   return object_lock_info_manager_->RefreshYsqlLease(*req, *resp, *rpc, epoch);
 }
 
+Status CatalogManager::RelinquishYsqlLease(const RelinquishYsqlLeaseRequestPB* req,
+                                           RelinquishYsqlLeaseResponsePB* resp,
+                                           rpc::RpcContext* rpc,
+                                           const LeaderEpoch& epoch) {
+  return object_lock_info_manager_->RelinquishYsqlLease(*req, *resp, *rpc, epoch);
+}
+
 Status CatalogManager::TruncateTable(const TableId& table_id,
                                      TruncateTableResponsePB* resp,
                                      rpc::RpcContext* rpc,
@@ -11943,8 +11950,11 @@ Status CatalogManager::MaybeCreateLocalTransactionTable(
 Result<int> CatalogManager::CalculateNumTabletsForTableCreation(
     const CreateTableRequestPB& request, const Schema& schema,
     const PlacementInfoPB& placement_info) {
+  // Stateful service should only have one tablet.
   if (PREDICT_FALSE(FLAGS_TEST_system_table_num_tablets >= 0 &&
-                    request.namespace_().name() == kSystemNamespaceName)) {
+                    request.namespace_().name() == kSystemNamespaceName &&
+                    request.name() !=
+                        GetStatefulServiceTableName(StatefulServiceKind::PG_AUTO_ANALYZE))) {
     return FLAGS_TEST_system_table_num_tablets;
   }
   // Calculate number of tablets to be used. Priorities:

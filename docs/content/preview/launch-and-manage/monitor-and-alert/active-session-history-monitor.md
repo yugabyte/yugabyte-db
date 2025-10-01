@@ -117,7 +117,7 @@ These are the wait events introduced by YugabyteDB. Some of the following [wait 
 | TableWrite  | Network |  | A YSQL backend is waiting for a table write from DocDB. |
 | CatalogWrite  | Network |  | A YSQL backend is waiting for a catalog write from master. |
 | IndexWrite | Network |   | A YSQL backend is waiting for a secondary index write from DocDB.  |
-| WaitingOnTServer | Network| RPC&nbsp;name | A YSQL backend is waiting for on TServer for an RPC. The RPC name is present on the wait event aux column.|
+| WaitingOnTServer | Network| RPC&nbsp;name | A YSQL backend is waiting on TServer for an RPC. The RPC name is present on the wait event aux column.|
 
 #### YSQLQuery class
 

@@ -3,7 +3,7 @@ title: Smart driver FAQ
 linkTitle: Smart driver FAQ
 description: YugabyteDB smart drivers frequently asked questions
 aliases:
-  - /preview/drivers-orms/smart-drivers-faq/
+  - /preview/develop/drivers-orms/smart-drivers-faq/
 menu:
   preview_faq:
     identifier: smart-drivers-faq
@@ -17,7 +17,7 @@ unversioned: true
 
 Think of smart drivers as PostgreSQL drivers with the addition of "smart" features that take advantage of the distributed nature of YugabyteDB. A smart driver intelligently distributes application connections across the nodes and regions of a YugabyteDB cluster, without the need for external load balancers. Balanced connections provide lower latencies and prevent hot nodes. For geographically-distributed applications, the driver can seamlessly connect to the geographically nearest regions and availability zones for lower latency.
 
-{{<lead link="../../drivers-orms/smart-drivers/">}}
+{{<lead link="/preview/develop/drivers-orms/smart-drivers/">}}
 YugabyteDB smart drivers for YSQL
 {{</lead>}}
 
@@ -98,6 +98,6 @@ You can direct connections to specific clouds, regions, or AZs using topology ke
 - Rust: `topology_keys`
 - Ruby: `topology_keys`
 
-{{<lead link="../../drivers-orms/smart-drivers/#topology-aware-load-balancing">}}
+{{<lead link="/preview/develop/drivers-orms/smart-drivers/#topology-aware-load-balancing">}}
 Topology-aware connection load balancing
 {{</lead>}}

@@ -161,7 +161,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
 
   private static final String YBC_BASE_S3_URL = "https://downloads.yugabyte.com/ybc/";
   private static final String YBC_BIN_ENV_KEY = "YBC_PATH";
-  private static boolean KEEP_FAILED_UNIVERSE = true;
+  private static final boolean KEEP_FAILED_UNIVERSE = true;
   private static final boolean KEEP_ALWAYS = false;
 
   public static Map<String, String> GFLAGS = new HashMap<>();
@@ -413,10 +413,6 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
     }
   }
 
-  private static String extractVersionFromFolder(String folder) {
-    return folder.substring(9); // yugabyte-2.18.3.0 for example
-  }
-
   private static String extractVersionFromBuild(String build) {
     return build.substring(0, build.indexOf("-"));
   }
@@ -442,7 +438,8 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
   }
 
   @Before
-  public void setUp() {
+  @Override
+  public void setUpBase() {
     injectDependencies();
 
     settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.releases.use_redesign", "false");

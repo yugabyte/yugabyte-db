@@ -32,10 +32,8 @@ public class CheckMemoryTest extends CommissionerBaseTest {
   private NodeDetails node;
   private long AVAILABLE_MEMORY_LIMIT_KB = 716800L;
 
-  @Override
   @Before
   public void setUp() {
-    super.setUp();
     defaultCustomer = ModelFactory.testCustomer();
     defaultUniverse = ModelFactory.createUniverse();
     UniverseDefinitionTaskParams details = defaultUniverse.getUniverseDetails();

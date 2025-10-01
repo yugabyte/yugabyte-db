@@ -965,7 +965,7 @@ void Reactor::RegisterInboundSocket(
   receive_buffer_size = PatchReceiveBufferSize(receive_buffer_size);
 
   auto stream = CreateStream(
-      messenger_.stream_factories_, messenger_.listen_protocol_,
+      messenger_.stream_factories_, &messenger_.listen_protocol_,
       StreamCreateData {
         .remote = remote,
         .remote_hostname = std::string(),

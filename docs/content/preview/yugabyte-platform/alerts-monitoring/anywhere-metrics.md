@@ -45,6 +45,23 @@ label_replace(
 
 For more information, refer to [Querying Prometheus](https://prometheus.io/docs/prometheus/latest/querying/basics/) in the Prometheus documentation.
 
+## Metrics collection level
+
+The metrics collection level setting controls how many database metrics are collected and stored. It helps balance system performance with monitoring needs, so that you can optimize resource usage based on your specific observability requirements.
+
+Set the metrics collection level by using the **Metrics Collection Level** Universe Runtime Configuration option (config key `yb.metrics.collection_level`). Refer to [Manage runtime configuration settings](../../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/).
+
+You can set the collection level to the following:
+
+| Level | Description |
+|:-------|:---------|
+| ALL | Collects all metrics from the database. Not recommended for large databases with a lot of tables, as it can overload the YugabyteDB Anywhere Prometheus instance and cause Out of Memory (OOM) errors on the node where YugabyteDB Anywhere is installed. |
+| NORMAL (default) | Collects all server-level metrics, and essential table-level metrics (required for YugabyteDB Anywhere UI and alerts). |
+| MINIMAL | Collects limited list of server-level metrics (required for YugabyteDB Anywhere UI and alerts), and very limited table-level metrics (required for alerts and table size display). |
+| OFF | Disables metric collection. |
+
+The collection level directly affects what data appears in monitoring interfaces. With NORMAL level, all UI components display full metrics. However, when MINIMAL is configured, most per-table monitoring screens display "No Data" messages, though table size information and essential alerts continue functioning. This provides a way to reduce monitoring overhead while maintaining core operational visibility.
+
 ## Filter metrics
 
 You can display metrics based on different criteria:
@@ -135,7 +152,7 @@ Resource metrics should be considered on a per-node basis.
 | --------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ | --------------------------------- |
 | Total YSQL Ops / sec  | The number of various transaction control operations, such as BEGIN, COMMIT, ROLLBACK, as well as other operations through the YSQL API. | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![Total YSQL Ops / sec](/images/yp/metrics101.png) |
 | YSQL Op Latency (Avg) | The average time taken by various transaction control operations, such as BEGIN, COMMIT, ROLLBACK, as well as other operations through the YSQL API. | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![YSQL Op Latency (Avg)](/images/yp/metrics102.png) |
-| Catalog Cache Misses | During YSQL query processing, system catalog (pg_catalog) tables that live on the YB-Master are cached on the local YSQL backend. This metric counts the number of YSQL catalog cache misses, where the data had to be fetched from the YB-Master. Also broken down by pg_catalog table that triggered the misses. | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![Catalog Cache Misses](/images/yp/metrics114.png) 
+| Catalog Cache Misses | During YSQL query processing, system catalog (pg_catalog) tables that live on the YB-Master are cached on the local YSQL backend. This metric counts the number of YSQL catalog cache misses, where the data had to be fetched from the YB-Master. Also broken down by pg_catalog table that triggered the misses. | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![Catalog Cache Misses](/images/yp/metrics114.png)
 
 ### YCQL advanced
 

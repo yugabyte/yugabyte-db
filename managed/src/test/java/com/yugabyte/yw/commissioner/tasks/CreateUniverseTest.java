@@ -26,6 +26,7 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -311,6 +312,29 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
             nodesByAZ.get(zone1.getUuid()),
             DoCapacityReservation.getCapacityReservationGroupName(universeUUID, region2.getCode()),
             nonZ1Nodes));
+  }
+
+  @Test
+  public void testCreateUniverseWithCRAzureFail() {
+    RuntimeConfigEntry.upsertGlobal(
+        ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
+    failsOnCapacityReservation = 1;
+
+    Region region1 = Region.create(azuProvider, "region-1", "region-1", "yb-image");
+    AvailabilityZone zone1 = AvailabilityZone.getOrCreate(region1, "zone-1", "zone-1", "subnet");
+    Universe universe = createUniverseForProvider("universe-test", azuProvider);
+    UniverseDefinitionTaskParams taskParams = getTaskParams(false, universe);
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Failure, taskInfo.getTaskState());
+
+    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.capacityReservationMaxRetries.getKey(), "2");
+
+    taskInfo = TaskInfo.getOrBadRequest(taskInfo.getUuid());
+    taskParams = Json.fromJson(taskInfo.getTaskParams(), UniverseDefinitionTaskParams.class);
+    taskParams.setPreviousTaskUUID(taskInfo.getUuid());
+    // Retry the task.
+    taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
   }
 
   @Test

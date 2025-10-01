@@ -17,7 +17,7 @@ import { toast } from 'react-toastify';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 import { BACKUP_REFETCH_INTERVAL, calculateDuration } from '../common/BackupUtils';
-import { formatBytes } from '../../xcluster/ReplicationUtils';
+import { formatBytes } from '@app/utils/Formatters';
 import { StatusBadge } from '../../common/badge/StatusBadge';
 import { TableType } from '../../../redesign/helpers/dtos';
 import Timer from '../../universes/images/timer.svg';

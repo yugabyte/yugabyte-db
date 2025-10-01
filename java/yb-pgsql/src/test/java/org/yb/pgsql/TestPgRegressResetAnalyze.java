@@ -36,6 +36,13 @@ public class TestPgRegressResetAnalyze extends BasePgRegressTest {
     builder.addCommonTServerFlags(commonTserverFlags);
   }
 
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    // (Auto-Analyze #28391) Restart read required
+    flagMap.put("ysql_enable_auto_analyze", "false");
+    return flagMap;
+  }
+
   @Test
   public void testPgRegressResetAnalyze() throws Exception {
     runPgRegressTest("yb_reset_analyze_schedule");

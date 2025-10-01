@@ -4,6 +4,7 @@ headerTitle: <title>
 headcontent: <date>
 type: docs
 showRightNav: true
+private: true
 cascade:
   unversioned: true
 rightNav:

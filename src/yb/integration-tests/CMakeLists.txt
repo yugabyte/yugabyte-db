@@ -63,7 +63,7 @@ add_custom_target(conflict_resolve_keys_verification_sql
     ${CMAKE_SOURCE_DIR}/src/yb/integration-tests/conflict_resolve_keys_verification/sql
     ${CMAKE_BINARY_DIR}/test_conflict_resolve_keys_verification_sql/sql
   DEPENDS ${CMAKE_SOURCE_DIR}/src/yb/integration-tests/conflict_resolve_keys_verification/sql
-  COMMENT "Copying SQL files for conflict_resolve_keys_verification-itest.cc.cc")
+  COMMENT "Copying SQL files for conflict_resolve_keys_verification-itest.cc")
 
 configure_file(
   ${CMAKE_SOURCE_DIR}/src/yb/integration-tests/upgrade-tests/builds.xml

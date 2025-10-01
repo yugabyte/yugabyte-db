@@ -57,7 +57,7 @@ YugabyteDB provides PostgreSQL without limits and is an excellent fit for new or
     linkText2="Hybrid and multi-cloud"
     linkUrl2="/preview/develop/multi-cloud/"
     linkText3="Drivers and ORMs"
-    linkUrl3="/preview/drivers-orms/"
+    linkUrl3="/preview/develop/drivers-orms/"
     linkText4="Explore more"
     linkClass4="more"
     linkUrl4="/preview/develop/"
@@ -142,7 +142,7 @@ Handle larger workloads by adding nodes to your cluster.
 
 ## Develop resilient applications
 
-##### Documentation: [Hello world](preview/tutorials/build-apps/)
+##### Documentation: [Hello world](preview/develop/tutorials/build-apps/)
 
 Use your favorite programming language to build a Hello world application.
 
@@ -158,7 +158,7 @@ Learn how to design globally distributed applications using patterns.
 
 Tips and tricks to build applications for high performance and availability.
 
-##### Documentation: [Drivers and ORMs](preview/drivers-orms/)
+##### Documentation: [Drivers and ORMs](preview/develop/drivers-orms/)
 
 Connect applications with your database.
 

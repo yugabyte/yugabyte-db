@@ -83,11 +83,6 @@ export const DataCenterConfigRedesign = ({
     fetchGlobalRunTimeConfigs(true).then((res: any) => res.data)
   );
 
-  const isExportLogEnabled =
-    globalRuntimeConfigs?.data?.configEntries?.find(
-      (c: any) => c.key === RuntimeConfigKey.ENABLE_AUDIT_LOG
-    )?.value === 'true';
-
   // Validate the URL params.
   if (
     params.tab !== undefined &&
@@ -95,6 +90,16 @@ export const DataCenterConfigRedesign = ({
   ) {
     return <YBErrorIndicator customErrorMessage={t('error.pageNotFound')} />;
   }
+
+  const isExportLogEnabled =
+    globalRuntimeConfigs?.data?.configEntries?.find(
+      (c: any) => c.key === RuntimeConfigKey.ENABLE_AUDIT_LOG
+    )?.value === 'true';
+  const isMetricsExportEnabled =
+    globalRuntimeConfigs?.data?.configEntries?.find(
+      (config: any) => config.key === RuntimeConfigKey.METRICS_EXPORT_FEATURE_FLAG
+    )?.value === 'true';
+  const shouldShowTelemetryProviderTab = isExportLogEnabled || isMetricsExportEnabled;
 
   const defaultTab = isAvailable(currentCustomer.data.features, 'config.infra')
     ? ConfigTabKey.INFRA
@@ -230,7 +235,7 @@ export const DataCenterConfigRedesign = ({
             </Tab>
           )}
 
-          {isExportLogEnabled && (
+          {shouldShowTelemetryProviderTab && (
             <Tab
               eventKey={ConfigTabKey.EXPORT_TELEMETRY}
               title={t('tab.exportTelemetry.tabLabel')}

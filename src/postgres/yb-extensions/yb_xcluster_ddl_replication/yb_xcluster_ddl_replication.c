@@ -203,7 +203,7 @@ bool
 IsDisabled()
 {
 	return !captured_by_extension || (replication_role != XCLUSTER_ROLE_AUTOMATIC_SOURCE &&
-			replication_role != XCLUSTER_ROLE_AUTOMATIC_TARGET);
+									  replication_role != XCLUSTER_ROLE_AUTOMATIC_TARGET);
 }
 
 bool
@@ -354,6 +354,17 @@ DisallowMultiStatementQueries(CommandTag command_tag)
 		++count;
 		RawStmt    *stmt = (RawStmt *) lfirst(lc);
 		CommandTag	stmt_command_tag = CreateCommandTag(stmt->stmt);
+
+		/*
+		 * Exception for SELECT ... INTO: The parser tags this as a SELECT,
+		 * so we must check the parsed statement for an IntoClause.
+		 */
+		if (command_tag == CMDTAG_SELECT_INTO &&
+			stmt_command_tag == CMDTAG_SELECT &&
+			((SelectStmt *) stmt->stmt)->intoClause != NULL)
+		{
+			stmt_command_tag = CMDTAG_SELECT_INTO;
+		}
 
 		/*
 		 * Only Extension DDLs are allowed to be part of multi-statement as
@@ -762,10 +773,11 @@ EvaluateTopDdlCommand(CommandTag command_tag)
 	if (IsExtensionDdl(command_tag))
 	{
 		is_extension_ddl = true;
-		List *parse_tree = pg_parse_query(debug_query_string);
-		char *extname = GetExtensionName(command_tag, parse_tree);
+		List	   *parse_tree = pg_parse_query(debug_query_string);
+		char	   *extname = GetExtensionName(command_tag, parse_tree);
+
 		is_self_extension_ddl = extname != NULL &&
-								strcmp(extname, EXTENSION_NAME) == 0;
+			strcmp(extname, EXTENSION_NAME) == 0;
 	}
 
 }

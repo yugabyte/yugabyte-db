@@ -73,6 +73,7 @@ The list of commands for various phases of migration are as follows:
 - [Cutover status](../../reference/cutover-archive/cutover/#cutover-status)
 - [Archive changes](../../reference/cutover-archive/archive-changes)
 - [End migration](../../reference/end-migration)
+- [Compare performance](../../reference/compare-performance)
 
 ## SSL Connectivity
 

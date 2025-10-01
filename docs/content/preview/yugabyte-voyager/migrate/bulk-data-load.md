@@ -10,6 +10,8 @@ menu:
     parent: migration-types
     weight: 105
 type: docs
+rightNav:
+  hideH4: true
 ---
 
 The following page describes the steps to import data in CSV or TEXT format from flat files on your local disk or in cloud storage, including AWS S3, GCS buckets, and Azure Blob.
@@ -459,6 +461,54 @@ In this scenario, the [import data status](#import-data-status) command reports 
 For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/yb-voyager/issues/360).
 
 {{< /warning >}}
+
+### Validate query performance
+
+{{<tags/feature/tp>}} You can compare query performance between the source database and the target YugabyteDB database (YugabyteDB release {{<release "2025.1">}} and later) using the [yb-voyager compare-performance](../../reference/compare-performance/) command.
+
+This command analyzes statistics collected during [assess migration](../assess-migration/) from the source database and compares it with statistics collected from the target YugabyteDB database.
+
+The command generates both HTML and JSON reports and provides insight into how your workload (application queries) is performing on the target YugabyteDB database compared to the source database, allowing you to prioritize and plan optimization efforts.
+
+#### Prerequisites
+
+To compare query performance, verify you have done the following:
+
+- Performed a [migration assessment](../../migrate/assess-migration/) using the [assess-migration](../reference/assess-migration/#assess-migration) command, and have the statistics from the source database.
+- Run a source workload on both the source and target YugabyteDB databases.
+- Enabled statistics collection ([pg_stat_statements](../../../additional-features/pg-extensions/extension-pgstatstatements/)) on the target YugabyteDB database.
+
+#### Compare performance
+
+Run the command as follows:
+
+{{< tabpane text=true >}}
+
+  {{% tab header="Config file" lang="config" %}}
+
+```sh
+yb-voyager compare-performance --config-file <path-to-config-file>
+```
+
+  {{% /tab %}}
+
+  {{% tab header="CLI" lang="cli" %}}
+
+```sh
+# Replace the argument values with those applicable for your migration.
+yb-voyager compare-performance --export-dir <EXPORT_DIR> \
+       --target-db-host <TARGET_DB_HOST> \
+       --target-db-user <TARGET_DB_USER> \
+       --target-db-password <TARGET_DB_PASSWORD> \ # Enclose the password in single quotes if it contains special characters.
+       --target-db-name <TARGET_DB_NAME> \
+       --target-db-schema <TARGET_DB_SCHEMA> \ # MySQL and Oracle only
+```
+
+  {{% /tab %}}
+
+{{< /tabpane >}}
+
+Refer to [yb-voyager compare-performance](../../reference/compare-performance/) for more information.
 
 ## End migration
 

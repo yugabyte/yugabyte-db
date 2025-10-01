@@ -598,13 +598,10 @@ export const GCPProviderCreateForm = ({
                       fullWidth
                     />
                   </FormField>
-                  <FormField>
-                    <FieldLabel>SSH Private Key Content</FieldLabel>
-                    <SshPrivateKeyFormField
-                      isFormDisabled={isFormDisabled}
-                      providerCode={ProviderCode.GCP}
-                    />
-                  </FormField>
+                  <SshPrivateKeyFormField
+                    isFormDisabled={isFormDisabled}
+                    providerCode={ProviderCode.GCP}
+                  />
                 </>
               )}
             </FieldGroup>

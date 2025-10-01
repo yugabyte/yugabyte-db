@@ -913,8 +913,8 @@ static void
 copy_non_pgproc_sample_fields(TimestampTz sample_time, int index)
 {
 	YbcAshSample *cb_sample = &yb_ash->circular_buffer[index];
-	int64_t rss_mem_bytes = 0;
-	int64_t pss_mem_bytes = 0;
+	int64_t		rss_mem_bytes = 0;
+	int64_t		pss_mem_bytes = 0;
 
 	/* top_level_node_id is constant for all PG samples */
 	if (get_top_level_node_id())

@@ -287,6 +287,8 @@ extern bool yb_disable_ddl_transaction_block_for_read_committed;
 
 extern bool yb_allow_dockey_bounds;
 
+extern bool yb_ignore_read_time_in_walsender;
+
 // Should be in sync with YsqlSamplingAlgorithm protobuf.
 typedef enum {
   YB_SAMPLING_ALGORITHM_FULL_TABLE_SCAN = 0,

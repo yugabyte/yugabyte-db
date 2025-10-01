@@ -254,16 +254,6 @@ TEST_F(YsqlMajorUpgradeDdlBlockingTest, KillInFlightDDLs) {
   auto oid = ASSERT_RESULT(
       conn.FetchRow<pgwrapper::PGOid>("SELECT oid FROM pg_class WHERE relname = 'tbl1'"));
 
-  // Create index, but block it before indisvalid is set.
-  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "postbackfill"));
-  Status index_creation_status;
-  std::promise<Status> index_creation_promise;
-  auto index_creation_future = index_creation_promise.get_future();
-  thread_holder.AddThreadFunctor([this, &index_creation_promise] {
-    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
-    index_creation_promise.set_value(conn.Execute("CREATE INDEX idx1 ON tbl1 (a)"));
-  });
-
   // Update the comment field in a transaction.
   ASSERT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=true"));
   ASSERT_OK(conn.Execute("BEGIN"));
@@ -278,7 +268,6 @@ TEST_F(YsqlMajorUpgradeDdlBlockingTest, KillInFlightDDLs) {
 
   // Validate connections before yb-master restart.
   ASSERT_OK(check_comment("Bye"));
-  ASSERT_EQ(index_creation_future.wait_for(0s), std::future_status::timeout);
 
   // Wait for the index creation to be blocked.
   SleepFor(10s);
@@ -287,7 +276,6 @@ TEST_F(YsqlMajorUpgradeDdlBlockingTest, KillInFlightDDLs) {
 
   // yb-master restart should not affect in-flight DDLs.
   ASSERT_OK(check_comment("Bye"));
-  ASSERT_EQ(index_creation_future.wait_for(0s), std::future_status::timeout);
 
   // Upgrade YSQL catalog.
   ASSERT_OK(PerformYsqlMajorCatalogUpgrade());
@@ -295,10 +283,6 @@ TEST_F(YsqlMajorUpgradeDdlBlockingTest, KillInFlightDDLs) {
   // DDLs should be killed by the upgrade.
   ASSERT_NOK_STR_CONTAINS(conn.Execute("COMMIT"),
       "could not serialize access due to concurrent update");
-
-  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"));
-  ASSERT_EQ(index_creation_future.wait_for(5min), std::future_status::ready);
-  ASSERT_NOK_STR_CONTAINS(index_creation_future.get(), kExpectedDdlError);
 
   // Validate rollback of the DDL.
   ASSERT_OK(check_comment("Hi"));

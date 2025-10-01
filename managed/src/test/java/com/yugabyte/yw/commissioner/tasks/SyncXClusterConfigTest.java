@@ -80,10 +80,7 @@ public class SyncXClusterConfigTest extends CommissionerBaseTest {
   private String namespace1Id;
 
   @Before
-  @Override
   public void setUp() {
-    super.setUp();
-
     defaultCustomer = testCustomer("SyncXClusterConfig-test-customer");
     defaultUser = ModelFactory.testUser(defaultCustomer);
     configName = "SyncXClusterConfigTest-test-config";

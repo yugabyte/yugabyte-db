@@ -3442,4 +3442,80 @@ TEST_F(XClusterDDLReplicationTest, DdlTableCleaningDuringPause) {
   ASSERT_OK(consumer_conn_->FetchRow<int64_t>("SELECT count(*) FROM test_table_2;"));
 }
 
+TEST_F(XClusterDDLReplicationTest, CreateTableAs) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  const std::string kSourceTable = "source_table_for_ctas";
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0(key int PRIMARY KEY, value text)", kSourceTable));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT i, 'value_' || i FROM generate_series(1, 50) as i;", kSourceTable));
+
+  auto VerifyRowCount = [&](const std::string& table_name, int64_t expected_row_count) {
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+    auto producer_row_count = ASSERT_RESULT(producer_conn_->FetchRow<int64_t>(
+        Format("SELECT COUNT(*) FROM $0", table_name)));
+    ASSERT_EQ(producer_row_count, expected_row_count);
+    auto consumer_row_count = ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>(
+        Format("SELECT COUNT(*) FROM $0", table_name)));
+    ASSERT_EQ(consumer_row_count, expected_row_count);
+  };
+
+  auto InsertAndVerify = [&](const std::string& table_name, int64_t initial_row_count) {
+    ASSERT_OK(producer_conn_->ExecuteFormat(
+        "INSERT INTO $0 (key, value) SELECT i, 'value_' || i FROM generate_series(51, 55) as i;",
+        table_name));
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+    VerifyRowCount(table_name, initial_row_count + 5);
+    ASSERT_OK(VerifyWrittenRecords({table_name}));
+  };
+
+  // Basic CTAS.
+  const std::string kNewTableCase1 = "new_table_from_ctas";
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0 AS SELECT * FROM $1 WHERE key > 30", kNewTableCase1, kSourceTable));
+  VerifyRowCount(kNewTableCase1, 20);
+  ASSERT_OK(VerifyWrittenRecords({kNewTableCase1}));
+  InsertAndVerify(kNewTableCase1, /*initial_row_count=*/20);
+
+  // CTAS with WITH NO DATA.
+  const std::string kNewTableCase2 = "new_table_no_data";
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0 AS SELECT * FROM $1 WITH NO DATA", kNewTableCase2, kSourceTable));
+  VerifyRowCount(kNewTableCase2, 0);
+  InsertAndVerify(kNewTableCase2, /*initial_row_count=*/0);
+
+  // CTAS from JOIN.
+  const std::string kSourceJoinTable = "source_join_table";
+  const std::string kNewTableCase3 = "new_table_from_join";
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0(fkey int PRIMARY KEY)", kSourceJoinTable));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT * FROM generate_series(1, 10);", kSourceJoinTable));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0 AS SELECT s1.key, s1.value FROM $1 s1 JOIN $2 s2 ON s1.key = s2.fkey",
+      kNewTableCase3, kSourceTable, kSourceJoinTable));
+  VerifyRowCount(kNewTableCase3, 10);
+  ASSERT_OK(VerifyWrittenRecords({kNewTableCase3}));
+  InsertAndVerify(kNewTableCase3, /*initial_row_count=*/10);
+
+  // Basic SELECT INTO.
+  const std::string kIntoTableCase1 = "new_table_from_select_into";
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "SELECT * INTO $0 FROM $1 WHERE key > 30", kIntoTableCase1, kSourceTable));
+  VerifyRowCount(kIntoTableCase1, 20);
+  ASSERT_OK(VerifyWrittenRecords({kIntoTableCase1}));
+  InsertAndVerify(kIntoTableCase1, /*initial_row_count=*/20);
+
+  // SELECT INTO from JOIN.
+  const std::string kIntoTableCase3 = "new_table_from_select_into_join";
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "SELECT s1.key, s1.value INTO $0 FROM $1 s1 JOIN $2 s2 ON s1.key = s2.fkey",
+      kIntoTableCase3, kSourceTable, kSourceJoinTable));
+  VerifyRowCount(kIntoTableCase3, 10);
+  ASSERT_OK(VerifyWrittenRecords({kIntoTableCase3}));
+  InsertAndVerify(kIntoTableCase3, /*initial_row_count=*/10);
+}
+
 }  // namespace yb

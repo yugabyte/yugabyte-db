@@ -1051,7 +1051,7 @@ YbSendParameterStatusForConnectionManager(const char *name, const char *value)
 	pq_beginmessage(&msgbuf, 'r');
 	pq_sendstring(&msgbuf, name);
 	pq_sendstring(&msgbuf, value);
-	pq_sendbyte(&msgbuf, 0); /* flags */
+	pq_sendbyte(&msgbuf, 0);	/* flags */
 	pq_endmessage(&msgbuf);
 
 	pq_flush();

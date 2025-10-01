@@ -452,6 +452,8 @@ message SysObjectLockEntryPB {
 
     // The instance_seqno of the tserver process to which this lease was granted.
     optional int64 instance_seqno = 3;
+
+    optional bool lease_relinquished = 4;
   }
   optional LeaseInfoPB lease_info = 2;
   map<uint64, tserver.ReleaseObjectLockRequestPB> in_progress_release_request = 3;
