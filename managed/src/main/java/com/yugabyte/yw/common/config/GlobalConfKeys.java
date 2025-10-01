@@ -1204,6 +1204,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable publishing thread dumps to GCS",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> ybcDiagSupportBundlesGCSEnabled =
+      new ConfKeyInfo<>(
+          "yb.diag.support_bundles.gcs.enabled",
+          ScopeType.GLOBAL,
+          "Enable publishing support bundles to GCS",
+          "Enable publishing support bundles to GCS",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> blockOperatorApiResources =
       new ConfKeyInfo<>(
           "yb.kubernetes.operator.block_api_operator_owned_resources",

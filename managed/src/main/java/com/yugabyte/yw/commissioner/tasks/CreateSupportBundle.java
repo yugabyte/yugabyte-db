@@ -28,6 +28,7 @@ import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.diagnostics.SupportBundlePublisher;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponent;
@@ -45,11 +46,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
+import java.util.Collection;
 import java.util.Date;
-import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 
@@ -63,6 +63,7 @@ public class CreateSupportBundle extends AbstractTaskBase {
   @Inject private Config staticConfig;
   @Inject private NodeUniverseManager nodeUniverseManager;
   @Inject RuntimeConfGetter confGetter;
+  @Inject private SupportBundlePublisher supportBundlePublisher;
 
   private final OperatorStatusUpdater operatorStatusUpdater;
 
@@ -85,6 +86,19 @@ public class CreateSupportBundle extends AbstractTaskBase {
     try {
       Path gzipPath = generateBundle(supportBundle);
       supportBundle.setPathObject(gzipPath);
+
+      // Upload support bundle to configured destinations with universe context
+      try {
+        if (supportBundlePublisher.publish(gzipPath.toFile(), taskParams().universe)) {
+          log.info(
+              "Support bundle uploaded successfully to configured destinations with universe"
+                  + " context");
+        }
+      } catch (Exception e) {
+        log.error("Failed to upload support bundle to configured destinations", e);
+        // Don't fail the entire task if upload fails - the bundle was created successfully
+      }
+
       supportBundle.setStatus(SupportBundleStatusType.Success);
       operatorStatusUpdater.markSupportBundleFinished(
           supportBundle, taskParams().getKubernetesResourceDetails(), gzipPath);
@@ -136,10 +150,10 @@ public class CreateSupportBundle extends AbstractTaskBase {
     int nodeReachableTimeout =
         confGetter.getGlobalConf(GlobalConfKeys.supportBundleNodeCheckTimeoutSec);
     Set<NodeDetails> reachableNodes = ConcurrentHashMap.newKeySet();
-    List<NodeDetails> nodes = universe.getNodes().stream().collect(Collectors.toList());
 
     // Run checks to all nodes in parallel to optimise bundle creation time.
-    createCheckNodeReachableSubTask(nodes, universe, nodeReachableTimeout, reachableNodes);
+    createCheckNodeReachableSubTask(
+        universe.getNodes(), universe, nodeReachableTimeout, reachableNodes);
     getRunnableTask().runSubTasks();
 
     // Clear previous subtask so its not run again.
@@ -161,12 +175,11 @@ public class CreateSupportBundle extends AbstractTaskBase {
     String storagePath = AppConfigHelper.getStoragePath();
     String datePrefix = new SimpleDateFormat("yyyyMMddHHmmss.SSS").format(new Date());
     String bundleName = "yb-support-bundle-" + universe.getName() + "-" + datePrefix + "-logs";
-    Path bundlePath = Paths.get(storagePath + "/" + bundleName);
-    return bundlePath;
+    return Paths.get(storagePath + "/" + bundleName);
   }
 
   private void createCheckNodeReachableSubTask(
-      List<NodeDetails> nodes,
+      Collection<NodeDetails> nodes,
       Universe universe,
       long nodeReachableTimeout,
       Set<NodeDetails> reachableNodes) {
@@ -228,10 +241,10 @@ public class CreateSupportBundle extends AbstractTaskBase {
             subTaskGroup.addSubTask(downloadTask);
           } catch (Exception e) {
             log.error(
-                "Error while creating {} component download task for {} node : {}",
-                componentType.toString(),
+                "Error while creating {} component download task for node {}",
+                componentType,
                 node.getNodeName(),
-                e.toString());
+                e);
           }
         }
       } else {
@@ -254,9 +267,7 @@ public class CreateSupportBundle extends AbstractTaskBase {
           subTaskGroup.addSubTask(downloadTask);
         } catch (Exception e) {
           log.error(
-              "Error while creating {} component download task for YBA node : {}",
-              componentType.toString(),
-              e.toString());
+              "Error while creating {} component download task for YBA node", componentType, e);
         }
       }
       getRunnableTask().addSubTaskGroup(subTaskGroup);
@@ -291,7 +302,7 @@ public class CreateSupportBundle extends AbstractTaskBase {
         subTaskGroup.addSubTask(downloadTask);
         getRunnableTask().addSubTaskGroup(subTaskGroup);
       } catch (Exception e) {
-        log.error("Error while collecting Application logs for support bundle: {}", e.getMessage());
+        log.error("Error while collecting Application logs for support bundle", e);
       }
     }
   }
