@@ -201,6 +201,27 @@ check_yugabyte_user() {
   update_result_json "user_group" "$result"
 }
 
+check_yugabyte_user_home_if_exists() {
+  # Check only if yugabyte user exists.
+  if id -u "yugabyte" >/dev/null 2>&1; then
+    # Get the local home directory
+    # Output looks like yugabyte:x:1001:1001::/home/yugabyte:/bin/bash
+    actual_home_dir=$(getent passwd yugabyte | cut -d: -f6 2>&1)
+    if [[ -z "$actual_home_dir" ]]; then
+      update_result_json "home_dir_exists" false
+    else
+      update_result_json "home_dir_exists" true
+      # Normalize path.
+      actual_home_dir=$(readlink -m "$actual_home_dir" 2>&1)
+      if [[ "$actual_home_dir" != "$yb_home_dir" ]]; then
+        update_result_json "home_dir_matches" false
+      else
+        update_result_json "home_dir_matches" true
+      fi
+    fi
+  fi
+}
+
 check_packages_installed() {
 
   check_package_installed "openssl" # Required.
@@ -292,12 +313,8 @@ preflight_all_checks() {
   fi
   update_result_json "python_version" "$result"
 
-  # Check home directory exists.
-  if [[ -d "$yb_home_dir" ]]; then
-    update_result_json "home_dir_exists" true
-  else
-    update_result_json "home_dir_exists" false
-  fi
+  # Check home directory exists and verify if it matches the expected home directory.
+  check_yugabyte_user_home_if_exists
 
   # Check all the communication ports
   check_port "master_http_port" "$master_http_port"
@@ -569,6 +586,8 @@ while [[ $# -gt 0 ]]; do
     ;;
     --yb_home_dir)
       yb_home_dir=${2//\'/}
+      # Normalize the path.
+      yb_home_dir=$(readlink -m "$yb_home_dir" 2>&1)
       shift
     ;;
     --cleanup)
