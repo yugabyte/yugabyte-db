@@ -83,6 +83,7 @@ typedef enum
 /* possible values for yb_enable_cbo */
 typedef enum
 {
+	YB_COST_MODEL_LEGACY_IGNORE_STATS_BNL = -5,
 	YB_COST_MODEL_LEGACY_BNL = -4,
 	YB_COST_MODEL_LEGACY_STATS_BNL = -3,
 	YB_COST_MODEL_LEGACY = -2,

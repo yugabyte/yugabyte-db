@@ -17,7 +17,7 @@ import { useTranslation } from 'react-i18next';
 import { Typography, makeStyles } from '@material-ui/core';
 import { toast } from 'react-toastify';
 import { YBButton } from '../../../redesign/components';
-import { formatBytes } from '../../xcluster/ReplicationUtils';
+import { formatBytes } from '@app/utils/Formatters';
 import { ENTITY_NOT_AVAILABLE, calculateDuration } from '../common/BackupUtils';
 import { Badge_Types, StatusBadge } from '../../common/badge/StatusBadge';
 import { api } from '../../../redesign/helpers/api';

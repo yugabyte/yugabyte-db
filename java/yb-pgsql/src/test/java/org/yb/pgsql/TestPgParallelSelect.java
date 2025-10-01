@@ -54,7 +54,10 @@ public class TestPgParallelSelect extends BasePgSQLTest {
     flagMap.put("TEST_slowdown_pgsql_aggregate_read_ms",
         Integer.toString(kSlowdownPgsqlAggregateReadMs));
     flagMap.put("ysql_select_parallelism", Integer.toString(3 * kNumShardsPerTserver));
-
+    // Disable auto analyze because it increases latency for this test, and latency
+    // is one metric checked by the test.
+    flagMap.put("ysql_enable_auto_analyze_infra", "false");
+    flagMap.put("ysql_enable_auto_analyze", "false");
     return flagMap;
   }
 

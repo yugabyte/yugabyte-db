@@ -798,12 +798,13 @@ CopyFrom(CopyFromState cstate)
 		else if (IsTransactionBlock() || YbIsBatchedExecution())
 		{
 			const char *context = IsTransactionBlock() ? "transaction block" : "batch of commands";
+
 			ereport(WARNING,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("ROWS_PER_TRANSACTION is not supported in a %s", context),
 					 errdetail("Defaulting to using one transaction for all statements in the %s.", context),
 					 errhint("Either run this COPY outside of a %s or set rows_per_transaction option to `0` "
-							" to remove this warning.", context)));
+							 " to remove this warning.", context)));
 		}
 		else if (HasNonRITrigger(cstate->rel->trigdesc))
 			ereport(WARNING,

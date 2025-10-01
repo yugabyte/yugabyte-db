@@ -52,7 +52,6 @@ public class AddGFlagMetadataTest extends CommissionerBaseTest {
 
   @Before
   public void setup() {
-    super.setUp();
     tempFilePath =
         TestHelper.createTempFile(TestHelper.TMP_PATH, DEFAULT_VERSION + ".tar.gz", "test-file");
     defaultReleaseMetadata = ReleaseMetadata.create(DEFAULT_VERSION).withFilePath(tempFilePath);

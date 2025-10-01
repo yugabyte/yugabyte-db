@@ -418,6 +418,8 @@ int TabletServerMain(int argc, char** argv) {
     redis_server->Shutdown();
   }
 
+  // We must stop the pg backend supervisor before shutting down the tserver.
+  // Otherwise the tserver could give up its lease while it continues to server queries.
   if (pg_supervisor) {
     LOG(WARNING) << "Stopping PostgreSQL";
     pg_supervisor->Stop();
@@ -437,7 +439,6 @@ int TabletServerMain(int argc, char** argv) {
 
   // Best effort flush of log without any mutex.
   google::FlushLogFilesUnsafe(0);
-
   return EXIT_SUCCESS;
 }
 

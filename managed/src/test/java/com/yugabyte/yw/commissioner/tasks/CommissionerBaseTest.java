@@ -68,6 +68,7 @@ import com.yugabyte.yw.common.ProviderEditRestrictionManager;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleasesUtils;
+import com.yugabyte.yw.common.RestoreManagerYb;
 import com.yugabyte.yw.common.ShellKubernetesManager;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.SoftwareUpgradeHelper;
@@ -156,53 +157,59 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       "yb.security.custom_hooks.enable_custom_hooks";
   protected static final String ENABLE_SUDO_PATH = "yb.security.custom_hooks.enable_sudo";
 
-  protected AccessManager mockAccessManager;
-  protected NetworkManager mockNetworkManager;
+  protected AccessManager mockAccessManager = mock(AccessManager.class);
+  protected NetworkManager mockNetworkManager = mock(NetworkManager.class);
   protected Config mockConfig;
-  protected ConfigHelper mockConfigHelper;
-  protected AWSInitializer mockAWSInitializer;
-  protected GCPInitializer mockGCPInitializer;
-  protected YBClientService mockYBClient;
-  protected NodeManager mockNodeManager;
-  protected DnsManager mockDnsManager;
-  protected TableManager mockTableManager;
-  protected TableManagerYb mockTableManagerYb;
-  protected CloudQueryHelper mockCloudQueryHelper;
-  protected ShellKubernetesManager mockKubernetesManager;
-  protected SwamperHelper mockSwamperHelper;
-  protected CallHome mockCallHome;
-  protected CallbackController mockCallbackController;
-  protected PlayCacheSessionStore mockSessionStore;
-  protected ApiHelper mockApiHelper;
-  protected NodeUIApiHelper mockNodeUIApiHelper;
-  protected MetricQueryHelper mockMetricQueryHelper;
-  protected MetricService metricService;
-  protected AlertService alertService;
-  protected AlertDefinitionService alertDefinitionService;
-  protected AlertConfigurationService alertConfigurationService;
-  protected YcqlQueryExecutor mockYcqlQueryExecutor;
-  protected YsqlQueryExecutor mockYsqlQueryExecutor;
-  protected LdapUtil mockLdapUtil;
-  protected NodeUniverseManager mockNodeUniverseManager;
-  protected TaskExecutor taskExecutor;
-  protected EncryptionAtRestManager mockEARManager;
-  protected SupportBundleComponent mockSupportBundleComponent;
-  protected SupportBundleComponentFactory mockSupportBundleComponentFactory;
-  protected ReleaseManager mockReleaseManager;
-  protected GFlagsValidation mockGFlagsValidation;
-  protected AutoFlagUtil mockAutoFlagUtil;
-  protected ProviderEditRestrictionManager providerEditRestrictionManager;
-  protected BackupHelper mockBackupHelper;
-  protected PrometheusConfigManager mockPrometheusConfigManager;
-  protected YbcManager mockYbcManager;
-  protected OperatorStatusUpdaterFactory mockOperatorStatusUpdaterFactory;
-  protected OperatorStatusUpdater mockOperatorStatusUpdater;
-  protected CloudUtilFactory mockCloudUtilFactory;
-  protected ReleasesUtils mockReleasesUtils;
-  protected NodeAgentManager mockNodeAgentManager;
-  protected NodeAgentClient mockNodeAgentClient;
-  protected SoftwareUpgradeHelper mockSoftwareUpgradeHelper;
-  protected GFlagsAuditHandler mockGFlagsAuditHandler;
+  protected ConfigHelper mockConfigHelper = mock(ConfigHelper.class);
+  protected AWSInitializer mockAWSInitializer = mock(AWSInitializer.class);
+  protected GCPInitializer mockGCPInitializer = mock(GCPInitializer.class);
+  protected YBClientService mockYBClient = mock(YBClientService.class);
+  protected NodeManager mockNodeManager = mock(NodeManager.class);
+  protected DnsManager mockDnsManager = mock(DnsManager.class);
+  protected TableManager mockTableManager = mock(TableManager.class);
+  protected TableManagerYb mockTableManagerYb = mock(TableManagerYb.class);
+  protected CloudQueryHelper mockCloudQueryHelper = mock(CloudQueryHelper.class);
+  protected ShellKubernetesManager mockKubernetesManager = mock(ShellKubernetesManager.class);
+  protected SwamperHelper mockSwamperHelper = mock(SwamperHelper.class);
+  protected CallHome mockCallHome = mock(CallHome.class);
+  protected CallbackController mockCallbackController = mock(CallbackController.class);
+  protected PlayCacheSessionStore mockSessionStore = mock(PlayCacheSessionStore.class);
+  protected ApiHelper mockApiHelper = mock(ApiHelper.class);
+  protected NodeUIApiHelper mockNodeUIApiHelper = mock(NodeUIApiHelper.class);
+  protected MetricQueryHelper mockMetricQueryHelper = mock(MetricQueryHelper.class);
+  protected MetricService metricService = mock(MetricService.class);
+  protected AlertService alertService = mock(AlertService.class);
+  protected AlertDefinitionService alertDefinitionService = mock(AlertDefinitionService.class);
+  protected AlertConfigurationService alertConfigurationService =
+      mock(AlertConfigurationService.class);
+  protected YcqlQueryExecutor mockYcqlQueryExecutor = mock(YcqlQueryExecutor.class);
+  protected YsqlQueryExecutor mockYsqlQueryExecutor = mock(YsqlQueryExecutor.class);
+  protected LdapUtil mockLdapUtil = mock(LdapUtil.class);
+  protected NodeUniverseManager mockNodeUniverseManager = mock(NodeUniverseManager.class);
+  protected TaskExecutor taskExecutor = mock(TaskExecutor.class);
+  protected EncryptionAtRestManager mockEARManager = mock(EncryptionAtRestManager.class);
+  protected SupportBundleComponent mockSupportBundleComponent = mock(SupportBundleComponent.class);
+  protected SupportBundleComponentFactory mockSupportBundleComponentFactory =
+      mock(SupportBundleComponentFactory.class);
+  protected ReleaseManager mockReleaseManager = mock(ReleaseManager.class);
+  protected GFlagsValidation mockGFlagsValidation = mock(GFlagsValidation.class);
+  protected AutoFlagUtil mockAutoFlagUtil = mock(AutoFlagUtil.class);
+  protected ProviderEditRestrictionManager providerEditRestrictionManager =
+      mock(ProviderEditRestrictionManager.class);
+  protected BackupHelper mockBackupHelper = mock(BackupHelper.class);
+  protected PrometheusConfigManager mockPrometheusConfigManager =
+      mock(PrometheusConfigManager.class);
+  protected YbcManager mockYbcManager = mock(YbcManager.class);
+  protected OperatorStatusUpdaterFactory mockOperatorStatusUpdaterFactory =
+      mock(OperatorStatusUpdaterFactory.class);
+  protected OperatorStatusUpdater mockOperatorStatusUpdater = mock(OperatorStatusUpdater.class);
+  protected CloudUtilFactory mockCloudUtilFactory = mock(CloudUtilFactory.class);
+  protected ReleasesUtils mockReleasesUtils = mock(ReleasesUtils.class);
+  protected NodeAgentManager mockNodeAgentManager = mock(NodeAgentManager.class);
+  protected NodeAgentClient mockNodeAgentClient = mock(NodeAgentClient.class);
+  protected SoftwareUpgradeHelper mockSoftwareUpgradeHelper = mock(SoftwareUpgradeHelper.class);
+  protected GFlagsAuditHandler mockGFlagsAuditHandler = mock(GFlagsAuditHandler.class);
+  protected RestoreManagerYb restoreManagerYb = mock(RestoreManagerYb.class);
 
   protected BaseTaskDependencies mockBaseTaskDependencies =
       Mockito.mock(BaseTaskDependencies.class);
@@ -215,7 +222,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected Provider kubernetesProvider;
   protected SettableRuntimeConfigFactory factory;
   protected RuntimeConfGetter confGetter;
-  protected CloudAPI.Factory mockCloudAPIFactory;
+  protected CloudAPI.Factory mockCloudAPIFactory = mock(CloudAPI.Factory.class);
 
   protected Commissioner commissioner;
   protected CustomerTaskManager customerTaskManager;
@@ -226,9 +233,10 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected AZUResourceGroupApiClient azuResourceGroupApiClient =
       mock(AZUResourceGroupApiClient.class);
   protected CloudAPI cloudAPI = mock(CloudAPI.class);
+  protected int failsOnCapacityReservation = 0;
 
   @Before
-  public void setUp() {
+  public void setUpBase() {
     mockConfig = spy(app.config());
     commissioner = app.injector().instanceOf(Commissioner.class);
     customerTaskManager = app.injector().instanceOf(CustomerTaskManager.class);
@@ -247,8 +255,6 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     providerEditRestrictionManager =
         app.injector().instanceOf(ProviderEditRestrictionManager.class);
     imageBundleUtil = app.injector().instanceOf(ImageBundleUtil.class);
-    mockCloudUtilFactory = mock(CloudUtilFactory.class);
-    mockReleasesUtils = mock(ReleasesUtils.class);
     lenient().when(azuClientFactory.getClient(any())).thenReturn(azuResourceGroupApiClient);
     lenient().when(mockCloudAPIFactory.get(any())).thenReturn(cloudAPI);
 
@@ -286,6 +292,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     when(mockBaseTaskDependencies.getNodeUniverseManager()).thenReturn(mockNodeUniverseManager);
     when(mockBaseTaskDependencies.getNodeAgentClient()).thenReturn(mockNodeAgentClient);
     when(mockBaseTaskDependencies.getImageBundleUtil()).thenReturn(imageBundleUtil);
+    when(mockBaseTaskDependencies.getRestoreManagerYb()).thenReturn(restoreManagerYb);
     releaseMetadata = ReleaseManager.ReleaseMetadata.create("1.0.0.0-b1");
     releaseContainer =
         new ReleaseContainer(releaseMetadata, mockCloudUtilFactory, mockConfig, mockReleasesUtils);
@@ -334,6 +341,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
               reservationsByGroup.put(groupName, new HashSet<>());
               return groupName;
             });
+    Map<String, Integer> failsPerReservation = new HashMap<>();
     lenient()
         .when(
             azuResourceGroupApiClient.createCapacityReservation(
@@ -348,6 +356,12 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
             invocation -> {
               String groupName = invocation.getArgument(0);
               String reservationName = invocation.getArgument(3);
+              if (failsOnCapacityReservation > 0) {
+                Integer res = failsPerReservation.merge(reservationName, 1, Integer::sum);
+                if (res <= failsOnCapacityReservation) {
+                  throw new RuntimeException("Failing");
+                }
+              }
               reservationsByGroup
                   .computeIfAbsent(groupName, x -> new HashSet<>())
                   .add(reservationName);
@@ -375,46 +389,6 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
 
   @Override
   protected Application provideApplication() {
-    mockAccessManager = mock(AccessManager.class);
-    mockNetworkManager = mock(NetworkManager.class);
-    mockConfigHelper = mock(ConfigHelper.class);
-    mockAWSInitializer = mock(AWSInitializer.class);
-    mockGCPInitializer = mock(GCPInitializer.class);
-    mockYBClient = mock(YBClientService.class);
-    mockNodeManager = mock(NodeManager.class);
-    mockDnsManager = mock(DnsManager.class);
-    mockCloudQueryHelper = mock(CloudQueryHelper.class);
-    mockTableManager = mock(TableManager.class);
-    mockTableManagerYb = mock(TableManagerYb.class);
-    mockKubernetesManager = mock(ShellKubernetesManager.class);
-    mockSwamperHelper = mock(SwamperHelper.class);
-    mockCallHome = mock(CallHome.class);
-    mockCallbackController = mock(CallbackController.class);
-    mockSessionStore = mock(PlayCacheSessionStore.class);
-    mockApiHelper = mock(ApiHelper.class);
-    mockNodeUIApiHelper = mock(NodeUIApiHelper.class);
-    mockMetricQueryHelper = mock(MetricQueryHelper.class);
-    mockYcqlQueryExecutor = mock(YcqlQueryExecutor.class);
-    mockYsqlQueryExecutor = mock(YsqlQueryExecutor.class);
-    mockLdapUtil = mock(LdapUtil.class);
-    mockNodeUniverseManager = mock(NodeUniverseManager.class);
-    mockEARManager = mock(EncryptionAtRestManager.class);
-    mockSupportBundleComponent = mock(SupportBundleComponent.class);
-    mockSupportBundleComponentFactory = mock(SupportBundleComponentFactory.class);
-    mockGFlagsValidation = mock(GFlagsValidation.class);
-    mockAutoFlagUtil = mock(AutoFlagUtil.class);
-    mockReleaseManager = mock(ReleaseManager.class);
-    mockCloudAPIFactory = mock(CloudAPI.Factory.class);
-    mockBackupHelper = mock(BackupHelper.class);
-    mockYbcManager = mock(YbcManager.class);
-    mockPrometheusConfigManager = mock(PrometheusConfigManager.class);
-    mockOperatorStatusUpdaterFactory = mock(OperatorStatusUpdaterFactory.class);
-    mockOperatorStatusUpdater = mock(OperatorStatusUpdater.class);
-    mockNodeAgentManager = mock(NodeAgentManager.class);
-    mockNodeAgentClient = mock(NodeAgentClient.class);
-    mockSoftwareUpgradeHelper = mock(SoftwareUpgradeHelper.class);
-    mockGFlagsAuditHandler = mock(GFlagsAuditHandler.class);
-
     return configureApplication(
             new GuiceApplicationBuilder()
                 .disable(GuiceModule.class)

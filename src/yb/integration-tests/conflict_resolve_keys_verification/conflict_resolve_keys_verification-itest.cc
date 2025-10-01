@@ -72,6 +72,8 @@ class ConflictResolveKeysVerificationITest : public ExternalMiniClusterITestBase
       "--ysql_enable_packed_row=true",
       "--TEST_docdb_log_write_batches=true",
       "--TEST_no_schedule_remove_intents=true",
+      "--ysql_enable_auto_analyze=false",
+      "--allowed_preview_flags_csv=skip_prefix_locks"
     };
     // Start cluster with the specified flags
     StartCluster(extra_tserver_flags);
@@ -125,7 +127,7 @@ class ConflictResolveKeysVerificationITest : public ExternalMiniClusterITestBase
 
   void RunTestsForFile(const string& sql_name) {
     auto sql_path = JoinPathSegments(test_sql_dir_, sql_name);
-    std::vector<bool> skip_prefix_locks_config = {false};
+    std::vector<bool> skip_prefix_locks_config = {false, true};
     std::vector<std::string> isolations = {"serializable", "repeatable read"};
     for (auto skip_prefix_locks : skip_prefix_locks_config) {
       for (auto isolation : isolations) {
@@ -149,6 +151,8 @@ class ConflictResolveKeysVerificationITest : public ExternalMiniClusterITestBase
                       const std::string& isolation) {
     LOG(INFO) << "RunTestForFile. sql_path=" << sql_path
               << ", skip_prefix_locks=" << skip_prefix_locks << ", isolation=" << isolation;
+    ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(0), "skip_prefix_locks",
+                                skip_prefix_locks ? "true" : "false"));
 
     const string tmp_sql_path = "/tmp/conflict_resolve_keys_verification.tmp.sql";
 
@@ -190,7 +194,8 @@ class ConflictResolveKeysVerificationITest : public ExternalMiniClusterITestBase
     ASSERT_TRUE(env->FileExists(target_output_file));
 
     const std::string expected_output_file = Format(
-      "$0/expected/$1/$2/$3.out", generate_output_path.empty() ? test_sql_dir_ : generate_output_path,
+      "$0/expected/$1/$2/$3.out",
+      generate_output_path.empty() ? test_sql_dir_ : generate_output_path,
       skip_prefix_locks ? "skip_prefix_locks_enabled" : "skip_prefix_locks_disabled",
       isolation_folder, BaseName(sql_path));
     if (!generate_output_path.empty()) {
@@ -359,7 +364,6 @@ class ConflictResolveKeysVerificationITest : public ExternalMiniClusterITestBase
   // Set to false if the test doesn't need to require creating a table and inserting a row
   // beforehand.
   bool prepare_table_row_ = true;
-
   bool use_explicit_txn_ = true;
 };
 
@@ -377,6 +381,24 @@ TEST_F(ConflictResolveKeysVerificationITest, InsertWithIndex) {
 
 TEST_F(ConflictResolveKeysVerificationITest, InsertWithUniqueIndex) {
   const std::string sql_file = "insert_with_unique_index.sql";
+  prepare_table_row_ = false;
+  RunTestsForFile(sql_file);
+}
+
+TEST_F(ConflictResolveKeysVerificationITest, InsertWithUniqueIndexComposite) {
+  const std::string sql_file = "insert_with_unique_index_composite.sql";
+  prepare_table_row_ = false;
+  RunTestsForFile(sql_file);
+}
+
+TEST_F(ConflictResolveKeysVerificationITest, InsertWithUniqueIndexDistinctNull) {
+  const std::string sql_file = "insert_with_unique_index_distinct_null.sql";
+  prepare_table_row_ = false;
+  RunTestsForFile(sql_file);
+}
+
+TEST_F(ConflictResolveKeysVerificationITest, InsertWithUniqueIndexNotDistinctNull) {
+  const std::string sql_file = "insert_with_unique_index_not_distinct_null.sql";
   prepare_table_row_ = false;
   RunTestsForFile(sql_file);
 }

@@ -68,7 +68,7 @@ class ServerStatusPB;
 // a YB tablet server and master.
 class RpcServerBase {
  public:
-  const RpcServer *rpc_server() const { return rpc_server_.get(); }
+  const RpcServer* rpc_server() const { return rpc_server_.get(); }
   rpc::Messenger* messenger() const { return messenger_.get(); }
   rpc::ProxyCache& proxy_cache() { return *proxy_cache_; }
 

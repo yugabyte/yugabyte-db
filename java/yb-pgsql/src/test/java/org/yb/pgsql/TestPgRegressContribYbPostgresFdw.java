@@ -27,6 +27,15 @@ public class TestPgRegressContribYbPostgresFdw extends BasePgRegressTest {
     return 1800;
   }
 
+  // Disable auto analyze likely because of issue #27973.
+  // This may not be related to auto analyze at all.
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("ysql_enable_auto_analyze", "false");
+    return flagMap;
+  }
+
+
   @Test
   public void schedule() throws Exception {
     runPgRegressTest(new File(TestUtils.getBuildRootDir(), "postgres_build/contrib/postgres_fdw"),

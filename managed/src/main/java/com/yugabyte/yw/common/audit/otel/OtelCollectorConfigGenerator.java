@@ -1231,78 +1231,20 @@ public class OtelCollectorConfigGenerator {
 
     exporterName =
         appendExporterConfig(telemetryProvider, exporters, attributeActions, ExportType.AUDIT_LOGS);
-    // Add some common collector labels.
-    attributeActions.add(
-        new OtelCollectorConfigFormat.AttributeAction("host", nodeName, "upsert", null));
-    attributeActions.add(
-        new OtelCollectorConfigFormat.AttributeAction(
-            "yugabyte.cloud",
-            StringUtils.defaultString(nodeDetails.cloudInfo.cloud, ""),
-            "upsert",
-            null));
-    attributeActions.add(
-        new OtelCollectorConfigFormat.AttributeAction(
-            "yugabyte.universe_uuid", universe.getUniverseUUID().toString(), "upsert", null));
-    attributeActions.add(
-        new OtelCollectorConfigFormat.AttributeAction(
-            "yugabyte.node_type",
-            universe.getCluster(nodeDetails.placementUuid).clusterType.toString(),
-            "upsert",
-            null));
-    attributeActions.add(
-        new OtelCollectorConfigFormat.AttributeAction(
-            "yugabyte.region",
-            StringUtils.defaultString(nodeDetails.cloudInfo.region, ""),
-            "upsert",
-            null));
-    attributeActions.add(
-        new OtelCollectorConfigFormat.AttributeAction(
-            "yugabyte.zone",
-            StringUtils.defaultString(nodeDetails.cloudInfo.az, ""),
-            "upsert",
-            null));
-    attributeActions.add(
-        new OtelCollectorConfigFormat.AttributeAction(
-            "yugabyte.purpose",
-            telemetryProvider.getConfig().getType().toString() + "_LOG_EXPORT",
-            "upsert",
-            null));
 
-    // Rename the attributes to organise under the key yugabyte.
-    List<RenamePair> renamePairs = new ArrayList<RenamePair>();
-    renamePairs.add(new RenamePair("log.file.name", ATTR_PREFIX_YUGABYTE + "log.file.name"));
-    renamePairs.add(new RenamePair("log_level", ATTR_PREFIX_YUGABYTE + "log_level"));
-    renamePairs.add(new RenamePair("audit_type", ATTR_PREFIX_YUGABYTE + "audit_type"));
-    renamePairs.add(new RenamePair("statement_id", ATTR_PREFIX_YUGABYTE + "statement_id"));
-    renamePairs.add(new RenamePair("substatement_id", ATTR_PREFIX_YUGABYTE + "substatement_id"));
-    renamePairs.add(new RenamePair("class", ATTR_PREFIX_YUGABYTE + "class"));
-    renamePairs.add(new RenamePair("command", ATTR_PREFIX_YUGABYTE + "command"));
-    renamePairs.add(new RenamePair("object_type", ATTR_PREFIX_YUGABYTE + "object_type"));
-    renamePairs.add(new RenamePair("object_name", ATTR_PREFIX_YUGABYTE + "object_name"));
-    renamePairs.add(new RenamePair("statement", ATTR_PREFIX_YUGABYTE + "statement"));
-    renamePairs.forEach(rp -> attributeActions.addAll(rp.getRenameAttributeActions()));
-
-    // Rename the log prefix extracted attributes to come under the key yugabyte.
+    // Add common log attributes, log prefix extraction, and tags
     AuditLogRegexGenerator.LogRegexResult regexResult =
         auditLogRegexGenerator.generateAuditLogRegex(logLinePrefix, /*onlyPrefix*/ true);
-    regexResult
-        .getTokens()
-        .forEach(
-            token -> {
-              RenamePair rp =
-                  new RenamePair(token.getAttributeName(), token.getYugabyteAttributeName());
-              attributeActions.addAll(rp.getRenameAttributeActions());
-            });
-
-    // Override or add tags from the exporter config.
-    if (MapUtils.isNotEmpty(telemetryProvider.getTags())) {
-      attributeActions.addAll(getTagsToAttributeActions(telemetryProvider.getTags()));
-    }
-
-    // Override or add additional tags from the audit log config payload.
-    if (MapUtils.isNotEmpty(logsExporterConfig.getAdditionalTags())) {
-      attributeActions.addAll(getTagsToAttributeActions(logsExporterConfig.getAdditionalTags()));
-    }
+    addCommonLogAttributes(
+        attributeActions,
+        nodeName,
+        nodeDetails,
+        universe,
+        telemetryProvider,
+        "_LOG_EXPORT",
+        true,
+        regexResult,
+        logsExporterConfig.getAdditionalTags());
 
     attributesProcessor.setActions(attributeActions);
 
@@ -1363,77 +1305,19 @@ public class OtelCollectorConfigGenerator {
     exporterName =
         appendExporterConfig(telemetryProvider, exporters, attributeActions, ExportType.QUERY_LOGS);
 
-    // Add some common collector labels.
-    attributeActions.add(
-        new OtelCollectorConfigFormat.AttributeAction("host", nodeName, "upsert", null));
-    attributeActions.add(
-        new OtelCollectorConfigFormat.AttributeAction(
-            "yugabyte.cloud",
-            StringUtils.defaultString(nodeDetails.cloudInfo.cloud, ""),
-            "upsert",
-            null));
-    attributeActions.add(
-        new OtelCollectorConfigFormat.AttributeAction(
-            "yugabyte.universe_uuid", universe.getUniverseUUID().toString(), "upsert", null));
-    attributeActions.add(
-        new OtelCollectorConfigFormat.AttributeAction(
-            "yugabyte.node_type",
-            universe.getCluster(nodeDetails.placementUuid).clusterType.toString(),
-            "upsert",
-            null));
-    attributeActions.add(
-        new OtelCollectorConfigFormat.AttributeAction(
-            "yugabyte.region",
-            StringUtils.defaultString(nodeDetails.cloudInfo.region, ""),
-            "upsert",
-            null));
-    attributeActions.add(
-        new OtelCollectorConfigFormat.AttributeAction(
-            "yugabyte.zone",
-            StringUtils.defaultString(nodeDetails.cloudInfo.az, ""),
-            "upsert",
-            null));
-    attributeActions.add(
-        new OtelCollectorConfigFormat.AttributeAction(
-            "yugabyte.purpose",
-            telemetryProvider.getConfig().getType().toString() + "_QUERY_LOG_EXPORT",
-            "upsert",
-            null));
-
-    // Rename the attributes to organise under the key yugabyte.
-    List<RenamePair> renamePairs = new ArrayList<RenamePair>();
-    renamePairs.add(new RenamePair("log.file.name", ATTR_PREFIX_YUGABYTE + "log.file.name"));
-    renamePairs.add(new RenamePair("log_level", ATTR_PREFIX_YUGABYTE + "log_level"));
-    renamePairs.add(new RenamePair("statement_id", ATTR_PREFIX_YUGABYTE + "statement_id"));
-    renamePairs.add(new RenamePair("substatement_id", ATTR_PREFIX_YUGABYTE + "substatement_id"));
-    renamePairs.add(new RenamePair("class", ATTR_PREFIX_YUGABYTE + "class"));
-    renamePairs.add(new RenamePair("command", ATTR_PREFIX_YUGABYTE + "command"));
-    renamePairs.add(new RenamePair("object_type", ATTR_PREFIX_YUGABYTE + "object_type"));
-    renamePairs.add(new RenamePair("object_name", ATTR_PREFIX_YUGABYTE + "object_name"));
-    renamePairs.add(new RenamePair("statement", ATTR_PREFIX_YUGABYTE + "statement"));
-    renamePairs.forEach(rp -> attributeActions.addAll(rp.getRenameAttributeActions()));
-
-    // Rename the log prefix extracted attributes to come under the key yugabyte.
+    // Add common log attributes, log prefix extraction, and tags
     AuditLogRegexGenerator.LogRegexResult regexResult =
         queryLogRegexGenerator.generateQueryLogRegex(logLinePrefix, /*onlyPrefix*/ true);
-    regexResult
-        .getTokens()
-        .forEach(
-            token -> {
-              RenamePair rp =
-                  new RenamePair(token.getAttributeName(), token.getYugabyteAttributeName());
-              attributeActions.addAll(rp.getRenameAttributeActions());
-            });
-
-    // Override or add tags from the exporter config.
-    if (MapUtils.isNotEmpty(telemetryProvider.getTags())) {
-      attributeActions.addAll(getTagsToAttributeActions(telemetryProvider.getTags()));
-    }
-
-    // Override or add additional tags from the query log config payload.
-    if (MapUtils.isNotEmpty(logsExporterConfig.getAdditionalTags())) {
-      attributeActions.addAll(getTagsToAttributeActions(logsExporterConfig.getAdditionalTags()));
-    }
+    addCommonLogAttributes(
+        attributeActions,
+        nodeName,
+        nodeDetails,
+        universe,
+        telemetryProvider,
+        "_QUERY_LOG_EXPORT",
+        false,
+        regexResult,
+        logsExporterConfig.getAdditionalTags());
 
     attributesProcessor.setActions(attributeActions);
 
@@ -1452,6 +1336,15 @@ public class OtelCollectorConfigGenerator {
     String batchProcessorName = PROCESSOR_PREFIX_BATCH + exportTypeAndUUIDString;
     collectorConfig.getProcessors().put(batchProcessorName, batchProcessor);
     processorNames.add(batchProcessorName);
+
+    String memoryLimiterProcessorName = PROCESSOR_PREFIX_MEMORY_LIMITER + exportTypeAndUUIDString;
+    OtelCollectorConfigFormat.MemoryLimiterProcessor memoryLimiterProcessor =
+        new OtelCollectorConfigFormat.MemoryLimiterProcessor();
+    memoryLimiterProcessor.setCheck_interval(
+        logsExporterConfig.getMemoryLimitCheckIntervalSeconds().toString() + "s");
+    memoryLimiterProcessor.setLimit_mib(logsExporterConfig.getMemoryLimitMib());
+    collectorConfig.getProcessors().put(memoryLimiterProcessorName, memoryLimiterProcessor);
+    processorNames.add(memoryLimiterProcessorName);
 
     // Add common transform processor
     addCommonTransformProcessor(collectorConfig);
@@ -1491,6 +1384,95 @@ public class OtelCollectorConfigGenerator {
                 new OtelCollectorConfigFormat.AttributeAction(
                     e.getKey(), e.getValue(), "upsert", null))
         .toList();
+  }
+
+  private void addCommonLogAttributes(
+      List<OtelCollectorConfigFormat.AttributeAction> attributeActions,
+      String nodeName,
+      NodeDetails nodeDetails,
+      Universe universe,
+      TelemetryProvider telemetryProvider,
+      String purposeSuffix,
+      boolean includeAuditType,
+      AuditLogRegexGenerator.LogRegexResult regexResult,
+      Map<String, String> additionalTags) {
+    // Add some common collector labels.
+    attributeActions.add(
+        new OtelCollectorConfigFormat.AttributeAction("host", nodeName, "upsert", null));
+    attributeActions.add(
+        new OtelCollectorConfigFormat.AttributeAction(
+            "yugabyte.node_name", nodeName, "upsert", null));
+
+    attributeActions.add(
+        new OtelCollectorConfigFormat.AttributeAction(
+            "yugabyte.cloud",
+            StringUtils.defaultString(nodeDetails.cloudInfo.cloud, ""),
+            "upsert",
+            null));
+    attributeActions.add(
+        new OtelCollectorConfigFormat.AttributeAction(
+            "yugabyte.universe_uuid", universe.getUniverseUUID().toString(), "upsert", null));
+    attributeActions.add(
+        new OtelCollectorConfigFormat.AttributeAction(
+            "yugabyte.node_type",
+            universe.getCluster(nodeDetails.placementUuid).clusterType.toString(),
+            "upsert",
+            null));
+    attributeActions.add(
+        new OtelCollectorConfigFormat.AttributeAction(
+            "yugabyte.region",
+            StringUtils.defaultString(nodeDetails.cloudInfo.region, ""),
+            "upsert",
+            null));
+    attributeActions.add(
+        new OtelCollectorConfigFormat.AttributeAction(
+            "yugabyte.zone",
+            StringUtils.defaultString(nodeDetails.cloudInfo.az, ""),
+            "upsert",
+            null));
+    attributeActions.add(
+        new OtelCollectorConfigFormat.AttributeAction(
+            "yugabyte.purpose",
+            telemetryProvider.getConfig().getType().toString() + purposeSuffix,
+            "upsert",
+            null));
+
+    // Rename the common attributes to organise under the key yugabyte.
+    List<RenamePair> commonRenamePairs = new ArrayList<RenamePair>();
+    commonRenamePairs.add(new RenamePair("log.file.name", ATTR_PREFIX_YUGABYTE + "log.file.name"));
+    commonRenamePairs.add(new RenamePair("log_level", ATTR_PREFIX_YUGABYTE + "log_level"));
+    if (includeAuditType) {
+      commonRenamePairs.add(new RenamePair("audit_type", ATTR_PREFIX_YUGABYTE + "audit_type"));
+    }
+    commonRenamePairs.add(new RenamePair("statement_id", ATTR_PREFIX_YUGABYTE + "statement_id"));
+    commonRenamePairs.add(
+        new RenamePair("substatement_id", ATTR_PREFIX_YUGABYTE + "substatement_id"));
+    commonRenamePairs.add(new RenamePair("class", ATTR_PREFIX_YUGABYTE + "class"));
+    commonRenamePairs.add(new RenamePair("command", ATTR_PREFIX_YUGABYTE + "command"));
+    commonRenamePairs.add(new RenamePair("object_type", ATTR_PREFIX_YUGABYTE + "object_type"));
+    commonRenamePairs.add(new RenamePair("object_name", ATTR_PREFIX_YUGABYTE + "object_name"));
+    commonRenamePairs.add(new RenamePair("statement", ATTR_PREFIX_YUGABYTE + "statement"));
+    commonRenamePairs.forEach(rp -> attributeActions.addAll(rp.getRenameAttributeActions()));
+
+    // Rename the log prefix extracted attributes to come under the key yugabyte.
+    regexResult
+        .getTokens()
+        .forEach(
+            token -> {
+              RenamePair rp =
+                  new RenamePair(token.getAttributeName(), token.getYugabyteAttributeName());
+              attributeActions.addAll(rp.getRenameAttributeActions());
+            });
+
+    // Override or add tags from the exporter config.
+    if (MapUtils.isNotEmpty(telemetryProvider.getTags())) {
+      attributeActions.addAll(getTagsToAttributeActions(telemetryProvider.getTags()));
+    }
+
+    // Override or add additional tags from the log config payload.
+    if (MapUtils.isNotEmpty(additionalTags)) {
+      attributeActions.addAll(getTagsToAttributeActions(additionalTags));
+    }
   }
 
   private String appendExporterConfig(

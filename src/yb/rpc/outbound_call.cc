@@ -403,13 +403,7 @@ Status OutboundCall::SetRequestParam(
   }
   RETURN_NOT_OK(SerializeMessage(req, req_size, buffer_, sidecars_size, header_size));
   if (use_crc) {
-    auto crc = crc::Crc64c(buffer_.udata() + header_size, message_size, 0);
-    if (sidecars_size) {
-      sidecars_->buffer().IterateBlocks([&crc](Slice block) {
-        crc = crc::Crc64c(block.data(), block.size(), crc);
-      });
-    }
-    LittleEndian::Store32(buffer_.udata() + header_size - 4, static_cast<uint32_t>(crc));
+    StoreCrc(buffer_, header_size, message_size, sidecars_.get());
   }
 
   if (method_metrics_) {

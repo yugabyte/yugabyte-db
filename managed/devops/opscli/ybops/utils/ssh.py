@@ -38,7 +38,7 @@ DEFAULT_SSH_USER = 'centos'
 SSH_TIMEOUT = 45
 # Retry in seconds
 SSH_RETRY_DELAY = 10
-RSA_KEY_LENGTH = 2048
+RSA_KEY_LENGTH = 3072
 CONNECTION_RETRY_DELAY_SEC = 15
 # Let's set some timeout to our commands.
 # If 10 minutes will not be enough for something - will have to pass command timeout as an argument.

@@ -859,6 +859,7 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 		 */
 		YBIsDBCatalogVersionMode();
 		uint64_t	shared_catalog_version;
+
 		HandleYBStatus(YBCGetSharedCatalogVersion(&shared_catalog_version));
 		if (YbUseTserverResponseCacheForAuth(shared_catalog_version))
 		{
@@ -869,11 +870,12 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 			 */
 			YbcPgLastKnownCatalogVersionInfo catalog_version =
 				(YbcPgLastKnownCatalogVersionInfo)
-				{
-					.version = shared_catalog_version,
-					.version_read_time = {},
-					.is_db_catalog_version_mode = YBIsDBCatalogVersionMode(),
-				};
+			{
+				.version = shared_catalog_version,
+				.version_read_time = {},
+				.is_db_catalog_version_mode = YBIsDBCatalogVersionMode(),
+			};
+
 			YBCStartSysTablePrefetching(Template1DbOid,
 										catalog_version,
 										YB_YQL_PREFETCHER_TRUST_CACHE_AUTH);
@@ -1420,12 +1422,12 @@ YbEnsureSysTablePrefetchingStopped()
 
 void
 YbInitPostgres(const char *in_dbname, Oid dboid,
-			 const char *username, Oid useroid,
-			 bool load_session_libraries,
-			 bool override_allow_connections,
-			 char *out_dbname, const YbcPgInitPostgresInfo *yb_init_info)
+			   const char *username, Oid useroid,
+			   bool load_session_libraries,
+			   bool override_allow_connections,
+			   char *out_dbname, const YbcPgInitPostgresInfo *yb_init_info)
 {
-	bool sys_table_prefetching_started = false;
+	bool		sys_table_prefetching_started = false;
 
 	PG_TRY();
 	{

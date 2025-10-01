@@ -27,6 +27,13 @@ public class TestPgRegressPartitions extends BasePgRegressTest {
     return getPerfMaxRuntime(500, 1000, 1200, 1200, 1200);
   }
 
+  // (Auto-Analyze #28391) Restarting a DDL transaction not supported
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("ysql_enable_auto_analyze", "false");
+    return flagMap;
+  }
+
   @Test
   public void misc() throws Exception {
     runPgRegressTest("yb_pg_partitions_misc_schedule");

@@ -64,6 +64,9 @@ YB_STRONGLY_TYPED_BOOL(AutoDecodeKeys);
 YB_STRONGLY_TYPED_BOOL(PartialRangeKeyIntents);
 YB_STRONGLY_TYPED_BOOL(UseHash);
 
+// Indicates whether skip prefix locks is enabled.
+YB_STRONGLY_TYPED_BOOL(SkipPrefixLocks);
+
 YB_DEFINE_ENUM(OperationKind, (kRead)(kWrite));
 
 // "Intent types" are used for single-tablet operations and cross-shard transactions. For example,

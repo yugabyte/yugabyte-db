@@ -367,7 +367,7 @@ class YBThreadPool::Impl {
       auto state = worker->Notify(task);
       switch (state) {
         case WorkerState::kWaitingTask:
-          if (share_.options.metrics.queue_time_us_stats) {
+          if (task && share_.options.metrics.queue_time_us_stats) {
             share_.options.metrics.queue_time_us_stats->Increment(0);
           }
           return true;

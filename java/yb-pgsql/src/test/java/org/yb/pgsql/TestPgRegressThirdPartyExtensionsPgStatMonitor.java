@@ -21,6 +21,8 @@ public class TestPgRegressThirdPartyExtensionsPgStatMonitor extends BasePgRegres
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     appendToYsqlPgConf(flagMap, "shared_preload_libraries='pg_stat_monitor'");
+    // Disable auto analyze because it introduces flakiness in pg_stat_monitor output.
+    flagMap.put("ysql_enable_auto_analyze", "false");
     return flagMap;
   }
 

@@ -47,10 +47,8 @@ public class DeleteCustomerConfigTest extends CommissionerBaseTest {
     return taskInfo;
   }
 
-  @Override
   @Before
   public void setUp() {
-    super.setUp();
     defaultCustomer = ModelFactory.testCustomer();
     defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId());
     nfsStorageConfig = ModelFactory.createNfsStorageConfig(defaultCustomer, "TEST0");

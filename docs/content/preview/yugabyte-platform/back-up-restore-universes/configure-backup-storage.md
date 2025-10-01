@@ -40,7 +40,9 @@ To configure S3 storage, do the following:
 
 1. Use the **Configuration Name** field to provide a meaningful name for your storage configuration.
 
-1. Enable **IAM Role** to use the YugabyteDB Anywhere instance's Identity Access Management (IAM) role for the S3 backup. See [Required S3 IAM permissions](#required-s3-iam-permissions).
+1. Enable **IAM Role** to use the YugabyteDB Anywhere instance's Identity Access Management (IAM) role or universe node IAM role for the S3 backup. See [Required S3 IAM permissions](#required-s3-iam-permissions).
+
+    To enable universe node IAM roles to access storage in S3, set the **Use S3 IAM roles attached to DB node for Backup/Restore** Universe Configuration option (config key `yb.backup.s3.use_db_nodes_iam_role_for_backup`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
 
 1. If **IAM Role** is disabled, enter values for the **Access Key** and **Access Secret** fields.
 

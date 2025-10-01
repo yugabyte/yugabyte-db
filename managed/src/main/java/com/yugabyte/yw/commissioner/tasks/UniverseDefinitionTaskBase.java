@@ -4160,4 +4160,17 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // Add the task list to the task queue.
     getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
+
+  protected void clearCapacityReservationOnError(Throwable t, Universe universe) {
+    if (universe.getUniverseDetails().getCapacityReservationState() != null
+        && !universe.getUniverseDetails().getCapacityReservationState().isEmpty()) {
+      try {
+        setTaskQueueAndRun(() -> createDeleteCapacityReservationTask());
+      } catch (Exception ignored) {
+        // Not throwing exception that will overwrite the current one.
+        log.error("Failed to delete capacity reservations", ignored);
+        t.addSuppressed(ignored);
+      }
+    }
+  }
 }

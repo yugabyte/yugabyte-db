@@ -204,9 +204,8 @@ Heartbeater::Impl::Impl(
     std::vector<std::unique_ptr<HeartbeatDataProvider>>&& data_providers)
     : server_(server),
       finder_(server.messenger(), server.proxy_cache(), opts.GetMasterAddresses()),
-      poll_scheduler_(
-          finder_,
-          std::make_unique<HeartbeatPoller>(server_, finder_, std::move(data_providers))) {
+      poller_(std::make_unique<HeartbeatPoller>(server_, finder_, std::move(data_providers))),
+      poll_scheduler_(finder_, *poller_.get()) {
   auto master_addresses = CHECK_NOTNULL(finder_.get_master_addresses());
   CHECK(!master_addresses->empty());
   VLOG_WITH_PREFIX(1) << "Initializing heartbeater thread with master addresses: "

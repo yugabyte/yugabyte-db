@@ -290,7 +290,7 @@ ExecCreateTableAs(ParseState *pstate, CreateTableAsStmt *stmt,
 		save_nestlevel = NewGUCNestLevel();
 	}
 
-	if (into->skipData)
+	if (into->skipData || yb_xcluster_automatic_mode_target_ddl)
 	{
 		/*
 		 * If WITH NO DATA was specified, do not go through the rewriter,

@@ -27,6 +27,7 @@ DECLARE_string(certs_for_cdc_dir);
 DECLARE_bool(TEST_force_automatic_ddl_replication_mode);
 DECLARE_bool(disable_xcluster_db_scoped_new_table_processing);
 DECLARE_bool(xcluster_skip_health_check_on_replication_setup);
+DECLARE_bool(ysql_enable_auto_analyze);
 
 using namespace std::chrono_literals;
 
@@ -1056,6 +1057,8 @@ TEST_F(XClusterDBScopedTest, CreateDropTablesWithPITR) {
 }
 
 TEST_F(XClusterDBScopedTest, RangedPartitionsWithIndex) {
+  // Disable auto analyze becauses the query plan changes.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
   ASSERT_OK(SetUpClusters());
 
   ASSERT_OK(CheckpointReplicationGroup());
@@ -1065,6 +1068,8 @@ TEST_F(XClusterDBScopedTest, RangedPartitionsWithIndex) {
 }
 
 TEST_F(XClusterDBScopedTest, ColocatedRangedPartitionsWithIndex) {
+  // Disable auto analyze becauses the query plan changes.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
   namespace_name = "colocated_db";
   SetupParams param;
   param.is_colocated = true;

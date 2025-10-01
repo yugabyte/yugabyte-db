@@ -59,11 +59,17 @@ class TestRemoteBootstrapFileSource {
         crc::Crc32c(resp->chunk().data().data(), resp->chunk().data().length()));
     resp->mutable_chunk()->set_total_data_length(file_data_.length());
     current_offset_ += req.max_length();
+    ++num_calls_;
     return Status::OK();
+  }
+
+  int NumCalls() const {
+    return num_calls_;
   }
 
  private:
   int current_offset_ = 0;
+  int num_calls_ = 0;
   std::string file_data_;
 };
 
@@ -76,12 +82,10 @@ TEST_F(RemoteBootstrapFileDownloaderTest, ChunkSizeTest) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_remote_bootstrap_rate_limit_bytes_per_sec) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_remote_bootstrap_max_chunk_size) = 1;
   auto test_source = std::make_shared<TestRemoteBootstrapFileSource>(kTestData);
-  downloader.Start([&](
-      const FetchDataRequestPB& req, FetchDataResponsePB* resp, rpc::RpcController* controller) {
-    return test_source->FetchData(req, resp, controller);
-  }, "test_session_id", 30s);
+  downloader.Start(FetchDataFunctionCreator(test_source), "test_session_id", 30s);
 
-  // Download a test file and check that the callback is called the expected number of times.
+  // Download a test file and check that the FetchData function and chunk callback are called the
+  // expected number of times.
   tablet::FilePB file_pb;
   file_pb.set_name("my_test_file");
   DataIdPB data_id;
@@ -91,8 +95,51 @@ TEST_F(RemoteBootstrapFileDownloaderTest, ChunkSizeTest) {
         ASSERT_EQ(chunk_size, FLAGS_remote_bootstrap_max_chunk_size);
         ++num_calls;
       }));
-  // Chunk size is 1, so we should call the callback once per character.
+  // Chunk size is 1, so we should call FetchData and the callback once per character.
+  ASSERT_EQ(test_source->NumCalls(), kTestData.size());
   ASSERT_EQ(num_calls, kTestData.size());
+
+  // Check that the file was downloaded correctly.
+  auto file_path = JoinPathSegments(fs_manager_->GetDefaultRootDir(), file_pb.name());
+  faststring file_data;
+  ASSERT_OK(ReadFileToString(Env::Default(), file_path, &file_data));
+  ASSERT_EQ(file_data.ToString(), kTestData);
+}
+
+TEST_F(RemoteBootstrapFileDownloaderTest, SkipCompression) {
+  // Check that we call the uncompressed fetch function if skip_compression is true.
+  std::string kLogPrefix = "test_prefix";
+  std::string kTestData = "test_data";
+  RemoteBootstrapFileDownloader downloader(&kLogPrefix, fs_manager_.get());
+
+  // Use no rate limiter to avoid a DFATAL when checking how many bootstrap sessions are created.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_remote_bootstrap_rate_limit_bytes_per_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_remote_bootstrap_max_chunk_size) = 1;
+  auto test_source = std::make_shared<TestRemoteBootstrapFileSource>(kTestData);
+  auto test_source_uncompressed = std::make_shared<TestRemoteBootstrapFileSource>(kTestData);
+  auto fetch_data = [&](
+      const FetchDataRequestPB& req, FetchDataResponsePB* resp, rpc::RpcController* controller) {
+    return test_source->FetchData(req, resp, controller);
+  };
+  auto fetch_data_uncompressed = [&](
+      const FetchDataRequestPB& req, FetchDataResponsePB* resp, rpc::RpcController* controller) {
+    return test_source_uncompressed->FetchData(req, resp, controller);
+  };
+  downloader.Start(
+      std::move(fetch_data), "test_session_id", 30s, std::move(fetch_data_uncompressed));
+
+  // Download a test file and check that we skip compression if requested.
+  tablet::FilePB file_pb;
+  file_pb.set_name("my_test_file");
+  DataIdPB data_id;
+  ASSERT_OK(downloader.DownloadFile(
+      file_pb, fs_manager_->GetDefaultRootDir(), &data_id, /*chunk_download_cb=*/ nullptr,
+      /*skip_compression=*/ true));
+
+  // Chunk size is 1, so we should call the uncompressed FetchData function once per character, and
+  // never call the default FetchData function.
+  ASSERT_EQ(test_source->NumCalls(), 0);
+  ASSERT_EQ(test_source_uncompressed->NumCalls(), kTestData.size());
 
   // Check that the file was downloaded correctly.
   auto file_path = JoinPathSegments(fs_manager_->GetDefaultRootDir(), file_pb.name());

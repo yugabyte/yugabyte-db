@@ -50,7 +50,7 @@ public class RebootNodeInUniverseTest extends CommissionerBaseTest {
   @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
 
   public void setUp(boolean withMaster, int numNodes, int replicationFactor) {
-    super.setUp();
+    super.setUpBase();
 
     Region region = Region.create(defaultProvider, "test-region", "Region 1", "yb-image-1");
     AvailabilityZone.createOrThrow(region, "az-1", "az-1", "subnet-1");

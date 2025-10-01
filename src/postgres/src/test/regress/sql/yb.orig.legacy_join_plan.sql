@@ -75,6 +75,9 @@ set yb_prefer_bnl = off;
 set yb_enable_cbo = legacy_bnl_mode;
 \i :filename
 
+set yb_enable_cbo = legacy_ignore_stats_bnl_mode;
+\i :filename
+
 set yb_enable_cbo = legacy_stats_bnl_mode;
 \i :filename
 
@@ -83,6 +86,9 @@ set yb_bnl_batch_size = 1024;
 set yb_prefer_bnl = on;
 
 set yb_enable_cbo = legacy_bnl_mode;
+\i :filename
+
+set yb_enable_cbo = legacy_ignore_stats_bnl_mode;
 \i :filename
 
 set yb_enable_cbo = legacy_stats_bnl_mode;

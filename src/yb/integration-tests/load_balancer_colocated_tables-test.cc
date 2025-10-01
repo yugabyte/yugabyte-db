@@ -82,6 +82,10 @@ class LoadBalancerColocatedTablesTest : public YBTableTestBase {
     // System tablets such as those from the transactions table and advisory lock table.
     opts->extra_master_flags.push_back("--TEST_system_table_num_tablets="
                                        + std::to_string(kNumSystemTablets));
+    // Disable auto analyze service in the test because one stateful service table can only
+    // have one tablet, causing the tests flaky.
+    opts->extra_master_flags.push_back("--ysql_enable_auto_analyze_infra=false");
+    opts->extra_tserver_flags.push_back("--ysql_enable_auto_analyze_infra=false");
   }
 
   virtual void CreateTables() {

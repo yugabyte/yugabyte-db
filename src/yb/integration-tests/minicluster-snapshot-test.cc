@@ -93,6 +93,8 @@ DECLARE_int32(pgsql_proxy_webserver_port);
 DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
+DECLARE_bool(ysql_enable_auto_analyze);
+DECLARE_bool(ysql_enable_auto_analyze_infra);
 DECLARE_string(ysql_hba_conf_csv);
 DECLARE_int32(ysql_sequence_cache_minval);
 DECLARE_int32(ysql_clone_pg_schema_rpc_timeout_ms);
@@ -698,6 +700,9 @@ class PgCloneInitiallyEmptyDBTest : public PostgresMiniClusterTest {
 class PgCloneTest : public PgCloneInitiallyEmptyDBTest {
  protected:
   void SetUp() override {
+    // (Auto-Analyze #28390)
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze_infra) = false;
     PgCloneInitiallyEmptyDBTest::SetUp();
     ASSERT_OK(source_conn_->ExecuteFormat(
         "CREATE TABLE $0 (key INT PRIMARY KEY, value INT)", kSourceTableName));
@@ -1089,6 +1094,9 @@ TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneAfter
 // The test is disabled in Sanitizers as ysql_dump fails in ASAN builds due to memory leaks
 // inherited from pg_dump.
 TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneAfterDropIndex)) {
+  // (Auto-Analyze #28427)
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze_infra) = false;
   // Clone to a time before a drop index and check that the index exists with correct data.
   // 1. Create a table and load some data.
   // 2. Create an index on the table.

@@ -5,7 +5,7 @@ linkTitle: Duplicate indexes
 description: Enhance the performance of global applications with Duplicate Indexes
 headcontent: Enhance the performance of global applications with Duplicate Indexes
 menu:
-  preview:
+  preview_develop:
     identifier: global-apps-duplicate-indexes
     parent: build-global-apps
     weight: 300

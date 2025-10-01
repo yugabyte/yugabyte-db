@@ -12961,6 +12961,7 @@
             "USER_GROUP",
             "HOME_DIR_SPACE",
             "HOME_DIR_EXISTS",
+            "HOME_DIR_MATCHES",
             "RAM_SIZE",
             "INTERNET_CONNECTION",
             "CPU_CORES",
@@ -12990,7 +12991,6 @@
             "ULIMIT_CORE",
             "ULIMIT_OPEN_FILES",
             "ULIMIT_USER_PROCESSES",
-            "SYSTEMD_SUDOER_ENTRY",
             "SSH_ACCESS",
             "NODE_AGENT_ACCESS",
             "MASTER_HTTP_PORT",
@@ -26237,6 +26237,18 @@
           "readOnly" : true,
           "type" : "string"
         },
+        "memoryLimitCheckIntervalSeconds" : {
+          "description" : "Check interval in seconds for the MemoryLimiterProcessor.",
+          "example" : 10,
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "memoryLimitMib" : {
+          "description" : "Memory limit in MiB for the OpenTelemetry Collector process in the config file.",
+          "example" : 2048,
+          "format" : "int32",
+          "type" : "integer"
+        },
         "sendBatchMaxSize" : {
           "description" : "Maximum batch size for query logs exporter",
           "format" : "int32",
@@ -28392,6 +28404,7 @@
             "USER_GROUP",
             "HOME_DIR_SPACE",
             "HOME_DIR_EXISTS",
+            "HOME_DIR_MATCHES",
             "RAM_SIZE",
             "INTERNET_CONNECTION",
             "CPU_CORES",
@@ -28421,7 +28434,6 @@
             "ULIMIT_CORE",
             "ULIMIT_OPEN_FILES",
             "ULIMIT_USER_PROCESSES",
-            "SYSTEMD_SUDOER_ENTRY",
             "SSH_ACCESS",
             "NODE_AGENT_ACCESS",
             "MASTER_HTTP_PORT",

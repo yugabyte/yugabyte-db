@@ -722,9 +722,10 @@ const char *yb_metric_event_label[] = {
 
 #undef BUILD_METRIC_LABEL
 
-typedef struct {
-	bool is_required;
-	bool is_dist;
+typedef struct
+{
+	bool		is_required;
+	bool		is_dist;
 	ExplainFormat format;
 } YbExplainCommitStatState;
 
@@ -1174,7 +1175,7 @@ YbExplainCommitStats(DestReceiver *dest)
 
 	ExplainState *es = NewExplainState();
 	TupOutputState *tstate = NULL;
-	TupleDesc tupdesc;
+	TupleDesc	tupdesc;
 	YbInstrumentation yb_instr = {0};
 
 	es->rpc = yb_explain_commit_stat_state.is_dist;

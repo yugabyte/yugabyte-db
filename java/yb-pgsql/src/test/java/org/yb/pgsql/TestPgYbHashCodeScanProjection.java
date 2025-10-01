@@ -60,6 +60,8 @@ public class TestPgYbHashCodeScanProjection extends BasePgSQLTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("ysql_prefetch_limit", Integer.toString(kPrefetchLimit));
+    // Disable auto analyze because it introduce flakiness in metric numbers.
+    flagMap.put("ysql_enable_auto_analyze", "false");
     return flagMap;
   }
 

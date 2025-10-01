@@ -60,8 +60,7 @@ DECLARE_uint64(consensus_max_batch_size_bytes);
 
 METRIC_DECLARE_entity(tablet);
 
-namespace yb {
-namespace consensus {
+namespace yb::consensus {
 
 static const char* kLeaderUuid = "peer-0";
 static const char* kPeerUuid = "peer-1";
@@ -91,8 +90,9 @@ class ConsensusQueueTest : public YBTest {
                             fs_manager_->uuid(),
                             schema_,
                             0, // schema_version
-                            nullptr,
-                            nullptr,
+                            /*table_metric_entity=*/nullptr,
+                            /*tablet_metric_entity=*/nullptr,
+                            /*read_wal_mem_tracker=*/nullptr,
                             log_thread_pool_.get(),
                             log_thread_pool_.get(),
                             log_thread_pool_.get(),
@@ -116,12 +116,12 @@ class ConsensusQueueTest : public YBTest {
     auto notify_observers_strand = std::make_unique<rpc::Strand>(raft_notifications_pool_.get());
     queue_.reset(new PeerMessageQueue(metric_entity_,
                                       log_.get(),
-                                      nullptr /* server_tracker */,
-                                      nullptr /* parent_tracker */,
+                                      /*server_tracker=*/nullptr,
+                                      /*parent_tracker=*/nullptr,
                                       FakeRaftPeerPB(kLeaderUuid),
                                       kTestTablet,
                                       clock_,
-                                      nullptr /* consensus_context */,
+                                      /*context=*/nullptr,
                                       std::move(notify_observers_strand)));
     SetupConsensus();
     queue_->RegisterObserver(consensus_.get());
@@ -1058,5 +1058,4 @@ TEST_F(ConsensusQueueDelayedCommitTest, TestReadReplicatedMessagesForXCluster) {
   ASSERT_EQ(received_op_id.index, read_result.majority_replicated_index);
 }
 
-}  // namespace consensus
-}  // namespace yb
+} // namespace yb::consensus

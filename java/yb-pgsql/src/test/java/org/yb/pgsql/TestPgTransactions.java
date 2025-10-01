@@ -80,6 +80,8 @@ public class TestPgTransactions extends BasePgSQLTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flags = super.getTServerFlags();
     appendToYsqlPgConf(flags, maxQueryLayerRetriesConf(2));
+    // Auto Analyze makes testSerializableReadDelayWrite time out on a few build.
+    flags.put("ysql_enable_auto_analyze", "false");
     return flags;
   }
 

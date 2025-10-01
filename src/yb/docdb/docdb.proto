@@ -27,6 +27,10 @@ message KeyValuePairPB {
   optional fixed64 external_hybrid_time = 3;
   // Reserved for transaction field which was used in xcluster external intent writes.
   reserved 4;
+  // Indicates whether 'key' contains a primary key. It is set to false only when a prefix of a PK
+  // is specified in the request(e.g., explicit row locking) in a serializable isolation
+  // transaction.
+  optional bool pk_is_known = 5;
 }
 
 message ApplyExternalTransactionPB {

@@ -17,6 +17,14 @@ public class TestPgRegressPgStatStatements extends BasePgRegressTest {
     return 1800;
   }
 
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    // Disable auto analyze because ANALYZE-related statements recorded in pg_stat_statements make
+    // the test flaky.
+    flagMap.put("ysql_enable_auto_analyze", "false");
+    return flagMap;
+  }
+
   @Test
   public void schedule() throws Exception {
     skipYsqlConnMgr(BasePgSQLTest.GUC_REPLAY_AFFECTS_QUERIES_EXEC_RESULT,

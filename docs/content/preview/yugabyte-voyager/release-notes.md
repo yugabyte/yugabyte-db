@@ -23,6 +23,26 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, where `YYYY` is the release year, `M` is the month, and `N` is the number of the release in that month.
 
+## v2025.9.3 - September 30, 2025
+
+### New feature
+
+- {{<tags/feature/tp>}} Added the ability to analyze, compare, and summarize workload query performance between the source database and the target YugabyteDB database using the [compare-performance](../reference/compare-performance/) command. The command generates both HTML and JSON reports for easy comparison.
+
+  Note that this feature is supported for YugabyteDB release {{<release "2025.1">}} and later.
+
+### Enhancements
+
+- Improved import data to skip retrying errors that the `pgx` driver identifies as non‑retryable, enhancing stability.
+- Added the ability to manage adaptive parallelism using the `--adaptive-parallelism` flag. Options include `disabled`, `balanced` (default), or `aggressive`. Replaces the `--enable-adaptive-parallelism` flag.
+- Added an `--output-format` flag to the `export data status`, `import data status`, and `get data-migration-report` commands to generate structured JSON reports. `end migration` now saves the JSON versions of these reports as well.
+
+### Bug fixes
+
+- Fixed offline import data failing with accelerated data export mode when some tables are not created in the target database and excluded via table-list flags.
+- Fixed an issue where data exported using older versions (before v2025.9.2) could not be imported after upgrading Voyager to v2025.9.2. Import data would previously fail with the error `failed to prepare table to column`.
+- Fixed a nil pointer error when an unknown table name is included in the table list passed to the `import data` command.
+
 ## v2025.9.2 - September 16, 2025
 
 ### Enhancements

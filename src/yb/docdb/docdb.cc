@@ -20,6 +20,9 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <fstream>
+
+#include <boost/logic/tribool.hpp>
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/row_mark.h"
@@ -114,7 +117,8 @@ Result<DetermineKeysToLockResult<SharedLockManager>> DetermineKeysToLock(
     IsolationLevel isolation_level,
     RowMarkType row_mark_type,
     bool transactional_table,
-    dockv::PartialRangeKeyIntents partial_range_key_intents) {
+    dockv::PartialRangeKeyIntents partial_range_key_intents,
+    dockv::SkipPrefixLocks skip_prefix_locks = dockv::SkipPrefixLocks::kFalse) {
   DetermineKeysToLockResult<SharedLockManager> result;
   boost::container::small_vector<RefCntPrefix, 8> doc_paths;
   boost::container::small_vector<size_t, 32> key_prefix_lengths;
@@ -136,6 +140,19 @@ Result<DetermineKeysToLockResult<SharedLockManager>> DetermineKeysToLock(
       intent_types = dockv::IntentTypeSet(
           {dockv::IntentType::kStrongRead, dockv::IntentType::kStrongWrite});
     }
+
+    boost::tribool pk_is_known = doc_op->OpType() == DocOperationType::PGSQL_WRITE_OPERATION ?
+        boost::tribool(down_cast<const docdb::PgsqlWriteOperation&>(*doc_op).pk_is_known()) :
+        boost::indeterminate;
+    // When skip_prefix_locks is enabled, if a PK is not specified in a serializable txn, the empty
+    // key must be locked to cover the locks of the pk. This is a coarser lock and can result in
+    // blocking many other transactions.
+    const bool top_level_key_takes_strong_locks =
+        isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION && skip_prefix_locks &&
+        !static_cast<bool>(pk_is_known);
+    VLOG_WITH_FUNC(4) << "isolation_level:" << isolation_level << "skip_prefix_locks:"
+                      << skip_prefix_locks << "pk_is_known:" << static_cast<bool>(pk_is_known);
+
     // TODO(#20662): Assert for the following invariant: the set of (key, intent type) for which
     // in-memory locks are acquired should be a superset of all (key, intent type) pairs which are
     // either: (a) used to check conflicts against or (b) written to intents db. This is to ensure
@@ -144,15 +161,23 @@ Result<DetermineKeysToLockResult<SharedLockManager>> DetermineKeysToLock(
     for (const auto& doc_path : doc_paths) {
       key_prefix_lengths.clear();
       auto doc_path_slice = doc_path.as_slice();
-      RETURN_NOT_OK(dockv::SubDocKey::DecodePrefixLengths(doc_path_slice, &key_prefix_lengths));
+
+      if (skip_prefix_locks) {
+        RETURN_NOT_OK(dockv::SubDocKey::DecodePrefixLengthsWithSkipPrefix(
+            doc_path_slice, &key_prefix_lengths));
+      } else {
+        RETURN_NOT_OK(dockv::SubDocKey::DecodePrefixLengths(doc_path_slice, &key_prefix_lengths));
+      }
       // At least entire doc_path should be returned, so empty key_prefix_lengths is an error.
       if (key_prefix_lengths.empty()) {
         return STATUS_FORMAT(Corruption, "Unable to decode key prefixes from: $0",
-                             doc_path_slice.ToDebugHexString());
+                            doc_path_slice.ToDebugHexString());
       }
       // We will acquire strong lock on the full doc_path, so remove it from list of weak locks.
       key_prefix_lengths.pop_back();
       auto partial_key = doc_path;
+      auto top_level_key_types =
+          top_level_key_takes_strong_locks ? intent_types :  MakeWeak(intent_types);
       // Acquire weak lock on empty key for transactional tables, unless specified key is already
       // empty.
       // For doc paths having cotable id/colocation id, a weak lock on the colocated table would be
@@ -160,13 +185,19 @@ Result<DetermineKeysToLockResult<SharedLockManager>> DetermineKeysToLock(
       // on the empty key since it would lead to a weak lock on the parent table of the host tablet.
       auto has_cotable_id = doc_path_slice.starts_with(KeyEntryTypeAsChar::kTableId);
       auto has_colocation_id = doc_path_slice.starts_with(KeyEntryTypeAsChar::kColocationId);
+      size_t idx = 0;
       if (doc_path.size() > 0 && transactional_table && !(has_cotable_id || has_colocation_id)) {
         partial_key.Resize(0);
-        RETURN_NOT_OK(ApplyIntent(
-            partial_key, MakeWeak(intent_types), &result.lock_batch));
+        RETURN_NOT_OK(ApplyIntent(partial_key, top_level_key_types, &result.lock_batch));
+      } else if (!key_prefix_lengths.empty()) {
+        // first element in key_prefix_lengths must be the length of empty prefix key which has
+        // tableId or colocation_id
+        partial_key.Resize(key_prefix_lengths[0]);
+        RETURN_NOT_OK(ApplyIntent(partial_key, top_level_key_types, &result.lock_batch));
+        idx = 1;
       }
-      for (auto prefix_length : key_prefix_lengths) {
-        partial_key.Resize(prefix_length);
+      for (; idx < key_prefix_lengths.size(); ++idx) {
+        partial_key.Resize(key_prefix_lengths[idx]);
         RETURN_NOT_OK(ApplyIntent(
             partial_key, MakeWeak(intent_types), &result.lock_batch));
       }
@@ -178,14 +209,19 @@ Result<DetermineKeysToLockResult<SharedLockManager>> DetermineKeysToLock(
   if (!read_pairs.empty()) {
     RETURN_NOT_OK(EnumerateIntents(
         read_pairs,
-        [&result, intent_types = dockv::GetIntentTypesForRead(isolation_level, row_mark_type)](
-            auto ancestor_doc_key, auto, auto, auto* key, auto, auto is_row_lock) {
+        [&result, intent_types = dockv::GetIntentTypesForRead(isolation_level, row_mark_type),
+         skip_prefix_locks, isolation_level](
+            auto ancestor_doc_key, auto, auto, auto* key, auto, auto is_row_lock,
+            auto is_top_level_key, boost::tribool pk_is_known) {
           auto actual_intents = GetIntentTypes(intent_types, is_row_lock);
+          const bool take_weak_lock = VERIFY_RESULT(ShouldTakeWeakLockForPrefix(
+              ancestor_doc_key, is_top_level_key, skip_prefix_locks,
+              isolation_level, pk_is_known, key));
           return ApplyIntent(
               RefCntPrefix(key->AsSlice()),
-              ancestor_doc_key ? MakeWeak(actual_intents) : actual_intents,
+              take_weak_lock ? MakeWeak(actual_intents) : actual_intents,
               &result.lock_batch);
-        }, partial_range_key_intents));
+        }, partial_range_key_intents, skip_prefix_locks));
   }
 
   return result;
@@ -223,12 +259,13 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     bool write_transaction_metadata,
     CoarseTimePoint deadline,
     dockv::PartialRangeKeyIntents partial_range_key_intents,
-    SharedLockManager *lock_manager) {
+    SharedLockManager *lock_manager,
+    dockv::SkipPrefixLocks skip_prefix_locks) {
   PrepareDocWriteOperationResult result;
 
   auto determine_keys_to_lock_result = VERIFY_RESULT(DetermineKeysToLock(
       doc_write_ops, read_pairs, isolation_level, row_mark_type,
-      transactional_table, partial_range_key_intents));
+      transactional_table, partial_range_key_intents, skip_prefix_locks));
   VLOG_WITH_FUNC(4) << "determine_keys_to_lock_result=" << determine_keys_to_lock_result.ToString();
   if (determine_keys_to_lock_result.lock_batch.empty() && !write_transaction_metadata) {
     LOG(DFATAL) << "Empty lock batch, doc_write_ops: " << yb::ToString(doc_write_ops)

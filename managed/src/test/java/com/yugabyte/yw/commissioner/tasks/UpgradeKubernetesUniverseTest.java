@@ -81,7 +81,6 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
 
   @Before
   public void setUp() {
-    super.setUp();
     mockClient = mock(YBClient.class);
     setFollowerLagMock();
     setUnderReplicatedTabletsMock();

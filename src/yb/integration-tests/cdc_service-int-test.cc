@@ -1805,6 +1805,57 @@ TEST_F(CDCServiceTest, TestCheckpointUpdate) {
   VerifyStreamDeletedFromCdcState(client_.get(), stream_id_, tablet_id);
 }
 
+class CDCServiceShutdownTest : public CDCServiceTest {
+  void DoTearDown() override {
+    YBMiniClusterTestBase::DoTearDown();
+  }
+};
+
+TEST_F(CDCServiceShutdownTest, Shutdown) {
+  // Skip cluster verification.
+  DontVerifyClusterBeforeNextTearDown();
+  stream_id_ = ASSERT_RESULT(CreateXClusterStream(*client_, table_.table()->id()));
+
+  std::string tablet_id = GetTablet();
+
+  GetChangesRequestPB change_req;
+  change_req.set_tablet_id(tablet_id);
+  change_req.set_stream_id(stream_id_.ToString());
+
+  // Sanity check we can successfully call the GetChanges RPC.
+  {
+    GetChangesResponsePB resp;
+    RpcController rpc;
+    ASSERT_OK(cdc_proxy_->GetChanges(change_req, &resp, &rpc));
+    ASSERT_FALSE(resp.has_error());
+    ASSERT_EQ(resp.records_size(), 0);
+  }
+
+  OneTimeBool stop;
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&stop, this, &change_req]() {
+    do {
+      GetChangesResponsePB resp;
+      RpcController rpc;
+      auto result = cdc_proxy_->GetChanges(change_req, &resp, &rpc);
+    } while (!stop);
+  });
+  LOG(INFO) << "Shutting down cluster.";
+  auto shutdown_thread = ASSERT_RESULT(
+      Thread::Make("shutdown_thread", "shutdown_thread", [&]() { cluster_->Shutdown(); }));
+  auto status =
+      ThreadJoiner(shutdown_thread.get()).give_up_after(MonoDelta::FromSeconds(30)).Join();
+  if (!status.ok()) {
+    std::stringstream ss;
+    RenderAllThreadStacks(ss);
+    LOG(INFO) << "Failed to shut down in time, dumping all thread stacks:\n" << ss.str();
+  }
+  WARN_NOT_OK(ThreadJoiner(shutdown_thread.get()).Join(), "Failed to join shutdown thread");
+  stop.Set();
+  thread_holder.Stop();
+  thread_holder.JoinAll();
+}
+
 class CDCServiceTestFourServers : public CDCServiceTest {
  public:
   void SetUp() override {

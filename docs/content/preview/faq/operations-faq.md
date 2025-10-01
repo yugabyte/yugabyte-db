@@ -20,7 +20,7 @@ rightNav:
 
 For YSQL, you should use a YugabyteDB smart driver. YugabyteDB smart drivers automatically balance connections to the database and eliminate the need for an external load balancer. If you are not using a smart driver, you will need an external load balancer.
 
-{{<lead link="../../drivers-orms/smart-drivers/">}}
+{{<lead link="/preview/develop/drivers-orms/smart-drivers/">}}
 YugabyteDB smart drivers for YSQL
 {{</lead>}}
 
@@ -28,7 +28,7 @@ For YCQL, YugabyteDB provides automatic load balancing.
 
 [YugabyteDB Aeon](../../yugabyte-cloud/) clusters automatically use the uniform load balancing provided by the cloud provider where the cluster is provisioned. YugabyteDB Aeon creates an external load balancer to distribute the connection load across the nodes in a particular region. For multi-region clusters, each region has its own external load balancer. For regular connections, you need to connect to the region of choice, and application connections are then uniformly distributed across the region without the need for any special coding.
 
-{{<lead link="../../drivers-orms/smart-drivers/#using-smart-drivers-with-yugabytedb-aeon">}}
+{{<lead link="/preview/develop/drivers-orms/smart-drivers/#using-smart-drivers-with-yugabytedb-aeon">}}
 Connection load balancing in YugabyteDB Aeon
 {{</lead>}}
 

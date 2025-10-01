@@ -382,14 +382,19 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
                        rpc::RpcContext* rpc,
                        const LeaderEpoch& epoch);
 
+  // Get the information about an in-progress truncate operation.
+  Status IsTruncateTableDone(const IsTruncateTableDoneRequestPB* req,
+                             IsTruncateTableDoneResponsePB* resp);
+
   Status RefreshYsqlLease(const RefreshYsqlLeaseRequestPB* req,
                           RefreshYsqlLeaseResponsePB* resp,
                           rpc::RpcContext* rpc,
                           const LeaderEpoch& epoch);
 
-  // Get the information about an in-progress truncate operation.
-  Status IsTruncateTableDone(const IsTruncateTableDoneRequestPB* req,
-                             IsTruncateTableDoneResponsePB* resp);
+  Status RelinquishYsqlLease(const RelinquishYsqlLeaseRequestPB* req,
+                             RelinquishYsqlLeaseResponsePB* resp,
+                             rpc::RpcContext* rpc,
+                             const LeaderEpoch& epoch);
 
   // Backfill the specified index.  Currently only supported for YSQL.  YCQL does not need this as
   // master automatically runs backfill according to the DocDB permissions.

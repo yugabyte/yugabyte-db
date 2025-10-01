@@ -27,12 +27,12 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Arrays;
 import java.util.Comparator;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -63,7 +63,7 @@ public class EditUniverse extends EditUniverseTaskBase {
   @Override
   protected void createPrecheckTasks(Universe universe) {
     addBasicPrecheckTasks();
-    prevNodes = Universe.getOrBadRequest(universe.getUniverseUUID()).getNodes();
+    prevState = Universe.getOrBadRequest(universe.getUniverseUUID()).getUniverseDetails();
     if (isFirstTry()) {
       configureTaskParams(universe);
     }
@@ -80,13 +80,23 @@ public class EditUniverse extends EditUniverseTaskBase {
     }
     log.info("Started {} task for uuid={}", getName(), taskParams().getUniverseUUID());
     checkUniverseVersion();
-    String errorString = null;
     Universe universe = null;
     boolean deleteCapacityReservation = false;
+    String errorMessage = null;
     try {
+      Consumer<Universe> retryCallback = null;
+      if (Universe.getOrBadRequest(taskParams().getUniverseUUID())
+          .getUniverseDetails()
+          .autoRollbackPerformed) {
+        // Need to write nodes to universe since there was a rollback.
+        retryCallback = univ -> updateUniverseNodesAndSettings(univ, taskParams(), false);
+      }
       universe =
           lockAndFreezeUniverseForUpdate(
-              taskParams().expectedUniverseVersion, this::freezeUniverseInTxn);
+              taskParams().getUniverseUUID(),
+              taskParams().expectedUniverseVersion,
+              this::freezeUniverseInTxn,
+              retryCallback);
       if (taskParams().getPrimaryCluster() != null) {
         dedicatedNodesChanged.set(
             taskParams().getPrimaryCluster().userIntent.dedicatedNodes
@@ -159,8 +169,9 @@ public class EditUniverse extends EditUniverseTaskBase {
       // Run all the tasks.
       getRunnableTask().runSubTasks();
     } catch (Throwable t) {
-      errorString = t.getMessage();
+      errorMessage = t.getMessage();
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+      clearCapacityReservationOnError(t, Universe.getOrBadRequest(universe.getUniverseUUID()));
       throw t;
     } finally {
       releaseReservedNodes();
@@ -170,6 +181,7 @@ public class EditUniverse extends EditUniverseTaskBase {
         try {
           // Fetch the latest universe.
           universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+
           if (!universe.getUniverseDetails().updateSucceeded) {
             // Operation ended up with error, so trying to do an automatic rollback.
             rollbackPerformed = rollbackState(universe, dedicatedNodesChanged.get());
@@ -187,24 +199,32 @@ public class EditUniverse extends EditUniverseTaskBase {
             universe.save();
           }
         } finally {
-          unlockUniverseForUpdate(taskParams().getUniverseUUID(), errorString, rollbackPerformed);
+          unlockUniverseForUpdate(taskParams().getUniverseUUID(), errorMessage, rollbackPerformed);
         }
       }
     }
     log.info("Finished {} task.", getName());
   }
 
+  /**
+   * Try to automatically rollback universe to a healthy state. This is only possible if we were
+   * going to add some nodes but none of those nodes were successfully created.
+   *
+   * @param universe
+   * @param dedicatedNodesChanged
+   * @return
+   */
   private boolean rollbackState(Universe universe, boolean dedicatedNodesChanged) {
     if (!confGetter.getGlobalConf(GlobalConfKeys.enableEditAutoRollback)) {
       return false;
     }
     UniverseDefinitionTaskParams taskParams = taskParams();
-    if (dedicatedNodesChanged || taskParams.isRunOnlyPrechecks() || !isFirstTry()) {
+    if (dedicatedNodesChanged || taskParams.isRunOnlyPrechecks()) {
       return false;
     }
     try {
       Map<String, NodeDetails> prevNodesMap =
-          prevNodes.stream().collect(Collectors.toMap(n -> n.nodeName, n -> n));
+          prevState.nodeDetailsSet.stream().collect(Collectors.toMap(n -> n.nodeName, n -> n));
       List<NodeDetails.NodeState> acceptableStates =
           Arrays.asList(
               NodeDetails.NodeState.ToBeAdded,
@@ -260,10 +280,12 @@ public class EditUniverse extends EditUniverseTaskBase {
       }
       // We can just rollback nodes state because we updated userIntent only in memory at this
       // moment.
+      log.debug("Automatic rollback is performed!");
       Universe.saveDetails(
           universe.getUniverseUUID(),
           u -> {
-            u.getUniverseDetails().nodeDetailsSet = new LinkedHashSet<>(prevNodes);
+            // During universe locking we are writing nodes to universe, now we are doing reverse.
+            updateUniverseNodesAndSettings(u, prevState, false);
           },
           false);
       return true;

@@ -34,6 +34,9 @@ public class TestPgRegressInsertOnConflict extends BasePgRegressTest {
     builder.addCommonTServerFlag("ysql_yb_ddl_transaction_block_enabled", "true");
     builder.addCommonTServerFlag(
         "allowed_preview_flags_csv", "ysql_yb_ddl_transaction_block_enabled");
+    // (Auto Analyze #28389, #28731) Disable auto analyze due to ddl conflicts between
+    // auto-Analyze and PL/pgSQL function.
+    builder.addCommonTServerFlag("ysql_enable_auto_analyze", "false");
   }
 
   @Test

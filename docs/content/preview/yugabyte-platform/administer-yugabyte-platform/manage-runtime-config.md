@@ -22,12 +22,12 @@ YugabyteDB Anywhere has a runtime configuration mechanism that is fully compatib
 
 Currently, the scopes can be categorized as follows:
 
-| Scope | Description | User Access |
+| Scope | Description |
 |:--- |:--- | :--- |
-| Global | Applies to the entire platform, persists across installs and any value defined in this scope overrides the defaults. | Super Admin |
-| Customer | Applies to a specific customer, persists across installs and any value defined in this scope overrides defaults in Global scope.| Super&nbsp;Admin,<br>Admin |
-| Provider | Applies to a specific provider, persists across installs and any value defined in this scope overrides defaults in Customer scope. | Super Admin,<br>Admin |
-| Universe | Applies to a specific universe, persists across installs and any value defined in this scope overrides defaults in Customer scope. | Super Admin,<br>Admin |
+| Global | Applies to the entire platform, persists across installs and any value defined in this scope overrides the defaults. Only the Super Admin can set global runtime configuration settings. |
+| Customer | Applies to a specific customer, persists across installs and any value defined in this scope overrides defaults in Global scope. |
+| Provider | Applies to a specific provider, persists across installs and any value defined in this scope overrides defaults in Customer scope. |
+| Universe | Applies to a specific universe, persists across installs and any value defined in this scope overrides defaults in Customer scope. |
 
 For more details about the flags and their scopes, refer to the [list of supported runtime configuration flags](https://github.com/yugabyte/yugabyte-db/blob/master/managed/RUNTIME-FLAGS.md)
 

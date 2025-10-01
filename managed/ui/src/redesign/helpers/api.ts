@@ -799,7 +799,7 @@ class ApiService {
   fetchCustomerTasks = (universeUuid?: string): Promise<Task[]> => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/tasks_list`;
     return axios
-      .get<Task[]>(requestUrl, { params: universeUuid })
+      .get<Task[]>(requestUrl, { params: { uUUID: universeUuid } })
       .then((response) => response.data);
   };
 
