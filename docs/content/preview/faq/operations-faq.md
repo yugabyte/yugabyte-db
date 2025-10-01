@@ -44,6 +44,8 @@ Edit configuration flags
 
 For most YugabyteDB deployments, you should not need to adjust the configuration flags for the write ahead log (WAL). While your data size is small and growing, the WAL files may seem to be much larger, but over time, the WAL files should reach their steady state while the data size continues to grow and become larger than the WAL files.
 
+Note that you should not delete any file in the `yb-data` folder, including the WAL files.
+
 WAL files are per tablet and the retention policy is managed by the following two yb-tserver configuration flags:
 
 - [`--log_min_segments_to_retain`](../../reference/configuration/yb-tserver/#log-min-segments-to-retain)
@@ -145,7 +147,11 @@ This confirms that the password for `John` will expire in approximately 4 hours.
 
 ### What exactly does the upgrade with rollback feature do?
 
-The feature upgrades the binaries and enables new features that do not change the data format on disk. Features that do require changes to the format of data sent over the network, or stored on disk, are not enabled until you finalize the upgrade. The vast majority of new changes do not modify data format, and most changes that do so are from new features that are not yet in use. So, this allows you to monitor the new binary for a while to make sure there is no impact to your application and rollback to the previous version if needed.
+The feature upgrades the binaries and enables new features that do not change the data format on disk. Features that do require changes to the format of data sent over the network, or stored on disk, are disabled until you finalize the upgrade.
+
+Because the vast majority of new changes do not modify data format, and most changes that do are from new features that are not yet in use, this temporary disabling typically has no impact on current operations. This allows you to monitor the new binary for a while (validating about 90% of code changes) to make sure there is no impact to your application and rollback to the previous version if needed.
+
+The aim of the rollback is to catch any regressions to existing features or query plans and handle them quickly by reverting to the previous binary without any data corruption.
 
 {{<lead link="../../yugabyte-platform/manage-deployments/upgrade-software-install/">}}
 For detailed information, see [Upgrade YugabyteDB](../../manage/upgrade-deployment/).
@@ -154,10 +160,6 @@ For detailed information, see [Upgrade YugabyteDB](../../manage/upgrade-deployme
 ### How long can a universe run after the upgrade but before the finalize step?
 
 A universe can run as long as needed while the application is being validated. However, it is recommended to finalize within 2 days. Operations like flag changes are disabled during the monitoring phase.
-
-### Are new YugabyteDB features disabled until the upgrade is finalized?
-
-New features that change the data format on disk are disabled. Because these data-format-changing features are new, they generally aren't being used in production environments yet, so disabling them temporarily has no impact on current operations. 90% of code changes are validated from the new binary itself. The aim of rollback is to catch regressions to existing features or query plans and handle them quickly (by reverting to the previous binary without any data corruption).
 
 ### Is it possible to run DDL operations during the upgrade (before finalize)?
 
@@ -170,6 +172,8 @@ Yugabyte performs extensive testing to ensure there are no issues. After the dat
 For customers that are extremely risk averse, the recommendation is to upgrade and finalize a development environment and DR replicas (if any) first.
 
 ### How does rollback interact with xCluster setups?
+
+You can upgrade and rollback each cluster individually.
 
 xCluster can only replicate from an old binary version to the new binary version. You should finalize the target universe before the source universe. If the source is finalized before the target, then xCluster automatically pauses itself (this only happens in certain versions that have an external data format change, such as v2024.2).
 
@@ -194,6 +198,8 @@ For detailed information about AutoFlags, see [AutoFlags](https://github.com/yug
 ### If not all new features are required immediately, is there a way to selectively enable them post-finalize?
 
 Features have dedicated flags to allow you to tune or disable them. For example, cost-based optimizer has a flag that lets you pick the mode, and tablet split has threshold flags that can be set.
+
+Refer to the documentation of the specific feature for more information on how to tune them.
 
 ### What happens to custom flags set at the universe level?
 
