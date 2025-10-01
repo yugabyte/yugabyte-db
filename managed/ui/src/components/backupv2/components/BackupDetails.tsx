@@ -24,7 +24,7 @@ import {
 import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
 import { TableType, TableTypeLabel } from '../../../redesign/helpers/dtos';
 import { find, findIndex, isFunction } from 'lodash';
-import { formatBytes } from '../../xcluster/ReplicationUtils';
+import { formatBytes } from '@app/utils/Formatters';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { getKMSConfigs, addIncrementalBackup } from '../common/BackupAPI';
 

@@ -41,7 +41,7 @@ import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
 import { BackupCreateModal } from './BackupCreateModal';
 import { useSearchParam } from 'react-use';
 import { AssignBackupStorageConfig } from './AssignBackupStorageConfig';
-import { formatBytes } from '../../xcluster/ReplicationUtils';
+import { formatBytes } from '@app/utils/Formatters';
 
 import { AccountLevelBackupEmpty, UniverseLevelBackupEmpty } from './BackupEmpty';
 import { YBTable } from '../../common/YBTable';

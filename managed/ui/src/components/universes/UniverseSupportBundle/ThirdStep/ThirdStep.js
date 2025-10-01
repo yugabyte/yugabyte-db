@@ -3,13 +3,12 @@ import clsx from 'clsx';
 import { withRouter } from 'react-router';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { DropdownButton, MenuItem } from 'react-bootstrap';
+import  { formatBytes } from '@app/utils/Formatters';
 
 import { YBMenuItem } from '../../UniverseDetail/compounds/YBMenuItem';
 import { YBButton, YBModal } from '../../../common/forms/fields';
 
 import { ybFormatDate, YBTimeFormats } from '../../../../redesign/helpers/DateUtils';
-import { formatBytes } from '../../../xcluster/ReplicationUtils';
-
 import { RbacValidator } from '../../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../../redesign/features/rbac/ApiAndUserPermMapping';
 import './ThirdStep.scss';

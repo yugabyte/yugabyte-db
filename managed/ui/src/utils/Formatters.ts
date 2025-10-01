@@ -156,3 +156,25 @@ export const formatNumberToText = (inputNumber: number) => {
   const result = translate(inputNumber);
   return result;
 };
+
+/**
+ * 
+ * @param sizeInBytes size in bytes
+ * @returns size in bytes with units
+ */
+export const formatBytes = function (sizeInBytes: any) {
+  if (Number.isInteger(sizeInBytes)) {
+    const bytes = sizeInBytes;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB'];
+    const k = 1000;
+    if (bytes <= 0) {
+      return bytes + ' ' + sizes[0];
+    }
+
+    const sizeIndex = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, sizeIndex)).toFixed(2)) + ' ' + sizes[sizeIndex];
+  } else {
+    return '-';
+  }
+};
+
