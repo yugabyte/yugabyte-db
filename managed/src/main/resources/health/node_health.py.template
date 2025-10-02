@@ -2573,6 +2573,8 @@ def main():
                         help='Master leader URL.')
     parser.add_argument('--verbose', type=bool, default=False, required=False,
                         help='Add verbose output')
+    parser.add_argument('--cronbased', default=False, required=False, action='store_true',
+                        help='Set to true if the node is cronbased instead of systemd')
 
     args = parser.parse_args()
 
@@ -2694,7 +2696,8 @@ def main():
     if not n.is_k8s:
         coordinator.add_check(checker, "check_oom_kills")
         coordinator.add_check(checker, "check_process_stats", NODE_EXPORTER)
-        coordinator.add_check(checker, "check_systemd_unit_preexec_present")
+        if not args.cronbased:
+            coordinator.add_check(checker, "check_systemd_unit_preexec_present")
 
     if n.otel_enabled:
         coordinator.add_check(checker, "check_process_stats", OTEL_COLLECTOR)
