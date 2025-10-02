@@ -7,7 +7,7 @@ headcontent: Get LLMs to interact directly with YugabyteDB
 menu:
   preview_develop:
     identifier: tutorials-mcp-server
-    parent: tutorials-ai
+    parent: tutorials-ai-agentic
     weight: 20
 type: docs
 ---
@@ -31,7 +31,7 @@ For more information about the YugabyteDB MCP Server, see [Unlock AI-Driven Data
 
 ## Prerequisites
 
-- YugabyteDB v2.25.1 or later
+- YugabyteDB v2025.1 (stable) or later, v2.25.1 (preview) or later
 - Python 3.10+
 - [uv](https://docs.astral.sh/uv/) for dependency management
 - [Claude Desktop](https://claude.ai/download)
@@ -104,10 +104,12 @@ Claude does the following:
 Example output:
 
 ```output
-This appears to be the classic Northwind database, a sample database commonly used for demos and tutorials. Here's a summary:
+This appears to be the classic Northwind database, a sample database 
+commonly used for demos and tutorials. Here's a summary:
 
 Database Overview
-This is a typical e-commerce/trading company database with 14 tables and approximately 3,400 total rows of data.
+This is a typical e-commerce/trading company database with 14 tables 
+and approximately 3,400 total rows of data.
 
 Core Business Tables:
 
@@ -132,7 +134,9 @@ Junction Tables:
 - customer_demographics (0 rows) - Empty demographic data
 - customer_customer_demo (0 rows) - Empty customer-demographic mapping
 
-This database supports typical business operations like order management, inventory tracking, employee territories, and supplier relationships. Would you like me to run any specific queries or analysis on this data?
+This database supports typical business operations like order management, 
+inventory tracking, employee territories, and supplier relationships. Would 
+you like me to run any specific queries or analysis on this data?
 ```
 
 ## Prompt 2: Build a dashboard
@@ -160,9 +164,14 @@ Example output:
 ```output
 I've created an interactive sales dashboard with all three visualizations you requested:
 
-1. Monthly Sales Trend - A line chart showing revenue progression from July 1996 to May 1998. You can see a clear upward trend with revenue growing from ~$27k to peaks of ~$123k per month.
-2. Top 10 Customers by Revenue - A horizontal bar chart showing QUICK-Stop, Ernst Handel, and Save-a-lot Markets as the top three customers, each generating over $100k in revenue.
-3. Sales by Country - A scrollable horizontal bar chart displaying all 21 countries, with USA and Germany leading at $245k and $230k respectively.
+1. Monthly Sales Trend - A line chart showing revenue progression from July 1996 to 
+May 1998. You can see a clear upward trend with revenue growing from ~$27k to peaks 
+of ~$123k per month.
+2. Top 10 Customers by Revenue - A horizontal bar chart showing QUICK-Stop, Ernst 
+Handel, and Save-a-lot Markets as the top three customers, each generating over $100k 
+in revenue.
+3. Sales by Country - A scrollable horizontal bar chart displaying all 21 countries, 
+with USA and Germany leading at $245k and $230k respectively.
 
 The dashboard features:
 
@@ -171,7 +180,8 @@ The dashboard features:
 - Responsive layout that adapts to different screen sizes
 - Currency formatting for easy readability
 
-All data is pulled directly from your Northwind database and shows real sales patterns over the ~2-year period covered by the dataset.
+All data is pulled directly from your Northwind database and shows real sales patterns 
+over the ~2-year period covered by the dataset.
 ```
 
 ## Read more
