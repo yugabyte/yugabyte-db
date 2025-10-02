@@ -341,16 +341,8 @@
   to = "/preview/explore/linear-scalability/"
 
 [[redirects]]
-  from = "/preview/explore/colocated-tables/"
-  to = "/preview/architecture/docdb-sharding/colocated-tables/"
-
-[[redirects]]
-  from = "/preview/explore/colocated-tables/linux/"
-  to = "/preview/architecture/docdb-sharding/colocated-tables/"
-
-[[redirects]]
-  from = "/preview/explore/colocated-tables/macos/"
-  to = "/preview/architecture/docdb-sharding/colocated-tables/"
+  from = "/preview/explore/colocated-tables/*"
+  to = "/preview/additional-features/colocation/"
 
 [[redirects]]
   from = "/preview/explore/follower-reads/fr-ycql/"
@@ -414,7 +406,7 @@
 
 [[redirects]]
   from = "/preview/explore/ysql-language-features/extensions/"
-  to = "/preview/explore/ysql-language-features/pg-extensions/"
+  to = "/preview/additional-features/pg-extensions/"
 
 [[redirects]]
   from = "/preview/explore/ysql-language-features/gin/"
@@ -523,10 +515,6 @@
 [[redirects]]
   from = "/preview/secure/authentication/enable-authentication/ycql"
   to = "/preview/secure/authentication/enable-authentication/authentication-ycql"
-
-[[redirects]]
-  from = "/preview/yugabyte-cloud/cloud-overview/"
-  to = "/preview/yugabyte-cloud/"
 
 [[redirects]]
   from = "/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/"
@@ -695,6 +683,10 @@
 #  from = "/:version/yugabyte-cloud/cloud-quickstart/"
 #  to = "/preview/yugabyte-cloud/cloud-quickstart/"
 #  force = true
+
+[[redirects]]
+  from = "/preview/yugabyte-cloud/cloud-overview/"
+  to = "/preview/yugabyte-cloud/"
 
 [[redirects]]
   from = "/preview/yugabyte-cloud/managed-automation/managed-cli/managed-cli-reference/*"
