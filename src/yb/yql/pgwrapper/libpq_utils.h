@@ -414,4 +414,6 @@ Result<std::string> ResultAsString(
     PGresult* res, const std::string& column_sep = DefaultColumnSeparator(),
     const std::string& row_sep = DefaultRowSeparator());
 
+void ReplaceAll(std::string* str, const std::string& from, const std::string& to);
+
 } // namespace yb::pgwrapper

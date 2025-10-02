@@ -2196,6 +2196,14 @@ TEST_F(PgCatalogVersionTest, InvalMessageSanityTest) {
     ASSERT_OK(conn.Execute("CREATE TABLE foo(id TEXT)"));
   }
   ASSERT_OK(conn.Execute("DROP TABLE foo"));
+
+  auto yugabyte_db_oid = ASSERT_RESULT(GetDatabaseOid(&conn, kYugabyteDatabase));
+  // Get the little endian formatted string of yugabyte db oid.
+  auto byte_swapped_yugabyte_db_oid = std::byteswap(yugabyte_db_oid);
+  char buffer[9]; // 8 characters for the hex string + 1 for the null terminator
+  snprintf(buffer, sizeof(buffer), "%08x", byte_swapped_yugabyte_db_oid);
+  auto yugabyte_db_oid_str = std::string(buffer);
+
   auto query = "SELECT current_version, encode(messages, 'hex') "
                "FROM pg_yb_invalidation_messages"s;
   auto expected_result0 =
@@ -2216,7 +2224,7 @@ TEST_F(PgCatalogVersionTest, InvalMessageSanityTest) {
       "0003600000000000000d034000021e2d2ca0000000000000000fb00000000000000d0340"
       "000300a00000000000000000000fb00000000000000d0340000300a00000000000000000"
       "000fe00000000000000d0340000004000000000000000000000fb00000000000000d0340"
-      "000300a00000000000000000000";
+      "000300a00000000000000000000"s;
   auto expected_result1 =
       "2, 5000000000000000d034000040c1eb0a00000000000000004f00000000000000d0340"
       "0005ac4b85300000000000000005000000000000000d034000047a2537b0000000000000"
@@ -2236,7 +2244,11 @@ TEST_F(PgCatalogVersionTest, InvalMessageSanityTest) {
       "0004657085300000000000000003600000000000000d034000021e2d2ca0000000000000"
       "000fb00000000000000d0340000300a00000000000000000000fb00000000000000d0340"
       "000300a00000000000000000000fe00000000000000d0340000004000000000000000000"
-      "000fb00000000000000d0340000300a00000000000000000000";
+      "000fb00000000000000d0340000300a00000000000000000000"s;
+  // The hard-coded litten-endian yugabyte db oid text.
+  auto hard_coded_yugabyte_db_oid_str = "d0340000";
+  ReplaceAll(&expected_result0, hard_coded_yugabyte_db_oid_str , yugabyte_db_oid_str);
+  ReplaceAll(&expected_result1, hard_coded_yugabyte_db_oid_str, yugabyte_db_oid_str);
   auto result = ASSERT_RESULT(conn.FetchAllAsString(query));
   if (choice) {
     ASSERT_EQ(result, expected_result1);
