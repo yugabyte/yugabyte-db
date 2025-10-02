@@ -12,8 +12,8 @@ import clsx from 'clsx';
 import { useFormContext } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { makeStyles, Typography } from '@material-ui/core';
+import { formatBytes } from '@app/utils/Formatters';
 import { ybFormatDate } from '../../../../helpers/DateUtils';
-import { formatBytes } from '../../../../../components/xcluster/ReplicationUtils';
 import { Backup_Options_Type } from '../../../../../components/backupv2';
 import { RestoreFormModel } from '../models/RestoreFormModel';
 

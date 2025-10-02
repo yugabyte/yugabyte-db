@@ -434,6 +434,8 @@ struct TransactionMetadata {
   // Former transaction status tablet that the transaction was using prior to a move.
   TabletId old_status_tablet;
 
+  bool skip_prefix_locks = false;
+
   static Result<TransactionMetadata> FromPB(const LWTransactionMetadataPB& source);
   static Result<TransactionMetadata> FromPB(const TransactionMetadataPB& source);
 
@@ -523,5 +525,14 @@ class TransactionLockInfoManager {
   std::unordered_map<
       TransactionId, TabletLockInfoPB::TransactionLockInfoPB*> transaction_lock_infos_;
 };
+
+inline bool IsFastMode(bool skip_prefix_locks, IsolationLevel isolation) {
+  return isolation == IsolationLevel::SERIALIZABLE_ISOLATION ? !skip_prefix_locks
+                                                             : skip_prefix_locks;
+}
+
+inline bool IsFastMode(const struct TransactionMetadata& metadata) {
+  return IsFastMode(metadata.skip_prefix_locks, metadata.isolation);
+}
 
 } // namespace yb

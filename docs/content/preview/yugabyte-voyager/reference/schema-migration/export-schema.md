@@ -235,7 +235,7 @@ log-level:
 | --start-clean | — | Starts a fresh schema export after clearing the `schema` directory.<br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -h, --help | — | Command line help for schema. |
 | -y, --yes | — | Answer "yes" to all prompts during the export schema operation. <br>Default: false |
-| -c, --config-file | — | Path to a [configuration file](../configuration-file). |
+| -c, --config-file | — | Path to a [configuration file](../../configuration-file). |
 
 {{</table>}}
 

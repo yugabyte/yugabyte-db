@@ -3610,7 +3610,7 @@ TEST_P(PgCatalogVersionConnManagerTest,
 
 TEST_F(PgCatalogVersionTest, NewConnectionRelCachePreloadTest) {
   // Disable auto analyze because it makes the number of the metric: RelCachePreload flaky.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = "libpq_utils=1";
+  RestartClusterWithInvalMessageEnabled({ "--ysql_enable_auto_analyze=false" });
   // Wait a bit for the webserver background process to get ready to serve curl request.
   SleepFor(2s);
   auto conn_yugabyte = ASSERT_RESULT(Connect());

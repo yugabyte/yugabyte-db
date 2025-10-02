@@ -883,7 +883,23 @@ TEST_F_EX(PgBackendsTest, YB_RELEASE_ONLY_TEST(Stress), PgBackendsTestRf3) {
   thread_holder.Stop();
 }
 
-TEST_F_EX(PgBackendsTest, LostHeartbeats, PgBackendsTestRf3) {
+// The LostHeartbeats test relies on the fact that the tserver's catalog version is behind,
+// if the tserver is not getting heartbeat responses. However, table locks will cause the catalog
+// invalidations to be piggybacked on the ddl release request. So disable table locks for this test.
+class PgBackendsTestRf3TableLocksDisabled : public PgBackendsTestRf3 {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgBackendsTestRf3::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
+    AppendFlagToAllowedPreviewFlagsCsv(
+        options->extra_tserver_flags, "enable_object_locking_for_table_locks");
+    options->extra_master_flags.push_back("--enable_object_locking_for_table_locks=false");
+    AppendFlagToAllowedPreviewFlagsCsv(
+        options->extra_master_flags, "enable_object_locking_for_table_locks");
+  }
+};
+
+TEST_F_EX(PgBackendsTest, LostHeartbeats, PgBackendsTestRf3TableLocksDisabled) {
   constexpr auto kUser = "eve";
   ASSERT_OK(conn_->ExecuteFormat("CREATE USER $0", kUser));
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0tab (i int)", kUser));

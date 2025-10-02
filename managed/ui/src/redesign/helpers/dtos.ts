@@ -274,6 +274,7 @@ export interface UniverseDetails {
   updateOptions: string[];
   useSpotInstance: boolean;
   universePaused: boolean;
+  otelCollectorEnabled: boolean;
 }
 
 export interface AllowedTasks {

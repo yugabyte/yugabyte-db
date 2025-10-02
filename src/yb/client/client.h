@@ -1000,6 +1000,11 @@ class YBClient {
 
   Status WaitForDdlVerificationToFinish(const TransactionMetadata& txn);
 
+  Status RollbackDocdbSchemaToSubtxn(const TransactionMetadata& txn, SubTransactionId sub_txn_id);
+
+  Status WaitForRollbackDocdbSchemaToSubtxnToFinish(
+      const TransactionMetadata& txn, SubTransactionId sub_txn_id);
+
   Result<bool> CheckIfPitrActive();
 
   void LookupTabletByKey(

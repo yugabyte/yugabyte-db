@@ -14,6 +14,8 @@ Review the following important information that may impact the stability or secu
 
 It is strongly recommended that you take appropriate measures as outlined in the advisories to mitigate potential risks and disruptions.
 
+For an RSS feed of all technical advisories, point your feed reader to the [RSS feed for technical advisories](index.xml).
+
 ## List of advisories
 
 {{%table%}}

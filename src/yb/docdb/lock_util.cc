@@ -16,6 +16,11 @@
 #include <ranges>
 #include <type_traits>
 
+#include <boost/logic/tribool.hpp>
+
+#include "yb/util/flags.h"
+
+
 namespace yb::docdb {
 
 using dockv::IntentTypeSet;
@@ -226,6 +231,34 @@ Result<DetermineKeysToLockResult<ObjectLockManager>> DetermineObjectsToLock(
   }
   FilterKeysToLock<ObjectLockManager>(&result.lock_batch);
   return result;
+}
+
+Result<bool> ShouldTakeWeakLockForPrefix(dockv::AncestorDocKey ancestor_doc_key,
+                                         dockv::IsTopLevelKey is_top_level_key,
+                                         dockv::SkipPrefixLocks skip_prefix_locks,
+                                         IsolationLevel isolation_level,
+                                         boost::tribool pk_is_known,
+                                         const KeyBytes* const key) {
+  if (!ancestor_doc_key) {
+    return false;
+  }
+  if (is_top_level_key && skip_prefix_locks) {
+    if (isolation_level != IsolationLevel::SERIALIZABLE_ISOLATION) {
+      if (static_cast<bool>(pk_is_known)) {
+        return true;
+      }
+      // If pk_is_known is indeterminate or false for RR/RC, take a strong lock on top level key and
+      // log a warning.
+      auto msg = Format("A prefix of a full-doc key is specified, "
+          "but it is not in serializable level. skip_prefix_locks:$0, isolation_level:$1, key:$2. "
+          "Consider turning off the gflag skip_prefix_locks",
+          skip_prefix_locks, isolation_level, key->ToString());
+      LOG(WARNING) << msg;
+      return false;
+    }
+    return static_cast<bool>(pk_is_known);
+  }
+  return true;
 }
 
 } // namespace yb::docdb

@@ -16,6 +16,7 @@ import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.Map;
 
 import static org.yb.AssertionWrappers.assertGreaterThan;
 import static org.yb.AssertionWrappers.assertFalse;
@@ -36,6 +37,17 @@ public class TestPgDdlConcurrency extends BasePgSQLTest {
 
   protected int getInitialNumTServers() {
     return 1;
+  }
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flags = super.getTServerFlags();
+    // TODO(#28745): Revisit this. Runs into a deadlock issue with table locks/txn-ddl enabled.
+    flags.put("enable_object_locking_for_table_locks", "false");
+    flags.put("ysql_yb_ddl_transaction_block_enabled", "false");
+    flags.put("allowed_preview_flags_csv",
+              "enable_object_locking_for_table_locks,ysql_yb_ddl_transaction_block_enabled");
+    return flags;
   }
 
   private boolean timeoutReached = false;

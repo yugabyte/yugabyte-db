@@ -337,7 +337,7 @@ import-data-file:
 | --start-clean | — | Starts a fresh import with data files present in the `data` directory.<br>If there's any non-empty table on the target YugabyteDB database, you get a prompt whether to continue the import without truncating those tables.<br> **Note** that for cases where a table doesn't have a primary key, it may lead to insertion of duplicate data. In that case, you can avoid the duplication by excluding the table from the `--file-table-map`, or truncating those tables manually before using the `start-clean` flag.<br> Default: false <br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -h, --help | — | Command line help. |
 | -y, --yes | — | Answer yes to all prompts during the export schema operation. <br>Default: false |
-| -c, --config-file | — | Path to a [configuration file](../configuration-file). |
+| -c, --config-file | — | Path to a [configuration file](../../configuration-file). |
 
 {{</table>}}
 

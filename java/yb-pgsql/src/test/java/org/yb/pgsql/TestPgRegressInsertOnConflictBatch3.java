@@ -22,9 +22,6 @@ public class TestPgRegressInsertOnConflictBatch3 extends TestPgRegressInsertOnCo
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flags = super.getTServerFlags();
     appendToYsqlPgConf(flags, YB_INSERT_ON_CONFLICT_BATCH_GUC + "=3");
-    // (Auto Analyze #28389) Disable auto analyze due to ddl conflicts between
-    // auto-Analyze and PL/pgSQL function.
-    flags.put("ysql_enable_auto_analyze", "false");
     return flags;
   }
 }

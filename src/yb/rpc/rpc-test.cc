@@ -117,7 +117,7 @@ void RunTest(RpcTestBase* test, const TestServerOptions& options,
       messenger_factory("TestServer", options.messenger_options), &server_hostport,
       options);
 
-  CalculatorServiceProxy p(proxy_cache.get(), server_hostport, client_messenger->DefaultProtocol());
+  CalculatorServiceProxy p(proxy_cache.get(), server_hostport);
   f(&p);
 }
 
@@ -1240,6 +1240,7 @@ class TestRpcSecure : public RpcTestBase {
       const std::string& name, const MessengerOptions& options = kDefaultClientMessengerOptions) {
     auto builder = CreateMessengerBuilder(name, options);
     builder.SetListenProtocol(SecureStreamProtocol());
+    builder.SetUncompressedProtocol(SecureStreamProtocol());
     builder.AddStreamFactory(SecureStreamProtocol(), CreateSecureStreamFactory());
     return EXPECT_RESULT(builder.Build());
   }
@@ -1488,6 +1489,7 @@ class TestRpcSecureCompression : public TestRpcSecure {
       const std::string& name, const MessengerOptions& options = kDefaultClientMessengerOptions) {
     auto builder = CreateMessengerBuilder(name, options);
     builder.SetListenProtocol(CompressedStreamProtocol());
+    builder.SetUncompressedProtocol(SecureStreamProtocol());
     builder.AddStreamFactory(
         CompressedStreamProtocol(),
         CompressedStreamFactory(CreateSecureStreamFactory(), MemTracker::GetRootTracker()));

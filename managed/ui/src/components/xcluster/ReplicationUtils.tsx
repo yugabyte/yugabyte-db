@@ -435,22 +435,6 @@ export const convertToLocalTime = (time: string, timezone: string | undefined) =
   );
 };
 
-export const formatBytes = function (sizeInBytes: any) {
-  if (Number.isInteger(sizeInBytes)) {
-    const bytes = sizeInBytes;
-    const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB'];
-    const k = 1024;
-    if (bytes <= 0) {
-      return bytes + ' ' + sizes[0];
-    }
-
-    const sizeIndex = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, sizeIndex)).toFixed(2)) + ' ' + sizes[sizeIndex];
-  } else {
-    return '-';
-  }
-};
-
 /**
  * Returns an object containing the start and end moment for a given time range option.
  */

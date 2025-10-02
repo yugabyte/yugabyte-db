@@ -61,7 +61,7 @@ if [ -z ${YB_HOME_DIR+x} ]; then
   YB_HOME_DIR="/home/yugabyte"
 fi
 
-systemctl --user disable earlyoom --now
+systemctl --user status earlyoom && systemctl --user disable earlyoom --now
 
 if [[ "$action" = "configure" || "$action" = "enable" ]]; then
   if ! [[ -z "${config}" ]]; then

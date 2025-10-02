@@ -2693,6 +2693,17 @@ INSTANTIATE_TEST_CASE_P(
 class YBDdlAtomicityBackupTest : public YBBackupTestBase, public pgwrapper::PgDdlAtomicityTestBase {
  public:
   Status RunDdlAtomicityTest(pgwrapper::DdlErrorInjection inject_error);
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    // Disable table locks to avoid issues during SuccessfulDdlAtomicityTest
+    // Test enables TEST_pause_ddl_rollback which may block table locks for ddl from
+    // being released. Hence blocking the following statements from failing to acquire locks.
+    AppendFlagToAllowedPreviewFlagsCsv(
+        options->extra_tserver_flags, "enable_object_locking_for_table_locks");
+    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
+    pgwrapper::PgDdlAtomicityTestBase::UpdateMiniClusterOptions(options);
+  }
+
 };
 
 Status YBDdlAtomicityBackupTest::RunDdlAtomicityTest(pgwrapper::DdlErrorInjection inject_error) {

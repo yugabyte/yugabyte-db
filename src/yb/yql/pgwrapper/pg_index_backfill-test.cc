@@ -87,20 +87,23 @@ class PgIndexBackfillTest : public LibPqTestBase, public ::testing::WithParamInt
     options->extra_tserver_flags.push_back(
         Format("--ysql_num_shards_per_tserver=$0", kTabletsPerServer));
 
-    if (EnableTableLocks()) {
+    const bool enable_table_locks = EnableTableLocks();
+    options->extra_tserver_flags.push_back(
+        Format("--allowed_preview_flags_csv=$0,$1",
+                "enable_object_locking_for_table_locks", "ysql_yb_ddl_transaction_block_enabled"));
+    options->extra_tserver_flags.push_back(
+        Format("--enable_object_locking_for_table_locks=$0", enable_table_locks));
+    options->extra_tserver_flags.push_back(
+        Format("--ysql_yb_ddl_transaction_block_enabled=$0", enable_table_locks));
+    if (enable_table_locks) {
       options->extra_master_flags.push_back("--enable_ysql_operation_lease=true");
 
-      options->extra_tserver_flags.push_back(
-          Format("--allowed_preview_flags_csv=$0,$1",
-                 "enable_object_locking_for_table_locks", "ysql_yb_ddl_transaction_block_enabled"));
-      options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=true");
-      options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
       options->extra_tserver_flags.push_back("--enable_ysql_operation_lease=true");
       options->extra_tserver_flags.push_back("--TEST_tserver_enable_ysql_lease_refresh=true");
-      // Disable auto analyze in this test suite because it introduce flakiness of metrics.
-      options->extra_tserver_flags.push_back("--ysql_enable_auto_analyze=false");
     }
-  }
+    // Disable auto analyze in this test suite because it introduces flakiness of metrics.
+    options->extra_tserver_flags.push_back("--ysql_enable_auto_analyze=false");
+}
 
  protected:
   Result<bool> IsAtTargetIndexStateFlags(

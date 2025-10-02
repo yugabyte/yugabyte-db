@@ -129,7 +129,8 @@ Result<DecodeStrongWriteIntentResult> DecodeStrongWriteIntent(
 Status EnumerateIntents(
     const ArenaList<LWKeyValuePairPB>& kv_pairs,
     const dockv::EnumerateIntentsCallback& functor,
-    dockv::PartialRangeKeyIntents partial_range_key_intents) {
+    dockv::PartialRangeKeyIntents partial_range_key_intents,
+    dockv::SkipPrefixLocks skip_prefix_locks) {
   if (kv_pairs.empty()) {
     return Status::OK();
   }
@@ -141,9 +142,17 @@ Status EnumerateIntents(
     dockv::LastKey last_key(++it == kv_pairs.end());
     CHECK(!kv_pair.key().empty());
     CHECK(!kv_pair.value().empty());
+    boost::tribool pk_is_known = kv_pair.has_pk_is_known() ?
+        boost::tribool(kv_pair.pk_is_known()) : boost::indeterminate;
+    dockv::EnumerateIntentsCallback new_functor = [&functor, &pk_is_known] (
+        auto ancestor_doc_key, auto full_doc_key, auto value, auto* key, auto last_key,
+        auto is_row_lock, auto is_top_level_key, auto) {
+      return functor(ancestor_doc_key, full_doc_key, value, key, last_key, is_row_lock,
+                     is_top_level_key, pk_is_known);
+    };
     RETURN_NOT_OK(dockv::EnumerateIntents(
-        kv_pair.key(), kv_pair.value(), functor, &encoded_key, partial_range_key_intents,
-        last_key));
+        kv_pair.key(), kv_pair.value(), new_functor, &encoded_key, partial_range_key_intents,
+        last_key, skip_prefix_locks ? dockv::SkipPrefix::kTrue : dockv::SkipPrefix::kFalse));
     if (last_key) {
       break;
     }
