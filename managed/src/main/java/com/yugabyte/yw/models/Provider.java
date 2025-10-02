@@ -634,4 +634,9 @@ public class Provider extends Model {
     return Customer.get(this.getCustomerUUID()).getUniversesForProvider(this.getUuid()).stream()
         .count();
   }
+
+  @JsonIgnore
+  public boolean isManualOnprem() {
+    return getCloudCode() == CloudType.onprem && getDetails().skipProvisioning;
+  }
 }
