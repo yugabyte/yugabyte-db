@@ -64,6 +64,7 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
+import javax.validation.constraints.NotNull;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -406,6 +407,7 @@ public class PlacementInfoUtil {
     for (UniverseDefinitionTaskParams.PartitionInfo partition : cluster.getPartitions()) {
       checkAndSetPerAZRF(partition.getPlacement(), partition.getReplicationFactor(), null, false);
     }
+    cluster.userIntent.replicationFactor = cluster.getDefaultPartition().getReplicationFactor();
     finalSanityCheckConfigure(cluster, taskParams.getNodesInCluster(cluster.uuid));
   }
 
@@ -914,7 +916,68 @@ public class PlacementInfoUtil {
     }
   }
 
-  private static void validatePartitions(Cluster cluster) {
+  public static boolean shouldChangeTablespace(
+      @NotNull PlacementInfo oldPlacement, @NotNull PlacementInfo newPlacement) {
+    return !Objects.equals(getReplicasMap(oldPlacement), getReplicasMap(newPlacement));
+  }
+
+  private static Map<UUID, Integer> getReplicasMap(PlacementInfo placement) {
+    return placement
+        .azStream()
+        .filter(az -> az.replicationFactor > 0)
+        .collect(Collectors.toMap(az -> az.uuid, az -> az.replicationFactor));
+  }
+
+  public static void validatePartition(UniverseDefinitionTaskParams.PartitionInfo p) {
+
+    if (StringUtils.isEmpty(p.getName())) {
+      throw new PlatformServiceException(BAD_REQUEST, "Name for partition should be defined");
+    }
+    if (p.getPlacement() == null || p.getPlacement().getAllAZUUIDs().isEmpty()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Placement for partition " + p.getName() + " should be defined");
+    }
+    if (p.getPlacement().azStream().count() == 0) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Placement for partition " + p.getName() + " should be defined");
+    }
+    if (p.getReplicationFactor() <= 0) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Incorrect replicas for partition " + p.getName() + ": should be non-zero");
+    }
+
+    int numberOfReplicas =
+        p.getPlacement()
+            .azStream()
+            .peek(
+                az -> {
+                  if (az.replicationFactor > az.numNodesInAZ) {
+                    throw new PlatformServiceException(
+                        BAD_REQUEST,
+                        p.getName()
+                            + ": cannot have "
+                            + az.replicationFactor
+                            + " replicas in zone "
+                            + az.name
+                            + " (there are only "
+                            + az.numNodesInAZ
+                            + " nodes)");
+                  }
+                })
+            .mapToInt(az -> az.replicationFactor)
+            .sum();
+    PlacementInfoUtil.checkAndSetPerAZRF(
+        p.getPlacement(),
+        p.getReplicationFactor(),
+        null,
+        numberOfReplicas > 0 // Means that user tried to place replicas.
+        );
+    if (p.getPlacement().hasRankOrdering()) {
+      PlacementInfoUtil.validatePriority(p.getPlacement());
+    }
+  }
+
+  public static void validatePartitions(Cluster cluster) {
     if (!CollectionUtils.isEmpty(cluster.getPartitions())) {
       Set<UUID> zoneUUIDs = new HashSet<>();
       Set<String> tablespaceNames = new HashSet<>();
@@ -923,56 +986,23 @@ public class PlacementInfoUtil {
           cluster.getPartitions().stream()
               .peek(
                   p -> {
-                    if (StringUtils.isEmpty(p.getName())) {
-                      throw new PlatformServiceException(
-                          BAD_REQUEST, "Name for partition should be defined");
-                    }
+                    PlacementInfoUtil.validatePartition(p);
                     if (!names.add(p.getName())) {
                       throw new PlatformServiceException(
                           BAD_REQUEST, "Found duplicate name for partition: " + p.getName());
                     }
-                    if (p.getPlacement() == null) {
+                    if (!tablespaceNames.add(p.getTablespaceName())) {
                       throw new PlatformServiceException(
                           BAD_REQUEST,
-                          "Placement for partition " + p.getName() + " should be defined");
+                          "Found duplicate tablespace name for partition: " + p.getName());
                     }
-                    if (p.getPlacement().azStream().count() == 0) {
-                      throw new PlatformServiceException(
-                          BAD_REQUEST,
-                          "Placement for partition " + p.getName() + " should be defined");
-                    }
-                    if (p.getReplicationFactor() <= 0) {
-                      throw new PlatformServiceException(
-                          BAD_REQUEST,
-                          "Incorrect replicas for partition "
-                              + p.getName()
-                              + ": should be non-zero");
-                    }
-                    int numberOfReplicas =
-                        p.getPlacement().azStream().mapToInt(az -> az.replicationFactor).sum();
-                    PlacementInfoUtil.checkAndSetPerAZRF(
-                        p.getPlacement(),
-                        p.getReplicationFactor(),
-                        null,
-                        numberOfReplicas > 0 // Means that user tried to place replicas.
-                        );
-                    if (p.getPlacement().hasRankOrdering()) {
-                      PlacementInfoUtil.validatePriority(p.getPlacement());
-                    }
-                    AtomicInteger zones = new AtomicInteger();
-                    p.getPlacement()
-                        .azStream()
-                        .forEach(
-                            az -> {
-                              zones.incrementAndGet();
-                              if (!zoneUUIDs.add(az.uuid)) {
-                                throw new PlatformServiceException(
-                                    BAD_REQUEST, "Found duplicate zone: " + az.uuid);
-                              }
-                            });
-                    if (zones.get() == 0) {
-                      throw new PlatformServiceException(
-                          BAD_REQUEST, "Placement is empty for partition " + p.getName());
+
+                    for (UUID azUUID : p.getPlacement().getAllAZUUIDs()) {
+                      if (!zoneUUIDs.add(azUUID)) {
+                        throw new PlatformServiceException(
+                            BAD_REQUEST,
+                            "Found duplicate zone " + azUUID + " for partition: " + p.getName());
+                      }
                     }
                   })
               .filter(p -> p.isDefaultPartition())
@@ -2990,31 +3020,6 @@ public class PlacementInfoUtil {
   // Checks the status of the node by given name in current universe
   public static boolean isNodeRemovable(String nodeName, Set<NodeDetails> nodeDetailsSet) {
     return nodeDetailsSet.stream().anyMatch(n -> n.nodeName.equals(nodeName) && n.isRemovable());
-  }
-
-  public static int getZoneRF(PlacementInfo pi, String cloud, String region, String zone) {
-    return pi.cloudList.stream()
-        .filter(pc -> pc.code.equals(cloud))
-        .flatMap(pc -> pc.regionList.stream())
-        .filter(pr -> pr.code.equals(region))
-        .flatMap(pr -> pr.azList.stream())
-        .filter(pa -> pa.name.equals(zone))
-        .map(pa -> pa.replicationFactor)
-        .findFirst()
-        .orElse(-1);
-  }
-
-  public static long getNumActiveTserversInZone(
-      Collection<NodeDetails> nodes, String cloud, String region, String zone) {
-    return nodes.stream()
-        .filter(
-            node ->
-                node.isActive()
-                    && node.isTserver
-                    && node.cloudInfo.cloud.equals(cloud)
-                    && node.cloudInfo.region.equals(region)
-                    && node.cloudInfo.az.equals(zone))
-        .count();
   }
 
   private static class RegionWithAz extends Pair<String, String> {

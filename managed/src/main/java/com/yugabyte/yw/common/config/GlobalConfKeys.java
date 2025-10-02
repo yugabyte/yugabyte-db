@@ -2134,4 +2134,37 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Background interval for redacting secrets from audit entries",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> tabletsMovementVerificationTimeoutSec =
+      new ConfKeyInfo<>(
+          "yb.task.tablets_movement_verification_timeout_secs",
+          ScopeType.GLOBAL,
+          "Timeout for checking till tablets are moved away from the node",
+          "Timeout for checking till tablets are moved away from the node.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> allowIncorrectTablespaces =
+      new ConfKeyInfo<>(
+          "yb.checks.allow_incorrect_tablespaces",
+          ScopeType.GLOBAL,
+          "Allow having incorrect tablespaces after edit operations",
+          "Allow having incorrect tablespaces after edit operations.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> automaticTablespaceUpdate =
+      new ConfKeyInfo<>(
+          "yb.task.automatic_tablespace_update",
+          ScopeType.GLOBAL,
+          "Allow YBA to update tablespaces automatically during edit operations",
+          "Allow YBA to update tablespaces automatically during edit operations.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> tablespaceMoveWithTemporary =
+      new ConfKeyInfo<>(
+          "yb.task.tablespace_move_with_temporary",
+          ScopeType.GLOBAL,
+          "Whether to move tables using temporary partition",
+          "When tablespace update is required, tables are moved to new tablespace through temporary"
+              + " tablespace.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }
