@@ -31,7 +31,6 @@
 //
 
 #include <atomic>
-#include <chrono>
 #include <memory>
 #include <string>
 #include <thread>
@@ -49,7 +48,6 @@
 #include "yb/fs/fs_manager.h"
 
 #include "yb/gutil/bind.h"
-#include "yb/gutil/stl_util.h"
 
 #include "yb/server/hybrid_clock.h"
 
@@ -78,8 +76,7 @@ using std::vector;
 using std::thread;
 using namespace std::chrono_literals;
 
-namespace yb {
-namespace consensus {
+namespace yb::consensus {
 
 static const char* kPeerUuid = "leader";
 static const char* kTestTable = "test-table";
@@ -111,9 +108,10 @@ class LogCacheTest : public YBTest {
                             fs_manager_->GetFirstTabletWalDirOrDie(kTestTable, kTestTablet),
                             fs_manager_->uuid(),
                             schema_,
-                            0, // schema_version
-                            nullptr, // table_metrics_entity
-                            nullptr, // tablet_metrics_entity
+                            /*schema_version=*/0,
+                            /*table_metrics_entity=*/nullptr,
+                            /*tablet_metrics_entity=*/nullptr,
+                            /*read_wal_mem_tracker=*/nullptr,
                             log_thread_pool_.get(),
                             log_thread_pool_.get(),
                             log_thread_pool_.get(),
@@ -484,5 +482,4 @@ TEST_F(LogCacheTest, TestMTReadAndWrite) {
   ASSERT_GT(num_appended, 0);
 }
 
-} // namespace consensus
-} // namespace yb
+} // namespace yb::consensus

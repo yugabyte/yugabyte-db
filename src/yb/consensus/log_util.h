@@ -32,11 +32,8 @@
 
 #pragma once
 
-#include <iosfwd>
-#include <map>
 #include <memory>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include <gtest/gtest_prod.h>
@@ -64,6 +61,9 @@ DECLARE_bool(require_durable_wal_write);
 DECLARE_string(fs_wal_dirs);
 
 namespace yb {
+
+class MemTracker;
+
 namespace log {
 
 // Suffix for temporary files
@@ -128,7 +128,7 @@ struct LogEntryMetadata {
 };
 
 // A sequence of segments, ordered by increasing sequence number.
-typedef std::vector<std::shared_ptr<LWLogEntryPB>> LogEntries;
+using LogEntries = std::vector<std::shared_ptr<LWLogEntryPB>>;
 
 struct ReadEntriesResult {
   // Read entries
@@ -167,11 +167,14 @@ YB_DEFINE_ENUM(EntriesToRead, (kAll)(kReplicate));
 class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
  public:
   // Factory method to construct a ReadableLogSegment from a file on the FS.
-  static Result<scoped_refptr<ReadableLogSegment>> Open(Env* env, const std::string& path);
+  static Result<scoped_refptr<ReadableLogSegment>> Open(
+      Env* env, const std::string& path, std::shared_ptr<MemTracker> read_wal_mem_tracker);
 
   // Build a readable segment to read entries from the provided path.
-  ReadableLogSegment(std::string path,
-                     std::shared_ptr<RandomAccessFile> readable_file);
+  // read_wal_mem_tracker may be nullptr in tests.
+  ReadableLogSegment(
+      std::string path, std::shared_ptr<RandomAccessFile> readable_file,
+      std::shared_ptr<MemTracker> read_wal_mem_tracker);
 
   // Initialize the ReadableLogSegment.
   // This initializer provides methods for avoiding disk IO when creating a
@@ -320,7 +323,7 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
     uint32_t header_crc;
   };
 
-  ~ReadableLogSegment() {}
+  ~ReadableLogSegment() = default;
 
   // Helper functions called by Init().
 
@@ -402,6 +405,9 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
 
   // the offset of the first entry in the log.
   int64_t first_entry_offset_;
+
+  // May be nullptr in tests.
+  std::shared_ptr<MemTracker> read_wal_mem_tracker_;
 
   DISALLOW_COPY_AND_ASSIGN(ReadableLogSegment);
 };

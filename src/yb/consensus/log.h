@@ -37,11 +37,9 @@
 
 #include <atomic>
 #include <condition_variable>
-#include <map>
 #include <memory>
 #include <mutex>
 #include <string>
-#include <vector>
 
 #include <boost/atomic.hpp>
 
@@ -51,23 +49,20 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/opid.h"
 
-#include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/log_util.h"
 
 #include "yb/fs/fs_manager.h"
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/spinlock.h"
 
-#include "yb/util/status_fwd.h"
 #include "yb/util/locks.h"
-#include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/mutex.h"
 #include "yb/util/promise.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_callback.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/threadpool.h"
 
 namespace yb {
@@ -152,6 +147,7 @@ class Log : public RefCountedThreadSafe<Log> {
       uint32_t schema_version,
       const scoped_refptr<MetricEntity>& table_metric_entity,
       const scoped_refptr<MetricEntity>& tablet_metric_entity,
+      std::shared_ptr<MemTracker> read_wal_mem_tracker,
       ThreadPool* append_thread_pool,
       ThreadPool* allocation_thread_pool,
       ThreadPool* background_sync_threadpool,
@@ -382,6 +378,7 @@ class Log : public RefCountedThreadSafe<Log> {
       uint32_t schema_version,
       const scoped_refptr<MetricEntity>& table_metric_entity,
       const scoped_refptr<MetricEntity>& tablet_metric_entity,
+      std::shared_ptr<MemTracker> read_wal_mem_tracker,
       ThreadPool* append_thread_pool,
       ThreadPool* allocation_thread_pool,
       ThreadPool* background_sync_threadpool,
@@ -504,8 +501,7 @@ class Log : public RefCountedThreadSafe<Log> {
   // Returns true if max_included_op_id is before or inside the segment and false otherwise.
 
   Result<bool> CopySegmentUpTo(
-      ReadableLogSegment* segment, const std::string& dest_wal_dir,
-      const OpId& max_included_op_id);
+      ReadableLogSegment* segment, const std::string& dest_wal_dir, const OpId& max_included_op_id);
 
   // Asynchronously appends 'entry' to the log. Once the append completes and is synced, 'callback'
   // will be invoked.
@@ -652,6 +648,8 @@ class Log : public RefCountedThreadSafe<Log> {
   scoped_refptr<MetricEntity> table_metric_entity_;
   scoped_refptr<MetricEntity> tablet_metric_entity_;
   std::unique_ptr<LogMetrics> metrics_;
+
+  std::shared_ptr<MemTracker> read_wal_mem_tracker_;
 
   // The cached on-disk size of the log, used to track its size even if it has been closed.
   std::atomic<uint64_t> on_disk_size_;
