@@ -24,6 +24,9 @@ cascade:
     body="Build a Retrieval-Augmented Generation (RAG) pipeline with YugabyteDB."
     href="hello-rag/"
     icon="fa-thin fa-vector-circle">}}
+{{</index/block>}}
+
+{{<index/block>}}
 
 {{<index/item
     title="Similarity Search using Azure AI"
@@ -58,6 +61,12 @@ cascade:
 ## Agentic, multiple data sources, and multi-step reasoning
 
 {{<index/block>}}
+
+{{<index/item
+    title="YugabyteDB MCP Server"
+    body="Get LLMs to interact directly with YugabyteDB."
+    href="mcp-server/"
+    icon="fa-thin fa-comment">}}
 
 {{<index/item
     title="Use a knowledge base using Llama-Index"
