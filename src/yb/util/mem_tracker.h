@@ -55,6 +55,8 @@ namespace yb {
 
 class MemTracker;
 class MetricEntity;
+class Counter;
+class Histogram;
 using MemTrackerPtr = std::shared_ptr<MemTracker>;
 
 static const std::string kTCMallocTrackerNamePrefix = "TCMalloc ";
@@ -430,11 +432,17 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   // This is needed in some tests to create deterministic GC behavior.
   static void TEST_SetReleasedMemorySinceGC(int64_t bytes);
 
+  static void InitializeGcMetrics(const scoped_refptr<MetricEntity>& metric_entity);
+
   bool IsRoot() {
     return is_root_tracker_;
   }
 
  private:
+  static scoped_refptr<Counter> gc_tcmalloc_calls_metric_;
+  static scoped_refptr<Counter> gc_tcmalloc_bytes_released_metric_;
+  static scoped_refptr<Histogram> gc_tcmalloc_bytes_per_call_metric_;
+
   template<class GC>
   using GarbageCollectorsContainer = boost::container::small_vector<GC, 8>;
 
