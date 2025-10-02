@@ -97,6 +97,7 @@
 #include "catalog/pg_cast.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_db_role_setting.h"
+#include "catalog/pg_enum.h"
 #include "catalog/pg_inherits.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_partitioned_table.h"
@@ -2230,6 +2231,7 @@ typedef enum YbPFetchTable
 	YB_PFETCH_TABLE_PG_CONSTRAINT,
 	YB_PFETCH_TABLE_PG_DATABASE,
 	YB_PFETCH_TABLE_PG_DB_ROLE_SETTINGS,
+	YB_PFETCH_TABLE_PG_ENUM,
 	YB_PFETCH_TABLE_PG_INDEX,
 	YB_PFETCH_TABLE_PG_INHERITS,
 	YB_PFETCH_TABLE_PG_NAMESPACE,
@@ -2294,6 +2296,7 @@ static const YbCatNamePfId YbCatalogNamesPfIds[] = {
 	{"pg_constraint", YB_PFETCH_TABLE_PG_CONSTRAINT},
 	{"pg_database", YB_PFETCH_TABLE_PG_DATABASE},
 	{"pg_db_role_setting", YB_PFETCH_TABLE_PG_DB_ROLE_SETTINGS},
+	{"pg_enum", YB_PFETCH_TABLE_PG_ENUM},
 	{"pg_index", YB_PFETCH_TABLE_PG_INDEX},
 	{"pg_inherits", YB_PFETCH_TABLE_PG_INHERITS},
 	{"pg_namespace", YB_PFETCH_TABLE_PG_NAMESPACE},
@@ -2390,6 +2393,8 @@ YbGetPrefetchableTableInfo(YbPFetchTable table)
 		(YbPFetchTableInfo) {DatabaseRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_NO_INDEX,.cat_cache = {DATABASEOID}}},
 		[YB_PFETCH_TABLE_PG_DB_ROLE_SETTINGS] =
 		(YbPFetchTableInfo) {DbRoleSettingRelationId},
+		[YB_PFETCH_TABLE_PG_ENUM] =
+		(YbPFetchTableInfo) {EnumRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX,.cat_cache = {ENUMOID, ENUMTYPOIDNAME}}},
 		[YB_PFETCH_TABLE_PG_INDEX] =
 		(YbPFetchTableInfo) {IndexRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_NO_INDEX,.cat_cache = {INDEXRELID}}},
 		[YB_PFETCH_TABLE_PG_INHERITS] =
