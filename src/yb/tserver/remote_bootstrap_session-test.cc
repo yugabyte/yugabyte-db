@@ -15,8 +15,6 @@
 
 #include <memory>
 
-#include "yb/common/wire_protocol.h"
-
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/log.h"
@@ -37,8 +35,7 @@ using std::string;
 
 DECLARE_int32(retryable_request_timeout_secs);
 
-namespace yb {
-namespace tserver {
+namespace yb::tserver {
 
 void RemoteBootstrapSessionTest::SetUp() {
   ASSERT_OK(ThreadPoolBuilder("raft").Build(&raft_pool_));
@@ -82,9 +79,10 @@ void RemoteBootstrapSessionTest::SetUpTabletPeer() {
                                                              tablet_id),
                      fs_manager()->uuid(),
                      *tablet()->schema(),
-                     0,  // schema_version
-                     nullptr, // table_metric_entity
-                     nullptr, // tablet_metric_entity
+                     /*schema_version=*/0,
+                     /*table_metric_entity=*/nullptr,
+                     /*tablet_metric_entity=*/nullptr,
+                     /*read_wal_mem_tracker=*/nullptr,
                      log_thread_pool_.get(),
                      log_thread_pool_.get(),
                      log_thread_pool_.get(),
@@ -111,7 +109,7 @@ void RemoteBootstrapSessionTest::SetUpTabletPeer() {
           Unretained(this),
           tablet_id),
       &metric_registry_,
-      nullptr /* tablet_splitter */,
+      /*tablet_splitter=*/nullptr,
       std::shared_future<client::YBClient*>()));
 
   // TODO similar to code in tablet_peer-test, consider refactor.
@@ -206,9 +204,8 @@ void RemoteBootstrapSessionTest::PopulateTablet() {
 
 void RemoteBootstrapSessionTest::InitSession() {
   session_.reset(new RemoteBootstrapSession(
-      tablet_peer_, "TestSession", "FakeUUID", nullptr /* nsessions */));
+      tablet_peer_, "TestSession", "FakeUUID", /*nsessions=*/nullptr));
   ASSERT_OK(session_->InitBootstrapSession());
 }
 
-}  // namespace tserver
-}  // namespace yb
+} // namespace yb::tserver

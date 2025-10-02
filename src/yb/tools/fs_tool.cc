@@ -59,8 +59,7 @@
 #include "yb/util/env.h"
 #include "yb/util/status.h"
 
-namespace yb {
-namespace tools {
+namespace yb::tools {
 
 using log::ReadableLogSegment;
 using std::shared_ptr;
@@ -86,8 +85,7 @@ FsTool::FsTool(DetailLevel detail_level)
       detail_level_(detail_level) {
 }
 
-FsTool::~FsTool() {
-}
+FsTool::~FsTool() = default;
 
 Status FsTool::Init() {
   CHECK(!initialized_) << "Already initialized";
@@ -212,9 +210,9 @@ Status FsTool::ListSegmentsInDir(const string& segments_dir) {
   return Status::OK();
 }
 
-Status FsTool::PrintLogSegmentHeader(const string& path,
-                                     int indent) {
-  auto segment_result = ReadableLogSegment::Open(fs_manager_->env(), path);
+Status FsTool::PrintLogSegmentHeader(const string& path, int indent) {
+  auto segment_result =
+      ReadableLogSegment::Open(fs_manager_->env(), path, /*read_wal_mem_tracker=*/nullptr);
   if (!segment_result.ok()) {
     auto s = segment_result.status();
     if (s.IsUninitialized()) {
@@ -273,6 +271,7 @@ Status FsTool::DumpTabletData(const std::string& tablet_id) {
       .clock = scoped_refptr<server::Clock>(),
       .parent_mem_tracker = shared_ptr<MemTracker>(),
       .block_based_table_mem_tracker = shared_ptr<MemTracker>(),
+      .read_wal_mem_tracker = nullptr,
       .metric_registry = nullptr,
       .log_anchor_registry = reg.get(),
       .tablet_options = tablet_options,
@@ -307,5 +306,4 @@ Status FsTool::PrintUUID(int indent) {
   return Status::OK();
 }
 
-} // namespace tools
-} // namespace yb
+} // namespace yb::tools

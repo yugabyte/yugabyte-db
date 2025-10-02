@@ -204,13 +204,13 @@ class TabletPeerTest : public YBTabletTest {
       return HybridTime::kInitial;
     };
 
-    ASSERT_OK(Log::Open(LogOptions(), tablet()->tablet_id(), metadata->wal_dir(),
-                        metadata->fs_manager()->uuid(), *tablet()->schema(),
-                        metadata->primary_table_schema_version(), table_metric_entity_.get(),
-                        tablet_metric_entity_.get(), log_thread_pool_.get(), log_thread_pool_.get(),
-                        log_thread_pool_.get(), &log,
-                        pre_log_rollover_callback, new_segment_allocation_callback,
-                        log::CreateNewSegment::kTrue, min_start_ht_running_txns_callback));
+    ASSERT_OK(Log::Open(
+        LogOptions(), tablet()->tablet_id(), metadata->wal_dir(), metadata->fs_manager()->uuid(),
+        *tablet()->schema(), metadata->primary_table_schema_version(), table_metric_entity_.get(),
+        tablet_metric_entity_.get(),
+        /*read_wal_mem_tracker=*/nullptr, log_thread_pool_.get(), log_thread_pool_.get(),
+        log_thread_pool_.get(), &log, pre_log_rollover_callback, new_segment_allocation_callback,
+        log::CreateNewSegment::kTrue, min_start_ht_running_txns_callback));
 
     auto bootstrap_state_manager = std::make_shared<TabletBootstrapStateManager>(
         tablet()->tablet_id(), metadata->fs_manager(), metadata->wal_dir());
@@ -597,9 +597,9 @@ TEST_F(TabletPeerTest, TestMinStartTimeRunningTxnsOnLogSegmentRollover) {
 
   std::unique_ptr<log::LogReader> reader;
   ASSERT_OK(log::LogReader::Open(
-      metadata->fs_manager()->env(), /* log_index */ nullptr, "Log reader: ", metadata->wal_dir(),
-      /* table_metric_entity = */ nullptr,
-      /* tablet_metric_entity = */ nullptr, &reader));
+      metadata->fs_manager()->env(), /*index=*/nullptr, "Log reader: ", metadata->wal_dir(),
+      /*table_metric_entity=*/nullptr,
+      /*tablet_metric_entity=*/nullptr, /*read_wal_mem_tracker=*/nullptr, &reader));
 
   ASSERT_OK(reader->GetSegmentsSnapshot(&segments));
   VerifyNonDecreasingTxnStartTimeInClosedSegments(segments);

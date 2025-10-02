@@ -62,6 +62,8 @@ DECLARE_bool(skip_flushed_entries);
 DECLARE_bool(skip_flushed_entries_in_first_replayed_segment);
 DECLARE_int32(retryable_request_timeout_secs);
 
+using namespace std::literals;
+
 using std::shared_ptr;
 using std::string;
 using std::vector;
@@ -112,7 +114,7 @@ struct BootstrapReport {
 };
 
 struct BootstrapTestHooksImpl : public TabletBootstrapTestHooksIf {
-  virtual ~BootstrapTestHooksImpl() {}
+  ~BootstrapTestHooksImpl() override = default;
 
   void Clear() {
     *this = BootstrapTestHooksImpl();
@@ -232,6 +234,7 @@ class BootstrapTest : public LogTestBase {
       .clock = scoped_refptr<Clock>(LogicalClock::CreateStartingAt(HybridTime::kInitial)),
       .parent_mem_tracker = shared_ptr<MemTracker>(),
       .block_based_table_mem_tracker = shared_ptr<MemTracker>(),
+      .read_wal_mem_tracker = shared_ptr<MemTracker>(),
       .metric_registry = nullptr,
       .log_anchor_registry = log_anchor_registry,
       .tablet_options = tablet_options,
