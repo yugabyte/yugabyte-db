@@ -493,7 +493,7 @@ calculate_indexes_size(Relation rel)
 					continue;
 				}
 
-				/* Colcoated tables do not have size info */
+				/* Colocated relations do not have size info */
 				if (YbGetTableProperties(idxRel)->is_colocated)
 				{
 					relation_close(idxRel, AccessShareLock);
