@@ -149,9 +149,9 @@ This confirms that the password for `John` will expire in approximately 4 hours.
 
 The feature upgrades the binaries and enables new features that do not change the data format on disk. Features that do require changes to the format of data sent over the network, or stored on disk, are disabled until you finalize the upgrade.
 
-Because the vast majority of new changes do not modify data format, and most changes that do are from new features that are not yet in use, this temporary disabling typically has no impact on current operations. This allows you to monitor the new binary for a while (validating about 90% of code changes) to make sure there is no impact to your application and rollback to the previous version if needed.
+Because the vast majority of new changes do not modify the data format, and most changes that do are from new features that are not yet in use, this temporary disabling typically has no impact on current operations. This allows you to monitor the new version for a while (validating typically about 90% of code changes) to ensure the upgrade has not impacted your application.
 
-The aim of the rollback is to catch any regressions to existing features or query plans and handle them quickly by reverting to the previous binary without any data corruption.
+If you discover any regressions to existing features or query plans, rollback allows you to handle them quickly by reverting to the previous binary without any data corruption.
 
 {{<lead link="../../yugabyte-platform/manage-deployments/upgrade-software-install/">}}
 For detailed information, see [Upgrade YugabyteDB](../../manage/upgrade-deployment/).
@@ -173,7 +173,7 @@ For customers that are extremely risk averse, the recommendation is to upgrade a
 
 ### How does rollback interact with xCluster setups?
 
-You can upgrade and rollback each cluster individually.
+You can upgrade and roll back each cluster individually.
 
 xCluster can only replicate from an old binary version to the new binary version. You should finalize the target universe before the source universe. If the source is finalized before the target, then xCluster automatically pauses itself (this only happens in certain versions that have an external data format change, such as v2024.2).
 
