@@ -12,12 +12,6 @@ menu:
 type: docs
 ---
 
-This tutorial walks you through using the Model Context Protocol (MCP) to allow an AI application to access, query, analyze, and interpret data in your YugabyteDB database, using only natural language prompts.
-
-The tutorial uses a YugabyteDB cluster running the [Northwind dataset](../../../../sample-data/northwind/). You connect [Claude](https://claude.com/product/overview) to this database using MCP, and then explore it using natural language prompts.
-
-## YugabyteDB MCP Server
-
 The YugabyteDB MCP Server is a lightweight, Python-based server that enables LLMs such as Anthropic's Claude to securely connect to and query YugabyteDB. It supports the Model Context Protocol (MCP), an industry standard that allows AI tools to discover and use structured services like databases, file systems, or APIs.
 
 With the YugabyteDB MCP Server, developers can:
@@ -28,6 +22,10 @@ With the YugabyteDB MCP Server, developers can:
 - Integrate instantly with tools like Claude Desktop, Cursor, and Windsurf
 
 For more information about the YugabyteDB MCP Server, see [Unlock AI-Driven Data Experiences with YugabyteDB MCP Server](https://www.yugabyte.com/blog/yugabytedb-mcp-server-on-aws-marketplace/).
+
+This tutorial walks you through using the YugabyteDB MCP Server to allow an AI application to access, query, analyze, and interpret data in your YugabyteDB database, using only natural language prompts.
+
+The tutorial uses a YugabyteDB cluster running the [Northwind dataset](../../../../sample-data/northwind/). You connect [Claude](https://claude.com/product/overview) to this database using MCP, and then explore it using natural language prompts.
 
 ## Prerequisites
 
