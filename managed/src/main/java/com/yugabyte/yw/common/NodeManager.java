@@ -353,11 +353,8 @@ public class NodeManager extends DevopsBase {
       String sshUser = null;
       // Currently we only need this for provision node operation.
       // All others use yugabyte user.
-      if (useSudoUser(type) || type == NodeCommandType.Wait_For_Connection) {
-        // in case of sshUserOverride in ImageBundle.
-        if (StringUtils.isNotBlank(params.sshUserOverride)) {
-          sshUser = params.sshUserOverride;
-        }
+      if (useSudoUser(type) && StringUtils.isNotBlank(params.sshUserOverride)) {
+        sshUser = params.sshUserOverride;
       }
 
       if (type == NodeCommandType.Manage_Otel_Collector) {
@@ -398,7 +395,7 @@ public class NodeManager extends DevopsBase {
       AccessKey.KeyInfo keyInfo,
       Common.CloudType providerType,
       String accessKeyCode,
-      String sshUser,
+      String sshUserOverride,
       Integer sshPort) {
     List<String> subCommand = new ArrayList<>();
 
@@ -469,62 +466,43 @@ public class NodeManager extends DevopsBase {
     }
     subCommand.add("--custom_ssh_port");
     subCommand.add(sshPort.toString());
+    // Give preference to the override because it is intentionally set for the subtask.
+    // For manual onprem, yugabyte user is already created.
+    String effectiveSshUser =
+        StringUtils.isNotBlank(sshUserOverride)
+            ? sshUserOverride
+            : provider.isManualOnprem() ? YUGABYTE_USER : providerDetails.sshUser;
+    log.info("Effective SSH user: {}", effectiveSshUser);
     // TODO make this global and remove this conditional check
     // to avoid bugs.
-    if (useSudoUser(type)
-        && (StringUtils.isNotBlank(providerDetails.sshUser) || StringUtils.isNotBlank(sshUser))) {
+    if (useSudoUser(type) && StringUtils.isNotBlank(effectiveSshUser)) {
       subCommand.add("--ssh_user");
-      if (StringUtils.isNotBlank(sshUser)) {
-        subCommand.add(sshUser);
-      } else {
-        // For Verify_Certs, we should use yugabyte user if manual provisioning is enabled.
-        if (type == NodeCommandType.Verify_Certs && providerDetails.skipProvisioning) {
-          subCommand.add(YUGABYTE_USER);
-        } else {
-          subCommand.add(providerDetails.sshUser);
-        }
-      }
-    } else if (type == NodeCommandType.Wait_For_Connection
-        || type == NodeCommandType.Manage_Otel_Collector) {
-      boolean installOtelCol =
-          params instanceof ManageOtelCollector.Params
-              && ((ManageOtelCollector.Params) params).installOtelCollector;
-      if (provider.getCloudCode() == CloudType.onprem
-          && providerDetails.skipProvisioning
-          && getNodeAgentClient().isClientEnabled(provider, null /* Universe */)
-          && !installOtelCol) {
+      subCommand.add(effectiveSshUser);
+    } else if (type == NodeCommandType.Manage_Otel_Collector) {
+      boolean useSudo =
+          (params instanceof ManageOtelCollector.Params
+                  && ((ManageOtelCollector.Params) params).installOtelCollector)
+              || (params instanceof ManageOtelCollector.Params
+                  && ((ManageOtelCollector.Params) params).useSudo);
+      // Override the effective user for the non-sudo special case.
+      String computedUser =
+          type == NodeCommandType.Manage_Otel_Collector && !useSudo
+              ? YUGABYTE_USER
+              : effectiveSshUser;
+      if (StringUtils.isNotBlank(computedUser)) {
         subCommand.add("--ssh_user");
-        subCommand.add("yugabyte");
-      } else {
-        String computedUser = "";
-        if (StringUtils.isNotBlank(sshUser)) {
-          computedUser = sshUser;
-        } else if (StringUtils.isNotBlank(providerDetails.sshUser)) {
-          computedUser = providerDetails.sshUser;
-        }
-        boolean useSudo =
-            params instanceof ManageOtelCollector.Params
-                && ((ManageOtelCollector.Params) params).useSudo;
-        if (type == NodeCommandType.Manage_Otel_Collector && !useSudo) {
-          computedUser = "yugabyte";
-        }
-        if (StringUtils.isNotBlank(computedUser)) {
-          subCommand.add("--ssh_user");
-          subCommand.add(computedUser);
-        }
+        subCommand.add(computedUser);
       }
     } else if (type == NodeCommandType.Precheck) {
       subCommand.add("--precheck_type");
       if (providerDetails.skipProvisioning) {
         subCommand.add("configure");
-        subCommand.add("--ssh_user");
-        subCommand.add("yugabyte");
       } else {
         subCommand.add("provision");
-        if (providerDetails.sshUser != null) {
-          subCommand.add("--ssh_user");
-          subCommand.add(providerDetails.sshUser);
-        }
+      }
+      if (StringUtils.isNotBlank(effectiveSshUser)) {
+        subCommand.add("--ssh_user");
+        subCommand.add(effectiveSshUser);
       }
       subCommand.add("--yb_home_dir");
       subCommand.add(provider.getYbHome());
@@ -3131,6 +3109,7 @@ public class NodeManager extends DevopsBase {
     return nodeDetails.otelCollectorMetricsPort;
   }
 
+  // Sudo user can be used in some cases for these types.
   private boolean useSudoUser(NodeCommandType type) {
     return type == NodeCommandType.Provision
         || type == NodeCommandType.Destroy
@@ -3141,6 +3120,7 @@ public class NodeManager extends DevopsBase {
         || type == NodeCommandType.Change_Instance_Type
         || type == NodeCommandType.Create_Root_Volumes
         || type == NodeCommandType.RunHooks
-        || type == NodeCommandType.Verify_Certs;
+        || type == NodeCommandType.Verify_Certs
+        || type == NodeCommandType.Wait_For_Connection;
   }
 }
