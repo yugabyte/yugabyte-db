@@ -16,7 +16,7 @@ Upgrading YugabyteDB from a version based on PostgreSQL 11 (all versions prior t
 
 The upgrade is fully online. While the upgrade is in progress, you have full and uninterrupted read and write access to your cluster.
 
-Some special considerations need to be taken care of by the users who are using CDC via logical replication model and upgrading to a YugabyteDB version that supports PG 15. These are listed in a separate section below.
+Performing a YSQL major upgrade on a universe with [CDC with logical replication](../../additional-features/change-data-capture/using-logical-replication/) requires additional steps.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
@@ -42,7 +42,7 @@ Some special considerations need to be taken care of by the users who are using 
 
 </ul>
 
-Logical replication streams can be upgraded to PG 15 YugabyteDB v2025.1.1 and later.
+Logical replication streams can be upgraded to YugabyteDB v2025.1.1 and later.
 
 When performing a YSQL major upgrade on a universe with CDC using logical replication, perform the following additional steps.
 
