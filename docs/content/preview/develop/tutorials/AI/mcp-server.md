@@ -1,7 +1,7 @@
 ---
 title: YugabyteDB MCP server
-headerTitle: MCP server
-linkTitle: MCP server
+headerTitle: YugabyteDB MCP Server
+linkTitle: YugabyteDB MCP Server
 description: Get LLMs to interact directly with YugabyteDB using a MCP server
 headcontent: Get LLMs to interact directly with YugabyteDB
 menu:
