@@ -671,7 +671,8 @@ public class HealthCheckerTest extends FakeDBApplication {
         .runCommand(any(), any(), expectedCommand.capture(), any());
 
     assertThat(
-        expectedCommand.getValue(), equalTo(ImmutableList.of("/home/yugabyte/bin/node_health.py")));
+        expectedCommand.getValue(),
+        equalTo(ImmutableList.of("/home/yugabyte/bin/node_health.py", "--cronbased")));
   }
 
   @Test
