@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -45,13 +45,11 @@
 #include "yb/fs/fs_manager.h"
 
 #include "yb/gutil/bind.h"
-#include "yb/gutil/stl_util.h"
 
 #include "yb/rpc/thread_pool.h"
 
 #include "yb/server/logical_clock.h"
 
-#include "yb/util/async_util.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/status_log.h"
@@ -69,8 +67,7 @@ using std::shared_ptr;
 using std::string;
 using std::vector;
 
-namespace yb {
-namespace consensus {
+namespace yb::consensus {
 
 using log::Log;
 using log::LogOptions;
@@ -87,7 +84,7 @@ const char* kTestTablet = "TestTablet";
 const char* kLocalPeerUuid = "peer-0";
 
 // A simple map to collect the results of a sequence of transactions.
-typedef std::map<OpIdPB, Status, OpIdCompareFunctor> StatusesMap;
+using StatusesMap = std::map<OpIdPB, Status, OpIdCompareFunctor>;
 
 class MockQueue : public PeerMessageQueue {
  public:
@@ -96,7 +93,7 @@ class MockQueue : public PeerMessageQueue {
                      std::unique_ptr<rpc::Strand> observers_strand)
       : PeerMessageQueue(
           tablet_metric_entity, log, nullptr /* server_tracker */, nullptr /* parent_tracker */,
-          FakeRaftPeerPB(kLocalPeerUuid), kTestTablet, clock, nullptr /* consensus_queue */,
+          FakeRaftPeerPB(kLocalPeerUuid), kTestTablet, clock, /*context=*/nullptr,
           std::move(observers_strand)) {}
 
   MOCK_METHOD1(Init, void(const OpId& locally_replicated_index));
@@ -127,7 +124,10 @@ class MockQueue : public PeerMessageQueue {
 
 class MockPeerManager : public PeerManager {
  public:
-  MockPeerManager() : PeerManager("", "", nullptr, nullptr, nullptr, nullptr) {}
+  MockPeerManager()
+      : PeerManager(
+            "", "", /*peer_proxy_factory=*/nullptr, /*queue=*/nullptr, /*raft_pool_token=*/nullptr,
+            /*multi_raft_manager=*/nullptr) {}
   MOCK_METHOD1(UpdateRaftConfig, void(const consensus::RaftConfigPB& config));
   MOCK_METHOD1(SignalRequest, void(RequestTriggerMode trigger_mode));
   MOCK_METHOD0(Close, void());
@@ -135,7 +135,7 @@ class MockPeerManager : public PeerManager {
 
 class RaftConsensusSpy : public RaftConsensus {
  public:
-  typedef Callback<Status(const scoped_refptr<ConsensusRound>& round)> AppendCallback;
+  using AppendCallback = Callback<Status (const scoped_refptr<ConsensusRound> &)>;
 
   RaftConsensusSpy(const ConsensusOptions& options,
                    std::unique_ptr<ConsensusMetadata> cmeta,
@@ -241,9 +241,10 @@ class RaftConsensusTest : public YBTest {
                        fs_manager_->GetFirstTabletWalDirOrDie(kTestTable, kTestTablet),
                        fs_manager_->uuid(),
                        schema_,
-                       0, // schema_version
-                       nullptr, // table_metric_entity
-                       nullptr, // tablet_metric_entity
+                       /*schema_version=*/0,
+                       /*table_metric_entity=*/nullptr,
+                       /*tablet_metric_entity=*/nullptr,
+                       /*read_wal_mem_tracker=*/nullptr,
                        log_thread_pool_.get(),
                        log_thread_pool_.get(),
                        log_thread_pool_.get(),
@@ -920,5 +921,4 @@ TEST_F(RaftConsensusTest, TestLastLeaderReceivedNotMinimum) {
   ASSERT_EQ(OpId::FromPB(response.status().last_received_current_leader()),  replicating_op_id);
 }
 
-}  // namespace consensus
-}  // namespace yb
+} // namespace yb::consensus

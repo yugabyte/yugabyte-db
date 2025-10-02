@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -403,13 +403,7 @@ Status OutboundCall::SetRequestParam(
   }
   RETURN_NOT_OK(SerializeMessage(req, req_size, buffer_, sidecars_size, header_size));
   if (use_crc) {
-    auto crc = crc::Crc64c(buffer_.udata() + header_size, message_size, 0);
-    if (sidecars_size) {
-      sidecars_->buffer().IterateBlocks([&crc](Slice block) {
-        crc = crc::Crc64c(block.data(), block.size(), crc);
-      });
-    }
-    LittleEndian::Store32(buffer_.udata() + header_size - 4, static_cast<uint32_t>(crc));
+    StoreCrc(buffer_, header_size, message_size, sidecars_.get());
   }
 
   if (method_metrics_) {

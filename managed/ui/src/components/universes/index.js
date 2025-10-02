@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 export { default as DeleteUniverse } from './DeleteUniverse/DeleteUniverse';
 export { default as DeleteUniverseContainer } from './DeleteUniverse/DeleteUniverseContainer';

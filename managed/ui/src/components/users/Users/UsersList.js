@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 import { useEffect, useState } from 'react';
 import { browserHistory } from 'react-router';

@@ -32,7 +32,7 @@ namespace yb::tserver {
 
 class MasterLeaderPollScheduler::Impl {
  public:
-  Impl(MasterLeaderFinder& finder, std::unique_ptr<MasterLeaderPollerInterface> poller);
+  Impl(MasterLeaderFinder& finder, MasterLeaderPollerInterface& poller);
   Status Start();
   Status Stop();
   void Run();
@@ -42,7 +42,7 @@ class MasterLeaderPollScheduler::Impl {
   const std::string& LogPrefix() const;
 
   MasterLeaderFinder& finder_;
-  std::unique_ptr<MasterLeaderPollerInterface> poller_;
+  MasterLeaderPollerInterface& poller_;
   scoped_refptr<Thread> thread_;
   bool should_run_ GUARDED_BY(mutex_) = false;
   int consecutive_failures_ = 0;
@@ -52,8 +52,8 @@ class MasterLeaderPollScheduler::Impl {
 };
 
 MasterLeaderPollScheduler::MasterLeaderPollScheduler(
-    MasterLeaderFinder& finder, std::unique_ptr<MasterLeaderPollerInterface> poller)
-    : impl_(std::make_unique<MasterLeaderPollScheduler::Impl>(finder, std::move(poller))) {}
+    MasterLeaderFinder& finder, MasterLeaderPollerInterface& poller)
+    : impl_(std::make_unique<MasterLeaderPollScheduler::Impl>(finder, poller)) {}
 
 Status MasterLeaderPollScheduler::Start() { return impl_->Start(); }
 
@@ -68,15 +68,15 @@ MasterLeaderPollScheduler::~MasterLeaderPollScheduler() {
 }
 
 MasterLeaderPollScheduler::Impl::Impl(
-    MasterLeaderFinder& finder, std::unique_ptr<MasterLeaderPollerInterface> poller)
-  : finder_(finder), poller_(std::move(poller)), cond_(&mutex_) {}
+    MasterLeaderFinder& finder, MasterLeaderPollerInterface& poller)
+    : finder_(finder), poller_(poller), cond_(&mutex_) {}
 
 Status MasterLeaderPollScheduler::Impl::Start() {
   MutexLock l(mutex_);
   CHECK(thread_ == nullptr);
   should_run_ = true;
   return Thread::Create(
-      poller_->category(), poller_->name(), &MasterLeaderPollScheduler::Impl::Run, this, &thread_);
+      poller_.category(), poller_.name(), &MasterLeaderPollScheduler::Impl::Run, this, &thread_);
 }
 
 Status MasterLeaderPollScheduler::Impl::Stop() {
@@ -97,17 +97,16 @@ Status MasterLeaderPollScheduler::Impl::Stop() {
 }
 
 void MasterLeaderPollScheduler::Impl::Run() {
-  poller_->Init();
+  poller_.Init();
 
   for (;;) {
-    auto delta = poller_->IntervalToNextPoll(consecutive_failures_);
+    auto delta = poller_.IntervalToNextPoll(consecutive_failures_);
     VLOG_IF(1, consecutive_failures_ > 0) << LogPrefix() << "Next poll in " << delta.ToString();
     auto next_poll = MonoTime::Now() + delta;
 
     {
       MutexLock l(mutex_);
-      while (!poll_asap_ && cond_.WaitUntil(next_poll)) {
-      }
+      while (!poll_asap_ && cond_.WaitUntil(next_poll)) {}
       poll_asap_ = false;
       if (!should_run_) {
         VLOG_WITH_PREFIX(1) << "thread finished.";
@@ -115,7 +114,7 @@ void MasterLeaderPollScheduler::Impl::Run() {
       }
     }
 
-    Status s = poller_->Poll();
+    Status s = poller_.Poll();
     if (!s.ok()) {
       const auto master_addresses = finder_.get_master_addresses();
       LOG_WITH_PREFIX(WARNING) << "Failed to heartbeat to " << finder_.get_master_leader_hostport()
@@ -131,7 +130,7 @@ void MasterLeaderPollScheduler::Impl::Run() {
         // so timeouts should be considered normal failures.
         if (s.IsNetworkError() ||
             consecutive_failures_ >= FLAGS_heartbeat_max_failures_before_backoff) {
-          poller_->ResetProxy();
+          poller_.ResetProxy();
         }
       }
       continue;
@@ -151,7 +150,7 @@ void MasterLeaderPollScheduler::Impl::TriggerASAP() {
 }
 
 const std::string& MasterLeaderPollScheduler::Impl::LogPrefix() const {
-  return poller_->LogPrefix();
+  return poller_.LogPrefix();
 }
 
 MasterLeaderFinder::MasterLeaderFinder(

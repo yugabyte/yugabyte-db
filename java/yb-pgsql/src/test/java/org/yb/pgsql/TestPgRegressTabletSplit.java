@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -60,6 +60,9 @@ public class TestPgRegressTabletSplit extends BasePgRegressTest {
     flags.put("db_index_block_size_bytes", Integer.toString(2048));
     flags.put("tserver_heartbeat_metrics_interval_ms", Integer.toString(1000));
     flags.put("heartbeat_interval_ms", Integer.toString(1000));
+    // TODO(28543): Remove once transactional ddl is enabled by default.
+    flags.put("ysql_yb_ddl_transaction_block_enabled", "true");
+    flags.put("allowed_preview_flags_csv", "ysql_yb_ddl_transaction_block_enabled");
     return flags;
   }
 
@@ -141,9 +144,9 @@ public class TestPgRegressTabletSplit extends BasePgRegressTest {
   public void testTabletSplitWithAbort() throws Exception {
     final String table = "test";
     try (Statement statement = connection.createStatement()) {
-      statement.execute("BEGIN");
       statement.execute(String.format("CREATE TABLE %s (id int primary key, val int) " +
                                       "SPLIT INTO 1 TABLETS;", table));
+      statement.execute("BEGIN");
       int numRowsInserted = 10000;
       int expectedRowCount = 0;
       for (int i = 0; i < numRowsInserted; i++) {
@@ -154,9 +157,8 @@ public class TestPgRegressTabletSplit extends BasePgRegressTest {
                            String.format("SELECT * FROM %s", table),
                            expectedRowCount);
     }
-    // Yugabyte does not abort DDLs within transactions. Hence the table will be created and at
-    // least one tablet will be created. However since the subsequent inserts are aborted, tablets
-    // will not be split further.
+    // Since the table is created separately, at least one tablet will be created. However since the
+    // subsequent inserts are aborted, tablets will not be split further.
     assert getTabletsForYsqlTable(database, table).size() == 1;
   }
 }

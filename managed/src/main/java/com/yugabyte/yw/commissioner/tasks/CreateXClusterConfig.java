@@ -1,5 +1,7 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 package com.yugabyte.yw.commissioner.tasks;
+
+import static com.yugabyte.yw.common.table.TableInfoUtil.isColocatedChildTable;
 
 import com.google.api.client.util.Throwables;
 import com.google.common.collect.Sets;
@@ -84,13 +86,74 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
       String dbId,
       YBClientService ybService,
       Universe sourceUniverse,
-      XClusterConfig xClusterConfig) {
+      XClusterConfig xClusterConfig,
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList,
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList) {
     if (dbIdBootstrapRequiredMap.containsKey(dbId)) {
       log.debug(
           "Db: {} requires bootstrapping: {} from cache.",
           dbId,
           dbIdBootstrapRequiredMap.get(dbId));
       return dbIdBootstrapRequiredMap.get(dbId);
+    }
+
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
+        getRequestedTableInfoList(Set.of(dbId), sourceTableInfoList);
+    String namespaceName = requestedTableInfoList.get(0).getNamespace().getName();
+
+    Map<String, String> sourceTableIdTargetTableIdMap =
+        XClusterConfigTaskBase.getSourceTableIdTargetTableIdMap(
+            requestedTableInfoList, targetTableInfoList);
+
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> srcTablesNotPresentOnTarget =
+        requestedTableInfoList.stream()
+            .filter(
+                ti -> {
+                  if (isColocatedChildTable(ti)) {
+                    return false;
+                  }
+
+                  String tableId = ti.getId().toStringUtf8();
+                  return !(sourceTableIdTargetTableIdMap.containsKey(tableId)
+                      && sourceTableIdTargetTableIdMap.get(tableId) != null);
+                })
+            .toList();
+
+    if (!srcTablesNotPresentOnTarget.isEmpty()) {
+      log.warn(
+          "{} will be bootstrapped because the following tables exist on source and"
+              + " don't exist on target: {}",
+          namespaceName,
+          groupByNamespaceId(srcTablesNotPresentOnTarget));
+      dbIdBootstrapRequiredMap.put(dbId, true);
+      return true;
+    }
+
+    Set<String> targetTablesToReplicate =
+        sourceTableIdTargetTableIdMap.values().stream()
+            .filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTablesNotPresentOnSource =
+        targetTableInfoList.stream()
+            .filter(
+                ti -> {
+                  if (isColocatedChildTable(ti)) {
+                    return false;
+                  }
+
+                  return ti.getNamespace().getName().equals(namespaceName)
+                      && !targetTablesToReplicate.contains(ti.getId().toStringUtf8());
+                })
+            .toList();
+
+    if (!targetTablesNotPresentOnSource.isEmpty()) {
+      log.warn(
+          "{} will be bootstrapped because the following tables exist on target and"
+              + " don't exist on source: {}",
+          namespaceName,
+          groupByNamespaceId(targetTablesNotPresentOnSource));
+      dbIdBootstrapRequiredMap.put(dbId, true);
+      return true;
     }
 
     Duration xclusterWaitTimeout =
@@ -140,7 +203,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
                         completionResponse.itInitialBootstrapRequired());
                   }
                   log.debug(
-                      "Last errors for checking db: {} if needs boostrapping: {}",
+                      "Last errors for checking db: {} if needs bootstrapping: {}",
                       dbId,
                       lastErrors);
                   return lastErrors.isEmpty();
@@ -507,10 +570,20 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
     Map<String, String> dbNameToDbIdMap = new HashMap<>();
     if (xClusterConfig.getType() == ConfigType.Db) {
       Set<MasterTypes.NamespaceIdentifierPB> namespaces =
-          getNamespaces(this.ybService, sourceUniverse, sourceDbIds);
+          getNamespaces(ybService, sourceUniverse, sourceDbIds);
       for (MasterTypes.NamespaceIdentifierPB namespace : namespaces) {
         dbNameToDbIdMap.put(namespace.getName(), namespace.getId().toStringUtf8());
       }
+    }
+
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
+        new ArrayList<>();
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList =
+        new ArrayList<>();
+
+    if (xClusterConfig.getType() == ConfigType.Db) {
+      sourceTableInfoList.addAll(getTableInfoList(ybService, sourceUniverse));
+      targetTableInfoList.addAll(getTableInfoList(ybService, targetUniverse));
     }
 
     for (String namespaceName :
@@ -539,13 +612,20 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
           task -> {
             // No bootstrap should be done for switchover.
             if (xClusterConfig.isUsedForDr()
-                && xClusterConfig.getDrConfig().getState().equals(State.SwitchoverInProgress)) {
+                && xClusterConfig.getDrConfig().getState() == State.SwitchoverInProgress) {
               return false;
             }
 
             if (xClusterConfig.getType() == ConfigType.Db) {
-              return checkBootstrapRequired(namespaceId, ybService, sourceUniverse, xClusterConfig);
+              return checkBootstrapRequired(
+                  namespaceId,
+                  ybService,
+                  sourceUniverse,
+                  xClusterConfig,
+                  sourceTableInfoList,
+                  targetTableInfoList);
             }
+
             return true;
           };
 

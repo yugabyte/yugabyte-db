@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.local;
 
@@ -34,9 +34,7 @@ public class AutoMasterFailoverLocalTest extends LocalProviderUniverseTestBase {
   @Inject LocalNodeManager localNodeManager;
 
   @Before
-  @Override
   public void setUp() {
-    super.setUp();
     jobScheduler.init();
     autoMasterFailoverScheduler.init();
   }

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.google.common.collect.ImmutableList;
@@ -14,6 +14,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -25,7 +26,6 @@ import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashSet;
@@ -40,7 +40,7 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
 
-  protected Collection<NodeDetails> prevNodes = new ArrayList<>();
+  protected UniverseDefinitionTaskParams prevState;
 
   @Inject
   public EditUniverseTaskBase(BaseTaskDependencies baseTaskDependencies) {

@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -1102,7 +1102,7 @@ class ObjectLockInfo : public MetadataCowWrapper<PersistentObjectLockInfo> {
   // Return the user defined type's ID. Does not require synchronization.
   virtual const std::string& id() const override { return ts_uuid_; }
 
-  std::variant<ObjectLockInfo::WriteLock, SysObjectLockEntryPB::LeaseInfoPB>
+  Result<std::variant<ObjectLockInfo::WriteLock, SysObjectLockEntryPB::LeaseInfoPB>>
   RefreshYsqlOperationLease(const NodeInstancePB& instance, MonoDelta lease_ttl) EXCLUDES(mutex_);
 
   virtual void Load(const SysObjectLockEntryPB& metadata) override;

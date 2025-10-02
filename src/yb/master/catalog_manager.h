@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -382,14 +382,19 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
                        rpc::RpcContext* rpc,
                        const LeaderEpoch& epoch);
 
+  // Get the information about an in-progress truncate operation.
+  Status IsTruncateTableDone(const IsTruncateTableDoneRequestPB* req,
+                             IsTruncateTableDoneResponsePB* resp);
+
   Status RefreshYsqlLease(const RefreshYsqlLeaseRequestPB* req,
                           RefreshYsqlLeaseResponsePB* resp,
                           rpc::RpcContext* rpc,
                           const LeaderEpoch& epoch);
 
-  // Get the information about an in-progress truncate operation.
-  Status IsTruncateTableDone(const IsTruncateTableDoneRequestPB* req,
-                             IsTruncateTableDoneResponsePB* resp);
+  Status RelinquishYsqlLease(const RelinquishYsqlLeaseRequestPB* req,
+                             RelinquishYsqlLeaseResponsePB* resp,
+                             rpc::RpcContext* rpc,
+                             const LeaderEpoch& epoch);
 
   // Backfill the specified index.  Currently only supported for YSQL.  YCQL does not need this as
   // master automatically runs backfill according to the DocDB permissions.
@@ -751,6 +756,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Status GetObjectLockStatus(
       const GetObjectLockStatusRequestPB* req, GetObjectLockStatusResponsePB* resp);
+
+  Status GetTabletsMetadata(
+      const GetTabletsMetadataRequestPB* req, GetTabletsMetadataResponsePB* resp);
 
   Status UpdateCDCProducerOnTabletSplit(
       const TableId& producer_table_id, const SplitTabletIds& split_tablet_ids) override;

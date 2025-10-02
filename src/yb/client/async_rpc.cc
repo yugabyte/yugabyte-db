@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -62,8 +62,8 @@ METRIC_DEFINE_event_stats(
     yb::MetricUnit::kMicroseconds, "Microseconds spent in the local Read call ");
 METRIC_DEFINE_event_stats(
     server, handler_latency_yb_client_time_to_send,
-    "Time taken for a Write/Read rpc to be sent to the server", yb::MetricUnit::kMicroseconds,
-    "Microseconds spent before sending the request to the server");
+    "Time (microseconds) taken for a Write/Read rpc to be sent to the server",
+    yb::MetricUnit::kMicroseconds, "Microseconds spent before sending the request to the server");
 
 METRIC_DEFINE_counter(server, consistent_prefix_successful_reads,
     "Number of consistent prefix reads that were served by the closest replica.",
@@ -706,8 +706,7 @@ WriteRpc::~WriteRpc() {
 
 void WriteRpc::CallRemoteMethod() {
   ts_proxy_ = tablet_invoker_.proxy();
-  ts_proxy_->WriteAsync(
-      req_, &resp_, PrepareController(), std::bind(&WriteRpc::Finished, this, Status::OK()));
+  ts_proxy_->WriteAsync(req_, &resp_, PrepareController(), [this] { Finished(Status::OK()); });
 }
 
 Status WriteRpc::SwapResponses() {
@@ -848,7 +847,7 @@ ReadRpc::~ReadRpc() {
 void ReadRpc::CallRemoteMethod() {
   DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("ReadRpc::CallRemoteMethod", &req_);
   tablet_invoker_.proxy()->ReadAsync(
-      req_, &resp_, PrepareController(), std::bind(&ReadRpc::Finished, this, Status::OK()));
+      req_, &resp_, PrepareController(), [this] { Finished(Status::OK()); });
 }
 
 Status ReadRpc::SwapResponses() {
@@ -949,8 +948,7 @@ void WaitForAsyncWriteRpc::SendRpc() {
 
   retained_self_ = shared_from_this();
   ts_proxy_->WaitForAsyncWriteAsync(
-      req_, &resp_, PrepareController(),
-      std::bind(&WaitForAsyncWriteRpc::Finished, this, Status::OK()));
+      req_, &resp_, PrepareController(), [this] { Finished(Status::OK()); });
 }
 
 void WaitForAsyncWriteRpc::SendRpcToTserver(int attempt_num) { CHECK(false) << "Not implemented"; }

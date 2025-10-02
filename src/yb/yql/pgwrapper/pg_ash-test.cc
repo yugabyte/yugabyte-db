@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -144,6 +144,8 @@ class PgBgWorkersTest : public PgAshSingleNode {
         std::to_underlying(ash::WaitStateCode::kCatalogRead)));
     options->extra_tserver_flags.push_back(Format("--TEST_yb_ash_sleep_at_wait_state_ms=$0",
         2 * kSamplingIntervalMs));
+    // Disable auto analyze because it changes the query plan of test: ValidateBgWorkers.
+    options->extra_tserver_flags.push_back("--ysql_enable_auto_analyze=false");
     PgAshSingleNode::UpdateMiniClusterOptions(options);
   }
 };

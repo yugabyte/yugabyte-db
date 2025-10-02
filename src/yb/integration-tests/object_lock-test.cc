@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -227,7 +227,6 @@ class ExternalObjectLockTest : public YBMiniClusterTestBase<ExternalMiniCluster>
   virtual ExternalMiniClusterOptions MakeExternalMiniClusterOptions();
   virtual int ReplicationFactor() { return 3; }
   virtual size_t NumberOfTabletServers() { return 3; }
-  Result<pgwrapper::PGConn> ConnectToTabletServer(ExternalTabletServer* ts, size_t timeout_seconds);
   ExternalTabletServer* tablet_server(size_t index);
   Status WaitForTServerLeaseToExpire(const std::string& ts_uuid, MonoDelta timeout);
   Status WaitForTServerLease(const std::string& ts_uuid, MonoDelta timeout);
@@ -1136,6 +1135,29 @@ TEST_F(ExternalObjectLockTest, RefreshYsqlLease) {
   ASSERT_FALSE(info.has_ddl_lock_entries());
 }
 
+class ExternalObjectLockTestLongLeaseTTL : public ExternalObjectLockTest {
+  ExternalMiniClusterOptions MakeExternalMiniClusterOptions() override;
+  int ReplicationFactor() override;
+  size_t NumberOfTabletServers() override;
+};
+
+TEST_F(ExternalObjectLockTestLongLeaseTTL, SigTerm) {
+  auto kLeaseTimeoutDeadline = MonoDelta::FromSeconds(10);
+  ASSERT_LT(
+      kLeaseTimeoutDeadline.ToMilliseconds(),
+      std::stoll(ASSERT_RESULT(cluster_->GetFlag(
+          ASSERT_NOTNULL(cluster_->GetLeaderMaster()), "master_ysql_operation_lease_ttl_ms"))));
+  auto ts = tablet_server(0);
+  auto ts_uuid = ts->uuid();
+  ts->Shutdown(SafeShutdown::kTrue);
+  // TServer should lose its lease before the lease TTL.
+  // Use EXPECT here so we restart the TS in case of failure.
+  EXPECT_OK(WaitForTServerLeaseToExpire(ts_uuid, kLeaseTimeoutDeadline));
+  ASSERT_OK(ts->Restart());
+  // TServer should be able to re-acquire the lease after it restarts.
+  ASSERT_OK(WaitForTServerLease(ts_uuid, 10s));
+}
+
 class MultiMasterObjectLockTest : public ObjectLockTest {
  protected:
   int num_masters() override { return 3; }
@@ -1678,16 +1700,6 @@ ExternalMiniClusterOptions ExternalObjectLockTest::MakeExternalMiniClusterOption
   return opts;
 }
 
-Result<pgwrapper::PGConn> ExternalObjectLockTest::ConnectToTabletServer(
-    ExternalTabletServer* ts, size_t timeout_seconds) {
-  auto settings = pgwrapper::PGConnSettings{
-      .host = ts->bind_host(),
-      .port = ts->ysql_port(),
-      .dbname = "yugabyte",
-      .connect_timeout = timeout_seconds};
-  return pgwrapper::PGConnBuilder(settings).Connect(/* simple_query_protocol */ false);
-}
-
 ExternalTabletServer* ExternalObjectLockTest::tablet_server(size_t index) {
   return cluster_->tablet_server(index);
 }
@@ -1741,5 +1753,25 @@ ExternalObjectLockTestOneTSWithoutLease::MakeExternalMiniClusterOptions() {
       "--TEST_tserver_enable_ysql_lease_refresh=false"};
   return opts;
 }
+
+ExternalMiniClusterOptions ExternalObjectLockTestLongLeaseTTL::MakeExternalMiniClusterOptions() {
+  ExternalMiniClusterOptions opts;
+  opts.num_tablet_servers = NumberOfTabletServers();
+  opts.replication_factor = ReplicationFactor();
+  opts.enable_ysql = true;
+  opts.extra_master_flags = {
+      Format("--master_ysql_operation_lease_ttl_ms=$0", 20 * 1000),
+      "--enable_load_balancing=false"};
+  opts.extra_tserver_flags = {
+      Format("--allowed_preview_flags_csv=$0,$1",
+             "enable_object_locking_for_table_locks", "ysql_yb_ddl_transaction_block_enabled"),
+      "--enable_object_locking_for_table_locks",
+      "--ysql_yb_ddl_transaction_block_enabled",
+      Format("--ysql_lease_refresher_interval_ms=$0", kDefaultYSQLLeaseRefreshIntervalMilli)};
+  return opts;
+}
+
+int ExternalObjectLockTestLongLeaseTTL::ReplicationFactor() { return 1; }
+size_t ExternalObjectLockTestLongLeaseTTL::NumberOfTabletServers() { return 1; }
 
 }  // namespace yb

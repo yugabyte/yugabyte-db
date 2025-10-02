@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -27,6 +27,10 @@ message KeyValuePairPB {
   optional fixed64 external_hybrid_time = 3;
   // Reserved for transaction field which was used in xcluster external intent writes.
   reserved 4;
+  // Indicates whether 'key' contains a primary key. It is set to false only when a prefix of a PK
+  // is specified in the request(e.g., explicit row locking) in a serializable isolation
+  // transaction.
+  optional bool pk_is_known = 5;
 }
 
 message ApplyExternalTransactionPB {
@@ -49,6 +53,11 @@ message LockPairPB {
   optional KeyValuePairPB lock = 1;
   optional dockv.DocdbLockMode mode = 2;
   optional bool is_lock = 3; // lock or unlock.
+}
+
+message XClusterUsedSchemaVersionPB {
+  optional uint32 colocation_id = 1;
+  repeated uint32 schema_versions = 2;
 }
 
 // A set of key/value pairs to be written into RocksDB.
@@ -102,6 +111,9 @@ message KeyValueWriteBatchPB {
 
   // Used to detect deadlocks between fast path transactions and transactional DDLs.
   optional TransactionMetadataPB object_locking_txn_meta = 18;
+
+  // Used to keep track of packing schema versions used in a xCluster write batch.
+  repeated XClusterUsedSchemaVersionPB xcluster_used_schema_versions = 19;
 }
 
 message PerDbFilterPB {

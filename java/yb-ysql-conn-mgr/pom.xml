@@ -22,7 +22,7 @@
   <parent>
     <groupId>org.yb</groupId>
     <artifactId>yb-parent</artifactId>
-    <version>0.8.107-SNAPSHOT</version>
+    <version>0.8.108-SNAPSHOT</version>
   </parent>
   <artifactId>yb-ysql-conn-mgr</artifactId>
   <name>Ysql Connection Manager Tests</name>

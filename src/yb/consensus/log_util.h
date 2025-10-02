@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -32,11 +32,10 @@
 
 #pragma once
 
-#include <iosfwd>
-#include <map>
+#include <sys/stat.h>
+
 #include <memory>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include <gtest/gtest_prod.h>
@@ -64,6 +63,9 @@ DECLARE_bool(require_durable_wal_write);
 DECLARE_string(fs_wal_dirs);
 
 namespace yb {
+
+class MemTracker;
+
 namespace log {
 
 // Suffix for temporary files
@@ -128,7 +130,7 @@ struct LogEntryMetadata {
 };
 
 // A sequence of segments, ordered by increasing sequence number.
-typedef std::vector<std::shared_ptr<LWLogEntryPB>> LogEntries;
+using LogEntries = std::vector<std::shared_ptr<LWLogEntryPB>>;
 
 struct ReadEntriesResult {
   // Read entries
@@ -167,11 +169,14 @@ YB_DEFINE_ENUM(EntriesToRead, (kAll)(kReplicate));
 class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
  public:
   // Factory method to construct a ReadableLogSegment from a file on the FS.
-  static Result<scoped_refptr<ReadableLogSegment>> Open(Env* env, const std::string& path);
+  static Result<scoped_refptr<ReadableLogSegment>> Open(
+      Env* env, const std::string& path, std::shared_ptr<MemTracker> read_wal_mem_tracker);
 
   // Build a readable segment to read entries from the provided path.
-  ReadableLogSegment(std::string path,
-                     std::shared_ptr<RandomAccessFile> readable_file);
+  // read_wal_mem_tracker may be nullptr in tests.
+  ReadableLogSegment(
+      std::string path, std::shared_ptr<RandomAccessFile> readable_file,
+      std::shared_ptr<MemTracker> read_wal_mem_tracker);
 
   // Initialize the ReadableLogSegment.
   // This initializer provides methods for avoiding disk IO when creating a
@@ -320,7 +325,7 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
     uint32_t header_crc;
   };
 
-  ~ReadableLogSegment() {}
+  ~ReadableLogSegment() = default;
 
   // Helper functions called by Init().
 
@@ -403,6 +408,9 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
   // the offset of the first entry in the log.
   int64_t first_entry_offset_;
 
+  // May be nullptr in tests.
+  std::shared_ptr<MemTracker> read_wal_mem_tracker_;
+
   DISALLOW_COPY_AND_ASSIGN(ReadableLogSegment);
 };
 
@@ -435,6 +443,10 @@ class WritableLogSegment {
 
   int64_t Size() const {
     return writable_file_->Size();
+  }
+
+  Result<uint64_t> SizeOnDisk() const {
+    return writable_file_->SizeOnDisk();
   }
 
   // Appends the provided batch of data, including a header

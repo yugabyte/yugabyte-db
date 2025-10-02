@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -47,10 +47,8 @@
 
 #include "yb/server/hybrid_clock.h"
 
-#include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/source_location.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
@@ -63,8 +61,7 @@ METRIC_DECLARE_entity(tablet);
 DECLARE_int32(stuck_peer_call_threshold_ms);
 DECLARE_bool(force_recover_from_stuck_peer_call);
 
-namespace yb {
-namespace consensus {
+namespace yb::consensus {
 
 using log::Log;
 using log::LogOptions;
@@ -102,9 +99,10 @@ class ConsensusPeersTest : public YBTest {
                        fs_manager_->GetFirstTabletWalDirOrDie(kTableId, kTabletId),
                        fs_manager_->uuid(),
                        schema_,
-                       0, // schema_version
-                       nullptr, // table_metric_entity
-                       nullptr, // tablet_metric_entity
+                       /*schema_version=*/0,
+                       /*table_metric_entity=*/nullptr,
+                       /*tablet_metric_entity=*/nullptr,
+                       /*read_wal_mem_tracker=*/nullptr,
                        log_thread_pool_.get(),
                        log_thread_pool_.get(),
                        log_thread_pool_.get(),
@@ -120,12 +118,12 @@ class ConsensusPeersTest : public YBTest {
     message_queue_.reset(new PeerMessageQueue(
         metric_entity_,
         log_.get(),
-        nullptr /* server_tracker */,
-        nullptr /* parent_tracker */,
+        /*server_tracker=*/nullptr,
+        /*parent_tracker=*/nullptr,
         FakeRaftPeerPB(kLeaderUuid),
         kTabletId,
         clock_,
-        nullptr /* consensus_context */,
+        /*context=*/nullptr,
         std::make_unique<rpc::Strand>(raft_notifications_pool_.get())));
     message_queue_->RegisterObserver(consensus_.get());
 
@@ -421,5 +419,4 @@ TEST_F(ConsensusPeersTest, TestDontSendOneRpcPerWriteWhenPeerIsDown) {
   ASSERT_LT(mock_proxy->update_count() - initial_update_count, 5);
 }
 
-}  // namespace consensus
-}  // namespace yb
+} // namespace yb::consensus

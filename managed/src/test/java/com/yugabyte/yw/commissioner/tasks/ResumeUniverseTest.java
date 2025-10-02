@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks;
 
@@ -23,6 +23,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DoCapacityReservation;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
 import com.yugabyte.yw.common.ApiUtils;
@@ -67,10 +68,8 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
   private KmsConfig testKMSConfig;
   private int expectedUniverseVersion = 2;
 
-  @Override
   @Before
   public void setUp() {
-    super.setUp();
     YBClient mockClient = mock(YBClient.class);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
@@ -100,15 +99,17 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
   private void setupUniverse(Provider provider, boolean updateInProgress, int numOfNodes) {
     Region r = Region.create(provider, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
+    String instanceType =
+        provider.getCloudCode() == Common.CloudType.azu ? "Standard_D4as_v4" : "c3.xlarge";
     InstanceType i =
         InstanceType.upsert(
-            provider.getUuid(), "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+            provider.getUuid(), instanceType, 10, 5.5, new InstanceType.InstanceTypeDetails());
     UniverseDefinitionTaskParams.UserIntent userIntent =
         getTestUserIntent(r, provider, i, numOfNodes);
     userIntent.replicationFactor = numOfNodes;
     userIntent.masterGFlags = new HashMap<>();
     userIntent.tserverGFlags = new HashMap<>();
-    userIntent.universeName = "demo-universe";
+    userIntent.universeName = "universe-test";
 
     defaultUniverse =
         createUniverse(userIntent.universeName, defaultCustomer.getId(), provider.getCloudCode());

@@ -15,7 +15,7 @@ export const dbUpgradeFormStyles = makeStyles((theme) => ({
     width: '100%',
     padding: theme.spacing(2),
     backgroundColor: '#FFEEC8',
-    marginTop: theme.spacing(2),
+    marginTop: theme.spacing(1),
     borderRadius: '8px'
   },
   additionalStepContainer: {
@@ -32,7 +32,7 @@ export const dbUpgradeFormStyles = makeStyles((theme) => ({
     display: 'flex',
     flexDirection: 'column',
     padding: theme.spacing(2),
-    marginTop: theme.spacing(2),
+    marginTop: theme.spacing(1),
     border: '1px solid #E5E5E9',
     borderRadius: '8px'
   },
@@ -45,7 +45,8 @@ export const dbUpgradeFormStyles = makeStyles((theme) => ({
     borderRadius: '8px',
     padding: theme.spacing(2),
     alignItems: 'center',
-    justifyContent: 'center'
+    justifyContent: 'center',
+    marginTop: theme.spacing(1),
   },
   releaseTypebadge: {
     marginLeft: theme.spacing(1),
@@ -55,6 +56,12 @@ export const dbUpgradeFormStyles = makeStyles((theme) => ({
     color: 'grey',
     padding: '2px 6px',
     fontSize: '10px'
+  },
+  pitrBanner: {
+    '& p': {
+      fontWeight: 400
+    },
+    marginBottom: theme.spacing(1)
   }
 }));
 

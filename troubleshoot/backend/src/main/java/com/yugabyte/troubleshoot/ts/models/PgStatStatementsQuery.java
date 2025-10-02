@@ -1,4 +1,4 @@
-// Copyright (c) Yugabyte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 package com.yugabyte.troubleshoot.ts.models;
 
 import com.fasterxml.jackson.annotation.JsonFormat;

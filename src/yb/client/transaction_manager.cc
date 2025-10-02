@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -16,6 +16,8 @@
 #include "yb/client/transaction_manager.h"
 
 #include "yb/ash/wait_state.h"
+
+#include "yb/common/transaction.h"
 
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
@@ -62,12 +64,12 @@ class TransactionTableState {
   }
 
   void InvokeCallback(const PickStatusTabletCallback& callback,
-                      TransactionLocality locality) EXCLUDES(mutex_) {
+                      TransactionFullLocality locality) EXCLUDES(mutex_) {
     SharedLock<yb::RWMutex> lock(mutex_);
     const auto& tablets = PickTabletList(locality);
     if (tablets.empty()) {
       callback(STATUS_FORMAT(
-          IllegalState, "No $0 transaction tablets found", TransactionLocality_Name(locality)));
+          IllegalState, "No $0 transaction tablets found", locality));
       return;
     }
     if (PickStatusTabletId(tablets, callback)) {
@@ -94,6 +96,11 @@ class TransactionTableState {
 
   bool HasAnyRegionLocalStatusTablets() {
     return has_region_local_tablets_.load();
+  }
+
+  bool HasAnyTransactionLocalStatusTablets(PgTablespaceOid tablespace_oid) {
+    SharedLock lock(mutex_);
+    return tablets_.tablespaces.contains(tablespace_oid);
   }
 
   uint64_t GetStatusTabletsVersion() EXCLUDES(mutex_) {
@@ -132,18 +139,28 @@ class TransactionTableState {
     return true;
   }
 
-  const std::vector<TabletId>& PickTabletList(TransactionLocality locality)
+  const std::vector<TabletId>& PickTabletList(TransactionFullLocality locality)
       REQUIRES_SHARED(mutex_) {
-    if (tablets_.region_local_tablets.empty()) {
-      return tablets_.global_tablets;
-    }
-    switch (locality) {
+    switch (locality.locality) {
       case TransactionLocality::GLOBAL:
         return tablets_.global_tablets;
-      case TransactionLocality::LOCAL:
+      case TransactionLocality::REGION_LOCAL:
+        if (tablets_.region_local_tablets.empty()) {
+          YB_LOG_EVERY_N_SECS(WARNING, 1) << "No region-local status tablets found";
+          return tablets_.global_tablets;
+        }
         return tablets_.region_local_tablets;
+      case TransactionLocality::TABLESPACE_LOCAL: {
+        auto itr = tablets_.tablespaces.find(locality.tablespace_oid);
+        if (itr == tablets_.tablespaces.end() || itr->second.tablets.empty()) {
+          YB_LOG_EVERY_N_SECS(WARNING, 1)
+              << "No status tablets found for tablespace " << locality.tablespace_oid;
+          return tablets_.global_tablets;
+        }
+        return itr->second.tablets;
+      }
     }
-    FATAL_INVALID_ENUM_VALUE(TransactionLocality, locality);
+    FATAL_INVALID_ENUM_VALUE(TransactionLocality, locality.locality);
   }
 
   LocalTabletFilter local_tablet_filter_;
@@ -185,7 +202,7 @@ class LoadStatusTabletsTask {
                         TransactionTableState* table_state,
                         uint64_t version,
                         PickStatusTabletCallback callback = PickStatusTabletCallback(),
-                        TransactionLocality locality = TransactionLocality::GLOBAL)
+                        TransactionFullLocality locality = TransactionFullLocality::Global())
       : client_(client), table_state_(table_state), version_(version), callback_(callback),
         locality_(locality) {
   }
@@ -226,14 +243,14 @@ class LoadStatusTabletsTask {
   TransactionTableState* table_state_;
   uint64_t version_;
   PickStatusTabletCallback callback_;
-  TransactionLocality locality_;
+  TransactionFullLocality locality_;
 };
 
 class InvokeCallbackTask {
  public:
   InvokeCallbackTask(TransactionTableState* table_state,
                      PickStatusTabletCallback callback,
-                     TransactionLocality locality)
+                     TransactionFullLocality locality)
       : table_state_(table_state), callback_(std::move(callback)), locality_(locality) {
   }
 
@@ -251,7 +268,7 @@ class InvokeCallbackTask {
  private:
   TransactionTableState* table_state_;
   PickStatusTabletCallback callback_;
-  TransactionLocality locality_;
+  TransactionFullLocality locality_;
 };
 } // namespace
 
@@ -302,7 +319,8 @@ class TransactionManager::Impl {
     }
   }
 
-  void PickStatusTablet(PickStatusTabletCallback callback, TransactionLocality locality) {
+  void PickStatusTablet(
+      PickStatusTabletCallback callback, TransactionFullLocality locality) {
     if (table_state_.IsInitialized()) {
       if (ThreadRestrictions::IsWaitAllowed()) {
         table_state_.InvokeCallback(callback, locality);
@@ -363,6 +381,10 @@ class TransactionManager::Impl {
     return table_state_.HasAnyRegionLocalStatusTablets();
   }
 
+  bool TablespaceLocalTransactionsPossible(PgTablespaceOid tablespace_oid) {
+    return table_state_.HasAnyTransactionLocalStatusTablets(tablespace_oid);
+  }
+
   uint64_t GetLoadedStatusTabletsVersion() {
     return table_state_.GetStatusTabletsVersion();
   }
@@ -400,7 +422,7 @@ void TransactionManager::UpdateTransactionTablesVersion(
 }
 
 void TransactionManager::PickStatusTablet(
-    PickStatusTabletCallback callback, TransactionLocality locality) {
+    PickStatusTabletCallback callback, TransactionFullLocality locality) {
   impl_->PickStatusTablet(std::move(callback), locality);
 }
 
@@ -430,6 +452,10 @@ void TransactionManager::UpdateClock(HybridTime time) {
 
 bool TransactionManager::RegionLocalTransactionsPossible() {
   return impl_->RegionLocalTransactionsPossible();
+}
+
+bool TransactionManager::TablespaceLocalTransactionsPossible(PgTablespaceOid tablespace_oid) {
+  return impl_->TablespaceLocalTransactionsPossible(tablespace_oid);
 }
 
 uint64_t TransactionManager::GetLoadedStatusTabletsVersion() {

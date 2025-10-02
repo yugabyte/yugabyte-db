@@ -2,7 +2,7 @@
  * ybExpr.c
  *        Routines to construct YBC expression tree.
  *
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License.  You may obtain a copy of the License at
@@ -173,26 +173,26 @@ yb_expr_instantiate_exprs_mutator(Node *node, EState *estate)
 	}
 	else if (IsA(node, FuncExpr))
 	{
-		FuncExpr *func = (FuncExpr *) node;
+		FuncExpr   *func = (FuncExpr *) node;
 
 		if (yb_can_constify_and_pushdown_func(func->funcid))
 		{
-			Expr *expr = (Expr *) func;
-			ExprState *exprstate = ExecInitExpr(expr, NULL);
+			Expr	   *expr = (Expr *) func;
+			ExprState  *exprstate = ExecInitExpr(expr, NULL);
 
-			Datum result;
-			bool isnull;
+			Datum		result;
+			bool		isnull;
 
 			result = ExecEvalExpr(exprstate, GetPerTupleExprContext(estate),
 								  &isnull);
 
 			return (Node *) makeConst(func->funcresulttype,
-										-1 /* typmod */ ,
-										func->funccollid,
-										get_typlen(func->funcresulttype),
-										result,
-										isnull,
-										get_typbyval(func->funcresulttype));
+									  -1 /* typmod */ ,
+									  func->funccollid,
+									  get_typlen(func->funcresulttype),
+									  result,
+									  isnull,
+									  get_typbyval(func->funcresulttype));
 		}
 	}
 	return expression_tree_mutator(node,

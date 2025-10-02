@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -2038,6 +2038,14 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
           assertRow("Table '" + tableName + "': ",
                     excluded(reinitdbRow, "prosqlbody"),
                     excluded(migratedRow, "prosqlbody"));
+        } else if (tableName.equals("pg_authid")) {
+          // Handle password format differences between fresh initdb (SCRAM-SHA-256)
+          // and migrated clusters (MD5). This is expected because migrations don't
+          // automatically convert existing passwords.
+          assertRow("Table '" + tableName + "': ",
+                    excluded(reinitdbRow, "rolpassword"),
+                    excluded(migratedRow, "rolpassword"));
+          // For now, skip password comparison since format conversion isn't automatic
         } else {
           assertRow("Table '" + tableName + "': ", reinitdbRow, migratedRow);
         }

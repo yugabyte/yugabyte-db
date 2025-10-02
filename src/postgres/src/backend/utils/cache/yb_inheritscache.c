@@ -6,7 +6,7 @@
  *		through the parent oid is O(1) operation. Lookup through the child oid is O(n) operation.
  *      The O(n) operation is acceptable because lookup via the child oid is comparatively rare and
  *      not worth creating another cache indexed by the child id.
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License.  You may obtain a copy of the License at

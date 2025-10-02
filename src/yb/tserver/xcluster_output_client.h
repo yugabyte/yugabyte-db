@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -96,8 +96,8 @@ class XClusterOutputClient : public XClusterAsyncExecutor {
   Result<bool> ProcessChangeMetadataOp(const cdc::CDCRecordPB& record);
 
   // Gets the producer/consumer schema mapping for the record.
-  Result<cdc::XClusterSchemaVersionMap> GetSchemaVersionMap(const cdc::CDCRecordPB& record)
-      REQUIRES(lock_);
+  Result<cdc::XClusterSchemaVersionMap> GetSchemaVersionMap(
+      const cdc::CDCRecordPB& record, ColocationId colocation_id) REQUIRES(lock_);
 
   // Processes the Record and sends the CDCWrite for it.
   Status ProcessRecord(const std::vector<std::string>& tablet_ids, const cdc::CDCRecordPB& record)

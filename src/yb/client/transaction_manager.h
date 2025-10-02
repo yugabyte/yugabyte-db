@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -17,11 +17,13 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/clock.h"
 #include "yb/common/hybrid_time.h"
+#include "yb/common/pg_types.h"
 #include "yb/common/transaction.pb.h"
 
 #include "yb/rpc/rpc_fwd.h"
@@ -48,7 +50,8 @@ class TransactionManager {
       uint64_t version,
       UpdateTransactionTablesVersionCallback callback = UpdateTransactionTablesVersionCallback());
 
-  void PickStatusTablet(PickStatusTabletCallback callback, TransactionLocality locality);
+  void PickStatusTablet(
+      PickStatusTabletCallback callback, TransactionFullLocality locality);
 
   rpc::Rpcs& rpcs();
   YBClient* client() const;
@@ -60,6 +63,8 @@ class TransactionManager {
   void UpdateClock(HybridTime time);
 
   bool RegionLocalTransactionsPossible();
+
+  bool TablespaceLocalTransactionsPossible(PgTablespaceOid tablespace_oid);
 
   uint64_t GetLoadedStatusTabletsVersion();
 

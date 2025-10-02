@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -71,9 +71,13 @@ class ObjectLockInfoManager {
       rpc::RpcContext rpc);
   void ReleaseLocksForTxn(const TransactionId& txn_id);
 
-  Status RefreshYsqlLease(const RefreshYsqlLeaseRequestPB& req, RefreshYsqlLeaseResponsePB& resp,
-                          rpc::RpcContext& rpc,
-                          const LeaderEpoch& epoch);
+  Status RefreshYsqlLease(
+      const RefreshYsqlLeaseRequestPB& req, RefreshYsqlLeaseResponsePB& resp, rpc::RpcContext& rpc,
+      const LeaderEpoch& epoch);
+
+  Status RelinquishYsqlLease(
+      const RelinquishYsqlLeaseRequestPB& req, RelinquishYsqlLeaseResponsePB& resp,
+      rpc::RpcContext& rpc, const LeaderEpoch& epoch);
 
   tserver::DdlLockEntriesPB ExportObjectLockInfo();
   void UpdateObjectLocks(const std::string& tserver_uuid, std::shared_ptr<ObjectLockInfo> info);

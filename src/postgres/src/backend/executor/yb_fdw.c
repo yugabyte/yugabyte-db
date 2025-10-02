@@ -3,7 +3,7 @@
  * yb_fdw.c
  *		  Foreign-data wrapper for YugabyteDB.
  *
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License.  You may obtain a copy of the License at
@@ -556,7 +556,7 @@ ybcIterateForeignScan(ForeignScanState *node)
 		.colrefs = foreignScan->fdw_private,
 	};
 	YbPushdownExprs *pushdown = YbInstantiatePushdownExprs(&orig_pushdown,
-															estate);
+														   estate);
 
 	/*
 	 * Execute the select statement one time.

@@ -2106,7 +2106,7 @@ For information on using this parameter to configure CBO, refer to [Enable cost-
 
 ### Auto Analyze service flags
 
-Auto analyze is {{<tags/feature/ea idea="590">}}.
+{{<tags/feature/ea idea="590">}}To learn about the Auto Analyze service, see [Auto Analyze service](../../../additional-features/auto-analyze).
 
 {{< note title="Note" >}}
 
@@ -2114,12 +2114,14 @@ To fully enable the Auto Analyze service, you need to enable `ysql_enable_auto_a
 
 {{< /note >}}
 
-See also [Auto Analyze Service Master flags](../yb-master#auto-analyze-service-flags).
+See also [Auto Analyze Service Master flags](../yb-master/#auto-analyze-service-flags).
 
 ##### ysql_enable_auto_analyze_service
 
 {{% tags/wrap %}}
 {{<tags/feature/ea idea="590">}}
+{{<tags/feature/t-server>}}
+{{<tags/feature/restart-needed>}}
 Default: `false`
 {{% /tags/wrap %}}
 
@@ -2128,7 +2130,6 @@ Enable the Auto Analyze service, which automatically runs ANALYZE to update tabl
 ##### ysql_enable_table_mutation_counter
 
 {{% tags/wrap %}}
-
 
 Default: `false`
 {{% /tags/wrap %}}
@@ -2139,7 +2140,7 @@ Enable per table mutation (INSERT, UPDATE, DELETE) counting. The Auto Analyze se
 
 {{% tags/wrap %}}
 
-
+{{<tags/feature/restart-needed>}}
 Default: `50`
 {{% /tags/wrap %}}
 
@@ -2149,7 +2150,7 @@ The minimum number of mutations needed to run ANALYZE on a table.
 
 {{% tags/wrap %}}
 
-
+{{<tags/feature/restart-needed>}}
 Default: `0.1`
 {{% /tags/wrap %}}
 
@@ -2161,7 +2162,7 @@ ANALYZE runs when the mutation count exceeds `ysql_auto_analyze_scale_factor * <
 
 {{% tags/wrap %}}
 
-
+{{<tags/feature/restart-needed>}}
 Default: `10`
 {{% /tags/wrap %}}
 
@@ -2171,7 +2172,7 @@ The maximum number of tables the Auto Analyze service tries to analyze in a sing
 
 {{% tags/wrap %}}
 
-
+{{<tags/feature/restart-needed>}}
 Default: `10000`
 {{% /tags/wrap %}}
 
@@ -2181,7 +2182,7 @@ Interval at which the reported node level table mutation counts are persisted to
 
 {{% tags/wrap %}}
 
-
+{{<tags/feature/restart-needed>}}
 Default: `10000`
 {{% /tags/wrap %}}
 
@@ -2191,7 +2192,7 @@ Timeout for the RPCs used to persist mutation counts in the auto-analyze mutatio
 
 {{% tags/wrap %}}
 
-
+{{<tags/feature/restart-needed>}}
 Default: `5000`
 {{% /tags/wrap %}}
 
@@ -2201,7 +2202,7 @@ Interval, in milliseconds, at which the node-level table mutation counts are sen
 
 {{% tags/wrap %}}
 
-
+{{<tags/feature/restart-needed>}}
 Default: `5000`
 {{% /tags/wrap %}}
 
@@ -2209,7 +2210,7 @@ Timeout, in milliseconds, for the node-level mutation reporting RPC to the Auto 
 
 ### Advisory lock flags
 
-Support for advisory locks is {{<tags/feature/tp idea="812">}}.
+Support for advisory locks is {{<tags/feature/tp idea="812">}}. To use the flags, you must add them to [allowed_preview_flags_csv](#allowed-preview-flags-csv).
 
 To learn about advisory locks, see [Advisory locks](../../../explore/transactions/explicit-locking/#advisory-locks).
 
@@ -2734,7 +2735,7 @@ Specifies the [severity level](https://www.postgresql.org/docs/15/runtime-config
 Default: `false`
 {{% /tags/wrap %}}
 
-Set this flag to true on all YB-Masters and YB-TServers to add the [pg_cron extension](../../../explore/ysql-language-features/pg-extensions/extension-pgcron/).
+Set this flag to true on all YB-Masters and YB-TServers to add the [pg_cron extension](../../../additional-features/pg-extensions/extension-pgcron/).
 
 ##### --ysql_cron_database_name
 
@@ -2746,7 +2747,7 @@ Default: `yugabyte`
 
 Specifies the database where pg_cron is to be installed. You can create the database after setting the flag.
 
-The [pg_cron extension](../../../explore/ysql-language-features/pg-extensions/extension-pgcron/) is installed on only one database (by default, `yugabyte`).
+The [pg_cron extension](../../../additional-features/pg-extensions/extension-pgcron/) is installed on only one database (by default, `yugabyte`).
 
 To change the database after the extension is created, you must first drop the extension and then change the flag value.
 

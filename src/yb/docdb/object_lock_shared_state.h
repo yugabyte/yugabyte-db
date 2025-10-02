@@ -56,11 +56,27 @@ static_assert(std::is_trivially_copyable_v<ObjectLockFastpathRequest>);
 using FastLockRequestConsumer = LWFunction<void(ObjectLockFastpathRequest)>;
 
 class ObjectLockSharedState {
+  class Impl;
+
  public:
+  class ActivationGuard {
+   public:
+    ActivationGuard() = default;
+    explicit ActivationGuard(Impl* impl);
+    ActivationGuard(ActivationGuard&& other);
+    ~ActivationGuard();
+    ActivationGuard& operator=(ActivationGuard&& other) PARENT_PROCESS_ONLY;
+   private:
+    Impl* impl_ = nullptr;
+  };
+
   explicit ObjectLockSharedState(SharedMemoryBackingAllocator& allocator);
   ~ObjectLockSharedState();
 
   [[nodiscard]] bool Lock(const ObjectLockFastpathRequest& request);
+
+  ActivationGuard Activate(const std::unordered_map<ObjectLockPrefix, size_t>& initial_intents)
+      PARENT_PROCESS_ONLY;
 
   size_t ConsumePendingLockRequests(const FastLockRequestConsumer& consume) PARENT_PROCESS_ONLY;
 
@@ -74,7 +90,6 @@ class ObjectLockSharedState {
   [[nodiscard]] SessionLockOwnerTag TEST_last_owner() PARENT_PROCESS_ONLY;
 
  private:
-  class Impl;
   const SharedMemoryUniquePtr<Impl> impl_;
 };
 

@@ -40,6 +40,8 @@ class MasterDDLClient {
       const std::string& permanent_uuid, int64_t instance_seqno, uint64_t time_ms,
       std::optional<uint64_t> current_lease_epoch);
 
+  Status RelinquishYsqlLease(const std::string& permanent_uuid, int64_t instance_seqno);
+
   Status DeleteTable(const TableId& id, MonoDelta timeout);
 
  private:

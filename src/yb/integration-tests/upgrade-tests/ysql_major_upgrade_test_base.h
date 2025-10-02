@@ -23,6 +23,7 @@ class YsqlMajorUpgradeTestBase : public UpgradeTestBase {
   virtual ~YsqlMajorUpgradeTestBase() override = default;
 
   void SetUp() override;
+  void SetUpOptions(ExternalMiniClusterOptions& opts) override;
 
  protected:
   // UpgradeTestBase provides helper functions UpgradeClusterToCurrentVersion, FinalizeUpgrade,

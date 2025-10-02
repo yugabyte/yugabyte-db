@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -107,7 +107,8 @@ Status ResolveTransactionConflicts(
     WaitQueue* wait_queue,
     bool is_advisory_lock_request,
     CoarseTimePoint deadline,
-    ResolutionCallback callback);
+    ResolutionCallback callback,
+    dockv::SkipPrefixLocks skip_prefix_locks);
 
 // Resolves conflicts for doc operations.
 // Read all intents that could conflict with provided doc_ops.

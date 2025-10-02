@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -20,8 +20,7 @@
 #include "yb/util/background_task.h"
 #include "yb/util/mem_tracker.h"
 
-namespace yb {
-namespace tserver {
+namespace yb::tserver {
 
 class TabletMemoryManagerListenerIf {
  public:
@@ -55,6 +54,8 @@ class TabletMemoryManager {
 
   // The MemTracker associated with the block cache.
   std::shared_ptr<MemTracker> block_based_table_mem_tracker();
+
+  std::shared_ptr<MemTracker> read_wal_mem_tracker();
 
   std::shared_ptr<MemTracker> tablets_overhead_mem_tracker();
 
@@ -96,6 +97,7 @@ class TabletMemoryManager {
 
   std::shared_ptr<MemTracker> server_mem_tracker_;
   std::shared_ptr<MemTracker> block_based_table_mem_tracker_;
+  std::shared_ptr<MemTracker> read_wal_mem_tracker_;
   std::shared_ptr<MemTracker> tablets_overhead_mem_tracker_;
 
   std::shared_ptr<GarbageCollector> block_based_table_gc_;
@@ -112,5 +114,4 @@ int64 ComputeTabletOverheadLimit();
 int32_t GetDbBlockCacheNumShardBits();
 int64_t GetTargetBlockCacheSize(int32_t default_block_cache_size_percentage);
 
-}  // namespace tserver
-}  // namespace yb
+} // namespace yb::tserver

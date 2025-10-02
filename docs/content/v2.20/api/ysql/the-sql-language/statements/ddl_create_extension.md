@@ -47,5 +47,5 @@ CREATE EXTENSION
 
 ## See also
 
-- [PostgreSQL Extensions](../../../../../explore/ysql-language-features/pg-extensions/)
+- [PostgreSQL Extensions](../../../../../additional-features/pg-extensions/)
 - [DROP EXTENSION](../ddl_drop_extension)

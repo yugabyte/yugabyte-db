@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
@@ -8,12 +8,11 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.List;
 import java.util.Map;
@@ -75,14 +74,13 @@ public class CleanUpPGUpgradeDataDir extends ServerSubTaskBase {
   }
 
   private void cleanUpDirOnK8sPod(Universe universe, NodeDetails node) {
-    Map<String, String> zoneConfig =
-        CloudInfoInterface.fetchEnvVars(AvailabilityZone.getOrBadRequest(node.azUuid));
+    Map<String, String> podConfig = KubernetesUtil.getKubernetesConfigPerPod(universe, node);
     String namespace = node.cloudInfo.kubernetesNamespace;
     String podName = node.cloudInfo.kubernetesPodName;
     kubernetesManagerFactory
         .getManager()
         .executeCommandInPodContainer(
-            zoneConfig,
+            podConfig,
             namespace,
             podName,
             "yb-master",

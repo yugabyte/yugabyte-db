@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -44,7 +44,7 @@ DEFINE_RUNTIME_int32(remote_bootstrap_max_chunk_size, 64_MB,
 
 DEPRECATE_FLAG(int64, remote_boostrap_rate_limit_bytes_per_sec, "10_2022");
 
-DEFINE_UNKNOWN_int64(remote_bootstrap_rate_limit_bytes_per_sec, 256_MB,
+DEFINE_RUNTIME_int64(remote_bootstrap_rate_limit_bytes_per_sec, 256_MB,
              "Maximum transmission rate during a remote bootstrap. This is across all the remote "
              "bootstrap sessions for which this process is acting as a sender or receiver. So "
              "the total limit will be 2 * remote_bootstrap_rate_limit_bytes_per_sec because a "
@@ -87,8 +87,11 @@ RemoteBootstrapFileDownloader::RemoteBootstrapFileDownloader(
 }
 
 void RemoteBootstrapFileDownloader::Start(
-    FetchDataFunction fetch_data, std::string session_id, MonoDelta session_idle_timeout) {
+    FetchDataFunction fetch_data, std::string session_id,
+    MonoDelta session_idle_timeout,
+    std::optional<FetchDataFunction> uncompressed_fetch_data) {
   fetch_data_ = std::move(fetch_data);
+  fetch_data_uncompressed_ = std::move(uncompressed_fetch_data);
   session_id_ = std::move(session_id);
   session_idle_timeout_ = session_idle_timeout;
 }
@@ -99,7 +102,7 @@ Env& RemoteBootstrapFileDownloader::env() const {
 
 Status RemoteBootstrapFileDownloader::DownloadFile(
     const tablet::FilePB& file_pb, const std::string& dir, DataIdPB *data_id,
-    std::function<void(size_t)> chunk_download_cb) {
+    std::function<void(size_t)> chunk_download_cb, bool skip_compression) {
   auto file_path = JoinPathSegments(dir, file_pb.name());
   RETURN_NOT_OK(env().CreateDirs(DirName(file_path)));
 
@@ -126,9 +129,10 @@ Status RemoteBootstrapFileDownloader::DownloadFile(
   RETURN_NOT_OK(env().NewWritableFile(file_path, &file));
 
   data_id->set_file_name(file_pb.name());
-  RETURN_NOT_OK_PREPEND(DownloadFile(*data_id, file.get(), chunk_download_cb),
-                        Format("Unable to download $0 file $1",
-                               DataIdPB::IdType_Name(data_id->type()), file_path));
+  RETURN_NOT_OK_PREPEND(
+      DownloadFile(*data_id, file.get(), chunk_download_cb, skip_compression),
+      Format("Unable to download $0 file $1",
+             DataIdPB::IdType_Name(data_id->type()), file_path));
   VLOG_WITH_PREFIX(2) << "Downloaded file " << file_path;
 
   if (file_pb.inode() != 0) {
@@ -141,7 +145,7 @@ Status RemoteBootstrapFileDownloader::DownloadFile(
 template<class Appendable>
 Status RemoteBootstrapFileDownloader::DownloadFile(
     const DataIdPB& data_id, Appendable* appendable,
-    std::function<void(size_t)> chunk_download_cb) {
+    std::function<void(size_t)> chunk_download_cb, bool skip_compression) {
   constexpr int kBytesReservedForMessageHeaders = 16384;
 
   // For periodic sync, indicates number of bytes which need to be sync'ed.
@@ -199,8 +203,12 @@ Status RemoteBootstrapFileDownloader::DownloadFile(
     Status status;
     {
       SCOPED_WAIT_STATUS(RemoteBootstrap_RateLimiter);
-      status = rate_limiter->SendOrReceiveData([this, &req, &resp, &controller]() {
+      status = rate_limiter->SendOrReceiveData(
+            [this, &req, &resp, &controller, skip_compression]() {
         SCOPED_WAIT_STATUS(RemoteBootstrap_FetchData);
+        if (skip_compression && fetch_data_uncompressed_) {
+          return (*fetch_data_uncompressed_)(req, &resp, &controller);
+        }
         return fetch_data_(req, &resp, &controller);
       }, [&resp]() { return resp.ByteSize(); });
     }

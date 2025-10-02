@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -202,6 +202,7 @@ Status MiniSysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMeta
       .clock = clock_,
       .parent_mem_tracker = nullptr,
       .block_based_table_mem_tracker = nullptr,
+      .read_wal_mem_tracker = nullptr,
       .metric_registry = metric_registry_.get(),
       .log_anchor_registry = nullptr,
       .tablet_options = tablet_options_,
@@ -249,7 +250,7 @@ Status MiniSysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMeta
 class StatusException : public std::exception {
  public:
   explicit StatusException(const Status& s) : status_(s), what_(s.ToString()) {}
-  virtual ~StatusException() throw() = default;
+  ~StatusException() throw() override = default;
   const char* what() const throw() override {
     return what_.c_str();
   }
@@ -410,7 +411,7 @@ class SysRowJsonWriter : public JsonWriter {
   // Stream 'out' and 'filters' must be alive during the object life-time.
   SysRowJsonWriter(std::stringstream* out, Mode mode, const ReadFilters& filters) :
       JsonWriter(out, mode), filters_(filters) {}
-  virtual ~SysRowJsonWriter() = default;
+  ~SysRowJsonWriter() override = default;
 
   Status WriteEntryPB(SysRowEntryType type, const Slice& id, const Slice& data);
 
@@ -566,8 +567,8 @@ class SysRowHandlerIf {
 
 class SysRowJsonReader : public JsonReader {
  public:
-  typedef std::function<unique_ptr<SysRowHandlerIf>(
-      const rapidjson::Value& value, master::SysRowEntry* entry)> CreateSysRowHandlerFn;
+  using CreateSysRowHandlerFn =
+      std::function<unique_ptr<SysRowHandlerIf>(const rapidjson::Value&, master::SysRowEntry*)>;
 
   explicit SysRowJsonReader(string text) : JsonReader(std::move(text)) {}
 

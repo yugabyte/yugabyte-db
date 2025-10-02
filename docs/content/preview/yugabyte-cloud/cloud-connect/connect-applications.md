@@ -14,13 +14,13 @@ menu:
 type: docs
 ---
 
-Applications connect to and interact with YugabyteDB using API client libraries, also known as client drivers. Because the YugabyteDB YSQL API is PostgreSQL-compatible, and the YCQL API has roots in the Apache Cassandra CQL, YugabyteDB supports many third-party drivers. YugabyteDB also supports [smart drivers](../../../drivers-orms/smart-drivers/), which extend PostgreSQL drivers to enable client applications to connect to YugabyteDB clusters without the need for external load balancers.
+Applications connect to and interact with YugabyteDB using API client libraries, also known as client drivers. Because the YugabyteDB YSQL API is PostgreSQL-compatible, and the YCQL API has roots in the Apache Cassandra CQL, YugabyteDB supports many third-party drivers. YugabyteDB also supports [smart drivers](/preview/develop/drivers-orms/smart-drivers/), which extend PostgreSQL drivers to enable client applications to connect to YugabyteDB clusters without the need for external load balancers.
 
-To connect to a YugabyteDB Aeon cluster, you need to add the [cluster connection parameters](#get-the-cluster-connection-parameters) to your application code. How you update the application depends on the driver you are using. For examples of applications that connect to YugabyteDB Aeon using common drivers, refer to [Build an application](/preview/tutorials/build-apps/).
+To connect to a YugabyteDB Aeon cluster, you need to add the [cluster connection parameters](#get-the-cluster-connection-parameters) to your application code. How you update the application depends on the driver you are using. For examples of applications that connect to YugabyteDB Aeon using common drivers, refer to [Build an application](/preview/develop/tutorials/build-apps/).
 
 You may want to add a database user specifically for your application. Refer to [Add database users](../../cloud-secure-clusters/add-users/).
 
-For more information on YugabyteDB-compatible drivers, refer to [Drivers and ORMs](../../../drivers-orms/).
+For more information on YugabyteDB-compatible drivers, refer to [Drivers and ORMs](/preview/develop/drivers-orms/).
 
 ## Prerequisites
 
@@ -49,7 +49,7 @@ Clusters deployed in VPCs don't expose public IP addresses unless you explicitly
 
 #### Using smart drivers
 
-To take advantage of smart driver load balancing features when connecting to clusters in YugabyteDB Aeon, applications using smart drivers _must_ be deployed in a VPC that has been peered with the cluster VPC. If not deployed in a peered VPC, although the smart driver falls back to the upstream driver behavior, it first attempts to connect to the inaccessible nodes, incurring added latency. For more information on smart drivers and using smart drivers with YugabyteDB Aeon, refer to [YugabyteDB smart drivers for YSQL](../../../drivers-orms/smart-drivers/).
+To take advantage of smart driver load balancing features when connecting to clusters in YugabyteDB Aeon, applications using smart drivers _must_ be deployed in a VPC that has been peered with the cluster VPC. If not deployed in a peered VPC, although the smart driver falls back to the upstream driver behavior, it first attempts to connect to the inaccessible nodes, incurring added latency. For more information on smart drivers and using smart drivers with YugabyteDB Aeon, refer to [YugabyteDB smart drivers for YSQL](/preview/develop/drivers-orms/smart-drivers/).
 
 ### Cluster certificate
 
@@ -127,9 +127,9 @@ To connect your application, do the following:
 
 {{< /tabpane >}}
 
-For examples of applications you can build and connect to YugabyteDB Aeon using a variety of drivers, refer to [Build an application](/preview/tutorials/build-apps/).
+For examples of applications you can build and connect to YugabyteDB Aeon using a variety of drivers, refer to [Build an application](/preview/develop/tutorials/build-apps/).
 
 ## Learn more
 
 - [Add database users](../../cloud-secure-clusters/add-users/)
-- [Build an application](/preview/tutorials/build-apps/)
+- [Build an application](/preview/develop/tutorials/build-apps/)

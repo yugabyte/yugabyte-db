@@ -368,14 +368,14 @@ YbctidListEval(TidScanState *tidstate)
 			int			i;
 
 			arraydatum = ExecEvalExprSwitchContext(tidexpr->exprstate,
-													econtext,
-													&isNull);
+												   econtext,
+												   &isNull);
 			if (isNull)
 				continue;
 
 			itemarray = DatumGetArrayTypeP(arraydatum);
 			deconstruct_array(itemarray, BYTEAOID, -1, false, TYPALIGN_INT,
-								&ipdatums, &ipnulls, &ndatums);
+							  &ipdatums, &ipnulls, &ndatums);
 			if (numYbctids + ndatums > numAllocYbctids)
 			{
 				numAllocYbctids = numYbctids + ndatums;
@@ -427,8 +427,9 @@ YbctidListEval(TidScanState *tidstate)
 static int
 ybctid_comparator(const void *a, const void *b)
 {
-	return DatumGetInt32(
-		DirectFunctionCall2(byteacmp, *(const Datum *) a, *(const Datum *) b));
+	return DatumGetInt32(DirectFunctionCall2(byteacmp,
+											 *(const Datum *) a,
+											 *(const Datum *) b));
 }
 
 /* ----------------------------------------------------------------
@@ -545,23 +546,25 @@ YbTidNext(TidScanState *node)
 	 */
 	if (node->ss.ss_currentScanDesc == NULL)
 	{
-		TidScan *plan = (TidScan *) node->ss.ps.plan;
+		TidScan    *plan = (TidScan *) node->ss.ps.plan;
 		YbPushdownExprs *rel_pushdown =
 			YbInstantiatePushdownExprs(&plan->yb_rel_pushdown, estate);
+
 		if (node->yb_tss_aggrefs)
 		{
 			TupleDesc	tupdesc = CreateTemplateTupleDesc(list_length(node->yb_tss_aggrefs));
+
 			ExecInitScanTupleSlot(node->ss.ps.state, &node->ss, tupdesc, &TTSOpsVirtual);
 			slot = node->ss.ss_ScanTupleSlot;
 		}
 		ybScan = ybcBeginScan(node->ss.ss_currentRelation,
-							  NULL,	/* index */
+							  NULL, /* index */
 							  false,	/* xs_want_itup */
 							  0,	/* nkeys */
 							  NULL, /* key */
 							  (Scan *) plan,
 							  rel_pushdown,
-							  NULL,	/* idx_pushdown */
+							  NULL, /* idx_pushdown */
 							  node->yb_tss_aggrefs,
 							  0,	/* distinct_prefixlen */
 							  &estate->yb_exec_params,
@@ -751,8 +754,8 @@ ExecInitTidScan(TidScan *node, EState *estate, int eflags)
 	ExecInitScanTupleSlot(estate, &tidstate->ss,
 						  RelationGetDescr(currentRelation),
 						  IsYBRelation(currentRelation) ?
-							  &TTSOpsVirtual :
-							  table_slot_callbacks(currentRelation));
+						  &TTSOpsVirtual :
+						  table_slot_callbacks(currentRelation));
 
 	/*
 	 * Initialize result type and projection.

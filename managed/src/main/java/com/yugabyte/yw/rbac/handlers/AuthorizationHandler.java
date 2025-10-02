@@ -1,4 +1,4 @@
-// Copyright (c) Yugabyte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 package com.yugabyte.yw.rbac.handlers;
 
 import com.fasterxml.jackson.databind.JsonNode;

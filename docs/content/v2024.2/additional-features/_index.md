@@ -26,4 +26,16 @@ type: indexpage
     href="colocation/"
     icon="fa-thin fa-people-roof">}}
 
+  {{<index/item
+    title="Parallel queries"
+    body="Leverage multiple CPUs to answer queries faster."
+    href="parallel-query/"
+    icon="fa-thin fa-grip-lines-vertical">}}
+
+  {{<index/item
+    title="PostgreSQL extensions"
+    body="Use PostgreSQL extensions to extend the functionality of YSQL."
+    href="pg-extensions/"
+    icon="fa-thin fa-puzzle">}}
+
 {{</index/block>}}

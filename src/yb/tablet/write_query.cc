@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -15,6 +15,8 @@
 
 #include "yb/ash/wait_state.h"
 
+#include <boost/logic/tribool.hpp>
+
 #include "yb/client/client.h"
 #include "yb/client/error.h"
 #include "yb/client/meta_data_cache.h"
@@ -29,6 +31,7 @@
 #include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/cql_operation.h"
+#include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/docdb_statistics.h"
 #include "yb/docdb/pgsql_operation.h"
@@ -61,11 +64,26 @@ DEFINE_RUNTIME_bool(disable_alter_vs_write_mutual_exclusion, false,
     "operation take an exclusive lock making all write operations wait for it.");
 TAG_FLAG(disable_alter_vs_write_mutual_exclusion, advanced);
 
+DEFINE_RUNTIME_bool(skip_prefix_locks, false,
+    "Enable to skip writing weak intent locks on intermediate prefixes of the actual PK being "
+    "written. This reduces the number of key-value pairs written to the intents db, resulting in "
+    "better performance. However, it may lead to high contention when serializable isolation "
+    "transactions are present in the workload.");
+
+DEFINE_RUNTIME_bool(skip_prefix_locks_suppress_warning_for_serializable_op, false,
+    "If false, logs a warning when a serializable transaction runs with skip prefix locks enabled."
+    "Serializable isolation transactions are not meant to be run if skip_prefix_locks is enabled. "
+    "This will result in warnings in the log. Use this flag to suppress the warnings if you are "
+    "sure that the serializable isolation transactions are never going to block a lot of other "
+    "transactions.");
+TAG_FLAG(skip_prefix_locks_suppress_warning_for_serializable_op, advanced);
+
 DEFINE_test_flag(bool, writequery_stuck_from_callback_leak, false,
     "Simulate WriteQuery stuck because of the update index flushed rpc call back leak");
 
 DECLARE_bool(batch_tablet_metrics_update);
 DECLARE_bool(ysql_analyze_dump_metrics);
+DECLARE_bool(ysql_enable_packed_row);
 
 namespace yb {
 namespace tablet {
@@ -136,13 +154,17 @@ bool CheckSchemaVersion(
 
 using DocPaths = boost::container::small_vector<RefCntPrefix, 16>;
 
-void AddReadPairs(const DocPaths& paths, docdb::LWKeyValueWriteBatchPB* write_batch) {
+void AddReadPairs(const DocPaths& paths, docdb::LWKeyValueWriteBatchPB* write_batch,
+                  boost::tribool pk_is_known = boost::indeterminate) {
   for (const auto& path : paths) {
     auto& pair = *write_batch->add_read_pairs();
     pair.dup_key(path.as_slice());
     // Empty values are disallowed by docdb.
     // https://github.com/YugaByte/yugabyte-db/issues/736
     pair.dup_value(Slice(&dockv::KeyEntryTypeAsChar::kNullLow, 1));
+    if (!boost::indeterminate(pk_is_known)) {
+      pair.set_pk_is_known(static_cast<bool>(pk_is_known));
+    }
   }
 }
 
@@ -457,7 +479,7 @@ Result<bool> WriteQuery::PrepareExecute() {
     }
 
     if (client_request_->has_write_batch() && client_request_->has_external_hybrid_time()) {
-      return false;
+      return ExternalWritePrepareExecute();
     }
   } else {
     const auto* request = operation().request();
@@ -647,6 +669,37 @@ Result<bool> WriteQuery::PgsqlPrepareLock() {
   return client_request_->pgsql_lock_batch().begin()->is_lock();
 }
 
+Result<bool> WriteQuery::ExternalWritePrepareExecute() {
+  auto& write_batch = client_request_->write_batch();
+  if (write_batch.xcluster_used_schema_versions().empty()) {
+    return false;
+  }
+
+  auto tablet = VERIFY_RESULT(tablet_safe());
+  auto& metadata = *tablet->metadata();
+  // Verify that the schema versions used in the write batch are present in the tablet metadata.
+  for (const auto& used_schema_version : write_batch.xcluster_used_schema_versions()) {
+    auto table_info_res = metadata.GetTableInfo(used_schema_version.colocation_id());
+    if (!table_info_res.ok()) {
+      if (used_schema_version.colocation_id() != kColocationIdNotSet) {
+        // This is expected for colocated tables that are not yet created on the target.
+        continue;
+      }
+      return table_info_res.status();
+    }
+    const auto table_info = *table_info_res;
+    const auto& schema_packing_storage = table_info->doc_read_context->schema_packing_storage;
+    for (const auto& schema_version : used_schema_version.schema_versions()) {
+      SCHECK(
+          schema_packing_storage.HasVersion(schema_version), IllegalState,
+          Format(
+              "Schema version $0 not found in schema packing storage: $1", schema_version,
+              schema_packing_storage.VersionsToString()));
+    }
+  }
+  return false;
+}
+
 void WriteQuery::Execute(std::unique_ptr<WriteQuery> query) {
   auto* query_ptr = query.get();
   query_ptr->self_ = std::move(query);
@@ -762,15 +815,46 @@ Status WriteQuery::DoExecute() {
         << operation_->ToString();
   }
 
+  auto* transaction_participant = tablet->transaction_participant();
+
+  // Doesn't support skip prefix lock for CQL, Redis, kPgsqlLock and sys catlog. For them, the locks
+  // are unaffected, regardless of the skip prefix lock setting. Also skip prefix lock is disabled
+  // when packed row is false or for fast-path transaction.
+  const bool is_pgsql_transaction_with_isolation =
+      tablet->table_type() == TableType::PGSQL_TABLE_TYPE &&
+      (execute_mode_ == ExecuteMode::kPgsql || execute_mode_ == ExecuteMode::kSimple) &&
+      transactional_table && !tablet->is_sys_catalog() &&
+      isolation_level_ != IsolationLevel::NON_TRANSACTIONAL;
+  dockv::SkipPrefixLocks skip_prefix_locks = dockv::SkipPrefixLocks::kFalse;
+  if (is_pgsql_transaction_with_isolation) {
+    auto transaction_id = VERIFY_RESULT(FullyDecodeTransactionId(
+      write_batch.transaction().transaction_id()));
+
+    const bool should_skip_prefix_locks = FLAGS_skip_prefix_locks && FLAGS_ysql_enable_packed_row;
+    skip_prefix_locks = should_skip_prefix_locks ?
+        dockv::SkipPrefixLocks::kTrue : dockv::SkipPrefixLocks::kFalse;
+    write_batch.mutable_transaction()->set_skip_prefix_locks(should_skip_prefix_locks);
+    VLOG_WITH_FUNC(4) << "Choose skip_prefix_locks:" << skip_prefix_locks << ", isolation_level:"
+        << isolation_level_ << ", transaction id:" << transaction_id;
+    if (skip_prefix_locks && isolation_level_ == IsolationLevel::SERIALIZABLE_ISOLATION &&
+        !FLAGS_skip_prefix_locks_suppress_warning_for_serializable_op) {
+      LOG(WARNING) << "The skip_prefix_locks gflag is enabled while there are active serializable "
+                   << "isolation transactions. Please consider turning it off since a serializable "
+                   << "transaction in skip_prefix_locks mode can block all other transactions that "
+                   << "access/ modify the same test. To suppress this warning, set the gflag "
+                   << "skip_prefix_locks_suppress_warning_for_serializable_op to true. "
+                   << "transaction id:" << transaction_id;
+    }
+  }
+
   dockv::PartialRangeKeyIntents partial_range_key_intents(metadata.UsePartialRangeKeyIntents());
   prepare_result_ = VERIFY_RESULT(docdb::PrepareDocWriteOperation(
       doc_ops_, write_batch.read_pairs(), metrics_, isolation_level_, row_mark_type,
       transactional_table, write_batch.has_transaction(), deadline(), partial_range_key_intents,
-      tablet->shared_lock_manager()));
+      tablet->shared_lock_manager(), skip_prefix_locks));
 
   DEBUG_ONLY_TEST_SYNC_POINT("WriteQuery::DoExecute::PreparedDocWriteOps");
 
-  auto* transaction_participant = tablet->transaction_participant();
   docdb::WaitQueue* wait_queue = nullptr;
 
   if (transaction_participant && execute_mode_ != ExecuteMode::kCql) {
@@ -840,7 +924,11 @@ Status WriteQuery::DoExecute() {
       IsolationLevel ignored_isolation_level;
       RETURN_NOT_OK(doc_op->GetDocPaths(
               docdb::GetDocPathsMode::kLock, &paths, &ignored_isolation_level));
-      AddReadPairs(paths, &write_batch);
+      boost::tribool pk_is_known =
+          doc_op->OpType() == docdb::DocOperation::Type::PGSQL_WRITE_OPERATION ?
+          boost::tribool(down_cast<const docdb::PgsqlWriteOperation&>(*doc_op).pk_is_known()) :
+          boost::indeterminate;
+      AddReadPairs(paths, &write_batch, pk_is_known);
       paths.clear();
     }
   }
@@ -866,7 +954,8 @@ Status WriteQuery::DoExecute() {
         }
         TransactionalConflictsResolved();
         TRACE("TransactionalConflictsResolved");
-      });
+      },
+      skip_prefix_locks);
 }
 
 void WriteQuery::NonTransactionalConflictsResolved(HybridTime now, HybridTime result) {
@@ -1022,7 +1111,11 @@ Status WriteQuery::DoCompleteExecute(HybridTime safe_time) {
       IsolationLevel ignored_isolation_level;
       RETURN_NOT_OK(doc_op->GetDocPaths(
           docdb::GetDocPathsMode::kStrongReadIntents, &paths, &ignored_isolation_level));
-      AddReadPairs(paths, &write_batch);
+      boost::tribool pk_is_known =
+          doc_op->OpType() == docdb::DocOperation::Type::PGSQL_WRITE_OPERATION ?
+          boost::tribool(down_cast<const docdb::PgsqlWriteOperation&>(*doc_op).pk_is_known()) :
+          boost::indeterminate;
+      AddReadPairs(paths, &write_batch, pk_is_known);
       paths.clear();
     }
   }

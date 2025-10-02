@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
@@ -50,10 +50,8 @@ public class CreateTableSpacesTest extends CommissionerBaseTest {
 
   private static final String FETCH_TABLESPACE_ANSWER = "CREATE TABLESPACE";
 
-  @Override
   @Before
   public void setUp() {
-    super.setUp();
     mockFetchTablespaceAnswer("com/yugabyte/yw/controllers/tablespaces_shell_response.txt");
     factory
         .globalRuntimeConf()

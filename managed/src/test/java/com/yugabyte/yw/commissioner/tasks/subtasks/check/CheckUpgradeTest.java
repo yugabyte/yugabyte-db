@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.subtasks.check;
 
@@ -33,10 +33,8 @@ public class CheckUpgradeTest extends CommissionerBaseTest {
 
   private Universe defaultUniverse;
 
-  @Override
   @Before
   public void setUp() {
-    super.setUp();
     defaultCustomer = ModelFactory.testCustomer();
     defaultUniverse = ModelFactory.createUniverse();
     TestHelper.updateUniverseVersion(defaultUniverse, "new-version");

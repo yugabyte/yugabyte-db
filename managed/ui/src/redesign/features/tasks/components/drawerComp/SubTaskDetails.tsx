@@ -1,7 +1,7 @@
 /*
  * Created on Wed Dec 20 2023
  *
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License")
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
@@ -17,7 +17,7 @@ import { Collapse, Tooltip, Typography, makeStyles } from '@material-ui/core';
 import { YBButton } from '../../../../components';
 import { YBLoadingCircleIcon } from '../../../../../components/common/indicators';
 import { getFailedTaskDetails, getSubTaskDetails } from './api';
-import { SubTaskInfo, Task, TaskStates } from '../../dtos';
+import { SubTaskInfo, Task, TaskState } from '../../dtos';
 import { TaskDrawerCompProps } from './dtos';
 import { isTaskFailed, isTaskRunning } from '../../TaskUtils';
 import LinkIcon from '../../../../assets/link.svg';
@@ -89,7 +89,9 @@ export const SubTaskDetails: FC<TaskDrawerCompProps> = ({ currentTask }) => {
     select: (data) => data.data,
     enabled: !!currentTask,
     refetchInterval: (data) => {
-      return values(data?.[currentTask.targetUUID]).some((task) => isTaskRunning(task)) ? 8000 : false;
+      return values(data?.[currentTask.targetUUID]).some((task) => isTaskRunning(task))
+        ? 8000
+        : false;
     }
   });
 
@@ -320,7 +322,7 @@ const subTaskCardStyles = makeStyles((theme) => ({
     wordBreak: 'break-word'
   },
   timeElapsed: {
-    marginLeft: 'auto',
+    marginLeft: 'auto'
   }
 }));
 
@@ -338,17 +340,17 @@ export const SubTaskCard: FC<SubTaskCardProps> = ({
 
   const getTaskIcon = (state: Task['status'], position?: number) => {
     switch (state) {
-      case TaskStates.RUNNING:
+      case TaskState.RUNNING:
         return <i className={'fa fa-spinner fa-pulse'} />;
-      case TaskStates.SUCCESS:
+      case TaskState.SUCCESS:
         return <i className={'fa fa-check'} />;
-      case TaskStates.ABORTED:
-      case TaskStates.FAILURE:
-      case TaskStates.ABORT:
+      case TaskState.ABORTED:
+      case TaskState.FAILURE:
+      case TaskState.ABORT:
         return <i className={'fa fa-exclamation-circle'} />;
-      case TaskStates.CREATED:
-      case TaskStates.INITIALIZING:
-      case TaskStates.UNKNOWN:
+      case TaskState.CREATED:
+      case TaskState.INITIALIZING:
+      case TaskState.UNKNOWN:
       default:
         return position ?? index;
     }
@@ -357,26 +359,31 @@ export const SubTaskCard: FC<SubTaskCardProps> = ({
   // Get the category status based on the subtasks
   // If any of the subtasks is not success, then the category status is the status of the last subtask
   // If all the subtasks are success, then the category status is success
-  let categoryTaskStatus = TaskStates.CREATED;
+  let categoryTaskStatus = TaskState.CREATED;
 
   for (let i = 0; i < subTasks.length; i++) {
-    if (subTasks[i].taskState !== TaskStates.SUCCESS) {
+    if (subTasks[i].taskState !== TaskState.SUCCESS) {
       categoryTaskStatus = subTasks[i].taskState;
       break;
     }
-    categoryTaskStatus = TaskStates.SUCCESS;
+    categoryTaskStatus = TaskState.SUCCESS;
   }
 
   const getNodeNames = (subTask: SubTaskInfo) => {
     if (subTask.taskParams?.nodeDetailsSet) {
-      return <>{subTask.taskParams.nodeDetailsSet.map(node => <div>{`(${node.nodeName})`}</div>)}</>;
+      return (
+        <>
+          {subTask.taskParams.nodeDetailsSet.map((node) => (
+            <div>{`(${node.nodeName})`}</div>
+          ))}
+        </>
+      );
     }
     if (subTask.taskParams?.nodeName) {
       return ` (${subTask.taskParams.nodeName})`;
     }
     return '';
   };
-
 
   return (
     <div className={classes.card} key={index}>
@@ -396,19 +403,19 @@ export const SubTaskCard: FC<SubTaskCardProps> = ({
       <Collapse in={expanded}>
         <div className={classes.subTaskPanel}>
           {subTasks.map((subTask, index) => {
-            return <div className={clsx(classes.content, subTask.taskState)} key={index}>
-              <div className={clsx(classes.indexCircle, subTask.taskState)}>
-                {getTaskIcon(subTask.taskState, index + 1)}
+            return (
+              <div className={clsx(classes.content, subTask.taskState)} key={index}>
+                <div className={clsx(classes.indexCircle, subTask.taskState)}>
+                  {getTaskIcon(subTask.taskState, index + 1)}
+                </div>
+                <Tooltip title={getNodeNames(subTask)} placement="top" arrow>
+                  <Typography variant="body2">{startCase(subTask.taskType)}</Typography>
+                </Tooltip>
+                {subTask.details?.error?.originMessage && (
+                  <div className={classes.errMsg}>{subTask.details?.error?.originMessage}</div>
+                )}
               </div>
-              <Tooltip title={getNodeNames(subTask)} placement="top" arrow>
-                <Typography variant="body2">
-                  {startCase(subTask.taskType)}
-                </Typography>
-              </Tooltip>
-              {subTask.details?.error?.originMessage && (
-                <div className={classes.errMsg}>{subTask.details?.error?.originMessage}</div>
-              )}
-            </div>;
+            );
           })}
         </div>
       </Collapse>

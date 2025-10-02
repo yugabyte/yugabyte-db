@@ -278,9 +278,10 @@ class AsyncAlterTable : public AsyncTabletLeaderTask {
   uint32_t schema_version_;
   tserver::ChangeMetadataResponsePB resp_;
 
+  bool SendRequest(int attempt) override;
+
  private:
   void HandleResponse(int attempt) override;
-  bool SendRequest(int attempt) override;
   virtual void HandleInsertPackedSchema(tablet::ChangeMetadataRequestPB& req) { return; }
 
   TransactionId transaction_id_ = TransactionId::Nil();
@@ -323,6 +324,8 @@ class AsyncInsertPackedSchemaForXClusterTarget : public AsyncAlterTable {
 
  protected:
   void HandleInsertPackedSchema(tablet::ChangeMetadataRequestPB& req) override;
+
+  bool SendRequest(int attempt) override;
 
  private:
   SchemaPB packed_schema_;

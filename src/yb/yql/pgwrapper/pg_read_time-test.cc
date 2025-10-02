@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -37,6 +37,7 @@
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_bool(ysql_enable_async_writes);
+DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_string(ysql_pg_conf_csv);
 DECLARE_uint64(max_clock_skew_usec);
 
@@ -55,6 +56,9 @@ class PgReadTimeTest : public PgMiniTestBase {
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
+    // Disable auto analyze because it introduces flakiness to
+    // metric: METRIC_picked_read_time_on_docdb.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
 
     // TODO: Remove yb_lock_pk_single_rpc once it becomes the default.
     // yb_max_query_layer_retries is required for TestConflictRetriesOnDocdb

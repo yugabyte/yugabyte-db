@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 YugaByte, Inc. and Contributors
+ * Copyright 2019 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -84,8 +84,7 @@ public class ModifyBlackList extends UniverseTaskBase {
           && !CollectionUtils.isEmpty(taskParams().removeNodes)) {
         List<NodeDetails> modifiedRemoveNodes = new ArrayList<>(taskParams().removeNodes);
         for (NodeDetails node : taskParams().removeNodes) {
-          Optional<NodeInstance> nodeInstanceOp =
-              NodeInstance.maybeGetByName(node.getNodeName(), node.getNodeUuid());
+          Optional<NodeInstance> nodeInstanceOp = NodeInstance.maybeGet(node.getNodeUuid());
           if (nodeInstanceOp.isPresent()) {
             NodeInstance nodeInstance = nodeInstanceOp.get();
             if (nodeInstance.getState().equals(NodeInstance.State.DECOMMISSIONED)) {

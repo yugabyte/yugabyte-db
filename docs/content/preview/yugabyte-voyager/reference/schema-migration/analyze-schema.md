@@ -36,7 +36,7 @@ analyze-schema:
   output-format:
 ```
 
-|Format in which the report file is generated. One of `html`, `txt`, `json`, or `xml`. If not provided, reports are generated in both `json` and `html` formats by default. |
+|Format for the status report. One of `html`, `txt`, `json`, or `xml`. If not provided, reports are generated in both `json` and `html` formats by default. |
 | --target-db-version |
 
 ```yaml{.nocopy}
@@ -59,8 +59,17 @@ send-diagnostics:
 ```
 
 |Enable or disable sending [diagnostics](../../../reference/diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
+
+| -l, --log-level |
+
+```yaml {.nocopy}
+log-level:
+```
+
+| Log level for yb-voyager. <br>Accepted values: trace, debug, info, warn, error, fatal, panic <br>Default: info |
 | -h, --help | — |Command line help. |
 | -y, --yes | — |Answer yes to all prompts during the export schema operation. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| -c, --config-file | — | Path to a [configuration file](../../configuration-file). |
 
 {{</table>}}
 

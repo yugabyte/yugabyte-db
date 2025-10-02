@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
@@ -205,7 +205,6 @@ public class ResizeNode extends UpgradeTaskBase {
   public void run() {
     runUpgrade(
         () -> {
-          boolean deleteCapacityReservation = false;
           NodesToApply nodesToApply = calclulateNodesToApply();
 
           Universe universe = getUniverse();
@@ -217,7 +216,7 @@ public class ResizeNode extends UpgradeTaskBase {
           Map<UUID, UniverseDefinitionTaskParams.Cluster> newVersionsOfClusters =
               taskParams().getNewVersionsOfClusters(universe);
 
-          deleteCapacityReservation =
+          boolean deleteCapacityReservation =
               createCapacityReservationsIfNeeded(
                   nodesToApply.instanceChangingNodes,
                   CapacityReservationUtil.OperationType.RESIZE,
@@ -295,7 +294,7 @@ public class ResizeNode extends UpgradeTaskBase {
                 .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ChangeInstanceType);
           }
           if (deleteCapacityReservation) {
-            createDeleteReservationTask();
+            createDeleteCapacityReservationTask();
           }
           // Need to run gflag upgrades for the nodes that weren't updated.
           if (flagsProvided) {

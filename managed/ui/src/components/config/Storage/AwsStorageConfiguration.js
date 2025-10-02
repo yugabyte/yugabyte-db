@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 import { Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
@@ -67,6 +67,7 @@ class AwsStorageConfiguration extends Component {
       iamInstanceToggle,
       iamRoleEnabled,
       enablePathStyleAccess,
+      enableSigningRegion,
       enableS3BackupProxy
     } = this.props;
     return (
@@ -204,6 +205,27 @@ class AwsStorageConfiguration extends Component {
               />
             </Col>
           </Row>
+          {enableSigningRegion && (
+            <Row className="config-provider-row">
+              <Col lg={2}>
+                <div className="form-item-custom-label">Signing Region</div>
+              </Col>
+              <Col lg={9}>
+                <Field
+                  name="SIGNING_REGION"
+                  placeHolder="us-east-1"
+                  component={YBTextInputWithLabel}
+                  isReadOnly={this.disableInputFields(isEdited, 'SIGNING_REGION')}
+                />
+              </Col>
+              <Col lg={1} className="config-zone-tooltip">
+                <YBInfoTip
+                  title="Signing Region"
+                  content="Used for cases when YBA cannot internally determine the bucket region"
+                />
+              </Col>
+            </Row>
+          )}
           {enablePathStyleAccess && (
             <Row className="config-provider-row">
               <Col lg={2}>

@@ -121,7 +121,7 @@
 
 [[redirects]]
   from = "/drivers-orms/"
-  to = "/preview/drivers-orms/"
+  to = "/preview/develop/drivers-orms/"
 
 [[redirects]]
   from = "/explore/tunable-reads/"
@@ -326,7 +326,7 @@
 
 [[redirects]]
   from = "/preview/develop/client-drivers/*"
-  to = "/preview/drivers-orms/:splat"
+  to = "/preview/develop/drivers-orms/:splat"
 
 [[redirects]]
   from = "/preview/explore/cloud-native/"
@@ -490,7 +490,7 @@
 
 [[redirects]]
   from = "/preview/reference/drivers/yugabytedb-jdbc-driver/"
-  to = "/preview/drivers-orms/java/yugabyte-jdbc-reference/"
+  to = "/preview/develop/drivers-orms/java/yugabyte-jdbc-reference/"
 
 [[redirects]]
   from = "/preview/releases/release-notes/preview-release/"
@@ -590,15 +590,11 @@
 
 [[redirects]]
   from = "/quick-start/run-sample-apps/"
-  to = "/preview/tutorials/"
+  to = "/preview/develop/tutorials/"
 
 [[redirects]]
-  from = "/preview/develop/realworld-apps/*"
-  to = "/preview/tutorials/"
-
-[[redirects]]
-  from = "/stable/develop/realworld-apps/*"
-  to = "/preview/tutorials/"
+  from = "/:version/develop/realworld-apps/*"
+  to = "/preview/develop/tutorials/"
 
 [[redirects]]
   from = "/quick-start/test-redis/"
@@ -645,12 +641,12 @@
 
 [[redirects]]
   from = "/:version/drivers-orms/*"
-  to = "/preview/drivers-orms/:splat"
+  to = "/preview/develop/drivers-orms/:splat"
   force = true
 
 [[redirects]]
   from = "/v2.20/reference/drivers/*"
-  to = "/preview/drivers-orms/"
+  to = "/preview/develop/drivers-orms/"
   force = true
 
 # Redirect for YugabyteDB Voyager
@@ -699,6 +695,11 @@
 #  from = "/:version/yugabyte-cloud/cloud-quickstart/"
 #  to = "/preview/yugabyte-cloud/cloud-quickstart/"
 #  force = true
+
+[[redirects]]
+  from = "/preview/yugabyte-cloud/managed-automation/managed-cli/managed-cli-reference/*"
+  to = "/preview/yugabyte-cloud/managed-automation/managed-cli"
+  force = true
 
 [[redirects]]
   from = "/:version/yugabyte-cloud/cloud-quickstart/qs-add/"
@@ -792,55 +793,55 @@
 
 [[redirects]]
   from = "/preview/develop/build-apps/java/ysql-hibernate/"
-  to = "/preview/drivers-orms/orms/java/ysql-hibernate/"
+  to = "/preview/develop/drivers-orms/orms/java/ysql-hibernate/"
   force = true
 [[redirects]]
   from = "/preview/develop/build-apps/java/ysql-ebean/"
-  to = "/preview/drivers-orms/orms/java/ysql-ebean/"
+  to = "/preview/develop/drivers-orms/orms/java/ysql-ebean/"
   force = true
 [[redirects]]
   from = "/preview/develop/build-apps/java/ysql-spring-data/"
-  to = "/preview/drivers-orms/orms/java/ysql-spring-data/"
+  to = "/preview/develop/drivers-orms/orms/java/ysql-spring-data/"
   force = true
 [[redirects]]
   from = "/preview/develop/build-apps/go/ysql-pg/"
-  to = "/preview/drivers-orms/go/pg/"
+  to = "/preview/develop/drivers-orms/go/pg/"
   force = true
 [[redirects]]
   from = "/preview/develop/build-apps/go/ysql-gorm/"
-  to = "/preview/drivers-orms/orms/go/ysql-gorm/"
+  to = "/preview/develop/drivers-orms/orms/go/ysql-gorm/"
   force = true
 [[redirects]]
   from = "/preview/develop/build-apps/python/ysql-sqlalchemy/"
-  to = "/preview/drivers-orms/orms/python/ysql-sqlalchemy/"
+  to = "/preview/develop/drivers-orms/orms/python/ysql-sqlalchemy/"
   force = true
 [[redirects]]
   from = "/preview/develop/build-apps/python/ysql-django/"
-  to = "/preview/drivers-orms/orms/python/ysql-django/"
+  to = "/preview/develop/drivers-orms/orms/python/ysql-django/"
   force = true
 [[redirects]]
   from = "/preview/develop/build-apps/python/ysql-aiopg/"
-  to = "/preview/drivers-orms/python/aiopg/"
+  to = "/preview/develop/drivers-orms/python/aiopg/"
   force = true
 [[redirects]]
   from = "/preview/develop/build-apps/nodejs/ysql-sequelize/"
-  to = "/preview/drivers-orms/orms/nodejs/ysql-sequelize/"
+  to = "/preview/develop/drivers-orms/orms/nodejs/ysql-sequelize/"
   force = true
 [[redirects]]
   from = "/preview/develop/build-apps/nodejs/ysql-prisma/"
-  to = "/preview/drivers-orms/orms/nodejs/ysql-prisma/"
+  to = "/preview/develop/drivers-orms/orms/nodejs/ysql-prisma/"
   force = true
 [[redirects]]
   from = "/preview/develop/build-apps/csharp/ysql-entity-framework/"
-  to = "/preview/drivers-orms/orms/csharp/ysql-entity-framework/"
+  to = "/preview/develop/drivers-orms/orms/csharp/ysql-entity-framework/"
   force = true
 [[redirects]]
   from = "/preview/develop/build-apps/csharp/ysql-dapper/"
-  to = "/preview/drivers-orms/orms/csharp/ysql-dapper/"
+  to = "/preview/develop/drivers-orms/orms/csharp/ysql-dapper/"
   force = true
 [[redirects]]
   from = "/preview/develop/build-apps/rust/ysql-diesel/"
-  to = "/preview/drivers-orms/orms/rust/ysql-diesel/"
+  to = "/preview/develop/drivers-orms/orms/rust/ysql-diesel/"
   force = true
 [[redirects]]
   from = "/preview/develop/build-apps/java/ysql-sdyb/"
@@ -851,59 +852,59 @@
 
 [[redirects]]
   from = "/preview/develop/build-apps/*"
-  to = "/preview/tutorials/build-apps/:splat"
+  to = "/preview/develop/tutorials/build-apps/:splat"
 
 [[redirects]]
   from = "/preview/quick-start/build-apps/*"
-  to = "/preview/tutorials/build-apps/"
+  to = "/preview/develop/tutorials/build-apps/"
 
 [[redirects]]
   from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/"
-  to = "/preview/tutorials/build-apps/"
+  to = "/preview/develop/tutorials/build-apps/"
 
 [[redirects]]
   from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-add-ip/"
-  to = "/preview/tutorials/build-apps/cloud-add-ip/"
+  to = "/preview/develop/tutorials/build-apps/cloud-add-ip/"
   force = true
 [[redirects]]
   from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-c/*"
-  to = "/preview/tutorials/build-apps/c/cloud-ysql-c/"
+  to = "/preview/develop/tutorials/build-apps/c/cloud-ysql-c/"
   force = true
 [[redirects]]
   from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-csharp/*"
-  to = "/preview/tutorials/build-apps/csharp/cloud-ysql-csharp/"
+  to = "/preview/develop/tutorials/build-apps/csharp/cloud-ysql-csharp/"
   force = true
 [[redirects]]
   from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-cpp/*"
-  to = "/preview/tutorials/build-apps/cpp/cloud-ysql-cpp/"
+  to = "/preview/develop/tutorials/build-apps/cpp/cloud-ysql-cpp/"
   force = true
 [[redirects]]
   from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-go/*"
-  to = "/preview/tutorials/build-apps/go/cloud-ysql-go/"
+  to = "/preview/develop/tutorials/build-apps/go/cloud-ysql-go/"
   force = true
 [[redirects]]
   from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-yb-jdbc/*"
-  to = "/preview/tutorials/build-apps/java/cloud-ysql-jdbc/"
+  to = "/preview/develop/tutorials/build-apps/java/cloud-ysql-jdbc/"
   force = true
 [[redirects]]
   from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-node/*"
-  to = "/preview/tutorials/build-apps/nodejs/cloud-ysql-node/"
+  to = "/preview/develop/tutorials/build-apps/nodejs/cloud-ysql-node/"
   force = true
 [[redirects]]
   from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-php/*"
-  to = "/preview/tutorials/build-apps/php/cloud-ysql-php/"
+  to = "/preview/develop/tutorials/build-apps/php/cloud-ysql-php/"
   force = true
 [[redirects]]
   from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-python/*"
-  to = "/preview/tutorials/build-apps/python/cloud-ysql-python/"
+  to = "/preview/develop/tutorials/build-apps/python/cloud-ysql-python/"
   force = true
 [[redirects]]
   from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-ruby/*"
-  to = "/preview/tutorials/build-apps/ruby/cloud-ysql-ruby/"
+  to = "/preview/develop/tutorials/build-apps/ruby/cloud-ysql-ruby/"
   force = true
 [[redirects]]
   from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-rust/*"
-  to = "/preview/tutorials/build-apps/rust/cloud-ysql-rust/"
+  to = "/preview/develop/tutorials/build-apps/rust/cloud-ysql-rust/"
   force = true
 
 # Manual import was in migrate, now in manage
@@ -981,13 +982,13 @@
 # Moving Drivers from reference to Develop
 [[redirects]]
   from = "/preview/reference/drivers/"
-  to = "/preview/drivers-orms/"
+  to = "/preview/develop/drivers-orms/"
   force = true
 
 # CDC tutorials was in explore, now in Tutorials
 [[redirects]]
   from = "/preview/explore/change-data-capture/cdc-tutorials/*"
-  to = "/preview/tutorials/cdc-tutorials/:splat"
+  to = "/preview/develop/tutorials/cdc-tutorials/:splat"
   force = true
 
 # CDC was in explore, develop, now in Additional features
@@ -1037,12 +1038,12 @@
 
 [[redirects]]
   from = "/:version/integrations/smart-driver/"
-  to = "/preview/drivers-orms/smart-drivers/"
+  to = "/preview/develop/drivers-orms/smart-drivers/"
   force = true
 
 [[redirects]]
   from = "/:version/integrations/jdbc-driver/"
-  to = "/preview/drivers-orms/java/yugabyte-jdbc-reference/"
+  to = "/preview/develop/drivers-orms/java/yugabyte-jdbc-reference/"
   force = true
 
 [[redirects]]
@@ -1068,7 +1069,7 @@
 
 [[redirects]]
   from = "/:version/tutorials/*"
-  to = "/preview/tutorials/:splat"
+  to = "/preview/develop/tutorials/:splat"
   force = true
 
 [[redirects]]

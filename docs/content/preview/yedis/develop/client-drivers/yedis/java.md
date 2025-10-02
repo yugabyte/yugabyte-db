@@ -41,7 +41,7 @@ Create a Maven build file `pom.xml` and add the following content into it.
 
 ```xml
 <?xml version="1.0"?>
-<!-- Copyright (c) Yugabyte, Inc. -->
+<!-- Copyright (c) YugabyteDB, Inc. -->
 <project
   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd"
   xmlns="http://maven.apache.org/POM/4.0.0"

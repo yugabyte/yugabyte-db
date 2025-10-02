@@ -547,7 +547,7 @@ class PgApiImpl {
   Status StartOperationsBuffering();
   Status StopOperationsBuffering();
   void ResetOperationsBuffering();
-  Status FlushBufferedOperations(const YbcFlushDebugContext& context);
+  Status FlushBufferedOperations(const YbcFlushDebugContext& debug_context);
   Status AdjustOperationsBuffering(int multiple = 1);
 
   //------------------------------------------------------------------------------------------------
@@ -862,7 +862,7 @@ class PgApiImpl {
   Result<tserver::PgYCQLStatementStatsResponsePB> YCQLStatementStats();
   Result<tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory();
 
-  Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata();
+  Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata(bool local_only);
 
   Result<tserver::PgServersMetricsResponsePB> ServersMetrics();
 

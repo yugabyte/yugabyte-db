@@ -680,6 +680,7 @@ static const struct config_enum_entry yb_cost_model_options[] = {
 	{"legacy_stats_mode", YB_COST_MODEL_LEGACY_STATS, false},
 	{"legacy_bnl_mode", YB_COST_MODEL_LEGACY_BNL, false},
 	{"legacy_stats_bnl_mode", YB_COST_MODEL_LEGACY_STATS_BNL, false},
+	{"legacy_ignore_stats_bnl_mode", YB_COST_MODEL_LEGACY_IGNORE_STATS_BNL, false},
 	{"true", YB_COST_MODEL_ON, true},
 	{"false", YB_COST_MODEL_OFF, true},
 	{"yes", YB_COST_MODEL_ON, true},
@@ -3573,6 +3574,39 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, assign_yb_enable_pg_stat_statements_rpc_stats, NULL
 	},
 
+	{
+		{"yb_ignore_read_time_in_walsender", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("When set, walsender will fetch the publication as of current time if "
+						 "it encounters any failures while reading the catalog tables as of yb_read_time"),
+			gettext_noop("This GUC should be set carefully and only till the time "
+						 "the process of upgrading logical replication streams is "
+						 "complete (i.e till the yb_restart_time of all the streams "
+						 "crosses the time of upgrade completion). Moreover this GUC "
+						 "should be set only after ensuring that no more DDLs "
+						 "(including ALTER PUBLICATION) will be encountered by the "
+						 "walsender"),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_ignore_read_time_in_walsender,
+		false,
+		NULL, NULL, NULL
+	},
+
+
+
+	{
+		{"yb_make_all_ddl_statements_incrementing", PGC_SIGHUP, CUSTOM_OPTIONS,
+			gettext_noop("When set, all DDL statements will cause the "
+						 "catalog version to increment. This mainly affects "
+						 "CREATE commands such as CREATE TABLE, CREATE VIEW, "
+						 "and CREATE SEQUENCE."),
+			NULL
+		},
+		&yb_make_all_ddl_statements_incrementing,
+		false,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL
@@ -5536,6 +5570,15 @@ static struct config_int ConfigureNamesInt[] =
 		65535, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
+		{
+		{"yb_test_reset_retry_counts", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Restricts the number of retries for transaction conflicts. For testing purposes."),
+			NULL
+		},
+		&yb_test_reset_retry_counts,
+		-1, -1, INT_MAX,
+		NULL, NULL, NULL
+	},
 
 	/* End-of-list marker */
 	{
@@ -7166,11 +7209,7 @@ static struct config_enum ConfigureNamesEnum[] =
 			NULL
 		},
 		&Password_encryption,
-		/*
-		 * YB_TODO: Change encryption method back to 'scram-sha-256' from 'md5'.
-		 * Currently YSQL Connection Manager times out when using scram passwords for unknown reasons.
-		 */
-		PASSWORD_TYPE_MD5, password_encryption_options,
+		PASSWORD_TYPE_SCRAM_SHA_256, password_encryption_options,
 		NULL, NULL, NULL
 	},
 
@@ -7342,6 +7381,7 @@ static const char *const YbDbAdminVariables[] = {
 	"yb_binary_restore",
 	"yb_speculatively_execute_pl_statements",
 	"yb_whitelist_extra_statements_for_pl_speculative_execution",
+	"yb_make_all_ddl_statements_incrementing",
 };
 
 
@@ -16000,6 +16040,11 @@ assign_yb_enable_cbo(int new_value, void *extra)
 		case YB_COST_MODEL_LEGACY_STATS_BNL:
 			yb_enable_optimizer_statistics = true;
 			yb_legacy_bnl_cost = true;
+			break;
+
+		case YB_COST_MODEL_LEGACY_IGNORE_STATS_BNL:
+			yb_legacy_bnl_cost = true;
+			yb_ignore_stats = true;
 			break;
 	}
 }

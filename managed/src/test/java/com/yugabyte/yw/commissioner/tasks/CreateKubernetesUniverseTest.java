@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks;
 
@@ -89,7 +89,6 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
 
   @Before
   public void setUp() {
-    super.setUp();
     when(mockOperatorStatusUpdaterFactory.create()).thenReturn(mockOperatorStatusUpdater);
     RuntimeConfigEntry.upsertGlobal("yb.kubernetes.operator.wait_for_gflag_sync_sec", "0");
   }

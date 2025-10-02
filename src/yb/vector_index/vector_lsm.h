@@ -26,8 +26,9 @@
 #include "yb/util/env.h"
 #include "yb/util/kv_util.h"
 #include "yb/util/locks.h"
-
+#include "yb/util/shutdown_controller.h"
 #include "yb/util/status_callback.h"
+
 #include "yb/vector_index/vector_index_if.h"
 
 namespace yb::vector_index {
@@ -68,7 +69,7 @@ template<IndexableVectorType Vector,
          ValidDistanceResultType DistanceResult>
 struct VectorLSMOptions {
   using VectorIndexFactory = vector_index::VectorIndexFactory<Vector, DistanceResult>;
-  using MergeFilterFactory = std::function<VectorLSMMergeFilterPtr()>;
+  using MergeFilterFactory = std::function<Result<VectorLSMMergeFilterPtr>()>;
   using FrontiersFactory   = std::function<rocksdb::UserFrontiersPtr()>;
 
   std::string log_prefix;
@@ -283,7 +284,7 @@ class VectorLSM {
   bool writing_manifest_ GUARDED_BY(mutex_) = false;
   std::condition_variable_any writing_manifest_done_cv_;
 
-  bool stopping_ GUARDED_BY(mutex_) = false;
+  ShutdownController shutdown_controller_;
 
   // The map contains only chunks being saved, i.e. chunks in kInMemory and kOnDisk states -- this
   // invariant must be kept. The value of order_no is used as key in this map.

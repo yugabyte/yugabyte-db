@@ -1,5 +1,5 @@
 """
-Copyright (c) YugaByte, Inc.
+Copyright (c) YugabyteDB, Inc.
 
 This module provides utility and helper functions to work with a remote server through SSH.
 """

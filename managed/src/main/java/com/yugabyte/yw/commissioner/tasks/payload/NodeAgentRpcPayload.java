@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.payload;
 
@@ -477,6 +477,14 @@ public class NodeAgentRpcPayload {
 
     installOtelCollectorInputBuilder.setRemoteTmp(customTmpDirectory);
     installOtelCollectorInputBuilder.setYbHomeDir(provider.getYbHome());
+
+    // Set memory limit for OTel collector
+    int otelColMaxMemory =
+        confGetter.getConfForScope(universe, UniverseConfKeys.otelCollectorMaxMemory);
+    if (otelColMaxMemory > 0) {
+      installOtelCollectorInputBuilder.setOtelColMaxMemory(otelColMaxMemory);
+    }
+
     String otelCollectorPackagePath =
         getThirdpartyPackagePath()
             + "/"

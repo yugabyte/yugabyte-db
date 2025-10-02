@@ -1104,7 +1104,7 @@ pg_plan_queries(List *querytrees, const char *query_string, int cursorOptions,
 void
 YbCollectCommitStats(DestReceiver *receiver, int16 *format)
 {
-	Portal yb_portal;
+	Portal		yb_portal;
 
 	/*
 	 * Printing commit stats may involve catalog lookups. Start a no-op txn
@@ -1116,7 +1116,7 @@ YbCollectCommitStats(DestReceiver *receiver, int16 *format)
 	 * Create a portal to publish the stats. The portal cannot be "started" as
 	 * no query will be run in it.
 	 */
-	yb_portal = CreatePortal("YB_COMMIT_STATS", false /* allowDup */, false /* dupSilent */ );
+	yb_portal = CreatePortal("YB_COMMIT_STATS", false /* allowDup */ , false /* dupSilent */ );
 	SetRemoteDestReceiverParams(receiver, yb_portal);
 	PortalSetResultFormat(yb_portal, 1, format);
 	YbExplainCommitStats(receiver);
@@ -4533,7 +4533,7 @@ YBRefreshCacheWrapperImpl(uint64_t catalog_master_version, bool is_retry,
 		{
 			YbNumCatalogCacheDeltaRefreshes++;
 			elog(yb_debug_log_catcache_events ? LOG : DEBUG1,
-				"full cache refresh skipped after applying %d message lists, "
+				 "full cache refresh skipped after applying %d message lists, "
 				 "updating local catalog version from %" PRIu64 " to %" PRIu64
 				 " for database %u",
 				 message_lists.num_lists,
@@ -4782,8 +4782,9 @@ YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 					 errmsg("%s", edata->message),
 					 edata->detail ? errdetail("%s", edata->detail) : 0,
 					 edata->hint ? errhint("%s", edata->hint) : 0,
-					 errcontext("Catalog Version Mismatch: A DDL occurred "
-								"while processing this query. Try again.")));
+					 !(*YBCGetGFlags()->TEST_hide_details_for_pg_regress) ?
+					 (errcontext("Catalog Version Mismatch: A DDL occurred "
+								 "while processing this query. Try again.")) : 0));
 		}
 		else
 		{
@@ -5612,6 +5613,16 @@ yb_prepare_transaction_for_retry(int attempt, bool is_read_restart, bool stateme
 	}
 }
 
+static bool
+yb_is_retryable_error(YbTxnError kind)
+{
+	if (kind == YB_TXN_CONFLICT || kind == YB_TXN_RESTART_READ ||
+		kind == YB_TXN_DEADLOCK || kind == YB_TXN_ABORTED)
+		return true;
+
+	return false;
+}
+
 static void
 yb_perform_retry_on_error(int attempt, ErrorData *edata,
 						  const char *portal_name)
@@ -5619,16 +5630,15 @@ yb_perform_retry_on_error(int attempt, ErrorData *edata,
 	if (yb_debug_log_internal_restarts)
 		ereport(LOG, (errmsg("performing query layer retry, attempt number %d", attempt)));
 
-	const bool	is_read_restart = edata->sqlerrcode == ERRCODE_YB_RESTART_READ;
-	const bool	is_conflict_error = edata->sqlerrcode == ERRCODE_YB_TXN_CONFLICT;
-	const bool	is_deadlock_error = edata->sqlerrcode == ERRCODE_YB_DEADLOCK;
-	const bool	is_aborted_error = edata->sqlerrcode == ERRCODE_YB_TXN_ABORTED;
+	YbTxnError txn_error_kind = YbSqlErrorCodeToTransactionError(edata->sqlerrcode);
 
-	if (!(is_read_restart || is_conflict_error || is_deadlock_error || is_aborted_error))
+	if (!yb_is_retryable_error(txn_error_kind))
 	{
 		Assert(false);
 		elog(ERROR, "unexpected txn error code: %d", edata->sqlerrcode);
 	}
+
+	YbIncrementRetryCount(txn_error_kind);
 
 	/*
 	 * If in parallel mode, destroy parallel contexts.
@@ -5653,8 +5663,8 @@ yb_perform_retry_on_error(int attempt, ErrorData *edata,
 
 	PG_TRY();
 	{
-		yb_prepare_transaction_for_retry(attempt, is_read_restart,
-										 is_conflict_error || is_read_restart /* statement_retry_possible */ );
+		yb_prepare_transaction_for_retry(attempt, txn_error_kind == YB_TXN_RESTART_READ,
+										 txn_error_kind == YB_TXN_CONFLICT || txn_error_kind == YB_TXN_RESTART_READ /* statement_retry_possible */ );
 	}
 	PG_CATCH();
 	{
@@ -5756,6 +5766,13 @@ yb_exec_query_wrapper(MemoryContext exec_context,
 {
 	bool		retry = true;
 
+	/*
+	 * Resets the retry counter after each query execution.
+	 * This is done to avoid the retry counts from being carried over to the next query.
+	 * The retry counts are accumulated per query within pg_stat_statements.
+	 */
+	YbResetRetryCounts();
+
 	for (int attempt = 0; retry; ++attempt)
 	{
 		yb_exec_query_wrapper_one_attempt(exec_context, retry_data, functor,
@@ -5777,7 +5794,8 @@ static void
 yb_exec_simple_query(const char *query_string, MemoryContext exec_context)
 {
 	YBQueryRetryData retry_data = {
-		.portal_name = "", /* unnamed portal is used in simple query protocol */
+		.portal_name = "",		/* unnamed portal is used in simple query
+								 * protocol */
 		.query_string = query_string,
 		.command_tag = YbParseCommandTag(query_string),
 	};
@@ -6050,7 +6068,7 @@ PostgresMain(const char *dbname, const char *username)
 				 username, InvalidOid,	/* role to connect as */
 				 !am_walsender, /* honor session_preload_libraries? */
 				 false,			/* don't ignore datallowconn */
-				 NULL			/* no out_dbname */ );
+				 NULL);			/* no out_dbname */
 
 	/*
 	 * If the PostmasterContext is still around, recycle the space; we don't

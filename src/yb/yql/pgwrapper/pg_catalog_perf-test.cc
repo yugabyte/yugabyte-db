@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -54,6 +54,7 @@ DECLARE_bool(ysql_minimal_catalog_caches_preload);
 DECLARE_bool(ysql_catalog_preload_additional_tables);
 DECLARE_bool(ysql_use_relcache_file);
 DECLARE_bool(ysql_yb_enable_invalidation_messages);
+DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_string(ysql_catalog_preload_additional_table_list);
 DECLARE_uint64(TEST_pg_response_cache_catalog_read_time_usec);
 DECLARE_uint64(TEST_committed_history_cutoff_initial_value_usec);
@@ -158,6 +159,9 @@ class PgCatalogPerfTestBase : public PgMiniTestBase {
     // cache and the test will timeout if we wait for response cache counters to become
     // greater than 0.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_invalidation_messages) = false;
+    // Auto-Analyze runs ANALYZEs and increments catalog version, causing more response cache
+    // queires. Disable auto-analyze for more stable test results.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
     PgMiniTestBase::SetUp();
     metrics_.emplace(*cluster_->mini_master()->master()->metric_entity(),
                      *cluster_->mini_tablet_server(0)->server()->metric_entity());

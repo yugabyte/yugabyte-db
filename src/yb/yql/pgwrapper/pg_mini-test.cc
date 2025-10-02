@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -95,6 +95,8 @@ DECLARE_bool(use_bootstrap_intent_ht_filter);
 DECLARE_bool(ysql_allow_duplicating_repeatable_read_queries);
 DECLARE_bool(ysql_yb_enable_ash);
 DECLARE_bool(ysql_yb_enable_replica_identity);
+DECLARE_bool(ysql_enable_auto_analyze);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 
 DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
@@ -561,6 +563,8 @@ class PgMiniTestTracing : public PgMiniTest, public ::testing::WithParamInterfac
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tracing) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_tracing_level) = 1;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_use_shared_memory) = GetParam();
+    // Disable auto analyze because it introduces flakiness for query plans and metrics.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
     PgMiniTest::SetUp();
   }
 };
@@ -2912,6 +2916,10 @@ class PgRecursiveAbortTest : public PgMiniTestSingleNode {
     PgMiniTest::SetUp();
   }
 
+  bool IsTransactionalDdlEnabled() const {
+    return ANNOTATE_UNPROTECTED_READ(FLAGS_ysql_yb_ddl_transaction_block_enabled);
+  }
+
   template <class F>
   tserver::PgClientServiceMockImpl::Handle MockFinishTransaction(const F& mock) {
     auto* client = cluster_->mini_tablet_server(0)->server()->TEST_GetPgClientServiceMock();
@@ -2929,8 +2937,21 @@ TEST_F(PgRecursiveAbortTest, AbortOnTserverFailure) {
   ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1)"));
   auto handle = MockFinishTransaction(MockAbortFailure);
   auto status = conn.Execute("CREATE TABLE t2 (k INT)");
+  // With transactional DDL enabled, "CREATE TABLE t2" won't auto-commit. So we need to explicitly
+  // commit to trigger our expected failure.
+  // This also means that the connection `conn` remains as `CONNECTION_OK` as the transaction gets
+  // aborted due to the failure during COMMIT.
+  if (IsTransactionalDdlEnabled()) {
+    status = conn.Execute("COMMIT");
+    ASSERT_EQ(conn.ConnStatus(), CONNECTION_OK);
+  } else {
+    ASSERT_EQ(conn.ConnStatus(), CONNECTION_BAD);
+  }
   ASSERT_TRUE(status.IsNetworkError());
-  ASSERT_EQ(conn.ConnStatus(), CONNECTION_BAD);
+
+  // Insert will fail since the table 't2' doesn't exist.
+  conn = ASSERT_RESULT(Connect());
+  ASSERT_NOK(conn.Execute("INSERT INTO t2 VALUES (1)"));
 }
 
 TEST_F(PgRecursiveAbortTest, MockAbortFailure) {
@@ -3001,6 +3022,94 @@ TEST_F_EX(PgMiniTest, OpenTableFailureDuringPerform, PgMiniTestSingleNode) {
     has_object_not_found_errors |= !res.ok();
   }
   ASSERT_TRUE(has_object_not_found_errors);
+}
+
+TEST_F(PgMiniTest, TabletMetadataCorrectnessWithHashPartitioning) {
+  auto pg_conn = ASSERT_RESULT(Connect());
+
+  // Create a hash-partitioned table with multiple tablets
+  ASSERT_OK(pg_conn.Execute(
+      "CREATE TABLE hash_test_table (id INT PRIMARY KEY, data TEXT) "
+      "SPLIT INTO 3 TABLETS"));
+
+  // Insert test data
+  const int test_key = 12345;
+  const std::string test_data = "test_data";
+  ASSERT_OK(pg_conn.ExecuteFormat(
+      "INSERT INTO hash_test_table (id, data) VALUES ($0, '$1')", test_key, test_data));
+
+  // Get the hash code of the primary key using yb_hash_code()
+  auto hash_code = ASSERT_RESULT(pg_conn.FetchRow<int32_t>(
+      yb::Format("SELECT yb_hash_code($0)", test_key)));
+  LOG(INFO) << "Hash code for key " << test_key << " is: " << hash_code;
+
+  // Find which tablet this hash falls into using yb_tablet_metadata
+  auto tablet_from_metadata = ASSERT_RESULT(pg_conn.FetchRow<std::string>(
+      yb::Format("SELECT tablet_id FROM yb_tablet_metadata "
+             "WHERE relname = 'hash_test_table' "
+             "AND $0 >= start_hash_code AND $0 < end_hash_code", hash_code)));
+  LOG(INFO) << "Tablet ID from yb_tablet_metadata: " << tablet_from_metadata;
+
+  // Verify using internal methods - get the actual tablet ID
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName("hash_test_table"));
+  auto tablet_peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+
+  std::string actual_tablet_id;
+  bool found_tablet = false;
+
+  for (const auto& peer : tablet_peers) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    auto partition = tablet->metadata()->partition();
+
+    // Check if this tablet contains our hash code
+    auto hash_bounds = dockv::PartitionSchema::GetHashPartitionBounds(*partition);
+    uint16_t start_hash = hash_bounds.first;
+    uint16_t end_hash = hash_bounds.second;
+
+    LOG(INFO) << "Tablet " << peer->tablet_id()
+              << " hash range: [" << start_hash << ", " << end_hash << ")";
+
+    // Check if our hash code falls in this tablet's range
+    if (static_cast<uint16_t>(hash_code) >= start_hash &&
+        static_cast<uint16_t>(hash_code) < end_hash) {
+      actual_tablet_id = peer->tablet_id();
+      found_tablet = true;
+      LOG(INFO) << "Found tablet containing hash " << hash_code
+                << ": " << actual_tablet_id;
+      break;
+    }
+  }
+
+  ASSERT_TRUE(found_tablet) << "Could not find tablet containing hash code " << hash_code;
+
+  // Verify that both methods return the same tablet ID
+  ASSERT_EQ(tablet_from_metadata, actual_tablet_id)
+      << "Tablet ID mismatch: yb_tablet_metadata returned " << tablet_from_metadata
+      << " but internal method found " << actual_tablet_id;
+
+  LOG(INFO) << "Test verified: yb_tablet_metadata correctly identifies tablet "
+            << actual_tablet_id << " for hash code " << hash_code;
+
+  // Additional verification: query the data using the tablet information
+  auto retrieved_data = ASSERT_RESULT(pg_conn.FetchRow<std::string>(
+      yb::Format("SELECT data FROM hash_test_table WHERE id = $0", test_key)));
+  ASSERT_EQ(retrieved_data, test_data);
+
+  LOG(INFO) << "Successfully retrieved data '" << retrieved_data
+            << "' from tablet " << actual_tablet_id;
+}
+
+TEST_F(PgMiniTest, TabletMetadataOidMatchesPgClass) {
+  auto pg_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(pg_conn.Execute(
+      "CREATE TABLE test_table (id INT PRIMARY KEY, name TEXT)"));
+  auto pg_class_oid = ASSERT_RESULT(pg_conn.FetchRow<pgwrapper::PGOid>(
+      "SELECT oid FROM pg_class WHERE relname = 'test_table'"));
+  auto tablet_metadata_oid = ASSERT_RESULT(pg_conn.FetchRow<pgwrapper::PGOid>(
+      "SELECT oid FROM yb_tablet_metadata WHERE relname = 'test_table' LIMIT 1;"));
+  ASSERT_EQ(pg_class_oid, tablet_metadata_oid)
+      << "OID mismatch: pg_class returned " << pg_class_oid
+      << " but yb_tablet_metadata returned " << tablet_metadata_oid;
 }
 
 }  // namespace yb::pgwrapper

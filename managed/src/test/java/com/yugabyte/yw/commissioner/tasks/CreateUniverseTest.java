@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks;
 
@@ -14,6 +14,8 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.google.common.collect.ImmutableList;
@@ -24,6 +26,7 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -48,6 +51,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
@@ -241,7 +245,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
   }
 
   @Test
-  public void testCreateUniverseWithCapacityReservationAzureSuccess() {
+  public void testCreateUniverseWithCRAzureSuccess() {
     RuntimeConfigEntry.upsertGlobal(
         ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
 
@@ -259,7 +263,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
       nodeDetails.cloudInfo.az = zone.getCode();
       nodeDetails.azUuid = zone.getUuid();
     }
-    String overridenInstanceType = "StandardV2";
+    String overridenInstanceType = "Standard_D8as_v4";
     UniverseDefinitionTaskParams.UserIntentOverrides userIntentOverrides =
         new UniverseDefinitionTaskParams.UserIntentOverrides();
     UniverseDefinitionTaskParams.AZOverrides azOverrides =
@@ -308,6 +312,98 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
             nodesByAZ.get(zone1.getUuid()),
             DoCapacityReservation.getCapacityReservationGroupName(universeUUID, region2.getCode()),
             nonZ1Nodes));
+  }
+
+  @Test
+  public void testCreateUniverseWithCRAzureFail() {
+    RuntimeConfigEntry.upsertGlobal(
+        ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
+    failsOnCapacityReservation = 1;
+
+    Region region1 = Region.create(azuProvider, "region-1", "region-1", "yb-image");
+    AvailabilityZone zone1 = AvailabilityZone.getOrCreate(region1, "zone-1", "zone-1", "subnet");
+    Universe universe = createUniverseForProvider("universe-test", azuProvider);
+    UniverseDefinitionTaskParams taskParams = getTaskParams(false, universe);
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Failure, taskInfo.getTaskState());
+
+    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.capacityReservationMaxRetries.getKey(), "2");
+
+    taskInfo = TaskInfo.getOrBadRequest(taskInfo.getUuid());
+    taskParams = Json.fromJson(taskInfo.getTaskParams(), UniverseDefinitionTaskParams.class);
+    taskParams.setPreviousTaskUUID(taskInfo.getUuid());
+    // Retry the task.
+    taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testCreateUniverseWithCRAzureUnsupportedTypeSuccess() {
+    RuntimeConfigEntry.upsertGlobal(
+        ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
+
+    Region region1 = Region.create(azuProvider, "region-1", "region-1", "yb-image");
+    AvailabilityZone zone1 = AvailabilityZone.getOrCreate(region1, "zone-1", "zone-1", "subnet");
+    Region region2 = Region.create(azuProvider, "region-2", "region-2", "yb-image");
+    AvailabilityZone zone2 = AvailabilityZone.getOrCreate(region2, "zone-2", "zone-2", "subnet");
+    AvailabilityZone zone3 = AvailabilityZone.getOrCreate(region2, "zone-3", "zone-3", "subnet");
+    Universe universe = createUniverseForProvider("universe-test", azuProvider);
+    List<AvailabilityZone> zones = Arrays.asList(zone1, zone2, zone3);
+    UniverseDefinitionTaskParams taskParams = getTaskParams(false, universe);
+    int i = 0;
+    for (NodeDetails nodeDetails : taskParams.nodeDetailsSet) {
+      AvailabilityZone zone = zones.get(i++ % zones.size());
+      nodeDetails.cloudInfo.az = zone.getCode();
+      nodeDetails.azUuid = zone.getUuid();
+    }
+    String overridenInstanceType = "Standard_D2"; // Unsupported type.
+    UniverseDefinitionTaskParams.UserIntentOverrides userIntentOverrides =
+        new UniverseDefinitionTaskParams.UserIntentOverrides();
+    UniverseDefinitionTaskParams.AZOverrides azOverrides =
+        new UniverseDefinitionTaskParams.AZOverrides();
+    azOverrides.setInstanceType(overridenInstanceType);
+    userIntentOverrides.setAzOverrides(new HashMap<>());
+    userIntentOverrides.getAzOverrides().put(zone2.getUuid(), azOverrides);
+    userIntentOverrides.getAzOverrides().put(zone3.getUuid(), azOverrides);
+    taskParams.getPrimaryCluster().userIntent.setUserIntentOverrides(userIntentOverrides);
+    UUID universeUUID = taskParams.getUniverseUUID();
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+    universe = Universe.getOrBadRequest(universeUUID);
+
+    Map<UUID, List<String>> nodesByAZ = new HashMap<>();
+    universe
+        .getNodes()
+        .forEach(
+            n -> {
+              nodesByAZ.computeIfAbsent(n.azUuid, x -> new ArrayList<>()).add(n.nodeName);
+            });
+    verifyCapacityReservationAZU(
+        universe.getUniverseUUID(),
+        region1,
+        Map.of(
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
+            Map.of("1", nodesByAZ.get(zone1.getUuid()))));
+
+    String region2Group =
+        DoCapacityReservation.getCapacityReservationGroupName(universeUUID, region2.getCode());
+    verify(azuResourceGroupApiClient, times(0))
+        .createCapacityReservation(
+            Mockito.eq(region2Group),
+            Mockito.eq(region2.getCode()),
+            Mockito.anyString(),
+            Mockito.anyString(),
+            Mockito.anyString(),
+            Mockito.anyInt(),
+            Mockito.anyMap());
+
+    verifyNodeInteractionsCapacityReservation(
+        39,
+        NodeManager.NodeCommandType.Create,
+        param -> ((AnsibleCreateServer.Params) param).capacityReservation,
+        Map.of(
+            DoCapacityReservation.getCapacityReservationGroupName(universeUUID, region1.getCode()),
+            nodesByAZ.get(zone1.getUuid())));
   }
 
   @Test
@@ -399,7 +495,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     AvailabilityZone zone4 = AvailabilityZone.getOrCreate(region2, "zone-4", "zone-4", "subnet");
 
     Universe universe = createUniverseForProvider("universe-test", azuProvider);
-    String rrInstanceType = "StandardV2";
+    String rrInstanceType = "Standard_D4as_v4";
 
     UniverseDefinitionTaskParams.UserIntent rrIntent =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.clone();

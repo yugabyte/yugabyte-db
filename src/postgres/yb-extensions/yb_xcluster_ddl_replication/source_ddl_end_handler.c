@@ -757,7 +757,9 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 		found_temp |= is_temporary_object;
 
 		if (command_tag == CMDTAG_CREATE_TABLE ||
-			command_tag == CMDTAG_CREATE_INDEX)
+			command_tag == CMDTAG_CREATE_INDEX ||
+			command_tag == CMDTAG_CREATE_TABLE_AS ||
+			command_tag == CMDTAG_SELECT_INTO)
 		{
 			should_replicate_ddl |=
 				ShouldReplicateNewRelation(obj_id, &new_rel_list, /* is_table_rewrite */ false);
@@ -862,15 +864,15 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 	{
 		if (found_temp)
 			ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				errmsg("unsupported mix of temporary and persisted objects in DDL command"),
-				errdetail("%s", kManualReplicationErrorMsg)));
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("unsupported mix of temporary and persisted objects in DDL command"),
+					 errdetail("%s", kManualReplicationErrorMsg)));
 
 		if (found_matview)
 			ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				errmsg("unsupported mix of materialized view and other DDL commands"),
-				errdetail("%s", kManualReplicationErrorMsg)));
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("unsupported mix of materialized view and other DDL commands"),
+					 errdetail("%s", kManualReplicationErrorMsg)));
 	}
 
 	ProcessNewRelationsList(state, &new_rel_list);
@@ -920,7 +922,7 @@ ProcessSourceEventTriggerTableRewrite()
 }
 
 bool
-ProcessSourceEventTriggerDroppedObjects(CommandTag	tag)
+ProcessSourceEventTriggerDroppedObjects(CommandTag tag)
 {
 	/*
 	 * Matview related DDLs are not replicated.

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 import { connect } from 'react-redux';
 import { BulkImport } from '../';

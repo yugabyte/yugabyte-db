@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -117,7 +117,8 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     bool write_transaction_metadata,
     CoarseTimePoint deadline,
     dockv::PartialRangeKeyIntents partial_range_key_intents,
-    SharedLockManager *lock_manager);
+    SharedLockManager *lock_manager,
+    dockv::SkipPrefixLocks skip_prefix_locks = dockv::SkipPrefixLocks::kFalse);
 
 // This constructs a DocWriteBatch using the given list of DocOperations, reading the previous
 // state of data from RocksDB when necessary.

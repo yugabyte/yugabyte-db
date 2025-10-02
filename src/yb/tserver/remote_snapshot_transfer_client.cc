@@ -110,11 +110,10 @@ Status RemoteSnapshotTransferClient::Start(
   auto* kv_store = resp.mutable_superblock()->mutable_kv_store();
   LOG_WITH_PREFIX(INFO) << "Snapshot files: " << yb::ToString(kv_store->snapshot_files());
 
+  // TODO: when we start using this, we should also pass in an uncompressed fetch data function
+  // so SST files are not re-compressed over the network.
   downloader_.Start(
-      [proxy = this->proxy_](
-          const FetchDataRequestPB& req, FetchDataResponsePB* resp,
-          rpc::RpcController* controller) {
-        return proxy->FetchData(req, resp, controller);},
+      FetchDataFunctionCreator(proxy_),
       resp.session_id(),
       MonoDelta::FromMilliseconds(resp.session_idle_timeout_millis()));
   LOG_WITH_PREFIX(INFO) << "Began remote snapshot transfer session " << session_id();

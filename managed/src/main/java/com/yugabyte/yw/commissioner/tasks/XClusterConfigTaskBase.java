@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 package com.yugabyte.yw.commissioner.tasks;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
@@ -156,10 +156,6 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
           XClusterTableConfig.Status.Bootstrapping);
 
   public static final List<XClusterNamespaceConfig.Status>
-      X_CLUSTER_NAMESPACE_CONFIG_RUNNING_STATUS_LIST =
-          ImmutableList.of(XClusterNamespaceConfig.Status.Running);
-
-  public static final List<XClusterNamespaceConfig.Status>
       X_CLUSTER_NAMESPACE_CONFIG_PENDING_STATUS_LIST =
           ImmutableList.of(
               XClusterNamespaceConfig.Status.Validated,
@@ -231,7 +227,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
         State.Failed, ImmutableList.of(TaskType.RestartDrConfig, TaskType.DeleteDrConfig));
   }
 
-  public static enum XClusterUniverseAction {
+  public enum XClusterUniverseAction {
     PAUSE,
     RESUME
   }
@@ -1027,175 +1023,6 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     xClusterConfig.updateReplicationSetupDone(
         tableIdsPartitionedByReplicationSetupDone.get(false), false /* replicationSetupDone */);
     return true;
-  }
-
-  /**
-   * It returns the list of table info from a universe for a set of table ids. Moreover, it ensures
-   * that all requested tables exist on the source and target universes, and they have the same
-   * type. Also, if the table type is YSQL and bootstrap is required, it ensures all the tables in a
-   * keyspace are selected because per-table backup/restore is not supported for YSQL.
-   *
-   * @param ybService The service to get a YB client from
-   * @param requestedTableIds The table ids to get the {@code TableInfo} for
-   * @param bootstrapParams The parameters used for bootstrapping
-   * @param sourceUniverse The universe to gather the {@code TableInfo}s from
-   * @param targetUniverse The universe to check that matching tables exist on
-   * @param currentReplicationGroupName The replication group name of the current xCluster config if
-   *     any
-   * @return A list of {@link MasterDdlOuterClass.ListTablesResponsePB.TableInfo} containing table
-   *     info of the tables whose id is specified at {@code requestedTableIds}
-   */
-  // Todo: This method is no longer use in the code base. It is only used in the utests and should
-  //  be removed.
-  @Deprecated
-  public static Pair<List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>, Set<String>>
-      getRequestedTableInfoListAndVerify(
-          YBClientService ybService,
-          Set<String> requestedTableIds,
-          @Nullable BootstrapParams bootstrapParams,
-          Universe sourceUniverse,
-          Universe targetUniverse,
-          @Nullable String currentReplicationGroupName,
-          XClusterConfig.ConfigType configType) {
-    log.debug(
-        "requestedTableIds are {} and BootstrapParams are {}", requestedTableIds, bootstrapParams);
-    // Ensure at least one table exists to verify.
-    if (requestedTableIds.isEmpty()) {
-      throw new IllegalArgumentException("requestedTableIds cannot be empty");
-    }
-    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
-        getTableInfoList(ybService, sourceUniverse);
-
-    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
-        filterTableInfoListByTableIds(sourceTableInfoList, requestedTableIds);
-
-    CommonTypes.TableType tableType = getTableType(requestedTableInfoList);
-
-    // Txn xCluster is supported only for YSQL tables.
-    if (configType.equals(ConfigType.Txn) && !tableType.equals(TableType.PGSQL_TABLE_TYPE)) {
-      throw new IllegalArgumentException(
-          String.format(
-              "Transaction xCluster is supported only for YSQL tables. Table type %s is selected",
-              tableType));
-    }
-
-    // XCluster replication can be set up only for YCQL and YSQL tables.
-    if (!tableType.equals(CommonTypes.TableType.YQL_TABLE_TYPE)
-        && !tableType.equals(CommonTypes.TableType.PGSQL_TABLE_TYPE)) {
-      throw new IllegalArgumentException(
-          String.format(
-              "XCluster replication can be set up only for YCQL and YSQL tables: "
-                  + "type %s requested",
-              tableType));
-    }
-
-    // Make sure all the tables on the source universe have a corresponding table on the target
-    // universe.
-    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTablesInfoList =
-        getTableInfoList(ybService, targetUniverse);
-    Map<String, String> sourceTableIdTargetTableIdMap =
-        getSourceTableIdTargetTableIdMap(requestedTableInfoList, targetTablesInfoList);
-
-    // If some tables do not exist on the target universe, bootstrapping is required.
-    Set<String> sourceTableIdsWithNoTableOnTargetUniverse =
-        sourceTableIdTargetTableIdMap.entrySet().stream()
-            .filter(entry -> Objects.isNull(entry.getValue()))
-            .map(Entry::getKey)
-            .collect(Collectors.toSet());
-    if (!sourceTableIdsWithNoTableOnTargetUniverse.isEmpty()) {
-      if (Objects.isNull(bootstrapParams)) {
-        throw new IllegalArgumentException(
-            String.format(
-                "Table ids %s do not have corresponding tables on the target universe and "
-                    + "they must be bootstrapped but bootstrapParams is null",
-                sourceTableIdsWithNoTableOnTargetUniverse));
-      }
-      if (Objects.isNull(bootstrapParams.tables)
-          || !bootstrapParams.tables.containsAll(sourceTableIdsWithNoTableOnTargetUniverse)) {
-        throw new IllegalArgumentException(
-            String.format(
-                "Table ids %s do not have corresponding tables on the target universe and "
-                    + "they must be bootstrapped but the set of tables in bootstrapParams (%s) "
-                    + "does not contain all of them",
-                sourceTableIdsWithNoTableOnTargetUniverse, bootstrapParams.tables));
-      }
-    }
-
-    if (bootstrapParams != null && bootstrapParams.tables != null) {
-      // Ensure tables in bootstrapParams is a subset of requestedTableIds.
-      if (!bootstrapParams.allowBootstrap
-          && !requestedTableIds.containsAll(bootstrapParams.tables)) {
-        throw new IllegalArgumentException(
-            String.format(
-                "The set of tables in bootstrapParams (%s) is not a subset of "
-                    + "requestedTableIds (%s)",
-                bootstrapParams.tables, requestedTableIds));
-      }
-
-      // Bootstrapping must not be done for tables whose corresponding target table is in
-      // replication. It also includes tables that are in reverse replication between the same
-      // universes.
-      Map<String, String> sourceTableIdTargetTableIdWithBootstrapMap =
-          sourceTableIdTargetTableIdMap.entrySet().stream()
-              .filter(entry -> bootstrapParams.tables.contains(entry.getKey()))
-              .collect(
-                  HashMap::new,
-                  (map, entry) -> map.put(entry.getKey(), entry.getValue()),
-                  HashMap::putAll);
-
-      if (!bootstrapParams.allowBootstrap) {
-        bootstrapParams.tables =
-            getTableIdsWithoutTablesOnTargetInReplication(
-                ybService,
-                requestedTableInfoList,
-                sourceTableIdTargetTableIdWithBootstrapMap,
-                targetUniverse,
-                currentReplicationGroupName);
-      }
-
-      // If table type is YSQL and bootstrap is requested, all tables in that keyspace are selected.
-      if (tableType == CommonTypes.TableType.PGSQL_TABLE_TYPE) {
-        groupByNamespaceId(requestedTableInfoList)
-            .forEach(
-                (namespaceId, tablesInfoList) -> {
-                  Set<String> selectedTableIdsInNamespaceToBootstrap =
-                      getTableIds(tablesInfoList).stream()
-                          .filter(bootstrapParams.tables::contains)
-                          .collect(Collectors.toSet());
-                  if (!selectedTableIdsInNamespaceToBootstrap.isEmpty()) {
-                    Set<String> tableIdsInNamespace =
-                        sourceTableInfoList.stream()
-                            .filter(
-                                tableInfo ->
-                                    !tableInfo
-                                            .getRelationType()
-                                            .equals(RelationType.SYSTEM_TABLE_RELATION)
-                                        && tableInfo
-                                            .getNamespace()
-                                            .getId()
-                                            .toStringUtf8()
-                                            .equals(namespaceId))
-                            .map(tableInfo -> tableInfo.getId().toStringUtf8())
-                            .collect(Collectors.toSet());
-                    if (!bootstrapParams.allowBootstrap
-                        && tableIdsInNamespace.size()
-                            != selectedTableIdsInNamespaceToBootstrap.size()) {
-                      throw new IllegalArgumentException(
-                          String.format(
-                              "For YSQL tables, all the tables in a keyspace must be selected: "
-                                  + "selected: %s, tables in the keyspace: %s",
-                              selectedTableIdsInNamespaceToBootstrap, tableIdsInNamespace));
-                    }
-                  }
-                });
-      }
-    }
-
-    log.debug("requestedTableInfoList is {}", requestedTableInfoList);
-    log.debug(
-        "sourceTableIdsWithNoTableOnTargetUniverse is {}",
-        sourceTableIdsWithNoTableOnTargetUniverse);
-    return new Pair<>(requestedTableInfoList, sourceTableIdsWithNoTableOnTargetUniverse);
   }
 
   private static Set<String> getTableIdsInReplicationOnTargetUniverse(

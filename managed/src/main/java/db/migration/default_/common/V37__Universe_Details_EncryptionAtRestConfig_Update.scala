@@ -74,7 +74,7 @@ class V37__Universe_Details_EncryptionAtRestConfig_Update extends BaseJavaMigrat
                 oldConfigUuid,
                 AwsEARServiceUtil.generateAliasName(universeUuid)
               )
-              val cmkId = universeAlias.getTargetKeyId()
+              val cmkId = universeAlias.targetKeyId()
               unmaskedAuthConfig.asInstanceOf[ObjectNode].put("cmk_id", cmkId)
             }
             val maskedAuthConfig = EncryptionAtRestUtil.maskConfigData(

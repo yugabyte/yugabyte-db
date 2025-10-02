@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 export { default as GraphPanelHeader } from './GraphPanelHeader/GraphPanelHeader';
 export { default as MetricsPanel } from './MetricsPanel/MetricsPanel';
 export { default as MetricsPanelOld } from './MetricsPanel/MetricsPanelOld';

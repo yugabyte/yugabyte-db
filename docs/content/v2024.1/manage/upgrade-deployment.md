@@ -92,7 +92,7 @@ cd /home/yugabyte/softwareyb-$NEW_VER/
 ./bin/post_install.sh
 ```
 
-If you are using PostgreSQL extensions, make sure to install the extensions in the new YugabyteDB version. Follow the instructions in [Install PostgreSQL extensions](../../explore/ysql-language-features/pg-extensions/install-extensions/).
+If you are using PostgreSQL extensions, make sure to install the extensions in the new YugabyteDB version. Follow the instructions in [Install PostgreSQL extensions](../../additional-features/pg-extensions/install-extensions/).
 
 #### 3. Upgrade YB-Masters
 

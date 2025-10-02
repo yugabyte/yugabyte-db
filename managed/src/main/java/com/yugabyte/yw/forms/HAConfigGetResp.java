@@ -1,4 +1,4 @@
-/* Copyright 2024 YugaByte, Inc. and Contributors */
+/* Copyright 2024 YugabyteDB, Inc. and Contributors */
 package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonProperty;

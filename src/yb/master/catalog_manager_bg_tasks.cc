@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -36,7 +36,6 @@
 #include "yb/master/clone/clone_state_manager.h"
 #include "yb/master/cluster_balance.h"
 #include "yb/master/master.h"
-#include "yb/master/ts_descriptor.h"
 #include "yb/master/tablet_split_manager.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
@@ -49,6 +48,8 @@
 #include "yb/util/mutex.h"
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
+
+using namespace std::literals;
 
 using std::shared_ptr;
 using std::vector;
@@ -68,6 +69,10 @@ DEFINE_RUNTIME_bool(sys_catalog_respect_affinity_task, true,
             "Whether the master sys catalog tablet respects cluster config preferred zones "
             "and sends step down requests to a preferred leader.");
 
+DEFINE_RUNTIME_int32(master_bg_task_long_operation_warning_ms, 5 * 1000,
+    "Log warnings if the catalog manager background tasks (combined) take longer than this amount "
+    "of time.");
+
 DEFINE_test_flag(bool, pause_catalog_manager_bg_loop_start, false,
                  "Pause the bg tasks thread at the beginning of the loop.");
 
@@ -86,10 +91,9 @@ DECLARE_bool(TEST_echo_service_enabled);
 DECLARE_bool(cdcsdk_enable_dynamic_table_addition_with_table_cleanup);
 DECLARE_bool(ysql_enable_auto_analyze_infra);
 
-namespace yb {
-namespace master {
+namespace yb::master {
 
-typedef std::unordered_map<TableId, std::list<CDCStreamInfoPtr>> TableStreamIdsMap;
+using TableStreamIdsMap = std::unordered_map<TableId, std::list<CDCStreamInfoPtr>>;
 
 CatalogManagerBgTasks::CatalogManagerBgTasks(Master* master)
     : closing_(false),
@@ -187,6 +191,10 @@ void CatalogManagerBgTasks::ClearDeadTServerMetrics() const {
 }
 
 void CatalogManagerBgTasks::RunOnceAsLeader(const LeaderEpoch& epoch) {
+  LongOperationTracker long_operation_tracker(
+      "CatalogManagerBgTasks::RunOnceAsLeader",
+      FLAGS_master_bg_task_long_operation_warning_ms * 1ms);
+
   ClearDeadTServerMetrics();
 
   if (FLAGS_TEST_echo_service_enabled) {
@@ -408,5 +416,4 @@ void CatalogManagerBgTasks::Run() {
   VLOG(1) << "Catalog manager background task thread shutting down";
 }
 
-}  // namespace master
-}  // namespace yb
+} // namespace yb::master

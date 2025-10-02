@@ -37,7 +37,7 @@ When running migration assessment, keep in mind the following:
 
 - The recommendations are based on testing using a [RF3](../../../architecture/docdb-replication/replication/#replication-factor) YugabyteDB cluster on instance types with 4GiB memory per core and running v2024.1.
 
-- To detect unsupported query constructs, ensure the [pg_stat_statements extension](../../../explore/ysql-language-features/pg-extensions/extension-pgstatstatements/) is properly installed and enabled on source.
+- To detect unsupported query constructs, ensure the [pg_stat_statements extension](../../../additional-features/pg-extensions/extension-pgstatstatements/) is properly installed and enabled on source.
 
 - To disable unsupported query construct detection, set the environment variable `REPORT_UNSUPPORTED_QUERY_CONSTRUCTS=false`.
 
@@ -330,3 +330,4 @@ After the bulk assessment is completed, the top-level directory specified using 
 ## Learn more
 
 - [Assess migration CLI](../../reference/assess-migration/)
+- [Compare performance](../../reference/compare-performance/)

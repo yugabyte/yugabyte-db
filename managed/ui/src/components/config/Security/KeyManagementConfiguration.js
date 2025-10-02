@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 import React, { Component, Fragment } from 'react';
 import { Row, Col, OverlayTrigger, Tooltip } from 'react-bootstrap';

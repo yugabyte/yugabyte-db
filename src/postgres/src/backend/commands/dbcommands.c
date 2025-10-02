@@ -16,9 +16,9 @@
  *	  src/backend/commands/dbcommands.c
  *
  * The following only applies to changes made to this file as part of
- * YugaByte development.
+ * YugabyteDB development.
  *
- * Portions Copyright (c) YugaByte, Inc.
+ * Portions Copyright (c) YugabyteDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you
  * may not use this file except in compliance with the License.
@@ -1105,8 +1105,8 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	 * getting dropped while this operation is in progress.
 	 */
 	bool		is_clone = strcmp(dbtemplate, "template0") != 0 && strcmp(dbtemplate, "template1") != 0;
-	LOCKMODE    lockmode_srcdb = (is_clone ? AccessShareLock : ShareLock);
-	LOCKMODE    lockmode_rel_db = (is_clone ? AccessShareLock : RowExclusiveLock);
+	LOCKMODE	lockmode_srcdb = (is_clone ? AccessShareLock : ShareLock);
+	LOCKMODE	lockmode_rel_db = (is_clone ? AccessShareLock : RowExclusiveLock);
 
 	if (!get_db_info(dbtemplate, lockmode_srcdb,
 					 &src_dboid, &src_owner, &src_encoding,

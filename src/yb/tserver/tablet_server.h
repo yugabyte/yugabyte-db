@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -77,6 +77,7 @@
 #include "yb/util/locks.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
+#include "yb/util/one_time_bool.h"
 #include "yb/util/status_fwd.h"
 
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
@@ -673,6 +674,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   tserver::TSLocalLockManagerPtr ts_local_lock_manager_ GUARDED_BY(lock_);
 
   std::unique_ptr<docdb::ObjectLockSharedStateManager> object_lock_shared_state_manager_;
+  OneTimeBool shutting_down_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletServer);
 };

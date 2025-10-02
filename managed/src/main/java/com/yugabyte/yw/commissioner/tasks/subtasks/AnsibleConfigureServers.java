@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 YugaByte, Inc. and Contributors
+ * Copyright 2019 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you may not use this file
  * except in compliance with the License. You may obtain a copy of the License at
@@ -214,7 +214,8 @@ public class AnsibleConfigureServers extends NodeTaskBase {
                   universe, nodeDetails, taskParams(), optional.get()),
               NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
         }
-      } else {
+      } else if (shouldInstallDbSoftware(
+          universe, taskParams().ignoreUseCustomImageConfig, taskParams().vmUpgradeTaskType)) {
         nodeAgentClient.runDownloadSoftware(
             optional.get(),
             nodeAgentRpcPayload.setupDownloadSoftwareBits(

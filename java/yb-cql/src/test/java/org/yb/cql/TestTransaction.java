@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -36,6 +36,9 @@ import org.slf4j.LoggerFactory;
 public class TestTransaction extends BaseCQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestTransaction.class);
 
+  // Flag to track if we're running with skip_prefix_locks enabled
+  private boolean skipPrefixLockEnabled = false;
+
   @Override
   public int getTestMethodTimeoutSec() {
     // Extend timeout for testBasicReadWrite stress test.
@@ -47,7 +50,29 @@ public class TestTransaction extends BaseCQLTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("allow_index_table_read_write", "true");
+    flagMap.put("skip_prefix_locks", String.valueOf(skipPrefixLockEnabled));
+    flagMap.put("allowed_preview_flags_csv", "skip_prefix_locks");
     return flagMap;
+  }
+
+  /**
+   * Helper method to run a test twice - once with skip_prefix_locks=false and once with
+   * skip_prefix_locks=true
+   */
+  private void runTestWithBothSkipPrefixLockSettings(Runnable testLogic) throws Exception {
+    // First run: skip_prefix_locks = false
+    LOG.info("Running test with skip_prefix_locks = false");
+    skipPrefixLockEnabled = false;
+    testLogic.run();
+
+    // Restart cluster with skip_prefix_locks = true
+    LOG.info("Restarting cluster with skip_prefix_locks = true");
+    skipPrefixLockEnabled = true;
+    restartClusterWithTSFlags(getTServerFlags());
+
+    // Second run: skip_prefix_locks = true
+    LOG.info("Running test with skip_prefix_locks = true");
+    testLogic.run();
   }
 
   private void createTable(String name, String columns, boolean transactional) {
@@ -63,225 +88,262 @@ public class TestTransaction extends BaseCQLTest {
 
   @Test
   public void testInsertMultipleTables() throws Exception {
-    createTables();
+    runTestWithBothSkipPrefixLockSettings(() -> {
+      try {
+        createTables();
 
-    // Insert into multiple tables and ensure all rows are written with same writetime.
-    session.execute("begin transaction" +
-                    "  insert into test_txn1 (k, c1, c2) values (?, ?, ?);" +
-                    "  insert into test_txn2 (k, c1, c2) values (?, ?, ?);" +
-                    "  insert into test_txn3 (k, c1, c2) values (?, ?, ?);" +
-                    "end transaction;",
-                    Integer.valueOf(1), Integer.valueOf(1), "v1",
-                    Integer.valueOf(2), Integer.valueOf(2), "v2",
-                    Integer.valueOf(3), Integer.valueOf(3), "v3");
+        // Insert into multiple tables and ensure all rows are written with same writetime.
+        session.execute("begin transaction" +
+                        "  insert into test_txn1 (k, c1, c2) values (?, ?, ?);" +
+                        "  insert into test_txn2 (k, c1, c2) values (?, ?, ?);" +
+                        "  insert into test_txn3 (k, c1, c2) values (?, ?, ?);" +
+                        "end transaction;",
+                        Integer.valueOf(1), Integer.valueOf(1), "v1",
+                        Integer.valueOf(2), Integer.valueOf(2), "v2",
+                        Integer.valueOf(3), Integer.valueOf(3), "v3");
 
-    Vector<Row> rows = new Vector<Row>();
-    for (int i = 1; i <= 3; i++) {
-      rows.add(session.execute(String.format("select c1, c2, writetime(c1), writetime(c2) " +
-                                             "from test_txn%d where k = ?;", i),
-                               Integer.valueOf(i)).one());
-      assertNotNull(rows.get(i - 1));
-      assertEquals(i, rows.get(i - 1).getInt("c1"));
-      assertEquals("v" + i, rows.get(i - 1).getString("c2"));
-    }
+        Vector<Row> rows = new Vector<Row>();
+        for (int i = 1; i <= 3; i++) {
+          rows.add(session.execute(String.format("select c1, c2, writetime(c1), writetime(c2) " +
+                                                 "from test_txn%d where k = ?;", i),
+                                   Integer.valueOf(i)).one());
+          assertNotNull(rows.get(i - 1));
+          assertEquals(i, rows.get(i - 1).getInt("c1"));
+          assertEquals("v" + i, rows.get(i - 1).getString("c2"));
+        }
 
-    // Verify writetimes are same.
-    assertEquals(rows.get(0).getLong("writetime(c1)"), rows.get(1).getLong("writetime(c1)"));
-    assertEquals(rows.get(0).getLong("writetime(c1)"), rows.get(2).getLong("writetime(c1)"));
-    assertEquals(rows.get(0).getLong("writetime(c2)"), rows.get(1).getLong("writetime(c2)"));
-    assertEquals(rows.get(0).getLong("writetime(c2)"), rows.get(2).getLong("writetime(c2)"));
+        // Verify writetimes are same.
+        assertEquals(rows.get(0).getLong("writetime(c1)"), rows.get(1).getLong("writetime(c1)"));
+        assertEquals(rows.get(0).getLong("writetime(c1)"), rows.get(2).getLong("writetime(c1)"));
+        assertEquals(rows.get(0).getLong("writetime(c2)"), rows.get(1).getLong("writetime(c2)"));
+        assertEquals(rows.get(0).getLong("writetime(c2)"), rows.get(2).getLong("writetime(c2)"));
+      } catch (Exception e) {
+        throw new RuntimeException(e);
+      }
+    });
   }
 
   @Test
   public void testInsertUpdateSameTable() throws Exception {
-    createTables();
+    runTestWithBothSkipPrefixLockSettings(() -> {
+      try {
+        createTables();
 
-    // Insert multiple keys into same table and ensure all rows are written with same writetime.
-    session.execute("start transaction;" +
-                    "insert into test_txn1 (k, c1, c2) values (?, ?, ?);" +
-                    "insert into test_txn1 (k, c1, c2) values (?, ?, ?);" +
-                    "update test_txn1 set c1 = ?, c2 = ? where k = ?;" +
-                    "commit;",
-                    Integer.valueOf(1), Integer.valueOf(1), "v1",
-                    Integer.valueOf(2), Integer.valueOf(2), "v2",
-                    Integer.valueOf(3), "v3", Integer.valueOf(3));
+        // Insert multiple keys into same table and ensure all rows are written with same writetime.
+        session.execute("start transaction;" +
+                        "insert into test_txn1 (k, c1, c2) values (?, ?, ?);" +
+                        "insert into test_txn1 (k, c1, c2) values (?, ?, ?);" +
+                        "update test_txn1 set c1 = ?, c2 = ? where k = ?;" +
+                        "commit;",
+                        Integer.valueOf(1), Integer.valueOf(1), "v1",
+                        Integer.valueOf(2), Integer.valueOf(2), "v2",
+                        Integer.valueOf(3), "v3", Integer.valueOf(3));
 
-    Vector<Row> rows = new Vector<Row>();
-    HashSet<String> values = new HashSet<String>();
-    for (Row row : session.execute("select c1, c2, writetime(c1), writetime(c2) " +
-                                   "from test_txn1 where k in ?;",
-                                   Arrays.asList(Integer.valueOf(1),
-                                                 Integer.valueOf(2),
-                                                 Integer.valueOf(3)))) {
-      rows.add(row);
-      values.add(row.getInt("c1") + "," + row.getString("c2"));
-    }
-    assertEquals(3, rows.size());
-    assertEquals(new HashSet<String>(Arrays.asList("1,v1", "2,v2", "3,v3")), values);
+        Vector<Row> rows = new Vector<Row>();
+        HashSet<String> values = new HashSet<String>();
+        for (Row row : session.execute("select c1, c2, writetime(c1), writetime(c2) " +
+                                       "from test_txn1 where k in ?;",
+                                       Arrays.asList(Integer.valueOf(1),
+                                                     Integer.valueOf(2),
+                                                     Integer.valueOf(3)))) {
+          rows.add(row);
+          values.add(row.getInt("c1") + "," + row.getString("c2"));
+        }
+        assertEquals(3, rows.size());
+        assertEquals(new HashSet<String>(Arrays.asList("1,v1", "2,v2", "3,v3")), values);
 
-    // Verify writetimes are same.
-    assertEquals(rows.get(0).getLong("writetime(c1)"), rows.get(1).getLong("writetime(c1)"));
-    assertEquals(rows.get(0).getLong("writetime(c1)"), rows.get(2).getLong("writetime(c1)"));
-    assertEquals(rows.get(0).getLong("writetime(c2)"), rows.get(1).getLong("writetime(c2)"));
-    assertEquals(rows.get(0).getLong("writetime(c2)"), rows.get(2).getLong("writetime(c2)"));
+        // Verify writetimes are same.
+        assertEquals(rows.get(0).getLong("writetime(c1)"), rows.get(1).getLong("writetime(c1)"));
+        assertEquals(rows.get(0).getLong("writetime(c1)"), rows.get(2).getLong("writetime(c1)"));
+        assertEquals(rows.get(0).getLong("writetime(c2)"), rows.get(1).getLong("writetime(c2)"));
+        assertEquals(rows.get(0).getLong("writetime(c2)"), rows.get(2).getLong("writetime(c2)"));
+      } catch (Exception e) {
+        throw new RuntimeException(e);
+      }
+    });
   }
 
   @Test
   public void testMixDML() throws Exception {
-    createTables();
+    runTestWithBothSkipPrefixLockSettings(() -> {
+      try {
+        createTables();
 
-    // Test non-transactional writes to transaction-enabled table.
-    for (int i = 1; i <= 2; i++) {
-      session.execute("insert into test_txn1 (k, c1, c2) values (?, ?, ?);",
-                      Integer.valueOf(i), Integer.valueOf(i), "v" + i);
-    }
-    assertQueryRowsUnordered("select * from test_txn1;", "Row[1, 1, v1]", "Row[2, 2, v2]");
+        // Test non-transactional writes to transaction-enabled table.
+        for (int i = 1; i <= 2; i++) {
+          session.execute("insert into test_txn1 (k, c1, c2) values (?, ?, ?);",
+                          Integer.valueOf(i), Integer.valueOf(i), "v" + i);
+        }
+        assertQueryRowsUnordered("select * from test_txn1;", "Row[1, 1, v1]", "Row[2, 2, v2]");
 
-    // Test a mix of insert/update/delete in the same transaction.
-    session.execute("begin transaction" +
-                    "  insert into test_txn1 (k, c1, c2) values (?, ?, ?);" +
-                    "  update test_txn1 set c1 = 0, c2 = 'v0' where k = ?;" +
-                    "  delete from test_txn1 where k = ?;" +
-                    "end transaction;",
-                    Integer.valueOf(3), Integer.valueOf(3), "v3",
-                    Integer.valueOf(2),
-                    Integer.valueOf(1));
+        // Test a mix of insert/update/delete in the same transaction.
+        session.execute("begin transaction" +
+                        "  insert into test_txn1 (k, c1, c2) values (?, ?, ?);" +
+                        "  update test_txn1 set c1 = 0, c2 = 'v0' where k = ?;" +
+                        "  delete from test_txn1 where k = ?;" +
+                        "end transaction;",
+                        Integer.valueOf(3), Integer.valueOf(3), "v3",
+                        Integer.valueOf(2),
+                        Integer.valueOf(1));
 
-    // Verify the rows.
-    Vector<Row> rows = new Vector<Row>();
-    HashSet<String> values = new HashSet<String>();
-    for (Row row : session.execute("select k, c1, c2, writetime(c1), writetime(c2) " +
-                                   "from test_txn1 where k in ?;",
-                                   Arrays.asList(Integer.valueOf(1),
-                                                 Integer.valueOf(2),
-                                                 Integer.valueOf(3)))) {
-      rows.add(row);
-      values.add(row.getInt("k") + "," + row.getInt("c1") + "," + row.getString("c2"));
-    }
-    assertEquals(2, rows.size());
-    assertEquals(new HashSet<String>(Arrays.asList("2,0,v0", "3,3,v3")), values);
+        // Verify the rows.
+        Vector<Row> rows = new Vector<Row>();
+        HashSet<String> values = new HashSet<String>();
+        for (Row row : session.execute("select k, c1, c2, writetime(c1), writetime(c2) " +
+                                       "from test_txn1 where k in ?;",
+                                       Arrays.asList(Integer.valueOf(1),
+                                                     Integer.valueOf(2),
+                                                     Integer.valueOf(3)))) {
+          rows.add(row);
+          values.add(row.getInt("k") + "," + row.getInt("c1") + "," + row.getString("c2"));
+        }
+        assertEquals(2, rows.size());
+        assertEquals(new HashSet<String>(Arrays.asList("2,0,v0", "3,3,v3")), values);
 
-    // Verify writetimes are same.
-    assertEquals(rows.get(0).getLong("writetime(c1)"), rows.get(1).getLong("writetime(c1)"));
-    assertEquals(rows.get(0).getLong("writetime(c2)"), rows.get(1).getLong("writetime(c2)"));
+        // Verify writetimes are same.
+        assertEquals(rows.get(0).getLong("writetime(c1)"), rows.get(1).getLong("writetime(c1)"));
+        assertEquals(rows.get(0).getLong("writetime(c2)"), rows.get(1).getLong("writetime(c2)"));
 
-    // Test writes to the same row.
-    session.execute("truncate test_txn1;");
-    session.execute("begin transaction" +
-                    "  insert into test_txn1 (k, c1, c2) values (1, 1, 'v1');" +
-                    "  insert into test_txn1 (k, c1, c2) values (2, 2, 'v2');" +
-                    "  insert into test_txn1 (k, c1, c2) values (2, 22, 'v2');" +
-                    "  insert into test_txn1 (k, c1, c2) values (3, 3, 'v3');" +
-                    "  delete from test_txn1 where k = 1;" +
-                    "  update test_txn1 set c2 = 'v22' where k = 2;" +
-                    "end transaction;");
+        // Test writes to the same row.
+        session.execute("truncate test_txn1;");
+        session.execute("begin transaction" +
+                        "  insert into test_txn1 (k, c1, c2) values (1, 1, 'v1');" +
+                        "  insert into test_txn1 (k, c1, c2) values (2, 2, 'v2');" +
+                        "  insert into test_txn1 (k, c1, c2) values (2, 22, 'v2');" +
+                        "  insert into test_txn1 (k, c1, c2) values (3, 3, 'v3');" +
+                        "  delete from test_txn1 where k = 1;" +
+                        "  update test_txn1 set c2 = 'v22' where k = 2;" +
+                        "end transaction;");
 
-    // Verify the rows.
-    rows = new Vector<Row>();
-    values = new HashSet<String>();
-    for (Row row : session.execute("select k, c1, c2, writetime(c1), writetime(c2) " +
-                                   "from test_txn1;")) {
-      rows.add(row);
-      values.add(row.getInt("k") + "," + row.getInt("c1") + "," + row.getString("c2"));
-    }
-    assertEquals(new HashSet<String>(Arrays.asList("2,22,v22",
-                                                   "3,3,v3")), values);
+        // Verify the rows.
+        rows = new Vector<Row>();
+        values = new HashSet<String>();
+        for (Row row : session.execute("select k, c1, c2, writetime(c1), writetime(c2) " +
+                                       "from test_txn1;")) {
+          rows.add(row);
+          values.add(row.getInt("k") + "," + row.getInt("c1") + "," + row.getString("c2"));
+        }
+        assertEquals(new HashSet<String>(Arrays.asList("2,22,v22",
+                                                       "3,3,v3")), values);
 
-    // Verify writetimes are same.
-    assertEquals(rows.get(0).getLong("writetime(c1)"), rows.get(1).getLong("writetime(c1)"));
-    assertEquals(rows.get(0).getLong("writetime(c2)"), rows.get(1).getLong("writetime(c2)"));
+        // Verify writetimes are same.
+        assertEquals(rows.get(0).getLong("writetime(c1)"), rows.get(1).getLong("writetime(c1)"));
+        assertEquals(rows.get(0).getLong("writetime(c2)"), rows.get(1).getLong("writetime(c2)"));
+      } catch (Exception e) {
+        throw new RuntimeException(e);
+      }
+    });
   }
 
   @Test
   public void testPrepareStatement() throws Exception {
-    createTable("test_hash", "h1 int, h2 int, r int, c text, primary key ((h1, h2), r)", true);
+    runTestWithBothSkipPrefixLockSettings(() -> {
+      try {
+        createTable("test_hash", "h1 int, h2 int, r int, c text, primary key ((h1, h2), r)", true);
 
-    // Prepare a transaction statement. Verify the hash key of the whole statement is the first
-    // insert statement that has the full hash key specified (third insert).
-    PreparedStatement stmt =
-        session.prepare("begin transaction" +
-                        "  insert into test_hash (h1, h2, r, c) values (1, 1, ?, ?);" +
-                        "  insert into test_hash (h1, h2, r, c) values (?, 2, ?, ?);" +
-                        "  insert into test_hash (h1, h2, r, c) values (?, ?, ?, ?);" +
-                        "end transaction;");
-    int hashIndexes[] = stmt.getRoutingKeyIndexes();
-    assertEquals(2, hashIndexes.length);
-    assertEquals(5, hashIndexes[0]);
-    assertEquals(6, hashIndexes[1]);
+        // Prepare a transaction statement. Verify the hash key of the whole statement is the first
+        // insert statement that has the full hash key specified (third insert).
+        PreparedStatement stmt =
+            session.prepare("begin transaction" +
+                            "  insert into test_hash (h1, h2, r, c) values (1, 1, ?, ?);" +
+                            "  insert into test_hash (h1, h2, r, c) values (?, 2, ?, ?);" +
+                            "  insert into test_hash (h1, h2, r, c) values (?, ?, ?, ?);" +
+                            "end transaction;");
+        int hashIndexes[] = stmt.getRoutingKeyIndexes();
+        assertEquals(2, hashIndexes.length);
+        assertEquals(5, hashIndexes[0]);
+        assertEquals(6, hashIndexes[1]);
 
-    session.execute(stmt.bind(Integer.valueOf(1), "v1",
-                              Integer.valueOf(2), Integer.valueOf(2), "v2",
-                              Integer.valueOf(3), Integer.valueOf(3), Integer.valueOf(3), "v3"));
+        session.execute(stmt.bind(Integer.valueOf(1), "v1",
+            Integer.valueOf(2), Integer.valueOf(2), "v2",
+            Integer.valueOf(3), Integer.valueOf(3), Integer.valueOf(3), "v3"));
 
-    // Verify the rows.
-    Vector<Row> rows = new Vector<Row>();
-    HashSet<String> values = new HashSet<String>();
-    for (Row row : session.execute("select h1, h2, r, c, writetime(c) from test_hash;")) {
-      rows.add(row);
-      values.add(row.getInt("h1")+","+row.getInt("h2")+","+row.getInt("r")+","+row.getString("c"));
-    }
-    assertEquals(3, rows.size());
-    assertEquals(new HashSet<String>(Arrays.asList("1,1,1,v1",
-                                                   "2,2,2,v2",
-                                                   "3,3,3,v3")), values);
-    // Verify writetimes are same.
-    assertEquals(rows.get(0).getLong("writetime(c)"), rows.get(1).getLong("writetime(c)"));
-    assertEquals(rows.get(0).getLong("writetime(c)"), rows.get(2).getLong("writetime(c)"));
+        // Verify the rows.
+        Vector<Row> rows = new Vector<Row>();
+        HashSet<String> values = new HashSet<String>();
+        for (Row row : session.execute("select h1, h2, r, c, writetime(c) from test_hash;")) {
+          rows.add(row);
+          values.add(row.getInt("h1")+","+row.getInt("h2")+","+row.getInt("r")+","+
+              row.getString("c"));
+        }
+        assertEquals(3, rows.size());
+        assertEquals(new HashSet<String>(Arrays.asList("1,1,1,v1",
+                                                       "2,2,2,v2",
+                                                       "3,3,3,v3")), values);
+        // Verify writetimes are same.
+        assertEquals(rows.get(0).getLong("writetime(c)"), rows.get(1).getLong("writetime(c)"));
+        assertEquals(rows.get(0).getLong("writetime(c)"), rows.get(2).getLong("writetime(c)"));
+      } catch (Exception e) {
+        throw new RuntimeException(e);
+      }
+    });
   }
 
   @Test
   public void testStaticColumn() throws Exception {
-    // Multiple writes to the same static row are not allowed
-    createTable("test_static", "h int, r int, s int static, c int, primary key ((h), r)", true);
-    session.execute("begin transaction" +
-                    "  insert into test_static (h, r, s, c) values (1, 1, 1, 1);" +
-                    "  insert into test_static (h, r, s, c) values (1, 2, 3, 4);" +
-                    "end transaction;");
+    runTestWithBothSkipPrefixLockSettings(() -> {
+      try {
+        // Multiple writes to the same static row are not allowed
+        createTable("test_static", "h int, r int, s int static, c int, primary key ((h), r)", true);
+        session.execute("begin transaction" +
+                        "  insert into test_static (h, r, s, c) values (1, 1, 1, 1);" +
+                        "  insert into test_static (h, r, s, c) values (1, 2, 3, 4);" +
+                        "end transaction;");
 
-    // Verify the rows.
-    Vector<Row> rows = new Vector<Row>();
-    HashSet<String> values = new HashSet<String>();
-    for (Row row : session.execute("select h, r, s, c, writetime(s), writetime(c) " +
-                                   "from test_static;")) {
-      rows.add(row);
-      values.add(row.getInt("h")+","+row.getInt("r")+","+row.getInt("s")+","+row.getInt("c"));
-    }
-    assertEquals(new HashSet<String>(Arrays.asList("1,1,3,1",
-                                                   "1,2,3,4")), values);
-    // Verify writetimes are same.
-    assertEquals(rows.get(0).getLong("writetime(s)"), rows.get(1).getLong("writetime(s)"));
-    assertEquals(rows.get(0).getLong("writetime(c)"), rows.get(1).getLong("writetime(c)"));
+        // Verify the rows.
+        Vector<Row> rows = new Vector<Row>();
+        HashSet<String> values = new HashSet<String>();
+        for (Row row : session.execute("select h, r, s, c, writetime(s), writetime(c) " +
+                                       "from test_static;")) {
+          rows.add(row);
+          values.add(row.getInt("h")+","+row.getInt("r")+","+row.getInt("s")+","+row.getInt("c"));
+        }
+        assertEquals(new HashSet<String>(Arrays.asList("1,1,3,1",
+                                                       "1,2,3,4")), values);
+        // Verify writetimes are same.
+        assertEquals(rows.get(0).getLong("writetime(s)"), rows.get(1).getLong("writetime(s)"));
+        assertEquals(rows.get(0).getLong("writetime(c)"), rows.get(1).getLong("writetime(c)"));
+      } catch (Exception e) {
+        throw new RuntimeException(e);
+      }
+    });
   }
 
   @Test
   public void testInvalidStatements() throws Exception {
-    createTables();
+    runTestWithBothSkipPrefixLockSettings(() -> {
+      try {
+        createTables();
 
-    // Missing "begin transaction"
-    runInvalidStmt("insert into test_txn1 (k, c1, c2) values (?, ?, ?);" +
-                   "insert into test_txn2 (k, c1, c2) values (?, ?, ?);" +
-                   "commit;");
+        // Missing "begin transaction"
+        runInvalidStmt("insert into test_txn1 (k, c1, c2) values (?, ?, ?);" +
+                       "insert into test_txn2 (k, c1, c2) values (?, ?, ?);" +
+                       "commit;");
 
-    // Missing "end transaction"
-    runInvalidStmt("begin transaction" +
-                   "  insert into test_txn1 (k, c1, c2) values (?, ?, ?);" +
-                   "  insert into test_txn2 (k, c1, c2) values (?, ?, ?);");
+        // Missing "end transaction"
+        runInvalidStmt("begin transaction" +
+                       "  insert into test_txn1 (k, c1, c2) values (?, ?, ?);" +
+                       "  insert into test_txn2 (k, c1, c2) values (?, ?, ?);");
 
-    // Missing "begin / end transaction"
-    runInvalidStmt("insert into test_txn1 (k, c1, c2) values (?, ?, ?);" +
-                   "insert into test_txn2 (k, c1, c2) values (?, ?, ?);");
+        // Missing "begin / end transaction"
+        runInvalidStmt("insert into test_txn1 (k, c1, c2) values (?, ?, ?);" +
+                       "insert into test_txn2 (k, c1, c2) values (?, ?, ?);");
 
-    // Writing to non-transactional table
-    createTable("test_non_txn", "k int primary key, c1 int, c2 text", false);
-    runInvalidStmt("begin transaction" +
-                   "  insert into test_txn1 (k, c1, c2) values (?, ?, ?);" +
-                   "  insert into test_non_txn (k, c1, c2) values (?, ?, ?);" +
-                   "end transaction;");
+        // Writing to non-transactional table
+        createTable("test_non_txn", "k int primary key, c1 int, c2 text", false);
+        runInvalidStmt("begin transaction" +
+                       "  insert into test_txn1 (k, c1, c2) values (?, ?, ?);" +
+                       "  insert into test_non_txn (k, c1, c2) values (?, ?, ?);" +
+                       "end transaction;");
 
-    // Conditional DML not supported yet
-    runInvalidStmt("begin transaction" +
-                   "  insert into test_txn1 (k, c1, c2) values (?, ?, ?) if not exists;" +
-                   "end transaction;");
+        // Conditional DML not supported yet
+        runInvalidStmt("begin transaction" +
+                       "  insert into test_txn1 (k, c1, c2) values (?, ?, ?) if not exists;" +
+                       "end transaction;");
+      } catch (Exception e) {
+        throw new RuntimeException(e);
+      }
+    });
   }
 
   protected String setupUserAndPrepareTransaction(
@@ -345,26 +407,50 @@ public class TestTransaction extends BaseCQLTest {
 
   @Test
   public void testUserInsertAfterDelete() throws Exception {
-    session.execute(setupUserAndPrepareTransaction("A", "22-11", true));
-    checkUserRow(2, 0, "A", "22-11");
+    runTestWithBothSkipPrefixLockSettings(() -> {
+      try {
+        session.execute(setupUserAndPrepareTransaction("A", "22-11", true));
+        checkUserRow(2, 0, "A", "22-11");
+      } catch (Exception e) {
+        throw new RuntimeException(e);
+      }
+    });
   }
 
   @Test
   public void testUserInsertAfterDeleteDiffNumber() throws Exception {
-    session.execute(setupUserAndPrepareTransaction("B", "44-33", true));
-    checkUserRow(2, 1, "B", "44-33");
+    runTestWithBothSkipPrefixLockSettings(() -> {
+      try {
+        session.execute(setupUserAndPrepareTransaction("B", "44-33", true));
+        checkUserRow(2, 1, "B", "44-33");
+      } catch (Exception e) {
+        throw new RuntimeException(e);
+      }
+    });
   }
 
   @Test
   public void testUserDeleteAfterInsert() throws Exception {
-    session.execute(setupUserAndPrepareTransaction("A", "22-11", false));
-    checkUserRow(0, 0, "", "");
+    runTestWithBothSkipPrefixLockSettings(() -> {
+      try {
+        session.execute(setupUserAndPrepareTransaction("A", "22-11", false));
+        checkUserRow(0, 0, "", "");
+      } catch (Exception e) {
+        throw new RuntimeException(e);
+      }
+    });
   }
 
   @Test
   public void testUserDeleteAfterInsertDiffNumber() throws Exception {
-    session.execute(setupUserAndPrepareTransaction("B", "44-33", false));
-    checkUserRow(1, 0, "B", "44-33");
+    runTestWithBothSkipPrefixLockSettings(() -> {
+      try {
+        session.execute(setupUserAndPrepareTransaction("B", "44-33", false));
+        checkUserRow(1, 0, "B", "44-33");
+      } catch (Exception e) {
+        throw new RuntimeException(e);
+      }
+    });
   }
 
   protected void doTestInsertAfterDeleteWithUniqueIndex() {
@@ -384,7 +470,13 @@ public class TestTransaction extends BaseCQLTest {
 
   @Test
   public void testInsertAfterDeleteWithUniqueIndex() throws Exception {
-    doTestInsertAfterDeleteWithUniqueIndex();
+    runTestWithBothSkipPrefixLockSettings(() -> {
+      try {
+        doTestInsertAfterDeleteWithUniqueIndex();
+      } catch (Exception e) {
+        throw new RuntimeException(e);
+      }
+    });
   }
 
   @Test
@@ -404,63 +496,69 @@ public class TestTransaction extends BaseCQLTest {
 
   @Test
   public void testBasicReadWrite() throws Exception {
-    // Stress-test multi-key insert in a loop. Each time insert keys in a transaction and read them
-    // back immediately to verify the content and writetime are identical for all keys.
-    session.execute("create table test_read_write (k int primary key, v int) " +
-                    "with transactions = {'enabled' : true};");
+    runTestWithBothSkipPrefixLockSettings(() -> {
+      try {
+        // Stress-test multi-key insert in a loop. Each time insert keys in a transaction and read
+        // them back immediately to verify the content and writetime are identical for all keys.
+        session.execute("create table test_read_write (k int primary key, v int) " +
+                        "with transactions = {'enabled' : true};");
 
-    final int BATCH_SIZE = 10;
-    final int KEY_COUNT = 5000;
+        final int BATCH_SIZE = 10;
+        final int KEY_COUNT = 5000;
 
-    String insert = "begin transaction";
-    for (int j = 0; j < BATCH_SIZE; j++) {
-      insert += "  insert into test_read_write (k, v) values (?, ?);";
-    }
-    insert +=  "end transaction;";
-
-    String select = "select v, writetime(v) from test_read_write where k in ?;";
-
-    PreparedStatement insertStmt = session.prepare(insert);
-    PreparedStatement selectStmt = session.prepare(select);
-
-    int failedReadCount = 0;
-    for (int i = 0; i < KEY_COUNT; i += BATCH_SIZE) {
-      Object[] values = new Object[BATCH_SIZE * 2];
-      for (int j = 0; j < BATCH_SIZE; j++) {
-        values[j * 2] = Integer.valueOf(i + j); // column k
-        values[j * 2 + 1] = Integer.valueOf(i); // column v
-      }
-      session.execute(insertStmt.bind(values));
-
-      values = new Object[BATCH_SIZE];
-      for (int j = 0; j < BATCH_SIZE; j++) {
-        values[j] = Integer.valueOf(i + j);
-      }
-      List<Row> rows = session.execute(selectStmt.bind(Arrays.asList(values))).all();
-
-      boolean match = true;
-      if (rows.size() == BATCH_SIZE) {
-        Row r0 = rows.get(0);
-        for (int j = 1; j < BATCH_SIZE; j++) {
-          Row rj = rows.get(j);
-          if (r0.getInt("v") != rj.getInt("v") ||
-              r0.getLong("writetime(v)") != rj.getLong("writetime(v)")) {
-            match = false;
-            break;
-          }
+        String insert = "begin transaction";
+        for (int j = 0; j < BATCH_SIZE; j++) {
+          insert += "  insert into test_read_write (k, v) values (?, ?);";
         }
+        insert +=  "end transaction;";
 
-        if (r0.getInt("v") == i && match)
-          continue;
-      }
+        String select = "select v, writetime(v) from test_read_write where k in ?;";
 
-      LOG.info(String.format("Iteration %d: row count = %d", i, rows.size()));
-      for (Row row : rows) {
-        LOG.info(row.toString());
+        PreparedStatement insertStmt = session.prepare(insert);
+        PreparedStatement selectStmt = session.prepare(select);
+
+        int failedReadCount = 0;
+        for (int i = 0; i < KEY_COUNT; i += BATCH_SIZE) {
+          Object[] values = new Object[BATCH_SIZE * 2];
+          for (int j = 0; j < BATCH_SIZE; j++) {
+            values[j * 2] = Integer.valueOf(i + j); // column k
+            values[j * 2 + 1] = Integer.valueOf(i); // column v
+          }
+          session.execute(insertStmt.bind(values));
+
+          values = new Object[BATCH_SIZE];
+          for (int j = 0; j < BATCH_SIZE; j++) {
+            values[j] = Integer.valueOf(i + j);
+          }
+          List<Row> rows = session.execute(selectStmt.bind(Arrays.asList(values))).all();
+
+          boolean match = true;
+          if (rows.size() == BATCH_SIZE) {
+            Row r0 = rows.get(0);
+            for (int j = 1; j < BATCH_SIZE; j++) {
+              Row rj = rows.get(j);
+              if (r0.getInt("v") != rj.getInt("v") ||
+                  r0.getLong("writetime(v)") != rj.getLong("writetime(v)")) {
+                match = false;
+                break;
+              }
+            }
+
+            if (r0.getInt("v") == i && match)
+              continue;
+          }
+
+          LOG.info(String.format("Iteration %d: row count = %d", i, rows.size()));
+          for (Row row : rows) {
+            LOG.info(row.toString());
+          }
+          failedReadCount++;
+        }
+        assertEquals("Failed read count", 0, failedReadCount);
+      } catch (Exception e) {
+        throw new RuntimeException(e);
       }
-      failedReadCount++;
-    }
-    assertEquals("Failed read count", 0, failedReadCount);
+    });
   }
 
   private int getTransactionConflictsCount(String tableName) throws Exception {
@@ -473,118 +571,130 @@ public class TestTransaction extends BaseCQLTest {
 
   @Test
   public void testWriteConflicts() throws Exception {
-    // Test write transaction conflicts by writing to the same rows in parallel repeatedly until
-    // the desired number of conlicts have happened and the writes have been retried successfully
-    // without error.
-    session.execute("create table test_write_conflicts (k int primary key, v int) " +
-                    "with transactions = {'enabled' : true};");
+    runTestWithBothSkipPrefixLockSettings(() -> {
+      try {
+        // Test write transaction conflicts by writing to the same rows in parallel repeatedly until
+        // the desired number of conlicts have happened and the writes have been retried
+        // successfully without error.
+        session.execute("create table test_write_conflicts (k int primary key, v int) " +
+                        "with transactions = {'enabled' : true};");
 
-    PreparedStatement insertStmt = session.prepare(
-        "begin transaction" +
-        "  insert into test_write_conflicts (k, v) values (1, 1000);" +
-        "  insert into test_write_conflicts (k, v) values (2, 2000);" +
-        "end transaction;");
+        PreparedStatement insertStmt = session.prepare(
+            "begin transaction" +
+            "  insert into test_write_conflicts (k, v) values (1, 1000);" +
+            "  insert into test_write_conflicts (k, v) values (2, 2000);" +
+            "end transaction;");
 
-    final int PARALLEL_WRITE_COUNT = 5;
-    final int TOTAL_CONFLICTS = 10;
+        final int PARALLEL_WRITE_COUNT = 5;
+        final int TOTAL_CONFLICTS = 10;
 
-    int initialConflicts = getTransactionConflictsCount("test_write_conflicts");
-    int initialRetries = getRetriesCount();
-    LOG.info("Initial transaction conflicts = {}, retries = {}",
-             initialConflicts, initialRetries);
+        int initialConflicts = getTransactionConflictsCount("test_write_conflicts");
+        int initialRetries = getRetriesCount();
+        LOG.info("Initial transaction conflicts = {}, retries = {}",
+                 initialConflicts, initialRetries);
 
-    while (true) {
-      Set<ResultSetFuture> results = new HashSet<ResultSetFuture>();
-      for (int i = 0; i < PARALLEL_WRITE_COUNT; i++) {
-        results.add(session.executeAsync(insertStmt.bind()));
+        while (true) {
+          Set<ResultSetFuture> results = new HashSet<ResultSetFuture>();
+          for (int i = 0; i < PARALLEL_WRITE_COUNT; i++) {
+            results.add(session.executeAsync(insertStmt.bind()));
+          }
+          for (ResultSetFuture result : results) {
+            result.get();
+          }
+          int currentConflicts = getTransactionConflictsCount("test_write_conflicts");
+          int currentRetries = getRetriesCount();
+          LOG.info("Current transaction conflicts = {}, retries = {}",
+                   currentConflicts, currentRetries);
+          if (currentConflicts - initialConflicts >= TOTAL_CONFLICTS &&
+              currentRetries > initialRetries)
+            break;
+        }
+
+        // Also verify that the rows are inserted indeed.
+        assertQueryRowsUnordered("select k, v from test_write_conflicts",
+                                 "Row[1, 1000]",
+                                 "Row[2, 2000]");
+      } catch (Exception e) {
+        throw new RuntimeException(e);
       }
-      for (ResultSetFuture result : results) {
-        result.get();
-      }
-      int currentConflicts = getTransactionConflictsCount("test_write_conflicts");
-      int currentRetries = getRetriesCount();
-      LOG.info("Current transaction conflicts = {}, retries = {}",
-               currentConflicts, currentRetries);
-      if (currentConflicts - initialConflicts >= TOTAL_CONFLICTS &&
-          currentRetries > initialRetries)
-        break;
-    }
-
-    // Also verify that the rows are inserted indeed.
-    assertQueryRowsUnordered("select k, v from test_write_conflicts",
-                             "Row[1, 1000]",
-                             "Row[2, 2000]");
+    });
   }
 
   @Test
   public void testReadRestarts() throws Exception {
-    // Test read restart by repeatedly inserting 2 rows into a table with an invariant while
-    // reading them back in parallel. Verify that the invariant is maintained and writetimes are
-    // consistent while there are read restarts and retries.
-    session.execute("create table test_restart (k int primary key, v int) " +
-                    "with transactions = {'enabled' : true};");
+    runTestWithBothSkipPrefixLockSettings(() -> {
+      try {
+        // Test read restart by repeatedly inserting 2 rows into a table with an invariant while
+        // reading them back in parallel. Verify that the invariant is maintained and writetimes are
+        // consistent while there are read restarts and retries.
+        session.execute("create table test_restart (k int primary key, v int) " +
+                        "with transactions = {'enabled' : true};");
 
-    final int TOTAL = 100;
-    final PreparedStatement insertStmt = session.prepare(
-        "begin transaction" +
-        "  insert into test_restart (k, v) values (1, ?);" +
-        "  insert into test_restart (k, v) values (2, ?);" +
-        "end transaction;");
-    session.execute(insertStmt.bind(Integer.valueOf(0), Integer.valueOf(TOTAL)));
+        final int TOTAL = 100;
+        final PreparedStatement insertStmt = session.prepare(
+            "begin transaction" +
+            "  insert into test_restart (k, v) values (1, ?);" +
+            "  insert into test_restart (k, v) values (2, ?);" +
+            "end transaction;");
+        session.execute(insertStmt.bind(Integer.valueOf(0), Integer.valueOf(TOTAL)));
 
-    // Thread to insert rows in parallel.
-    Thread thread = new Thread() {
+        // Thread to insert rows in parallel.
+        Thread thread = new Thread() {
 
-      public void run() {
-        Random rand = new Random();
-        do {
-          int v1 = rand.nextInt();
-          int v2 = TOTAL - v1;
-          session.execute(insertStmt.bind(Integer.valueOf(v1), Integer.valueOf(v2)));
-        } while (!Thread.interrupted());
-      }
-    };
-    thread.start();
+          public void run() {
+            Random rand = new Random();
+            do {
+              int v1 = rand.nextInt();
+              int v2 = TOTAL - v1;
+              session.execute(insertStmt.bind(Integer.valueOf(v1), Integer.valueOf(v2)));
+            } while (!Thread.interrupted());
+          }
+        };
+        thread.start();
 
-    try {
-      PreparedStatement selectStmt = session.prepare(
-          "select v, writetime(v) from test_restart where k in (1, 2);");
+        try {
+          PreparedStatement selectStmt = session.prepare(
+              "select v, writetime(v) from test_restart where k in (1, 2);");
 
-      int initialRestarts = getRestartsCount("test_restart");
-      int initialRetries = getRetriesCount();
-      LOG.info("Initial restarts = {}, retries = {}", initialRestarts, initialRetries);
+          int initialRestarts = getRestartsCount("test_restart");
+          int initialRetries = getRetriesCount();
+          LOG.info("Initial restarts = {}, retries = {}", initialRestarts, initialRetries);
 
-      // Keep reading until we either:
-      // (1) have the desired number of restart requests and retries.
-      // (2) have run for 100 seconds but still don't have the desired number of restart requests.
-      //     We still assert finally for atleast 1 restart and retry to have occurred.
-      final int TOTAL_RESTARTS = BuildTypeUtil.nonTsanVsTsan(10, 5);
-      final int TOTAL_RETRIES = BuildTypeUtil.nonTsanVsTsan(10, 5);
-      int i = 0;
-      int currentRestarts = 0;
-      int currentRetries = 0;
-      long start_time = System.currentTimeMillis();
-      while ((System.currentTimeMillis() - start_time) < 250 * 1000) {
-        i++;
-        List<Row> rows = session.execute(selectStmt.bind()).all();
-        assertEquals(2, rows.size());
-        assertEquals(TOTAL, rows.get(0).getInt("v") + rows.get(1).getInt("v"));
-        assertEquals(rows.get(0).getLong("writetime(v)"), rows.get(1).getLong("writetime(v)"));
+          // Keep reading until we either:
+          // (1) have the desired number of restart requests and retries.
+          // (2) have run for 100 seconds but still don't have the desired number of restart
+          //     requests. We still assert finally for atleast 1 restart and retry to have occurred.
+          final int TOTAL_RESTARTS = BuildTypeUtil.nonTsanVsTsan(10, 5);
+          final int TOTAL_RETRIES = BuildTypeUtil.nonTsanVsTsan(10, 5);
+          int i = 0;
+          int currentRestarts = 0;
+          int currentRetries = 0;
+          long start_time = System.currentTimeMillis();
+          while ((System.currentTimeMillis() - start_time) < 250 * 1000) {
+            i++;
+            List<Row> rows = session.execute(selectStmt.bind()).all();
+            assertEquals(2, rows.size());
+            assertEquals(TOTAL, rows.get(0).getInt("v") + rows.get(1).getInt("v"));
+            assertEquals(rows.get(0).getLong("writetime(v)"), rows.get(1).getLong("writetime(v)"));
 
-        currentRestarts = getRestartsCount("test_restart");
-        currentRetries = getRetriesCount();
-        if (currentRestarts - initialRestarts >= TOTAL_RESTARTS &&
-            currentRetries - initialRetries >= TOTAL_RETRIES) {
-          break;
+            currentRestarts = getRestartsCount("test_restart");
+            currentRetries = getRetriesCount();
+            if (currentRestarts - initialRestarts >= TOTAL_RESTARTS &&
+                currentRetries - initialRetries >= TOTAL_RETRIES) {
+              break;
+            }
+          }
+          LOG.info("Current restarts = {}, retries = {} after {} tries",
+                       currentRestarts, currentRetries, i);
+          assertTrue(currentRestarts > initialRestarts);
+          assertTrue(currentRetries > initialRetries);
+            } finally {
+          thread.interrupt();
         }
+      } catch (Exception e) {
+        throw new RuntimeException(e);
       }
-      LOG.info("Current restarts = {}, retries = {} after {} tries",
-                   currentRestarts, currentRetries, i);
-      assertTrue(currentRestarts > initialRestarts);
-      assertTrue(currentRetries > initialRetries);
-    } finally {
-      thread.interrupt();
-    }
+    });
   }
 
   @Test

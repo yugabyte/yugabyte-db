@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -20,10 +20,13 @@
 
 #include "yb/ash/wait_state.h"
 
+#include "yb/common/entity_ids.h"
 #include "yb/common/init.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
+
+#include "yb/dockv/partition.h"
 
 #include "yb/gutil/stringprintf.h"
 
@@ -882,6 +885,16 @@ void YBCUpdateInitPostgresMetrics() {
     // At initdb time we do not load yb_pg_metrics extension.
     DCHECK(YBCIsInitDbModeEnvVarSet());
   }
+}
+
+uint16_t YBCDecodeMultiColumnHashLeftBound(const char* partition_key, size_t key_len) {
+  yb::Slice slice(partition_key, key_len);
+  return dockv::PartitionSchema::DecodeMultiColumnHashLeftBound(slice);
+}
+
+uint16_t YBCDecodeMultiColumnHashRightBound(const char* partition_key, size_t key_len) {
+  yb::Slice slice(partition_key, key_len);
+  return dockv::PartitionSchema::DecodeMultiColumnHashRightBound(slice);
 }
 
 } // extern "C"

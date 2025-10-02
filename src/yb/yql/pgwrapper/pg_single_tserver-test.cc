@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -56,6 +56,7 @@ DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
 DECLARE_bool(ysql_use_packed_row_v2);
 DECLARE_bool(ysql_yb_enable_alter_table_rewrite);
+DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_int32(TEST_pause_and_skip_apply_intents_task_loop_ms);
 DECLARE_int32(max_prevs_to_avoid_seek);
@@ -90,6 +91,8 @@ class PgSingleTServerTest : public PgMiniTestBase {
 
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_alter_table_rewrite) = false;
+    // Disable auto analyze to prevent query plan from changing.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
     PgMiniTestBase::SetUp();
   }
 
@@ -181,9 +184,9 @@ class PgSingleTServerTest : public PgMiniTestBase {
       }
       auto finish = MonoTime::Now();
       auto metric_finish = read_histogram->TotalSum();
-      ASSERT_EQ(rows, fetched_rows);
       LOG(INFO) << i << ") Full Time: " << finish - start
-                << ", tserver time: " << MonoDelta::FromMicroseconds(metric_finish - metric_start);
+                << ", tserver time: " << MonoDelta::FromMicroseconds(metric_finish - metric_start)
+                << ", fetched rows: " << fetched_rows;
     }
   }
 
@@ -351,25 +354,37 @@ int NumScanRows() {
 
 constexpr int kScanBlockSize = 1000;
 
-std::string CreateTableWithNValuesCommand(int num_columns, bool add_pk = true) {
+std::string CreateTableWithNValuesCommand(int num_columns, int num_keys = 1) {
   std::string result = "CREATE TABLE t (";
-  if (add_pk) {
-    result += "a int PRIMARY KEY";
-  }
-  for (auto column : Range(num_columns)) {
-    if (add_pk || column != 0) {
+  std::string pk = "";
+  for (auto column : Range(num_keys + num_columns)) {
+    if (column != 0) {
       result += ", ";
     }
-    result += Format("c$0 INT", column);
+    if (column < num_keys) {
+      auto key_name = Format("k$0", column);
+      result += key_name + " INT";
+      if (!pk.empty()) {
+        pk += ", ";
+      }
+      pk += key_name;
+    } else {
+      result += Format("c$0 INT", column - num_keys);
+    }
+  }
+  if (!pk.empty()) {
+    result += ", PRIMARY KEY (" + pk + ")";
   }
   result += ")";
   return result;
 }
 
+constexpr int kValueRange = 100000000;
+
 std::string InsertNValuesCommand(int num_columns) {
   std::string result = "INSERT INTO t VALUES (generate_series($0, $1)";
   for (int i = 0; i != num_columns; ++i) {
-    result += ", trunc(random()*100000000)";
+    result += Format(", trunc(random()*$0)", kValueRange);
   }
   result += ")";
   return result;
@@ -396,6 +411,20 @@ TEST_F_EX(PgSingleTServerTest, ScanWithPackedRow, PgMiniBigPrefetchTest) {
   SetupTableAndRunBenchmark(
       create_cmd, insert_cmd, select_cmd, NumScanRows(), kScanBlockSize, FLAGS_TEST_scan_reads,
       /* compact= */ false, /* aggregate= */ false);
+}
+
+TEST_F_EX(PgSingleTServerTest, ScanWithChoices, PgMiniBigPrefetchTest) {
+  constexpr int kNumColumns = 3;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
+
+  auto create_cmd = CreateTableWithNValuesCommand(kNumColumns, 2);
+  auto insert_cmd = InsertNValuesCommand(kNumColumns + 1);
+  const std::string select_cmd = Format("SELECT COUNT(*) FROM t WHERE k1 > $0", kValueRange / 2);
+  SetupTableAndRunBenchmark(
+      create_cmd, insert_cmd, select_cmd, NumScanRows(), kScanBlockSize, FLAGS_TEST_scan_reads,
+      /* compact= */ false, /* aggregate= */ true);
 }
 
 TEST_F_EX(PgSingleTServerTest, YB_DISABLE_TEST_ON_MACOS(HybridTimeFilterDuringConflictResolution),
@@ -432,7 +461,7 @@ TEST_F_EX(PgSingleTServerTest, ScanWithLowerLimit, PgMiniBigPrefetchTest) {
 
   auto create_cmd = CreateTableWithNValuesCommand(kNumColumns);
   auto insert_cmd = InsertNValuesCommand(kNumColumns);
-  const std::string select_cmd = "SELECT * FROM t WHERE a > 0";
+  const std::string select_cmd = "SELECT * FROM t WHERE k0 > 0";
   SetupTableAndRunBenchmark(
       create_cmd, insert_cmd, select_cmd, NumScanRows(), kScanBlockSize, FLAGS_TEST_scan_reads,
       /* compact= */ false, /* aggregate = */ false);
@@ -441,7 +470,7 @@ TEST_F_EX(PgSingleTServerTest, ScanWithLowerLimit, PgMiniBigPrefetchTest) {
 void PgSingleTServerTest::TestIndexScan(int fetch_column_idx) {
   constexpr int kNumColumns = 2;
 
-  auto create_cmd = CreateTableWithNValuesCommand(kNumColumns, false) + ";";
+  auto create_cmd = CreateTableWithNValuesCommand(kNumColumns, 0) + ";";
   create_cmd += "CREATE INDEX ON t (c0 ASC);";
   auto insert_cmd = InsertNValuesCommand(kNumColumns - 1);
   const std::string select_cmd = Format("SELECT c$0 FROM t WHERE c0 > 0", fetch_column_idx);

@@ -34,8 +34,7 @@ services:
       Description=Run logrotate for yugabyte logs daily
 
       [Timer]
-      #OnCalendar=daily
-      OnCalendar=*:*:0,15,30,45
+      OnCalendar=daily
       Persistent=true
 
       [Install]

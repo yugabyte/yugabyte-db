@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -100,11 +100,11 @@ class HashUtil {
     boost::hash_combine(_seed, obj_name.elem);
 
 #define YB_STRUCT_HASHER(...) \
-    ([] (const auto& _obj) { \
+    ([] (const auto& _struct) { \
       size_t _seed = 0; \
       BOOST_PP_SEQ_FOR_EACH( \
           YB_STRUCT_HASH_VALUE_HELPER, \
-          _obj, \
+          _struct, \
           BOOST_PP_VARIADIC_TO_SEQ(__VA_ARGS__)) \
       return _seed; \
     })

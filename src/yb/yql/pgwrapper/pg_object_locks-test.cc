@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -16,6 +16,7 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_local_lock_manager.h"
+#include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/master/catalog_manager.h"
@@ -57,6 +58,7 @@ DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 DECLARE_bool(TEST_tserver_enable_ysql_lease_refresh);
 DECLARE_int64(olm_poll_interval_ms);
 DECLARE_string(vmodule);
+DECLARE_bool(ysql_enable_auto_analyze);
 
 using namespace std::literals;
 
@@ -80,6 +82,7 @@ class PgObjectLocksTestRF1 : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_check_broadcast_address) = false;  // GH #26281
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
     PgMiniTestBase::SetUp();
     Init();
   }
@@ -154,7 +157,9 @@ class PgObjectLocksTestRF1 : public PgMiniTestBase {
 
     CreateTestTable();
     auto conn1 = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn1.ExecuteFormat("SET yb_locks_min_txn_age='0s'"));
     auto conn2 = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn2.ExecuteFormat("SET yb_locks_min_txn_age='0s'"));
     for (const auto& lock_types : kBlockingPairs) {
       VerifyBlockingBehavior(conn1, conn2, lock_types.first, lock_types.second, test_pg_locks);
       VerifyBlockingBehavior(conn1, conn2, lock_types.second, lock_types.first, test_pg_locks);
@@ -538,6 +543,9 @@ class PgObjectLocksTest : public LibPqTestBase {
     opts->extra_tserver_flags.emplace_back("--TEST_tserver_enable_ysql_lease_refresh=true");
     opts->extra_tserver_flags.emplace_back(
         Format("--ysql_lease_refresher_interval_ms=$0", kDefaultYSQLLeaseRefreshIntervalMilli));
+    // yb_user_ddls_preempt_auto_analyze works only if enable_object_locking_for_table_locks is off,
+    // so disable auto analyze in this test suite.
+    opts->extra_tserver_flags.emplace_back("--ysql_enable_auto_analyze=false");
 
     opts->extra_master_flags.emplace_back("--enable_ysql_operation_lease=true");
     opts->extra_master_flags.emplace_back(
@@ -633,49 +641,66 @@ class TestWithTransactionalDDLRF3: public PgObjectLocksTest {
     PgObjectLocksTest::UpdateMiniClusterOptions(opts);
     opts->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=true");
   }
+
+  void testConcurrentAlterSelect(bool fresh_catalog_cache) {
+    const auto ts1_idx = 0;
+    const auto ts2_idx = 1;
+    auto* ts1 = cluster_->tablet_server(ts1_idx);
+    auto* ts2 = cluster_->tablet_server(ts2_idx);
+
+    auto conn1 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    auto conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+
+    ASSERT_OK(conn1.Execute("CREATE TABLE t1(c1 INT, c2 INT)"));
+    ASSERT_OK(conn2.Execute("INSERT INTO t1 VALUES (1, 2)"));
+
+    if (fresh_catalog_cache) {
+      // Reset to new conns so we don't retain any catalog cache entries
+      conn1 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+      conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+    } else {
+      auto row1 = ASSERT_RESULT(conn2.FetchRowAsString("SELECT * FROM t1"));
+      LOG(INFO) << "Row was " << row1;
+    }
+    ASSERT_OK(cluster_->SetFlag(
+        ts2,
+        "TEST_tserver_disable_catalog_refresh_on_heartbeat",
+        "true"));
+
+    ASSERT_OK(conn1.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+    ASSERT_OK(conn2.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+    LOG(INFO) << "conn1: Acquiring exclusive lock on test table";
+    ASSERT_OK(conn1.Execute("ALTER TABLE t1 DROP COLUMN c2"));
+
+    TestThreadHolder thread_holder;
+    thread_holder.AddThreadFunctor([&conn2]() {
+      LOG(INFO) << "conn2: going to wait on conn1's table lock";
+      // without propagation of inval msgs on lock acquire, this statement would hit a
+      // schema mismatch error
+      auto row2 = ASSERT_RESULT(conn2.FetchRowAsString("SELECT * FROM t1"));
+      LOG(INFO) << "Row was " << row2;
+    });
+
+    ASSERT_OK(conn1.Execute("COMMIT"));
+    thread_holder.JoinAll();
+    ASSERT_OK(conn2.Execute("COMMIT"));
+
+    ASSERT_OK(cluster_->SetFlag(
+        ts2,
+        "TEST_tserver_disable_catalog_refresh_on_heartbeat",
+        "false"));
+    LOG(INFO) << "Verifying new conns go through";
+    auto conn4 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+    ASSERT_OK(conn4.Fetch("SELECT * FROM t1"));
+  }
 };
 
+TEST_F_EX(PgObjectLocksTest, ConcurrentAlterSelectFreshCache, TestWithTransactionalDDLRF3) {
+  testConcurrentAlterSelect(true);
+}
+
 TEST_F_EX(PgObjectLocksTest, ConcurrentAlterSelect, TestWithTransactionalDDLRF3) {
-  const auto ts1_idx = 0;
-  const auto ts2_idx = 1;
-  auto* ts1 = cluster_->tablet_server(ts1_idx);
-  auto* ts2 = cluster_->tablet_server(ts2_idx);
-
-  auto conn1 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
-  auto conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
-
-  ASSERT_OK(conn1.Execute("CREATE TABLE t1(c1 INT, c2 INT)"));
-  ASSERT_OK(conn2.Fetch("SELECT * FROM t1"));
-
-  ASSERT_OK(cluster_->SetFlag(
-      ts2,
-      "TEST_tserver_disable_catalog_refresh_on_heartbeat",
-      "true"));
-
-  ASSERT_OK(conn1.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
-  ASSERT_OK(conn2.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
-  LOG(INFO) << "conn1: Acquiring exclusive lock on test table";
-  ASSERT_OK(conn1.Execute("ALTER TABLE t1 ADD COLUMN c3 INT"));
-
-  TestThreadHolder thread_holder;
-  thread_holder.AddThreadFunctor([&conn2]() {
-    LOG(INFO) << "conn2: going to wait on conn1's table lock";
-    // without propagation of inval msgs on lock acquire, this statement would hit a
-    // schema mismatch error
-    ASSERT_OK(conn2.Fetch("SELECT * FROM t1"));
-  });
-
-  ASSERT_OK(conn1.Execute("COMMIT"));
-  thread_holder.JoinAll();
-  ASSERT_OK(conn2.Execute("COMMIT"));
-
-  ASSERT_OK(cluster_->SetFlag(
-      ts2,
-      "TEST_tserver_disable_catalog_refresh_on_heartbeat",
-      "false"));
-  LOG(INFO) << "Verifying new conns go through";
-  auto conn4 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
-  ASSERT_OK(conn4.Fetch("SELECT * FROM t1"));
+  testConcurrentAlterSelect(false);
 }
 
 TEST_F(PgObjectLocksTest, BackfillIndexSanityTest) {
@@ -889,10 +914,8 @@ TEST_P(PgObjecLocksTestOutOfOrderMessageHandling, TestOutOfOrderMessageHandling)
       cluster_->SetFlag(ts2, "TEST_release_blocked_acquires_to_simulate_out_of_order", "true"));
   ASSERT_OK(log_waiter2.WaitFor(kTimeout));
 
-  auto get_locks_count_on_tserver = [&conn2]() -> Result<int64_t> {
-    return conn2.FetchRow<int64_t>(
-        "SELECT COUNT(relname) FROM pg_locks l, pg_class c "
-        "WHERE l.relation = c.oid AND relname = 'test_table';");
+  auto get_locks_count_on_tserver = [&ts2, this]() -> Result<int64_t> {
+    return VERIFY_RESULT(cluster_->GetObjectLockStatus(*ts2)).object_lock_infos_size();
   };
 
   auto kGracePeriod = MonoDelta::FromMilliseconds(500);

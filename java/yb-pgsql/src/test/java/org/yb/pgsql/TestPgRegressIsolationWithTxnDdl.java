@@ -27,7 +27,13 @@ public class TestPgRegressIsolationWithTxnDdl extends BasePgRegressTest {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("yb_enable_read_committed_isolation", "true");
     flagMap.put("ysql_yb_ddl_transaction_block_enabled", "true");
-    flagMap.put("allowed_preview_flags_csv", "ysql_yb_ddl_transaction_block_enabled");
+    // TODO(#28745): Enabling table locks causes the test output to be different
+    // from what is expected.  When we enable table locks by default, we could
+    // consider updating the expected output accordingly, to expect a
+    // deadlock detection error. For now, disable table locks here.
+    flagMap.put("enable_object_locking_for_table_locks", "false");
+    flagMap.put("allowed_preview_flags_csv",
+        "ysql_yb_ddl_transaction_block_enabled,enable_object_locking_for_table_locks");
     return flagMap;
   }
 

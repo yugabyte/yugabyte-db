@@ -1139,6 +1139,422 @@ TEST_F(YsqlMajorUpgradeTestWithAuth, NoYugabyteUserPassword) {
   ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes));
 }
 
+// Test scenario 2: MD5->SCRAM version upgrade with no HBA modification
+// This tests that during a major version upgrade, existing MD5 passwords continue to work
+// while new passwords use the upgraded version's default (SCRAM-SHA-256)
+TEST_F(YsqlMajorUpgradeTestWithAuth, MD5ToSCRAMVersionUpgrade) {
+  // Set password_encryption to md5 to simulate older version behavior
+  ASSERT_OK(ExecuteStatement("SET password_encryption = 'md5'"));
+
+  // Create test users with MD5 passwords (simulating pre-upgrade state)
+  ASSERT_OK(ExecuteStatements({
+    "CREATE USER md5_test_user WITH PASSWORD 'md5_password'",
+    "CREATE USER pre_upgrade_user WITH PASSWORD 'pre_upgrade_pass'"
+  }));
+
+  {
+    auto conn = ASSERT_RESULT(CreateConnToTs(kAnyTserver));
+    auto md5_password_result = conn.FetchRow<std::string>(
+        "SELECT LEFT(rolpassword, 3) FROM pg_authid WHERE rolname='md5_test_user'");
+    auto md5_password = ASSERT_RESULT(std::move(md5_password_result));
+    ASSERT_EQ("md5", md5_password);
+  }
+
+  auto test_auth = [this](const std::string& username, const std::string& password) {
+    auto conn_settings = pgwrapper::PGConnSettings{
+        .host = cluster_->tablet_server(0)->bind_host(),
+        .port = cluster_->tablet_server(0)->ysql_port(),
+        .dbname = "yugabyte",
+        .user = username,
+        .password = password};
+    return pgwrapper::PGConnBuilder(conn_settings).Connect();
+  };
+
+  ASSERT_OK(test_auth("md5_test_user", "md5_password"));
+  ASSERT_OK(test_auth("pre_upgrade_user", "pre_upgrade_pass"));
+
+  ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes));
+
+  // Verify password_encryption default is now SCRAM-SHA-256 after upgrade
+  {
+    auto conn = ASSERT_RESULT(CreateConnToTs(kAnyTserver));
+    auto password_encryption_result = conn.FetchRow<std::string>(
+        "SELECT boot_val FROM pg_settings WHERE name='password_encryption'");
+    auto password_encryption = ASSERT_RESULT(std::move(password_encryption_result));
+    ASSERT_EQ("scram-sha-256", password_encryption);
+  }
+
+  // Verify existing MD5 passwords still work after upgrade
+  ASSERT_OK(test_auth("md5_test_user", "md5_password"));
+  ASSERT_OK(test_auth("pre_upgrade_user", "pre_upgrade_pass"));
+
+  // Create new user and verify it uses SCRAM-SHA-256 by default
+  ASSERT_OK(ExecuteStatement("CREATE USER post_upgrade_user WITH PASSWORD 'post_upgrade_pass'"));
+  {
+    auto conn = ASSERT_RESULT(CreateConnToTs(kAnyTserver));
+    auto scram_password_result = conn.FetchRow<std::string>(
+        "SELECT LEFT(rolpassword, 13) FROM pg_authid WHERE rolname='post_upgrade_user'");
+    auto scram_password = ASSERT_RESULT(std::move(scram_password_result));
+    ASSERT_EQ("SCRAM-SHA-256", scram_password);
+  }
+
+  // Verify new SCRAM user authentication works
+  ASSERT_OK(test_auth("post_upgrade_user", "post_upgrade_pass"));
+
+  ASSERT_OK(ExecuteStatements({
+      "DROP USER md5_test_user",
+    "DROP USER pre_upgrade_user",
+    "DROP USER post_upgrade_user"
+  }));
+}
+
+// Test class for MD5 password encryption configuration scenario
+class YsqlMajorUpgradeTestWithMD5 : public YsqlMajorUpgradeTest {
+ public:
+  YsqlMajorUpgradeTestWithMD5() = default;
+
+  void SetUpOptions(ExternalMiniClusterOptions& opts) override {
+    opts.enable_ysql_auth = true;
+    YsqlMajorUpgradeTest::SetUpOptions(opts);
+
+    // Configure MD5 authentication in HBA
+    // Allow trust for yugabyte and postgres users for setup, require MD5 for others
+    std::string hba_conf_value =
+        "host all yugabyte 0.0.0.0/0 trust,"
+        "host all postgres 0.0.0.0/0 trust,"
+        "host all all 0.0.0.0/0 md5";
+    opts.extra_tserver_flags.push_back(
+        "--ysql_hba_conf_csv=" + hba_conf_value);
+
+    // Set password_encryption to md5 for testing MD5 password storage
+    opts.extra_tserver_flags.push_back(
+        "--ysql_pg_conf_csv=password_encryption=md5");
+  }
+
+  Status ValidateUpgradeCompatibility(const std::string& user_name = "yugabyte") override {
+    setenv("PGPASSWORD", "yugabyte", /*overwrite=*/true);
+    return YsqlMajorUpgradeTest::ValidateUpgradeCompatibility(user_name);
+  }
+
+  Result<pgwrapper::PGConn> CreateConnWithAuth(
+      std::optional<size_t> tserver,
+      const std::string& user_name = "yugabyte",
+      const std::string& password = "yugabyte") {
+    setenv("PGPASSWORD", password.c_str(), /*overwrite=*/true);
+    return CreateConnToTs(tserver, user_name);
+  }
+};
+
+// Test scenario: MD5 password encryption configuration effects during upgrade
+TEST_F(YsqlMajorUpgradeTestWithMD5, PasswordEncryptionWithMD5) {
+  // Verify current password_encryption setting
+  // password_encryption should be md5 due to ysql_pg_conf_csv configuration
+  {
+    auto conn = ASSERT_RESULT(CreateConnToTs(kAnyTserver));
+    auto password_encryption_result = conn.FetchRow<std::string>(
+        "SELECT setting FROM pg_settings WHERE name='password_encryption'");
+    auto password_encryption = ASSERT_RESULT(std::move(password_encryption_result));
+    // Should be md5 due to ysql_pg_conf_csv=password_encryption=md5
+    ASSERT_EQ("md5", password_encryption);
+  }
+
+  // Create test users with default password encryption
+  ASSERT_OK(ExecuteStatements({
+    "CREATE USER hba_test_user1 WITH PASSWORD 'test_password1'",
+    "CREATE USER hba_test_user2 WITH PASSWORD 'test_password2'"
+  }));
+
+  // Verify users have MD5 passwords (due to ysql_pg_conf_csv setting)
+  {
+    auto conn = ASSERT_RESULT(CreateConnToTs(kAnyTserver));
+    auto password_format_result = conn.FetchRow<std::string>(
+        "SELECT LEFT(rolpassword, 3) FROM pg_authid WHERE rolname='hba_test_user1'");
+    auto password_format = ASSERT_RESULT(std::move(password_format_result));
+    ASSERT_EQ("md5", password_format);
+  }
+
+  auto test_md5_auth = [this](const std::string& username, const std::string& password) {
+    auto conn_settings = pgwrapper::PGConnSettings{
+        .host = cluster_->tablet_server(0)->bind_host(),
+        .port = cluster_->tablet_server(0)->ysql_port(),
+        .dbname = "yugabyte",
+        .user = username,
+        .password = password};
+    return pgwrapper::PGConnBuilder(conn_settings).Connect();
+  };
+
+  ASSERT_OK(test_md5_auth("hba_test_user1", "test_password1"));
+  ASSERT_OK(test_md5_auth("hba_test_user2", "test_password2"));
+
+  // Perform major version upgrade with MD5 HBA configuration
+  ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes));
+
+  // Verify password_encryption setting is preserved after upgrade
+  // Should still be md5 due to ysql_pg_conf_csv configuration being preserved
+  {
+    auto conn = ASSERT_RESULT(CreateConnToTs(kAnyTserver));
+    auto password_encryption_result = conn.FetchRow<std::string>(
+        "SELECT setting FROM pg_settings WHERE name='password_encryption'");
+    auto password_encryption = ASSERT_RESULT(std::move(password_encryption_result));
+    ASSERT_EQ("md5", password_encryption);
+  }
+
+  // Verify existing users still work after upgrade
+  ASSERT_OK(test_md5_auth("hba_test_user1", "test_password1"));
+  ASSERT_OK(test_md5_auth("hba_test_user2", "test_password2"));
+
+  // Create new user after upgrade and verify password format
+  // Since we explicitly set password_encryption=md5 via ysql_pg_conf_csv,
+  // new users should still use MD5 format even after upgrade
+  ASSERT_OK(ExecuteStatement("CREATE USER post_upgrade_hba_user WITH PASSWORD 'post_password'"));
+  {
+    auto conn = ASSERT_RESULT(CreateConnToTs(kAnyTserver));
+    auto password_format_result = conn.FetchRow<std::string>(
+        "SELECT LEFT(rolpassword, 3) FROM pg_authid WHERE rolname='post_upgrade_hba_user'");
+    auto password_format = ASSERT_RESULT(std::move(password_format_result));
+    ASSERT_EQ("md5", password_format);
+  }
+
+  ASSERT_OK(test_md5_auth("post_upgrade_hba_user", "post_password"));
+
+  ASSERT_OK(ExecuteStatements({
+    "DROP USER hba_test_user1",
+    "DROP USER hba_test_user2",
+    "DROP USER post_upgrade_hba_user"
+  }));
+}
+
+class YsqlMajorUpgradeTestMD5ToSCRAM : public YsqlMajorUpgradeTest {
+ public:
+  YsqlMajorUpgradeTestMD5ToSCRAM() = default;
+
+  void SetUpOptions(ExternalMiniClusterOptions& opts) override {
+    opts.enable_ysql_auth = true;
+    YsqlMajorUpgradeTest::SetUpOptions(opts);
+
+    // Simulate old cluster with MD5 password encryption
+    opts.extra_tserver_flags.push_back(
+        "--ysql_pg_conf_csv=password_encryption=md5");
+  }
+
+  Status ValidateUpgradeCompatibility(const std::string& user_name = "yugabyte") override {
+    setenv("PGPASSWORD", "yugabyte", /*overwrite=*/true);
+    return YsqlMajorUpgradeTest::ValidateUpgradeCompatibility(user_name);
+  }
+
+  Result<pgwrapper::PGConn> TestAuth(const std::string& username, const std::string& password) {
+    auto conn_settings = pgwrapper::PGConnSettings{
+        .host = cluster_->tablet_server(0)->bind_host(),
+        .port = cluster_->tablet_server(0)->ysql_port(),
+        .dbname = "yugabyte",
+        .user = username,
+        .password = password};
+    return pgwrapper::PGConnBuilder(conn_settings).Connect();
+  }
+};
+
+// Test scenario: Complete MD5->SCRAM migration with dynamic configuration updates
+TEST_F(YsqlMajorUpgradeTestMD5ToSCRAM, CompleteMigrationScenario) {
+  // Verify pre-upgrade state - should be MD5 due to explicit gflag
+  {
+    auto conn = ASSERT_RESULT(CreateConnToTs(kAnyTserver));
+    auto password_encryption = ASSERT_RESULT(conn.FetchRow<std::string>(
+        "SELECT setting FROM pg_settings WHERE name='password_encryption'"));
+    ASSERT_EQ("md5", password_encryption);
+  }
+
+  // Create users with MD5 passwords (simulating pre-upgrade users)
+  ASSERT_OK(ExecuteStatements({
+    "CREATE USER old_user1 WITH PASSWORD 'old_password1'",
+    "CREATE USER old_user2 WITH PASSWORD 'old_password2'"
+  }));
+
+  // Verify users have MD5 passwords
+  {
+    auto conn = ASSERT_RESULT(CreateConnToTs(kAnyTserver));
+    auto password_format = ASSERT_RESULT(conn.FetchRow<std::string>(
+        "SELECT LEFT(rolpassword, 3) FROM pg_authid WHERE rolname='old_user1'"));
+    ASSERT_EQ("md5", password_format);
+  }
+
+  ASSERT_OK(TestAuth("old_user1", "old_password1"));
+  ASSERT_OK(TestAuth("old_user2", "old_password2"));
+
+  ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes));
+
+  // Verify password_encryption setting preserved after upgrade
+  {
+    auto conn = ASSERT_RESULT(CreateConnToTs(kAnyTserver));
+    auto password_encryption = ASSERT_RESULT(conn.FetchRow<std::string>(
+        "SELECT setting FROM pg_settings WHERE name='password_encryption'"));
+    ASSERT_EQ("md5", password_encryption); // Should still be MD5 due to gflag preservation
+  }
+
+  // Verify existing users still work after upgrade
+  ASSERT_OK(TestAuth("old_user1", "old_password1"));
+  ASSERT_OK(TestAuth("old_user2", "old_password2"));
+
+  // Create another user - should still be MD5 due to explicit gflag
+  ASSERT_OK(ExecuteStatement("CREATE USER mid_upgrade_user WITH PASSWORD 'mid_password'"));
+  {
+    auto conn = ASSERT_RESULT(CreateConnToTs(kAnyTserver));
+    auto password_format = ASSERT_RESULT(conn.FetchRow<std::string>(
+        "SELECT LEFT(rolpassword, 3) FROM pg_authid WHERE rolname='mid_upgrade_user'"));
+    ASSERT_EQ("md5", password_format);
+  }
+
+  // Remove MD5 setting to allow new default
+  LOG(INFO) << "Updating tserver flags to remove explicit password_encryption setting";
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_pg_conf_csv", ""));
+
+  // Give time for configuration to be reloaded
+  SleepFor(2s);
+
+  // Verify password_encryption now defaults to SCRAM-SHA-256
+  {
+    // Reconnect to get updated configuration
+    auto conn = ASSERT_RESULT(CreateConnToTs(kAnyTserver));
+    auto password_encryption = ASSERT_RESULT(conn.FetchRow<std::string>(
+        "SELECT setting FROM pg_settings WHERE name='password_encryption'"));
+    ASSERT_EQ("scram-sha-256", password_encryption); // Should now be SCRAM default
+  }
+
+  ASSERT_OK(ExecuteStatement("CREATE USER new_user WITH PASSWORD 'new_password'"));
+  {
+    auto conn = ASSERT_RESULT(CreateConnToTs(kAnyTserver));
+    auto password_format = ASSERT_RESULT(conn.FetchRow<std::string>(
+        "SELECT LEFT(rolpassword, 13) FROM pg_authid WHERE rolname='new_user'"));
+    ASSERT_EQ("SCRAM-SHA-256", password_format);
+  }
+
+  // Verify all users work regardless of password format
+  ASSERT_OK(TestAuth("old_user1", "old_password1")); // MD5 from pre-upgrade
+  ASSERT_OK(TestAuth("old_user2", "old_password2")); // MD5 from pre-upgrade
+  ASSERT_OK(TestAuth("mid_upgrade_user", "mid_password")); // MD5 from during upgrade
+  ASSERT_OK(TestAuth("new_user", "new_password")); // SCRAM from post-flag-update
+
+  // Test password changes work correctly
+  ASSERT_OK(ExecuteStatement("ALTER USER old_user1 PASSWORD 'updated_password1'"));
+  {
+    // Password should now be SCRAM since current default is SCRAM
+    auto conn = ASSERT_RESULT(CreateConnToTs(kAnyTserver));
+    auto password_format = ASSERT_RESULT(conn.FetchRow<std::string>(
+        "SELECT LEFT(rolpassword, 13) FROM pg_authid WHERE rolname='old_user1'"));
+    ASSERT_EQ("SCRAM-SHA-256", password_format);
+  }
+  ASSERT_OK(TestAuth("old_user1", "updated_password1"));
+
+  ASSERT_OK(ExecuteStatements({
+    "DROP USER old_user1",
+    "DROP USER old_user2",
+    "DROP USER mid_upgrade_user",
+    "DROP USER new_user"
+  }));
+}
+
+// Test class for explicit SCRAM-SHA-256 password encryption configuration scenario
+class YsqlMajorUpgradeTestWithSCRAM : public YsqlMajorUpgradeTest {
+ public:
+  YsqlMajorUpgradeTestWithSCRAM() = default;
+
+  void SetUpOptions(ExternalMiniClusterOptions& opts) override {
+    opts.enable_ysql_auth = true;
+    YsqlMajorUpgradeTest::SetUpOptions(opts);
+
+    std::string hba_conf_value =
+        "host all yugabyte 0.0.0.0/0 trust,"
+        "host all all 0.0.0.0/0 scram-sha-256";
+    opts.extra_tserver_flags.push_back(
+        "--ysql_hba_conf_csv=" + hba_conf_value);
+
+    // Explicitly set password_encryption to scram-sha-256 for testing SCRAM password storage
+    opts.extra_tserver_flags.push_back(
+        "--ysql_pg_conf_csv=password_encryption=scram-sha-256");
+  }
+
+  Status ValidateUpgradeCompatibility(const std::string& user_name = "yugabyte") override {
+    setenv("PGPASSWORD", "yugabyte", /*overwrite=*/true);
+    return YsqlMajorUpgradeTest::ValidateUpgradeCompatibility(user_name);
+  }
+};
+
+// Test scenario: Explicit SCRAM password encryption configuration effects during upgrade
+TEST_F(YsqlMajorUpgradeTestWithSCRAM, PasswordEncryptionWithSCRAM) {
+  // Verify current password_encryption setting
+  // password_encryption should be scram-sha-256 due to ysql_pg_conf_csv configuration
+  {
+    auto conn = ASSERT_RESULT(CreateConnToTs(kAnyTserver));
+    auto password_encryption_result = conn.FetchRow<std::string>(
+        "SELECT setting FROM pg_settings WHERE name='password_encryption'");
+    auto password_encryption = ASSERT_RESULT(std::move(password_encryption_result));
+    // Should be scram-sha-256 due to ysql_pg_conf_csv=password_encryption=scram-sha-256
+    ASSERT_EQ("scram-sha-256", password_encryption);
+  }
+
+  ASSERT_OK(ExecuteStatements({
+    "CREATE USER scram_test_user1 WITH PASSWORD 'test_password1'",
+    "CREATE USER scram_test_user2 WITH PASSWORD 'test_password2'"
+  }));
+
+  // Verify users have SCRAM passwords (due to ysql_pg_conf_csv setting)
+  {
+    auto conn = ASSERT_RESULT(CreateConnToTs(kAnyTserver));
+    auto password_format_result = conn.FetchRow<std::string>(
+        "SELECT LEFT(rolpassword, 13) FROM pg_authid WHERE rolname='scram_test_user1'");
+    auto password_format = ASSERT_RESULT(std::move(password_format_result));
+    ASSERT_EQ("SCRAM-SHA-256", password_format);
+  }
+
+  auto test_scram_auth = [this](const std::string& username, const std::string& password) {
+    auto conn_settings = pgwrapper::PGConnSettings{
+        .host = cluster_->tablet_server(0)->bind_host(),
+        .port = cluster_->tablet_server(0)->ysql_port(),
+        .dbname = "yugabyte",
+        .user = username,
+        .password = password};
+    return pgwrapper::PGConnBuilder(conn_settings).Connect();
+  };
+
+  ASSERT_OK(test_scram_auth("scram_test_user1", "test_password1"));
+  ASSERT_OK(test_scram_auth("scram_test_user2", "test_password2"));
+
+  ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes));
+
+  // Verify password_encryption setting is preserved after upgrade
+  // Should still be scram-sha-256 due to ysql_pg_conf_csv configuration being preserved
+  {
+    auto conn = ASSERT_RESULT(CreateConnToTs(kAnyTserver));
+    auto password_encryption_result = conn.FetchRow<std::string>(
+        "SELECT setting FROM pg_settings WHERE name='password_encryption'");
+    auto password_encryption = ASSERT_RESULT(std::move(password_encryption_result));
+    ASSERT_EQ("scram-sha-256", password_encryption);
+  }
+
+  // Verify existing users still work after upgrade
+  ASSERT_OK(test_scram_auth("scram_test_user1", "test_password1"));
+  ASSERT_OK(test_scram_auth("scram_test_user2", "test_password2"));
+
+  // Create new user after upgrade and verify password format
+  // Since we explicitly set password_encryption=scram-sha-256 via ysql_pg_conf_csv,
+  // new users should still use SCRAM format even after upgrade
+  ASSERT_OK(ExecuteStatement("CREATE USER post_upgrade_scram_user WITH PASSWORD 'post_password'"));
+  {
+    auto conn = ASSERT_RESULT(CreateConnToTs(kAnyTserver));
+    auto password_format_result = conn.FetchRow<std::string>(
+        "SELECT LEFT(rolpassword, 13) FROM pg_authid WHERE rolname='post_upgrade_scram_user'");
+    auto password_format = ASSERT_RESULT(std::move(password_format_result));
+    ASSERT_EQ("SCRAM-SHA-256", password_format);
+  }
+
+  ASSERT_OK(test_scram_auth("post_upgrade_scram_user", "post_password"));
+
+  ASSERT_OK(ExecuteStatements({
+    "DROP USER scram_test_user1",
+    "DROP USER scram_test_user2",
+    "DROP USER post_upgrade_scram_user"
+  }));
+}
+
 TEST_F(YsqlMajorUpgradeTest, GlobalBreakingDDL) {
   ASSERT_OK(ExecuteStatements(
     {"CREATE USER test",

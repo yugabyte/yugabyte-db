@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 import React, { useState, useEffect } from 'react';
 import { usePrevious } from 'react-use';

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks;
 
@@ -76,7 +76,6 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
 
   @Before
   public void setUp() {
-    super.setUp();
     when(mockOperatorStatusUpdaterFactory.create()).thenReturn(mockOperatorStatusUpdater);
   }
 

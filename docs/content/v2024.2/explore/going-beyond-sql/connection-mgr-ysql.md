@@ -22,7 +22,7 @@ However, connection poolers have some limitations:
 - Added complexity. Deploying and maintaining a connection pooler adds complexity to your application stack.
 - They don't support all PostgreSQL features. For example, neither PgBouncer nor Odyssey supports SET statements in the transaction pooling mode.
 
-To provide the advantages of connection pooling, but without the limitations, YugabyteDB includes a built-in connection pooler, YSQL Connection Manager. Because the manager is bundled with the product, it is convenient to manage, monitor, and configure the server connections without additional third-party tools. When combined with [smart drivers](/preview/drivers-orms/smart-drivers/), YugabyteDB simplifies application architecture and enhances developer productivity.
+To provide the advantages of connection pooling, but without the limitations, YugabyteDB includes a built-in connection pooler, YSQL Connection Manager. Because the manager is bundled with the product, it is convenient to manage, monitor, and configure the server connections without additional third-party tools. When combined with [smart drivers](/preview/develop/drivers-orms/smart-drivers/), YugabyteDB simplifies application architecture and enhances developer productivity.
 
 ![Connection manager](/images/explore/ysql-connection-manager.png)
 
@@ -141,7 +141,8 @@ The following table outlines the various authentication methods supported by Yug
 | {{<icon/yes>}} | JWT Authentication (OIDC) | Uses JSON Web Tokens (JWT) from an external Identity Provider (IDP) to securely transmit authentication and authorization information. |
 | {{<icon/yes>}} | LDAP Authentication | Verifies users against a centralized directory service using Lightweight Directory Access Protocol (LDAP). |
 | {{<icon/no>}} | GSS API or Kerberos| Enables Kerberos-based authentication through a standardized API, allowing secure, enterprise-grade Single Sign-On (SSO) logins without passwords. <br> **Note**: Testing of this feature with YugabyteDB is currently limited.|
-| {{<icon/no>}} | SCRAM-sha256  | A secure password-based authentication that protects credentials using hashing, salting, and challenge-response. |
+| {{<icon/yes>}} | SCRAM-SHA-256  | A secure password-based authentication that protects credentials using hashing, salting, and challenge-response. |
+| {{<icon/no>}} | SCRAM-SHA-256-PLUS  | A variant of SCRAM-SHA-256 over TLS channels that performs TLS channel-binding as part of authentication. | 
 | {{<icon/yes>}} | MD5 | Password-based authentication where the user's password is by default stored in MD5 encryption format in the database. |
 | {{<icon/no>}} | Cert  | Certificate-based authentication requires the client to provide certificates to the server over a TLS connection for authentication. |
 

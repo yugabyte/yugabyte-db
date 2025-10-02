@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
@@ -141,11 +141,8 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
           TaskType.WaitStartingFromTime,
           TaskType.UpdateUniverseFields);
 
-  @Override
   @Before
   public void setUp() {
-    super.setUp();
-
     // Create test region and Availability Zones
     region = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
     az1 = AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");

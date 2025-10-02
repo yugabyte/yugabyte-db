@@ -177,14 +177,17 @@ libraryDependencies ++= Seq(
   "org.bouncycastle" % "bctls-fips" % "2.1.20",
   "org.mindrot" % "jbcrypt" % "0.4",
   "org.springframework.security" % "spring-security-core" % "5.8.16",
-  "com.amazonaws" % "aws-java-sdk-ec2" % "1.12.768",
-  "com.amazonaws" % "aws-java-sdk-kms" % "1.12.768",
-  "com.amazonaws" % "aws-java-sdk-iam" % "1.12.768",
-  "com.amazonaws" % "aws-java-sdk-sts" % "1.12.768",
-  "com.amazonaws" % "aws-java-sdk-s3" % "1.12.768",
-  "com.amazonaws" % "aws-java-sdk-elasticloadbalancingv2" % "1.12.327",
-  "com.amazonaws" % "aws-java-sdk-route53" % "1.12.400",
-  "com.amazonaws" % "aws-java-sdk-cloudtrail" % "1.12.498",
+  // AWS SDK 2.x dependencies
+  "software.amazon.awssdk" % "bom" % "2.33.10" pomOnly(),
+  "software.amazon.awssdk" % "core" % "2.33.10",
+  "software.amazon.awssdk" % "ec2" % "2.33.10",
+  "software.amazon.awssdk" % "kms" % "2.33.10",
+  "software.amazon.awssdk" % "iam" % "2.33.10",
+  "software.amazon.awssdk" % "sts" % "2.33.10",
+  "software.amazon.awssdk" % "s3" % "2.33.10",
+  "software.amazon.awssdk" % "elasticloadbalancingv2" % "2.33.10",
+  "software.amazon.awssdk" % "route53" % "2.33.10",
+  "software.amazon.awssdk" % "cloudtrail" % "2.33.10",
   "net.minidev" % "json-smart" % "2.5.2",
   "com.cronutils" % "cron-utils" % "9.1.6",
   // Be careful when changing azure library versions.
@@ -936,8 +939,8 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.107-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.3-b6"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.108-SNAPSHOT"
+libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.3-b9"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b35"
 
 libraryDependencies ++= Seq(

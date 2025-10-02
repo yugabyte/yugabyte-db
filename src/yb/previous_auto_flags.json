@@ -68,12 +68,20 @@
           "class": 3
         },
         {
+          "name": "xcluster_use_encoded_key_filter",
+          "class": 2
+        },
+        {
           "name": "yb_enable_cdc_consistent_snapshot_streams",
           "class": 2
         },
         {
           "name": "ycql_suppress_group_by_error",
           "class": 1
+        },
+        {
+          "name": "ysql_enable_auto_analyze_infra",
+          "class": 2
         },
         {
           "name": "ysql_enable_packed_row",
@@ -85,6 +93,10 @@
         },
         {
           "name": "ysql_yb_allow_block_based_sampling_algorithm",
+          "class": 1
+        },
+        {
+          "name": "ysql_yb_allow_dockey_bounds",
           "class": 1
         },
         {
@@ -102,6 +114,10 @@
         {
           "name": "ysql_yb_enable_add_column_missing_default",
           "class": 3
+        },
+        {
+          "name": "ysql_yb_enable_advisory_locks",
+          "class": 2
         },
         {
           "name": "ysql_yb_enable_alter_table_rewrite",
@@ -225,6 +241,10 @@
           "class": 2
         },
         {
+          "name": "enable_tablespace_based_transaction_placement",
+          "class": 2
+        },
+        {
           "name": "enable_tablet_split_of_xcluster_replicated_tables",
           "class": 3
         },
@@ -277,8 +297,20 @@
           "class": 2
         },
         {
+          "name": "xcluster_enable_ddl_replication",
+          "class": 3
+        },
+        {
           "name": "xcluster_enable_subtxn_abort_propagation",
           "class": 3
+        },
+        {
+          "name": "xcluster_store_older_schema_versions",
+          "class": 2
+        },
+        {
+          "name": "xcluster_use_encoded_key_filter",
+          "class": 2
         },
         {
           "name": "yb_enable_cdc_consistent_snapshot_streams",
@@ -297,6 +329,10 @@
           "class": 3
         },
         {
+          "name": "ysql_enable_auto_analyze_infra",
+          "class": 2
+        },
+        {
           "name": "ysql_enable_packed_row",
           "class": 3
         },
@@ -306,6 +342,10 @@
         },
         {
           "name": "ysql_yb_allow_block_based_sampling_algorithm",
+          "class": 1
+        },
+        {
+          "name": "ysql_yb_allow_dockey_bounds",
           "class": 1
         },
         {
@@ -323,6 +363,10 @@
         {
           "name": "ysql_yb_enable_add_column_missing_default",
           "class": 3
+        },
+        {
+          "name": "ysql_yb_enable_advisory_locks",
+          "class": 2
         },
         {
           "name": "ysql_yb_enable_alter_table_rewrite",

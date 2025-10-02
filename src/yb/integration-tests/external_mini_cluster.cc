@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -106,9 +106,6 @@
 #include "yb/util/flags.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
-#define YB_FORWARD_FLAG(flag_name) \
-  "--" BOOST_PP_STRINGIZE(flag_name) "="s + FlagToString(BOOST_PP_CAT(FLAGS_, flag_name))
-
 
 using namespace std::literals;  // NOLINT
 using namespace yb::size_literals;  // NOLINT
@@ -160,24 +157,24 @@ using yb::rpc::RpcController;
 
 typedef ListTabletsResponsePB::StatusAndSchemaPB StatusAndSchemaPB;
 
-DECLARE_string(vmodule);
-DECLARE_int32(replication_factor);
+DECLARE_bool(allow_insecure_connections);
+DECLARE_bool(enable_stream_compression);
 DECLARE_bool(mem_tracker_logging);
 DECLARE_bool(mem_tracker_log_stack_trace);
-DECLARE_string(minicluster_daemon_id);
-DECLARE_bool(use_libbacktrace);
 DECLARE_bool(never_fsync);
-DECLARE_bool(allow_insecure_connections);
 DECLARE_bool(node_to_node_encryption_use_client_certificates);
 DECLARE_bool(use_client_to_server_encryption);
+DECLARE_bool(use_libbacktrace);
 DECLARE_bool(use_node_to_node_encryption);
-DECLARE_string(certs_dir);
-DECLARE_string(ysql_hba_conf_csv);
-
+DECLARE_int32(replication_factor);
+DECLARE_int32(stream_compression_algo);
 DECLARE_int64(outbound_rpc_block_size);
 DECLARE_int64(outbound_rpc_memory_limit);
-
+DECLARE_string(certs_dir);
 DECLARE_string(dynamically_linked_exe_suffix);
+DECLARE_string(minicluster_daemon_id);
+DECLARE_string(vmodule);
+DECLARE_string(ysql_hba_conf_csv);
 
 namespace yb {
 
@@ -1847,6 +1844,16 @@ Result<tserver::CheckTserverTabletHealthResponsePB> ExternalMiniCluster::GetTabl
   return CheckedResponse(resp);
 }
 
+Result<tserver::GetObjectLockStatusResponsePB> ExternalMiniCluster::GetObjectLockStatus(
+    const ExternalTabletServer& ts) {
+  auto rpc = DefaultRpcController();
+  tserver::GetObjectLockStatusRequestPB req;
+
+  tserver::GetObjectLockStatusResponsePB resp;
+  RETURN_NOT_OK(GetProxy<TabletServerServiceProxy>(&ts).GetObjectLockStatus(req, &resp, &rpc));
+  return CheckedResponse(resp);
+}
+
 Result<tserver::GetSplitKeyResponsePB> ExternalMiniCluster::GetSplitKey(
     const TabletId& tablet_id) {
   size_t attempts = 50;
@@ -2819,39 +2826,15 @@ Status CompactSysCatalog(ExternalMiniCluster* cluster, const MonoDelta& timeout)
   return Status::OK();
 }
 
-std::string FlagToString(bool flag) {
-  return flag ? "true" : "false";
-}
-
-const std::string& FlagToString(const std::string& flag) {
-  return flag;
-}
-
 void StartSecure(
     std::unique_ptr<ExternalMiniCluster>* cluster,
     std::unique_ptr<rpc::SecureContext>* secure_context,
     std::unique_ptr<rpc::Messenger>* messenger,
-    bool enable_ysql) {
+    const ExternalMiniClusterOptions& opts) {
   auto messenger_builder = CreateMiniClusterMessengerBuilder();
   *secure_context = ASSERT_RESULT(rpc::SetupSecureContext(
       /*root_dir=*/"", "127.0.0.100", rpc::SecureContextType::kInternal, &messenger_builder));
   *messenger = ASSERT_RESULT(messenger_builder.Build());
-
-  ExternalMiniClusterOptions opts;
-  opts.extra_tserver_flags = {
-      YB_FORWARD_FLAG(allow_insecure_connections),
-      YB_FORWARD_FLAG(certs_dir),
-      YB_FORWARD_FLAG(node_to_node_encryption_use_client_certificates),
-      YB_FORWARD_FLAG(use_client_to_server_encryption),
-      YB_FORWARD_FLAG(use_node_to_node_encryption),
-      YB_FORWARD_FLAG(ysql_hba_conf_csv)
-  };
-  opts.extra_master_flags = opts.extra_tserver_flags;
-  opts.num_tablet_servers = 3;
-  opts.use_even_ips = true;
-  opts.enable_ysql = enable_ysql;
-  opts.enable_ysql_auth = enable_ysql;
-  opts.wait_for_tservers_to_accept_ysql_connections = false;
   *cluster = std::make_unique<ExternalMiniCluster>(opts);
   ASSERT_OK((**cluster).Start(messenger->get()));
 }

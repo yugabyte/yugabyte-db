@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -72,14 +72,7 @@ public class HAController extends AuthenticatedController {
       nickname = "getHAConfig",
       value = "Get high availability config",
       response = HAConfigGetResp.class)
-  @AuthzPath({
-    @RequiredPermissionOnResource(
-        requiredPermission =
-            @PermissionAttribute(
-                resourceType = ResourceType.OTHER,
-                action = Action.SUPER_ADMIN_ACTIONS),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
-  })
+  @AuthzPath
   public Result getHAConfig() {
     Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.get();
     if (!config.isPresent()) {

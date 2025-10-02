@@ -6,7 +6,7 @@
  * Tracks a history of all applied migrations, starting with <baseline>
  * assigned by reinitdb.
  *
- * Portions Copyright (c) YugaByte, Inc.
+ * Portions Copyright (c) YugabyteDB, Inc.
  *
  * src/include/catalog/pg_yb_migration.h
  *

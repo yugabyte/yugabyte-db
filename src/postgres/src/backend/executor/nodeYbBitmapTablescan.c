@@ -5,7 +5,7 @@
  *
  * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
- * Portions Copyright (c) Yugabyte, Inc.
+ * Portions Copyright (c) YugabyteDB, Inc.
  *
  * IDENTIFICATION
  *	  src/backend/executor/nodeYbBitmapTablescan.c
@@ -264,9 +264,9 @@ CreateYbBitmapTableScanDesc(YbBitmapTableScanState *scanstate)
 		plan.recheck_local_quals = NULL;
 
 	yb_pushdown = YbInstantiatePushdownExprs((scanstate->work_mem_exceeded ?
-											   &plan.fallback_pushdown :
-											   &plan.rel_pushdown),
-											  scanstate->ss.ps.state);
+											  &plan.fallback_pushdown :
+											  &plan.rel_pushdown),
+											 scanstate->ss.ps.state);
 
 
 	ybScan = ybcBeginScan(scanstate->ss.ss_currentRelation,
@@ -295,7 +295,7 @@ CreateYbBitmapTableScanDesc(YbBitmapTableScanState *scanstate)
 	if (scanstate->recheck_required && !scanstate->work_mem_exceeded)
 	{
 		YbPushdownExprs *recheck_pushdown = YbInstantiatePushdownExprs(&plan.recheck_pushdown,
-																		scanstate->ss.ps.state);
+																	   scanstate->ss.ps.state);
 
 		if (recheck_pushdown)
 		{

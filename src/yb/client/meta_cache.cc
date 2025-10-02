@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -2443,8 +2443,9 @@ Status MetaCache::ClearCacheEntries(const std::string& namespace_id) {
   std::set<TableId> db_tables_ids;
   std::set<TabletId> db_tablets_ids;
   for (const auto& [table_id, table_data] : tables_) {
-    // Escape sys catalog and parent table ids as they don't conform to a typical ysql table id
-    if (table_id == master::kSysCatalogTableId) {
+    // Escape sys catalog, ycql tables, and parent table ids as they don't conform to a typical
+    // ysql table id
+    if (table_id == master::kSysCatalogTableId || !IsPgsqlId(table_id)) {
       continue;
     } else if (IsColocationParentTableId(table_id)) {
       db_tables_ids.insert(table_id);

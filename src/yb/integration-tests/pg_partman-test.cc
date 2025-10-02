@@ -31,6 +31,8 @@ class PgPartmanTest : public MiniClusterTestWithClient<ExternalMiniCluster> {
     opts.replication_factor = 1;
     opts.num_masters = 1;
     opts.enable_ysql = true;
+    // (Auto Analyze #28389)
+    opts.extra_tserver_flags.push_back("--ysql_enable_auto_analyze=false");
 
     cluster_.reset(new ExternalMiniCluster(opts));
     ASSERT_OK(cluster_->Start());

@@ -2,9 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -295,7 +295,7 @@ class Env {
   // This should operate safely, not following any symlinks, etc.
   virtual Status DeleteRecursively(const std::string &dirname) = 0;
 
-  // Store the logical size of fname in *file_size.
+  // Returns the logical size of fname.
   virtual Result<uint64_t> GetFileSize(const std::string& fname) = 0;
 
   virtual Result<uint64_t> GetFileINode(const std::string& fname) = 0;
@@ -534,6 +534,9 @@ class WritableFile {
 
   virtual uint64_t Size() const = 0;
 
+  // Get the logical file size visible to the users.
+  virtual Result<uint64_t> SizeOnDisk() const = 0;
+
   // Returns the filename provided when the WritableFile was constructed.
   virtual const std::string& filename() const = 0;
 
@@ -563,6 +566,7 @@ class WritableFileWrapper : public WritableFile {
   Status Flush(FlushMode mode) override;
   Status Sync() override;
   uint64_t Size() const override { return target_->Size(); }
+  Result<uint64_t> SizeOnDisk() const override { return target_->SizeOnDisk(); }
   const std::string& filename() const override { return target_->filename(); }
 
  private:
@@ -649,7 +653,7 @@ class RWFile {
   virtual Status Close() = 0;
 
   // Retrieves the file's size.
-  virtual Status Size(uint64_t* size) const = 0;
+  virtual Result<uint64_t> Size() const = 0;
 
   // Returns the filename provided when the RWFile was constructed.
   virtual const std::string& filename() const = 0;

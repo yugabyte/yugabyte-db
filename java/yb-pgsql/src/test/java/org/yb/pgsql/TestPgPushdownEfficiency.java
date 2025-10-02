@@ -16,6 +16,14 @@ public class TestPgPushdownEfficiency extends BasePgSQLTestWithRpcMetric {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("enable_object_lock_fastpath", "false");
     flagMap.put("pg_client_use_shared_memory", "false");
+    // The test is designed to test the pushdown efficiency of the query. It counts the number of
+    // RPCs that are sent to the tablet servers. Enabling table locks causes us to use more RPCs.
+    // So let's just disble the table locks here. The functionality tested here does not require
+    // table locks.
+    flagMap.put("ysql_yb_ddl_transaction_block_enabled", "true");
+    flagMap.put("enable_object_locking_for_table_locks", "false");
+    flagMap.put("allowed_preview_flags_csv",
+        "ysql_yb_ddl_transaction_block_enabled,enable_object_locking_for_table_locks");
     return flagMap;
   }
 

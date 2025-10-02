@@ -1,4 +1,4 @@
-// Copyright (c) Yugabyte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -29,6 +29,7 @@ using namespace std::literals;
 
 DECLARE_string(vmodule);
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 METRIC_DECLARE_counter(handler_latency_yb_tserver_PgClientService_OpenTable);
 METRIC_DECLARE_counter(handler_latency_yb_master_MasterDdl_GetTableSchema);
@@ -1849,8 +1850,10 @@ TEST_F(PgCatalogVersionTest, NonIncrementingDDLMode) {
   ASSERT_OK(conn.Execute("CREATE TEMP TABLE temp_demo (a INT, b INT)"));
   ASSERT_OK(conn.Execute("ALTER TABLE temp_demo ADD COLUMN c INT"));
   ASSERT_OK(conn.Execute("CREATE INDEX temp_idx ON temp_demo(c)"));
-  ASSERT_OK(conn.Execute("DROP INDEX temp_idx"));
-  ASSERT_OK(conn.Execute("DROP TABLE temp_demo"));
+  ASSERT_OK(conn.Execute("ALTER TABLE temp_demo RENAME TO temp_demo_new"));
+  ASSERT_OK(conn.Execute("ALTER INDEX temp_idx RENAME TO temp_idx_new"));
+  ASSERT_OK(conn.Execute("DROP INDEX temp_idx_new"));
+  ASSERT_OK(conn.Execute("DROP TABLE temp_demo_new"));
   new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
   ASSERT_EQ(new_version, version);
 }
@@ -2615,7 +2618,7 @@ DROP TABLE tempTable2;
   LOG(INFO) << "result.size(): " << result.size();
   LOG(INFO) << "fingerprint: " << fingerprint;
   ASSERT_EQ(result.size(), 54564U);
-  ASSERT_EQ(fingerprint, 13716420936941683649UL);
+  ASSERT_EQ(fingerprint, 11276843017411745442UL);
 }
 
 TEST_F(PgCatalogVersionTest, InvalMessageAlterTableRefreshTest) {
@@ -3133,9 +3136,11 @@ TEST_F(PgCatalogVersionTest, InvalMessageMinimalRetention) {
 
 // https://github.com/yugabyte/yugabyte-db/issues/27822
 TEST_F(PgCatalogVersionTest, InvalMessageWaitOnVersionGap) {
+  // Disable auto analyze in this test because it introduce flakiness of metrics.
   RestartClusterWithInvalMessageEnabled(
       { "--heartbeat_interval_ms=10000",
-        "--ysql_pg_conf_csv=log_statement=all" });
+        "--ysql_pg_conf_csv=log_statement=all",
+        "--ysql_enable_auto_analyze=false" });
   // Create a test table.
   auto conn = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
   ASSERT_OK(conn.Execute("CREATE TABLE test_table(id int)"));
@@ -3258,11 +3263,13 @@ TEST_F(PgCatalogVersionTest, TestAlterRoleSetGUCHasGlobalImpact) {
 
 TEST_F(PgCatalogVersionTest, InvalMessageDeltaTableLoad) {
   for (int i = 0; i < 2; i++) {
+    // Disable auto analyze in this test because it introduce flakiness of metrics.
     if (i == 0) {
-      RestartClusterWithInvalMessageEnabled();
+      RestartClusterWithInvalMessageEnabled({ "--ysql_enable_auto_analyze=false" });
     } else {
       RestartClusterWithInvalMessageEnabled(
-          { "--ysql_yb_enable_invalidate_table_cache_entry=false" });
+          { "--ysql_yb_enable_invalidate_table_cache_entry=false",
+            "--ysql_enable_auto_analyze=false" });
     }
     auto conn = CHECK_RESULT(Connect());
     ASSERT_OK(conn.ExecuteFormat("create table test_table$0(id int)", i));
@@ -3372,6 +3379,45 @@ TEST_P(PgCatalogVersionConnManagerTest,
             << ", master_read_count_after: " << master_read_count_after;
   auto expected_count = (enable_ysql_conn_mgr ? 1 : 3) * num_logical_connections + 1;
   ASSERT_EQ(master_read_count_after - master_read_count_before, expected_count);
+}
+
+TEST_P(PgCatalogVersionConnManagerTest,
+       YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestConnectionManagerRelCacheInitRpcCount)) {
+  const bool enable_ysql_conn_mgr = GetParam();
+  RestartClusterWithInvalMessageEnabled({ "--ysql_use_relcache_file=false" });
+  // Create the first logical connection to warm up the tserver cache
+  // for later auth backends to use.
+  auto conn = ASSERT_RESULT(Connect());
+
+  auto master_read_count_before = ASSERT_RESULT(GetMasterReadRPCCount());
+
+  // This triggers a pg auth backend to create a second logical connection.
+  auto conn2 = ASSERT_RESULT(Connect());
+  auto master_read_count_after = ASSERT_RESULT(GetMasterReadRPCCount());
+  LOG(INFO) << ", master_read_count_before: " << master_read_count_before
+            << ", master_read_count_after: " << master_read_count_after;
+  auto expected_count = (enable_ysql_conn_mgr ? 1 : 2) + 1;
+  ASSERT_EQ(master_read_count_after - master_read_count_before, expected_count);
+
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table(id int)"));
+  // Increase the catalog version to invalidate relcache init file.
+  // Increment more 200 times so that a backend see heartbeat propagated a newer
+  // shared catalog version like 131, when the master catalog version is already 201.
+  for (int i = 1; i <= 200; i++) {
+    ASSERT_OK(IncrementAllDBCatalogVersions(conn, IsBreakingCatalogVersionChange::kFalse));
+  }
+
+  // This triggers a new pg auth backend, it needs to rebuild relcache init file.
+  pg_ts = cluster_->tablet_server(1);
+  master_read_count_before = ASSERT_RESULT(GetMasterReadRPCCount());
+  auto conn3 = ASSERT_RESULT(Connect());
+  master_read_count_after = ASSERT_RESULT(GetMasterReadRPCCount());
+  LOG(INFO) << ", master_read_count_before: " << master_read_count_before
+            << ", master_read_count_after: " << master_read_count_after;
+  // Because latest master catalog version is used to do prefetch when rebuilding
+  // relcache init file, we see the same number of master RPCs regardless of
+  // whether connection manager is used or not.
+  ASSERT_EQ(master_read_count_after - master_read_count_before, 7);
 }
 
 TEST_P(PgCatalogVersionConnManagerTest,
@@ -3563,6 +3609,8 @@ TEST_P(PgCatalogVersionConnManagerTest,
 }
 
 TEST_F(PgCatalogVersionTest, NewConnectionRelCachePreloadTest) {
+  // Disable auto analyze because it makes the number of the metric: RelCachePreload flaky.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = "false";
   // Wait a bit for the webserver background process to get ready to serve curl request.
   SleepFor(2s);
   auto conn_yugabyte = ASSERT_RESULT(Connect());

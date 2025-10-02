@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -28,6 +28,7 @@
 
 #include "yb/client/client_fwd.h"
 #include "yb/client/in_flight_op.h"
+#include "yb/common/pg_types.h"
 
 #include "yb/util/status_callback.h"
 #include "yb/util/status_fwd.h"
@@ -85,7 +86,7 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
  public:
   explicit YBTransaction(TransactionManager* manager,
-                         TransactionLocality locality = TransactionLocality::GLOBAL);
+                         TransactionFullLocality locality = TransactionFullLocality::Global());
 
   // Trick to allow std::make_shared with this ctor only from methods of this class.
   YBTransaction(TransactionManager* manager, const TransactionMetadata& metadata, PrivateOnlyTag);
@@ -110,6 +111,10 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   // Transaction is unusable before Init is called.
   Status Init(
       IsolationLevel isolation, const ReadHybridTime& read_time = ReadHybridTime());
+
+  void RestartStartTime();
+
+  void SetStartTimeIfNecessary();
 
   // Allows starting a transaction that reuses an existing read point.
   void InitWithReadPoint(IsolationLevel isolation, ConsistentReadPoint&& read_point);

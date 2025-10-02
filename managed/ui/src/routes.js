@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 import Cookies from 'js-cookie';
 import { Route, IndexRoute, browserHistory } from 'react-router';

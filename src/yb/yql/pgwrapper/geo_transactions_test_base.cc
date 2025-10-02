@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -334,35 +334,50 @@ bool GeoTransactionsTestBase::AllTabletLeaderInZone(
   return true;
 }
 
-Result<uint32_t> GeoTransactionsTestBase::GetTablespaceOidForRegion(int region) const {
+Result<PgTablespaceOid> GeoTransactionsTestBase::GetTablespaceOid(
+    std::string_view tablespace) const {
   auto conn = EXPECT_RESULT(Connect());
-  return EXPECT_RESULT(conn.FetchRow<pgwrapper::PGOid>(strings::Substitute(
-      "SELECT oid FROM pg_catalog.pg_tablespace WHERE spcname = 'tablespace$0'", region)));
+  LOG(INFO) << tablespace;
+  return EXPECT_RESULT(conn.FetchRow<pgwrapper::PGOid>(Format(
+      "SELECT oid FROM pg_catalog.pg_tablespace WHERE spcname = '$0'", tablespace)));
 }
 
-Result<std::vector<TabletId>> GeoTransactionsTestBase::GetStatusTablets(
-    int region, ExpectedLocality locality) {
+Result<PgTablespaceOid> GeoTransactionsTestBase::GetTablespaceOidForRegion(int region) const {
+  return GetTablespaceOid("tablespace"s + std::to_string(region));
+}
 
+Result<std::vector<TabletId>> GeoTransactionsTestBase::GetStatusTabletsWithTableName(
+    const std::string& local_txn_table, ExpectedLocality locality) {
   YBTableName table_name;
   if (locality == ExpectedLocality::kNoCheck) {
     return std::vector<TabletId>();
   } else if (locality == ExpectedLocality::kGlobal) {
     table_name = YBTableName(
         YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
-  } else if (ANNOTATE_UNPROTECTED_READ(FLAGS_auto_create_local_transaction_tables)) {
-    auto tablespace_oid = EXPECT_RESULT(GetTablespaceOidForRegion(region));
-    table_name = YBTableName(
-        YQL_DATABASE_CQL, master::kSystemNamespaceName,
-        yb::Format("transactions_$0", tablespace_oid));
   } else {
     table_name = YBTableName(
-        YQL_DATABASE_CQL, master::kSystemNamespaceName,
-        yb::Format("transactions_region$0", region));
+        YQL_DATABASE_CQL, master::kSystemNamespaceName, local_txn_table);
   }
   std::vector<TabletId> tablet_uuids;
   RETURN_NOT_OK(client_->GetTablets(
       table_name, 1000 /* max_tablets */, &tablet_uuids, nullptr /* ranges */));
   return tablet_uuids;
+}
+
+Result<std::vector<TabletId>> GeoTransactionsTestBase::GetStatusTablets(
+    std::string_view tablespace, ExpectedLocality locality) {
+  auto tablespace_oid = EXPECT_RESULT(GetTablespaceOid(tablespace));
+  return GetStatusTabletsWithTableName(Format("transactions_$0", tablespace_oid), locality);
+}
+
+Result<std::vector<TabletId>> GeoTransactionsTestBase::GetStatusTablets(
+    int region, ExpectedLocality locality) {
+  if (ANNOTATE_UNPROTECTED_READ(FLAGS_auto_create_local_transaction_tables)) {
+    auto tablespace_oid = EXPECT_RESULT(GetTablespaceOidForRegion(region));
+    return GetStatusTabletsWithTableName(Format("transactions_$0", tablespace_oid), locality);
+  } else {
+    return GetStatusTabletsWithTableName(Format("transactions_region$0", region), locality);
+  }
 }
 
 } // namespace client

@@ -3,7 +3,7 @@
  * yb_catalog_version.c
  *	  utility functions related to the ysql catalog version table.
  *
- * Portions Copyright (c) YugaByte, Inc.
+ * Portions Copyright (c) YugabyteDB, Inc.
  *
  *-------------------------------------------------------------------------
  */
@@ -117,7 +117,7 @@ YbMaybeLockMasterCatalogVersion()
 		!*YBCGetGFlags()->enable_object_locking_for_table_locks &&
 		YbIsInvalidationMessageEnabled() && YBIsDBCatalogVersionMode())
 	{
-		elog(DEBUG1, "Locking catalog version for db oid %d", MyDatabaseId);
+		elog(DEBUG3, "Locking catalog version for db oid %d", MyDatabaseId);
 		YbGetMasterCatalogVersionImpl(true /* acquire_lock */ );
 	}
 }

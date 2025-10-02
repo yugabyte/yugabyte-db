@@ -39,7 +39,7 @@ To optimize the search for the best plan, the CBO uses a dynamic programming-bas
 
 The optimizer relies on accurate statistics about the tables, including the number of rows, the distribution of data in columns, and the cardinality of results from operations. These statistics are essential for estimating the selectivity of filters and costs of various query plans accurately. These statistics are gathered by the [ANALYZE](../../../api/ysql/the-sql-language/statements/cmd_analyze/) command and are provided in a display-friendly format by the [pg_stats](../../../architecture/system-catalog/#data-statistics) view.
 
-Similar to [PostgreSQL autovacuum](https://www.postgresql.org/docs/current/routine-vacuuming.html#AUTOVACUUM), the YugabyteDB [Auto Analyze](../../../explore/query-1-performance/auto-analyze/) service automates the execution of ANALYZE commands for any table where rows have changed more than a configurable threshold for the table. This ensures table statistics are always up-to-date.
+Similar to [PostgreSQL autovacuum](https://www.postgresql.org/docs/current/routine-vacuuming.html#AUTOVACUUM), the YugabyteDB [Auto Analyze](../../../additional-features/auto-analyze/) service automates the execution of ANALYZE commands for any table where rows have changed more than a configurable threshold for the table. This ensures table statistics are always up-to-date.
 
 Even with the Auto Analyze service, for the CBO to create optimal execution plans, you should still run ANALYZE manually on user tables after data load, as well as in other circumstances. Refer to [Best practices](#best-practices).
 

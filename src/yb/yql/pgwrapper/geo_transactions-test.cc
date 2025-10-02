@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -27,8 +27,9 @@ using std::string;
 DECLARE_int32(master_ts_rpc_timeout_ms);
 DECLARE_bool(auto_create_local_transaction_tables);
 DECLARE_bool(auto_promote_nonlocal_transactions_to_global);
-DECLARE_bool(TEST_enable_tablespace_based_transaction_placement);
+DECLARE_bool(enable_tablespace_based_transaction_placement);
 DECLARE_bool(force_global_transactions);
+DECLARE_bool(use_tablespace_based_transaction_placement);
 DECLARE_bool(transaction_tables_use_preferred_zones);
 
 using namespace std::literals;
@@ -83,10 +84,15 @@ class GeoTransactionsTest : public GeoTransactionsTestBase {
     }
   }
 
-  void CheckSuccess(int to_region, SetGlobalTransactionsGFlag set_global_transactions_gflag,
-                   SetGlobalTransactionSessionVar session_var, InsertToLocalFirst local_first,
-                   ExpectedLocality expected) {
-    auto expected_status_tablets = ASSERT_RESULT(GetStatusTablets(to_region, expected));
+  std::string GetTableName(int region) {
+    return Format("$0$1_1", kTablePrefix, region);
+  }
+
+  void CheckSuccess(auto&& tablespace_or_region, std::optional<std::string_view> local_table,
+                    std::string_view target_table,
+                    SetGlobalTransactionsGFlag set_global_transactions_gflag,
+                    SetGlobalTransactionSessionVar session_var, ExpectedLocality expected) {
+    auto expected_status_tablets = ASSERT_RESULT(GetStatusTablets(tablespace_or_region, expected));
     if (expected != ExpectedLocality::kNoCheck) {
       ASSERT_FALSE(expected_status_tablets.empty());
     }
@@ -94,13 +100,18 @@ class GeoTransactionsTest : public GeoTransactionsTestBase {
         (set_global_transactions_gflag == SetGlobalTransactionsGFlag::kTrue);
 
     auto conn = ASSERT_RESULT(Connect());
+    auto insert_value = NextInsertValue();
     ASSERT_OK(conn.ExecuteFormat("SET force_global_transaction = $0", ToString(session_var)));
     ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
-    if (local_first) {
+    if (local_table) {
       ASSERT_OK(conn.ExecuteFormat(
-          "INSERT INTO $0$1_1(value) VALUES (0)", kTablePrefix, kLocalRegion));
+          "INSERT INTO $0(value) VALUES ($1)", *local_table, insert_value));
+      if (*local_table == target_table) {
+        insert_value = NextInsertValue();
+      }
     }
-    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0$1_1(value) VALUES (0)", kTablePrefix, to_region));
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO $0(value) VALUES ($1)", target_table, insert_value));
     ASSERT_OK(conn.CommitTransaction());
 
     if (expected != ExpectedLocality::kNoCheck) {
@@ -113,10 +124,10 @@ class GeoTransactionsTest : public GeoTransactionsTestBase {
     }
 
     ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
-    if (local_first) {
-      ASSERT_OK(conn.FetchFormat("SELECT * FROM $0$1_1", kTablePrefix, kLocalRegion));
+    if (local_table) {
+      ASSERT_OK(conn.FetchFormat("SELECT * FROM $0", *local_table));
     }
-    ASSERT_OK(conn.FetchFormat("SELECT * FROM $0$1_1", kTablePrefix, to_region));
+    ASSERT_OK(conn.FetchFormat("SELECT * FROM $0", target_table));
     ASSERT_OK(conn.CommitTransaction());
 
     if (expected != ExpectedLocality::kNoCheck) {
@@ -129,48 +140,68 @@ class GeoTransactionsTest : public GeoTransactionsTestBase {
     }
 
     ASSERT_OK(conn.StartTransaction(IsolationLevel::READ_COMMITTED));
-    if (local_first) {
-      ASSERT_OK(conn.FetchFormat("SELECT * FROM $0$1_1", kTablePrefix, kLocalRegion));
+    if (local_table) {
+      ASSERT_OK(conn.FetchFormat("SELECT * FROM $0", *local_table));
     }
-    ASSERT_OK(conn.FetchFormat("SELECT * FROM $0$1_1", kTablePrefix, to_region));
+    ASSERT_OK(conn.FetchFormat("SELECT * FROM $0", target_table));
     ASSERT_OK(conn.CommitTransaction());
   }
 
-  void CheckAbort(int to_region, SetGlobalTransactionsGFlag set_global_transactions_gflag,
-                  SetGlobalTransactionSessionVar session_var, InsertToLocalFirst local_first,
-                  size_t num_aborts) {
+  void CheckSuccess(int to_region, SetGlobalTransactionsGFlag set_global_transactions_gflag,
+                    SetGlobalTransactionSessionVar session_var, InsertToLocalFirst local_first,
+                    ExpectedLocality expected) {
+    CheckSuccess(
+        to_region, local_first ? std::make_optional(GetTableName(kLocalRegion)) : std::nullopt,
+        GetTableName(to_region), set_global_transactions_gflag, session_var, expected);
+  }
+
+  void CheckAbort(std::optional<std::string_view> local_table, std::string_view target_table,
+                  SetGlobalTransactionsGFlag set_global_transactions_gflag,
+                  SetGlobalTransactionSessionVar session_var, size_t num_aborts) {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = set_global_transactions_gflag;
 
     auto conn = ASSERT_RESULT(Connect());
     ASSERT_OK(conn.ExecuteFormat("SET force_global_transaction = $0", ToString(session_var)));
     for (size_t i = 0; i < num_aborts; ++i) {
       ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
-      if (local_first) {
+      auto insert_value = NextInsertValue();
+      if (local_table) {
         ASSERT_OK(conn.ExecuteFormat(
-            "INSERT INTO $0$1_1(value) VALUES (0)", kTablePrefix, kLocalRegion));
+            "INSERT INTO $0(value) VALUES ($1)", *local_table, insert_value));
+        if (*local_table == target_table) {
+          insert_value = NextInsertValue();
+        }
       }
       ASSERT_NOK(conn.ExecuteFormat(
-          "INSERT INTO $0$1_1(value) VALUES (0)", kTablePrefix, to_region));
+          "INSERT INTO $0(value) VALUES ($1)", target_table, insert_value));
       ASSERT_OK(conn.RollbackTransaction());
     }
 
     for (size_t i = 0; i < num_aborts; ++i) {
       ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
-      if (local_first) {
-        ASSERT_OK(conn.FetchFormat("SELECT * FROM $0$1_1", kTablePrefix, kLocalRegion));
+      if (local_table) {
+        ASSERT_OK(conn.FetchFormat("SELECT * FROM $0", *local_table));
       }
-      ASSERT_NOK(conn.FetchFormat("SELECT * FROM $0$1_1", kTablePrefix, to_region));
+      ASSERT_NOK(conn.FetchFormat("SELECT * FROM $0", target_table));
       ASSERT_OK(conn.RollbackTransaction());
     }
 
     for (size_t i = 0; i < num_aborts; ++i) {
       ASSERT_OK(conn.StartTransaction(IsolationLevel::READ_COMMITTED));
-      if (local_first) {
-        ASSERT_OK(conn.FetchFormat("SELECT * FROM $0$1_1", kTablePrefix, kLocalRegion));
+      if (local_table) {
+        ASSERT_OK(conn.FetchFormat("SELECT * FROM $0", *local_table));
       }
-      ASSERT_OK(conn.FetchFormat("SELECT * FROM $0$1_1", kTablePrefix, to_region));
+      ASSERT_OK(conn.FetchFormat("SELECT * FROM $0", target_table));
       ASSERT_OK(conn.CommitTransaction());
     }
+  }
+
+  void CheckAbort(int to_region, SetGlobalTransactionsGFlag set_global_transactions_gflag,
+                  SetGlobalTransactionSessionVar session_var, InsertToLocalFirst local_first,
+                  size_t num_aborts) {
+    CheckAbort(
+        local_first ? std::make_optional(GetTableName(kLocalRegion)) : std::nullopt,
+        GetTableName(to_region), set_global_transactions_gflag, session_var, num_aborts);
   }
 
   // Get the leader replica count and total replica count of a group of tablets belongs to a table
@@ -238,6 +269,12 @@ class GeoTransactionsTest : public GeoTransactionsTestBase {
     }
     return true;
   }
+
+  uint64_t NextInsertValue() {
+    return next_insert_value_++;
+  }
+
+  uint64_t next_insert_value_ = 0;
 };
 
 TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionTabletSelection)) {
@@ -824,7 +861,7 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestAlterTableSetTablespaceM
 
 class GeoTransactionsTablespaceBasedSelectionCandidatesTest : public GeoTransactionsTest {
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_tablespace_based_transaction_placement) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablespace_based_transaction_placement) = false;
     GeoTransactionsTest::SetUp();
   }
 };
@@ -856,7 +893,7 @@ TEST_F(GeoTransactionsTablespaceBasedSelectionCandidatesTest, TestCandidates) {
   }
 
   auto version = GetCurrentVersion();
-  ASSERT_OK(SET_FLAG(TEST_enable_tablespace_based_transaction_placement, true));
+  ASSERT_OK(SET_FLAG(enable_tablespace_based_transaction_placement, true));
   WaitForStatusTabletsVersion(version + 1);
 
   {
@@ -871,6 +908,314 @@ TEST_F(GeoTransactionsTablespaceBasedSelectionCandidatesTest, TestCandidates) {
     auto cloud_info = local_ts.placement_info.placement_blocks().begin()->cloud_info();
     ASSERT_EQ(cloud_info.placement_region(), local_cloud_info.placement_region());
   }
+}
+
+class GeoTransactionsTablespaceLocalityTest : public GeoTransactionsTest {
+ public:
+  constexpr static auto kTablespace1 = "tablespace_multi_region1";
+  constexpr static auto kTablespace2 = "tablespace_multi_region2";
+  constexpr static auto kTableName = "table_multi_region";
+  constexpr static auto kTableNameFK = "table_multi_region_fk";
+
+  void SetUp() override {
+    GeoTransactionsTest::SetUp();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_tablespace_based_transaction_placement) = true;
+  }
+
+  void SetupTablespaces() override {
+    GeoTransactionsTest::SetupTablespaces();
+
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = true;
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.ExecuteFormat(R"#(
+        CREATE TABLESPACE $0 WITH (replica_placement='{
+          "num_replicas": 2,
+          "placement_blocks": [
+            {
+              "cloud": "cloud0",
+              "region": "rack1",
+              "zone": "zone",
+              "min_num_replicas": 1
+            },
+            {
+              "cloud": "cloud0",
+              "region": "rack2",
+              "zone": "zone",
+              "min_num_replicas": 1
+            }
+          ]
+        }')
+    )#", kTablespace1));
+    ASSERT_OK(conn.ExecuteFormat(R"#(
+        CREATE TABLESPACE $0 WITH (replica_placement='{
+          "num_replicas": 2,
+          "placement_blocks": [
+            {
+              "cloud": "cloud0",
+              "region": "rack1",
+              "zone": "zone",
+              "min_num_replicas": 1
+            },
+            {
+              "cloud": "cloud0",
+              "region": "rack3",
+              "zone": "zone",
+              "min_num_replicas": 1
+            }
+          ]
+        }')
+    )#", kTablespace2));
+  }
+
+  void SetupTables(size_t tables_per_region) override {
+    GeoTransactionsTest::SetupTables(tables_per_region);
+
+    auto version = GetCurrentVersion();
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.ExecuteFormat(R"#(
+        CREATE TABLE $1(value int PRIMARY KEY, other_value int)
+        TABLESPACE $0
+    )#", kTablespace1, kTableName));
+    ASSERT_OK(conn.ExecuteFormat(R"#(
+        CREATE TABLE $1(value int REFERENCES $2(value))
+        TABLESPACE $0
+    )#", kTablespace1, kTableNameFK, kTableName));
+    WaitForStatusTabletsVersion(version + 1);
+
+    // Dummy table to create transaction tables.
+    ASSERT_OK(conn.ExecuteFormat(R"#(
+        CREATE TABLE __$0_dummy_table(value int)
+        TABLESPACE $0
+    )#", kTablespace2));
+    WaitForStatusTabletsVersion(version + 2);
+    WaitForLoadBalanceCompletion();
+  }
+};
+
+TEST_F(GeoTransactionsTablespaceLocalityTest, TestSimple) {
+  constexpr int kTablesPerRegion = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_promote_nonlocal_transactions_to_global) = false;
+  SetupTablesAndTablespaces(kTablesPerRegion);
+
+  std::string external_table = GetTableName(kOtherRegion);
+
+  CheckSuccess(
+      kTablespace1, kTableName, kTableName,
+      SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      ExpectedLocality::kLocal);
+  CheckSuccess(
+      kTablespace1, std::nullopt, external_table,
+      SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      ExpectedLocality::kGlobal);
+  CheckAbort(
+      kTableName, external_table,
+      SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      1 /* num_aborts */);
+  CheckSuccess(
+      kTablespace1, kTableName, kTableName,
+      SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
+      ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kTablespace1, kTableName, external_table,
+      SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
+      ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kTablespace1, kTableName, kTableName,
+      SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
+      ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kTablespace1, kTableName, external_table,
+      SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
+      ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kTablespace1, kTableName, kTableName,
+      SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
+      ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kTablespace1, kTableName, external_table,
+      SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
+      ExpectedLocality::kGlobal);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_promote_nonlocal_transactions_to_global) = true;
+
+  // Promotion now allowed. We do not check the status tablet for the promoted case in this test,
+  // because the transaction object we have access to here is from the original take request sent
+  // to the tserver, which is normally discarded and thus not kept up to date.
+  CheckSuccess(
+      kTablespace1, kTableName, kTableName,
+      SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      ExpectedLocality::kLocal);
+  CheckSuccess(
+      kTablespace1, kTableName, external_table,
+      SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      ExpectedLocality::kNoCheck);
+  CheckSuccess(
+      kTablespace1, kTableName, kTableName,
+      SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
+      ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kTablespace1, kTableName, external_table,
+      SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
+      ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kTablespace1, kTableName, kTableName,
+      SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
+      ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kTablespace1, kTableName, external_table,
+      SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
+      ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kTablespace1, kTableName, kTableName,
+      SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
+      ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kTablespace1, kTableName, external_table,
+      SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
+      ExpectedLocality::kGlobal);
+}
+
+TEST_F(GeoTransactionsTablespaceLocalityTest, TestFK) {
+  constexpr int kTablesPerRegion = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_promote_nonlocal_transactions_to_global) = false;
+  SetupTablesAndTablespaces(kTablesPerRegion);
+
+  std::string external_table = GetTableName(kOtherRegion);
+
+  CheckSuccess(
+      kTablespace1, kTableName, kTableNameFK,
+      SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      ExpectedLocality::kLocal);
+  CheckSuccess(
+      kTablespace1, kTableName, kTableNameFK,
+      SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
+      ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kTablespace1, kTableName, kTableNameFK,
+      SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
+      ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kTablespace1, kTableName, kTableNameFK,
+      SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
+      ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kTablespace1, kTableName, kTableNameFK,
+      SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
+      ExpectedLocality::kGlobal);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_promote_nonlocal_transactions_to_global) = true;
+
+  // Promotion now allowed. We do not check the status tablet for the promoted case in this test,
+  // because the transaction object we have access to here is from the original take request sent
+  // to the tserver, which is normally discarded and thus not kept up to date.
+  CheckSuccess(
+      kTablespace1, kTableName, kTableNameFK,
+      SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      ExpectedLocality::kLocal);
+  CheckSuccess(
+      kTablespace1, kTableName, kTableNameFK,
+      SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
+      ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kTablespace1, kTableName, kTableNameFK,
+      SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
+      ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kTablespace1, kTableName, kTableNameFK,
+      SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
+      ExpectedLocality::kGlobal);
+}
+
+TEST_F(GeoTransactionsTablespaceLocalityTest, TestAlterSetTablespace) {
+  constexpr int kTablesPerRegion = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_promote_nonlocal_transactions_to_global) = false;
+  SetupTablesAndTablespaces(kTablesPerRegion);
+
+  std::string external_table = GetTableName(kOtherRegion);
+
+  CheckSuccess(
+      kTablespace1, kTableName, kTableNameFK,
+      SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      ExpectedLocality::kLocal);
+  CheckSuccess(
+      kTablespace1, std::nullopt, external_table,
+      SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      ExpectedLocality::kGlobal);
+  CheckAbort(
+      kTableName, external_table,
+      SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      1 /* num_aborts */);
+  CheckSuccess(
+      kTablespace1, kTableName, kTableNameFK,
+      SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
+      ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kTablespace1, kTableName, external_table,
+      SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
+      ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kTablespace1, kTableName, kTableNameFK,
+      SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
+      ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kTablespace1, kTableName, external_table,
+      SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
+      ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kTablespace1, kTableName, kTableNameFK,
+      SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
+      ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kTablespace1, kTableName, external_table,
+      SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
+      ExpectedLocality::kGlobal);
+
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.ExecuteFormat(
+        "ALTER TABLE $0 SET TABLESPACE $1", kTableName, kTablespace2));
+    ASSERT_OK(conn.ExecuteFormat(
+        "ALTER TABLE $0 SET TABLESPACE $1", kTableNameFK, kTablespace2));
+  }
+  WaitForLoadBalanceCompletion();
+
+  CheckSuccess(
+      kTablespace2, kTableName, kTableNameFK,
+      SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      ExpectedLocality::kLocal);
+  CheckSuccess(
+      kTablespace2, std::nullopt, external_table,
+      SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      ExpectedLocality::kGlobal);
+  CheckAbort(
+      kTableName, external_table,
+      SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      1 /* num_aborts */);
+  CheckSuccess(
+      kTablespace2, kTableName, kTableNameFK,
+      SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
+      ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kTablespace2, kTableName, external_table,
+      SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
+      ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kTablespace2, kTableName, kTableNameFK,
+      SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
+      ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kTablespace2, kTableName, external_table,
+      SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
+      ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kTablespace2, kTableName, kTableNameFK,
+      SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
+      ExpectedLocality::kGlobal);
+  CheckSuccess(
+      kTablespace2, kTableName, external_table,
+      SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
+      ExpectedLocality::kGlobal);
 }
 
 class GeoTransactionsWildcardTest : public GeoTransactionsTest {

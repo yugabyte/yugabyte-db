@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -118,7 +118,6 @@ enum class YBTableType;
 
 YB_DEFINE_ENUM(GrantRevokeStatementType, (GRANT)(REVOKE));
 YB_STRONGLY_TYPED_BOOL(ForceConsistentRead);
-YB_STRONGLY_TYPED_BOOL(ForceGlobalTransaction);
 YB_STRONGLY_TYPED_BOOL(Initial);
 YB_STRONGLY_TYPED_BOOL(UseCache);
 YB_STRONGLY_TYPED_BOOL(ForceCreateTransaction);

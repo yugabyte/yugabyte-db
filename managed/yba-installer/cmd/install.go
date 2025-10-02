@@ -48,7 +48,7 @@ var installCmd = &cobra.Command{
 		}
 		// Save the services installed
 		state.Services.PerfAdvisor = viper.GetBool("perfAdvisor.enabled")
-		state.Services.Platform = !viper.GetBool("perfAdvisor.enabled") || viper.GetBool("perfAdvisor.withPlatform")
+		state.Services.Platform = !viper.GetBool("perfAdvisor.enabled")
 		if err := state.TransitionStatus(ybactlstate.InstallingStatus); err != nil {
 			log.Fatal("failed to start install: " + err.Error())
 		}

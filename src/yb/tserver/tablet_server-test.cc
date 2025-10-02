@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -30,12 +30,11 @@
 // under the License.
 //
 
-#include "yb/qlexpr/index.h"
-#include "yb/dockv/partition.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema_pbutil.h"
-
 #include "yb/consensus/log-test-base.h"
+
+#include "yb/dockv/partition.h"
 
 #include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/substitute.h"
@@ -45,6 +44,7 @@
 #include "yb/rpc/rpc_test_util.h"
 #include "yb/rpc/yb_rpc.h"
 
+#include "yb/server/call_home-test-util.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/server/server_base.pb.h"
 #include "yb/server/server_base.proxy.h"
@@ -60,16 +60,14 @@
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_call_home.h"
-#include "yb/server/call_home-test-util.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/crc.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/metrics.h"
+#include "yb/util/monotime.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_log.h"
-#include "yb/util/flags.h"
-#include "yb/util/monotime.h"
 
 using yb::rpc::MessengerBuilder;
 using yb::rpc::RpcController;
@@ -97,8 +95,7 @@ METRIC_DECLARE_counter(rows_updated);
 METRIC_DECLARE_counter(rows_deleted);
 METRIC_DECLARE_gauge_uint64(untracked_memory);
 
-namespace yb {
-namespace tserver {
+namespace yb::tserver {
 
 class TabletServerTest : public TabletServerTestBase {
  public:
@@ -763,7 +760,7 @@ TEST_F(TabletServerTest, TestInsertLatencyMicroBenchmark) {
   METRIC_DEFINE_event_stats(test, insert_latency,
                           "Insert Latency",
                           MetricUnit::kMicroseconds,
-                          "TabletServer single threaded insert latency.");
+                          "TabletServer single threaded insert latency (microseconds).");
 
   scoped_refptr<EventStats> stats =
       METRIC_insert_latency.Instantiate(ts_test_metric_entity_);
@@ -957,10 +954,12 @@ TEST_F(TabletServerTest, TestChecksumScan) {
 
   // Second row (null string field).
   key = 2;
-  InsertTestRowsRemote(0, key, 1, 1, nullptr, kTabletId, nullptr, nullptr, false);
+  InsertTestRowsRemote(
+      0, key, 1, 1, /*proxy=*/nullptr, kTabletId, /*write_hybrid_times_collector=*/nullptr,
+      /*ts=*/nullptr, /*string_field_defined=*/false);
   controller.Reset();
   ASSERT_OK(proxy_->Checksum(req, &resp, &controller));
-  CalcTestRowChecksum(&total_crc, key, false);
+  CalcTestRowChecksum(&total_crc, key, /*string_field_defined=*/false);
 
   ASSERT_FALSE(resp.has_error()) << resp.error().DebugString();
   ASSERT_EQ(total_crc, resp.checksum());
@@ -1036,5 +1035,4 @@ TEST_F(TabletServerTest, TestUntrackedMemory) {
 }
 #endif
 
-} // namespace tserver
-} // namespace yb
+} // namespace yb::tserver

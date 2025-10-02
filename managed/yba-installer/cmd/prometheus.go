@@ -1,5 +1,5 @@
 /*
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  */
 
 package cmd
@@ -30,10 +30,23 @@ type prometheusDirectories struct {
 	DataDir             string
 	PromDir             string
 	LogDir              string
+	HttpsCertPath       string
+	HttpsKeyPath        string
 }
 
 func newPrometheusDirectories() prometheusDirectories {
-
+	// If prometheus or the "global" certs are provided, use them. Otherwise, fall back to self
+	// signed certs.
+	certPath := viper.GetString("prometheus.httpsCertPath")
+	if certPath == "" {
+		log.Debug("no prometheus https cert path provided, using self signed.")
+		certPath = common.GetSelfSignedServerCertPath()
+	}
+	keyPath := viper.GetString("prometheus.httpsKeyPath")
+	if keyPath == "" {
+		log.Debug("no prometheus https key path provided, using self signed.")
+		keyPath = common.GetSelfSignedServerKeyPath()
+	}
 	return prometheusDirectories{
 		SystemdFileLocation: common.SystemdDir + "/prometheus.service",
 		ConfFileLocation:    common.GetSoftwareRoot() + "/prometheus/conf/prometheus.yml",
@@ -42,6 +55,8 @@ func newPrometheusDirectories() prometheusDirectories {
 		DataDir:             common.GetBaseInstall() + "/data/prometheus",
 		PromDir:             common.GetSoftwareRoot() + "/prometheus",
 		LogDir:              common.GetBaseInstall() + "/data/logs",
+		HttpsCertPath:       certPath,
+		HttpsKeyPath:        keyPath,
 	}
 }
 
@@ -527,6 +542,17 @@ func (prom Prometheus) migrateReplicatedDirs() error {
 
 func (prom Prometheus) Reconfigure() error {
 	log.Info("Reconfiguring Prometheus")
+	// Make sure the cert and key paths are set
+	certPath := viper.GetString("prometheus.httpsCertPath")
+	if certPath == "" {
+		certPath = common.GetSelfSignedServerCertPath()
+	}
+	keyPath := viper.GetString("prometheus.httpsKeyPath")
+	if keyPath == "" {
+		keyPath = common.GetSelfSignedServerKeyPath()
+	}
+	prom.prometheusDirectories.HttpsCertPath = certPath
+	prom.prometheusDirectories.HttpsKeyPath = keyPath
 	if err := template.GenerateTemplate(prom); err != nil {
 		return fmt.Errorf("failed to generate prometheus config template: %w", err)
 	}

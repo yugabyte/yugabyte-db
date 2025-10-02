@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -100,6 +100,18 @@ using namespace std::placeholders;
 
 namespace yb {
 namespace tserver {
+
+namespace {
+Result<ColocationId> DecodeColocationId(const cdc::CDCRecordPB& record) {
+  if (record.changes().empty()) {
+    return kColocationIdNotSet;
+  }
+  auto decoder = dockv::DocKeyDecoder(record.changes(0).key());
+  ColocationId colocation_id = kColocationIdNotSet;
+  VERIFY_RESULT(decoder.DecodeColocationId(&colocation_id));
+  return colocation_id;
+}
+}  // namespace
 
 XClusterOutputClient::XClusterOutputClient(
     XClusterPoller* xcluster_poller, const xcluster::ConsumerTabletInfo& consumer_tablet_info,
@@ -385,16 +397,13 @@ bool XClusterOutputClient::IsSequencesDataTablet() {
 }
 
 Result<cdc::XClusterSchemaVersionMap> XClusterOutputClient::GetSchemaVersionMap(
-    const cdc::CDCRecordPB& record) {
+    const cdc::CDCRecordPB& record, ColocationId colocation_id) {
   cdc::XClusterSchemaVersionMap* cached_schema_versions = nullptr;
-  auto& kv_pair = record.changes(0);
-  auto decoder = dockv::DocKeyDecoder(kv_pair.key());
-  ColocationId colocationId = kColocationIdNotSet;
-  if (VERIFY_RESULT(decoder.DecodeColocationId(&colocationId))) {
-    // Can't find the table, so we most likely need an update
-    // to the consumer registry, so return an error and fail the apply.
-    cached_schema_versions = FindOrNull(colocated_schema_version_map_, colocationId);
-    SCHECK(cached_schema_versions, NotFound, Format("ColocationId $0 not found.", colocationId));
+  if (colocation_id != kColocationIdNotSet) {
+    cached_schema_versions = FindOrNull(colocated_schema_version_map_, colocation_id);
+    // If we can't find the table, then we most likely need an update to the consumer registry,
+    // so return an error and fail the apply.
+    SCHECK_FORMAT(cached_schema_versions, NotFound, "ColocationId $0 not found.", colocation_id);
   } else {
     cached_schema_versions = &schema_versions_;
   }
@@ -402,7 +411,7 @@ Result<cdc::XClusterSchemaVersionMap> XClusterOutputClient::GetSchemaVersionMap(
   if (PREDICT_FALSE(VLOG_IS_ON(3))) {
     for (const auto& [producer_schema_version, consumer_schema_version] : *cached_schema_versions) {
       VLOG_WITH_PREFIX(3) << Format(
-          "ColocationId:$0 Producer Schema Version:$1, Consumer Schema Version:$2", colocationId,
+          "ColocationId:$0 Producer Schema Version:$1, Consumer Schema Version:$2", colocation_id,
           producer_schema_version, consumer_schema_version);
     }
   }
@@ -420,15 +429,19 @@ Status XClusterOutputClient::ProcessRecord(
     SCHECK(!IsOffline(), Aborted, "$0$1", LogPrefix(), "xCluster output client went offline");
 
     cdc::XClusterSchemaVersionMap schema_versions_map;
+    auto colocation_id = VERIFY_RESULT(DecodeColocationId(record));
     if (PREDICT_TRUE(FLAGS_xcluster_enable_packed_rows_support) &&
         !record.changes().empty() &&
         (record.operation() == cdc::CDCRecordPB::WRITE ||
          record.operation() == cdc::CDCRecordPB::DELETE)) {
-        schema_versions_map = VERIFY_RESULT(GetSchemaVersionMap(record));
+      schema_versions_map = VERIFY_RESULT(GetSchemaVersionMap(record, colocation_id));
     }
 
     auto status = write_strategy_->ProcessRecord(
-        ProcessRecordInfo{.tablet_id = tablet_id, .schema_versions_map = schema_versions_map},
+        ProcessRecordInfo{
+            .tablet_id = tablet_id,
+            .schema_versions_map = schema_versions_map,
+            .colocation_id = colocation_id},
         record);
     if (!status.ok()) {
       error_status_ = status;
@@ -797,7 +810,8 @@ void XClusterOutputClient::HandleNewSchemaPacking(
                .InsertPackedSchemaForXClusterTarget(
                    consumer_tablet_info_.table_id, req.schema(), resp.latest_schema_version(),
                    colocation_id_opt);
-
+  // TODO(#28326): We could pass the producer schema version here to check if a matching schema
+  // version already exists.
   if (s.ok()) {
     VLOG_WITH_PREFIX(2) << "Inserted schema for automatic DDL replication: "
                         << req.schema().ShortDebugString();

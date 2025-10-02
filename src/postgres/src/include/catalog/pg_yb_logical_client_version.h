@@ -4,7 +4,7 @@
  *
  *    definition of the "YSQL logical client version" system catalog (pg_yb_logical_client_version)
  *
- * Portions Copyright (c) YugaByte, Inc.
+ * Portions Copyright (c) YugabyteDB, Inc.
  *
  * src/include/catalog/pg_yb_logical_client_version.h
  *

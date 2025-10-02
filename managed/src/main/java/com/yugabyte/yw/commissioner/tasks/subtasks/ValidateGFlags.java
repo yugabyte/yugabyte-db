@@ -2,11 +2,14 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import static com.yugabyte.yw.common.Util.isIpAddress;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
-import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.ShellProcessContext;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -16,6 +19,7 @@ import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,29 +27,29 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.yb.client.YBClient;
 
 @Slf4j
 public class ValidateGFlags extends UniverseDefinitionTaskBase {
 
-  private final NodeManager nodeManager;
   private final YBClientService ybClientService;
   private final GFlagsValidation gFlagsValidation;
 
   @Inject
   protected ValidateGFlags(
       BaseTaskDependencies baseTaskDependencies,
-      NodeManager nodeManager,
       YBClientService ybClientService,
       GFlagsValidation gFlagsValidation) {
     super(baseTaskDependencies);
-    this.nodeManager = nodeManager;
     this.ybClientService = ybClientService;
     this.gFlagsValidation = gFlagsValidation;
   }
 
   public static class Params extends UniverseDefinitionTaskParams {
     public List<UniverseDefinitionTaskParams.Cluster> newClusters;
+    public String ybSoftwareVersion;
+    public boolean useCLIBinary;
   }
 
   @Override
@@ -140,40 +144,45 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
     gFlagsValidationErrorsPerAZ.azUuid = azUuid;
     gFlagsValidationErrorsPerAZ.clusterUuid = cluster.uuid;
 
-    for (NodeDetails node : nodesInAZ) {
+    Map<String, String> masterGFlagsValidationErrors = new HashMap<>();
+    Map<String, String> tserverGFlagsValidationErrors = new HashMap<>();
+
+    NodeDetails masterNode =
+        nodesInAZ.stream().filter(node -> node.isMaster).findFirst().orElse(null);
+    NodeDetails tserverNode =
+        nodesInAZ.stream().filter(node -> node.isTserver).findFirst().orElse(null);
+
+    if (masterNode != null) {
       try {
-        if (node.isMaster) {
-          Map<String, String> masterGFlags =
-              buildGFlagsForValidation(
-                  node, cluster, newCluster, universe, ServerType.MASTER, azUuid);
-          masterGFlagsForAZ.putAll(masterGFlags);
-        }
+        masterGFlagsForAZ =
+            buildGFlagsForValidation(
+                masterNode, cluster, newCluster, universe, ServerType.MASTER, azUuid);
       } catch (Exception e) {
         log.error("Error in collecting master gflags from node: {}", e);
         throw new PlatformServiceException(
             BAD_REQUEST,
             String.format(
                 "Failed to collect master gflags from node"
-                    + node.nodeName
+                    + masterNode.nodeName
                     + "in AZ"
                     + azUuid
                     + ": "
                     + e));
       }
+    }
+
+    if (tserverNode != null) {
       try {
-        if (node.isTserver) {
-          Map<String, String> tserverGFlags =
-              buildGFlagsForValidation(
-                  node, cluster, newCluster, universe, ServerType.TSERVER, azUuid);
-          tserverGFlagsForAZ.putAll(tserverGFlags);
-        }
+        tserverGFlagsForAZ =
+            buildGFlagsForValidation(
+                tserverNode, cluster, newCluster, universe, ServerType.TSERVER, azUuid);
       } catch (Exception e) {
         log.error("Error in collecting tserver gflags from node: {}", e);
         throw new PlatformServiceException(
             BAD_REQUEST,
             String.format(
                 "Failed to collect tserver gflags from node"
-                    + node.nodeName
+                    + tserverNode.nodeName
                     + "in AZ"
                     + azUuid
                     + ": "
@@ -181,32 +190,46 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
       }
     }
 
-    if (!masterGFlagsForAZ.isEmpty()) {
-      Map<String, String> masterGFlagsValidationErrors =
-          validateGFlagsWithYBClient(masterGFlagsForAZ, universe, ServerType.MASTER);
-      if (!masterGFlagsValidationErrors.isEmpty()) {
-        gFlagsValidationErrorsPerAZ.masterGFlagsErrors.putAll(masterGFlagsValidationErrors);
+    if (taskParams().useCLIBinary) {
+      if (!masterGFlagsForAZ.isEmpty()) {
+        masterGFlagsValidationErrors.putAll(
+            validateGFlagsWithYBServerBinary(
+                masterGFlagsForAZ, universe, ServerType.MASTER, masterNode));
       }
-      log.info(
-          "Completed validation for all master gflags for AZ {}: {}",
-          azUuid,
-          masterGFlagsForAZ.keySet());
-    }
+      if (!tserverGFlagsForAZ.isEmpty()) {
+        tserverGFlagsValidationErrors.putAll(
+            validateGFlagsWithYBServerBinary(
+                tserverGFlagsForAZ, universe, ServerType.TSERVER, tserverNode));
+      }
+    } else {
+      if (!masterGFlagsForAZ.isEmpty()) {
+        masterGFlagsValidationErrors.putAll(
+            validateGFlagsWithYBClient(masterGFlagsForAZ, universe, ServerType.MASTER));
+        log.info(
+            "Completed validation for all master gflags for AZ {}: {}",
+            azUuid,
+            masterGFlagsForAZ.keySet());
+      }
 
-    if (!tserverGFlagsForAZ.isEmpty()) {
-      Map<String, String> tserverGFlagsValidationErrors =
-          validateGFlagsWithYBClient(tserverGFlagsForAZ, universe, ServerType.TSERVER);
-      if (!tserverGFlagsValidationErrors.isEmpty()) {
-        gFlagsValidationErrorsPerAZ.tserverGFlagsErrors.putAll(tserverGFlagsValidationErrors);
+      if (!tserverGFlagsForAZ.isEmpty()) {
+        tserverGFlagsValidationErrors.putAll(
+            validateGFlagsWithYBClient(tserverGFlagsForAZ, universe, ServerType.TSERVER));
+        log.info(
+            "Completed validation for all tserver gflags for AZ {}: {}",
+            azUuid,
+            tserverGFlagsForAZ.keySet());
       }
-      log.info(
-          "Completed validation for all tserver gflags for AZ {}: {}",
-          azUuid,
-          tserverGFlagsForAZ.keySet());
     }
 
     if (masterGFlagsForAZ.isEmpty() && tserverGFlagsForAZ.isEmpty()) {
       log.warn("No gflags collected from any nodes in AZ {}", azUuid);
+    }
+
+    if (!masterGFlagsValidationErrors.isEmpty()) {
+      gFlagsValidationErrorsPerAZ.masterGFlagsErrors.putAll(masterGFlagsValidationErrors);
+    }
+    if (!tserverGFlagsValidationErrors.isEmpty()) {
+      gFlagsValidationErrorsPerAZ.tserverGFlagsErrors.putAll(tserverGFlagsValidationErrors);
     }
 
     gFlagsValidationErrors.gFlagsValidationErrorsPerAZs.add(gFlagsValidationErrorsPerAZ);
@@ -273,7 +296,8 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
         serverType,
         node.nodeName,
         azUuid,
-        gflags);
+        RedactingService.redactSensitiveInfoInString(
+            gflags.toString(), taskParams().ybSoftwareVersion, gFlagsValidation));
 
     return gflags;
   }
@@ -289,5 +313,86 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
       throw new PlatformServiceException(
           BAD_REQUEST, String.format("Failed to validate gflags with YBClient: {}", e));
     }
+  }
+
+  private Map<String, String> validateGFlagsWithYBServerBinary(
+      Map<String, String> gflags, Universe universe, ServerType serverType, NodeDetails node) {
+    Map<String, String> serverGFlagsValidationErrors = new HashMap<>();
+
+    String ybHomeDir = nodeUniverseManager.getYbHomeDir(node, universe);
+    String cliPath = ybHomeDir;
+
+    if (serverType == ServerType.MASTER) {
+      cliPath = cliPath + "/master/bin/yb-master";
+    } else if (serverType == ServerType.TSERVER) {
+      cliPath = cliPath + "/tserver/bin/yb-tserver";
+    } else {
+      return serverGFlagsValidationErrors;
+    }
+
+    ShellProcessContext shellContext =
+        ShellProcessContext.builder()
+            .logCmdOutput(false)
+            .traceLogging(true)
+            .timeoutSecs(120)
+            .build();
+
+    List<String> command = new ArrayList<>();
+    command.add(cliPath);
+    command.add("--version");
+    for (Map.Entry<String, String> gflag : gflags.entrySet()) {
+      String flagName = gflag.getKey();
+      String flagValue = gflag.getValue();
+      if (StringUtils.isBlank(flagValue)) {
+        flagValue = "\"\"";
+      }
+
+      command.add("--" + flagName);
+      command.add(flagValue);
+    }
+
+    log.debug(
+        "About to run command: {} using yb-server binary.",
+        RedactingService.redactSensitiveInfoInString(
+            command.toString(), taskParams().ybSoftwareVersion, gFlagsValidation));
+
+    try {
+      ShellResponse response =
+          nodeUniverseManager.runCommand(node, universe, command, shellContext);
+      if (response.code != 0) {
+        log.warn(
+            "Shell response returned with non-zero exit code with message: {}",
+            RedactingService.redactSensitiveInfoInString(
+                response.message, taskParams().ybSoftwareVersion, gFlagsValidation));
+        // An existing flag's value was invalid or a flag not recognised by the yb-server binary was
+        // sent (unknown command line flag)
+        if ((response.message.contains("Invalid value") && response.message.contains("for flag"))
+            || response.message.contains("unknown command line flag")) {
+          serverGFlagsValidationErrors.put(
+              serverType.toString(),
+              "Invalid gflags detected. "
+                  + RedactingService.redactSensitiveInfoInString(
+                      response.message, taskParams().ybSoftwareVersion, gFlagsValidation));
+        } else {
+          throw new PlatformServiceException(
+              INTERNAL_SERVER_ERROR,
+              "Command to call RPC failed: "
+                  + RedactingService.redactSensitiveInfoInString(
+                      response.message, taskParams().ybSoftwareVersion, gFlagsValidation));
+        }
+      }
+    } catch (Exception e) {
+      log.warn(
+          "Error while validating gflags on node: {} using yb-server CLI. {}",
+          node.nodeName,
+          RedactingService.redactSensitiveInfoInString(
+              e.toString(), taskParams().ybSoftwareVersion, gFlagsValidation));
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR,
+          "Error validating flags "
+              + RedactingService.redactSensitiveInfoInString(
+                  e.getMessage(), taskParams().ybSoftwareVersion, gFlagsValidation));
+    }
+    return serverGFlagsValidationErrors;
   }
 }

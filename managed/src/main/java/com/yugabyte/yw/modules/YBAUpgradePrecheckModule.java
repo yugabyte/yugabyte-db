@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.modules;
 
@@ -23,18 +23,12 @@ public class YBAUpgradePrecheckModule extends AbstractModule {
 
   @Inject
   public YBAUpgradePrecheckModule(Environment environment, Config config) {
-    String upgradePrecheck = System.getProperty(UPGRADE_PRECHECK_PROP);
-    if (StringUtils.isBlank(upgradePrecheck)) {
-      upgradePrecheck = System.getenv(UPGRADE_PRECHECK_PROP.toUpperCase());
-    }
+    String upgradePrecheck = getPropertyValue(UPGRADE_PRECHECK_PROP);
     if (!"true".equalsIgnoreCase(StringUtils.trim(upgradePrecheck))) {
       log.info("Skipping YBA upgrade precheck as it is disabled");
       return;
     }
-    String upgradePrecheckOutputDir = System.getProperty(UPGRADE_PRECHECK_OUTPUT_DIR_PROP);
-    if (StringUtils.isBlank(upgradePrecheckOutputDir)) {
-      upgradePrecheckOutputDir = System.getenv(UPGRADE_PRECHECK_OUTPUT_DIR_PROP.toUpperCase());
-    }
+    String upgradePrecheckOutputDir = getPropertyValue(UPGRADE_PRECHECK_OUTPUT_DIR_PROP);
     // Set output dir only if it's precheck and is not set to prevent normal startup failure.
     Path precheckOutputDirPath =
         Paths.get(
@@ -54,5 +48,13 @@ public class YBAUpgradePrecheckModule extends AbstractModule {
       log.info("Finished upgrade precheck");
     }
     System.exit(0);
+  }
+
+  private String getPropertyValue(String name) {
+    String value = System.getProperty(name);
+    if (StringUtils.isBlank(value)) {
+      value = System.getenv(name.toUpperCase());
+    }
+    return value;
   }
 }

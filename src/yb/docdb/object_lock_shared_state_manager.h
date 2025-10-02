@@ -13,7 +13,10 @@
 
 #pragma once
 
+#include <atomic>
 #include <memory>
+#include <mutex>
+#include <unordered_map>
 
 #include "yb/common/transaction.h"
 #include "yb/common/object_lock_tracker.h"
@@ -22,8 +25,10 @@
 #include "yb/docdb/lock_util.h"
 #include "yb/docdb/object_lock_data.h"
 #include "yb/docdb/object_lock_shared_fwd.h"
+#include "yb/docdb/object_lock_shared_state.h"
 
 #include "yb/gutil/macros.h"
+#include "yb/gutil/thread_annotations.h"
 
 #include "yb/util/lw_function.h"
 #include "yb/util/tostring.h"
@@ -106,6 +111,14 @@ class ObjectLockSharedStateManager {
   ObjectLockOwnerRegistry registry_;
 
   const std::shared_ptr<ObjectLockTracker> object_lock_tracker_;
+
+  std::mutex setup_mutex_;
+  ObjectLockSharedState::ActivationGuard shared_activate_ GUARDED_BY(setup_mutex_);
+  // We can accumulate exclusive lock intents before shared memory is set up via lock manager
+  // bootstrap. If these are not released before shared memory is set up, they must be transferred
+  // to shared memory before PG has a chance to use the fastpath. We track them here until setup
+  // time.
+  std::unordered_map<ObjectLockPrefix, size_t> pre_setup_locks_ GUARDED_BY(setup_mutex_);
 };
 
 } // namespace yb::docdb

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -80,6 +80,8 @@ public class TestPgTransactions extends BasePgSQLTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flags = super.getTServerFlags();
     appendToYsqlPgConf(flags, maxQueryLayerRetriesConf(2));
+    // Auto Analyze makes testSerializableReadDelayWrite time out on a few build.
+    flags.put("ysql_enable_auto_analyze", "false");
     return flags;
   }
 

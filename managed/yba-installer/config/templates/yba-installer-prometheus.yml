@@ -2,7 +2,7 @@
   - name: prometheusConfig
     fileName: '{{ .ConfFileLocation }}'
     contents: |
-      # Copyright (c) YugaByte, Inc.
+      # Copyright (c) YugabyteDB, Inc.
 
       global:
         # By default, scrape targets every 15 seconds.
@@ -212,7 +212,7 @@
       --web.listen-address=:{{ yamlPath "prometheus.port" }} \
       --query.max-concurrency={{ yamlPath "prometheus.maxConcurrency" }} \
       --query.max-samples={{ yamlPath "prometheus.maxSamples" }} \
-      --query.timeout={{ yamlPath "prometheus.timeout" }} &>> {{ .LogDir }}/prometheus.log"
+      --query.timeout={{ yamlPath "prometheus.timeout" }} >> {{ .LogDir }}/prometheus.log 2>&1"
 
       Restart=always
       RestartSec={{ yamlPath "prometheus.restartSeconds"}}
@@ -227,8 +227,8 @@
       {{ if eq (yamlPath "prometheus.enableHttps") "true" }}
       {{ $tlsCiphers := yamlPathSlice "prometheus.allowedTLSCiphers" }}
       tls_server_config:
-        cert_file: "{{ yamlPath "prometheus.httpsCertPath" }}"
-        key_file: "{{ yamlPath "prometheus.httpsKeyPath" }}"
+        cert_file: {{ .HttpsCertPath }}
+        key_file: {{ .HttpsKeyPath }}
         {{ if gt (len $tlsCiphers) 0 }}
         cipher_suites:
           {{ range $suite :=  $tlsCiphers }}

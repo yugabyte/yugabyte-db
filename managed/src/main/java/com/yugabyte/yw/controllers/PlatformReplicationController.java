@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -97,28 +97,14 @@ public class PlatformReplicationController extends AuthenticatedController {
     return ok(result);
   }
 
-  @AuthzPath({
-    @RequiredPermissionOnResource(
-        requiredPermission =
-            @PermissionAttribute(
-                resourceType = ResourceType.OTHER,
-                action = Action.SUPER_ADMIN_ACTIONS),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
-  })
+  @AuthzPath
   public Result getBackupInfo(UUID configUUID) {
     HighAvailabilityConfig.maybeGet(configUUID)
         .orElseThrow(() -> new PlatformServiceException(NOT_FOUND, "Invalid config UUID"));
     return ok(replicationManager.getBackupInfo());
   }
 
-  @AuthzPath({
-    @RequiredPermissionOnResource(
-        requiredPermission =
-            @PermissionAttribute(
-                resourceType = ResourceType.OTHER,
-                action = Action.SUPER_ADMIN_ACTIONS),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
-  })
+  @AuthzPath
   public Result listBackups(UUID configUUID, String leaderAddr) {
     HighAvailabilityConfig config =
         HighAvailabilityConfig.maybeGet(configUUID)

@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -88,7 +88,7 @@ struct PgTableReadData {
   const Schema& schema() const;
   Result<ColumnId> ColumnByName(const std::string& name) const;
 
-  Result<std::unique_ptr<docdb::DocRowwiseIterator>> NewUninitializedIterator(
+  Result<docdb::DocRowwiseIteratorPtr> NewUninitializedIterator(
       const dockv::ReaderProjection& projection) const;
 
   Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> NewIterator(

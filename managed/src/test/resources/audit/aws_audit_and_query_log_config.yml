@@ -24,6 +24,7 @@ processors:
   attributes/00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$AttributesProcessor
     actions:
     - {action: upsert, key: host, value: test-node}
+    - {action: upsert, key: yugabyte.node_name, value: test-node}
     - {action: upsert, key: yugabyte.cloud, value: ''}
     - {action: upsert, key: yugabyte.universe_uuid, value: 00000000-0000-0000-0000-000000000000}
     - {action: upsert, key: yugabyte.node_type, value: PRIMARY}
@@ -54,9 +55,14 @@ processors:
     - {action: delete, key: timestamp_without_ms}
     - {action: upsert, key: tag, value: value}
     - {action: upsert, key: additionalTag, value: auditValue}
+  transform/replace: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$TransformProcessor
+    log_statements:
+    - context: log
+      statements: ['replace_pattern(body, "^otho8Aut", "")']
   attributes/query_logs_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$AttributesProcessor
     actions:
     - {action: upsert, key: host, value: test-node}
+    - {action: upsert, key: yugabyte.node_name, value: test-node}
     - {action: upsert, key: yugabyte.cloud, value: ''}
     - {action: upsert, key: yugabyte.universe_uuid, value: 00000000-0000-0000-0000-000000000000}
     - {action: upsert, key: yugabyte.node_type, value: PRIMARY}
@@ -87,6 +93,8 @@ processors:
     - {action: upsert, key: additionalTag, value: queryValue}
   batch/query_logs_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$BatchProcessor {
     send_batch_max_size: 1000, send_batch_size: 100, timeout: 10s}
+  memory_limiter/query_logs_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$MemoryLimiterProcessor {
+    check_interval: 10s, limit_mib: 2048}
 receivers:
   filelog/ysql: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$FileLogReceiver
     attributes: {yugabyte.audit_log_type: ysql}
@@ -133,11 +141,12 @@ service:
   pipelines:
     logs/query_logs_00000000-0000-0000-0000-000000000000:
       exporters: [awscloudwatchlogs/query_logs_00000000-0000-0000-0000-000000000000]
-      processors: [attributes/query_logs_00000000-0000-0000-0000-000000000000, batch/query_logs_00000000-0000-0000-0000-000000000000]
+      processors: [transform/replace, attributes/query_logs_00000000-0000-0000-0000-000000000000,
+        batch/query_logs_00000000-0000-0000-0000-000000000000, memory_limiter/query_logs_00000000-0000-0000-0000-000000000000]
       receivers: [filelog/query_logs_ysql]
     logs/00000000-0000-0000-0000-000000000000:
       exporters: [awscloudwatchlogs/00000000-0000-0000-0000-000000000000]
-      processors: [attributes/00000000-0000-0000-0000-000000000000]
+      processors: [attributes/00000000-0000-0000-0000-000000000000, transform/replace]
       receivers: [filelog/ysql]
   telemetry:
     logs:
