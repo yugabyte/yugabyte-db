@@ -414,7 +414,7 @@ calculate_toast_table_size(Oid toastrelid)
 static int64
 calculate_table_size(Relation rel)
 {
-	int64		size = 0;
+	int64_t		size = 0;
 	ForkNumber	forkNum;
 
 	if (IsYBRelation(rel))
@@ -430,7 +430,7 @@ calculate_table_size(Relation rel)
 		int32		num_missing_tablets = 0;
 
 		HandleYBStatus(YBCPgGetTableDiskSize(YbGetRelfileNodeId(rel),
-											 YBCGetDatabaseOid(rel), (int64_t *) &size, &num_missing_tablets));
+											 YBCGetDatabaseOid(rel), &size, &num_missing_tablets));
 		if (num_missing_tablets > 0)
 		{
 			elog(NOTICE,
@@ -500,11 +500,11 @@ calculate_indexes_size(Relation rel)
 					continue;
 				}
 
-				int64		index_size = 0;
+				int64_t		index_size = 0;
 				int32		num_missing_tablets = 0;
 
 				HandleYBStatus(YBCPgGetTableDiskSize(YbGetRelfileNodeId(idxRel),
-													 YBCGetDatabaseOid(idxRel), (int64_t *) &index_size, &num_missing_tablets));
+													 YBCGetDatabaseOid(idxRel), &index_size, &num_missing_tablets));
 				if (num_missing_tablets > 0)
 				{
 					elog(NOTICE,
