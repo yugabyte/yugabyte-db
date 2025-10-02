@@ -43,6 +43,7 @@
 
 #include "yb/rpc/call_data.h"
 #include "yb/rpc/rpc_header.pb.h"
+#include "yb/rpc/sidecars.h"
 
 #include "yb/util/crc.h"
 #include "yb/util/faststring.h"
@@ -57,8 +58,10 @@ using google::protobuf::MessageLite;
 using google::protobuf::io::CodedInputStream;
 using google::protobuf::io::CodedOutputStream;
 
-namespace yb {
-namespace rpc {
+namespace yb::rpc {
+
+// tag + 4 bytes values
+constexpr size_t kCrcFieldSize = 5;
 
 size_t SerializedMessageSize(size_t body_size, size_t additional_size) {
   auto full_size = body_size + additional_size;
@@ -133,7 +136,7 @@ Status SerializeHeader(const MessageLite& header,
   return Status::OK();
 }
 
-Result<RefCntBuffer> SerializeRequest(
+Result<std::pair<RefCntBuffer, size_t>> SerializeResponse(
     size_t body_size, size_t additional_size, const google::protobuf::Message& header,
     AnyMessageConstPtr body) {
   auto message_size = SerializedMessageSize(body_size, additional_size);
@@ -143,7 +146,7 @@ Result<RefCntBuffer> SerializeRequest(
       header, message_size + additional_size, &result, message_size, &header_size));
 
   RETURN_NOT_OK(SerializeMessage(body, body_size, result, additional_size, header_size));
-  return result;
+  return std::pair{result, header_size};
 }
 
 bool SkipField(uint8_t type, CodedInputStream* in) {
@@ -267,11 +270,12 @@ Result<Slice> ParseYBHeader(Slice buf, Header* parsed_header) {
   in.PopLimit(l);
 
   if (auto crc = GetCrc(*parsed_header)) {
-    auto offset = in.CurrentPosition();
-    auto msg_crc = crc::Crc32c(buf.data() + offset, buf.size() - offset);
-    if (msg_crc != *crc) {
+    crc::Crc32Accumulator msg_crc;
+    msg_crc.Feed(buf.Prefix(in.CurrentPosition() - kCrcFieldSize));
+    msg_crc.Feed(buf.WithoutPrefix(in.CurrentPosition()));
+    if (msg_crc.result() != *crc) {
       auto status = STATUS_FORMAT(
-          Corruption, "Invalid CRC $0 for request $1", msg_crc, *parsed_header);
+          Corruption, "Invalid CRC $0 for $1", msg_crc.result(), *parsed_header);
       LOG(DFATAL) << status;
       return status;
     }
@@ -411,5 +415,20 @@ Status ParseMetadataFromSharedMemory(
   return ParseMetadata(metadata, out);
 }
 
-}  // namespace rpc
-}  // namespace yb
+void StoreCrc(
+    const RefCntBuffer& buffer, size_t header_size, size_t message_size, Sidecars* sidecars) {
+  crc::Crc32Accumulator crc;
+  // 5 last bytes for CRC.
+  crc.Feed(
+      buffer.AsSlice().Prefix(header_size - kCrcFieldSize).WithoutPrefix(kMsgLengthPrefixLength));
+  crc.Feed(buffer.udata() + header_size, message_size);
+  if (sidecars) {
+    sidecars->buffer().IterateBlocks([&crc](Slice block) {
+      crc.Feed(block.data(), block.size());
+    });
+  }
+  // Expect CRC to be located at header end.
+  LittleEndian::Store32(buffer.udata() + header_size - 4, crc.result());
+}
+
+}  // namespace yb::rpc

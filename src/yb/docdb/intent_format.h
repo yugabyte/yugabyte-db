@@ -88,7 +88,8 @@ Result<DecodeStrongWriteIntentResult> DecodeStrongWriteIntent(
 Status EnumerateIntents(
     const ArenaList<LWKeyValuePairPB>& kv_pairs,
     const dockv::EnumerateIntentsCallback& functor,
-    dockv::PartialRangeKeyIntents partial_range_key_intents);
+    dockv::PartialRangeKeyIntents partial_range_key_intents,
+    dockv::SkipPrefixLocks skip_prefix_locks = dockv::SkipPrefixLocks::kFalse);
 
 // Class that is used while combining external intents into single key value pair.
 class ExternalIntentsProvider {

@@ -330,3 +330,4 @@ After the bulk assessment is completed, the top-level directory specified using 
 ## Learn more
 
 - [Assess migration CLI](../../reference/assess-migration/)
+- [Compare performance](../../reference/compare-performance/)

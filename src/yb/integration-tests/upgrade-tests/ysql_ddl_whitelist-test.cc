@@ -13,6 +13,11 @@
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
+DECLARE_string(allowed_preview_flags_csv);
+
+DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
+
 DECLARE_bool(TEST_ysql_require_force_catalog_modifications);
 
 #define ASSERT_STMT_OK(stmt) ASSERT_OK(conn.Execute(stmt))
@@ -25,7 +30,18 @@ constexpr auto kExpectedDdlError =
     "Catalog update without force_catalog_modifications when "
     "TEST_ysql_require_force_catalog_modifications is set";
 
-using YsqlDdlWhitelistTest = pgwrapper::PgMiniTestBase;
+class YsqlDdlWhitelistTest : public pgwrapper::PgMiniTestBase {
+ protected:
+  void SetUp() override {
+    // TODO(#28742): Fix interaction of ysql_yb_ddl_transaction_block_enabled with
+    // yb_force_catalog_update_on_next_ddl. For now, disable table locks for this test.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_allowed_preview_flags_csv) =
+        "enable_object_locking_for_table_locks,ysql_yb_ddl_transaction_block_enabled";
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = false;
+    pgwrapper::PgMiniTestBase::SetUp();
+  }
+};
 
 TEST_F(YsqlDdlWhitelistTest, TestDDLBlocking) {
   // Prepare the cluster.

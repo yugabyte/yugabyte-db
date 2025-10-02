@@ -6,6 +6,7 @@ import { Box, Collapse, makeStyles, Typography, useTheme } from '@material-ui/co
 import { Alert, DropdownButton, MenuItem } from 'react-bootstrap';
 import moment from 'moment';
 import momentLocalizer from 'react-widgets-moment';
+import { formatBytes } from '@app/utils/Formatters';
 
 import { YBLoading } from '../../../common/indicators';
 import { YBButton, YBCheckBox } from '../../../common/forms/fields';
@@ -21,7 +22,6 @@ import YBInfoTip from '../../../common/descriptors/YBInfoTip';
 import { ReactComponent as AddIcon } from '../../../../redesign/assets/add2.svg';
 import { ReactComponent as EditIcon } from '../../../../redesign/assets/edit2.svg';
 import { EditCustomPrometheusQueriesModal } from '../../../../redesign/features/universe/universe-actions/support-bundle/EditCustomPrometheusQueriesModal';
-import { formatBytes } from '../../../xcluster/ReplicationUtils';
 import { fetchEstimatedSupportBundleSize } from '../UniverseSupportBundleModal';
 import { handleServerError } from '../../../../utils/errorHandlingUtils';
 

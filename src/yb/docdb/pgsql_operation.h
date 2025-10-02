@@ -72,6 +72,10 @@ class PgsqlWriteOperation :
   // Execute write.
   Status Apply(const DocOperationApplyData& data) override;
 
+  bool pk_is_known() const {
+    return pk_is_known_;
+  }
+
  private:
   void ClearResponse() override {
     if (response_) {
@@ -160,6 +164,7 @@ class PgsqlWriteOperation :
   WriteBufferPos row_num_pos_;
   WriteBuffer* write_buffer_ = nullptr;
   const bool ysql_skip_row_lock_for_update_;
+  bool pk_is_known_ = false;
 };
 
 struct PgsqlReadOperationData {

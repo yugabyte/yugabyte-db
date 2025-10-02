@@ -209,10 +209,19 @@ export-dir:
 
 | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 
+| -l, --log-level |
+
+```yaml {.nocopy}
+log-level:
+```
+
+| Log level for yb-voyager. <br>Accepted values: trace, debug, info, warn, error, fatal, panic <br>Default: info |
+
 | --start-clean | — | Cleans up the project directory for schema or data files depending on the export command. <br>Default: false <br> Accepted parameters: true, false, yes, no, 0, 1. |
 
 | -h, --help | — |Command line help. |
 | -y, --yes | — |Answer yes to all prompts during the export schema operation. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| -c, --config-file | — | Path to a [configuration file](../configuration-file). |
 
 {{</table>}}
 
@@ -256,6 +265,7 @@ The valid *arguments* for assess migration bulk are described in the following t
 | --send-diagnostics | Enable or disable sending [diagnostics](../../reference/diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --start-clean | Cleans up the project directory for schema or data files depending on the export command. <br>Default: false <br> Accepted parameters: true, false, yes, no, 0, 1. |
 | -y, --yes | Assume answer to all prompts during migration. <br>Default: false |
+| -l, --log-level | Log level for yb-voyager. <br>Accepted values: trace, debug, info, warn, error, fatal, panic <br>Default: info |
 
 ### Example
 

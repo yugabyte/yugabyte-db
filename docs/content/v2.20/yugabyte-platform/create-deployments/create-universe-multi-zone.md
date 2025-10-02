@@ -119,7 +119,7 @@ Choose the version of YugabyteDB to install on the nodes.
 
 The access key is the SSH key that is created in the provider. Usually, each provider has its own access key, but if you are reusing keys across providers, they are listed here.
 
-For AWS providers, you can assign an ARN to the nodes in the universe; this allow them to be seamlessly backed up without explicit credentials.
+For AWS providers, you can assign an ARN to the nodes in the universe; this allows them to be seamlessly backed up without explicit credentials.
 
 To use cron instead of systemd for managing nodes, you can disable systemd services. This not recommended.
 

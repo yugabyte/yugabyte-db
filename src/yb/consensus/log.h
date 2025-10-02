@@ -353,6 +353,7 @@ class Log : public RefCountedThreadSafe<Log> {
   FRIEND_TEST(LogTest, TestReadLogWithReplacedReplicates);
   FRIEND_TEST(LogTest, TestWriteAndReadToAndFromInProgressSegment);
   FRIEND_TEST(LogTest, TestLogMetrics);
+  FRIEND_TEST(LogTest, TestLogMetricsWithSegmentReuse);
   FRIEND_TEST(LogTest, AsyncRolloverMarker);
 
   FRIEND_TEST(cdc::CDCServiceTestMaxRentionTime, TestLogRetentionByOpId_MaxRentionTime);
@@ -705,6 +706,9 @@ class Log : public RefCountedThreadSafe<Log> {
   // This function retrieves the xCluster minimum required index for a given tablet.
   std::function<int64_t(const std::string&)> get_xcluster_min_index_to_retain_
       GUARDED_BY(get_xcluster_index_lock_);
+
+  // Tracks on-disk size of active log segment file for metric reporting.
+  int64_t active_segment_ondisk_size_ = 0;
 
   DISALLOW_COPY_AND_ASSIGN(Log);
 };

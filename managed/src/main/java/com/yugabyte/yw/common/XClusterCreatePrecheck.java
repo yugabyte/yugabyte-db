@@ -13,15 +13,11 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.table.TableInfoUtil;
-import com.yugabyte.yw.controllers.handlers.UniverseTableHandler;
-import com.yugabyte.yw.forms.TableInfoForm;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import jakarta.inject.Inject;
-import java.util.Collection;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
@@ -32,22 +28,19 @@ import org.yb.master.MasterDdlOuterClass;
 public class XClusterCreatePrecheck {
   private final YBClientService ybService;
   private final RuntimeConfGetter confGetter;
-  private final UniverseTableHandler tableHandler;
   private final SoftwareUpgradeHelper softwareUpgradeHelper;
 
   @Inject
   public XClusterCreatePrecheck(
       YBClientService ybService,
       RuntimeConfGetter confGetter,
-      UniverseTableHandler tableHandler,
       SoftwareUpgradeHelper softwareUpgradeHelper) {
     this.ybService = ybService;
     this.confGetter = confGetter;
-    this.tableHandler = tableHandler;
     this.softwareUpgradeHelper = softwareUpgradeHelper;
   }
 
-  public Map<String, String> xClusterCreatePreChecks(
+  public void xClusterCreatePreChecks(
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList,
       XClusterConfig.ConfigType configType,
       Universe sourceUniverse,
@@ -59,22 +52,13 @@ public class XClusterCreatePrecheck {
       throw new IllegalArgumentException("requestedTableInfoList is empty");
     }
 
-    Map<String, String> sourceTableIdTargetTableIdMap =
-        XClusterConfigTaskBase.getSourceTableIdTargetTableIdMap(
-            requestedTableInfoList, targetTableInfoList);
-
     CommonTypes.TableType tableType = XClusterConfigTaskBase.getTableType(requestedTableInfoList);
 
     if (configType == XClusterConfig.ConfigType.Txn) {
       transactionalXClusterPreChecks(sourceUniverse, targetUniverse, tableType);
     } else if (configType == XClusterConfig.ConfigType.Db) {
       dbScopedXClusterPreChecks(
-          sourceUniverse,
-          targetUniverse,
-          requestedTableInfoList,
-          sourceTableInfoList,
-          targetTableInfoList,
-          sourceTableIdTargetTableIdMap);
+          sourceUniverse, targetUniverse, requestedTableInfoList, sourceTableInfoList);
     }
 
     Set<String> tableIds = XClusterConfigTaskBase.getTableIds(requestedTableInfoList);
@@ -151,7 +135,6 @@ public class XClusterCreatePrecheck {
     }
 
     // TODO: Validate colocated child tables have the same colocation id.
-    return sourceTableIdTargetTableIdMap;
   }
 
   public void transactionalXClusterPreChecks(
@@ -220,24 +203,11 @@ public class XClusterCreatePrecheck {
     }
   }
 
-  private Map<String, Set<String>> groupTableNamesByDBName(
-      Collection<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tables) {
-    return tables.stream()
-        .collect(
-            Collectors.groupingBy(
-                tableInfo -> tableInfo.getNamespace().getName(),
-                Collectors.mapping(
-                    MasterDdlOuterClass.ListTablesResponsePB.TableInfo::getName,
-                    Collectors.toSet())));
-  }
-
   public void dbScopedXClusterPreChecks(
       Universe sourceUniverse,
       Universe targetUniverse,
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList,
-      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList,
-      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList,
-      Map<String, String> sourceTableIdTargetTableIdMap) {
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList) {
     checkDbScopedXClusterSupported(sourceUniverse, targetUniverse);
     Set<String> requestedDbIds =
         requestedTableInfoList.stream()
@@ -255,68 +225,6 @@ public class XClusterCreatePrecheck {
       throw new PlatformServiceException(
           FORBIDDEN,
           String.format("Namespaces %s don't exist on the source universe", nonExistentSourceDBs));
-    }
-
-    if (!confGetter.getStaticConf().getBoolean("yb.cloud.enabled")) {
-      Map<String, TableInfoForm.TableSizes> sourceTableSizes =
-          tableHandler.getTableSizesOrEmpty(sourceUniverse);
-
-      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> emptySrcTablesNotPresentOnTarget =
-          requestedTableInfoList.stream()
-              .filter(
-                  ti -> {
-                    String tableId = ti.getId().toStringUtf8();
-                    boolean checkTarget;
-
-                    if (sourceTableSizes.containsKey(tableId)) {
-                      TableInfoForm.TableSizes ts = sourceTableSizes.get(tableId);
-                      checkTarget = ts.getSstSizeBytes() == 0d && ts.getWalSizeBytes() == 0d;
-                    } else {
-                      log.warn("Size unknown for table ID {}", tableId);
-                      checkTarget = true;
-                    }
-
-                    if (checkTarget) {
-                      return !(sourceTableIdTargetTableIdMap.containsKey(tableId)
-                          && sourceTableIdTargetTableIdMap.get(tableId) != null);
-                    }
-
-                    return false;
-                  })
-              .toList();
-
-      if (!emptySrcTablesNotPresentOnTarget.isEmpty()) {
-        log.error(
-            "The following tables are empty on source and don't exist on target: {}",
-            groupTableNamesByDBName(emptySrcTablesNotPresentOnTarget));
-        throw new PlatformServiceException(
-            FORBIDDEN,
-            "Some tables are empty on the source universe and don't exist on the target");
-      }
-
-      Set<String> targetTablesToReplicate =
-          sourceTableIdTargetTableIdMap.values().stream()
-              .filter(Objects::nonNull)
-              .collect(Collectors.toSet());
-      Set<String> namesOfSourceDBsToReplicate =
-          requestedTableInfoList.stream()
-              .map(ti -> ti.getNamespace().getName())
-              .collect(Collectors.toSet());
-      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTablesNotPresentOnSource =
-          targetTableInfoList.stream()
-              .filter(
-                  ti ->
-                      namesOfSourceDBsToReplicate.contains(ti.getNamespace().getName())
-                          && !targetTablesToReplicate.contains(ti.getId().toStringUtf8()))
-              .toList();
-
-      if (!targetTablesNotPresentOnSource.isEmpty()) {
-        log.error(
-            "The following tables exist on target and don't exist on source: {}",
-            groupTableNamesByDBName(targetTablesNotPresentOnSource));
-        throw new PlatformServiceException(
-            FORBIDDEN, "Some tables exist on the target universe and don't exist on the source");
-      }
     }
 
     // TODO: Validate namespace names exist on both source and target universe.

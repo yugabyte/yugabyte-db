@@ -70,10 +70,8 @@ public class UpdateOOMServiceTaskTest extends CommissionerBaseTest {
         Json.toJson(formData));
   }
 
-  @Override
   @Before
   public void setUp() {
-    super.setUp();
     user = ModelFactory.testUser(defaultCustomer);
 
     Region region = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");

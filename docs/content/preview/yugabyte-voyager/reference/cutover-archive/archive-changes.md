@@ -70,8 +70,17 @@ send-diagnostics:
 ```
 
 |Enable or disable sending [diagnostics](../../../reference/diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
+
+| -l, --log-level |
+
+```yaml {.nocopy}
+log-level:
+```
+
+| Log level for yb-voyager. <br>Accepted values: trace, debug, info, warn, error, fatal, panic <br>Default: info |
 | -h, --help | — | Command line help for archive changes. |
 | -y, --yes | — | Answer yes to all prompts during migration. <br>Default: false |
+| -c, --config-file | — | Path to a [configuration file](../../configuration-file). |
 
 {{</table>}}
 

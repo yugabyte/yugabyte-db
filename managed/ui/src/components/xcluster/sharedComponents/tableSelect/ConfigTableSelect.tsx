@@ -10,6 +10,7 @@ import clsx from 'clsx';
 import moment from 'moment';
 import { Box, Typography, useTheme } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
+import { formatBytes } from '@app/utils/Formatters';
 
 import {
   alertConfigQueryKey,
@@ -20,7 +21,6 @@ import {
 import { YBControlledSelect } from '../../../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import {
-  formatBytes,
   augmentTablesWithXClusterDetails,
   tableSort,
   getStrictestReplicationLagAlertThreshold,

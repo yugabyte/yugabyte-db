@@ -78,7 +78,6 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
   public void run() {
     log.info("Started {} task for uuid={}", getName(), taskParams().getUniverseUUID());
     Universe universe = null;
-    boolean deleteCapacityReservation = false;
     try {
       universe =
           lockAndFreezeUniverseForUpdate(
@@ -102,7 +101,7 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
         log.error(errMsg);
         throw new IllegalArgumentException(errMsg);
       }
-      deleteCapacityReservation =
+      boolean deleteCapacityReservation =
           createCapacityReservationsIfNeeded(
               nodesToProvision,
               CapacityReservationUtil.OperationType.CREATE,
@@ -175,6 +174,7 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
       getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+      clearCapacityReservationOnError(t, Universe.getOrBadRequest(universe.getUniverseUUID()));
       throw t;
     } finally {
       releaseReservedNodes();

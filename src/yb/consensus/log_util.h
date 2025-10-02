@@ -32,6 +32,8 @@
 
 #pragma once
 
+#include <sys/stat.h>
+
 #include <memory>
 #include <string>
 #include <vector>
@@ -441,6 +443,10 @@ class WritableLogSegment {
 
   int64_t Size() const {
     return writable_file_->Size();
+  }
+
+  Result<uint64_t> SizeOnDisk() const {
+    return writable_file_->SizeOnDisk();
   }
 
   // Appends the provided batch of data, including a header

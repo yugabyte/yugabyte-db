@@ -286,11 +286,11 @@ CREATE TABLE num_check (n1 decimal);
 
 ---
 
-#### Large-sized CLOB/NCLOB data is not supported
+#### Large-sized CLOB data is not supported
 
 **GitHub**: [Issue #385](https://github.com/yugabyte/yb-voyager/issues/385)
 
-**Description**: YugabyteDB Voyager ignores any values of BLOB types by default, but for CLOB and NCLOB, it migrates the data as text. However, if the size of rows for such CLOB/ NCLOB type columns exceeds 240 MB, it may result in errors and the migration may fail.
+**Description**: YugabyteDB Voyager ignores any values of CLOB, NCLOB, or BLOB types by default, but for CLOB columns, data export can be enabled using the experimental flag [--allow-oracle-clob-data-export](../../reference/data-migration/export-data/#arguments). However, if the size of rows for such CLOB type columns exceeds 240 MB, it may result in errors and the migration may fail.
 
 **Workaround**: None. A workaround is being currently explored.
 

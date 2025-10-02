@@ -107,7 +107,8 @@ Status ResolveTransactionConflicts(
     WaitQueue* wait_queue,
     bool is_advisory_lock_request,
     CoarseTimePoint deadline,
-    ResolutionCallback callback);
+    ResolutionCallback callback,
+    dockv::SkipPrefixLocks skip_prefix_locks);
 
 // Resolves conflicts for doc operations.
 // Read all intents that could conflict with provided doc_ops.

@@ -31,9 +31,10 @@ CONFIG_INPUT_FILE_NAME:=$(CURDIR)/yba-ctl.yml.reference
 CONFIG_EMBEDED_NAME:=$(CURDIR)/pkg/config/yba-ctl.yml
 VERSION_METADATA_JSON:=$(CURDIR)/version_metadata.json
 
-# get the perf advisor version from the tarball if it exists
-PERF_ADVISOR_TARBALL ?= $(shell ls $(CURDIR)/perf_advisor-*.tar.gz 2>/dev/null | head -1)
-PERF_ADVISOR_VERSION ?= $(if $(PERF_ADVISOR_TARBALL),$(shell basename $(PERF_ADVISOR_TARBALL) | sed -E 's/perf_advisor-([0-9a-zA-Z\.\-]+)\.tar\.gz/\1/'),)
+# get the perf advisor version to bundle
+PERF_ADVISOR_VERSION ?= 1.0.0-b5
+PA_BINARY_NAME ?= perf_advisor-$(PERF_ADVISOR_VERSION).tar.gz
+PA_BINARY_URL := https://releases.yugabyte.com/perf-advisor/$(PA_BINARY_NAME)
 
 #pre-reqs
 PREREQS_DIR := ${TOP_BUILDDIR}/prereqs
@@ -42,7 +43,7 @@ PREREQS_DIR := ${TOP_BUILDDIR}/prereqs
 PROMETHEUS_VERSION ?= 3.5.0
 
 # https://github.com/yugabyte/yba-pg-build/releases/tag/2025-03-05-17-09
-POSTGRES_VERSION ?= 14.17
+POSTGRES_VERSION ?= 14.19
 PG_BINARY_NAME ?= postgres-linux-${POSTGRES_VERSION}.tar.gz
 PG_BINARY_URL := https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/yba-pg-build/${PG_BINARY_NAME}
 
@@ -56,13 +57,17 @@ YBDB_BINARY_URL ?= https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/rel
 
 
 
-all: prereqs test yba-ctl package
+all: test package
 
-prereqs: postgres jdk
+prereqs: postgres jdk perf_advisor
 
 echo:
 	@echo $(CURDIR)
 
+perf_advisor: ${PREREQS_DIR}/${PA_BINARY_NAME}
+${PREREQS_DIR}/${PA_BINARY_NAME}:
+	curl -Lo $@ ${PG_BINARY_URL}
+	@echo downloaded $@
 
 postgres: ${PREREQS_DIR}/${PG_BINARY_NAME}
 ${PREREQS_DIR}/${PG_BINARY_NAME}:
@@ -92,7 +97,7 @@ ${BIN_DIR}/${BIN_NAME}:
 
 package: ${PACKAGE_NAME}
 ${PACKAGE_NAME}: prereqs yba-ctl
-	mkdir $(PACKAGE_DIR)
+	mkdir -p $(PACKAGE_DIR)
 	cp -RL ${BIN_DIR}/${BIN_NAME} ${PREREQS_DIR}/* ${CONFIG_FILE_FOLDER} ${CONFIG_INPUT_FILE_NAME} ${VERSION_METADATA_JSON} ${VERSION_TXT} ${PACKAGE_DIR}
 	tar -czvf ${PACKAGE_NAME} ${PACKAGE_DIR} && rm -R ${PACKAGE_DIR}
 

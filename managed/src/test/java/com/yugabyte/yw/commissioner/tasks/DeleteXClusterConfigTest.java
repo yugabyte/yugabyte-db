@@ -98,10 +98,7 @@ public class DeleteXClusterConfigTest extends CommissionerBaseTest {
           TaskType.UniverseUpdateSucceeded);
 
   @Before
-  @Override
   public void setUp() {
-    super.setUp();
-
     defaultCustomer = testCustomer("DeleteXClusterConfig-test-customer");
     defaultUser = ModelFactory.testUser(defaultCustomer);
 

@@ -1064,6 +1064,61 @@ typedef struct YbSessionStats
 
 static YbSessionStats yb_session_stats = {0};
 
+static uint64_t yb_retry_counts[YB_TXN_CONFLICT_KIND_COUNT] = {0};
+
+void
+YbResetRetryCounts()
+{
+	memset(yb_retry_counts, 0, sizeof(yb_retry_counts));
+}
+
+void
+YbIncrementRetryCount(YbTxnError kind)
+{
+	Assert(kind >= 0 && kind < YB_TXN_CONFLICT_KIND_COUNT);
+	yb_retry_counts[kind]++;
+
+	if (yb_test_reset_retry_counts > 0 && YbGetTotalRetryCount() >= yb_test_reset_retry_counts)
+		YbTestGucBlockWhileIntNotEqual(&yb_test_reset_retry_counts, -1, "yb_test_reset_retry_counts");
+}
+
+uint64_t
+YbGetRetryCount(YbTxnError kind)
+{
+	Assert(kind >= 0 && kind < YB_TXN_CONFLICT_KIND_COUNT);
+	return yb_retry_counts[kind];
+}
+
+uint64_t
+YbGetTotalRetryCount()
+{
+	return yb_retry_counts[YB_TXN_CONFLICT] + yb_retry_counts[YB_TXN_RESTART_READ] +
+		   yb_retry_counts[YB_TXN_DEADLOCK] + yb_retry_counts[YB_TXN_ABORTED];
+}
+
+YbTxnError
+YbSqlErrorCodeToTransactionError(int sqlerrcode)
+{
+	switch (sqlerrcode)
+	{
+		case ERRCODE_YB_TXN_CONFLICT:
+			return YB_TXN_CONFLICT;
+		case ERRCODE_YB_RESTART_READ:
+			return YB_TXN_RESTART_READ;
+		case ERRCODE_YB_DEADLOCK:
+			return YB_TXN_DEADLOCK;
+		case ERRCODE_YB_TXN_ABORTED:
+			return YB_TXN_ABORTED;
+		case ERRCODE_YB_TXN_SKIP_LOCKING:
+			return YB_TXN_SKIP_LOCKING;
+		case ERRCODE_YB_TXN_LOCK_NOT_FOUND:
+			return YB_TXN_LOCK_NOT_FOUND;
+		default:
+			ereport(ERROR,
+					(errmsg("unknown sql error code: %d", sqlerrcode)));
+	}
+}
+
 static YbcPgAshConfig ash_config;
 
 static void
@@ -2182,6 +2237,7 @@ bool		yb_enable_invalidation_messages = true;
 bool		yb_enable_invalidate_table_cache_entry = true;
 int			yb_invalidation_message_expiration_secs = 10;
 int			yb_max_num_invalidation_messages = 4096;
+bool        yb_make_all_ddl_statements_incrementing = false;
 
 /* DEPRECATED */
 bool		yb_enable_advisory_locks = true;
@@ -2237,6 +2293,7 @@ bool		yb_test_inval_message_portability = false;
 int			yb_test_delay_after_applying_inval_message_ms = 0;
 int			yb_test_delay_set_local_tserver_inval_message_ms = 0;
 double		yb_test_delay_next_ddl = 0;
+int			yb_test_reset_retry_counts = -1;
 
 /*
  * These two GUC variables are used together to control whether DDL atomicity
@@ -3085,7 +3142,8 @@ YBCommitTransactionContainingDDL()
 
 				if (nmsgs > max_allowed)
 				{
-					elog(LOG, "too many messages: %d, max allowed %d", nmsgs, max_allowed);
+					elog(LOG, "too many invalidation messages: %d, max allowed %d",
+						 nmsgs, max_allowed);
 					/*
 					 * If we have too many invalidation messages, write PG null into
 					 * messages so that we fall back to do catalog cache refresh.
@@ -3112,10 +3170,10 @@ YBCommitTransactionContainingDDL()
 			}
 			else
 				Assert(nmsgs == 0);
-			YBC_LOG_INFO("pg null=%d, nmsgs=%d", !currentInvalMessages, nmsgs);
+			YBC_LOG_INFO("DEBUG: pg null=%d, nmsgs=%d", !currentInvalMessages, nmsgs);
 		}
 		else if (ddl_transaction_state.num_committed_pg_txns > 0)
-			YBC_LOG_INFO("num_committed_pg_txns: %d",
+			YBC_LOG_INFO("DEBUG: num_committed_pg_txns: %d",
 						 ddl_transaction_state.num_committed_pg_txns);
 
 		/* Clear yb_sender_pid for unit test to have a stable result. */
@@ -3254,8 +3312,8 @@ YBCommitTransactionContainingDDL()
 	}
 	YBClearDdlHandles();
 	if (increment_done)
-		YBC_LOG_INFO("%s: got %d messages, local catalog version %" PRIu64,
-					 __func__, nmsgs, yb_catalog_cache_version);
+		YBC_LOG_INFO("%s: got %d invalidation messages, local catalog version %" PRIu64,
+			 __func__, nmsgs, yb_catalog_cache_version);
 }
 
 void
@@ -4058,6 +4116,12 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 	if (yb_make_next_ddl_statement_nonbreaking)
 		is_breaking_change = false;
 	/*
+	 * If yb_make_all_ddl_statements_incrementing is true, we should be incrementing
+	 * the catalog version for all DDL statements.
+	 */
+	if (yb_make_all_ddl_statements_incrementing)
+		is_version_increment = true;
+	/*
 	 * If yb_make_next_ddl_statement_nonincrementing is true, then no DDL statement
 	 * will cause a catalog version to increment. Note that we also disable breaking
 	 * catalog change as well because it does not make sense to only increment
@@ -4438,6 +4502,29 @@ YbTestGucBlockWhileStrEqual(char **actual, const char *expected,
 	static const int kSpinWaitMs = 100;
 
 	while (strcmp(*actual, expected) == 0)
+	{
+		ereport(LOG,
+				(errmsg("blocking %s for %dms", msg, kSpinWaitMs),
+				 errhidestmt(true),
+				 errhidecontext(true)));
+		pg_usleep(kSpinWaitMs * 1000);
+
+		/* Reload config in hopes that guc var actual changed. */
+		if (ConfigReloadPending)
+		{
+			ConfigReloadPending = false;
+			ProcessConfigFile(PGC_SIGHUP);
+		}
+	}
+}
+
+void
+YbTestGucBlockWhileIntNotEqual(int *actual, int expected,
+							const char *msg)
+{
+	static const int kSpinWaitMs = 100;
+
+	while (*actual != expected)
 	{
 		ereport(LOG,
 				(errmsg("blocking %s for %dms", msg, kSpinWaitMs),

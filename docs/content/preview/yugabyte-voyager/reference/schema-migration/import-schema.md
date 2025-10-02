@@ -209,10 +209,19 @@ send-diagnostics:
 
 | Enable or disable sending [diagnostics](../../../reference/diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
 
+| -l, --log-level |
+
+```yaml {.nocopy}
+log-level:
+```
+
+| Log level for yb-voyager. <br>Accepted values: trace, debug, info, warn, error, fatal, panic <br>Default: info |
+
 | --post-snapshot-import | — | **[Deprecated]** Perform schema related tasks on the target YugabyteDB after data import is complete. Use --refresh-mviews along with this flag to refresh materialized views. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --refresh-mviews | — |**[Deprecated]** Refreshes the materialized views on target during the post-import-data phase. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -y, --yes | —  | Answer yes to all prompts during the export schema operation. <br>Default: false |
 | -h, --help | —  | Command line help. |
+| -c, --config-file | — | Path to a [configuration file](../../configuration-file). |
 
 {{</table>}}
 

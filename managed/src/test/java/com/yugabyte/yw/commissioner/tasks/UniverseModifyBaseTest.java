@@ -72,10 +72,8 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
   protected Hook hook1, hook2;
   protected HookScope hookScope1, hookScope2;
 
-  @Override
   @Before
   public void setUp() {
-    super.setUp();
     Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
     Region.create(onPremProvider, "region-1", "Region 1", "yb-image-1");
     defaultUser = ModelFactory.testUser(defaultCustomer);

@@ -97,10 +97,10 @@ class PgIndexBackfillTest : public LibPqTestBase, public ::testing::WithParamInt
       options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
       options->extra_tserver_flags.push_back("--enable_ysql_operation_lease=true");
       options->extra_tserver_flags.push_back("--TEST_tserver_enable_ysql_lease_refresh=true");
-      // Disable auto analyze in this test suite because it introduce flakiness of metrics.
-      options->extra_tserver_flags.push_back("--ysql_enable_auto_analyze=false");
     }
-  }
+    // Disable auto analyze in this test suite because it introduces flakiness of metrics.
+    options->extra_tserver_flags.push_back("--ysql_enable_auto_analyze=false");
+}
 
  protected:
   Result<bool> IsAtTargetIndexStateFlags(

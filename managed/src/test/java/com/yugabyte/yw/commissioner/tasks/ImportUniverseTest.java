@@ -103,10 +103,8 @@ public class ImportUniverseTest extends CommissionerBaseTest {
   private String masterMountPaths;
   private String tserverMountPaths;
 
-  @Override
   @Before
   public void setUp() {
-    super.setUp();
     setupInfra();
     try {
       YBClient mockClient = mock(YBClient.class);

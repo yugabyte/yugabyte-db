@@ -19,7 +19,7 @@ import { YBMultiSelectRedesiged } from '../../common/forms/fields';
 import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
 import { YBLoading } from '../../common/indicators';
 import { YBTable } from '../../common/YBTable';
-import { formatBytes } from '../../xcluster/ReplicationUtils';
+import { formatBytes } from '@app/utils/Formatters';
 import {
   BACKUP_REFETCH_INTERVAL,
   CALDENDAR_ICON,

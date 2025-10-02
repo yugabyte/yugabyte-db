@@ -1823,7 +1823,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "ybc.success_marker_download_timeout_secs",
           ScopeType.GLOBAL,
           "Timeout for backup success marker download",
-          "Timeout for backup success marker download from backup lcoation",
+          "Timeout for backup success marker download from backup location",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<List> capacityReservationOperationsAws =
@@ -1866,5 +1866,21 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable Signing Region",
           "Enable AWS signing region for S3 access",
           ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> capacityReservationMaxRetries =
+      new ConfKeyInfo<>(
+          "yb.task.capacity_reservation.max_retries",
+          ScopeType.GLOBAL,
+          "Max retries for capacity reservation",
+          "Max retries for capacity reservation",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> capacityReservationRetrySeconds =
+      new ConfKeyInfo<>(
+          "yb.task.capacity_reservation.retry_delay_seconds",
+          ScopeType.GLOBAL,
+          "Wait( in seconds ) between each retry for capacity reservation failures",
+          "Wait( in seconds ) between each retry for capacity reservation failures",
+          ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 }

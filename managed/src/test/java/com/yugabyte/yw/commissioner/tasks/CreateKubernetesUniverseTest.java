@@ -89,7 +89,6 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
 
   @Before
   public void setUp() {
-    super.setUp();
     when(mockOperatorStatusUpdaterFactory.create()).thenReturn(mockOperatorStatusUpdater);
     RuntimeConfigEntry.upsertGlobal("yb.kubernetes.operator.wait_for_gflag_sync_sec", "0");
   }

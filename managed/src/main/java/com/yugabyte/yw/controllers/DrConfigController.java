@@ -237,18 +237,23 @@ public class DrConfigController extends AuthenticatedController {
 
     List<TableInfo> targetTableInfoList =
         XClusterConfigTaskBase.getTableInfoList(ybService, targetUniverse);
-    Map<String, String> sourceTableIdTargetTableIdMap =
-        xClusterCreatePrecheck.xClusterCreatePreChecks(
-            requestedTableInfoList,
-            isDbScoped ? ConfigType.Db : ConfigType.Txn,
-            sourceUniverse,
-            sourceTableInfoList,
-            targetUniverse,
-            targetTableInfoList);
+
+    xClusterCreatePrecheck.xClusterCreatePreChecks(
+        requestedTableInfoList,
+        isDbScoped ? ConfigType.Db : ConfigType.Txn,
+        sourceUniverse,
+        sourceTableInfoList,
+        targetUniverse,
+        targetTableInfoList);
 
     Set<String> tableIds = XClusterConfigTaskBase.getTableIds(requestedTableInfoList);
     BootstrapParams bootstrapParams =
         getBootstrapParamsFromRestartBootstrapParams(createForm.bootstrapParams, tableIds);
+
+    Map<String, String> sourceTableIdTargetTableIdMap =
+        XClusterConfigTaskBase.getSourceTableIdTargetTableIdMap(
+            requestedTableInfoList, targetTableInfoList);
+
     XClusterConfigController.xClusterBootstrappingPreChecks(
         requestedTableInfoList,
         sourceTableInfoList,

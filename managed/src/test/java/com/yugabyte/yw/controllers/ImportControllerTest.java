@@ -65,7 +65,6 @@ public class ImportControllerTest extends CommissionerBaseTest {
 
   @Before
   public void setUp() {
-    super.setUp();
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
     authToken = user.createAuthToken();

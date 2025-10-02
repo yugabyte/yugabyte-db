@@ -1780,11 +1780,13 @@ Status Tablet::WriteTransactionalBatch(
   auto isolation_level = prepare_batch_data->first;
   auto& last_batch_data = prepare_batch_data->second;
 
+  const dockv::SkipPrefixLocks skip_prefix_locks = put_batch.transaction().skip_prefix_locks() ?
+      dockv::SkipPrefixLocks::kTrue : dockv::SkipPrefixLocks::kFalse;
   docdb::TransactionalWriter writer(
       put_batch, hybrid_time, transaction_id, isolation_level,
       dockv::PartialRangeKeyIntents(metadata_->UsePartialRangeKeyIntents()),
       Slice(encoded_replicated_batch_idx_set.data(), encoded_replicated_batch_idx_set.size()),
-      last_batch_data.next_write_id, this);
+      last_batch_data.next_write_id, this, skip_prefix_locks);
   if (store_metadata) {
     writer.SetMetadataToStore(&put_batch.transaction());
   }

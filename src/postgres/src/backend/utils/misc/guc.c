@@ -680,6 +680,7 @@ static const struct config_enum_entry yb_cost_model_options[] = {
 	{"legacy_stats_mode", YB_COST_MODEL_LEGACY_STATS, false},
 	{"legacy_bnl_mode", YB_COST_MODEL_LEGACY_BNL, false},
 	{"legacy_stats_bnl_mode", YB_COST_MODEL_LEGACY_STATS_BNL, false},
+	{"legacy_ignore_stats_bnl_mode", YB_COST_MODEL_LEGACY_IGNORE_STATS_BNL, false},
 	{"true", YB_COST_MODEL_ON, true},
 	{"false", YB_COST_MODEL_OFF, true},
 	{"yes", YB_COST_MODEL_ON, true},
@@ -3591,6 +3592,21 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+
+
+	{
+		{"yb_make_all_ddl_statements_incrementing", PGC_SIGHUP, CUSTOM_OPTIONS,
+			gettext_noop("When set, all DDL statements will cause the "
+						 "catalog version to increment. This mainly affects "
+						 "CREATE commands such as CREATE TABLE, CREATE VIEW, "
+						 "and CREATE SEQUENCE."),
+			NULL
+		},
+		&yb_make_all_ddl_statements_incrementing,
+		false,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL
@@ -5554,6 +5570,15 @@ static struct config_int ConfigureNamesInt[] =
 		65535, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
+		{
+		{"yb_test_reset_retry_counts", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Restricts the number of retries for transaction conflicts. For testing purposes."),
+			NULL
+		},
+		&yb_test_reset_retry_counts,
+		-1, -1, INT_MAX,
+		NULL, NULL, NULL
+	},
 
 	/* End-of-list marker */
 	{
@@ -7356,6 +7381,7 @@ static const char *const YbDbAdminVariables[] = {
 	"yb_binary_restore",
 	"yb_speculatively_execute_pl_statements",
 	"yb_whitelist_extra_statements_for_pl_speculative_execution",
+	"yb_make_all_ddl_statements_incrementing",
 };
 
 
@@ -16014,6 +16040,11 @@ assign_yb_enable_cbo(int new_value, void *extra)
 		case YB_COST_MODEL_LEGACY_STATS_BNL:
 			yb_enable_optimizer_statistics = true;
 			yb_legacy_bnl_cost = true;
+			break;
+
+		case YB_COST_MODEL_LEGACY_IGNORE_STATS_BNL:
+			yb_legacy_bnl_cost = true;
+			yb_ignore_stats = true;
 			break;
 	}
 }

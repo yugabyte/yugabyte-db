@@ -40,6 +40,22 @@ void YsqlMajorUpgradeTestBase::SetUp() {
       "RESET yb_non_ddl_txn_for_sys_tables_allowed"}));
 }
 
+void YsqlMajorUpgradeTestBase::SetUpOptions(ExternalMiniClusterOptions& opts) {
+  UpgradeTestBase::SetUpOptions(opts);
+
+  // Disable table locks to avoid issues during upgrade tests.
+  // TODO(#28746): This should not be required once we switch to making table
+  // locks an autoflag.
+  AddUnDefOkAndSetFlag(
+      opts.extra_master_flags, "enable_object_locking_for_table_locks", "false");
+  AddUnDefOkAndSetFlag(
+      opts.extra_tserver_flags, "enable_object_locking_for_table_locks", "false");
+  AppendFlagToAllowedPreviewFlagsCsv(
+      opts.extra_master_flags, "enable_object_locking_for_table_locks");
+  AppendFlagToAllowedPreviewFlagsCsv(
+      opts.extra_tserver_flags, "enable_object_locking_for_table_locks");
+}
+
 Status YsqlMajorUpgradeTestBase::ValidateUpgradeCompatibility(const std::string& user_name) {
   const auto tserver = cluster_->tablet_server(0);
   const auto data_path = JoinPathSegments(tserver->GetDataDirs().front(), "../../pg_data");
