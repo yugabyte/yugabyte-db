@@ -84,13 +84,12 @@ public class EditUniverse extends EditUniverseTaskBase {
     boolean deleteCapacityReservation = false;
     String errorMessage = null;
     try {
-      Consumer<Universe> retryCallback = null;
-      if (Universe.getOrBadRequest(taskParams().getUniverseUUID())
-          .getUniverseDetails()
-          .autoRollbackPerformed) {
-        // Need to write nodes to universe since there was a rollback.
-        retryCallback = univ -> updateUniverseNodesAndSettings(univ, taskParams(), false);
-      }
+      Consumer<Universe> retryCallback =
+          (univ) -> {
+            if (univ.getUniverseDetails().autoRollbackPerformed) {
+              updateUniverseNodesAndSettings(univ, taskParams(), false);
+            }
+          };
       universe =
           lockAndFreezeUniverseForUpdate(
               taskParams().getUniverseUUID(),
@@ -171,7 +170,7 @@ public class EditUniverse extends EditUniverseTaskBase {
     } catch (Throwable t) {
       errorMessage = t.getMessage();
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
-      clearCapacityReservationOnError(t, Universe.getOrBadRequest(universe.getUniverseUUID()));
+      clearCapacityReservationOnError(t, Universe.getOrBadRequest(taskParams().getUniverseUUID()));
       throw t;
     } finally {
       releaseReservedNodes();
