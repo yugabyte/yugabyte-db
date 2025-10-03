@@ -27,7 +27,7 @@ Query diagnostics collects the following information:
 
 ## Enable query diagnostics
 
-{{<tags/feature/ea>}}To use query diagnostics, enable and configure the following flags for each node of your cluster.
+{{<tags/feature/ea idea="1591">}}To use query diagnostics, enable and configure the following flags for each node of your cluster.
 
 | Flag | Description |
 | :--- | :---------- |
