@@ -144,7 +144,7 @@ Enable Connection Pooling
 : {{<tags/feature/ea idea="1368">}}If database version is v2024.2 or later, you can enable [Built-in connection pooling](../../../additional-features/connection-manager-ysql/).
 : While in Early Access, connection pooling is not available by default. To make the feature available, set the *Allow users to enable or disable connection pooling* Global Runtime Configuration option (config key `yb.universe.allow_connection_pooling`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
 
-Enable Systemd Services
+Enable Systemd Services (v2025.1.0.0 and earlier only)
 : To use cron instead of systemd for managing nodes, you can disable systemd services. This is not recommended.
 
 {{< warning title="cron-based support deprecated" >}}

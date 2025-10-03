@@ -123,6 +123,12 @@ For AWS providers, you can assign an ARN to the nodes in the universe; this allo
 
 To use cron instead of systemd for managing nodes, you can disable systemd services. This not recommended.
 
+{{< note title="cron-based support deprecated" >}}
+
+cron-based universes will no longer be supported in YugabyteDB Anywhere v2025.2 and later.
+
+{{< /note >}}
+
 To customize the ports used for the universe, select the **Override Deployment Ports** option and enter the custom port numbers for the services you want to change.
 
 ### G-Flags
