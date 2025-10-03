@@ -36,7 +36,6 @@ spec:
                 taskUUID:
                   description: Internal UUID of the task associated with the backup resource.
                   type: string
-
             spec:
               type: object
               properties:

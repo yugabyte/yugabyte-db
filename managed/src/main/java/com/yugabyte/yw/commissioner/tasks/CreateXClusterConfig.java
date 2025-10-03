@@ -19,6 +19,8 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
@@ -28,6 +30,7 @@ import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams.BootstrapBackupParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.Universe;
@@ -69,11 +72,15 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
 
   public static final long TIME_BEFORE_DELETE_BACKUP_MS = TimeUnit.DAYS.toMillis(1);
   private static final long DELAY_BETWEEN_RETRIES_MS = TimeUnit.SECONDS.toMillis(10);
+  private final OperatorStatusUpdater kubernetesStatus;
 
   @Inject
   protected CreateXClusterConfig(
-      BaseTaskDependencies baseTaskDependencies, XClusterUniverseService xClusterUniverseService) {
+      BaseTaskDependencies baseTaskDependencies,
+      XClusterUniverseService xClusterUniverseService,
+      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
     super(baseTaskDependencies, xClusterUniverseService);
+    this.kubernetesStatus = operatorStatusUpdaterFactory.create();
   }
 
   public List<Restore> restoreList = new ArrayList<>();
@@ -330,6 +337,11 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
     } finally {
       // Unlock the target universe.
       unlockUniverseForUpdate(targetUniverse.getUniverseUUID());
+      if (xClusterConfig.isUsedForDr()) {
+        DrConfig drConfig = xClusterConfig.getDrConfig();
+        drConfig.refresh();
+        kubernetesStatus.updateDrConfigStatus(drConfig, getName(), getUserTaskUUID());
+      }
     }
 
     log.info("Completed {}", getName());
