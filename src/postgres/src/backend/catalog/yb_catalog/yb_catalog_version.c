@@ -112,9 +112,11 @@ YbMaybeLockMasterCatalogVersion()
 	 *       different DB.
 	 * (2) We enable this feature only if the invalidation messages are used and per-database catalog
 	 *		 version mode is enabled.
+	 *
+	 * TODO(#27037): Re-enable table locks check when concurrent DDL is ready.
 	 */
 	if (yb_user_ddls_preempt_auto_analyze &&
-		!*YBCGetGFlags()->enable_object_locking_for_table_locks &&
+		/* !*YBCGetGFlags()->enable_object_locking_for_table_locks && */
 		YbIsInvalidationMessageEnabled() && YBIsDBCatalogVersionMode())
 	{
 		elog(DEBUG3, "Locking catalog version for db oid %d", MyDatabaseId);

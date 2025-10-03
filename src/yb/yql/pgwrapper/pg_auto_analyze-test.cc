@@ -1046,19 +1046,7 @@ TEST_F(PgAutoAnalyzeTest, MutationsCleanupForDeletedAnalyzeTargetTable) {
   ASSERT_OK(WaitForTableMutationsCleanUp({table_id}));
 }
 
-class PgAutoAnalyzeTestDisableObjectLocks : public PgAutoAnalyzeTest {
- protected:
-  void SetUp() override {
-    // Explicitly disable object locking. With object locking, concurrent DDLs will be handled
-    // without relying on catalog version increments.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
-    PgAutoAnalyzeTest::SetUp();
-  }
-};
-
-TEST_F_EX(
-    PgAutoAnalyzeTest, DDLsInParallelWithAutoAnalyze,
-    PgAutoAnalyzeTestDisableObjectLocks) {
+TEST_F(PgAutoAnalyzeTest, DDLsInParallelWithAutoAnalyze) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_scale_factor) = 0.01;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_cooldown_per_table_scale_factor) = 1;
