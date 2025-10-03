@@ -502,7 +502,8 @@ YbcStatus YBCPgDmlAppendTarget(YbcPgStatement handle, YbcPgExpr target);
 // Only serialized Postgres expressions are allowed.
 // Multiple quals added to the same statement are implicitly AND'ed.
 YbcStatus YbPgDmlAppendQual(
-    YbcPgStatement handle, YbcPgExpr qual, bool is_for_secondary_index);
+    YbcPgStatement handle, YbcPgExpr qual, uint32_t serialization_version,
+    bool is_for_secondary_index);
 
 // Add column reference needed to evaluate serialized Postgres expression.
 // PgExpr's other than serialized Postgres expressions are inspected and if they contain any

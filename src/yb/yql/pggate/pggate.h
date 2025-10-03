@@ -450,7 +450,9 @@ class PgApiImpl {
   // All DML statements
   Status DmlAppendTarget(PgStatement *handle, PgExpr *expr);
 
-  Status DmlAppendQual(PgStatement *handle, PgExpr *expr, bool is_for_secondary_index);
+  Status DmlAppendQual(
+      PgStatement *handle, PgExpr *expr, uint32_t serialization_version,
+      bool is_for_secondary_index);
 
   Status DmlAppendColumnRef(PgStatement *handle, PgColumnRef *colref, bool is_for_secondary_index);
 

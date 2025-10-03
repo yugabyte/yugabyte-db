@@ -1371,9 +1371,12 @@ Status PgApiImpl::DmlAppendTarget(PgStatement* handle, PgExpr* target) {
   return VERIFY_RESULT_REF(GetStatementAs<PgDml>(handle)).AppendTarget(target);
 }
 
-Status PgApiImpl::DmlAppendQual(PgStatement* handle, PgExpr* qual, bool is_for_secondary_index) {
+Status PgApiImpl::DmlAppendQual(
+    PgStatement* handle, PgExpr* qual, uint32_t serialization_version,
+    bool is_for_secondary_index) {
   return VERIFY_RESULT_REF(
-      GetStatementAs<PgDmlRead>(handle)).AppendQual(qual, is_for_secondary_index);
+      GetStatementAs<PgDmlRead>(handle)).AppendQual(
+          qual, serialization_version, is_for_secondary_index);
 }
 
 Status PgApiImpl::DmlAppendColumnRef(

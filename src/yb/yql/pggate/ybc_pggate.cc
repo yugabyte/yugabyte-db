@@ -1400,8 +1400,11 @@ YbcStatus YBCPgDmlAppendTarget(YbcPgStatement handle, YbcPgExpr target) {
   return ToYBCStatus(pgapi->DmlAppendTarget(handle, target));
 }
 
-YbcStatus YbPgDmlAppendQual(YbcPgStatement handle, YbcPgExpr qual, bool is_for_secondary_index) {
-  return ToYBCStatus(pgapi->DmlAppendQual(handle, qual, is_for_secondary_index));
+YbcStatus YbPgDmlAppendQual(
+    YbcPgStatement handle, YbcPgExpr qual, uint32_t serialization_version,
+    bool is_for_secondary_index) {
+  return ToYBCStatus(pgapi->DmlAppendQual(
+      handle, qual, serialization_version, is_for_secondary_index));
 }
 
 YbcStatus YbPgDmlAppendColumnRef(
