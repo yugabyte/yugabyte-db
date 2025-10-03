@@ -17,9 +17,9 @@ Get started using YugabyteDB as a vector store with the [LangChain framework](ht
 
 LangChain is a powerful framework for developing large language model-powered applications. It provides a comprehensive toolkit for building context-aware LLM applications by managing the communication between LLMs and various data sources, including databases and vector stores.
 
-YugabyteDB supports the pgvector extension in a distributed SQL architecture, providing ultra resilience and seamless scalability for buildling Gen AI applications.
+YugabyteDB supports the [pgvector extension](../../additional-features/pg-extensions/extension-pgvector/) in a distributed SQL architecture, providing resilience and seamless scalability for buildling generative AI (GAI) applications.
 
-The `langchain-yugabytedb` Python package provides capabilities for generative AI (GAI) applications to use YugabyteDB as a vector store, using the LangChain framework's vectorstore retrieval for storing and retrieving vector data.
+The `langchain-yugabytedb` Python package provides capabilities for GAI applications to use YugabyteDB as a vector store, using the LangChain framework's vectorstore retrieval for storing and retrieving vector data.
 
 `langchain-yugabytedb` is available as [PyPi module](https://pypi.org/project/langchain-yugabytedb/).
 
