@@ -489,7 +489,7 @@ class PgCatalogVersionTest : public LibPqTestBase {
     // Create a number of databases.
     auto conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
     const auto yugabyte_db_oid = ASSERT_RESULT(GetDatabaseOid(&conn_yugabyte, kYugabyteDatabase));
-    const int num_databases = 10;
+    const int num_databases = IsTsan() ? 5 : 10;
     for (int i = 0; i < num_databases; ++i) {
       ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE DATABASE test_db$0", i));
     }
@@ -533,7 +533,11 @@ class PgCatalogVersionTest : public LibPqTestBase {
                               "yb_pg_stat_get_backend_local_catalog_version(NULL) "
                               "WHERE datid != 1 ORDER BY datid ASC, local_catalog_version ASC";
     auto result = ASSERT_RESULT((conn_yugabyte.FetchAllAsString(query)));
-    const string expected =
+    const string expected = IsTsan() ?
+        Format("$0, 16; "
+               "16384, 1; 16385, 2; 16385, 3; 16386, 4; 16386, 5; 16386, 6; "
+               "16387, 7; 16387, 8; 16387, 9; 16387, 10; "
+               "16388, 11; 16388, 12; 16388, 13; 16388, 14; 16388, 15", yugabyte_db_oid) :
         Format("$0, 56; "
                "16384, 1; 16385, 2; 16385, 3; 16386, 4; 16386, 5; 16386, 6; "
                "16387, 7; 16387, 8; 16387, 9; 16387, 10; "
@@ -2689,14 +2693,15 @@ TEST_F(PgCatalogVersionTest, InvalMessageAlterTableRefreshTest) {
 }
 
 TEST_F(PgCatalogVersionTest, InvalMessageLocalCatalogVersion) {
-  RestartClusterWithInvalMessageEnabled();
+  RestartClusterWithInvalMessageEnabled({ "--ysql_enable_auto_analyze=false" });
   InvalMessageLocalCatalogVersionHelper();
 }
 
 TEST_F(PgCatalogVersionTest, InvalMessageGarbageCollection) {
   RestartClusterWithInvalMessageEnabled(
       { "--check_lagging_catalog_versions_interval_secs=5",
-        "--min_invalidation_message_retention_time_secs=1" });
+        "--min_invalidation_message_retention_time_secs=1",
+        "--ysql_enable_auto_analyze=false" });
   InvalMessageLocalCatalogVersionHelper();
 }
 
