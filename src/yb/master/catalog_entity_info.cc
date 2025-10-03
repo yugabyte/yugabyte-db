@@ -678,17 +678,17 @@ void TableInfo::AddStatusTabletViaSplitPartition(
 }
 
 Status TableInfo::AddTabletUnlocked(const TabletInfoPtr& tablet) {
-  const auto& dirty = tablet->metadata().dirty();
-  if (dirty.is_deleted()) {
+  const auto& tablet_dirty = tablet->metadata().dirty();
+  if (tablet_dirty.is_deleted()) {
     // todo(zdrudi): for github issue 18257 this function's return type changed from void to Status.
     // To avoid changing existing behaviour we return OK here.
     // But silently passing over this case could cause bugs.
     return Status::OK();
   }
-  const auto& tablet_meta = dirty.pb;
+  const auto& tablet_meta = tablet_dirty.pb;
   tablets_.emplace(tablet->id(), tablet);
 
-  if (dirty.is_hidden()) {
+  if (tablet_dirty.is_hidden()) {
     // todo(zdrudi): for github issue 18257 this function's return type changed from void to Status.
     // To avoid changing existing behaviour we return OK here.
     // But silently passing over this case could cause bugs.
