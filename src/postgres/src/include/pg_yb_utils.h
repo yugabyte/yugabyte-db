@@ -906,6 +906,7 @@ void		YBIncrementDdlNestingLevel(YbDdlMode mode);
 void		YBDecrementDdlNestingLevel();
 
 extern void YBAddDdlTxnState(YbDdlMode mode);
+extern void YBMergeDdlTxnState();
 extern void YBCommitTransactionContainingDDL();
 
 typedef struct YbDdlModeOptional
