@@ -7,6 +7,7 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.common.DrConfigStates.State;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.forms.DrConfigCreateForm.PitrParams;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams;
 import com.yugabyte.yw.forms.XClusterConfigRestartFormData;
@@ -24,6 +25,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
+import jakarta.persistence.Transient;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -76,6 +78,12 @@ public class DrConfig extends Model {
   private List<Webhook> webhooks;
 
   @JsonIgnore private int parallelism;
+
+  @ApiModelProperty(hidden = true)
+  @Getter
+  @Setter
+  @Transient
+  private KubernetesResourceDetails kubernetesResourceDetails;
 
   /**
    * In the application logic, <em>NEVER<em/> read from the following variable. This is only used

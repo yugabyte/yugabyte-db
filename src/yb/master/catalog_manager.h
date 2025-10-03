@@ -350,8 +350,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Status CreateTestEchoService(const LeaderEpoch& epoch);
 
-  Status CreatePgAutoAnalyzeService(const LeaderEpoch& epoch);
-
   Status CreatePgCronService(const LeaderEpoch& epoch) EXCLUDES(mutex_);
 
   // Get the information about an in-progress create operation.
@@ -1765,6 +1763,21 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   rpc::Scheduler& Scheduler() override;
 
+  // Submit a task to run on the background thread pool.
+  Status SubmitBackgroundTask(const std::function<void()>& func);
+
+
+  // Below functions are temporarily made public until they can be moved into YsqlManager.
+
+  // Helper function to refresh the tablespace info.
+  Status DoRefreshTablespaceInfo(const LeaderEpoch& epoch);
+
+  void ResetCachedCatalogVersions()
+      EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
+
+  // Refresh the in-memory map for YSQL pg_yb_catalog_version table.
+  void RefreshPgCatalogVersionInfo() EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
+
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;
@@ -2159,8 +2172,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const TablespaceIdToReplicationInfoMap& tablespace_info,
       const TableToTablespaceIdMap& table_to_tablespace_map, const LeaderEpoch& epoch);
 
-  void StartTablespaceBgTaskIfStopped();
-
   // Report metrics.
   void ReportMetrics();
 
@@ -2500,6 +2511,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   mutable MutexType backfill_mutex_;
   std::unordered_set<TableId> pending_backfill_tables_ GUARDED_BY(backfill_mutex_);
 
+  std::unique_ptr<CdcsdkManager> cdcsdk_manager_;
+
   std::unique_ptr<XClusterManager> xcluster_manager_;
 
   std::unique_ptr<YsqlManager> ysql_manager_;
@@ -2594,17 +2607,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Return the table->tablespace mapping by reading the pg catalog tables.
   Result<std::shared_ptr<TableToTablespaceIdMap>> GetYsqlTableToTablespaceMap(
       const TablespaceIdToReplicationInfoMap& tablespace_info) EXCLUDES(mutex_);
-
-  // Background task that refreshes the in-memory state for YSQL tables with their associated
-  // tablespace info.
-  // Note: This function should only ever be called by StartTablespaceBgTaskIfStopped().
-  void RefreshTablespaceInfoPeriodically();
-
-  // Helper function to schedule the next iteration of the tablespace info task.
-  void ScheduleRefreshTablespaceInfoTask(const bool schedule_now = false);
-
-  // Helper function to refresh the tablespace info.
-  Status DoRefreshTablespaceInfo(const LeaderEpoch& epoch);
 
   size_t GetNumLiveTServersForPlacement(const PlacementId& placement_id);
 
@@ -3020,15 +3022,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status BumpVersionAndStoreClusterConfig(
       ClusterConfigInfo* cluster_config, ClusterConfigInfo::WriteLock* l);
 
-  // Background task that refreshes the in-memory map for YSQL pg_yb_catalog_version table.
-  void RefreshPgCatalogVersionInfoPeriodically()
-      EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
-  // Helper function to schedule the next iteration of the pg catalog versions task.
-  void ScheduleRefreshPgCatalogVersionsTask(bool schedule_now = false);
-
-  void StartPgCatalogVersionsBgTaskIfStopped();
-  void ResetCachedCatalogVersions()
-      EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
   Status GetYsqlAllDBCatalogVersionsImpl(DbOidToCatalogVersionMap* versions);
   Result<DbOidVersionToMessageListMap> GetYsqlCatalogInvalationMessagesImpl();
 
@@ -3114,11 +3107,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // No clients are expected to update the manager, they take a lock merely to copy the
   // shared_ptr and read from it.
   std::shared_ptr<YsqlTablespaceManager> tablespace_manager_ GUARDED_BY(tablespace_mutex_);
-
-  // Whether the periodic job to update tablespace info is running.
-  std::atomic<bool> tablespace_bg_task_running_;
-
-  rpc::ScheduledTaskTracker refresh_ysql_tablespace_info_task_;
 
   struct YsqlDdlTransactionState {
     // Indicates whether the transaction is committed or aborted or unknown.
@@ -3237,9 +3225,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   // True when the cluster is a producer of a valid replication stream.
   std::atomic<bool> cdc_enabled_{false};
-
-  std::atomic<bool> pg_catalog_versions_bg_task_running_ = {false};
-  rpc::ScheduledTaskTracker refresh_ysql_pg_catalog_versions_task_;
 
   // For per-database catalog version mode upgrade support: when the gflag
   // --ysql_enable_db_catalog_version_mode is true, whether the table

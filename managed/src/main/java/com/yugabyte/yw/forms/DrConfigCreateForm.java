@@ -1,5 +1,6 @@
 package com.yugabyte.yw.forms;
 
+import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import io.swagger.annotations.ApiModel;
@@ -8,7 +9,9 @@ import java.util.Set;
 import java.util.UUID;
 import javax.validation.Valid;
 import lombok.AllArgsConstructor;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 import lombok.ToString;
 import play.data.validation.Constraints.MaxLength;
 import play.data.validation.Constraints.Pattern;
@@ -72,4 +75,9 @@ public class DrConfigCreateForm {
     @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2024.2.0.0")
     public long snapshotIntervalSec;
   }
+
+  @ApiModelProperty(hidden = true)
+  @Getter
+  @Setter
+  private KubernetesResourceDetails kubernetesResourceDetails;
 }

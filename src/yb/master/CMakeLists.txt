@@ -83,6 +83,7 @@ set(MASTER_SRCS
   catalog_manager_bg_tasks.cc
   catalog_manager_ext.cc
   catalog_manager_util.cc
+  cdcsdk_manager.cc
   clone/clone_state_entity.cc
   clone/clone_state_manager.cc
   clone/clone_tasks.cc

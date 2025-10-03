@@ -176,6 +176,44 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
   }
 
   /*
+   * Update DrConfig Status
+   */
+  @Override
+  public void updateDrConfigStatus(
+      com.yugabyte.yw.models.DrConfig drConfig, String taskName, UUID taskUUID) {
+    try {
+      if (drConfig != null && drConfig.getKubernetesResourceDetails() != null) {
+        log.info("Update Dr config Status called for task {} ", taskUUID);
+        try (final KubernetesClient kubernetesClient =
+            new KubernetesClientBuilder().withConfig(k8sClientConfig).build()) {
+          DrConfig drConfigCr =
+              operatorUtils.getResource(
+                  drConfig.getKubernetesResourceDetails(),
+                  kubernetesClient.resources(DrConfig.class),
+                  DrConfig.class);
+          DrConfigStatus status = drConfigCr.getStatus();
+
+          status.setMessage("Dr Config State: " + drConfig.getState().name());
+          status.setResourceUUID(drConfig.getUuid().toString());
+          status.setTaskUUID(taskUUID.toString());
+
+          drConfigCr.setStatus(status);
+          kubernetesClient
+              .resources(DrConfig.class)
+              .inNamespace(namespace)
+              .resource(drConfigCr)
+              .updateStatus();
+          log.info("Updated Status for Dr config CR {}", drConfigCr);
+        }
+      }
+    } catch (Exception e) {
+      // This can happen for a variety of reasons.
+      // We might fail to talk to the API server, might need to add retries around this logic
+      log.error("Exception in updating dr config cr status", e);
+    }
+  }
+
+  /*
    * Universe Status Updates
    */
 

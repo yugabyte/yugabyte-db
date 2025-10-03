@@ -671,6 +671,7 @@
         "encryptionSettings": {
           "title": "Encryption Settings",
           "encryptionInTransit": "Encryption in Transit",
+          "enableEncryptionInTransit": "Enable encryption in transit",
           "encryptionAtRest": "Encryption at Rest",
           "enableClientToNodeTLS": "Enable Client-to-Node TLS",
           "enableClientToNodeTLSHelper": "Enable Client-to-Node encryption to use TLS enabled connection for communication between a client (ex: Database application, ysqlsh, ycqlsh) and the Universe YSQL -or- YCQL endpoint.",
