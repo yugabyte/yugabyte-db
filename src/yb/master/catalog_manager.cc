@@ -5907,7 +5907,8 @@ Result<string> CatalogManager::GetPgSchemaName(
     const ReadHybridTime& read_time) const {
   uint32_t database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(table_info.namespace_id()));
   const auto pg_table_oid =
-      VERIFY_RESULT(GetPgTableOidIfCommitted(table_id, table_info, read_time));
+      (read_time ? VERIFY_RESULT(GetPgTableOidIfCommitted(table_id, table_info, read_time))
+                 : VERIFY_RESULT(table_info.GetPgTableOid(table_id)));
   const auto relnamespace_oid = VERIFY_RESULT(sys_catalog_->ReadPgClassColumnWithOidValue(
       database_oid, pg_table_oid, kPgClassRelNamespaceColumnName, read_time));
   if (relnamespace_oid == kPgInvalidOid) {
