@@ -85,17 +85,22 @@ Status WriteEntry(
   return ApplyWriteRequest(doc_read_context, schema_packing_provider, write_request, write_batch);
 }
 
-bool TableDeleted(const SysTablesEntryPB& table) {
+bool TableDeletedOrHidden(const SysTablesEntryPB& table) {
   return table.state() == SysTablesEntryPB::DELETED ||
          table.state() == SysTablesEntryPB::DELETING ||
          table.hide_state() == SysTablesEntryPB::HIDING ||
          table.hide_state() == SysTablesEntryPB::HIDDEN;
 }
 
-bool TabletDeleted(const SysTabletsEntryPB& tablet) {
+bool TabletDeletedOrHidden(const SysTabletsEntryPB& tablet) {
   return tablet.state() == SysTabletsEntryPB::REPLACED ||
          tablet.state() == SysTabletsEntryPB::DELETED ||
          tablet.hide_hybrid_time() != 0;
+}
+
+bool TabletDeleted(const SysTabletsEntryPB& tablet) {
+  return tablet.state() == SysTabletsEntryPB::REPLACED ||
+         tablet.state() == SysTabletsEntryPB::DELETED;
 }
 
 bool IsSequencesDataObject(const NamespaceId& id, const SysNamespaceEntryPB& pb) {
@@ -297,16 +302,23 @@ Status RestoreSysCatalogState::PatchAndAddRestoringTablets() {
       // If both the children are not registered on the master as of the time to restore
       // then all the writes are still going to the parent and it is safe to restore
       // the parent.
-      RSTATUS_DCHECK_EQ(split_info.children.size(), 0, IllegalState,
-                        "Less than two children tablets exist for the parent tablet");
-      RSTATUS_DCHECK_EQ(split_info.parent.second->split_tablet_ids_size(), 0, IllegalState,
-                        "Split children exist for the parent tablet");
+      RSTATUS_DCHECK_EQ(
+          split_info.children.size(), 0, IllegalState,
+          Format(
+              "Exactly one child tablet exists for the parent tablet $0, $1. Child has id $2",
+              split_info.parent.first, split_info.parent.second->ShortDebugString(),
+              split_info.children.begin()->first));
+      RSTATUS_DCHECK_EQ(
+          split_info.parent.second->split_tablet_ids_size(), 0, IllegalState,
+          Format(
+              "Split children exist for the parent tablet $0, $1", split_info.parent.first,
+              split_info.parent.second->ShortDebugString()));
       // If it is a colocated tablet, then set the schedules that prevent
       // its colocated tables from getting deleted. Also, add to-be hidden table ids
       // in its colocated list as they won't be present previously.
       RETURN_NOT_OK(PatchColocatedTablet(split_info.parent.first, split_info.parent.second));
-      RETURN_NOT_OK(AddRestoringEntry(split_info.parent.first, split_info.parent.second,
-                                      &buffer, SysRowEntryType::TABLET));
+      RETURN_NOT_OK(AddRestoringEntry(
+          split_info.parent.first, split_info.parent.second, &buffer, SysRowEntryType::TABLET));
     } else {
       // CASE 2: If there are two children, we restore the children and hide the parent.
       // This works because, at the time when restore was initiated, we waited
@@ -347,6 +359,32 @@ void RestoreSysCatalogState::FillHideInformation(
       out_schedules.Add()->assign(schedule_id.AsSlice().cdata(), schedule_id.size());
     }
   }
+}
+
+// Iterate through the restoring state, compute the entries to write to the sys catalog to restore
+// all objects live at the restore-to time, and save these entries to
+// restoration_.non_system_objects_to_restore to be written later.
+Status RestoreSysCatalogState::ProcessRestoringObjects() {
+  faststring buffer;
+  auto restoring_tables = VERIFY_RESULT_PREPEND(
+      DetermineTables(
+          &restoring_objects_, nullptr,
+          [this, &buffer](const auto& id, auto* pb) {
+            return PatchAndAddRestoringEntry(id, pb, &buffer);
+          }),
+      "Determine restoring tables failed");
+  for (auto& [id, metadata] : restoring_objects_.tablets) {
+    auto it = restoring_tables.find(metadata.table_id());
+    if (it == restoring_tables.end()) {
+      continue;
+    }
+    // From the set of tablets in the restoring state, we are only interested in live tablets.
+    if (TabletDeletedOrHidden(metadata)) {
+      continue;
+    }
+    AddTabletToSplitRelationshipsMap(id, &metadata);
+  }
+  return PatchAndAddRestoringTablets();
 }
 
 Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
@@ -413,7 +451,7 @@ Status RestoreSysCatalogState::PatchColocatedTablet(
     return Status::OK();
   }
   auto it = existing_objects_.tablets.find(id);
-  if (TabletDeleted(it->second)) {
+  if (TabletDeletedOrHidden(it->second)) {
     return Status::OK();
   }
 
@@ -461,7 +499,7 @@ void RestoreSysCatalogState::AddTabletToSplitRelationshipsMap(
   if (pb->has_split_parent_tablet_id()) {
     auto it = restoring_objects_.tablets.find(pb->split_parent_tablet_id());
     if (it != restoring_objects_.tablets.end()) {
-      has_live_parent = !TabletDeleted(it->second);
+      has_live_parent = !TabletDeletedOrHidden(it->second);
     }
   }
   if (has_live_parent) {
@@ -472,15 +510,6 @@ void RestoreSysCatalogState::AddTabletToSplitRelationshipsMap(
     split_info.parent.first = id;
     split_info.parent.second = pb;
   }
-}
-
-Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
-    const std::string& id, SysTabletsEntryPB* pb) {
-  AddTabletToSplitRelationshipsMap(id, pb);
-  // Don't add this entry to the write batch yet, we write
-  // them once split relationships are known for all tablets
-  // as a separate step.
-  return false;
 }
 
 template <class PB>
@@ -586,11 +615,7 @@ Status RestoreSysCatalogState::Process() {
   VLOG_WITH_FUNC(4) << "Restoring namespaces: " << AsString(restoring_objects_.namespaces);
 
   VLOG_WITH_FUNC(2) << "Check existing objects";
-  RETURN_NOT_OK_PREPEND(DetermineEntries(
-      &existing_objects_, &retained_existing_tables_,
-      [this](const auto& id, auto* pb) {
-        return CheckExistingEntry(id, *pb);
-  }), "Determine obsolete entries failed");
+  RETURN_NOT_OK(ProcessExistingObjects());
 
   // Sort generated vectors, so binary search could be used to check whether object is obsolete.
   auto compare_by_first = [](const auto& lhs, const auto& rhs) { return lhs.first < rhs.first; };
@@ -601,20 +626,12 @@ Status RestoreSysCatalogState::Process() {
             restoration_.non_system_obsolete_tables.end(),
             compare_by_first);
 
-  faststring buffer;
-  RETURN_NOT_OK_PREPEND(DetermineEntries(
-      &restoring_objects_, nullptr,
-      [this, &buffer](const auto& id, auto* pb) {
-        return PatchAndAddRestoringEntry(id, pb, &buffer);
-  }), "Determine restoring entries failed");
-
-  RETURN_NOT_OK(PatchAndAddRestoringTablets());
-
+  RETURN_NOT_OK(ProcessRestoringObjects());
   return Status::OK();
 }
 
 template <class ProcessEntry>
-Status RestoreSysCatalogState::DetermineEntries(
+Result<std::unordered_set<TableId>> RestoreSysCatalogState::DetermineTables(
     Objects* objects, RetainedExistingTables* retained_existing_tables,
     const ProcessEntry& process_entry) {
   std::unordered_set<NamespaceId> namespaces;
@@ -636,7 +653,7 @@ Status RestoreSysCatalogState::DetermineEntries(
     VLOG_WITH_FUNC(3) << "Checking: " << id_and_metadata.first << ", "
                       << id_and_metadata.second.ShortDebugString();
 
-    if (TableDeleted(id_and_metadata.second)) {
+    if (TableDeletedOrHidden(id_and_metadata.second)) {
       continue;
     }
     auto& root_table_id_and_metadata = VERIFY_RESULT(objects->FindRootTable(id_and_metadata)).get();
@@ -672,21 +689,7 @@ Status RestoreSysCatalogState::DetermineEntries(
     VLOG(2) << "Table to restore: " << id_and_metadata.first << ", "
             << id_and_metadata.second.ShortDebugString();
   }
-  for (auto& id_and_metadata : objects->tablets) {
-    auto it = tables.find(id_and_metadata.second.table_id());
-    if (it == tables.end()) {
-      continue;
-    }
-    // We could have DELETED/HIDDEN tablets for a RUNNING table,
-    // for instance in the case of tablet splitting.
-    if (TabletDeleted(id_and_metadata.second)) {
-      continue;
-    }
-    RETURN_NOT_OK(process_entry(id_and_metadata.first, &id_and_metadata.second));
-    VLOG(2) << "Tablet to restore: " << id_and_metadata.first << ", "
-            << id_and_metadata.second.ShortDebugString();
-  }
-  return Status::OK();
+  return tables;
 }
 
 Result<const std::pair<const TableId, SysTablesEntryPB>&>
@@ -782,14 +785,30 @@ Status RestoreSysCatalogState::LoadExistingObjects(
   return LoadObjects(doc_read_context, doc_db, pending_op, HybridTime::kMax, &existing_objects_);
 }
 
-Status RestoreSysCatalogState::CheckExistingEntry(
-    const std::string& id, const SysTabletsEntryPB& pb) {
-  VLOG_WITH_FUNC(4) << "Tablet: " << id << ", " << pb.ShortDebugString();
-  if (restoring_objects_.tablets.count(id)) {
-    return Status::OK();
+// Iterate through the set of objects in the sys catalog at the current time.
+// Collect tables and tablets that don't exist at the restore-to time for deletion.
+Status RestoreSysCatalogState::ProcessExistingObjects() {
+  auto existing_tables = VERIFY_RESULT_PREPEND(
+      DetermineTables(
+          &existing_objects_, &retained_existing_tables_,
+          [this](const auto& id, auto* pb) { return CheckExistingEntry(id, *pb); }),
+      "Determine obsolete tables failed");
+  for (auto& [id, metadata] : existing_objects_.tablets) {
+    auto it = existing_tables.find(metadata.table_id());
+    if (it == existing_tables.end()) {
+      continue;
+    }
+    // We iterate through the existing set of tablets to delete tablets that don't exist
+    // in the restoring state. So skip tablets that are already deleted.
+    if (TabletDeleted(metadata)) {
+      continue;
+    }
+    VLOG_WITH_FUNC(4) << "Tablet: " << id << ", " << metadata.ShortDebugString();
+    if (!restoring_objects_.tablets.count(id)) {
+      LOG(INFO) << "PITR: Will remove tablet: " << id;
+      restoration_.non_system_obsolete_tablets.emplace_back(id, metadata);
+    }
   }
-  LOG(INFO) << "PITR: Will remove tablet: " << id;
-  restoration_.non_system_obsolete_tablets.emplace_back(id, pb);
   return Status::OK();
 }
 
