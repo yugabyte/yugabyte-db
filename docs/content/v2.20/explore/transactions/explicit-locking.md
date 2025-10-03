@@ -23,6 +23,12 @@ type: docs
 
 </ul>
 
+Explicit locking in YugabyteDB gives you granular control over concurrency and data integrity within your transactions. While YugabyteDB automatically handles the ACID properties through its underlying distributed transaction protocol, explicit locking allows you to prevent conflicts that might otherwise occur, or to implement custom concurrency patterns that extend beyond the default isolation levels.
+
+By using explicit locks, you can guarantee exclusive or shared access to specific data, ensuring that subsequent transactions are appropriately blocked or permitted. This is particularly useful for complex business logic, long-running transactions, or scenarios where you require custom serializability guarantees.
+
+## Row-level locks
+
 YugabyteDB's YSQL supports explicit row-level locking, similar to PostgreSQL. Explicit row-locks ensure that two transactions can never hold conflicting locks on the same row. When two transactions try to acquire conflicting lock modes, the semantics are dictated by YugabyteDB's [concurrency control](../../../architecture/transactions/concurrency-control/) policies.
 
 The following types of row locks are supported:
