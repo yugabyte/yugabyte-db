@@ -316,20 +316,6 @@ You can modify these parameters in the following ways:
     SET LOCAL temp_file_limit=-1;
     ```
 
-- To specify the minimum age of a transaction (in seconds) before its locks are included in the results returned from querying the [pg_locks](../../../explore/observability/pg-locks/) view, use [yb_locks_min_txn_age](../../../explore/observability/pg-locks/#yb-locks-min-txn-age):
-
-    ```sql
-    --- To change the minimum transaction age to 5 seconds:
-    SET session yb_locks_min_txn_age = 5000;
-    ```
-
-- To set the maximum number of transactions for which lock information is displayed when you query the [pg_locks](../../../explore/observability/pg-locks/) view, use [yb_locks_max_transactions](../../../explore/observability/pg-locks/#yb-locks-max-transactions):
-
-    ```sql
-    --- To change the maximum number of transactions to display to 10:
-    SET session yb_locks_max_transactions = 10;
-    ```
-
 For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/15/runtime-config.html) in the PostgreSQL documentation.
 
 ### YSQL configuration parameters
@@ -603,6 +589,33 @@ Determines the sampling algorithm to use to select random rows from a table when
 
 - `full_table_scan`: Scans the whole table and picks random rows
 - `block_based_sampling`: Samples the table for a set of blocks, and then scans only those selected blocks to form a final rows sample.
+
+##### yb_locks_min_txn_age
+
+{{% tags/wrap %}}
+
+Default: `1`
+{{% /tags/wrap %}}
+
+Specifies the minimum age of a transaction (in seconds) before its locks are included in the results returned from querying the [pg_locks](../../../explore/observability/pg-locks/) view. Use this parameter to focus on older transactions that may be more relevant to performance tuning or deadlock resolution efforts.
+
+##### yb_locks_max_transactions
+
+{{% tags/wrap %}}
+
+Default: `16`
+{{% /tags/wrap %}}
+
+Sets the maximum number of transactions for which lock information is displayed when you query the [pg_locks](../../../explore/observability/pg-locks/) view. Limits output to the most relevant transactions, which is particularly beneficial in environments with high levels of concurrency and transactional activity.
+
+##### yb_locks_txn_locks_per_tablet
+
+{{% tags/wrap %}}
+
+Default: `200`
+{{% /tags/wrap %}}
+
+Sets the maximum number of rows per transaction per tablet to return in [pg_locks](../../../explore/observability/pg-locks/). Set to 0 to return all results.
 
 ## Networking
 

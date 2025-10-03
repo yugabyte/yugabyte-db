@@ -64,74 +64,58 @@ JSONB type that encapsulates additional information about each lock, specific to
   - `column_id`: The column ID in DocDB if the lock is a column-level lock, further aligning lock information with YugabyteDB's internal document-oriented architecture.
   - `multiple_rows_locked`: Indicates when the lock is held on more than one entry in DocDB, helping to understand the scope of the lock in the database's document model.
 
-## Configurable parameters for lock management
+## Filter your results
 
-YugabyteDB offers several YSQL configuration parameters to customize how locks are queried and displayed, so you can tailor the lock information as needed. `yb_locks_min_txn_age` and `yb_locks_max_transactions` control the filtering and limitation of transactions in lock queries.
+Use the following [YSQL configuration parameters](../../../reference/configuration/yb-tserver/#ysql-configuration-parameters) to customize how locks are queried and displayed, so you can tailor the lock information as needed.
 
-##### yb_locks_min_txn_age
-
-The `yb_locks_min_txn_age` parameter specifies the minimum age of a transaction (in seconds) before its locks are included in the results returned from querying the `pg_locks` view. By setting this parameter, you can focus on older transactions that may be more relevant to performance tuning or deadlock resolution efforts. Transactions that are started more recently than the specified duration are not shown, helping to reduce clutter and focus on potentially problematic transactions.
-
-Default: 1 second
-
-Example: Enter the following command to change the minimum transaction age to 5 seconds:
-
-```sh
-SET session yb_locks_min_txn_age = 5000;
-```
-
-##### yb_locks_max_transactions
-
-The `yb_locks_max_transactions` parameter sets the maximum number of transactions for which lock information is displayed when you query the pg_locks view. You can limit the output to the most relevant transactions, which is particularly beneficial in environments with high levels of concurrency and transactional activity. By controlling the volume of information returned, this parameter helps in managing the analysis of lock contention more effectively.
-
-Default: 16
-
-Example: Enter the following command to change the maximum number of transactions to display to 10:
-
-```sh
-SET session yb_locks_max_transactions = 10;
-```
-
-##### yb_locks_txn_locks_per_tablet
-
-The `yb_locks_txn_locks_per_tablet` parameter sets the maximum number of rows per transaction per tablet to return in pg_locks. Set to 0 to return all results.
-
-Default: 200
-
-Example: Enter the following command to return a maximum of 10 rows per transaction per tablet:
-
-```sh
-SET session yb_locks_txn_locks_per_tablet = 10;
-```
+| Parameter | Description |
+| :--- | :--- |
+| yb_locks_min_txn_age | Sets the minimum age of a transaction (in seconds) before its locks are included in the results returned from querying pg_locks. Use this parameter to focus on older transactions that may be more relevant to performance tuning or deadlock resolution efforts. Transactions that are started more recently than the specified duration are not shown, helping to reduce clutter and focus on potentially problematic transactions. |
+| yb_locks_max_transactions | The maximum number of transactions for which lock information is displayed when you query pg_locks. Use this to limit the output to the most relevant transactions in environments with high levels of concurrency and transactional activity. |
+| yb_locks_txn_locks_per_tablet | Sets the maximum number of rows per transaction per tablet to return in pg_locks. Set to 0 to return all results. |
 
 ## Examples
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 The following examples show how you can use the pg_locks view in YugabyteDB:
 
 - To display long-held locks, run the following command:
 
-    ```sh
+    ```sql
     SET session yb_locks_min_txn_age = 5000;
+    SELECT * FROM pg_locks;
+    ```
+
+- To change the maximum number of transactions to display to 10, run the following command:
+
+    ```sql
+    SET session yb_locks_max_transactions = 10;
+    SELECT * FROM pg_locks;
+    ```
+
+- To return a maximum of 10 rows per transaction per tablet, run the following command:
+
+    ```sql
+    SET session yb_locks_txn_locks_per_tablet = 10;
     SELECT * FROM pg_locks;
     ```
 
 - To filter results for a specific table, run the following command:
 
-    ```sh
+    ```sql
     SELECT * FROM pg_locks WHERE relation = 'user_app.products'::regclass;
     ```
 
 - To find locks by transaction ID, run the following command:
 
-    ```sh
+    ```sql
     SELECT * FROM pg_locks WHERE ybdetails->>'transactionid' = '{yb_txn_id}';
     ```
 
 - To diagnose blocked sessions, run the following command:
 
-    ```sh
+    ```sql
     SELECT * FROM pg_locks
     WHERE ybdetails->>'transaction_id' IN
     (SELECT yb_transaction_id FROM pg_stat_activity WHERE pid = <blocked_pid>);
@@ -139,12 +123,12 @@ The following examples show how you can use the pg_locks view in YugabyteDB:
 
 - To identify blocked sessions, run the following command:
 
-    ```sh
-    SELECT * from pg_locks WHERE granted = false;
+    ```sql
+    SELECT * FROM pg_locks WHERE granted = false;
     ```
 
 - To cancel a transaction, run the following command:
 
-    ```sh
+    ```sql
     SELECT yb_cancel_transaction('{yb_txn_id}');
     ```
