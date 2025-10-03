@@ -39,6 +39,11 @@ DEFINE_RUNTIME_int32(xcluster_ddl_queue_max_retries_per_ddl, 5,
 DEFINE_RUNTIME_uint32(xcluster_ddl_queue_statement_timeout_ms, 0,
     "Statement timeout to use for executing DDLs from the ddl_queue table. 0 means no timeout.");
 
+// Random default value to avoid collisions.
+DEFINE_RUNTIME_int64(xcluster_ddl_queue_advisory_lock_key, 8674896558949688690,
+    "Advisory lock key to use for DDL queue handler sessions. This ensures only one handler "
+    "processes the DDL queue at a time. A value of 0 means no advisory lock will be used.");
+
 DEFINE_test_flag(bool, xcluster_ddl_queue_handler_cache_connection, true,
     "Whether we should cache the ddl_queue handler's connection, or always recreate it.");
 
@@ -59,6 +64,8 @@ DEFINE_test_flag(bool, xcluster_ddl_queue_handler_fail_before_incremental_safe_t
 
 DEFINE_test_flag(bool, xcluster_ddl_queue_handler_fail_ddl, false,
     "Whether the ddl_queue handler should fail the ddl command that it executes.");
+
+DECLARE_bool(ysql_yb_enable_advisory_locks);
 
 #define VALIDATE_MEMBER(doc, member_name, expected_type) \
   SCHECK( \
@@ -564,7 +571,10 @@ Status XClusterDDLQueueHandler::RunDdlQueueHandlerPrepareQueries(pgwrapper::PGCo
 }
 
 Status XClusterDDLQueueHandler::InitPGConnection() {
-  if (pg_conn_ && FLAGS_TEST_xcluster_ddl_queue_handler_cache_connection) {
+  if (!FLAGS_TEST_xcluster_ddl_queue_handler_cache_connection) {
+    pg_conn_.reset();
+  }
+  if (pg_conn_) {
     return Status::OK();
   }
 
@@ -572,6 +582,15 @@ Status XClusterDDLQueueHandler::InitPGConnection() {
   CoarseTimePoint deadline = CoarseMonoClock::Now() + local_client_->default_rpc_timeout();
   auto pg_conn = std::make_unique<pgwrapper::PGConn>(
       VERIFY_RESULT(connect_to_pg_func_(namespace_name_, deadline)));
+
+  if (FLAGS_ysql_yb_enable_advisory_locks && FLAGS_xcluster_ddl_queue_advisory_lock_key != 0) {
+    // Acquire advisory lock to ensure only one handler processes the DDL queue at a time.
+    // Use non-blocking try_advisory_lock to fail fast if another handler is already running.
+    auto lock_acquired = VERIFY_RESULT(pg_conn->FetchRow<bool>(
+        Format("SELECT pg_try_advisory_lock($0)", FLAGS_xcluster_ddl_queue_advisory_lock_key)));
+    SCHECK(lock_acquired, IllegalState, "Failed to acquire advisory lock for DDL queue handler.");
+    TEST_SYNC_POINT("XClusterDDLQueueHandler::AdvisoryLockAcquired");
+  }
 
   RETURN_NOT_OK(RunDdlQueueHandlerPrepareQueries(pg_conn.get()));
 

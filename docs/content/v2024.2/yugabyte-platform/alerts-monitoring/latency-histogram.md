@@ -42,4 +42,4 @@ To discard latency statistics gathered so far, click the  **Reset stats** button
 ## Learn more
 
 - [Slow Query dashboard](../../../yugabyte-platform/alerts-monitoring/slow-queries-dashboard/) for details on how to run queries and view the results.
-- Latency histogram and percentile metrics are obtained using the `yb_latency_histogram` column in `pg_stat_statements` and `yb_get_percentile` function. Refer to [Get query statistics using pg_stat_statements](../../../explore/query-1-performance/pg-stat-statements/) for details on using latency histograms in YugabyteDB.
+- Latency histogram and percentile metrics are obtained using the `yb_latency_histogram` column in `pg_stat_statements` and `yb_get_percentile` function. Refer to [Get query statistics using pg_stat_statements](../../../launch-and-manage/monitor-and-alert/query-tuning/pg-stat-statements/) for details on using latency histograms in YugabyteDB.

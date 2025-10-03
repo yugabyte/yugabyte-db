@@ -1199,6 +1199,9 @@ public class HealthChecker {
       commandToRun.add("--ddl_atomicity_check=true");
       commandToRun.add("--master_leader_url=" + nodeCheckContext.getMasterLeaderUrl());
     }
+    if (!universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd) {
+      commandToRun.add("--cronbased");
+    }
     ShellResponse response =
         nodeUniverseManager
             .runCommand(nodeInfo.getNodeDetails(), universe, commandToRun, context)

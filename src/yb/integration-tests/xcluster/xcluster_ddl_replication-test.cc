@@ -43,7 +43,10 @@
 DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
 DECLARE_bool(enable_pg_cron);
 DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_int32(xcluster_cleanup_tables_frequency_secs);
+DECLARE_uint32(xcluster_ddl_tables_retention_secs);
 DECLARE_int32(xcluster_ddl_queue_max_retries_per_ddl);
+DECLARE_int64(xcluster_ddl_queue_advisory_lock_key);
 DECLARE_uint32(xcluster_consistent_wal_safe_time_frequency_ms);
 DECLARE_uint32(xcluster_max_old_schema_versions);
 DECLARE_string(ysql_cron_database_name);
@@ -55,29 +58,14 @@ DECLARE_int32(ysql_sequence_cache_minval);
 DECLARE_bool(TEST_force_get_checkpoint_from_cdc_state);
 DECLARE_string(TEST_skip_async_insert_packed_schema_for_tablet_id);
 DECLARE_bool(TEST_skip_oid_advance_on_restore);
+DECLARE_bool(TEST_xcluster_ddl_queue_handler_cache_connection);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_end);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_start);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_before_incremental_safe_time_bump);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_ddl);
-DECLARE_bool(enable_pg_cron);
-DECLARE_bool(ysql_enable_packed_row);
-
-DECLARE_uint32(xcluster_ddl_tables_retention_secs);
-DECLARE_uint32(xcluster_consistent_wal_safe_time_frequency_ms);
-DECLARE_uint32(xcluster_max_old_schema_versions);
-DECLARE_uint32(ysql_oid_cache_prefetch_size);
-
 DECLARE_int32(TEST_xcluster_producer_modify_sent_apply_safe_time_ms);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
-DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
-DECLARE_int32(timestamp_history_retention_interval_sec);
-DECLARE_int32(xcluster_cleanup_tables_frequency_secs);
-DECLARE_int32(xcluster_ddl_queue_max_retries_per_ddl);
-DECLARE_int32(ysql_sequence_cache_minval);
-
 DECLARE_string(TEST_xcluster_simulated_lag_tablet_filter);
-DECLARE_string(ysql_cron_database_name);
-DECLARE_string(ysql_pg_conf_csv);
 
 using namespace std::chrono_literals;
 
@@ -173,6 +161,39 @@ TEST_F(XClusterDDLReplicationTest, BasicSetupAlterTeardown) {
   // Extension should no longer exist on either side.
   ASSERT_OK(VerifyDDLExtensionTablesDeletion(namespace_name));
   ASSERT_OK(VerifyDDLExtensionTablesDeletion(namespace_name2));
+}
+
+TEST_F(XClusterDDLReplicationTest, BasicTestWithMultipleDatabases) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  // Create a new empty database and add it to replication.
+  const auto namespace_name2 = namespace_name + "2";
+  auto [source_db2_id, target_db2_id] =
+      ASSERT_RESULT(CreateDatabaseOnBothClusters(namespace_name2));
+  ASSERT_OK(AddDatabaseToReplication(source_db2_id, target_db2_id));
+  ASSERT_OK(VerifyDDLExtensionTablesCreation(namespace_name2));
+
+  // Create a table in each database and insert some data.
+  for (auto db_name : {namespace_name, namespace_name2}) {
+    auto pconn = ASSERT_RESULT(producer_cluster_.ConnectToDB(db_name));
+    ASSERT_OK(pconn.Execute("CREATE TABLE tbl(key int)"));
+    ASSERT_OK(pconn.Execute("INSERT INTO tbl SELECT i FROM generate_series(1, 100) as i"));
+  }
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  for (auto db_name : {namespace_name, namespace_name2}) {
+    ASSERT_OK(VerifyWrittenRecords({"tbl"}, db_name));
+  }
+
+  // Simple alter on the table.
+  for (auto db_name : {namespace_name, namespace_name2}) {
+    auto pconn = ASSERT_RESULT(producer_cluster_.ConnectToDB(db_name));
+    ASSERT_OK(pconn.Execute("ALTER TABLE tbl ADD COLUMN a int"));
+    ASSERT_OK(pconn.Execute("INSERT INTO tbl SELECT i FROM generate_series(101, 200) as i"));
+  }
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  for (auto db_name : {namespace_name, namespace_name2}) {
+    ASSERT_OK(VerifyWrittenRecords({"tbl"}, db_name));
+  }
 }
 
 // We have a temporary fix for this test that we are applying only in non-debug builds.  We do this
@@ -1527,6 +1548,69 @@ TEST_F(XClusterDDLReplicationTest, IncrementalSafeTimeBumpDropColumn) {
   // Fully resume replication and check that the data is correct.
   SyncPoint::GetInstance()->DisableProcessing();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_end) = false;
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifyWrittenRecords(std::vector<TableName>{kTableName}));
+}
+
+TEST_F(XClusterDDLReplicationTest, SingleDDLQueueHandler) {
+  // Test that the advisory lock prevents multiple DDL queue handlers from processing DDLs
+  // concurrently, even when the ddl_queue tablet steps down and creates new handlers.
+  const auto kTableName = "test_table";
+
+  // Using rf3 to test ddl_queue stepdowns. Can't run any DDLs that use xcluster_context however.
+  auto params = XClusterDDLReplicationTestBase::kDefaultParams;
+  params.replication_factor = 3;
+  ASSERT_OK(SetUpClusters(params));
+
+  // Create initial tables.
+  ASSERT_OK(producer_conn_->ExecuteFormat("CREATE TABLE $0 (key int primary key)", kTableName));
+  ASSERT_OK(consumer_conn_->ExecuteFormat("CREATE TABLE $0 (key int primary key)", kTableName));
+
+  // Don't cache the connection until after we finish setting up replication.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_cache_connection) = false;
+
+  // Setup replication.
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNowWithoutDDLQueue());
+
+  // Use a syncpoint to block the first DDL queue handler.
+  int sync_point_count = 0;
+  SyncPoint::GetInstance()->SetCallBack(
+      "XClusterDDLQueueHandler::AdvisoryLockAcquired",
+      [&sync_point_count](void*) { sync_point_count++; });
+  SyncPoint::GetInstance()->LoadDependency(
+      {{.predecessor = "XClusterDDLReplicationTest::ResumeDDLQueueHandler",
+        .successor = "XClusterDDLQueueHandler::AdvisoryLockAcquired"}});
+  SyncPoint::GetInstance()->EnableProcessing();
+  // Now that we've set up replication, we can cache the connection and hold the advisory lock.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_cache_connection) = true;
+
+  // Run some DDLs on the producer (don't run anything that uses xcluster_context as this is rf3).
+  ASSERT_OK(producer_conn_->ExecuteFormat("ALTER TABLE $0 ADD COLUMN a text", kTableName));
+  ASSERT_OK(producer_conn_->ExecuteFormat("ALTER TABLE $0 ADD COLUMN b text", kTableName));
+  ASSERT_OK(producer_conn_->ExecuteFormat("ALTER TABLE $0 DROP COLUMN a", kTableName));
+  ASSERT_OK(producer_conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 'test')", kTableName));
+
+  // Regular replication should make progress, but ddl_queue should be stuck.
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNowWithoutDDLQueue());
+  auto original_propagation_timeout = propagation_timeout_;
+  propagation_timeout_ = 10s;
+  ASSERT_NOK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_EQ(sync_point_count, 1);
+
+  // Step down the ddl_queue tablet.
+  ASSERT_OK(StepDownDdlQueueTablet(consumer_cluster_));
+
+  // Replication should still be stuck, even with a new queue handler.
+  ASSERT_NOK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_EQ(sync_point_count, 1);  // The new poller should not have tried to process the queue.
+
+  // Resume the ddl_queue handler.
+  TEST_SYNC_POINT("XClusterDDLReplicationTest::ResumeDDLQueueHandler");
+
+  // Replication should resume.
+  propagation_timeout_ = original_propagation_timeout;
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
   ASSERT_OK(VerifyWrittenRecords(std::vector<TableName>{kTableName}));
 }

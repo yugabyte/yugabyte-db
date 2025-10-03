@@ -247,5 +247,5 @@ new_db=# SELECT query_text FROM yb_terminated_queries WHERE databasename='new_db
 ## Learn more
 
 - For information on the temporary file limit, refer to [temp_file_limit](../../../reference/configuration/yb-tserver/#temp-file-limit) YB-TServer flag.
-- Refer to [Get query statistics using pg_stat_statements](../../query-1-performance/pg-stat-statements/) to track planning and execution of all the SQL statements.
+- Refer to [Get query statistics using pg_stat_statements](../../../launch-and-manage/monitor-and-alert/query-tuning/pg-stat-statements/) to track planning and execution of all the SQL statements.
 - Refer to [View live queries with pg_stat_activity](../pg-stat-activity/) to analyze live queries.

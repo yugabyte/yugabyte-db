@@ -146,7 +146,8 @@ uint64_t
 YBGetActiveCatalogCacheVersion()
 {
 	if (yb_catalog_version_type == CATALOG_VERSION_CATALOG_TABLE &&
-		YBGetDdlNestingLevel() > 0)
+		(YBGetDdlNestingLevel() > 0 ||
+		 (YBIsDdlTransactionBlockEnabled() && YBIsCurrentStmtDdl())))
 		return yb_catalog_cache_version + 1;
 
 	return yb_catalog_cache_version;
@@ -4126,8 +4127,24 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 	 * will cause a catalog version to increment. Note that we also disable breaking
 	 * catalog change as well because it does not make sense to only increment
 	 * breaking breaking catalog version.
+	 * If incremental catalog cache refresh is enabled, we ignore
+	 * yb_make_next_ddl_statement_nonincrementing. Consider this example where
+	 * each ddl statement increments the catalog version.
+	 * BEGIN;
+	 *   SET yb_make_next_ddl_statement_nonincrementing = true;
+	 *   ddl_statement_1;
+	 *   SET yb_make_next_ddl_statement_nonincrementing = true;
+	 *   ddl_statement_2;
+	 *   ddl_statement_3;
+	 * END;
+	 * In full refresh mode, ddl_statement_3 would have caused a full catalog cache
+	 * refresh which will allow a PG backend to see the effect of ddl_statement_1
+	 * and ddl_statement_2. In incremental refresh mode, ddl_statement_3 only causes
+	 * an incremental catalog cache refresh and the effect of ddl_statement_1 and
+	 * ddl_statement_2 are lost.
 	 */
-	if (yb_make_next_ddl_statement_nonincrementing)
+	if (yb_make_next_ddl_statement_nonincrementing &&
+		!YbIsInvalidationMessageEnabled())
 	{
 		is_version_increment = false;
 		is_breaking_change = false;

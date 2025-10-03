@@ -74,7 +74,7 @@ The examples run on any YugabyteDB universe.
 <!-- end: nav tabs -->
 
 {{<note>}}
-To explain the behavior of queries, the examples use *explain (analyze, dist, costs off)*. In practice, you do not need to do this unless you are trying to optimize performance. For more details, see [Analyze queries](../../../../explore/query-1-performance/explain-analyze).
+To explain the behavior of queries, the examples use *explain (analyze, dist, costs off)*. In practice, you do not need to do this unless you are trying to optimize performance. For more details, see [Analyze queries](../../../../launch-and-manage/monitor-and-alert/query-tuning/explain-analyze).
 {{</note>}}
 
 Create a census table as follows:

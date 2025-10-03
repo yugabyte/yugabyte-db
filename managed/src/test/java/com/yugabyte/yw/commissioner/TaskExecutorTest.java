@@ -166,7 +166,8 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.UpgradeKubernetesYbcGFlags,
           TaskType.UpdateYbcThrottleFlags,
           TaskType.UpdateK8sYbcThrottleFlags,
-          TaskType.KubernetesToggleImmutableYbc);
+          TaskType.KubernetesToggleImmutableYbc,
+          TaskType.OperatorImportUniverse);
 
   @Override
   protected Application provideApplication() {

@@ -89,7 +89,7 @@ EXPLAIN ANALYZE SELECT * FROM sample_table WHERE yb_hash_code(x,z) <= 128 AND yb
 (5 rows)
 ```
 
-Note that you can also use [pg_hint_plan](../../../../explore/query-1-performance/pg-hint-plan/) to manipulate the index that is used.
+Note that you can also use [pg_hint_plan](../../../../launch-and-manage/monitor-and-alert/query-tuning/pg-hint-plan/) to manipulate the index that is used.
 Consider a duplicate index of `sample_idx`:
 
 ```sql

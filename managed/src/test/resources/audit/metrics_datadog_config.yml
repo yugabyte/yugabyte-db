@@ -12,6 +12,7 @@ extensions:
 processors:
   attributes/metrics_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$AttributesProcessor
     actions:
+    - {action: upsert, key: tag, value: value}
     - {action: upsert, key: env, value: prod}
     - {action: upsert, key: region, value: us-west}
   batch/metrics_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$BatchProcessor {

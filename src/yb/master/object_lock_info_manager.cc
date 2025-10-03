@@ -512,20 +512,19 @@ std::string ReleaseObjectLockRequestToString(const ReleaseObjectLockRequestPB& p
   return ss.str();
 }
 
+#ifndef NDEBUG
+
 bool CompareReleaseRequestsIgnoringCatalogFields(
     const ReleaseObjectLockRequestPB& req1, const ReleaseObjectLockRequestPB& req2,
     std::string* diff_str = nullptr) {
-  // Use static MessageDifferencer for performance optimization
-  // This avoids recreating the differencer and reconfiguring fields on each call
-  static google::protobuf::util::MessageDifferencer md;
-  static std::once_flag fields_configured_flag;
+  // Create a new MessageDifferencer for each call to avoid thread safety issues
+  // with static instances
+  google::protobuf::util::MessageDifferencer md;
 
-  std::call_once(fields_configured_flag, [&req1]() {
-    // Configure fields to ignore only once
-    md.IgnoreField(req1.GetDescriptor()->FindFieldByName("db_catalog_version_data"));
-    md.IgnoreField(req1.GetDescriptor()->FindFieldByName("db_catalog_inval_messages_data"));
-    md.IgnoreField(req1.GetDescriptor()->FindFieldByName("populate_db_catalog_info"));
-  });
+  // Configure fields to ignore
+  md.IgnoreField(req1.GetDescriptor()->FindFieldByName("db_catalog_version_data"));
+  md.IgnoreField(req1.GetDescriptor()->FindFieldByName("db_catalog_inval_messages_data"));
+  md.IgnoreField(req1.GetDescriptor()->FindFieldByName("populate_db_catalog_info"));
 
   if (diff_str) {
     md.ReportDifferencesToString(diff_str);
@@ -533,6 +532,8 @@ bool CompareReleaseRequestsIgnoringCatalogFields(
 
   return md.Compare(req1, req2);
 }
+
+#endif
 
 // Returns a ReleaseObjectLockRequestPB that is suitable for persisting to the SysCatalog.
 // Request_id should have been set by the master when the request is added to the
@@ -558,9 +559,12 @@ ReleaseObjectLockRequestPB ReleaseRequestToPersist(const ReleaseObjectLockReques
   DCHECK(!req.has_db_catalog_inval_messages_data());
   req_to_persist.set_populate_db_catalog_info(req.populate_db_catalog_info());
 
+#ifndef NDEBUG
   DCHECK(CompareReleaseRequestsIgnoringCatalogFields(req, req_to_persist))
       << "Did we add a new field to the ReleaseObjectLockRequestPB? It should either be ignored or "
          "copied here.";
+#endif
+
   return req_to_persist;
 }
 
@@ -749,13 +753,15 @@ Status ObjectLockInfoManager::Impl::AddToInProgress(
     VLOG(0) << "Request already found among persisted in progress requests: "
             << ReleaseObjectLockRequestToString(existing_req);
 
+#ifndef NDEBUG
     std::string diff_str;
     bool are_equal = CompareReleaseRequestsIgnoringCatalogFields(req, existing_req, &diff_str);
-
     LOG_IF(DFATAL, !are_equal) << "Failed to match "
                                << ReleaseObjectLockRequestToString(existing_req) << " with "
                                << ReleaseObjectLockRequestToString(req) << "\n difference: \n"
                                << diff_str;
+#endif
+
     return Status::OK();
   }
   (*lock.mutable_data()->pb.mutable_in_progress_release_request())[req.request_id()] =

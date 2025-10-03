@@ -178,9 +178,9 @@ message SysTablesEntryPB {
   // corresponding entries are cleared out from this field.
   //
   // As a result, this field contains one element for every **active** sub-transaction modifying
-  // this table. In other words, if there are N active sub-transactions modifying this table, there
-  // will be N elements in this state. Note that the overall transaction is also counted as an
-  // implicit sub-transaction here. See example below.
+  // this table in increasing order of sub-transaction id. In other words, if there are N active
+  // sub-transactions modifying this table, there will be N elements in this state. Note that the
+  // overall transaction is also counted as an implicit sub-transaction here. See example below.
   //
   // Example:
   // BEGIN;

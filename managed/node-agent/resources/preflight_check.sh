@@ -212,7 +212,7 @@ check_yugabyte_user_home_if_exists() {
     else
       update_result_json "home_dir_exists" true
       # Normalize path.
-      actual_home_dir=$(readlink -f "$actual_home_dir" 2>&1)
+      actual_home_dir=$(readlink -m "$actual_home_dir" 2>&1)
       if [[ "$actual_home_dir" != "$yb_home_dir" ]]; then
         update_result_json "home_dir_matches" false
       else
@@ -586,7 +586,7 @@ while [[ $# -gt 0 ]]; do
     --yb_home_dir)
       yb_home_dir=${2//\'/}
       # Normalize the path.
-      yb_home_dir=$(readlink -f "$yb_home_dir" 2>&1)
+      yb_home_dir=$(readlink -m "$yb_home_dir" 2>&1)
       shift
     ;;
     --cleanup)
