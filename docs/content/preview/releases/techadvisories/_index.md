@@ -24,7 +24,7 @@ For an RSS feed of all technical advisories, point your feed reader to the [RSS 
 | {{<ta 27177>}}
 | PostgreSQL logical replication and v2025.1 upgrade
 | {{<product "cdc">}}
-| {{<release "2025.1">}}
+| {{<release "2025.1.0">}}
 | {{<nobreak "03 October 2025">}}
 |
 | {{<ta 26666>}}
