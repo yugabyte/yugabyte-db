@@ -90,7 +90,7 @@ static const std::initializer_list<UpgradeIncompatibilityCheck> kCheckList{
           "\\c yugabyte",
           "DROP INDEX public.idx_invalid;"},
      .teardown_stmts =
-         {"DROP INDEX idx_invalid"}}};
+         {"DROP TABLE invalid_index_test"}}};
 
 // The following checks are not used in YugabyteDB:
 // check_for_prepared_transactions
