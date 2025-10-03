@@ -673,6 +673,8 @@ PgApiImpl::PgApiImpl(
       ybctid_reader_provider_(pg_session_),
       fk_reference_cache_(ybctid_reader_provider_, buffering_settings_, tablespace_map_),
       explicit_row_lock_buffer_(ybctid_reader_provider_, tablespace_map_) {
+  MemTracker::InitializeGcMetrics(metric_entity_);
+
   PgBackendSetupSharedMemory();
   // This is an RCU object, but there are no concurrent updates on PG side, only on tserver, so
   // it's safe to just save the pointer.

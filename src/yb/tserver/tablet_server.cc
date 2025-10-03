@@ -487,6 +487,8 @@ Status TabletServer::Init() {
 
   RETURN_NOT_OK(DbServerBase::Init());
 
+  MemTracker::InitializeGcMetrics(metric_entity());
+
   RETURN_NOT_OK(path_handlers_->Register(web_server_.get()));
 
   log_prefix_ = Format("P $0: ", permanent_uuid());
