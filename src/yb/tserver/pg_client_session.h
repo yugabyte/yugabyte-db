@@ -98,6 +98,7 @@ struct PgClientSessionContext {
   const EventStatsPtr& stats_exchange_response_size;
   const std::string& instance_uuid;
   docdb::ObjectLockOwnerRegistry* lock_owner_registry;
+  const TransactionManagerProvider transaction_manager_provider;
 };
 
 class PgClientSession final {

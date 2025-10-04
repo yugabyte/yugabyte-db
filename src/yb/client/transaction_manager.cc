@@ -77,6 +77,20 @@ namespace client {
 
 namespace {
 
+const CloudInfoPB& GetPlacementFromGFlags() {
+  static GoogleOnceType once = GOOGLE_ONCE_INIT;
+  static CloudInfoPB cloud_info;
+  auto set_placement_from_gflags = [](CloudInfoPB* cloud_info) {
+    cloud_info->set_placement_cloud(FLAGS_placement_cloud);
+    cloud_info->set_placement_region(FLAGS_placement_region);
+    cloud_info->set_placement_zone(FLAGS_placement_zone);
+  };
+  GoogleOnceInitArg(
+      &once, static_cast<void (*)(CloudInfoPB*)>(set_placement_from_gflags), &cloud_info);
+
+  return cloud_info;
+}
+
 // Cache of tablet ids of the global transaction table and any transaction tables with
 // the same placement.
 class TransactionTableState {
@@ -110,6 +124,7 @@ class TransactionTableState {
     std::lock_guard lock(mutex_);
     if (!initialized_.load() || status_tablets_version_ < new_version) {
       tablets_ = std::move(tablets);
+      tablespace_region_local_.clear();
       tablespace_contains_tablespace_.clear();
       has_region_local_tablets_.store(!tablets_.region_local_tablets.empty());
       status_tablets_version_ = new_version;
@@ -124,6 +139,32 @@ class TransactionTableState {
   bool HasAnyTransactionLocalStatusTablets(PgTablespaceOid tablespace_oid) {
     SharedLock lock(mutex_);
     return tablets_.tablespaces.contains(tablespace_oid);
+  }
+
+  bool TablespaceIsRegionLocal(PgTablespaceOid tablespace_oid) {
+    if (tablespace_oid == kPgInvalidOid) {
+      return false;
+    }
+
+    {
+      SharedLock lock(mutex_);
+      auto itr = tablespace_region_local_.find(tablespace_oid);
+      if (itr != tablespace_region_local_.end()) {
+        return itr->second;
+      }
+    }
+
+    std::lock_guard lock(mutex_);
+    auto itr = tablets_.tablespaces.find(tablespace_oid);
+    if (itr == tablets_.tablespaces.end()) {
+      return false;
+    }
+
+    auto& placement = itr->second.placement_info;
+    return tablespace_region_local_.try_emplace(
+        tablespace_oid,
+        PlacementInfoContainsCloudInfo(placement, GetPlacementFromGFlags()) &&
+            !PlacementInfoSpansMultipleRegions(placement)).first->second;
   }
 
   bool TablespaceContainsTablespace(PgTablespaceOid lhs, PgTablespaceOid rhs) {
@@ -241,6 +282,8 @@ class TransactionTableState {
 
   TransactionStatusTablets tablets_ GUARDED_BY(mutex_);
 
+  std::unordered_map<PgTablespaceOid, bool> tablespace_region_local_ GUARDED_BY(mutex_);
+
   struct TablespaceOidPair {
     PgTablespaceOid first;
     PgTablespaceOid second;
@@ -250,20 +293,6 @@ class TransactionTableState {
   };
   std::unordered_map<TablespaceOidPair, bool> tablespace_contains_tablespace_ GUARDED_BY(mutex_);
 };
-
-const CloudInfoPB& GetPlacementFromGFlags() {
-  static GoogleOnceType once = GOOGLE_ONCE_INIT;
-  static CloudInfoPB cloud_info;
-  auto set_placement_from_gflags = [](CloudInfoPB* cloud_info) {
-    cloud_info->set_placement_cloud(FLAGS_placement_cloud);
-    cloud_info->set_placement_region(FLAGS_placement_region);
-    cloud_info->set_placement_zone(FLAGS_placement_zone);
-  };
-  GoogleOnceInitArg(
-      &once, static_cast<void (*)(CloudInfoPB*)>(set_placement_from_gflags), &cloud_info);
-
-  return cloud_info;
-}
 
 // Loads transaction tablets list to cache.
 class LoadStatusTabletsTask {
@@ -460,6 +489,10 @@ class TransactionManager::Impl {
     return table_state_.HasAnyRegionLocalStatusTablets();
   }
 
+  bool TablespaceIsRegionLocal(PgTablespaceOid tablespace_oid) {
+    return table_state_.TablespaceIsRegionLocal(tablespace_oid);
+  }
+
   bool TablespaceLocalTransactionsPossible(PgTablespaceOid tablespace_oid) {
     return table_state_.HasAnyTransactionLocalStatusTablets(tablespace_oid);
   }
@@ -558,6 +591,10 @@ void TransactionManager::UpdateClock(HybridTime time) {
 
 bool TransactionManager::RegionLocalTransactionsPossible() {
   return impl_->RegionLocalTransactionsPossible();
+}
+
+bool TransactionManager::TablespaceIsRegionLocal(PgTablespaceOid tablespace_oid) {
+  return impl_->TablespaceIsRegionLocal(tablespace_oid);
 }
 
 bool TransactionManager::TablespaceLocalTransactionsPossible(PgTablespaceOid tablespace_oid) {
