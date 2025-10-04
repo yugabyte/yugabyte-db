@@ -3,7 +3,7 @@ title: Integrate the LangChain Framework
 headerTitle: LangChain Framework
 linkTitle: LangChain
 description: Using the LangChain framework with YugabyteDB
-headcontent: Use YugabyteDB as a vector store with the LangChain framework
+headcontent: Use YugabyteDB as a vector store with LangChain
 aliases:
 menu:
   preview_integrations:
@@ -13,7 +13,7 @@ menu:
 type: docs
 ---
 
-Get started using YugabyteDB as a vector store with the [LangChain framework](https://www.langchain.com) for developing Retrieval-Augmented Generation (RAG) apps.
+Get started using YugabyteDB as a vector store with [LangChain](https://www.langchain.com) for developing Retrieval-Augmented Generation (RAG) apps.
 
 LangChain is a powerful framework for developing large language model-powered applications. It provides a comprehensive toolkit for building context-aware LLM applications by managing the communication between LLMs and various data sources, including databases and vector stores.
 
@@ -29,7 +29,7 @@ For detailed information of all YugabyteDBVectorStore features and configuration
 
 - Python 3.9 or later
 - Docker
-- Create an [OpenAI API Key](https://platform.openai.com/api-keys). export it as an environment variable with the name `OPENAI_API_KEY`.
+- Create an [OpenAI API Key](https://platform.openai.com/api-keys). Export it as an environment variable with the name `OPENAI_API_KEY`.
 
 ## Setup
 
@@ -315,7 +315,7 @@ for i, doc in enumerate(documents):
     print(f"Successfully stored {len(chunks)} chunks in PostgreSQL table: {TABLE_NAME}")
 ```
 
-#### step 2: Configure the YugabyteDB retriever
+#### Step 2: Configure the YugabyteDB retriever
 
 ```python
 from langchain_core.prompts import ChatPromptTemplate
