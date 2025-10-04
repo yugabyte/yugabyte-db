@@ -11,13 +11,7 @@ menu:
 type: docs
 ---
 
-{{< page-finder/head text="Upgrade YugabyteDB" subtle="across different products">}}
-  {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" url="../../../manage/upgrade-deployment/" >}}
-  {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" url="../../../yugabyte-platform/manage-deployments/upgrade-software/" >}}
-  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" current="" >}}
-{{< /page-finder/head >}}
-
-In YugabyteDB Aeon, database upgrades are fully automated and are performed during scheduled maintenance windows. Yugabyte also occasionally performs maintenance on clusters, which can include infrastructure upgrades.
+In YugabyteDB Aeon, [database upgrades](../database-upgrade/) are fully automated and are performed during scheduled maintenance windows. Yugabyte also occasionally performs maintenance on clusters, which can include infrastructure upgrades.
 
 Depending on the type of maintenance, your cluster may be restarted. [Fault tolerant](../../cloud-basics/create-clusters-overview/#fault-tolerance) clusters use rolling restarts, meaning your cluster has no downtime. Clusters with no fault tolerance (including your Sandbox) will briefly be unavailable. For more information on the impact, see [What to expect during maintenance](#what-to-expect-during-maintenance).
 
@@ -71,6 +65,8 @@ To set the maintenance exclusion period for a cluster:
 ## What to expect during maintenance
 
 The impact of maintenance on a cluster depends on its topology and [fault tolerance](../../cloud-basics/create-clusters-overview/#fault-tolerance).
+
+For information on database upgrades, refer to [Database upgrade](../database-upgrade/).
 
 | Fault&nbsp;tolerance | Details | Restart |
 | :--- | :--- | :--- |
