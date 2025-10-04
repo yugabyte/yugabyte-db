@@ -39,6 +39,11 @@ class YsqlMajorUpgradeDdlBlockingTest : public YsqlMajorUpgradeTestBase {
     ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0(a int)", kCommentTable));
   }
 
+  bool IsTransactionalDdlEnabled(pgwrapper::PGConn& conn) const {
+    auto txn_ddl_enabled = conn.FetchRow<std::string>("SHOW yb_ddl_transaction_block_enabled;");
+    return txn_ddl_enabled.ok() && *txn_ddl_enabled == "on";
+  }
+
  protected:
   Status SwitchToMixedMode() {
     LOG(INFO) << "Restarting yb-tserver " << kMixedModeTserverPg15 << " in current version";
@@ -123,6 +128,14 @@ class YsqlMajorUpgradeDdlBlockingTest : public YsqlMajorUpgradeTestBase {
   Status RunForceSetComment(std::optional<size_t> node_index) {
     static int count = 0;
     auto conn = VERIFY_RESULT(CreateConnToTs(node_index));
+    // TODO(#28045): Transactional DDL doesn't work with yb_force_catalog_update_on_next_ddl yet.
+    // This is fine because yb_force_catalog_update_on_next_ddl is only relevant for major version
+    // upgrade and transactional ddl can only be used after PG15 upgrade.
+    // This should eventually be fixed though for future major version upgrades. For now, we just
+    // skip using yb_force_catalog_update_on_next_ddl when txn ddl is enabled.
+    if (IsTransactionalDdlEnabled(conn)) {
+      return Status::OK();
+    }
 
     const auto new_comment = Format("comment $0", count++);
 
