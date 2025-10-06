@@ -7,15 +7,22 @@ import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import play.mvc.Http.Status;
@@ -92,22 +99,21 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
             createXClusterSourceRootCertDirPathGFlagTasks();
           }
 
-          boolean isUniverseOnPremManualProvisioned = Util.isOnPremManualProvisioning(universe);
-          boolean reProvisionRequired =
-              taskParams().installYbc
-                  && !isUniverseOnPremManualProvisioned
-                  && universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd;
-
           // Download software to nodes which does not have either master or tserver with new
           // version.
           createDownloadTasks(toOrderedSet(nodesToApply.asPair()), newVersion);
 
           // Install software on nodes.
-          createUpgradeTaskFlowTasks(
-              nodesToApply,
+
+          upgradeMaster(
+              universe,
+              getNonMasterNodes(nodesToApply.mastersList, nodesToApply.tserversList),
               newVersion,
-              getUpgradeContext(taskParams().ybSoftwareVersion),
-              reProvisionRequired);
+              false /* activeRole */);
+
+          upgradeMaster(universe, nodesToApply.mastersList, newVersion, true /* activeRole */);
+
+          upgradeTServer(universe, nodesToApply.tserversList, newVersion);
 
           if (taskParams().installYbc) {
             createYbcInstallTask(universe, new ArrayList<>(allNodes), newVersion);
@@ -150,5 +156,79 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
                 true /* isSoftwareRollbackAllowed */);
           }
         });
+  }
+
+  private void upgradeMaster(
+      Universe universe, List<NodeDetails> masterNodes, String version, boolean activeRole) {
+    long sleepTime =
+        confGetter.getConfForScope(universe, UniverseConfKeys.upgradeMasterStagePauseDurationMs);
+    if (taskParams().upgradeOption == UpgradeOption.NON_ROLLING_UPGRADE
+        || sleepTime <= 0
+        || !activeRole) {
+      createMasterUpgradeFlowTasks(
+          universe, masterNodes, version, getUpgradeContext(version), activeRole);
+    } else {
+
+      List<String> upgradedZones = new ArrayList<>();
+      for (UniverseDefinitionTaskParams.Cluster cluster : universe.getUniverseDetails().clusters) {
+        List<UUID> azs = sortAZs(cluster, universe);
+        for (UUID azUUID : azs) {
+          List<NodeDetails> nodesInAZ = getNodesInAZ(masterNodes, azUUID);
+          createMasterUpgradeFlowTasks(
+              universe, nodesInAZ, version, getUpgradeContext(version), activeRole);
+          AvailabilityZone zone = AvailabilityZone.getOrBadRequest(azUUID);
+          upgradedZones.add(zone.getName());
+          String sleepMessage =
+              String.format(
+                  "Matsers are upgraded in AZ %s, Sleeping after upgrade master in AZ %s",
+                  String.join(",", upgradedZones), zone.getName());
+          createWaitForDurationSubtask(
+              universe.getUniverseUUID(), Duration.ofMillis(sleepTime), sleepMessage);
+        }
+      }
+    }
+  }
+
+  private void upgradeTServer(Universe universe, List<NodeDetails> tserverNodes, String version) {
+    long sleepTime =
+        confGetter.getConfForScope(universe, UniverseConfKeys.upgradeTServerStagePauseDurationMs);
+    if (taskParams().upgradeOption == UpgradeOption.NON_ROLLING_UPGRADE || sleepTime <= 0) {
+      createTServerUpgradeFlowTasks(
+          universe,
+          tserverNodes,
+          version,
+          getUpgradeContext(version),
+          taskParams().installYbc
+              && !Util.isOnPremManualProvisioning(universe)
+              && universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd);
+    } else {
+      List<String> upgradedZones = new ArrayList<>();
+      for (UniverseDefinitionTaskParams.Cluster cluster : universe.getUniverseDetails().clusters) {
+        List<UUID> azs = sortAZs(cluster, universe);
+        for (UUID azUUID : azs) {
+          List<NodeDetails> nodesInAZ = getNodesInAZ(tserverNodes, azUUID);
+          createTServerUpgradeFlowTasks(
+              universe,
+              nodesInAZ,
+              version,
+              getUpgradeContext(version),
+              taskParams().installYbc
+                  && !Util.isOnPremManualProvisioning(universe)
+                  && universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd);
+          AvailabilityZone zone = AvailabilityZone.getOrBadRequest(azUUID);
+          upgradedZones.add(zone.getName());
+          String sleepMessage =
+              String.format(
+                  "Tservers are upgraded in AZ %s, Sleeping after upgrade tserver in AZ %s",
+                  String.join(",", upgradedZones), zone.getName());
+          createWaitForDurationSubtask(
+              universe.getUniverseUUID(), Duration.ofMillis(sleepTime), sleepMessage);
+        }
+      }
+    }
+  }
+
+  private List<NodeDetails> getNodesInAZ(List<NodeDetails> nodes, UUID az) {
+    return nodes.stream().filter(node -> node.azUuid.equals(az)).collect(Collectors.toList());
   }
 }
