@@ -28,6 +28,7 @@ using yb::tablet::TabletPeer;
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_int32(TEST_slowdown_alter_table_rpcs_ms);
 DECLARE_string(allowed_preview_flags_csv);
+DECLARE_bool(enable_object_locking_for_table_locks);
 
 namespace yb {
 namespace pgwrapper {
@@ -40,6 +41,8 @@ class AlterTableWithConcurrentTxnTest : public PgMiniTestBase {
     // alter table rpc's send request and response handler. This will result
     // in a heartbeat delay on the TServer and thus trigger ProcessTabletReport().
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_slowdown_alter_table_rpcs_ms) = 5000; // 5 seconds
+    // Disabled object locking as DDLs are expected to go through in presence of active DMLs.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
     PgMiniTestBase::SetUp();
   }
 
