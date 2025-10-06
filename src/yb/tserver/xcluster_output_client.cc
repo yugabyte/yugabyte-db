@@ -569,7 +569,8 @@ Result<bool> XClusterOutputClient::ProcessMetaOp(const cdc::CDCRecordPB& record)
     }
 
     RETURN_NOT_OK(local_client_.UpdateConsumerOnProducerSplit(
-        producer_tablet_info_.replication_group_id, producer_tablet_info_.stream_id, split_info));
+        producer_tablet_info_.replication_group_id, producer_tablet_info_.stream_id, split_info,
+        consumer_tablet_info_.table_id));
   } else if (record.operation() == cdc::CDCRecordPB::CHANGE_METADATA) {
     if (!VERIFY_RESULT(ProcessChangeMetadataOp(record))) {
       return false;

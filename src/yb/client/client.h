@@ -739,7 +739,7 @@ class YBClient {
   // Update consumer pollers after a producer side tablet split.
   Status UpdateConsumerOnProducerSplit(
       const xcluster::ReplicationGroupId& replication_group_id, const xrepl::StreamId& stream_id,
-      const master::ProducerSplitTabletInfoPB& split_info);
+      const master::ProducerSplitTabletInfoPB& split_info, const TableId& consumer_table_id);
 
   // Update after a producer DDL change. Returns if caller should wait for a similar Consumer DDL.
   Status UpdateConsumerOnProducerMetadata(
