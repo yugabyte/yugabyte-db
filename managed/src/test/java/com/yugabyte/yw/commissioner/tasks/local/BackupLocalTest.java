@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.local;
 
@@ -133,11 +133,12 @@ public class BackupLocalTest extends LocalProviderUniverseTestBase {
     Universe target = createUniverseWithYbc(userIntent);
 
     // Restoring the backup on the same universe under a different keyspace.
-    RestoreBackupParams rParams = getRestoreParams(target, backup, customerConfig, YUGABYTE_DB);
+    String db2Name = YUGABYTE_DB + "_2";
+    RestoreBackupParams rParams = getRestoreParams(target, backup, customerConfig, db2Name);
     taskUUID = backupHelper.createRestoreTask(customer.getUuid(), rParams);
     taskInfo = waitForTask(taskUUID, source, target);
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
-    verifyYSQL(target);
+    verifyYSQL(target, false, db2Name);
     verifyPayload();
   }
 
@@ -229,7 +230,8 @@ public class BackupLocalTest extends LocalProviderUniverseTestBase {
         localNodeUniverseManager
             .runYsqlCommand(nd, target, YUGABYTE_DB, String.join(" ", psqlCmds), 10, authEnabled)
             .isSuccess());
-    RestoreBackupParams rParams = getRestoreParams(target, backup, customerConfig, YUGABYTE_DB);
+    String db2Name = YUGABYTE_DB + "_2";
+    RestoreBackupParams rParams = getRestoreParams(target, backup, customerConfig, db2Name);
     rParams.backupStorageInfoList.stream()
         .forEach(backupStorage -> backupStorage.setIgnoreErrors(false));
     for (BackupStorageInfo backupStorage : rParams.backupStorageInfoList) {
@@ -246,7 +248,7 @@ public class BackupLocalTest extends LocalProviderUniverseTestBase {
             + " AND table_name = 't1';");
     resp =
         localNodeUniverseManager.runYsqlCommand(
-            nd, target, YUGABYTE_DB, String.join(" ", psqlCmds), 10, authEnabled);
+            nd, target, db2Name, String.join(" ", psqlCmds), 10, authEnabled);
     assertTrue(resp.isSuccess());
     String result = resp.message;
     assertFalse(result.contains("INSERT"));
@@ -258,7 +260,7 @@ public class BackupLocalTest extends LocalProviderUniverseTestBase {
             + " AND table_name = 't2';");
     resp =
         localNodeUniverseManager.runYsqlCommand(
-            nd, target, YUGABYTE_DB, String.join(" ", psqlCmds), 10, authEnabled);
+            nd, target, db2Name, String.join(" ", psqlCmds), 10, authEnabled);
     assertTrue(resp.isSuccess());
     result = resp.message;
     assertTrue(result.contains("INSERT"));
@@ -268,7 +270,7 @@ public class BackupLocalTest extends LocalProviderUniverseTestBase {
     psqlCmds.add("SELECT tableowner FROM pg_tables WHERE tablename = 't3';");
     resp =
         localNodeUniverseManager.runYsqlCommand(
-            nd, target, YUGABYTE_DB, String.join(" ", psqlCmds), 10, authEnabled);
+            nd, target, db2Name, String.join(" ", psqlCmds), 10, authEnabled);
     assertTrue(resp.isSuccess());
     result = resp.message;
     assertFalse(result.contains("role1")); // role 1 was not created
@@ -278,7 +280,7 @@ public class BackupLocalTest extends LocalProviderUniverseTestBase {
     psqlCmds.add("SELECT tableowner FROM pg_tables WHERE tablename = 't1';");
     resp =
         localNodeUniverseManager.runYsqlCommand(
-            nd, target, YUGABYTE_DB, String.join(" ", psqlCmds), 10, authEnabled);
+            nd, target, db2Name, String.join(" ", psqlCmds), 10, authEnabled);
     assertTrue(resp.isSuccess());
     result = resp.message;
     assertTrue(result.contains("role2"));

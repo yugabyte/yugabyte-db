@@ -12,7 +12,6 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.nullable;
@@ -33,11 +32,13 @@ import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.XClusterCreatePrecheck;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
+import com.yugabyte.yw.common.dr.DrConfigHelper;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.DrConfigCreateForm;
@@ -65,7 +66,7 @@ import com.yugabyte.yw.models.XClusterNamespaceConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -103,6 +104,7 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
   private final Commissioner mockCommissioner = mock(Commissioner.class);
   private final MetricQueryHelper mockMetricQueryHelper = mock(MetricQueryHelper.class);
   private final BackupHelper mockBackupHelper = mock(BackupHelper.class);
+  private final DrConfigHelper mockDrConfigHelper = mock(DrConfigHelper.class);
   private final CustomerConfigService mockCustomerConfigService = mock(CustomerConfigService.class);
   private final YBClientService mockYBClientService = mock(YBClientService.class);
   private final XClusterUniverseService mockXClusterUniverseService =
@@ -119,7 +121,7 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
   private String authToken;
   private BootstrapBackupParams backupRequestParams;
   private SettableRuntimeConfigFactory settableRuntimeConfigFactory;
-  private String namespaceId;
+  private final List<String> namespaceIds = new ArrayList<>();
 
   private DrConfigController drConfigController;
 
@@ -132,42 +134,45 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
     return CustomerConfig.createWithFormData(customer.getUuid(), formData);
   }
 
-  private DrConfigCreateForm createDefaultCreateForm(String name) {
+  private DrConfigCreateForm createDefaultCreateForm(String name) throws Exception {
+    return createDefaultCreateForm(name, namespaceIds);
+  }
+
+  private DrConfigCreateForm createDefaultCreateForm(String name, Collection<String> dbIds)
+      throws Exception {
     DrConfigCreateForm createForm = new DrConfigCreateForm();
     createForm.name = name;
     createForm.sourceUniverseUUID = sourceUniverse.getUniverseUUID();
     createForm.targetUniverseUUID = targetUniverse.getUniverseUUID();
-    createForm.dbs = Set.of(namespaceId);
+    createForm.dbs = new HashSet<>(dbIds);
     createForm.bootstrapParams = new RestartBootstrapParams();
     createForm.bootstrapParams.backupRequestParams = backupRequestParams;
 
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList = new ArrayList<>();
-    MasterDdlOuterClass.ListTablesResponsePB.TableInfo.Builder table1TableInfoBuilder =
-        MasterDdlOuterClass.ListTablesResponsePB.TableInfo.newBuilder();
-    table1TableInfoBuilder.setTableType(TableType.PGSQL_TABLE_TYPE);
-    table1TableInfoBuilder.setId(ByteString.copyFromUtf8(UUID.randomUUID().toString()));
-    table1TableInfoBuilder.setName("table_1");
-    table1TableInfoBuilder.setRelationType(RelationType.USER_TABLE_RELATION);
-    table1TableInfoBuilder.setNamespace(
-        MasterTypes.NamespaceIdentifierPB.newBuilder()
-            .setName("db1")
-            .setId(ByteString.copyFromUtf8(namespaceId))
-            .build());
-    tableInfoList.add(table1TableInfoBuilder.build());
-
-    try {
-      ListTablesResponse mockListTablesResponse = mock(ListTablesResponse.class);
-      when(mockListTablesResponse.getTableInfoList()).thenReturn(tableInfoList);
-      when(mockYBClient.getTablesList(nullable(String.class), eq(false), nullable(String.class)))
-          .thenReturn(mockListTablesResponse);
-
-      GetMasterClusterConfigResponse fakeClusterConfigResponse =
-          new GetMasterClusterConfigResponse(
-              0, "", CatalogEntityInfo.SysClusterConfigEntryPB.getDefaultInstance(), null);
-      when(mockYBClient.getMasterClusterConfig()).thenReturn(fakeClusterConfigResponse);
-    } catch (Exception e) {
-      e.printStackTrace();
+    for (String namespaceId : namespaceIds) {
+      MasterDdlOuterClass.ListTablesResponsePB.TableInfo.Builder table1TableInfoBuilder =
+          MasterDdlOuterClass.ListTablesResponsePB.TableInfo.newBuilder()
+              .setTableType(TableType.PGSQL_TABLE_TYPE)
+              .setId(ByteString.copyFromUtf8(UUID.randomUUID().toString()))
+              .setName("table_1")
+              .setRelationType(RelationType.USER_TABLE_RELATION)
+              .setNamespace(
+                  MasterTypes.NamespaceIdentifierPB.newBuilder()
+                      .setName(namespaceId)
+                      .setId(ByteString.copyFromUtf8(namespaceId))
+                      .build());
+      tableInfoList.add(table1TableInfoBuilder.build());
     }
+
+    ListTablesResponse mockListTablesResponse = mock(ListTablesResponse.class);
+    when(mockListTablesResponse.getTableInfoList()).thenReturn(tableInfoList);
+    when(mockYBClient.getTablesList(nullable(String.class), eq(false), nullable(String.class)))
+        .thenReturn(mockListTablesResponse);
+
+    GetMasterClusterConfigResponse fakeClusterConfigResponse =
+        new GetMasterClusterConfigResponse(
+            0, "", CatalogEntityInfo.SysClusterConfigEntryPB.getDefaultInstance(), null);
+    when(mockYBClient.getMasterClusterConfig()).thenReturn(fakeClusterConfigResponse);
 
     return createForm;
   }
@@ -203,7 +208,7 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
     TestHelper.updateUniverseVersion(sourceUniverse, "2.23.0.0-b394");
     targetUniverse = createUniverse("target Universe");
     TestHelper.updateUniverseVersion(targetUniverse, "2.23.0.0-b394");
-    namespaceId = UUID.randomUUID().toString().replace("-", "");
+    namespaceIds.add(UUID.randomUUID().toString().replace("-", ""));
 
     backupRequestParams = new BootstrapBackupParams();
     backupRequestParams.storageConfigUUID = config.getConfigUUID();
@@ -212,20 +217,20 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
         new DrConfigController(
             mockCommissioner,
             mockMetricQueryHelper,
-            mockBackupHelper,
-            mockCustomerConfigService,
+            mockDrConfigHelper,
             mockYBClientService,
             null,
             mockXClusterUniverseService,
             mockAutoFlagUtil,
             mockXClusterScheduler,
             null,
-            mockSoftwareUpgradeHelper);
+            mockSoftwareUpgradeHelper,
+            new XClusterCreatePrecheck(mockYBClientService, null, mockSoftwareUpgradeHelper));
   }
 
   @Test
   // Runtime config `yb.xcluster.db_scoped.creationEnabled` = false.
-  public void testCreateSuccess() {
+  public void testCreateSuccess() throws Exception {
     settableRuntimeConfigFactory
         .globalRuntimeConf()
         .setValue("yb.xcluster.db_scoped.creationEnabled", "false");
@@ -245,10 +250,7 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
             CommonTypes.TableType.PGSQL_TABLE_TYPE,
             Collections.emptyList(),
             false);
-    try {
-      when(mockYBClient.getTableSchemaByUUID(any())).thenReturn(mockTableSchemaResponseTable1);
-    } catch (Exception ignored) {
-    }
+    when(mockYBClient.getTableSchemaByUUID(any())).thenReturn(mockTableSchemaResponseTable1);
     Result result =
         doRequestWithAuthTokenAndBody(
             "POST",
@@ -264,12 +266,12 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
     DrConfig drConfig = drConfigs.get(0);
     assertNotNull(drConfig);
     XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
-    assertEquals(xClusterConfig.getType(), ConfigType.Txn);
+    assertEquals(ConfigType.Txn, xClusterConfig.getType());
   }
 
   @Test
   // Runtime config `yb.xcluster.db_scoped.creationEnabled` = true for source universe.
-  public void testCreateDbScopedSuccess() {
+  public void testCreateDbScopedSuccess() throws Exception {
     settableRuntimeConfigFactory
         .forUniverse(sourceUniverse)
         .setValue("yb.xcluster.db_scoped.creationEnabled", "true");
@@ -294,11 +296,11 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
     DrConfig drConfig = drConfigs.get(0);
     assertNotNull(drConfig);
     XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
-    assertEquals(xClusterConfig.getType(), ConfigType.Db);
+    assertEquals(ConfigType.Db, xClusterConfig.getType());
   }
 
   @Test
-  public void testCreateDRConfigWhenUpgradeIsInProgress() {
+  public void testCreateDRConfigWhenUpgradeIsInProgress() throws Exception {
     targetUniverse =
         Universe.saveDetails(
             targetUniverse.getUniverseUUID(),
@@ -329,7 +331,7 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
 
   @Test
   // Only target universe has db scoped runtime config set as true.
-  public void testNonDbScopedCreate() {
+  public void testNonDbScopedCreate() throws Exception {
     settableRuntimeConfigFactory
         .forUniverse(sourceUniverse)
         .setValue("yb.xcluster.db_scoped.creationEnabled", "false");
@@ -349,10 +351,7 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
             CommonTypes.TableType.PGSQL_TABLE_TYPE,
             Collections.emptyList(),
             false);
-    try {
-      when(mockYBClient.getTableSchemaByUUID(any())).thenReturn(mockTableSchemaResponseTable1);
-    } catch (Exception ignored) {
-    }
+    when(mockYBClient.getTableSchemaByUUID(any())).thenReturn(mockTableSchemaResponseTable1);
     DrConfigCreateForm data = createDefaultCreateForm("txnDR");
     UUID taskUUID = buildTaskInfo(null, TaskType.CreateDrConfig);
     when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);
@@ -371,16 +370,21 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
     DrConfig drConfig = drConfigs.get(0);
     assertNotNull(drConfig);
     XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
-    assertEquals(xClusterConfig.getType(), ConfigType.Txn);
+    assertEquals(ConfigType.Txn, xClusterConfig.getType());
   }
 
   @Test
   // Runtime config `yb.xcluster.db_scoped.creationEnabled` = true.
-  public void testSetDatabasesDbScopedSuccess() {
+  public void testSetDatabasesDbScopedSuccess() throws Exception {
     settableRuntimeConfigFactory
         .globalRuntimeConf()
         .setValue("yb.xcluster.db_scoped.creationEnabled", "true");
-    DrConfigCreateForm data = createDefaultCreateForm("dbScopedDR");
+
+    for (int i = 0; i < 2; i++) {
+      namespaceIds.add(UUID.randomUUID().toString().replace("-", ""));
+    }
+
+    DrConfigCreateForm data = createDefaultCreateForm("dbScopedDR", Set.of(namespaceIds.get(0)));
     UUID taskUUID = buildTaskInfo(null, TaskType.CreateDrConfig);
     when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);
     Result result =
@@ -399,7 +403,7 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
     assertNotNull(drConfig);
     UUID drConfigId = drConfig.getUuid();
     DrConfigSetDatabasesForm setDatabasesData = new DrConfigSetDatabasesForm();
-    setDatabasesData.dbs = new HashSet<>(Set.of("db1", "db2"));
+    setDatabasesData.dbs = Set.of(namespaceIds.get(0), namespaceIds.get(1));
     XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
     xClusterConfig.updateStatus(XClusterConfigStatusType.Running);
     drConfig.setState(State.Replicating);
@@ -421,7 +425,7 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
     assertOk(result);
 
     // Try adding a database and deleting a database.
-    setDatabasesData.dbs = new HashSet<>(Set.of("db2", "db3"));
+    setDatabasesData.dbs = Set.of(namespaceIds.get(1), namespaceIds.get(2));
     xClusterConfig = drConfig.getActiveXClusterConfig();
     xClusterConfig.updateStatus(XClusterConfigStatusType.Running);
 
@@ -443,11 +447,11 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
 
   @Test
   // Runtime config `yb.xcluster.db_scoped.creationEnabled` = true.
-  public void testSetDatabasesDbScopedSuccessWhenUpgradeIsInProgress() {
-
+  public void testSetDatabasesDbScopedSuccessWhenUpgradeIsInProgress() throws Exception {
     settableRuntimeConfigFactory
         .globalRuntimeConf()
         .setValue("yb.xcluster.db_scoped.creationEnabled", "true");
+    namespaceIds.add(UUID.randomUUID().toString().replace("-", ""));
     DrConfigCreateForm data = createDefaultCreateForm("dbScopedDR");
     UUID taskUUID = buildTaskInfo(null, TaskType.CreateDrConfig);
     when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);
@@ -467,7 +471,7 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
     assertNotNull(drConfig);
     UUID drConfigId = drConfig.getUuid();
     DrConfigSetDatabasesForm setDatabasesData = new DrConfigSetDatabasesForm();
-    setDatabasesData.dbs = new HashSet<>(Set.of("db1", "db2"));
+    setDatabasesData.dbs = new HashSet<>(namespaceIds);
     XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
     xClusterConfig.updateStatus(XClusterConfigStatusType.Running);
     drConfig.setState(State.Replicating);
@@ -500,7 +504,7 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
 
   @Test
   // Runtime config `yb.xcluster.db_scoped.creationEnabled` = true.
-  public void testSetDatabasesDbScopedFailureNoChange() {
+  public void testSetDatabasesDbScopedFailureNoChange() throws Exception {
     settableRuntimeConfigFactory
         .globalRuntimeConf()
         .setValue("yb.xcluster.db_scoped.creationEnabled", "true");
@@ -522,7 +526,8 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
     assertNotNull(drConfig);
     UUID drConfigId = drConfig.getUuid();
     DrConfigSetDatabasesForm setDatabasesData = new DrConfigSetDatabasesForm();
-    setDatabasesData.dbs = new HashSet<>(Set.of(namespaceId));
+    String namespaceId = namespaceIds.get(0);
+    setDatabasesData.dbs = Set.of(namespaceId);
     XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
     xClusterConfig.updateStatus(XClusterConfigStatusType.Running);
     xClusterConfig.updateStatusForNamespace(namespaceId, XClusterNamespaceConfig.Status.Running);
@@ -550,7 +555,7 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
 
   @Test
   // Runtime config `yb.xcluster.db_scoped.creationEnabled` = true.
-  public void testSetDatabasesDbScopedFailureNoDbs() {
+  public void testSetDatabasesDbScopedFailureNoDbs() throws Exception {
     settableRuntimeConfigFactory
         .globalRuntimeConf()
         .setValue("yb.xcluster.db_scoped.creationEnabled", "true");
@@ -588,11 +593,9 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
             () ->
                 doRequestWithAuthTokenAndBody(
                     "PUT",
-                    "/api/customers/"
-                        + defaultCustomer.getUuid()
-                        + "/dr_configs/"
-                        + drConfigId
-                        + "/set_dbs",
+                    String.format(
+                        "/api/customers/%s/dr_configs/%s/set_dbs",
+                        defaultCustomer.getUuid(), drConfigId),
                     authToken,
                     Json.toJson(setDatabasesData)));
     assertThat(exception.getMessage(), containsString("error.required"));
@@ -623,8 +626,7 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
     NamespaceInfoPB namespaceInfo =
         NamespaceInfoPB.newBuilder().setNamespaceId(sourceNamespace).clearTableStreams().build();
     GetXClusterOutboundReplicationGroupInfoResponse mockResponse =
-        new GetXClusterOutboundReplicationGroupInfoResponse(
-            0, "", null, new ArrayList<>(Arrays.asList(namespaceInfo)));
+        new GetXClusterOutboundReplicationGroupInfoResponse(0, "", null, List.of(namespaceInfo));
     when(mockYBClient.getXClusterOutboundReplicationGroupInfo(
             eq(drConfig.getActiveXClusterConfig().getReplicationGroupName())))
         .thenReturn(mockResponse);
@@ -1118,11 +1120,7 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
     xClusterConfig.update();
 
     // Precheck should succeed.
-    try {
-      drConfigController.pauseUniversesPrechecks(xClusterConfig, sourceUniverse, targetUniverse);
-    } catch (Exception e) {
-      fail();
-    }
+    drConfigController.pauseUniversesPrechecks(xClusterConfig, sourceUniverse, targetUniverse);
 
     // One universe is paused already.
     sourceUniverse.getUniverseDetails().universePaused = true;
@@ -1165,11 +1163,7 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
     xClusterConfig.setPaused(true);
 
     // Precheck should succeed.
-    try {
-      drConfigController.resumeUniversesPrechecks(xClusterConfig, sourceUniverse, targetUniverse);
-    } catch (Exception e) {
-      fail();
-    }
+    drConfigController.resumeUniversesPrechecks(xClusterConfig, sourceUniverse, targetUniverse);
 
     // One universe is not paused.
     sourceUniverse.getUniverseDetails().universePaused = false;

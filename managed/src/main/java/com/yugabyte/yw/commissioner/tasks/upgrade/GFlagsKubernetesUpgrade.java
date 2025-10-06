@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
@@ -107,7 +107,7 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
           >= 0) {
         List<UniverseDefinitionTaskParams.Cluster> newClustersList =
             new ArrayList<>(taskParams().clusters);
-        createValidateGFlagsTask(newClustersList);
+        createValidateGFlagsTask(newClustersList, true /* useCLIBinary */, softwareVersion);
       }
     }
     addBasicPrecheckTasks();

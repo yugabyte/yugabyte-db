@@ -6,10 +6,9 @@ import moment from 'moment';
 import { Box, useTheme } from '@material-ui/core';
 
 import { closeDialog, openDialog } from '../../../actions/modal';
-import { formatLagMetric, formatSchemaName } from '../../../utils/Formatters';
+import { formatLagMetric, formatSchemaName, formatBytes } from '../../../utils/Formatters';
 import { YBButton } from '../../common/forms/fields';
 import {
-  formatBytes,
   augmentTablesWithXClusterDetails,
   getStrictestReplicationLagAlertThreshold
 } from '../ReplicationUtils';

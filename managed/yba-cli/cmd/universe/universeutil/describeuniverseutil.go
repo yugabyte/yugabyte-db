@@ -1,5 +1,5 @@
 /*
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  */
 
 package universeutil
@@ -71,6 +71,11 @@ func PopulateDescribeUniverseCLIOutput(
 			earKMSConfig = k.Name
 			break
 		}
+	}
+
+	enableVolumeEncryption := false
+	if len(earKMSConfig) != 0 {
+		enableVolumeEncryption = true
 	}
 
 	var cveKMSConfig string
@@ -188,8 +193,8 @@ func PopulateDescribeUniverseCLIOutput(
 	)
 	_ = flags["root-ca"].Set(rootCA)
 	_ = flags["client-root-ca"].Set(clientRootCA)
-	_ = flags["encryption-at-rest-kms-config"].Set(earKMSConfig)
-	_ = flags["cloud-volume-encryption-kms-config"].Set(cveKMSConfig)
+	_ = flags["enable-volume-encryption"].Set(fmt.Sprintf("%t", enableVolumeEncryption))
+	_ = flags["kms-config"].Set(earKMSConfig)
 	_ = flags["provider-code"].Set(primaryUserIntent.GetProviderType())
 	_ = flags["provider-name"].Set(provider.GetName())
 	_ = flags["dedicated-nodes"].Set(fmt.Sprintf("%t", primaryUserIntent.GetDedicatedNodes()))
@@ -514,6 +519,8 @@ func PopulateDescribeUniverseCLIOutput(
 		} else {
 			_ = flags["connection-pooling"].Set("disable")
 		}
+		_ = flags["encryption-at-rest-kms-config"].Set(earKMSConfig)
+		_ = flags["cloud-volume-encryption-kms-config"].Set(cveKMSConfig)
 	}
 
 	primarySpecificGFlags := primaryUserIntent.GetSpecificGFlags()

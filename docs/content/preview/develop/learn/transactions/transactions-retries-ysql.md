@@ -6,7 +6,7 @@ description: Learn how to retry transactions in YSQL.
 aliases:
    - /preview/develop/learn/transactions-retries-ysql/
 menu:
-  preview:
+  preview_develop:
     identifier: transactions-retries-ysql
     parent: acid-transactions-1-ysql
     weight: 567

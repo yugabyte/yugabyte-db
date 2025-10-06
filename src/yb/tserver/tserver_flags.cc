@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -27,6 +27,6 @@ DEFINE_UNKNOWN_uint64(tserver_master_replication_factor, 0,
     "name and port through tserver_master_addrs for masters auto-discovery when running on "
     "Kubernetes.");
 
-DEFINE_RUNTIME_PREVIEW_bool(ysql_enable_auto_analyze, false,
+DEFINE_RUNTIME_bool(ysql_enable_auto_analyze, true,
     "Enable Auto Analyze to automatically trigger ANALYZE for updating table statistics of tables "
     "which have changed more than a configurable threshold.");

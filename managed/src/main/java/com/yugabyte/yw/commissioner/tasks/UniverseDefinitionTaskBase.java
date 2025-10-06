@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks;
 
@@ -2373,7 +2373,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    *
    * @param nodes a collection of nodes to be processed.
    */
-  public SubTaskGroup createYNPProvisioningTask(Universe universe, Collection<NodeDetails> nodes) {
+  public SubTaskGroup createYNPProvisioningTask(
+      Universe universe, Collection<NodeDetails> nodes, boolean isYbPrebuiltImage) {
     Map<UUID, Provider> nodeUuidProviderMap = new HashMap<>();
     SubTaskGroup subTaskGroup =
         createSubTaskGroup(YNPProvisioning.class.getSimpleName(), SubTaskGroupType.Provisioning);
@@ -2405,6 +2406,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           params.setUniverseUUID(universe.getUniverseUUID());
           params.nodeAgentInstallDir = installPath;
           params.remotePackagePath = taskParams().remotePackagePath;
+          params.isYbPrebuiltImage = isYbPrebuiltImage;
           if (StringUtils.isNotEmpty(n.sshUserOverride)) {
             params.sshUser = n.sshUserOverride;
           }
@@ -2416,6 +2418,33 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       getRunnableTask().addSubTaskGroup(subTaskGroup);
     }
     return subTaskGroup;
+  }
+
+  /**
+   * Checks if the DB software should be installed based on the custom image properties.
+   *
+   * @param universe the universe.
+   * @param ignoreUseCustomImageConfig flag which is used only when vmUpgradeTaskType is not set.
+   * @param vmUpgradeTaskType VM image upgrade type if set.
+   * @return true if software needs to be installed else false.
+   */
+  public boolean shouldInstallDbSoftware(
+      Universe universe,
+      boolean ignoreUseCustomImageConfig,
+      @Nullable VmUpgradeTaskType vmUpgradeTaskType) {
+    // This is ported from NodeManager.
+    if (vmUpgradeTaskType == VmUpgradeTaskType.VmUpgradeWithCustomImages) {
+      return false;
+    }
+    if (vmUpgradeTaskType == VmUpgradeTaskType.None
+        && !ignoreUseCustomImageConfig
+        && universe
+            .getConfig()
+            .getOrDefault(Universe.USE_CUSTOM_IMAGE, "false")
+            .equalsIgnoreCase("true")) {
+      return false;
+    }
+    return true;
   }
 
   /**
@@ -2494,7 +2523,15 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                 createSetupYNPTask(universe, filteredNodes)
                     .setSubTaskGroupType(SubTaskGroupType.Provisioning);
                 if (!useAnsibleProvisioning) {
-                  createYNPProvisioningTask(universe, filteredNodes)
+                  // TODO hack to get the custom params.
+                  AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
+                  if (setupParamsCustomizer != null) {
+                    setupParamsCustomizer.accept(params);
+                  }
+                  boolean isYbPrebuiltImage =
+                      !shouldInstallDbSoftware(
+                          universe, params.ignoreUseCustomImageConfig, params.vmUpgradeTaskType);
+                  createYNPProvisioningTask(universe, filteredNodes, isYbPrebuiltImage)
                       .setSubTaskGroupType(SubTaskGroupType.Provisioning);
                 }
               }
@@ -2571,6 +2608,18 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               createConfigureServerTasks(filteredNodes, installSoftwareParamsCustomizer)
                   .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
             });
+
+    String softwareVersion = taskParams().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    // Validate GFlags through RPC
+    boolean skipRuntimeGflagValidation =
+        confGetter.getGlobalConf(GlobalConfKeys.skipRuntimeGflagValidation);
+    if (!skipRuntimeGflagValidation) {
+      if (Util.compareYBVersions(
+              softwareVersion, "2024.2.0.0-b1", "2.27.0.0-b1", true /* suppressFormatError */)
+          >= 0) {
+        createValidateGFlagsTask(null /* newClusters */, true /* useCLIBinary */, softwareVersion);
+      }
+    }
 
     // GFlags Task for masters.
     // State remains as SoftwareInstalled, so it is fine to call this one by one for master,
@@ -4099,7 +4148,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
-  protected void createDeleteReservationTask() {
+  protected void createDeleteCapacityReservationTask() {
     TaskExecutor.SubTaskGroup subTaskGroup = createSubTaskGroup("ReleaseCapacityReservation");
     DeleteCapacityReservation.Params params = new DeleteCapacityReservation.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
@@ -4110,5 +4159,18 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     subTaskGroup.addSubTask(task);
     // Add the task list to the task queue.
     getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  protected void clearCapacityReservationOnError(Throwable t, Universe universe) {
+    if (universe.getUniverseDetails().getCapacityReservationState() != null
+        && !universe.getUniverseDetails().getCapacityReservationState().isEmpty()) {
+      try {
+        setTaskQueueAndRun(() -> createDeleteCapacityReservationTask());
+      } catch (Exception ignored) {
+        // Not throwing exception that will overwrite the current one.
+        log.error("Failed to delete capacity reservations", ignored);
+        t.addSuppressed(ignored);
+      }
+    }
   }
 }

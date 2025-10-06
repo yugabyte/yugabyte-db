@@ -206,7 +206,7 @@ Default: `true`
 
 ##### --enable_pg_cron
 
-Set this flag to true on all YB-Masters and YB-TServers to add the [pg_cron extension](../../../explore/ysql-language-features/pg-extensions/extension-pgcron/).
+Set this flag to true on all YB-Masters and YB-TServers to add the [pg_cron extension](../../../additional-features/pg-extensions/extension-pgcron/).
 
 Default: `false`
 
@@ -1042,7 +1042,7 @@ Default: `true`
 
 ## Auto Analyze service flags
 
-Auto analyze is {{<tags/feature/ea idea="590">}}.
+{{<tags/feature/ea idea="590">}}To learn about the Auto Analyze service, see [Auto Analyze service](../../../additional-features/auto-analyze).
 
 See also [Auto Analyze Service TServer flags](../yb-tserver/#auto-analyze-service-flags).
 

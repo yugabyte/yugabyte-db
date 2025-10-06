@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -53,6 +53,7 @@ DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_uint64(transactions_status_poll_interval_ms);
 DECLARE_int32(ysql_yb_ash_sampling_interval_ms);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
+DECLARE_bool(enable_object_locking_for_table_locks);
 
 namespace yb {
 
@@ -489,8 +490,12 @@ class DeadlockDetectionWithTxnPromotionTest : public GeoPartitionedDeadlockTest 
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_select_all_status_tablets) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_single_shard_waiter_retry_ms) = 10000;
-    // Disable re-running conflict resolution for waiter txn(s) due to timeout.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_refresh_waiter_timeout_ms) = 0;
+    if (!ANNOTATE_UNPROTECTED_READ(FLAGS_enable_object_locking_for_table_locks)) {
+      // Disable re-running conflict resolution for waiter txn(s) due to timeout.
+      // Don't do in case of object locking enabled, since it takes a dependency
+      // on the timeout flag for detecting deadlocks in certain scenarios.
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_refresh_waiter_timeout_ms) = 0;
+    }
     GeoPartitionedDeadlockTest::SetUp();
 
     auto conn = ASSERT_RESULT(Connect());

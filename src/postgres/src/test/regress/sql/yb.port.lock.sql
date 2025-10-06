@@ -50,6 +50,7 @@ ROLLBACK;
 -- Verify that we can lock views.
 BEGIN TRANSACTION;
 LOCK TABLE lock_view1 IN EXCLUSIVE MODE;
+SELECT pg_sleep(2);  -- YB: sleep 2 second to ensure locks are propagated (via the transaction heartbeat)
 -- lock_view1 and lock_tbl1 are locked.
 select relname from pg_locks l, pg_class c
  where l.relation = c.oid and relname like '%lock_%' and mode = 'ExclusiveLock'
@@ -57,6 +58,7 @@ select relname from pg_locks l, pg_class c
 ROLLBACK;
 BEGIN TRANSACTION;
 LOCK TABLE lock_view2 IN EXCLUSIVE MODE;
+SELECT pg_sleep(2);  -- YB: sleep 2 second to ensure locks are propagated (via the transaction heartbeat)
 -- lock_view1, lock_tbl1, and lock_tbl1a are locked.
 select relname from pg_locks l, pg_class c
  where l.relation = c.oid and relname like '%lock_%' and mode = 'ExclusiveLock'
@@ -64,6 +66,7 @@ select relname from pg_locks l, pg_class c
 ROLLBACK;
 BEGIN TRANSACTION;
 LOCK TABLE lock_view3 IN EXCLUSIVE MODE;
+SELECT pg_sleep(2);  -- YB: sleep 2 second to ensure locks are propagated (via the transaction heartbeat)
 -- lock_view3, lock_view2, lock_tbl1, and lock_tbl1a are locked recursively.
 select relname from pg_locks l, pg_class c
  where l.relation = c.oid and relname like '%lock_%' and mode = 'ExclusiveLock'
@@ -71,6 +74,7 @@ select relname from pg_locks l, pg_class c
 ROLLBACK;
 BEGIN TRANSACTION;
 LOCK TABLE lock_view4 IN EXCLUSIVE MODE;
+SELECT pg_sleep(2);  -- YB: sleep 2 second to ensure locks are propagated (via the transaction heartbeat)
 -- lock_view4, lock_tbl1, and lock_tbl1a are locked.
 select relname from pg_locks l, pg_class c
  where l.relation = c.oid and relname like '%lock_%' and mode = 'ExclusiveLock'
@@ -78,6 +82,7 @@ select relname from pg_locks l, pg_class c
 ROLLBACK;
 BEGIN TRANSACTION;
 LOCK TABLE lock_view5 IN EXCLUSIVE MODE;
+SELECT pg_sleep(2);  -- YB: sleep 2 second to ensure locks are propagated (via the transaction heartbeat)
 -- lock_view5, lock_tbl1, and lock_tbl1a are locked.
 select relname from pg_locks l, pg_class c
  where l.relation = c.oid and relname like '%lock_%' and mode = 'ExclusiveLock'
@@ -85,6 +90,7 @@ select relname from pg_locks l, pg_class c
 ROLLBACK;
 BEGIN TRANSACTION;
 LOCK TABLE lock_view6 IN EXCLUSIVE MODE;
+SELECT pg_sleep(2);  -- YB: sleep 2 second to ensure locks are propagated (via the transaction heartbeat)
 -- lock_view6 an lock_tbl1 are locked.
 select relname from pg_locks l, pg_class c
  where l.relation = c.oid and relname like '%lock_%' and mode = 'ExclusiveLock'
@@ -137,6 +143,7 @@ GRANT yb_db_admin TO regress_rol_lock1; -- YB: for pg_locks access
 SET ROLE regress_rol_lock1;
 BEGIN;
 LOCK TABLE lock_view1 IN ACCESS EXCLUSIVE MODE;
+SELECT pg_sleep(2);  -- YB: sleep 2 second to ensure locks are propagated (via the transaction heartbeat)
 -- lock_view1 and lock_tbl1 (plus children lock_tbl2 and lock_tbl3) are locked.
 select relname from pg_locks l, pg_class c
  where l.relation = c.oid and relname like '%lock_%' and mode = 'AccessExclusiveLock'
@@ -165,6 +172,7 @@ RESET ROLE;
 GRANT UPDATE ON TABLE lock_tbl1 TO regress_rol_lock1;
 BEGIN;
 LOCK TABLE lock_view8 IN ACCESS EXCLUSIVE MODE;
+SELECT pg_sleep(2);  -- YB: sleep 2 second to ensure locks are propagated (via the transaction heartbeat)
 -- lock_view8 and lock_tbl1 (plus children lock_tbl2 and lock_tbl3) are locked.
 select relname from pg_locks l, pg_class c
  where l.relation = c.oid and relname like '%lock_%' and mode = 'AccessExclusiveLock'

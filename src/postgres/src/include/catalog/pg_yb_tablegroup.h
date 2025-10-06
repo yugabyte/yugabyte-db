@@ -4,7 +4,7 @@
  *	  definition of the "tablegroup" system catalog (pg_yb_tablegroup)
  *
  *
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  *
  * src/include/catalog/pg_yb_tablegroup.h
  *

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -16,6 +16,7 @@
 #include <map>
 
 #include <boost/container/small_vector.hpp>
+#include <boost/logic/tribool.hpp>
 
 #include "yb/ash/wait_state.h"
 
@@ -35,6 +36,7 @@
 #include "yb/docdb/intent_format.h"
 #include "yb/docdb/iter_util.h"
 #include "yb/docdb/lock_util.h"
+#include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/transaction_dump.h"
 
 #include "yb/dockv/doc_key.h"
@@ -47,6 +49,7 @@
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_metrics.h"
 
+#include "yb/util/file_util.h"
 #include "yb/util/lazy_invoke.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
@@ -64,6 +67,12 @@ using namespace std::placeholders;
 
 DEFINE_RUNTIME_bool(docdb_ht_filter_conflict_with_committed, true,
     "Use hybrid time SST filter when checking for conflicts with committed transactions.");
+
+DEFINE_test_flag(string, file_to_dump_keys_checked_for_conflict_in_intents_db, "",
+    "Dump the keys used to check for conflicts in intents db into the file if specified.");
+
+DEFINE_test_flag(string, file_to_dump_keys_checked_for_conflict_in_regular_db, "",
+    "Dump the keys used to check for conflicts in regular db into the file if specified.");
 
 namespace yb::docdb {
 
@@ -791,20 +800,28 @@ class WaitOnConflictResolver : public ConflictResolver {
 
 class IntentProcessor {
  public:
-  explicit IntentProcessor(IntentTypesContainer* container)
-      : container_(*container)
+  IntentProcessor(IntentTypesContainer& container, IsolationLevel isolation_level,
+                  dockv::SkipPrefixLocks skip_prefix_locks)
+      : container_(container),
+        isolation_level_(isolation_level),
+        skip_prefix_locks_(skip_prefix_locks)
   {}
 
-  void Process(
+  Status Process(
       dockv::AncestorDocKey ancestor_doc_key,
       dockv::FullDocKey full_doc_key,
       const KeyBytes* const intent_key,
-      IntentTypeSet intent_types) {
-    const auto& intent_type_set = ancestor_doc_key ? MakeWeak(intent_types) : intent_types;
+      IntentTypeSet intent_types,
+      dockv::IsTopLevelKey is_top_level_key,
+      boost::tribool pk_is_known) {
+    const bool take_weak_lock = VERIFY_RESULT(ShouldTakeWeakLockForPrefix(
+        ancestor_doc_key, is_top_level_key,
+        skip_prefix_locks_, isolation_level_, pk_is_known, intent_key));
+    const auto& intent_type_set = take_weak_lock ? MakeWeak(intent_types) : intent_types;
     auto [i, inserted] = container_.try_emplace(
             intent_key->data(), IntentData{intent_type_set, full_doc_key});
     if (inserted) {
-      return;
+      return Status::OK();
     }
 
     i->second.types |= intent_type_set;
@@ -835,32 +852,41 @@ class IntentProcessor {
     // - Weak intents with full_doc_key=true
     // - Strong intents with full_doc_key=true.
     i->second.full_doc_key = i->second.full_doc_key || full_doc_key;
+    return Status::OK();
   }
 
  private:
   IntentTypesContainer& container_;
+  const IsolationLevel isolation_level_;
+  const dockv::SkipPrefixLocks skip_prefix_locks_;
 };
 
 using DocPaths = boost::container::small_vector<RefCntPrefix, 8>;
 
 class DocPathProcessor {
  public:
-  DocPathProcessor(IntentProcessor* processor, KeyBytes* buffer, PartialRangeKeyIntents partial)
-      : processor_(*processor), buffer_(*buffer), partial_(partial) {}
+  DocPathProcessor(IntentProcessor* processor, KeyBytes* buffer,
+                   PartialRangeKeyIntents partial, dockv::SkipPrefixLocks skip_prefix_locks)
+      : processor_(*processor), buffer_(*buffer),
+        partial_(partial), skip_prefix_locks_(skip_prefix_locks) {}
 
-  Status operator()(DocPaths* paths, dockv::IntentTypeSet intent_types) {
+  Status operator()(DocPaths* paths, dockv::IntentTypeSet intent_types,
+                    boost::tribool pk_is_known) {
     for (const auto& path : *paths) {
       VLOG(4) << "Doc path: " << SubDocKey::DebugSliceToString(path.as_slice());
       RETURN_NOT_OK(EnumerateIntents(
           path.as_slice(),
           /*intent_value=*/ Slice(),
-          [&processor = processor_, &intent_types](
-              auto ancestor_doc_key, auto full_doc_key, auto, auto intent_key, auto, auto) {
-            processor.Process(ancestor_doc_key, full_doc_key, intent_key, intent_types);
-            return Status::OK();
+          [&processor = processor_, &intent_types, &pk_is_known](
+              auto ancestor_doc_key, auto full_doc_key, auto, auto intent_key, auto, auto,
+              auto is_top_level_key, auto) {
+            return processor.Process(ancestor_doc_key, full_doc_key, intent_key,
+                                     intent_types, is_top_level_key, pk_is_known);
           },
           &buffer_,
-          partial_));
+          partial_,
+          /*last_key=*/ dockv::LastKey::kFalse,
+          skip_prefix_locks_ ? dockv::SkipPrefix::kTrue : dockv::SkipPrefix::kFalse));
     }
     paths->clear();
     return Status::OK();
@@ -870,13 +896,14 @@ class DocPathProcessor {
   IntentProcessor& processor_;
   KeyBytes& buffer_;
   PartialRangeKeyIntents partial_;
+  dockv::SkipPrefixLocks skip_prefix_locks_;
 
   DISALLOW_COPY_AND_ASSIGN(DocPathProcessor);
 };
 
 Result<IntentTypesContainer> GetWriteRequestIntents(
     const DocOperations& doc_ops, KeyBytes* buffer, PartialRangeKeyIntents partial,
-    IsolationLevel isolation_level) {
+    IsolationLevel isolation_level, dockv::SkipPrefixLocks skip_prefix_locks) {
   bool is_lock_batch = !doc_ops.empty() &&
       doc_ops[0]->OpType() == DocOperationType::PGSQL_LOCK_OPERATION;
   static const dockv::IntentTypeSet kStrongReadIntentTypeSet{dockv::IntentType::kStrongRead};
@@ -886,19 +913,25 @@ Result<IntentTypesContainer> GetWriteRequestIntents(
   }
 
   IntentTypesContainer container;
-  IntentProcessor intent_processor(&container);
-  DocPathProcessor processor(&intent_processor, buffer, partial);
+  IntentProcessor intent_processor(container, isolation_level, skip_prefix_locks);
+  DocPathProcessor processor(&intent_processor, buffer, partial, skip_prefix_locks);
   DocPaths doc_paths;
   for (const auto& doc_op : doc_ops) {
+    // pk_is_known may be set for PGSQL_WRITE_OPERATION but never for PGSQL_LOCK_OPERATION.
+    boost::tribool pk_is_known =
+        doc_op->OpType() == docdb::DocOperation::Type::PGSQL_WRITE_OPERATION ?
+        boost::tribool(down_cast<const docdb::PgsqlWriteOperation&>(*doc_op).pk_is_known()) :
+        boost::indeterminate;
     IsolationLevel op_isolation;
     RETURN_NOT_OK(doc_op->GetDocPaths(GetDocPathsMode::kIntents, &doc_paths, &op_isolation));
     RETURN_NOT_OK(processor(
         &doc_paths,
-        intent_types.None() ? doc_op->GetIntentTypes(op_isolation) : intent_types));
+        intent_types.None() ? doc_op->GetIntentTypes(op_isolation) : intent_types,
+        pk_is_known));
 
     RETURN_NOT_OK(
         doc_op->GetDocPaths(GetDocPathsMode::kStrongReadIntents, &doc_paths, &op_isolation));
-    RETURN_NOT_OK(processor(&doc_paths, kStrongReadIntentTypeSet));
+    RETURN_NOT_OK(processor(&doc_paths, kStrongReadIntentTypeSet, pk_is_known));
   }
   return container;
 }
@@ -919,6 +952,9 @@ class StrongConflictChecker {
 
   Status Check(
       Slice intent_key, bool strong, ConflictManagementPolicy conflict_management_policy) {
+    if (PREDICT_FALSE(!FLAGS_TEST_file_to_dump_keys_checked_for_conflict_in_regular_db.empty())) {
+      RETURN_NOT_OK(TEST_DumpRegularDbKeyToCheck(intent_key));
+    }
     if (!value_iter_.Initialized()) {
       auto hybrid_time_file_filter =
           FLAGS_docdb_ht_filter_conflict_with_committed ? CreateHybridTimeFileFilter(read_time_)
@@ -1006,6 +1042,14 @@ class StrongConflictChecker {
  private:
   std::string LogPrefix() const {
     return Format("$0: ", transaction_id_);
+  }
+
+  Status TEST_DumpRegularDbKeyToCheck(const Slice& intent_key) {
+    dockv::SubDocKey sub_doc_key;
+    CHECK_OK(sub_doc_key.FullyDecodeFrom(intent_key, dockv::HybridTimeRequired::kFalse));
+    std::string desc = "regular_check";
+    return TEST_DumpStringToFile(desc, sub_doc_key.ToString(),
+                                 FLAGS_TEST_file_to_dump_keys_checked_for_conflict_in_regular_db);
   }
 
   const TransactionId& transaction_id_;
@@ -1097,6 +1141,17 @@ class ConflictResolverContextBase : public ConflictResolverContext {
     return Status::OK();
   }
 
+  Status TEST_DumpIntentsCheckKeys(const IntentTypesContainer& locks, const std::string& path) {
+    auto transform = [] (const auto& entry) {
+      dockv::SubDocKey sub_doc_key;
+      CHECK_OK(sub_doc_key.FullyDecodeFrom(
+            entry.first.AsSlice(), dockv::HybridTimeRequired::kFalse));
+      return std::make_pair(sub_doc_key.ToString(), entry.second.types);
+    };
+    std::string desc = "intent_check";
+    return TEST_DumpCollectionToFile(desc, locks, transform, path);
+  }
+
  private:
   const DocOperations& doc_ops_;
 
@@ -1122,12 +1177,14 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
       HybridTime read_time,
       int64_t txn_start_us,
       const std::shared_ptr<tablet::TabletMetricsHolder>& tablet_metrics,
-      ConflictManagementPolicy conflict_management_policy)
+      ConflictManagementPolicy conflict_management_policy,
+      dockv::SkipPrefixLocks skip_prefix_locks)
       : ConflictResolverContextBase(
             doc_ops, resolution_ht, txn_start_us, tablet_metrics, conflict_management_policy),
         write_batch_(write_batch),
         read_time_(read_time),
-        transaction_id_(FullyDecodeTransactionId(write_batch.transaction().transaction_id()))
+        transaction_id_(FullyDecodeTransactionId(write_batch.transaction().transaction_id())),
+        skip_prefix_locks_(skip_prefix_locks)
   {}
 
   virtual ~TransactionConflictResolverContext() {}
@@ -1183,7 +1240,8 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
   Result<IntentTypesContainer> GetRequestedIntents(
       ConflictResolver* resolver, KeyBytes* buffer) override {
     auto container = VERIFY_RESULT(GetWriteRequestIntents(
-        doc_ops(), buffer, resolver->partial_range_key_intents(), metadata_.isolation));
+        doc_ops(), buffer, resolver->partial_range_key_intents(), metadata_.isolation,
+        skip_prefix_locks_));
     const auto& pairs = write_batch_.read_pairs();
     if (pairs.empty()) {
       return container;
@@ -1191,18 +1249,19 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
     // Form the intents corresponding to the request's read pairs.
     const auto read_intents =
         dockv::GetIntentTypesForRead(metadata_.isolation, GetRowMarkTypeFromPB(write_batch_));
-    IntentProcessor intent_processor(&container);
+    IntentProcessor intent_processor(container, metadata_.isolation, skip_prefix_locks_);
     RETURN_NOT_OK(EnumerateIntents(
         pairs,
         [&intent_processor, &read_intents](
             auto ancestor_doc_key, auto full_doc_key, auto, auto* intent_key, auto,
-            auto is_row_lock) {
-          intent_processor.Process(
+            auto is_row_lock, auto is_top_level_key, auto pk_is_known) {
+          return intent_processor.Process(
               ancestor_doc_key, full_doc_key, intent_key,
-              GetIntentTypes(read_intents, is_row_lock));
-          return Status::OK();
+              GetIntentTypes(read_intents, is_row_lock),
+              is_top_level_key, pk_is_known);
         },
-        resolver->partial_range_key_intents()));
+        resolver->partial_range_key_intents(),
+        skip_prefix_locks_));
     return container;
   }
 
@@ -1223,6 +1282,10 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
 
     VLOG_WITH_PREFIX_AND_FUNC(4) << "Check txn's conflicts for following intents: "
                                  << AsString(container);
+    if (PREDICT_FALSE(!FLAGS_TEST_file_to_dump_keys_checked_for_conflict_in_intents_db.empty())) {
+      RETURN_NOT_OK(TEST_DumpIntentsCheckKeys(
+          container, FLAGS_TEST_file_to_dump_keys_checked_for_conflict_in_intents_db));
+    }
 
     StrongConflictChecker checker(
         *transaction_id_, read_time_, resolver, GetTabletMetrics(), &buffer);
@@ -1354,6 +1417,8 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
   TransactionMetadata metadata_;
 
   Status result_ = Status::OK();
+
+  const dockv::SkipPrefixLocks skip_prefix_locks_;
 };
 
 class OperationConflictResolverContext : public ConflictResolverContextBase {
@@ -1396,7 +1461,7 @@ class OperationConflictResolverContext : public ConflictResolverContextBase {
       ConflictResolver* resolver, KeyBytes* buffer) override {
     return GetWriteRequestIntents(
         doc_ops(), buffer, resolver->partial_range_key_intents(),
-        IsolationLevel::NON_TRANSACTIONAL);
+        IsolationLevel::NON_TRANSACTIONAL, dockv::SkipPrefixLocks::kFalse);
   }
 
   // Reads stored intents that could conflict with our operations.
@@ -1406,6 +1471,10 @@ class OperationConflictResolverContext : public ConflictResolverContextBase {
     for (const auto& [key, intent_data] : container) {
       buffer.Reset(key.AsSlice());
       RETURN_NOT_OK(resolver->ReadIntentConflicts(intent_data.types, &buffer));
+    }
+    if (PREDICT_FALSE(!FLAGS_TEST_file_to_dump_keys_checked_for_conflict_in_intents_db.empty())) {
+      return TEST_DumpIntentsCheckKeys(
+          container, FLAGS_TEST_file_to_dump_keys_checked_for_conflict_in_intents_db);
     }
     return Status::OK();
   }
@@ -1489,7 +1558,8 @@ Status ResolveTransactionConflicts(
     WaitQueue* wait_queue,
     bool is_advisory_lock_request,
     CoarseTimePoint deadline,
-    ResolutionCallback callback) {
+    ResolutionCallback callback,
+    dockv::SkipPrefixLocks skip_prefix_locks) {
   DCHECK(resolution_ht.is_valid());
   TRACE_FUNC();
 
@@ -1501,7 +1571,7 @@ Status ResolveTransactionConflicts(
 
   auto context = std::make_unique<TransactionConflictResolverContext>(
       doc_ops, write_batch, resolution_ht, read_time, txn_start_us, tablet_metrics,
-      conflict_management_policy);
+      conflict_management_policy, skip_prefix_locks);
   if (conflict_management_policy == WAIT_ON_CONFLICT) {
     RSTATUS_DCHECK(
         wait_queue, InternalError,

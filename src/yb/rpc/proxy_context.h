@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -36,7 +36,8 @@ class ProxyContext {
 
   virtual void Handle(InboundCallPtr call, Queue queue) = 0;
 
-  virtual const Protocol* DefaultProtocol() = 0;
+  virtual const Protocol& DefaultProtocol() = 0;
+  virtual const Protocol& UncompressedProtocol() = 0;
 
   virtual ThreadPool& CallbackThreadPool(ServicePriority priority = ServicePriority::kNormal) = 0;
 

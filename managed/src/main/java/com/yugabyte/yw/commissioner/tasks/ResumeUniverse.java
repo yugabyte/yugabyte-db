@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -63,12 +63,11 @@ public class ResumeUniverse extends UniverseDefinitionTaskBase {
 
   @Override
   public void run() {
-    boolean deleteCapacityReservation = false;
     try {
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
       Universe universe = lockAndFreezeUniverseForUpdate(-1, null /* Txn callback */);
-      deleteCapacityReservation =
+      boolean deleteCapacityReservation =
           createCapacityReservationsIfNeeded(
               universe.getUniverseDetails().nodeDetailsSet,
               CapacityReservationUtil.OperationType.RESUME,
@@ -82,7 +81,7 @@ public class ResumeUniverse extends UniverseDefinitionTaskBase {
           u -> updateRuntimeInfo(RuntimeInfo.class, info -> info.certsUpdated = true));
 
       if (deleteCapacityReservation) {
-        createDeleteReservationTask();
+        createDeleteCapacityReservationTask();
       }
 
       createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
@@ -91,6 +90,7 @@ public class ResumeUniverse extends UniverseDefinitionTaskBase {
       getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+      clearCapacityReservationOnError(t, Universe.getOrBadRequest(taskParams().getUniverseUUID()));
       throw t;
     } finally {
       unlockUniverseForUpdate();

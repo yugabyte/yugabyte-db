@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks;
 
@@ -65,7 +65,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
   private YBClient mockClient;
 
   public void setUp(boolean withMaster, int numNodes, int replicationFactor, boolean multiZone) {
-    super.setUp();
+    super.setUpBase();
 
     Region region = Region.create(defaultProvider, "test-region", "Region 1", "yb-image-1");
     AvailabilityZone.createOrThrow(region, "az-1", "az-1", "subnet-1");

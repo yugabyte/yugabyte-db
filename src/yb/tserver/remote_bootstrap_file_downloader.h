@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -36,15 +36,27 @@ namespace tserver {
 
 using FetchDataFunction =
     std::function<Status(const FetchDataRequestPB&, FetchDataResponsePB*, rpc::RpcController*)>;
+
+template<typename T>
+FetchDataFunction FetchDataFunctionCreator(const std::shared_ptr<T>& proxy) {
+  return [proxy](
+      const FetchDataRequestPB& req, FetchDataResponsePB* resp, rpc::RpcController* controller) {
+    return proxy->FetchData(req, resp, controller);
+  };
+}
+
 class RemoteBootstrapFileDownloader {
  public:
   RemoteBootstrapFileDownloader(const std::string* log_prefix, FsManager* fs_manager);
 
-  void Start(FetchDataFunction fetch_data, std::string session_id, MonoDelta session_idle_timeout);
+  void Start(
+      FetchDataFunction fetch_data, std::string session_id,
+      MonoDelta session_idle_timeout,
+      std::optional<FetchDataFunction> uncompressed_fetch_data = std::nullopt);
 
   Status DownloadFile(
       const tablet::FilePB& file_pb, const std::string& dir, DataIdPB* data_id,
-      std::function<void(size_t)> chunk_download_cb = nullptr);
+      std::function<void(size_t)> chunk_download_cb = nullptr, bool skip_compression = false);
 
   // Download a single remote file. The block and WAL implementations delegate
   // to this method when downloading files.
@@ -56,7 +68,7 @@ class RemoteBootstrapFileDownloader {
   template<class Appendable>
   Status DownloadFile(
       const DataIdPB& data_id, Appendable* appendable,
-      std::function<void(size_t)> chunk_download_cb = nullptr);
+      std::function<void(size_t)> chunk_download_cb = nullptr, bool skip_compression = false);
 
   FsManager& fs_manager() const {
     return fs_manager_;
@@ -79,6 +91,7 @@ class RemoteBootstrapFileDownloader {
   FsManager& fs_manager_;
 
   FetchDataFunction fetch_data_;
+  std::optional<FetchDataFunction> fetch_data_uncompressed_;
   std::string session_id_;
   MonoDelta session_idle_timeout_ = MonoDelta::kZero;
   std::unordered_map<uint64_t, std::string> inode2file_;

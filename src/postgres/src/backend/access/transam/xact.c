@@ -2130,31 +2130,32 @@ YBBuildInitTransactionData()
 	return (YbcPgInitTransactionData)
 	{
 		.xact_start_timestamp = xactStartTimestamp,
-		.xact_read_only = XactReadOnly,
-		.xact_deferrable = XactDeferrable,
-		.enable_tracing = YBEnableTracing(),
-		.effective_pggate_isolation_level = YBGetEffectivePggateIsolationLevel(),
-		.read_from_followers_enabled = YBReadFromFollowersEnabled(),
-		.follower_read_staleness_ms = YBFollowerReadStalenessMs()
+			.xact_read_only = XactReadOnly,
+			.xact_deferrable = XactDeferrable,
+			.enable_tracing = YBEnableTracing(),
+			.effective_pggate_isolation_level = YBGetEffectivePggateIsolationLevel(),
+			.read_from_followers_enabled = YBReadFromFollowersEnabled(),
+			.follower_read_staleness_ms = YBFollowerReadStalenessMs()
 	};
 }
 
 static void
-YBRunWithInitTransactionData(YbcStatus (*Callback)(const YbcPgInitTransactionData *))
+YBRunWithInitTransactionData(YbcStatus (*Callback) (const YbcPgInitTransactionData *))
 {
 	if (YBTransactionsEnabled())
 	{
 		const YbcPgInitTransactionData data =
-			{
-				.xact_start_timestamp = xactStartTimestamp,
-				.xact_read_only = XactReadOnly,
-				.xact_deferrable = XactDeferrable,
-				.enable_tracing = YBEnableTracing(),
-				.effective_pggate_isolation_level = YBGetEffectivePggateIsolationLevel(),
-				.read_from_followers_enabled = YBReadFromFollowersEnabled(),
-				.follower_read_staleness_ms = YBFollowerReadStalenessMs()
-			};
-		HandleYBStatus((*Callback)(&data));
+		{
+			.xact_start_timestamp = xactStartTimestamp,
+			.xact_read_only = XactReadOnly,
+			.xact_deferrable = XactDeferrable,
+			.enable_tracing = YBEnableTracing(),
+			.effective_pggate_isolation_level = YBGetEffectivePggateIsolationLevel(),
+			.read_from_followers_enabled = YBReadFromFollowersEnabled(),
+			.follower_read_staleness_ms = YBFollowerReadStalenessMs()
+		};
+
+		HandleYBStatus((*Callback) (&data));
 	}
 }
 
@@ -4998,18 +4999,19 @@ RollbackToSavepoint(const char *name)
 void
 BeginInternalSubTransaction(const char *name)
 {
+	YbcFlushDebugContext yb_debug_context = {
+		.reason = YB_BEGIN_SUBTRANSACTION,
+		.uintarg = CurrentTransactionState->subTransactionId,
+		.strarg1 = name,
+	};
+
 	/*
-	 * The subtransaction corresponding to the buffered operations must be
+	 * YB: The subtransaction corresponding to the buffered operations must be
 	 * current and in the INPROGRESS state for correct error handling.
 	 * An error thrown while/after switching over to a new subtransaction
 	 * would lead to a fatal error or unpredictable behavior.
 	 */
-	YBFlushBufferedOperations((YbcFlushDebugContext)
-		{
-			.reason = YB_BEGIN_SUBTRANSACTION,
-			.uintarg = CurrentTransactionState->subTransactionId,
-			.strarg1 = name,
-		});
+	YBFlushBufferedOperations(&yb_debug_context);
 	TransactionState s = CurrentTransactionState;
 
 	/*
@@ -5086,13 +5088,13 @@ BeginInternalSubTransaction(const char *name)
 void
 YbBeginInternalSubTransactionForReadCommittedStatement()
 {
+	YbcFlushDebugContext debug_context = {
+		.reason = YB_BEGIN_SUBTRANSACTION,
+		.uintarg = CurrentTransactionState->subTransactionId,
+		.strarg1 = "read committed transaction",
+	};
 
-	YBFlushBufferedOperations((YbcFlushDebugContext)
-		{
-			.reason = YB_BEGIN_SUBTRANSACTION,
-			.uintarg = CurrentTransactionState->subTransactionId,
-			.strarg1 = "read committed transaction",
-		});
+	YBFlushBufferedOperations(&debug_context);
 	TransactionState s = CurrentTransactionState;
 
 	Assert(s->blockState == TBLOCK_SUBINPROGRESS ||
@@ -5148,17 +5150,18 @@ YBTransactionContainsNonReadCommittedSavepoint(void)
 void
 ReleaseCurrentSubTransaction(void)
 {
+	YbcFlushDebugContext yb_debug_context = {
+		.reason = YB_END_SUBTRANSACTION,
+		.uintarg = CurrentTransactionState->subTransactionId,
+	};
+
 	/*
-	 * The subtransaction corresponding to the buffered operations must be
+	 * YB: The subtransaction corresponding to the buffered operations must be
 	 * current and in the INPROGRESS state for correct error handling.
 	 * An error thrown while/after commiting/releasing it would lead to a
 	 * fatal error or unpredictable behavior.
 	 */
-	YBFlushBufferedOperations((YbcFlushDebugContext)
-		{
-			.reason = YB_END_SUBTRANSACTION,
-			.uintarg = CurrentTransactionState->subTransactionId,
-		});
+	YBFlushBufferedOperations(&yb_debug_context);
 	TransactionState s = CurrentTransactionState;
 
 	/*

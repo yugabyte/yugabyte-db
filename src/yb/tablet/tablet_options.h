@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -88,6 +88,7 @@ struct TabletInitData {
   scoped_refptr<server::Clock> clock;
   std::shared_ptr<MemTracker> parent_mem_tracker;
   std::shared_ptr<MemTracker> block_based_table_mem_tracker;
+  std::shared_ptr<MemTracker> read_wal_mem_tracker;
   MetricRegistry* metric_registry = nullptr;
   log::LogAnchorRegistryPtr log_anchor_registry;
   TabletOptions tablet_options;

@@ -7,7 +7,7 @@ headcontent: Tips and tricks to build YCQL applications for high performance and
 aliases:
   - /preview/develop/best-practices-ycql/
 menu:
-  preview:
+  preview_develop:
     identifier: best-practices-ycql
     parent: best-practices-develop
     weight: 40
@@ -62,7 +62,7 @@ TTL does not apply to transactional tables and so, its unsupported in that conte
 
 ## Use YugabyteDB drivers
 
-Use YugabyteDB-specific [client drivers](../../../drivers-orms/) because they are cluster- and partition-aware, and support `jsonb` columns.
+Use YugabyteDB-specific [client drivers](/preview/develop/drivers-orms/) because they are cluster- and partition-aware, and support `jsonb` columns.
 
 ## Leverage connection pooling in the YCQL client
 

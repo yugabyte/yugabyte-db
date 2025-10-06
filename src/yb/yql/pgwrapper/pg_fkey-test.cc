@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -38,6 +38,7 @@ DECLARE_uint64(ysql_session_max_batch_size);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(pg_client_use_shared_memory);
+DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_string(ysql_pg_conf_csv);
 
 namespace yb::pgwrapper {
@@ -83,6 +84,8 @@ class PgFKeyTest : public PgMiniTestBase {
     FLAGS_enable_automatic_tablet_splitting = false;
     // This test counts number of performed RPC calls, so turn off pg client shared memory.
     FLAGS_pg_client_use_shared_memory = false;
+    // Disable auto analyze in this test suite because it introduce flakiness of metrics.
+    FLAGS_ysql_enable_auto_analyze = false;
     AppendPgConfOption(MaxQueryLayerRetriesConf(0));
     PgMiniTestBase::SetUp();
     rpc_count_.emplace(*cluster_->mini_tablet_server(0)->server()->metric_entity());

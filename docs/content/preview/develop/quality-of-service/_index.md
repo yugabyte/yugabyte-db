@@ -4,11 +4,6 @@ headerTitle: Quality of service
 linkTitle: Quality of service
 description: Quality of service and admission control
 headcontent: Quality of service and admission control
-menu:
-  preview:
-    identifier: develop-quality-of-service
-    parent: develop
-    weight: 585
 type: indexpage
 ---
 

@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -201,10 +201,10 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
   }
 
   // Lookup the table.
-  TableInfoPtr first_table = catalog_manager_->tables_->FindTableOrNull(metadata.table_id());
+  TableInfoPtr primary_table = catalog_manager_->tables_->FindTableOrNull(metadata.table_id());
 
   // TODO: We need to properly remove deleted tablets.  This can happen async of master loading.
-  if (!first_table) {
+  if (!primary_table) {
     if (metadata.state() != SysTabletsEntryPB::DELETED) {
       LOG(DFATAL) << "Unexpected Tablet state for " << tablet_id << ": "
                   << SysTabletsEntryPB::State_Name(metadata.state())
@@ -221,7 +221,7 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
   bool tablet_deleted;
   bool listed_as_hidden;
   bool needs_async_write_to_sys_catalog = false;
-  TabletInfoPtr tablet = std::make_shared<TabletInfo>(first_table, tablet_id);
+  TabletInfoPtr tablet = std::make_shared<TabletInfo>(primary_table, tablet_id);
   {
     auto l = tablet->LockForWrite();
     l.mutable_data()->pb.CopyFrom(metadata);
@@ -235,8 +235,8 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
     }
 
     if (metadata.hosted_tables_mapped_by_parent_id()) {
-      table_ids = state_->parent_to_child_tables[first_table->id()];
-      table_ids.push_back(first_table->id());
+      table_ids = state_->parent_to_child_tables[primary_table->id()];
+      table_ids.push_back(primary_table->id());
     } else {
       for (int k = 0; k < metadata.table_ids_size(); ++k) {
         table_ids.push_back(metadata.table_ids(k));
@@ -357,13 +357,13 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
 
     if (should_delete_tablet) {
       LOG(INFO) << Format("Marking tablet $0 for table $1 as DELETED in-memory. Sys catalog will "
-          "be updated asynchronously.", tablet->id(), first_table->ToString());
+          "be updated asynchronously.", tablet->id(), primary_table->ToString());
       std::string deletion_msg = "Tablet deleted at " + LocalTimeAsString();
       l.mutable_data()->set_state(SysTabletsEntryPB::DELETED, deletion_msg);
       needs_async_write_to_sys_catalog = true;
       catalog_manager_->deleted_tablets_.insert(tablet_id);
     } else if (should_hide_tablet) {
-      LOG(INFO) << "Will mark tablet " << tablet->id() << " for table " << first_table->ToString()
+      LOG(INFO) << "Will mark tablet " << tablet->id() << " for table " << primary_table->ToString()
                 << " as HIDDEN post loading sys.catalog";
       state_->AddPostLoadTask(
           std::bind(
@@ -385,26 +385,26 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
     tablet->SetTableIds(std::move(table_ids));
   }
 
-  if (first_table->IsColocationParentTable()) {
+  if (primary_table->IsColocationParentTable()) {
     SCHECK(tablet_colocation_map.size() == existing_table_ids.size(), IllegalState,
            Format("Tablet $0 has $1 tables, but only $2 of them were colocated",
                   tablet_id, existing_table_ids.size(), tablet_colocation_map.size()));
   }
 
   // Add the tablet to colocated_db_tablets_map_ if the tablet is colocated via database.
-  if (first_table->IsColocatedDbParentTable()) {
-    catalog_manager_->colocated_db_tablets_map_[first_table->namespace_id()] =
+  if (primary_table->IsColocatedDbParentTable()) {
+    catalog_manager_->colocated_db_tablets_map_[primary_table->namespace_id()] =
         catalog_manager_->tablet_map_->find(tablet_id)->second;
   }
 
   // Add the tablet to tablegroup_manager_ if the tablet is for a tablegroup.
-  if (first_table->IsTablegroupParentTable()) {
-    if (first_table->IsOperationalForClient()) {
-      const auto tablegroup_id = GetTablegroupIdFromParentTableId(first_table->id());
+  if (primary_table->IsTablegroupParentTable()) {
+    if (primary_table->IsOperationalForClient()) {
+      const auto tablegroup_id = GetTablegroupIdFromParentTableId(primary_table->id());
 
       auto* tablegroup =
           VERIFY_RESULT(catalog_manager_->tablegroup_manager_->Add(
-              first_table->namespace_id(),
+              primary_table->namespace_id(),
               tablegroup_id,
               catalog_manager_->tablet_map_->find(tablet_id)->second));
 
@@ -420,9 +420,10 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
     }
   }
 
-  LOG(INFO) << "Loaded metadata for " << (tablet_deleted ? "deleted " : "")
+  std::string state = tablet_deleted ? "deleted " : (listed_as_hidden ? "hidden " : "");
+  LOG(INFO) << "Loaded metadata for " << state
             << "tablet " << tablet_id
-            << " (first table " << first_table->ToString() << ")";
+            << " (first table " << primary_table->ToString() << ")";
 
   VLOG(1) << "Metadata for tablet " << tablet_id << ": " << metadata.ShortDebugString();
 

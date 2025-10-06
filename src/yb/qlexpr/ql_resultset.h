@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // This module defines the ResultSet that QL database returns to a query request.
 // QLResultSet is a set of rows of data that is returned by a query request.

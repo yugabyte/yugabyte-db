@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -34,7 +34,6 @@
 #include <utility>
 #include <vector>
 
-#include "yb/util/logging.h"
 #include <gtest/gtest.h>
 
 #include "yb/common/hybrid_time.h"
@@ -45,14 +44,13 @@
 #include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_anchor_registry.h"
+#include "yb/consensus/log_index.h"
 #include "yb/consensus/log_reader.h"
 #include "yb/consensus/opid_util.h"
 
 #include "yb/fs/fs_manager.h"
 
 #include "yb/gutil/bind.h"
-#include "yb/gutil/stl_util.h"
-#include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
 
@@ -64,22 +62,19 @@
 #include "yb/tserver/tserver.pb.h"
 
 #include "yb/util/async_util.h"
-#include "yb/util/env_util.h"
 #include "yb/util/metrics.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/threadpool.h"
-#include "yb/consensus/log_index.h"
 
 METRIC_DECLARE_entity(table);
 METRIC_DECLARE_entity(tablet);
 
 DECLARE_int32(log_min_seconds_to_retain);
 
-namespace yb {
-namespace log {
+namespace yb::log {
 
 using consensus::ReplicateMsg;
 using consensus::WRITE_OP;
@@ -145,9 +140,9 @@ static Status AppendNoOpToLogSync(const scoped_refptr<Clock>& clock,
 class LogTestBase : public YBTest {
  public:
 
-  typedef std::pair<int, int> DeltaId;
+  using DeltaId = std::pair<int, int>;
 
-  typedef std::tuple<int, int, std::string> TupleForAppend;
+  using TupleForAppend = std::tuple<int, int, std::string>;
 
   LogTestBase()
       : schema_({
@@ -191,6 +186,7 @@ class LogTestBase : public YBTest {
                        0, // schema_version
                        table_metric_entity_.get(),
                        tablet_metric_entity_.get(),
+                       /*read_wal_mem_tracker=*/nullptr,
                        log_thread_pool_.get(),
                        log_thread_pool_.get(),
                        log_thread_pool_.get(),
@@ -401,8 +397,9 @@ Status CorruptLogFile(Env* env, const std::string& log_path,
 Result<SegmentSequence> GetReadableSegments(const std::string& wal_dir_path) {
   SegmentSequence segments;
   std::unique_ptr<LogReader> reader;
-  RETURN_NOT_OK(LogReader::Open(Env::Default(), nullptr, "Log reader", wal_dir_path,
-                                 nullptr, nullptr, &reader));
+  RETURN_NOT_OK(LogReader::Open(
+      Env::Default(), nullptr, "Log reader", wal_dir_path, nullptr, nullptr,
+      /*read_wal_mem_tracker=*/nullptr, &reader));
   RETURN_NOT_OK(reader->GetSegmentsSnapshot(&segments));
   return segments;
 }
@@ -426,5 +423,4 @@ Result<size_t> GetSegmentsCount(const std::string& wal_dir_path) {
   return segments.size();
 }
 
-} // namespace log
-} // namespace yb
+} // namespace yb::log

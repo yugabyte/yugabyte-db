@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 YugaByte, Inc. and Contributors
+ * Copyright 2019 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -78,7 +78,6 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
   public void run() {
     log.info("Started {} task for uuid={}", getName(), taskParams().getUniverseUUID());
     Universe universe = null;
-    boolean deleteCapacityReservation = false;
     try {
       universe =
           lockAndFreezeUniverseForUpdate(
@@ -102,7 +101,7 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
         log.error(errMsg);
         throw new IllegalArgumentException(errMsg);
       }
-      deleteCapacityReservation =
+      boolean deleteCapacityReservation =
           createCapacityReservationsIfNeeded(
               nodesToProvision,
               CapacityReservationUtil.OperationType.CREATE,
@@ -130,7 +129,7 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
             gFlagsParams.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
           });
       if (deleteCapacityReservation) {
-        createDeleteReservationTask();
+        createDeleteCapacityReservationTask();
       }
 
       // Set of processes to be started, note that in this case it is same as nodes provisioned.
@@ -175,6 +174,7 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
       getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+      clearCapacityReservationOnError(t, Universe.getOrBadRequest(universe.getUniverseUUID()));
       throw t;
     } finally {
       releaseReservedNodes();

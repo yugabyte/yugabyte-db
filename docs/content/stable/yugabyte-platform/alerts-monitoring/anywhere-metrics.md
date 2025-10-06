@@ -45,6 +45,24 @@ label_replace(
 
 For more information, refer to [Querying Prometheus](https://prometheus.io/docs/prometheus/latest/querying/basics/) in the Prometheus documentation.
 
+## Metrics collection level
+
+The metrics collection level setting controls how many database metrics are collected and stored. It helps balance system performance with monitoring needs, so that you can optimize resource usage based on your specific observability requirements.
+
+Set the metrics collection level by using the **Metrics Collection Level** Universe Runtime Configuration option (config key `yb.metrics.collection_level`). Refer to [Manage runtime configuration settings](../../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/).
+
+You can set the collection level to the following:
+
+| Level | Description |
+|:-------|:---------|
+| ALL | Collects all metrics from the database. Not recommended for large databases with a lot of tables, as it can overload the YugabyteDB Anywhere Prometheus instance and cause Out of Memory (OOM) errors on the node where YugabyteDB Anywhere is installed. |
+| NORMAL (default) | Collects all server-level metrics, and essential table-level metrics (required for YugabyteDB Anywhere UI and alerts). |
+| MINIMAL | Collects limited list of server-level metrics (required for YugabyteDB Anywhere UI and alerts), and very limited table-level metrics (required for alerts and table size display). |
+| OFF | Disables metric collection. |
+| TABLE_OFF | Collects only server-level metrics. |
+
+The collection level directly affects what data appears in monitoring interfaces. With NORMAL level, all UI components display full metrics. However, when MINIMAL is configured, most per-table monitoring screens display "No Data" messages, though table size information and essential alerts continue functioning. This provides a way to reduce monitoring overhead while maintaining core operational visibility.
+
 ## Filter metrics
 
 You can display metrics based on different criteria:

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.common.certmgmt;
 
@@ -798,7 +798,7 @@ public class CertificateHelper {
   public static KeyPair getKeyPairObject()
       throws NoSuchAlgorithmException, NoSuchProviderException {
     KeyPairGenerator keypairGen = KeyPairGenerator.getInstance("RSA");
-    keypairGen.initialize(2048);
+    keypairGen.initialize(3072);
     return keypairGen.generateKeyPair();
   }
 

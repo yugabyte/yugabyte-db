@@ -123,7 +123,7 @@ This page highlights the important differences in feature support between YSQL a
 |                |                              Component                              |                                  Details                                   |
 | :------------: | :------------------------------------------------------------------ | :------------------------------------------------------------------------- |
 | {{<icon/yes>}} | FROM, WHERE, GROUP BY, HAVING, DISTINCT, LIMIT/OFFSET, WITH queries | [Group data](../queries/#group-data)                                       |
-| {{<icon/yes>}} | EXPLAIN query plans                                                 | [Analyze queries with EXPLAIN](../../query-1-performance/explain-analyze/) |
+| {{<icon/yes>}} | EXPLAIN query plans                                                 | [Analyze queries with EXPLAIN](../../../launch-and-manage/monitor-and-alert/query-tuning/explain-analyze/) |
 | {{<icon/yes>}} | JOINs (INNER/OUTER, LEFT/RIGHT)                                     | [Join columns](../queries/#join-columns)                                   |
 | {{<icon/yes>}} | Expressions and Operators                                           | [Expressions and operators](../expressions-operators/)                     |
 | {{<icon/yes>}} | Common Table Expressions (CTE) and Recursive Queries                | [Recursive queries and CTEs](../queries/#recursive-queries-and-ctes)       |

@@ -494,11 +494,11 @@ extern void InitPostgres(const char *in_dbname, Oid dboid,
 						 char *out_dbname);
 
 extern void YbInitPostgres(const char *in_dbname, Oid dboid,
-						 const char *username, Oid useroid,
-						 bool load_session_libraries,
-						 bool override_allow_connections,
-						 char *out_dbname,
-						 const YbcPgInitPostgresInfo *yb_info);
+						   const char *username, Oid useroid,
+						   bool load_session_libraries,
+						   bool override_allow_connections,
+						   char *out_dbname,
+						   const YbcPgInitPostgresInfo *yb_info);
 extern long YbGetAuthorizedConnections();
 
 extern void BaseInit(void);

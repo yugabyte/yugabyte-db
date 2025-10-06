@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -40,8 +40,8 @@ struct HostPortHash;
 namespace master {
 
 class TSDescriptor;
-typedef std::shared_ptr<TSDescriptor> TSDescriptorPtr;
-typedef std::vector<TSDescriptorPtr> TSDescriptorVector;
+using TSDescriptorPtr = std::shared_ptr<TSDescriptor>;
+using TSDescriptorVector = std::vector<TSDescriptorPtr>;
 
 class EncryptionManager;
 
@@ -52,6 +52,8 @@ class AsyncTryStepDown;
 class CatalogManager;
 class CatalogManagerIf;
 class CatalogManagerBgTasks;
+class CdcsdkManager;
+class CdcsdkManagerIf;
 class CloneStateManager;
 class XClusterRpcTasks;
 class ClusterConfigInfo;

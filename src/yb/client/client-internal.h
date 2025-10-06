@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -480,6 +480,18 @@ class YBClient::Data {
     bool *ddl_verification_in_progress);
 
   Status WaitForDdlVerificationToFinish(const TransactionMetadata& txn, CoarseTimePoint deadline);
+
+  Status RollbackDocdbSchemaToSubtxn(
+      const TransactionMetadata& txn, SubTransactionId sub_txn_id, const CoarseTimePoint& deadline);
+
+  Status IsRollbackDocdbSchemaToSubtxnInProgress(
+    const TransactionMetadata& txn,
+    SubTransactionId sub_txn_id,
+    CoarseTimePoint deadline,
+    bool *rollback_to_sub_txn_in_progress);
+
+  Status WaitForRollbackDocdbSchemaToSubtxnToFinish(
+      const TransactionMetadata& txn, SubTransactionId sub_txn_id, CoarseTimePoint deadline);
 
   Result<bool> CheckIfPitrActive(CoarseTimePoint deadline);
 

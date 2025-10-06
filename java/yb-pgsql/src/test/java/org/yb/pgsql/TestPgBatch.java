@@ -189,12 +189,19 @@ public class TestPgBatch extends BasePgSQLTest {
       // the catalog cache of c1 until the next heartbeat with the master.
       s2.execute("ALTER TABLE t ALTER COLUMN v SET NOT NULL");
 
-      // The s1 statement uses the cached catalog version but the schema is changed by the
-      // ALTER TABLE statement above. The s1 statement execution should cause the schema mismatch
-      // error. The schema mismatch error is not retried internally in batched execution mode.
-      assertThrows(
-          "Internal retries are not supported in batched execution mode",
-           BatchUpdateException.class, () -> s1.executeBatch());
+      String enable_object_locking = miniCluster.getClient().getFlag(
+          miniCluster.getTabletServers().keySet().iterator().next(),
+          "enable_object_locking_for_table_locks");
+      if (enable_object_locking.equals("true")) {
+        s1.executeBatch();
+      } else {
+        // The s1 statement uses the cached catalog version but the schema is changed by the
+        // ALTER TABLE statement above. The s1 statement execution should cause the schema mismatch
+        // error. The schema mismatch error is not retried internally in batched execution mode.
+        assertThrows(
+            "Internal retries are not supported in batched execution mode",
+            BatchUpdateException.class, () -> s1.executeBatch());
+      }
     }
   }
 

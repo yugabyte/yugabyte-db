@@ -5,7 +5,7 @@ linkTitle: Secondary indexes
 tags:
   other: ysql
 menu:
-  preview:
+  preview_develop:
     identifier: data-modeling-indexes
     parent: data-modeling
     weight: 200
@@ -210,5 +210,5 @@ While primary keys are essential to ensure data uniqueness and facilitate effici
 
 ## Learn more
 
-- [Use Explain Analyze to improve query performance](../../../explore/query-1-performance/explain-analyze)
+- [Use Explain Analyze to improve query performance](../../../launch-and-manage/monitor-and-alert/query-tuning/explain-analyze)
 - [Explore indexes and constraints](../../../explore/ysql-language-features/indexes-constraints/)

@@ -224,7 +224,7 @@ explain (costs off) /*+Leading((f1 f2)) YbBatchedNL(f1 f2)*/ select * from float
 drop table floattable1;
 drop table floattable2;
 
-create table ss1(a bigint, b int, primary key(a asc, b asc));
+create table ss1(a bigint, b int, primary key(b asc, a asc));
 create table ss2(a int, b bigint, primary key(a asc, b asc));
 -- 0x8000000000000001 should not join with 1 and 0x8000000000000002 should not join with 2
 insert into ss1 values (1,2), (3,4), (x'8000000000000001'::bigint, 1);

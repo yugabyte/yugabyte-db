@@ -160,6 +160,9 @@ SELECT col, col2, col4 FROM base2 ORDER BY col;
 \d+ base2;
 SELECT num_tablets, num_hash_key_columns, is_colocated FROM
     yb_table_properties('base2_idx'::regclass);
+CREATE TABLE t5(c0 money UNIQUE);
+ALTER TABLE ONLY t5 ALTER COLUMN c0 SET DATA TYPE money USING c0::text::money;
+\d t5;
 \c yugabyte;
 -- Suppress NOTICE messages during table rewrite operations.
 SET client_min_messages TO WARNING;

@@ -8,6 +8,7 @@ import {
 import { useQueries, useQuery, UseQueryResult } from 'react-query';
 import { Box, makeStyles, Typography, useTheme } from '@material-ui/core';
 import { Trans, useTranslation } from 'react-i18next';
+import { formatBytes } from '@app/utils/Formatters';
 
 import {
   fetchTablesInUniverse,
@@ -17,7 +18,6 @@ import { api, universeQueryKey, xClusterQueryKey } from '../../../../redesign/he
 import { YBControlledSelect } from '../../../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import {
-  formatBytes,
   getSharedXClusterConfigs,
   tableSort,
   isTableToggleable,

@@ -1,5 +1,5 @@
 """
-Copyright (c) Yugabyte, Inc.
+Copyright (c) YugabyteDB, Inc.
 
 This module provides utilities for generating and publishing release.
 """
@@ -19,7 +19,7 @@ import distro  # type: ignore
 from sys_detection import is_macos
 from subprocess import call, check_output
 from xml.dom import minidom
-from yugabyte.command_util import run_program, mkdir_p, copy_deep
+from yugabyte.command_util import run_program, mkdir_p, copy_deep, has_pigz
 from yugabyte.common_util import (
     get_thirdparty_dir,
     get_compiler_type_from_build_root,
@@ -352,8 +352,13 @@ class ReleaseUtil:
             change_permissions('a+X')
             logging.info("Creating a package '%s' from directory %s",
                          release_file, tmp_distribution_dir)
-            run_program(['tar', 'cvzf', release_file, yugabyte_folder_prefix],
-                        cwd=tmp_parent_dir)
+            # pigz is much faster, if it's available.
+            if has_pigz():
+                run_program(['tar', '-I', 'pigz', '-cvf', release_file, yugabyte_folder_prefix],
+                            cwd=tmp_parent_dir)
+            else:
+                run_program(['tar', 'cvzf', release_file, yugabyte_folder_prefix],
+                            cwd=tmp_parent_dir)
             return release_file
         finally:
             shutil.move(tmp_distribution_dir, self.distribution_path)

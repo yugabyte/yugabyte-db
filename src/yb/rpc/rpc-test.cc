@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -117,7 +117,7 @@ void RunTest(RpcTestBase* test, const TestServerOptions& options,
       messenger_factory("TestServer", options.messenger_options), &server_hostport,
       options);
 
-  CalculatorServiceProxy p(proxy_cache.get(), server_hostport, client_messenger->DefaultProtocol());
+  CalculatorServiceProxy p(proxy_cache.get(), server_hostport);
   f(&p);
 }
 
@@ -1184,6 +1184,7 @@ void TestMaxSizeRpcResponse(CalculatorServiceProxy* proxy) {
   ResponseHeader resp_header;
   resp_header.set_call_id(1);
   resp_header.set_is_error(false);
+  resp_header.set_crc(0);
 
   const size_t header_pb_len = resp_header.ByteSize();
   const size_t header_tot_len = OutboundCall::HeaderTotalLength(header_pb_len);
@@ -1239,6 +1240,7 @@ class TestRpcSecure : public RpcTestBase {
       const std::string& name, const MessengerOptions& options = kDefaultClientMessengerOptions) {
     auto builder = CreateMessengerBuilder(name, options);
     builder.SetListenProtocol(SecureStreamProtocol());
+    builder.SetUncompressedProtocol(SecureStreamProtocol());
     builder.AddStreamFactory(SecureStreamProtocol(), CreateSecureStreamFactory());
     return EXPECT_RESULT(builder.Build());
   }
@@ -1487,6 +1489,7 @@ class TestRpcSecureCompression : public TestRpcSecure {
       const std::string& name, const MessengerOptions& options = kDefaultClientMessengerOptions) {
     auto builder = CreateMessengerBuilder(name, options);
     builder.SetListenProtocol(CompressedStreamProtocol());
+    builder.SetUncompressedProtocol(SecureStreamProtocol());
     builder.AddStreamFactory(
         CompressedStreamProtocol(),
         CompressedStreamFactory(CreateSecureStreamFactory(), MemTracker::GetRootTracker()));

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
@@ -236,7 +236,6 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     mockUpgrade
         .precheckTasks(getPrecheckTasks(true))
         .addTasks(TaskType.UpdateUniverseState)
-        .addTasks(TaskType.DisablePitrConfig)
         .addSimultaneousTasks(TaskType.AnsibleConfigureServers, defaultUniverse.getMasters().size())
         .addSimultaneousTasks(
             TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
@@ -269,6 +268,60 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     assertFalse(defaultUniverse.getUniverseDetails().isSoftwareRollbackAllowed);
     assertNull(defaultUniverse.getUniverseDetails().prevYBSoftwareConfig);
+    assertEquals(
+        SoftwareUpgradeState.Ready, defaultUniverse.getUniverseDetails().softwareUpgradeState);
+  }
+
+  @Test
+  public void testSoftwareUpgradeWithNoFinalize() {
+    updateDefaultUniverseTo5Nodes(true);
+
+    when(mockSoftwareUpgradeHelper.checkUpgradeRequireFinalize(anyString(), anyString()))
+        .thenReturn(false);
+
+    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
+    taskParams.ybSoftwareVersion = "2.21.0.0-b2";
+    taskParams.rollbackSupport = true;
+    taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
+    mockDBServerVersion(
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
+        taskParams.ybSoftwareVersion,
+        defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
+    TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
+    verify(mockNodeManager, times(71)).nodeCommand(any(), any());
+    verify(mockNodeUniverseManager, times(10)).runCommand(any(), any(), anyList(), any());
+
+    MockUpgrade mockUpgrade = initMockUpgrade();
+    mockUpgrade
+        .precheckTasks(getPrecheckTasks(true))
+        .addTasks(TaskType.UpdateUniverseState)
+        .addSimultaneousTasks(TaskType.AnsibleConfigureServers, defaultUniverse.getMasters().size())
+        .addSimultaneousTasks(
+            TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
+        .addTasks(TaskType.XClusterInfoPersist)
+        .addTasks(TaskType.StoreAutoFlagConfigVersion)
+        .addSimultaneousTasks(
+            TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
+        .upgradeRound(UpgradeOption.ROLLING_UPGRADE)
+        .withContext(
+            UpgradeTaskBase.UpgradeContext.builder()
+                .reconfigureMaster(false)
+                .runBeforeStopping(false)
+                .processInactiveMaster(true)
+                .targetSoftwareVersion("2.21.0.0-b2")
+                .build())
+        .task(TaskType.AnsibleConfigureServers)
+        .applyRound()
+        .addSimultaneousTasks(TaskType.CheckSoftwareVersion, defaultUniverse.getTServers().size())
+        .addTasks(TaskType.PromoteAutoFlags)
+        .addTasks(TaskType.UpdateSoftwareVersion)
+        .addTasks(TaskType.UpdateUniverseState)
+        .verifyTasks(taskInfo.getSubTasks());
+
+    assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
+    assertEquals(Success, taskInfo.getTaskState());
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertTrue(defaultUniverse.getUniverseDetails().isSoftwareRollbackAllowed);
     assertEquals(
         SoftwareUpgradeState.Ready, defaultUniverse.getUniverseDetails().softwareUpgradeState);
   }
@@ -319,7 +372,6 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     mockUpgrade
         .precheckTasks(enableYSQL, getPrecheckTasks(true))
         .addTasks(TaskType.UpdateUniverseState)
-        .addTasks(TaskType.DisablePitrConfig)
         .addSimultaneousTasks(TaskType.AnsibleConfigureServers, defaultUniverse.getMasters().size())
         .addSimultaneousTasks(
             TaskType.AnsibleConfigureServers, defaultUniverse.getTServersInPrimaryCluster().size())
@@ -375,7 +427,6 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     mockUpgrade
         .precheckTasks(getPrecheckTasks(false))
         .addTasks(TaskType.UpdateUniverseState)
-        .addTasks(TaskType.DisablePitrConfig)
         .addSimultaneousTasks(TaskType.AnsibleConfigureServers, defaultUniverse.getMasters().size())
         .addSimultaneousTasks(
             TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
@@ -419,6 +470,10 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     when(mockSoftwareUpgradeHelper.isYsqlMajorVersionUpgradeRequired(
             any(), anyString(), anyString()))
         .thenReturn(true);
+
+    when(mockSoftwareUpgradeHelper.checkUpgradeRequireFinalize(anyString(), anyString()))
+        .thenReturn(true);
+
     ReleaseManager.ReleaseMetadata rm =
         ReleaseManager.ReleaseMetadata.create(targetVersion)
             .withFilePath("yugabyte-" + targetVersion + "-centos-x86_64" + ".tar.gz");
@@ -521,6 +576,8 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     defaultUniverse.setUniverseDetails(details);
     defaultUniverse.save();
 
+    when(mockSoftwareUpgradeHelper.checkUpgradeRequireFinalize(anyString(), anyString()))
+        .thenReturn(true);
     when(mockSoftwareUpgradeHelper.isSuperUserRequiredForCatalogUpgrade(
             any(), anyString(), anyString()))
         .thenReturn(true);
@@ -631,6 +688,8 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     defaultUniverse.setUniverseDetails(details);
     defaultUniverse.save();
 
+    when(mockSoftwareUpgradeHelper.checkUpgradeRequireFinalize(anyString(), anyString()))
+        .thenReturn(true);
     when(mockSoftwareUpgradeHelper.isSuperUserRequiredForCatalogUpgrade(
             any(), anyString(), anyString()))
         .thenReturn(true);
@@ -899,7 +958,6 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         .precheckTasks(
             TaskType.CheckUpgrade, TaskType.CheckMemory, TaskType.CheckLocale, TaskType.CheckGlibc)
         .addTasks(TaskType.UpdateUniverseState)
-        .addTasks(TaskType.DisablePitrConfig)
         .addSimultaneousTasks(TaskType.AnsibleConfigureServers, defaultUniverse.getMasters().size())
         .addSimultaneousTasks(
             TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())

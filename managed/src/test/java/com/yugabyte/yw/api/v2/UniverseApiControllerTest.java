@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 package com.yugabyte.yw.api.v2;
 
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;

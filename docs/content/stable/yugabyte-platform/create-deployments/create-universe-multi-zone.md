@@ -50,7 +50,7 @@ To create a universe:
 
 1. Click **Create** when you are done and wait for the configuration to complete.
 
-![Create Universe on GCP](/images/yp/create-uni-multi-zone-1-gcp.png)
+![Create Universe on GCP](/images/yp/create-uni-multi-zone.png)
 
 ## Universe settings
 
@@ -78,6 +78,7 @@ Specify the provider and geolocations for the nodes in the universe:
 
 Specify the instance to use for the universe nodes:
 
+- Choose the **CPU Architecture**, either x86 (Intel) or AArch6 (ARM).
 - Choose the **Linux version** to be provisioned on the nodes of the universe.
 
   This option only applies if you have selected an AWS, GCP, or Azure provider configuration. The available Linux versions are specified in the provider.
@@ -90,8 +91,21 @@ Specify the instance to use for the universe nodes:
   Refer to [Create cloud provider configuration](../../configure-yugabyte-platform/aws/).
 
 - Select the **Instance Type** to use for the nodes in the universe.
-
 - Specify the number and size of the storage volumes, and the storage type.
+
+#### Additional AWS fields
+
+- Choose the AWS **EBS Type** between IO1, GP2, and GP3.
+- Specify the **Provisioned IOPS** (IO1 and GP3 only) and **Provisioned Throughput** (GP3 only) for your disk in advance to ensure a consistent performance level.
+- {{<tags/feature/ea idea="2329">}}Enable **EBS Volume Encryption** (AWS only) to create a universe with AWS EBS volume-level encryption, using a custom AWS Key Management Service (KMS) configuration.
+
+  Select the **Key Management Service Config** you created. See [Create a KMS configuration](../../security/create-kms-config/aws-kms/#create-a-kms-configuration).
+
+  While in Early Access, EBS Volume Encryption is not available in YugabyteDB Anywhere by default. To make it available, set the _Allow Cloud Volume Encryption_ Global Runtime Configuration option (config key `yb.universe.allow_cloud_volume_encryption`) to true. Refer to [Manage runtime configuration settings](../../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
+
+  You can use AWS EBS volume-level encryption and YugabyteDB Anywhere envelope [Encryption at rest](../../security/enable-encryption-at-rest/) (EAR) at the same time. Configure each one with its own KMS config; you cannot use the same KMS config for both.
+
+  Currently, you cannot use EBS volume-level encryption for multi-region universe deployments, because an instance in one region cannot access the KMS key in another region.
 
 ### Security Configurations
 
@@ -135,7 +149,7 @@ Access key
 : The access key is the SSH key that is created in the provider. Usually, each provider has its own access key, but if you are reusing keys across providers, they are listed here.
 
 Instance Profile ARN
-: For AWS providers, you can assign an ARN to the nodes in the universe; this allow them to be seamlessly backed up without explicit credentials.
+: For AWS providers, you can assign an ARN to the nodes in the universe; this allows them to be seamlessly backed up without explicit credentials.
 
 Enhanced Postgres Compatibility
 : If database version is v2024.2 or later, you can enable early access features for PostgreSQL compatibility. For more information, refer to [Enhanced PostgreSQL Compatibility Mode](../../../reference/configuration/postgresql-compatibility/).
@@ -144,7 +158,7 @@ Enable Connection Pooling
 : {{<tags/feature/ea idea="1368">}}If database version is v2024.2 or later, you can enable [Built-in connection pooling](../../../additional-features/connection-manager-ysql/).
 : While in Early Access, connection pooling is not available by default. To make the feature available, set the *Allow users to enable or disable connection pooling* Global Runtime Configuration option (config key `yb.universe.allow_connection_pooling`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
 
-Enable Systemd Services
+Enable Systemd Services (v2025.1.0.0 and earlier only)
 : To use cron instead of systemd for managing nodes, you can disable systemd services. This is not recommended.
 
 {{< warning title="cron-based support deprecated" >}}

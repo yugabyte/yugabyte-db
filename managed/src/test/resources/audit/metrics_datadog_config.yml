@@ -12,10 +12,13 @@ extensions:
 processors:
   attributes/metrics_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$AttributesProcessor
     actions:
+    - {action: upsert, key: tag, value: value}
     - {action: upsert, key: env, value: prod}
     - {action: upsert, key: region, value: us-west}
   batch/metrics_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$BatchProcessor {
     send_batch_max_size: 1000, send_batch_size: 500, timeout: 5s}
+  memory_limiter/metrics_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$MemoryLimiterProcessor {
+    check_interval: 10s, limit_mib: 2048}
 receivers:
   prometheus/yugabyte: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$PrometheusReceiver
     config:
@@ -164,7 +167,8 @@ service:
   pipelines:
     metrics/metrics_00000000-0000-0000-0000-000000000000:
       exporters: [datadog/metrics_00000000-0000-0000-0000-000000000000]
-      processors: [attributes/metrics_00000000-0000-0000-0000-000000000000, batch/metrics_00000000-0000-0000-0000-000000000000]
+      processors: [attributes/metrics_00000000-0000-0000-0000-000000000000, batch/metrics_00000000-0000-0000-0000-000000000000,
+        memory_limiter/metrics_00000000-0000-0000-0000-000000000000]
       receivers: [prometheus/yugabyte]
   telemetry:
     logs:

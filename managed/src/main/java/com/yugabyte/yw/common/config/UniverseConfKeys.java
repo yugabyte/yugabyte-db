@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 YugaByte, Inc. and Contributors
+ * Copyright 2022 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -237,7 +237,8 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "DB node metrics collection level."
               + "ALL - collect all metrics, "
               + "NORMAL - default value, which only limits some per-table metrics, "
-              + "MINIMAL - limits both node level and further limits table level "
+              + "TABLE_OFF - Disable table level metrics collection, "
+              + "MINIMAL - limits both node level and further limits table level"
               + "metrics we collect and "
               + "OFF to completely disable metric collection.",
           ConfDataType.StringType,
@@ -1537,6 +1538,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Skip OpenTelemetry Operator Check",
           "If true, YBA will skip checking for Opentelemetry operator installation on the cluster.",
           ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> otelCollectorMaxMemory =
+      new ConfKeyInfo<>(
+          "yb.universe.otel_collector_max_memory",
+          ScopeType.UNIVERSE,
+          "Max memory for OpenTelemetry Collector process.",
+          "Hard memory limit for the OpenTelemetry Collector process in the systemd unit file.",
+          ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> waitAttemptsForMajorCatalogUpgrade =
       new ConfKeyInfo<>(

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 // import '@yugabyte-ui-library/core/dist/esm/YBClassnameSetup';
 import i18n from 'i18next';
 import ReactDOM from 'react-dom';

@@ -2805,6 +2805,7 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
+            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
@@ -5483,6 +5484,7 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
+            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
@@ -8541,6 +8543,7 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
+            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
@@ -9337,6 +9340,7 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
+            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
@@ -10751,6 +10755,7 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
+            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
@@ -11468,6 +11473,7 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
+            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
@@ -12106,6 +12112,7 @@
             "ALL",
             "NORMAL",
             "MINIMAL",
+            "TABLE_OFF",
             "OFF"
           ],
           "example" : "NORMAL",
@@ -12960,6 +12967,7 @@
             "USER_GROUP",
             "HOME_DIR_SPACE",
             "HOME_DIR_EXISTS",
+            "HOME_DIR_MATCHES",
             "RAM_SIZE",
             "INTERNET_CONNECTION",
             "CPU_CORES",
@@ -12989,7 +12997,6 @@
             "ULIMIT_CORE",
             "ULIMIT_OPEN_FILES",
             "ULIMIT_USER_PROCESSES",
-            "SYSTEMD_SUDOER_ENTRY",
             "SSH_ACCESS",
             "NODE_AGENT_ACCESS",
             "MASTER_HTTP_PORT",
@@ -15655,6 +15662,7 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
+            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
@@ -16682,6 +16690,7 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
+            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
@@ -17509,6 +17518,7 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
+            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
@@ -19017,6 +19027,7 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
+            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
@@ -19573,6 +19584,7 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
+            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
@@ -19971,6 +19983,7 @@
               "ConfigureOOMServiceOnNode",
               "CheckSshConnection",
               "FetchServerConf",
+              "OperatorImportUniverse",
               "DoCapacityReservation",
               "DeleteCapacityReservation",
               "DisablePitrConfig",
@@ -20793,6 +20806,7 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
+            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
@@ -21885,6 +21899,7 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
+            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
@@ -22289,6 +22304,16 @@
         },
         "status" : {
           "items" : {
+            "enum" : [
+              "Created",
+              "Initializing",
+              "Running",
+              "Success",
+              "Failure",
+              "Unknown",
+              "Abort",
+              "Aborted"
+            ],
             "type" : "string"
           },
           "type" : "array",
@@ -23189,6 +23214,7 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
+            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
@@ -23859,6 +23885,7 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
+            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
@@ -24784,6 +24811,7 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
+            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
@@ -25418,6 +25446,7 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
+            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
@@ -26052,6 +26081,7 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
+            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
@@ -26168,6 +26198,18 @@
           "readOnly" : true,
           "type" : "string"
         },
+        "memoryLimitCheckIntervalSeconds" : {
+          "description" : "Check interval in seconds for the MemoryLimiterProcessor.",
+          "example" : 10,
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "memoryLimitMib" : {
+          "description" : "Memory limit in MiB for the OpenTelemetry Collector process in the config file.",
+          "example" : 2048,
+          "format" : "int32",
+          "type" : "integer"
+        },
         "metricsPrefix" : {
           "description" : "Custom prefix to add to all exported metric names. Can be customised to each exporter differently.",
           "example" : "ybdb.",
@@ -26213,6 +26255,18 @@
           "format" : "uuid",
           "readOnly" : true,
           "type" : "string"
+        },
+        "memoryLimitCheckIntervalSeconds" : {
+          "description" : "Check interval in seconds for the MemoryLimiterProcessor.",
+          "example" : 10,
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "memoryLimitMib" : {
+          "description" : "Memory limit in MiB for the OpenTelemetry Collector process in the config file.",
+          "example" : 2048,
+          "format" : "int32",
+          "type" : "integer"
         },
         "sendBatchMaxSize" : {
           "description" : "Maximum batch size for query logs exporter",
@@ -27172,6 +27226,7 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
+            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
@@ -28293,6 +28348,7 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
+            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
@@ -28369,6 +28425,7 @@
             "USER_GROUP",
             "HOME_DIR_SPACE",
             "HOME_DIR_EXISTS",
+            "HOME_DIR_MATCHES",
             "RAM_SIZE",
             "INTERNET_CONNECTION",
             "CPU_CORES",
@@ -28398,7 +28455,6 @@
             "ULIMIT_CORE",
             "ULIMIT_OPEN_FILES",
             "ULIMIT_USER_PROCESSES",
-            "SYSTEMD_SUDOER_ENTRY",
             "SSH_ACCESS",
             "NODE_AGENT_ACCESS",
             "MASTER_HTTP_PORT",
@@ -39453,6 +39509,53 @@
         "summary" : "Create Universe Clusters",
         "tags" : [
           "UniverseClusterMutations"
+        ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/universes/{uUUID}/operator_import/precheck" : {
+      "post" : {
+        "description" : "WARNING: This is a preview API that could change: import operator universe",
+        "operationId" : "operatorImportUniverse",
+        "parameters" : [
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "cUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "uUUID",
+            "required" : true,
+            "type" : "string"
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "summary" : "Import a universe and related resources to be managed by the kubernetes operator",
+        "tags" : [
+          "preview"
         ]
       }
     },

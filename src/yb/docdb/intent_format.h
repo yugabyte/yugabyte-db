@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -88,7 +88,8 @@ Result<DecodeStrongWriteIntentResult> DecodeStrongWriteIntent(
 Status EnumerateIntents(
     const ArenaList<LWKeyValuePairPB>& kv_pairs,
     const dockv::EnumerateIntentsCallback& functor,
-    dockv::PartialRangeKeyIntents partial_range_key_intents);
+    dockv::PartialRangeKeyIntents partial_range_key_intents,
+    dockv::SkipPrefixLocks skip_prefix_locks = dockv::SkipPrefixLocks::kFalse);
 
 // Class that is used while combining external intents into single key value pair.
 class ExternalIntentsProvider {

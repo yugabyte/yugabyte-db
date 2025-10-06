@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -56,6 +56,16 @@ const MonoTime& PGPostgresEpoch() {
   return result;
 }
 
+// Taken from <https://stackoverflow.com/a/24315631> by Gauthier Boaglio.
+void ReplaceAll(std::string* str, const std::string& from, const std::string& to) {
+  CHECK(str);
+  size_t start_pos = 0;
+  while ((start_pos = str->find(from, start_pos)) != std::string::npos) {
+    str->replace(start_pos, from.length(), to);
+    start_pos += to.length(); // Handles case where 'to' is a substring of 'from'
+  }
+}
+
 namespace {
 
 // Converts the given element of the ExecStatusType enum to a string.
@@ -109,16 +119,6 @@ YBPgErrorCode GetSqlState(PGresult* result) {
     sqlstate |= (sqlstate_str[i] - '0') << (6 * i);
   }
   return static_cast<YBPgErrorCode>(sqlstate);
-}
-
-// Taken from <https://stackoverflow.com/a/24315631> by Gauthier Boaglio.
-inline void ReplaceAll(std::string* str, const std::string& from, const std::string& to) {
-  CHECK(str);
-  size_t start_pos = 0;
-  while ((start_pos = str->find(from, start_pos)) != std::string::npos) {
-    str->replace(start_pos, from.length(), to);
-    start_pos += to.length(); // Handles case where 'to' is a substring of 'from'
-  }
 }
 
 std::string BuildConnectionString(const PGConnSettings& settings, bool mask_password = false) {

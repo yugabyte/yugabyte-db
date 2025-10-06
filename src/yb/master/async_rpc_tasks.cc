@@ -37,6 +37,9 @@ DEFINE_test_flag(bool, stuck_add_tablet_to_table_task_enabled, false, "descripti
 DEFINE_test_flag(bool, fail_async_delete_replica_task, false,
                  "When set, transition all delete replica tasks to a failed state.");
 
+DEFINE_test_flag(string, skip_async_insert_packed_schema_for_tablet_id, "",
+    "Tablet ID to skip AsyncInsertPackedSchemaForXClusterTarget requests for.");
+
 DECLARE_int32(tablet_creation_timeout_ms);
 DECLARE_int32(TEST_slowdown_alter_table_rpcs_ms);
 
@@ -664,6 +667,19 @@ void AsyncInsertPackedSchemaForXClusterTarget::HandleInsertPackedSchema(
   // and then the current schema will be reinserted with [schema_version].
   req.set_insert_packed_schema(true);
   req.mutable_schema()->CopyFrom(packed_schema_);
+}
+
+bool AsyncInsertPackedSchemaForXClusterTarget::SendRequest(int attempt) {
+  if (PREDICT_FALSE(!FLAGS_TEST_skip_async_insert_packed_schema_for_tablet_id.empty())) {
+    if (tablet_id() == FLAGS_TEST_skip_async_insert_packed_schema_for_tablet_id) {
+      LOG_WITH_PREFIX(INFO) << "Skipping AsyncInsertPackedSchemaForXClusterTarget for tablet "
+                            << tablet_id()
+                            << " due to FLAGS_TEST_skip_async_insert_packed_schema_for_tablet_id";
+      TransitionToCompleteState();
+      return true;
+    }
+  }
+  return AsyncAlterTable::SendRequest(attempt);
 }
 
 // ============================================================================

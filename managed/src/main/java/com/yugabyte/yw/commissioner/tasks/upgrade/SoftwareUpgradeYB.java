@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
@@ -92,8 +92,14 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
               UniverseDefinitionTaskParams.SoftwareUpgradeState.Upgrading,
               true /* isSoftwareRollbackAllowed */);
 
-          // Disable PITR configs at the start of software upgrade
-          createDisablePitrConfigTask();
+          // Check if upgrade require finalize.
+          boolean upgradeRequireFinalize =
+              softwareUpgradeHelper.checkUpgradeRequireFinalize(currentVersion, newVersion);
+
+          if (upgradeRequireFinalize) {
+            // Disable PITR configs at the start of software upgrade
+            createDisablePitrConfigTask();
+          }
 
           if (!universe
               .getUniverseDetails()
@@ -240,9 +246,6 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
                 requireYsqlMajorVersionUpgrade,
                 requireAdditionalSuperUserForCatalogUpgrade);
           } else {
-            // Check if upgrade require finalize.
-            boolean upgradeRequireFinalize =
-                softwareUpgradeHelper.checkUpgradeRequireFinalize(currentVersion, newVersion);
 
             if (upgradeRequireFinalize) {
               createUpdateUniverseSoftwareUpgradeStateTask(

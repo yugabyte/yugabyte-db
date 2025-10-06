@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -25,7 +25,9 @@
 using yb::tablet::Tablet;
 using yb::tablet::TabletPeer;
 
+DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_int32(TEST_slowdown_alter_table_rpcs_ms);
+DECLARE_string(allowed_preview_flags_csv);
 
 namespace yb {
 namespace pgwrapper {
@@ -58,7 +60,18 @@ class AlterTableWithConcurrentTxnTest : public PgMiniTestBase {
   }
 };
 
-TEST_F(AlterTableWithConcurrentTxnTest, TServerLeaderChange) {
+class AlterTableWithConcurrentTxnTestTableLocksDisabled : public AlterTableWithConcurrentTxnTest {
+ protected:
+  virtual void OverrideMiniClusterOptions(MiniClusterOptions* options) override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_allowed_preview_flags_csv) =
+        yb::Format("enable_object_locking_for_table_locks,%s", FLAGS_allowed_preview_flags_csv);
+    AlterTableWithConcurrentTxnTest::OverrideMiniClusterOptions(options);
+  }
+};
+
+TEST_F_EX(AlterTableWithConcurrentTxnTest, TServerLeaderChange,
+          AlterTableWithConcurrentTxnTestTableLocksDisabled) {
   auto resource_conn = ASSERT_RESULT(Connect());
   ASSERT_OK(resource_conn.Execute("CREATE TABLE p (a INT PRIMARY KEY)"));
   ASSERT_OK(resource_conn.Execute("INSERT INTO p VALUES (1)"));
@@ -69,6 +82,7 @@ TEST_F(AlterTableWithConcurrentTxnTest, TServerLeaderChange) {
   ASSERT_OK(txn_conn.Execute("BEGIN"));
   ASSERT_OK(txn_conn.Execute("INSERT INTO p VALUES (2)"));
 
+  // With table locks enabled, ddl_conn would fail to acquire the table lock.
   ASSERT_OK(ddl_conn.Execute("ALTER TABLE p ADD COLUMN b TEXT"));
   ASSERT_NO_FATALS(TriggerTServerLeaderChange());
 

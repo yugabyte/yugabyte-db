@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 YugaByte, Inc. and Contributors
+ * Copyright 2022 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -1777,7 +1777,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Allows enabling the volume encryption feature for new universes. Currently only"
               + " supported for AWS universes.",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableYbcBackgroundUpgrade =
       new ConfKeyInfo<>(
           "ybc.upgrade.enable_background_upgrade",
@@ -1823,7 +1823,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "ybc.success_marker_download_timeout_secs",
           ScopeType.GLOBAL,
           "Timeout for backup success marker download",
-          "Timeout for backup success marker download from backup lcoation",
+          "Timeout for backup success marker download from backup location",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<List> capacityReservationOperationsAws =
@@ -1858,5 +1858,29 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Exposes a new subtab on the platform administration page where users can enable"
               + " automated platform backups.",
           ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableSigningRegion =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.enable_signing_region",
+          ScopeType.GLOBAL,
+          "Enable Signing Region",
+          "Enable AWS signing region for S3 access",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> capacityReservationMaxRetries =
+      new ConfKeyInfo<>(
+          "yb.task.capacity_reservation.max_retries",
+          ScopeType.GLOBAL,
+          "Max retries for capacity reservation",
+          "Max retries for capacity reservation",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> capacityReservationRetrySeconds =
+      new ConfKeyInfo<>(
+          "yb.task.capacity_reservation.retry_delay_seconds",
+          ScopeType.GLOBAL,
+          "Wait( in seconds ) between each retry for capacity reservation failures",
+          "Wait( in seconds ) between each retry for capacity reservation failures",
+          ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 }

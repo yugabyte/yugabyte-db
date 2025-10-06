@@ -10,6 +10,8 @@ menu:
     parent: migration-types
     weight: 105
 type: docs
+rightNav:
+  hideH4: true
 ---
 
 The following page describes the steps to import data in CSV or TEXT format from flat files on your local disk or in cloud storage, including AWS S3, GCS buckets, and Azure Blob.

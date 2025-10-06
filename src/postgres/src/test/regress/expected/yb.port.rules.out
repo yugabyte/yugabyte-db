@@ -2719,6 +2719,22 @@ yb_servers_metrics| SELECT yb_servers_metrics.uuid,
     yb_servers_metrics.status,
     yb_servers_metrics.error
    FROM yb_servers_metrics() yb_servers_metrics(uuid, metrics, status, error);
+yb_tablet_metadata| SELECT t.tablet_id,
+        CASE
+            WHEN ((t.namespace = 'system'::text) AND (t.object_name = 'transactions'::text)) THEN NULL::oid
+            WHEN (length(t.object_uuid) <> 32) THEN NULL::oid
+            ELSE (((('x'::text || "right"(t.object_uuid, 8)))::bit(32))::integer)::oid
+        END AS oid,
+    t.namespace AS db_name,
+    t.object_name AS relname,
+    t.start_hash_code,
+    t.end_hash_code,
+    t.leader,
+    t.replicas
+   FROM ((yb_get_tablet_metadata() t(tablet_id, object_uuid, namespace, object_name, type, start_hash_code, end_hash_code, leader, replicas)
+     LEFT JOIN pg_class c ON ((c.relname = t.object_name)))
+     LEFT JOIN pg_namespace n ON ((n.oid = c.relnamespace)))
+  WHERE (((t.namespace = 'system'::text) AND (t.object_name = 'transactions'::text)) OR ((t.type = 'YSQL'::text) AND (n.nspname <> ALL (ARRAY['pg_catalog'::name, 'information_schema'::name]))));
 yb_terminated_queries| SELECT d.datname AS databasename,
     s.backend_pid,
     s.query_id,

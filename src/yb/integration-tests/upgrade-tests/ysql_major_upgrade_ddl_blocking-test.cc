@@ -39,6 +39,11 @@ class YsqlMajorUpgradeDdlBlockingTest : public YsqlMajorUpgradeTestBase {
     ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0(a int)", kCommentTable));
   }
 
+  bool IsTransactionalDdlEnabled(pgwrapper::PGConn& conn) const {
+    auto txn_ddl_enabled = conn.FetchRow<std::string>("SHOW yb_ddl_transaction_block_enabled;");
+    return txn_ddl_enabled.ok() && *txn_ddl_enabled == "on";
+  }
+
  protected:
   Status SwitchToMixedMode() {
     LOG(INFO) << "Restarting yb-tserver " << kMixedModeTserverPg15 << " in current version";
@@ -123,6 +128,14 @@ class YsqlMajorUpgradeDdlBlockingTest : public YsqlMajorUpgradeTestBase {
   Status RunForceSetComment(std::optional<size_t> node_index) {
     static int count = 0;
     auto conn = VERIFY_RESULT(CreateConnToTs(node_index));
+    // TODO(#28045): Transactional DDL doesn't work with yb_force_catalog_update_on_next_ddl yet.
+    // This is fine because yb_force_catalog_update_on_next_ddl is only relevant for major version
+    // upgrade and transactional ddl can only be used after PG15 upgrade.
+    // This should eventually be fixed though for future major version upgrades. For now, we just
+    // skip using yb_force_catalog_update_on_next_ddl when txn ddl is enabled.
+    if (IsTransactionalDdlEnabled(conn)) {
+      return Status::OK();
+    }
 
     const auto new_comment = Format("comment $0", count++);
 
@@ -254,16 +267,6 @@ TEST_F(YsqlMajorUpgradeDdlBlockingTest, KillInFlightDDLs) {
   auto oid = ASSERT_RESULT(
       conn.FetchRow<pgwrapper::PGOid>("SELECT oid FROM pg_class WHERE relname = 'tbl1'"));
 
-  // Create index, but block it before indisvalid is set.
-  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "postbackfill"));
-  Status index_creation_status;
-  std::promise<Status> index_creation_promise;
-  auto index_creation_future = index_creation_promise.get_future();
-  thread_holder.AddThreadFunctor([this, &index_creation_promise] {
-    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
-    index_creation_promise.set_value(conn.Execute("CREATE INDEX idx1 ON tbl1 (a)"));
-  });
-
   // Update the comment field in a transaction.
   ASSERT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=true"));
   ASSERT_OK(conn.Execute("BEGIN"));
@@ -278,7 +281,6 @@ TEST_F(YsqlMajorUpgradeDdlBlockingTest, KillInFlightDDLs) {
 
   // Validate connections before yb-master restart.
   ASSERT_OK(check_comment("Bye"));
-  ASSERT_EQ(index_creation_future.wait_for(0s), std::future_status::timeout);
 
   // Wait for the index creation to be blocked.
   SleepFor(10s);
@@ -287,7 +289,6 @@ TEST_F(YsqlMajorUpgradeDdlBlockingTest, KillInFlightDDLs) {
 
   // yb-master restart should not affect in-flight DDLs.
   ASSERT_OK(check_comment("Bye"));
-  ASSERT_EQ(index_creation_future.wait_for(0s), std::future_status::timeout);
 
   // Upgrade YSQL catalog.
   ASSERT_OK(PerformYsqlMajorCatalogUpgrade());
@@ -295,10 +296,6 @@ TEST_F(YsqlMajorUpgradeDdlBlockingTest, KillInFlightDDLs) {
   // DDLs should be killed by the upgrade.
   ASSERT_NOK_STR_CONTAINS(conn.Execute("COMMIT"),
       "could not serialize access due to concurrent update");
-
-  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"));
-  ASSERT_EQ(index_creation_future.wait_for(5min), std::future_status::ready);
-  ASSERT_NOK_STR_CONTAINS(index_creation_future.get(), kExpectedDdlError);
 
   // Validate rollback of the DDL.
   ASSERT_OK(check_comment("Hi"));

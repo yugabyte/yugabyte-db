@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.common.operator;
 
@@ -40,15 +40,18 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.K8SNodeResourceSpec;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.forms.YbcThrottleParametersResponse.ThrottleParamValue;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.CustomerTask.TargetType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Provider.UsabilityState;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.Secret;
@@ -62,6 +65,7 @@ import io.yugabyte.operator.v1alpha1.ybuniversespec.KubernetesOverrides;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YbcThrottleParameters;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YcqlPassword;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YsqlPassword;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.placementinfo.*;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -553,7 +557,6 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       taskParams.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.CREATE;
       taskParams.currentClusterType = ClusterType.PRIMARY;
       universeCRUDHandler.configure(customer, taskParams);
-
       log.info("Done configuring CRUDHandler");
 
       if (taskParams.clusters.stream()
@@ -640,6 +643,13 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
             currentUserIntent.deviceInfo.volumeSize = incomingIntent.deviceInfo.volumeSize;
             currentUserIntent.masterDeviceInfo.volumeSize =
                 incomingIntent.masterDeviceInfo.volumeSize;
+            // Update the placement info in the task params
+            if (ybUniverse.getSpec().getPlacementInfo() != null) {
+              universeDetails.getPrimaryCluster().placementInfo =
+                  createPlacementInfo(ybUniverse, cust.getUuid());
+              universeDetails.userAZSelected = true;
+            }
+            log.info("task params: {}", universeDetails.toString());
             taskUUID = updateYBUniverse(universeDetails, cust, ybUniverse);
             break;
           case KubernetesOverridesUpgrade:
@@ -771,15 +781,24 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
               upgradeYBUniverse(
                   universeDetails, cust, ybUniverse, incomingIntent.ybSoftwareVersion);
         } else if (operatorUtils.shouldUpdateYbUniverse(
-            currentUserIntent,
-            incomingIntent.numNodes,
-            incomingIntent.deviceInfo,
-            incomingIntent.masterDeviceInfo)) {
+                currentUserIntent,
+                incomingIntent.numNodes,
+                incomingIntent.deviceInfo,
+                incomingIntent.masterDeviceInfo)
+            || operatorUtils.checkIfPlacementInfoChanged(
+                universeDetails.getPrimaryCluster().placementInfo, ybUniverse)) {
           log.info("Calling Edit Universe");
           currentUserIntent.numNodes = incomingIntent.numNodes;
           currentUserIntent.deviceInfo.volumeSize = incomingIntent.deviceInfo.volumeSize;
           currentUserIntent.masterDeviceInfo.volumeSize =
               incomingIntent.masterDeviceInfo.volumeSize;
+          // Update the placement info in the task params
+          if (ybUniverse.getSpec().getPlacementInfo() != null) {
+            universeDetails.getPrimaryCluster().placementInfo =
+                createPlacementInfo(ybUniverse, cust.getUuid());
+            universeDetails.userAZSelected = true;
+          }
+
           kubernetesStatusUpdater.createYBUniverseEventStatus(
               universe, k8ResourceDetails, TaskType.EditKubernetesUniverse.name());
           if (checkAndHandleUniverseLock(
@@ -940,6 +959,15 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     Cluster cluster =
         new Cluster(
             ClusterType.PRIMARY, createUserIntent(ybUniverse, customerUUID, true, provider));
+    if (ybUniverse.getSpec().getPlacementInfo() != null) {
+      try {
+        cluster.placementInfo = createPlacementInfo(ybUniverse, customerUUID);
+        taskParams.userAZSelected = true;
+      } catch (Exception e) {
+        log.error("Invalid placement info: {}", e.getMessage(), e);
+        throw new RuntimeException("Invalid placement info: " + e.getMessage(), e);
+      }
+    }
     taskParams.clusters.add(cluster);
     List<Users> users = Users.getAll(customerUUID);
     if (users.isEmpty()) {
@@ -1047,6 +1075,225 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       kubernetesStatusUpdater.updateUniverseState(
           KubernetesResourceDetails.fromResource(ybUniverse),
           isCreate ? UniverseState.ERROR_CREATING : UniverseState.ERROR_UPDATING);
+      throw e;
+    }
+  }
+
+  private PlacementInfo createPlacementInfo(YBUniverse ybUniverse, UUID customerUUID) {
+    PlacementInfo placementInfo = new PlacementInfo();
+
+    try {
+      Provider provider = getProvider(ybUniverse, customerUUID);
+
+      PlacementInfo.PlacementCloud placementCloud = new PlacementInfo.PlacementCloud();
+      placementCloud.uuid = provider.getUuid();
+      placementCloud.code = provider.getCode();
+
+      // Set default region if specified
+      if (ybUniverse.getSpec().getPlacementInfo().getDefaultRegion() != null) {
+        String defaultRegionCode = ybUniverse.getSpec().getPlacementInfo().getDefaultRegion();
+        // Find the region by code and set its UUID
+        boolean defaultRegionFound =
+            provider.getRegions().stream()
+                .filter(region -> region.getCode().equals(defaultRegionCode))
+                .findFirst()
+                .map(
+                    region -> {
+                      placementCloud.defaultRegion = region.getUuid();
+                      log.debug(
+                          "Set default region: {} -> {}", defaultRegionCode, region.getUuid());
+                      return true;
+                    })
+                .orElse(false);
+
+        if (!defaultRegionFound) {
+          String errorMsg =
+              String.format(
+                  "Default region '%s' specified in CR not found in provider %s",
+                  defaultRegionCode, provider.getName());
+          log.error(errorMsg);
+          throw new IllegalArgumentException(errorMsg);
+        }
+      }
+
+      // Process regions from the CR
+      if (ybUniverse.getSpec().getPlacementInfo().getRegions() != null) {
+        List<io.yugabyte.operator.v1alpha1.ybuniversespec.placementinfo.Regions> regions =
+            ybUniverse.getSpec().getPlacementInfo().getRegions();
+        if (regions.isEmpty()) {
+          String errorMsg = "Regions list in .spec.placementInfo cannot be empty";
+          log.error(errorMsg);
+          throw new IllegalArgumentException(errorMsg);
+        }
+        log.debug("Processing {} regions from CR", regions.size());
+
+        for (io.yugabyte.operator.v1alpha1.ybuniversespec.placementinfo.Regions crRegion :
+            regions) {
+          PlacementInfo.PlacementRegion placementRegion = new PlacementInfo.PlacementRegion();
+
+          try {
+            String regionCode = crRegion.getCode();
+            if (regionCode == null || regionCode.trim().isEmpty()) {
+              String errorMsg = "Region code cannot be null or empty";
+              log.error(errorMsg);
+              throw new IllegalArgumentException(errorMsg);
+            }
+
+            placementRegion.code = regionCode;
+            log.debug("Processing region: {}", regionCode);
+
+            // Find the actual region from the provider to get UUID and name
+            Region providerRegion =
+                provider.getRegions().stream()
+                    .filter(region -> region.getCode().equals(regionCode))
+                    .findFirst()
+                    .orElse(null);
+
+            if (providerRegion == null) {
+              String errorMsg =
+                  String.format(
+                      "Region '%s' specified in CR not found in provider %s",
+                      regionCode, provider.getName());
+              log.error(errorMsg);
+              throw new IllegalArgumentException(errorMsg);
+            }
+
+            placementRegion.uuid = providerRegion.getUuid();
+            placementRegion.name = providerRegion.getName();
+            log.debug(
+                "Found provider region: {} -> {} ({})",
+                regionCode,
+                providerRegion.getUuid(),
+                providerRegion.getName());
+
+            // Process zones for this region
+            List<io.yugabyte.operator.v1alpha1.ybuniversespec.placementinfo.regions.Zones> zones =
+                crRegion.getZones();
+            if (zones == null || zones.isEmpty()) {
+              String errorMsg =
+                  String.format("Zones list cannot be null or empty for region %s", regionCode);
+              log.error(errorMsg);
+              throw new IllegalArgumentException(errorMsg);
+            }
+
+            log.debug("Processing {} zones for region {}", zones.size(), regionCode);
+
+            for (io.yugabyte.operator.v1alpha1.ybuniversespec.placementinfo.regions.Zones crZone :
+                zones) {
+              PlacementInfo.PlacementAZ placementAZ = new PlacementInfo.PlacementAZ();
+
+              try {
+                String zoneCode = crZone.getCode();
+                if (zoneCode == null || zoneCode.trim().isEmpty()) {
+                  String errorMsg =
+                      String.format("Zone code cannot be null or empty in region %s", regionCode);
+                  log.error(errorMsg);
+                  throw new IllegalArgumentException(errorMsg);
+                }
+
+                placementAZ.name = zoneCode;
+                log.debug("Processing zone: {} in region: {}", zoneCode, regionCode);
+
+                // Find the actual zone from the provider to get UUID
+                AvailabilityZone providerZone =
+                    providerRegion.getZones().stream()
+                        .filter(zone -> zone.getCode().equals(zoneCode))
+                        .findFirst()
+                        .orElse(null);
+
+                if (providerZone == null) {
+                  String errorMsg =
+                      String.format(
+                          "Zone '%s' specified in CR not found in provider region %s",
+                          zoneCode, regionCode);
+                  log.error(errorMsg);
+                  throw new IllegalArgumentException(errorMsg);
+                }
+
+                placementAZ.uuid = providerZone.getUuid();
+                log.debug(
+                    "Found provider zone: {} -> {} in region {}",
+                    zoneCode,
+                    providerZone.getUuid(),
+                    regionCode);
+
+                // Set zone properties from CR
+                int nodeCount = crZone.getNumNodes().intValue();
+                if (nodeCount < 1) {
+                  String errorMsg =
+                      String.format(
+                          "Zone %s in region %s must have at least 1 node, got: %d",
+                          zoneCode, regionCode, nodeCount);
+                  log.error(errorMsg);
+                  throw new IllegalArgumentException(errorMsg);
+                }
+                placementAZ.numNodesInAZ = nodeCount;
+                placementAZ.replicationFactor =
+                    1; // Dummy value for now, will be updated in configure step
+                Boolean preferred = crZone.getPreferred();
+                placementAZ.isAffinitized = preferred;
+                placementAZ.leaderPreference = placementAZ.isAffinitized ? 1 : 0;
+                placementRegion.azList.add(placementAZ);
+                log.debug(
+                    "Added zone {} with {} nodes to region {}",
+                    zoneCode,
+                    placementAZ.numNodesInAZ,
+                    regionCode);
+              } catch (Exception e) {
+                String errorMsg =
+                    String.format(
+                        "Error processing zones in region %s: %s", regionCode, e.getMessage());
+                log.error(errorMsg, e);
+                throw new IllegalArgumentException(errorMsg, e);
+              }
+            }
+
+            // Only add regions that have valid zones
+            if (!placementRegion.azList.isEmpty()) {
+              placementCloud.regionList.add(placementRegion);
+              log.debug(
+                  "Added region {} with {} zones",
+                  placementRegion.code,
+                  placementRegion.azList.size());
+            } else {
+              String errorMsg = String.format("Region %s has no valid zones", placementRegion.code);
+              log.error(errorMsg);
+              throw new IllegalArgumentException(errorMsg);
+            }
+
+          } catch (Exception e) {
+            String errorMsg =
+                String.format(
+                    "Error processing region %s: %s",
+                    placementRegion.code != null ? placementRegion.code : "unknown",
+                    e.getMessage());
+            log.error(errorMsg, e);
+            throw new IllegalArgumentException(errorMsg, e);
+          }
+        }
+      }
+
+      placementInfo.cloudList.add(placementCloud);
+
+      // Validate total nodes across zones matches the CR specification
+      int totalNodesInPlacement =
+          placementCloud.regionList.stream()
+              .mapToInt(region -> region.azList.stream().mapToInt(zone -> zone.numNodesInAZ).sum())
+              .sum();
+
+      int crNumNodes = ybUniverse.getSpec().getNumNodes().intValue();
+      if (totalNodesInPlacement != crNumNodes) {
+        String errorMsg =
+            String.format(
+                "Total nodes in placementInfo (%d) does not match numNodes in CR (%d)",
+                totalNodesInPlacement, crNumNodes);
+        log.error(errorMsg);
+        throw new IllegalArgumentException(errorMsg);
+      }
+      return placementInfo;
+
+    } catch (Exception e) {
+      log.error("Error creating placement info from CR: {}", e.getMessage(), e);
       throw e;
     }
   }

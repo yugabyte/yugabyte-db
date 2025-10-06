@@ -5136,12 +5136,12 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Hit",
-      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({node_prefix=~\"$dbcluster\", saved_name=\"rocksdb_block_cache_hit\", export_type=\"tserver_export\"}[300s]))) by (saved_name)",
+      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({export_type=\"tserver_export\", table_id=~\".+\", node_prefix=~\"$dbcluster\", saved_name=\"rocksdb_block_cache_hit\"}[300s]))) by (saved_name)",
       "refId" : "A"
     }, {
       "hide" : false,
       "legendFormat" : "Miss",
-      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({node_prefix=~\"$dbcluster\", saved_name=\"rocksdb_block_cache_miss\", export_type=\"tserver_export\"}[300s]))) by (saved_name)",
+      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({export_type=\"tserver_export\", table_id=~\".+\", node_prefix=~\"$dbcluster\", saved_name=\"rocksdb_block_cache_miss\"}[300s]))) by (saved_name)",
       "refId" : "B"
     } ],
     "gridPos" : {
@@ -5233,12 +5233,12 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Written",
-      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"rocksdb_compact_write_bytes\"}[300s]))) by (saved_name) / 1048576",
+      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({export_type=\"tserver_export\", table_id=~\".+\", node_prefix=~\"$dbcluster\", saved_name=\"rocksdb_compact_write_bytes\"}[300s]))) by (saved_name) / 1048576",
       "refId" : "A"
     }, {
       "hide" : false,
       "legendFormat" : "Read",
-      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"rocksdb_compact_read_bytes\"}[300s]))) by (saved_name) / 1048576",
+      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({export_type=\"tserver_export\", table_id=~\".+\", node_prefix=~\"$dbcluster\", saved_name=\"rocksdb_compact_read_bytes\"}[300s]))) by (saved_name) / 1048576",
       "refId" : "B"
     } ],
     "gridPos" : {
@@ -5330,7 +5330,7 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Written",
-      "expr" : "sum(sum by (namespace_name, table_id, table_name)(rate(log_bytes_logged{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s])))",
+      "expr" : "sum(sum by (namespace_name, table_id, table_name)(rate(log_bytes_logged{table_id=~\".+\", node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s])))",
       "refId" : "A"
     } ],
     "gridPos" : {
@@ -5422,17 +5422,17 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Sync",
-      "expr" : "(avg(rate(log_sync_latency_sum{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s]))) / (avg(rate(log_sync_latency_count{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s])))",
+      "expr" : "(avg(rate(log_sync_latency_sum{table_id=~\".+\", node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s]))) / (avg(rate(log_sync_latency_count{table_id=~\".+\", node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s])))",
       "refId" : "A"
     }, {
       "hide" : false,
       "legendFormat" : "Commit",
-      "expr" : "(avg(rate(log_group_commit_latency_sum{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s]))) / (avg(rate(log_group_commit_latency_count{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s])))",
+      "expr" : "(avg(rate(log_group_commit_latency_sum{table_id=~\".+\", node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s]))) / (avg(rate(log_group_commit_latency_count{table_id=~\".+\", node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s])))",
       "refId" : "B"
     }, {
       "hide" : false,
       "legendFormat" : "Append",
-      "expr" : "(avg(rate(log_append_latency_sum{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s]))) / (avg(rate(log_append_latency_count{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s])))",
+      "expr" : "(avg(rate(log_append_latency_sum{table_id=~\".+\", node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s]))) / (avg(rate(log_append_latency_count{table_id=~\".+\", node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s])))",
       "refId" : "C"
     } ],
     "gridPos" : {
@@ -5524,17 +5524,17 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Sync",
-      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"log_sync_latency_count\"}[300s]))) by (saved_name)",
+      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({export_type=\"tserver_export\", table_id=~\".+\", node_prefix=~\"$dbcluster\", saved_name=\"log_sync_latency_count\"}[300s]))) by (saved_name)",
       "refId" : "A"
     }, {
       "hide" : false,
       "legendFormat" : "Append",
-      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"log_append_latency_count\"}[300s]))) by (saved_name)",
+      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({export_type=\"tserver_export\", table_id=~\".+\", node_prefix=~\"$dbcluster\", saved_name=\"log_append_latency_count\"}[300s]))) by (saved_name)",
       "refId" : "B"
     }, {
       "hide" : false,
       "legendFormat" : "Commit",
-      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"log_group_commit_latency_count\"}[300s]))) by (saved_name)",
+      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({export_type=\"tserver_export\", table_id=~\".+\", node_prefix=~\"$dbcluster\", saved_name=\"log_group_commit_latency_count\"}[300s]))) by (saved_name)",
       "refId" : "C"
     } ],
     "gridPos" : {
@@ -5626,32 +5626,32 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "IntentsDB",
-      "expr" : "avg(sum by (saved_name, namespace_name, table_id, table_name)(avg_over_time({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"mem_tracker_IntentsDB_MemTable\"}[300s]))) by (saved_name)",
+      "expr" : "avg(sum by (saved_name, namespace_name, table_id, table_name)(avg_over_time({export_type=\"tserver_export\", table_id=~\".+\", node_prefix=~\"$dbcluster\", saved_name=\"mem_tracker_IntentsDB_MemTable\"}[300s]))) by (saved_name)",
       "refId" : "A"
     }, {
       "hide" : false,
       "legendFormat" : "IntentsDB",
-      "expr" : "avg(sum by (saved_name, namespace_name, table_id, table_name)(avg_over_time({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"mem_tracker_server_Tablets_overhead_PerTablet_IntentsDB_MemTable\"}[300s]))) by (saved_name)",
+      "expr" : "avg(sum by (saved_name, namespace_name, table_id, table_name)(avg_over_time({export_type=\"tserver_export\", table_id=~\".+\", node_prefix=~\"$dbcluster\", saved_name=\"mem_tracker_server_Tablets_overhead_PerTablet_IntentsDB_MemTable\"}[300s]))) by (saved_name)",
       "refId" : "B"
     }, {
       "hide" : false,
       "legendFormat" : "IntentsDB",
-      "expr" : "avg(sum by (saved_name, namespace_name, table_id, table_name)(avg_over_time({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"mem_tracker_server_PerTablet_IntentsDB_MemTable\"}[300s]))) by (saved_name)",
+      "expr" : "avg(sum by (saved_name, namespace_name, table_id, table_name)(avg_over_time({export_type=\"tserver_export\", table_id=~\".+\", node_prefix=~\"$dbcluster\", saved_name=\"mem_tracker_server_PerTablet_IntentsDB_MemTable\"}[300s]))) by (saved_name)",
       "refId" : "C"
     }, {
       "hide" : false,
       "legendFormat" : "RegularDB",
-      "expr" : "avg(sum by (saved_name, namespace_name, table_id, table_name)(avg_over_time({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"mem_tracker_server_Tablets_overhead_PerTablet_RegularDB_MemTable\"}[300s]))) by (saved_name)",
+      "expr" : "avg(sum by (saved_name, namespace_name, table_id, table_name)(avg_over_time({export_type=\"tserver_export\", table_id=~\".+\", node_prefix=~\"$dbcluster\", saved_name=\"mem_tracker_server_Tablets_overhead_PerTablet_RegularDB_MemTable\"}[300s]))) by (saved_name)",
       "refId" : "D"
     }, {
       "hide" : false,
       "legendFormat" : "RegularDB",
-      "expr" : "avg(sum by (saved_name, namespace_name, table_id, table_name)(avg_over_time({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"mem_tracker_server_PerTablet_RegularDB_MemTable\"}[300s]))) by (saved_name)",
+      "expr" : "avg(sum by (saved_name, namespace_name, table_id, table_name)(avg_over_time({export_type=\"tserver_export\", table_id=~\".+\", node_prefix=~\"$dbcluster\", saved_name=\"mem_tracker_server_PerTablet_RegularDB_MemTable\"}[300s]))) by (saved_name)",
       "refId" : "E"
     }, {
       "hide" : false,
       "legendFormat" : "RegularDB",
-      "expr" : "avg(sum by (saved_name, namespace_name, table_id, table_name)(avg_over_time({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"mem_tracker_RegularDB_MemTable\"}[300s]))) by (saved_name)",
+      "expr" : "avg(sum by (saved_name, namespace_name, table_id, table_name)(avg_over_time({export_type=\"tserver_export\", table_id=~\".+\", node_prefix=~\"$dbcluster\", saved_name=\"mem_tracker_RegularDB_MemTable\"}[300s]))) by (saved_name)",
       "refId" : "F"
     } ],
     "gridPos" : {
@@ -5743,17 +5743,17 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Leader",
-      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"leader_memory_pressure_rejections\"}[300s]))) by (saved_name)",
+      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({export_type=\"tserver_export\", table_id=~\".+\", node_prefix=~\"$dbcluster\", saved_name=\"leader_memory_pressure_rejections\"}[300s]))) by (saved_name)",
       "refId" : "A"
     }, {
       "hide" : false,
       "legendFormat" : "Follower",
-      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"follower_memory_pressure_rejections\"}[300s]))) by (saved_name)",
+      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({export_type=\"tserver_export\", table_id=~\".+\", node_prefix=~\"$dbcluster\", saved_name=\"follower_memory_pressure_rejections\"}[300s]))) by (saved_name)",
       "refId" : "B"
     }, {
       "hide" : false,
       "legendFormat" : "Operations",
-      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"operation_memory_pressure_rejections\"}[300s]))) by (saved_name)",
+      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({export_type=\"tserver_export\", table_id=~\".+\", node_prefix=~\"$dbcluster\", saved_name=\"operation_memory_pressure_rejections\"}[300s]))) by (saved_name)",
       "refId" : "C"
     } ],
     "gridPos" : {
@@ -5845,12 +5845,12 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Write",
-      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(avg_over_time({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"write_operations_inflight\"}[300s]))) by (saved_name)",
+      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(avg_over_time({export_type=\"tserver_export\", table_id=~\".+\", node_prefix=~\"$dbcluster\", saved_name=\"write_operations_inflight\"}[300s]))) by (saved_name)",
       "refId" : "A"
     }, {
       "hide" : false,
       "legendFormat" : "All",
-      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(avg_over_time({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"all_operations_inflight\"}[300s]))) by (saved_name)",
+      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(avg_over_time({export_type=\"tserver_export\", table_id=~\".+\", node_prefix=~\"$dbcluster\", saved_name=\"all_operations_inflight\"}[300s]))) by (saved_name)",
       "refId" : "B"
     } ],
     "gridPos" : {
@@ -5942,7 +5942,7 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Read",
-      "expr" : "(avg(rate(ql_read_latency_sum{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s]))) / (avg(rate(ql_read_latency_count{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s])))",
+      "expr" : "(avg(rate(ql_read_latency_sum{table_id=~\".+\", node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s]))) / (avg(rate(ql_read_latency_count{table_id=~\".+\", node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s])))",
       "refId" : "A"
     } ],
     "gridPos" : {
@@ -6034,7 +6034,7 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Read",
-      "expr" : "sum(sum by (namespace_name, table_id, table_name)(rate(ql_read_latency_count{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s])))",
+      "expr" : "sum(sum by (namespace_name, table_id, table_name)(rate(ql_read_latency_count{table_id=~\".+\", node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s])))",
       "refId" : "A"
     } ],
     "gridPos" : {
@@ -6126,12 +6126,12 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Blooms Useful",
-      "expr" : "avg(sum by (saved_name, namespace_name, table_id, table_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"rocksdb_bloom_filter_useful\"}[300s]))) by (saved_name)",
+      "expr" : "avg(sum by (saved_name, namespace_name, table_id, table_name)(rate({export_type=\"tserver_export\", table_id=~\".+\", node_prefix=~\"$dbcluster\", saved_name=\"rocksdb_bloom_filter_useful\"}[300s]))) by (saved_name)",
       "refId" : "A"
     }, {
       "hide" : false,
       "legendFormat" : "Blooms Checked",
-      "expr" : "avg(sum by (saved_name, namespace_name, table_id, table_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"rocksdb_bloom_filter_checked\"}[300s]))) by (saved_name)",
+      "expr" : "avg(sum by (saved_name, namespace_name, table_id, table_name)(rate({export_type=\"tserver_export\", table_id=~\".+\", node_prefix=~\"$dbcluster\", saved_name=\"rocksdb_bloom_filter_checked\"}[300s]))) by (saved_name)",
       "refId" : "B"
     } ],
     "gridPos" : {
@@ -6223,17 +6223,17 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Seek",
-      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"rocksdb_number_db_seek\"}[300s]))) by (saved_name)",
+      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({export_type=\"tserver_export\", table_id=~\".+\", node_prefix=~\"$dbcluster\", saved_name=\"rocksdb_number_db_seek\"}[300s]))) by (saved_name)",
       "refId" : "A"
     }, {
       "hide" : false,
       "legendFormat" : "Prev",
-      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"rocksdb_number_db_prev\"}[300s]))) by (saved_name)",
+      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({export_type=\"tserver_export\", table_id=~\".+\", node_prefix=~\"$dbcluster\", saved_name=\"rocksdb_number_db_prev\"}[300s]))) by (saved_name)",
       "refId" : "B"
     }, {
       "hide" : false,
       "legendFormat" : "Next",
-      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"rocksdb_number_db_next\"}[300s]))) by (saved_name)",
+      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({export_type=\"tserver_export\", table_id=~\".+\", node_prefix=~\"$dbcluster\", saved_name=\"rocksdb_number_db_next\"}[300s]))) by (saved_name)",
       "refId" : "C"
     } ],
     "gridPos" : {
@@ -6325,7 +6325,7 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Write",
-      "expr" : "(avg(rate(ql_write_latency_sum{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s]))) / (avg(rate(ql_write_latency_count{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s])))",
+      "expr" : "(avg(rate(ql_write_latency_sum{table_id=~\".+\", node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s]))) / (avg(rate(ql_write_latency_count{table_id=~\".+\", node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s])))",
       "refId" : "A"
     } ],
     "gridPos" : {
@@ -6417,7 +6417,7 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Write Lock",
-      "expr" : "(avg(rate(write_lock_latency_sum{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s]))) / (avg(rate(write_lock_latency_count{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s])))",
+      "expr" : "(avg(rate(write_lock_latency_sum{table_id=~\".+\", node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s]))) / (avg(rate(write_lock_latency_count{table_id=~\".+\", node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s])))",
       "refId" : "A"
     } ],
     "gridPos" : {
@@ -6509,7 +6509,7 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Rejections",
-      "expr" : "sum(sum by (namespace_name, table_id, table_name)(rate(majority_sst_files_rejections{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s])))",
+      "expr" : "sum(sum by (namespace_name, table_id, table_name)(rate(majority_sst_files_rejections{table_id=~\".+\", node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s])))",
       "refId" : "A"
     } ],
     "gridPos" : {
@@ -6601,7 +6601,7 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Write",
-      "expr" : "sum(sum by (namespace_name, table_id, table_name)(rate(ql_write_latency_count{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s])))",
+      "expr" : "sum(sum by (namespace_name, table_id, table_name)(rate(ql_write_latency_count{table_id=~\".+\", node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s])))",
       "refId" : "A"
     } ],
     "gridPos" : {
@@ -12723,7 +12723,7 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Current Lag",
-      "expr" : "max by (saved_name)(cdcsdk_sent_lag_micros{node_prefix=~\"$dbcluster\"}) / 1000",
+      "expr" : "max by (saved_name)(cdcsdk_flush_lag{node_prefix=~\"$dbcluster\"}) / 1000",
       "refId" : "A"
     } ],
     "gridPos" : {

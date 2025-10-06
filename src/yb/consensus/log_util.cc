@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -34,7 +34,6 @@
 
 #include <algorithm>
 #include <array>
-#include <limits>
 #include <utility>
 
 #include "yb/ash/wait_state.h"
@@ -42,7 +41,6 @@
 #include "yb/common/hybrid_time.h"
 
 #include "yb/consensus/consensus.messages.h"
-#include "yb/consensus/opid_util.h"
 #include "yb/consensus/log.messages.h"
 #include "yb/consensus/log_index.h"
 
@@ -59,8 +57,8 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/env_util.h"
-#include "yb/util/flags.h"
 #include "yb/util/logging.h"
+#include "yb/util/mem_tracker.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/result.h"
@@ -124,8 +122,7 @@ TAG_FLAG(save_index_into_wal_segments, advanced);
 
 DECLARE_bool(store_min_start_ht_running_txns);
 
-namespace yb {
-namespace log {
+namespace yb::log {
 
 using env_util::ReadFully;
 using std::vector;
@@ -172,13 +169,14 @@ LogOptions::LogOptions()
 }
 
 Result<scoped_refptr<ReadableLogSegment>> ReadableLogSegment::Open(
-    Env* env, const std::string& path) {
+    Env* env, const std::string& path, std::shared_ptr<MemTracker> read_wal_mem_tracker) {
   VLOG(1) << "Parsing wal segment: " << path;
   shared_ptr<RandomAccessFile> readable_file;
-  RETURN_NOT_OK_PREPEND(env_util::OpenFileForRandom(env, path, &readable_file),
-                        "Unable to open file for reading");
+  RETURN_NOT_OK_PREPEND(
+      env_util::OpenFileForRandom(env, path, &readable_file), "Unable to open file for reading");
 
-  auto segment = make_scoped_refptr<ReadableLogSegment>(path, readable_file);
+  auto segment =
+      make_scoped_refptr<ReadableLogSegment>(path, readable_file, std::move(read_wal_mem_tracker));
   if (!VERIFY_RESULT_PREPEND(segment->Init(), "Unable to initialize segment")) {
     return nullptr;
   }
@@ -186,13 +184,15 @@ Result<scoped_refptr<ReadableLogSegment>> ReadableLogSegment::Open(
 }
 
 ReadableLogSegment::ReadableLogSegment(
-    std::string path, shared_ptr<RandomAccessFile> readable_file)
+    std::string path, shared_ptr<RandomAccessFile> readable_file,
+    std::shared_ptr<MemTracker> read_wal_mem_tracker)
     : path_(std::move(path)),
       file_size_(0),
       readable_to_offset_(0),
       readable_file_(std::move(readable_file)),
       is_initialized_(false),
-      footer_was_rebuilt_(false) {
+      footer_was_rebuilt_(false),
+      read_wal_mem_tracker_(std::move(read_wal_mem_tracker)) {
   CHECK_OK(env_util::OpenFileForRandom(Env::Default(), path_, &readable_file_checkpoint_));
 }
 
@@ -945,11 +945,45 @@ Result<std::shared_ptr<LWLogEntryBatchPB>> ReadableLogSegment::ReadEntryBatch(
                    header.msg_length, *offset, path_, limit));
   }
 
+  // Use standard arena starting size for now; this seems too big in many cases though.
+  static constexpr uint32_t kStartBlockSize = ThreadSafeArena::kStartBlockSize;
+
+  // TODO(lw_uc) embed buffer and first arena block into holder itself.
+  struct DataHolder {
+    RefCntBuffer buffer;
+    ThreadSafeArena arena{/*initial_buffer_size=*/kStartBlockSize};
+    int64_t consumed = 0;
+    std::shared_ptr<MemTracker> read_wal_mem_tracker;
+
+    explicit DataHolder(
+        const RefCntBuffer& buffer_, std::shared_ptr<MemTracker> read_wal_mem_tracker_)
+        : buffer(buffer_), read_wal_mem_tracker(std::move(read_wal_mem_tracker_)) {}
+
+    ~DataHolder() {
+      if (read_wal_mem_tracker) {
+        read_wal_mem_tracker->Release(consumed);
+      }
+    }
+  };
+
+  // Estimate that arena after deserializing message will take about the same space as the message
+  // unless that would be below the arena minimum size.
+  int64_t estimated_memory_needed = header.msg_length;
+  if (estimated_memory_needed < kStartBlockSize) {
+    estimated_memory_needed = kStartBlockSize;
+  }
+  // Space for RefCntBuffer buffer.
+  estimated_memory_needed += header.msg_length;
+
+  if (read_wal_mem_tracker_) {
+    read_wal_mem_tracker_->Consume(estimated_memory_needed);
+  }
   RefCntBuffer buffer(header.msg_length);
+  auto holder = std::make_shared<DataHolder>(buffer, read_wal_mem_tracker_);
+  holder->consumed = estimated_memory_needed;
+
   Slice entry_batch_slice;
-
   Status s = readable_file()->Read(*offset, header.msg_length, &entry_batch_slice, buffer.data());
-
   if (!s.ok()) {
     return STATUS_FORMAT(
         IOError, "Could not read entry at offset: $0, length: $1. Cause: $2", *offset,
@@ -965,22 +999,20 @@ Result<std::shared_ptr<LWLogEntryBatchPB>> ReadableLogSegment::ReadEntryBatch(
                                          header.msg_crc, read_crc));
   }
 
-  // TODO(lw_uc) embed buffer and first arena block into holder itself.
-  struct DataHolder {
-    RefCntBuffer buffer;
-    ThreadSafeArena arena;
-
-    explicit DataHolder(const RefCntBuffer& buffer_) : buffer(buffer_) {}
-  };
-
-  auto holder = std::make_shared<DataHolder>(buffer);
   auto batch = holder->arena.NewArenaObject<LWLogEntryBatchPB>();
   s = batch->ParseFromSlice(entry_batch_slice.Prefix(header.msg_length));
-
   if (!s.ok()) {
     return STATUS_FORMAT(
         Corruption, "Failed to parse PB at offset: $0, length: $1. Cause: $2", *offset,
         header.msg_length, s);
+  }
+
+  if (read_wal_mem_tracker_) {
+    int64_t actual_memory_used =
+        header.msg_length + static_cast<int64_t>(holder->arena.memory_footprint());
+    int64_t adjustment = actual_memory_used - holder->consumed;
+    read_wal_mem_tracker_->Consume(adjustment);  // This is a Release if adjustment is negative.
+    holder->consumed = actual_memory_used;
   }
 
   *offset += entry_batch_slice.size();
@@ -1325,5 +1357,4 @@ void UpdateSegmentFooterIndexes(
 }
 
 
-}  // namespace log
-}  // namespace yb
+} // namespace yb::log

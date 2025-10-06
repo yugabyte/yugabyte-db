@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 YugaByte, Inc. and Contributors
+ * Copyright 2019 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -1198,6 +1198,9 @@ public class HealthChecker {
     if (nodeCheckContext.ddlAtomicityCheck) {
       commandToRun.add("--ddl_atomicity_check=true");
       commandToRun.add("--master_leader_url=" + nodeCheckContext.getMasterLeaderUrl());
+    }
+    if (!universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd) {
+      commandToRun.add("--cronbased");
     }
     ShellResponse response =
         nodeUniverseManager

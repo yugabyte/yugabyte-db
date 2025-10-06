@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks;
 
@@ -56,11 +56,8 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
   private Universe defaultUniverse;
   private YBClient mockClient;
 
-  @Override
   @Before
   public void setUp() {
-    super.setUp();
-
     Region region = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
     AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
     // create default universe

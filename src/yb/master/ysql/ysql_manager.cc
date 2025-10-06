@@ -16,13 +16,17 @@
 #include "yb/client/schema.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/common_flags.h"
 #include "yb/common/schema_pbutil.h"
 
-#include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager-internal.h"
+#include "yb/master/catalog_manager.h"
+#include "yb/master/master.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/ysql/ysql_initdb_major_upgrade_handler.h"
+
+#include "yb/rpc/messenger.h"
 
 #include "yb/tserver/ysql_advisory_lock_table.h"
 
@@ -37,16 +41,39 @@ DEFINE_RUNTIME_bool(master_auto_run_initdb, false,
 DEFINE_NON_RUNTIME_uint32(num_advisory_locks_tablets, 1, "Number of advisory lock tablets");
 DEFINE_validator(num_advisory_locks_tablets, FLAG_GT_VALUE_VALIDATOR(0));
 
+DEFINE_NON_RUNTIME_int32(ysql_tablespace_info_refresh_secs, 30,
+    "Frequency at which the table to tablespace information will be updated in master "
+    "from pg catalog tables. A value of -1 disables the refresh task.");
+
+DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
+DECLARE_bool(enable_ysql_tablespaces_for_placement);
+DECLARE_bool(ysql_enable_auto_analyze_infra);
+
+DECLARE_int32(heartbeat_interval_ms);
+
 namespace yb::master {
+
+using namespace std::literals;
 
 YsqlManager::YsqlManager(
     Master& master, CatalogManager& catalog_manager, SysCatalogTable& sys_catalog)
     : master_(master),
       catalog_manager_(catalog_manager),
       sys_catalog_(sys_catalog),
-      ysql_catalog_config_(sys_catalog) {
+      ysql_catalog_config_(sys_catalog),
+      tablespace_bg_task_running_(false) {
   ysql_initdb_and_major_upgrade_helper_ = std::make_unique<YsqlInitDBAndMajorUpgradeHandler>(
       master, ysql_catalog_config_, catalog_manager, sys_catalog, *catalog_manager.AsyncTaskPool());
+}
+
+void YsqlManager::StartShutdown() {
+  refresh_ysql_pg_catalog_versions_task_.StartShutdown();
+  refresh_ysql_tablespace_info_task_.StartShutdown();
+}
+
+void YsqlManager::CompleteShutdown() {
+  refresh_ysql_pg_catalog_versions_task_.CompleteShutdown();
+  refresh_ysql_tablespace_info_task_.CompleteShutdown();
 }
 
 void YsqlManager::Clear() { ysql_catalog_config_.Reset(); }
@@ -300,6 +327,176 @@ Result<std::string> YsqlManager::GetPgSchemaName(
         MasterError(MasterErrorPB::DOCDB_TABLE_NOT_COMMITTED));
   }
   return sys_catalog_.ReadPgNamespaceNspname(oids.database_oid, relnamespace_oid, read_time);
+}
+
+void YsqlManager::RunBgTasks(const LeaderEpoch& epoch) {
+  if (!FLAGS_enable_ysql) {
+    return;
+  }
+
+  // Avoid creating system tables if we are in the middle of upgrade.
+  if (!IsMajorUpgradeInProgress()) {
+    WARN_NOT_OK(
+        CreateYbAdvisoryLocksTableIfNeeded(epoch), "Failed to create YB advisory locks table");
+
+    if (FLAGS_ysql_enable_auto_analyze_infra)
+      WARN_NOT_OK(CreatePgAutoAnalyzeService(epoch), "Failed to create Auto Analyze service");
+  }
+
+  StartTablespaceBgTaskIfStopped();
+  StartPgCatalogVersionsBgTaskIfStopped();
+}
+
+Status YsqlManager::CreatePgAutoAnalyzeService(const LeaderEpoch& epoch) {
+  if (pg_auto_analyze_service_created_ || !FLAGS_enable_ysql) {
+    return Status::OK();
+  }
+
+  client::YBSchemaBuilder schema_builder;
+  schema_builder.AddColumn(kPgAutoAnalyzeTableId)->HashPrimaryKey()->Type(DataType::STRING);
+  schema_builder.AddColumn(kPgAutoAnalyzeMutations)->Type(DataType::INT64);
+  schema_builder.AddColumn(kPgAutoAnalyzeLastAnalyzeInfo)->Type(DataType::JSONB);
+  schema_builder.AddColumn(kPgAutoAnalyzeCurrentAnalyzeInfo)->Type(DataType::JSONB);
+
+  client::YBSchema yb_schema;
+  CHECK_OK(schema_builder.Build(&yb_schema));
+
+  auto s = catalog_manager_.CreateStatefulService(
+      StatefulServiceKind::PG_AUTO_ANALYZE, yb_schema, epoch);
+  // It is possible that the table was already created. If so, there is nothing to do so we just
+  // ignore the "AlreadyPresent" error.
+  if (!s.ok() && !s.IsAlreadyPresent()) {
+    return s;
+  }
+
+  pg_auto_analyze_service_created_ = true;
+  return Status::OK();
+}
+
+void YsqlManager::StartTablespaceBgTaskIfStopped() {
+  if (FLAGS_ysql_tablespace_info_refresh_secs <= 0 ||
+      !FLAGS_enable_ysql_tablespaces_for_placement || FLAGS_create_initial_sys_catalog_snapshot) {
+    // The tablespace bg task is disabled. Nothing to do.
+    return;
+  }
+
+  const bool is_task_running = tablespace_bg_task_running_.exchange(true);
+  if (is_task_running) {
+    // Task already running, nothing to do.
+    return;
+  }
+
+  ScheduleRefreshTablespaceInfoTask(true /* schedule_now */);
+}
+
+void YsqlManager::ScheduleRefreshTablespaceInfoTask(const bool schedule_now) {
+  int wait_time = 0;
+
+  if (!schedule_now) {
+    wait_time = FLAGS_ysql_tablespace_info_refresh_secs;
+    if (wait_time <= 0) {
+      // The tablespace refresh task has been disabled.
+      tablespace_bg_task_running_ = false;
+      return;
+    }
+  }
+
+  refresh_ysql_tablespace_info_task_.Bind(&master_.messenger()->scheduler());
+  refresh_ysql_tablespace_info_task_.Schedule(
+      [this](const Status& status) {
+        Status s =
+            catalog_manager_.SubmitBackgroundTask([this] { RefreshTablespaceInfoPeriodically(); });
+        if (!s.IsOk()) {
+          // Failed to submit task to the thread pool. Mark that the task is now
+          // no longer running.
+          LOG(WARNING) << "Failed to schedule: RefreshTablespaceInfoPeriodically";
+          tablespace_bg_task_running_ = false;
+        }
+      },
+      wait_time * 1s);
+}
+
+void YsqlManager::RefreshTablespaceInfoPeriodically() {
+  if (!FLAGS_enable_ysql_tablespaces_for_placement) {
+    tablespace_bg_task_running_ = false;
+    return;
+  }
+
+  LeaderEpoch epoch;
+  {
+    SCOPED_LEADER_SHARED_LOCK(l, &catalog_manager_);
+    if (!l.IsInitializedAndIsLeader()) {
+      LOG(INFO) << "No longer the leader, so cancelling tablespace info task";
+      tablespace_bg_task_running_ = false;
+      return;
+    }
+    epoch = l.epoch();
+  }
+
+  // Refresh the tablespace info in memory.
+  Status s = catalog_manager_.DoRefreshTablespaceInfo(epoch);
+  if (!s.IsOk()) {
+    LOG(WARNING) << "Tablespace refresh task failed with error " << s.ToString();
+  }
+
+  // Schedule the next iteration of the task.
+  ScheduleRefreshTablespaceInfoTask();
+}
+
+void YsqlManager::StartPgCatalogVersionsBgTaskIfStopped() {
+  // In per-database catalog version mode, if heartbeat PG catalog versions
+  // cache is enabled, start a background task to periodically read the
+  // pg_yb_catalog_version table and cache the result.
+  if (FLAGS_ysql_enable_db_catalog_version_mode &&
+      FLAGS_enable_heartbeat_pg_catalog_versions_cache) {
+    const bool is_task_running = pg_catalog_versions_bg_task_running_.exchange(true);
+    if (is_task_running) {
+      // Task already running, nothing to do.
+      return;
+    }
+    ScheduleRefreshPgCatalogVersionsTask(true /* schedule_now */);
+  }
+}
+
+void YsqlManager::ScheduleRefreshPgCatalogVersionsTask(bool schedule_now) {
+  // Schedule the next refresh catalog versions task. Do it twice every
+  // tserver to master heartbeat so we have reasonably recent catalog versions
+  // used for heartbeat response.
+  auto wait_time = schedule_now ? 0 : (FLAGS_heartbeat_interval_ms / 2);
+  refresh_ysql_pg_catalog_versions_task_.Bind(&master_.messenger()->scheduler());
+  refresh_ysql_pg_catalog_versions_task_.Schedule(
+      [this](const Status& status) {
+        Status s = catalog_manager_.SubmitBackgroundTask(
+            [this] { RefreshPgCatalogVersionInfoPeriodically(); });
+        if (!s.ok()) {
+          LOG(WARNING) << "Failed to schedule: RefreshPgCatalogVersionInfoPeriodically";
+          pg_catalog_versions_bg_task_running_ = false;
+          catalog_manager_.ResetCachedCatalogVersions();
+        }
+      },
+      wait_time * 1ms);
+}
+
+void YsqlManager::RefreshPgCatalogVersionInfoPeriodically() {
+  DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
+  DCHECK(FLAGS_enable_heartbeat_pg_catalog_versions_cache);
+  DCHECK(pg_catalog_versions_bg_task_running_);
+
+  {
+    SCOPED_LEADER_SHARED_LOCK(l, &catalog_manager_);
+    if (!l.IsInitializedAndIsLeader()) {
+      VLOG(2) << "No longer the leader, skipping catalog versions task";
+      pg_catalog_versions_bg_task_running_ = false;
+      catalog_manager_.ResetCachedCatalogVersions();
+      return;
+    }
+  }
+
+  // Refresh the catalog versions in memory.
+  VLOG(2) << "Running " << __func__ << " task";
+  catalog_manager_.RefreshPgCatalogVersionInfo();
+
+  ScheduleRefreshPgCatalogVersionsTask();
 }
 
 }  // namespace yb::master

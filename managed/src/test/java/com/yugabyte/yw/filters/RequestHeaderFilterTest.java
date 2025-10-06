@@ -1,4 +1,4 @@
-package com.yugabyte.yw.filters; // Copyright (c) YugaByte, Inc.
+package com.yugabyte.yw.filters; // Copyright (c) YugabyteDB, Inc.
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;

@@ -1,5 +1,6 @@
 import { FC, ChangeEvent, FocusEvent, useState } from 'react';
 import _ from 'lodash';
+import clsx from 'clsx';
 import { toast } from 'react-toastify';
 import { useDispatch, useSelector } from 'react-redux';
 import { useMutation, useQuery } from 'react-query';
@@ -19,12 +20,13 @@ import {
   YBButton
 } from '../../../../components';
 import { api } from '../../../../utils/api';
+import { getPITRConfigs } from '@app/components/backupv2/common/PitrAPI';
 import {
   getPrimaryCluster,
   createErrorMessage,
   transitToUniverse
 } from '../../universe-form/utils/helpers';
-import { PRECHECK_UPGRADE_TYPE, Universe } from '../../universe-form/utils/dto';
+import { Universe } from '../../universe-form/utils/dto';
 import { fetchUniverseInfo, fetchUniverseInfoResponse } from '../../../../../actions/universe';
 import {
   fetchCustomerTasks,
@@ -33,7 +35,6 @@ import {
   showTaskInDrawer
 } from '../../../../../actions/tasks';
 import { YBLoadingCircleIcon } from '../../../../../components/common/indicators';
-import { fetchTaskUntilItCompletes } from '../../../../../actions/xClusterReplication';
 import { DBUpgradeFormFields, UPGRADE_TYPE, DBUpgradePayload } from './utils/types';
 import { TOAST_AUTO_DISMISS_INTERVAL } from '../../universe-form/utils/constants';
 import { RuntimeConfigKey } from '../../../../helpers/constants';
@@ -45,7 +46,7 @@ import {
 import { useIsTaskNewUIEnabled } from '../../../tasks/TaskUtils';
 //Rbac
 import { RBAC_ERR_MSG_NO_PERM } from '../../../rbac/common/validator/ValidatorUtils';
-import { isEmptyString, isNonEmptyString } from '../../../../../utils/ObjectUtils';
+import { isNonEmptyString } from '../../../../../utils/ObjectUtils';
 import { hasNecessaryPerm } from '../../../rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../rbac/ApiAndUserPermMapping';
 //imported styles
@@ -138,6 +139,12 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
     universeData?.universeDetails?.xclusterInfo?.sourceXClusterConfigs?.length > 0 ||
     universeData?.universeDetails?.xclusterInfo?.targetXClusterConfigs?.length > 0;
 
+  const { data: pitrConfig } = useQuery(['pitrConfig', universeUUID], () => getPITRConfigs(universeUUID), { enabled: open });
+
+  const hasPITRConfig = pitrConfig?.length > 0;
+
+  const hasXclusterDR = universeData?.drConfigUuidsAsSource?.length > 0 || universeData?.drConfigUuidsAsTarget?.length > 0;
+
   const { data: globalRuntimeConfigs, isLoading } = useQuery(['globalRuntimeConfigs'], () =>
     fetchGlobalRunTimeConfigs(true).then((res: any) => res.data)
   );
@@ -225,9 +232,8 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
     ...versionsAboveCurrent.map((e: any) => ({
       version: e,
       info: releases[e],
-      series: `v${e.split('.')[0]}.${e.split('.')[1]} Series ${
-        isVersionStable(e) ? '(Stable)' : '(Preview)'
-      }`
+      series: `v${e.split('.')[0]}.${e.split('.')[1]} Series ${isVersionStable(e) ? '(Stable)' : '(Preview)'
+        }`
     }))
   ];
 
@@ -599,18 +605,18 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
                 suppressFormatError: true
               }
             }) >= 0 && (
-              <Box className={classes.greyFooter}>
-                <img src={BulbIcon} alt="--" height={'32px'} width={'32px'} />
-                <Box ml={0.5} mt={0.5}>
-                  <Typography variant="body2">
-                    {t('universeActions.dbRollbackUpgrade.footerMsg1')}
-                    <b>{t('universeActions.dbRollbackUpgrade.rollbackPrevious')}</b>&nbsp;
-                    {t('universeActions.dbRollbackUpgrade.footerMsg2')}
-                    <div>{t('universeActions.dbRollbackUpgrade.footerMsg3')}</div>
-                  </Typography>
+                <Box className={classes.greyFooter}>
+                  <img src={BulbIcon} alt="--" height={'32px'} width={'32px'} />
+                  <Box ml={0.5} mt={0.5}>
+                    <Typography variant="body2">
+                      {t('universeActions.dbRollbackUpgrade.footerMsg1')}
+                      <b>{t('universeActions.dbRollbackUpgrade.rollbackPrevious')}</b>&nbsp;
+                      {t('universeActions.dbRollbackUpgrade.footerMsg2')}
+                      <div>{t('universeActions.dbRollbackUpgrade.footerMsg3')}</div>
+                    </Typography>
+                  </Box>
                 </Box>
-              </Box>
-            )}
+              )}
             {universeHasXcluster && (
               <Box className={classes.xclusterBanner}>
                 <Box display="flex" mr={1}>
@@ -628,6 +634,39 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
                 </Box>
               </Box>
             )}
+            {
+              (hasXclusterDR || hasPITRConfig) && (
+                <Box className={clsx(classes.xclusterBanner, classes.pitrBanner)}>
+                  <Box display="flex" mr={1}>
+                    <img src={WarningIcon} alt="---" height={'22px'} width="22px" />
+                  </Box>
+                  <Box display="flex" flexDirection={'column'} mt={0.5} width="100%">
+                    {
+                      hasPITRConfig && (
+                        <span>
+                          <Trans
+                            i18nKey="universeActions.dbRollbackUpgrade.pitrNotSupported"
+                            components={{ b: <b /> }}
+                          />
+                        </span>
+                      )
+                    }
+                    {
+                      hasXclusterDR && (
+                        <Box display="flex" mt={hasPITRConfig ? 1 : 0}>
+                          <span>
+                            <Trans
+                              i18nKey="universeActions.dbRollbackUpgrade.xClusterWarning2"
+                              components={{ b: <b /> }}
+                            />
+                          </span>
+                        </Box>
+                      )
+                    }
+                  </Box>
+                </Box>
+              )
+            }
           </Box>
         </Box>
       </FormProvider>

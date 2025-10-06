@@ -97,10 +97,10 @@ Note that upgrading a PostgreSQL 11-based universe ({{<release "2024.2">}} and e
 | [Query ID](../../../architecture/query-layer/#query-id)
 | Unique query ID to track a query across pg_stat_activity, EXPLAIN VERBOSE, and pg_stat_statements. |
 
-| [Stats on planning times](../../../explore/query-1-performance/pg-stat-statements/)
+| [Stats on planning times](../../../launch-and-manage/monitor-and-alert/query-tuning/pg-stat-statements/)
 | pg_stat_statements can now track the planning time of statements. |
 
-| [Granular stats reset](../../../explore/query-1-performance/pg-stat-statements/#reset-statistics)
+| [Granular stats reset](../../../launch-and-manage/monitor-and-alert/query-tuning/pg-stat-statements/#reset-statistics)
 | Resetting statistics via `pg_stat_statements_reset` is now granular at user, database, and query levels. |
 
 | [Sampled logging](../../../explore/observability/logging/#log-management)
@@ -151,7 +151,7 @@ The following PG15 features are not yet implemented but are planned for the futu
 The following features supported in v2024.2 and earlier are not yet available in v2.25:
 
 - [View terminated queries with yb_terminated_queries](../../../explore/observability/yb-pg-stat-get-queries/)
-- [PostgreSQL_FDW extension](../../../explore/ysql-language-features/pg-extensions/extension-postgres-fdw/)
+- [PostgreSQL_FDW extension](../../../additional-features/pg-extensions/extension-postgres-fdw/)
 
 ## What's changed
 

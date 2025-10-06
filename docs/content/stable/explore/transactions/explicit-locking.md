@@ -104,13 +104,11 @@ This should succeed.
 
 ## Advisory locks
 
-Advisory locks are available in {{<release "2.25.1.0">}} and later.
-
 YSQL also supports advisory locks, where the application manages concurrent access to resources through a cooperative locking mechanism. Advisory locks can be less resource-intensive than table or row locks for certain use cases because they don't involve scanning tables or indexes for lock conflicts. They are session-specific and managed by the client application.
 
 In PostgreSQL, if an advisory lock is taken on one session, all sessions should be able to see the advisory locks acquired by any other session. Similarly, in YugabyteDB, if an advisory lock is acquired on one session, all the sessions should be able to see the advisory locks regardless of the node the session is connected to. This is achieved via the pg_advisory_locks system table, which is dedicated to hosting advisory locks. All advisory lock requests are stored in this system table.
 
-To enable the use of advisory locks in a cluster, you must set the [Advisory lock flags](../../../reference/configuration/yb-tserver/#advisory-lock-flags).
+Advisory locks are enabled by default. You can configure advisory locks using the [Advisory lock flags](../../../reference/configuration/yb-tserver/#advisory-lock-flags).
 
 ### Using advisory locks
 
@@ -175,3 +173,29 @@ Finally, advisory locks can be blocking or non-blocking:
     select pg_try_advisory_lock(10);
     select pg_try_advisory_xact_lock(10);
     ```
+
+## Table-level locks
+
+{{<tags/feature/tp idea="1114">}} Table-level locks are available in {{<release "2025.1.1.0">}} and later.
+
+YugabyteDB's YSQL supports table-level locks (also known as object locks) to coordinate between DML and DDL operations. This feature ensures that DDLs wait for in-progress DMLs to finish before making schema changes, and gates new DMLs behind any waiting DDLs, providing concurrency handling that closely matches PostgreSQL behavior.
+
+Table-level locks depend on:
+
+- [Transactional DDL](../transactional-ddl/), controlled by [ysql_yb_ddl_transaction_block_enabled](../transactional-ddl/#enable-transactional-ddl) (preview flag).
+- [YSQL lease](../../../architecture/transactions/concurrency-control/#ysql-lease-mechanism), lease period controlled by [master_ysql_operation_lease_ttl_ms](../../../reference/configuration/yb-master/#master-ysql-operation-lease-ttl-ms).
+- Per-database catalog caching, controlled by [ysql_enable_db_catalog_version_mode](../../../reference/configuration/yb-master/#ysql-enable-db-catalog-version-mode).
+
+Table-level locking provides serializable semantics between DMLs and DDLs for YSQL by introducing distributed locks on YSQL objects. PostgreSQL clients acquire locks to prevent DMLs and DDLs from running concurrently. DML locks are acquired only on the TServer hosting the PostgreSQL session, but DDL locks are acquired on every TServer in the universe to ensure no DML touching the locked object runs while the DDL does.
+
+To prevent dead TServers holding locks from permanently blocking subsequent DMLs or DDLs, YugabyteDB internally uses the [YSQL lease mechanism](../../../architecture/transactions/concurrency-control/#ysql-lease-mechanism) between TServers and the Master leader to serve any YSQL DMLs. All locks held by a TServer are released when its lease expires.
+
+### Enable table-level locks
+
+Table-level locks are disabled by default. To enable the feature, set the [yb-tserver](../../../reference/configuration/yb-tserver/) flag `enable_object_locking_for_table_locks` to true.
+
+Because `enable_object_locking_for_table_locks` is a preview flag, to use it, add the flag to the [allowed_preview_flags_csv](../../../reference/configuration/yb-tserver/#allowed-preview-flags-csv) list (that is, `allowed_preview_flags_csv=enable_object_locking_for_table_locks`).
+
+As the table-level locks feature depends on Transactional DDL (currently not enabled by default), you need to enable the preview flag, [ysql_yb_ddl_transaction_block_enabled](../transactional-ddl/#enable-transactional-ddl).
+
+For more information on the lock scopes and lifecycle, see [Table-level locks](../../../architecture/transactions/concurrency-control/#table-level-locks).

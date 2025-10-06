@@ -1467,6 +1467,7 @@ ParallelWorkerMain(Datum main_arg)
 			.parallel_leader_session_id = &fps->parallel_master_yb_session_state.session_id,
 			.shared_data = &fps->parallel_leader_pgproc->yb_shared_data
 		};
+
 		YbBackgroundWorkerInitializeConnectionByOid(fps->database_id,
 													fps->authenticated_user_id,
 													BGWORKER_BYPASS_ALLOWCONN,

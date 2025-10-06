@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -12,11 +12,11 @@
 //
 package org.yb.pgsql;
 
+import java.util.Map;
+
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
-
-import java.util.Map;
 
 /**
  * Runs the pg_regress test suite on YB code.
@@ -26,6 +26,17 @@ public class TestPgRegressPlpgsql extends BasePgRegressTestPorted {
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;
+  }
+
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    // (Auto-Analyze #28393) error output is flaky.
+    flagMap.put("ysql_enable_auto_analyze", "false");
+    // TODO(28543): Remove once transactional ddl is enabled by default.
+    flagMap.put("ysql_yb_ddl_transaction_block_enabled", "true");
+    flagMap.put(
+        "allowed_preview_flags_csv", "ysql_yb_ddl_transaction_block_enabled");
+    return flagMap;
   }
 
   @Test

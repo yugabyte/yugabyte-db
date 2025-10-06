@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -31,6 +31,8 @@ DECLARE_bool(enable_tablespace_based_transaction_placement);
 DECLARE_bool(force_global_transactions);
 DECLARE_bool(use_tablespace_based_transaction_placement);
 DECLARE_bool(transaction_tables_use_preferred_zones);
+DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 
 using namespace std::literals;
 
@@ -277,7 +279,19 @@ class GeoTransactionsTest : public GeoTransactionsTestBase {
   uint64_t next_insert_value_ = 0;
 };
 
-TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionTabletSelection)) {
+class GeoTransactionsTestTableLocksDisabled : public GeoTransactionsTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = false;
+    GeoTransactionsTest::SetUp();
+  }
+};
+
+// Fails when table-level locks are enabled due to #28317.
+TEST_F_EX(
+    GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionTabletSelection),
+    GeoTransactionsTestTableLocksDisabled) {
   constexpr int tables_per_region = 1;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = false;
@@ -455,7 +469,10 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestMultiRegionTransactionTa
       InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
 }
 
-TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestAutomaticLocalTransactionTableCreation)) {
+// Fails when table-level locks are enabled due to #28317.
+TEST_F_EX(
+    GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestAutomaticLocalTransactionTableCreation),
+    GeoTransactionsTestTableLocksDisabled) {
   constexpr int tables_per_region = 1;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = true;
@@ -831,7 +848,11 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestPromotionAfterTablespace
       InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
 }
 
-TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestAlterTableSetTablespaceMidTxn)) {
+// This test is for testing the behavior when table-level locks are disabled (checks that
+// catalog version mismatch error happens), so doesn't make sense to run with them enabled.
+TEST_F_EX(
+    GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestAlterTableSetTablespaceMidTxn),
+    GeoTransactionsTestTableLocksDisabled) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_promote_nonlocal_transactions_to_global) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = false;
@@ -918,6 +939,9 @@ class GeoTransactionsTablespaceLocalityTest : public GeoTransactionsTest {
   constexpr static auto kTableNameFK = "table_multi_region_fk";
 
   void SetUp() override {
+    // These tests are failing when table-level locks are enabled due to #28317.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = false;
     GeoTransactionsTest::SetUp();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_tablespace_based_transaction_placement) = true;
@@ -1218,7 +1242,8 @@ TEST_F(GeoTransactionsTablespaceLocalityTest, TestAlterSetTablespace) {
       ExpectedLocality::kGlobal);
 }
 
-class GeoTransactionsWildcardTest : public GeoTransactionsTest {
+// Fails when table-level locks are enabled due to #28317.
+class GeoTransactionsWildcardTest : public GeoTransactionsTestTableLocksDisabled {
  protected:
   void SetupTablespaces() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = true;

@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -58,6 +58,7 @@
 #include "yb/master/master_client.fwd.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_types.pb.h"
+#include "yb/tablet/tablet.pb.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -350,6 +351,8 @@ class YBClient {
   Status GetIndexBackfillProgress(
       const TableIds& index_ids,
       google::protobuf::RepeatedField<google::protobuf::uint64>* rows_processed_entries);
+
+  Result<google::protobuf::RepeatedPtrField<tablet::TabletStatusPB>> GetTabletsMetadata();
 
   Result<master::GetBackfillStatusResponsePB> GetBackfillStatus(
       const std::vector<std::string_view>& table_ids);
@@ -996,6 +999,11 @@ class YBClient {
   Status ReportYsqlDdlTxnStatus(const TransactionMetadata& txn, bool is_committed);
 
   Status WaitForDdlVerificationToFinish(const TransactionMetadata& txn);
+
+  Status RollbackDocdbSchemaToSubtxn(const TransactionMetadata& txn, SubTransactionId sub_txn_id);
+
+  Status WaitForRollbackDocdbSchemaToSubtxnToFinish(
+      const TransactionMetadata& txn, SubTransactionId sub_txn_id);
 
   Result<bool> CheckIfPitrActive();
 

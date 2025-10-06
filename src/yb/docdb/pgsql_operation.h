@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -71,6 +71,10 @@ class PgsqlWriteOperation :
 
   // Execute write.
   Status Apply(const DocOperationApplyData& data) override;
+
+  bool pk_is_known() const {
+    return pk_is_known_;
+  }
 
  private:
   void ClearResponse() override {
@@ -160,6 +164,7 @@ class PgsqlWriteOperation :
   WriteBufferPos row_num_pos_;
   WriteBuffer* write_buffer_ = nullptr;
   const bool ysql_skip_row_lock_for_update_;
+  bool pk_is_known_ = false;
 };
 
 struct PgsqlReadOperationData {

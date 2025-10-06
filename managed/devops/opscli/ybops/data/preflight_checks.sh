@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright 2020 YugaByte, Inc. and Contributors
+# Copyright 2020 YugabyteDB, Inc. and Contributors
 #
 # Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
 # may not use this file except in compliance with the License. You
@@ -149,9 +149,6 @@ preflight_configure_check() {
   fi
   update_result_json "Yugabyte Group" "$user_status"
 
-  # Check home directory exists.
-  check_filepath "Home Directory" "$yb_home_dir" false
-
   # Check virtual memory max map limit.
   vm_max_map_count=$(cat /proc/sys/vm/max_map_count 2> /dev/null)
   test ${vm_max_map_count:-0} -ge $VM_MAX_MAP_COUNT
@@ -176,8 +173,10 @@ preflight_all_checks() {
       yb_home_dir_clean=false
     fi
   fi
-  update_result_json "yb_home_dir_clean" "$yb_home_dir_clean"
+  update_result_json "Home Directory Clean" "$yb_home_dir_clean"
 
+  # Check home directory exists and verify if it matches the expected home directory.
+  check_yugabyte_user_home_if_exists
 
   # Check whether files in data directory are cleaned up.
   data_dir_clean=true
@@ -199,7 +198,7 @@ preflight_all_checks() {
       fi
     done
   done
-  update_result_json "data_dir_clean" "$data_dir_clean"
+  update_result_json "Data Directory Clean" "$data_dir_clean"
 }
 
 # Checks for an available python executable
@@ -211,6 +210,28 @@ check_python() {
     fi
   done
   update_result_json "Sudo Access to Python" "$python_status"
+}
+
+# Checks if the home directory exists for yugabyte and is correct.
+check_yugabyte_user_home_if_exists() {
+  # Check only if yugabyte user exists.
+  if id -u "yugabyte" >/dev/null 2>&1; then
+    # Get the local home directory
+    # Output looks like yugabyte:x:1001:1001::/home/yugabyte:/bin/bash
+    actual_home_dir=$(getent passwd yugabyte | cut -d: -f6 2>&1)
+    if [[ -z "$actual_home_dir" ]]; then
+      update_result_json "Home Directory Exists" false
+    else
+      update_result_json "Home Directory Exists" true
+      # Normalize path.
+      actual_home_dir=$(readlink -m "$actual_home_dir" 2>&1)
+      if [[ "$actual_home_dir" != "$yb_home_dir" ]]; then
+        update_result_json "Home Directory Matches" false
+      else
+        update_result_json "Home Directory Matches" true
+      fi
+    fi
+  fi
 }
 
 # Checks if given filepath is writable.
@@ -393,6 +414,8 @@ while [[ $# -gt 0 ]]; do
     ;;
     --yb_home_dir)
       yb_home_dir="$2"
+      # Normalize the path.
+      yb_home_dir=$(readlink -m "$yb_home_dir" 2>&1)
       shift
     ;;
     --tmp_dir)

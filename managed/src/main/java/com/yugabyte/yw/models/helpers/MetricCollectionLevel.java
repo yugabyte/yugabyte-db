@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -29,6 +29,7 @@ public enum MetricCollectionLevel {
   ALL(StringUtils.EMPTY, false),
   NORMAL("metric/normal_level_params.json", false),
   MINIMAL("metric/minimal_level_params.json", false),
+  TABLE_OFF("metric/table_off_level_params.json", false),
   OFF(StringUtils.EMPTY, true);
 
   private final String paramsFilePath;

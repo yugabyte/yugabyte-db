@@ -35,6 +35,7 @@ import org.yb.util.json.ValueChecker;
 public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
   private static final Logger LOG =
       LoggerFactory.getLogger(TestPgCostModelSeekNextEstimation.class);
+
   private static final String DATABASE_NAME = "colocated_db";
   private static final String T1_NAME = "t1";
   private static final String T1_INDEX_NAME = T1_NAME + "_pkey";
@@ -498,6 +499,8 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("ysql_analyze_dump_metrics", "true");
     flagMap.put("ysql_enable_packed_row_for_colocated_table", "true");
+    // Disable auto analyze for CBO seek and next metrics test.
+    flagMap.put("ysql_enable_auto_analyze", "false");
     return flagMap;
   }
 

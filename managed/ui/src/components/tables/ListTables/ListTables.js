@@ -1,18 +1,18 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 import { Component, Fragment } from 'react';
 import { Link } from 'react-router';
 import { Image, ProgressBar, ButtonGroup, DropdownButton } from 'react-bootstrap';
+import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { toast } from 'react-toastify';
 import { Typography } from '@material-ui/core';
+import _ from 'lodash';
 
-import tableIcon from '../images/table.png';
+import { formatBytes } from '../../../utils/Formatters';
 import { isNonEmptyArray } from '../../../utils/ObjectUtils';
 import { TableAction } from '../../tables';
 import { YBPanelItem } from '../../panels';
-import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
-import 'react-bootstrap-table/css/react-bootstrap-table.css';
-import _ from 'lodash';
+
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBBanner, YBBannerVariant, YBResourceCount } from '../../common/descriptors';
 import { isDisabled, isNotHidden } from '../../../utils/LayoutUtils';
@@ -29,6 +29,10 @@ import { SchemaChangeModeInfoModal } from '../../xcluster/sharedComponents/Schem
 import { getPrimaryCluster } from '../../../utils/universeUtilsTyped';
 
 import './ListTables.scss';
+import 'react-bootstrap-table/css/react-bootstrap-table.css';
+
+import tableIcon from '../images/table.png';
+
 
 class TableTitle extends Component {
   render() {
@@ -267,22 +271,6 @@ class ListTableGrid extends Component {
       }
     };
 
-    const formatBytes = function (item, row) {
-      if (Number.isInteger(item)) {
-        const bytes = item;
-        const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB'];
-        const k = 1024;
-        if (bytes <= 0) {
-          return bytes + ' ' + sizes[0];
-        }
-
-        const sizeIndex = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, sizeIndex)).toFixed(2)) + ' ' + sizes[sizeIndex];
-      } else {
-        return '-';
-      }
-    };
-
     let listItems = [];
     if (isNonEmptyArray(self.props.tables.universeTablesList)) {
       listItems = self.props.tables.universeTablesList.map((ybTable) => ({
@@ -376,7 +364,7 @@ class ListTableGrid extends Component {
           dataField={'sizeBytes'}
           width="15%"
           columnClassName={'yb-table-cell'}
-          dataFormat={formatBytes}
+          dataFormat={(cell, row) => formatBytes(row.sizeBytes)}
           dataSort
         >
           SST Size
@@ -385,7 +373,7 @@ class ListTableGrid extends Component {
           dataField={'walSizeBytes'}
           width="15%"
           columnClassName={'yb-table-cell'}
-          dataFormat={formatBytes}
+          dataFormat={(cell, row) => formatBytes(row.walSizeBytes)}
           dataSort
         >
           WAL Size

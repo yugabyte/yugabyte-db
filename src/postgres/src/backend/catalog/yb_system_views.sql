@@ -48,3 +48,37 @@ CREATE VIEW yb_query_diagnostics_status AS
 CREATE VIEW yb_servers_metrics AS
     SELECT *
     FROM yb_servers_metrics();
+
+CREATE VIEW yb_tablet_metadata AS
+    SELECT
+        t.tablet_id,
+        -- OID is NULL for the 'transactions' table, otherwise derived from the UUID.
+        CASE
+            WHEN t.namespace = 'system' AND t.object_name = 'transactions'
+                THEN NULL
+            WHEN length(t.object_uuid) != 32
+                THEN NULL
+            ELSE
+                -- Convert last 8 hex chars of UUID to OID
+                ('x' || right(t.object_uuid, 8))::bit(32)::int::oid
+        END AS oid,
+        t.namespace    AS db_name,
+        t.object_name  AS relname,
+        t.start_hash_code,
+        t.end_hash_code,
+        t.leader,
+        t.replicas
+    FROM
+        yb_get_tablet_metadata() t
+    LEFT JOIN
+        pg_class c ON c.relname = t.object_name
+    LEFT JOIN
+        pg_namespace n ON n.oid = c.relnamespace
+    WHERE
+        -- Condition 1: Include the system 'transactions' table.
+        (t.namespace = 'system' AND t.object_name = 'transactions')
+    OR
+        -- Condition 2: Include user tables, while excluding system and catalog objects.
+        (
+            t.type = 'YSQL' AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+        );

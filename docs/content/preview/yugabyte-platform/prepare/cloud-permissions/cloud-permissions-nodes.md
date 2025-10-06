@@ -1,5 +1,5 @@
 ---
-title: Cloud setup for deploying YugabyteDB Anywhere
+title: Cloud setup for deploying universe nodes
 headerTitle: To deploy nodes
 linkTitle: To deploy nodes
 description: Prepare your cloud for deploying YugabyteDB universe nodes.
@@ -50,10 +50,10 @@ type: docs
 
 Because you are creating the VMs manually (on a private cloud, bare metal, or cloud provider), nodes for on-premises providers don't require any cloud permissions.
 
-If you will be deploying on-premises universes in AWS, you can attach a service account to nodes to be used to access storage in S3. The IAM role used should be sufficient to access S3. For more information, refer to [Enable IAM roles for service accounts](https://docs.aws.amazon.com/eks/latest/userguide/enable-iam-roles-for-service-accounts.html) in the AWS documentation.
+If you will be deploying on-premises universes in AWS, you can attach a service account or IAM role to nodes to be used to access storage in S3. The service account or IAM role used should be sufficient to access S3. For more information, refer to [Permissions to back up and restore](../cloud-permissions-storage/).
 
 With an on-premises provider, permissions against your infrastructure are generally not needed to deploy VMs, modify VMs, and so on.
 
-Provisioning VMs requires root accress, but after VMs have been provisioned with the operating system, required software, and node agent, root and sudo access is no longer required.
+Provisioning VMs requires root access, but after VMs have been provisioned with the operating system, required software, and node agent, root and sudo access is no longer required.
 
 For more information, refer to [Automatically provision on-premises nodes](../../server-nodes-software/software-on-prem/).

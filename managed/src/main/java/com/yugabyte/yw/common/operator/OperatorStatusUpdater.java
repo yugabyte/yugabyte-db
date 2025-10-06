@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
  */
 package com.yugabyte.yw.common.operator;
 
@@ -71,6 +71,11 @@ public interface OperatorStatusUpdater {
 
   default void updateBackupStatus(
       com.yugabyte.yw.models.Backup backup, String taskName, UUID taskUUID) {
+    // no-op implementation
+  }
+
+  default void updateDrConfigStatus(
+      com.yugabyte.yw.models.DrConfig drConfig, String taskName, UUID taskUUID) {
     // no-op implementation
   }
 

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -22,13 +22,12 @@
 #include "yb/consensus/log_util.h"
 
 #include "yb/docdb/consensus_frontier.h"
+#include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_types.h"
-#include "yb/dockv/value_type.h"
 #include "yb/docdb/kv_debug.h"
-#include "yb/docdb/docdb-internal.h"
-#include "yb/dockv/schema_packing.h"
 #include "yb/dockv/value.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/fs/fs_manager.h"
 
@@ -38,7 +37,6 @@
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/version_set.h"
-#include "yb/rocksdb/db/writebuffer.h"
 #include "yb/rocksdb/table/block_based_table_reader.h"
 #include "yb/rocksdb/table/internal_iterator.h"
 #include "yb/rocksdb/table/table_builder.h"
@@ -48,11 +46,10 @@
 
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/date_time.h"
+#include "yb/util/enums.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
-#include "yb/util/enums.h"
 #include "yb/util/logging.h"
-#include "yb/util/metrics.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/random_util.h"
@@ -60,9 +57,9 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
+#include "yb/util/string_util.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/tostring.h"
-#include "yb/util/string_util.h"
 
 using namespace std::placeholders;
 namespace po = boost::program_options;
@@ -72,8 +69,7 @@ DECLARE_int32(rocksdb_base_background_compactions);
 DECLARE_int32(rocksdb_max_background_compactions);
 DECLARE_int32(priority_thread_pool_size);
 
-namespace yb {
-namespace tools {
+namespace yb::tools {
 
 const std::regex kTabletRegex(".*/tablet-[0-9a-f]{32}");
 const std::regex kTabletDbRegex(".*/tablet-[0-9a-f]{32}(?:\\.intents)?");
@@ -342,7 +338,6 @@ Status AddDeltaToSstFile(
 
   rocksdb::ReadOptions read_options;
   std::unique_ptr<rocksdb::InternalIterator> iterator(table_reader->NewIterator(read_options));
-  auto data_fname = rocksdb::TableBaseToDataFileName(fname);
 
   auto out_dir = DirName(fname) + kPatchedExtension;
   auto& env = *Env::Default();
@@ -370,7 +365,7 @@ Status AddDeltaToSstFile(
                   << ", rocksdb_value_type=" << static_cast<uint64_t>(rocksdb_value_type)
                   << "): " << docdb::DocDBKeyToDebugStr(user_key, storage_db_type) << " => "
                   << docdb::DocDBValueToDebugStr(
-                         key_type, user_key, v, nullptr /*schema_packing_provider*/);
+                         key_type, user_key, v, /*schema_packing_provider=*/nullptr);
       }
       builder->Add(k, v);
     };
@@ -520,7 +515,7 @@ Status AddDeltaToSstFile(
                       << "decoded value "
                       << DocDBValueToDebugStr(
                              docdb::KeyType::kReverseTxnKey, iterator->key(), iterator->value(),
-                             nullptr /*schema_packing_provider*/);
+                             /*schema_packing_provider=*/nullptr);
             return doc_ht_result.status();
           }
           delta_data.AddEarlyTime(doc_ht_result->hybrid_time());
@@ -601,8 +596,9 @@ Status ChangeTimeInWalDir(
   auto log_index = VERIFY_RESULT(log::LogIndex::NewLogIndex(dir));
   std::unique_ptr<log::LogReader> log_reader;
   RETURN_NOT_OK(log::LogReader::Open(
-      env, log_index, kLogPrefix, dir, /* table_metric_entity= */ nullptr,
-      /* tablet_metric_entity= */ nullptr, &log_reader));
+      env, log_index, kLogPrefix, dir, /*table_metric_entity=*/nullptr,
+      /*tablet_metric_entity=*/nullptr,
+      /*read_wal_mem_tracker=*/nullptr, &log_reader));
   log::SegmentSequence segments;
   RETURN_NOT_OK(log_reader->GetSegmentsSnapshot(&segments));
   auto patched_dir = dir + kPatchedExtension;
@@ -1109,8 +1105,7 @@ Status ApplyPatchExecute(const ApplyPatchArguments& args) {
 
 YB_TOOL_ARGUMENTS(DataPatcherAction, DATA_PATCHER_ACTIONS);
 
-} // namespace tools
-} // namespace yb
+} // namespace yb::tools
 
 int main(int argc, char** argv) {
   yb::HybridTime::TEST_SetPrettyToString(true);

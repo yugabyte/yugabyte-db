@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // This module defines the ResultSet that YQL database returns to a query request.
 //--------------------------------------------------------------------------------------------------

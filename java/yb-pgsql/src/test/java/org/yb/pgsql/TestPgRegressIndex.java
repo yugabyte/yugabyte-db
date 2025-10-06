@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -35,6 +35,9 @@ public class TestPgRegressIndex extends BasePgRegressTest {
     Map<String, String> flagMap = super.getTServerFlags();
     // TODO (#19975): Enable read committed isolation
     flagMap.put("yb_enable_read_committed_isolation", "false");
+    // Disable auto analyze because it aborts the SQL snippet:
+    // force_cache_refresh which increments catalog version explictly.
+    flagMap.put("ysql_enable_auto_analyze", "false");
     return flagMap;
   }
 

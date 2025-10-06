@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -141,6 +141,16 @@ public class TestDropTableWithConcurrentTxn extends BasePgSQLTest {
         (withCachedMetadata ? "PgCached" : "NonPgCached") + resourceToDrop;
     prepareResources(resourceToDrop, tableName);
     String resource = ((Resource.VIEW).equals(resourceToDrop)) ? tableName + "_view" : tableName;
+
+    if (!withCachedMetadata) {
+      // It is possible that prepareResources contains a DDL that incremented
+      // the catalog version and therefore invalidated the relcache init file.
+      // Make a tmp connection as the first connection to rebuild the relcache init file.
+      // Otherwise, txnConnection below will become the first connection and it will rebuild
+      // the relcache init file. As part of that it would have cached the metadata
+      // of the table which contradicts with the condition "!withCachedMetadata"
+      Connection tmpConnection = getConnectionBuilder().connect();
+    }
 
     try (Connection txnConnection = getConnectionBuilder().connect();
         Statement statement1 = txnConnection.createStatement();
@@ -337,10 +347,8 @@ public class TestDropTableWithConcurrentTxn extends BasePgSQLTest {
     LOG.info("Run INSERT transaction AFTER drop");
     runDmlTxnWithDropOnCurrentResource(Dml.INSERT, indexDrop, withCachedMetadata,
         executeDmlAfterDrop, RESOURCE_NONEXISTING_ERROR);
-    // Postgres load relation's index info on cache refresh, as a result even without explicit index
-    // usage the error will be the same as with index usage.
     runDmlTxnWithDropOnCurrentResource(Dml.INSERT, indexDrop, !withCachedMetadata,
-        executeDmlAfterDrop, RESOURCE_NONEXISTING_ERROR);
+        executeDmlAfterDrop, NO_ERROR);
     LOG.info("Run SELECT transaction AFTER drop");
     runDmlTxnWithDropOnCurrentResource(Dml.SELECT, indexDrop, withCachedMetadata,
         executeDmlAfterDrop, SCHEMA_VERSION_MISMATCH_ERROR);

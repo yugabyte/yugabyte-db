@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -41,12 +41,6 @@ import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.test.Helpers.contentAsString;
 
-import com.amazonaws.services.ec2.model.Image;
-import com.amazonaws.services.ec2.model.IpPermission;
-import com.amazonaws.services.ec2.model.SecurityGroup;
-import com.amazonaws.services.ec2.model.Subnet;
-import com.amazonaws.services.ec2.model.Vpc;
-import com.amazonaws.services.securitytoken.model.GetCallerIdentityResult;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -116,6 +110,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
 import play.mvc.Result;
+import software.amazon.awssdk.services.ec2.model.Image;
+import software.amazon.awssdk.services.ec2.model.IpPermission;
+import software.amazon.awssdk.services.ec2.model.SecurityGroup;
+import software.amazon.awssdk.services.ec2.model.Subnet;
+import software.amazon.awssdk.services.ec2.model.Vpc;
+import software.amazon.awssdk.services.sts.model.GetCallerIdentityResponse;
 
 @RunWith(JUnitParamsRunner.class)
 @Slf4j
@@ -438,10 +438,12 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
                 + "\"secondarySubnet\":\"subnet-foo\",\"subnet\":\"subnet-foo\"}]}],"
                 + "\"version\": %d}",
             provider.getVersion());
-    Image image = new Image();
-    image.setArchitecture("x86_64");
-    image.setRootDeviceType("ebs");
-    image.setPlatformDetails("linux/UNIX");
+    Image image =
+        Image.builder()
+            .architecture("x86_64")
+            .rootDeviceType("ebs")
+            .platformDetails("linux/UNIX")
+            .build();
     when(mockAWSCloudImpl.describeImageOrBadRequest(any(), any(), any())).thenReturn(image);
     when(mockAWSCloudImpl.describeSecurityGroupsOrBadRequest(any(), any()))
         .thenReturn(Arrays.asList(getTestSecurityGroup(21, 24, "vpc-foo")));
@@ -843,7 +845,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     regionsList.add(region);
     bodyJson.set("regions", regionsList);
     when(mockAWSCloudImpl.getStsClientOrBadRequest(any(), any()))
-        .thenReturn(new GetCallerIdentityResult());
+        .thenReturn(GetCallerIdentityResponse.builder().build());
     when(mockAWSCloudImpl.getHostedZoneOrBadRequest(any(), any(), anyString()))
         .thenThrow(
             new PlatformServiceException(BAD_REQUEST, "Hosted Zone validation failed: Invalid ID"));
@@ -868,7 +870,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     bodyJson.put("sshPrivateKeyContent", CertificateHelperTest.getDSAKeyContent());
     bodyJson.put("keyPairName", "test1");
     when(mockAWSCloudImpl.getStsClientOrBadRequest(any(), any()))
-        .thenReturn(new GetCallerIdentityResult());
+        .thenReturn(GetCallerIdentityResponse.builder().build());
     Result result = assertPlatformException(() -> createProvider(bodyJson));
     assertEquals(BAD_REQUEST, result.status());
     assertBadRequestValidationResult(
@@ -889,7 +891,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     detailsJson.set("cloudInfo", cloudInfoJson);
     bodyJson.set("details", detailsJson);
     when(mockAWSCloudImpl.getStsClientOrBadRequest(any(), any()))
-        .thenReturn(new GetCallerIdentityResult());
+        .thenReturn(GetCallerIdentityResponse.builder().build());
     ObjectNode regionAWSCloudInfo = Json.newObject();
     regionAWSCloudInfo.put("ybImage", "image_id");
     regionAWSCloudInfo.put("vnetName", "vpc_id");
@@ -925,10 +927,12 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     ObjectNode imageBundle = Json.newObject().put("name", "test-image").set("details", details);
     imageBundlesList.add(imageBundle);
     bodyJson.set("imageBundles", imageBundlesList);
-    Image image = new Image();
-    image.setArchitecture("random_arch");
-    image.setRootDeviceType("random_device_type");
-    image.setPlatformDetails("windows");
+    Image image =
+        Image.builder()
+            .architecture("random_arch")
+            .rootDeviceType("random_device_type")
+            .platformDetails("windows")
+            .build();
     when(mockAWSCloudImpl.describeImageOrBadRequest(any(), any(), anyString()))
         .thenThrow(
             new PlatformServiceException(BAD_REQUEST, "AMI details extraction failed: Not found"))
@@ -938,7 +942,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
         .thenThrow(
             new PlatformServiceException(
                 BAD_REQUEST, "Vpc details extraction failed: Invalid VPC ID"))
-        .thenReturn(new Vpc());
+        .thenReturn(Vpc.builder().build());
 
     when(mockAWSCloudImpl.describeSecurityGroupsOrBadRequest(any(), any()))
         .thenThrow(
@@ -1035,14 +1039,17 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
                 + "\"REGION.us-west-2.SUBNETS\":[\"Invalid AZ code for subnet: subnet-a\","
                 + "\"Please provide non-overlapping CIDR blocks subnets\"],"
                 + "\"REGION.us-west-2.IMAGE.test-image\":["
-                + "\"random_arch arch on image image_id is not supported\","
-                + "\"random_device_type root device type on image image_id is not supported\","
-                + "\"windows platform on image image_id is not supported\"],"
+                + "\"unknown_to_sdk_version root device type on image image_id is not supported\","
+                + "\"null arch on image image_id is not supported\",\"windows platform on image"
+                + " image_id is not supported\"],"
                 + "\"errorSource\":[\"providerValidation\"]}}"));
 
-    image.setArchitecture("x86_64");
-    image.setRootDeviceType("ebs");
-    image.setPlatformDetails("linux/UNIX");
+    image =
+        Image.builder()
+            .architecture("x86_64")
+            .rootDeviceType("ebs")
+            .platformDetails("linux/UNIX")
+            .build();
     when(mockAWSCloudImpl.describeImageOrBadRequest(any(), any(), anyString())).thenReturn(image);
 
     result = assertPlatformException(() -> createProvider(bodyJson));
@@ -1219,7 +1226,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     regionsList.add(region);
     bodyJson.set("regions", regionsList);
     when(mockAWSCloudImpl.getStsClientOrBadRequest(any(), any()))
-        .thenReturn(new GetCallerIdentityResult());
+        .thenReturn(GetCallerIdentityResponse.builder().build());
     when(mockAWSCloudImpl.getHostedZoneOrBadRequest(any(), any(), anyString()))
         .thenThrow(
             new PlatformServiceException(BAD_REQUEST, "Hosted Zone validation failed: Invalid ID"));
@@ -1446,23 +1453,26 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
   }
 
   private SecurityGroup getTestSecurityGroup(int fromPort, int toPort, String vpcId) {
-    SecurityGroup sg = new SecurityGroup();
-    sg.setGroupId("sg_id");
-    IpPermission ipPermission = new IpPermission();
-    ipPermission.setFromPort(fromPort);
-    ipPermission.setToPort(toPort);
-    sg.setIpPermissions(Collections.singletonList(ipPermission));
-    sg.setVpcId(vpcId);
+    IpPermission ipPermission = IpPermission.builder().fromPort(fromPort).toPort(toPort).build();
+
+    SecurityGroup sg =
+        SecurityGroup.builder()
+            .groupId("sg_id")
+            .ipPermissions(Collections.singletonList(ipPermission))
+            .vpcId(vpcId)
+            .build();
     return sg;
   }
 
   private Subnet getTestSubnet(
       String cidrBlock, String subnetId, String vpcId, String availabilityZone) {
-    Subnet subnet = new Subnet();
-    subnet.setVpcId(vpcId);
-    subnet.setSubnetId(subnetId);
-    subnet.setCidrBlock(cidrBlock);
-    subnet.setAvailabilityZone(availabilityZone);
+    Subnet subnet =
+        Subnet.builder()
+            .vpcId(vpcId)
+            .subnetId(subnetId)
+            .cidrBlock(cidrBlock)
+            .availabilityZone(availabilityZone)
+            .build();
     return subnet;
   }
 

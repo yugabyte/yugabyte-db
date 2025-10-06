@@ -23,6 +23,48 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, where `YYYY` is the release year, `M` is the month, and `N` is the number of the release in that month.
 
+## v2025.9.3 - September 30, 2025
+
+### New feature
+
+- {{<tags/feature/tp>}} Added the ability to analyze, compare, and summarize workload query performance between the source database and the target YugabyteDB database using the [compare-performance](../reference/compare-performance/) command. The command generates both HTML and JSON reports for easy comparison.
+
+  Note that this feature is supported for YugabyteDB release {{<release "2025.1">}} and later.
+
+### Enhancements
+
+- Improved import data to skip retrying errors that the `pgx` driver identifies as non‑retryable, enhancing stability.
+- Added the ability to manage adaptive parallelism using the `--adaptive-parallelism` flag. Options include `disabled`, `balanced` (default), or `aggressive`. Replaces the `--enable-adaptive-parallelism` flag.
+- Added an `--output-format` flag to the `export data status`, `import data status`, and `get data-migration-report` commands to generate structured JSON reports. `end migration` now saves the JSON versions of these reports as well.
+
+### Bug fixes
+
+- Fixed offline import data failing with accelerated data export mode when some tables are not created in the target database and excluded via table-list flags.
+- Fixed an issue where data exported using older versions (before v2025.9.2) could not be imported after upgrading Voyager to v2025.9.2. Import data would previously fail with the error `failed to prepare table to column`.
+- Fixed a nil pointer error when an unknown table name is included in the table list passed to the `import data` command.
+
+## v2025.9.2 - September 16, 2025
+
+### Enhancements
+
+- Enhanced primary key recommendation logic to consider both unique constraints and unique indexes when suggesting primary keys, and added support for generating recommendations for partitioned tables that don't have primary keys.
+
+- Enhanced assessment report:
+  - Removed low cardinality performance optimization recommendation and updated descriptions for NULL and particular value column indexes to clarify unnecessary writes for these values.
+  - Improved "Notes" section organization by categorizing them according to their types for better readability.
+  - Added explanatory notes about redundant indexes in the sizing recommendation section to help users understand the impact on estimated data import time.
+  - Renamed "Sharding Recommendations" to "Colocation Recommendations" for better clarity.
+  - Enhanced the colocation recommendations by suggesting only to colocate tables if it provides an overall benefit in the required number of cores or nodes.
+  - Removed a suggestion note to create range-sharded secondary indexes as they are now automatically created during export schema.
+
+- Added console messages to show resumption progress when importing from large files, keeping users informed during long resumption processes.
+- Introduced a flag [--max-retries-streaming](../reference/data-migration/import-data/#arguments) in the import data commands to configure the number of retries for the streaming phase in live migration.
+
+### Bug fixes
+
+- Fixed a bug in offline migration during import data. The command now correctly honors the table list allowing users to continue their migration by excluding tables that are not present in the target database.
+- Fixed issue where rows skipped due to size or transformation errors were not being counted in the errored row count during data import, providing more accurate error statistics.
+
 ## v2025.9.1 - September 2, 2025
 
 ### New feature
@@ -407,7 +449,7 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
 
 - Using the arguments `--table-list` and `--exclude-table-list` in guardrails now checks for PostgreSQL export to determine which tables require permission checks.
 - Added a check for Java as a dependency in guardrails for PostgreSQL export during live migration.
-- Added check to verify if [pg_stat_statements](../../explore/ysql-language-features/pg-extensions/extension-pgstatstatements/) is in a schema not included in the specified `schema_list` and if the migration user has access to queries in the pg_stat_statements view. This is part of the guardrails for assess-migration for PostgreSQL.
+- Added check to verify if [pg_stat_statements](../../additional-features/pg-extensions/extension-pgstatstatements/) is in a schema not included in the specified `schema_list` and if the migration user has access to queries in the pg_stat_statements view. This is part of the guardrails for assess-migration for PostgreSQL.
 - Introduced the `--version` flag in the voyager installer script, which can be used to specify the version to install.
 - Added argument [--truncate-tables](../reference/data-migration/import-data/#arguments) to import data to target for truncating tables, applicable only when --start-clean is true.
 - Added support in the assess-migration command to detect the `XMLTABLE()` function under unsupported query constructs.
@@ -440,7 +482,7 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
 
 ### Known issues
 
-- The [assess-migration](../reference/assess-migration/) command will fail if the [pg_stat_statements](../../explore/ysql-language-features/pg-extensions/extension-pgstatstatements/) extension is created in a non-public schema, due to the "Unsupported Query Constructs" feature.
+- The [assess-migration](../reference/assess-migration/) command will fail if the [pg_stat_statements](../../additional-features/pg-extensions/extension-pgstatstatements/) extension is created in a non-public schema, due to the "Unsupported Query Constructs" feature.
 To bypass this issue, set the environment variable `REPORT_UNSUPPORTED_QUERY_CONSTRUCTS=false`, which disables the "Unsupported Query Constructs" feature and proceeds with the command execution.
 
 ## v1.8.4 - October 29, 2024

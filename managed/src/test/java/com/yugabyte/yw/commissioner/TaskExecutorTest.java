@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner;
 
@@ -166,7 +166,8 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.UpgradeKubernetesYbcGFlags,
           TaskType.UpdateYbcThrottleFlags,
           TaskType.UpdateK8sYbcThrottleFlags,
-          TaskType.KubernetesToggleImmutableYbc);
+          TaskType.KubernetesToggleImmutableYbc,
+          TaskType.OperatorImportUniverse);
 
   @Override
   protected Application provideApplication() {

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -413,5 +413,7 @@ PGConnBuilder CreateInternalPGConnBuilder(
 Result<std::string> ResultAsString(
     PGresult* res, const std::string& column_sep = DefaultColumnSeparator(),
     const std::string& row_sep = DefaultRowSeparator());
+
+void ReplaceAll(std::string* str, const std::string& from, const std::string& to);
 
 } // namespace yb::pgwrapper

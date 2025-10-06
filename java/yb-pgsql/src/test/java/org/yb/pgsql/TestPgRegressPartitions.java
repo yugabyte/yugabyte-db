@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -25,6 +25,13 @@ public class TestPgRegressPartitions extends BasePgRegressTest {
   @Override
   public int getTestMethodTimeoutSec() {
     return getPerfMaxRuntime(500, 1000, 1200, 1200, 1200);
+  }
+
+  // (Auto-Analyze #28391) Restarting a DDL transaction not supported
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("ysql_enable_auto_analyze", "false");
+    return flagMap;
   }
 
   @Test

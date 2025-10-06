@@ -1,4 +1,4 @@
-# Copyright 2019 YugaByte, Inc. and Contributors
+# Copyright 2019 YugabyteDB, Inc. and Contributors
 #
 # Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
 # may not use this file except in compliance with the License. You
@@ -14,7 +14,7 @@ setup(name='ybops',
       url='https://github.com/YugaByte/yugabyte-db/tree/master/managed/devops',
       author='Ram Sri',
       author_email='ramkumarvs@users.noreply.github.com',
-      license='YugaByte, Inc.',
+      license='YugabyteDB, Inc.',
       packages=[
           'ybops',
           'ybops/cloud',

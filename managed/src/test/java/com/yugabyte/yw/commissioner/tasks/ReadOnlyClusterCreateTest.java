@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks;
 
@@ -208,7 +208,7 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
   public void testCreateRRWithCapacityReservationAzureSuccess() {
     RuntimeConfigEntry.upsertGlobal(
         ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
-    String rrInstanceType = "m5.superlarge";
+    String rrInstanceType = "Standard_D4as_v4";
     Region region = Region.create(azuProvider, "region-1", "region-1", "yb-image");
     Universe universe = createUniverseForProvider("universe-test", azuProvider);
     UniverseConfigureTaskParams taskParams = new UniverseConfigureTaskParams();

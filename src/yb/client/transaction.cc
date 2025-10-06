@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -338,6 +338,16 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     }
     CompleteInit(isolation);
     return Status::OK();
+  }
+
+  void RestartStartTime() {
+    start_.store(0, std::memory_order_release);
+  }
+
+  void SetStartTimeIfNecessary() {
+    if (!start_) {
+      start_.store(manager_->clock()->Now().GetPhysicalValueMicros(), std::memory_order_release);
+    }
   }
 
   void InitWithReadPoint(IsolationLevel isolation, ConsistentReadPoint&& read_point) {
@@ -805,25 +815,31 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     }
     metadata_future_ = std::shared_future<Result<TransactionMetadata>>(
         metadata_promise_.get_future());
-    if (!ready_) {
-      auto transaction = transaction_->shared_from_this();
-      waiters_.push_back([this, transaction](const Status& status) {
-        WARN_NOT_OK(status, "Transaction request failed");
-        UniqueLock lock(mutex_);
-        if (status.ok()) {
-          metadata_promise_.set_value(metadata_);
-        } else {
-          metadata_promise_.set_value(status);
-        }
-      });
-      lock.unlock();
-      RequestStatusTablet(deadline);
-      lock.lock();
+    if (ready_) {
+      metadata_promise_.set_value(metadata_);
       return metadata_future_;
     }
 
-    metadata_promise_.set_value(metadata_);
-    return metadata_future_;
+    if (state_.load(std::memory_order_acquire) == TransactionState::kAborted) {
+      metadata_promise_.set_value(STATUS(IllegalState, "Transaction aborted"));
+      return metadata_future_;
+    }
+
+    auto transaction = transaction_->shared_from_this();
+    waiters_.push_back([this, transaction](const Status& status) {
+      WARN_NOT_OK(status, "Transaction request failed");
+      UniqueLock lock(mutex_);
+      if (status.ok()) {
+        metadata_promise_.set_value(metadata_);
+      } else {
+        metadata_promise_.set_value(status);
+      }
+    });
+
+    auto result = metadata_future_;
+    lock.unlock();
+    RequestStatusTablet(deadline);
+    return result;
   }
 
   Result<TransactionMetadata> metadata() EXCLUDES(mutex_) {
@@ -1024,10 +1040,6 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   }
 
   Status RollbackToSubTransaction(SubTransactionId id, CoarseTimePoint deadline) EXCLUDES(mutex_) {
-    SCHECK(
-        subtransaction_.active(), InternalError,
-        "Attempted to rollback to savepoint before creating any savepoints.");
-
     // A heartbeat should be sent (& waited for) to the txn status tablet(s) as part of a rollback.
     // This is for updating the list of aborted sub-txns and ensures that other txns don't see false
     // conflicts with this txn.
@@ -1288,7 +1300,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     }
     // TODO(wait-queues): Consider using metadata_.pg_txn_start_us here for consistency with
     // wait queues. https://github.com/yugabyte/yugabyte-db/issues/20976
-    start_.store(manager_->clock()->Now().GetPhysicalValueMicros(), std::memory_order_release);
+    SetStartTimeIfNecessary();
   }
 
   void SetReadTimeIfNeeded(bool do_it) {
@@ -2636,6 +2648,14 @@ uint64_t YBTransaction::GetPriority() const {
 
 Status YBTransaction::Init(IsolationLevel isolation, const ReadHybridTime& read_time) {
   return impl_->Init(isolation, read_time);
+}
+
+void YBTransaction::RestartStartTime() {
+  return impl_->RestartStartTime();
+}
+
+void YBTransaction::SetStartTimeIfNecessary() {
+  return impl_->SetStartTimeIfNecessary();
 }
 
 void YBTransaction::InitWithReadPoint(

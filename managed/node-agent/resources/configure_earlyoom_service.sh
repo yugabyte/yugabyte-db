@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Copyright 2021 YugaByte, Inc. and Contributors
+# Copyright 2021 YugabyteDB, Inc. and Contributors
 #
 # Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
 # may not use this file except in compliance with the License. You
@@ -61,7 +61,7 @@ if [ -z ${YB_HOME_DIR+x} ]; then
   YB_HOME_DIR="/home/yugabyte"
 fi
 
-systemctl --user disable earlyoom --now
+systemctl --user status earlyoom && systemctl --user disable earlyoom --now
 
 if [[ "$action" = "configure" || "$action" = "enable" ]]; then
   if ! [[ -z "${config}" ]]; then

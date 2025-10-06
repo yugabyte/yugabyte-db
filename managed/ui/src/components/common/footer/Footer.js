@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 import * as moment from 'moment';
 import { get } from 'lodash';
 import { useSelector } from 'react-redux';

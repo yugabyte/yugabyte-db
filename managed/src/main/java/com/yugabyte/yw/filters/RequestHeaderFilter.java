@@ -1,4 +1,4 @@
-package com.yugabyte.yw.filters; // Copyright (c) YugaByte, Inc.
+package com.yugabyte.yw.filters; // Copyright (c) YugabyteDB, Inc.
 
 import static com.yugabyte.yw.commissioner.Commissioner.SUBTASK_ABORT_POSITION_PROPERTY;
 import static com.yugabyte.yw.commissioner.Commissioner.SUBTASK_PAUSE_POSITION_PROPERTY;

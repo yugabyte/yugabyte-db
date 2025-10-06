@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -87,7 +87,7 @@ class RestoreSysCatalogState {
 
   // Determine entries that should be restored. I.e. apply filter and serialize.
   template <class ProcessEntry>
-  Status DetermineEntries(
+  Result<std::unordered_set<TableId>> DetermineTables(
       Objects* objects, RetainedExistingTables* retained_existing_tables,
       const ProcessEntry& process_entry);
 
@@ -121,18 +121,16 @@ class RestoreSysCatalogState {
   Status PatchColocatedTablet(const std::string& id, SysTabletsEntryPB* pb);
   bool IsNonSystemObsoleteTable(const TableId& table_id);
 
+  Status ProcessRestoringObjects();
   Result<bool> PatchRestoringEntry(const std::string& id, SysNamespaceEntryPB* pb);
   Result<bool> PatchRestoringEntry(const std::string& id, SysTablesEntryPB* pb);
-  Result<bool> PatchRestoringEntry(const std::string& id, SysTabletsEntryPB* pb);
 
+  Status ProcessExistingObjects();
   Status CheckExistingEntry(
       const std::string& id, const SysNamespaceEntryPB& pb);
 
   Status CheckExistingEntry(
       const std::string& id, const SysTablesEntryPB& pb);
-
-  Status CheckExistingEntry(
-      const std::string& id, const SysTabletsEntryPB& pb);
 
   Status LoadObjects(
       const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db,

@@ -28,8 +28,8 @@ func (s State) ValidateReconfig() error {
 	if s.Services.PerfAdvisor != viper.GetBool("perfAdvisor.enabled") {
 		return fmt.Errorf("cannot change perf advisor service from %t", s.Services.PerfAdvisor)
 	}
-	// Platform is enabled if perf advisor is false or if it is enabled withPlatform.
-	if s.Services.Platform != (!viper.GetBool("perfAdvisor.enabled") || viper.GetBool("perfAdvisor.withPlatform")) {
+	// Platform is enabled only if perf advisor is false.
+	if s.Services.Platform != (!viper.GetBool("perfAdvisor.enabled")) {
 		return fmt.Errorf("cannot change platform service from %t", s.Services.Platform)
 	}
 

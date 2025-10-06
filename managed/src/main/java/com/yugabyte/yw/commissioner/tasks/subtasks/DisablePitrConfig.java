@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
@@ -7,6 +7,7 @@ import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Universe;
 import java.util.List;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.DeleteSnapshotScheduleResponse;
@@ -42,6 +43,12 @@ public class DisablePitrConfig extends UniverseTaskBase {
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     List<PitrConfig> pitrConfigs = PitrConfig.getByUniverseUUID(taskParams().getUniverseUUID());
+
+    // Filter out disabled PITR configs
+    pitrConfigs =
+        pitrConfigs.stream()
+            .filter(pitrConfig -> !pitrConfig.isDisabled())
+            .collect(Collectors.toList());
 
     if (pitrConfigs.isEmpty()) {
       log.info("No PITR configs found for universe {}", taskParams().getUniverseUUID());

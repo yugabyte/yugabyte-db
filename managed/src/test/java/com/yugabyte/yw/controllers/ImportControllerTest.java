@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.controllers;
 
@@ -65,7 +65,6 @@ public class ImportControllerTest extends CommissionerBaseTest {
 
   @Before
   public void setUp() {
-    super.setUp();
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
     authToken = user.createAuthToken();

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2019 YugaByte, Inc. and Contributors
+# Copyright 2019 YugabyteDB, Inc. and Contributors
 #
 # Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
 # may not use this file except in compliance with the License. You
@@ -271,6 +271,8 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
                                  help='Check if node exporter can be installed properly.')
         self.parser.add_argument("--skip_ntp_check", action="store_true",
                                  help='Skip check for time synchronization.')
+        self.parser.add_argument("--yb_home_dir", default=YB_HOME_DIR,
+                                 help="YB-Home directory path, if not default.")
 
     def test_file_readable(self, remote_shell, path):
         node_file_verify = remote_shell.run_command_raw("test -r {}".format(path))
@@ -324,7 +326,7 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
                                       if p is not None])
             cmd = "{}/preflight_checks.sh --type {} --yb_home_dir {} --mount_points {} " \
                 "--ports_to_check {} --sudo_pass_file {} --tmp_dir {} --cleanup".format(
-                    args.remote_tmp_dir, args.precheck_type, YB_HOME_DIR,
+                    args.remote_tmp_dir, args.precheck_type, args.yb_home_dir,
                     self.cloud.get_mount_points_csv(args),
                     ports_to_check, sudo_pass_file, args.remote_tmp_dir)
             if args.install_node_exporter:

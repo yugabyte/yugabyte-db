@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -39,17 +39,14 @@
 #include "yb/consensus/log-test-base.h"
 #include "yb/consensus/log_index.h"
 
-#include "yb/gutil/algorithm.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/locks.h"
-#include "yb/util/metrics.h"
 #include "yb/util/random.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/thread.h"
-#include "yb/util/flags.h"
 
 // TODO: Semantics of the Log and Appender thread interactions changed and now multi-threaded
 // writing is no longer allowed, or to be more precise, does no longer guarantee the ordering of
@@ -58,8 +55,7 @@ DEFINE_NON_RUNTIME_int32(num_writer_threads, 1, "Number of threads writing to th
 DEFINE_NON_RUNTIME_int32(num_batches_per_thread, 2000, "Number of batches per thread");
 DEFINE_NON_RUNTIME_int32(num_ops_per_batch_avg, 5, "Target average number of ops per batch");
 
-namespace yb {
-namespace log {
+namespace yb::log {
 
 using std::vector;
 using consensus::ReplicateMsgPtr;
@@ -176,9 +172,11 @@ TEST_F(MultiThreadedLogTest, TestAppends) {
   ASSERT_OK(log_->Close());
 
   std::unique_ptr<LogReader> reader;
-  ASSERT_OK(LogReader::Open(fs_manager_->env(), nullptr, "Log reader: ",
-                            fs_manager_->GetFirstTabletWalDirOrDie(kTestTable, kTestTablet),
-                            nullptr, nullptr, &reader));
+  ASSERT_OK(LogReader::Open(
+      fs_manager_->env(), /*index=*/nullptr,
+      "Log reader: ", fs_manager_->GetFirstTabletWalDirOrDie(kTestTable, kTestTablet),
+      /*table_metric_entity=*/nullptr, /*tablet_metric_entity=*/nullptr,
+      /*read_wal_mem_tracker=*/nullptr, &reader));
   SegmentSequence segments;
   ASSERT_OK(reader->GetSegmentsSnapshot(&segments));
 
@@ -197,5 +195,4 @@ TEST_F(MultiThreadedLogTest, TestAppends) {
   ASSERT_TRUE(std::is_sorted(ids.begin(), ids.end()));
 }
 
-} // namespace log
-} // namespace yb
+} // namespace yb::log

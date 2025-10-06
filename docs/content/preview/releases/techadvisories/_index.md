@@ -14,11 +14,19 @@ Review the following important information that may impact the stability or secu
 
 It is strongly recommended that you take appropriate measures as outlined in the advisories to mitigate potential risks and disruptions.
 
+For an RSS feed of all technical advisories, point your feed reader to the [RSS feed for technical advisories](index.xml).
+
 ## List of advisories
 
 {{%table%}}
 | Advisory&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Synopsis | Product | Affected Versions | Date |
 | :------------------------------- | :------- | :-----: | :---------------: | :--- |
+| {{<ta 27177>}}
+| PostgreSQL logical replication and v2025.1 upgrade
+| {{<product "cdc">}}
+| {{<release "2025.1.0">}}
+| {{<nobreak "03 October 2025">}}
+|
 | {{<ta 26666>}}
 | Memory leak in workloads with foreign keys or serializable reads
 | {{<product "ysql, ycql">}}
@@ -63,7 +71,7 @@ It is strongly recommended that you take appropriate measures as outlined in the
 |
 | {{<ta 25193>}}
 | Logical Replication CDC may fail to stream UPDATE or DELETE changes correctly when using FULL_ROW_NEW_IMAGE, MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES, or DEFAULT Replica Identity with CDC lag
-| [CDC](/preview/additional-features/change-data-capture/)
+| {{<product "ysql">}}
 | {{<release "2.20, 2024.1, 2024.2">}}
 | {{<nobreak "10 January 2025">}}
 |

@@ -1,10 +1,13 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 package com.yugabyte.yw.forms;
 
+import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.models.common.YbaApi;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Set;
+import lombok.Getter;
+import lombok.Setter;
 import play.data.validation.Constraints.Required;
 
 @ApiModel(description = "dr config set databases form")
@@ -15,4 +18,9 @@ public class DrConfigSetDatabasesForm {
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.0.0")
   @Required
   public Set<String> dbs;
+
+  @ApiModelProperty(hidden = true)
+  @Getter
+  @Setter
+  private KubernetesResourceDetails kubernetesResourceDetails;
 }

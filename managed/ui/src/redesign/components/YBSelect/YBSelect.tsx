@@ -7,32 +7,31 @@ export type YBSelectProps = {
   renderValue?: (value: unknown) => ReactNode;
 } & Omit<
   StandardTextFieldProps,
-  | 'variant'
-  | 'color'
-  | 'classes'
-  | 'select'
-  | 'size'
-  | 'placeholder'
-  | 'FormHelperTextProps'
-  | 'SelectProps'
+  'variant' | 'color' | 'classes' | 'select' | 'size' | 'placeholder' | 'FormHelperTextProps'
 >;
 
-export const YBSelect: FC<YBSelectProps> = ({ renderValue, ...props }) => (
-  <TextField
-    {...props}
-    select
-    SelectProps={{
-      IconComponent: CaretDownIcon,
-      displayEmpty: true,
-      renderValue,
-      MenuProps: {
-        getContentAnchorEl: null,
-        anchorOrigin: {
-          vertical: 'bottom',
-          horizontal: 'left'
-        }
-      }
-    }}
-    variant="standard"
-  />
-);
+export const YBSelect: FC<YBSelectProps> = ({ renderValue, ...props }) => {
+  const { SelectProps: selectPropsOverride, ...remainingTextFieldProps } = props;
+  const { MenuProps: menuPropsOverride, ...remainingSelectProps } = selectPropsOverride ?? {};
+  return (
+    <TextField
+      {...remainingTextFieldProps}
+      select
+      SelectProps={{
+        IconComponent: CaretDownIcon,
+        displayEmpty: true,
+        renderValue,
+        MenuProps: {
+          getContentAnchorEl: null,
+          anchorOrigin: {
+            vertical: 'bottom',
+            horizontal: 'left'
+          },
+          ...menuPropsOverride
+        },
+        ...remainingSelectProps
+      }}
+      variant="standard"
+    />
+  );
+};

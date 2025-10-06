@@ -3,7 +3,7 @@
  * yb_logical_client_version.c
  *	  utility functions related to the ysql logical client version table.
  *
- * Portions Copyright (c) YugaByte, Inc.
+ * Portions Copyright (c) YugabyteDB, Inc.
  *
  *-------------------------------------------------------------------------
  */

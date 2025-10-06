@@ -1,5 +1,5 @@
 #
-# Copyright (c) YugaByte, Inc.
+# Copyright (c) YugabyteDB, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 # in compliance with the License.  You may obtain a copy of the License at
@@ -12,7 +12,7 @@
 # under the License.
 #
 """
-Copyright (c) YugaByte, Inc.
+Copyright (c) YugabyteDB, Inc.
 
 This module provides utilities for running commands.
 """
@@ -179,3 +179,13 @@ def decode_cmd_output(output: Optional[Union[str, bytes, IO[bytes]]]) -> str:
         return output.decode('utf-8')
     # This is a file-like object, but we can't check for that using isinstance.
     return output.read().decode('utf-8')
+
+
+def has_pigz() -> bool:
+    try:
+        run_program(['pigz', '--version'])
+        logging.debug("pigz command available")
+        return True
+    except OSError:
+        logging.debug("pigz command not available")
+        return False

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -790,6 +790,29 @@ message IsYsqlDdlVerificationDoneResponsePB {
   optional bool done = 2;
 }
 
+message RollbackDocdbSchemaToSubtxnRequestPB {
+  // The transaction whose status is being reported.
+  optional bytes transaction_id = 1;
+
+  // The subtransaction to rollback to.
+  optional uint32 sub_transaction_id = 2;
+}
+
+message RollbackDocdbSchemaToSubtxnResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message IsRollbackDocdbSchemaToSubtxnDoneRequestPB {
+  optional TransactionMetadataPB transaction = 1;
+  optional uint32 sub_transaction_id = 2;
+}
+
+message IsRollbackDocdbSchemaToSubtxnDoneResponsePB {
+  optional MasterErrorPB error = 1;
+
+  optional bool done = 2;
+}
+
 // ============================================================================
 // Table/Object Locks
 // ============================================================================
@@ -864,6 +887,14 @@ message RefreshYsqlLeaseResponsePB {
   }
 }
 
+message RelinquishYsqlLeaseRequestPB {
+  optional NodeInstancePB instance = 1;
+}
+
+message RelinquishYsqlLeaseResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 service MasterDdl {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -919,6 +950,11 @@ service MasterDdl {
   rpc IsYsqlDdlVerificationDone(IsYsqlDdlVerificationDoneRequestPB) returns
       (IsYsqlDdlVerificationDoneResponsePB);
 
+  rpc RollbackDocdbSchemaToSubtxn(RollbackDocdbSchemaToSubtxnRequestPB) returns
+      (RollbackDocdbSchemaToSubtxnResponsePB);
+  rpc IsRollbackDocdbSchemaToSubtxnDone(IsRollbackDocdbSchemaToSubtxnDoneRequestPB) returns
+      (IsRollbackDocdbSchemaToSubtxnDoneResponsePB);
+
   rpc AcquireObjectLocksGlobal(AcquireObjectLocksGlobalRequestPB)
       returns (AcquireObjectLocksGlobalResponsePB) {
     option (yb.rpc.send_metadata) = true;
@@ -928,8 +964,9 @@ service MasterDdl {
     option (yb.rpc.send_metadata) = true;
   }
   rpc RefreshYsqlLease(RefreshYsqlLeaseRequestPB)
-    returns (RefreshYsqlLeaseResponsePB);
-
+      returns (RefreshYsqlLeaseResponsePB);
+  rpc RelinquishYsqlLease(RelinquishYsqlLeaseRequestPB)
+      returns (RelinquishYsqlLeaseResponsePB);
   rpc GetObjectLockStatus(GetObjectLockStatusRequestPB)
       returns (GetObjectLockStatusResponsePB);
 }

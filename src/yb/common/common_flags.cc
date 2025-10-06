@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -133,7 +133,7 @@ DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_consistent_replication_from_hash_
                        "Enable consumption of consistent changes via replication slots from "
                        "a hash range of a table.");
 
-DEFINE_test_flag(bool, ysql_yb_enable_implicit_dynamic_tables_logical_replication, false,
+DEFINE_NON_RUNTIME_PREVIEW_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication, false,
     "When set to true, modifications to publication will be reflected implicitly. "
     "This replaces the previous mechanism of periodic publication refresh with PG "
     "like semantics for dynamic tables");
@@ -185,17 +185,42 @@ DEFINE_test_flag(bool, ysql_yb_enable_ddl_savepoint_support, false,
 DEFINE_validator(TEST_ysql_yb_enable_ddl_savepoint_support,
     FLAG_REQUIRES_FLAG_VALIDATOR(ysql_yb_ddl_transaction_block_enabled));
 
+// Wait-queues: Enabling FLAGS_refresh_waiter_timeout_ms is necessary for maintaining up-to-date
+// blocking transaction(s) information at the transaction coordinator/deadlock detector. Else, with
+// the current implementation, it could result in true deadlocks not being detected.
+//
+// For instance, refer issue https://github.com/yugabyte/yugabyte-db/issues/16286
+//
+// Additionally, enabling this flag serves as a fallback mechanism for deadlock detection as it
+// helps maintain updated blocker(s) info at the deadlock detector. Since the feature of supporting
+// transaction promotion for geo-partitioned workloads in use of wait-queues and deadlock detection
+// is relatively new, it is advisable that we have the flag enabled for now. The value can be
+// increased once the feature hardens and the above referred issue is resolved.
+DEFINE_RUNTIME_uint64(refresh_waiter_timeout_ms, 30000,
+                      "The maximum amount of time a waiter transaction waits in the wait-queue "
+                      "before its callback is invoked. On invocation, the waiter transaction "
+                      "re-runs conflicts resolution and might enter the wait-queue again with "
+                      "updated blocker(s) information. Setting the value to 0 disables "
+                      "automatically re-running conflict resolution due to timeout. It follows "
+                      "that the waiter callback would only be invoked when a blocker txn commits/ "
+                      "aborts/gets promoted.");
+TAG_FLAG(refresh_waiter_timeout_ms, advanced);
+TAG_FLAG(refresh_waiter_timeout_ms, hidden);
+
 DEFINE_RUNTIME_PREVIEW_bool(enable_object_locking_for_table_locks, false,
     "This test flag enables the object lock APIs provided by tservers and masters - "
     "AcquireObject(Global)Lock, ReleaseObject(Global)Lock. These APIs are used to "
     "implement pg table locks.");
 DEFINE_validator(enable_object_locking_for_table_locks,
     FLAG_REQUIRES_FLAG_VALIDATOR(ysql_enable_db_catalog_version_mode),
-    FLAG_REQUIRES_FLAG_VALIDATOR(ysql_yb_ddl_transaction_block_enabled));
+    FLAG_REQUIRES_FLAG_VALIDATOR(ysql_yb_ddl_transaction_block_enabled),
+    FLAG_REQUIRES_NONZERO_FLAG_VALIDATOR(refresh_waiter_timeout_ms));
 DEFINE_validator(ysql_enable_db_catalog_version_mode,
     FLAG_REQUIRED_BY_FLAG_VALIDATOR(enable_object_locking_for_table_locks));
 DEFINE_validator(ysql_yb_ddl_transaction_block_enabled,
     FLAG_REQUIRED_BY_FLAG_VALIDATOR(enable_object_locking_for_table_locks));
+DEFINE_validator(refresh_waiter_timeout_ms,
+    FLAG_REQUIRED_NONZERO_BY_FLAG_VALIDATOR(enable_object_locking_for_table_locks));
 
 namespace {
 

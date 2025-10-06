@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -30,7 +30,6 @@
 // under the License.
 //
 
-#include "yb/util/logging.h"
 #include <gtest/gtest.h>
 
 #include "yb/common/hybrid_time.h"
@@ -51,7 +50,6 @@
 #include "yb/consensus/state_change_context.h"
 
 #include "yb/gutil/bind.h"
-#include "yb/gutil/macros.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
@@ -68,10 +66,8 @@
 #include "yb/tserver/tserver.pb.h"
 
 #include "yb/util/backoff_waiter.h"
-#include "yb/util/debug-util.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
-#include "yb/util/scope_exit.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
@@ -94,10 +90,10 @@ DECLARE_bool(TEST_pause_before_copying_bootstrap_state);
 DECLARE_bool(TEST_pause_before_flushing_bootstrap_state);
 DECLARE_bool(TEST_pause_before_submitting_flush_bootstrap_state);
 
-namespace yb {
-namespace tablet {
+namespace yb::tablet {
 
 using namespace std::literals;
+
 using consensus::ConsensusBootstrapInfo;
 using consensus::ConsensusMetadata;
 using consensus::RaftPeerPB;
@@ -156,12 +152,12 @@ class TabletPeerTest : public YBTabletTest {
             Unretained(this),
             tablet()->tablet_id()),
         &metric_registry_,
-        nullptr, // tablet_splitter
+        /*tablet_splitter=*/nullptr,
         std::shared_future<client::YBClient*>()
     ));
 
     // Make TabletPeer use the same LogAnchorRegistry as the Tablet created by the harness.
-    // TODO: Refactor TabletHarness to allow taking a LogAnchorRegistry, while also providing
+    // TODO: Refactor TabletTestHarness to allow taking a LogAnchorRegistry, while also providing
     // RaftGroupMetadata for consumption by TabletPeer before Tablet is instantiated.
     tablet_peer_->log_anchor_registry_ = tablet()->log_anchor_registry_;
 
@@ -181,7 +177,7 @@ class TabletPeerTest : public YBTabletTest {
     log::NewSegmentAllocationCallback noop = {};
     auto new_segment_allocation_callback =
         metadata->IsLazySuperblockFlushEnabled()
-            ? std::bind(&RaftGroupMetadata::Flush, metadata, OnlyIfDirty::kTrue)
+            ? [metadata] { return metadata->Flush(OnlyIfDirty::kTrue); }
             : noop;
     TabletPeerWeakPtr peer_weak_ptr(tablet_peer_);
     auto pre_log_rollover_callback = [peer_weak_ptr]() {
@@ -204,13 +200,13 @@ class TabletPeerTest : public YBTabletTest {
       return HybridTime::kInitial;
     };
 
-    ASSERT_OK(Log::Open(LogOptions(), tablet()->tablet_id(), metadata->wal_dir(),
-                        metadata->fs_manager()->uuid(), *tablet()->schema(),
-                        metadata->primary_table_schema_version(), table_metric_entity_.get(),
-                        tablet_metric_entity_.get(), log_thread_pool_.get(), log_thread_pool_.get(),
-                        log_thread_pool_.get(), &log,
-                        pre_log_rollover_callback, new_segment_allocation_callback,
-                        log::CreateNewSegment::kTrue, min_start_ht_running_txns_callback));
+    ASSERT_OK(Log::Open(
+        LogOptions(), tablet()->tablet_id(), metadata->wal_dir(), metadata->fs_manager()->uuid(),
+        *tablet()->schema(), metadata->primary_table_schema_version(), table_metric_entity_.get(),
+        tablet_metric_entity_.get(),
+        /*read_wal_mem_tracker=*/nullptr, log_thread_pool_.get(), log_thread_pool_.get(),
+        log_thread_pool_.get(), &log, pre_log_rollover_callback, new_segment_allocation_callback,
+        log::CreateNewSegment::kTrue, min_start_ht_running_txns_callback));
 
     auto bootstrap_state_manager = std::make_shared<TabletBootstrapStateManager>(
         tablet()->tablet_id(), metadata->fs_manager(), metadata->wal_dir());
@@ -599,9 +595,9 @@ TEST_F(TabletPeerTest, TestMinStartTimeRunningTxnsOnLogSegmentRollover) {
 
   std::unique_ptr<log::LogReader> reader;
   ASSERT_OK(log::LogReader::Open(
-      metadata->fs_manager()->env(), /* log_index */ nullptr, "Log reader: ", metadata->wal_dir(),
-      /* table_metric_entity = */ nullptr,
-      /* tablet_metric_entity = */ nullptr, &reader));
+      metadata->fs_manager()->env(), /*index=*/nullptr, "Log reader: ", metadata->wal_dir(),
+      /*table_metric_entity=*/nullptr,
+      /*tablet_metric_entity=*/nullptr, /*read_wal_mem_tracker=*/nullptr, &reader));
 
   ASSERT_OK(reader->GetSegmentsSnapshot(&segments));
   VerifyNonDecreasingTxnStartTimeInClosedSegments(segments);
@@ -929,5 +925,4 @@ TEST_F_EX(TabletBootstrapStateFlusherTest,
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_flushing_bootstrap_state) = false;
 }
 
-} // namespace tablet
-} // namespace yb
+} // namespace yb::tablet

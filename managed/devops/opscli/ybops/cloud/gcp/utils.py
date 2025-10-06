@@ -1,4 +1,4 @@
-# Copyright 2019 YugaByte, Inc. and Contributors
+# Copyright 2019 YugabyteDB, Inc. and Contributors
 #
 # Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
 # may not use this file except in compliance with the License. You
@@ -988,7 +988,11 @@ class GoogleCloudAdmin():
                 else boot_disk_size_gb
             boot_disk_init_params["diskSizeGb"] = disk_size
         # Create boot disk backed by a zonal persistent SSD
-        boot_disk_init_params["diskType"] = "zones/{}/diskTypes/pd-ssd".format(zone)
+        boot_disk_type = "pd-ssd"
+        if instance_type.startswith(('c4', 'n4')):
+            boot_disk_type = "hyperdisk-balanced"
+
+        boot_disk_init_params["diskType"] = "zones/{}/diskTypes/{}".format(zone, boot_disk_type)
         boot_disk_json["initializeParams"] = boot_disk_init_params
 
         access_configs = [{"natIP": None}

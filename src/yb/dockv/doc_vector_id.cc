@@ -13,6 +13,7 @@
 
 #include "yb/dockv/doc_vector_id.h"
 
+#include "yb/common/doc_hybrid_time.h"
 #include "yb/common/ql_value.h"
 
 #include "yb/dockv/primitive_value.h"
@@ -121,6 +122,8 @@ bool IsNull(const dockv::DocVectorValue& v) {
   return IsNull(v.value());
 }
 
+namespace {
+
 // Vector Key is used for reverse entries only with the following format:
 // |----------------------------------------------------------------------|
 // |                       encoded full vector key                        |
@@ -135,6 +138,12 @@ bool IsNull(const dockv::DocVectorValue& v) {
 constexpr std::array<char, 2> kVectorIdKeyPrefix =
     { dockv::KeyEntryTypeAsChar::kVectorIndexMetadata, dockv::KeyEntryTypeAsChar::kVectorId };
 
+std::string FormatVectorKey(const vector_index::VectorId& id, const std::string& ht) {
+  return Format("MetaKey($0, [$1])", DocVectorIdToString(id), ht);
+}
+
+} // namespace
+
 KeyBytes DocVectorKey(vector_index::VectorId vector_id) {
   KeyBytes key;
   key.AppendRawBytes(Slice(kVectorIdKeyPrefix));
@@ -144,6 +153,39 @@ KeyBytes DocVectorKey(vector_index::VectorId vector_id) {
 
 std::array<Slice, 3> DocVectorKeyAsParts(Slice id, Slice encoded_write_time) {
   return std::array<Slice, 3>{ Slice(kVectorIdKeyPrefix), id, encoded_write_time };
+}
+
+Status DecodeDocVectorKey(Slice* input, vector_index::VectorId* vector_id) {
+  RETURN_NOT_OK(input->consume_byte(dockv::KeyEntryTypeAsChar::kVectorIndexMetadata));
+  RETURN_NOT_OK(input->consume_byte(dockv::KeyEntryTypeAsChar::kVectorId));
+  if (!vector_id) {
+    RETURN_NOT_OK(vector_index::DecodeVectorId(input));
+  } else {
+    *vector_id = VERIFY_RESULT(vector_index::DecodeVectorId(input));
+  }
+  return Status::OK();
+}
+
+Result<vector_index::VectorId> DecodeDocVectorKey(Slice* input) {
+  vector_index::VectorId vector_id;
+  RETURN_NOT_OK(DecodeDocVectorKey(input, &vector_id));
+  return vector_id;
+}
+
+std::string DocVectorIdToString(const Uuid& vector_id) {
+  return Format("VectorId($0)", vector_id.ToString());
+}
+
+std::string DocVectorIdToString(const vector_index::VectorId& vector_id) {
+  return DocVectorIdToString(vector_id.GetUuid());
+}
+
+std::string DocVectorKeyToString(const vector_index::VectorId& vector_id) {
+  return FormatVectorKey(vector_id, /* ht = */ "");
+}
+
+std::string DocVectorKeyToString(const vector_index::VectorId& vector_id, const DocHybridTime& ht) {
+  return FormatVectorKey(vector_id, ht.ToString());
 }
 
 } // namespace yb::dockv

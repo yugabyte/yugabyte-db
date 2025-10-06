@@ -21,6 +21,7 @@ processors:
   attributes/00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$AttributesProcessor
     actions:
     - {action: upsert, key: host, value: test-node}
+    - {action: upsert, key: yugabyte.node_name, value: test-node}
     - {action: upsert, key: yugabyte.cloud, value: ''}
     - {action: upsert, key: yugabyte.universe_uuid, value: 00000000-0000-0000-0000-000000000000}
     - {action: upsert, key: yugabyte.node_type, value: PRIMARY}
@@ -51,9 +52,14 @@ processors:
     - {action: delete, key: timestamp_without_ms}
     - {action: upsert, key: tag, value: value}
     - {action: upsert, key: additionalTag, value: otherValue}
+  transform/replace: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$TransformProcessor
+    log_statements:
+    - context: log
+      statements: ['replace_pattern(body, "^otho8Aut", "")']
   attributes/11111111-1111-1111-1111-111111111111: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$AttributesProcessor
     actions:
     - {action: upsert, key: host, value: test-node}
+    - {action: upsert, key: yugabyte.node_name, value: test-node}
     - {action: upsert, key: yugabyte.cloud, value: ''}
     - {action: upsert, key: yugabyte.universe_uuid, value: 00000000-0000-0000-0000-000000000000}
     - {action: upsert, key: yugabyte.node_type, value: PRIMARY}
@@ -123,11 +129,11 @@ service:
   pipelines:
     logs/00000000-0000-0000-0000-000000000000:
       exporters: [awscloudwatchlogs/00000000-0000-0000-0000-000000000000]
-      processors: [attributes/00000000-0000-0000-0000-000000000000]
+      processors: [attributes/00000000-0000-0000-0000-000000000000, transform/replace]
       receivers: [filelog/ysql, filelog/ycql]
     logs/11111111-1111-1111-1111-111111111111:
       exporters: [googlecloud/11111111-1111-1111-1111-111111111111]
-      processors: [attributes/11111111-1111-1111-1111-111111111111]
+      processors: [transform/replace, attributes/11111111-1111-1111-1111-111111111111]
       receivers: [filelog/ysql, filelog/ycql]
   telemetry:
     logs:

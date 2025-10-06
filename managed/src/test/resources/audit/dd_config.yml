@@ -16,6 +16,7 @@ processors:
     - {action: upsert, key: ddsource, value: yugabyte}
     - {action: upsert, key: service, value: yb-otel-collector}
     - {action: upsert, key: host, value: test-node}
+    - {action: upsert, key: yugabyte.node_name, value: test-node}
     - {action: upsert, key: yugabyte.cloud, value: ''}
     - {action: upsert, key: yugabyte.universe_uuid, value: 00000000-0000-0000-0000-000000000000}
     - {action: upsert, key: yugabyte.node_type, value: PRIMARY}
@@ -46,6 +47,10 @@ processors:
     - {action: delete, key: timestamp_without_ms}
     - {action: upsert, key: tag, value: value}
     - {action: upsert, key: additionalTag, value: otherValue}
+  transform/replace: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$TransformProcessor
+    log_statements:
+    - context: log
+      statements: ['replace_pattern(body, "^otho8Aut", "")']
 receivers:
   filelog/ysql: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$FileLogReceiver
     attributes: {yugabyte.audit_log_type: ysql}
@@ -69,7 +74,7 @@ service:
   pipelines:
     logs/00000000-0000-0000-0000-000000000000:
       exporters: [datadog/00000000-0000-0000-0000-000000000000]
-      processors: [attributes/00000000-0000-0000-0000-000000000000]
+      processors: [attributes/00000000-0000-0000-0000-000000000000, transform/replace]
       receivers: [filelog/ysql]
   telemetry:
     logs:

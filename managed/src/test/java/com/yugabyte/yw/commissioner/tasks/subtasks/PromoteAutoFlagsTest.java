@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
@@ -42,10 +42,8 @@ public class PromoteAutoFlagsTest extends CommissionerBaseTest {
   private YBClient mockClient;
   private NodeDetails node;
 
-  @Override
   @Before
   public void setUp() {
-    super.setUp();
     defaultCustomer = ModelFactory.testCustomer();
     defaultUniverse = ModelFactory.createUniverse();
     UniverseDefinitionTaskParams details = defaultUniverse.getUniverseDetails();

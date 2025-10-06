@@ -401,7 +401,8 @@ INSERT INTO base VALUES (1); -- TODO(#26677): remove this workaround.
 REFRESH MATERIALIZED VIEW CONCURRENTLY mv;
 :display_catalog_version;
 
--- Verify ANALYZE increments catalog version and is not a breaking change.
+-- Verify ANALYZE increments catalog version once for every involved table
+-- and is not a breaking change.
 CREATE TABLE analyze_table (t int);
 CREATE TABLE analyze_table2 (t int);
 INSERT INTO analyze_table select generate_series(1,100);
@@ -412,7 +413,7 @@ SELECT relname, reltuples FROM pg_class WHERE relname = 'analyze_table' OR relna
 SELECT min(t), max(t) FROM analyze_table;
 SELECT min(t), max(t) FROM analyze_table2;
 -- Without specifying tables, ANALYZE update statistics for all tables.
--- Verify catalog version only bumps once.
+-- Verify catalog version bumps once for every table.
 ANALYZE;
 :display_catalog_version;
 

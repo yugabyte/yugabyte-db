@@ -32,4 +32,10 @@ type: indexpage
     href="active-session-history-monitor/"
     icon="fa-thin fa-monitor-waveform">}}
 
+  {{<index/item
+    title="Query tuning"
+    body="Optimize query performance with tuning techniques and tools."
+    href="query-tuning/"
+    icon="fa-thin fa-gauge-high">}}
+
 {{</index/block>}}

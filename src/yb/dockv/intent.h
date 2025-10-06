@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -17,6 +17,7 @@
 #include <string>
 
 #include <boost/function.hpp>
+#include <boost/logic/tribool.hpp>
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/transaction.h"
@@ -137,6 +138,13 @@ YB_STRONGLY_TYPED_BOOL(AncestorDocKey);
 // components of the document key. This flag is also true for intents that include subdocument keys.
 YB_STRONGLY_TYPED_BOOL(FullDocKey);
 
+// Indicates that a doc key is the top level key which has no hash component, range component
+// and sub keys.
+YB_STRONGLY_TYPED_BOOL(IsTopLevelKey);
+
+// Indicates whether we should skip prefix.
+YB_STRONGLY_TYPED_BOOL(SkipPrefix);
+
 // TODO(dtxn) don't expose this method outside of DocDB if TransactionConflictResolver is moved
 // inside DocDB.
 // Note: From https://stackoverflow.com/a/17278470/461529:
@@ -146,12 +154,14 @@ YB_STRONGLY_TYPED_BOOL(FullDocKey);
 // So, we use boost::function which doesn't have such issue:
 // http://www.boost.org/doc/libs/1_65_1/doc/html/function/misc.html
 using EnumerateIntentsCallback = boost::function<
-    Status(AncestorDocKey, FullDocKey, Slice, KeyBytes*, LastKey, IsRowLock)>;
+    Status(AncestorDocKey, FullDocKey, Slice, KeyBytes*, LastKey, IsRowLock, IsTopLevelKey,
+           boost::tribool)>;
 
 Status EnumerateIntents(
     Slice key, Slice intent_value, const EnumerateIntentsCallback& functor,
     KeyBytes* encoded_key_buffer, PartialRangeKeyIntents partial_range_key_intents,
-    LastKey last_key = LastKey::kFalse);
+    LastKey last_key = LastKey::kFalse,
+    SkipPrefix skip_prefix = SkipPrefix::kFalse);
 
 struct ParsedIntent {
   // Intent DocPath.

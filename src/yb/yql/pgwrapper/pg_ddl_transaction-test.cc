@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -306,6 +306,211 @@ TEST_P(PgDdlSavepointMiniClusterTest, TestTransactionStateRollForwards) {
   }
   ASSERT_FALSE(table->LockForRead()->has_ysql_ddl_txn_verifier_state());
   ASSERT_FALSE(table_2->LockForRead()->has_ysql_ddl_txn_verifier_state());
+}
+
+TEST_P(PgDdlSavepointMiniClusterTest, TestRollbackToSavepoints) {
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto conn = ASSERT_RESULT(Connect());
+  auto& catalog_mgr = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE IF EXISTS $0", kTableName));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (a int, b text, c text, d text, e text, f text)", kTableName));
+  ASSERT_OK(conn.Execute("SAVEPOINT a"));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN g TEXT", kTableName));
+  ASSERT_OK(conn.Execute("SAVEPOINT b"));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN b", kTableName));
+  ASSERT_OK(conn.Execute("SAVEPOINT c"));
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", kTableName));
+
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT c"));
+  auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "yugabyte", kTableName));
+  auto table = catalog_mgr.GetTableInfo(table_id);
+  auto table_verifier_states = table->LockForRead()->ysql_ddl_txn_verifier_state();
+  ASSERT_EQ(table_verifier_states.size(), 3);
+  ASSERT_TRUE(table_verifier_states[0].contains_create_table_op());
+  ASSERT_TRUE(table_verifier_states[1].contains_alter_table_op());
+  ASSERT_TRUE(table_verifier_states[2].contains_alter_table_op());
+
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT b"));
+  table_verifier_states = table->LockForRead()->ysql_ddl_txn_verifier_state();
+  ASSERT_EQ(table_verifier_states.size(), 2);
+  ASSERT_TRUE(table_verifier_states[0].contains_create_table_op());
+  ASSERT_TRUE(table_verifier_states[1].contains_alter_table_op());
+
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT a"));
+  table_verifier_states = table->LockForRead()->ysql_ddl_txn_verifier_state();
+  ASSERT_EQ(table_verifier_states.size(), 1);
+  ASSERT_TRUE(table_verifier_states[0].contains_create_table_op());
+
+  if (GetParam()) {
+    ASSERT_OK(conn.Execute("COMMIT"));
+  } else {
+    ASSERT_OK(conn.Execute("ROLLBACK"));
+  }
+  ASSERT_FALSE(table->LockForRead()->has_ysql_ddl_txn_verifier_state());
+}
+
+// Tests that rollback to savepoint which involves DROP and CREATE TABLE with same name works.
+TEST_P(PgDdlSavepointMiniClusterTest, TestRollbackToSavepointWithDropCreateTableSameName) {
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto conn = ASSERT_RESULT(Connect());
+  auto& catalog_mgr = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE IF EXISTS $0", kTableName));
+
+  ASSERT_OK(conn.ExecuteFormat(
+    "CREATE TABLE $0 (a int, b text, c text, d text, e text, f text)", kTableName));
+  auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "yugabyte", kTableName));
+  auto table = catalog_mgr.GetTableInfo(table_id);
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("SAVEPOINT a"));
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (a int, b text, c text, d text)", kTableName));
+
+  auto table_verifier_states = table->LockForRead()->ysql_ddl_txn_verifier_state();
+  ASSERT_EQ(table_verifier_states.size(), 1);
+  ASSERT_TRUE(table_verifier_states[0].contains_drop_table_op());
+
+  // Get the id of the table created with the same name but after the drop statement.
+  // The GetTableIdByTableName function cannot be used here because it returns the id of the first
+  // table with the given name. In this case, there are two. So we need to choose the one different
+  // from the first table.
+  std::string table_id_after_drop;
+  {
+    const auto tables = ASSERT_RESULT(client->ListTables());
+    for (const auto& t : tables) {
+      if (t.namespace_name() == "yugabyte" && t.table_name() == kTableName &&
+          t.table_id() != table_id) {
+        table_id_after_drop = t.table_id();
+      }
+    }
+  }
+  ASSERT_FALSE(table_id_after_drop.empty());
+  auto table_after_drop = catalog_mgr.GetTableInfo(table_id_after_drop);
+  ASSERT_EQ(table_after_drop->LockForRead()->ysql_ddl_txn_verifier_state().size(), 1);
+  ASSERT_TRUE(
+      table_after_drop->LockForRead()->ysql_ddl_txn_verifier_state()[0].contains_create_table_op());
+
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT a"));
+  ASSERT_FALSE(table->LockForRead()->has_ysql_ddl_txn_verifier_state());
+  ASSERT_FALSE(table_after_drop->LockForRead()->has_ysql_ddl_txn_verifier_state());
+
+  if (GetParam()) {
+    ASSERT_OK(conn.Execute("COMMIT"));
+  } else {
+    ASSERT_OK(conn.Execute("ROLLBACK"));
+  }
+  ASSERT_FALSE(table->LockForRead()->has_ysql_ddl_txn_verifier_state());
+  ASSERT_FALSE(table_after_drop->LockForRead()->has_ysql_ddl_txn_verifier_state());
+}
+
+TEST_P(PgDdlSavepointMiniClusterTest, TestRollbackToSavepointWithNestedSavepoint) {
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto conn = ASSERT_RESULT(Connect());
+  auto& catalog_mgr = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE IF EXISTS $0", kTableName));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (a INT, b INT)", kTableName));
+  ASSERT_OK(conn.Execute("SAVEPOINT a"));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN c TEXT", kTableName));
+  ASSERT_OK(conn.Execute("SAVEPOINT b"));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN d TEXT", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN b", kTableName));
+
+  // Rollback to savepoint a -> should remove column 'c', 'd', and bring back column 'b'.
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT a"));
+  auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "yugabyte", kTableName));
+  auto table = catalog_mgr.GetTableInfo(table_id);
+  auto table_verifier_states = table->LockForRead()->ysql_ddl_txn_verifier_state();
+  ASSERT_EQ(table_verifier_states.size(), 1);
+  ASSERT_TRUE(table_verifier_states[0].contains_create_table_op());
+  ASSERT_FALSE(table_verifier_states[0].contains_alter_table_op());
+  ASSERT_FALSE(table_verifier_states[0].contains_drop_table_op());
+  auto table_schema = ASSERT_RESULT(table->GetSchema());
+  ASSERT_EQ(table_schema.num_columns(), 3); // Only column 'ybrowid', 'a' and 'b'.
+  ASSERT_EQ(table_schema.columns()[0].name(), "ybrowid");
+  ASSERT_EQ(table_schema.columns()[1].name(), "a");
+  ASSERT_EQ(table_schema.columns()[2].name(), "b");
+
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN e TEXT", kTableName));
+  table_verifier_states = table->LockForRead()->ysql_ddl_txn_verifier_state();
+  ASSERT_EQ(table_verifier_states.size(), 2);
+  ASSERT_TRUE(table_verifier_states[0].contains_create_table_op());
+  ASSERT_TRUE(table_verifier_states[1].contains_alter_table_op());
+
+  if (GetParam()) {
+    ASSERT_OK(conn.Execute("COMMIT"));
+  } else {
+    ASSERT_OK(conn.Execute("ROLLBACK"));
+  }
+  ASSERT_FALSE(table->LockForRead()->has_ysql_ddl_txn_verifier_state());
+}
+
+TEST_P(PgDdlSavepointMiniClusterTest, TestRollbackToSavepointWithReleaseSavepoint) {
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto conn = ASSERT_RESULT(Connect());
+  auto& catalog_mgr = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE IF EXISTS $0", kTableName));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (a INT, b INT)", kTableName));
+  auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "yugabyte", kTableName));
+  ASSERT_OK(conn.Execute("SAVEPOINT a"));
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", kTableName));
+  ASSERT_OK(conn.Execute("SAVEPOINT b"));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (a INT, b INT)", kTableName));
+  std::string table_id_after_drop;
+  {
+    const auto tables = ASSERT_RESULT(client->ListTables());
+    for (const auto& t : tables) {
+      if (t.namespace_name() == "yugabyte" && t.table_name() == kTableName &&
+          t.table_id() != table_id) {
+        table_id_after_drop = t.table_id();
+      }
+    }
+  }
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN b", kTableName));
+  ASSERT_OK(conn.Execute("RELEASE SAVEPOINT b"));
+  ASSERT_OK(conn.Execute("SAVEPOINT c"));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN c INT", kTableName));
+
+  // Rollback to savepoint a -> should bring bring the earlier table with column 'a' and 'b'.
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT a"));
+  auto table = catalog_mgr.GetTableInfo(table_id);
+  auto table_verifier_states = table->LockForRead()->ysql_ddl_txn_verifier_state();
+  ASSERT_EQ(table_verifier_states.size(), 1);
+  ASSERT_TRUE(table_verifier_states[0].contains_create_table_op());
+  ASSERT_FALSE(table_verifier_states[0].contains_alter_table_op());
+  ASSERT_FALSE(table_verifier_states[0].contains_drop_table_op());
+  auto table_schema = ASSERT_RESULT(table->GetSchema());
+  ASSERT_EQ(table_schema.num_columns(), 3); // Only column 'ybrowid', 'a' and 'b'.
+  ASSERT_EQ(table_schema.columns()[0].name(), "ybrowid");
+  ASSERT_EQ(table_schema.columns()[1].name(), "a");
+  ASSERT_EQ(table_schema.columns()[2].name(), "b");
+
+  ASSERT_FALSE(table_id_after_drop.empty());
+  auto table_after_drop = catalog_mgr.GetTableInfo(table_id_after_drop);
+  ASSERT_FALSE(table_after_drop->LockForRead()->has_ysql_ddl_txn_verifier_state());
+
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN e TEXT", kTableName));
+  table_verifier_states = table->LockForRead()->ysql_ddl_txn_verifier_state();
+  ASSERT_EQ(table_verifier_states.size(), 2);
+  ASSERT_TRUE(table_verifier_states[0].contains_create_table_op());
+  ASSERT_TRUE(table_verifier_states[1].contains_alter_table_op());
+
+  if (GetParam()) {
+    ASSERT_OK(conn.Execute("COMMIT"));
+  } else {
+    ASSERT_OK(conn.Execute("ROLLBACK"));
+  }
+  ASSERT_FALSE(table->LockForRead()->has_ysql_ddl_txn_verifier_state());
 }
 
 } // namespace yb::pgwrapper

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -54,7 +54,7 @@ DEFINE_RUNTIME_int32(update_min_cdc_indices_master_interval_secs, 300 /* 5 minut
   "catalog tablet.");
 
 DECLARE_bool(create_initial_sys_catalog_snapshot);
-DECLARE_bool(TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication);
+DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 
 namespace yb {
 namespace master {
@@ -326,7 +326,7 @@ rpc::ServiceIfPtr MasterTabletServer::CreateCDCService(
 }
 
 void MasterTabletServer::EnableCDCService() {
-  if (!FLAGS_TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
+  if (!FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
     return;
   }
 

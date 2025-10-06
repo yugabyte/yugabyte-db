@@ -155,6 +155,13 @@ public class OtelCollectorConfigFormat {
 
   @Data
   @EqualsAndHashCode(callSuper = true)
+  public static class MemoryLimiterProcessor extends Processor {
+    private String check_interval;
+    private int limit_mib;
+  }
+
+  @Data
+  @EqualsAndHashCode(callSuper = true)
   public static class CumulativeToDeltaProcessor extends Processor {
     // No additional configuration needed for basic cumulative to delta conversion
   }
@@ -172,6 +179,18 @@ public class OtelCollectorConfigFormat {
     private String action;
     private Map<String, String> experimental_match_labels;
     private String new_name;
+  }
+
+  @Data
+  @EqualsAndHashCode(callSuper = true)
+  public static class TransformProcessor extends Processor {
+    private List<LogStatement> log_statements;
+  }
+
+  @Data
+  public static class LogStatement {
+    private String context;
+    private List<String> statements;
   }
 
   @Data

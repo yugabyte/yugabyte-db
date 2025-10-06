@@ -2194,7 +2194,7 @@ dumpYbRoleProfiles(PGconn *conn)
 
 			stmt = createPQExpBuffer();
 			YBWwrapInRoleChecks(conn, yb_source_sql, "alter role",
-								role_name, /* role1 */
+								role_name,	/* role1 */
 								NULL,	/* role2 */
 								NULL,	/* role3 */
 								stmt);

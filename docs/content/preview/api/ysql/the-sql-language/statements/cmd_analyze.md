@@ -21,7 +21,7 @@ The statistics are also used by the YugabyteDB [cost based optimizer](../../../.
 {{< warning title="Run ANALYZE regularly" >}}
 If you have enabled CBO, you must run ANALYZE on user tables after data load for the CBO to create optimal execution plans.
 
-You can automate running ANALYZE using the [Auto Analyze service](../../../../../explore/query-1-performance/auto-analyze/).
+You can automate running ANALYZE using the [Auto Analyze service](../../../../../additional-features/auto-analyze/).
 {{< /warning >}}
 
 The YugabyteDB implementation is based on the framework provided by PostgreSQL, which requires the storage layer to provide a random sample of rows of a predefined size. The size is calculated based on a number of factors, such as the included columns' data types.

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Author: Gaurav Raj(gauraraj@deloitte.com)
 //

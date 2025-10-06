@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -111,6 +111,10 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   // Transaction is unusable before Init is called.
   Status Init(
       IsolationLevel isolation, const ReadHybridTime& read_time = ReadHybridTime());
+
+  void RestartStartTime();
+
+  void SetStartTimeIfNecessary();
 
   // Allows starting a transaction that reuses an existing read point.
   void InitWithReadPoint(IsolationLevel isolation, ConsistentReadPoint&& read_point);

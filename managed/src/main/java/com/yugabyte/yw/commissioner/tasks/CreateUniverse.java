@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 YugaByte, Inc. and Contributors
+ * Copyright 2019 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you may not use this file
  * except in compliance with the License. You may obtain a copy of the License at
@@ -214,7 +214,6 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
     // Cache the password before it is redacted.
     cachePasswordsIfNeeded();
     Universe universe = null;
-    boolean deleteCapacityReservation = false;
     try {
       universe =
           lockAndFreezeUniverseForUpdate(
@@ -229,7 +228,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
 
       createInstanceExistsCheckTasks(universe.getUniverseUUID(), taskParams(), universe.getNodes());
 
-      deleteCapacityReservation =
+      boolean deleteCapacityReservation =
           createCapacityReservationsIfNeeded(
               taskParams().nodeDetailsSet,
               CapacityReservationUtil.OperationType.CREATE,
@@ -251,7 +250,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
             gFlagsParams.masterJoinExistingCluster = false;
           });
       if (deleteCapacityReservation) {
-        createDeleteReservationTask();
+        createDeleteCapacityReservationTask();
       }
 
       Set<NodeDetails> primaryNodes = taskParams().getNodesInCluster(primaryCluster.uuid);
@@ -300,6 +299,9 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
+      if (universe != null) {
+        clearCapacityReservationOnError(t, Universe.getOrBadRequest(universe.getUniverseUUID()));
+      }
       throw t;
     } finally {
       releaseReservedNodes();

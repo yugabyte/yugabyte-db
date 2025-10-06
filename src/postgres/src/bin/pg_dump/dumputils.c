@@ -960,6 +960,7 @@ makeAlterConfigCommand(PGconn *conn, const char *configitem,
 	*pos++ = '\0';
 
 	PQExpBuffer buf = createPQExpBuffer();
+
 	/* Build the command, with suitable quoting for everything. */
 	appendPQExpBuffer(buf, "ALTER %s %s ", type, fmtId(name));
 	if (type2 != NULL && name2 != NULL)

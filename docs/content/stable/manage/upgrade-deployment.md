@@ -62,6 +62,8 @@ To upgrade YugabyteDB to a version based on a different version of PostgreSQL (f
   - If you have PITR enabled, you must disable it before performing an upgrade. Re-enable it only after the upgrade is either finalized or rolled back.
   - After the upgrade, PITR cannot be done to a time before the upgrade.
 
+- For more information, refer to [Upgrade FAQ](/preview/faq/operations-faq/#upgrade).
+
 ## Upgrade YugabyteDB cluster
 
 You upgrade a cluster in the following phases:
@@ -101,7 +103,7 @@ cd /home/yugabyte/softwareyb-$NEW_VER/
 ./bin/post_install.sh
 ```
 
-If you are using PostgreSQL extensions, make sure to install the extensions in the new YugabyteDB version. Follow the instructions in [Install PostgreSQL extensions](../../explore/ysql-language-features/pg-extensions/install-extensions/).
+If you are using PostgreSQL extensions, make sure to install the extensions in the new YugabyteDB version. Follow the instructions in [Install PostgreSQL extensions](../../additional-features/pg-extensions/install-extensions/).
 
 #### 3. Upgrade YB-Masters
 

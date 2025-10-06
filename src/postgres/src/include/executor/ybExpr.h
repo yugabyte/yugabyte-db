@@ -2,7 +2,7 @@
  * ybExpr.h
  *	  prototypes for ybExpr.c
  *
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License.  You may obtain a copy of the License at
@@ -50,7 +50,7 @@ extern YbcPgExpr YBCNewTupleExpr(YbcPgStatement ybc_stmt, const YbcPgTypeAttrs *
 
 extern Expr *YbExprInstantiateExprs(Expr *expr, EState *estate);
 extern YbPushdownExprs *YbInstantiatePushdownExprs(YbPushdownExprs *pushdown,
-													EState *estate);
+												   EState *estate);
 
 extern bool YbCanPushdownExpr(Expr *pg_expr, List **params, Oid relid);
 

@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -33,12 +33,7 @@
 #include "yb/rpc/connection.h"
 
 #include <atomic>
-#include <sstream>
-#include <thread>
 #include <utility>
-
-#include "yb/gutil/map-util.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/rpc/connection_context.h"
 #include "yb/rpc/messenger.h"
@@ -51,26 +46,25 @@
 
 #include "yb/util/debug-util.h"
 #include "yb/util/enums.h"
-#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
-#include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/unique_lock.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
+
 using std::vector;
 
 DEFINE_UNKNOWN_uint64(rpc_connection_timeout_ms, yb::NonTsanVsTsan(15000, 30000),
     "Timeout for RPC connection operations");
 
-METRIC_DEFINE_histogram(
-    server, handler_latency_outbound_transfer, "Time taken to transfer the response ",
+METRIC_DEFINE_histogram(server, handler_latency_outbound_transfer,
+    "Time taken to transfer the response ",
     yb::MetricUnit::kMicroseconds, "Microseconds spent to queue and write the response to the wire",
     60000000LU, 2);
 
@@ -594,7 +588,7 @@ Status Connection::QueueOutboundData(OutboundDataPtr outbound_data) {
           SOURCE_LOCATION());
       outbound_data_queue_lock.unlock();
       responses_queued_after_shutdown_.fetch_add(1, std::memory_order_acq_rel);
-      auto scheduling_status = reactor_->ScheduleReactorTask(task, true /* even_if_not_running */);
+      auto scheduling_status = reactor_->ScheduleReactorTask(task, /*even_if_not_running=*/true);
       LOG_IF_WITH_PREFIX(DFATAL, !scheduling_status.ok())
           << "Failed to schedule OutboundData::Transferred: " << scheduling_status;
       return scheduling_status;

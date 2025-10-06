@@ -3,7 +3,6 @@ package cmd
 import (
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -20,7 +19,6 @@ type perfAdvisorDirectories struct {
 	SystemdFileLocation string
 	templateFileName    string
 	PABin               string
-	ConfigLocation      string
 	PALogDir            string
 }
 
@@ -37,7 +35,6 @@ func newPerfAdvisorDirectories(version string) perfAdvisorDirectories {
 		templateFileName:    "yb-installer-perf-advisor.yml",
 		// GetSoftwareRoot returns /opt/yugabyte/software/
 		PABin:          common.GetSoftwareRoot() + "/perf-advisor/backend/bin",
-		ConfigLocation: common.GetSoftwareRoot() + "/perf-advisor/config/override.properties",
 		PALogDir:       common.GetBaseInstall() + "/data/logs",
 	}
 }
@@ -46,7 +43,7 @@ func newPerfAdvisorDirectories(version string) perfAdvisorDirectories {
 func NewPerfAdvisor(version string) PerfAdvisor {
 
 	return PerfAdvisor{
-		name:                   "performance-advisor",
+		name:                   "yb-perf-advisor",
 		version:                version,
 		perfAdvisorDirectories: newPerfAdvisorDirectories(version),
 	}
@@ -220,23 +217,6 @@ func (perf PerfAdvisor) untarAndSetupPerfAdvisorPackages() error {
 	}
 	if stat, err := os.Stat(frontendDir); err != nil || !stat.IsDir() {
 			return fmt.Errorf("ui directory not found in %s after extraction", targetDir)
-	}
-
-	// Move override.properties into perf-advisor/config
-	overrideSrc := filepath.Join(targetDir, "override.properties")
-	overrideDst := filepath.Join(targetDir, "config", "override.properties")
-	input, err := os.Open(overrideSrc)
-	if err != nil {
-			return fmt.Errorf("failed to open %s: %w", overrideSrc, err)
-	}
-	defer input.Close()
-	output, err := os.Create(overrideDst)
-	if err != nil {
-			return fmt.Errorf("failed to create %s: %w", overrideDst, err)
-	}
-	defer output.Close()
-	if _, err := io.Copy(output, input); err != nil {
-			return fmt.Errorf("failed to copy override.properties: %w", err)
 	}
 
 	if common.HasSudoAccess() {

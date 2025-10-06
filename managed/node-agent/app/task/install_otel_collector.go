@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package task
 
@@ -63,9 +63,14 @@ func (h *InstallOtelCollector) Handle(ctx context.Context) (*pb.DescribeTaskResp
 	}
 
 	// 3) Place the otel-collector.service at desired location.
+	otelColMaxMemory := h.param.GetOtelColMaxMemory()
+	if otelColMaxMemory == 0 {
+		otelColMaxMemory = 2048 // Default to 2048MB if not specified
+	}
 	otelCollectorServiceContext := map[string]any{
-		"user_name":   h.username,
-		"yb_home_dir": h.param.GetYbHomeDir(),
+		"user_name":           h.username,
+		"yb_home_dir":         h.param.GetYbHomeDir(),
+		"otel_col_max_memory": otelColMaxMemory,
 	}
 
 	// Copy otel-collector.service

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# Copyright (c) YugaByte, Inc.
+# Copyright (c) YugabyteDB, Inc.
 
 import argparse
 import json

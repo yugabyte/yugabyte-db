@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -104,7 +104,7 @@ DEFINE_test_flag(bool, cdcsdk_fail_before_updating_cdc_state, false,
 
 DECLARE_uint64(cdc_stream_records_threshold_size_bytes);
 DECLARE_bool(ysql_yb_enable_consistent_replication_from_hash_range);
-DECLARE_bool(TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication);
+DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 
 namespace yb::cdc {
 
@@ -217,7 +217,7 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
     RETURN_NOT_OK(CheckHashRangeConstraints(*slot_entry_opt));
   }
 
-  if (FLAGS_TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
+  if (FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
     pub_all_tables_ = pub_all_tables;
     publications_list_ = std::move(publications_list);
 
@@ -552,7 +552,7 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
 
     if (records_queue.empty()) {
       if (tablet_id == kPublicationRefreshTabletID) {
-        if (FLAGS_TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
+        if (FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
           // Delete the empty pub refresh tablet queue, since it will be no longer used.
           tablet_queues_.erase(kPublicationRefreshTabletID);
         } else {
@@ -661,7 +661,7 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
     // records in the response. Set the fields 'needs_publication_table_list_refresh' and
     // 'publication_refresh_time' and return the response.
     if (unique_id->IsPublicationRefreshRecord() &&
-        !FLAGS_TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
+        !FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
       // The dummy transaction id is set in the publication refresh message only when the value of
       // the flag 'cdcsdk_enable_dynamic_table_support' is true. In other words, the VWAL notifies
       // the walsender to refresh publication when the pub refresh message has a dummy transaction
@@ -1422,9 +1422,9 @@ bool CDCSDKVirtualWAL::CompareCDCSDKProtoRecords::operator()(
 }
 
 Status CDCSDKVirtualWAL::CreatePublicationRefreshTabletQueue() {
-  if (FLAGS_TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
+  if (FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
     LOG(INFO) << "Will not create a pub refresh tablet queue as "
-                 "TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication is enabled.";
+                 "FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication is enabled.";
     return Status::OK();
   }
 
@@ -1463,9 +1463,9 @@ Status CDCSDKVirtualWAL::CreatePublicationRefreshTabletQueue() {
 }
 
 Status CDCSDKVirtualWAL::PushNextPublicationRefreshRecord() {
-  if (FLAGS_TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
+  if (FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
     LOG(INFO) << "Will not push any records to the pub refresh tablet queue since "
-                 "TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication is enabled.";
+                 "FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication is enabled.";
     return Status::OK();
   }
 
@@ -1503,9 +1503,9 @@ Status CDCSDKVirtualWAL::PushNextPublicationRefreshRecord() {
 
 Status CDCSDKVirtualWAL::PushPublicationRefreshRecord(
     uint64_t pub_refresh_time, bool should_apply) {
-  if (FLAGS_TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
+  if (FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
     LOG(INFO) << "Will not push any records to the pub refresh tablet queue as "
-                 "TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication is enabled.";
+                 "FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication is enabled.";
     return Status::OK();
   }
   auto publication_refresh_record = std::make_shared<CDCSDKProtoRecordPB>();

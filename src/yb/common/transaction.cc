@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -85,6 +85,7 @@ void DoToPB(const TransactionMetadata& source, PB* dest) {
   if (source.locality.locality == TransactionLocality::TABLESPACE_LOCAL) {
     dest->set_locality_tablespace_oid(source.locality.tablespace_oid);
   }
+  dest->set_skip_prefix_locks(source.skip_prefix_locks);
 }
 
 } // namespace
@@ -98,11 +99,15 @@ std::string TransactionFullLocality::ToString() const {
 }
 
 std::string TransactionMetadata::ToString() const {
-  return Format(
-      "{ transaction_id: $0 isolation: $1 status_tablet: $2 priority: $3 start_time: $4"
-      " locality: $5 old_status_tablet: $6}",
-      transaction_id, IsolationLevel_Name(isolation), status_tablet, priority, start_time,
-      locality.ToString(), old_status_tablet);
+  return YB_STRUCT_TO_STRING(
+      transaction_id,
+      (isolation, IsolationLevel_Name(isolation)),
+      status_tablet,
+      priority,
+      start_time,
+      locality,
+      old_status_tablet,
+      skip_prefix_locks);
 }
 
 template <class PB>
@@ -117,6 +122,7 @@ Result<TransactionMetadata> TransactionMetadata::DoFromPB(const PB& source) {
     result.status_tablet.assign(string_view.data(), string_view.size());
     result.priority = source.priority();
     result.start_time = HybridTime(source.start_hybrid_time());
+    result.skip_prefix_locks = source.skip_prefix_locks();
   }
 
   if (source.has_locality()) {

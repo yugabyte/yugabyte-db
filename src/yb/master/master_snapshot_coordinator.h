@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -47,7 +47,13 @@ struct SnapshotScheduleRestoration {
   // DB OID of the database that is being restored.
   std::optional<int64_t> db_oid;
   std::vector<std::pair<SnapshotScheduleId, SnapshotScheduleFilterPB>> schedules;
+  // Populated with the list of tablets that exist in the current sys catalog (existing state)
+  // but do not exist in the sys catalog as of the restore-to time (restoring state).
+  // These tablets are deleted.
   std::vector<std::pair<TabletId, SysTabletsEntryPB>> non_system_obsolete_tablets;
+  // Populated with the list of tables that exist in the current sys catalog (existing state)
+  // but do not exist in the sys catalog as of the restore-to time (restoring state).
+  // These tables are hidden.
   std::vector<std::pair<TableId, SysTablesEntryPB>> non_system_obsolete_tables;
   std::unordered_map<std::string, SysRowEntryType> non_system_objects_to_restore;
   // YSQL pg_catalog tables as of the current time.
@@ -65,6 +71,11 @@ struct SnapshotScheduleRestoration {
   // For colocated tablets or tablets that have not been split as of restoring time,
   // only the 'parent' field of SplitTabletInfo above will be populated and 'children'
   // map of SplitTabletInfo will be empty.
+  // We assume each split tablet child will have at most one ancestor in this map.
+  // We only add live tablets to this map, skipping deleted and hidden tablets.
+  //
+  // todo(GH#28776): It is possible w/ extensive manual splits there may be multiple ancestors live,
+  // and restore may not handle this.
   std::unordered_map<TabletId, SplitTabletInfo> non_system_tablets_to_restore;
 
   static std::shared_ptr<SnapshotScheduleRestoration> Create(

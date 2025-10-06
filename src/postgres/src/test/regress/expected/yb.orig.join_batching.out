@@ -904,7 +904,7 @@ explain (costs off) /*+Leading((f1 f2)) YbBatchedNL(f1 f2)*/ select * from float
 
 drop table floattable1;
 drop table floattable2;
-create table ss1(a bigint, b int, primary key(a asc, b asc));
+create table ss1(a bigint, b int, primary key(b asc, a asc));
 create table ss2(a int, b bigint, primary key(a asc, b asc));
 -- 0x8000000000000001 should not join with 1 and 0x8000000000000002 should not join with 2
 insert into ss1 values (1,2), (3,4), (x'8000000000000001'::bigint, 1);
@@ -933,7 +933,7 @@ explain (costs off) /*+Leading((ss2 ss1))*/ select * from ss1, ss2 where ss1.a =
    Join Filter: ((ss1.a = ss2.a) AND (ss1.b = ss2.b))
    ->  Index Scan using ss2_pkey on ss2
    ->  Index Scan using ss1_pkey on ss1
-         Index Cond: (ROW(a, b) = ANY (ARRAY[ROW(ss2.a, ss2.b), ROW($1, $4), ROW($2, $5)]))
+         Index Cond: (ROW(b, a) = ANY (ARRAY[ROW(ss2.b, ss2.a), ROW($1, $4), ROW($2, $5)]))
 (5 rows)
 
 /*+Leading((ss2 ss1))*/ select * from ss1, ss2 where ss1.a = ss2.a and ss1.b = ss2.b;
@@ -950,7 +950,7 @@ explain (costs off) /*+Leading((ss2 ss1))*/ select * from ss1, ss2 where ss1.a =
    Join Filter: ((ss1.a = ss2.a) AND (ss1.b = ss2.b))
    ->  Index Scan using ss2_pkey on ss2
    ->  Index Scan using ss1_pkey on ss1
-         Index Cond: ((ROW(a, b) = ANY (ARRAY[ROW(ss2.a, ss2.b), ROW($1, $4), ROW($2, $5)])) AND (b < 10))
+         Index Cond: ((ROW(b, a) = ANY (ARRAY[ROW(ss2.b, ss2.a), ROW($1, $4), ROW($2, $5)])) AND (b < 10))
 (5 rows)
 
 /*+Leading((ss2 ss1))*/ select * from ss1, ss2 where ss1.a = ss2.a and ss1.b = ss2.b and ss1.b < 10;

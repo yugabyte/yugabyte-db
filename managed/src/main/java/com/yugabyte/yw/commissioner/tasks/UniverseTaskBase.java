@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks;
 
@@ -941,19 +941,22 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           // TODO When checkSuccess = false, lock and unlock are not reverse of each other, but this
           // existing behaviour is retained to not cause regression.
           boolean clearUpdatingTask =
-              (universeDetails.updateSucceeded && updaterConfig.isCheckSuccess())
-                  || updaterConfig.isRollbackPerformed();
-          if (clearUpdatingTask) {
+              (universeDetails.updateSucceeded && updaterConfig.isCheckSuccess());
+
+          if (clearUpdatingTask || updaterConfig.isRollbackPerformed()) {
             if (PLACEMENT_MODIFICATION_TASKS.contains(universeDetails.updatingTask)) {
               universeDetails.placementModificationTaskUuid = null;
               // Do not save the transient state in the universe.
               universeDetails.nodeDetailsSet.forEach(n -> n.masterState = null);
             }
+          }
+          if (clearUpdatingTask) {
             // Clear the task UUIDs only if the update succeeded.
             universeDetails.updatingTaskUUID = null;
           }
           universeDetails.updatingTask = null;
           universeDetails.autoRollbackPerformed = updaterConfig.isRollbackPerformed();
+          log.debug("Autorollback {}", universeDetails.autoRollbackPerformed);
         }
         universe.setUniverseDetails(universeDetails);
       }
@@ -1003,7 +1006,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     // This locks the universe.
     universeDetails.updateInProgress = true;
-    universeDetails.autoRollbackPerformed = false;
     if (updaterConfig.isFreezeUniverse()) {
       universeDetails.updatingTask = owner;
       universeDetails.updatingTaskUUID = getUserTaskUUID();
@@ -1178,6 +1180,29 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       UUID universeUuid,
       int expectedUniverseVersion,
       @Nullable Consumer<Universe> firstRunTxnCallback) {
+    return lockAndFreezeUniverseForUpdate(
+        universeUuid, expectedUniverseVersion, firstRunTxnCallback, null);
+  }
+
+  /**
+   * This method locks the universe, runs {@link #createPrecheckTasks(Universe)}, and freezes the
+   * universe with the given txnCallback. By freezing, the association between the task and the
+   * universe is set up such that the universe always has a reference to the task.
+   *
+   * @param universeUuid the universe UUID.
+   * @param expectedUniverseVersion Lock only if the current version of the universe is at this
+   *     version. -1 implies always lock the universe.
+   * @param firstRunTxnCallback the callback to be invoked in transaction when the universe is
+   *     frozen on the first run of the task.
+   * @param retryTxnCallback the callback to be invoked in transaction when the universe is frozen
+   *     on the retry of the task.
+   * @return the universe.
+   */
+  public Universe lockAndFreezeUniverseForUpdate(
+      UUID universeUuid,
+      int expectedUniverseVersion,
+      @Nullable Consumer<Universe> firstRunTxnCallback,
+      @Nullable Consumer<Universe> retryTxnCallback) {
     if (taskParams().isRunOnlyPrechecks()) {
       throw new PlatformServiceException(
           Http.Status.FORBIDDEN, "Current task doesn't support running only prechecks");
@@ -1201,7 +1226,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         createFreezeUniverseTask(universeUuid, firstRunTxnCallback)
             .setSubTaskGroupType(SubTaskGroupType.ValidateConfigurations);
       } else {
-        createFreezeUniverseTask(universeUuid)
+        createFreezeUniverseTask(universeUuid, retryTxnCallback)
             .setSubTaskGroupType(SubTaskGroupType.ValidateConfigurations);
       }
       // Run to apply the change first before adding the rest of the subtasks.
@@ -1275,6 +1300,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       log.warn("Unlock universe({}) called when it was not locked.", universeUUID);
       return null;
     }
+    log.debug("Rollback performed {}", rollbackPerformed);
     UniverseUpdater updater =
         getUnlockingUniverseUpdater(
             executionContext.getUniverseUpdaterConfig(universeUUID).toBuilder()
@@ -1369,12 +1395,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   /** Create a task to validate gflags for universe */
   public SubTaskGroup createValidateGFlagsTask(
-      List<UniverseDefinitionTaskParams.Cluster> newClusters) {
+      List<UniverseDefinitionTaskParams.Cluster> newClusters,
+      boolean useCLIBinary,
+      String ybSoftwareVersion) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("ValidateGFlags");
     ValidateGFlags task = createTask(ValidateGFlags.class);
     ValidateGFlags.Params params = new ValidateGFlags.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.newClusters = newClusters;
+    params.useCLIBinary = useCLIBinary;
+    params.ybSoftwareVersion = ybSoftwareVersion;
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);

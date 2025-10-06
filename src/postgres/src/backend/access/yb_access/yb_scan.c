@@ -1438,10 +1438,10 @@ YbShouldRecheckEquality(Oid column_typid, Oid value_typid)
 
 static bool
 YbNeedTupleRangeCheck(Datum value, TupleDesc bind_desc,
-					  int key_length, ScanKey keys[])
+					  int key_length, AttrNumber bind_key_attnums[])
 {
 	/* Move past header key. */
-	++keys;
+	++bind_key_attnums;
 	--key_length;
 
 	Oid			tupType = HeapTupleHeaderGetTypeId(DatumGetHeapTupleHeader(value));
@@ -1452,7 +1452,8 @@ YbNeedTupleRangeCheck(Datum value, TupleDesc bind_desc,
 	for (int i = 0; i < key_length; i++)
 	{
 		Oid			val_type = ybc_get_atttypid(val_tupdesc, i + 1);
-		Oid			column_type = ybc_get_atttypid(bind_desc, keys[i]->sk_attno);
+		Oid			column_type = ybc_get_atttypid(bind_desc,
+												   bind_key_attnums[i]);
 
 		if (YbShouldRecheckEquality(column_type, val_type))
 		{
@@ -1466,11 +1467,9 @@ YbNeedTupleRangeCheck(Datum value, TupleDesc bind_desc,
 
 static bool
 YbIsTupleInRange(Datum value, TupleDesc bind_desc,
-				 int key_length, ScanKey keys[],
-				 AttrNumber bind_key_attnums[])
+				 int key_length, AttrNumber bind_key_attnums[])
 {
 	/* Move past header key. */
-	++keys;
 	++bind_key_attnums;
 	--key_length;
 
@@ -1496,7 +1495,8 @@ YbIsTupleInRange(Datum value, TupleDesc bind_desc,
 	{
 		Datum		val = datum_values[i];
 		Oid			val_type = ybc_get_atttypid(val_tupdesc, i + 1);
-		Oid			column_type = ybc_get_atttypid(bind_desc, bind_key_attnums[i]);
+		Oid			column_type = ybc_get_atttypid(bind_desc,
+												   bind_key_attnums[i]);
 
 		if (!YbShouldRecheckEquality(column_type, val_type))
 			continue;
@@ -1840,7 +1840,7 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 										  YbNeedTupleRangeCheck(elem_values[0],
 																scan_plan->bind_desc,
 																length_of_key,
-																&ybScan->keys[i]));
+																&scan_plan->bind_key_attnums[i]));
 
 	bool		retain_nulls = YbSearchArrayRetainNulls(key);
 	bool		bind_to_null = false;
@@ -1883,7 +1883,6 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 				if (!YbIsTupleInRange(elem_values[j],
 									  scan_plan->bind_desc,
 									  length_of_key,
-									  &ybScan->keys[i],
 									  &scan_plan->bind_key_attnums[i]))
 					continue;
 			}

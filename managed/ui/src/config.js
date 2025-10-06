@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 import _ from 'lodash';
 import Cookies from 'js-cookie';
 

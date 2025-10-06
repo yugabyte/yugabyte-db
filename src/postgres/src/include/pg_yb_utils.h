@@ -4,7 +4,7 @@
  * Utilities for YugaByte/PostgreSQL integration that have to be defined on the
  * PostgreSQL side.
  *
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License.  You may obtain a copy
@@ -201,6 +201,7 @@ extern bool YbIsTempRelation(Relation relation);
  * Returns false for all other relations, or if they are not found.
  */
 extern bool YbIsRangeVarTempRelation(const RangeVar *relation);
+
 /*
  * Returns whether a relation's attribute is a real column in the backing
  * YugaByte table. (It implies we can both read from and write to it).
@@ -735,6 +736,11 @@ extern int	yb_test_delay_set_local_tserver_inval_message_ms;
 extern double yb_test_delay_next_ddl;
 
 /*
+ * If > 0, then puts a hard limit on the number of retries.
+ */
+extern int	yb_test_reset_retry_counts;
+
+/*
  * Denotes whether DDL operations touching DocDB system catalog will be rolled
  * back upon failure. These two GUC variables are used together. See comments
  * for the gflag --ysql_enable_ddl_atomicity_infra in common_flags.cc.
@@ -775,6 +781,11 @@ extern bool yb_enable_invalidation_messages;
 extern bool yb_enable_invalidate_table_cache_entry;
 extern int	yb_invalidation_message_expiration_secs;
 extern int	yb_max_num_invalidation_messages;
+
+/*
+ * If set to true, all DDL statements will cause the catalog version to increment.
+ */
+extern bool yb_make_all_ddl_statements_incrementing;
 
 typedef struct YBUpdateOptimizationOptions
 {
@@ -912,7 +923,7 @@ void		YBAddModificationAspects(YbDdlMode mode);
 extern void YBBeginOperationsBuffering();
 extern void YBEndOperationsBuffering();
 extern void YBResetOperationsBuffering();
-extern void YBFlushBufferedOperations(YbcFlushDebugContext debug_context);
+extern void YBFlushBufferedOperations(YbcFlushDebugContext *debug_context);
 extern void YBAdjustOperationsBuffering(int multiple);
 
 bool		YBEnableTracing();
@@ -971,6 +982,10 @@ extern void YbCheckUnsupportedLibcLocale(const char *localebuf);
 /* Spin wait while test guc var actual equals expected. */
 extern void YbTestGucBlockWhileStrEqual(char **actual, const char *expected,
 										const char *msg);
+
+/* Spin wait until test guc var actual equals expected. */
+extern void YbTestGucBlockWhileIntNotEqual(int *actual, int expected,
+										   const char *msg);
 
 extern void YbTestGucFailIfStrEqual(char *actual, const char *expected);
 
@@ -1138,37 +1153,37 @@ extern void yb_assign_max_replication_slots(int newval, void *extra);
  * Refreshes the session stats snapshot with the collected stats. This function
  * is to be invoked before the query has started its execution.
  */
-extern void		YbRefreshSessionStatsBeforeExecution();
+extern void YbRefreshSessionStatsBeforeExecution();
 
 /*
  * Refreshes the session stats snapshot with the collected stats. This function
  * is to be invoked when during/after query execution.
  */
-extern void		YbRefreshSessionStatsDuringExecution();
+extern void YbRefreshSessionStatsDuringExecution();
 
 /*
  * Updates the global flag indicating whether RPC requests to the underlying
  * storage layer need to be timed.
  */
-extern void		YbToggleSessionStatsTimer(bool timing_on);
+extern void YbToggleSessionStatsTimer(bool timing_on);
 
 /* Indicates whether timing of RPC requests is enabled. */
-extern bool		YbIsSessionStatsTimerEnabled();
+extern bool YbIsSessionStatsTimerEnabled();
 
 /*
  * Updates the global flag indicating whether stats need to be collected at the
  * time of transaction commit for EXPLAIN.
  */
-extern void		YbToggleCommitStatsCollection(bool enable);
+extern void YbToggleCommitStatsCollection(bool enable);
 
 /* Indicates whether commit stats collection is enabled. */
-extern bool		YbIsCommitStatsCollectionEnabled();
+extern bool YbIsCommitStatsCollectionEnabled();
 
 /*
  * Records the latency of the last transaction commit operation in a global
  * variable.
  */
-extern void		YbRecordCommitLatency(uint64_t latency_us);
+extern void YbRecordCommitLatency(uint64_t latency_us);
 
 /**
  * Update the global flag indicating what metric changes to capture and return
@@ -1184,7 +1199,7 @@ extern void YBCheckServerAccessIsAllowed();
 
 void		YbSetCatalogCacheVersion(YbcPgStatement handle, uint64_t version);
 
-extern void	YbMaybeSetNonSystemTablespaceOid(YbcPgStatement handle, Relation rel);
+extern void YbMaybeSetNonSystemTablespaceOid(YbcPgStatement handle, Relation rel);
 
 uint64_t	YbGetSharedCatalogVersion();
 uint32_t	YbGetNumberOfDatabases();
@@ -1379,6 +1394,8 @@ extern Relation YbGetRelationWithOverwrittenReplicaIdentity(Oid relid,
 
 extern void YBCUpdateYbReadTimeAndInvalidateRelcache(uint64_t read_time);
 
+extern void YBCResetYbReadTimeAndInvalidateRelcache();
+
 extern uint64_t YbCalculateTimeDifferenceInMicros(TimestampTz yb_start_time);
 
 static inline bool
@@ -1449,5 +1466,22 @@ extern bool YbIsAnyDependentGeneratedColPK(Relation rel, AttrNumber attnum);
 extern bool YbCheckTserverResponseCacheForAuthGflags();
 
 extern bool YbUseTserverResponseCacheForAuth(uint64_t shared_catalog_version);
+
+typedef enum YbTxnError
+{
+	YB_TXN_CONFLICT,
+	YB_TXN_RESTART_READ,
+	YB_TXN_DEADLOCK,
+	YB_TXN_ABORTED,
+	YB_TXN_SKIP_LOCKING,
+	YB_TXN_LOCK_NOT_FOUND,
+	YB_TXN_CONFLICT_KIND_COUNT, /* Must be last value of this enum */
+} YbTxnError;
+
+extern void YbResetRetryCounts();
+extern void YbIncrementRetryCount(YbTxnError kind);
+extern uint64_t YbGetRetryCount(YbTxnError kind);
+extern uint64_t YbGetTotalRetryCount();
+extern YbTxnError YbSqlErrorCodeToTransactionError(int sqlerrcode);
 
 #endif							/* PG_YB_UTILS_H */

@@ -5172,6 +5172,7 @@ create_tidscan_plan(PlannerInfo *root, TidPath *best_path,
 	}
 
 	YbPushdownExprs yb_rel_pushdown = {yb_remote_quals, yb_colrefs};
+
 	scan_plan = make_tidscan(tlist,
 							 yb_local_quals,
 							 scan_relid,

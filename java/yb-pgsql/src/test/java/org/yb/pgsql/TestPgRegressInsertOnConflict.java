@@ -15,6 +15,7 @@ package org.yb.pgsql;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
+import org.yb.minicluster.MiniYBClusterBuilder;
 
 @RunWith(value=YBTestRunner.class)
 public class TestPgRegressInsertOnConflict extends BasePgRegressTest {
@@ -24,6 +25,18 @@ public class TestPgRegressInsertOnConflict extends BasePgRegressTest {
   @Override
   public int getTestMethodTimeoutSec() {
     return 500;
+  }
+
+  @Override
+  protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
+    super.customizeMiniClusterBuilder(builder);
+    // TODO(28543): Remove once transactional ddl is enabled by default.
+    builder.addCommonTServerFlag("ysql_yb_ddl_transaction_block_enabled", "true");
+    builder.addCommonTServerFlag(
+        "allowed_preview_flags_csv", "ysql_yb_ddl_transaction_block_enabled");
+    // (Auto Analyze #28389, #28731) Disable auto analyze due to ddl conflicts between
+    // auto-Analyze and PL/pgSQL function.
+    builder.addCommonTServerFlag("ysql_enable_auto_analyze", "false");
   }
 
   @Test

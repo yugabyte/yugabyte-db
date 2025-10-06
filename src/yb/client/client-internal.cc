@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -287,6 +287,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, RedisConfigGet);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, RedisConfigSet);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, ReservePgsqlOids);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetStatefulServiceLocation);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetTabletsMetadata);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Cluster, GetAutoFlagsConfig);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Cluster, ValidateAutoFlagsConfig);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Cluster, IsLoadBalanced);
@@ -3098,6 +3099,52 @@ Status YBClient::Data::WaitForDdlVerificationToFinish(
       Format("Waiting on YSQL DDL Verification for $0 to be completed", txn.transaction_id),
       Format("Timed out on YSQL DDL Verification for $0 to be completed", txn.transaction_id),
       std::bind(&YBClient::Data::IsYsqlDdlVerificationInProgress, this, txn, _1, _2));
+}
+
+Status YBClient::Data::RollbackDocdbSchemaToSubtxn(
+  const TransactionMetadata& txn, SubTransactionId sub_txn_id, const CoarseTimePoint& deadline) {
+  master::RollbackDocdbSchemaToSubtxnRequestPB req;
+  master::RollbackDocdbSchemaToSubtxnResponsePB resp;
+
+  req.set_transaction_id(txn.transaction_id.data(), txn.transaction_id.size());
+  req.set_sub_transaction_id(sub_txn_id);
+  RETURN_NOT_OK(SyncLeaderMasterRpc(
+      deadline, req, &resp, "RollbackDocdbSchemaToSubtxn",
+      &master::MasterDdlProxy::RollbackDocdbSchemaToSubtxnAsync));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
+Status YBClient::Data::IsRollbackDocdbSchemaToSubtxnInProgress(
+    const TransactionMetadata& txn, SubTransactionId sub_txn_id, CoarseTimePoint deadline,
+    bool* rollback_to_sub_txn_in_progress) {
+  master::IsRollbackDocdbSchemaToSubtxnDoneRequestPB req;
+  master::IsRollbackDocdbSchemaToSubtxnDoneResponsePB resp;
+
+  txn.ToPB(req.mutable_transaction());
+  req.set_sub_transaction_id(sub_txn_id);
+  auto status = SyncLeaderMasterRpc(
+      deadline, req, &resp, "IsRollbackDocdbSchemaToSubtxnDone",
+      &master::MasterDdlProxy::IsRollbackDocdbSchemaToSubtxnDoneAsync);
+
+  *rollback_to_sub_txn_in_progress = !resp.done();
+  return status;
+}
+
+Status YBClient::Data::WaitForRollbackDocdbSchemaToSubtxnToFinish(
+    const TransactionMetadata& txn, SubTransactionId sub_txn_id, CoarseTimePoint deadline) {
+  return RetryFunc(
+      deadline,
+      Format(
+          "Waiting on YSQL Rollback to sub-transaction for $0-$1 to be completed",
+          txn.transaction_id, sub_txn_id),
+      Format(
+          "Timed out on YSQL Rollback to sub-transaction for $0-$1 to be completed",
+          txn.transaction_id, sub_txn_id),
+      std::bind(
+          &YBClient::Data::IsRollbackDocdbSchemaToSubtxnInProgress, this, txn, sub_txn_id, _1, _2));
 }
 
 Result<bool> YBClient::Data::CheckIfPitrActive(CoarseTimePoint deadline) {

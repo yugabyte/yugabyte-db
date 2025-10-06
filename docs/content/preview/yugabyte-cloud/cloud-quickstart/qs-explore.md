@@ -82,4 +82,4 @@ To run this tutorial from your desktop shell, refer to [Explore Yugabyte SQL](/p
 
 ## Next step
 
-[Build an application](/preview/tutorials/build-apps/)
+[Build an application](/preview/develop/tutorials/build-apps/)

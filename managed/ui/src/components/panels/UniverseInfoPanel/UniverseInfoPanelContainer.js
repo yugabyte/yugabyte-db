@@ -1,4 +1,4 @@
-// Copyright YugaByte Inc.
+// Copyright YugabyteDB, Inc.
 
 import { UniverseInfoPanel } from '../../panels';
 import { connect } from 'react-redux';

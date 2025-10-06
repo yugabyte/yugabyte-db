@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -590,6 +590,18 @@ bool TableInfo::IsBeingDroppedDueToDdlTxn(const std::string& pb_txn_id, bool txn
          (l->is_being_deleted_by_ysql_ddl_txn() && txn_success);
 }
 
+bool TableInfo::IsBeingDroppedDueToSubTxnRollback(
+    const std::string& pb_txn_id, const SubTransactionId sub_transaction_id) const {
+  auto l = LockForRead();
+  if (l->pb_transaction_id() != pb_txn_id) {
+    return false;
+  }
+
+  auto idx = l->ysql_first_ddl_state_at_or_after_sub_txn(sub_transaction_id);
+  return idx < l->ysql_ddl_txn_verifier_state().size() &&
+         l->ysql_ddl_txn_verifier_state()[idx].contains_create_table_op();
+}
+
 Status TableInfo::AddTablet(const TabletInfoPtr& tablet) {
   std::lock_guard l(lock_);
   return AddTabletUnlocked(tablet);
@@ -666,17 +678,17 @@ void TableInfo::AddStatusTabletViaSplitPartition(
 }
 
 Status TableInfo::AddTabletUnlocked(const TabletInfoPtr& tablet) {
-  const auto& dirty = tablet->metadata().dirty();
-  if (dirty.is_deleted()) {
+  const auto& tablet_dirty = tablet->metadata().dirty();
+  if (tablet_dirty.is_deleted()) {
     // todo(zdrudi): for github issue 18257 this function's return type changed from void to Status.
     // To avoid changing existing behaviour we return OK here.
     // But silently passing over this case could cause bugs.
     return Status::OK();
   }
-  const auto& tablet_meta = dirty.pb;
+  const auto& tablet_meta = tablet_dirty.pb;
   tablets_.emplace(tablet->id(), tablet);
 
-  if (dirty.is_hidden()) {
+  if (tablet_dirty.is_hidden()) {
     // todo(zdrudi): for github issue 18257 this function's return type changed from void to Status.
     // To avoid changing existing behaviour we return OK here.
     // But silently passing over this case could cause bugs.
@@ -1150,6 +1162,30 @@ std::vector<TransactionId> TableInfo::EraseDdlTxnsWaitingForSchemaVersion(int sc
   return txns;
 }
 
+void TableInfo::AddDdlTxnForRollbackToSubTxnWaitingForSchemaVersion(
+    int schema_version, const TransactionId& txn) {
+  std::lock_guard l(lock_);
+  auto res = ddl_txns_for_subtxn_rollback_waiting_for_schema_version_.emplace(schema_version, txn);
+  // There should never have existed an entry for this schema version already as only one
+  // DDL transaction is allowed on an entity at a given time.
+  LOG_IF(DFATAL, !res.second) << "Found existing entry for schema version " << schema_version
+                              << " for table " << table_id_ << " with txn " << txn
+                              << " previous transaction " << res.first->second;
+}
+
+TransactionId TableInfo::EraseDdlTxnForRollbackToSubTxnWaitingForSchemaVersion(
+    int schema_version) {
+  std::lock_guard l(lock_);
+  TransactionId txn;
+
+  auto itr = ddl_txns_for_subtxn_rollback_waiting_for_schema_version_.find(schema_version);
+  if (itr != ddl_txns_for_subtxn_rollback_waiting_for_schema_version_.end()) {
+    txn = itr->second;
+    ddl_txns_for_subtxn_rollback_waiting_for_schema_version_.erase(itr);
+  }
+  return txn;
+}
+
 bool TableInfo::IsUserCreated() const {
   return IsUserCreated(LockForRead());
 }
@@ -1360,9 +1396,24 @@ std::string DdlLogEntry::id() const {
 // ObjectLockInfo
 // ================================================================================================
 
-std::variant<ObjectLockInfo::WriteLock, SysObjectLockEntryPB::LeaseInfoPB>
+Result<std::variant<ObjectLockInfo::WriteLock, SysObjectLockEntryPB::LeaseInfoPB>>
 ObjectLockInfo::RefreshYsqlOperationLease(const NodeInstancePB& instance, MonoDelta lease_ttl) {
   auto l = LockForWrite();
+  auto& current_lease_info = l->pb.lease_info();
+  if (instance.instance_seqno() < current_lease_info.instance_seqno()) {
+    return STATUS_FORMAT(
+        IllegalState,
+        "Cannot grant lease, instance seqno of requestor $0 is lower than instance seqno of a "
+        "previously granted lease $1",
+        instance.instance_seqno(), current_lease_info.instance_seqno());
+  }
+  if (current_lease_info.lease_relinquished() &&
+      instance.instance_seqno() <= current_lease_info.instance_seqno()) {
+    return STATUS_FORMAT(
+        IllegalState,
+        "Cannot grant lease, lease has been relinquished by instance_seqno $0 already",
+        current_lease_info.instance_seqno());
+  }
   {
     std::lock_guard l(mutex_);
     // When doing this mutation we cannot be sure the tserver receives the response.
@@ -1377,6 +1428,7 @@ ObjectLockInfo::RefreshYsqlOperationLease(const NodeInstancePB& instance, MonoDe
   lease_info.set_live_lease(true);
   lease_info.set_lease_epoch(lease_info.lease_epoch() + 1);
   lease_info.set_instance_seqno(instance.instance_seqno());
+  lease_info.set_lease_relinquished(false);
   return std::move(l);
 }
 
