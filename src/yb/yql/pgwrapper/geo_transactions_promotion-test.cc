@@ -259,6 +259,11 @@ class GeoTransactionsPromotionTest : public GeoTransactionsTestBase {
       conn = ASSERT_RESULT(Connect());
     }
 
+    // Region-local transaction tablets may not be available, since some tests shut it down
+    // in the pre/post-commit hooks.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = true;
+    ScopeExit s([] { ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = false; });
+
     if (transaction_type == TestTransactionType::kCommit && success) {
       for (size_t i = 1; i <= tables_per_region_; ++i) {
         ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(strings::Substitute(
