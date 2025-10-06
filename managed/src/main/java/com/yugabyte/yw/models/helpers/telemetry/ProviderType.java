@@ -7,7 +7,8 @@ public enum ProviderType {
   GCP_CLOUD_MONITORING(true, false),
   LOKI(true, false),
   DYNATRACE(false, true),
-  S3(true, false);
+  S3(true, false),
+  OTLP(true, false);
 
   public final boolean isAllowedForLogs;
   public final boolean isAllowedForMetrics;

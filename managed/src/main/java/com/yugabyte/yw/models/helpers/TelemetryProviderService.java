@@ -222,6 +222,7 @@ public class TelemetryProviderService {
   public void throwRuntimeFlagDisabledForExporterTypeException(ProviderType providerType) {
     throwExceptionIfLokiExporterRuntimeFlagDisabled(providerType);
     throwExceptionIfS3ExporterRuntimeFlagDisabled(providerType);
+    throwExceptionIfOTLPExporterRuntimeFlagDisabled(providerType);
   }
 
   public void throwExceptionIfLokiExporterRuntimeFlagDisabled(ProviderType providerType) {
@@ -241,6 +242,16 @@ public class TelemetryProviderService {
           BAD_REQUEST,
           "S3 Exporter for Telemetry Provider is not enabled. Please set runtime flag"
               + " 'yb.telemetry.allow_s3' to true.");
+    }
+  }
+
+  public void throwExceptionIfOTLPExporterRuntimeFlagDisabled(ProviderType providerType) {
+    boolean isOTLPTelemetryEnabled = confGetter.getGlobalConf(GlobalConfKeys.telemetryAllowOTLP);
+    if (!isOTLPTelemetryEnabled && providerType == ProviderType.OTLP) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "OTLP Exporter for Telemetry Provider is not enabled. Please set runtime flag"
+              + " 'yb.telemetry.allow_otlp' to true.");
     }
   }
 
