@@ -289,3 +289,5 @@
 | "Common Name Required for Certificates" | "yb.tls.cert_manager.common_name_required" | "UNIVERSE" | "If true, YBA will add commonName to the CertificateRequest sent to cert manager." | "Boolean" |
 | "Use S3 IAM roles attached to DB node for Backup/Restore" | "yb.backup.s3.use_db_nodes_iam_role_for_backup" | "UNIVERSE" | "Use S3 IAM roles attached to DB node for Backup/Restore" | "Boolean" |
 | "Whether to check if correct THP settings are applied" | "yb.health_checks.check_thp" | "UNIVERSE" | "Whether to check if correct Transparent Huge Pages settings are applied" | "Boolean" |
+| "Upgrade Master Sleep Time Per AZ" | "yb.upgrade.upgrade_master_stage_pause_duration_ms" | "UNIVERSE" | "Time to sleep after upgrading masters in each AZ" | "Long" |
+| "Upgrade TServer Sleep Time Per AZ" | "yb.upgrade.upgrade_tserver_stage_pause_duration_ms" | "UNIVERSE" | "Time to sleep after upgrading tservers in each AZ" | "Long" |

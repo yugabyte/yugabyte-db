@@ -108,6 +108,90 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
         false);
   }
 
+  protected void createMasterUpgradeFlowTasks(
+      Universe universe,
+      List<NodeDetails> masterNodes,
+      String newVersion,
+      UpgradeContext upgradeContext,
+      boolean activeRole) {
+    switch (taskParams().upgradeOption) {
+      case ROLLING_UPGRADE:
+        createRollingUpgradeTaskFlow(
+            (nodes1, processTypes) -> {
+              createSoftwareInstallTasks(
+                  nodes1, getSingle(processTypes), newVersion, getTaskSubGroupType());
+            },
+            masterNodes,
+            ServerType.MASTER,
+            upgradeContext,
+            activeRole,
+            taskParams().isYbcInstalled());
+        break;
+      case NON_ROLLING_UPGRADE:
+        createNonRollingUpgradeTaskFlow(
+            (nodes1, processTypes) -> {
+              createSoftwareInstallTasks(
+                  nodes1, getSingle(processTypes), newVersion, getTaskSubGroupType());
+            },
+            masterNodes,
+            ServerType.MASTER,
+            upgradeContext,
+            activeRole,
+            taskParams().isYbcInstalled());
+        break;
+      case NON_RESTART_UPGRADE:
+        throw new UnsupportedOperationException(
+            "Non-restart upgrade is not supported for software upgrade");
+      default:
+        break;
+    }
+  }
+
+  protected void createTServerUpgradeFlowTasks(
+      Universe universe,
+      List<NodeDetails> tserverNodes,
+      String newVersion,
+      UpgradeContext upgradeContext,
+      boolean reProvision) {
+    switch (taskParams().upgradeOption) {
+      case ROLLING_UPGRADE:
+        createRollingUpgradeTaskFlow(
+            (nodes1, processTypes) -> {
+              if (reProvision) {
+                createSetupServerTasks(nodes1, param -> param.isSystemdUpgrade = true);
+              }
+              createSoftwareInstallTasks(
+                  nodes1, getSingle(processTypes), newVersion, getTaskSubGroupType());
+            },
+            tserverNodes,
+            ServerType.TSERVER,
+            upgradeContext,
+            true /* activeRole */,
+            taskParams().isYbcInstalled());
+        break;
+      case NON_ROLLING_UPGRADE:
+        createNonRollingUpgradeTaskFlow(
+            (nodes1, processTypes) -> {
+              if (reProvision) {
+                createSetupServerTasks(nodes1, param -> param.isSystemdUpgrade = true);
+              }
+              createSoftwareInstallTasks(
+                  nodes1, getSingle(processTypes), newVersion, getTaskSubGroupType());
+            },
+            tserverNodes,
+            ServerType.TSERVER,
+            upgradeContext,
+            true /* activeRole */,
+            taskParams().isYbcInstalled());
+        break;
+      case NON_RESTART_UPGRADE:
+        throw new UnsupportedOperationException(
+            "Non-restart upgrade is not supported for software upgrade");
+      default:
+        break;
+    }
+  }
+
   protected void createYbcInstallTask(
       Universe universe, List<NodeDetails> nodes, String newVersion) {
     createYbcSoftwareInstallTasks(nodes, newVersion, getTaskSubGroupType());

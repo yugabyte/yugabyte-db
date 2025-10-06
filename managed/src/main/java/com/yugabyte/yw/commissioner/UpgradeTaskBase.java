@@ -383,7 +383,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         lambda, nodeSet, NodeDetails::getAllProcesses, context, true, isYbcPresent);
   }
 
-  private void createRollingUpgradeTaskFlow(
+  protected void createRollingUpgradeTaskFlow(
       IUpgradeSubTask rollingUpgradeLambda,
       Collection<NodeDetails> nodes,
       ServerType baseProcessType,
@@ -754,7 +754,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     }
   }
 
-  private List<NodeDetails> getNonMasterNodes(
+  protected List<NodeDetails> getNonMasterNodes(
       List<NodeDetails> masterNodes, List<NodeDetails> tServerNodes) {
     Universe universe = getUniverse();
     UUID primaryClusterUuid = universe.getUniverseDetails().getPrimaryCluster().uuid;
@@ -768,7 +768,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         : null;
   }
 
-  private void createNonRollingUpgradeTaskFlow(
+  protected void createNonRollingUpgradeTaskFlow(
       IUpgradeSubTask nonRollingUpgradeLambda,
       List<NodeDetails> nodes,
       ServerType processType,
@@ -1155,7 +1155,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         .collect(Collectors.toList());
   }
 
-  private static List<UUID> sortAZs(
+  protected static List<UUID> sortAZs(
       UniverseDefinitionTaskParams.Cluster cluster, Universe universe) {
     List<UUID> result = new ArrayList<>();
     Map<UUID, Integer> indexByUUID = new HashMap<>();
