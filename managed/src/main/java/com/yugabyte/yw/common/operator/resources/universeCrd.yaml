@@ -132,6 +132,14 @@ spec:
                 x-kubernetes-validations:
                 - message: enableClientToNodeEncrypt cannot be changed
                   rule: self == oldSelf
+              rootCA:
+                description: >
+                  Specify the name of the rootCA certificate to be used for cert-manager
+                  or cert-manager certificates. If empty, YBA will create its own certificate.
+                type: string
+                x-kubernetes-validations:
+                - message: rootCA cannot be changed once set
+                  rule: self == oldSelf
               ybSoftwareVersion:
                 description: Version of DB software to use in the universe.
                 type: string
