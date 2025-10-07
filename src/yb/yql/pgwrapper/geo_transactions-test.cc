@@ -114,6 +114,10 @@ class GeoTransactionsTest : public GeoTransactionsTestBase {
     }
     auto insert_value = NextInsertValue();
     ASSERT_OK(conn.ExecuteFormat("SET force_global_transaction = $0", ToString(session_var)));
+    if (local_table) {
+      ASSERT_OK(WarmupTablespaceCache(conn, *local_table));
+    }
+    ASSERT_OK(WarmupTablespaceCache(conn, target_table));
     ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
     if (local_table) {
       ASSERT_OK(conn.ExecuteFormat(
@@ -178,6 +182,10 @@ class GeoTransactionsTest : public GeoTransactionsTestBase {
       ASSERT_OK(init_conn(conn));
     }
     ASSERT_OK(conn.ExecuteFormat("SET force_global_transaction = $0", ToString(session_var)));
+    if (local_table) {
+      ASSERT_OK(WarmupTablespaceCache(conn, *local_table));
+    }
+    ASSERT_OK(WarmupTablespaceCache(conn, target_table));
     for (size_t i = 0; i < num_aborts; ++i) {
       ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
       auto insert_value = NextInsertValue();
@@ -329,10 +337,7 @@ class GeoTransactionsTestTableLocksDisabled : public GeoTransactionsTest {
   }
 };
 
-// Fails when table-level locks are enabled due to #28317.
-TEST_F_EX(
-    GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionTabletSelection),
-    GeoTransactionsTestTableLocksDisabled) {
+TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionTabletSelection)) {
   constexpr int tables_per_region = 1;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = false;
@@ -510,10 +515,7 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestMultiRegionTransactionTa
       InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
 }
 
-// Fails when table-level locks are enabled due to #28317.
-TEST_F_EX(
-    GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestAutomaticLocalTransactionTableCreation),
-    GeoTransactionsTestTableLocksDisabled) {
+TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestAutomaticLocalTransactionTableCreation)) {
   constexpr int tables_per_region = 1;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = true;
@@ -1194,11 +1196,13 @@ TEST_F(GeoTransactionsTablespaceLocalityTest, TestSessionVariableOverride) {
       SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
       ExpectedLocality::kGlobal, force_tablespace_auto_select);
 
-  auto force_tablespace_bad_select = [](pgwrapper::PGConn& conn) -> Status {
+  auto force_tablespace_bad_select = [this](pgwrapper::PGConn& conn) -> Status {
     RETURN_NOT_OK(conn.Execute("SET yb_force_tablespace_locality = true"));
     // Normal user oids start at 16384, so this should not map to anything, and we can test
     // that it becomes global.
-    return conn.Execute("SET yb_force_tablespace_locality_oid = 1");
+    RETURN_NOT_OK(conn.Execute("SET yb_force_tablespace_locality_oid = 1"));
+    // Discard current transaction.
+    return WarmupTablespaceCache(conn, kTableName);
   };
 
   CheckSuccess(
@@ -1375,8 +1379,7 @@ TEST_F(GeoTransactionsTablespaceLocalityTest, TestAlterSetTablespace) {
       ExpectedLocality::kGlobal);
 }
 
-// Fails when table-level locks are enabled due to #28317.
-class GeoTransactionsWildcardTest : public GeoTransactionsTestTableLocksDisabled {
+class GeoTransactionsWildcardTest : public GeoTransactionsTest {
  protected:
   void SetupTablespaces() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = true;

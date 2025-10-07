@@ -384,5 +384,14 @@ Result<std::vector<TabletId>> GeoTransactionsTestBase::GetStatusTablets(
   }
 }
 
+Status GeoTransactionsTestBase::WarmupTablespaceCache(
+    pgwrapper::PGConn& conn, std::string_view table) {
+  // Force tablespace information into cache. Since SERIALIZABLE replicates reads, this also
+  // serves to ensure transaction is not reused (for object locking enabled cases).
+  RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+  RETURN_NOT_OK(conn.FetchFormat("SELECT * FROM $0 LIMIT 0", table));
+  return conn.RollbackTransaction();
+}
+
 } // namespace client
 } // namespace yb

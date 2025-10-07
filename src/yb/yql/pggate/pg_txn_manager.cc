@@ -789,6 +789,10 @@ Status PgTxnManager::SetupPerformOptions(
   if (read_time_action && *read_time_action == ReadTimeAction::RESET) {
     options->mutable_read_time()->Clear();
   }
+
+  options->set_force_global_transaction(yb_force_global_transaction);
+  options->set_force_tablespace_locality(yb_force_tablespace_locality);
+  options->set_force_tablespace_locality_oid(yb_force_tablespace_locality_oid);
   return Status::OK();
 }
 

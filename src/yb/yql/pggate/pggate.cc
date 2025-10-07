@@ -666,7 +666,8 @@ PgApiImpl::PgApiImpl(
       }),
       pg_shared_data_(
           *init_postgres_info.shared_data, !init_postgres_info.parallel_leader_session_id),
-      pg_client_(wait_event_watcher_, pg_shared_data_->next_perform_op_serial_no),
+      pg_client_(
+          wait_event_watcher_, pg_shared_data_->next_perform_op_serial_no, tablespace_map_),
       clock_(new server::HybridClock()),
       enable_table_locking_(ShouldEnableTableLocks()),
       pg_txn_manager_(new PgTxnManager(&pg_client_, clock_, pg_callbacks_, enable_table_locking_)),

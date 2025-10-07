@@ -493,10 +493,12 @@ class PgClient::Impl : public BigDataFetcher {
  public:
   Impl(
       std::reference_wrapper<const WaitEventWatcher> wait_event_watcher,
-      std::atomic<uint64_t>& next_perform_op_serial_no)
+      std::atomic<uint64_t>& next_perform_op_serial_no,
+      const TablespaceMap& tablespace_map)
     : heartbeat_poller_(std::bind(&Impl::Heartbeat, this, false)),
       wait_event_watcher_(wait_event_watcher),
-      next_perform_op_serial_no_(next_perform_op_serial_no) {
+      next_perform_op_serial_no_(next_perform_op_serial_no),
+      tablespace_map_(tablespace_map) {
     tablet_server_count_cache_.fill(0);
   }
 
@@ -932,6 +934,15 @@ class PgClient::Impl : public BigDataFetcher {
     lock_oid->set_relation_oid(lock_id.relation_oid);
     lock_oid->set_object_oid(lock_id.object_oid);
     lock_oid->set_object_sub_oid(lock_id.object_sub_oid);
+    if (lock_id.relation_oid >= kPgFirstNormalObjectId) {
+      auto tablespace_itr = tablespace_map_.find(PgObjectId(lock_id.db_oid, lock_id.relation_oid));
+      if (tablespace_itr == tablespace_map_.end()) {
+        LOG(WARNING) << "Tablespace not found for db_oid=" << lock_id.db_oid
+                     << " relation_oid=" << lock_id.relation_oid;
+      } else {
+        lock_oid->set_tablespace_oid(tablespace_itr->second);
+      }
+    }
     req.set_lock_type(static_cast<tserver::ObjectLockMode>(mode));
 
     auto result_future = PrepareAndSend<AcquireObjectLockData>(
@@ -1744,6 +1755,8 @@ class PgClient::Impl : public BigDataFetcher {
   InterprocessMappedRegion big_mapped_region_;
   ThreadSafeArena object_locks_arena_;
   std::atomic<uint64_t>& next_perform_op_serial_no_;
+
+  const TablespaceMap& tablespace_map_;
 };
 
 std::string DdlMode::ToString() const {
@@ -1761,8 +1774,9 @@ void DdlMode::ToPB(tserver::PgFinishTransactionRequestPB_DdlModePB* dest) const 
 
 PgClient::PgClient(
     std::reference_wrapper<const WaitEventWatcher> wait_event_watcher,
-    std::atomic<uint64_t>& seq_number)
-    : impl_(new Impl(wait_event_watcher, seq_number)) {}
+    std::atomic<uint64_t>& seq_number,
+    const TablespaceMap& tablespace_map)
+    : impl_(new Impl(wait_event_watcher, seq_number, tablespace_map)) {}
 
 PgClient::~PgClient() = default;
 
