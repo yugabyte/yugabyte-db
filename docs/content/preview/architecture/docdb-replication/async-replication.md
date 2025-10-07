@@ -63,6 +63,10 @@ Because there is a useful trade-off between how much consistency is lost and wha
 For YCQL, only non-transactional replication mode is supported.
 Non-transactional replication mode supports active-active multi-master deployments.
 
+{{< Warning title="Important" >}}
+Refer to [Inconsistencies affecting transactions](#inconsistencies-affecting-transactions) for details on how non-transactional mode can lead to inconsistencies.
+{{< /Warning >}}
+
 {{< tip >}}
 For YSQL deployments, transactional mode is preferred because it provides the necessary consistency guarantees typically required for such deployments.
 {{< /tip >}}
@@ -224,6 +228,7 @@ The multi-master deployment uses bidirectional replication, which involves two u
 
 {{< Warning title="Important" >}}
 Refer to [Inconsistencies affecting transactions](#inconsistencies-affecting-transactions) for details on how non-transactional mode can lead to inconsistencies.
+
 This mode is not recommended for YSQL deployments.
 {{< /Warning >}}
 
