@@ -36,9 +36,9 @@ METRIC_DEFINE_counter(server, rpc_inbound_calls_created,
                       "Number of created RPC inbound calls.");
 
 METRIC_DEFINE_counter(server, rpc_inbound_calls_failed,
-                      "Number of failed RPC inbound calls.",
-                      yb::MetricUnit::kRequests,
-                      "Number of failed RPC inbound calls.");
+    "Number of failed RPC inbound calls; these are calls where we respond with failure.",
+    yb::MetricUnit::kRequests,
+    "Number of failed RPC inbound calls; these are calls where we respond with failure.");
 
 METRIC_DEFINE_gauge_int64(server, rpc_outbound_calls_alive,
                           "Number of alive RPC outbound calls.",
@@ -61,8 +61,7 @@ METRIC_DEFINE_gauge_int64(server, rpc_busy_reactors, "The number of busy reactor
                           yb::MetricUnit::kUnits,
                           "The number of reactors doing some work at this time.");
 
-namespace yb {
-namespace rpc {
+namespace yb::rpc {
 
 RpcMetrics::RpcMetrics(const scoped_refptr<MetricEntity>& metric_entity) {
   if (metric_entity) {
@@ -78,5 +77,4 @@ RpcMetrics::RpcMetrics(const scoped_refptr<MetricEntity>& metric_entity) {
   }
 }
 
-} // namespace rpc
-} // namespace yb
+} // namespace yb::rpc
