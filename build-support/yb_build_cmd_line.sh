@@ -91,6 +91,9 @@ Build options:
   --build-yugabyted-ui
     Build yugabyted-ui. If specified with --cmake-only, it won't be built.
 
+  --skip-pg-parquet
+    Skip pg_parquet extension build.
+
   --target, --targets
     Pass the given target or set of targets to make or ninja.
   --rebuild-file <source_file_to_rebuild>
@@ -615,6 +618,9 @@ parse_yb_build_cmd_line() {
       ;;
       --no-yugabyted-ui|--skip-yugabyted-ui)
         build_yugabyted_ui=false
+      ;;
+      --skip-pg-parquet)
+        export YB_SKIP_PG_PARQUET_BUILD=1
       ;;
       --num-repetitions|--num-reps|-n)
         ensure_option_has_arg "$@"
