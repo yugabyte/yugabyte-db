@@ -25,8 +25,8 @@ rightNav:
 
 ##### New features
 
-* Support for [Roll back upgrades](../cloud-clusters/cloud-maintenance/#what-to-expect-during-maintenance) and [YSQL major upgrade (PostgreSQL 15 upgrade)](../cloud-clusters/database-upgrade/#ysql-major-upgrade). Ability to roll back a database upgrade in-place and restore the cluster to its state before the upgrade.
-* [YSQL Connection Pooling](../../additional-features/connection-manager-ysql/)
+* Support for [Roll back upgrades](../cloud-clusters/database-upgrade/#roll-back-an-upgrade) and [YSQL major upgrade (PostgreSQL 15 upgrade)](../cloud-clusters/database-upgrade/#ysql-major-upgrade). Ability to roll back a database upgrade in-place and restore the cluster to its state before the upgrade.
+* [YSQL Connection Pooling](../../additional-features/connection-manager-ysql/) enhancements.
   * Support to enable Connection Pooling during cluster creation using [CLI](https://github.com/yugabyte/ybm-cli/blob/main/docs/ybm_cluster_create.md).
   * Added API to increase or decrease the logical connections on a cluster.
   * Support to dynamically control the physical connections count per vCPU (similar to logical connections).
