@@ -32,16 +32,12 @@
 
 #include "yb/rpc/inbound_call.h"
 
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/rpc/connection.h"
 #include "yb/rpc/connection_context.h"
-#include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/rpc_metrics.h"
 #include "yb/rpc/service_if.h"
 
 #include "yb/util/debug/trace_event.h"
-#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/trace.h"
@@ -63,8 +59,7 @@ DEFINE_RUNTIME_int32(rpc_slow_query_threshold_ms, 10000,
     "Traces for calls that take longer than this threshold (in ms) are logged");
 TAG_FLAG(rpc_slow_query_threshold_ms, advanced);
 
-namespace yb {
-namespace rpc {
+namespace yb::rpc {
 
 namespace {
 
@@ -234,7 +229,7 @@ void InboundCall::QueueResponse(bool is_success) {
     ASH_ENABLE_CONCURRENT_UPDATES_FOR(wait_state_ptr);
     SET_WAIT_STATUS_TO(wait_state_ptr, OnCpu_Passive);
   }
-  if (is_success) {
+  if (!is_success) {
     IncrementCounter(rpc_metrics_->inbound_calls_failed);
   }
 }
@@ -314,5 +309,4 @@ void InboundCall::Serialize(ByteBlocks* output) {
   }
 }
 
-}  // namespace rpc
-}  // namespace yb
+} // namespace yb::rpc
