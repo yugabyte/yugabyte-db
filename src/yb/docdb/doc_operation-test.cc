@@ -614,7 +614,7 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
   DocRowwiseIterator iter(
       projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
       ReadOperationData::FromReadTime(ReadHybridTime::FromUint64(3000)), pending_op);
-  iter.InitForTableType(YQL_TABLE_TYPE);
+  ASSERT_OK(iter.InitForTableType(YQL_TABLE_TYPE));
   ASSERT_FALSE(ASSERT_RESULT(iter.FetchNext(nullptr)));
 
   // Now verify row exists even with one valid column.

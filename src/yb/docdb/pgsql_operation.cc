@@ -550,7 +550,7 @@ Result<std::unique_ptr<YQLRowwiseIteratorIf>> CreateYbctidIterator(
       SkipSeek skip_seek) {
   return data.ql_storage.GetIteratorForYbctid(
       data.request.stmt_id(), projection, read_context, data.txn_op_context,
-      data.read_operation_data, bounds, data.pending_op, skip_seek, UseVariableBloomFilter::kTrue);
+      data.read_operation_data, bounds, data.pending_op, skip_seek);
 }
 
 class FilteringIterator {
@@ -2842,10 +2842,11 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteScalar() {
   // columns and key columns.
   auto doc_projection = CreateProjection(data_.doc_read_context.schema(), request_);
   FilteringIterator table_iter(&table_iter_);
-  RETURN_NOT_OK(table_iter.Init(data_, request_, doc_projection, data_.doc_read_context));
 
   std::optional<IndexState> index_state;
   if (data_.index_doc_read_context) {
+    RETURN_NOT_OK(table_iter.InitForYbctid(data_, doc_projection, data_.doc_read_context, {}));
+
     const auto& index_schema = data_.index_doc_read_context->schema();
     const auto idx = index_schema.find_column("ybidxbasectid");
     SCHECK_NE(idx, Schema::kColumnNotFound, Corruption, "ybidxbasectid not found in index schema");
@@ -2853,6 +2854,8 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteScalar() {
         index_schema, request_.index_request(), &index_iter_, index_schema.column_id(idx));
     RETURN_NOT_OK(index_state->iter.Init(
         data_, request_.index_request(), index_state->projection, *data_.index_doc_read_context));
+  } else {
+    RETURN_NOT_OK(table_iter.Init(data_, request_, doc_projection, data_.doc_read_context));
   }
 
   // Set scan end time. We want to iterate as long as we can, but stop before client timeout.

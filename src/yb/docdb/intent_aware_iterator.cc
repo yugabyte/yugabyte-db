@@ -1428,8 +1428,11 @@ bool IntentAwareIterator::HandleStatus(const Status& status) {
   return false;
 }
 
-void IntentAwareIterator::UpdateFilterKey(Slice user_key_for_filter) {
-  iter_.UpdateFilterKey(user_key_for_filter);
+void IntentAwareIterator::UpdateFilterKey(Slice user_key_for_filter, Slice seek_key) {
+  VLOG_WITH_FUNC(4)
+      << "user_key_for_filter: " << DebugDumpKeyToStr(user_key_for_filter)
+      << ", seek_key: " << DebugDumpKeyToStr(seek_key);
+  iter_.UpdateFilterKey(user_key_for_filter, seek_key);
 }
 
 #ifndef NDEBUG

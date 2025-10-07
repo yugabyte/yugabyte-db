@@ -26,6 +26,7 @@
 #include "yb/docdb/bounded_rocksdb_iterator.h"
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_ql_filefilter.h"
+#include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/docdb_filter_policy.h"
 #include "yb/docdb/docdb_statistics.h"
 #include "yb/docdb/intent_aware_iterator.h"
@@ -1105,6 +1106,19 @@ std::shared_ptr<rocksdb::RateLimiter> CreateRocksDBRateLimiter() {
       rocksdb::NewGenericRateLimiter(FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec));
   }
   return nullptr;
+}
+
+Result<BloomFilterOptions> BloomFilterOptions::Make(
+    const DocReadContext& doc_read_context, Slice lower, Slice upper, bool allow_variable) {
+  const bool is_fixed_point_get =
+      !lower.empty() && VERIFY_RESULT(doc_read_context.HaveEqualBloomFilterKey(lower, upper));
+  if (is_fixed_point_get) {
+    return BloomFilterOptions::Fixed(lower);
+  }
+  if (allow_variable) {
+    return BloomFilterOptions::Variable();
+  }
+  return BloomFilterOptions::Inactive();
 }
 
 } // namespace docdb

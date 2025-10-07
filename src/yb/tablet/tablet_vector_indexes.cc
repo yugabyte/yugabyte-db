@@ -71,9 +71,9 @@ class IndexedTableContext : public docdb::DocVectorIndexedTableContext {
     // allow to save Seek and Next on intent_iter_ of IntentAwareIterator.
     auto result = VERIFY_RESULT(tablet_.NewUninitializedDocRowIterator(
         projection_, ReadHybridTime::SingleTime(read_ht), indexed_table_id_));
-    result->InitForTableType(
+    RETURN_NOT_OK(result->InitForTableType(
         TableType::PGSQL_TABLE_TYPE, start_key ? *start_key : Slice(), docdb::SkipSeek(!start_key),
-        docdb::AddTablePrefixToKey::kTrue);
+        docdb::AddTablePrefixToKey::kTrue));
     return result;
   }
 

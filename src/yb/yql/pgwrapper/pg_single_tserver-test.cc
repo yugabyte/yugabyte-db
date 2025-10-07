@@ -2099,5 +2099,114 @@ TEST_F(PgSingleTServerTest, IterKeyInvalidationDuringBackwardScan) {
   }
 }
 
+TEST_F(PgSingleTServerTest, BloomFilterIn) {
+  constexpr int kIterations = 1000;
+  constexpr int32_t kMinKey = 1;
+  constexpr int32_t kMaxKey = 20;
+
+  use_colocation_ = false;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (k INT PRIMARY KEY, v INT) "
+      "SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO test (SELECT i * 4, i * 2 FROM GENERATE_SERIES(1, 5) AS i)"));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO test (SELECT i * 4 - 2, i * 2 - 1 FROM GENERATE_SERIES(1, 5) AS i)"));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto peers = ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), "test"));
+  ASSERT_EQ(peers.size(), 1);
+  auto get_useful = [
+      stats = ASSERT_RESULT(peers.front()->shared_tablet())->regulardb_statistics()] {
+    return stats->getTickerCount(rocksdb::BLOOM_FILTER_USEFUL);
+  };
+
+  auto useful_before = get_useful();
+  std::mt19937_64 rng(42);
+  for (int i = 0; i != kIterations; ++i) {
+    auto pattern = RandomUniformInt<uintptr_t>(0, (1ULL << (kMaxKey - kMinKey + 1)) - 1, &rng);
+    std::vector<int32_t> keys;
+    for (int k : std::views::iota(kMinKey, kMaxKey + 1)) {
+      if (pattern & (1ULL << (k - kMinKey))) {
+        keys.push_back(k);
+      }
+    }
+
+    auto rows = ASSERT_RESULT((conn.FetchRows<int32_t, int32_t>(
+        Format("SELECT k, v FROM test WHERE k IN ($0)", JoinElements(keys, ", ")))));
+    LOG(INFO) << "Rows: " << AsString(rows) << ", useful: " << get_useful();
+
+    std::vector<int32_t> found_keys;
+
+    for (const auto& [k, v] : rows) {
+      found_keys.push_back(k);
+      ASSERT_EQ(v * 2, k);
+    }
+
+    std::sort(found_keys.begin(), found_keys.end());
+    std::vector<int32_t> expected_keys;
+    for (const auto k : keys) {
+      if (!(k & 1)) {
+        expected_keys.push_back(k);
+      }
+    }
+
+    ASSERT_EQ(AsString(expected_keys), AsString(found_keys));
+  }
+
+  ASSERT_GT(get_useful(), useful_before);
+}
+
+class PgSmallBlockCacheTest : public PgSingleTServerTest {
+  void OverrideMiniClusterOptions(MiniClusterOptions* options) override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_cache_size_bytes) = 1_MB;
+  }
+};
+
+TEST_F_EX(PgSingleTServerTest, BloomFilterPerf, PgSmallBlockCacheTest) {
+  constexpr int kIterations = 1000;
+  auto payload = RandomHumanReadableString(5_KB);
+  constexpr int32_t kNumDiskRows = RegularBuildVsDebugVsSanitizers(100, 10, 1) * 1000;
+  constexpr int32_t kNumMemoryRows = 50;
+
+  use_colocation_ = false;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (k INT PRIMARY KEY, v TEXT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test (SELECT i * 2, '$1' FROM GENERATE_SERIES(0, $0) AS i)",
+      kNumDiskRows - 1, payload));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test (SELECT i * $1 + 1, '' FROM GENERATE_SERIES(0, $0) AS i)",
+      kNumMemoryRows - 1, kNumDiskRows / kNumMemoryRows));
+
+  std::mt19937_64 rng(42);
+  auto start = MonoTime::Now();
+  std::vector<int32_t> keys;
+  for (int i = 0; i != kIterations; ++i) {
+    auto pattern = RandomUniformInt<uintptr_t>(0, (1ULL << kNumMemoryRows) - 1, &rng);
+    keys.clear();
+    for (int k : std::views::iota(0, kNumMemoryRows)) {
+      if (pattern & (1ULL << k)) {
+        keys.push_back(k * (kNumDiskRows / kNumMemoryRows) + 1);
+      }
+    }
+
+    auto max_length = ASSERT_RESULT(conn.FetchRow<int32_t>(
+        Format("SELECT MAX(LENGTH(v)) FROM test WHERE k IN ($0)", JoinElements(keys, ", "))));
+    ASSERT_EQ(max_length, 0);
+  }
+  auto finish = MonoTime::Now();
+  LOG(INFO) << "Time passed: " << finish - start;
+}
+
 }  // namespace pgwrapper
 }  // namespace yb

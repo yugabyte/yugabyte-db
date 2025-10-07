@@ -78,7 +78,7 @@ class UserKeyIterator : public Iterator {
     LOG(FATAL) << "UserIterator::UseFastNext is not supported";
   }
 
-  void UpdateFilterKey(Slice user_key_for_filter) override {
+  void UpdateFilterKey(Slice user_key_for_filter, Slice seek_key) override {
     LOG(FATAL) << "UserIterator::UpdateFilterKey is not supported";
   }
 

@@ -26,8 +26,7 @@
 
 #include "yb/util/slice.h"
 
-namespace yb {
-namespace docdb {
+namespace yb::docdb {
 
 // Map from old cotable id to new cotable id.
 // Used to restore snapshot to a new database/tablegroup and update cotable ids in the frontiers.
@@ -52,6 +51,9 @@ class BloomFilterOptions {
   static BloomFilterOptions Fixed(Slice key) {
     return BloomFilterOptions(BloomFilterMode::kFixed, key);
   }
+
+  static Result<BloomFilterOptions> Make(
+      const DocReadContext& doc_read_context, Slice lower, Slice upper, bool allow_variable);
 
   BloomFilterMode mode() const {
     return mode_;
@@ -188,5 +190,4 @@ class RocksDBPatcher {
   std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace docdb
-}  // namespace yb
+}  // namespace yb::docdb

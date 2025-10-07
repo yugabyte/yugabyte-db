@@ -100,6 +100,9 @@ struct DocReadContext {
     return Slice(shared_key_prefix_buffer_.data(), table_key_prefix_len_);
   }
 
+  Result<bool> HaveEqualBloomFilterKey(Slice lhs, Slice rhs) const;
+  size_t NumColumnsUsedByBloomFilterKey() const;
+
   void TEST_SetDefaultTimeToLive(uint64_t ttl_msec) {
     schema_.SetDefaultTimeToLive(ttl_msec);
   }

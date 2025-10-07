@@ -187,7 +187,7 @@ class IntentAwareIterator final {
   // Returns HybridTime::kInvalid if no such record was found.
   Result<HybridTime> FindOldestRecord(Slice key_without_ht, HybridTime min_hybrid_time);
 
-  void UpdateFilterKey(Slice user_key_for_filter);
+  void UpdateFilterKey(Slice user_key_for_filter, Slice seek_key = Slice());
 
   void DebugDump();
 
@@ -417,11 +417,23 @@ template <bool kLowerBound>
 class NODISCARD_CLASS IntentAwareIteratorBoundScope {
  public:
   IntentAwareIteratorBoundScope(Slice bound, IntentAwareIterator* iterator)
-      : iterator_(DCHECK_NOTNULL(iterator)), prev_bound_(SetBound(bound)) {
+      : iterator_(DCHECK_NOTNULL(iterator)), prev_bound_(Update(bound)) {
   }
 
   ~IntentAwareIteratorBoundScope() {
-    SetBound(prev_bound_);
+    Update(prev_bound_);
+  }
+
+  Slice Update(Slice bound) {
+    if constexpr (kLowerBound) {
+      return iterator_->SetLowerbound(bound);
+    } else {
+      return iterator_->SetUpperbound(bound);
+    }
+  }
+
+  IntentAwareIterator& iterator() const {
+    return *iterator_;
   }
 
   IntentAwareIteratorBoundScope(const IntentAwareIteratorBoundScope&) = delete;
@@ -430,14 +442,6 @@ class NODISCARD_CLASS IntentAwareIteratorBoundScope {
   IntentAwareIteratorBoundScope& operator=(IntentAwareIteratorBoundScope&&) = delete;
 
  private:
-  inline Slice SetBound(Slice bound) {
-    if constexpr (kLowerBound) {
-      return iterator_->SetLowerbound(bound);
-    } else {
-      return iterator_->SetUpperbound(bound);
-    }
-  }
-
   IntentAwareIterator* iterator_;
   Slice prev_bound_;
 };

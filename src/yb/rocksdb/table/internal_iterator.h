@@ -124,7 +124,8 @@ class InternalIterator : public Cleanable {
     return STATUS(NotSupported, "");
   }
 
-  virtual void UpdateFilterKey(Slice user_key_for_filter) {
+  virtual const KeyValueEntry& UpdateFilterKey(Slice user_key_for_filter, Slice seek_key) {
+    return Entry();
   }
 
   // Returns true if iterator matches file filter, meaning it may contain requested keys.

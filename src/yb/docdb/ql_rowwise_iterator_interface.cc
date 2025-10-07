@@ -34,7 +34,7 @@ Slice YQLRowwiseIteratorIf::GetRowKey() const {
   return Slice();
 }
 
-void YQLRowwiseIteratorIf::SeekTuple(Slice tuple_id) {
+void YQLRowwiseIteratorIf::SeekTuple(Slice tuple_id, UpdateFilterKey update_filter_key) {
   LOG(DFATAL) << "This iterator cannot seek by tuple id";
 }
 
