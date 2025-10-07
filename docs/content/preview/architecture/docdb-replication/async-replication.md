@@ -60,25 +60,27 @@ Because there is a useful trade-off between how much consistency is lost and wha
 
 ### Non-transactional replication
 
-All writes to the source universe are independently replicated to the target universe, where they are applied with the same timestamp they committed on the source universe. No locks are taken or honored on the target side.
-
-Due to replication lag, a read performed in the target universe immediately after a write in the source universe may not reflect the recent write. In other words, reads in the target universe do not wait for the latest data from the source universe to become available.
-
-Note that the writes are usually being written in the past as far as the target universe is concerned. This violates the preconditions for YugabyteDB serving consistent reads (see the discussion on [safe timestamps](../../transactions/single-row-transactions/#safe-timestamp-assignment-for-a-read-request)). Accordingly, reads on the target universe are no longer strongly consistent but rather eventually consistent even in a single table.
-
-If both target and source universes write to the same key, then the last writer wins. The deciding factor is the underlying hybrid time of the updates from each universe.
-
-#### Inconsistencies affecting transactions
-
-Due to the independent replication of writes, transactions from the source universe become visible over time. This results in transactions on the target universe experiencing non-repeatable reads and phantom reads, regardless of their declared isolation level. Consequently, all transactions on the target universe effectively operate at the SQL-92 isolation level READ COMMITTED, which only ensures that transactions do not read uncommitted data. Unlike the standard YugabyteDB READ COMMITTED level, this does not guarantee that a statement will see a consistent snapshot or all data committed before the statement is issued.
-
-If the source universe fails, the target universe may be left in an inconsistent state where some source universe transactions have only some of their writes applied in the target universe (these are called _torn transactions_). This inconsistency will not automatically heal over time and may need to be manually resolved.
-
-Note that these inconsistencies are limited to the tables/rows being written to and replicated from the source universe: any target transaction that does not interact with such rows is unaffected.
+For YCQL, only non-transactional replication mode is supported.
+Non-transactional replication mode supports active-active multi-master deployments.
 
 {{< tip >}}
 For YSQL deployments, transactional mode is preferred because it provides the necessary consistency guarantees typically required for such deployments.
 {{< /tip >}}
+
+#### Inconsistencies affecting transactions
+
+Writes to the source universe tablets are independently replicated to the target universe tablets, where they are applied with the same timestamp they committed on the source universe. No locks are taken or honored on the target side.
+
+Due to replication lag, reads in the target universe may not immediately reflect recent writes from the source universe. When a read is performed in the target universe, it proceeds without waiting for the latest source data to become available. Additionally, since writes are replicated independently, reads do not wait for all related writes to arrive - this applies both within a single table (across tablets) and across different tables and their indexes.
+
+For YSQL, transactions on the target universe can experience non-repeatable reads and phantom reads, and do not honor the declared isolation level.
+
+If both target and source universes write to the primary key row, then the last writer wins. The deciding factor is the underlying hybrid time of the updates from each universe.
+Concurrent updates and deletes of the same primary key row can result in inconsistent data.
+For YSQL, if there are indexes involved then the write can result in corruption of the index. Concurrent updates, and deletes to the primary key row, or the same index row (including INCLUDED columns) can also result in corruption of the index. xCluster also does not honor violations of Foreign Key and Unique constraints if it occurs concurrently.
+
+If the source universe fails, the target universe may be left in an inconsistent state where some source universe transactions have only some of their writes applied in the target universe (these are called _torn transactions_). This inconsistency will not automatically heal over time and may need to be manually resolved.
+
 
 ### Transactional replication
 
@@ -219,6 +221,11 @@ The following diagram shows an example of this deployment:
 In a multi-master deployment, data replication is bidirectional between two universes, allowing both universes to perform reads and writes. Writes to any universe are asynchronously replicated to the other universe with a timestamp for the update. This mode implements last-writer-wins, where if the same key is updated in both universes around the same time, the write with the larger timestamp overrides the other one. This deployment mode is called multi-master because both universes serve writes.
 
 The multi-master deployment uses bidirectional replication, which involves two unidirectional replication streams operating in non-transactional mode. Special measures are taken to assign timestamps that ensure last-writer-wins semantics, and data received from the replication stream is not re-replicated.
+
+{{< Warning title="Important" >}}
+Refer to [Inconsistencies affecting transactions](#inconsistencies-affecting-transactions) for details on how non-transactional mode can lead to inconsistencies.
+This mode is not recommended for YSQL deployments.
+{{< /Warning >}}
 
 The following diagram illustrates this deployment:
 
