@@ -5917,6 +5917,11 @@ PostgresMain(int argc, char *argv[],
 								yb_is_dml_command(query_string),
 								&need_retry);
 						MemoryContextSwitchTo(errorcontext);
+						if (YbIsClientYsqlConnMgr())
+						{
+							pq_puttextmessage('4', stmt_name);
+							pq_flush();
+						}
 						ThrowErrorData(edata);
 
 					}
