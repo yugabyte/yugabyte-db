@@ -708,7 +708,7 @@ Status TabletServer::RegisterServices() {
 
   if (FLAGS_ysql_enable_auto_analyze_infra) {
     auto connect_to_pg = [this](const std::string& database_name,
-                                const std::optional<CoarseTimePoint>& deadline) {
+                                const CoarseTimePoint& deadline) {
       return pgwrapper::CreateInternalPGConnBuilder(pgsql_proxy_bind_address(), database_name,
                                                     GetSharedMemoryPostgresAuthKey(),
                                                     deadline).Connect();
