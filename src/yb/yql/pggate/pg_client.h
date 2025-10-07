@@ -167,7 +167,8 @@ class PgClient {
  public:
   PgClient(
       std::reference_wrapper<const WaitEventWatcher> wait_event_watcher,
-      std::atomic<uint64_t>& next_perform_op_serial_no);
+      std::atomic<uint64_t>& next_perform_op_serial_no,
+      const TablespaceMap& tablespace_map);
   ~PgClient();
 
   Status Start(rpc::ProxyCache* proxy_cache,

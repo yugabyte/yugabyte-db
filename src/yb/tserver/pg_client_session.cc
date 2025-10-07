@@ -123,6 +123,9 @@ DEFINE_test_flag(bool, perform_ignore_pg_is_region_local, false,
     "everything to work when this field is not set, as the field is only left in for upgrade from "
     "older versions and to be removed in the future.");
 
+DEFINE_test_flag(bool, force_initial_region_local, false,
+    "Force transaction to start as region-local initially.");
+
 DECLARE_bool(vector_index_dump_stats);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 DECLARE_bool(ysql_enable_db_catalog_version_mode);
@@ -1183,7 +1186,10 @@ class TransactionProvider {
     if (!next_plain_) {
       return std::nullopt;
     }
-    auto res = NextTxnMetaForPlain(deadline, true /* is_for_release */);
+    // next_plain_ exists, so the locality passed here doesn't matter as we won't be creating
+    // a new transaction.
+    auto res = NextTxnMetaForPlain(
+        TransactionFullLocality::RegionLocal(), deadline, true /* is_for_release */);
     if (!res.ok()) {
       LOG(DFATAL) << "Unexpected error while fetching existing plain re-usable txn";
       return std::nullopt;
@@ -1192,13 +1198,11 @@ class TransactionProvider {
   }
 
   Result<TransactionMetadata> NextTxnMetaForPlain(
-      CoarseTimePoint deadline, bool is_for_release = false) {
+      TransactionFullLocality locality, CoarseTimePoint deadline, bool is_for_release = false) {
     client::internal::InFlightOpsGroupsWithMetadata ops_info;
     if (!next_plain_) {
-      VLOG_WITH_FUNC(1) << "requesting new transaction";
-      // TODO(#28317): We should figure out the correct locality and use it here. With table-level
-      // locks, this will prevent transactions from being started as global or tablespace-local(X).
-      auto txn = Build(TransactionFullLocality::RegionLocal(), deadline, {});
+      VLOG_WITH_FUNC(1) << "requesting new transaction of locality " << locality;
+      auto txn = Build(locality, deadline, {});
       // Don't execute txn->GetMetadata() here since the transaction is not iniatialized with
       // its full metadata yet, like isolation level.
       Synchronizer synchronizer;
@@ -2635,9 +2639,10 @@ class PgClientSession::Impl {
     if (setup_session_result.is_plain && setup_session_result.session_data.transaction) {
       RETURN_NOT_OK(setup_session_result.session_data.transaction->GetMetadata(deadline).get());
     }
+    auto locality = GetTargetTransactionLocality(data->req);
     auto txn_meta_res = setup_session_result.session_data.transaction
         ? setup_session_result.session_data.transaction->GetMetadata(deadline).get()
-        : NextObjectLockingTxnMeta(deadline);
+        : NextObjectLockingTxnMeta(locality, deadline);
     RETURN_NOT_OK(txn_meta_res);
     const auto lock_type = static_cast<TableLockType>(data->req.lock_type());
     VLOG_WITH_PREFIX_AND_FUNC(1)
@@ -2674,12 +2679,12 @@ class PgClientSession::Impl {
         txn_meta_res->status_tablet);
     AcquireObjectLockLocallyWithRetries(
         ts_lock_manager(), std::move(lock_req), deadline, std::move(callback),
-        [session_impl = this, txn = setup_session_result.session_data.transaction]
+        [session_impl = this, txn = setup_session_result.session_data.transaction, locality]
             (CoarseTimePoint deadline) -> Status {
           if (txn) {
             RETURN_NOT_OK(txn->metadata());
           } else {
-            RETURN_NOT_OK(session_impl->NextObjectLockingTxnMeta(deadline));
+            RETURN_NOT_OK(session_impl->NextObjectLockingTxnMeta(locality, deadline));
           }
           return Status::OK();
         });
@@ -2936,7 +2941,9 @@ class PgClientSession::Impl {
     std::tie(data->ops, data->vector_index_query) = VERIFY_RESULT(PrepareOperations(
         &data->req, session, &data->sidecars, tables, vector_index_query_data_,
         data->transaction != nullptr /* has_distributed_txn */,
-        make_lw_function([this, deadline] { return NextObjectLockingTxnMeta(deadline); }),
+        make_lw_function([this, locality, deadline] {
+          return NextObjectLockingTxnMeta(locality, deadline);
+        }),
         IsObjectLockingEnabled()));
     session->FlushAsync([this, data, trace, trace_created_locally,
                          start_time](client::FlushStatus* flush_status) {
@@ -3686,8 +3693,9 @@ class PgClientSession::Impl {
 
   [[nodiscard]] bool IsObjectLockingEnabled() const { return ts_lock_manager() != nullptr; }
 
-  Result<TransactionMetadata> NextObjectLockingTxnMeta(CoarseTimePoint deadline) {
-    auto txn_meta = VERIFY_RESULT(transaction_provider_.NextTxnMetaForPlain(deadline));
+  Result<TransactionMetadata> NextObjectLockingTxnMeta(
+      TransactionFullLocality locality, CoarseTimePoint deadline) {
+    auto txn_meta = VERIFY_RESULT(transaction_provider_.NextTxnMetaForPlain(locality, deadline));
     RegisterLockOwner(txn_meta.transaction_id, txn_meta.status_tablet);
     return txn_meta;
   }
@@ -3700,14 +3708,27 @@ class PgClientSession::Impl {
   }
 
   TransactionFullLocality GetTargetTransactionLocality(const PgPerformRequestPB& request) const {
-    auto tablespace_oids = request.ops() | std::views::transform(GetOpTablespaceOid);
+    return GetTargetTransactionLocality(
+        request.options(), request.ops() | std::views::transform(GetOpTablespaceOid));
+  }
 
-    if (FLAGS_use_tablespace_based_transaction_placement ||
-        request.options().force_tablespace_locality()) {
-      if (auto oid = request.options().force_tablespace_locality_oid()) {
+  TransactionFullLocality GetTargetTransactionLocality(
+      const PgAcquireObjectLockRequestPB& request) const {
+    return GetTargetTransactionLocality(
+        request.options(), std::views::single(request.lock_oid().tablespace_oid()));
+  }
+
+  TransactionFullLocality GetTargetTransactionLocality(
+      const PgPerformOptionsPB& options, std::ranges::range auto&& tablespace_oids) const {
+    if (PREDICT_FALSE(FLAGS_TEST_force_initial_region_local)) {
+      return TransactionFullLocality::RegionLocal();
+    }
+
+    if (FLAGS_use_tablespace_based_transaction_placement || options.force_tablespace_locality()) {
+      if (auto oid = options.force_tablespace_locality_oid()) {
         return TransactionFullLocality::TablespaceLocal(oid);
       }
-      return CalculateTablespaceBasedLocality(tablespace_oids);
+      return CalculateTablespaceBasedLocality(std::move(tablespace_oids));
     }
 
     // TODO: is_all_region_local() handles exactly two cases that tablespace oid check does not:
@@ -3720,10 +3741,10 @@ class PgClientSession::Impl {
     //    from use setting up some unit tests.
     // Once these are no longer of concern, is_all_region_local and corresponding code in
     // pggate/pg can be removed.
-    if (!FLAGS_TEST_perform_ignore_pg_is_region_local && request.options().is_all_region_local()) {
+    if (!FLAGS_TEST_perform_ignore_pg_is_region_local && options.is_all_region_local()) {
       return TransactionFullLocality::RegionLocal();
     }
-    return CalculateRegionBasedLocality(tablespace_oids);
+    return CalculateRegionBasedLocality(std::move(tablespace_oids));
   }
 
   TransactionFullLocality CalculateRegionBasedLocality(

@@ -947,6 +947,8 @@ class PgApiImpl {
 
   const WaitEventWatcher wait_event_watcher_;
 
+  TablespaceMap tablespace_map_;
+
   PgSharedDataHolder pg_shared_data_;
 
   // TODO Rename to client_ when YBClient is removed.
@@ -968,7 +970,6 @@ class PgApiImpl {
   TupleIdBuilder tuple_id_builder_;
   BufferingSettings buffering_settings_;
   YbctidReaderProvider ybctid_reader_provider_;
-  TablespaceMap tablespace_map_;
   PgFKReferenceCache fk_reference_cache_;
   ExplicitRowLockBuffer explicit_row_lock_buffer_;
 
