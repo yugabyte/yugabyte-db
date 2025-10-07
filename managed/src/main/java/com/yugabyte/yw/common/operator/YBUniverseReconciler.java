@@ -41,6 +41,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.K8SNodeReso
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.forms.YbcThrottleParametersResponse.ThrottleParamValue;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.CustomerTask.TargetType;
@@ -982,6 +983,31 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     // CommonUtils.getUserFromContext(ctx);
     taskParams.expectedUniverseVersion = -1; // -1 skips the version check
     taskParams.setKubernetesResourceDetails(KubernetesResourceDetails.fromResource(ybUniverse));
+
+    // Handle rootCA certificate
+    String rootCAName = ybUniverse.getSpec().getRootCA();
+    if (rootCAName != null && !rootCAName.trim().isEmpty()) {
+      try {
+        // Look for certificate by its original name (not universe-specific label)
+        CertificateInfo rootCACert = CertificateInfo.get(customerUUID, rootCAName);
+        if (rootCACert != null) {
+          taskParams.rootCA = rootCACert.getUuid();
+          log.info("Found rootCA certificate '{}' with UUID: {}", rootCAName, rootCACert.getUuid());
+        } else {
+          log.error("RootCA certificate '{}' not found for customer {}", rootCAName, customerUUID);
+          kubernetesStatusUpdater.updateUniverseState(
+              KubernetesResourceDetails.fromResource(ybUniverse), UniverseState.ERROR_CREATING);
+          throw new RuntimeException("RootCA certificate '" + rootCAName + "' not found");
+        }
+      } catch (Exception e) {
+        log.error("Error looking up rootCA certificate '{}': {}", rootCAName, e.getMessage());
+        kubernetesStatusUpdater.updateUniverseState(
+            KubernetesResourceDetails.fromResource(ybUniverse), UniverseState.ERROR_CREATING);
+        throw new RuntimeException(
+            "Error looking up rootCA certificate '" + rootCAName + "': " + e.getMessage());
+      }
+    }
+
     return taskParams;
   }
 
