@@ -81,7 +81,9 @@ For YSQL, transactions on the target universe can experience non-repeatable read
 
 If both target and source universes write to the primary key row, then the last writer wins. The deciding factor is the underlying hybrid time of the updates from each universe.
 Concurrent updates and deletes of the same primary key row can result in inconsistent data.
-For YSQL, if there are indexes involved then the write can result in corruption of the index. Concurrent updates, and deletes to the primary key row, or the same index row (including INCLUDED columns) can also result in corruption of the index. xCluster also does not honor violations of Foreign Key and Unique constraints if it occurs concurrently.
+
+For YSQL, if there are indexes involved then the write can result in corruption of the index. Concurrent updates, and deletes to the primary key row, or the same index row (including INCLUDED columns) can also result in corruption of the index. 
+Foreign Key and Unique constraints and other user defined constraints cannot be guaranteed for data that is concurrently written to from both universes.
 
 If the source universe fails, the target universe may be left in an inconsistent state where some source universe transactions have only some of their writes applied in the target universe (these are called _torn transactions_). This inconsistency will not automatically heal over time and may need to be manually resolved.
 
