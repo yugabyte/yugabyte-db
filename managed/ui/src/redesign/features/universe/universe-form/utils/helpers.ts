@@ -182,7 +182,7 @@ export const getFormData = (
   clusterType: ClusterType,
   providerConfig?: YBProvider
 ) => {
-  const { communicationPorts, encryptionAtRestConfig, rootCA } = universeData;
+  const { communicationPorts, encryptionAtRestConfig, rootCA, clientRootCA, rootAndClientRootCASame } = universeData;
   const cluster = getClusterByType(universeData, clusterType);
 
   if (!cluster) return DEFAULT_FORM_DATA;
@@ -229,7 +229,9 @@ export const getFormData = (
       tserverK8SNodeResourceSpec: userIntent.tserverK8SNodeResourceSpec,
       arch: universeData.arch,
       imageBundleUUID: userIntent.imageBundleUUID,
-      rootCA
+      rootCA,
+      clientRootCA : rootAndClientRootCASame ? '' : clientRootCA,
+      rootAndClientRootCASame: rootAndClientRootCASame
     },
     advancedConfig: {
       useSystemd: userIntent.useSystemd,

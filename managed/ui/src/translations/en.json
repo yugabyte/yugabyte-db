@@ -676,7 +676,10 @@
           "enableNodeToNodeTLS": "Enable Node-to-Node TLS",
           "enableNodeToNodeTLSHelper": "Enable Node-to-Node encryption to use TLS enabled connections for communication between different Universe nodes.",
           "rootCertificate": "Root Certificate",
-          "rootCertificatePlaceHolder": "Create New Certificate"
+          "clientToNodeCertificate": "Client-to-Node Certificate",
+          "rootCertificatePlaceHolder": "Create New Certificate",
+          "clientCAAndRootCASame": "Use the same certificate for “Node to Node” and “Client to Node” encryption",
+          "enableBothNodeAndClientTLS": "Enable “Node to Node” and “Client to Node” Encryption"
         },
         "placeholder": {
           "enterYSQLPassword": "Enter YSQL auth password",

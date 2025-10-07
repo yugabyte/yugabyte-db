@@ -537,6 +537,8 @@ export interface InstanceConfigFormValue {
   enableClientToNodeEncrypt: boolean;
   enableNodeToNodeEncrypt: boolean;
   rootCA: string;
+  clientRootCA: string;
+  rootAndClientRootCASame: boolean;
   enableEncryptionAtRest: boolean;
   enableYSQL: boolean;
   enableYSQLAuth: boolean;
@@ -639,6 +641,8 @@ export const DEFAULT_INSTANCE_CONFIG: InstanceConfigFormValue = {
   enableClientToNodeEncrypt: true,
   enableNodeToNodeEncrypt: true,
   rootCA: '',
+  clientRootCA: '',
+  rootAndClientRootCASame: true,
   enableEncryptionAtRest: false,
   enableYSQL: true,
   enableYSQLAuth: true,
