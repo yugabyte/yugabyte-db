@@ -112,6 +112,12 @@ For Connection Pooling metrics, see [YSQL Ops metrics](../cloud-monitor/overview
     icon="/images/section_icons/manage/backup.png">}}
 
   {{<index/item
+    title="Database upgrade"
+    body="Manage upgrades to the YugabyteDB software powering your cluster."
+    href="database-upgrade/"
+    icon="/images/section_icons/manage/backup.png">}}
+
+  {{<index/item
     title="Create extensions"
     body="Create PostgreSQL extensions in YugabyteDB Aeon clusters."
     href="add-extensions/"
