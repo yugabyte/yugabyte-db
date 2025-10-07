@@ -85,9 +85,9 @@ We're also pleased to announce that YugabyteDB 2025.1.0.0 supports in-place onli
 
 **Note** that the source cluster must be running version 2024.2.3.0 or later to upgrade to version 2025.1.0.
 
-### [Support pgvector extension - With indexing support](https://docs.yugabyte.com/stable/additional-features/pg-extensions/extension-pgvector/#vector-indexing)
+### [HNSW indexing support for pgvector](https://docs.yugabyte.com/stable/additional-features/pg-extensions/extension-pgvector/#vector-indexing)
 
-Brings AI-native capability by supporting pgvector with indexing, enabling efficient similarity search in vector workloads. Enhances vector search capabilities by introducing Hierarchical Navigable Small World (HNSW) indexing, enabling faster and more efficient high-dimensional vector lookups.
+Brings AI-native capability by enabling efficient similarity search in vector workloads. Enhanced vector search capabilities via Hierarchical Navigable Small World (HNSW) indexing provide faster and more efficient high-dimensional vector lookups.
 
 ### [Automatic transactional xCluster DDL replication](https://docs.yugabyte.com/stable/deploy/multi-dc/async-replication/async-transactional-setup-automatic/#set-up-automatic-mode-replication)
 
@@ -97,7 +97,7 @@ YugabyteDB now supports seamless replication of YSQL DDL changes across xCluster
 
 Improves query performance for colocated tables by allowing PostgreSQL to leverage multiple CPUs, leading to faster query execution times.
 
-### [Optimization for INSERT ON CONFLICT batching](https://docs.yugabyte.com/stable/reference/configuration/yb-tserver/#yb-insert-on-conflict-read-batch-size)
+### [Optimization of INSERT ON CONFLICT batching](https://docs.yugabyte.com/stable/reference/configuration/yb-tserver/#yb-insert-on-conflict-read-batch-size)
 
 Queries using the `INSERT ... ON CONFLICT` clause are optimized for efficient execution, with automatic batching applied when multiple statements are executed to improve performance.
 
