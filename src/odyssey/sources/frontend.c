@@ -895,7 +895,13 @@ static od_frontend_status_t od_frontend_remote_server(od_relay_t *relay,
 	int is_ready_for_query = 0;
 
 	int rc;
+	bool skip_forward_to_client = false;
 	switch (type) {
+	case YB_BE_PARSE_PREPARE_ERROR_RESPONSE:
+		// YB: Custom packet not required to be forwarded to client.
+		od_backend_evict_server_hashmap(server, "parse prepare error", data, size);
+		skip_forward_to_client = true;
+		break;
 	case KIWI_BE_ERROR_RESPONSE:
 		od_backend_error(server, "main", data, size);
 		break;
@@ -970,7 +976,7 @@ static od_frontend_status_t od_frontend_remote_server(od_relay_t *relay,
 		return YB_OD_DEPLOY_ERR;
 
 	/* discard replies during configuration deploy */
-	if (is_deploy)
+	if (is_deploy || skip_forward_to_client)
 		return OD_SKIP;
 
 	if (route->id.physical_rep || route->id.logical_rep) {

@@ -235,6 +235,17 @@ protected void enableVersionMatchingAndRestartCluster(boolean higher_version_mat
     return null;
   }
 
+  protected int getTotalPhysicalConnections(String db_name,
+                String user_name, int sleep_time) throws Exception {
+    if (sleep_time > 0) {
+      Thread.sleep(sleep_time * 1000);
+    }
+    JsonObject pool = getPool(db_name, user_name);
+    assertNotNull(pool);
+    return pool.get("active_physical_connections").getAsInt()
+    + pool.get("idle_physical_connections").getAsInt();
+  }
+
   protected static class Row implements Comparable<Row>, Cloneable {
     static Row fromResultSet(ResultSet rs) throws SQLException {
       List<Object> elems = new ArrayList<>();

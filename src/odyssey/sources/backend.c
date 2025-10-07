@@ -67,6 +67,31 @@ cleanup:
 	}
 }
 
+void od_backend_evict_server_hashmap(od_server_t *server, char *context, char *data, 
+		uint32_t size)
+{
+	od_instance_t *instance = server->global->instance;
+	od_debug(&instance->logger, context, NULL, server, "evicting hashmap entry from server");
+
+	char *stmt_name;
+	uint32_t stmt_name_len;
+	int rc = kiwi_fe_read_parse_error_yb(data, size, &stmt_name, &stmt_name_len);
+	if (rc == -1) {
+		od_error(&instance->logger, context, NULL, server, 
+			"failed to parse error message from server");
+		return;
+	}
+	od_hash_t keyhash = strtoul(stmt_name, NULL, 16);
+	if (yb_od_hashmap_find_key_and_remove(server->prep_stmts, keyhash)) {
+		od_debug(&instance->logger, context, NULL, server, 
+			"Evicted %u hashmap entry from server", keyhash);
+	}
+	else {
+		od_error(&instance->logger, context, NULL, server, 
+			"failed to evict %u hashmap entry from server", keyhash);
+	}
+}
+
 void od_backend_error(od_server_t *server, char *context, char *data,
 		      uint32_t size)
 {
