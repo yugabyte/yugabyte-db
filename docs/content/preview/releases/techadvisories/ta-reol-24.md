@@ -1,6 +1,7 @@
 ---
 title: TA-REOL-24
 headerTitle: Replicated End of Life
+description: Replicated End of Life.
 headcontent: 30 Apr 2024
 type: docs
 showRightNav: true
