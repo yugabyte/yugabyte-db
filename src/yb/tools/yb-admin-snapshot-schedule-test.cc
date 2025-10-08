@@ -1186,11 +1186,6 @@ class YbAdminSnapshotScheduleTestWithYsqlParam
       public ::testing::WithParamInterface<ScheduleRestoreTestParams> {
  public:
   void SetUp() override {
-    if (GetRestoreType() == RestoreType::kClone && IsAsan()) {
-      LOG(INFO) << "This test is disabled in ASAN as ysql_dump fails due to memory leaks inherited "
-                << "from pg_dump.";
-      GTEST_SKIP();
-    }
     YbAdminSnapshotScheduleTestWithYsql::SetUp();
   }
 
