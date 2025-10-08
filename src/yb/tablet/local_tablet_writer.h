@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -32,7 +32,6 @@
 #pragma once
 
 #include <future>
-#include <vector>
 
 #include <google/protobuf/repeated_field.h>
 
@@ -44,23 +43,27 @@
 
 #include "yb/tserver/tserver_fwd.h"
 
-namespace yb {
-namespace tablet {
+namespace yb::tablet {
 
-// Helper class to write directly into a local tablet, without going
+// Test helper class to write directly into a local tablet, without going
 // through TabletPeer, consensus, etc.
 //
 // This is useful for unit-testing the Tablet code paths with no consensus
 // implementation or thread pools.
 class LocalTabletWriter : public WriteQueryContext {
  public:
-  typedef google::protobuf::RepeatedPtrField<QLWriteRequestPB> Batch;
+  using Batch = google::protobuf::RepeatedPtrField<QLWriteRequestPB>;
 
   explicit LocalTabletWriter(TabletPtr tablet);
-  ~LocalTabletWriter();
+  ~LocalTabletWriter() override;
 
   Status Write(QLWriteRequestPB* req);
   Status WriteBatch(Batch* batch);
+
+  void RegisterAsyncWrite(const OpId& op_id) override {}
+  void RegisterAsyncWriteCompletion(const OpId& op_id, StdStatusCallback&& callback) override {
+    callback(Status::OK());
+  }
 
  private:
   void Submit(std::unique_ptr<Operation> operation, int64_t term) override;
@@ -76,5 +79,4 @@ class LocalTabletWriter : public WriteQueryContext {
 };
 
 
-}  // namespace tablet
-}  // namespace yb
+} // namespace yb::tablet

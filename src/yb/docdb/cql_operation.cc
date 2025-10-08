@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -22,16 +22,10 @@
 
 #include "yb/bfpg/tserver_opcodes.h"
 
-#include "yb/qlexpr/index.h"
-#include "yb/qlexpr/index_column.h"
 #include "yb/common/jsonb.h"
-#include "yb/dockv/partition.h"
 #include "yb/common/ql_protocol_util.h"
-#include "yb/qlexpr/ql_resultset.h"
-#include "yb/qlexpr/ql_rowblock.h"
 #include "yb/common/ql_value.h"
 
-#include "yb/dockv/doc_path.h"
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
@@ -39,9 +33,18 @@
 #include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
-#include "yb/dockv/packed_row.h"
-#include "yb/dockv/primitive_value_util.h"
 #include "yb/docdb/ql_storage_interface.h"
+
+#include "yb/dockv/doc_path.h"
+#include "yb/dockv/packed_row.h"
+#include "yb/dockv/partition.h"
+#include "yb/dockv/primitive_value_util.h"
+#include "yb/dockv/reader_projection.h"
+
+#include "yb/qlexpr/index.h"
+#include "yb/qlexpr/index_column.h"
+#include "yb/qlexpr/ql_resultset.h"
+#include "yb/qlexpr/ql_rowblock.h"
 
 #include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
@@ -605,9 +608,9 @@ Status QLWriteOperation::PopulateStatusRow(const DocOperationApplyData& data,
   // If not applied report the existing row values as for regular if clause.
   if (!should_apply) {
     for (size_t i = 0; i < doc_read_context_->schema().num_columns(); i++) {
-      boost::optional<const QLValuePB&> col_val = table_row.GetValue(
-          doc_read_context_->schema().column_id(i));
-      if (col_val.is_initialized()) {
+      std::optional<std::reference_wrapper<const QLValuePB>> col_val =
+          table_row.GetValue(doc_read_context_->schema().column_id(i));
+      if (col_val.has_value()) {
         *(row.mutable_column(i + 2)) = *col_val;
       }
     }
@@ -684,12 +687,12 @@ Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValue(
   for (const auto& column_value : request_.column_values()) {
     ColumnId column_id(column_value.column_id());
     if (key_column_ids.count(column_id) > 0) {
-      boost::optional<const QLValuePB&> existing_value = table_row.GetValue(column_id);
+      std::optional<std::reference_wrapper<const QLValuePB>> existing_value =
+          table_row.GetValue(column_id);
       const QLValuePB& new_value = column_value.expr().value();
       if (existing_value && *existing_value != new_value) {
         VLOG(2) << "Found collision while checking at " << AsString(read_time)
-                << "\nExisting: " << AsString(*existing_value)
-                << " vs New: " << AsString(new_value)
+                << "\nExisting: " << AsString(*existing_value) << " vs New: " << AsString(new_value)
                 << "\nUsed read time as " << AsString(data.read_time());
         DVLOG(3) << "DocDB is now:\n" << DocDBDebugDumpToStr(data);
         return true;
@@ -1055,7 +1058,7 @@ Status QLWriteOperation::ApplyUpsert(
 
   auto se = ScopeExit([&packed_row_write_id, doc_write_batch = data.doc_write_batch]() {
     if (packed_row_write_id) {
-      doc_write_batch->RollbackReservedWriteId();
+      doc_write_batch->RollbackReservedWriteId(*packed_row_write_id);
     }
   });
 
@@ -1203,21 +1206,16 @@ Status QLWriteOperation::ApplyDelete(
         request_.hashed_column_values(), doc_read_context_->schema(), 0,
         doc_read_context_->schema().num_hash_key_columns(), &hashed_components));
 
-    boost::optional<int32_t> hash_code = request_.has_hash_code()
-                                         ? boost::make_optional<int32_t>(request_.hash_code())
-                                         : boost::none;
+    std::optional<int32_t> hash_code =
+        request_.has_hash_code() ? std::make_optional<int32_t>(request_.hash_code()) : std::nullopt;
     const auto range_covers_whole_partition_key = !request_.has_where_expr();
-    const auto include_static_columns_in_scan = range_covers_whole_partition_key &&
-                                                doc_read_context_->schema().has_statics();
-    DocQLScanSpec spec(doc_read_context_->schema(),
-                       hash_code,
-                       hash_code, // max hash code.
-                       hashed_components,
-                       request_.has_where_expr() ? &request_.where_expr().condition() : nullptr,
-                       nullptr,
-                       request_.query_id(),
-                       true /* is_forward_scan */,
-                       include_static_columns_in_scan);
+    const auto include_static_columns_in_scan =
+        range_covers_whole_partition_key && doc_read_context_->schema().has_statics();
+    DocQLScanSpec spec(
+        doc_read_context_->schema(), hash_code,
+        hash_code,  // max hash code.
+        hashed_components, request_.has_where_expr() ? &request_.where_expr().condition() : nullptr,
+        nullptr, request_.query_id(), true /* is_forward_scan */, include_static_columns_in_scan);
 
     // Create iterator.
     auto iterator = DocRowwiseIterator(

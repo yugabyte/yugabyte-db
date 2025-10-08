@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -86,6 +86,7 @@ YB_STRONGLY_TYPED_BOOL(DisableFlushOnShutdown);
 YB_STRONGLY_TYPED_BOOL(IsSysCatalogTablet);
 YB_STRONGLY_TYPED_BOOL(ShouldAbortActiveTransactions);
 YB_STRONGLY_TYPED_BOOL(TransactionsEnabled);
+YB_STRONGLY_TYPED_BOOL(VectorIndexOnly);
 
 enum class FlushFlags {
   kNone = 0,

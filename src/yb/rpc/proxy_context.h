@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -36,7 +36,8 @@ class ProxyContext {
 
   virtual void Handle(InboundCallPtr call, Queue queue) = 0;
 
-  virtual const Protocol* DefaultProtocol() = 0;
+  virtual const Protocol& DefaultProtocol() = 0;
+  virtual const Protocol& UncompressedProtocol() = 0;
 
   virtual ThreadPool& CallbackThreadPool(ServicePriority priority = ServicePriority::kNormal) = 0;
 
@@ -50,6 +51,10 @@ class ProxyContext {
 
   // Number of connections to create per destination address.
   virtual int num_connections_to_server() const = 0;
+
+  virtual MetadataSerializerFactory* metadata_serializer_factory() = 0;
+
+  virtual CallStateListenerFactory* call_state_listener_factory() = 0;
 
   virtual ~ProxyContext() {}
 };

@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -36,8 +36,9 @@
 
 #include <crcutil/interface.h>
 
-namespace yb {
-namespace crc {
+#include "yb/util/slice.h"
+
+namespace yb::crc {
 
 typedef crcutil_interface::CRC Crc;
 
@@ -47,5 +48,27 @@ Crc* GetCrc32cInstance();
 // Helper function to simply calculate a CRC32C of the given data.
 uint32_t Crc32c(const void* data, size_t length);
 
-} // namespace crc
-} // namespace yb
+inline uint32_t Crc32c(Slice slice) {
+  return Crc32c(slice.data(), slice.size());
+}
+
+class Crc32Accumulator {
+ public:
+  explicit Crc32Accumulator(uint64_t state = 0) : state_(state) {}
+
+  void Feed(Slice slice) {
+    Feed(slice.data(), slice.size());
+  }
+
+  void Feed(const void* data, size_t length);
+
+  uint32_t result() const {
+    return static_cast<uint32_t>(state_);
+  }
+
+ private:
+  // CRC32C has 64 bits state, but top 32 bits are always zero.
+  uint64_t state_;
+};
+
+} // namespace yb::crc

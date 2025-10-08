@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -49,3 +49,4 @@ YB_STATUS_CODE(CacheMissError, CACHE_MISS_ERROR, 32, "Cache miss error")
 YB_STATUS_CODE(TabletSplit, TABLET_SPLIT, 33, "Tablet split has occured")
 YB_STATUS_CODE(ReplicationSlotLimitReached, REPLICATION_SLOT_LIMIT_REACHED, 34,
                "Replication slot limit reached")
+YB_STATUS_CODE(Deleted, DELETED, 35, "Deleted")

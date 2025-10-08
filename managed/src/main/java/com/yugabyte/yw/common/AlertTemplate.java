@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.common;
 
@@ -39,7 +39,6 @@ public enum AlertTemplate {
   DB_REDIS_CONNECTION,
   DB_MEMORY_OVERLOAD,
   DB_COMPACTION_OVERLOAD,
-  DB_QUEUES_OVERFLOW,
   DB_DRIVE_FAILURE,
   DB_WRITE_READ_TEST_ERROR,
 

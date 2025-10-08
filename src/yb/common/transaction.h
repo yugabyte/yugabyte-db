@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -33,6 +33,7 @@
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/opid.h"
+#include "yb/common/pg_types.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/status_fwd.h"
@@ -222,7 +223,7 @@ class TransactionStatusManager {
 
   // If this tablet is aware that this transaction has committed, returns the TransactionLocalState
   // for the transaction. Otherwise, returns boost::none.
-  virtual boost::optional<TransactionLocalState> LocalTxnData(const TransactionId& id) = 0;
+  virtual std::optional<TransactionLocalState> LocalTxnData(const TransactionId& id) = 0;
 
   // Fetches status of specified transaction at specified time from transaction coordinator.
   // Callback would be invoked in any case.
@@ -248,7 +249,7 @@ class TransactionStatusManager {
   virtual Status FillPriorities(
       boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) = 0;
 
-  virtual Result<boost::optional<TabletId>> FindStatusTablet(const TransactionId& id) = 0;
+  virtual Result<std::optional<TabletId>> FindStatusTablet(const TransactionId& id) = 0;
 
   // Returns minimal running hybrid time of all running transactions.
   virtual HybridTime MinRunningHybridTime() const = 0;
@@ -381,6 +382,37 @@ inline std::ostream& operator<<(std::ostream& out, const TransactionOperationCon
   return out;
 }
 
+struct TransactionFullLocality {
+  // Indicates whether this transaction is a region/tablespace local transaction or a global
+  // transaction.
+  TransactionLocality locality = TransactionLocality::GLOBAL;
+
+  // Tablespace oid if this transaction is a tablespace-local transaction.
+  PgTablespaceOid tablespace_oid = 0;
+
+  constexpr bool IsGlobal() const {
+    return locality == TransactionLocality::GLOBAL;
+  }
+
+  static constexpr TransactionFullLocality Global() {
+    return { .locality = TransactionLocality::GLOBAL, .tablespace_oid = 0 };
+  }
+
+  static constexpr TransactionFullLocality RegionLocal() {
+    return { .locality = TransactionLocality::REGION_LOCAL, .tablespace_oid = 0 };
+  }
+
+  static constexpr TransactionFullLocality TablespaceLocal(PgTablespaceOid tablespace_oid) {
+    return { .locality = TransactionLocality::TABLESPACE_LOCAL, .tablespace_oid = tablespace_oid };
+  }
+
+  std::string ToString() const;
+};
+
+bool operator==(const TransactionFullLocality& lhs, const TransactionFullLocality& rhs);
+
+std::ostream& operator<<(std::ostream& out, const TransactionFullLocality& locality);
+
 struct TransactionMetadata {
   TransactionId transaction_id = TransactionId::Nil();
   IsolationLevel isolation = IsolationLevel::NON_TRANSACTIONAL;
@@ -397,11 +429,12 @@ struct TransactionMetadata {
   // Matches the txn start time tracked by postgres.
   int64_t pg_txn_start_us = 0;
 
-  // Indicates whether this transaction is a local transaction or global transaction.
-  TransactionLocality locality = TransactionLocality::GLOBAL;
+  TransactionFullLocality locality = TransactionFullLocality::Global();
 
   // Former transaction status tablet that the transaction was using prior to a move.
   TabletId old_status_tablet;
+
+  bool skip_prefix_locks = false;
 
   static Result<TransactionMetadata> FromPB(const LWTransactionMetadataPB& source);
   static Result<TransactionMetadata> FromPB(const TransactionMetadataPB& source);
@@ -412,13 +445,7 @@ struct TransactionMetadata {
   void TransactionIdToPB(LWTransactionMetadataPB* dest) const;
   void TransactionIdToPB(TransactionMetadataPB* dest) const;
 
-  std::string ToString() const {
-    return Format(
-        "{ transaction_id: $0 isolation: $1 status_tablet: $2 priority: $3 start_time: $4"
-        " locality: $5 old_status_tablet: $6}",
-        transaction_id, IsolationLevel_Name(isolation), status_tablet, priority, start_time,
-        TransactionLocality_Name(locality), old_status_tablet);
-  }
+  std::string ToString() const;
 
  private:
   template <class PB>
@@ -498,5 +525,14 @@ class TransactionLockInfoManager {
   std::unordered_map<
       TransactionId, TabletLockInfoPB::TransactionLockInfoPB*> transaction_lock_infos_;
 };
+
+inline bool IsFastMode(bool skip_prefix_locks, IsolationLevel isolation) {
+  return isolation == IsolationLevel::SERIALIZABLE_ISOLATION ? !skip_prefix_locks
+                                                             : skip_prefix_locks;
+}
+
+inline bool IsFastMode(const struct TransactionMetadata& metadata) {
+  return IsFastMode(metadata.skip_prefix_locks, metadata.isolation);
+}
 
 } // namespace yb

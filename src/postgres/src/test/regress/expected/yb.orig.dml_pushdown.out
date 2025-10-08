@@ -942,13 +942,12 @@ EXPLAIN (COSTS OFF) UPDATE single_row_function_test SET created_at = '2022-01-01
 
 -- Verify that even if the function used in the WHERE clause is a supported but volatile function, the fast path is still disabled.
 EXPLAIN (COSTS OFF) UPDATE single_row_function_test SET created_at = '2022-01-01 00:00:00'::TIMESTAMP WITH TIME ZONE, random_field = ceil(random())::int  WHERE date_pk = NOW() AND k = random()::int;
-                    QUERY PLAN                     
----------------------------------------------------
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
  Update on single_row_function_test
    ->  Seq Scan on single_row_function_test
-         Storage Filter: (k = (random())::integer)
-         Filter: (date_pk = now())
-(4 rows)
+         Storage Filter: ((date_pk = now()) AND (k = (random())::integer))
+(3 rows)
 
 DROP TABLE single_row_function_test;
 -- Test execution.
@@ -2848,6 +2847,25 @@ SELECT * FROM crypto_hash_t1 WHERE sha4 = sha512(v1);
  1 | \x666f6f | bar | acbd18db4cc2f85cedef654fccc4a4d8 | 37b51d194a7513e45b56f6524f2d51f2 | \x0808f64e60d58979fcb676c96ec938270dea42445aeefcd3a4e6f8db | \x2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae | \x98c11ffdfdd540676b1a137cb1a22b2a70350c9a44171d6b1180c6be5cbb2ee3f79d532c8a1dd9ef2e8e08e752a3babb | \xf7fbba6e0636f890e56fbbf3283e524c6fa3204ae298382d624741d0dc6638326e282c41be5e4254d8820772c5518a2c5a8c0c7f7eda19594a7eb539453e1ed7
 (1 row)
 
+-----------------------------------
+-- Test now() pushdown.
+CREATE TABLE x (t timestamptz);
+BEGIN;
+INSERT INTO x VALUES (now());
+SELECT COUNT(*) FROM x WHERE t = now();
+ count 
+-------
+     1
+(1 row)
+
+EXPLAIN SELECT * FROM x WHERE t = now();
+                      QUERY PLAN                      
+------------------------------------------------------
+ Seq Scan on x  (cost=0.00..105.00 rows=1000 width=8)
+   Storage Filter: (t = now())
+(2 rows)
+
+COMMIT;
 -----------------------------------
 -- Cleanup.
 DROP FUNCTION next_v3;

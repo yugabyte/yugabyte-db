@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -108,7 +108,7 @@ DEFINE_NON_RUNTIME_string(rocksdb_compact_flush_rate_limit_sharing_mode, "tserve
     "  none - rate limit is calculated independently for every RocksDB instance");
 DEFINE_UNKNOWN_uint64(rocksdb_compaction_size_threshold_bytes, 2ULL * 1024 * 1024 * 1024,
     "Threshold beyond which compaction is considered large.");
-DEFINE_UNKNOWN_uint64(rocksdb_max_file_size_for_compaction, 0,
+DEFINE_RUNTIME_uint64(rocksdb_max_file_size_for_compaction, 0,
     "Maximal allowed file size to participate in RocksDB compaction. 0 - unlimited.");
 
 // Use big enough default value for rocksdb_max_write_buffer_number, so behavior defined by

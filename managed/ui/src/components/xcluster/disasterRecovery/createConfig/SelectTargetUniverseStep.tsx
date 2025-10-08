@@ -3,7 +3,10 @@ import { useFormContext } from 'react-hook-form';
 import { useQuery } from 'react-query';
 import { Trans, useTranslation } from 'react-i18next';
 
-import { UnavailableUniverseStates } from '../../../../redesign/helpers/constants';
+import {
+  I18N_ACCESSABILITY_ALT_TEXT_KEY_PREFIX,
+  UnavailableUniverseStates
+} from '../../../../redesign/helpers/constants';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import { YBReactSelectField } from '../../../configRedesign/providerRedesign/components/YBReactSelect/YBReactSelectField';
 import { api, universeQueryKey } from '../../../../redesign/helpers/api';
@@ -92,7 +95,10 @@ export const SelectTargetUniverseStep = ({
                 </Typography>
               }
             >
-              <img src={InfoIcon} alt={t('infoIcon', { keyPrefix: 'imgAltText' })} />
+              <img
+                src={InfoIcon}
+                alt={t('infoIcon', { keyPrefix: I18N_ACCESSABILITY_ALT_TEXT_KEY_PREFIX })}
+              />
             </YBTooltip>
           </Typography>
           <Box display="flex" flexDirection="column" gridGap={theme.spacing(2)}>

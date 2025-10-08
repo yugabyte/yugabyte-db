@@ -11,6 +11,7 @@
 // under the License.
 
 #include <chrono>
+#include <latch>
 #include <optional>
 #include <thread>
 
@@ -27,94 +28,57 @@ using namespace std::literals;
 
 namespace yb {
 
-class TestSleepProcessWrapper : public ProcessWrapper {
+class FailStartProcessWrapper : public ProcessWrapper {
  public:
-  explicit TestSleepProcessWrapper(int sleep) : sleep_(sleep) {}
+  explicit FailStartProcessWrapper(bool succeed_on_start);
 
-  Status PreflightCheck() override {
-    return Status::OK();
-  }
+  Status PreflightCheck() override;
+  Status ReloadConfig() override;
 
-  Status ReloadConfig() override {
-    return Status::OK();
-  }
+  Status UpdateAndReloadConfig() override;
 
-  Status UpdateAndReloadConfig() override {
-    return Status::OK();
-  }
+  Status Start() override;
 
-  Status Start() override {
-    std::vector<std::string> argv{"/usr/bin/sleep", AsString(sleep_)};
-    proc_.emplace(argv[0], argv);
-    RETURN_NOT_OK(proc_->Start());
-    LOG(INFO) << "Started pid: " << proc_->pid();
-    return Status::OK();
-  }
+  Status WaitForStart();
 
  private:
-  int sleep_;
+  bool succeed_on_start_;
+  Status start_status_;
+  std::latch started_;
 };
 
-class TestSleepProcessSupervisor : public ProcessSupervisor {
+class FailStartProcessSupervisor : public ProcessSupervisor {
  public:
-  explicit TestSleepProcessSupervisor(int sleep): sleep_(sleep) {}
-  ~TestSleepProcessSupervisor() {
-    LOG(INFO) << "~TestSleepProcessSupervisor";
-  }
+  FailStartProcessSupervisor();
 
-  std::shared_ptr<ProcessWrapper> CreateProcessWrapper() override {
-    return std::make_shared<TestSleepProcessWrapper>(sleep_);
-  }
+  std::shared_ptr<ProcessWrapper> CreateProcessWrapper() override;
 
-  std::string GetProcessName() override {
-    return "test sleep process";
-  }
+  std::string GetProcessName() override;
+
+  std::shared_ptr<FailStartProcessWrapper> WaitForProcessSpawn(uint64_t count);
+
+  void SetSucceedProcessStart(bool succeed_process_start);
+
  private:
-  int sleep_;
+  uint64_t start_count_{0};
+  std::mutex mutex_;
+  std::condition_variable cv_;
+  std::atomic_bool succeed_process_start_;
+  std::shared_ptr<FailStartProcessWrapper> last_spawned_proc_;
 };
 
-// Test is disabled because it will cause test server instability.
-TEST(ProcessWrapperTest, YB_DISABLE_TEST(HitThreadsLimit)) {
-  std::vector<std::unique_ptr<TestSleepProcessSupervisor>> supervisors;
-
-  // This process is supposed to restart in a loop to reproduce crash after hitting limit on
-  // number of threads.
-  TestSleepProcessSupervisor supervisor(/* sleep = */ 1);
+TEST(ProcessWrapperTest, ProcessWrapperStartFails) {
+  FailStartProcessSupervisor supervisor;
   ASSERT_OK(supervisor.Start());
-
-  std::atomic<bool> stop{false};
-  std::vector<scoped_refptr<Thread>> threads;
-
-  auto deadline = CoarseMonoClock::now() + 120s;
-  bool hit_threads_limit = false;
-  while (CoarseMonoClock::now() < deadline) {
-    scoped_refptr<Thread> thread;
-    auto status = Thread::Create(
-        "termination_monitor", "sigterm_loop",
-        [&stop]() {
-          while (!stop.load(std::memory_order_acquire)) {
-            std::this_thread::sleep_for(50ms);
-          }
-        },
-        &thread);
-    if (!status.ok()) {
-      LOG(INFO) << "Failed to start thread: " << status;
-      if (!hit_threads_limit) {
-        // Give process time to attempt restarts and reproduce the bug.
-        deadline = CoarseMonoClock::now() + 3s;
-        hit_threads_limit = true;
-      }
-      continue;
-    }
-    threads.push_back(thread);
-    YB_LOG_EVERY_N_SECS(INFO, 5) << "Threads running: " << threads.size();
-  }
-
-  stop.store(true);
-  for (auto& thread : threads) {
-    thread->Join();
-  }
-
+  auto first_proc = supervisor.WaitForProcessSpawn(1);
+  ASSERT_OK(first_proc->WaitForStart());
+  // Now fail the next process start.
+  supervisor.SetSucceedProcessStart(false);
+  ASSERT_OK(supervisor.Restart());
+  // Give 2 go rounds to ensure the process runner thread has dealt with the Start() failure.
+  auto last_failed_proc = supervisor.WaitForProcessSpawn(3);
+  ASSERT_NOK(last_failed_proc->WaitForStart());
+  supervisor.SetSucceedProcessStart(true);
   supervisor.Stop();
 }
 
@@ -182,6 +146,59 @@ TEST(TestProcessSupervisor, RestartOnUnStarted) {
   auto s = supervisor->Restart();
   ASSERT_NOK(s);
   ASSERT_TRUE(s.IsIllegalState());
+}
+
+FailStartProcessWrapper::FailStartProcessWrapper(bool succeed_on_start)
+    : succeed_on_start_(succeed_on_start), started_(1) {}
+
+Status FailStartProcessWrapper::PreflightCheck() { return Status::OK(); }
+
+Status FailStartProcessWrapper::ReloadConfig() { return Status::OK(); }
+
+Status FailStartProcessWrapper::UpdateAndReloadConfig() { return Status::OK(); }
+
+Status FailStartProcessWrapper::Start() {
+  if (!succeed_on_start_) {
+    start_status_ = STATUS(IllegalState, "Failed to spawn sleep process due to count hit");
+    started_.count_down();
+    return start_status_;
+  }
+  std::vector<std::string> argv{"cat"};
+  proc_.emplace("/bin/cat", argv);
+  start_status_ = proc_->Start();
+  started_.count_down();
+  return start_status_;
+}
+
+Status FailStartProcessWrapper::WaitForStart() {
+  started_.wait();
+  return start_status_;
+}
+
+FailStartProcessSupervisor::FailStartProcessSupervisor() : succeed_process_start_(true) {}
+
+std::shared_ptr<ProcessWrapper> FailStartProcessSupervisor::CreateProcessWrapper() {
+  auto proc = std::make_shared<FailStartProcessWrapper>(succeed_process_start_);
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    start_count_++;
+    last_spawned_proc_ = proc;
+  }
+  cv_.notify_all();
+  return proc;
+}
+
+std::string FailStartProcessSupervisor::GetProcessName() { return "test_process"; }
+
+std::shared_ptr<FailStartProcessWrapper> FailStartProcessSupervisor::WaitForProcessSpawn(
+    uint64_t count) {
+  std::unique_lock<std::mutex> lock(mutex_);
+  cv_.wait(lock, [this, &count] { return start_count_ >= count; });
+  return last_spawned_proc_;
+}
+
+void FailStartProcessSupervisor::SetSucceedProcessStart(bool succeed_process_start) {
+  succeed_process_start_ = succeed_process_start;
 }
 
 Status TestCatProcessWrapper::PreflightCheck() { return Status::OK(); }

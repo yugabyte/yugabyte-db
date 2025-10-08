@@ -56,6 +56,9 @@
 #include "utils/timeout.h"
 #include "utils/timestamp.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 /* GUC variables */
 int			DeadlockTimeout = 1000;
 int			StatementTimeout = 0;
@@ -480,6 +483,7 @@ InitProcess(void)
 		   sizeof(MyProc->yb_ash_metadata.client_addr));
 	MyProc->yb_ash_metadata.client_port = 0;
 	MyProc->yb_ash_metadata.addr_family = AF_UNSPEC;
+	MyProc->yb_ash_metadata.database_id = 0;
 	MyProc->yb_is_ash_metadata_set = false;
 
 	/*
@@ -908,6 +912,9 @@ ProcKill(int code, Datum arg)
 	proc = MyProc;
 	MyProc = NULL;
 	DisownLatch(&proc->procLatch);
+
+	if (IsYugaByteEnabled())
+		YBOnPostgresBackendShutdown();
 
 	ReleaseProcToFreeList(proc);
 

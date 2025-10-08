@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -18,7 +18,6 @@
 #include "yb/consensus/raft_consensus.h"
 
 #include "yb/gutil/bits.h"
-#include "yb/gutil/casts.h"
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/sysinfo.h"
 
@@ -35,6 +34,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/status_log.h"
 
 using namespace std::literals;
@@ -98,6 +98,10 @@ TAG_FLAG(db_block_cache_num_shard_bits, advanced);
 
 DEFINE_test_flag(bool, pretend_memory_exceeded_enforce_flush, false,
                   "Always pretend memory has been exceeded to enforce background flush.");
+
+DEFINE_NON_RUNTIME_int64(read_wal_memory_bytes, 512_MB,
+    "Limit on amount of memory used to hold WAL records temporarily read in from disk; -1 means "
+    "no limit.");
 
 namespace yb::tserver {
 
@@ -197,6 +201,8 @@ TabletMemoryManager::TabletMemoryManager(
   // See #20667 for why removing this limit temporarily was necessary.
   tablets_overhead_mem_tracker_ = MemTracker::FindOrCreateTracker(
       /*no limit*/ -1, "Tablets_overhead", server_mem_tracker_);
+  read_wal_mem_tracker_ = MemTracker::FindOrCreateTracker(
+      FLAGS_read_wal_memory_bytes, "Log Reader Memory", server_mem_tracker_);
 
   InitBlockCache(metrics, default_block_cache_size_percentage, options);
   InitLogCacheGC();
@@ -219,6 +225,10 @@ void TabletMemoryManager::Shutdown() {
 
 std::shared_ptr<MemTracker> TabletMemoryManager::block_based_table_mem_tracker() {
   return block_based_table_mem_tracker_;
+}
+
+std::shared_ptr<MemTracker> TabletMemoryManager::read_wal_mem_tracker() {
+  return read_wal_mem_tracker_;
 }
 
 std::shared_ptr<MemTracker> TabletMemoryManager::tablets_overhead_mem_tracker() {
@@ -351,7 +361,7 @@ void TabletMemoryManager::FlushTabletIfLimitExceeded() {
     auto flush_tick = rocksdb::FlushTick();
     tablet::TabletPeerPtr peer_to_flush = TabletToFlush();
     if (peer_to_flush) {
-      auto tablet_to_flush = peer_to_flush->shared_tablet();
+      auto tablet_to_flush = peer_to_flush->shared_tablet_maybe_null();
       // TODO(bojanserafimov): If peer_to_flush flushes now because of other reasons,
       // we will schedule a second flush, which will unnecessarily stall writes for a short time.
       // This will not happen often, but should be fixed.
@@ -384,7 +394,7 @@ tablet::TabletPeerPtr TabletMemoryManager::TabletToFlush() {
   HybridTime oldest_write_in_memstores = HybridTime::kMax;
   tablet::TabletPeerPtr tablet_to_flush;
   for (const tablet::TabletPeerPtr& peer : peers_fn_()) {
-    const auto tablet = peer->shared_tablet();
+    const auto tablet = peer->shared_tablet_maybe_null();
     if (tablet) {
       const auto ht = tablet->OldestMutableMemtableWriteHybridTime();
       if (ht.ok()) {

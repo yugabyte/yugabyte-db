@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -42,7 +42,6 @@
 #include <vector>
 
 #include <boost/container/small_vector.hpp>
-#include <boost/optional/optional_fwd.hpp>
 #include <boost/version.hpp>
 #include "yb/util/flags.h"
 #include <gtest/gtest.h>
@@ -202,32 +201,29 @@ class MasterTestBase : public YBTest {
 
   Status DeleteTablegroup(const TablegroupId& tablegroup_id);
 
-  void DoListTablegroups(const ListTablegroupsRequestPB& req,
-                         ListTablegroupsResponsePB* resp);
+  void DoListTablegroups(const ListTablegroupsRequestPB& req, ListTablegroupsResponsePB* resp);
 
   void DoListAllNamespaces(ListNamespacesResponsePB* resp);
-  void DoListAllNamespaces(const boost::optional<YQLDatabase>& database_type,
-                           ListNamespacesResponsePB* resp);
+  void DoListAllNamespaces(
+      const std::optional<YQLDatabase>& database_type, ListNamespacesResponsePB* resp);
 
   Status CreateNamespace(const NamespaceName& ns_name, CreateNamespaceResponsePB* resp);
-  Status CreateNamespace(const NamespaceName& ns_name,
-                         const boost::optional<YQLDatabase>& database_type,
-                         CreateNamespaceResponsePB* resp);
-  Status CreatePgsqlNamespace(const NamespaceName& ns_name,
-                              const NamespaceId& ns_id,
-                              CreateNamespaceResponsePB* resp);
-  Status CreateNamespaceAsync(const NamespaceName& ns_name,
-                              const boost::optional<YQLDatabase>& database_type,
-                              CreateNamespaceResponsePB* resp);
+  Status CreateNamespace(
+      const NamespaceName& ns_name, const std::optional<YQLDatabase>& database_type,
+      CreateNamespaceResponsePB* resp);
+  Status CreatePgsqlNamespace(
+      const NamespaceName& ns_name, const NamespaceId& ns_id, CreateNamespaceResponsePB* resp);
+  Status CreateNamespaceAsync(
+      const NamespaceName& ns_name, const std::optional<YQLDatabase>& database_type,
+      CreateNamespaceResponsePB* resp);
   Result<CreateNamespaceResponsePB> CreateNamespaceAsync(const CreateNamespaceRequestPB& req);
-  Status CreateNamespaceWait(const NamespaceId& ns_id,
-                             const boost::optional<YQLDatabase>& database_type);
+  Status CreateNamespaceWait(
+      const NamespaceId& ns_id, const std::optional<YQLDatabase>& database_type);
 
-  Status AlterNamespace(const NamespaceName& ns_name,
-                        const NamespaceId& ns_id,
-                        const boost::optional<YQLDatabase>& database_type,
-                        const std::string& new_name,
-                        AlterNamespaceResponsePB* resp);
+  Status AlterNamespace(
+      const NamespaceName& ns_name, const NamespaceId& ns_id,
+      const std::optional<YQLDatabase>& database_type, const std::string& new_name,
+      AlterNamespaceResponsePB* resp);
 
   Status DeleteNamespaceWait(IsDeleteNamespaceDoneRequestPB const& del_req);
 

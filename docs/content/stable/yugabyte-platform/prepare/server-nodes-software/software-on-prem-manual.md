@@ -1,8 +1,8 @@
 ---
-title: YugabyteDB Anywhere on-premises node provisioning
+title: Legacy manual on-premises node provisioning
 headerTitle: Legacy provisioning
 linkTitle: Legacy provisioning
-description: Software requirements for on-premises provider nodes.
+description: How to provision on-premises provider nodes using legacy manual method.
 headContent: How to meet the software prerequisites for database nodes
 menu:
   stable_yugabyte-platform:
@@ -31,7 +31,7 @@ Legacy provisioning of on-premises nodes is deprecated. Provision your nodes usi
   <li>
     <a href="../software-on-prem-assist/" class="nav-link">
       <i class="fa-regular fa-scroll"></i>
-      Assisted
+      Assisted manual
     </a>
   </li>
 
@@ -385,6 +385,7 @@ You can install systemd-specific database service unit files, as follows:
 
     [Service]
     # Start
+    ExecStartPre=/home/yugabyte/bin/clock-sync.sh
     ExecStart=/home/yugabyte/master/bin/yb-master --flagfile /home/yugabyte/master/conf/server.conf
     Restart=on-failure
     RestartSec=5
@@ -422,6 +423,7 @@ You can install systemd-specific database service unit files, as follows:
 
     [Service]
     # Start
+    ExecStartPre=/home/yugabyte/bin/clock-sync.sh
     ExecStart=/home/yugabyte/tserver/bin/yb-tserver --flagfile /home/yugabyte/tserver/conf/server.conf
     Restart=on-failure
     RestartSec=5

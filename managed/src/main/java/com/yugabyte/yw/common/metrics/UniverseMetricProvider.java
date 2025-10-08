@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -187,6 +187,17 @@ public class UniverseMetricProvider implements MetricsProvider {
                   universe,
                   PlatformMetrics.UNIVERSE_REPLICATION_FACTOR,
                   universe.getUniverseDetails().getPrimaryCluster().userIntent.replicationFactor));
+          universeGroup.metric(
+              createUniverseMetric(
+                  customer,
+                  universe,
+                  PlatformMetrics.UNIVERSE_CONNECTION_POOLING_STATUS,
+                  statusValue(
+                      universe
+                          .getUniverseDetails()
+                          .getPrimaryCluster()
+                          .userIntent
+                          .enableConnectionPooling)));
           if (!Util.isKubernetesBasedUniverse(universe)) {
             boolean validPermission =
                 accessManager.checkAccessKeyPermissionsValidity(universe, allAccessKeys);

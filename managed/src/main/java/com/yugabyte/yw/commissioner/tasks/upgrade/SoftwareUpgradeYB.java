@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
@@ -92,6 +92,15 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
               UniverseDefinitionTaskParams.SoftwareUpgradeState.Upgrading,
               true /* isSoftwareRollbackAllowed */);
 
+          // Check if upgrade require finalize.
+          boolean upgradeRequireFinalize =
+              softwareUpgradeHelper.checkUpgradeRequireFinalize(currentVersion, newVersion);
+
+          if (upgradeRequireFinalize) {
+            // Disable PITR configs at the start of software upgrade
+            createDisablePitrConfigTask();
+          }
+
           if (!universe
               .getUniverseDetails()
               .xClusterInfo
@@ -173,6 +182,12 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
                 true /* activeRole */);
           }
 
+          if (requireYsqlMajorVersionUpgrade) {
+            createUpdateSoftwareUpdatePrevConfigTask(
+                true /* canRollbackCatalogUpgrade */,
+                false /* allTserversUpgradedToYsqlMajorVersion */);
+          }
+
           if (nodesToApply.tserversList.size() == universe.getTServers().size()) {
             // If any tservers is upgraded, then we can assume pg upgrade is completed.
             if (requireYsqlMajorVersionUpgrade) {
@@ -195,6 +210,12 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
                     && !Util.isOnPremManualProvisioning(universe)
                     && universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd,
                 requireYsqlMajorVersionUpgrade ? YsqlMajorVersionUpgradeState.IN_PROGRESS : null);
+          }
+
+          if (requireYsqlMajorVersionUpgrade) {
+            createUpdateSoftwareUpdatePrevConfigTask(
+                true /* canRollbackCatalogUpgrade */,
+                true /* allTserversUpgradedToYsqlMajorVersion */);
           }
 
           if (requireYsqlMajorVersionUpgrade) {
@@ -225,9 +246,6 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
                 requireYsqlMajorVersionUpgrade,
                 requireAdditionalSuperUserForCatalogUpgrade);
           } else {
-            // Check if upgrade require finalize.
-            boolean upgradeRequireFinalize =
-                softwareUpgradeHelper.checkUpgradeRequireFinalize(currentVersion, newVersion);
 
             if (upgradeRequireFinalize) {
               createUpdateUniverseSoftwareUpgradeStateTask(

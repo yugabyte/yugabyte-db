@@ -12,11 +12,11 @@ type: docs
 
 This page explores keyspaces and tables in YCQL using the command line shell ycqlsh.
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-new %}}
 
 ## YCQL shell
 
-Use the YCQL shell [ycqlsh](../../../api/ycqlsh/) to interact with a Yugabyte database cluster using the [YCQL API](../../../api/ycql/). Because ycqlsh is derived from the Apache Cassandra shell [cqlsh](https://cassandra.apache.org/doc/latest/cassandra/managing/tools/cqlsh.html), most cqlsh commands work as is in ycqlsh. Unsupported commands are [listed](#unsupported-cqlsh-commands) at the end of this page.
+Use the [ycqlsh shell](../../../api/ycqlsh/) to interact with a Yugabyte database cluster using the [YCQL API](../../../api/ycql/). Because ycqlsh is derived from the Apache Cassandra shell [cqlsh](https://cassandra.apache.org/doc/latest/cassandra/managing/tools/cqlsh.html), most cqlsh commands work as is in ycqlsh. Unsupported commands are [listed](#unsupported-cqlsh-commands) at the end of this page.
 
 Using ycqlsh, you can:
 
@@ -96,7 +96,7 @@ You should see the following output:
 ycqlsh:testdb>
 ```
 
-To drop the keyspace you just created, use the DROP command as follows:
+To drop the keyspace you just created, use the `DROP` command as follows:
 
 ```sql
 ycqlsh> DROP KEYSPACE testdb;

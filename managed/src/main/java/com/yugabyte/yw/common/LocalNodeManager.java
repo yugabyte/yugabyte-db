@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 YugaByte, Inc. and Contributors
+ * Copyright 2023 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -12,6 +12,7 @@ package com.yugabyte.yw.common;
 
 import static com.yugabyte.yw.common.ShellResponse.ERROR_CODE_GENERIC_ERROR;
 import static com.yugabyte.yw.common.ShellResponse.ERROR_CODE_SUCCESS;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -123,6 +124,8 @@ public class LocalNodeManager {
 
   private boolean checkDNS = false;
 
+  private Predicate<Pair<NodeManager.NodeCommandType, NodeTaskParams>> failureInjection;
+
   public static class LocalDNSManager extends DnsManager {
     public Map<UUID, Set<String>> ipsList = new HashMap<>();
 
@@ -144,6 +147,11 @@ public class LocalNodeManager {
 
   public void setPredefinedConfig(Map<Integer, String> predefinedConfig) {
     this.predefinedConfig = predefinedConfig;
+  }
+
+  public void setFailureInjection(
+      Predicate<Pair<NodeManager.NodeCommandType, NodeTaskParams>> failureInjection) {
+    this.failureInjection = failureInjection;
   }
 
   public void addVersionBinPath(String version, String binPath) {
@@ -430,6 +438,9 @@ public class LocalNodeManager {
     }
     Map<String, String> args = convertCommandArgListToMap(commandArgs);
     log.debug("Arguments: " + args);
+    if (failureInjection != null && failureInjection.apply(new Pair<>(type, nodeTaskParam))) {
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Failure injected");
+    }
     switch (type) {
       case Create:
         NodeInfo newNodeInfo = new NodeInfo(nodeDetails, nodeTaskParam);

@@ -1,4 +1,4 @@
-package com.yugabyte.yw.common; // Copyright (c) YugaByte, Inc.
+package com.yugabyte.yw.common; // Copyright (c) YugabyteDB, Inc.
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;

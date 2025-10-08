@@ -4,6 +4,8 @@ headerTitle: Customize preloading of YSQL catalog caches
 linkTitle: YSQL catalog cache tuning
 description: Trading off memory vs performance in YSQL catalog caches
 headcontent: Trading off memory vs performance in YSQL catalog caches
+tags:
+  other: ysql
 menu:
   stable:
     identifier: ysql-catalog-cache-tuning-guide
@@ -439,9 +441,11 @@ You can customize this tradeoff to control preloading of entries into PostgreSQL
 
 ### Default behavior
 
-By default, YSQL backends do not preload any catalog entries, except right after a schema change (DDL).
+By default, YSQL backends do not preload any catalog entries.
 
-On most schema changes, running backends discard their catalog cache, and are then refreshed from either the YB-Master leader or an intermediate response cache on the local YB-TServer. This refresh causes a latency hit on running queries while they wait for this process to complete. There is also a memory increase because the cache is now preloaded with all rows of these catalog tables (as opposed to just the actively used entries that it had before).
+On most schema changes, running backends invalidate their caches incrementally and refresh such invalidated entries directly from the leader yb-master. This can result in a slight effect on the latency and memory usage of running queries but it should not be significant in most cases.
+
+In rare cases, a full catalog refresh may be needed (this typically happens through an intermediate response cache on the local YB-TServer to minimize load on the yb-master). Such a rare full refresh may cause a more pronounced latency effect on running queries as well as a noticeable spike in memory consumption. If you encounter such cases commonly, report these at {{<issue 23785>}}.
 
 ## Problem scenarios and recommendations
 
@@ -472,11 +476,9 @@ To confirm that catalog caching is the cause of this, see [Confirm that catalog 
 - [Use connection pooling](#connection-pooling) to reuse existing connections.
 - [Preload additional system tables](#preload-additional-system-tables).
 
-### Memory spikes on PostgreSQL backends or out of memory (OOM) events
+### High memory usage on PostgreSQL backends
 
-On the flip side, automatic preloading of caches after a DDL change may cause memory spikes on PostgreSQL backends or out of memory (OOM) events.
-
-To confirm that catalog caching is the cause of this, correlate the time when DDLs were run (Write RPCs on YB-Master) to the time of the OOM event or a spike in PostgreSQL RSS metrics.
+On the flip side, automatic preloading of caches may result in higher memory usage of PostgreSQL backends than desired.
 
 **Possible solution**
 
@@ -490,8 +492,8 @@ When there is significant connection churn, the warm up of catalog caches on eac
 
 To set up connection pooling, explore the following approaches:
 
-- [Server-side connection pooling](../../explore/going-beyond-sql/connection-mgr-ysql/) using YSQL Connection Manager ({{<tags/feature/ea idea="1368">}} in v2024.2).
-- [Client-side connection pooling](../../drivers-orms/smart-drivers/#connection-pooling) using smart drivers.
+- [Server-side connection pooling](../../additional-features/connection-manager-ysql/) using YSQL Connection Manager (Early Access in `v2024.2`).
+- [Client-side connection pooling](/preview/develop/drivers-orms/smart-drivers/#connection-pooling) using smart drivers.
 - [Intermediate connection pooling](https://www.yugabyte.com/blog/database-connection-management/) through tools like PgBouncer and Odyssey.
 
 ### Preload additional system tables {#preload-additional-system-tables}
@@ -521,7 +523,7 @@ For example:
 
 ### Minimal catalog cache preloading {#minimal-catalog-cache-preloading}
 
-When enabled, only a small subset of the catalog cache entries is preloaded. This reduces the memory spike that results, but can increase the warm up time for queries after a DDL change, as well as the initial query latency when [additional tables are preloaded](#preload-additional-system-tables).
+When enabled, only a small subset of the catalog cache entries is preloaded. This reduces the memory spike that results, but can increase the initial query latency when [additional tables are preloaded](#preload-additional-system-tables).
 
 To enable minimal catalog cache preloading, set the [YB-TServer flag](../../reference/configuration/yb-tserver/#catalog-flags) `--ysql_minimal_catalog_caches_preload=true`.
 
@@ -529,7 +531,7 @@ To enable minimal catalog cache preloading, set the [YB-TServer flag](../../refe
 
 To confirm that catalog cache misses are a cause of latency or load, use the following techniques:
 
-1. Run [EXPLAIN (ANALYZE, DIST) \<query\>](../../explore/query-1-performance/explain-analyze/#:~:text=Index%20Writes.-,Catalog%20Read%20Requests,-%3A%20Number%20of%20requests) on the first query on a new connection that shows a high number of Catalog Reads. A subsequent run of the same EXPLAIN (ANALYZE, DIST) typically shows a drop in the number of Catalog Reads.
+1. Run [EXPLAIN (ANALYZE, DIST) \<query\>](../../launch-and-manage/monitor-and-alert/query-tuning/explain-analyze/#:~:text=Index%20Writes.-,Catalog%20Read%20Requests,-%3A%20Number%20of%20requests) on the first query on a new connection that shows a high number of Catalog Reads. A subsequent run of the same EXPLAIN (ANALYZE, DIST) typically shows a drop in the number of Catalog Reads.
 
 2. Check metrics for a [high number](https://docs.yugabyte.com/images/yp/metrics114.png) of [Catalog Cache Misses](../../yugabyte-platform/alerts-monitoring/anywhere-metrics/#ysql-ops-and-latency:~:text=on%20other%20metrics.-,Catalog%20Cache%20Misses,-During%20YSQL%20query).
 
@@ -549,7 +551,7 @@ If there are still a significant number of misses to these tables after preloadi
 
 ## Manually collect logs for catalog reads {#manually-collecting-logs-for-catalog-reads}
 
-If the catalog reads can be traced to a specific query, set the following configuration parameters and run [EXPLAIN (ANALYZE, DIST) \<query\>](../../explore/query-1-performance/explain-analyze/#:~:text=Distributed%20Storage%20Counters):
+If the catalog reads can be traced to a specific query, set the following configuration parameters and run [EXPLAIN (ANALYZE, DIST) \<query\>](../../launch-and-manage/monitor-and-alert/query-tuning/explain-analyze/#:~:text=Distributed%20Storage%20Counters):
 
 ```sql
 SET yb_debug_log_catcache_events = 1;

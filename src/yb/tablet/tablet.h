@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -124,6 +124,7 @@ YB_STRONGLY_TYPED_BOOL(ResetSplit);
 struct AdminCompactionOptions {
   StdStatusCallback compaction_completion_callback;
   TableIdsPtr vector_index_ids;
+  VectorIndexOnly vector_index_only = VectorIndexOnly::kTrue;
   rocksdb::SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe =
       rocksdb::SkipCorruptDataBlocksUnsafe::kFalse;
 };
@@ -326,7 +327,7 @@ class Tablet : public AbstractTablet,
 
   Status WritePostApplyMetadata(std::span<const PostApplyTransactionMetadata> metadatas) override;
 
-  Status GetIntents(
+  Status GetIntentsForCDC(
       const TransactionId& id,
       std::vector<docdb::IntentKeyValueForCDC>* keyValueIntents,
       docdb::ApplyTransactionState* stream_state);
@@ -422,7 +423,7 @@ class Tablet : public AbstractTablet,
   // Create a new row iterator which yields the rows as of the current MVCC
   // state of this tablet.
   // The returned iterator is not initialized and should be initialized by the caller before usage.
-  Result<std::unique_ptr<docdb::DocRowwiseIterator>> NewUninitializedDocRowIterator(
+  Result<docdb::DocRowwiseIteratorPtr> NewUninitializedDocRowIterator(
       const dockv::ReaderProjection& projection,
       const ReadHybridTime& read_hybrid_time = {},
       const TableId& table_id = "",
@@ -826,16 +827,7 @@ class Tablet : public AbstractTablet,
   Status TriggerAdminFullCompactionIfNeeded(const AdminCompactionOptions& options);
 
   bool HasActiveFullCompaction();
-
-  bool HasActiveFullCompactionUnlocked() const REQUIRES(full_compaction_token_mutex_) {
-    bool has_active_scheduled = full_compaction_task_pool_token_ != nullptr
-                                    ? !full_compaction_task_pool_token_->WaitFor(MonoDelta::kZero)
-                                    : false;
-    bool has_active_admin = admin_full_compaction_task_pool_token_ != nullptr
-                                ? !admin_full_compaction_task_pool_token_->WaitFor(MonoDelta::kZero)
-                                : false;
-    return has_active_scheduled || has_active_admin;
-  }
+  bool HasActiveFullCompactionUnlocked() const REQUIRES(full_compaction_token_mutex_);
 
   bool HasActiveTTLFileExpiration();
 
@@ -1020,14 +1012,12 @@ class Tablet : public AbstractTablet,
   void DocDBDebugDump(std::vector<std::string> *lines);
 
   Status WriteTransactionalBatch(
-      int64_t batch_idx, // index of this batch in its transaction
-      const docdb::LWKeyValueWriteBatchPB& put_batch,
-      HybridTime hybrid_time,
+      int64_t batch_idx,  // index of this batch in its transaction
+      const docdb::LWKeyValueWriteBatchPB& put_batch, HybridTime hybrid_time,
       const rocksdb::UserFrontiers& frontiers);
 
   Result<TransactionOperationContext> CreateTransactionOperationContext(
-      const boost::optional<TransactionId>& transaction_id,
-      bool is_ysql_catalog_table,
+      const std::optional<TransactionId>& transaction_id, bool is_ysql_catalog_table,
       const SubTransactionMetadataPB* subtransaction_metadata = nullptr) const;
 
   // Pause new read/write operations that are blocking/not blocking start of RocksDB shutdown and
@@ -1047,13 +1037,10 @@ class Tablet : public AbstractTablet,
 
   std::string LogPrefix(docdb::StorageDbType db_type) const;
 
-  Result<bool> IsQueryOnlyForTablet(const PgsqlReadRequestPB& pgsql_read_request,
-      size_t row_count) const;
+  bool MayTargetMultipleTablets(
+      const PgsqlReadRequestPB& pgsql_read_request, size_t row_count) const;
 
-  Result<bool> HasScanReachedMaxPartitionKey(
-      const PgsqlReadRequestPB& pgsql_read_request,
-      const std::string& partition_key,
-      size_t row_count) const;
+  const std::string* NextReadPartitionKey(const PgsqlReadRequestPB& pgsql_read_request) const;
 
   Status TriggerManualCompactionSyncUnsafe(
       rocksdb::CompactionReason reason,
@@ -1063,7 +1050,7 @@ class Tablet : public AbstractTablet,
     return TriggerManualCompactionSyncUnsafe(reason, rocksdb::SkipCorruptDataBlocksUnsafe::kFalse);
   }
 
-  void TriggerVectorIndexCompactionSync(const TableIds& vector_index_ids);
+  Status TriggerVectorIndexCompactionSync(const TableIds& vector_index_ids);
 
   Status ForceRocksDBCompact(
       const rocksdb::CompactRangeOptions& regular_options,
@@ -1309,6 +1296,8 @@ class Tablet : public AbstractTablet,
   // Thread pool token for triggering admin full compactions.
   std::unique_ptr<ThreadPoolToken> admin_full_compaction_task_pool_token_
       GUARDED_BY(full_compaction_token_mutex_);
+
+  std::atomic<size_t> num_active_full_compactions_ GUARDED_BY(full_compaction_token_mutex_) = 0;
 
   // Pointer to shared thread pool in TsTabletManager. Managed by the FullCompactionManager.
   ThreadPool* full_compaction_pool_ = nullptr;

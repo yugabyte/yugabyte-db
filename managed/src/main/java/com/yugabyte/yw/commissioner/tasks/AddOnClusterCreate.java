@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 YugaByte, Inc. and Contributors
+ * Copyright 2022 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -66,7 +66,7 @@ public class AddOnClusterCreate extends UniverseDefinitionTaskBase {
       log.info("The nodes to provision are nodesToProvision={}", nodesToProvision);
 
       // Create preflight node check tasks for on-prem nodes.
-      createPreflightNodeCheckTasks(Collections.singletonList(cluster));
+      createPreflightNodeCheckTasks(universe, Collections.singletonList(cluster));
 
       // Add check for certificateConfig
       createCheckCertificateConfigTask(universe, Collections.singletonList(cluster));

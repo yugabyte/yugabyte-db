@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 YugaByte, Inc. and Contributors
+ * Copyright 2019 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -74,12 +74,8 @@ public class ModifyBlackList extends UniverseTaskBase {
   @Override
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    String masterHostPorts = universe.getMasterAddresses();
-    String certificate = universe.getCertificateNodetoNode();
     try {
-      log.info("Running {}: masterHostPorts={}.", getName(), masterHostPorts);
       List<HostPortPB> addHosts = getHostPortPBs(universe, taskParams().addNodes);
-
       // Skip removing nodes from blacklist if they failed to be cleaned up properly.
       // i.e. if node instance is in decommissioned state.
       UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;

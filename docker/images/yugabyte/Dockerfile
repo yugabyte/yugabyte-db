@@ -12,19 +12,31 @@ WORKDIR $YB_HOME
 
 COPY packages/yugabyte*.tar.gz /tmp/
 
-RUN tar -xvf /tmp/yugabyte*$(uname -m)*.tar.gz --strip 1 \
-    && rm -rf /tmp/yuabyte* \
-    && bin/post_install.sh
+RUN <<EOF
+#!/usr/bin/env bash
+set -ex
+dnf install -y file
+tar -xvf /tmp/yugabyte*$(uname -m)*.tar.gz --strip 1
+rm -rf /tmp/yuabyte*
+./bin/post_install.sh
+for a in $(find . -exec file {} \; | grep -i elf | cut -f1 -d:); do
+  strip --strip-unneeded $a || true
+done
+EOF
+
+RUN tar -xvf share/ybc-*.tar.gz \
+    && rm -rf ybc-*/conf/
 
 FROM $BASE_IMAGE
 ARG BASE_IMAGE
 ARG VERSION=Development
 ARG RELEASE=Unknown
 ARG USER=root
+ARG YBC_VERSION=Unknown
 
 LABEL name="YugabyteDB" \
     maintainer="YugaByte" \
-    vendor="Yugabyte Inc" \
+    vendor="YugabyteDB, Inc" \
     release=$RELEASE \
     version=$VERSION \
     summary="YugabytDB Image" \
@@ -75,21 +87,6 @@ RUN set -x; \
   && rm -rf ~/.cache \
   && yum clean all && rm -rf /var/cache/yum
 
-# Install required python packages first
-# this should leave us with python3.8 as the default python3
-# We need to explicitly remove the old pip wheel file to avoid tripping vulnerability scans
-RUN set -x ; \
-   $yum_install  \
-      python3.11-devel \
-      python3.11-pip \
-    && pip3 install --upgrade pip \
-    && pip3 install --upgrade lxml \
-    && pip3 install --upgrade s3cmd \
-    && pip3 install --upgrade psutil \
-    && rm -rf /usr/share/python3-wheels/pip-9.0.3-py2.py3-none-any.whl \
-    && rm -rf ~/.cache \
-    && yum clean all && rm -rf /var/cache/yum
-
 # Install required packages that are universal across RHEL versions
 RUN $yum_install \
       bind-utils \
@@ -108,11 +105,19 @@ RUN $yum_install \
       redhat-rpm-config \
       rsync \
       procps \
+      python3.11-devel \
+      python3.11-pip \
       sysstat \
       tcpdump \
       which \
     && alternatives --set python3 /usr/bin/python3.11 \
     && alternatives --set python /usr/bin/python3.11 \
+    && python3 -m pip install --upgrade pip \
+    && python3 -m pip install --upgrade lxml \
+    && python3 -m pip install --upgrade s3cmd \
+    && python3 -m pip install --upgrade psutil \
+    && rm -rf /usr/share/python3-wheels/pip-9.0.3-py2.py3-none-any.whl \
+    && rm -rf ~/.cache \
     && yum clean all && rm -rf /var/cache/yum
 
 RUN set -x; \
@@ -133,16 +138,15 @@ RUN set -x; \
 
 COPY --from=intermediate $YB_HOME $YB_HOME
 
-RUN ln -s /home/yugabyte/bin/ysqlsh /usr/local/bin/ysqlsh && \
-    ln -s /home/yugabyte/bin/cqlsh /usr/local/bin/ycqlsh && \
-    ln -s /home/yugabyte/bin/yugabyted /usr/local/bin/yugabyted && \
-    ln -s /home/yugabyte/bin/yb-admin /usr/local/bin/yb-admin && \
-    ln -s /home/yugabyte/bin/yb-ts-cli /usr/local/bin/yb-ts-cli
+RUN for a in ysqlsh ycqlsh yugabyted yb-admin yb-tsi-cli; do \
+      ln -s /home/yugabyte/bin/$a /usr/local/bin/$a; \
+    done
 
 # In the normal EE flows, we expect /home/yugabyte/{master,tserver} to exist and have both links
 # to all the components in the unpacked tar.gz, as well as an extra link to the log path for the
 # respective server.
-RUN export dirs=$(ls /home/yugabyte) && mkdir $YB_HOME/{master,tserver} && \
+RUN export dirs=$(ls /home/yugabyte | grep -v "^ybc-") && \
+    mkdir $YB_HOME/{master,tserver} && \
     # Link all YB pieces.
     for dir in $dirs; do ln -s $YB_HOME/$dir $YB_HOME/master/$dir; done && \
     for dir in $dirs; do ln -s $YB_HOME/$dir $YB_HOME/tserver/$dir; done && \
@@ -151,6 +155,14 @@ RUN export dirs=$(ls /home/yugabyte) && mkdir $YB_HOME/{master,tserver} && \
     ln -s /mnt/disk0/yb-data/tserver/logs $YB_HOME/tserver/logs && \
     # Create and link the cores.
     mkdir -p /mnt/disk0/cores && ln -s /mnt/disk0/cores $YB_HOME/cores
+
+RUN mkdir $YB_HOME/controller && \
+    # Find ybc-* directory
+    YBC_DIR=$(find "$YB_HOME" -maxdepth 1 -type d -name 'ybc-*'); \
+    # Link bin directory
+    ln -s ${YBC_DIR}/bin $YB_HOME/controller/bin && \
+    # Link the logs
+    ln -s /mnt/disk0/ybc-data/controller/logs $YB_HOME/controller/logs
 
 # Copy licenses
 ARG ghr_url=https://raw.githubusercontent.com/yugabyte/yugabyte-db/master
@@ -161,7 +173,7 @@ RUN mkdir /licenses && \
       -o /licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
 # Install azcopy
-ARG AZV=10.28.1
+ARG AZV=10.30.1
 RUN set -x; \
     [[ "$(uname -m)" == "aarch64" ]] && arch='arm64' || arch='amd64'; \
     pkg_name="azcopy_linux_${arch}_${AZV}"; \
@@ -205,7 +217,7 @@ RUN set -x; \
     && egrep $(sha256sum /sbin/tini) /tmp/tini.sha256sum
 
 # Expose the required ports.
-EXPOSE 7000 7100 7200 9000 9100 12000 11000 6379 9042 5433 10100
+EXPOSE 7000 7100 7200 9000 9100 12000 11000 6379 9042 5433 10100 18018
 
 # Required for Red Hat certification
 USER ${USER}

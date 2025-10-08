@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2020 YugaByte, Inc. and Contributors
+# Copyright 2020 YugabyteDB, Inc. and Contributors
 #
 # Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
 # may not use this file except in compliance with the License. You
@@ -125,6 +125,7 @@ class AzureCloud(AbstractCloud):
         volType = args.volume_type
         private_key_file = args.private_key_file
         instanceType = args.instance_type
+        capacity_reservation = args.capacity_reservation
         image = args.machine_image
         nsg = args.security_group_id
         vnet = args.vpcId
@@ -154,13 +155,15 @@ class AzureCloud(AbstractCloud):
                                  instanceType, adminSSH, image, volType, args.type, region,
                                  nicId, tags, disk_iops, disk_throughput, spot_price,
                                  use_spot_instance, vm_params, disk_params, use_plan,
+                                 capacity_reservation=capacity_reservation,
                                  cloud_instance_types=args.cloud_instance_types)
         logging.info("[app] Updated Azure VM {}.".format(vmName, region, zone))
         return output
 
-    def change_instance_type(self, host_info, instance_type, cloud_instance_types):
+    def change_instance_type(self, host_info, instance_type, capacity_reservation,
+                             cloud_instance_types):
         self.get_admin().change_instance_type(host_info['name'], instance_type,
-                                              cloud_instance_types)
+                                              capacity_reservation, cloud_instance_types)
 
     def destroy_instance(self, args):
         host_info = self.get_host_info(args)
@@ -249,14 +252,15 @@ class AzureCloud(AbstractCloud):
         # TODO this method is not present!
         modify_tags(args.region, instance["id"], args.instance_tags, args.remove_tags)
 
-    def start_instance(self, host_info, server_ports):
+    def start_instance(self, host_info, server_ports, capacity_reservation=None):
         vm_name = host_info['name']
         vm_status = self.get_admin().get_vm_status(vm_name)
         if vm_status != 'deallocated' and vm_status != 'stopped':
             logging.warning("Host {} is not stopped, VM status is {}".format(
                 vm_name, vm_status))
         else:
-            self.get_admin().start_instance(host_info['name'])
+            res = capacity_reservation if vm_status == 'deallocated' else None
+            self.get_admin().start_instance(host_info['name'], capacity_reservation=res)
 
         # Refreshing private IP address.
         host_info = self.get_admin().get_host_info(vm_name, False)

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -14,19 +14,17 @@
 #include "yb/master/tablet_split_manager.h"
 
 #include <algorithm>
-#include <chrono>
 #include <optional>
 
 #include "yb/common/constants.h"
+#include "yb/common/schema.h"
 
-#include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/human_readable.h"
 
 #include "yb/dockv/partition.h"
-#include "yb/common/schema.h"
 
-#include "yb/master/async_rpc_tasks.h"
+#include "yb/master/async_rpc_tasks_base.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
@@ -42,10 +40,8 @@
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
-#include "yb/util/scope_exit.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/unique_lock.h"
-#include "yb/util/shared_lock.h"
 
 using std::vector;
 
@@ -121,8 +117,9 @@ DEFINE_RUNTIME_bool(
 TAG_FLAG(split_respects_tablet_replica_limits, advanced);
 
 METRIC_DEFINE_gauge_uint64(server, automatic_split_manager_time,
-                           "Automatic Split Manager Time", yb::MetricUnit::kMilliseconds,
-                           "Time for one run of the automatic tablet split manager.");
+    "Automatic Split Manager Time",
+    yb::MetricUnit::kMilliseconds,
+    "Time (milliseconds) for one run of the automatic tablet split manager.");
 
 METRIC_DEFINE_counter(
     cluster, split_tablet_too_many_tablets,
@@ -131,8 +128,7 @@ METRIC_DEFINE_counter(
     "The number of SplitTablet operations failed because the cluster cannot host any more "
     "tablets.");
 
-namespace yb {
-namespace master {
+namespace yb::master {
 
 using strings::Substitute;
 using namespace std::literals;
@@ -481,7 +477,7 @@ Status TabletSplitManager::PrepareForPitr(const CoarseTimePoint& deadline) {
   bool inflight_splits_finished = false;
   while (CoarseMonoClock::Now() < std::min(wait_inflight_splitting_until, deadline)) {
     // Wait for existing split operations to complete.
-    if (IsTabletSplittingComplete(true /* wait_for_parent_deletion */, deadline)) {
+    if (IsTabletSplittingComplete(/*wait_for_parent_deletion=*/true, deadline)) {
       inflight_splits_finished = true;
       break;
     }
@@ -678,7 +674,8 @@ class OutstandingSplitState {
 
   void AddCandidate(TabletInfoPtr tablet, uint64_t leader_sst_size) {
     largest_candidate_size_ = std::max(largest_candidate_size_, leader_sst_size);
-    new_split_candidates_.emplace_back(SplitCandidate{tablet, leader_sst_size});
+    new_split_candidates_.emplace_back(
+        SplitCandidate{.tablet = tablet, .leader_sst_size = leader_sst_size});
   }
 
   void ProcessCandidates() {
@@ -1033,5 +1030,4 @@ Status TabletSplitManager::ProcessSplitTabletResult(
   return Status::OK();
 }
 
-}  // namespace master
-}  // namespace yb
+} // namespace yb::master

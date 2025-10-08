@@ -8177,7 +8177,7 @@ class ControlScript(object):
         common_parser.add_argument(
             "--data_dir", help=argparse.SUPPRESS)
         common_parser.add_argument(
-            "--base_dir", help="Directory under which {} will store data, conf and logs".format(
+            "--base_dir", help="Directory under which {0} will store data, conf and logs. It defaults to `~/var`. On nodes started with a non-default `--base_dir`, this flag must be specified on every command so that {0} can identify the correct node".format(
                 SCRIPT_NAME), metavar="")
         common_parser.add_argument(
             "--log_dir", help=argparse.SUPPRESS)
@@ -8382,7 +8382,7 @@ class ControlScript(object):
                 action="store_true", default=None
                 )
             cur_parser.add_argument(
-                "--retention", help="Specify the retention period of the snapshots.",
+                "--retention", help="Specify the retention period for snapshots in days (from the time they were created), after which they will be automatically deleted.",
                 metavar=""
                 )
             cur_parser.add_argument(

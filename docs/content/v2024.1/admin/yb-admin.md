@@ -11,20 +11,32 @@ menu:
 type: docs
 ---
 
-The `yb-admin` utility, located in the `bin` directory of YugabyteDB home, provides a command line interface for administering clusters.
+The yb-admin utility, located in the `bin` directory of YugabyteDB home, provides a command line interface for administering clusters.
 
-It invokes the [`yb-master`](../../reference/configuration/yb-master/) and [`yb-tserver`](../../reference/configuration/yb-tserver/) servers to perform the necessary administration.
+It invokes the [yb-master](../../reference/configuration/yb-master/) and [yb-tserver](../../reference/configuration/yb-tserver/) servers to perform the necessary administration.
+
+{{< note title="Using YugabyteDB Anywhere or YugabyteDB Aeon?" >}}
+
+yb-admin is intended to be used to administer manually created and managed universes only.
+
+If you are using [YugabyteDB Anywhere](../../yugabyte-platform/) or [YugabyteDB Aeon](/preview/yugabyte-cloud/), administer your universes using the respective UI, or, to use automation, use the respective API or CLI. For more information, refer to [YugabyteDB Anywhere automation](../../yugabyte-platform/anywhere-automation/) and [YugabyteDB Aeon automation](/preview/yugabyte-cloud/managed-automation/).
+
+**If you perform tasks on a YugabyteDB Anywhere-managed universe using yb-admin, the changes may not be reflected in YugabyteDB Anywhere.**
+
+If you are unsure whether a particular functionality in yb-admin is available in YugabyteDB Anywhere, contact {{% support-platform %}}.
+
+{{< /note >}}
 
 ## Syntax
 
-To use the `yb-admin` utility from the YugabyteDB home directory, run `./bin/yb-admin` using the following syntax.
+To use yb-admin from the YugabyteDB home directory, run `./bin/yb-admin` using the following syntax.
 
 ```sh
 yb-admin \
-    [ -master_addresses <master-addresses> ]  \
-    [ -init_master_addrs <master-address> ]  \
-    [ -timeout_ms <millisec> ] \
-    [ -certs_dir_name <dir_name> ] \
+    [ --master_addresses <master-addresses> ]  \
+    [ --init_master_addrs <master-address> ]  \
+    [ --timeout_ms <millisec> ] \
+    [ --certs_dir_name <dir_name> ] \
     <command> [ command_flags ]
 ```
 
@@ -73,7 +85,7 @@ Gets the configuration for the universe.
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     get_universe_config
 ```
 
@@ -87,7 +99,7 @@ Changes the configuration of a tablet.
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     change_config <tablet_id> \
     [ ADD_SERVER | REMOVE_SERVER ] \
     <peer_uuid> \
@@ -117,7 +129,7 @@ Changes the master configuration.
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     change_master_config \
     [ ADD_SERVER|REMOVE_SERVER ] \
     <ip_addr> <port> \
@@ -137,7 +149,7 @@ yb-admin \
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     list_tablet_servers <tablet_id>
 ```
 
@@ -154,7 +166,7 @@ Use this to find out who the LEADER of a tablet is.
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     list_tablets <keyspace_type>.<keyspace_name> <table> [max_tablets]
 ```
 
@@ -168,7 +180,7 @@ yb-admin \
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
     list_tablets ysql.db_name table_name 0
 ```
 
@@ -186,7 +198,7 @@ Lists all tablet servers.
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     list_all_tablet_servers
 ```
 
@@ -200,7 +212,7 @@ Displays a list of all YB-Master servers in a table listing the master UUID, RPC
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     list_all_masters
 ```
 
@@ -210,7 +222,7 @@ yb-admin \
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses node7:7100,node8:7100,node9:7100 \
+    --master_addresses node7:7100,node8:7100,node9:7100 \
     list_all_masters
 ```
 
@@ -229,7 +241,7 @@ Prints a list of replica types and counts for the specified table.
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     list_replica_type_counts <keyspace> <table_name>
 ```
 
@@ -245,7 +257,7 @@ Prints the status of the YB-Master servers.
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     dump_masters_state
 ```
 
@@ -259,7 +271,7 @@ List the locations of the tablet server logs.
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     list_tablet_server_log_locations
 ```
 
@@ -273,7 +285,7 @@ Lists all tablets for the specified tablet server (YB-TServer).
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     list_tablets_for_tablet_server <ts_uuid>
 ```
 
@@ -286,7 +298,7 @@ Splits the specified hash-sharded tablet and computes the split point as the mid
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     split_tablet <tablet_id_to_split>
 ```
 
@@ -314,7 +326,7 @@ Forces the master leader to step down. The specified YB-Master node will take it
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     master_leader_stepdown [ <new_leader_id> ]
 ```
 
@@ -329,7 +341,7 @@ Prints the current YSQL schema catalog version.
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     ysql_catalog_version
 ```
 
@@ -339,7 +351,7 @@ yb-admin \
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
     ysql_catalog_version
 ```
 
@@ -361,14 +373,14 @@ Prints a list of all tables. Optionally, include the database type, table ID, an
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     list_tables \
     [ include_db_type ] [ include_table_id ] [ include_table_type ]
 ```
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> list_tables
+    --master_addresses <master-addresses> list_tables
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
@@ -382,10 +394,10 @@ Returns tables in the following format, depending on the flags used:
 <db_type>.<namespace>.<table_name> table_id table_type
 ```
 
-* *db_type*: The type of database. Valid values include `ysql`, `ycql`, and `unknown`.
+* *db_type*: The type of database. Valid values are `ysql`, `ycql`, and `unknown`.
 * *namespace*: The name of the database (for YSQL) or keyspace (for YCQL).
 * *table_name*: The name of the table.
-* *table_type*: The type of table. Valid values include `catalog`, `table`, `index`, and `other`.
+* *table_type*: The type of table. Valid values are `catalog`, `table`, `index`, and `other`.
 
 {{< note title="Tip" >}}
 
@@ -397,7 +409,7 @@ To display a list of tables and their UUID (`table_id`) values, open the **YB-Ma
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
     list_tables
 ```
 
@@ -432,12 +444,12 @@ Triggers manual compaction on a table.
 
 ```sh
 yb-admin \
-    -master_addresses <master_addresses> \
+    --master_addresses <master_addresses> \
     compact_table <db_type>.<namespace> <table> [timeout_in_seconds] [ADD_INDEXES]
 ```
 
 * *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *db_type*: The type of database. Valid values include ysql and ycql.
+* *db_type*: The type of database. Valid values are `ysql` and `ycql`.
 * *namespace*: The name of the database (for YSQL) or keyspace (for YCQL).
 * *table*: The name of the table to compact.
 * *timeout_in_seconds*: Specifies duration (in seconds) yb-admin waits for compaction to end. Default value is `20`.
@@ -447,7 +459,7 @@ yb-admin \
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses $MASTER_RPC_ADDRS \
+    --master_addresses $MASTER_RPC_ADDRS \
     compact_table ysql.yugabyte table_name
 ```
 
@@ -459,7 +471,7 @@ Compacted [yugabyte.table_name] tables.
 
 ```sh
 yb-admin \
-    -master_addresses <master_addresses> \
+    --master_addresses <master_addresses> \
     compact_table tableid.<table_id> [timeout_in_seconds] [ADD_INDEXES]
 ```
 
@@ -472,12 +484,71 @@ yb-admin \
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses $MASTER_RPC_ADDRS \
+    --master_addresses $MASTER_RPC_ADDRS \
     compact_table tableid.000033eb000030008000000000004002
 ```
 
 ```output
 Compacted [000033eb000030008000000000004002] tables.
+```
+
+#### compaction_status
+
+Show the status of full compaction on a table.
+
+```sh
+yb-admin \
+    --master_addresses <master-addresses> \
+    compaction_status <db-type>.<namespace> <table> [show_tablets]
+```
+
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
+* *db-type*: The type of database. Valid values are `ysql` and `ycql`.
+* *namespace*: The name of the database (for YSQL) or keyspace (for YCQL).
+* *table*: The name of the table to show the full compaction status.
+* `show_tablets`: Show the compactions status of individual tablets.
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    --master_addresses $MASTER_RPC_ADDRS \
+    compaction_status ysql.yugabyte table_name show_tablets
+```
+
+```output
+tserver uuid: 1b9486461cdd48f59eb46b33992cd73a
+ tablet id | full compaction state | last full compaction completion time
+
+ 93c6933407e24adf8b3f12c11499673a IDLE 2025-06-03 15:36:22.395586
+ 9c1cddfe33ec440cbcd70770563c62ca IDLE 2025-06-03 15:36:22.743703
+ b739745bba254330805c259459c61a7e IDLE 2025-06-03 15:36:23.416460
+ 9d0155aa77b3441e8e8c78cc433b995c IDLE 2025-06-03 15:36:23.504400
+ 2b9f283301d14be2add2c3f2a0016531 IDLE 2025-06-03 15:36:23.892202
+ eff101a879f348778ed599cb79498c44 IDLE 2025-06-03 15:36:24.706769
+
+tserver uuid: c0505f1d31774a3d88fae26ce14cde10
+ tablet id | full compaction state | last full compaction completion time
+
+ 93c6933407e24adf8b3f12c11499673a IDLE 2025-06-03 15:36:22.769900
+ 9c1cddfe33ec440cbcd70770563c62ca IDLE 2025-06-03 15:36:23.142609
+ b739745bba254330805c259459c61a7e IDLE 2025-06-03 15:36:23.871247
+ 9d0155aa77b3441e8e8c78cc433b995c IDLE 2025-06-03 15:36:23.877126
+ 2b9f283301d14be2add2c3f2a0016531 IDLE 2025-06-03 15:36:24.294265
+ eff101a879f348778ed599cb79498c44 IDLE 2025-06-03 15:36:25.107964
+
+tserver uuid: f7b5e6fc38974cbabc330d944d564974
+ tablet id | full compaction state | last full compaction completion time
+
+ 93c6933407e24adf8b3f12c11499673a IDLE 2025-06-03 15:36:22.415413
+ 9c1cddfe33ec440cbcd70770563c62ca IDLE 2025-06-03 15:36:22.793145
+ b739745bba254330805c259459c61a7e IDLE 2025-06-03 15:36:23.473077
+ 9d0155aa77b3441e8e8c78cc433b995c IDLE 2025-06-03 15:36:23.475270
+ 2b9f283301d14be2add2c3f2a0016531 IDLE 2025-06-03 15:36:23.888733
+ eff101a879f348778ed599cb79498c44 IDLE 2025-06-03 15:36:24.705576
+
+Last full compaction completion time: 2025-06-03 15:36:22.395586
+Last admin compaction request time: 2025-06-03 15:36:22.061267
 ```
 
 #### modify_table_placement_info
@@ -488,7 +559,7 @@ Modifies the placement information (cloud, region, and zone) for a table.
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     modify_table_placement_info <keyspace> <table_name> <placement_info> <replication_factor> \
     [ <placement_id> ]
 ```
@@ -497,7 +568,7 @@ or alternatively:
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     modify_table_placement_info tableid.<table_id> <placement_info> <replication_factor> \
     [ <placement_id> ]
 ```
@@ -514,7 +585,7 @@ yb-admin \
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses $MASTER_RPC_ADDRS \
+    --master_addresses $MASTER_RPC_ADDRS \
     modify_table_placement_info  testdatabase testtable \
     aws.us-west.us-west-2a,aws.us-west.us-west-2b,aws.us-west.us-west-2c 3
 ```
@@ -536,7 +607,7 @@ Creates a transaction status table to be used in a region. This command should a
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     create_transaction_table \
     <table_name>
 ```
@@ -550,7 +621,7 @@ The transaction status table will be created as `system.<table_name>`.
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses $MASTER_RPC_ADDRS \
+    --master_addresses $MASTER_RPC_ADDRS \
     create_transaction_table \
     transactions_us_east
 ```
@@ -561,7 +632,7 @@ Next, set the placement on the newly created transactions table:
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses $MASTER_RPC_ADDRS \
+    --master_addresses $MASTER_RPC_ADDRS \
     modify_table_placement_info system transactions_us_east \
     aws.us-east.us-east-1a,aws.us-east.us-east-1b,aws.us-east.us-east-1c 3
 ```
@@ -582,7 +653,7 @@ Add a tablet to a transaction status table.
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     add_transaction_tablet \
     <table_id>
 ```
@@ -594,7 +665,7 @@ yb-admin \
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
     add_transaction_tablet 000033eb000030008000000000004002
 ```
 
@@ -608,12 +679,12 @@ Flush the memstores of the specified table on all tablet servers to disk.
 
 ```sh
 yb-admin \
-    -master_addresses <master_addresses> \
+    --master_addresses <master_addresses> \
     flush_table <db_type>.<namespace> <table> [timeout_in_seconds] [ADD_INDEXES]
 ```
 
 * *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *db_type*: The type of database. Valid values include ysql and ycql.
+* *db_type*: The type of database. Valid values are `ysql` and `ycql`.
 * *namespace*: The name of the database (for YSQL) or keyspace (for YCQL).
 * *table*: The name of the table to flush.
 * *timeout_in_seconds*: Specifies duration (in seconds) yb-admin waits for flushing to end. Default value is `20`.
@@ -623,7 +694,7 @@ yb-admin \
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses $MASTER_RPC_ADDRS \
+    --master_addresses $MASTER_RPC_ADDRS \
     flush_table ysql.yugabyte table_name
 
 ```
@@ -636,7 +707,7 @@ Flushed [yugabyte.table_name] tables.
 
 ```sh
 yb-admin \
-    -master_addresses <master_addresses> \
+    --master_addresses <master_addresses> \
     flush_table tableid.<table_id> [timeout_in_seconds] [ADD_INDEXES]
 ```
 
@@ -649,7 +720,7 @@ yb-admin \
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses $MASTER_RPC_ADDRS \
+    --master_addresses $MASTER_RPC_ADDRS \
     flush_table tableid.000033eb000030008000000000004002
 ```
 
@@ -665,7 +736,7 @@ Backfill all DEFERRED indexes in a YCQL table.
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     backfill_indexes_for_table <keyspace> <table_name>
 ```
 
@@ -677,7 +748,7 @@ yb-admin \
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
     backfill_indexes_for_table ybdemo table_name
 ```
 
@@ -701,6 +772,7 @@ The following backup and snapshot commands are available:
 * [**delete_snapshot**](#delete-snapshot) deletes a snapshot's information
 * [**create_snapshot_schedule**](#create-snapshot-schedule) sets the schedule for snapshot creation
 * [**list_snapshot_schedules**](#list-snapshot-schedules) returns a list of all snapshot schedules
+* [**edit_snapshot_schedule**](#edit-snapshot-schedule) modifies the schedule for snapshot creation
 * [**restore_snapshot_schedule**](#restore-snapshot-schedule) restores all objects in a scheduled snapshot
 * [**delete_snapshot_schedule**](#delete-snapshot-schedule) deletes the specified snapshot schedule
 
@@ -718,7 +790,7 @@ Creates a snapshot of the specified YSQL database.
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     create_database_snapshot <database_name>
 ```
 
@@ -731,7 +803,7 @@ When this command runs, a `snapshot_id` is generated and printed.
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
     create_database_snapshot
 ```
 
@@ -745,7 +817,7 @@ Creates a snapshot of the specified YCQL keyspace.
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     create_keyspace_snapshot <keyspace_name>
 ```
 
@@ -758,7 +830,7 @@ When this command runs, a `snapshot_id` is generated and printed.
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
     create_keyspace_snapshot
 ```
 
@@ -772,7 +844,7 @@ Prints a list of all snapshot IDs, restoration IDs, and states. Optionally, prin
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     list_snapshots \
     [ show_details ] [ not_show_restored ]
 ```
@@ -822,7 +894,7 @@ In this example, the optional `show_details` flag is added to generate the snaps
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
     list_snapshots show_details
 ```
 
@@ -858,7 +930,7 @@ Use the [`create_snapshot_schedule`](#create-snapshot-schedule) command to creat
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     create_snapshot <keyspace> <table_name> | <table_id> \
     [<keyspace> <table_name> | <table_id> ]... \
     [flush_timeout_in_seconds]
@@ -876,7 +948,7 @@ When this command runs, a `snapshot_id` is generated and printed.
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
     create_snapshot ydb test_tb
 ```
 
@@ -898,7 +970,7 @@ Restores the specified snapshot, including the tables and indexes. When the oper
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     restore_snapshot <snapshot_id> <restore-target>
 ```
 
@@ -948,7 +1020,7 @@ Returns one or more restorations in JSON format.
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     list_snapshot_restorations <restoration_id>
 ```
 
@@ -959,7 +1031,7 @@ yb-admin \
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
     list_snapshot_restorations 26ed9053-0c26-4277-a2b8-c12d0fa4c8cf
 ```
 
@@ -983,7 +1055,7 @@ Generates a metadata file for the specified snapshot, listing all the relevant i
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     export_snapshot <snapshot_id> <file_name>
 ```
 
@@ -995,7 +1067,7 @@ yb-admin \
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
     export_snapshot 4963ed18fc1e4f1ba38c8fcf4058b295 \
     test_tb.snapshot
 ```
@@ -1013,7 +1085,7 @@ Imports the specified snapshot metadata file.
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     import_snapshot <file_name> \
     [<keyspace> <table_name> [<keyspace> <table_name>]...]
 ```
@@ -1033,7 +1105,7 @@ The *keyspace* and the *table* can be different from the exported one.
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
     import_snapshot test_tb.snapshot ydb test_tb
 ```
 
@@ -1059,7 +1131,7 @@ Imports only the specified tables from the specified snapshot metadata file.
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     import_snapshot_selective <file_name> \
     [<keyspace> <table_name> [<keyspace> <table_name>]...]
 ```
@@ -1079,7 +1151,7 @@ The *keyspace* can be different from the exported one. The name of the table nee
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
     import_snapshot_selective test_tb.snapshot ydb test_tb
 ```
 
@@ -1105,7 +1177,7 @@ Deletes the specified snapshot.
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     delete_snapshot <snapshot_id>
 ```
 
@@ -1122,7 +1194,7 @@ Returns a schedule ID in JSON format.
 
 ```sh
 yb-admin create_snapshot_schedule \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     <snapshot-interval>\
     <retention-time>\
     <filter-expression>
@@ -1141,7 +1213,7 @@ Take a snapshot of the YSQL database `yugabyte` once per minute, and retain each
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
     create_snapshot_schedule 1 10 ysql.yugabyte
 ```
 
@@ -1149,7 +1221,7 @@ The equivalent command for a YCQL keyspace (for example, yugabyte) would be the 
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
     create_snapshot_schedule 1 10 yugabyte
 ```
 
@@ -1181,7 +1253,7 @@ Returns one or more schedule lists in JSON format.
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     list_snapshot_schedules <schedule-id>
 ```
 
@@ -1192,7 +1264,7 @@ yb-admin \
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
     list_snapshot_schedules 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256
 ```
 
@@ -1221,6 +1293,40 @@ yb-admin \
 }
 ```
 
+#### edit_snapshot_schedule
+
+Edits a snapshot schedule. A schedule consists of a list of objects to be included in a snapshot, a time interval at which to take snapshots for them, and a retention time.
+
+**Syntax**
+
+```sh
+yb-admin \
+    --master_addresses <master-addresses> \
+    edit_snapshot_schedule <schedule-id> \
+    <snapshot-interval> \
+    <retention-time> \
+    <filter-expression>
+```
+
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
+* *schedule-id*: The identifier (ID) of the schedule to be edited.
+* *snapshot-interval*: The frequency at which to take snapshots, in minutes.
+* *retention-time*: The number of minutes to keep a snapshot before deleting it.
+* *filter-expression*: The set of objects to include in the snapshot.
+
+The filter expression is a list of acceptable objects, which can be either raw tables, keyspaces (YCQL) in the format `keyspace_name`, or databases (YSQL) in the format `ysql.database_name`. For proper consistency guarantees, set this up _per-keyspace_ (YCQL) or _per-database_ (YSQL).
+
+**Example**
+
+Edit a snapshot schedule to take a snapshot of the YSQL database `yugabyte` once per minute, and retain each snapshot for 20 minutes:
+
+```sh
+./bin/yb-admin \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    edit_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
+    1 20 ysql.yugabyte
+```
+
 #### restore_snapshot_schedule
 
 Schedules group a set of items into a single tracking object (the *schedule*). When you restore, you can choose a particular schedule and a point in time, and revert the state of all affected objects back to the chosen time.
@@ -1229,7 +1335,7 @@ Schedules group a set of items into a single tracking object (the *schedule*). W
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     restore_snapshot_schedule <schedule-id> <restore-target>
 ```
 
@@ -1261,7 +1367,7 @@ Restore from an absolute timestamp:
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
     restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 1617670679185100
 ```
 
@@ -1269,7 +1375,7 @@ Restore from a relative time:
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
     restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 minus 60s
 ```
 
@@ -1292,7 +1398,7 @@ Returns a JSON object with the `schedule_id` that was just deleted.
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     delete_snapshot_schedule <schedule-id>
 ```
 
@@ -1303,7 +1409,7 @@ yb-admin \
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
     delete_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256
 ```
 
@@ -1329,7 +1435,7 @@ Modifies the placement information (cloud, region, and zone) for a deployment.
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     modify_placement_info <placement_info> <replication_factor> \
     [ <placement_id> ]
 ```
@@ -1343,7 +1449,7 @@ yb-admin \
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses $MASTER_RPC_ADDRS \
+    --master_addresses $MASTER_RPC_ADDRS \
     modify_placement_info  \
     aws.us-west.us-west-2a:2,aws.us-west.us-west-2b:2,aws.us-west.us-west-2c 5
 ```
@@ -1378,7 +1484,7 @@ Having all tablet leaders reside in a single region reduces the number of networ
 
 * Tablespaces don't inherit cluster-level placement information, leader preference, or read replica configurations.
 
-* If the client application uses a smart driver, set the [topology keys](../../drivers-orms/smart-drivers/#topology-aware-load-balancing) to target the preferred zones.
+* If the client application uses a smart driver, set the [topology keys](/preview/develop/drivers-orms/smart-drivers/#topology-aware-load-balancing) to target the preferred zones.
 
 {{< /note >}}
 
@@ -1386,7 +1492,7 @@ Having all tablet leaders reside in a single region reduces the number of networ
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     set_preferred_zones <cloud.region.zone>[:preference] \
     [<cloud.region.zone>[:preference]]...
 ```
@@ -1533,7 +1639,7 @@ Add a read replica cluster to the master configuration.
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     add_read_replica_placement_info <placement_info> \
     <replication_factor> \
     [ <placement_id> ]
@@ -1551,7 +1657,7 @@ yb-admin \
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     modify_read_replica_placement_info <placement_info> \
     <replication_factor> \
     [ <placement_id> ]
@@ -1570,7 +1676,7 @@ Delete the read replica.
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     delete_read_replica_placement_info
 ```
 
@@ -1592,7 +1698,7 @@ Sets the contents of `key_path` in-memory on each YB-Master node.
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     add_universe_key_to_all_masters <key_id> <key_path>
 ```
 
@@ -1611,7 +1717,7 @@ Checks whether the universe key associated with the provided *key_id* exists in-
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> all_masters_have_universe_key_in_memory <key_id>
+    --master_addresses <master-addresses> all_masters_have_universe_key_in_memory <key_id>
 ```
 
 * *key_id*: Universe-unique identifier (can be any string, such as a string of a UUID) that will be associated to the universe key contained in the contents of `key_path` as a byte[].
@@ -1630,7 +1736,7 @@ The [`all_masters_have_universe_key_in_memory`](#all-masters-have-universe-key-i
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> rotate_universe_key_in_memory <key_id>
+    --master_addresses <master-addresses> rotate_universe_key_in_memory <key_id>
 ```
 
 * *key_id*: Universe-unique identifier (can be any string, such as a string of a UUID) that will be associated to the universe key contained in the contents of `key_path` as a byte[].
@@ -1643,7 +1749,7 @@ Disables the in-memory encryption at rest for newly-written data files.
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     disable_encryption_in_memory
 ```
 
@@ -1655,7 +1761,7 @@ Checks if cluster-wide encryption is enabled.
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     is_encryption_enabled
 ```
 
@@ -1673,7 +1779,7 @@ The new key ID (`<key_id_2>`) should be different from the previous one (`<key_i
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
     is_encryption_enabled
 ```
 
@@ -1691,7 +1797,7 @@ Create a change data capture (CDC) DB stream for the specified namespace using t
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     create_change_data_stream ysql.<namespace_name>
 ```
 
@@ -1702,7 +1808,7 @@ For example:
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses 127.0.0.1:7100 \
+    --master_addresses 127.0.0.1:7100 \
     create_change_data_stream ysql.yugabyte
 ```
 
@@ -1715,7 +1821,7 @@ This feature is {{<tags/feature/tp>}}. Use the [yb_enable_cdc_consistent_snapsho
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     create_change_data_stream ysql.<namespace_name> EXPLICIT CHANGE USE_SNAPSHOT
 ```
 
@@ -1729,7 +1835,7 @@ For example:
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses 127.0.0.1:7100 \
+    --master_addresses 127.0.0.1:7100 \
     create_change_data_stream ysql.yugabyte EXPLICIT CHANGE USE_SNAPSHOT
 ```
 
@@ -1741,7 +1847,7 @@ To create a change data capture (CDC) DB stream which also supports sending the 
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     create_change_data_stream ysql.<namespace_name> IMPLICIT ALL
 ```
 
@@ -1764,7 +1870,7 @@ To create a change data capture (CDC) DB stream which works in the EXPLICIT chec
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     create_change_data_stream ysql.<namespace_name> EXPLICIT
 ```
 
@@ -1786,7 +1892,7 @@ Lists all the created CDC DB streams.
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     list_change_data_streams [namespace_name]
 ```
 
@@ -1797,7 +1903,7 @@ yb-admin \
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses 127.0.0.1:7100 \
+    --master_addresses 127.0.0.1:7100 \
     list_change_data_streams
 ```
 
@@ -1843,7 +1949,7 @@ Get the information associated with a particular CDC DB stream.
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     get_change_data_stream_info <db_stream_id>
 ```
 
@@ -1854,7 +1960,7 @@ yb-admin \
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses 127.0.0.1:7100 \
+    --master_addresses 127.0.0.1:7100 \
     get_change_data_stream_info d540f5e4890c4d3b812933cbfd703ed3
 ```
 
@@ -1877,7 +1983,7 @@ Delete the specified CDC DB stream.
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     delete_change_data_stream <db_stream_id>
 ```
 
@@ -1888,7 +1994,7 @@ yb-admin \
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses 127.0.0.1:7100 \
+    --master_addresses 127.0.0.1:7100 \
     delete_change_data_stream d540f5e4890c4d3b812933cbfd703ed3
 ```
 
@@ -1910,7 +2016,7 @@ To verify if any tables are already configured for replication, use [list_cdc_st
 
 ```sh
 yb-admin \
-    -master_addresses <target_master_addresses> \
+    --master_addresses <target_master_addresses> \
     setup_universe_replication \
     <source_universe_uuid>_<replication_name> \
     <source_master_addresses> \
@@ -1941,7 +2047,7 @@ To display a list of tables and their UUID (`table_id`) values, open the **YB-Ma
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
+    --master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
     setup_universe_replication e260b8b6-e89f-4505-bb8e-b31f74aa29f3_xClusterSetup1 \
     127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
     000030a5000030008000000000004000,000030a5000030008000000000004005,dfef757c415c4b2cacc9315b8acb539a
@@ -1963,7 +2069,7 @@ To check if any tables are configured for replication, use [list_cdc_streams](#l
 Use the `set_master_addresses` subcommand to replace the source master address list. Use this if the set of masters on the source changes:
 
 ```sh
-yb-admin -master_addresses <target-master-addresses> \
+yb-admin --master_addresses <target-master-addresses> \
     alter_universe_replication <source-universe-uuid>_<replication-name> \
     set_master_addresses <source-master-addresses>
 ```
@@ -1976,7 +2082,7 @@ yb-admin -master_addresses <target-master-addresses> \
 Use the `add_table` subcommand to add one or more tables to the existing list:
 
 ```sh
-yb-admin -master_addresses <target-master-addresses> \
+yb-admin --master_addresses <target-master-addresses> \
     alter_universe_replication <source-universe-uuid>_<replication-name> \
     add_table [ <source-table-ids> ] \
     [ <source-bootstrap-ids> ]
@@ -1995,7 +2101,7 @@ Enter the source universe bootstrap IDs in the same order as their corresponding
 Use the `remove_table` subcommand to remove one or more tables from the existing list:
 
 ```sh
-yb-admin -master_addresses <target-master-addresses> \
+yb-admin --master_addresses <target-master-addresses> \
     alter_universe_replication <source-universe-uuid>_<replication-name> \
     remove_table <source-table-ids> [ignore-errors]
 ```
@@ -2009,7 +2115,7 @@ yb-admin -master_addresses <target-master-addresses> \
 Use the `rename_id` subcommand to rename xCluster replication streams.
 
 ```sh
-yb-admin -master_addresses <target-master-addresses> \
+yb-admin --master_addresses <target-master-addresses> \
     alter_universe_replication <source-universe-uuid>_<replication-name> \
     rename_id <source-universe-uuid>_<new-replication-name>
 ```
@@ -2027,7 +2133,7 @@ Deletes universe replication for the specified source universe.
 
 ```sh
 yb-admin \
-    -master_addresses <target_master_addresses> \
+    --master_addresses <target_master_addresses> \
     delete_universe_replication <source_universe_uuid>_<replication_name>
 ```
 
@@ -2043,7 +2149,7 @@ Sets the universe replication to be enabled or disabled.
 
 ```sh
 yb-admin \
-    -master_addresses <target_master_addresses> \
+    --master_addresses <target_master_addresses> \
     set_universe_replication_enabled <source_universe_uuid>_<replication_name>
 ```
 
@@ -2060,7 +2166,7 @@ Sets the xCluster role to `STANDBY` or `ACTIVE`.
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     change_xcluster_role \
     <role>
 ```
@@ -2072,7 +2178,7 @@ yb-admin \
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
+    --master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
     change_xcluster_role STANDBY
 ```
 
@@ -2084,7 +2190,7 @@ Reports the current xCluster safe time for each namespace, which is the time at 
 
 ```sh
 yb-admin \
-    -master_addresses <target_master_addresses> \
+    --master_addresses <target_master_addresses> \
     get_xcluster_safe_time \
     [include_lag_and_skew]
 ```
@@ -2096,7 +2202,7 @@ yb-admin \
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
+    --master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
     get_xcluster_safe_time
 ```
 
@@ -2126,7 +2232,7 @@ Verify when the producer and consumer are in sync for a given list of `stream_id
 
 ```sh
 yb-admin \
-    -master_addresses <source_master_addresses> \
+    --master_addresses <source_master_addresses> \
     wait_for_replication_drain \
     <comma_separated_list_of_stream_ids> [<timestamp> | minus <interval>]
 ```
@@ -2140,7 +2246,7 @@ yb-admin \
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+    --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
     wait_for_replication_drain 000033f1000030008000000000000000,200033f1000030008000000000000002 minus 1m
 ```
 
@@ -2171,7 +2277,7 @@ Use this command when setting up universe replication to verify if any tables ar
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     list_cdc_streams
 ```
 
@@ -2181,7 +2287,7 @@ yb-admin \
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
+    --master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
     list_cdc_streams
 ```
 
@@ -2193,7 +2299,7 @@ Deletes underlying CDC stream for the specified YB-Master servers.
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     delete_cdc_stream <stream_id [force_delete]>
 ```
 
@@ -2213,7 +2319,7 @@ Mark a set of tables in preparation for setting up universe level replication.
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     bootstrap_cdc_producer <comma_separated_list_of_table_ids>
 ```
 
@@ -2224,7 +2330,7 @@ yb-admin \
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses 172.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
+    --master_addresses 172.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
     bootstrap_cdc_producer 000030ad000030008000000000004000
 ```
 
@@ -2244,7 +2350,7 @@ Returns the replication status of all consumer streams. If *source_universe_uuid
 
 ```sh
 yb-admin \
-    -master_addresses <target-master-addresses> \
+    --master_addresses <target-master-addresses> \
     get_replication_status [ <source_universe_uuid>_<replication_name> ]
 ```
 
@@ -2255,7 +2361,7 @@ yb-admin \
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses 172.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
+    --master_addresses 172.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
     get_replication_status e260b8b6-e89f-4505-bb8e-b31f74aa29f3
 ```
 
@@ -2282,7 +2388,7 @@ Gets the tablet load move completion percentage for blacklisted nodes.
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     get_leader_blacklist_completion
 ```
 
@@ -2292,7 +2398,7 @@ yb-admin \
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
     get_leader_blacklist_completion
 ```
 
@@ -2306,7 +2412,7 @@ After old YB-TServer servers are terminated, you can use this command to clean u
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     change_blacklist [ ADD | REMOVE ] <ip_addr>:<port> \
     [ <ip_addr>:<port> ]...
 ```
@@ -2319,7 +2425,7 @@ yb-admin \
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
     change_blacklist \
       ADD node1:9100 node2:9100 node3:9100 node4:9100 node5:9100 node6:9100
 ```
@@ -2330,20 +2436,20 @@ yb-admin \
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     change_leader_blacklist [ ADD | REMOVE ] <ip_addr>:<port> \
     [ <ip_addr>:<port> ]...
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* ADD | REMOVE: Adds or removes the specified YB-TServer from leader blacklist.
+* ADD | REMOVE: Adds or removes the specified YB-Master, or YB-TServer from leader blacklist.
 * *ip_addr:port*: The IP address and port of the YB-TServer.
 
 **Example**
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
     change_leader_blacklist \
       ADD node1:9100 node2:9100 node3:9100 node4:9100 node5:9100 node6:9100
 ```
@@ -2364,7 +2470,7 @@ There is a possibility of downtime.
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     leader_stepdown <tablet_id> <dest_ts_uuid>
 ```
 
@@ -2394,7 +2500,7 @@ Enables or disables the load balancer.
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     set_load_balancer_enabled [ 0 | 1 ]
 ```
 
@@ -2405,7 +2511,7 @@ yb-admin \
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
     set_load_balancer_enabled 0
 ```
 
@@ -2417,7 +2523,7 @@ Returns the cluster load balancer state.
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> get_load_balancer_state
+    --master_addresses <master-addresses> get_load_balancer_state
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
@@ -2432,7 +2538,7 @@ You can rerun this command periodically until the value reaches `100.0`, indicat
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     get_load_move_completion
 ```
 
@@ -2457,7 +2563,7 @@ In the following example, the data move is `66.6` percent done.
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
     get_load_move_completion
 ```
 
@@ -2475,7 +2581,7 @@ Finds out if the load balancer is idle.
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     get_is_load_balancer_idle
 ```
 
@@ -2485,7 +2591,7 @@ yb-admin \
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
     get_is_load_balancer_idle
 ```
 
@@ -2505,14 +2611,14 @@ Returns the current AutoFlags configuration of the universe.
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     get_auto_flags_config
 ```
 
 **Example**
 
 ```sh
-./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 get_auto_flags_config
+./bin/yb-admin --master_addresses ip1:7100,ip2:7100,ip3:7100 get_auto_flags_config
 ```
 
 If the operation is successful you should see output similar to the following:
@@ -2558,7 +2664,7 @@ Note that `promote_auto_flags` is a cluster-level operation; you don't need to r
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     promote_auto_flags \
     [<max_flags_class> [<promote_non_runtime_flags> [force]]]
 ```
@@ -2572,7 +2678,7 @@ yb-admin \
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
     promote_auto_flags kLocalPersisted
 ```
 
@@ -2600,7 +2706,7 @@ YSQL upgrades are not required for clusters where [YSQL is not enabled](../../re
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> \
+    --master_addresses <master-addresses> \
     upgrade_ysql
 ```
 
@@ -2608,7 +2714,7 @@ yb-admin \
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
     upgrade_ysql
 ```
 
@@ -2622,8 +2728,8 @@ In certain scenarios, a YSQL upgrade can take longer than 60 seconds, which is t
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
-    -timeout_ms 180000 \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    --timeout_ms 180000 \
     upgrade_ysql
 ```
 

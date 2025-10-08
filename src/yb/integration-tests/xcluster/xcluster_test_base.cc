@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -639,7 +639,7 @@ Status XClusterTestBase::WaitForSetupUniverseReplicationCleanUp(
 
 Status XClusterTestBase::WaitForValidSafeTimeOnAllTServers(
     const NamespaceId& namespace_id, MiniCluster& cluster,
-    boost::optional<CoarseTimePoint> deadline) {
+    std::optional<CoarseTimePoint> deadline) {
   if (!deadline) {
     deadline = PropagationDeadline();
   }
@@ -661,7 +661,7 @@ Status XClusterTestBase::WaitForValidSafeTimeOnAllTServers(
 }
 
 Status XClusterTestBase::WaitForValidSafeTimeOnAllTServers(
-    const NamespaceId& namespace_id, Cluster* cluster, boost::optional<CoarseTimePoint> deadline) {
+    const NamespaceId& namespace_id, Cluster* cluster, std::optional<CoarseTimePoint> deadline) {
   if (!cluster) {
     cluster = &consumer_cluster_;
   }
@@ -671,12 +671,11 @@ Status XClusterTestBase::WaitForValidSafeTimeOnAllTServers(
 
 Status XClusterTestBase::WaitForInValidSafeTimeOnAllTServers(
     const NamespaceId& namespace_id, MiniCluster& cluster,
-    boost::optional<CoarseTimePoint> deadline) {
+    std::optional<CoarseTimePoint> deadline) {
   if (!deadline) {
     deadline = PropagationDeadline();
   }
-  const auto description =
-      Format("Wait for safe_time of namespace $0 to be invalid", namespace_id);
+  const auto description = Format("Wait for safe_time of namespace $0 to be invalid", namespace_id);
   for (auto& tserver : cluster.mini_tablet_servers()) {
     RETURN_NOT_OK(Wait(
         [&]() -> Result<bool> {
@@ -693,7 +692,7 @@ Status XClusterTestBase::WaitForInValidSafeTimeOnAllTServers(
 }
 
 Status XClusterTestBase::WaitForInValidSafeTimeOnAllTServers(
-    const NamespaceId& namespace_id, Cluster* cluster, boost::optional<CoarseTimePoint> deadline) {
+    const NamespaceId& namespace_id, Cluster* cluster, std::optional<CoarseTimePoint> deadline) {
   if (!cluster) {
     cluster = &consumer_cluster_;
   }
@@ -703,7 +702,7 @@ Status XClusterTestBase::WaitForInValidSafeTimeOnAllTServers(
 
 Status XClusterTestBase::WaitForReadOnlyModeOnAllTServers(
     const NamespaceId& namespace_id, bool is_read_only, Cluster* cluster,
-    boost::optional<CoarseTimePoint> deadline) {
+    std::optional<CoarseTimePoint> deadline) {
   if (!cluster) {
     cluster = &consumer_cluster_;
   }

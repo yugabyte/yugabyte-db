@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -77,6 +77,7 @@
 #include "yb/util/locks.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
+#include "yb/util/one_time_bool.h"
 #include "yb/util/status_fwd.h"
 
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
@@ -89,6 +90,7 @@ namespace yb {
 
 class Env;
 class MaintenanceManager;
+class ObjectLockTracker;
 
 namespace cdc {
 
@@ -273,13 +275,13 @@ class TabletServer : public DbServerBase, public TabletServerIf {
     SetYsqlDBCatalogVersionsUnlocked(db_catalog_version_data, 0UL /* debug_id */);
   }
   void SetYsqlDBCatalogInvalMessagesUnlocked(
-      const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data,
+      const tserver::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data,
       uint64_t debug_id) REQUIRES(lock_);
   void SetYsqlDBCatalogVersionsWithInvalMessages(
       const tserver::DBCatalogVersionDataPB& db_catalog_version_data,
-      const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data)
-      EXCLUDES(lock_);
-  void ResetCatalogVersionsFingerprint() EXCLUDES(lock_);
+      const tserver::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data)
+      EXCLUDES(lock_) override;
+  void ResetCatalogVersionsFingerprint() EXCLUDES(lock_) override;
   void UpdateCatalogVersionsFingerprintUnlocked() REQUIRES(lock_);
 
   uint32_t get_oid_cache_invalidations_count() const override {
@@ -479,6 +481,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   void StartTSLocalLockManager() EXCLUDES (lock_);
 
+  void StartTSLocalLockManagerUnlocked() REQUIRES (lock_);
+
   std::atomic<bool> initted_{false};
 
   // If true, all heartbeats will be seen as failed.
@@ -621,13 +625,13 @@ class TabletServer : public DbServerBase, public TabletServerIf {
       InvalidationMessagesInfo *info) REQUIRES(lock_);
   void MergeInvalMessagesIntoQueueUnlocked(
       uint32_t db_oid,
-      const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data,
+      const tserver::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data,
       int start_index,
       int end_index,
       uint64_t debug_id) REQUIRES(lock_);
   void DoMergeInvalMessagesIntoQueueUnlocked(
       uint32_t db_oid,
-      const master::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data,
+      const tserver::DBCatalogInvalMessagesDataPB& db_catalog_inval_messages_data,
       int start_index,
       int end_index,
       InvalidationMessagesQueue *db_message_lists,
@@ -664,10 +668,13 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   std::atomic<yb::server::RpcAndWebServerBase*> cql_server_{nullptr};
   std::atomic<yb::server::YCQLStatementStatsProvider*> cql_stmt_provider_{nullptr};
 
+  std::shared_ptr<ObjectLockTracker> object_lock_tracker_;
+
   // Lock Manager to maintain table/object locking activity in memory.
   tserver::TSLocalLockManagerPtr ts_local_lock_manager_ GUARDED_BY(lock_);
 
   std::unique_ptr<docdb::ObjectLockSharedStateManager> object_lock_shared_state_manager_;
+  OneTimeBool shutting_down_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletServer);
 };

@@ -76,15 +76,45 @@ the INSERT ON CONFLICT variant is often colloquially referred to as "upsert".
 
 ### *returning_clause*
 
+The optional `RETURNING` clause causes `INSERT` to compute and return values based on each row that's actually inserted or updated (when you use an `ON CONFLICT DO UPDATE` clause). 
+You'll primarily find this useful for getting values supplied by defaults, like a serial sequence number. 
+However, you can use any expression that uses the table's columns. 
+The syntax for the `RETURNING` list is identical to the output list of `SELECT`.
+
+Only rows that are successfully inserted or updated are returned. For example, if a row is locked but not updated because an `ON CONFLICT DO UPDATE ... WHERE` clause condition wasn't satisfied, that row won't be returned.
+
 ### *column_values*
+
+The values you supply in the `VALUES` clause or query are matched with your column list from left to right. 
+
+Any column not included in your explicit or implicit column list is filled with its default value. If there's no declared default value for that column, it is set to `NULL`.
+
+If the expression for any column isn't the correct data type, YugabyteDB will attempt automatic type conversion.
 
 ### *conflict_target*
 
+The `conflict_target` specifies which conflicts `ON CONFLICT` should handle by choosing arbiter indexes. You can either perform unique index inference, or name a constraint explicitly.
+
+The requirements depend on which conflict action you're using:
+
+- **For `ON CONFLICT DO NOTHING`** - Specifying a `conflict_target` is optional. When you omit it, conflicts with all usable constraints and unique indexes are handled.
+- **For `ON CONFLICT DO UPDATE`** - You must provide a `conflict_target`.
+
 ### *conflict_action*
 
-```sql
-DO NOTHING | DO UPDATE SET *update_item* [ , ... ] [ WHERE *condition* ]
-```
+The `conflict_action` specifies what to do when a conflict occurs with `ON CONFLICT`. You have the following two options:
+
+- `DO NOTHING` - Simply ignore the conflicting row and don't insert it.
+- `DO UPDATE` - Perform an update operation on the existing row instead.
+
+When you use `DO UPDATE`, you'll need to specify the exact details of the `UPDATE` action. In the `SET` and `WHERE` clauses of `ON CONFLICT DO UPDATE`, you can access:
+
+- The existing row using the table's name (or an alias you've defined).
+- The row that was proposed for insertion using the special `excluded` table.
+
+You'll need `SELECT` privilege on any column in the target table where you're reading from the corresponding `excluded` columns.
+
+Note that the `excluded` values reflect all the effects of per-row `BEFORE INSERT` triggers, as those effects may have contributed to the row being excluded from insertion.
 
 #### *update_item*
 

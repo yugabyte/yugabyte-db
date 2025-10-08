@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -288,8 +288,9 @@ int64_t GetFailedBatchLockNum(MiniCluster* cluster)  {
   int64_t failed_batch_lock = 0;
   auto list = ListTabletPeers(cluster, ListPeersFilter::kAll);
   for (const auto& peer : list) {
-    if (peer->tablet()->metadata()->table_name() == "t") {
-      auto metrics = peer->tablet()->metrics();
+    auto tablet = peer->shared_tablet_maybe_null();
+    if (tablet && tablet->metadata()->table_name() == "t") {
+      auto metrics = tablet->metrics();
       if (metrics) {
         failed_batch_lock += metrics->Get(tablet::TabletCounters::kFailedBatchLock);
       }
@@ -339,8 +340,9 @@ TEST_F(CqlIndexTest, WriteQueryStuckAndVerifyTxnCleanup) {
   size_t total_txns = 0;
   auto list = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
   for (const auto& peer : list) {
-    if (peer->tablet()->metadata()->table_name() == "t") {
-      auto* participant = peer->tablet()->transaction_participant();
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    if (tablet->metadata()->table_name() == "t") {
+      auto* participant = tablet->transaction_participant();
       if (participant) {
         total_txns += participant->GetNumRunningTransactions();
       }

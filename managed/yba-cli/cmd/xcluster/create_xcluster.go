@@ -1,5 +1,5 @@
 /*
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  */
 
 package xcluster
@@ -145,7 +145,7 @@ var createXClusterCmd = &cobra.Command{
 				errMessage := util.ErrorFromHTTPResponse(
 					response,
 					err,
-					"XCluster",
+					"xCluster",
 					"Create - List Tables")
 				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 			}
@@ -282,7 +282,7 @@ var createXClusterCmd = &cobra.Command{
 		rTask, response, err := authAPI.CreateXClusterConfig().
 			XclusterReplicationCreateFormData(req).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "XCluster", "Create")
+			errMessage := util.ErrorFromHTTPResponse(response, err, "xCluster", "Create")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
@@ -321,8 +321,8 @@ var createXClusterCmd = &cobra.Command{
 				errMessage := util.ErrorFromHTTPResponse(
 					response,
 					err,
-					"XCluster",
-					"Create - Get XCluster")
+					"xCluster",
+					"Create - Get xCluster")
 				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 			}
 			r := make([]ybaclient.XClusterConfigGetResp, 0)

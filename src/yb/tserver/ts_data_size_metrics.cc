@@ -59,24 +59,39 @@ void ProcessFilesInDir(const std::string& dir, InodeMap* inode_map, bool active)
 
 void TsDataSizeMetrics::Update() {
   auto start_time = CoarseMonoClock::now();
-  InodeMap inode_map;
+  InodeMap tserver_inode_map;
   auto tablet_peers = tablet_manager_->GetTabletPeers();
   for (const auto& tablet_peer : tablet_peers) {
-    auto shared_tablet = tablet_peer->shared_tablet();
+    auto shared_tablet = tablet_peer->shared_tablet_maybe_null();
     if (shared_tablet == nullptr) continue;
 
     // Count RegularDB, IntentsDB, and WAL files as active if and only if the tablet is not hidden.
     // Do not count snapshot-only files as active.
+    InodeMap tablet_inode_map;
     const auto* meta = shared_tablet->metadata();
-    ProcessFilesInDir(meta->rocksdb_dir(), &inode_map, /*active=*/!meta->hidden());
-    ProcessFilesInDir(meta->intents_rocksdb_dir(), &inode_map, /*active=*/!meta->hidden());
-    ProcessFilesInDir(meta->wal_dir(), &inode_map, /*active=*/!meta->hidden());
-    ProcessFilesInDir(meta->snapshots_dir(), &inode_map, /*active=*/false);
+    ProcessFilesInDir(meta->rocksdb_dir(), &tablet_inode_map, /*active=*/!meta->hidden());
+    ProcessFilesInDir(meta->intents_rocksdb_dir(), &tablet_inode_map, /*active=*/!meta->hidden());
+    ProcessFilesInDir(meta->wal_dir(), &tablet_inode_map, /*active=*/!meta->hidden());
+    ProcessFilesInDir(meta->snapshots_dir(), &tablet_inode_map, /*active=*/false);
+
+    size_t tablet_total_size = 0;
+    for (const auto& [_, file] : tablet_inode_map) {
+      tablet_total_size += file.size;
+    }
+    tablet_peer->SetTabletOnDiskSize(tablet_total_size);
+
+    // Aggregate tablet inode map with tserver inode map.
+    for (const auto& [inode, file_data] : tablet_inode_map) {
+      auto& tserver_entry = tserver_inode_map[inode];
+      tserver_entry.size = file_data.size;
+      tserver_entry.active |= file_data.active;
+    }
   }
 
+  // Calculate tserver-level metrics from aggregated inode map.
   size_t total_size = 0;
   size_t total_active_size = 0;
-  for (const auto& [_, file] : inode_map) {
+  for (const auto& [_, file] : tserver_inode_map) {
     total_size += file.size;
     if (file.active) {
       total_active_size += file.size;

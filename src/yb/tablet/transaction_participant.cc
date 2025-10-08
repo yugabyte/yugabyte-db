@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -295,6 +295,9 @@ class TransactionParticipant::Impl
       mem_tracker_->UnregisterFromParent();
     }
 
+    // Cannot move it to StartShutdown due to weird logic with aborting transactions
+    // on tablet delete.
+    rpcs_.StartShutdown();
     decltype(status_resolvers_) status_resolvers;
     {
       std::lock_guard lock(status_resolvers_mutex_);
@@ -304,7 +307,7 @@ class TransactionParticipant::Impl
     for (auto& resolver : status_resolvers) {
       resolver.Shutdown();
     }
-    rpcs_.Shutdown();
+    rpcs_.CompleteShutdown();
     shutdown_done_.store(true, std::memory_order_release);
   }
 
@@ -368,15 +371,15 @@ class TransactionParticipant::Impl
     return (**it).local_commit_time();
   }
 
-  boost::optional<TransactionLocalState> LocalTxnData(const TransactionId& id) {
+  std::optional<TransactionLocalState> LocalTxnData(const TransactionId& id) {
     std::lock_guard lock(mutex_);
     auto it = transactions_.find(id);
     if (it == transactions_.end()) {
-      return boost::none;
+      return std::nullopt;
     }
-    return boost::make_optional<TransactionLocalState>({
-      .commit_ht = (**it).local_commit_time(),
-      .aborted_subtxn_set = (**it).last_known_aborted_subtxn_set(),
+    return std::make_optional<TransactionLocalState>({
+        .commit_ht = (**it).local_commit_time(),
+        .aborted_subtxn_set = (**it).last_known_aborted_subtxn_set(),
     });
   }
 
@@ -460,7 +463,7 @@ class TransactionParticipant::Impl
     return lock_and_iterator.transaction().metadata();
   }
 
-  Result<boost::optional<std::pair<IsolationLevel, TransactionalBatchData>>> PrepareBatchData(
+  Result<std::optional<std::pair<IsolationLevel, TransactionalBatchData>>> PrepareBatchData(
       const TransactionId& id, size_t batch_idx,
       boost::container::small_vector_base<uint8_t>* encoded_replicated_batches,
       bool has_write_pairs) {
@@ -472,7 +475,7 @@ class TransactionParticipant::Impl
       if (lock_and_iterator.did_txn_deadlock()) {
         return lock_and_iterator.deadlock_status;
       }
-      return boost::none;
+      return std::nullopt;
     }
     auto& transaction = lock_and_iterator.transaction();
     transaction.AddReplicatedBatch(batch_idx, encoded_replicated_batches);
@@ -636,6 +639,12 @@ class TransactionParticipant::Impl
   template <class Queue>
   void CleanTransactionsQueue(
       Queue* queue, MinRunningNotifier* min_running_notifier) REQUIRES(mutex_) {
+    // The tablet peer is not ready yet, skip the clean up for now. Once the table peer is ready,
+    // Poll will clean up the queue.
+    if (!participant_context_.IsRunning()) {
+      return;
+    }
+
     int64_t min_request = running_requests_.empty() ? std::numeric_limits<int64_t>::max()
                                                     : running_requests_.front();
     HybridTime safe_time;
@@ -746,11 +755,11 @@ class TransactionParticipant::Impl
     return Status::OK();
   }
 
-  Result<boost::optional<TabletId>> GetStatusTablet(const TransactionId& id) {
+  Result<std::optional<TabletId>> GetStatusTablet(const TransactionId& id) {
     auto lock_and_iterator =
         VERIFY_RESULT(LockAndFind(id, "get status tablet"s, TransactionLoadFlags{}));
     if (!lock_and_iterator.found() || lock_and_iterator.transaction().WasAborted()) {
-      return boost::none;
+      return std::nullopt;
     }
     return lock_and_iterator.transaction().status_tablet();
   }
@@ -1809,8 +1818,9 @@ class TransactionParticipant::Impl
     TransactionId txn_id = (**it).id();
     OpId checkpoint_op_id = GetLatestCheckPointUnlocked();
     OpId op_id = (**it).GetApplyOpId();
+    const bool tablet_peer_running = participant_context_.IsRunning();
 
-    if (running_requests_.empty()) {
+    if (running_requests_.empty() && tablet_peer_running) {
       auto result = HandleTransactionCleanup(it, reason, checkpoint_op_id);
 
       if (result.post_apply_metadata_entry.has_value()) {
@@ -1840,8 +1850,10 @@ class TransactionParticipant::Impl
       .transaction_id = (**it).id(),
       .reason = reason,
       .expected_deadlock_status = expected_deadlock_status,
+      .tablet_peer_running = tablet_peer_running,
     });
-    VLOG_WITH_PREFIX(2) << "Queued for cleanup: " << (**it).id() << ", reason: " << reason;
+    VLOG_WITH_PREFIX(2) << "Queued for cleanup: " << (**it).id() << ", reason: " << reason
+                        << ", peer running: " << tablet_peer_running;
     return false;
   }
 
@@ -2200,11 +2212,22 @@ class TransactionParticipant::Impl
         decltype(pending_applies_)().swap(pending_applies_);
       }
     }
+
+    if (!participant_context_.IsRunning()) {
+      // The participant is started before Tablet Peer is initialized. At this moment,
+      // the participant_context_(TabletPeer) may not be running, so skip the poll check for now.
+      return;
+    }
+
     {
       MinRunningNotifier min_running_notifier(&applier_);
       std::lock_guard lock(mutex_);
 
       ProcessRemoveQueueUnlocked(&min_running_notifier);
+      if (!immediate_cleanup_queue_.empty() &&
+          !immediate_cleanup_queue_.front().tablet_peer_running) {
+        CleanTransactionsQueue(&immediate_cleanup_queue_,  &min_running_notifier);
+      }
       CleanTransactionsQueue(&graceful_cleanup_queue_, &min_running_notifier);
       CleanDeadlockedTransactionsMapUnlocked();
     }
@@ -2427,6 +2450,8 @@ class TransactionParticipant::Impl
     RemoveReason reason;
     // Status containing deadlock info if the transaction was aborted due to deadlock.
     Status expected_deadlock_status = Status::OK();
+    // Whether the state of the tablet peer is running when the entry is inserted to the queue.
+    bool tablet_peer_running = true;
 
     bool Ready(TransactionParticipantContext* participant_context, HybridTime* safe_time) const {
       return true;
@@ -2592,8 +2617,8 @@ Result<TransactionMetadata> TransactionParticipant::PrepareMetadata(
   return impl_->PrepareMetadata(pb);
 }
 
-Result<boost::optional<std::pair<IsolationLevel, TransactionalBatchData>>>
-    TransactionParticipant::PrepareBatchData(
+Result<std::optional<std::pair<IsolationLevel, TransactionalBatchData>>>
+TransactionParticipant::PrepareBatchData(
     const TransactionId& id, size_t batch_idx,
     boost::container::small_vector_base<uint8_t>* encoded_replicated_batches,
     bool has_write_pairs) {
@@ -2609,8 +2634,7 @@ HybridTime TransactionParticipant::LocalCommitTime(const TransactionId& id) {
   return impl_->LocalCommitTime(id);
 }
 
-boost::optional<TransactionLocalState> TransactionParticipant::LocalTxnData(
-    const TransactionId& id) {
+std::optional<TransactionLocalState> TransactionParticipant::LocalTxnData(const TransactionId& id) {
   return impl_->LocalTxnData(id);
 }
 
@@ -2658,8 +2682,7 @@ Status TransactionParticipant::FillPriorities(
   return impl_->FillPriorities(inout);
 }
 
-Result<boost::optional<TabletId>> TransactionParticipant::FindStatusTablet(
-    const TransactionId& id) {
+Result<std::optional<TabletId>> TransactionParticipant::FindStatusTablet(const TransactionId& id) {
   return impl_->GetStatusTablet(id);
 }
 

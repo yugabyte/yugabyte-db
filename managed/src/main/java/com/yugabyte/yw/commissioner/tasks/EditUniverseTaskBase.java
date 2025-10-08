@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.google.common.collect.ImmutableList;
@@ -14,6 +14,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -28,11 +29,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -41,6 +39,8 @@ import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
+
+  protected UniverseDefinitionTaskParams prevState;
 
   @Inject
   public EditUniverseTaskBase(BaseTaskDependencies baseTaskDependencies) {
@@ -77,7 +77,7 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       createValidateDiskSizeOnNodeRemovalTasks(
           universe, cluster, taskParams().getNodesInCluster(cluster.uuid));
     }
-    createPreflightNodeCheckTasks(taskParams().clusters);
+    createPreflightNodeCheckTasks(universe, taskParams().clusters);
 
     createCheckCertificateConfigTask(universe, taskParams().clusters);
   }
@@ -117,7 +117,6 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       Cluster cluster,
       Set<NodeDetails> newMasters,
       Set<NodeDetails> mastersToStop,
-      boolean updateMasters,
       boolean forceDestroyServers) {
     UserIntent userIntent = cluster.userIntent;
     Set<NodeDetails> nodes = taskParams().getNodesInCluster(cluster.uuid);
@@ -187,37 +186,6 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
         !taskParams().nodeDetailsSet.stream().allMatch(n -> n.ybPrebuiltAmi);
 
     if (!nodesToProvision.isEmpty()) {
-      Map<UUID, List<NodeDetails>> nodesPerAZ =
-          nodes.stream()
-              .filter(
-                  n ->
-                      n.state != NodeDetails.NodeState.ToBeAdded
-                          && n.state != NodeDetails.NodeState.ToBeRemoved)
-              .collect(Collectors.groupingBy(n -> n.azUuid));
-
-      nodesToProvision.forEach(
-          node -> {
-            Set<String> machineImages =
-                nodesPerAZ.getOrDefault(node.azUuid, Collections.emptyList()).stream()
-                    .map(n -> n.machineImage)
-                    .collect(Collectors.toSet());
-            Iterator<String> iterator = machineImages.iterator();
-
-            if (iterator.hasNext()) {
-              String imageToUse = iterator.next();
-
-              if (iterator.hasNext()) {
-                log.warn(
-                    "Nodes in AZ {} are based on different machine images: {},"
-                        + " falling back to default",
-                    node.cloudInfo.az,
-                    String.join(", ", machineImages));
-              } else {
-                node.machineImage = imageToUse;
-              }
-            }
-          });
-
       // Provision the nodes.
       // State checking is enabled because the subtasks are not idempotent.
       createProvisionNodeTasks(

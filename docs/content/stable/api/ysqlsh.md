@@ -30,7 +30,7 @@ To download and install a standalone version of ysqlsh, refer to [YugabyteDB cli
 ```
 
 ```output
-ysqlsh (11.2-YB-{{<yb-version version="stable">}}-b0)
+ysqlsh (15.2-YB-{{<yb-version version="stable">}}-b0)
 Type "help" for help.
 
 yugabyte=#
@@ -55,7 +55,7 @@ ysqlsh returns the following to the shell on exit:
 
 {{< note title="YugabyteDB Aeon" >}}
 
-For information on connecting to a YugabyteDB Aeon cluster using ysqlsh, refer to [Connect via client shells](/preview/yugabyte-cloud/cloud-connect/connect-client-shell/).
+For information on connecting to a YugabyteDB Aeon cluster using ysqlsh, refer to [Connect via client shells](../../yugabyte-cloud/cloud-connect/connect-client-shell/).
 
 {{< /note >}}
 
@@ -130,19 +130,15 @@ ysqlsh [ <option>...] [ <dbname> [ <username> ]]
 
 ### Default flags
 
-When you open ysqlsh, the following default flags (aka flags) are set so that the user doesn't have to specify them.
+When you open ysqlsh, the following defaults are set so that you don't have to specify them:
 
 - host: `-h 127.0.0.1`
 - port: `-p 5433`
 - user: `-U yugabyte`
 
-{{< note title="Note" >}}
+For manually deployed universes, or insecure universes deployed using yugabyted, the default password for the default user `yugabyte` is `yugabyte`. If YSQL authentication is enabled, then the `yugabyte` user is prompted for this password.
 
-Starting with v2.0.1, the default password for the default user `yugabyte` is `yugabyte`. If YSQL authentication is enabled, then the `yugabyte` user is prompted for this password.
-
-For v2.0.0 users, the default user `yugabyte` has no password. If you don't want any password to be prompted, don't enable YSQL authentication. If you want to enable YSQL authentication, then you must first set a password for the `yugabyte` user (in a cluster with YSQL authentication turned off).
-
-{{< /note >}}
+If you start a [secure universe](../../reference/configuration/yugabyted/#secure-universes) using yugabyted (using the `--secure` flag), the credentials for the universe, including password, are output to a credentials file. The location of the credentials file is output to the console.
 
 ## Flags
 
@@ -476,7 +472,7 @@ Setting this variable to `on` is equivalent to the command line option `-q`. It 
 
 ##### SERVER_VERSION_NAME / SERVER_VERSION_NUM
 
-The server's version number as a string, for example, `11.2-YB-2.0.7.0-b0`, and in numeric form, for example, `110002`. These are set every time you connect to a database (including program start-up), but can be changed or unset.
+The server's version number as a string, for example, `15.2-YB-2.25.0.0-b0`, and in numeric form, for example, `110002`. These are set every time you connect to a database (including program start-up), but can be changed or unset.
 
 ##### SHOW_CONTEXT
 

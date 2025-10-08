@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -16,6 +16,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
 
+import java.util.Collections;
 import java.util.Map;
 
 /**
@@ -31,12 +32,28 @@ public class TestPgRegressMisc extends BasePgRegressTest {
   }
 
   @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    // TODO(28543): Remove once transactional ddl is enabled by default.
+    flagMap.put("ysql_yb_ddl_transaction_block_enabled", "true");
+    flagMap.put("allowed_preview_flags_csv", "ysql_yb_ddl_transaction_block_enabled");
+    // (Auto-Analyze #28057) Query plans change after enabling auto analyze.
+    flagMap.put("ysql_enable_auto_analyze", "false");
+    flagMap.put("ysql_enable_profile", "true");
+    return flagMap;
+  }
+
+  @Override
   public int getTestMethodTimeoutSec() {
     return 1800;
   }
 
   @Test
   public void testPgRegressMiscIndependent() throws Exception {
+    // Disable auto analyze for catalog version tests.
+    restartClusterWithFlags(Collections.emptyMap(),
+                            Collections.singletonMap("ysql_enable_auto_analyze",
+                                                     "false"));
     runPgRegressTest("yb_misc_independent_schedule");
   }
 
@@ -63,5 +80,18 @@ public class TestPgRegressMisc extends BasePgRegressTest {
   @Test
   public void testPgRegressMiscSerial5() throws Exception {
     runPgRegressTest("yb_misc_serial5_schedule");
+  }
+
+  @Test
+  public void makeAllDdlStatementsIncrementing() throws Exception {
+    // Disable auto analyze for catalog version tests.
+    restartClusterWithFlags(
+        Collections.emptyMap(),
+        Collections.singletonMap(
+            "ysql_pg_conf_csv",
+            "yb_make_all_ddl_statements_incrementing=true"
+        )
+    );
+    runPgRegressTest("yb_misc_catalog_version_increment_schedule");
   }
 }

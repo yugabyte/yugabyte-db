@@ -2347,7 +2347,7 @@ index_drop(Oid indexId, bool concurrent, bool concurrent_lock_mode)
 
 	if (IsYugaByteEnabled() &&
 		userIndexRelation->rd_rel->relpersistence == RELPERSISTENCE_TEMP)
-		YBCDdlEnableForceCatalogModification();
+		YBCRecordTempRelationDDL();
 
 	/*
 	 * Drop Index Concurrently is more or less the reverse process of Create
@@ -3166,7 +3166,7 @@ index_build(Relation heapRelation,
 	Assert(PointerIsValid(indexRelation->rd_indam->ambuild));
 	Assert(PointerIsValid(indexRelation->rd_indam->ambuildempty));
 
-	if (yb_skip_data_insert_for_xcluster_target)
+	if (yb_xcluster_automatic_mode_target_ddl)
 	{
 		/* Still need to update pg_catalog. */
 		index_update_stats(heapRelation, true, -1);

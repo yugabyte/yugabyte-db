@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -13,13 +13,16 @@
 
 #pragma once
 
-#include <inttypes.h>
 #include <string>
 #include "yb/util/status_fwd.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 
+YB_STRONGLY_TYPED_BOOL(UseUTC);
+
 class Timestamp {
+
  public:
   typedef int64_t val_type;
   explicit Timestamp(int64_t value) : value_(value) {}
@@ -31,9 +34,9 @@ class Timestamp {
 
   std::string ToFormattedString() const;
 
-  // Return date in human readable format (in local time zone).
+  // Return date in human readable format.
   // For example, 2021-Jan-10 22:29:35.776000.
-  std::string ToHumanReadableTime() const;
+  std::string ToHumanReadableTime(UseUTC use_utc = UseUTC::kFalse) const;
 
   val_type value() const { return value_; }
   void set_value(int64_t value) {value_ = value;}

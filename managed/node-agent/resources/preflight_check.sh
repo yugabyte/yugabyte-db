@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright 2020 YugaByte, Inc. and Contributors
+# Copyright 2020 YugabyteDB, Inc. and Contributors
 #
 # Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
 # may not use this file except in compliance with the License. You
@@ -201,6 +201,27 @@ check_yugabyte_user() {
   update_result_json "user_group" "$result"
 }
 
+check_yugabyte_user_home_if_exists() {
+  # Check only if yugabyte user exists.
+  if id -u "yugabyte" >/dev/null 2>&1; then
+    # Get the local home directory
+    # Output looks like yugabyte:x:1001:1001::/home/yugabyte:/bin/bash
+    actual_home_dir=$(getent passwd yugabyte | cut -d: -f6 2>&1)
+    if [[ -z "$actual_home_dir" ]]; then
+      update_result_json "home_dir_exists" false
+    else
+      update_result_json "home_dir_exists" true
+      # Normalize path.
+      actual_home_dir=$(readlink -m "$actual_home_dir" 2>&1)
+      if [[ "$actual_home_dir" != "$yb_home_dir" ]]; then
+        update_result_json "home_dir_matches" false
+      else
+        update_result_json "home_dir_matches" true
+      fi
+    fi
+  fi
+}
+
 check_packages_installed() {
 
   check_package_installed "openssl" # Required.
@@ -279,20 +300,6 @@ preflight_configure_check() {
   ulimit_user_processes=$(ulimit -u)
   update_result_json "ulimit_user_processes" "$ulimit_user_processes"
 
-  # Check systemd sudoers.
-  # TODO change the check name appropriately.
-  timeout 5 sudo -n /bin/systemctl --no-ask-password enable yb-master
-  if [[ "$?" = 0 ]]; then
-    update_result_json "systemd_sudoer_entry" true
-  else
-    timeout 5 systemctl --user --no-ask-password enable yb-master
-    if [[ "$?" = 0 ]]; then
-      update_result_json "systemd_sudoer_entry" true
-    else
-      update_result_json "systemd_sudoer_entry" false
-    fi
-  fi
-
   # Check virtual memory max map limit.
   vm_max_map_count=$(cat /proc/sys/vm/max_map_count 2> /dev/null)
   update_result_json "vm_max_map_count" "${vm_max_map_count:-0}"
@@ -306,12 +313,7 @@ preflight_all_checks() {
   fi
   update_result_json "python_version" "$result"
 
-  # Check home directory exists.
-  if [[ -d "$yb_home_dir" ]]; then
-    update_result_json "home_dir_exists" true
-  else
-    update_result_json "home_dir_exists" false
-  fi
+  check_yugabyte_user_home_if_exists
 
   # Check all the communication ports
   check_port "master_http_port" "$master_http_port"
@@ -583,6 +585,8 @@ while [[ $# -gt 0 ]]; do
     ;;
     --yb_home_dir)
       yb_home_dir=${2//\'/}
+      # Normalize the path.
+      yb_home_dir=$(readlink -m "$yb_home_dir" 2>&1)
       shift
     ;;
     --cleanup)

@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -342,11 +342,11 @@ void MasterTestBase::DoListTablegroups(const ListTablegroupsRequestPB& req,
 }
 
 void MasterTestBase::DoListAllNamespaces(ListNamespacesResponsePB* resp) {
-  DoListAllNamespaces(boost::none, resp);
+  DoListAllNamespaces(std::nullopt, resp);
 }
 
-void MasterTestBase::DoListAllNamespaces(const boost::optional<YQLDatabase>& database_type,
-                                         ListNamespacesResponsePB* resp) {
+void MasterTestBase::DoListAllNamespaces(
+    const std::optional<YQLDatabase>& database_type, ListNamespacesResponsePB* resp) {
   ListNamespacesRequestPB req;
   if (database_type) {
     req.set_database_type(*database_type);
@@ -357,14 +357,14 @@ void MasterTestBase::DoListAllNamespaces(const boost::optional<YQLDatabase>& dat
   ASSERT_FALSE(resp->has_error());
 }
 
-Status MasterTestBase::CreateNamespace(const NamespaceName& ns_name,
-                                       CreateNamespaceResponsePB* resp) {
-  return CreateNamespace(ns_name, boost::none, resp);
+Status MasterTestBase::CreateNamespace(
+    const NamespaceName& ns_name, CreateNamespaceResponsePB* resp) {
+  return CreateNamespace(ns_name, std::nullopt, resp);
 }
 
-Status MasterTestBase::CreateNamespace(const NamespaceName& ns_name,
-                                       const boost::optional<YQLDatabase>& database_type,
-                                       CreateNamespaceResponsePB* resp) {
+Status MasterTestBase::CreateNamespace(
+    const NamespaceName& ns_name, const std::optional<YQLDatabase>& database_type,
+    CreateNamespaceResponsePB* resp) {
   RETURN_NOT_OK(CreateNamespaceAsync(ns_name, database_type, resp));
   return CreateNamespaceWait(resp->id(), database_type);
 }
@@ -384,9 +384,9 @@ Status MasterTestBase::CreatePgsqlNamespace(
   return CreateNamespaceWait(resp->id(), YQLDatabase::YQL_DATABASE_PGSQL);
 }
 
-Status MasterTestBase::CreateNamespaceAsync(const NamespaceName& ns_name,
-                                            const boost::optional<YQLDatabase>& database_type,
-                                            CreateNamespaceResponsePB* resp) {
+Status MasterTestBase::CreateNamespaceAsync(
+    const NamespaceName& ns_name, const std::optional<YQLDatabase>& database_type,
+    CreateNamespaceResponsePB* resp) {
   CreateNamespaceRequestPB req;
   req.set_name(ns_name);
   if (database_type) {
@@ -407,8 +407,8 @@ Result<CreateNamespaceResponsePB> MasterTestBase::CreateNamespaceAsync(
   return resp;
 }
 
-Status MasterTestBase::CreateNamespaceWait(const NamespaceId& ns_id,
-                                           const boost::optional<YQLDatabase>& database_type) {
+Status MasterTestBase::CreateNamespaceWait(
+    const NamespaceId& ns_id, const std::optional<YQLDatabase>& database_type) {
   Status status = Status::OK();
 
   IsCreateNamespaceDoneRequestPB is_req;
@@ -434,11 +434,10 @@ Status MasterTestBase::CreateNamespaceWait(const NamespaceId& ns_id,
   }, MonoDelta::FromSeconds(60), "Wait for create namespace to finish async setup tasks.");
 }
 
-Status MasterTestBase::AlterNamespace(const NamespaceName& ns_name,
-                                      const NamespaceId& ns_id,
-                                      const boost::optional<YQLDatabase>& database_type,
-                                      const std::string& new_name,
-                                      AlterNamespaceResponsePB* resp) {
+Status MasterTestBase::AlterNamespace(
+    const NamespaceName& ns_name, const NamespaceId& ns_id,
+    const std::optional<YQLDatabase>& database_type, const std::string& new_name,
+    AlterNamespaceResponsePB* resp) {
   AlterNamespaceRequestPB req;
   req.mutable_namespace_()->set_id(ns_id);
   req.mutable_namespace_()->set_name(ns_name);

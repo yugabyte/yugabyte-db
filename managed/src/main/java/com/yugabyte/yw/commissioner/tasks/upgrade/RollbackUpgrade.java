@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
@@ -135,11 +135,15 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
           }
 
           if (nodes.mastersList.size() > 0) {
-            // Perform rollback ysql major version catalog upgrade only when
-            // none of the masters are upgraded.
+            // Perform rollback ysql major version catalog upgrade only when all masters were
+            // upgraded to the target ysql major version.
             if (ysqlMajorVersionUpgrade
-                && nodes.mastersList.size() == universe.getMasters().size()) {
+                && prevYBSoftwareConfig != null
+                && prevYBSoftwareConfig.isCanRollbackCatalogUpgrade()) {
               createRollbackYsqlMajorVersionCatalogUpgradeTask();
+              createUpdateSoftwareUpdatePrevConfigTask(
+                  false /* canRollbackCatalogUpgrade */,
+                  false /* allTserversUpgradedToYsqlMajorVersion */);
             }
 
             createMasterUpgradeFlowTasks(
@@ -172,6 +176,10 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
               createManageCatalogUpgradeSuperUserTask(Action.DELETE_USER);
             }
           }
+
+          // Re-enable PITR configs after successful rollback
+          // This also updates intermittentMinRecoverTimeInMillis for all PITR configs
+          createEnablePitrConfigTask();
 
           // Check software version on each node.
           createCheckSoftwareVersionTask(allNodes, oldVersion);

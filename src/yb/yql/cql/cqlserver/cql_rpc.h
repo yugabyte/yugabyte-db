@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -110,7 +110,8 @@ class CQLInboundCall : public rpc::InboundCall {
  public:
   explicit CQLInboundCall(rpc::ConnectionPtr conn,
                           CallProcessedListener* call_processed_listener,
-                          ql::QLSession::SharedPtr ql_session);
+                          ql::QLSession::SharedPtr ql_session,
+                          rpc::CallStateListenerFactory* call_state_listener_factory);
 
   // Takes ownership of call_data content.
   Status ParseFrom(const MemTrackerPtr& call_tracker, rpc::CallData* call_data);

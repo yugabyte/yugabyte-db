@@ -52,8 +52,11 @@ extern PGDLLIMPORT int XactIsoLevel;
  * the others use one snapshot per statement.
  * Serializable uses predicate locks in addition to snapshots.
  * These macros should be used to check which isolation level is selected.
+ *
+ * YB: When using Read Committed or Read Uncommitted isolation, we fall back to Snapshot isolation
+ * if yb_enable_read_committed_isolation is not enabled.
  */
-#define IsolationUsesXactSnapshot() (XactIsoLevel >= XACT_REPEATABLE_READ)
+#define IsolationUsesXactSnapshot() (XactIsoLevel >= XACT_REPEATABLE_READ || !IsYBReadCommitted())
 #define IsolationIsSerializable() (XactIsoLevel == XACT_SERIALIZABLE)
 
 /* Xact read-only state */
@@ -536,6 +539,7 @@ extern bool IsInParallelMode(void);
 extern const char *GetCurrentTransactionName(void);
 extern int	YBGetEffectivePggateIsolationLevel();
 extern void YBInitializeTransaction(void);
+extern void YBCommitTransactionIntermediate(void);
 extern void YBResetTransactionReadPoint(void);
 extern void YBRestartReadPoint(void);
 extern void YBCRestartWriteTransaction(void);

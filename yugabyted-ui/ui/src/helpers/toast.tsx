@@ -23,8 +23,8 @@ export const ToastProvider: FC = (props) => {
 
   const addToast = (status: AlertVariant, text: string | ReactNode, autoDismissMs?: number) => {
     const currentTime = Date.now();
-    setToastList([
-      ...toastList,
+    setToastList((prev) => [
+      ...prev,
       {
         id: currentTime,
         status,

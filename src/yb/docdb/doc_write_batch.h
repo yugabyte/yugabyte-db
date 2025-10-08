@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -14,6 +14,8 @@
 #pragma once
 
 #include "yb/bfql/tserver_opcodes.h"
+
+#include <boost/logic/tribool.hpp>
 
 #include "yb/common/constants.h"
 #include "yb/common/hybrid_time.h"
@@ -165,6 +167,7 @@ YB_STRONGLY_TYPED_BOOL(HasAncestor);
 struct DocWriteBatchEntry {
   std::string key;
   std::string value;
+  boost::tribool pk_is_known = boost::indeterminate;
 };
 
 struct DocLockBatchEntry {
@@ -288,8 +291,7 @@ class DocWriteBatch {
 
   std::reference_wrapper<const ScopedRWOperation> pending_op() { return pending_op_; }
 
-  boost::optional<DocWriteBatchCache::Entry> LookupCache(
-      const dockv::KeyBytes& encoded_key_prefix) {
+  std::optional<DocWriteBatchCache::Entry> LookupCache(const dockv::KeyBytes& encoded_key_prefix) {
     return cache_.Get(encoded_key_prefix);
   }
 
@@ -314,14 +316,8 @@ class DocWriteBatch {
   }
 
   // See SetPrimitive above.
-  IntraTxnWriteId ReserveWriteId() {
-    put_batch_.emplace_back();
-    return narrow_cast<IntraTxnWriteId>(put_batch_.size()) - 1;
-  }
-
-  void RollbackReservedWriteId() {
-    put_batch_.pop_back();
-  }
+  IntraTxnWriteId ReserveWriteId();
+  void RollbackReservedWriteId(IntraTxnWriteId write_id);
 
   void SetDocReadContext(const DocReadContextPtr& doc_read_context) {
     doc_read_context_ = doc_read_context;
@@ -329,6 +325,10 @@ class DocWriteBatch {
 
   void DeleteVectorId(const vector_index::VectorId& id) {
     delete_vector_ids_.Append(id.AsSlice());
+  }
+
+  void SetIncludesPk(bool pk_is_known) {
+    pk_is_known_ = pk_is_known;
   }
 
  private:
@@ -393,6 +393,7 @@ class DocWriteBatch {
 
   MonoDelta ttl_;
   ValueBuffer delete_vector_ids_;
+  boost::tribool pk_is_known_ = boost::indeterminate;
 };
 
 // A helper handler for converting a RocksDB write batch to a string.

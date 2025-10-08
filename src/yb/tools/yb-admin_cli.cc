@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -190,14 +190,6 @@ Result<std::pair<std::optional<int>, EnumBitSet<Enum>>> GetValueAndFlags(
   }
 
   return result;
-}
-
-YB_DEFINE_ENUM(AddIndexes, (ADD_INDEXES));
-
-Result<pair<std::optional<int>, bool>> GetTimeoutAndAddIndexesFlag(
-    CLIArgumentsIterator begin, const CLIArgumentsIterator& end) {
-  auto temp_pair = VERIFY_RESULT(GetValueAndFlags(begin, end, AddIndexesList()));
-  return std::make_pair(temp_pair.first, temp_pair.second.Test(AddIndexes::ADD_INDEXES));
 }
 
 YB_DEFINE_ENUM(ListTabletsFlags, (JSON)(INCLUDE_FOLLOWERS));
@@ -506,8 +498,8 @@ void ClusterAdminCli::Register(
 void ClusterAdminCli::SetUsage(const string& prog_name) {
   ostringstream str;
 
-  str << prog_name << " [-master_addresses server1:port,server2:port,server3:port,...] "
-      << " [-timeout_ms <millisec>] [-certs_dir_name <dir_name>] <operation>" << endl
+  str << prog_name << " [--master_addresses server1:port,server2:port,server3:port,...] "
+      << " [--timeout_ms <millisec>] [--certs_dir_name <dir_name>] <operation>" << endl
       << "<operation> must be one of:" << endl;
 
   for (size_t i = 0; i < commands_.size(); ++i) {
@@ -542,7 +534,7 @@ Status change_config_action(const ClusterAdminCli::CLIArguments& args, ClusterAd
   const string tablet_id = args[0];
   const string change_type = args[1];
   const string peer_uuid = args[2];
-  boost::optional<string> member_type;
+  std::optional<string> member_type;
   if (args.size() > 3) {
     member_type = args[3];
   }
@@ -802,26 +794,35 @@ Status delete_index_by_id_action(
   return Status::OK();
 }
 
+YB_DEFINE_ENUM(FlushTableFlag, (ADD_INDEXES));
+
+Result<pair<std::optional<int>, bool>> ParseFlushTableArgs(
+    CLIArgumentsIterator begin, const CLIArgumentsIterator& end) {
+  auto temp_pair = VERIFY_RESULT(GetValueAndFlags(begin, end, FlushTableFlagList()));
+  return std::make_pair(temp_pair.first, temp_pair.second.Test(FlushTableFlag::ADD_INDEXES));
+}
+
+
 const auto flush_table_args =
-    "<table> [<timeout_in_seconds>] (default 20) [ADD_INDEXES] (default false)";
+    "<table> [<timeout_in_seconds>] (default 20) [ADD_INDEXES] (default false, YCQL only)";
 Status flush_table_action(const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   bool add_indexes = false;
   std::optional<int> timeout_secs;
   const auto table_name = VERIFY_RESULT(ResolveSingleTableName(
       client, args.begin(), args.end(),
       [&add_indexes, &timeout_secs](auto i, const auto& end) -> Status {
-        std::tie(timeout_secs, add_indexes) = VERIFY_RESULT(GetTimeoutAndAddIndexesFlag(i, end));
+        std::tie(timeout_secs, add_indexes) = VERIFY_RESULT(ParseFlushTableArgs(i, end));
         return Status::OK();
       }));
   RETURN_NOT_OK_PREPEND(
       client->FlushTables(
-          {table_name}, add_indexes, timeout_secs.value_or(20), false /* is_compaction */),
+          {table_name}, MonoDelta::FromSeconds(timeout_secs.value_or(20)), add_indexes),
       Format("Unable to flush table $0", table_name.ToString()));
   return Status::OK();
 }
 
 const auto flush_table_by_id_args =
-    "<table_id> [<timeout_in_seconds>] (default 20) [ADD_INDEXES] (default false)";
+    "<table_id> [<timeout_in_seconds>] (default 20) [ADD_INDEXES] (default false, YCQL only)";
 Status flush_table_by_id_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   if (args.size() < 1) {
@@ -830,10 +831,10 @@ Status flush_table_by_id_action(
   std::optional<int> timeout_secs;
   bool add_indexes = false;
   std::tie(timeout_secs, add_indexes) =
-      VERIFY_RESULT(GetTimeoutAndAddIndexesFlag(args.begin() + 1, args.end()));
+      VERIFY_RESULT(ParseFlushTableArgs(args.begin() + 1, args.end()));
   RETURN_NOT_OK_PREPEND(
       client->FlushTablesById(
-          {args[0]}, add_indexes, timeout_secs.value_or(20), false /* is_compaction */),
+          {args[0]}, MonoDelta::FromSeconds(timeout_secs.value_or(20)), add_indexes),
       Format("Unable to flush table $0", args[0]));
   return Status::OK();
 }
@@ -852,39 +853,57 @@ Status compact_sys_catalog_action(
   return Status::OK();
 }
 
+YB_DEFINE_ENUM(CompactTableFlag, (ADD_INDEXES)(ADD_VECTOR_INDEXES));
+using CompactTableFlags = EnumBitSet<CompactTableFlag>;
+
 const auto compact_table_args =
-    "<table> [<timeout_in_seconds>] (default 20) [ADD_INDEXES] (default false)";
+    "<table> [<timeout_in_seconds>] (default 20) "
+    "[ADD_INDEXES] (default false, YCQL only)"
+    "[ADD_VECTOR_INDEXES] (default false)";
+
 Status compact_table_action(const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  bool add_indexes = false;
   std::optional<int> timeout_secs;
+  CompactTableFlags flags;
   const auto table_name = VERIFY_RESULT(ResolveSingleTableName(
       client, args.begin(), args.end(),
-      [&add_indexes, &timeout_secs](auto i, const auto& end) -> Status {
-        std::tie(timeout_secs, add_indexes) = VERIFY_RESULT(GetTimeoutAndAddIndexesFlag(i, end));
+    [&timeout_secs, &flags](auto i, const auto& end) -> Status {
+      std::tie(timeout_secs, flags) =
+          VERIFY_RESULT(GetValueAndFlags(i, end, CompactTableFlagList()));
         return Status::OK();
       }));
-  // We use the same FlushTables RPC to trigger compaction.
+
   RETURN_NOT_OK_PREPEND(
-      client->FlushTables(
-          {table_name}, add_indexes, timeout_secs.value_or(20), true /* is_compaction */),
+      client->CompactTables(
+          {table_name},
+          MonoDelta::FromSeconds(timeout_secs.value_or(20)),
+          flags.Test(CompactTableFlag::ADD_INDEXES),
+          flags.Test(CompactTableFlag::ADD_VECTOR_INDEXES)),
       Format("Unable to compact table $0", table_name.ToString()));
   return Status::OK();
 }
 
 const auto compact_table_by_id_args =
-    "<table_id> [<timeout_in_seconds>] (default 20) [ADD_INDEXES] (default false)";
+    "<table_id> [<timeout_in_seconds>] (default 20) "
+    "[ADD_INDEXES] (default false, YCQL only)"
+    "[ADD_VECTOR_INDEXES] (default false)";
+
 Status compact_table_by_id_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   if (args.size() < 1) {
     return ClusterAdminCli::kInvalidArguments;
   }
-  const auto& [timeout_secs, add_indexes] =
-      VERIFY_RESULT(GetTimeoutAndAddIndexesFlag(args.begin() + 1, args.end()));
-  // We use the same FlushTables RPC to trigger compaction.
+
+  const auto& [timeout_secs, flags] =
+      VERIFY_RESULT(GetValueAndFlags(args.begin() + 1, args.end(), CompactTableFlagList()));
+
   RETURN_NOT_OK_PREPEND(
-      client->FlushTablesById(
-          {args[0]}, add_indexes, timeout_secs.value_or(20), true /* is_compaction */),
+      client->CompactTablesById(
+          {args[0]},
+          MonoDelta::FromSeconds(timeout_secs.value_or(20)),
+          flags.Test(CompactTableFlag::ADD_INDEXES),
+          flags.Test(CompactTableFlag::ADD_VECTOR_INDEXES)),
       Format("Unable to compact table $0", args[0]));
+
   return Status::OK();
 }
 
@@ -1276,7 +1295,7 @@ Status finalize_upgrade_action(
 // The expected input argument for the <table> is:
 // <db type>.<namespace> <table name>
 // (with a space in between).
-// So the expected arguement size is 3 (= 2 for the table name + 1 for the retention
+// So the expected argument size is 3 (= 2 for the table name + 1 for the retention
 // time).
 const auto set_wal_retention_secs_args = "<table> <seconds>";
 Status set_wal_retention_secs_action(
@@ -1487,8 +1506,7 @@ Status create_snapshot_action(
   }
 
   RETURN_NOT_OK_PREPEND(
-      client->CreateSnapshot(tables, retention_duration_hours,
-                             !skip_indexes, timeout_secs),
+      client->CreateSnapshot(tables, retention_duration_hours, !skip_indexes, timeout_secs),
       Format("Unable to create snapshot of tables: $0", yb::ToString(tables)));
   return Status::OK();
 }
@@ -2710,10 +2728,10 @@ Status get_universe_replication_info_action(
 //
 // If no entry_id is provided all entries of the given type will be dumped
 // out. entry_id can be an empty string. Ex:
-// ./bin/yb-admin -master_addresses 127.0.0.1.9:7100 dump_sys_catalog_entries
+// ./bin/yb-admin --master_addresses 127.0.0.1.9:7100 dump_sys_catalog_entries
 //    UNIVERSE_REPLICATION  /tmp/catalog_dump "rg1"
 //
-// ./bin/yb-admin -master_addresses 127.0.0.1.9:7100 dump_sys_catalog_entries
+// ./bin/yb-admin --master_addresses 127.0.0.1.9:7100 dump_sys_catalog_entries
 //    CLUSTER_CONFIG /tmp/catalog_dump ""
 const auto dump_sys_catalog_entries_args = "<entry_type> <folder_path> [entry_id]";
 Status dump_sys_catalog_entries_action(
@@ -2763,13 +2781,13 @@ Result<master::WriteSysCatalogEntryRequestPB::WriteOp> ToCatalogEntryWriteOp(
 // - file_path is not required for DELETE operation.
 // - force will bypass the confirmation prompt.
 // Ex:
-// ./bin/yb-admin -master_addresses 127.0.0.1.9:7100 write_sys_catalog_entry INSERT
+// ./bin/yb-admin --master_addresses 127.0.0.1.9:7100 write_sys_catalog_entry INSERT
 //    UNIVERSE_REPLICATION "rg1" /tmp/catalog_dump/UNIVERSE_REPLICATION-rg1
 //
-// ./bin/yb-admin -master_addresses 127.0.0.1.9:7100 write_sys_catalog_entry DELETE
+// ./bin/yb-admin --master_addresses 127.0.0.1.9:7100 write_sys_catalog_entry DELETE
 //    XCLUSTER_CONFIG ""
 //
-// ./bin/yb-admin -master_addresses 127.0.0.1.9:7100 write_sys_catalog_entry UPDATE
+// ./bin/yb-admin --master_addresses 127.0.0.1.9:7100 write_sys_catalog_entry UPDATE
 //    UNIVERSE_REPLICATION "rg1" /tmp/catalog_dump/UNIVERSE_REPLICATION-rg1
 const auto write_sys_catalog_entry_args =
     "<insert/update/delete> <entry_type> <entry_id> [file_path] [force]";
@@ -2795,6 +2813,41 @@ Status write_sys_catalog_entry_action(
 
   return client->WriteSysCatalogEntryAction(
       operation, entry_type, /*entry_id=*/args[2], /*file_path=*/args[3], force);
+}
+
+const auto are_nodes_safe_to_take_down_args = "<server_uuids> [follower_lag_bound_ms]";
+Status are_nodes_safe_to_take_down_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.empty() || args.size() > 2) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  std::vector<std::string> server_uuids;
+  boost::split(server_uuids, args[0], boost::is_any_of(","));
+  int follower_lag_bound_ms = 1000;
+  if (args.size() == 2) {
+    follower_lag_bound_ms = VERIFY_RESULT(CheckedStoi(args[1]));
+  }
+
+  // Figure out which uuids are tservers and which are masters.
+  auto all_tserver_uuids = VERIFY_RESULT(client->ListAllKnownTabletServersUuids());
+  auto all_master_uuids = VERIFY_RESULT(client->ListAllKnownMasterUuids());
+  std::vector<std::string> tservers_to_take_down, masters_to_take_down;
+  for (auto& uuid : server_uuids) {
+    if (all_tserver_uuids.contains(uuid)) {
+      tservers_to_take_down.push_back(uuid);
+    } else if (all_master_uuids.contains(uuid)) {
+      masters_to_take_down.push_back(uuid);
+    } else {
+      return STATUS_FORMAT(InvalidArgument, "Unknown server UUID: $0", uuid);
+    }
+  }
+
+  RETURN_NOT_OK_PREPEND(
+      client->AreNodesSafeToTakeDown(
+          tservers_to_take_down, masters_to_take_down, follower_lag_bound_ms),
+      "Unable to check if nodes are safe to take down");
+  return Status::OK();
 }
 
 const auto unsafe_release_object_locks_global_args = "<txn_uuid> [subtxn_id]";
@@ -2902,6 +2955,7 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(rotate_universe_key_in_memory);
   REGISTER_COMMAND(disable_encryption_in_memory);
   REGISTER_COMMAND(write_universe_key_to_file);
+  REGISTER_COMMAND(are_nodes_safe_to_take_down);
   REGISTER_COMMAND_HIDDEN(unsafe_release_object_locks_global);
   // CDCSDK commands
   REGISTER_COMMAND(create_change_data_stream);

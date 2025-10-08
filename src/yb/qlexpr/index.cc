@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -246,7 +246,7 @@ bool IndexInfo::CheckColumnDependency(ColumnId column_id) const {
   return false;
 }
 
-boost::optional<size_t> IndexInfo::FindKeyIndex(const string& key_expr_name) const {
+std::optional<size_t> IndexInfo::FindKeyIndex(const string& key_expr_name) const {
   for (size_t idx = 0; idx < key_column_count(); idx++) {
     const auto& col = columns_[idx];
     if (!col.column_name.empty() && key_expr_name.find(col.column_name) != key_expr_name.npos) {
@@ -255,7 +255,7 @@ boost::optional<size_t> IndexInfo::FindKeyIndex(const string& key_expr_name) con
     }
   }
 
-  return boost::none;
+  return std::nullopt;
 }
 
 std::string IndexInfo::ToString() const {

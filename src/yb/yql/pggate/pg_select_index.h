@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -16,7 +16,8 @@
 
 #include <memory>
 #include <optional>
-#include <vector>
+
+#include <boost/container/small_vector.hpp>
 
 #include "yb/util/result.h"
 #include "yb/util/slice.h"
@@ -42,13 +43,12 @@ class PgSelectIndex : public PgSelect {
   explicit PgSelectIndex(const PgSession::ScopedRefPtr& pg_session);
 
  private:
-  // Get next batch of ybctids from either PgGate::cache or server.
-  Result<bool> GetNextYbctidBatch();
-
   // Prepare NESTED query for secondary index. This function is called when Postgres layer is
   // accessing the IndexTable via an outer select (Sequential or primary scans)
   Status PrepareSubquery(
-        const PgObjectId& index_id, std::shared_ptr<LWPgsqlReadRequestPB>&& read_req);
+      const PgObjectId& index_id, std::shared_ptr<LWPgsqlReadRequestPB>&& read_req);
+
+  boost::container::small_vector<Slice, 8> ybctids_;
 };
 
 }  // namespace yb::pggate

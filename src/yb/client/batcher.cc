@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -41,7 +41,6 @@
 #include <utility>
 #include <vector>
 
-#include <boost/optional/optional_io.hpp>
 #include <boost/range/adaptors.hpp>
 
 #include "yb/ash/wait_state.h"
@@ -67,6 +66,7 @@
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/join.h"
 
+#include "yb/master/sys_catalog_constants.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
@@ -85,6 +85,10 @@ DEFINE_test_flag(double, simulate_tablet_lookup_does_not_match_partition_key_pro
                  "Probability for simulating the error that happens when a key is not in the key "
                  "range of the resolved tablet's partition.");
 DEFINE_test_flag(bool, fail_batcher_rpc, false, "Fail batcher RPCs for testing purposes.");
+
+DEFINE_RUNTIME_PREVIEW_bool(ysql_enable_async_writes, false,
+    "Enable asynchronous quorum commit for writes. When enabled, multiple write statements in a "
+    "transaction can execute concurrently, reducing overall latency.");
 
 using std::pair;
 using std::shared_ptr;
@@ -105,6 +109,12 @@ const std::string Batcher::kErrorReachingOutToTServersMsg(
 namespace {
 
 const auto kGeneralErrorStatus = STATUS(IOError, Batcher::kErrorReachingOutToTServersMsg);
+
+bool UseAsyncWrites(YBTableType table_type, TransactionId txn_id) {
+  // Use async writes for transactional writes in YSQL, or if the test flag is enabled.
+  return FLAGS_ysql_enable_async_writes && table_type == YBTableType::PGSQL_TABLE_TYPE &&
+         !txn_id.IsNil();
+}
 
 }  // namespace
 
@@ -640,7 +650,8 @@ void Batcher::MoveRequestDetailsFrom(const BatcherPtr& other, RetryableRequestId
 std::shared_ptr<AsyncRpc> Batcher::CreateRpc(
     const BatcherPtr& self, RemoteTablet* tablet, const InFlightOpsGroup& group,
     const bool allow_local_calls_in_curr_thread, const bool need_consistent_read) {
-  VLOG_WITH_PREFIX_AND_FUNC(3) << "tablet: " << tablet->tablet_id();
+  const auto& tablet_id = tablet->tablet_id();
+  VLOG_WITH_PREFIX_AND_FUNC(3) << "tablet: " << tablet_id;
 
   CHECK(group.begin != group.end);
 
@@ -652,8 +663,8 @@ std::shared_ptr<AsyncRpc> Batcher::CreateRpc(
 
   // Split the read operations according to consistency levels since based on consistency
   // levels the read algorithm would differ.
-  const auto op_group = (*group.begin).yb_op->group();
-  AsyncRpcData data {
+
+  AsyncRpcData data{
       .batcher = self,
       .tablet = tablet,
       .allow_local_calls_in_curr_thread = allow_local_calls_in_curr_thread,
@@ -662,13 +673,24 @@ std::shared_ptr<AsyncRpc> Batcher::CreateRpc(
       .need_metadata = group.need_metadata
   };
 
+  const auto& first_op = group.begin->yb_op;
+  auto transaction = this->transaction();
+  if (!data.need_metadata && transaction && transaction->HasPendingAsyncWrites(tablet_id)) {
+    data.need_metadata = true;
+  }
+
+  const auto op_group = first_op->group();
   switch (op_group) {
-    case OpGroup::kWrite: FALLTHROUGH_INTENDED;
-    case OpGroup::kLock: FALLTHROUGH_INTENDED;
-    case OpGroup::kUnlock:
+    case OpGroup::kWrite: [[fallthrough]];
+    case OpGroup::kLock: [[fallthrough]];
+    case OpGroup::kUnlock: {
+      data.use_async_write = UseAsyncWrites(
+          first_op->table()->table_type(), ops_info_.metadata.transaction.transaction_id);
       return std::make_shared<WriteRpc>(data);
-    case OpGroup::kLeaderRead:
+    }
+    case OpGroup::kLeaderRead: {
       return std::make_shared<ReadRpc>(data, YBConsistencyLevel::STRONG);
+    }
     case OpGroup::kConsistentPrefixRead:
       return std::make_shared<ReadRpc>(data, YBConsistencyLevel::CONSISTENT_PREFIX);
   }
@@ -749,8 +771,29 @@ void Batcher::ProcessReadResponse(const ReadRpc &rpc, const Status &s) {
 void Batcher::ProcessWriteResponse(const WriteRpc &rpc, const Status &s) {
   ProcessRpcStatus(rpc, s);
 
-  if (s.ok() && rpc.resp().has_propagated_hybrid_time()) {
-    client_->data_->UpdateLatestObservedHybridTime(rpc.resp().propagated_hybrid_time());
+  if (s.ok()) {
+    const auto& resp = rpc.resp();
+    if (resp.has_async_write_op_id()) {
+      // We have a async write. Record the OpId, and send a async RPC to track its completion.
+      // At time of final commit, we will wait for all these async writes to complete.
+      auto transaction = this->transaction();
+      if (transaction) {
+        const auto op_id = OpId::FromPB(resp.async_write_op_id());
+        const auto& tablet = rpc.tablet();
+
+        if (transaction->RecordAsyncWrite(tablet.tablet_id(), op_id)) {
+          // Multiple write operations can get combined into the same async write RPC resulting in
+          // duplicate OpIds.
+          auto wait_for_async_write_rpc = std::make_shared<WaitForAsyncWriteRpc>(
+              shared_from_this(), tablet.tablet_id(), rpc.ts_proxy(), op_id);
+          wait_for_async_write_rpc->SendRpc();
+        }
+      }
+    }
+
+    if (resp.has_propagated_hybrid_time()) {
+      client_->data_->UpdateLatestObservedHybridTime(resp.propagated_hybrid_time());
+    }
   }
 
   // Check individual row errors.
@@ -813,6 +856,23 @@ void Batcher::InitFromFailedBatcher(const BatcherPtr& failed_batcher,
     Add(op);
   }
   SetSubTransactionMetadataPB(failed_batcher->GetSubTransactionMetadataPB());
+}
+
+void Batcher::RecordAsyncWriteCompletion(
+    const TabletId& tablet_id, const OpId& op_id, const Status& status) {
+  auto transaction = this->transaction();
+  if (transaction) {
+    transaction->RecordAsyncWriteCompletion(tablet_id, op_id, status);
+  }
+}
+
+void Batcher::WaitForAsyncWrites(const TabletId& tablet_id, StdStatusCallback&& callback) {
+  auto transaction = this->transaction();
+  if (!transaction) {
+    callback(Status::OK());
+    return;
+  }
+  transaction->WaitForAsyncWrites(tablet_id, std::move(callback));
 }
 
 InFlightOpsGroup::InFlightOpsGroup(const Iterator& group_begin, const Iterator& group_end)

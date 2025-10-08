@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -90,7 +90,7 @@ Status PopulateWriteRecord(
     const XClusterGetChangesContext& context,
     const consensus::LWReplicateMsg& msg) {
   const auto& batch = msg.write().write_batch();
-  auto tablet = VERIFY_RESULT(context.tablet_peer->shared_tablet_safe());
+  auto tablet = VERIFY_RESULT(context.tablet_peer->shared_tablet());
   // Write batch may contain records from different rows.
   // For xCluster, we need to split the batch into 1 CDC record per row of the table.
   // We'll use DocDB key hash to identify the records that belong to the same row.
@@ -195,7 +195,7 @@ Status PopulateTransactionRecord(
     aborted_subtransactions.ToPB(txn_state->mutable_aborted()->mutable_set());
   }
 
-  auto tablet = VERIFY_RESULT(context.tablet_peer->shared_tablet_safe());
+  auto tablet = VERIFY_RESULT(context.tablet_peer->shared_tablet());
   tablet->metadata()->partition()->ToPB(record->mutable_partition());
 
   // The partition keys for a hash partitioned table are not encoded, whereas for a range
@@ -289,7 +289,7 @@ Status GetChangesForXCluster(const XClusterGetChangesContext& context) {
       context.stream_metadata->GetRecordFormat(), CDCRecordFormat::WAL, IllegalState,
       "xCluster only supports WAL record format");
 
-  auto tablet = VERIFY_RESULT(context.tablet_peer->shared_tablet_safe());
+  auto tablet = VERIFY_RESULT(context.tablet_peer->shared_tablet());
   auto consensus = VERIFY_RESULT(context.tablet_peer->GetConsensus());
   auto term = consensus->LeaderTerm();
   SCHECK_GT(
@@ -342,6 +342,10 @@ Status GetChangesForXCluster(const XClusterGetChangesContext& context) {
   *context.last_readable_opid_index = read_result.majority_replicated_index;
 
   if (update_apply_safe_time) {
+    VLOG(4) << "Updating apply safe time for tablet " << context.tablet_id
+            << ", stream: " << context.stream_id << ", last_apply_safe_time: " << leader_safe_time
+            << ", apply_safe_time_checkpoint_op_id: " << read_result.majority_replicated_index
+            << ", last_apply_safe_time_update_time: " << now.ToString();
     DCHECK(!stream_tablet_metadata->last_apply_safe_time_.is_valid());
     stream_tablet_metadata->last_apply_safe_time_ = leader_safe_time;
 
@@ -450,6 +454,13 @@ Status GetChangesForXCluster(const XClusterGetChangesContext& context) {
   SCHECK_EQ(
       term, consensus->LeaderTerm(), NotFound,
       Format("Leader term for tablet has changed", context.tablet_id));
+
+  VLOG(3) << "Sending GetChanges response for tablet " << context.tablet_id
+          << ", stream: " << context.stream_id
+          << ", checkpoint: " << context.resp->checkpoint().ShortDebugString()
+          << ", safe_hybrid_time: " << context.resp->safe_hybrid_time()
+          << ", wal_segment_index: " << context.resp->wal_segment_index()
+          << ", num_records: " << context.resp->records_size();
 
   return Status::OK();
 }

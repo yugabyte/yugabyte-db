@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -57,6 +57,14 @@ namespace yb {
 namespace master {
 
 bool PersistentTServerInfo::IsLive() const { return pb.state() == SysTabletServerEntryPB::LIVE; }
+
+bool PersistentTServerInfo::IsBlacklisted(const BlacklistSet& blacklist) const {
+  return yb::master::IsBlacklisted(pb.registration(), blacklist);
+}
+
+std::string PersistentTServerInfo::placement_uuid() const {
+  return pb.registration().placement_uuid();
+}
 
 TSDescriptor::TSDescriptor(const std::string& permanent_uuid,
                            RegisteredThroughHeartbeat registered_through_heartbeat,
@@ -275,10 +283,6 @@ ServerRegistrationPB TSDescriptor::GetRegistration() const {
   return LockForRead()->pb.registration();
 }
 
-ResourcesPB TSDescriptor::GetResources() const {
-  return LockForRead()->pb.resources();
-}
-
 TSInformationPB TSDescriptor::GetTSInformationPB() const {
   auto l = LockForRead();
   TSInformationPB ts_info_pb;
@@ -314,7 +318,7 @@ CloudInfoPB TSDescriptor::GetCloudInfo() const {
 }
 
 bool TSDescriptor::IsBlacklisted(const BlacklistSet& blacklist) const {
-  return yb::master::IsBlacklisted(LockForRead()->pb.registration(), blacklist);
+  return LockForRead()->IsBlacklisted(blacklist);
 }
 
 bool TSDescriptor::IsRunningOn(const HostPortPB& hp) const {

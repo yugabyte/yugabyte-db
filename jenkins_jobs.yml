@@ -1,7 +1,7 @@
 # This file determines the jobs that we run in this branch on Jenkins.
 # Default architecture is x86_64
 jobs:
-  - os: alma8
+  - os: alma9
     compiler: clang19
     build_type: asan
     release_artifact: false
@@ -12,7 +12,7 @@ jobs:
     release_artifact: false
 
   - os: alma8
-    compiler: gcc11
+    compiler: gcc12
     build_type: fastdebug
     test_opts: YB_TEST_YB_CONTROLLER=0
     release_artifact: false

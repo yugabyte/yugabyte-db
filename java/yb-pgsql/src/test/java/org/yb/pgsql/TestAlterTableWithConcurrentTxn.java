@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -35,6 +35,16 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
     return flagMap;
   }
 
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    // The test suite asserts for DML failing when run in concurrent to ALTER,
+    // and doesn't expect proper wait-on behavior for DML-DDL interaction.
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("allowed_preview_flags_csv", "enable_object_locking_for_table_locks");
+    flagMap.put("enable_object_locking_for_table_locks", "false");
+    return flagMap;
+  }
+
   private static final Logger LOG = LoggerFactory.getLogger(TestAlterTableWithConcurrentTxn.class);
 
   // When a transaction is performed on a table that is altered,
@@ -50,6 +60,8 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
        "could not find tuple for parent";
   private static final String CONSTRAINT_VIOLATION_ERROR =
        "violates check constraint";
+  private static final String NO_PARTITION_FOUND_ERROR =
+       "no partition of relation";
   private static final String NO_ERROR = "";
   private static final boolean executeDmlBeforeAlter = true;
   private static final boolean executeDmlAfterAlter = false;
@@ -463,6 +475,15 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
       dependentTableName = tableName + "_f";
     }
 
+    if (!withCachedMetadata) {
+      // It is possible that prepareAndPopulateTable contains a DDL that incremented
+      // the catalog version and therefore invalidated the relcache init file.
+      // Make a tmp connection as the first connection to rebuild the relcache init file.
+      // Otherwise, txnConnection1 below will become the first connection and it will rebuild
+      // the relcache init file. As part of that it would have cached the metadata
+      // of the table which contradicts with the condition "!withCachedMetadata"
+      Connection tmpConnection = getConnectionBuilder().connect();
+    }
     try (Connection txnConnection1 = getConnectionBuilder().connect();
          Statement txnStmt1 = txnConnection1.createStatement();
          Connection txnConnection2 = getConnectionBuilder().connect();
@@ -825,6 +846,8 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
       String expectedErrorOnInsert;
       if (alterType == AlterCommand.VALIDATE_CONSTRAINT) {
         expectedErrorOnInsert = CONSTRAINT_VIOLATION_ERROR;
+      } else if (alterType == AlterCommand.DETACH_PARTITION) {
+        expectedErrorOnInsert = NO_PARTITION_FOUND_ERROR;
       } else {
         expectedErrorOnInsert = NO_ERROR;
       }

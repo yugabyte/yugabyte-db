@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -18,8 +18,6 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-
-#include <boost/optional/optional.hpp>
 
 #include "yb/common/entity_ids_types.h"
 
@@ -42,8 +40,8 @@ struct HostPortHash;
 namespace master {
 
 class TSDescriptor;
-typedef std::shared_ptr<TSDescriptor> TSDescriptorPtr;
-typedef std::vector<TSDescriptorPtr> TSDescriptorVector;
+using TSDescriptorPtr = std::shared_ptr<TSDescriptor>;
+using TSDescriptorVector = std::vector<TSDescriptorPtr>;
 
 class EncryptionManager;
 
@@ -54,6 +52,8 @@ class AsyncTryStepDown;
 class CatalogManager;
 class CatalogManagerIf;
 class CatalogManagerBgTasks;
+class CdcsdkManager;
+class CdcsdkManagerIf;
 class CloneStateManager;
 class XClusterRpcTasks;
 class ClusterConfigInfo;
@@ -152,9 +152,9 @@ YB_DEFINE_ENUM(
 
 using CollectFlags = EnumBitSet<CollectFlag>;
 
-using TableToTablespaceIdMap = std::unordered_map<TableId, boost::optional<TablespaceId>>;
-using TablespaceIdToReplicationInfoMap = std::unordered_map<
-    TablespaceId, boost::optional<ReplicationInfoPB>>;
+using TableToTablespaceIdMap = std::unordered_map<TableId, std::optional<TablespaceId>>;
+using TablespaceIdToReplicationInfoMap =
+    std::unordered_map<TablespaceId, std::optional<ReplicationInfoPB>>;
 
 using LeaderStepDownFailureTimes = std::unordered_map<TabletServerId, MonoTime>;
 using TabletReplicaMap = std::unordered_map<TabletServerId, TabletReplica>;

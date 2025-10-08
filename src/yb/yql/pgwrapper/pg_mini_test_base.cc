@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -40,6 +40,7 @@ DECLARE_int32(pggate_rpc_timeout_secs);
 DECLARE_string(pgsql_proxy_bind_address);
 DECLARE_int32(pgsql_proxy_webserver_port);
 DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_int32(ysql_num_tablets);
 DECLARE_int32(ysql_num_shards_per_tserver);
 DECLARE_string(ysql_pg_conf_csv);
 
@@ -61,6 +62,9 @@ void PgMiniTestBase::SetUp() {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_pggate_rpc_timeout_secs) = 120;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_disable_index_backfill) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_num_shards_per_tserver) = 1;
+
+  // Make sure ysql_num_tablets are not specified to rely on other shard-related flags.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_num_tablets) = -1;
 
   master::SetDefaultInitialSysCatalogSnapshotFlags();
   MiniClusterTestWithClient::SetUp();

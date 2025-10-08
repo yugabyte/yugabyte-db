@@ -52,8 +52,6 @@ The universe **Backups** page allows you to create new backups that start immedi
 
 If the universe has [encryption at rest enabled](../../security/enable-encryption-at-rest), data files are backed up as-is (encrypted) to reduce the computation cost of a backup and to keep the files encrypted. A universe key metadata file containing key references is also backed up.
 
-For YSQL, you can allow YugabyteDB Anywhere to back up your data with the user authentication enabled by following the instructions in [Edit configuration flags](../../manage-deployments/edit-config-flags) to add the `ysql_enable_auth=true` and `ysql_hba_conf_csv="local all all trust"` YB-TServer flags.
-
 ### View backup details
 
 To view detailed backup information, click on the backup (row) in the **Backups** list to open **Backup Details**.
@@ -113,7 +111,7 @@ YugabyteDB Anywhere universe backups are stored using the following folder struc
       /<backup-series-name>-<backup-series-uuid>
         /<backup-type>
           /<creation-time>
-            /<backup-name>_<backup-uuid>
+            /<backup-name>_<uuid>
 ```
 
 For example:
@@ -136,7 +134,49 @@ s3://user_bucket
 | Backup series name and UUID | The name of the backup series and YBA-generated UUID. The UUID ensures that YBA can correctly identify the appropriate folder. |
 | Backup type | `full` or `incremental`. Indicates whether the subfolders contain full or incremental backups. |
 | Creation time | The time the backup was started. |
-| Backup name and UUID | The name of the backup and YBA-generated UUID. This folder contains the backup files (metadata and success) and subfolders (tablet components). |
+| Backup name and UUID | The name of the backup and YBA-generated UUID that uniquely identifies the backup object. This folder contains the backup files (metadata and success) and subfolders (tablet components). |
+
+You can also use [yba-cli](../../anywhere-automation/anywhere-cli/) to get a list of backups and their details as follows:
+
+```sh
+yba-cli backup list
+```
+
+```output
+Backup UUID                            Universe                                     Storage Configuration                          Storage Configuration Type   KMS configuration   Backup Type        Completion Time                   Has Incremental Backups   State
+b924cda0-7330-4870-8984-8e31b61007c4   test(2341a0b9-7b60-4a21-b6f6-6b557e5df036)   aws-s3(6a469b14-d319-4173-a8db-b9d972f875ab)   S3                                               PGSQL_TABLE_TYPE   Sun, 29 Jun 2025 20:27:11 +0000   false                     Completed
+No more backups present
+```
+
+```sh
+yba-cli backup  describe --uuid b924cda0-7330-4870-8984-8e31b61007c4
+```
+
+```output
+General
+Backup UUID                            Backup Type        Category        State
+b924cda0-7330-4870-8984-8e31b61007c4   PGSQL_TABLE_TYPE   YB_CONTROLLER   Completed
+
+Universe                                     Schedule Name   Has Incremental Backups
+test(2341a0b9-7b60-4a21-b6f6-6b557e5df036)                   false
+
+Storage Configuration                          Storage Configuration Type   KMS configuration
+aws-s3(6a469b14-d319-4173-a8db-b9d972f875ab)   S3
+
+Create Time                       Completion Time                   Expiry Time
+Sun, 29 Jun 2025 20:27:05 +0000   Sun, 29 Jun 2025 20:27:11 +0000
+
+Keyspace Details
+Keyspace 1 Details
+Keyspace   Backup size   Default Location
+yugabyte   63.95 MB      s3://yb-emea-poc-backups/univ-2341a0b9-7b60-4a21-b6f6-6b557e5df036/ybc_backup-b924cda07330487089848e31b61007c4/full/2025-06-29T20:27:05/multi-table-yugabyte_6e7945f5b3e84a7a97eb3d8033b92f9c
+
+Table UUID list
+[]
+
+Table name list
+[]
+```
 
 A backup set consists of a successful full backup, and (if incremental backups were taken) one or more consecutive successful incremental backups. The backup set can be used to restore a database at the point in time of the full and/or incremental backup, as long as the chain of good incremental backups is unbroken. Use the creation time to identify increments that occurred after a full backup.
 

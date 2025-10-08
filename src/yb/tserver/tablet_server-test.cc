@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -30,12 +30,11 @@
 // under the License.
 //
 
-#include "yb/qlexpr/index.h"
-#include "yb/dockv/partition.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema_pbutil.h"
-
 #include "yb/consensus/log-test-base.h"
+
+#include "yb/dockv/partition.h"
 
 #include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/substitute.h"
@@ -45,6 +44,7 @@
 #include "yb/rpc/rpc_test_util.h"
 #include "yb/rpc/yb_rpc.h"
 
+#include "yb/server/call_home-test-util.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/server/server_base.pb.h"
 #include "yb/server/server_base.proxy.h"
@@ -60,16 +60,14 @@
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_call_home.h"
-#include "yb/server/call_home-test-util.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/crc.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/metrics.h"
+#include "yb/util/monotime.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_log.h"
-#include "yb/util/flags.h"
-#include "yb/util/monotime.h"
 
 using yb::rpc::MessengerBuilder;
 using yb::rpc::RpcController;
@@ -97,8 +95,7 @@ METRIC_DECLARE_counter(rows_updated);
 METRIC_DECLARE_counter(rows_deleted);
 METRIC_DECLARE_gauge_uint64(untracked_memory);
 
-namespace yb {
-namespace tserver {
+namespace yb::tserver {
 
 class TabletServerTest : public TabletServerTestBase {
  public:
@@ -380,9 +377,10 @@ TEST_F(TabletServerTest, TestInsert) {
   WriteResponsePB resp;
   RpcController controller;
 
-  auto tablet = ASSERT_RESULT(mini_server_->server()->tablet_manager()->GetTablet(kTabletId));
+  auto peer = ASSERT_RESULT(mini_server_->server()->tablet_manager()->GetTablet(kTabletId));
+  auto tablet = ASSERT_RESULT(peer->shared_tablet());
   scoped_refptr<Counter> rows_inserted =
-      METRIC_rows_inserted.Instantiate(tablet->tablet()->GetTabletMetricsEntity());
+      METRIC_rows_inserted.Instantiate(tablet->GetTabletMetricsEntity());
   ASSERT_EQ(0, rows_inserted->value());
   tablet.reset();
 
@@ -614,7 +612,8 @@ TEST_F(TabletServerTest, TestInvalidWriteRequest_BadSchema) {
 TEST_F(TabletServerTest, TestClientGetsErrorBackWhenRecoveryFailed) {
   ASSERT_NO_FATALS(InsertTestRowsRemote(0, 1, 7));
 
-  ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
+  auto tablet = ASSERT_RESULT(tablet_peer_->shared_tablet());
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
 
   // Save the log path before shutting down the tablet (and destroying
   // the tablet peer).
@@ -675,7 +674,8 @@ TEST_F(TabletServerTest, TestDeleteTablet) {
   // Put some data in the tablet. We flush and insert more rows to ensure that
   // there is data both in the MRS and on disk.
   ASSERT_NO_FATALS(InsertTestRowsRemote(0, 1, 1));
-  ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
+  auto tablet = ASSERT_RESULT(tablet_peer_->shared_tablet());
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
   ASSERT_NO_FATALS(InsertTestRowsRemote(0, 2, 1));
 
   // Drop any local references to the tablet from within this test,
@@ -760,7 +760,7 @@ TEST_F(TabletServerTest, TestInsertLatencyMicroBenchmark) {
   METRIC_DEFINE_event_stats(test, insert_latency,
                           "Insert Latency",
                           MetricUnit::kMicroseconds,
-                          "TabletServer single threaded insert latency.");
+                          "TabletServer single threaded insert latency (microseconds).");
 
   scoped_refptr<EventStats> stats =
       METRIC_insert_latency.Instantiate(ts_test_metric_entity_);
@@ -954,10 +954,12 @@ TEST_F(TabletServerTest, TestChecksumScan) {
 
   // Second row (null string field).
   key = 2;
-  InsertTestRowsRemote(0, key, 1, 1, nullptr, kTabletId, nullptr, nullptr, false);
+  InsertTestRowsRemote(
+      0, key, 1, 1, /*proxy=*/nullptr, kTabletId, /*write_hybrid_times_collector=*/nullptr,
+      /*ts=*/nullptr, /*string_field_defined=*/false);
   controller.Reset();
   ASSERT_OK(proxy_->Checksum(req, &resp, &controller));
-  CalcTestRowChecksum(&total_crc, key, false);
+  CalcTestRowChecksum(&total_crc, key, /*string_field_defined=*/false);
 
   ASSERT_FALSE(resp.has_error()) << resp.error().DebugString();
   ASSERT_EQ(total_crc, resp.checksum());
@@ -990,6 +992,34 @@ TEST_F(TabletServerTest, TestGFlagsCallHome) {
   TestGFlagsCallHome<TabletServer, TserverCallHome>(mini_server_->server());
 }
 
+TEST_F(TabletServerTest, ThreadMetricsStability) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_metrics_retirement_age_ms) = 1;
+  auto ScrapeAndVerifyThreadMetrics = [&]() {
+    MetricPrometheusOptions opts;
+    opts.export_help_and_type = ExportHelpAndType::kFalse;
+    std::stringstream output;
+    PrometheusWriter writer(&output, opts);
+    ASSERT_OK(mini_server_->server()->metric_registry()->WriteForPrometheus(&writer, opts));
+
+    ASSERT_TRUE(output.str().contains("threads_running_"));
+    ASSERT_TRUE(output.str().contains("threads_started_"));
+  };
+
+  // Verify thread metrics are not retired despite FLAGS_metrics_retirement_age_ms = 0.
+  // Requires 3 scrapes because metric retirement is a two-phase process:
+  // - After scrape 1: cleanup thread marks unreferenced metrics for deletion
+  // - After scrape 2: cleanup thread deletes previously marked metrics
+  // - Scrape 3: confirms metrics still exist (if they were unreferenced, they'd be gone)
+
+  ScrapeAndVerifyThreadMetrics();
+  SleepFor(MonoDelta::FromSeconds(1));
+
+  ScrapeAndVerifyThreadMetrics();
+  SleepFor(MonoDelta::FromSeconds(1));
+
+  ScrapeAndVerifyThreadMetrics();
+}
+
 #if YB_TCMALLOC_ENABLED
 TEST_F(TabletServerTest, TestUntrackedMemory) {
   auto server_metric_entity = mini_server_->server()->metric_entity();
@@ -1005,5 +1035,4 @@ TEST_F(TabletServerTest, TestUntrackedMemory) {
 }
 #endif
 
-} // namespace tserver
-} // namespace yb
+} // namespace yb::tserver

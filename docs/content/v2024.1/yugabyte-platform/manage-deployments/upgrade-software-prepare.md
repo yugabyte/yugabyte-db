@@ -2,7 +2,7 @@
 title: Prepare to upgrade universes with a new version of YugabyteDB
 headerTitle: Prepare to upgrade a universe
 linkTitle: Prepare to upgrade
-description: Use YugabyteDB Anywhere to upgrade the YugabyteDB software on universes.
+description: Review changes that may affect your automation when upgrading universes.
 headcontent: Review changes that may affect your automation
 menu:
   v2024.1_yugabyte-platform:
@@ -15,6 +15,19 @@ type: docs
 ## Upgrade the operating system
 
 If your universe is running on a [deprecated OS](../../../reference/configuration/operating-systems/), you need to update your OS before you can upgrade to the next major release of YugabyteDB. Refer to [Patch and upgrade the Linux operating system](../upgrade-nodes/).
+
+## Backups and point-in-time-restore
+
+- Backups
+
+  - Backups taken on a newer version cannot be restored to universes running a previous version.
+  - Backups taken during the upgrade cannot be restored to universes running a previous version.
+  - Backups taken before the upgrade _can_ be used for restore to the new version.
+
+- [Point-in-time-restore](../../back-up-restore-universes/pitr/) (PITR)
+
+  - If you have PITR enabled, you must disable it before performing an upgrade. Re-enable it only after the upgrade is either finalized or rolled back.
+  - After the upgrade, PITR cannot be done to a time before the upgrade.
 
 ## Review major changes in previous YugabyteDB releases
 

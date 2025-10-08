@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.local;
 
@@ -13,9 +13,12 @@ import static org.junit.Assert.assertTrue;
 
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.common.LocalNodeManager;
+import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagGroup;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
@@ -28,6 +31,7 @@ import com.yugabyte.yw.forms.RollMaxBatchSize;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -329,6 +333,74 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
     }
     assertTrue(foundTasks);
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    compareGFlags(universe);
+  }
+
+  @Test
+  public void testRetryPartlyUpdated() throws InterruptedException {
+    RuntimeConfigEntry.upsertGlobal(
+        GlobalConfKeys.verifyGFlagsOnNodeDuringUpgrade.getKey(), "true");
+    Universe universe = createUniverse(getDefaultUserIntent());
+    initYSQL(universe);
+    SpecificGFlags specificGFlags =
+        SpecificGFlags.construct(
+            Collections.singletonMap("max_log_size", "1805"),
+            Collections.singletonMap("log_max_seconds_to_retain", "86333"));
+    List<String> upgradedNodes = new ArrayList<>();
+    localNodeManager.setFailureInjection(
+        pair -> {
+          if (pair.getFirst() != NodeManager.NodeCommandType.Configure) {
+            return false;
+          }
+          AnsibleConfigureServers.Params params = (AnsibleConfigureServers.Params) pair.getSecond();
+          if (params.type != UpgradeTaskParams.UpgradeTaskType.GFlags) {
+            return false;
+          }
+          String processType = params.getProperty("processType");
+          String node = params.nodeName + "_" + processType;
+          if (upgradedNodes.size() > 1) {
+            log.debug("Already upgraded {}", upgradedNodes);
+            return true;
+          }
+          upgradedNodes.add(node);
+          return false;
+        });
+
+    TaskInfo taskInfo =
+        doGflagsUpgrade(
+            universe,
+            UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE,
+            specificGFlags,
+            null,
+            TaskInfo.State.Failure,
+            "Failure injected",
+            null);
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+
+    // Now will fail if we try to upgrade already upgraded node again.
+    localNodeManager.setFailureInjection(
+        pair -> {
+          if (pair.getFirst() != NodeManager.NodeCommandType.Configure) {
+            return false;
+          }
+          AnsibleConfigureServers.Params params = (AnsibleConfigureServers.Params) pair.getSecond();
+          if (params.type != UpgradeTaskParams.UpgradeTaskType.GFlags) {
+            return false;
+          }
+          String processType = params.getProperty("processType");
+          String node = params.nodeName + "_" + processType;
+          if (upgradedNodes.contains(node)) {
+            log.debug("Should not upgrade {} already upgraded: {}", node, upgradedNodes);
+            return true;
+          }
+          return false;
+        });
+    log.debug("Doing retry");
+    CustomerTask customerTask =
+        customerTaskManager.retryCustomerTask(customer.getUuid(), taskInfo.getUuid());
+    taskInfo = waitForTask(customerTask.getTaskUUID());
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+
     compareGFlags(universe);
   }
 
@@ -689,7 +761,6 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     UniverseDefinitionTaskParams.UserIntent userIntent =
         universe.getUniverseDetails().getPrimaryCluster().userIntent;
-    SpecificGFlags specificGFlags = userIntent.specificGFlags;
     for (NodeDetails node : universe.getNodes()) {
       UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(node.placementUuid);
       for (UniverseTaskBase.ServerType serverType : node.getAllProcesses()) {

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -257,10 +257,10 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
   std::shared_ptr<ManualHistoryRetentionPolicy> retention_policy_ {
       std::make_shared<ManualHistoryRetentionPolicy>() };
   std::shared_ptr<rocksdb::CompactionFileFilterFactory> compaction_file_filter_factory_;
-  std::shared_ptr<std::function<uint64_t()>> max_file_size_for_compaction_;
+  std::shared_ptr<std::function<bool(const rocksdb::FileMetaData&)>> exclude_from_compaction_;
 
   rocksdb::WriteOptions write_options_;
-  boost::optional<TransactionId> current_txn_id_;
+  std::optional<TransactionId> current_txn_id_;
   mutable IntraTxnWriteId intra_txn_write_id_ = 0;
   IsolationLevel txn_isolation_level_ = IsolationLevel::NON_TRANSACTIONAL;
   InitMarkerBehavior init_marker_behavior_ = InitMarkerBehavior::kOptional;

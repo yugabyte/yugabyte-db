@@ -46,6 +46,8 @@ Note that when making DDL changes on universes in manually-configured transactio
 Before setting up xCluster replication, ensure you have reviewed the [Prerequisites](../#prerequisites) and [Best practices](../#best-practices).
 {{< /tip >}}
 
+For moving data out of YugabyteDB, set up CDC on the xCluster source universe. CDC on the xCluster target universe is not supported.
+
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
   <li>
     <a href="#local" class="nav-link active" id="local-tab" data-bs-toggle="tab"
@@ -115,7 +117,7 @@ To set up unidirectional transactional replication manually, do the following:
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <standby_master_addresses> \
+        --master_addresses <standby_master_addresses> \
         create_snapshot_schedule 1 10 ysql.yugabyte
     ```
 
@@ -125,8 +127,8 @@ To set up unidirectional transactional replication manually, do the following:
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <standby_master_addresses> \
-        -certs_dir_name <cert_dir> \
+        --master_addresses <standby_master_addresses> \
+        --certs_dir_name <cert_dir> \
         setup_universe_replication \
         <primary_universe_uuid>_<replication_name> \
         <primary_universe_master_addresses> \
@@ -138,8 +140,8 @@ To set up unidirectional transactional replication manually, do the following:
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <standby_master_addresses> \
-        -certs_dir_name <dir_name> \
+        --master_addresses <standby_master_addresses> \
+        --certs_dir_name <dir_name> \
         change_xcluster_role STANDBY
     ```
 
@@ -246,7 +248,7 @@ get_xcluster_safe_time
 For example:
 
 ```sh
-./tserver/bin/yb-admin -master_addresses 172.150.21.61:7100,172.150.44.121:7100,172.151.23.23:7100 \
+./tserver/bin/yb-admin --master_addresses 172.150.21.61:7100,172.150.44.121:7100,172.151.23.23:7100 \
     get_xcluster_safe_time
 ```
 

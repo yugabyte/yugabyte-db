@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -22,6 +22,7 @@
 #include "yb/tserver/tserver_util_fwd.h"
 
 #include "yb/util/concurrent_value.h"
+#include "yb/util/one_time_bool.h"
 
 #include "yb/yql/pgwrapper/pg_wrapper_context.h"
 
@@ -84,6 +85,7 @@ class DbServerBase : public server::RpcAndWebServerBase, public pgwrapper::PgWra
   std::mutex transaction_pool_mutex_;
   std::unique_ptr<client::TransactionManager> transaction_manager_holder_;
   std::unique_ptr<client::TransactionPool> transaction_pool_holder_;
+  OneTimeBool shutting_down_;
 };
 
 }  // namespace tserver

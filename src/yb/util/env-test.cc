@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -480,7 +480,7 @@ TEST_F(TestEnv, TestHolePunch) {
   ASSERT_OK(file->Write(0, slice));
   ASSERT_OK(file->Sync());
   uint64_t sz;
-  ASSERT_OK(file->Size(&sz));
+  sz = ASSERT_RESULT(file->Size());
   ASSERT_EQ(kOneMb, sz);
   uint64_t size_on_disk = ASSERT_RESULT(env_->GetFileSizeOnDisk(test_path));
   // Some kernels and filesystems (e.g. Centos 6.6 with XFS) aggressively
@@ -492,7 +492,7 @@ TEST_F(TestEnv, TestHolePunch) {
   uint64_t punch_amount = 4096 * 4;
   uint64_t new_size_on_disk;
   ASSERT_OK(file->PunchHole(4096, punch_amount));
-  ASSERT_OK(file->Size(&sz));
+  sz = ASSERT_RESULT(file->Size());
   ASSERT_EQ(kOneMb, sz);
   new_size_on_disk = ASSERT_RESULT(env_->GetFileSizeOnDisk(test_path));
   ASSERT_EQ(size_on_disk - punch_amount, new_size_on_disk);
@@ -850,7 +850,7 @@ TEST_F(TestEnv, TestRWFile) {
   ASSERT_OK(file->Read(0, kTestData.length(), &result, scratch.get()));
   ASSERT_EQ(result, kTestData);
   uint64_t sz;
-  ASSERT_OK(file->Size(&sz));
+  sz = ASSERT_RESULT(file->Size());
   ASSERT_EQ(kTestData.length(), sz);
 
   // Write past the end of the file and rewrite some of the interior.
@@ -863,7 +863,7 @@ TEST_F(TestEnv, TestRWFile) {
 
   // Retest.
   ASSERT_EQ(result, kNewTestData);
-  ASSERT_OK(file->Size(&sz));
+  sz = ASSERT_RESULT(file->Size());
   ASSERT_EQ(kNewTestData.length(), sz);
 
   // Make sure we can't overwrite it.

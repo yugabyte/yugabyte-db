@@ -920,7 +920,7 @@ CREATE TABLE public.part_uniq_const (
     CONSTRAINT part_uniq_const_pkey PRIMARY KEY((v1) HASH, v3 ASC)
 )
 PARTITION BY RANGE (v1)
-SPLIT INTO 3 TABLETS;
+SPLIT INTO 1 TABLETS;
 
 
 \if :use_roles
@@ -2993,6 +2993,15 @@ CREATE POLICY p2 ON public.rls_private FOR INSERT WITH CHECK (((k % 2) = 1));
 --
 
 CREATE POLICY p3 ON public.rls_private FOR UPDATE USING (((k % 2) = 1));
+
+
+--
+-- Name: rls_public p4; Type: POLICY; Schema: public; Owner: yugabyte_test
+--
+
+\if :use_roles
+CREATE POLICY p4 ON public.rls_public FOR UPDATE TO rls_user USING ((v = CURRENT_USER));
+\endif
 
 
 --

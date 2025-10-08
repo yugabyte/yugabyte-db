@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -35,8 +35,6 @@
 #include <algorithm>
 #include <mutex>
 #include <string>
-
-#include <boost/optional.hpp>
 
 #include "yb/ash/wait_state.h"
 
@@ -64,8 +62,6 @@
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/options.h"
 
-#include "yb/rpc/lightweight_message.h"
-
 #include "yb/tablet/metadata.pb.h"
 #include "yb/tablet/tablet_options.h"
 
@@ -77,6 +73,7 @@
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
+#include "yb/util/std_util.h"
 #include "yb/util/trace.h"
 
 DEPRECATE_FLAG(bool, enable_tablet_orphaned_block_deletion, "10_2022");
@@ -420,7 +417,7 @@ Result<docdb::CompactionSchemaInfo> TableInfo::Packing(
   return docdb::CompactionSchemaInfo {
     .table_type = self->table_type,
     .schema_version = schema_version,
-    .schema_packing = rpc::SharedField(self, packing.get_ptr()),
+    .schema_packing = SharedField(self, packing.get_ptr()),
     .cotable_id = self->cotable_id,
     .deleted_cols = std::move(deleted_before_history_cutoff),
     .packed_row_version = docdb::PackedRowVersion(

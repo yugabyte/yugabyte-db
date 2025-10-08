@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -190,14 +190,15 @@ public class TestYBClient extends BaseYBClientTest {
       // Discard original master/tserver flags
       cb.masterFlags(
           Collections.singletonMap("TEST_simulate_slow_system_tablet_bootstrap_secs", "20"));
-      cb.commonTServerFlags(
-          Collections.emptyMap());
+      cb.commonTServerFlags(Collections.emptyMap());
     });
     miniCluster.restart(false /* waitForMasterLeader */);
-
     for (HostAndPort mhp : miniCluster.getMasters().keySet()) {
       testServerReady(mhp, false, true);
     }
+    // The flag simulate_slow_system_tablet_bootstrap_secs interferes with graceful shutdown.
+    // Kill the daemons ungracefully to avoid hanging on the graceful shutdown path.
+    miniCluster.killDaemons();
   }
 
   /**

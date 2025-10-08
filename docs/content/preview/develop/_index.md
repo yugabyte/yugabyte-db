@@ -5,7 +5,53 @@ linkTitle: Develop
 description: Build YugabyteDB application that use ecosystem integrations and GraphQL.
 headcontent: Get started building applications based on YugabyteDB
 type: indexpage
+cascade:
+  unversioned: true
 ---
+
+## Tutorials
+
+Get started with step-by-step guides for building scalable and fault-tolerant applications using YugabyteDB and your favorite programming language, services, and frameworks, including Kafka, Gen-AI, and more.
+
+{{< sections/3-boxes >}}
+  {{< sections/3-box-card
+    title="Hello World"
+    description="Build the most basic application in your favorite language using YugabyteDB as a database."
+    buttonText="Hello World"
+    buttonUrl="tutorials/build-apps/"
+  >}}
+
+  {{< sections/3-box-card
+    title="Build and Learn"
+    description="Learn YugabyteDB essentials by building an app and scaling to a multi-region YugabyteDB cluster."
+    buttonText="Get Started"
+    buttonUrl="tutorials/build-and-learn/"
+  >}}
+
+  {{< sections/3-box-card
+    title="AI"
+    description="Add a scalable and highly-available database to your AI projects."
+    buttonText="Explore"
+    buttonUrl="tutorials/ai/"
+  >}}
+
+{{< /sections/3-boxes >}}
+
+## Application development
+
+Although building scalable applications on top of YugabyteDB is straightforward, you need to understand certain fundamental concepts like transactions, search, and more to make the best use of them.
+
+{{<lead link="./learn/">}}
+To learn how to build applications on top of YugabyteDB, see [Learn app development](./learn/).
+{{</lead>}}
+
+## Drivers and ORMs
+
+To communicate with YugabyteDB, applications need to use drivers. Applications can also be built using Object-Relational mappings, a technique used to communicate with the database using object-oriented techniques. We've tested various drivers and ORMs in multiple languages with the optimal configurations to get your applications up and running.
+
+{{<lead link="../drivers-orms/">}}
+For the list of drivers and ORMs with sample code, see [Drivers and ORMs](./drivers-orms/).
+{{</lead>}}
 
 ## Data modeling
 
@@ -25,18 +71,10 @@ To learn more about building global applications, see [Build global applications
 
 ## Multi-cloud applications
 
-A multi-cloud strategy provides the flexibility to use the optimal computing environment for each specific workload, helps avoid vendor lock-in, lets you place data close to the users, and can minimize cost by choosing optimal pricing and performance of various cloud providers. You can also opt for a hybrid model as your path to migration onto the cloud.
+A multi-cloud strategy provides the flexibility to use the optimal computing environment for each specific workload, helps avoid vendor lock-in, lets you place data close to users, and can minimize cost by choosing optimal pricing and performance of various cloud providers. You can also opt for a hybrid model as your path to migration onto the cloud.
 
 {{<lead link="./multi-cloud/">}}
 To understand how to build a multi-cloud setup with YugabyteDB, see [Build multi-cloud applications](./multi-cloud/).
-{{</lead>}}
-
-## Application development
-
-Although building scalable applications on top of YugabyteDB is straightforward, you need to understand certain fundamental concepts like transactions, search, and more to make the best use of them.
-
-{{<lead link="./learn/">}}
-To learn how to build applications on top of YugabyteDB, see [Learn app development](./learn/).
 {{</lead>}}
 
 ## Best practices
@@ -45,14 +83,6 @@ Use these best practices to build distributed applications on top of YugabyteDB;
 
 {{<lead link="./best-practices-develop">}}
 For more details, see [Best practices](./best-practices-develop).
-{{</lead>}}
-
-## Drivers and ORMs
-
-To communicate with YugabyteDB, applications need to use drivers. Applications can also be built using Object-Relational mappings, a technique used to communicate with the database using object-oriented techniques. We've tested various drivers and ORMs in multiple languages with the optimal configurations to get your applications up and running.
-
-{{<lead link="../drivers-orms/">}}
-For the list of drivers and ORMs with sample code, see [Drivers and ORMs](../drivers-orms/).
 {{</lead>}}
 
 ## Quality of service
@@ -69,20 +99,4 @@ Cloud-native development refers to building and running applications that fully 
 
 {{<lead link="./gitdev/">}}
 To learn more about how to use browser-based IDEs, see [Cloud-native development](./gitdev/).
-{{</lead>}}
-
-## Tutorials
-
-Yugabyte provides multiple step-by-step guides for building scalable and fault-tolerant applications with YugabyteDB using your favorite programming language, services, and frameworks, including Kafka, Gen-AI, and more.
-
-{{<lead link="/preview/tutorials/">}}
-For step-by-step guides for various frameworks, see [Tutorials](/preview/tutorials/).
-{{</lead>}}
-
-## PostgreSQL compatibility
-
-YugabyteDB aims to be a fully PostgreSQL-compatible distributed database that supports the majority of PostgreSQL syntax. This means that existing applications built on PostgreSQL can often be migrated to YugabyteDB without changing application code. YugabyteDB also includes many optimizations to enable PostgreSQL applications to run with predictable performance.
-
-{{<lead link="postgresql-compatibility/">}}
-To learn more, see [PostgreSQL compatibility](postgresql-compatibility/).
 {{</lead>}}

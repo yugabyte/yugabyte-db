@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -2719,6 +2719,38 @@ public class YBClient implements AutoCloseable {
     Deferred<ValidateReplicationInfoResponse> d =
         asyncClient.validateReplicationInfo(replicationInfoPB);
     return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public SetPreferredZonesResponse setPreferredZones(
+      Map<Integer, List<CommonNet.CloudInfoPB>> prioritiesMap)
+      throws Exception {
+    Deferred<SetPreferredZonesResponse> d =
+        asyncClient.setPreferredZones(prioritiesMap);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * Initiates validation of a gflag's value.
+   *
+   * @return An {@link ValidateFlagValueResponse} object containing the response.
+   */
+  public ValidateFlagValueResponse validateFlagValue(
+      String flagName, String flagValue) throws Exception {
+    Deferred<ValidateFlagValueResponse> d =
+      asyncClient.validateFlagValue(flagName, flagValue);
+    d.addErrback(
+        new Callback<Exception, Exception>() {
+          @Override
+          public Exception call(Exception o) throws Exception {
+            LOG.error("Error: ", o);
+            throw o;
+          }
+        });
+    d.addCallback(
+      ValidateFlagValueResponse -> {
+          return ValidateFlagValueResponse;
+        });
+    return d.join(2 * getDefaultAdminOperationTimeoutMs());
   }
 
   /**

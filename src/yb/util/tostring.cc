@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -11,8 +11,11 @@
 // under the License.
 //
 
-#include "yb/util/format.h"
 #include "yb/util/tostring.h"
+
+#include <chrono>
+
+#include "yb/util/format.h"
 
 namespace yb {
 
@@ -34,6 +37,36 @@ std::string CStringArrayToString(char** elements, size_t length) {
   }
   result += "]";
   return result;
+}
+
+namespace {
+
+template <class Clock, class Duration>
+std::string ToStringTimePoint(const std::chrono::time_point<Clock, Duration>& tp) {
+  int64_t micros = std::chrono::duration_cast<std::chrono::microseconds>(
+    tp.time_since_epoch()).count();
+
+  const char* sign = "";
+  if (micros < 0) {
+    sign = "-";
+    micros = -micros;
+  }
+
+  int64_t seconds = micros / 1'000'000;
+  int64_t remainder_micros = micros % 1'000'000;
+
+  // Format as "<seconds>.<microseconds padded to 6 digits>s", mirroring MillisecondsToString.
+  return StringPrintf("%s%" PRId64 ".%06" PRId64 "s", sign, seconds, remainder_micros);
+}
+
+} // namespace
+
+std::string ToString(const std::chrono::steady_clock::time_point& time_point) {
+  return ToStringTimePoint(time_point);
+}
+
+std::string ToString(const std::chrono::system_clock::time_point& time_point) {
+  return ToStringTimePoint(time_point);
 }
 
 } // namespace yb

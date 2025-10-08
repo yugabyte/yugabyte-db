@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -19,6 +19,7 @@ import com.typesafe.config.ConfigValue;
 import com.typesafe.config.ConfigValueFactory;
 import com.yugabyte.yw.common.HaConfigStates.GlobalState;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.ha.PlatformReplicationHelper;
@@ -30,6 +31,7 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Date;
@@ -37,6 +39,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
@@ -54,6 +57,7 @@ public class HighAvailabilityConfig extends Model {
 
   private static final Finder<UUID, HighAvailabilityConfig> find =
       new Finder<UUID, HighAvailabilityConfig>(HighAvailabilityConfig.class) {};
+  private static final KeyLock<UUID> KEY_LOCK = new KeyLock<>();
 
   @JsonIgnore private final int id = 1;
 
@@ -141,27 +145,25 @@ public class HighAvailabilityConfig extends Model {
     return create(clusterKey, true);
   }
 
-  public static void update(HighAvailabilityConfig config, String clusterKey) {
-    update(config, clusterKey, config.getAcceptAnyCertificate());
-  }
-
-  public static void update(
-      HighAvailabilityConfig config, String clusterKey, boolean acceptAnyCertificate) {
-    config.setClusterKey(clusterKey);
-    config.setAcceptAnyCertificate(acceptAnyCertificate);
-    config.update();
+  public static HighAvailabilityConfig update(
+      UUID uuid, String clusterKey, boolean acceptAnyCertificate) {
+    return doWithLock(
+        uuid,
+        config -> {
+          config.setClusterKey(clusterKey);
+          config.setAcceptAnyCertificate(acceptAnyCertificate);
+          config.update();
+          return config;
+        });
   }
 
   public static Optional<HighAvailabilityConfig> maybeGet(UUID uuid) {
     return Optional.ofNullable(find.byId(uuid));
   }
 
-  public static Optional<HighAvailabilityConfig> getOrBadRequest(UUID uuid) {
-    Optional<HighAvailabilityConfig> config = maybeGet(uuid);
-    if (!config.isPresent()) {
-      throw new PlatformServiceException(BAD_REQUEST, "Invalid config UUID");
-    }
-    return config;
+  public static HighAvailabilityConfig getOrBadRequest(UUID uuid) {
+    return maybeGet(uuid)
+        .orElseThrow(() -> new PlatformServiceException(BAD_REQUEST, "Invalid config UUID"));
   }
 
   public static Optional<HighAvailabilityConfig> get() {
@@ -176,12 +178,15 @@ public class HighAvailabilityConfig extends Model {
     find.deleteById(uuid);
   }
 
-  public static String generateClusterKey() throws Exception {
-    KeyGenerator keyGen = KeyGenerator.getInstance("AES");
-    keyGen.init(256);
-    SecretKey secretKey = keyGen.generateKey();
-
-    return Base64.getEncoder().encodeToString(secretKey.getEncoded());
+  public static String generateClusterKey() {
+    try {
+      KeyGenerator keyGen = KeyGenerator.getInstance("AES");
+      keyGen.init(256);
+      SecretKey secretKey = keyGen.generateKey();
+      return Base64.getEncoder().encodeToString(secretKey.getEncoded());
+    } catch (NoSuchAlgorithmException e) {
+      throw new PlatformServiceException(BAD_REQUEST, "Error generating cluster key");
+    }
   }
 
   public static boolean isFollower() {
@@ -227,5 +232,29 @@ public class HighAvailabilityConfig extends Model {
     }
     log.warn("Could not compute global state, defaulting to Unknown.");
     return GlobalState.Unknown;
+  }
+
+  // Invoke the function after acquiring the lock.
+  public static <T> T doWithLock(UUID haConfigUuid, Function<HighAvailabilityConfig, T> function) {
+    KEY_LOCK.acquireLock(haConfigUuid);
+    try {
+      return function.apply(HighAvailabilityConfig.getOrBadRequest(haConfigUuid));
+    } finally {
+      KEY_LOCK.releaseLock(haConfigUuid);
+    }
+  }
+
+  // Invoke the function after acquiring the lock. If the lock cannot acquired, null is returned.
+  public static <T> Optional<T> doWithTryLock(
+      UUID haConfigUuid, Function<HighAvailabilityConfig, T> function) {
+    if (KEY_LOCK.tryLock(haConfigUuid)) {
+      try {
+        return Optional.ofNullable(
+            function.apply(HighAvailabilityConfig.getOrBadRequest(haConfigUuid)));
+      } finally {
+        KEY_LOCK.releaseLock(haConfigUuid);
+      }
+    }
+    return null;
   }
 }

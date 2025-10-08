@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -32,8 +32,8 @@
 #pragma once
 
 #include <string>
-#include <vector>
 #include <unordered_map>
+#include <vector>
 
 #include "yb/common/pg_types.h"
 #include "yb/common/ql_protocol.pb.h"
@@ -53,12 +53,11 @@
 
 #include "yb/tserver/tablet_memory_manager.h"
 
-#include "yb/rpc/thread_pool.h"
-
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics_fwd.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/status_fwd.h"
+#include "yb/util/tostring.h"
 #include "yb/util/unique_lock.h"
 
 namespace yb {
@@ -89,11 +88,22 @@ struct PgTableReadData {
   const Schema& schema() const;
   Result<ColumnId> ColumnByName(const std::string& name) const;
 
-  Result<std::unique_ptr<docdb::DocRowwiseIterator>> NewUninitializedIterator(
+  Result<docdb::DocRowwiseIteratorPtr> NewUninitializedIterator(
       const dockv::ReaderProjection& projection) const;
 
   Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> NewIterator(
       const dockv::ReaderProjection& projection) const;
+};
+
+// Instances of this are used to accumulate the maximum OID simultaneously for both OID spaces.
+class MaxOidPerSpace {
+ public:
+  void UpdateWithOid(uint32_t oid);
+
+  uint32_t for_normal_space_ = kPgFirstNormalObjectId;
+  uint32_t for_secondary_space_ = kPgFirstSecondarySpaceObjectId;
+
+  std::string ToString() const;
 };
 
 // SysCatalogTable is a YB table that keeps track of table and
@@ -312,9 +322,9 @@ class SysCatalogTable {
   Result<uint32_t> ReadPgYbTablegroupOid(const uint32_t database_oid,
                                          const std::string& grpname);
 
-  // Scan database database_oid's catalog tables to find the highest normal space OID that xCluster
-  // needs to preserve and return it.
-  Result<uint32_t> ReadHighestNormalPreservableOid(uint32_t database_oid);
+  // Scan database database_oid's catalog tables to find the highest normal and secondary space OIDs
+  // that xCluster needs to preserve and return them.
+  Result<MaxOidPerSpace> ReadHighestPreservableOids(uint32_t database_oid);
 
   // Copy the content of co-located tables in sys catalog as a batch.
   Status CopyPgsqlTables(const std::vector<TableId>& source_table_ids,

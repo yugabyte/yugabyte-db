@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.forms.ybc;
 
@@ -52,6 +52,10 @@ public class YbcGflags {
   Integer rw_num_threads;
   Integer per_upload_num_objects;
   Integer per_download_num_objects;
+  Long disk_io_request_size_bytes;
+  Long disk_read_bytes_per_sec;
+  Long disk_write_bytes_per_sec;
+
   Integer object_get_wait_ms;
   Integer max_retries;
   Integer max_timeout_secs;
@@ -219,6 +223,27 @@ public class YbcGflags {
                   "Number of objects in pool for each upload operation",
                   "0",
                   "int32")),
+          Map.entry(
+              "disk_io_request_size_bytes",
+              new YbcGflagsMetadata(
+                  "disk_io_request_size_bytes",
+                  "Disk IO request size in bytes",
+                  "1048576",
+                  "int64")),
+          Map.entry(
+              "disk_read_bytes_per_sec",
+              new YbcGflagsMetadata(
+                  "disk_read_bytes_per_sec",
+                  "Disk IO read bytes per second( used in backup )",
+                  "0",
+                  "int64")),
+          Map.entry(
+              "disk_write_bytes_per_sec",
+              new YbcGflagsMetadata(
+                  "disk_write_bytes_per_sec",
+                  "Disk IO write bytes per second( used in restore )",
+                  "0",
+                  "int64")),
           Map.entry(
               "rw_num_threads",
               new YbcGflagsMetadata(

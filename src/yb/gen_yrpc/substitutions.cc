@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -57,6 +57,16 @@ std::string GenerateCloseNamespace(const string &str) {
     out = Format("} // namespace $0\n", c) + out;
   }
   return out;
+}
+
+bool ShouldSendMetadata(const google::protobuf::MethodDescriptor* method) {
+  if (method->options().GetExtension(rpc::send_metadata)) {
+    return true;
+  }
+  if (method->options().GetExtension(rpc::exclude_metadata)) {
+    return false;
+  }
+  return method->service()->options().GetExtension(rpc::service_send_metadata);
 }
 
 } // namespace
@@ -154,6 +164,8 @@ Substitutions CreateSubstitutions(
   result.emplace_back(
       "response", RelativeClassPath(response_type,  method->service()->full_name()));
   result.emplace_back("metric_enum_key", Format("k$0", method->name()));
+
+  result.emplace_back("send_metadata", ShouldSendMetadata(method) ? "true" : "false");
 
   return result;
 }

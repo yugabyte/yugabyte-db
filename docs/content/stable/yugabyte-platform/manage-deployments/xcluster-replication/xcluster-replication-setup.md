@@ -141,7 +141,7 @@ A full copy is done by first backing up the data to external storage, and then r
 
 ### YSQL tables
 
-You can add databases containing colocated tables to the xCluster configuration as long as the underlying database is v2.18.1.0 or later. Colocated tables on the source and target should be created with the same colocation ID if they already exist on both the source and target prior to setup. Refer to [xCluster and colocation](../../../../explore/colocation/#xcluster-and-colocation).
+You can add databases containing colocated tables to the xCluster configuration as long as the underlying database is v2.18.1.0 or later. Colocated tables on the source and target should be created with the same colocation ID if they already exist on both the source and target prior to setup. Refer to [xCluster and colocation](../../../../additional-features/colocation/#xcluster-and-colocation).
 
 If a [full copy](#full-copy-during-xcluster-setup) is required, the entire database is recreated on the target universe from the current database on the source universe. Be sure to keep the set of tables the same at all times on both the source and target universes in these databases by following the steps in [Manage tables and indexes](../xcluster-replication-ddl/).
 
@@ -179,13 +179,13 @@ For more information, refer to [Metrics](../../../back-up-restore-universes/disa
 
 The replication details also provide all the tables in replication and their status on the **Tables** tab.
 
-![Replication](/images/yb-platform/xcluster/xcluster-tables.png)
+![Replication](/images/yb-platform/xcluster/xcluster-tables-2024.2.png)
 
 - To find out the replication lag for a specific table, click the graph icon corresponding to that table.
 
-- To delete a table from the replication, click **... > Remove Table**. This removes both the table and its index tables from replication. If you decide to remove an index table from the replication group, it does not remove its main table from the replication group.
-
 - Use the search bar to filter the view by table name, database, size, and more.
+
+For information on managing tables in replication, refer to [Manage tables and indexes](../xcluster-replication-ddl/).
 
 #### Status
 
@@ -214,8 +214,10 @@ The following statuses [trigger an alert](#set-up-replication-lag-alerts).
 | Warning | The table is in replication, but the replication lag is more than the [maximum acceptable lag](#set-up-replication-lag-alerts), or the lag is not being reported. |
 | Dropped From Source | The table was in replication, but dropped from the Source without first being [removed from replication](../xcluster-replication-ddl/#remove-a-table-from-replication). If you are using Manual mode, you need to remove it manually from the configuration. In Semi-automatic mode, you don't need to remove it manually. |
 | Dropped From Target | The table was in replication, but was dropped from the Target without first being [removed from replication](../xcluster-replication-ddl/#remove-a-table-from-replication). If you are using Manual mode, you need to remove it manually from the configuration. In Semi-automatic mode, you don't need to remove it manually. |
+| Dropped From Database | The table was in replication, but doesn't exist on either the DR primary or DR replica. If you are using Manual mode, you need to remove it manually from the configuration. |
 | Extra Table On Source | The table is newly created on the Source but is not in replication yet. |
 | Extra Table On Target | The table is newly created on the Target but it is not in replication yet. |
+| Table Info Missing | The system is unable to fetch table info from either the DR primary or the DR replica. |
 | Missing op ID | The replication is broken and cannot continue because the write-ahead-logs are garbage collected before they were replicated to the other universe and you will need to [restart replication](#restart-replication).|
 | Schema&nbsp;mismatch | The schema was updated on the table (on either of the universes) and replication is paused until the same schema change is made to the other universe. |
 | Missing table | For colocated tables, only the parent table is in the replication group; any child table that is part of the colocation will also be replicated. This status is displayed for a parent colocated table if a child table only exists on the Source. Create the same table on the Target. |
@@ -299,4 +301,4 @@ If you have bidirectional xCluster replication, then you should upgrade and fina
 
 ### Rotating CA certificates
 
-If you [rotate the CA certificate](../../../security/enable-encryption-in-transit/rotate-certificates/) on the source universe, you need to restart the replication so that the target nodes get the new root certificate for TLS verifications.
+On Kubernetes, if you [rotate the CA certificate](../../../security/enable-encryption-in-transit/rotate-certificates/) on the source universe, you need to restart the replication so that the target nodes get the new root certificate for TLS verifications.

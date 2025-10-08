@@ -1,4 +1,4 @@
-// Copyright (c) Yugabyte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
@@ -34,7 +34,7 @@ public class SetupYNP extends AbstractTaskBase {
   private final NodeUniverseManager nodeUniverseManager;
   private final NodeAgentManager nodeAgentManager;
   private final ShellProcessContext defaultShellContext =
-      ShellProcessContext.builder().logCmdOutput(true).build();
+      ShellProcessContext.builder().useSshConnectionOnly(true).logCmdOutput(true).build();
   private final RuntimeConfGetter confGetter;
 
   @Inject
@@ -107,7 +107,6 @@ public class SetupYNP extends AbstractTaskBase {
     Path ynpStagingDir = Paths.get(customTmpDirectory, "ynp");
     Path targetPackagePath = ynpStagingDir.resolve(Paths.get("release", "node-agent.tgz"));
     Path nodeAgentHomePath = Paths.get(taskParams().nodeAgentInstallDir, NodeAgent.NODE_AGENT_DIR);
-    Path packagePath = getNodeAgentPackagePath(universe, node, shellContext);
 
     // Clean up the previous stale data.
     Optional<NodeAgent> optional = NodeAgent.maybeGetByIp(node.cloudInfo.private_ip);
@@ -118,7 +117,7 @@ public class SetupYNP extends AbstractTaskBase {
       }
     }
     removeNodeAgentDirectory(node, universe, shellContext, nodeAgentHomePath.toString());
-
+    Path packagePath = getNodeAgentPackagePath(universe, node, shellContext);
     // Clean and create the staging path where the node agent release will be uploaded.
     StringBuilder sb = new StringBuilder();
     sb.append("rm -rf ").append(ynpStagingDir);
@@ -157,7 +156,7 @@ public class SetupYNP extends AbstractTaskBase {
         .append("--wildcards '*/thirdparty/*'");
 
     sb.append(" && tar --no-same-owner -zxf ").append(targetPackagePath);
-    sb.append(" --exclude='*/node-agent' --exclude='*/preflight_check.sh'");
+    sb.append(" --exclude='*/node-agent' --exclude='*/preflight_check.sh' --exclude='*/devops'");
     sb.append(" --strip-components=3 -C ").append(ynpStagingDir);
 
     // Move the node-agent source folder to the right location.

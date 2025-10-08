@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -12,8 +12,6 @@
 //
 
 #pragma once
-
-#include <boost/optional/optional.hpp>
 
 #include "yb/common/redis_protocol.pb.h"
 
@@ -140,7 +138,7 @@ class RedisReadOperation {
   // calling Apply(). Apply() and Execute() should be more similar() in definition.
   std::unique_ptr<IntentAwareIterator> iterator_;
 
-  boost::optional<DeadlineInfo> deadline_info_;
+  std::optional<DeadlineInfo> deadline_info_;
 };
 
 }  // namespace docdb

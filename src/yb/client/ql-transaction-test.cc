@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -946,7 +946,7 @@ TEST_F_EX(QLTransactionTest, IntentsCleanupAfterRestart, QLTransactionTestWithDi
     uint64_t bytes = 0;
     for (const auto& peer : peers) {
       uint64_t read_bytes = 0;
-      const auto tablet = peer->shared_tablet();
+      const auto tablet = peer->shared_tablet_maybe_null();
       if (tablet) {
         read_bytes = tablet->intentsdb_statistics()->getTickerCount(rocksdb::COMPACT_READ_BYTES);
       }
@@ -1455,10 +1455,11 @@ TEST_F_EX(QLTransactionTest, ChangeLeader, QLTransactionBigLogSegmentSizeTest) {
       auto peers = cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers();
       for (const auto& peer : peers) {
         auto consensus_result = peer->GetConsensus();
+        const auto tablet = peer->shared_tablet_maybe_null();
         if (consensus_result &&
             consensus_result.get()->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER &&
-            peer->tablet()->transaction_coordinator() &&
-            peer->tablet()->transaction_coordinator()->test_count_transactions()) {
+            tablet && tablet->transaction_coordinator() &&
+            tablet->transaction_coordinator()->test_count_transactions()) {
           consensus::LeaderStepDownRequestPB req;
           req.set_tablet_id(peer->tablet_id());
           consensus::LeaderStepDownResponsePB resp;
@@ -1608,10 +1609,10 @@ TEST_F_EX(QLTransactionTest, PickReadTimeAtServer, QLTransactionBigLogSegmentSiz
 
 // Test that we could init transaction after it was originally created.
 TEST_F(QLTransactionTest, DelayedInit) {
-  SetAtomicFlag(0ULL, &FLAGS_max_clock_skew_usec); // To avoid read restart in this test.
+  SetAtomicFlag(0ULL, &FLAGS_max_clock_skew_usec);  // To avoid read restart in this test.
 
-  auto txn1 = std::make_shared<YBTransaction>(transaction_manager_.get_ptr());
-  auto txn2 = std::make_shared<YBTransaction>(transaction_manager_.get_ptr());
+  auto txn1 = std::make_shared<YBTransaction>(&transaction_manager_.value());
+  auto txn2 = std::make_shared<YBTransaction>(&transaction_manager_.value());
 
   auto write_session = CreateSession();
   ASSERT_OK(WriteRow(write_session, 0, 0));
@@ -1678,7 +1679,11 @@ TEST_F_EX(QLTransactionTest, DeleteFlushedIntents, QLTransactionTestSingleTablet
     auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
     size_t total_sst_files = 0;
     for (auto& peer : peers) {
-      auto intents_db = peer->tablet()->intents_db();
+      auto tablet = peer->shared_tablet_maybe_null();
+      if (!tablet) {
+        continue;
+      }
+      auto intents_db = tablet->intents_db();
       if (!intents_db) {
         continue;
       }
@@ -1726,7 +1731,7 @@ TEST_F_EX(QLTransactionTest, GCLogsAfterTransactionalWritesStop, QLTransactionTe
     ASSERT_OK(cluster_->FlushTablets());
     auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
     for (const auto& peer : peers) {
-      auto* tablet = peer->tablet();
+      const auto tablet = peer->shared_tablet_maybe_null();
       if (!tablet) {
         continue;
       }
@@ -1867,9 +1872,9 @@ TEST_F_EX(
   HybridTime curr_min_start_ht_running_txns = HybridTime::kInvalid;
   auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
   for (const auto& peer : peers) {
-    if (peer->tablet_metadata()->table_id() == table_id) {
-      curr_min_start_ht_running_txns =
-          peer->shared_tablet()->GetMinStartHTRunningTxnsForCDCLogCallback();
+    auto tablet = peer->shared_tablet_maybe_null();
+    if (tablet && peer->tablet_metadata()->table_id() == table_id) {
+      curr_min_start_ht_running_txns = tablet->GetMinStartHTRunningTxnsForCDCLogCallback();
       ASSERT_NE(curr_min_start_ht_running_txns, HybridTime::kInvalid);
       break;
     }

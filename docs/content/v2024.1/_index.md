@@ -14,7 +14,7 @@ YugabyteDB is an open source PostgreSQL-compatible distributed database for clou
     title="Get started locally on your laptop"
     description="Download and install YugabyteDB on your laptop, create a cluster, and build a sample application."
     buttonText="Quick Start"
-    buttonUrl="/preview/tutorials/quick-start/"
+    buttonUrl="/preview/quick-start/"
     imageAlt="Locally Laptop" imageUrl="/images/homepage/locally-laptop.svg"
   >}}
 
@@ -34,14 +34,14 @@ YugabyteDB is an open source PostgreSQL-compatible distributed database for clou
     title="Build a Hello World application"
     description="Use your favorite programming language to build an application that connects to a YugabyteDB cluster."
     buttonText="Build"
-    buttonUrl="/preview/tutorials/build-apps/"
+    buttonUrl="/preview/develop/tutorials/build-apps/"
   >}}
 
   {{< sections/3-box-card
     title="Connect using drivers and ORMs"
     description="Connect applications to your database using familiar third-party divers and ORMs and YugabyteDB Smart Drivers."
     buttonText="Connect"
-    buttonUrl="/v2024.1/drivers-orms/"
+    buttonUrl="/preview/develop/drivers-orms/"
   >}}
 
   {{< sections/3-box-card

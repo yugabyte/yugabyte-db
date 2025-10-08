@@ -1,5 +1,5 @@
 /*
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  */
 
 package aws
@@ -109,16 +109,6 @@ var createAWSProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		sshUser, err := cmd.Flags().GetString("ssh-user")
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-
-		sshPort, err := cmd.Flags().GetInt("ssh-port")
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-
 		ntpServers, err := cmd.Flags().GetStringArray("ntp-servers")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -143,11 +133,17 @@ var createAWSProviderCmd = &cobra.Command{
 			sshFileContent = string(sshFileContentByte)
 		}
 
+		skipKeyValidateAndUpload, err := cmd.Flags().GetBool("skip-ssh-keypair-validation")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
 		allAccessKeys := make([]ybaclient.AccessKey, 0)
 		accessKey := ybaclient.AccessKey{
 			KeyInfo: ybaclient.KeyInfo{
-				KeyPairName:          util.GetStringPointer(keyPairName),
-				SshPrivateKeyContent: util.GetStringPointer(sshFileContent),
+				KeyPairName:              util.GetStringPointer(keyPairName),
+				SshPrivateKeyContent:     util.GetStringPointer(sshFileContent),
+				SkipKeyValidateAndUpload: util.GetBoolPointer(skipKeyValidateAndUpload),
 			},
 		}
 		allAccessKeys = append(allAccessKeys, accessKey)
@@ -184,8 +180,6 @@ var createAWSProviderCmd = &cobra.Command{
 			Regions:       awsRegions,
 			Details: &ybaclient.ProviderDetails{
 				AirGapInstall: util.GetBoolPointer(airgapInstall),
-				SshPort:       util.GetInt32Pointer(int32(sshPort)),
-				SshUser:       util.GetStringPointer(sshUser),
 				NtpServers:    util.StringSliceFromString(ntpServers),
 				CloudInfo: &ybaclient.CloudInfo{
 					Aws: &awsCloudInfo,
@@ -283,13 +277,6 @@ func init() {
 			"Example: --image-bundle-region-override image-bundle-name=<name>::"+
 			"region-name=<region-name>::machine-image=<machine-image>")
 
-	createAWSProviderCmd.Flags().String("ssh-user", "ec2-user",
-		"[Optional] SSH User to access the YugabyteDB nodes.")
-	createAWSProviderCmd.Flags().Int("ssh-port", 22,
-		"[Optional] SSH Port to access the YugabyteDB nodes.")
-	createAWSProviderCmd.Flags().MarkDeprecated("ssh-port", "Use --image-bundle instead.")
-	createAWSProviderCmd.Flags().MarkDeprecated("ssh-user", "Use --image-bundle instead.")
-
 	createAWSProviderCmd.Flags().String("custom-ssh-keypair-name", "",
 		"[Optional] Provide custom key pair name to access YugabyteDB nodes. "+
 			"If left empty, "+
@@ -300,6 +287,8 @@ func init() {
 				formatter.GreenColor)))
 	createAWSProviderCmd.MarkFlagsRequiredTogether("custom-ssh-keypair-name",
 		"custom-ssh-keypair-file-path")
+	createAWSProviderCmd.Flags().Bool("skip-ssh-keypair-validation", false,
+		"[Optional] Skip ssh keypair validation and upload to AWS. (default false)")
 
 	createAWSProviderCmd.Flags().Bool("airgap-install", false,
 		"[Optional] Are YugabyteDB nodes installed in an air-gapped environment,"+

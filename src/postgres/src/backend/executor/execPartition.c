@@ -1060,6 +1060,14 @@ ExecInitRoutingInfo(ModifyTableState *mtstate,
 	if (YbIsInsertOnConflictReadBatchingPossible(partRelInfo))
 		partRelInfo->ri_ybIocBatchingPossible = true;
 
+	/*
+	 * YB: similarly, also inherit index-only scan applicability for insert on
+	 * conflict read batching. Currently, index-only scans are only supported
+	 * for the DO NOTHING clause. When support is added for DO UPDATE, the
+	 * applicability will need to be determined on a per-partition basis.
+	 */
+	partRelInfo->ri_ybUseIndexOnlyScanForIocRead = rootRelInfo->ri_ybUseIndexOnlyScanForIocRead;
+
 	Assert(partRelInfo->ri_BatchSize >= 1);
 
 	partRelInfo->ri_CopyMultiInsertBuffer = NULL;

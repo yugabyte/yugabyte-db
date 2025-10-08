@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
@@ -100,13 +100,14 @@ public class FinalizeUpgradeTest extends UpgradeTaskTest {
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    assertEquals(7, subTasks.size());
+    assertEquals(8, subTasks.size());
     int position = 0;
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateConsistencyCheck);
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseState);
     assertTaskType(subTasksByPosition.get(position++), TaskType.PromoteAutoFlags);
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunYsqlUpgrade);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.EnablePitrConfig);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseState);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UniverseUpdateSucceeded);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
@@ -128,12 +129,13 @@ public class FinalizeUpgradeTest extends UpgradeTaskTest {
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    assertEquals(6, subTasks.size());
+    assertEquals(7, subTasks.size());
     int position = 0;
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateConsistencyCheck);
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseState);
     assertTaskType(subTasksByPosition.get(position++), TaskType.PromoteAutoFlags);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.EnablePitrConfig);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseState);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UniverseUpdateSucceeded);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
@@ -163,7 +165,7 @@ public class FinalizeUpgradeTest extends UpgradeTaskTest {
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    assertEquals(9, subTasks.size());
+    assertEquals(10, subTasks.size());
     int position = 0;
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateConsistencyCheck);
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
@@ -172,6 +174,7 @@ public class FinalizeUpgradeTest extends UpgradeTaskTest {
     assertTaskType(subTasksByPosition.get(position++), TaskType.PromoteAutoFlags);
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunYsqlUpgrade);
     assertTaskType(subTasksByPosition.get(position++), TaskType.ManageCatalogUpgradeSuperUser);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.EnablePitrConfig);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseState);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UniverseUpdateSucceeded);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);

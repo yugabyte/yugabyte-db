@@ -1,7 +1,7 @@
 /*
  * Created on Fri Feb 18 2022
  *
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License")
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
@@ -11,7 +11,7 @@ import React, { useState } from 'react';
 import moment from 'moment';
 import { useSelector } from 'react-redux';
 import { keyBy, mapValues, capitalize, lowerCase, find } from 'lodash';
-import { Backup_Options_Type, IBackup, IStorageConfig, IUniverse } from './IBackup';
+import { Backup_Options_Type, IBackup, CustomerConfig, IUniverse } from './IBackup';
 import { Backup_States } from '../common/IBackup';
 import { Alert } from 'react-bootstrap';
 import { TableType } from '../../../redesign/helpers/dtos';
@@ -22,6 +22,7 @@ import './BackupUtils.scss';
 export const BACKUP_REFETCH_INTERVAL = 20 * 1000;
 export const BACKUP_PITR_ENABLED = 'yb.ui.feature_flags.off_cluster_pitr_enabled';
 export const PATH_STYLE_ACCESS = 'yb.ui.feature_flags.enable_path_style_access';
+export const ENABLE_SIGNING_REGION = 'yb.ui.feature_flags.enable_signing_region';
 
 /**
  * Calculates the difference between two dates
@@ -166,7 +167,7 @@ export const RESTORE_IN_PROGRESS_MSG = (
     progress.
   </Alert>
 );
-export const convertBackupToFormValues = (backup: IBackup, storage_config: IStorageConfig) => {
+export const convertBackupToFormValues = (backup: IBackup, storage_config: CustomerConfig) => {
   const formValues = {
     use_cron_expression: false,
     cron_expression: '',
@@ -241,9 +242,16 @@ export const convertBackupToFormValues = (backup: IBackup, storage_config: IStor
 };
 
 export const isBackupPITREnabled = (runtimeConfigs: RunTimeConfig) => {
-  return find(runtimeConfigs?.configEntries, (config) => config.key === BACKUP_PITR_ENABLED)?.value === 'true';
+  return (
+    find(runtimeConfigs?.configEntries, (config) => config.key === BACKUP_PITR_ENABLED)?.value ===
+    'true'
+  );
 };
 
 export const isPathStyleAccess = (runtimeConfigs: RunTimeConfig) => {
   return find(runtimeConfigs?.configEntries, (config) => config.key === PATH_STYLE_ACCESS)?.value === 'true';
+};
+
+export const isSigningRegionEnabled = (runtimeConfigs: RunTimeConfig) => {
+  return find(runtimeConfigs?.configEntries, (config) => config.key === ENABLE_SIGNING_REGION)?.value === 'true';
 };

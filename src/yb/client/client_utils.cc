@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -18,6 +18,8 @@
 #include <string>
 #include <unordered_set>
 #include <vector>
+
+#include "yb/ash/rpc_wait_state.h"
 
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
@@ -69,6 +71,9 @@ Result<std::unique_ptr<rpc::Messenger>> CreateClientMessenger(
     rpc::ApplySecureContext(secure_context, &builder);
   }
   auto messenger = VERIFY_RESULT(builder.Build());
+  if (FLAGS_ysql_yb_enable_ash) {
+    messenger->SetMetadataSerializerFactory(std::make_unique<ash::MetadataSerializerFactory>());
+  }
   return messenger;
 }
 

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -461,7 +461,7 @@ TEST_F_EX(YBBackupTest,
 
   // Flush table because it is necessary for manual tablet split.
   auto table_id = ASSERT_RESULT(GetTableId(table_name, "pre-split"));
-  ASSERT_OK(client_->FlushTables({table_id}, false, 30, false));
+  ASSERT_OK(client_->FlushTables({table_id}));
 
   // Split it && Wait for split to complete.
   constexpr int num_tablets = 4;
@@ -739,7 +739,7 @@ TEST_F_EX(YBBackupTest,
 
   // Flush table so SST file size is accurate.
   auto table_id = ASSERT_RESULT(GetTableId(table_name, "pre-split"));
-  ASSERT_OK(client_->FlushTables({table_id}, false, 30, false));
+  ASSERT_OK(client_->FlushTables({table_id}));
 
   // Wait for automatic split to complete.
   ASSERT_OK(WaitFor(
@@ -801,7 +801,7 @@ TEST_F_EX(YBBackupTest,
 
   // Flush table
   auto table_id = ASSERT_RESULT(GetTableId(table_name, "pre-split"));
-  ASSERT_OK(client_->FlushTables({table_id}, false, 30, false));
+  ASSERT_OK(client_->FlushTables({table_id}));
 
   // Split at split depth 0
   // Choose the first tablet among tablets: "" --- "4a" and "4a" --- ""
@@ -893,7 +893,7 @@ TEST_F_EX(YBBackupTest,
 
   // Flush index
   auto index_id = ASSERT_RESULT(GetTableId(index_name, "pre-split"));
-  ASSERT_OK(client_->FlushTables({index_id}, false, 30, false));
+  ASSERT_OK(client_->FlushTables({index_id}));
 
   // Split the unique index into three tablets on its hidden column:
   // tablet-1 boundaries: [ "", (null, <ybctid-1>) )
@@ -1007,7 +1007,7 @@ TEST_F_EX(YBBackupTest,
 
   // Flush index
   auto index_id = ASSERT_RESULT(GetTableId(index_name, "pre-split"));
-  ASSERT_OK(client_->FlushTables({index_id}, false, 30, false));
+  ASSERT_OK(client_->FlushTables({index_id}));
 
   // Split the index into three tablets on its hidden column:
   // tablet-1 boundaries: [ "", (200, <ybctid-1>) )
@@ -1111,7 +1111,7 @@ TEST_F_EX(YBBackupTest,
 
   // Flush index
   auto index_id = ASSERT_RESULT(GetTableId(index_name, "pre-split"));
-  ASSERT_OK(client_->FlushTables({index_id}, false, 30, false));
+  ASSERT_OK(client_->FlushTables({index_id}));
 
   // Split the GIN index into two tablets and wait for its split to complete.
   // The splits make GinNull become part of its tablets' partition bounds:
@@ -2186,7 +2186,7 @@ TEST_F_EX(
 
   // Flush table because it is necessary for manual tablet split.
   auto table_id = ASSERT_RESULT(GetTableId(table_name, "pre-split"));
-  ASSERT_OK(client_->FlushTables({table_id}, false, 30, false));
+  ASSERT_OK(client_->FlushTables({table_id}));
 
   ASSERT_OK(test_admin_client_->SplitTabletAndWait(
       default_db_, table_name, /* wait_for_parent_deletion */ false, tablets[0].tablet_id()));
@@ -2246,7 +2246,7 @@ TEST_F_EX(
   // Wait for intents and flush table because it is necessary for manual tablet split.
   ASSERT_OK(cluster_->WaitForAllIntentsApplied(10s));
   auto table_id = ASSERT_RESULT(GetTableId(table_name, "pre-split"));
-  ASSERT_OK(client_->FlushTables({table_id}, false, 30, false));
+  ASSERT_OK(client_->FlushTables({table_id}));
   constexpr bool kWaitForParentDeletion = false;
   ASSERT_OK(test_admin_client_->SplitTabletAndWait(
       default_db_, table_name, /* wait_for_parent_deletion */ kWaitForParentDeletion,
@@ -2693,6 +2693,17 @@ INSTANTIATE_TEST_CASE_P(
 class YBDdlAtomicityBackupTest : public YBBackupTestBase, public pgwrapper::PgDdlAtomicityTestBase {
  public:
   Status RunDdlAtomicityTest(pgwrapper::DdlErrorInjection inject_error);
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    // Disable table locks to avoid issues during SuccessfulDdlAtomicityTest
+    // Test enables TEST_pause_ddl_rollback which may block table locks for ddl from
+    // being released. Hence blocking the following statements from failing to acquire locks.
+    AppendFlagToAllowedPreviewFlagsCsv(
+        options->extra_tserver_flags, "enable_object_locking_for_table_locks");
+    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
+    pgwrapper::PgDdlAtomicityTestBase::UpdateMiniClusterOptions(options);
+  }
+
 };
 
 Status YBDdlAtomicityBackupTest::RunDdlAtomicityTest(pgwrapper::DdlErrorInjection inject_error) {
@@ -3316,6 +3327,32 @@ TEST_F_EX(
   }
 }
 
+TEST_F_EX(
+    YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestOidsAdvancedAfterRestore),
+    YBBackupTestOneTablet) {
+  ASSERT_NO_FATALS(CreateTable(
+      Format("CREATE TABLE my_table (a INT, b INT)", "my_table")));
+
+  // Backup then restore to a new database.
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte_new", "restore"}));
+
+  // Ensure that the DROP below will only hide the table, not delete it.
+  ASSERT_OK(snapshot_util_->CreateSchedule(
+      nullptr, YQL_DATABASE_PGSQL, "yugabyte_new", client::WaitSnapshot::kTrue,
+      2s * kTimeMultiplier, 20h));
+
+  SetDbName("yugabyte_new");
+  ASSERT_NO_FATALS(RunPsqlCommand("DROP TABLE my_table", "DROP TABLE"));
+
+  // At this point, if we have not advanced the normal space OID counter, then we will be attempting
+  // to create a table with the same OID as the one we just dropped.  That would fail.
+  ASSERT_NO_FATALS(RunPsqlCommand("CREATE TABLE my_table (a INT, b INT)", "CREATE TABLE"));
+}
+
 TEST_F(
     YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestRenamedColumns)) {
   ASSERT_NO_FATALS(CreateTable("CREATE TABLE table_1 (a INT, b INT, c INT, d INT)"));
@@ -3473,12 +3510,11 @@ class YBBackupTestAutoAnalyze : public YBBackupTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     YBBackupTest::UpdateMiniClusterOptions(options);
-    options->extra_master_flags.push_back("--ysql_enable_auto_analyze_service=true");
-
-    options->extra_tserver_flags.push_back("--ysql_enable_auto_analyze_service=true");
-    options->extra_tserver_flags.push_back("--ysql_enable_table_mutation_counter=true");
+    options->extra_tserver_flags.push_back("--ysql_enable_auto_analyze=true");
     options->extra_tserver_flags.push_back("--ysql_node_level_mutation_reporting_interval_ms=10");
     options->extra_tserver_flags.push_back("--ysql_cluster_level_mutation_persist_interval_ms=10");
+    AppendCsvFlagValue(options->extra_tserver_flags, "allowed_preview_flags_csv",
+                       "ysql_enable_auto_analyze");
   }
 };
 

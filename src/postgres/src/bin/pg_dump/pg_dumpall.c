@@ -607,8 +607,8 @@ main(int argc, char *argv[])
 
 	if (!data_only)
 	{
-		bool yb_dump_profile = IsYugabyteEnabled && !roles_only &&
-							   !tablespaces_only && !yb_no_profiles;
+		bool		yb_dump_profile = IsYugabyteEnabled && !roles_only &&
+			!tablespaces_only && !yb_no_profiles;
 
 		/*
 		 * If asked to --clean, do that first.  We can avoid detailed
@@ -1491,7 +1491,7 @@ dumpUserConfig(PGconn *conn, const char *username)
 		resetPQExpBuffer(buf);
 		makeAlterConfigCommand(conn, PQgetvalue(res, i, 0),
 							   "ROLE", username, NULL, NULL,
-							   buf);
+							   yb_dump_role_checks, buf);
 		fprintf(OPF, "%s", buf->data);
 	}
 
@@ -2056,8 +2056,8 @@ dropYbProfiles(PGconn *conn)
 {
 	PQExpBuffer buf = createPQExpBuffer();
 	PGresult   *res;
-	int i_prfname;
-	int i;
+	int			i_prfname;
+	int			i;
 
 	/* Select all profiles from pg_yb_profile table */
 	appendPQExpBuffer(buf, "SELECT prfname FROM pg_yb_profile");
@@ -2096,16 +2096,16 @@ dumpYbProfiles(PGconn *conn)
 
 	/* Get all rows from pg_yb_profile */
 	res = executeQuery(conn, "SELECT prfname, prfmaxfailedloginattempts "
-							 "FROM pg_yb_profile ORDER BY prfname");
+					   "FROM pg_yb_profile ORDER BY prfname");
 
 	if (PQntuples(res) > 0)
 		fprintf(OPF, "--\n-- YB Profiles\n--\n\n");
 
 	for (i = 0; i < PQntuples(res); i++)
 	{
-		char *prfname = PQgetvalue(res, i, 0);
-		char *max_failed_logins = PQgetvalue(res, i, 1);
-		char *fprfname = pg_strdup(fmtId(prfname));
+		char	   *prfname = PQgetvalue(res, i, 0);
+		char	   *max_failed_logins = PQgetvalue(res, i, 1);
+		char	   *fprfname = pg_strdup(fmtId(prfname));
 
 		PQExpBuffer stmt = createPQExpBuffer();
 
@@ -2154,8 +2154,8 @@ dumpYbRoleProfiles(PGconn *conn)
 
 	for (i = 0; i < PQntuples(res); i++)
 	{
-		char *role_name = PQgetvalue(res, i, 0);
-		char *profile_name = PQgetvalue(res, i, 1);
+		char	   *role_name = PQgetvalue(res, i, 0);
+		char	   *profile_name = PQgetvalue(res, i, 1);
 		char		status = *PQgetvalue(res, i, 2);
 		int			failed_login_attempts = atoi(PQgetvalue(res, i, 3));
 		const char *locked_until = PQgetvalue(res, i, 4);
@@ -2180,15 +2180,28 @@ dumpYbRoleProfiles(PGconn *conn)
 		}
 
 		appendPQExpBuffer(stmt,
-			"\nWHERE rolprfrole = (SELECT oid FROM %s WHERE rolname = ", role_catalog);
+						  "\nWHERE rolprfrole = (SELECT oid FROM %s WHERE rolname = ", role_catalog);
 		appendStringLiteralConn(stmt, role_name, conn);
 		appendPQExpBuffer(stmt,
-			")\n  AND rolprfprofile = (SELECT oid FROM pg_yb_profile WHERE prfname = ");
+						  ")\n  AND rolprfprofile = (SELECT oid FROM pg_yb_profile WHERE prfname = ");
 		appendStringLiteralConn(stmt, profile_name, conn);
 		appendPQExpBuffer(stmt,
-			");\n");
+						  ");\n");
 
-		fprintf(OPF, "%s\n", stmt->data);
+		if (yb_dump_role_checks)
+		{
+			PQExpBuffer yb_source_sql = stmt;
+
+			stmt = createPQExpBuffer();
+			YBWwrapInRoleChecks(conn, yb_source_sql, "alter role",
+								role_name,	/* role1 */
+								NULL,	/* role2 */
+								NULL,	/* role3 */
+								stmt);
+			destroyPQExpBuffer(yb_source_sql);
+		}
+
+		fprintf(OPF, "%s%s", stmt->data, yb_dump_role_checks ? "" : "\n");
 		destroyPQExpBuffer(stmt);
 	}
 

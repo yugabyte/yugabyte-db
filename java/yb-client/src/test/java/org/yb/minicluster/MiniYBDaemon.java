@@ -1,5 +1,5 @@
 /**
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License.  You may obtain a copy of the License at
@@ -291,6 +291,7 @@ public class MiniYBDaemon {
   private final CountDownLatch shutdownLatch = new CountDownLatch(1);
   private final LogPrinter logPrinter;
   private final ExternalDaemonLogErrorListener logListener;
+  private boolean shutdownStarted = false;
 
   public HostAndPort getWebHostAndPort() {
     return HostAndPort.fromParts(bindIp, webPort);
@@ -321,17 +322,6 @@ public class MiniYBDaemon {
     return pgsqlWebPort;
   }
 
-  void waitForShutdown() {
-    try {
-      if (!shutdownLatch.await(10, TimeUnit.SECONDS)) {
-        LOG.warn("Timed out waiting for logging of process shutdown to finish: " + this);
-      }
-    } catch (InterruptedException ex) {
-      LOG.warn("Interrupted when waiting for logging of process shutdown to finish: " + this);
-      Thread.currentThread().interrupt();
-    }
-  }
-
   public void waitForServerStartLogMessage(long deadlineMs) throws InterruptedException {
     logListener.waitForServerStartingLogLine(deadlineMs);
     LOG.info("Saw an 'RPC server started' message from " + this);
@@ -346,10 +336,6 @@ public class MiniYBDaemon {
         throw ex;
       }
     }
-    try {
-      process.getInputStream().close();
-    } catch (IOException ex) {
-    }
 
     // Manually cleanup left behind YB Controller subprocesses if any.
     if (this.type == MiniYBDaemonType.YBCONTROLLER) {
@@ -362,6 +348,72 @@ public class MiniYBDaemon {
         // OK to fail. It means there are no subprocesses left behind.
         LOG.info("No Yb controller subprocesses left behind to kill! " + e.getMessage());
       }
+    }
+  }
+
+  public void startShutdown() throws Exception {
+    try {
+      ProcessUtil.signalProcess(process, "TERM");
+    } catch (IllegalStateException ex) {
+      // Failed to send signal, if process is not alive - it is OK, otherwise rethrow the exception.
+      if (process.isAlive()) {
+        throw ex;
+      }
+    }
+    shutdownStarted = true;
+  }
+
+  // Returns whether the shutdown was graceful.
+  public boolean completeShutdown(long deadlineNs, long killWaitTimeNs) throws Exception {
+    if (!shutdownStarted) {
+      throw new IllegalStateException("Must call startShutdown first");
+    }
+    boolean gracefulTermination = true;
+    if (process.isAlive()) {
+      long currentNs = System.nanoTime();
+      if (deadlineNs > currentNs) {
+        gracefulTermination = process.waitFor(deadlineNs - currentNs, TimeUnit.NANOSECONDS);
+      } else {
+        gracefulTermination = false;
+      }
+      if (!gracefulTermination) {
+        LOG.warn("{} failed to terminate within the deadline", this);
+      }
+      killProcessIfNecessary(killWaitTimeNs);
+    }
+    cleanupResourcesPostShutdown();
+    return gracefulTermination;
+  }
+
+  public void kill(long killWaitTimeNs) throws Exception {
+    killProcessIfNecessary(killWaitTimeNs);
+    cleanupResourcesPostShutdown();
+  }
+
+  private void killProcessIfNecessary(long killWaitTimeNs) throws Exception {
+    if (process.isAlive()) {
+      process.destroyForcibly();
+      if (!process.waitFor(killWaitTimeNs, TimeUnit.NANOSECONDS)) {
+        LOG.warn("Failed to kill {} within {} ms",
+                 this,
+                 TimeUnit.NANOSECONDS.toMillis(killWaitTimeNs));
+      }
+    }
+  }
+
+  private void cleanupResourcesPostShutdown() throws Exception {
+    try {
+      if (!shutdownLatch.await(10, TimeUnit.SECONDS)) {
+        LOG.warn("Timed out waiting for logging of process shutdown to finish for {}", this);
+      }
+    } catch (InterruptedException ex) {
+      LOG.warn("Interrupted when waiting for logging of process shutdown to finish {}", this);
+      Thread.currentThread().interrupt();
+    }
+    try {
+      process.getInputStream().close();
+    } catch (IOException ex) {
+      LOG.warn("Exception when trying to close process stdin for process {}", this, ex);
     }
   }
 

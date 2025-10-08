@@ -12,12 +12,12 @@ menu:
 type: indexpage
 ---
 
-YugabyteDB and YugabyteDB client shell installations include sample datasets you can use to test out YugabyteDB. These are located in the `share` directory of your installation. The datasets are also available in the [sample directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample). The datasets are provided in the form of SQL script files. All of the datasets are PostgreSQL-compatible, and you can explore them using the [ysqlsh shell](../admin/ysqlsh/) to compare between PostgreSQL and the YugabyteDB [YSQL API](../api/ysql/).
+YugabyteDB and YugabyteDB client shell installations include sample datasets you can use to test out YugabyteDB. These are located in the `share` directory of your installation. The datasets are also available in the [sample directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample). The datasets are provided in the form of SQL script files. All of the datasets are PostgreSQL-compatible, and you can explore them using the [ysqlsh shell](../api/ysqlsh/) to compare between PostgreSQL and the YugabyteDB [YSQL API](../api/ysql/).
 
 You can install and use the sample datasets using either a local installation of YugabyteDB, or by connecting to a cluster in YugabyteDB Aeon (including your free cluster).
 
 Local install
-: The ysqlsh shell is included with the YugabyteDB installation. For information on installing YugabyteDB, refer to [Quick start](/preview/tutorials/quick-start/macos/).
+: The ysqlsh shell is included with the YugabyteDB installation. For information on installing YugabyteDB, refer to [Quick start](/preview/quick-start/macos/).
 
 YugabyteDB Aeon
 : For information on connecting to your YugabyteDB Aeon cluster using `ysqlsh` in cloud shell, refer to [Connect using cloud shell](/preview/yugabyte-cloud/cloud-connect/connect-cloud-shell/).

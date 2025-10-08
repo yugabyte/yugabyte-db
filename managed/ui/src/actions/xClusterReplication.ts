@@ -104,7 +104,8 @@ export function isBootstrapRequired<TIncludeDetails extends boolean>(
   targetUniverseUuid: string | null,
   tableUuids: string[],
   configType: XClusterConfigType,
-  includeDetails: TIncludeDetails
+  includeDetails: TIncludeDetails,
+  isUsedForDr: boolean
 ) {
   const customerId = localStorage.getItem('customerId');
   return axios
@@ -116,7 +117,8 @@ export function isBootstrapRequired<TIncludeDetails extends boolean>(
       `${ROOT_URL}/customers/${customerId}/universes/${sourceUniverseUuid}/need_bootstrap`,
       {
         tables: tableUuids,
-        targetUniverseUUID: targetUniverseUuid
+        targetUniverseUUID: targetUniverseUuid,
+        isDrConfig: isUsedForDr
       },
       { params: { configType, includeDetails } }
     )

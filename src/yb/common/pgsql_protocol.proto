@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -318,6 +318,9 @@ message PgsqlWriteRequestPB {
 
   // What metric changes to return in response.
   optional PgsqlMetricsCaptureType metrics_capture = 28;
+
+  // Table space oid of the table specified by table_id.
+  optional uint32 tablespace_oid = 29;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -371,6 +374,10 @@ message PgsqlPagingStatePB {
   // Value of the next geometric index row that can be used as a key into the
   // main RocksDB store.
   optional bytes main_key = 8;
+
+  // To hint PgGate about upcoming tablet switch
+  // may be expected in cross tablet scan, or may indicate tablet split
+  optional bytes next_tablet_bound = 9;
 }
 
 // Given: master --chunk--> tserver --batch--> postgres --page--> tserver
@@ -586,6 +593,9 @@ message PgsqlReadRequestPB {
   optional GetTabletKeyRangesEmbeddedRequestPB get_tablet_key_ranges_request = 41;
 
   optional PgVectorReadOptionsPB vector_idx_options = 42;
+
+  // Table space oid of the table specified by table_id.
+  optional uint32 tablespace_oid = 45;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -671,6 +681,8 @@ message PgsqlResponsePB {
   repeated uint64 vector_index_distances = 19;
   // The offset of end of encoded row for particular vector.
   repeated uint64 vector_index_ends = 20;
+  // Whether this replica could have more vectors, used for paging.
+  optional bool vector_index_could_have_more_data = 21;
 
   // Number of rows affected by the operation. Currently only used for update and delete.
   optional int32 rows_affected_count = 7;

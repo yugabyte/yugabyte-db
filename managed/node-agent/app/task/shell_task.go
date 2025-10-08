@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package task
 
@@ -97,6 +97,7 @@ func (s *ShellTask) Process(ctx context.Context) (*TaskStatus, error) {
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			taskStatus.ExitStatus.Code = exitErr.ExitCode()
 		}
+		err = util.NewStatusError(taskStatus.ExitStatus.Code, err)
 		if util.FileLogger().IsDebugEnabled() && s.cmdInfo.StdOut.Len() > 0 {
 			util.FileLogger().
 				Debugf(ctx, "Output for failed command %s - %s", s.cmdInfo.Desc, s.cmdInfo.StdOut.String())

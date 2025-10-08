@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -38,7 +38,6 @@
 #include <unordered_set>
 #include <vector>
 
-#include <boost/optional/optional_fwd.hpp>
 #include <gtest/gtest_prod.h>
 
 #include "yb/client/client_fwd.h"
@@ -135,18 +134,22 @@ YB_STRONGLY_TYPED_BOOL(ShouldWait);
 
 struct AdminCompactionOptions {
   ShouldWait should_wait;
-  rocksdb::SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe =
-      rocksdb::SkipCorruptDataBlocksUnsafe::kFalse;
+  rocksdb::SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe;
   TableIdsPtr vector_index_ids;
+  tablet::VectorIndexOnly vector_index_only;
 
   AdminCompactionOptions() = delete;
 
   AdminCompactionOptions(
       ShouldWait should_wait_,
       rocksdb::SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe_ =
-          rocksdb::SkipCorruptDataBlocksUnsafe::kFalse)
+          rocksdb::SkipCorruptDataBlocksUnsafe::kFalse,
+      TableIdsPtr vector_index_ids_ = {},
+      tablet::VectorIndexOnly vector_index_only_ = tablet::VectorIndexOnly::kTrue)
       : should_wait(should_wait_),
-        skip_corrupt_data_blocks_unsafe(skip_corrupt_data_blocks_unsafe_) {}
+        skip_corrupt_data_blocks_unsafe(skip_corrupt_data_blocks_unsafe_),
+        vector_index_ids(std::move(vector_index_ids_)),
+        vector_index_only(vector_index_only_) {}
 };
 
 // Keeps track of the tablets hosted on the tablet server side.
@@ -222,7 +225,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   Status ApplyTabletSplit(
       tablet::SplitOperation* operation, log::Log* raft_log,
-      boost::optional<consensus::RaftConfigPB> committed_raft_config) override;
+      std::optional<consensus::RaftConfigPB> committed_raft_config) override;
 
   Status ApplyCloneTablet(
       tablet::CloneOperation* operation, log::Log* raft_log,
@@ -239,15 +242,17 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // If `hide_only` is true, then just hide tablet instead of deleting it.
   // If `keep_data` is true, then on disk data is not deleted.
   Status DeleteTablet(
-      const TabletId& tablet_id,
-      tablet::TabletDataState delete_type,
+      const TabletId& tablet_id, tablet::TabletDataState delete_type,
       tablet::ShouldAbortActiveTransactions should_abort_active_txns,
-      const boost::optional<int64_t>& cas_config_opid_index_less_or_equal,
-      bool hide_only,
-      bool keep_data,
-      boost::optional<TabletServerErrorPB::Code>* error_code);
+      const std::optional<int64_t>& cas_config_opid_index_less_or_equal, bool hide_only,
+      bool keep_data, std::optional<TabletServerErrorPB::Code>* error_code);
 
-  // Lookup the given tablet peer by its ID. Returns nullptr if the tablet is not found.
+  // Lookup the given tablet peer by its ID. Returns nullptr if the tablet peer is not found.
+  //
+  // WARNING: Just because a tablet peer is found does not mean that the associated tablet has not
+  //          already been deleted. Be prepared for the associated tablet (e.g., from
+  //          TabletPeer::shared_tablet()) to not exist. The common scenario when this happens is
+  //          when a tablet replica has been moved off of a node after that node (re-)started.
   tablet::TabletPeerPtr LookupTablet(const TabletId& tablet_id) const;
   tablet::TabletPeerPtr LookupTablet(const Slice& tablet_id) const;
 
@@ -458,7 +463,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   typedef std::unordered_map<std::string, TabletReportState> DirtyMap;
 
   // Returns Status::OK() iff state_ == MANAGER_RUNNING.
-  Status CheckRunningUnlocked(boost::optional<TabletServerErrorPB::Code>* error_code) const
+  Status CheckRunningUnlocked(std::optional<TabletServerErrorPB::Code>* error_code) const
       REQUIRES_SHARED(mutex_);
 
   // Registers the start of a tablet state transition by inserting the tablet

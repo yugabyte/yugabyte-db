@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -16,8 +16,6 @@
 #include <condition_variable>
 #include <shared_mutex>
 
-#include <boost/optional.hpp>
-
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/roles_permissions.h"
 
@@ -27,6 +25,7 @@
 
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
+#include "yb/util/one_time_bool.h"
 
 #include "yb/yql/cql/ql/ptree/pt_option.h"
 
@@ -102,7 +101,7 @@ class PermissionsCache {
   // false if the cache is not ready after waiting for the specified time. Returns true otherwise.
   bool WaitUntilReady(MonoDelta wait_for);
 
-  boost::optional<uint64_t> version() {
+  std::optional<uint64_t> version() {
     std::unique_lock<simple_spinlock> l(permissions_cache_lock_);
     return version_;
   }
@@ -114,6 +113,7 @@ class PermissionsCache {
 
   Result<std::string> salted_hash(const RoleName& role_name);
   Result<bool> can_login(const RoleName& role_name);
+  void Shutdown();
 
  private:
   void ScheduleGetPermissionsFromMaster(bool now);
@@ -122,7 +122,7 @@ class PermissionsCache {
 
   // Passed to the master whenever we want to update our cache. The master will only send a new
   // cache if its version number is greater than this version number.
-  boost::optional<uint64_t> version_;
+  std::optional<uint64_t> version_;
 
   // Client used to send the request to the master.
   client::YBClient* const client_;
@@ -144,7 +144,8 @@ class PermissionsCache {
   std::unique_ptr<yb::rpc::Scheduler> scheduler_;
 
   // Whether we have received the permissions from the master.
-  std::atomic<bool> ready_{false};
+  std::atomic_bool ready_{false};
+  OneTimeBool shutting_down_;
 };
 
 } // namespace namespace internal

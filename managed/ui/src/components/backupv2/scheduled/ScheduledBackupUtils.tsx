@@ -1,7 +1,7 @@
 /*
  * Created on Mon Apr 04 2022
  *
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License")
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
@@ -11,7 +11,7 @@ import { capitalize, lowerCase } from 'lodash';
 import moment from 'moment';
 import pluralize from 'pluralize';
 import { isDefinedNotNull } from '../../../utils/ObjectUtils';
-import { Backup_Options_Type, IStorageConfig } from '../common/IBackup';
+import { Backup_Options_Type, CustomerConfig } from '../common/IBackup';
 import { TableType } from '../../../redesign/helpers/dtos';
 import { IBackupSchedule } from '../common/IBackupSchedule';
 
@@ -57,7 +57,7 @@ export const convertMsecToTimeFrame = (msec: number, dType: string, prefix = '')
 
 export const convertScheduleToFormValues = (
   schedule: IBackupSchedule,
-  storage_configs: IStorageConfig[]
+  storage_configs: CustomerConfig[]
 ) => {
   const formValues = {
     scheduleName: schedule.scheduleName,

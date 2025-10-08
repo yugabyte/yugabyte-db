@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License.  You may obtain a copy
@@ -47,6 +47,17 @@ extern bool yb_non_ddl_txn_for_sys_tables_allowed;
  * Toggles whether to force use of global transaction status table.
  */
 extern bool yb_force_global_transaction;
+
+/*
+ * Toggles whether to force use of tablespace-local locality instead of region locality.
+ */
+extern bool yb_force_tablespace_locality;
+
+/*
+ * Specify oid for tablespace to use for tablespace-local locality. Automatic selection is used
+ * if 0 (default value).
+ */
+extern uint32_t yb_force_tablespace_locality_oid;
 
 /*
  * Guc that toggles whether strict inequalities are pushed down.
@@ -271,6 +282,8 @@ extern bool yb_upgrade_to_pg15_completed;
 
 extern bool yb_debug_log_catcache_events;
 
+extern bool yb_debug_log_snapshot_mgmt;
+
 extern bool yb_extension_upgrade;
 
 extern bool yb_mixed_mode_expression_pushdown;
@@ -283,6 +296,10 @@ extern bool yb_ddl_transaction_block_enabled;
 
 extern bool yb_disable_ddl_transaction_block_for_read_committed;
 
+extern bool yb_allow_dockey_bounds;
+
+extern bool yb_ignore_read_time_in_walsender;
+
 // Should be in sync with YsqlSamplingAlgorithm protobuf.
 typedef enum {
   YB_SAMPLING_ALGORITHM_FULL_TABLE_SCAN = 0,
@@ -290,6 +307,10 @@ typedef enum {
 } YbcSamplingAlgorithmEnum;
 
 extern int32_t yb_sampling_algorithm;
+
+extern int yb_fk_references_cache_limit;
+
+extern bool yb_xcluster_target_ddl_bypass;
 
 #ifdef __cplusplus
 } // extern "C"

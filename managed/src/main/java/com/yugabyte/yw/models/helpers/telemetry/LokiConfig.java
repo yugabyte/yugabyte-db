@@ -5,6 +5,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
@@ -109,7 +110,7 @@ public class LokiConfig extends TelemetryProviderConfig {
   }
 
   @Override
-  public void validate() {
+  public void validate(ApiHelper apiHelper) {
 
     if (endpoint == null || endpoint.isEmpty()) {
       throw new PlatformServiceException(BAD_REQUEST, "Loki endpoint is required.");

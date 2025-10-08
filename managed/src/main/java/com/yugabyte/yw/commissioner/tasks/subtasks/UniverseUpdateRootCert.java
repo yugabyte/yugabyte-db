@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
@@ -84,7 +84,10 @@ public class UniverseUpdateRootCert extends UniverseTaskBase {
               temporaryCert =
                   CertificateInfo.createCopy(
                       oldRootCert,
-                      oldRootCert.getLabel()
+                      String.join(
+                              "-",
+                              universeDetails.getUniverseUUID().toString(),
+                              oldRootCert.getLabel())
                           + EncryptionInTransitUtil.MULTI_ROOT_CERT_TMP_LABEL_SUFFIX,
                       multiCertFile.getAbsolutePath());
             }

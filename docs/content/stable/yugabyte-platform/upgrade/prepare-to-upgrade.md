@@ -13,6 +13,8 @@ type: docs
 
 For information on which versions of YugabyteDB are compatible with your version of YugabyteDB Anywhere, see [YugabyteDB Anywhere releases](/preview/releases/yba-releases/).
 
+For information on upgrading universes, refer to [Upgrade the YugabyteDB software](../../manage-deployments/upgrade-software/).
+
 ## High availability
 
 If you are upgrading a YugabyteDB Anywhere installation with high availability enabled, follow the instructions provided in [Upgrade instances](../../administer-yugabyte-platform/high-availability/#upgrade-instances).
@@ -21,9 +23,11 @@ If you are upgrading a YugabyteDB Anywhere installation with high availability e
 
 If you are running YugabyteDB Anywhere on a [deprecated OS](../../../reference/configuration/operating-systems/), you need to update your OS before you can upgrade YugabyteDB Anywhere to the next major release.
 
-## Python
+## Python for YugabyteDB Anywhere
 
-YugabyteDB Anywhere v25.1 and later requires Python v3.10-3.12. If you are running YugabyteDB Anywhere on a system with Python earlier than 3.10, you will need to update Python on your system before you can upgrade YugabyteDB Anywhere to v25.1 or later.
+YugabyteDB Anywhere v2025.1 and later requires Python v3.10-3.11. If you are running YugabyteDB Anywhere on a system with Python earlier than 3.10, you will need to update Python on your system before you can upgrade YugabyteDB Anywhere to v25.1 or later. (Note that this requirement applies only to the node running YugabyteDB Anywhere.)
+
+In addition, both python and python3 must symbolically link to Python 3. Refer to [Prerequisites to deploy YBA on a VM](../../prepare/server-yba/).
 
 ## cron-based universes
 
@@ -58,7 +62,23 @@ What action you take will depend on the type of provider used to create a univer
 
 YugabyteDB Anywhere v2025.2 (LTS release planned for end of 2025) and later require universes have node agent running on their nodes. Before you will be able to upgrade to v2025.2 or later, all your universes must be using node agent.
 
-To upgrade a universe to node agent, first make sure the universe is not cron-based and if necessary [update the universe to systemd](#cron-based-universes). Then navigate to the universe and click **Actions>Install Node Agent**. If installation fails on a node, make sure the node satisfies the [prerequisites](../../prepare/server-nodes-software/) and re-try the install.
+If any universe nodes require an update to node agent, YugabyteDB Anywhere displays a banner on the **Dashboard** to that effect.
+
+You can manually update a universe to node agent by navigating to the universe and clicking **Actions>More>Install Node Agent**.
+
+If you want YugabyteDB Anywhere to automatically update universes requiring node agent, on the banner, click **Automatically Install Node Agents**. YugabyteDB Anywhere will then attempt to update universe nodes to use node agent in the background. If it is unable to update a universe, click **View Node Agents** on the banner to display the **Node Agents** list, where you can identify problem nodes. Make sure the universe nodes satisfy the [prerequisites](../../prepare/server-nodes-software/) and re-try the install by clicking **Actions>Reinstall Node Agent** for the node in the **Node Agents** list.
+
+<details> <summary>Additional settings</summary>
+
+You can configure automatic node agent installation using the following [Runtime Configuration options](../../administer-yugabyte-platform/manage-runtime-config/).
+
+- `yb.node_agent.enabler.run_installer`: Turn automatic node agent installation on or off. Global parameter.
+- `yb.node_agent.enabler.reinstall_cooldown`: If installation fails on a node, YugabyteDB Anywhere tries again after this period expires (default is 24 hours).
+- `yb.node_agent.client.enabled`: Set to false for a provider to prevent automatic installation. Provider parameter.
+
+Note that only a Super Admin user can modify Global configuration settings.
+
+</details>
 
 ## xCluster
 

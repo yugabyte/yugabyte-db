@@ -4,7 +4,7 @@
  *	  definition of the "profile" system catalog (pg_yb_profile)
  *
  *
- * Copyright (c) Yugabyte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  *
  * src/include/catalog/pg_yb_profile.h
  *

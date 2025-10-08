@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -111,7 +111,9 @@ Result<YBTransactionPtr> QLEnv::NewTransaction(const YBTransactionPtr& transacti
     }
   }
   auto result = transaction_pool_->Take(
-      client::ForceGlobalTransaction(!FLAGS_ycql_use_local_transaction_tables), deadline);
+      FLAGS_ycql_use_local_transaction_tables
+          ? TransactionFullLocality::RegionLocal() : TransactionFullLocality::Global(),
+      deadline);
   RETURN_NOT_OK(result->Init(isolation_level));
   return result;
 }
@@ -248,10 +250,9 @@ Status QLEnv::CreateRole(const std::string& role_name,
   return client_->CreateRole(role_name, salted_hash, login, superuser, CurrentRoleName());
 }
 
-Status QLEnv::AlterRole(const std::string& role_name,
-                        const boost::optional<std::string>& salted_hash,
-                        const boost::optional<bool> login,
-                        const boost::optional<bool> superuser) {
+Status QLEnv::AlterRole(
+    const std::string& role_name, const std::optional<std::string>& salted_hash,
+    const std::optional<bool> login, const std::optional<bool> superuser) {
   return client_->AlterRole(role_name, salted_hash, login, superuser, CurrentRoleName());
 }
 

@@ -73,7 +73,7 @@ class MultiStageAlterTable {
   // change is made.
   static Status ClearFullyAppliedAndUpdateState(
       CatalogManager* mgr, const scoped_refptr<TableInfo>& table,
-      boost::optional<uint32_t> expected_version, bool update_state_to_running,
+      std::optional<uint32_t> expected_version, bool update_state_to_running,
       const LeaderEpoch& epoch);
 
   // Copies the current schema, schema_version, indexes and index_info
@@ -87,18 +87,15 @@ class MultiStageAlterTable {
   // Returns whether any permissions were actually updated (leading to a version being incremented).
   static Result<bool> UpdateIndexPermission(
       CatalogManager* mgr, const scoped_refptr<TableInfo>& indexed_table,
-      const std::unordered_map<TableId, IndexPermissions>& perm_mapping,
-      const LeaderEpoch& epoch,
-      boost::optional<uint32_t> current_version = boost::none);
+      const std::unordered_map<TableId, IndexPermissions>& perm_mapping, const LeaderEpoch& epoch,
+      std::optional<uint32_t> current_version = std::nullopt);
 
  private:
   // Start Index Backfill process/step for the specified table/index.
-  static Status
-  StartBackfillingData(CatalogManager *catalog_manager,
-                       const scoped_refptr<TableInfo> &indexed_table,
-                       const std::vector<IndexInfoPB>& idx_infos,
-                       boost::optional<uint32_t> expected_version,
-                       const LeaderEpoch& epoch);
+  static Status StartBackfillingData(
+      CatalogManager* catalog_manager, const scoped_refptr<TableInfo>& indexed_table,
+      const std::vector<IndexInfoPB>& idx_infos, std::optional<uint32_t> expected_version,
+      const LeaderEpoch& epoch);
 };
 
 class BackfillTablet;
@@ -265,10 +262,8 @@ class BackfillTablet : public std::enable_shared_from_this<BackfillTablet> {
 
   Status LaunchNextChunkOrDone();
   Status Done(
-      const Status& status,
-      const boost::optional<std::string>& backfilled_until,
-      const uint64_t number_rows_processed,
-      const std::unordered_set<TableId>& failed_indexes);
+      const Status& status, const std::optional<std::string>& backfilled_until,
+      const uint64_t number_rows_processed, const std::unordered_set<TableId>& failed_indexes);
 
   Master* master() { return backfill_table_->master(); }
 

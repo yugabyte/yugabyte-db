@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -25,14 +25,15 @@
 #include <unordered_map>
 #include <vector>
 
-#include <boost/optional.hpp>
 #include <boost/preprocessor/cat.hpp>
+
 #include "yb/tserver/tserver_admin.proxy.h"
-#include "yb/util/logging.h"
 
 #include "yb/common/wire_protocol.h"
 
 #include "yb/docdb/doc_rowwise_iterator.h"
+
+#include "yb/dockv/reader_projection.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/ref_counted.h"
@@ -52,6 +53,7 @@
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 
+#include "yb/util/logging.h"
 #include "yb/util/status_log.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/trace.h"
@@ -143,8 +145,7 @@ Result<bool> GetPgIndexStatus(
   const auto pg_index_id =
       GetPgsqlTableId(VERIFY_RESULT(GetPgsqlDatabaseOid(idx_id)), kPgIndexTableOid);
 
-  const auto catalog_tablet =
-      VERIFY_RESULT(catalog_manager->tablet_peer()->shared_tablet_safe());
+  const auto catalog_tablet = VERIFY_RESULT(catalog_manager->tablet_peer()->shared_tablet());
   const Schema& pg_index_schema =
       VERIFY_RESULT(catalog_tablet->metadata()->GetTableInfo(pg_index_id))->schema();
 
@@ -226,10 +227,8 @@ void MultiStageAlterTable::CopySchemaDetailsToFullyApplied(SysTablesEntryPB* pb)
 }
 
 Status MultiStageAlterTable::ClearFullyAppliedAndUpdateState(
-    CatalogManager* catalog_manager,
-    const scoped_refptr<TableInfo>& table,
-    boost::optional<uint32_t> expected_version,
-    bool update_state_to_running,
+    CatalogManager* catalog_manager, const scoped_refptr<TableInfo>& table,
+    std::optional<uint32_t> expected_version, bool update_state_to_running,
     const LeaderEpoch& epoch) {
   if (PREDICT_FALSE(FLAGS_TEST_delay_clearing_fully_applied_ms > 0)) {
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_delay_clearing_fully_applied_ms));
@@ -265,11 +264,9 @@ Status MultiStageAlterTable::ClearFullyAppliedAndUpdateState(
 }
 
 Result<bool> MultiStageAlterTable::UpdateIndexPermission(
-    CatalogManager* catalog_manager,
-    const scoped_refptr<TableInfo>& indexed_table,
-    const std::unordered_map<TableId, IndexPermissions>& perm_mapping,
-    const LeaderEpoch& epoch,
-    boost::optional<uint32_t> current_version) {
+    CatalogManager* catalog_manager, const scoped_refptr<TableInfo>& indexed_table,
+    const std::unordered_map<TableId, IndexPermissions>& perm_mapping, const LeaderEpoch& epoch,
+    std::optional<uint32_t> current_version) {
   TRACE(__func__);
   DVLOG(3) << __PRETTY_FUNCTION__ << " " << yb::ToString(*indexed_table);
   if (FLAGS_TEST_slowdown_backfill_alter_table_rpcs_ms > 0) {
@@ -366,7 +363,7 @@ Status MultiStageAlterTable::StartBackfillingData(
     CatalogManager* catalog_manager,
     const scoped_refptr<TableInfo>& indexed_table,
     const std::vector<IndexInfoPB>& idx_infos,
-    boost::optional<uint32_t> current_version, const LeaderEpoch& epoch) {
+    std::optional<uint32_t> current_version, const LeaderEpoch& epoch) {
   // We leave the table state as ALTERING so that a master failover can resume the backfill.
   RETURN_NOT_OK(ClearFullyAppliedAndUpdateState(
       catalog_manager, indexed_table, current_version, /* change_state to RUNNING */ false, epoch));
@@ -431,11 +428,10 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
     CatalogManager* catalog_manager, const scoped_refptr<TableInfo>& indexed_table,
     uint32_t current_version, const LeaderEpoch& epoch, bool respect_backfill_deferrals,
     bool update_ysql_to_backfill) {
-  DVLOG(3) << __PRETTY_FUNCTION__ << " "
-           << yb::Format(
-                  "$0, version: $1, respect_deferrals: $2, update_ysql_to_backfill: $3",
-                  yb::ToString(*indexed_table), current_version, respect_backfill_deferrals,
-                  update_ysql_to_backfill);
+  DVLOG_WITH_FUNC(3)
+      << Format("$0, version: $1, respect_deferrals: $2, update_ysql_to_backfill: $3",
+                *indexed_table, current_version, respect_backfill_deferrals,
+                update_ysql_to_backfill);
 
   const bool is_ysql_table = (indexed_table->GetTableType() == TableType::PGSQL_TABLE_TYPE);
   // For YSQL, master won't automatically move the index permission to DO_BACKFILL unless
@@ -1121,7 +1117,8 @@ Status BackfillTable::UpdateIndexPermissionsForIndexes() {
 
   RETURN_NOT_OK_PREPEND(
       MultiStageAlterTable::UpdateIndexPermission(
-          master_->catalog_manager_impl(), indexed_table_, permissions_to_set, epoch_, boost::none),
+          master_->catalog_manager_impl(), indexed_table_, permissions_to_set, epoch_,
+          std::nullopt),
       "Could not update permissions after backfill. "
       "Possible that the master-leader has changed, or the table was deleted.");
   backfill_job_->SetState(
@@ -1326,7 +1323,7 @@ Status BackfillTablet::LaunchNextChunkOrDone() {
 }
 
 Status BackfillTablet::Done(
-    const Status& status, const boost::optional<string>& backfilled_until,
+    const Status& status, const std::optional<string>& backfilled_until,
     const uint64_t number_rows_processed, const std::unordered_set<TableId>& failed_indexes) {
   if (!status.ok()) {
     LOG(INFO) << "Failed to backfill the tablet " << yb::ToString(tablet_) << ": " << status
@@ -1637,7 +1634,7 @@ void BackfillChunk::UnregisterAsyncTaskCallback() {
         "Failed marking BackfillTablet as done.");
   } else {
     WARN_NOT_OK(
-        backfill_tablet_->Done(status, boost::none, resp_.number_rows_processed(), failed_indexes),
+        backfill_tablet_->Done(status, std::nullopt, resp_.number_rows_processed(), failed_indexes),
         "Failed marking BackfillTablet as done.");
   }
 }

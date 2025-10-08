@@ -1,6 +1,6 @@
 author = "Team Yugabyte"
 description = "YugabyteDB, the transactional, high-performance database for building internet-scale, globally-distributed apps."
-copyright = "Yugabyte, Inc."
+copyright = "YugabyteDB, Inc."
 privacy_policy = "https://www.yugabyte.com/privacy-policy/"
 kapa_ai = true
 search_banner = false
@@ -52,10 +52,13 @@ version_menu_pagelinks = true
   ul_show = 1
 
 [[versions]]
+  url = "/stable"
+  version = "v2025.1 (STS)"
+[[versions]]
   url = "/preview"
   version = "v2.25 (Preview)"
 [[versions]]
-  url = "/stable"
+  url = "/v2024.2"
   version = "v2024.2 (LTS)"
 [[versions]]
   url = "/v2024.1"

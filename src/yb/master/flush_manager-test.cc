@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -44,8 +44,9 @@ class FlushManagerTest : public CqlTestBase<MiniCluster> {
   Result<OpId> GetOpIdAtLeader(const string& table_id) {
     auto all_peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
     for (const auto& peer : all_peers) {
-      if (peer->tablet()->metadata()->table_id() == table_id) {
-        return VERIFY_RESULT(peer->tablet()->MaxPersistentOpId()).regular;
+      auto tablet = VERIFY_RESULT(peer->shared_tablet());
+      if (tablet->metadata()->table_id() == table_id) {
+        return VERIFY_RESULT(tablet->MaxPersistentOpId()).regular;
       }
     }
     return STATUS(IllegalState, "No leader found for table.");
@@ -55,8 +56,9 @@ class FlushManagerTest : public CqlTestBase<MiniCluster> {
     auto all_peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
     OpId max_op_id(0, 0);
     for (const auto& peer : all_peers) {
-      if (peer->tablet()->metadata()->table_id() == table_id) {
-        max_op_id = std::max(max_op_id, VERIFY_RESULT(peer->tablet()->MaxPersistentOpId()).regular);
+      auto tablet = VERIFY_RESULT(peer->shared_tablet());
+      if (tablet->metadata()->table_id() == table_id) {
+        max_op_id = std::max(max_op_id, VERIFY_RESULT(tablet->MaxPersistentOpId()).regular);
       }
     }
     return max_op_id;
@@ -80,7 +82,8 @@ TEST_F(FlushManagerTest, VerifyFlush) {
 
   auto baseline_table_op_id = ASSERT_RESULT(GetOpIdAtLeader(table->id()));
   auto baseline_index_op_id = ASSERT_RESULT(GetOpIdAtLeader(index->id()));
-  ASSERT_OK(client_->FlushTables({table->name()}, true, 30, false));
+  ASSERT_OK(client_->FlushTables(
+      {table->name()}, MonoDelta::FromSeconds(30), /* add_indexes = */ true));
   EXPECT_GT(ASSERT_RESULT(GetMaxOpId(table->id())), baseline_table_op_id);
   EXPECT_GT(ASSERT_RESULT(GetMaxOpId(index->id())), baseline_index_op_id);
 }
@@ -104,7 +107,8 @@ TEST_F(FlushManagerTest, TestRpcFailureSingleTserverDown) {
   LOG(INFO) << "TServer which will be shutdown = " << leader_mini_tserver->ToString();
   cluster_->mini_tablet_server(leader_idx)->Shutdown();
 
-  auto status = client_->FlushTables({table->id()}, true, 30, false);
+  auto status = client_->FlushTables(
+      {table->name()}, MonoDelta::FromSeconds(30), /* add_indexes = */ true);
   ASSERT_NOK(status);
   ASSERT_EQ(status.code(), Status::kInternalError);
 

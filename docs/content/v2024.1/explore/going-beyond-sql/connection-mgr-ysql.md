@@ -22,13 +22,9 @@ However, connection poolers have some limitations:
 - Added complexity. Deploying and maintaining a connection pooler adds complexity to your application stack.
 - They don't support all PostgreSQL features. For example, neither PgBouncer nor Odyssey supports SET statements in the transaction pooling mode.
 
-To provide the advantages of connection pooling, but without the limitations, YugabyteDB includes a built-in connection pooler, YSQL Connection Manager. Because the manager is bundled with the product, it is convenient to manage, monitor, and configure the server connections without additional third-party tools. When combined with [smart drivers](../../../drivers-orms/smart-drivers/), YugabyteDB simplifies application architecture and enhances developer productivity.
+To provide the advantages of connection pooling, but without the limitations, YugabyteDB includes a built-in connection pooler, YSQL Connection Manager. Because the manager is bundled with the product, it is convenient to manage, monitor, and configure the server connections without additional third-party tools. When combined with [smart drivers](/preview/develop/drivers-orms/smart-drivers/), YugabyteDB simplifies application architecture and enhances developer productivity.
 
 ![Connection manager](/images/explore/ysql-connection-manager.png)
-
-{{< note title = "Note">}}
-YSQL Connection Manager is currently not supported for [YugabyteDB Anywhere](../../../yugabyte-platform/) and [YugabyteDB Aeon](../../../yugabyte-cloud/).
-{{< /note >}}
 
 ## Key features
 
@@ -36,13 +32,13 @@ YSQL Connection Manager is a modified version of the open-source connection pool
 
 YSQL Connection Manager has the following key features:
 
-- No SQL limitations - Unlike other pooling solutions running in transaction mode, YSQL Connection Manager supports SQL features such as TEMP TABLE, WITH HOLD CURSORS, and more.
+- No SQL limitations. Unlike other pooling solutions running in transaction mode, YSQL Connection Manager supports SQL features such as TEMP TABLE, WITH HOLD CURSORS, and more.
 
-- Single pool per database - PgBouncer and Odyssey create a pool for every combination of users and databases, which significantly limits the number of users that can be supported and therefore impacts scalability. YSQL Connection Manager, however, creates one pool per database - all connections trying to access the same database share the same single pool meant for that database.
+- Per user and database pool, with quota sharing. Like PgBouncer and Odyssey, YSQL Connection Manager creates a pool for each unique combination of user and database. However, it also allows connection quotas to be shared across multiple such pools, enabling more efficient use of resources and improved scalability.
 
-- Support for session parameters - YSQL Connection Manager supports SET statements, which are not supported by other connection poolers.
+- Support for session parameters. YSQL Connection Manager supports SET statements, which are not supported by other connection poolers.
 
-- Support for prepared statements - Odyssey supports protocol-level prepared statements and YSQL Connection Manager inherits this feature.
+- Support for prepared statements. Odyssey supports protocol-level prepared statements and YSQL Connection Manager inherits this feature.
 
 ## How to use
 

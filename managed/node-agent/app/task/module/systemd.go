@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package module
 
@@ -6,14 +6,20 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"node-agent/backoff"
 	"node-agent/util"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 const (
 	UserSystemdUnitPath = ".config/systemd/user"
+)
+
+var (
+	SystemdBackOff = backoff.NewSimpleBackOff(10*time.Second /* interval */, 10 /* max attempts */)
 )
 
 func IsUserSystemd(username, serverName string) (bool, error) {
@@ -71,20 +77,15 @@ func EnableSystemdService(
 	if err != nil {
 		return err
 	}
-	cmd := fmt.Sprintf(
-		"systemctl %sdaemon-reload && systemctl %senable %s",
-		userOption,
-		userOption,
-		serverName,
-	)
-	util.FileLogger().Infof(ctx, "Running enable systemd unit command: %s", cmd)
-	logOut.WriteLine("Running enable systemd unit command: %s", cmd)
-	if _, err := RunShellCmd(ctx, cmdUser, "EnableSystemdUnit", cmd, logOut); err != nil {
-		util.FileLogger().Errorf(ctx, "Failed to run systemd command: %s - %s", cmd, err.Error())
-		logOut.WriteLine("Failed to run systemd command: %s - %s", cmd, err.Error())
-		return err
+	steps := []struct {
+		Desc string
+		Cmd  string
+	}{
+		{"ReloadSystemdDaemon", fmt.Sprintf("systemctl %sdaemon-reload", userOption)},
+		{"EnableSystemdService", fmt.Sprintf("systemctl %senable %s", userOption, serverName)},
 	}
-	return nil
+	_, err = RunShellStepsWithRetry(ctx, SystemdBackOff, cmdUser, steps, logOut)
+	return err
 }
 
 func StartSystemdService(
@@ -94,20 +95,18 @@ func StartSystemdService(
 ) error {
 	userOption, cmdUser, err := getUserOptionForUserLevel(ctx, username, serverName, logOut)
 	if err != nil {
-		util.FileLogger().
-			Errorf(ctx, "Failed to get user option for systemd: %s - %s", serverName, err.Error())
-		logOut.WriteLine("Failed to get user option for systemd: %s - %s", serverName, err.Error())
 		return err
 	}
 	cmd := fmt.Sprintf("systemctl %sstart %s", userOption, serverName)
-	util.FileLogger().Infof(ctx, "Running systemd start command: %s", cmd)
-	logOut.WriteLine("Running systemd start command: %s", cmd)
-	if _, err := RunShellCmd(ctx, cmdUser, "StartSystemdService", cmd, logOut); err != nil {
-		util.FileLogger().Errorf(ctx, "Failed to run systemd command: %s - %s", cmd, err.Error())
-		logOut.WriteLine("Failed to run systemd command: %s - %s", cmd, err.Error())
-		return err
-	}
-	return nil
+	_, err = RunShellCmdWithRetry(
+		ctx,
+		SystemdBackOff,
+		cmdUser,
+		"StartSystemdService",
+		cmd,
+		logOut,
+	)
+	return err
 }
 
 func StopSystemdService(
@@ -117,20 +116,11 @@ func StopSystemdService(
 ) error {
 	userOption, cmdUser, err := getUserOptionForUserLevel(ctx, username, serverName, logOut)
 	if err != nil {
-		util.FileLogger().
-			Errorf(ctx, "Failed to get user option for systemd: %s - %s", serverName, err.Error())
-		logOut.WriteLine("Failed to get user option for systemd: %s - %s", serverName, err.Error())
 		return err
 	}
 	cmd := fmt.Sprintf("systemctl %s stop %s", userOption, serverName)
-	util.FileLogger().Infof(ctx, "Running systemd stop command: %s", cmd)
-	logOut.WriteLine("Running systemd stop command: %s", cmd)
-	if _, err := RunShellCmd(ctx, cmdUser, "StopSystemdService", cmd, logOut); err != nil {
-		util.FileLogger().Errorf(ctx, "Failed to run systemd command: %s - %s", cmd, err.Error())
-		logOut.WriteLine("Failed to run systemd command: %s - %s", cmd, err.Error())
-		return err
-	}
-	return nil
+	_, err = RunShellCmdWithRetry(ctx, SystemdBackOff, cmdUser, "StopSystemdService", cmd, logOut)
+	return err
 }
 
 func DisableSystemdService(
@@ -140,24 +130,18 @@ func DisableSystemdService(
 ) error {
 	userOption, cmdUser, err := getUserOptionForUserLevel(ctx, username, serverName, logOut)
 	if err != nil {
-		util.FileLogger().
-			Errorf(ctx, "Failed to get user option for systemd: %s - %s", serverName, err.Error())
-		logOut.WriteLine("Failed to get user option for systemd: %s - %s", serverName, err.Error())
 		return err
 	}
-	cmd := fmt.Sprintf(
-		"systemctl %sdaemon-reload && systemctl %sstop %s && systemctl %sdisable %s",
-		userOption,
-		userOption,
-		serverName,
-		userOption,
-		serverName,
-	)
-	util.FileLogger().Infof(ctx, "Running systemd disable command: %s", cmd)
-	logOut.WriteLine("Running systemd disable command: %s", cmd)
-	if _, err := RunShellCmd(ctx, cmdUser, "DisableSystemdService", cmd, logOut); err != nil {
-		util.FileLogger().Errorf(ctx, "Failed to run systemd command: %s - %s", cmd, err.Error())
-		logOut.WriteLine("Failed to run systemd command: %s - %s", cmd, err.Error())
+	steps := []struct {
+		Desc string
+		Cmd  string
+	}{
+		{"ReloadSystemdDaemon", fmt.Sprintf("systemctl %sdaemon-reload", userOption)},
+		{"StopSystemdService", fmt.Sprintf("systemctl %sstop %s", userOption, serverName)},
+		{"DisableSystemdService", fmt.Sprintf("systemctl %sdisable %s", userOption, serverName)},
+	}
+	_, err = RunShellStepsWithRetry(ctx, SystemdBackOff, cmdUser, steps, logOut)
+	if err != nil {
 		return err
 	}
 	if unitPathToBeRemoved != "" {
@@ -174,15 +158,16 @@ func DisableSystemdService(
 			return err
 		}
 	}
-	cmd = fmt.Sprintf("systemctl %sdaemon-reload", userOption)
-	util.FileLogger().Infof(ctx, "Running systemd daemon-reload command: %s", cmd)
-	logOut.WriteLine("Running systemd daemon-reload command: %s", cmd)
-	if _, err := RunShellCmd(ctx, cmdUser, "DisableSystemdService", cmd, logOut); err != nil {
-		util.FileLogger().Errorf(ctx, "Failed to run systemd command %v - %s", cmd, err.Error())
-		logOut.WriteLine("Failed to run systemd command: %s - %s", cmd, err.Error())
-		return err
-	}
-	return nil
+	cmd := fmt.Sprintf("systemctl %sdaemon-reload", userOption)
+	_, err = RunShellCmdWithRetry(
+		ctx,
+		SystemdBackOff,
+		cmdUser,
+		"ReloadSystemdDaemon",
+		cmd,
+		logOut,
+	)
+	return err
 }
 
 func ControlSystemdService(
@@ -190,28 +175,32 @@ func ControlSystemdService(
 	username, serverName, controlType string,
 	logOut util.Buffer,
 ) error {
-	userOption, cmdUser, err := getUserOptionForUserLevel(ctx, username, serverName, logOut)
-	if err != nil {
-		util.FileLogger().
-			Errorf(ctx, "Failed to get user option for systemd: %s - %s", serverName, err.Error())
-		logOut.WriteLine("Failed to get user option for systemd: %s - %s", serverName, err.Error())
-		return err
-	}
-	cmd := fmt.Sprintf(
-		"systemctl %sdaemon-reload && systemctl %senable %s && systemctl %s%s %s",
-		userOption,
-		userOption,
-		serverName,
-		userOption,
-		controlType,
-		serverName,
-	)
-	util.FileLogger().Infof(ctx, "Running systemd control command: %s", cmd)
-	logOut.WriteLine("Running systemd control command: %s", cmd)
-	if _, err := RunShellCmd(ctx, cmdUser, "ControlSystemdService", cmd, logOut); err != nil {
-		util.FileLogger().Errorf(ctx, "Failed to run systemd command %v - %s", cmd, err.Error())
-		logOut.WriteLine("Failed to run systemd command: %s - %s", cmd, err.Error())
-		return err
+	if strings.HasSuffix(controlType, "start") {
+		err := EnableSystemdService(ctx, username, serverName, logOut)
+		if err != nil {
+			return err
+		}
+		if controlType == "restart" {
+			err = StopSystemdService(ctx, username, serverName, logOut)
+			if err != nil {
+				return err
+			}
+		}
+		err = StartSystemdService(ctx, username, serverName, logOut)
+		if err != nil {
+			return err
+		}
+	} else if controlType == "stop" {
+		err := StopSystemdService(ctx, username, serverName, logOut)
+		if err != nil {
+			return err
+		}
+		err = DisableSystemdService(ctx, username, serverName, "", logOut)
+		if err != nil {
+			return err
+		}
+	} else {
+		return fmt.Errorf("Unsupported control type for systemd service: %s", controlType)
 	}
 	return nil
 }
@@ -223,23 +212,44 @@ func SystemdUnitPath(
 ) (string, error) {
 	userOption, cmdUser, err := getUserOptionForUserLevel(ctx, username, serverName, logOut)
 	if err != nil {
-		util.FileLogger().
-			Errorf(ctx, "Failed to get user option for systemd: %s - %s", serverName, err.Error())
-		logOut.WriteLine("Failed to get user option for systemd: %s - %s", serverName, err.Error())
 		return "", err
 	}
 	cmd := fmt.Sprintf(
-		"systemctl %scat %s 2>/dev/null | head -1 | sed -e 's/#\\s*//g' || true",
+		"systemctl %scat %s --no-pager 2>/dev/null | head -1 | sed -e 's/#\\s*//g' || true",
 		userOption,
 		serverName,
 	)
-	util.FileLogger().Infof(ctx, "Running systemd cat command: %s", cmd)
-	logOut.WriteLine("Running systemd cat command: %s", cmd)
-	info, err := RunShellCmd(ctx, cmdUser, "SystemdUnitPath", cmd, logOut)
+	cmdInfo, err := RunShellCmdWithRetry(
+		ctx,
+		SystemdBackOff,
+		cmdUser,
+		"GetSystemdUnitPath",
+		cmd,
+		logOut,
+	)
 	if err != nil {
-		util.FileLogger().Errorf(ctx, "Failed to run systemd command %s - %s", cmd, err.Error())
-		logOut.WriteLine("Failed to run systemd command: %s - %s", cmd, err.Error())
 		return "", err
 	}
-	return strings.TrimSpace(info.StdOut.String()), nil
+	return strings.TrimSpace(cmdInfo.StdOut.String()), nil
+}
+
+// IsProcessRunning checks if a process is running. This check is already in Ansible.
+func IsProcessRunning(
+	ctx context.Context,
+	username, process string,
+	logOut util.Buffer,
+) (bool, error) {
+	cmd := fmt.Sprintf("pgrep -lx %s 2>/dev/null || true", process)
+	cmdInfo, err := RunShellCmd(ctx, username, "CheckRunningProcess", cmd, logOut)
+	if err != nil {
+		util.FileLogger().
+			Errorf(ctx, "Failed to check if process is running: %s - %s", process, err.Error())
+		logOut.WriteLine("Failed to check if process is running: %s - %s", process, err.Error())
+		return false, err
+	}
+	stdOut := cmdInfo.StdOut.String()
+	util.FileLogger().
+		Infof(ctx, "Process %s state: %s", process, stdOut)
+	logOut.WriteLine("Process %s state: %s", process, stdOut)
+	return strings.Contains(stdOut, process), nil
 }

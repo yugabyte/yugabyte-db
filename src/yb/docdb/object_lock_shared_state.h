@@ -14,6 +14,7 @@
 #pragma once
 
 #include <optional>
+#include <span>
 
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/lock_util.h"
@@ -28,7 +29,12 @@
 
 namespace yb::docdb {
 
+TableLockType FastpathLockTypeToTableLockType(ObjectLockFastpathLockType lock_type);
+
 std::optional<ObjectLockFastpathLockType> MakeObjectLockFastpathLockType(TableLockType lock_type);
+
+[[nodiscard]] std::span<const LockTypeEntry> GetEntriesForFastpathLockType(
+    ObjectLockFastpathLockType lock_type);
 
 struct ObjectLockFastpathRequest {
   SessionLockOwnerTag owner;
@@ -50,18 +56,40 @@ static_assert(std::is_trivially_copyable_v<ObjectLockFastpathRequest>);
 using FastLockRequestConsumer = LWFunction<void(ObjectLockFastpathRequest)>;
 
 class ObjectLockSharedState {
+  class Impl;
+
  public:
+  class ActivationGuard {
+   public:
+    ActivationGuard() = default;
+    explicit ActivationGuard(Impl* impl);
+    ActivationGuard(ActivationGuard&& other);
+    ~ActivationGuard();
+    ActivationGuard& operator=(ActivationGuard&& other) PARENT_PROCESS_ONLY;
+   private:
+    Impl* impl_ = nullptr;
+  };
+
   explicit ObjectLockSharedState(SharedMemoryBackingAllocator& allocator);
   ~ObjectLockSharedState();
 
   [[nodiscard]] bool Lock(const ObjectLockFastpathRequest& request);
 
-  void ConsumePendingLockRequests(const FastLockRequestConsumer& consume) PARENT_PROCESS_ONLY;
+  ActivationGuard Activate(const std::unordered_map<ObjectLockPrefix, size_t>& initial_intents)
+      PARENT_PROCESS_ONLY;
+
+  size_t ConsumePendingLockRequests(const FastLockRequestConsumer& consume) PARENT_PROCESS_ONLY;
+
+  size_t ConsumeAndAcquireExclusiveLockIntents(
+      const FastLockRequestConsumer& consume,
+      std::span<const ObjectLockPrefix*> object_ids) PARENT_PROCESS_ONLY;
+
+  void ReleaseExclusiveLockIntent(const ObjectLockPrefix& object_id, size_t count = 1)
+      PARENT_PROCESS_ONLY;
 
   [[nodiscard]] SessionLockOwnerTag TEST_last_owner() PARENT_PROCESS_ONLY;
 
  private:
-  class Impl;
   const SharedMemoryUniquePtr<Impl> impl_;
 };
 

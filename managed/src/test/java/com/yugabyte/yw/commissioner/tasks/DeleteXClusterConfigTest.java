@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks;
 
@@ -98,10 +98,7 @@ public class DeleteXClusterConfigTest extends CommissionerBaseTest {
           TaskType.UniverseUpdateSucceeded);
 
   @Before
-  @Override
   public void setUp() {
-    super.setUp();
-
     defaultCustomer = testCustomer("DeleteXClusterConfig-test-customer");
     defaultUser = ModelFactory.testUser(defaultCustomer);
 

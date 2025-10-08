@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -117,7 +117,8 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     bool write_transaction_metadata,
     CoarseTimePoint deadline,
     dockv::PartialRangeKeyIntents partial_range_key_intents,
-    SharedLockManager *lock_manager);
+    SharedLockManager *lock_manager,
+    dockv::SkipPrefixLocks skip_prefix_locks = dockv::SkipPrefixLocks::kFalse);
 
 // This constructs a DocWriteBatch using the given list of DocOperations, reading the previous
 // state of data from RocksDB when necessary.
@@ -136,12 +137,6 @@ Status AssembleDocWriteBatch(
     std::atomic<int64_t>* monotonic_counter,
     ReadRestartData* read_restart_data,
     const std::string& table_name);
-
-Status EnumerateIntents(
-    const ArenaList<LWKeyValuePairPB>& kv_pairs,
-    const dockv::EnumerateIntentsCallback& functor,
-    dockv::PartialRangeKeyIntents partial_range_key_intents);
-
 
 // replicated_batches_state format does not matter at this point, because it is just
 // appended to appropriate value.
@@ -234,7 +229,7 @@ struct ApplyStateWithCommitInfo {
   }
 };
 
-Result<ApplyTransactionState> GetIntentsBatch(
+Result<ApplyTransactionState> GetIntentsBatchForCDC(
     const TransactionId& transaction_id,
     const KeyBounds* key_bounds,
     const ApplyTransactionState* stream_state,
@@ -242,29 +237,6 @@ Result<ApplyTransactionState> GetIntentsBatch(
     std::vector<IntentKeyValueForCDC>* keyValueIntents);
 
 void AppendTransactionKeyPrefix(const TransactionId& transaction_id, dockv::KeyBytes* out);
-
-// Class that is used while combining external intents into single key value pair.
-class ExternalIntentsProvider {
- public:
-  // Set output key.
-  virtual void SetKey(const Slice& slice) = 0;
-
-  // Set output value.
-  virtual void SetValue(const Slice& slice) = 0;
-
-  // Get next external intent, returns false when there are no more intents.
-  virtual boost::optional<std::pair<Slice, Slice>> Next() = 0;
-
-  virtual const Uuid& InvolvedTablet() = 0;
-
-  virtual ~ExternalIntentsProvider() = default;
-};
-
-// Combine external intents into single key value pair.
-void CombineExternalIntents(
-    const TransactionId& txn_id,
-    SubTransactionId subtransaction_id,
-    ExternalIntentsProvider* provider);
 
 } // namespace docdb
 } // namespace yb

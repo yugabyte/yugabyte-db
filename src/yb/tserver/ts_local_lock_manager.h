@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -28,41 +28,18 @@
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tserver.pb.h"
 
+#include "yb/util/metrics.h"
 #include "yb/util/status_callback.h"
 
 namespace yb {
 
+class ObjectLockTracker;
 class ThreadPool;
 
+namespace master {
+class ReleaseObjectLocksGlobalRequestPB;
+}
 namespace tserver {
-
-struct ObjectLockContext {
-  ObjectLockContext(
-      TransactionId txn_id, SubTransactionId subtxn_id, uint64_t database_oid,
-      uint64_t relation_oid, uint64_t object_oid, uint64_t object_sub_oid, TableLockType lock_type)
-      : txn_id(txn_id),
-        subtxn_id(subtxn_id),
-        database_oid(database_oid),
-        relation_oid(relation_oid),
-        object_oid(object_oid),
-        object_sub_oid(object_sub_oid),
-        lock_type(lock_type) {}
-
-  YB_STRUCT_DEFINE_HASH(
-      ObjectLockContext, txn_id, subtxn_id, database_oid, relation_oid, object_oid, object_sub_oid,
-      lock_type);
-
-  auto operator<=>(const ObjectLockContext&) const = default;
-
-  TransactionId txn_id;
-  SubTransactionId subtxn_id;
-  uint64_t database_oid;
-  uint64_t relation_oid;
-  uint64_t object_oid;
-  uint64_t object_sub_oid;
-  TableLockType lock_type;
-};
-
 // LockManager for acquiring table/object locks of type TableLockType on a given object id.
 // TSLocalLockManager uses LockManagerImpl<ObjectLockPrefix> to acheive the locking/unlocking
 // behavior, yet the scope of the object lock is not just limited to the scope of the lock rpc
@@ -85,6 +62,8 @@ class TSLocalLockManager {
   TSLocalLockManager(
       const server::ClockPtr& clock, TabletServerIf* tablet_server,
       server::RpcServerBase& messenger_server, ThreadPool* thread_pool,
+      const MetricEntityPtr& metric_entity,
+      std::shared_ptr<ObjectLockTracker> lock_tracker = nullptr,
       docdb::ObjectLockSharedStateManager* shared_manager = nullptr);
   ~TSLocalLockManager();
 
@@ -111,6 +90,14 @@ class TSLocalLockManager {
   Status ReleaseObjectLocks(
       const tserver::ReleaseObjectLockRequestPB& req, CoarseTimePoint deadline);
 
+  void TrackDeadlineForGlobalAcquire(
+      const TransactionId& txn_id, const SubTransactionId& subtxn_id,
+      CoarseTimePoint apply_after_ht);
+  void ScheduleReleaseForLostMessages(
+      yb::client::YBClient& client, std::weak_ptr<TSLocalLockManager> lock_manager_weak,
+      const TransactionId& txn_id, std::optional<SubTransactionId> subtxn_id,
+      const std::shared_ptr<master::ReleaseObjectLocksGlobalRequestPB>& release_req);
+
   void Start(docdb::LocalWaitingTxnRegistry* waiting_txn_registry);
 
   void Shutdown();
@@ -124,18 +111,29 @@ class TSLocalLockManager {
   server::ClockPtr clock() const;
 
   void PopulateObjectLocks(
-      google::protobuf::RepeatedPtrField<ObjectLockInfoPB>* object_lock_infos) const;
+      google::protobuf::RepeatedPtrField<ObjectLockInfoPB>* object_lock_infos);
 
   size_t TEST_GrantedLocksSize();
   size_t TEST_WaitingLocksSize();
   void TEST_MarkBootstrapped();
   std::unordered_map<docdb::ObjectLockPrefix, docdb::LockState>
       TEST_GetLockStateMapForTxn(const TransactionId& txn) const;
+  bool IsShutdownInProgress() const;
 
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;
 };
+
+void ReleaseWithRetriesGlobal(
+    yb::client::YBClient& client, std::weak_ptr<TSLocalLockManager> lock_manager_weak,
+    const TransactionId& txn_id, std::optional<SubTransactionId> subtxn_id,
+    const std::shared_ptr<master::ReleaseObjectLocksGlobalRequestPB>& release_req);
+
+void AcquireObjectLockLocallyWithRetries(
+    std::weak_ptr<TSLocalLockManager> lock_manager, AcquireObjectLockRequestPB&& req,
+    CoarseTimePoint deadline, StdStatusCallback&& lock_cb,
+    std::function<Status(CoarseTimePoint)> check_txn_running);
 
 }  // namespace tserver
 }  // namespace yb

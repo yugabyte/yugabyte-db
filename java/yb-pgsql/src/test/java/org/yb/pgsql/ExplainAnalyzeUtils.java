@@ -60,10 +60,13 @@ public class ExplainAnalyzeUtils {
 
   public static final String TOTAL_COST = "Total Cost";
 
+  public static final String QUERY_ID = "Query Identifier";
+
   public interface TopLevelCheckerBuilder extends ObjectCheckerBuilder {
     TopLevelCheckerBuilder plan(ObjectChecker checker);
     TopLevelCheckerBuilder storageReadRequests(ValueChecker<Long> checker);
     TopLevelCheckerBuilder storageReadExecutionTime(ValueChecker<Double> checker);
+    TopLevelCheckerBuilder storageReadOps(ValueChecker<Long> checker);
     TopLevelCheckerBuilder storageRowsScanned(ValueChecker<Long> checker);
     TopLevelCheckerBuilder storageWriteRequests(ValueChecker<Long> checker);
     TopLevelCheckerBuilder catalogReadRequests(ValueChecker<Long> checker);
@@ -93,6 +96,7 @@ public class ExplainAnalyzeUtils {
     // This requires a different type of checker than ValueChecker<>
     PlanCheckerBuilder storageTableReadRequests(Checker checker);
     PlanCheckerBuilder storageTableReadExecutionTime(Checker checker);
+    PlanCheckerBuilder storageTableReadOps(ValueChecker<Long> checker);
     PlanCheckerBuilder storageTableRowsScanned(ValueChecker<Long> checker);
 
     // Table Writes
@@ -334,6 +338,22 @@ public class ExplainAnalyzeUtils {
     if (!rootArray.isEmpty()) {
       JsonObject plan = rootArray.get(0).getAsJsonObject().getAsJsonObject(PLAN);
       return new Cost(plan.get(TOTAL_COST).getAsString());
+    }
+    throw new IllegalArgumentException("Explain plan for this query returned empty.");
+  }
+
+  public static long getExplainQueryId(Statement stmt, String query)
+  throws Exception {
+    stmt.execute("set compute_query_id to on");
+    ResultSet rs = stmt.executeQuery(String.format(
+      "EXPLAIN (FORMAT json, VERBOSE on) %s", query));
+    rs.next();
+    JsonElement json = JsonParser.parseString(rs.getString(1));
+    JsonArray rootArray = json.getAsJsonArray();
+    if (!rootArray.isEmpty()) {
+      long queryId = rootArray.get(0).getAsJsonObject().get(QUERY_ID).getAsLong();
+
+      return queryId;
     }
     throw new IllegalArgumentException("Explain plan for this query returned empty.");
   }

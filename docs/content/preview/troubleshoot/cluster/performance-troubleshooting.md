@@ -119,22 +119,22 @@ You can run various commands using yb-admin. You need to specify the full set of
 
 ```sh
 # Get all tables
-./yb-admin -master_addresses 127.0.0.1:7000,127.0.0.2:7000,127.0.0.3:7000 list_tables
+./yb-admin --master_addresses 127.0.0.1:7000,127.0.0.2:7000,127.0.0.3:7000 list_tables
 
 # Get all tablets for a specific table
-./yb-admin -master_addresses 127.0.0.1:7000,127.0.0.2:7000,127.0.0.3:7000 list_tablets yb_load_test
+./yb-admin --master_addresses 127.0.0.1:7000,127.0.0.2:7000,127.0.0.3:7000 list_tablets yb_load_test
 
 # List the tablet servers for each tablet
-./yb-admin -master_addresses 127.0.0.1:7000,127.0.0.2:7000,127.0.0.3:7000 list_tablet_servers $(./yb-admin -master_addresses 127.0.0.1:7000,127.0.0.2:7000,127.0.0.3:7000 list_tablets yb_load_test)
+./yb-admin --master_addresses 127.0.0.1:7000,127.0.0.2:7000,127.0.0.3:7000 list_tablet_servers $(./yb-admin --master_addresses 127.0.0.1:7000,127.0.0.2:7000,127.0.0.3:7000 list_tablets yb_load_test)
 
 # List all tablet servers
-./yb-admin -master_addresses 127.0.0.1:7000,127.0.0.2:7000,127.0.0.3:7000 list_all_tablet_servers
+./yb-admin --master_addresses 127.0.0.1:7000,127.0.0.2:7000,127.0.0.3:7000 list_all_tablet_servers
 
 # List all masters
-./yb-admin -master_addresses 127.0.0.1:7000,127.0.0.2:7000,127.0.0.3:7000 list_all_masters
+./yb-admin --master_addresses 127.0.0.1:7000,127.0.0.2:7000,127.0.0.3:7000 list_all_masters
 
 # Output master state to console
-./yb-admin -master_addresses 127.0.0.1:7000,127.0.0.2:7000,127.0.0.3:7000 dump_masters_state
+./yb-admin --master_addresses 127.0.0.1:7000,127.0.0.2:7000,127.0.0.3:7000 dump_masters_state
 ```
 
 ## Real-time metrics

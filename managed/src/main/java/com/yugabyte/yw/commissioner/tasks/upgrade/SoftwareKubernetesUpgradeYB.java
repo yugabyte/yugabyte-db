@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
@@ -94,6 +94,9 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
 
           createStoreAutoFlagConfigVersionTask(taskParams().getUniverseUUID(), newVersion);
 
+          // Disable PITR configs at the start of software upgrade
+          createDisablePitrConfigTask();
+
           String password = null;
           boolean catalogUpgradeCompleted = false;
 
@@ -157,6 +160,12 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
                     ysqlMajorVersionUpgrade ? YsqlMajorVersionUpgradeState.IN_PROGRESS : null));
           }
 
+          if (ysqlMajorVersionUpgrade) {
+            createUpdateSoftwareUpdatePrevConfigTask(
+                true /* canRollbackCatalogUpgrade */,
+                false /* allTserversUpgradedToYsqlMajorVersion */);
+          }
+
           if (ysqlMajorVersionUpgrade && !catalogUpgradeCompleted) {
 
             if (password != null) {
@@ -181,6 +190,12 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
               getSoftwareUpgradeContext(
                   newVersion,
                   ysqlMajorVersionUpgrade ? YsqlMajorVersionUpgradeState.IN_PROGRESS : null));
+
+          if (ysqlMajorVersionUpgrade) {
+            createUpdateSoftwareUpdatePrevConfigTask(
+                true /* canRollbackCatalogUpgrade */,
+                true /* allTserversUpgradedToYsqlMajorVersion */);
+          }
 
           if (ysqlMajorVersionUpgrade) {
             createGFlagsUpgradeAndUpdateMastersTaskForYSQLMajorUpgrade(

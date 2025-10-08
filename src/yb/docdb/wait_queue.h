@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -35,14 +35,10 @@ namespace docdb {
 class ScopedWaitingTxnRegistration {
  public:
   virtual Status Register(
-    const TransactionId& waiting,
-    int64_t request_id,
-    std::shared_ptr<ConflictDataManager> blockers,
-    const TabletId& status_tablet,
-    boost::optional<PgSessionRequestVersion> pg_session_req_version) = 0;
-  virtual Status RegisterSingleShardWaiter(
-      const TabletId& tablet_id,
-      uint64_t wait_start_us) = 0;
+      const TransactionId& waiting, int64_t request_id,
+      std::shared_ptr<ConflictDataManager> blockers, const TabletId& status_tablet,
+      std::optional<PgSessionRequestVersion> pg_session_req_version) = 0;
+  virtual Status RegisterSingleShardWaiter(const TabletId& tablet_id, uint64_t wait_start_us) = 0;
   virtual int64 GetDataUseCount() const = 0;
   virtual Status PruneInactiveBlockerData(const TabletId& status_tablet) = 0;
   virtual ~ScopedWaitingTxnRegistration() = default;
@@ -87,7 +83,7 @@ class WaitQueue {
       const TransactionId& waiter, SubTransactionId subtxn_id, LockBatch* locks,
       std::shared_ptr<ConflictDataManager> blockers, const TabletId& status_tablet_id,
       uint64_t serial_no, int64_t txn_start_us, uint64_t req_start_us, int64_t request_id,
-      boost::optional<PgSessionRequestVersion> pg_session_req_version,
+      std::optional<PgSessionRequestVersion> pg_session_req_version,
       bool prune_waiter_edges_post_resumption, CoarseTimePoint deadline,
       IntentProviderFunc intent_provider, WaitDoneCallback callback);
 
@@ -100,9 +96,9 @@ class WaitQueue {
   // status in case of some unresolvable error.
   Result<bool> MaybeWaitOnLocks(
       const TransactionId& waiter, SubTransactionId subtxn_id, LockBatch* locks,
-      const TabletId& status_tablet_id, uint64_t serial_no,
-      int64_t txn_start_us, uint64_t req_start_us, int64_t request_id,
-      boost::optional<PgSessionRequestVersion> pg_session_req_version,
+      const TabletId& status_tablet_id, uint64_t serial_no, int64_t txn_start_us,
+      uint64_t req_start_us, int64_t request_id,
+      std::optional<PgSessionRequestVersion> pg_session_req_version,
       bool prune_waiter_edges_post_resumption, CoarseTimePoint deadline,
       IntentProviderFunc intent_provider, WaitDoneCallback callback);
 

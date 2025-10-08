@@ -1,4 +1,4 @@
-// Copyright (c) Yugabyte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.common.operator;
 
@@ -21,6 +21,7 @@ import com.yugabyte.yw.common.backuprestore.ScheduleTaskHelper;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.common.operator.utils.OperatorWorkQueue;
+import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.backuprestore.BackupScheduleTaskParams;
 import com.yugabyte.yw.models.Customer;
@@ -54,6 +55,7 @@ public class ScheduledBackupReconcilerTest extends FakeDBApplication {
   private ValidatingFormFactory mockFormFactory;
   private RuntimeConfGetter mockConfGetter;
   private OperatorUtils mockOperatorUtils;
+  private YBClientService mockYbClientService;
   private KubernetesClient mockClient;
   private YBInformerFactory mockInformerFactory;
   private SharedIndexInformer<BackupSchedule> mockScheduleInformer;
@@ -82,8 +84,15 @@ public class ScheduledBackupReconcilerTest extends FakeDBApplication {
     mockBackupHelper = Mockito.mock(BackupHelper.class);
     mockFormFactory = Mockito.mock(ValidatingFormFactory.class);
     mockConfGetter = Mockito.mock(RuntimeConfGetter.class);
+    mockYbClientService = Mockito.mock(YBClientService.class);
     mockOperatorUtils =
-        spy(new OperatorUtils(mockConfGetter, mockReleaseManager, mockYbcManager, mockFormFactory));
+        spy(
+            new OperatorUtils(
+                mockConfGetter,
+                mockReleaseManager,
+                mockYbcManager,
+                mockFormFactory,
+                mockYbClientService));
     mockClient = Mockito.mock(KubernetesClient.class);
     mockInformerFactory = Mockito.mock(YBInformerFactory.class);
     mockScheduleTaskHelper = Mockito.mock(ScheduleTaskHelper.class);

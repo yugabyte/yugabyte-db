@@ -31,16 +31,16 @@ While YugabyteDB is a distributed database, it leverages PostgreSQL's query laye
 
 Implementing all PostgreSQL features in a distributed system can be challenging, and some features are still under development. To ensure that the features your applications depend on are supported in the version of YugabyteDB you are using, double-check that the feature is included in the list of supported features.
 
-{{<lead link="../../../develop/postgresql-compatibility/#unsupported-postgresql-features">}}
-Review the [list of unsupported features](../../../develop/postgresql-compatibility/#unsupported-postgresql-features) to make sure that the PostgreSQL features used by your application are supported by YugabyteDB.
+{{<lead link="../../../reference/configuration/postgresql-compatibility/#unsupported-postgresql-features">}}
+Review the [list of unsupported features](../../../reference/configuration/postgresql-compatibility/#unsupported-postgresql-features) to make sure that the PostgreSQL features used by your application are supported by YugabyteDB.
 {{</lead>}}
 
 ### Extension support
 
 PostgreSQL offers extensions that greatly enhance its capabilities, allowing users to tailor and extend its functionality according to their needs. YugabyteDB includes many, but not all, of these extensions. Double-check that the extensions used by your application are supported by YugabyteDB.
 
-{{<lead link="../../../explore/ysql-language-features/pg-extensions#supported-extensions">}}
-To verify that the extensions your applications use are available in YugabyteDB, check the [list of supported extensions](../../../explore/ysql-language-features/pg-extensions#supported-extensions).
+{{<lead link="../../../additional-features/pg-extensions/#supported-extensions">}}
+To verify that the extensions your applications use are available in YugabyteDB, check the [list of supported extensions](../../../additional-features/pg-extensions/#supported-extensions).
 {{</lead>}}
 
 ## Data distribution schemes
@@ -109,8 +109,8 @@ By default, all the rows of the table are distributed across multiple tablets an
 
 Choose colocation for tables with small tables that don't grow much; for example, less than 1 million rows, or smaller than 1 GB.
 
-{{<lead link="../../../explore/colocation/">}}
-For more information on when and how to create colocated tables, see [Colocated tables](../../../explore/colocation/).
+{{<lead link="../../../additional-features/colocation/">}}
+For more information on when and how to create colocated tables, see [Colocated tables](../../../additional-features/colocation/).
 {{</lead>}}
 
 ## Schema Migration
@@ -265,7 +265,7 @@ All nodes (YB-TServers) in the cluster are identical and are capable of handling
 
 - **Load balancer**: Use a load balancer to front all the nodes of the cluster. The load balancer should be set to round-robin all requests across the nodes in the cluster.
 
-- **Smart driver**: YugabyteDB ships a [smart driver](../../../drivers-orms/smart-drivers/) in multiple languages that can automatically distribute connections to the various nodes in the cluster with minimum configuration.
+- **Smart driver**: YugabyteDB ships a [smart driver](/preview/develop/drivers-orms/smart-drivers/) in multiple languages that can automatically distribute connections to the various nodes in the cluster with minimum configuration.
 
 ### Increase throughput
 
@@ -275,7 +275,7 @@ There are many applications where handling a large number of client connections 
 
 - **Increase number of nodes in cluster:** The number of connections to a YugabyteDB cluster scales linearly with the number of nodes in the cluster. By deploying more nodes with smaller vCPUs per node, it may be possible to get more connections. For example, a 10 node cluster consisting of 32 vCPU per node can handle 3000 connections; a 20 node cluster with 16 vCPUs per node (which is equivalent to the 10 node, 32 vCPU cluster) can handle 6000 connections.
 
-- **Connection Manager**: Enable the built-in connection pooler called [YSQL Connection Manager](../../../explore/going-beyond-sql/connection-mgr-ysql/). The connection manager works by multiplexing many client connection over few physical connections to the database. With the connection manager enabled, each node in the cluster will be able to handle more than 10K connections per node.
+- **Connection Manager**: Enable the built-in connection pooler called [YSQL Connection Manager](../../../additional-features/connection-manager-ysql/). The connection manager works by multiplexing many client connection over few physical connections to the database. With the connection manager enabled, each node in the cluster will be able to handle more than 10K connections per node.
 
 ## Post-migration activities
 

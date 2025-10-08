@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -47,6 +47,10 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flags = super.getTServerFlags();
     appendToYsqlPgConf(flags, "log_statement=all");
+    // The test suite asserts for DML failing with catalog version mismatch when run
+    // immediately after DDLs, which isn't true with object locking enabled.
+    flags.put("allowed_preview_flags_csv", "enable_object_locking_for_table_locks");
+    flags.put("enable_object_locking_for_table_locks", "false");
     return flags;
   }
 

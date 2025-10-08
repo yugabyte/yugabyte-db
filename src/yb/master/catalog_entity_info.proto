@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -21,7 +21,6 @@ import "yb/cdc/xcluster_producer.proto";
 import "yb/common/common.proto";
 import "yb/common/common_net.proto";
 import "yb/common/common_types.proto";
-import "yb/common/transaction.proto";
 import "yb/common/version_info.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/consensus/metadata.proto";
@@ -55,6 +54,8 @@ message BackfillJobPB {
     optional SchemaPB previous_schema = 4;
     optional string previous_table_name = 5;
     optional int32 previous_next_column_id = 6;
+
+    optional uint32 sub_transaction_id = 7;
   }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for
@@ -172,8 +173,24 @@ message SysTablesEntryPB {
   optional fixed64 hide_hybrid_time = 35;
 
   // State that indicates that this table is being changed by a YSQL transaction.
-  // This repeated field contains only a single element as of now. When we support DDL + Savepoints,
-  // we will have one element for every savepoint modifying this table in this field.
+  // When a new savepoint (sub_transaction) modifies this table, a new entry is added to this field.
+  // If the savepoint is rolled back, the state is used to rollback to the previous schema and the
+  // corresponding entries are cleared out from this field.
+  //
+  // As a result, this field contains one element for every **active** sub-transaction modifying
+  // this table in increasing order of sub-transaction id. In other words, if there are N active
+  // sub-transactions modifying this table, there will be N elements in this state. Note that the
+  // overall transaction is also counted as an implicit sub-transaction here. See example below.
+  //
+  // Example:
+  // BEGIN;
+  //  DDL 1;                # part of implicit sub-transaction
+  //  DDL 2;                # part of implicit sub-transaction
+  //  SAVEPOINT a;
+  //  DDL 3;                # part of sub-transaction 2 or savepoint a.
+  //  SAVEPOINT b;
+  //  DDL 4;                # part of sub-transaction 3 or savepoint b.
+  // The ysql_ddl_txn_verifier_state will contain 3 entries - [DDL 1 & 2, DDL 3, DDL 4].
   repeated YsqlDdlTxnVerifierStatePB ysql_ddl_txn_verifier_state = 38;
 
   // YSQL transaction that is currently modifying this table state. The changes being performed by
@@ -435,6 +452,8 @@ message SysObjectLockEntryPB {
 
     // The instance_seqno of the tserver process to which this lease was granted.
     optional int64 instance_seqno = 3;
+
+    optional bool lease_relinquished = 4;
   }
   optional LeaseInfoPB lease_info = 2;
   map<uint64, tserver.ReleaseObjectLockRequestPB> in_progress_release_request = 3;

@@ -17,7 +17,8 @@ export const MetricTypes = {
   CONTAINER: 'container',
   TSERVER_TABLE: 'tserver_table',
   LSMDB_TABLE: 'lsmdb_table',
-  OUTLIER_TABLES: 'outlier_tables'
+  OUTLIER_TABLES: 'outlier_tables',
+  OUTLIER_DATABASES: 'outlier_databases'
 } as const;
 
 export const MetricTypesWithOperations = {
@@ -221,9 +222,17 @@ export const MetricTypesWithOperations = {
       'container_volume_usage_percent'
     ]
   },
+  ysql_table: {
+    title: 'YSQL',
+    metrics: ['ysql_catalog_cache_misses']
+  },
   tserver_table: {
     title: 'Tablet Server',
     metrics: [
+      'table_read_latency',
+      'table_read_rps',
+      'table_write_latency',
+      'table_write_rps',
       'tserver_log_latency',
       'tserver_log_bytes_written',
       'tserver_log_bytes_read',
@@ -241,6 +250,8 @@ export const MetricTypesWithOperations = {
       'lsm_rocksdb_avg_num_sst_per_node',
       'lsm_rocksdb_latencies_get',
       'lsm_rocksdb_latencies_write',
+      'table_write_rejections',
+      'table_memory_rejections',
       'lsm_rocksdb_latencies_seek',
       'lsm_rocksdb_block_cache_hit_miss',
       'lsm_rocksdb_blooms_checked_and_useful',
@@ -269,8 +280,30 @@ export const MetricTypesWithOperations = {
       'table_memory_rejections',
       'table_compaction',
       'table_block_cache_hit_miss',
+      'table_rocksdb_blooms_checked_and_useful',
       'table_mem_tracker_db_memtable',
       'ysql_catalog_cache_misses'
+    ]
+  },
+  outlier_databases: {
+    title: 'Outlier Databases',
+    metrics: [
+      'table_read_latency',
+      'table_read_rps',
+      'table_write_latency',
+      'table_write_rps',
+      'table_log_latency',
+      'table_log_ops_second',
+      'table_log_bytes_written',
+      'table_write_lock_latency',
+      'table_seek_next_prev',
+      'table_ops_in_flight',
+      'table_write_rejections',
+      'table_memory_rejections',
+      'table_compaction',
+      'table_block_cache_hit_miss',
+      'table_rocksdb_blooms_checked_and_useful',
+      'table_mem_tracker_db_memtable'
     ]
   }
 } as const;
@@ -288,7 +321,8 @@ export const MetricTypesByOrigin = {
       'master',
       'master_advanced',
       'lsmdb',
-      'outlier_tables'
+      'outlier_tables',
+      'outlier_databases'
     ]
   },
   customer: {
@@ -302,11 +336,12 @@ export const MetricTypesByOrigin = {
       'master',
       'master_advanced',
       'lsmdb',
-      'outlier_tables'
+      'outlier_tables',
+      'outlier_databases'
     ]
   },
   table: {
-    data: ['lsmdb_table', 'tserver_table']
+    data: ['tserver_table', 'lsmdb_table', 'ysql_table']
   }
 } as const;
 
@@ -338,7 +373,8 @@ export const NodeType = {
 export enum MetricMeasure {
   OVERALL = 'Overall',
   OUTLIER = 'Outlier',
-  OUTLIER_TABLES = 'Outlier_Tables'
+  OUTLIER_TABLES = 'Outlier_Tables',
+  OUTLIER_DATABASES = 'Outlier_Databases'
 }
 
 export const DEFAULT_OUTLIER_NUM_NODES = 3;

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -138,6 +138,19 @@ class WriteBuffer {
   }
 
   void Swap(WriteBuffer& rhs);
+
+  template <class F>
+  void IterateBlocks(const F& f) const {
+    size_t last_block = blocks_.size();
+    if (last_block == 0) {
+      return;
+    }
+    --last_block;
+    for (size_t i = 0; i != last_block; ++i) {
+      f(blocks_[i].AsSlice());
+    }
+    f(Slice(blocks_[last_block].data(), last_block_free_begin_));
+  }
 
  private:
   void ShrinkLastBlock();

@@ -176,6 +176,12 @@ To add your own machine images to the catalog:
 
 To edit custom Linux versions, remove Linux versions, and set a version as the default to use when creating universes, click **...** for the version you want to modify.
 
+    {{< warning title="Important" >}}
+
+For YugabyteDB Anywhere v2025.1 and later, if you want to deploy a universe on Azure in an airgapped environment, you must provide your own Linux version.
+
+    {{< /warning >}}
+
 ### SSH Key Pairs
 
 To be able to provision cloud instances with YugabyteDB, YBA requires SSH access.
@@ -252,6 +258,8 @@ The preceding setting specifies the resource group as `different-rg` and the DNS
 ### Use a shared image gallery
 
 You can use shared image galleries as an alternative to using marketplace image URNs. A gallery allows you to provide your own custom image to use for creating universe instances. For more information on shared image galleries, refer to [Store and share images in an Azure Compute Gallery](https://docs.microsoft.com/en-us/azure/virtual-machines/shared-image-galleries).
+
+Note: If your image does not have a purchase plan set or has an incorrect plan set, set the **Ignore VM plan information** Provider Runtime Configuration option (config key `yb.azure.vm.ignore_plan`) to true, otherwise you may not be able to create universes using the image. Refer to [Manage runtime configuration settings](../../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/).
 
 You set up a shared gallery image on Azure as follows:
 

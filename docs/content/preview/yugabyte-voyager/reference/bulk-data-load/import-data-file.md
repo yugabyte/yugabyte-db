@@ -66,14 +66,14 @@ import-data-file:
 
 | Use this argument to disable progress bar or statistics during data import. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1|
 
-| --enable-adaptive-parallelism |
+| --adaptive-parallelism |
 
 ```yaml{.nocopy}
 import-data-file:
-  enable-adaptive-parallelism:
+  adaptive-parallelism:
 ```
 
-| Adapt parallelism based on the resource usage (CPU, memory) of the target YugabyteDB cluster. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| Adjust parallelism based on the resource usage (CPU, memory) of the target YugabyteDB cluster. Choose from the following modes: <ul><li> `balanced` (Default): Run with moderate thresholds. Recommended when other workloads are running on the cluster.</li><li>`aggressive`: Run with maximum CPU thresholds for better performance. Recommended when no other workloads are running on the cluster.</li><li> `disabled`: Disable adaptive parallelism. </ul> |
 
 | --adaptive-parallelism-max |
 
@@ -173,6 +173,14 @@ import-data-file:
 ```
 
 | Comma-separated list of node endpoints to use for parallel import of data.<br>Default: Use all the nodes in the cluster. For example: "host1:port1,host2:port2" or "host1,host2". Note: use-public-ip flag is ignored if this is used. |
+| --on-primary-key-conflict |
+
+```yaml{.nocopy}
+import-data-file:
+  on-primary-key-conflict:
+```
+
+| Action to take on primary key conflict during data import.<br>Accepted parameters: <ul><li> `ERROR` (Default): Import in this mode fails if any primary key conflict is encountered, indicating such conflicts are unexpected.</li><li>`IGNORE`: Skips rows that have an existing primary key allowing the import to continue for the remaining data.</li></ul> |
 
 | -e, --export-dir |
 
@@ -283,7 +291,7 @@ target:
 
 | --file-opts | — | **[Deprecated]** Comma-separated string options for CSV file format. <br>Options:<ul><li>`escape_char` - escape character</li><li>`quote_char` - character used to quote the values</li></ul>Default: double quotes (") for both escape and quote characters<br>**Note** that escape_char and quote_char are only valid and required for CSV file format.<br>Example: `--file-opts "escape_char \\",quote_char \\""` or `--file-opts 'escape_char ",quote_char "'` |
 
-|  --skip-replication-checks | 
+|  --skip-replication-checks |
 
 ```yaml{.nocopy}
 import-data-file:
@@ -300,6 +308,14 @@ send-diagnostics:
 
 | Enable or disable sending [diagnostics](../../../reference/diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
 
+| -l, --log-level |
+
+```yaml {.nocopy}
+log-level:
+```
+
+| Log level for yb-voyager. <br>Accepted values: trace, debug, info, warn, error, fatal, panic <br>Default: info |
+
 | --truncate-tables |
 
 ```yaml{.nocopy}
@@ -309,9 +325,19 @@ import-data-file:
 
 | Truncate tables on target YugabyteDB database before importing data. This option is only valid if `--start-clean` is set to true. <br>Default: false |
 
+| --error-policy |
+
+```yaml{.nocopy}
+import-data-file:
+  error-policy:
+```
+
+| Specifies how to handle errors when processing and importing rows to the target YugabyteDB database. Errors can arise from reading data from file, transforming rows, or ingesting them into YugabyteDB. <br> Accepted parameters: <ul><li> `abort` (Default) - Immediately aborts the process.</li><li> `stash-and-continue` - Stashes the errored rows to a file and continues the import.</li></ul> |
+
 | --start-clean | — | Starts a fresh import with data files present in the `data` directory.<br>If there's any non-empty table on the target YugabyteDB database, you get a prompt whether to continue the import without truncating those tables.<br> **Note** that for cases where a table doesn't have a primary key, it may lead to insertion of duplicate data. In that case, you can avoid the duplication by excluding the table from the `--file-table-map`, or truncating those tables manually before using the `start-clean` flag.<br> Default: false <br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -h, --help | — | Command line help. |
 | -y, --yes | — | Answer yes to all prompts during the export schema operation. <br>Default: false |
+| -c, --config-file | — | Path to a [configuration file](../../configuration-file). |
 
 {{</table>}}
 

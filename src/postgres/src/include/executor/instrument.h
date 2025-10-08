@@ -82,6 +82,9 @@ typedef struct YbInstrumentation
 	YbPgRpcStats index_reads;
 	YbPgRpcStats catalog_reads;
 	YbPgRpcStats write_flushes;
+	double		tbl_read_ops;
+	double		index_read_ops;
+	double		catalog_read_ops;
 	double		tbl_writes;
 	double		index_writes;
 	double		catalog_writes;
@@ -90,6 +93,7 @@ typedef struct YbInstrumentation
 	YbcPgExecStorageMetrics *write_metrics;
 
 	uint64_t	rows_removed_by_recheck;
+	uint64_t	commit_wait;
 } YbInstrumentation;
 
 typedef struct Instrumentation

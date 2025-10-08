@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -40,6 +40,7 @@ constexpr auto kSnapshotRetention = 20h;
 YB_STRONGLY_TYPED_BOOL(WaitSnapshot);
 YB_STRONGLY_TYPED_BOOL(ListDeleted);
 YB_STRONGLY_TYPED_BOOL(PrepareForBackup);
+YB_STRONGLY_TYPED_BOOL(IncludeDdlInProgressTables);
 
 class SnapshotTestUtil {
  public:
@@ -75,7 +76,9 @@ class SnapshotTestUtil {
   Result<Snapshots> ListSnapshots(
       const TxnSnapshotId& snapshot_id = TxnSnapshotId::Nil(),
       ListDeleted list_deleted = ListDeleted::kTrue,
-      PrepareForBackup prepare_for_backup = PrepareForBackup::kFalse);
+      PrepareForBackup prepare_for_backup = PrepareForBackup::kFalse,
+      IncludeDdlInProgressTables include_ddl_in_progress_tables =
+          IncludeDdlInProgressTables::kFalse);
   Status VerifySnapshot(
       const TxnSnapshotId& snapshot_id, master::SysSnapshotEntryPB::State state,
       size_t expected_num_tablets, size_t expected_num_namespaces = 1,
@@ -103,6 +106,10 @@ class SnapshotTestUtil {
   Result<TxnSnapshotId> CreateSnapshot(const TableId& table_id, bool imported = false);
   Result<TxnSnapshotId> CreateSnapshot(
       const std::vector<TableId>& table_ids, bool imported = false);
+  // By specifying only the namespace_type and namespace_id in table_name, the snapshot includes all
+  // the user tables that belongs to the database.
+  Result<TxnSnapshotId> CreateSnapshot(const YBTableName& table_name);
+
   Status DeleteSnapshot(const TxnSnapshotId& snapshot_id);
   Status WaitAllSnapshotsDeleted();
 

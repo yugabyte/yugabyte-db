@@ -190,16 +190,20 @@ typedef enum YbStatLabel
 	YB_STAT_LABEL_FIRST = 0,
 
 	YB_STAT_LABEL_CATALOG_READ = YB_STAT_LABEL_FIRST,
+	YB_STAT_LABEL_CATALOG_READ_OP,
 	YB_STAT_LABEL_CATALOG_WRITE,
 
 	YB_STAT_LABEL_STORAGE_READ,
+	YB_STAT_LABEL_STORAGE_READ_OP,
 	YB_STAT_LABEL_STORAGE_WRITE,
 
 	YB_STAT_LABEL_STORAGE_TABLE_READ,
+	YB_STAT_LABEL_STORAGE_TABLE_READ_OP,
 	YB_STAT_LABEL_STORAGE_TABLE_WRITE,
 	YB_STAT_LABEL_STORAGE_TABLE_ROWS_SCANNED,
 
 	YB_STAT_LABEL_STORAGE_INDEX_READ,
+	YB_STAT_LABEL_STORAGE_INDEX_READ_OP,
 	YB_STAT_LABEL_STORAGE_INDEX_WRITE,
 	YB_STAT_LABEL_STORAGE_INDEX_ROWS_SCANNED,
 
@@ -235,6 +239,9 @@ typedef struct YbExplainState
 		NAME " Requests", NAME " Execution Time", IS_NON_DETERMINISTIC \
 	}
 
+#define BUILD_NON_DETERMINISTIC_STAT_LABEL_DATA(NAME) \
+	BUILD_STAT_LABEL_DATA(NAME, true)
+
 #define BUILD_DETERMINISTIC_STAT_LABEL_DATA(NAME) \
 	BUILD_STAT_LABEL_DATA(NAME, false)
 
@@ -247,11 +254,15 @@ typedef struct YbExplainState
 const YbStatLabelData yb_stat_label_data[] = {
 	[YB_STAT_LABEL_CATALOG_READ] =
 	BUILD_NON_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Catalog Read"),
+	[YB_STAT_LABEL_CATALOG_READ_OP] =
+	BUILD_NON_DETERMINISTIC_STAT_LABEL_DATA("Catalog Read Ops"),
 	[YB_STAT_LABEL_CATALOG_WRITE] =
 	BUILD_NON_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Catalog Write"),
 
 	[YB_STAT_LABEL_STORAGE_READ] =
 	BUILD_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Storage Read"),
+	[YB_STAT_LABEL_STORAGE_READ_OP] =
+	BUILD_DETERMINISTIC_STAT_LABEL_DATA("Storage Read Ops"),
 	[YB_STAT_LABEL_STORAGE_WRITE] =
 	BUILD_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Storage Write"),
 	[YB_STAT_LABEL_STORAGE_ROWS_SCANNED] =
@@ -259,6 +270,8 @@ const YbStatLabelData yb_stat_label_data[] = {
 
 	[YB_STAT_LABEL_STORAGE_TABLE_READ] =
 	BUILD_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Storage Table Read"),
+	[YB_STAT_LABEL_STORAGE_TABLE_READ_OP] =
+	BUILD_DETERMINISTIC_STAT_LABEL_DATA("Storage Table Read Ops"),
 	[YB_STAT_LABEL_STORAGE_TABLE_WRITE] =
 	BUILD_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Storage Table Write"),
 	[YB_STAT_LABEL_STORAGE_TABLE_ROWS_SCANNED] =
@@ -266,6 +279,8 @@ const YbStatLabelData yb_stat_label_data[] = {
 
 	[YB_STAT_LABEL_STORAGE_INDEX_READ] =
 	BUILD_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Storage Index Read"),
+	[YB_STAT_LABEL_STORAGE_INDEX_READ_OP] =
+	BUILD_DETERMINISTIC_STAT_LABEL_DATA("Storage Index Read Ops"),
 	[YB_STAT_LABEL_STORAGE_INDEX_WRITE] =
 	BUILD_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Storage Index Write"),
 	[YB_STAT_LABEL_STORAGE_INDEX_ROWS_SCANNED] =
@@ -301,8 +316,6 @@ const char *yb_metric_gauge_label[] = {
 	BUILD_METRIC_LABEL("rocksdb_block_cache_data_miss"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_DATA_HIT] =
 	BUILD_METRIC_LABEL("rocksdb_block_cache_data_hit"),
-	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_BYTES_READ] =
-	BUILD_METRIC_LABEL("rocksdb_block_cache_bytes_read"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_BYTES_WRITE] =
 	BUILD_METRIC_LABEL("rocksdb_block_cache_bytes_write"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOOM_FILTER_USEFUL] =
@@ -431,16 +444,12 @@ const char *yb_metric_gauge_label[] = {
 	BUILD_METRIC_LABEL("rocksdb_block_cache_single_touch_hit"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_SINGLE_TOUCH_ADD] =
 	BUILD_METRIC_LABEL("rocksdb_block_cache_single_touch_add"),
-	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_SINGLE_TOUCH_BYTES_READ] =
-	BUILD_METRIC_LABEL("rocksdb_block_cache_single_touch_bytes_read"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_SINGLE_TOUCH_BYTES_WRITE] =
 	BUILD_METRIC_LABEL("rocksdb_block_cache_single_touch_bytes_write"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_MULTI_TOUCH_HIT] =
 	BUILD_METRIC_LABEL("rocksdb_block_cache_multi_touch_hit"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_MULTI_TOUCH_ADD] =
 	BUILD_METRIC_LABEL("rocksdb_block_cache_multi_touch_add"),
-	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_MULTI_TOUCH_BYTES_READ] =
-	BUILD_METRIC_LABEL("rocksdb_block_cache_multi_touch_bytes_read"),
 	[YB_STORAGE_GAUGE_REGULARDB_BLOCK_CACHE_MULTI_TOUCH_BYTES_WRITE] =
 	BUILD_METRIC_LABEL("rocksdb_block_cache_multi_touch_bytes_write"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_MISS] =
@@ -463,8 +472,6 @@ const char *yb_metric_gauge_label[] = {
 	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_data_miss"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_DATA_HIT] =
 	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_data_hit"),
-	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_BYTES_READ] =
-	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_bytes_read"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_BYTES_WRITE] =
 	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_bytes_write"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOOM_FILTER_USEFUL] =
@@ -593,16 +600,12 @@ const char *yb_metric_gauge_label[] = {
 	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_single_touch_hit"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_SINGLE_TOUCH_ADD] =
 	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_single_touch_add"),
-	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_SINGLE_TOUCH_BYTES_READ] =
-	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_single_touch_bytes_read"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_SINGLE_TOUCH_BYTES_WRITE] =
 	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_single_touch_bytes_write"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_MULTI_TOUCH_HIT] =
 	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_multi_touch_hit"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_MULTI_TOUCH_ADD] =
 	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_multi_touch_add"),
-	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_MULTI_TOUCH_BYTES_READ] =
-	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_multi_touch_bytes_read"),
 	[YB_STORAGE_GAUGE_INTENTSDB_BLOCK_CACHE_MULTI_TOUCH_BYTES_WRITE] =
 	BUILD_METRIC_LABEL("intentsdb_rocksdb_block_cache_multi_touch_bytes_write"),
 	[YB_STORAGE_GAUGE_ACTIVE_WRITE_QUERY_OBJECTS] =
@@ -718,6 +721,20 @@ const char *yb_metric_event_label[] = {
 };
 
 #undef BUILD_METRIC_LABEL
+
+typedef struct
+{
+	bool		is_required;
+	bool		is_dist;
+	ExplainFormat format;
+} YbExplainCommitStatState;
+
+/*
+ * YB: Commit stats are collected after the end of the query, and need to outlive
+ * both the query and the transaction. Therefore, store information in a static
+ * scoped global variable.
+ */
+static YbExplainCommitStatState yb_explain_commit_stat_state = {0};
 
 /* Explains a single stat with no associated timing */
 static void
@@ -921,7 +938,7 @@ YbExplainRpcRequestMetrics(YbExplainState *yb_es, YbcPgExecStorageMetrics *metri
 
 	for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i)
 		YbExplainRpcRequestEvent(yb_es, i, &metrics->events[i],
-								 nloops , is_mean);
+								 nloops, is_mean);
 
 	if (yb_es->es->format == EXPLAIN_FORMAT_TEXT)
 		--yb_es->es->indent;
@@ -969,6 +986,8 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt,
 		/* YB */
 		else if (strcmp(opt->defname, "debug") == 0)
 			es->yb_debug = defGetBoolean(opt);
+		else if (strcmp(opt->defname, "commit") == 0)
+			es->yb_commit = defGetBoolean(opt);
 		else if (strcmp(opt->defname, "timing") == 0)
 		{
 			timing_set = true;
@@ -1020,29 +1039,13 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("EXPLAIN option WAL requires ANALYZE")));
 
-	/*
-	 * YB: if hiding of non-deterministic fields is requested, turn off debug
-	 * and verbose modes
-	 */
-	if (yb_explain_hide_non_deterministic_fields)
+	if (yb_explain_hide_non_deterministic_fields && es->yb_debug)
 	{
-		if (es->yb_debug)
-		{
-			ereport(WARNING,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("GUC yb_explain_hide_non_deterministic_fields "
-							"disables EXPLAIN option DEBUG")));
-			es->yb_debug = false;
-		}
-
-		if (es->verbose)
-		{
-			ereport(WARNING,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("GUC yb_explain_hide_non_deterministic_fields "
-							"disables EXPLAIN option VERBOSE")));
-			es->verbose = false;
-		}
+		ereport(WARNING,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("GUC yb_explain_hide_non_deterministic_fields "
+						"disables EXPLAIN option DEBUG")));
+		es->yb_debug = false;
 	}
 
 	/* YB: check if timing is required */
@@ -1061,6 +1064,11 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt,
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("EXPLAIN option DIST requires ANALYZE")));
+
+	if (es->yb_commit && !es->analyze)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("EXPLAIN option COMMIT requires ANALYZE")));
 
 	/* Turn on timing of RPC requests in accordance to the flags passed */
 	YbToggleSessionStatsTimer(es->timing);
@@ -1127,10 +1135,131 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt,
 	end_tup_output(tstate);
 
 	/*
+	 * YB: If commit stats are to be collected and explained, copy over the
+	 * necessary options to the global variable as the ExplainState will be lost
+	 * after this function returns.
+	 */
+	if (YbIsCommitStatsCollectionEnabled() && es->yb_commit)
+	{
+		yb_explain_commit_stat_state.is_required = (es->analyze && es->summary);
+		yb_explain_commit_stat_state.is_dist = es->rpc;
+		yb_explain_commit_stat_state.format = es->format;
+	}
+	else
+	{
+		/*
+		 * YB: Turn off timing RPC requests and metrics capture so that future
+		 * queries are not timed and metrics are not sent by default.
+		 * Also turn off commit stats collection if 'COMMIT' is not specified
+		 * as an EXPLAIN option.
+		 */
+		YbToggleSessionStatsTimer(false);
+		YbToggleCommitStatsCollection(false);
+	}
+
+	YbSetMetricsCaptureType(YB_YQL_METRICS_CAPTURE_NONE);
+	pfree(es->str->data);
+}
+
+void
+YbExplainCommitStats(DestReceiver *dest)
+{
+	/* Nothing to explain if statement is not run with ANALYZE */
+	if (!yb_explain_commit_stat_state.is_required)
+		return;
+
+	/* No stats to be printed */
+	if (!yb_explain_commit_stat_state.is_dist &&
+		(!YbIsSessionStatsTimerEnabled() || yb_explain_hide_non_deterministic_fields))
+		return;
+
+	ExplainState *es = NewExplainState();
+	TupOutputState *tstate = NULL;
+	TupleDesc	tupdesc;
+	YbInstrumentation yb_instr = {0};
+
+	es->rpc = yb_explain_commit_stat_state.is_dist;
+	es->format = yb_explain_commit_stat_state.format;
+	es->timing = YbIsSessionStatsTimerEnabled();
+
+	/* DocDB stats are currently not collected for COMMIT */
+	es->yb_debug = false;
+
+	/* Collect the stats */
+	YbUpdateSessionStats(&yb_instr);
+	YbAggregateExplainableRPCRequestStat(es, &yb_instr);
+
+	/*
+	 * Postgres does not provide an API to detect if autocommit is turned on/off
+	 * in the given connection. Therefore the commit wait is used to estimate
+	 * this. A wait of 0 ns implies that either:
+	 * - the transaction commit has not yet run (OR)
+	 * - the commit has run but with timing disabled.
+	 * In both cases, ensure that there is something to print before proceeding
+	 * further.
+	 */
+	if (!(yb_instr.commit_wait ||
+		  es->yb_stats.read.count || es->yb_stats.flush.count ||
+		  (es->yb_stats.catalog_read.count && !yb_explain_hide_non_deterministic_fields)))
+	{
+		YbToggleSessionStatsTimer(false);
+		pfree(es);
+		return;
+	}
+
+	tupdesc = CreateTemplateTupleDesc(1);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "COMMIT STATS",
+					   TEXTOID, -1, 0);
+
+	ExplainBeginOutput(es);
+	ExplainOpenGroup("Commit", NULL, true, es);
+
+	if (es->rpc)
+	{
+		YbExplainState yb_es = {es, false /* display_zero */ };
+
+		YbExplainRpcRequestStat(&yb_es, YB_STAT_LABEL_CATALOG_READ,
+								es->yb_stats.catalog_read.count,
+								es->yb_stats.catalog_read.wait_time);
+
+		YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_CATALOG_READ_OP,
+								   es->yb_stats.catalog_read_op_count);
+
+		YbExplainRpcRequestStat(&yb_es, YB_STAT_LABEL_STORAGE_READ,
+								es->yb_stats.read.count,
+								es->yb_stats.read.wait_time);
+
+		YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_STORAGE_READ_OP,
+								   es->yb_stats.read_op_count);
+
+		YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_STORAGE_WRITE,
+								   es->yb_stats.write_count);
+
+		YbExplainRpcRequestStat(&yb_es, YB_STAT_LABEL_STORAGE_FLUSH,
+								es->yb_stats.flush.count,
+								es->yb_stats.flush.wait_time);
+	}
+
+	if (es->timing && !yb_explain_hide_non_deterministic_fields)
+		ExplainPropertyFloat("Commit Execution Time", "ms",
+							 (double) yb_instr.commit_wait / 1000.0, 3, es);
+
+	ExplainCloseGroup("Commit", NULL, true, es);
+	ExplainEndOutput(es);
+
+	/* output tuples */
+	tstate = begin_tup_output_tupdesc(dest, tupdesc, &TTSOpsVirtual);
+	if (es->format == EXPLAIN_FORMAT_TEXT)
+		do_text_output_multiline(tstate, es->str->data);
+	else
+		do_text_output_oneline(tstate, es->str->data);
+	end_tup_output(tstate);
+
+	/*
 	 * YB: Turn off timing RPC requests and metrics capture so that future
 	 * queries are not timed and metrics are not sent by default
 	 */
-	YbToggleSessionStatsTimer(false);
+	YbToggleSessionStatsTimer(yb_enable_pg_stat_statements_rpc_stats);
 	YbSetMetricsCaptureType(YB_YQL_METRICS_CAPTURE_NONE);
 	pfree(es->str->data);
 }
@@ -1568,6 +1697,8 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 			YbExplainRpcRequestStat(&yb_es, YB_STAT_LABEL_STORAGE_READ,
 									es->yb_stats.read.count,
 									es->yb_stats.read.wait_time);
+			YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_STORAGE_READ_OP,
+									   es->yb_stats.read_op_count);
 			YbExplainStatWithoutTiming(&yb_es,
 									   YB_STAT_LABEL_STORAGE_ROWS_SCANNED,
 									   es->yb_stats.read.rows_scanned);
@@ -1579,6 +1710,8 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 			YbExplainRpcRequestStat(&yb_es, YB_STAT_LABEL_CATALOG_READ,
 									es->yb_stats.catalog_read.count,
 									es->yb_stats.catalog_read.wait_time);
+			YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_CATALOG_READ_OP,
+									   es->yb_stats.catalog_read_op_count);
 			YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_CATALOG_WRITE,
 									   es->yb_stats.catalog_write_count);
 			YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_STORAGE_WRITE,
@@ -1594,6 +1727,9 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 			if (es->timing)
 				ExplainPropertyFloat("Storage Execution Time", "ms",
 									 total_rpc_wait / 1000000.0, 3, es);
+
+			if (YBCCurrentTransactionUsesFastPath())
+				ExplainPropertyText("Transaction", "Fast Path", es);
 		}
 
 		if (IsYugaByteEnabled() && yb_enable_memory_tracking && show_variable_fields)
@@ -3042,14 +3178,18 @@ ExplainNode(PlanState *planstate, List *ancestors,
 				 * as an OR condition.
 				 */
 				List	   *tidquals = ((TidScan *) plan)->tidquals;
+				List	   *yb_pushdown = ((TidScan *) plan)->yb_rel_pushdown.quals;
 
 				if (list_length(tidquals) > 1)
 					tidquals = list_make1(make_orclause(tidquals));
 				show_scan_qual(tidquals, "TID Cond", planstate, ancestors, es);
+				show_scan_qual(yb_pushdown, "Storage Filter", planstate, ancestors, es);
 				show_scan_qual(plan->qual, "Filter", planstate, ancestors, es);
 				if (plan->qual)
 					show_instrumentation_count("Rows Removed by Filter", 1,
 											   planstate, es);
+				if (is_yb_rpc_stats_required)
+					show_yb_rpc_stats(planstate, es);
 			}
 			break;
 		case T_TidRangeScan:
@@ -4994,8 +5134,10 @@ show_yb_rpc_stats(PlanState *planstate, ExplainState *es)
 	/* Read stats */
 	double		table_reads = yb_instr->tbl_reads.count / nloops;
 	double		table_read_wait = yb_instr->tbl_reads.wait_time / nloops;
+	double		table_read_ops = yb_instr->tbl_read_ops / nloops;
 	double		index_reads = yb_instr->index_reads.count / nloops;
 	double		index_read_wait = yb_instr->index_reads.wait_time / nloops;
+	double		index_read_ops = yb_instr->index_read_ops / nloops;
 	double		table_rows_scanned = yb_instr->tbl_reads.rows_scanned / nloops;
 	double		index_rows_scanned = yb_instr->index_reads.rows_scanned / nloops;
 
@@ -5009,10 +5151,14 @@ show_yb_rpc_stats(PlanState *planstate, ExplainState *es)
 
 	YbExplainRpcRequestStat(&yb_es, YB_STAT_LABEL_STORAGE_TABLE_READ,
 							table_reads, table_read_wait);
+	YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_STORAGE_TABLE_READ_OP,
+							   table_read_ops);
 	YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_STORAGE_TABLE_ROWS_SCANNED,
 							   table_rows_scanned);
 	YbExplainRpcRequestStat(&yb_es, YB_STAT_LABEL_STORAGE_INDEX_READ,
 							index_reads, index_read_wait);
+	YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_STORAGE_INDEX_READ_OP,
+							   index_read_ops);
 	YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_STORAGE_INDEX_ROWS_SCANNED,
 							   index_rows_scanned);
 
@@ -6390,6 +6536,7 @@ YbAggregateExplainableRpcMetrics(YbcPgExecStorageMetrics **metrics,
 	{
 		const YbcPgExecEventMetric *val = &instr_metrics->events[i];
 		YbcPgExecEventMetric *agg = &(*metrics)->events[i];
+
 		agg->sum += val->sum;
 		agg->count += val->count;
 	}
@@ -6404,12 +6551,15 @@ YbAggregateExplainableRPCRequestStat(ExplainState *es,
 		yb_instr->tbl_reads.count + yb_instr->index_reads.count;
 	es->yb_stats.read.wait_time +=
 		yb_instr->tbl_reads.wait_time + yb_instr->index_reads.wait_time;
+	es->yb_stats.read_op_count +=
+		yb_instr->tbl_read_ops + yb_instr->index_read_ops;
 
 	/* Storage Writes */
 	es->yb_stats.write_count += yb_instr->tbl_writes + yb_instr->index_writes;
 
 	/* Catalog Reads */
 	es->yb_stats.catalog_read.count += yb_instr->catalog_reads.count;
+	es->yb_stats.catalog_read_op_count += yb_instr->catalog_read_ops;
 	es->yb_stats.catalog_read.wait_time += yb_instr->catalog_reads.wait_time;
 
 	/* Catalog Writes */

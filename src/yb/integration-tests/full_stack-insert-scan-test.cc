@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -392,7 +392,7 @@ void FullStackInsertScanTest::FlushToDisk() {
     ts->maintenance_manager()->Shutdown();
     auto peers = ts->tablet_manager()->GetTabletPeers();
     for (const std::shared_ptr<TabletPeer>& peer : peers) {
-      Tablet* tablet = peer->tablet();
+      auto tablet = ASSERT_RESULT(peer->shared_tablet());
       ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
     }
   }

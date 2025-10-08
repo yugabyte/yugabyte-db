@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -16,11 +16,13 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <variant>
 
 #include <boost/container/small_vector.hpp>
 
 #include "yb/common/pg_types.h"
 #include "yb/common/pgsql_protocol.fwd.h"
+#include "yb/common/read_hybrid_time.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -32,14 +34,19 @@ namespace yb::pggate {
 
 class PgSession;
 
-YB_DEFINE_ENUM(PrefetchingCacheMode, (TRUST_CACHE)(RENEW_CACHE_SOFT)(RENEW_CACHE_HARD));
+YB_DEFINE_ENUM(PrefetchingCacheMode,
+               (TRUST_CACHE_AUTH)(TRUST_CACHE)(RENEW_CACHE_SOFT)(RENEW_CACHE_HARD));
 
 using PrefetchedDataHolder =
     std::shared_ptr<const boost::container::small_vector<rpc::SidecarHolder, 8>>;
+using MissedPrefetchedDataAlternativeReadTime = std::optional<ReadHybridTime>;
+using PrefetchedDataInfo =
+    std::variant<PrefetchedDataHolder, MissedPrefetchedDataAlternativeReadTime>;
 
 struct PrefetcherOptions {
   struct VersionInfo {
     uint64_t version;
+    ReadHybridTime version_read_time;
     bool is_db_catalog_version_mode;
 
     std::string ToString() const;
@@ -76,7 +83,8 @@ class PgSysTablePrefetcher {
   Status Prefetch(PgSession* session);
 
   // GetData of previously registered table.
-  PrefetchedDataHolder GetData(const LWPgsqlReadRequestPB& read_req, bool index_check_required);
+  [[nodiscard]] PrefetchedDataInfo GetData(
+      const LWPgsqlReadRequestPB& read_req, bool index_check_required);
 
  private:
   class Impl;

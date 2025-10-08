@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -31,9 +31,7 @@
 //
 #pragma once
 
-#include <map>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -44,11 +42,10 @@
 #include "yb/consensus/log_fwd.h"
 
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/spinlock.h"
 
 #include "yb/util/locks.h"
+#include "yb/util/mem_tracker.h"
 #include "yb/util/monotime.h"
-#include "yb/util/numbered_deque.h"
 
 namespace yb {
 
@@ -73,13 +70,11 @@ class LogReader {
   // LogReader.
   //
   // 'index' may be nullptr, but if it is, ReadReplicatesInRange() may not be used.
-  static Status Open(Env *env,
-                             const scoped_refptr<LogIndex>& index,
-                             std::string log_prefix,
-                             const std::string& tablet_wal_path,
-                             const scoped_refptr<MetricEntity>& table_metric_entity,
-                             const scoped_refptr<MetricEntity>& tablet_metric_entity,
-                             std::unique_ptr<LogReader> *reader);
+  static Status Open(
+      Env* env, const scoped_refptr<LogIndex>& index, std::string log_prefix,
+      const std::string& tablet_wal_path, const scoped_refptr<MetricEntity>& table_metric_entity,
+      const scoped_refptr<MetricEntity>& tablet_metric_entity,
+      std::shared_ptr<MemTracker> read_wal_mem_tracker, std::unique_ptr<LogReader>* reader);
 
   // Returns the biggest prefix of segments, from the current sequence, guaranteed
   // not to include any replicate messages with indexes >= 'index'.
@@ -104,8 +99,10 @@ class LogReader {
   // The caller takes ownership of the returned ReplicateMsg objects.
   //
   // Will attempt to read no more than 'max_bytes_to_read', unless it is set to
-  // LogReader::kNoSizeLimit. If the size limit would prevent reading any operations at
-  // all, then will read exactly one operation.
+  // LogReader::kNoSizeLimit.  If the size limit would prevent reading any operations at all, then
+  // will read exactly one operation.  Exception: if obey_memory_limit is true then may fail to read
+  // even one operation if doing so would exceed the log reader memory tracker limit; returns Busy
+  // in that case.
   //
   // Requires that a LogIndex was passed into LogReader::Open().
   // Requires up_to operation index to be Raft-committed, otherwise might return NotFound error if
@@ -118,6 +115,7 @@ class LogReader {
       const int64_t starting_at,
       const int64_t up_to,
       int64_t max_bytes_to_read,
+      ObeyMemoryLimit obey_memory_limit,
       consensus::ReplicateMsgs* replicates,
       int64_t* starting_op_segment_seq_num,
       CoarseTimePoint deadline = CoarseTimePoint::max()) const;
@@ -205,13 +203,17 @@ class LogReader {
 
   // Read the LogEntryBatch pointed to by the provided index entry.
   // 'tmp_buf' is used as scratch space to avoid extra allocation.
+  //
+  // Returns status Busy if obey_memory_limit is set and there is insufficient memory to hold the
+  // batch.
   Result<std::shared_ptr<LWLogEntryBatchPB>> ReadBatchUsingIndexEntry(
-      const LogIndexEntry& index_entry) const;
+      const LogIndexEntry& index_entry, ObeyMemoryLimit obey_memory_limit) const;
 
-  LogReader(Env* env, const scoped_refptr<LogIndex>& index,
-            std::string log_prefix,
-            const scoped_refptr<MetricEntity>& table_metric_entity,
-            const scoped_refptr<MetricEntity>& tablet_metric_entity);
+  LogReader(
+      Env* env, const scoped_refptr<LogIndex>& index, std::string log_prefix,
+      const scoped_refptr<MetricEntity>& table_metric_entity,
+      const scoped_refptr<MetricEntity>& tablet_metric_entity,
+      std::shared_ptr<MemTracker> read_wal_mem_tracker);
 
   // Reads the headers of all segments in 'path_'.
   Status Init(const std::string& path);
@@ -237,6 +239,8 @@ class LogReader {
   scoped_refptr<Counter> bytes_read_;
   scoped_refptr<Counter> entries_read_;
   scoped_refptr<EventStats> read_batch_latency_;
+
+  std::shared_ptr<MemTracker> read_wal_mem_tracker_;
 
   // The sequence of all current log segments in increasing sequence number order.
   SegmentSequence segments_;

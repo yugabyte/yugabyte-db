@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks;
 
@@ -53,11 +53,17 @@ public class ResumeXClusterUniverses extends XClusterConfigTaskBase {
 
         taskParams = sourceUniverseParams;
         createResumeUniverseTasks(
-            sourceUniverse, Customer.get(sourceUniverse.getCustomerId()).getUuid());
+            sourceUniverse,
+            Customer.get(sourceUniverse.getCustomerId()).getUuid(),
+            true /*updateCerts*/,
+            u -> {});
 
         taskParams = targetUniverseParams;
         createResumeUniverseTasks(
-            targetUniverse, Customer.get(targetUniverse.getCustomerId()).getUuid());
+            targetUniverse,
+            Customer.get(targetUniverse.getCustomerId()).getUuid(),
+            true /*updateCerts*/,
+            u -> {});
 
         createSetReplicationPausedTask(xClusterConfig, false /* pause */);
         createWaitForReplicationDrainTask(xClusterConfig);

@@ -55,9 +55,6 @@ WITH w AS (
 ) INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{1, 3, 2, 4}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i * (SELECT -min(i) FROM w);
 SELECT * FROM parttrigtab_parent ORDER BY i;
 ABORT;
-DROP TRIGGER parttrigtrig_createdtrig ON parttrigtab_even; -- TODO: transactional DDL
-DROP TRIGGER parttrigtrig_createdtrig ON parttrigtab_odd; -- TODO: transactional DDL
-DROP TRIGGER noparttrigtrig ON noparttrigtab; -- TODO: transactional DDL
 
 -- How much of a LIMITed WITH statement is processed on demand and in
 -- ExecPostprocessPlan?  The | in the diagram below denotes where processing
@@ -105,8 +102,7 @@ WITH w AS (
 ) INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{0, 2, 4, 6, 1}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + (SELECT max(i) - 66 FROM (SELECT i FROM w LIMIT 2) l) + 1000;
 SELECT * FROM parttrigtab_parent ORDER BY i;
 ABORT;
-DROP TRIGGER IF EXISTS parttrigtrig_odd ON parttrigtab_odd; -- YB: transactional DDL
-DROP TRIGGER IF EXISTS parttrigtrig_odd2 ON parttrigtab_odd; -- YB: transactional DDL
+DROP TRIGGER parttrigtrig_odd ON parttrigtab_odd;
 
 -- More LIMITed WITH statement getting processed on demand when reading tuples
 -- from input and in ON CONFLICT DO UPDATE, and in ExecPostprocessPlan.
@@ -419,8 +415,6 @@ CREATE TRIGGER parttrigtrig_createtrigoneven AFTER INSERT ON parttrigtab_even FO
 INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{0, 2, 4, 1, 6, 3}'::int[]) u ON CONFLICT DO NOTHING;
 SELECT * FROM parttrigtab_parent ORDER BY i;
 ABORT;
-DROP TRIGGER parttrigtrig_createdtrig ON parttrigtab_even; -- TODO: transactional DDL
-DROP TRIGGER parttrigtrig_createtrigoneven ON parttrigtab_even; -- TODO: transactional DDL
 
 -- CREATE TRIGGER is visible to the parttrigtab_even table opened in the
 -- following trigger execution only because that opens the relation fresh.
@@ -444,8 +438,6 @@ WITH w AS (
 ) INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{0, 2, 4, 1, 6, 3}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + (SELECT max(i) - 111 FROM w);
 SELECT * FROM parttrigtab_parent ORDER BY i;
 ABORT;
-DROP TRIGGER parttrigtrig_createdtrig ON parttrigtab_even; -- TODO: transactional DDL
-DROP TRIGGER parttrigtrig_createtrigoneven ON parttrigtab_even; -- TODO: transactional DDL
 
 -- CREATE TRIGGER is visible to the parttrigtab_even table opened in the three
 -- places that freshly open that table.
@@ -473,8 +465,6 @@ WITH w AS (
 ) INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{0, 2, 4, 6}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + (SELECT max(i) FROM w2);
 SELECT * FROM parttrigtab_parent ORDER BY i;
 ABORT;
-DROP TRIGGER parttrigtrig_createdtrig ON parttrigtab_even; -- TODO: transactional DDL
-DROP TRIGGER parttrigtrig_createtrigoneven ON parttrigtab_even; -- TODO: transactional DDL
 
 -- CREATE TRIGGER is visible to the parttrigtab_even table opened in the three
 -- places that freshly open that table.
@@ -502,8 +492,6 @@ WITH w AS (
 ) INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{0, 2, 4, 5}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + (SELECT max(i) FROM w2);
 SELECT * FROM parttrigtab_parent ORDER BY i;
 ABORT;
-DROP TRIGGER parttrigtrig_createdtrig ON parttrigtab_even; -- TODO: transactional DDL
-DROP TRIGGER parttrigtrig_createtrigoneven ON parttrigtab_even; -- TODO: transactional DDL
 
 -- CREATE TRIGGER is visible to the parttrigtab_even table opened in the two
 -- places that freshly open that table.
@@ -539,8 +527,6 @@ ABORT;
 
 -- DROP TRIGGER is visible to the parttrigtab_even table opened in the two
 -- places that freshly open that table.
-DROP TRIGGER parttrigtrig_createdtrig ON parttrigtab_odd; -- TODO: transactional DDL
-DROP TRIGGER parttrigtrig_createtrigonodd ON parttrigtab_even; -- TODO: transactional DDL
 CREATE OR REPLACE FUNCTION parttrigfunc_dropself() RETURNS trigger AS $$
     BEGIN
         RAISE NOTICE 'placeholder';
@@ -621,8 +607,6 @@ WITH w AS (
 ) INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{0, 2, 4, 1}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + (SELECT max(i) + 996 FROM w2);
 SELECT * FROM parttrigtab_parent ORDER BY i;
 ABORT;
-DROP TRIGGER parttrigtrig_createdtrig ON parttrigtab_even; -- TODO: transactional DDL
-DROP TRIGGER noparttrigtrig ON noparttrigtab; -- TODO: transactional DDL
 
 -- CREATE TRIGGER is visible to the parttrigtab_even table opened in the three
 -- places that freshly open that table.
@@ -660,5 +644,3 @@ WITH w AS (
 ) INSERT INTO parttrigtab_parent SELECT u, (u % 2)::bool FROM unnest('{0, 2, 4, 1}'::int[]) u ON CONFLICT (i, p) DO UPDATE SET i = EXCLUDED.i + (SELECT max(i) + 996 FROM w2);
 SELECT * FROM parttrigtab_parent ORDER BY i;
 ABORT;
-DROP TRIGGER parttrigtrig_createdtrig ON parttrigtab_even; -- TODO: transactional DDL
-DROP TRIGGER noparttrigtrig ON noparttrigtab; -- TODO: transactional DDL

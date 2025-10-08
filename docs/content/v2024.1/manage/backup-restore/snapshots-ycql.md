@@ -41,13 +41,13 @@ Using distributed snapshots allows you to back up a database and then restore it
 To back up a keyspace with all its tables and indexes, create a snapshot using the [`create_keyspace_snapshot`](../../../admin/yb-admin/#create-keyspace-snapshot) command, as follows:
 
 ```sh
-./bin/yb-admin -master_addresses <ip1:7100,ip2:7100,ip3:7100> create_keyspace_snapshot my_keyspace
+./bin/yb-admin --master_addresses <ip1:7100,ip2:7100,ip3:7100> create_keyspace_snapshot my_keyspace
 ```
 
 To back up a single table with its indexes, use the [`create_snapshot`](../../../admin/yb-admin/#create-snapshot) command instead, as follows:
 
 ```sh
-./bin/yb-admin -master_addresses <ip1:7100,ip2:7100,ip3:7100> create_snapshot my_keyspace my_table
+./bin/yb-admin --master_addresses <ip1:7100,ip2:7100,ip3:7100> create_snapshot my_keyspace my_table
 ```
 
 When you execute either of the preceding commands, a unique ID for the snapshot is returned, as per the following output:
@@ -61,7 +61,7 @@ You can then use this ID to check the status of the snapshot, [delete it](#delet
 Even though the `create_keyspace_snapshot` and `create_snapshot` commands exit immediately, the snapshot may take some time to complete. Before using the snapshot, verify its status with the [`list_snapshots`](../../../admin/yb-admin/#list-snapshots) command, as follows:
 
 ```sh
-./bin/yb-admin -master_addresses <ip1:7100,ip2:7100,ip3:7100> list_snapshots
+./bin/yb-admin --master_addresses <ip1:7100,ip2:7100,ip3:7100> list_snapshots
 ```
 
 The preceding command lists the snapshots in the cluster, along with their states. You can find the ID of the new snapshot and make sure it has been completed, as shown in the following  sample output:
@@ -76,7 +76,7 @@ Snapshot UUID                           State       Creation Time
 Snapshots never expire and are retained as long as the cluster exists. If you no longer need a snapshot, you can delete it with the [`delete_snapshot`](../../../admin/yb-admin/#delete-snapshot) command, as follows:
 
 ```sh
-./bin/yb-admin -master_addresses <ip1:7100,ip2:7100,ip3:7100> delete_snapshot 6e7e85b0-13ef-4073-9ab7-224cb77f22ef
+./bin/yb-admin --master_addresses <ip1:7100,ip2:7100,ip3:7100> delete_snapshot 6e7e85b0-13ef-4073-9ab7-224cb77f22ef
 ```
 
 ## Restore a snapshot
@@ -84,7 +84,7 @@ Snapshots never expire and are retained as long as the cluster exists. If you no
 To restore the data backed up in one of the previously created snapshots, run the [`restore_snapshot`](../../../admin/yb-admin/#restore-snapshot) command, as follows:
 
 ```sh
-./bin/yb-admin -master_addresses <ip1:7100,ip2:7100,ip3:7100> restore_snapshot 6e7e85b0-13ef-4073-9ab7-224cb77f22ef
+./bin/yb-admin --master_addresses <ip1:7100,ip2:7100,ip3:7100> restore_snapshot 6e7e85b0-13ef-4073-9ab7-224cb77f22ef
 ```
 
 This command rolls back the database to the state which it had when the snapshot was created. The restore happens in-place: it changes the state of the existing database in the same cluster.
@@ -102,7 +102,7 @@ To move a snapshot to external storage, gather all the relevant files from all t
 1. Create the snapshot metadata file by running the [`export_snapshot`](../../../admin/yb-admin/#export-snapshot) command and providing the ID of the snapshot:
 
     ```sh
-    ./bin/yb-admin -master_addresses <ip1:7100,ip2:7100,ip3:7100> export_snapshot 6e7e85b0-13ef-4073-9ab7-224cb77f22ef my_keyspace.snapshot
+    ./bin/yb-admin --master_addresses <ip1:7100,ip2:7100,ip3:7100> export_snapshot 6e7e85b0-13ef-4073-9ab7-224cb77f22ef my_keyspace.snapshot
     ```
 
 1. Copy the newly created snapshot metadata file (`my_keyspace.snapshot`) to the external storage.
@@ -133,7 +133,7 @@ You can restore a snapshot that you have [moved to external storage](#move-a-sna
 1. Retrieve the snapshot metadata file from the external storage and apply it by running the [`import_snapshot`](../../../admin/yb-admin/#import-snapshot) command, as follows:
 
     ```sh
-    ./bin/yb-admin -master_addresses <ip1:7100,ip2:7100,ip3:7100> import_snapshot my_keyspace.snapshot my_keyspace
+    ./bin/yb-admin --master_addresses <ip1:7100,ip2:7100,ip3:7100> import_snapshot my_keyspace.snapshot my_keyspace
     ```
 
     Notice that the following output contains the mapping between the old tablet IDs and the new tablet IDs:

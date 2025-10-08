@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.forms;
 
@@ -209,13 +209,13 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(hidden = true)
   @Getter
   @Setter
-  private Boolean revertToPreRolesBehaviour = true;
+  private Boolean revertToPreRolesBehaviour = false;
 
   // False until fully tested
   @ApiModelProperty(value = "Add role exists checks for roles metadata", hidden = true)
   @Getter
   @Setter
-  private Boolean dumpRoleChecks = false;
+  private Boolean dumpRoleChecks = true;
 
   @ApiModelProperty(hidden = true)
   @Getter

@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -36,8 +36,7 @@
 #include "yb/gutil/once.h"
 #include "yb/util/debug/leakcheck_disabler.h"
 
-namespace yb {
-namespace crc {
+namespace yb::crc {
 
 using debug::ScopedLeakCheckDisabler;
 
@@ -58,8 +57,12 @@ Crc* GetCrc32cInstance() {
 uint32_t Crc32c(const void* data, size_t length) {
   uint64_t crc32 = 0;
   GetCrc32cInstance()->Compute(data, length, &crc32);
-  return static_cast<uint32_t>(crc32); // Only uses lower 32 bits.
+  // Only uses lower 32 bits, since top 32 bits are always zero.
+  return static_cast<uint32_t>(crc32);
 }
 
-} // namespace crc
-} // namespace yb
+void Crc32Accumulator::Feed(const void* data, size_t length) {
+  GetCrc32cInstance()->Compute(data, length, &state_);
+}
+
+} // namespace yb::crc

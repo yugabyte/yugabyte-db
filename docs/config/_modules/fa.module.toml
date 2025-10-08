@@ -1,0 +1,16 @@
+# This file contains the MODULE configuration specific to Font Awesome Pro.
+# It is designed to be CONDITIONALLY APPENDED by a Node.js script
+# to the 'module.toml' file in 'config/_default/', ONLY IF Font Awesome Pro
+# is detected as installed in 'node_modules'.
+#
+# IMPORTANT: This file MUST NOT contain a top-level '[module]' header,
+# as it's intended to be a section of the final 'module.toml'.
+[[imports]]
+  path = "../node_modules/@fortawesome/fontawesome-pro"
+  disable = false
+  [[imports.mounts]]
+    source = "scss"
+    target = "assets/vendor/Font-Awesome-Pro/scss"
+  [[imports.mounts]]
+    source = "webfonts"
+    target = "static/webfonts/Font-Awesome-Pro"

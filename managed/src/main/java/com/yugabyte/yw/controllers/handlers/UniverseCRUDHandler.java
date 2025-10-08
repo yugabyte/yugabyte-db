@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -73,6 +73,7 @@ import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.TlsConfigUpdateParams;
 import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
+import com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -359,10 +360,14 @@ public class UniverseCRUDHandler {
     if (taskParams.clusterOperation == null) {
       throw new PlatformServiceException(BAD_REQUEST, "clusterOperation must be set");
     }
-
-    // TODO(Rahul): When we support multiple read only clusters, change clusterType to cluster
-    //  uuid.
     Cluster cluster = getClusterFromTaskParams(taskParams);
+    if (taskParams.clusterOperation == ClusterOperationType.CREATE
+        && taskParams.currentClusterType == ClusterType.PRIMARY
+        && !cluster.userIntent.useSystemd) {
+      // Fail only for new primary cluster creation.
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Only systemd is supported. Set useSystemd=true for the primary cluster");
+    }
     UniverseDefinitionTaskParams.UserIntent userIntent = cluster.userIntent;
     if (userIntent.deviceInfo != null) {
       userIntent.deviceInfo.validate();
@@ -370,7 +375,9 @@ public class UniverseCRUDHandler {
     if (userIntent.masterDeviceInfo != null && userIntent.dedicatedNodes) {
       userIntent.masterDeviceInfo.validate();
     }
-
+    if (cluster.placementInfo != null && cluster.placementInfo.hasRankOrdering()) {
+      PlacementInfoUtil.validatePriority(cluster.placementInfo);
+    }
     checkGeoPartitioningParameters(customer, taskParams, OpType.CONFIGURE);
 
     userIntent.masterGFlags = trimFlags(userIntent.masterGFlags);
@@ -695,6 +702,9 @@ public class UniverseCRUDHandler {
         c.userIntent.dedicatedNodes = true;
       }
 
+      if (c.placementInfo != null && c.placementInfo.hasRankOrdering()) {
+        PlacementInfoUtil.validatePriority(c.placementInfo);
+      }
       PlacementInfoUtil.updatePlacementInfo(taskParams.getNodesInCluster(c.uuid), c.placementInfo);
       PlacementInfoUtil.finalSanityCheckConfigure(c, taskParams.getNodesInCluster(c.uuid));
 
@@ -751,6 +761,14 @@ public class UniverseCRUDHandler {
       } else {
         taskParams.setEnableYbc(false);
         taskParams.setYbcSoftwareVersion(null);
+      }
+
+      if (userIntent.isUseYbdbInbuiltYbc()
+          && !KubernetesUtil.isUseYbdbInbuiltYbcSupported(userIntent.ybSoftwareVersion)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "YBDB inbuilt YBC cannot be used with software version: "
+                + userIntent.ybSoftwareVersion);
       }
 
       if (taskParams.isEnableYbc()) {
@@ -913,6 +931,7 @@ public class UniverseCRUDHandler {
         }
       }
       if (!Util.isOnPremManualProvisioning(taskParams)
+          && !Util.isKubernetesBasedUniverse(taskParams)
           && taskParams.additionalServicesStateData == null) {
         boolean enableEarlyoomFeature =
             confGetter.getConfForScope(customer, CustomerConfKeys.enableEarlyoomFeature);
@@ -2413,6 +2432,9 @@ public class UniverseCRUDHandler {
 
     for (Cluster newCluster : taskParams.clusters) {
       Cluster curCluster = universe.getCluster(newCluster.uuid);
+      if (newCluster.placementInfo != null && newCluster.placementInfo.hasRankOrdering()) {
+        PlacementInfoUtil.validatePriority(newCluster.placementInfo);
+      }
       if (curCluster.userIntent.replicationFactor != newCluster.userIntent.replicationFactor
           && !rfChangeEnabled
           && curCluster.clusterType == ClusterType.PRIMARY) {
@@ -2517,6 +2539,16 @@ public class UniverseCRUDHandler {
                 String.format(
                     "Cannot change proxy config for existing node %s" + " through EditUniverse",
                     nodeDetails.nodeName));
+          }
+          if (!Objects.equals(curIntent.isUseYbdbInbuiltYbc(), newIntent.isUseYbdbInbuiltYbc())) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                String.format(
+                    "Cannot change YBC's deployment setting for existing node %s"
+                        + " through EditUniverse: from %s to %s",
+                    nodeDetails.nodeName,
+                    curIntent.isUseYbdbInbuiltYbc(),
+                    newIntent.isUseYbdbInbuiltYbc()));
           }
         }
       }

@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -37,22 +37,16 @@
 #include <string>
 #include <utility>
 
-#include "yb/util/logging.h"
-
-#include "yb/qlexpr/index.h"
-#include "yb/dockv/partition.h"
 #include "yb/common/schema.h"
-
-#include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_util.h"
 
-#include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
+#include "yb/dockv/partition.h"
 
 #include "yb/rpc/messenger.h"
 
 #include "yb/server/rpc_server.h"
 
-#include "yb/tablet/tablet-harness.h"
+#include "yb/tablet/tablet-test-harness.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
@@ -60,7 +54,6 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
-#include "yb/util/flags.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/tunnel.h"
 #include "yb/util/scope_exit.h"
@@ -83,8 +76,7 @@ DECLARE_int32(TEST_nodes_per_cloud);
 DEFINE_test_flag(bool, private_broadcast_address, false,
                  "Use private address for broadcast address in tests.");
 
-namespace yb {
-namespace tserver {
+namespace yb::tserver {
 
 MiniTabletServer::MiniTabletServer(const std::vector<std::string>& wal_paths,
                                    const std::vector<std::string>& data_paths,
@@ -120,8 +112,7 @@ MiniTabletServer::MiniTabletServer(const string& fs_root,
   : MiniTabletServer({ fs_root }, { fs_root }, rpc_port, extra_opts, index) {
 }
 
-MiniTabletServer::~MiniTabletServer() {
-}
+MiniTabletServer::~MiniTabletServer() = default;
 
 Result<std::unique_ptr<MiniTabletServer>> MiniTabletServer::CreateMiniTabletServer(
     const string& fs_root, uint16_t rpc_port, int index) {
@@ -249,7 +240,7 @@ Status MiniTabletServer::FlushTablets(tablet::FlushMode mode, tablet::FlushFlags
     return Status::OK();
   }
   return ForAllTablets(this, [mode, flags](TabletPeer* tablet_peer) -> Status {
-    auto tablet = tablet_peer->shared_tablet();
+    auto tablet = tablet_peer->shared_tablet_maybe_null();
     if (!tablet) {
       return Status::OK();
     }
@@ -262,7 +253,7 @@ Status MiniTabletServer::CompactTablets(docdb::SkipFlush skip_flush) {
     return Status::OK();
   }
   return ForAllTablets(this, [skip_flush](TabletPeer* tablet_peer) -> Status {
-    auto tablet = tablet_peer->shared_tablet();
+    auto tablet = tablet_peer->shared_tablet_maybe_null();
     if (!tablet) {
       return Status::OK();
     }
@@ -270,9 +261,21 @@ Status MiniTabletServer::CompactTablets(docdb::SkipFlush skip_flush) {
   });
 }
 
+Status MiniTabletServer::CompactTablet(const TabletId& tablet_id, docdb::SkipFlush skip_flush) {
+  if (!server_) {
+    return Status::OK();
+  }
+  auto tablet_peer = server_->tablet_manager()->LookupTablet(tablet_id);
+  if (!tablet_peer) {
+    return Status::OK();
+  }
+  auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet());
+  return tablet->ForceManualRocksDBCompact(skip_flush);
+}
+
 Status MiniTabletServer::SwitchMemtables() {
   return ForAllTablets(this, [](TabletPeer* tablet_peer) -> Status {
-    auto tablet = tablet_peer->shared_tablet();
+    auto tablet = tablet_peer->shared_tablet_maybe_null();
     if (!tablet) {
       return Status::OK();
     }
@@ -397,5 +400,4 @@ void MiniTabletServer::SetPgServerHandlers(
   get_pg_conn_settings_ = std::move(get_pg_conn_settings);
 }
 
-}  // namespace tserver
-}  // namespace yb
+} // namespace yb::tserver

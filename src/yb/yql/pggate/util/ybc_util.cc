@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -20,10 +20,13 @@
 
 #include "yb/ash/wait_state.h"
 
+#include "yb/common/entity_ids.h"
 #include "yb/common/init.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
+
+#include "yb/dockv/partition.h"
 
 #include "yb/gutil/stringprintf.h"
 
@@ -227,8 +230,8 @@ template <class Enum>
 const char* NoPrefixName(Enum value) {
   const char* name = ToCString(value);
   if (!name) {
-    DCHECK(false);
-    return nullptr;
+    DCHECK(false) << "Prefix not found for: " << ToString(value);
+    return "";
   }
   return name + 1;
 }
@@ -479,9 +482,16 @@ const char* YBCGetWaitEventComponent(uint32_t wait_event_info) {
 const char* YBCGetWaitEventType(uint32_t wait_event_info) {
   // This is only called for ASH wait events, so we remove the component bits as
   // ash::WaitStateCode doesn't contain them.
-  constexpr uint32_t kWaitEventMask = (1 << YB_ASH_COMPONENT_POSITION) - 1;
+  static constexpr uint32_t kWaitEventMask = (1 << YB_ASH_COMPONENT_POSITION) - 1;
   uint32_t wait_event = wait_event_info & kWaitEventMask;
   return NoPrefixName(GetWaitStateType(static_cast<ash::WaitStateCode>(wait_event)));
+}
+
+const char* YBCGetWaitEventAuxDescription(uint32_t wait_event_info) {
+  static constexpr uint32_t kWaitEventMask = (1 << YB_ASH_COMPONENT_POSITION) - 1;
+  uint32_t wait_event = wait_event_info & kWaitEventMask;
+  const char* result = ash::GetWaitStateAuxDescription(static_cast<ash::WaitStateCode>(wait_event));
+  return result;
 }
 
 uint8_t YBCGetConstQueryId(YbcAshConstQueryIdType type) {
@@ -490,6 +500,8 @@ uint8_t YBCGetConstQueryId(YbcAshConstQueryIdType type) {
       return static_cast<uint8_t>(ash::FixedQueryId::kQueryIdForUncomputedQueryId);
     case YbcAshConstQueryIdType::QUERY_ID_TYPE_BACKGROUND_WORKER:
       return static_cast<uint8_t>(ash::FixedQueryId::kQueryIdForYSQLBackgroundWorker);
+    case YbcAshConstQueryIdType::QUERY_ID_TYPE_WALSENDER:
+      return static_cast<uint8_t>(ash::FixedQueryId::kQueryIdForWalsender);
   }
   FATAL_INVALID_ENUM_VALUE(YbcAshConstQueryIdType, type);
 }
@@ -533,6 +545,19 @@ int YBCGetCallStackFrames(void** result, int max_depth, int skip_count) {
   return google::GetStackTrace(result, max_depth, skip_count);
 }
 
+bool YBCIsInitDbModeEnvVarSet() {
+  static bool cached_value = false;
+  static bool cached = false;
+
+  if (!cached) {
+    const char* initdb_mode_env_var_value = getenv("YB_PG_INITDB_MODE");
+    cached_value = initdb_mode_env_var_value && strcmp(initdb_mode_env_var_value, "1") == 0;
+    cached = true;
+  }
+
+  return cached_value;
+}
+
 bool YBIsMajorUpgradeInitDb() {
   static int cached_value = -1;
   if (cached_value == -1) {
@@ -542,6 +567,7 @@ bool YBIsMajorUpgradeInitDb() {
 
   return cached_value;
 }
+
 
 const char *YBCGetOutFuncName(YbcPgOid typid) {
   switch (typid) {
@@ -840,6 +866,35 @@ const char *YBCGetOutFuncName(YbcPgOid typid) {
     default:
       return NULL;
   }
+}
+
+namespace {
+YbcUpdateInitPostgresMetricsFn update_init_postgres_metrics_fn = nullptr;
+}  // namespace
+
+void
+YBCSetUpdateInitPostgresMetricsFn(YbcUpdateInitPostgresMetricsFn update_init_postgres_metrics) {
+  CHECK_NOTNULL(update_init_postgres_metrics);
+  update_init_postgres_metrics_fn = update_init_postgres_metrics;
+}
+
+void YBCUpdateInitPostgresMetrics() {
+  if (update_init_postgres_metrics_fn) {
+    update_init_postgres_metrics_fn();
+  } else {
+    // At initdb time we do not load yb_pg_metrics extension.
+    DCHECK(YBCIsInitDbModeEnvVarSet());
+  }
+}
+
+uint16_t YBCDecodeMultiColumnHashLeftBound(const char* partition_key, size_t key_len) {
+  yb::Slice slice(partition_key, key_len);
+  return dockv::PartitionSchema::DecodeMultiColumnHashLeftBound(slice);
+}
+
+uint16_t YBCDecodeMultiColumnHashRightBound(const char* partition_key, size_t key_len) {
+  yb::Slice slice(partition_key, key_len);
+  return dockv::PartitionSchema::DecodeMultiColumnHashRightBound(slice);
 }
 
 } // extern "C"

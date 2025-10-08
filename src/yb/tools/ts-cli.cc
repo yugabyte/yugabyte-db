@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -33,25 +33,28 @@
 
 #include <memory>
 
-#include "yb/dockv/partition.h"
-#include "yb/qlexpr/ql_rowblock.h"
-#include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
+#include "yb/common/schema_pbutil.h"
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.proxy.h"
+#include "yb/consensus/metadata.pb.h"
+
+#include "yb/dockv/partition.h"
+
+#include "yb/qlexpr/ql_rowblock.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/secure_stream.h"
 
-#include "yb/consensus/metadata.pb.h"
-#include "yb/rpc/secure.h"
 #include "yb/server/server_base.proxy.h"
 
 #include "yb/tablet/tablet.pb.h"
+
+#include "yb/tools/tools_utils.h"
 
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver_admin.proxy.h"
@@ -112,6 +115,7 @@ const char* const kStatus = "status";
 const char* const kCountIntents = "count_intents";
 const char* const kFlushTabletOp = "flush_tablet";
 const char* const kFlushAllTabletsOp = "flush_all_tablets";
+const char* const kFlushVectorIndexOp = "flush_vector_index";
 const char* const kCompactTabletOp = "compact_tablet";
 const char* const kCompactAllTabletsOp = "compact_all_tablets";
 const char* const kCompactVectorIndexOp = "compact_vector_index";
@@ -122,16 +126,17 @@ const char* const kClearAllMetaCachesOnServerOp = "clear_server_metacache";
 const char* const kClearUniverseUuidOp = "clear_universe_uuid";
 const char* const kReleaseAllLocksForTxnOp = "unsafe_release_all_locks_for_txn";
 
-DEFINE_NON_RUNTIME_string(server_address, "localhost",
-              "Address of server to run against");
+DEFINE_NON_RUNTIME_string(server_address,
+    "localhost", "Address of server to run against");
+
 DEFINE_NON_RUNTIME_int64(timeout_ms, 1000 * 60, "RPC timeout in milliseconds");
 
 DEFINE_NON_RUNTIME_bool(force, false, "set_flag: If true, allows command to set a flag "
-            "which is not explicitly marked as runtime-settable. Such flag changes may be "
-            "simply ignored on the server, or may cause the server to crash.\n"
-            "delete_tablet: If true, command will delete the tablet and remove the tablet "
-            "from the memory, otherwise tablet metadata will be kept in memory with state "
-            "TOMBSTONED.");
+    "which is not explicitly marked as runtime-settable. Such flag changes may be "
+    "simply ignored on the server, or may cause the server to crash.\n"
+    "delete_tablet: If true, command will delete the tablet and remove the tablet "
+    "from the memory, otherwise tablet metadata will be kept in memory with state "
+    "TOMBSTONED.");
 
 DEFINE_NON_RUNTIME_bool(
     remove_corrupt_data_blocks_unsafe, false,
@@ -141,10 +146,8 @@ TAG_FLAG(remove_corrupt_data_blocks_unsafe, advanced);
 TAG_FLAG(remove_corrupt_data_blocks_unsafe, hidden);
 TAG_FLAG(remove_corrupt_data_blocks_unsafe, unsafe);
 
-DEFINE_NON_RUNTIME_string(certs_dir_name, "",
-    "Directory with certificates to use for secure server connection.");
-
-DEFINE_NON_RUNTIME_string(client_node_name, "", "Client node name.");
+DEFINE_NON_RUNTIME_bool(include_vector_indexes, false,
+    "If true, compacts vector indexes when indexable table is compacted.");
 
 PB_ENUM_FORMATTERS(yb::consensus::LeaderLeaseStatus);
 
@@ -227,12 +230,13 @@ class TsAdminClient {
 
   // Delete a tablet replica from the specified peer.
   // The 'reason' string is passed to the tablet server, used for logging.
-  Status DeleteTablet(const std::string& tablet_id,
-                      const std::string& reason,
-                      tablet::TabletDataState delete_type);
+  Status DeleteTablet(
+      const TabletId& tablet_id,
+      const std::string& reason,
+      tablet::TabletDataState delete_type);
 
-  Status UnsafeConfigChange(const std::string& tablet_id,
-                            const std::vector<std::string>& peers);
+  Status UnsafeConfigChange(
+      const TabletId& tablet_id, const std::vector<std::string>& peers);
 
 
   // Sets hybrid_time to the value of the tablet server's current hybrid_time.
@@ -246,15 +250,12 @@ class TsAdminClient {
 
   // Flush or compact a given tablet on a given tablet server.
   // If 'tablet_id' is empty string, flush or compact all tablets.
-  Status CompactTablets(const std::string& tablet_id);
+  Status FlushOrCompactTablets(bool is_compaction, const TabletId& tablet_id);
 
-  // For a given tablet, compact vector index chunks into a single chunk for the provided vector
-  // indexes. If input vector indexes are empty, compacts all vector indexes for the given tablet.
-  Status CompactVectorIndex(const TableId& tablet_id, const TableIds& vector_index_ids);
-
-  // Flush or compact a given tablet on a given tablet server.
-  // If 'tablet_id' is empty string, flush or compact all tablets.
-  Status FlushTablets(const std::string& tablet_id);
+  // For a given tablet, flush or compact vector index chunks for the provided vector indexes.
+  // If vector indexes are empty, do the operation for all vector indexes for the given tablet.
+  Status FlushOrCompactVectorIndex(
+      bool is_compaction, const TabletId& tablet_id, const TableIds& vector_index_ids);
 
   // Verify the given tablet against its indexes
   // Assume the tablet belongs to a main table
@@ -283,8 +284,10 @@ class TsAdminClient {
 
  private:
   Status FlushOrCompactsTabletsImpl(
-    const std::string& tablet_id, bool is_compaction,
-    std::optional<std::reference_wrapper<const TableIds>> vector_index_ids);
+      bool is_compaction,
+      const TabletId& tablet_id,
+      const TableIds& vector_index_ids = {},
+      tablet::FlushCompactFlags flags = tablet::FLUSH_COMPACT_DEFAULT);
 
   std::string addr_;
   MonoDelta timeout_;
@@ -316,12 +319,7 @@ Status TsAdminClient::Init() {
   HostPort host_port;
   RETURN_NOT_OK(host_port.ParseString(addr_, tserver::TabletServer::kDefaultPort));
   auto messenger_builder = MessengerBuilder("ts-cli");
-  if (!FLAGS_certs_dir_name.empty()) {
-    const std::string& cert_name = FLAGS_client_node_name;
-    secure_context_ = VERIFY_RESULT(rpc::CreateSecureContext(
-        FLAGS_certs_dir_name, rpc::UseClientCerts(!cert_name.empty()), cert_name));
-    rpc::ApplySecureContext(secure_context_.get(), &messenger_builder);
-  }
+  secure_context_ = VERIFY_RESULT(CreateSecureContextIfNeeded(messenger_builder));
   messenger_ = VERIFY_RESULT(messenger_builder.Build());
 
   rpc::ProxyCache proxy_cache(messenger_.get());
@@ -626,8 +624,8 @@ Status TsAdminClient::CountIntents(int64_t* num_intents) {
 }
 
 Status TsAdminClient::FlushOrCompactsTabletsImpl(
-    const std::string& tablet_id, bool is_compaction,
-    std::optional<std::reference_wrapper<const TableIds>> vector_index_ids) {
+    bool is_compaction, const TabletId& tablet_id,
+    const TableIds& vector_index_ids, tablet::FlushCompactFlags flags) {
   ServerStatusPB status_pb;
   RETURN_NOT_OK(GetStatus(&status_pb));
 
@@ -643,15 +641,9 @@ Status TsAdminClient::FlushOrCompactsTabletsImpl(
   }
 
   req.set_remove_corrupt_data_blocks_unsafe(FLAGS_remove_corrupt_data_blocks_unsafe);
-
-  if (vector_index_ids.has_value()) {
-    const auto& index_ids = vector_index_ids->get();
-    req.set_all_vector_indexes(index_ids.empty());
-    if (!index_ids.empty()) {
-      for (const auto& index_id : index_ids) {
-        req.add_vector_index_ids(index_id);
-      }
-    }
+  req.set_flags(flags);
+  for (const auto& index_id : vector_index_ids) {
+    req.add_vector_index_ids(index_id);
   }
 
   req.set_dest_uuid(status_pb.node_instance().permanent_uuid());
@@ -671,20 +663,20 @@ Status TsAdminClient::FlushOrCompactsTabletsImpl(
   return Status::OK();
 }
 
-Status TsAdminClient::CompactTablets(const std::string& tablet_id) {
-  return FlushOrCompactsTabletsImpl(
-      tablet_id, /* is_compaction = */ true, /* vector_index_ids = */ std::nullopt);
+Status TsAdminClient::FlushOrCompactTablets(bool is_compaction, const TabletId& tablet_id) {
+  auto flags = tablet::FLUSH_COMPACT_DEFAULT;
+  if (is_compaction && FLAGS_include_vector_indexes) {
+    // No need to set for flush operation as vector indexes are always flushed when
+    // indexable table is flushed.
+    flags = tablet::FLUSH_COMPACT_ALL;
+  }
+  return FlushOrCompactsTabletsImpl(is_compaction, tablet_id, /* vector_index_ids */ {}, flags);
 }
 
-Status TsAdminClient::CompactVectorIndex(
-    const TableId& tablet_id, const TableIds& vector_index_ids) {
+Status TsAdminClient::FlushOrCompactVectorIndex(
+    bool is_compaction, const TabletId& tablet_id, const TableIds& vector_index_ids) {
   return FlushOrCompactsTabletsImpl(
-      tablet_id, /* is_compaction = */ true, std::cref(vector_index_ids));
-}
-
-Status TsAdminClient::FlushTablets(const std::string& tablet_id) {
-  return FlushOrCompactsTabletsImpl(
-      tablet_id, /* is_compaction = */ false, /* vector_index_ids = */ std::nullopt);
+      is_compaction, tablet_id, vector_index_ids, tablet::FLUSH_COMPACT_VECTOR_INDEX);
 }
 
 Status TsAdminClient::ReloadCertificates() {
@@ -832,6 +824,8 @@ void SetUsage(const char* argv0) {
       << "  " << kCountIntents << "\n"
       << "  " << kFlushTabletOp << " <tablet_id>\n"
       << "  " << kFlushAllTabletsOp << "\n"
+      << "  " << kFlushVectorIndexOp
+      << " <tablet_id> [<vector_index_id1> <vector_index_id2> ...]\n"
       << "  " << kCompactTabletOp << " <tablet_id>\n"
       << "  " << kCompactAllTabletsOp << "\n"
       << "  " << kCompactVectorIndexOp
@@ -1026,29 +1020,20 @@ static int TsCliMain(int argc, char** argv) {
                                     "Unable to count intents");
 
     std::cout << num_intents << std::endl;
-  } else if (op == kFlushTabletOp) {
+  } else if (op == kCompactTabletOp || op == kFlushTabletOp) {
     CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 3);
 
     std::string tablet_id = argv[2];
-    RETURN_NOT_OK_PREPEND_FROM_MAIN(client.FlushTablets(tablet_id),
-                                    "Unable to flush tablet");
-  } else if (op == kFlushAllTabletsOp) {
+    RETURN_NOT_OK_PREPEND_FROM_MAIN(
+        client.FlushOrCompactTablets(op == kCompactTabletOp, tablet_id),
+        "Unable to flush or compact tablet");
+  } else if (op == kCompactAllTabletsOp || op == kFlushAllTabletsOp) {
     CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 2);
 
-    RETURN_NOT_OK_PREPEND_FROM_MAIN(client.FlushTablets(std::string()),
-                                    "Unable to flush all tablets");
-  } else if (op == kCompactTabletOp) {
-    CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 3);
-
-    std::string tablet_id = argv[2];
-    RETURN_NOT_OK_PREPEND_FROM_MAIN(client.CompactTablets(tablet_id),
-                                    "Unable to compact tablet");
-  } else if (op == kCompactAllTabletsOp) {
-    CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 2);
-
-    RETURN_NOT_OK_PREPEND_FROM_MAIN(client.CompactTablets(std::string()),
-                                    "Unable to compact all tablets");
-  } else if (op == kCompactVectorIndexOp) {
+    RETURN_NOT_OK_PREPEND_FROM_MAIN(
+        client.FlushOrCompactTablets(op == kCompactAllTabletsOp, /*tablet_id = */ {}),
+        "Unable to flush or compact all tablets");
+  } else if (op == kCompactVectorIndexOp || op == kFlushVectorIndexOp) {
     if (argc < 3) {
       CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 3);
     }
@@ -1058,8 +1043,9 @@ static int TsCliMain(int argc, char** argv) {
     for (int i = 3; i < argc; i++) {
       vector_index_ids.push_back(argv[i]);
     }
-    RETURN_NOT_OK_PREPEND_FROM_MAIN(client.CompactVectorIndex(tablet_id, vector_index_ids),
-                                    "Unable to compact vector index");
+    RETURN_NOT_OK_PREPEND_FROM_MAIN(client.FlushOrCompactVectorIndex(
+        op == kCompactVectorIndexOp , tablet_id, vector_index_ids),
+        "Unable to flush or compact vector index");
   } else if (op == kReloadCertificatesOp) {
     CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 2);
 

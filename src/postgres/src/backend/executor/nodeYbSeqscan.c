@@ -3,7 +3,7 @@
  * nodeYbSeqscan.c
  *	  Support routines for sequential scans of Yugabyte relations.
  *
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License.  You may obtain a copy of the License at
@@ -90,7 +90,7 @@ YbSeqNext(YbSeqScanState *node)
 
 		YbSeqScan  *plan = (YbSeqScan *) node->ss.ps.plan;
 		YbPushdownExprs *yb_pushdown =
-			YbInstantiatePushdownParams(&plan->yb_pushdown, estate);
+			YbInstantiatePushdownExprs(&plan->yb_pushdown, estate);
 
 		ybScan = ybcBeginScan(node->ss.ss_currentRelation,
 							  NULL, /* index */

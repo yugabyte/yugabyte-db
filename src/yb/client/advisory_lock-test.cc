@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -66,8 +66,8 @@ void CheckNumIntents(MiniCluster* cluster, size_t expected_num_records, const Ta
       continue;
     }
     found = true;
-    auto count = ASSERT_RESULT(
-        peer->tablet()->TEST_CountDBRecords(docdb::StorageDbType::kIntents));
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    auto count = ASSERT_RESULT(tablet->TEST_CountDBRecords(docdb::StorageDbType::kIntents));
     LOG(INFO) << peer->LogPrefix() << "records: " << count;
     ASSERT_EQ(count, expected_num_records);
   }

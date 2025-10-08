@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -20,8 +20,8 @@
 #include "yb/client/tablet_rpc.h"
 
 #include "yb/common/common_types.pb.h"
+#include "yb/common/opid.h"
 #include "yb/common/read_hybrid_time.h"
-#include "yb/common/retryable_request.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -64,6 +64,7 @@ struct AsyncRpcData {
   bool need_consistent_read = false;
   InFlightOps ops;
   bool need_metadata = false;
+  bool use_async_write = false;
 };
 
 struct FlushExtraResult {
@@ -97,6 +98,8 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
 
  protected:
   void Finished(const Status& status) override;
+
+  void HandleFinished(const Status& status);
 
   void SendRpcToTserver(int attempt_num) override;
 
@@ -182,10 +185,14 @@ class WriteRpc : public AsyncRpcBase<tserver::WriteRequestPB, tserver::WriteResp
 
   std::string GetRpcName() override { return "Write"; }
 
+  std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy() const { return ts_proxy_; }
+
  private:
   Status SwapResponses() override;
   void CallRemoteMethod() override;
   void NotifyBatcher(const Status& status) override;
+
+  std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy_;
 };
 
 class ReadRpc : public AsyncRpcBase<tserver::ReadRequestPB, tserver::ReadResponsePB> {
@@ -201,6 +208,39 @@ class ReadRpc : public AsyncRpcBase<tserver::ReadRequestPB, tserver::ReadRespons
   Status SwapResponses() override;
   void CallRemoteMethod() override;
   void NotifyBatcher(const Status& status) override;
+};
+
+class WaitForAsyncWriteRpc : public rpc::Rpc, public TabletRpc {
+ public:
+  WaitForAsyncWriteRpc(
+      const BatcherPtr& batcher, const TabletId& tablet_id,
+      std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy, const OpId& op_id);
+
+  ~WaitForAsyncWriteRpc() = default;
+
+  void SendRpc() override;
+  std::string ToString() const override;
+
+ protected:
+  const tserver::TabletServerErrorPB* response_error() const override {
+    return resp_.has_error() ? &resp_.error() : nullptr;
+  }
+
+  void SendRpcToTserver(int attempt_num) override;
+
+  void Finished(const Status& status) override;
+
+  void Failed(const Status& status) override;
+
+ private:
+  const TabletId tablet_id_;
+  const OpId op_id_;
+  BatcherPtr batcher_;
+  std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy_;
+  tserver::WaitForAsyncWriteRequestPB req_;
+  tserver::WaitForAsyncWriteResponsePB resp_;
+
+  rpc::RpcCommandPtr retained_self_;
 };
 
 }  // namespace internal

@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -33,9 +33,14 @@ namespace rpc {
 
 class QueueableInboundCall : public InboundCall {
  public:
-  QueueableInboundCall(ConnectionPtr conn, size_t weight_in_bytes,
-                       CallProcessedListener* call_processed_listener)
-      : InboundCall(std::move(conn), nullptr /* rpc_metrics */, call_processed_listener),
+  QueueableInboundCall(ConnectionPtr conn,
+                       size_t weight_in_bytes,
+                       CallProcessedListener* call_processed_listener,
+                       rpc::CallStateListenerFactory* call_state_listener_factory)
+      : InboundCall(std::move(conn),
+                    nullptr /* rpc_metrics */,
+                    call_processed_listener,
+                    call_state_listener_factory),
         weight_in_bytes_(weight_in_bytes) {}
 
   void SetHasReply() {

@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -96,7 +96,8 @@ class RemoteBootstrapTest : public TabletServerTestBase {
     LOG_TIMING(INFO, "Loading test data") {
       for (int row_id = 0; row_id < kNumLogRolls * kIncr; row_id += kIncr) {
         InsertTestRowsRemote(0, row_id, kIncr);
-        ASSERT_OK(tablet_peer_->tablet()->Flush(tablet::FlushMode::kSync));
+        auto tablet = ASSERT_RESULT(tablet_peer_->shared_tablet());
+        ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
         ASSERT_OK(tablet_peer_->log()->AllocateSegmentAndRollOver());
       }
     }
@@ -108,11 +109,13 @@ class RemoteBootstrapTest : public TabletServerTestBase {
   }
 
   std::string GetTableId() const {
-    return tablet_peer_->tablet()->metadata()->table_id();
+    auto tablet = CHECK_NOTNULL(tablet_peer_->shared_tablet_maybe_null());
+    return tablet->metadata()->table_id();
   }
 
   const std::string& GetTabletId() const {
-    return tablet_peer_->tablet()->tablet_id();
+    auto tablet = CHECK_NOTNULL(tablet_peer_->shared_tablet_maybe_null());
+    return tablet->tablet_id();
   }
 
   log::LogAnchor anchor_;

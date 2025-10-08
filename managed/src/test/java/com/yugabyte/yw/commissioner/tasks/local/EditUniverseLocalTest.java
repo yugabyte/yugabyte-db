@@ -1,7 +1,8 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.local;
 
+import static com.yugabyte.yw.common.gflags.GFlagsUtil.POSTMASTER_CGROUP;
 import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType.CREATE;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
@@ -37,6 +38,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
@@ -63,10 +65,31 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
   public void testExpand() throws InterruptedException {
     UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
     userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
-    Universe universe = createUniverse(userIntent);
+    userIntent.setCgroupSize(100);
+    Universe universe =
+        createUniverse(
+            userIntent,
+            params -> {
+              AtomicInteger i = new AtomicInteger(1);
+              params
+                  .getPrimaryCluster()
+                  .placementInfo
+                  .azStream()
+                  .forEach(
+                      az -> {
+                        az.leaderPreference = i.get();
+                        if (i.get() == 1) {
+                          i.incrementAndGet();
+                        }
+                      });
+            });
     initYSQL(universe);
     initAndStartPayload(universe);
     verifyMasterLBStatus(customer, universe, true /*enabled*/, true /*idle*/);
+    Map<String, String> varz =
+        getVarz(
+            universe.getNodes().iterator().next(), universe, UniverseTaskBase.ServerType.TSERVER);
+    assertEquals(GFlagsUtil.YSQL_CGROUP_PATH, varz.get(POSTMASTER_CGROUP));
 
     changeNumberOfNodesInPrimary(universe, 2);
     UUID taskID =
@@ -139,6 +162,10 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
     userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
     Universe universe = createUniverse(userIntent);
+    Map<String, String> varz =
+        getVarz(
+            universe.getNodes().iterator().next(), universe, UniverseTaskBase.ServerType.TSERVER);
+    assertEquals("", varz.get(POSTMASTER_CGROUP));
     initYSQL(universe);
     RuntimeConfigEntry.upsert(universe, "yb.checks.node_disk_size.target_usage_percentage", "0");
     UniverseDefinitionTaskParams.Cluster cluster =

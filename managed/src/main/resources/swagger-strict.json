@@ -848,7 +848,6 @@
             "DB_REDIS_CONNECTION",
             "DB_MEMORY_OVERLOAD",
             "DB_COMPACTION_OVERLOAD",
-            "DB_QUEUES_OVERFLOW",
             "DB_DRIVE_FAILURE",
             "DB_WRITE_READ_TEST_ERROR",
             "DDL_ATOMICITY_CHECK",
@@ -1027,7 +1026,6 @@
             "DB_REDIS_CONNECTION",
             "DB_MEMORY_OVERLOAD",
             "DB_COMPACTION_OVERLOAD",
-            "DB_QUEUES_OVERFLOW",
             "DB_DRIVE_FAILURE",
             "DB_WRITE_READ_TEST_ERROR",
             "DDL_ATOMICITY_CHECK",
@@ -1302,7 +1300,6 @@
             "DB_REDIS_CONNECTION",
             "DB_MEMORY_OVERLOAD",
             "DB_COMPACTION_OVERLOAD",
-            "DB_QUEUES_OVERFLOW",
             "DB_DRIVE_FAILURE",
             "DB_WRITE_READ_TEST_ERROR",
             "DDL_ATOMICITY_CHECK",
@@ -1975,6 +1972,8 @@
             "ConfigUniverseAlert",
             "ToggleTls",
             "ModifyAuditLogging",
+            "ModifyQueryLogging",
+            "ConfigureMetricsExport",
             "TlsConfigUpdate",
             "UpdateDiskSize",
             "CreateCluster",
@@ -2042,7 +2041,8 @@
             "LdapUniverseSync",
             "UpdateProxyConfig",
             "CloneNamespace",
-            "UpdateAdditionalServicesState"
+            "UpdateAdditionalServicesState",
+            "KubernetesToggleImmutableYbc"
           ],
           "example" : "Create User",
           "readOnly" : true,
@@ -2219,6 +2219,9 @@
         },
         "auditLogConfig" : {
           "$ref" : "#/definitions/AuditLogConfig"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "capability" : {
           "enum" : [
@@ -2537,9 +2540,14 @@
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
+            "ModifyQueryLoggingConfig",
+            "ModifyMetricsExportConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
+            "UpgradeKubernetesYbcGFlags",
+            "UpdateYbcThrottleFlags",
+            "UpdateK8sYbcThrottleFlags",
             "DisableYbc",
             "AddGFlagMetadata",
             "CloudProviderDelete",
@@ -2576,6 +2584,8 @@
             "SendUserNotification",
             "ImportUniverse",
             "MigrateUniverse",
+            "KubernetesToggleImmutableYbc",
+            "OperatorImportUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -2628,6 +2638,7 @@
             "UpdateUniverseYbcDetails",
             "YBCBackupSucceeded",
             "UpdateUniverseYbcGflagsDetails",
+            "SetYbcThrottleParamsInMemory",
             "VerifyNodeSSHAccess",
             "WaitForDataMove",
             "WaitForLeaderBlacklistCompletion",
@@ -2719,6 +2730,7 @@
             "CreateAlertDefinitions",
             "ManageAlertDefinitions",
             "ManageCatalogUpgradeSuperUser",
+            "UpdatePitrConfigIntermittentMinRecoverTime",
             "MarkSourceMetric",
             "UniverseSetTlsParams",
             "UniverseUpdateRootCert",
@@ -2733,6 +2745,7 @@
             "PreflightNodeCheck",
             "RunYsqlUpgrade",
             "PromoteAutoFlags",
+            "UpdateSoftwareUpdatePrevConfig",
             "RollbackAutoFlags",
             "StoreAutoFlagConfigVersion",
             "CheckUpgrade",
@@ -2746,12 +2759,15 @@
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
+            "ValidateGFlags",
             "CheckSoftwareVersion",
             "UpdateMountedDisks",
             "TransferXClusterCerts",
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistQueryLoggingConfig",
+            "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -2789,7 +2805,12 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig",
+            "UpdateAndPersistKubernetesImmutableYbc"
           ],
           "type" : "string"
         },
@@ -3100,6 +3121,12 @@
             "YEARS"
           ],
           "type" : "string"
+        },
+        "firstSnapshotTime" : {
+          "description" : "First snapshot time in this backup",
+          "format" : "int64",
+          "readOnly" : true,
+          "type" : "integer"
         },
         "hasKMSHistory" : {
           "description" : "Whether the backup has KMS history metadata",
@@ -3898,6 +3925,10 @@
             "TRANSACTION_STATUS_TABLE_TYPE"
           ],
           "type" : "string"
+        },
+        "errorIfTablespacesExists" : {
+          "description" : "WARNING: This is a preview API that could change. Fail if tablespaces exist with same names. Only applicable with new roles behavior.",
+          "type" : "boolean"
         },
         "ignoreErrors" : {
           "description" : "WARNING: This is a preview API that could change. Ignore all restore errors",
@@ -4865,6 +4896,9 @@
           ],
           "type" : "string"
         },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
+        },
         "capability" : {
           "enum" : [
             "READ_ONLY",
@@ -5185,9 +5219,14 @@
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
+            "ModifyQueryLoggingConfig",
+            "ModifyMetricsExportConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
+            "UpgradeKubernetesYbcGFlags",
+            "UpdateYbcThrottleFlags",
+            "UpdateK8sYbcThrottleFlags",
             "DisableYbc",
             "AddGFlagMetadata",
             "CloudProviderDelete",
@@ -5224,6 +5263,8 @@
             "SendUserNotification",
             "ImportUniverse",
             "MigrateUniverse",
+            "KubernetesToggleImmutableYbc",
+            "OperatorImportUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -5276,6 +5317,7 @@
             "UpdateUniverseYbcDetails",
             "YBCBackupSucceeded",
             "UpdateUniverseYbcGflagsDetails",
+            "SetYbcThrottleParamsInMemory",
             "VerifyNodeSSHAccess",
             "WaitForDataMove",
             "WaitForLeaderBlacklistCompletion",
@@ -5367,6 +5409,7 @@
             "CreateAlertDefinitions",
             "ManageAlertDefinitions",
             "ManageCatalogUpgradeSuperUser",
+            "UpdatePitrConfigIntermittentMinRecoverTime",
             "MarkSourceMetric",
             "UniverseSetTlsParams",
             "UniverseUpdateRootCert",
@@ -5381,6 +5424,7 @@
             "PreflightNodeCheck",
             "RunYsqlUpgrade",
             "PromoteAutoFlags",
+            "UpdateSoftwareUpdatePrevConfig",
             "RollbackAutoFlags",
             "StoreAutoFlagConfigVersion",
             "CheckUpgrade",
@@ -5394,12 +5438,15 @@
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
+            "ValidateGFlags",
             "CheckSoftwareVersion",
             "UpdateMountedDisks",
             "TransferXClusterCerts",
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistQueryLoggingConfig",
+            "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -5437,7 +5484,12 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig",
+            "UpdateAndPersistKubernetesImmutableYbc"
           ],
           "type" : "string"
         },
@@ -5734,6 +5786,21 @@
         "useTimeSync" : {
           "description" : "True if `use time sync` is enabled",
           "type" : "boolean"
+        }
+      },
+      "type" : "object"
+    },
+    "CloudVolumeEncryption" : {
+      "description" : "Volume encryption settings for AWS EBS volumes",
+      "properties" : {
+        "enableVolumeEncryption" : {
+          "description" : "To enable volume encryption or not",
+          "type" : "boolean"
+        },
+        "kmsConfigUUID" : {
+          "description" : "KMS config UUID to be used for volume encryption",
+          "format" : "uuid",
+          "type" : "string"
         }
       },
       "type" : "object"
@@ -7170,6 +7237,10 @@
     "DeviceInfo" : {
       "description" : "Device information",
       "properties" : {
+        "cloudVolumeEncryption" : {
+          "$ref" : "#/definitions/CloudVolumeEncryption",
+          "description" : "Volume encryption settings for AWS EBS volumes"
+        },
         "diskIops" : {
           "description" : "Desired IOPS for the volumes mounted on this instance",
           "format" : "int32",
@@ -7315,6 +7386,10 @@
     "DrConfigGetResp" : {
       "description" : "disaster recovery get response",
       "properties" : {
+        "automaticDdlMode" : {
+          "description" : "Whether the config is using automatic DDL replication mode.",
+          "type" : "boolean"
+        },
         "bootstrapParams" : {
           "$ref" : "#/definitions/RestartBootstrapParams",
           "description" : "Bootstrap backup params for DR config"
@@ -7612,6 +7687,27 @@
       },
       "type" : "object"
     },
+    "DynatraceConfig" : {
+      "allOf" : [
+        {
+          "$ref" : "#/definitions/TelemetryProviderConfig"
+        },
+        {
+          "description" : "Dynatrace Config",
+          "properties" : {
+            "apiToken" : {
+              "description" : "API Token",
+              "type" : "string"
+            },
+            "endpoint" : {
+              "description" : "Endpoint",
+              "type" : "string"
+            }
+          },
+          "type" : "object"
+        }
+      ]
+    },
     "EarlyoomConfig" : {
       "description" : "State for earlyoom service",
       "properties" : {
@@ -7864,6 +7960,9 @@
             "aarch64"
           ],
           "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "capability" : {
           "enum" : [
@@ -8179,9 +8278,14 @@
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
+            "ModifyQueryLoggingConfig",
+            "ModifyMetricsExportConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
+            "UpgradeKubernetesYbcGFlags",
+            "UpdateYbcThrottleFlags",
+            "UpdateK8sYbcThrottleFlags",
             "DisableYbc",
             "AddGFlagMetadata",
             "CloudProviderDelete",
@@ -8218,6 +8322,8 @@
             "SendUserNotification",
             "ImportUniverse",
             "MigrateUniverse",
+            "KubernetesToggleImmutableYbc",
+            "OperatorImportUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -8270,6 +8376,7 @@
             "UpdateUniverseYbcDetails",
             "YBCBackupSucceeded",
             "UpdateUniverseYbcGflagsDetails",
+            "SetYbcThrottleParamsInMemory",
             "VerifyNodeSSHAccess",
             "WaitForDataMove",
             "WaitForLeaderBlacklistCompletion",
@@ -8361,6 +8468,7 @@
             "CreateAlertDefinitions",
             "ManageAlertDefinitions",
             "ManageCatalogUpgradeSuperUser",
+            "UpdatePitrConfigIntermittentMinRecoverTime",
             "MarkSourceMetric",
             "UniverseSetTlsParams",
             "UniverseUpdateRootCert",
@@ -8375,6 +8483,7 @@
             "PreflightNodeCheck",
             "RunYsqlUpgrade",
             "PromoteAutoFlags",
+            "UpdateSoftwareUpdatePrevConfig",
             "RollbackAutoFlags",
             "StoreAutoFlagConfigVersion",
             "CheckUpgrade",
@@ -8388,12 +8497,15 @@
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
+            "ValidateGFlags",
             "CheckSoftwareVersion",
             "UpdateMountedDisks",
             "TransferXClusterCerts",
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistQueryLoggingConfig",
+            "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -8431,7 +8543,12 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig",
+            "UpdateAndPersistKubernetesImmutableYbc"
           ],
           "type" : "string"
         },
@@ -8628,6 +8745,9 @@
             "aarch64"
           ],
           "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "capability" : {
           "enum" : [
@@ -8955,9 +9075,14 @@
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
+            "ModifyQueryLoggingConfig",
+            "ModifyMetricsExportConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
+            "UpgradeKubernetesYbcGFlags",
+            "UpdateYbcThrottleFlags",
+            "UpdateK8sYbcThrottleFlags",
             "DisableYbc",
             "AddGFlagMetadata",
             "CloudProviderDelete",
@@ -8994,6 +9119,8 @@
             "SendUserNotification",
             "ImportUniverse",
             "MigrateUniverse",
+            "KubernetesToggleImmutableYbc",
+            "OperatorImportUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -9046,6 +9173,7 @@
             "UpdateUniverseYbcDetails",
             "YBCBackupSucceeded",
             "UpdateUniverseYbcGflagsDetails",
+            "SetYbcThrottleParamsInMemory",
             "VerifyNodeSSHAccess",
             "WaitForDataMove",
             "WaitForLeaderBlacklistCompletion",
@@ -9137,6 +9265,7 @@
             "CreateAlertDefinitions",
             "ManageAlertDefinitions",
             "ManageCatalogUpgradeSuperUser",
+            "UpdatePitrConfigIntermittentMinRecoverTime",
             "MarkSourceMetric",
             "UniverseSetTlsParams",
             "UniverseUpdateRootCert",
@@ -9151,6 +9280,7 @@
             "PreflightNodeCheck",
             "RunYsqlUpgrade",
             "PromoteAutoFlags",
+            "UpdateSoftwareUpdatePrevConfig",
             "RollbackAutoFlags",
             "StoreAutoFlagConfigVersion",
             "CheckUpgrade",
@@ -9164,12 +9294,15 @@
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
+            "ValidateGFlags",
             "CheckSoftwareVersion",
             "UpdateMountedDisks",
             "TransferXClusterCerts",
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistQueryLoggingConfig",
+            "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -9207,7 +9340,12 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig",
+            "UpdateAndPersistKubernetesImmutableYbc"
           ],
           "type" : "string"
         },
@@ -10026,6 +10164,9 @@
           ],
           "type" : "string"
         },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
+        },
         "azOverrides" : {
           "additionalProperties" : {
             "type" : "string"
@@ -10349,9 +10490,14 @@
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
+            "ModifyQueryLoggingConfig",
+            "ModifyMetricsExportConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
+            "UpgradeKubernetesYbcGFlags",
+            "UpdateYbcThrottleFlags",
+            "UpdateK8sYbcThrottleFlags",
             "DisableYbc",
             "AddGFlagMetadata",
             "CloudProviderDelete",
@@ -10388,6 +10534,8 @@
             "SendUserNotification",
             "ImportUniverse",
             "MigrateUniverse",
+            "KubernetesToggleImmutableYbc",
+            "OperatorImportUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -10440,6 +10588,7 @@
             "UpdateUniverseYbcDetails",
             "YBCBackupSucceeded",
             "UpdateUniverseYbcGflagsDetails",
+            "SetYbcThrottleParamsInMemory",
             "VerifyNodeSSHAccess",
             "WaitForDataMove",
             "WaitForLeaderBlacklistCompletion",
@@ -10531,6 +10680,7 @@
             "CreateAlertDefinitions",
             "ManageAlertDefinitions",
             "ManageCatalogUpgradeSuperUser",
+            "UpdatePitrConfigIntermittentMinRecoverTime",
             "MarkSourceMetric",
             "UniverseSetTlsParams",
             "UniverseUpdateRootCert",
@@ -10545,6 +10695,7 @@
             "PreflightNodeCheck",
             "RunYsqlUpgrade",
             "PromoteAutoFlags",
+            "UpdateSoftwareUpdatePrevConfig",
             "RollbackAutoFlags",
             "StoreAutoFlagConfigVersion",
             "CheckUpgrade",
@@ -10558,12 +10709,15 @@
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
+            "ValidateGFlags",
             "CheckSoftwareVersion",
             "UpdateMountedDisks",
             "TransferXClusterCerts",
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistQueryLoggingConfig",
+            "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -10601,7 +10755,12 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig",
+            "UpdateAndPersistKubernetesImmutableYbc"
           ],
           "type" : "string"
         },
@@ -10717,6 +10876,659 @@
       },
       "required" : [
         "kubernetesOperatorControlled"
+      ],
+      "type" : "object"
+    },
+    "KubernetesToggleImmutableYbcParams" : {
+      "properties" : {
+        "allowInsecure" : {
+          "type" : "boolean"
+        },
+        "arch" : {
+          "enum" : [
+            "x86_64",
+            "aarch64"
+          ],
+          "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
+        },
+        "capability" : {
+          "enum" : [
+            "READ_ONLY",
+            "EDITS_ALLOWED"
+          ],
+          "type" : "string"
+        },
+        "clientRootCA" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "clusters" : {
+          "items" : {
+            "$ref" : "#/definitions/Cluster"
+          },
+          "maxItems" : 2147483647,
+          "minItems" : 1,
+          "type" : "array"
+        },
+        "cmkArn" : {
+          "description" : "Amazon Resource Name (ARN) of the CMK",
+          "type" : "string"
+        },
+        "communicationPorts" : {
+          "$ref" : "#/definitions/CommunicationPorts",
+          "description" : "Communication ports"
+        },
+        "creatingUser" : {
+          "$ref" : "#/definitions/Users"
+        },
+        "currentClusterType" : {
+          "enum" : [
+            "PRIMARY",
+            "ASYNC",
+            "ADDON"
+          ],
+          "type" : "string"
+        },
+        "deviceInfo" : {
+          "$ref" : "#/definitions/DeviceInfo",
+          "description" : "Device information"
+        },
+        "enableYbc" : {
+          "type" : "boolean"
+        },
+        "encryptionAtRestConfig" : {
+          "$ref" : "#/definitions/EncryptionAtRestConfig",
+          "description" : "Encryption at rest configation"
+        },
+        "errorString" : {
+          "description" : "Error message",
+          "type" : "string"
+        },
+        "expectedUniverseVersion" : {
+          "description" : "Expected universe version",
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "extraDependencies" : {
+          "$ref" : "#/definitions/ExtraDependencies",
+          "description" : "Extra dependencies"
+        },
+        "importedState" : {
+          "enum" : [
+            "NONE",
+            "STARTED",
+            "MASTERS_ADDED",
+            "TSERVERS_ADDED",
+            "IMPORTED"
+          ],
+          "type" : "string"
+        },
+        "installYbc" : {
+          "type" : "boolean"
+        },
+        "isKubernetesOperatorControlled" : {
+          "type" : "boolean"
+        },
+        "isSoftwareRollbackAllowed" : {
+          "description" : "Available since YBA version 2.20.2.0",
+          "readOnly" : true,
+          "type" : "boolean"
+        },
+        "itestS3PackagePath" : {
+          "type" : "string"
+        },
+        "kubernetesUpgradeSupported" : {
+          "type" : "boolean"
+        },
+        "mastersInDefaultRegion" : {
+          "type" : "boolean"
+        },
+        "nextClusterIndex" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "nodeDetailsSet" : {
+          "description" : "Node details",
+          "items" : {
+            "$ref" : "#/definitions/NodeDetails"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "nodeExporterUser" : {
+          "description" : "Node exporter user",
+          "type" : "string"
+        },
+        "nodePrefix" : {
+          "type" : "string"
+        },
+        "nodesResizeAvailable" : {
+          "type" : "boolean"
+        },
+        "placementModificationTaskUuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "platformUrl" : {
+          "type" : "string"
+        },
+        "platformVersion" : {
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "prevYBSoftwareConfig" : {
+          "$ref" : "#/definitions/PrevYBSoftwareConfig",
+          "description" : "WARNING: This is a preview API that could change. Previous software version related data"
+        },
+        "previousTaskUUID" : {
+          "description" : "Previous task UUID of a retry",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "remotePackagePath" : {
+          "type" : "string"
+        },
+        "resetAZConfig" : {
+          "type" : "boolean"
+        },
+        "rootAndClientRootCASame" : {
+          "type" : "boolean"
+        },
+        "rootCA" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "setTxnTableWaitCountFlag" : {
+          "type" : "boolean"
+        },
+        "sleepAfterMasterRestartMillis" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "sleepAfterTServerRestartMillis" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "softwareUpgradeState" : {
+          "enum" : [
+            "Ready",
+            "Upgrading",
+            "UpgradeFailed",
+            "PreFinalize",
+            "Finalizing",
+            "FinalizeFailed",
+            "RollingBack",
+            "RollbackFailed"
+          ],
+          "type" : "string"
+        },
+        "sourceXClusterConfigs" : {
+          "description" : "The source universe's xcluster replication relationships",
+          "items" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "readOnly" : true,
+          "type" : "array"
+        },
+        "sshUserOverride" : {
+          "type" : "string"
+        },
+        "targetXClusterConfigs" : {
+          "description" : "The target universe's xcluster replication relationships",
+          "items" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "readOnly" : true,
+          "type" : "array"
+        },
+        "universePaused" : {
+          "type" : "boolean"
+        },
+        "universeUUID" : {
+          "description" : "Associated universe UUID",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "updateInProgress" : {
+          "type" : "boolean"
+        },
+        "updateOptions" : {
+          "items" : {
+            "enum" : [
+              "UPDATE",
+              "FULL_MOVE",
+              "SMART_RESIZE_NON_RESTART",
+              "SMART_RESIZE",
+              "GFLAGS_UPGRADE"
+            ],
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "updateSucceeded" : {
+          "type" : "boolean"
+        },
+        "updatingTask" : {
+          "enum" : [
+            "CloudBootstrap",
+            "CloudCleanup",
+            "CreateCassandraTable",
+            "CreateUniverse",
+            "ReadOnlyClusterCreate",
+            "ReadOnlyKubernetesClusterDelete",
+            "ReadOnlyClusterDelete",
+            "CreateKubernetesUniverse",
+            "ReadOnlyKubernetesClusterCreate",
+            "DestroyUniverse",
+            "PauseUniverse",
+            "ResumeUniverse",
+            "PauseKubernetesUniverse",
+            "ResumeKubernetesUniverse",
+            "DestroyKubernetesUniverse",
+            "DeleteTable",
+            "BackupUniverse",
+            "RestoreBackup",
+            "MultiTableBackup",
+            "CreateBackup",
+            "ConfigureDBApis",
+            "ConfigureDBApisKubernetes",
+            "CreatePitrConfig",
+            "UpdatePitrConfig",
+            "DeletePitrConfig",
+            "RestoreSnapshotSchedule",
+            "EditUniverse",
+            "EditKubernetesUniverse",
+            "ExternalScript",
+            "ImportIntoTable",
+            "RunApiTriggeredHooks",
+            "AddOnClusterCreate",
+            "AddOnClusterDelete",
+            "UpgradeUniverse",
+            "UpdateLoadBalancerConfig",
+            "RestartUniverse",
+            "RestartUniverseKubernetesUpgrade",
+            "SoftwareUpgrade",
+            "SoftwareKubernetesUpgrade",
+            "KubernetesOverridesUpgrade",
+            "GFlagsUpgrade",
+            "GFlagsKubernetesUpgrade",
+            "CertsRotate",
+            "CertsRotateKubernetesUpgrade",
+            "TlsToggle",
+            "VMImageUpgrade",
+            "SystemdUpgrade",
+            "RebootUniverse",
+            "UpgradeKubernetesUniverse",
+            "DeleteNodeFromUniverse",
+            "StopNodeInUniverse",
+            "StartNodeInUniverse",
+            "AddNodeToUniverse",
+            "RemoveNodeFromUniverse",
+            "RebootNodeInUniverse",
+            "ReleaseInstanceFromUniverse",
+            "RotateAccessKey",
+            "SetUniverseKey",
+            "CreateAndRotateAccessKey",
+            "CreateKMSConfig",
+            "EditKMSConfig",
+            "DeleteKMSConfig",
+            "UpdateDiskSize",
+            "UpdateKubernetesDiskSize",
+            "StartMasterOnNode",
+            "DeleteXClusterConfig",
+            "SyncXClusterConfig",
+            "CreateSupportBundle",
+            "CreateXClusterConfig",
+            "EditXClusterConfig",
+            "RestartXClusterConfig",
+            "RestartDrConfig",
+            "SyncDrConfig",
+            "SetDatabasesDrConfig",
+            "SetTablesDrConfig",
+            "CreateDrConfig",
+            "DeleteDrConfig",
+            "FailoverDrConfig",
+            "SwitchoverDrConfig",
+            "SwitchoverDrConfigRollback",
+            "EditDrConfig",
+            "EditDrConfigParams",
+            "PauseXClusterUniverses",
+            "ResumeXClusterUniverses",
+            "ReinstallNodeAgent",
+            "DeleteCustomerConfig",
+            "DeleteCustomerStorageConfig",
+            "ResizeNode",
+            "CreateTableSpacesInUniverse",
+            "ThirdpartySoftwareUpgrade",
+            "ModifyAuditLoggingConfig",
+            "ModifyKubernetesAuditLoggingConfig",
+            "ModifyQueryLoggingConfig",
+            "ModifyMetricsExportConfig",
+            "InstallYbcSoftware",
+            "UpgradeUniverseYbc",
+            "UpgradeYbcGFlags",
+            "UpgradeKubernetesYbcGFlags",
+            "UpdateYbcThrottleFlags",
+            "UpdateK8sYbcThrottleFlags",
+            "DisableYbc",
+            "AddGFlagMetadata",
+            "CloudProviderDelete",
+            "CreateBackupSchedule",
+            "CreateBackupScheduleKubernetes",
+            "DeleteBackupSchedule",
+            "DeleteBackupScheduleKubernetes",
+            "EditBackupSchedule",
+            "EditBackupScheduleKubernetes",
+            "CloudProviderEdit",
+            "SoftwareUpgradeYB",
+            "SoftwareKubernetesUpgradeYB",
+            "FinalizeUpgrade",
+            "FinalizeKubernetesUpgrade",
+            "RollbackUpgrade",
+            "RollbackKubernetesUpgrade",
+            "LdapUniverseSync",
+            "ReprovisionNode",
+            "ReplaceNodeInUniverse",
+            "UpdateProxyConfig",
+            "RecommissionNodeInstance",
+            "DecommissionNodeInstance",
+            "MasterFailover",
+            "SyncMasterAddresses",
+            "CreateContinuousBackup",
+            "CreateYbaBackup",
+            "RestoreYbaBackup",
+            "RestoreContinuousBackup",
+            "EnableNodeAgentInUniverse",
+            "DecommissionNode",
+            "CloneNamespace",
+            "TlsToggleKubernetes",
+            "UpdateOOMServiceState",
+            "SendUserNotification",
+            "ImportUniverse",
+            "MigrateUniverse",
+            "KubernetesToggleImmutableYbc",
+            "OperatorImportUniverse",
+            "KubernetesCheckVolumeExpansion",
+            "KubernetesPostExpansionCheckVolume",
+            "NodeCertReloadTask",
+            "UpdateUniverseConfig",
+            "CreateRootVolumes",
+            "ReplaceRootVolume",
+            "ChangeInstanceType",
+            "PersistResizeNode",
+            "PersistSystemdUpgrade",
+            "PersistUseClockbound",
+            "UpdateNodeDetails",
+            "AddAuthorizedKey",
+            "AnsibleClusterServerCtl",
+            "AnsibleConfigureServers",
+            "AnsibleDestroyServer",
+            "PauseServer",
+            "ResumeServer",
+            "AnsibleSetupServer",
+            "AnsibleCreateServer",
+            "PrecheckNodeDetached",
+            "AnsibleUpdateNodeInfo",
+            "BulkImport",
+            "ChangeMasterConfig",
+            "ChangeAdminPassword",
+            "DropTable",
+            "CreateTable",
+            "DeleteNode",
+            "DeleteBackup",
+            "DeleteBackupYb",
+            "UpdateNodeProcess",
+            "DeleteTableFromUniverse",
+            "DeleteTablesFromUniverse",
+            "DeleteKeyspace",
+            "LoadBalancerStateChange",
+            "ModifyBlackList",
+            "CheckUnderReplicatedTablets",
+            "CheckFollowerLag",
+            "CheckNodeSafeToDelete",
+            "ManipulateDnsRecordTask",
+            "RemoveUniverseEntry",
+            "SetFlagInMemory",
+            "SetNodeState",
+            "SwamperTargetsFileUpdate",
+            "UniverseUpdateSucceeded",
+            "UpdateAndPersistGFlags",
+            "UpdateAndPersistKubernetesOverrides",
+            "HandleKubernetesNamespacedServices",
+            "UpdatePlacementInfo",
+            "UpdateSoftwareVersion",
+            "UpdateUniverseYbcDetails",
+            "YBCBackupSucceeded",
+            "UpdateUniverseYbcGflagsDetails",
+            "SetYbcThrottleParamsInMemory",
+            "VerifyNodeSSHAccess",
+            "WaitForDataMove",
+            "WaitForLeaderBlacklistCompletion",
+            "WaitForFollowerLag",
+            "WaitForLoadBalance",
+            "WaitForMasterLeader",
+            "WaitForServer",
+            "WaitForYbcServer",
+            "WaitForTServerHeartBeats",
+            "DeleteClusterFromUniverse",
+            "InstanceActions",
+            "WaitForServerReady",
+            "WaitForClockSync",
+            "WaitForDuration",
+            "RunExternalScript",
+            "RemoveAuthorizedKey",
+            "UpdateUniverseAccessKey",
+            "ManageLoadBalancerGroup",
+            "BootstrapProducer",
+            "CheckBootstrapRequired",
+            "DeleteBootstrapIds",
+            "XClusterNetworkConnectivityCheck",
+            "DeleteReplication",
+            "DeleteXClusterConfigEntry",
+            "DeleteXClusterTableConfigEntry",
+            "DeleteDrConfigEntry",
+            "WaitForReplicationDrain",
+            "ResetXClusterConfigEntry",
+            "SetReplicationPaused",
+            "ChangeXClusterRole",
+            "SetDrStates",
+            "UpdateDrConfigParams",
+            "XClusterAddNamespaceToOutboundReplicationGroup",
+            "AddNamespaceToXClusterReplication",
+            "XClusterRemoveNamespaceFromTargetUniverse",
+            "XClusterRemoveNamespaceFromOutboundReplication",
+            "SetRestoreTime",
+            "XClusterConfigSetup",
+            "XClusterConfigSetStatus",
+            "XClusterConfigSetStatusForTables",
+            "XClusterConfigSetStatusForNamespaces",
+            "XClusterConfigModifyTables",
+            "XClusterConfigRename",
+            "XClusterConfigSync",
+            "XClusterConfigUpdateMasterAddresses",
+            "XClusterInfoPersist",
+            "ReplicateNamespaces",
+            "CheckXUniverseAutoFlags",
+            "PromoteSecondaryConfigToMainConfig",
+            "DeleteRemnantStreams",
+            "CreateOutboundReplicationGroup",
+            "XClusterDbReplicationSetup",
+            "DeleteReplicationOnSource",
+            "DeleteXClusterBackupRestoreEntries",
+            "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
+            "SetRestoreState",
+            "CloudAccessKeyCleanup",
+            "CloudAccessKeySetup",
+            "CloudInitializer",
+            "CloudProviderCleanup",
+            "CloudRegionCleanup",
+            "CloudRegionSetup",
+            "CloudSetup",
+            "BackupTable",
+            "BackupTableYb",
+            "BackupTableYbc",
+            "BackupUniverseKeys",
+            "RestoreBackupYb",
+            "RestoreBackupYbc",
+            "RestoreUniverseKeys",
+            "RestoreUniverseKeysYb",
+            "RestoreUniverseKeysYbc",
+            "SetBackupHiddenState",
+            "SetRestoreHiddenState",
+            "RestorePreflightValidate",
+            "BackupPreflightValidate",
+            "WaitForLeadersOnPreferredOnly",
+            "EnableEncryptionAtRest",
+            "DisableEncryptionAtRest",
+            "DestroyEncryptionAtRest",
+            "KubernetesCommandExecutor",
+            "KubernetesWaitForPod",
+            "KubernetesCheckNumPod",
+            "PodDisruptionBudgetPolicy",
+            "SetActiveUniverseKeys",
+            "WaitForEncryptionKeyInMemory",
+            "UnivSetCertificate",
+            "CreateAlertDefinitions",
+            "ManageAlertDefinitions",
+            "ManageCatalogUpgradeSuperUser",
+            "UpdatePitrConfigIntermittentMinRecoverTime",
+            "MarkSourceMetric",
+            "UniverseSetTlsParams",
+            "UniverseUpdateRootCert",
+            "ResetUniverseVersion",
+            "DeleteCertificate",
+            "SetNodeStatus",
+            "CheckMasterLeader",
+            "CheckMasters",
+            "CheckTServers",
+            "WaitForTServerHBs",
+            "CreatePrometheusSwamperConfig",
+            "PreflightNodeCheck",
+            "RunYsqlUpgrade",
+            "PromoteAutoFlags",
+            "UpdateSoftwareUpdatePrevConfig",
+            "RollbackAutoFlags",
+            "StoreAutoFlagConfigVersion",
+            "CheckUpgrade",
+            "CheckCertificateConfig",
+            "CheckMemory",
+            "CheckLocale",
+            "CheckGlibc",
+            "CheckOpentelemetryOperator",
+            "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
+            "RunYsqlMajorVersionCatalogUpgrade",
+            "RollbackYsqlMajorVersionCatalogUpgrade",
+            "FinalizeYsqlMajorCatalogUpgrade",
+            "ValidateGFlags",
+            "CheckSoftwareVersion",
+            "UpdateMountedDisks",
+            "TransferXClusterCerts",
+            "CreateTableSpaces",
+            "ManageOtelCollector",
+            "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistQueryLoggingConfig",
+            "UpdateAndPersistMetricsExportConfig",
+            "MarkUniverseForHealthScriptReUpload",
+            "RebootServer",
+            "HardRebootServer",
+            "RunHooks",
+            "UpdateUniverseTags",
+            "UpgradeYbc",
+            "InstallYbcSoftwareOnK8s",
+            "InstanceExistCheck",
+            "DeleteRootVolumes",
+            "InstallingThirdPartySoftware",
+            "InstallNodeAgent",
+            "WaitForNodeAgent",
+            "CloudImageBundleSetup",
+            "UpdateClusterUserIntent",
+            "UpdateClusterAPIDetails",
+            "UpdateUniverseState",
+            "UpdateUniverseCommunicationPorts",
+            "UpdateUniverseIntent",
+            "UpdateConsistencyCheck",
+            "FreezeUniverse",
+            "QueryLdapServer",
+            "DbLdapSync",
+            "CheckForClusterServers",
+            "CheckLeaderlessTablets",
+            "CheckNodesAreSafeToTakeDown",
+            "ValidateNodeDiskSize",
+            "CheckNodeReachable",
+            "SupportBundleComponentDownload",
+            "WaitStartingFromTime",
+            "RemoveNodeAgent",
+            "UpdateUniverseFields",
+            "RunNodeCommand",
+            "MasterLeaderStepdown",
+            "SetupYNP",
+            "YNPProvisioning",
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection",
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig",
+            "UpdateAndPersistKubernetesImmutableYbc"
+          ],
+          "type" : "string"
+        },
+        "updatingTaskUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "upgradeOption" : {
+          "enum" : [
+            "Rolling",
+            "Non-Rolling",
+            "Non-Restart"
+          ],
+          "type" : "string"
+        },
+        "useNewHelmNamingStyle" : {
+          "type" : "boolean"
+        },
+        "useYbdbInbuiltYbc" : {
+          "description" : "Use YBDB image inbuilt YBC",
+          "type" : "boolean"
+        },
+        "userAZSelected" : {
+          "type" : "boolean"
+        },
+        "xclusterInfo" : {
+          "$ref" : "#/definitions/XClusterInfo",
+          "description" : "XCluster related states in this universe",
+          "readOnly" : true
+        },
+        "ybPrevSoftwareVersion" : {
+          "description" : "Previous software version",
+          "type" : "string"
+        },
+        "ybcInstalled" : {
+          "type" : "boolean"
+        },
+        "ybcSoftwareVersion" : {
+          "type" : "string"
+        }
+      },
+      "required" : [
+        "clusters",
+        "creatingUser",
+        "kubernetesUpgradeSupported",
+        "platformUrl",
+        "sleepAfterMasterRestartMillis",
+        "sleepAfterTServerRestartMillis",
+        "upgradeOption",
+        "useYbdbInbuiltYbc"
       ],
       "type" : "object"
     },
@@ -11288,6 +12100,64 @@
       "required" : [
         "labels",
         "value"
+      ],
+      "type" : "object"
+    },
+    "MetricsExportConfig" : {
+      "description" : "Metrics Export Configuration",
+      "properties" : {
+        "collectionLevel" : {
+          "description" : "The level of metrics collection. Allowed values are: ALL, NORMAL, MINIMAL, OFF",
+          "enum" : [
+            "ALL",
+            "NORMAL",
+            "MINIMAL",
+            "TABLE_OFF",
+            "OFF"
+          ],
+          "example" : "NORMAL",
+          "type" : "string"
+        },
+        "scrapeConfigTargets" : {
+          "description" : "Set of target types to include in scrape configuration. If not specified, all supported target types will be included.",
+          "example" : "[\"MASTER_EXPORT\", \"TSERVER_EXPORT\", \"YSQL_EXPORT\", \"CQL_EXPORT\", \"NODE_EXPORT\", \"NODE_AGENT_EXPORT\", \"OTEL_EXPORT\"]",
+          "items" : {
+            "enum" : [
+              "MASTER_EXPORT",
+              "TSERVER_EXPORT",
+              "YSQL_EXPORT",
+              "CQL_EXPORT",
+              "NODE_EXPORT",
+              "NODE_AGENT_EXPORT",
+              "OTEL_EXPORT"
+            ],
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "scrapeIntervalSeconds" : {
+          "description" : "Scrape interval in seconds. Applied on all scrape jobs commonly.",
+          "example" : 30,
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "scrapeTimeoutSeconds" : {
+          "description" : "Scrape timeout in seconds. Applied on all scrape jobs commonly.",
+          "example" : 20,
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "universeMetricsExporterConfig" : {
+          "description" : "List of universe metrics exporter configurations. If empty, no metrics will be sent anywhere.",
+          "items" : {
+            "$ref" : "#/definitions/UniverseMetricsExporterConfig"
+          },
+          "type" : "array"
+        }
+      },
+      "required" : [
+        "universeMetricsExporterConfig"
       ],
       "type" : "object"
     },
@@ -12097,6 +12967,7 @@
             "USER_GROUP",
             "HOME_DIR_SPACE",
             "HOME_DIR_EXISTS",
+            "HOME_DIR_MATCHES",
             "RAM_SIZE",
             "INTERNET_CONNECTION",
             "CPU_CORES",
@@ -12126,7 +12997,6 @@
             "ULIMIT_CORE",
             "ULIMIT_OPEN_FILES",
             "ULIMIT_USER_PROCESSES",
-            "SYSTEMD_SUDOER_ENTRY",
             "SSH_ACCESS",
             "NODE_AGENT_ACCESS",
             "MASTER_HTTP_PORT",
@@ -12396,7 +13266,9 @@
             "Terminated",
             "Rebooting",
             "HardRebooting",
-            "VMImageUpgrade"
+            "VMImageUpgrade",
+            "InstanceStopping",
+            "InstanceStopped"
           ],
           "example" : "Provisioned",
           "type" : "string"
@@ -12653,7 +13525,9 @@
             "Terminated",
             "Rebooting",
             "HardRebooting",
-            "VMImageUpgrade"
+            "VMImageUpgrade",
+            "InstanceStopping",
+            "InstanceStopped"
           ],
           "example" : "Provisioned",
           "type" : "string"
@@ -13692,6 +14566,11 @@
           "description" : "DB Name",
           "type" : "string"
         },
+        "disabled" : {
+          "description" : "Whether the PITR config is disabled",
+          "readOnly" : true,
+          "type" : "boolean"
+        },
         "intermittentMinRecoverTimeInMillis" : {
           "description" : "Intermittent min recovery time in millis if retention period is increased",
           "format" : "int64",
@@ -13784,6 +14663,10 @@
         },
         "lbName" : {
           "type" : "string"
+        },
+        "leaderPreference" : {
+          "format" : "int32",
+          "type" : "integer"
         },
         "name" : {
           "type" : "string"
@@ -13945,15 +14828,15 @@
     "PresetThrottleValues" : {
       "properties" : {
         "defaultValue" : {
-          "format" : "int32",
+          "format" : "int64",
           "type" : "integer"
         },
         "maxValue" : {
-          "format" : "int32",
+          "format" : "int64",
           "type" : "integer"
         },
         "minValue" : {
-          "format" : "int32",
+          "format" : "int64",
           "type" : "integer"
         }
       },
@@ -13966,9 +14849,15 @@
     },
     "PrevYBSoftwareConfig" : {
       "properties" : {
+        "allTserversUpgradedToYsqlMajorVersion" : {
+          "type" : "boolean"
+        },
         "autoFlagConfigVersion" : {
           "format" : "int32",
           "type" : "integer"
+        },
+        "canRollbackCatalogUpgrade" : {
+          "type" : "boolean"
         },
         "softwareVersion" : {
           "type" : "string"
@@ -14190,6 +15079,9 @@
             "aarch64"
           ],
           "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "capability" : {
           "enum" : [
@@ -14505,9 +15397,14 @@
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
+            "ModifyQueryLoggingConfig",
+            "ModifyMetricsExportConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
+            "UpgradeKubernetesYbcGFlags",
+            "UpdateYbcThrottleFlags",
+            "UpdateK8sYbcThrottleFlags",
             "DisableYbc",
             "AddGFlagMetadata",
             "CloudProviderDelete",
@@ -14544,6 +15441,8 @@
             "SendUserNotification",
             "ImportUniverse",
             "MigrateUniverse",
+            "KubernetesToggleImmutableYbc",
+            "OperatorImportUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -14596,6 +15495,7 @@
             "UpdateUniverseYbcDetails",
             "YBCBackupSucceeded",
             "UpdateUniverseYbcGflagsDetails",
+            "SetYbcThrottleParamsInMemory",
             "VerifyNodeSSHAccess",
             "WaitForDataMove",
             "WaitForLeaderBlacklistCompletion",
@@ -14687,6 +15587,7 @@
             "CreateAlertDefinitions",
             "ManageAlertDefinitions",
             "ManageCatalogUpgradeSuperUser",
+            "UpdatePitrConfigIntermittentMinRecoverTime",
             "MarkSourceMetric",
             "UniverseSetTlsParams",
             "UniverseUpdateRootCert",
@@ -14701,6 +15602,7 @@
             "PreflightNodeCheck",
             "RunYsqlUpgrade",
             "PromoteAutoFlags",
+            "UpdateSoftwareUpdatePrevConfig",
             "RollbackAutoFlags",
             "StoreAutoFlagConfigVersion",
             "CheckUpgrade",
@@ -14714,12 +15616,15 @@
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
+            "ValidateGFlags",
             "CheckSoftwareVersion",
             "UpdateMountedDisks",
             "TransferXClusterCerts",
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistQueryLoggingConfig",
+            "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -14757,7 +15662,12 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig",
+            "UpdateAndPersistKubernetesImmutableYbc"
           ],
           "type" : "string"
         },
@@ -14837,6 +15747,30 @@
         "endTime",
         "startTime",
         "suggestion"
+      ],
+      "type" : "object"
+    },
+    "QueryLogConfig" : {
+      "description" : "Query Log Configuration",
+      "properties" : {
+        "exportActive" : {
+          "description" : "Universe logs export active",
+          "type" : "boolean"
+        },
+        "universeLogsExporterConfig" : {
+          "description" : "Universe query logs exporter config",
+          "items" : {
+            "$ref" : "#/definitions/UniverseQueryLogsExporterConfig"
+          },
+          "type" : "array"
+        },
+        "ysqlQueryLogConfig" : {
+          "$ref" : "#/definitions/YSQLQueryLogConfig",
+          "description" : "YSQL query config"
+        }
+      },
+      "required" : [
+        "universeLogsExporterConfig"
       ],
       "type" : "object"
     },
@@ -15158,6 +16092,9 @@
             "aarch64"
           ],
           "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "capability" : {
           "enum" : [
@@ -15488,9 +16425,14 @@
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
+            "ModifyQueryLoggingConfig",
+            "ModifyMetricsExportConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
+            "UpgradeKubernetesYbcGFlags",
+            "UpdateYbcThrottleFlags",
+            "UpdateK8sYbcThrottleFlags",
             "DisableYbc",
             "AddGFlagMetadata",
             "CloudProviderDelete",
@@ -15527,6 +16469,8 @@
             "SendUserNotification",
             "ImportUniverse",
             "MigrateUniverse",
+            "KubernetesToggleImmutableYbc",
+            "OperatorImportUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -15579,6 +16523,7 @@
             "UpdateUniverseYbcDetails",
             "YBCBackupSucceeded",
             "UpdateUniverseYbcGflagsDetails",
+            "SetYbcThrottleParamsInMemory",
             "VerifyNodeSSHAccess",
             "WaitForDataMove",
             "WaitForLeaderBlacklistCompletion",
@@ -15670,6 +16615,7 @@
             "CreateAlertDefinitions",
             "ManageAlertDefinitions",
             "ManageCatalogUpgradeSuperUser",
+            "UpdatePitrConfigIntermittentMinRecoverTime",
             "MarkSourceMetric",
             "UniverseSetTlsParams",
             "UniverseUpdateRootCert",
@@ -15684,6 +16630,7 @@
             "PreflightNodeCheck",
             "RunYsqlUpgrade",
             "PromoteAutoFlags",
+            "UpdateSoftwareUpdatePrevConfig",
             "RollbackAutoFlags",
             "StoreAutoFlagConfigVersion",
             "CheckUpgrade",
@@ -15697,12 +16644,15 @@
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
+            "ValidateGFlags",
             "CheckSoftwareVersion",
             "UpdateMountedDisks",
             "TransferXClusterCerts",
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistQueryLoggingConfig",
+            "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -15740,7 +16690,12 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig",
+            "UpdateAndPersistKubernetesImmutableYbc"
           ],
           "type" : "string"
         },
@@ -15980,6 +16935,9 @@
             "aarch64"
           ],
           "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "capability" : {
           "enum" : [
@@ -16295,9 +17253,14 @@
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
+            "ModifyQueryLoggingConfig",
+            "ModifyMetricsExportConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
+            "UpgradeKubernetesYbcGFlags",
+            "UpdateYbcThrottleFlags",
+            "UpdateK8sYbcThrottleFlags",
             "DisableYbc",
             "AddGFlagMetadata",
             "CloudProviderDelete",
@@ -16334,6 +17297,8 @@
             "SendUserNotification",
             "ImportUniverse",
             "MigrateUniverse",
+            "KubernetesToggleImmutableYbc",
+            "OperatorImportUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -16386,6 +17351,7 @@
             "UpdateUniverseYbcDetails",
             "YBCBackupSucceeded",
             "UpdateUniverseYbcGflagsDetails",
+            "SetYbcThrottleParamsInMemory",
             "VerifyNodeSSHAccess",
             "WaitForDataMove",
             "WaitForLeaderBlacklistCompletion",
@@ -16477,6 +17443,7 @@
             "CreateAlertDefinitions",
             "ManageAlertDefinitions",
             "ManageCatalogUpgradeSuperUser",
+            "UpdatePitrConfigIntermittentMinRecoverTime",
             "MarkSourceMetric",
             "UniverseSetTlsParams",
             "UniverseUpdateRootCert",
@@ -16491,6 +17458,7 @@
             "PreflightNodeCheck",
             "RunYsqlUpgrade",
             "PromoteAutoFlags",
+            "UpdateSoftwareUpdatePrevConfig",
             "RollbackAutoFlags",
             "StoreAutoFlagConfigVersion",
             "CheckUpgrade",
@@ -16504,12 +17472,15 @@
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
+            "ValidateGFlags",
             "CheckSoftwareVersion",
             "UpdateMountedDisks",
             "TransferXClusterCerts",
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistQueryLoggingConfig",
+            "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -16547,7 +17518,12 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig",
+            "UpdateAndPersistKubernetesImmutableYbc"
           ],
           "type" : "string"
         },
@@ -17469,6 +18445,9 @@
           ],
           "type" : "string"
         },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
+        },
         "capability" : {
           "enum" : [
             "READ_ONLY",
@@ -17783,9 +18762,14 @@
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
+            "ModifyQueryLoggingConfig",
+            "ModifyMetricsExportConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
+            "UpgradeKubernetesYbcGFlags",
+            "UpdateYbcThrottleFlags",
+            "UpdateK8sYbcThrottleFlags",
             "DisableYbc",
             "AddGFlagMetadata",
             "CloudProviderDelete",
@@ -17822,6 +18806,8 @@
             "SendUserNotification",
             "ImportUniverse",
             "MigrateUniverse",
+            "KubernetesToggleImmutableYbc",
+            "OperatorImportUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -17874,6 +18860,7 @@
             "UpdateUniverseYbcDetails",
             "YBCBackupSucceeded",
             "UpdateUniverseYbcGflagsDetails",
+            "SetYbcThrottleParamsInMemory",
             "VerifyNodeSSHAccess",
             "WaitForDataMove",
             "WaitForLeaderBlacklistCompletion",
@@ -17965,6 +18952,7 @@
             "CreateAlertDefinitions",
             "ManageAlertDefinitions",
             "ManageCatalogUpgradeSuperUser",
+            "UpdatePitrConfigIntermittentMinRecoverTime",
             "MarkSourceMetric",
             "UniverseSetTlsParams",
             "UniverseUpdateRootCert",
@@ -17979,6 +18967,7 @@
             "PreflightNodeCheck",
             "RunYsqlUpgrade",
             "PromoteAutoFlags",
+            "UpdateSoftwareUpdatePrevConfig",
             "RollbackAutoFlags",
             "StoreAutoFlagConfigVersion",
             "CheckUpgrade",
@@ -17992,12 +18981,15 @@
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
+            "ValidateGFlags",
             "CheckSoftwareVersion",
             "UpdateMountedDisks",
             "TransferXClusterCerts",
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistQueryLoggingConfig",
+            "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -18035,7 +19027,12 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig",
+            "UpdateAndPersistKubernetesImmutableYbc"
           ],
           "type" : "string"
         },
@@ -18322,9 +19319,14 @@
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
+            "ModifyQueryLoggingConfig",
+            "ModifyMetricsExportConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
+            "UpgradeKubernetesYbcGFlags",
+            "UpdateYbcThrottleFlags",
+            "UpdateK8sYbcThrottleFlags",
             "DisableYbc",
             "AddGFlagMetadata",
             "CloudProviderDelete",
@@ -18361,6 +19363,8 @@
             "SendUserNotification",
             "ImportUniverse",
             "MigrateUniverse",
+            "KubernetesToggleImmutableYbc",
+            "OperatorImportUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -18413,6 +19417,7 @@
             "UpdateUniverseYbcDetails",
             "YBCBackupSucceeded",
             "UpdateUniverseYbcGflagsDetails",
+            "SetYbcThrottleParamsInMemory",
             "VerifyNodeSSHAccess",
             "WaitForDataMove",
             "WaitForLeaderBlacklistCompletion",
@@ -18504,6 +19509,7 @@
             "CreateAlertDefinitions",
             "ManageAlertDefinitions",
             "ManageCatalogUpgradeSuperUser",
+            "UpdatePitrConfigIntermittentMinRecoverTime",
             "MarkSourceMetric",
             "UniverseSetTlsParams",
             "UniverseUpdateRootCert",
@@ -18518,6 +19524,7 @@
             "PreflightNodeCheck",
             "RunYsqlUpgrade",
             "PromoteAutoFlags",
+            "UpdateSoftwareUpdatePrevConfig",
             "RollbackAutoFlags",
             "StoreAutoFlagConfigVersion",
             "CheckUpgrade",
@@ -18531,12 +19538,15 @@
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
+            "ValidateGFlags",
             "CheckSoftwareVersion",
             "UpdateMountedDisks",
             "TransferXClusterCerts",
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistQueryLoggingConfig",
+            "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -18574,7 +19584,12 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig",
+            "UpdateAndPersistKubernetesImmutableYbc"
           ],
           "type" : "string"
         },
@@ -18703,9 +19718,14 @@
               "ThirdpartySoftwareUpgrade",
               "ModifyAuditLoggingConfig",
               "ModifyKubernetesAuditLoggingConfig",
+              "ModifyQueryLoggingConfig",
+              "ModifyMetricsExportConfig",
               "InstallYbcSoftware",
               "UpgradeUniverseYbc",
               "UpgradeYbcGFlags",
+              "UpgradeKubernetesYbcGFlags",
+              "UpdateYbcThrottleFlags",
+              "UpdateK8sYbcThrottleFlags",
               "DisableYbc",
               "AddGFlagMetadata",
               "CloudProviderDelete",
@@ -18742,6 +19762,8 @@
               "SendUserNotification",
               "ImportUniverse",
               "MigrateUniverse",
+              "KubernetesToggleImmutableYbc",
+              "OperatorImportUniverse",
               "KubernetesCheckVolumeExpansion",
               "KubernetesPostExpansionCheckVolume",
               "NodeCertReloadTask",
@@ -18794,6 +19816,7 @@
               "UpdateUniverseYbcDetails",
               "YBCBackupSucceeded",
               "UpdateUniverseYbcGflagsDetails",
+              "SetYbcThrottleParamsInMemory",
               "VerifyNodeSSHAccess",
               "WaitForDataMove",
               "WaitForLeaderBlacklistCompletion",
@@ -18885,6 +19908,7 @@
               "CreateAlertDefinitions",
               "ManageAlertDefinitions",
               "ManageCatalogUpgradeSuperUser",
+              "UpdatePitrConfigIntermittentMinRecoverTime",
               "MarkSourceMetric",
               "UniverseSetTlsParams",
               "UniverseUpdateRootCert",
@@ -18899,6 +19923,7 @@
               "PreflightNodeCheck",
               "RunYsqlUpgrade",
               "PromoteAutoFlags",
+              "UpdateSoftwareUpdatePrevConfig",
               "RollbackAutoFlags",
               "StoreAutoFlagConfigVersion",
               "CheckUpgrade",
@@ -18912,12 +19937,15 @@
               "RunYsqlMajorVersionCatalogUpgrade",
               "RollbackYsqlMajorVersionCatalogUpgrade",
               "FinalizeYsqlMajorCatalogUpgrade",
+              "ValidateGFlags",
               "CheckSoftwareVersion",
               "UpdateMountedDisks",
               "TransferXClusterCerts",
               "CreateTableSpaces",
               "ManageOtelCollector",
               "UpdateAndPersistAuditLoggingConfig",
+              "UpdateAndPersistQueryLoggingConfig",
+              "UpdateAndPersistMetricsExportConfig",
               "MarkUniverseForHealthScriptReUpload",
               "RebootServer",
               "HardRebootServer",
@@ -18955,7 +19983,12 @@
               "YNPProvisioning",
               "ConfigureOOMServiceOnNode",
               "CheckSshConnection",
-              "FetchServerConf"
+              "FetchServerConf",
+              "DoCapacityReservation",
+              "DeleteCapacityReservation",
+              "DisablePitrConfig",
+              "EnablePitrConfig",
+              "UpdateAndPersistKubernetesImmutableYbc"
             ],
             "type" : "string"
           },
@@ -19190,6 +20223,9 @@
             "aarch64"
           ],
           "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "capability" : {
           "enum" : [
@@ -19505,9 +20541,14 @@
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
+            "ModifyQueryLoggingConfig",
+            "ModifyMetricsExportConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
+            "UpgradeKubernetesYbcGFlags",
+            "UpdateYbcThrottleFlags",
+            "UpdateK8sYbcThrottleFlags",
             "DisableYbc",
             "AddGFlagMetadata",
             "CloudProviderDelete",
@@ -19544,6 +20585,8 @@
             "SendUserNotification",
             "ImportUniverse",
             "MigrateUniverse",
+            "KubernetesToggleImmutableYbc",
+            "OperatorImportUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -19596,6 +20639,7 @@
             "UpdateUniverseYbcDetails",
             "YBCBackupSucceeded",
             "UpdateUniverseYbcGflagsDetails",
+            "SetYbcThrottleParamsInMemory",
             "VerifyNodeSSHAccess",
             "WaitForDataMove",
             "WaitForLeaderBlacklistCompletion",
@@ -19687,6 +20731,7 @@
             "CreateAlertDefinitions",
             "ManageAlertDefinitions",
             "ManageCatalogUpgradeSuperUser",
+            "UpdatePitrConfigIntermittentMinRecoverTime",
             "MarkSourceMetric",
             "UniverseSetTlsParams",
             "UniverseUpdateRootCert",
@@ -19701,6 +20746,7 @@
             "PreflightNodeCheck",
             "RunYsqlUpgrade",
             "PromoteAutoFlags",
+            "UpdateSoftwareUpdatePrevConfig",
             "RollbackAutoFlags",
             "StoreAutoFlagConfigVersion",
             "CheckUpgrade",
@@ -19714,12 +20760,15 @@
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
+            "ValidateGFlags",
             "CheckSoftwareVersion",
             "UpdateMountedDisks",
             "TransferXClusterCerts",
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistQueryLoggingConfig",
+            "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -19757,7 +20806,12 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig",
+            "UpdateAndPersistKubernetesImmutableYbc"
           ],
           "type" : "string"
         },
@@ -20263,6 +21317,9 @@
           ],
           "type" : "string"
         },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
+        },
         "capability" : {
           "enum" : [
             "READ_ONLY",
@@ -20577,9 +21634,14 @@
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
+            "ModifyQueryLoggingConfig",
+            "ModifyMetricsExportConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
+            "UpgradeKubernetesYbcGFlags",
+            "UpdateYbcThrottleFlags",
+            "UpdateK8sYbcThrottleFlags",
             "DisableYbc",
             "AddGFlagMetadata",
             "CloudProviderDelete",
@@ -20616,6 +21678,8 @@
             "SendUserNotification",
             "ImportUniverse",
             "MigrateUniverse",
+            "KubernetesToggleImmutableYbc",
+            "OperatorImportUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -20668,6 +21732,7 @@
             "UpdateUniverseYbcDetails",
             "YBCBackupSucceeded",
             "UpdateUniverseYbcGflagsDetails",
+            "SetYbcThrottleParamsInMemory",
             "VerifyNodeSSHAccess",
             "WaitForDataMove",
             "WaitForLeaderBlacklistCompletion",
@@ -20759,6 +21824,7 @@
             "CreateAlertDefinitions",
             "ManageAlertDefinitions",
             "ManageCatalogUpgradeSuperUser",
+            "UpdatePitrConfigIntermittentMinRecoverTime",
             "MarkSourceMetric",
             "UniverseSetTlsParams",
             "UniverseUpdateRootCert",
@@ -20773,6 +21839,7 @@
             "PreflightNodeCheck",
             "RunYsqlUpgrade",
             "PromoteAutoFlags",
+            "UpdateSoftwareUpdatePrevConfig",
             "RollbackAutoFlags",
             "StoreAutoFlagConfigVersion",
             "CheckUpgrade",
@@ -20786,12 +21853,15 @@
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
+            "ValidateGFlags",
             "CheckSoftwareVersion",
             "UpdateMountedDisks",
             "TransferXClusterCerts",
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistQueryLoggingConfig",
+            "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -20829,7 +21899,12 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig",
+            "UpdateAndPersistKubernetesImmutableYbc"
           ],
           "type" : "string"
         },
@@ -21229,6 +22304,16 @@
         },
         "status" : {
           "items" : {
+            "enum" : [
+              "Created",
+              "Initializing",
+              "Running",
+              "Success",
+              "Failure",
+              "Unknown",
+              "Abort",
+              "Aborted"
+            ],
             "type" : "string"
           },
           "type" : "array",
@@ -21336,6 +22421,8 @@
               "CreateTableSpaces",
               "ThirdpartySoftwareUpgrade",
               "ModifyAuditLoggingConfig",
+              "ModifyQueryLoggingConfig",
+              "ModifyMetricsExportConfig",
               "RotateAccessKey",
               "CreateAndRotateAccessKey",
               "RunApiTriggeredHooks",
@@ -21344,6 +22431,9 @@
               "UpgradeUniverseYbc",
               "DisableYbc",
               "UpgradeYbcGFlags",
+              "UpgradeKubernetesYbcGFlags",
+              "UpdateYbcThrottleFlags",
+              "UpdateK8sYbcThrottleFlags",
               "ConfigureDBApis",
               "ConfigureDBApisKubernetes",
               "CreateImageBundle",
@@ -21361,7 +22451,9 @@
               "UpdateOOMServiceState",
               "SendUserNotification",
               "ImportUniverse",
-              "MigrateUniverse"
+              "MigrateUniverse",
+              "KubernetesToggleImmutableYbc",
+              "OperatorImportUniverse"
             ],
             "type" : "string"
           },
@@ -21517,7 +22609,10 @@
             "SPLUNK",
             "AWS_CLOUDWATCH",
             "GCP_CLOUD_MONITORING",
-            "LOKI"
+            "LOKI",
+            "DYNATRACE",
+            "S3",
+            "OTLP"
           ],
           "type" : "string"
         }
@@ -21535,6 +22630,9 @@
             "aarch64"
           ],
           "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "capability" : {
           "enum" : [
@@ -21853,9 +22951,14 @@
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
+            "ModifyQueryLoggingConfig",
+            "ModifyMetricsExportConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
+            "UpgradeKubernetesYbcGFlags",
+            "UpdateYbcThrottleFlags",
+            "UpdateK8sYbcThrottleFlags",
             "DisableYbc",
             "AddGFlagMetadata",
             "CloudProviderDelete",
@@ -21892,6 +22995,8 @@
             "SendUserNotification",
             "ImportUniverse",
             "MigrateUniverse",
+            "KubernetesToggleImmutableYbc",
+            "OperatorImportUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -21944,6 +23049,7 @@
             "UpdateUniverseYbcDetails",
             "YBCBackupSucceeded",
             "UpdateUniverseYbcGflagsDetails",
+            "SetYbcThrottleParamsInMemory",
             "VerifyNodeSSHAccess",
             "WaitForDataMove",
             "WaitForLeaderBlacklistCompletion",
@@ -22035,6 +23141,7 @@
             "CreateAlertDefinitions",
             "ManageAlertDefinitions",
             "ManageCatalogUpgradeSuperUser",
+            "UpdatePitrConfigIntermittentMinRecoverTime",
             "MarkSourceMetric",
             "UniverseSetTlsParams",
             "UniverseUpdateRootCert",
@@ -22049,6 +23156,7 @@
             "PreflightNodeCheck",
             "RunYsqlUpgrade",
             "PromoteAutoFlags",
+            "UpdateSoftwareUpdatePrevConfig",
             "RollbackAutoFlags",
             "StoreAutoFlagConfigVersion",
             "CheckUpgrade",
@@ -22062,12 +23170,15 @@
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
+            "ValidateGFlags",
             "CheckSoftwareVersion",
             "UpdateMountedDisks",
             "TransferXClusterCerts",
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistQueryLoggingConfig",
+            "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -22105,7 +23216,12 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig",
+            "UpdateAndPersistKubernetesImmutableYbc"
           ],
           "type" : "string"
         },
@@ -22158,7 +23274,7 @@
     "ThrottleParamValue" : {
       "properties" : {
         "currentValue" : {
-          "format" : "int32",
+          "format" : "int64",
           "type" : "integer"
         },
         "presetValues" : {
@@ -22182,6 +23298,9 @@
             "aarch64"
           ],
           "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "capability" : {
           "enum" : [
@@ -22503,9 +23622,14 @@
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
+            "ModifyQueryLoggingConfig",
+            "ModifyMetricsExportConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
+            "UpgradeKubernetesYbcGFlags",
+            "UpdateYbcThrottleFlags",
+            "UpdateK8sYbcThrottleFlags",
             "DisableYbc",
             "AddGFlagMetadata",
             "CloudProviderDelete",
@@ -22542,6 +23666,8 @@
             "SendUserNotification",
             "ImportUniverse",
             "MigrateUniverse",
+            "KubernetesToggleImmutableYbc",
+            "OperatorImportUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -22594,6 +23720,7 @@
             "UpdateUniverseYbcDetails",
             "YBCBackupSucceeded",
             "UpdateUniverseYbcGflagsDetails",
+            "SetYbcThrottleParamsInMemory",
             "VerifyNodeSSHAccess",
             "WaitForDataMove",
             "WaitForLeaderBlacklistCompletion",
@@ -22685,6 +23812,7 @@
             "CreateAlertDefinitions",
             "ManageAlertDefinitions",
             "ManageCatalogUpgradeSuperUser",
+            "UpdatePitrConfigIntermittentMinRecoverTime",
             "MarkSourceMetric",
             "UniverseSetTlsParams",
             "UniverseUpdateRootCert",
@@ -22699,6 +23827,7 @@
             "PreflightNodeCheck",
             "RunYsqlUpgrade",
             "PromoteAutoFlags",
+            "UpdateSoftwareUpdatePrevConfig",
             "RollbackAutoFlags",
             "StoreAutoFlagConfigVersion",
             "CheckUpgrade",
@@ -22712,12 +23841,15 @@
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
+            "ValidateGFlags",
             "CheckSoftwareVersion",
             "UpdateMountedDisks",
             "TransferXClusterCerts",
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistQueryLoggingConfig",
+            "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -22755,7 +23887,12 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig",
+            "UpdateAndPersistKubernetesImmutableYbc"
           ],
           "type" : "string"
         },
@@ -23086,6 +24223,9 @@
           ],
           "type" : "string"
         },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
+        },
         "capability" : {
           "enum" : [
             "READ_ONLY",
@@ -23408,9 +24548,14 @@
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
+            "ModifyQueryLoggingConfig",
+            "ModifyMetricsExportConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
+            "UpgradeKubernetesYbcGFlags",
+            "UpdateYbcThrottleFlags",
+            "UpdateK8sYbcThrottleFlags",
             "DisableYbc",
             "AddGFlagMetadata",
             "CloudProviderDelete",
@@ -23447,6 +24592,8 @@
             "SendUserNotification",
             "ImportUniverse",
             "MigrateUniverse",
+            "KubernetesToggleImmutableYbc",
+            "OperatorImportUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -23499,6 +24646,7 @@
             "UpdateUniverseYbcDetails",
             "YBCBackupSucceeded",
             "UpdateUniverseYbcGflagsDetails",
+            "SetYbcThrottleParamsInMemory",
             "VerifyNodeSSHAccess",
             "WaitForDataMove",
             "WaitForLeaderBlacklistCompletion",
@@ -23590,6 +24738,7 @@
             "CreateAlertDefinitions",
             "ManageAlertDefinitions",
             "ManageCatalogUpgradeSuperUser",
+            "UpdatePitrConfigIntermittentMinRecoverTime",
             "MarkSourceMetric",
             "UniverseSetTlsParams",
             "UniverseUpdateRootCert",
@@ -23604,6 +24753,7 @@
             "PreflightNodeCheck",
             "RunYsqlUpgrade",
             "PromoteAutoFlags",
+            "UpdateSoftwareUpdatePrevConfig",
             "RollbackAutoFlags",
             "StoreAutoFlagConfigVersion",
             "CheckUpgrade",
@@ -23617,12 +24767,15 @@
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
+            "ValidateGFlags",
             "CheckSoftwareVersion",
             "UpdateMountedDisks",
             "TransferXClusterCerts",
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistQueryLoggingConfig",
+            "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -23660,7 +24813,12 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig",
+            "UpdateAndPersistKubernetesImmutableYbc"
           ],
           "type" : "string"
         },
@@ -23710,6 +24868,9 @@
             "aarch64"
           ],
           "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "capability" : {
           "enum" : [
@@ -24022,9 +25183,14 @@
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
+            "ModifyQueryLoggingConfig",
+            "ModifyMetricsExportConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
+            "UpgradeKubernetesYbcGFlags",
+            "UpdateYbcThrottleFlags",
+            "UpdateK8sYbcThrottleFlags",
             "DisableYbc",
             "AddGFlagMetadata",
             "CloudProviderDelete",
@@ -24061,6 +25227,8 @@
             "SendUserNotification",
             "ImportUniverse",
             "MigrateUniverse",
+            "KubernetesToggleImmutableYbc",
+            "OperatorImportUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -24113,6 +25281,7 @@
             "UpdateUniverseYbcDetails",
             "YBCBackupSucceeded",
             "UpdateUniverseYbcGflagsDetails",
+            "SetYbcThrottleParamsInMemory",
             "VerifyNodeSSHAccess",
             "WaitForDataMove",
             "WaitForLeaderBlacklistCompletion",
@@ -24204,6 +25373,7 @@
             "CreateAlertDefinitions",
             "ManageAlertDefinitions",
             "ManageCatalogUpgradeSuperUser",
+            "UpdatePitrConfigIntermittentMinRecoverTime",
             "MarkSourceMetric",
             "UniverseSetTlsParams",
             "UniverseUpdateRootCert",
@@ -24218,6 +25388,7 @@
             "PreflightNodeCheck",
             "RunYsqlUpgrade",
             "PromoteAutoFlags",
+            "UpdateSoftwareUpdatePrevConfig",
             "RollbackAutoFlags",
             "StoreAutoFlagConfigVersion",
             "CheckUpgrade",
@@ -24231,12 +25402,15 @@
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
+            "ValidateGFlags",
             "CheckSoftwareVersion",
             "UpdateMountedDisks",
             "TransferXClusterCerts",
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistQueryLoggingConfig",
+            "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -24274,7 +25448,12 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig",
+            "UpdateAndPersistKubernetesImmutableYbc"
           ],
           "type" : "string"
         },
@@ -24324,6 +25503,9 @@
             "aarch64"
           ],
           "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "capability" : {
           "enum" : [
@@ -24636,9 +25818,14 @@
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
+            "ModifyQueryLoggingConfig",
+            "ModifyMetricsExportConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
+            "UpgradeKubernetesYbcGFlags",
+            "UpdateYbcThrottleFlags",
+            "UpdateK8sYbcThrottleFlags",
             "DisableYbc",
             "AddGFlagMetadata",
             "CloudProviderDelete",
@@ -24675,6 +25862,8 @@
             "SendUserNotification",
             "ImportUniverse",
             "MigrateUniverse",
+            "KubernetesToggleImmutableYbc",
+            "OperatorImportUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -24727,6 +25916,7 @@
             "UpdateUniverseYbcDetails",
             "YBCBackupSucceeded",
             "UpdateUniverseYbcGflagsDetails",
+            "SetYbcThrottleParamsInMemory",
             "VerifyNodeSSHAccess",
             "WaitForDataMove",
             "WaitForLeaderBlacklistCompletion",
@@ -24818,6 +26008,7 @@
             "CreateAlertDefinitions",
             "ManageAlertDefinitions",
             "ManageCatalogUpgradeSuperUser",
+            "UpdatePitrConfigIntermittentMinRecoverTime",
             "MarkSourceMetric",
             "UniverseSetTlsParams",
             "UniverseUpdateRootCert",
@@ -24832,6 +26023,7 @@
             "PreflightNodeCheck",
             "RunYsqlUpgrade",
             "PromoteAutoFlags",
+            "UpdateSoftwareUpdatePrevConfig",
             "RollbackAutoFlags",
             "StoreAutoFlagConfigVersion",
             "CheckUpgrade",
@@ -24845,12 +26037,15 @@
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
+            "ValidateGFlags",
             "CheckSoftwareVersion",
             "UpdateMountedDisks",
             "TransferXClusterCerts",
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistQueryLoggingConfig",
+            "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -24888,7 +26083,12 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig",
+            "UpdateAndPersistKubernetesImmutableYbc"
           ],
           "type" : "string"
         },
@@ -24976,6 +26176,114 @@
           "format" : "uuid",
           "readOnly" : true,
           "type" : "string"
+        }
+      },
+      "required" : [
+        "additionalTags",
+        "exporterUuid"
+      ],
+      "type" : "object"
+    },
+    "UniverseMetricsExporterConfig" : {
+      "description" : "Metrics Exporter Configuration",
+      "properties" : {
+        "additionalTags" : {
+          "additionalProperties" : {
+            "type" : "string"
+          },
+          "description" : "Additional tags",
+          "type" : "object"
+        },
+        "exporterUuid" : {
+          "description" : "Exporter uuid",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "memoryLimitCheckIntervalSeconds" : {
+          "description" : "Check interval in seconds for the MemoryLimiterProcessor.",
+          "example" : 10,
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "memoryLimitMib" : {
+          "description" : "Memory limit in MiB for the OpenTelemetry Collector process in the config file.",
+          "example" : 2048,
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "metricsPrefix" : {
+          "description" : "Custom prefix to add to all exported metric names. Can be customised to each exporter differently.",
+          "example" : "ybdb.",
+          "type" : "string"
+        },
+        "sendBatchMaxSize" : {
+          "description" : "Maximum batch size for sending metrics. Can be customised to each exporter differently.",
+          "example" : 1000,
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "sendBatchSize" : {
+          "description" : "Batch size for sending metrics. Can be customised to each exporter differently.",
+          "example" : 100,
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "sendBatchTimeoutSeconds" : {
+          "description" : "Batch timeout in seconds for sending metrics. Can be customised to each exporter differently.",
+          "example" : 10,
+          "format" : "int32",
+          "type" : "integer"
+        }
+      },
+      "required" : [
+        "additionalTags",
+        "exporterUuid"
+      ],
+      "type" : "object"
+    },
+    "UniverseQueryLogsExporterConfig" : {
+      "description" : "Universe Logs Exporter Config",
+      "properties" : {
+        "additionalTags" : {
+          "additionalProperties" : {
+            "type" : "string"
+          },
+          "description" : "Additional tags",
+          "type" : "object"
+        },
+        "exporterUuid" : {
+          "description" : "Exporter uuid",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "memoryLimitCheckIntervalSeconds" : {
+          "description" : "Check interval in seconds for the MemoryLimiterProcessor.",
+          "example" : 10,
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "memoryLimitMib" : {
+          "description" : "Memory limit in MiB for the OpenTelemetry Collector process in the config file.",
+          "example" : 2048,
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "sendBatchMaxSize" : {
+          "description" : "Maximum batch size for query logs exporter",
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "sendBatchSize" : {
+          "description" : "Batch size for query logs exporter",
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "sendBatchTimeoutSeconds" : {
+          "description" : "Maximum batch timeout for query logs exporter in seconds",
+          "format" : "int32",
+          "type" : "integer"
         }
       },
       "required" : [
@@ -25338,6 +26646,9 @@
           ],
           "type" : "string"
         },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
+        },
         "capability" : {
           "enum" : [
             "READ_ONLY",
@@ -25652,9 +26963,14 @@
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
+            "ModifyQueryLoggingConfig",
+            "ModifyMetricsExportConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
+            "UpgradeKubernetesYbcGFlags",
+            "UpdateYbcThrottleFlags",
+            "UpdateK8sYbcThrottleFlags",
             "DisableYbc",
             "AddGFlagMetadata",
             "CloudProviderDelete",
@@ -25691,6 +27007,8 @@
             "SendUserNotification",
             "ImportUniverse",
             "MigrateUniverse",
+            "KubernetesToggleImmutableYbc",
+            "OperatorImportUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -25743,6 +27061,7 @@
             "UpdateUniverseYbcDetails",
             "YBCBackupSucceeded",
             "UpdateUniverseYbcGflagsDetails",
+            "SetYbcThrottleParamsInMemory",
             "VerifyNodeSSHAccess",
             "WaitForDataMove",
             "WaitForLeaderBlacklistCompletion",
@@ -25834,6 +27153,7 @@
             "CreateAlertDefinitions",
             "ManageAlertDefinitions",
             "ManageCatalogUpgradeSuperUser",
+            "UpdatePitrConfigIntermittentMinRecoverTime",
             "MarkSourceMetric",
             "UniverseSetTlsParams",
             "UniverseUpdateRootCert",
@@ -25848,6 +27168,7 @@
             "PreflightNodeCheck",
             "RunYsqlUpgrade",
             "PromoteAutoFlags",
+            "UpdateSoftwareUpdatePrevConfig",
             "RollbackAutoFlags",
             "StoreAutoFlagConfigVersion",
             "CheckUpgrade",
@@ -25861,12 +27182,15 @@
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
+            "ValidateGFlags",
             "CheckSoftwareVersion",
             "UpdateMountedDisks",
             "TransferXClusterCerts",
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistQueryLoggingConfig",
+            "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -25904,7 +27228,12 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig",
+            "UpdateAndPersistKubernetesImmutableYbc"
           ],
           "type" : "string"
         },
@@ -26006,9 +27335,6 @@
           "type" : "boolean"
         },
         "enableNodeToNodeEncrypt" : {
-          "type" : "boolean"
-        },
-        "enableVolumeEncryption" : {
           "type" : "boolean"
         },
         "enableYCQL" : {
@@ -26122,6 +27448,10 @@
           "type" : "boolean"
         },
         "useTimeSync" : {
+          "type" : "boolean"
+        },
+        "useYbdbInbuiltYbc" : {
+          "description" : "WARNING: This is a preview API that could change. Use YBDB inbuilt YBC for K8s universe",
           "type" : "boolean"
         },
         "userIntentOverrides" : {
@@ -26427,6 +27757,9 @@
             "aarch64"
           ],
           "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
         },
         "capability" : {
           "enum" : [
@@ -26752,9 +28085,14 @@
             "ThirdpartySoftwareUpgrade",
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
+            "ModifyQueryLoggingConfig",
+            "ModifyMetricsExportConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
+            "UpgradeKubernetesYbcGFlags",
+            "UpdateYbcThrottleFlags",
+            "UpdateK8sYbcThrottleFlags",
             "DisableYbc",
             "AddGFlagMetadata",
             "CloudProviderDelete",
@@ -26791,6 +28129,8 @@
             "SendUserNotification",
             "ImportUniverse",
             "MigrateUniverse",
+            "KubernetesToggleImmutableYbc",
+            "OperatorImportUniverse",
             "KubernetesCheckVolumeExpansion",
             "KubernetesPostExpansionCheckVolume",
             "NodeCertReloadTask",
@@ -26843,6 +28183,7 @@
             "UpdateUniverseYbcDetails",
             "YBCBackupSucceeded",
             "UpdateUniverseYbcGflagsDetails",
+            "SetYbcThrottleParamsInMemory",
             "VerifyNodeSSHAccess",
             "WaitForDataMove",
             "WaitForLeaderBlacklistCompletion",
@@ -26934,6 +28275,7 @@
             "CreateAlertDefinitions",
             "ManageAlertDefinitions",
             "ManageCatalogUpgradeSuperUser",
+            "UpdatePitrConfigIntermittentMinRecoverTime",
             "MarkSourceMetric",
             "UniverseSetTlsParams",
             "UniverseUpdateRootCert",
@@ -26948,6 +28290,7 @@
             "PreflightNodeCheck",
             "RunYsqlUpgrade",
             "PromoteAutoFlags",
+            "UpdateSoftwareUpdatePrevConfig",
             "RollbackAutoFlags",
             "StoreAutoFlagConfigVersion",
             "CheckUpgrade",
@@ -26961,12 +28304,15 @@
             "RunYsqlMajorVersionCatalogUpgrade",
             "RollbackYsqlMajorVersionCatalogUpgrade",
             "FinalizeYsqlMajorCatalogUpgrade",
+            "ValidateGFlags",
             "CheckSoftwareVersion",
             "UpdateMountedDisks",
             "TransferXClusterCerts",
             "CreateTableSpaces",
             "ManageOtelCollector",
             "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistQueryLoggingConfig",
+            "UpdateAndPersistMetricsExportConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -27004,7 +28350,12 @@
             "YNPProvisioning",
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
-            "FetchServerConf"
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig",
+            "UpdateAndPersistKubernetesImmutableYbc"
           ],
           "type" : "string"
         },
@@ -27076,6 +28427,7 @@
             "USER_GROUP",
             "HOME_DIR_SPACE",
             "HOME_DIR_EXISTS",
+            "HOME_DIR_MATCHES",
             "RAM_SIZE",
             "INTERNET_CONNECTION",
             "CPU_CORES",
@@ -27105,7 +28457,6 @@
             "ULIMIT_CORE",
             "ULIMIT_OPEN_FILES",
             "ULIMIT_USER_PROCESSES",
-            "SYSTEMD_SUDOER_ENTRY",
             "SSH_ACCESS",
             "NODE_AGENT_ACCESS",
             "MASTER_HTTP_PORT",
@@ -27645,6 +28996,10 @@
     },
     "XClusterConfigNeedBootstrapFormData" : {
       "properties" : {
+        "isDrConfig" : {
+          "description" : "WARNING: This is a preview API that could change. Whether this check is being done as part of a DR configuration setup",
+          "type" : "boolean"
+        },
         "tables" : {
           "description" : "Source universe table IDs to check whether they need bootstrap",
           "example" : "[\"000033df00003000800000000000400b\"]",
@@ -28125,27 +29480,106 @@
       ],
       "type" : "object"
     },
+    "YSQLQueryLogConfig" : {
+      "description" : "YSQL Query Logging Configuration",
+      "properties" : {
+        "debugPrintPlan" : {
+          "description" : "Debug print plan, these parameters enable various debugging output to be emitted. When set, they print the resulting parse tree, the query rewriter output, or the execution plan for each executed query.",
+          "type" : "boolean"
+        },
+        "enabled" : {
+          "description" : "Enabled",
+          "readOnly" : true,
+          "type" : "boolean"
+        },
+        "logConnections" : {
+          "description" : "Log connections, causes each attempted connection to the server to be logged, as well as successful completion of both client authentication (if necessary) and authorization",
+          "type" : "boolean"
+        },
+        "logDisconnections" : {
+          "description" : "Log disconnections, causes session terminations to be logged. The log output provides information similar to log_connections, plus the duration of the session.",
+          "type" : "boolean"
+        },
+        "logDuration" : {
+          "description" : "Log duration, causes the duration of every completed statement to be logged",
+          "type" : "boolean"
+        },
+        "logErrorVerbosity" : {
+          "description" : "Log error verbosity, controls the amount of detail written in the server log for each message that is logged.",
+          "enum" : [
+            "VERBOSE",
+            "TERSE",
+            "DEFAULT"
+          ],
+          "type" : "string"
+        },
+        "logMinDurationStatement" : {
+          "description" : "Log min duration statement, causes the duration of each completed statement to be logged if the statement ran for at least the specified amount of time.",
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "logMinErrorStatement" : {
+          "description" : "Log min error statement, controls which SQL statements that cause an error condition are recorded.",
+          "enum" : [
+            "ERROR"
+          ],
+          "type" : "string"
+        },
+        "logStatement" : {
+          "description" : "Log statement, controls which SQL statements are logged.",
+          "enum" : [
+            "ALL",
+            "NONE",
+            "DDL",
+            "MOD"
+          ],
+          "type" : "string"
+        }
+      },
+      "required" : [
+        "debugPrintPlan",
+        "enabled",
+        "logConnections",
+        "logDisconnections",
+        "logDuration",
+        "logErrorVerbosity",
+        "logMinDurationStatement",
+        "logMinErrorStatement",
+        "logStatement"
+      ],
+      "type" : "object"
+    },
     "YbcThrottleParameters" : {
       "description" : "YB-Controller throttle parameters",
       "properties" : {
+        "diskReadBytesPerSecond" : {
+          "description" : "WARNING: This is a preview API that could change. Disk read bytes per second to throttle disk usage during backups",
+          "format" : "int64",
+          "type" : "integer"
+        },
+        "diskWriteBytesPerSecond" : {
+          "description" : "WARNING: This is a preview API that could change. Disk write bytes per second to throttle disk usage during restore",
+          "format" : "int64",
+          "type" : "integer"
+        },
         "maxConcurrentDownloads" : {
           "description" : "Max concurrent downloads per node",
-          "format" : "int32",
+          "format" : "int64",
           "type" : "integer"
         },
         "maxConcurrentUploads" : {
           "description" : "Max concurrent uploads per node",
-          "format" : "int32",
+          "format" : "int64",
           "type" : "integer"
         },
         "perDownloadNumObjects" : {
           "description" : "Max objects per download per node",
-          "format" : "int32",
+          "format" : "int64",
           "type" : "integer"
         },
         "perUploadNumObjects" : {
           "description" : "Max objects per upload per node",
-          "format" : "int32",
+          "format" : "int64",
           "type" : "integer"
         },
         "resetDefaults" : {
@@ -38080,6 +39514,53 @@
         ]
       }
     },
+    "/api/v1/customers/{cUUID}/universes/{uUUID}/operator_import/precheck" : {
+      "post" : {
+        "description" : "WARNING: This is a preview API that could change: import operator universe",
+        "operationId" : "operatorImportUniverse",
+        "parameters" : [
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "cUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "uUUID",
+            "required" : true,
+            "type" : "string"
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "summary" : "Import a universe and related resources to be managed by the kubernetes operator",
+        "tags" : [
+          "preview"
+        ]
+      }
+    },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}" : {
       "delete" : {
         "description" : "Available since YBA version 2.2.0.0.",
@@ -41082,6 +42563,67 @@
         ]
       }
     },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/upgrade/k8s_immutable_ybc" : {
+      "post" : {
+        "description" : "WARNING: This is a preview API that could change. Queues a task to toggle immutable YBC on Kubernetes universe.",
+        "operationId" : "kubernetesToggleImmutableYbc",
+        "parameters" : [
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "cUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "uniUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "in" : "query",
+            "name" : "request",
+            "required" : false
+          },
+          {
+            "description" : "Kubernetes Toggle Immutable Ybc Params",
+            "in" : "body",
+            "name" : "Kubernetes_toggle_immutable_ybc",
+            "required" : true,
+            "schema" : {
+              "$ref" : "#/definitions/KubernetesToggleImmutableYbcParams"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "summary" : "Upgrade Kubernetes universe to toggle immutable YBC",
+        "tags" : [
+          "Universe Upgrades Management"
+        ]
+      }
+    },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/upgrade/kubernetes_overrides" : {
       "post" : {
         "description" : "Queues a task to perform Kubernetesoverrides upgrade for a kubernetes universe.",
@@ -41859,7 +43401,9 @@
         "tags" : [
           "Backups"
         ]
-      },
+      }
+    },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/ybc_throttle_params_async" : {
       "post" : {
         "description" : "",
         "operationId" : "setThrottleParams",
@@ -41914,9 +43458,9 @@
             "apiKeyAuth" : [ ]
           }
         ],
-        "summary" : "Set throttle params in YB-Controller",
+        "summary" : "Set throttle params in YB-Controller( async )",
         "tags" : [
-          "Backups"
+          "Ybc Management"
         ]
       }
     },
@@ -44471,7 +46015,13 @@
       "get" : {
         "description" : "Available since YBA version 2.8.0.0.",
         "operationId" : "MetricsDetail",
-        "parameters" : [ ],
+        "parameters" : [
+          {
+            "in" : "query",
+            "name" : "request",
+            "required" : false
+          }
+        ],
         "responses" : {
           "200" : {
             "description" : "successful operation",
@@ -44859,6 +46409,9 @@
     },
     {
       "name" : "User management"
+    },
+    {
+      "name" : "Ybc Management"
     },
     {
       "name" : "preview"

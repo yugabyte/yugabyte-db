@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -29,6 +29,7 @@
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/serialization.h"
 
+#include "yb/util/crc.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
@@ -49,6 +50,7 @@ DEFINE_test_flag(uint64, yb_inbound_big_calls_parse_delay_ms, false,
                  "rpc_throttle_threshold_bytes");
 
 DECLARE_bool(rpc_dump_all_traces);
+DECLARE_bool(rpc_enable_crc);
 DECLARE_bool(ysql_yb_enable_ash);
 DECLARE_int32(print_trace_every);
 DECLARE_int32(rpc_slow_query_threshold_ms);
@@ -171,7 +173,8 @@ Status ThrottleRpcStatus(const MemTrackerPtr& throttle_tracker, const YBInboundC
 
 Status YBInboundConnectionContext::HandleCall(
     const ConnectionPtr& connection, CallData* call_data) {
-  auto call = InboundCall::Create<YBInboundCall>(connection, this);
+  auto call = InboundCall::Create<YBInboundCall>(
+      connection, this, connection->call_state_listener_factory());
 
   Status s = call->ParseFrom(call_tracker(), call_data);
   if (!s.ok()) {
@@ -255,12 +258,26 @@ void YBInboundConnectionContext::HandleTimeout(ev::timer& watcher, int revents) 
   }
 }
 
-YBInboundCall::YBInboundCall(ConnectionPtr conn, CallProcessedListener* call_processed_listener)
-    : InboundCall(std::move(conn), nullptr /* rpc_metrics */, call_processed_listener),
+YBInboundCall::YBInboundCall(
+    ConnectionPtr conn,
+    CallProcessedListener* call_processed_listener,
+    CallStateListenerFactory* call_state_listener_factory)
+    : InboundCall(
+          std::move(conn),
+          nullptr /* rpc_metrics */,
+          call_processed_listener,
+          call_state_listener_factory),
       sidecars_(&consumption_) {}
 
-YBInboundCall::YBInboundCall(RpcMetrics* rpc_metrics, const RemoteMethod& remote_method)
-    : InboundCall(nullptr /* conn */, rpc_metrics, nullptr /* call_processed_listener */),
+YBInboundCall::YBInboundCall(
+    RpcMetrics* rpc_metrics,
+    const RemoteMethod& remote_method,
+    CallStateListenerFactory* call_state_listener_factory)
+    : InboundCall(
+          nullptr /* conn */,
+          rpc_metrics,
+          nullptr /* call_processed_listener */,
+          call_state_listener_factory),
       sidecars_(&consumption_) {
   header_.remote_method = remote_method.serialized_body();
 }
@@ -275,13 +292,13 @@ CoarseTimePoint YBInboundCall::GetClientDeadline() const {
 }
 
 void YBInboundCall::UpdateWaitStateInfo() {
-  if (wait_state_) {
-    wait_state_->UpdateMetadata({.rpc_request_id = instance_id()});
-    wait_state_->UpdateAuxInfo({
-        .method = method_name().ToBuffer(),
-    });
-  } else {
-    LOG_IF(DFATAL, FLAGS_ysql_yb_enable_ash) << "Wait state is nullptr for " << ToString();
+  if (auto* listener = call_state_listener()) {
+    const auto s = rpc::ParseMetadata(header_.metadata, listener->mutable_message());
+    if (!s.ok()) {
+      LOG(DFATAL) << "Failed to parse metadata for call " << header_.call_id << ": " << s;
+      return;
+    }
+    listener->UpdateInfo(IsLocalCall(), method_name().ToBuffer());
   }
 }
 
@@ -310,9 +327,19 @@ Status YBInboundCall::SerializeResponseBuffer(AnyMessageConstPtr response, bool 
   ResponseHeader resp_hdr;
   resp_hdr.set_call_id(header_.call_id);
   resp_hdr.set_is_error(!is_success);
+  auto use_crc = FLAGS_rpc_enable_crc;
+  if (use_crc) {
+    resp_hdr.set_crc(0);
+  }
   sidecars_.MoveOffsetsTo(body_size, resp_hdr.mutable_sidecar_offsets());
 
-  response_buf_ = VERIFY_RESULT(SerializeRequest(body_size, sidecars_.size(), resp_hdr, response));
+  size_t header_size;
+  std::tie(response_buf_, header_size) = VERIFY_RESULT(SerializeResponse(
+      body_size, sidecars_.size(), resp_hdr, response));
+  if (use_crc) {
+    StoreCrc(response_buf_, header_size, response_buf_.size() - header_size, &sidecars_);
+  }
+
   response_data_memory_usage_ = response_buf_.size();
 
   return Status::OK();

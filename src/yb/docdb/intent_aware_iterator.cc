@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -27,7 +27,7 @@
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_statistics.h"
 #include "yb/dockv/intent.h"
-#include "yb/docdb/intent_iterator.h"
+#include "yb/docdb/intent_format.h"
 #include "yb/docdb/iter_util.h"
 #include "yb/docdb/key_bounds.h"
 #include "yb/docdb/transaction_dump.h"

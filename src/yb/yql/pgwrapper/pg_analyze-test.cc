@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -300,7 +300,7 @@ class PgAnalyzeTest : public PgTabletSplitTestBase {
     size_t num_total_data_blocks = 0;
 
     for (const auto& tablet_peer : ListTableActiveTabletLeadersPeers(cluster_.get(), table_id)) {
-      auto tablet = tablet_peer->shared_tablet();
+      auto tablet = tablet_peer->shared_tablet_maybe_null();
       if (!tablet || !tablet->regular_db()) {
         continue;
       }

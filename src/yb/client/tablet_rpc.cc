@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -279,7 +279,14 @@ void TabletInvoker::Execute(const std::string& tablet_id, bool leader_only) {
           << current_ts_->ToString();
   int64_t opid_index = client_->GetRaftConfigOpidIndex(tablet_id_);
   rpc_->SetRequestRaftConfigOpidIndex(opid_index);
+
+  // Keep a refon trace, since it is possible that we receive reply before returning from async rpc,
+  // destroying us.
+  auto trace = trace_;
+  TRACE_TO(trace, "SendRpcToTserver");
+  ADOPT_TRACE(trace);
   rpc_->SendRpcToTserver(retrier_->attempt_num());
+  TRACE_TO(trace, "RpcDispatched Asynchronously");
 }
 
 Status TabletInvoker::FailToNewReplica(const Status& reason,
@@ -429,8 +436,7 @@ bool TabletInvoker::Done(Status* status) {
       IsTabletConsideredNotFound(rsp_err, *status) ||
       IsTabletConsideredNonLeader(rsp_err, *status) ||
       (status->IsTimedOut() && CoarseMonoClock::Now() < retrier_->deadline())) {
-    VLOG(4) << "Retryable failure: " << *status
-            << ", response: " << yb::ToString(rsp_err);
+    VLOG(4) << "Retryable failure: " << *status << ", response: " << AsString(rsp_err);
 
     const bool leader_is_not_ready =
         ErrorCode(rsp_err) ==

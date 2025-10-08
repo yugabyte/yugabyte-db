@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -74,14 +74,12 @@ class NonTransactionalStatusProvider: public TransactionStatusManager {
     return HybridTime::kInvalid;
   }
 
-  boost::optional<TransactionLocalState> LocalTxnData(const TransactionId& id) override {
+  std::optional<TransactionLocalState> LocalTxnData(const TransactionId& id) override {
     Fail();
-    return boost::none;
+    return std::nullopt;
   }
 
-  void RequestStatusAt(const StatusRequest& request) override {
-    Fail();
-  }
+  void RequestStatusAt(const StatusRequest& request) override { Fail(); }
 
   Result<TransactionMetadata> PrepareMetadata(const LWTransactionMetadataPB& pb) override {
     Fail();
@@ -112,13 +110,11 @@ class NonTransactionalStatusProvider: public TransactionStatusManager {
     return STATUS(NotSupported, "FillPriorities not implemented");
   }
 
-  Result<boost::optional<TabletId>> FindStatusTablet(const TransactionId& id) override {
-    return boost::none;
+  Result<std::optional<TabletId>> FindStatusTablet(const TransactionId& id) override {
+    return std::nullopt;
   }
 
-  HybridTime MinRunningHybridTime() const override {
-    return HybridTime::kMax;
-  }
+  HybridTime MinRunningHybridTime() const override { return HybridTime::kMax; }
 
   Result<HybridTime> WaitForSafeTime(HybridTime safe_time, CoarseTimePoint deadline) override {
     return STATUS(NotSupported, "WaitForSafeTime not implemented");

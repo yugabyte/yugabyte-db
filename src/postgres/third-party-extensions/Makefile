@@ -1,20 +1,18 @@
 DIRS = \
+	documentdb \
 	hypopg \
 	orafce \
-	pgaudit \
 	pg_cron \
 	pg_hint_plan \
+	pg_parquet \
+	pg_partman \
 	pg_stat_monitor \
+	pgaudit \
+	pgtap \
 	pgvector \
 	postgresql-hll \
 	postgresql_anonymizer \
-	pg_partman \
 	wal2json \
-	pgtap \
-
-ifneq ($(findstring YB_ENABLE_YSQL_DOCUMENTDB_EXT, $(CXXFLAGS)),)
-	DIRS += documentdb
-endif
 
 BUILDDIRS = $(DIRS:%=build-%)
 INSTALLDIRS = $(DIRS:%=install-%)

@@ -4,7 +4,7 @@ headerTitle: SELECT
 linkTitle: SELECT
 description: Use the SELECT statement to retrieve rows of specified columns that meet a given condition from a table.
 menu:
-  v2.20:
+  v2.20_api:
     identifier: dml_select
     parent: statements
 type: docs

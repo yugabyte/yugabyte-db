@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -45,6 +45,9 @@ public class TestPgConnection extends BasePgSQLTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("ysql_max_connections", String.valueOf(MAX_CONNECTIONS));
+    // Disable auto analyze for this test suite because auto analyze sets up
+    // PG connections to fetch unknown reltuples causing tests' flakyness.
+    flagMap.put("ysql_enable_auto_analyze", "false");
     return flagMap;
   }
 

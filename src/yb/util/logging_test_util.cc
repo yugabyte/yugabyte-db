@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -24,8 +24,7 @@ Status PatternWaiterLogSink<Pattern>::WaitFor(MonoDelta timeout) {
   constexpr auto kInitialWaitPeriod = 100ms;
   const auto message = Format("$0 '$1'...", kWaitingMessage, pattern_source_);
   LOG(INFO) << message;
-  return ::yb::WaitFor(
-      [this] { return event_occurred_.load(); }, timeout, message, kInitialWaitPeriod);
+  return ::yb::WaitFor([this] { return IsEventOccurred(); }, timeout, message, kInitialWaitPeriod);
 }
 
 template<>
@@ -35,7 +34,7 @@ void PatternWaiterLogSink<std::string>::send(
   auto log_message = ToString(severity, base_filename, line, tm_time, message, message_len);
   if (log_message.find(pattern_to_wait_for_) != std::string::npos &&
       log_message.find(kWaitingMessage) == std::string::npos) {
-    event_occurred_ = true;
+    event_count_++;
   }
 }
 
@@ -46,7 +45,7 @@ void PatternWaiterLogSink<boost::regex>::send(
   auto log_message = ToString(severity, base_filename, line, tm_time, message, message_len);
   if (boost::regex_match(log_message, pattern_to_wait_for_) &&
       log_message.find(kWaitingMessage) == std::string::npos) {
-    event_occurred_ = true;
+    event_count_++;
   }
 }
 

@@ -4,7 +4,7 @@
  *	  Utilities for YugaByte/PostgreSQL integration that have to be defined on
  *	  the PostgreSQL side.
  *
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License.  You may obtain a copy
@@ -44,7 +44,7 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "yb_tcmalloc_utils.h"
 
-int yb_log_heap_snapshot_on_exit_threshold = -1;
+int			yb_log_heap_snapshot_on_exit_threshold = -1;
 
 static void YbLogHeapSnapshotProcExit(int status, Datum arg);
 
@@ -318,12 +318,13 @@ YbLogHeapSnapshotProcExit(int status, Datum arg)
 {
 	if (yb_log_heap_snapshot_on_exit_threshold >= 0)
 	{
-		long peak_rss_kb = YbGetPeakRssKb();
+		long		peak_rss_kb = YbGetPeakRssKb();
+
 		if (peak_rss_kb >= yb_log_heap_snapshot_on_exit_threshold)
 		{
 			ereport(LOG,
-				   (errmsg("peak heap snapshot of PID %d (peak RSS: %ld KB, threshold: %d KB):",
-						  MyProcPid, peak_rss_kb, yb_log_heap_snapshot_on_exit_threshold)));
+					(errmsg("peak heap snapshot of PID %d (peak RSS: %ld KB, threshold: %d KB):",
+							MyProcPid, peak_rss_kb, yb_log_heap_snapshot_on_exit_threshold)));
 			YBCDumpTcMallocHeapProfile(true, 100);
 		}
 	}

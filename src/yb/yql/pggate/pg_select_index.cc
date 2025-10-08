@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -43,33 +43,16 @@ Status PgSelectIndex::PrepareSubquery(
 }
 
 Result<std::optional<YbctidBatch>> PgSelectIndex::FetchYbctidBatch() {
-  // Keep reading until we get one batch of ybctids or EOF.
-  while (!VERIFY_RESULT(GetNextYbctidBatch())) {
-    if (!VERIFY_RESULT(FetchDataFromServer())) {
-      // Server returns no more rows.
-      return std::nullopt;
-    }
+  ybctids_.clear();
+  if (!VERIFY_RESULT(doc_op_->ResultStream().ProcessNextYbctids(
+          [this](Slice ybctid, const RefCntBuffer&) {
+            ybctids_.push_back(ybctid);
+            return Status::OK();
+          }))) {
+    return std::nullopt;
   }
-
-  // Got the next batch of ybctids.
-  DCHECK(!rowsets_.empty());
-
   AtomicFlagSleepMs(&FLAGS_TEST_inject_delay_between_prepare_ybctid_execute_batch_ybctid_ms);
-  return YbctidBatch{rowsets_.front().ybctids(), read_req_->has_is_forward_scan()};
-}
-
-Result<bool> PgSelectIndex::GetNextYbctidBatch() {
-  for (auto rowset_iter = rowsets_.begin(); rowset_iter != rowsets_.end();) {
-    if (rowset_iter->is_eof()) {
-      rowset_iter = rowsets_.erase(rowset_iter);
-    } else {
-      // Write all found rows to ybctid array.
-      RETURN_NOT_OK(rowset_iter->ProcessSystemColumns());
-      return true;
-    }
-  }
-
-  return false;
+  return YbctidBatch{ybctids_, read_req_->has_is_forward_scan()};
 }
 
 Result<std::unique_ptr<PgSelectIndex>> PgSelectIndex::Make(

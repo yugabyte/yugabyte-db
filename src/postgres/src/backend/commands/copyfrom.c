@@ -789,24 +789,27 @@ CopyFrom(CopyFromState cstate)
 				   resultRelInfo->ri_RelationDesc->rd_rel->relkind == RELKIND_FOREIGN_TABLE);
 			ereport(WARNING,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("batched COPY is not supported on %s tables",
+					 errmsg("ROWS_PER_TRANSACTION is not supported on %s tables",
 							YbIsTempRelation(resultRelInfo->ri_RelationDesc) ? "temporary" : "foreign"),
 					 errdetail("Defaulting to using one transaction for the entire copy."),
 					 errhint("Either copy onto non-temporary table or set rows_per_transaction "
 							 "option to `0` to disable batching and remove this warning.")));
 		}
-		else if (YBIsDataSent())
+		else if (IsTransactionBlock() || YbIsBatchedExecution())
+		{
+			const char *context = IsTransactionBlock() ? "transaction block" : "batch of commands";
+
 			ereport(WARNING,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("batched COPY is not supported in transaction blocks"),
-					 errdetail("Defaulting to using one transaction for the entire copy."),
-					 errhint("Either run this COPY outside of a transaction block or set "
-							 "rows_per_transaction option to `0` to disable batching and "
-							 "remove this warning.")));
+					 errmsg("ROWS_PER_TRANSACTION is not supported in a %s", context),
+					 errdetail("Defaulting to using one transaction for all statements in the %s.", context),
+					 errhint("Either run this COPY outside of a %s or set rows_per_transaction option to `0` "
+							 " to remove this warning.", context)));
+		}
 		else if (HasNonRITrigger(cstate->rel->trigdesc))
 			ereport(WARNING,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("batched COPY is not supported on table with non RI trigger"),
+					 errmsg("ROWS_PER_TRANSACTION is not supported on table with non RI trigger"),
 					 errdetail("Defaulting to using one transaction for the entire copy."),
 					 errhint("Set rows_per_transaction option to `0` to disable batching "
 							 "and remove this warning.")));
@@ -1364,25 +1367,30 @@ yb_process_more_batches:
 		 * When CopyFrom method is called, we are already inside a transaction block
 		 * and relevant transaction state properties have been previously set.
 		 */
-		YBCCommitTransaction();
+		YBCommitTransactionIntermediate();
 
 		/*
 		 * Update progress of the COPY command as well.
 		 */
 		pgstat_progress_update_param(PROGRESS_COPY_TUPLES_PROCESSED, processed);
 		pgstat_progress_update_param(PROGRESS_COPY_BYTES_PROCESSED, cstate->bytes_processed);
-		YBInitializeTransaction();
 
 		/* Start a new AFTER trigger */
 		AfterTriggerBeginQuery();
 	}
 	else
 	{
+		YbcFlushDebugContext yb_debug_context = {
+			.reason = YB_COPY_BATCH,
+			.uintarg = processed,
+			.strarg1 = RelationGetRelationName(cstate->rel),
+		};
+
 		/*
 		 * We need to flush buffered operations so that error callback is
 		 * executed
 		 */
-		YBFlushBufferedOperations();
+		YBFlushBufferedOperations(&yb_debug_context);
 
 		/* Update progress of the COPY command as well */
 		pgstat_progress_update_param(PROGRESS_COPY_TUPLES_PROCESSED, processed);

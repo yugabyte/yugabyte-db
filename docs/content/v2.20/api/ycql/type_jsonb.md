@@ -4,7 +4,7 @@ headerTitle: JSONB
 linkTitle: JSONB
 description: Use the JSONB data type to efficiently model json data. This data type makes it easy to model JSON data which does not have a set schema and might change often.
 menu:
-  v2.20:
+  v2.20_api:
     parent: api-cassandra
     weight: 1470
 type: docs
@@ -241,6 +241,6 @@ Note that JSONB upsert only works for JSON objects and not for other data types 
 
 ## See also
 
-- [Explore JSON documents](../../../develop/learn/data-types-ycql/#jsonb)
+- [Explore JSON documents](/preview/develop/learn/data-types-ycql/#jsonb)
 - [Data types](..#data-types)
 - [Secondary indexes with JSONB](../../../explore/ycql-language/indexes-constraints/secondary-indexes-with-jsonb-ycql/)

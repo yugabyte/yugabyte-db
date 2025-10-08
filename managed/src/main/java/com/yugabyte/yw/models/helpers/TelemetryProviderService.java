@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 YugaByte, Inc. and Contributors
+ * Copyright 2022 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -13,15 +13,19 @@ import static com.yugabyte.yw.models.helpers.CommonUtils.appendInClause;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.WSClientRefresher;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.audit.UniverseLogsExporterConfig;
+import com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig;
+import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig;
+import com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.telemetry.ProviderType;
 import io.ebean.annotation.Transactional;
 import java.util.Collection;
@@ -40,18 +44,25 @@ import org.apache.commons.collections4.CollectionUtils;
 public class TelemetryProviderService {
 
   public static final String LOKI_PUSH_ENDPOINT = "/loki/api/v1/push";
+  public static final String WS_CLIENT_KEY = "yb.ws";
   private final BeanValidator beanValidator;
   private final RuntimeConfGetter confGetter;
+  private WSClientRefresher wsClientRefresher;
+  private ApiHelper apiHelper;
 
   @Inject
-  public TelemetryProviderService(BeanValidator beanValidator, RuntimeConfGetter confGetter) {
+  public TelemetryProviderService(
+      BeanValidator beanValidator,
+      RuntimeConfGetter confGetter,
+      WSClientRefresher wsClientRefresher) {
     this.beanValidator = beanValidator;
     this.confGetter = confGetter;
+    this.wsClientRefresher = wsClientRefresher;
   }
 
   @VisibleForTesting
   public TelemetryProviderService() {
-    this(new BeanValidator(null), null);
+    this(new BeanValidator(null), null, null);
   }
 
   @Transactional
@@ -157,14 +168,61 @@ public class TelemetryProviderService {
   }
 
   public void throwExceptionIfRuntimeFlagDisabled() {
-    boolean isDBAuditLoggingEnabled =
-        confGetter.getGlobalConf(GlobalConfKeys.dbAuditLoggingEnabled);
-    if (!isDBAuditLoggingEnabled) {
+    boolean isDBAuditLoggingEnabled = isDBAuditLoggingRuntimeFlagEnabled();
+    boolean isQueryLoggingEnabled = isQueryLoggingRuntimeFlagEnabled();
+    boolean isMetricsExportEnabled = isMetricsExportRuntimeFlagEnabled();
+    if (!isDBAuditLoggingEnabled && !isQueryLoggingEnabled && !isMetricsExportEnabled) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "DB Audit Logging, Query Logging and Metrics Export are not enabled. Please set runtime"
+              + " flag 'yb.universe.audit_logging_enabled' or 'yb.universe.query_logging_enabled'"
+              + " or 'yb.universe.metrics_export_enabled' to true.");
+    }
+  }
+
+  public void throwExceptionIfDBAuditLoggingRuntimeFlagDisabled() {
+    if (!isDBAuditLoggingRuntimeFlagEnabled()) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           "DB Audit Logging is not enabled. Please set runtime flag"
               + " 'yb.universe.audit_logging_enabled' to true.");
     }
+  }
+
+  public void throwExceptionIfQueryLoggingRuntimeFlagDisabled() {
+    if (!isQueryLoggingRuntimeFlagEnabled()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Query Logging is not enabled. Please set runtime flag"
+              + " 'yb.universe.query_logging_enabled' to true.");
+    }
+  }
+
+  public void throwExceptionIfMetricsExportRuntimeFlagDisabled() {
+    if (!isMetricsExportRuntimeFlagEnabled()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Metrics Export is not enabled. Please set runtime flag"
+              + " 'yb.universe.metrics_export_enabled' to true.");
+    }
+  }
+
+  public boolean isDBAuditLoggingRuntimeFlagEnabled() {
+    return confGetter.getGlobalConf(GlobalConfKeys.dbAuditLoggingEnabled);
+  }
+
+  public boolean isQueryLoggingRuntimeFlagEnabled() {
+    return confGetter.getGlobalConf(GlobalConfKeys.queryLoggingEnabled);
+  }
+
+  public boolean isMetricsExportRuntimeFlagEnabled() {
+    return confGetter.getGlobalConf(GlobalConfKeys.metricsExportEnabled);
+  }
+
+  public void throwRuntimeFlagDisabledForExporterTypeException(ProviderType providerType) {
+    throwExceptionIfLokiExporterRuntimeFlagDisabled(providerType);
+    throwExceptionIfS3ExporterRuntimeFlagDisabled(providerType);
+    throwExceptionIfOTLPExporterRuntimeFlagDisabled(providerType);
   }
 
   public void throwExceptionIfLokiExporterRuntimeFlagDisabled(ProviderType providerType) {
@@ -177,9 +235,28 @@ public class TelemetryProviderService {
     }
   }
 
+  public void throwExceptionIfS3ExporterRuntimeFlagDisabled(ProviderType providerType) {
+    boolean isS3TelemetryEnabled = confGetter.getGlobalConf(GlobalConfKeys.telemetryAllowS3);
+    if (!isS3TelemetryEnabled && providerType == ProviderType.S3) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "S3 Exporter for Telemetry Provider is not enabled. Please set runtime flag"
+              + " 'yb.telemetry.allow_s3' to true.");
+    }
+  }
+
+  public void throwExceptionIfOTLPExporterRuntimeFlagDisabled(ProviderType providerType) {
+    boolean isOTLPTelemetryEnabled = confGetter.getGlobalConf(GlobalConfKeys.telemetryAllowOTLP);
+    if (!isOTLPTelemetryEnabled && providerType == ProviderType.OTLP) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "OTLP Exporter for Telemetry Provider is not enabled. Please set runtime flag"
+              + " 'yb.telemetry.allow_otlp' to true.");
+    }
+  }
+
   public boolean isProviderInUse(Customer customer, UUID providerUUID) {
     Set<Universe> allUniverses = Universe.getAllWithoutResources(customer);
-
     // Iterate through all universe details and check if any of them have an audit log config.
     for (Universe universe : allUniverses) {
       UserIntent primaryUserIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
@@ -196,11 +273,43 @@ public class TelemetryProviderService {
           }
         }
       }
+
+      // Check if the provider is in the list of query log exporters.
+      if (primaryUserIntent.getQueryLogConfig() != null
+          && primaryUserIntent.getQueryLogConfig().getUniverseLogsExporterConfig() != null) {
+        List<UniverseQueryLogsExporterConfig> universeLogsExporterConfigs =
+            primaryUserIntent.getQueryLogConfig().getUniverseLogsExporterConfig();
+
+        // Check if the provider is in the list of export configs in the audit log config.
+        for (UniverseQueryLogsExporterConfig config : universeLogsExporterConfigs) {
+          if (config != null && providerUUID.equals(config.getExporterUuid())) {
+            return true;
+          }
+        }
+      }
+      if (primaryUserIntent.getMetricsExportConfig() != null
+          && primaryUserIntent.getMetricsExportConfig().getUniverseMetricsExporterConfig()
+              != null) {
+        List<UniverseMetricsExporterConfig> metricsExporterConfigs =
+            primaryUserIntent.getMetricsExportConfig().getUniverseMetricsExporterConfig();
+
+        // Check if the provider is in the list of export configs in the metrics export config.
+        for (UniverseMetricsExporterConfig config : metricsExporterConfigs) {
+          if (config != null && providerUUID.equals(config.getExporterUuid())) {
+            return true;
+          }
+        }
+      }
     }
     return false;
   }
 
+  public ApiHelper getApiHelper() {
+    return new ApiHelper(this.wsClientRefresher.getClient(WS_CLIENT_KEY));
+  }
+
   public void validateTelemetryProvider(TelemetryProvider provider) {
-    provider.getConfig().validate();
+    this.apiHelper = getApiHelper();
+    provider.getConfig().validate(this.apiHelper);
   }
 }

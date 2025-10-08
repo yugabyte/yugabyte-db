@@ -43,7 +43,6 @@
 | "Default Kubernetes Memory Size" | "yb.kubernetes.default_memory_size_gb" | "PROVIDER" | "Default Kubernetes Memory Size" | "Integer" |
 | "Minimum Kubernetes Memory Size" | "yb.kubernetes.min_memory_size_gb" | "PROVIDER" | "Minimum Kubernetes Memory Size" | "Integer" |
 | "Maximum Kubernetes Memory Size" | "yb.kubernetes.max_memory_size_gb" | "PROVIDER" | "Maximum Kubernetes Memory Size" | "Integer" |
-| "Enable Node Agent Client" | "yb.node_agent.client.enabled" | "PROVIDER" | "Enable node agent client for communication to DB nodes." | "Boolean" |
 | "Enable Ansible Offloading" | "yb.node_agent.ansible_offloading.enabled" | "PROVIDER" | "Offload ansible tasks to the DB nodes." | "Boolean" |
 | "Remote tmp directory" | "yb.filepaths.remoteTmpDirectory" | "PROVIDER" | "A remote temporary directory should be used for performing operations on nodes within the provider scope." | "String" |
 | "Polling interval for GCP Opertion status" | "yb.gcp.operations.status_polling_interval" | "PROVIDER" | "Interval to poll the status of an ongoing GCP resource creation operation." | "Duration" |
@@ -83,7 +82,6 @@
 | "YBC admin operation timeout" | "ybc.timeout.admin_operation_timeout_ms" | "GLOBAL" | "YBC client timeout in milliseconds for admin operations" | "Integer" |
 | "XCluster config DB sync timeout" | "yb.xcluster.db_sync_timeout_ms" | "GLOBAL" | "XCluster config background DB sync timeout in milliseconds" | "Integer" |
 | "XCluster/DR config GET API timeout" | "yb.xcluster.get_api_timeout_ms" | "GLOBAL" | "XCluster/DR config GET API timeout in milliseconds" | "Integer" |
-| "XCluster DB Scoped Automatic DDL YBDB Min Compatible Version" | "yb.xcluster.db_scoped.automatic_ddl.ybdbMinCompatibleVersion" | "GLOBAL" | "Minimum YBDB version for which XCluster DB Scoped Automatic DDL is supported" | "String" |
 | "YBC socket read timeout" | "ybc.timeout.socket_read_timeout_ms" | "GLOBAL" | "YBC client socket read timeout in milliseconds" | "Integer" |
 | "YBC operation timeout" | "ybc.timeout.operation_timeout_ms" | "GLOBAL" | "YBC client timeout in milliseconds for operations" | "Integer" |
 | "Server certificate verification for S3 backup/restore" | "yb.certVerifyBackupRestore.is_enforced" | "GLOBAL" | "Enforce server certificate verification during S3 backup/restore" | "Boolean" |
@@ -136,6 +134,7 @@
 | "Enable strict mode to ignore deprecated YBA APIs" | "yb.api.mode.strict" | "GLOBAL" | "Will ignore deprecated APIs" | "Boolean" |
 | "Enable safe mode to ignore preview YBA APIs" | "yb.api.mode.safe" | "GLOBAL" | "Will ignore preview APIs" | "Boolean" |
 | "Enable publishing thread dumps to GCS" | "yb.diag.thread_dumps.gcs.enabled" | "GLOBAL" | "Enable publishing thread dumps to GCS" | "Boolean" |
+| "Enable publishing support bundles to GCS" | "yb.diag.support_bundles.gcs.enabled" | "GLOBAL" | "Enable publishing support bundles to GCS" | "Boolean" |
 | "Operator owned resources api block" | "yb.kubernetes.operator.block_api_operator_owned_resources" | "GLOBAL" | "A resource controlled by the kubernetes operator cannot be updated using the REST API" | "Boolean" |
 | "Granular level metrics" | "yb.ui.feature_flags.granular_metrics" | "GLOBAL" | "View granular level metrics when user selects specific time period in a chart" | "Boolean" |
 | "Enable multiline option for GFlag conf." | "yb.ui.feature_flags.gflag_multiline_conf" | "GLOBAL" | "Allows user to enter postgres hba rules and ident map rules in multiple rows" | "Boolean" |
@@ -171,8 +170,20 @@
 | "Disable Node Agent Configure Server" | "yb.node_agent.disable_configure_server" | "GLOBAL" | "Disable server configuration RPCs in node agent. Defaults to ansible if it is enabled." | "Boolean" |
 | "Enable Node Agent Message Compression" | "yb.node_agent.enable_message_compression" | "GLOBAL" | "Enable compression for message sent over node agent channel." | "Boolean" |
 | "Disable Node Agent Background Installation After Migration" | "yb.node_agent.disable_bg_install_post_migration" | "GLOBAL" | "Install node agent synchronously during a task instead after migration if it is true." | "Boolean" |
-| "Enable Task Runtime Info on Retry" | "yb.task.enable_task_runtime_info_on_retry" | "GLOBAL" | "Use the runtime info from the previously failed task on retry" | "Boolean" |
 | "GCP Blob Delete Retry Count" | "yb.gcp.blob_delete_retry_count" | "GLOBAL" | "Number of times to retry deleting blobs in GCP. This is used to handle the case where the blob deletion fails due to some transient error." | "Integer" |
+| "Node Agent Client Connection Cache Size" | "yb.node_agent.connection_cache_size" | "GLOBAL" | "Cache size for node agent client connections" | "Integer" |
+| "Node Agent Client Connection Time-out" | "yb.node_agent.connect_timeout" | "GLOBAL" | "Client connection time-out for node agent." | "Duration" |
+| "Node Agent Client Idle Connection Time-out" | "yb.node_agent.idle_connection_timeout" | "GLOBAL" | "Client idle connection timeout for node agent." | "Duration" |
+| "Node Agent Client Keep Alive Time" | "yb.node_agent.connection_keep_alive_time" | "GLOBAL" | "Client connection keep-alive time for node agent." | "Duration" |
+| "Node Agent Client Keep Alive Time-out" | "yb.node_agent.connection_keep_alive_timeout" | "GLOBAL" | "Client connection keep-alive timeout for node agent." | "Duration" |
+| "Node Agent Describe Poll Deadline" | "yb.node_agent.describe_poll_deadline" | "GLOBAL" | "Node agent describe polling deadline." | "Duration" |
+| "Allow Cloud Volume Encryption feature" | "yb.universe.allow_cloud_volume_encryption" | "GLOBAL" | "Allows enabling the volume encryption feature for new universes. Currently only supported for AWS universes." | "Boolean" |
+| "Enable YBC Background Upgrade" | "ybc.upgrade.enable_background_upgrade" | "GLOBAL" | "Enable background upgrade for YBC." | "Boolean" |
+| "Enable Systemd Debug Logging" | "yb.ansible.systemd_debug" | "GLOBAL" | "Enable systemd debug logging for systemctl service management commands." | "Boolean" |
+| "Keep Remote Files from an ansible run" | "yb.ansible.keep_remote_files" | "GLOBAL" | "Keep remote files after ansible run for debugging." | "Boolean" |
+| "Skip Runtime GFlag validation before cluster operations." | "yb.skip_runtime_gflag_validation" | "GLOBAL" | "Skip Runtime GFlag validation before cluster operations." | "Boolean" |
+| "Timeout for backup success marker download" | "ybc.success_marker_download_timeout_secs" | "GLOBAL" | "Timeout for backup success marker download from backup location" | "Integer" |
+| "Enable Performing Automatic Rollback of Edit Operation" | "yb.task.enable_edit_auto_rollback" | "GLOBAL" | "Enable performing automatic rollback of edit operation (if possible)" | "Boolean" |
 | "Clock Skew" | "yb.alert.max_clock_skew_ms" | "UNIVERSE" | "Default threshold for Clock Skew alert" | "Duration" |
 | "Health Log Output" | "yb.health.logOutput" | "UNIVERSE" | "It determines whether to log the output of the node health check script to the console" | "Boolean" |
 | "Node Checkout Time" | "yb.health.nodeCheckTimeoutSec" | "UNIVERSE" | "The timeout (in seconds) for node check operation as part of universe health check" | "Integer" |
@@ -192,7 +203,7 @@
 | "DB Read Write Test" | "yb.metrics.db_read_write_test" | "UNIVERSE" | "The flag defines, if we perform DB write-read check on DB nodes or not." | "Boolean" |
 | "YSQLSH Connectivity Test" | "yb.metrics.ysqlsh_connectivity_test" | "UNIVERSE" | "The flag defines, if we perform YSQLSH Connectivity check on DB nodes or not." | "Boolean" |
 | "CQLSH Connectivity Test" | "yb.metrics.cqlsh_connectivity_test" | "UNIVERSE" | "The flag defines, if we perform CQLSH Connectivity check on DB nodes or not." | "Boolean" |
-| "Metrics Collection Level" | "yb.metrics.collection_level" | "UNIVERSE" | "DB node metrics collection level.ALL - collect all metrics, NORMAL - default value, which only limits some per-table metrics, MINIMAL - limits both node level and further limits table level metrics we collect and OFF to completely disable metric collection." | "String" |
+| "Metrics Collection Level" | "yb.metrics.collection_level" | "UNIVERSE" | "DB node metrics collection level.ALL - collect all metrics, NORMAL - default value, which only limits some per-table metrics, TABLE_OFF - Disable table level metrics collection, MINIMAL - limits both node level and further limits table levelmetrics we collect and OFF to completely disable metric collection." | "String" |
 | "Universe Version Check Mode" | "yb.universe_version_check_mode" | "UNIVERSE" | "Possible values: NEVER, HA_ONLY, ALWAYS" | "VersionCheckMode" |
 | "Override Force Universe Lock" | "yb.task.override_force_universe_lock" | "UNIVERSE" | "Whether overriding universe lock is allowed when force option is selected.If it is disabled, force option will wait for the lock to be released." | "Boolean" |
 | "Enable SSH Key Expiration" | "yb.security.ssh_keys.enable_ssh_key_expiration" | "UNIVERSE" | "TODO" | "Boolean" |
@@ -290,9 +301,9 @@
 | "Verify current cluster state (from db perspective) before running task" | "yb.task.verify_cluster_state" | "UNIVERSE" | "Verify current cluster state (from db perspective) before running task" | "Boolean" |
 | "Wait time for xcluster/DR replication setup and edit RPCs" | "yb.xcluster.operation_timeout" | "UNIVERSE" | "Wait time for xcluster/DR replication setup and edit RPCs." | "Duration" |
 | "Maximum timeout for xCluster bootstrap producer RPC call" | "yb.xcluster.bootstrap_producer_timeout" | "UNIVERSE" | "If the RPC call to create the bootstrap streams on the source universe does not return before this timeout, the task will retry with exponential backoff until it fails." | "Duration" |
-| "Maximum timeout for yb client RPC call to delete the outbound replication on the source universe during failover task execution" | "yb.xcluster.db_scoped.failover.delete_replication_on_source_timeout" | "UNIVERSE" | "If the source universe is down, this RPC call will time out during failover operation, increasing the failover task execution time; The lower the value, the less time the failover task will take to complete. If it is set to zero, this subtask during failover will be skipped providing a faster failover execution time." | "Duration" |
-| "Flag to enable db scoped xCluster replication creation" | "yb.xcluster.db_scoped.creationEnabled" | "UNIVERSE" | "If flag is enabled, allows DR creation with db scoped xCluster replication" | "Boolean" |
-| "Flag indicating if db scoped xCluster replication should have automatic DDL replication" | "yb.xcluster.db_scoped.automatic_ddl.creationEnabled" | "UNIVERSE" | "If flag and yb.xcluster.db_scoped.creationEnabled are enabled, newly created DR configs will have automatic DDL replication" | "Boolean" |
+| "Maximum timeout for delete replication RPC on source during failover" | "yb.xcluster.db_scoped.failover.delete_replication_on_source_timeout" | "UNIVERSE" | "If the source universe is down, this RPC call will time out during failover operation, increasing the failover task execution time; The lower the value, the less time the failover task will take to complete. If it is set to zero, this subtask during failover will be skipped providing a faster failover execution time." | "Duration" |
+| "Enable xCluster DR Semi-automatic Mode" | "yb.xcluster.db_scoped.creationEnabled" | "UNIVERSE" | "When enabled, new xCluster DR configurations use Semi-automatic mode." | "Boolean" |
+| "Enable xCluster DR Automatic Mode" | "yb.xcluster.db_scoped.automatic_ddl.creationEnabled" | "UNIVERSE" | "When this and yb.xcluster.db_scoped.creationEnabled are both enabled, new xCluster DR configurations use Automatic mode." | "Boolean" |
 | "Leaderless tablets check enabled" | "yb.checks.leaderless_tablets.enabled" | "UNIVERSE" | " Whether to run CheckLeaderlessTablets subtask before running universe tasks" | "Boolean" |
 | "Leaderless tablets check timeout" | "yb.checks.leaderless_tablets.timeout" | "UNIVERSE" | "Controls the max time out when performing the CheckLeaderlessTablets subtask" | "Duration" |
 | "Enable Clock Sync check" | "yb.wait_for_clock_sync.enabled" | "UNIVERSE" | "Enable Clock Sync check" | "Boolean" |
@@ -321,6 +332,7 @@
 | "Queue Wait Time for Tasks" | "yb.task.queue_wait_time" | "UNIVERSE" | "Wait time for a queued task before the running task can be evicted forcefully." | "Duration" |
 | "Common Name Required for Certificates" | "yb.tls.cert_manager.common_name_required" | "UNIVERSE" | "If true, YBA will add commonName to the CertificateRequest sent to cert manager." | "Boolean" |
 | "Skip OpenTelemetry Operator Check" | "yb.universe.skip_otel_operator_check" | "UNIVERSE" | "If true, YBA will skip checking for Opentelemetry operator installation on the cluster." | "Boolean" |
+| "Max memory for OpenTelemetry Collector process." | "yb.universe.otel_collector_max_memory" | "UNIVERSE" | "Hard memory limit for the OpenTelemetry Collector process in the systemd unit file." | "Integer" |
 | "Wait Attempts for major catalog upgrade" | "yb.upgrade.wait_attempts_for_major_catalog_upgrade" | "UNIVERSE" | "Wait Attempts for major catalog upgrade" | "Integer" |
 | "PG Upgrade Check Timeout" | "yb.upgrade.pg_upgrade_check_timeout_secs" | "UNIVERSE" | "Timeout for pg_upgrade check in seconds" | "Integer" |
 | "Allow users to disable DB APIs" | "yb.configure_db_api.allow_disable" | "UNIVERSE" | "Allow users to disable DB APIs" | "Boolean" |
@@ -337,3 +349,8 @@
 | "Enable backups during DDL" | "yb.backup.enable_backups_during_ddl" | "UNIVERSE" | "Have YBC ysql-dump use read-time as of snapshot time to support backups during DDL" | "Boolean" |
 | "Whether to check if correct THP settings are applied" | "yb.health_checks.check_thp" | "UNIVERSE" | "Whether to check if correct Transparent Huge Pages settings are applied" | "Boolean" |
 | "Timeout for catalog upgrade admin operations" | "yb.upgrade.catalog_upgrade_admin_ops_timeout_ms" | "UNIVERSE" | "Timeout for catalog upgrade admin operations in milliseconds" | "Long" |
+| "Skip auto flags and YSQL migration files validation" | "yb.upgrade.skip_autoflags_and_ysql_migration_files_validation" | "UNIVERSE" | "Skip auto flags and YSQL migration files validation" | "Boolean" |
+| "Per disk IO request size" | "ybc.disk_io_request_size_bytes" | "UNIVERSE" | "Per disk IO request size during backup/restore in Yb-Controller" | "Long" |
+| "Default disk IO read bytes per second" | "ybc.default_disk_io_read_bytes_per_sec" | "UNIVERSE" | "Default disk IO read bytes per second during backup in Yb-Controller" | "Long" |
+| "Default disk IO write bytes per second" | "ybc.default_disk_io_write_bytes_per_sec" | "UNIVERSE" | "Default disk IO write bytes per second during restore in Yb-Controller" | "Long" |
+| "Auto Recover from Pending Upgrade" | "yb.helm.auto_recover_from_pending_upgrade" | "UNIVERSE" | "If true, YBA will automatically recover from stuck Helm upgrades before performing Helm upgrade operations" | "Boolean" |

@@ -64,6 +64,8 @@ public class TestPgBackwardIndexScan extends BasePgSQLTest {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("use_fast_backward_scan", "false");
     flagMap.put("ysql_enable_packed_row_for_colocated_table", "true");
+    // Disable auto analyze to prevent query plan from changing.
+    flagMap.put("ysql_enable_auto_analyze", "false");
     return flagMap;
   }
 

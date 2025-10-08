@@ -1,8 +1,10 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
@@ -13,6 +15,8 @@ import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.Universe;
 import javax.inject.Inject;
 
+@Abortable
+@Retryable
 public class TlsToggleKubernetes extends KubernetesUpgradeTaskBase {
 
   @Inject
@@ -50,8 +54,8 @@ public class TlsToggleKubernetes extends KubernetesUpgradeTaskBase {
   @Override
   protected void createPrecheckTasks(Universe universe) {
     super.createPrecheckTasks(universe);
-    // Skip running prechecks if Node2Node certs has expired
-    if (!CertificateHelper.checkNode2NodeCertsExpiry(universe)) {
+    if (!(universe.getUniverseDetails().getPrimaryCluster().userIntent.enableNodeToNodeEncrypt
+        && CertificateHelper.checkNode2NodeCertsExpiry(universe))) {
       addBasicPrecheckTasks();
     }
     if (taskParams().upgradeOption != UpgradeOption.NON_ROLLING_UPGRADE) {
@@ -67,7 +71,8 @@ public class TlsToggleKubernetes extends KubernetesUpgradeTaskBase {
           Universe universe = getUniverse();
           syncUniverseDetailToTaskParams();
 
-          // update details in DB.
+          // Update the database with details earlier so that wait-for-server tasks
+          // can utilize the node-to-node certificate for yb-client connections.
           createUniverseSetTlsParamsTask(
               taskParams().getUniverseUUID(),
               taskParams().enableNodeToNodeEncrypt,

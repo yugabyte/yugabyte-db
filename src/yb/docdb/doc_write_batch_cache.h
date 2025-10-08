@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -15,8 +15,6 @@
 
 #include <unordered_map>
 #include <string>
-
-#include <boost/optional.hpp>
 
 #include "yb/common/hybrid_time.h"
 #include "yb/dockv/key_bytes.h"
@@ -64,7 +62,7 @@ class DocWriteBatchCache {
   // Returns the latest generation hybrid_time for the document/subdocument identified by the given
   // encoded key prefix.
   // TODO: switch to taking a slice as an input to avoid making a copy on lookup.
-  boost::optional<Entry> Get(const dockv::KeyBytes& encoded_key_prefix);
+  std::optional<Entry> Get(const dockv::KeyBytes& encoded_key_prefix);
 
   std::string ToDebugString();
 

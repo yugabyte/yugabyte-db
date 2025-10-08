@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -76,6 +76,10 @@ DEFINE_RUNTIME_string(minicluster_daemon_id, "",
 DEFINE_NON_RUNTIME_string(ref_counted_debug_type_name_regex, "",
               "Regex for type names for debugging RefCounted / scoped_refptr based classes. "
               "An empty string disables RefCounted debug logging.");
+
+DEFINE_RUNTIME_bool(disable_core_dumps_on_fatal, true,
+    "Whether to disable core dumps when a FATAL log is encountered. "
+    "Set to false to allow full core dumps on FATAL for debugging purposes.");
 
 DECLARE_bool(TEST_running_test);
 
@@ -446,36 +450,41 @@ LogFatalHandlerSink::~LogFatalHandlerSink() {
 void LogFatalHandlerSink::send(
     google::LogSeverity severity, const char* full_filename, const char* base_filename,
     int line_number, const struct tm* tm_time, const char* message, size_t message_len) {
-  if (severity == LogSeverity::SEVERITY_FATAL) {
-    DisableCoreDumps();
-    string timestamp_for_filename;
-    StringAppendStrftime(&timestamp_for_filename, "%Y-%m-%dT%H_%M_%S", tm_time);
-    const string output_path = Format(
-        "$0.$1.pid$2.txt", GetFatalDetailsPathPrefix(), timestamp_for_filename, getpid());
-    // Use a line format similar to glog with a couple of slight differences:
-    // - Report full file path.
-    // - Time has no microsecond component.
-    string output_str = "F";
-    StringAppendStrftime(&output_str, "%Y%m%d %H:%M:%S", tm_time);
-    // TODO: append thread id if we need to.
-    StringAppendF(&output_str, " %s:%d] ", full_filename, line_number);
-    output_str += std::string(message, message_len);
-    output_str += "\n";
-    output_str += GetStackTrace();
-
-    ofstream out_f(output_path);
-    if (out_f) {
-      out_f << output_str << endl;
-    }
-    if (out_f.bad()) {
-      cerr << "Failed to write fatal failure details to " << output_path << endl;
-    } else {
-      cerr << "Fatal failure details written to " << output_path << endl;
-    }
-    // Also output fatal failure details to stderr so make sure we have a properly symbolized stack
-    // trace in the context of a test.
-    cerr << output_str << endl;
+  if (severity != LogSeverity::SEVERITY_FATAL) {
+    return;
   }
+
+  if (FLAGS_disable_core_dumps_on_fatal) {
+    DisableCoreDumps();
+  }
+
+  string timestamp_for_filename;
+  StringAppendStrftime(&timestamp_for_filename, "%Y-%m-%dT%H_%M_%S", tm_time);
+  const string output_path = Format(
+      "$0.$1.pid$2.txt", GetFatalDetailsPathPrefix(), timestamp_for_filename, getpid());
+  // Use a line format similar to glog with a couple of slight differences:
+  // - Report full file path.
+  // - Time has no microsecond component.
+  string output_str = "F";
+  StringAppendStrftime(&output_str, "%Y%m%d %H:%M:%S", tm_time);
+  // TODO: append thread id if we need to.
+  StringAppendF(&output_str, " %s:%d] ", full_filename, line_number);
+  output_str += std::string(message, message_len);
+  output_str += "\n";
+  output_str += GetStackTrace();
+
+  ofstream out_f(output_path);
+  if (out_f) {
+    out_f << output_str << endl;
+  }
+  if (out_f.bad()) {
+    cerr << "Failed to write fatal failure details to " << output_path << endl;
+  } else {
+    cerr << "Fatal failure details written to " << output_path << endl;
+  }
+  // Also output fatal failure details to stderr so make sure we have a properly symbolized stack
+  // trace in the context of a test.
+  cerr << output_str << endl;
 }
 
 namespace logging_internal {

@@ -1,4 +1,4 @@
-# Copyright (c) YugaByte, Inc.
+# Copyright (c) YugabyteDB, Inc.
 africa-south1:
   name: Johannesburg, South Africa
   latitude: 26.2056
@@ -104,6 +104,11 @@ northamerica-northeast2:
   latitude: 43.653226
   longitude: -79.383184
   availabilty_zones: [northamerica-northeast2-a, northamerica-northeast2-b, northamerica-northeast2-c]
+northamerica-south1:
+  name: Queretaro
+  latitude: 20.5888
+  longitude: -100.3899
+  availabilty_zones: [northamerica-south1-a, northamerica-south1-b, northamerica-south1-c]
 southamerica-east1:
   name: Sao Paulo
   latitude: -23.286926

@@ -166,5 +166,9 @@ extern bool CheckUpdateExprOrPred(const Bitmapset *updated_attrs,
 extern void YBPreloadRelCache();
 extern void YbRelationCacheInvalidate(void);
 extern bool YbRelationIdIsInInitFileAndNotCached(Oid relationId);
+extern bool YbSharedRelationIdNeedsGlobalImpact(Oid relationId);
+extern Relation YbRelationIdCacheLookup(Oid relid);
+
+extern long YbGetRelCachePreloads(void);
 
 #endif							/* RELCACHE_H */

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -16,7 +16,10 @@
 #include <array>
 #include <span>
 #include <tuple>
+#include <utility>
 #include <vector>
+
+#include <boost/logic/tribool.hpp>
 
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/docdb_fwd.h"
@@ -24,6 +27,7 @@
 #include "yb/docdb/object_lock_data.h"
 
 #include "yb/dockv/intent.h"
+#include "yb/dockv/key_bytes.h"
 #include "yb/dockv/value.h"
 
 #include "yb/util/ref_cnt_buffer.h"
@@ -87,6 +91,10 @@ inline LockState IntentTypeSetConflict(dockv::IntentTypeSet intent_types) {
 
 bool IntentTypeSetsConflict(dockv::IntentTypeSet lhs, dockv::IntentTypeSet rhs);
 
+[[nodiscard]] bool IntentTypeReadOnly(dockv::IntentTypeSet intents);
+
+[[nodiscard]] size_t LockStateWriteIntentCount(LockState state);
+
 std::string LockStateDebugString(LockState state);
 
 template <typename LockManager>
@@ -140,6 +148,8 @@ void FilterKeysToLock(LockBatchEntries<T> *keys_locked) {
   keys_locked->erase(w, keys_locked->end());
 }
 
+using LockTypeEntry = std::pair<dockv::KeyEntryType, dockv::IntentTypeSet>;
+
 // We achieve the same table lock conflict matrix as that of pg documented here,
 // https://www.postgresql.org/docs/current/explicit-locking.html#LOCKING-TABLES
 //
@@ -148,12 +158,22 @@ void FilterKeysToLock(LockBatchEntries<T> *keys_locked) {
 // KeyEntryType values and associate a list of <KeyEntryType, IntentTypeSet> to each table lock.
 // Since our conflict detection mechanism checks conflicts against each key, we indirectly achieve
 // the exact same conflict matrix. Refer comments on the function definition for more details.
-std::span<const std::pair<dockv::KeyEntryType, dockv::IntentTypeSet>>
-    GetEntriesForLockType(TableLockType lock);
+std::span<const LockTypeEntry> GetEntriesForLockType(TableLockType lock);
 
 // Returns DetermineKeysToLockResult<ObjectLockManager> which can further be passed to
 // ObjectLockManager to acquire locks against the required objects with the given lock type.
 Result<DetermineKeysToLockResult<ObjectLockManager>> DetermineObjectsToLock(
     const google::protobuf::RepeatedPtrField<ObjectLockPB>& objects_to_lock);
+
+// Weak lock modes are typically taken on the prefixes of the key being locked/ written. But if
+// skip_prefix_lock is enabled, for explicit row level locks or reads in serializable isolation
+// level transactions which don't specify the full pk but a prefix of it, we need to take the strong
+// lock modes on the top-level key to be able to lock all the PKs enclosed in the top-level key.
+Result<bool> ShouldTakeWeakLockForPrefix(dockv::AncestorDocKey ancestor_doc_key,
+                                         dockv::IsTopLevelKey is_top_level_key,
+                                         dockv::SkipPrefixLocks skip_prefix_locks,
+                                         IsolationLevel isolation_level,
+                                         boost::tribool pk_is_known,
+                                         const KeyBytes* const key);
 
 } // namespace yb::docdb

@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -906,7 +906,7 @@ TEST_F(SysCatalogTest, TestNamespaceNameMigration) {
 
 TEST_F(SysCatalogTest, TestTabletMemTracker) {
   const auto& tablet_mem_tracker =
-      sys_catalog_->TEST_GetTabletPeer()->shared_tablet()->mem_tracker();
+      ASSERT_RESULT(sys_catalog_->TEST_GetTabletPeer()->shared_tablet())->mem_tracker();
   ASSERT_EQ("Tablets_overhead", tablet_mem_tracker->parent()->id());
   ASSERT_EQ("mem_tracker_server_Tablets_overhead_PerTablet", tablet_mem_tracker->metric_name());
 }

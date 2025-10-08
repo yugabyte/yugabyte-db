@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -632,7 +632,7 @@ string DocKey::ToString(AutoDecodeKeys auto_decode_keys) const {
   string result = "DocKey(";
   if (!cotable_id_.IsNil()) {
     result += "CoTableId=";
-    result += cotable_id_.ToString();
+    result += cotable_id_.ToHexString();
     result += ", ";
   } else if (colocation_id_ != kColocationIdNotSet) {
     result += "ColocationId=";
@@ -918,6 +918,43 @@ Status SubDocKey::DecodePrefixLengths(
     out->push_back(slice.data() - begin);
   }
 
+  return Status::OK();
+}
+
+Status SubDocKey::DecodePrefixLengthsWithSkipPrefix(
+    Slice slice, boost::container::small_vector_base<size_t>* out) {
+  const bool has_id_prefix =
+      slice[0] == KeyEntryTypeAsChar::kColocationId || slice[0] == KeyEntryTypeAsChar::kTableId;
+  auto begin = slice.data();
+  auto hashed_part_size = VERIFY_RESULT(DocKey::EncodedSize(slice, DocKeyPart::kUpToHash));
+  if (hashed_part_size != 0) {
+    slice.remove_prefix(hashed_part_size);
+    // Similar to DecodePrefixLengths, if colocated id or table id are present, the hash must
+    // be absent.
+    if (has_id_prefix) {
+      out->push_back(hashed_part_size);
+    }
+  }
+
+  // Will move forward 1 byte when no range columns.
+  while (VERIFY_RESULT(ConsumePrimitiveValueFromKey(&slice))) {}
+
+  // Push the offset of the row key if:
+  // (1) a range component exists; Or
+  // (2) a hash component exists but doesn't have cotable/colocation id.
+  if (slice.data() > begin + hashed_part_size + 1 || (hashed_part_size > 0 && !has_id_prefix)) {
+    out->push_back(slice.data() - 1 - begin);
+  }
+  if (!out->empty()) {
+    if (begin[out->back()] != KeyEntryTypeAsChar::kGroupEnd) {
+      return STATUS_FORMAT(Corruption, "Range keys group end expected at $0 in $1",
+                           out->back(), Slice(begin, slice.end()).ToDebugHexString());
+    }
+    ++out->back(); // Add range key group end to last prefix
+  }
+  while (VERIFY_RESULT(SubDocKey::DecodeSubkey(&slice))) {
+    out->push_back(slice.data() - begin);
+  }
   return Status::OK();
 }
 
@@ -1403,10 +1440,10 @@ Result<bool> IsColocatedTableTombstoneKey(Slice doc_key) {
   return false;
 }
 
-Result<boost::optional<DocKeyHash>> DecodeDocKeyHash(const Slice& encoded_key) {
+Result<std::optional<DocKeyHash>> DecodeDocKeyHash(const Slice& encoded_key) {
   DocKey key;
   RETURN_NOT_OK(key.DecodeFrom(encoded_key, DocKeyPart::kUpToHashCode));
-  return key.has_hash() ? key.hash() : boost::optional<DocKeyHash>();
+  return key.has_hash() ? key.hash() : std::optional<DocKeyHash>();
 }
 
 }  // namespace yb::dockv

@@ -95,7 +95,7 @@ Video: [YFTT - Transactional xCluster](https://www.youtube.com/watch?lI6gw7ncBs8
 
 - Setting up xCluster Replication between a universe earlier than or upgraded to v2.20.x, and a new v2.20.x universe is not supported. This is due to a limitation of xCluster deployments and packed rows. See [Packed row limitations](../../../architecture/docdb/packed-rows/#limitations).
 
-- You cannot set up [change data capture](../../../develop/change-data-capture/) on a source or a target universe in xCluster Replication.
+- You cannot set up [change data capture](../../../additional-features/change-data-capture/) on a source or a target universe in xCluster Replication.
 
 - xCluster Replication is not supported for [materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views).
 

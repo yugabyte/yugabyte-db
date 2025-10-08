@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -108,6 +108,7 @@ class RemoteClientBase {
   bool fetch_phase_active_ = false;
 
   std::shared_ptr<RemoteBootstrapServiceProxy> proxy_;
+  std::shared_ptr<RemoteBootstrapServiceProxy> uncompressed_proxy_;
   std::unique_ptr<tablet::RaftGroupReplicaSuperBlockPB> superblock_;
 
   int64_t start_time_micros_ = 0;

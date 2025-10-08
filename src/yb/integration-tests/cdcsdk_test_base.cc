@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -36,6 +36,7 @@
 #include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog_initialization.h"
+#include "yb/master/sys_catalog_constants.h"
 
 #include "yb/rpc/rpc_controller.h"
 
@@ -537,6 +538,43 @@ Result<master::ListCDCStreamsResponsePB> CDCSDKTestBase::ListDBStreams() {
   }
 
   return resp;
+}
+
+// Helper method to convert a hybrid time value to a timestamp string with
+// a UTC timezone (indicated by +00 at the end).
+Result<std::string> CDCSDKTestBase::HybridTimeToReadableString(uint64_t hybrid_time) {
+  uint64_t micros_since_epoch = hybrid_time >> 12;
+  time_t unix_time = static_cast<time_t>(micros_since_epoch / 1'000'000);
+  uint64_t microseconds = micros_since_epoch % 1'000'000;
+  char buf[64];
+  struct tm tm_info;
+  if (gmtime_r(&unix_time, &tm_info) == nullptr) {
+    return "Invalid time";
+  }
+  strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &tm_info);
+  return Format("$0.$1+00", buf, StringPrintf("%06" PRIu64, microseconds));
+}
+
+Result<GetChangesResponsePB> CDCSDKTestBase::GetChangesFromMaster(
+    const xrepl::StreamId& stream_id) {
+  GetChangesRequestPB change_req;
+  GetChangesResponsePB change_resp;
+  change_req.set_stream_id(stream_id.ToString());
+  change_req.set_tablet_id(master::kSysCatalogTabletId);
+  change_req.set_wal_segment_index(0);
+  change_req.set_safe_hybrid_time(-1);
+  change_req.set_cdcsdk_request_source(CDCSDKRequestSource::WALSENDER);
+
+  rpc::RpcController change_rpc;
+  change_rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
+
+  // Create CDC service proxy to master.
+  CDCServiceProxy master_proxy(
+      &test_client()->proxy_cache(),
+      VERIFY_RESULT(test_cluster_.mini_cluster_->GetLeaderMasterBoundRpcAddr()));
+
+  RETURN_NOT_OK(master_proxy.GetChanges(change_req, &change_resp, &change_rpc));
+  return change_resp;
 }
 
 }  // namespace cdc

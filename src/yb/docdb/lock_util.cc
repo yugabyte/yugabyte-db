@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -13,7 +13,13 @@
 
 #include "yb/docdb/lock_util.h"
 
+#include <ranges>
 #include <type_traits>
+
+#include <boost/logic/tribool.hpp>
+
+#include "yb/util/flags.h"
+
 
 namespace yb::docdb {
 
@@ -116,6 +122,17 @@ bool IntentTypeSetsConflict(IntentTypeSet lhs, IntentTypeSet rhs) {
   return false;
 }
 
+bool IntentTypeReadOnly(IntentTypeSet intents) {
+  return std::ranges::all_of(intents, [](dockv::IntentType intent) {
+    return intent == dockv::IntentType::kWeakRead || intent == dockv::IntentType::kStrongRead;
+  });
+}
+
+size_t LockStateWriteIntentCount(LockState state) {
+  return LockStateIntentCount(state, dockv::IntentType::kWeakWrite) +
+         LockStateIntentCount(state, dockv::IntentType::kStrongWrite);
+}
+
 std::string LockStateDebugString(LockState state) {
   return Format(
       "{ num_weak_read: $0 num_weak_write: $1 num_strong_read: $2 num_strong_write: $3 }",
@@ -139,49 +156,47 @@ std::string LockStateDebugString(LockState state) {
 // in this case, we see that the intents requested are [kStrongRead] and [kStrongRead, kWeakWrite]
 // for modes 'ROW_SHARE' and 'EXCLUSIVE' respectively. And since the above intenttype sets conflict
 // among themselves, we successfully detect the conflict.
-std::span<const std::pair<KeyEntryType, dockv::IntentTypeSet>>
-GetEntriesForLockType(TableLockType lock) {
-  static const std::array<
-      std::vector<std::pair<KeyEntryType, dockv::IntentTypeSet>>,
-      TableLockType_ARRAYSIZE> lock_entries = {{
+std::span<const LockTypeEntry> GetEntriesForLockType(TableLockType lock) {
+  static const
+      std::array<std::initializer_list<LockTypeEntry>, TableLockType_ARRAYSIZE> lock_entries = {{
     // NONE
     {{}},
     // ACCESS_SHARE
-    {{
+    {
       {KeyEntryType::kWeakObjectLock, dockv::IntentTypeSet {dockv::IntentType::kWeakRead}}
-    }},
+    },
     // ROW_SHARE
-    {{
+    {
       {KeyEntryType::kWeakObjectLock, dockv::IntentTypeSet {dockv::IntentType::kStrongRead}}
-    }},
+    },
     // ROW_EXCLUSIVE
-    {{
+    {
       {KeyEntryType::kWeakObjectLock, dockv::IntentTypeSet {dockv::IntentType::kStrongRead}},
       {KeyEntryType::kStrongObjectLock, dockv::IntentTypeSet {dockv::IntentType::kWeakRead}}
-    }},
+    },
     // SHARE_UPDATE_EXCLUSIVE
-    {{
+    {
       {KeyEntryType::kWeakObjectLock, dockv::IntentTypeSet {dockv::IntentType::kStrongRead}},
       {
         KeyEntryType::kStrongObjectLock,
         dockv::IntentTypeSet {dockv::IntentType::kStrongRead, dockv::IntentType::kWeakWrite}
       }
-    }},
+    },
     // SHARE
-    {{
+    {
       {KeyEntryType::kWeakObjectLock, dockv::IntentTypeSet {dockv::IntentType::kStrongRead}},
       {KeyEntryType::kStrongObjectLock, dockv::IntentTypeSet {dockv::IntentType::kStrongWrite}}
-    }},
+    },
     // SHARE_ROW_EXCLUSIVE
-    {{
+    {
       {KeyEntryType::kWeakObjectLock, dockv::IntentTypeSet {dockv::IntentType::kStrongRead}},
       {
         KeyEntryType::kStrongObjectLock,
         dockv::IntentTypeSet {dockv::IntentType::kStrongRead, dockv::IntentType::kStrongWrite}
       }
-    }},
+    },
     // EXCLUSIVE
-    {{
+    {
       {
         KeyEntryType::kWeakObjectLock,
         dockv::IntentTypeSet {dockv::IntentType::kStrongRead, dockv::IntentType::kWeakWrite}},
@@ -189,9 +204,9 @@ GetEntriesForLockType(TableLockType lock) {
         KeyEntryType::kStrongObjectLock,
         dockv::IntentTypeSet {dockv::IntentType::kStrongRead, dockv::IntentType::kStrongWrite}
       }
-    }},
+    },
     // ACCESS_EXCLUSIVE
-    {{
+    {
       {
         KeyEntryType::kWeakObjectLock,
         dockv::IntentTypeSet {dockv::IntentType::kStrongRead, dockv::IntentType::kStrongWrite}},
@@ -199,7 +214,7 @@ GetEntriesForLockType(TableLockType lock) {
         KeyEntryType::kStrongObjectLock,
         dockv::IntentTypeSet {dockv::IntentType::kStrongRead, dockv::IntentType::kStrongWrite}
       }
-    }}
+    }
   }};
   return lock_entries[lock];
 }
@@ -216,6 +231,34 @@ Result<DetermineKeysToLockResult<ObjectLockManager>> DetermineObjectsToLock(
   }
   FilterKeysToLock<ObjectLockManager>(&result.lock_batch);
   return result;
+}
+
+Result<bool> ShouldTakeWeakLockForPrefix(dockv::AncestorDocKey ancestor_doc_key,
+                                         dockv::IsTopLevelKey is_top_level_key,
+                                         dockv::SkipPrefixLocks skip_prefix_locks,
+                                         IsolationLevel isolation_level,
+                                         boost::tribool pk_is_known,
+                                         const KeyBytes* const key) {
+  if (!ancestor_doc_key) {
+    return false;
+  }
+  if (is_top_level_key && skip_prefix_locks) {
+    if (isolation_level != IsolationLevel::SERIALIZABLE_ISOLATION) {
+      if (static_cast<bool>(pk_is_known)) {
+        return true;
+      }
+      // If pk_is_known is indeterminate or false for RR/RC, take a strong lock on top level key and
+      // log a warning.
+      auto msg = Format("A prefix of a full-doc key is specified, "
+          "but it is not in serializable level. skip_prefix_locks:$0, isolation_level:$1, key:$2. "
+          "Consider turning off the gflag skip_prefix_locks",
+          skip_prefix_locks, isolation_level, key->ToString());
+      LOG(WARNING) << msg;
+      return false;
+    }
+    return static_cast<bool>(pk_is_known);
+  }
+  return true;
 }
 
 } // namespace yb::docdb

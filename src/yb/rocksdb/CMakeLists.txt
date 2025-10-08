@@ -1,4 +1,4 @@
-# Copyright (c) YugaByte, Inc.
+# Copyright (c) YugabyteDB, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 # in compliance with the License.  You may obtain a copy of the License at
@@ -178,7 +178,7 @@ if (NOT APPLE)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DROCKSDB_FALLOCATE_PRESENT")
 endif()
 
-if ("${YB_BUILD_TYPE}" STREQUAL "asan")
+if (IS_ASAN)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DROCKSDB_MALLOC_USABLE_SIZE")
 endif()
 

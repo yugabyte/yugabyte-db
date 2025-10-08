@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -16,7 +16,6 @@
 #include <atomic>
 #include <ctime>
 #include <memory>
-#include <mutex>
 
 #include "yb/client/client.h"
 #include "yb/client/transaction_rpc.h"
@@ -26,7 +25,6 @@
 #include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
 
-#include "yb/gutil/stl_util.h"
 #include "yb/gutil/thread_annotations.h"
 
 #include "yb/rpc/rpc.h"
@@ -35,7 +33,6 @@
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/atomic.h"
-#include "yb/util/flags.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/memory/memory.h"
@@ -46,12 +43,11 @@
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
 #include "yb/util/strongly_typed_uuid.h"
-#include "yb/util/tsan_util.h"
 #include "yb/util/unique_lock.h"
 #include "yb/util/yb_pg_errcodes.h"
 
-using namespace std::placeholders;
 using namespace std::literals;
+using namespace std::placeholders;
 
 DEFINE_UNKNOWN_int32(
     clear_active_probes_older_than_seconds, 60,
@@ -66,34 +62,35 @@ METRIC_DEFINE_event_stats(
     "The number of transactions involved in detected deadlocks");
 METRIC_DEFINE_event_stats(
     tablet, deadlock_probe_latency, "Deadlock probe latency", yb::MetricUnit::kMicroseconds,
-    "The time it takes to complete the probe from a waiting transaction to all of its blockers.");
+    "The time (microseconds) it takes to complete the probe from a waiting transaction to all of "
+    "its blockers.");
 METRIC_DEFINE_gauge_uint64(
     tablet, deadlock_detector_waiters, "Num Waiting Txns", yb::MetricUnit::kTransactions,
     "The total number of waiting transactions tracked by one deadlock detector.");
 
 DEFINE_test_flag(int32, sleep_amidst_iterating_blockers_ms, 0,
-    "Time for which the thread sleeps in each iteration while looping over the computed wait-for "
+    "Time (microseconds) for which the thread sleeps in each iteration while looping over the "
+    "computed wait-for "
     "probes and sending information to the waiters.");
 
 DEFINE_test_flag(int32, delay_forwarding_waiting_probes_ms, 0,
-    "Time for which the thread sleeps before initiating/fowarding wait-for probes.");
+    "Time (microseconds) for which the thread sleeps before initiating/fowarding wait-for probes.");
 
 DECLARE_uint64(transaction_heartbeat_usec);
 
 DECLARE_bool(TEST_hide_details_for_pg_regress);
 
-namespace yb {
-namespace tablet {
+namespace yb::tablet {
 
 namespace {
 
 YB_STRONGLY_TYPED_UUID(DetectorId);
 
-using LocalProbeProcessorCallback = std::function<void(
-    const Status&, const tserver::ProbeTransactionDeadlockResponsePB&)>;
+using LocalProbeProcessorCallback =
+    std::function<void(const Status&, const tserver::ProbeTransactionDeadlockResponsePB&)>;
 using WaiterTxnTuple = std::tuple<
     const TransactionId, const std::string, std::shared_ptr<const BlockingData>,
-    const boost::optional<uint64_t>>;
+    const std::optional<uint64_t>>;
 
 // Container class which supports efficiently fetching items uniquely indexed by probe_num as well
 // as efficiently removing items which were added before a threshold time or which are associated
@@ -274,7 +271,7 @@ class LocalProbeProcessor : public std::enable_shared_from_this<LocalProbeProces
 
     *handle = client::ProbeTransactionDeadlock(
         TransactionRpcDeadline(),
-        nullptr /* tablet*/,
+        /*tablet=*/nullptr,
         client_,
         &req,
         wrapped_callback);;
@@ -437,7 +434,7 @@ class RemoteDeadlockResolver : public std::enable_shared_from_this<RemoteDeadloc
     rpcs_->RegisterAndStart(
         AbortTransaction(
             TransactionRpcDeadline(),
-            nullptr,
+            /*tablet=*/nullptr,
             client_,
             &req,
             [shared_this = shared_from(this), txn_id = id]
@@ -471,7 +468,7 @@ class RemoteDeadlockResolver : public std::enable_shared_from_this<RemoteDeadloc
     rpcs_->RegisterAndStart(
         UpdateTransaction(
             TransactionRpcDeadline(),
-            nullptr,
+            /*tablet=*/nullptr,
             client_,
             &req,
             [shared_this = shared_from(this), txn_id = id]
@@ -753,9 +750,9 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
         // TODO(wait-queues): Tracking tserver uuid here is unnecessary as it isn't required in
         // GetProbesToSend. We adhere to this format so that GetProbesToSend function can be re-used
         // for both 'waiters_'  as well as 'waiters_to_probe'.
-        waiters_to_probe.push_back({
-            waiter_it->txn_id(), "" /* tserver uuid */, waiter_it->blocking_data(),
-            boost::none /* pg_session_req_version */});
+        waiters_to_probe.push_back(
+            {waiter_it->txn_id(), "" /* tserver uuid */, waiter_it->blocking_data(),
+             std::nullopt /* pg_session_req_version */});
         // Restore the old blocker(s) data for the waiter entry, if any.
         if (old_blocking_data) {
           CHECK(waiter_it != waiters_.end());
@@ -922,9 +919,9 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
           auto waiter_entries = boost::make_iterator_range(
               detector->waiters_.get<TransactionIdTag>().equal_range(origin_txn_id));
           for (auto entry : waiter_entries) {
-            waiters_to_probe.push_back({
-                origin_txn_id, "" /* tserver uuid */, entry.blocking_data(),
-                boost::none /* pg_session_req_version */});
+            waiters_to_probe.push_back(
+                {origin_txn_id, "" /* tserver uuid */, entry.blocking_data(),
+                 std::nullopt /* pg_session_req_version */});
           }
         }
         for (const auto& probe : detector->GetProbesToSend(waiters_to_probe)) {
@@ -1238,5 +1235,4 @@ void DeadlockDetector::Shutdown() {
   return impl_->Shutdown();
 }
 
-} // namespace tablet
-} // namespace yb
+} // namespace yb::tablet

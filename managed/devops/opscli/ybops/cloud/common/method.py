@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2019 YugaByte, Inc. and Contributors
+# Copyright 2019 YugabyteDB, Inc. and Contributors
 #
 # Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
 # may not use this file except in compliance with the License. You
@@ -164,6 +164,7 @@ class AbstractInstancesMethod(AbstractMethod):
         self.parser.add_argument("--private_key_file", default=default_key_pair)
         self.parser.add_argument("--volume_size", type=int, default=250,
                                  help="desired size (gb) of each volume mounted on instance")
+        self.parser.add_argument("--cmk_res_name", help="CMK arn to enable encrypted EBS volumes")
         self.parser.add_argument("--instance_type",
                                  required=False,
                                  help="The instance type to act on")
@@ -845,6 +846,8 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument("--install_locales", action="store_true", default=False,
                                  help="If enabled YBA will install locale on the DB nodes")
         self.parser.add_argument("--install_otel_collector", action="store_true")
+        self.parser.add_argument("--otel_col_max_memory", default="2048",
+                                 help="Max memory for OpenTelemetry Collector process.")
         self.parser.add_argument('--otel_col_config_file', default=None,
                                  help="Path to OpenTelemetry Collector config file.")
         self.parser.add_argument('--otel_col_aws_access_key', default=None,
@@ -919,6 +922,8 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         self.extra_vars["lun_indexes"] = args.lun_indexes
         if args.install_otel_collector:
             self.extra_vars.update({"install_otel_collector": args.install_otel_collector})
+        if args.otel_col_max_memory:
+            self.extra_vars.update({"otel_col_max_memory": args.otel_col_max_memory})
         if args.otel_col_config_file:
             self.extra_vars.update({"otel_col_config_file_local": args.otel_col_config_file})
         if args.otel_col_aws_access_key:
@@ -927,8 +932,9 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
             self.extra_vars.update({"otel_col_aws_secret_key": args.otel_col_aws_secret_key})
         if args.otel_col_gcp_creds_file:
             self.extra_vars.update({"otel_col_gcp_creds_local": args.otel_col_gcp_creds_file})
-        if args.ycql_audit_log_level:
-            self.extra_vars.update({"ycql_audit_log_level": args.ycql_audit_log_level})
+        self.extra_vars.update({
+            "ycql_audit_log_level": getattr(args, 'ycql_audit_log_level', 'NONE')
+        })
         if args.reboot_node_allowed:
             self.extra_vars.update({"reboot_node_allowed": args.reboot_node_allowed})
 
@@ -1217,7 +1223,8 @@ class ChangeInstanceTypeMethod(AbstractInstancesMethod):
             self.cloud.start_instance(host_info, server_ports)
             logging.info('Instance {} is started'.format(args.search_pattern))
         # Make sure we are using the updated cgroup value if instance type is changing.
-        self.cloud.setup_ansible(args).run("setup-cgroup.yml", self.extra_vars, host_info)
+        if args.pg_max_mem_mb > 0:
+            self.cloud.setup_ansible(args).run("setup-cgroup.yml", self.extra_vars, host_info)
 
 
 class CronCheckMethod(AbstractInstancesMethod):
@@ -1350,6 +1357,8 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                                  help="The maximum number of checking the clock skew before "
                                       "failing.")
         self.parser.add_argument("--install_otel_collector", action="store_true")
+        self.parser.add_argument("--otel_col_max_memory", default="2048",
+                                 help="Max memory for OpenTelemetry Collector process.")
         self.parser.add_argument('--otel_col_config_file', default=None,
                                  help="Path to OpenTelemetry Collector config file.")
         self.parser.add_argument('--otel_col_aws_access_key', default=None,
@@ -1678,6 +1687,8 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
 
         if args.install_otel_collector:
             self.extra_vars.update({"install_otel_collector": args.install_otel_collector})
+        if args.otel_col_max_memory:
+            self.extra_vars.update({"otel_col_max_memory": args.otel_col_max_memory})
         if args.otel_col_config_file:
             self.extra_vars.update({"otel_col_config_file_local": args.otel_col_config_file})
         if args.otel_col_aws_access_key:
@@ -1686,8 +1697,9 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
             self.extra_vars.update({"otel_col_aws_secret_key": args.otel_col_aws_secret_key})
         if args.otel_col_gcp_creds_file:
             self.extra_vars.update({"otel_col_gcp_creds_local": args.otel_col_gcp_creds_file})
-        if args.ycql_audit_log_level:
-            self.extra_vars.update({"ycql_audit_log_level": args.ycql_audit_log_level})
+        self.extra_vars.update({
+            "ycql_audit_log_level": getattr(args, 'ycql_audit_log_level', 'NONE')
+        })
 
         if args.reset_master_state and args.extra_gflags is not None:
             delete_paths = []
@@ -2228,6 +2240,8 @@ class ManageOtelCollector(AbstractInstancesMethod):
         super(ManageOtelCollector, self).add_extra_args()
 
         self.parser.add_argument("--install_otel_collector", action="store_true")
+        self.parser.add_argument("--otel_col_max_memory", default="2048",
+                                 help="Max memory for OpenTelemetry Collector process.")
         self.parser.add_argument('--otel_col_config_file', default=None,
                                  help="Path to OpenTelemetry Collector config file.")
         self.parser.add_argument('--otel_col_aws_access_key', default=None,
@@ -2261,6 +2275,8 @@ class ManageOtelCollector(AbstractInstancesMethod):
             self.extra_vars.update({"local_package_path": args.local_package_path})
         if args.install_otel_collector:
             self.extra_vars.update({"install_otel_collector": args.install_otel_collector})
+        if args.otel_col_max_memory:
+            self.extra_vars.update({"otel_col_max_memory": args.otel_col_max_memory})
         if args.otel_col_config_file:
             self.extra_vars.update({"otel_col_config_file_local": args.otel_col_config_file})
         if args.otel_col_aws_access_key:
@@ -2269,8 +2285,9 @@ class ManageOtelCollector(AbstractInstancesMethod):
             self.extra_vars.update({"otel_col_aws_secret_key": args.otel_col_aws_secret_key})
         if args.otel_col_gcp_creds_file:
             self.extra_vars.update({"otel_col_gcp_creds_local": args.otel_col_gcp_creds_file})
-        if args.ycql_audit_log_level:
-            self.extra_vars.update({"ycql_audit_log_level": args.ycql_audit_log_level})
+        self.extra_vars.update({
+            "ycql_audit_log_level": getattr(args, 'ycql_audit_log_level', 'NONE')
+        })
         if args.use_sudo:
             self.extra_vars.update({"use_sudo": args.use_sudo})
 

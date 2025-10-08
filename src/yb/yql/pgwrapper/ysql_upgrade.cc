@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -523,11 +523,11 @@ Status YsqlUpgradeHelper::MigrateOnce(DatabaseEntry* db_entry, const Version* hi
   // guarantees apply.
   // Migrations may override that using BEGIN/COMMIT statements - this will split a singular
   // implicit transaction onto several explicit ones.
-  RETURN_NOT_OK_PREPEND(pgconn->Execute(migration_content.ToString(),
-                                       false /* show_query_in_error */),
-                        Format("Failed to apply migration '$0' to a database $1",
-                               next_migration_filename,
-                               db_name));
+  RETURN_NOT_OK_PREPEND(
+      pgconn->Execute(
+          migration_content.ToString(),
+          /*show_query_in_error=*/false, /*ignore_empty_query=*/true),
+      Format("Failed to apply migration '$0' to a database $1", next_migration_filename, db_name));
 
   bool has_breaking_ddl = false;
   if (check_breaking_ddl) {

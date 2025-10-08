@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -11,6 +11,8 @@
 // under the License.
 
 #include "yb/tserver/xcluster_output_client.h"
+
+#include "yb/ash/wait_state.h"
 
 #include "yb/cdc/cdc_types.h"
 #include "yb/cdc/xcluster_rpc.h"
@@ -98,6 +100,18 @@ using namespace std::placeholders;
 
 namespace yb {
 namespace tserver {
+
+namespace {
+Result<ColocationId> DecodeColocationId(const cdc::CDCRecordPB& record) {
+  if (record.changes().empty()) {
+    return kColocationIdNotSet;
+  }
+  auto decoder = dockv::DocKeyDecoder(record.changes(0).key());
+  ColocationId colocation_id = kColocationIdNotSet;
+  VERIFY_RESULT(decoder.DecodeColocationId(&colocation_id));
+  return colocation_id;
+}
+}  // namespace
 
 XClusterOutputClient::XClusterOutputClient(
     XClusterPoller* xcluster_poller, const xcluster::ConsumerTabletInfo& consumer_tablet_info,
@@ -197,6 +211,7 @@ void XClusterOutputClient::ApplyChanges(std::shared_ptr<cdc::GetChangesResponseP
     processed_record_count_ = 0;
     record_count_ = poller_resp->records_size();
     ddl_queue_commit_times_.clear();
+    processed_change_metadata_op_ = false;
     ResetWriteInterface(&write_strategy_);
   }
 
@@ -382,16 +397,13 @@ bool XClusterOutputClient::IsSequencesDataTablet() {
 }
 
 Result<cdc::XClusterSchemaVersionMap> XClusterOutputClient::GetSchemaVersionMap(
-    const cdc::CDCRecordPB& record) {
+    const cdc::CDCRecordPB& record, ColocationId colocation_id) {
   cdc::XClusterSchemaVersionMap* cached_schema_versions = nullptr;
-  auto& kv_pair = record.changes(0);
-  auto decoder = dockv::DocKeyDecoder(kv_pair.key());
-  ColocationId colocationId = kColocationIdNotSet;
-  if (VERIFY_RESULT(decoder.DecodeColocationId(&colocationId))) {
-    // Can't find the table, so we most likely need an update
-    // to the consumer registry, so return an error and fail the apply.
-    cached_schema_versions = FindOrNull(colocated_schema_version_map_, colocationId);
-    SCHECK(cached_schema_versions, NotFound, Format("ColocationId $0 not found.", colocationId));
+  if (colocation_id != kColocationIdNotSet) {
+    cached_schema_versions = FindOrNull(colocated_schema_version_map_, colocation_id);
+    // If we can't find the table, then we most likely need an update to the consumer registry,
+    // so return an error and fail the apply.
+    SCHECK_FORMAT(cached_schema_versions, NotFound, "ColocationId $0 not found.", colocation_id);
   } else {
     cached_schema_versions = &schema_versions_;
   }
@@ -399,7 +411,7 @@ Result<cdc::XClusterSchemaVersionMap> XClusterOutputClient::GetSchemaVersionMap(
   if (PREDICT_FALSE(VLOG_IS_ON(3))) {
     for (const auto& [producer_schema_version, consumer_schema_version] : *cached_schema_versions) {
       VLOG_WITH_PREFIX(3) << Format(
-          "ColocationId:$0 Producer Schema Version:$1, Consumer Schema Version:$2", colocationId,
+          "ColocationId:$0 Producer Schema Version:$1, Consumer Schema Version:$2", colocation_id,
           producer_schema_version, consumer_schema_version);
     }
   }
@@ -417,15 +429,19 @@ Status XClusterOutputClient::ProcessRecord(
     SCHECK(!IsOffline(), Aborted, "$0$1", LogPrefix(), "xCluster output client went offline");
 
     cdc::XClusterSchemaVersionMap schema_versions_map;
+    auto colocation_id = VERIFY_RESULT(DecodeColocationId(record));
     if (PREDICT_TRUE(FLAGS_xcluster_enable_packed_rows_support) &&
         !record.changes().empty() &&
         (record.operation() == cdc::CDCRecordPB::WRITE ||
          record.operation() == cdc::CDCRecordPB::DELETE)) {
-        schema_versions_map = VERIFY_RESULT(GetSchemaVersionMap(record));
+      schema_versions_map = VERIFY_RESULT(GetSchemaVersionMap(record, colocation_id));
     }
 
     auto status = write_strategy_->ProcessRecord(
-        ProcessRecordInfo{.tablet_id = tablet_id, .schema_versions_map = schema_versions_map},
+        ProcessRecordInfo{
+            .tablet_id = tablet_id,
+            .schema_versions_map = schema_versions_map,
+            .colocation_id = colocation_id},
         record);
     if (!status.ok()) {
       error_status_ = status;
@@ -471,6 +487,11 @@ bool XClusterOutputClient::IsValidMetaOp(const cdc::CDCRecordPB& record) {
 Result<bool> XClusterOutputClient::ProcessChangeMetadataOp(const cdc::CDCRecordPB& record) {
   YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 300)
       << " Processing Change Metadata Op :" << record.DebugString();
+  {
+    ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN_STATUS;
+    processed_change_metadata_op_ = true;
+  }
+
   if (record.change_metadata_request().has_remove_table_id() ||
       !record.change_metadata_request().add_multiple_tables().empty()) {
     // TODO (#16557): Support remove_table_id() for colocated tables / tablegroups.
@@ -548,7 +569,8 @@ Result<bool> XClusterOutputClient::ProcessMetaOp(const cdc::CDCRecordPB& record)
     }
 
     RETURN_NOT_OK(local_client_.UpdateConsumerOnProducerSplit(
-        producer_tablet_info_.replication_group_id, producer_tablet_info_.stream_id, split_info));
+        producer_tablet_info_.replication_group_id, producer_tablet_info_.stream_id, split_info,
+        consumer_tablet_info_.table_id));
   } else if (record.operation() == cdc::CDCRecordPB::CHANGE_METADATA) {
     if (!VERIFY_RESULT(ProcessChangeMetadataOp(record))) {
       return false;
@@ -594,6 +616,14 @@ void XClusterOutputClient::SendNextCDCWriteToTablet(std::unique_ptr<WriteRequest
       },
       UseLocalTserver());
   SetHandleAndSendRpc(handle);
+
+  // If local tserver is used, we will get all the write events, so mark it idle to
+  // avoid duplicate events
+  if (UseLocalTserver()) {
+    SET_WAIT_STATUS(Idle);
+  } else {
+    SET_WAIT_STATUS(YBClient_WaitingOnDocDB);
+  }
 }
 
 void XClusterOutputClient::UpdateSchemaVersionMapping(
@@ -709,12 +739,12 @@ void XClusterOutputClient::HandleNewCompatibleSchemaVersion(
     (*schema_version_map)[resp_schema_versions.current_producer_schema_version()] =
         resp_schema_versions.current_consumer_schema_version();
 
-    // Update the old producer schema version, only if it is not the same as
-    // current producer schema version.
-    if (resp_schema_versions.old_producer_schema_version() !=
-        resp_schema_versions.current_producer_schema_version()) {
-      (*schema_version_map)[resp_schema_versions.old_producer_schema_version()] =
-          resp_schema_versions.old_consumer_schema_version();
+    DCHECK_EQ(
+        resp_schema_versions.old_producer_schema_versions_size(),
+        resp_schema_versions.old_consumer_schema_versions_size());
+    for (int i = 0; i < resp_schema_versions.old_producer_schema_versions_size(); ++i) {
+      (*schema_version_map)[resp_schema_versions.old_producer_schema_versions(i)] =
+          resp_schema_versions.old_consumer_schema_versions(i);
     }
 
     IncProcessedRecordCount();
@@ -781,7 +811,8 @@ void XClusterOutputClient::HandleNewSchemaPacking(
                .InsertPackedSchemaForXClusterTarget(
                    consumer_tablet_info_.table_id, req.schema(), resp.latest_schema_version(),
                    colocation_id_opt);
-
+  // TODO(#28326): We could pass the producer schema version here to check if a matching schema
+  // version already exists.
   if (s.ok()) {
     VLOG_WITH_PREFIX(2) << "Inserted schema for automatic DDL replication: "
                         << req.schema().ShortDebugString();
@@ -798,6 +829,13 @@ void XClusterOutputClient::HandleNewSchemaPacking(
 
 void XClusterOutputClient::DoWriteCDCRecordDone(
     const Status& status, const WriteResponsePB& response) {
+  ash::WaitStateInfoPtr wait_state;
+  {
+    std::lock_guard l(lock_);
+    wait_state = xcluster_poller_->wait_state();
+  }
+  ADOPT_WAIT_STATE(wait_state);
+  SCOPED_WAIT_STATUS(OnCpu_Active);
   if (!status.ok()) {
     HandleError(status);
     return;
@@ -872,10 +910,12 @@ void XClusterOutputClient::HandleResponse() {
     response.last_applied_op_id = op_id_;
     response.processed_record_count = processed_record_count_;
     response.ddl_queue_commit_times = std::move(ddl_queue_commit_times_);
+    response.processed_change_metadata_op = processed_change_metadata_op_;
   }
   op_id_ = consensus::MinimumOpId();
   processed_record_count_ = 0;
   ddl_queue_commit_times_ = {};
+  processed_change_metadata_op_ = false;
 
   xcluster_poller_->ApplyChangesCallback(std::move(response));
 }

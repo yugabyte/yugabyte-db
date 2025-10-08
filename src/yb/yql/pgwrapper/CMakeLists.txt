@@ -1,4 +1,4 @@
-# Copyright (c) YugaByte, Inc.
+# Copyright (c) YugabyteDB, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 # in compliance with the License.  You may obtain a copy of the License at
@@ -130,6 +130,7 @@ ADD_YB_TEST(pg_catalog_snapshot_too_old-test)
 ADD_YB_TEST(pg_catalog_version-test)
 ADD_YB_TEST(pg_clock_skew-test)
 ADD_YB_TEST(pg_conn-test)
+ADD_YB_TEST(pg_copy-test)
 ADD_YB_TEST(pg_create_database-test)
 ADD_YB_TEST(pg_ddl_atomicity-test)
 ADD_YB_TEST(pg_ddl_atomicity_stress-test)
@@ -181,6 +182,7 @@ ADD_YB_TEST(pg_wrapper-test)
 ADD_YB_TEST(orphaned_tablet_cleanup-test)
 ADD_YB_TEST(pg_retryable_request-test)
 ADD_YB_TEST(pg_advisory_lock-test)
+ADD_YB_TEST(pg_yb_index_check-test)
 
 # This is really a tool, not a test, but uses a lot of existing test infrastructure.
 ADD_YB_TEST(create_initial_sys_catalog_snapshot)

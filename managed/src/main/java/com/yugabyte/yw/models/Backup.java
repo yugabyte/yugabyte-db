@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.models;
 
@@ -50,7 +50,6 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import java.text.SimpleDateFormat;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
@@ -286,6 +285,19 @@ public class Backup extends Model {
   // Unix timestamp at which backup will get deleted.
   private Date expiry;
 
+  @ApiModelProperty(value = "First snapshot time in this backup", accessMode = READ_ONLY)
+  @Column
+  private long firstSnapshotTime;
+
+  @JsonIgnore
+  public void upsertFirstSnapshotTime(long snapshotTime) {
+    if (this.getFirstSnapshotTime() == 0) {
+      this.setFirstSnapshotTime(snapshotTime);
+    } else {
+      this.setFirstSnapshotTime(Math.min(snapshotTime, this.getFirstSnapshotTime()));
+    }
+  }
+
   @JsonIgnore
   private void setExpiry(long timeBeforeDeleteFromPresent) {
     this.expiry = new Date(System.currentTimeMillis() + timeBeforeDeleteFromPresent);
@@ -422,19 +434,25 @@ public class Backup extends Model {
                 customerUUID,
                 backup.getCategory(),
                 backup.getVersion(),
-                backupLocationTS);
+                backupLocationTS,
+                backup.getUniverseName());
           }
         }
       } else {
         // Only for incremental backup object creation
-        populateChildParams(params, previousBackup, backupLocationTS);
+        populateChildParams(params, previousBackup, backupLocationTS, backup.getUniverseName());
       }
     } else if (params.storageLocation == null) {
       params.backupUuid = backup.getBackupUUID();
       params.baseBackupUUID = backup.getBaseBackupUUID();
       // We would derive the storage location based on the parameters
       BackupUtil.updateDefaultStorageLocation(
-          params, customerUUID, backup.getCategory(), backup.getVersion(), backupLocationTS);
+          params,
+          customerUUID,
+          backup.getCategory(),
+          backup.getVersion(),
+          backupLocationTS,
+          backup.getUniverseName());
     }
     CustomerConfig storageConfig = CustomerConfig.get(customerUUID, params.storageConfigUUID);
     if (storageConfig != null) {
@@ -449,7 +467,10 @@ public class Backup extends Model {
   // If a previous sub-param consist of a keyspace-tables match with this request, assign the
   // same params identifier to this child param.
   private static void populateChildParams(
-      BackupTableParams params, Backup previousBackup, String backupLocationTS) {
+      BackupTableParams params,
+      Backup previousBackup,
+      String backupLocationTS,
+      String universeName) {
     BackupTableParams previousBackupInfo = previousBackup.getBackupInfo();
     List<BackupTableParams> paramsCollection = previousBackup.getBackupParamsCollection();
     for (BackupTableParams childParams : params.backupList) {
@@ -481,7 +502,8 @@ public class Backup extends Model {
             params.customerUuid,
             BackupCategory.YB_CONTROLLER,
             BackupVersion.V2,
-            backupLocationTS);
+            backupLocationTS,
+            universeName);
       }
     }
     if (previousBackup != null) {
@@ -1033,14 +1055,13 @@ public class Backup extends Model {
    */
   public static Optional<Backup> maybeGetRestorableBackup(
       UUID customerUUID, UUID baseBackupUUID, long restoreTimestampMillis) {
-    Date restoreTimestamp = Date.from(Instant.ofEpochMilli(restoreTimestampMillis));
     Optional<Backup> optB =
         find.query()
             .where()
             .eq("customer_uuid", customerUUID)
             .eq("base_backup_uuid", baseBackupUUID)
             .eq("state", BackupState.Completed)
-            .ge("create_time", restoreTimestamp)
+            .ge("first_snapshot_time", restoreTimestampMillis)
             .orderBy()
             .asc("create_time")
             .setMaxRows(1)

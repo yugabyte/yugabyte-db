@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -16,10 +16,8 @@
 #include <string>
 #include <string_view>
 #include <thread>
-#include <unordered_map>
 
 #include "yb/common/json_util.h"
-#include "yb/common/ysql_operation_lease.h"
 
 #include "yb/master/master.h"
 #include "yb/master/mini_master.h"
@@ -32,7 +30,6 @@
 #include "yb/tserver/mini_tablet_server.h"
 
 #include "yb/util/backoff_waiter.h"
-#include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
@@ -57,6 +54,7 @@ DECLARE_bool(ysql_minimal_catalog_caches_preload);
 DECLARE_bool(ysql_catalog_preload_additional_tables);
 DECLARE_bool(ysql_use_relcache_file);
 DECLARE_bool(ysql_yb_enable_invalidation_messages);
+DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_string(ysql_catalog_preload_additional_table_list);
 DECLARE_uint64(TEST_pg_response_cache_catalog_read_time_usec);
 DECLARE_uint64(TEST_committed_history_cutoff_initial_value_usec);
@@ -161,6 +159,9 @@ class PgCatalogPerfTestBase : public PgMiniTestBase {
     // cache and the test will timeout if we wait for response cache counters to become
     // greater than 0.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_invalidation_messages) = false;
+    // Auto-Analyze runs ANALYZEs and increments catalog version, causing more response cache
+    // queires. Disable auto-analyze for more stable test results.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
     PgMiniTestBase::SetUp();
     metrics_.emplace(*cluster_->mini_master()->master()->metric_entity(),
                      *cluster_->mini_tablet_server(0)->server()->metric_entity());
@@ -360,7 +361,8 @@ class PgCatalogWithStaleResponseCacheTest : public PgCatalogWithUnlimitedCachePe
     // get 'Snapshot too old' error on attempt to read at this read time.
     ANNOTATE_UNPROTECTED_WRITE(
         FLAGS_TEST_pg_response_cache_catalog_read_time_usec) = kHistoryCutoffInitialValue - 1;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_cache_response_renew_soft_lifetime_limit_ms) = 1000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_cache_response_renew_soft_lifetime_limit_ms) =
+        ReleaseVsDebugVsAsanVsTsan(1000, 5000, 5000, 10000);
     PgCatalogWithUnlimitedCachePerfTest::SetUp();
   }
 };
@@ -388,7 +390,7 @@ class ClientConnectionsCountFetcher {
           return curl_.FetchURL(url_, &buf).ok();
         },
         5s, "Requesting /rpcz", initial_delay_));
-    const auto doc = VERIFY_RESULT(ParseJson(std::string_view(buf.c_str(), buf.size())));
+    const auto doc = VERIFY_RESULT(ParseJson(std::string_view(buf.char_data(), buf.size())));
     size_t result = 0;
     for (const auto& conn : VERIFY_RESULT(GetMemberAsArray(doc, "connections"))) {
       if (VERIFY_RESULT(GetMemberAsStr(conn, "backend_type")) == "client backend") {
@@ -577,6 +579,27 @@ TEST_F_EX(PgCatalogPerfTest,
   ASSERT_EQ(second_connection_cache_metrics.renew_soft, 1);
   ASSERT_EQ(second_connection_cache_metrics.hits, 1);
   ASSERT_EQ(second_connection_cache_metrics.queries, 7);
+}
+
+TEST_F_EX(PgCatalogPerfTest,
+          ResponseCacheWithHardRenewTooOldSnapshot,
+          PgCatalogWithStaleResponseCacheTest) {
+  auto connector = [this] {
+    RETURN_NOT_OK(Connect());
+    return static_cast<Status>(Status::OK());
+  };
+
+  auto first_connection_cache_metrics = ASSERT_RESULT(metrics_->Delta(connector)).cache;
+  ASSERT_EQ(first_connection_cache_metrics.renew_hard, 0);
+  ASSERT_EQ(first_connection_cache_metrics.renew_soft, 0);
+  ASSERT_EQ(first_connection_cache_metrics.hits, 0);
+  ASSERT_EQ(first_connection_cache_metrics.queries, 5);
+
+  auto second_connection_cache_metrics = ASSERT_RESULT(metrics_->Delta(connector)).cache;
+  ASSERT_EQ(second_connection_cache_metrics.renew_hard, 1);
+  ASSERT_EQ(second_connection_cache_metrics.renew_soft, 0);
+  ASSERT_EQ(second_connection_cache_metrics.hits, 2);
+  ASSERT_EQ(second_connection_cache_metrics.queries, 9);
 }
 
 // The test checks that GC keeps response cache memory lower than limit
@@ -824,7 +847,8 @@ TEST_F_EX(PgCatalogPerfTest,
 
   {
     // Cutoff catalog history for current time to avoid reading with old read time
-    auto* tablet = cluster_->mini_master(0)->master()->catalog_manager()->tablet_peer()->tablet();
+    auto tablet = ASSERT_RESULT(
+        cluster_->mini_master(0)->master()->catalog_manager()->tablet_peer()->shared_tablet());
     auto* policy = tablet->RetentionPolicy();
     auto cutoff = policy->GetRetentionDirective().history_cutoff;
     cutoff.primary_cutoff_ht = HybridTime::FromMicros(

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.models.helpers;
 
@@ -19,7 +19,6 @@ import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.REGION_LOCATIO
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.any;
-import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doThrow;
@@ -27,12 +26,6 @@ import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.model.AmazonS3Exception;
-import com.amazonaws.services.s3.model.ListObjectsV2Result;
-import com.amazonaws.services.s3.model.S3Object;
-import com.amazonaws.services.s3.model.S3ObjectInputStream;
-import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.azure.core.http.rest.PagedIterable;
 import com.azure.core.util.BinaryData;
 import com.azure.storage.blob.BlobClient;
@@ -73,6 +66,19 @@ import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 import org.mockito.stubbing.Answer;
 import play.libs.Json;
+import software.amazon.awssdk.core.ResponseBytes;
+import software.amazon.awssdk.core.ResponseInputStream;
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.DeleteObjectResponse;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
+import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
+import software.amazon.awssdk.services.s3.model.ListObjectsV2Response;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.model.S3Exception;
+import software.amazon.awssdk.services.s3.model.S3Object;
 
 @Slf4j
 @RunWith(JUnitParamsRunner.class)
@@ -288,7 +294,7 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
   @Test
   public void testValidateDataContent_Storage_S3PreflightCheckValidatorCRUDUnsupportedPermission() {
     String bucket = "test";
-    AmazonS3 client = mock(AmazonS3.class);
+    S3Client client = mock(S3Client.class);
     doCallRealMethod()
         .when(mockAWSUtil)
         .validateOnBucket(client, bucket, "", ImmutableList.of(ExtraPermissionToValidate.NULL));
@@ -308,7 +314,7 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
       throws IOException {
     String bucketName = "test";
     CustomerConfig config = createS3Config(bucketName);
-    AmazonS3 client = ((StubbedCustomerConfigValidator) customerConfigValidator).s3Client;
+    S3Client client = ((StubbedCustomerConfigValidator) customerConfigValidator).s3Client;
 
     doCallRealMethod()
         .when(mockAWSUtil)
@@ -323,11 +329,9 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
     when(mockAWSUtil.getRandomUUID()).thenReturn(myUUID);
 
     S3Object object = mock(S3Object.class);
-    S3ObjectInputStream inputStream = mock(S3ObjectInputStream.class);
+    ResponseInputStream<GetObjectResponse> inputStream = mock(ResponseInputStream.class);
 
     String incorrectData = "notdummy";
-    when(client.getObject(anyString(), anyString())).thenReturn(object);
-    when(object.getObjectContent()).thenReturn(inputStream);
 
     doAnswer(
             new Answer() {
@@ -343,16 +347,29 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
         .when(inputStream)
         .read(any());
 
-    List<S3ObjectSummary> objSummaryList = new ArrayList<>();
-    ListObjectsV2Result mockObjectListing = mock(ListObjectsV2Result.class);
-    when(mockObjectListing.getObjectSummaries()).thenReturn(objSummaryList);
-    when(client.listObjectsV2(bucketName, fileName)).thenReturn(mockObjectListing);
+    when(client.getObject(any(GetObjectRequest.class))).thenReturn(inputStream);
 
-    S3ObjectSummary objSummary = mock(S3ObjectSummary.class);
-    when(objSummary.getKey()).thenReturn(fileName);
-
+    S3Object objSummary = mock(S3Object.class);
+    when(objSummary.key()).thenReturn(fileName);
+    List<S3Object> objSummaryList = new ArrayList<>(); // List.of(objSummary);
     objSummaryList.add(objSummary);
-    when(client.doesObjectExist(bucketName, fileName)).thenReturn(false);
+
+    ListObjectsV2Response mockObjectListing = mock(ListObjectsV2Response.class);
+    when(mockObjectListing.contents()).thenReturn(objSummaryList);
+    when(client.listObjectsV2(any(ListObjectsV2Request.class))).thenReturn(mockObjectListing);
+
+    ResponseBytes<GetObjectResponse> mockResponseBytes = mock(ResponseBytes.class);
+    when(mockResponseBytes.asUtf8String()).thenReturn("dummy-text");
+
+    when(client.getObjectAsBytes(any(GetObjectRequest.class))).thenReturn(mockResponseBytes);
+
+    when(client.deleteObject(any(DeleteObjectRequest.class)))
+        .thenAnswer(
+            invocation -> {
+              DeleteObjectRequest req = invocation.getArgument(0);
+              objSummaryList.removeIf(obj -> obj.key().equals(req.key()));
+              return DeleteObjectResponse.builder().build();
+            });
 
     customerConfigValidator.validateConfig(config);
   }
@@ -361,7 +378,7 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
   public void testValidateDataContent_Stroage_S3PreflightCheckValidator_BucketCrudFailCreate() {
     String bucketName = "test";
     CustomerConfig config = createS3Config(bucketName);
-    AmazonS3 client = ((StubbedCustomerConfigValidator) customerConfigValidator).s3Client;
+    S3Client client = ((StubbedCustomerConfigValidator) customerConfigValidator).s3Client;
 
     doCallRealMethod()
         .when(mockAWSUtil)
@@ -375,9 +392,9 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
     String fileName = myUUID.toString() + ".txt";
     when(mockAWSUtil.getRandomUUID()).thenReturn(myUUID);
 
-    doThrow(new AmazonS3Exception("Put object failed"))
+    doThrow(S3Exception.builder().message("Put object failed").build())
         .when(client)
-        .putObject(anyString(), anyString(), anyString());
+        .putObject(any(PutObjectRequest.class), any(RequestBody.class));
 
     assertThat(
         () -> customerConfigValidator.validateConfig(config),
@@ -389,7 +406,7 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
       throws IOException {
     String bucketName = "test";
     CustomerConfig config = createS3Config(bucketName);
-    AmazonS3 client = ((StubbedCustomerConfigValidator) customerConfigValidator).s3Client;
+    S3Client client = ((StubbedCustomerConfigValidator) customerConfigValidator).s3Client;
 
     UUID myUUID = UUID.randomUUID();
     String fileName = myUUID.toString() + ".txt";
@@ -404,12 +421,9 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
             ImmutableList.of(ExtraPermissionToValidate.READ, ExtraPermissionToValidate.LIST));
 
     S3Object object = mock(S3Object.class);
-    S3ObjectInputStream inputStream = mock(S3ObjectInputStream.class);
+    ResponseInputStream<GetObjectResponse> inputStream = mock(ResponseInputStream.class);
 
     String incorrectData = "notdummy";
-
-    when(client.getObject(anyString(), anyString())).thenReturn(object);
-    when(object.getObjectContent()).thenReturn(inputStream);
 
     doAnswer(
             new Answer() {
@@ -424,21 +438,21 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
             })
         .when(inputStream)
         .read(any());
+    when(client.getObject(any(GetObjectRequest.class))).thenReturn(inputStream);
+
+    ResponseBytes<GetObjectResponse> mockResponseBytes = mock(ResponseBytes.class);
+    when(mockResponseBytes.asUtf8String()).thenReturn("dummy-text");
+    when(client.getObjectAsBytes(any(GetObjectRequest.class))).thenReturn(mockResponseBytes);
 
     byte[] tmp = new byte[CloudUtil.DUMMY_DATA.getBytes().length];
     byte[] content = incorrectData.getBytes();
     System.arraycopy(content, 0, tmp, 0, content.length);
+
     assertThat(
         () -> customerConfigValidator.validateConfig(config),
         thrown(
             PlatformServiceException.class,
-            "Error reading test object "
-                + fileName
-                + ", expected: \""
-                + CloudUtil.DUMMY_DATA
-                + "\", got: \""
-                + new String(tmp)
-                + "\""));
+            "Test object " + fileName + " was not found in bucket test objects list."));
   }
 
   @Test
@@ -446,7 +460,7 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
       throws IOException {
     String bucketName = "test";
     CustomerConfig config = createS3Config(bucketName);
-    AmazonS3 client = ((StubbedCustomerConfigValidator) customerConfigValidator).s3Client;
+    S3Client client = ((StubbedCustomerConfigValidator) customerConfigValidator).s3Client;
 
     UUID myUUID = UUID.randomUUID();
     String fileName = myUUID.toString() + ".txt";
@@ -461,12 +475,9 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
             ImmutableList.of(ExtraPermissionToValidate.READ, ExtraPermissionToValidate.LIST));
 
     S3Object object = mock(S3Object.class);
-    S3ObjectInputStream inputStream = mock(S3ObjectInputStream.class);
+    ResponseInputStream<GetObjectResponse> inputStream = mock(ResponseInputStream.class);
 
     String incorrectData = "notdummy";
-
-    when(client.getObject(anyString(), anyString())).thenReturn(object);
-    when(object.getObjectContent()).thenReturn(inputStream);
 
     doAnswer(
             new Answer() {
@@ -482,10 +493,16 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
         .when(inputStream)
         .read(any());
 
-    List<S3ObjectSummary> objSummaryList = new ArrayList<>();
-    ListObjectsV2Result mockObjectListing = mock(ListObjectsV2Result.class);
-    when(mockObjectListing.getObjectSummaries()).thenReturn(objSummaryList);
-    when(client.listObjectsV2(bucketName, fileName)).thenReturn(mockObjectListing);
+    when(client.getObject(any(GetObjectRequest.class))).thenReturn(inputStream);
+
+    List<S3Object> objSummaryList = new ArrayList<>();
+    ListObjectsV2Response mockObjectListing = mock(ListObjectsV2Response.class);
+    when(mockObjectListing.contents()).thenReturn(objSummaryList);
+    when(client.listObjectsV2(any(ListObjectsV2Request.class))).thenReturn(mockObjectListing);
+
+    ResponseBytes<GetObjectResponse> mockResponseBytes = mock(ResponseBytes.class);
+    when(mockResponseBytes.asUtf8String()).thenReturn("dummy-text");
+    when(client.getObjectAsBytes(any(GetObjectRequest.class))).thenReturn(mockResponseBytes);
 
     assertThat(
         () -> customerConfigValidator.validateConfig(config),
@@ -499,7 +516,7 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
       throws IOException {
     String bucketName = "test";
     CustomerConfig config = createS3Config(bucketName);
-    AmazonS3 client = ((StubbedCustomerConfigValidator) customerConfigValidator).s3Client;
+    S3Client client = ((StubbedCustomerConfigValidator) customerConfigValidator).s3Client;
 
     UUID myUUID = UUID.randomUUID();
     String fileName = myUUID.toString() + ".txt";
@@ -514,12 +531,11 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
             ImmutableList.of(ExtraPermissionToValidate.READ, ExtraPermissionToValidate.LIST));
 
     S3Object object = mock(S3Object.class);
-    S3ObjectInputStream inputStream = mock(S3ObjectInputStream.class);
+    ResponseInputStream<GetObjectResponse> inputStream = mock(ResponseInputStream.class);
 
     String incorrectData = "notdummy";
 
-    when(client.getObject(anyString(), anyString())).thenReturn(object);
-    when(object.getObjectContent()).thenReturn(inputStream);
+    when(client.getObject(any(GetObjectRequest.class))).thenReturn(inputStream);
 
     doAnswer(
             new Answer() {
@@ -535,15 +551,17 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
         .when(inputStream)
         .read(any());
 
-    List<S3ObjectSummary> objSummaryList = new ArrayList<>();
-    ListObjectsV2Result mockObjectListing = mock(ListObjectsV2Result.class);
-    when(mockObjectListing.getObjectSummaries()).thenReturn(objSummaryList);
-    when(client.listObjectsV2(bucketName, fileName)).thenReturn(mockObjectListing);
+    S3Object mockS3Object = S3Object.builder().key(fileName).build();
+    List<S3Object> objSummaryList = new ArrayList<>();
+    objSummaryList.add(mockS3Object);
 
-    S3ObjectSummary objSummary = mock(S3ObjectSummary.class);
-    when(objSummary.getKey()).thenReturn(fileName);
-    objSummaryList.add(objSummary);
-    when(client.doesObjectExist(bucketName, fileName)).thenReturn(true);
+    ListObjectsV2Response mockObjectListing = mock(ListObjectsV2Response.class);
+    when(mockObjectListing.contents()).thenReturn(objSummaryList);
+    when(client.listObjectsV2(any(ListObjectsV2Request.class))).thenReturn(mockObjectListing);
+
+    ResponseBytes<GetObjectResponse> mockResponseBytes = mock(ResponseBytes.class);
+    when(mockResponseBytes.asUtf8String()).thenReturn("dummy-text");
+    when(client.getObjectAsBytes(any(GetObjectRequest.class))).thenReturn(mockResponseBytes);
 
     assertThat(
         () -> customerConfigValidator.validateConfig(config),
@@ -922,6 +940,7 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
         .when(mockAZUtil)
         .validateOnBlobContainerClient(
             blobContainerClient,
+            "",
             ImmutableList.of(ExtraPermissionToValidate.READ, ExtraPermissionToValidate.LIST));
 
     when(blobClient.openInputStream()).thenReturn(blobIs);
@@ -992,11 +1011,11 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
     BlobContainerClient bcc = mock(BlobContainerClient.class);
     doCallRealMethod()
         .when(mockAZUtil)
-        .validateOnBlobContainerClient(bcc, ImmutableList.of(ExtraPermissionToValidate.NULL));
+        .validateOnBlobContainerClient(bcc, "", ImmutableList.of(ExtraPermissionToValidate.NULL));
     assertThat(
         () ->
             mockAZUtil.validateOnBlobContainerClient(
-                bcc, ImmutableList.of(ExtraPermissionToValidate.NULL)),
+                bcc, "", ImmutableList.of(ExtraPermissionToValidate.NULL)),
         thrown(
             PlatformServiceException.class,
             "Unsupported permission "

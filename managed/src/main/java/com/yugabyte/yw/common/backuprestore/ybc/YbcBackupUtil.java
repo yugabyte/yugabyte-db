@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.common.backuprestore.ybc;
 
@@ -117,7 +117,6 @@ public class YbcBackupUtil {
   public static final String YBC_SUCCESS_MARKER_FILE_NAME = "success";
   public static final String YBDB_AUTOFLAG_BACKUP_SUPPORT_VERSION = "2.19.3.0-b1";
   // YBDB Version that implements https://github.com/yugabyte/yugabyte-db/issues/25877
-  // TODO: Update the version once the change is landed
   public static final String YBDB_STABLE_GRANT_SAFETY_VERSION = "2025.1.0.0-b1";
   public static final String YBDB_PREVIEW_GRANT_SAFETY_VERSION = "2.25.2.0-b275";
 
@@ -262,6 +261,9 @@ public class YbcBackupUtil {
 
     @JsonProperty("ysql_major_version")
     public String ysqlMajorVersion;
+
+    @JsonProperty("ysql_migration_files")
+    public Set<String> ysqlMigrationFiles;
   }
 
   @JsonIgnoreProperties(ignoreUnknown = true)
@@ -1082,6 +1084,12 @@ public class YbcBackupUtil {
           config.ysqlMajorVersion = String.valueOf(ysqlMajorVersionOptional.get());
         }
       }
+      if (!StringUtils.isEmpty(config.rollbackYbdbVersion)) {
+        config.ysqlMigrationFiles =
+            gFlagsValidation.getYsqlMigrationFilesList(config.rollbackYbdbVersion);
+      } else {
+        config.ysqlMigrationFiles = gFlagsValidation.getYsqlMigrationFilesList(ybdbSoftwareVersion);
+      }
 
       BackupServiceTaskExtendedArgs.Builder extendedArgsBuilder =
           BackupServiceTaskExtendedArgs.newBuilder();
@@ -1101,7 +1109,7 @@ public class YbcBackupUtil {
               YBDB_STABLE_GRANT_SAFETY_VERSION,
               YBDB_PREVIEW_GRANT_SAFETY_VERSION,
               true)
-          <= 0) {
+          >= 0) {
         extendedArgsBuilder.setDumpRoleChecks(tableParams.getDumpRoleChecks());
       } else {
         log.debug("database version {} does not support --dump-role-checks", ybdbSoftwareVersion);
@@ -1214,10 +1222,10 @@ public class YbcBackupUtil {
       // Set the rest of the extended args directly from api params.
       extendedArgsBuilder.setRevertToPreRolesBehaviour(
           backupStorageInfo.getRevertToPreRolesBehaviour());
-      /* Removing backup of roles temporarily. There are some issues we need to work out before
-      fully implementing this.
       extendedArgsBuilder.setErrorIfTablespacesExists(
           backupStorageInfo.getErrorIfTablespacesExists());
+      /* Removing backup of roles temporarily. There are some issues we need to work out before
+      fully implementing this.
       extendedArgsBuilder.setErrorIfRolesExists(backupStorageInfo.getErrorIfRolesExists());
       */
     }
@@ -1495,5 +1503,37 @@ public class YbcBackupUtil {
                     }));
     restorePreflightResponseBuilder.perLocationBackupInfoMap(perLocationBackupInfoMap);
     return restorePreflightResponseBuilder.build();
+  }
+
+  public void validateYsqlMigrationFiles(
+      Universe universe, Set<String> ysqlMigrationFilesDuringBackup) {
+    try {
+      String universeVersion =
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+      if (universe.getUniverseDetails().isSoftwareRollbackAllowed
+          && universe.getUniverseDetails().prevYBSoftwareConfig != null) {
+        universeVersion = universe.getUniverseDetails().prevYBSoftwareConfig.getSoftwareVersion();
+      }
+      if (universeVersion.startsWith("2025.1.0")) {
+        log.info("Skipping YSQL migration files validation for 2025.1.0 version");
+        return;
+      }
+      Set<String> universeMigrationFiles =
+          gFlagsValidation.getYsqlMigrationFilesList(universeVersion);
+      Set<String> missingFiles = new java.util.HashSet<>(ysqlMigrationFilesDuringBackup);
+      missingFiles.removeAll(universeMigrationFiles);
+      if (!missingFiles.isEmpty()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Cannot restore backup: the following YSQL migration files are missing in the target"
+                + " universe version: "
+                + missingFiles);
+      }
+    } catch (PlatformServiceException e) {
+      throw e;
+    } catch (Exception e) {
+      log.error("Error occurred while validating YSQL migration files for restore: ", e);
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
+    }
   }
 }

@@ -1,7 +1,7 @@
 /*
  * Created on Thu Feb 10 2022
  *
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License")
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
@@ -18,7 +18,7 @@ import {
   BACKUP_API_TYPES,
   Backup_Options_Type,
   ICommonBackupInfo,
-  IStorageConfig,
+  CustomerConfig,
   ITable,
   ThrottleParameters,
   IBackupEditParams
@@ -216,7 +216,7 @@ export function editBackup(values: IBackupEditParams) {
   return axios.put(requestUrl, values);
 }
 
-export const assignStorageConfig = (backup: IBackup, storageConfig: IStorageConfig) => {
+export const assignStorageConfig = (backup: IBackup, storageConfig: CustomerConfig) => {
   const cUUID = localStorage.getItem('customerId');
   const requestUrl = `${ROOT_URL}/customers/${cUUID}/backups/${backup.commonBackupInfo.backupUUID}`;
   return axios.put(requestUrl, {
@@ -239,7 +239,9 @@ export const setThrottleParameters = (
     maxConcurrentUploads: values.max_concurrent_uploads.currentValue,
     perUploadNumObjects: values.per_upload_num_objects.currentValue,
     maxConcurrentDownloads: values.max_concurrent_downloads.currentValue,
-    perDownloadNumObjects: values.per_download_num_objects.currentValue
+    perDownloadNumObjects: values.per_download_num_objects.currentValue,
+    diskReadBytesPerSecond: values.disk_read_bytes_per_sec.currentValue,
+    diskWriteBytesPerSecond: values.disk_write_bytes_per_sec.currentValue
   };
   const requestUrl = `${ROOT_URL}/customers/${cUUID}/universes/${universeUUID}/ybc_throttle_params`;
   return axios.post<ThrottleParameters>(requestUrl, payload);
@@ -294,5 +296,5 @@ export function deleteIncrementalBackup(incrementalBackup: ICommonBackupInfo) {
 export const fetchStorageConfigs = () => {
   const cUUID = localStorage.getItem('customerId');
   const requestUrl = `${ROOT_URL}/customers/${cUUID}/configs`;
-  return axios.get<IStorageConfig[]>(requestUrl);
+  return axios.get<CustomerConfig[]>(requestUrl);
 };

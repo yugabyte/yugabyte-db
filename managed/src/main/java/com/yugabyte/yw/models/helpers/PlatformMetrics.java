@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -108,6 +108,8 @@ public enum PlatformMetrics {
   UNIVERSE_NODE_PROVISIONED_IOPS("Provisioned IOPS for the node disk", Unit.COUNT, false),
   UNIVERSE_NODE_PROVISIONED_THROUGHPUT(
       "Provisioned throughput for the node disk", Unit.COUNT, false),
+  UNIVERSE_CONNECTION_POOLING_STATUS(
+      "Flag indicating whether connection pooling is enabled on Universe", Unit.STATUS),
   // Used for k8s universes only.
   CONTAINER_RESOURCE_REQUESTS_CPU_CORES(
       "Requested number of CPU cores for the db process", Unit.COUNT, false),

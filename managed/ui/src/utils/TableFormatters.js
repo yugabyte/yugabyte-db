@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 import { isValidObject } from './ObjectUtils';
 import { YBFormattedNumber } from '../components/common/descriptors';
 import { YBLoadingCircleIcon } from '../components/common/indicators';

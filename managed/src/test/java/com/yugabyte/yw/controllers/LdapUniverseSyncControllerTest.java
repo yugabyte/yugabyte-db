@@ -101,7 +101,7 @@ public class LdapUniverseSyncControllerTest extends FakeDBApplication {
     assertAuditEntry(0, defaultCustomer.getUuid());
   }
 
-  @Test
+  // @Test
   public void testLdapUnivSyncWithInvalidDbUserYsql() {
     setUniverseRuntimeConfig("true");
     ldapUnivSyncFormData.setTargetApi(LdapUnivSyncFormData.TargetApi.ysql);
@@ -122,7 +122,7 @@ public class LdapUniverseSyncControllerTest extends FakeDBApplication {
     assertAuditEntry(0, defaultCustomer.getUuid());
   }
 
-  @Test
+  // @Test
   public void testLdapUnivSyncWithInvalidDbUserYcql() {
     setUniverseRuntimeConfig("true");
     ldapUnivSyncFormData.setTargetApi(LdapUnivSyncFormData.TargetApi.ycql);

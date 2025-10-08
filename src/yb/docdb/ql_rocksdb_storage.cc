@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -15,12 +15,11 @@
 
 #include <utility>
 
-#include <boost/optional/optional.hpp>
-
 #include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/ql_protocol.pb.h"
 
 #include "yb/dockv/doc_key.h"
+#include "yb/dockv/partition.h"
 #include "yb/dockv/primitive_value_util.h"
 
 #include "yb/docdb/doc_read_context.h"
@@ -64,17 +63,15 @@ Status QLRocksDBStorage::GetIterator(
 }
 
 Status QLRocksDBStorage::BuildYQLScanSpec(
-    const QLReadRequestPB& request,
-    const ReadHybridTime& read_time,
-    const Schema& schema,
-    const bool include_static_columns,
-    std::unique_ptr<qlexpr::QLScanSpec>* spec,
+    const QLReadRequestPB& request, const ReadHybridTime& read_time, const Schema& schema,
+    const bool include_static_columns, std::unique_ptr<qlexpr::QLScanSpec>* spec,
     std::unique_ptr<qlexpr::QLScanSpec>* static_row_spec) const {
   // Populate dockey from QL key columns.
-  auto hash_code = request.has_hash_code() ?
-      boost::make_optional<int32_t>(request.hash_code()) : boost::none;
-  auto max_hash_code = request.has_max_hash_code() ?
-      boost::make_optional<int32_t>(request.max_hash_code()) : boost::none;
+  auto hash_code =
+      request.has_hash_code() ? std::make_optional<int32_t>(request.hash_code()) : std::nullopt;
+  auto max_hash_code = request.has_max_hash_code()
+                           ? std::make_optional<int32_t>(request.max_hash_code())
+                           : std::nullopt;
 
   dockv::KeyEntryValues hashed_components;
   RETURN_NOT_OK(QLKeyColumnValuesToPrimitiveValues(
@@ -225,7 +222,9 @@ Status QLRocksDBStorage::GetIterator(
     // Construct the scan spec basing on the HASH condition.
 
     DocKey lower_doc_key(schema);
-    if (request.has_lower_bound() && schema.num_hash_key_columns() == 0) {
+    if (request.has_lower_bound() &&
+        (schema.num_hash_key_columns() == 0 ||
+         !dockv::PartitionSchema::IsValidHashPartitionKeyBound(request.lower_bound().key()))) {
         Slice lower_key_slice = request.lower_bound().key();
         RETURN_NOT_OK(lower_doc_key.DecodeFrom(
             &lower_key_slice, dockv::DocKeyPart::kWholeDocKey, dockv::AllowSpecial::kTrue));
@@ -236,7 +235,9 @@ Status QLRocksDBStorage::GetIterator(
     }
 
     DocKey upper_doc_key(schema);
-    if (request.has_upper_bound() && schema.num_hash_key_columns() == 0) {
+    if (request.has_upper_bound() &&
+        (schema.num_hash_key_columns() == 0 ||
+         !dockv::PartitionSchema::IsValidHashPartitionKeyBound(request.upper_bound().key()))) {
         Slice upper_key_slice = request.upper_bound().key();
         RETURN_NOT_OK(upper_doc_key.DecodeFrom(
             &upper_key_slice, dockv::DocKeyPart::kWholeDocKey, dockv::AllowSpecial::kTrue));

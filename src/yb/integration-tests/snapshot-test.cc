@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -465,13 +465,18 @@ class SnapshotTest : public SnapshotTestBase<MiniCluster> {
     LOG(INFO) << "Verifying table is dropped";
     // Check that the table is dropped on the master.
     auto master_leader = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
-    auto table = VERIFY_RESULT(master_leader->catalog_manager_impl().FindTableById(table_id));
-    LOG(INFO) << "Table info " << table->id();
-    if (!VERIFY_RESULT(table->AreAllTabletsDeleted())) {
-      return false;
-    }
-    if (!table->LockForRead()->is_deleted()) {
-      return false;
+    auto result = master_leader->catalog_manager_impl().FindTableById(table_id);
+    if (result.ok()) {
+      const auto& table = *result;
+      LOG(INFO) << "Table info " << table;
+      if (!VERIFY_RESULT(table->AreAllTabletsDeleted())) {
+        return false;
+      }
+      if (!table->LockForRead()->is_deleted()) {
+        return false;
+      }
+    } else if (!result.status().IsNotFound()) {
+      return result.status();
     }
 
     // Check that the table is deleted on the tservers.

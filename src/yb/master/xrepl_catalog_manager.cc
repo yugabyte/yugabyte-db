@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -16,7 +16,6 @@
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/schema.h"
-#include "yb/client/table.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/table_info.h"
 #include "yb/client/xcluster_client.h"
@@ -25,21 +24,13 @@
 #include "yb/common/common.pb.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/pg_system_attr.h"
-#include "yb/common/schema_pbutil.h"
 #include "yb/common/xcluster_util.h"
 
 #include "yb/docdb/docdb_pgapi.h"
 
-#include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager.h"
-#include "yb/util/is_operation_done_result.h"
-#include "yb/master/xcluster/xcluster_manager.h"
-#include "yb/master/xcluster/xcluster_replication_group.h"
-#include "yb/master/xcluster/master_xcluster_util.h"
-#include "yb/master/xcluster_consumer_registry_service.h"
-#include "yb/master/xcluster_rpc_tasks.h"
 #include "yb/master/master.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_heartbeat.pb.h"
@@ -47,7 +38,17 @@
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/master_util.h"
 #include "yb/master/snapshot_transfer_manager.h"
+#include "yb/master/xcluster/master_xcluster_util.h"
+#include "yb/master/xcluster/xcluster_manager.h"
+#include "yb/master/xcluster_consumer_registry_service.h"
+#include "yb/master/xcluster/xcluster_replication_group.h"
+#include "yb/master/xcluster_rpc_tasks.h"
 #include "yb/master/ysql/ysql_manager_if.h"
+
+#include "yb/tablet/operations/change_metadata_operation.h"
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/transaction_participant.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/debug-util.h"
@@ -141,6 +142,13 @@ DEFINE_test_flag(bool, cdcsdk_skip_table_removal_from_qualified_list, false,
 DEFINE_RUNTIME_bool(enable_truncate_cdcsdk_table, false,
     "When set, enables truncating tables currently part of a CDCSDK Stream");
 
+DEFINE_RUNTIME_AUTO_bool(xcluster_store_older_schema_versions, kLocalPersisted, false, true,
+    "When set, enables storing multiple older schema versions in xCluster replication stream "
+    "metadata instead of just storing the current and previous schema versions.");
+
+DEFINE_RUNTIME_uint32(xcluster_max_old_schema_versions, 50,
+    "Maximum number of old schema versions to keep in xCluster replication stream metadata");
+
 DECLARE_int32(master_rpc_timeout_ms);
 DECLARE_bool(ysql_yb_enable_replication_commands);
 DECLARE_bool(ysql_yb_allow_replication_slot_lsn_types);
@@ -152,8 +160,7 @@ DECLARE_uint32(max_replication_slots);
 DECLARE_uint64(cdc_intent_retention_ms);
 DECLARE_uint32(cdcsdk_tablet_not_of_interest_timeout_secs);
 DECLARE_bool(cdcsdk_enable_dynamic_table_addition_with_table_cleanup);
-
-
+DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 
 #define RETURN_ACTION_NOT_OK(expr, action) \
   RETURN_NOT_OK_PREPEND((expr), Format("An error occurred while $0", action))
@@ -702,7 +709,7 @@ Status CatalogManager::BackfillMetadataForXRepl(
           uint32_t pg_type_oid = entry.second;
 
           const YbcPgTypeEntity* type_entity =
-              docdb::DocPgGetTypeEntity({(int32_t)pg_type_oid, -1});
+              docdb::DocPgGetTypeEntity({.type_id = (int32_t)pg_type_oid, .type_mod = -1});
 
           if (type_entity == nullptr && type_oid_info_map.contains(pg_type_oid)) {
             VLOG(1) << "Looking up primitive type for: " << pg_type_oid;
@@ -724,8 +731,8 @@ Status CatalogManager::BackfillMetadataForXRepl(
       if (!IsColocationParentTableId(table_id) &&
           (backfill_required || table_lock->schema().deprecated_pgschema_name().empty())) {
         LOG_WITH_FUNC(INFO) << "backfilling pgschema_name for table " << table_id;
-        string pgschema_name =
-            VERIFY_RESULT(GetYsqlManager().GetPgSchemaName(table_id, table_lock.data()));
+        const auto pgschema_name = VERIFY_RESULT(GetYsqlManager().GetPgSchemaName(
+            VERIFY_RESULT(table->GetPgTableAllOids())));
         VLOG(1) << "For table: " << table_lock->name() << " found pgschema_name: " << pgschema_name;
         alter_table_req_pg_type.set_pgschema_name(pgschema_name);
         backfill_required = true;
@@ -847,6 +854,18 @@ Status CatalogManager::CreateNewCDCStreamForNamespace(
     RETURN_NOT_OK(BackfillMetadataForXRepl(table, epoch));
     table_ids.push_back(table->id());
   }
+
+  // We add the pg_class and pg_publication_rel catalog tables to the stream metadata as we will
+  // poll them to figure out changes to the publications. This will not be done for gRPC streams.
+  if (FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication &&
+      req.has_cdcsdk_ysql_replication_slot_name()) {
+    auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
+    table_ids.push_back(GetPgsqlTableId(database_oid, kPgClassTableOid));
+    table_ids.push_back(GetPgsqlTableId(database_oid, kPgPublicationRelOid));
+    VLOG_WITH_FUNC(1) << "Added the catalog tables pg_class and pg_publication_rel to the stream "
+                         "metadata tables list.";
+  }
+
   VLOG_WITH_FUNC(1) << Format("Creating CDCSDK stream for $0 tables", table_ids.size());
 
   return CreateNewCdcsdkStream(req, table_ids, ns->id(), resp, epoch, rpc);
@@ -989,7 +1008,11 @@ Status CatalogManager::CreateNewCdcsdkStream(
     if (FLAGS_ysql_yb_enable_replica_identity && has_replication_slot_name) {
       auto table = VERIFY_RESULT(FindTableById(table_id));
       auto schema = VERIFY_RESULT(table->GetSchema());
-      PgReplicaIdentity replica_identity = schema.table_properties().replica_identity();
+      // For catalog tables we will use replica identity CHANGE.
+      PgReplicaIdentity replica_identity = PgReplicaIdentity::CHANGE;
+      if (!table->is_system()) {
+        replica_identity = schema.table_properties().replica_identity();
+      }
 
       // If atleast one of the tables in the stream has replica identity other than CHANGE &
       // NOTHING, we will set the history cutoff. UpdatepPeersAndMetrics thread will remove the
@@ -1382,6 +1405,80 @@ Status CatalogManager::SetAllCDCSDKRetentionBarriers(
   return Status::OK();
 }
 
+// This function sets the initial retention barriers on the sys catalog tablet. This is called only
+// in the CreateCDCStream context, i.e this will be always called on the master leader. It follows
+// the following steps:
+//    Step 1: Get the last committed OpId (safe_op_id) from the sys catalog tablet.
+//    Step 2: Create and submit a CHANGE_METADATA_OP. The retention barriers will be set on all the
+//    peers when this OP is applied.
+//    Step 3: Populate the safe_op_id in the cdc_state table upon successful apply of the
+//    CHANGE_METADATA_OP in the callback.
+Status CatalogManager::SetAllInitialCDCSDKRetentionBarriersOnCatalogTable(
+    const TableInfoPtr& table, const xrepl::StreamId& stream_id) {
+  auto tablet_peer = sys_catalog_->tablet_peer();
+
+  tablet::RemoveIntentsData data;
+  RETURN_NOT_OK(tablet_peer->GetLastReplicatedData(&data));
+  OpIdPB safe_op_id;
+  safe_op_id.set_term(data.op_id.term);
+  safe_op_id.set_index(data.op_id.index);
+
+  // Perform a raft operation (CHANGE_METADATA_OP) to set retention barriers. The barriers will be
+  // set in the ChangeMetadataOperation::Apply() path.
+  tablet::ChangeMetadataRequestPB cm_req;
+  tserver::ChangeMetadataResponsePB resp;
+  {
+    auto l = table->LockForRead();
+
+    cm_req.set_schema_version(l->pb.version());
+    cm_req.set_dest_uuid(master_->permanent_uuid());
+    cm_req.set_tablet_id(sys_catalog_->tablet_id());
+    cm_req.set_alter_table_id(table->id());
+    cm_req.mutable_schema()->CopyFrom(l->pb.schema());
+
+    if (l->pb.has_wal_retention_secs()) {
+      cm_req.set_wal_retention_secs(l->pb.wal_retention_secs());
+    }
+
+    cm_req.set_retention_requester_id(stream_id.ToString());
+
+    // TODO(#26427): Here we are setting the history retention barriers on the sys catalog tablet.
+    // However these barriers will not be moved by UpdatePeersAndMetrics thread but instead will be
+    // governed by the flag timestamp_syscatalog_history_retention_interval_sec.
+    cm_req.set_cdc_sdk_require_history_cutoff(true);
+  }
+  auto sys_catalog_tablet = VERIFY_RESULT(sys_catalog_->Tablet());
+  auto operation =
+      std::make_unique<tablet::ChangeMetadataOperation>(sys_catalog_tablet, tablet_peer->log());
+  auto request = operation->AllocateRequest();
+  request->CopyFrom(cm_req);
+
+  operation->set_completion_callback([this, table, stream_id, safe_op_id](Status s) {
+    // If the apply of CHANGE_METADATA_OP has returned non-ok status, then do not populate the state
+    // table entry for the sys catalog tablet. If safe_op_id is not populated in the state table
+    // then WaitForSnapshotSafeOpIdToBePopulated() will fail, hence failing stream creation.
+    if (!s.ok()) {
+      LOG(WARNING) << "Failed to set retention barriers on the sys catalog tablet. Will not "
+                      "populate its state table entry for stream: "
+                   << stream_id.ToString();
+      return;
+    }
+
+    WARN_NOT_OK(
+        PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails(
+            table, sys_catalog_->tablet_id(), stream_id, safe_op_id,
+            master_->clock()->Now() /* proposed_snapshot_time */,
+            true /* require_history_cutoff */),
+        "Failed to populate the CDC state table entry for the sys catalog tablet. Will fail stream "
+        "creation for the stream: " + stream_id.ToString());
+  });
+
+  // Submit the CHANGE_METADATA_OP and return. We wait in the CreateCDCStream processing for all
+  // retention barriers to be set.
+  tablet_peer->Submit(std::move(operation), tablet_peer->LeaderTerm());
+  return Status::OK();
+}
+
 Status CatalogManager::PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails(
     const scoped_refptr<TableInfo>& table,
     const yb::TabletId& tablet_id,
@@ -1496,9 +1593,19 @@ Status CatalogManager::WaitForSnapshotSafeOpIdToBePopulated(
     CoarseTimePoint deadline) {
 
   auto num_expected_tablets = 0;
+  auto sys_catalog_tablet_seen = false;
   for (const auto& table_id : table_ids) {
     auto table = VERIFY_RESULT(FindTableById(table_id));
-    num_expected_tablets += table->TabletCount();
+    if (table->is_system()) {
+      // We do not add snapshot entries for catalog tables. Since all the catalog tables reside on
+      // the same tablet we count them only once.
+      if (!sys_catalog_tablet_seen) {
+        num_expected_tablets += table->TabletCount();
+        sys_catalog_tablet_seen = true;
+      }
+    } else {
+      num_expected_tablets += table->TabletCount();
+    }
   }
 
   return WaitFor(
@@ -1716,7 +1823,7 @@ Status CatalogManager::FindCDCSDKStreamsForAddedTables(
           continue;
         }
 
-        if (!IsTableEligibleForCDCSDKStream(table, table->LockForRead(), true)) {
+        if (!IsTableEligibleForCDCSDKStream(table, table->LockForRead(), /*check_schema=*/true)) {
           RemoveTableFromCDCSDKUnprocessedMap(unprocessed_table_id, stream_info->namespace_id());
           continue;
         }
@@ -1882,7 +1989,8 @@ void CatalogManager::FindAllNonEligibleTablesInCDCSDKStream(
       auto table_info = GetTableInfoUnlocked(table_id);
       if (table_info) {
         // Re-confirm this table is not meant to be part of a CDC stream.
-        if (!IsTableEligibleForCDCSDKStream(table_info, table_info->LockForRead(), true)) {
+        if (!IsTableEligibleForCDCSDKStream(
+                table_info, table_info->LockForRead(), /*check_schema=*/true)) {
           LOG(INFO) << "Found a non-eligible table: " << table_info->id()
                     << ", for stream: " << stream_id;
           LockGuard lock(cdcsdk_non_eligible_table_mutex_);
@@ -2065,7 +2173,7 @@ std::vector<TableInfoPtr> CatalogManager::FindAllTablesForCDCSDK(const Namespace
       continue;
     }
 
-    if (!IsTableEligibleForCDCSDKStream(table_info.get(), ltm, true)) {
+    if (!IsTableEligibleForCDCSDKStream(table_info.get(), ltm, /*check_schema=*/true)) {
       continue;
     }
 
@@ -2194,7 +2302,7 @@ Status CatalogManager::ProcessNewTablesForCDCSDKStreams(
       alter_table_req.mutable_table()->set_table_id(table_id);
       alter_table_req.set_wal_retention_secs(FLAGS_cdc_wal_retention_time_secs);
       AlterTableResponsePB alter_table_resp;
-      s = this->AlterTable(&alter_table_req, &alter_table_resp, nullptr, epoch);
+      s = this->AlterTable(&alter_table_req, &alter_table_resp, /*rpc=*/nullptr, epoch);
       if (!s.ok()) {
         LOG(WARNING) << "Unable to change the WAL retention time for table " << table_id;
         continue;
@@ -2329,7 +2437,7 @@ Status CatalogManager::ValidateTableForRemovalFromCDCSDKStream(
   }
 
   if (check_for_ineligibility) {
-    if (!IsTableEligibleForCDCSDKStream(table, lock, true)) {
+    if (!IsTableEligibleForCDCSDKStream(table, lock, /*check_schema=*/true)) {
       return STATUS(InvalidArgument, "Only allowed to remove user tables from CDC streams");
     }
   }
@@ -2727,13 +2835,18 @@ Status CatalogManager::CleanUpCDCSDKStreamsMetadata(const LeaderEpoch& epoch) {
     if (!tablets->contains(entry.tablet_id)) {
       // Either this tablet belongs to a dropped table or a dynamic table. If the corresponding
       // table of the tablet (all the tables in case of a colocated tablet) belongs to the dropped
-      // table list computed previously, then the cdc_state entry will be deleted. If the tablet
-      // itself is not found, we can safely delete the cdc_state entry.
+      // table list computed previously, then the cdc_state entry will be deleted.
+      // There is a possible race if the tablet is not found for split tablets.
+      // So we require the tablet is found, or it is known to have been deleted.
       auto tablet_info_result = GetTabletInfo(entry.tablet_id);
       if (!tablet_info_result.ok()) {
-        LOG_WITH_FUNC(WARNING) << "Did not find tablet info for tablet_id: " << entry.tablet_id
-                               << " , will not delete its cdc_state entry for stream id:"
-                               << entry.stream_id << "in this iteration";
+        if (tablet_info_result.status().IsDeleted()) {
+          keys_to_delete.emplace_back(entry.tablet_id, entry.stream_id);
+        } else {
+          LOG_WITH_FUNC(WARNING) << "Did not find tablet info for tablet_id: " << entry.tablet_id
+                                 << " , will not delete its cdc_state entry for stream id:"
+                                 << entry.stream_id << "in this iteration";
+        }
         continue;
       }
 
@@ -3200,6 +3313,9 @@ Status CatalogManager::ListCDCStreams(
       stream->set_cdcsdk_disable_dynamic_table_addition(
           ltm->pb.cdcsdk_disable_dynamic_table_addition());
     }
+
+    auto replica_identity_map = ltm->pb.replica_identity_map();
+    stream->mutable_replica_identity_map()->swap(replica_identity_map);
   }
   return Status::OK();
 }
@@ -3447,7 +3563,8 @@ Status CatalogManager::UpdateCDCProducerOnTabletSplit(
         // table splits and concurrently we are removing such tables from stream, the child tables
         // do not get added.
         {
-          if (!IsTableEligibleForCDCSDKStream(table_info, table_info->LockForRead(), false)) {
+          if (!IsTableEligibleForCDCSDKStream(
+                  table_info, table_info->LockForRead(), /*check_schema=*/false)) {
             LOG(INFO) << "Skipping adding children tablets to cdc state for table "
                       << producer_table_id << " as it is not meant to part of a CDC stream";
             continue;
@@ -3765,8 +3882,20 @@ Status CatalogManager::UpdateConsumerOnProducerSplit(
         MasterError(MasterErrorPB::INVALID_REQUEST));
   }
 
-  auto cluster_config = ClusterConfig();
-  auto l = cluster_config->LockForWrite();
+  auto consumer_table_id = req->consumer_table_id();
+  // If the consumer table ID is not provided (only for upgrade cases) get it from the stream entry.
+  if (consumer_table_id.empty()) {
+    consumer_table_id = VERIFY_RESULT(GetConsumerTableIdForStreamId(
+        *this, xcluster::ReplicationGroupId(req->replication_group_id()),
+        VERIFY_RESULT(xrepl::StreamId::FromString(req->stream_id()))));
+  }
+
+  auto locked_config_and_ranges =
+      VERIFY_RESULT(LockClusterConfigAndGetTableKeyRanges(*this, consumer_table_id));
+  auto& cluster_config = locked_config_and_ranges.cluster_config;
+  auto& l = locked_config_and_ranges.write_lock;
+  auto& consumer_tablet_keys = locked_config_and_ranges.table_key_ranges;
+
   auto replication_group_map =
       l.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
   auto producer_entry = FindOrNull(*replication_group_map, req->replication_group_id());
@@ -3780,6 +3909,9 @@ Status CatalogManager::UpdateConsumerOnProducerSplit(
         NotFound, "Unable to find the stream entry for universe $0, stream $1",
         req->replication_group_id(), req->stream_id());
   }
+  SCHECK_EQ(
+      stream_entry->consumer_table_id(), consumer_table_id, InvalidArgument,
+      "Consumer table ID provided in request does not match the stream entry");
 
   SplitTabletIds split_tablet_id{
       .source = req->producer_split_tablet_info().tablet_id(),
@@ -3788,7 +3920,6 @@ Status CatalogManager::UpdateConsumerOnProducerSplit(
           req->producer_split_tablet_info().new_tablet2_id()}};
 
   auto split_key = req->producer_split_tablet_info().split_partition_key();
-  auto consumer_tablet_keys = VERIFY_RESULT(GetTableKeyRanges(stream_entry->consumer_table_id()));
   bool found_source = false, found_all_split_children = false;
   RETURN_NOT_OK(UpdateTabletMappingOnProducerSplit(
       consumer_tablet_keys, split_tablet_id, split_key, &found_source, &found_all_split_children,
@@ -3891,47 +4022,79 @@ Status CatalogManager::UpdateConsumerOnProducerMetadata(
       schema_versions_pb->current_producer_schema_version();
   SchemaVersion current_consumer_schema_version =
       schema_versions_pb->current_consumer_schema_version();
-  SchemaVersion old_producer_schema_version =
-      schema_versions_pb->old_producer_schema_version();
-  SchemaVersion old_consumer_schema_version =
-      schema_versions_pb->old_consumer_schema_version();
+  auto* old_producer_schema_versions = schema_versions_pb->mutable_old_producer_schema_versions();
+  auto* old_consumer_schema_versions = schema_versions_pb->mutable_old_consumer_schema_versions();
+  std::map<SchemaVersion, SchemaVersion> old_schema_versions_map;
+  for (int i = 0; i < old_producer_schema_versions->size(); ++i) {
+    old_schema_versions_map[old_producer_schema_versions->Get(i)] =
+        old_consumer_schema_versions->Get(i);
+  }
 
-  // Incoming producer version is greater than anything we've seen before, update our cache.
-  if (req->producer_schema_version() > current_producer_schema_version) {
-    old_producer_schema_version = current_producer_schema_version;
-    old_consumer_schema_version = current_consumer_schema_version;
-    current_producer_schema_version = req->producer_schema_version();
-    current_consumer_schema_version = req->consumer_schema_version();
-    schema_versions_updated = true;
-  } else if (req->producer_schema_version() < current_producer_schema_version) {
-    // We are seeing an older schema version that we need to keep track of to handle old rows.
-    if (req->producer_schema_version() > old_producer_schema_version) {
-      old_producer_schema_version = req->producer_schema_version();
-      old_consumer_schema_version = req->consumer_schema_version();
-      schema_versions_updated = true;
-    } else {
-      // If we have already seen this producer schema version in the past, we can ignore it OR
-      // We recieved an update from a different tablet, so consumer schema version should match
-      // or we received a new consumer schema version than what was cached locally.
-      DCHECK(req->producer_schema_version() < old_producer_schema_version ||
-             req->consumer_schema_version() >= old_consumer_schema_version);
-    }
-  } else {
+  if (req->producer_schema_version() == current_producer_schema_version ||
+      old_schema_versions_map.contains(req->producer_schema_version())) {
     // If we have already seen this producer schema version, then verify that the consumer schema
     // version matches what we saw from other tablets or we received a new one.
     // If we get an older schema version from the consumer, that's an indication that it
     // has not yet performed the ALTER and caught up to the latest schema version so fail the
     // request until it catches up to the latest schema version.
-    SCHECK(req->consumer_schema_version() >= current_consumer_schema_version, InternalError,
+    auto prev_consumer_schema_version = FindWithDefault(
+        old_schema_versions_map, req->producer_schema_version(), current_consumer_schema_version);
+    SCHECK_GE(
+        req->consumer_schema_version(), prev_consumer_schema_version, InternalError,
         Format(
-            "Received Older Consumer schema version $0 for replication group $1, table $2",
-            req->consumer_schema_version(), replication_group_id, consumer_table_id));
+            "Received older consumer schema version for replication group $1, consumer table $2",
+            replication_group_id, consumer_table_id));
+  } else if (req->producer_schema_version() > current_producer_schema_version) {
+    // Incoming producer version is greater than anything we've seen before, update stored versions.
+    old_schema_versions_map[current_producer_schema_version] = current_consumer_schema_version;
+    current_producer_schema_version = req->producer_schema_version();
+    current_consumer_schema_version = req->consumer_schema_version();
+    schema_versions_updated = true;
+  } else {
+    // This is an older producer schema version that we haven't seen before, need to keep track of
+    // it to handle old rows.
+    old_schema_versions_map[req->producer_schema_version()] = req->consumer_schema_version();
+    schema_versions_updated = true;
   }
 
+  // Clean up the oldest schema versions if we've reached our max limit.
+  auto max_num_schemas =
+      FLAGS_xcluster_store_older_schema_versions ? FLAGS_xcluster_max_old_schema_versions : 1;
+  while (old_schema_versions_map.size() > max_num_schemas) {
+    LOG(INFO) << Format(
+        "Removing oldest schema version (producer version: $0, consumer version: $1) for "
+        "replication group $2, consumer table $3",
+        old_schema_versions_map.begin()->first, old_schema_versions_map.begin()->second,
+        replication_group_id, consumer_table_id);
+    old_schema_versions_map.erase(old_schema_versions_map.begin());
+    schema_versions_updated = true;
+  }
+
+  // Update the schema versions in the stream entry.
   schema_versions_pb->set_current_producer_schema_version(current_producer_schema_version);
   schema_versions_pb->set_current_consumer_schema_version(current_consumer_schema_version);
-  schema_versions_pb->set_old_producer_schema_version(old_producer_schema_version);
-  schema_versions_pb->set_old_consumer_schema_version(old_consumer_schema_version);
+  if (schema_versions_updated) {
+    old_producer_schema_versions->Clear();
+    old_consumer_schema_versions->Clear();
+    for (const auto& [producer_schema_version, consumer_schema_version] : old_schema_versions_map) {
+      old_producer_schema_versions->Add(producer_schema_version);
+      old_consumer_schema_versions->Add(consumer_schema_version);
+    }
+  }
+
+  // Set the values for the response.
+  auto resp_schema_versions = resp->mutable_schema_versions();
+  resp_schema_versions->set_current_producer_schema_version(current_producer_schema_version);
+  resp_schema_versions->set_current_consumer_schema_version(current_consumer_schema_version);
+  resp_schema_versions->mutable_old_producer_schema_versions()->Add(
+      old_producer_schema_versions->begin(), old_producer_schema_versions->end());
+  resp_schema_versions->mutable_old_consumer_schema_versions()->Add(
+      old_consumer_schema_versions->begin(), old_consumer_schema_versions->end());
+
+  SchemaVersion last_old_producer_schema_version =
+      old_producer_schema_versions->empty() ? 0 : *old_producer_schema_versions->rbegin();
+  SchemaVersion last_old_consumer_schema_version =
+      old_consumer_schema_versions->empty() ? 0 : *old_consumer_schema_versions->rbegin();
 
   if (schema_versions_updated) {
     // Bump the ClusterConfig version so we'll broadcast new schema versions.
@@ -3944,20 +4107,14 @@ Status CatalogManager::UpdateConsumerOnProducerMetadata(
     l.Unlock();
   }
 
-  // Set the values for the response.
-  auto resp_schema_versions = resp->mutable_schema_versions();
-  resp_schema_versions->set_current_producer_schema_version(current_producer_schema_version);
-  resp_schema_versions->set_current_consumer_schema_version(current_consumer_schema_version);
-  resp_schema_versions->set_old_producer_schema_version(old_producer_schema_version);
-  resp_schema_versions->set_old_consumer_schema_version(old_consumer_schema_version);
-
   LOG(INFO) << Format(
       "Updated the schema versions for table $0 with stream id $1, colocation id $2."
-      "Current producer schema version:$3, current consumer schema version:$4 "
-      "old producer schema version:$5, old consumer schema version:$6, replication group:$7",
+      "Current producer schema version:$3, current consumer schema version:$4, "
+      "last old producer schema version:$5, last old consumer schema version:$6, "
+      "replication group:$7",
       replication_group_id, stream_id, req->colocation_id(), current_producer_schema_version,
-      current_consumer_schema_version, old_producer_schema_version, old_consumer_schema_version,
-      replication_group_id);
+      current_consumer_schema_version, last_old_producer_schema_version,
+      last_old_consumer_schema_version, replication_group_id);
   return Status::OK();
 }
 
@@ -4705,7 +4862,7 @@ Status CatalogManager::DoClearFailedReplicationBootstrap(
     case SysUniverseReplicationBootstrapEntryPB_State_BOOTSTRAP_PRODUCER: {
       DeleteCDCStreamResponsePB resp;
       s = xcluster_rpc_task->client()->DeleteCDCStream(
-          bootstrap_ids, /* force_delete = */ true, /* ignore_failures = */ false, &resp);
+          bootstrap_ids, /*force_delete=*/ true, /*ignore_errors=*/false, &resp);
       if (!s.ok()) {
         LOG(WARNING) << Format(
             "Failed to send delete CDC streams request to producer on status: $0", s);
@@ -4842,7 +4999,7 @@ void CatalogManager::ScheduleXReplParentTabletDeletionTask() {
   xrepl_parent_tablet_deletion_task_.Schedule(
       [this](const Status& status) {
         Status s = background_tasks_thread_pool_->SubmitFunc(
-            std::bind(&CatalogManager::ProcessXReplParentTabletDeletionPeriodically, this));
+            [this] { ProcessXReplParentTabletDeletionPeriodically(); });
         if (!s.IsOk()) {
           // Failed to submit task to the thread pool. Mark that the task is now no longer running.
           LOG(WARNING) << "Failed to schedule: ProcessXReplParentTabletDeletionPeriodically";
@@ -4963,7 +5120,7 @@ Status CatalogManager::DoProcessCDCSDKTabletDeletion() {
                   << ". Reason: Consumer finished processing parent tablet after split.";
 
         // Also delete the parent tablet from cdc_state for all completed streams.
-        entries_to_delete.emplace_back(cdc::CDCStateTableKey{tablet_id, stream_id});
+        entries_to_delete.emplace_back(tablet_id, stream_id);
         count_tablet_streams_to_delete++;
         continue;
       }
@@ -4981,7 +5138,7 @@ Status CatalogManager::DoProcessCDCSDKTabletDeletion() {
           (hidden_tablet.hide_time_ < min_restart_time_across_slots ||
            IsCDCSDKTabletExpiredOrNotOfInterest(
                last_active_time, stream_creation_time_map.at(stream_id)))) {
-        entries_to_delete.emplace_back(cdc::CDCStateTableKey{tablet_id, stream_id});
+        entries_to_delete.emplace_back(tablet_id, stream_id);
         count_tablet_streams_to_delete++;
       }
     }
@@ -5019,7 +5176,10 @@ std::shared_ptr<cdc::CDCServiceProxy> CatalogManager::GetCDCServiceProxy(RemoteT
   return cdc_service;
 }
 
-void CatalogManager::SetCDCServiceEnabled() { cdc_enabled_.store(true, std::memory_order_release); }
+void CatalogManager::SetCDCServiceEnabled() {
+  master_->EnableCDCService();
+  cdc_enabled_.store(true, std::memory_order_release);
+}
 
 Result<scoped_refptr<TableInfo>> CatalogManager::GetTableById(const TableId& table_id) const {
   return FindTableById(table_id);

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -15,7 +15,10 @@
 
 #include <algorithm>
 #include <future>
+#include <ranges>
 #include <type_traits>
+
+#include "yb/gutil/stl_util.h"
 
 // Implementation of std functions we want to use, but cannot until we switch to newer C++.
 
@@ -130,5 +133,17 @@ auto ValueAsFuture(T&& value) {
 
 template <class T>
 using optional_ref = std::optional<std::reference_wrapper<T>>;
+
+template <class T, class S>
+auto SharedField(std::shared_ptr<S> ptr, T* field) {
+  return std::shared_ptr<T>(std::move(ptr), field);
+}
+
+template <class Container, class T>
+void AddIfMissing(Container& container, T&& value) {
+    if (std::ranges::find(container, value) == container.end()) {
+      InsertIntoContainer(container, std::move(value));
+    }
+}
 
 } // namespace yb

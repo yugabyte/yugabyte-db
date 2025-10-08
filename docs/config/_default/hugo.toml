@@ -6,6 +6,13 @@ pygmentsCodefences = true
 pygmentsStyle = 'pygments'
 resourceDir = 'docs/resources'
 
+[languages]
+  [languages.en]
+    languageCode = 'en-US'
+    languageDirection = 'ltr'
+    languageName = 'English'
+    weight = 1
+
 enableGitInfo = true
 
 [frontmatter]
@@ -15,31 +22,8 @@ enableGitInfo = true
 [params]
   regenerateDiagrams = false
 
-[module]
-  [module.hugoVersion]
-    extended = true
-    min = "0.145.0"
-  [[module.imports]]
-    path = "github.com/google/docsy"
-    disable = false
-  [[module.imports]]
-    path = "github.com/google/docsy/dependencies"
-    disable = false
-  [[module.imports]]
-    path = "github.com/trunkcode/hugo-seo"
-    disable = false
-  [[module.imports]]
-    path = "../node_modules/@fortawesome/fontawesome-pro"
-    disable = false
-    [[module.imports.mounts]]
-      source = "scss"
-      target = "assets/vendor/Font-Awesome-Pro/scss"
-    [[module.imports.mounts]]
-      source = "webfonts"
-      target = "static/webfonts/Font-Awesome-Pro"
-
 [markup.goldmark.parser.attribute]
-    block = true
+  block = true
 
 [security]
   [security.funcs]

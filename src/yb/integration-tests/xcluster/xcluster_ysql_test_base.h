@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -80,28 +80,19 @@ class XClusterYsqlTestBase : public XClusterTestBase {
       const NamespaceName& db_name);
 
   Result<client::YBTableName> CreateYsqlTable(
-      Cluster* cluster,
-      const std::string& namespace_name,
-      const std::string& schema_name,
-      const std::string& table_name,
-      const boost::optional<std::string>& tablegroup_name,
-      uint32_t num_tablets,
-      bool colocated = false,
-      const ColocationId colocation_id = 0,
+      Cluster* cluster, const std::string& namespace_name, const std::string& schema_name,
+      const std::string& table_name, const std::optional<std::string>& tablegroup_name,
+      uint32_t num_tablets, bool colocated = false, const ColocationId colocation_id = 0,
       const bool ranged_partitioned = false);
 
   Result<client::YBTableName> CreateYsqlTable(
       uint32_t idx, uint32_t num_tablets, Cluster* cluster,
-      const boost::optional<std::string>& tablegroup_name = {}, bool colocated = false,
+      const std::optional<std::string>& tablegroup_name = {}, bool colocated = false,
       const bool ranged_partitioned = false);
 
   Result<client::YBTableName> GetYsqlTable(
-      Cluster* cluster,
-      const std::string& namespace_name,
-      const std::string& schema_name,
-      const std::string& table_name,
-      bool verify_table_name = true,
-      bool verify_schema_name = false,
+      Cluster* cluster, const std::string& namespace_name, const std::string& schema_name,
+      const std::string& table_name, bool verify_table_name = true, bool verify_schema_name = false,
       bool exclude_system_tables = true);
 
   Result<bool> IsTableDeleted(Cluster& cluster, const client::YBTableName& table_name);
@@ -141,6 +132,16 @@ class XClusterYsqlTestBase : public XClusterTestBase {
   Status VerifyWrittenRecords(
       ExpectNoRecords expect_no_records,
       CheckColumnCounts check_col_counts = CheckColumnCounts::kTrue);
+
+  Status VerifyWrittenRecords(
+      const std::vector<TableName>& table_names, const NamespaceName& database_name = "",
+      const std::string& schema_name = "");
+
+  Result<std::shared_ptr<client::YBTable>> GetProducerTable(
+      const client::YBTableName& producer_table_name);
+
+  Result<std::shared_ptr<client::YBTable>> GetConsumerTable(
+      const client::YBTableName& producer_table_name);
 
   static Result<std::vector<xrepl::StreamId>> BootstrapCluster(
       const std::vector<std::shared_ptr<client::YBTable>>& tables,

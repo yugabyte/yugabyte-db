@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -15,8 +15,8 @@
 
 #include "yb/common/schema.h"
 
-#include "yb/dockv/key_entry_value.h"
 #include "yb/docdb/doc_ql_scanspec.h"
+#include "yb/dockv/key_entry_value.h"
 
 #include "yb/master/master.h"
 #include "yb/master/scoped_leader_shared_lock.h"
@@ -24,16 +24,15 @@
 #include "yb/master/yql_vtable_iterator.h"
 
 #include "yb/util/metrics.h"
-#include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
 
-namespace yb {
-namespace master {
+namespace yb::master {
 
-namespace  {
-static const char* const kBaseMetricDescription = "Time spent querying YCQL system table: ";
+namespace {
+static const char* const kBaseMetricDescription =
+    "Time (microseconds) spent querying YCQL system table: ";
 static const char* const kMetricPrefixName = "ycql_queries_";
-}
+}  // namespace
 
 YQLVirtualTable::YQLVirtualTable(const TableName& table_name,
                                  const NamespaceName &namespace_name,
@@ -89,7 +88,7 @@ Status YQLVirtualTable::BuildYQLScanSpec(
   }
   const dockv::KeyEntryValues empty_vec;
   spec->reset(new docdb::DocQLScanSpec(
-      schema, /* hash_code = */ boost::none, /* max_hash_code = */ boost::none, empty_vec,
+      schema, /* hash_code = */ std::nullopt, /* max_hash_code = */ std::nullopt, empty_vec,
       request.has_where_expr() ? &request.where_expr().condition() : nullptr,
       request.has_if_expr() ? &request.if_expr().condition() : nullptr, rocksdb::kDefaultQueryId,
       request.is_forward_scan()));
@@ -123,5 +122,4 @@ Result<std::pair<int, DataType>> YQLVirtualTable::ColumnIndexAndType(
 const std::string kSystemTablesReleaseVersion = "3.9-SNAPSHOT";
 const std::string kSystemTablesReleaseVersionColumn = "release_version";
 
-}  // namespace master
-}  // namespace yb
+} // namespace yb::master

@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -38,8 +38,8 @@ import com.yugabyte.yw.common.CloudProviderHelper;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.forms.EditAccessKeyRotationScheduleParams;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -139,8 +139,8 @@ public class CloudProviderHandler {
         }
       }
     }
-    if (reqProvider.getCloudCode() != kubernetes
-        && !runtimeConfGetter.getGlobalConf(GlobalConfKeys.disableNodeAgentOnProviderCreation)) {
+    if (reqProvider.getCloudCode() != kubernetes) {
+      // TODO This will be removed later after the migrations are done.
       reqProvider.getDetails().setEnableNodeAgent(true);
     }
     Provider provider =
@@ -406,6 +406,17 @@ public class CloudProviderHandler {
       Provider editProviderReq,
       boolean validate,
       boolean ignoreValidationErrors) {
+    return editProvider(
+        customer, provider, editProviderReq, validate, ignoreValidationErrors, null);
+  }
+
+  public UUID editProvider(
+      Customer customer,
+      Provider provider,
+      Provider editProviderReq,
+      boolean validate,
+      boolean ignoreValidationErrors,
+      KubernetesResourceDetails kubernetesResourceDetails) {
     cloudProviderHelper.validateEditProvider(
         editProviderReq, provider, validate, ignoreValidationErrors);
     Provider.UsabilityState state = provider.getUsabilityState();
@@ -418,6 +429,7 @@ public class CloudProviderHandler {
       taskParams.newProviderState = editProviderReq;
       taskParams.providerUUID = provider.getUuid();
       taskParams.skipRegionBootstrap = false;
+      taskParams.kubernetesResourceDetails = kubernetesResourceDetails;
       UUID taskUUID = commissioner.submit(TaskType.CloudProviderEdit, taskParams);
       CustomerTask.create(
           customer,
@@ -517,5 +529,17 @@ public class CloudProviderHandler {
       }
     }
     return schedule;
+  }
+
+  public String getKubernetesPullSecretYaml(String secretName, String namespace) {
+    return Serialization.asYaml(cloudProviderHelper.getKubernetesPullSecret(secretName, namespace));
+  }
+
+  public String getDefaultKubernetesPullSecretYaml() {
+    return getKubernetesPullSecretYaml(config.getString("yb.kubernetes.pullSecretName"), null);
+  }
+
+  public String getKubernetesPullSecretName() {
+    return config.getString("yb.kubernetes.pullSecretName");
   }
 }

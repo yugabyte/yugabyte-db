@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -327,7 +327,8 @@ TEST_F_EX(RetryableRequestTest, TestMemTrackerMetric, SingleServerRetryableReque
   // Make sure mem_tracker metric is in the tablet metric entity.
   std::string mem_tracker_metric_name =
       "mem_tracker_server_1_Tablets_overhead_PerTablet_Retryable_Requests";
-  auto tablet_metrics_entity = tablet_peer->tablet()->GetTabletMetricsEntity();
+  auto tablet = ASSERT_RESULT(tablet_peer->shared_tablet());
+  auto tablet_metrics_entity = tablet->GetTabletMetricsEntity();
   ASSERT_TRUE(tablet_metrics_entity->TEST_ContainsMetricName(mem_tracker_metric_name));
 }
 

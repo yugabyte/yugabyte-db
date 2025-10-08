@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -23,6 +23,7 @@
 #include "yb/integration-tests/cdcsdk_test_base.h"
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 
+#include "yb/master/sys_catalog_constants.h"
 #include "yb/master/tasks_tracker.h"
 
 #include "yb/tserver/tablet_server.h"
@@ -1227,9 +1228,10 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckPointPersistencyNodeRest
       if (peer->tablet_id() == tablets[0].tablet_id()) {
         // What ever checkpoint persisted in the RAFT logs should be same as what ever in memory
         // transaction participant tablet peer.
+        auto tablet = ASSERT_RESULT(peer->shared_tablet());
         ASSERT_EQ(
             peer->cdc_sdk_min_checkpoint_op_id(),
-            peer->tablet()->transaction_participant()->GetRetainOpId());
+            tablet->transaction_participant()->GetRetainOpId());
       }
     }
   }
@@ -1553,20 +1555,21 @@ void CDCSDKYsqlTest::TestMultipleActiveStreamOnSameTablet(CDCCheckpointType chec
   ASSERT_OK(s);
 
   ASSERT_OK(WaitFor(
-      [&]() {
+      [&]() -> Result<bool> {
         // Read the tablet LEADER as well as FOLLOWER's transaction_participation
         // Check all the tserver checkpoint info it's should be valid.
         uint32_t i = 0;
         while (i < test_cluster()->num_tablet_servers()) {
           for (const auto& peer : test_cluster()->GetTabletPeers(i)) {
             if (peer->tablet_id() == tablets[0].tablet_id()) {
-              if (peer->tablet()->transaction_participant()->GetRetainOpId() != min_checkpoint) {
+              auto tablet = VERIFY_RESULT(peer->shared_tablet());
+              if (tablet->transaction_participant()->GetRetainOpId() != min_checkpoint) {
                 SleepFor(MonoDelta::FromMilliseconds(2));
               } else {
                 i += 1;
                 LOG(INFO) << "In tserver: " << i
                           << " tablet peer have transaction_participant op_id set as: "
-                          << peer->tablet()->transaction_participant()->GetRetainOpId();
+                          << tablet->transaction_participant()->GetRetainOpId();
               }
               break;
             }
@@ -1690,16 +1693,15 @@ void CDCSDKYsqlTest::TestActiveAndInactiveStreamOnSameTablet(CDCCheckpointType c
         while (i < test_cluster()->num_tablet_servers()) {
           for (const auto& peer : test_cluster()->GetTabletPeers(i)) {
             if (peer->tablet_id() == tablets[0].tablet_id()) {
-              if (peer->tablet()->transaction_participant()->GetRetainOpId() !=
-                      overall_min_checkpoint &&
-                  peer->tablet()->transaction_participant()->GetRetainOpId() !=
-                      active_stream_checkpoint) {
+              auto tablet = VERIFY_RESULT(peer->shared_tablet());
+              if (tablet->transaction_participant()->GetRetainOpId() != overall_min_checkpoint &&
+                  tablet->transaction_participant()->GetRetainOpId() != active_stream_checkpoint) {
                 SleepFor(MonoDelta::FromMilliseconds(2));
               } else {
                 i += 1;
                 LOG(INFO) << "In tserver: " << i
                           << " tablet peer have transaction_participant op_id set as: "
-                          << peer->tablet()->transaction_participant()->GetRetainOpId();
+                          << tablet->transaction_participant()->GetRetainOpId();
               }
               break;
             }
@@ -1782,8 +1784,9 @@ void CDCSDKYsqlTest::TestCheckpointPersistencyAllNodesRestart(CDCCheckpointType 
             [&]() -> Result<bool> {
               // Checkpoint persisted in the RAFT logs should be same as in memory transaction
               // participant tablet peer.
+              auto tablet = VERIFY_RESULT(peer->shared_tablet());
               if (peer->cdc_sdk_min_checkpoint_op_id() !=
-                      peer->tablet()->transaction_participant()->GetRetainOpId() ||
+                      tablet->transaction_participant()->GetRetainOpId() ||
                   checkpoints[0] != peer->cdc_sdk_min_checkpoint_op_id()) {
                 return false;
               }
@@ -6215,9 +6218,10 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckPointWithNoCDCStream)) {
         // What ever checkpoint persisted in the RAFT logs should be same as what ever in memory
         // transaction participant tablet peer.
         ASSERT_EQ(peer->cdc_sdk_min_checkpoint_op_id(), OpId::Invalid());
+        auto tablet = ASSERT_RESULT(peer->shared_tablet());
         ASSERT_EQ(
             peer->cdc_sdk_min_checkpoint_op_id(),
-            peer->tablet()->transaction_participant()->GetRetainOpId());
+            tablet->transaction_participant()->GetRetainOpId());
       }
     }
   }
@@ -6235,9 +6239,10 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckPointWithNoCDCStream)) {
         // What ever checkpoint persisted in the RAFT logs should be same as what ever in memory
         // transaction participant tablet peer.
         ASSERT_EQ(peer->cdc_sdk_min_checkpoint_op_id(), OpId::Invalid());
+        auto tablet = ASSERT_RESULT(peer->shared_tablet());
         ASSERT_EQ(
             peer->cdc_sdk_min_checkpoint_op_id(),
-            peer->tablet()->transaction_participant()->GetRetainOpId());
+            tablet->transaction_participant()->GetRetainOpId());
       }
     }
   }
@@ -7826,7 +7831,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAtomicDDLDropColumn)) {
   // Sleep to ensure that second CHANGE_METADATA_OP is written to the WAL
   SleepFor(MonoDelta::FromSeconds(10));
 
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 1000, false));
+  ASSERT_OK(test_client()->FlushTables({table.table_id()}, MonoDelta::FromSeconds(1000)));
 
   // Call getChanges to consume the records
   auto get_changes_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
@@ -8672,7 +8677,7 @@ TEST_F(CDCSDKYsqlTest, TestPackedRowsWithLargeColumnValue) {
       "UPDATE $0 SET $1 = '$2' WHERE $3 = 1", kTableName, kValue2ColumnName, text + text,
       kKeyColumnName));
   ASSERT_OK(conn.Execute("COMMIT"));
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 30, false));
+  ASSERT_OK(test_client()->FlushTables({table.table_id()}));
 
   std::unordered_set<std::string> record_primary_key;
   std::unordered_set<std::string> record_table_id;
@@ -8723,7 +8728,7 @@ TEST_F(CDCSDKYsqlTest, TestPackedRowsWithLargeColumnValue) {
       "UPDATE $0 SET $1 = '$2', $4 = 22, $5 = '$6' WHERE $3 = 2", kTableName, kValue2ColumnName,
       text + text, kKeyColumnName, kValueColumnName, kValue3ColumnName, text));
   ASSERT_OK(conn.Execute("COMMIT"));
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 30, false));
+  ASSERT_OK(test_client()->FlushTables({table.table_id()}));
 
   get_changes_resp =
       ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &get_changes_resp.cdc_sdk_checkpoint()));
@@ -8776,7 +8781,7 @@ TEST_F(CDCSDKYsqlTest, TestPackedRowsWithLargeColumnValue) {
       "INSERT INTO $0($1, $2, $3, $4) VALUES (3, 4, NULL, '$5')", kTableName, kKeyColumnName,
       kValueColumnName, kValue2ColumnName, kValue3ColumnName, text));
   ASSERT_OK(conn.Execute("COMMIT"));
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 30, false));
+  ASSERT_OK(test_client()->FlushTables({table.table_id()}));
 
   get_changes_resp =
       ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &get_changes_resp.cdc_sdk_checkpoint()));
@@ -8848,7 +8853,7 @@ TEST_F(CDCSDKYsqlTest, TestPackedRowsWithLargeColumnValueSingleShardTransaction)
   ASSERT_OK(conn.ExecuteFormat(
       "UPDATE $0 SET $1 = '$2' WHERE $3 = 1", kTableName, kValue2ColumnName, text + text,
       kKeyColumnName));
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 30, false));
+  ASSERT_OK(test_client()->FlushTables({table.table_id()}));
 
   std::unordered_set<std::string> record_primary_key;
   std::unordered_set<std::string> record_table_id;
@@ -8893,7 +8898,7 @@ TEST_F(CDCSDKYsqlTest, TestPackedRowsWithLargeColumnValueSingleShardTransaction)
   ASSERT_OK(conn.ExecuteFormat(
       "INSERT INTO $0($1, $2, $3, $4) VALUES (3, 4, NULL, '$5')", kTableName, kKeyColumnName,
       kValueColumnName, kValue2ColumnName, kValue3ColumnName, text));
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 30, false));
+  ASSERT_OK(test_client()->FlushTables({table.table_id()}));
   get_changes_resp =
       ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &get_changes_resp.cdc_sdk_checkpoint()));
 
@@ -10758,7 +10763,7 @@ TEST_F(CDCSDKYsqlTest, TestWithMajorityReplicatedButNonCommittedMultiShardTxn) {
     if (peer->tablet_id() != tablet_id) {
       continue;
     }
-    auto tablet = ASSERT_RESULT(peer->shared_tablet_safe());
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
     ASSERT_OK(peer->log()->AllocateSegmentAndRollOver());
     ASSERT_OK(peer->log()->GetSegmentsSnapshot(&segments));
     ASSERT_EQ(segments.size(), 2);
@@ -11582,7 +11587,7 @@ TEST_F(CDCSDKYsqlTest, TestIntentSSTFileCleanupAfterConsumption) {
             if (peer->tablet_id() != tablet_id) {
               continue;
             }
-            auto tablet = VERIFY_RESULT(peer->shared_tablet_safe());
+            auto tablet = VERIFY_RESULT(peer->shared_tablet());
             if (tablet->transaction_participant()->GetNumRunningTransactions() != 0) {
               return false;
             }
@@ -11867,7 +11872,7 @@ TEST_F(CDCSDKYsqlTest, TestGetChangesAfterMultipleTabletBootstrap) {
             if (peer->tablet_id() != tablet_id) {
               continue;
             }
-            auto tablet = VERIFY_RESULT(peer->shared_tablet_safe());
+            auto tablet = VERIFY_RESULT(peer->shared_tablet());
             auto running_txns = tablet->transaction_participant()->GetNumRunningTransactions();
             if (running_txns != 0) {
               LOG(INFO) << "Running txns on tablet " << tablet_id
@@ -12070,6 +12075,280 @@ TEST_F(CDCSDKYsqlTest, TestDropTableWithXcluster) {
   replica_identities.clear();
   ASSERT_OK(test_client()->GetCDCStream(ReplicationSlotName(slot_name), &replica_identities));
   ASSERT_EQ(replica_identities.size(), 2);
+}
+
+TEST_F(CDCSDKYsqlTest, TestYbRestartCommitTimeInPgReplicationSlots) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_consumption) = true;
+  ASSERT_OK(SetUpWithParams(3, 1, false, true));
+
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, 3));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 3);
+
+  auto cdc_state_table = MakeCDCStateTable(test_client());
+  auto stream_id = ASSERT_RESULT(
+      CreateConsistentSnapshotStreamWithReplicationSlot(CDCSDKSnapshotOption::USE_SNAPSHOT));
+  auto checkpoint = ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id, tablets[0].tablet_id()));
+
+  auto entry = ASSERT_RESULT(cdc_state_table.TryFetchEntry(
+      {kCDCSDKSlotEntryTabletId, stream_id}, CDCStateTableEntrySelector().IncludeAll()));
+  ASSERT_TRUE(entry.has_value());
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto result = ASSERT_RESULT(conn.Fetch(
+      "SELECT to_char(yb_restart_time, 'YYYY-MM-DD HH24:MI:SS.USOF') FROM pg_replication_slots"));
+
+  ASSERT_EQ(PQntuples(result.get()), 1);
+
+  std::string view_time = PQgetvalue(result.get(), 0, 0);
+  std::string expected_time =
+    ASSERT_RESULT(HybridTimeToReadableString(entry->record_id_commit_time.value()));
+
+  ASSERT_EQ(view_time, expected_time);
+}
+
+// This test verifies that we are able to call GetChanges successfully on master tablet.
+TEST_F(CDCSDKYsqlTest, TestPollingPgCatalogTables) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_dynamic_table_support) = false;
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) = true;
+
+  ASSERT_OK(SetUpWithParams(3, 3));
+  xrepl::StreamId stream_id =
+      ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot("test_poll_catalog_tables"));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.Execute("CREATE TABLE test_1 (a int primary key, b text)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE test_2 (a int primary key, b text)"));
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub_1 FOR TABLE test_1"));
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub_2 FOR ALL TABLES"));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE test_3 (a int primary key, b text)"));
+  ASSERT_OK(conn.Execute("ALTER PUBLICATION pub_1 ADD TABLE test_3"));
+  ASSERT_OK(conn.Execute("ALTER PUBLICATION pub_1 DROP TABLE test_3"));
+
+  ASSERT_OK(conn.Execute("ALTER TABLE test_1 ADD COLUMN c text"));
+
+  auto change_resp = ASSERT_RESULT(GetChangesFromMaster(stream_id));
+  ASSERT_FALSE(change_resp.has_error());
+
+  // 0=DDL, 1=INSERT, 2=UPDATE, 3=DELETE, 4=READ, 5=TRUNCATE, 6=BEGIN, 7=COMMIT
+  int record_count[] = {0, 0, 0, 0, 0, 0, 0, 0};
+
+  // We will receive 2 DDLs, one for pg_class and one for pg_publication_rel.
+  // Each CREATE TABLE will give 2 inserts and an update to pg_class in debug builds. In release
+  // build we get 3 inserts.
+  // Creation of pub_1 will result into one insert to pg_publication_rel.
+  // ALTER PUB ADD TABLE will give one insert and ALTER PUB DROP TABLE will give one delete.
+  // Creation of an all tables publication does not give any change record to us.
+  // ALTER TABLE will give one update to pg_class in debug builds and one insert in release builds.
+  // We will not receive any record corresponding to the addition of column in other catalog tables
+  // such as pg_attribute.
+  const int expected_count_without_packed_row[] = {2, 8, 4, 1, 0, 0, 8, 8};
+  const int expected_count_with_packed_row[] = {2, 12, 0, 1, 0, 0, 8, 8};
+
+  for (auto record : change_resp.cdc_sdk_proto_records()) {
+    UpdateRecordCount(record, record_count);
+  }
+
+  for (int i = 0; i < 8; i++) {
+    if (FLAGS_ysql_enable_packed_row) {
+      ASSERT_EQ(record_count[i], expected_count_with_packed_row[i]);
+    } else {
+      ASSERT_EQ(record_count[i], expected_count_without_packed_row[i]);
+    }
+  }
+}
+
+TEST_F(CDCSDKYsqlTest, TestStreamIndependenceWhilePollingCatalogTablet) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_dynamic_table_support) = false;
+  ANNOTATE_UNPROTECTED_WRITE(
+    FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) = true;
+
+  ASSERT_OK(SetUpWithParams(1, 1));
+
+  // Create second DB.
+  const auto kNamespaceName_2 = "test_namespace_2";
+  ASSERT_OK(CreateDatabase(&test_cluster_, kNamespaceName_2, false /* colocated*/));
+
+  // Create one table on each DB.
+  ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "test_table_1"));
+  ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName_2, "test_table_2"));
+
+  auto conn_1 = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto conn_2 = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName_2));
+
+  // Create a publication in each DB.
+  ASSERT_OK(conn_1.Execute("CREATE PUBLICATION test_pub_1 FOR TABLE test_table_1"));
+  ASSERT_OK(conn_2.Execute("CREATE PUBLICATION test_pub_2 FOR TABLE test_table_2"));
+
+  // Create streams on both DBs.
+  auto stream_id_1 = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(
+      "test_slot_1", CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT, false, kNamespaceName));
+  auto stream_id_2 = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(
+      "test_slot_2", CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT, false, kNamespaceName_2));
+
+  // Create a dynamic table and add it to the publication in first DB.
+  ASSERT_OK(conn_1.Execute("CREATE TABLE dynamic_table (id int primary key)"));
+  ASSERT_OK(conn_1.Execute("ALTER PUBLICATION test_pub_1 ADD TABLE dynamic_table"));
+
+  // Call GetChanges on sys catalog tablet using stream_1. We will get 11 records:
+  // 1 DDL corresponding to the CHANGE_METADATA_OP performed during creation of stream_2, 6 recprds
+  // corresponding to the CREATE TABLES (BEGIN, DDL, 2 INSERTS, 1 UPDATE, COMMIT) and 4 records
+  // corresponding to the ALTER PUB (BEGIN, DDL, INSERT, COMMIT).
+  auto change_resp = ASSERT_RESULT(GetChangesFromMaster(stream_id_1));
+  ASSERT_FALSE(change_resp.has_error());
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 11);
+
+  // Call GetChanges on sys catalog tablet using stream_2. We will not get any DMLs as sys catalog
+  // tablet only has change records corresponding to the DB 1. These records will be filtered by CDC
+  // producer and empty BEGIN - COMMIT pairs will be received here.
+  auto change_resp_2 = ASSERT_RESULT(GetChangesFromMaster(stream_id_2));
+  ASSERT_FALSE(change_resp_2.has_error());
+  for (auto record : change_resp_2.cdc_sdk_proto_records()) {
+    ASSERT_TRUE(
+        (record.row_message().op() == RowMessage_Op_BEGIN) ||
+        (record.row_message().op() == RowMessage_Op_COMMIT));
+  }
+}
+
+TEST_F(CDCSDKYsqlTest, TestPollingPgCatalogTablesAfterLeaderStepDown) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(
+    FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) = true;
+
+  ASSERT_OK(SetUpWithParams(3, 3, false));
+
+  // Create a table before stream creation. No change record corresponding to this DDL will be
+  // shipped from catalog tablet.
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.Execute("CREATE TABLE test_1 (a int primary key, b text)"));
+
+  // Create a stream.
+  xrepl::StreamId stream_id =
+      ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot("test_poll_catalog_tables"));
+
+  // Change the leader master. This will ensure that GetChanges call is served by a different peer
+  // than the one which handled CreateCDCSteam.
+  ASSERT_OK(test_cluster_.mini_cluster_->StepDownMasterLeader("" /*new_leader_uuid*/));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE test_2 (a int primary key, b text)"));
+
+  auto change_resp = ASSERT_RESULT(GetChangesFromMaster(stream_id));
+
+  // 0=DDL, 1=INSERT, 2=UPDATE, 3=DELETE, 4=READ, 5=TRUNCATE, 6=BEGIN, 7=COMMIT
+  // We will receive records only corresponding to the creation of test_2.
+  // Without packed row wer will receive 1 Insert in pg_class for test_2 entry, 1 insert in pg_class
+  // for pk index table and 1 Update to the originally added entry (first insert) regarding pk
+  // addition. With packed row instead of the Update we will receive another Insert.
+  int record_count[] = {0, 0, 0, 0, 0, 0, 0, 0};
+  const int expected_count_without_packed_row[] = {1, 2, 1, 0, 0, 0, 1, 1};
+  const int expected_count_with_packed_row[] = {1, 3, 0, 0, 0, 0, 1, 1};
+
+  // None of the records should belong to the DDL which was performed before stream creation.
+  for (auto record : change_resp.cdc_sdk_proto_records()) {
+    UpdateRecordCount(record, record_count);
+    if (record.row_message().op() == RowMessage_Op_INSERT ||
+        record.row_message().op() == RowMessage_Op_UPDATE) {
+      ASSERT_NE(
+          record.row_message().new_tuple().Get(1).pg_catalog_value().string_value(), "test_1");
+    }
+  }
+
+  for (int i = 0; i < 8; i++) {
+    if (FLAGS_ysql_enable_packed_row) {
+      ASSERT_EQ(record_count[i], expected_count_with_packed_row[i]);
+    } else {
+      ASSERT_EQ(record_count[i], expected_count_without_packed_row[i]);
+    }
+  }
+}
+
+TEST_F(CDCSDKYsqlTest, TestFailSettingRetentionBarriersOnApplyForCatalogTable) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(
+    FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_master_interval_secs) = 0;
+
+  // Set the test flag to fail setting retention barriers on apply of change metadata operation.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_cdc_setting_retention_barriers_on_apply) = true;
+
+  ASSERT_OK(SetUpWithParams(3, 3, false /* colocated */));
+
+  // Since there were no tables in the database, stream metadata will only contain the two catalog
+  // tables and we will try to set the retention barriers on sys catalog tablet only. Stream
+  // creation will fail since the safe_op_id will not be populated in the state table entry for the
+  // sys catalog tablet as the apply of change_metadata_op will fail.
+  auto stream_result = CreateConsistentSnapshotStreamWithReplicationSlot();
+  ASSERT_FALSE(stream_result.ok());
+
+  // Assert that the state table entry added for sys catalog tablet during the stream creation is
+  // deleted by UPAM after rolling back the stream creation.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto state_table_row_count = VERIFY_RESULT(GetStateTableRowCount());
+        return state_table_row_count == 0;
+      },
+      MonoDelta::FromSeconds(30 * kTimeMultiplier),
+      "Failed while waiting for state table to be empty"));
+}
+
+TEST_F(CDCSDKYsqlTest, TestConcurrentStreamCreationOnCatalogTables) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(
+    FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) = true;
+
+  ASSERT_OK(SetUpWithParams(1, 1));
+
+  // Concurrently create two streams. Since there are no tables in the DB, stream metadata will only
+  // contain the catalog tables.
+  xrepl::StreamId stream_1, stream_2;
+  std::thread t1([&stream_1, this]() {
+    stream_1 = ASSERT_RESULT(this->CreateConsistentSnapshotStreamWithReplicationSlot());
+  });
+  std::thread t2([&stream_2, this]() {
+    stream_2 = ASSERT_RESULT(this->CreateConsistentSnapshotStreamWithReplicationSlot());
+  });
+
+  t1.join();
+  t2.join();
+
+  auto mini_master = ASSERT_RESULT(test_cluster_.mini_cluster_->GetLeaderMiniMaster());
+  auto tablet_peer = mini_master->tablet_peer();
+
+  // 2 entries for the sys catalog tablet and 2 slot entries.
+  auto row_count = ASSERT_RESULT(GetStateTableRowCount());
+  ASSERT_EQ(row_count, 4);
+
+  auto checkpoint_result_1 =
+      ASSERT_RESULT(GetCDCSnapshotCheckpoint(stream_1, tablet_peer->tablet_id()));
+  auto checkpoint_result_2 =
+      ASSERT_RESULT(GetCDCSnapshotCheckpoint(stream_2, tablet_peer->tablet_id()));
+
+  // Both the sys catalog tablet state table entris should have a valid checkpoint.
+  ASSERT_GT(checkpoint_result_1.checkpoint().op_id().term(), 0);
+  ASSERT_GT(checkpoint_result_1.checkpoint().op_id().index(), 0);
+  ASSERT_GT(checkpoint_result_2.checkpoint().op_id().term(), 0);
+  ASSERT_GT(checkpoint_result_2.checkpoint().op_id().index(), 0);
+
+  // Since we are setting the history barrier, cdc_sdk_safe_time should be valid.
+  ASSERT_NE(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
+
+  // Checkpoint in state table should be >= the retention boundary OpId (index).
+  ASSERT_GE(
+      checkpoint_result_1.checkpoint().op_id().index(),
+      tablet_peer->get_cdc_min_replicated_index());
+  ASSERT_GE(
+      checkpoint_result_2.checkpoint().op_id().index(),
+      tablet_peer->get_cdc_min_replicated_index());
+
+  ASSERT_EQ(
+      tablet_peer->cdc_sdk_min_checkpoint_op_id().index,
+      tablet_peer->get_cdc_min_replicated_index());
 }
 
 }  // namespace cdc

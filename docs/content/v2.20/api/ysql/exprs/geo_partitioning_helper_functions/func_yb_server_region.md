@@ -4,7 +4,7 @@ headerTitle: yb_server_region()
 linkTitle: yb_server_region()
 description: Returns the region of the currently connected node
 menu:
-  v2.20:
+  v2.20_api:
     identifier: api-ysql-exprs-yb_server_region
     parent: geo-partitioning-helper-functions
 type: docs
@@ -63,10 +63,10 @@ Do the following to create a 3-node multi-region cluster and a geo-partitioned t
 1. Use [yb-admin](../../../../../admin/yb-admin/) to specify the placement configuration to be used by the cluster:
 
     ```sh
-    ./bin/yb-admin -master_addresses <IP1>:7100 modify_placement_info aws.us-west-1.us-west-1c:1,aws.us-east-1.us-east-1a:1,aws.us-east-2.us-east-2c:1 3
+    ./bin/yb-admin --master_addresses <IP1>:7100 modify_placement_info aws.us-west-1.us-west-1c:1,aws.us-east-1.us-east-1a:1,aws.us-east-2.us-east-2c:1 3
     ```
 
-1. Create tablespaces corresponding to the regions used by the cluster created above [using ysqlsh](../../../../../admin/ysqlsh/#using-ysqlsh):
+1. Create tablespaces corresponding to the regions used by the cluster created above [using ysqlsh](../../../../../api/ysqlsh/#using-ysqlsh):
 
     ```sql
     CREATE TABLESPACE us_west_tablespace WITH (replica_placement=' {"num_replicas":1,"placement_blocks":[{"cloud":"aws","region":"us-west-1","zone":"us-west-1c","min_num_replicas":1}]}');

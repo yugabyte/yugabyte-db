@@ -10,6 +10,7 @@ import { ReplicationIcon } from '../../icons/ReplicationIcon';
 import { getXClusterConfig } from '../utils';
 import { EstimatedDataLossLabel } from './EstimatedDataLossLabel';
 import { SchemaChangeModeLabel } from './SchemaChangeModeLabel';
+import { I18N_ACCESSABILITY_ALT_TEXT_KEY_PREFIX } from '../../../../redesign/helpers/constants';
 
 import { DrConfig } from '../dtos';
 
@@ -64,7 +65,10 @@ export const DrConfigOverview = ({ drConfig }: DrConfigOverviewProps) => {
             <YBTooltip
               title={<Typography variant="body2">{t('property.drStatus.tooltip')}</Typography>}
             >
-              <img src={InfoIcon} alt={t('infoIcon', { keyPrefix: 'imgAltText' })} />
+              <img
+                src={InfoIcon}
+                alt={t('infoIcon', { keyPrefix: I18N_ACCESSABILITY_ALT_TEXT_KEY_PREFIX })}
+              />
             </YBTooltip>
           </div>
           <DrConfigStateLabel drConfig={drConfig} />
@@ -77,7 +81,10 @@ export const DrConfigOverview = ({ drConfig }: DrConfigOverviewProps) => {
                 <Typography variant="body2">{t('property.estimatedDataLoss.tooltip')}</Typography>
               }
             >
-              <img src={InfoIcon} alt={t('infoIcon', { keyPrefix: 'imgAltText' })} />
+              <img
+                src={InfoIcon}
+                alt={t('infoIcon', { keyPrefix: I18N_ACCESSABILITY_ALT_TEXT_KEY_PREFIX })}
+              />
             </YBTooltip>
           </div>
           <EstimatedDataLossLabel drConfigUuid={drConfig.uuid} />

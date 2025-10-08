@@ -1,4 +1,4 @@
-// Copyright (c) Yugabyte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.common.operator.utils;
 
@@ -24,6 +24,7 @@ import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupState;
@@ -52,9 +53,9 @@ public class OperatorUtilsTest extends FakeDBApplication {
   private ValidatingFormFactory mockValidatingFormFactory;
   private BeanValidator mockBeanValidator;
   private FormFactory mockFormFactory;
+  private YBClientService mockYbClientService;
   private ReleaseManager mockReleaseManager;
   private OperatorUtils operatorUtils;
-
   private Universe testUniverse;
   private Customer testCustomer;
   private CustomerConfig testStorageConfig;
@@ -66,6 +67,7 @@ public class OperatorUtilsTest extends FakeDBApplication {
     mockYbcManager = Mockito.mock(YbcManager.class);
     mockFormFactory = Mockito.mock(FormFactory.class);
     mockBeanValidator = Mockito.mock(BeanValidator.class);
+    mockYbClientService = Mockito.mock(YBClientService.class);
     mockValidatingFormFactory = spy(new ValidatingFormFactory(mockFormFactory, mockBeanValidator));
     doCallRealMethod()
         .when(mockValidatingFormFactory)
@@ -74,7 +76,11 @@ public class OperatorUtilsTest extends FakeDBApplication {
     operatorUtils =
         spy(
             new OperatorUtils(
-                mockConfGetter, mockReleaseManager, mockYbcManager, mockValidatingFormFactory));
+                mockConfGetter,
+                mockReleaseManager,
+                mockYbcManager,
+                mockValidatingFormFactory,
+                mockYbClientService));
 
     testCustomer = ModelFactory.testCustomer();
     testUniverse = ModelFactory.createUniverse("operator-universe", testCustomer.getId());

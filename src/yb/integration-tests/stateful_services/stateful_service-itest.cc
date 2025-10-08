@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -11,23 +11,27 @@
 // under the License.
 //
 
-#include <chrono>
-
 #include "yb/client/stateful_services/test_echo_service_client.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_table_name.h"
+#include "yb/common/ql_value.h"
+
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
+
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/mini_master.h"
+
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/service_util.h"
 #include "yb/tserver/stateful_services/stateful_service_base.h"
 #include "yb/tserver/tablet_server.h"
+
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/sync_point.h"
@@ -65,7 +69,7 @@ class StatefulServiceTest : public MiniClusterTestWithClient<MiniCluster> {
     ASSERT_OK(CreateClient());
     ASSERT_OK(client_->WaitForCreateTableToFinish(service_table_name));
     std::vector<TabletId> tablet_ids;
-    ASSERT_OK(client_->GetTablets(service_table_name, 0 /* max_tablets */, &tablet_ids, NULL));
+    ASSERT_OK(client_->GetTablets(service_table_name, 0 /* max_tablets */, &tablet_ids, nullptr));
     ASSERT_EQ(tablet_ids.size(), 1);
     tablet_id_.swap(tablet_ids[0]);
     ASSERT_OK(cluster_->WaitForLoadBalancerToStabilize(kTimeout));
@@ -224,7 +228,6 @@ TEST_F(StatefulServiceTest, TestEchoService) {
   auto echo_resp = ASSERT_RESULT(service_client_->GetEcho(echo_req, kTimeout));
 
   ASSERT_EQ(echo_resp.message(), "Hello World! World! World!");
-  auto initial_node_id = echo_resp.node_id();
 
   // Make sure the tablet leader is the one serving the request.
   auto initial_leader = GetLeaderForTablet(cluster_.get(), tablet_id_);
@@ -301,10 +304,10 @@ TEST_F(StatefulServiceTest, TestLeadershipChange) {
   ASSERT_EQ(count_resp.count(), 0);
 
   yb::SyncPoint::GetInstance()->LoadDependency(
-      {{"StatefulRpcServiceBase::HandleRpcRequestWithTermCheck::AfterMethodImpl1",
-        "StatefulServiceTest::TestLeadershipChange::BeforeLeaderChange"},
-       {"StatefulServiceTest::TestLeadershipChange::AfterLeaderChange",
-        "StatefulRpcServiceBase::HandleRpcRequestWithTermCheck::AfterMethodImpl2"}});
+      {{.predecessor = "StatefulRpcServiceBase::HandleRpcRequestWithTermCheck::AfterMethodImpl1",
+        .successor = "StatefulServiceTest::TestLeadershipChange::BeforeLeaderChange"},
+       {.predecessor = "StatefulServiceTest::TestLeadershipChange::AfterLeaderChange",
+        .successor = "StatefulRpcServiceBase::HandleRpcRequestWithTermCheck::AfterMethodImpl2"}});
 
   uint64 attempts = 0;
   yb::SyncPoint::GetInstance()->SetCallBack(
@@ -350,10 +353,10 @@ TEST_F(StatefulServiceTest, TestWriteDuringLeadershipChange) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_combine_batcher_errors) = true;
 
   yb::SyncPoint::GetInstance()->LoadDependency(
-      {{"TestEchoService::RecordRequestInTable::BeforeApply1",
-        "StatefulServiceTest::TestWriteDuringLeadershipChange::BeforeLeaderChange"},
-       {"StatefulServiceTest::TestWriteDuringLeadershipChange::AfterLeaderChange",
-        "TestEchoService::RecordRequestInTable::BeforeApply2"}});
+      {{.predecessor = "TestEchoService::RecordRequestInTable::BeforeApply1",
+        .successor = "StatefulServiceTest::TestWriteDuringLeadershipChange::BeforeLeaderChange"},
+       {.predecessor = "StatefulServiceTest::TestWriteDuringLeadershipChange::AfterLeaderChange",
+        .successor = "TestEchoService::RecordRequestInTable::BeforeApply2"}});
 
   uint32 count_ok = 0, count_term_err = 0, count_err = 0;
   yb::SyncPoint::GetInstance()->SetCallBack(

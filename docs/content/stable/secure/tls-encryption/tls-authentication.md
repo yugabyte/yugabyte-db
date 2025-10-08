@@ -29,17 +29,17 @@ The four default cases are shown in the following table.
 | TLS disabled | `host all all all trust`</br>(no ssl, no password) | `host all all all md5`</br>(no ssl, password required) |
 | TLS enabled | `hostssl all all all trust`</br>(require ssl, no password) | `hostssl all all all md5`</br>(require ssl and password) |
 
-{{< note title="Note" >}}
-Before YugabyteDB v2.5.2, when TLS was enabled the default was to use the more strict `cert` option when auth was disabled, and `md5 clientcert=1` (md5 auth + cert verification) when auth was enabled.
-{{< /note >}}
-
 Additionally, `ysql_hba_conf_csv` can be used to manually configure a custom HBA configuration.
 
 For instance, to use TLS with both password authentication and client certificate verification, you can set the `ysql_hba_conf_csv` flag as follows:
 
 ```sh
-hostssl all all all md5 clientcert=1
+hostssl all all all md5 clientcert=verify-full
 ```
+
+{{< note title="Note" >}}
+To use the client certificate only for verification (signed by the CA) but not for authentication, you can set `clientcert` to `verify-ca`.
+{{< /note >}}
 
 The `ysql_hba_conf_csv` rules are added above the auto-generated rules in the `ysql_hba.conf` file, so if they do not match the connection type, database, user, or host, then the auto-generated rules (that is, from the table above) may still be used.
 
@@ -53,6 +53,8 @@ hostssl mydb myuser myhost cert,hostssl all all all reject
 
 ## Examples
 
+To secure clusters when deploying using yugabyted, you use the [--secure flag](../../../reference/configuration/yugabyted/#start), which enables encryption in transit and authentication. For the purposes of illustration, the following examples enable these features manually.
+
 To begin, generate and configure certificates using the following steps:
 
 1. Generate the certificates and keys for the local IP address (`127.0.0.1` in this example) using the `cert generate_server_certs` command. See [create certificates for a secure local cluster](../../../reference/configuration/yugabyted/#create-certificates-for-a-secure-local-multi-node-cluster) for more information.
@@ -63,7 +65,7 @@ To begin, generate and configure certificates using the following steps:
 
     Certificates are generated in the `<HOME>/var/generated_certs/<hostname>` directory.
 
-    ```sh
+    ```output
     127.0.0.1
     ├── ca.crt
     ├── node.127.0.0.1.crt
@@ -73,12 +75,12 @@ To begin, generate and configure certificates using the following steps:
 1. Enable TLS encryption by setting the `ENABLE_TLS` variable to point to the directory where the certificates are stored, and set the `use_client_to_server_encryption` flag to true as follows:
 
     ```sh
-    $ CERTS=`pwd`
+    $ cd ~/var/generated_certs/127.0.0.1
+    $ CERTS=$(pwd)
     $ ENABLE_TLS="use_client_to_server_encryption=true,certs_for_client_dir=$CERTS"
     ```
 
 1. `node.127.0.0.1.crt` and `node.127.0.0.1.key` are the default values for the `ssl_cert_file` and `ssl_key_file` server-side configuration for a YSQL node. If your local IP is not 127.0.0.1, then use the appropriate local IP to name the two files. Alternatively, use [ysql_pg_conf_csv](../../../reference/configuration/all-flags-yb-tserver/#ysql-pg-conf-csv) to set `ssl_cert_file` and `ssl_key_file` to the appropriate values.
-
 
 ### TLS without authentication
 
@@ -87,7 +89,8 @@ This configuration requires the client to use client-to-server encryption to con
 Create the database:
 
 ```sh
-$ ./bin/yb-ctl destroy && ./bin/yb-ctl create --tserver_flags="$ENABLE_TLS"
+$ ./bin/yugabyted start \
+    --tserver_flags="$ENABLE_TLS"
 ```
 
 Without SSL enabled in the client, the connection fails.
@@ -107,12 +110,12 @@ $ ./bin/ysqlsh "sslmode=require"
 ```
 
 ```output
-ysqlsh (11.2-YB-{{<yb-version version="stable" format="build">}})
+ysqlsh (15.2-YB-{{<yb-version version="stable">}}-b0)
 SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
 Type "help" for help.
 ```
 
-The default ysqlsh SSL mode is `prefer` (refer to [SSL Support](https://www.postgresql.org/docs/11/libpq-ssl.html) in the PostgreSQL documentation), which tries SSL first, but falls back to `disable` if the server does not support it.
+The default ysqlsh SSL mode is `prefer` (refer to [SSL Support](https://www.postgresql.org/docs/15/libpq-ssl.html) in the PostgreSQL documentation), which tries SSL first, but falls back to `disable` if the server does not support it.
 
 In this case, a plain ysqlsh with no options will work and use encryption:
 
@@ -121,7 +124,7 @@ $ ./bin/ysqlsh
 ```
 
 ```output
-ysqlsh (11.2-YB-{{<yb-version version="stable" format="build">}})
+ysqlsh (15.2-YB-{{<yb-version version="stable">}}-b0)
 SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
 Type "help" for help.
 ```
@@ -135,7 +138,10 @@ This configuration requires the client to use client-to-server encryption and au
 To create the database, execute the following command:
 
 ```sh
-$ ./bin/yb-ctl destroy && ./bin/yb-ctl create --tserver_flags="$ENABLE_TLS,ysql_enable_auth=true"
+$ ./bin/yugabyted destroy && \
+    ./bin/yugabyted cert generate_server_certs --hostnames=127.0.0.1 && \
+    ./bin/yugabyted start \
+    --tserver_flags="$ENABLE_TLS,ysql_enable_auth=true"
 ```
 
 To connect to the database, the password is required (see second line below):
@@ -146,27 +152,43 @@ $ ./bin/ysqlsh
 
 ```output
 Password for user yugabyte:
-ysqlsh (11.2-YB-{{<yb-version version="stable" format="build">}})
+ysqlsh (15.2-YB-{{<yb-version version="stable">}}-b0)
 SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
 Type "help" for help.
 ```
 
 The other modes (that is, `sslmode=require` or `disable`) behave analogously.
 
+### TLS with SCRAM-based password authentication
+
+This configuration (also known as SCRAM-SHA-256-PLUS) enables authentication with SCRAM using TLS channel-binding as described in [RFC 7677](https://tools.ietf.org/html/rfc7677). When enabled, information about the TLS channel is encoded in the authentication messages exchanged; this ensures the client and server share the same TLS channel (that is, binding the channel to the authentication mechanism).
+
+To enable SCRAM-SHA-256-PLUS for a user already using SCRAM-SHA-256, you set the `ysql_enable_scram_channel_binding` YB-TServer flag to true.
+
+For example, to create a database, execute the following command:
+
+```sh
+$ ./bin/yugabyted destroy && \
+    ./bin/yugabyted cert generate_server_certs --hostnames=127.0.0.1 && \
+    ./bin/yugabyted start \
+    --tserver_flags="ysql_enable_auth=true,ysql_enable_scram_channel_binding=true,$ENABLE_TLS"
+```
+
+Note that this configuration requires the client to use client-to-server encryption.
+
+For more information on enabling SCRAM-SHA-256 password encryption, refer to [Password authentication](../../../secure/authentication/password-authentication/#scram-sha-256).
+
 ### TLS with authentication via certificate
 
 This configuration requires the client to use client-to-server encryption and authenticate with the appropriate certificate to connect.
 
-{{< note title="Note" >}}
-Before YugabyteDB v2.5.2, this was the default for TLS without authentication. This example shows the `ysql_hba_conf_csv` configuration to use to replicate the previous behavior.
-{{< /note >}}
-
 To create the database, execute the following command:
 
 ```sh
-$ ./bin/yb-ctl destroy && ./bin/yb-ctl create \
-    --tserver_flags="$ENABLE_TLS" \
-    --ysql_hba_conf_csv="hostssl all all all cert"
+$ ./bin/yugabyted destroy && \
+    ./bin/yugabyted cert generate_server_certs --hostnames=127.0.0.1 && \
+    ./bin/yugabyted start \
+    --tserver_flags="$ENABLE_TLS,ysql_hba_conf_csv={hostssl all all all cert}"
 ```
 
 Without a certificate, the connection fails.
@@ -187,26 +209,22 @@ $ ./bin/ysqlsh "sslcert=$CERTS/node.127.0.0.1.crt sslkey=$CERTS/node.127.0.0.1.k
 ```
 
 ```output
-ysqlsh (11.2-YB-{{<yb-version version="stable" format="build">}})
+ysqlsh (15.2-YB-{{<yb-version version="stable">}}-b0)
 SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
 Type "help" for help.
 ```
 
-### TLS with password authentication and certificate verification
+### TLS with password and certificate authentication
 
-This configuration requires the client to use client-to-server encryption, supplying a signed client certificate, while using a password to authenticate. Note that the server verifies that the client certificate is signed by the configured CA but it does not use the CN (Common Name) of the client certificate to authenticate the user. It is not possible to configure the server to require authentication via both password and client certificate.
-
-{{< note title="Note" >}}
-Before YugabyteDB v2.5.2, this was the default for TLS with authentication. This example shows the `ysql_hba_conf_csv` configuration to use to replicate the previous behavior.
-
-{{< /note >}}
+This configuration requires the client to use client-to-server encryption and authenticate with both the appropriate certificate and the password to connect.
 
 To create the database, execute the following command:
 
 ```sh
-$ ./bin/yb-ctl destroy && ./bin/yb-ctl create \
-    --tserver_flags="$ENABLE_TLS,ysql_enable_auth=true" \
-    --ysql_hba_conf_csv="hostssl all all all md5 clientcert=1"
+$ ./bin/yugabyted destroy && \
+    ./bin/yugabyted cert generate_server_certs --hostnames=127.0.0.1 && \
+    ./bin/yugabyted start \
+    --tserver_flags="$ENABLE_TLS,ysql_hba_conf_csv={hostssl all all all md5 clientcert=verify-full}"
 ```
 
 The `ysql_enable_auth=true` flag is redundant in this case, but included to demonstrate the ability to override the auto-generated configuration using `ysql_hba_conf_csv`.
@@ -230,7 +248,7 @@ $ ./bin/ysqlsh "sslcert=$CERTS/node.127.0.0.1.crt sslkey=$CERTS/node.127.0.0.1.k
 
 ```output
 Password for user yugabyte:
-ysqlsh (11.2-YB-{{<yb-version version="stable" format="build">}})
+ysqlsh (15.2-YB-{{<yb-version version="stable">}}-b0)
 SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
 Type "help" for help.
 ```

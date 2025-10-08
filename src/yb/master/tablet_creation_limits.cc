@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -54,15 +54,18 @@ class Aggregator {
 }  // namespace
 
 AggregatedClusterInfo ComputeAggregatedClusterInfo(
-    const TSDescriptorVector& ts_descs, const std::string& placement_uuid) {
+    const TSDescriptorVector& ts_descs, const BlacklistSet& blacklist,
+    const std::string& placement_uuid) {
   Aggregator memory_aggregator;
   Aggregator cores_aggregator;
   int64_t live_replicas_count = 0;
   for (const auto& ts : ts_descs) {
-    if (ts->placement_uuid() != placement_uuid) {
+    auto l = ts->LockForRead();
+    // todo(zdrudi): We probably shouldn't skip tablet replicas on blacklisted tservers.
+    if (!l->IsLive() || l->IsBlacklisted(blacklist) || l->placement_uuid() != placement_uuid) {
       continue;
     }
-    const auto resources = ts->GetResources();
+    const auto& resources = l->pb.resources();
     cores_aggregator.Add(resources.has_core_count(), resources.core_count());
     memory_aggregator.Add(
         resources.has_tablet_overhead_ram_in_bytes(), resources.tablet_overhead_ram_in_bytes());
@@ -75,14 +78,12 @@ AggregatedClusterInfo ComputeAggregatedClusterInfo(
   };
 }
 
-// TODO(zdrudi): This function is passed a filtered version of TSDescriptorVector - blacklisted and
-// non-live tservers are removed.  But tablet replicas hosted on blacklisted tservers aren't going
-// to be deleted so they should be counted towards the total number of live tablet replicas.  Alter
-// this function to take the complete, unfiltered TSDescriptorVector and put logic directly into
-// ComputeAggregatedClusterInfo to do the right thing with blacklisted and non-live tservers.
 Status CanCreateTabletReplicas(
-    int num_tablets, const ReplicationInfoPB& replication_info,
-    const TSDescriptorVector& ts_descs) {
+    std::vector<std::pair<ReplicationInfoPB, int>> replication_info_to_num_tablets,
+    const TSDescriptorVector& ts_descs, const BlacklistSet& blacklist) {
+  if (replication_info_to_num_tablets.empty()) {
+    return Status::OK();
+  }
   if (!GetAtomicFlag(&FLAGS_enforce_tablet_replica_limits)) {
     return Status::OK();
   }
@@ -90,10 +91,14 @@ Status CanCreateTabletReplicas(
   if (!limits.per_gib && !limits.per_core) {
     return Status::OK();
   }
-  int64_t tablet_replicas_to_create =
-      num_tablets * GetNumReplicasOrGlobalReplicationFactor(replication_info.live_replicas());
-  auto cluster_info =
-      ComputeAggregatedClusterInfo(ts_descs, replication_info.live_replicas().placement_uuid());
+  int64_t tablet_replicas_to_create = 0;
+  for (const auto& [replication_info, num_tablets] : replication_info_to_num_tablets) {
+    tablet_replicas_to_create += num_tablets * GetNumReplicasOrGlobalReplicationFactor(
+        replication_info.live_replicas());
+  }
+  auto cluster_info = ComputeAggregatedClusterInfo(
+      ts_descs, blacklist,
+      replication_info_to_num_tablets.front().first.live_replicas().placement_uuid());
   int64_t cluster_limit = ComputeTabletReplicaLimit(cluster_info, limits);
   int64_t new_tablet_count = cluster_info.total_live_replicas + tablet_replicas_to_create;
   if (new_tablet_count > cluster_limit) {
@@ -110,6 +115,12 @@ Status CanCreateTabletReplicas(
         << cluster_limit;
   }
   return Status::OK();
+}
+
+Status CanCreateTabletReplicas(
+    int num_tablets, const ReplicationInfoPB& replication_info,
+    const TSDescriptorVector& ts_descs, const BlacklistSet& blacklist) {
+  return CanCreateTabletReplicas({{replication_info, num_tablets}}, ts_descs, blacklist);
 }
 
 }  // namespace yb::master

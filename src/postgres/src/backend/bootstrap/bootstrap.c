@@ -52,6 +52,7 @@
 #include "executor/ybModifyTable.h"
 #include "pg_yb_utils.h"
 #include "storage/pg_shmem.h"
+#include <sys/stat.h>
 
 uint32		bootstrap_data_checksum_version = 0;	/* No checksum */
 
@@ -351,7 +352,15 @@ BootstrapModeMain(int argc, char *argv[], bool check_only)
 	 */
 	InitProcess();
 
+	/* YB note: Don't remove read permission from group/others. */
+	mode_t yb_oumask;
+	yb_oumask = umask(0);
+	umask(yb_oumask & ~S_IRGRP & ~S_IROTH);
+
 	BaseInit();
+
+	/* YB note: Restore the original umask. */
+	umask(yb_oumask);
 
 	bootstrap_signals();
 	BootStrapXLOG();
@@ -363,7 +372,7 @@ BootstrapModeMain(int argc, char *argv[], bool check_only)
 	if (pg_link_canary_is_frontend())
 		elog(ERROR, "backend is incorrectly linked to frontend functions");
 
-	InitPostgres(NULL, InvalidOid, NULL, InvalidOid, false, false, NULL, NULL);
+	InitPostgres(NULL, InvalidOid, NULL, InvalidOid, false, false, NULL);
 
 	/* Initialize stuff for bootstrap-file processing */
 	for (i = 0; i < MAXATTR; i++)

@@ -3,9 +3,9 @@
 // LICENSE file in the root directory of this source tree. An additional grant
 // of patent rights can be found in the PATENTS file in the same directory.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -338,9 +338,6 @@ static std::unordered_map<std::string, OptionTypeInfo> db_options_type_info = {
     {"initial_seqno",
      {offsetof(struct DBOptions, initial_seqno), OptionType::kUInt64T,
       OptionVerificationType::kNormal}},
-    {"max_file_size_for_compaction",
-     {offsetof(struct DBOptions, max_file_size_for_compaction),
-      OptionType::kUInt64T, OptionVerificationType::kNormal}},
 };
 
 static std::unordered_map<std::string, OptionTypeInfo> cf_options_type_info = {

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -29,6 +29,7 @@
 #include "yb/dockv/intent.h"
 #include "yb/dockv/key_entry_value.h"
 #include "yb/dockv/value_type.h"
+#include "yb/dockv/doc_vector_id.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/integral_types.h"
@@ -353,7 +354,7 @@ std::string PrimitiveValue::ValueToString() const {
     case ValueEntryType::kUuid:
       return uuid_val_.ToString();
     case ValueEntryType::kVectorId:
-      return Substitute("VectorId($0)", uuid_val_.ToString());
+      return DocVectorIdToString(uuid_val_);
     case ValueEntryType::kDeleteVectorIds:
       return "<DELETE VECTOR ID>";
     case ValueEntryType::kRowLock:
@@ -2918,7 +2919,7 @@ std::string KeyEntryValue::ToString(AutoDecodeKeys auto_decode_keys) const {
     case KeyEntryType::kGreaterThanIntentType:
       break;
     case KeyEntryType::kVectorId:
-      return Substitute("VectorId($0)", uuid_val_.ToString());
+      return DocVectorIdToString(uuid_val_);
     case KeyEntryType::kLowest:
       return "-Inf";
     case KeyEntryType::kHighest:

@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -51,15 +51,16 @@
 #include "yb/rpc/proxy_context.h"
 #include "yb/rpc/scheduler.h"
 
-#include "yb/util/metrics_fwd.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/async_util.h"
 #include "yb/util/atomic.h"
 #include "yb/util/locks.h"
+#include "yb/util/metrics_fwd.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/sockaddr.h"
+#include "yb/util/one_time_bool.h"
 #include "yb/util/operation_counter.h"
 #include "yb/util/stack_trace.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
@@ -109,6 +110,11 @@ class MessengerBuilder {
 
   MessengerBuilder &SetListenProtocol(const Protocol* protocol) {
     listen_protocol_ = protocol;
+    return *this;
+  }
+
+  MessengerBuilder &SetUncompressedProtocol(const Protocol* protocol) {
+    uncompressed_protocol_ = protocol;
     return *this;
   }
 
@@ -170,6 +176,7 @@ class MessengerBuilder {
   ConnectionContextFactoryPtr connection_context_factory_;
   StreamFactories stream_factories_;
   const Protocol* listen_protocol_;
+  const Protocol* uncompressed_protocol_;
   size_t workers_limit_;
   int num_connections_to_server_;
   std::shared_ptr<MemTracker> last_used_parent_mem_tracker_;
@@ -222,7 +229,8 @@ class Messenger : public ProxyContext {
   // Invoke the RpcService to handle a call directly.
   void Handle(InboundCallPtr call, Queue queue) override;
 
-  const Protocol* DefaultProtocol() override { return listen_protocol_; }
+  const Protocol& DefaultProtocol() override { return listen_protocol_; }
+  const Protocol& UncompressedProtocol() override { return uncompressed_protocol_; }
 
   rpc::ThreadPool& CallbackThreadPool(ServicePriority priority) override {
     return ThreadPool(priority);
@@ -314,6 +322,22 @@ class Messenger : public ProxyContext {
     return next_task_id_.load(std::memory_order_acquire);
   }
 
+  void SetMetadataSerializerFactory(std::unique_ptr<MetadataSerializerFactory> factory) {
+    metadata_serializer_factory_ = std::move(factory);
+  }
+
+  MetadataSerializerFactory* metadata_serializer_factory() override {
+    return metadata_serializer_factory_.get();
+  }
+
+  void SetCallStateListenerFactory(std::unique_ptr<CallStateListenerFactory> factory) {
+    call_state_listener_factory_ = std::move(factory);
+  }
+
+  CallStateListenerFactory* call_state_listener_factory() override {
+    return call_state_listener_factory_.get();
+  }
+
  private:
   friend class DelayedTask;
 
@@ -343,7 +367,8 @@ class Messenger : public ProxyContext {
 
   const StreamFactories stream_factories_;
 
-  const Protocol* const listen_protocol_;
+  const Protocol& listen_protocol_;
+  const Protocol& uncompressed_protocol_;
 
   mutable PerCpuRwMutex lock_;
 
@@ -351,7 +376,7 @@ class Messenger : public ProxyContext {
 
   // RPC services that handle inbound requests.
   mutable RWOperationCounter rpc_services_counter_;
-  std::atomic_bool rpc_services_counter_stopped_ = false;
+  OneTimeBool rpc_services_stopped_;
   std::unordered_multimap<std::string, RpcServicePtr> rpc_services_;
   RpcEndpointMap rpc_endpoints_;
 
@@ -408,6 +433,9 @@ class Messenger : public ProxyContext {
   int num_connections_to_server_;
 
   std::unique_ptr<ReactorMonitor> reactor_monitor_ GUARDED_BY(lock_);
+
+  std::unique_ptr<CallStateListenerFactory> call_state_listener_factory_;
+  std::unique_ptr<MetadataSerializerFactory> metadata_serializer_factory_;
 
 #ifndef NDEBUG
   // This is so we can log where exactly a Messenger was instantiated to better diagnose a CHECK

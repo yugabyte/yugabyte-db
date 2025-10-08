@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 import React, { Component } from 'react';
 import { jsPDF } from 'jspdf';
@@ -40,6 +40,8 @@ import { OutlierSelector } from '../OutlierSelector/OutlierSelector';
 import { GraphPanelHeaderTimezone } from './GraphPanelHeaderTimezone';
 import { YBFormatDate, ybFormatDate, YBTimeFormats } from '../../../redesign/helpers/DateUtils';
 import { DEFAULT_TIMEZONE, RuntimeConfigKey } from '../../../redesign/helpers/constants';
+import { UniverseMetricsExportConfigModal } from '@app/redesign/features/export-telemetry/UniverseMetricsExportConfigModal';
+
 import './GraphPanelHeader.scss';
 
 require('react-widgets/dist/css/react-widgets.css');
@@ -72,7 +74,8 @@ const outlierTypes = [
 const metricMeasureTypes = [
   { value: MetricMeasure.OVERALL, label: 'Overall' },
   { value: MetricMeasure.OUTLIER, label: 'Outlier Nodes', k8label: 'Outlier Pods' },
-  { value: MetricMeasure.OUTLIER_TABLES, label: 'Outlier Tables' }
+  { value: MetricMeasure.OUTLIER_TABLES, label: 'Outlier Tables' },
+  { value: MetricMeasure.OUTLIER_DATABASES, label: 'Outlier Databases' }
 ];
 const DEFAULT_FILTER_KEY = 0;
 const DEFAULT_INTERVAL_KEY = 0;
@@ -142,6 +145,7 @@ class GraphPanelHeader extends Component {
       metricMeasure: metricMeasureTypes[DEFAULT_METRIC_MEASURE_KEY].value,
       outlierType: outlierTypes[DEFAULT_OUTLIER_TYPE].value,
       outlierNumNodes: DEFAULT_OUTLIER_NUM_NODES,
+      isUniverseMetricsExportModalOpen: false,
       isSingleNodeSelected: false,
       openPreviewMetricsModal: false,
       pdfDownloadInProgress: false,
@@ -617,6 +621,10 @@ class GraphPanelHeader extends Component {
       runtimeConfigs?.data?.configEntries?.find(
         (config) => config.key === RuntimeConfigKey.ENABLE_METRICS_TZ
       )?.value === 'true';
+    const isMetricsExportEnabled =
+      runtimeConfigs?.data?.configEntries?.find(
+        (config) => config.key === RuntimeConfigKey.METRICS_EXPORT_FEATURE_FLAG
+      )?.value === 'true';
 
     const self = this;
     const menuItems = filterTypes.map((filter, idx) => {
@@ -652,8 +660,16 @@ class GraphPanelHeader extends Component {
       );
     });
 
-    const splitType =
-      this.state.metricMeasure === MetricMeasure.OUTLIER_TABLES ? SplitType.TABLE : SplitType.NODE;
+    let splitType = SplitType.NONE;
+    const metricMeasure = this.state.metricMeasure;
+    if (metricMeasure === MetricMeasure.OUTLIER_TABLES) {
+      splitType = SplitType.TABLE;
+    } else if (metricMeasure === MetricMeasure.OUTLIER_DATABASES) {
+      splitType = SplitType.NAMESPACE;
+    } else if (metricMeasure === MetricMeasure.OUTLIER) {
+      splitType = SplitType.NODE;
+    }
+
     // TODO: Need to fix handling of query params on Metrics tab
     const liveQueriesLink =
       this.state.currentSelectedUniverse &&
@@ -662,7 +678,6 @@ class GraphPanelHeader extends Component {
       `/universes/${this.state.currentSelectedUniverse.universeUUID}/queries?nodeName=${this.state.nodeName}`;
     const isDedicatedNodes = isDedicatedNodePlacement(this.state.currentSelectedUniverse);
     const isK8Universe = getIsKubernetesUniverse(this.state.currentSelectedUniverse);
-
     return (
       <div className="graph-panel-header">
         <YBPanelItem
@@ -789,10 +804,6 @@ class GraphPanelHeader extends Component {
                             <i className="graph-settings-icon fa fa-cog"></i>
                           </Dropdown.Toggle>
                           <Dropdown.Menu>
-                            <MenuItem className="dropdown-header" header>
-                              VIEW OPTIONS
-                            </MenuItem>
-                            <MenuItem divider />
                             <MenuItem onSelect={self.props.togglePrometheusQuery}>
                               {prometheusQueryEnabled
                                 ? 'Disable Prometheus query'
@@ -831,6 +842,17 @@ class GraphPanelHeader extends Component {
                             >
                               {'Download Grafana JSON'}
                             </MenuItem>
+                            {isMetricsExportEnabled && (
+                              <MenuItem
+                                onSelect={() => {
+                                  this.setState({
+                                    isUniverseMetricsExportModalOpen: true
+                                  });
+                                }}
+                              >
+                                Export Metrics
+                              </MenuItem>
+                            )}
                           </Dropdown.Menu>
                         </Dropdown>
                       </div>
@@ -843,7 +865,7 @@ class GraphPanelHeader extends Component {
                       this.props.origin !== MetricOrigin.TABLE && (
                         <MetricsMeasureSelector
                           metricMeasureTypes={metricMeasureTypes}
-                          selectedMetricMeasureValue={this.state.metricMeasure}
+                          selectedMetricMeasureValue={metricMeasure}
                           onMetricMeasureChanged={this.onMetricMeasureChanged}
                           isSingleNodeSelected={this.state.isSingleNodeSelected}
                           isK8Universe={isK8Universe}
@@ -868,8 +890,9 @@ class GraphPanelHeader extends Component {
                     {/* Show Outlier Selector component if user has selected Outlier section
                   or if user has selected TopTables tab in Overall section  */}
                     {currentSelectedUniverse !== MetricConsts.ALL &&
-                      (this.state.metricMeasure === MetricMeasure.OUTLIER ||
-                        this.state.metricMeasure === MetricMeasure.OUTLIER_TABLES) && (
+                      (metricMeasure === MetricMeasure.OUTLIER ||
+                        metricMeasure === MetricMeasure.OUTLIER_TABLES ||
+                        metricMeasure === MetricMeasure.OUTLIER_DATABASES) && (
                         <OutlierSelector
                           outlierTypes={outlierTypes}
                           selectedOutlierType={this.state.outlierType}
@@ -882,6 +905,19 @@ class GraphPanelHeader extends Component {
                       )}
                   </FlexGrow>
                 </FlexContainer>
+                {this.state.isUniverseMetricsExportModalOpen && (
+                  <UniverseMetricsExportConfigModal
+                    universeUuid={this.props.universe.currentUniverse.data.universeUUID}
+                    modalProps={{
+                      open: this.state.isUniverseMetricsExportModalOpen,
+                      onClose: () => {
+                        this.setState({
+                          isUniverseMetricsExportModalOpen: false
+                        });
+                      }
+                    }}
+                  />
+                )}
                 <YBModal
                   open={this.state.openPreviewMetricsModal}
                   size="fit"

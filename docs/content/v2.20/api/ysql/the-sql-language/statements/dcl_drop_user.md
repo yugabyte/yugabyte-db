@@ -4,7 +4,7 @@ headerTitle: DROP USER
 linkTitle: DROP USER
 description: Use the DROP USER statement to drop a user or role. DROP USER is an alias for DROP ROLE.
 menu:
-  v2.20:
+  v2.20_api:
     identifier: dcl_drop_user
     parent: statements
 type: docs

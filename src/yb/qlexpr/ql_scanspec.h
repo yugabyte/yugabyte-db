@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -22,7 +22,6 @@
 #include <vector>
 
 #include <boost/functional/hash.hpp>
-#include <boost/optional/optional.hpp>
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/column_id.h"
@@ -94,8 +93,8 @@ class QLScanRange {
 
   // Range filter specification on a column
   struct QLRange {
-    boost::optional<QLBound> min_bound;
-    boost::optional<QLBound> max_bound;
+    std::optional<QLBound> min_bound;
+    std::optional<QLBound> max_bound;
     // Set to true only for an IS NOT NULL query, in which case the bounds (min_bound and max_bound)
     // are not set.
     bool is_not_null = false;

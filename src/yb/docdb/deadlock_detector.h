@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -146,11 +146,9 @@ class WaiterInfoEntry {
     return txn_id_;
   }
 
-  const std::string& tserver_uuid() const {
-    return tserver_uuid_;
-  }
+  const std::string& tserver_uuid() const { return tserver_uuid_; }
 
-  boost::optional<PgSessionRequestVersion> pg_session_req_version() const {
+  std::optional<PgSessionRequestVersion> pg_session_req_version() const {
     return pg_session_req_version_;
   }
 
@@ -175,7 +173,7 @@ class WaiterInfoEntry {
   const TransactionId txn_id_;
   const std::string tserver_uuid_;
   BlockingDataPtr blocking_data_;
-  boost::optional<PgSessionRequestVersion> pg_session_req_version_ = boost::none;
+  std::optional<PgSessionRequestVersion> pg_session_req_version_ = std::nullopt;
 };
 
 // Waiters is a multi-indexed container storing WaiterInfoEntry records. The records are indexed
@@ -234,7 +232,7 @@ class TransactionStatusController {
   // Returns Aborted status if the blocking probe isn't active anymore, and need not be forwarded.
   virtual Result<TransactionInfo> CheckProbeActive(
       const TransactionId& transaction_id, const SubtxnSet& subtxn_set) = 0;
-  virtual boost::optional<TransactionInfo> GetTransactionInfo(
+  virtual std::optional<TransactionInfo> GetTransactionInfo(
       const TransactionId& transaction_id) = 0;
   virtual const std::string& LogPrefix() = 0;
   virtual ~TransactionStatusController() = default;

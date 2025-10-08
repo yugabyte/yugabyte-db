@@ -3,7 +3,7 @@
  * ybModifyTable.c
  *        YB routines to stmt_handle ModifyTable nodes.
  *
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License.  You may obtain a copy of the License at
@@ -30,11 +30,13 @@
 #include "access/xact.h"
 #include "access/yb_scan.h"
 #include "catalog/catalog.h"
+#include "catalog/heap.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_attribute.h"
 #include "catalog/pg_auth_members_d.h"
 #include "catalog/pg_authid_d.h"
 #include "catalog/pg_database.h"
+#include "catalog/pg_db_role_setting_d.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_shseclabel_d.h"
 #include "catalog/pg_tablespace_d.h"
@@ -64,7 +66,7 @@
 #include "utils/rel.h"
 #include "utils/relcache.h"
 #include "utils/syscache.h"
-#include "yb/yql/pggate/ybc_pggate.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 
 bool		yb_disable_transactional_writes = false;
 bool		yb_enable_upsert_mode = false;
@@ -173,23 +175,29 @@ YBCComputeYBTupleIdFromSlot(Relation rel, TupleTableSlot *slot)
 		 * Don't need to fill in for the DocDB RowId column, however we still
 		 * need to add the column to the statement to construct the ybctid.
 		 */
-		if (attnum != YBRowIdAttributeNumber)
+		if (attnum > 0)
 		{
-			Oid			type_id = ((attnum > 0) ?
-								   TupleDescAttr(slot->tts_tupleDescriptor,
-												 attnum - 1)->atttypid :
-								   InvalidOid);
+			Oid			type_id = TupleDescAttr(slot->tts_tupleDescriptor,
+												attnum - 1)->atttypid;
 
 			next_attr->type_entity = YbDataTypeFromOidMod(attnum, type_id);
 			next_attr->collation_id = ybc_get_attcollation(RelationGetDescr(rel), attnum);
 			next_attr->datum = slot_getattr(slot, attnum, &next_attr->is_null);
 		}
-		else
+		else if (attnum == YBRowIdAttributeNumber)
 		{
 			next_attr->datum = 0;
 			next_attr->is_null = false;
 			next_attr->type_entity = NULL;
 			next_attr->collation_id = InvalidOid;
+		}
+		else
+		{
+			Oid			type_id = SystemAttributeDefinition(attnum)->atttypid;
+
+			next_attr->type_entity = YbDataTypeFromOidMod(attnum, type_id);
+			next_attr->collation_id = ybc_get_attcollation(RelationGetDescr(rel), attnum);
+			next_attr->datum = slot_getsysattr(slot, attnum, &next_attr->is_null);
 		}
 		YbcPgColumnInfo column_info = {0};
 
@@ -229,6 +237,7 @@ YBCExecWriteStmt(YbcPgStatement ybc_stmt,
 				 int *rows_affected_count)
 {
 	YbSetCatalogCacheVersion(ybc_stmt, YbGetCatalogCacheVersion());
+	YbMaybeSetNonSystemTablespaceOid(ybc_stmt, rel);
 
 	bool		is_syscatalog_version_inc = YbMarkStatementIfCatalogVersionIncrement(ybc_stmt, rel);
 
@@ -257,14 +266,15 @@ YBCExecWriteStmt(YbcPgStatement ybc_stmt,
 
 		if (RelationGetForm(rel)->relisshared &&
 			(RelationSupportsSysCache(relid) ||
-			 YbRelationIdIsInInitFileAndNotCached(relid)) &&
+			 YbRelationIdIsInInitFileAndNotCached(relid) ||
+			 YbSharedRelationIdNeedsGlobalImpact(relid)) &&
 			!(*YBCGetGFlags()->ysql_disable_global_impact_ddl_statements))
 		{
 			/* NOTE: relisshared implies that rel is a system relation. */
 			Assert(IsSystemRelation(rel));
 			/*
-			 * There are two sections in the next Assert. Relation ids
-			 * in each section are grouped together and two sections
+			 * There are 3 sections in the next Assert. Relation ids
+			 * in each section are grouped together and these sections
 			 * are separated with an empty line.
 			 *
 			 * Section 1 contains relations in relcache init file that
@@ -274,6 +284,10 @@ YBCExecWriteStmt(YbcPgStatement ybc_stmt,
 			 * Section 2 contains relations in relcache init file but
 			 * do not support sys cache. Should be kept in sync with
 			 * YbRelationIdIsInInitFileAndNotCached.
+			 *
+			 * Section 3 contains relations that can be prefetched
+			 * but do not have a PG catalog cache. Should be kept in
+			 * sync with YbSharedRelationIdNeedsGlobalImpact.
 			 */
 			Assert(relid == AuthIdRelationId ||
 				   relid == AuthIdRolnameIndexId ||
@@ -282,9 +296,13 @@ YBCExecWriteStmt(YbcPgStatement ybc_stmt,
 				   relid == AuthMemMemRoleIndexId ||
 				   relid == DatabaseRelationId ||
 				   relid == TableSpaceRelationId ||
+
 				   relid == DatabaseNameIndexId ||
 				   relid == SharedSecLabelRelationId ||
-				   relid == SharedSecLabelObjectIndexId);
+				   relid == SharedSecLabelObjectIndexId ||
+
+				   relid == DbRoleSettingRelationId ||
+				   relid == DbRoleSettingDatidRolidIndexId);
 
 			YbSetIsGlobalDDL();
 		}
@@ -1096,7 +1114,7 @@ YBCExecuteUpdate(ResultRelInfo *resultRelInfo,
 			((TargetEntry *) lfirst(pushdown_lc))->resno == attnum)
 		{
 			TargetEntry *tle = (TargetEntry *) lfirst(pushdown_lc);
-			Expr	   *expr = YbExprInstantiateParams(tle->expr, estate);
+			Expr	   *expr = YbExprInstantiateExprs(tle->expr, estate);
 			MemoryContext oldContext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 			YbcPgExpr	ybc_expr = YBCNewEvalExprCall(update_stmt, expr);
 

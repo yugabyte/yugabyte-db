@@ -121,8 +121,6 @@ SELECT pc_id, pc_address, pc_phone, pc_email FROM pcustomer WHERE pc_name like '
 
 reset enable_sort;
 -- forced parallel scan by PK
-set parallel_setup_cost=0;
-set parallel_tuple_cost=0;
 /*+ Parallel(pcustomer 2 hard) */
 EXPLAIN (costs off)
 SELECT * FROM pcustomer WHERE pc_id = 42;
@@ -141,6 +139,38 @@ SELECT * FROM pcustomer WHERE pc_id = 42;
     42 | Customer #42 | 1318 Unknown Str., Some Random City, XX, 33815 | (142)156-5363 | customer42@example.com |         100.00
 (1 row)
 
-reset parallel_setup_cost;
-reset parallel_tuple_cost;
+EXPLAIN (costs off)
+/*+ Parallel(pcustomer 2 hard) */
+SELECT pc_id, pc_address, pc_phone, pc_email FROM pcustomer WHERE pc_id > 24 and pc_id < 42 order by pc_id;
+                         QUERY PLAN                          
+-------------------------------------------------------------
+ Gather Merge
+   Workers Planned: 2
+   ->  Parallel Index Scan using pcustomer_pkey on pcustomer
+         Index Cond: ((pc_id > 24) AND (pc_id < 42))
+(4 rows)
+
+/*+ Parallel(pcustomer 2 hard) */
+SELECT pc_id, pc_address, pc_phone, pc_email FROM pcustomer WHERE pc_id > 24 and pc_id < 42 order by pc_id;
+ pc_id |                   pc_address                   |   pc_phone    |        pc_email        
+-------+------------------------------------------------+---------------+------------------------
+    25 | 1284 Unknown Str., Some Random City, XX, 24176 | (125)139-5346 | customer25@example.com
+    26 | 1286 Unknown Str., Some Random City, XX, 24743 | (126)140-5347 | customer26@example.com
+    27 | 1288 Unknown Str., Some Random City, XX, 25310 | (127)141-5348 | customer27@example.com
+    28 | 1290 Unknown Str., Some Random City, XX, 25877 | (128)142-5349 | customer28@example.com
+    29 | 1292 Unknown Str., Some Random City, XX, 26444 | (129)143-5350 | customer29@example.com
+    30 | 1294 Unknown Str., Some Random City, XX, 27011 | (130)144-5351 | customer30@example.com
+    31 | 1296 Unknown Str., Some Random City, XX, 27578 | (131)145-5352 | customer31@example.com
+    32 | 1298 Unknown Str., Some Random City, XX, 28145 | (132)146-5353 | customer32@example.com
+    33 | 1300 Unknown Str., Some Random City, XX, 28712 | (133)147-5354 | customer33@example.com
+    34 | 1302 Unknown Str., Some Random City, XX, 29279 | (134)148-5355 | customer34@example.com
+    35 | 1304 Unknown Str., Some Random City, XX, 29846 | (135)149-5356 | customer35@example.com
+    36 | 1306 Unknown Str., Some Random City, XX, 30413 | (136)150-5357 | customer36@example.com
+    37 | 1308 Unknown Str., Some Random City, XX, 30980 | (137)151-5358 | customer37@example.com
+    38 | 1310 Unknown Str., Some Random City, XX, 31547 | (138)152-5359 | customer38@example.com
+    39 | 1312 Unknown Str., Some Random City, XX, 32114 | (139)153-5360 | customer39@example.com
+    40 | 1314 Unknown Str., Some Random City, XX, 32681 | (140)154-5361 | customer40@example.com
+    41 | 1316 Unknown Str., Some Random City, XX, 33248 | (141)155-5362 | customer41@example.com
+(17 rows)
+
 DROP TABLE pcustomer;

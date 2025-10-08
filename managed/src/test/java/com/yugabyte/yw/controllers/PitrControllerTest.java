@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.controllers;
 
@@ -30,6 +30,7 @@ import com.yugabyte.yw.forms.CreatePitrConfigParams;
 import com.yugabyte.yw.forms.RestoreSnapshotScheduleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PrevYBSoftwareConfig;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.forms.UpdatePitrConfigParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.PitrConfig;
@@ -89,7 +90,7 @@ public class PitrControllerTest extends FakeDBApplication {
     defaultUniverse.save();
     Commissioner commissioner = app.injector().instanceOf(Commissioner.class);
     auditService = new AuditService();
-    pitrController = new PitrController(commissioner, mockService, mockSoftwareUpgradeHelper);
+    pitrController = new PitrController(commissioner, mockService);
     pitrController.setAuditService(auditService);
   }
 
@@ -834,7 +835,6 @@ public class PitrControllerTest extends FakeDBApplication {
 
   @Test
   public void testPerformPitrWhenYsqlMajorVersionUpgradeInMonitoringPhase() {
-    when(mockSoftwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(any())).thenReturn(true);
     defaultUniverse =
         Universe.saveDetails(
             defaultUniverse.getUniverseUUID(),
@@ -842,6 +842,7 @@ public class PitrControllerTest extends FakeDBApplication {
               universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion =
                   "2025.1.0.0-b1";
               universe.getUniverseDetails().prevYBSoftwareConfig = new PrevYBSoftwareConfig();
+              universe.getUniverseDetails().softwareUpgradeState = SoftwareUpgradeState.PreFinalize;
               universe
                   .getUniverseDetails()
                   .prevYBSoftwareConfig
@@ -855,7 +856,7 @@ public class PitrControllerTest extends FakeDBApplication {
         assertPlatformException(
             () ->
                 createPitrConfig(defaultUniverse.getUniverseUUID(), "YSQL", "yugabyte", bodyJson));
-    assertBadRequest(r, "Cannot enable PITR when the universe is in the middle of a major upgrade");
+    assertBadRequest(r, "Cannot enable PITR when the universe is not in ready state");
     verify(mockCommissioner, times(0)).submit(any(), any());
     assertAuditEntry(0, defaultCustomer.getUuid());
 
@@ -867,8 +868,7 @@ public class PitrControllerTest extends FakeDBApplication {
     r =
         assertPlatformException(
             () -> performPitr(defaultUniverse.getUniverseUUID(), Json.toJson(params)));
-    assertBadRequest(
-        r, "Cannot perform PITR when the universe is in the middle of a major upgrade");
+    assertBadRequest(r, "Cannot perform PITR when the universe is not in ready state");
     verify(mockCommissioner, times(0)).submit(any(), any());
     assertAuditEntry(0, defaultCustomer.getUuid());
 
@@ -884,6 +884,6 @@ public class PitrControllerTest extends FakeDBApplication {
                     defaultUniverse.getUniverseUUID(),
                     updatePitrConfigParams.pitrConfigUUID,
                     Json.toJson(updatePitrConfigParams)));
-    assertBadRequest(r, "Cannot update PITR when the universe is in the middle of a major upgrade");
+    assertBadRequest(r, "Cannot update PITR when the universe is not in ready state");
   }
 }

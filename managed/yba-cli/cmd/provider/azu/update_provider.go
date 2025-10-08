@@ -1,5 +1,5 @@
 /*
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  */
 
 package azu
@@ -185,26 +185,6 @@ var updateAzureProviderCmd = &cobra.Command{
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
 			details.SetAirGapInstall(airgapInstall)
-		}
-
-		sshUser, err := cmd.Flags().GetString("ssh-user")
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		if len(sshUser) > 0 {
-			logrus.Debug("Updating SSH user\n")
-			details.SetSshUser(sshUser)
-		}
-
-		if cmd.Flags().Changed("ssh-port") {
-			sshPort, err := cmd.Flags().GetInt("ssh-port")
-			if err != nil {
-				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-			}
-			if details.GetSshPort() != int32(sshPort) {
-				logrus.Debug("Updating SSH port\n")
-				details.SetSshPort(int32(sshPort))
-			}
 		}
 
 		ntpServers, err := cmd.Flags().GetStringArray("ntp-servers")
@@ -428,13 +408,6 @@ func init() {
 		"[Optional] Image bundle UUID to be removed from the provider. "+
 			"Each bundle to be removed needs to be provided using a separate "+
 			"--remove-image-bundle definition.")
-
-	updateAzureProviderCmd.Flags().String("ssh-user", "",
-		"[Optional] Updating SSH User to access the YugabyteDB nodes.")
-	updateAzureProviderCmd.Flags().Int("ssh-port", 0,
-		"[Optional] Updating SSH Port to access the YugabyteDB nodes.")
-	updateAzureProviderCmd.Flags().MarkDeprecated("ssh-port", "Use --edit-image-bundle instead.")
-	updateAzureProviderCmd.Flags().MarkDeprecated("ssh-user", "Use --edit-image-bundle instead.")
 
 	updateAzureProviderCmd.Flags().Bool("airgap-install", false,
 		"[Optional] Are YugabyteDB nodes installed in an air-gapped environment,"+

@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -36,6 +36,7 @@
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
 
 #include "yb/docdb/docdb_fwd.h"
 
@@ -115,6 +116,8 @@ class MiniTabletServer {
       tablet::FlushMode mode = tablet::FlushMode::kSync,
       tablet::FlushFlags flags = tablet::FlushFlags::kAllDbs);
   Status CompactTablets(docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse);
+  Status CompactTablet(
+      const TabletId& tablet_id, docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse);
   Status SwitchMemtables();
   Status CleanTabletLogs();
 

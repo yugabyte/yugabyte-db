@@ -289,7 +289,7 @@ These values are approximate because different kernels use different amounts of 
 
 Also shown is an estimate of how many Postgres connections that node can handle assuming default Postgres flags and usage.  Unusually memory expensive queries or preloading Postgres catalog information will reduce the number of connections that can be supported.
 
-Thus a 8 GiB node would be expected to be able support 530 tablet replicas and 65 (physical) typical Postgres connections.  A universe of six of these nodes would be able to support 530 \* 2 = 1,060 [RF3](../../../architecture/key-concepts/#replication-factor-rf) tablets and 65 \* 6 = 570 typical physical Postgres connections assuming the connections are evenly distributed among the nodes.
+Thus a 8 GiB node would be expected to be able support 530 tablet replicas and 65 (physical) typical Postgres connections.  A universe of six of these nodes would be able to support 530 \* 2 = 1,060 [RF3](../../../architecture/key-concepts/#replication-factor-rf) tablets and 65 \* 6 = 390 typical physical Postgres connections assuming the connections are evenly distributed among the nodes.
 
 
 ### Flags controlling the split of memory among processes
@@ -586,7 +586,7 @@ Default: `50`
 
 When enabled, all databases created in the cluster are colocated by default. If you enable the flag after creating a cluster, you need to restart the YB-Master and YB-TServer services.
 
-For more details, see [clusters in colocated tables](../../../explore/colocation/#clusters).
+For more details, see [clusters in colocated tables](../../../additional-features/colocation/#clusters).
 
 Default: `false`
 
@@ -804,14 +804,6 @@ Default: `false`
 
 Default: `false`
 
-##### --ysql_disable_index_backfill
-
-Set this flag to `false` to enable online index backfill. When set to `false`, online index builds run while online, without failing other concurrent writes and traffic.
-
-For details on how online index backfill works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
-
-Default: `false`
-
 ##### --ysql_sequence_cache_method
 
 Specifies where to cache sequence values.
@@ -929,14 +921,6 @@ Default: `12000`
 Specifies if YCQL tables are created with transactions enabled by default.
 
 Default: `false`
-
-##### --ycql_disable_index_backfill
-
-Set this flag to `false` to enable online index backfill. When set to `false`, online index builds run while online, without failing other concurrent writes and traffic.
-
-For details on how online index backfill works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
-
-Default: `true`
 
 ##### --ycql_require_drop_privs_for_truncate
 
@@ -1239,7 +1223,7 @@ Default: `0`
 
 ## Change data capture (CDC) flags
 
-To learn about CDC, see [Change data capture (CDC)](../../../architecture/docdb-replication/change-data-capture/).
+To learn about CDC, see [Change data capture (CDC)](../../../additional-features/change-data-capture/).
 
 ##### --yb_enable_cdc_consistent_snapshot_streams
 
@@ -1331,7 +1315,9 @@ The following set of flags are only relevant for CDC using the PostgreSQL replic
 
 ##### --ysql_yb_default_replica_identity
 
-The default replica identity to be assigned to user defined tables at the time of creation. The flag is case sensitive and can take only one of the four possible values, `FULL`, `DEFAULT`,`'NOTHING` and `CHANGE`.
+The default replica identity to be assigned to user-defined tables at the time of creation. The flag is case sensitive and can take only one of the four possible values, `FULL`, `DEFAULT`, `NOTHING`, and `CHANGE`.
+
+For more information, refer to [Replica identity](../../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/#replica-identity).
 
 Default: `CHANGE`
 
@@ -1610,6 +1596,53 @@ After a DDL statement that includes updating DocDB system catalog completes, YB-
 When the flag `ysql_ddl_transaction_wait_for_ddl_verification` is enabled, YSQL waits for any YB-Master background operations to finish before returning control to the user.
 {{< /note >}}
 
+## Index backfill flags
+
+##### --ysql_disable_index_backfill
+
+Set this flag to `false` to enable online index backfill. When set to `false`, online index builds run while online, without failing other concurrent writes and traffic.
+
+For details on how online index backfill works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
+
+Default: `false`
+
+##### --ycql_disable_index_backfill
+
+Set this flag to `false` to enable online index backfill. When set to `false`, online index builds run while online, without failing other concurrent writes and traffic.
+
+For details on how online index backfill works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
+
+Default: `true`
+
+#### --num_concurrent_backfills_allowed
+
+[Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) uses a number of distributed workers to backfill older data from the main table into the index table. This flag sets the number of concurrent index backfill jobs that are allowed to execute on each yb-tserver process. By default, the number of jobs is set automatically as follows:
+
+- When the node has >= 16 cores, it is set to 8 jobs.
+- When the node has < 16 cores, it is set to (number of cores) / 2 jobs.
+
+Increasing the number of backfill jobs can allow the index creation to complete faster, however setting it to a higher number can impact foreground workload operations and also increase the chance of failures and retries of backfill jobs if CPU usage becomes too high.
+
+Default: -1 (automatic setting)
+
+##### backfill_index_client_rpc_timeout_ms
+
+Timeout (in milliseconds) for the backfill stage of a concurrent CREATE INDEX.
+
+Default: 86400000 (1 day)
+
+##### backfill_index_timeout_grace_margin_ms
+
+The time to exclude from the YB-Master flag [ysql_index_backfill_rpc_timeout_ms](../yb-master/#ysql-index-backfill-rpc-timeout-ms) in order to return results to YB-Master in the specified deadline. Should be set to at least the amount of time each batch would require, and less than `ysql_index_backfill_rpc_timeout_ms`.
+
+Default: -1, where the system automatically calculates the value to be approximately 1 second.
+
+##### backfill_index_write_batch_size
+
+The number of table rows to backfill in a single backfill job. In case of [GIN indexes](../../../explore/ysql-language-features/indexes-constraints/gin/), the number can include more index rows. When index creation is slower than expected on large tables, increasing this parameter to 1024 or 2048 may speed up the operation. However, care must be taken to also tune the associated timeouts for larger batch sizes.
+
+Default: 128
+
 ## Advanced flags
 
 ##### --allowed_preview_flags_csv
@@ -1629,24 +1662,6 @@ If you are using YugabyteDB Anywhere, as with other flags, set `allowed_preview_
 
 After adding a preview flag to the `allowed_preview_flags_csv` list, you still need to set the flag using **Edit Flags** as well.
 {{</note>}}
-
-##### backfill_index_client_rpc_timeout_ms
-
-Timeout (in milliseconds) for the backfill stage of a concurrent CREATE INDEX.
-
-Default: 86400000 (1 day)
-
-##### backfill_index_timeout_grace_margin_ms
-
-The time to exclude from the YB-Master flag [ysql_index_backfill_rpc_timeout_ms](../yb-master/#ysql-index-backfill-rpc-timeout-ms) in order to return results to YB-Master in the specified deadline. Should be set to at least the amount of time each batch would require, and less than `ysql_index_backfill_rpc_timeout_ms`.
-
-Default: -1, where the system automatically calculates the value to be approximately 1 second.
-
-##### backfill_index_write_batch_size
-
-The number of table rows to backfill at a time. In case of [GIN indexes](../../../explore/ysql-language-features/indexes-constraints/gin/), the number can include more index rows.
-
-Default: 128
 
 ## PostgreSQL server options
 
@@ -1688,20 +1703,6 @@ You can modify these parameters in the following ways:
 
     ```sql
     SET LOCAL temp_file_limit=-1;
-    ```
-
-- To specify the minimum age of a transaction (in seconds) before its locks are included in the results returned from querying the [pg_locks](../../../explore/observability/pg-locks/) view, use [yb_locks_min_txn_age](../../../explore/observability/pg-locks/#yb-locks-min-txn-age):
-
-    ```sql
-    --- To change the minimum transaction age to 5 seconds:
-    SET session yb_locks_min_txn_age = 5000;
-    ```
-
-- To set the maximum number of transactions for which lock information is displayed when you query the [pg_locks](../../../explore/observability/pg-locks/) view, use [yb_locks_max_transactions](../../../explore/observability/pg-locks/#yb-locks-max-transactions):
-
-    ```sql
-    --- To change the maximum number of transactions to display to 10:
-    SET session yb_locks_max_transactions = 10;
     ```
 
 For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/11/runtime-config.html) in the PostgreSQL documentation.
@@ -1760,7 +1761,7 @@ Default: true
 | enable_bitmapscan | yb_enable_bitmapscan | Result |
 | :--- | :---  | :--- |
 | true | false | Default. Bitmap scans allowed only on temporary tables, if the planner believes the bitmap scan is most optimal. |
-| true | true  | Default for [Enhanced PostgreSQL Compatibility](../../../develop/postgresql-compatibility/). Bitmap scans are allowed on temporary tables and YugabyteDB relations, if the planner believes the bitmap scan is most optimal. |
+| true | true  | Default for [Enhanced PostgreSQL Compatibility](../postgresql-compatibility/). Bitmap scans are allowed on temporary tables and YugabyteDB relations, if the planner believes the bitmap scan is most optimal. |
 | false | false | Bitmap scans allowed only on temporary tables, but only if every other scan type is also disabled / not possible. |
 | false | true  | Bitmap scans allowed on temporary tables and YugabyteDB relations, but only if every other scan type is also disabled / not possible. |
 
@@ -1843,6 +1844,24 @@ Specifies the default isolation level of each new transaction. Every transaction
 See [transaction isolation levels](../../../architecture/transactions/isolation-levels) for reference.
 
 Default: `read committed`
+
+##### yb_locks_min_txn_age
+
+Specifies the minimum age of a transaction (in seconds) before its locks are included in the results returned from querying the [pg_locks](../../../explore/observability/pg-locks/) view. Use this parameter to focus on older transactions that may be more relevant to performance tuning or deadlock resolution efforts.
+
+Default: `1`
+
+##### yb_locks_max_transactions
+
+Sets the maximum number of transactions for which lock information is displayed when you query the [pg_locks](../../../explore/observability/pg-locks/) view. Limits output to the most relevant transactions, which is particularly beneficial in environments with high levels of concurrency and transactional activity.
+
+Default: `16`
+
+##### yb_locks_txn_locks_per_tablet
+
+Sets the maximum number of rows per transaction per tablet to return in [pg_locks](../../../explore/observability/pg-locks/). Set to 0 to return all results.
+
+Default: `200`
 
 ## Admin UI
 

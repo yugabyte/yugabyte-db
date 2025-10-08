@@ -4,7 +4,7 @@ headerTitle: DROP POLICY
 linkTitle: DROP POLICY
 description: Use the DROP POLICY statement to remove the specified row level security policy from the table.
 menu:
-  v2.20:
+  v2.20_api:
     identifier: dcl_drop_policy
     parent: statements
 type: docs

@@ -2,9 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -118,6 +118,8 @@ class WritableFileImpl : public WritableFile {
 
   uint64_t Size() const override { return file_->Size(); }
 
+  Result<uint64_t> SizeOnDisk() const override { return file_->Size(); }
+
   const string& filename() const override {
     return file_->filename();
   }
@@ -173,9 +175,8 @@ class RWFileImpl : public RWFile {
     return Status::OK();
   }
 
-  Status Size(uint64_t* size) const override {
-    *size = file_->Size();
-    return Status::OK();
+  Result<uint64_t> Size() const override {
+    return file_->Size();
   }
 
   const string& filename() const override {

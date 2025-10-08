@@ -39,9 +39,9 @@ You can contact the author at :
 // If you know your target CPU supports unaligned memory access, you want to force this option manually to improve performance.
 // You can also enable this parameter if you know your input data will always be aligned (boundaries of 4, for U32).
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at

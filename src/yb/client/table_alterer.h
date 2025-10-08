@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -13,12 +13,11 @@
 
 #pragma once
 
-#include <boost/optional.hpp>
-
 #include "yb/client/client_fwd.h"
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/common_fwd.h"
+#include "yb/common/transaction.h"
 
 #include "yb/master/master_ddl.fwd.h"
 #include "yb/master/master_fwd.h"
@@ -85,6 +84,10 @@ class YBTableAlterer {
   // The altering of this table is dependent upon the success of this higher-level transaction.
   YBTableAlterer* part_of_transaction(const TransactionMetadata* txn);
 
+  // The altering of this table is happening within this sub-transaction. If the sub-transaction is
+  // rolled back, this altering will be rolled back too.
+  YBTableAlterer* part_of_sub_transaction(uint32_t sub_txn_id);
+
   // Set increment_schema_version to true.
   YBTableAlterer* set_increment_schema_version();
 
@@ -120,11 +123,12 @@ class YBTableAlterer {
 
   std::unique_ptr<TableProperties> table_properties_;
 
-  boost::optional<uint32_t> wal_retention_secs_;
+  std::optional<uint32_t> wal_retention_secs_;
 
   std::unique_ptr<ReplicationInfoPB> replication_info_;
 
   const TransactionMetadata* txn_ = nullptr;
+  uint32_t sub_txn_id_ = kMinSubTransactionId;
 
   bool increment_schema_version_ = false;
 

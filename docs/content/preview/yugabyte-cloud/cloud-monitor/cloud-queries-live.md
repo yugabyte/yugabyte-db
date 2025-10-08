@@ -16,7 +16,7 @@ Evaluate the performance of running queries on your cluster using the **Live Que
 
 - Visually identify relevant database operations.
 - Evaluate query execution times.
-- Discover potential queries for [tuning](../../../explore/query-1-performance/).
+- Discover potential queries for [tuning](../../../launch-and-manage/monitor-and-alert/query-tuning/).
 
 Live queries only shows queries "in-flight" (that is, currently in progress); queries that execute quickly might not show up by the time the display loads. There is no significant performance overhead on databases because the queries are fetched on-demand and are not tracked in the background.
 

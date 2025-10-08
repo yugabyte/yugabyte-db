@@ -3,9 +3,9 @@
 //  LICENSE file in the root directory of this source tree. An additional grant
 //  of patent rights can be found in the PATENTS file in the same directory.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -5202,11 +5202,12 @@ class DBWriter : public DBHolder {
     write_options_.IncreaseParallelism(4);
   }
 
-  Status InitRate(boost::optional<double> rate_bytes_per_sec = boost::none) {
+  Status InitRate(std::optional<double> rate_bytes_per_sec = std::nullopt) {
     if (rate_bytes_per_sec) {
       write_reference_rate_bytes_per_sec_ = *rate_bytes_per_sec;
-      SCHECK_GT(write_reference_rate_bytes_per_sec_, 0.0,
-                IllegalState, "Reference rate must be greater than zero");
+      SCHECK_GT(
+          write_reference_rate_bytes_per_sec_, 0.0, IllegalState,
+          "Reference rate must be greater than zero");
     } else {
       RETURN_NOT_OK(ExecWrite());
       write_reference_rate_bytes_per_sec_ = VERIFY_RESULT(write_stat_.GetRate());

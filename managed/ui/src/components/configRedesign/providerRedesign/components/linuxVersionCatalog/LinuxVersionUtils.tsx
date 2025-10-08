@@ -1,7 +1,7 @@
 /*
  * Created on Thu Nov 16 2023
  *
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License")
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
@@ -32,6 +32,7 @@ import { CloudVendorRegionField } from '../../forms/configureRegion/ConfigureReg
 import { fetchGlobalRunTimeConfigs } from '../../../../../api/admin';
 import FlagIcon from '../../../../../redesign/assets/flag-secondary.svg';
 import YBLogo from '../../../../../redesign/assets/yb-logo-secondary.svg';
+import clsx from 'clsx';
 
 /**
  * The key for the runtime configuration entry that enables VM OS patching.
@@ -70,11 +71,13 @@ const defaultTagStyle = makeStyles((theme) => ({
 export const ImageBundleDefaultTag = ({
   text,
   tooltip,
-  icon
+  icon,
+  className
 }: {
   text?: string;
   tooltip?: string;
   icon?: React.ReactChild;
+  className?: string;
 }) => {
   const { t } = useTranslation('translation', { keyPrefix: 'common' });
   const classes = defaultTagStyle();
@@ -89,7 +92,11 @@ export const ImageBundleDefaultTag = ({
       arrow
       placement="top"
     >
-      <Typography variant="subtitle1" className={classes.root} component={'span'}>
+      <Typography
+        variant="subtitle1"
+        className={clsx(classes.root, className && className)}
+        component={'span'}
+      >
         {icon ? icon : <img alt="default" src={FlagIcon} width="18" />}
         {text ? text : t('default')}
       </Typography>
@@ -116,7 +123,13 @@ const ImageBundleYBActiveTagStyle = makeStyles((theme) => ({
  *
  * @returns The ImageBundleYBActiveTag component.
  */
-export const ImageBundleYBActiveTag = () => {
+export const ImageBundleYBActiveTag = ({
+  icon,
+  className
+}: {
+  icon?: React.ReactChild;
+  className?: string;
+}) => {
   const classes = ImageBundleYBActiveTagStyle();
   const { t } = useTranslation('translation', { keyPrefix: 'linuxVersion.form.menuActions' });
   return (
@@ -125,8 +138,8 @@ export const ImageBundleYBActiveTag = () => {
       arrow
       placement="top"
     >
-      <div className={classes.root}>
-        <img alt="yb-active" src={YBLogo} width={14} height={14} />
+      <div className={clsx(classes.root, className && className)}>
+        {icon ? icon : <img alt="yb-active" src={YBLogo} width={14} height={14} />}
       </div>
     </Tooltip>
   );

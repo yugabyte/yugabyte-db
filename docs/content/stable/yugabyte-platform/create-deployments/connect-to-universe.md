@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Connect to your YugabyteDB database from your desktop using the YugabyteDB [ysqlsh](../../../api/ysqlsh/) and [ycqlsh](../../../api/ycqlsh/) client shells. Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can also use [psql](https://www.postgresql.org/docs/11/app-psql.html) and third-party tools to connect.
+Connect to your YugabyteDB database from your desktop using the YugabyteDB [ysqlsh](../../../api/ysqlsh/) and [ycqlsh](../../../api/ycqlsh/) client shells. Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can also use [psql](https://www.postgresql.org/docs/15/app-psql.html) and third-party tools to connect.
 
 You can connect to the database on a universe in the following ways:
 
@@ -33,9 +33,9 @@ If the universe uses Client-to-Node encryption in transit, to connect you need t
 
 For information on connecting using a client shell using this certificate, see [Connect from your desktop](#connect-from-your-desktop).
 
-To use TLS to connect an application, refer to the [driver documentation](../../../drivers-orms/). If you are using a PostgreSQL JDBC driver to connect to YugabyteDB, you can also refer to [Configuring the client](https://jdbc.postgresql.org/documentation/head/ssl-client.html) for more details.
+To use TLS to connect an application, refer to the [driver documentation](/preview/develop/drivers-orms/). If you are using a PostgreSQL JDBC driver to connect to YugabyteDB, you can also refer to [Configuring the client](https://jdbc.postgresql.org/documentation/head/ssl-client.html) for more details.
 
-If you are using PostgreSQL/YugabyteDB JDBC driver with SSL, you need to convert the certificates to DER format. To do this, you need to perform only steps 6 and 7 from [Set up SSL certificates for Java applications](../../../drivers-orms/java/postgres-jdbc-reference/#set-up-ssl-certificates-for-java-applications) section after downloading the certificates.
+If you are using PostgreSQL/YugabyteDB JDBC driver with SSL, you need to convert the certificates to DER format. To do this, you need to perform only steps 6 and 7 from [Set up SSL certificates for Java applications](/preview/develop/drivers-orms/java/postgres-jdbc-reference/#set-up-ssl-certificates-for-java-applications) section after downloading the certificates.
 
 ## Connect to a universe node
 
@@ -205,7 +205,7 @@ Replace the following:
 
   <div id="psql" class="tab-pane fade" role="tabpanel" aria-labelledby="psql-tab">
 
-To connect using [psql](https://www.postgresql.org/docs/11/app-psql.html), use the following connection string:
+To connect using [psql](https://www.postgresql.org/docs/15/app-psql.html), use the following connection string:
 
 ```sh
 ./psql --host=<HOST_ADDRESS> --port=5433 \

@@ -1,4 +1,4 @@
-# Copyright (c) YugaByte, Inc.
+# Copyright (c) YugabyteDB, Inc.
 # az account list-locations -o table from Azure CLI
 # Residency https://azure.microsoft.com/en-us/global-infrastructure/data-residency/
 

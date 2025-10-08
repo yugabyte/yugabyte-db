@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -86,13 +86,8 @@ class PgDml : public PgStatement {
   Status Fetch(
       int32_t natts, uint64_t* values, bool* isnulls, YbcPgSysColumns* syscols, bool* has_data);
 
-  // Returns TRUE if docdb replies with more data.
-  Result<bool> FetchDataFromServer();
-
-  // Returns TRUE if desired row is found.
-  Result<bool> GetNextRow(PgTuple* pg_tuple);
-
   virtual void SetCatalogCacheVersion(std::optional<PgOid> db_oid, uint64_t version) = 0;
+  virtual void SetTablespaceOid(uint32_t tablespace_oid) = 0;
 
   // Get column info on whether the column 'attr_num' is a hash key, a range
   // key, or neither.
@@ -145,7 +140,7 @@ class PgDml : public PgStatement {
   void ColRefsToPB();
 
   Result<bool> UpdateRequestWithYbctids(
-      const std::vector<Slice>& ybctids, KeepOrder keep_order = KeepOrder::kFalse);
+      std::span<const Slice> ybctids, KeepOrder keep_order = KeepOrder::kFalse);
 
   template<class Request>
   static void DoSetCatalogCacheVersion(
@@ -158,6 +153,13 @@ class PgDml : public PgStatement {
     } else {
       request.set_ysql_catalog_version(version);
     }
+  }
+
+  template<class Request>
+  static void DoSetTablespaceOid(Request* req, uint32_t tablespace_oid) {
+    DCHECK_GE(tablespace_oid, kPgFirstNormalObjectId);
+    auto& request = *DCHECK_NOTNULL(req);
+    request.set_tablespace_oid(tablespace_oid);
   }
 
   Result<bool> ProcessProvidedYbctids();
@@ -214,11 +216,6 @@ class PgDml : public PgStatement {
 
   // DML Operator.
   PgDocOp::SharedPtr doc_op_;
-
-  //------------------------------------------------------------------------------------------------
-  // Data members for navigating the output / result-set from either selected or returned targets.
-  std::list<PgDocResult> rowsets_;
-  int64_t current_row_order_ = 0;
 
   // Yugabyte has a few IN/OUT parameters of statement execution, "pg_exec_params_" is used to sent
   // OUT value back to postgres.

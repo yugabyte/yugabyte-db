@@ -28,6 +28,10 @@ If you already have existing data in your tables, follow the bootstrap process d
 
 ## Set up unidirectional replication
 
+{{< tip >}}
+Before setting up xCluster replication, ensure you have reviewed the [Prerequisites](../#prerequisites) and [Best practices](../#best-practices).
+{{< /tip >}}
+
 After you created the required tables, you can set up unidirectional replication as follows:
 
 - Look up the source universe UUID and the table IDs for the two tables and the index table:
@@ -37,20 +41,20 @@ After you created the required tables, you can set up unidirectional replication
   - To find a table ID, execute the following command as an admin user:
 
       ```sh
-      ./bin/yb-admin -master_addresses <source_universe_master_addresses> list_tables include_table_id
+      ./bin/yb-admin --master_addresses <source_universe_master_addresses> list_tables include_table_id
       ```
 
       The preceding command lists all the tables, including system tables. To locate a specific table, you can add grep as follows:
 
       ```sh
-      ./bin/yb-admin -master_addresses <source_universe_master_addresses> list_tables include_table_id | grep table_name
+      ./bin/yb-admin --master_addresses <source_universe_master_addresses> list_tables include_table_id | grep table_name
       ```
 
 - Run the following yb-admin [`setup_universe_replication`](../../../../admin/yb-admin/#setup-universe-replication) command from the YugabyteDB home directory in the source universe:
 
     ```sh
     ./bin/yb-admin \
-      -master_addresses <target_universe_master_addresses> \
+      --master_addresses <target_universe_master_addresses> \
       setup_universe_replication <source_universe_UUID>_<replication_stream_name> \
         <source_universe_master_addresses> \
         <table_id>,[<table_id>..]
@@ -60,7 +64,7 @@ After you created the required tables, you can set up unidirectional replication
 
     ```sh
     ./bin/yb-admin \
-      -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
+      --master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
       setup_universe_replication e260b8b6-e89f-4505-bb8e-b31f74aa29f3_xClusterSetup1 \
         127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
         000030a5000030008000000000004000,000030a5000030008000000000004005,dfef757c415c4b2cacc9315b8acb539a
@@ -71,6 +75,10 @@ The preceding command contains three table IDs: the first two are YSQL for the b
 If you need to set up bidirectional replication, see instructions provided in [Set up bidirectional replication](#set-up-bidirectional-replication). Otherwise, proceed to [Load data into the source universe](#load-data-into-the-source-universe).
 
 ## Set up bidirectional replication
+
+{{< tip >}}
+Before setting up xCluster replication, ensure you have reviewed the [Prerequisites](../#prerequisites) and [Best practices](../#best-practices).
+{{< /tip >}}
 
 To set up bidirectional replication, repeat the procedure described in [Set up unidirectional replication](#set-up-unidirectional-replication) applying the steps to the target universe. You need to set up each source to consume data from target.
 
@@ -136,7 +144,7 @@ You can use yb-admin to return the current replication status. The `get_replicat
 
 ```sh
 ./bin/yb-admin \
-    -master_addresses 127.0.0.1:7000,127.0.0.2:7000,127.0.0.3:7000 \
+    --master_addresses 127.0.0.1:7000,127.0.0.2:7000,127.0.0.3:7000 \
     get_replication_status
 ```
 
@@ -150,46 +158,6 @@ statuses {
   }
 }
 ```
-
-## Set up replication with TLS
-
-The setup process depends on whether the source and target universes have the same certificates.
-
-If both universes use the same certificates, run `yb-admin setup_universe_replication` and include the [`-certs_dir_name`](../../../../admin/yb-admin#syntax) flag. Setting that to the target universe's certificate directory will make replication use those certificates for connecting to both universes.
-
-Consider the following example:
-
-```sh
-./bin/yb-admin -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
-  -certs_dir_name /home/yugabyte/yugabyte-tls-config \
-  setup_universe_replication e260b8b6-e89f-4505-bb8e-b31f74aa29f3_xClusterSetup1 \
-  127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
-  000030a5000030008000000000004000,000030a5000030008000000000004005,dfef757c415c4b2cacc9315b8acb539a
-```
-
-When universes use different certificates, you need to store the certificates for the source universe on the target universe, as follows:
-
-1. Ensure that `use_node_to_node_encryption` is set to `true` on all [YB-Masters](../../../../reference/configuration/yb-master/#use-node-to-node-encryption) and [YB-TServers](../../../../reference/configuration/yb-tserver/#use-node-to-node-encryption) on both the source and target.
-
-1. For each YB-Master and YB-TServer on the target universe, set the flag `certs_for_cdc_dir` to the parent directory where you want to store all the source universe's certificates for replication.
-
-1. Find the certificate authority file used by the source universe (`ca.crt`). This should be stored in the [`--certs_dir`](../../../../reference/configuration/yb-master/#certs-dir).
-
-1. Copy this file to each node on the target. It needs to be copied to a directory named`<certs_for_cdc_dir>/<source_universe_uuid>`.
-
-    For example, if you previously set `certs_for_cdc_dir=/home/yugabyte/yugabyte_producer_certs`, and the source universe's ID is `00000000-1111-2222-3333-444444444444`, then you would need to copy the certificate file to `/home/yugabyte/yugabyte_producer_certs/00000000-1111-2222-3333-444444444444/ca.crt`.
-
-1. Set up replication using `yb-admin setup_universe_replication`, making sure to also set the `-certs_dir_name` flag to the directory with the target universe's certificates (this should be different from the directory used in the previous steps).
-
-    For example, if you have the target universe's certificates in `/home/yugabyte/yugabyte-tls-config`, then you would run the following:
-
-    ```sh
-    ./bin/yb-admin -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
-      -certs_dir_name /home/yugabyte/yugabyte-tls-config \
-      setup_universe_replication 00000000-1111-2222-3333-444444444444_xClusterSetup1 \
-      127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
-      000030a5000030008000000000004000,000030a5000030008000000000004005,dfef757c415c4b2cacc9315b8acb539a
-    ```
 
 ## Set up replication with geo-partitioning
 
@@ -263,7 +231,7 @@ To create unidirectional replication, perform the following:
 1. Run the replication setup command for the source universe, as follows:
 
     ```sh
-    ./bin/yb-admin -master_addresses <target_master_addresses> \
+    ./bin/yb-admin --master_addresses <target_master_addresses> \
     setup_universe_replication <source_universe_UUID>_<replication_stream_name> \
     <source_master_addresses> <comma_separated_table_ids>
     ```
@@ -271,7 +239,7 @@ To create unidirectional replication, perform the following:
     Consider the following example:
 
     ```sh
-    ./bin/yb-admin -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
+    ./bin/yb-admin --master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
     setup_universe_replication 00000000-1111-2222-3333-444444444444_xClusterSetup1 \
     127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
     000033e1000030008000000000004007,000033e100003000800000000000400d,000033e1000030008000000000004013
@@ -324,7 +292,7 @@ In the Kubernetes environment, you can set up a pod to pod connectivity, as foll
 
   ```sh
   kubectl exec -it -n <source_universe_namespace> -t <source_universe_master_leader> -c \
-    <source_universe_container> -- bash -c "/home/yugabyte/bin/yb-admin -master_addresses \
+    <source_universe_container> -- bash -c "/home/yugabyte/bin/yb-admin --master_addresses \
     <target_universe_master_addresses> setup_universe_replication \
     <source_universe_UUID>_<replication_stream_name> <source_universe_master_addresses> \
     <comma_separated_table_ids>"
@@ -334,7 +302,7 @@ In the Kubernetes environment, you can set up a pod to pod connectivity, as foll
 
   ```sh
   kubectl exec -it -n xcluster-source -t yb-master-2 -c yb-master -- bash -c \
-    "/home/yugabyte/bin/yb-admin -master_addresses yb-master-2.yb-masters.xcluster-target.svc.cluster.local, \
+    "/home/yugabyte/bin/yb-admin --master_addresses yb-master-2.yb-masters.xcluster-target.svc.cluster.local, \
     yb-master-1.yb-masters.xcluster-target.svc.cluster.local,yb-master-0.yb-masters.xcluster-target.svc.cluster.local \
     setup_universe_replication ac39666d-c183-45d3-945a-475452deac9f_xCluster_1 \
     yb-master-2.yb-masters.xcluster-source.svc.cluster.local,yb-master-1.yb-masters.xcluster-source.svc.cluster.local, \
@@ -389,14 +357,14 @@ Proceed as follows:
 1. Create a checkpoint on the source universe for all the tables you want to replicate by executing the following command:
 
     ```sh
-    ./bin/yb-admin -master_addresses <source_universe_master_addresses> \
+    ./bin/yb-admin --master_addresses <source_universe_master_addresses> \
     bootstrap_cdc_producer <comma_separated_source_universe_table_ids>
     ```
 
     Consider the following example:
 
     ```sh
-    ./bin/yb-admin -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+    ./bin/yb-admin --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
     bootstrap_cdc_producer 000033e1000030008000000000004000,000033e1000030008000000000004003,000033e1000030008000000000004006
     ```
 
@@ -412,7 +380,7 @@ Proceed as follows:
 1. Execute the following command to set up the replication stream using the bootstrap IDs generated in step 1. Ensure that the bootstrap IDs are in the same order as their corresponding table IDs.
 
     ```sh
-    ./bin/yb-admin -master_addresses <target_universe_master_addresses> setup_universe_replication \
+    ./bin/yb-admin --master_addresses <target_universe_master_addresses> setup_universe_replication \
       <source_universe_uuid>_<replication_stream_name> <source_universe_master_addresses> \
       <comma_separated_source_universe_table_ids> <comma_separated_bootstrap_ids>
     ```
@@ -420,7 +388,7 @@ Proceed as follows:
     Consider the following example:
 
     ```sh
-    ./bin/yb-admin -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 setup_universe_replication \
+    ./bin/yb-admin --master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 setup_universe_replication \
       00000000-1111-2222-3333-444444444444_xCluster1 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
       000033e1000030008000000000004000,000033e1000030008000000000004003,000033e1000030008000000000004006 \
       fb156717174941008e54fa958e613c10,a2a46f5cbf8446a3a5099b5ceeaac28b,c967967523eb4e03bcc201bb464e0679
@@ -472,8 +440,8 @@ When new tables (or partitions) are created, to ensure that all changes from the
 1. Get table IDs of the new partition from the source as follows:
 
     ```sql
-    yb-admin -master_addresses <source_master_ips> \
-    -certs_dir_name <cert_dir> \
+    yb-admin --master_addresses <source_master_ips> \
+    --certs_dir_name <cert_dir> \
     list_tables include_table_id|grep 'order_changes_2023_01'
     ```
 
@@ -486,8 +454,8 @@ When new tables (or partitions) are created, to ensure that all changes from the
 1. Add the new table (or partition) to replication.
 
    ```sql
-   yb-admin -master_addresses <target_master_ips> \
-   -certs_dir_name <cert_dir> \
+   yb-admin --master_addresses <target_master_ips> \
+   --certs_dir_name <cert_dir> \
    alter_universe_replication <replication_group_name> \
    add_table  000033e800003000800000000000410b
    ```
@@ -510,8 +478,8 @@ However, to add a new index to a table that already has data, the following addi
 
    ```sql
    yb-admin
-   -master_addresses <source_master_ips> \
-   -certs_dir_name <cert_dir> \
+   --master_addresses <source_master_ips> \
+   --certs_dir_name <cert_dir> \
    list_tables include_table_id|grep 'my_new_index'
    ```
 
@@ -525,8 +493,8 @@ However, to add a new index to a table that already has data, the following addi
 
    ```sql
    yb-admin
-   -master_addresses <source_master_ips> \
-   -certs_dir_name <cert_dir> \
+   --master_addresses <source_master_ips> \
+   --certs_dir_name <cert_dir> \
    bootstrap_cdc_producer 000033e8000030008000000000004028
    ```
 
@@ -543,8 +511,8 @@ However, to add a new index to a table that already has data, the following addi
 
     ```sql
     yb-admin
-    -master_addresses <target_master_ips> \
-    -certs_dir_name <cert_dir> \
+    --master_addresses <target_master_ips> \
+    --certs_dir_name <cert_dir> \
     alter_universe_replication 59e58153-eec6-4cb5-a858-bf685df52316_east-west \
     add_table  000033e8000030008000000000004028 c8cba563e39c43feb66689514488591c
     ```
@@ -579,16 +547,16 @@ Objects (tables, indexes, partitions) need to be removed from replication before
 1. Get the table ID for the object to be removed from the source.
 
     ```sql
-    yb-admin -master_addresses <source_master_ips> \
-    -certs_dir_name <cert_dir> \
+    yb-admin --master_addresses <source_master_ips> \
+    --certs_dir_name <cert_dir> \
     list_tables include_table_id |grep '<partition_name>'
     ```
 
 1. Remove the table from replication on the target.
 
     ```sql
-    yb-admin -master_addresses <target_master_ips> \
-    -certs_dir_name <cert_dir> \
+    yb-admin --master_addresses <target_master_ips> \
+    --certs_dir_name <cert_dir> \
     alter_universe_replication <replication_group_name> \
     remove_table  000033e800003000800000000000410b
     ```
@@ -601,8 +569,8 @@ Alters involving adding/removing columns or modifying data types require replica
 
     ```sql
     yb-admin
-    -master_addresses <target_master_ips>
-    -certs_dir_name <cert_dir> \
+    --master_addresses <target_master_ips>
+    --certs_dir_name <cert_dir> \
     set_universe_replication_enabled <replication_group_name> 0
     ```
 
@@ -617,8 +585,8 @@ Alters involving adding/removing columns or modifying data types require replica
 
     ```sql
     yb-admin
-    -master_addresses <target_master_ips>
-    -certs_dir_name <cert_dir> \
+    --master_addresses <target_master_ips>
+    --certs_dir_name <cert_dir> \
     set_universe_replication_enabled <replication_group_name> 0
     ```
 

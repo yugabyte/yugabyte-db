@@ -1,4 +1,4 @@
-// Copyright (c) Yugabyte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 package com.yugabyte.yw.models;
 
 import static com.yugabyte.yw.models.helpers.CommonUtils.DEFAULT_YB_HOME_DIR;
@@ -633,5 +633,10 @@ public class Provider extends Model {
   public long getUniverseCount() {
     return Customer.get(this.getCustomerUUID()).getUniversesForProvider(this.getUuid()).stream()
         .count();
+  }
+
+  @JsonIgnore
+  public boolean isManualOnprem() {
+    return getCloudCode() == CloudType.onprem && getDetails().skipProvisioning;
   }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  *
  * This is mainly a placeholder until we integrate with a systemd library.
  * For now, it will contain helper functions for performing basic systemctl

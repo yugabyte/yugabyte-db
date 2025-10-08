@@ -24,7 +24,7 @@
 #ifndef YB_TCMALLOC_UTILS_H
 #define YB_TCMALLOC_UTILS_H
 
-extern int yb_log_heap_snapshot_on_exit_threshold;
+extern int	yb_log_heap_snapshot_on_exit_threshold;
 
 /*
  * Handle and process logging of heap snapshot interrupt.

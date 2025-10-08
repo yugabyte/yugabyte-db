@@ -71,8 +71,8 @@ The pg_stat_statements extension tracks and aggregates statistics for SQL querie
 
 By analyzing the pg_stat_statements view, database administrators can identify slow, frequently executed, or resource-intensive queries, making it a powerful tool for performance tuning. It is straightforward to use — enable the extension and query the view to gain insights into query patterns and optimize database performance.
 
-{{<lead link="../query-1-performance/pg-stat-statements">}}
-To get more info on query level statistics, see [pg_stat_statements](../query-1-performance/pg-stat-statements)
+{{<lead link="../../launch-and-manage/monitor-and-alert/query-tuning/pg-stat-statements">}}
+To get more info on query level statistics, see [pg_stat_statements](../../launch-and-manage/monitor-and-alert/query-tuning/pg-stat-statements)
 {{</lead>}}
 
 ## Live queries
@@ -119,7 +119,7 @@ To understand how to view and use lock information, see [pg_locks](./pg-locks)
 
 ## Active Session History
 
-Active Session History (ASH) offers insight into current and past system activity by periodically sampling session behavior in the database. ASH functionality extends to [YSQL](../../api/ysql/), [YCQL](../../api/ycql/), and [YB-TServer](../../architecture/yb-tserver/) processes, and helps you to conduct analytical queries, perform aggregations, and troubleshoot performance issues.
+{{<tags/feature/ea idea="830">}} Active Session History (ASH) offers insight into current and past system activity by periodically sampling session behavior in the database. ASH functionality extends to [YSQL](../../api/ysql/), [YCQL](../../api/ycql/), and [YB-TServer](../../architecture/yb-tserver/) processes, and helps you to conduct analytical queries, perform aggregations, and troubleshoot performance issues.
 
 {{<lead link="./active-session-history">}}
 To learn more, see [Active Session History](./active-session-history)

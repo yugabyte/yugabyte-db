@@ -275,6 +275,315 @@ spec:
   keyspace: <keyspace overide>
 ```
 
+#### Service account for backup
+
+You can attach a service account to database pods to be used to access storage in S3 or GCS. The service account used for the database pods should have annotations for the IAM role. The service account to be used can be applied to the database pods as a Helm override with provider- or universe- level overrides.
+
+The operator pod (with the YugabyteDB Anywhere instance) should have the IAM role for cloud storage access attached to its service account.
+
+**AWS**
+
+The IAM role used should be sufficient to access storage in S3.
+
+To enable IAM roles to access storage in S3, set the **Use S3 IAM roles attached to DB node for Backup/Restore** Universe Configuration option (config key `yb.backup.s3.use_db_nodes_iam_role_for_backup`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
+
+The storage config CR should have IAM as the credential source.
+
+```yaml
+apiVersion: operator.yugabyte.io/v1alpha1
+kind: StorageConfig
+metadata:
+  name: s3-config-operator
+spec:
+  config_type: STORAGE_S3
+  data:
+    BACKUP_LOCATION: s3://backups.yugabyte.com/test
+    USE_IAM: true //For IAM based access on GCP/S3
+```
+
+Provide the service account in the universe overrides section. The service account should have IAM roles configured for access to cloud storage.
+
+```yaml
+apiVersion: operator.yugabyte.io/v1alpha1
+kind: YBUniverse
+metadata:
+  name: operator-universe
+spec:
+  ...
+  kubernetesOverrides:
+    tserver:
+      serviceAccount: <KSA_NAME>
+```
+
+For more information, refer to [Enable IAM roles for service accounts](https://docs.aws.amazon.com/eks/latest/userguide/enable-iam-roles-for-service-accounts.html) in the AWS documentation.
+
+**GKE**
+
+The IAM role used should be sufficient to access storage in GCS.
+
+The storage config CR should have IAM as the credential source.
+
+```yaml
+apiVersion: operator.yugabyte.io/v1alpha1
+kind: StorageConfig
+metadata:
+  name: gcs-config-operator
+spec:
+  config_type: STORAGE_GCS
+  data:
+    BACKUP_LOCATION: gs://gcp-bucket/test_backups
+    USE_IAM: true //For IAM based access on GCP/S3
+```
+
+Provide the service account in the universe overrides section. The service account should have IAM roles configured for access to cloud storage.
+
+```yaml
+apiVersion: operator.yugabyte.io/v1alpha1
+kind: YBUniverse
+metadata:
+  name: operator-universe
+spec:
+  ...
+  kubernetesOverrides:
+    tserver:
+      serviceAccount: <KSA_NAME>
+```
+
+For more information, refer to [Authenticate to Google Cloud APIs from GKE workloads](https://cloud.google.com/kubernetes-engine/docs/how-to/workload-identity) in the Google Cloud documentation.
+
+<!--
+TODO in 2.27
+#### Scheduled backups
+
+This feature is {{<tags/feature/ea idea="1448">}}. Backup schedules support taking full backups based on cron expressions or specified frequencies. They also allow you to configure incremental backups to run in between these full backups, providing finer-grained recovery points.
+
+When an operator schedule triggers a backup, a corresponding CR is automatically created for that specific backup. The operator names this CR appropriately, and marks it with "ignore-reconciler-add".
+
+Operator schedules maintain owner references to their respective YugabyteDB Anywhere universes. This ensures that when you delete a source universe, its associated schedule is also deleted.
+
+The operator's backup schedule also supports Point-In-Time Recovery (PITR) from a backup. See [Create a scheduled backup policy with PITR](../../back-up-restore-universes/schedule-data-backups/#create-a-scheduled-backup-policy-with-pitr) for more details.
+
+**Setup**
+
+Set up scheduled backups as follows:
+
+1. Apply latest CRDs with new scheduled backups CRD on the Kubernetes cluster.
+
+    ```sh
+    kubectl apply -f https://raw.github.com/yugabyte/charts/{{< yb-version version="stable" format="short">}}/crds/concatenated_crd.yaml
+    ```
+
+1. Verify scheduled backup fields in the backup CRD specification using `kubectl explain` to understand the available configuration options.
+
+    ```sh
+    $ kubectl explain backupschedules.operator.yugabyte.io.spec
+    ```
+
+    ```output
+    GROUP:operator.yugabyte.io
+    KIND:BackupSchedule
+    VERSION:v1alpha1
+    FIELDS:
+      backupType<string>-required-
+        Type of backup to be taken. Allowed values are - YQL_TABLE_TYPE
+        PGSQL_TABLE_TYPE
+
+      cronExpression<string>
+        Frequency of full backups in cron expression.
+
+      enablePointInTimeRestore<boolean>
+        Enable Point in time restore for backups created with the schedule
+
+      incrementalBackupFrequency<integer>
+        Frequency of incremental backups in milliseconds
+
+      keyspace<string>-required-
+        Name of keyspace to be backed up.
+
+      schedulingFrequency<integer>
+        Frequency of full backups in milliseconds.
+
+      storageConfig<string>-required-
+        Storage configuration for the backup, refers to a storageconfig CR name. Should be in the same namespace as the     backupschedule.
+
+      tableByTableBackup<boolean>
+        Boolean indicating if backup is to be taken table by table.
+
+      timeBeforeDelete<integer>
+        Time before backup is deleted from storage in milliseconds.
+
+      universe<string>-required-
+        Name of the universe for which backup is to be taken, refers to a ybuniverse CR name. Should be in the same namespace as the backupschedule.
+    ```
+
+##### Example
+
+This example decribes how to create and delete scheduled backups, and assumes you have the following:
+
+- An existing YugabyteDB Anywhwere universe deployed using the YugabyteDB Kubernetes Operator.
+- A configured storage location for your backups.
+
+Use the following CRD to create a scheduled backup:
+
+```sh
+kubectl apply scheduled-backup-demo.yaml -n schedule-cr
+```
+
+```yaml
+apiVersion:operator.yugabyte.io/v1alpha1
+kind:BackupSchedule
+metadata:
+  name:operator-scheduled-backup-1
+spec:
+  backupType:PGSQL_TABLE_TYPE
+  storageConfig:s3-config-operator
+  universe:operator-universe-test-2
+  timeBeforeDelete:1234567890
+  keyspace:test
+  schedulingFrequency:3600000
+  incrementalBackupFrequency:900000
+```
+
+Backups are created from the schedules (using their auto-created CRs). You can verify them using the `kubectl get backups` as follows:
+
+```sh
+kubectl get backups -n schedule-cr
+```
+
+```output
+NAME                                                          AGE
+operator-scheduled-backup-1-1069296176-full--06-43-25         32m
+operator-scheduled-backup-1-1069296176-incremental--06-59-26  16m
+operator-scheduled-backup-1-1069296176-incremental--07-13-26  2m55s
+```
+
+Backup schedules get automatically deleted when you delete the YBA universe that owns it as per the following:
+
+```sh
+$kubectl get backups -n schedule-cr
+```
+
+```yaml
+NAME                           AGE
+operator-scheduled-backup-1   101m
+```
+
+```sh
+$ kubectl get ybuniverse -n schedule-cr
+```
+
+```yaml
+NAME                       STATE   SOFTWARE VERSION
+operator-universe-test-2   Ready   2.25.2.0-b40
+```
+
+```sh
+# Delete YBA universe
+$ kubectl delete ybuniverse operator-universe-test-2 -n schedule-cr
+```
+
+```output
+ybuniverse.operator.yugabyte.io "operator-universe-test-2" deleted
+```
+
+```sh
+$ kubectl get backupschedule -n schedule-cr
+```
+
+```output
+No resources found in schedule-cr namespace.
+```
+
+#### Incremental backups
+
+{{<tags/feature/ea idea="1448">}}Use backup schedules to schedule full backups at specific intervals or using a cron expression. You can also configure incremental backups to run in between these full backups, providing finer-grained recovery points.
+
+This functionality creates a chain of references for your backups. Each incremental backup CR references its preceding backup in the chain, whether a full or another incremental backup. This chain always leads back to the initial full backup.
+
+When you initiate an incremental backup, it is appended to the last successful backup (either full or incremental) within that existing chain. This ensures a consistent and complete backup history.
+
+To delete the backups, you delete the first full backup, and this action triggers a chain of deletes. You cannot delete individual incremental backups, as doing so can break the backup chain.
+
+**Setup**
+
+Set up incremental backups as follows:
+
+1. Apply the latest CRD for backup:
+
+    ```sh
+    kubectl apply -f https://raw.github.com/yugabyte/charts/{{< yb-version version="stable" format="short">}}/crds/concatenated_crd.yaml
+    ```
+
+1. Verify incremental backup fields in the backup CRD specification using `kubectl explain` to understand the available configuration options.
+
+    ```sh
+    $ kubectl explain backups.operator.yugabyte.io.spec
+    ```
+
+    ```output
+    GROUP: operator.yugabyte.io
+    KIND: Backup
+    VERSION: v1alpha1
+    FIELDS:
+    ...
+    incrementalBackupBase <string>
+      Base backup Custom Resource name. Operator will add an incremental backup to the existing chain of backups at the last.
+    ```
+
+##### Example
+
+This example decribes how to create and delete incremental backups, and assumes you have the following:
+
+- An existing YugabyteDB Anywhwere universe deployed using the YugabyteDB Kubernetes Operator.
+- A configured storage location for your backups. You must have an existing base backup (either a full backup or a previous incremental backup) to create the new incremental backup.
+
+Use the following CRD to create an incremental backup:
+
+```sh
+kubectl apply operator-backup-demo.yaml -n schedule-cr
+```
+
+```yaml
+#operator-backup-demo.yaml
+apiVersion: operator.yugabyte.io/v1alpha1
+kind: Backup
+metadata:
+  name: operator-backup-1
+spec:
+  backupType: PGSQL_TABLE_TYPE
+  storageConfig: az-config-operator-1
+  universe: operator-universe-test-1
+  timeBeforeDelete: 1234567890
+  keyspace: test
+  incrementalBackupBase: <base full backup cr name>
+  ```
+
+Deleting full backup deletes all incremental backups associated with it as follows:
+
+```sh
+# Get all backups in the 'schedule-cr' namespace.
+$ kubectl get backups -n schedule-cr
+```
+
+```output
+NAME                                                                     AGE
+operator-scheduled-backup-1-1069296176-full-2025-02-27-06-43-25          32m
+operator-scheduled-backup-1-1069296176-incremental-2025-02-27-06-59-26   16m
+operator-scheduled-backup-1-1069296176-incremental-2025-02-27-07-13-26   2m55s
+```
+
+```sh
+$ kubectl delete backup operator-scheduled-backup-1-1069296176-full-2025-02-27-06-43-25 -n schedule-cr
+```
+
+```sh
+$ kubectl get backups -n schedule-cr
+```
+
+```output
+No resources found in schedule-cr namespace.
+``` -->
+
 ### Support bundle
 
 Use the following CRD to create a [support bundle](../../troubleshoot/universe-issues/#use-support-bundles):
@@ -310,6 +619,7 @@ spec:
 
 ## Limitations
 
+<!--TODO in 2.27 - Remove Backup schedules limitation-->
 - YugabyteDB Kubernetes Operator can only deploy universes on the _same_ Kubernetes cluster it is deployed on.
 - YugabyteDB Kubernetes Operator is single cluster only, and does not support multi-cluster universes.
 - Currently, YugabyteDB Kubernetes Operator does not support the following features:

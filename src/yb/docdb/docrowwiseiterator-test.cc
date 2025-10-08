@@ -16,21 +16,24 @@
 
 #include "yb/common/common.pb.h"
 #include "yb/common/pgsql_protocol.pb.h"
-#include "yb/qlexpr/ql_expr.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction-test-util.h"
 
-#include "yb/dockv/doc_key.h"
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_test_base.h"
 #include "yb/docdb/docdb_test_util.h"
+
+#include "yb/dockv/doc_key.h"
 #include "yb/dockv/packed_row.h"
 #include "yb/dockv/pg_row.h"
+#include "yb/dockv/reader_projection.h"
 #include "yb/dockv/schema_packing.h"
+
+#include "yb/qlexpr/ql_expr.h"
 
 #include "yb/server/hybrid_clock.h"
 
@@ -96,7 +99,7 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
       const KeyBytes &doc_key, HybridTime ht,
       std::initializer_list<std::pair<ColumnId, const QLValuePB>> columns);
 
-  std::unique_ptr<DocRowwiseIterator> MakeIterator(
+  docdb::DocRowwiseIteratorPtr MakeIterator(
       const Schema& projection,
       std::reference_wrapper<const DocReadContext> doc_read_context,
       const TransactionOperationContext &txn_op_context,
@@ -1246,11 +1249,11 @@ SubDocKey(DocKey(ColocationId=16385, [], ["row1", 11111]), [SystemColumnId(0); \
   Schema schema_copy = doc_read_context().schema();
   schema_copy.set_colocation_id(colocation_id);
   Schema projection;
-  auto doc_read_context = DocReadContext::TEST_Create(schema_copy);
   auto pending_op = ScopedRWOperation::TEST_Create();
 
   // Read should have results before delete...
   {
+    auto doc_read_context = DocReadContext::TEST_Create(schema_copy);
     auto iter = ASSERT_RESULT(CreateIterator(
         projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
         ReadOperationData::TEST_FromReadTimeMicros(1500),
@@ -1259,6 +1262,7 @@ SubDocKey(DocKey(ColocationId=16385, [], ["row1", 11111]), [SystemColumnId(0); \
   }
   // ...but there should be no results after delete.
   {
+    auto doc_read_context = DocReadContext::TEST_Create(schema_copy);
     auto iter = ASSERT_RESULT(CreateIterator(
         projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
         ReadOperationData(), pending_op));

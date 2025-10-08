@@ -13,6 +13,11 @@
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
+DECLARE_string(allowed_preview_flags_csv);
+
+DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
+
 DECLARE_bool(TEST_ysql_require_force_catalog_modifications);
 
 #define ASSERT_STMT_OK(stmt) ASSERT_OK(conn.Execute(stmt))
@@ -25,7 +30,18 @@ constexpr auto kExpectedDdlError =
     "Catalog update without force_catalog_modifications when "
     "TEST_ysql_require_force_catalog_modifications is set";
 
-using YsqlDdlWhitelistTest = pgwrapper::PgMiniTestBase;
+class YsqlDdlWhitelistTest : public pgwrapper::PgMiniTestBase {
+ protected:
+  void SetUp() override {
+    // TODO(#28742): Fix interaction of ysql_yb_ddl_transaction_block_enabled with
+    // yb_force_catalog_update_on_next_ddl. For now, disable table locks for this test.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_allowed_preview_flags_csv) =
+        "enable_object_locking_for_table_locks,ysql_yb_ddl_transaction_block_enabled";
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = false;
+    pgwrapper::PgMiniTestBase::SetUp();
+  }
+};
 
 TEST_F(YsqlDdlWhitelistTest, TestDDLBlocking) {
   // Prepare the cluster.
@@ -50,6 +66,9 @@ TEST_F(YsqlDdlWhitelistTest, TestDDLBlocking) {
   ASSERT_STMT_OK("CREATE INDEX temp_idx ON test_temp_table_with_pk (b)");
   ASSERT_STMT_OK("DROP INDEX temp_idx");
 
+  // Truncate a temp table.
+  ASSERT_STMT_OK("TRUNCATE TABLE test_temp_table_with_pk");
+
   // Drop a collection of temp tables.
   ASSERT_STMT_OK("CREATE TEMP TABLE test_temp_table (id INT)");
   ASSERT_STMT_OK("DROP TABLE test_temp_table, test_temp_table_with_pk");
@@ -61,9 +80,12 @@ TEST_F(YsqlDdlWhitelistTest, TestDDLBlocking) {
   ASSERT_DDL_NOK("ALTER TABLE normal_table ADD COLUMN c INT");
   ASSERT_DDL_NOK("CREATE INDEX normal_idx2 ON normal_table (b)");
   ASSERT_DDL_NOK("DROP INDEX normal_idx");
+  ASSERT_DDL_NOK("TRUNCATE TABLE normal_table");
 
-  // Ensure mix of temp and normal table drops are not allowed.
+  // Ensure mix of temp and normal table truncate and drop are not allowed.
   ASSERT_STMT_OK("CREATE TEMP TABLE test_temp_table (id INT)");
+  ASSERT_DDL_NOK("TRUNCATE TABLE normal_table, test_temp_table");
+  ASSERT_DDL_NOK("DROP TABLE normal_table, test_temp_table");
   ASSERT_DDL_NOK("DROP TABLE test_temp_table, normal_table");
 
   // Ensure yb_force_catalog_update_on_next_ddl works as expected.

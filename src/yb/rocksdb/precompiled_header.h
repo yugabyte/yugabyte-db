@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -74,7 +74,6 @@
 #include <utility>
 #include <vector>
 
-#include <boost/optional.hpp>
 #include <boost/container/small_vector.hpp>
 #include <boost/functional/hash.hpp>
 #include <boost/variant.hpp>

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -118,6 +118,9 @@ Status SetNonDDLTxnAllowedForSysTableWrite(PGConn& conn, bool value);
 Status IncrementAllDBCatalogVersions(
     PGConn& conn,
     IsBreakingCatalogVersionChange is_breaking = IsBreakingCatalogVersionChange::kTrue);
+
+void GenerateCSVFileForCopy(
+    const std::string& filename, int num_rows, int num_columns = 2, int offset = 0);
 
 } // namespace pgwrapper
 } // namespace yb

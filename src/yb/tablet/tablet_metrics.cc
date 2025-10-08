@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -33,7 +33,6 @@
 
 #include "yb/common/pgsql_protocol.pb.h"
 
-#include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 
 #include "yb/yql/pggate/pg_metrics_list.h"
@@ -55,21 +54,22 @@ METRIC_DEFINE_counter(tablet, insertions_failed_dup_key, "Duplicate Key Inserts"
 
 METRIC_DEFINE_event_stats(table, ql_write_latency, "Write latency at tserver layer",
   yb::MetricUnit::kMicroseconds,
-  "Time taken to handle a batch of writes at tserver layer");
+  "Time (microseconds) taken to handle a batch of writes at tserver layer");
 
 METRIC_DEFINE_event_stats(table, snapshot_read_inflight_wait_duration,
-  "Time Waiting For Snapshot Reads",
-  yb::MetricUnit::kMicroseconds,
-  "Time spent waiting for in-flight writes to complete for READ_AT_SNAPSHOT scans.");
+    "Time Waiting For Snapshot Reads",
+    yb::MetricUnit::kMicroseconds,
+    "Time (microseconds) spent waiting for in-flight writes to complete for READ_AT_SNAPSHOT "
+    "scans.");
 
 METRIC_DEFINE_event_stats(
     table, ql_read_latency, "Handle ReadRequest latency at tserver layer",
     yb::MetricUnit::kMicroseconds,
-    "Time taken to handle the read request at the tserver layer.");
+    "Time (microseconds) taken to handle the read request at the tserver layer.");
 
 METRIC_DEFINE_event_stats(
     table, write_lock_latency, "Write lock latency", yb::MetricUnit::kMicroseconds,
-    "Time taken to acquire key locks for a write operation");
+    "Time (microseconds) taken to acquire key locks for a write operation");
 
 METRIC_DEFINE_event_stats(
     table, read_time_wait, "Read Time Wait", yb::MetricUnit::kMicroseconds,
@@ -82,12 +82,12 @@ METRIC_DEFINE_event_stats(
 METRIC_DEFINE_event_stats(
     table, intentsdb_rocksdb_write_thread_join_group_micros,
     "intents db write thread join duration", yb::MetricUnit::kMicroseconds,
-    "The time taken for intents db write thread to join the write group");
+    "Time (microseconds) taken for intents db write thread to join the write group");
 
 METRIC_DEFINE_event_stats(
     table, intentsdb_rocksdb_remove_thread_join_group_micros,
     "Intents db remove thread join duration", yb::MetricUnit::kMicroseconds,
-    "The time taken for intents db remove thread to join the write group");
+    "Time (microseconds) taken for intents db remove thread to join the write group");
 
 METRIC_DEFINE_gauge_uint32(tablet, compact_rs_running,
   "RowSet Compactions Running",
@@ -178,8 +178,7 @@ METRIC_DEFINE_gauge_int64(tablet, active_write_query_objects,
     yb::MetricUnit::kOperations,
     "Number of active WriteQuery objects associated with the current tablet");
 
-namespace yb {
-namespace tablet {
+namespace yb::tablet {
 
 namespace {
 
@@ -290,7 +289,7 @@ class TabletMetricsImpl final : public TabletMetrics {
  public:
   TabletMetricsImpl(const scoped_refptr<MetricEntity>& table_metric_entity,
                     const scoped_refptr<MetricEntity>& tablet_metric_entity);
-  ~TabletMetricsImpl() {}
+  ~TabletMetricsImpl() override {}
 
   uint64_t Get(TabletCounters counter) const override;
 
@@ -365,7 +364,7 @@ ScopedTabletMetrics::ScopedTabletMetrics()
       gauges_(kElementsInTabletGauges, 0),
       stats_(kElementsInTabletEventStats) { }
 
-ScopedTabletMetrics::~ScopedTabletMetrics() { }
+ScopedTabletMetrics::~ScopedTabletMetrics() = default;
 
 uint64_t ScopedTabletMetrics::Get(TabletCounters counter) const {
   return counters_[std::to_underlying(counter)];
@@ -496,5 +495,4 @@ ScopedTabletMetricsLatencyTracker::~ScopedTabletMetricsLatencyTracker() {
 }
 
 
-} // namespace tablet
-} // namespace yb
+} // namespace yb::tablet

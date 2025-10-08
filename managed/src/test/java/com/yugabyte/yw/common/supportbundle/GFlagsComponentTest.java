@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.common.supportbundle;
 
@@ -13,10 +13,12 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.SupportBundleUtil;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
@@ -122,6 +124,60 @@ public class GFlagsComponentTest extends FakeDBApplication {
 
     // Check if the gflags directory is created
     Boolean isDestDirCreated = new File(fakeTargetComponentPath).exists();
+    assertTrue(isDestDirCreated);
+  }
+
+  @Test
+  public void testDownloadComponentKubernetes() throws Exception {
+    // Create a Kubernetes universe
+    Universe k8sUniverse =
+        ModelFactory.createUniverse("Test K8s Universe", customer.getId(), CloudType.kubernetes);
+
+    // Add a fake node to the kubernetes universe with a node name
+    NodeDetails k8sNode = new NodeDetails();
+    k8sNode.nodeName = "k8s-n1";
+    k8sUniverse =
+        Universe.saveDetails(
+            k8sUniverse.getUniverseUUID(),
+            (universe) -> {
+              UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+              universeDetails.nodeDetailsSet = new HashSet<>(Arrays.asList(k8sNode));
+              universe.setUniverseDetails(universeDetails);
+            });
+
+    // Create fake temp files for Kubernetes path
+    String k8sFakeSourcePath = fakeSupportBundleBasePath + "tmp/yugabyte/";
+    Path k8sMasterTempFile =
+        Paths.get(
+            createTempFile(
+                k8sFakeSourcePath + "master/conf/", "server.conf", "test-k8s-gflags-content"));
+    String k8sFakeTargetPath = fakeBundlePath + "/" + k8sNode.nodeName + "/conf";
+
+    // Mock the download for Kubernetes
+    when(mockUniverseInfoHandler.downloadNodeFile(
+            any(), any(), any(), eq(GFlagsUtil.K8S_HOME_DIR_FOR_GFLAG_OVERRIDES), any(), any()))
+        .thenAnswer(
+            answer -> {
+              Path fakeTargetComponentTarGzPath = Paths.get(k8sFakeTargetPath, "tempOutput.tar.gz");
+              Files.createDirectories(Paths.get(k8sFakeTargetPath));
+              createTarGzipFiles(Arrays.asList(k8sMasterTempFile), fakeTargetComponentTarGzPath);
+              return fakeTargetComponentTarGzPath;
+            });
+
+    // Calling the download function
+    GFlagsComponent gFlagsComponent =
+        new GFlagsComponent(
+            mockUniverseInfoHandler, mockNodeUniverseManager, mockSupportBundleUtil);
+    gFlagsComponent.downloadComponent(
+        null, customer, k8sUniverse, Paths.get(fakeBundlePath), k8sNode);
+
+    // Verify that the download function is called with the correct Kubernetes path
+    verify(mockUniverseInfoHandler, times(1))
+        .downloadNodeFile(
+            any(), any(), any(), eq(GFlagsUtil.K8S_HOME_DIR_FOR_GFLAG_OVERRIDES), any(), any());
+
+    // Check if the gflags directory is created
+    Boolean isDestDirCreated = new File(k8sFakeTargetPath).exists();
     assertTrue(isDestDirCreated);
   }
 }

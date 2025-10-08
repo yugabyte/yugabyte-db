@@ -32,22 +32,7 @@ The columns that are specified in the [CREATE INDEX](../../../../api/ysql/the-sq
 
 ## Setup
 
-The examples run on any YugabyteDB universe.
-
-<!-- begin: nav tabs -->
-{{<nav/tabs list="local,anywhere,cloud" active="local"/>}}
-
-{{<nav/panels>}}
-{{<nav/panel name="local" active="true">}}
-<!-- local cluster setup instructions -->
-{{<setup/local numnodes="1" rf="1" >}}
-
-{{</nav/panel>}}
-
-{{<nav/panel name="anywhere">}} {{<setup/anywhere>}} {{</nav/panel>}}
-{{<nav/panel name="cloud">}}{{<setup/cloud>}}{{</nav/panel>}}
-{{</nav/panels>}}
-<!-- end: nav tabs -->
+{{% explore-setup-single-new %}}
 
 Create a census table as follows:
 
@@ -171,7 +156,7 @@ Now only one row is scanned to retrieve one row.
 
 ## Learn more
 
-- [Designing secondary indexes](../../../../develop/data-modeling/secondary-indexes-ysql)
+- [Designing secondary indexes](/preview/develop/data-modeling/secondary-indexes-ysql)
 - [Benefits of Index-only scan](https://www.yugabyte.com/blog/how-a-distributed-sql-database-boosts-secondary-index-queries-with-index-only-scan/)
 - Blog on [Pushdown #3: Filtering using index predicates](https://www.yugabyte.com/blog/5-query-pushdowns-for-distributed-sql-and-how-they-differ-from-a-traditional-rdbms/) discusses the performance boost of distributed SQL queries using indexes.
 - [How To Design Distributed Indexes for Optimal Query Performance](https://www.yugabyte.com/blog/design-indexes-query-performance-distributed-database/)

@@ -1,4 +1,4 @@
-// Copyright (c) Yugabyte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.models;
 
@@ -58,13 +58,13 @@ public class ContinuousBackupConfig extends Model {
   private String storageLocation;
 
   @ApiModelProperty(value = "the last time a successful backup occurred")
-  private long lastBackup;
+  private Long lastBackup;
 
   @Transactional
   public static ContinuousBackupConfig create(
-      UUID uuid, long frequency, TimeUnit timeUnit, int numBackups, String backupDir) {
+      UUID storageConfigUUID, long frequency, TimeUnit timeUnit, int numBackups, String backupDir) {
     ContinuousBackupConfig cbConfig = new ContinuousBackupConfig();
-    cbConfig.storageConfigUUID = uuid;
+    cbConfig.storageConfigUUID = storageConfigUUID;
     cbConfig.frequency = frequency;
     cbConfig.frequencyTimeUnit = timeUnit;
     cbConfig.numBackupsToRetain = numBackups;

@@ -3,7 +3,7 @@
  * yb_builtin.c
  *        Commands to call YugaByte builtin functions.
  *
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License.  You may obtain a copy of the License at
@@ -189,7 +189,8 @@ yb_getrusage(PG_FUNCTION_ARGS)
 Datum
 yb_mem_usage(PG_FUNCTION_ARGS)
 {
-	char a[1024];
+	char		a[1024];
+
 	sprintf(a, "Session memory usage = %ld kbs", YbGetPeakRssKb());
 	PG_RETURN_TEXT_P(cstring_to_text(a));
 }

@@ -23,7 +23,7 @@ Note that the examples are deliberately simplified. In many of the scenarios, yo
 
 ## Set up universe
 
-The examples run on a local multi-node YugabyteDB universe. To create a universe, see [Set up YugabyteDB universe](../../#set-up-yugabytedb-universe).
+The examples run on a local multi-node YugabyteDB universe. To create a universe, see [Set up YugabyteDB universe](../../cluster-setup-local/#set-up-yugabytedb-universe).
 
 ## Undo data changes
 
@@ -78,7 +78,7 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
         create_snapshot_schedule 1 10 ycql.pitr
     ```
 
@@ -92,7 +92,7 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
         list_snapshot_schedules
     ```
 
@@ -152,7 +152,7 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
         restore_snapshot_schedule 0e4ceb83-fe3d-43da-83c3-013a8ef592ca 1620418817729963
     ```
 
@@ -167,7 +167,7 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+        --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
         list_snapshots
     ```
 

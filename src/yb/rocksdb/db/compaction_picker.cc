@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -1389,16 +1389,17 @@ void UniversalCompactionPicker::SortedRun::DumpSizeInfo(
 }
 
 std::vector<std::vector<UniversalCompactionPicker::SortedRun>>
-    UniversalCompactionPicker::CalculateSortedRuns(const VersionStorageInfo& vstorage,
-                                                   const ImmutableCFOptions& ioptions,
-                                                   uint64_t max_file_size) {
+UniversalCompactionPicker::CalculateSortedRuns(
+    const VersionStorageInfo& vstorage,
+    const ImmutableCFOptions& ioptions,
+    const std::function<bool(const FileMetaData& file)>& exclude_from_compaction) {
   std::vector<std::vector<SortedRun>> ret(1);
   MarkL0FilesForDeletion(&vstorage, &ioptions);
 
   for (FileMetaData* f : vstorage.LevelFiles(0)) {
     // Any files that can be directly removed during compaction can be included, even if they
     // exceed the "max file size for compaction."
-    if (f->fd.GetTotalFileSize() <= max_file_size || f->delete_after_compaction()) {
+    if (!exclude_from_compaction(*f) || f->delete_after_compaction()) {
       ret.back().emplace_back(0, f, f->fd.GetTotalFileSize(), f->compensated_file_size,
           f->being_compacted);
     // If last sequence is empty it means that there are multiple too-large-to-compact files in
@@ -1527,9 +1528,9 @@ std::unique_ptr<Compaction> UniversalCompactionPicker::PickCompaction(
     VersionStorageInfo* vstorage,
     LogBuffer* log_buffer) {
   std::vector<std::vector<SortedRun>> sorted_runs = CalculateSortedRuns(
-      *vstorage,
-      ioptions_,
-      mutable_cf_options.MaxFileSizeForCompaction());
+      *vstorage, ioptions_,
+      mutable_cf_options.exclude_from_compaction ?
+          *mutable_cf_options.exclude_from_compaction : [](const auto&) { return false; });
 
   for (const auto& block : sorted_runs) {
     auto result = DoPickCompaction(cf_name, mutable_cf_options, vstorage, log_buffer, block);

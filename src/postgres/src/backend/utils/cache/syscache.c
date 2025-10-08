@@ -94,10 +94,10 @@
 #include "fmgr.h"
 #include "funcapi.h"
 #include "miscadmin.h"
-#include "pg_yb_utils.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/rel.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 #include <assert.h>
 
 /*---------------------------------------------------------------------------

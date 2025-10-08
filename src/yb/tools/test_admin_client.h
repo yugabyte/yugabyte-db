@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -24,6 +24,7 @@
 
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_client.pb.h"
+#include "yb/master/master_fwd.h"
 
 #include "yb/util/tsan_util.h"
 #include "yb/util/status.h"
@@ -58,9 +59,11 @@ class TestAdminClient {
   Result<bool> IsTabletSplittingComplete(bool wait_for_parent_deletion);
 
   Result<std::vector<master::TabletLocationsPB>> GetTabletLocations(
-      const client::YBTableName& table);
+      const client::YBTableName& table,
+      master::IncludeInactive include_inactive = master::IncludeInactive::kFalse);
   Result<std::vector<master::TabletLocationsPB>> GetTabletLocations(
-      const std::string& ns, const std::string& table);
+      const std::string& ns, const std::string& table,
+      master::IncludeInactive include_inactive = master::IncludeInactive::kFalse);
 
   Status WaitForTabletPostSplitCompacted(size_t tserver_idx, const TabletId& tablet_id);
 

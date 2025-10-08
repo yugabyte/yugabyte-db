@@ -1,4 +1,4 @@
-// Copyright (c) Yugabyte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -21,7 +21,7 @@ import org.yb.client.TestUtils;
 import org.yb.YBTestRunner;
 
 @RunWith(value=YBTestRunner.class)
-public class TestPgRegressThirdPartyExtensionsPgaudit extends BasePgRegressTest {
+public class TestPgRegressThirdPartyExtensionsPgaudit extends BasePgRegressTestPorted {
 
   private static final String TURN_OFF_COPY_FROM_BATCH_TRANSACTION =
       "yb_default_copy_from_rows_per_transaction=0";

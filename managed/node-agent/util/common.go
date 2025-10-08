@@ -14,6 +14,7 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
@@ -37,8 +38,9 @@ const (
 	JwtClientTypeClaim      = "clientType"
 	JwtIssuer               = "https://www.yugabyte.com"
 	JwtSubject              = "NODE_AGENT"
-	JwtExpirationTime       = 600 //in seconds
+	JwtExpirationSecs       = 600 //in seconds
 	NodeAgentDefaultLog     = "node_agent.log"
+	NodeAgentGrpcDefaultLog = "grpc.log"
 	NodeHomeDirectory       = "/home/yugabyte"
 	NodeAgentRegistryPath   = ".yugabyte/node-agent-registry"
 	GetCustomersApiEndpoint = "/api/customers"
@@ -66,25 +68,30 @@ const (
 	PlatformCaCertPathKey     = "platform.ca_cert_path"
 
 	// Node config keys.
-	NodeIpKey                  = "node.ip"
-	NodeBindIpKey              = "node.bind_ip"
-	NodePortKey                = "node.port"
-	RequestTimeoutKey          = "node.request_timeout_sec"
-	NodeNameKey                = "node.name"
-	NodeAgentIdKey             = "node.agent.uuid"
-	NodeIdKey                  = "node.uuid"
-	NodeInstanceTypeKey        = "node.instance_type"
-	NodeAzIdKey                = "node.azid"
-	NodeRegionKey              = "node.region"
-	NodeZoneKey                = "node.zone"
-	NodeLoggerKey              = "node.log"
-	NodeAgentRestartKey        = "node.restart"
-	NodeAgentLogLevelKey       = "node.log_level"
-	NodeAgentLogMaxMbKey       = "node.log_max_mb"
-	NodeAgentLogMaxBackupsKey  = "node.log_max_backups"
-	NodeAgentLogMaxDaysKey     = "node.log_max_days"
-	NodeAgentDisableMetricsTLS = "node.disable_metrics_tls"
-
+	NodeIpKey                     = "node.ip"
+	NodeBindIpKey                 = "node.bind_ip"
+	NodePortKey                   = "node.port"
+	RequestTimeoutKey             = "node.request_timeout_sec"
+	NodeNameKey                   = "node.name"
+	NodeAgentIdKey                = "node.agent.uuid"
+	NodeIdKey                     = "node.uuid"
+	NodeInstanceTypeKey           = "node.instance_type"
+	NodeAzIdKey                   = "node.azid"
+	NodeRegionKey                 = "node.region"
+	NodeZoneKey                   = "node.zone"
+	NodeAgentLoggerKey            = "node.log"
+	NodeAgentGrpcLoggerKey        = "node.grpc.log"
+	NodeAgentGrpcLogVerbosityKey  = "node.grpc.log_verbosity"
+	NodeAgentGrpcLogMaxMbKey      = "node.grpc.log_max_mb"
+	NodeAgentGrpcLogMaxBackupsKey = "node.grpc.log_max_backups"
+	NodeAgentGrpcLogMaxDaysKey    = "node.grpc.log_max_days"
+	NodeAgentRestartKey           = "node.restart"
+	NodeAgentLogLevelKey          = "node.log_level"
+	NodeAgentLogMaxMbKey          = "node.log_max_mb"
+	NodeAgentLogMaxBackupsKey     = "node.log_max_backups"
+	NodeAgentLogMaxDaysKey        = "node.log_max_days"
+	NodeAgentDisableMetricsTLSKey = "node.disable_metrics_tls"
+	NodeAgentTaskExpirySecsKey    = "node.task_expiry_secs"
 	// Node agent registry keys.
 	NodeAgentRegistryHomeKey = "node_agent_home"
 
@@ -347,6 +354,9 @@ func UserInfo(username string) (*UserDetail, error) {
 // InheritTracingIDs inherits the tracing related info from a context.
 func InheritTracingIDs(fromCtx context.Context, toCtx context.Context) context.Context {
 	resultCtx := toCtx
+	if md, ok := metadata.FromIncomingContext(fromCtx); ok {
+		resultCtx = metadata.NewOutgoingContext(resultCtx, md)
+	}
 	for _, val := range TracingIDs {
 		if v := fromCtx.Value(val); v != nil {
 			resultCtx = context.WithValue(resultCtx, val, v.(string))
@@ -464,4 +474,33 @@ func (queue *PriorityQueue[T]) Peek() T {
 		return queue.entries[0]
 	}
 	return zero
+}
+
+// StatusError represents an error with a status code.
+type StatusError struct {
+	code int
+	err  error
+}
+
+// NewStatusError creates a new StatusError with the given code and error.
+func NewStatusError(code int, err error) *StatusError {
+	return &StatusError{
+		code: code,
+		err:  err,
+	}
+}
+
+// Error implements the error interface.
+func (e *StatusError) Error() string {
+	return e.err.Error()
+}
+
+// Cause returns cause of the error.
+func (e *StatusError) Cause() error {
+	return e.err
+}
+
+// Code returns the status code of the error.
+func (e *StatusError) Code() int {
+	return e.code
 }

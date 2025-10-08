@@ -26,6 +26,8 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
+#include "yb/tablet/tablet_fwd.h"
+
 #include "yb/util/kv_util.h"
 
 #include "yb/vector_index/vector_index_fwd.h"
@@ -55,6 +57,19 @@ struct DocVectorIndexSearchResultEntry {
   }
 };
 
+using DocVectorIndexSearchResultEntries = std::vector<DocVectorIndexSearchResultEntry>;
+
+struct DocVectorIndexSearchResult {
+  bool could_have_more_data;
+  DocVectorIndexSearchResultEntries entries;
+};
+
+struct DocVectorIndexedTableContext {
+  virtual ~DocVectorIndexedTableContext() = default;
+  virtual Result<docdb::DocRowwiseIteratorPtr> CreateIterator(HybridTime read_ht) const = 0;
+};
+using DocVectorIndexedTableContextPtr = std::unique_ptr<DocVectorIndexedTableContext>;
+
 class DocVectorIndex {
  public:
   virtual ~DocVectorIndex() = default;
@@ -64,14 +79,17 @@ class DocVectorIndex {
   virtual ColumnId column_id() const = 0;
   virtual const std::string& path() const = 0;
   virtual HybridTime hybrid_time() const = 0;
+  virtual const DocVectorIndexedTableContext& indexed_table_context() const = 0;
 
   virtual Status Insert(
       const DocVectorIndexInsertEntries& entries, const rocksdb::UserFrontiers& frontiers) = 0;
   virtual Result<DocVectorIndexSearchResult> Search(
-      Slice vector, const vector_index::SearchOptions& options) = 0;
+      Slice vector, const vector_index::SearchOptions& options,
+      bool could_have_missing_entries) = 0;
   virtual Result<EncodedDistance> Distance(Slice lhs, Slice rhs) = 0;
   virtual void EnableAutoCompactions() = 0;
   virtual Status Compact() = 0;
+  virtual Status WaitForCompaction() = 0;
   virtual Status Flush() = 0;
   virtual Status WaitForFlush() = 0;
   virtual docdb::ConsensusFrontierPtr GetFlushedFrontier() = 0;
@@ -81,6 +99,11 @@ class DocVectorIndex {
   virtual Result<bool> HasVectorId(const vector_index::VectorId& vector_id) const = 0;
   virtual Status Destroy() = 0;
   virtual Result<size_t> TotalEntries() const = 0;
+
+  virtual void StartShutdown() = 0;
+  virtual void CompleteShutdown() = 0;
+
+  virtual bool TEST_HasBackgroundInserts() const = 0;
 
   bool BackfillDone();
 
@@ -101,7 +124,6 @@ struct DocVectorIndexThreadPools {
   // Used for compactions.
   PriorityThreadPool* compaction_thread_pool;
 };
-
 using DocVectorIndexThreadPoolProvider = std::function<DocVectorIndexThreadPools()>;
 
 // Doc vector index starts with background compactions disabled, they must be enabled explicitly:
@@ -113,7 +135,7 @@ Result<DocVectorIndexPtr> CreateDocVectorIndex(
     Slice indexed_table_key_prefix,
     HybridTime hybrid_time,
     const qlexpr::IndexInfo& index_info,
-    const DocDB& doc_db,
+    DocVectorIndexedTableContextPtr indexed_table_context,
     const hnsw::BlockCachePtr& block_cache,
     const MemTrackerPtr& mem_tracker);
 

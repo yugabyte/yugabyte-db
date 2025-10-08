@@ -5,3 +5,11 @@
 --add-exports=jdk.compiler/com.sun.tools.javac.parser=ALL-UNNAMED
 --add-exports=jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED
 --add-exports=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED
+# Set time zone.
+-Duser.timezone=GMT
+# Configure netty to use heap buffer as defined in PooledByteBufAllocator (default).
+-Dio.grpc.netty.shaded.io.netty.noPreferDirect=true
+-Dio.netty.noPreferDirect=true
+# Configure netty to use pool chunk size of 1MB calculated as 8192 (pageSize) << maxOrder.
+-Dio.grpc.netty.shaded.io.netty.allocator.maxOrder=7
+-Dio.netty.allocator.maxOrder=7

@@ -4,7 +4,7 @@ linkTitle: string_to_array()
 headerTitle: string_to_array()
 description: string_to_array()
 menu:
-  v2.20:
+  v2.20_api:
     identifier: string-to-array
     parent: array-functions-operators
 type: docs

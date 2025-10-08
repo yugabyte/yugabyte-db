@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -198,6 +198,8 @@ class CQLServiceImpl : public CQLServerServiceIf,
 
   // Mutex that protects access to processors_.
   std::mutex processors_mutex_;
+
+  bool processors_closed_ = false;
 
   // Prepared statements cache.
   CQLStatementMap prepared_stmts_map_;

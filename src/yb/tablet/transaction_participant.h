@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -22,8 +22,6 @@
 #include <future>
 #include <memory>
 #include <type_traits>
-
-#include <boost/optional/optional.hpp>
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/opid.h"
@@ -136,8 +134,8 @@ class TransactionParticipant : public TransactionStatusManager {
   // with new state of replicated batch indexes. Encoding does not matter for user of this function,
   // he should just append it to appropriate value.
   //
-  // Returns boost::none when transaction is unknown.
-  Result<boost::optional<std::pair<IsolationLevel, TransactionalBatchData>>> PrepareBatchData(
+  // Returns std::nullopt when transaction is unknown.
+  Result<std::optional<std::pair<IsolationLevel, TransactionalBatchData>>> PrepareBatchData(
       const TransactionId& id, size_t batch_idx,
       boost::container::small_vector_base<uint8_t>* encoded_replicated_batches,
       bool has_write_pairs);
@@ -146,7 +144,7 @@ class TransactionParticipant : public TransactionStatusManager {
 
   HybridTime LocalCommitTime(const TransactionId& id) override;
 
-  boost::optional<TransactionLocalState> LocalTxnData(const TransactionId& id) override;
+  std::optional<TransactionLocalState> LocalTxnData(const TransactionId& id) override;
 
   void RequestStatusAt(const StatusRequest& request) override;
 
@@ -179,13 +177,11 @@ class TransactionParticipant : public TransactionStatusManager {
   Status FillPriorities(
       boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) override;
 
-  Result<boost::optional<TabletId>> FindStatusTablet(const TransactionId& id) override;
+  Result<std::optional<TabletId>> FindStatusTablet(const TransactionId& id) override;
 
-  void GetStatus(const TransactionId& transaction_id,
-                 size_t required_num_replicated_batches,
-                 int64_t term,
-                 tserver::GetTransactionStatusAtParticipantResponsePB* response,
-                 rpc::RpcContext* context);
+  void GetStatus(
+      const TransactionId& transaction_id, size_t required_num_replicated_batches, int64_t term,
+      tserver::GetTransactionStatusAtParticipantResponsePB* response, rpc::RpcContext* context);
 
   TransactionParticipantContext* context() const;
 

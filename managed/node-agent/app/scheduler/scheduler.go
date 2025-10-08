@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package scheduler
 
@@ -52,7 +52,7 @@ func Init(ctx context.Context) *Scheduler {
 
 func GetInstance() *Scheduler {
 	if instance == nil {
-		util.FileLogger().Fatal(nil, "Scheduler is not initialized")
+		util.FileLogger().Fatal(context.TODO(), "Scheduler is not initialized")
 	}
 	return instance
 }
@@ -61,7 +61,7 @@ func (s *Scheduler) executeTask(ctx context.Context, taskID uuid.UUID) error {
 	value, ok := s.tasks.Load(taskID)
 	if !ok {
 		err := fmt.Errorf("Invalid state for task %s. Exiting...", taskID)
-		util.FileLogger().Errorf(ctx, err.Error())
+		util.FileLogger().Error(ctx, err.Error())
 		return err
 	}
 	info := value.(*taskInfo)

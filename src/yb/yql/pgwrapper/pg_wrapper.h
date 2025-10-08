@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -188,7 +188,7 @@ class PgSupervisor : public ProcessSupervisor {
 
  private:
   Status RegisterPgFlagChangeNotifications() REQUIRES(mtx_);
-  Status RegisterReloadPgConfigCallback(const void* flag_ptr) REQUIRES(mtx_);
+  Status RegisterReloadConfigCallback(const void* flag_ptr) REQUIRES(mtx_);
   void DeregisterPgFlagChangeNotifications() REQUIRES(mtx_);
 
   void PrepareForStop() REQUIRES(mtx_) override;

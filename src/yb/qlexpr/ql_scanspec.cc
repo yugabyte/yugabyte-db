@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -494,13 +494,13 @@ QLScanRange& QLScanRange::operator|=(const QLScanRange& other) {
     if (range.min_bound && other_range.min_bound) {
       range.min_bound = std::min(range.min_bound, other_range.min_bound);
     } else if (!other_range.min_bound) {
-      range.min_bound = boost::none;
+      range.min_bound = std::nullopt;
     }
 
     if (range.max_bound && other_range.max_bound) {
       range.max_bound = std::max(range.max_bound, other_range.max_bound);
     } else if (!other_range.max_bound) {
-      range.max_bound = boost::none;
+      range.max_bound = std::nullopt;
     }
 
     if (!range.min_bound && !range.max_bound) {
@@ -523,8 +523,8 @@ QLScanRange& QLScanRange::operator~() {
       // If the condition's min and max values are defined, the negation of it will be
       // disjoint ranges at the two ends, which is not representable as a simple range. So
       // we will treat the result as unbounded, but omit NULLs.
-      range.min_bound = boost::none;
-      range.max_bound = boost::none;
+      range.min_bound = std::nullopt;
+      range.max_bound = std::nullopt;
       range.is_not_null = true;
     } else {
       // Otherwise, for one-sided range or unbounded range, the resulting min/max bounds are

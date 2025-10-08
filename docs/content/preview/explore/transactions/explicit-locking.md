@@ -110,7 +110,15 @@ YSQL also supports advisory locks, where the application manages concurrent acce
 
 In PostgreSQL, if an advisory lock is taken on one session, all sessions should be able to see the advisory locks acquired by any other session. Similarly, in YugabyteDB, if an advisory lock is acquired on one session, all the sessions should be able to see the advisory locks regardless of the node the session is connected to. This is achieved via the pg_advisory_locks system table, which is dedicated to hosting advisory locks. All advisory lock requests are stored in this system table.
 
-To enable the use of advisory locks in a cluster, you must set the [Advisory lock flags](../../../reference/configuration/yb-tserver/#advisory-lock-flags).
+### Enable advisory locks
+
+To use advisory locks, enable and configure the following flags for each node of your cluster.
+
+| Flag | Description |
+| :--- | :---------- |
+| ysql_yb_enable_advisory_locks | Enables advisory locking. <br>Default: false. The flag must have the same value across all yb-master and yb-tserver nodes. |
+| num_advisory_locks_tablets | Number of tablets used for the advisory locks table. It must be set before `ysql_yb_enable_advisory_locks` is set to true on the cluster.<br>Default: 1 |
+| [allowed_preview_flags_csv](../../../reference/configuration/yb-tserver/#allowed-preview-flags-csv) | Set the value of this flag to include `ysql_yb_enable_advisory_locks`. |
 
 ### Using advisory locks
 
@@ -152,7 +160,7 @@ Advisory locks can also be exclusive or shared:
     Multiple sessions/transactions can hold the lock simultaneously. However, no session/transaction can acquire an exclusive lock while shared locks are held.
 
     ```sql
-    select pg_advisory_lock_shared(10); 
+    select pg_advisory_lock_shared(10);
     select pg_advisory_xact_lock_shared(10);
     ```
 
@@ -163,7 +171,7 @@ Finally, advisory locks can be blocking or non-blocking:
     The process trying to acquire the lock waits until the lock is acquired.
 
     ```sql
-    select pg_advisory_lock(10); 
+    select pg_advisory_lock(10);
     select pg_advisory_xact_lock(10);
     ```
 

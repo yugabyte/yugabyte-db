@@ -38,7 +38,7 @@ import { YBDropdown, mui, YBButton } from '@yugabyte-ui-library/core';
 
 const { MenuItem } = mui;
 
-/* TODO : 
+/* TODO :
 1. Rewrite this file with proper types
 2. Integrate with react-query
 3. Rewrite AddGflag and EditorGflag with typescript and react-query
@@ -192,7 +192,7 @@ export const GFlagsFieldNew = ({
       const currentArr = fields;
       const duplicateArr = _.remove(currentArr, (e: any) => flagArr.some((f) => f.Name === e.Name));
       const transformedArr = flagArr.map((e) => {
-        const dupEl = duplicateArr.find((f: any) => f.Name === e.Name) || {};
+        const dupEl = duplicateArr.find((f: any) => f.Name === e.Name) ?? {};
         return { ...dupEl, ...e };
       });
       const payload = { gflags: [...currentArr, ...transformedArr] };
@@ -383,7 +383,7 @@ export const GFlagsFieldNew = ({
           previewFlagValue: row?.masterFlagDetails?.PreviewConfValue
         }
       };
-      if (isError) modalProps['errorMsg'] = eInfo[server]?.error;
+      if (isError) (modalProps as any)['errorMsg'] = eInfo[server]?.error;
 
       const checkFlagExistsOnOtherServer = (serverType: SERVER) => {
         return (
@@ -651,6 +651,7 @@ export const GFlagsFieldNew = ({
                     {btnLabel}
                   </YBButton>
                 }
+                dataTestId="yb-gflags-dropdown"
               >
                 {SERVER_LIST.filter((e) => e.visible).map((server) => {
                   const { serverName, label } = server;

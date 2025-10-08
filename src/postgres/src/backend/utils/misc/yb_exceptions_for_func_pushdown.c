@@ -4,7 +4,7 @@
  *    List of non-immutable functions that do not perform any accesses to
  *    the database.
  *
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License.  You may obtain a copy
@@ -226,8 +226,13 @@ const uint32 yb_funcs_safe_for_mixed_mode_pushdown[] = {
 	F_SUBSTRING_TEXT_INT4_INT4,
 };
 
+const uint32 yb_pushdown_funcs_to_constify[] = {
+	F_NOW
+};
+
 #define DEFINE_ARRAY_SIZE(array) const int array##_count = lengthof(array)
 
 DEFINE_ARRAY_SIZE(yb_funcs_safe_for_pushdown);
 DEFINE_ARRAY_SIZE(yb_funcs_unsafe_for_pushdown);
 DEFINE_ARRAY_SIZE(yb_funcs_safe_for_mixed_mode_pushdown);
+DEFINE_ARRAY_SIZE(yb_pushdown_funcs_to_constify);

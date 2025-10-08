@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -19,6 +19,7 @@
 
 #include "yb/server/server_fwd.h"
 
+#include "yb/util/metrics.h"
 #include "yb/util/status_callback.h"
 
 namespace yb {
@@ -65,7 +66,7 @@ class ObjectLockManagerImpl;
 class ObjectLockManager {
  public:
   ObjectLockManager(
-      ThreadPool* thread_pool, server::RpcServerBase& server,
+      ThreadPool* thread_pool, server::RpcServerBase& server, const MetricEntityPtr& metric_entity,
       ObjectLockSharedStateManager* shared_manager = nullptr);
   ~ObjectLockManager();
 
@@ -83,6 +84,8 @@ class ObjectLockManager {
   void Shutdown();
 
   void DumpStatusHtml(std::ostream& out);
+
+  void ConsumePendingSharedLockRequests();
 
   size_t TEST_GrantedLocksSize();
   size_t TEST_WaitingLocksSize();

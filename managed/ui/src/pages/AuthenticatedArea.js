@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 import { useState } from 'react';
 import { find } from 'lodash';
@@ -122,6 +122,14 @@ const RBACAuthenticatedArea = (props) => {
     userRoleBindingsLoading
   )
     return <YBLoading />;
+
+  if (props.simpleMode) {
+    return (
+      <AuthenticatedComponentContainer>
+        {props.children}
+      </AuthenticatedComponentContainer>
+    );
+  }
 
   return (
     <AuthenticatedComponentContainer>

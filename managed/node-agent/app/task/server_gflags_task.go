@@ -1,9 +1,10 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package task
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"node-agent/app/task/module"
@@ -86,6 +87,16 @@ func (handler *ServerGflagsHandler) Handle(
 ) (*pb.DescribeTaskResponse, error) {
 	gflags := handler.param.GetGflags()
 	if handler.param.GetResetMasterState() {
+		// Verify that master process is not running.
+		running, err := module.IsProcessRunning(ctx, handler.username, "yb-master", handler.logOut)
+		if err != nil {
+			return nil, err
+		}
+		if running {
+			util.FileLogger().
+				Infof(ctx, "Master process must be stopped before resetting state")
+			return nil, errors.New("Master process must be stopped before resetting state")
+		}
 		if fsDataDirsCsv, ok := gflags["fs_data_dirs"]; ok {
 			util.FileLogger().
 				Infof(ctx, "Deleting master state dirs in fs_data_dirs: %s", fsDataDirsCsv)

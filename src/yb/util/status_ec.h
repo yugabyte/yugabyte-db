@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -14,8 +14,6 @@
 //
 
 #pragma once
-
-#include <boost/optional.hpp>
 
 #include "yb/gutil/endian.h"
 
@@ -158,13 +156,11 @@ class StatusErrorCodeImpl : public StatusErrorCode {
 
   explicit StatusErrorCodeImpl(const Status& status);
 
-  static boost::optional<StatusErrorCodeImpl> FromStatus(const Status& status);
+  static std::optional<StatusErrorCodeImpl> FromStatus(const Status& status);
 
-  static boost::optional<Value> ValueFromStatus(const Status& status);
+  static std::optional<Value> ValueFromStatus(const Status& status);
 
-  uint8_t Category() const override {
-    return kCategory;
-  }
+  uint8_t Category() const override { return kCategory; }
 
   size_t EncodedSize() const override {
     return Tag::EncodedSize(value_);
@@ -243,23 +239,22 @@ StatusErrorCodeImpl<Tag>::StatusErrorCodeImpl(const Status& status)
     : value_(Tag::Decode(status.ErrorData(Tag::kCategory))) {}
 
 template <class Tag>
-boost::optional<StatusErrorCodeImpl<Tag>> StatusErrorCodeImpl<Tag>::FromStatus(
-    const Status& status) {
+std::optional<StatusErrorCodeImpl<Tag>> StatusErrorCodeImpl<Tag>::FromStatus(const Status& status) {
   const auto* error_data = status.ErrorData(Tag::kCategory);
   if (!error_data) {
-    return boost::none;
+    return std::nullopt;
   }
   return StatusErrorCodeImpl<Tag>(Tag::Decode(error_data));
 }
 
 template <class Tag>
-boost::optional<typename StatusErrorCodeImpl<Tag>::Value> StatusErrorCodeImpl<Tag>::ValueFromStatus(
+std::optional<typename StatusErrorCodeImpl<Tag>::Value> StatusErrorCodeImpl<Tag>::ValueFromStatus(
     const Status& status) {
   const auto* error_data = status.ErrorData(Tag::kCategory);
   if (!error_data) {
-    return boost::none;
+    return std::nullopt;
   }
   return Tag::Decode(error_data);
 }
 
-} // namespace yb
+}  // namespace yb

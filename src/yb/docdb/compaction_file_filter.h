@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -35,12 +35,24 @@ struct ExpirationTime {
   // Indicates creation hybrid time, used to calculate table-level TTL expiration.
   HybridTime created_ht = HybridTime::kMax;
 
+  bool Valid() {
+    return ttl_expiration_ht != dockv::kNoExpiration && created_ht != HybridTime::kMax;
+  }
+
   std::string ToString() const;
 };
 
 bool operator==(const ExpirationTime& lhs, const ExpirationTime& rhs);
 
 ExpirationTime ExtractExpirationTime(const rocksdb::FileMetaData* file);
+
+// Checks that table expiration is later or equal to the value expiration.
+Status CheckTtlFileExpirationConsistency(const rocksdb::FileMetaData& file, MonoDelta table_ttl);
+
+Status CheckTtlFileExpirationConsistency(
+    MonoDelta table_ttl,
+    ExpirationTime expiry,
+    ExpiryMode mode);
 
 bool TtlIsExpired(
     const ExpirationTime expiry,

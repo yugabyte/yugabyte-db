@@ -4,7 +4,7 @@ headerTitle: Rule 2
 linkTitle: 2 ~names.abbrev never searched
 description: Substantiates the rule that a string that's intended to identify a UTC offset is never resolved in pg_timezone_names.abbrev. [YSQL]
 menu:
-  v2.20:
+  v2.20_api:
     identifier: rule-2
     parent: name-res-rules
     weight: 20

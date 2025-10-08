@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -237,7 +237,7 @@ Result<bool> TableMatchesIdentifier(
 
 Status SetupError(MasterErrorPB* error, MasterErrorPB::Code code, const Status& s) {
   StatusToPB(s, error->mutable_status());
-  error->set_code(MasterError::ValueFromStatus(s).get_value_or(code));
+  error->set_code(MasterError::ValueFromStatus(s).value_or(code));
   return s;
 }
 

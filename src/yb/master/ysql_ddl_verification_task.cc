@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -15,6 +15,8 @@
 #include "yb/master/ysql_ddl_verification_task.h"
 
 #include "yb/client/transaction_rpc.h"
+
+#include "yb/dockv/reader_projection.h"
 
 #include "yb/qlexpr/ql_expr.h"
 
@@ -84,12 +86,8 @@ string PrintPgCols(const vector<PgColumnFields>& pg_cols) {
 }
 
 Status PgEntryExistsWithReadTime(
-    SysCatalogTable* sys_catalog,
-    const TableId& pg_table_id,
-    PgOid entry_oid,
-    boost::optional<PgOid> relfilenode_oid,
-    const ReadHybridTime& read_time,
-    bool* result,
+    SysCatalogTable* sys_catalog, const TableId& pg_table_id, PgOid entry_oid,
+    std::optional<PgOid> relfilenode_oid, const ReadHybridTime& read_time, bool* result,
     HybridTime* read_restart_ht);
 
 Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
@@ -139,7 +137,7 @@ GetPgCatalogTableScanIterator(
 Result<bool> PgEntryExists(SysCatalogTable& sys_catalog,
                            const TableId& pg_table_id,
                            PgOid entry_oid,
-                           boost::optional<PgOid> relfilenode_oid) {
+                           std::optional<PgOid> relfilenode_oid) {
   bool result = false;
   RETURN_NOT_OK(sys_catalog.ReadWithRestarts(std::bind(
       &PgEntryExistsWithReadTime, &sys_catalog, pg_table_id, entry_oid, relfilenode_oid,
@@ -150,12 +148,8 @@ Result<bool> PgEntryExists(SysCatalogTable& sys_catalog,
 // Note: "relfilenode_oid" is only used for rewritten tables. For rewritten tables, we need to
 // check both the oid and the relfilenode columns in pg_class.
 Status PgEntryExistsWithReadTime(
-    SysCatalogTable* sys_catalog,
-    const TableId& pg_table_id,
-    PgOid entry_oid,
-    boost::optional<PgOid> relfilenode_oid,
-    const ReadHybridTime& read_time,
-    bool* result,
+    SysCatalogTable* sys_catalog, const TableId& pg_table_id, PgOid entry_oid,
+    std::optional<PgOid> relfilenode_oid, const ReadHybridTime& read_time, bool* result,
     HybridTime* read_restart_ht) {
   auto read_data = VERIFY_RESULT(sys_catalog->TableReadData(pg_table_id, read_time));
 
@@ -188,7 +182,7 @@ Status PgEntryExistsWithReadTime(
   SCHECK(!VERIFY_RESULT(iter->FetchNext(nullptr)), Corruption, "Too many rows found");
   if (is_rewritten_table) {
     const auto& relfilenode = row.GetValue(relfilenode_col);
-    if (relfilenode->uint32_value() != *relfilenode_oid) {
+    if (relfilenode->get().uint32_value() != *relfilenode_oid) {
       *read_restart_ht = VERIFY_RESULT(iter->GetReadRestartData()).restart_time;
       *result = false;
       return Status::OK();
@@ -279,10 +273,10 @@ Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
     if (check_relfilenode) {
       const auto& relfilenode_col = row.GetValue(relfilenode_col_id);
       const auto& docdb_relfilenodeOid = VERIFY_RESULT(table->GetPgRelfilenodeOid());
-      if (relfilenode_col->uint32_value() != docdb_relfilenodeOid) {
+      if (relfilenode_col->get().uint32_value() != docdb_relfilenodeOid) {
         VLOG(3) << "Table rewrite detected for " << table->ToString()
                 << " with oid " << oid
-                << " and pg_class relfilenode " << relfilenode_col->uint32_value()
+                << " and pg_class relfilenode " << relfilenode_col->get().uint32_value()
                 << ", docdb relfilenode " << docdb_relfilenodeOid;
         table_found = false;
         table_rewritten = true;
@@ -363,16 +357,17 @@ Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
   // Table was being altered. Check whether its current DocDB schema matches
   // that of PG catalog.
   VLOG(3) << "Comparing with the PG schema for alter table";
-  CHECK(l->ysql_ddl_txn_verifier_state().contains_alter_table_op());
+  // Since the table is not being dropped or created, it must being altered.
+  CHECK(l->is_being_altered_by_ysql_ddl_txn());
   const auto& relname_col = row.GetValue(relname_col_id);
-  const string& table_name = relname_col->string_value();
+  const string& table_name = relname_col->get().string_value();
 
   const string fail_msg = "Alter transaction on " + table->ToString() + " failed.";
   if (table->name().compare(table_name) != 0) {
     // Table name does not match.
     LOG(INFO) << fail_msg << " Expected table name: " << table->name() << " Table name in PG: "
               << table_name;
-    CHECK_EQ(table_name, l->ysql_ddl_txn_verifier_state().previous_table_name());
+    CHECK_EQ(table_name, l->ysql_ddl_txn_verifier_state_first().previous_table_name());
     *result = false;
     return Status::OK();
   }
@@ -385,7 +380,8 @@ Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
 
   auto schema = VERIFY_RESULT(table->GetSchema());
   Schema previous_schema;
-  RETURN_NOT_OK(SchemaFromPB(l->ysql_ddl_txn_verifier_state().previous_schema(), &previous_schema));
+  RETURN_NOT_OK(
+      SchemaFromPB(l->ysql_ddl_txn_verifier_state_first().previous_schema(), &previous_schema));
   // CompareDdlAtomicity takes marked_for_deletion() into comparison. If a column is marked for
   // deletion in the current schema and not in the previous schema, then CompareByDefault would
   // return true which isn't right for correct handling.
@@ -416,7 +412,7 @@ Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
                << schema.ToString() << " and previous schema " << previous_schema.ToString()
                << " and PG catalog schema " << PrintPgCols(pg_cols)
                << ". The transaction verification state is "
-               << l->ysql_ddl_txn_verifier_state().ShortDebugString();
+               << AsString(l->ysql_ddl_txn_verifier_state());
   return STATUS_FORMAT(Corruption, "Failed to verify DDL transaction for table $0",
                        table->ToString());
 }
@@ -527,15 +523,15 @@ Status ReadPgAttributeWithReadTime(
           corrupted_col, table_oid, database_oid);
     }
 
-    const int32_t attnum = attnum_col->int16_value();
+    const int32_t attnum = attnum_col->get().int16_value();
     if (attnum < 0) {
       // Ignore system columns.
-      VLOG(3) << "Ignoring system column (attnum = " << attnum_col->int16_value()
+      VLOG(3) << "Ignoring system column (attnum = " << attnum_col->get().int16_value()
               << ") for attrelid:" << table_oid;
       continue;
     }
-    string attname = attname_col->string_value();
-    PgOid atttypid = atttypid_col->uint32_value();
+    string attname = attname_col->get().string_value();
+    PgOid atttypid = atttypid_col->get().uint32_value();
     if (atttypid == 0) {
       // Ignore dropped columns.
       VLOG(3) << "Ignoring dropped column " << attname << " (atttypid = 0)"
@@ -724,7 +720,7 @@ Status NamespaceVerificationTask::CheckNsExists() {
   const auto pg_table_id = GetPgsqlTableId(atoi(kSystemNamespaceId), kPgDatabaseTableOid);
   const PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_info_.id()));
   entry_exists_ = VERIFY_RESULT(
-      PgEntryExists(sys_catalog_, pg_table_id, database_oid, boost::none /* relfilenodeoid */));
+      PgEntryExists(sys_catalog_, pg_table_id, database_oid, std::nullopt /* relfilenodeoid */));
 
   Complete();
   return Status::OK();
@@ -733,11 +729,14 @@ Status NamespaceVerificationTask::CheckNsExists() {
 Status NamespaceVerificationTask::ValidateRunnable() {
   RETURN_NOT_OK(MultiStepNamespaceTaskBase::ValidateRunnable());
   const auto& l = namespace_info_.LockForRead();
-  SCHECK(l->pb.has_transaction(), IllegalState,
-         "Namespace $0 is not being modified by any transaction", namespace_info_.ToString());
-  SCHECK_EQ(l->pb.state(), SysNamespaceEntryPB::RUNNING, Aborted,
-            Format("Invalid Namespace state ($0), abandoning transaction GC work for $1",
-                   SysNamespaceEntryPB_State_Name(l->pb.state()), namespace_info_.ToString()));
+  SCHECK(
+      l->pb.has_transaction(), IllegalState,
+      "Namespace $0 is not being modified by any transaction", namespace_info_.ToString());
+  SCHECK_EQ(
+      l->pb.state(), SysNamespaceEntryPB::RUNNING, Aborted,
+      Format(
+          "Invalid Namespace state ($0), abandoning transaction GC work for $1",
+          SysNamespaceEntryPB_State_Name(l->pb.state()), namespace_info_.ToString()));
   return Status::OK();
 }
 
@@ -849,7 +848,7 @@ Status TableSchemaVerificationTask::CheckTableExists() {
         sys_catalog_, pg_class_table_id, pg_table_oid,
         // If relfilenode_oid is the same as pg table oid, this is isn't a rewritten table and
         // we don't need to perform additional checks on the relfilenode column.
-        relfilenode_oid == pg_table_oid ? boost::none : boost::make_optional(relfilenode_oid)));
+        relfilenode_oid == pg_table_oid ? std::nullopt : std::make_optional(relfilenode_oid)));
   }
   // The table we have is a dummy parent table, hence not present in YSQL.
   // We need to check a tablegroup instead.
@@ -859,7 +858,7 @@ Status TableSchemaVerificationTask::CheckTableExists() {
   const PgOid tablegroup_oid = VERIFY_RESULT(GetPgsqlTablegroupOid(tablegroup_id));
 
   return FinishTask(PgEntryExists(
-      sys_catalog_, pg_yb_tablegroup_table_id, tablegroup_oid, boost::none /* relfilenode_oid */));
+      sys_catalog_, pg_yb_tablegroup_table_id, tablegroup_oid, std::nullopt /* relfilenode_oid */));
 }
 
 Status TableSchemaVerificationTask::CompareSchema() {

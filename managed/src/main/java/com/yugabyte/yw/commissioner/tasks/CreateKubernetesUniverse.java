@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 YugaByte, Inc. and Contributors
+ * Copyright 2019 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -250,17 +250,21 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       // Install YBC on the pods
       String stableYbcVersion = confGetter.getGlobalConf(GlobalConfKeys.ybcStableVersion);
       if (taskParams().isEnableYbc()) {
-        installYbcOnThePods(
-            tserversAdded,
-            false,
-            stableYbcVersion,
-            taskParams().getPrimaryCluster().userIntent.ybcFlags);
-        if (readClusters.size() == 1) {
+        if (!universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc()) {
           installYbcOnThePods(
-              readOnlyTserversAdded,
-              true,
+              tserversAdded,
+              false,
               stableYbcVersion,
-              taskParams().getReadOnlyClusters().get(0).userIntent.ybcFlags);
+              taskParams().getPrimaryCluster().userIntent.ybcFlags);
+          if (readClusters.size() == 1) {
+            installYbcOnThePods(
+                readOnlyTserversAdded,
+                true,
+                stableYbcVersion,
+                taskParams().getReadOnlyClusters().get(0).userIntent.ybcFlags);
+          }
+        } else {
+          log.debug("Skipping configure YBC as 'useYBDBInbuiltYbc' is enabled");
         }
         createWaitForYbcServerTask(allTserversAdded);
         createUpdateYbcTask(stableYbcVersion)
@@ -271,8 +275,8 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       Runnable nonRestartMasterGflagUpgrade = null;
       if (KubernetesUtil.isNonRestartGflagsUpgradeSupported(
           primaryCluster.userIntent.ybSoftwareVersion)) {
-        KubernetesGflagsUpgradeCommonParams gflagsParams =
-            new KubernetesGflagsUpgradeCommonParams(universe, primaryCluster, confGetter);
+        KubernetesUpgradeCommonParams gflagsParams =
+            new KubernetesUpgradeCommonParams(universe, primaryCluster, confGetter);
         nonRestartMasterGflagUpgrade =
             () ->
                 upgradePodsNonRestart(

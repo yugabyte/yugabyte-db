@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -393,6 +393,18 @@ Status Webserver::Impl::Start() {
     // We already initialize OpenSSL, so no need for Squeasel to do it.
     options.push_back("ssl_global_init");
     options.push_back("no");
+
+    if (opts_.ssl_ciphers.c_str()) {
+      LOG(INFO) << "Webserver: Setting ssl_ciphers to " << opts_.ssl_ciphers;
+      options.push_back("ssl_ciphers");
+      options.push_back(opts_.ssl_ciphers.c_str());
+    }
+
+    if (opts_.ssl_min_version.c_str()) {
+      LOG(INFO) << "Webserver: Setting ssl_min_version to " << opts_.ssl_min_version;
+      options.push_back("ssl_min_version");
+      options.push_back(opts_.ssl_min_version.c_str());
+    }
   }
 
   if (!opts_.authentication_domain.empty()) {

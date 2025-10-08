@@ -1,9 +1,10 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.MASTER;
 import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.TSERVER;
+import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType.CREATE;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -26,16 +27,22 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.MockUpgrade;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeInstanceType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DoCapacityReservation;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -1487,6 +1494,295 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     }
   }
 
+  @Test
+  public void testChangingInstanceRRWithCRAzu() {
+    RuntimeConfigEntry.upsertGlobal(
+        ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
+    String defaultInstanceType = "Standard_EC2as_v5";
+    String newInstanceType = "Standard_EC4as_v5";
+    createInstanceType(azuProvider.getUuid(), defaultInstanceType);
+    createInstanceType(azuProvider.getUuid(), newInstanceType);
+    Region region1 = Region.create(azuProvider, "region-1", "region-1", "img");
+    AvailabilityZone az1 = AvailabilityZone.getOrCreate(region1, "az-1", "az 1", "subn");
+    Region region2 = Region.create(azuProvider, "region-2", "region-2", "img");
+    AvailabilityZone az2 = AvailabilityZone.getOrCreate(region2, "az-2", "az 2", "subn");
+    AvailabilityZone az3 = AvailabilityZone.getOrCreate(region2, "az-3", "az 3", "subn");
+    AvailabilityZone az4 = AvailabilityZone.getOrCreate(region2, "az-4", "az 4", "subn");
+
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        createIntent(
+            Common.CloudType.azu, defaultInstanceType, PublicCloudConstants.StorageType.Persistent);
+    userIntent.numNodes = 3;
+    userIntent.ybSoftwareVersion = "2.21.1.1-b1";
+    userIntent.accessKeyCode = "demo-access";
+    userIntent.universeName = "universe-test";
+    userIntent.regionList = ImmutableList.of(region1.getUuid(), region2.getUuid());
+    PlacementInfo pi = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(az1.getUuid(), pi, 1, 1, false);
+    PlacementInfoUtil.addPlacementZone(az2.getUuid(), pi, 1, 1, false);
+    PlacementInfoUtil.addPlacementZone(az3.getUuid(), pi, 1, 1, true);
+
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.nodePrefix = "univConfCreate";
+    taskParams.upsertPrimaryCluster(userIntent, pi);
+    taskParams.userAZSelected = true;
+    PlacementInfoUtil.updateUniverseDefinition(
+        taskParams, defaultCustomer.getId(), taskParams.getPrimaryCluster().uuid, CREATE);
+    taskParams.expectedUniverseVersion = -1;
+
+    UniverseDefinitionTaskParams.UserIntent rrIntent =
+        createIntent(
+            Common.CloudType.azu, defaultInstanceType, PublicCloudConstants.StorageType.Persistent);
+    rrIntent.numNodes = 2;
+    rrIntent.ybSoftwareVersion = "2.21.1.1-b1";
+    rrIntent.accessKeyCode = "demo-access";
+    rrIntent.replicationFactor = 2;
+    rrIntent.regionList = ImmutableList.of(region1.getUuid(), region2.getUuid());
+    PlacementInfo piRR = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(az1.getUuid(), piRR, 1, 1, false);
+    PlacementInfoUtil.addPlacementZone(az4.getUuid(), piRR, 1, 1, false);
+
+    UUID asyncUUID = UUID.randomUUID();
+    taskParams.upsertCluster(
+        rrIntent, piRR, asyncUUID, UniverseDefinitionTaskParams.ClusterType.ASYNC);
+    taskParams.userAZSelected = true;
+
+    PlacementInfoUtil.updateUniverseDefinition(
+        taskParams, defaultCustomer.getId(), asyncUUID, CREATE);
+
+    assertEquals(5, taskParams.nodeDetailsSet.size());
+    AtomicInteger i = new AtomicInteger();
+    Map<String, String> nodesByAZ = new HashMap<>();
+    taskParams
+        .getNodesInCluster(taskParams.getPrimaryCluster().uuid)
+        .forEach(
+            n -> {
+              n.state = NodeDetails.NodeState.Live;
+              n.cloudInfo.private_ip = "10.0.0." + i.incrementAndGet();
+              n.isMaster = true;
+              n.nodeName = "host-n" + i.get();
+              nodesByAZ.put(
+                  String.valueOf(
+                      DoCapacityReservation.extractZoneNumber(
+                          AvailabilityZone.getOrBadRequest(n.azUuid).getCode())),
+                  n.nodeName);
+            });
+    i.set(0);
+    Map<String, String> rrNodesByAZ = new HashMap<>();
+    taskParams
+        .getNodesInCluster(taskParams.getReadOnlyClusters().get(0).uuid)
+        .forEach(
+            n -> {
+              n.state = NodeDetails.NodeState.Live;
+              n.cloudInfo.private_ip = "10.0.1." + i.incrementAndGet();
+              n.nodeName = "host-readonly-n" + i.get();
+              rrNodesByAZ.put(
+                  String.valueOf(
+                      DoCapacityReservation.extractZoneNumber(
+                          AvailabilityZone.getOrBadRequest(n.azUuid).getCode())),
+                  n.nodeName);
+            });
+    defaultUniverse = Universe.create(taskParams, defaultCustomer.getId());
+
+    ResizeNodeParams resizeNodeParams = createResizeParams();
+    resizeNodeParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    resizeNodeParams.clusters.forEach(c -> c.userIntent.instanceType = newInstanceType);
+    resizeNodeParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet;
+    TaskInfo taskInfo = submitTask(resizeNodeParams);
+    assertEquals(Success, taskInfo.getTaskState());
+    assertUniverseData(false, true, true, true, defaultInstanceType, newInstanceType);
+
+    MockUpgrade mockUpgrade = initMockUpgrade();
+    mockUpgrade
+        .precheckTasks(getPrecheckTasks(true))
+        .addTasks(TaskType.DoCapacityReservation)
+        .upgradeRound(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, true)
+        .withContext(instanceChangeContext(mockUpgrade))
+        .tserverTask(TaskType.ChangeInstanceType)
+        // Primary cluster first
+        .applyToCluster(defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid)
+        .addTask(TaskType.PersistResizeNode, null)
+        .upgradeRound(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, true)
+        .withContext(instanceChangeContext(mockUpgrade))
+        .tserverTask(TaskType.ChangeInstanceType)
+        // Now read replica
+        .applyToCluster(defaultUniverse.getUniverseDetails().getReadOnlyClusters().get(0).uuid)
+        .addTask(TaskType.PersistResizeNode, null)
+        .addTasks(TaskType.DeleteCapacityReservation)
+        .verifyTasks(taskInfo.getSubTasks());
+
+    verifyCapacityReservationAZU(
+        defaultUniverse.getUniverseUUID(),
+        region1,
+        Map.of(
+            newInstanceType, Map.of("1", Arrays.asList(nodesByAZ.get("1"), rrNodesByAZ.get("1")))));
+
+    verifyCapacityReservationAZU(
+        defaultUniverse.getUniverseUUID(),
+        region2,
+        Map.of(
+            newInstanceType,
+            Map.of(
+                "2",
+                Arrays.asList(nodesByAZ.get("2")),
+                "3",
+                Arrays.asList(nodesByAZ.get("3")),
+                "4",
+                Arrays.asList(rrNodesByAZ.get("4")))));
+
+    verifyNodeInteractionsCapacityReservation(
+        21,
+        NodeManager.NodeCommandType.Change_Instance_Type,
+        params -> ((ChangeInstanceType.Params) params).capacityReservation,
+        Map.of(
+            DoCapacityReservation.getCapacityReservationGroupName(
+                defaultUniverse.getUniverseUUID(), region1.getCode()),
+            Arrays.asList(nodesByAZ.get("1"), rrNodesByAZ.get("1")),
+            DoCapacityReservation.getCapacityReservationGroupName(
+                defaultUniverse.getUniverseUUID(), region2.getCode()),
+            Arrays.asList(nodesByAZ.get("2"), nodesByAZ.get("3"), rrNodesByAZ.get("4"))));
+  }
+
+  @Test
+  public void testChangingInstanceRRWithCRAws() {
+    RuntimeConfigEntry.upsertGlobal(ProviderConfKeys.enableCapacityReservationAws.getKey(), "true");
+    createInstanceType(defaultProvider.getUuid(), DEFAULT_INSTANCE_TYPE);
+    createInstanceType(defaultProvider.getUuid(), NEW_INSTANCE_TYPE);
+    Region region1 = Region.getByCode(defaultProvider, "region-1");
+    AvailabilityZone az1 = AvailabilityZone.getOrCreate(region1, "az-1", "az 1", "subn");
+    Region region2 = Region.create(defaultProvider, "region-2", "region-2", "img");
+    AvailabilityZone az2 = AvailabilityZone.getOrCreate(region2, "az-4", "az 4", "subn");
+    AvailabilityZone az3 = AvailabilityZone.getOrCreate(region2, "az-5", "az 5", "subn");
+    AvailabilityZone az4 = AvailabilityZone.getOrCreate(region2, "az-6", "az 6", "subn");
+
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        createIntent(
+            Common.CloudType.aws,
+            DEFAULT_INSTANCE_TYPE,
+            PublicCloudConstants.StorageType.Persistent);
+    userIntent.numNodes = 3;
+    userIntent.ybSoftwareVersion = "2.21.1.1-b1";
+    userIntent.accessKeyCode = "demo-access";
+    userIntent.regionList = ImmutableList.of(region1.getUuid(), region2.getUuid());
+    PlacementInfo pi = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(az1.getUuid(), pi, 1, 1, false);
+    PlacementInfoUtil.addPlacementZone(az2.getUuid(), pi, 1, 1, false);
+    PlacementInfoUtil.addPlacementZone(az3.getUuid(), pi, 1, 1, true);
+
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.nodePrefix = "univConfCreate";
+    taskParams.upsertPrimaryCluster(userIntent, pi);
+    taskParams.userAZSelected = true;
+    PlacementInfoUtil.updateUniverseDefinition(
+        taskParams, defaultCustomer.getId(), taskParams.getPrimaryCluster().uuid, CREATE);
+    taskParams.expectedUniverseVersion = -1;
+
+    UniverseDefinitionTaskParams.UserIntent rrIntent =
+        createIntent(
+            Common.CloudType.aws,
+            DEFAULT_INSTANCE_TYPE,
+            PublicCloudConstants.StorageType.Persistent);
+    rrIntent.numNodes = 2;
+    rrIntent.ybSoftwareVersion = "2.21.1.1-b1";
+    rrIntent.accessKeyCode = "demo-access";
+    rrIntent.replicationFactor = 2;
+    rrIntent.regionList = ImmutableList.of(region1.getUuid(), region2.getUuid());
+    PlacementInfo piRR = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(az1.getUuid(), piRR, 1, 1, false);
+    PlacementInfoUtil.addPlacementZone(az4.getUuid(), piRR, 1, 1, false);
+
+    UUID asyncUUID = UUID.randomUUID();
+    taskParams.upsertCluster(
+        rrIntent, piRR, asyncUUID, UniverseDefinitionTaskParams.ClusterType.ASYNC);
+    taskParams.userAZSelected = true;
+
+    PlacementInfoUtil.updateUniverseDefinition(
+        taskParams, defaultCustomer.getId(), asyncUUID, CREATE);
+
+    assertEquals(5, taskParams.nodeDetailsSet.size());
+    AtomicInteger i = new AtomicInteger();
+    Map<String, String> nodesByAZ = new HashMap<>();
+    taskParams
+        .getNodesInCluster(taskParams.getPrimaryCluster().uuid)
+        .forEach(
+            n -> {
+              n.state = NodeDetails.NodeState.Live;
+              n.cloudInfo.private_ip = "10.0.0." + i.incrementAndGet();
+              n.isMaster = true;
+              n.nodeName = "host-n" + i.get();
+              nodesByAZ.put(AvailabilityZone.getOrBadRequest(n.azUuid).getCode(), n.nodeName);
+            });
+    i.set(0);
+    Map<String, String> rrNodesByAZ = new HashMap<>();
+    taskParams
+        .getNodesInCluster(taskParams.getReadOnlyClusters().get(0).uuid)
+        .forEach(
+            n -> {
+              n.state = NodeDetails.NodeState.Live;
+              n.cloudInfo.private_ip = "10.0.1." + i.incrementAndGet();
+              n.nodeName = "host-readonly-n" + i.get();
+              rrNodesByAZ.put(AvailabilityZone.getOrBadRequest(n.azUuid).getCode(), n.nodeName);
+            });
+    defaultUniverse = Universe.create(taskParams, defaultCustomer.getId());
+
+    ResizeNodeParams resizeNodeParams = createResizeParams();
+    resizeNodeParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    resizeNodeParams.clusters.forEach(c -> c.userIntent.instanceType = NEW_INSTANCE_TYPE);
+    resizeNodeParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet;
+    TaskInfo taskInfo = submitTask(resizeNodeParams);
+    assertEquals(Success, taskInfo.getTaskState());
+    assertUniverseData(false, true, true, true);
+
+    MockUpgrade mockUpgrade = initMockUpgrade();
+    mockUpgrade
+        .precheckTasks(getPrecheckTasks(true))
+        .addTasks(TaskType.DoCapacityReservation)
+        .upgradeRound(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, true)
+        .withContext(instanceChangeContext(mockUpgrade))
+        .tserverTask(TaskType.ChangeInstanceType)
+        // Primary cluster first
+        .applyToCluster(defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid)
+        .addTask(TaskType.PersistResizeNode, null)
+        .upgradeRound(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, true)
+        .withContext(instanceChangeContext(mockUpgrade))
+        .tserverTask(TaskType.ChangeInstanceType)
+        // Now read replica
+        .applyToCluster(defaultUniverse.getUniverseDetails().getReadOnlyClusters().get(0).uuid)
+        .addTask(TaskType.PersistResizeNode, null)
+        .addTasks(TaskType.DeleteCapacityReservation)
+        .verifyTasks(taskInfo.getSubTasks());
+
+    verifyCapacityReservationAws(
+        defaultUniverse.getUniverseUUID(),
+        Map.of(
+            NEW_INSTANCE_TYPE,
+            Map.of(
+                "1",
+                    new ZoneData(
+                        "region-1", Arrays.asList(nodesByAZ.get("az-1"), rrNodesByAZ.get("az-1"))),
+                "4", new ZoneData("region-2", Arrays.asList(nodesByAZ.get("az-4"))),
+                "5", new ZoneData("region-2", Arrays.asList(nodesByAZ.get("az-5"))),
+                "6", new ZoneData("region-2", Arrays.asList(rrNodesByAZ.get("az-6"))))));
+
+    verifyNodeInteractionsCapacityReservation(
+        21,
+        NodeManager.NodeCommandType.Change_Instance_Type,
+        params -> ((ChangeInstanceType.Params) params).capacityReservation,
+        Map.of(
+            DoCapacityReservation.getZoneInstanceCapacityReservationName(
+                defaultUniverse.getUniverseUUID(), "az-1", NEW_INSTANCE_TYPE),
+            Arrays.asList(nodesByAZ.get("az-1"), rrNodesByAZ.get("az-1")),
+            DoCapacityReservation.getZoneInstanceCapacityReservationName(
+                defaultUniverse.getUniverseUUID(), "az-4", NEW_INSTANCE_TYPE),
+            Arrays.asList(nodesByAZ.get("az-4")),
+            DoCapacityReservation.getZoneInstanceCapacityReservationName(
+                defaultUniverse.getUniverseUUID(), "az-5", NEW_INSTANCE_TYPE),
+            Arrays.asList(nodesByAZ.get("az-5")),
+            DoCapacityReservation.getZoneInstanceCapacityReservationName(
+                defaultUniverse.getUniverseUUID(), "az-6", NEW_INSTANCE_TYPE),
+            Arrays.asList(rrNodesByAZ.get("az-6"))));
+  }
+
   private void assertUniverseData(boolean increaseVolume, boolean changeInstance) {
     assertUniverseData(increaseVolume, changeInstance, true, false);
   }
@@ -1496,10 +1792,26 @@ public class ResizeNodeTest extends UpgradeTaskTest {
       boolean changeInstance,
       boolean primaryChanged,
       boolean readonlyChanged) {
+    assertUniverseData(
+        increaseVolume,
+        changeInstance,
+        primaryChanged,
+        readonlyChanged,
+        DEFAULT_INSTANCE_TYPE,
+        NEW_INSTANCE_TYPE);
+  }
+
+  private void assertUniverseData(
+      boolean increaseVolume,
+      boolean changeInstance,
+      boolean primaryChanged,
+      boolean readonlyChanged,
+      String defaultInstanceType,
+      String newInstanceType) {
     // false false means changing throughput or/and iops
     boolean lastVolumeUpdateTimeChanged = increaseVolume || (!increaseVolume && !changeInstance);
     int volumeSize = increaseVolume ? NEW_VOLUME_SIZE : DEFAULT_VOLUME_SIZE;
-    String instanceType = changeInstance ? NEW_INSTANCE_TYPE : DEFAULT_INSTANCE_TYPE;
+    String instanceType = changeInstance ? newInstanceType : defaultInstanceType;
     Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     UniverseDefinitionTaskParams.Cluster primaryCluster =
         universe.getUniverseDetails().getPrimaryCluster();
@@ -1533,9 +1845,9 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         }
       } else {
         assertEquals(DEFAULT_VOLUME_SIZE, readonlyIntent.deviceInfo.volumeSize.intValue());
-        assertEquals(DEFAULT_INSTANCE_TYPE, readonlyIntent.instanceType);
+        assertEquals(defaultInstanceType, readonlyIntent.instanceType);
         for (NodeDetails nodeDetails : universe.getNodesInCluster(readonlyCluster.uuid)) {
-          assertEquals(DEFAULT_INSTANCE_TYPE, nodeDetails.cloudInfo.instance_type);
+          assertEquals(defaultInstanceType, nodeDetails.cloudInfo.instance_type);
           assertNull(nodeDetails.lastVolumeUpdateTime);
         }
       }

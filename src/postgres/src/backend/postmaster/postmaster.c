@@ -149,7 +149,9 @@
 #include "storage/procarray.h"
 #include "storage/procsignal.h"
 #include "storage/sinvaladt.h"
+#include "yb/util/debug/leak_annotations.h"
 #include "yb/yql/pggate/ybc_pg_shared_mem.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 #include "yb_ash.h"
 #include "yb_query_diagnostics.h"
 #include "yb_terminated_queries.h"
@@ -598,7 +600,10 @@ HANDLE		PostmasterHandle;
 char *
 postmaster_strdup(const char *in)
 {
-	return strdup(in);
+	char	   *result = strdup(in);
+
+	__lsan_ignore_object(result);
+	return result;
 }
 
 /*
@@ -749,6 +754,7 @@ PostmasterMain(int argc, char *argv[])
 			case 'b':
 				/* Undocumented flag used for binary upgrades */
 				IsBinaryUpgrade = true;
+				YBCSetBinaryUpgrade(true);
 				break;
 
 			case 'C':
@@ -2003,7 +2009,7 @@ ServerLoop(void)
 		 * backends if they're not responding after a certain time.
 		 */
 		if ((Shutdown >= ImmediateShutdown || (FatalError && !SendStop) ||
-			(YBIsEnabledInPostgresEnvVar() && Shutdown >= FastShutdown)) &&
+			 (YBIsEnabledInPostgresEnvVar() && Shutdown >= FastShutdown)) &&
 			AbortStartTime != 0 &&
 			(now - AbortStartTime) >= SIGKILL_CHILDREN_AFTER_SECS)
 		{
@@ -6160,8 +6166,7 @@ BackgroundWorkerInitializeConnection(const char *dbname, const char *username, u
 				 username, InvalidOid,	/* role to connect as */
 				 false,			/* never honor session_preload_libraries */
 				 (flags & BGWORKER_BYPASS_ALLOWCONN) != 0,	/* ignore datallowconn? */
-				 NULL,			/* no out_dbname */
-				 NULL);			/* session id */
+				 NULL /* no out_dbname */ );
 
 	if (yb_enable_ash)
 		YbAshSetMetadataForBgworkers();
@@ -6177,8 +6182,8 @@ BackgroundWorkerInitializeConnection(const char *dbname, const char *username, u
  * Connect background worker to a database using OIDs.
  */
 void
-YbBackgroundWorkerInitializeConnectionByOid(Oid dboid, Oid useroid,
-											uint64_t *session_id, uint32 flags)
+YbBackgroundWorkerInitializeConnectionByOid(Oid dboid, Oid useroid, uint32 flags,
+											const YbcPgInitPostgresInfo *yb_init_info)
 {
 	BackgroundWorker *worker = MyBgworkerEntry;
 
@@ -6188,12 +6193,12 @@ YbBackgroundWorkerInitializeConnectionByOid(Oid dboid, Oid useroid,
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 				 errmsg("database connection requirement not indicated during registration")));
 
-	InitPostgres(NULL, dboid,	/* database to connect to */
-				 NULL, useroid, /* role to connect as */
-				 false,			/* never honor session_preload_libraries */
-				 (flags & BGWORKER_BYPASS_ALLOWCONN) != 0,	/* ignore datallowconn? */
-				 NULL,			/* no out_dbname */
-				 session_id);	/* session id */
+	YbInitPostgres(NULL, dboid, /* database to connect to */
+				   NULL, useroid,	/* role to connect as */
+				   false,		/* never honor session_preload_libraries */
+				   (flags & BGWORKER_BYPASS_ALLOWCONN) != 0,	/* ignore datallowconn? */
+				   NULL,		/* no out_dbname */
+				   yb_init_info);
 
 	if (yb_enable_ash)
 		YbAshSetMetadataForBgworkers();
@@ -6209,7 +6214,7 @@ void
 BackgroundWorkerInitializeConnectionByOid(Oid dboid, Oid useroid,
 										  uint32 flags)
 {
-	YbBackgroundWorkerInitializeConnectionByOid(dboid, useroid, NULL, flags);
+	YbBackgroundWorkerInitializeConnectionByOid(dboid, useroid, flags, NULL);
 }
 
 /*

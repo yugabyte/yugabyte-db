@@ -5,7 +5,7 @@ linkTitle: Transaction priorities
 description: Transaction priorities in YugabyteDB.
 headcontent: Transaction priorities in YugabyteDB
 menu:
-  preview:
+  preview_develop:
     name: Transaction priorities
     identifier: develop-quality-of-service-transaction-priorities
     parent: develop-quality-of-service
@@ -46,10 +46,10 @@ Currently, transaction priorities work in the following scenarios:
 
 ## Examples
 
-Create a [YugabyteDB universe](/preview/tutorials/quick-start/macos/) and open two separate [ysqlsh](../../../api/ysqlsh/#starting-ysqlsh) connections to it.
+Create a [YugabyteDB universe](/preview/quick-start/macos/) and open two separate [ysqlsh](../../../api/ysqlsh/#starting-ysqlsh) connections to it.
 
 {{< tip title="Tip - Use YugabyteDB Aeon" >}}
-You can create a free cluster with [YugabyteDB Aeon](/preview/tutorials/quick-start-yugabytedb-managed/), and open two *cloud shell* connections to it. These cloud shell connections open in two different browser tabs, which you can use to do the steps that follow.
+You can create a free cluster with [YugabyteDB Aeon](/preview/quick-start-yugabytedb-managed/), and open two *cloud shell* connections to it. These cloud shell connections open in two different browser tabs, which you can use to do the steps that follow.
 
 {{< /tip >}}
 

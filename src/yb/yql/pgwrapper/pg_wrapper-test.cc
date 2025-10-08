@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -16,7 +16,6 @@
 #include "yb/common/wire_protocol.h"
 
 #include "yb/master/master_admin.proxy.h"
-#include "yb/master/master_ddl.pb.h"
 
 #include "yb/rpc/rpc_controller.h"
 
@@ -25,7 +24,6 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
-#include "yb/util/logging.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pg_util.h"
@@ -75,11 +73,15 @@ class PgWrapperTestHelper: public PgCommandTestBase {
 } // namespace
 
 
-YB_DEFINE_ENUM(FlushOrCompaction, (kFlush)(kCompaction));
+YB_DEFINE_ENUM(FlushOrCompaction, (kFlush)(kFlushRegularOnly)(kCompaction));
+
+auto GetFlushCompactFlags(FlushOrCompaction flush_or_compaction) {
+  return flush_or_compaction == FlushOrCompaction::kFlushRegularOnly ?
+      tablet::FLUSH_COMPACT_REGULAR_FOR_TEST_ONLY : tablet::FLUSH_COMPACT_DEFAULT;
+}
 
 class PgWrapperTest : public PgWrapperTestHelper<ConnectionStrategy<false, false>> {
  protected:
-
   Result<PGConn> ConnectToDB(const std::string& dbname) const {
     return PGConnBuilder({
       .host = pg_ts->bound_rpc_addr().host(),
@@ -88,25 +90,22 @@ class PgWrapperTest : public PgWrapperTestHelper<ConnectionStrategy<false, false
     }).Connect();
   }
 
-  void FlushTableById(string table_id) {
+  void FlushTableById(const TableId&  table_id) {
     DoFlushOrCompact(table_id, /* namespace_name= */ "", FlushOrCompaction::kFlush);
   }
 
-  void CompactTableById(string table_id) {
+  void CompactTableById(const TableId& table_id) {
     DoFlushOrCompact(table_id, /* namespace_name= */ "", FlushOrCompaction::kCompaction);
   }
 
   void FlushRegularRocksDbInNamespace(string namespace_name) {
-    DoFlushOrCompact(/* table_id= */ "",
-                     namespace_name,
-                     FlushOrCompaction::kFlush,
-                     /* regular_only= */ true);
+    DoFlushOrCompact(/* table_id= */ "", namespace_name, FlushOrCompaction::kFlushRegularOnly);
   }
 
-  void DoFlushOrCompact(string table_id,
-                        string namespace_name,
-                        FlushOrCompaction flush_or_compaction,
-                        bool regular_only = false) {
+  void DoFlushOrCompact(
+      const TableId& table_id,
+      const std::string& namespace_name,
+      FlushOrCompaction flush_or_compaction) {
     if (!table_id.empty() && !namespace_name.empty()) {
       FAIL() << "Only one of table_id and namespace_name should be specified: "
              << YB_EXPR_TO_STREAM_COMMA_SEPARATED(table_id, namespace_name);
@@ -125,7 +124,7 @@ class PgWrapperTest : public PgWrapperTestHelper<ConnectionStrategy<false, false
       ns.set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
     }
     compaction_req.set_is_compaction(flush_or_compaction == FlushOrCompaction::kCompaction);
-    compaction_req.set_regular_only(regular_only);
+    compaction_req.set_flags(GetFlushCompactFlags(flush_or_compaction));
     LOG(INFO) << "Sending a " << flush_or_compaction << " request: "
               << compaction_req.DebugString();
     ASSERT_OK(master_proxy.FlushTables(compaction_req, &flush_tables_resp, &rpc));
@@ -227,8 +226,6 @@ TEST_F(PgWrapperTest, TestStartStop) {
 }
 
 TEST_F(PgWrapperTest, TestCompactHistoryWithTxn) {
-  RpcController rpc;
-  rpc.set_timeout(MonoDelta::FromSeconds(60));
   ASSERT_NO_FATALS(CreateTable("CREATE TABLE mytbl (k INT PRIMARY KEY, v TEXT)"));
 
   ASSERT_NO_FATALS(InsertOneRow("INSERT INTO mytbl (k, v) VALUES (100, 'value1')"));
@@ -477,7 +474,12 @@ TEST_F(PgWrapperOneNodeClusterTest, TestPgStatUserTablesPersistence) {
 
   auto last_analyze_time_before_restart = ASSERT_RESULT(get_last_analyze_time());
 
-  pg_ts->Shutdown(SafeShutdown::kFalse);
+  auto shutdown_mode = SafeShutdown::kTrue;
+#ifdef HAVE_SYS_PRCTL_H
+  shutdown_mode = SafeShutdown::kFalse;
+#endif
+
+  pg_ts->Shutdown(shutdown_mode);
   LOG(INFO) << "Starting the tablet server again";
   ASSERT_OK(pg_ts->Restart(/* start_cql_proxy= */ false));
 
@@ -509,7 +511,8 @@ TEST_F(PgWrapperSingleNodeLongTxnTest, RestartMidApply) {
         auto table_info_result = client_->GetYBTableInfo(
             client::YBTableName{YQLDatabase::YQL_DATABASE_UNKNOWN, "system", "transactions"});
         return table_info_result.ok();
-      }, MonoDelta::FromSeconds(15), "Waiting for transaction status table to be created", 100ms));
+      },
+      MonoDelta::FromSeconds(15), "Waiting for transaction status table to be created", 100ms));
 
   const std::string kDbName = "mydb";
   {
@@ -792,6 +795,42 @@ TEST_F_EX(
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_docdb_vector_type", "false"));
 
   ASSERT_NO_FATALS(CheckAutoFlagValues(false /* expect_target_value */));
+}
+
+TEST_F(PgWrapperFlagsTest, RuntimeUpdateHbaAndIdent) {
+  ASSERT_OK(SetFlagOnAllTServers(
+      "ysql_hba_conf_csv", "host all all all trust, host all all 127.99.88.77/32 trust"));
+  ASSERT_OK(SetFlagOnAllTServers("ysql_ident_conf_csv", "map_x user_foo yb_user_bar"));
+
+  auto conn = ASSERT_RESULT(ConnectToDB(std::string()));
+
+  auto hba_rules = ASSERT_RESULT(conn.FetchRow<std::string>(
+      "SELECT auth_method FROM pg_hba_file_rules WHERE address='127.99.88.77'"));
+  ASSERT_EQ(hba_rules, "trust");
+
+  // Update the flag again and verify the old rule is deleted.
+  ASSERT_OK(SetFlagOnAllTServers(
+      "ysql_hba_conf_csv", "host all all all trust, host all all 127.11.22.33/32 trust"));
+  auto row_count = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+      "SELECT COUNT(*) FROM pg_hba_file_rules WHERE address='127.11.22.33'"));
+  ASSERT_EQ(row_count, 1);
+  row_count = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+      "SELECT COUNT(*) FROM pg_hba_file_rules WHERE address='127.99.88.77'"));
+  ASSERT_EQ(row_count, 0);
+
+  auto ident_mappings = ASSERT_RESULT(
+      conn.FetchRow<std::string>("SELECT pg_username FROM pg_ident_file_mappings WHERE "
+                                 "map_name='map_x' AND sys_name='user_foo'"));
+  ASSERT_EQ(ident_mappings, "yb_user_bar");
+
+  // Update the flag again and verify the old rule is deleted.
+  ASSERT_OK(SetFlagOnAllTServers("ysql_ident_conf_csv", "map_a user_a yb_user_b"));
+  row_count = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+      "SELECT COUNT(*) FROM pg_ident_file_mappings WHERE sys_name='user_a'"));
+  ASSERT_EQ(row_count, 1);
+  row_count = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+      "SELECT COUNT(*) FROM pg_ident_file_mappings WHERE sys_name='user_foo'"));
+  ASSERT_EQ(row_count, 0);
 }
 
 class ValidateYsqlPgConfCsvTest : public YBTest {};

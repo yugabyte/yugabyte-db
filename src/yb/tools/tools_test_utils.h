@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -40,8 +40,12 @@ Status RunBackupCommand(
 Status RunYbControllerCommand(
     MiniClusterBase* cluster, const std::string& tmp_dir, const std::vector<std::string>& args);
 
-// Runs ysql_dump against specified database of the cluster and returns the output.
+// Runs ysql_dump schema-only against specified database of the cluster and returns the output.
 Result<std::string> RunYSQLDump(
+    HostPort& pg_host_port, const std::string& database_name = "yugabyte");
+
+// Runs ysql_dump data-only against specified database of the cluster and returns the output.
+Result<std::string> RunYSQLDataOnlyDump(
     HostPort& pg_host_port, const std::string& database_name = "yugabyte");
 
 // A class to manage random tmp dir for test.

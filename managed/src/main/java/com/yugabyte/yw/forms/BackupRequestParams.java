@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.forms;
 
@@ -153,7 +153,7 @@ public class BackupRequestParams extends UniverseTaskParams {
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2025.1.0.0")
   @Getter
   @Setter
-  private Boolean dumpRoleChecks = false;
+  private Boolean dumpRoleChecks = true;
 
   // Intermediate states to resume ybc backups
   public UUID backupUUID;

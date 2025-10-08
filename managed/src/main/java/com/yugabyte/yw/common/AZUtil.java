@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.common;
 
@@ -181,12 +181,25 @@ public class AZUtil implements CloudUtil {
 
   // Returns a map for <container_url, SAS token>
   private Map<String, String> getContainerTokenMap(CustomerConfigStorageAzureData azData) {
+    CloudLocationInfoAzure cLInfo =
+        (CloudLocationInfoAzure)
+            getCloudLocationInfo(
+                YbcBackupUtil.DEFAULT_REGION_STRING, azData, azData.backupLocation);
+    String azureUrl = cLInfo.azureUrl;
+    String container = cLInfo.bucket;
+    String containerEndpoint = String.format("%s/%s", azureUrl, container);
     Map<String, String> containerTokenMap = new HashMap<>();
-    containerTokenMap.put(StringUtils.removeEnd(azData.backupLocation, "/"), azData.azureSasToken);
+    containerTokenMap.put(containerEndpoint, azData.azureSasToken);
     if (CollectionUtils.isNotEmpty(azData.regionLocations)) {
       azData.regionLocations.forEach(
           (rL) -> {
-            containerTokenMap.put(StringUtils.removeEnd(rL.location, "/"), rL.azureSasToken);
+            CloudLocationInfoAzure cLInfoRegion =
+                (CloudLocationInfoAzure) getCloudLocationInfo(rL.region, azData, rL.location);
+            String regionalAzureUrl = cLInfoRegion.azureUrl;
+            String regionalContainer = cLInfoRegion.bucket;
+            String regionalContainerEndpoint =
+                String.format("%s/%s", regionalAzureUrl, regionalContainer);
+            containerTokenMap.put(regionalContainerEndpoint, rL.azureSasToken);
           });
     }
     return containerTokenMap;
@@ -536,12 +549,22 @@ public class AZUtil implements CloudUtil {
       throws Exception {
     CustomerConfigStorageAzureData azData = (CustomerConfigStorageAzureData) configData;
     if (!StringUtils.isEmpty(azData.azureSasToken)) {
-      validateTokenAndLocation(azData.azureSasToken, azData.backupLocation, permissions);
+      CloudLocationInfoAzure cLInfo =
+          (CloudLocationInfoAzure)
+              getCloudLocationInfo(
+                  YbcBackupUtil.DEFAULT_REGION_STRING, azData, azData.backupLocation);
+      String cloudPath = cLInfo.cloudPath;
+      validateTokenAndLocation(azData.azureSasToken, azData.backupLocation, cloudPath, permissions);
       if (CollectionUtils.isNotEmpty(azData.regionLocations)) {
         azData.regionLocations.stream()
             .forEach(
                 location -> {
-                  validateTokenAndLocation(location.azureSasToken, location.location, permissions);
+                  CloudLocationInfoAzure cLInfoRegion =
+                      (CloudLocationInfoAzure)
+                          getCloudLocationInfo(location.region, azData, location.location);
+                  String regionalCloudPath = cLInfoRegion.cloudPath;
+                  validateTokenAndLocation(
+                      location.azureSasToken, location.location, regionalCloudPath, permissions);
                 });
       }
     } else {
@@ -556,7 +579,9 @@ public class AZUtil implements CloudUtil {
    * permissions if specified.
    */
   public void validateOnBlobContainerClient(
-      BlobContainerClient blobContainerClient, List<ExtraPermissionToValidate> permissions) {
+      BlobContainerClient blobContainerClient,
+      String cloudPath,
+      List<ExtraPermissionToValidate> permissions) {
     Optional<ExtraPermissionToValidate> unsupportedPermission =
         permissions.stream()
             .filter(
@@ -573,18 +598,20 @@ public class AZUtil implements CloudUtil {
               + " validation is not supported!");
     }
 
-    String fileName = getRandomUUID().toString() + ".txt";
-    createDummyBlob(blobContainerClient, DUMMY_DATA, fileName);
+    String objectName = getRandomUUID().toString() + ".txt";
+    String completeObjectPath = BackupUtil.getPathWithPrefixSuffixJoin(cloudPath, objectName);
+
+    createDummyBlob(blobContainerClient, DUMMY_DATA, completeObjectPath);
 
     if (permissions.contains(ExtraPermissionToValidate.READ)) {
-      validateReadBlob(fileName, DUMMY_DATA, blobContainerClient);
+      validateReadBlob(completeObjectPath, DUMMY_DATA, blobContainerClient);
     }
 
     if (permissions.contains(ExtraPermissionToValidate.LIST)) {
-      validateListBlobs(blobContainerClient, fileName);
+      validateListBlobs(blobContainerClient, completeObjectPath);
     }
 
-    validateDelete(blobContainerClient, fileName);
+    validateDelete(blobContainerClient, completeObjectPath);
   }
 
   /**
@@ -592,9 +619,12 @@ public class AZUtil implements CloudUtil {
    * delete permissions if specified.
    */
   private void validateTokenAndLocation(
-      String sasToken, String location, List<ExtraPermissionToValidate> permissions) {
+      String sasToken,
+      String location,
+      String cloudPath,
+      List<ExtraPermissionToValidate> permissions) {
     BlobContainerClient blobContainerClient = createBlobContainerClient(sasToken, location);
-    validateOnBlobContainerClient(blobContainerClient, permissions);
+    validateOnBlobContainerClient(blobContainerClient, cloudPath, permissions);
   }
 
   /**

@@ -11,9 +11,9 @@
  *	  src/backend/optimizer/path/allpaths.c
  *
  * The following only applies to changes made to this file as part of
- * YugaByte development.
+ * YugabyteDB development.
  *
- * Portions Copyright (c) YugaByte, Inc.
+ * Portions Copyright (c) YugabyteDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you
  * may not use this file except in compliance with the License.
@@ -3635,8 +3635,8 @@ standard_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
 						break;
 					default:
 						ereport(ERROR,
-							(errmsg("expected a join path (%u)",
-									ybRel->cheapest_total_path->ybUniqueId)));
+								(errmsg("expected a join path (%u)",
+										ybRel->cheapest_total_path->ybUniqueId)));
 						break;
 				}
 

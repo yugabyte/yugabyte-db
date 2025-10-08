@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.queries;
 
@@ -94,7 +94,7 @@ public class LiveQueryExecutor implements Callable<JsonNode> {
             if (params.leader_pid != -1) {
               rowData.put("leader_pid", params.leader_pid);
             }
-            if (params.query_id != -1) {
+            if (params.query_id != null) {
               rowData.put("query_id", params.query_id);
             }
 

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -39,6 +39,7 @@ struct XClusterOutputClientResponse {
   uint32_t processed_record_count;
   std::shared_ptr<cdc::GetChangesResponsePB> get_changes_response;
   std::set<HybridTime> ddl_queue_commit_times;
+  bool processed_change_metadata_op = false;
 };
 
 class XClusterPoller;
@@ -95,8 +96,8 @@ class XClusterOutputClient : public XClusterAsyncExecutor {
   Result<bool> ProcessChangeMetadataOp(const cdc::CDCRecordPB& record);
 
   // Gets the producer/consumer schema mapping for the record.
-  Result<cdc::XClusterSchemaVersionMap> GetSchemaVersionMap(const cdc::CDCRecordPB& record)
-      REQUIRES(lock_);
+  Result<cdc::XClusterSchemaVersionMap> GetSchemaVersionMap(
+      const cdc::CDCRecordPB& record, ColocationId colocation_id) REQUIRES(lock_);
 
   // Processes the Record and sends the CDCWrite for it.
   Status ProcessRecord(const std::vector<std::string>& tablet_ids, const cdc::CDCRecordPB& record)
@@ -163,6 +164,8 @@ class XClusterOutputClient : public XClusterAsyncExecutor {
 
   uint32_t processed_record_count_ GUARDED_BY(lock_) = 0;
   uint32_t record_count_ GUARDED_BY(lock_) = 0;
+
+  bool processed_change_metadata_op_ GUARDED_BY(lock_) = false;
 
   SchemaVersion producer_schema_version_ GUARDED_BY(lock_) = 0;
   ColocationId colocation_id_ GUARDED_BY(lock_) = 0;

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -170,13 +170,13 @@ class QLWriteOperation :
 
   // Doc key and encoded Doc key for hashed key (i.e. without range columns). Present when there is
   // a static column being written.
-  boost::optional<dockv::DocKey> hashed_doc_key_;
+  std::optional<dockv::DocKey> hashed_doc_key_;
   RefCntPrefix encoded_hashed_doc_key_;
 
   // Doc key and encoded Doc key for primary key (i.e. with range columns). Present when there is a
   // non-static column being written or when writing the primary key alone (i.e. range columns are
   // present or table does not have range columns).
-  boost::optional<dockv::DocKey> pk_doc_key_;
+  std::optional<dockv::DocKey> pk_doc_key_;
   RefCntPrefix encoded_pk_doc_key_;
 
   QLResponsePB* response_ = nullptr;

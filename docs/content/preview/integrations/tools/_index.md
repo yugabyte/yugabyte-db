@@ -82,7 +82,7 @@ Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can use thir
 
 To use these tools with YugabyteDB, you should have a cluster up and running, and you will need to know the connection parameters required by the client to connect to your cluster.
 
-To create a local cluster, follow the steps in [Quick start](/preview/tutorials/quick-start/macos/).
+To create a local cluster, follow the steps in [Quick start](/preview/quick-start/macos/).
 
 To create a cluster in YugabyteDB Aeon, follow the steps in [Create a cluster](/preview/yugabyte-cloud/cloud-quickstart/). In addition, do the following:
 
@@ -99,6 +99,6 @@ To connect, follow the client's configuration steps, and use the following value
 | Port | `5433` (YSQL) `9042` (YCQL) | `5433` (YSQL) `9042` (YCQL) |
 | Database | Database name (`yugabyte` is the default) | Database name (`yugabyte` is the default) |
 | Username | `yugabyte` or `cassandra` | Database username (`admin` is the default) |
-| Password | `yugabyte` or `cassandra`<br>Leave blank if [authentication is not enabled](../../secure/enable-authentication/) | Database user password |
+| Password | `yugabyte` or `cassandra` are the default for an insecure local cluster.<br>For a [secure cluster](../../reference/configuration/yugabyted/#secure-universes), the credentials are in the credentials file.<br>Leave blank if [authentication is not enabled](../../secure/enable-authentication/). | Database user password |
 
 YugabyteDB Aeon requires TLS. Use the root.ca certificate you downloaded for connections to YugabyteDB Aeon clusters.

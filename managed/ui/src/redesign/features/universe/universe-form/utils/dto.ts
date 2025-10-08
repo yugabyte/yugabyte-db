@@ -288,6 +288,8 @@ export interface Universe {
   universeUUID: string;
   version: number;
   rollMaxBatchSize: RollMaxBatchSize;
+  drConfigUuidsAsSource: string[];
+  drConfigUuidsAsTarget: string[];
 }
 
 //-------------------------------------------------------- Payload related Types - Ends -------------------------------------------------------------------
@@ -330,6 +332,10 @@ export interface DeviceInfo {
   storageClass: 'standard'; // hardcoded in DeviceInfo.java
   mountPoints: string | null;
   storageType: StorageType | null;
+  cloudVolumeEncryption? : {
+    enableVolumeEncryption: boolean;
+    kmsConfigUUID: string;
+  }
 }
 
 export interface K8NodeSpec {
@@ -531,6 +537,8 @@ export interface InstanceConfigFormValue {
   enableClientToNodeEncrypt: boolean;
   enableNodeToNodeEncrypt: boolean;
   rootCA: string;
+  clientRootCA: string;
+  rootAndClientRootCASame: boolean;
   enableEncryptionAtRest: boolean;
   enableYSQL: boolean;
   enableYSQLAuth: boolean;
@@ -633,6 +641,8 @@ export const DEFAULT_INSTANCE_CONFIG: InstanceConfigFormValue = {
   enableClientToNodeEncrypt: true,
   enableNodeToNodeEncrypt: true,
   rootCA: '',
+  clientRootCA: '',
+  rootAndClientRootCASame: true,
   enableEncryptionAtRest: false,
   enableYSQL: true,
   enableYSQLAuth: true,

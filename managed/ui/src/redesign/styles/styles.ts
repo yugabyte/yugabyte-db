@@ -7,6 +7,7 @@ export const usePillStyles = makeStyles((theme) => ({
     alignItems: 'center',
 
     width: 'fit-content',
+    height: 24,
     padding: `${theme.spacing(0.5)}px ${theme.spacing(0.75)}px`,
 
     fontSize: '11.5px',
@@ -41,22 +42,32 @@ export const usePillStyles = makeStyles((theme) => ({
         color: theme.palette.ybacolors.pillDangerIcon
       }
     },
-    '&$inactive': {
+    '&$metadataGrey': {
       color: theme.palette.ybacolors.pillInactiveText,
       backgroundColor: theme.palette.ybacolors.pillInactiveBackground
+    },
+    '&$metadataWhite': {
+      color: theme.palette.grey[900],
+      backgroundColor: theme.palette.common.white,
+      border: `1px solid ${theme.palette.grey[300]}`
     },
     '&$productOrange': {
       fontWeight: 500,
       color: theme.palette.common.white,
       backgroundColor: theme.palette.orange[500]
+    },
+    '&$small': {
+      height: 20
     }
   },
+  small: {},
   icon: {},
   ready: {},
   inProgress: {},
   warning: {},
   danger: {},
-  inactive: {},
+  metadataGrey: {},
+  metadataWhite: {},
   productOrange: {}
 }));
 

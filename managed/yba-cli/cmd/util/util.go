@@ -1,5 +1,5 @@
 /*
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  */
 
 package util
@@ -167,6 +167,27 @@ func FindCommonStringElements(list1, list2 []string) []string {
 		}
 	}
 	return common
+}
+
+// IsEmptyString checks if the string is empty or whitespace
+func IsEmptyString(s string) bool {
+	return strings.TrimSpace(s) == ""
+}
+
+// PrintTime prints the time in RFC1123Z format
+func PrintTime(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.Format(time.RFC1123Z)
+}
+
+// PrintCustomTime prints the time in RFC1123Z format
+func PrintCustomTime(t CustomTime) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.Format(time.RFC1123Z)
 }
 
 // GetFloat64SliceFromString returns a slice of float64 from a string

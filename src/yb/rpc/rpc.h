@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -37,7 +37,6 @@
 #include <string>
 
 #include <boost/container/stable_vector.hpp>
-#include <boost/optional/optional.hpp>
 
 #include "yb/rpc/rpc_controller.h"
 
@@ -242,7 +241,10 @@ class Rpcs {
   typedef boost::container::stable_vector<rpc::RpcCommandPtr> Calls;
   typedef Calls::iterator Handle;
 
+  void StartShutdown();
+  void CompleteShutdown();
   void Shutdown();
+
   Handle Register(RpcCommandPtr call);
   void Register(RpcCommandPtr call, Handle* handle);
   bool RegisterAndStart(RpcCommandPtr call, Handle* handle);
@@ -290,11 +292,12 @@ class Rpcs {
   // If shutdown is true - switches Rpcs to shutting down state.
   CoarseTimePoint DoRequestAbortAll(RequestShutdown shutdown);
 
-  boost::optional<std::mutex> mutex_holder_;
+  std::optional<std::mutex> mutex_holder_;
   std::mutex* mutex_;
   std::condition_variable cond_;
   Calls calls_;
-  bool shutdown_ = false;
+  bool shutdown_  GUARDED_BY(mutex_) = false;
+  CoarseTimePoint shutdown_deadline_ GUARDED_BY(mutex_);
 };
 
 template<class Iter>

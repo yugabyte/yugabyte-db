@@ -170,33 +170,37 @@ libraryDependencies ++= Seq(
   "org.apache.mina" % "mina-core" % "2.2.4",
   "org.flywaydb" %% "flyway-play" % "9.0.0",
   // https://github.com/YugaByte/cassandra-java-driver/releases
-  "com.yugabyte" % "cassandra-driver-core" % "3.8.0-yb-7",
+  "com.yugabyte" % "java-driver-core" % "4.15.0-yb-3",
   "org.yaml" % "snakeyaml" % "2.1",
   "org.bouncycastle" % "bc-fips" % "2.1.0",
   "org.bouncycastle" % "bcpkix-fips" % "2.1.9",
   "org.bouncycastle" % "bctls-fips" % "2.1.20",
   "org.mindrot" % "jbcrypt" % "0.4",
   "org.springframework.security" % "spring-security-core" % "5.8.16",
-  "com.amazonaws" % "aws-java-sdk-ec2" % "1.12.768",
-  "com.amazonaws" % "aws-java-sdk-kms" % "1.12.768",
-  "com.amazonaws" % "aws-java-sdk-iam" % "1.12.768",
-  "com.amazonaws" % "aws-java-sdk-sts" % "1.12.768",
-  "com.amazonaws" % "aws-java-sdk-s3" % "1.12.768",
-  "com.amazonaws" % "aws-java-sdk-elasticloadbalancingv2" % "1.12.327",
-  "com.amazonaws" % "aws-java-sdk-route53" % "1.12.400",
-  "com.amazonaws" % "aws-java-sdk-cloudtrail" % "1.12.498",
+  // AWS SDK 2.x dependencies
+  "software.amazon.awssdk" % "bom" % "2.33.10" pomOnly(),
+  "software.amazon.awssdk" % "core" % "2.33.10",
+  "software.amazon.awssdk" % "ec2" % "2.33.10",
+  "software.amazon.awssdk" % "kms" % "2.33.10",
+  "software.amazon.awssdk" % "iam" % "2.33.10",
+  "software.amazon.awssdk" % "sts" % "2.33.10",
+  "software.amazon.awssdk" % "s3" % "2.33.10",
+  "software.amazon.awssdk" % "elasticloadbalancingv2" % "2.33.10",
+  "software.amazon.awssdk" % "route53" % "2.33.10",
+  "software.amazon.awssdk" % "cloudtrail" % "2.33.10",
   "net.minidev" % "json-smart" % "2.5.2",
   "com.cronutils" % "cron-utils" % "9.1.6",
   // Be careful when changing azure library versions.
   // Make sure all itests and existing functionality works as expected.
   // Used below azure versions from azure-sdk-bom:1.2.6
-  "com.azure" % "azure-core" % "1.32.0",
-  "com.azure" % "azure-identity" % "1.6.0",
-  "com.azure" % "azure-security-keyvault-keys" % "4.5.0",
-  "com.azure" % "azure-storage-blob" % "12.19.1",
-  "com.azure" % "azure-storage-blob-batch" % "12.19.1",
-  "com.azure.resourcemanager" % "azure-resourcemanager" % "2.43.0",
-  "com.azure.resourcemanager" % "azure-resourcemanager-marketplaceordering" % "1.0.0-beta.2",
+  "com.azure" % "azure-core-http-netty" % "1.16.1",
+  "com.azure" % "azure-core" % "1.56.0",
+  "com.azure" % "azure-identity" % "1.17.0",
+  "com.azure" % "azure-security-keyvault-keys" % "4.10.2",
+  "com.azure" % "azure-storage-blob" % "12.31.2",
+  "com.azure" % "azure-storage-blob-batch" % "12.27.2",
+  "com.azure.resourcemanager" % "azure-resourcemanager" % "2.54.0",
+  "com.azure.resourcemanager" % "azure-resourcemanager-marketplaceordering" % "1.0.0",
   "jakarta.mail" % "jakarta.mail-api" % "2.1.2",
   "org.eclipse.angus" % "jakarta.mail" % "1.0.0",
   "javax.validation" % "validation-api" % "2.0.1.Final",
@@ -211,7 +215,7 @@ libraryDependencies ++= Seq(
   "com.nimbusds" % "nimbus-jose-jwt" % "9.37.2",
   "com.nimbusds" % "oauth2-oidc-sdk" % "10.1",
   "org.playframework" %% "play-json" % "3.0.4",
-  "commons-validator" % "commons-validator" % "1.8.0",
+  "commons-validator" % "commons-validator" % "1.10.0",
   "org.apache.velocity" % "velocity-engine-core" % "2.4.1",
   "com.fasterxml.woodstox" % "woodstox-core" % "6.4.0",
   "com.jayway.jsonpath" % "json-path" % "2.9.0",
@@ -482,6 +486,7 @@ downloadThirdPartyDeps := {
 
 devSpaceReload := {
   (Universal / packageBin).value
+  Process("./devspace.sh", baseDirectory.value / "scripts") !
   val status = Process("devspace run extract-archive").!
   status
 }
@@ -889,9 +894,6 @@ Universal / javaOptions += "-J-XX:+PreserveFramePointer"
 // Disable shutdown hook of ebean to let play manage its lifecycle.
 Universal / javaOptions += "-Debean.registerShutdownHook=false"
 
-// Set time zone.
-Universal / javaOptions += "-Duser.timezone=GMT"
-
 Universal / mappings ++= {
   val (status, cliFolders) = compileYbaCliBinary.value
   if (status == 0) {
@@ -937,8 +939,8 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.105-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.2-b6"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.108-SNAPSHOT"
+libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.3-b9"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b35"
 
 libraryDependencies ++= Seq(
@@ -956,7 +958,7 @@ dependencyOverrides += "org.reflections" % "reflections" % "0.10.2"
 // datadog-api-client library also needs them, but the newer versions
 // pulled by datadog-api-client are not compatible with the openapi java client. So
 // fixing these to older versions.
-val jerseyVersion = "2.30.1"
+val jerseyVersion = "2.41"
 dependencyOverrides += "org.glassfish.jersey.connectors" % "jersey-apache-connector" % jerseyVersion % Test
 dependencyOverrides += "org.glassfish.jersey.core" % "jersey-client" % jerseyVersion % Test
 dependencyOverrides += "org.glassfish.jersey.core" % "jersey-common" % jerseyVersion % Test

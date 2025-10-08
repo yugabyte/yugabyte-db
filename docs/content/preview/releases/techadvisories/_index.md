@@ -14,11 +14,43 @@ Review the following important information that may impact the stability or secu
 
 It is strongly recommended that you take appropriate measures as outlined in the advisories to mitigate potential risks and disruptions.
 
+For an RSS feed of all technical advisories, point your feed reader to the [RSS feed for technical advisories](index.xml).
+
 ## List of advisories
 
 {{%table%}}
 | Advisory&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Synopsis | Product | Affected Versions | Date |
 | :------------------------------- | :------- | :-----: | :---------------: | :--- |
+| {{<ta 27177>}}
+| PostgreSQL logical replication and v2025.1 upgrade
+| {{<product "cdc">}}
+| {{<release "2025.1.0">}}
+| {{<nobreak "03 October 2025">}}
+|
+| {{<ta 26666>}}
+| Memory leak in workloads with foreign keys or serializable reads
+| {{<product "ysql, ycql">}}
+| {{<release "2024.2">}}
+| {{<nobreak "02 September 2025">}}
+|
+| {{<ta 28222>}}
+| Regression for queries with BNL plans
+| {{<product "ysql">}}
+| {{<release "2024.1, 2024.2, 2025.1">}}
+| {{<nobreak "18 August 2025">}}
+|
+| {{<ta 2968>}}
+| Import schema fails on all Voyager installs done after August 14, 2025
+| {{<product "voyager">}}
+| {{<release "All">}}
+| {{<nobreak "15 August 2025">}}
+|
+| {{<ta 26440>}}
+| Transparent Huge Pages causing Memory Issues
+| {{<product "ybdb,yba">}}
+| {{<release "All">}}
+| {{<nobreak "12 August 2025">}}
+|
 | {{<ta 25106>}}
 | TServer fatals with schema packing not found error
 | {{<product "ysql">}}
@@ -39,13 +71,13 @@ It is strongly recommended that you take appropriate measures as outlined in the
 |
 | {{<ta 25193>}}
 | Logical Replication CDC may fail to stream UPDATE or DELETE changes correctly when using FULL_ROW_NEW_IMAGE, MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES, or DEFAULT Replica Identity with CDC lag
-| [CDC](/preview/develop/change-data-capture/)
+| {{<product "ysql">}}
 | {{<release "2.20, 2024.1, 2024.2">}}
 | {{<nobreak "10 January 2025">}}
 |
 | {{<ta 24992>}}
 |Partial Streaming Stall After Tablet Split
-| [YugabyteDB gRPC (Debezium) Connector](/preview/develop/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/)
+| [YugabyteDB gRPC (Debezium) Connector](/preview/additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/)
 | [dz.1.9.5.yb.grpc.2024.1](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/tag/vdz.1.9.5.yb.grpc.2024.1)
 | {{<nobreak "3 December 2024">}}
 |

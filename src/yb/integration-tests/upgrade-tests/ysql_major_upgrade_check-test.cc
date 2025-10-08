@@ -76,7 +76,21 @@ static const std::initializer_list<UpgradeIncompatibilityCheck> kCheckList{
      .expected_errors =
          {"public.sql_identifier_test.d",
           "Your installation contains the \"sql_identifier\" data type"},
-     .teardown_stmts = {"DROP TABLE sql_identifier_test"}}};
+     .teardown_stmts = {"DROP TABLE sql_identifier_test"}},
+
+    {// yb_check_invalid_indexes
+     .setup_stmts =
+         {"CREATE TABLE invalid_index_test (id int primary key, data text)",
+          "CREATE INDEX idx_invalid ON invalid_index_test (data)",
+          // Simulate a failed CREATE INDEX by manually setting indisvalid to false
+          "UPDATE pg_index SET indisvalid = false WHERE indexrelid = 'idx_invalid'::regclass"},
+     .expected_errors =
+         {"public.idx_invalid",
+          "Your installation contains invalid indexes that must be fixed",
+          "\\c yugabyte",
+          "DROP INDEX public.idx_invalid;"},
+     .teardown_stmts =
+         {"DROP TABLE invalid_index_test"}}};
 
 // The following checks are not used in YugabyteDB:
 // check_for_prepared_transactions
@@ -266,5 +280,95 @@ TEST_F(YsqlMajorUpgradeCheckTest, UsersAndRoles) {
   }
 
   ASSERT_NO_FATALS(check_roles(conn));
+}
+
+TEST_F(YsqlMajorUpgradeCheckTest, InvalidIndexes) {
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+  TestThreadHolder thread_holder;
+
+  // Create test databases and schemas
+  ASSERT_OK(conn.Execute("CREATE DATABASE testdb1"));
+  ASSERT_OK(conn.Execute("CREATE DATABASE testdb2"));
+  ASSERT_OK(conn.Execute("CREATE SCHEMA testschema"));
+
+  // Create invalid indexes in different databases and schemas
+
+  // Default database, public schema
+  ASSERT_OK(conn.Execute("CREATE TABLE test_invalid_public (id int primary key, data text)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX idx_same_name ON test_invalid_public (data)"));
+  ASSERT_OK(conn.Execute(
+      "UPDATE pg_index SET indisvalid = false WHERE indexrelid = 'idx_same_name'::regclass"));
+  ASSERT_OK(conn.Execute("CREATE INDEX valid_index ON test_invalid_public (data)"));
+
+  // Default database, custom schema
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE testschema.test_invalid_schema (id int primary key, data text)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX idx_same_name ON testschema.test_invalid_schema (data)"));
+  ASSERT_OK(conn.Execute("UPDATE pg_index SET indisready = false WHERE "
+    "indexrelid = 'testschema.idx_same_name'::regclass"));
+  ASSERT_OK(conn.Execute("CREATE INDEX valid_index ON testschema.test_invalid_schema (data)"));
+
+  // Different database 1
+  auto conn_db1 = ASSERT_RESULT(cluster_->ConnectToDB("testdb1"));
+  ASSERT_OK(conn_db1.Execute("CREATE TABLE test_invalid_db1 (id int primary key, data text)"));
+  ASSERT_OK(conn_db1.Execute("INSERT INTO test_invalid_db1 VALUES (1, 'dup'), (2, 'dup')"));
+  ASSERT_NOK(conn_db1.Execute("CREATE UNIQUE INDEX idx_unique_fail ON test_invalid_db1 (data)"));
+  ASSERT_OK(conn_db1.Execute("CREATE INDEX valid_index ON test_invalid_db1 (data)"));
+
+  // Different database 2
+  auto conn_db2 = ASSERT_RESULT(cluster_->ConnectToDB("testdb2"));
+  ASSERT_OK(conn_db2.Execute("CREATE SCHEMA otherschema"));
+  ASSERT_OK(conn_db2.Execute(
+      "CREATE TABLE otherschema.test_invalid_db2 (id int primary key, data text)"));
+  ASSERT_OK(conn_db2.Execute(
+      "CREATE INDEX idx_db2_invalid ON otherschema.test_invalid_db2 (data)"));
+  ASSERT_OK(conn_db2.Execute("UPDATE pg_index SET indisvalid = false WHERE "
+      "indexrelid = 'otherschema.idx_db2_invalid'::regclass"));
+  ASSERT_OK(conn_db2.Execute("CREATE INDEX valid_index ON otherschema.test_invalid_db2 (data)"));
+
+  // Test partitioned table (should pass)
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test_partitioned (id int, data text) PARTITION BY RANGE (id)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX idx_part_invalid ON ONLY test_partitioned (data)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX idx_part_valid ON test_partitioned (data)"));
+
+  // Create index, but block it before indisvalid is set.
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "postbackfill"));
+  Status index_creation_status;
+  std::promise<Status> index_creation_promise;
+  auto index_creation_future = index_creation_promise.get_future();
+  thread_holder.AddThreadFunctor([&conn, &index_creation_promise] {
+    index_creation_promise.set_value(conn.Execute(
+        "CREATE INDEX blocked_index ON test_invalid_public (data)"));
+  });
+
+  // Check that upgrade validation fails with comprehensive error message including DROP commands
+  ASSERT_OK(ValidateUpgradeCompatibilityFailure(std::vector<std::string>{
+      "public.idx_same_name",
+      "testschema.idx_same_name",
+      "public.idx_unique_fail",
+      "otherschema.idx_db2_invalid",
+      "Your installation contains invalid indexes that must be fixed",
+      "\\c yugabyte",
+      "DROP INDEX public.idx_same_name;",
+      "DROP INDEX testschema.idx_same_name;",
+      "\\c testdb1",
+      "DROP INDEX public.idx_unique_fail;",
+      "\\c testdb2",
+      "DROP INDEX otherschema.idx_db2_invalid;"}));
+
+  // Unblock index creation
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"));
+  ASSERT_EQ(index_creation_future.wait_for(5min), std::future_status::ready);
+  ASSERT_OK(index_creation_future.get());
+
+  // Clean up invalid indexes using the DROP commands
+  ASSERT_OK(conn.Execute("DROP INDEX public.idx_same_name"));
+  ASSERT_OK(conn.Execute("DROP INDEX testschema.idx_same_name"));
+  ASSERT_OK(conn_db1.Execute("DROP INDEX public.idx_unique_fail"));
+  ASSERT_OK(conn_db2.Execute("DROP INDEX otherschema.idx_db2_invalid"));
+
+  // Verify that validation now succeeds (partitioned table invalid index should still be allowed)
+  ASSERT_OK(ValidateUpgradeCompatibility());
 }
 }  // namespace yb

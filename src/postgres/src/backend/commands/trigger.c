@@ -64,8 +64,8 @@
 #include "utils/tuplestore.h"
 
 /* YB includes */
-#include "pg_yb_utils.h"
 #include "utils/yb_tuplecache.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 
 
 /* GUC variables */

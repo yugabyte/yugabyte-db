@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks;
 
@@ -23,20 +23,29 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DoCapacityReservation;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.KmsConfig;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -59,10 +68,8 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
   private KmsConfig testKMSConfig;
   private int expectedUniverseVersion = 2;
 
-  @Override
   @Before
   public void setUp() {
-    super.setUp();
     YBClient mockClient = mock(YBClient.class);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
@@ -86,28 +93,40 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
   }
 
   private void setupUniverse(boolean updateInProgress, int numOfNodes) {
-    Region r = Region.create(defaultProvider, "region-1", "PlacementRegion 1", "default-image");
+    setupUniverse(defaultProvider, updateInProgress, numOfNodes);
+  }
+
+  private void setupUniverse(Provider provider, boolean updateInProgress, int numOfNodes) {
+    Region r = Region.create(provider, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
+    String instanceType =
+        provider.getCloudCode() == Common.CloudType.azu ? "Standard_D4as_v4" : "c3.xlarge";
     InstanceType i =
         InstanceType.upsert(
-            defaultProvider.getUuid(),
-            "c3.xlarge",
-            10,
-            5.5,
-            new InstanceType.InstanceTypeDetails());
+            provider.getUuid(), instanceType, 10, 5.5, new InstanceType.InstanceTypeDetails());
     UniverseDefinitionTaskParams.UserIntent userIntent =
-        getTestUserIntent(r, defaultProvider, i, numOfNodes);
+        getTestUserIntent(r, provider, i, numOfNodes);
     userIntent.replicationFactor = numOfNodes;
     userIntent.masterGFlags = new HashMap<>();
     userIntent.tserverGFlags = new HashMap<>();
-    userIntent.universeName = "demo-universe";
+    userIntent.universeName = "universe-test";
 
-    defaultUniverse = createUniverse(defaultCustomer.getId());
+    defaultUniverse =
+        createUniverse(userIntent.universeName, defaultCustomer.getId(), provider.getCloudCode());
     String nodePrefix = "demo-universe";
-    Universe.saveDetails(
-        defaultUniverse.getUniverseUUID(),
-        ApiUtils.mockUniverseUpdater(
-            userIntent, nodePrefix, true /* setMasters */, updateInProgress));
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            ApiUtils.mockUniverseUpdater(
+                userIntent, nodePrefix, true /* setMasters */, updateInProgress));
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              u.getUniverseDetails()
+                  .nodeDetailsSet
+                  .forEach(n -> n.state = NodeDetails.NodeState.Stopped);
+            });
   }
 
   private static final List<TaskType> RESUME_UNIVERSE_TASKS =
@@ -232,6 +251,64 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
   }
 
   @Test
+  public void testResumeUniverseWithCRAzureSuccess() {
+    RuntimeConfigEntry.upsertGlobal(
+        ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
+    setupUniverse(azuProvider, false, 3);
+    ResumeUniverse.Params taskParams = new ResumeUniverse.Params();
+    taskParams.customerUUID = defaultCustomer.getUuid();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+    Region region = Region.getByCode(azuProvider, "region-1");
+    verifyCapacityReservationAZU(
+        defaultUniverse.getUniverseUUID(),
+        region,
+        Map.of(
+            defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
+            Map.of("1", Arrays.asList("host-n1", "host-n2", "host-n3"))));
+
+    verifyNodeInteractionsCapacityReservation(
+        12,
+        NodeManager.NodeCommandType.Resume,
+        params -> ((ResumeServer.Params) params).capacityReservation,
+        Map.of(
+            DoCapacityReservation.getCapacityReservationGroupName(
+                defaultUniverse.getUniverseUUID(), region.getCode()),
+            Arrays.asList("host-n1", "host-n2", "host-n3")));
+  }
+
+  @Test
+  public void testResumeUniverseWithCRAwsSuccess() {
+    RuntimeConfigEntry.upsertGlobal(ProviderConfKeys.enableCapacityReservationAws.getKey(), "true");
+    setupUniverse(defaultProvider, false, 3);
+    ResumeUniverse.Params taskParams = new ResumeUniverse.Params();
+    taskParams.customerUUID = defaultCustomer.getUuid();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+    Region region = Region.getByCode(defaultProvider, "region-1");
+    verifyCapacityReservationAws(
+        defaultUniverse.getUniverseUUID(),
+        Map.of(
+            defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
+            Map.of("1", new ZoneData("region-1", Arrays.asList("host-n1", "host-n2", "host-n3")))));
+
+    verifyNodeInteractionsCapacityReservation(
+        9,
+        NodeManager.NodeCommandType.Resume,
+        params -> ((ResumeServer.Params) params).capacityReservation,
+        Map.of(
+            DoCapacityReservation.getZoneInstanceCapacityReservationName(
+                defaultUniverse.getUniverseUUID(),
+                "az-1",
+                defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.instanceType),
+            Arrays.asList("host-n1", "host-n2", "host-n3")));
+  }
+
+  @Test
   public void testResumeNodeStates() {
     setupUniverse(false, 3);
 
@@ -297,5 +374,20 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
         RESUME_ENCRYPTION_AT_REST_UNIVERSE_EXPECTED_RESULTS);
     assertEquals(Success, taskInfo.getTaskState());
     assertTrue(defaultCustomer.getUniverseUUIDs().contains(defaultUniverse.getUniverseUUID()));
+  }
+
+  @Test
+  public void testResumeUniverseRetries() {
+    setupUniverse(false, 3);
+    ResumeUniverse.Params taskParams = new ResumeUniverse.Params();
+    taskParams.customerUUID = defaultCustomer.getUuid();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    verifyTaskRetries(
+        defaultCustomer,
+        CustomerTask.TaskType.Resume,
+        CustomerTask.TargetType.Universe,
+        taskParams.getUniverseUUID(),
+        TaskType.ResumeUniverse,
+        taskParams);
   }
 }

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -124,16 +124,16 @@ class KVTableTsFailoverWriteIfTest : public integration_tests::YBTableTestBase {
     return op;
   }
 
-  boost::optional<int32_t> GetValue(const YBSessionPtr& session, int32_t key) {
+  std::optional<int32_t> GetValue(const YBSessionPtr& session, int32_t key) {
     const auto op = client::CreateReadOp(key, table_, kValueColumnName);
     Status s = session->TEST_ApplyAndFlush(op);
     if (!s.ok()) {
-      return boost::none;
+      return std::nullopt;
     }
     auto rowblock = ql::RowsResult(op.get()).GetRowBlock();
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
     if (rowblock->row_count() == 0) {
-      return boost::none;
+      return std::nullopt;
     }
     EXPECT_EQ(1, rowblock->row_count());
     return rowblock->row(0).column(0).int32_value();

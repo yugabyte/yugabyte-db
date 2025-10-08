@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 import { Component } from 'react';
 import { Tab, Row, Col } from 'react-bootstrap';
@@ -21,7 +21,7 @@ import gcsLogo from './images/gcs-logo.png';
 import nfsIcon from './images/nfs.svg';
 import { Formik } from 'formik';
 import { DEFAULT_RUNTIME_GLOBAL_SCOPE, fetchRunTimeConfigs, fetchRunTimeConfigsResponse } from '../../../actions/customers';
-import { isPathStyleAccess } from '../../backupv2/common/BackupUtils';
+import { isPathStyleAccess, isSigningRegionEnabled } from '../../backupv2/common/BackupUtils';
 
 const getTabTitle = (configName) => {
   switch (configName) {
@@ -168,7 +168,8 @@ class StorageConfiguration extends Component {
             'AWS_SECRET_ACCESS_KEY',
             'BACKUP_LOCATION',
             'AWS_HOST_BASE',
-            'PATH_STYLE_ACCESS'
+            'PATH_STYLE_ACCESS',
+            'SIGNING_REGION'
           ];
         }
         if (dataPayload?.PROXY_SETTINGS?.PROXY_HOST) FIELDS.push('PROXY_SETTINGS.PROXY_HOST');
@@ -308,6 +309,8 @@ class StorageConfiguration extends Component {
         };
         if (row?.data?.PATH_STYLE_ACCESS)
           initialVal['PATH_STYLE_ACCESS'] = row?.data?.PATH_STYLE_ACCESS;
+        if (row?.data?.SIGNING_REGION)
+          initialVal['SIGNING_REGION'] = row?.data?.SIGNING_REGION;
         if (row?.data?.PROXY_SETTINGS?.PROXY_HOST)
           initialVal['PROXY_SETTINGS'] = row?.data?.PROXY_SETTINGS;
         break;
@@ -384,6 +387,7 @@ class StorageConfiguration extends Component {
       customerConfigs,
       initialValues,
       enablePathStyleAccess,
+      enableSigningRegion,
       enableS3BackupProxy
     } = this.props;
     const { iamRoleEnabled, useGcpIam, editView, listView } = this.state;
@@ -416,6 +420,7 @@ class StorageConfiguration extends Component {
               iamInstanceToggle={this.iamInstanceToggle}
               isEdited={editView[activeTab]}
               enablePathStyleAccess={enablePathStyleAccess}
+              enableSigningRegion={enableSigningRegion}
               enableS3BackupProxy={enableS3BackupProxy}
             />
           )}
@@ -504,8 +509,10 @@ function mapStateToProps(state) {
     customer: { runtimeConfigs }
   } = state;
   const enablePathStyleAccess = isPathStyleAccess(runtimeConfigs?.data);
+  const enableSigningRegion = isSigningRegionEnabled(runtimeConfigs?.data);
   return {
     enablePathStyleAccess: enablePathStyleAccess,
+    enableSigningRegion: enableSigningRegion,
     enableS3BackupProxy: test.enableS3BackupProxy || released.enableS3BackupProxy
   };
 }

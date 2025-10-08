@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -18,8 +18,7 @@
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/dockv/value_type.h"
 
-namespace yb {
-namespace docdb {
+namespace yb::docdb {
 
 KeyType GetKeyType(const Slice& slice, StorageDbType db_type) {
   if (slice.empty()) {
@@ -27,10 +26,14 @@ KeyType GetKeyType(const Slice& slice, StorageDbType db_type) {
   }
 
   if (db_type == StorageDbType::kRegular) {
-    if (slice[0] == dockv::KeyEntryTypeAsChar::kTransactionApplyState) {
-      return KeyType::kApplyState;
+    switch (slice[0]) {
+      case dockv::KeyEntryTypeAsChar::kTransactionApplyState:
+        return KeyType::kApplyState;
+      case dockv::KeyEntryTypeAsChar::kVectorIndexMetadata:
+        return KeyType::kVectorIndexMetadata;
+      default:
+        return KeyType::kPlainSubDocKey;
     }
-    return KeyType::kPlainSubDocKey;
   }
 
   if (slice[0] == dockv::KeyEntryTypeAsChar::kTransactionId) {
@@ -50,5 +53,4 @@ KeyType GetKeyType(const Slice& slice, StorageDbType db_type) {
   return KeyType::kIntentKey;
 }
 
-} // namespace docdb
-} // namespace yb
+} // namespace yb::docdb

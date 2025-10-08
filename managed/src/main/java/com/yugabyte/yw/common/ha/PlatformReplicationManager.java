@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -24,6 +24,7 @@ import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.PrometheusConfigHelper;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.services.FileDataService;
@@ -36,7 +37,6 @@ import io.prometheus.client.CollectorRegistry;
 import io.prometheus.client.Gauge;
 import java.io.File;
 import java.io.IOException;
-import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -171,7 +171,7 @@ public class PlatformReplicationManager {
     replicationHelper.setReplicationFrequency(duration);
     replicationHelper.setBackupScheduleEnabled(true);
     this.start();
-    return this.getBackupInfo();
+    return getBackupInfo();
   }
 
   private Cancellable createSchedule(Duration frequency) {
@@ -228,12 +228,13 @@ public class PlatformReplicationManager {
 
   /** Demote the local instance that is invoked by a remote peer. */
   @Transactional
-  public synchronized void demoteLocalInstance(
-      HighAvailabilityConfig config,
-      PlatformInstance localInstance,
-      String requestLeaderAddr,
-      Date requestLastFailover)
-      throws MalformedURLException {
+  public PlatformInstance demoteLocalInstance(
+      HighAvailabilityConfig config, String requestLeaderAddr, Date requestLastFailover) {
+    PlatformInstance localInstance =
+        config
+            .getLocal()
+            .orElseThrow(
+                () -> new PlatformServiceException(BAD_REQUEST, "No local instance configured"));
     log.info(
         "Demoting local instance {} in favor of leader {}",
         localInstance.getAddress(),
@@ -274,7 +275,7 @@ public class PlatformReplicationManager {
     // This conditional check is just for optimization the prometheus mode switch.
     if (wasLeader) {
       // Try switching local prometheus to read from the reported leader.
-      replicationHelper.switchPrometheusToFederated(new URL(requestLeaderAddr));
+      replicationHelper.switchPrometheusToFederated(Util.toURL(requestLeaderAddr));
     }
     String version =
         configHelper
@@ -283,6 +284,7 @@ public class PlatformReplicationManager {
             .toString();
     localInstance.setYbaVersion(version);
     localInstance.update();
+    return localInstance;
   }
 
   @VisibleForTesting
@@ -308,20 +310,15 @@ public class PlatformReplicationManager {
                 if (isLocal) {
                   updated.set(isLocal);
                 }
-                try {
-                  // Clear out any old backups.
-                  log.info("Cleaning up received backups.");
-                  replicationHelper.cleanupReceivedBackups(new URL(i.getAddress()), 0);
-                } catch (MalformedURLException ignored) {
-                }
               });
     }
     return updated.get();
   }
 
-  public synchronized void promoteLocalInstance(PlatformInstance newLeader) {
+  public void promoteLocalInstance(PlatformInstance newLeader) {
     log.info("Promoting local instance {} to active.", newLeader.getAddress());
     HighAvailabilityConfig config = newLeader.getConfig();
+    config.refresh();
     // Update is_local after the backup is restored.
     if (!config.getLocal().isPresent() || !updateLocalInstanceAfterRestore(config)) {
       // It must update a local instance.
@@ -346,11 +343,17 @@ public class PlatformReplicationManager {
               if (!replicationHelper.demoteRemoteInstance(instance, true)) {
                 log.warn("Could not demote remote instance {}", instance.getAddress());
               }
+              try {
+                // Clear out any old backups only after the leader promotion is successful.
+                log.info("Cleaning up received backups from {}", instance.getAddress());
+                replicationHelper.cleanupReceivedBackups(Util.toURL(instance.getAddress()), 0);
+              } catch (Exception ignored) {
+              }
             });
   }
 
   @Transactional
-  private synchronized void persistLocalInstancePromotion(
+  private void persistLocalInstancePromotion(
       HighAvailabilityConfig config, PlatformInstance localInstance) {
     // Mark the failover timestamp.
     config.updateLastFailover();
@@ -374,7 +377,7 @@ public class PlatformReplicationManager {
    * @param newInstances the JSON payload received from the leader instance
    */
   @Transactional
-  public synchronized Set<PlatformInstance> importPlatformInstances(
+  public Set<PlatformInstance> importPlatformInstances(
       HighAvailabilityConfig config,
       List<PlatformInstance> newInstances,
       Date requestLastFailover) {
@@ -425,7 +428,7 @@ public class PlatformReplicationManager {
   }
 
   @Transactional
-  private synchronized Optional<PlatformInstance> processImportedInstance(PlatformInstance i) {
+  private Optional<PlatformInstance> processImportedInstance(PlatformInstance i) {
     Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.get();
     if (config.isPresent()) {
       // Ensure the previous leader is marked as a follower to avoid uniqueness violation.
@@ -517,8 +520,10 @@ public class PlatformReplicationManager {
     return true;
   }
 
-  private synchronized void sync() {
+  private void sync() {
     try {
+      // No need to lock as taking a backup is ok. The sync will get rejected by the remote if the
+      // switch happens in the middle.
       HighAvailabilityConfig.get()
           .ifPresent(
               config -> {
@@ -609,8 +614,8 @@ public class PlatformReplicationManager {
         FileUtils.moveFile(uploadedFile, saveAsFile);
         log.debug(
             "Store platform backup received from leader {} via {} as {}.",
-            leader.toString(),
-            sender.toString(),
+            leader,
+            sender,
             saveAsFile);
 
         return true;
@@ -621,16 +626,16 @@ public class PlatformReplicationManager {
       log.error(
           "Couldn't create folder {} to store platform backup received from leader {} via {} to {}",
           replicationDir,
-          leader.toString(),
-          sender.toString(),
-          saveAsFile.toString());
+          leader,
+          sender,
+          saveAsFile);
     }
 
     return false;
   }
 
   public void switchPrometheusToStandalone() {
-    this.replicationHelper.switchPrometheusToStandalone();
+    replicationHelper.switchPrometheusToStandalone();
   }
 
   abstract class PlatformBackupParams {

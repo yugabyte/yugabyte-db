@@ -11,7 +11,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License. See accompanying LICENSE file.
  *
- * Portions Copyright (c) YugaByte, Inc.
+ * Portions Copyright (c) YugabyteDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License.  You may obtain a copy of the License at
@@ -35,6 +35,7 @@ import java.util.Optional;
 public class MiniYBClusterParameters {
   public static final int DEFAULT_NUM_MASTERS = 3;
   public static final int DEFAULT_NUM_TSERVERS = 3;
+  public static final int DEFAULT_NUM_TABLETS = -1;
   public static final int DEFAULT_NUM_SHARDS_PER_TSERVER = 3;
   public static boolean DEFAULT_USE_IP_WITH_CERTIFICATE = false;
 
@@ -43,6 +44,8 @@ public class MiniYBClusterParameters {
   public int numMasters = 1;
   public int numTservers = DEFAULT_NUM_TSERVERS;
   public int numShardsPerTServer = DEFAULT_NUM_SHARDS_PER_TSERVER;
+  public int ycqlNumTablets = DEFAULT_NUM_TABLETS;
+  public int ysqlNumTablets = DEFAULT_NUM_TABLETS;
   public boolean useIpWithCertificate = DEFAULT_USE_IP_WITH_CERTIFICATE;
   public int defaultTimeoutMs = 50000;
   public int defaultAdminOperationTimeoutMs = DEFAULT_ADMIN_OPERATION_TIMEOUT_MS;

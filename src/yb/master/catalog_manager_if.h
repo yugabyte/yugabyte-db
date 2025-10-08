@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -160,7 +160,7 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
 
   virtual std::vector<std::shared_ptr<server::MonitoredTask>> GetRecentTasks() = 0;
 
-  virtual Result<boost::optional<TablespaceId>> GetTablespaceForTable(
+  virtual Result<std::optional<TablespaceId>> GetTablespaceForTable(
       const scoped_refptr<TableInfo>& table) const = 0;
 
   virtual bool IsLoadBalancerEnabled() = 0;

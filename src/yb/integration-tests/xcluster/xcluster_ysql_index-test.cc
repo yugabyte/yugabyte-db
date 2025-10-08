@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -393,8 +393,6 @@ TEST_F(XClusterYsqlIndexTest, FailedCreateIndex) {
 }
 
 TEST_F(XClusterYsqlIndexTest, MasterFailoverRetryAddTableToXcluster) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_user_ddl_operation_timeout_sec) = NonTsanVsTsan(60, 90);
-
   ASSERT_OK(CreateIndex(*producer_conn_));
 
   SyncPoint::GetInstance()->LoadDependency(

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -25,6 +25,8 @@ class Slice;
 using PgOid = uint32_t;
 static constexpr PgOid kPgInvalidOid = 0;
 static constexpr PgOid kPgByteArrayOid = 17;
+
+using PgTablespaceOid = PgOid;
 
 // A struct to identify a Postgres object by oid and the database oid it belongs to.
 struct PgObjectId {

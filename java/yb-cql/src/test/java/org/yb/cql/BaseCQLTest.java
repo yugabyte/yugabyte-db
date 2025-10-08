@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -105,7 +105,8 @@ public class BaseCQLTest extends BaseMiniClusterTest {
         String.valueOf(systemQueryCacheEmptyResponses));
     flagMap.put("client_read_write_timeout_ms",
         String.valueOf(BuildTypeUtil.adjustTimeout(clientReadWriteTimeoutMs)));
-
+    // TODO(zdrudi): GH 28438
+    flagMap.put("graceful_shutdown", "false");
     return flagMap;
   }
 

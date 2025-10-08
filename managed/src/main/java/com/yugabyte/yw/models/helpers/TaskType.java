@@ -1,10 +1,11 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.models.helpers;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.ITask;
+import com.yugabyte.yw.commissioner.tasks.OperatorImportUniverse;
 import com.yugabyte.yw.commissioner.tasks.UpdateOOMServiceState;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckClusterConsistency;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckLeaderlessTablets;
@@ -487,6 +488,16 @@ public enum TaskType {
       CustomerTask.TaskType.ModifyAuditLoggingConfig,
       CustomerTask.TargetType.Universe),
 
+  ModifyQueryLoggingConfig(
+      com.yugabyte.yw.commissioner.tasks.upgrade.ModifyQueryLoggingConfig.class,
+      CustomerTask.TaskType.ModifyQueryLoggingConfig,
+      CustomerTask.TargetType.Universe),
+
+  ModifyMetricsExportConfig(
+      com.yugabyte.yw.commissioner.tasks.upgrade.ModifyMetricsExportConfig.class,
+      CustomerTask.TaskType.ModifyMetricsExportConfig,
+      CustomerTask.TargetType.Universe),
+
   InstallYbcSoftware(
       com.yugabyte.yw.commissioner.tasks.InstallYbcSoftware.class,
       CustomerTask.TaskType.InstallYbcSoftware,
@@ -500,6 +511,21 @@ public enum TaskType {
   UpgradeYbcGFlags(
       com.yugabyte.yw.commissioner.tasks.UpgradeYbcGFlags.class,
       CustomerTask.TaskType.UpgradeYbcGFlags,
+      CustomerTask.TargetType.Universe),
+
+  UpgradeKubernetesYbcGFlags(
+      com.yugabyte.yw.commissioner.tasks.upgrade.UpgradeKubernetesYbcGFlags.class,
+      CustomerTask.TaskType.UpgradeKubernetesYbcGFlags,
+      CustomerTask.TargetType.Universe),
+
+  UpdateYbcThrottleFlags(
+      com.yugabyte.yw.commissioner.tasks.upgrade.UpdateYbcThrottleFlags.class,
+      CustomerTask.TaskType.UpdateYbcThrottleFlags,
+      CustomerTask.TargetType.Universe),
+
+  UpdateK8sYbcThrottleFlags(
+      com.yugabyte.yw.commissioner.tasks.upgrade.UpdateK8sYbcThrottleFlags.class,
+      CustomerTask.TaskType.UpdateK8sYbcThrottleFlags,
       CustomerTask.TargetType.Universe),
 
   DisableYbc(
@@ -680,6 +706,16 @@ public enum TaskType {
       CustomerTask.TaskType.MigrateUniverse,
       CustomerTask.TargetType.Universe),
 
+  KubernetesToggleImmutableYbc(
+      com.yugabyte.yw.commissioner.tasks.upgrade.KubernetesToggleImmutableYbc.class,
+      CustomerTask.TaskType.KubernetesToggleImmutableYbc,
+      CustomerTask.TargetType.Universe),
+
+  OperatorImportUniverse(
+      com.yugabyte.yw.commissioner.tasks.OperatorImportUniverse.class,
+      CustomerTask.TaskType.OperatorImportUniverse,
+      CustomerTask.TargetType.Universe),
+
   /* Subtasks start here */
 
   KubernetesCheckVolumeExpansion(
@@ -801,6 +837,9 @@ public enum TaskType {
 
   UpdateUniverseYbcGflagsDetails(
       com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseYbcGflagsDetails.class),
+
+  SetYbcThrottleParamsInMemory(
+      com.yugabyte.yw.commissioner.tasks.subtasks.SetYbcThrottleParamsInMemory.class),
 
   VerifyNodeSSHAccess(com.yugabyte.yw.commissioner.tasks.subtasks.VerifyNodeSSHAccess.class),
 
@@ -1039,6 +1078,9 @@ public enum TaskType {
   ManageCatalogUpgradeSuperUser(
       com.yugabyte.yw.commissioner.tasks.subtasks.ManageCatalogUpgradeSuperUser.class),
 
+  UpdatePitrConfigIntermittentMinRecoverTime(
+      com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePitrConfigIntermittentMinRecoverTime.class),
+
   MarkSourceMetric(com.yugabyte.yw.commissioner.tasks.subtasks.MarkSourceMetric.class),
 
   UniverseSetTlsParams(com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams.class),
@@ -1067,6 +1109,9 @@ public enum TaskType {
   RunYsqlUpgrade(com.yugabyte.yw.commissioner.tasks.subtasks.RunYsqlUpgrade.class),
 
   PromoteAutoFlags(com.yugabyte.yw.commissioner.tasks.subtasks.PromoteAutoFlags.class),
+
+  UpdateSoftwareUpdatePrevConfig(
+      com.yugabyte.yw.commissioner.tasks.subtasks.UpdateSoftwareUpdatePrevConfig.class),
 
   RollbackAutoFlags(com.yugabyte.yw.commissioner.tasks.subtasks.RollbackAutoFlags.class),
 
@@ -1102,6 +1147,8 @@ public enum TaskType {
   FinalizeYsqlMajorCatalogUpgrade(
       com.yugabyte.yw.commissioner.tasks.subtasks.FinalizeYsqlMajorCatalogUpgrade.class),
 
+  ValidateGFlags(com.yugabyte.yw.commissioner.tasks.subtasks.ValidateGFlags.class),
+
   CheckSoftwareVersion(
       com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckSoftwareVersion.class),
 
@@ -1115,6 +1162,12 @@ public enum TaskType {
 
   UpdateAndPersistAuditLoggingConfig(
       com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistAuditLoggingConfig.class),
+
+  UpdateAndPersistQueryLoggingConfig(
+      com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistQueryLoggingConfig.class),
+
+  UpdateAndPersistMetricsExportConfig(
+      com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistMetricsExportConfig.class),
 
   MarkUniverseForHealthScriptReUpload(
       com.yugabyte.yw.commissioner.tasks.subtasks.MarkUniverseForHealthScriptReUpload.class),
@@ -1200,7 +1253,19 @@ public enum TaskType {
 
   CheckSshConnection(com.yugabyte.yw.commissioner.tasks.subtasks.CheckSshConnection.class),
 
-  FetchServerConf(com.yugabyte.yw.commissioner.tasks.subtasks.FetchServerConf.class);
+  FetchServerConf(com.yugabyte.yw.commissioner.tasks.subtasks.FetchServerConf.class),
+
+  DoCapacityReservation(com.yugabyte.yw.commissioner.tasks.subtasks.DoCapacityReservation.class),
+
+  DeleteCapacityReservation(
+      com.yugabyte.yw.commissioner.tasks.subtasks.DeleteCapacityReservation.class),
+
+  DisablePitrConfig(com.yugabyte.yw.commissioner.tasks.subtasks.DisablePitrConfig.class),
+
+  EnablePitrConfig(com.yugabyte.yw.commissioner.tasks.subtasks.EnablePitrConfig.class),
+
+  UpdateAndPersistKubernetesImmutableYbc(
+      com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistKubernetesImmutableYbc.class);
 
   private final Class<? extends ITask> taskClass;
 
@@ -1259,6 +1324,12 @@ public enum TaskType {
           .put(RollbackKubernetesUpgrade, 54)
           .put(ModifyAuditLoggingConfig, 55)
           .put(ModifyKubernetesAuditLoggingConfig, 56)
+          .put(ModifyQueryLoggingConfig, 57)
+          .put(ModifyMetricsExportConfig, 58)
+          .put(KubernetesToggleImmutableYbc, 59)
+          .put(UpgradeKubernetesYbcGFlags, 60)
+          .put(UpdateYbcThrottleFlags, 61)
+          .put(UpdateK8sYbcThrottleFlags, 62)
           // Node operations (70-89):
           .put(AddNodeToUniverse, 70)
           .put(DeleteNodeFromUniverse, 71)
@@ -1309,6 +1380,7 @@ public enum TaskType {
           .put(UpgradeYbcGFlags, 138)
           .put(MasterFailover, 139)
           .put(SyncMasterAddresses, 140)
+          .put(OperatorImportUniverse, 141)
           .build();
 
   TaskType(Class<? extends ITask> taskClass) {

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) YugaByte, Inc.
+# Copyright (c) YugabyteDB, Inc.
 
 import argparse
 from distutils.command.build import build

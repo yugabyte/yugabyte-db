@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 YugaByte, Inc. and Contributors
+ * Copyright 2024 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -150,7 +150,6 @@ public class DecommissionNode extends EditUniverseTaskBase {
           taskParamsCluster,
           getNodesInCluster(taskParamsCluster.uuid, addedMasters),
           getNodesInCluster(taskParamsCluster.uuid, removedMasters),
-          !addedMasters.isEmpty() || !removedMasters.isEmpty() /*updateMasters*/,
           true /* force */);
 
       createUpdateUniverseIntentTask(taskParamsCluster, true /*updatePlacementInfo*/);

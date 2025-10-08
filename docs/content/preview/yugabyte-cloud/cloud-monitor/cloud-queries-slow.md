@@ -20,7 +20,7 @@ Use this data to:
 
 - Visually identify slower running database operations.
 - Evaluate query execution times over time.
-- Discover potential queries for [tuning](../../../explore/query-1-performance/).
+- Discover potential queries for [tuning](../../../launch-and-manage/monitor-and-alert/query-tuning/).
 - View latency percentile metrics, including P99, P95, P90, P50, and P25 percentiles.
 
 Slow queries are only available for YSQL.

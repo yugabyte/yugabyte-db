@@ -465,7 +465,7 @@ static PLpgSQL_variable *make_callstmt_target(PLpgSQL_execstate *estate,
 static bool YbIsFlushRequiredForPlStmt(PLpgSQL_stmt_type cmd_type);
 static bool YbIsFlushRequiredForCommandTag(CommandTag commandTag);
 
-static int yb_exception_block_nesting = 0;
+static int	yb_exception_block_nesting = 0;
 
 
 /* ----------
@@ -1769,7 +1769,7 @@ exec_stmt_block(PLpgSQL_execstate *estate, PLpgSQL_stmt_block *block)
 		ExprContext *old_eval_econtext = estate->eval_econtext;
 		ErrorData  *save_cur_error = estate->cur_error;
 		MemoryContext stmt_mcontext;
-		int yb_saved_exception_block_nesting = yb_exception_block_nesting;
+		int			yb_saved_exception_block_nesting = yb_exception_block_nesting;
 
 		estate->err_text = gettext_noop("during statement block entry");
 
@@ -1788,7 +1788,10 @@ exec_stmt_block(PLpgSQL_execstate *estate, PLpgSQL_stmt_block *block)
 		/* Want to run statements inside function's memory context */
 		MemoryContextSwitchTo(oldcontext);
 
-		/* YB: Mark the following statements as running within an exception block */
+		/*
+		 * YB: Mark the following statements as running within an exception
+		 * block
+		 */
 		yb_exception_block_nesting++;
 
 		PG_TRY();
@@ -2030,7 +2033,16 @@ exec_stmts(PLpgSQL_execstate *estate, List *stmts)
 
 		/* YB: Check if flush is required before executing statement. */
 		if (YbIsFlushRequiredForPlStmt(stmt->cmd_type))
-			YBFlushBufferedOperations();
+		{
+			YbcFlushDebugContext yb_debug_context = {
+				.reason = YB_UNBATCHABLE_PL_STMT,
+				.oidarg = estate->func->fn_oid,
+				.strarg1 = plpgsql_stmt_typename(stmt),
+				.strarg2 = estate->func->fn_signature,
+			};
+
+			YBFlushBufferedOperations(&yb_debug_context);
+		}
 
 		estate->err_stmt = stmt;
 
@@ -4249,6 +4261,7 @@ exec_stmt_execsql(PLpgSQL_execstate *estate,
 	PLpgSQL_expr *expr = stmt->sqlstmt;
 	int			too_many_rows_level = 0;
 	SPIExecuteOptions yb_options;
+	CommandTag	yb_flush_before_command_tag = CMDTAG_UNKNOWN;
 
 	memset(&yb_options, 0, sizeof(yb_options));
 
@@ -4275,7 +4288,10 @@ exec_stmt_execsql(PLpgSQL_execstate *estate,
 			CachedPlanSource *plansource = (CachedPlanSource *) lfirst(l);
 
 			if (!stmt->yb_flush_before_stmt)
+			{
 				stmt->yb_flush_before_stmt = YbIsFlushRequiredForCommandTag(plansource->commandTag);
+				yb_flush_before_command_tag = plansource->commandTag;
+			}
 
 			/*
 			 * We could look at the raw_parse_tree, but it seems simpler to
@@ -4301,7 +4317,16 @@ exec_stmt_execsql(PLpgSQL_execstate *estate,
 
 	Assert(stmt->yb_flush_before_stmt_set);
 	if (stmt->yb_flush_before_stmt)
-		YBFlushBufferedOperations();
+	{
+		YbcFlushDebugContext yb_debug_context = {
+			.reason = YB_UNBATCHABLE_SQL_STMT_IN_PL_FUNCTION,
+			.oidarg = estate->func->fn_oid,
+			.strarg1 = GetCommandTagName(yb_flush_before_command_tag),
+			.strarg2 = estate->func->fn_signature,
+		};
+
+		YBFlushBufferedOperations(&yb_debug_context);
+	}
 
 	/*
 	 * Set up ParamListInfo to pass to executor
@@ -8997,33 +9022,36 @@ YbIsFlushRequiredForPlStmt(PLpgSQL_stmt_type cmd_type)
 
 	switch (cmd_type)
 	{
-		/*
-		 * A block is a meta statement that is used to demarcate a groups of
-		 * statements. Need for flushing is evaluated for each of the statements
-		 * in the block individually. So, it does not make sense to require
-		 * flushing for the block statement itself.
-		 */
-		case PLPGSQL_STMT_BLOCK: yb_switch_fallthrough();
-		/* Return statements are executed unconditionally. */
-		case PLPGSQL_STMT_RETURN: yb_switch_fallthrough();
-		/*
-		 * Variable assignments are executed unconditionally and are in-memory.
-		 * If the preceding buffered operations produced any exceptions, the
-		 * memory context holding them will be discarded.
-		 */
+			/*
+			 * A block is a meta statement that is used to demarcate a groups of
+			 * statements. Need for flushing is evaluated for each of the statements
+			 * in the block individually. So, it does not make sense to require
+			 * flushing for the block statement itself.
+			 */
+		case PLPGSQL_STMT_BLOCK:
+			yb_switch_fallthrough();
+			/* Return statements are executed unconditionally. */
+		case PLPGSQL_STMT_RETURN:
+			yb_switch_fallthrough();
+			/*
+			 * Variable assignments are executed unconditionally and are in-memory.
+			 * If the preceding buffered operations produced any exceptions, the
+			 * memory context holding them will be discarded.
+			 */
 		case PLPGSQL_STMT_ASSIGN:
 			return false;
 
-		/*
-		 * PERFORM runs a SELECT query and discards the result. The SELECT query
-		 * will cause a flush if it requires a storage lookup.
-		 */
-		case PLPGSQL_STMT_PERFORM: yb_switch_fallthrough();
-		/*
-		 * CALL is used to invoke stored procedure. Need for flushing is
-		 * evaluated for each of the statements within the stored procedure. So,
-		 * it does not make sense to require flushing for the invocation itself.
-		 */
+			/*
+			 * PERFORM runs a SELECT query and discards the result. The SELECT query
+			 * will cause a flush if it requires a storage lookup.
+			 */
+		case PLPGSQL_STMT_PERFORM:
+			yb_switch_fallthrough();
+			/*
+			 * CALL is used to invoke stored procedure. Need for flushing is
+			 * evaluated for each of the statements within the stored procedure. So,
+			 * it does not make sense to require flushing for the invocation itself.
+			 */
 		case PLPGSQL_STMT_CALL:
 			return !yb_whitelist_extra_stmts_for_pl_speculative_execution;
 
@@ -9054,44 +9082,55 @@ YbIsFlushRequiredForCommandTag(CommandTag commandTag)
 {
 	switch (commandTag)
 	{
-		/*
-		 * DML statements
-		 * If we know that the new statement is an INSERT, UPDATE or DELETE, we
-		 * can skip flushing since these statements have only transactional
-		 * effects. And an exception that occurs later due to previously buffered
-		 * operations (i.e., from previous statements) will lead to reverting
-		 * of the transactional effects of the new statement too.
-		 */
-		case CMDTAG_DELETE: yb_switch_fallthrough();
-		case CMDTAG_INSERT: yb_switch_fallthrough();
-		case CMDTAG_MERGE: yb_switch_fallthrough();
+			/*
+			 * DML statements
+			 * If we know that the new statement is an INSERT, UPDATE or DELETE, we
+			 * can skip flushing since these statements have only transactional
+			 * effects. And an exception that occurs later due to previously buffered
+			 * operations (i.e., from previous statements) will lead to reverting
+			 * of the transactional effects of the new statement too.
+			 */
+		case CMDTAG_DELETE:
+			yb_switch_fallthrough();
+		case CMDTAG_INSERT:
+			yb_switch_fallthrough();
+		case CMDTAG_MERGE:
+			yb_switch_fallthrough();
 		case CMDTAG_UPDATE:
 			return false;
 
-		/* Variants of SELECT statements */
-		case CMDTAG_SELECT: yb_switch_fallthrough();
+			/* Variants of SELECT statements */
+		case CMDTAG_SELECT:
+			yb_switch_fallthrough();
 		case CMDTAG_SELECT_INTO:
 			return !yb_speculatively_execute_pl_statements;
 
-		/* Command types that involve a SELECT in some form */
-		case CMDTAG_DO: yb_switch_fallthrough();
-		case CMDTAG_CALL: yb_switch_fallthrough();
-		case CMDTAG_SELECT_FOR_KEY_SHARE: yb_switch_fallthrough();
-		case CMDTAG_SELECT_FOR_NO_KEY_UPDATE: yb_switch_fallthrough();
-		case CMDTAG_SELECT_FOR_SHARE: yb_switch_fallthrough();
-		case CMDTAG_SELECT_FOR_UPDATE: yb_switch_fallthrough();
+			/* Command types that involve a SELECT in some form */
+		case CMDTAG_DO:
+			yb_switch_fallthrough();
+		case CMDTAG_CALL:
+			yb_switch_fallthrough();
+		case CMDTAG_SELECT_FOR_KEY_SHARE:
+			yb_switch_fallthrough();
+		case CMDTAG_SELECT_FOR_NO_KEY_UPDATE:
+			yb_switch_fallthrough();
+		case CMDTAG_SELECT_FOR_SHARE:
+			yb_switch_fallthrough();
+		case CMDTAG_SELECT_FOR_UPDATE:
+			yb_switch_fallthrough();
 
-		/*
-		 * Utility statements
-		 * EXPLAIN cannot be used to describe utility statements (like DDLs).
-		 * It can only be used in conjunction with one of the already whitelisted
-		 * statements above.
-		 */
-		case CMDTAG_EXPLAIN: yb_switch_fallthrough();
-		/*
-		 * SHOW returns the value of a runtime parameter from the config. This
-		 * does not require a storage lookup.
-		 */
+			/*
+			 * Utility statements
+			 * EXPLAIN cannot be used to describe utility statements (like DDLs).
+			 * It can only be used in conjunction with one of the already whitelisted
+			 * statements above.
+			 */
+		case CMDTAG_EXPLAIN:
+			yb_switch_fallthrough();
+			/*
+			 * SHOW returns the value of a runtime parameter from the config. This
+			 * does not require a storage lookup.
+			 */
 		case CMDTAG_SHOW:
 			return !(yb_speculatively_execute_pl_statements &&
 					 yb_whitelist_extra_stmts_for_pl_speculative_execution);

@@ -73,6 +73,42 @@ Refer to [roadmap tracker](https://github.com/yugabyte/yugabyte-db/issues?q=is:i
 
 # Recently released features
 
+## v2025.1 (Stable) - July, 2025
+
+**v2025.1** is the current [stable](https://docs.yugabyte.com/preview/releases/versioning/#stable-releases) release. Stable releases undergo rigorous testing for a longer period of time and are ready for production use. For the full list of features and improvements in this release, see [Release notes - v2025.1](https://docs.yugabyte.com/preview/releases/ybdb-releases/v2025.1/). Here are some of the prominent features.
+
+### [PostgreSQL 15 compatible YugabyteDB clusters](https://docs.yugabyte.com/stable/api/ysql/pg15-features/)
+
+This is the first stable release featuring a PostgreSQL fork rebase from version 11.2 to 15.0, enabling you to leverage the many key capabilities introduced in PostgreSQL between the two versions. This upgrade brings YSQL API support for numerous features, including stored generated columns, foreign keys on partitioned tables, and non-distinct NULLs in unique indexes. It also introduces query execution optimizations like incremental sort and memoization, along with various observability and security enhancements.
+
+We're also pleased to announce that YugabyteDB 2025.1.0.0 supports in-place online upgrades and downgrade—even with the PostgreSQL fork rebased to 15.0.
+
+**Note** that the source cluster must be running version 2024.2.3.0 or later to upgrade to version 2025.1.0.
+
+### [HNSW indexing support for pgvector](https://docs.yugabyte.com/stable/additional-features/pg-extensions/extension-pgvector/#vector-indexing)
+
+Brings AI-native capability by enabling efficient similarity search in vector workloads. Enhanced vector search capabilities via Hierarchical Navigable Small World (HNSW) indexing provide faster and more efficient high-dimensional vector lookups.
+
+### [Automatic transactional xCluster DDL replication](https://docs.yugabyte.com/stable/deploy/multi-dc/async-replication/async-transactional-setup-automatic/#set-up-automatic-mode-replication)
+
+YugabyteDB now supports seamless replication of YSQL DDL changes across xCluster setups, eliminating the need to manually apply DDLs on both source and target clusters.
+
+### [Parallel queries: Enabling PG parallelism for colocated tables](https://docs.yugabyte.com/stable/additional-features/parallel-query/)
+
+Improves query performance for colocated tables by allowing PostgreSQL to leverage multiple CPUs, leading to faster query execution times.
+
+### [Optimization of INSERT ON CONFLICT batching](https://docs.yugabyte.com/stable/reference/configuration/yb-tserver/#yb-insert-on-conflict-read-batch-size)
+
+Queries using the `INSERT ... ON CONFLICT` clause are optimized for efficient execution, with automatic batching applied when multiple statements are executed to improve performance.
+
+### [Cost-Based Optimizer (CBO)](https://docs.yugabyte.com/stable/best-practices-operations/ysql-yb-enable-cbo/)
+
+The CBO leverages YugabyteDB's distributed storage architecture and advanced query execution optimizations, including query pushdowns, LSM indexes, and batched nested loop joins, to deliver PostgreSQL-like performance.
+
+### [Bitmap scan support](https://docs.yugabyte.com/stable/reference/configuration/yb-tserver/#enable-bitmapscan)
+
+Combine multiple indexes for more efficient scans.
+
 ## v2.25 (Preview) - Jan, 2025
 
 **v2.25** is the current [Preview](https://docs.yugabyte.com/preview/releases/versioning/#preview-releases) release. This includes features under active development and is recommended for development and testing only. For the full list of features and improvements in this release, see [Release notes - v2.25](https://docs.yugabyte.com/preview/releases/ybdb-releases/v2.25/). Here are some of the prominent features.
@@ -88,26 +124,6 @@ This feature significantly simplifies tuning poorly performing SQL queries by al
 ### [Active session history](https://docs.yugabyte.com/preview/explore/observability/active-session-history/)
 
 In addition, the Active Session History, which provides real-time and historical views of system activity, is now enabled by default.
-
-## v2024.2 (Stable) - Dec, 2024
-
-**v2024.2** is the current [stable](https://docs.yugabyte.com/preview/releases/versioning/#stable-releases) release. Stable releases undergo rigorous testing for a longer period of time and are ready for production use. For the full list of features and improvements in this release, see [Release notes - v2024.2](https://docs.yugabyte.com/preview/releases/ybdb-releases/v2024.2/). Here are some of the prominent features.
-
-#### [Yugabyte Kubernetes Operator](https://docs.yugabyte.com/preview/quick-start/kubernetes/#yugabytedb-kubernetes-operator)
-
-The [Yugabyte Kubernetes Operator](https://docs.yugabyte.com/preview/quick-start/kubernetes/#yugabytedb-kubernetes-operator) is a powerful tool designed to automate deploying, scaling, and managing YugabyteDB clusters in Kubernetes environments. It streamlines database operations, reducing manual effort for developers and operators. For more information, refer to the [YugabyteDB Kubernetes Operator](https://github.com/yugabyte/yugabyte-k8s-operator) GitHub project.
-
-#### [Active session history](https://docs.yugabyte.com/stable/explore/observability/active-session-history/)
-
-Get real-time and historical views of system activity by sampling session activity in the database. Use this feature to analyze and troubleshoot performance issues.
-
-#### [pg_partman extension](https://docs.yugabyte.com/stable/explore/ysql-language-features/pg-extensions/extension-pgpartman/)
-
-Use the [pg_partman extension](https://docs.yugabyte.com/stable/explore/ysql-language-features/pg-extensions/extension-pgpartman/) to create and manage both time- and serial-based (aka range-based) table partition sets. pg_partman is often used in combination with [pg_cron](https://docs.yugabyte.com/stable/explore/ysql-language-features/pg-extensions/extension-pgcron/) for data lifecycle management, and specifically for managing data aging, retention, and expiration.
-
-#### [Colocated tables with tablespaces](https://docs.yugabyte.com/stable/explore/colocation/#colocated-tables-with-tablespaces)
-
-Starting this release, you can create [colocated tables with tablespaces](https://docs.yugabyte.com/stable/explore/colocation/#colocated-tables-with-tablespaces). With this enhancement, you can now take advantage of colocated tables for geo-distributed use cases, eliminating the need for trade-offs between distributing data across specific regions.
 
 # Architecture
 

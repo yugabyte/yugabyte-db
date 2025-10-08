@@ -7,40 +7,13 @@ import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
-import com.amazonaws.AmazonServiceException;
-import com.amazonaws.SdkClientException;
-import com.amazonaws.services.ec2.AmazonEC2;
-import com.amazonaws.services.ec2.model.AuthorizeSecurityGroupIngressRequest;
-import com.amazonaws.services.ec2.model.CreateKeyPairRequest;
-import com.amazonaws.services.ec2.model.CreateSecurityGroupRequest;
-import com.amazonaws.services.ec2.model.DescribeImagesRequest;
-import com.amazonaws.services.ec2.model.DescribeImagesResult;
-import com.amazonaws.services.ec2.model.DescribeInstanceTypesRequest;
-import com.amazonaws.services.ec2.model.DescribeInstancesRequest;
-import com.amazonaws.services.ec2.model.DescribeKeyPairsRequest;
-import com.amazonaws.services.ec2.model.DescribeSecurityGroupsRequest;
-import com.amazonaws.services.ec2.model.DescribeSecurityGroupsResult;
-import com.amazonaws.services.ec2.model.DescribeSubnetsRequest;
-import com.amazonaws.services.ec2.model.DescribeSubnetsResult;
-import com.amazonaws.services.ec2.model.DescribeVpcsRequest;
-import com.amazonaws.services.ec2.model.DescribeVpcsResult;
-import com.amazonaws.services.ec2.model.DryRunResult;
-import com.amazonaws.services.ec2.model.Image;
-import com.amazonaws.services.ec2.model.SecurityGroup;
-import com.amazonaws.services.ec2.model.Subnet;
-import com.amazonaws.services.ec2.model.Vpc;
-import com.amazonaws.services.elasticloadbalancingv2.AmazonElasticLoadBalancing;
-import com.amazonaws.services.elasticloadbalancingv2.model.Listener;
-import com.amazonaws.services.route53.AmazonRoute53;
-import com.amazonaws.services.route53.model.GetHostedZoneResult;
-import com.amazonaws.services.securitytoken.AWSSecurityTokenService;
-import com.amazonaws.services.securitytoken.model.GetCallerIdentityResult;
 import com.yugabyte.yw.common.CloudUtil.Protocol;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
@@ -59,12 +32,42 @@ import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Set;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mock;
 import org.mockito.Mockito;
+import software.amazon.awssdk.awscore.exception.AwsErrorDetails;
+import software.amazon.awssdk.awscore.exception.AwsServiceException;
+import software.amazon.awssdk.core.exception.SdkClientException;
+import software.amazon.awssdk.services.ec2.Ec2Client;
+import software.amazon.awssdk.services.ec2.model.AuthorizeSecurityGroupIngressRequest;
+import software.amazon.awssdk.services.ec2.model.CreateKeyPairRequest;
+import software.amazon.awssdk.services.ec2.model.CreateSecurityGroupRequest;
+import software.amazon.awssdk.services.ec2.model.DescribeImagesRequest;
+import software.amazon.awssdk.services.ec2.model.DescribeImagesResponse;
+import software.amazon.awssdk.services.ec2.model.DescribeInstanceTypesRequest;
+import software.amazon.awssdk.services.ec2.model.DescribeInstancesRequest;
+import software.amazon.awssdk.services.ec2.model.DescribeKeyPairsRequest;
+import software.amazon.awssdk.services.ec2.model.DescribeSecurityGroupsRequest;
+import software.amazon.awssdk.services.ec2.model.DescribeSecurityGroupsResponse;
+import software.amazon.awssdk.services.ec2.model.DescribeSubnetsRequest;
+import software.amazon.awssdk.services.ec2.model.DescribeSubnetsResponse;
+import software.amazon.awssdk.services.ec2.model.DescribeVpcsRequest;
+import software.amazon.awssdk.services.ec2.model.DescribeVpcsResponse;
+import software.amazon.awssdk.services.ec2.model.Ec2Exception;
+import software.amazon.awssdk.services.ec2.model.Image;
+import software.amazon.awssdk.services.ec2.model.SecurityGroup;
+import software.amazon.awssdk.services.ec2.model.Subnet;
+import software.amazon.awssdk.services.ec2.model.Vpc;
+import software.amazon.awssdk.services.elasticloadbalancingv2.ElasticLoadBalancingV2Client;
+import software.amazon.awssdk.services.elasticloadbalancingv2.model.Listener;
+import software.amazon.awssdk.services.route53.Route53Client;
+import software.amazon.awssdk.services.route53.model.GetHostedZoneRequest;
+import software.amazon.awssdk.services.route53.model.GetHostedZoneResponse;
+import software.amazon.awssdk.services.sts.StsClient;
+import software.amazon.awssdk.services.sts.model.GetCallerIdentityRequest;
+import software.amazon.awssdk.services.sts.model.GetCallerIdentityResponse;
 
 public class AWSCloudImplTest extends FakeDBApplication {
 
@@ -73,10 +76,10 @@ public class AWSCloudImplTest extends FakeDBApplication {
   private Provider defaultProvider;
   private NLBHealthCheckConfiguration defaultNlbHealthCheckConfiguration;
   private Region defaultRegion;
-  @Mock private AmazonEC2 mockEC2Client;
-  @Mock private AmazonRoute53 mockRoute53Client;
-  @Mock private AWSSecurityTokenService mockSTSService;
-  @Mock private AmazonElasticLoadBalancing mockElbClient;
+  @Mock private Ec2Client mockEC2Client;
+  @Mock private Route53Client mockRoute53Client;
+  @Mock private StsClient mockSTSService;
+  @Mock private ElasticLoadBalancingV2Client mockElbClient;
 
   private String AMAZON_COMMON_ERROR_MSG =
       "(Service: null; Status Code: 0;" + " Error Code: null; Request ID: null; Proxy: null)";
@@ -84,10 +87,10 @@ public class AWSCloudImplTest extends FakeDBApplication {
   @Before
   public void setup() {
     awsCloudImpl = spy(new AWSCloudImpl(null));
-    mockEC2Client = mock(AmazonEC2.class);
-    mockElbClient = mock(AmazonElasticLoadBalancing.class);
-    mockRoute53Client = mock(AmazonRoute53.class);
-    mockSTSService = mock(AWSSecurityTokenService.class);
+    mockEC2Client = mock(Ec2Client.class);
+    mockElbClient = mock(ElasticLoadBalancingV2Client.class);
+    mockRoute53Client = mock(Route53Client.class);
+    mockSTSService = mock(StsClient.class);
     customer = ModelFactory.testCustomer();
     defaultProvider = ModelFactory.awsProvider(customer);
     defaultRegion = new Region();
@@ -115,7 +118,7 @@ public class AWSCloudImplTest extends FakeDBApplication {
     Mockito.doReturn(mockEC2Client).when(awsCloudImpl).getEC2Client(any(), anyString());
     Mockito.doReturn(Arrays.asList("")).when(awsCloudImpl).getInstanceIDs(any(), any());
     // Mockito.doNothing().when(awsCloudImpl).ensureLoadBalancerAttributes(any(), any());
-    Mockito.doReturn(new Listener().withListenerArn("listener1"))
+    Mockito.doReturn(Listener.builder().listenerArn("listener1").build())
         .when(awsCloudImpl)
         .getListenerByPort(any(), any(), anyInt());
     Mockito.doReturn("tg-test").when(awsCloudImpl).getListenerTargetGroup(any());
@@ -144,11 +147,11 @@ public class AWSCloudImplTest extends FakeDBApplication {
   @Test
   public void testDescribeVpc() {
     defaultRegion.setVnetName("vpc_id");
-    DescribeVpcsResult result = new DescribeVpcsResult();
-    Vpc vpc = new Vpc();
-    result.setVpcs(Collections.singletonList(vpc));
-    when(mockEC2Client.describeVpcs(any()))
-        .thenThrow(new AmazonServiceException("Not found"))
+    Vpc vpc = Vpc.builder().build();
+    DescribeVpcsResponse result =
+        DescribeVpcsResponse.builder().vpcs(Collections.singletonList(vpc)).build();
+    when(mockEC2Client.describeVpcs(any(DescribeVpcsRequest.class)))
+        .thenThrow(AwsServiceException.builder().message("Not found").build())
         .thenReturn(result);
     Mockito.doReturn(mockEC2Client).when(awsCloudImpl).getEC2Client(any(), anyString());
     PlatformServiceException exception =
@@ -156,19 +159,17 @@ public class AWSCloudImplTest extends FakeDBApplication {
             PlatformServiceException.class,
             () -> awsCloudImpl.describeVpcOrBadRequest(defaultProvider, defaultRegion));
     assertEquals(BAD_REQUEST, exception.getHttpStatus());
-    assertEquals(
-        "Vpc details extraction failed: Not found " + AMAZON_COMMON_ERROR_MSG,
-        exception.getMessage());
+    assertEquals("Vpc details extraction failed: Not found", exception.getMessage());
     assertEquals(vpc, awsCloudImpl.describeVpcOrBadRequest(defaultProvider, defaultRegion));
   }
 
   @Test
   public void testDescribeSubnet() {
-    DescribeSubnetsResult result = new DescribeSubnetsResult();
-    Subnet subnet = new Subnet();
-    result.setSubnets(Collections.singletonList(subnet));
-    when(mockEC2Client.describeSubnets(any()))
-        .thenThrow(new AmazonServiceException("Not found"))
+    Subnet subnet = Subnet.builder().build();
+    DescribeSubnetsResponse result =
+        DescribeSubnetsResponse.builder().subnets(Collections.singletonList(subnet)).build();
+    when(mockEC2Client.describeSubnets(any(DescribeSubnetsRequest.class)))
+        .thenThrow(AwsServiceException.builder().message("Not found").build())
         .thenReturn(result);
     Mockito.doReturn(mockEC2Client).when(awsCloudImpl).getEC2Client(any(), anyString());
     PlatformServiceException exception =
@@ -176,22 +177,20 @@ public class AWSCloudImplTest extends FakeDBApplication {
             PlatformServiceException.class,
             () -> awsCloudImpl.describeSubnetsOrBadRequest(defaultProvider, defaultRegion));
     assertEquals(BAD_REQUEST, exception.getHttpStatus());
+    assertEquals("Subnet details extraction failed: Not found", exception.getMessage());
     assertEquals(
-        "Subnet details extraction failed: Not found " + AMAZON_COMMON_ERROR_MSG,
-        exception.getMessage());
-    assertEquals(
-        result.getSubnets(),
-        awsCloudImpl.describeSubnetsOrBadRequest(defaultProvider, defaultRegion));
+        result.subnets(), awsCloudImpl.describeSubnetsOrBadRequest(defaultProvider, defaultRegion));
   }
 
   @Test
   public void testDescribeSecurityGroup() {
     defaultRegion.setSecurityGroupId("sg_id, sg_id_2");
-    DescribeSecurityGroupsResult result = new DescribeSecurityGroupsResult();
-    List<SecurityGroup> securityGroupList = Arrays.asList(new SecurityGroup(), new SecurityGroup());
-    result.setSecurityGroups(securityGroupList);
-    when(mockEC2Client.describeSecurityGroups(any()))
-        .thenThrow(new AmazonServiceException("Not found"))
+    DescribeSecurityGroupsResponse result =
+        DescribeSecurityGroupsResponse.builder()
+            .securityGroups(SecurityGroup.builder().build(), SecurityGroup.builder().build())
+            .build();
+    when(mockEC2Client.describeSecurityGroups(any(DescribeSecurityGroupsRequest.class)))
+        .thenThrow(AwsServiceException.builder().message("Not found").build())
         .thenReturn(result);
     Mockito.doReturn(mockEC2Client).when(awsCloudImpl).getEC2Client(any(), anyString());
     PlatformServiceException exception =
@@ -199,11 +198,9 @@ public class AWSCloudImplTest extends FakeDBApplication {
             PlatformServiceException.class,
             () -> awsCloudImpl.describeSecurityGroupsOrBadRequest(defaultProvider, defaultRegion));
     assertEquals(BAD_REQUEST, exception.getHttpStatus());
+    assertEquals("Security group extraction failed: Not found", exception.getMessage());
     assertEquals(
-        "Security group extraction failed: Not found " + AMAZON_COMMON_ERROR_MSG,
-        exception.getMessage());
-    assertEquals(
-        securityGroupList,
+        result.securityGroups(),
         awsCloudImpl.describeSecurityGroupsOrBadRequest(defaultProvider, defaultRegion));
   }
 
@@ -211,11 +208,10 @@ public class AWSCloudImplTest extends FakeDBApplication {
   public void testDescribeImage() {
     String imageId = "image_id";
     defaultRegion.setYbImage(imageId);
-    DescribeImagesResult result = new DescribeImagesResult();
-    Image image = new Image();
-    result.setImages(Collections.singletonList(image));
-    when(mockEC2Client.describeImages(any()))
-        .thenThrow(new AmazonServiceException("Not found"))
+    Image image = Image.builder().build();
+    DescribeImagesResponse result = DescribeImagesResponse.builder().images(image).build();
+    when(mockEC2Client.describeImages(any(DescribeImagesRequest.class)))
+        .thenThrow(AwsServiceException.builder().message("Not found").build())
         .thenReturn(result);
     Mockito.doReturn(mockEC2Client).when(awsCloudImpl).getEC2Client(any(), anyString());
     PlatformServiceException exception =
@@ -223,9 +219,7 @@ public class AWSCloudImplTest extends FakeDBApplication {
             PlatformServiceException.class,
             () -> awsCloudImpl.describeImageOrBadRequest(defaultProvider, defaultRegion, imageId));
     assertEquals(BAD_REQUEST, exception.getHttpStatus());
-    assertEquals(
-        "AMI details extraction failed: Not found " + AMAZON_COMMON_ERROR_MSG,
-        exception.getMessage());
+    assertEquals("AMI details extraction failed: Not found", exception.getMessage());
     assertEquals(
         image, awsCloudImpl.describeImageOrBadRequest(defaultProvider, defaultRegion, imageId));
   }
@@ -234,9 +228,9 @@ public class AWSCloudImplTest extends FakeDBApplication {
   public void testHostedZone() {
     String hostedZoneId = "hosted_zone_id";
     defaultProvider.getDetails().getCloudInfo().aws.awsHostedZoneId = hostedZoneId;
-    GetHostedZoneResult result = new GetHostedZoneResult();
-    when(mockRoute53Client.getHostedZone(any()))
-        .thenThrow(new AmazonServiceException("Not found"))
+    GetHostedZoneResponse result = GetHostedZoneResponse.builder().build();
+    when(mockRoute53Client.getHostedZone(any(GetHostedZoneRequest.class)))
+        .thenThrow(AwsServiceException.builder().message("Not found").build())
         .thenReturn(result);
     Mockito.doReturn(mockRoute53Client).when(awsCloudImpl).getRoute53Client(any(), anyString());
     PlatformServiceException exception =
@@ -246,9 +240,7 @@ public class AWSCloudImplTest extends FakeDBApplication {
                 awsCloudImpl.getHostedZoneOrBadRequest(
                     defaultProvider, defaultRegion, hostedZoneId));
     assertEquals(BAD_REQUEST, exception.getHttpStatus());
-    assertEquals(
-        "Hosted Zone validation failed: Not found " + AMAZON_COMMON_ERROR_MSG,
-        exception.getMessage());
+    assertEquals("Hosted Zone validation failed: Not found", exception.getMessage());
     assertEquals(
         result,
         awsCloudImpl.getHostedZoneOrBadRequest(defaultProvider, defaultRegion, hostedZoneId));
@@ -256,14 +248,13 @@ public class AWSCloudImplTest extends FakeDBApplication {
 
   @Test
   public void testDryRunDescribeInstance() {
-    DryRunResult<DescribeInstancesRequest> dryRunResult =
-        new DryRunResult<>(false, null, null, new AmazonServiceException("Invalid region access"));
-    DryRunResult<DescribeInstancesRequest> dryRunResult2 =
-        new DryRunResult<>(true, null, null, null);
-    when(mockEC2Client.dryRun(new DescribeInstancesRequest()))
-        .thenThrow(new AmazonServiceException("Invalid details"))
-        .thenReturn(dryRunResult)
-        .thenReturn(dryRunResult2);
+    DescribeInstancesRequest dryRunRequest =
+        DescribeInstancesRequest.builder().dryRun(true).build();
+    when(mockEC2Client.describeInstances(eq(dryRunRequest)))
+        .thenThrow(AwsServiceException.builder().message("Invalid details").build())
+        .thenThrow(AwsServiceException.builder().message("Invalid region access").build())
+        .thenReturn(
+            software.amazon.awssdk.services.ec2.model.DescribeInstancesResponse.builder().build());
     Mockito.doReturn(mockEC2Client).when(awsCloudImpl).getEC2Client(any(), anyString());
     PlatformServiceException exception =
         assertThrows(
@@ -273,8 +264,7 @@ public class AWSCloudImplTest extends FakeDBApplication {
                     defaultProvider, defaultRegion.getCode()));
     assertEquals(BAD_REQUEST, exception.getHttpStatus());
     assertEquals(
-        "Dry run of AWS DescribeInstances failed: Invalid details " + AMAZON_COMMON_ERROR_MSG,
-        exception.getMessage());
+        "Dry run of AWS DescribeInstances failed: Invalid details", exception.getMessage());
     exception =
         assertThrows(
             PlatformServiceException.class,
@@ -283,8 +273,7 @@ public class AWSCloudImplTest extends FakeDBApplication {
                     defaultProvider, defaultRegion.getCode()));
     assertEquals(BAD_REQUEST, exception.getHttpStatus());
     assertEquals(
-        "Dry run of AWS DescribeInstances failed: Invalid region access " + AMAZON_COMMON_ERROR_MSG,
-        exception.getMessage());
+        "Dry run of AWS DescribeInstances failed: Invalid region access", exception.getMessage());
     assertEquals(
         true,
         awsCloudImpl.dryRunDescribeInstanceOrBadRequest(defaultProvider, defaultRegion.getCode()));
@@ -292,13 +281,10 @@ public class AWSCloudImplTest extends FakeDBApplication {
 
   @Test
   public void testDryRunDescribeImage() {
-    DryRunResult<DescribeImagesRequest> dryRunResult =
-        new DryRunResult<>(false, null, null, new AmazonServiceException("Invalid region access"));
-    DryRunResult<DescribeImagesRequest> dryRunResult2 = new DryRunResult<>(true, null, null, null);
-    when(mockEC2Client.dryRun(new DescribeImagesRequest()))
-        .thenThrow(new AmazonServiceException("Invalid details"))
-        .thenReturn(dryRunResult)
-        .thenReturn(dryRunResult2);
+    when(mockEC2Client.describeImages(any(DescribeImagesRequest.class)))
+        .thenThrow(AwsServiceException.builder().message("Invalid details").build())
+        .thenThrow(AwsServiceException.builder().message("Invalid region access").build())
+        .thenReturn(DescribeImagesResponse.builder().build());
     Mockito.doReturn(mockEC2Client).when(awsCloudImpl).getEC2Client(any(), anyString());
     PlatformServiceException exception =
         assertThrows(
@@ -307,9 +293,7 @@ public class AWSCloudImplTest extends FakeDBApplication {
                 awsCloudImpl.dryRunDescribeImageOrBadRequest(
                     defaultProvider, defaultRegion.getCode()));
     assertEquals(BAD_REQUEST, exception.getHttpStatus());
-    assertEquals(
-        "Dry run of AWS DescribeImages failed: Invalid details " + AMAZON_COMMON_ERROR_MSG,
-        exception.getMessage());
+    assertEquals("Dry run of AWS DescribeImages failed: Invalid details", exception.getMessage());
     exception =
         assertThrows(
             PlatformServiceException.class,
@@ -318,8 +302,7 @@ public class AWSCloudImplTest extends FakeDBApplication {
                     defaultProvider, defaultRegion.getCode()));
     assertEquals(BAD_REQUEST, exception.getHttpStatus());
     assertEquals(
-        "Dry run of AWS DescribeImages failed: Invalid region access " + AMAZON_COMMON_ERROR_MSG,
-        exception.getMessage());
+        "Dry run of AWS DescribeImages failed: Invalid region access", exception.getMessage());
     assertEquals(
         true,
         awsCloudImpl.dryRunDescribeImageOrBadRequest(defaultProvider, defaultRegion.getCode()));
@@ -327,14 +310,12 @@ public class AWSCloudImplTest extends FakeDBApplication {
 
   @Test
   public void testDryRunDescribeInstanceTypes() {
-    DryRunResult<DescribeInstanceTypesRequest> dryRunResult =
-        new DryRunResult<>(false, null, null, new AmazonServiceException("Invalid region access"));
-    DryRunResult<DescribeInstanceTypesRequest> dryRunResult2 =
-        new DryRunResult<>(true, null, null, null);
-    when(mockEC2Client.dryRun(new DescribeInstanceTypesRequest()))
-        .thenThrow(new AmazonServiceException("Invalid details"))
-        .thenReturn(dryRunResult)
-        .thenReturn(dryRunResult2);
+    when(mockEC2Client.describeInstanceTypes(any(DescribeInstanceTypesRequest.class)))
+        .thenThrow(AwsServiceException.builder().message("Invalid details").build())
+        .thenThrow(AwsServiceException.builder().message("Invalid region access").build())
+        .thenReturn(
+            software.amazon.awssdk.services.ec2.model.DescribeInstanceTypesResponse.builder()
+                .build());
     Mockito.doReturn(mockEC2Client).when(awsCloudImpl).getEC2Client(any(), anyString());
     PlatformServiceException exception =
         assertThrows(
@@ -344,8 +325,7 @@ public class AWSCloudImplTest extends FakeDBApplication {
                     defaultProvider, defaultRegion.getCode()));
     assertEquals(BAD_REQUEST, exception.getHttpStatus());
     assertEquals(
-        "Dry run of AWS DescribeInstanceTypes failed: Invalid details " + AMAZON_COMMON_ERROR_MSG,
-        exception.getMessage());
+        "Dry run of AWS DescribeInstanceTypes failed: Invalid details", exception.getMessage());
     exception =
         assertThrows(
             PlatformServiceException.class,
@@ -354,8 +334,7 @@ public class AWSCloudImplTest extends FakeDBApplication {
                     defaultProvider, defaultRegion.getCode()));
     assertEquals(BAD_REQUEST, exception.getHttpStatus());
     assertEquals(
-        "Dry run of AWS DescribeInstanceTypes failed: Invalid region access "
-            + AMAZON_COMMON_ERROR_MSG,
+        "Dry run of AWS DescribeInstanceTypes failed: Invalid region access",
         exception.getMessage());
     assertEquals(
         true,
@@ -365,13 +344,10 @@ public class AWSCloudImplTest extends FakeDBApplication {
 
   @Test
   public void testDryRunDescribeVpcs() {
-    DryRunResult<DescribeVpcsRequest> dryRunResult =
-        new DryRunResult<>(false, null, null, new AmazonServiceException("Invalid region access"));
-    DryRunResult<DescribeVpcsRequest> dryRunResult2 = new DryRunResult<>(true, null, null, null);
-    when(mockEC2Client.dryRun(new DescribeVpcsRequest()))
-        .thenThrow(new AmazonServiceException("Invalid details"))
-        .thenReturn(dryRunResult)
-        .thenReturn(dryRunResult2);
+    when(mockEC2Client.describeVpcs(any(DescribeVpcsRequest.class)))
+        .thenThrow(AwsServiceException.builder().message("Invalid details").build())
+        .thenThrow(AwsServiceException.builder().message("Invalid region access").build())
+        .thenReturn(DescribeVpcsResponse.builder().build());
     Mockito.doReturn(mockEC2Client).when(awsCloudImpl).getEC2Client(any(), anyString());
     PlatformServiceException exception =
         assertThrows(
@@ -380,9 +356,7 @@ public class AWSCloudImplTest extends FakeDBApplication {
                 awsCloudImpl.dryRunDescribeVpcsOrBadRequest(
                     defaultProvider, defaultRegion.getCode()));
     assertEquals(BAD_REQUEST, exception.getHttpStatus());
-    assertEquals(
-        "Dry run of AWS DescribeVpcs failed: Invalid details " + AMAZON_COMMON_ERROR_MSG,
-        exception.getMessage());
+    assertEquals("Dry run of AWS DescribeVpcs failed: Invalid details", exception.getMessage());
     exception =
         assertThrows(
             PlatformServiceException.class,
@@ -391,8 +365,7 @@ public class AWSCloudImplTest extends FakeDBApplication {
                     defaultProvider, defaultRegion.getCode()));
     assertEquals(BAD_REQUEST, exception.getHttpStatus());
     assertEquals(
-        "Dry run of AWS DescribeVpcs failed: Invalid region access " + AMAZON_COMMON_ERROR_MSG,
-        exception.getMessage());
+        "Dry run of AWS DescribeVpcs failed: Invalid region access", exception.getMessage());
     assertEquals(
         true,
         awsCloudImpl.dryRunDescribeVpcsOrBadRequest(defaultProvider, defaultRegion.getCode()));
@@ -400,13 +373,10 @@ public class AWSCloudImplTest extends FakeDBApplication {
 
   @Test
   public void testDryRunDescribeSubnets() {
-    DryRunResult<DescribeSubnetsRequest> dryRunResult =
-        new DryRunResult<>(false, null, null, new AmazonServiceException("Invalid region access"));
-    DryRunResult<DescribeSubnetsRequest> dryRunResult2 = new DryRunResult<>(true, null, null, null);
-    when(mockEC2Client.dryRun(new DescribeSubnetsRequest()))
-        .thenThrow(new AmazonServiceException("Invalid details"))
-        .thenReturn(dryRunResult)
-        .thenReturn(dryRunResult2);
+    when(mockEC2Client.describeSubnets(any(DescribeSubnetsRequest.class)))
+        .thenThrow(AwsServiceException.builder().message("Invalid details").build())
+        .thenThrow(AwsServiceException.builder().message("Invalid region access").build())
+        .thenReturn(DescribeSubnetsResponse.builder().build());
     Mockito.doReturn(mockEC2Client).when(awsCloudImpl).getEC2Client(any(), anyString());
     PlatformServiceException exception =
         assertThrows(
@@ -415,9 +385,7 @@ public class AWSCloudImplTest extends FakeDBApplication {
                 awsCloudImpl.dryRunDescribeSubnetOrBadRequest(
                     defaultProvider, defaultRegion.getCode()));
     assertEquals(BAD_REQUEST, exception.getHttpStatus());
-    assertEquals(
-        "Dry run of AWS DescribeSubnets failed: Invalid details " + AMAZON_COMMON_ERROR_MSG,
-        exception.getMessage());
+    assertEquals("Dry run of AWS DescribeSubnets failed: Invalid details", exception.getMessage());
     exception =
         assertThrows(
             PlatformServiceException.class,
@@ -426,8 +394,7 @@ public class AWSCloudImplTest extends FakeDBApplication {
                     defaultProvider, defaultRegion.getCode()));
     assertEquals(BAD_REQUEST, exception.getHttpStatus());
     assertEquals(
-        "Dry run of AWS DescribeSubnets failed: Invalid region access " + AMAZON_COMMON_ERROR_MSG,
-        exception.getMessage());
+        "Dry run of AWS DescribeSubnets failed: Invalid region access", exception.getMessage());
     assertEquals(
         true,
         awsCloudImpl.dryRunDescribeSubnetOrBadRequest(defaultProvider, defaultRegion.getCode()));
@@ -435,19 +402,41 @@ public class AWSCloudImplTest extends FakeDBApplication {
 
   @Test
   public void testDryRunSecurityGroup() {
-    DryRunResult<DescribeSecurityGroupsRequest> dryRunResult =
-        new DryRunResult<>(false, null, null, new AmazonServiceException("Invalid region access"));
-    DryRunResult<DescribeSecurityGroupsRequest> dryRunResult2 =
-        new DryRunResult<>(true, null, null, null);
-    when(mockEC2Client.dryRun(new DescribeSecurityGroupsRequest()))
-        .thenThrow(new AmazonServiceException("Invalid details"))
-        .thenReturn(dryRunResult)
-        .thenReturn(dryRunResult2);
-    when(mockEC2Client.dryRun(new CreateSecurityGroupRequest()))
-        .thenReturn(
-            new DryRunResult<>(
-                false, null, null, new AmazonServiceException("Invalid region access")))
-        .thenReturn(new DryRunResult<>(true, null, null, null));
+    // Simulate normal AWS errors (not dry-run success)
+    var invalidDetails =
+        Ec2Exception.builder()
+            .message("Invalid details")
+            .statusCode(400)
+            .awsErrorDetails(AwsErrorDetails.builder().errorCode("AuthFailure").build())
+            .build();
+
+    var invalidRegionAccess =
+        Ec2Exception.builder()
+            .message("Invalid region access")
+            .statusCode(400)
+            .awsErrorDetails(AwsErrorDetails.builder().errorCode("AuthFailure").build())
+            .build();
+
+    // Simulate dry-run success via exception
+    var dryRunSuccess =
+        Ec2Exception.builder()
+            .message("Dry run would have succeeded")
+            .statusCode(412)
+            .awsErrorDetails(
+                AwsErrorDetails.builder()
+                    .errorCode("DryRunOperation")
+                    .errorMessage("Request would have succeeded, but DryRun flag is set")
+                    .build())
+            .build();
+
+    when(mockEC2Client.describeSecurityGroups(any(DescribeSecurityGroupsRequest.class)))
+        .thenThrow(invalidDetails)
+        .thenThrow(invalidRegionAccess)
+        .thenThrow(dryRunSuccess);
+    when(mockEC2Client.createSecurityGroup(any(CreateSecurityGroupRequest.class)))
+        .thenThrow(invalidDetails)
+        .thenThrow(invalidRegionAccess)
+        .thenThrow(dryRunSuccess);
     Mockito.doReturn(mockEC2Client).when(awsCloudImpl).getEC2Client(any(), anyString());
     PlatformServiceException exception =
         assertThrows(
@@ -456,9 +445,8 @@ public class AWSCloudImplTest extends FakeDBApplication {
                 awsCloudImpl.dryRunSecurityGroupOrBadRequest(
                     defaultProvider, defaultRegion.getCode()));
     assertEquals(BAD_REQUEST, exception.getHttpStatus());
-    assertEquals(
-        "Dry run of AWS SecurityGroup failed: Invalid details " + AMAZON_COMMON_ERROR_MSG,
-        exception.getMessage());
+    assertTrue(
+        exception.getMessage().contains("Dry run of AWS SecurityGroup failed: Invalid details"));
     exception =
         assertThrows(
             PlatformServiceException.class,
@@ -466,60 +454,81 @@ public class AWSCloudImplTest extends FakeDBApplication {
                 awsCloudImpl.dryRunSecurityGroupOrBadRequest(
                     defaultProvider, defaultRegion.getCode()));
     assertEquals(BAD_REQUEST, exception.getHttpStatus());
-    assertEquals(
-        "Dry run of AWS SecurityGroup failed: Invalid region access " + AMAZON_COMMON_ERROR_MSG,
-        exception.getMessage());
-    assertEquals(
-        true,
+    assertTrue(
+        exception
+            .getMessage()
+            .contains("Dry run of AWS SecurityGroup failed: Invalid region access"));
+    assertTrue(
         awsCloudImpl.dryRunSecurityGroupOrBadRequest(defaultProvider, defaultRegion.getCode()));
   }
 
   @Test
   public void testDryRunKeyPair() {
-    DryRunResult<DescribeKeyPairsRequest> dryRunResult =
-        new DryRunResult<>(false, null, null, new AmazonServiceException("Invalid region access"));
-    DryRunResult<DescribeKeyPairsRequest> dryRunResult2 =
-        new DryRunResult<>(true, null, null, null);
-    when(mockEC2Client.dryRun(new DescribeKeyPairsRequest()))
-        .thenThrow(new AmazonServiceException("Invalid details"))
-        .thenReturn(dryRunResult)
-        .thenReturn(dryRunResult2);
-    when(mockEC2Client.dryRun(new CreateKeyPairRequest()))
-        .thenReturn(
-            new DryRunResult<>(
-                false, null, null, new AmazonServiceException("Invalid region access")))
-        .thenReturn(new DryRunResult<>(true, null, null, null));
+    // Simulate normal AWS errors (not dry-run success)
+    var invalidDetails =
+        Ec2Exception.builder()
+            .message("Invalid details")
+            .statusCode(400)
+            .awsErrorDetails(AwsErrorDetails.builder().errorCode("AuthFailure").build())
+            .build();
+
+    var invalidRegionAccess =
+        Ec2Exception.builder()
+            .message("Invalid region access")
+            .statusCode(400)
+            .awsErrorDetails(AwsErrorDetails.builder().errorCode("AuthFailure").build())
+            .build();
+
+    // Simulate dry-run success via exception
+    var dryRunSuccess =
+        Ec2Exception.builder()
+            .message("Dry run would have succeeded")
+            .statusCode(412)
+            .awsErrorDetails(
+                AwsErrorDetails.builder()
+                    .errorCode("DryRunOperation")
+                    .errorMessage("Request would have succeeded, but DryRun flag is set")
+                    .build())
+            .build();
+
+    when(mockEC2Client.describeKeyPairs(any(DescribeKeyPairsRequest.class)))
+        .thenThrow(invalidDetails)
+        .thenThrow(invalidRegionAccess)
+        .thenThrow(dryRunSuccess);
+    when(mockEC2Client.createKeyPair(any(CreateKeyPairRequest.class)))
+        .thenThrow(invalidDetails)
+        .thenThrow(invalidRegionAccess)
+        .thenThrow(dryRunSuccess);
     Mockito.doReturn(mockEC2Client).when(awsCloudImpl).getEC2Client(any(), anyString());
+
     PlatformServiceException exception =
         assertThrows(
             PlatformServiceException.class,
             () -> awsCloudImpl.dryRunKeyPairOrBadRequest(defaultProvider, defaultRegion.getCode()));
     assertEquals(BAD_REQUEST, exception.getHttpStatus());
-    assertEquals(
-        "Dry run of AWS KeyPair failed: Invalid details " + AMAZON_COMMON_ERROR_MSG,
-        exception.getMessage());
+    assertTrue(exception.getMessage().contains("Dry run of AWS KeyPair failed: Invalid details"));
+
     exception =
         assertThrows(
             PlatformServiceException.class,
             () -> awsCloudImpl.dryRunKeyPairOrBadRequest(defaultProvider, defaultRegion.getCode()));
     assertEquals(BAD_REQUEST, exception.getHttpStatus());
-    assertEquals(
-        "Dry run of AWS KeyPair failed: Invalid region access " + AMAZON_COMMON_ERROR_MSG,
-        exception.getMessage());
-    assertEquals(
-        true, awsCloudImpl.dryRunKeyPairOrBadRequest(defaultProvider, defaultRegion.getCode()));
+    assertTrue(
+        exception.getMessage().contains("Dry run of AWS KeyPair failed: Invalid region access"));
+
+    assertTrue(awsCloudImpl.dryRunKeyPairOrBadRequest(defaultProvider, defaultRegion.getCode()));
   }
 
   @Test
   public void testDryRunAuthorizeSecurityGroupIngress() {
-    DryRunResult<AuthorizeSecurityGroupIngressRequest> dryRunResult =
-        new DryRunResult<>(false, null, null, new AmazonServiceException("Invalid region access"));
-    DryRunResult<AuthorizeSecurityGroupIngressRequest> dryRunResult2 =
-        new DryRunResult<>(true, null, null, null);
-    when(mockEC2Client.dryRun(new AuthorizeSecurityGroupIngressRequest()))
-        .thenThrow(new AmazonServiceException("Invalid details"))
-        .thenReturn(dryRunResult)
-        .thenReturn(dryRunResult2);
+    when(mockEC2Client.authorizeSecurityGroupIngress(
+            any(AuthorizeSecurityGroupIngressRequest.class)))
+        .thenThrow(AwsServiceException.builder().message("Invalid details").build())
+        .thenThrow(AwsServiceException.builder().message("Invalid region access").build())
+        .thenReturn(
+            software.amazon.awssdk.services.ec2.model.AuthorizeSecurityGroupIngressResponse
+                .builder()
+                .build());
     Mockito.doReturn(mockEC2Client).when(awsCloudImpl).getEC2Client(any(), anyString());
     PlatformServiceException exception =
         assertThrows(
@@ -529,8 +538,7 @@ public class AWSCloudImplTest extends FakeDBApplication {
                     defaultProvider, defaultRegion.getCode()));
     assertEquals(BAD_REQUEST, exception.getHttpStatus());
     assertEquals(
-        "Dry run of AWS AuthorizeSecurityGroupIngress failed: Invalid details "
-            + AMAZON_COMMON_ERROR_MSG,
+        "Dry run of AWS AuthorizeSecurityGroupIngress failed: Invalid details",
         exception.getMessage());
     exception =
         assertThrows(
@@ -540,8 +548,7 @@ public class AWSCloudImplTest extends FakeDBApplication {
                     defaultProvider, defaultRegion.getCode()));
     assertEquals(BAD_REQUEST, exception.getHttpStatus());
     assertEquals(
-        "Dry run of AWS AuthorizeSecurityGroupIngress failed: Invalid region access "
-            + AMAZON_COMMON_ERROR_MSG,
+        "Dry run of AWS AuthorizeSecurityGroupIngress failed: Invalid region access",
         exception.getMessage());
     assertEquals(
         true,
@@ -551,9 +558,9 @@ public class AWSCloudImplTest extends FakeDBApplication {
 
   @Test
   public void testSTSClient() {
-    GetCallerIdentityResult result = new GetCallerIdentityResult();
-    when(mockSTSService.getCallerIdentity(any()))
-        .thenThrow(new SdkClientException("Not found"))
+    GetCallerIdentityResponse result = GetCallerIdentityResponse.builder().build();
+    when(mockSTSService.getCallerIdentity(any(GetCallerIdentityRequest.class)))
+        .thenThrow(SdkClientException.builder().message("Not found").build())
         .thenReturn(result);
     Mockito.doReturn(mockSTSService).when(awsCloudImpl).getStsClient(any(), anyString());
     PlatformServiceException exception =

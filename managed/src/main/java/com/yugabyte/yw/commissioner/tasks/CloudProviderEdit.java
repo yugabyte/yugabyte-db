@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 YugaByte, Inc. and Contributors
+ * Copyright 2019 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -23,6 +23,9 @@ import com.yugabyte.yw.common.CloudProviderHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ProviderEditRestrictionManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.controllers.handlers.AccessKeyHandler;
 import com.yugabyte.yw.controllers.handlers.RegionHandler;
 import com.yugabyte.yw.models.AccessKey;
@@ -54,6 +57,7 @@ public class CloudProviderEdit extends CloudTaskBase {
   private AccessKeyHandler accessKeyHandler;
   private CloudProviderHelper cloudProviderHelper;
   private ProviderEditRestrictionManager providerEditRestrictionManager;
+  private OperatorStatusUpdater operatorStatusUpdater;
 
   @Inject
   protected CloudProviderEdit(
@@ -61,18 +65,21 @@ public class CloudProviderEdit extends CloudTaskBase {
       RegionHandler regionHandler,
       AccessKeyHandler accessKeyHandler,
       CloudProviderHelper cloudProviderHelper,
-      ProviderEditRestrictionManager providerEditRestrictionManager) {
+      ProviderEditRestrictionManager providerEditRestrictionManager,
+      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
     super(baseTaskDependencies);
     this.regionHandler = regionHandler;
     this.accessKeyHandler = accessKeyHandler;
     this.cloudProviderHelper = cloudProviderHelper;
     this.providerEditRestrictionManager = providerEditRestrictionManager;
+    this.operatorStatusUpdater = operatorStatusUpdaterFactory.create();
   }
 
   @ApiModel(value = "CloudProviderEditParams", description = "Parameters for editing provider")
   public static class Params extends CloudTaskParams {
     public Provider newProviderState;
     public boolean skipRegionBootstrap;
+    public KubernetesResourceDetails kubernetesResourceDetails;
   }
 
   @Override
@@ -104,11 +111,14 @@ public class CloudProviderEdit extends CloudTaskBase {
       provider.setUsabilityState(Provider.UsabilityState.READY);
       provider.save();
       cloudProviderHelper.updatePrometheusConfig(provider);
+      maybeUpdateKubernetesOperatorState(
+          Provider.UsabilityState.READY, "Provider edited successfully");
     } catch (RuntimeException e) {
       log.error("Received exception during edit", e);
       Provider p = Provider.getOrBadRequest(taskParams().providerUUID);
       p.setUsabilityState(Provider.UsabilityState.ERROR);
       p.save();
+      maybeUpdateKubernetesOperatorState(Provider.UsabilityState.ERROR, e.getMessage());
       throw e;
     }
   }
@@ -333,5 +343,12 @@ public class CloudProviderEdit extends CloudTaskBase {
 
   private long getMaxWaitMs() {
     return confGetter.getGlobalConf(GlobalConfKeys.waitForProviderTasksTimeoutMs);
+  }
+
+  private void maybeUpdateKubernetesOperatorState(Provider.UsabilityState state, String message) {
+    if (taskParams().kubernetesResourceDetails != null) {
+      operatorStatusUpdater.updateProviderStatus(
+          taskParams().kubernetesResourceDetails, taskParams().providerUUID, state, message);
+    }
   }
 }

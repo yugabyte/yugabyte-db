@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.controllers;
 
@@ -346,8 +346,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     Result result =
         assertPlatformException(
             () -> doCreateInstanceTypeAndVerify(randomUUID, instanceTypeJson, BAD_REQUEST));
-    assertErrorNodeValue(
-        Json.parse(contentAsString(result)), "Invalid Provider UUID: " + randomUUID);
+    assertErrorNodeValue(Json.parse(contentAsString(result)), "Cannot find provider " + randomUUID);
     assertAuditEntry(0, customer.getUuid());
   }
 
@@ -544,8 +543,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     Result result =
         assertPlatformException(
             () -> doDeleteInstanceTypeAndVerify(randomUUID, fakeInstanceCode, BAD_REQUEST));
-    assertErrorNodeValue(
-        Json.parse(contentAsString(result)), "Invalid Provider UUID: " + randomUUID);
+    assertErrorNodeValue(Json.parse(contentAsString(result)), "Cannot find provider " + randomUUID);
     assertAuditEntry(0, customer.getUuid());
   }
 }

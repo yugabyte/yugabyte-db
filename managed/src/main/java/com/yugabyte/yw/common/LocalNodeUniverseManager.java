@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 YugaByte, Inc. and Contributors
+ * Copyright 2023 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -10,23 +10,28 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.common.ShellResponse.ERROR_CODE_GENERIC_ERROR;
 import static com.yugabyte.yw.common.ShellResponse.ERROR_CODE_SUCCESS;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.provider.LocalCloudInfo;
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import javax.inject.Singleton;
@@ -172,31 +177,65 @@ public class LocalNodeUniverseManager {
     return ShellResponse.create(ERROR_CODE_SUCCESS, "Lost!");
   }
 
+  public void postProcessGFlagsMap(
+      Map<String, String> gflags, Universe universe, NodeDetails nodeDetails) {
+    String nodeRoot =
+        localNodeManager.getNodeRoot(
+            universe.getCluster(nodeDetails.placementUuid).userIntent, nodeDetails.nodeName);
+    Map<String, String> override = new HashMap<>();
+    gflags.forEach(
+        (k, v) -> {
+          if (v.contains(nodeRoot)) {
+            override.put(k, v.replaceAll(nodeRoot, CommonUtils.DEFAULT_YB_HOME_DIR));
+          }
+          if (k.equals(GFlagsUtil.FS_DATA_DIRS)) {
+            override.put(k, "/mnt/d0");
+          }
+        });
+    gflags.putAll(override);
+  }
+
   private ShellResponse runCommand(Universe universe, NodeDetails node, List<String> commandArgs) {
     try {
       UniverseDefinitionTaskParams.UserIntent userIntent = getUserIntent(universe, node);
       int commandIndex = commandArgs.indexOf("--command");
       List<String> commandArguments = commandArgs.subList(commandIndex + 1, commandArgs.size());
 
+      String nodeRoot = localNodeManager.getNodeRoot(userIntent, node.nodeName);
+
       for (int i = 0; i < commandArguments.size(); i++) {
         if (commandArguments.get(i).startsWith(CommonUtils.DEFAULT_YB_HOME_DIR)) {
           commandArguments.set(
-              i,
-              commandArguments
-                  .get(i)
-                  .replace(
-                      CommonUtils.DEFAULT_YB_HOME_DIR,
-                      localNodeManager.getNodeRoot(userIntent, node.nodeName)));
+              i, commandArguments.get(i).replace(CommonUtils.DEFAULT_YB_HOME_DIR, nodeRoot));
         }
       }
-      runProcess(commandArguments, null);
+      Pair<Integer, String> results = runProcess(commandArguments, null);
+      if (commandArguments.get(0).equals("cat")
+          && commandArguments.get(1).endsWith("server.conf")) {
+        if (results.getFirst() != 0) {
+          return ShellResponse.create(
+              ERROR_CODE_GENERIC_ERROR,
+              "Result code: " + results.getFirst() + ", output " + results.getSecond());
+        }
+        StringBuilder sb = new StringBuilder();
+        results
+            .getSecond()
+            .lines()
+            .forEach(
+                l -> {
+                  sb.append(l.replaceAll(nodeRoot, CommonUtils.DEFAULT_YB_HOME_DIR));
+                  sb.append("\n");
+                });
+        return ShellResponse.create(ERROR_CODE_SUCCESS, "Command output: " + sb.toString());
+      }
     } catch (IOException | InterruptedException e) {
       throw new RuntimeException(e);
     }
     return ShellResponse.create(ERROR_CODE_SUCCESS, "Command output: Linux x86_64");
   }
 
-  private int runProcess(List<String> commandArguments, Map<String, String> envVars)
+  private Pair<Integer, String> runProcess(
+      List<String> commandArguments, Map<String, String> envVars)
       throws IOException, InterruptedException {
     ProcessBuilder processBuilder =
         new ProcessBuilder(commandArguments.toArray(new String[0])).redirectErrorStream(true);
@@ -205,8 +244,17 @@ public class LocalNodeUniverseManager {
     }
     log.debug("Running command {}", String.join(" ", commandArguments));
     Process process = processBuilder.start();
+    StringBuilder output = new StringBuilder();
+    try (BufferedReader reader =
+        new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+
+      String line;
+      while ((line = reader.readLine()) != null) {
+        output.append(line).append("\n");
+      }
+    }
     int exitCode = process.waitFor();
-    return exitCode;
+    return new Pair<>(exitCode, output.toString());
   }
 
   private ShellResponse uploadFile(Universe universe, NodeDetails node, List<String> commandArgs) {

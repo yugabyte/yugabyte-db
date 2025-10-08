@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -64,7 +64,6 @@ DEFINE_RUNTIME_uint32(auto_flags_apply_delay_ms, 10000,
 TAG_FLAG(auto_flags_apply_delay_ms, stable);
 TAG_FLAG(auto_flags_apply_delay_ms, advanced);
 
-DECLARE_bool(TEST_running_test);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
 
 namespace yb {

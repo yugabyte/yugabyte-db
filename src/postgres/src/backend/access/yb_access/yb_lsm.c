@@ -3,7 +3,7 @@
  * yb_lsm.c
  *	  Implementation of YugaByte indexes.
  *
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License.  You may obtain a copy of the License at
@@ -473,23 +473,6 @@ ybcincostestimate(struct PlannerInfo *root, struct IndexPath *path, double loop_
 				  Cost *indexStartupCost, Cost *indexTotalCost, Selectivity *indexSelectivity,
 				  double *indexCorrelation, double *indexPages)
 {
-	/*
-	 * Information is lacking for hypothetical index in order for estimation
-	 * in YB to work.
-	 * So we skip hypothetical index.
-	 * TODO(jason): this should be shared with ybgin, ybvector, etc when they
-	 * are also supported for hypopg.
-	 */
-	if (path->indexinfo->hypothetical)
-	{
-		*indexStartupCost = 0.0;
-		*indexTotalCost = 0.0;
-		*indexSelectivity = 0.0;
-		*indexCorrelation = 0.0;
-		*indexPages = 0.0;
-		return;
-	}
-
 	ybcIndexCostEstimate(root,
 						 path,
 						 indexSelectivity,

@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -51,6 +51,9 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_read_request_caching, true, "Enable read req
 DEFINE_NON_RUNTIME_uint32(
     pg_cache_response_renew_soft_lifetime_limit_ms, 3 * 60 * 1000,
     "Lifetime limit for response cache soft renewing process");
+DEFINE_NON_RUNTIME_uint32(
+    pg_cache_response_trust_auth_lifetime_limit_ms, 60 * 1000,
+    "Lifetime limit for response cache used for auth process when connection manager is used.");
 
 namespace yb::pggate {
 namespace {
@@ -280,6 +283,8 @@ class VersionInfoWriter {
 
 [[nodiscard]] std::optional<uint32_t> GetCacheLifetimeThreshold(PrefetchingCacheMode mode) {
   switch(mode) {
+    case PrefetchingCacheMode::TRUST_CACHE_AUTH:
+      return FLAGS_pg_cache_response_trust_auth_lifetime_limit_ms;
     case PrefetchingCacheMode::TRUST_CACHE:
       return std::nullopt;
     case PrefetchingCacheMode::RENEW_CACHE_SOFT:
@@ -459,7 +464,7 @@ class Loader {
 } // namespace
 
 std::string PrefetcherOptions::VersionInfo::ToString() const {
-  return YB_STRUCT_TO_STRING(version, is_db_catalog_version_mode);
+  return YB_STRUCT_TO_STRING(version, version_read_time, is_db_catalog_version_mode);
 }
 
 std::string PrefetcherOptions::CachingInfo::ToString() const {
@@ -487,7 +492,7 @@ class PgSysTablePrefetcher::Impl {
     registered_for_loading_.emplace_back(table_id, index_id, row_oid_filtering_attr, fetch_ybctid);
   }
 
-  PrefetchedDataHolder GetData(const LWPgsqlReadRequestPB& read_req, bool index_check_required) {
+  PrefetchedDataInfo GetData(const LWPgsqlReadRequestPB& read_req, bool index_check_required) {
     LOG_IF(DFATAL, !registered_for_loading_.empty())
         << "All registered table must be prefetched first";
     const PgObjectId table_id(read_req.table_id());
@@ -497,14 +502,28 @@ class PgSysTablePrefetcher::Impl {
       if (data.ok()) {
         return std::move(*data);
       }
-      LOG(DFATAL) << data.status();
+      LOG(DFATAL) << "Bad target check result for prefetched table " << data.status();
     } else {
-      LOG(DFATAL) << "Sys table prefetching is enabled but table "
-                  << table_id
-                  << " was not prefetched. Prefetched tables are: "
-                  << CollectionToString(data_, [](const auto& item) { return item.first; });
-     }
-    return PrefetchedDataHolder();
+      LOG(WARNING)
+          << "Sys table prefetching is enabled but table " << table_id << " was not prefetched.";
+      VLOG(5) << "Prefetched tables are: "
+              << CollectionToString(data_, [](const auto& item) { return item.first; });
+    }
+    // In case of prefething data from the cache it could be not possible to read non-prefetched
+    // data at same read time (to guarantee consistency of the cache) due to `Snapshot too old`
+    // error. In this case alternative read time is used, which is equal to catalog version read
+    // time. This approach guaranties the cache consistency because of the following:
+    // - Catalog version is a part of cache key. In case version is N catalog data from the cache
+    //   will be not older than N (i.e. N or N + 1 ... N + M)
+    // - Latest catalog version has been read straight before starting prefetcher, and the version
+    //   is N. So cache can't contain data fresher than catalog version N, so data belongs to
+    //   catalog version N.
+    // - Reading missed data at same read time when catalog version N has been read guaranties that
+    //   data will be consistent to catalog version N
+    return options_.caching_info &&
+           (options_.caching_info->mode == PrefetchingCacheMode::TRUST_CACHE ||
+            options_.caching_info->mode == PrefetchingCacheMode::TRUST_CACHE_AUTH)
+        ?  std::optional(options_.caching_info->version_info.version_read_time) : std::nullopt;
   }
 
   Status Prefetch(PgSession* session) {
@@ -556,7 +575,7 @@ Status PgSysTablePrefetcher::Prefetch(PgSession* session) {
   return status;
 }
 
-PrefetchedDataHolder PgSysTablePrefetcher::GetData(
+PrefetchedDataInfo PgSysTablePrefetcher::GetData(
     const LWPgsqlReadRequestPB& read_req, bool index_check_required) {
   return impl_->GetData(read_req, index_check_required);
 }

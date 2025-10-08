@@ -20,7 +20,7 @@ Enable the YugabyteDB [cost-based optimizer (CBO)](../../architecture/query-laye
 
 Use of CBO is recommended for all YSQL deployments.
 
-You configure CBO using the [yb_enable_cbo](../../reference/configuration/yb-tserver/#yb-enable-cbo) configuration parameter. The `yb_enable_cbo` parameter also provides a heuristic-based optimizer mode that operates independently of table analysis. This allows you to continue using the system without unexpected plan changes during the transition to cost-based optimization, and to selectively enable this mode for specific connections if needed.
+You configure CBO using the [yb_enable_cbo](../../reference/configuration/yb-tserver/#yb-enable-cbo) configuration parameter. The `yb_enable_cbo` parameter also provides a heuristic-based optimizer mode that doesn't rely on table statistics. This allows you to continue using the system without unexpected plan changes during the transition to cost-based optimization, and to selectively enable this mode for specific connections if needed. The new setting (`off`) trades plan adaptability (provided by the CBO and using table statistics) for plan stability (heuristic-based).
 
 `yb_enable_cbo` replaces the [yb_enable_optimizer_statistics](../../reference/configuration/yb-tserver/#yb-enable-optimizer-statistics) and [yb_enable_base_scans_cost_model](../../reference/configuration/yb-tserver/#yb-enable-base-scans-cost-model) parameters, which will be deprecated and removed in a future release.
 
@@ -96,8 +96,8 @@ If your tables are analyzed, do the following:
 
 ## ANALYZE and Auto Analyze service
 
-Use the [YugabyteDB Auto Analyze service](../../explore/query-1-performance/auto-analyze/) {{<tags/feature/ea idea="590">}} to automate the execution of ANALYZE commands for any table where rows have changed more than a configurable threshold. This ensures table statistics are always up-to-date.
+Use the [YugabyteDB Auto Analyze service](../../additional-features/auto-analyze/) {{<tags/feature/ea idea="590">}} to automate the execution of ANALYZE commands for any table where rows have changed more than a configurable threshold. This ensures table statistics are always up-to-date.
 
 Even with the Auto Analyze service, for the CBO to create optimal execution plans, you should still run ANALYZE manually on user tables after data load, as well as in other circumstances.
 
-For more information, refer to [Auto Analyze](../../explore/query-1-performance/auto-analyze/).
+For more information, refer to [Auto Analyze](../../additional-features/auto-analyze/).

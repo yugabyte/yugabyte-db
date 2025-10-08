@@ -1,6 +1,6 @@
 /*-------------------------------------------------------------------------
  *
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License.  You may obtain a copy
@@ -46,8 +46,10 @@
 #include "utils/builtins.h"
 #include "utils/catcache.h"
 #include "utils/datetime.h"
+#include "utils/relcache.h"
 #include "utils/syscache.h"
 #include "yb/yql/pggate/webserver/ybc_pg_webserver_wrapper.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 #define YSQL_METRIC_PREFIX "yb_ysqlserver_"
 #define YSQL_LATENCY_METRIC_PREFIX "handler_latency_yb_ysqlserver_SQLProcessor_"
@@ -216,6 +218,8 @@ typedef enum YbStatementType
 	HintCacheRefresh,
 	HintCacheHits,
 	HintCacheMisses,
+	AuthorizedConnection,
+	RelCachePreload,
 	kMaxStatementType
 } YbStatementType;
 int			num_entries = kMaxStatementType;
@@ -266,6 +270,9 @@ static long last_cache_table_misses_val[YbNumCatalogCacheTables] = {0};
 static long last_hint_cache_refreshes_val = 0;
 static long last_hint_cache_hits_val = 0;
 static long last_hint_cache_misses_val = 0;
+
+static long last_authorized_connection_val = 0;
+static long last_relcache_preload_val = 0;
 
 static volatile sig_atomic_t got_SIGHUP = false;
 static volatile sig_atomic_t got_SIGTERM = false;
@@ -406,65 +413,70 @@ set_metric_names(void)
 	strcpy(ybpgm_table[HintCacheMisses].name,
 		   YSQL_METRIC_PREFIX "HintCacheMisses");
 
+	strcpy(ybpgm_table[AuthorizedConnection].name,
+		   YSQL_METRIC_PREFIX "AuthorizedConnection");
+	strcpy(ybpgm_table[RelCachePreload].name,
+		   YSQL_METRIC_PREFIX "RelCachePreload");
+
 	strcpy(ybpgm_table[Select].count_help,
 		   "Number of SELECT statements that have been executed");
 	strcpy(ybpgm_table[Select].sum_help,
-		   "Total time spent executing SELECT statements");
+		   "Total time (microseconds) spent executing SELECT statements");
 
 	strcpy(ybpgm_table[Insert].count_help,
 		   "Number of INSERT statements that have been executed");
 	strcpy(ybpgm_table[Insert].sum_help,
-		   "Total time spent executing INSERT statements");
+		   "Total time (microseconds) spent executing INSERT statements");
 
 	strcpy(ybpgm_table[Delete].count_help,
 		   "Number of DELETE statements that have been executed");
 	strcpy(ybpgm_table[Delete].sum_help,
-		   "Total time spent executing DELETE statements");
+		   "Total time (microseconds) spent executing DELETE statements");
 
 	strcpy(ybpgm_table[Update].count_help,
 		   "Number of UPDATE statements that have been executed");
 	strcpy(ybpgm_table[Update].sum_help,
-		   "Total time spent executing UPDATE statements");
+		   "Total time (microseconds) spent executing UPDATE statements");
 
 	strcpy(ybpgm_table[Begin].count_help,
 		   "Number of BEGIN statements that have been executed");
 	strcpy(ybpgm_table[Begin].sum_help,
-		   "Total time spent executing BEGIN statements");
+		   "Total time (microseconds) spent executing BEGIN statements");
 
 	strcpy(ybpgm_table[Commit].count_help,
 		   "Number of COMMIT statements that have been executed");
 	strcpy(ybpgm_table[Commit].sum_help,
-		   "Total time spent executing COMMIT statements");
+		   "Total time (microseconds) spent executing COMMIT statements");
 
 	strcpy(ybpgm_table[Rollback].count_help,
 		   "Number of ROLLBACK statements that have been executed");
 	strcpy(ybpgm_table[Rollback].sum_help,
-		   "Total time spent executing ROLLBACK statements");
+		   "Total time (microseconds) spent executing ROLLBACK statements");
 
 	strcpy(ybpgm_table[Other].count_help,
 		   "Number of other statements that have been executed");
 	strcpy(ybpgm_table[Other].sum_help,
-		   "Total time spent executing other statements");
+		   "Total time (microseconds) spent executing other statements");
 
 	strcpy(ybpgm_table[Single_Shard_Transaction].count_help,
 		   "Number of single shard transactions that have been executed (deprecated)");
 	strcpy(ybpgm_table[Single_Shard_Transaction].sum_help,
-		   "Total time spent executing single shard transactions (deprecated)");
+		   "Total time (microseconds) spent executing single shard transactions (deprecated)");
 
 	strcpy(ybpgm_table[SingleShardTransaction].count_help,
 		   "Number of single shard transactions that have been executed");
 	strcpy(ybpgm_table[SingleShardTransaction].sum_help,
-		   "Total time spent executing single shard transactions");
+		   "Total time (microseconds) spent executing single shard transactions");
 
 	strcpy(ybpgm_table[Transaction].count_help,
 		   "Number of transactions that have been executed");
 	strcpy(ybpgm_table[Transaction].sum_help,
-		   "Total time spent executing transactions");
+		   "Total time (microseconds) spent executing transactions");
 
 	strcpy(ybpgm_table[AggregatePushdown].count_help,
 		   "Number of aggregate pushdowns");
 	strcpy(ybpgm_table[AggregatePushdown].sum_help,
-		   "Total time spent executing aggregate pushdowns");
+		   "Total time (microseconds) spent executing aggregate pushdowns");
 	strcpy(ybpgm_table[CatCacheRefresh].count_help,
 		   "Number of full catalog cache refreshes");
 	strcpy(ybpgm_table[CatCacheRefresh].sum_help,
@@ -506,6 +518,14 @@ set_metric_names(void)
 	strcpy(ybpgm_table[HintCacheMisses].count_help,
 		   "Number of hint cache misses");
 	strcpy(ybpgm_table[HintCacheMisses].sum_help, "Not applicable");
+
+	strcpy(ybpgm_table[AuthorizedConnection].count_help,
+		   "Number of authorized connections");
+	strcpy(ybpgm_table[AuthorizedConnection].sum_help, "Not applicable");
+
+	strcpy(ybpgm_table[RelCachePreload].count_help,
+		   "Number of relcache preloads");
+	strcpy(ybpgm_table[RelCachePreload].sum_help, "Not applicable");
 }
 
 /*
@@ -923,6 +943,24 @@ ybpgm_shmem_request(void)
 	RequestNamedLWLockTranche("yb_pg_metrics", 1);
 }
 
+static void
+ybpgm_InitPostgres()
+{
+	/* Authorized connections metric */
+	long		current_authorized_connections = YbGetAuthorizedConnections();
+	long		total_delta = current_authorized_connections - last_authorized_connection_val;
+
+	last_authorized_connection_val = current_authorized_connections;
+	ybpgm_StoreCount(AuthorizedConnection, 0, total_delta);
+
+	/* Relcache preloads metric */
+	long		current_relcache_preloads = YbGetRelCachePreloads();
+
+	total_delta = current_relcache_preloads - last_relcache_preload_val;
+	last_relcache_preload_val = current_relcache_preloads;
+	ybpgm_StoreCount(RelCachePreload, 0, total_delta);
+}
+
 /*
  * Allocate or attach to shared memory.
  */
@@ -938,6 +976,7 @@ ybpgm_startup_hook(void)
 								  num_entries * sizeof(struct YbcPgmEntry),
 								  &found);
 	set_metric_names();
+	YBCSetUpdateInitPostgresMetricsFn(&ybpgm_InitPostgres);
 }
 
 static void
@@ -1260,7 +1299,9 @@ ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 		INSTR_TIME_SET_CURRENT(end);
 		INSTR_TIME_SUBTRACT(end, start);
 
-		YbDdlModeOptional ddl_mode = YbGetDdlMode(pstmt, context);
+		bool		requires_autonomous_transaction = false;
+		YbDdlModeOptional ddl_mode =
+			YbGetDdlMode(pstmt, context, &requires_autonomous_transaction);
 
 		if (ddl_mode.has_value)
 			ybpgm_Store(Transaction, INSTR_TIME_GET_MICROSEC(end), 0);

@@ -98,7 +98,7 @@
         path: "{{ otel_col_log_cleanup_env }}"
         block: |
           preserve_audit_logs=true
-          ycql_audit_log_level={{ ycql_audit_log_level }}
+          ycql_audit_log_level={{ ycql_audit_log_level | default('NONE') }}
         create: yes
         mode: 0440
       when: otel_col_config_file_local is defined

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner;
 
@@ -34,6 +34,8 @@ import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.TaskExecutor.TaskCache;
 import com.yugabyte.yw.commissioner.TaskExecutor.TaskExecutionListener;
+import com.yugabyte.yw.commissioner.TaskExecutorTest.AbortableTask;
+import com.yugabyte.yw.commissioner.TaskExecutorTest.NonAbortableTask;
 import com.yugabyte.yw.common.CustomWsClientFactory;
 import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
@@ -128,9 +130,13 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.RestartUniverseKubernetesUpgrade,
           TaskType.ThirdpartySoftwareUpgrade,
           TaskType.CertsRotate,
+          TaskType.CertsRotateKubernetesUpgrade,
           TaskType.TlsToggle,
+          TaskType.TlsToggleKubernetes,
           TaskType.SystemdUpgrade,
           TaskType.ModifyAuditLoggingConfig,
+          TaskType.ModifyQueryLoggingConfig,
+          TaskType.ModifyMetricsExportConfig,
           TaskType.StartMasterOnNode,
           TaskType.MasterFailover,
           TaskType.SyncMasterAddresses,
@@ -153,7 +159,15 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.EditDrConfig,
           TaskType.SetDatabasesDrConfig,
           TaskType.SetTablesDrConfig,
-          TaskType.DecommissionNode);
+          TaskType.DecommissionNode,
+          TaskType.PauseUniverse,
+          TaskType.ResumeUniverse,
+          TaskType.UpgradeYbcGFlags,
+          TaskType.UpgradeKubernetesYbcGFlags,
+          TaskType.UpdateYbcThrottleFlags,
+          TaskType.UpdateK8sYbcThrottleFlags,
+          TaskType.KubernetesToggleImmutableYbc,
+          TaskType.OperatorImportUniverse);
 
   @Override
   protected Application provideApplication() {
@@ -237,7 +251,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
               taskInfo.setTaskParams(
                   RedactingService.filterSecretFields(task.getTaskParams(), RedactionTarget.APIS));
               taskInfo.setOwner("test-owner");
-              taskInfo.setVersion(Util.getYbaVersion());
+              taskInfo.setYbaVersion(Util.getYbaVersion());
               return taskInfo;
             })
         .when(taskExecutor)
@@ -267,8 +281,8 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
     String errMsg = taskInfo.getTaskError().getMessage();
     assertTrue("Found " + errMsg, errMsg.contains("Error occurred in task"));
-    assertNotNull(taskInfo.getVersion());
-    assertEquals(Util.getYbaVersion(), taskInfo.getVersion());
+    assertNotNull(taskInfo.getYbaVersion());
+    assertEquals(Util.getYbaVersion(), taskInfo.getYbaVersion());
   }
 
   @Test
@@ -421,8 +435,8 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
     assertEquals(TaskInfo.State.Success, subTaskInfos.get(0).getTaskState());
     assertEquals(TaskInfo.State.Aborted, subTaskInfos.get(1).getTaskState());
-    assertNotNull(taskInfo.getVersion());
-    assertEquals(Util.getYbaVersion(), taskInfo.getVersion());
+    assertNotNull(taskInfo.getYbaVersion());
+    assertEquals(Util.getYbaVersion(), taskInfo.getYbaVersion());
   }
 
   @Test
@@ -877,8 +891,8 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
         subTasksByPosition.get(1).stream().map(TaskInfo::getTaskState).collect(Collectors.toList());
     assertEquals(1, subTaskStates.size());
     assertTrue(subTaskStates.contains(TaskInfo.State.Success));
-    assertNotNull(taskInfo.getVersion());
-    assertEquals(Util.getYbaVersion(), taskInfo.getVersion());
+    assertNotNull(taskInfo.getYbaVersion());
+    assertEquals(Util.getYbaVersion(), taskInfo.getYbaVersion());
   }
 
   @Test

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -44,13 +44,13 @@ CDCSDKUniqueRecordID::CDCSDKUniqueRecordID(
     this->docdb_txn_id_ = "";
   }
   switch (this->vwal_record_type_) {
+    case VWALRecordType::PUBLICATION_REFRESH: FALLTHROUGH_INTENDED;
     case VWALRecordType::DDL:
       this->record_time_ = 0;
       this->write_id_ = 0;
       this->table_id_ = record->row_message().table_id();
       this->primary_key_ = "";
       break;
-    case VWALRecordType::PUBLICATION_REFRESH: FALLTHROUGH_INTENDED;
     case VWALRecordType::BEGIN:
       this->record_time_ = 0;
       this->write_id_ = 0;

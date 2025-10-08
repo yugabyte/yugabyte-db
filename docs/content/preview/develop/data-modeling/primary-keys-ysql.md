@@ -5,7 +5,7 @@ linkTitle: Primary keys
 tags:
   other: ysql
 menu:
-  preview:
+  preview_develop:
     identifier: data-modeling-pk
     parent: data-modeling
     weight: 100

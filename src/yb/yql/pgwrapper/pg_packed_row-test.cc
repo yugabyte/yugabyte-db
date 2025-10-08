@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -45,6 +45,7 @@ using namespace std::literals;
 DECLARE_bool(TEST_dcheck_for_missing_schema_packing);
 DECLARE_bool(TEST_keep_intent_doc_ht);
 DECLARE_bool(TEST_skip_aborting_active_transactions_during_schema_change);
+DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_enable_pack_full_row_update);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
@@ -74,11 +75,20 @@ class PgPackedRowTest : public PackedRowTestBase<PgMiniTestBase>,
   void TestSstDump(bool specify_metadata, std::string* output);
   void TestAppliedSchemaVersion(bool colocated);
   void TestDropColocatedTable(bool use_transaction);
+
+  std::unique_ptr<client::SnapshotTestUtil> snapshot_util_;
+};
+
+class PgPackedRowTestDisableTableLocks : public PgPackedRowTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
+    PgPackedRowTest::SetUp();
+  }
+
   void TestCompactionWithConcurrentAggregate(
       PGConn& conn, const std::string& pre_compaction_query, const std::string& aggregate_query,
       int64_t expected_aggregate_result);
-
-  std::unique_ptr<client::SnapshotTestUtil> snapshot_util_;
 };
 
 TEST_P(PgPackedRowTest, Simple) {
@@ -208,7 +218,8 @@ TEST_P(PgPackedRowTest, AlterTable) {
   auto deadline = CoarseMonoClock::now() + 90s;
 
   while (!thread_holder.stop_flag().load() && CoarseMonoClock::now() < deadline) {
-    ASSERT_OK(cluster_->mini_master()->tablet_peer()->tablet()->ForceManualRocksDBCompact());
+    ASSERT_OK(ASSERT_RESULT(cluster_->mini_master()->tablet_peer()->shared_tablet())
+                  ->ForceManualRocksDBCompact());
   }
 
   thread_holder.Stop();
@@ -309,11 +320,15 @@ TEST_P(PgPackedRowTest, Random) {
   }
   auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
   for (const auto& peer : peers) {
-    if (!peer->tablet()->regular_db()) {
+    auto tablet = peer->shared_tablet_maybe_null();
+    if (!tablet) {
+      continue;
+    }
+    if (!tablet->regular_db()) {
       continue;
     }
     std::unordered_set<std::string> values;
-    peer->tablet()->TEST_DocDBDumpToContainer(docdb::IncludeIntents::kTrue, &values);
+    tablet->TEST_DocDBDumpToContainer(docdb::IncludeIntents::kTrue, &values);
     std::vector<std::string> sorted_values(values.begin(), values.end());
     std::sort(sorted_values.begin(), sorted_values.end());
     for (const auto& line : sorted_values) {
@@ -416,7 +431,8 @@ TEST_P(PgPackedRowTest, SchemaGC) {
     if (peer->TEST_table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
       continue;
     }
-    auto files = peer->tablet()->regular_db()->GetLiveFilesMetaData();
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    auto files = tablet->regular_db()->GetLiveFilesMetaData();
     auto table_info = peer->tablet_metadata()->primary_table_info();
     ASSERT_EQ(table_info->doc_read_context->schema_packing_storage.SchemaCount(), 1);
   }
@@ -806,10 +822,14 @@ TEST_P(PgPackedRowTest, CleanupIntentDocHt) {
 
   auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
   for (const auto& peer : peers) {
-    if (!peer->tablet()->regular_db()) {
+    auto tablet = peer->shared_tablet_maybe_null();
+    if (!tablet) {
       continue;
     }
-    auto dump = peer->tablet()->TEST_DocDBDumpStr(docdb::IncludeIntents::kTrue);
+    if (!tablet->regular_db()) {
+      continue;
+    }
+    auto dump = tablet->TEST_DocDBDumpStr(docdb::IncludeIntents::kTrue);
     LOG(INFO) << "Dump: " << dump;
     ASSERT_EQ(dump.find("intent doc ht"), std::string::npos);
   }
@@ -940,7 +960,7 @@ void PgPackedRowTest::TestSstDump(bool specify_metadata, std::string* output) {
   std::string fname;
   std::string metapath;
   for (const auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders)) {
-    auto tablet = peer->shared_tablet();
+    auto tablet = peer->shared_tablet_maybe_null();
     if (!tablet || !tablet->regular_db()) {
       continue;
     }
@@ -1113,7 +1133,7 @@ TEST_P(PgPackedRowTest, DropColocatedTableWithTxn) {
   TestDropColocatedTable(true);
 }
 
-void PgPackedRowTest::TestCompactionWithConcurrentAggregate(
+void PgPackedRowTestDisableTableLocks::TestCompactionWithConcurrentAggregate(
     PGConn& conn, const std::string& pre_compaction_query, const std::string& aggregate_query,
       int64_t expected_aggregate_result) {
   auto conn2 = ASSERT_RESULT(Connect());
@@ -1142,7 +1162,7 @@ void PgPackedRowTest::TestCompactionWithConcurrentAggregate(
   ASSERT_EQ(value, expected_aggregate_result);
 }
 
-TEST_P(PgPackedRowTest, SchemaChangeAfterReadStart) {
+TEST_P(PgPackedRowTestDisableTableLocks, SchemaChangeAfterReadStart) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_dcheck_for_missing_schema_packing) = true;
 
@@ -1157,7 +1177,7 @@ TEST_P(PgPackedRowTest, SchemaChangeAfterReadStart) {
       1);
 }
 
-TEST_P(PgPackedRowTest, DropColumnAfterReadStart) {
+TEST_P(PgPackedRowTestDisableTableLocks, DropColumnAfterReadStart) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_dcheck_for_missing_schema_packing) = true;
 
@@ -1178,6 +1198,10 @@ TEST_P(PgPackedRowTest, DropColumnAfterReadStart) {
 
 INSTANTIATE_TEST_SUITE_P(
     , PgPackedRowTest, ::testing::ValuesIn(dockv::kPackedRowVersionArray),
+    PackedRowVersionToString);
+
+INSTANTIATE_TEST_SUITE_P(
+    , PgPackedRowTestDisableTableLocks, ::testing::ValuesIn(dockv::kPackedRowVersionArray),
     PackedRowVersionToString);
 
 } // namespace pgwrapper

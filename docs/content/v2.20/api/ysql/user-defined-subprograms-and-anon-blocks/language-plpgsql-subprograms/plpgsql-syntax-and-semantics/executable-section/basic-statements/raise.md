@@ -5,7 +5,7 @@ linkTitle: >
   "raise" statement
 description: Describes the syntax and semantics of the PL/pgSQL "raise" statement. [YSQL].
 menu:
-  v2.20:
+  v2.20_api:
     identifier: raise
     parent: basic-statements
     weight: 30

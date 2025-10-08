@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -52,8 +52,8 @@ class YBNamespaceAlterer {
 
   Status status_;
 
-  boost::optional<std::string> rename_to_;
-  boost::optional<YQLDatabase> database_type_;
+  std::optional<std::string> rename_to_;
+  std::optional<YQLDatabase> database_type_;
 
   DISALLOW_COPY_AND_ASSIGN(YBNamespaceAlterer);
 };

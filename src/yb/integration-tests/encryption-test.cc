@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -99,10 +99,10 @@ class EncryptionTest : public YBTableTestBase, public testing::WithParamInterfac
       PutKeyValue(Format("k_$0", i), s);
       auto num_keys_written = i - start + 1;
       if (num_keys_written % (total_num_keys / kNumFlushes) == 0) {
-        ASSERT_OK(client_->FlushTables({table_->id()}, false, 30, false));
+        ASSERT_OK(client_->FlushTables({table_->id()}));
       }
       if (num_keys_written % (total_num_keys / kNumCompactions) == 0) {
-        ASSERT_OK(client_->FlushTables({table_->id()}, false, 30, true));
+        ASSERT_OK(client_->CompactTables({table_->id()}));
       }
     }
   }

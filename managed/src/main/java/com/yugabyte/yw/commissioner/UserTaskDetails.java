@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner;
 
@@ -299,7 +299,13 @@ public class UserTaskDetails {
     PersistUseClockbound,
 
     // Support bundle component download
-    SupportBundleComponentDownload
+    SupportBundleComponentDownload,
+
+    // Persist immutable YBC
+    PersistYbdbInbuiltYbc,
+
+    // Migrate resources from YBA to operator
+    OperatorImportResource
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -695,6 +701,14 @@ public class UserTaskDetails {
       case PersistUseClockbound:
         title = "Persist useClockbound";
         description = "Persist useClockbound true/false in userIntent";
+        break;
+      case PersistYbdbInbuiltYbc:
+        title = "Persist useYbdbInbuiltYbc";
+        description = "Persist useYbdbInbuiltYbc in userIntent";
+        break;
+      case OperatorImportResource:
+        title = "Importing Resource to Operator";
+        description = "Importing Resource from YBA to Operator";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);

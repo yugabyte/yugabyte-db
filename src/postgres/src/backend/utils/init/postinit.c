@@ -11,9 +11,9 @@
  *	  src/backend/utils/init/postinit.c
  *
  * The following only applies to changes made to this file as part of
- * YugaByte development.
+ * YugabyteDB development.
  *
- * Portions Copyright (c) YugaByte, Inc.
+ * Portions Copyright (c) YugabyteDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you
  * may not use this file except in compliance with the License.
@@ -91,8 +91,8 @@
 #include "catalog/pg_yb_tablegroup.h"
 #include "catalog/yb_catalog_version.h"
 #include "catalog/yb_logical_client_version.h"
-#include "pg_yb_utils.h"
 #include "utils/yb_inheritscache.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 
 static HeapTuple GetDatabaseTuple(const char *dbname);
 static HeapTuple GetDatabaseTupleByOid(Oid dboid);
@@ -110,16 +110,9 @@ static void process_startup_options(Port *port, bool am_superuser);
 static void process_settings(Oid databaseid, Oid roleid);
 
 /* YB functions */
-static void InitPostgresImpl(const char *in_dbname, Oid dboid,
-							 const char *username, Oid useroid,
-							 bool load_session_libraries,
-							 bool override_allow_connections,
-							 char *out_dbname,
-							 uint64_t *yb_session_id,
-							 bool *yb_sys_table_prefetching_started);
-static void YbEnsureSysTablePrefetchingStopped();
 static void YbPresetDatabaseCollation(HeapTuple tuple);
 
+static long YbNumAuthorizedConnections = 0L;
 
 /*** InitPostgres support ***/
 
@@ -334,6 +327,9 @@ PerformAuthentication(Port *port)
 		ereport(LOG, errmsg_internal("%s", logmsg.data));
 		pfree(logmsg.data);
 	}
+
+	if (IsYugaByteEnabled())
+		YbNumAuthorizedConnections++;
 
 	set_ps_display("startup");
 
@@ -726,25 +722,10 @@ InitPostgres(const char *in_dbname, Oid dboid,
 			 const char *username, Oid useroid,
 			 bool load_session_libraries,
 			 bool override_allow_connections,
-			 char *out_dbname,
-			 uint64_t *yb_session_id)
+			 char *out_dbname)
 {
-	bool		sys_table_prefetching_started = false;
-
-	PG_TRY();
-	{
-		InitPostgresImpl(in_dbname, dboid, username, useroid,
-						 load_session_libraries, override_allow_connections,
-						 out_dbname, yb_session_id,
-						 &sys_table_prefetching_started);
-	}
-	PG_CATCH();
-	{
-		YbEnsureSysTablePrefetchingStopped();
-		PG_RE_THROW();
-	}
-	PG_END_TRY();
-	YbEnsureSysTablePrefetchingStopped();
+	YbInitPostgres(in_dbname, dboid, username, useroid, load_session_libraries,
+				   override_allow_connections, out_dbname, NULL);
 }
 
 static void
@@ -753,7 +734,7 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 				 bool load_session_libraries,
 				 bool override_allow_connections,
 				 char *out_dbname,
-				 uint64_t *yb_session_id,
+				 const YbcPgInitPostgresInfo *yb_init_info,
 				 bool *yb_sys_table_prefetching_started)
 {
 	bool		bootstrap = IsBootstrapProcessingMode();
@@ -862,10 +843,7 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 		YbAshSetOneTimeMetadata();
 
 	/* Connect to YugaByte cluster. */
-	if (bootstrap)
-		YBInitPostgresBackend("postgres", yb_session_id);
-	else
-		YBInitPostgresBackend("postgres", yb_session_id);
+	YBInitPostgresBackend("postgres", yb_init_info);
 
 	if (IsYugaByteEnabled() && !bootstrap)
 	{
@@ -880,7 +858,30 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 		 * catalog version mode is impossible in case prefething is started.
 		 */
 		YBIsDBCatalogVersionMode();
-		YBCStartSysTablePrefetchingNoCache();
+		uint64_t	shared_catalog_version;
+
+		HandleYBStatus(YBCGetSharedCatalogVersion(&shared_catalog_version));
+		if (YbUseTserverResponseCacheForAuth(shared_catalog_version))
+		{
+			/*
+			 * If YB connection manager is enabled, for scalability reason we use
+			 * shared catalog version instead of YbGetMasterCatalogVersion() to
+			 * avoid one master RPC.
+			 */
+			YbcPgLastKnownCatalogVersionInfo catalog_version =
+				(YbcPgLastKnownCatalogVersionInfo)
+			{
+				.version = shared_catalog_version,
+				.version_read_time = {},
+				.is_db_catalog_version_mode = YBIsDBCatalogVersionMode(),
+			};
+
+			YBCStartSysTablePrefetching(Template1DbOid,
+										catalog_version,
+										YB_YQL_PREFETCHER_TRUST_CACHE_AUTH);
+		}
+		else
+			YBCStartSysTablePrefetchingNoCache();
 		YbRegisterSysTableForPrefetching(AuthIdRelationId); /* pg_authid */
 		YbRegisterSysTableForPrefetching(DatabaseRelationId);	/* pg_database */
 
@@ -1419,6 +1420,32 @@ YbEnsureSysTablePrefetchingStopped()
 		YBCStopSysTablePrefetching();
 }
 
+void
+YbInitPostgres(const char *in_dbname, Oid dboid,
+			   const char *username, Oid useroid,
+			   bool load_session_libraries,
+			   bool override_allow_connections,
+			   char *out_dbname, const YbcPgInitPostgresInfo *yb_init_info)
+{
+	bool		sys_table_prefetching_started = false;
+
+	PG_TRY();
+	{
+		InitPostgresImpl(in_dbname, dboid, username, useroid,
+						 load_session_libraries, override_allow_connections,
+						 out_dbname, yb_init_info, &sys_table_prefetching_started);
+	}
+	PG_CATCH();
+	{
+		YbEnsureSysTablePrefetchingStopped();
+		YBCUpdateInitPostgresMetrics();
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+	YbEnsureSysTablePrefetchingStopped();
+	YBCUpdateInitPostgresMetrics();
+}
+
 /*
  * Check and set database collation once MyDatabaseId is resolved. In YB we
  * need to do this earlier because of prefetching where we may need to
@@ -1461,6 +1488,12 @@ YbPresetDatabaseCollation(HeapTuple tuple)
 	default_locale.provider = dbform->datlocprovider;
 	default_locale.deterministic = true;
 	yb_default_collation_resolved = true;
+}
+
+long
+YbGetAuthorizedConnections()
+{
+	return YbNumAuthorizedConnections;
 }
 
 /*

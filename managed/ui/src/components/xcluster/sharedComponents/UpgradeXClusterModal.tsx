@@ -27,7 +27,7 @@ const useStyles = makeStyles((theme) => ({
     gap: theme.spacing(0.5),
     alignItems: 'center',
 
-    color: theme.palette.orange[500],
+    color: theme.palette.ybacolors.primary4,
     cursor: 'pointer',
     textDecoration: 'underline'
   }

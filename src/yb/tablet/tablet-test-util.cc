@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -13,20 +13,19 @@
 
 #include "yb/tablet/tablet-test-util.h"
 
-#include "yb/qlexpr/ql_expr.h"
+#include <algorithm>
+
 #include "yb/common/ql_value.h"
 
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
 
 #include "yb/dockv/reader_projection.h"
 
-#include "yb/gutil/strings/join.h"
+#include "yb/qlexpr/ql_expr.h"
 
 #include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
-
-#include "yb/tserver/tserver_admin.pb.h"
 
 #include "yb/util/status_log.h"
 
@@ -34,8 +33,7 @@ using std::string;
 
 DECLARE_bool(enable_data_block_fsync);
 
-namespace yb {
-namespace tablet {
+namespace yb::tablet {
 
 YBTabletTest::YBTabletTest(const Schema& schema, TableType table_type)
   : schema_(schema),
@@ -56,11 +54,11 @@ void YBTabletTest::SetUp() {
 
 void YBTabletTest::CreateTestTablet(const std::string& root_dir) {
   string dir = root_dir.empty() ? GetTestPath("fs_root") : root_dir;
-  TabletHarness::Options opts(dir);
+  TabletTestHarness::Options opts(dir);
   opts.enable_metrics = true;
   opts.table_type = table_type_;
-  bool first_time = harness_ == NULL;
-  harness_.reset(new TabletHarness(schema_, opts));
+  bool first_time = harness_ == nullptr;
+  harness_.reset(new TabletTestHarness(schema_, opts));
   CHECK_OK(harness_->Create(first_time));
 }
 
@@ -74,7 +72,7 @@ void YBTabletTest::AlterSchema(const Schema& schema) {
   LWChangeMetadataRequestPB req(&arena);
   req.set_schema_version(tablet()->metadata()->primary_table_schema_version() + 1);
 
-  ChangeMetadataOperation operation(nullptr, nullptr, &req);
+  ChangeMetadataOperation operation(/*tablet=*/nullptr, /*log=*/nullptr, &req);
   ASSERT_OK(tablet()->CreatePreparedChangeMetadata(
       &operation, &schema, IsLeaderSide::kTrue));
   ASSERT_OK(tablet()->AlterSchema(&operation));
@@ -94,7 +92,7 @@ Status IterateToStringList(
     temp.emplace_back(key, row.ToString(schema));
     fetched++;
   }
-  std::sort(temp.begin(), temp.end(), [](const auto& lhs, const auto& rhs) {
+  std::ranges::sort(temp, [](const auto& lhs, const auto& rhs) {
     return lhs.first < rhs.first;
   });
   for (auto& p : temp) {
@@ -111,10 +109,9 @@ Status DumpTablet(const Tablet& tablet, std::vector<std::string>* out) {
   RETURN_NOT_OK(iter);
   std::vector<string> rows;
   RETURN_NOT_OK(IterateToStringList(iter->get(), schema, &rows));
-  std::sort(rows.begin(), rows.end());
+  std::ranges::sort(rows);
   out->swap(rows);
   return Status::OK();
 }
 
-} // namespace tablet
-} // namespace yb
+} // namespace yb::tablet

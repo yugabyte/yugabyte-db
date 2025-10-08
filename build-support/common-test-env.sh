@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Copyright (c) YugaByte, Inc.
+# Copyright (c) YugabyteDB, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 # in compliance with the License.  You may obtain a copy of the License at
@@ -1131,7 +1131,7 @@ set_sanitizer_runtime_options() {
     fi
   fi
 
-  if [[ $build_root_basename =~ ^asan- ]]; then
+  if [[ $build_root_basename =~ ^asan ]]; then
     # Enable leak detection even under LLVM 3.4, where it was disabled by default.
     # This flag only takes effect when running an ASAN build.
     export ASAN_OPTIONS="detect_leaks=1 disable_coredump=0"
@@ -1193,92 +1193,76 @@ did_test_succeed() {
     return 1
   fi
 
-  if grep -q 'LeakSanitizer: detected memory leaks' "$log_path"; then
-    log 'Test failure reason: Detected memory leaks'
-    return 1
-  fi
+  declare -A patterns=(
+    ['LeakSanitizer: detected memory leaks']='Detected memory leaks'
+    ['AddressSanitizer: heap-use-after-free']='Detected use of freed memory'
+    ['Leak check.*detected leaks']='Leak check failures'
+    ['AddressSanitizer: undefined-behavior']='Detected ASAN undefined behavior'
+    ['UndefinedBehaviorSanitizer: undefined-behavior']='Detected UBSAN undefined behavior'
+    ['ThreadSanitizer']='ThreadSanitizer failures'
+    ['Segmentation fault: ']='Segmentation fault'
+    ['Check failed: ']='Check failed'
+    ['^\[INFO\] BUILD FAILURE$']='Java build or tests failed'
+    ['^\[  FAILED  \]']='GTest failures'
+  )
 
-  if grep -q 'AddressSanitizer: heap-use-after-free' "$log_path"; then
-    log 'Test failure reason: Detected use of freed memory'
-    return 1
-  fi
+  signals=(
+    SIGHUP
+    SIGINT
+    SIGQUIT
+    SIGILL
+    SIGTRAP
+    SIGIOT
+    SIGBUS
+    SIGFPE
+    SIGUSR1
+    SIGSEGV
+    SIGUSR2
+    SIGPIPE
+    SIGALRM
+    SIGTERM
+    SIGSTKFLT
+    SIGCHLD
+    SIGCONT
+    SIGSTOP
+    SIGTSTP
+    SIGTTIN
+    SIGTTOU
+    SIGURG
+    SIGXCPU
+    SIGXFSZ
+    SIGVTALRM
+    SIGPROF
+    SIGWINCH
+    SIGIO
+    SIGPWR
+  )
 
-  if grep -q 'AddressSanitizer: undefined-behavior' "$log_path"; then
-    log 'Test failure reason: Detected ASAN undefined behavior'
-    return 1
-  fi
-
-  if grep -q 'UndefinedBehaviorSanitizer: undefined-behavior' "$log_path"; then
-    log 'Test failure reason: Detected UBSAN undefined behavior'
-    return 1
-  fi
-
-  if grep -q 'ThreadSanitizer' "$log_path"; then
-    log 'Test failure reason: ThreadSanitizer failures'
-    return 1
-  fi
-
-  if grep -Eq 'Leak check.*detected leaks' "$log_path"; then
-    log 'Test failure reason: Leak check failures'
-    return 1
-  fi
-
-  if grep -Eq 'Segmentation fault: ' "$log_path"; then
-    log 'Test failure reason: Segmentation fault'
-    return 1
-  fi
-
-  if grep -Eq '^\[  FAILED  \]' "$log_path"; then
-    log 'Test failure reason: GTest failures'
-    return 1
-  fi
-
-  # When signals show up in the test log, that's usually not good. We can see how many of these we
-  # get and gradually prune false positives.
-  local signal_str
-  for signal_str in \
-      SIGHUP \
-      SIGINT \
-      SIGQUIT \
-      SIGILL \
-      SIGTRAP \
-      SIGIOT \
-      SIGBUS \
-      SIGFPE \
-      SIGUSR1 \
-      SIGSEGV \
-      SIGUSR2 \
-      SIGPIPE \
-      SIGALRM \
-      SIGTERM \
-      SIGSTKFLT \
-      SIGCHLD \
-      SIGCONT \
-      SIGSTOP \
-      SIGTSTP \
-      SIGTTIN \
-      SIGTTOU \
-      SIGURG \
-      SIGXCPU \
-      SIGXFSZ \
-      SIGVTALRM \
-      SIGPROF \
-      SIGWINCH \
-      SIGIO \
-      SIGPWR; do
-    if grep -q " $signal_str " "$log_path"; then
-      log "Test failure reason: Caught signal: $signal_str"
-      return 1
-    fi
+  for signal in "${signals[@]}"; do
+    patterns[" $signal "]="Caught signal: $signal"
   done
 
-  if grep -q 'Check failed: ' "$log_path"; then
-    log 'Test failure reason: Check failed'
-    return 1
-  fi
+  grep_args=("awk")
+  grep_args+=("/$(IFS="|"; echo "${!patterns[*]}")/")
+  grep_args+=("$log_path")
 
-  if grep -Eq '^\[INFO\] BUILD FAILURE$' "$log_path"; then
-    log "Test failure reason: Java build or tests failed"
+  found_results=$("${grep_args[@]}")
+
+  found_count=0
+  while IFS= read -r matched_line; do
+    for regex in "${!patterns[@]}"; do
+      if [[ "$matched_line" =~ $regex ]]; then
+        echo "Test failure reason: ${patterns[$regex]}"
+        ((found_count++))
+        break
+      fi
+    done
+    if [[ $found_count -ne 0 ]]; then
+      break
+    fi
+  done <<< "$found_results"
+
+  if [[ $found_count -ne 0 ]]; then
     return 1
   fi
 
@@ -1324,7 +1308,7 @@ find_spark_submit_cmd() {
     return
   fi
 
-  if [[ $build_type == "tsan" || $build_type == "asan" ]]; then
+  if is_sanitizer ; then
     spark_submit_cmd_path=${YB_ASAN_TSAN_PY3_SPARK_SUBMIT_CMD:-"NoSpark"}
     return
   fi
@@ -1375,7 +1359,7 @@ run_tests_on_spark() {
     time "$spark_submit_cmd_path" \
       --driver-cores "$INITIAL_SPARK_DRIVER_CORES" \
       "$YB_SCRIPT_PATH_RUN_TESTS_ON_SPARK" \
-      "${run_tests_args[@]}" "$@" 2>&1 | \
+      "${run_tests_args[@]}" 2>&1 | \
       grep -Ev "TaskSetManager: (Starting task|Finished task .* \([0-9]+[1-9]/[0-9]+\))" \
            --line-buffered
     exit "${PIPESTATUS[0]}"

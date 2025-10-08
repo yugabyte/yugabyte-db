@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -25,6 +25,8 @@ DECLARE_bool(enable_wait_queues);
 DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_bool(ysql_skip_row_lock_for_update);
 DECLARE_bool(ysql_yb_enable_advisory_locks);
+DECLARE_bool(skip_prefix_locks);
+DECLARE_bool(ysql_enable_packed_row);
 
 using namespace std::literals;
 
@@ -42,11 +44,28 @@ class PgRowLockTest : public PgMiniTestBase {
 
  protected:
   void SetUp() override {
+    // Run the test first with default skip_prefix_locks value
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_skip_prefix_locks) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
     // This test depends on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
     EnableFailOnConflict();
     PgMiniTestBase::SetUp();
+  }
+
+  // Helper method to run test logic twice with skip prefix lock disabled/enable
+  template<typename TestFunc>
+  void RunTestTwice(TestFunc test_func) {
+    // First run: with default skip_prefix_locks value
+    LOG(INFO) << "Running test with skip_prefix_locks=false";
+    test_func();
+
+    // Second run: with skip_prefix_locks=true
+    LOG(INFO) << "Running test with skip_prefix_locks=true";
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_skip_prefix_locks) = true;
+    ASSERT_OK(cluster_->RestartSync());
+    test_func();
   }
 };
 
@@ -174,76 +193,92 @@ void PgRowLockTest::TestStmtBeforeRowLockImpl(TestStatement statement) {
 }
 
 TEST_F(PgRowLockTest, YB_DISABLE_TEST_IN_SANITIZERS(InsertBeforeExplicitRowLock)) {
-  TestStmtBeforeRowLockImpl(TestStatement::kInsert);
+  RunTestTwice([this]() {
+    TestStmtBeforeRowLockImpl(TestStatement::kInsert);
+  });
 }
 
 TEST_F(PgRowLockTest, YB_DISABLE_TEST_IN_SANITIZERS(DeleteBeforeExplicitRowLock)) {
-  TestStmtBeforeRowLockImpl(TestStatement::kDelete);
+  RunTestTwice([this]() {
+    TestStmtBeforeRowLockImpl(TestStatement::kDelete);
+  });
 }
 
 TEST_F(PgRowLockTest, RowLockWithoutTransaction) {
-  auto conn = ASSERT_RESULT(Connect());
+  RunTestTwice([this]() {
+    auto conn = ASSERT_RESULT(Connect());
 
-  auto status = conn.Execute(
-      "SELECT relname FROM pg_catalog.pg_class WHERE relname NOT LIKE 'pg%' FOR SHARE");
-  ASSERT_NOK(status);
-  ASSERT_STR_CONTAINS(status.message().ToBuffer(),
-                      "Read request with row mark types must be part of a transaction");
+    auto status = conn.Execute(
+        "SELECT relname FROM pg_catalog.pg_class WHERE relname NOT LIKE 'pg%' FOR SHARE");
+    ASSERT_NOK(status);
+    ASSERT_STR_CONTAINS(status.message().ToBuffer(),
+                        "Read request with row mark types must be part of a transaction");
+  });
 }
 
 TEST_F(PgRowLockTest, SelectForKeyShareWithRestart) {
-  const auto table = "foo";
-  auto conn = ASSERT_RESULT(Connect());
+  RunTestTwice([this]() {
+    const auto table = "foo";
+    auto conn = ASSERT_RESULT(Connect());
 
-  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0(k INT, v INT)", table));
-  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT generate_series(1, 100), 1", table));
-  ASSERT_OK(cluster_->FlushTablets());
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0(k INT, v INT)", table));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT generate_series(1, 100), 1", table));
+    ASSERT_OK(cluster_->FlushTablets());
 
-  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-  ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k=1 FOR KEY SHARE", table));
+    ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k=1 FOR KEY SHARE", table));
 
-  ASSERT_OK(cluster_->RestartSync());
+    ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", table));
+  });
 }
 
 TEST_F(PgRowLockTest, AdvisoryLocksNotSupported) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_advisory_locks) = false;
-  const auto table = "foo";
-  const auto query = Format("SELECT pg_advisory_lock(k) FROM $0", table);
-  auto conn = ASSERT_RESULT(Connect());
+  RunTestTwice([this]() {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_advisory_locks) = false;
+    const auto table = "foo";
+    const auto query = Format("SELECT pg_advisory_lock(k) FROM $0", table);
+    auto conn = ASSERT_RESULT(Connect());
 
-  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0(k INT, v INT)", table));
-  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", table));
-  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-  auto value = conn.Fetch(query);
-  ASSERT_NOK(value);
-  ASSERT_TRUE(value.status().message().Contains("ERROR:  advisory locks are disabled"));
-  ASSERT_OK(conn.RollbackTransaction());
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0(k INT, v INT)", table));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", table));
+    ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    auto value = conn.Fetch(query);
+    ASSERT_NOK(value);
+    ASSERT_TRUE(value.status().message().Contains("ERROR:  advisory locks are disabled"));
+    ASSERT_OK(conn.RollbackTransaction());
 
-  ASSERT_OK(conn.Execute("SET yb_silence_advisory_locks_not_supported_error = true"));
-  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-  ASSERT_OK(conn.Fetch(query));
-  ASSERT_OK(conn.CommitTransaction());
+    ASSERT_OK(conn.Execute("SET yb_silence_advisory_locks_not_supported_error = true"));
+    ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    ASSERT_OK(conn.Fetch(query));
+    ASSERT_OK(conn.CommitTransaction());
+
+    ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", table));
+  });
 }
 
 TEST_F(PgRowLockTest, ObjectLocksNotSupported) {
-  auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
-  auto VerifyAcquireTableLockNotSupport = [&](const std::string& lock_mode) -> void {
-    ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-    auto s = conn.Execute(Format("LOCK TABLE test IN $0 MODE", lock_mode));
-    ASSERT_NOK(s);
-    ASSERT_STR_CONTAINS(s.message().ToBuffer(),
-        Format("ERROR:  $0 not supported yet", lock_mode));
-    ASSERT_OK(conn.RollbackTransaction());
-  };
+  RunTestTwice([this]() {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+    auto VerifyAcquireTableLockNotSupport = [&](const std::string& lock_mode) -> void {
+      ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+      auto s = conn.Execute(Format("LOCK TABLE test IN $0 MODE", lock_mode));
+      ASSERT_NOK(s);
+      ASSERT_STR_CONTAINS(s.message().ToBuffer(),
+          Format("ERROR:  $0 not supported yet", lock_mode));
+      ASSERT_OK(conn.RollbackTransaction());
+    };
 
-  VerifyAcquireTableLockNotSupport("SHARE");
-  VerifyAcquireTableLockNotSupport("SHARE ROW EXCLUSIVE");
-  VerifyAcquireTableLockNotSupport("EXCLUSIVE");
-  VerifyAcquireTableLockNotSupport("ACCESS EXCLUSIVE");
-  VerifyAcquireTableLockNotSupport("ROW SHARE");
-  VerifyAcquireTableLockNotSupport("ROW EXCLUSIVE");
-  VerifyAcquireTableLockNotSupport("SHARE UPDATE EXCLUSIVE");
+    VerifyAcquireTableLockNotSupport("SHARE");
+    VerifyAcquireTableLockNotSupport("SHARE ROW EXCLUSIVE");
+    VerifyAcquireTableLockNotSupport("EXCLUSIVE");
+    VerifyAcquireTableLockNotSupport("ACCESS EXCLUSIVE");
+    VerifyAcquireTableLockNotSupport("ROW SHARE");
+    VerifyAcquireTableLockNotSupport("ROW EXCLUSIVE");
+    VerifyAcquireTableLockNotSupport("SHARE UPDATE EXCLUSIVE");
+
+    ASSERT_OK(conn.Execute("DROP TABLE test"));
+  });
 }
 
 class PgMiniTestNoTxnRetry : public PgRowLockTest {
@@ -251,106 +286,114 @@ class PgMiniTestNoTxnRetry : public PgRowLockTest {
   void BeforePgProcessStart() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_sleep_before_retry_on_txn_conflict) = false;
   }
+
+  // -----------------------------------------------------------------------------------------------
+  // A test performing manual transaction control on system tables.
+  // -----------------------------------------------------------------------------------------------
+  void TestSystemTableTxn() {
+    // Resolving conflicts between transactions on a system table.
+    //
+    // postgres=# \d pg_ts_dict;
+    //
+    //              Table "pg_catalog.pg_ts_dict"
+    //      Column     | Type | Collation | Nullable | Default
+    // ----------------+------+-----------+----------+---------
+    //  oid            | oid  |           | not null |
+    //  dictname       | name |           | not null |
+    //  dictnamespace  | oid  |           | not null |
+    //  dictowner      | oid  |           | not null |
+    //  dicttemplate   | oid  |           | not null |
+    //  dictinitoption | text |           |          |
+    // Indexes:
+    //     "pg_ts_dict_oid_index" PRIMARY KEY, lsm (oid)
+    //     "pg_ts_dict_dictname_index" UNIQUE, lsm (dictname, dictnamespace)
+
+    auto conn1 = ASSERT_RESULT(Connect());
+    auto conn2 = ASSERT_RESULT(Connect());
+    ASSERT_OK(SetNonDDLTxnAllowedForSysTableWrite(conn1, true));
+    ASSERT_OK(SetNonDDLTxnAllowedForSysTableWrite(conn2, true));
+
+    size_t commit1_fail_count = 0;
+    size_t commit2_fail_count = 0;
+    size_t insert2_fail_count = 0;
+
+    const auto kStartTxnStatementStr = "START TRANSACTION ISOLATION LEVEL REPEATABLE READ";
+    const int iterations = 48;
+    for (int i = 1; i <= iterations; ++i) {
+      std::string dictname = Format("contendedkey$0", i);
+      const int dictnamespace = i;
+      ASSERT_OK(conn1.Execute(kStartTxnStatementStr));
+      ASSERT_OK(conn2.Execute(kStartTxnStatementStr));
+      const auto pg_next_oid_str =
+          "pg_nextoid('pg_ts_dict'::regclass::oid, 'oid', 'pg_ts_dict_oid_index'::regclass::oid)";
+      // Insert a row in each transaction. The first insert should always succeed.
+      ASSERT_OK(conn1.Execute(Format("INSERT INTO pg_ts_dict VALUES ($0, '$1', $2, 1, 2, 'b')",
+          pg_next_oid_str, dictname, dictnamespace)));
+      Status insert_status2 = conn2.Execute(Format(
+          "INSERT INTO pg_ts_dict VALUES ($0, '$1', $2, 3, 4, 'c')",
+          pg_next_oid_str, dictname, dictnamespace));
+      if (!insert_status2.ok()) {
+        LOG(INFO) << "MUST BE A CONFLICT: Insert failed: " << insert_status2;
+        insert2_fail_count++;
+      }
+
+      Status commit_status1;
+      Status commit_status2;
+      if (RandomUniformBool()) {
+        commit_status1 = conn1.Execute("COMMIT");
+        commit_status2 = conn2.Execute("COMMIT");
+      } else {
+        commit_status2 = conn2.Execute("COMMIT");
+        commit_status1 = conn1.Execute("COMMIT");
+      }
+      if (!commit_status1.ok()) {
+        commit1_fail_count++;
+      }
+      if (!commit_status2.ok()) {
+        commit2_fail_count++;
+      }
+
+      auto get_commit_statuses_str = [&commit_status1, &commit_status2]() {
+        return Format("commit_status1=$0, commit_status2=$1", commit_status1, commit_status2);
+      };
+
+      bool succeeded1 = commit_status1.ok();
+      bool succeeded2 = insert_status2.ok() && commit_status2.ok();
+
+      ASSERT_TRUE(!succeeded1 || !succeeded2)
+          << "Both transactions can't commit. " << get_commit_statuses_str();
+      ASSERT_TRUE(succeeded1 || succeeded2)
+          << "We expect one of the two transactions to succeed. " << get_commit_statuses_str();
+      if (!commit_status1.ok()) {
+        ASSERT_OK(conn1.Execute("ROLLBACK"));
+      }
+      if (!commit_status2.ok()) {
+        ASSERT_OK(conn2.Execute("ROLLBACK"));
+      }
+
+      if (RandomUniformBool()) {
+        std::swap(conn1, conn2);
+      }
+    }
+    LOG(INFO) << "Test stats: "
+              << YB_EXPR_TO_STREAM_COMMA_SEPARATED(
+                  commit1_fail_count,
+                  insert2_fail_count,
+                  commit2_fail_count);
+    ASSERT_GE(commit1_fail_count, iterations / 4);
+    ASSERT_GE(insert2_fail_count, iterations / 4);
+    ASSERT_EQ(commit2_fail_count, 0);
+  }
 };
 
-// ------------------------------------------------------------------------------------------------
-// A test performing manual transaction control on system tables.
-// ------------------------------------------------------------------------------------------------
-
 TEST_F_EX(PgRowLockTest, SystemTableTxnTest, PgMiniTestNoTxnRetry) {
+  TestSystemTableTxn();
+}
 
-  // Resolving conflicts between transactions on a system table.
-  //
-  // postgres=# \d pg_ts_dict;
-  //
-  //              Table "pg_catalog.pg_ts_dict"
-  //      Column     | Type | Collation | Nullable | Default
-  // ----------------+------+-----------+----------+---------
-  //  oid            | oid  |           | not null |
-  //  dictname       | name |           | not null |
-  //  dictnamespace  | oid  |           | not null |
-  //  dictowner      | oid  |           | not null |
-  //  dicttemplate   | oid  |           | not null |
-  //  dictinitoption | text |           |          |
-  // Indexes:
-  //     "pg_ts_dict_oid_index" PRIMARY KEY, lsm (oid)
-  //     "pg_ts_dict_dictname_index" UNIQUE, lsm (dictname, dictnamespace)
-
-  auto conn1 = ASSERT_RESULT(Connect());
-  auto conn2 = ASSERT_RESULT(Connect());
-  ASSERT_OK(SetNonDDLTxnAllowedForSysTableWrite(conn1, true));
-  ASSERT_OK(SetNonDDLTxnAllowedForSysTableWrite(conn2, true));
-
-  size_t commit1_fail_count = 0;
-  size_t commit2_fail_count = 0;
-  size_t insert2_fail_count = 0;
-
-  const auto kStartTxnStatementStr = "START TRANSACTION ISOLATION LEVEL REPEATABLE READ";
-  const int iterations = 48;
-  for (int i = 1; i <= iterations; ++i) {
-    std::string dictname = Format("contendedkey$0", i);
-    const int dictnamespace = i;
-    ASSERT_OK(conn1.Execute(kStartTxnStatementStr));
-    ASSERT_OK(conn2.Execute(kStartTxnStatementStr));
-    const auto pg_next_oid_str =
-        "pg_nextoid('pg_ts_dict'::regclass::oid, 'oid', 'pg_ts_dict_oid_index'::regclass::oid)";
-    // Insert a row in each transaction. The first insert should always succeed.
-    ASSERT_OK(conn1.Execute(Format("INSERT INTO pg_ts_dict VALUES ($0, '$1', $2, 1, 2, 'b')",
-        pg_next_oid_str, dictname, dictnamespace)));
-    Status insert_status2 = conn2.Execute(Format(
-        "INSERT INTO pg_ts_dict VALUES ($0, '$1', $2, 3, 4, 'c')",
-        pg_next_oid_str, dictname, dictnamespace));
-    if (!insert_status2.ok()) {
-      LOG(INFO) << "MUST BE A CONFLICT: Insert failed: " << insert_status2;
-      insert2_fail_count++;
-    }
-
-    Status commit_status1;
-    Status commit_status2;
-    if (RandomUniformBool()) {
-      commit_status1 = conn1.Execute("COMMIT");
-      commit_status2 = conn2.Execute("COMMIT");
-    } else {
-      commit_status2 = conn2.Execute("COMMIT");
-      commit_status1 = conn1.Execute("COMMIT");
-    }
-    if (!commit_status1.ok()) {
-      commit1_fail_count++;
-    }
-    if (!commit_status2.ok()) {
-      commit2_fail_count++;
-    }
-
-    auto get_commit_statuses_str = [&commit_status1, &commit_status2]() {
-      return Format("commit_status1=$0, commit_status2=$1", commit_status1, commit_status2);
-    };
-
-    bool succeeded1 = commit_status1.ok();
-    bool succeeded2 = insert_status2.ok() && commit_status2.ok();
-
-    ASSERT_TRUE(!succeeded1 || !succeeded2)
-        << "Both transactions can't commit. " << get_commit_statuses_str();
-    ASSERT_TRUE(succeeded1 || succeeded2)
-        << "We expect one of the two transactions to succeed. " << get_commit_statuses_str();
-    if (!commit_status1.ok()) {
-      ASSERT_OK(conn1.Execute("ROLLBACK"));
-    }
-    if (!commit_status2.ok()) {
-      ASSERT_OK(conn2.Execute("ROLLBACK"));
-    }
-
-    if (RandomUniformBool()) {
-      std::swap(conn1, conn2);
-    }
-  }
-  LOG(INFO) << "Test stats: "
-            << YB_EXPR_TO_STREAM_COMMA_SEPARATED(
-                commit1_fail_count,
-                insert2_fail_count,
-                commit2_fail_count);
-  ASSERT_GE(commit1_fail_count, iterations / 4);
-  ASSERT_GE(insert2_fail_count, iterations / 4);
-  ASSERT_EQ(commit2_fail_count, 0);
+TEST_F_EX(PgRowLockTest, SystemTableTxnTest_SkipPrefixLock, PgMiniTestNoTxnRetry) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_skip_prefix_locks) = true;
+  ASSERT_OK(cluster_->RestartSync());
+  TestSystemTableTxn();
 }
 
 template<IsolationLevel level>
@@ -376,12 +419,16 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     auto res = ASSERT_RESULT(
         conn.template FetchRow<PGUint64>("SELECT COUNT(*) FROM pktable WHERE v = 20"));
     ASSERT_EQ(res, 1);
+
+    ASSERT_OK(conn.Execute("DROP TABLE fktable"));
+    ASSERT_OK(conn.Execute("DROP TABLE pktable"));
   }
 
   // Check that `FOR KEY SHARE` prevents rows from being deleted even in case not all key
   // components are specified (for SERIALIZABLE isolation level). For REPEATABLE READ, only rows
   // returned to the user are locked.
   void TestRowKeyShareLock(const std::string& cur_name = "") {
+    const bool skip_prefix_locks = ANNOTATE_UNPROTECTED_READ(FLAGS_skip_prefix_locks);
     auto conn = ASSERT_RESULT(SetHighPriTxn(Connect()));
     auto extra_conn = ASSERT_RESULT(SetLowPriTxn(Connect()));
 
@@ -402,8 +449,13 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     ASSERT_NOK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 1 AND r1 = 2 AND r2 = 3"));
     ASSERT_NOK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 1 AND r1 = 2 AND r2 = 30"));
 
-    // Doc key (1, 3, 4) is not locked in both isolation levels.
-    ASSERT_OK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 1 AND r1 = 3 AND r2 = 4"));
+    // Will conflict when skip_prefix_locks is enabled in SERIALIZABLE_ISOLATION level. Should not
+    // conflict in other cases.
+    if (skip_prefix_locks && level == IsolationLevel::SERIALIZABLE_ISOLATION) {
+      ASSERT_NOK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 1 AND r1 = 3 AND r2 = 4"));
+    } else {
+      ASSERT_OK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 1 AND r1 = 3 AND r2 = 4"));
+    }
 
     // New rows with prefix that matches (1, 2) can't be inserted in SERIALIZABLE level.
     if (level == IsolationLevel::SERIALIZABLE_ISOLATION) {
@@ -422,6 +474,10 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     }
 
     ASSERT_OK(conn.Execute("COMMIT"));
+    // Now delete should succeed after the txn in conn has committed.
+    if (skip_prefix_locks && level == IsolationLevel::SERIALIZABLE_ISOLATION) {
+      ASSERT_OK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 1 AND r1 = 3 AND r2 = 4"));
+    }
 
     // Transaction 2.
     // For SERIALIZABLE level:
@@ -500,6 +556,8 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
 
     auto res = ASSERT_RESULT(conn.template FetchRow<PGUint64>("SELECT COUNT(*) FROM t"));
     ASSERT_EQ(res, 1);
+
+    ASSERT_OK(conn.Execute("DROP TABLE t"));
   }
 
   // Check conflicts according to the following matrix (X - conflict, O - no conflict):
@@ -568,6 +626,8 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     ASSERT_OK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR UPDATE"));
 
     ASSERT_NOK(conn.Execute("COMMIT"));
+
+    ASSERT_OK(conn.Execute("DROP TABLE t"));
   }
 
   void RowLock(PGConn* connection, const std::string& query, const std::string& cur_name) {
@@ -618,6 +678,8 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     ASSERT_OK(conn.Execute("COMMIT;"));
     const auto count = ASSERT_RESULT(conn.template FetchRow<PGUint64>("SELECT COUNT(*) FROM t"));
     ASSERT_EQ(4, count);
+
+    ASSERT_OK(conn.Execute("DROP TABLE t"));
   }
 
   // Check that 2 rows with same PK can't be inserted from different txns.
@@ -680,6 +742,8 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     const auto count = ASSERT_RESULT(
       extra_conn.template FetchRow<PGUint64>("SELECT COUNT(*) FROM t WHERE v = 10"));
     ASSERT_EQ(low_pri_txn_succeed ? 2 : 1, count);
+
+    ASSERT_OK(extra_conn.Execute("DROP TABLE t"));
   }
 };
 
@@ -720,6 +784,8 @@ class PgMiniTestTxnHelperSerializable
 
     res = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT COUNT(*) FROM t WHERE v2 = 6"));
     ASSERT_EQ(res, 1);
+
+    ASSERT_OK(conn.Execute("DROP TABLE t"));
   }
 };
 
@@ -749,6 +815,8 @@ class PgRowLockTxnHelperSnapshotTest
     const auto res = ASSERT_RESULT(conn.FetchRow<PGUint64>(
         "SELECT COUNT(*) FROM t WHERE v = 20"));
     ASSERT_EQ(res, 1);
+
+    ASSERT_OK(conn.Execute("DROP TABLE t"));
   }
 };
 
@@ -763,159 +831,209 @@ class PgMiniTestTxnHelperSerializableColumnLevelLocking
 TEST_F_EX(PgRowLockTest,
           ReferencedTableUpdateSerializable,
           PgMiniTestTxnHelperSerializable) {
-  TestReferencedTableUpdate();
+  RunTestTwice([this]() {
+    TestReferencedTableUpdate();
+  });
 }
 
 TEST_F_EX(PgRowLockTest,
           ReferencedTableUpdateSnapshot,
           PgRowLockTxnHelperSnapshotTest) {
-  TestReferencedTableUpdate();
+  RunTestTwice([this]() {
+    TestReferencedTableUpdate();
+  });
 }
 
 TEST_F_EX(PgRowLockTest,
           ReferencedTableUpdateReadCommitted,
           PgMiniTestTxnHelper<IsolationLevel::READ_COMMITTED>) {
-  TestReferencedTableUpdate();
+  RunTestTwice([this]() {
+    TestReferencedTableUpdate();
+  });
 }
 
 TEST_F_EX(PgRowLockTest,
           RowKeyShareLockSerializable,
           PgMiniTestTxnHelperSerializable) {
-  TestRowKeyShareLock();
+  RunTestTwice([this]() {
+    TestRowKeyShareLock();
+  });
 }
 
 TEST_F_EX(PgRowLockTest,
           RowKeyShareLockSnapshot,
           PgRowLockTxnHelperSnapshotTest) {
-  TestRowKeyShareLock();
+  RunTestTwice([this]() {
+    TestRowKeyShareLock();
+  });
 }
 
 TEST_F_EX(PgRowLockTest,
           RowLockConflictMatrixSerializable,
           PgMiniTestTxnHelperSerializable) {
-  TestRowLockConflictMatrix();
+  RunTestTwice([this]() {
+    TestRowLockConflictMatrix();
+  });
 }
 
 TEST_F_EX(PgRowLockTest,
           RowLockConflictMatrixSnapshot,
           PgRowLockTxnHelperSnapshotTest) {
-  TestRowLockConflictMatrix();
+  RunTestTwice([this]() {
+    TestRowLockConflictMatrix();
+  });
 }
 
 TEST_F_EX(PgRowLockTest,
           CursorRowKeyShareLockSerializable,
           PgMiniTestTxnHelperSerializable) {
-  TestRowKeyShareLock("cur_name");
+  RunTestTwice([this]() {
+    TestRowKeyShareLock("cur_name");
+  });
 }
 
 TEST_F_EX(PgRowLockTest,
           CursorRowKeyShareLockSnapshot,
           PgRowLockTxnHelperSnapshotTest) {
-  TestRowKeyShareLock("cur_name");
+  RunTestTwice([this]() {
+    TestRowKeyShareLock("cur_name");
+  });
 }
 
 TEST_F_EX(PgRowLockTest,
           CursorRowLockConflictMatrixSerializable,
           PgMiniTestTxnHelperSerializable) {
-  TestRowLockConflictMatrix("cur_name");
+  RunTestTwice([this]() {
+    TestRowLockConflictMatrix("cur_name");
+  });
 }
 
 TEST_F_EX(PgRowLockTest,
           CursorRowLockConflictMatrixSnapshot,
           PgRowLockTxnHelperSnapshotTest) {
-  TestRowLockConflictMatrix("cur_name");
+  RunTestTwice([this]() {
+    TestRowLockConflictMatrix("cur_name");
+  });
 }
 
 // TODO(#19729): Finer column level locking should be enabled on simple statements.
 TEST_F_EX(PgRowLockTest,
           SameColumnUpdateSerializableWithPushdown,
           PgMiniTestTxnHelperSerializableColumnLevelLocking) {
-  TestSameColumnUpdate(true /* enable_expression_pushdown */);
+  RunTestTwice([this]() {
+    TestSameColumnUpdate(true /* enable_expression_pushdown */);
+  });
 }
 
 TEST_F_EX(PgRowLockTest,
           SameColumnUpdateSnapshotWithPushdown,
           PgRowLockTxnHelperSnapshotTest) {
-  TestSameColumnUpdate(true /* enable_expression_pushdown */);
+  RunTestTwice([this]() {
+    TestSameColumnUpdate(true /* enable_expression_pushdown */);
+  });
 }
 
 // TODO(#19729): Finer column level locking should be enabled on simple statements.
 TEST_F_EX(PgRowLockTest,
           SameColumnUpdateSerializableWithoutPushdown,
           PgMiniTestTxnHelperSerializableColumnLevelLocking) {
-  TestSameColumnUpdate(false /* enable_expression_pushdown */);
+  RunTestTwice([this]() {
+    TestSameColumnUpdate(false /* enable_expression_pushdown */);
+  });
 }
 
 TEST_F_EX(PgRowLockTest,
           SameColumnUpdateSnapshotWithoutPushdown,
           PgRowLockTxnHelperSnapshotTest) {
-  TestSameColumnUpdate(false /* enable_expression_pushdown */);
+  RunTestTwice([this]() {
+    TestSameColumnUpdate(false /* enable_expression_pushdown */);
+  });
 }
 
 TEST_F_EX(PgRowLockTest,
           DuplicateInsertSerializable,
           PgMiniTestTxnHelperSerializable) {
-  TestDuplicateInsert();
+  RunTestTwice([this]() {
+    TestDuplicateInsert();
+  });
 }
 
 TEST_F_EX(PgRowLockTest,
           DuplicateInsertSnapshot,
           PgRowLockTxnHelperSnapshotTest) {
-  TestDuplicateInsert();
+  RunTestTwice([this]() {
+    TestDuplicateInsert();
+  });
 }
 
 TEST_F_EX(PgRowLockTest,
           DuplicateUniqueIndexInsertSerializable,
           PgMiniTestTxnHelperSerializable) {
-  TestDuplicateUniqueIndexInsert();
+  RunTestTwice([this]() {
+    TestDuplicateUniqueIndexInsert();
+  });
 }
 
 TEST_F_EX(PgRowLockTest,
           DuplicateUniqueIndexInsertSnapshot,
           PgRowLockTxnHelperSnapshotTest) {
-  TestDuplicateUniqueIndexInsert();
+  RunTestTwice([this]() {
+    TestDuplicateUniqueIndexInsert();
+  });
 }
 
 TEST_F_EX(PgRowLockTest,
           DuplicateNonUniqueIndexInsertSerializable,
           PgMiniTestTxnHelperSerializable) {
-  TestDuplicateNonUniqueIndexInsert();
+  RunTestTwice([this]() {
+    TestDuplicateNonUniqueIndexInsert();
+  });
 }
 
 TEST_F_EX(PgRowLockTest,
           DuplicateNonUniqueIndexInsertSnapshot,
           PgRowLockTxnHelperSnapshotTest) {
-  TestDuplicateNonUniqueIndexInsert();
+  RunTestTwice([this]() {
+    TestDuplicateNonUniqueIndexInsert();
+  });
 }
 
-TEST_F_EX(
-  PgRowLockTest, SnapshotInOperatorLock,
-  PgRowLockTxnHelperSnapshotTest) {
-  TestInOperatorLock();
+TEST_F_EX(PgRowLockTest,
+          SnapshotInOperatorLock,
+          PgRowLockTxnHelperSnapshotTest) {
+  RunTestTwice([this]() {
+    TestInOperatorLock();
+  });
 }
 
-TEST_F_EX(
-    PgRowLockTest, SerializableInOperatorLock,
-    PgMiniTestTxnHelperSerializable) {
-  TestInOperatorLock();
+TEST_F_EX(PgRowLockTest,
+          SerializableInOperatorLock,
+          PgMiniTestTxnHelperSerializable) {
+  RunTestTwice([this]() {
+    TestInOperatorLock();
+  });
 }
 
-TEST_F_EX(
-    PgRowLockTest, PartialKeyRowLockConflict,
-    PgMiniTestTxnHelperSerializable) {
-  auto conn = ASSERT_RESULT(SetHighPriTxn(Connect()));
-  auto extra_conn = ASSERT_RESULT(SetLowPriTxn(Connect()));
+TEST_F_EX(PgRowLockTest,
+          PartialKeyRowLockConflict,
+          PgMiniTestTxnHelperSerializable) {
+  RunTestTwice([this]() {
+    auto conn = ASSERT_RESULT(SetHighPriTxn(Connect()));
+    auto extra_conn = ASSERT_RESULT(SetLowPriTxn(Connect()));
 
-  ASSERT_OK(conn.Execute("CREATE TABLE t (h INT, r INT, v INT, PRIMARY KEY(h, r))"));
-  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1, 2, 3)"));
+    ASSERT_OK(conn.Execute("CREATE TABLE t (h INT, r INT, v INT, PRIMARY KEY(h, r))"));
+    ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1, 2, 3)"));
 
-  ASSERT_OK(StartTxn(&conn));
-  ASSERT_OK(conn.Fetch("SELECT * FROM t WHERE h = 1 AND r = 2 FOR KEY SHARE"));
+    ASSERT_OK(StartTxn(&conn));
+    ASSERT_OK(conn.Fetch("SELECT * FROM t WHERE h = 1 AND r = 2 FOR KEY SHARE"));
 
-  // Check that FOR KEY SHARE + FOR UPDATE conflicts.
-  // FOR KEY SHARE uses regular and FOR UPDATE uses high txn priority.
-  ASSERT_OK(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE h = 1 FOR UPDATE"));
-  ASSERT_NOK(conn.Execute("COMMIT"));
+    // Check that FOR KEY SHARE + FOR UPDATE conflicts.
+    // FOR KEY SHARE uses regular and FOR UPDATE uses high txn priority.
+    ASSERT_OK(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE h = 1 FOR UPDATE"));
+    ASSERT_NOK(conn.Execute("COMMIT"));
+
+    ASSERT_OK(conn.Execute("DROP TABLE t"));
+  });
 }
 
 }  // namespace yb::pgwrapper

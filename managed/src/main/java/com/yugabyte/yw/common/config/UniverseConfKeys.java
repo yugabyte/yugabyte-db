@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 YugaByte, Inc. and Contributors
+ * Copyright 2022 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -237,7 +237,8 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "DB node metrics collection level."
               + "ALL - collect all metrics, "
               + "NORMAL - default value, which only limits some per-table metrics, "
-              + "MINIMAL - limits both node level and further limits table level "
+              + "TABLE_OFF - Disable table level metrics collection, "
+              + "MINIMAL - limits both node level and further limits table level"
               + "metrics we collect and "
               + "OFF to completely disable metric collection.",
           ConfDataType.StringType,
@@ -1192,8 +1193,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           new ConfKeyInfo<>(
               "yb.xcluster.db_scoped.failover.delete_replication_on_source_timeout",
               ScopeType.UNIVERSE,
-              "Maximum timeout for yb client RPC call to delete the outbound replication on the"
-                  + " source universe during failover task execution",
+              "Maximum timeout for delete replication RPC on source during failover",
               "If the source universe is down, this RPC call will time out during failover"
                   + " operation, increasing the failover task execution time; The lower the value,"
                   + " the less time the failover task will take to complete. If it is set to zero,"
@@ -1205,17 +1205,17 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
       new ConfKeyInfo<>(
           "yb.xcluster.db_scoped.creationEnabled",
           ScopeType.UNIVERSE,
-          "Flag to enable db scoped xCluster replication creation",
-          "If flag is enabled, allows DR creation with db scoped xCluster replication",
+          "Enable xCluster DR Semi-automatic Mode",
+          "When enabled, new xCluster DR configurations use Semi-automatic mode.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> XClusterDbScopedAutomaticDdlCreationEnabled =
       new ConfKeyInfo<>(
           "yb.xcluster.db_scoped.automatic_ddl.creationEnabled",
           ScopeType.UNIVERSE,
-          "Flag indicating if db scoped xCluster replication should have automatic DDL replication",
-          "If flag and yb.xcluster.db_scoped.creationEnabled are enabled, newly created DR configs"
-              + " will have automatic DDL replication",
+          "Enable xCluster DR Automatic Mode",
+          "When this and yb.xcluster.db_scoped.creationEnabled are both enabled, new xCluster DR"
+              + " configurations use Automatic mode.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> leaderlessTabletsCheckEnabled =
@@ -1539,6 +1539,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "If true, YBA will skip checking for Opentelemetry operator installation on the cluster.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> otelCollectorMaxMemory =
+      new ConfKeyInfo<>(
+          "yb.universe.otel_collector_max_memory",
+          ScopeType.UNIVERSE,
+          "Max memory for OpenTelemetry Collector process.",
+          "Hard memory limit for the OpenTelemetry Collector process in the systemd unit file.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> waitAttemptsForMajorCatalogUpgrade =
       new ConfKeyInfo<>(
           "yb.upgrade.wait_attempts_for_major_catalog_upgrade",
@@ -1702,5 +1710,46 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Timeout for catalog upgrade admin operations",
           "Timeout for catalog upgrade admin operations in milliseconds",
           ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> skipAutoflagsAndYsqlMigrationFilesValidation =
+      new ConfKeyInfo<>(
+          "yb.upgrade.skip_autoflags_and_ysql_migration_files_validation",
+          ScopeType.UNIVERSE,
+          "Skip auto flags and YSQL migration files validation",
+          "Skip auto flags and YSQL migration files validation",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> ybcPerDiskIoRequestSize =
+      new ConfKeyInfo<>(
+          "ybc.disk_io_request_size_bytes",
+          ScopeType.UNIVERSE,
+          "Per disk IO request size",
+          "Per disk IO request size during backup/restore in Yb-Controller",
+          ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> defaultDiskIoReadBytesPerSecond =
+      new ConfKeyInfo<>(
+          "ybc.default_disk_io_read_bytes_per_sec",
+          ScopeType.UNIVERSE,
+          "Default disk IO read bytes per second",
+          "Default disk IO read bytes per second during backup in Yb-Controller",
+          ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> defaultDiskIoWriteBytesPerSecond =
+      new ConfKeyInfo<>(
+          "ybc.default_disk_io_write_bytes_per_sec",
+          ScopeType.UNIVERSE,
+          "Default disk IO write bytes per second",
+          "Default disk IO write bytes per second during restore in Yb-Controller",
+          ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> autoRecoverFromPendingUpgrade =
+      new ConfKeyInfo<>(
+          "yb.helm.auto_recover_from_pending_upgrade",
+          ScopeType.UNIVERSE,
+          "Auto Recover from Pending Upgrade",
+          "If true, YBA will automatically recover from stuck Helm upgrades before performing Helm"
+              + " upgrade operations",
+          ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

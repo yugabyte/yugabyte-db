@@ -1,8 +1,14 @@
 package org.yb.ysqlconnmgr;
 
-import static org.yb.AssertionWrappers.assertNotNull;
 import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertGreaterThan;
+import static org.yb.AssertionWrappers.assertNotNull;
 import static org.yb.AssertionWrappers.assertTrue;
+
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import java.io.IOException;
 import java.net.URL;
 import java.sql.Connection;
@@ -14,14 +20,9 @@ import org.junit.runner.RunWith;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.minicluster.MiniYBDaemon;
 import org.yb.pgsql.ConnectionEndpoint;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 
 @RunWith(value = YBTestRunnerYsqlConnMgr.class)
 public class TestStatsAndMetrics extends BaseYsqlConnMgr {
-  private static final int TSERVER_IDX = 0;
   private static final String[] FIELDS_IN_CONNECTION_STATS =
       {"database_name",
        "user_name",
@@ -43,36 +44,6 @@ public class TestStatsAndMetrics extends BaseYsqlConnMgr {
         Integer.toString(STATS_UPDATE_INTERVAL));
   }
 
-  private JsonObject getConnectionStats() throws IOException {
-    String host_name = getPgHost(TSERVER_IDX);
-    MiniYBDaemon[] ts_list = miniCluster.getTabletServers()
-                                        .values()
-                                        .toArray(new MiniYBDaemon[0]);
-    MiniYBDaemon ts = null;
-
-    for (MiniYBDaemon daemon : ts_list) {
-      if (host_name.equals(daemon.getLocalhostIP())) {
-        ts = daemon;
-        break;
-      }
-    }
-
-    assertNotNull(ts);
-
-    String connection_endpoint = String.format("http://%s:%d/connections",
-      ts.getLocalhostIP(), ts.getPgsqlWebPort());
-    URL url = new URL(connection_endpoint);
-    LOG.info("Trying to gather stats at the endpoint " + connection_endpoint);
-
-    try (Scanner scanner = new Scanner(url.openConnection().getInputStream())) {
-      JsonElement tree = JsonParser.parseString(scanner.useDelimiter("\\A").next());
-      return tree.getAsJsonObject();
-    } catch (Exception e) {
-       LOG.error(e.getMessage());
-      return null;
-    }
-  }
-
   private void testStatsFields() throws Exception {
     JsonObject obj = getConnectionStats();
     assertNotNull("Got a null response from the connections endpoint",
@@ -88,26 +59,6 @@ public class TestStatsAndMetrics extends BaseYsqlConnMgr {
         assertNotNull("Stats for " + fieldName + " not found", pool.get(fieldName));
       }
     }
-  }
-
-  private JsonObject getPool(String db_name, String user_name) throws Exception {
-    JsonObject obj = getConnectionStats();
-    assertNotNull("Got a null response from the connections endpoint",
-        obj);
-    JsonArray pools = obj.getAsJsonArray("pools");
-    assertNotNull("Got empty pool", pools);
-    assertEquals("Pool size must be 2", 2, pools.size());
-    for (int i = 0; i < pools.size(); ++i) {
-      JsonObject pool = pools.get(i).getAsJsonObject();
-      String databaseName = pool.get("database_name").getAsString();
-      String userName = pool.get("user_name").getAsString();
-
-      if (db_name.equals(databaseName) && user_name.equals(userName)) {
-          return pool;
-      }
-    }
-
-    return null;
   }
 
   private void testNumLogicalConnections(String db_name,
@@ -132,6 +83,35 @@ public class TestStatsAndMetrics extends BaseYsqlConnMgr {
     pool.get("idle_physical_connections").getAsInt();
     assertEquals("Did not get the expected number of physical connections",
         exp_val, num_physical_conn);
+  }
+
+  // This function is primarily being used to test this stat in the control pool
+  // (after the fix for #28083). However, connections do not wait in the control
+  // pool unless there is a delay during routing, and even then, avg_wait_time_ns
+  // is updated in only 1 tick before being reset.
+  // Hence, it is checked in 2 adjacent ticks to ensure it is not missed (i.e.
+  // immediately upon creating the connection, and the tick after creating the
+  // connection).
+  private void testAvgWaitTime(String db_name, String user_name, int min_val,
+      int stats_update_interval_ms) throws Exception {
+    JsonObject pool;
+
+    pool = getPool(db_name, user_name);
+    assertNotNull(pool);
+    int avgWaitTimeNs1 = pool.get("avg_wait_time_ns").getAsInt();
+    Thread.sleep(stats_update_interval_ms);
+    pool = getPool(db_name, user_name);
+    assertNotNull(pool);
+    int avgWaitTimeNs2 = pool.get("avg_wait_time_ns").getAsInt();
+
+    Thread.sleep(stats_update_interval_ms);
+    pool = getPool(db_name, user_name);
+    assertNotNull(pool);
+    int avgWaitTimeNs3 = pool.get("avg_wait_time_ns").getAsInt();
+
+    assertGreaterThan("Routing time (avg_wait_time_ns) not updated, expect greater than min_val",
+        avgWaitTimeNs1 + avgWaitTimeNs2, min_val);
+    assertEquals("Routing time (avg_wait_time_ns) not reset, expect == 0", avgWaitTimeNs3, 0);
   }
 
   private void testStickyConnections(String db_name,
@@ -173,6 +153,18 @@ public class TestStatsAndMetrics extends BaseYsqlConnMgr {
     testNumPhysicalConnections("yugabyte", "yugabyte",
                               isTestRunningInWarmupRandomMode() ? 3 : 1);
     testNumLogicalConnections("yugabyte", "yugabyte", 0);
+  }
+  @Test
+  public void testControlPoolConnections() throws Exception {
+    // Create a connection. This will spin up a control backend
+    Connection conn =
+        getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR).connect();
+
+    // Stats should also be correctly populated for the control pool for the 'tick' right after
+    // initiating a connection. No sleep as control pool stats are updated quick enough
+    testAvgWaitTime("control_connection", "control_connection", 100, STATS_UPDATE_INTERVAL * 1000);
+
+    conn.close();
   }
 
   @Test

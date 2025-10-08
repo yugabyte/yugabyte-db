@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -13,8 +13,8 @@
 #include <sstream>
 
 #include <boost/algorithm/string.hpp>
-#include <boost/optional.hpp>
 #include <boost/asio/ip/tcp.hpp>
+
 #include <rapidjson/reader.h>
 #include <rapidjson/writer.h>
 
@@ -184,7 +184,7 @@ class RpcsCollector : public Collector {
     return Status::OK();
   }
 
-  boost::optional<Endpoint> addr_;
+  std::optional<Endpoint> addr_;
   EasyCurl curl_;
 };
 

@@ -41,8 +41,6 @@ You can also set the runtime flags while the yb-master process is running using 
 ./bin/yb-ts-cli --server-address=127.0.0.1:7100 set_flag enable_db_clone true
 ```
 
-Note: Database cloning is {{<tags/feature/tp idea="990">}} in versions of 2024.2 prior to v2024.2.2; to enable the feature, you must also add the `enable_db_clone` flag to the [allowed_preview_flags_csv](../../../reference/configuration/yb-master/#allowed-preview-flags-csv) list.
-
 ## Clone databases
 
 ### Prerequisites
@@ -50,18 +48,6 @@ Note: Database cloning is {{<tags/feature/tp idea="990">}} in versions of 2024.2
 - [Create a snapshot schedule](../../../manage/backup-restore/point-in-time-recovery/#create-a-schedule) for the database you want to clone.
 
     For example, creating a snapshot schedule with retention period of 7 days allows you to create a clone of the original database to any time in the past 7 days.
-
-- You have to trust local YSQL connections (that use UNIX domain sockets) in the [host-based authentication](../../../secure/authentication/host-based-authentication/). You have to do this for all YB-TServers in the cluster. You can do this when starting the YB-TServer process by adding the authentication line `local all all trust` to the [ysql_hba_conf_csv](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv) flag.
-
-    For example, if you are using yugabyted you can use the `--tserver_flags` option of the `start` command as follows:
-
-    ```sh
-    --tserver_flags "ysql_hba_conf_csv={host all all 0.0.0.0/0 trust,local all all trust}"
-    ```
-
-{{<note title="Note">}}
-Do not override your default host-based authentication rules when trusting the local connection. You may need to add additional authentication lines to `ysql_hba_conf_csv` based on your specific configuration. For more information, see [host-based authentication](../../../secure/authentication/host-based-authentication/).
-{{</note>}}
 
 ### Clone a YSQL database
 
@@ -73,15 +59,17 @@ CREATE DATABASE clone_db TEMPLATE original_db;
 
 In this example, `clone_db` is created as a clone of `original_db`, and contains the latest schema and data of `original_db` as of current time.
 
-To create a clone of the original database at a specific point in time (within the history retention period specified when creating the snapshot schedule), you can specify the [Unix timestamp](https://www.unixtimestamp.com/) in microseconds using the `AS OF` option as follows:
+To create a clone of the original database at a specific point in time (within the history retention period specified when creating the snapshot schedule), you can specify a timestamp using the `AS OF` option. The timestamp may be either a [Unix timestamp](https://www.unixtimestamp.com/) in microseconds (as below), or a [PostgreSQL TIMESTAMP](https://www.postgresql.org/docs/current/datatype-datetime.html) in single quotes.
 
 ```sql
 CREATE DATABASE clone_db TEMPLATE original_db AS OF 1723146703674480;
+# Alternatively:
+CREATE DATABASE clone_db TEMPLATE original_db AS OF '2024-08-08 19:51:43.674480';
 ```
 
 ### Clone a YCQL keyspace
 
-YCQL keyspace cloning is {{<tags/feature/tp>}}. You can create a clone in YCQL using the yb-admin `clone_namespace` command as follows:
+You can create a clone in YCQL using the yb-admin `clone_namespace` command as follows:
 
 ```sh
 ./bin/yb-admin --master_addresses $MASTERS clone_namespace ycql.originaldb1 clonedb2 1715275616599020
@@ -150,8 +138,7 @@ The following example demonstrates how to use a database clone to recover from a
 
     ```sh
     ./bin/yugabyted start --advertise_address=127.0.0.1 \
-        --master_flags "enable_db_clone=true" \
-        --tserver_flags "ysql_hba_conf_csv={host all all 0.0.0.0/0 trust,local all all trust}"
+        --master_flags "enable_db_clone=true"
     ```
 
 1. Start [ysqlsh](../../../api/ysqlsh/) and create the database:

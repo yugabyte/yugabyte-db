@@ -5,7 +5,7 @@ linkTitle: >
   Jumping out of a block statement with "exit"
 description: Describes how to use the "exit" statement, not in a "loop" statement, to jump out of a block statement. [YSQL].
 menu:
-  v2.20:
+  v2.20_api:
     identifier: exit-from-block-statememt
     parent: loop-exit-continue
     weight: 50

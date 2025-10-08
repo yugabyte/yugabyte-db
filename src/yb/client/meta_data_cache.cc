@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -159,7 +159,9 @@ YBMetaDataCache::YBMetaDataCache(
   }
 }
 
-YBMetaDataCache::~YBMetaDataCache() = default;
+YBMetaDataCache::~YBMetaDataCache() {
+  Shutdown();
+}
 
 void YBMetaDataCache::GetTableAsync(
     const YBTableName& table_name, const GetTableAsyncCallback& callback) {
@@ -378,6 +380,15 @@ Status YBMetaDataCache::HasTablePermission(const NamespaceName& keyspace_name,
                            CacheCheckMode::NO_RETRY);
   }
   return s;
+}
+
+void YBMetaDataCache::Shutdown() {
+  if (!shutting_down_.Set()) {
+    return;
+  }
+  if (permissions_cache_) {
+    permissions_cache_->Shutdown();
+  }
 }
 
 } // namespace client

@@ -344,8 +344,6 @@ $body$;
 -- Test to validate that PL/pgSQL function triggers can be executed without
 -- additional flushes.
 --
-SET yb_explain_hide_non_deterministic_fields TO true;
-
 CREATE TABLE t_test (k INT PRIMARY KEY, v INT);
 CREATE TABLE t_audit (k INT);
 
@@ -527,3 +525,15 @@ SELECT * FROM t_test ORDER BY k;
 SELECT * FROM t_other ORDER BY k;
 SELECT * FROM t_temp ORDER BY k;
 SELECT * FROM t_audit ORDER BY k;
+
+RESET yb_speculatively_execute_pl_statements;
+
+-- GH-28101: Test that a user of yb_db_admin role can set the speculative execution flags
+SET SESSION ROLE yb_db_admin;
+SET yb_speculatively_execute_pl_statements TO true;
+SET yb_whitelist_extra_statements_for_pl_speculative_execution TO true;
+
+SET SESSION ROLE yb_extension;
+SET yb_speculatively_execute_pl_statements TO true;
+SET yb_whitelist_extra_statements_for_pl_speculative_execution TO true;
+

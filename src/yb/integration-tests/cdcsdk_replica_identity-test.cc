@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -1004,9 +1004,8 @@ TEST_F(
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_enable_ttl_file_filter) = false;
   constexpr int kCompactionTimeoutSec = 60;
-  ASSERT_OK(test_client()->FlushTables(
-      {table.table_id()}, /* add_indexes = */ false,
-      /* timeout_secs = */ kCompactionTimeoutSec, /* is_compaction = */ true));
+  ASSERT_OK(test_client()->CompactTables(
+      {table.table_id()}, MonoDelta::FromSeconds(kCompactionTimeoutSec)));
 
   ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
 

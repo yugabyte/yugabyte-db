@@ -58,13 +58,17 @@ Wait for any pending updates to propagate to B:
 The lag and skew values might be non-zero as they are estimates based on the last time the tablets were polled. Because no new writes can occur during this period, you can be certain that no data is lost within this timeframe.
 {{< /note >}}
 
+If you are using CDC to move data out of YugabyteDB, while no new writes are occurring, you must also wait for the CDC target to catch up. Check that the lag is zero (or close to zero), and verify the event count metrics of the connector being streamed are 0.
+
 ### Fix up sequences and serial columns
 
 {{< note >}}
 Skip this step if you are using xCluster replication automatic mode.
 {{< /note >}}
 
-xCluster only replicates sequence data in automatic mode.  If you are not using automatic mode, you need to manually synchronize the sequence next values on universe B to match those on universe A. This ensures that new writes on universe B do not conflict with existing data.
+xCluster only replicates sequence data in automatic mode.  If you are not using automatic mode, you need to manually synchronize the sequence next values on universe B after switchover to match those on universe A. This ensures that new writes on universe B do not conflict with existing data.
+
+For example, if you have a SERIAL column in a table and the highest value in that column after switchover is 500, you need to set the sequence associated with that column to a value higher than 500, such as 501. This ensures that new writes on universe B do not conflict with existing data.
 
 Use the [nextval](../../../../api/ysql/exprs/sequence_functions/func_nextval/) function to set the sequence next values appropriately.
 
@@ -74,6 +78,10 @@ Run the following command against A to delete the old replication group.
 
 {{% readfile "includes/transactional-drop.md" %}}
 
+In addition, if you are using CDC to move data out of YugabyteDB, delete CDC on A (that is, de-configure CDC by deleting publications and slots), and start up CDC on B (that is, create publications and slots on B).
+
 ### Switch applications to the new Primary universe (B)
 
 The old Standby (B) is now the new Primary universe, and the old Primary (A) is the new Standby universe. Update the application connection strings to point to the new Primary universe (B).
+
+If you are using CDC to move data out of YugabyteDB, point your CDC sink to pull from B (the newly promoted database) by starting the connector in `snapshot.mode=never`.

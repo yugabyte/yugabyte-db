@@ -3,9 +3,9 @@
 // LICENSE file in the root directory of this source tree. An additional grant
 // of patent rights can be found in the PATENTS file in the same directory.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -69,8 +69,6 @@ enum Tickers : uint32_t {
   BLOCK_CACHE_DATA_MISS,
   // # of times cache hit when accessing data block from block cache.
   BLOCK_CACHE_DATA_HIT,
-  // # of bytes read from cache.
-  BLOCK_CACHE_BYTES_READ,
   // # of bytes written into cache.
   BLOCK_CACHE_BYTES_WRITE,
   // # of times bloom filter has avoided file reads.
@@ -207,11 +205,9 @@ enum Tickers : uint32_t {
   // Single-touch and multi-touch statistics.
   BLOCK_CACHE_SINGLE_TOUCH_HIT,
   BLOCK_CACHE_SINGLE_TOUCH_ADD,
-  BLOCK_CACHE_SINGLE_TOUCH_BYTES_READ,
   BLOCK_CACHE_SINGLE_TOUCH_BYTES_WRITE,
   BLOCK_CACHE_MULTI_TOUCH_HIT,
   BLOCK_CACHE_MULTI_TOUCH_ADD,
-  BLOCK_CACHE_MULTI_TOUCH_BYTES_READ,
   BLOCK_CACHE_MULTI_TOUCH_BYTES_WRITE,
 
   // Files filtered during compaction due to TTL expiration

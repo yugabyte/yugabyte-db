@@ -1,5 +1,5 @@
 /*
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  */
 
 package cmd
@@ -49,7 +49,7 @@ var validateLicenseCmd = &cobra.Command{
 
 var addLicenseCmd = &cobra.Command{
 	Use:     "add -l license_file",
-	Short:   "Add a license for YugabyteDB Anywhere.",
+	Short:   "Add a license for YugabyteDB Anywhere. (alias: update)",
 	Long:    "Add a license for YugabyteDB Anywhere. This can also overwrite an existing license.",
 	Aliases: []string{"update"},
 	Args:    cobra.NoArgs,

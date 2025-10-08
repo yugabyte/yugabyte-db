@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.common.operator;
 
@@ -9,6 +9,7 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Provider.UsabilityState;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.Universe;
@@ -171,6 +172,44 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
       // This can happen for a variety of reasons.
       // We might fail to talk to the API server, might need to add retries around this logic
       log.error("Exception in updating backup cr status {}", e);
+    }
+  }
+
+  /*
+   * Update DrConfig Status
+   */
+  @Override
+  public void updateDrConfigStatus(
+      com.yugabyte.yw.models.DrConfig drConfig, String taskName, UUID taskUUID) {
+    try {
+      if (drConfig != null && drConfig.getKubernetesResourceDetails() != null) {
+        log.info("Update Dr config Status called for task {} ", taskUUID);
+        try (final KubernetesClient kubernetesClient =
+            new KubernetesClientBuilder().withConfig(k8sClientConfig).build()) {
+          DrConfig drConfigCr =
+              operatorUtils.getResource(
+                  drConfig.getKubernetesResourceDetails(),
+                  kubernetesClient.resources(DrConfig.class),
+                  DrConfig.class);
+          DrConfigStatus status = drConfigCr.getStatus();
+
+          status.setMessage("Dr Config State: " + drConfig.getState().name());
+          status.setResourceUUID(drConfig.getUuid().toString());
+          status.setTaskUUID(taskUUID.toString());
+
+          drConfigCr.setStatus(status);
+          kubernetesClient
+              .resources(DrConfig.class)
+              .inNamespace(namespace)
+              .resource(drConfigCr)
+              .updateStatus();
+          log.info("Updated Status for Dr config CR {}", drConfigCr);
+        }
+      }
+    } catch (Exception e) {
+      // This can happen for a variety of reasons.
+      // We might fail to talk to the API server, might need to add retries around this logic
+      log.error("Exception in updating dr config cr status", e);
     }
   }
 
@@ -472,6 +511,35 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
       } catch (Exception e) {
         log.error("Failed to update BackupSchedule {} status", resourceDetails.name, e);
       }
+    }
+  }
+
+  @Override
+  public void updateProviderStatus(
+      KubernetesResourceDetails providerDetails,
+      UUID providerUUID,
+      UsabilityState state,
+      String message) {
+    try (final KubernetesClient kubernetesClient =
+        new KubernetesClientBuilder().withConfig(k8sClientConfig).build()) {
+      YBProvider providerCr =
+          operatorUtils.getResource(
+              providerDetails, kubernetesClient.resources(YBProvider.class), YBProvider.class);
+      YBProviderStatus providerStatus = providerCr.getStatus();
+      if (providerStatus == null) {
+        providerStatus = new YBProviderStatus();
+      }
+      providerStatus.setState(state.toString());
+      providerStatus.setResourceUUID(providerUUID.toString());
+      providerStatus.setMessage(message);
+      providerCr.setStatus(providerStatus);
+      kubernetesClient
+          .resources(YBProvider.class)
+          .inNamespace(providerDetails.namespace)
+          .resource(providerCr)
+          .replaceStatus();
+    } catch (Exception e) {
+      log.error("Failed to update Provider {} status", providerDetails.name, e);
     }
   }
 

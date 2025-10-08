@@ -4,7 +4,7 @@ linkTitle: table t1
 headerTitle: Create and populate table t1
 description: Creates and populate table t1 with data that allows the demonstration of the YSQL window functions.
 menu:
-  v2.20:
+  v2.20_api:
     identifier: table-t1
     parent: data-sets
     weight: 20
@@ -12,7 +12,7 @@ type: docs
 ---
 
 {{< note title=" " >}}
-Make sure that you read the section [The data sets used by the code examples](../../data-sets/) before running the script to create table _"t1"_. In particular, it's essential that you have installed the [pgcrypto](../../../../../../../explore/ysql-language-features/pg-extensions/#pgcrypto-example) extension.
+Make sure that you read the section [The data sets used by the code examples](../../data-sets/) before running the script to create table _"t1"_. In particular, it's essential that you have installed the [pgcrypto](../../../../../../../additional-features/pg-extensions/#pgcrypto-example) extension.
 {{< /note >}}
 
 The rows in table  _"t1"_ are inserted in random order. The table is used for demonstrating these window functions:

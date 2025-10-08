@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -53,6 +53,9 @@ namespace pggate {
 namespace {
 
 YbcPgMemctx global_test_memctx = nullptr;
+YbcAshMetadata ash_metadata;
+YbcPgAshConfig ash_config;
+YbcPgSharedDataPlaceholder shared_data_placeholder;
 
 YbcPgMemctx GetCurrentTestYbMemctx() {
   if (!global_test_memctx) {
@@ -77,9 +80,6 @@ const char* GetDebugQueryStringStub() {
 YbcWaitEventInfo PgstatReportWaitStartNoOp(YbcWaitEventInfo info) {
   return info;
 }
-
-// Not defined locally in PggateTest::Init to avoid asan use-after-return error
-bool yb_enable_ash = false;
 
 } // namespace
 
@@ -143,7 +143,6 @@ Status PggateTest::Init(
   CHECK_YBC_STATUS(YBCInit(test_name, PggateTestAlloc, PggateTestCStringToTextWithLen));
 
   YbcPgCallbacks callbacks;
-  YbcPgAshConfig ash_config;
 
   auto* session_stats =
       static_cast<YbcPgExecStatsState*>(PggateTestAlloc(sizeof(YbcPgExecStatsState)));
@@ -152,12 +151,17 @@ Status PggateTest::Init(
   callbacks.GetDebugQueryString = &GetDebugQueryStringStub;
   callbacks.PgstatReportWaitStart = &PgstatReportWaitStartNoOp;
 
-  ash_config.yb_enable_ash = &yb_enable_ash;
-
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_pggate_tserver_shared_memory_uuid) =
       cluster_->tablet_server(0)->instance_id().permanent_uuid();
 
-  YBCInitPgGate(YBCTestGetTypeTable(), &callbacks, nullptr /* session_id */, &ash_config);
+  ash_metadata.query_id = 5; // to make sure a DCHECK passes during metadata serilazation
+  ash_config.metadata = &ash_metadata;
+
+  YbcPgInitPostgresInfo init_info{
+    .parallel_leader_session_id = nullptr,
+    .shared_data = &shared_data_placeholder};
+  YBCInitPgGate(
+      YBCTestGetTypeTable(), &callbacks, &init_info, &ash_config);
 
   CHECK_YBC_STATUS(YBCPgInitSession(session_stats, false /* is_binary_upgrade */));
   if (should_create_db) {

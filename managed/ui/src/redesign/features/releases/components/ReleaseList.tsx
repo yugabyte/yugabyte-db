@@ -39,7 +39,7 @@ import { isEmptyString, isNonEmptyString } from '../../../../utils/ObjectUtils';
 
 import UnChecked from '../../../../redesign/assets/checkbox/UnChecked.svg';
 import Checked from '../../../../redesign/assets/checkbox/Checked.svg';
-import AddIcon from '../../../../redesign/assets/Add.svg';
+import AddIcon from '../../../../redesign/assets/cross.svg';
 
 const useStyles = makeStyles((theme) => ({
   releaseListBox: {

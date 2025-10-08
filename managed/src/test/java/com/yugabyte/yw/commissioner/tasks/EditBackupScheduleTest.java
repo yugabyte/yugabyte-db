@@ -37,10 +37,8 @@ public class EditBackupScheduleTest extends CommissionerBaseTest {
   private CustomerConfig storageConfig;
   private Users defaultUser;
 
-  @Override
   @Before
   public void setUp() {
-    super.setUp();
     defaultCustomer = ModelFactory.testCustomer();
     defaultUniverse =
         ModelFactory.createUniverse(

@@ -1,4 +1,4 @@
-# Copyright (c) YugaByte, Inc.
+# Copyright (c) YugabyteDB, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 # in compliance with the License.  You may obtain a copy of the License at
@@ -88,10 +88,7 @@ if("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "x86_64")
   add_pg_c_cxx_flags(-DUSE_SSE42_CRC32C=1)
 endif()
 
-if(NOT APPLE AND
-   "${YB_BUILD_TYPE}" STREQUAL "asan" AND
-   IS_CLANG AND
-   "${COMPILER_VERSION}" VERSION_GREATER_EQUAL "10.0.0")
+if(NOT APPLE AND IS_ASAN AND IS_CLANG AND "${COMPILER_VERSION}" VERSION_GREATER_EQUAL "10.0.0")
   add_pg_ld_flags(-ldl)
 endif()
 

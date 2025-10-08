@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -400,11 +400,11 @@ class TnodeContext {
   //                            Top-Level QueryPagingState::counter_pb_ }
   Status ComposeRowsResultForUser(const TreeNode* child_select_node, bool for_new_batches);
 
-  const boost::optional<uint32_t>& hash_code_from_partition_key_ops() {
+  const std::optional<uint32_t>& hash_code_from_partition_key_ops() {
     return hash_code_from_partition_key_ops_;
   }
 
-  const boost::optional<uint32_t>& max_hash_code_from_partition_key_ops() {
+  const std::optional<uint32_t>& max_hash_code_from_partition_key_ops() {
     return max_hash_code_from_partition_key_ops_;
   }
 
@@ -436,7 +436,7 @@ class TnodeContext {
   //  hash_values_options_ = [[2, 3], [4, 5], [6]]
   //  partitions_count_ = 4 (i.e. [2,4,6], [2,5,6], [3,4,6], [3,5,6]).
   //  current_partition_index_ starts from 0 unless set in the paging state.
-  boost::optional<std::vector<std::vector<QLExpressionPB>>> hash_values_options_;
+  std::optional<std::vector<std::vector<QLExpressionPB>>> hash_values_options_;
   uint64_t partitions_count_ = 0;
   uint64_t current_partition_index_ = 0;
 
@@ -455,8 +455,8 @@ class TnodeContext {
   client::YBqlReadOpPtr uncovered_select_op_;
   std::unique_ptr<qlexpr::QLRowBlock> keys_;
 
-  boost::optional<uint32_t> hash_code_from_partition_key_ops_;
-  boost::optional<uint32_t> max_hash_code_from_partition_key_ops_;
+  std::optional<uint32_t> hash_code_from_partition_key_ops_;
+  std::optional<uint32_t> max_hash_code_from_partition_key_ops_;
 };
 
 // The context for execution of a statement. Inside the statement parse tree, there may be one or

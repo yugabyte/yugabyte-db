@@ -33,6 +33,53 @@ public class OtelCollectorConfigFormat {
   }
 
   @Data
+  @EqualsAndHashCode(callSuper = true)
+  public static class PrometheusReceiver extends Receiver {
+    private PrometheusConfig config;
+  }
+
+  @Data
+  public static class PrometheusConfig {
+    private GlobalConfig global;
+    private List<ScrapeConfig> scrape_configs;
+  }
+
+  @Data
+  public static class GlobalConfig {
+    private String scrape_interval;
+    private String scrape_timeout;
+  }
+
+  @Data
+  public static class ScrapeConfig {
+    private String job_name;
+    private String scheme;
+    private String metrics_path;
+    private List<StaticConfig> static_configs;
+    private List<MetricRelabelConfig> metric_relabel_configs;
+    private TlsConfig tls_config;
+  }
+
+  @Data
+  public static class StaticConfig {
+    private List<String> targets;
+    private Map<String, String> labels;
+  }
+
+  @Data
+  public static class MetricRelabelConfig {
+    private List<String> source_labels;
+    private String regex;
+    private String target_label;
+    private String replacement;
+  }
+
+  @Data
+  public static class TlsConfig {
+    private boolean insecure_skip_verify;
+  }
+
+  @Data
   public static class Operator {
     private String type;
   }
@@ -77,6 +124,7 @@ public class OtelCollectorConfigFormat {
   @EqualsAndHashCode(callSuper = true)
   public static class FilterProcessor extends Processor {
     private FilterProcessorLogsConfig logs;
+    private String error_mode;
   }
 
   @Data
@@ -95,6 +143,54 @@ public class OtelCollectorConfigFormat {
   @EqualsAndHashCode(callSuper = true)
   public static class AttributesProcessor extends Processor {
     private List<AttributeAction> actions;
+  }
+
+  @Data
+  @EqualsAndHashCode(callSuper = true)
+  public static class BatchProcessor extends Processor {
+    private int send_batch_max_size;
+    private int send_batch_size;
+    private String timeout;
+  }
+
+  @Data
+  @EqualsAndHashCode(callSuper = true)
+  public static class MemoryLimiterProcessor extends Processor {
+    private String check_interval;
+    private int limit_mib;
+  }
+
+  @Data
+  @EqualsAndHashCode(callSuper = true)
+  public static class CumulativeToDeltaProcessor extends Processor {
+    // No additional configuration needed for basic cumulative to delta conversion
+  }
+
+  @Data
+  @EqualsAndHashCode(callSuper = true)
+  public static class MetricTransformProcessor extends Processor {
+    private List<MetricTransformRule> transforms;
+  }
+
+  @Data
+  public static class MetricTransformRule {
+    private String include;
+    private String match_type;
+    private String action;
+    private Map<String, String> experimental_match_labels;
+    private String new_name;
+  }
+
+  @Data
+  @EqualsAndHashCode(callSuper = true)
+  public static class TransformProcessor extends Processor {
+    private List<LogStatement> log_statements;
+  }
+
+  @Data
+  public static class LogStatement {
+    private String context;
+    private List<String> statements;
   }
 
   @Data
@@ -143,6 +239,13 @@ public class OtelCollectorConfigFormat {
   public static class DataDogApiConfig {
     private String site;
     private String key;
+  }
+
+  @Data
+  @EqualsAndHashCode(callSuper = true)
+  public static class DynatraceExporter extends Exporter {
+    private String endpoint;
+    private Map<String, String> headers;
   }
 
   @Data

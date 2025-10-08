@@ -245,6 +245,10 @@ export const MigrationSchema: FC<MigrationSchemaProps> = ({
 
   const [expandedSuggestions, setExpandedSuggestions] = React.useState<boolean[]>([]);
 
+  // Add pagination state for the suggestions/errors table
+  const [suggestionsTablePage, setSuggestionsTablePage] = React.useState(0);
+  const [suggestionsTableRowsPerPage, setSuggestionsTableRowsPerPage] = React.useState(10);
+
   return (
     <Box>
       <Box display="flex" justifyContent="space-between" alignItems="start">
@@ -388,6 +392,11 @@ export const MigrationSchema: FC<MigrationSchemaProps> = ({
                         }
                       ),
                       pagination: true,
+                      page: suggestionsTablePage,
+                      rowsPerPage: suggestionsTableRowsPerPage,
+                      onChangePage: (currentPage: number) => setSuggestionsTablePage(currentPage),
+                      onChangeRowsPerPage: (numberOfRows: number) =>
+                        setSuggestionsTableRowsPerPage(numberOfRows),
                       rowHover: true,
                     }}
                     withBorder={false}

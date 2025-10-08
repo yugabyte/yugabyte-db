@@ -120,6 +120,7 @@ export const colors = {
     bar2: '#262666'
   },
   ybacolors: {
+    accent_2_1: '#EF5824',
     backgroundBlueLight: '#F5F8FE',
     backgroundDisabled: '#EEE',
     backgroundGrayDark: '#E5E5E9',
@@ -127,13 +128,15 @@ export const colors = {
     backgroundGrayLightest: '#FCFCFC',
     backgroundGrayRegular: '#F1F1F1',
     borderBlue: '#3771FD',
+    borderGray: '#C8C8C8',
     colorDisabled: '#555',
     darkBlue: '#303a78',
     disabledIcon: '#E5E5E9',
     error: '#E73E36',
     inputBackground: '#E6E6E6',
     labelBackground: '#151730',
-    linkBlue: '#44518B',
+    tipBackgroundLightGray: '#F7F9FB',
+    primary4: '#44518B',
     purple300: '#7879F1',
     pillDangerBackground: '#FDE2E2',
     pillDangerIcon: '#DA1515',
@@ -161,7 +164,8 @@ export const colors = {
     ybDarkGray2: '#D9D9DB',
     ybDarkGray: '#232329',
     ybGray: '#DEDEE0',
-    ybOrangeFocus: '#EF582480'
+    ybOrangeFocus: '#EF582480',
+    ybPurple: '#5D5FEF'
   },
   ybaShadows: {
     inputBoxShadow: 'inset 0 1px 1px rgb(0 0 0 / 8%), 0 0 8px rgb(239 88 36 / 20%)'

@@ -234,7 +234,7 @@ tserver:
     valueFrom:
       fieldRef:
         fieldPath: status.hostIP
-  serverBroadcastAddress: "$(NODE_IP)"
+  serverBroadcastAddress: "${NODE_IP}"
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
@@ -463,6 +463,8 @@ spec:
         ISTIO_META_DNS_AUTO_ALLOCATE: "true"
   # rest of the configuration…
 ```
+
+Note that any change to the Istio configuration requires a restart of the YugabyteDB Anywhere pod.
 
 Refer to [Multi-Region YugabyteDB Deployments on Kubernetes with Istio](https://www.yugabyte.com/blog/multi-region-yugabytedb-deployments-on-kubernetes-with-istio/) for a step-by-step guide and an explanation of the options being used.
 

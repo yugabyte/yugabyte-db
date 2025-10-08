@@ -1,4 +1,4 @@
-ansible==9.2.0
+ansible==9.13.0
 ansible-vault==2.1.0
 six==1.10.0
 mitogen==0.2.9

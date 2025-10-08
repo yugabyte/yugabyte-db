@@ -15,9 +15,9 @@
 # specific language governing permissions and limitations
 # under the License.
 #
-# The following only applies to changes made to this file as part of YugaByte development.
+# The following only applies to changes made to this file as part of YugabyteDB development.
 #
-# Portions Copyright (c) YugaByte, Inc.
+# Portions Copyright (c) YugabyteDB, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 # in compliance with the License.  You may obtain a copy of the License at
@@ -42,7 +42,8 @@ set(LINK_LIBS
 )
 
 add_library(yb_tools_util
-  data_gen_util.cc)
+  data_gen_util.cc
+  tools_utils.cc)
 target_link_libraries(yb_tools_util
   ${LINK_LIBS})
 
@@ -57,6 +58,7 @@ target_link_libraries(yb-admin
   yb-admin_lib
   master_error
   master_util
+  yb_tools_util
   ${LINK_LIBS})
 
 add_library(yb-admin_lib
@@ -64,11 +66,13 @@ add_library(yb-admin_lib
   yb-admin_util.cc)
 target_link_libraries(yb-admin_lib
   encryption
+  yb_tools_util
   ${LINK_LIBS})
 
 add_executable(yb-ts-cli ts-cli.cc)
 target_link_libraries(yb-ts-cli
   server_base_proto
+  yb_tools_util
   ${LINK_LIBS})
 
 add_executable(data-patcher data-patcher.cc)
@@ -220,6 +224,7 @@ ADD_YB_TEST(yb-backup/yb-backup-during-ddl-test)
 ADD_YB_TEST(yb-admin-snapshot-test)
 ADD_YB_TEST(yb-admin-xcluster-test)
 ADD_YB_TEST(yb-admin_client-test)
+ADD_YB_TEST(yb-admin-are-nodes-safe-test)
 
 add_executable(run-with-timeout run-with-timeout.cc)
 target_link_libraries(run-with-timeout yb_util)

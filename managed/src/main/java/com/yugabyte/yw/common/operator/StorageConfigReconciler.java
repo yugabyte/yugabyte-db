@@ -8,7 +8,6 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
-import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
@@ -52,12 +51,6 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
     this.ccs = ccs;
     this.namespace = namespace;
     this.operatorUtils = operatorUtils;
-  }
-
-  public String getCustomerUUID() throws Exception {
-
-    Customer cust = operatorUtils.getOperatorCustomer();
-    return cust.getUuid().toString();
   }
 
   public JsonNode getConfigPayloadFromCRD(StorageConfig sc) {
@@ -167,7 +160,7 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
     String name = value.split("_")[1];
     log.info("Adding a storage config {} ", name);
     try {
-      cuuid = getCustomerUUID();
+      cuuid = operatorUtils.getCustomerUUID();
     } catch (Exception e) {
       log.info("Failed adding storageconfig {}", sc.getMetadata().getName());
       updateStatus(sc, false, "", e.getMessage());
@@ -202,7 +195,7 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
     String configUUID = oldSc.getStatus().getResourceUUID();
 
     try {
-      cuuid = getCustomerUUID();
+      cuuid = operatorUtils.getCustomerUUID();
     } catch (Exception e) {
       log.error("Got Error {}", e);
       log.info("Failed updating storageconfig {}, ", oldSc.getMetadata().getName());
@@ -229,7 +222,7 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
     log.info("Deleting a storage config");
     String cuuid;
     try {
-      cuuid = getCustomerUUID();
+      cuuid = operatorUtils.getCustomerUUID();
     } catch (Exception e) {
       log.info("Failed deleting storageconfig {}, ", e.getMessage());
       return;

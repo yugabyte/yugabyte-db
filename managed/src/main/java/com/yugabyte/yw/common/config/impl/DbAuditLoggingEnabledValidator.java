@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 YugaByte, Inc. and Contributors
+ * Copyright 2024 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -15,7 +15,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigPreChangeValidator;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;

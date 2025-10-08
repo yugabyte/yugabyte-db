@@ -1,5 +1,5 @@
 /*
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  */
 
 package earutil
@@ -27,43 +27,18 @@ func ListEARUtil(cmd *cobra.Command, commandCall, earCode string) {
 	if len(strings.TrimSpace(commandCall)) != 0 {
 		callSite = fmt.Sprintf("%s: %s", callSite, commandCall)
 	}
-	r, response, err := authAPI.ListKMSConfigs().Execute()
-	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(response, err, callSite, "List")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
-	}
 
+	kmsConfigsList, err := authAPI.GetListOfKMSConfigs(callSite, "List")
+	if err != nil {
+		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+	}
 	// filter by name and/or by ear code
 	earName, err := cmd.Flags().GetString("name")
 	if err != nil {
 		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 	}
 
-	kmsConfigsCode := make([]util.KMSConfig, 0)
-	for _, k := range r {
-		kmsConfig, err := util.ConvertToKMSConfig(k)
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		if strings.TrimSpace(earCode) != "" {
-			if strings.Compare(kmsConfig.KeyProvider, earCode) == 0 {
-				kmsConfigsCode = append(kmsConfigsCode, kmsConfig)
-			}
-		} else {
-			kmsConfigsCode = append(kmsConfigsCode, kmsConfig)
-		}
-	}
-
-	kmsConfigs := make([]util.KMSConfig, 0)
-	if strings.TrimSpace(earName) != "" {
-		for _, k := range kmsConfigsCode {
-			if strings.Compare(k.Name, earName) == 0 {
-				kmsConfigs = append(kmsConfigs, k)
-			}
-		}
-	} else {
-		kmsConfigs = kmsConfigsCode
-	}
+	kmsConfigs := KMSConfigNameAndCodeFilter(earName, earCode, kmsConfigsList)
 
 	earCtx := formatter.Context{
 		Command: "list",

@@ -31,7 +31,7 @@ To build your Java application using the YugabyteDB version of the Jedis driver,
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe, and are able to interact with it using the Redis shell. If not, please follow these steps in [Quick start](/preview/tutorials/quick-start/macos/).
+- installed YugabyteDB, created a universe, and are able to interact with it using the Redis shell. If not, please follow these steps in [Quick start](/preview/quick-start/macos/).
 - JDK version 1.8 or later
 - Maven 3.3 or later
 
@@ -41,7 +41,7 @@ Create a Maven build file `pom.xml` and add the following content into it.
 
 ```xml
 <?xml version="1.0"?>
-<!-- Copyright (c) Yugabyte, Inc. -->
+<!-- Copyright (c) YugabyteDB, Inc. -->
 <project
   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd"
   xmlns="http://maven.apache.org/POM/4.0.0"

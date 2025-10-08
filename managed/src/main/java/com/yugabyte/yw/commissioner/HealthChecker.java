@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 YugaByte, Inc. and Contributors
+ * Copyright 2019 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -59,7 +59,9 @@ import com.yugabyte.yw.models.filters.MetricFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
-import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
+import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import jakarta.mail.MessagingException;
 import java.io.IOException;
 import java.io.InputStream;
@@ -853,8 +855,25 @@ public class HealthChecker {
         if (auditLogConfig != null) {
           nodeInfo.setOtelCollectorEnabled(auditLogConfig.isExportActive());
         }
+        // Check if query log export was ever enabled and disabled.
+        QueryLogConfig queryLogConfig = cluster.userIntent.queryLogConfig;
+        if (queryLogConfig != null && !nodeInfo.isOtelCollectorEnabled()) {
+          nodeInfo.setOtelCollectorEnabled(queryLogConfig.isExportActive());
+        }
+        // Check if metrics export was ever enabled and disabled.
+        MetricsExportConfig metricsExportConfig = cluster.userIntent.metricsExportConfig;
+        if (metricsExportConfig != null && !nodeInfo.isOtelCollectorEnabled()) {
+          nodeInfo.setOtelCollectorEnabled(metricsExportConfig.isExportActive());
+        }
         nodeInfo.setClockboundEnabled(
             params.universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseClockbound());
+        nodeInfo.setYbdbInbuiltYbc(
+            params
+                .universe
+                .getUniverseDetails()
+                .getPrimaryCluster()
+                .userIntent
+                .isUseYbdbInbuiltYbc());
         nodeMetadata.add(nodeInfo);
       }
     }
@@ -1018,7 +1037,8 @@ public class HealthChecker {
     String nodeToRunDdlAtomicityCheck = null;
     String masterLeaderUrl = null;
 
-    if (ddlAtomicityCheckEnabled) {
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    if (ddlAtomicityCheckEnabled && userIntent.enableYSQL) {
       int ddlAtomicityIntervalSec =
           confGetter.getConfForScope(universe, UniverseConfKeys.ddlAtomicityIntervalSec);
       nodeCheckTimeoutSec =
@@ -1026,8 +1046,7 @@ public class HealthChecker {
 
       Instant lastDdlAtomicitySuccessfulCheckTimestamp =
           ddlAtomicitySuccessfulCheckTimestamp.get(universe.getUniverseUUID());
-      String ybDbRelease =
-          universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+      String ybDbRelease = userIntent.ybSoftwareVersion;
       boolean ddlAtomicityCheckSupported =
           CommonUtils.isReleaseBetween(DDL_ATOMICITY_CHECK_RELEASE, "2.19.0.0-b0", ybDbRelease)
               || CommonUtils.isReleaseEqualOrAfter(
@@ -1180,6 +1199,9 @@ public class HealthChecker {
       commandToRun.add("--ddl_atomicity_check=true");
       commandToRun.add("--master_leader_url=" + nodeCheckContext.getMasterLeaderUrl());
     }
+    if (!universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd) {
+      commandToRun.add("--cronbased");
+    }
     ShellResponse response =
         nodeUniverseManager
             .runCommand(nodeInfo.getNodeDetails(), universe, commandToRun, context)
@@ -1327,6 +1349,7 @@ public class HealthChecker {
     private int topKOtherProcesses;
     private int topKMemThresholdPercent;
     private boolean checkTHP;
+    private boolean ybdbInbuiltYbc = false;
     @JsonIgnore @EqualsAndHashCode.Exclude private NodeDetails nodeDetails;
     private boolean earlyoomEnabled = false;
   }

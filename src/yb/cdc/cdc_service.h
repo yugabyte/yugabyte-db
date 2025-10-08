@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -30,9 +30,8 @@
 #include "yb/rpc/rpc_context.h"
 
 #include "yb/util/net/net_util.h"
+#include "yb/util/one_time_bool.h"
 #include "yb/util/semaphore.h"
-
-#include <boost/optional.hpp>
 
 namespace rocksdb {
 
@@ -116,12 +115,37 @@ using TableIdToStreamIdMap =
 using RollBackTabletIdCheckpointMap =
     std::unordered_map<const std::string*, std::pair<int64_t, OpId>>;
 
+// Non-exhaustive list of simulated error codes for the errors that can occur in GetChanges().
+// Currently these error codes are being employed to test errors retryable by virtual WAL.
+#define TEST_SIMULATE_ALL_ERRORS \
+  TEST_SIMULATE_ERROR(PeerNotStarted, 0, IllegalState, "Tablet peer is not started yet") \
+  TEST_SIMULATE_ERROR( \
+      TabletUnavailable, 1, IllegalState, "Tablet not running: tablet object has invalid state") \
+  TEST_SIMULATE_ERROR(PeerNotLeader, 2, NotFound, "Not leader for requested tablet id") \
+  TEST_SIMULATE_ERROR( \
+      PeerNotReadyToServe, 3, LeaderNotReadyToServe, "Not ready to serve requested tablet id") \
+  TEST_SIMULATE_ERROR(LogSegmentFooterNotFound, 4, NotFound, "Footer for segment not found")
+
+enum TestSimulateErrorCode : int32_t {
+#define TEST_SIMULATE_ERROR(name, value, status_code, message) name = value,
+  TEST_SIMULATE_ALL_ERRORS
+#undef TEST_SIMULATE_ERROR
+      kNumSimulateErrors
+};
+
 class CDCServiceImpl : public CDCServiceIf {
  public:
   CDCServiceImpl(
       std::unique_ptr<CDCServiceContext> context,
       const scoped_refptr<MetricEntity>& metric_entity_server, MetricRegistry* metric_registry,
-      const std::shared_future<client::YBClient*>& client_future);
+      const std::shared_future<client::YBClient*>& client_future,
+      const std::function<int32()>& get_update_peers_interval);
+
+  CDCServiceImpl(
+      std::unique_ptr<CDCServiceContext> context,
+      const scoped_refptr<MetricEntity>& metric_entity_server, MetricRegistry* metric_registry,
+      int get_changes_concurrency, const std::shared_future<client::YBClient*>& client_future,
+      const std::function<int32()>& get_update_peers_interval);
 
   CDCServiceImpl(const CDCServiceImpl&) = delete;
   void operator=(const CDCServiceImpl&) = delete;
@@ -163,12 +187,10 @@ class CDCServiceImpl : public CDCServiceIf {
       const DestroyVirtualWALForCDCRequestPB* req, DestroyVirtualWALForCDCResponsePB* resp,
       rpc::RpcContext context) override;
 
-  // Get a filtered list of all the sessions that belong to virtual WAL
-  std::vector<uint64_t> FilterVirtualWalSessions(const std::vector<uint64_t>& session_ids);
-
   // Destroy a batch of Virtual WAL instances managed by this CDC service.
   // Intended to be called from background jobs and hence only logs warnings in case of errors.
-  void DestroyVirtualWALBatchForCDC(const std::vector<uint64_t>& session_ids);
+  void DestroyVirtualWALBatchForCDC(const std::vector<uint64_t>& expired_session_ids)
+      EXCLUDES(mutex_);
 
   void UpdateAndPersistLSN(
       const UpdateAndPersistLSNRequestPB* req, UpdateAndPersistLSNResponsePB* resp,
@@ -355,7 +377,7 @@ class CDCServiceImpl : public CDCServiceIf {
       const TabletStreamInfo& producer_tablet, const OpId& sent_op_id, const OpId& commit_op_id,
       uint64_t last_record_hybrid_time, const std::optional<HybridTime>& cdc_sdk_safe_time,
       const CDCRequestSource& request_source = CDCRequestSource::CDCSDK, bool force_update = false,
-      const bool is_snapshot = false, const std::string& snapshot_key = "",
+      bool is_snapshot = false, const std::string& snapshot_key = "",
       const TableId& colocated_table_id = "");
 
   Status UpdateSnapshotDone(
@@ -589,6 +611,9 @@ class CDCServiceImpl : public CDCServiceIf {
 
   const std::shared_future<client::YBClient*>& client_future_;
 
+  // Lambda to get the update peers and metrics frequency interval.
+  std::function<int32()> get_update_peers_interval_;
+
   std::unique_ptr<CDCStateTable> cdc_state_table_;
 
   std::unordered_map<xrepl::StreamId, std::shared_ptr<StreamMetadata>> stream_metadata_
@@ -616,10 +641,6 @@ class CDCServiceImpl : public CDCServiceIf {
   // Periodically update lag metrics (FLAGS_update_metrics_interval_ms).
   scoped_refptr<Thread> update_peers_and_metrics_thread_;
 
-  // True when this service is stopped. Used to inform
-  // get_minimum_checkpoints_and_update_peers_thread_ that it should exit.
-  bool cdc_service_stopped_ GUARDED_BY(mutex_){false};
-
   // True when the server is a producer of a valid replication stream.
   std::atomic<bool> cdc_enabled_{false};
 
@@ -640,8 +661,10 @@ class CDCServiceImpl : public CDCServiceIf {
   std::unordered_map<TabletId, OpId> xcluster_tablet_min_opid_map_
       GUARDED_BY(xcluster_replication_maps_mutex_);
 
-  MonoTime xcluster_map_last_refresh_time_ GUARDED_BY(xcluster_replication_maps_mutex_)
-      = MonoTime::Min();
+  MonoTime xcluster_map_last_refresh_time_ GUARDED_BY(xcluster_replication_maps_mutex_) =
+      MonoTime::Min();
+
+  OneTimeBool shutting_down_;
 };
 
 }  // namespace cdc

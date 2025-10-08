@@ -1,0 +1,54 @@
+in_memory:
+{SubDocKey(DocKey([], []), []), [kWeakRead, kWeakWrite]}
+{SubDocKey(DocKey(0xbdda, ["1", "2"], ["3", "4"]), []), [kStrongRead, kStrongWrite]}
+
+
+intent_check:
+{SubDocKey(DocKey([], []), []), [kWeakRead, kWeakWrite]}
+{SubDocKey(DocKey(0xbdda, ["1", "2"], ["3", "4"]), []), [kWeakRead, kWeakWrite, kStrongRead]}
+{SubDocKey(DocKey(0xbdda, ["1", "2"], ["3", "4"]), [ColumnId(4)]), [kStrongRead, kStrongWrite]}
+{SubDocKey(DocKey(0xbdda, ["1", "2"], ["3", "4"]), [ColumnId(5)]), [kStrongRead, kStrongWrite]}
+
+
+intent_write:
+Wrote 11 key/value pairs to kIntents RocksDB:
+ 1. PutCF: TXN META ********-****-****-****-************ => { transaction_id: ********-****-****-****-************ isolation: SNAPSHOT_ISOLATION status_tablet: 0 priority: 0 start_time: { physical: 0 } locality: GLOBAL old_status_tablet:  skip_prefix_locks: 1 }
+ 2. PutCF: SubDocKey(DocKey(0xbdda, ["1", "2"], ["3", "4"]), [ColumnId(4)]) [kStrongRead, kStrongWrite] HT{ days: 0 time: 0 } => TransactionId(********-****-****-****-************) WriteId(0) "b"
+ 4. PutCF: SubDocKey(DocKey(0xbdda, ["1", "2"], ["3", "4"]), [ColumnId(5)]) [kStrongRead, kStrongWrite] HT{ days: 0 time: 0 } => TransactionId(********-****-****-****-************) WriteId(1) "a"
+ 6. PutCF: SubDocKey(DocKey(0xbdda, ["1", "2"], ["3", "4"]), []) [kStrongRead] HT{ days: 0 time: 0 } => TransactionId(********-****-****-****-************) WriteId(2) null
+ 8. PutCF: SubDocKey(DocKey(0xbdda, ["1", "2"], ["3", "4"]), []) [kWeakRead, kWeakWrite] HT{ days: 0 time: 0 } => TransactionId(********-****-****-****-************) none
+ 10. PutCF: SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ days: 0 time: 0 } => TransactionId(********-****-****-****-************) none
+
+
+in_memory:
+{SubDocKey(DocKey([], []), []), [kWeakRead, kWeakWrite]}
+{SubDocKey(DocKey(0xbdda, ["1", "2"], ["3", "4"]), []), [kStrongRead, kStrongWrite]}
+
+
+intent_check:
+{SubDocKey(DocKey([], []), []), [kWeakRead, kWeakWrite]}
+{SubDocKey(DocKey(0xbdda, ["1", "2"], ["3", "4"]), []), [kWeakRead, kWeakWrite, kStrongRead]}
+{SubDocKey(DocKey(0xbdda, ["1", "2"], ["3", "4"]), [ColumnId(4)]), [kStrongRead, kStrongWrite]}
+
+
+regular_check:
+SubDocKey(DocKey(0xbdda, ["1", "2"], ["3", "4"]), [])
+
+regular_check:
+SubDocKey(DocKey(0xbdda, ["1", "2"], ["3", "4"]), [ColumnId(4)])
+
+intent_write:
+Wrote 8 key/value pairs to kIntents RocksDB:
+ 1. PutCF: SubDocKey(DocKey(0xbdda, ["1", "2"], ["3", "4"]), [ColumnId(4)]) [kStrongRead, kStrongWrite] HT{ days: 0 time: 0 } => TransactionId(********-****-****-****-************) WriteId(3) "a"
+ 3. PutCF: SubDocKey(DocKey(0xbdda, ["1", "2"], ["3", "4"]), []) [kStrongRead] HT{ days: 0 time: 0 } => TransactionId(********-****-****-****-************) WriteId(4) null
+ 5. PutCF: SubDocKey(DocKey(0xbdda, ["1", "2"], ["3", "4"]), []) [kWeakRead, kWeakWrite] HT{ days: 0 time: 0 } => TransactionId(********-****-****-****-************) none
+ 7. PutCF: SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ days: 0 time: 0 } => TransactionId(********-****-****-****-************) none
+
+
+regular_write:
+Wrote 3 key/value pairs to kRegular RocksDB:
+ 1. PutCF: SubDocKey(DocKey(0xbdda, ["1", "2"], ["3", "4"]), [ColumnId(4); HT{ days: 0 time: 0 }]) => "b"
+ 2. PutCF: SubDocKey(DocKey(0xbdda, ["1", "2"], ["3", "4"]), [ColumnId(5); HT{ days: 0 time: 0 }]) => "a"
+ 3. PutCF: SubDocKey(DocKey(0xbdda, ["1", "2"], ["3", "4"]), [ColumnId(4); HT{ days: 0 time: 0 }]) => "a"
+
+

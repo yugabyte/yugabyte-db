@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -16,8 +16,6 @@
 //--------------------------------------------------------------------------------------------------
 
 #pragma once
-
-#include <boost/optional.hpp>
 
 #include "yb/yql/cql/ql/ptree/tree_node.h"
 #include "yb/yql/cql/ql/ptree/pt_name.h"
@@ -63,12 +61,10 @@ class PTAlterRole : public TreeNode {
   void PrintSemanticAnalysisResult(SemContext* sem_context);
 
   // Role name.
-  const char* role_name() const {
-    return name_->c_str();
-  }
+  const char* role_name() const { return name_->c_str(); }
 
-  boost::optional<std::string> salted_hash() const {
-    boost::optional<std::string> ret_salted_hash;
+  std::optional<std::string> salted_hash() const {
+    std::optional<std::string> ret_salted_hash;
     // Empty salted hash denotes no password, salted_hash can contain null characters.
     if (salted_hash_ != nullptr) {
       ret_salted_hash = std::string(salted_hash_->c_str(), kBcryptHashSize);
@@ -76,20 +72,16 @@ class PTAlterRole : public TreeNode {
     return ret_salted_hash;
   }
 
-  boost::optional<bool> superuser() const {
-    return superuser_;
-  }
+  std::optional<bool> superuser() const { return superuser_; }
 
-  boost::optional<bool> login() const {
-    return login_;
-  }
+  std::optional<bool> login() const { return login_; }
 
  private:
-  const MCSharedPtr<MCString>  name_;
+  const MCSharedPtr<MCString> name_;
   PTRoleOptionListNode::SharedPtr roleOptions_;
   MCSharedPtr<MCString> salted_hash_ = nullptr;
-  boost::optional<bool> login_;
-  boost::optional<bool> superuser_;
+  std::optional<bool> login_;
+  std::optional<bool> superuser_;
 };
 
 }  // namespace ql

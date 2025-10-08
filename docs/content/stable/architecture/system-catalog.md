@@ -11,7 +11,7 @@ showRightNav: true
 type: docs
 ---
 
-System catalogs, also known as system tables or system views, play a crucial role in the internal organization and management of the database and serve as the backbone of YugabyteDB's architecture. YugabyteDB builds upon the system catalog of [PostgreSQL](https://www.postgresql.org/docs/11/catalogs.html). These catalogs form a centralized repository that stores metadata about the database itself, such as tables, indexes, columns, constraints, functions, users, privileges, extensions, query statistics, and more. All the system catalog tables and views are organized under the _pg_catalog_ schema.
+System catalogs, also known as system tables or system views, play a crucial role in the internal organization and management of the database and serve as the backbone of YugabyteDB's architecture. YugabyteDB builds upon the system catalog of [PostgreSQL](https://www.postgresql.org/docs/15/catalogs.html). These catalogs form a centralized repository that stores metadata about the database itself, such as tables, indexes, columns, constraints, functions, users, privileges, extensions, query statistics, and more. All the system catalog tables and views are organized under the _pg_catalog_ schema.
 
 To list the tables in the system catalog, you can execute the following command:
 
@@ -110,11 +110,11 @@ The _pg_proc_ catalog stores metadata about database procedures, including their
 The _pg_stat_statements_ view provides detailed statistical insights into SQL query performance by tracking query execution statistics over time. It records metrics such as query execution counts, total runtime, average runtime, and resource consumption (for example, CPU time, I/O) for individual SQL statements. Using _pg_stat_statements_, you can prioritize optimization efforts based on query frequency and resource consumption, improving overall database efficiency and response times.
 
 {{<note>}}
-By default, only _min_, _max_, _mean_, and _stddev_ of the execution times are associated with a query. This has proved insufficient to debug large volumes of queries. To get a better insight, YugabyteDB introduces an additional column, [yb_latency_histogram](../../explore/query-1-performance/pg-stat-statements#yb-latency-histogram-column), that stores a list of latency ranges and the number of query executions in that range.
+By default, only _min_, _max_, _mean_, and _stddev_ of the execution times are associated with a query. This has proved insufficient to debug large volumes of queries. To get a better insight, YugabyteDB introduces an additional column, [yb_latency_histogram](../../launch-and-manage/monitor-and-alert/query-tuning/pg-stat-statements#yb-latency-histogram-column), that stores a list of latency ranges and the number of query executions in that range.
 {{</note>}}
 
-{{<lead link="../../explore/query-1-performance/pg-stat-statements/">}}
-Learn how to improve query performance using these stats in [Query tuning](../../explore/query-1-performance/pg-stat-statements/).
+{{<lead link="../../launch-and-manage/monitor-and-alert/query-tuning/pg-stat-statements/">}}
+Learn how to improve query performance using these stats in [Query tuning](../../launch-and-manage/monitor-and-alert/query-tuning/pg-stat-statements/).
 {{</lead>}}
 
 ## Data statistics
@@ -189,4 +189,4 @@ The `pg_authid` table stores details of users, roles, groups, and the correspond
 
 ## Learn more
 
-- [List of PostgreSQL system tables](https://www.postgresql.org/docs/current/catalogs.html)
+- [List of PostgreSQL system tables](https://www.postgresql.org/docs/15/catalogs.html)

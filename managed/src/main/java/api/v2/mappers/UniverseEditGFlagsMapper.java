@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 package api.v2.mappers;
 
 import api.v2.models.UniverseEditGFlags;
@@ -64,6 +64,11 @@ public interface UniverseEditGFlagsMapper {
                           perAZ.put(UUID.fromString(azuuid), perProcessFlags);
                         });
                 cluster.userIntent.specificGFlags.setPerAZ(perAZ);
+              }
+              if (clusterGFlags.getGflagGroups() != null) {
+                cluster.userIntent.specificGFlags.setGflagGroups(
+                    UniverseDefinitionTaskParamsMapper.INSTANCE.mapGroupNameList(
+                        clusterGFlags.getGflagGroups()));
               }
             });
     return targetClusters;

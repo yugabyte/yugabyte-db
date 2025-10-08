@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Author: Nishant Sharma(nishant.sharma@hashedin.com)
 

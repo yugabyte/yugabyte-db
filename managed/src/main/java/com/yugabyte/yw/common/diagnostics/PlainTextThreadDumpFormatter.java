@@ -10,24 +10,26 @@ import java.lang.management.ThreadInfo;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
  * Formats a thread dump as plain text. Originally from <a
- * href="https://github.com/spring-projects/spring-boot/blob/main/spring-boot-project/spring-boot-actuator/src/main/java/org/springframework/boot/actuate/management/PlainTextThreadDumpFormatter.java">Spring
+ * href="https://github.com/spring-projects/spring-boot/blob/main/module/spring-boot-actuator/src/main/java/org/springframework/boot/actuate/management/PlainTextThreadDumpFormatter.java">Spring
  * Boot</a> The only difference from the original implementation is {@link
- * PlainTextThreadDumpFormatter#format(ThreadInfo[])} returning a {@link StringWriter} instance so
- * it can be streamed directly without string conversion
+ * PlainTextThreadDumpFormatter#format(ThreadInfo[], Map)} accepting a map of TID -> CPU times and
+ * returning a {@link StringWriter} instance so it can be streamed directly without string
+ * conversion
  */
 class PlainTextThreadDumpFormatter {
 
-  StringWriter format(ThreadInfo[] threads) {
+  StringWriter format(ThreadInfo[] threads, Map<Long, Long> cpuTimes) {
     StringWriter dump = new StringWriter();
     PrintWriter writer = new PrintWriter(dump);
     writePreamble(writer);
     for (ThreadInfo info : threads) {
-      writeThread(writer, info);
+      writeThread(writer, info, cpuTimes.get(info.getThreadId()));
     }
     return dump;
   }
@@ -42,9 +44,17 @@ class PlainTextThreadDumpFormatter {
     writer.println();
   }
 
-  private void writeThread(PrintWriter writer, ThreadInfo info) {
+  private void writeThread(PrintWriter writer, ThreadInfo info, Long cpuTime) {
     writer.printf("\"%s\" - Thread t@%d%n", info.getThreadName(), info.getThreadId());
-    writer.printf("   %s: %s%n", Thread.State.class.getCanonicalName(), info.getThreadState());
+
+    if (cpuTime != null) {
+      writer.printf(
+          "   %s: %s (time: %d)%n",
+          Thread.State.class.getCanonicalName(), info.getThreadState(), cpuTime);
+    } else {
+      writer.printf("   %s: %s%n", Thread.State.class.getCanonicalName(), info.getThreadState());
+    }
+
     writeStackTrace(writer, info, info.getLockedMonitors());
     writer.println();
     writeLockedOwnableSynchronizers(writer, info);

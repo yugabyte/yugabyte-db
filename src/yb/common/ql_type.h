@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -21,8 +21,6 @@
 #include <string>
 #include <utility>
 #include <vector>
-
-#include <boost/optional.hpp>
 
 #include "yb/util/logging.h"
 
@@ -159,12 +157,10 @@ class QLType {
     return udtype_info_->name();
   }
 
-  const std::string& udtype_id() const {
-    return udtype_info_->id();
-  }
+  const std::string& udtype_id() const { return udtype_info_->id(); }
 
   // returns position of "field_name" in udtype_field_names() vector if found, otherwise -1
-  boost::optional<size_t> GetUDTypeFieldIdxByName(const std::string& field_name) const;
+  std::optional<size_t> GetUDTypeFieldIdxByName(const std::string& field_name) const;
 
   // Get the type ids of all UDTs (transitively) referenced by this UDT.
   std::vector<std::string> GetUserDefinedTypeIds() const {

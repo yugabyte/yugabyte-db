@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -47,6 +47,8 @@ const MonoDelta ComputeTTL(const MonoDelta& value_ttl, const MonoDelta& default_
 // Utility function that computes the effective TTL directly given a schema
 const MonoDelta ComputeTTL(const MonoDelta& value_ttl, const Schema& schema);
 
+HybridTime ComputeExpiration(HybridTime ht, MonoDelta ttl);
+
 // Utility function that computes an expiration time based on a key's hybrid_time and TTL.
 const HybridTime FileExpirationFromValueTTL(
     const HybridTime& key_hybrid_time, const MonoDelta& value_ttl);
@@ -55,6 +57,9 @@ const HybridTime FileExpirationFromValueTTL(
 // expiration time and its table TTL.
 const HybridTime MaxExpirationFromValueAndTableTTL(const HybridTime& key_hybrid_time,
     const MonoDelta& table_ttl, const HybridTime& value_expiry);
+
+// Checks if ttl is configured.
+bool IsInvalidTTL(MonoDelta ttl);
 
 // Cassandra considers a TTL of zero as resetting the TTL.
 static const uint64_t kResetTTL = 0;

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 import _ from 'lodash';
 import {
   isNonEmptyArray,
@@ -54,6 +54,8 @@ export const CONST_VALUES = {
   JWKS_EQUALS: 'jwks=',
   JWT_JWKS_URL: 'jwt_jwks_url'
 };
+
+export const SENSITIVE_INFO = 'sensitive_info';
 
 export const GFLAG_EDIT = 'EDIT';
 

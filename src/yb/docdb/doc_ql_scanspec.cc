@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -67,25 +67,16 @@ DocQLScanSpec::DocQLScanSpec(
 }
 
 DocQLScanSpec::DocQLScanSpec(
-    const Schema& schema,
-    const boost::optional<int32_t>
-        hash_code,
-    const boost::optional<int32_t>
-        max_hash_code,
-    std::reference_wrapper<const dockv::KeyEntryValues>
-        hashed_components,
-    const QLConditionPB* condition,
-    const QLConditionPB* if_condition,
-    const rocksdb::QueryId query_id,
-    const bool is_forward_scan,
-    const bool include_static_columns,
-    const dockv::DocKey& start_doc_key,
-    const size_t prefix_length)
+    const Schema& schema, const std::optional<int32_t> hash_code,
+    const std::optional<int32_t> max_hash_code,
+    std::reference_wrapper<const dockv::KeyEntryValues> hashed_components,
+    const QLConditionPB* condition, const QLConditionPB* if_condition,
+    const rocksdb::QueryId query_id, const bool is_forward_scan, const bool include_static_columns,
+    const dockv::DocKey& start_doc_key, const size_t prefix_length)
     : qlexpr::QLScanSpec(
           schema, is_forward_scan, query_id,
           condition ? std::make_unique<qlexpr::QLScanRange>(schema, *condition) : nullptr,
-          prefix_length,
-          condition, if_condition, std::make_shared<DocExprExecutor>()),
+          prefix_length, condition, if_condition, std::make_shared<DocExprExecutor>()),
       hash_code_(hash_code),
       max_hash_code_(max_hash_code),
       hashed_components_(&hashed_components.get()),

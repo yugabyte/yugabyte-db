@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -36,7 +36,7 @@ static const uint32_t kPgUpperBoundNormalObjectId = 2'199'999'999; // upper boun
 // Secondary OID space is used by xCluster when a database is a target.  Starting point has been
 // chosen so it starts at a nice human readable number, 2'200'000'000 = 0x83'21'56'00.
 static const uint32_t kPgFirstSecondarySpaceObjectId = kPgUpperBoundNormalObjectId + 1;
-static const uint32_t kPgUpperBoundSecondarySpaceObjectId = 0xff'ff'ff'ff;
+static const uint32_t kPgUpperBoundSecondarySpaceObjectId = 0xff'ff'ff'ff; // exclusive
 static const uint32_t kPgYbTablegroupTableOid = 8036;  // Hardcoded in pg_yb_tablegroup.h
 static const uint32_t kPgSequencesTableOid = 2224;  // Hardcoded for pg_sequence. (in pg_sequence.h)
 static const uint32_t kPgYbMigrationTableOid = 8027;  // Hardcoded for pg_yb_migration.
@@ -49,6 +49,9 @@ static const uint32_t kTemplate1Oid = 1;              // Hardcoded for template1
 
 // Hardcoded for pg_yb_invalidation_messages hardcoded (in pg_yb_invalidation_messages.h).
 static const uint32_t kPgYbInvalidationMessagesTableOid = 8080;
+
+// Hardcoded for pg_publication_rel (in pg_publication_rel.h).
+static const uint32_t kPgPublicationRelOid = 6106;
 
 extern const TableId kPgProcTableId;
 extern const TableId kPgYbCatalogVersionTableId;

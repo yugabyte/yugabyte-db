@@ -219,8 +219,8 @@ typedef struct TransactionStateData
 	bool		ybDataSentForCurrQuery; /* Whether any data has been sent to
 										 * frontend as part of current query's
 										 * execution */
-	bool		ybTxnUsesTempRel; /* True if the transaction operates on a
-								   * temporary table */
+	bool		ybTxnUsesTempRel;	/* True if the transaction operates on a
+									 * temporary table */
 	List	   *YBPostponedDdlOps;	/* We postpone execution of non-revertable
 									 * DocDB operations (e.g. drop
 									 * table/index) until the rest of the txn
@@ -2124,20 +2124,51 @@ YBGetEffectivePggateIsolationLevel()
 	return mapped_pg_isolation_level;
 }
 
-void
-YBInitializeTransaction(void)
+static YbcPgInitTransactionData
+YBBuildInitTransactionData()
+{
+	return (YbcPgInitTransactionData)
+	{
+		.xact_start_timestamp = xactStartTimestamp,
+			.xact_read_only = XactReadOnly,
+			.xact_deferrable = XactDeferrable,
+			.enable_tracing = YBEnableTracing(),
+			.effective_pggate_isolation_level = YBGetEffectivePggateIsolationLevel(),
+			.read_from_followers_enabled = YBReadFromFollowersEnabled(),
+			.follower_read_staleness_ms = YBFollowerReadStalenessMs()
+	};
+}
+
+static void
+YBRunWithInitTransactionData(YbcStatus (*Callback) (const YbcPgInitTransactionData *))
 {
 	if (YBTransactionsEnabled())
 	{
-		HandleYBStatus(YBCPgBeginTransaction(xactStartTimestamp));
+		const YbcPgInitTransactionData data =
+		{
+			.xact_start_timestamp = xactStartTimestamp,
+			.xact_read_only = XactReadOnly,
+			.xact_deferrable = XactDeferrable,
+			.enable_tracing = YBEnableTracing(),
+			.effective_pggate_isolation_level = YBGetEffectivePggateIsolationLevel(),
+			.read_from_followers_enabled = YBReadFromFollowersEnabled(),
+			.follower_read_staleness_ms = YBFollowerReadStalenessMs()
+		};
 
-		HandleYBStatus(YBCPgSetTransactionIsolationLevel(YBGetEffectivePggateIsolationLevel()));
-		HandleYBStatus(YBCPgUpdateFollowerReadsConfig(YBReadFromFollowersEnabled(),
-													  YBFollowerReadStalenessMs()));
-		HandleYBStatus(YBCPgSetTransactionReadOnly(XactReadOnly));
-		HandleYBStatus(YBCPgSetEnableTracing(YBEnableTracing()));
-		HandleYBStatus(YBCPgSetTransactionDeferrable(XactDeferrable));
+		HandleYBStatus((*Callback) (&data));
 	}
+}
+
+void
+YBInitializeTransaction(void)
+{
+	YBRunWithInitTransactionData(&YBCInitTransaction);
+}
+
+void
+YBCommitTransactionIntermediate(void)
+{
+	YBRunWithInitTransactionData(&YBCCommitTransactionIntermediate);
 }
 
 /*
@@ -2317,7 +2348,20 @@ YBCRestartWriteTransaction()
 	 */
 	PopAllActiveSnapshots();
 
+	if (TopTransactionResourceOwner != NULL)
+	{
+		ResourceOwnerRelease(TopTransactionResourceOwner,
+							 RESOURCE_RELEASE_BEFORE_LOCKS,
+							 false, true);
+		ResourceOwnerRelease(TopTransactionResourceOwner,
+							 RESOURCE_RELEASE_LOCKS,
+							 false, true);
+		ResourceOwnerRelease(TopTransactionResourceOwner,
+							 RESOURCE_RELEASE_AFTER_LOCKS,
+							 false, true);
+	}
 	AtEOXact_SPI(false /* isCommit */ );
+	AtEOXact_Snapshot(false, true); /* and release the transaction's snapshots */
 
 	/*
 	 * Recreate the global state present for triggers that would have changed
@@ -2338,6 +2382,12 @@ CommitTransaction(void)
 	TransactionState s = CurrentTransactionState;
 	TransactionId latestXid;
 	bool		is_parallel_worker;
+	instr_time	yb_commit_starttime;
+	instr_time	yb_commit_endtime;
+	uint64		elapsed_time;
+
+	if (YbIsCommitStatsCollectionEnabled() && YbIsSessionStatsTimerEnabled())
+		INSTR_TIME_SET_CURRENT(yb_commit_starttime);
 
 	is_parallel_worker = (s->blockState == TBLOCK_PARALLEL_INPROGRESS);
 
@@ -2440,7 +2490,8 @@ CommitTransaction(void)
 
 	if (IsYugaByteEnabled())
 	{
-		bool increment_pg_txns = YbTrackPgTxnInvalMessagesForAnalyze();
+		bool		increment_pg_txns = YbTrackPgTxnInvalMessagesForAnalyze();
+
 		/*
 		 * Firing the triggers may abort current transaction.
 		 * At this point all the them has been fired already.
@@ -2601,6 +2652,14 @@ CommitTransaction(void)
 	 * default
 	 */
 	s->state = TRANS_DEFAULT;
+
+	if (YbIsCommitStatsCollectionEnabled() && YbIsSessionStatsTimerEnabled())
+	{
+		INSTR_TIME_SET_CURRENT(yb_commit_endtime);
+		INSTR_TIME_SUBTRACT(yb_commit_endtime, yb_commit_starttime);
+		elapsed_time = INSTR_TIME_GET_MICROSEC(yb_commit_endtime);
+		YbRecordCommitLatency(elapsed_time);
+	}
 
 	RESUME_INTERRUPTS();
 }
@@ -3270,10 +3329,10 @@ YBStartTransactionCommandInternal(bool yb_skip_read_committed_internal_savepoint
 void
 YbCommitTransactionCommandIntermediate(void)
 {
-	NodeTag yb_node_tag;
-	CommandTag yb_command_tag;
-	bool is_ddl_mode = YBCPgIsDdlMode();
-	YbDdlMode ddl_mode;
+	NodeTag		yb_node_tag;
+	CommandTag	yb_command_tag;
+	bool		is_ddl_mode = YBCPgIsDdlMode();
+	YbDdlMode	ddl_mode;
 
 	elog(DEBUG2, "YbCommitTransactionCommandIntermediate");
 
@@ -4940,13 +4999,19 @@ RollbackToSavepoint(const char *name)
 void
 BeginInternalSubTransaction(const char *name)
 {
+	YbcFlushDebugContext yb_debug_context = {
+		.reason = YB_BEGIN_SUBTRANSACTION,
+		.uintarg = CurrentTransactionState->subTransactionId,
+		.strarg1 = name,
+	};
+
 	/*
-	 * The subtransaction corresponding to the buffered operations must be
+	 * YB: The subtransaction corresponding to the buffered operations must be
 	 * current and in the INPROGRESS state for correct error handling.
 	 * An error thrown while/after switching over to a new subtransaction
 	 * would lead to a fatal error or unpredictable behavior.
 	 */
-	YBFlushBufferedOperations();
+	YBFlushBufferedOperations(&yb_debug_context);
 	TransactionState s = CurrentTransactionState;
 
 	/*
@@ -5023,8 +5088,13 @@ BeginInternalSubTransaction(const char *name)
 void
 YbBeginInternalSubTransactionForReadCommittedStatement()
 {
+	YbcFlushDebugContext debug_context = {
+		.reason = YB_BEGIN_SUBTRANSACTION,
+		.uintarg = CurrentTransactionState->subTransactionId,
+		.strarg1 = "read committed transaction",
+	};
 
-	YBFlushBufferedOperations();
+	YBFlushBufferedOperations(&debug_context);
 	TransactionState s = CurrentTransactionState;
 
 	Assert(s->blockState == TBLOCK_SUBINPROGRESS ||
@@ -5080,13 +5150,18 @@ YBTransactionContainsNonReadCommittedSavepoint(void)
 void
 ReleaseCurrentSubTransaction(void)
 {
+	YbcFlushDebugContext yb_debug_context = {
+		.reason = YB_END_SUBTRANSACTION,
+		.uintarg = CurrentTransactionState->subTransactionId,
+	};
+
 	/*
-	 * The subtransaction corresponding to the buffered operations must be
+	 * YB: The subtransaction corresponding to the buffered operations must be
 	 * current and in the INPROGRESS state for correct error handling.
 	 * An error thrown while/after commiting/releasing it would lead to a
 	 * fatal error or unpredictable behavior.
 	 */
-	YBFlushBufferedOperations();
+	YBFlushBufferedOperations(&yb_debug_context);
 	TransactionState s = CurrentTransactionState;
 
 	/*

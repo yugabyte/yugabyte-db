@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -36,6 +36,10 @@ class PgDmlWrite : public PgDml {
   void SetCatalogCacheVersion(std::optional<PgOid> db_oid,
                               uint64_t catalog_cache_version) override {
     DoSetCatalogCacheVersion(write_req_.get(), db_oid, catalog_cache_version);
+  }
+
+  void SetTablespaceOid(uint32_t tablespace_oid) override {
+    DoSetTablespaceOid(write_req_.get(), tablespace_oid);
   }
 
   [[nodiscard]] int32_t GetRowsAffectedCount() { return rows_affected_count_; }

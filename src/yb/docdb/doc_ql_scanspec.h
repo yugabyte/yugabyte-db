@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -46,14 +46,12 @@ class DocQLScanSpec : public qlexpr::QLScanSpec {
   //
   // DocQLScanSpec spec(...{} /* hashed_components */,...);
 
-  DocQLScanSpec(const Schema& schema, boost::optional<int32_t> hash_code,
-                boost::optional<int32_t> max_hash_code,
-                std::reference_wrapper<const dockv::KeyEntryValues> hashed_components,
-                const QLConditionPB* req, const QLConditionPB* if_req,
-                rocksdb::QueryId query_id, bool is_forward_scan = true,
-                bool include_static_columns = false,
-                const dockv::DocKey& start_doc_key = DefaultStartDocKey(),
-                const size_t prefix_length = 0);
+  DocQLScanSpec(
+      const Schema& schema, std::optional<int32_t> hash_code, std::optional<int32_t> max_hash_code,
+      std::reference_wrapper<const dockv::KeyEntryValues> hashed_components,
+      const QLConditionPB* req, const QLConditionPB* if_req, rocksdb::QueryId query_id,
+      bool is_forward_scan = true, bool include_static_columns = false,
+      const dockv::DocKey& start_doc_key = DefaultStartDocKey(), const size_t prefix_length = 0);
 
   const std::shared_ptr<std::vector<qlexpr::OptionList>>& options() const override {
     return options_;
@@ -88,11 +86,11 @@ class DocQLScanSpec : public qlexpr::QLScanSpec {
 
   // Hash code to scan at (interpreted as lower bound if hashed_components_ are empty)
   // hash values are positive int16_t.
-  const boost::optional<int32_t> hash_code_;
+  const std::optional<int32_t> hash_code_;
 
   // Max hash code to scan at (upper bound, only useful if hashed_components_ are empty)
   // hash values are positive int16_t.
-  const boost::optional<int32_t> max_hash_code_;
+  const std::optional<int32_t> max_hash_code_;
 
   // The hashed_components are owned by the caller of QLScanSpec.
   const dockv::KeyEntryValues* hashed_components_;

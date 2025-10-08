@@ -42,7 +42,7 @@ The limits are controlled by the following YB-TServer configuration flags: `--ss
 After configuring [encryption in transit](../../../secure/tls-encryption/) for a YugabyteDB cluster, you may encounter the following error when trying to use yb-admin:
 
 ```sh
-./bin/yb-admin -master_addresses <master-addresses> list_all_masters
+./bin/yb-admin --master_addresses <master-addresses> list_all_masters
 ```
 
 ```output
@@ -70,7 +70,7 @@ SELECT * FROM system.peers_v2;
  (ql error -2)
 ```
 
-The most likely reason is that you are not using one of the YugabyteDB forks of the Cassandra client drivers. The `system.peers_v2` table does not exist in YugabyteDB. To resolve this issue, you should check the [drivers page](../../../drivers-orms/ycql-client-drivers/) to find a driver for your client language.
+The most likely reason is that you are not using one of the YugabyteDB forks of the Cassandra client drivers. The `system.peers_v2` table does not exist in YugabyteDB. To resolve this issue, you should check the [drivers page](/preview/develop/drivers-orms/ycql-client-drivers/) to find a driver for your client language.
 
 ## Poll stopped: Service unavailable
 

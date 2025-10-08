@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 YugaByte, Inc. and Contributors
+ * Copyright 2022 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -116,11 +116,15 @@ public class ReadOnlyKubernetesClusterCreate extends KubernetesTaskBase {
 
       // Install YBC on the RR tservers and wait for its completion
       if (universe.isYbcEnabled()) {
-        installYbcOnThePods(
-            tserversAdded,
-            true,
-            ybcManager.getStableYbcVersion(),
-            readOnlyCluster.userIntent.ybcFlags);
+        if (!universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc()) {
+          installYbcOnThePods(
+              tserversAdded,
+              true,
+              ybcManager.getStableYbcVersion(),
+              readOnlyCluster.userIntent.ybcFlags);
+        } else {
+          log.debug("Skipping configure YBC as 'useYBDBInbuiltYbc' is enabled");
+        }
         createWaitForYbcServerTask(tserversAdded);
       }
 

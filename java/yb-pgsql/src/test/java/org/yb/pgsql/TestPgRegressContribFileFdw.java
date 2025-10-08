@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -18,12 +18,21 @@ import org.yb.client.TestUtils;
 import org.yb.YBTestRunner;
 
 import java.io.File;
+import java.util.Map;
 
 @RunWith(value=YBTestRunner.class)
 public class TestPgRegressContribFileFdw extends BasePgRegressTestPorted {
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;
+  }
+
+  // (Auto-Analyze) proactively disable auto analyze because the test
+  // checks query plan.
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("ysql_enable_auto_analyze", "false");
+    return flagMap;
   }
 
   @Test

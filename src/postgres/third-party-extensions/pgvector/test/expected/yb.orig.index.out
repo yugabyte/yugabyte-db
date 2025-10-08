@@ -393,8 +393,6 @@ CREATE TABLE vec1 (embedding vector(3));
 CREATE INDEX vec1_idx ON vec1 USING hnsw (embedding vector_l2_ops);
 SET ybhnsw.ef_search = 100;
 SET hnsw.ef_search = 100;
-ERROR:  invalid configuration parameter name "hnsw.ef_search"
-DETAIL:  "hnsw" is a reserved prefix.
 \d vec1
                   Table "public.vec1"
   Column   |   Type    | Collation | Nullable | Default 
@@ -404,3 +402,42 @@ Indexes:
     "vec1_idx" ybhnsw (embedding)
 
 DROP TABLE vec1;
+-- Test to validate that both GUCs ybhnsw.ef_search and hnsw.ef_search are in sync.
+SHOW ybhnsw.ef_search;
+ ybhnsw.ef_search 
+------------------
+ 100
+(1 row)
+
+SHOW hnsw.ef_search;
+ hnsw.ef_search 
+----------------
+ 100
+(1 row)
+
+SET ybhnsw.ef_search = 200;
+SHOW ybhnsw.ef_search;
+ ybhnsw.ef_search 
+------------------
+ 200
+(1 row)
+
+SHOW hnsw.ef_search;
+ hnsw.ef_search 
+----------------
+ 200
+(1 row)
+
+RESET hnsw.ef_search;
+SHOW ybhnsw.ef_search;
+ ybhnsw.ef_search 
+------------------
+ 40
+(1 row)
+
+SHOW hnsw.ef_search;
+ hnsw.ef_search 
+----------------
+ 40
+(1 row)
+

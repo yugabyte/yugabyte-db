@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -58,8 +58,8 @@
 #include "yb/util/metric_entity.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"
-#include "yb/util/slice.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/slice.h"
 #include "yb/util/status_format.h"
 
 DEFINE_NON_RUNTIME_bool(print_headers, true, "print the log segment headers/footers");
@@ -89,8 +89,7 @@ DEFINE_NON_RUNTIME_int64(max_op_index_to_omit, yb::OpId::Invalid().index,
 DEFINE_NON_RUNTIME_string(output_wal_dir, "",
              "WAL directory for the output of --filter_log_segment");
 
-namespace yb {
-namespace log {
+namespace yb::log {
 
 using consensus::ReplicateMsg;
 using std::string;
@@ -105,11 +104,11 @@ enum PrintEntryType {
 };
 
 static PrintEntryType ParsePrintType() {
-  if (!ParseLeadingBoolValue(FLAGS_print_entries.c_str(), true)) {
+  if (!ParseLeadingBoolValue(FLAGS_print_entries.c_str(), /*deflt=*/true)) {
     return DONT_PRINT;
   }
 
-  if (ParseLeadingBoolValue(FLAGS_print_entries.c_str(), false) ||
+  if (ParseLeadingBoolValue(FLAGS_print_entries.c_str(), /*deflt=*/false) ||
       FLAGS_print_entries == "decoded") {
     return PRINT_DECODED;
   }
@@ -173,7 +172,7 @@ Status PrintDecodedWriteRequestPB(const string& indent, const tablet::WritePB& w
       if (kv.has_value()) {
         Result<std::string> formatted_value = DocDBValueToDebugStr(
             kv.key(), ::yb::docdb::StorageDbType::kRegular, kv.value(),
-            nullptr /*schema_packing_provider*/);
+            /*schema_packing_provider=*/nullptr);
         cout << indent << indent << indent << indent << "Value: " << formatted_value << endl;
       }
       if (kv.has_external_hybrid_time()) {
@@ -302,6 +301,7 @@ Status DumpLog(const string& tablet_id, const string& tablet_wal_path) {
                                 tablet_wal_path,
                                 scoped_refptr<MetricEntity>(),
                                 scoped_refptr<MetricEntity>(),
+                                /*read_wal_mem_tracker=*/nullptr,
                                 &reader));
 
   SegmentSequence segments;
@@ -314,9 +314,10 @@ Status DumpLog(const string& tablet_id, const string& tablet_wal_path) {
   return Status::OK();
 }
 
-Status DumpSegment(const string &segment_path) {
-  Env *env = Env::Default();
-  auto segment = VERIFY_RESULT(ReadableLogSegment::Open(env, segment_path));
+Status DumpSegment(const string& segment_path) {
+  Env* env = Env::Default();
+  auto segment =
+      VERIFY_RESULT(ReadableLogSegment::Open(env, segment_path, /*read_wal_mem_tracker=*/nullptr));
   RETURN_NOT_OK(PrintSegment(segment));
 
   return Status::OK();
@@ -337,7 +338,8 @@ Status FilterLogSegment(const string& segment_path) {
   output_wal_dir = VERIFY_RESULT(env->Canonicalize(output_wal_dir));
   LOG(INFO) << "Created directory " << output_wal_dir;
 
-  auto segment = VERIFY_RESULT(ReadableLogSegment::Open(env, segment_path));
+  auto segment =
+      VERIFY_RESULT(ReadableLogSegment::Open(env, segment_path, /*read_wal_mem_tracker=*/nullptr));
   Schema tablet_schema;
   const auto& segment_header = segment->header();
 
@@ -405,8 +407,9 @@ Status FilterLogSegment(const string& segment_path) {
       "log-dump-tool",
       tablet_schema,
       segment_header.deprecated_schema_version(),
-      /* table_metric_entity */ nullptr,
-      /* tablet_metric_entity */ nullptr,
+      /*table_metric_entity=*/nullptr,
+      /*tablet_metric_entity=*/nullptr,
+      /*read_wal_mem_tracker=*/nullptr,
       log_thread_pool.get(),
       log_thread_pool.get(),
       log_thread_pool.get(),
@@ -444,11 +447,10 @@ Status FilterLogSegment(const string& segment_path) {
   return Status::OK();
 }
 
-}  // namespace log
-}  // namespace yb
+} // namespace yb::log
 
 int main(int argc, char **argv) {
-  yb::ParseCommandLineFlags(&argc, &argv, true);
+  yb::ParseCommandLineFlags(&argc, &argv, /*remove_flags=*/true);
   using yb::Status;
 
   if (argc != 2 && argc != 3) {

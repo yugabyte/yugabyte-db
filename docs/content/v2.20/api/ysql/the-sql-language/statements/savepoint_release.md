@@ -4,7 +4,7 @@ headerTitle: RELEASE SAVEPOINT
 linkTitle: RELEASE SAVEPOINT
 description: Use the `RELEASE SAVEPOINT` statement to release a savepoint.
 menu:
-  v2.20:
+  v2.20_api:
     identifier: savepoint_release
     parent: statements
 type: docs

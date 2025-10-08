@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package server
 
@@ -7,7 +7,6 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
-	"fmt"
 	"io"
 	"io/fs"
 	"net"
@@ -639,7 +638,7 @@ func (server *RPCServer) Update(
 		// Platform has confirmed that it has also rotated the cert and the key.
 		err = HandleUpgradedState(ctx, config)
 	default:
-		err = status.Errorf(codes.InvalidArgument, fmt.Sprintf("Unhandled state - %s", state))
+		err = status.Errorf(codes.InvalidArgument, "Unhandled state - %s", state)
 	}
 	res := &pb.UpdateResponse{Home: util.MustGetHomeDirectory()}
 	return res, err

@@ -13,9 +13,139 @@ type: docs
 
 What follows are the release notes for the YugabyteDB Voyager v1 release series. Content will be added as new notable features and changes are available in the patch releases of the YugabyteDB v1 series.
 
+{{< warning title="Technical Advisory" >}}
+
+{{<ta 2968>}} : Import schema fails on all Voyager installs done after August 14, 2025. Impacts [v1.1](#v1-1-march-7-2023) to [v2025.8.1](#v2025-8-1-august-5-2025).
+
+{{< /warning >}}
+
 ## Versioning
 
 Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, where `YYYY` is the release year, `M` is the month, and `N` is the number of the release in that month.
+
+## v2025.9.3 - September 30, 2025
+
+### New feature
+
+- {{<tags/feature/tp>}} Added the ability to analyze, compare, and summarize workload query performance between the source database and the target YugabyteDB database using the [compare-performance](../reference/compare-performance/) command. The command generates both HTML and JSON reports for easy comparison.
+
+  Note that this feature is supported for YugabyteDB release {{<release "2025.1">}} and later.
+
+### Enhancements
+
+- Improved import data to skip retrying errors that the `pgx` driver identifies as non‑retryable, enhancing stability.
+- Added the ability to manage adaptive parallelism using the `--adaptive-parallelism` flag. Options include `disabled`, `balanced` (default), or `aggressive`. Replaces the `--enable-adaptive-parallelism` flag.
+- Added an `--output-format` flag to the `export data status`, `import data status`, and `get data-migration-report` commands to generate structured JSON reports. `end migration` now saves the JSON versions of these reports as well.
+
+### Bug fixes
+
+- Fixed offline import data failing with accelerated data export mode when some tables are not created in the target database and excluded via table-list flags.
+- Fixed an issue where data exported using older versions (before v2025.9.2) could not be imported after upgrading Voyager to v2025.9.2. Import data would previously fail with the error `failed to prepare table to column`.
+- Fixed a nil pointer error when an unknown table name is included in the table list passed to the `import data` command.
+
+## v2025.9.2 - September 16, 2025
+
+### Enhancements
+
+- Enhanced primary key recommendation logic to consider both unique constraints and unique indexes when suggesting primary keys, and added support for generating recommendations for partitioned tables that don't have primary keys.
+
+- Enhanced assessment report:
+  - Removed low cardinality performance optimization recommendation and updated descriptions for NULL and particular value column indexes to clarify unnecessary writes for these values.
+  - Improved "Notes" section organization by categorizing them according to their types for better readability.
+  - Added explanatory notes about redundant indexes in the sizing recommendation section to help users understand the impact on estimated data import time.
+  - Renamed "Sharding Recommendations" to "Colocation Recommendations" for better clarity.
+  - Enhanced the colocation recommendations by suggesting only to colocate tables if it provides an overall benefit in the required number of cores or nodes.
+  - Removed a suggestion note to create range-sharded secondary indexes as they are now automatically created during export schema.
+
+- Added console messages to show resumption progress when importing from large files, keeping users informed during long resumption processes.
+- Introduced a flag [--max-retries-streaming](../reference/data-migration/import-data/#arguments) in the import data commands to configure the number of retries for the streaming phase in live migration.
+
+### Bug fixes
+
+- Fixed a bug in offline migration during import data. The command now correctly honors the table list allowing users to continue their migration by excluding tables that are not present in the target database.
+- Fixed issue where rows skipped due to size or transformation errors were not being counted in the errored row count during data import, providing more accurate error statistics.
+
+## v2025.9.1 - September 2, 2025
+
+### New feature
+
+- Export schema automatically exports all secondary indexes as range-sharded by default to avoid potential hash hotspots. Use the [skip-performance-recommendations](../reference/schema-migration/export-schema/#arguments) flag to skip this automatic change.
+
+### Enhancements
+
+- The assessment report now includes primary key recommendations for tables having no primary key but with UNIQUE NOT NULL columns, improving schema optimization guidance.
+
+- Improved the estimated time for import calculations in the assessment report by additionally estimating the time without considering redundant indexes, which are now automatically excluded in the export schema step.
+
+- End migration now backs up the schema optimization report produced by export schema.
+
+- Modified flag names in export schema from "skip-performance-optimizations" to "skip-performance-recommendations" and from "skip-recommendations" to "skip-colocation-recommendations" for consistency and clarity.
+
+### Bug fix
+
+- Fixed a bug where the source database password was not correctly configured when passed to assess-migration when it was run automatically during a schema export.
+
+## v2025.8.2 - August 19, 2025
+
+### New feature
+
+- Introduced the `--allow-oracle-clob-data-export` flag for the export data command, to enable exporting data from CLOB datatype columns in Oracle offline migrations.
+
+### Enhancements
+
+- Improved sizing calculations in `assess-migration` by factoring in throughput gains based on the recommended number of nodes for more accurate import time estimation.
+- Enhanced PostgreSQL permissions grant script by adding an option for live migrations to either transfer table ownership to the migration user or grant the original owner's permissions to it.
+- Improved import data retry logic to skip non-retryable errors such as data exceptions and integrity violations.
+- Removed redundant index performance optimization reports from the `assess-migration` report as `export schema` now automatically removes redundant indexes.
+- Enhanced schema optimization report in `export schema` to list all recommendations, whether they are applied or skipped, even when the `--skip-performance-recommendations` / `--skip-colocation-recommendations` flags are used.
+
+### Bug fix
+
+- Fixed an [issue](https://github.com/yugabyte/yb-voyager/issues/2968) where import schema fails while parsing some unnecessary statements on all Voyager installs done after August 14, 2025. Refer to [TA-2968](/preview/releases/techadvisories/ta-2968/).
+
+## v2025.8.1 - August 5, 2025
+
+### New feature
+
+- Automatically apply performance optimizations recommended by the migration assessment (such as removing redundant indexes) during the export schema phase. Voyager also generates a schema optimization report detailing the optimizations that were applied. To turn automatic optimization off, set the new `--skip-performance-recommendations` flag in the `export schema` command to true.
+- Introduced the ability to stash errors and continue when importing snapshot data in `import data` and `import-data-file` commands by using the flags `error-policy-snapshot` or `error-policy`.
+
+### Enhancements
+
+- Migration assessment now detects missing indexes on foreign‑key columns. This provides more comprehensive performance optimization recommendations in the migration assessment report.
+- Updated the latest stable YugabyteDB version to v2025.1.0.0, ensuring compatibility with the newest features and fixes. Advisory locks are now supported in YugabyteDB and will no longer be reported from this target version onwards.
+- Improved the performance of `import data` by increasing the max CPU threshold for adaptive parallelism to 80.
+- Improved ANALYZE checks in the `assess-migration` command to honor auto‑analyze settings and gracefully handle user prompts.
+- Improved error handling by throwing clear errors when connection to the source database fails, making troubleshooting easier.
+
+### Bug fixes
+
+- Addressed nil pointer exceptions in `end migration` when the database configuration is not set, preventing unexpected errors during migration processes.
+- Fixed an issue where `import data` with `--on-primary-key-conflict ignore` failed if import to source replica started earlier.
+
+## v2025.7.2 - July 15, 2025
+
+### New feature
+
+- Introduced the `--on-primary-key-conflict` flag for the import data to target and import data file command, supporting two modes:
+
+  - ERROR: Fails the import if a primary key conflict is encountered.
+  - IGNORE: Ignores rows that have a primary key conflict.
+
+### Enhancements
+
+- Foreign keys with mismatched datatypes are now detected and reported in the Migration Assessment Report under **Performance Optimizations**.
+- Automatically clean up leftover metadata when `assess-migration` is aborted via a prompt, eliminating the need to rerun with `--start-clean`.
+- Added a warning in import data when existing rows are detected in the target table to help prevent primary key conflicts during import.
+- Improved error messages when multiple Debezium processes or active replication slots are detected, so that you can identify and kill orphaned processes and retry the command.
+- Upgraded the [YugabyteDB gRPC Connector](/preview/additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/) for live migration with fall-back and fall-forward workflows to support new YugabyteDB releases.
+
+### Bug fixes
+
+- Fixed incorrect error message shown during schema export failures; now correctly reports "schema export unsuccessful".
+- Fixed import report output for import data file when the same file is mapped to multiple tables; all target tables are now correctly listed in the report.
+- Fixed broken status reporting in import data status when multiple files are imported to the same table; all imported files are now listed in the status report.
+- Fixed misclassification of performance optimization issues inside PL/pgSQL blocks; these are now correctly reported under **Performance Optimizations** in the Migration Assessment Report.
 
 ## v2025.7.1 - July 1, 2025
 
@@ -57,7 +187,7 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
 
 ### New feature
 
-- Added support for the [YugabyteDB Connector](../../develop/change-data-capture/using-logical-replication/yugabytedb-connector/) in live migration with fall-forward and fall-back workflows. The `cutover to target` command now includes a mandatory flag to specify whether to use [YugabyteDB gRPC Connector](../../develop/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/) or [YugabyteDB Connector](../../develop/change-data-capture/using-logical-replication/yugabytedb-connector/) for these workflows.
+- Added support for the [YugabyteDB Connector](../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/) in live migration with fall-forward and fall-back workflows. The `cutover to target` command now includes a mandatory flag to specify whether to use [YugabyteDB gRPC Connector](../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/) or [YugabyteDB Connector](../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/) for these workflows.
 
   This is required for [YugabyteDB Aeon](/preview/yugabyte-cloud/) or restricted environments where only the YugabyteDB Connector is supported.
 
@@ -319,7 +449,7 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
 
 - Using the arguments `--table-list` and `--exclude-table-list` in guardrails now checks for PostgreSQL export to determine which tables require permission checks.
 - Added a check for Java as a dependency in guardrails for PostgreSQL export during live migration.
-- Added check to verify if [pg_stat_statements](../../explore/ysql-language-features/pg-extensions/extension-pgstatstatements/) is in a schema not included in the specified `schema_list` and if the migration user has access to queries in the pg_stat_statements view. This is part of the guardrails for assess-migration for PostgreSQL.
+- Added check to verify if [pg_stat_statements](../../additional-features/pg-extensions/extension-pgstatstatements/) is in a schema not included in the specified `schema_list` and if the migration user has access to queries in the pg_stat_statements view. This is part of the guardrails for assess-migration for PostgreSQL.
 - Introduced the `--version` flag in the voyager installer script, which can be used to specify the version to install.
 - Added argument [--truncate-tables](../reference/data-migration/import-data/#arguments) to import data to target for truncating tables, applicable only when --start-clean is true.
 - Added support in the assess-migration command to detect the `XMLTABLE()` function under unsupported query constructs.
@@ -352,7 +482,7 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
 
 ### Known issues
 
-- The [assess-migration](../reference/assess-migration/) command will fail if the [pg_stat_statements](../../explore/ysql-language-features/pg-extensions/extension-pgstatstatements/) extension is created in a non-public schema, due to the "Unsupported Query Constructs" feature.
+- The [assess-migration](../reference/assess-migration/) command will fail if the [pg_stat_statements](../../additional-features/pg-extensions/extension-pgstatstatements/) extension is created in a non-public schema, due to the "Unsupported Query Constructs" feature.
 To bypass this issue, set the environment variable `REPORT_UNSUPPORTED_QUERY_CONSTRUCTS=false`, which disables the "Unsupported Query Constructs" feature and proceeds with the command execution.
 
 ## v1.8.4 - October 29, 2024

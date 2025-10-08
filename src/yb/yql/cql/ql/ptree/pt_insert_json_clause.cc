@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -16,8 +16,6 @@
 //--------------------------------------------------------------------------------------------------
 #include "yb/yql/cql/ql/ptree/pt_insert_json_clause.h"
 
-#include <boost/optional.hpp>
-
 #include "yb/common/ql_type.h"
 #include "yb/yql/cql/ql/ptree/pt_expr.h"
 #include "yb/yql/cql/ql/ptree/yb_location.h"
@@ -25,15 +23,14 @@
 namespace yb {
 namespace ql {
 
-PTInsertJsonClause::PTInsertJsonClause(MemoryContext* memctx,
-                                       const YBLocation::SharedPtr& loc,
-                                       const PTExpr::SharedPtr& json_expr,
-                                       bool default_null)
+PTInsertJsonClause::PTInsertJsonClause(
+    MemoryContext* memctx, const YBLocation::SharedPtr& loc, const PTExpr::SharedPtr& json_expr,
+    bool default_null)
     : PTCollection(memctx, loc),
       default_null_(default_null),
       json_expr_(json_expr),
       json_string_(""),
-      json_document_(boost::none) {}
+      json_document_(std::nullopt) {}
 
 PTInsertJsonClause::~PTInsertJsonClause() = default;
 

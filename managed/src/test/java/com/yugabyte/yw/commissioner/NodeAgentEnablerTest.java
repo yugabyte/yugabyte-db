@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner;
 
@@ -102,7 +102,6 @@ public class NodeAgentEnablerTest extends FakeDBApplication {
         new NodeAgentEnabler(
             confGetter, platformExecutorFactory, platformScheduler, mockNodeAgentInstaller);
     nodeAgentEnabler.setUniverseInstallerExecutor(executorService);
-    nodeAgentEnabler.enable();
     universeTaskBase =
         new TestUniverseTaskBase(
             app.injector().instanceOf(BaseTaskDependencies.class), nodeAgentEnabler);

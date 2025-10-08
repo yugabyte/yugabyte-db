@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -36,8 +36,6 @@
 
 DEFINE_test_flag(int32, ysql_catalog_write_rejection_percentage, 0,
     "Reject specified percentage of writes to the YSQL catalog tables.");
-
-DECLARE_bool(enable_object_locking_for_table_locks);
 
 DEFINE_test_flag(bool, ysql_require_force_catalog_modifications, false,
     "Fail YSQL catalog writes requests if force_catalog_modifications is not set.");

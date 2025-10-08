@@ -20,6 +20,8 @@
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/master/catalog_manager_util.h"
+#include "yb/master/master.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_heartbeat.pb.h"
@@ -32,6 +34,7 @@
 #include "yb/rpc/rpc_context.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
@@ -69,10 +72,22 @@ DEFINE_RUNTIME_bool(ysql_auto_add_new_index_to_bidirectional_xcluster, true,
     "indexes for this table to replication. This flag must be set on both universes, and the index "
     "must be created concurrently on both universes.");
 
+DEFINE_RUNTIME_int32(xcluster_cleanup_tables_frequency_secs, /*half an hour*/ 30 * 60,
+    "Frequency at which we will clean up old xCluster automatic mode"
+    "DDL replication table entries.  0 means do not perform cleanup.");
+
+DEFINE_RUNTIME_uint32(xcluster_ddl_tables_retention_secs, /*1 week*/ 7 * 24 * 60 * 60,
+    "Age of DDL replication table entries beyond which they are cleaned up.  This needs to be "
+    "at least one day.");
+
+DEFINE_validator(xcluster_ddl_tables_retention_secs, FLAG_GE_VALUE_VALIDATOR(1 * 24 * 60 * 60));
+
 #define LOG_FUNC_AND_RPC \
   LOG_WITH_FUNC(INFO) << req->ShortDebugString() << ", from: " << RequestorString(rpc)
 
 namespace yb::master {
+
+using namespace std::literals;
 
 namespace {
 
@@ -103,11 +118,15 @@ XClusterManager::XClusterManager(
       catalog_manager_(catalog_manager),
       sys_catalog_(sys_catalog) {
   xcluster_config_ = std::make_unique<XClusterConfig>(&sys_catalog_);
+
+  // No need to run cleaning task as soon as we start; delay it to make startup faster.
+  time_of_last_clean_tables_task_run_ = CoarseMonoClock::Now();
 }
 
 XClusterManager::~XClusterManager() {}
 
 void XClusterManager::StartShutdown() {
+  shutdown_started_ = true;
   XClusterTargetManager::StartShutdown();
 
   // Copy the tasks out since Abort will trigger UnRegister which needs the mutex.
@@ -173,7 +192,13 @@ void XClusterManager::SysCatalogLoaded(const LeaderEpoch& epoch) {
 }
 
 void XClusterManager::RunBgTasks(const LeaderEpoch& epoch) {
+  if (shutdown_started_) {
+    return;
+  }
+
   XClusterTargetManager::RunBgTasks(epoch);
+
+  ProcessCleanupTablesPeriodically();
 }
 
 void XClusterManager::DumpState(std::ostream* out, bool on_disk_dump) const {
@@ -1014,6 +1039,81 @@ Status XClusterManager::ValidateCreateTableRequest(const CreateTableRequestPB& r
       error_str);
 
   return Status::OK();
+}
+
+void XClusterManager::ProcessCleanupTablesPeriodically() {
+  int32_t wait_flag_value = FLAGS_xcluster_cleanup_tables_frequency_secs;
+  if (wait_flag_value <= 0) {
+    // Cleanup tables work has been disabled.
+    return;
+  }
+  auto now = CoarseMonoClock::Now();
+  if (time_of_last_clean_tables_task_run_ + wait_flag_value * 1s > CoarseMonoClock::Now()) {
+    return;
+  }
+  // Cleanup duration is much smaller than cleanup frequency so it doesn't matter whether we save
+  // the start or end time of the run.
+  time_of_last_clean_tables_task_run_ = now;
+
+  std::vector<scoped_refptr<NamespaceInfo>> namespaces;
+  catalog_manager_.GetAllNamespaces(&namespaces, /*include_only_running_namespaces=*/true);
+  for (const auto& namespace_info : namespaces) {
+    // Skip namespaces not in automatic mode.
+    const auto namespace_id = namespace_info->id();
+    bool is_source = IsNamespaceInAutomaticModeSource(namespace_id);
+    bool is_target = IsNamespaceInAutomaticModeTarget(namespace_id);
+    if (!(is_source || is_target)) {
+      continue;
+    }
+
+    const auto namespace_name = namespace_info->name();
+    VLOG(1) << "Attempting to clean up DDL replication tables for namespace " << namespace_name
+            << "; is_source: " << is_source << " is_target: " << is_target;
+
+    MicrosecondsInt64 too_old_time =
+        GetCurrentTimeMicros() -
+        static_cast<int64_t>(FLAGS_xcluster_ddl_tables_retention_secs) * 1000 * 1000;
+    std::vector<std::string> statements;
+    if (is_source) {
+      // Next statement will fail if it runs on a target (mode switch might occur before the
+      // statement runs).
+      statements.push_back(Format(
+          "DELETE FROM yb_xcluster_ddl_replication.ddl_queue "
+          "WHERE ddl_end_time < $0;",
+          too_old_time));
+    }
+    statements.push_back("SET yb_non_ddl_txn_for_sys_tables_allowed = 1;");
+    // Remaining statements don't fail if run on target.
+    statements.push_back(Format(
+        "DELETE FROM yb_xcluster_ddl_replication.replicated_ddls "
+        "WHERE replicated_ddls.ddl_end_time < $0 "
+        // Below skips the special row.
+        "  AND yb_xcluster_ddl_replication.replicated_ddls.query_id != 1 "
+        // Below checks that a matching row does NOT exist in the ddl_queue table.
+        "  AND NOT EXISTS ( "
+        "    SELECT 1 "
+        "    FROM yb_xcluster_ddl_replication.ddl_queue "
+        "    WHERE "
+        "      ddl_queue.ddl_end_time = replicated_ddls.ddl_end_time "
+        "      AND ddl_queue.query_id = replicated_ddls.query_id "
+        "  );",
+        too_old_time));
+
+    // Run statements against the namespace best effort asynchronously.
+    StdStatusCallback callback = [namespace_name, is_source, is_target](const Status& status) {
+      WARN_NOT_OK(
+          status, Format(
+                      "Error cleaning up xCluster DDL replication tables for namespace $0",
+                      namespace_name));
+      VLOG(2) << "Finished DDL replication table cleanup for namespace " << namespace_name
+              << "; is_source: " << is_source << " is_target: " << is_target;
+    };
+    WARN_NOT_OK(
+        ExecutePgsqlStatements(
+            namespace_name, statements, catalog_manager_,
+            CoarseMonoClock::now() + MonoDelta::FromSeconds(60), std::move(callback)),
+        "Cleanup of xCluster DDL replication tables failed");
+  }
 }
 
 }  // namespace yb::master

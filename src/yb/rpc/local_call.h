@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -41,7 +41,8 @@ class LocalOutboundCall : public OutboundCall {
       AnyMessageConstPtr req, std::unique_ptr<Sidecars> sidecars,
       const MemTrackerPtr& mem_tracker) override;
 
-  const std::shared_ptr<LocalYBInboundCall>& CreateLocalInboundCall();
+  const std::shared_ptr<LocalYBInboundCall>& CreateLocalInboundCall(
+      CallStateListenerFactory* call_state_listener_factory);
 
   size_t ObjectSize() const override { return sizeof(*this); }
 
@@ -70,7 +71,8 @@ class LocalYBInboundCall : public YBInboundCall, public RpcCallParams {
  public:
   LocalYBInboundCall(RpcMetrics* rpc_metrics, const RemoteMethod& remote_method,
                      std::weak_ptr<LocalOutboundCall> outbound_call,
-                     CoarseTimePoint deadline);
+                     CoarseTimePoint deadline,
+                     CallStateListenerFactory* call_state_listener_factory);
 
   bool IsLocalCall() const override { return true; }
 
@@ -92,6 +94,8 @@ class LocalYBInboundCall : public YBInboundCall, public RpcCallParams {
 
  protected:
   void Respond(AnyMessageConstPtr req, bool is_success) override;
+
+  void UpdateWaitStateInfo() override;
 
  private:
   friend class LocalOutboundCall;

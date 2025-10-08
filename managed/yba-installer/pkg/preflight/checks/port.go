@@ -1,5 +1,5 @@
 /*
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  */
 
 package checks
@@ -44,6 +44,9 @@ func (p portCheck) Execute() Result {
 
 	if viper.GetBool("postgres.install.enabled") {
 		ports = append(ports, viper.GetInt("postgres.install.port"))
+	}
+	if (viper.GetBool("perfAdvisor.enabled")) {
+		ports = append(ports, viper.GetInt("perfAdvisor.port"))
 	}
 
 	usedPorts := make([]int, 0, len(ports))

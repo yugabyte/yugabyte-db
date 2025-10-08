@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -32,16 +32,16 @@ struct YBTableInfo {
   YBSchema schema;
   dockv::PartitionSchema partition_schema;
   qlexpr::IndexMap index_map;
-  boost::optional<qlexpr::IndexInfo> index_info;
+  std::optional<qlexpr::IndexInfo> index_info;
   YBTableType table_type;
-  bool colocated; // Accounts for databases and tablegroups but not for YSQL system tables.
-  boost::optional<ReplicationInfoPB> replication_info;
-  boost::optional<uint32> wal_retention_secs;
+  bool colocated;  // Accounts for databases and tablegroups but not for YSQL system tables.
+  std::optional<ReplicationInfoPB> replication_info;
+  std::optional<uint32> wal_retention_secs;
   // Explicitly stores the PG table id (incase the table was rewritten).
   TableId pg_table_id;
 
   // Populated and used by GetTableSchema() for YSQL tables.
-  boost::optional<google::protobuf::RepeatedPtrField<yb::master::YsqlDdlTxnVerifierStatePB>>
+  std::optional<google::protobuf::RepeatedPtrField<yb::master::YsqlDdlTxnVerifierStatePB>>
       ysql_ddl_txn_verifier_state;
 
   size_t DynamicMemoryUsage() const {

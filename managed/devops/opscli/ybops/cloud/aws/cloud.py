@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2019 YugaByte, Inc. and Contributors
+# Copyright 2019 YugabyteDB, Inc. and Contributors
 #
 # Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
 # may not use this file except in compliance with the License. You
@@ -13,7 +13,7 @@ import logging
 import os
 import socket
 import subprocess
-
+import time
 import boto3
 from botocore.exceptions import ClientError
 from botocore.utils import InstanceMetadataFetcher
@@ -487,6 +487,34 @@ class AwsCloud(AbstractCloud):
     def create_instance(self, args):
         create_instance(args)
 
+    def _release_elastic_ip(self, client, elastic_ip):
+        max_attempts = 20
+        sleep_time_between_attempts = 3
+        try:
+            if "AssociationId" in elastic_ip:
+                # Idempotent operation, ignore if disassociate fails
+                client.disassociate_address(
+                    AssociationId=elastic_ip["AssociationId"]
+                )
+
+            client.release_address(
+                AllocationId=elastic_ip["AllocationId"]
+            )
+            for attempt in range(max_attempts):
+                time.sleep(sleep_time_between_attempts)
+                response = client.describe_addresses(
+                    AllocationIds=[elastic_ip["AllocationId"]]
+                )
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'InvalidAllocationId.NotFound':
+                logging.info(f"Elastic IP {elastic_ip['AllocationId']} released successfully")
+                return True
+            else:
+                logging.error(f"Error releasing elastic ip {elastic_ip['AllocationId']}: {e}")
+                return False
+        logging.error(f"Timed out releasing elastic ip {elastic_ip['AllocationId']}")
+        return False
+
     def delete_instance(self, region, instance_id, has_elastic_ip=False):
         logging.info("[app] Deleting AWS instance {} in region {}".format(
             instance_id, region))
@@ -503,12 +531,9 @@ class AwsCloud(AbstractCloud):
                         Filters=[{'Name': 'public-ip', 'Values': [public_ip_address]}]
                     )["Addresses"]
                     for elastic_ip in elastic_ip_list:
-                        client.disassociate_address(
-                            AssociationId=elastic_ip["AssociationId"]
-                        )
-                        client.release_address(
-                            AllocationId=elastic_ip["AllocationId"]
-                        )
+                        if not self._release_elastic_ip(client, elastic_ip):
+                            logging.warning("Failed to release Elastic IP {}".format(
+                                elastic_ip['AllocationId']))
                 logging.info("[app] Deleted elastic ip {}".format(public_ip_address))
 
         # persistent spot requests might have more than one instance associated with them
@@ -580,7 +605,6 @@ class AwsCloud(AbstractCloud):
             logging.warning(f"Error fetching AWS disk attachment: {e}")
             return None
 
-
     def clone_disk(self, args, volume_id, num_disks,
                    snapshot_creation_delay=15, snapshot_creation_max_attempts=80):
         output = []
@@ -639,8 +663,8 @@ class AwsCloud(AbstractCloud):
             raise YBOpsRuntimeError("Could not find instance {}".format(args.search_pattern))
         update_disk(args, instance["id"])
 
-    def change_instance_type(self, args, instance_type):
-        change_instance_type(args["region"], args["id"], instance_type)
+    def change_instance_type(self, args, instance_type, capacity_reservation):
+        change_instance_type(args["region"], args["id"], instance_type, capacity_reservation)
 
     def stop_instance(self, host_info):
         ec2 = boto3.resource('ec2', host_info["region"])
@@ -654,9 +678,23 @@ class AwsCloud(AbstractCloud):
             logging.error(e)
             raise YBOpsRuntimeError("Failed to stop instance {}: {}".format(host_info["id"], e))
 
-    def start_instance(self, host_info, server_ports):
+    def start_instance(self, host_info, server_ports, capacity_reservation=None):
         ec2 = boto3.resource('ec2', host_info["region"])
         try:
+            # Add capacity reservation logic here
+            if capacity_reservation:
+                # Use the EC2 client to modify instance attributes
+                ec2_client = boto3.client('ec2', region_name=host_info["region"])
+                ec2_client.modify_instance_capacity_reservation_attributes(
+                    InstanceId=host_info["id"],
+                    CapacityReservationSpecification={
+                        'CapacityReservationPreference': 'capacity-reservations-only',
+                        'CapacityReservationTarget': {
+                            'CapacityReservationId': capacity_reservation
+                        }
+                    }
+                )
+
             instance = ec2.Instance(id=host_info["id"])
             if instance.state['Name'] != 'running':
                 if instance.state['Name'] != 'pending':

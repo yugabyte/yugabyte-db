@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -35,8 +35,6 @@
 #include <algorithm>
 #include <memory>
 #include <mutex>
-
-#include <boost/optional.hpp>
 
 #include "yb/common/wire_protocol.h"
 
@@ -132,6 +130,10 @@ DEFINE_test_flag(bool, follower_reject_update_consensus_requests, false,
 
 DEFINE_test_flag(bool, follower_pause_update_consensus_requests, false,
                  "Whether a follower will pause all UpdateConsensus() requests.");
+
+DEFINE_test_flag(int32, delay_update_consensus_requests_ms, 0,
+    "Delay execution of UpdateConsensus() requests for specified amount of milliseconds during "
+    "tests");
 
 DEFINE_test_flag(int32, follower_reject_update_consensus_requests_seconds, 0,
                  "Whether a follower will return an error for all UpdateConsensus() requests for "
@@ -1161,7 +1163,9 @@ Status RaftConsensus::BecomeReplicaUnlocked(
     WithholdElectionAfterStepDown(new_leader_uuid);
   }
 
-  state_->ClearLeaderUnlocked();
+  state_->BecomeReplicaUnlocked();
+
+  state_->context()->BecomeReplica();
 
   // FD should be running while we are a follower.
   EnableFailureDetector(initial_fd_wait);
@@ -1418,7 +1422,7 @@ void RaftConsensus::UpdateMajorityReplicated(
       majority_replicated_data.op_id, committed_op_id, &committed_index_changed,
       last_applied_op_id);
   if (s.ok() && state_->GetLeaderStateUnlocked().ok()) {
-    s = state_->context()->MajorityReplicated();
+    s = state_->context()->MajorityReplicated(*committed_op_id);
   }
   if (PREDICT_FALSE(!s.ok())) {
     string msg = Format("Unable to mark committed up to $0: $1", majority_replicated_data.op_id, s);
@@ -1527,12 +1531,13 @@ void RaftConsensus::TryRemoveFollowerTask(const string& uuid,
   req.mutable_server()->set_permanent_uuid(uuid);
   req.set_type(REMOVE_SERVER);
   req.set_cas_config_opid_index(committed_config.opid_index());
-  LOG_WITH_PREFIX(INFO)
-      << "Attempting to remove follower " << uuid << " from the Raft config at commit index "
-      << committed_config.opid_index() << ". Reason: " << reason;
-  boost::optional<TabletServerErrorPB::Code> error_code;
-  WARN_NOT_OK(ChangeConfig(req, &DoNothingStatusCB, &error_code),
-              state_->LogPrefix() + "Unable to remove follower " + uuid);
+  LOG_WITH_PREFIX(INFO) << "Attempting to remove follower " << uuid
+                        << " from the Raft config at commit index " << committed_config.opid_index()
+                        << ". Reason: " << reason;
+  std::optional<TabletServerErrorPB::Code> error_code;
+  WARN_NOT_OK(
+      ChangeConfig(req, &DoNothingStatusCB, &error_code),
+      state_->LogPrefix() + "Unable to remove follower " + uuid);
 }
 
 Status RaftConsensus::Update(
@@ -1596,6 +1601,8 @@ Status RaftConsensus::Update(
     auto delay = TEST_delay_update_.load(std::memory_order_acquire);
     if (delay != MonoDelta::kZero) {
       std::this_thread::sleep_for(delay.ToSteadyDuration());
+    } else if (FLAGS_TEST_delay_update_consensus_requests_ms != 0) {
+      std::this_thread::sleep_for(1ms * FLAGS_TEST_delay_update_consensus_requests_ms);
     }
   }
 
@@ -2550,12 +2557,13 @@ Status RaftConsensus::IsLeaderReadyForChangeConfigUnlocked(ChangeConfigType type
   return Status::OK();
 }
 
-Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
-                                   const StdStatusCallback& client_cb,
-                                   boost::optional<TabletServerErrorPB::Code>* error_code) {
+Status RaftConsensus::ChangeConfig(
+    const ChangeConfigRequestPB& req, const StdStatusCallback& client_cb,
+    std::optional<TabletServerErrorPB::Code>* error_code) {
   if (PREDICT_FALSE(!req.has_type())) {
-    return STATUS(InvalidArgument, "Must specify 'type' argument to ChangeConfig()",
-                                   req.ShortDebugString());
+      return STATUS(
+          InvalidArgument, "Must specify 'type' argument to ChangeConfig()",
+          req.ShortDebugString());
   }
   if (PREDICT_FALSE(!req.has_server())) {
     *error_code = TabletServerErrorPB::INVALID_CONFIG;
@@ -2754,7 +2762,7 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
 
 Status RaftConsensus::UnsafeChangeConfig(
     const UnsafeChangeConfigRequestPB& req,
-    boost::optional<tserver::TabletServerErrorPB::Code>* error_code) {
+    std::optional<tserver::TabletServerErrorPB::Code>* error_code) {
   if (PREDICT_FALSE(!req.has_new_config())) {
     *error_code = TabletServerErrorPB::INVALID_CONFIG;
     return STATUS(InvalidArgument, "Request must contain 'new_config' argument "

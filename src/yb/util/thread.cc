@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -48,7 +48,6 @@
 #include <functional>
 #include <map>
 #include <memory>
-#include <set>
 #include <vector>
 
 #include <boost/intrusive/list.hpp>
@@ -56,8 +55,8 @@
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/bind.h"
 #include "yb/gutil/dynamic_annotations.h"
-#include "yb/gutil/once.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/debug-util.h"
 #include "yb/util/errno.h"
 #include "yb/util/format.h"
@@ -87,13 +86,13 @@ METRIC_DEFINE_gauge_uint64(server, threads_running,
 METRIC_DEFINE_gauge_uint64(server, cpu_utime,
                            "User CPU Time",
                            yb::MetricUnit::kMilliseconds,
-                           "Total user CPU time of the process",
+                           "Total user CPU time (milliseconds) of the process",
                            yb::EXPOSE_AS_COUNTER);
 
 METRIC_DEFINE_gauge_uint64(server, cpu_stime,
                            "System CPU Time",
                            yb::MetricUnit::kMilliseconds,
-                           "Total system CPU time of the process",
+                           "Total system CPU time (milliseconds) of the process",
                            yb::EXPOSE_AS_COUNTER);
 
 METRIC_DEFINE_gauge_uint64(server, voluntary_context_switches,
@@ -147,12 +146,12 @@ struct ThreadDescriptor {
   boost::intrusive::list_member_hook<> category_link{};
 };
 
-void SetNext(QueueLink* link, QueueLink* next) {
-  link->next = next;
+void SetNext(QueueLink& link, QueueLink* next) {
+  link.next = next;
 }
 
-QueueLink* GetNext(QueueLink* link) {
-  return link->next;
+QueueLink* GetNext(QueueLink& link) {
+  return link.next;
 }
 
 namespace {
@@ -197,7 +196,10 @@ class ThreadCategoryTracker {
 
   struct Entry {
     std::unique_ptr<GaugePrototype<uint64>> gauge_proto;
-    uint64_t metric;
+    uint64_t metric = 0;
+    // We must retain references to each metric object from each metric_entity,
+    // otherwise they will be cleaned up after 2 minutes.
+    std::vector<scoped_refptr<FunctionGauge<uint64>>> metric_holders;
   };
 
   std::string name_;
@@ -210,9 +212,10 @@ uint64 ThreadCategoryTracker::GetCategory(const string& category) {
 }
 
 void ThreadCategoryTracker::RegisterMetricEntity(const scoped_refptr<MetricEntity> &metric_entity) {
-  for (const auto& [category, entry] : entries_) {
-    entry.gauge_proto->InstantiateFunctionGauge(metric_entity,
+  for (auto& [category, entry] : entries_) {
+    auto metric_ptr = entry.gauge_proto->InstantiateFunctionGauge(metric_entity,
       Bind(&ThreadCategoryTracker::GetCategory, Unretained(this), category));
+    entry.metric_holders.push_back(std::move(metric_ptr));
   }
   metric_entities_.push_back(metric_entity);
 }
@@ -237,12 +240,17 @@ uint64_t& ThreadCategoryTracker::RegisterGaugeForAllMetricEntities(const string&
     std::make_unique<OwningGaugePrototype<uint64>>( "server", id, description,
     yb::MetricUnit::kThreads, description, yb::MetricLevel::kInfo, yb::EXPOSE_AS_COUNTER);
 
+  Entry entry;
+  entry.gauge_proto = std::move(gauge_proto);
   for (auto& metric_entity : metric_entities_) {
-    gauge_proto->InstantiateFunctionGauge(metric_entity,
+    auto metric_ptr = entry.gauge_proto->InstantiateFunctionGauge(metric_entity,
         Bind(&ThreadCategoryTracker::GetCategory, Unretained(this), category));
+    entry.metric_holders.push_back(metric_ptr);
   }
-  return entries_.emplace(
-      category, Entry {.gauge_proto = std::move(gauge_proto), .metric = 0}).first->second.metric;
+
+  auto [inserted_it, inserted] = entries_.emplace(category, std::move(entry));
+  DCHECK(inserted);
+  return inserted_it->second.metric;
 }
 
 // A singleton class that tracks all live threads, and groups them together for easy
@@ -361,7 +369,8 @@ Status ThreadMgr::StartInstrumentation(const scoped_refptr<MetricEntity>& metric
 
   WebCallbackRegistry::PathHandlerCallback thread_callback =
       std::bind(&ThreadMgr::ThreadPathHandler, this, _1, _2);
-  DCHECK_NOTNULL(web)->RegisterPathHandler("/threadz", "Threads", thread_callback, true, false);
+  DCHECK_NOTNULL(web)->RegisterPathHandler(
+      "/threadz", "Threads", thread_callback, /*is_styled=*/true, /*is_on_nav_bar=*/false);
   return Status::OK();
 }
 
@@ -764,7 +773,7 @@ Status ThreadJoiner::Join() {
       // Unconditionally join before returning, to guarantee that any TLS
       // has been destroyed (pthread_key_create() destructors only run
       // after a pthread's user method has returned).
-      int ret = pthread_join(thread_->thread_, NULL);
+      int ret = pthread_join(thread_->thread_, nullptr);
       CHECK_EQ(ret, 0);
       thread_->joinable_ = false;
       return Status::OK();
@@ -937,7 +946,7 @@ void* Thread::SuperviseThread(void* arg) {
   t->functor_();
   pthread_cleanup_pop(true);
 
-  return NULL;
+  return nullptr;
 }
 
 void Thread::Join() {

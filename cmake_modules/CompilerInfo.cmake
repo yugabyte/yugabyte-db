@@ -15,9 +15,9 @@
 # specific language governing permissions and limitations
 # under the License.
 #
-# The following only applies to changes made to this file as part of YugaByte development.
+# The following only applies to changes made to this file as part of YugabyteDB development.
 #
-# Portions Copyright (c) YugaByte, Inc.
+# Portions Copyright (c) YugabyteDB, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 # in compliance with the License.  You may obtain a copy of the License at
@@ -103,12 +103,26 @@ if("${COMPILER_FAMILY}" STREQUAL "gcc")
   set(IS_GCC TRUE)
 endif()
 
+set(IS_SANITIZER FALSE)
+set(IS_ASAN FALSE)
+set(IS_TSAN FALSE)
+if ("${YB_BUILD_TYPE}" MATCHES "^asan(_.*)?$")
+  set(IS_SANITIZER TRUE)
+  set(IS_ASAN TRUE)
+elseif ("${YB_BUILD_TYPE}" MATCHES "^tsan(_.*)?$")
+  set(IS_SANITIZER TRUE)
+  set(IS_TSAN TRUE)
+endif()
+
 yb_put_string_vars_into_cache(
   COMPILER_FAMILY
   COMPILER_VERSION
   IS_APPLE_CLANG
   IS_CLANG
   IS_GCC
+  IS_SANITIZER
+  IS_ASAN
+  IS_TSAN
   YB_COMPILER_TYPE
 )
 

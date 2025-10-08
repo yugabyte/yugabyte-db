@@ -1,5 +1,5 @@
 /*
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  */
 
 package azu
@@ -128,16 +128,6 @@ var createAzureProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		sshUser, err := cmd.Flags().GetString("ssh-user")
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-
-		sshPort, err := cmd.Flags().GetInt("ssh-port")
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-
 		ntpServers, err := cmd.Flags().GetStringArray("ntp-servers")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -194,8 +184,6 @@ var createAzureProviderCmd = &cobra.Command{
 			Regions:       buildAzureRegions(regions, zones),
 			Details: &ybaclient.ProviderDetails{
 				AirGapInstall: util.GetBoolPointer(airgapInstall),
-				SshPort:       util.GetInt32Pointer(int32(sshPort)),
-				SshUser:       util.GetStringPointer(sshUser),
 				NtpServers:    util.StringSliceFromString(ntpServers),
 				CloudInfo: &ybaclient.CloudInfo{
 					Azu: &azureCloudInfo,
@@ -283,13 +271,6 @@ func init() {
 			"Each image bundle can be added using separate --image-bundle flag. "+
 			"Example: --image-bundle image-bundle-name=<image-bundle>::machine-image=<custom-ami>::"+
 			"ssh-user=<ssh-user>::ssh-port=22")
-
-	createAzureProviderCmd.Flags().String("ssh-user", "centos",
-		"[Optional] SSH User to access the YugabyteDB nodes.")
-	createAzureProviderCmd.Flags().Int("ssh-port", 22,
-		"[Optional] SSH Port to access the YugabyteDB nodes.")
-	createAzureProviderCmd.Flags().MarkDeprecated("ssh-port", "Use --image-bundle instead.")
-	createAzureProviderCmd.Flags().MarkDeprecated("ssh-user", "Use --image-bundle instead.")
 
 	createAzureProviderCmd.Flags().String("custom-ssh-keypair-name", "",
 		"[Optional] Provide custom key pair name to access YugabyteDB nodes. "+

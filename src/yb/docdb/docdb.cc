@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -20,6 +20,9 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <fstream>
+
+#include <boost/logic/tribool.hpp>
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/row_mark.h"
@@ -34,6 +37,7 @@
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_types.h"
 #include "yb/docdb/intent_aware_iterator.h"
+#include "yb/docdb/intent_format.h"
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/rocksdb_writer.h"
 
@@ -58,6 +62,7 @@
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/enums.h"
 #include "yb/util/fast_varint.h"
+#include "yb/util/file_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
@@ -80,6 +85,9 @@ DEFINE_RUNTIME_uint64(cdc_max_stream_intent_records, 1680,
 
 DEFINE_RUNTIME_bool(cdc_enable_caching_db_block, true,
                     "When set to true, cache the DB block read for CDC in block cache.");
+
+DEFINE_test_flag(string, file_to_dump_in_memory_keys, "",
+                 "Write memory locks into the file if specified.");
 
 namespace yb {
 namespace docdb {
@@ -109,7 +117,8 @@ Result<DetermineKeysToLockResult<SharedLockManager>> DetermineKeysToLock(
     IsolationLevel isolation_level,
     RowMarkType row_mark_type,
     bool transactional_table,
-    dockv::PartialRangeKeyIntents partial_range_key_intents) {
+    dockv::PartialRangeKeyIntents partial_range_key_intents,
+    dockv::SkipPrefixLocks skip_prefix_locks = dockv::SkipPrefixLocks::kFalse) {
   DetermineKeysToLockResult<SharedLockManager> result;
   boost::container::small_vector<RefCntPrefix, 8> doc_paths;
   boost::container::small_vector<size_t, 32> key_prefix_lengths;
@@ -131,6 +140,19 @@ Result<DetermineKeysToLockResult<SharedLockManager>> DetermineKeysToLock(
       intent_types = dockv::IntentTypeSet(
           {dockv::IntentType::kStrongRead, dockv::IntentType::kStrongWrite});
     }
+
+    boost::tribool pk_is_known = doc_op->OpType() == DocOperationType::PGSQL_WRITE_OPERATION ?
+        boost::tribool(down_cast<const docdb::PgsqlWriteOperation&>(*doc_op).pk_is_known()) :
+        boost::indeterminate;
+    // When skip_prefix_locks is enabled, if a PK is not specified in a serializable txn, the empty
+    // key must be locked to cover the locks of the pk. This is a coarser lock and can result in
+    // blocking many other transactions.
+    const bool top_level_key_takes_strong_locks =
+        isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION && skip_prefix_locks &&
+        !static_cast<bool>(pk_is_known);
+    VLOG_WITH_FUNC(4) << "isolation_level:" << isolation_level << "skip_prefix_locks:"
+                      << skip_prefix_locks << "pk_is_known:" << static_cast<bool>(pk_is_known);
+
     // TODO(#20662): Assert for the following invariant: the set of (key, intent type) for which
     // in-memory locks are acquired should be a superset of all (key, intent type) pairs which are
     // either: (a) used to check conflicts against or (b) written to intents db. This is to ensure
@@ -139,15 +161,23 @@ Result<DetermineKeysToLockResult<SharedLockManager>> DetermineKeysToLock(
     for (const auto& doc_path : doc_paths) {
       key_prefix_lengths.clear();
       auto doc_path_slice = doc_path.as_slice();
-      RETURN_NOT_OK(dockv::SubDocKey::DecodePrefixLengths(doc_path_slice, &key_prefix_lengths));
+
+      if (skip_prefix_locks) {
+        RETURN_NOT_OK(dockv::SubDocKey::DecodePrefixLengthsWithSkipPrefix(
+            doc_path_slice, &key_prefix_lengths));
+      } else {
+        RETURN_NOT_OK(dockv::SubDocKey::DecodePrefixLengths(doc_path_slice, &key_prefix_lengths));
+      }
       // At least entire doc_path should be returned, so empty key_prefix_lengths is an error.
       if (key_prefix_lengths.empty()) {
         return STATUS_FORMAT(Corruption, "Unable to decode key prefixes from: $0",
-                             doc_path_slice.ToDebugHexString());
+                            doc_path_slice.ToDebugHexString());
       }
       // We will acquire strong lock on the full doc_path, so remove it from list of weak locks.
       key_prefix_lengths.pop_back();
       auto partial_key = doc_path;
+      auto top_level_key_types =
+          top_level_key_takes_strong_locks ? intent_types :  MakeWeak(intent_types);
       // Acquire weak lock on empty key for transactional tables, unless specified key is already
       // empty.
       // For doc paths having cotable id/colocation id, a weak lock on the colocated table would be
@@ -155,13 +185,19 @@ Result<DetermineKeysToLockResult<SharedLockManager>> DetermineKeysToLock(
       // on the empty key since it would lead to a weak lock on the parent table of the host tablet.
       auto has_cotable_id = doc_path_slice.starts_with(KeyEntryTypeAsChar::kTableId);
       auto has_colocation_id = doc_path_slice.starts_with(KeyEntryTypeAsChar::kColocationId);
+      size_t idx = 0;
       if (doc_path.size() > 0 && transactional_table && !(has_cotable_id || has_colocation_id)) {
         partial_key.Resize(0);
-        RETURN_NOT_OK(ApplyIntent(
-            partial_key, MakeWeak(intent_types), &result.lock_batch));
+        RETURN_NOT_OK(ApplyIntent(partial_key, top_level_key_types, &result.lock_batch));
+      } else if (!key_prefix_lengths.empty()) {
+        // first element in key_prefix_lengths must be the length of empty prefix key which has
+        // tableId or colocation_id
+        partial_key.Resize(key_prefix_lengths[0]);
+        RETURN_NOT_OK(ApplyIntent(partial_key, top_level_key_types, &result.lock_batch));
+        idx = 1;
       }
-      for (auto prefix_length : key_prefix_lengths) {
-        partial_key.Resize(prefix_length);
+      for (; idx < key_prefix_lengths.size(); ++idx) {
+        partial_key.Resize(key_prefix_lengths[idx]);
         RETURN_NOT_OK(ApplyIntent(
             partial_key, MakeWeak(intent_types), &result.lock_batch));
       }
@@ -173,20 +209,45 @@ Result<DetermineKeysToLockResult<SharedLockManager>> DetermineKeysToLock(
   if (!read_pairs.empty()) {
     RETURN_NOT_OK(EnumerateIntents(
         read_pairs,
-        [&result, intent_types = dockv::GetIntentTypesForRead(isolation_level, row_mark_type)](
-            auto ancestor_doc_key, auto, auto, auto* key, auto, auto is_row_lock) {
+        [&result, intent_types = dockv::GetIntentTypesForRead(isolation_level, row_mark_type),
+         skip_prefix_locks, isolation_level](
+            auto ancestor_doc_key, auto, auto, auto* key, auto, auto is_row_lock,
+            auto is_top_level_key, boost::tribool pk_is_known) {
           auto actual_intents = GetIntentTypes(intent_types, is_row_lock);
+          const bool take_weak_lock = VERIFY_RESULT(ShouldTakeWeakLockForPrefix(
+              ancestor_doc_key, is_top_level_key, skip_prefix_locks,
+              isolation_level, pk_is_known, key));
           return ApplyIntent(
               RefCntPrefix(key->AsSlice()),
-              ancestor_doc_key ? MakeWeak(actual_intents) : actual_intents,
+              take_weak_lock ? MakeWeak(actual_intents) : actual_intents,
               &result.lock_batch);
-        }, partial_range_key_intents));
+        }, partial_range_key_intents, skip_prefix_locks));
   }
 
   return result;
 }
 
 } // namespace
+
+Status TEST_LogInMemoryKeys(const LockBatchEntries<SharedLockManager>& lock_batch,
+                            const std::string& path) {
+  auto transform = [] (const auto& entry) {
+    dockv::SubDocKey sub_doc_key;
+    Status s = sub_doc_key.FullyDecodeFrom(entry.key.as_slice(), dockv::HybridTimeRequired::kFalse);
+    if (!s.ok()) {
+      // Not valid sub-doc key. Append a kGroupEnd.
+      faststring copied_data;
+      const auto& slice = entry.key.as_slice();
+      copied_data.assign_copy(slice.data(), slice.size());
+      copied_data.push_back(dockv::KeyEntryTypeAsChar::kGroupEnd);
+      Slice copied_slice(copied_data);
+      CHECK_OK(sub_doc_key.DecodeFrom(&copied_slice, dockv::HybridTimeRequired::kFalse));
+    }
+    return std::make_pair(sub_doc_key.ToString(), entry.intent_types);
+  };
+  std::string desc = "in_memory";
+  return TEST_DumpCollectionToFile(desc, lock_batch, transform, path);
+}
 
 Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
@@ -198,12 +259,13 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     bool write_transaction_metadata,
     CoarseTimePoint deadline,
     dockv::PartialRangeKeyIntents partial_range_key_intents,
-    SharedLockManager *lock_manager) {
+    SharedLockManager *lock_manager,
+    dockv::SkipPrefixLocks skip_prefix_locks) {
   PrepareDocWriteOperationResult result;
 
   auto determine_keys_to_lock_result = VERIFY_RESULT(DetermineKeysToLock(
       doc_write_ops, read_pairs, isolation_level, row_mark_type,
-      transactional_table, partial_range_key_intents));
+      transactional_table, partial_range_key_intents, skip_prefix_locks));
   VLOG_WITH_FUNC(4) << "determine_keys_to_lock_result=" << determine_keys_to_lock_result.ToString();
   if (determine_keys_to_lock_result.lock_batch.empty() && !write_transaction_metadata) {
     LOG(DFATAL) << "Empty lock batch, doc_write_ops: " << yb::ToString(doc_write_ops)
@@ -215,6 +277,12 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
   FilterKeysToLock<SharedLockManager>(&determine_keys_to_lock_result.lock_batch);
   VLOG_WITH_FUNC(4) << "filtered determine_keys_to_lock_result="
                     << determine_keys_to_lock_result.ToString();
+
+  if (PREDICT_FALSE(!FLAGS_TEST_file_to_dump_in_memory_keys.empty())) {
+      RETURN_NOT_OK(TEST_LogInMemoryKeys(determine_keys_to_lock_result.lock_batch,
+                                         FLAGS_TEST_file_to_dump_in_memory_keys));
+  }
+
   const MonoTime start_time = MonoTime::NowIf(tablet_metrics != nullptr);
   result.lock_batch = LockBatch(
       lock_manager, std::move(determine_keys_to_lock_result.lock_batch), deadline);
@@ -280,32 +348,6 @@ Status AssembleDocWriteBatch(const vector<unique_ptr<DocOperation>>& doc_write_o
   return Status::OK();
 }
 
-Status EnumerateIntents(
-    const ArenaList<LWKeyValuePairPB>& kv_pairs,
-    const dockv::EnumerateIntentsCallback& functor,
-    dockv::PartialRangeKeyIntents partial_range_key_intents) {
-  if (kv_pairs.empty()) {
-    return Status::OK();
-  }
-  KeyBytes encoded_key;
-
-  auto it = kv_pairs.begin();
-  for (;;) {
-    const auto& kv_pair = *it;
-    dockv::LastKey last_key(++it == kv_pairs.end());
-    CHECK(!kv_pair.key().empty());
-    CHECK(!kv_pair.value().empty());
-    RETURN_NOT_OK(dockv::EnumerateIntents(
-        kv_pair.key(), kv_pair.value(), functor, &encoded_key, partial_range_key_intents,
-        last_key));
-    if (last_key) {
-      break;
-    }
-  }
-
-  return Status::OK();
-}
-
 // ------------------------------------------------------------------------------------------------
 // Standalone functions
 // ------------------------------------------------------------------------------------------------
@@ -315,7 +357,7 @@ void AppendTransactionKeyPrefix(const TransactionId& transaction_id, KeyBytes* o
   out->AppendRawBytes(transaction_id.AsSlice());
 }
 
-Result<ApplyTransactionState> GetIntentsBatch(
+Result<ApplyTransactionState> GetIntentsBatchForCDC(
     const TransactionId& transaction_id,
     const KeyBounds* key_bounds,
     const ApplyTransactionState* stream_state,
@@ -363,10 +405,23 @@ Result<ApplyTransactionState> GetIntentsBatch(
     // isolation level etc.).
     if (key_slice.size() > txn_reverse_index_prefix.size()) {
       auto reverse_index_value = reverse_index_iter.value();
+
+      // The intents with kDeleteVectorIds value type correspond to the tombstones added for
+      // optimal vector indexing. They do not contain a main intent data key in their value field
+      // and hence should be skipped.
+      if (dockv::DecodeValueEntryType(reverse_index_value) ==
+              dockv::ValueEntryType::kDeleteVectorIds) {
+        VLOG_WITH_FUNC(3) << "Skipping an intent of type kDeleteVectorIds, with key: "
+                          << key_slice.ToDebugHexString() << ", transactionId: " << transaction_id;
+        reverse_index_iter.Next();
+        continue;
+      }
+
       if (!reverse_index_value.empty() && reverse_index_value[0] == KeyEntryTypeAsChar::kBitSet) {
         reverse_index_value.remove_prefix(1);
         RETURN_NOT_OK(OneWayBitmap::Skip(&reverse_index_value));
       }
+
       // Value of reverse index is a key of original intent record, so seek it and check match.
       if ((!key_bounds || key_bounds->IsWithinBounds(reverse_index_iter.value()))) {
         // return when we have reached the batch limit.
@@ -439,39 +494,6 @@ Result<ApplyTransactionState> GetIntentsBatch(
 std::string ApplyTransactionState::ToString() const {
   return Format(
       "{ key: $0 write_id: $1 aborted: $2 }", Slice(key).ToDebugString(), write_id, aborted);
-}
-
-void CombineExternalIntents(
-    const TransactionId& txn_id,
-    SubTransactionId subtransaction_id,
-    ExternalIntentsProvider* provider) {
-  // External intents are stored in the following format:
-  //   key:   kExternalTransactionId, txn_id
-  //   value: kUuid involved_tablet [kSubTransactionId subtransaction_ID]
-  //          kExternalIntents size(intent1_key), intent1_key, size(intent1_value), intent1_value,
-  //          size(intent2_key)...  0
-  // where size is encoded as varint.
-
-  dockv::KeyBytes buffer;
-  buffer.AppendKeyEntryType(KeyEntryType::kExternalTransactionId);
-  buffer.AppendRawBytes(txn_id.AsSlice());
-  provider->SetKey(buffer.AsSlice());
-  buffer.Clear();
-  buffer.AppendKeyEntryType(KeyEntryType::kUuid);
-  buffer.AppendRawBytes(provider->InvolvedTablet().AsSlice());
-  if (subtransaction_id != kMinSubTransactionId) {
-    buffer.AppendKeyEntryType(KeyEntryType::kSubTransactionId);
-    buffer.AppendUInt32(subtransaction_id);
-  }
-  buffer.AppendKeyEntryType(KeyEntryType::kExternalIntents);
-  while (auto key_value = provider->Next()) {
-    buffer.AppendUInt64AsVarInt(key_value->first.size());
-    buffer.AppendRawBytes(key_value->first);
-    buffer.AppendUInt64AsVarInt(key_value->second.size());
-    buffer.AppendRawBytes(key_value->second);
-  }
-  buffer.AppendUInt64AsVarInt(0);
-  provider->SetValue(buffer.AsSlice());
 }
 
 }  // namespace docdb

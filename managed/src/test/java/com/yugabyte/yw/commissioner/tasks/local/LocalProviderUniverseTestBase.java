@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.local;
 
@@ -60,7 +60,6 @@ import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseResp;
-import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -79,6 +78,7 @@ import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.provider.LocalCloudInfo;
 import com.yugabyte.yw.scheduler.JobScheduler;
@@ -101,6 +101,7 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -123,6 +124,7 @@ import org.junit.Rule;
 import org.junit.rules.TestWatcher;
 import org.junit.rules.Timeout;
 import org.junit.runner.Description;
+import org.yb.CommonNet;
 import org.yb.CommonNet.PlacementInfoPB;
 import org.yb.CommonNet.ReplicationInfoPB;
 import org.yb.CommonTypes.TableType;
@@ -159,7 +161,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
 
   private static final String YBC_BASE_S3_URL = "https://downloads.yugabyte.com/ybc/";
   private static final String YBC_BIN_ENV_KEY = "YBC_PATH";
-  private static boolean KEEP_FAILED_UNIVERSE = true;
+  private static final boolean KEEP_FAILED_UNIVERSE = true;
   private static final boolean KEEP_ALWAYS = false;
 
   public static Map<String, String> GFLAGS = new HashMap<>();
@@ -411,10 +413,6 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
     }
   }
 
-  private static String extractVersionFromFolder(String folder) {
-    return folder.substring(9); // yugabyte-2.18.3.0 for example
-  }
-
   private static String extractVersionFromBuild(String build) {
     return build.substring(0, build.indexOf("-"));
   }
@@ -440,7 +438,8 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
   }
 
   @Before
-  public void setUp() {
+  @Override
+  public void setUpBase() {
     injectDependencies();
 
     settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.releases.use_redesign", "false");
@@ -822,7 +821,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
     formData.setTableType(TableType.YQL_TABLE_TYPE);
     JsonNode response =
         ycqlQueryExecutor.executeQuery(
-            universe, formData, true, Util.DEFAULT_YCQL_USERNAME, password);
+            universe, formData, authEnabled, Util.DEFAULT_YCQL_USERNAME, password);
     assertFalse(response.has("error"));
 
     // Create table.
@@ -830,27 +829,27 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
         "CREATE TABLE yugabyte.some_table (id int, name text, age int, PRIMARY KEY((id, name)));");
     response =
         ycqlQueryExecutor.executeQuery(
-            universe, formData, true, Util.DEFAULT_YCQL_USERNAME, password);
+            universe, formData, authEnabled, Util.DEFAULT_YCQL_USERNAME, password);
     assertFalse(response.has("error"));
 
     // Insert Data.
     formData.setQuery("INSERT INTO yugabyte.some_table (id, name, age) VALUES (1, 'John', 20);");
     response =
         ycqlQueryExecutor.executeQuery(
-            universe, formData, true, Util.DEFAULT_YCQL_USERNAME, password);
+            universe, formData, authEnabled, Util.DEFAULT_YCQL_USERNAME, password);
     assertFalse(response.has("error"));
 
     formData.setQuery("INSERT INTO yugabyte.some_table (id, name, age) VALUES (2, 'Mary', 18);");
     response =
         ycqlQueryExecutor.executeQuery(
-            universe, formData, true, Util.DEFAULT_YCQL_USERNAME, password);
+            universe, formData, authEnabled, Util.DEFAULT_YCQL_USERNAME, password);
     assertFalse(response.has("error"));
 
     formData.setQuery(
         "INSERT INTO yugabyte.some_table (id, name, age) VALUES (10000, 'Stephen', 50);");
     response =
         ycqlQueryExecutor.executeQuery(
-            universe, formData, true, Util.DEFAULT_YCQL_USERNAME, password);
+            universe, formData, authEnabled, Util.DEFAULT_YCQL_USERNAME, password);
     assertFalse(response.has("error"));
   }
 
@@ -865,7 +864,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
 
     JsonNode response =
         ycqlQueryExecutor.executeQuery(
-            universe, formData, true, Util.DEFAULT_YCQL_USERNAME, password);
+            universe, formData, authEnabled, Util.DEFAULT_YCQL_USERNAME, password);
     assertFalse(response.has("error"));
     assertEquals("3", response.get("result").get(0).get("count").asText());
   }
@@ -929,6 +928,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
       UniverseDefinitionTaskParams.Cluster primaryCluster = universeDetails.getPrimaryCluster();
       ReplicationInfoPB replicationInfo = config.getReplicationInfo();
       PlacementInfoPB liveReplicas = replicationInfo.getLiveReplicas();
+      verifyAffinitized(primaryCluster, replicationInfo);
       verifyCluster(universe, primaryCluster, liveReplicas);
       verifyMasterAddresses(universe);
       if (!universeDetails.getReadOnlyClusters().isEmpty()) {
@@ -954,6 +954,53 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
       }
     } catch (Exception e) {
       throw new RuntimeException(e);
+    }
+  }
+
+  private void verifyAffinitized(Cluster cluster, ReplicationInfoPB replicationInfo) {
+    if (cluster.placementInfo.hasRankOrdering()) {
+      Map<Integer, List<PlacementInfo.PlacementAZ>> ranks = new HashMap<>();
+      cluster
+          .placementInfo
+          .azStream()
+          .forEach(
+              az -> {
+                List<PlacementInfo.PlacementAZ> lst =
+                    ranks.computeIfAbsent(az.leaderPreference, x -> new ArrayList<>());
+                lst.add(az);
+              });
+      assertEquals(ranks.size(), replicationInfo.getMultiAffinitizedLeadersCount());
+      Iterator<CommonNet.CloudInfoListPB> iterator =
+          replicationInfo.getMultiAffinitizedLeadersList().iterator();
+      ranks.keySet().stream()
+          .sorted()
+          .forEach(
+              ord -> {
+                Set<String> placementAZS =
+                    ranks.get(ord).stream()
+                        .map(az -> AvailabilityZone.getOrBadRequest(az.uuid).getCode())
+                        .collect(Collectors.toSet());
+                CommonNet.CloudInfoListPB lst = iterator.next();
+                Set<String> cloudAZs =
+                    lst.getZonesList().stream()
+                        .map(z -> z.getPlacementZone())
+                        .collect(Collectors.toSet());
+                assertEquals(placementAZS, cloudAZs);
+              });
+    } else {
+      Set<String> affinitized =
+          cluster
+              .placementInfo
+              .azStream()
+              .filter(az -> az.isAffinitized)
+              .map(az -> AvailabilityZone.getOrBadRequest(az.uuid).getCode())
+              .collect(Collectors.toSet());
+      assertEquals(affinitized.size(), replicationInfo.getAffinitizedLeadersCount());
+      Set<String> affinitizedPbs =
+          replicationInfo.getAffinitizedLeadersList().stream()
+              .map(z -> z.getPlacementZone())
+              .collect(Collectors.toSet());
+      assertEquals(affinitized, affinitizedPbs);
     }
   }
 
@@ -1001,19 +1048,8 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
 
   protected Map<String, String> getVarz(
       NodeDetails nodeDetails, Universe universe, UniverseTaskBase.ServerType serverType) {
-    UniverseTaskParams.CommunicationPorts ports = universe.getUniverseDetails().communicationPorts;
-    int port =
-        serverType == UniverseTaskBase.ServerType.MASTER
-            ? ports.masterHttpPort
-            : ports.tserverHttpPort;
-    JsonNode varz =
-        nodeUIApiHelper.getRequest(
-            "http://" + nodeDetails.cloudInfo.private_ip + ":" + port + "/api/v1/varz");
-    Map<String, String> result = new HashMap<>();
-    for (JsonNode flag : varz.get("flags")) {
-      result.put(flag.get("name").asText(), flag.get("value").asText());
-    }
-    return result;
+    return GFlagsUtil.getActualGFlags(
+        nodeDetails, serverType, universe, true, null, nodeUIApiHelper, false);
   }
 
   public Map<String, String> getDiskFlags(

@@ -579,6 +579,7 @@ create_index = 'CREATE' [ 'UNIQUE' ] 'INDEX' [ 'CONCURRENTLY' | 'NONCONCURRENTLY
                [ 'USING' access_method_name ]
                '(' index_elem { ',' index_elem } ')' \
                [ 'INCLUDE' '(' column_name { ',' column_name } ')' ] \
+               [ 'WITH' '(' ( 'COLOCATION_ID' '=' int_literal ) ')' ] \
                [ 'TABLESPACE' tablespace_name ] \
                [ 'SPLIT' ( 'INTO' int_literal 'TABLETS'
                       | 'AT' 'VALUES' '(' split_row { ',' split_row } ')' ) ]
@@ -720,7 +721,8 @@ drop_tablespace = 'DROP' 'TABLESPACE' [ 'IF' 'EXISTS' ] tablespace_name;
 (* 'CREATE' 'TABLE' *)
 create_table = 'CREATE' [ 'TEMPORARY' | 'TEMP' ] 'TABLE' [ 'IF' 'NOT' 'EXISTS' ] table_name
                  '(' [ table_elem { ',' table_elem } ] ')'  \
-                 [ 'WITH' '(' ( 'COLOCATION' '=' ('true' | 'false') | storage_parameters ) ')'
+                 [ 'PARTITION' 'BY' { 'RANGE' | 'LIST' | 'HASH' } '(' { column_name | ( expression ) } [ operator_class_name ] [, ...] ')' ] \
+                 [ 'WITH' '(' ( 'COLOCATION' '=' ('true' | 'false') | 'COLOCATION_ID' '=' int_literal | storage_parameters ) ')'
                       | 'WITHOUT' 'OIDS' ] \
                  [ 'TABLESPACE' tablespace_name ]
                  [ 'SPLIT' ( 'INTO' positive_int_literal 'TABLETS'
@@ -885,6 +887,7 @@ close = 'CLOSE' ( name | 'ALL' ) ;
 (* 'DELETE' *)
 delete = [ with_clause ] \
          'DELETE' 'FROM' table_expr [ [ 'AS' ] alias ] \
+         [ 'USING' from_item ] \
          [ 'WHERE' boolean_expression | 'WHERE' 'CURRENT' 'OF' cursor_name ] \
          [ returning_clause ] ;
 
@@ -947,6 +950,10 @@ drop_group = 'DROP' 'GROUP' [ 'IF' 'EXISTS' ] role_name { ',' role_name } ;
 
 (* 'DROP' 'MATERIALIZED' 'VIEW' *)
 drop_matview = 'DROP' 'MATERIALIZED' 'VIEW' [ 'IF' 'EXISTS' ] matview_name \
+               [ 'CASCADE' | 'RESTRICT' ] ;
+
+(* 'DROP' 'VIEW' *)
+drop_view = 'DROP' 'VIEW' [ 'IF' 'EXISTS' ] qualified_name \
                [ 'CASCADE' | 'RESTRICT' ] ;
 
 (* 'DROP' 'OPERATOR' *)
@@ -1278,7 +1285,7 @@ table_expr = [ 'ONLY' ] table_name [ '*' ] ;
 update = [ with_clause ] \
          'UPDATE' table_expr [ [ 'AS' ] alias ] \
          'SET' update_item { ',' update_item }
-         (* [ 'FROM' from_list ] \ *)
+         [ 'FROM' from_item ] \
          [ 'WHERE' boolean_expression | 'WHERE' 'CURRENT' 'OF' cursor_name ] \
          [ returning_clause ] ;
 

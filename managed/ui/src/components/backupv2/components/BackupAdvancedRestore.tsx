@@ -1,7 +1,7 @@
 /*
  * Created on Mon May 09 2022
  *
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License")
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
@@ -31,7 +31,7 @@ import {
 } from '../../common/forms/fields';
 
 import { getKMSConfigs, restoreEntireBackup } from '../common/BackupAPI';
-import { BACKUP_API_TYPES, IBackup, IStorageConfig } from '../common/IBackup';
+import { BACKUP_API_TYPES, IBackup, CustomerConfig, StorageConfig } from '../common/IBackup';
 import { KEYSPACE_VALIDATION_REGEX, ParallelThreads } from '../common/BackupUtils';
 import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
 import { YBLoading } from '../../common/indicators';
@@ -169,16 +169,14 @@ export const BackupAdvancedRestore: FC<RestoreModalProps> = ({
     }
 
     const configs = storageConfigs?.data
-      ?.filter((c: IStorageConfig) => c.type === 'STORAGE')
-      .map((c: IStorageConfig) => {
-        return { value: c.configUUID, label: c.configName, name: c.name };
+      ?.filter((config: CustomerConfig) => config.type === 'STORAGE')
+      .map((config: StorageConfig) => {
+        return { value: config.configUUID, label: config.configName, name: config.name };
       });
 
-    return Object.entries(groupBy(configs, (c: IStorageConfig) => c.name)).map(
-      ([label, options]) => {
-        return { label, options };
-      }
-    );
+    return Object.entries(groupBy(configs, (config) => config.name)).map(([label, options]) => {
+      return { label, options };
+    });
   }, [storageConfigs]);
 
   const validationSchema = Yup.object().shape({
@@ -322,7 +320,7 @@ function RestoreForm({
     label: string;
     value: {
       label: string;
-      value: Partial<IStorageConfig>;
+      value: Partial<CustomerConfig>;
     };
   };
   isYbcEnabledinCurrentUniverse: boolean;

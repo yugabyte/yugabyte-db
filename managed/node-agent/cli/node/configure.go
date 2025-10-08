@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package node
 
@@ -286,17 +286,17 @@ func configureEnabledEgress(ctx context.Context, cmd *cobra.Command) {
 			nil,  /* validator */
 		)
 		if err != nil {
-			util.ConsoleLogger().Fatalf(ctx, "Unable to store node agent IP - %s", err.Error())
+			util.ConsoleLogger().Fatalf(ctx, "Unable to store node agent address - %s", err.Error())
 		}
 	} else {
-		// Get node agent name and IP.
-		checkConfigAndUpdate(ctx, util.NodeIpKey, nil, "Node IP")
+		// Get node agent name and address (IP/FQDN).
+		checkConfigAndUpdate(ctx, util.NodeIpKey, nil, "Node Address (IP/FQDN)")
 	}
 	nodeIp := config.String(util.NodeIpKey)
 	bindIp, err := cmd.Flags().GetString("bind_ip")
 	if err != nil {
 		util.FileLogger().Errorf(ctx, "Unable to get bind IP - %s", err.Error())
-		util.FileLogger().Infof(ctx, "Using node ip")
+		util.FileLogger().Infof(ctx, "Using node address")
 		bindIp = nodeIp
 	}
 	util.FileLogger().Infof(ctx, "Bind IP: %s", bindIp)

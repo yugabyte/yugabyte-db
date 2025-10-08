@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -69,6 +69,18 @@ class PgAshTest : public LibPqTestBase {
   static constexpr int kSamplingIntervalMs = 50;
 };
 
+class PgAshMasterMetadataSerializerTest : public PgAshTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back(
+        Format("--allowed_preview_flags_csv=$0,$1",
+               "enable_object_locking_for_table_locks", "ysql_yb_ddl_transaction_block_enabled"));
+    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=true");
+    options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
+    PgAshTest::UpdateMiniClusterOptions(options);
+  }
+};
+
 class PgAshSingleNode : public PgAshTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
@@ -132,6 +144,8 @@ class PgBgWorkersTest : public PgAshSingleNode {
         std::to_underlying(ash::WaitStateCode::kCatalogRead)));
     options->extra_tserver_flags.push_back(Format("--TEST_yb_ash_sleep_at_wait_state_ms=$0",
         2 * kSamplingIntervalMs));
+    // Disable auto analyze because it changes the query plan of test: ValidateBgWorkers.
+    options->extra_tserver_flags.push_back("--ysql_enable_auto_analyze=false");
     PgAshSingleNode::UpdateMiniClusterOptions(options);
   }
 };
@@ -635,7 +649,7 @@ TEST_F(PgAshSingleNode, CheckWaitEventsDescription) {
 
   std::unordered_set<std::string> yb_events;
   for (const auto& code : ash::WaitStateCodeList()) {
-    if (code == ash::WaitStateCode::kUnused || code == ash::WaitStateCode::kYSQLReserved) {
+    if (code == ash::WaitStateCode::kYSQLReserved) {
       continue;
     }
     yb_events.insert(ToString(code).erase(0, 1)); // remove 'k' prefix
@@ -723,7 +737,7 @@ TEST_F(PgBgWorkersTest, ValidateBgWorkers) {
 
   ASSERT_OK(WaitFor([this, &pid_with_backend_type, &bg_workers]() -> Result<bool> {
     auto rows = VERIFY_RESULT((conn_->FetchRows<int32_t, std::string>(
-        "SELECT pid, backend_type FROM pg_stat_activity")));
+        "SELECT pid, backend_type FROM pg_stat_activity WHERE backend_type IS NOT NULL")));
     for (const auto& [pid, backend_type] : rows) {
       if (bg_workers.contains(backend_type)) {
         pid_with_backend_type.insert(std::make_pair(pid, backend_type));
@@ -839,6 +853,56 @@ TEST_F(PgAshSingleNode, TestFinishTransactionRPCs) {
           "WHERE wait_event = 'WaitingOnTServer' AND wait_event_aux = 'FinishTransaction' "
           "AND query_id = 5")));
   ASSERT_EQ(finish_txn_cnt, 0);
+}
+
+TEST_F(PgAshTest, TestTServerMetadataSerializer) {
+  static constexpr auto kTableName = "test_table";
+
+  ASSERT_OK(conn_->Execute(Format("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTableName)));
+  for (int i = 0; i < 1000; ++i) {
+    ASSERT_OK(conn_->Execute(Format("INSERT INTO $0 VALUES ($1, $1)", kTableName, i)));
+  }
+
+  auto query_id = ASSERT_RESULT(conn_->FetchRow<int64_t>(
+      "SELECT queryid FROM pg_stat_statements WHERE query LIKE 'INSERT INTO%'"));
+
+  // Test that each tserver has the query id in ASH samples
+  for (auto* ts : cluster_->tserver_daemons()) {
+    auto conn = ASSERT_RESULT(ConnectToTs(*ts));
+    const auto count = ASSERT_RESULT((conn.FetchRow<int64_t>(
+        Format("SELECT COUNT(*) FROM yb_active_session_history WHERE query_id = $0", query_id))));
+    ASSERT_GT(count, 0);
+  }
+}
+
+TEST_F(PgAshMasterMetadataSerializerTest, TestMasterMetadataSerializer) {
+  static constexpr auto kTableName = "test_table";
+
+  ASSERT_OK(conn_->Execute(Format("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTableName)));
+  ASSERT_OK(conn_->StartTransaction(IsolationLevel::READ_COMMITTED));
+  ASSERT_OK(conn_->Execute(Format("LOCK TABLE $0 IN ACCESS SHARE MODE", kTableName)));
+
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([this]() {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.StartTransaction(IsolationLevel::READ_COMMITTED));
+    // this gets routed from master to tserver
+    ASSERT_OK(conn.Execute(Format("LOCK TABLE $0 IN ACCESS EXCLUSIVE MODE", kTableName)));
+    ASSERT_OK(conn.CommitTransaction());
+  });
+
+  SleepFor(1s * kTimeMultiplier);
+  ASSERT_OK(conn_->CommitTransaction());
+
+  auto query_id = ASSERT_RESULT(conn_->FetchRow<int64_t>(
+      "SELECT queryid FROM pg_stat_statements WHERE query LIKE '%EXCLUSIVE MODE'"));
+
+  const auto count = ASSERT_RESULT((conn_->FetchRow<int64_t>(Format(
+      "SELECT COUNT(*) FROM yb_active_session_history WHERE query_id = $0 "
+      "AND wait_event_component = 'TServer'",
+      query_id))));
+
+  ASSERT_GT(count, 0);
 }
 
 }  // namespace yb::pgwrapper

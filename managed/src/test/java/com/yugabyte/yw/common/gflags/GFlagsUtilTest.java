@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.common.gflags;
 
@@ -458,5 +458,17 @@ public class GFlagsUtilTest extends FakeDBApplication {
     // function, update this UT, and increase this count here. This is just so that we don't miss
     // combining the objects in the future when we add new child fields to this class.
     assertEquals(finalSpecificGFlags.getClass().getDeclaredFields().length, 4);
+  }
+
+  @Test
+  public void testConfigParsing() {
+    StringBuilder sb = new StringBuilder();
+    sb.append("#some comment\n")
+        .append("--key=true\n")
+        .append("--key2\n")
+        .append("some=rrr\n") // will be ignored
+        .append("--key3 = val3 #TODO");
+    Map<String, String> gflags = GFlagsUtil.parseConfigContents(sb.toString());
+    assertEquals(Map.of("key", "true", "key2", "", "key3", "val3"), gflags);
   }
 }

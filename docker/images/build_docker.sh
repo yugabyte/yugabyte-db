@@ -16,7 +16,6 @@ usage() {
 uri=''
 repo_name='yugabytedb'
 tag_latest=false
-tag_arch=false
 while getopts ":hf:r:al" arg; do
   case $arg in
     f) # URI for the yugabyte tarball to dockerize
@@ -67,10 +66,6 @@ else
   exit 1
 fi
 
-if $tag_arch; then
-  full_version="${full_version}-${arch}"
-fi
-
 # Determine out arch from the passed in package name
 docker_arch_arg=''
 if [[ $arch != $(uname -m) ]]; then
@@ -80,6 +75,7 @@ if [[ $arch != $(uname -m) ]]; then
       ;;
     aarch64)
       docker_arch=arm64
+      tag_arch=true
       ;;
     *)
       echo "Cannot determine arch for docker cross-arch build"
@@ -90,6 +86,10 @@ if [[ $arch != $(uname -m) ]]; then
   esac
   # Add cross compile docker flag.
   docker_arch_arg="--platform linux/${docker_arch}"
+fi
+
+if ${tag_arch:-false}; then
+  full_version="${full_version}-${arch}"
 fi
 
 # Try to parse some version info

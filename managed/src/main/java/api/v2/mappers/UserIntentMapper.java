@@ -1,9 +1,10 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 package api.v2.mappers;
 
 import api.v2.models.AvailabilityZoneGFlags;
 import api.v2.models.AvailabilityZoneNetworking;
 import api.v2.models.AvailabilityZoneNodeSpec;
+import api.v2.models.CloudVolumeEncryption;
 import api.v2.models.ClusterAddSpec;
 import api.v2.models.ClusterEditSpec;
 import api.v2.models.ClusterGFlags;
@@ -31,7 +32,8 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.K8SNodeReso
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntentOverrides;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.ProxyConfig;
-import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -172,6 +174,10 @@ public interface UserIntentMapper {
   EnableExposingServiceEnum toV2EnableExposingServiceEnum(
       ExposingServiceState v1ExposingServiceState);
 
+  @Mapping(target = "kmsConfigUuid", source = "kmsConfigUUID")
+  CloudVolumeEncryption toV2CloudVolumeEncryption(
+      com.yugabyte.yw.models.helpers.CloudVolumeEncryption v1CloudVolumeEncryption);
+
   default ClusterGFlags specificGFlagsToClusterGFlags(
       UniverseDefinitionTaskParams.UserIntent userIntent) {
     if (userIntent == null) {
@@ -193,6 +199,11 @@ public interface UserIntentMapper {
         azGFlags.setTserver(entry.getValue().value.get(ServerType.TSERVER));
         clusterGFlags.putAzGflagsItem(entry.getKey().toString(), azGFlags);
       }
+    }
+    if (specificGFlags.getGflagGroups() != null) {
+      clusterGFlags.setGflagGroups(
+          UniverseDefinitionTaskParamsMapper.INSTANCE.mapGflagGroupsList(
+              specificGFlags.getGflagGroups()));
     }
     return clusterGFlags;
   }
@@ -231,6 +242,7 @@ public interface UserIntentMapper {
       userIntent.instanceTags = new LinkedHashMap<String, String>(instanceTags);
     }
     userIntent.auditLogConfig = toV1AuditLogConfig(clusterSpec.getAuditLogConfig());
+    userIntent.queryLogConfig = toV1QueryLogConfig(clusterSpec.getQueryLogConfig());
     userIntent.specificGFlags = clusterSpecToSpecificGFlags(clusterSpec);
 
     return userIntent;
@@ -374,6 +386,10 @@ public interface UserIntentMapper {
 
   DeviceInfo storageSpecToDeviceInfo(ClusterStorageSpec storageSpec);
 
+  @Mapping(target = "kmsConfigUUID", source = "kmsConfigUuid")
+  com.yugabyte.yw.models.helpers.CloudVolumeEncryption toV1CloudVolumeEncryption(
+      CloudVolumeEncryption v2CloudVolumeEncryption);
+
   K8SNodeResourceSpec toV1K8SNodeResourceSpec(
       api.v2.models.K8SNodeResourceSpec v2K8SNodeResourceSpec);
 
@@ -382,6 +398,8 @@ public interface UserIntentMapper {
   ExposingServiceState toV1ExposingServiceState(EnableExposingServiceEnum v2EnableExposingService);
 
   AuditLogConfig toV1AuditLogConfig(api.v2.models.AuditLogConfig v2AuditLogConfig);
+
+  QueryLogConfig toV1QueryLogConfig(api.v2.models.QueryLogConfig v2QueryLogConfig);
 
   default UserIntent fillUserIntentFromClusterNetworkingSpec(
       ClusterNetworkingSpec clusterNetworkingSpec, UserIntent userIntent) {
@@ -449,6 +467,11 @@ public interface UserIntentMapper {
         perAz.put(UUID.fromString(entry.getKey()), perProc);
       }
       specificGFlags.setPerAZ(perAz);
+    }
+    if (v2ClusterGFlags.getGflagGroups() != null) {
+      specificGFlags.setGflagGroups(
+          UniverseDefinitionTaskParamsMapper.INSTANCE.mapGroupNameList(
+              v2ClusterGFlags.getGflagGroups()));
     }
     return specificGFlags;
   }

@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -158,7 +158,12 @@ std::ostream& operator<<(std::ostream& str, const TaggedLogPrefix& value) {
   return str << ": ";
 }
 
-} // namespace
+struct AsyncWriteQuery {
+  std::unordered_set<OpId> op_ids;
+  std::vector<StdStatusCallback> waiters_ = {};
+};
+
+}  // namespace
 
 Result<ChildTransactionData> ChildTransactionData::FromPB(const ChildTransactionDataPB& data) {
   ChildTransactionData result;
@@ -172,9 +177,9 @@ Result<ChildTransactionData> ChildTransactionData::FromPB(const ChildTransaction
   return result;
 }
 
-bool CanAbortTransaction(const Status& status,
-                         const TransactionMetadata& txn_metadata,
-                         const boost::optional<SubTransactionMetadataPB>& subtransaction_pb) {
+bool CanAbortTransaction(
+    const Status& status, const TransactionMetadata& txn_metadata,
+    const std::optional<SubTransactionMetadataPB>& subtransaction_pb) {
   // We don't abort the transaction in the following scenarios:
   // 1. When we face a kSkipLocking error, so as to make further progress.
   // 2. When we are inside a sub transaction, so as to only abort the subtxn, not the entire txn.
@@ -224,7 +229,7 @@ const SubTransactionMetadata& YBSubTransaction::get() const { return sub_txn_; }
 
 class YBTransaction::Impl final : public internal::TxnBatcherIf {
  public:
-  Impl(TransactionManager* manager, YBTransaction* transaction, TransactionLocality locality)
+  Impl(TransactionManager* manager, YBTransaction* transaction, TransactionFullLocality locality)
       : trace_(Trace::MaybeGetNewTrace()),
         wait_state_(ash::WaitStateInfo::CurrentWaitState()),
         manager_(manager),
@@ -285,9 +290,11 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     LOG_IF_WITH_PREFIX(DFATAL, !waiters_.empty()) << "Non empty waiters";
     auto start_us = start_.load(std::memory_order_relaxed);
     const auto now_us = manager_->clock()->Now().GetPhysicalValueMicros();
+    const auto threshold_ms = FLAGS_txn_slow_op_threshold_ms;
     auto time_spent_ms = (start_us == 0 ? 0 : now_us - start_us) / 1000;
     bool must_log_trace = (FLAGS_txn_print_trace_on_error && !status_.ok()) ||
-                          (static_cast<int32>(time_spent_ms) > FLAGS_txn_slow_op_threshold_ms);
+                          (threshold_ms > 0 &&
+                           static_cast<int32>(time_spent_ms) > threshold_ms);
     if (must_log_trace) {
       LOG(INFO) << "Transaction " << ToString() << " took " << time_spent_ms
                 << "ms to complete, status: " << status_;
@@ -331,6 +338,16 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     }
     CompleteInit(isolation);
     return Status::OK();
+  }
+
+  void RestartStartTime() {
+    start_.store(0, std::memory_order_release);
+  }
+
+  void SetStartTimeIfNecessary() {
+    if (!start_) {
+      start_.store(manager_->clock()->Now().GetPhysicalValueMicros(), std::memory_order_release);
+    }
   }
 
   void InitWithReadPoint(IsolationLevel isolation, ConsistentReadPoint&& read_point) {
@@ -458,17 +475,16 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
   void Flushed(
       const internal::InFlightOps& ops,
-      const boost::optional<SubTransactionMetadataPB>& subtransaction_pb,
+      const std::optional<SubTransactionMetadataPB>& subtransaction_pb,
       const ReadHybridTime& used_read_time, const Status& status) EXCLUDES(mutex_) override {
     TRACE_TO(trace_, "Flushed $0 ops. with Status $1", ops.size(), status.ToString());
-    VLOG_WITH_PREFIX(5)
-        << "Flushed: " << yb::ToString(ops) << ", used_read_time: " << used_read_time
-        << ", status: " << status;
+    VLOG_WITH_PREFIX(5) << "Flushed: " << yb::ToString(ops)
+                        << ", used_read_time: " << used_read_time << ", status: " << status;
     if (FLAGS_TEST_transaction_inject_flushed_delay_ms > 0) {
       std::this_thread::sleep_for(FLAGS_TEST_transaction_inject_flushed_delay_ms * 1ms);
     }
 
-    boost::optional<Status> notify_commit_status;
+    std::optional<Status> notify_commit_status;
     bool abort = false;
     bool schedule_status_moved = false;
 
@@ -558,6 +574,28 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     auto transaction = transaction_->shared_from_this();
     TRACE_TO(trace_, __func__);
     {
+      UniqueLock lock(async_write_query_mutex_);
+      auto status = async_write_status_;
+      if (!status.ok()) {
+        lock.unlock();
+        callback(status);
+        return;
+      }
+      if (!inflight_async_writes_.empty()) {
+        async_write_commit_waiter_ = [transaction, seal_only, deadline,
+                                      callback = std::move(callback)](const Status& status) {
+          TRACE_TO(transaction->trace(), "YBTransaction::Commit Async writes completed");
+          if (status.ok()) {
+            transaction->Commit(deadline, seal_only, std::move(callback));
+          } else {
+            callback(status);
+          }
+        };
+        return;
+      }
+    }
+
+    {
       UniqueLock lock(mutex_);
       auto status = CheckCouldCommitUnlocked(seal_only);
       if (!status.ok()) {
@@ -582,8 +620,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
           return;
         }
 
-        waiters_.emplace_back(std::bind(
-            &Impl::DoCommit, this, deadline, seal_only, _1, transaction));
+        waiters_.emplace_back(
+            std::bind(&Impl::DoCommit, this, deadline, seal_only, _1, transaction));
         lock.unlock();
         RequestStatusTablet(deadline);
         return;
@@ -663,17 +701,42 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
   internal::InFlightOp* FindOpWithLocalityViolation(
       internal::InFlightOpsGroupsWithMetadata* ops_info) REQUIRES(mutex_) {
-    if (metadata_.locality != TransactionLocality::LOCAL) {
+    if (metadata_.locality.IsGlobal()) {
       return nullptr;
     }
     for (auto& group : ops_info->groups) {
       auto& first_op = *group.begin;
-      auto tablet = first_op.tablet;
-      if (!tablet->IsLocalRegion()) {
-        return &first_op;
+      switch (metadata_.locality.locality) {
+        case TransactionLocality::REGION_LOCAL:
+          if (!first_op.tablet->IsLocalRegion()) {
+            return &first_op;
+          }
+          break;
+        case TransactionLocality::TABLESPACE_LOCAL:
+          if (auto tablespace_oid = GetOpTablespaceOid(first_op);
+              !tablespace_oid || metadata_.locality.tablespace_oid != *tablespace_oid) {
+            return &first_op;
+          }
+          break;
+        default:
+          LOG(DFATAL) << "Unexpected locality: " << metadata_.locality;
+          return nullptr;
       }
     }
     return nullptr;
+  }
+
+  std::optional<PgTablespaceOid> GetOpTablespaceOid(internal::InFlightOp& op) {
+    auto* yb_op = op.yb_op.get();
+    switch (yb_op->type()) {
+      case YBOperation::Type::PGSQL_READ:
+        return down_cast<YBPgsqlReadOp*>(yb_op)->request().tablespace_oid();
+      case YBOperation::Type::PGSQL_WRITE:
+        return down_cast<YBPgsqlWriteOp*>(yb_op)->request().tablespace_oid();
+      default:
+        LOG(DFATAL) << "Unexpected op type: " << yb_op->type();
+        return std::nullopt;
+    }
   }
 
   Result<bool> StartPromotionToGlobalIfNecessary(
@@ -706,7 +769,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   Status EnsureGlobal(const CoarseTimePoint& deadline) EXCLUDES(mutex_) {
     {
       UniqueLock lock(mutex_);
-      if (metadata_.locality == TransactionLocality::GLOBAL) {
+      if (metadata_.locality.IsGlobal()) {
         return Status::OK();
       }
       RETURN_NOT_OK(StartPromotionToGlobal());
@@ -716,7 +779,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   }
 
   Status StartPromotionToGlobal() REQUIRES(mutex_) {
-    if (metadata_.locality == TransactionLocality::GLOBAL) {
+    if (metadata_.locality.IsGlobal()) {
       return STATUS(IllegalState, "Global transactions cannot be promoted");
     }
 
@@ -726,7 +789,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       LOG_WITH_PREFIX(DFATAL) << "Attempting to promote transaction not in running state";
     }
     ready_ = false;
-    metadata_.locality = TransactionLocality::GLOBAL;
+    metadata_.locality = TransactionFullLocality::Global();
 
     transaction_status_move_tablets_.reserve(tablets_.size());
     transaction_status_move_handles_.reserve(tablets_.size());
@@ -752,25 +815,31 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     }
     metadata_future_ = std::shared_future<Result<TransactionMetadata>>(
         metadata_promise_.get_future());
-    if (!ready_) {
-      auto transaction = transaction_->shared_from_this();
-      waiters_.push_back([this, transaction](const Status& status) {
-        WARN_NOT_OK(status, "Transaction request failed");
-        UniqueLock lock(mutex_);
-        if (status.ok()) {
-          metadata_promise_.set_value(metadata_);
-        } else {
-          metadata_promise_.set_value(status);
-        }
-      });
-      lock.unlock();
-      RequestStatusTablet(deadline);
-      lock.lock();
+    if (ready_) {
+      metadata_promise_.set_value(metadata_);
       return metadata_future_;
     }
 
-    metadata_promise_.set_value(metadata_);
-    return metadata_future_;
+    if (state_.load(std::memory_order_acquire) == TransactionState::kAborted) {
+      metadata_promise_.set_value(STATUS(IllegalState, "Transaction aborted"));
+      return metadata_future_;
+    }
+
+    auto transaction = transaction_->shared_from_this();
+    waiters_.push_back([this, transaction](const Status& status) {
+      WARN_NOT_OK(status, "Transaction request failed");
+      UniqueLock lock(mutex_);
+      if (status.ok()) {
+        metadata_promise_.set_value(metadata_);
+      } else {
+        metadata_promise_.set_value(status);
+      }
+    });
+
+    auto result = metadata_future_;
+    lock.unlock();
+    RequestStatusTablet(deadline);
+    return result;
   }
 
   Result<TransactionMetadata> metadata() EXCLUDES(mutex_) {
@@ -927,9 +996,9 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     return subtransaction_.SetActiveSubTransaction(id);
   }
 
-  boost::optional<SubTransactionMetadataPB> GetSubTransactionMetadataPB() const {
+  std::optional<SubTransactionMetadataPB> GetSubTransactionMetadataPB() const {
     if (!subtransaction_.active()) {
-      return boost::none;
+      return std::nullopt;
     }
     SubTransactionMetadataPB subtxn_metadata_pb;
     subtransaction_.get().ToPB(&subtxn_metadata_pb);
@@ -971,10 +1040,6 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   }
 
   Status RollbackToSubTransaction(SubTransactionId id, CoarseTimePoint deadline) EXCLUDES(mutex_) {
-    SCHECK(
-        subtransaction_.active(), InternalError,
-        "Attempted to rollback to savepoint before creating any savepoints.");
-
     // A heartbeat should be sent (& waited for) to the txn status tablet(s) as part of a rollback.
     // This is for updating the list of aborted sub-txns and ensures that other txns don't see false
     // conflicts with this txn.
@@ -1123,6 +1188,88 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     return wait_state_;
   }
 
+  // Records the Async Write OpId. Returns true if the query was recorded, false if it already
+  // existed.
+  bool RecordAsyncWrite(const TabletId& tablet_id, const OpId& op_id)
+      EXCLUDES(async_write_query_mutex_) {
+    VLOG_WITH_PREFIX_AND_FUNC(4) << YB_STRUCT_TO_STRING(tablet_id, op_id);
+
+    std::lock_guard l(async_write_query_mutex_);
+    return InsertIfNotPresent(&inflight_async_writes_[tablet_id].op_ids, op_id);
+  }
+
+  void RecordAsyncWriteCompletion(
+      const TabletId& tablet_id, const OpId& op_id, const Status& status)
+      EXCLUDES(async_write_query_mutex_) {
+    VLOG_WITH_PREFIX_AND_FUNC(4) << YB_STRUCT_TO_STRING(tablet_id, op_id, status);
+
+    std::vector<StdStatusCallback> waiters;
+    {
+      std::lock_guard l(async_write_query_mutex_);
+      auto table_it = inflight_async_writes_.find(tablet_id);
+      if (table_it == inflight_async_writes_.end()) {
+        // Maybe we got stale responses from multiple retries on the rpc. We dont care about the
+        // status in such cases.
+        return;
+      }
+
+      auto& tablet_data = table_it->second;
+
+      if (status.ok()) {
+        // Partition key is not needed for searching.
+        tablet_data.op_ids.erase(op_id);
+        if (tablet_data.op_ids.empty()) {
+          waiters = std::move(tablet_data.waiters_);
+          inflight_async_writes_.erase(table_it);
+        }
+      } else if (async_write_status_.ok()) {
+        async_write_status_ = status;
+      }
+
+      if (!async_write_status_.ok() || inflight_async_writes_.empty()) {
+        for (auto& [_, tablet_data] : inflight_async_writes_) {
+          MoveCollection(&tablet_data.waiters_, &waiters);
+          tablet_data.waiters_.clear();
+        }
+
+        if (async_write_commit_waiter_) {
+          waiters.push_back(std::move(async_write_commit_waiter_));
+          async_write_commit_waiter_ = nullptr;
+        }
+      }
+    }
+
+    for (auto& waiter : waiters) {
+      waiter(status);
+    }
+  }
+
+  bool HasPendingAsyncWrites(const TabletId& tablet_id) const EXCLUDES(async_write_query_mutex_) {
+    std::lock_guard l(async_write_query_mutex_);
+    return inflight_async_writes_.contains(tablet_id);
+  }
+
+  void WaitForAsyncWrites(const TabletId& tablet_id, StdStatusCallback&& callback) {
+    Status status;
+    {
+      std::lock_guard l(async_write_query_mutex_);
+      status = async_write_status_;
+      if (status.ok()) {
+        // If the tablet has a pending write then we are guaranteed that its parent tablets do not
+        // have pending writes, since new writes wait for the parent tablets writes to complete.
+        auto tablet_it = FindOrNull(inflight_async_writes_, tablet_id);
+        if (tablet_it) {
+          tablet_it->waiters_.emplace_back(std::move(callback));
+          VLOG_WITH_PREFIX_AND_FUNC(4)
+              << "Waiting for async writes: " << YB_STRUCT_TO_STRING(tablet_id, status);
+          return;
+        }
+      }
+    }
+
+    callback(status);
+  }
+
  private:
   void CompleteConstruction() {
     LOG_IF(FATAL, !IsAcceptableAtomicImpl(log_prefix_.tag));
@@ -1153,7 +1300,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     }
     // TODO(wait-queues): Consider using metadata_.pg_txn_start_us here for consistency with
     // wait queues. https://github.com/yugabyte/yugabyte-db/issues/20976
-    start_.store(manager_->clock()->Now().GetPhysicalValueMicros(), std::memory_order_release);
+    SetStartTimeIfNecessary();
   }
 
   void SetReadTimeIfNeeded(bool do_it) {
@@ -1214,7 +1361,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       TransactionStatus status, UpdateTransactionCallback callback,
       std::optional<SubtxnSet> aborted_set_for_rollback_heartbeat = std::nullopt,
       const TabletStates& tablets_with_locks = {},
-      const boost::optional<TransactionMetadata>& background_transaction = boost::none) {
+      const std::optional<TransactionMetadata>& background_transaction = std::nullopt) {
     tserver::UpdateTransactionRequestPB req;
     req.set_tablet_id(status_tablet->tablet_id());
     req.set_propagated_hybrid_time(manager_->Now().ToUint64());
@@ -1641,9 +1788,12 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       }
       SendAbortToOldStatusTabletIfNeeded(TransactionRpcDeadline(), transaction, old_status_tablet);
     } else {
-      auto send_new_heartbeat = [this, status, promoting](const Status&) {
-        SendHeartbeat(status, metadata_.transaction_id, transaction_->shared_from_this(),
-                      SendHeartbeatToNewTablet(promoting));
+      std::weak_ptr<YBTransaction> weak_transaction = transaction;
+      auto send_new_heartbeat = [this, weak_transaction, status, promoting](const Status&) {
+        if (auto transaction = weak_transaction.lock()) {
+          SendHeartbeat(status, metadata_.transaction_id, transaction,
+                        SendHeartbeatToNewTablet(promoting));
+        }
       };
       if (PREDICT_FALSE(FLAGS_TEST_new_txn_status_initial_heartbeat_delay_ms > 0)) {
         manager_->client()->messenger()->scheduler().Schedule(
@@ -1846,7 +1996,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       } else {
         status_tablet = status_tablet_;
       }
-      boost::optional<TransactionMetadata> background_transaction = boost::none;
+      std::optional<TransactionMetadata> background_transaction = std::nullopt;
       if (auto shared_bg_txn = background_transaction_.lock(); shared_bg_txn) {
         LOG_IF_WITH_PREFIX(DFATAL, !pg_session_req_version_)
             << "Expected this path to be triggered only for PgSessionTransactions "
@@ -2014,17 +2164,24 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       auto state = state_.load(std::memory_order_acquire);
       LOG_WITH_PREFIX(WARNING) << "Send heartbeat failed: " << status << ", txn state: " << state;
 
-      if (status.IsAborted() || status.IsExpired() || status.IsShutdownInProgress()) {
+      if (status.IsAborted() || status.IsExpired() || status.IsShutdownInProgress() ||
+          manager_->IsClosing()) {
         // IsAborted/IsShutdownInProgress - Service is shutting down, no reason to retry.
         // IsExpired - Transaction expired.
+        // We want to notify waiters for RUNNING if we are in kPromoting state -- this is heartbeat
+        // to old status tablet during promotion, and SetError will cause the PROMOTED heartbeat to
+        // new status tablet to be skipped if it has not started yet. It's OK even if it actually
+        // has started, since the repeated NotifyWaiters call will do nothing.
         if (transaction_status == TransactionStatus::CREATED ||
-            transaction_status == TransactionStatus::PROMOTED) {
+            transaction_status == TransactionStatus::PROMOTED ||
+            state == TransactionState::kPromoting) {
           NotifyWaiters(status, "Heartbeat", SetReady::kTrue);
         } else {
           SetError(status, "Heartbeat");
         }
         // If state is committed, then we should not cleanup.
-        if (status.IsExpired() && state == TransactionState::kRunning) {
+        if (status.IsExpired() &&
+            (state == TransactionState::kRunning || state == TransactionState::kPromoting)) {
           DoAbortCleanup(transaction, CleanupType::kImmediate);
         }
         return;
@@ -2450,6 +2607,12 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   // wait-on-dependency from session level transaction -> regular transaction. This is necessary to
   // detect deadlocks involving advisory locks and row-level locks (and object locks in future).
   std::weak_ptr<YBTransaction> background_transaction_;
+
+  mutable std::mutex async_write_query_mutex_;
+  std::unordered_map<TabletId, AsyncWriteQuery> inflight_async_writes_
+      GUARDED_BY(async_write_query_mutex_);
+  StdStatusCallback async_write_commit_waiter_ GUARDED_BY(async_write_query_mutex_);
+  Status async_write_status_ GUARDED_BY(async_write_query_mutex_);
 };
 
 CoarseTimePoint AdjustDeadline(CoarseTimePoint deadline) {
@@ -2459,7 +2622,7 @@ CoarseTimePoint AdjustDeadline(CoarseTimePoint deadline) {
   return deadline;
 }
 
-YBTransaction::YBTransaction(TransactionManager* manager, TransactionLocality locality)
+YBTransaction::YBTransaction(TransactionManager* manager, TransactionFullLocality locality)
     : impl_(new Impl(manager, this, locality)) {
 }
 
@@ -2485,6 +2648,14 @@ uint64_t YBTransaction::GetPriority() const {
 
 Status YBTransaction::Init(IsolationLevel isolation, const ReadHybridTime& read_time) {
   return impl_->Init(isolation, read_time);
+}
+
+void YBTransaction::RestartStartTime() {
+  return impl_->RestartStartTime();
+}
+
+void YBTransaction::SetStartTimeIfNecessary() {
+  return impl_->SetStartTimeIfNecessary();
 }
 
 void YBTransaction::InitWithReadPoint(
@@ -2606,7 +2777,7 @@ void YBTransaction::SetActiveSubTransaction(SubTransactionId id) {
   return impl_->SetActiveSubTransaction(id);
 }
 
-boost::optional<SubTransactionMetadataPB> YBTransaction::GetSubTransactionMetadataPB() const {
+std::optional<SubTransactionMetadataPB> YBTransaction::GetSubTransactionMetadataPB() const {
   return impl_->GetSubTransactionMetadataPB();
 }
 
@@ -2649,6 +2820,23 @@ const ash::WaitStateInfoPtr YBTransaction::wait_state() {
 
 void YBTransaction::SetBackgroundTransaction(const YBTransactionPtr& background_transaction) {
   return impl_->SetBackgroundTransaction(background_transaction);
+}
+
+bool YBTransaction::RecordAsyncWrite(const TabletId& tablet_id, const OpId& op_id) {
+  return impl_->RecordAsyncWrite(tablet_id, op_id);
+}
+
+void YBTransaction::RecordAsyncWriteCompletion(
+    const TabletId& tablet_id, const OpId& op_id, const Status& status) {
+  return impl_->RecordAsyncWriteCompletion(tablet_id, op_id, status);
+}
+
+bool YBTransaction::HasPendingAsyncWrites(const TabletId& tablet_id) const {
+  return impl_->HasPendingAsyncWrites(tablet_id);
+}
+
+void YBTransaction::WaitForAsyncWrites(const TabletId& tablet_id, StdStatusCallback&& callback) {
+  return impl_->WaitForAsyncWrites(tablet_id, std::move(callback));
 }
 
 } // namespace client

@@ -1,5 +1,5 @@
 """
-Copyright (c) Yugabyte, Inc.
+Copyright (c) YugabyteDB, Inc.
 
 This module provides utilities for generating and publishing release.
 """
@@ -19,7 +19,7 @@ import distro  # type: ignore
 from sys_detection import is_macos
 from subprocess import call, check_output
 from xml.dom import minidom
-from yugabyte.command_util import run_program, mkdir_p, copy_deep
+from yugabyte.command_util import run_program, mkdir_p, copy_deep, has_pigz
 from yugabyte.common_util import (
     get_thirdparty_dir,
     get_compiler_type_from_build_root,
@@ -32,6 +32,7 @@ from typing import Dict, Any, Optional, cast, List
 RELEASE_MANIFEST_NAME = "yb_release_manifest.json"
 RELEASE_VERSION_FILE = "version.txt"
 VERSION_METADATA_FILE = "version_metadata.json"
+YBC_VERSION_FILE = "ybc_version.conf"
 THIRDPARTY_PREFIX_RE = re.compile('^thirdparty/(.*)$')
 
 
@@ -67,6 +68,18 @@ def filter_bin_items(
         item for item in bin_items
         if os.path.basename(item) not in bin_items_to_remove
     ]
+
+
+def get_ybc_version() -> str:
+    ybc_version_path = os.path.join(YB_SRC_ROOT, "managed", "src", "main",
+                                    "resources", YBC_VERSION_FILE)
+    try:
+        with open(ybc_version_path, 'r', encoding='utf-8') as f:
+            m = re.search(r'stable_version\s*=\s*"([^"]+)"', f.read())
+            assert m is not None
+            return m.group(1)
+    except Exception as e:
+        raise e
 
 
 class ReleaseUtil:
@@ -117,6 +130,7 @@ class ReleaseUtil:
         assert base_version is not None, \
             'Unable to read {0} file'.format(RELEASE_VERSION_FILE)
         self.base_version = base_version
+        self.ybc_version = get_ybc_version()
 
         self.release_manifest = read_release_manifest(package_name)
 
@@ -164,6 +178,8 @@ class ReleaseUtil:
         thirdparty_prefix_match = THIRDPARTY_PREFIX_RE.match(new_value)
         if thirdparty_prefix_match:
             new_value = os.path.join(get_thirdparty_dir(), thirdparty_prefix_match.group(1))
+        # Substitution for YBC_VERSION.
+        new_value = new_value.replace("${YBC_VERSION}", self.ybc_version)
         # Substitution for ARCH.
         new_value = new_value.replace("${ARCH}", platform.machine())
         # Substitution for YBCOS.  This doesn't map cleanly yet.
@@ -336,8 +352,13 @@ class ReleaseUtil:
             change_permissions('a+X')
             logging.info("Creating a package '%s' from directory %s",
                          release_file, tmp_distribution_dir)
-            run_program(['tar', 'cvzf', release_file, yugabyte_folder_prefix],
-                        cwd=tmp_parent_dir)
+            # pigz is much faster, if it's available.
+            if has_pigz():
+                run_program(['tar', '-I', 'pigz', '-cvf', release_file, yugabyte_folder_prefix],
+                            cwd=tmp_parent_dir)
+            else:
+                run_program(['tar', 'cvzf', release_file, yugabyte_folder_prefix],
+                            cwd=tmp_parent_dir)
             return release_file
         finally:
             shutil.move(tmp_distribution_dir, self.distribution_path)

@@ -61,6 +61,7 @@
 
 /* YB includes */
 #include "catalog/namespace.h"
+#include "commands/explain.h"
 #include "common/hashfn.h"
 #include "pg_yb_utils.h"
 #include "utils/catcache.h"
@@ -2124,6 +2125,13 @@ get_hints_from_table(const char *client_query, const char *client_application)
 	text   *qry;
 	text   *app;
 
+	if (IsYugaByteEnabled() && yb_enable_planner_trace)
+	{
+		ereport(DEBUG1,
+				(errmsg("\nget_hints_from_table : using hint table cache? %s",
+						yb_enable_hint_table_cache ? "true" : "false")));
+	}
+
 	if (IsYugaByteEnabled() && yb_enable_hint_table_cache)
 	{
 		bool found;
@@ -2145,6 +2153,15 @@ get_hints_from_table(const char *client_query, const char *client_application)
 		return NULL;
 	}
 
+	/*
+ 	 * YB GH26621 
+	 *
+	 * Save and restore current_hint_retrieved flag since we could change
+	 * its value if not using the hint table cache. In particular,
+	 * pg_hint_ExecutorEnd() sets the value to FALSE when we are 
+	 * at the top of a PL recursion level.
+	 */
+	bool yb_save_current_hint_retrieved = current_hint_retrieved;
 	PG_TRY();
 	{
 		bool snapshot_set = false;
@@ -2197,10 +2214,12 @@ get_hints_from_table(const char *client_query, const char *client_application)
 			PopActiveSnapshot();
 
 		hint_inhibit_level--;
+		current_hint_retrieved = yb_save_current_hint_retrieved;
 	}
 	PG_CATCH();
 	{
 		hint_inhibit_level--;
+		current_hint_retrieved = yb_save_current_hint_retrieved;
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
@@ -3936,6 +3955,26 @@ ybAliasForHinting(List *aliasMapping, RelOptInfo *rel, RangeTblEntry *rte)
 	return aliasForHint;
 }
 
+static char *
+yb_get_rel_name(Oid relid)
+{
+	char	   *relname = NULL;
+
+	if (explain_get_index_name_hook)
+	{
+		char	   *tmp_relname = (char*) (*explain_get_index_name_hook) (relid);
+		if (tmp_relname)
+		{
+			relname = pstrdup(tmp_relname);
+		}
+	}
+
+	if (relname == NULL)
+		relname = get_rel_name(relid);
+
+	return relname;
+}
+
 /*
  * Find scan method hint to be applied to the given relation
  *
@@ -3997,7 +4036,7 @@ find_scan_hint(PlannerInfo *root, Index relid)
 		if (!real_name_hint &&
 			rel && rel->reloptkind == RELOPT_OTHER_MEMBER_REL)
 		{
-			char *realname = get_rel_name(rte->relid);
+			char *realname = yb_get_rel_name(rte->relid);
 
 			if (realname && RelnameCmp(&realname, &hint->relname) == 0)
 				real_name_hint = hint;
@@ -4068,7 +4107,7 @@ find_parallel_hint(PlannerInfo *root, Index relid)
 		if (!real_name_hint &&
 			rel && rel->reloptkind == RELOPT_OTHER_MEMBER_REL)
 		{
-			char *realname = get_rel_name(rte->relid);
+			char *realname = yb_get_rel_name(rte->relid);
 
 			if (realname && RelnameCmp(&realname, &hint->relname) == 0)
 				real_name_hint = hint;
@@ -4170,7 +4209,7 @@ restrict_indexes(PlannerInfo *root, ScanMethodHint *hint, RelOptInfo *rel,
 	foreach (cell, rel->indexlist)
 	{
 		IndexOptInfo   *info = (IndexOptInfo *) lfirst(cell);
-		char		   *indexname = get_rel_name(info->indexoid);
+		char		   *indexname = yb_get_rel_name(info->indexoid);
 		ListCell	   *l;
 		bool			use_index = false;
 
@@ -4402,7 +4441,7 @@ restrict_indexes(PlannerInfo *root, ScanMethodHint *hint, RelOptInfo *rel,
 		 * child. Otherwise use hint specification.
 		 */
 		if (using_parent_hint)
-			disprelname = get_rel_name(rte->relid);
+			disprelname = yb_get_rel_name(rte->relid);
 		else
 			disprelname = hint->relname;
 
@@ -4565,7 +4604,7 @@ setup_hint_enforcement(PlannerInfo *root, RelOptInfo *rel,
 							 " skipping inh parent: relation=%u(%s), inhparent=%d,"
 							 " current_hint_state=%p, hint_inhibit_level=%d",
 							 qnostr, relationObjectId,
-							 get_rel_name(relationObjectId),
+							 yb_get_rel_name(relationObjectId),
 							 inhparent, current_hint_state, hint_inhibit_level)));
 		return 0;
 	}
@@ -4622,7 +4661,7 @@ setup_hint_enforcement(PlannerInfo *root, RelOptInfo *rel,
 				foreach(l, RelationGetIndexList(parent_rel))
 				{
 					Oid         indexoid = lfirst_oid(l);
-					char       *indexname = get_rel_name(indexoid);
+					char       *indexname = yb_get_rel_name(indexoid);
 					ListCell   *lc;
 					ParentIndexInfo *parent_index_info;
 
@@ -4686,7 +4725,7 @@ setup_hint_enforcement(PlannerInfo *root, RelOptInfo *rel,
 							 " hint_inhibit_level=%d, scanmask=0x%x",
 							 qnostr, additional_message,
 							 relationObjectId,
-							 get_rel_name(relationObjectId),
+							 yb_get_rel_name(relationObjectId),
 							 inhparent, current_hint_state,
 							 hint_inhibit_level,
 							 shint->enforce_mask)));
@@ -4714,7 +4753,7 @@ setup_hint_enforcement(PlannerInfo *root, RelOptInfo *rel,
 							 " relation=%u(%s), inhparent=%d, current_hint=%p,"
 							 " hint_inhibit_level=%d, scanmask=0x%x",
 							 qnostr, relationObjectId,
-							 get_rel_name(relationObjectId),
+							 yb_get_rel_name(relationObjectId),
 							 inhparent, current_hint_state, hint_inhibit_level,
 							 current_hint_state->init_scan_mask)));
 
@@ -5518,13 +5557,60 @@ make_join_rel_wrapper(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 	if (memoize_hint && memoize_hint->inner_nrels != 0)
 		memoize_hint = NULL;
 
+	bool yb_prefer_bnl_save = yb_prefer_bnl;
 	if (join_hint || memoize_hint)
 	{
 		save_nestlevel = NewGUCNestLevel();
 
 		if (join_hint)
+		{
+			if (IsYugaByteEnabled())
+			{
+				/*
+				 * Enforce semantics for hints affecting NL and BNL:
+				 *
+				 *   yb_prefer_bnl = on
+				 *     - NestLoop --> NestLoop OR BNL (if possible, they compete on cost)
+				 *     - NoNestLoop --> only Merge, Hash allowed
+				 *     - YBBatchedNL --> YBBatchedNL
+				 *     - NoYBBatchedNL --> NestLoop, Merge, Hash all allowed
+				 *
+				 *   yb_prefer_bnl = off
+				 *     - NestLoop --> NestLoop (if possible)
+				 *     - NoNestLoop --> BNL, Merge, Hash all allowed
+				 *     - YBBatchedNL --> YBBatchedNL (if possible)
+				 *     - NoYBBatchedNL --> NestLoop, Merge, Hash all allowed
+				 */
+				if (yb_prefer_bnl)
+				{
+					if (join_hint->base.hint_keyword == HINT_KEYWORD_NONESTLOOP)
+					{
+						/*
+						* Nested loop is disabled via a hint so disable BNL also
+						* since it is a subtype of NL.
+						*/
+						join_hint->enforce_mask &= ~ENABLE_BATCHEDNL;
+					}
+					else if (join_hint->base.hint_keyword == HINT_KEYWORD_NOBATCHEDNL)
+					{
+						yb_prefer_bnl = false;
+					}
+				}
+				else
+				{
+					if (join_hint->base.hint_keyword == HINT_KEYWORD_NESTLOOP)
+					{
+						/*
+						 * Do not want BNL in this case.
+						 */
+						join_hint->enforce_mask &= ~ENABLE_BATCHEDNL;
+					}
+				}
+			}
+
 			set_join_config_options(join_hint->enforce_mask, false,
 									current_hint_state->context);
+		}
 
 		if (memoize_hint)
 		{
@@ -5567,6 +5653,8 @@ make_join_rel_wrapper(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 			memoize_hint->base.state = HINT_STATE_USED;
 
 		AtEOXact_GUC(true, save_nestlevel);
+
+		yb_prefer_bnl = yb_prefer_bnl_save;
 	}
 
 	if (IsYugaByteEnabled() && yb_enable_planner_trace)
@@ -6201,7 +6289,7 @@ ybCheckBadIndexHintExists(PlannerInfo *root, RelOptInfo *rel)
 				foreach(lc1, rel->indexlist)
 				{
 					IndexOptInfo *index = (IndexOptInfo *) lfirst(lc1);
-					char *indexName = get_rel_name(index->indexoid);
+					char *indexName = yb_get_rel_name(index->indexoid);
 
 					if (RelnameCmp(&indexName, &hintIndexName) == 0)
 					{
@@ -6831,12 +6919,19 @@ yb_hint_plan_cache_invalidate(PG_FUNCTION_ARGS)
 	 * Send an invalidation message marking the hint table relcache entry as
 	 * invalid.
 	 */
-	YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
+	bool yb_use_regular_txn_block = YBIsDdlTransactionBlockEnabled();
+	if (yb_use_regular_txn_block)
+		YBAddDdlTxnState(YB_DDL_MODE_VERSION_INCREMENT);
+	else
+		YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
 
 	YbInvalidateHintCache();
 
 	YbForceSendInvalMessages();
-	YBDecrementDdlNestingLevel();
+	if (yb_use_regular_txn_block)
+		YBMergeDdlTxnState();
+	else
+		YBDecrementDdlNestingLevel();
 
 	PG_RETURN_DATUM(PointerGetDatum(NULL));
 }

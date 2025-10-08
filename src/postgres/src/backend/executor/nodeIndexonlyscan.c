@@ -389,8 +389,10 @@ StoreIndexTuple(IndexOnlyScanState *node, TupleTableSlot *slot,
 
 	ExecStoreVirtualTuple(slot);
 
-	TABLETUPLE_YBCTID(slot) = INDEXTUPLE_YBCTID(itup);	/* ybidxbasectid */
-	slot->ts_ybuniqueidxkeysuffix = itup->t_ybuniqueidxkeysuffix;	/* ybuniqueidxkeysuffix */
+	/* Fields used by yb_index_check() */
+	slot->tts_ybidxbasectid = INDEXTUPLE_BASECTID(itup);	/* ybidxbasectid */
+	slot->tts_ybuniqueidxkeysuffix = itup->t_ybuniqueidxkeysuffix;	/* ybuniqueidxkeysuffix */
+	slot->tts_ybctid = itup->t_ybindexrowybctid;	/* index row's ybctid */
 }
 
 /*
@@ -835,7 +837,7 @@ yb_init_indexonly_scandesc(IndexOnlyScanState *node)
 		scandesc->yb_exec_params = &estate->yb_exec_params;
 		scandesc->yb_scan_plan = (Scan *) plan;
 		scandesc->yb_rel_pushdown =
-			YbInstantiatePushdownParams(&plan->yb_pushdown, estate);
+			YbInstantiatePushdownExprs(&plan->yb_pushdown, estate);
 		scandesc->yb_aggrefs = node->yb_ioss_aggrefs;
 		scandesc->yb_distinct_prefixlen = plan->yb_distinct_prefixlen;
 		scandesc->fetch_ybctids_only = false;

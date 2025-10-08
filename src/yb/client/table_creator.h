@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -13,14 +13,13 @@
 
 #pragma once
 
-#include <boost/optional/optional.hpp>
-
 #include "yb/client/client_fwd.h"
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/constants.h"
 #include "yb/common/common_fwd.h"
 
+#include "yb/common/transaction.h"
 #include "yb/dockv/dockv_fwd.h"
 
 #include "yb/gutil/macros.h"
@@ -92,6 +91,10 @@ class YBTableCreator {
 
   // The creation of this table is dependent upon the success of this higher-level transaction.
   YBTableCreator& part_of_transaction(const TransactionMetadata* txn);
+
+  // The creation of this table is happening within this sub-transaction. If the sub-transaction is
+  // rolled back, this creation will be rolled back too.
+  YBTableCreator& part_of_sub_transaction(uint32_t sub_txn_id);
 
   // Adds a partitions to the table.
   YBTableCreator& add_partition(const dockv::Partition& partition);
@@ -201,8 +204,8 @@ class YBTableCreator {
   // For Postgres: table id to assign, and whether the table is a sys catalog / shared table.
   // For all tables, table_id_ will contain the table id assigned after creation.
   std::string table_id_;
-  boost::optional<bool> is_pg_catalog_table_;
-  boost::optional<bool> is_pg_shared_table_;
+  std::optional<bool> is_pg_catalog_table_;
+  std::optional<bool> is_pg_shared_table_;
 
   int32_t num_tablets_ = 0;
 
@@ -238,7 +241,7 @@ class YBTableCreator {
   // The id of the tablespace to which this table is to be associated with.
   std::string tablespace_id_;
 
-  boost::optional<bool> is_matview_;
+  std::optional<bool> is_matview_;
 
   // In case the table was rewritten, explicitly store the TableId containing the PG table OID
   // (as the table's TableId no longer matches).
@@ -248,7 +251,7 @@ class YBTableCreator {
   TableId old_rewrite_table_id_;
 
   // Set to true when the table is being re-written as part of a TRUNCATE operation.
-  boost::optional<bool> is_truncate_;
+  std::optional<bool> is_truncate_;
 
   // Set by DDL Replication to link the table to the original table in the source cluster.
   TableId xcluster_source_table_id_;
@@ -257,6 +260,7 @@ class YBTableCreator {
   uint64_t xcluster_backfill_hybrid_time_ = 0;
 
   const TransactionMetadata* txn_ = nullptr;
+  uint32_t sub_txn_id_ = kMinSubTransactionId;
 
   DISALLOW_COPY_AND_ASSIGN(YBTableCreator);
 };

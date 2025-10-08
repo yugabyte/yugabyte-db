@@ -4,17 +4,25 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.*;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.when;
 
 import com.google.protobuf.ByteString;
+import com.yugabyte.yw.common.NodeUniverseManager;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.CDCReplicationSlotResponse;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.*;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.MockedStatic;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.CDCStreamInfo;
 import org.yb.client.ListCDCStreamsResponse;
@@ -27,16 +35,17 @@ import org.yb.master.MasterTypes.NamespaceIdentifierPB;
 @RunWith(MockitoJUnitRunner.class)
 public class CdcStreamManagerTest {
   private YBClient mockClient;
+  private NodeUniverseManager mockNodeUniverseManager;
   private CdcStreamManager streamManager;
 
   @Before
   public void setup() {
     mockClient = mock(YBClient.class);
     YBClientService mockClientService = mock(YBClientService.class);
-
+    mockNodeUniverseManager = mock(NodeUniverseManager.class);
     when(mockClientService.getUniverseClient(any())).thenReturn(mockClient);
 
-    streamManager = new CdcStreamManager(mockClientService);
+    streamManager = new CdcStreamManager(mockClientService, mockNodeUniverseManager);
   }
 
   @Test
@@ -155,7 +164,18 @@ public class CdcStreamManagerTest {
     when(mockClient.listCDCStreams(null, null, MasterReplicationOuterClass.IdTypePB.NAMESPACE_ID))
         .thenReturn(response);
 
-    CDCReplicationSlotResponse r = streamManager.listReplicationSlot(mock(Universe.class));
+    NodeDetails randomTserver = mock(NodeDetails.class);
+    Universe universe = mock(Universe.class);
+    MockedStatic<CommonUtils> staticMock = mockStatic(CommonUtils.class);
+    staticMock.when(() -> CommonUtils.getARandomLiveTServer(any())).thenReturn(randomTserver);
+
+    ShellResponse mockShellResponse = mock(ShellResponse.class);
+    when(mockNodeUniverseManager.runYsqlCommand(
+            eq(randomTserver), eq(universe), eq("yugabyte"), anyString()))
+        .thenReturn(mockShellResponse);
+    when(mockShellResponse.extractRunCommandOutput())
+        .thenReturn("wal_status\n----------------\nreserved\n(1 row))");
+    CDCReplicationSlotResponse r = streamManager.listReplicationSlot(universe);
 
     assertEquals(2, r.replicationSlots.size());
     CDCReplicationSlotResponse.CDCReplicationSlotDetails testSlot =

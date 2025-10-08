@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -118,7 +118,8 @@ class RedisInboundCall : public rpc::QueueableInboundCall {
   explicit RedisInboundCall(
      rpc::ConnectionPtr conn,
      size_t weight_in_bytes,
-     CallProcessedListener* call_processed_listener);
+     CallProcessedListener* call_processed_listener,
+     rpc::CallStateListenerFactory* call_state_listener_factory);
 
   ~RedisInboundCall();
   // Takes ownership of data content.

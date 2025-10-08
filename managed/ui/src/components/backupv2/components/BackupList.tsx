@@ -1,7 +1,7 @@
 /*
  * Created on Thu Feb 10 2022
  *
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License")
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
@@ -15,7 +15,7 @@ import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
 import Select, { OptionTypeBase } from 'react-select';
 import clsx from 'clsx';
-import { Backup_States, IBackup, IStorageConfig, TIME_RANGE_STATE } from '..';
+import { Backup_States, IBackup, CustomerConfig, TIME_RANGE_STATE } from '..';
 import { getBackupsList } from '../common/BackupAPI';
 import { StatusBadge } from '../../common/badge/StatusBadge';
 import { YBButton, YBMultiSelectRedesiged } from '../../common/forms/fields';
@@ -41,7 +41,7 @@ import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
 import { BackupCreateModal } from './BackupCreateModal';
 import { useSearchParam } from 'react-use';
 import { AssignBackupStorageConfig } from './AssignBackupStorageConfig';
-import { formatBytes } from '../../xcluster/ReplicationUtils';
+import { formatBytes } from '@app/utils/Formatters';
 
 import { AccountLevelBackupEmpty, UniverseLevelBackupEmpty } from './BackupEmpty';
 import { YBTable } from '../../common/YBTable';
@@ -200,7 +200,10 @@ export const BackupList: FC<BackupListOptions> = ({
   const isNewRestoreModalEnabled =
     featureFlags.test.enableNewRestoreModal || featureFlags.released.enableNewRestoreModal;
 
-  const { data: runtimeConfigs, isLoading: runtimeConfigLoading } = useQuery(['runtimeConfigs', universeUUID], () => api.fetchRunTimeConfigs(true, universeUUID));
+  const { data: runtimeConfigs, isLoading: runtimeConfigLoading } = useQuery(
+    ['runtimeConfigs', universeUUID],
+    () => api.fetchRunTimeConfigs(true, universeUUID)
+  );
 
   const enableBackupPITR = !runtimeConfigLoading && isBackupPITREnabled(runtimeConfigs!);
 
@@ -873,7 +876,7 @@ export const BackupList: FC<BackupListOptions> = ({
           selectedBackups[0] &&
           convertBackupToFormValues(
             selectedBackups[0],
-            storageConfigs?.data.find((e: IStorageConfig) => {
+            storageConfigs?.data.find((e: CustomerConfig) => {
               return e.configUUID === selectedBackups[0].commonBackupInfo.storageConfigUUID;
             })
           )

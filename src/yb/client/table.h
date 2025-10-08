@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -112,7 +112,7 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   bool colocated() const;
 
   // Returns the replication info for the table.
-  const boost::optional<ReplicationInfoPB>& replication_info() const;
+  const std::optional<ReplicationInfoPB>& replication_info() const;
 
   std::string ToString() const;
   //------------------------------------------------------------------------------------------------

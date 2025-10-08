@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -22,6 +22,8 @@
 #include <variant>
 #include <utility>
 #include <vector>
+
+#include <boost/logic/tribool.hpp>
 
 #include "yb/common/common.pb.h"
 #include "yb/common/common_flags.h"
@@ -139,11 +141,18 @@ DEFINE_RUNTIME_AUTO_bool(ysql_skip_row_lock_for_update, kExternal, true, false,
 DEFINE_RUNTIME_bool(vector_index_skip_filter_check, false,
                     "Whether to skip filter check during vector index search.");
 
+DEFINE_RUNTIME_bool(vector_index_no_deletions_skip_filter_check, true,
+    "Whether to skip filter check during vector index search if table does not have "
+    "updates/deletions.");
+
 DECLARE_uint64(rpc_max_message_size);
 DECLARE_double(max_buffer_size_to_rpc_limit_ratio);
 DECLARE_bool(vector_index_dump_stats);
 
 namespace yb::docdb {
+
+bool TEST_vector_index_filter_allowed = true;
+size_t TEST_vector_index_max_checked_entries = std::numeric_limits<size_t>::max();
 
 using dockv::DocKey;
 using dockv::DocPath;
@@ -253,18 +262,18 @@ class IntentInserter {
   explicit IntentInserter(LWKeyValueWriteBatchPB* out)
       : out_(*out) {}
 
-  void Add(Slice encoded_key, const IntentMode& mode) {
+  void Add(Slice encoded_key, bool pk_is_known, const IntentMode& mode) {
     if (mode.regular_read()) {
-      Add(encoded_key);
+      Add(encoded_key, pk_is_known);
     } else if (mode.key_only_read()) {
       auto& buf = buffer();
       buf.Clear();
       DocKeyColumnPathBuilder doc_key_builder(&buf, encoded_key);
-      Add(doc_key_builder.Build(dockv::SystemColumnIds::kLivenessColumn));
+      Add(doc_key_builder.Build(dockv::SystemColumnIds::kLivenessColumn), pk_is_known);
     }
 
     if (mode.row_lock()) {
-      Add(encoded_key, /*row_lock=*/ true);
+      Add(encoded_key, pk_is_known, /*row_lock=*/ true);
     }
   }
 
@@ -276,13 +285,14 @@ class IntentInserter {
     return *buffer_;
   }
 
-  void Add(Slice encoded_key, bool is_row_lock = false) {
+  void Add(Slice encoded_key, bool pk_is_known, bool is_row_lock = false) {
     auto& pair = *out_.add_read_pairs();
     pair.dup_key(encoded_key);
     pair.dup_value(Slice(
         is_row_lock ? &dockv::ValueEntryTypeAsChar::kRowLock
                     : &dockv::ValueEntryTypeAsChar::kNullLow,
         1));
+    pair.set_pk_is_known(pk_is_known);
   }
 
   std::optional<dockv::KeyBytes> buffer_;
@@ -309,6 +319,11 @@ class DocKeyAccessor {
   Result<DocKey&> GetDecoded(std::reference_wrapper<const yb::PgsqlWriteRequestPB> req) {
     RETURN_NOT_OK(Apply(req.get()));
     return Decoded();
+  }
+
+  // Should be invoked only after GetEncoded or GetDecoded
+  bool pk_is_known() {
+    return pk_is_known_;
   }
 
  private:
@@ -346,6 +361,10 @@ class DocKeyAccessor {
         req.partition_column_values(), schema_, 0 /* start_idx */));
     auto range_components = VERIFY_RESULT(qlexpr::InitKeyColumnPrimitiveValues(
         req.range_column_values(), schema_, schema_.num_hash_key_columns()));
+    // A SELECT on the unique index column currently takes a strong lock on the top-level key at the
+    // serializable isolation level. TODO: Optimize with weak lock.
+    pk_is_known_ = schema_.num_hash_key_columns() == hashed_components.size() &&
+                   schema_.num_range_key_columns() == range_components.size();
     if (hashed_components.empty()) {
       source_.emplace<DocKey>(schema_, std::move(range_components));
     } else {
@@ -359,6 +378,7 @@ class DocKeyAccessor {
     const auto& value = ybctid.value().binary_value();
     SCHECK(!value.empty(), InternalError, "empty ybctid");
     source_.emplace<Slice>(value);
+    pk_is_known_ = true;
     return Status::OK();
   }
 
@@ -410,6 +430,9 @@ class DocKeyAccessor {
   const Schema& schema_;
   std::variant<std::nullopt_t, Slice, DocKey> source_;
   std::variant<std::nullopt_t, EncodedKey, DocKey> result_holder_;
+
+  // Whether the assoicated key includes a PK. It is valid only after GetEncoded or GetDecoded.
+  bool pk_is_known_ = false;
 };
 
 Result<YQLRowwiseIteratorIf::UniPtr> CreateIterator(
@@ -596,15 +619,19 @@ class FilteringIterator {
   }
 
   bool has_filter() const {
+    DCHECK(iterator_holder_ != nullptr);
     return filter_.has_value();
+  }
+
+  static bool NeedFilter(const PgsqlReadRequestPB& request) {
+    return !request.where_clauses().empty();
   }
 
  private:
   Status InitCommon(
       const PgsqlReadRequestPB& request, const Schema& schema,
       const dockv::ReaderProjection& projection) {
-    const auto& where_clauses = request.where_clauses();
-    if (where_clauses.empty()) {
+    if (!NeedFilter(request)) {
       return Status::OK();
     }
 
@@ -613,7 +640,7 @@ class FilteringIterator {
       : std::nullopt;
 
     DocPgExprExecutorBuilder builder(schema, projection);
-    for (const auto& exp : where_clauses) {
+    for (const auto& exp : request.where_clauses()) {
       RETURN_NOT_OK(builder.AddWhere(exp, version));
     }
     filter_.emplace(VERIFY_RESULT(builder.Build(request.col_refs())));
@@ -834,21 +861,25 @@ class VectorIndexKeyProvider {
       DocVectorIndexSearchResult& search_result, PgsqlResponsePB& response,
       DocVectorIndex& vector_index, Slice vector_slice, size_t num_top_vectors_to_remove,
       size_t max_results, WriteBuffer& result_buffer)
-      : search_result_(search_result), response_(response), vector_index_(vector_index),
+      : could_have_more_data_(search_result.could_have_more_data),
+        result_entries_(search_result.entries), response_(response), vector_index_(vector_index),
         vector_slice_(vector_slice), num_top_vectors_to_remove_(num_top_vectors_to_remove),
         max_results_(max_results), result_buffer_(result_buffer) {}
 
   Slice FetchKey() {
-    if (index_ >= search_result_.size()) {
+    if (index_ >= result_entries_.size()) {
+      VLOG_WITH_FUNC(4) << vector_index_.ToString()
+                        << ", returned: " << response_.vector_index_distances().size()
+                        << " out of " << result_entries_.size();
       return Slice();
     }
     // TODO(vector_index) When row came from intents, we already have all necessary data,
     // so could avoid refetching it.
-    return search_result_[index_++].key.AsSlice();
+    return result_entries_[index_++].key.AsSlice();
   }
 
   void AddedKeyToResultSet() {
-    response_.add_vector_index_distances(search_result_[index_ - 1].encoded_distance);
+    response_.add_vector_index_distances(result_entries_[index_ - 1].encoded_distance);
     response_.add_vector_index_ends(result_buffer_.size());
   }
 
@@ -863,45 +894,52 @@ class VectorIndexKeyProvider {
                    vector_index_.column_id(), projection);
     // TODO(vector_index) Use limit during prefetch.
     dockv::PgTableRow table_row(projection);
-    size_t old_size = search_result_.size();
+    size_t old_size = result_entries_.size();
     while (VERIFY_RESULT(iterator.FetchNextMatch(&table_row))) {
       auto vector_value = table_row.GetValueByIndex(indexed_column_index);
       RSTATUS_DCHECK(vector_value, Corruption, "Vector column ($0) missing in row: $1",
                      vector_index_.column_id(), table_row.ToString());
       auto encoded_value = dockv::EncodedDocVectorValue::FromSlice(vector_value->binary_value());
-      search_result_.push_back(DocVectorIndexSearchResultEntry {
+      result_entries_.push_back(DocVectorIndexSearchResultEntry {
         // TODO(vector_index) Avoid decoding vector_slice for each vector
         .encoded_distance = VERIFY_RESULT(vector_index_.Distance(
             vector_slice_, encoded_value.data)),
         .key = KeyBuffer(iterator.impl().GetTupleId()),
       });
     }
-    found_intents_ = search_result_.size() - old_size;
+    found_intents_ = result_entries_.size() - old_size;
     prefetch_done_time_ = MonoTime::NowIf(FLAGS_vector_index_dump_stats);
 
     auto cmp_keys = [](const auto& lhs, const auto& rhs) {
       return lhs.key < rhs.key;
     };
-    std::ranges::sort(search_result_, cmp_keys);
+    std::ranges::sort(result_entries_, cmp_keys);
 
     if (found_intents_) {
-      auto range = std::ranges::unique(search_result_, [](const auto& lhs, const auto& rhs) {
+      auto range = std::ranges::unique(result_entries_, [](const auto& lhs, const auto& rhs) {
         return lhs.key == rhs.key;
       });
-      search_result_.erase(range.begin(), range.end());
+      result_entries_.erase(range.begin(), range.end());
     }
 
-    if (search_result_.size() > max_results_ || num_top_vectors_to_remove_ != 0) {
-      std::ranges::sort(search_result_, [](const auto& lhs, const auto& rhs) {
+    VLOG_WITH_FUNC(4) << vector_index_.ToString()
+                      << ", could_have_more_data_: " << could_have_more_data_
+                      << ", result_entries_.size(): " << result_entries_.size()
+                      << ", max_results_: " << max_results_
+                      << ", num_top_vectors_to_remove_: " << num_top_vectors_to_remove_;
+    could_have_more_data_ = could_have_more_data_ || result_entries_.size() >= max_results_;
+    if (result_entries_.size() > max_results_ || num_top_vectors_to_remove_ != 0) {
+      std::ranges::sort(result_entries_, [](const auto& lhs, const auto& rhs) {
         return lhs.encoded_distance < rhs.encoded_distance;
       });
-      search_result_.erase(
-          search_result_.begin(), search_result_.begin() + num_top_vectors_to_remove_);
-      std::ranges::sort(search_result_, cmp_keys);
+      result_entries_.erase(
+          result_entries_.begin(), result_entries_.begin() + num_top_vectors_to_remove_);
+      std::ranges::sort(result_entries_, cmp_keys);
     }
 
     merge_done_time_ = MonoTime::NowIf(FLAGS_vector_index_dump_stats);
 
+    response_.set_vector_index_could_have_more_data(could_have_more_data_);
     return Status::OK();
   }
 
@@ -918,7 +956,8 @@ class VectorIndexKeyProvider {
   }
 
  private:
-  DocVectorIndexSearchResult& search_result_;
+  bool could_have_more_data_;
+  DocVectorIndexSearchResultEntries& result_entries_;
   PgsqlResponsePB& response_;
   DocVectorIndex& vector_index_;
   Slice vector_slice_;
@@ -948,12 +987,21 @@ class PgsqlVectorFilter {
         << "VI_STATS: PgsqlVectorFilter, checked: " << num_checked_entries_ << ", accepted: "
         << num_accepted_entries_ << ", num removed: " << num_removed_
         << (iter_.has_filter() ? Format(", found: $0", num_found_entries_) : "");
+    DCHECK_LE(num_checked_entries_, TEST_vector_index_max_checked_entries);
   }
 
-  Status Init(const PgsqlReadOperationData& data) {
+  Result<bool> Init(const PgsqlReadOperationData& data) {
     if (FLAGS_vector_index_skip_filter_check) {
-      return Status::OK();
+      return false;
     }
+    if (!data.table_has_vector_deletion && !FilteringIterator::NeedFilter(data.request) &&
+        FLAGS_vector_index_no_deletions_skip_filter_check) {
+      LOG_IF(INFO, FLAGS_vector_index_dump_stats)
+          << "VI_STATS: PgsqlVectorFilter, "
+             "skip because filter not specified and table does not have deletions";
+      return false;
+    }
+    CHECK(TEST_vector_index_filter_allowed);
     std::vector<ColumnId> columns;
     ColumnId index_column = data.vector_index->column_id();
     for (const auto& col_ref : data.request.col_refs()) {
@@ -969,7 +1017,8 @@ class PgsqlVectorFilter {
     dockv::ReaderProjection projection;
     projection_.Init(data.doc_read_context.schema(), columns);
     row_.emplace(projection_);
-    return iter_.InitForYbctid(data, projection_, data.doc_read_context, {});
+    RETURN_NOT_OK(iter_.InitForYbctid(data, projection_, data.doc_read_context, {}));
+    return true;
   }
 
   bool operator()(const vector_index::VectorId& vector_id) {
@@ -1140,11 +1189,13 @@ Status PgsqlWriteOperation::Init(PgsqlResponsePB* response) {
     // other places.
     doc_key_ = dockv::DocKey(doc_read_context_->schema());
     encoded_doc_key_ = doc_key_.EncodeAsRefCntPrefix();
+    pk_is_known_ = true;
   } else {
     DocKeyAccessor accessor(doc_read_context_->schema());
     doc_key_ = std::move(VERIFY_RESULT_REF(accessor.GetDecoded(request_)));
     encoded_doc_key_ = doc_key_.EncodeAsRefCntPrefix(
         Slice(&dockv::KeyEntryTypeAsChar::kHighest, 1));
+    pk_is_known_ = accessor.pk_is_known();
   }
 
   encoded_doc_key_.Resize(encoded_doc_key_.size() - 1);
@@ -1281,6 +1332,7 @@ Result<HybridTime> PgsqlWriteOperation::FindOldestOverwrittenTimestamp(
 Status PgsqlWriteOperation::Apply(const DocOperationApplyData& data) {
   VLOG(4) << "Write, read time: " << data.read_time() << ", txn: " << txn_op_context_;
 
+  data.doc_write_batch->SetIncludesPk(pk_is_known_);
   RETURN_NOT_OK(VerifyNoColsMarkedForDeletion(doc_read_context_->schema(), request_));
 
   auto scope_exit = ScopeExit([this] {
@@ -2722,7 +2774,7 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOpti
 
   table_iter_.reset();
   PgsqlVectorFilter filter(&table_iter_);
-  RETURN_NOT_OK(filter.Init(data_));
+  auto could_have_missing_entries = !VERIFY_RESULT(filter.Init(data_));
   RSTATUS_DCHECK(
       data_.vector_index->BackfillDone(), IllegalState,
       "Vector index query on non ready index: $0", *data_.vector_index);
@@ -2732,15 +2784,16 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOpti
         .max_num_results = max_results,
         .ef = options.hnsw_options().ef_search(),
         .filter = std::ref(filter),
-      }
+      },
+      could_have_missing_entries
   ));
 
   // TODO(vector_index) Order keys by ybctid for fetching.
   auto dump_stats = FLAGS_vector_index_dump_stats;
   auto read_start_time = MonoTime::NowIf(dump_stats);
   VectorIndexKeyProvider key_provider(
-      result, response_, *data_.vector_index, vector_slice, options.num_top_vectors_to_remove(),
-      max_results, *result_buffer_);
+      result, response_, *data_.vector_index, vector_slice,
+      options.num_top_vectors_to_remove(), max_results, *result_buffer_);
   auto res = ExecuteBatchKeys(key_provider);
   LOG_IF(INFO, dump_stats)
       << "VI_STATS: Read rows data time: "
@@ -3151,19 +3204,24 @@ Status GetIntents(
 
   DocKeyAccessor accessor(schema);
   if (!(has_batch_arguments || request.has_ybctid_column_value())) {
-    inserter.Add(
-        VERIFY_RESULT(accessor.GetEncoded(request)), {level, row_mark, KeyOnlyRequested::kFalse});
+    auto slice = VERIFY_RESULT(accessor.GetEncoded(request));
+    bool inlcudes_pk = static_cast<bool>(accessor.pk_is_known());
+    inserter.Add(slice, inlcudes_pk, {level, row_mark, KeyOnlyRequested::kFalse});
     return Status::OK();
   }
 
   const IntentMode mode{
       level, row_mark, KeyOnlyRequested(IsOnlyKeyColumnsRequested(schema, request))};
   for (const auto& batch_argument : request.batch_arguments()) {
-    inserter.Add(VERIFY_RESULT(accessor.GetEncoded(batch_argument.ybctid())), mode);
+    auto slice = VERIFY_RESULT(accessor.GetEncoded(batch_argument.ybctid()));
+    bool inlcudes_pk = static_cast<bool>(accessor.pk_is_known());
+    inserter.Add(slice, inlcudes_pk, mode);
   }
   if (!has_batch_arguments) {
     DCHECK(request.has_ybctid_column_value());
-    inserter.Add(VERIFY_RESULT(accessor.GetEncoded(request.ybctid_column_value())), mode);
+    auto slice = VERIFY_RESULT(accessor.GetEncoded(request.ybctid_column_value()));
+    bool inlcudes_pk = static_cast<bool>(accessor.pk_is_known());
+    inserter.Add(slice, inlcudes_pk, mode);
   }
   return Status::OK();
 }

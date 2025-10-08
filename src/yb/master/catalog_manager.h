@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -32,6 +32,7 @@
 
 #pragma once
 
+#include <functional>
 #include <list>
 #include <map>
 #include <set>
@@ -60,13 +61,13 @@
 #include "yb/master/master_dcl.fwd.h"
 #include "yb/master/master_ddl.fwd.h"
 #include "yb/master/master_encryption.fwd.h"
-#include "yb/master/master_heartbeat.fwd.h"
 #include "yb/master/master_fwd.h"
+#include "yb/master/master_heartbeat.fwd.h"
 #include "yb/master/master_types.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/snapshot_coordinator_context.h"
-#include "yb/master/sys_catalog_types.h"
 #include "yb/master/sys_catalog_initialization.h"
+#include "yb/master/sys_catalog_types.h"
 
 #include "yb/rocksdb/rocksdb_fwd.h"
 
@@ -75,6 +76,7 @@
 #include "yb/server/monitored_task.h"
 #include "yb/util/async_task_util.h"
 #include "yb/util/debug/lock_debug.h"
+#include "yb/util/flags/flags_callback.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
@@ -84,12 +86,12 @@
 
 namespace yb {
 
-class Schema;
-class ThreadPool;
 class AddTransactionStatusTabletRequestPB;
 class AddTransactionStatusTabletResponsePB;
-class UniverseKeyRegistryPB;
 class IsOperationDoneResult;
+class Schema;
+class ThreadPool;
+class UniverseKeyRegistryPB;
 
 template<class T>
 class AtomicGauge;
@@ -125,12 +127,12 @@ struct CDCStateTableEntry;
 namespace master {
 
 struct DeferredAssignmentActions;
-struct SysCatalogLoadingState;
 struct KeyRange;
+struct SysCatalogLoadingState;
 class RestoreSysCatalogState;
 class YsqlInitDBAndMajorUpgradeHandler;
-class YsqlManagerIf;
 class YsqlManager;
+class YsqlManagerIf;
 
 using PlacementId = std::string;
 
@@ -170,6 +172,10 @@ YB_DEFINE_ENUM(YsqlDdlVerificationState,
 // this table's DocDB schema.
 YB_DEFINE_ENUM(TxnState, (kUnknown)(kCommitted)(kAborted)(kNoChange));
 
+YB_DEFINE_ENUM(YsqlDdlSubTransactionRollbackState,
+    (kDdlSubTxnRollbackInProgress)
+    (kDdlSubTxnRollbackPostProcessingFailed));
+
 YB_DEFINE_ENUM(
     DeleteYsqlDBTablesType,
     (kNormal)                // Reglar DB drop. Can we used during both normal operations and major
@@ -182,6 +188,41 @@ YB_DEFINE_ENUM(
 );
 
 struct YsqlTableDdlTxnState;
+using google::protobuf::RepeatedPtrField;
+using TabletIdWithEntry = std::pair<TabletId, SysTabletsEntryPB>;
+using SysTabletsEntriesWithIds = std::vector<TabletIdWithEntry>;
+struct TableWithTabletsEntries {
+  TableWithTabletsEntries(
+      const SysTablesEntryPB& table_entry, const SysTabletsEntriesWithIds& tablets_entries) {
+    this->table_entry = table_entry;
+    this->tablets_entries = tablets_entries;
+  }
+  TableWithTabletsEntries() {}
+
+  // Construct a TableDescription out of this entry using the provided factory for TableInfo.
+  // - table_id: id of the table corresponding to this entry (key in the map)
+  // - namespace_info: namespace to attach to the TableDescription
+  Result<TableDescription> DescribeTable(
+      const TableId& table_id, const NamespaceInfoPtr& namespace_info) const;
+
+  // Add the table with table_id and its tablets entries to a list of backup entries.
+  void AddToBackupEntries(
+      const TableId& table_id, RepeatedPtrField<BackupRowEntryPB>& backup_entries) const;
+
+  void OrderTabletsByPartitions();
+
+  static SysRowEntry ToSysRowEntry(
+      const std::string& id, SysRowEntryType type, const std::string& data) {
+    SysRowEntry entry;
+    entry.set_id(id);
+    entry.set_type(type);
+    entry.set_data(data);
+    return entry;
+  }
+
+  SysTablesEntryPB table_entry;
+  SysTabletsEntriesWithIds tablets_entries;
+};
 
 // The component of the master which tracks the state and location
 // of tables/tablets in the cluster.
@@ -206,7 +247,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
  public:
   explicit CatalogManager(Master *master, SysCatalogTable* sys_catalog);
-  virtual ~CatalogManager();
+  ~CatalogManager() override;
 
   Status Init();
 
@@ -284,32 +325,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
                                     rpc::RpcContext* rpc,
                                     const LeaderEpoch& epoch);
 
-  // Check if there is a transaction table whose tablespace id matches the given tablespace id.
-  bool DoesTransactionTableExistForTablespace(
-      const TablespaceId& tablespace_id) EXCLUDES(mutex_);
-
-  // Create a local transaction status table for a tablespace if needed
-  // (i.e., if it does not exist already).
-  //
-  // This is called during CreateTable if the table has transactions enabled and is part
-  // of a tablespace with a placement set.
-  Status CreateLocalTransactionStatusTableIfNeeded(
-      rpc::RpcContext* rpc, const TablespaceId& tablespace_id, const LeaderEpoch& epoch)
-      EXCLUDES(mutex_);
-
-  // Get tablet ids of the global transaction status table.
-  Status GetGlobalTransactionStatusTablets(
-      GetTransactionStatusTabletsResponsePB* resp) EXCLUDES(mutex_);
-
-  // Get ids of transaction status tables matching a given placement.
-  Result<std::vector<TableInfoPtr>> GetPlacementLocalTransactionStatusTables(
-      const CloudInfoPB& placement) EXCLUDES(mutex_);
-
-  // Get tablet ids of local transaction status tables matching a given placement.
-  Status GetPlacementLocalTransactionStatusTablets(
-      const std::vector<TableInfoPtr>& placement_local_tables,
-      GetTransactionStatusTabletsResponsePB* resp) EXCLUDES(mutex_);
-
   // Get tablet ids of the global transaction status table and local transaction status tables
   // matching a given placement.
   Status GetTransactionStatusTablets(const GetTransactionStatusTabletsRequestPB* req,
@@ -334,8 +349,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Result<std::vector<StatefulServiceStatus>> GetStatefulServicesStatus() const EXCLUDES(mutex_);
 
   Status CreateTestEchoService(const LeaderEpoch& epoch);
-
-  Status CreatePgAutoAnalyzeService(const LeaderEpoch& epoch);
 
   Status CreatePgCronService(const LeaderEpoch& epoch) EXCLUDES(mutex_);
 
@@ -371,14 +384,19 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
                        rpc::RpcContext* rpc,
                        const LeaderEpoch& epoch);
 
+  // Get the information about an in-progress truncate operation.
+  Status IsTruncateTableDone(const IsTruncateTableDoneRequestPB* req,
+                             IsTruncateTableDoneResponsePB* resp);
+
   Status RefreshYsqlLease(const RefreshYsqlLeaseRequestPB* req,
                           RefreshYsqlLeaseResponsePB* resp,
                           rpc::RpcContext* rpc,
                           const LeaderEpoch& epoch);
 
-  // Get the information about an in-progress truncate operation.
-  Status IsTruncateTableDone(const IsTruncateTableDoneRequestPB* req,
-                             IsTruncateTableDoneResponsePB* resp);
+  Status RelinquishYsqlLease(const RelinquishYsqlLeaseRequestPB* req,
+                             RelinquishYsqlLeaseResponsePB* resp,
+                             rpc::RpcContext* rpc,
+                             const LeaderEpoch& epoch);
 
   // Backfill the specified index.  Currently only supported for YSQL.  YCQL does not need this as
   // master automatically runs backfill according to the DocDB permissions.
@@ -504,19 +522,46 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Status HandleAbortedYsqlDdlTxn(const YsqlTableDdlTxnState txn_data);
 
-  Status ClearYsqlDdlTxnState(const YsqlTableDdlTxnState txn_data);
+  Status YsqlRollbackDocdbSchemaToSubTxn(const std::string& pb_txn_id,
+                                    const SubTransactionId sub_txn_id,
+                                    const LeaderEpoch& epoch);
+
+  Status YsqlRollbackDocdbSchemaToSubTxnHelper(TableInfo* table,
+                                          const TransactionId& txn_id,
+                                          const SubTransactionId sub_txn_id,
+                                          const LeaderEpoch& epoch);
+
+  // Rollback all the DDL state changes made by the YSQL transaction from the end till
+  // rollback_till_ddl_state_index of ysql_ddl_txn_verifier_state i.e.
+  // ysql_ddl_txn_verifier_state[rollback_till_ddl_state_index, end)
+  Status RollbackYsqlTxnDdlStates(
+      const YsqlTableDdlTxnState txn_data, bool is_rollback_to_subtxn,
+      int rollback_till_ddl_state_index = 0);
+
+  Status ClearYsqlDdlTxnState(const YsqlTableDdlTxnState txn_data,
+                              int rollback_till_ddl_state_index = 0);
 
   Status YsqlDdlTxnAlterTableHelper(const YsqlTableDdlTxnState txn_data,
                                     const std::vector<DdlLogEntry>& ddl_log_entries,
                                     const std::string& new_table_name,
-                                    bool success);
+                                    bool success,
+                                    int rollback_till_ddl_state_index = 0);
 
-  Status YsqlDdlTxnDropTableHelper(const YsqlTableDdlTxnState txn_data, bool success);
+  Status YsqlDdlTxnDropTableHelper(
+      const YsqlTableDdlTxnState txn_data, bool success, bool is_rollback_to_subtxn = false);
 
   void UpdateDdlVerificationStateUnlocked(const TransactionId& txn,
                                           YsqlDdlVerificationState state)
       REQUIRES_SHARED(ddl_txn_verifier_mutex_);
   void UpdateDdlVerificationState(const TransactionId& txn, YsqlDdlVerificationState state);
+
+  void UpdateDdlRollbackToSubTxnStateUnlocked(const TransactionId& txn,
+                                              const SubTransactionId sub_txn_id,
+                                              YsqlDdlSubTransactionRollbackState state)
+      REQUIRES_SHARED(ddl_txn_verifier_mutex_);
+  void UpdateDdlRollbackToSubTxnState(const TransactionId& txn,
+                                      const SubTransactionId sub_txn_id,
+                                      YsqlDdlSubTransactionRollbackState state);
 
   bool HasDdlVerificationState(const TransactionId& txn) const EXCLUDES(ddl_txn_verifier_mutex_);
   void RemoveDdlTransactionStateUnlocked(
@@ -525,6 +570,12 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   void RemoveDdlTransactionState(
       const TableId& table_id, const std::vector<TransactionId>& txn_ids)
+      EXCLUDES(ddl_txn_verifier_mutex_);
+
+  void RemoveDdlRollbackToSubTxnStateUnlocked(const TableId& table_id, TransactionId txn_id)
+      REQUIRES(ddl_txn_verifier_mutex_);
+
+  void RemoveDdlRollbackToSubTxnState(const TableId& table_id, TransactionId txn_id)
       EXCLUDES(ddl_txn_verifier_mutex_);
 
   Status TriggerDdlVerificationIfNeeded(const TransactionMetadata& txn, const LeaderEpoch& epoch);
@@ -575,20 +626,17 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   // Send the "delete tablet request" to the specified TS/tablet.
   // The specified 'reason' will be logged on the TS.
-  void SendDeleteTabletRequest(const TabletId& tablet_id,
-                               tablet::TabletDataState delete_type,
-                               const boost::optional<int64_t>& cas_config_opid_index_less_or_equal,
-                               const scoped_refptr<TableInfo>& table,
-                               const std::string& ts_uuid,
-                               const std::string& reason,
-                               const LeaderEpoch& epoch,
-                               HideOnly hide_only = HideOnly::kFalse,
-                               KeepData keep_data = KeepData::kFalse);
+  void SendDeleteTabletRequest(
+      const TabletId& tablet_id, tablet::TabletDataState delete_type,
+      const std::optional<int64_t>& cas_config_opid_index_less_or_equal,
+      const scoped_refptr<TableInfo>& table, const std::string& ts_uuid, const std::string& reason,
+      const LeaderEpoch& epoch, HideOnly hide_only = HideOnly::kFalse,
+      KeepData keep_data = KeepData::kFalse);
 
   std::shared_ptr<AsyncDeleteReplica> MakeDeleteReplicaTask(
       const TabletServerId& peer_uuid, const TableInfoPtr& table, const TabletId& tablet_id,
       tablet::TabletDataState delete_type,
-      boost::optional<int64_t> cas_config_opid_index_less_or_equal, LeaderEpoch epoch,
+      std::optional<int64_t> cas_config_opid_index_less_or_equal, LeaderEpoch epoch,
       const std::string& reason);
 
   void SetTabletReplicaLocations(
@@ -744,6 +792,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status GetObjectLockStatus(
       const GetObjectLockStatusRequestPB* req, GetObjectLockStatusResponsePB* resp);
 
+  Status GetTabletsMetadata(
+      const GetTabletsMetadataRequestPB* req, GetTabletsMetadataResponsePB* resp);
+
   Status UpdateCDCProducerOnTabletSplit(
       const TableId& producer_table_id, const SplitTabletIds& split_tablet_ids) override;
 
@@ -754,6 +805,16 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status ReVerifyChildrenEntriesOnTabletSplit(
       const TableId& producer_table_id, const std::vector<cdc::CDCStateTableEntry>& entries,
       const std::unordered_set<xrepl::StreamId>& cdcsdk_stream_ids);
+
+  // Advance OID counters as needed to ensure future OID allocations do not run into trouble.
+  //
+  // After this function returns, the following will hold:
+  //   * All the in-use OIDs that xCluster needs to preserve are below the associated OID counter.
+  //   * There are no DocDB hidden tables whose OIDs are at or above the associated OID counter.
+  //
+  // Remember that OIDs are cached at TServers so you may want to use InvalidateTserverOidCaches()
+  // after calling this function.
+  Status AdvanceOidCounters(const NamespaceId& namespace_id);
 
   // Invalidate all the TServer OID caches in this universe.  After this returns, each TServer cache
   // will be effectively invalidated when that TServer receives a heartbeat response from master.
@@ -796,7 +857,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   ClusterLoadBalancer* load_balancer() override { return load_balance_policy_.get(); }
 
+  // This never returns nullptr.
   XClusterManagerIf* GetXClusterManager() override;
+  // This never returns nullptr.
   XClusterManager* GetXClusterManagerImpl() override { return xcluster_manager_.get(); }
 
   YsqlManagerIf& GetYsqlManager();
@@ -1072,19 +1135,15 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
     leader_mutex_.AssertAcquiredForWriting();
   }
 
-  std::string GenerateId() override {
-    return GenerateId(boost::none);
-  }
+  std::string GenerateId() override { return GenerateId(std::nullopt); }
 
-  std::string GenerateId(boost::optional<const SysRowEntryType> entity_type);
-  std::string GenerateIdUnlocked(boost::optional<const SysRowEntryType> entity_type = boost::none)
+  std::string GenerateId(std::optional<const SysRowEntryType> entity_type);
+  std::string GenerateIdUnlocked(std::optional<const SysRowEntryType> entity_type = std::nullopt)
       REQUIRES_SHARED(mutex_);
 
   ThreadPool* AsyncTaskPool() override { return async_task_pool_.get(); }
 
-  PermissionsManager* permissions_manager() override {
-    return permissions_manager_.get();
-  }
+  PermissionsManager* permissions_manager() override { return permissions_manager_.get(); }
 
   intptr_t tablets_version() const override NO_THREAD_SAFETY_ANALYSIS {
     // This method should not hold the lock, because Version method is thread safe.
@@ -1164,7 +1223,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status ScheduleTask(std::shared_ptr<server::RunnableMonitoredTask> task) override;
 
   // Time since this peer became master leader. Caller should verify that it is leader before.
-  MonoDelta TimeSinceElectedLeader();
+  MonoDelta TimeSinceElectedLeader() const;
 
   Result<std::vector<TableDescription>> CollectTables(
       const google::protobuf::RepeatedPtrField<TableIdentifierPB>& table_identifiers,
@@ -1176,6 +1235,12 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       CollectFlags flags,
       std::unordered_set<NamespaceId>* namespaces = nullptr);
 
+  // Collect all tables belonging to a specific namespace by reading the sys_catalog from disk as of
+  // a provided hybrid_time.
+  Result<std::vector<TableDescription>> CollectTablesAsOfTime(
+      const NamespaceId& namespace_id, CollectFlags flags, HybridTime read_time,
+      CoarseTimePoint deadline);
+
   // Returns 'table_replication_info' itself if set. Else looks up placement info for its
   // 'tablespace_id'. If neither is set, returns the cluster level replication info.
   Result<ReplicationInfoPB> GetTableReplicationInfo(
@@ -1186,7 +1251,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Result<size_t> GetTableReplicationFactor(const TableInfoPtr& table) const override;
 
-  Result<boost::optional<TablespaceId>> GetTablespaceForTable(
+  Result<std::optional<TablespaceId>> GetTablespaceForTable(
       const scoped_refptr<TableInfo>& table) const override;
 
   void CheckTableDeleted(const TableInfoPtr& table, const LeaderEpoch& epoch) override;
@@ -1227,6 +1292,18 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status IsYsqlDdlVerificationDone(
       const IsYsqlDdlVerificationDoneRequestPB* req,
       IsYsqlDdlVerificationDoneResponsePB* resp,
+      rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+
+  Status RollbackDocdbSchemaToSubtxn(
+      const RollbackDocdbSchemaToSubtxnRequestPB* req,
+      RollbackDocdbSchemaToSubtxnResponsePB* resp,
+      rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+
+  Status IsRollbackDocdbSchemaToSubtxnDone(
+      const IsRollbackDocdbSchemaToSubtxnDoneRequestPB* req,
+      IsRollbackDocdbSchemaToSubtxnDoneResponsePB* resp,
       rpc::RpcContext* rpc,
       const LeaderEpoch& epoch);
 
@@ -1430,6 +1507,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const UpdateConsumerOnProducerMetadataRequestPB* req,
       UpdateConsumerOnProducerMetadataResponsePB* resp, rpc::RpcContext* rpc);
 
+  // Store packing schemas for upcoming colocated tables on an xCluster automatic mode target,
+  // since their rows are replicated before the corresponding table is created.
   Status InsertHistoricalColocatedSchemaPacking(
       const xcluster::ReplicationGroupId& replication_group_id, const TablegroupId& tablegroup_id,
       const ColocationId colocation_id,
@@ -1580,7 +1659,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   docdb::HistoryCutoff AllowedHistoryCutoffProvider(tablet::RaftGroupMetadata* metadata);
 
-  Result<boost::optional<ReplicationInfoPB>> GetTablespaceReplicationInfoWithRetry(
+  Result<std::optional<ReplicationInfoPB>> GetTablespaceReplicationInfoWithRetry(
       const TablespaceId& tablespace_id);
 
   // Promote the table from a PREPARING state to a RUNNING state, and persist in sys_catalog.
@@ -1607,6 +1686,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Result<TabletInfoPtr> GetTabletInfo(const TabletId& tablet_id) override
       EXCLUDES(mutex_);
+
+  // Gets the set of table IDs that belong to the sys.catalog tablet.
+  std::unordered_set<TableId> GetSysCatalogTableIds() EXCLUDES(mutex_);
 
   // Gets the tablet info for each tablet id, or nullptr if the tablet was not found.
   TabletInfos GetTabletInfos(const std::vector<TabletId>& ids) override;
@@ -1666,6 +1748,21 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Result<TSDescriptorPtr> LookupTSByUUID(const TabletServerId& tserver_uuid);
 
   rpc::Scheduler& Scheduler() override;
+
+  // Submit a task to run on the background thread pool.
+  Status SubmitBackgroundTask(const std::function<void()>& func);
+
+
+  // Below functions are temporarily made public until they can be moved into YsqlManager.
+
+  // Helper function to refresh the tablespace info.
+  Status DoRefreshTablespaceInfo(const LeaderEpoch& epoch);
+
+  void ResetCachedCatalogVersions()
+      EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
+
+  // Refresh the in-memory map for YSQL pg_yb_catalog_version table.
+  void RefreshPgCatalogVersionInfo() EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
 
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
@@ -2061,8 +2158,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const TablespaceIdToReplicationInfoMap& tablespace_info,
       const TableToTablespaceIdMap& table_to_tablespace_map, const LeaderEpoch& epoch);
 
-  void StartTablespaceBgTaskIfStopped();
-
   // Report metrics.
   void ReportMetrics();
 
@@ -2223,7 +2318,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // issuing a DeleteTablet call to tservers. It is possible in the case of corrupted sys catalog or
   // tservers heartbeating into wrong clusters that live data is considered to be orphaned. So make
   // sure that the tablet was explicitly deleted before deleting any on-disk data from tservers.
-  std::unordered_set<TabletId> deleted_tablets_loaded_from_sys_catalog_ GUARDED_BY(mutex_);
+  std::unordered_set<TabletId> deleted_tablets_ GUARDED_BY(mutex_);
 
   // Split parent tablets that are now hidden and still being replicated by some CDC stream. Keep
   // track of these tablets until their children tablets start being polled, at which point they
@@ -2327,9 +2422,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   std::atomic<int64_t> leader_ready_term_ = -1;
 
   // This field is set to true when the leader master has is restoring sys catalog.
-  // In this case ScopedLeaderSharedLock cannot be acquired on this master.
-  // So all RPCs that requires this lock will fail.
-  bool restoring_sys_catalog_ GUARDED_BY(leader_mutex_) = false;
+  // While this is true, the ScopedLeaderSharedLock cannot be acquired on this master, so all RPCs
+  // that require this lock will fail.
+  std::atomic_bool restoring_sys_catalog_ = false;
 
   // Lock used to fence operations and leader elections. All logical operations
   // (i.e. create table, alter table, etc.) should acquire this lock for
@@ -2377,7 +2472,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   std::unique_ptr<ObjectLockInfoManager> object_lock_info_manager_;
 
-  boost::optional<InitialSysCatalogSnapshotWriter> initial_snapshot_writer_;
+  std::optional<InitialSysCatalogSnapshotWriter> initial_snapshot_writer_;
 
   std::unique_ptr<PermissionsManager> permissions_manager_;
 
@@ -2404,6 +2499,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   mutable MutexType backfill_mutex_;
   std::unordered_set<TableId> pending_backfill_tables_ GUARDED_BY(backfill_mutex_);
 
+  std::unique_ptr<CdcsdkManager> cdcsdk_manager_;
+
   std::unique_ptr<XClusterManager> xcluster_manager_;
 
   std::unique_ptr<YsqlManager> ysql_manager_;
@@ -2415,8 +2512,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const TableInfoPtr& table, const ReplicationInfoPB& replication_info) const override;
 
   Status CanSupportAdditionalTabletsForTableCreation(
-    int num_tablets, const ReplicationInfoPB& replication_info,
-    const TSDescriptorVector& ts_descs);
+    int num_tablets, const ReplicationInfoPB& replication_info) const;
 
   Status CDCSDKValidateCreateTableRequest(const CreateTableRequestPB& req);
 
@@ -2474,13 +2570,13 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status ValidateTableReplicationInfo(const ReplicationInfoPB& replication_info) const;
 
   // Return the id of the tablespace associated with a transaction status table, if any.
-  boost::optional<TablespaceId> GetTransactionStatusTableTablespace(
+  std::optional<TablespaceId> GetTransactionStatusTableTablespace(
       const scoped_refptr<TableInfo>& table) REQUIRES_SHARED(mutex_);
 
   // Clears tablespace id for a transaction status table, reverting it back to cluster default
   // if no placement has been set explicitly.
-  void ClearTransactionStatusTableTablespace(
-      const scoped_refptr<TableInfo>& table) REQUIRES(mutex_);
+  void ClearTransactionStatusTableTablespace(const scoped_refptr<TableInfo>& table)
+      REQUIRES(mutex_);
 
   // Checks if there are any transaction tables with tablespace id set for a tablespace not in
   // the given tablespace info map.
@@ -2499,17 +2595,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Return the table->tablespace mapping by reading the pg catalog tables.
   Result<std::shared_ptr<TableToTablespaceIdMap>> GetYsqlTableToTablespaceMap(
       const TablespaceIdToReplicationInfoMap& tablespace_info) EXCLUDES(mutex_);
-
-  // Background task that refreshes the in-memory state for YSQL tables with their associated
-  // tablespace info.
-  // Note: This function should only ever be called by StartTablespaceBgTaskIfStopped().
-  void RefreshTablespaceInfoPeriodically();
-
-  // Helper function to schedule the next iteration of the tablespace info task.
-  void ScheduleRefreshTablespaceInfoTask(const bool schedule_now = false);
-
-  // Helper function to refresh the tablespace info.
-  Status DoRefreshTablespaceInfo(const LeaderEpoch& epoch);
 
   size_t GetNumLiveTServersForPlacement(const PlacementId& placement_id);
 
@@ -2541,6 +2626,32 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Status MaybeCreateLocalTransactionTable(
       const CreateTableRequestPB& request, rpc::RpcContext* rpc, const LeaderEpoch& epoch);
+
+  // Check if there is a transaction table whose tablespace id matches the given tablespace id.
+  bool DoesTransactionTableExistForTablespace(
+      const TablespaceId& tablespace_id) EXCLUDES(mutex_);
+
+  // Create a local transaction status table for a tablespace if needed
+  // (i.e., if it does not exist already).
+  //
+  // This is called during CreateTable if the table has transactions enabled and is part
+  // of a tablespace with a placement set.
+  Status CreateLocalTransactionStatusTableIfNeeded(
+      rpc::RpcContext* rpc, const TablespaceId& tablespace_id, const LeaderEpoch& epoch)
+      EXCLUDES(mutex_);
+
+  // Get tablet ids of the global transaction status table.
+  Status GetGlobalTransactionStatusTablets(
+      GetTransactionStatusTabletsResponsePB* resp) EXCLUDES(mutex_);
+
+  struct PlacementLocalTransactionStatusTables;
+
+  Result<PlacementLocalTransactionStatusTables> GetPlacementLocalTransactionStatusTables(
+      const CloudInfoPB& placement) EXCLUDES(mutex_);
+
+  Status GetPlacementLocalTransactionStatusTablets(
+      const PlacementLocalTransactionStatusTables& status_table_infos,
+      GetTransactionStatusTabletsResponsePB* resp) EXCLUDES(mutex_);
 
   Result<int> CalculateNumTabletsForTableCreation(
       const CreateTableRequestPB& request, const Schema& schema,
@@ -2657,8 +2768,15 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status ImportTabletEntry(
       const SysRowEntry& entry, bool use_relfilenode, ExternalTableSnapshotDataMap* table_map);
 
-  Result<SysRowEntries> CollectEntries(
+  Result<SysRowEntries> CollectEntriesFromActiveSysCatalog(
       const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables, CollectFlags flags);
+  Result<SysRowEntries> CollectEntriesAsOfTime(
+      const NamespaceId& namespace_id, CollectFlags flags, HybridTime read_time,
+      CoarseTimePoint deadline) override;
+
+  Result<SysRowEntries> CollectEntriesInternal(
+      CollectFlags flags, const std::vector<TableDescription>& tables,
+      std::unordered_set<NamespaceId>* namespaces);
 
   Result<SysRowEntries> CollectEntriesForSnapshot(
       const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables,
@@ -2704,6 +2822,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   void CleanupHiddenObjects(
       const ScheduleMinRestoreTime& schedule_min_restore_time, const LeaderEpoch& epoch) override;
+
+  Status WaitForSafeTime(HybridTime target_time, CoarseTimePoint deadline);
+
   void CleanupHiddenTablets(
       const ScheduleMinRestoreTime& schedule_min_restore_time, const LeaderEpoch& epoch)
       EXCLUDES(mutex_);
@@ -2749,6 +2870,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const CreateCDCStreamRequestPB& req, rpc::RpcContext* rpc, const LeaderEpoch& epoch,
       const std::vector<TableId>& table_ids, const xrepl::StreamId& stream_id,
       const bool has_consistent_snapshot_option, bool require_history_cutoff);
+
+  Status SetAllInitialCDCSDKRetentionBarriersOnCatalogTable(
+      const TableInfoPtr& table, const xrepl::StreamId& stream_id);
 
   Status ReplicationSlotValidateName(const std::string& replication_slot_name);
 
@@ -2886,15 +3010,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status BumpVersionAndStoreClusterConfig(
       ClusterConfigInfo* cluster_config, ClusterConfigInfo::WriteLock* l);
 
-  // Background task that refreshes the in-memory map for YSQL pg_yb_catalog_version table.
-  void RefreshPgCatalogVersionInfoPeriodically()
-      EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
-  // Helper function to schedule the next iteration of the pg catalog versions task.
-  void ScheduleRefreshPgCatalogVersionsTask(bool schedule_now = false);
-
-  void StartPgCatalogVersionsBgTaskIfStopped();
-  void ResetCachedCatalogVersions()
-      EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
   Status GetYsqlAllDBCatalogVersionsImpl(DbOidToCatalogVersionMap* versions);
   Result<DbOidVersionToMessageListMap> GetYsqlCatalogInvalationMessagesImpl();
 
@@ -2963,6 +3078,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   void DoReleaseObjectLocksIfNecessary(const TransactionId& txn_id);
 
+  Status RegisterFlagCallbacks();
+
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};
 
@@ -2978,11 +3095,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // No clients are expected to update the manager, they take a lock merely to copy the
   // shared_ptr and read from it.
   std::shared_ptr<YsqlTablespaceManager> tablespace_manager_ GUARDED_BY(tablespace_mutex_);
-
-  // Whether the periodic job to update tablespace info is running.
-  std::atomic<bool> tablespace_bg_task_running_;
-
-  rpc::ScheduledTaskTracker refresh_ysql_tablespace_info_task_;
 
   struct YsqlDdlTransactionState {
     // Indicates whether the transaction is committed or aborted or unknown.
@@ -3001,6 +3113,16 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
     std::unordered_set<TableId> nochange_tables;
   };
 
+  struct YsqlDdlSubTransactionRollbackMetadata {
+    // The sub-transaction to which this transaction is getting rolled back to.
+    SubTransactionId sub_txn;
+
+    YsqlDdlSubTransactionRollbackState state;
+
+    // The table info objects of the tables affected by this rollback to sub-transaction operation.
+    std::vector<TableInfoPtr> tables;
+  };
+
   // This map stores the transaction ids of all the DDL transactions undergoing verification.
   // For each transaction, it also stores pointers to the table info objects of the tables affected
   // by that transaction.
@@ -3008,6 +3130,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   std::unordered_map<TransactionId, YsqlDdlTransactionState>
       ysql_ddl_txn_verfication_state_map_ GUARDED_BY(ddl_txn_verifier_mutex_);
+
+  // Stores the transaction ids of all the transactions undergoing rollback to a sub-transaction.
+  std::unordered_map<TransactionId, YsqlDdlSubTransactionRollbackMetadata>
+      ysql_ddl_txn_undergoing_subtransaction_rollback_map_ GUARDED_BY(ddl_txn_verifier_mutex_);
 
   ServerRegistrationPB server_registration_;
 
@@ -3088,9 +3214,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // True when the cluster is a producer of a valid replication stream.
   std::atomic<bool> cdc_enabled_{false};
 
-  std::atomic<bool> pg_catalog_versions_bg_task_running_ = {false};
-  rpc::ScheduledTaskTracker refresh_ysql_pg_catalog_versions_task_;
-
   // For per-database catalog version mode upgrade support: when the gflag
   // --ysql_enable_db_catalog_version_mode is true, whether the table
   // pg_yb_catalog_version has been upgraded to have one row per database.
@@ -3120,6 +3243,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   std::unique_ptr<cdc::CDCStateTable> cdc_state_table_;
 
   std::atomic<bool> pg_cron_service_created_{false};
+
+  std::vector<FlagCallbackRegistration> flag_callbacks_;
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

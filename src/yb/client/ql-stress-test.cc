@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -34,10 +34,9 @@
 #include "yb/consensus/retryable_requests.h"
 
 #include "yb/docdb/consensus_frontier.h"
-#include "yb/dockv/doc_key.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/dockv/doc_key.h"
 
-#include "yb/rocksdb/metadata.h"
 #include "yb/rocksdb/utilities/checkpoint.h"
 
 #include "yb/rpc/messenger.h"
@@ -108,8 +107,7 @@ using yb::docdb::InitRocksDBOptions;
 
 DECLARE_bool(enable_ysql);
 
-namespace yb {
-namespace client {
+namespace yb::client {
 
 namespace {
 
@@ -277,18 +275,17 @@ bool QLStressTest::CheckRetryableRequestsCountsAndLeaders(
   auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
   for (const auto& peer : peers) {
     auto leader = peer->LeaderStatus() != consensus::LeaderStatus::NOT_LEADER;
-    if (!peer->tablet() || peer->tablet()->metadata()->table_id() != table_.table()->id()) {
+    auto tablet = peer->shared_tablet_maybe_null();
+    if (!tablet || tablet->metadata()->table_id() != table_.table()->id()) {
       continue;
     }
-    const auto tablet_entries = EXPECT_RESULT(peer->tablet()->TEST_CountDBRecords(
-        docdb::StorageDbType::kRegular));
+    const auto tablet_entries =
+        EXPECT_RESULT(tablet->TEST_CountDBRecords(docdb::StorageDbType::kRegular));
     auto raft_consensus = EXPECT_RESULT(peer->GetRaftConsensus());
     auto request_counts = raft_consensus->TEST_CountRetryableRequests();
-    LOG(INFO) << "T " << peer->tablet()->tablet_id() << " P " << peer->permanent_uuid()
-              << ", entries: " << tablet_entries
-              << ", running: " << request_counts.running
-              << ", replicated: " << request_counts.replicated
-              << ", leader: " << leader
+    LOG(INFO) << "T " << tablet->tablet_id() << " P " << peer->permanent_uuid()
+              << ", entries: " << tablet_entries << ", running: " << request_counts.running
+              << ", replicated: " << request_counts.replicated << ", leader: " << leader
               << ", term: " << raft_consensus->LeaderTerm();
     if (leader) {
       *total_entries += tablet_entries;
@@ -313,10 +310,11 @@ bool QLStressTest::CheckRetryableRequestsCountsAndLeaders(
   if (result && FLAGS_detect_duplicates_for_retryable_requests) {
     auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
     for (const auto& peer : peers) {
-      if (peer->tablet()->metadata()->table_id() != table_.table()->id()) {
+      auto tablet = peer->shared_tablet_maybe_null();
+      if (!tablet || tablet->metadata()->table_id() != table_.table()->id()) {
         continue;
       }
-      auto db = peer->tablet()->regular_db();
+      auto db = tablet->regular_db();
       rocksdb::ReadOptions read_opts;
       read_opts.query_id = rocksdb::kDefaultQueryId;
       std::unique_ptr<rocksdb::Iterator> iter(db->NewIterator(read_opts));
@@ -350,7 +348,7 @@ void QLStressTest::TestRetryWrites(bool restarts) {
   SetAtomicFlag(0.25, &FLAGS_TEST_respond_write_failed_probability);
 
   const bool transactional = table_.table()->schema().table_properties().is_transactional();
-  boost::optional<TransactionManager> txn_manager;
+  std::optional<TransactionManager> txn_manager;
   if (transactional) {
     txn_manager = CreateTxnManager();
   }
@@ -365,9 +363,8 @@ void QLStressTest::TestRetryWrites(bool restarts) {
       while (!stop_requested.load(std::memory_order_acquire)) {
         int32_t key = key_source.fetch_add(1, std::memory_order_acq_rel);
         YBTransactionPtr txn;
-        if (txn_manager &&
-            RandomActWithProbability(kTransactionalWriteProbability)) {
-          txn = std::make_shared<YBTransaction>(txn_manager.get_ptr());
+        if (txn_manager && RandomActWithProbability(kTransactionalWriteProbability)) {
+          txn = std::make_shared<YBTransaction>(&txn_manager.value());
           ASSERT_OK(txn->Init(IsolationLevel::SNAPSHOT_ISOLATION));
           session->SetTransaction(txn);
         } else {
@@ -601,8 +598,8 @@ TEST_F_EX(QLStressTest, ShortTimeLeaderDoesNotReplicateNoOp, QLStressTestSingleT
   // Give new leader some time to request lease.
   // TODO wait for specific event.
   std::this_thread::sleep_for(3s);
-  auto temp_leader_safe_time = ASSERT_RESULT(
-      temp_leader->tablet()->SafeTime(tablet::RequireLease::kTrue));
+  auto tablet = ASSERT_RESULT(temp_leader->shared_tablet());
+  auto temp_leader_safe_time = ASSERT_RESULT(tablet->SafeTime(tablet::RequireLease::kTrue));
   LOG(INFO) << "Safe time: " << temp_leader_safe_time;
 
   LOG(INFO) << "Transferring leadership from " << temp_leader->permanent_uuid()
@@ -636,7 +633,11 @@ void QLStressTest::VerifyFlushedFrontiers() {
   for (const auto& mini_tserver : cluster_->mini_tablet_servers()) {
     auto peers = mini_tserver->server()->tablet_manager()->GetTabletPeers();
     for (const auto& peer : peers) {
-      rocksdb::DB* db = peer->tablet()->regular_db();
+      auto tablet = peer->shared_tablet_maybe_null();
+      if (!tablet) {
+        continue;
+      }
+      rocksdb::DB* db = tablet->regular_db();
       OpId op_id;
       ASSERT_NO_FATALS(VerifyFlushedFrontier(db->GetFlushedFrontier(), &op_id));
 
@@ -896,8 +897,12 @@ void QLStressTest::TestWriteRejection() {
       int64_t rejections = 0;
       auto peers = cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers();
       for (const auto& peer : peers) {
-        auto counter = METRIC_majority_sst_files_rejections.Instantiate(
-            peer->tablet()->GetTabletMetricsEntity());
+        auto tablet = peer->shared_tablet_maybe_null();
+        if (!tablet) {
+          continue;
+        }
+        auto counter =
+            METRIC_majority_sst_files_rejections.Instantiate(tablet->GetTabletMetricsEntity());
         rejections += counter->value();
       }
       total_rejections += rejections;
@@ -933,14 +938,14 @@ void QLStressTest::TestWriteRejection() {
   }, 30s, "Waiting tablets to sync up"));
 }
 
-typedef QLStressTestDelayWrite<4, 10> QLStressTestDelayWrite_4_10;
+using QLStressTestDelayWrite_4_10 = QLStressTestDelayWrite<4, 10>;
 
 TEST_F_EX(QLStressTest, DelayWrite, QLStressTestDelayWrite_4_10) {
   TestWriteRejection();
 }
 
 // Soft limit == hard limit to test write stop and recover after it.
-typedef QLStressTestDelayWrite<6, 6> QLStressTestDelayWrite_6_6;
+using QLStressTestDelayWrite_6_6 = QLStressTestDelayWrite<6, 6>;
 
 TEST_F_EX(QLStressTest, WriteStop, QLStressTestDelayWrite_6_6) {
   TestWriteRejection();
@@ -978,22 +983,30 @@ TEST_F_EX(QLStressTest, LongRemoteBootstrap, QLStressTestLongRemoteBootstrap) {
 
   std::this_thread::sleep_for(20s); // Wait some time to have logs.
 
-  ASSERT_OK(WaitFor([this]() -> Result<bool> {
-    RETURN_NOT_OK(cluster_->CleanTabletLogs());
-    auto leaders = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
-    if (leaders.empty()) {
-      return false;
-    }
+  ASSERT_OK(WaitFor(
+      [this]() -> Result<bool> {
+        RETURN_NOT_OK(cluster_->CleanTabletLogs());
+        auto leaders = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
+        if (leaders.empty()) {
+          return false;
+        }
 
-    RETURN_NOT_OK(leaders.front()->tablet()->Flush(tablet::FlushMode::kSync));
-    RETURN_NOT_OK(leaders.front()->RunLogGC());
+        RETURN_NOT_OK(
+            VERIFY_RESULT(leaders.front()->shared_tablet())->Flush(tablet::FlushMode::kSync));
+        RETURN_NOT_OK(leaders.front()->RunLogGC());
 
-    // Check that first log was garbage collected, so remote bootstrap will be required.
-    consensus::ReplicateMsgs replicates;
-    int64_t starting_op_segment_seq_num;
-    return !leaders.front()->log()->GetLogReader()->ReadReplicatesInRange(
-        100, 101, 0, &replicates, &starting_op_segment_seq_num).ok();
-  }, 30s, "Logs cleaned"));
+        // Check that first log was garbage collected, so remote bootstrap will be required.
+        consensus::ReplicateMsgs replicates;
+        int64_t starting_op_segment_seq_num;
+        return !leaders.front()
+                    ->log()
+                    ->GetLogReader()
+                    ->ReadReplicatesInRange(
+                        100, 101, 0, log::ObeyMemoryLimit::kFalse, &replicates,
+                        &starting_op_segment_seq_num)
+                    .ok();
+      },
+      30s, "Logs cleaned"));
 
   LOG(INFO) << "Bring replica back, keys written: " << key.load(std::memory_order_acquire);
   ASSERT_OK(cluster_->mini_tablet_server(0)->Start(tserver::WaitTabletsBootstrapped::kFalse));
@@ -1196,5 +1209,4 @@ TEST_F_EX(QLStressTest, SyncOldLeader, QLStressTestSingleTablet) {
   thread_holder.Stop();
 }
 
-} // namespace client
-} // namespace yb
+} // namespace yb::client

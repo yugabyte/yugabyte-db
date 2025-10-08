@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -51,11 +51,12 @@
 #include "yb/util/status_format.h"
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
+#include "yb/util/unique_lock.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
 
-DEFINE_UNKNOWN_int64(rpcs_shutdown_timeout_ms, 15000 * yb::kTimeMultiplier,
+DEFINE_UNKNOWN_int64(rpcs_shutdown_timeout_ms, 30000 * yb::kTimeMultiplier,
              "Timeout for a batch of multiple RPCs invoked in parallel to shutdown.");
 DEFINE_UNKNOWN_int64(rpcs_shutdown_extra_delay_ms, 5000 * yb::kTimeMultiplier,
              "Extra allowed time for a single RPC command to complete after its deadline.");
@@ -87,7 +88,7 @@ RpcCommand::RpcCommand() : trace_(Trace::MaybeGetNewTraceForParent(Trace::Curren
 
 RpcCommand::~RpcCommand() {}
 
-RpcRetrier::RpcRetrier(CoarseTimePoint deadline, Messenger* messenger, ProxyCache *proxy_cache)
+RpcRetrier::RpcRetrier(CoarseTimePoint deadline, Messenger* messenger, ProxyCache* proxy_cache)
     : start_(CoarseMonoClock::now()),
       deadline_(deadline),
       messenger_(messenger),
@@ -299,46 +300,62 @@ Rpcs::Rpcs(std::mutex* mutex) {
     mutex_ = mutex;
   } else {
     mutex_holder_.emplace();
-    mutex_ = &mutex_holder_.get();
+    mutex_ = &mutex_holder_.value();
   }
 }
 
 CoarseTimePoint Rpcs::DoRequestAbortAll(RequestShutdown shutdown) {
   std::vector<Calls::value_type> calls;
+  auto deadline = CoarseMonoClock::now() + FLAGS_rpcs_shutdown_timeout_ms * 1ms;
   {
     std::lock_guard lock(*mutex_);
     if (!shutdown_) {
       shutdown_ = shutdown;
       calls.assign(calls_.begin(), calls_.end());
+      // It takes some time to complete rpc command after its deadline has passed.
+      // So we add extra time for it.
+      auto single_call_extra_delay = std::chrono::milliseconds(FLAGS_rpcs_shutdown_extra_delay_ms);
+      for (auto& call : calls) {
+        CHECK(call);
+        deadline = std::max(deadline, call->deadline() + single_call_extra_delay);
+      }
+      if (shutdown) {
+        shutdown_deadline_ = deadline;
+      }
     } else if (shutdown) {
       CHECK(calls_.empty());
     }
   }
-  auto deadline = CoarseMonoClock::now() + FLAGS_rpcs_shutdown_timeout_ms * 1ms;
-  // It takes some time to complete rpc command after its deadline has passed.
-  // So we add extra time for it.
-  auto single_call_extra_delay = std::chrono::milliseconds(FLAGS_rpcs_shutdown_extra_delay_ms);
+
   for (auto& call : calls) {
     CHECK(call);
     call->Abort();
-    deadline = std::max(deadline, call->deadline() + single_call_extra_delay);
   }
 
   return deadline;
 }
 
-void Rpcs::Shutdown() {
-  auto deadline = DoRequestAbortAll(RequestShutdown::kTrue);
+void Rpcs::StartShutdown() {
+  DoRequestAbortAll(RequestShutdown::kTrue);
+}
+
+void Rpcs::CompleteShutdown() {
   {
-    std::unique_lock<std::mutex> lock(*mutex_);
+    UniqueLock lock(*mutex_);
     while (!calls_.empty()) {
       LOG(INFO) << "Waiting calls: " << calls_.size();
-      if (cond_.wait_until(lock, deadline) == std::cv_status::timeout) {
+      if (cond_.wait_until(GetLockForCondition(lock), shutdown_deadline_) ==
+              std::cv_status::timeout) {
         break;
       }
     }
     CHECK(calls_.empty()) << "Calls: " << AsString(calls_);
   }
+}
+
+void Rpcs::Shutdown() {
+  StartShutdown();
+  CompleteShutdown();
 }
 
 void Rpcs::Register(RpcCommandPtr call, Handle* handle) {

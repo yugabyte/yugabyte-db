@@ -13,16 +13,22 @@
 
 #pragma once
 
+#include <atomic>
 #include <memory>
+#include <mutex>
+#include <unordered_map>
 
 #include "yb/common/transaction.h"
+#include "yb/common/object_lock_tracker.h"
 
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/lock_util.h"
 #include "yb/docdb/object_lock_data.h"
 #include "yb/docdb/object_lock_shared_fwd.h"
+#include "yb/docdb/object_lock_shared_state.h"
 
 #include "yb/gutil/macros.h"
+#include "yb/gutil/thread_annotations.h"
 
 #include "yb/util/lw_function.h"
 #include "yb/util/tostring.h"
@@ -31,6 +37,7 @@ namespace yb::docdb {
 
 struct ObjectSharedLockRequest {
   ObjectLockOwner owner;
+  TabletId status_tablet;
   LockBatchEntry<ObjectLockManager> entry;
 
   std::string ToString() const {
@@ -58,12 +65,20 @@ class ObjectLockOwnerRegistry {
     const SessionLockOwnerTag tag_;
   };
 
+  struct OwnerInfo {
+    OwnerInfo(TransactionId txn_id_, const TabletId& status_tablet_)
+        : txn_id(txn_id_), status_tablet(status_tablet_) {}
+
+    TransactionId txn_id;
+    TabletId status_tablet;
+  };
+
   ObjectLockOwnerRegistry();
   ~ObjectLockOwnerRegistry();
 
-  RegistrationGuard Register(const TransactionId& id);
+  RegistrationGuard Register(const TransactionId& id, const TabletId& tablet_id);
 
-  [[nodiscard]] TransactionId GetTransactionId(SessionLockOwnerTag tag) const;
+  [[nodiscard]] std::shared_ptr<OwnerInfo> GetOwnerInfo(SessionLockOwnerTag tag) const;
 
  private:
   std::unique_ptr<Impl> impl_;
@@ -71,17 +86,39 @@ class ObjectLockOwnerRegistry {
 
 class ObjectLockSharedStateManager {
  public:
+  explicit ObjectLockSharedStateManager(std::shared_ptr<ObjectLockTracker> object_lock_tracker)
+      : object_lock_tracker_(std::move(object_lock_tracker)) {}
+
   void SetupShared(ObjectLockSharedState& shared);
 
   [[nodiscard]] ObjectLockOwnerRegistry& registry() { return registry_; }
 
-  void ConsumePendingSharedLockRequests(const LockRequestConsumer& consume);
+  size_t ConsumePendingSharedLockRequests(const LockRequestConsumer& consume);
+
+  size_t ConsumeAndAcquireExclusiveLockIntents(
+      const LockRequestConsumer& consume, std::span<const ObjectLockPrefix*> object_ids);
+
+  void ReleaseExclusiveLockIntent(const ObjectLockPrefix& object_id, size_t count = 1);
 
   [[nodiscard]] TransactionId TEST_last_owner() const;
 
  private:
-  ObjectLockSharedState* shared_ = nullptr;
+  template<typename ConsumeMethod>
+  size_t CallWithRequestConsumer(
+      ObjectLockSharedState* shared, ConsumeMethod&& m, const LockRequestConsumer& consume);
+
+  std::atomic<ObjectLockSharedState*> shared_{nullptr};
   ObjectLockOwnerRegistry registry_;
+
+  const std::shared_ptr<ObjectLockTracker> object_lock_tracker_;
+
+  std::mutex setup_mutex_;
+  ObjectLockSharedState::ActivationGuard shared_activate_ GUARDED_BY(setup_mutex_);
+  // We can accumulate exclusive lock intents before shared memory is set up via lock manager
+  // bootstrap. If these are not released before shared memory is set up, they must be transferred
+  // to shared memory before PG has a chance to use the fastpath. We track them here until setup
+  // time.
+  std::unordered_map<ObjectLockPrefix, size_t> pre_setup_locks_ GUARDED_BY(setup_mutex_);
 };
 
 } // namespace yb::docdb

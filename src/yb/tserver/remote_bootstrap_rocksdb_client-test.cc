@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -43,8 +43,8 @@ TEST_F(RemoteBootstrapRocksDBClientTest, TestBeginEndSession) {
 TEST_F(RemoteBootstrapRocksDBClientTest, TestDownloadRocksDBFiles) {
   TabletStatusListener listener(meta_);
   ASSERT_OK(client_->FetchAll(&listener));
-  auto tablet_peer_checkpoint_dir =
-      tablet_peer_->tablet()->snapshots().TEST_LastRocksDBCheckpointDir();
+  auto tablet = ASSERT_RESULT(tablet_peer_->shared_tablet());
+  auto tablet_peer_checkpoint_dir = tablet->snapshots().TEST_LastRocksDBCheckpointDir();
 
   vector<std::string> rocksdb_files;
   LOG(INFO) << "RocksDB dir: " << meta_->rocksdb_dir();

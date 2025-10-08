@@ -139,7 +139,8 @@ typedef enum pgssVersion
 	PGSS_V1_8,
 	PGSS_V1_9,
 	PGSS_V1_10,
-	YB_PGSS_V1_10
+	YB_PGSS_V1_10,
+	YB_V2_0_PGSS_V1_10
 } pgssVersion;
 
 /*
@@ -184,6 +185,34 @@ typedef struct pgssHashKey
 	uint64		queryid;		/* query identifier */
 	bool		toplevel;		/* query executed at top level */
 } pgssHashKey;
+
+/*
+ * Enum for YbCounters::counters
+ */
+typedef enum YbIntCounters
+{
+	YB_INT_DOCDB_READ_RPCS,
+	YB_INT_DOCDB_WRITE_RPCS,
+	YB_INT_DOCDB_READ_OPS,
+	YB_INT_DOCDB_WRITE_OPS,
+	YB_INT_DOCDB_ROWS_SCANNED,
+	YB_INT_CONFLICT_RETRIES,
+	YB_INT_READ_RESTART_RETRIES,
+	YB_INT_TOTAL_RETRIES,
+
+	YB_INT_COUNTERS_LAST = YB_NUM_COUNTERS_INT
+} YbIntCounters;
+
+/*
+ * Enum for YbCounters::counters_dbl
+ */
+typedef enum YbDoubleCounters
+{
+	YB_DBL_CATALOG_WAIT_TIME_MS,
+	YB_DBL_DOCDB_WAIT_TIME_MS,
+
+	YB_DBL_COUNTERS_LAST = YB_NUM_COUNTERS_DBL
+} YbDoubleCounters;
 
 /*
  * Struct for YB-specific counters. Currently, all counters are unreserved.
@@ -412,6 +441,7 @@ PG_FUNCTION_INFO_V1(pg_stat_statements_info);
 
 PG_FUNCTION_INFO_V1(yb_pg_stat_statements_1_4);
 PG_FUNCTION_INFO_V1(yb_pg_stat_statements_1_10);
+PG_FUNCTION_INFO_V1(yb_2_0_pg_stat_statements_1_10);
 
 static void pgss_shmem_request(void);
 static void pgss_shmem_startup(void);
@@ -1975,6 +2005,40 @@ pgss_store(const char *query, uint64 queryId,
 			e->counters.jit_emission_time += INSTR_TIME_GET_MILLISEC(jitusage->emission_counter);
 		}
 
+		if (kind == PGSS_EXEC)
+		{
+			/*
+			 * YB: These stats are collected for both regular and utility
+			 * statements, unlike EXPLAIN
+			 */
+			YbInstrumentation yb_instr = {0};
+
+			YbUpdateSessionStats((YbInstrumentation *) &yb_instr);
+			e->counters.yb_counters.counters[YB_INT_DOCDB_READ_RPCS] +=
+				yb_instr.tbl_reads.count + yb_instr.index_reads.count;
+			e->counters.yb_counters.counters[YB_INT_DOCDB_WRITE_RPCS] +=
+				yb_instr.write_flushes.count;
+			e->counters.yb_counters.counters[YB_INT_DOCDB_READ_OPS] +=
+				yb_instr.tbl_read_ops + yb_instr.index_read_ops;
+			e->counters.yb_counters.counters[YB_INT_DOCDB_WRITE_OPS] +=
+				yb_instr.tbl_writes + yb_instr.index_writes;
+			e->counters.yb_counters.counters[YB_INT_DOCDB_ROWS_SCANNED] +=
+				yb_instr.tbl_reads.rows_scanned + yb_instr.index_reads.rows_scanned;
+
+			e->counters.yb_counters.counters_dbl[YB_DBL_CATALOG_WAIT_TIME_MS] +=
+				(yb_instr.catalog_reads.wait_time) / 1000000.0;
+			e->counters.yb_counters.counters_dbl[YB_DBL_DOCDB_WAIT_TIME_MS] +=
+				(yb_instr.tbl_reads.wait_time + yb_instr.write_flushes.wait_time +
+				 yb_instr.index_reads.wait_time) / 1000000.0;
+
+			/* Update retry statistics, only after the statement has completed */
+			e->counters.yb_counters.counters[YB_INT_CONFLICT_RETRIES] +=
+				YbGetRetryCount(YB_TXN_CONFLICT);
+			e->counters.yb_counters.counters[YB_INT_READ_RESTART_RETRIES] +=
+				YbGetRetryCount(YB_TXN_RESTART_READ);
+			e->counters.yb_counters.counters[YB_INT_TOTAL_RETRIES] += YbGetTotalRetryCount();
+		}
+
 		SpinLockRelease(&e->mutex);
 	}
 
@@ -2032,7 +2096,8 @@ pg_stat_statements_reset(PG_FUNCTION_ARGS)
 #define PG_STAT_STATEMENTS_COLS_V1_9	33
 #define PG_STAT_STATEMENTS_COLS_V1_10	43
 #define YB_PG_STAT_STATEMENTS_COLS_V1_10	44
-#define PG_STAT_STATEMENTS_COLS			44	/* maximum of above */
+#define YB_V2_0_PG_STAT_STATEMENTS_COLS_V1_10	55
+#define PG_STAT_STATEMENTS_COLS			55	/* maximum of above */
 
 /*
  * Retrieve statement statistics.
@@ -2050,6 +2115,16 @@ yb_pg_stat_statements_1_4(PG_FUNCTION_ARGS)
 	bool		showtext = PG_GETARG_BOOL(0);
 
 	pg_stat_statements_internal(fcinfo, YB_PGSS_V1_4, showtext);
+
+	return (Datum) 0;
+}
+
+Datum
+yb_2_0_pg_stat_statements_1_10(PG_FUNCTION_ARGS)
+{
+	bool		showtext = PG_GETARG_BOOL(0);
+
+	pg_stat_statements_internal(fcinfo, YB_V2_0_PGSS_V1_10, showtext);
 
 	return (Datum) 0;
 }
@@ -2200,6 +2275,10 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 			break;
 		case YB_PG_STAT_STATEMENTS_COLS_V1_10:
 			if (api_version != YB_PGSS_V1_10)
+				elog(ERROR, "incorrect number of output arguments");
+			break;
+		case YB_V2_0_PG_STAT_STATEMENTS_COLS_V1_10:
+			if (api_version != YB_V2_0_PGSS_V1_10)
 				elog(ERROR, "incorrect number of output arguments");
 			break;
 		default:
@@ -2436,12 +2515,31 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 			values[i++] = Float8GetDatumFast(tmp.jit_emission_time);
 		}
 
-		if (api_version == YB_PGSS_V1_4 || api_version == YB_PGSS_V1_10)
+		if (api_version == YB_PGSS_V1_4 || api_version == YB_PGSS_V1_10 ||
+			api_version == YB_V2_0_PGSS_V1_10)
 		{
 			values[i++] = yb_get_histogram_jsonb_args(queryid,
 													  entry->key.userid,
 													  entry->key.dbid,
 													  entry->key.toplevel);
+		}
+
+		if (api_version >= YB_V2_0_PGSS_V1_10)
+		{
+			values[i++] = Int64GetDatumFast(tmp.yb_counters.counters[YB_INT_DOCDB_READ_RPCS]);
+			values[i++] = Int64GetDatumFast(tmp.yb_counters.counters[YB_INT_DOCDB_WRITE_RPCS]);
+			values[i++] = Float8GetDatumFast(tmp.yb_counters.counters_dbl[YB_DBL_CATALOG_WAIT_TIME_MS]);
+			values[i++] = Int64GetDatumFast(tmp.yb_counters.counters[YB_INT_DOCDB_READ_OPS]);
+			values[i++] = Int64GetDatumFast(tmp.yb_counters.counters[YB_INT_DOCDB_WRITE_OPS]);
+			values[i++] = Int64GetDatumFast(tmp.yb_counters.counters[YB_INT_DOCDB_ROWS_SCANNED]);
+
+			/* TODO(#28505): Add docdb_rows_returned */
+			nulls[i++] = true;
+
+			values[i++] = Float8GetDatumFast(tmp.yb_counters.counters_dbl[YB_DBL_DOCDB_WAIT_TIME_MS]);
+			values[i++] = Int64GetDatumFast(tmp.yb_counters.counters[YB_INT_CONFLICT_RETRIES]);
+			values[i++] = Int64GetDatumFast(tmp.yb_counters.counters[YB_INT_READ_RESTART_RETRIES]);
+			values[i++] = Int64GetDatumFast(tmp.yb_counters.counters[YB_INT_TOTAL_RETRIES]);
 		}
 
 		Assert(i == (api_version == PGSS_V1_0 ? PG_STAT_STATEMENTS_COLS_V1_0 :
@@ -2453,6 +2551,7 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 					 api_version == PGSS_V1_10 ? PG_STAT_STATEMENTS_COLS_V1_10 :
 					 api_version == YB_PGSS_V1_4 ? YB_PG_STAT_STATEMENTS_COLS_V1_4 :
 					 api_version == YB_PGSS_V1_10 ? YB_PG_STAT_STATEMENTS_COLS_V1_10 :
+					 api_version == YB_V2_0_PGSS_V1_10 ? YB_V2_0_PG_STAT_STATEMENTS_COLS_V1_10 :
 					 -1 /* fail if you forget to update this assert */ ));
 
 		tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);

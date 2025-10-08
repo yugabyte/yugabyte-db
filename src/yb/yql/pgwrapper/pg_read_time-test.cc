@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -34,10 +34,12 @@
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 #include "yb/tools/tools_test_utils.h"
 
-DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_bool(enable_wait_queues);
-DECLARE_uint64(max_clock_skew_usec);
+DECLARE_bool(yb_enable_read_committed_isolation);
+DECLARE_bool(ysql_enable_async_writes);
+DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_string(ysql_pg_conf_csv);
+DECLARE_uint64(max_clock_skew_usec);
 
 METRIC_DECLARE_counter(picked_read_time_on_docdb);
 
@@ -54,6 +56,9 @@ class PgReadTimeTest : public PgMiniTestBase {
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
+    // Disable auto analyze because it introduces flakiness to
+    // metric: METRIC_picked_read_time_on_docdb.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
 
     // TODO: Remove yb_lock_pk_single_rpc once it becomes the default.
     // yb_max_query_layer_retries is required for TestConflictRetriesOnDocdb
@@ -68,8 +73,12 @@ class PgReadTimeTest : public PgMiniTestBase {
     for (const auto& mini_tablet_server : cluster_->mini_tablet_servers()) {
       auto peers = mini_tablet_server->server()->tablet_manager()->GetTabletPeers();
       for (const auto& peer : peers) {
-        auto counter = METRIC_picked_read_time_on_docdb.Instantiate(
-            peer->tablet()->GetTabletMetricsEntity());
+        auto tablet = peer->shared_tablet_maybe_null();
+        if (!tablet) {
+          continue;
+        }
+        auto counter =
+            METRIC_picked_read_time_on_docdb.Instantiate(tablet->GetTabletMetricsEntity());
         num_pick_read_time_on_docdb += counter->value();
       }
     }
@@ -85,21 +94,6 @@ class PgReadTimeTest : public PgMiniTestBase {
   void CheckReadTimeProvidedToDocdb(const StmtExecutor& stmt_executor) {
     CheckReadTimePickingLocation(
         stmt_executor, 0 /* expected_num_picked_read_time_on_doc_db_metric */);
-  }
-
-  static void GenerateCSVFileForCopy(const std::string& filename, size_t num_rows) {
-    constexpr auto kNumColumns = 2;
-    std::ofstream out(filename);
-    out << "k";
-    for (auto c : std::views::iota(0, kNumColumns - 1)) {
-      out << ",v" << c;
-    }
-    for (auto i : std::views::iota(0U, num_rows)) {
-      out << std::endl << i + 10000;
-      for (auto c : std::views::iota(0, kNumColumns - 1)) {
-        out << "," << i + c;
-      }
-    }
   }
 
   static Status ExecuteCopyFromCSV(
@@ -317,6 +311,9 @@ TEST_F(PgReadTimeTest, CheckReadTimePickingLocation) {
   // latest read point). For each statement, if the new read time for that statement can be picked
   // on docdb, ensure it is.
   ASSERT_OK(conn.StartTransaction(IsolationLevel::READ_COMMITTED));
+  // Disable async writes, since the metrics are only updated after the entire write query including
+  // the quorum commit completes. The client conn wont wait for these until the final commit.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_async_writes) = false;
   CheckReadTimePickedOnDocdb(
       [&conn, kTable]() {
         ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k=1", kTable));
@@ -343,6 +340,7 @@ TEST_F(PgReadTimeTest, CheckReadTimePickingLocation) {
       }, 2 /* expected_num_picked_read_time_on_doc_db_metric */);
 
   ASSERT_OK(conn.CommitTransaction());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_async_writes) = true;
 
   // 10. Pipeline, copy a file to a table by fast-path transation. Only single tserver is involved
   // during copy.
@@ -357,7 +355,7 @@ TEST_F(PgReadTimeTest, CheckReadTimePickingLocation) {
       }, 1);
 
   // (2) Copy multiple rows to table with single tserver
-  GenerateCSVFileForCopy(csv_filename, 100);
+  GenerateCSVFileForCopy(csv_filename, 100, 2 /* num_columns */, 10000 /* offset */);
   ASSERT_OK(conn.Execute("SET yb_disable_transactional_writes = 1"));
   CheckReadTimePickedOnDocdb(
       [&conn, kSingleTabletTable, &csv_filename]() {

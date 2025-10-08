@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -103,6 +103,8 @@ using ProxyTuple = util::SharedPtrTuple<
 
 struct PersistentTServerInfo : public Persistent<SysTabletServerEntryPB> {
   bool IsLive() const;
+  bool IsBlacklisted(const BlacklistSet& blacklist) const;
+  std::string placement_uuid() const;
 };
 
 // Master-side view of a single tablet server.
@@ -171,7 +173,6 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   bool registered_through_heartbeat() const;
 
   ServerRegistrationPB GetRegistration() const;
-  ResourcesPB GetResources() const;
 
   // Returns TSInformationPB for this TSDescriptor.
   // todo(zdrudi): See if we can remove at least some of these functions.
@@ -336,7 +337,7 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   bool IsLive() const;
 
-  virtual bool IsLiveAndHasReported() const;
+  bool IsLiveAndHasReported() const;
 
   bool HasYsqlCatalogLease() const;
 

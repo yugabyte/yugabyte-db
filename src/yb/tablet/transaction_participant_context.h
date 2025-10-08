@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -51,6 +51,9 @@ class TransactionParticipantContext {
   virtual Result<OpId> MaxPersistentOpId() const = 0;
 
   virtual Result<HybridTime> WaitForSafeTime(HybridTime safe_time, CoarseTimePoint deadline) = 0;
+
+  // Returns true if the context is running
+  virtual bool IsRunning() const = 0;
 
   std::string LogPrefix() const;
 

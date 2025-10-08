@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.forms;
 
@@ -55,6 +55,7 @@ public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
     Download,
     Install,
     CopyCerts,
+    ValidateGFlags,
     Round1GFlagsUpdate,
     Round2GFlagsUpdate,
     PackageReInstall,
@@ -93,6 +94,16 @@ public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
       throw new PlatformServiceException(
           Status.BAD_REQUEST,
           "Cannot perform a rolling upgrade on universe "
+              + universe.getUniverseUUID()
+              + " as it has nodes in one of "
+              + NodeDetails.IN_TRANSIT_STATES
+              + " states.");
+    }
+
+    if (upgradeOption == UpgradeOption.NON_RESTART_UPGRADE && universe.nodesInTransit(nodeState)) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST,
+          "Cannot perform a non-restart upgrade on universe "
               + universe.getUniverseUUID()
               + " as it has nodes in one of "
               + NodeDetails.IN_TRANSIT_STATES

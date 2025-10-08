@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -98,10 +98,8 @@ dockv::KeyEntryValues GetRangeKeyScanSpec(
   return range_components;
 }
 
-const boost::optional<QLScanRange::QLBound> &GetQLRangeBound(
-    const QLScanRange::QLRange& ql_range,
-    SortingType sorting_type,
-    bool lower_bound) {
+const std::optional<QLScanRange::QLBound>& GetQLRangeBound(
+    const QLScanRange::QLRange& ql_range, SortingType sorting_type, bool lower_bound) {
   const auto sort_order = dockv::SortOrderFromColumnSchemaSortingType(sorting_type);
 
   // lower bound for ASC column and upper bound for DESC column -> min value

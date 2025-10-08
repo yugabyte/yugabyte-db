@@ -1,4 +1,4 @@
-// Copyright (c) Yugabyte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -136,6 +136,38 @@ void PgConnTest::TestUriAuth() {
     LOG(INFO) << "Connecting using string: " << conn_str;
     ASSERT_OK(ConnectUsingString(conn_str));
   }
+}
+
+TEST_F(PgConnTest, TabletMetadataConnectWithLeader) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE test (id INT PRIMARY KEY, name TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1, 'test_data')"));
+
+  auto tablet_infos = ASSERT_RESULT((conn.FetchRows<std::string>(
+      "SELECT leader FROM yb_tablet_metadata WHERE relname = 'test' ORDER BY tablet_id")));
+  ASSERT_FALSE(tablet_infos.empty()) << "No tablets  found for table 'test'";
+
+  // Parse leader IP and port from the first rows leader
+  auto first_leader = tablet_infos[0];
+  auto colon_pos = first_leader.find(':');
+  ASSERT_NE(colon_pos, std::string::npos) << "Invalid leader format: " << first_leader;
+
+  auto leader_ip = first_leader.substr(0, colon_pos);
+  auto leader_port_str = first_leader.substr(colon_pos + 1);
+  auto leader_port = std::stoi(leader_port_str);
+
+  LOG(INFO) << "Connecting to leader at " << leader_ip << ":" << leader_port;
+
+  auto leader_conn = ASSERT_RESULT(pgwrapper::PGConnBuilder({
+    .host = leader_ip,
+    .port = static_cast<uint16_t>(leader_port),
+  }).Connect());
+
+  // Verify that we are able to access test table
+  const auto row = ASSERT_RESULT((leader_conn.FetchRow<int32_t, std::string>(
+      "SELECT id, name FROM test ORDER BY id")));
+
+  ASSERT_EQ(row, (decltype(row){1, "test_data"}));
 }
 
 // Enable authentication using password.  This scheme requests the plain password.  You may still

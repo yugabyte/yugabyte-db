@@ -26,7 +26,8 @@
     ],
     "moduleNameMapper": {
       "\\.(css|less|scss)$": "<rootDir>/__mocks__/styleMock.js",
-      "\\.css\\?inline$": "<rootDir>/__mocks__/styleMock.js"
+      "\\.css\\?inline$": "<rootDir>/__mocks__/styleMock.js",
+      "^@app/(.*)$": "<rootDir>/src/$1"
     }
   },
   "engines": {
@@ -87,8 +88,8 @@
     "@types/react-select": "3.0.19",
     "@types/redux-form": "8.3.1",
     "@types/yup": "0.29.11",
+    "@yugabyte-ui-library/core": "2.0.4",
     "@yugabytedb/perf-advisor-ui": "1.0.14",
-    "@yugabyte-ui-library/core": "1.5.0",
     "ace-builds": "1.4.12",
     "axios": "0.21.3",
     "bootstrap": "3.4.1",
@@ -159,23 +160,16 @@
     "typescript": "4.9.3",
     "typy": "3.3.0",
     "unique-names-generator": "4.7.1",
+    "vis-timeline": "7.7.3",
     "vite-plugin-dynamic-import": "^1.4.1",
     "vite-plugin-svgr": "^3.2.0",
-    "vis-timeline": "7.7.3",
     "yup": "0.30.0"
   },
-  "browserslist": {
-    "production": [
-      ">0.2%",
-      "not dead",
-      "not op_mini all"
-    ],
-    "development": [
-      "last 1 chrome version",
-      "last 1 firefox version",
-      "last 1 safari version"
-    ]
-  },
+  "browserslist": [
+    ">0.2%",
+    "not dead",
+    "not op_mini all"
+  ],
   "eslintConfig": {
     "overrides": [
       {

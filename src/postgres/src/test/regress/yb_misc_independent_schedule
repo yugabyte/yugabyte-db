@@ -13,3 +13,4 @@ test: yb.orig.errors
 test: yb.orig.truncate
 test: yb.orig.local_tablets
 test: yb.orig.generated
+test: yb.orig.tablet_metadata

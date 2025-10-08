@@ -54,14 +54,14 @@ The section [The SQL language](./the-sql-language/) describes of all of the Yuga
 
 This section lists the main elements that support the YugabyteDB SQL language subsystem.
 
+- [Built-in SQL functions](exprs/).
+- [Data types](datatypes/). Most PostgreSQL-compatible data types are supported.
 - [Keywords](keywords/).
 - Names and Qualifiers. Some names are reserved for the system. List of [reserved names](reserved_names/).
-- [Data types](datatypes/). Most PostgreSQL-compatible data types are supported.
-- [Built-in SQL functions](exprs/).
 
 ## Quick Start
 
-You can explore the basics of the YSQL API using the [Quick Start](/preview/tutorials/quick-start/macos/).
+You can explore the basics of the YSQL API using the [Quick Start](/preview/quick-start/macos/).
 
 It always helps to have access to a sandbox YugabyteDB cluster where you can, when you need to, do whatever you want without considering any risk of doing harm. Here are the kinds of things you'll want to do:
 
@@ -78,4 +78,4 @@ It also helps to have a vanilla PostgreSQL installation on the same server so th
 
 To do all this confidently, you need to be sure that nobody else can use your sandbox so that you know that everything that you observe will be explained by what you deliberately did. Occasionally, you'll even want to destroy a cluster at one version and replace it with a cluster at a different version.
 
-The simplest way to achieve this ideal sandbox regime is to use your own laptop. The [Quick Start](/preview/tutorials/quick-start/macos/) shows you how to do this.
+The simplest way to achieve this ideal sandbox regime is to use your own laptop. The [Quick Start](/preview/quick-start/macos/) shows you how to do this.

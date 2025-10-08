@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -174,11 +174,13 @@ Result<OpId> TabletBootstrapStateFlusher::CopyBootstrapStateTo(const std::string
               "oShould succeed to set state if old_state=kFlushIdle");
     WaitForFlushIdleOrShutdown();
   }
-  auto se = ScopeExit([this] {
-    SetIdleAndNotifyAll();
-  });
-  TEST_PAUSE_IF_FLAG(TEST_pause_before_copying_bootstrap_state);
-  RETURN_NOT_OK(bootstrap_state_manager_->CopyTo(dest_path));
+  {
+    auto se = ScopeExit([this] {
+      SetIdleAndNotifyAll();
+    });
+    TEST_PAUSE_IF_FLAG(TEST_pause_before_copying_bootstrap_state);
+    RETURN_NOT_OK(bootstrap_state_manager_->CopyTo(dest_path));
+  }
   return raft_consensus_->GetLastFlushedOpIdInRetryableRequests();
 }
 

@@ -20,12 +20,20 @@ import org.yb.client.TestUtils;
 import org.yb.YBTestRunner;
 
 import java.io.File;
+import java.util.Map;
 
 @RunWith(value=YBTestRunner.class)
 public class TestPgRegressThirdPartyExtensionsOrafce extends BasePgRegressTest {
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;
+  }
+
+  // (Auto-Analyze #28391) Restarting a DDL transaction not supported
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("ysql_enable_auto_analyze", "false");
+    return flagMap;
   }
 
   @Test

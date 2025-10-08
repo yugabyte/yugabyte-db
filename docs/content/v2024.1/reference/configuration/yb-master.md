@@ -334,7 +334,7 @@ These values are approximate because different kernels use different amounts of 
 
 Also shown is an estimate of how many Postgres connections that node can handle assuming default Postgres flags and usage.  Unusually memory expensive queries or preloading Postgres catalog information will reduce the number of connections that can be supported.
 
-Thus a 8 GiB node would be expected to be able support 530 tablet replicas and 65 (physical) typical Postgres connections.  A universe of six of these nodes would be able to support 530 \* 2 = 1,060 [RF3](../../../architecture/key-concepts/#replication-factor-rf) tablets and 65 \* 6 = 570 typical physical Postgres connections assuming the connections are evenly distributed among the nodes.
+Thus a 8 GiB node would be expected to be able support 530 tablet replicas and 65 (physical) typical Postgres connections.  A universe of six of these nodes would be able to support 530 \* 2 = 1,060 [RF3](../../../architecture/key-concepts/#replication-factor-rf) tablets and 65 \* 6 = 390 typical physical Postgres connections assuming the connections are evenly distributed among the nodes.
 
 ### Flags controlling the split of memory among processes
 
@@ -621,7 +621,7 @@ Clusters created using yugabyted always use a default value of `1`.
 
 When enabled, all databases created in the cluster are colocated by default. If you enable the flag after creating a cluster, you need to restart the YB-Master and YB-TServer services.
 
-For more details, see [clusters in colocated tables](../../../explore/colocation/#clusters).
+For more details, see [clusters in colocated tables](../../../additional-features/colocation/#clusters).
 
 Default: `false`
 

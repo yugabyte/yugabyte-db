@@ -39,19 +39,15 @@ yb-voyager only disables the constraint checks and triggers in the internal sess
 
 Use one or more of the following techniques to improve import data performance:
 
-- **Load data in parallel**. yb-voyager executes N parallel batch ingestion jobs at any given time. On YugabyteDB v2.20 and above, yb-voyager adapts the value of N depending on the resource usage (CPU/memory) of the cluster, with the goal of maintaining an optimal CPU usage (<70%). By default, the upper bound of N is set to half the total number of cores in the YugabyteDB cluster. Use the --adaptive-parallelism-max flag to override this default value.
+- **Load data in parallel**. yb-voyager imports batches from multiple tables at any given time using parallel connections. On YugabyteDB v2.20 and later, yb-voyager adjusts the number of connections based on the resource use (CPU and memory) of the cluster, with the goal of maintaining stability while optimizing CPU.
 
-  Against older YugabyteDB versions, N is equal to one-fourth of the total number of cores in the YugabyteDB cluster. Normally this is a good default value and should consume around 50-60% of CPU usage.
+  Available flags:
 
-  If CPU use is greater than 50-60%, you should lower the number of jobs. Similarly, if CPU use is low, you can increase the number of jobs.
+  - By default, adaptive parallelism operates under moderate thresholds (`--adaptive-parallelism balanced`), where Voyager throttles the number of parallel connections if the CPU usage of any node exceeds 80%. To maximize CPU use for faster performance, you can use the `aggressive` flag; this is only recommended if you don't have any other running workloads.
 
-  Use the [--parallel-jobs](../../reference/data-migration/import-data/#arguments) argument with the import data command to override the default setting based on your cluster configuration and observation.
+  - By default, the upper bound for the number of parallel connections is set to half the total number of cores in the YugabyteDB cluster. Use the `--adaptive-parallelism-max` flag to override this value.
 
-   {{< note title="Note" >}}
-
-   If there are timeouts during import, restart the import with fewer parallel jobs.
-
-   {{< /note >}}
+  - To disable adaptive parallelism and specify a static number of connections, use `--adaptive-parallelism disabled --parallel-jobs N`.
 
 - **Increase batch size**. The default [--batch-size](../../reference/data-migration/import-data/#arguments) is 20000 rows or approximately 200 MB of data, depending on whichever is reached first while preparing the batch. Normally this is considered a good default value. However, if the rows are too small, then you may consider increasing the batch size for greater throughput. Increasing the batch size to a very high value is not recommended as the whole batch is executed in one transaction.
 

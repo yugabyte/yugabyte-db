@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.controllers;
 
@@ -56,7 +56,7 @@ public class TelemetryProviderController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
     TelemetryProvider provider =
         telemetryProviderService.getOrBadRequest(customerUUID, providerUUID);
-    telemetryProviderService.throwExceptionIfLokiExporterRuntimeFlagDisabled(
+    telemetryProviderService.throwRuntimeFlagDisabledForExporterTypeException(
         provider.getConfig().getType());
     return PlatformResults.withData(CommonUtils.maskObject(provider));
   }
@@ -109,7 +109,7 @@ public class TelemetryProviderController extends AuthenticatedController {
     if (provider.getUuid() != null) {
       throw new PlatformServiceException(BAD_REQUEST, "Can't create provider with uuid set");
     }
-    telemetryProviderService.throwExceptionIfLokiExporterRuntimeFlagDisabled(
+    telemetryProviderService.throwRuntimeFlagDisabledForExporterTypeException(
         provider.getConfig().getType());
 
     // Validate the telemetry provider config.
@@ -156,7 +156,7 @@ public class TelemetryProviderController extends AuthenticatedController {
 
     TelemetryProvider provider =
         telemetryProviderService.getOrBadRequest(customerUUID, providerUUID);
-    telemetryProviderService.throwExceptionIfLokiExporterRuntimeFlagDisabled(
+    telemetryProviderService.throwRuntimeFlagDisabledForExporterTypeException(
         provider.getConfig().getType());
     // Check if telemetry provider is in use.
     boolean isProviderInUse = telemetryProviderService.isProviderInUse(customer, providerUUID);

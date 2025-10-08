@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -38,6 +38,8 @@
 #include <vector>
 
 #include <boost/algorithm/string/predicate.hpp>
+
+#include "yb/ash/rpc_wait_state.h"
 
 #include "yb/common/wire_protocol.h"
 
@@ -318,6 +320,12 @@ Status RpcServerBase::Init() {
   builder.UseDefaultConnectionContextFactory(mem_tracker());
   RETURN_NOT_OK(SetupMessengerBuilder(&builder));
   messenger_ = VERIFY_RESULT(builder.Build());
+
+  if (FLAGS_ysql_yb_enable_ash) {
+    messenger_->SetCallStateListenerFactory(std::make_unique<ash::CallStateListenerFactory>());
+    messenger_->SetMetadataSerializerFactory(std::make_unique<ash::MetadataSerializerFactory>());
+  }
+
   proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
 
   if (PREDICT_FALSE(FLAGS_TEST_running_test)) {

@@ -16,22 +16,7 @@ INSERT, UPDATE, and DELETE (often abbreviated as IUD) are fundamental SQL operat
 
 ## Setup
 
-The examples run on any YugabyteDB universe.
-
-<!-- begin: nav tabs -->
-{{<nav/tabs list="local,anywhere,cloud" active="local"/>}}
-
-{{<nav/panels>}}
-{{<nav/panel name="local" active="true">}}
-<!-- local cluster setup instructions -->
-{{<setup/local numnodes="1" rf="1" >}}
-
-{{</nav/panel>}}
-
-{{<nav/panel name="anywhere">}} {{<setup/anywhere>}} {{</nav/panel>}}
-{{<nav/panel name="cloud">}}{{<setup/cloud>}}{{</nav/panel>}}
-{{</nav/panels>}}
-<!-- end: nav tabs -->
+{{% explore-setup-single-new %}}
 
 For illustration, consider the following employee schema:
 
@@ -106,9 +91,9 @@ To update the timestamp on row modification, you would use [Triggers](../advance
 
 ## Auto-Increment
 
-Using [Sequences](../../../develop/data-modeling/primary-keys-ysql/#sequence), you can generate unique identifiers by auto-incrementing the numeric identifier of each preceding row. In most cases, you would use sequences to auto-generate primary keys.
+Using [Sequences](/preview/develop/data-modeling/primary-keys-ysql/#sequence), you can generate unique identifiers by auto-incrementing the numeric identifier of each preceding row. In most cases, you would use sequences to auto-generate primary keys.
 
-Although you can assign a default value to a column via a sequence, typically you add sequences using the [serial](../../../develop/data-modeling/primary-keys-ysql/#serial) pseudotype that creates a new sequence object and sets the default value for the column to the next value produced by the sequence. For example:
+Although you can assign a default value to a column via a sequence, typically you add sequences using the [serial](/preview/develop/data-modeling/primary-keys-ysql/#serial) pseudotype that creates a new sequence object and sets the default value for the column to the next value produced by the sequence. For example:
 
 ```sql
 CREATE TABLE employees2 (

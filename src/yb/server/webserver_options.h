@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -52,6 +52,8 @@ struct WebserverOptions {
   std::string private_key_password;
   std::string authentication_domain;
   std::string password_file;
+  std::string ssl_min_version;
+  std::string ssl_ciphers;
   uint32_t num_worker_threads;
 
   std::string TEST_custom_varz; // Show custom G-flags in Web UI '/varz' from tests.

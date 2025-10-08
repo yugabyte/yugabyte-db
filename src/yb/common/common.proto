@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -137,6 +137,7 @@ enum PgVectorIndexType {
 enum HnswBackend {
   USEARCH = 0;
   YB_HNSW = 1;
+  HNSWLIB = 2;
 };
 
 message HnswIndexOptionsPB {
@@ -451,6 +452,11 @@ message TransactionMetadataPB {
   // for backwards compatability.
   optional TransactionLocality locality = 7;
 
+  // Stores tablespace oid for TABLESPACE_LOCAL locality.
+  optional uint32 locality_tablespace_oid = 10;
+
+  optional bool skip_prefix_locks = 11 [default = false];
+
   // Reserved for deprecated xcluster field external_transaction.
   reserved 8;
 }
@@ -663,6 +669,7 @@ message DatumMessagePB {
   oneof cdc_column_type {
     QLTypePB cql_type = 11;
     int64 pg_type = 12;
+    QLTypePB pg_catalog_type = 17;
   }
   oneof cdc_datum {
     PgDatumPB pg_value = 13;
@@ -670,6 +677,7 @@ message DatumMessagePB {
     // We send the datum as QLValuePB if the client is Walsender.
     // The Walsender does the conversion from QLValuePB to the PG datum.
     QLValuePB pg_ql_value = 15;
+    QLValuePB pg_catalog_value = 18;
   }
   // This is applicable only for YSQL table columns.
   optional int32 col_attr_num = 16;

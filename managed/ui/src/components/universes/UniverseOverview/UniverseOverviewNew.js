@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 import { Component, PureComponent, Fragment } from 'react';
 import { Link } from 'react-router';

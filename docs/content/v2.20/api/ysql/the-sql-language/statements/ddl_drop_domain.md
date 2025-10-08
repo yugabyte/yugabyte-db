@@ -4,7 +4,7 @@ headerTitle: DROP DOMAIN
 linkTitle: DROP DOMAIN
 description: Use the DROP DOMAIN statement to remove a domain from the database.
 menu:
-  v2.20:
+  v2.20_api:
     identifier: ddl_drop_domain
     parent: statements
 type: docs

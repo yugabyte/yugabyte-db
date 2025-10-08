@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -13,10 +13,12 @@
 
 #pragma once
 
+#include <memory>
 #include <future>
 #include <span>
-
-#include <boost/container/small_vector.hpp>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
 
 #include "yb/client/client_fwd.h"
 
@@ -36,58 +38,45 @@ struct PgTableCacheGetOptions {
   master::IncludeHidden include_hidden = master::IncludeHidden::kFalse;
 };
 
-void AddTableIdIfMissing(
-    const TableId& table_id, boost::container::small_vector_base<TableId>& table_ids);
-
-class PgTablesQueryResult;
-
-class PgTablesQueryListener {
- public:
-  virtual ~PgTablesQueryListener() = default;
-  virtual void Ready() = 0;
-};
-using PgTablesQueryListenerPtr = std::shared_ptr<PgTablesQueryListener>;
-
-class PgTablesQueryResultBuilder;
-
 class PgTablesQueryResult {
  public:
   struct TableInfo {
     client::YBTablePtr table;
     std::shared_ptr<master::GetTableSchemaResponsePB> schema;
+
+    std::string ToString() const;
   };
 
-  PgTablesQueryResult() = default;
+  using Tables = std::span<const TableInfo>;
+  using TablesResult = Result<std::span<const TableInfo>>;
+  using TablesResultPtr = std::shared_ptr<TablesResult>;
 
-  Result<client::YBTablePtr> Get(const TableId& table_id) const;
-  Result<TableInfo> GetInfo(const TableId& table_id) const;
+  explicit PgTablesQueryResult(TablesResultPtr&& tables) : tables_(std::move(tables)) {}
+
+  Result<const client::YBTablePtr&> Get(const TableId& table_id) const;
+  Result<const TableInfo&> GetInfo(const TableId& table_id) const;
 
  private:
-  friend class PgTablesQueryResultBuilder;
-
-  std::mutex mutex_;
-  Status failure_status_ GUARDED_BY(mutex_);
-  size_t pending_tables_ GUARDED_BY(mutex_) = 0;
-  boost::container::small_vector<TableInfo, 4> tables_ GUARDED_BY(mutex_);
+  TablesResultPtr tables_;
 };
+
+class PgTablesQueryListener {
+ public:
+  virtual ~PgTablesQueryListener() = default;
+  virtual void Ready(const PgTablesQueryResult& result) = 0;
+};
+using PgTablesQueryListenerPtr = std::shared_ptr<PgTablesQueryListener>;
 
 class PgTableCache {
  public:
   explicit PgTableCache(std::shared_future<client::YBClient*> client_future);
   ~PgTableCache();
 
-  Status GetInfo(
-      const TableId& table_id,
-      const PgTableCacheGetOptions& options,
-      client::YBTablePtr* table,
-      master::GetTableSchemaResponsePB* schema);
-
   Result<client::YBTablePtr> Get(const TableId& table_id);
   void GetTables(
       std::span<const TableId> table_ids,
-      const PgTableCacheGetOptions& options,
-      PgTablesQueryResult& result,
-      const PgTablesQueryListenerPtr& listener);
+      const PgTablesQueryListenerPtr& listener,
+      const PgTableCacheGetOptions& options = {});
 
   void Invalidate(const TableId& table_id);
   void InvalidateAll(CoarseTimePoint invalidation_time);

@@ -1,20 +1,21 @@
 /*
  * Created on Tue Aug 27 2024
  *
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License")
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { find, last } from "lodash";
+import { find, keys, last } from "lodash";
 import moment from "moment";
 import { useContext } from "react";
 import { Backup_States, IBackup, ICommonBackupInfo } from "../../../../components/backupv2";
 import { IncrementalBackupProps } from "../../../../components/backupv2/components/BackupDetails";
-import { ValidateRestoreApiReq } from "./api/api";
+import { PreflightResponseV2Params, ValidateRestoreApiReq } from "./api/api";
 import { RestoreContext, RestoreContextMethods, RestoreFormContext } from "./models/RestoreContext";
 import { RestoreFormModel, TimeToRestoreType } from "./models/RestoreFormModel";
+import { PreflightResponseParams } from "@app/components/backupv2/components/restore/api";
 
 // This function is used to determine if the user can select a time frame for the restore operation.
 export const userCanSelectTimeFrame = (backupDetails: IBackup, restoreContext: RestoreContext): boolean => {
@@ -96,4 +97,17 @@ export const doesUserSelectsSingleKeyspaceToRestore = (additionalBackupProps: In
 
 export function GetRestoreContext() {
     return (useContext(RestoreFormContext) as unknown) as RestoreContextMethods;
+};
+
+// Get unsupported tablespace config
+export const getUnSupportedTableSpaceConfig = (preflightResponse: PreflightResponseV2Params | PreflightResponseParams, configName: 'conflictingTablespaces' | 'unsupportedTablespaces') => {
+    const storageLocationsKeys = keys(preflightResponse.perLocationBackupInfoMap);
+
+    return storageLocationsKeys.some((location) => {
+        const tablespaceResponse =
+            preflightResponse.perLocationBackupInfoMap[location].tablespaceResponse;
+        return (
+            tablespaceResponse[configName]?.length !== 0
+        );
+    });
 };

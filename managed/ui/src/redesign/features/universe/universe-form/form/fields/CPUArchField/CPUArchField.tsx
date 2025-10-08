@@ -2,7 +2,7 @@
 /*
  * Created on Mon Nov 13 2023
  *
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License")
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
@@ -55,7 +55,6 @@ export const CPUArchField: FC<CPUArchFieldProps> = ({ disabled }) => {
 
   // TODO: When anyone changes this conditon, please ensure to change
   // in  api.getDBVersions in DBVersionField.tsx
-  if (provider?.code !== CloudType.aws) return null;
 
   const handleSelect = (option: typeof supportedArch[number]) => {
     setValue(CPU_ARCHITECTURE_FIELD, option.value, {

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -111,7 +111,7 @@ std::string IdToString(ColocationId id) {
 }
 
 std::string IdToString(const Uuid& id) {
-  return Format("CoTableId=$0", id.ToString());
+  return Format("CoTableId=$0", id.ToHexString());
 }
 
 } // namespace

@@ -1,4 +1,4 @@
-# Copyright (c) Yugabyte, Inc.
+# Copyright (c) YugabyteDB, Inc.
 #
 # To analyze (without uploading to Fossa) -- for local debugging:
 # fossa analyze --debug --output

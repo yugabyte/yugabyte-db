@@ -1,6 +1,7 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.google.common.collect.Sets;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
@@ -8,6 +9,7 @@ import com.yugabyte.yw.common.DrConfigStates.SourceUniverseState;
 import com.yugabyte.yw.common.DrConfigStates.State;
 import com.yugabyte.yw.common.DrConfigStates.TargetUniverseState;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
@@ -29,8 +31,10 @@ public class RestartXClusterConfig extends EditXClusterConfig {
 
   @Inject
   protected RestartXClusterConfig(
-      BaseTaskDependencies baseTaskDependencies, XClusterUniverseService xClusterUniverseService) {
-    super(baseTaskDependencies, xClusterUniverseService);
+      BaseTaskDependencies baseTaskDependencies,
+      XClusterUniverseService xClusterUniverseService,
+      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
+    super(baseTaskDependencies, xClusterUniverseService, operatorStatusUpdaterFactory);
   }
 
   @Override
@@ -91,8 +95,10 @@ public class RestartXClusterConfig extends EditXClusterConfig {
           // A replication group with no tables in it cannot exist in YBDB. If all the tables
           // must be removed from the replication group, remove the replication group.
           isRestartWholeConfig =
-              xClusterConfig.getTableIdsWithReplicationSetup(tableIds, true /* done */).size()
-                  >= xClusterConfig.getTableIdsWithReplicationSetup().size();
+              Sets.difference(
+                      xClusterConfig.getTableIdsWithReplicationSetup(),
+                      xClusterConfig.getTableIdsWithReplicationSetup(tableIds, true /* done */))
+                  .isEmpty();
         } else {
           isRestartWholeConfig =
               taskParams().getDbs().size() == xClusterConfig.getNamespaces().size();

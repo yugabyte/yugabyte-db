@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.models.configs;
 
@@ -7,10 +7,6 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.AmazonS3Client;
-import com.amazonaws.services.s3.model.AmazonS3Exception;
-import com.amazonaws.services.s3.model.ListObjectsV2Result;
 import com.azure.storage.blob.BlobContainerClient;
 import com.azure.storage.blob.models.BlobStorageException;
 import com.google.api.gax.paging.Page;
@@ -29,6 +25,12 @@ import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.util.Collections;
 import java.util.List;
+import java.util.function.Consumer;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.HeadBucketRequest;
+import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
+import software.amazon.awssdk.services.s3.model.ListObjectsV2Response;
+import software.amazon.awssdk.services.s3.model.S3Exception;
 
 // @formatter:off
 /*
@@ -43,7 +45,7 @@ import java.util.List;
 public class StubbedCustomerConfigValidator extends CustomerConfigValidator
     implements CloudClientsFactory {
 
-  public final AmazonS3Client s3Client = mock(AmazonS3Client.class);
+  public final S3Client s3Client = mock(S3Client.class);
 
   public final Storage gcpStorage = mock(Storage.class);
 
@@ -65,15 +67,28 @@ public class StubbedCustomerConfigValidator extends CustomerConfigValidator
     super(beanValidator, storageUtilFactory, runtimeConfGetter, awsUtil, gcpUtil);
 
     lenient()
-        .when(s3Client.doesBucketExistV2(any(String.class)))
-        .thenAnswer(invocation -> allowedBuckets.contains(invocation.getArguments()[0]));
-    lenient()
-        .when(s3Client.listObjectsV2(any(String.class), any(String.class)))
+        .when(s3Client.headBucket(any(Consumer.class)))
         .thenAnswer(
             invocation -> {
-              boolean allowedBucket = allowedBuckets.contains(invocation.getArguments()[0]);
-              ListObjectsV2Result result = new ListObjectsV2Result();
-              result.setKeyCount(allowedBucket ? 1 : 0);
+              Consumer<HeadBucketRequest.Builder> builderConsumer = invocation.getArgument(0);
+              HeadBucketRequest.Builder builder = HeadBucketRequest.builder();
+              builderConsumer.accept(builder);
+              HeadBucketRequest request = builder.build();
+              String bucketName = request.bucket();
+              if (!allowedBuckets.contains(bucketName)) {
+                throw S3Exception.builder().statusCode(404).build();
+              }
+              return null;
+            });
+    lenient()
+        .when(s3Client.listObjectsV2(any(ListObjectsV2Request.class)))
+        .thenAnswer(
+            invocation -> {
+              ListObjectsV2Request request = invocation.getArgument(0);
+              String bucketName = request.bucket();
+              boolean allowedBucket = allowedBuckets.contains(bucketName);
+              ListObjectsV2Response result =
+                  ListObjectsV2Response.builder().keyCount(allowedBucket ? 1 : 0).build();
               return result;
             });
 
@@ -116,10 +131,11 @@ public class StubbedCustomerConfigValidator extends CustomerConfigValidator
   }
 
   @Override
-  public AmazonS3 createS3Client(CustomerConfigStorageS3Data configData) {
+  public S3Client createS3Client(CustomerConfigStorageS3Data configData) {
     if (refuseKeys) {
-      throw new AmazonS3Exception(
-          "The AWS Access Key Id you provided does not exist in our records.");
+      throw S3Exception.builder()
+          .message("The AWS Access Key Id you provided does not exist in our records.")
+          .build();
     }
     return s3Client;
   }

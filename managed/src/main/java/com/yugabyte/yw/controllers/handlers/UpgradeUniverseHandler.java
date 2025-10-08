@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.controllers.handlers;
 
@@ -33,7 +33,9 @@ import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
+import com.yugabyte.yw.forms.KubernetesToggleImmutableYbcParams;
 import com.yugabyte.yw.forms.ProxyConfigUpdateParams;
+import com.yugabyte.yw.forms.QueryLogConfigParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
@@ -51,6 +53,7 @@ import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.extended.FinalizeUpgradeInfoResponse;
 import com.yugabyte.yw.models.extended.SoftwareUpgradeInfoRequest;
@@ -58,7 +61,9 @@ import com.yugabyte.yw.models.extended.SoftwareUpgradeInfoResponse;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
-import com.yugabyte.yw.models.helpers.audit.UniverseLogsExporterConfig;
+import com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig;
+import com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig;
+import com.yugabyte.yw.models.helpers.telemetry.ProviderType;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -478,7 +483,7 @@ public class UpgradeUniverseHandler {
 
   public UUID modifyAuditLoggingConfig(
       AuditLogConfigParams requestParams, Customer customer, Universe universe) {
-    telemetryProviderService.throwExceptionIfRuntimeFlagDisabled();
+    telemetryProviderService.throwExceptionIfDBAuditLoggingRuntimeFlagDisabled();
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
 
@@ -525,6 +530,19 @@ public class UpgradeUniverseHandler {
           log.error(errorMessage);
           throw new PlatformServiceException(BAD_REQUEST, errorMessage);
         }
+
+        // Verify if the exporter is allowed for logs export.
+        TelemetryProvider telemetryProvider = telemetryProviderService.get(exporterUUID);
+        ProviderType providerType = telemetryProvider.getConfig().getType();
+        if (!providerType.isAllowedForLogs) {
+          String errorMessage =
+              String.format(
+                  "Exporter config provider type '%s' is not allowed for logs export on universe"
+                      + " '%s'.",
+                  providerType, universe.getUniverseUUID());
+          log.error(errorMessage);
+          throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+        }
       }
 
       // For Kubernetes provider, verify the universe version is compatible with otel exporter.
@@ -551,6 +569,87 @@ public class UpgradeUniverseHandler {
             ? TaskType.ModifyKubernetesAuditLoggingConfig
             : TaskType.ModifyAuditLoggingConfig,
         CustomerTask.TaskType.ModifyAuditLoggingConfig,
+        requestParams,
+        customer,
+        universe);
+  }
+
+  public UUID modifyQueryLoggingConfig(
+      QueryLogConfigParams requestParams, Customer customer, Universe universe) {
+    telemetryProviderService.throwExceptionIfQueryLoggingRuntimeFlagDisabled();
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
+
+    // Verify if the query log payload is same as existing query log config.
+    if (requestParams.queryLogConfig != null
+        && requestParams.queryLogConfig.equals(userIntent.queryLogConfig)) {
+      String errorMessage =
+          String.format(
+              "Query log config is same as existing config on universe '%s'.",
+              universe.getUniverseUUID());
+      log.error(errorMessage);
+      throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+    }
+
+    if (softwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(universe)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Cannot modify query log config while YSQL major version upgrade is in progress.");
+    }
+
+    // Verify if exporter config is set to export active.
+    if (requestParams.queryLogConfig.isExportActive()) {
+      // If exporter config is set to export active, verify if any exporter is configured.
+      if (CollectionUtils.isEmpty(requestParams.queryLogConfig.getUniverseLogsExporterConfig())) {
+        String errorMessage =
+            String.format(
+                "Query log config is set to export active, but no exporter configured on universe"
+                    + " '%s'.",
+                universe.getUniverseUUID());
+        log.error(errorMessage);
+        throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+      }
+
+      // If exporter config is set to export active, verify if given exporter uuid(s) are empty.
+      for (UniverseQueryLogsExporterConfig exporterConfig :
+          requestParams.queryLogConfig.getUniverseLogsExporterConfig()) {
+        UUID exporterUUID = exporterConfig.getExporterUuid();
+        if (exporterUUID == null
+            || !telemetryProviderService.checkIfExists(customer.getUuid(), exporterUUID)) {
+          String errorMessage =
+              String.format(
+                  "Exporter config UUID '%s' is invalid for universe '%s'.",
+                  exporterUUID, universe.getUniverseUUID());
+          log.error(errorMessage);
+          throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+        }
+
+        // Verify if the exporter is allowed for logs export.
+        TelemetryProvider telemetryProvider = telemetryProviderService.get(exporterUUID);
+        ProviderType providerType = telemetryProvider.getConfig().getType();
+        if (!providerType.isAllowedForLogs) {
+          String errorMessage =
+              String.format(
+                  "Exporter config provider type '%s' is not allowed for logs export on universe"
+                      + " '%s'.",
+                  providerType, universe.getUniverseUUID());
+          log.error(errorMessage);
+          throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+        }
+      }
+
+      if (userIntent.providerType.equals(CloudType.kubernetes)) {
+        String errorMessage = "Query log exporter is not supported for kubernetes provider.";
+        log.error(errorMessage);
+        throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+      }
+    }
+
+    requestParams.verifyParams(universe, true);
+    userIntent.queryLogConfig = requestParams.queryLogConfig;
+    return submitUpgradeTask(
+        TaskType.ModifyQueryLoggingConfig,
+        CustomerTask.TaskType.ModifyQueryLoggingConfig,
         requestParams,
         customer,
         universe);
@@ -818,6 +917,17 @@ public class UpgradeUniverseHandler {
     return submitUpgradeTask(
         TaskType.UpdateProxyConfig,
         CustomerTask.TaskType.UpdateProxyConfig,
+        requestParams,
+        customer,
+        universe);
+  }
+
+  public UUID kubernetesToggleImmutableYbc(
+      KubernetesToggleImmutableYbcParams requestParams, Customer customer, Universe universe) {
+    requestParams.verifyParams(universe, true);
+    return submitUpgradeTask(
+        TaskType.KubernetesToggleImmutableYbc,
+        CustomerTask.TaskType.KubernetesToggleImmutableYbc,
         requestParams,
         customer,
         universe);

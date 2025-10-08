@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FilenameUtils;
 import play.libs.Files;
@@ -62,53 +63,51 @@ public class InternalHAController extends Controller {
   }
 
   public Result getHAConfigByClusterKey(Http.Request request) {
-    try {
-      Optional<HighAvailabilityConfig> config =
-          HighAvailabilityConfig.getByClusterKey(this.getClusterKey(request));
-
-      if (!config.isPresent()) {
-        throw new PlatformServiceException(NOT_FOUND, "Could not find HA Config by cluster key");
-      }
-
-      return PlatformResults.withData(config.get());
-    } catch (Exception e) {
-      log.error("Error retrieving HA config");
-      if (e instanceof PlatformServiceException) {
-        throw (PlatformServiceException) e;
-      }
-      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Error retrieving HA config");
-    }
+    HighAvailabilityConfig config =
+        HighAvailabilityConfig.getByClusterKey(this.getClusterKey(request))
+            .orElseThrow(
+                () ->
+                    new PlatformServiceException(
+                        NOT_FOUND, "Could not find HA Config by cluster key"));
+    return PlatformResults.withData(config);
   }
 
   // TODO: Change this to accept ObjectNode instead of ArrayNode in request body
-  public synchronized Result syncInstances(long timestamp, Http.Request request) {
+  public Result syncInstances(long timestamp, Http.Request request) {
     log.debug("Received request to sync instances from {}", request.remoteAddress());
-    Optional<HighAvailabilityConfig> config =
-        HighAvailabilityConfig.getByClusterKey(this.getClusterKey(request));
-    if (!config.isPresent()) {
-      throw new PlatformServiceException(NOT_FOUND, "Invalid config UUID");
-    }
-
-    Optional<PlatformInstance> localInstance = config.get().getLocal();
-
-    if (!localInstance.isPresent()) {
-      log.warn("No local instance configured");
-      throw new PlatformServiceException(BAD_REQUEST, "No local instance configured");
-    }
-    if (localInstance.get().getIsLeader()) {
-      log.warn(
-          "Rejecting request to import instances due to this process being designated a leader");
-      throw new PlatformServiceException(BAD_REQUEST, "Cannot import instances for a leader");
-    }
+    HighAvailabilityConfig config =
+        HighAvailabilityConfig.getByClusterKey(getClusterKey(request))
+            .orElseThrow(
+                () ->
+                    new PlatformServiceException(
+                        NOT_FOUND, "Could not find HA Config by cluster key"));
     String content = request.body().asBytes().utf8String();
     List<PlatformInstance> newInstances = Util.parseJsonArray(content, PlatformInstance.class);
     Set<PlatformInstance> processedInstances =
-        replicationManager.importPlatformInstances(config.get(), newInstances, new Date(timestamp));
-
+        HighAvailabilityConfig.doWithTryLock(
+                config.getUuid(),
+                c -> {
+                  Optional<PlatformInstance> localInstance = c.getLocal();
+                  if (!localInstance.isPresent()) {
+                    log.warn("No local instance configured");
+                    throw new PlatformServiceException(BAD_REQUEST, "No local instance configured");
+                  }
+                  if (localInstance.get().getIsLeader()) {
+                    log.warn(
+                        "Rejecting request to import instances due to this process being designated"
+                            + " a leader");
+                    throw new PlatformServiceException(
+                        BAD_REQUEST, "Cannot import instances for a leader");
+                  }
+                  return replicationManager.importPlatformInstances(
+                      config, newInstances, new Date(timestamp));
+                })
+            .orElseThrow(
+                () -> new PlatformServiceException(529, "Server is busy with ongoing HA process"));
     return PlatformResults.withData(processedInstances);
   }
 
-  public synchronized Result syncBackups(Http.Request request) throws Exception {
+  public Result syncBackups(Http.Request request) throws Exception {
     Http.MultipartFormData<Files.TemporaryFile> body = request.body().asMultipartFormData();
 
     Map<String, String[]> reqParams = body.asFormUrlEncoded();
@@ -139,76 +138,77 @@ public class InternalHAController extends Controller {
       throw new PlatformServiceException(
           BAD_REQUEST, "Sender: " + sender + " does not match leader: " + leader);
     }
-
-    Optional<HighAvailabilityConfig> config =
-        HighAvailabilityConfig.getByClusterKey(this.getClusterKey(request));
-    if (!config.isPresent()) {
-      throw new PlatformServiceException(BAD_REQUEST, "Could not find HA Config");
-    }
-
-    Optional<PlatformInstance> localInstance = config.get().getLocal();
-    if (localInstance.isPresent() && leader.equals(localInstance.get().getAddress())) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Backup originated on the node itself. Leader: " + leader);
-    }
-
-    if (ybaVersions.length == 1) {
-      String ybaVersion = ybaVersions[0];
-      if (Util.compareYbVersions(ybaVersion, Util.getYbaVersion()) > 0) {
-        throw new PlatformServiceException(
-            BAD_REQUEST,
-            String.format(
-                "Cannot sync backup from leader on higher version %s to follower on lower version"
-                    + " %s",
-                ybaVersion, Util.getYbaVersion()));
-      }
-    }
-    URL leaderUrl = new URL(leader);
-
-    // For all the other cases we will accept the backup without checking local config state.
-    boolean success =
-        replicationManager.saveReplicationData(
-            fileName, temporaryFile.path(), leaderUrl, new URL(sender));
-    if (success) {
-      // TODO: (Daniel) - Need to cleanup backups in non-current leader dir too.
-      replicationManager.cleanupReceivedBackups(leaderUrl);
-      return YBPSuccess.withMessage("File uploaded");
-    }
-    throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Failed to copy backup");
+    HighAvailabilityConfig config =
+        HighAvailabilityConfig.getByClusterKey(this.getClusterKey(request))
+            .orElseThrow(
+                () -> new PlatformServiceException(BAD_REQUEST, "Could not find HA Config"));
+    // Use non-blocking lock-acquire for syncs to avoid deadlock.
+    return HighAvailabilityConfig.doWithTryLock(
+            config.getUuid(),
+            c -> {
+              Optional<PlatformInstance> localInstance = config.getLocal();
+              if (localInstance.isPresent() && leader.equals(localInstance.get().getAddress())) {
+                throw new PlatformServiceException(
+                    BAD_REQUEST, "Backup originated on the node itself. Leader: " + leader);
+              }
+              if (ybaVersions.length == 1) {
+                String ybaVersion = ybaVersions[0];
+                if (Util.compareYbVersions(ybaVersion, Util.getYbaVersion()) > 0) {
+                  throw new PlatformServiceException(
+                      BAD_REQUEST,
+                      String.format(
+                          "Cannot sync backup from leader on higher version %s to follower on lower"
+                              + " version %s",
+                          ybaVersion, Util.getYbaVersion()));
+                }
+              }
+              URL leaderUrl = Util.toURL(leader);
+              // For all the other cases we will accept the backup without checking local config
+              // state.
+              boolean success =
+                  replicationManager.saveReplicationData(
+                      fileName, temporaryFile.path(), leaderUrl, Util.toURL(sender));
+              if (success) {
+                // TODO: (Daniel) - Need to cleanup backups in non-current leader dir too.
+                replicationManager.cleanupReceivedBackups(leaderUrl);
+                return YBPSuccess.withMessage("File uploaded");
+              }
+              throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Failed to copy backup");
+            })
+        .orElseThrow(
+            () -> new PlatformServiceException(529, "Server is busy with ongoing HA process"));
   }
 
   /** This is invoked by the remote peer to demote this local leader. */
-  public synchronized Result demoteLocalLeader(
-      long timestamp, boolean promote, Http.Request request) {
-    try {
-      log.debug("Received request to demote local instance from {}", request.remoteAddress());
-      DemoteInstanceFormData formData =
-          formFactory.getFormDataOrBadRequest(request, DemoteInstanceFormData.class).get();
-      Optional<HighAvailabilityConfig> config =
-          HighAvailabilityConfig.getByClusterKey(getClusterKey(request));
-      if (!config.isPresent()) {
-        log.warn("No HA configuration configured, skipping request");
-        throw new PlatformServiceException(NOT_FOUND, "Invalid config UUID");
-      }
-      Optional<PlatformInstance> localInstance = config.get().getLocal();
-      if (!localInstance.isPresent()) {
-        log.warn("No local instance configured");
-        throw new PlatformServiceException(BAD_REQUEST, "No local instance configured");
-      }
-      // Demote the local instance.
-      replicationManager.demoteLocalInstance(
-          config.get(), localInstance.get(), formData.leader_address, new Date(timestamp));
-      // Only restart YBA when demote comes from promote call, not from periodic sync
-      if (promote && runtimeConfGetter.getGlobalConf(GlobalConfKeys.haShutdownLevel) > 1) {
-        Util.shutdownYbaProcess(5);
-      }
-      return PlatformResults.withData(localInstance);
-    } catch (Exception e) {
-      log.error("Error demoting platform instance", e);
-      if (e instanceof PlatformServiceException) {
-        throw (PlatformServiceException) e;
-      }
-      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Error demoting platform instance");
+  public Result demoteLocalLeader(long timestamp, boolean promote, Http.Request request) {
+    log.debug("Received request to demote local instance from {}", request.remoteAddress());
+    String clusterKey = getClusterKey(request);
+    HighAvailabilityConfig config =
+        HighAvailabilityConfig.getByClusterKey(clusterKey)
+            .orElseThrow(() -> new PlatformServiceException(NOT_FOUND, "Invalid config UUID"));
+    Function<HighAvailabilityConfig, PlatformInstance> func =
+        c -> {
+          DemoteInstanceFormData formData =
+              formFactory.getFormDataOrBadRequest(
+                  request.body().asJson(), DemoteInstanceFormData.class);
+          // Demote the local instance.
+          PlatformInstance i =
+              replicationManager.demoteLocalInstance(
+                  c, formData.leader_address, new Date(timestamp));
+          // Only restart YBA when demote comes from promote call, not from periodic sync
+          if (promote && runtimeConfGetter.getGlobalConf(GlobalConfKeys.haShutdownLevel) > 1) {
+            Util.shutdownYbaProcess(5);
+          }
+          return i;
+        };
+    // Use non-blocking lock-acquire for background syncs to avoid deadlock.
+    PlatformInstance localInstance =
+        promote
+            ? HighAvailabilityConfig.doWithLock(config.getUuid(), func)
+            : HighAvailabilityConfig.doWithTryLock(config.getUuid(), func).orElse(null);
+    if (localInstance == null) {
+      log.warn("Local leader was not demoted possibly due to an ongoining promotion");
     }
+    return PlatformResults.withData(localInstance);
   }
 }

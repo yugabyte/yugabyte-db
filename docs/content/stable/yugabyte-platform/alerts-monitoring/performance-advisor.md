@@ -33,7 +33,7 @@ You should see a list of performance recommendations similar to the following il
 
 ### Index recommendations
 
-Performance Advisor suggests dropping unused indexes to improve write performance and increase storage space. Performance Advisor uses the [pg_stat_all_indexes view](https://www.postgresql.org/docs/11/monitoring-stats.html#PG-STAT-ALL-INDEXES-VIEW) to determine unused indexes. Any index with an `idx_scan` of 0 is considered unused.
+Performance Advisor suggests dropping unused indexes to improve write performance and increase storage space. Performance Advisor uses the [pg_stat_all_indexes view](https://www.postgresql.org/docs/15/monitoring-stats.html#PG-STAT-ALL-INDEXES-VIEW) to determine unused indexes. Any index with an `idx_scan` of 0 is considered unused.
 
 Indexes take up storage space on the same disk volume as the main table. They also increase the size of backups and can add to backup and restore time.
 
@@ -122,7 +122,7 @@ Review the sharding strategies for your primary and secondary indexes. Consisten
 
 ### Rejected connection recommendations
 
-Advisor monitors rejected YSQL connections. Advisor flags nodes that rejected one or more connections in the last hour. By default each YB-TServer can handle up to 300 simultaneous connections. This number can be configured using the [ysql-max-connections](../../../reference/configuration/yb-tserver/#ysql-max-connections) YB-Tserver flag.
+Advisor monitors rejected YSQL connections. Advisor flags nodes that rejected one or more connections in the last hour. By default each YB-TServer can handle up to 300 simultaneous connections. This number can be configured using the [ysql-max-connections](../../../reference/configuration/yb-tserver/#ysql-max-connections) YB-TServer flag.
 
 Rejected connections can be caused by:
 

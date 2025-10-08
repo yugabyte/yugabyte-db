@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -17,8 +17,6 @@
 
 #include <optional>
 #include <type_traits>
-
-#include <boost/optional.hpp>
 
 #include <boost/preprocessor/cat.hpp>
 #include <boost/tti/has_type.hpp>
@@ -95,21 +93,15 @@ class IsPointerLike : public IsPointerLikeImpl<
     typename std::remove_cv<typename std::remove_reference<T>::type>::type> {
 };
 
-template<class T>
+template <class T>
 concept StdOptionalType = std::is_same_v<T, std::optional<typename T::value_type>>;
 
-template<class T>
-concept OptionalType = StdOptionalType<T> ||
-                       std::is_same_v<T, boost::optional<typename T::value_type>>;
-
-
-template<class T>
-concept TupleLikeType =
-    requires (T a) {
-      typename std::tuple_size<T>::type;
-      typename std::tuple_element_t<0, T>;
-      std::get<0>(a);
-    };
+template <class T>
+concept TupleLikeType = requires(T a) {
+                          typename std::tuple_size<T>::type;
+                          typename std::tuple_element_t<0, T>;
+                          std::get<0>(a);
+                        };
 
 template<typename T>
 concept NonReferenceType = !std::is_reference_v<T>;

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -194,7 +194,7 @@ TEST_F(
       auto tablet_id = peer->tablet_id();
       auto raft_consensus = ASSERT_RESULT(peer->GetRaftConsensus());
       if (tablets_locations_map.contains(tablet_id)) {
-        auto txn_participant = ASSERT_RESULT(peer->shared_tablet_safe())->transaction_participant();
+        auto txn_participant = ASSERT_RESULT(peer->shared_tablet())->transaction_participant();
         ASSERT_OK(WaitFor(
             [&]() -> Result<bool> {
               if (txn_participant->GetNumRunningTransactions() == 0) {
@@ -2682,6 +2682,62 @@ TEST_F(
   ASSERT_EQ(tablet_peer_2->get_cdc_sdk_safe_time(), slot_row->record_id_commit_time);
 }
 
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestBeforeImageNotExistErrorPropagation) {
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+  uint32_t num_cols = 3;
+  auto table = ASSERT_RESULT(CreateTable(
+    &test_cluster_, kNamespaceName, kTableName, 1, true, false, 0, false, "", "public", num_cols));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  // Set the replica identity to FULL. This is needed to get before image in update operation.
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 REPLICA IDENTITY FULL", kTableName));
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}));
+
+  map<std::string, uint32_t> col_val_map1, col_val_map2;
+  col_val_map1.insert({"col2", 9});
+  col_val_map1.insert({"col3", 10});
+  col_val_map2.insert({"col2", 10});
+  col_val_map2.insert({"col3", 11});
+  ASSERT_OK(UpdateRowsHelper(1, 2, &test_cluster_, true, 1, col_val_map1, col_val_map2, num_cols));
+
+  // Getting the consistent changes from stream and expecting a non-ok status due to "Failed to get
+  // the beforeimage" error. This error occurs when an UPDATE follows an INSERT for the same row in
+  // the same transaction, and the before image is unavailable.
+  // However, when packed rows are enabled, all the UPDATE operation/s of the same row gets absorbed
+  // into the INSERT operation and hence the before image is not required. In that case, we expect
+  // GetConsistentChanges to return the records without any error.
+  if (FLAGS_ysql_enable_packed_row) {
+    ASSERT_OK(GetConsistentChangesFromCDC(stream_id));
+  } else {
+    ASSERT_NOK_STR_CONTAINS(
+        GetConsistentChangesFromCDC(stream_id), "Failed to get the beforeimage");
+  }
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestRetryableErrorsNotSentToWalsender) {
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}));
+
+  vector<TestSimulateErrorCode> error_codes = {
+      TestSimulateErrorCode::PeerNotStarted, TestSimulateErrorCode::TabletUnavailable,
+      TestSimulateErrorCode::PeerNotLeader, TestSimulateErrorCode::PeerNotReadyToServe,
+      TestSimulateErrorCode::LogSegmentFooterNotFound};
+
+  for (auto error_code : error_codes) {
+    // Setting the flag to mimic retryable errors. The expectation is that
+    // CDCServiceImpl::GetConsistentChanges() should not return an error since such error is
+    // expected to be retryable.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_simulate_error_for_get_changes) = error_code;
+    auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+    ASSERT_FALSE(change_resp.has_error());
+  }
+}
+
 // This test verifies the behaviour of VWAL when the publication refresh interval is changed when
 // consumption is in progress.
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestChangingPublicationRefreshInterval) {
@@ -4504,6 +4560,85 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestColocatedSingleShardUpdateAff
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestColocatedMultiShardUpdateAffectingNoRows) {
   TestColocatedUpdateAffectingNoRows(true /* use_multi_shard*/);
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCheckpointNoUpdateUponCdcStateUpdateFailure) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_interval_secs) = 0;
+  ASSERT_OK(SetUpWithParams(
+      3 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* cdc_populate_safepoint_record */));
+
+  // Create a table with 1 tablet.
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr /* partition_list_version */));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}, kVWALSessionId1));
+
+  //  We sleep for 5 seconds to ensure that leader safe time has moved beyond consistent snapshot
+  //  time.
+  SleepFor(MonoDelta::FromSeconds(5));
+
+  // Insert 1 record, consume and acknowledge it.
+  ASSERT_OK(WriteRows(0, 1, &test_cluster_));
+  auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 3);
+
+  // Acknowledging this record should move the restart time forward.
+  auto commit_lsn = change_resp.cdc_sdk_proto_records().Get(2).row_message().pg_lsn();
+  ASSERT_OK(UpdateAndPersistLSN(stream_id, commit_lsn, commit_lsn));
+
+  auto slot_entry = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
+  auto restart_time_1 = slot_entry->record_id_commit_time;
+
+  // Introduce a DDL and then add a failure so that the entry cannot be updated in cdc_state table.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_fail_before_updating_cdc_state) = true;
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD col_2 int DEFAULT 123;", kTableName));
+
+  // Insert more records.
+  ASSERT_OK(WriteRows(1, 2, &test_cluster_));
+  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 4 /* DDL + BEGIN + INSERT + COMMIT */);
+
+  // The call to UpdateAndPersistLSN would fail because of our artificially introduced
+  // failure resulting in a scenario where the local map will be truncated but the update
+  // to cdc_state table has failed.
+  commit_lsn = change_resp.cdc_sdk_proto_records().Get(3).row_message().pg_lsn();
+  ASSERT_NOK(UpdateAndPersistLSN(stream_id, commit_lsn, commit_lsn));
+
+  // Ensure that another GetChanges has been called to simulate the scenario
+  // of an explicit checkpoint being sent to individual tablets.
+  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+
+  // Assert that restart time has not moved forward.
+  slot_entry = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
+  auto restart_time_2 = slot_entry->record_id_commit_time;
+  ASSERT_EQ(restart_time_2, restart_time_1);
+
+  // Restart virtual WAL now and ensure that there is no failure now.
+  ASSERT_OK(DestroyVirtualWAL());
+  ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_fail_before_updating_cdc_state) = false;
+
+  // Upon restart, since the slot restart time is not updated, we should be getting the
+  // DDL and the INSERT record again.
+  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 4 /* DDL + BEGIN + INSERT + COMMIT */);
+
+  // Update the slot restart time and ensure that it has moved forward now.
+  commit_lsn = change_resp.cdc_sdk_proto_records().Get(3).row_message().pg_lsn();
+  ASSERT_OK(UpdateAndPersistLSN(stream_id, commit_lsn, commit_lsn));
+
+  slot_entry = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
+  auto restart_time_3 = slot_entry->record_id_commit_time;
+  ASSERT_GT(restart_time_3, restart_time_1);
 }
 
 }  // namespace cdc

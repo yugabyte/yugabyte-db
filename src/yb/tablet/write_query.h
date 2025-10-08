@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -138,6 +138,8 @@ class WriteQuery {
 
   void Complete(const Status& status);
 
+  void InvokeCallback(const Status& status);
+
   Status InitExecute(ExecuteMode mode);
 
   void ExecuteDone(const Status& status);
@@ -163,6 +165,7 @@ class WriteQuery {
   Result<bool> CqlPrepareExecute();
   Result<bool> PgsqlPrepareExecute();
   Result<bool> PgsqlPrepareLock();
+  Result<bool> ExternalWritePrepareExecute();
 
   void SimpleExecuteDone(const Status& status);
   void RedisExecuteDone(const Status& status);
@@ -222,6 +225,7 @@ class WriteQuery {
   // is managed by the rpc subsystem. These pointers maybe nullptr if the
   // operation was not initiated by an RPC call.
   const tserver::WriteRequestPB* client_request_ = nullptr;
+  RequestScope request_scope_;
   ReadHybridTime read_time_;
   bool allow_immediate_read_restart_ = false;
   std::unique_ptr<tserver::WriteRequestPB> client_request_holder_;

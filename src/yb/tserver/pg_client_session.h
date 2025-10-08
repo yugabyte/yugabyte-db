@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -100,33 +100,28 @@ struct PgClientSessionContext {
   docdb::ObjectLockOwnerRegistry* lock_owner_registry;
 };
 
-class LeaseEpochValidator {
- public:
-  virtual ~LeaseEpochValidator() = default;
-  virtual bool IsLeaseValid(uint64_t lease_epoch) = 0;
-};
-
 class PgClientSession final {
  private:
   using SharedThisSource = std::shared_ptr<void>;
 
  public:
   using TransactionBuilder = std::function<client::YBTransactionPtr(
-      IsDDL, client::ForceGlobalTransaction, CoarseTimePoint, client::ForceCreateTransaction)>;
+      IsDDL, TransactionFullLocality, CoarseTimePoint, client::ForceCreateTransaction)>;
 
   PgClientSession(
       TransactionBuilder&& transaction_builder, SharedThisSource shared_this_source,
       client::YBClient& client, std::reference_wrapper<const PgClientSessionContext> context,
-      uint64_t id, uint64_t lease_epoch, LeaseEpochValidator* lease_provider,
-      tserver::TSLocalLockManagerPtr ts_local_lock_manager, rpc::Scheduler& scheduler);
+      uint64_t id, uint64_t lease_epoch, tserver::TSLocalLockManagerPtr ts_local_lock_manager,
+      rpc::Scheduler& scheduler);
   ~PgClientSession();
 
   uint64_t id() const;
 
   void SetupSharedObjectLocking(PgSessionLockOwnerTagShared& object_lock_shared);
 
-  Status Perform(PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context,
-                 const PgTablesQueryResult& tables);
+  void Perform(
+      PgPerformRequestPB& req, PgPerformResponsePB& resp, rpc::RpcContext&& context,
+      const PgTablesQueryResult& tables);
 
   void ProcessSharedRequest(size_t size, SharedExchange* exchange);
 
@@ -134,7 +129,7 @@ class PgClientSession final {
 
   std::pair<uint64_t, std::byte*> ObtainBigSharedMemorySegment(size_t size);
 
-  void StartShutdown();
+  void StartShutdown(bool pg_service_shutting_down);
   bool ReadyToShutdown() const;
   void CompleteShutdown();
 
@@ -156,7 +151,8 @@ class PgClientSession final {
   BOOST_PP_SEQ_FOR_EACH(
         PG_CLIENT_SESSION_METHOD_DECLARE, (Status, rpc::RpcContext*), PG_CLIENT_SESSION_METHODS);
   BOOST_PP_SEQ_FOR_EACH(
-        PG_CLIENT_SESSION_METHOD_DECLARE, (void, rpc::RpcContext), PG_CLIENT_SESSION_ASYNC_METHODS);
+        PG_CLIENT_SESSION_METHOD_DECLARE,
+        (void, rpc::RpcContext&&), PG_CLIENT_SESSION_ASYNC_METHODS);
 
   #undef PG_CLIENT_SESSION_METHOD_DECLARE
   #undef PG_CLIENT_SESSION_METHOD_DECLARE_IMPL

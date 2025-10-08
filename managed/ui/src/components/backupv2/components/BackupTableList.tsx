@@ -1,7 +1,7 @@
 /*
  * Created on Thu Feb 17 2022
  *
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License")
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
@@ -17,7 +17,7 @@ import { toast } from 'react-toastify';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 import { BACKUP_REFETCH_INTERVAL, calculateDuration } from '../common/BackupUtils';
-import { formatBytes } from '../../xcluster/ReplicationUtils';
+import { formatBytes } from '@app/utils/Formatters';
 import { StatusBadge } from '../../common/badge/StatusBadge';
 import { TableType } from '../../../redesign/helpers/dtos';
 import Timer from '../../universes/images/timer.svg';

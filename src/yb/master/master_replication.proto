@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -439,6 +439,7 @@ message UpdateConsumerOnProducerSplitRequestPB {
   optional string replication_group_id = 1;
   optional string stream_id = 2;
   optional ProducerSplitTabletInfoPB producer_split_tablet_info = 3;
+  optional bytes consumer_table_id = 4;
 }
 
 message UpdateConsumerOnProducerSplitResponsePB {

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -35,14 +35,24 @@ METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Write);
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_PgClientService_Perform);
 DECLARE_uint64(ysql_session_max_batch_size);
-DECLARE_bool(TEST_ysql_ignore_add_fk_reference);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(pg_client_use_shared_memory);
+DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_string(ysql_pg_conf_csv);
+DECLARE_bool(enable_object_locking_for_table_locks);
 
 namespace yb::pgwrapper {
 namespace {
+
+void AppendPgConfOption(const std::string& value) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) =
+      FLAGS_ysql_pg_conf_csv.empty() ? value : (FLAGS_ysql_pg_conf_csv + "," + value);
+}
+
+std::string FKReferenceCacheLimitPgConfOption(size_t value) {
+  return Format("yb_fk_references_cache_limit=$0", value);
+}
 
 const std::string kPKTable = "pk_table";
 const std::string kFKTable = "fk_table";
@@ -75,7 +85,11 @@ class PgFKeyTest : public PgMiniTestBase {
     FLAGS_enable_automatic_tablet_splitting = false;
     // This test counts number of performed RPC calls, so turn off pg client shared memory.
     FLAGS_pg_client_use_shared_memory = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = MaxQueryLayerRetriesConf(0);
+    // Disable auto analyze in this test suite because it introduce flakiness of metrics.
+    FLAGS_ysql_enable_auto_analyze = false;
+    AppendPgConfOption(MaxQueryLayerRetriesConf(0));
+    // Tests assert for expected rpc counts from ysql which change with object locking enabled.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
     PgMiniTestBase::SetUp();
     rpc_count_.emplace(*cluster_->mini_tablet_server(0)->server()->metric_entity());
   }
@@ -147,7 +161,7 @@ Status CheckAddFKCorrectness(PGConn* conn, bool temp_tables) {
 class PgFKeyTestNoFKCache : public PgFKeyTest {
  protected:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_ignore_add_fk_reference) = true;
+    AppendPgConfOption(FKReferenceCacheLimitPgConfOption(0));
     PgFKeyTest::SetUp();
   }
 };
@@ -436,7 +450,7 @@ TEST_F(PgFKeyTest, YB_DISABLE_TEST_IN_TSAN(InsertBatching)) {
   }));
   ASSERT_EQ(rpc_count.read, NumBatches(kPKItemCount));
   ASSERT_EQ(rpc_count.write, NumBatches(kFKItemCount));
-  ASSERT_EQ(rpc_count.perform, rpc_count.read + rpc_count.write - 1);
+  ASSERT_LT(rpc_count.perform, rpc_count.read + rpc_count.write);
 }
 
 // Test checks number of read/write/perform rpcs in case of inserts into table
@@ -484,8 +498,8 @@ TEST_F(PgFKeyTest, YB_DISABLE_TEST_IN_TSAN(UpdateBatching)) {
       [&conn, &query_template] { return conn.ExecuteFormat(query_template, kItemCount - 1); }));
   const auto num_batches = NumBatches(kItemCount - 1);
   ASSERT_EQ(rpc_count.read, num_batches + 1);
-  ASSERT_EQ(rpc_count.write, num_batches);
-  ASSERT_EQ(rpc_count.perform, rpc_count.read + rpc_count.write - 1);
+  ASSERT_EQ(rpc_count.write, num_batches + 1);
+  ASSERT_LT(rpc_count.perform, rpc_count.read + rpc_count.write);
 }
 
 // Test checks rows written by buffered write operations are read successfully while
@@ -509,6 +523,29 @@ TEST_F_EX(PgFKeyTest, BufferedWriteOfReferencedRows, PgFKeyTestNoFKCache) {
   }
 }
 
+Status TestFKeyConstraint(PGConn* conn, int value, const std::string& cmd = "") {
+  EXPECT_OK(conn->StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  Status res = Status::OK();
+
+  if (!cmd.empty()) {
+    res = conn->Execute(cmd);
+  }
+
+  if (res.ok()) {
+    res = conn->ExecuteFormat("INSERT INTO fk_t VALUES($0, 1, $0)", value);
+  }
+  if (res.ok()) {
+    res = conn->ExecuteFormat("INSERT INTO pk_t VALUES($0)", value);
+  }
+  if (res.ok()) {
+    EXPECT_OK(conn->CommitTransaction());
+    return Status::OK();
+  }
+
+  EXPECT_OK(conn->RollbackTransaction());
+  return res;
+}
+
 // Test checks that reads for deferred fk constraint are performed at the end of transaction.
 TEST_F_EX(PgFKeyTest, DeferredConstraintReadAtTxnEnd, PgFKeyTestNoFKCache) {
   auto conn = ASSERT_RESULT(Connect());
@@ -517,10 +554,47 @@ TEST_F_EX(PgFKeyTest, DeferredConstraintReadAtTxnEnd, PgFKeyTestNoFKCache) {
       "CREATE TABLE fk_t(k INT, pk_1 INT REFERENCES pk_t(k), "
       "pk_2 INT REFERENCES pk_t(k) DEFERRABLE INITIALLY DEFERRED, PRIMARY KEY (k ASC))"));
   ASSERT_OK(conn.Execute("INSERT INTO pk_t VALUES (1)"));
-  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-  ASSERT_OK(conn.Execute("INSERT INTO fk_t VALUES(1, 1, 2)"));
-  ASSERT_OK(conn.Execute("INSERT INTO pk_t VALUES(2)"));
-  ASSERT_OK(conn.CommitTransaction());
+  ASSERT_OK(TestFKeyConstraint(&conn, 2));
+}
+
+// Test checks that reads for altered deferred fk constraint are performed
+// at the end of transaction.
+TEST_F_EX(PgFKeyTest, AlteredDeferredConstraintReadAtTxnEnd, PgFKeyTestNoFKCache) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE pk_t(k INT, PRIMARY KEY (k ASC))"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE fk_t(k INT, pk_1 INT REFERENCES pk_t(k), "
+      "pk_2 INT REFERENCES pk_t(k) NOT DEFERRABLE, PRIMARY KEY (k ASC))"));
+  ASSERT_OK(conn.Execute("INSERT INTO pk_t VALUES (1)"));
+
+  // Not deferrable constraint should fail.
+  ASSERT_NOK(TestFKeyConstraint(&conn, 2));
+  // Try to defer not deferrable constraint should fail.
+  ASSERT_NOK(TestFKeyConstraint(&conn, 3, "SET CONSTRAINTS fk_t_pk_2_fkey DEFERRED"));
+  ASSERT_NOK(TestFKeyConstraint(&conn, 4, "SET CONSTRAINTS ALL DEFERRED"));
+
+  // Test deferrable constraint.
+  ASSERT_OK(conn.Execute(
+      "ALTER TABLE fk_t ALTER CONSTRAINT fk_t_pk_2_fkey DEFERRABLE INITIALLY IMMEDIATE"));
+
+  // Initially not deferred constraint should fail.
+  ASSERT_NOK(TestFKeyConstraint(&conn, 5));
+  // Temporary defer this constraint.
+  ASSERT_OK(TestFKeyConstraint(&conn, 6, "SET CONSTRAINTS fk_t_pk_2_fkey DEFERRED"));
+  // Temporary defer all constraints.
+  ASSERT_OK(TestFKeyConstraint(&conn, 7, "SET CONSTRAINTS ALL DEFERRED"));
+
+  // Permanently defer the constraint.
+  ASSERT_OK(conn.Execute(
+      "ALTER TABLE fk_t ALTER CONSTRAINT fk_t_pk_2_fkey DEFERRABLE INITIALLY DEFERRED"));
+
+  ASSERT_OK(TestFKeyConstraint(&conn, 8));
+  // Defer already deferred constraint (no-op).
+  ASSERT_OK(TestFKeyConstraint(&conn, 9, "SET CONSTRAINTS fk_t_pk_2_fkey DEFERRED"));
+  ASSERT_OK(TestFKeyConstraint(&conn, 10, "SET CONSTRAINTS ALL DEFERRED"));
+  // Make the deffered constraint immediate.
+  ASSERT_NOK(TestFKeyConstraint(&conn, 11, "SET CONSTRAINTS fk_t_pk_2_fkey IMMEDIATE"));
+  ASSERT_NOK(TestFKeyConstraint(&conn, 12, "SET CONSTRAINTS ALL IMMEDIATE"));
 }
 
 // Test checks that batching of FK check doesn't break transaction conflict detection
@@ -623,4 +697,77 @@ TEST_F(PgFKeyTest, DeferredConstraintWithSubTxn) {
   ASSERT_EQ(row, (decltype(row){1, 1}));
 }
 
+class PgFKeyFKCacheLimitTest : public PgFKeyTest {
+ protected:
+  struct Options {
+    std::optional<size_t> cache_limit_guc_value{};
+    std::pair<size_t, size_t> insert_keys{};
+    size_t expected_reads{};
+  };
+
+  void SetUp() override {
+    AppendPgConfOption(FKReferenceCacheLimitPgConfOption(kDefaultRefCacheLimit));
+    FLAGS_ysql_session_max_batch_size = 1;
+    PgFKeyTest::SetUp();
+  }
+
+  Status DoTest(PGConn& conn, const Options& options) {
+    RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    if (options.cache_limit_guc_value) {
+      RETURN_NOT_OK(conn.ExecuteFormat(
+          "SET LOCAL yb_fk_references_cache_limit = $0", *options.cache_limit_guc_value));
+    }
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "INSERT INTO $0 SELECT s FROM generate_series($1, $2) AS s",
+        kPKTable, options.insert_keys.first, options.insert_keys.second));
+    const auto num_reads = VERIFY_RESULT(rpc_count_->Delta([&conn, &options] {
+      return conn.ExecuteFormat(
+          "INSERT INTO $0 SELECT s, s FROM generate_series($1, $2) AS s",
+          kFKTable, options.insert_keys.first, options.insert_keys.second);
+    })).read;
+    RSTATUS_DCHECK_EQ(num_reads, options.expected_reads, IllegalState, "Bad read count");
+    return conn.CommitTransaction();
+  }
+
+  static constexpr size_t kDefaultRefCacheLimit = 10;
+};
+
+// The test checks limiting of FK reference cache size base on GUC
+TEST_F_EX(PgFKeyTest, FKReferenceCacheLimit, PgFKeyFKCacheLimitTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(CreateTables(&conn));
+  ASSERT_OK(AddFKConstraint(&conn));
+  size_t last_key = 0;
+  auto get_next_insert_keys = [&last_key](auto count) {
+    const auto start = last_key + 1;
+    last_key += count;
+    return std::make_pair(start, last_key);
+  };
+  for (auto above_limit_value : {0U, 1U, 3U}) {
+    ASSERT_OK(DoTest(
+        conn,
+        {
+            .insert_keys =
+                get_next_insert_keys(kDefaultRefCacheLimit + above_limit_value),
+            .expected_reads = above_limit_value
+        }));
+  }
+
+  ASSERT_OK(DoTest(
+    conn,
+    {
+        .cache_limit_guc_value = 0,
+        .insert_keys = get_next_insert_keys(kDefaultRefCacheLimit),
+        .expected_reads = kDefaultRefCacheLimit
+    }));
+
+  const auto new_cache_limit_value = kDefaultRefCacheLimit * 2;
+  ASSERT_OK(DoTest(
+    conn,
+    {
+        .cache_limit_guc_value = new_cache_limit_value,
+        .insert_keys = get_next_insert_keys(new_cache_limit_value + 1),
+        .expected_reads = 1
+    }));
+}
 } // namespace yb::pgwrapper

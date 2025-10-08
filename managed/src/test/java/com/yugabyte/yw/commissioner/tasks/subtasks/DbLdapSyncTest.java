@@ -33,7 +33,6 @@ public class DbLdapSyncTest extends CommissionerBaseTest {
 
   @Before
   public void setUp() {
-    super.setUp();
     defaultCustomer = ModelFactory.testCustomer();
     defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId());
     defaultUniverse = ModelFactory.addNodesToUniverse(defaultUniverse.getUniverseUUID(), 1);

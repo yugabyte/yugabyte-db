@@ -1,4 +1,4 @@
-import _ from 'lodash';
+import _, { omit } from 'lodash';
 import { browserHistory } from 'react-router';
 import { toast } from 'react-toastify';
 import {
@@ -27,6 +27,7 @@ import {
 } from './constants';
 import { api } from './api';
 import { getPlacementsFromCluster } from '../form/fields/PlacementsField/PlacementsFieldHelper';
+import { isDefinedNotNull } from '@app/utils/ObjectUtils';
 import {
   compareYBSoftwareVersions,
   isVersionStable
@@ -181,7 +182,7 @@ export const getFormData = (
   clusterType: ClusterType,
   providerConfig?: YBProvider
 ) => {
-  const { communicationPorts, encryptionAtRestConfig, rootCA } = universeData;
+  const { communicationPorts, encryptionAtRestConfig, rootCA, clientRootCA, rootAndClientRootCASame } = universeData;
   const cluster = getClusterByType(universeData, clusterType);
 
   if (!cluster) return DEFAULT_FORM_DATA;
@@ -228,7 +229,9 @@ export const getFormData = (
       tserverK8SNodeResourceSpec: userIntent.tserverK8SNodeResourceSpec,
       arch: universeData.arch,
       imageBundleUUID: userIntent.imageBundleUUID,
-      rootCA
+      rootCA,
+      clientRootCA : rootAndClientRootCASame ? '' : clientRootCA,
+      rootAndClientRootCASame: rootAndClientRootCASame
     },
     advancedConfig: {
       useSystemd: userIntent.useSystemd,
@@ -377,6 +380,10 @@ export const getUserIntent = (
 
   if (instanceConfig.enableYCQLAuth && instanceConfig.ycqlPassword)
     intent.ycqlPassword = instanceConfig.ycqlPassword;
+
+  if(!instanceConfig.deviceInfo?.cloudVolumeEncryption?.enableVolumeEncryption || !isDefinedNotNull(instanceConfig.deviceInfo?.cloudVolumeEncryption?.kmsConfigUUID)){
+    intent.deviceInfo = omit(intent.deviceInfo, 'cloudVolumeEncryption');
+  }
 
   return intent;
 };

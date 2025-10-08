@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -18,10 +18,14 @@
 #include "yb/common/schema.h"
 
 #include "yb/docdb/doc_pgsql_scanspec.h"
+#include "yb/docdb/hybrid_scan_choices.h"
 #include "yb/docdb/scan_choices.h"
 
+#include "yb/dockv/doc_key.h"
 #include "yb/dockv/value_type.h"
+
 #include "yb/gutil/casts.h"
+
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
@@ -177,14 +181,12 @@ void ScanChoicesTest::InitializeScanChoicesInstance(
       schema, rocksdb::kDefaultQueryId, empty_components, empty_components, &cond,
       std::nullopt /* hash_code */, std::nullopt /* max_hash_code */, DocKey(), true);
   const auto& bounds = spec.bounds();
-  auto base_choices = ScanChoices::Create(schema, spec, bounds).release();
-
-  choices_ = std::unique_ptr<HybridScanChoices>(down_cast<HybridScanChoices *>(base_choices));
+  choices_ = down_pointer_cast<HybridScanChoices>(ScanChoices::Create(schema, spec, bounds, {}));
 }
 
 bool ScanChoicesTest::IsScanChoicesFinished() {
   return choices_->Finished() ||
-         choices_->current_scan_target_ >= choices_->upper_doc_key_;
+         choices_->scan_target_.AsSlice() >= choices_->upper_doc_key_;
 }
 
 // Utility function to help the test iterate past a range option that originate from a
@@ -207,7 +209,7 @@ void ScanChoicesTest::AdjustForRangeConstraints() {
   }
 
   EXPECT_FALSE(choices_->Finished());
-  const auto &cur_target = choices_->current_scan_target_;
+  auto cur_target = choices_->scan_target_.AsSlice();
   dockv::DocKeyDecoder decoder(cur_target);
   EXPECT_OK(decoder.DecodeToKeys());
   KeyEntryValue cur_val;
@@ -224,8 +226,7 @@ void ScanChoicesTest::AdjustForRangeConstraints() {
 
     if (i == cur_opts.size() || cur_val.IsInfinity()) {
       dockv::KeyBytes new_target;
-      new_target.Reset(Slice(cur_target.data().AsSlice().data(),
-          cur_target.data().AsSlice().data() + valid_size));
+      new_target.Reset(cur_target.Prefix(valid_size));
       ASSERT_GE(i, 1);
 
       auto is_inclusive = cur_opts[i - 1].upper_inclusive();
@@ -267,7 +268,6 @@ void ScanChoicesTest::AdjustForRangeConstraints() {
 void ScanChoicesTest::CheckOptions(const std::vector<std::vector<OptionRange>> &expected) {
   auto expected_it = expected.begin();
   dockv::KeyBytes target;
-  dockv::KeyEntryValues target_vals;
   // We don't test for backwards scan yet
   ASSERT_TRUE(choices_->is_forward_scan_);
 
@@ -286,6 +286,7 @@ void ScanChoicesTest::CheckOptions(const std::vector<std::vector<OptionRange>> &
         opt.upper().AppendToKey(&target);
       }
     }
+    target.AppendGroupEnd();
     EXPECT_OK(choices_->SkipTargetsUpTo(target));
     if (!IsScanChoicesFinished()) {
       EXPECT_OK(choices_->DoneWithCurrentTarget());
@@ -334,9 +335,9 @@ void ScanChoicesTest::CheckSkipTargetsUpTo(
 
     auto expected_keybytes = DocKey(expected_keyentries).Encode();
     Slice expected_slice = expected_keybytes.AsSlice();
-    EXPECT_TRUE(choices_->CurrentTargetMatchesKey(expected_slice))
+    EXPECT_TRUE(choices_->CurrentTargetMatchesKey(expected_slice, nullptr))
         << "Expected: " << DocKey::DebugSliceToString(expected_slice)
-        << "but got: " << DocKey::DebugSliceToString(choices_->current_scan_target_);
+        << "but got: " << DocKey::DebugSliceToString(choices_->scan_target_.AsSlice());
   }
 }
 

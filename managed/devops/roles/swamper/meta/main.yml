@@ -1,4 +1,4 @@
-# Copyright 2019 YugaByte, Inc. and Contributors
+# Copyright 2019 YugabyteDB, Inc. and Contributors
 #
 # Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
 # may not use this file except in compliance with the License. You
@@ -17,7 +17,7 @@ dependencies:
     become_method: sudo
     prometheus_go_version: 1.7
     prometheus_use_service: true
-    prometheus_node_exporter_version: 1.7.0
+    prometheus_node_exporter_version: 1.9.1
     prometheus_node_exporter_opts: "--web.listen-address=:{{ node_exporter_port }} \
                                     --collector.textfile.directory={{ home_dir | default('/home/yugabyte') }}/metrics"
     prometheus_node_exporter_use_systemd: true

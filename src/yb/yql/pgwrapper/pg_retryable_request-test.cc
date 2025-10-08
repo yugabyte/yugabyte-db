@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -37,7 +37,11 @@ class PgRetryableRequestTest : public pgwrapper::PgMiniTestBase {
   Result<tablet::TabletPeerPtr> GetOnlyTablePeer() {
     auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
     for (const auto& peer : peers) {
-      if (!peer->tablet()->regular_db()) {
+      auto tablet = peer->shared_tablet_maybe_null();
+      if (!tablet) {
+        continue;
+      }
+      if (!tablet->regular_db()) {
         continue;
       }
       return peer;

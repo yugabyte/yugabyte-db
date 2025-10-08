@@ -1,4 +1,4 @@
-// Copyright (c) Yugabyte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.controllers;
 
@@ -204,10 +204,6 @@ public class AlertControllerTest extends FakeDBApplication {
               DB_COMPACTION_OVERLOAD,
               "DB compaction rejections detected for universe"
                   + " 'Test Universe'."
-                  + "\nAffected nodes: node1 node2 node3")
-          .put(
-              DB_QUEUES_OVERFLOW,
-              "DB queues overflow detected for universe 'Test Universe'."
                   + "\nAffected nodes: node1 node2 node3")
           .put(
               NODE_TO_NODE_CA_CERT_EXPIRY,

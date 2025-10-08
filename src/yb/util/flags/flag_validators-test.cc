@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -36,6 +36,13 @@ DEFINE_validator(flag_validators_test_plus_one,
        yb::Format("Must be 1 greater than flag_validators_test_even: $0",
                   FLAGS_flag_validators_test_even)));
 
+DEFINE_RUNTIME_uint64(flag_base_defaults_to_zero, 0, "Base flag that defaults to 0.");
+DEFINE_RUNTIME_bool(flag_dependent_on_base_flag, false,
+    "When true, requires base flag to be non-zero.");
+DEFINE_validator(flag_dependent_on_base_flag,
+    FLAG_REQUIRES_NONZERO_FLAG_VALIDATOR(flag_base_defaults_to_zero));
+DEFINE_validator(flag_base_defaults_to_zero,
+    FLAG_REQUIRED_NONZERO_BY_FLAG_VALIDATOR(flag_dependent_on_base_flag));
 namespace yb {
 namespace {
 
@@ -225,6 +232,11 @@ TEST_F(FlagValidatorsTest, TestValidators) {
                                "Required by flag_validators_test_requires_2 to be true"));
   ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_requires_2", "false"));
   ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_required_by_1", "false"));
+
+  ASSERT_NO_FATALS(TestSetFlag("flag_dependent_on_base_flag", "true",
+                               "Requires flag_base_defaults_to_zero to be non-zero"));
+  ASSERT_NO_FATALS(TestSetFlag("flag_base_defaults_to_zero", "1"));
+  ASSERT_NO_FATALS(TestSetFlag("flag_dependent_on_base_flag", "true"));
 }
 
 } // namespace yb

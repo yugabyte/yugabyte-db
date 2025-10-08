@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -59,6 +59,7 @@ DECLARE_bool(cdc_send_null_before_image_if_not_exists);
 DECLARE_bool(enable_tablet_split_of_replication_slot_streamed_tables);
 DECLARE_bool(TEST_simulate_load_txn_for_cdc);
 DECLARE_bool(TEST_dcheck_for_missing_schema_packing);
+DECLARE_bool(TEST_cdcsdk_fail_before_updating_cdc_state);
 
 namespace yb {
 using client::YBClient;
@@ -100,11 +101,9 @@ class CDCSDKTestBase : public YBTest {
     std::unique_ptr<YBClient> client_;
     std::unique_ptr<yb::pgwrapper::PgSupervisor> pg_supervisor_;
     HostPort pg_host_port_;
-    boost::optional<client::TransactionManager> txn_mgr_;
+    std::optional<client::TransactionManager> txn_mgr_;
 
-    Result<pgwrapper::PGConn> Connect() {
-      return ConnectToDB(std::string() /* dbname */);
-    }
+    Result<pgwrapper::PGConn> Connect() { return ConnectToDB(std::string() /* dbname */); }
 
     Result<pgwrapper::PGConn> ConnectToDB(const std::string& dbname) {
       return pgwrapper::PGConnBuilder({
@@ -158,13 +157,9 @@ class CDCSDKTestBase : public YBTest {
     return test_cluster_.mini_cluster_.get();
   }
 
-  client::TransactionManager* test_cluster_txn_mgr() {
-    return test_cluster_.txn_mgr_.get_ptr();
-  }
+  client::TransactionManager* test_cluster_txn_mgr() { return &test_cluster_.txn_mgr_.value(); }
 
-  YBClient* test_client() {
-    return test_cluster_.client_.get();
-  }
+  YBClient* test_client() { return test_cluster_.client_.get(); }
 
   Status CreateDatabase(
       PostgresMiniCluster* cluster, const std::string& namespace_name = kNamespaceName,
@@ -258,6 +253,10 @@ class CDCSDKTestBase : public YBTest {
   Result<master::GetCDCStreamResponsePB> GetCDCStream(const xrepl::StreamId& stream_id);
 
   Result<master::ListCDCStreamsResponsePB> ListDBStreams();
+
+  Result<std::string> HybridTimeToReadableString(uint64_t hybrid_time);
+
+  Result<GetChangesResponsePB> GetChangesFromMaster(const xrepl::StreamId& stream_id);
 
  protected:
   // Every test needs to initialize this cdc_proxy_.

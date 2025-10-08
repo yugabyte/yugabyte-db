@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -18,6 +18,8 @@
 
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
+
+#include "yb/dockv/reader_projection.h"
 
 #include "yb/gutil/casts.h"
 
@@ -249,8 +251,8 @@ Status EnumerateSysCatalog(
   QLAddInt8Condition(&cond, schema.column_id(type_col_idx), QL_OP_EQUAL, entry_type);
   const dockv::KeyEntryValues empty_hash_components;
   docdb::DocQLScanSpec spec(
-      schema, boost::none /* hash_code */, boost::none /* max_hash_code */,
-      empty_hash_components, &cond, nullptr /* if_req */, rocksdb::kDefaultQueryId);
+      schema, std::nullopt /* hash_code */, std::nullopt /* max_hash_code */, empty_hash_components,
+      &cond, nullptr /* if_req */, rocksdb::kDefaultQueryId);
   RETURN_NOT_OK(doc_iter->Init(spec));
 
   qlexpr::QLTableRow value_map;
@@ -284,9 +286,8 @@ Status EnumerateAllSysCatalogEntries(
 
   const dockv::KeyEntryValues empty_hash_components;
   docdb::DocQLScanSpec spec(
-      schema, boost::none /* hash_code */, boost::none /* max_hash_code */,
-      empty_hash_components, nullptr  /* req */,
-      nullptr /* if_req */, rocksdb::kDefaultQueryId);
+      schema, std::nullopt /* hash_code */, std::nullopt /* max_hash_code */, empty_hash_components,
+      nullptr /* req */, nullptr /* if_req */, rocksdb::kDefaultQueryId);
   RETURN_NOT_OK(doc_iter->Init(spec));
 
   qlexpr::QLTableRow value_map;

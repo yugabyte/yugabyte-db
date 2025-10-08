@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -238,7 +238,7 @@ message FlushTabletsRequestPB {
   // UUID of server this request is addressed to.
   optional bytes dest_uuid = 1;
 
-  // Tablets to flush.
+  // Tablets to flush or compact.
   repeated bytes tablet_ids = 2;
 
   optional fixed64 propagated_hybrid_time = 3;
@@ -249,14 +249,17 @@ message FlushTabletsRequestPB {
   // Whether we want to flush or compact all tablets in the server.
   optional bool all_tablets = 5;
 
-  // Only flush/compact regular RocksDB, not intents RocksDB.
-  optional bool regular_only = 6;
+  // DEPRECATED, use flags instead.
+  // Whether flush operation only applies to regular RocksDB but not to intents RocksDB and
+  // vector indexes. Not applicable for compaction. Used in tests only.
+  optional bool DEPRECATED_regular_only = 6;
 
-  // Performs operation only for the given vector indexes for the specified tablets.
+  // Whether we want to perform operation for the given vector indexes for the specified tablets.
   repeated bytes vector_index_ids = 7;
 
+  // DEPRECATED, covered by flags.
   // Whether we want to perform operation for all vector indexes for the specified tablets.
-  optional bool all_vector_indexes = 8;
+  optional bool DEPRECATED_all_vector_indexes = 8;
 
   // Whether to rollover log before LOG_GC.
   optional bool rollover = 9;
@@ -264,6 +267,9 @@ message FlushTabletsRequestPB {
   // UNSAFE: For compaction only: remove corrupt data blocks during in tablet if found. This will
   // result in data loss. Use with extra care only when/while no other options are available.
   optional bool remove_corrupt_data_blocks_unsafe = 10;
+
+  // Which DBs are the subject for the operation and other options.
+  optional tablet.FlushCompactFlags flags = 11;
 }
 
 message FlushTabletsResponsePB {
@@ -308,7 +314,7 @@ message SplitTabletResponsePB {
 }
 
 message UpgradeYsqlRequestPB {
-  // Perform an upgrade unsing just one connection.
+  // Perform an upgrade using just one connection.
   // This is much slower but does not incur overhead for each database.
   optional bool use_single_connection = 1 [ default = false ];
 }
@@ -407,7 +413,7 @@ service TabletServerAdminService {
   // brand-new tablets, not for "moves".
   rpc CreateTablet(CreateTabletRequestPB) returns (CreateTabletResponsePB);
 
-  // Prepare a transasction tablet for deletion. This waits for all relevant intents
+  // Prepare a transaction tablet for deletion. This waits for all relevant intents
   // to be applied and cleaned up.
   rpc PrepareDeleteTransactionTablet(PrepareDeleteTransactionTabletRequestPB)
       returns (PrepareDeleteTransactionTabletResponsePB);

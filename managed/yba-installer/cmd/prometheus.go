@@ -1,5 +1,5 @@
 /*
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  */
 
 package cmd
@@ -17,9 +17,9 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/config"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/systemd"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/template"
 )
 
 type prometheusDirectories struct {
@@ -30,10 +30,23 @@ type prometheusDirectories struct {
 	DataDir             string
 	PromDir             string
 	LogDir              string
+	HttpsCertPath       string
+	HttpsKeyPath        string
 }
 
 func newPrometheusDirectories() prometheusDirectories {
-
+	// If prometheus or the "global" certs are provided, use them. Otherwise, fall back to self
+	// signed certs.
+	certPath := viper.GetString("prometheus.httpsCertPath")
+	if certPath == "" {
+		log.Debug("no prometheus https cert path provided, using self signed.")
+		certPath = common.GetSelfSignedServerCertPath()
+	}
+	keyPath := viper.GetString("prometheus.httpsKeyPath")
+	if keyPath == "" {
+		log.Debug("no prometheus https key path provided, using self signed.")
+		keyPath = common.GetSelfSignedServerKeyPath()
+	}
 	return prometheusDirectories{
 		SystemdFileLocation: common.SystemdDir + "/prometheus.service",
 		ConfFileLocation:    common.GetSoftwareRoot() + "/prometheus/conf/prometheus.yml",
@@ -42,6 +55,8 @@ func newPrometheusDirectories() prometheusDirectories {
 		DataDir:             common.GetBaseInstall() + "/data/prometheus",
 		PromDir:             common.GetSoftwareRoot() + "/prometheus",
 		LogDir:              common.GetBaseInstall() + "/data/logs",
+		HttpsCertPath:       certPath,
+		HttpsKeyPath:        keyPath,
 	}
 }
 
@@ -94,7 +109,7 @@ func (prom Prometheus) Version() string {
 // Install the prometheus service.
 func (prom Prometheus) Install() error {
 	log.Info("Starting Prometheus install")
-	config.GenerateTemplate(prom)
+	template.GenerateTemplate(prom)
 	if err := prom.FixBasicAuth(); err != nil {
 		return err
 	}
@@ -218,7 +233,7 @@ func (prom Prometheus) Uninstall(removeData bool) error {
 // Upgrade will NOT restart the service, the old version is expected to still be runnins
 func (prom Prometheus) Upgrade() error {
 	prom.prometheusDirectories = newPrometheusDirectories()
-	if err := config.GenerateTemplate(prom); err != nil {
+	if err := template.GenerateTemplate(prom); err != nil {
 		return err
 	}
 	if err := prom.FixBasicAuth(); err != nil {
@@ -284,7 +299,7 @@ func (prom Prometheus) Status() (common.Status, error) {
 // MigrateFromReplicated will install prometheus using data from replicated
 func (prom Prometheus) MigrateFromReplicated() error {
 	log.Info("Starting Prometheus migration")
-	config.GenerateTemplate(prom)
+	template.GenerateTemplate(prom)
 	if err := prom.FixBasicAuth(); err != nil {
 		return err
 	}
@@ -527,7 +542,18 @@ func (prom Prometheus) migrateReplicatedDirs() error {
 
 func (prom Prometheus) Reconfigure() error {
 	log.Info("Reconfiguring Prometheus")
-	if err := config.GenerateTemplate(prom); err != nil {
+	// Make sure the cert and key paths are set
+	certPath := viper.GetString("prometheus.httpsCertPath")
+	if certPath == "" {
+		certPath = common.GetSelfSignedServerCertPath()
+	}
+	keyPath := viper.GetString("prometheus.httpsKeyPath")
+	if keyPath == "" {
+		keyPath = common.GetSelfSignedServerKeyPath()
+	}
+	prom.prometheusDirectories.HttpsCertPath = certPath
+	prom.prometheusDirectories.HttpsKeyPath = keyPath
+	if err := template.GenerateTemplate(prom); err != nil {
 		return fmt.Errorf("failed to generate prometheus config template: %w", err)
 	}
 	if err := prom.FixBasicAuth(); err != nil {
@@ -536,3 +562,5 @@ func (prom Prometheus) Reconfigure() error {
 	log.Info("Prometheus reconfigured")
 	return nil
 }
+
+func (prom Prometheus) PreUpgrade() error { return nil }

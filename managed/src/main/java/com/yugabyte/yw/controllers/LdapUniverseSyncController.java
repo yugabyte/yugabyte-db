@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 YugaByte, Inc. and Contributors
+ * Copyright 2023 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -93,20 +93,10 @@ public class LdapUniverseSyncController extends AuthenticatedController {
         formFactory.getFormDataOrBadRequest(request.body().asJson(), LdapUnivSyncFormData.class);
 
     if (ldapUnivSyncFormData.getTargetApi().equals(LdapUnivSyncFormData.TargetApi.ycql)) {
-      if (!(ldapUnivSyncFormData.getDbUser().equals("cassandra"))) {
-        errorMsg = "Sync can be performed only by the dbUser(YCQL): cassandra";
-        throw new PlatformServiceException(BAD_REQUEST, errorMsg);
-      }
-
       if (ldapUnivSyncFormData.getDbuserPassword().isEmpty()) {
         errorMsg =
             String.format(
                 "Password is required for the user(YCQL): %s", ldapUnivSyncFormData.getDbUser());
-        throw new PlatformServiceException(BAD_REQUEST, errorMsg);
-      }
-    } else {
-      if (!(ldapUnivSyncFormData.getDbUser().equals("yugabyte"))) {
-        errorMsg = "Sync can be performed only by the dbUser(YSQL): yugabyte";
         throw new PlatformServiceException(BAD_REQUEST, errorMsg);
       }
     }

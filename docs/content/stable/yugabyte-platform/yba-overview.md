@@ -16,7 +16,7 @@ type: docs
 
 YugabyteDB Anywhere (YBA) is a self-managed database-as-a-service that allows you to deploy and operate YugabyteDB database clusters (also known as universes) at scale.
 
-In YBA, a database cluster is called a [universe](../../architecture/key-concepts/#universe), and the terms are used interchangeably. More precisely, a universe in YBA always consists of one (and only one) [primary cluster](../../architecture/key-concepts/#primary-cluster), and can optionally also include a single [read replica](../../architecture/key-concepts/#read-replica-cluster/) cluster attached to the primary cluster.
+In YBA, a database cluster is called a [universe](../../architecture/key-concepts/#universe), and the terms are used interchangeably. More precisely, a universe in YBA always consists of one (and only one) [primary cluster](../../architecture/key-concepts/#primary-cluster), and can optionally also include a single [read replica](../../architecture/key-concepts/#read-replica-cluster) cluster attached to the primary cluster.
 
 ## Features
 
@@ -63,7 +63,7 @@ YBA runs on standalone VMs or Kubernetes pods. YBA can in turn be used to deploy
 
 ![YugabyteDB Architecture](/images/yb-platform/prepare/yba-architecture.png)
 
-A VM that is part of a YugabyteDB cluster runs multiple processes, including the [YB-Master](../../architecture/yb-master/) and [YB-TServer](../../architecture/yb-tserver/) services of the cluster, and other secondary agents, including the [node agent](/preview/faq/yugabyte-platform/#node-agent-1), YB Controller backup agent, and [Prometheus Node Exporter](https://prometheus.io/docs/guides/node-exporter/) for host metrics export. The YB-Master and YB-TServer services can be deployed in the same VM or, for better isolation, in separate dedicated VMs. On Kubernetes clusters, the YB-Master and YB-TServer services always run in isolated pods. For more information on the architecture of YugabyteDB, see [YugabyteDB Architecture](../../architecture/).
+A VM that is part of a YugabyteDB cluster runs multiple processes, including the [YB-Master](../../architecture/yb-master/) and [YB-TServer](../../architecture/yb-tserver/) services of the cluster, and other secondary agents, including the [node agent](/preview/faq/yugabyte-platform/#node-agent), YB Controller backup agent, and [Prometheus Node Exporter](https://prometheus.io/docs/guides/node-exporter/) for host metrics export. The YB-Master and YB-TServer services can be deployed in the same VM or, for better isolation, in separate dedicated VMs. On Kubernetes clusters, the YB-Master and YB-TServer services always run in isolated pods. For more information on the architecture of YugabyteDB, see [YugabyteDB Architecture](../../architecture/).
 
 YBA requires network connectivity to the YugabyteDB database clusters to perform day 2 operations and monitoring. And, of course, in any cluster, database cluster nodes require connectivity to each other. Network connectivity to the public Internet is optional: YBA supports both Internet-connected and air-gapped deployments.
 
@@ -88,7 +88,20 @@ YBA supports three major types of provider configurations:
 | Advantages | Maximum flexibility | Maximum automation | It's&nbsp;Kubernetes |
 | Platforms | Private cloud, bare metal,<br>AWS, Azure, GCP | AWS, Azure, GCP | Kubernetes |
 | Permissions for YBA | Minimal sudo access during provisioning | Cloud and OS permissions | As required for Kubernetes |
-| Node&nbsp;provisioning | Manually created, provisioned using a script | Automatically created and provisioned | Via Helm |
+| Node&nbsp;provisioning | Manually created, with automatic provisioning using a script | Automatically created and provisioned | Via Helm |
+
+### On-premises
+
+Unlike the Kubernetes and cloud providers, where YBA has privileges and creates the VMs (or pods) automatically, with an on-premises provider *you* create the server VMs manually.
+
+Use this option for any of the following situations:
+
+- You are deploying YugabyteDB clusters truly on-premises (for example, on VMware or Nutanix).
+- You are deploying YugabyteDB clusters to public cloud, but (due to security policies or other restrictions) you can't provide YBA with cloud permissions or SSH access to cloud VMs. In this case, you must create your VMs and/or deploy your Linux OS manually in the cloud.
+- You are deploying a single [stretched cluster across multiple clouds](../create-deployments/create-universe-multi-cloud/) (for example, one cluster with some nodes on AWS, others on GCP, and/or others on Azure).
+- Any other cases where you must retain control over creating the VMs and/or Linux OS, and can't give this control to YBA.
+
+With the on-premises provider, after creating VMs manually (that is, outside of YBA), you will add them to your on-premises provider's free pool of servers. Subsequently, when creating the universe, database nodes are taken from the on-premises provider's free pool of servers and added to the universe.
 
 ### Public cloud
 
@@ -100,19 +113,6 @@ For example:
 - YBA must initially have root-level SSH login access to that VM for initial installation of a management agent. After installation of the agent, SSH access can be removed.
 
 This approach allows for maximum automation. Also, you do have the option to specify a custom OS image that otherwise meets all other enterprise security rules.
-
-### On-premises
-
-For all other cases, use an on-premises provider. Unlike the Kubernetes and cloud providers, where YBA has privileges and creates the VMs (or pods) automatically, with an on-premises provider *you* create the server VMs manually.
-
-Use this option for any of the following situations:
-
-- You are deploying YugabyteDB clusters truly on-premises (for example, on VMware or Nutanix).
-- You are deploying YugabyteDB clusters to public cloud, but (due to security policies or other restrictions) you can't provide YBA with cloud permissions or SSH access to cloud VMs. In this case, you must create your VMs and/or deploy your Linux OS manually in the cloud.
-- You are deploying a single [stretched cluster across multiple clouds](../create-deployments/create-universe-multi-cloud/) (for example, one cluster with some nodes on AWS, others on GCP, and/or others on Azure).
-- Any other cases where you must retain control over creating the VMs and/or Linux OS, and can't give this control to YBA.
-
-With the on-premises provider, after creating VMs manually (that is, outside of YBA), you will add them to your on-premises provider's free pool of servers. Subsequently, when creating the universe, database nodes are taken from the on-premises provider's free pool of servers and added to the universe.
 
 ### Kubernetes
 

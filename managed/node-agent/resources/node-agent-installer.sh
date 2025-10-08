@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2020 YugaByte, Inc. and Contributors
+# Copyright 2020 YugabyteDB, Inc. and Contributors
 
 set -euo pipefail
 

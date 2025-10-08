@@ -25,9 +25,9 @@
  */
 
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -1272,6 +1272,20 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
+   * Initiates validation of a gflag's value.
+   *
+   * @return a Deferred object that will contain the response of the gflag validation request.
+   */
+  public Deferred<ValidateFlagValueResponse> validateFlagValue(
+      String flagName, String flagValue) {
+    checkIsClosed();
+    ValidateFlagValueRequest rpc =
+        new ValidateFlagValueRequest(this.masterTable, flagName, flagValue);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
    * Get the master tablet id.
    *
    * @return the constant master tablet uuid.
@@ -2453,6 +2467,19 @@ public class AsyncYBClient implements AutoCloseable {
 
     LOG.debug("servers {} are directed to reload their certs ...", hostPort);
     return req.getDeferred();
+  }
+
+  /**
+   * Get the list of all the masters.
+   *
+   * @return a deferred object that yields a list of masters
+   */
+  public Deferred<SetPreferredZonesResponse> setPreferredZones(Map<Integer,
+      List<CommonNet.CloudInfoPB>> prioritiesMap) {
+    checkIsClosed();
+    SetPreferredZonesRequest rpc = new SetPreferredZonesRequest(this.masterTable, prioritiesMap);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
   }
 
   /**

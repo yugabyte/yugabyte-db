@@ -1,4 +1,4 @@
-# Copyright 2020 YugaByte, Inc. and Contributors
+# Copyright 2020 YugabyteDB, Inc. and Contributors
 #
 # Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
 # may not use this file except in compliance with the License. You
@@ -88,6 +88,8 @@ CLOUDINIT_EPHEMERAL_MNTPOINT = {
         ["ephemeral0", "/mnt/resource"]
     ]
 }
+CAPACITY_RESERVATION_PATH = ("/subscriptions/{}/resourceGroups/{}/providers"
+                             "/Microsoft.Compute/capacityReservationGroups/{}")
 
 
 class GetPriceWorker(Thread):
@@ -742,7 +744,8 @@ class AzureCloudAdmin():
 
         logging.info("[app] Successfully destroyed orphaned resources for {}".format(vm_name))
 
-    def change_instance_type(self, vm_name, instance_type, cloud_instance_types=[]):
+    def change_instance_type(self, vm_name, instance_type, capacity_reservation,
+                             cloud_instance_types=[]):
         vm = self.compute_client.virtual_machines.get(RESOURCE_GROUP, vm_name)
         if not vm:
             raise YBOpsRuntimeError("VM {} is not found".format(vm_name))
@@ -753,6 +756,18 @@ class AzureCloudAdmin():
                     "vm_size": instance_type
                 }
             }
+            if capacity_reservation is not None:
+                logging.info("using capacity reservation {}".format(capacity_reservation))
+                properties = {
+                    "capacityReservation": {
+                        "capacityReservationGroup": {
+                            "id": CAPACITY_RESERVATION_PATH.format(SUBSCRIPTION_ID, RESOURCE_GROUP,
+                                                                   capacity_reservation)
+                        }
+                    }
+                }
+                vm_parameters["properties"] = properties
+
             return self.compute_client.virtual_machines.begin_update(
                 RESOURCE_GROUP,
                 vm_name,
@@ -876,7 +891,8 @@ class AzureCloudAdmin():
                             instance_type, ssh_user, image, vol_type, server_type,
                             region, nic_id, tags, disk_iops, disk_throughput, spot_price,
                             use_spot_instance, vm_custom, disk_custom, use_plan, is_edit=False,
-                            json_output=True, cloud_instance_types=[]):
+                            json_output=True, capacity_reservation=None,
+                            cloud_instance_types=[]):
         disk_names = [vm_name + "-Disk-" + str(i) for i in range(1, num_vols + 1)]
         private_key = validated_key_file(private_key_file)
 
@@ -1014,6 +1030,18 @@ class AzureCloudAdmin():
 
         if vol_type == ULTRASSD_LRS:
             vm_parameters["additionalCapabilities"] = {"ultraSSDEnabled": True}
+
+        if capacity_reservation is not None:
+            logging.info("using capacity reservation {}".format(capacity_reservation))
+            properties = {
+                "capacityReservation": {
+                    "capacityReservationGroup": {
+                        "id": CAPACITY_RESERVATION_PATH.format(SUBSCRIPTION_ID, RESOURCE_GROUP,
+                                                               capacity_reservation)
+                    }
+                }
+            }
+            vm_parameters["properties"] = properties
 
         # Tag VM as cluster-server for ansible configure-{} script
         self.add_tag_resource(vm_parameters, "yb-server-type", server_type)
@@ -1325,7 +1353,24 @@ class AzureCloudAdmin():
         async_vm_deallocate.wait()
         return async_vm_deallocate.result()
 
-    def start_instance(self, vm_name):
+    def start_instance(self, vm_name, capacity_reservation=None):
+        if capacity_reservation is not None:
+            logging.info("using capacity reservation {}".format(capacity_reservation))
+            vm_parameters = {}
+            vm_parameters["properties"] = {
+                "capacityReservation": {
+                    "capacityReservationGroup": {
+                        "id": CAPACITY_RESERVATION_PATH.format(SUBSCRIPTION_ID, RESOURCE_GROUP,
+                                                               capacity_reservation)
+                    }
+                }
+            }
+            res = self.compute_client.virtual_machines.begin_update(
+                RESOURCE_GROUP,
+                vm_name,
+                vm_parameters
+            )
+            res.wait()
         async_vm_start = self.compute_client.virtual_machines.begin_start(RESOURCE_GROUP, vm_name)
         async_vm_start.wait()
         return async_vm_start.result()

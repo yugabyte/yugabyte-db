@@ -6,7 +6,7 @@ description: Learn how ACID transactions work in YCQL on YugabyteDB.
 aliases:
   - /preview/develop/learn/acid-transactions-ycql/
 menu:
-  preview:
+  preview_develop:
     identifier: acid-transactions-2-ycql
     parent: learn
     weight: 140
@@ -15,7 +15,7 @@ type: docs
 
 {{<api-tabs>}}
 
-A transaction is a sequence of operations performed as a single logical unit of work. YugabyteDB provides [ACID](../../../../architecture/key-concepts#acid) guarantees for all transactions:
+A transaction is a sequence of operations performed as a single logical unit of work. YugabyteDB provides [ACID](../../../../architecture/key-concepts#acid) guarantees for all transactions.
 
 {{<note title="Note">}}
 Although YugabyteDB supports only *Snapshot* isolation level in the YCQL API, it supports three levels of isolation in the [YSQL](../../../../explore/transactions/isolation-levels/) API: *Snapshot*, *Serializable*, and *Read Committed*.

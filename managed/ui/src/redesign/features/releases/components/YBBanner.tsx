@@ -1,7 +1,7 @@
 import { Box, makeStyles } from '@material-ui/core';
 import clsx from 'clsx';
 
-import TipIcon from '../../../assets/Tip.svg';
+import TipIcon from '../../../assets/tip.svg';
 
 interface YBBannerProps {
   bannerClassName?: any;
@@ -18,13 +18,13 @@ const useStyles = makeStyles(() => ({
   },
   messageBox: {
     display: 'flex',
-    flexDirection: 'row'
+    flexDirection: 'row',
+    color: '#FFFFFF'
   },
   message: {
     fontFamily: 'Inter',
     fontSize: '15px',
     fontWeight: 400,
-    color: '#FFFFFF',
     height: '38px'
   }
 }));

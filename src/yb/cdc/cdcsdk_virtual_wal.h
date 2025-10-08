@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -39,9 +39,22 @@ class CDCSDKVirtualWAL {
 
   using TabletRecordInfoPair = std::pair<TabletId, RecordInfo>;
 
+  using RetryableErrorPattern = std::pair<Status::Code, std::string>;
+  // Pairs of error code and error msg pattern used to identify errors that will be retried.
+  // Everytime a new error is made retriable for virtual WAL by adding it to
+  // kRetryableErrorPatterns, it should also be added to the test
+  // CDCSDKConsumptionConsistentChangesTest.TestRetryableErrorsNotSentToWalsender
+  inline static const std::vector<RetryableErrorPattern> kRetryableErrorPatterns = {
+      {Status::Code::kIllegalState, "is not started yet"},
+      {Status::Code::kIllegalState, "Tablet not running"},
+      {Status::Code::kNotFound, "Not leader for"},
+      {Status::Code::kLeaderNotReadyToServe, "Not ready to serve"},
+      {Status::Code::kNotFound, "Footer for segment"}};
+
   Status InitVirtualWALInternal(
-      const std::unordered_set<TableId>& table_list, const HostPort hostport,
-      const CoarseTimePoint deadline, std::unique_ptr<ReplicationSlotHashRange> slot_hash_range);
+      std::unordered_set<TableId> table_list, const HostPort hostport,
+      const CoarseTimePoint deadline, std::unique_ptr<ReplicationSlotHashRange> slot_hash_range,
+      const std::unordered_set<uint32_t>& publications_list, bool pub_all_tables);
 
   Status GetConsistentChangesInternal(
       GetConsistentChangesResponsePB* resp, const HostPort hostport,
@@ -60,9 +73,11 @@ class CDCSDKVirtualWAL {
 
   std::vector<TabletId> GetTabletIdsFromVirtualWAL();
 
+  bool ShouldPopulateExplicitCheckpoint(const TabletId& tablet_id);
+
  private:
   struct GetChangesRequestInfo {
-    int64_t safe_hybrid_time;
+    uint64_t safe_hybrid_time;
     int32_t wal_segment_index;
 
     // The following fields will be used to populate from_cdc_sdk_checkpoint object of the next
@@ -196,6 +211,8 @@ class CDCSDKVirtualWAL {
 
   Status UpdateRestartTimeIfRequired();
 
+  bool DeterminePubRefreshFromMasterRecord(const RecordInfo& record_info);
+
   CDCServiceImpl* cdc_service_;
 
   xrepl::StreamId stream_id_;
@@ -320,6 +337,21 @@ class CDCSDKVirtualWAL {
   // The time at which slot entry was last read to compare restart lsn with the last shipped lsn.
   HybridTime last_restart_lsn_read_time_ = HybridTime::kInvalid;
 
+  // The table ID of pg_class catalog table for the database on which virtual WAL is polling.
+  TableId pg_class_table_id_;
+
+  // The table ID of pg_publication_rel catalog table for the database on which virtual WAL is
+  // polling.
+  TableId pg_publication_rel_table_id_;
+
+  // The list of publication OIDs that are being polled by the virtual WAL.
+  std::unordered_set<uint32_t> publications_list_;
+
+  // Indicates whether any of the publications being polled is an "ALL TABLES" publication.
+  bool pub_all_tables_ = false;
+
+  // The last slot restart time which was updated in the cdc_state table.
+  uint64_t last_persisted_record_id_commit_time_;
 };
 
 }  // namespace cdc

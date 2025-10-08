@@ -40,6 +40,7 @@ interface EncryptionInTransitProps {
   open: boolean;
   onClose: () => void;
   universe: Universe;
+  isItKubernetesUniverse: boolean;
 }
 
 enum EitTabs {
@@ -62,7 +63,12 @@ const NonRollingBanner: FC = () => {
   );
 };
 
-export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClose, universe }) => {
+export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({
+  open,
+  onClose,
+  universe,
+  isItKubernetesUniverse
+}) => {
   const { t } = useTranslation();
   const classes = useEITStyles();
   const theme = useTheme();
@@ -77,7 +83,7 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClos
   );
 
   //initialize form
-  const INITIAL_VALUES = getInitialFormValues(universeDetails);
+  const INITIAL_VALUES = getInitialFormValues(universeDetails, isItKubernetesUniverse);
   const formMethods = useForm<EncryptionInTransitFormValues>({
     defaultValues: INITIAL_VALUES,
     mode: 'onChange',
@@ -127,8 +133,20 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClos
   //methods
   const handleChange = (_: any, tab: string) => setTab(tab);
 
-  const setEIT = useMutation(
-    (payload: Partial<EncryptionInTransitFormValues>) => api.updateTLS(universeId, payload),
+  const setTLS = useMutation(
+    (payload: Partial<EncryptionInTransitFormValues>) => api.upgradeTLS(universeId, payload),
+    {
+      onSuccess: () => {
+        onClose();
+      },
+      onError: (e) => {
+        toast.error(createErrorMessage(e), TOAST_OPTIONS);
+      }
+    }
+  );
+
+  const setCerts = useMutation(
+    (payload: Partial<EncryptionInTransitFormValues>) => api.upgradeCerts(universeId, payload),
     {
       onSuccess: () => {
         onClose();
@@ -176,7 +194,7 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClos
 
     if (values.rootAndClientRootCASame) {
       if (values.enableNodeToNodeEncrypt && values.enableClientToNodeEncrypt) {
-        payload['clientRootCA'] = null;
+        payload['clientRootCA'] = values.rootCA;
         payload['createNewClientRootCA'] = false;
       }
     }
@@ -203,7 +221,8 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClos
     } else {
       try {
         let payload = constructPayload(values);
-        setEIT.mutateAsync(payload);
+        if (tlsToggled) setTLS.mutateAsync(payload);
+        else setCerts.mutateAsync(payload);
       } catch (e) {
         console.error(e);
       }
@@ -326,7 +345,10 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClos
                 </Tabs>
 
                 {(currentTab === EitTabs.CACert || disableServerCertRotation) && (
-                  <CertificateAuthority initialValues={INITIAL_VALUES} />
+                  <CertificateAuthority
+                    initialValues={INITIAL_VALUES}
+                    isItKubernetesUniverse={isItKubernetesUniverse}
+                  />
                 )}
                 {currentTab === EitTabs.ServerCert && !disableServerCertRotation && (
                   <RotateServerCerts initialValues={INITIAL_VALUES} />

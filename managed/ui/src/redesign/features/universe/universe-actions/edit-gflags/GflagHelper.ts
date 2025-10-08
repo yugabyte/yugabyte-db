@@ -22,6 +22,15 @@ export interface EditGflagsFormValues {
   upgradeOption: UpgradeOptions;
 }
 
+export interface GFlagValues {
+  default: string;
+  file: string;
+  meaning: string;
+  name: string;
+  tags: string;
+  type: string;
+}
+
 export interface EditGflagPayload {
   clusters: Cluster[];
   nodePrefix: string;

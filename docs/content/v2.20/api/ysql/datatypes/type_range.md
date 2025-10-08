@@ -4,7 +4,7 @@ headerTitle: Range data types
 linkTitle: Range
 description: YSQL supports the following built-in range data types.int4range for integer; int8range for bigint; numrange for numeric; tsrange for timestamp without time zone; tstzrange for timestamp with time zone; daterange for date.
 menu:
-  v2.20:
+  v2.20_api:
     identifier: api-ysql-datatypes-range
     parent: api-ysql-datatypes
 type: docs

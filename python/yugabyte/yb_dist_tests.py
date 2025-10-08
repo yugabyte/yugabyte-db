@@ -1,4 +1,4 @@
-# Copyright (c) YugaByte, Inc.
+# Copyright (c) YugabyteDB, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 # in compliance with the License.  You may obtain a copy of the License at
@@ -32,6 +32,7 @@ from yugabyte.common_util import (
     get_build_type_from_build_root,
     get_compiler_type_from_build_root
 )
+from yugabyte.command_util import has_pigz
 from yugabyte.postgres_build_util import POSTGRES_BUILD_SUBDIR
 from yugabyte import artifact_upload
 from yugabyte.test_descriptor import TestDescriptor
@@ -196,6 +197,7 @@ ARCHIVED_PATHS_IN_BUILD_DIR = [
     'upgrade_test_builds',
     'gflag_allowlist.txt',
     'test_xcluster_ddl_replication_sql',
+    'test_conflict_resolve_keys_verification_sql',
     f'{POSTGRES_BUILD_SUBDIR}/contrib',
     f'{POSTGRES_BUILD_SUBDIR}/src/test/modules',
     f'{POSTGRES_BUILD_SUBDIR}/src/test/regress',
@@ -327,7 +329,8 @@ def create_archive_for_workers() -> None:
         # TODO: use zip instead of tar/gz.
         tar_args = [
             'tar',
-            'cz',
+        ] + (['-I', 'pigz'] if has_pigz() else ['-z']) + [
+            '-c',
             '-f',
             tmp_dest_path
         ] + [

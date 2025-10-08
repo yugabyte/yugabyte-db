@@ -1,14 +1,14 @@
 /*
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  */
 
 package rolebinding
 
 import (
 	"encoding/json"
-	"time"
 
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
@@ -67,7 +67,7 @@ func (c *GroupMappingInfoContext) Identifier() string {
 
 // CreationDate function
 func (c *GroupMappingInfoContext) CreationDate() string {
-	return c.Gmi.GetCreationDate().Format(time.RFC1123Z)
+	return util.PrintTime(c.Gmi.GetCreationDate())
 }
 
 // MarshalJSON function

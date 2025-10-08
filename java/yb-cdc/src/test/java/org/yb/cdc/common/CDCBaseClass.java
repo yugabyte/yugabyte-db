@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -130,7 +130,6 @@ public class CDCBaseClass extends BaseMiniClusterTest {
     flagMap.put("ysql_enable_packed_row", "false");
 
     flagMap.put("cdc_enable_implicit_checkpointing", "true");
-
     return flagMap;
   }
 

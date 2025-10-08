@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -807,18 +807,29 @@ TEST_F(MasterTestXRepl, TestListCDCStreamsCDCSDKWithReplicationSlot) {
       kPgReplicationSlotName, kPgReplicationSlotName2};
   std::set<std::string> expected_replication_slot_plugins = {
       kPgReplicationSlotPgOutput, kPgReplicationSlotTestDecoding};
+  std::set<std::map<std::string, PgReplicaIdentity>> expected_replica_identity_maps = {
+      {{kTableIds[0], PgReplicaIdentity::CHANGE},
+       {kTableIds[1], PgReplicaIdentity::CHANGE}},
+      {{kTableIds[2], PgReplicaIdentity::CHANGE}}};
 
   std::set<std::string> resp_stream_ids;
   std::set<std::string> resp_replication_slot_names;
   std::set<std::string> resp_replication_slot_plugins;
+  std::set<std::map<std::string, PgReplicaIdentity>> resp_replica_identity_maps;
   for (const auto& stream : resp.streams()) {
     resp_stream_ids.insert(stream.stream_id());
     resp_replication_slot_names.insert(stream.cdcsdk_ysql_replication_slot_name());
     resp_replication_slot_plugins.insert(stream.cdcsdk_ysql_replication_slot_plugin_name());
+    std::map<std::string, PgReplicaIdentity> replica_identity_map;
+    for (const auto& entry : stream.replica_identity_map()) {
+      replica_identity_map.emplace(entry.first, entry.second);
+    }
+    resp_replica_identity_maps.insert(replica_identity_map);
   }
   ASSERT_EQ(expected_stream_ids, resp_stream_ids);
   ASSERT_EQ(expected_replication_slot_names, resp_replication_slot_names);
   ASSERT_EQ(expected_replication_slot_plugins, resp_replication_slot_plugins);
+  ASSERT_EQ(expected_replica_identity_maps, resp_replica_identity_maps);
 }
 
 TEST_F(MasterTestXRepl, TestYsqlBackfillReplicationSlotNameToCDCSDKStream) {

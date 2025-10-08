@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -67,6 +67,15 @@ StatusCallback Synchronizer::AsStatusCallback(const std::shared_ptr<Synchronizer
   // No need to set must_wait_ here -- the callback knows whether Synchronizer still exists.
   std::weak_ptr<Synchronizer> weak_sync(synchronizer);
   return Bind(CallStatusCBMaybe, weak_sync);
+}
+
+StdStatusCallback Synchronizer::AsStdStatusCallback(
+    const std::shared_ptr<Synchronizer>& synchronizer) {
+  DCHECK(!synchronizer->assigned_);
+  // No need to set must_wait_ here -- the callback knows whether Synchronizer still exists.
+  return [weak_sync = std::weak_ptr<Synchronizer>(synchronizer)](const Status& status) {
+    CallStatusCBMaybe(weak_sync, status);
+  };
 }
 
 Status Synchronizer::WaitUntil(const std::chrono::steady_clock::time_point& time) {

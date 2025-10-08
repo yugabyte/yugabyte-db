@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -289,7 +289,7 @@ Status ReadQuery::DoPerform() {
     // Serializable read adds intents, i.e. writes data.
     // We should check for memory pressure in this case.
     RETURN_NOT_OK(CheckWriteThrottling(req_->rejection_score(), leader_peer.peer.get()));
-    abstract_tablet_ = VERIFY_RESULT(leader_peer.peer->shared_tablet_safe());
+    abstract_tablet_ = VERIFY_RESULT(leader_peer.peer->shared_tablet());
   } else {
     abstract_tablet_ = VERIFY_RESULT(read_tablet_provider_.GetTabletForRead(
         req_->tablet_id(), std::move(peer_tablet.tablet_peer),

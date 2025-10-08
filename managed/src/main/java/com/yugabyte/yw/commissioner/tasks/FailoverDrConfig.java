@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
@@ -9,6 +9,7 @@ import com.yugabyte.yw.common.DrConfigStates.SourceUniverseState;
 import com.yugabyte.yw.common.DrConfigStates.State;
 import com.yugabyte.yw.common.DrConfigStates.TargetUniverseState;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.DrConfigSafetimeResp.NamespaceSafetime;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Restore;
@@ -35,8 +36,10 @@ public class FailoverDrConfig extends EditDrConfig {
 
   @Inject
   protected FailoverDrConfig(
-      BaseTaskDependencies baseTaskDependencies, XClusterUniverseService xClusterUniverseService) {
-    super(baseTaskDependencies, xClusterUniverseService);
+      BaseTaskDependencies baseTaskDependencies,
+      XClusterUniverseService xClusterUniverseService,
+      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
+    super(baseTaskDependencies, xClusterUniverseService, operatorStatusUpdaterFactory);
   }
 
   @Override

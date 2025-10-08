@@ -16,7 +16,7 @@ type: docs
 
 This tutorial uses [Prisma 1](https://v1.prisma.io/docs/1.34/) which is in maintenance mode. If you are new to Prisma, check out the [Prisma ORM](https://www.prisma.io/).
 
-The [Hello World Example](../../drivers-orms/nodejs/prisma/) uses the current Prisma ORM.
+The [Hello World Example](/preview/develop/drivers-orms/nodejs/prisma/) uses the current Prisma ORM.
 
 {{< /warning >}}
 
@@ -30,7 +30,7 @@ For more information, see [What is Prisma?](https://www.prisma.io/docs/concepts/
 
 ### YugabyteDB
 
-If you are new to YugabyteDB, you can be up and running with YugabyteDB in under five minutes by following the steps in [Quick start](/preview/tutorials/quick-start/macos/).
+If you are new to YugabyteDB, you can be up and running with YugabyteDB in under five minutes by following the steps in [Quick start](/preview/quick-start/macos/).
 
 If YugabyteDB is installed, run the following `yb-ctl create` command to start a YugabyteDB 1-node cluster, setting the default transaction isolation level to `serializable`:
 

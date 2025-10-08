@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -65,6 +65,8 @@ DECLARE_int32(TEST_mini_cluster_registration_wait_time_sec);
 DECLARE_int32(tserver_unresponsive_timeout_ms);
 DECLARE_bool(persist_tserver_registry);
 DECLARE_bool(master_enable_universe_uuid_heartbeat_check);
+DECLARE_int32(data_size_metric_updater_interval_sec);
+DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 
 namespace yb::integration_tests {
 
@@ -182,39 +184,42 @@ TEST_F(MasterHeartbeatITest, IgnorePeerNotInConfig) {
   ASSERT_OK(itest::FindTabletLeader(ts_map, tablet->id(), timeout, &leader_ts));
 
   // Add the tablet to the new tserver to start the RBS (it will get stuck before starting).
-  ASSERT_OK(itest::AddServer(leader_ts, tablet->id(), new_ts,
-                             consensus::PeerMemberType::PRE_OBSERVER, boost::none, timeout));
+  ASSERT_OK(itest::AddServer(
+      leader_ts, tablet->id(), new_ts, consensus::PeerMemberType::PRE_OBSERVER, std::nullopt,
+      timeout));
   ASSERT_OK(itest::WaitForTabletConfigChange(tablet, new_ts_uuid, consensus::ADD_SERVER));
 
   // Remove the tablet from the new tserver and let the remote bootstrap proceed.
-  ASSERT_OK(itest::RemoveServer(leader_ts, tablet->id(), new_ts, boost::none, timeout));
+  ASSERT_OK(itest::RemoveServer(leader_ts, tablet->id(), new_ts, std::nullopt, timeout));
   ASSERT_OK(itest::WaitForTabletConfigChange(tablet, new_ts_uuid, consensus::REMOVE_SERVER));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_remote_bootstrap) = false;
 
-  ASSERT_OK(WaitFor([&]() {
-    auto replica_locations = tablet->GetReplicaLocations();
-    int leaders = 0, followers = 0;
-    LOG(INFO) << Format("Replica locations after new tserver heartbeat: $0", *replica_locations);
-    if (replica_locations->size() != 3) {
-      return false;
-    }
-    for (auto& p : *replica_locations) {
-      if (p.first == new_ts_uuid ||
-          p.second.state != tablet::RaftGroupStatePB::RUNNING ||
-          p.second.member_type != consensus::VOTER) {
-        return false;
-      }
-      if (p.second.role == LEADER) {
-        ++leaders;
-      } else if (p.second.role == FOLLOWER) {
-        ++followers;
-      }
-    }
-    if (leaders != 1 || followers != 2) {
-      return false;
-    }
-    return true;
-  }, FLAGS_heartbeat_interval_ms * 5ms, "Wait for proper replica locations."));
+  ASSERT_OK(WaitFor(
+      [&]() {
+        auto replica_locations = tablet->GetReplicaLocations();
+        int leaders = 0, followers = 0;
+        LOG(INFO) << Format(
+            "Replica locations after new tserver heartbeat: $0", *replica_locations);
+        if (replica_locations->size() != 3) {
+          return false;
+        }
+        for (auto& p : *replica_locations) {
+          if (p.first == new_ts_uuid || p.second.state != tablet::RaftGroupStatePB::RUNNING ||
+              p.second.member_type != consensus::VOTER) {
+            return false;
+          }
+          if (p.second.role == LEADER) {
+            ++leaders;
+          } else if (p.second.role == FOLLOWER) {
+            ++followers;
+          }
+        }
+        if (leaders != 1 || followers != 2) {
+          return false;
+        }
+        return true;
+      },
+      FLAGS_heartbeat_interval_ms * 5ms, "Wait for proper replica locations."));
 }
 
 // This test verifies the master doesn't corrupt its tablet metadata when receiving out-of-order
@@ -459,6 +464,41 @@ TEST_F(MasterHeartbeatITest, TestRegistrationThroughRaftPersisted) {
       });
   ASSERT_TRUE(live_ts_it == live_tservers_resp.servers().end())
       << "TS registered through raft config should be unresponsive, not live";
+}
+
+class DriveInfoTest : public MasterHeartbeatITest {
+ public:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_data_size_metric_updater_interval_sec) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) = 1000;
+    MasterHeartbeatITest::SetUp();
+  }
+};
+
+TEST_F(DriveInfoTest, DriveInfo) {
+  CreateTable();
+  auto table = table_name();
+  auto& catalog_mgr = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster())->catalog_manager();
+  auto table_info = catalog_mgr.GetTableInfoFromNamespaceNameAndTableName(
+      table.namespace_type(), table.namespace_name(), table.table_name());
+  auto tablets = ASSERT_RESULT(table_info->GetTablets());
+
+  // Insert 1000 rows and flush to an SST.
+  for (int i = 0; i < 1000; ++i) {
+    PutKeyValue(Format("k$0", i), Format("v$0", i));
+  }
+  ASSERT_OK(mini_cluster_->CompactTablets());
+  ASSERT_OK(WaitFor([&]() {
+    for (const auto& tablet : tablets) {
+      for (auto& replica : *tablet->GetReplicaLocations()) {
+        if (replica.second.drive_info.sst_files_size == 0) return false;
+        if (replica.second.drive_info.wal_files_size == 0) return false;
+        if (replica.second.drive_info.uncompressed_sst_file_size == 0) return false;
+        if (replica.second.drive_info.total_size == 0) return false;
+      }
+    }
+    return true;
+  }, 30s, "Waiting for drive info to be populated for all tablets"));
 }
 
 class PersistTabletServerRegistryUpgradeTest : public MasterHeartbeatITest {

@@ -2,7 +2,6 @@ import React, { FC, useMemo } from "react";
 import {
   Box,
   Divider,
-  Grid,
   LinearProgress,
   MenuItem,
   Paper,
@@ -15,15 +14,18 @@ import SearchIcon from "@app/assets/search.svg";
 import { AssessmentSourceDbObject, useGetAssessmentSourceDBInfoQuery } from "@app/api/src";
 import type { Migration } from "../../MigrationOverview";
 import { getMemorySizeUnits } from "@app/helpers";
+import { MetadataItem } from "../../components/MetadataItem";
+import { YBMultiToggleButton, ToggleButtonData } from "@app/components/YBMultiToggleButton";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
     marginBottom: theme.spacing(4),
   },
   label: {
-    color: theme.palette.grey[500],
-    fontWeight: theme.typography.fontWeightMedium as number,
+    color: "#6D7C88",
+    fontWeight: 500,
     textTransform: "uppercase",
+    fontSize: "11.5px",
     textAlign: "left",
   },
   dividerHorizontal: {
@@ -85,20 +87,16 @@ export const MigrationSourceEnvSidePanel: FC<MigrationSourceEnvSidePanelProps> =
     }));
   }, [sourceDBData]);
 
-  const sourceObjects = useMemo(
-    () =>
-      sourceDBData?.sql_objects_count
-        ?.filter((obj) => obj.sql_type)
-        .map((obj) => ({
-          type: obj.sql_type || "",
-          count: obj.count || 0,
-        })) || [],
-    [sourceDBData]
-  );
-
-  const totalObjects = useMemo(() => {
-    return sourceObjects.reduce((acc, obj) => acc + obj.count, 0);
-  }, [sourceObjects]);
+  // const sourceObjects = useMemo(
+  //   () =>
+  //     sourceDBData?.sql_objects_count
+  //       ?.filter((obj) => obj.sql_type)
+  //       .map((obj) => ({
+  //         type: obj.sql_type || "",
+  //         count: obj.count || 0,
+  //       })) || [],
+  //   [sourceDBData]
+  // );
 
   const types = useMemo(() => {
     const typeSet = new Set<string>();
@@ -118,6 +116,88 @@ export const MigrationSourceEnvSidePanel: FC<MigrationSourceEnvSidePanelProps> =
     );
   }, [sourceObjectData, typeFilter, search]);
 
+  // Calculate total size for filtered objects
+  const filteredTotalSize = useMemo(() => {
+    return filteredSourceObjects
+      .filter(obj => obj.size !== -1)
+      .reduce((acc, obj) => acc + obj.size, 0);
+  }, [filteredSourceObjects]);
+
+  const groupedObjectData = useMemo(() => {
+    const grouped = sourceObjectData.reduce((acc, obj) => {
+      const type = obj.type || 'Unknown';
+      if (!acc[type]) {
+        acc[type] = {
+          type,
+          count: 0,
+          totalSize: 0,
+          totalIops: 0,
+          objects: []
+        };
+      }
+      acc[type].count++;
+      if (obj.size !== -1)
+        acc[type].totalSize += obj.size;
+      if (obj.iops !== -1)
+        acc[type].totalIops += obj.iops;
+      acc[type].objects.push(obj);
+      return acc;
+    }, {} as Record<string, {
+      type: string;
+      count: number;
+      totalSize: number;
+      totalIops: number;
+      objects: any[];
+    }>);
+
+    const searchQuery = search.toLowerCase().trim();
+    return Object.values(grouped).filter(group =>
+      (typeFilter === "" || group.type === typeFilter) &&
+      (search === "" || group.type.toLowerCase().includes(searchQuery))
+    );
+  }, [sourceObjectData, typeFilter, search]);
+
+  const groupedColumns = [
+    {
+      name: "type",
+      label: t("clusterDetail.voyager.planAndAssess.sourceEnv.sourceObjects.type"),
+      options: {
+        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
+        setCellProps: () => ({ style: { padding: "8px 16px", textTransform: "capitalize" } }),
+      },
+    },
+    {
+      name: "count",
+      label: t("clusterDetail.voyager.planAndAssess.sourceEnv.sourceObjects.count"),
+      options: {
+        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
+        setCellProps: () => ({ style: { padding: "8px 16px" } }),
+      },
+    },
+    {
+      name: "totalSize",
+      label: t("clusterDetail.voyager.planAndAssess.sourceEnv.sourceObjects.totalSize"),
+      options: {
+        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
+        setCellProps: () => ({ style: { padding: "8px 16px" } }),
+        customBodyRender: (size: number) => (
+          size === 0 ? <Typography component="span">-</Typography> : getMemorySizeUnits(size)
+        ),
+      },
+    },
+    // {
+    //   name: "totalIops",
+    //   label: t("clusterDetail.voyager.planAndAssess.sourceEnv.sourceObjects.totalIops"),
+    //   options: {
+    //     setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
+    //     setCellProps: () => ({ style: { padding: "8px 16px" } }),
+    //     customBodyRender: (iops: number) => (
+    //       iops === 0 ? <Typography component="span">-</Typography> : iops
+    //     ),
+    //   },
+    // },
+  ];
+
   const sourceObjectsColumns = [
     {
       name: "name",
@@ -132,7 +212,7 @@ export const MigrationSourceEnvSidePanel: FC<MigrationSourceEnvSidePanelProps> =
       label: t("clusterDetail.voyager.planAndAssess.sourceEnv.sourceObjects.type"),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
-        setCellProps: () => ({ style: { padding: "8px 16px", textTransform: "capitalize"  } }),
+        setCellProps: () => ({ style: { padding: "8px 16px", textTransform: "capitalize" } }),
       },
     },
     {
@@ -162,16 +242,25 @@ export const MigrationSourceEnvSidePanel: FC<MigrationSourceEnvSidePanelProps> =
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
         customBodyRender: (iops: number) => (
-          iops === -1 ? <span>-</span> : iops
+          iops === -1 ? <Typography component="span">-</Typography> : iops
         ),
       },
     },
   ];
 
+  const [sourceObjectsTablePage, setSourceObjectsTablePage] = React.useState(0);
+  const [sourceObjectsTableRowsPerPage, setSourceObjectsTableRowsPerPage] = React.useState(10);
+
+  const [toggleValue, setToggleValue] = React.useState<string>("all");
+  const toggleOptions: ToggleButtonData<string>[] = [
+    { label: t("clusterDetail.voyager.planAndAssess.sourceEnv.groupByObjectType"), value: "group" },
+    { label: t("clusterDetail.voyager.planAndAssess.sourceEnv.listAllObjects"), value: "all" }
+  ];
+
   return (
     <YBModal
       open={open}
-      title={t("clusterDetail.voyager.planAndAssess.sourceEnv.sourceObjects.heading")}
+      title={t("clusterDetail.voyager.planAndAssess.sourceEnv.schemaDetails")}
       onClose={onClose}
       enableBackdropDismiss
       titleSeparator
@@ -188,38 +277,13 @@ export const MigrationSourceEnvSidePanel: FC<MigrationSourceEnvSidePanelProps> =
 
       {!isFetchingSourceDBData && (
         <>
-          <Box my={2}>
-            <Paper>
-              <Box p={2} className={classes.grayBg}>
-                <Grid container spacing={4}>
-                  <Grid item xs={2}>
-                    <Typography variant="subtitle2" className={classes.label}>
-                      {t(
-                        "clusterDetail.voyager.planAndAssess.sourceEnv.sourceObjects.totalObjects"
-                      )}
-                    </Typography>
-                    <Typography variant="body2" className={classes.value}>
-                      {totalObjects}
-                    </Typography>
-                  </Grid>
-                  <Grid item xs={1}>
-                    <Divider orientation="vertical" />
-                  </Grid>
-                  {sourceObjects.map((obj) => (
-                    <Grid item xs={2} key={obj.type}>
-                      <Typography variant="subtitle2" className={classes.label}>
-                        {obj.type}
-                      </Typography>
-                      <Typography variant="body2" className={classes.value}>
-                        {obj.count}
-                      </Typography>
-                    </Grid>
-                  ))}
-                </Grid>
-              </Box>
-            </Paper>
+          <Box display="flex" justifyContent="flex-end" alignItems="center" mb={2}>
+            <YBMultiToggleButton
+              options={toggleOptions}
+              value={toggleValue}
+              onChange={setToggleValue}
+            />
           </Box>
-
           <Box display="flex" alignItems="center" gridGap={10} my={2}>
             <Box flex={1}>
               <Typography variant="body1" className={classes.label}>
@@ -230,7 +294,7 @@ export const MigrationSourceEnvSidePanel: FC<MigrationSourceEnvSidePanelProps> =
                 value={typeFilter}
                 onChange={(e) => setTypeFilter(e.target.value)}
               >
-                <MenuItem value="">All</MenuItem>
+                <MenuItem value="" className={classes.label}>All</MenuItem>
                 <Divider className={classes.divider} />
                 {types.map((type) => {
                   return (
@@ -247,9 +311,12 @@ export const MigrationSourceEnvSidePanel: FC<MigrationSourceEnvSidePanelProps> =
               </Typography>
               <YBInput
                 className={classes.fullWidth}
-                placeholder={t(
-                  "clusterDetail.voyager.planAndAssess.sourceEnv.sourceObjects.searchPlaceholder"
-                )}
+                placeholder={
+                  toggleValue === "all"
+                    ? t("clusterDetail.voyager.planAndAssess.sourceEnv.sourceObjects."
+                      + "searchPlaceholder")
+                    : "Search object type"
+                }
                 InputProps={{
                   startAdornment: <SearchIcon />,
                 }}
@@ -257,16 +324,75 @@ export const MigrationSourceEnvSidePanel: FC<MigrationSourceEnvSidePanelProps> =
                 value={search}
               />
             </Box>
+
+          </Box>
+          <Box my={2}>
+            <Paper
+              style={{ border: '1px solid #E9EEF2' }}
+            >
+              <Box p={2} className={classes.grayBg}>
+                <Box display="flex" flexDirection="row">
+                  <MetadataItem
+                    layout="vertical"
+                    label={
+                      t('clusterDetail.voyager.planAndAssess.sourceEnv.sourceObjects.totalObjects')
+                    }
+                    value={toggleValue === "all"
+                      ? filteredSourceObjects.length
+                      : groupedObjectData.reduce((acc, group) => acc + group.count, 0)
+                    }
+                  />
+                  <MetadataItem
+                    layout="vertical"
+                    label={
+                      t('clusterDetail.voyager.planAndAssess.sourceEnv.sourceObjects.totalSize')
+                    }
+                    value={toggleValue === "all"
+                      ? getMemorySizeUnits(filteredTotalSize)
+                      : getMemorySizeUnits(groupedObjectData.reduce((acc, group) =>
+                        acc + group.totalSize, 0))
+                    }
+                  />
+                  {toggleValue === "group" && (
+                    <MetadataItem
+                      layout="vertical"
+                      label={t('Object Types')}
+                      value={groupedObjectData.length}
+                    />
+                  )}
+                </Box>
+              </Box>
+            </Paper>
           </Box>
 
           <Box>
-            <YBTable
-              data={filteredSourceObjects}
-              columns={sourceObjectsColumns}
-              options={{
-                pagination: true,
-              }}
-            />
+            {toggleValue === "all" ? (
+              <YBTable
+                data={filteredSourceObjects}
+                columns={sourceObjectsColumns}
+                options={{
+                  pagination: true,
+                  page: sourceObjectsTablePage,
+                  rowsPerPage: sourceObjectsTableRowsPerPage,
+                  onChangePage: (currentPage: number) => setSourceObjectsTablePage(currentPage),
+                  onChangeRowsPerPage: (numberOfRows: number) =>
+                    setSourceObjectsTableRowsPerPage(numberOfRows)
+                }}
+              />
+            ) : (
+              <YBTable
+                data={groupedObjectData}
+                columns={groupedColumns}
+                options={{
+                  pagination: true,
+                  page: sourceObjectsTablePage,
+                  rowsPerPage: sourceObjectsTableRowsPerPage,
+                  onChangePage: (currentPage: number) => setSourceObjectsTablePage(currentPage),
+                  onChangeRowsPerPage: (numberOfRows: number) =>
+                    setSourceObjectsTableRowsPerPage(numberOfRows)
+                }}
+              />
+            )}
           </Box>
         </>
       )}

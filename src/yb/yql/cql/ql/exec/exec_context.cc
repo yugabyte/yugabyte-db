@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -350,9 +350,9 @@ void TnodeContext::AdvanceToNextPartition(QLReadRequestPB *req) {
   req->clear_hash_code();
   req->clear_max_hash_code();
 
-  if (hash_code_from_partition_key_ops_.is_initialized())
+  if (hash_code_from_partition_key_ops_.has_value())
     req->set_hash_code(*hash_code_from_partition_key_ops_);
-  if (max_hash_code_from_partition_key_ops_.is_initialized())
+  if (max_hash_code_from_partition_key_ops_.has_value())
     req->set_max_hash_code(*max_hash_code_from_partition_key_ops_);
 }
 

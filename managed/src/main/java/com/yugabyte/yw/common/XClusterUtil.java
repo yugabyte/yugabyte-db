@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.common;
 
@@ -16,6 +16,9 @@ public class XClusterUtil {
 
   public static final String MULTIPLE_TXN_REPLICATION_SUPPORT_VERSION_STABLE = "2024.1.0.0-b71";
   public static final String MULTIPLE_TXN_REPLICATION_SUPPORT_VERSION_PREVIEW = "2.23.0.0-b157";
+
+  public static final String MINIMUM_VERSION_AUTOMATIC_DDL_SUPPORT_STABLE = "2025.1.0.0-b167";
+  public static final String MINIMUM_VERSION_AUTOMATIC_DDL_SUPPORT_PREVIEW = "2.25.1.0-b0";
 
   public static boolean supportsDbScopedXCluster(Universe universe) {
     // The minimum YBDB version that supports db scoped replication is 2024.1.1.0-b49 stable and
@@ -57,6 +60,25 @@ public class XClusterUtil {
         >= 0;
   }
 
+  public static boolean supportsAutomaticDdl(Universe universe) {
+    String softwareVersion =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    if (universe
+        .getUniverseDetails()
+        .softwareUpgradeState
+        .equals(SoftwareUpgradeState.PreFinalize)) {
+      if (universe.getUniverseDetails().prevYBSoftwareConfig != null) {
+        softwareVersion = universe.getUniverseDetails().prevYBSoftwareConfig.getSoftwareVersion();
+      }
+    }
+    return Util.compareYBVersions(
+            softwareVersion,
+            MINIMUM_VERSION_AUTOMATIC_DDL_SUPPORT_STABLE,
+            MINIMUM_VERSION_AUTOMATIC_DDL_SUPPORT_PREVIEW,
+            true /* suppressFormatError */)
+        > 0;
+  }
+
   public static void checkDbScopedXClusterSupported(
       Universe sourceUniverse, Universe targetUniverse) {
     // Check YBDB software version.
@@ -91,51 +113,37 @@ public class XClusterUtil {
     }
   }
 
-  public static void dbScopedXClusterPreChecks(
-      Universe sourceUniverse, Universe targetUniverse, Set<String> dbIds) {
-    checkDbScopedXClusterSupported(sourceUniverse, targetUniverse);
-    checkDbScopedNonEmptyDbs(dbIds);
-
-    // TODO: Validate dbIds passed in exist on source universe.
-    // TODO: Validate namespace names exist on both source and target universe.
-  }
-
   public static XClusterTableConfig.Status dbStatusToTableStatus(
       XClusterNamespaceConfig.Status namespaceStatus) {
-    switch (namespaceStatus) {
-      case Failed:
-        return XClusterTableConfig.Status.Failed;
-      case Warning:
-        return XClusterTableConfig.Status.Warning;
-      case Updating:
-        return XClusterTableConfig.Status.Updating;
-      case Bootstrapping:
-        return XClusterTableConfig.Status.Bootstrapping;
-      case Validated:
-        return XClusterTableConfig.Status.Validated;
-      case Running:
-        return XClusterTableConfig.Status.Running;
-      default:
-        return XClusterTableConfig.Status.Error;
-    }
+    return switch (namespaceStatus) {
+      case Failed -> XClusterTableConfig.Status.Failed;
+      case Warning -> XClusterTableConfig.Status.Warning;
+      case Updating -> XClusterTableConfig.Status.Updating;
+      case Bootstrapping -> XClusterTableConfig.Status.Bootstrapping;
+      case Validated -> XClusterTableConfig.Status.Validated;
+      case Running -> XClusterTableConfig.Status.Running;
+      default -> XClusterTableConfig.Status.Error;
+    };
   }
 
-  public static void ensureYsqlMajorUpgradeIsComplete(
-      SoftwareUpgradeHelper softwareUpgradeHelper,
-      Universe sourceUniverse,
-      Universe targetUniverse) {
-    if (softwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(sourceUniverse)) {
+  public static void ensureUpgradeIsComplete(Universe sourceUniverse, Universe targetUniverse) {
+    if (!sourceUniverse
+        .getUniverseDetails()
+        .softwareUpgradeState
+        .equals(SoftwareUpgradeState.Ready)) {
       throw new PlatformServiceException(
           BAD_REQUEST,
-          "Cannot configure XCluster/DR config because YSQL major version upgrade on source"
-              + " universe is in progress.");
+          "Cannot configure XCluster/DR config because source universe is not in ready software"
+              + " upgrade state.");
     }
-
-    if (softwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(targetUniverse)) {
+    if (!targetUniverse
+        .getUniverseDetails()
+        .softwareUpgradeState
+        .equals(SoftwareUpgradeState.Ready)) {
       throw new PlatformServiceException(
           BAD_REQUEST,
-          "Cannot configure XCluster/DR config because YSQL major version upgrade on target"
-              + " universe is in progress.");
+          "Cannot configure XCluster/DR config because target universe is not in ready software"
+              + " upgrade state.");
     }
   }
 }

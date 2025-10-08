@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.models;
 
@@ -72,6 +72,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.Getter;
 import lombok.Setter;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -84,6 +85,7 @@ import play.libs.Json;
 @Entity
 @Getter
 @Setter
+@Slf4j
 public class Universe extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(Universe.class);
   public static final String DISABLE_ALERTS_UNTIL = "disableAlertsUntilSecs";
@@ -273,11 +275,14 @@ public class Universe extends Model {
     universe.swamperConfigWritten = true;
     LOG.info(
         "Created db entry for universe {} [{}]", universe.getName(), universe.getUniverseUUID());
+    JsonNode redactedUniverseDetailsJson =
+        RedactingService.filterSecretFields(
+            Json.toJson(universe.universeDetails), RedactionTarget.LOGS);
     LOG.debug(
         "Details for universe {} [{}] : [{}].",
         universe.getName(),
         universe.getUniverseUUID(),
-        universe.universeDetailsJson);
+        redactedUniverseDetailsJson);
     // Save the object.
     universe.save();
     return universe;
@@ -426,17 +431,22 @@ public class Universe extends Model {
    * @param clazz the attribute type.
    * @param customerId the customer ID primary key.
    * @param fieldName the name of the field.
-   * @return the attribute values for all universes.
+   * @param universeUuid the targeted universe UUID which can be null.
+   * @return the attribute values for all universes or the given targeted universe.
    */
   public static <T> Map<UUID, T> getUniverseDetailsFields(
-      Class<T> clazz, Long customerId, String fieldName) {
+      Class<T> clazz, Long customerId, String fieldName, @Nullable UUID universeUuid) {
+    String querySuffix = universeUuid == null ? "" : " and universe_uuid = :universeUuid";
     String query =
         String.format(
             "select universe_uuid, universe_details_json::jsonb->>'%s' as field from universe"
-                + " where customer_id = :customerId",
-            fieldName);
+                + " where customer_id = :customerId%s",
+            fieldName, querySuffix);
     SqlQuery sqlQuery = DB.sqlQuery(query);
     sqlQuery.setParameter("customerId", customerId);
+    if (universeUuid != null) {
+      sqlQuery.setParameter("universeUuid", universeUuid);
+    }
     return sqlQuery.findList().stream()
         .filter(r -> r.get("field") != null && clazz.isAssignableFrom(r.get("field").getClass()))
         .collect(
@@ -465,6 +475,7 @@ public class Universe extends Model {
     @Builder.Default private boolean freezeUniverse = true;
     private boolean ignoreAbsence;
     private Consumer<Universe> callback;
+    @Builder.Default private boolean rollbackPerformed = false;
   }
 
   /**

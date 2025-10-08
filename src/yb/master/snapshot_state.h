@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -105,6 +105,8 @@ class SnapshotState : public StateWithTablets {
   bool ShouldRemoveFromCoveringMap() const {
     return ShouldBlockObjectCleanup() && AllInState(SysSnapshotEntryPB::DELETING);
   }
+
+  bool ShouldRemoveNamespaceAnchor() const;
 
   Result<tablet::CreateSnapshotData> SysCatalogSnapshotData(
       const tablet::SnapshotOperation& operation) const;

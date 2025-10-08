@@ -37,6 +37,9 @@ DEFINE_test_flag(bool, stuck_add_tablet_to_table_task_enabled, false, "descripti
 DEFINE_test_flag(bool, fail_async_delete_replica_task, false,
                  "When set, transition all delete replica tasks to a failed state.");
 
+DEFINE_test_flag(string, skip_async_insert_packed_schema_for_tablet_id, "",
+    "Tablet ID to skip AsyncInsertPackedSchemaForXClusterTarget requests for.");
+
 DECLARE_int32(tablet_creation_timeout_ms);
 DECLARE_int32(TEST_slowdown_alter_table_rpcs_ms);
 
@@ -601,12 +604,11 @@ bool AsyncAlterTable::SendRequest(int attempt) {
 
     // First provisional column ID is the earliest column ID we can set next_column_id to.
     int32_t first_provisional_column_id = l->pb.next_column_id();
-    if (l->pb.ysql_ddl_txn_verifier_state().size() > 0) {
-      DCHECK_EQ(l->pb.ysql_ddl_txn_verifier_state().size(), 1);
-      const auto& state = l->pb.ysql_ddl_txn_verifier_state()[0];
+    for (const auto& state : l->pb.ysql_ddl_txn_verifier_state()) {
       if (state.has_previous_next_column_id()) {
         // If we rollback, we will move next_column_id back to this.
         first_provisional_column_id = state.previous_next_column_id();
+        break;
       }
     }
     req.set_first_provisional_column_id(first_provisional_column_id);
@@ -665,6 +667,19 @@ void AsyncInsertPackedSchemaForXClusterTarget::HandleInsertPackedSchema(
   // and then the current schema will be reinserted with [schema_version].
   req.set_insert_packed_schema(true);
   req.mutable_schema()->CopyFrom(packed_schema_);
+}
+
+bool AsyncInsertPackedSchemaForXClusterTarget::SendRequest(int attempt) {
+  if (PREDICT_FALSE(!FLAGS_TEST_skip_async_insert_packed_schema_for_tablet_id.empty())) {
+    if (tablet_id() == FLAGS_TEST_skip_async_insert_packed_schema_for_tablet_id) {
+      LOG_WITH_PREFIX(INFO) << "Skipping AsyncInsertPackedSchemaForXClusterTarget for tablet "
+                            << tablet_id()
+                            << " due to FLAGS_TEST_skip_async_insert_packed_schema_for_tablet_id";
+      TransitionToCompleteState();
+      return true;
+    }
+  }
+  return AsyncAlterTable::SendRequest(attempt);
 }
 
 // ============================================================================

@@ -14,7 +14,7 @@ type: docs
 
 ## Overview
 
-ysql_dumpall is a utility for writing out (“dumping”) all YugabyteDB databases of a cluster into one plain-text, SQL script file. The script file contains SQL statements that can be used as input to `ysqlsh` to restore the databases. It does this by calling [ysql_dump](../ysql-dump/) for each database in the YugabyteDB cluster. ysql_dumpall also dumps global objects that are common to all databases, such as database roles. (ysql_dump does not export roles.)
+ysql_dumpall is a utility for writing out ("dumping") all YugabyteDB databases of a cluster into one plain-text, SQL script file. The script file contains SQL statements that can be used as input to ysqlsh to restore the databases. It does this by calling [ysql_dump](../ysql-dump/) for each database in the YugabyteDB cluster. ysql_dumpall also dumps global objects that are common to all databases, such as database roles. (ysql_dump does not export roles.)
 
 Because ysql_dumpall reads tables from all databases, you will most likely have to connect as a database superuser in order to produce a complete dump. Also, you will need superuser privileges to execute the saved script in order to be allowed to add roles and create databases.
 
@@ -249,4 +249,4 @@ The database to which you connect is not important because the script file creat
 ## See Also
 
 - [ysql_dump](../ysql-dump/)
-- [ysqlsh](../ysqlsh/)
+- [ysqlsh](../../api/ysqlsh/)

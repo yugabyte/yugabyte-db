@@ -8,6 +8,7 @@ menu:
   stable_api:
     identifier: geo-partitioning-helper-functions
     parent: api-ysql-exprs
+    weight: 40
 type: indexpage
 ---
 

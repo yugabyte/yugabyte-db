@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package session
 
@@ -33,7 +33,7 @@ func Init(ctx context.Context) *SessionCache {
 // GetCacheInstance returns the singleton session cache.
 func GetCacheInstance() *SessionCache {
 	if instance == nil {
-		util.FileLogger().Fatal(nil, "Session cache is not initialized")
+		util.FileLogger().Fatal(context.TODO(), "Session cache is not initialized")
 	}
 	return instance
 }

@@ -6,9 +6,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -115,11 +115,11 @@ enum CompactionStyle : char {
   kCompactionStyleNone = 0x3,
 };
 
-// In Level-based comapction, it Determines which file from a level to be
+// In Level-based compaction, it Determines which file from a level to be
 // picked to merge to the next level. We suggest people try
 // kMinOverlappingRatio first when you tune your database.
 enum CompactionPri : char {
-  // Slightly Priotize larger files by size compensated by #deletes
+  // Slightly Prioritize larger files by size compensated by #deletes
   kByCompensatedSize = 0x0,
   // First compact files whose data's latest update time is oldest.
   // Try this if you only update some hot keys in small ranges.
@@ -238,7 +238,7 @@ struct ColumnFamilyOptions {
   // the same DB. The only exception is reserved for upgrade, where a DB
   // previously without a merge operator is introduced to Merge operation
   // for the first time. It's necessary to specify a merge operator when
-  // openning the DB in this case.
+  // opening the DB in this case.
   // Default: nullptr
   std::shared_ptr<MergeOperator> merge_operator;
 
@@ -309,7 +309,7 @@ struct ColumnFamilyOptions {
 
   // The minimum number of write buffers that will be merged together
   // before writing to storage.  If set to 1, then
-  // all write buffers are fushed to L0 as individual files and this increases
+  // all write buffers are flushed to L0 as individual files and this increases
   // read amplification because a get request has to check in all of these
   // files. Also, an in-memory merge may result in writing lesser
   // data to storage if there are duplicate records in each of these
@@ -608,7 +608,7 @@ struct ColumnFamilyOptions {
   // Dynamically changeable through SetOptions() API
   bool disable_auto_compactions;
 
-  // DEPREACTED
+  // DEPRECATED
   // Does not have any effect.
   bool purge_redundant_kvs_while_flush;
 
@@ -1336,9 +1336,10 @@ struct DBOptions {
 
   std::shared_ptr<CompactionContextFactory> compaction_context_factory;
 
-  // Function that returns max file size for compaction.
+  // Function that check if file is not eligible for a compaction. Actively used by
+  // File TTL expiration to check max file size for compaction.
   // Supported only for level0 of universal style compactions.
-  std::shared_ptr<std::function<uint64_t()>> max_file_size_for_compaction;
+  std::shared_ptr<std::function<bool(const FileMetaData&)>> exclude_from_compaction;
 
   // Invoked after memtable switched.
   std::shared_ptr<std::function<MemTableFilter()>> mem_table_flush_filter_factory;
@@ -1368,7 +1369,7 @@ struct DBOptions {
   // Metrics tracker for tasks in the priority thread pool.
   std::shared_ptr<RocksDBPriorityThreadPoolMetrics> priority_thread_pool_metrics;
 
-  // Used for identifying disk in priorty pool. This corresponds to the hashed
+  // Used for identifying disk in priority pool. This corresponds to the hashed
   // data root directory for the rocksdb instance.
   uint64_t disk_group_no;
 };

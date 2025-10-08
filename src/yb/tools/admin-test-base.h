@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -42,7 +42,7 @@ class AdminTestBase : public tserver::TabletServerIntegrationTestBase {
   template <class... Args>
   Result<std::string> CallAdmin(Args&&... args) {
     return CallAdminVec(ToStringVector(
-        GetAdminToolPath(), "-master_addresses", GetMasterAddresses(),
+        GetAdminToolPath(), "--master_addresses", GetMasterAddresses(),
         std::forward<Args>(args)...));
   }
 
@@ -70,7 +70,7 @@ class AdminTestBase : public tserver::TabletServerIntegrationTestBase {
 template <class... Args>
 Result<std::string> RunAdminToolCommand(const std::string& master_addresses, Args&&... args) {
   auto command = ToStringVector(
-      GetToolPath("yb-admin"), "-master_addresses", master_addresses,
+      GetToolPath("yb-admin"), "--master_addresses", master_addresses,
       "--never_fsync=true",
       std::forward<Args>(args)...);
   std::string result;

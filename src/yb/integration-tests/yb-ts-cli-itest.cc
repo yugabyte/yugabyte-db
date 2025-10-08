@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -117,7 +117,7 @@ TEST_F(YBTsCliITest, MoveTablet) {
 
   string exe_path = GetTsCliToolPath();
   vector<string> argv = {exe_path, "--server_address", AsString(ts->bound_rpc_addr()),
-                         "delete_tablet", "-force", tablet_id, "Deleting for yb-ts-cli-itest"};
+                         "delete_tablet", "--force", tablet_id, "Deleting for yb-ts-cli-itest"};
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     Status s = Subprocess::Call(argv);
     return s.ok();

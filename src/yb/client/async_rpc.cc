@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -16,6 +16,7 @@
 #include "yb/ash/wait_state.h"
 
 #include "yb/client/batcher.h"
+#include "yb/client/client.h"
 #include "yb/client/client_error.h"
 #include "yb/client/in_flight_op.h"
 #include "yb/client/meta_cache.h"
@@ -37,14 +38,10 @@
 
 #include "yb/tserver/tserver_service.proxy.h"
 
-#include "yb/util/cast.h"
-#include "yb/util/debug-util.h"
-#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
-#include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
 #include "yb/util/yb_pg_errcodes.h"
@@ -65,8 +62,8 @@ METRIC_DEFINE_event_stats(
     yb::MetricUnit::kMicroseconds, "Microseconds spent in the local Read call ");
 METRIC_DEFINE_event_stats(
     server, handler_latency_yb_client_time_to_send,
-    "Time taken for a Write/Read rpc to be sent to the server", yb::MetricUnit::kMicroseconds,
-    "Microseconds spent before sending the request to the server");
+    "Time (microseconds) taken for a Write/Read rpc to be sent to the server",
+    yb::MetricUnit::kMicroseconds, "Microseconds spent before sending the request to the server");
 
 METRIC_DEFINE_counter(server, consistent_prefix_successful_reads,
     "Number of consistent prefix reads that were served by the closest replica.",
@@ -229,17 +226,20 @@ void AsyncRpc::Finished(const Status& status) {
     }
   }
   if (tablet_invoker_.Done(&new_status)) {
-    if (tablet().is_split() ||
-        ClientError(new_status) == ClientErrorCode::kTablePartitionListIsStale) {
-      ops_[0].yb_op->MarkTablePartitionListAsStale();
-    }
-    if (async_rpc_metrics_ && status.ok() && tablet_invoker_.is_consistent_prefix()) {
-      IncrementCounter(async_rpc_metrics_->consistent_prefix_successful_reads);
-    }
-    ProcessResponseFromTserver(new_status);
-    batcher_->Flushed(ops_, new_status, MakeFlushExtraResult());
-    retained_self_.reset();
+    HandleFinished(new_status);
   }
+}
+
+void AsyncRpc::HandleFinished(const Status& status) {
+  if (tablet().is_split() || ClientError(status) == ClientErrorCode::kTablePartitionListIsStale) {
+    ops_[0].yb_op->MarkTablePartitionListAsStale();
+  }
+  if (async_rpc_metrics_ && status.ok() && tablet_invoker_.is_consistent_prefix()) {
+    IncrementCounter(async_rpc_metrics_->consistent_prefix_successful_reads);
+  }
+  ProcessResponseFromTserver(status);
+  batcher_->Flushed(ops_, status, MakeFlushExtraResult());
+  retained_self_.reset();
 }
 
 void AsyncRpc::Failed(const Status& status) {
@@ -389,7 +389,17 @@ void AsyncRpc::SendRpcToTserver(int attempt_num) {
   if (async_rpc_metrics_) {
     async_rpc_metrics_->time_to_send->Increment(ToMicroseconds(CoarseMonoClock::Now() - start_));
   }
-  CallRemoteMethod();
+  auto callback = [this](const Status& status) {
+    TRACE_TO(trace_, "AsyncRpc::SendRpcToTserver WaitForAsyncWrites completed");
+    if (!status.ok()) {
+      HandleFinished(status);
+      return;
+    }
+
+    CallRemoteMethod();
+  };
+
+  batcher_->WaitForAsyncWrites(tablet().tablet_id(), std::move(callback));
 }
 
 template <class Req, class Resp>
@@ -399,7 +409,6 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(
   // TODO(#26139): this set_allocated_* call is not safe.
   req_.set_allocated_tablet_id(const_cast<std::string*>(&tablet_invoker_.tablet()->tablet_id()));
   req_.set_include_trace(IsTracingEnabled());
-  ash::WaitStateInfo::CurrentMetadataToPB(req_.mutable_ash_metadata());
   const ConsistentReadPoint* read_point = batcher_->read_point();
   bool has_read_time = false;
   if (read_point) {
@@ -649,6 +658,8 @@ WriteRpc::WriteRpc(const AsyncRpcData& data)
   VLOG(3) << "Created batch for " << data.tablet->tablet_id() << ":\n"
           << req_.ShortDebugString();
 
+  req_.set_use_async_write(data.use_async_write);
+
   if (batcher_->GetLeaderTerm() != OpId::kUnknownTerm) {
     req_.set_leader_term(batcher_->GetLeaderTerm());
   }
@@ -694,16 +705,8 @@ WriteRpc::~WriteRpc() {
 }
 
 void WriteRpc::CallRemoteMethod() {
-  auto trace = trace_; // It is possible that we receive reply before returning from WriteAsync.
-                       // Since send happens before we return from WriteAsync.
-                       // So under heavy load it is possible that our request is handled and
-                       // reply is received before WriteAsync returned.
-  TRACE_TO(trace, "SendRpcToTserver");
-  ADOPT_TRACE(trace.get());
-
-  tablet_invoker_.proxy()->WriteAsync(
-      req_, &resp_, PrepareController(), std::bind(&WriteRpc::Finished, this, Status::OK()));
-  TRACE_TO(trace, "RpcDispatched Asynchronously");
+  ts_proxy_ = tablet_invoker_.proxy();
+  ts_proxy_->WriteAsync(req_, &resp_, PrepareController(), [this] { Finished(Status::OK()); });
 }
 
 Status WriteRpc::SwapResponses() {
@@ -842,15 +845,9 @@ ReadRpc::~ReadRpc() {
 }
 
 void ReadRpc::CallRemoteMethod() {
-  auto trace = trace_; // It is possible that we receive reply before returning from ReadAsync.
-                       // Detailed explanation in WriteRpc::SendRpcToTserver.
-  TRACE_TO(trace, "SendRpcToTserver");
-  ADOPT_TRACE(trace.get());
-
   DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("ReadRpc::CallRemoteMethod", &req_);
   tablet_invoker_.proxy()->ReadAsync(
-    req_, &resp_, PrepareController(), std::bind(&ReadRpc::Finished, this, Status::OK()));
-  TRACE_TO(trace, "RpcDispatched Asynchronously");
+      req_, &resp_, PrepareController(), [this] { Finished(Status::OK()); });
 }
 
 Status ReadRpc::SwapResponses() {
@@ -927,6 +924,63 @@ Status ReadRpc::SwapResponses() {
 void ReadRpc::NotifyBatcher(const Status& status) {
   DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("ReadRpc::NotifyBatcher", &resp_);
   batcher_->ProcessReadResponse(*this, status);
+}
+
+WaitForAsyncWriteRpc::WaitForAsyncWriteRpc(
+    const BatcherPtr& batcher, const TabletId& tablet_id,
+    std::shared_ptr<tserver::TabletServerServiceProxy> ts_proxy, const OpId& op_id)
+    : Rpc(batcher->deadline(), batcher->messenger(), &batcher->proxy_cache()),
+      tablet_id_(tablet_id),
+      op_id_(op_id),
+      batcher_(batcher),
+      ts_proxy_(std::move(ts_proxy)) {
+  TRACE_TO(trace_, "WaitForAsyncWrite initiated");
+  VTRACE_TO(1, trace_, "Tablet $0, op_id $2", tablet_id_, op_id_.ToString());
+
+  req_.set_tablet_id(tablet_id_);
+  op_id_.ToPB(req_.mutable_op_id());
+
+  VLOG(4) << "Created WaitForAsyncWriteRequest" << ":\n" << req_.ShortDebugString();
+}
+
+void WaitForAsyncWriteRpc::SendRpc() {
+  TRACE_TO(trace_, "SendRpc() called.");
+
+  retained_self_ = shared_from_this();
+  ts_proxy_->WaitForAsyncWriteAsync(
+      req_, &resp_, PrepareController(), [this] { Finished(Status::OK()); });
+}
+
+void WaitForAsyncWriteRpc::SendRpcToTserver(int attempt_num) { CHECK(false) << "Not implemented"; }
+
+void WaitForAsyncWriteRpc::Finished(const Status& status) {
+  VLOG_WITH_FUNC(4) << ToString() << "status: " << status
+                    << ", error: " << AsString(response_error());
+
+  Status new_status = status;
+  if (new_status.ok() && mutable_retrier()->HandleResponse(this, &new_status)) {
+    return;
+  }
+
+  if (new_status.ok() && resp_.has_error()) {
+    new_status = StatusFromPB(resp_.error().status());
+  }
+
+  batcher_->RecordAsyncWriteCompletion(tablet_id_, op_id_, new_status);
+  retained_self_.reset();
+}
+
+std::string WaitForAsyncWriteRpc::ToString() const {
+  const auto& metadata = batcher_->in_flight_ops().metadata;
+  return Format(
+      "WaitForAsyncWrite(tablet: $0, op_id: $1, num_attempts: $2, txn: $3, subtxn: $4)", tablet_id_,
+      op_id_, num_attempts(), metadata.transaction.transaction_id,
+      metadata.subtransaction_pb ? AsString(metadata.subtransaction_pb->subtransaction_id())
+                                 : "[none]");
+}
+
+void WaitForAsyncWriteRpc::Failed(const Status& status) {
+  VLOG_WITH_FUNC(4) << ToString() << " status: " << status;
 }
 
 }  // namespace yb::client::internal

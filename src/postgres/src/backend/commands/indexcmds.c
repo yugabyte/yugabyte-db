@@ -75,10 +75,10 @@
 #include "catalog/yb_catalog_version.h"
 #include "commands/progress.h"
 #include "commands/yb_tablegroup.h"
-#include "pg_yb_utils.h"
 #include "pgstat.h"
 #include "utils/guc.h"
 #include "utils/yb_inheritscache.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 #include <inttypes.h>
 
 
@@ -1626,7 +1626,7 @@ DefineIndex(Oid relationId,
 
 	if (IsYugaByteEnabled() &&
 		rel->rd_rel->relpersistence == RELPERSISTENCE_TEMP)
-		YBCDdlEnableForceCatalogModification();
+		YBCRecordTempRelationDDL();
 
 	indexRelationId =
 		index_create(rel, indexRelationName, indexRelationId, parentIndexId,
@@ -2200,11 +2200,7 @@ DefineIndex(Oid relationId,
 
 		StartTransactionCommand();
 
-		YbDdlMode	ddl_mode = (YBIsDdlTransactionBlockEnabled()) ?
-			YB_DDL_MODE_AUTONOMOUS_TRANSACTION_CHANGE_VERSION_INCREMENT :
-			YB_DDL_MODE_VERSION_INCREMENT;
-
-		YBIncrementDdlNestingLevel(ddl_mode);
+		YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
 
 		/* Wait for all backends to have up-to-date version. */
 		YbWaitForBackendsCatalogVersion();
@@ -2234,7 +2230,7 @@ DefineIndex(Oid relationId,
 										"concurrent index backfill");
 
 		StartTransactionCommand();
-		YBIncrementDdlNestingLevel(ddl_mode);
+		YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
 
 		/* Wait for all backends to have up-to-date version. */
 		YbWaitForBackendsCatalogVersion();

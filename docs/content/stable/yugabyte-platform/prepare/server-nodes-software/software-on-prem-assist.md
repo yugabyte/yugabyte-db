@@ -1,8 +1,8 @@
 ---
-title: YugabyteDB Anywhere on-premises node provisioning
+title: Legacy assisted manual on-premises node provisioning
 headerTitle: Legacy provisioning
 linkTitle: Legacy provisioning
-description: Software requirements for on-premises provider nodes.
+description: How to provision on-premises provider nodes using legacy assisted manual method.
 headContent: How to meet the software prerequisites for database nodes
 menu:
   stable_yugabyte-platform:
@@ -31,7 +31,7 @@ Legacy provisioning of on-premises nodes is deprecated. Provision your nodes usi
   <li>
     <a href="../software-on-prem-assist/" class="nav-link active">
       <i class="fa-regular fa-scroll"></i>
-      Assisted
+      Assisted manual
     </a>
   </li>
 

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.forms;
 
@@ -30,7 +30,9 @@ import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.*;
-import com.yugabyte.yw.models.helpers.audit.*;
+import com.yugabyte.yw.models.helpers.exporters.audit.*;
+import com.yugabyte.yw.models.helpers.exporters.metrics.*;
+import com.yugabyte.yw.models.helpers.exporters.query.*;
 import io.ebean.annotation.EnumValue;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -153,6 +155,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   // UUID of last failed task that applied modification to cluster state.
   @ApiModelProperty public UUID placementModificationTaskUuid = null;
+
+  // Indicates whether automatic rollback was performed by the last update task.
+  @ApiModelProperty public boolean autoRollbackPerformed = false;
 
   @ApiModelProperty public SoftwareUpgradeState softwareUpgradeState = SoftwareUpgradeState.Ready;
 
@@ -312,6 +317,68 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2025.1.0.0")
   public AdditionalServicesStateData additionalServicesStateData;
 
+  @Setter
+  @Getter
+  @ApiModelProperty(
+      hidden = true,
+      value = "YbaApi Internal. Information about capacity reservation.")
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.27.0.0")
+  private CapacityReservationState capacityReservationState;
+
+  @Data
+  public static class PerInstanceTypeReservation {
+    private String instanceType;
+    private Map<String, ZonedReservation> zonedReservation = new HashMap<>();
+  }
+
+  @Data
+  public static class ZonedReservation {
+    private String zone;
+    private Set<String> vmNames = new HashSet<>();
+    private String reservationName;
+  }
+
+  @Data
+  public static class AwsZoneReservation {
+    private String zone;
+    private String region;
+    private String reservationName;
+    private Map<String, PerInstanceTypeReservation> reservationsByType = new HashMap<>();
+  }
+
+  @Data
+  public static class AzureRegionReservation {
+    private String groupName;
+    private String region;
+    private Set<String> zones = new HashSet<>();
+    private Map<String, PerInstanceTypeReservation> reservationsByType = new HashMap<>();
+  }
+
+  public interface ReservationInfo {}
+
+  @Data
+  public static class AzureReservationInfo implements ReservationInfo {
+    private Map<String, AzureRegionReservation> reservationsByRegionMap = new HashMap<>();
+  }
+
+  @Data
+  public static class AwsReservationInfo implements ReservationInfo {
+    private Map<String, AwsZoneReservation> reservationsByZoneMap = new HashMap<>();
+  }
+
+  @Data
+  public static class CapacityReservationState {
+    private AzureReservationInfo azureReservationInfo;
+    private AwsReservationInfo awsReservationInfo;
+
+    // other reservation types
+
+    @JsonIgnore
+    public boolean isEmpty() {
+      return azureReservationInfo == null && awsReservationInfo == null;
+    }
+  }
+
   /** A wrapper for all the clusters that will make up the universe. */
   @JsonInclude(value = JsonInclude.Include.NON_NULL)
   @Slf4j
@@ -348,6 +415,22 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         value = "YbaApi Internal. Kubernetes per AZ statefulset gflags checksum map")
     @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.23.0.0")
     private Map<UUID, Map<ServerType, String>> perAZServerTypeGflagsChecksumMap = new HashMap<>();
+
+    @Setter
+    @Getter
+    @ApiModelProperty(
+        hidden = true,
+        value = "YbaApi Internal. Kubernetes statefulset cert checksum map")
+    @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.27.0.0")
+    private String certChecksum = null;
+
+    @Setter
+    @Getter
+    @ApiModelProperty(
+        hidden = true,
+        value = "YbaApi Internal. Information about capacity reservation.")
+    @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.27.0.0")
+    private CapacityReservationState capacityReservationState;
 
     /** Default to PRIMARY. */
     private Cluster() {
@@ -855,7 +938,13 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     @ApiModelProperty() public boolean enableClientToNodeEncrypt = false;
 
-    @ApiModelProperty() public boolean enableVolumeEncryption = false;
+    @Deprecated
+    @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2025.1")
+    @ApiModelProperty(
+        value =
+            "<b style=\"color:#ff0000\">Deprecated since YBA version 2025.1.</b> "
+                + "Use userIntent.deviceInfo.cloudVolumeEncryption instead")
+    public boolean enableVolumeEncryption = false;
 
     @ApiModelProperty() public boolean enableIPV6 = false;
 
@@ -886,7 +975,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // setup and will be in-place of privateIP
     @Deprecated @ApiModelProperty() public boolean useHostname = false;
 
-    @ApiModelProperty() public Boolean useSystemd = false;
+    @ApiModelProperty() public Boolean useSystemd = true;
 
     // Info of all the gflags that the user would like to save to the universe. These will be
     // used during edit universe, for example, to set the flags on new nodes to match
@@ -957,6 +1046,24 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return auditLogConfig;
     }
 
+    // Query Logging Config
+    @ApiModelProperty(value = "YbaApi Internal. Query Logging configuration")
+    @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2025.2.0.0")
+    public QueryLogConfig queryLogConfig;
+
+    public QueryLogConfig getQueryLogConfig() {
+      return queryLogConfig;
+    }
+
+    // Metrics Export Config
+    @ApiModelProperty(value = "YbaApi Internal. Metrics Export configuration")
+    @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2025.2.0.0")
+    public MetricsExportConfig metricsExportConfig;
+
+    public MetricsExportConfig getMetricsExportConfig() {
+      return metricsExportConfig;
+    }
+
     // Proxy config HTTP_RPOXY, HTTPS_PROXY, NO_PROXY
     @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.3.0")
     @Getter
@@ -978,6 +1085,15 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @Nullable
     @ApiModelProperty(hidden = true, value = "YbaApi Internal. OSS universe migration config")
     private UniverseMigrationConfig migrationConfig;
+
+    @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2025.2.0.0")
+    @Getter
+    @Setter
+    @ApiModelProperty(
+        value =
+            "WARNING: This is a preview API that could change. Use YBDB inbuilt YBC for K8s"
+                + " universe")
+    private boolean useYbdbInbuiltYbc = false;
 
     @Override
     public String toString() {
@@ -1064,6 +1180,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       if (tserverK8SNodeResourceSpec != null) {
         newUserIntent.tserverK8SNodeResourceSpec = tserverK8SNodeResourceSpec.clone();
       }
+      newUserIntent.useClockbound = useClockbound;
+      newUserIntent.useYbdbInbuiltYbc = useYbdbInbuiltYbc;
       return newUserIntent;
     }
 
@@ -1597,6 +1715,11 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty private int autoFlagConfigVersion;
 
     @ApiModelProperty private String targetUpgradeSoftwareVersion;
+
+    // This is used to track if all tservers are upgraded to the target ysql major version
+    @ApiModelProperty private boolean allTserversUpgradedToYsqlMajorVersion;
+
+    @ApiModelProperty private boolean canRollbackCatalogUpgrade;
   }
 
   // XCluster: All the xCluster related code resides in this section.

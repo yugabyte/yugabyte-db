@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -55,6 +55,10 @@
 DEFINE_test_flag(bool, ignore_apply_change_metadata_on_followers, false,
                  "Used in tests to ignore applying change metadata operation"
                  " on followers.");
+
+DEFINE_test_flag(bool, fail_cdc_setting_retention_barriers_on_apply, false,
+                 "Used in tests to fail setting retention barriers on apply of change metadata "
+                 "operation.");
 
 DECLARE_bool(TEST_invalidate_last_change_metadata_op);
 
@@ -121,7 +125,8 @@ Status ChangeMetadataOperation::Prepare(IsLeaderSide is_leader_side) {
 }
 
 Status ChangeMetadataOperation::Apply(int64_t leader_term, Status* complete_status) {
-  if (PREDICT_FALSE(FLAGS_TEST_ignore_apply_change_metadata_on_followers)) {
+  if (PREDICT_FALSE(FLAGS_TEST_ignore_apply_change_metadata_on_followers) &&
+      leader_term == OpId::kUnknownTerm) {
     LOG_WITH_PREFIX(INFO) << "Ignoring apply of change metadata ops on followers";
     return Status::OK();
   }
@@ -134,7 +139,7 @@ Status ChangeMetadataOperation::Apply(int64_t leader_term, Status* complete_stat
 
   // CDCSDK Create Stream Context
   if (request()->has_retention_requester_id()) {
-    RETURN_NOT_OK(ProcessCDCSDKCreateStreamContext());
+    RETURN_NOT_OK(ProcessCDCSDKCreateStreamContext(complete_status));
   }
 
   if (request()->has_wal_retention_secs()) {
@@ -276,7 +281,12 @@ Status ChangeMetadataOperation::DoAborted(const Status& status) {
 }
 
 // CDCSDK Create Stream Context
-Status ChangeMetadataOperation::ProcessCDCSDKCreateStreamContext() {
+Status ChangeMetadataOperation::ProcessCDCSDKCreateStreamContext(Status* complete_status) {
+  if (PREDICT_FALSE(FLAGS_TEST_fail_cdc_setting_retention_barriers_on_apply)) {
+    *complete_status =
+        STATUS_FORMAT(InternalError, "Setting retention barriers on tablet for CDC failed.");
+    return Status::OK();
+  }
 
   TabletPtr tablet = VERIFY_RESULT(tablet_safe());
   log::Log* log = mutable_log();
@@ -317,7 +327,7 @@ Status SyncReplicateChangeMetadataOperation(
     TabletPeer* tablet_peer,
     int64_t term) {
   auto operation = std::make_unique<ChangeMetadataOperation>(
-      VERIFY_RESULT(tablet_peer->shared_tablet_safe()), tablet_peer->log());
+      VERIFY_RESULT(tablet_peer->shared_tablet()), tablet_peer->log());
   operation->AllocateRequest()->CopyFrom(*req);
 
   Synchronizer synchronizer;

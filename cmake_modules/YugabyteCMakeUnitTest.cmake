@@ -1,4 +1,4 @@
-# Copyright (c) Yugabyte, Inc.
+# Copyright (c) YugabyteDB, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 # in compliance with the License.  You may obtain a copy of the License at
@@ -50,25 +50,27 @@ function(check_parse_build_root_basename
 endfunction()
 
 function(test_parse_build_root_basename)
-  # BUILD_ROOT_BASENAME                  BUILD_TYPE  COMPILER_TYPE LINK_TYPE USING_LINUXBREW
+  # BUILD_ROOT_BASENAME                  BUILD_TYPE      COMPILER_TYPE LINK_TYPE USING_LINUXBREW
   check_parse_build_root_basename(
-    "debug-clang-dynamic-ninja"          "debug"     "clang"       "dynamic"  OFF)
+    "debug-clang-dynamic-ninja"          "debug"         "clang"       "dynamic"  OFF)
   check_parse_build_root_basename(
-    "debug-clang-dynamic"                "debug"     "clang"       "dynamic"  OFF)
+    "debug-clang-dynamic"                "debug"         "clang"       "dynamic"  OFF)
   check_parse_build_root_basename(
-    "asan-gcc11-dynamic-ninja"           "asan"      "gcc11"       "dynamic"  OFF)
+    "asan-gcc12-dynamic-ninja"           "asan"          "gcc12"       "dynamic"  OFF)
   check_parse_build_root_basename(
-    "debug-clang-dynamic"                "debug"     "clang"       "dynamic"  OFF)
+    "asan_release-clang19-dynamic-ninja" "asan_release"  "clang19"     "dynamic"  OFF)
   check_parse_build_root_basename(
-    "tsan-clang14-dynamic"               "tsan"      "clang14"     "dynamic"  OFF)
+    "debug-clang-dynamic"                "debug"         "clang"       "dynamic"  OFF)
   check_parse_build_root_basename(
-    "tsan-clang14-dynamic"               "tsan"      "clang14"     "dynamic"  OFF)
+    "tsan-clang14-dynamic"               "tsan"          "clang14"     "dynamic"  OFF)
   check_parse_build_root_basename(
-    "release-clang15-linuxbrew-dynamic"  "release"   "clang15"     "dynamic"  ON)
+    "tsan_release-clang19-dynamic"       "tsan_release"  "clang19"     "dynamic"  OFF)
   check_parse_build_root_basename(
-    "release-clang15-linuxbrew-thin-lto" "release"   "clang15"     "thin-lto" ON)
+    "release-clang15-linuxbrew-dynamic"  "release"       "clang15"     "dynamic"  ON)
   check_parse_build_root_basename(
-    "release-clang15-linuxbrew-full-lto" "release"   "clang15"     "full-lto" ON)
+    "release-clang15-linuxbrew-thin-lto" "release"       "clang15"     "thin-lto" ON)
+  check_parse_build_root_basename(
+    "release-clang15-linuxbrew-full-lto" "release"       "clang15"     "full-lto" ON)
 endfunction()
 
 # -------------------------------------------------------------------------------------------------

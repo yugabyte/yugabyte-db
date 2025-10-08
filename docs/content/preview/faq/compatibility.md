@@ -71,15 +71,19 @@ The YSQL shell (ysqlsh) is functionally similar to PostgreSQL's psql , but uses 
 Explore ysqlsh
 {{</lead>}}
 
+<!--
+### What is the status of the YEDIS API?
+
 In the near-term, Yugabyte is not actively working on new feature or driver enhancements to the [YEDIS](../../yedis/) API other than bug fixes and stability improvements. Current focus is on [YSQL](../../api/ysql/) and [YCQL](../../api/ycql/).
 
 For key-value workloads that need persistence, elasticity and fault-tolerance, YCQL (with the notion of keyspaces, tables, role-based access control, and more) is often a great fit, especially if the application is new rather than an existing one already written in Redis. The YCQL drivers are also more clustering aware, and hence YCQL is expected to perform better than YEDIS for equivalent scenarios. In general, our new feature development (support for data types, built-ins, TLS, backups, and more), correctness testing (using Jepsen), and performance optimization is in the YSQL and YCQL areas.
+-->
 
 ## API compatibility
 
 ### What does API compatibility mean exactly?
 
-API compatibility refers to the fact that the database APIs offered by YugabyteDB servers implement the same wire protocol and modeling/query language as that of an existing database. Because [client drivers](../../drivers-orms/), [command line shells](../../admin/), and IDE and other [ecosystem integrations](/preview/integrations/) of the existing database rely on this wire protocol and modeling/query language, they are expected to work with YugabyteDB without major modifications.
+API compatibility refers to the fact that the database APIs offered by YugabyteDB servers implement the same wire protocol and modeling/query language as that of an existing database. Because [client drivers](/preview/develop/drivers-orms/), [command line shells](../../admin/), and IDE and other [ecosystem integrations](/preview/integrations/) of the existing database rely on this wire protocol and modeling/query language, they are expected to work with YugabyteDB without major modifications.
 
 {{< note title="Note" >}}
 The [YSQL](../../api/ysql/) API is compatible with PostgreSQL. This means PostgreSQL client drivers, psql command line shell, IDE integrations such as TablePlus and DBeaver, and more can be used with YugabyteDB. The same concept applies to [YCQL](../../api/ycql/) in the context of the Apache Cassandra Query Language.

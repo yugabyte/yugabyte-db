@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 import { Box, makeStyles, Typography } from '@material-ui/core';
-import Check from '../../assets/check.svg';
+import Check from '../../assets/check-green.svg';
 import Warning from '../../assets/warning-solid.svg';
 import Loading from '../../assets/loading-dark.svg';
 

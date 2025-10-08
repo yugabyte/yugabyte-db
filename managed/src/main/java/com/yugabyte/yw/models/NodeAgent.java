@@ -1,4 +1,4 @@
-// Copyright (c) Yugabyte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.models;
 
@@ -459,6 +459,9 @@ public class NodeAgent extends Model {
   }
 
   public void heartbeat() {
+    if (getState() == State.READY) {
+      clearLastError();
+    }
     updateTimestamp(new Date());
   }
 

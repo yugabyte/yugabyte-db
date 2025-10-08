@@ -20,9 +20,9 @@ Change data capture (CDC) in YugabyteDB provides technology to ensure that any c
 
 CDC using PostgreSQL protocol in YugabyteDB is based on the PostgreSQL Logical Replication model. The fundamental concept is that of the Replication Slot. A Replication Slot represents a stream of changes that can be replayed to the client in the order they were made on the origin server in a manner that preserves transactional consistency. This is the basis for the support for Transactional CDC in YugabyteDB. Where the strict requirements of Transactional CDC are not present, multiple replication slots can be used to stream changes from unrelated tables in parallel.
 
-{{<lead link="../../../develop/change-data-capture/">}}
+{{<lead link="../../../additional-features/change-data-capture/">}}
 
-See [Change data capture](../../../develop/change-data-capture/) for more details and limitations.
+See [Change data capture](../../../additional-features/change-data-capture/) for more details and limitations.
 
 {{</lead>}}
 
@@ -70,7 +70,7 @@ Each tablet sends changes in transaction commit time order. Further, in a transa
 
 ![VWAL-walsender](/images/architecture/vwal_walsender_interaction.png)
 
-VWAL collects changes across multiple tablets, assembles the transactions, assigns a Log Sequence Number ([LSN](../../../develop/change-data-capture/using-logical-replication/key-concepts/#lsn-type)) to each change and transaction boundary (BEGIN, COMMIT) record, and sends the changes to the walsender in transaction commit time order.
+VWAL collects changes across multiple tablets, assembles the transactions, assigns a Log Sequence Number ([LSN](../../../additional-features/change-data-capture/using-logical-replication/key-concepts/#lsn-type)) to each change and transaction boundary (BEGIN, COMMIT) record, and sends the changes to the walsender in transaction commit time order.
 
 **Step 3 - walsender to client**
 
@@ -79,13 +79,13 @@ The walsender sends changes to the output plugin, which filters them according t
 <!--TODO (Siddharth): Fix the Links to the protocol section.
 
 {{< note title="Note" >}}
-Refer to [Replication Protocol](../../../develop/change-data-capture/using-logical-replication/#streaming-protocol) for more details.
+Refer to [Replication Protocol](../../../additional-features/change-data-capture/using-logical-replication/#streaming-protocol) for more details.
 
 {{< /note >}}
 
 {{< tip title="Explore" >}}
 
-See [Getting Started with Logical Replication](../../../develop/change-data-capture/using-logical-replication/getting-started/) to set up Logical Replication in YugabyteDB.
+See [Getting Started with Logical Replication](../../../additional-features/change-data-capture/using-logical-replication/getting-started/) to set up Logical Replication in YugabyteDB.
 
 {{< /tip >}}
 -->

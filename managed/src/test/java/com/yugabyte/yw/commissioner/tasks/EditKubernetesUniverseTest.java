@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks;
 
@@ -100,7 +100,6 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
   @Before
   public void setUp() {
-    super.setUp();
     setFollowerLagMock();
     setUnderReplicatedTabletsMock();
     when(mockOperatorStatusUpdaterFactory.create()).thenReturn(mockOperatorStatusUpdater);

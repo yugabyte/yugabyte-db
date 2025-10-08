@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -202,9 +202,6 @@ void RemoteBootstrapServiceImpl::BeginRemoteBootstrapSession(
   const auto& wait_state = ash::WaitStateInfo::CurrentWaitState();
 
   if (wait_state) {
-    if (req->has_ash_metadata()) {
-      wait_state->UpdateMetadataFromPB(req->ash_metadata());
-    }
     if (req->has_tablet_id()) {
       wait_state->UpdateAuxInfo({
         .tablet_id = req->tablet_id(),
@@ -294,9 +291,6 @@ void RemoteBootstrapServiceImpl::FetchData(const FetchDataRequestPB* req,
 
   const auto& wait_state = ash::WaitStateInfo::CurrentWaitState();
   if (wait_state) {
-    if (req->has_ash_metadata()) {
-      wait_state->UpdateMetadataFromPB(req->ash_metadata());
-    }
     wait_state->UpdateAuxInfo({.tablet_id = session->tablet_id(), .method = "FetchData"});
   }
 

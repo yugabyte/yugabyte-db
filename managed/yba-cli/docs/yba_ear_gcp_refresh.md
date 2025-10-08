@@ -34,7 +34,7 @@ yba ear gcp refresh --name <config-name>
   -H, --host string        YugabyteDB Anywhere Host (default "http://localhost:9000")
       --insecure           Allow insecure connections to YugabyteDB Anywhere. Value ignored for http endpoints. Defaults to false for https.
   -l, --logLevel string    Select the desired log level format. Allowed values: debug, info, warn, error, fatal. (default "info")
-  -n, --name string        [Optional] The name of the configuration for the action. Required for create, delete, describe, update.
+  -n, --name string        [Optional] The name of the configuration for the action. Required for create, delete, describe, update and refresh.
   -o, --output string      Select the desired output format. Allowed values: table, json, pretty. (default "table")
       --timeout duration   Wait command timeout, example: 5m, 1h. (default 168h0m0s)
       --wait               Wait until the task is completed, otherwise it will exit immediately. (default true)

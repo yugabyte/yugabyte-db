@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 import { Component, lazy, Suspense } from 'react';
 import Measure from 'react-measure';

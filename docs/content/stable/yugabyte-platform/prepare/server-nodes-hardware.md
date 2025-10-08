@@ -1,8 +1,8 @@
 ---
-title: YugabyteDB Anywhere hardware requirements
-headerTitle: Hardware requirements for nodes
+title: Hardware requirements for servers running database nodes
+headerTitle: Hardware requirements for database nodes
 linkTitle: Hardware requirements
-description: Hardware prerequisites for cluster nodes.
+description: Hardware prerequisites for database nodes.
 headContent: CPU, memory, disk, and instance types required for YugabyteDB
 menu:
   stable_yugabyte-platform:
@@ -59,7 +59,7 @@ Refer to [Hardware requirements](../../../deploy/checklist/#hardware-requirement
 - [Verify support for SSE2 and SSE4.2](../../../deploy/checklist/#verify-support-for-sse2-and-sse4-2)
 - [Disks](../../../deploy/checklist/#disks)
 
-When creating your VMs, create at least two virtual disks: one as the boot disk, and another for data and logs.
+It is recommended to use separate disks for the Linux OS and for the data.
 
   </div>
 

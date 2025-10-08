@@ -48,6 +48,7 @@ static void yb_check_user_attributes(PGconn *old_cluster_conn,
 									 const char **role_attrs);
 static void yb_check_yugabyte_user(PGconn *old_cluster_conn);
 static void yb_check_old_cluster_user(PGconn *old_cluster_conn);
+static void yb_check_invalid_indexes();
 static void yb_check_installed_extensions();
 
 /*
@@ -227,6 +228,7 @@ check_and_dump_old_cluster(bool live_check)
 	if (!is_yugabyte_enabled() && GET_MAJOR_VERSION(old_cluster.major_version) <= 903)
 		old_9_3_check_for_line_data_type_usage(&old_cluster);
 
+	yb_check_invalid_indexes();
 	yb_check_installed_extensions();
 
 	if (yb_has_check_fatal)
@@ -1775,7 +1777,103 @@ yb_check_old_cluster_user(PGconn *old_cluster_conn)
 	check_ok();
 }
 
-void
+static void
+yb_check_invalid_indexes()
+{
+	int			dbnum;
+	bool		found = false;
+	char		output_path[MAXPGPATH];
+	FILE	   *script = NULL;
+
+	snprintf(output_path, sizeof(output_path), "%s/%s",
+			 log_opts.basedir,
+			 "invalid_indexes.txt");
+
+	prep_status("Checking for invalid indexes");
+
+	for (dbnum = 0; dbnum < old_cluster.dbarr.ndbs; dbnum++)
+	{
+		PGresult   *res;
+		int			ntups;
+		int			rowno;
+		int			i_schemaname;
+		int			i_indexname;
+		int			i_indexrelid;
+		bool		db_used = false;
+		DbInfo	   *active_db = &old_cluster.dbarr.dbs[dbnum];
+		PGconn	   *conn = connectToServer(&old_cluster, active_db->db_name);
+
+		/*
+		 * Query to find invalid indexes that would be excluded by pg_dump.
+		 * pg_dump includes indexes WHERE (indisvalid OR relkind='p') AND indisready
+		 * So we find the negation, which is:
+		 * (NOT indisvalid AND relkind!='p') OR NOT indisready
+		 */
+		res = executeQueryOrDie(conn,
+								"SELECT n.nspname AS schemaname, "
+								"       c.relname AS tablename, "
+								"       i.relname AS indexname, "
+								"       indexrelid "
+								"FROM pg_catalog.pg_index x "
+								"JOIN pg_catalog.pg_class c ON c.oid = x.indrelid "
+								"JOIN pg_catalog.pg_class i ON i.oid = x.indexrelid "
+								"JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+								"WHERE (NOT x.indisvalid AND c.relkind != 'p') OR NOT x.indisready "
+								"ORDER BY n.nspname, c.relname, i.relname");
+
+		ntups = PQntuples(res);
+		i_schemaname = PQfnumber(res, "schemaname");
+		i_indexname = PQfnumber(res, "indexname");
+		i_indexrelid = PQfnumber(res, "indexrelid");
+
+		for (rowno = 0; rowno < ntups; rowno++)
+		{
+			const char *schemaname = PQgetvalue(res, rowno, i_schemaname);
+			const char *indexname = PQgetvalue(res, rowno, i_indexname);
+
+			found = true;
+			if (script == NULL && (script = fopen_priv(output_path, "w")) == NULL)
+				pg_fatal("could not open file \"%s\": %s\n", output_path,
+						 strerror(errno));
+			if (!db_used)
+			{
+				yb_fprintf_and_log(script, "In database: %s\n",
+								   active_db->db_name);
+				db_used = true;
+			}
+			yb_fprintf_and_log(script, "  %s.%s (oid=%s)\n",
+							   PQgetvalue(res, rowno, i_schemaname),
+							   PQgetvalue(res, rowno, i_indexname),
+							   PQgetvalue(res, rowno, i_indexrelid));
+			yb_fprintf_and_log(script, "    \\c %s\n", active_db->db_name);
+			yb_fprintf_and_log(script, "    DROP INDEX %s.%s;\n", schemaname, indexname);
+		}
+
+		PQclear(res);
+		PQfinish(conn);
+	}
+
+	if (found)
+	{
+		yb_fatal("Your installation contains invalid indexes that must be fixed\n"
+				 "before upgrading. Invalid indexes are typically created when\n"
+				 "CREATE INDEX CONCURRENTLY fails or is interrupted. You can fix\n"
+				 "this by dropping the invalid indexes and recreating them if needed.\n"
+				 "To find invalid indexes, run\n"
+				 "  SELECT i.indexrelid::regclass FROM pg_index i\n"
+				 "  JOIN pg_class c ON c.oid = i.indrelid\n"
+				 "  WHERE (NOT i.indisvalid AND c.relkind != 'p') OR NOT i.indisready;\n"
+				 "in all databases.\n"
+				 "A list of invalid indexes and DROP commands is printed above and in the file:\n"
+				 "    %s\n\n", output_path);
+	}
+	else
+	{
+		check_ok();
+	}
+}
+
+static void
 yb_check_installed_extensions()
 {
 	int			dbnum;

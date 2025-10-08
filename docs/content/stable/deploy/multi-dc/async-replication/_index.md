@@ -11,9 +11,9 @@ menu:
     weight: 610
 type: indexpage
 ---
-By default, YugabyteDB provides synchronous replication and strong consistency across geo-distributed data centers. However, many use cases do not require synchronous replication or justify the additional complexity and operating costs associated with managing three or more data centers. A cross-cluster (xCluster) deployment provides asynchronous replication across two data centers or cloud regions. Using an xCluster deployment, you can use unidirectional (master-follower) or bidirectional (multi-master) asynchronous replication between two universes (aka data centers).
+By default, YugabyteDB provides synchronous replication and strong consistency across geo-distributed data centers. However, many use cases do not require synchronous replication or justify the additional complexity and operating costs associated with managing three or more data centers. A cross-universe (xCluster) deployment provides asynchronous replication across two data centers or cloud regions. Using an xCluster deployment, you can use unidirectional (master-follower) or bidirectional (multi-master) asynchronous replication between two universes (aka data centers).
 
-For information on xCluster deployment architecture, replication scenarios, and limitations, refer to [xCluster replication](../../../architecture/docdb-replication/async-replication/).
+For information on xCluster deployment architecture, replication scenarios, and limitations, refer to [xCluster architecture](../../../architecture/docdb-replication/async-replication/).
 
 {{<index/block>}}
 
@@ -33,21 +33,24 @@ For information on xCluster deployment architecture, replication scenarios, and 
 
 ## Prerequisites
 
-- If the root certificates for the source and target clusters are different, (for example, the node certificates for target and source nodes were not created on the same machine), copy the `ca.crt` for the source cluster to all target nodes, and vice-versa. If the root certificate for both source and target clusters is the same, you can skip this step.
+- If the root certificates for the source and target universe are different, (for example, the node certificates for target and source nodes were not created on the same machine), copy the `ca.crt` for the source universe to all target nodes, and vice-versa. If the root certificate for both source and target universes is the same, you can skip this step.
 
-    Locate the `ca.crt` file for the source cluster on any node at `<base-dir>/certs/ca.crt`. Copy this file to all target nodes at `<base-dir>/certs/xcluster/<replication-id>/`. The `<replication-id>` must be the same as you configured in Step 1.
-
-    Similarly, copy the `ca.crt` file for the target cluster on any node at `<base-dir>/certs/ca.crt` to source cluster nodes at `<base-dir>/certs/xcluster/<replication-id>/`.
+    1. For each YB-Master and YB-TServer on both the source and target universe, set the flag `certs_for_cdc_dir` to the parent directory (for example, `<home>/xcluster-certs`) where you want to store all the other universe's certificates for replication.
+    1. Find the certificate authority file used by the source universe (`ca.crt`). This should be stored in the [--certs_dir](../../../reference/configuration/yb-master/#certs-dir).
+    1. Copy this file to each node on the target universe. It needs to be copied to a directory named `<home>/xcluster-certs/xcluster-replication-id` (create the directory if it is not there).
+    1. Similarly, copy the `ca.crt` file for the target universe from any target universe node at `--certs_dir` to the source universe nodes at `<home>/xcluster-certs/<xcluster-replication-id>/` (create the directory if it is not there).
 
 - Global objects like users, roles, tablespaces are not managed by xCluster. You must explicitly create and manage these objects on both source and target universes.
+
+- For moving data out of YugabyteDB, set up CDC on the xCluster source universe. CDC on the xCluster target universe is not supported. CDC is not supported in bi-directional xCluster setups.
 
 ## Best practices
 
 - Set the YB-TServer [cdc_wal_retention_time_secs](../../../reference/configuration/all-flags-yb-tserver/#cdc-wal-retention-time-secs) flag to 86400 on both source and target universe.
 
-    This flag determines the duration for which WAL is retained on the source universe in case of a network partition or a complete outage of the target universe. The value depends on how long a network partition of the source cluster or an outage of the target cluster can be tolerated.
+    This flag determines the duration for which WAL is retained on the source universe in case of a network partition or a complete outage of the target universe. The value depends on how long a network partition of the source universe or an outage of the target universe can be tolerated.
 
-- Make sure all YB-Master and YB-Tserver flags are set to the same value on both the source and target universes.
+- Make sure all YB-Master and YB-TServer flags are set to the same value on both the source and target universes.
 
 - Monitor CPU usage and ensure it remains below 65%. Note that xCluster replication typically incurs a 20% CPU overhead.
 

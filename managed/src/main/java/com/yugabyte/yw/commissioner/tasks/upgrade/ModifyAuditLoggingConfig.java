@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
@@ -69,6 +69,9 @@ public class ModifyAuditLoggingConfig extends UpgradeTaskBase {
                 mastersAndTservers.getForCluster(curCluster.uuid).tserversList);
           }
           updateAndPersistAuditLoggingConfigTask();
+
+          // Update the swamper target file.
+          createSwamperTargetUpdateTask(false /* removeFile */);
         });
   }
 
@@ -124,6 +127,8 @@ public class ModifyAuditLoggingConfig extends UpgradeTaskBase {
         nodes,
         taskParams().installOtelCollector,
         taskParams().auditLogConfig,
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.queryLogConfig,
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.metricsExportConfig,
         nodeDetails ->
             GFlagsUtil.getGFlagsForNode(
                 nodeDetails,

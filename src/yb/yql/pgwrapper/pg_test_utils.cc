@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -10,6 +10,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
+#include <fstream>
 
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
@@ -127,6 +129,25 @@ Status IncrementAllDBCatalogVersions(
         "SELECT yb_increment_all_db_catalog_versions($0)", is_breaking ? "true" : "false"));
   }
   return result;
+}
+
+void GenerateCSVFileForCopy(
+    const std::string& filename, int num_rows, int num_columns, int offset) {
+  std::remove(filename.c_str());
+  std::ofstream temp_file(filename);
+  temp_file << "k";
+  for (int c = 0; c < num_columns - 1; ++c) {
+    temp_file << ",v" << c;
+  }
+  temp_file << std::endl;
+  for (int i = 0; i < num_rows; ++i) {
+    temp_file << i + offset;
+    for (int c = 0; c < num_columns - 1; ++c) {
+      temp_file << "," << i + c;
+    }
+    temp_file << std::endl;
+  }
+  temp_file.close();
 }
 
 } // namespace yb::pgwrapper

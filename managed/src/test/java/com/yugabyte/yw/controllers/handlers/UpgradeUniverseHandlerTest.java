@@ -1,28 +1,36 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.controllers.handlers;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.SoftwareUpgradeHelper;
+import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -31,19 +39,23 @@ import com.yugabyte.yw.common.gflags.GFlagDetails;
 import com.yugabyte.yw.common.gflags.GFlagDiffEntry;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
+import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeWithGFlags;
+import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
 import java.io.IOException;
+import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -54,6 +66,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.MockedStatic;
 import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
@@ -63,6 +76,7 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
   private GFlagsValidationHandler gFlagsValidationHandler;
   private Commissioner mockCommissioner;
   private RuntimeConfGetter runtimeConfGetter;
+  private RuntimeConfigFactory mockRuntimeConfigFactory;
 
   @Before
   public void setUp() {
@@ -72,11 +86,19 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
     gFlagsValidationHandler = mock(GFlagsValidationHandler.class);
     gFlagsAuditHandler = new GFlagsAuditHandler(gFlagsValidationHandler);
     runtimeConfGetter = mock(RuntimeConfGetter.class);
+    mockRuntimeConfigFactory = mock(RuntimeConfigFactory.class);
+
+    // Mock KubernetesManagerFactory
+    KubernetesManagerFactory mockKubernetesManagerFactory = mock(KubernetesManagerFactory.class);
+    KubernetesManager mockKubernetesManager = mock(KubernetesManager.class);
+    when(mockKubernetesManagerFactory.getManager()).thenReturn(mockKubernetesManager);
+    when(mockKubernetesManager.getHelmPackagePath(anyString())).thenReturn("/tmp/helm/path");
+
     handler =
         new UpgradeUniverseHandler(
             mockCommissioner,
-            mock(KubernetesManagerFactory.class),
-            mock(RuntimeConfigFactory.class),
+            mockKubernetesManagerFactory,
+            mockRuntimeConfigFactory,
             mock(YbcManager.class),
             runtimeConfGetter,
             mock(CertificateHelper.class),
@@ -179,7 +201,7 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
     params.setUniverseUUID(u.getUniverseUUID());
     params.clusters = u.getUniverseDetails().clusters;
     params.getPrimaryCluster().userIntent.specificGFlags =
-        SpecificGFlags.construct(Map.of("master", "1"), Map.of("tserver", "2"));
+        SpecificGFlags.construct(ImmutableMap.of("master", "1"), ImmutableMap.of("tserver", "2"));
     JsonNode payload = gFlagsAuditHandler.constructGFlagAuditPayload(params);
     ObjectNode expected = Json.newObject();
     expected.set(
@@ -198,7 +220,7 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
     UniverseDefinitionTaskParams.UserIntent rrUserIntent =
         u.getUniverseDetails().getPrimaryCluster().userIntent.clone();
     rrUserIntent.specificGFlags =
-        SpecificGFlags.construct(Map.of("master", "5"), Map.of("tserver2", "2"));
+        SpecificGFlags.construct(ImmutableMap.of("master", "5"), ImmutableMap.of("tserver2", "2"));
     u =
         Universe.saveDetails(
             u.getUniverseUUID(), ApiUtils.mockUniverseUpdaterWithReadReplica(rrUserIntent, null));
@@ -206,7 +228,7 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
     params.setUniverseUUID(u.getUniverseUUID());
     params.clusters = u.getUniverseDetails().clusters;
     params.getReadOnlyClusters().get(0).userIntent.specificGFlags =
-        SpecificGFlags.construct(Map.of("master", "1"), Map.of("tserver", "2"));
+        SpecificGFlags.construct(ImmutableMap.of("master", "1"), ImmutableMap.of("tserver", "2"));
     JsonNode payload = gFlagsAuditHandler.constructGFlagAuditPayload(params);
     ObjectNode expected = Json.newObject();
     expected.set(
@@ -228,13 +250,14 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
             universe -> {
               UniverseDefinitionTaskParams details = universe.getUniverseDetails();
               details.getPrimaryCluster().userIntent.specificGFlags =
-                  SpecificGFlags.construct(Map.of("master", "1"), Map.of("tserver", "1"));
+                  SpecificGFlags.construct(
+                      ImmutableMap.of("master", "1"), ImmutableMap.of("tserver", "1"));
               universe.setUniverseDetails(details);
             });
     UniverseDefinitionTaskParams.UserIntent rrUserIntent =
         u.getUniverseDetails().getPrimaryCluster().userIntent.clone();
     rrUserIntent.specificGFlags =
-        SpecificGFlags.construct(Map.of("master", "5"), Map.of("tserver2", "2"));
+        SpecificGFlags.construct(ImmutableMap.of("master", "5"), ImmutableMap.of("tserver2", "2"));
     u =
         Universe.saveDetails(
             u.getUniverseUUID(), ApiUtils.mockUniverseUpdaterWithReadReplica(rrUserIntent, null));
@@ -242,9 +265,9 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
     params.setUniverseUUID(u.getUniverseUUID());
     params.clusters = u.getUniverseDetails().clusters;
     params.getPrimaryCluster().userIntent.specificGFlags =
-        SpecificGFlags.construct(Map.of("master", "2"), Map.of("tserver", "3"));
+        SpecificGFlags.construct(ImmutableMap.of("master", "2"), ImmutableMap.of("tserver", "3"));
     params.getReadOnlyClusters().get(0).userIntent.specificGFlags =
-        SpecificGFlags.construct(Map.of("master", "1"), Map.of("tserver", "2"));
+        SpecificGFlags.construct(ImmutableMap.of("master", "1"), ImmutableMap.of("tserver", "2"));
     JsonNode payload = gFlagsAuditHandler.constructGFlagAuditPayload(params);
     ObjectNode expected = Json.newObject();
     expected.set(
@@ -275,7 +298,7 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
     params.setUniverseUUID(u.getUniverseUUID());
     params.clusters = u.getUniverseDetails().clusters;
     params.getPrimaryCluster().userIntent.specificGFlags =
-        SpecificGFlags.construct(Map.of("master", "1"), Map.of("tserver", "2"));
+        SpecificGFlags.construct(ImmutableMap.of("master", "1"), ImmutableMap.of("tserver", "2"));
     JsonNode payload = gFlagsAuditHandler.constructGFlagAuditPayload(params);
     ObjectNode expected = Json.newObject();
     // Expecting no read replica gflags as long as they are inherited.
@@ -304,7 +327,8 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
               UniverseDefinitionTaskParams.UserIntent userIntent =
                   details.getPrimaryCluster().userIntent;
               userIntent.specificGFlags =
-                  SpecificGFlags.construct(Map.of("master", "1"), Map.of("tserver", "1"));
+                  SpecificGFlags.construct(
+                      ImmutableMap.of("master", "1"), ImmutableMap.of("tserver", "1"));
               userIntent.masterGFlags =
                   userIntent.specificGFlags.getPerProcessFlags().value.get(ServerType.MASTER);
               userIntent.tserverGFlags =
@@ -314,8 +338,8 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
     GFlagsUpgradeParams params = new GFlagsUpgradeParams();
     params.setUniverseUUID(u.getUniverseUUID());
     params.clusters = u.getUniverseDetails().clusters;
-    Map<String, String> masterGFlags = Map.of("asd", "10");
-    Map<String, String> tserverGFlags = Map.of("awesd", "15");
+    Map<String, String> masterGFlags = ImmutableMap.of("asd", "10");
+    Map<String, String> tserverGFlags = ImmutableMap.of("awesd", "15");
     params.masterGFlags = masterGFlags;
     params.tserverGFlags = tserverGFlags;
     handler.upgradeGFlags(params, c, Universe.getOrBadRequest(u.getUniverseUUID()));
@@ -346,7 +370,8 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
               UniverseDefinitionTaskParams.UserIntent userIntent =
                   details.getPrimaryCluster().userIntent;
               userIntent.specificGFlags =
-                  SpecificGFlags.construct(Map.of("master", "1"), Map.of("tserver", "1"));
+                  SpecificGFlags.construct(
+                      ImmutableMap.of("master", "1"), ImmutableMap.of("tserver", "1"));
               userIntent.masterGFlags =
                   userIntent.specificGFlags.getPerProcessFlags().value.get(ServerType.MASTER);
               userIntent.tserverGFlags =
@@ -362,8 +387,8 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
     GFlagsUpgradeParams params = new GFlagsUpgradeParams();
     params.setUniverseUUID(u.getUniverseUUID());
     params.clusters = u.getUniverseDetails().clusters;
-    Map<String, String> masterGFlags = Map.of("asd", "10");
-    Map<String, String> tserverGFlags = Map.of("awesd", "15");
+    Map<String, String> masterGFlags = ImmutableMap.of("asd", "10");
+    Map<String, String> tserverGFlags = ImmutableMap.of("awesd", "15");
     params.masterGFlags = masterGFlags;
     params.tserverGFlags = tserverGFlags;
     handler.upgradeGFlags(params, c, Universe.getOrBadRequest(u.getUniverseUUID()));
@@ -391,7 +416,8 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
               UniverseDefinitionTaskParams.UserIntent userIntent =
                   details.getPrimaryCluster().userIntent;
               userIntent.specificGFlags =
-                  SpecificGFlags.construct(Map.of("master", "1"), Map.of("tserver", "1"));
+                  SpecificGFlags.construct(
+                      ImmutableMap.of("master", "1"), ImmutableMap.of("tserver", "1"));
               userIntent.masterGFlags =
                   userIntent.specificGFlags.getPerProcessFlags().value.get(ServerType.MASTER);
               userIntent.tserverGFlags =
@@ -400,15 +426,16 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
             });
     UniverseDefinitionTaskParams.UserIntent rrUserIntent =
         u.getUniverseDetails().getPrimaryCluster().userIntent.clone();
-    rrUserIntent.specificGFlags = SpecificGFlags.construct(Map.of("wer", "3"), Map.of("ere", "5"));
+    rrUserIntent.specificGFlags =
+        SpecificGFlags.construct(ImmutableMap.of("wer", "3"), ImmutableMap.of("ere", "5"));
     u =
         Universe.saveDetails(
             u.getUniverseUUID(), ApiUtils.mockUniverseUpdaterWithReadReplica(rrUserIntent, null));
     GFlagsUpgradeParams params = new GFlagsUpgradeParams();
     params.setUniverseUUID(u.getUniverseUUID());
     params.clusters = u.getUniverseDetails().clusters;
-    Map<String, String> masterGFlags = Map.of("asd", "10");
-    Map<String, String> tserverGFlags = Map.of("awesd", "15");
+    Map<String, String> masterGFlags = ImmutableMap.of("asd", "10");
+    Map<String, String> tserverGFlags = ImmutableMap.of("awesd", "15");
     params.masterGFlags = masterGFlags;
     params.tserverGFlags = tserverGFlags;
     PlatformServiceException exception =
@@ -437,7 +464,8 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
               UniverseDefinitionTaskParams.UserIntent userIntent =
                   details.getPrimaryCluster().userIntent;
               userIntent.specificGFlags =
-                  SpecificGFlags.construct(Map.of("master", "1"), Map.of("tserver", "1"));
+                  SpecificGFlags.construct(
+                      ImmutableMap.of("master", "1"), ImmutableMap.of("tserver", "1"));
               userIntent.masterGFlags =
                   userIntent.specificGFlags.getPerProcessFlags().value.get(ServerType.MASTER);
               userIntent.tserverGFlags =
@@ -446,19 +474,21 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
             });
     UniverseDefinitionTaskParams.UserIntent rrUserIntent =
         u.getUniverseDetails().getPrimaryCluster().userIntent.clone();
-    rrUserIntent.specificGFlags = SpecificGFlags.construct(Map.of("wer", "3"), Map.of("ere", "5"));
+    rrUserIntent.specificGFlags =
+        SpecificGFlags.construct(ImmutableMap.of("wer", "3"), ImmutableMap.of("ere", "5"));
     rrUserIntent.specificGFlags.setPerAZ(
-        Map.of(
+        ImmutableMap.of(
             UUID.randomUUID(),
-            SpecificGFlags.construct(Map.of("a", "b"), Map.of("a", "b")).getPerProcessFlags()));
+            SpecificGFlags.construct(ImmutableMap.of("a", "b"), ImmutableMap.of("a", "b"))
+                .getPerProcessFlags()));
     u =
         Universe.saveDetails(
             u.getUniverseUUID(), ApiUtils.mockUniverseUpdaterWithReadReplica(rrUserIntent, null));
     GFlagsUpgradeParams params = new GFlagsUpgradeParams();
     params.setUniverseUUID(u.getUniverseUUID());
     params.clusters = u.getUniverseDetails().clusters;
-    Map<String, String> masterGFlags = Map.of("asd", "10");
-    Map<String, String> tserverGFlags = Map.of("awesd", "15");
+    Map<String, String> masterGFlags = ImmutableMap.of("asd", "10");
+    Map<String, String> tserverGFlags = ImmutableMap.of("awesd", "15");
     params.masterGFlags = masterGFlags;
     params.tserverGFlags = tserverGFlags;
     PlatformServiceException exception =
@@ -487,11 +517,12 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
               UniverseDefinitionTaskParams.UserIntent userIntent =
                   details.getPrimaryCluster().userIntent;
               userIntent.specificGFlags =
-                  SpecificGFlags.construct(Map.of("master", "1"), Map.of("tserver", "1"));
+                  SpecificGFlags.construct(
+                      ImmutableMap.of("master", "1"), ImmutableMap.of("tserver", "1"));
               userIntent.specificGFlags.setPerAZ(
-                  Map.of(
+                  ImmutableMap.of(
                       UUID.randomUUID(),
-                      SpecificGFlags.construct(Map.of("a", "b"), Map.of("a", "b"))
+                      SpecificGFlags.construct(ImmutableMap.of("a", "b"), ImmutableMap.of("a", "b"))
                           .getPerProcessFlags()));
               userIntent.masterGFlags =
                   userIntent.specificGFlags.getPerProcessFlags().value.get(ServerType.MASTER);
@@ -503,8 +534,8 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
     GFlagsUpgradeParams params = new GFlagsUpgradeParams();
     params.setUniverseUUID(u.getUniverseUUID());
     params.clusters = u.getUniverseDetails().clusters;
-    params.masterGFlags = Map.of("asd", "10");
-    params.tserverGFlags = Map.of("awesd", "15");
+    params.masterGFlags = ImmutableMap.of("asd", "10");
+    params.tserverGFlags = ImmutableMap.of("awesd", "15");
     PlatformServiceException exception =
         assertThrows(
             PlatformServiceException.class,
@@ -531,7 +562,8 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
               UniverseDefinitionTaskParams.UserIntent userIntent =
                   details.getPrimaryCluster().userIntent;
               userIntent.specificGFlags =
-                  SpecificGFlags.construct(Map.of("master", "1"), Map.of("tserver", "1"));
+                  SpecificGFlags.construct(
+                      ImmutableMap.of("master", "1"), ImmutableMap.of("tserver", "1"));
               userIntent.masterGFlags =
                   userIntent.specificGFlags.getPerProcessFlags().value.get(ServerType.MASTER);
               userIntent.tserverGFlags =
@@ -565,7 +597,8 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
               UniverseDefinitionTaskParams.UserIntent userIntent =
                   details.getPrimaryCluster().userIntent;
               userIntent.specificGFlags =
-                  SpecificGFlags.construct(Map.of("master", "1"), Map.of("tserver", "1"));
+                  SpecificGFlags.construct(
+                      ImmutableMap.of("master", "1"), ImmutableMap.of("tserver", "1"));
               userIntent.masterGFlags =
                   userIntent.specificGFlags.getPerProcessFlags().value.get(ServerType.MASTER);
               userIntent.tserverGFlags =
@@ -611,7 +644,8 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
               UniverseDefinitionTaskParams.UserIntent userIntent =
                   details.getPrimaryCluster().userIntent;
               userIntent.specificGFlags =
-                  SpecificGFlags.construct(Map.of("master", "1"), Map.of("tserver", "1"));
+                  SpecificGFlags.construct(
+                      ImmutableMap.of("master", "1"), ImmutableMap.of("tserver", "1"));
               userIntent.masterGFlags =
                   userIntent.specificGFlags.getPerProcessFlags().value.get(ServerType.MASTER);
               userIntent.tserverGFlags =
@@ -621,8 +655,8 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
     GFlagsUpgradeParams params = new GFlagsUpgradeParams();
     params.setUniverseUUID(u.getUniverseUUID());
     params.clusters = u.getUniverseDetails().clusters;
-    Map<String, String> masterGFlags = Map.of("asd", "10");
-    Map<String, String> tserverGFlags = Map.of("awesd", "15");
+    Map<String, String> masterGFlags = ImmutableMap.of("asd", "10");
+    Map<String, String> tserverGFlags = ImmutableMap.of("awesd", "15");
     params.masterGFlags = masterGFlags;
     params.tserverGFlags = tserverGFlags;
     // Erasing specificGFlags in
@@ -669,14 +703,382 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
     return res;
   }
 
-  //  private   public static UUID buildTaskInfo(UUID parentUUID, TaskType taskType) {
-  //    TaskInfo taskInfo = new TaskInfo(taskType);
-  //    taskInfo.setDetails(Json.newObject());
-  //    taskInfo.setOwner("test-owner");
-  //    if (parentUUID != null) {
-  //      taskInfo.setParentUuid(parentUUID);
-  //    }
-  //    taskInfo.save();
-  //    return taskInfo.getTaskUUID();
-  //  }
+  // Kubernetes Certificate Rotation Tests
+  @Test
+  public void testRotateCertsKubernetesRootCertRotation()
+      throws IOException, NoSuchAlgorithmException {
+    UUID fakeTaskUUID =
+        FakeDBApplication.buildTaskInfo(null, TaskType.CertsRotateKubernetesUpgrade);
+    when(mockCommissioner.submit(any(TaskType.class), any(ITaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    Customer c = ModelFactory.testCustomer();
+    Universe u = createKubernetesUniverse(c);
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            universe -> {
+              UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+              details.getPrimaryCluster().userIntent.enableClientToNodeEncrypt = false;
+              universe.setUniverseDetails(details);
+            });
+
+    CertsRotateParams params = new CertsRotateParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = u.getUniverseDetails().clusters;
+    params.rootCA = UUID.randomUUID();
+    params.rootAndClientRootCASame = true;
+
+    // Create certificate info
+    String certBasePath = TestHelper.TMP_PATH + "/" + UUID.randomUUID();
+    TestHelper.createTempFile(certBasePath, "test.crt", "test-cert");
+    CertificateInfo.create(
+        params.rootCA,
+        c.getUuid(),
+        "test-cert",
+        new Date(),
+        new Date(),
+        "privateKey",
+        certBasePath + "/test.crt",
+        CertConfigType.SelfSigned);
+
+    handler.rotateCerts(params, c, u);
+
+    ArgumentCaptor<CertsRotateParams> paramsArgumentCaptor =
+        ArgumentCaptor.forClass(CertsRotateParams.class);
+    verify(mockCommissioner)
+        .submit(eq(TaskType.CertsRotateKubernetesUpgrade), paramsArgumentCaptor.capture());
+
+    CertsRotateParams capturedParams = paramsArgumentCaptor.getValue();
+    assertEquals(CertsRotateParams.CertRotationType.RootCert, capturedParams.rootCARotationType);
+  }
+
+  @Test
+  public void testRotateCertsKubernetesServerCertRotation()
+      throws IOException, NoSuchAlgorithmException {
+    UUID fakeTaskUUID =
+        FakeDBApplication.buildTaskInfo(null, TaskType.CertsRotateKubernetesUpgrade);
+    when(mockCommissioner.submit(any(TaskType.class), any(ITaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    // Mock the static method
+    try (MockedStatic<CertificateHelper> mockedCertificateHelper =
+        mockStatic(CertificateHelper.class)) {
+      mockedCertificateHelper
+          .when(() -> CertificateHelper.createClientCertificate(any(), any(), any()))
+          .thenReturn(null);
+
+      Customer c = ModelFactory.testCustomer();
+      Universe u = createKubernetesUniverse(c);
+
+      // Set up universe with existing rootCA
+      UUID existingRootCA = UUID.randomUUID();
+      u =
+          Universe.saveDetails(
+              u.getUniverseUUID(),
+              universe -> {
+                UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+                details.rootCA = existingRootCA;
+                details.getPrimaryCluster().userIntent.enableClientToNodeEncrypt = true;
+                details.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt = true;
+                universe.setUniverseDetails(details);
+              });
+
+      CertsRotateParams params = new CertsRotateParams();
+      params.setUniverseUUID(u.getUniverseUUID());
+      params.clusters = u.getUniverseDetails().clusters;
+      params.rootCA = existingRootCA; // Same rootCA
+      params.selfSignedServerCertRotate = true;
+      params.selfSignedClientCertRotate = true;
+      params.rootAndClientRootCASame = true;
+
+      // Create certificate info
+      String certBasePath = TestHelper.TMP_PATH + "/" + UUID.randomUUID();
+      TestHelper.createTempFile(certBasePath, "test.crt", "test-cert");
+      CertificateInfo.create(
+          existingRootCA,
+          c.getUuid(),
+          "test-cert",
+          new Date(),
+          new Date(),
+          "privateKey",
+          certBasePath + "/test.crt",
+          CertConfigType.SelfSigned);
+
+      handler.rotateCerts(params, c, u);
+
+      ArgumentCaptor<CertsRotateParams> paramsArgumentCaptor =
+          ArgumentCaptor.forClass(CertsRotateParams.class);
+      verify(mockCommissioner)
+          .submit(eq(TaskType.CertsRotateKubernetesUpgrade), paramsArgumentCaptor.capture());
+
+      CertsRotateParams capturedParams = paramsArgumentCaptor.getValue();
+      assertEquals(
+          CertsRotateParams.CertRotationType.ServerCert, capturedParams.rootCARotationType);
+    } catch (Exception e) {
+      fail();
+    }
+  }
+
+  @Test
+  public void testRotateCertsKubernetesPartialServerCertRotationFailure()
+      throws IOException, NoSuchAlgorithmException {
+    Customer c = ModelFactory.testCustomer();
+    Universe u = createKubernetesUniverse(c);
+
+    // Set up universe with existing rootCA
+    UUID existingRootCA = UUID.randomUUID();
+    Universe updatedUniverse =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            universe -> {
+              UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+              details.rootCA = existingRootCA;
+              details.getPrimaryCluster().userIntent.enableClientToNodeEncrypt = false;
+              universe.setUniverseDetails(details);
+            });
+
+    // Create certificate info
+    String certBasePath = TestHelper.TMP_PATH + "/" + UUID.randomUUID();
+    TestHelper.createTempFile(certBasePath, "test.crt", "test-cert");
+    CertificateInfo.create(
+        existingRootCA,
+        c.getUuid(),
+        "test-cert",
+        new Date(),
+        new Date(),
+        "privateKey",
+        certBasePath + "/test.crt",
+        CertConfigType.SelfSigned);
+
+    CertsRotateParams params = new CertsRotateParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = u.getUniverseDetails().clusters;
+    params.selfSignedServerCertRotate = true;
+    params.selfSignedClientCertRotate = false; // Only server cert rotation
+    params.rootAndClientRootCASame = true;
+    params.rootCA = existingRootCA;
+
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class, () -> handler.rotateCerts(params, c, updatedUniverse));
+
+    assertEquals(
+        "Cannot rotate only one of server or client certificates at a time. "
+            + "Both must be rotated together for Kubernetes universes.",
+        exception.getMessage());
+  }
+
+  @Test
+  public void testRotateCertsKubernetesNoRotationRequested()
+      throws IOException, NoSuchAlgorithmException {
+
+    Customer c = ModelFactory.testCustomer();
+    Universe u = createKubernetesUniverse(c);
+
+    // Set up universe with existing rootCA
+    UUID existingRootCA = UUID.randomUUID();
+    Universe updatedUniverse =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            universe -> {
+              UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+              details.rootCA = existingRootCA;
+              details.getPrimaryCluster().userIntent.enableClientToNodeEncrypt = false;
+              universe.setUniverseDetails(details);
+            });
+
+    CertsRotateParams params = new CertsRotateParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = u.getUniverseDetails().clusters;
+    params.rootAndClientRootCASame = true;
+    params.rootCA = existingRootCA;
+    // No rotation flags set
+
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class, () -> handler.rotateCerts(params, c, updatedUniverse));
+
+    assertEquals(
+        "No changes in rootCA or server certificate rotation has been requested.",
+        exception.getMessage());
+  }
+
+  @Test
+  public void testRotateCertsKubernetesNullRootCA() throws IOException, NoSuchAlgorithmException {
+    Customer c = ModelFactory.testCustomer();
+    Universe u = createKubernetesUniverse(c);
+
+    CertsRotateParams params = new CertsRotateParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = u.getUniverseDetails().clusters;
+    params.rootCA = null;
+    params.rootAndClientRootCASame = true;
+
+    PlatformServiceException exception =
+        assertThrows(PlatformServiceException.class, () -> handler.rotateCerts(params, c, u));
+
+    assertEquals("rootCA is null. Cannot perform any upgrade.", exception.getMessage());
+  }
+
+  @Test
+  public void testRotateCertsKubernetesDifferentClientRootCA()
+      throws IOException, NoSuchAlgorithmException {
+    Customer c = ModelFactory.testCustomer();
+    Universe u = createKubernetesUniverse(c);
+
+    CertsRotateParams params = new CertsRotateParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = u.getUniverseDetails().clusters;
+    params.rootCA = UUID.randomUUID();
+    params.setClientRootCA(UUID.randomUUID()); // Different from rootCA
+    params.rootAndClientRootCASame = true;
+
+    PlatformServiceException exception =
+        assertThrows(PlatformServiceException.class, () -> handler.rotateCerts(params, c, u));
+
+    assertEquals(
+        "clientRootCA not applicable for Kubernetes certificate rotation.", exception.getMessage());
+  }
+
+  @Test
+  public void testRotateCertsKubernetesRootAndClientRootCASameFalse()
+      throws IOException, NoSuchAlgorithmException {
+    Customer c = ModelFactory.testCustomer();
+    Universe u = createKubernetesUniverse(c);
+
+    CertsRotateParams params = new CertsRotateParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = u.getUniverseDetails().clusters;
+    params.rootCA = UUID.randomUUID();
+    params.rootAndClientRootCASame = false;
+
+    PlatformServiceException exception =
+        assertThrows(PlatformServiceException.class, () -> handler.rotateCerts(params, c, u));
+
+    assertEquals(
+        "rootAndClientRootCASame cannot be false for Kubernetes universes.",
+        exception.getMessage());
+  }
+
+  @Test
+  public void testRotateCertsKubernetesUnsupportedCertType()
+      throws IOException, NoSuchAlgorithmException {
+    Customer c = ModelFactory.testCustomer();
+    Universe u = createKubernetesUniverse(c);
+
+    CertsRotateParams params = new CertsRotateParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = u.getUniverseDetails().clusters;
+    params.rootCA = UUID.randomUUID();
+    params.rootAndClientRootCASame = true;
+    String certBasePath = TestHelper.TMP_PATH + "/" + UUID.randomUUID();
+    TestHelper.createTempFile(certBasePath, "test.crt", "test-cert");
+
+    // Create certificate info with unsupported type
+    CertificateInfo.create(
+        params.rootCA,
+        c.getUuid(),
+        "test-cert",
+        new Date(),
+        new Date(),
+        "privateKey",
+        certBasePath + "/test.crt",
+        CertConfigType.CustomCertHostPath);
+
+    PlatformServiceException exception =
+        assertThrows(PlatformServiceException.class, () -> handler.rotateCerts(params, c, u));
+
+    assertEquals(
+        "Kubernetes universes supports only SelfSigned or HashicorpVault certificates.",
+        exception.getMessage());
+  }
+
+  @Test
+  public void testRotateCertsEncryptionDisabledWithCA() {
+    Customer c = ModelFactory.testCustomer();
+    Universe u = createKubernetesUniverseInternal(c, null, false, false);
+
+    CertsRotateParams params = new CertsRotateParams();
+    params.rootCA = UUID.randomUUID();
+
+    PlatformServiceException exception =
+        assertThrows(PlatformServiceException.class, () -> params.verifyParams(u, true));
+
+    assertEquals(
+        "Cannot rotate rootCA or clientRootCA when encryption-in-transit is disabled.",
+        exception.getMessage());
+
+    params.rootCA = null;
+    params.setClientRootCA(UUID.randomUUID());
+    params.rootAndClientRootCASame = false;
+
+    exception = assertThrows(PlatformServiceException.class, () -> params.verifyParams(u, true));
+
+    assertEquals(
+        "Cannot rotate rootCA or clientRootCA when encryption-in-transit is disabled.",
+        exception.getMessage());
+  }
+
+  @Test
+  public void testRotateClientCertsEncryptionDisabled() {
+    Customer c = ModelFactory.testCustomer();
+    Universe u = createKubernetesUniverseInternal(c, UUID.randomUUID(), true, false);
+
+    CertsRotateParams params = new CertsRotateParams();
+    params.selfSignedClientCertRotate = true;
+    params.selfSignedServerCertRotate = false;
+
+    PlatformServiceException exception =
+        assertThrows(PlatformServiceException.class, () -> handler.rotateCerts(params, c, u));
+
+    assertEquals(
+        "Cannot rotate client certificate when client to node encryption is disabled.",
+        exception.getMessage());
+  }
+
+  @Test
+  public void testRotateServerCertsEncryptionDisabled() {
+    Customer c = ModelFactory.testCustomer();
+    Universe u = createKubernetesUniverseInternal(c, UUID.randomUUID(), false, true);
+
+    CertsRotateParams params = new CertsRotateParams();
+    params.selfSignedServerCertRotate = true;
+    params.selfSignedClientCertRotate = false;
+
+    PlatformServiceException exception =
+        assertThrows(PlatformServiceException.class, () -> handler.rotateCerts(params, c, u));
+
+    assertEquals(
+        "Cannot rotate server certificate when node to node encryption is disabled.",
+        exception.getMessage());
+  }
+
+  private Universe createKubernetesUniverse(Customer customer) {
+    return createKubernetesUniverseInternal(customer, null, true, true);
+  }
+
+  private Universe createKubernetesUniverseInternal(
+      Customer customer,
+      UUID rootCA,
+      boolean enableNodeToNodeEncrypt,
+      boolean enableClientToNodeEncrypt) {
+    Universe u = ModelFactory.createUniverse(customer.getId());
+    u.updateConfig(ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
+    u.save();
+    return Universe.saveDetails(
+        u.getUniverseUUID(),
+        universe -> {
+          UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+          details.getPrimaryCluster().userIntent.providerType = CloudType.kubernetes;
+          details.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt = enableNodeToNodeEncrypt;
+          details.getPrimaryCluster().userIntent.enableClientToNodeEncrypt =
+              enableClientToNodeEncrypt;
+          details.getPrimaryCluster().userIntent.ybSoftwareVersion = "2.28.0.0-b0";
+          if (rootCA != null) {
+            details.rootCA = rootCA;
+          }
+          universe.setUniverseDetails(details);
+        });
+  }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  */
 
 package xcluster
@@ -46,7 +46,7 @@ var describeXClusterCmd = &cobra.Command{
 
 		rXCluster, response, err := authAPI.GetXClusterConfig(uuid).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "XCluster", "Describe")
+			errMessage := util.ErrorFromHTTPResponse(response, err, "xCluster", "Describe")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
@@ -58,7 +58,7 @@ var describeXClusterCmd = &cobra.Command{
 			errMessage := util.ErrorFromHTTPResponse(
 				response,
 				err,
-				"XCluster",
+				"xCluster",
 				"Describe - Get Source Universe")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
@@ -68,7 +68,7 @@ var describeXClusterCmd = &cobra.Command{
 			errMessage := util.ErrorFromHTTPResponse(
 				response,
 				err,
-				"XCluster",
+				"xCluster",
 				"Describe - Get Target Universe")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
