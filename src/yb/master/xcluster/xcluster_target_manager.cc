@@ -1035,9 +1035,12 @@ Status XClusterTargetManager::HandleTabletSplit(
     return Status::OK();
   }
 
-  auto consumer_tablet_keys = VERIFY_RESULT(catalog_manager_.GetTableKeyRanges(consumer_table_id));
-  auto cluster_config = catalog_manager_.ClusterConfig();
-  auto l = cluster_config->LockForWrite();
+  auto locked_config_and_ranges =
+      VERIFY_RESULT(LockClusterConfigAndGetTableKeyRanges(catalog_manager_, consumer_table_id));
+  auto& cluster_config = locked_config_and_ranges.cluster_config;
+  auto& l = locked_config_and_ranges.write_lock;
+  auto& consumer_tablet_keys = locked_config_and_ranges.table_key_ranges;
+
   for (const auto& [replication_group_id, stream_id] : stream_ids) {
     // Fetch the stream entry so we can update the mappings.
     auto replication_group_map =

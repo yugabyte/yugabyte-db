@@ -1928,13 +1928,14 @@ Status YBClient::BootstrapProducer(
 
 Status YBClient::UpdateConsumerOnProducerSplit(
     const xcluster::ReplicationGroupId& replication_group_id, const xrepl::StreamId& stream_id,
-    const master::ProducerSplitTabletInfoPB& split_info) {
+    const master::ProducerSplitTabletInfoPB& split_info, const TableId& consumer_table_id) {
   SCHECK(!replication_group_id.empty(), InvalidArgument, "Producer id is required.");
   SCHECK(stream_id, InvalidArgument, "Stream id is required.");
 
   UpdateConsumerOnProducerSplitRequestPB req;
   req.set_replication_group_id(replication_group_id.ToString());
   req.set_stream_id(stream_id.ToString());
+  req.set_consumer_table_id(consumer_table_id);
   req.mutable_producer_split_tablet_info()->CopyFrom(split_info);
 
   UpdateConsumerOnProducerSplitResponsePB resp;
