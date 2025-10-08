@@ -36,7 +36,6 @@
 #include <string>
 #include <type_traits>
 #include <unordered_map>
-#include <iomanip>
 
 #include <boost/multi_index/composite_key.hpp>
 #include <boost/multi_index/global_fun.hpp>
@@ -101,16 +100,12 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/protobuf_util.h"
-#include "yb/util/slice.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_case.h"
 #include "yb/util/string_util.h"
 #include "yb/util/tostring.h"
-#include "yb/dockv/partition.h"
-#include "yb/dockv/doc_key.h"
-#include "yb/common/schema_pbutil.h"
 
 DEFINE_NON_RUNTIME_bool(wait_if_no_leader_master, false,
             "When yb-admin connects to the cluster and no leader master is present, "
@@ -1535,11 +1530,6 @@ Status ClusterAdminClient::ListTablets(
   RETURN_NOT_OK(yb_client_->GetTablets(
       table_name, max_tablets, &tablet_uuids, &ranges, &locations));
 
-  // Get table schema to access partition schema
-  client::YBSchema schema;
-  dockv::PartitionSchema partition_schema;
-  RETURN_NOT_OK(yb_client_->GetTableSchema(table_name, &schema, &partition_schema));
-
   rapidjson::Document document(rapidjson::kObjectType);
   rapidjson::Value json_tablets(rapidjson::kArrayType);
   CHECK(json_tablets.IsArray());
@@ -1553,14 +1543,6 @@ Status ClusterAdminClient::ListTablets(
     }
     std::cout << std::endl;
   }
-
-  const auto common_schema = client::internal::GetSchema(schema);
-  auto getPartitionDebugString = [&partition_schema,
-                                  &common_schema](const PartitionPB& partition) -> std::string {
-    dockv::Partition dockv_partition;
-    dockv::Partition::FromPB(partition, &dockv_partition);
-    return partition_schema.PartitionDebugString(dockv_partition, common_schema);
-  };
 
   for (size_t i = 0; i < tablet_uuids.size(); i++) {
     const string& tablet_uuid = tablet_uuids[i];
@@ -1597,15 +1579,16 @@ Status ClusterAdminClient::ListTablets(
       }
     }
 
-    // Get partition debug string (common for both JSON and non-JSON output)
-    const auto& partition = locations_of_this_tablet.partition();
-    const auto partition_debug_string = getPartitionDebugString(partition);
-
     if (json) {
       rapidjson::Value json_tablet(rapidjson::kObjectType);
       AddStringField("id", tablet_uuid, &json_tablet, &document.GetAllocator());
-      AddStringField(
-          "partition_debug_string", partition_debug_string, &json_tablet, &document.GetAllocator());
+      const auto& partition = locations_of_this_tablet.partition();
+      AddStringField("partition_key_start",
+                     Slice(partition.partition_key_start()).ToDebugHexString(), &json_tablet,
+                     &document.GetAllocator());
+      AddStringField("partition_key_end",
+                     Slice(partition.partition_key_end()).ToDebugHexString(), &json_tablet,
+                     &document.GetAllocator());
       rapidjson::Value json_leader(rapidjson::kObjectType);
       AddStringField("uuid", leader_uuid, &json_leader, &document.GetAllocator());
       AddStringField("endpoint", leader_host_port, &json_leader, &document.GetAllocator());
@@ -1627,10 +1610,9 @@ Status ClusterAdminClient::ListTablets(
       }
       json_tablets.PushBack(json_tablet, document.GetAllocator());
     } else {
-      // Format partition keys as inclusive range [start, end] in hex format
-      std::cout << tablet_uuid << kColumnSep
-                << RightPadToWidth(partition_debug_string, kPartitionRangeColWidth) << kColumnSep
-                << RightPadToWidth(leader_host_port, kLongColWidth) << kColumnSep << leader_uuid;
+      std::cout << tablet_uuid << kColumnSep << RightPadToWidth(ranges[i], kPartitionRangeColWidth)
+                << kColumnSep << RightPadToWidth(leader_host_port, kLongColWidth) << kColumnSep
+                << leader_uuid;
       if (followers) {
         std::cout << kColumnSep << follower_list_str;
       }
