@@ -49,7 +49,6 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/human_readable.h"
 
-#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
@@ -60,8 +59,8 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
 
-using std::vector;
 using std::string;
+using std::vector;
 
 using namespace std::literals;
 
@@ -99,8 +98,7 @@ METRIC_DEFINE_counter(tablet, log_cache_disk_reads, "Log Cache Disk Reads",
 
 DECLARE_bool(get_changes_honor_deadline);
 
-namespace yb {
-namespace consensus {
+namespace yb::consensus {
 
 namespace {
 
@@ -108,7 +106,7 @@ const std::string kParentMemTrackerId = "LogCache"s;
 
 }
 
-typedef vector<const ReplicateMsg*>::const_iterator MsgIter;
+using MsgIter = vector<const ReplicateMsg *>::const_iterator;
 
 LogCache::LogCache(const scoped_refptr<MetricEntity>& metric_entity,
                    const log::LogPtr& log,
@@ -182,7 +180,7 @@ LogCache::PrepareAppendResult LogCache::PrepareAppendOperations(const ReplicateM
   std::vector<CacheEntry> entries_to_insert;
   entries_to_insert.reserve(msgs.size());
   for (const auto& msg : msgs) {
-    CacheEntry e = { msg, msg->SpaceUsedLong() };
+    CacheEntry e = {.msg = msg, .mem_usage = msg->SpaceUsedLong()};
     result.mem_required += e.mem_usage;
     entries_to_insert.emplace_back(std::move(e));
   }
@@ -376,8 +374,9 @@ int64_t TotalByteSizeForMessage(const LWReplicateMsg& msg) {
 
 } // anonymous namespace
 
-Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index, size_t max_size_bytes) {
-  return ReadOps(after_op_index, 0 /* to_op_index */, max_size_bytes);
+Result<ReadOpsResult> LogCache::ReadOps(
+    int64_t after_op_index, size_t max_size_bytes, log::ObeyMemoryLimit obey_memory_limit) {
+  return ReadOps(after_op_index, /*to_op_index=*/0, max_size_bytes, obey_memory_limit);
 }
 
 // Disabled thread safety analysis because the locking seems to be inconsistent, we capture
@@ -389,6 +388,7 @@ Result<ReadOpsResult> LogCache::ReadOps(
     int64_t after_op_index,
     int64_t to_op_index,
     size_t max_size_bytes,
+    log::ObeyMemoryLimit obey_memory_limit,
     CoarseTimePoint deadline,
     bool fetch_single_entry) NO_THREAD_SAFETY_ANALYSIS {
   DCHECK_GE(after_op_index, 0);
@@ -417,16 +417,19 @@ Result<ReadOpsResult> LogCache::ReadOps(
   }
 
   // Return as many operations as we can, up to the limit.
+  bool hit_memory_limit = false;
   int64_t remaining_space = max_size_bytes;
-  while (remaining_space >= 0 &&
-         (fetch_single_entry ? next_index == to_index : next_index < to_index)) {
+  while (fetch_single_entry ? next_index == to_index : next_index < to_index) {
+    if (hit_memory_limit || remaining_space < 0) {
+      break;
+    }
     // Stop reading if a deadline was specified and the deadline has been exceeded.
     if (deadline != CoarseTimePoint::max() && CoarseMonoClock::Now() >= deadline) {
       break;
     }
 
     // If the messages the peer needs haven't been loaded into the queue yet, load them.
-    MessageCache::const_iterator iter = cache_.lower_bound(next_index);
+    auto iter = cache_.lower_bound(next_index);
     if (iter == cache_.end() || iter->first != next_index) {
       int64_t up_to;
       if (fetch_single_entry) {
@@ -444,11 +447,16 @@ Result<ReadOpsResult> LogCache::ReadOps(
       l.unlock();
 
       ReplicateMsgs raw_replicate_ptrs;
-      RETURN_NOT_OK_PREPEND(
-          log_->GetLogReader()->ReadReplicatesInRange(
-              next_index, up_to, remaining_space, &raw_replicate_ptrs, &starting_op_segment_seq_num,
-              deadline),
-          Substitute("Failed to read ops $0..$1", next_index, up_to));
+      auto s = log_->GetLogReader()->ReadReplicatesInRange(
+          next_index, up_to, remaining_space, obey_memory_limit, &raw_replicate_ptrs,
+          &starting_op_segment_seq_num, deadline);
+      if (!s.ok()) {
+        if (s.IsBusy() && result.messages.size() > 0) {
+          hit_memory_limit = true;
+        } else {
+          RETURN_NOT_OK_PREPEND(s, Format("Failed to read ops $0..$1", next_index, up_to));
+        }
+      }
 
       metrics_.disk_reads->IncrementBy(raw_replicate_ptrs.size());
       VLOG_WITH_PREFIX(1) << "Successfully read " << raw_replicate_ptrs.size() << " ops from disk.";
@@ -497,7 +505,7 @@ Result<ReadOpsResult> LogCache::ReadOps(
       }
     }
   }
-  result.have_more_messages = HaveMoreMessages(remaining_space < 0);
+  result.have_more_messages = HaveMoreMessages(remaining_space < 0 || hit_memory_limit);
   return result;
 }
 
@@ -573,7 +581,8 @@ Result<OpId> LogCache::TEST_GetLastOpIdWithType(int64_t max_allowed_index, Opera
   constexpr int kStepSize = 20;
   for (auto end = max_allowed_index; end > 0; end -= kStepSize) {
     auto result = VERIFY_RESULT(ReadOps(
-        std::max<int64_t>(0, end - kStepSize), end, std::numeric_limits<int>::max()));
+        std::max<int64_t>(0, end - kStepSize), end, std::numeric_limits<int>::max(),
+        log::ObeyMemoryLimit::kFalse));
     for (auto it = result.messages.end(); it != result.messages.begin();) {
       --it;
       if ((**it).op_type() == op_type) {
@@ -581,8 +590,9 @@ Result<OpId> LogCache::TEST_GetLastOpIdWithType(int64_t max_allowed_index, Opera
       }
     }
   }
-  return STATUS_FORMAT(NotFound, "Operation of type $0 not found before $1",
-                       OperationType_Name(op_type), max_allowed_index);
+  return STATUS_FORMAT(
+      NotFound, "Operation of type $0 not found before $1", OperationType_Name(op_type),
+      max_allowed_index);
 }
 
 string LogCache::StatsString() const {
@@ -716,5 +726,4 @@ LogCache::Metrics::Metrics(const scoped_refptr<MetricEntity>& metric_entity)
 }
 #undef INSTANTIATE_METRIC
 
-} // namespace consensus
-} // namespace yb
+} // namespace yb::consensus
