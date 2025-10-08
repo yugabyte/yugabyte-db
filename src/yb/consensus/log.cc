@@ -1846,8 +1846,7 @@ Result<SegmentOpIdRelation> Log::GetSegmentOpIdRelation(
 }
 
 Result<bool> Log::CopySegmentUpTo(
-    ReadableLogSegment* segment, const std::string& dest_wal_dir,
-    const OpId& max_included_op_id) {
+    ReadableLogSegment* segment, const std::string& dest_wal_dir, const OpId& max_included_op_id) {
   SegmentOpIdRelation relation = VERIFY_RESULT(GetSegmentOpIdRelation(segment, max_included_op_id));
   auto* const env = options_.env;
   const auto sequence_number = segment->header().sequence_number();

@@ -58,15 +58,17 @@
 DEFINE_NON_RUNTIME_int32(num_batches, 10000,
              "Number of batches to write to/read from the Log in TestWriteManyBatches");
 
-DECLARE_int32(log_min_segments_to_retain);
-DECLARE_bool(never_fsync);
-DECLARE_bool(writable_file_use_fsync);
-DECLARE_int32(o_direct_block_alignment_bytes);
-DECLARE_int32(o_direct_block_size_bytes);
 DECLARE_bool(TEST_simulate_abrupt_server_restart);
 DECLARE_bool(TEST_skip_file_close);
-DECLARE_int64(reuse_unclosed_segment_threshold_bytes);
+DECLARE_bool(never_fsync);
+DECLARE_bool(writable_file_use_fsync);
+
+DECLARE_int32(log_min_segments_to_retain);
 DECLARE_int32(min_segment_size_bytes_to_rollover_at_flush);
+DECLARE_int32(o_direct_block_alignment_bytes);
+DECLARE_int32(o_direct_block_size_bytes);
+
+DECLARE_int64(reuse_unclosed_segment_threshold_bytes);
 
 namespace yb::log {
 
@@ -899,7 +901,8 @@ TEST_F(LogTest, TestGCWithLogRunning) {
     ReplicateMsgs repls;
     int64_t starting_op_segment_seq_num;
     Status s = log_->GetLogReader()->ReadReplicatesInRange(
-      1, 2, LogReader::kNoSizeLimit, &repls, &starting_op_segment_seq_num);
+        1, 2, LogReader::kNoSizeLimit, log::ObeyMemoryLimit::kFalse, &repls,
+        &starting_op_segment_seq_num);
     ASSERT_TRUE(s.IsNotFound()) << s.ToString();
   }
 
@@ -1295,9 +1298,9 @@ TEST_F(LogTest, TestReadLogWithReplacedReplicates) {
       {
         SCOPED_TRACE(Substitute("Reading $0-$1", start_index, end_index));
         consensus::ReplicateMsgs repls;
-        ASSERT_OK(reader->ReadReplicatesInRange(start_index, end_index,
-                                                LogReader::kNoSizeLimit, &repls,
-                                                &starting_op_segment_seq_num));
+        ASSERT_OK(reader->ReadReplicatesInRange(
+            start_index, end_index, LogReader::kNoSizeLimit, log::ObeyMemoryLimit::kFalse, &repls,
+            &starting_op_segment_seq_num));
         ASSERT_EQ(end_index - start_index + 1, repls.size());
         auto expected_index = start_index;
         for (const auto& repl : repls) {
@@ -1317,11 +1320,12 @@ TEST_F(LogTest, TestReadLogWithReplacedReplicates) {
       // Test a size-limited read.
       int size_limit = RandomUniformInt(1, 1000);
       {
-        SCOPED_TRACE(Substitute("Reading $0-$1 with size limit $2",
-                                start_index, end_index, size_limit));
+        SCOPED_TRACE(
+            Format("Reading $0-$1 with size limit $2", start_index, end_index, size_limit));
         ReplicateMsgs repls;
-        ASSERT_OK(reader->ReadReplicatesInRange(start_index, end_index, size_limit, &repls,
-                                                &starting_op_segment_seq_num));
+        ASSERT_OK(reader->ReadReplicatesInRange(
+            start_index, end_index, size_limit, log::ObeyMemoryLimit::kFalse, &repls,
+            &starting_op_segment_seq_num));
         ASSERT_LE(repls.size(), end_index - start_index + 1);
         int total_size = 0;
         auto expected_index = start_index;
@@ -1364,10 +1368,55 @@ TEST_F(LogTest, TestReadReplicatesHighIndex) {
   auto* reader = log_->GetLogReader();
   ReplicateMsgs repls;
   int64_t starting_op_segment_seq_num;
-  ASSERT_OK(reader->ReadReplicatesInRange(first_log_index, first_log_index + kSequenceLength - 1,
-                                          LogReader::kNoSizeLimit, &repls,
-                                          &starting_op_segment_seq_num));
+  ASSERT_OK(reader->ReadReplicatesInRange(
+      first_log_index, first_log_index + kSequenceLength - 1, LogReader::kNoSizeLimit,
+      log::ObeyMemoryLimit::kFalse, &repls, &starting_op_segment_seq_num));
   ASSERT_EQ(kSequenceLength, repls.size());
+}
+
+TEST_F(LogTest, TestReadReplicatesWithInsufficientMemory) {
+  const int64_t first_log_index = 1;
+  const int kSequenceLength = 10000;
+
+  BuildLog(10);
+  OpIdPB op_id;
+  op_id.set_term(first_log_index);
+  op_id.set_index(first_log_index);
+  ASSERT_OK(AppendNoOps(&op_id, kSequenceLength));
+
+  // Here the limit is so severe that we can't even read in a single batch; accordingly we expect to
+  // get Status Busy return.
+  auto* reader = log_->GetLogReader();
+  ReplicateMsgs repls;
+  int64_t starting_op_segment_seq_num;
+  auto s = reader->ReadReplicatesInRange(
+      first_log_index, first_log_index + kSequenceLength - 1, LogReader::kNoSizeLimit,
+      log::ObeyMemoryLimit::kTrue, &repls, &starting_op_segment_seq_num);
+  ASSERT_TRUE(s.IsBusy()) << s;
+}
+
+TEST_F(LogTest, TestReadReplicatesWithOnlyPartialMemory) {
+  const int64_t first_log_index = 1;
+  const int kSequenceLength = 10000;
+
+  BuildLog(10000);
+  OpIdPB op_id;
+  op_id.set_term(first_log_index);
+  op_id.set_index(first_log_index);
+  ASSERT_OK(AppendNoOps(&op_id, kSequenceLength));
+
+  // Here the limit is sufficient to get several batches but not all of them.  Accordingly we expect
+  // to get only some of the replicas returned.
+  auto* reader = log_->GetLogReader();
+  ReplicateMsgs repls;
+  int64_t starting_op_segment_seq_num;
+  auto s = reader->ReadReplicatesInRange(
+      first_log_index, first_log_index + kSequenceLength - 1, LogReader::kNoSizeLimit,
+      log::ObeyMemoryLimit::kTrue, &repls, &starting_op_segment_seq_num);
+  ASSERT_OK(s);
+  ASSERT_NE(repls.size(), kSequenceLength);
+  ASSERT_GE(repls.size(), 2);
+
 }
 
 TEST_F(LogTest, AllocateSegmentAndRollOver) {
