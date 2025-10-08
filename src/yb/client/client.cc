@@ -2265,7 +2265,13 @@ Result<TransactionStatusTablets> YBClient::GetTransactionStatusTablets(
   TransactionStatusTablets tablets;
 
   MoveCollection(&resp.global_tablet_id(), &tablets.global_tablets);
-  MoveCollection(&resp.placement_local_tablet_id(), &tablets.placement_local_tablets);
+  MoveCollection(&resp.region_local_tablet_id(), &tablets.region_local_tablets);
+
+  for (auto& tablespace_info : resp.placement_local_tablespace()) {
+    auto& ts_info = tablets.tablespaces[tablespace_info.tablespace_oid()];
+    ts_info.placement_info = std::move(tablespace_info.placement());
+    MoveCollection(&tablespace_info.tablet_id(), &ts_info.tablets);
+  }
 
   return tablets;
 }
