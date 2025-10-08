@@ -24,7 +24,7 @@
     {{- end -}}
     {{ range $pages }}{{ if and (not .Params.private) (not (hasPrefix .File.LogicalName "_")) (not (in .File.LogicalName "template")) }}
     <item>
-      <title>{{ .Title }}{{ if .Params.headerTitle }}: {{ .Params.headerTitle }}{{ end }}</title>
+      <title>{{ .Title }}</title>
       <link>{{ .Permalink }}</link>
       <pubDate>{{ .Lastmod.UTC.Format "Mon, 02 Jan 2006 15:04:05 -0700" | safeHTML }}</pubDate>
       <guid>{{ .Permalink }}</guid>

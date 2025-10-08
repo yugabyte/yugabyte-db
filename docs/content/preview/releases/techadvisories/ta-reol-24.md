@@ -1,7 +1,7 @@
 ---
-title: TA-REOL-24
+title: "TA-REOL-24: Replicated End of Life"
 headerTitle: Replicated End of Life
-description: Replicated End of Life.
+description: YugabyteDB Replicated has reached end of life and is no longer supported, requiring migration to YugabyteDB Anywhere for continued support and updates.
 headcontent: 30 Apr 2024
 type: docs
 showRightNav: true
