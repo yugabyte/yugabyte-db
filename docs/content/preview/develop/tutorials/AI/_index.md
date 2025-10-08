@@ -26,6 +26,11 @@ cascade:
     icon="fa-thin fa-vector-circle">}}
 {{</index/block>}}
 
+{{<index/item
+    title="langchain-yugabytedb integration"
+    body="Use YugabyteDB as a vector store with LangChain to develop RAG apps."
+    href="../../../integrations/langchain/"
+    icon="/images/tutorials/ai/icons/langchain-icon.svg">}}
 {{<index/block>}}
 
 {{<index/item
