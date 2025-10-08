@@ -27,6 +27,7 @@ import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterC
 import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig;
+import com.yugabyte.yw.models.helpers.telemetry.AuthCredentials.AuthType;
 import com.yugabyte.yw.models.helpers.telemetry.DataDogConfig;
 import com.yugabyte.yw.models.helpers.telemetry.DynatraceConfig;
 import com.yugabyte.yw.models.helpers.telemetry.ExportType;
@@ -1657,7 +1658,7 @@ public class OtelCollectorConfigGenerator {
           headers.put("X-Scope-OrgID", lokiConfig.getOrganizationID());
           setHeaders = true;
         }
-        if (lokiConfig.getAuthType() == LokiConfig.LokiAuthType.BasicAuth) {
+        if (lokiConfig.getAuthType() == AuthType.BasicAuth) {
           String credentials =
               Base64.getEncoder()
                   .encodeToString(

@@ -4408,6 +4408,18 @@
       ],
       "type" : "object"
     },
+    "BearerToken" : {
+      "properties" : {
+        "token" : {
+          "description" : "Bearer Token",
+          "type" : "string"
+        }
+      },
+      "required" : [
+        "token"
+      ],
+      "type" : "object"
+    },
     "BootstrapBackupParams" : {
       "description" : "Backup parameters for bootstrapping",
       "properties" : {
@@ -11804,7 +11816,8 @@
               "description" : "Auth Type",
               "enum" : [
                 "BasicAuth",
-                "NoAuth"
+                "NoAuth",
+                "BearerToken"
               ],
               "type" : "string"
             },
@@ -13847,6 +13860,78 @@
         "numUpdate"
       ],
       "type" : "object"
+    },
+    "OTLPConfig" : {
+      "allOf" : [
+        {
+          "$ref" : "#/definitions/TelemetryProviderConfig"
+        },
+        {
+          "description" : "OTLP Config",
+          "properties" : {
+            "authType" : {
+              "description" : "Auth Type",
+              "enum" : [
+                "BasicAuth",
+                "NoAuth",
+                "BearerToken"
+              ],
+              "type" : "string"
+            },
+            "basicAuth" : {
+              "$ref" : "#/definitions/BasicAuthCredentials",
+              "description" : "Basic Auth Credentials"
+            },
+            "bearerToken" : {
+              "$ref" : "#/definitions/BearerToken",
+              "description" : "Bearer Token"
+            },
+            "compression" : {
+              "description" : "Compression",
+              "enum" : [
+                "gzip",
+                "none",
+                "snappy",
+                "zstd"
+              ],
+              "type" : "string"
+            },
+            "endpoint" : {
+              "description" : "End Point. For HTTP protcol logs export \"/v1/logs\" will be appended.",
+              "type" : "string"
+            },
+            "headers" : {
+              "additionalProperties" : {
+                "type" : "string"
+              },
+              "description" : "Headers",
+              "type" : "object"
+            },
+            "logsEndpoint" : {
+              "description" : "Logs endpoint. The target URL to send log data to (e.g.: https://example.com:4318/v1/logs). If this setting is present the endpoint setting is ignored logs. Allowed only for HTTP protocol",
+              "type" : "string"
+            },
+            "protocol" : {
+              "description" : "Protocol",
+              "enum" : [
+                "gRPC",
+                "HTTP"
+              ],
+              "type" : "string"
+            },
+            "timeoutSeconds" : {
+              "description" : "Timeout in seconds",
+              "format" : "int32",
+              "type" : "integer"
+            }
+          },
+          "required" : [
+            "authType",
+            "endpoint"
+          ],
+          "type" : "object"
+        }
+      ]
     },
     "OidcGroupToYbaRolesData" : {
       "properties" : {
