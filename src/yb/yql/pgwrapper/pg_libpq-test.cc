@@ -4377,6 +4377,70 @@ TEST_F_EX(PgLibPqTest, PgInheritsNegCacheMinPreloadTest,
   TestInheritsNegCache(true /*minimal preload*/);
 }
 
+// Test that preloading pg_enum prevents cache misses on the pg_enum catcaches.
+class BasePgEnumTest : public PgLibPqTest {
+ protected:
+  void RunTest(bool is_pg_enum_preloaded) {
+    auto conn = ASSERT_RESULT(Connect());
+
+    ASSERT_OK(conn.Execute(
+        "CREATE TYPE color AS ENUM ('cerulean', 'chartreuse', 'vermilion');"
+        "CREATE TABLE e (c color);"
+        "INSERT INTO e VALUES ('cerulean');"));
+
+    auto start_value = ASSERT_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_enum"));
+
+    auto conn2 = ASSERT_RESULT(Connect());
+
+    // Trigger ENUMTYPOIDNAME via text->enum input cast.
+    auto s1 = ASSERT_RESULT(conn2.FetchAllAsString("SELECT 'cerulean'::color"));
+
+    // Trigger ENUMOID via enum->text output.
+    auto s2 = ASSERT_RESULT(conn2.FetchAllAsString("SELECT c::text FROM e"));
+
+    auto end_value = ASSERT_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_enum"));
+
+    LOG(INFO) << "pg_enum cache misses start value: " << start_value.value
+              << " end value: " << end_value.value;
+
+    if (is_pg_enum_preloaded) {
+      ASSERT_EQ(end_value.value, start_value.value);
+    } else {
+      ASSERT_EQ(end_value.value, start_value.value + 2);
+    }
+  }
+};
+
+class BasePgEnumPreloadTest : public BasePgEnumTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back(
+        "--ysql_catalog_preload_additional_table_list=pg_enum");
+        BasePgEnumTest::UpdateMiniClusterOptions(options);
+  }
+};
+
+class BasePgEnumPreloadMinimalPreloadTest : public BasePgEnumPreloadTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back(
+        "--ysql_minimal_catalog_caches_preload=true");
+    BasePgEnumPreloadTest::UpdateMiniClusterOptions(options);
+  }
+};
+
+TEST_F_EX(PgLibPqTest, PgEnumNegativeTest, BasePgEnumTest) {
+  RunTest(false /* preloaded */);
+}
+
+TEST_F_EX(PgLibPqTest, PgEnumPreloadTest, BasePgEnumPreloadTest) {
+  RunTest(true /* preloaded */);
+}
+
+TEST_F_EX(PgLibPqTest, PgEnumPreloadMinPreloadTest, BasePgEnumPreloadMinimalPreloadTest) {
+  RunTest(false /* preloaded */);
+}
+
 class PgLibPqCreateSequenceNamespaceRaceTest : public PgLibPqTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.emplace_back(
