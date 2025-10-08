@@ -6928,7 +6928,9 @@ yb_hint_plan_cache_invalidate(PG_FUNCTION_ARGS)
 	YbInvalidateHintCache();
 
 	YbForceSendInvalMessages();
-	if (!yb_use_regular_txn_block)
+	if (yb_use_regular_txn_block)
+		YBMergeDdlTxnState();
+	else
 		YBDecrementDdlNestingLevel();
 
 	PG_RETURN_DATUM(PointerGetDatum(NULL));

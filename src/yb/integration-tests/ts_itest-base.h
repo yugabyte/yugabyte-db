@@ -72,7 +72,8 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
 
   void CreateCluster(const std::string& data_root_path,
                      const std::vector<std::string>& non_default_ts_flags = {},
-                     const std::vector<std::string>& non_default_master_flags = {});
+                     const std::vector<std::string>& non_default_master_flags = {},
+                     bool enable_ysql = false);
 
   virtual void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) {}
 
@@ -133,7 +134,8 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
   // to 'FLAGS_num_replicas'. The caller can pass 'ts_flags' to specify non-default
   // flags to pass to the tablet servers.
   void BuildAndStart(const std::vector<std::string>& ts_flags = std::vector<std::string>(),
-                     const std::vector<std::string>& master_flags = std::vector<std::string>());
+                     const std::vector<std::string>& master_flags = std::vector<std::string>(),
+                     bool enable_ysql = false);
 
   void AssertAllReplicasAgree(size_t expected_result_count);
 

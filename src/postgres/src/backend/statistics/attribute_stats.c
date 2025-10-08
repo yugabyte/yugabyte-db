@@ -829,8 +829,13 @@ upsert_pg_statistic(Relation starel, HeapTuple oldtup,
 		CatalogTupleInsert(starel, newtup);
 	}
 
-	if (IsYugaByteEnabled() && !yb_use_regular_txn_block)
-		YBDecrementDdlNestingLevel();
+	if (IsYugaByteEnabled())
+	{
+		if (yb_use_regular_txn_block)
+			YBMergeDdlTxnState();
+		else
+			YBDecrementDdlNestingLevel();
+	}
 
 	heap_freetuple(newtup);
 
@@ -870,8 +875,13 @@ delete_pg_statistic(Oid reloid, AttrNumber attnum, bool stainherit)
 		result = true;
 	}
 
-	if (IsYugaByteEnabled() && !yb_use_regular_txn_block)
-		YBDecrementDdlNestingLevel();
+	if (IsYugaByteEnabled())
+	{
+		if (yb_use_regular_txn_block)
+			YBMergeDdlTxnState();
+		else
+			YBDecrementDdlNestingLevel();
+	}
 
 	table_close(sd, RowExclusiveLock);
 

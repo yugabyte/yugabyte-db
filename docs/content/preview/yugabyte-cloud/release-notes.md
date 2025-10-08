@@ -21,6 +21,18 @@ rightNav:
 
 ### 2025
 
+#### October 7, 2025
+
+##### New features
+
+- Support for [Roll back upgrades](../cloud-clusters/database-upgrade/#roll-back-an-upgrade) and [YSQL major upgrade](../cloud-clusters/database-upgrade/#ysql-major-upgrade) (PostgreSQL 15 upgrade). Ability to roll back a database upgrade in-place and restore the cluster to its state before the upgrade.
+- Support to set a list of default flags per account for new clusters.
+- Enhanced authentication security by removing local user access to YugabyteDB Aeon accounts, and enforcing [federated authentication](../managed-security/managed-authentication/) for _all_ account users.
+
+##### Database
+
+- Innovation track updated to 2024.2.5.0.
+
 #### August 25, 2025
 
 ##### New features

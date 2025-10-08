@@ -2711,6 +2711,16 @@ YBAddDdlTxnState(YbDdlMode mode)
 }
 
 void
+YBMergeDdlTxnState()
+{
+	Assert(yb_ddl_transaction_block_enabled);
+
+	const bool	has_change = YbHasDdlMadeChanges();
+	MergeCatalogModificationAspects(&ddl_transaction_state.catalog_modification_aspects,
+									has_change);
+}
+
+void
 YBAddModificationAspects(YbDdlMode mode)
 {
 	ddl_transaction_state.catalog_modification_aspects.pending |= mode;
@@ -4343,6 +4353,8 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 
 			if (use_separate_ddl_transaction)
 				YBDecrementDdlNestingLevel();
+			else
+				YBMergeDdlTxnState();
 
 			/*
 			 * Reset the is_top_level_ddl_active for this statement as it is
