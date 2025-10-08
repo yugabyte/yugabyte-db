@@ -841,24 +841,14 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
 }
 
 bool IsRetryableError(const Status& status) {
-  // The following error cases are considered retryable:
-  // - when the tablet peer is not started yet, or
-  // - the tablet is not in available state.
-  // If any additional errors need to be made retryable in VWAL, add them to the list above.
-
   DCHECK(!status.ok()) << "Status is not expected to be OK when calling IsRetryableError, "
                        << "status: " << status.ToString();
 
-  // Tablet peer is not started yet
-  if (status.IsIllegalState() &&
-      status.message().ToBuffer().find("is not started yet") != std::string::npos) {
-    return true;
-  }
-
-  // Tablet is not in kAvailable state
-  if (status.IsIllegalState() &&
-      status.message().ToBuffer().find("Tablet not running") != std::string::npos) {
-    return true;
+  for (const auto& pattern : CDCSDKVirtualWAL::kRetryableErrorPatterns) {
+    if (status.code() == pattern.first &&
+        status.message().ToBuffer().find(pattern.second) != std::string::npos) {
+      return true;
+    }
   }
 
   return false;

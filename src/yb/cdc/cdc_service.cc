@@ -206,9 +206,9 @@ DEFINE_RUNTIME_bool(cdc_enable_implicit_checkpointing, false,
 DEFINE_RUNTIME_uint32(cdc_max_virtual_wal_per_tserver, 5,
                       "Maximum VirtualWAL instances that can be present on a tserver at any time.");
 
-DEFINE_test_flag(bool, mimic_tablet_not_in_available_state, false,
-    "If true, this is used to mimic the behavior of the tablet as if it is not in an available "
-    "state.");
+DEFINE_test_flag(int32, cdc_simulate_error_for_get_changes, -1,
+    "Based on the value of this flag, an error will be simulated by TEST_SimulateError() in "
+    "GetChanges().");
 
 DECLARE_int32(log_min_seconds_to_retain);
 
@@ -409,6 +409,30 @@ Result<std::shared_ptr<T>> GetOrCreateXreplTabletMetrics(
   SCHECK(
       metrics_raw, NotFound, Format("Xrepl Tablet Metric not found for Tablet id $0", tablet_id));
   return std::static_pointer_cast<T>(metrics_raw);
+}
+
+}  // namespace
+
+namespace {
+
+Status TEST_SimulateError() {
+  if (FLAGS_TEST_cdc_simulate_error_for_get_changes < 0) {
+    return Status::OK();
+  }
+
+  TestSimulateErrorCode error_to_simulate =
+      static_cast<TestSimulateErrorCode>(FLAGS_TEST_cdc_simulate_error_for_get_changes);
+
+  switch (error_to_simulate) {
+#define TEST_SIMULATE_ERROR(name, value, status_code, message) \
+  case TestSimulateErrorCode::name: { \
+    return STATUS_FORMAT(status_code, "Simulated error: $0", message); \
+  }
+    TEST_SIMULATE_ALL_ERRORS
+#undef TEST_SIMULATE_ERROR
+    default:
+      return Status::OK();
+  }
 }
 
 }  // namespace
@@ -1575,6 +1599,12 @@ void CDCServiceImpl::GetChanges(
   YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 300, 5)
       << "Received GetChanges request " << req->ShortDebugString();
 
+  // Mocking the error set by the flag TEST_cdc_simulate_error_for_get_changes for testing purposes.
+  auto status = TEST_SimulateError();
+  if (!status.ok()) {
+    RPC_STATUS_RETURN_ERROR(status, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
+  }
+
   RPC_CHECK_AND_RETURN_ERROR(
       req->has_tablet_id(),
       STATUS(InvalidArgument, "Tablet ID is required to get CDC changes"),
@@ -1598,18 +1628,11 @@ void CDCServiceImpl::GetChanges(
   // Check that requested tablet_id is part of the CDC stream.
   TabletStreamInfo producer_tablet = {.stream_id = stream_id, .tablet_id = req->tablet_id()};
 
-  auto status = CheckTabletValidForStream(producer_tablet);
+  status = CheckTabletValidForStream(producer_tablet);
   if (!status.ok()) {
     RPC_STATUS_RETURN_ERROR(
         CheckTabletValidForStream(producer_tablet), resp->mutable_error(),
         status.IsTabletSplit() ? CDCErrorPB::TABLET_SPLIT : CDCErrorPB::INVALID_REQUEST, context);
-  }
-
-  // Mocking that the tablet peer is not in TabletObjectState::kAvailable state.
-  if (PREDICT_FALSE(FLAGS_TEST_mimic_tablet_not_in_available_state)) {
-    RPC_STATUS_RETURN_ERROR(
-        STATUS(IllegalState, "Tablet not running: tablet object has invalid state"),
-        resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
   }
 
   auto tablet_peer = context_->LookupTablet(req->tablet_id());

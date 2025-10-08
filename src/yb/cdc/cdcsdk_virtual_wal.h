@@ -39,6 +39,18 @@ class CDCSDKVirtualWAL {
 
   using TabletRecordInfoPair = std::pair<TabletId, RecordInfo>;
 
+  using RetryableErrorPattern = std::pair<Status::Code, std::string>;
+  // Pairs of error code and error msg pattern used to identify errors that will be retried.
+  // Everytime a new error is made retriable for virtual WAL by adding it to
+  // kRetryableErrorPatterns, it should also be added to the test
+  // CDCSDKConsumptionConsistentChangesTest.TestRetryableErrorsNotSentToWalsender
+  inline static const std::vector<RetryableErrorPattern> kRetryableErrorPatterns = {
+      {Status::Code::kIllegalState, "is not started yet"},
+      {Status::Code::kIllegalState, "Tablet not running"},
+      {Status::Code::kNotFound, "Not leader for"},
+      {Status::Code::kLeaderNotReadyToServe, "Not ready to serve"},
+      {Status::Code::kNotFound, "Footer for segment"}};
+
   Status InitVirtualWALInternal(
       std::unordered_set<TableId> table_list, const HostPort hostport,
       const CoarseTimePoint deadline, std::unique_ptr<ReplicationSlotHashRange> slot_hash_range,

@@ -115,6 +115,24 @@ using TableIdToStreamIdMap =
 using RollBackTabletIdCheckpointMap =
     std::unordered_map<const std::string*, std::pair<int64_t, OpId>>;
 
+// Non-exhaustive list of simulated error codes for the errors that can occur in GetChanges().
+// Currently these error codes are being employed to test errors retryable by virtual WAL.
+#define TEST_SIMULATE_ALL_ERRORS \
+  TEST_SIMULATE_ERROR(PeerNotStarted, 0, IllegalState, "Tablet peer is not started yet") \
+  TEST_SIMULATE_ERROR( \
+      TabletUnavailable, 1, IllegalState, "Tablet not running: tablet object has invalid state") \
+  TEST_SIMULATE_ERROR(PeerNotLeader, 2, NotFound, "Not leader for requested tablet id") \
+  TEST_SIMULATE_ERROR( \
+      PeerNotReadyToServe, 3, LeaderNotReadyToServe, "Not ready to serve requested tablet id") \
+  TEST_SIMULATE_ERROR(LogSegmentFooterNotFound, 4, NotFound, "Footer for segment not found")
+
+enum TestSimulateErrorCode : int32_t {
+#define TEST_SIMULATE_ERROR(name, value, status_code, message) name = value,
+  TEST_SIMULATE_ALL_ERRORS
+#undef TEST_SIMULATE_ERROR
+      kNumSimulateErrors
+};
+
 class CDCServiceImpl : public CDCServiceIf {
  public:
   CDCServiceImpl(
