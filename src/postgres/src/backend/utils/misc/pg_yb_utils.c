@@ -63,6 +63,7 @@
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_db_role_setting.h"
+#include "catalog/pg_enum.h"
 #include "catalog/pg_inherits.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_opclass.h"
@@ -6359,6 +6360,10 @@ YbRegisterSysTableForPrefetching(int sys_table_id)
 		case ConstraintRelationId:	/* pg_constraint */
 			sys_table_index_id = ConstraintRelidTypidNameIndexId;
 			sys_only_filter_attr = Anum_pg_constraint_oid;
+			break;
+		case EnumRelationId:	/* pg_enum */
+			sys_table_index_id = EnumTypIdLabelIndexId;
+			sys_only_filter_attr = Anum_pg_enum_oid;
 			break;
 		case IndexRelationId:	/* pg_index */
 			sys_table_index_id = IndexIndrelidIndexId;
