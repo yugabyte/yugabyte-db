@@ -439,6 +439,7 @@ message UpdateConsumerOnProducerSplitRequestPB {
   optional string replication_group_id = 1;
   optional string stream_id = 2;
   optional ProducerSplitTabletInfoPB producer_split_tablet_info = 3;
+  optional bytes consumer_table_id = 4;
 }
 
 message UpdateConsumerOnProducerSplitResponsePB {
