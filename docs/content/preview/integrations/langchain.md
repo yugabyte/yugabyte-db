@@ -25,7 +25,7 @@ The `langchain-yugabytedb` Python package provides capabilities for GAI applicat
 
 For detailed information of all `YugabyteDBVectorStore` features and configurations, head to the langchain-yugabytedb [GitHub repo](https://github.com/yugabyte/langchain-yugabytedb).
 
-## Example
+## Quick Start - Complete Working Example
 
 ### Prerequisites
 
@@ -33,15 +33,15 @@ For detailed information of all `YugabyteDBVectorStore` features and configurati
 - Docker
 - Create an [OpenAI API Key](https://platform.openai.com/api-keys). Export it as an environment variable with the name `OPENAI_API_KEY`.
 
-### Step 1: Setup
+### Step 1: Setup Environment
 
-**Install all dependencies**
+**Install all dependencies (including the missing `langchain-postgres` package):**
 
 ```sh
 pip install --upgrade --quiet langchain langchain-openai langchain-community langchain-postgres tiktoken psycopg-binary langchain-yugabytedb
 ```
 
-**Start YugabyteDB:**
+**Start YugabyteDB with proper vector extension support:**
 
 ```sh
 docker run -d --name yugabyte_node01 --hostname yugabyte01 \
@@ -51,11 +51,20 @@ docker run -d --name yugabyte_node01 --hostname yugabyte01 \
   --tserver_flags="allowed_preview_flags_csv=ysql_yb_enable_advisory_locks,ysql_yb_enable_advisory_locks=true"
 ```
 
+**Enable the vector extension and verify it's working:**
+
 ```sh
-docker exec -it yugabyte_node01 bin/ysqlsh -h yugabyte01 -c "CREATE extension vector;"
+# Enable vector extension
+docker exec -it yugabyte_node01 bin/ysqlsh -h yugabyte01 -c "CREATE extension if not exists vector;"
+
+# Verify vector extension is installed
+docker exec -it yugabyte_node01 bin/ysqlsh -h yugabyte01 -c "SELECT * FROM pg_extension WHERE extname = 'vector';"
+
+# Test vector functionality
+docker exec -it yugabyte_node01 bin/ysqlsh -h yugabyte01 -c "SELECT '[1,2,3]'::vector;"
 ```
 
-### Step 2: Run the integration
+### Step 2: Create a sample langchain-yugabytedb application
 
 Create a file called `langchain_example.py` with the following complete code:
 
@@ -92,9 +101,9 @@ def setup_connection():
     TABLE_NAME = "yugabyte_docs_collection"
     VECTOR_SIZE = 1536
 
-    # Create connection string
+    # Create connection string - using psycopg instead of asyncpg for better vector support
     CONNECTION_STRING = (
-        f"postgresql+asyncpg://{YUGABYTEDB_USER}:{YUGABYTEDB_PASSWORD}@{YUGABYTEDB_HOST}"
+        f"postgresql+psycopg://{YUGABYTEDB_USER}:{YUGABYTEDB_PASSWORD}@{YUGABYTEDB_HOST}"
         f":{YUGABYTEDB_PORT}/{YUGABYTEDB_DB}"
     )
 
@@ -352,9 +361,9 @@ YUGABYTEDB_HOST = "localhost"
 YUGABYTEDB_PORT = "5433"
 YUGABYTEDB_DB = "yugabyte"
 
-# Create connection string
+# Create connection string - using psycopg instead of asyncpg for better vector support
 CONNECTION_STRING = (
-    f"postgresql+asyncpg://{YUGABYTEDB_USER}:{YUGABYTEDB_PASSWORD}@{YUGABYTEDB_HOST}"
+    f"postgresql+psycopg://{YUGABYTEDB_USER}:{YUGABYTEDB_PASSWORD}@{YUGABYTEDB_HOST}"
     f":{YUGABYTEDB_PORT}/{YUGABYTEDB_DB}"
 )
 ```
@@ -411,6 +420,33 @@ rag_chain = (
     | llm
     | StrOutputParser()
 )
+```
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Vector extension not working**: Make sure you ran all the verification commands
+2. **Connection issues**: Verify YugabyteDB is running and accessible on localhost:5433
+3. **API key issues**: Ensure your OpenAI API key is set correctly
+4. **Driver compatibility**: Use `psycopg` instead of `asyncpg` for better vector support
+
+### Verification Steps
+
+Check if everything is working:
+
+```bash
+# Check if YugabyteDB is running
+docker ps | grep yugabyte
+
+# Check if vector extension is installed
+docker exec -it yugabyte_node01 bin/ysqlsh -h yugabyte01 -c "SELECT * FROM pg_extension WHERE extname = 'vector';"
+
+# Test vector functionality
+docker exec -it yugabyte_node01 bin/ysqlsh -h yugabyte01 -c "SELECT '[1,2,3]'::vector;"
+
+# Test Python imports
+python -c "from langchain_yugabytedb import YBEngine, YugabyteDBVectorStore; print('Imports successful')"
 ```
 
 ## Detailed API Reference
