@@ -139,7 +139,7 @@ DECLARE_int32(retryable_request_timeout_secs);
 DECLARE_bool(save_index_into_wal_segments);
 DECLARE_bool(TEST_skip_process_apply);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
-DECLARE_bool(TEST_mimic_tablet_not_in_available_state);
+DECLARE_int32(TEST_cdc_simulate_error_for_get_changes);
 DECLARE_bool(TEST_fail_cdc_setting_retention_barriers_on_apply);
 DECLARE_int32(update_min_cdc_indices_master_interval_secs);
 
