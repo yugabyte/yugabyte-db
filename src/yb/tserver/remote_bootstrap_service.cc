@@ -37,6 +37,8 @@
 #include <string>
 #include <vector>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/log.h"
@@ -197,6 +199,19 @@ void RemoteBootstrapServiceImpl::BeginRemoteBootstrapSession(
         const BeginRemoteBootstrapSessionRequestPB* req,
         BeginRemoteBootstrapSessionResponsePB* resp,
         rpc::RpcContext context) {
+  const auto& wait_state = ash::WaitStateInfo::CurrentWaitState();
+
+  if (wait_state) {
+    if (req->has_ash_metadata()) {
+      wait_state->UpdateMetadataFromPB(req->ash_metadata());
+    }
+    if (req->has_tablet_id()) {
+      wait_state->UpdateAuxInfo({
+        .tablet_id = req->tablet_id(),
+        .method = "BeginRemoteBootstrapSession"});
+    }
+  }
+
   RemoteBootstrapErrorPB::Code error_code;
   auto tablet_leader_conn_info =
       req->has_tablet_leader_conn_info() ? &req->tablet_leader_conn_info() : nullptr;
@@ -277,6 +292,15 @@ void RemoteBootstrapServiceImpl::FetchData(const FetchDataRequestPB* req,
     session = it->second.session;
   }
 
+  const auto& wait_state = ash::WaitStateInfo::CurrentWaitState();
+  if (wait_state) {
+    if (req->has_ash_metadata()) {
+      wait_state->UpdateMetadataFromPB(req->ash_metadata());
+    }
+    wait_state->UpdateAuxInfo({.tablet_id = session->tablet_id(), .method = "FetchData"});
+  }
+
+
   session->EnsureRateLimiterIsInitialized();
 
   MAYBE_FAULT(FLAGS_TEST_fault_crash_on_handle_rb_fetch_data);
@@ -299,7 +323,11 @@ void RemoteBootstrapServiceImpl::FetchData(const FetchDataRequestPB* req,
                     info.error_code, "Unable to get piece of data file");
   session->data_read_timer().stop();
 
-  session->rate_limiter().UpdateDataSizeAndMaybeSleep(info.data.size());
+  {
+    SCOPED_WAIT_STATUS(RemoteBootstrap_RateLimiter);
+    session->rate_limiter().UpdateDataSizeAndMaybeSleep(info.data.size());
+  }
+
   session->crc_compute_timer().resume();
   uint32_t crc32 = Crc32c(info.data.data(), info.data.length());
   session->crc_compute_timer().stop();
