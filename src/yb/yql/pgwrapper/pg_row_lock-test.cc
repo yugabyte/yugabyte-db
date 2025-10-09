@@ -221,14 +221,13 @@ TEST_F(PgRowLockTest, SelectForKeyShareWithRestart) {
     const auto table = "foo";
     auto conn = ASSERT_RESULT(Connect());
 
+    ASSERT_OK(conn.ExecuteFormat("DROP TABLE IF EXISTS $0", table));
     ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0(k INT, v INT)", table));
     ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT generate_series(1, 100), 1", table));
     ASSERT_OK(cluster_->FlushTablets());
 
     ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
     ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k=1 FOR KEY SHARE", table));
-
-    ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", table));
   });
 }
 
