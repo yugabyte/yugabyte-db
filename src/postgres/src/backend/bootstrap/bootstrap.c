@@ -330,18 +330,23 @@ AuxiliaryProcessMain(int argc, char *argv[])
 		{
 			case StartupProcess:
 				statmsg = pgstat_get_backend_desc(B_STARTUP);
+				MyBackendType = B_STARTUP;
 				break;
 			case BgWriterProcess:
 				statmsg = pgstat_get_backend_desc(B_BG_WRITER);
+				MyBackendType = B_BG_WRITER;
 				break;
 			case CheckpointerProcess:
 				statmsg = pgstat_get_backend_desc(B_CHECKPOINTER);
+				MyBackendType = B_CHECKPOINTER;
 				break;
 			case WalWriterProcess:
 				statmsg = pgstat_get_backend_desc(B_WAL_WRITER);
+				MyBackendType = B_WAL_WRITER;
 				break;
 			case WalReceiverProcess:
 				statmsg = pgstat_get_backend_desc(B_WAL_RECEIVER);
+				MyBackendType = B_WAL_RECEIVER;
 				break;
 			default:
 				statmsg = "??? process";

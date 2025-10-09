@@ -718,6 +718,7 @@ StartBackgroundWorker(void)
 		elog(FATAL, "unable to find bgworker entry");
 
 	IsBackgroundWorker = true;
+	MyBackendType = B_BG_WORKER;
 
 	/* Identify myself via ps */
 	init_ps_display(worker->bgw_name, "", "", "");

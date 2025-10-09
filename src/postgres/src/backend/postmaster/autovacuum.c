@@ -435,6 +435,8 @@ AutoVacLauncherMain(int argc, char *argv[])
 
 	am_autovacuum_launcher = true;
 
+	MyBackendType = B_AUTOVAC_LAUNCHER;
+
 	/* Identify myself via ps */
 	init_ps_display(pgstat_get_backend_desc(B_AUTOVAC_LAUNCHER), "", "", "");
 
@@ -1524,6 +1526,8 @@ AutoVacWorkerMain(int argc, char *argv[])
 
 	am_autovacuum_worker = true;
 
+	MyBackendType = B_AUTOVAC_WORKER;
+
 	/* Identify myself via ps */
 	init_ps_display(pgstat_get_backend_desc(B_AUTOVAC_WORKER), "", "", "");
 
@@ -1688,12 +1692,14 @@ AutoVacWorkerMain(int argc, char *argv[])
 		pgstat_report_autovac(dbid);
 
 		/*
-		 * Connect to the selected database
+		 * Connect to the selected database, specifying no particular user,
+		 * and ignoring datallowconn.  Collect the database's name for
+		 * display.
 		 *
 		 * Note: if we have selected a just-deleted database (due to using
 		 * stale stats info), we'll fail and exit here.
 		 */
-		InitPostgres(NULL, dbid, NULL, InvalidOid, dbname, NULL, false);
+		InitPostgres(NULL, dbid, NULL, InvalidOid, dbname, NULL, true);
 		SetProcessingMode(NormalProcessing);
 		set_ps_display(dbname, false);
 		ereport(DEBUG1,
