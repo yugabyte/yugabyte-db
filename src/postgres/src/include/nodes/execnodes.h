@@ -578,6 +578,13 @@ typedef struct ResultRelInfo
 	 * CONFLICT clause is found and YbAddSlotToBatch is called.
 	 */
 	bool		ri_ybIocBatchingPossible;
+
+	/*
+	 * YB: can index-only scans be used to read conflicting tuples for the given
+	 * INSERT ... ON CONFLICT query on this table? Index-only scans are
+	 * currently supported only for the DO NOTHING clause.
+	 */
+	bool		ri_ybUseIndexOnlyScanForIocRead;
 } ResultRelInfo;
 
 /*
