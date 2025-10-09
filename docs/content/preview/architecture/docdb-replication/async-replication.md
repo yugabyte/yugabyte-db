@@ -229,6 +229,9 @@ In a multi-master deployment, data replication is bidirectional between two univ
 The multi-master deployment uses bidirectional replication, which involves two unidirectional replication streams operating in non-transactional mode. Special measures are taken to assign timestamps that ensure last-writer-wins semantics, and data received from the replication stream is not re-replicated.
 
 {{< Warning title="Important" >}}
+
+Active-active multi-master replication can lead to inconsistencies if schemas or data modifications are not carefully coordinated across clusters.
+
 Refer to [Inconsistencies affecting transactions](#inconsistencies-affecting-transactions) for details on how non-transactional mode can lead to inconsistencies.
 
 This mode is not recommended for YSQL deployments.
