@@ -241,6 +241,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
           universe,
           taskParams().nodeDetailsSet,
           false /* ignore node status check */,
+          true /* do validation of gflags */,
           setupServerParams -> {
             setupServerParams.rebootNodeAllowed = true;
           },
