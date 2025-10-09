@@ -66,7 +66,7 @@ Refer to [Inconsistencies affecting transactions](#inconsistencies-affecting-tra
 {{< /Warning >}}
 
 {{< tip >}}
-For YSQL deployments, transactional mode is preferred because it provides the necessary consistency guarantees typically required for such deployments.
+For YSQL deployments, [transactional mode](#transactional-replication) is preferred because it provides the necessary consistency guarantees typically required for such deployments.
 {{< /tip >}}
 
 #### Inconsistencies affecting transactions
