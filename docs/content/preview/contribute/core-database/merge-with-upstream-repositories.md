@@ -665,13 +665,14 @@ This requires having the source repository's commit present in the destination r
 Then, a cherry-pick can be done directly.
 
 For example, suppose you put up a GitHub PR of a commit that you point-imported on [yugabyte/postgres][repo-postgres].
-That commit exists locally in your `postgres` repository, and it also exists in your GitHub fork of `postgres`.
-Either can be used as a remote in order to get the commit: for this example, let's use the fork as that process may be more familiar to people.
+That commit may exist in your local `postgres` repository, it may exist in your GitHub fork of `postgres`, and it exists in upstream `postgres`.
+Wherever it exists, it needs to be fetched into this [yugabyte/yugabyte-db][repo-yugabyte-db] repository.
+For this example, let's use [upstream postgres](#git-multiple-remotes):
 
 ```sh
-git remote add postgres-fork https://github.com/<my_user>/postgres
-git fetch postgres-fork <commit>
-git cherry-pick --strategy subtree -Xsubtree=src/postgres <commit>
+git remote add pg https://git.postgresql.org/git/postgresql.git
+git fetch pg <full_commit_hash>
+git cherry-pick --strategy subtree -Xsubtree=src/postgres <full_commit_hash>
 ```
 
 This can get tedious in case you point-imported multiple commits at once, and you want to resolve all merge conflicts in one go rather than one-by-one.
@@ -683,8 +684,8 @@ pushd ~/code/postgres
 git switch -c tmp-squash heads/yb-pg15
 git merge --squash <feature_branch>
 popd
-git remote add local-postgres ~/code/postgres
-git fetch local-postgres tmp-squash
+git remote add local-pg ~/code/postgres
+git fetch local-pg tmp-squash
 git cherry-pick --strategy subtree -Xsubtree=src/postgres local-postgres/tmp-squash
 ```
 
