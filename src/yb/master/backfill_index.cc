@@ -440,7 +440,6 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
   const bool is_ysql_table = (indexed_table->GetTableType() == TableType::PGSQL_TABLE_TYPE);
   // For YSQL, master won't automatically move the index permission to DO_BACKFILL unless
   // postgres calls CatalogManager::BackfillIndex() because postgres drives permission changes.
-  const bool update_to_backfill = (!is_ysql_table || update_ysql_to_backfill);
   const bool defer_backfill = !is_ysql_table && GetAtomicFlag(&FLAGS_defer_index_backfill);
   const bool is_backfilling = indexed_table->IsBackfilling();
 
@@ -473,8 +472,11 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
         }
       } else if (idx_pb.index_permissions() == INDEX_PERM_INDEX_UNUSED) {
         indexes_to_delete.emplace_back(idx_pb);
-      } else if (
-          idx_pb.index_permissions() != INDEX_PERM_READ_WRITE_AND_DELETE && update_to_backfill) {
+      } else if (!is_ysql_table && idx_pb.index_permissions() != INDEX_PERM_READ_WRITE_AND_DELETE) {
+        indexes_to_update.emplace(idx_pb.table_id(), NextPermission(idx_pb.index_permissions()));
+      } else if (update_ysql_to_backfill &&
+                 idx_pb.index_permissions() != INDEX_PERM_READ_WRITE_AND_DELETE &&
+                 idx_pb.index_permissions() != INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING) {
         indexes_to_update.emplace(idx_pb.table_id(), NextPermission(idx_pb.index_permissions()));
       }
     }
