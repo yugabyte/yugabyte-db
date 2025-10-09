@@ -119,6 +119,22 @@ DEFINE_RUNTIME_int64(mem_tracker_tcmalloc_gc_release_bytes, -1,
 
 DECLARE_int64(server_tcmalloc_max_total_thread_cache_bytes);
 
+METRIC_DEFINE_counter(server, mem_tracker_gc_tcmalloc_calls,
+                      "MemTracker GC TCMalloc Calls",
+                      yb::MetricUnit::kOperations,
+                      "Number of times MemTracker::GcTcmallocIfNeeded() has been called");
+
+METRIC_DEFINE_counter(server, mem_tracker_gc_tcmalloc_bytes_released,
+                      "MemTracker GC TCMalloc Bytes Released",
+                      yb::MetricUnit::kBytes,
+                      "Total number of bytes released by MemTracker::GcTcmallocIfNeeded()");
+
+METRIC_DEFINE_histogram(server, mem_tracker_gc_tcmalloc_bytes_per_call,
+                        "MemTracker GC TCMalloc Bytes Per Call",
+                        yb::MetricUnit::kBytes,
+                        "Histogram of bytes released per call to MemTracker::GcTcmallocIfNeeded()",
+                        60000000 /* 60MB as max value */, 2 /* 2 digits precision */);
+
 namespace yb {
 
 // NOTE: this class has been adapted from Impala, so the code style varies
@@ -739,6 +755,10 @@ bool MemTracker::GcMemory(int64_t max_consumption) {
 
 void MemTracker::GcTcmallocIfNeeded() {
 #ifdef YB_TCMALLOC_ENABLED
+  if (gc_tcmalloc_calls_metric_) {
+    gc_tcmalloc_calls_metric_->Increment();
+  }
+
   released_memory_since_gc = 0;
   TRACE_EVENT0("process", "MemTracker::GcTcmallocIfNeeded");
 
@@ -748,7 +768,9 @@ void MemTracker::GcTcmallocIfNeeded() {
   // Bytes allocated by the application.
   int64_t bytes_used = GetTCMallocCurrentAllocatedBytes();
 
+  int64_t initial_overhead = bytes_overhead;
   int64_t max_overhead = bytes_used * FLAGS_tcmalloc_max_free_bytes_percentage / 100.0;
+
   if (bytes_overhead > max_overhead) {
     int64_t extra = bytes_overhead - max_overhead;
     while (extra > 0) {
@@ -761,6 +783,19 @@ void MemTracker::GcTcmallocIfNeeded() {
       MallocExtension::instance()->ReleaseToSystem(1024 * 1024);
 #endif  // YB_GOOGLE_TCMALLOC
       extra -= 1024 * 1024;
+    }
+
+    int64_t final_overhead = GetTCMallocPageHeapFreeBytes();
+    int64_t bytes_released = initial_overhead - final_overhead;
+    if (gc_tcmalloc_bytes_released_metric_ && bytes_released > 0) {
+      gc_tcmalloc_bytes_released_metric_->IncrementBy(bytes_released);
+    }
+    if (gc_tcmalloc_bytes_per_call_metric_ && bytes_released > 0) {
+      gc_tcmalloc_bytes_per_call_metric_->Increment(bytes_released);
+    }
+  } else {
+    if (gc_tcmalloc_bytes_per_call_metric_) {
+      gc_tcmalloc_bytes_per_call_metric_->Increment(0);
     }
   }
 #endif  // YB_TCMALLOC_ENABLED
@@ -846,6 +881,16 @@ void MemTracker::SetMetricEntity(const MetricEntityPtr& metric_entity) {
 
 void MemTracker::TEST_SetReleasedMemorySinceGC(int64_t value) {
   released_memory_since_gc = value;
+}
+
+scoped_refptr<Counter> MemTracker::gc_tcmalloc_calls_metric_;
+scoped_refptr<Counter> MemTracker::gc_tcmalloc_bytes_released_metric_;
+scoped_refptr<Histogram> MemTracker::gc_tcmalloc_bytes_per_call_metric_;
+
+void MemTracker::InitializeGcMetrics(const scoped_refptr<MetricEntity>& metric_entity) {
+  gc_tcmalloc_calls_metric_ = METRIC_mem_tracker_gc_tcmalloc_calls.Instantiate(metric_entity);
+  gc_tcmalloc_bytes_released_metric_ = METRIC_mem_tracker_gc_tcmalloc_bytes_released.Instantiate(metric_entity);
+  gc_tcmalloc_bytes_per_call_metric_ = METRIC_mem_tracker_gc_tcmalloc_bytes_per_call.Instantiate(metric_entity);
 }
 
 scoped_refptr<MetricEntity> MemTracker::metric_entity() const {
