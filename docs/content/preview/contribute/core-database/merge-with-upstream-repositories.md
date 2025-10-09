@@ -665,9 +665,8 @@ This requires having the source repository's commit present in the destination r
 Then, a cherry-pick can be done directly.
 
 For example, suppose you put up a GitHub PR of a commit that you point-imported on [yugabyte/postgres][repo-postgres].
-That commit may exist in your local `postgres` repository and it may exist in your GitHub fork of `postgres`.
-Wherever it exists, it needs to be fetched into this [yugabyte/yugabyte-db][repo-yugabyte-db] repository.
-For this example, let's use your GitHub fork of postgres:
+That commit exists locally in your `postgres` repository, and it also exists in your GitHub fork of `postgres`.
+Either can be used as a remote in order to get the commit: for this example, let's use the fork as that process may be more familiar to people.
 
 ```sh
 git remote add fork-pg https://github.com/<your_username>/postgres
