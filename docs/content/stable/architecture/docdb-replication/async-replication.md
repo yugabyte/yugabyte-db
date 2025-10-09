@@ -59,7 +59,7 @@ Because there is a useful trade-off between how much consistency is lost and wha
 ### Non-transactional replication
 
 For YCQL, only non-transactional replication mode is supported.
-Non-transactional replication mode supports active-active multi-master deployments.
+Non-transactional replication mode supports [active-active multi-master](#active-active-multi-master) deployments.
 
 {{< Warning title="Important" >}}
 Refer to [Inconsistencies affecting transactions](#inconsistencies-affecting-transactions) for details on how non-transactional mode can lead to inconsistencies.
