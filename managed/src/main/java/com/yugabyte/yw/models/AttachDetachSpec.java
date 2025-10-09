@@ -783,11 +783,12 @@ public class AttachDetachSpec {
         return;
       }
 
-      if (Util.getStoredYwUuid(universe, ysqlQueryExecutor, confGetter) != DETACHED_UNIVERSE_UUID) {
+      UUID storedYwUuid = Util.getStoredYwUuid(universe, ysqlQueryExecutor, confGetter);
+      if (storedYwUuid != null && !storedYwUuid.equals(DETACHED_UNIVERSE_UUID)) {
         throw new PlatformServiceException(
             BAD_REQUEST,
             "Universe already has an owner "
-                + Util.getStoredYwUuid(universe, ysqlQueryExecutor, confGetter)
+                + storedYwUuid
                 + ", please delete universe metadata from this YBA"
                 + " instance.");
       }
