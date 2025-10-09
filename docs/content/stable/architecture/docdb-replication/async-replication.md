@@ -73,7 +73,7 @@ For YSQL deployments, [transactional mode](#transactional-replication) is prefer
 
 Writes to the source universe tablets are independently replicated to the target universe tablets, where they are applied with the same timestamp they committed on the source universe. No locks are taken or honored on the target side.
 
-Due to replication lag, reads in the target universe may not immediately reflect recent writes from the source universe. When a read is performed in the target universe, it proceeds without waiting for the latest source data to become available. Additionally, since writes are replicated independently, reads do not wait for all related writes to arrive - this applies both within a single table (across tablets) and across different tables and their indexes.
+Due to replication lag, reads in the target universe may not immediately reflect recent writes from the source universe. When a read is performed in the target universe, it proceeds without waiting for the latest source data to become available. Additionally, because writes are replicated independently, reads don’t wait for all related writes to arrive. This applies both within a single table (across tablets) and across different tables and their indexes.
 
 For YSQL, transactions on the target universe can experience non-repeatable reads and phantom reads, and do not honor the declared isolation level.
 
