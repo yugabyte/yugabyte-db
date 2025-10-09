@@ -22,67 +22,67 @@ For an RSS feed of all technical advisories, point your feed reader to the [RSS 
 | Advisory&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Synopsis | Product | Affected Versions | Date |
 | :------------------------------- | :------- | :-----: | :---------------: | :--- |
 | {{<ta 27177>}}
-| PostgreSQL logical replication and v2025.1 upgrade
+|PostgreSQL logical replication breaks during v2025.1 upgrade
 | {{<product "cdc">}}
 | {{<release "2025.1.0">}}
 | {{<nobreak "03 October 2025">}}
 |
 | {{<ta 26666>}}
-| Memory leak in workloads with foreign keys or serializable reads
+|Memory leak in workloads with foreign keys or serializable reads
 | {{<product "ysql, ycql">}}
 | {{<release "2024.2">}}
 | {{<nobreak "02 September 2025">}}
 |
 | {{<ta 28222>}}
-| Regression for queries with BNL plans
+|Regression for queries with BNL plans
 | {{<product "ysql">}}
 | {{<release "2024.1, 2024.2, 2025.1">}}
 | {{<nobreak "18 August 2025">}}
 |
 | {{<ta 2968>}}
-| Import schema fails on all Voyager installs done after August 14, 2025
+|Import schema fails on all Voyager installs done after August 14, 2025
 | {{<product "voyager">}}
 | {{<release "All">}}
 | {{<nobreak "15 August 2025">}}
 |
 | {{<ta 26440>}}
-| Transparent Huge Pages causing Memory Issues
+|Transparent Huge Pages (THP) causing memory issues and RSS increase
 | {{<product "ybdb,yba">}}
 | {{<release "All">}}
 | {{<nobreak "12 August 2025">}}
 |
 | {{<ta 25106>}}
-| TServer fatals with schema packing not found error
+|TServer fatals with schema packing not found error during DDL operations
 | {{<product "ysql">}}
 | {{<release "2.20, 2024.1, 2024.2">}}
 | {{<nobreak "04 June 2025">}}
 |
 | {{<ta 27380>}}
-| Missing rows on xCluster target on range sharded tables with multiple tablets
+|Missing rows on xCluster target on range-sharded tables with multiple tablets
 | {{<product "ysql">}}
 | {{<release "2.20.x, 2024.1, 2024.2">}}
 | {{<nobreak "03 June 2025">}}
 |
 | {{<ta 14696>}}
-| DDL Atomicity Health Check Alert is Wrong
+|DDL Atomicity health check alert shows incorrect results in YugabyteDB Anywhere
 | {{<product "yba">}}
 | {{<release "2.20.8.1, 2024.1.3.1, 2024.2.0.0, 2.23.1.0">}}
 | {{<nobreak "19 February 2025">}}
 |
 | {{<ta 25193>}}
-| Logical Replication CDC may fail to stream UPDATE or DELETE changes correctly when using FULL_ROW_NEW_IMAGE, MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES, or DEFAULT Replica Identity with CDC lag
+|Logical replication CDC may fail to stream UPDATE or DELETE changes with specific configurations
 | {{<product "ysql">}}
 | {{<release "2.20, 2024.1, 2024.2">}}
 | {{<nobreak "10 January 2025">}}
 |
 | {{<ta 24992>}}
-|Partial Streaming Stall After Tablet Split
+|Partial streaming stall after tablet split
 | [YugabyteDB gRPC (Debezium) Connector](/preview/additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/)
 | [dz.1.9.5.yb.grpc.2024.1](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/tag/vdz.1.9.5.yb.grpc.2024.1)
 | {{<nobreak "3 December 2024">}}
 |
 | {{<ta 23476>}}
-|YCQL Timestamp Precision (Millis vs Micros)
+|YCQL timestamp precision (Millis vs Micros) issues
 | {{<product "ycql">}}
 | {{<release "All">}}
 | {{<nobreak "21 November 2024">}}
@@ -118,7 +118,7 @@ For an RSS feed of all technical advisories, point your feed reader to the [RSS 
 | {{<nobreak "30 Apr 2024">}}
 |
 | {{<ta 21297>}}
-|Missing writes during Batch Execution in a transaction
+|Missing writes during batch execution in a transaction
 | {{<product "ysql">}}
 | {{<release "All">}}
 | {{<nobreak "26 Mar 2024">}}
@@ -142,7 +142,7 @@ For an RSS feed of all technical advisories, point your feed reader to the [RSS 
 | {{<nobreak "27 Feb 2024">}}
 |
 | {{<ta 20827>}}
-|Correctness issue for queries using SELECT DISTINCT
+|Query correctness issue with SELECT DISTINCT and BatchNestedLoopJoin
 | {{<product "ysql">}}
 | {{<release "2.20.1.x">}}
 | {{<nobreak "06 Feb 2024">}}
