@@ -91,7 +91,7 @@ is_run_test_script=true
 # shellcheck source=build-support/common-test-env.sh
 . "${BASH_SOURCE%/*}/common-test-env.sh"
 
-export YB_BUILD_STRICT=true
+export YB_BUILD_STRICT=${YB_BUILD_STRICT:-true}
 detect_architecture
 activate_virtualenv
 set_pythonpath
