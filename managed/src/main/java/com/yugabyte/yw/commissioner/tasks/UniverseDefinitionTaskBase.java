@@ -2586,6 +2586,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       Set<NodeDetails> mastersToBeConfigured,
       Set<NodeDetails> tServersToBeConfigured,
       boolean ignoreNodeStatus,
+      boolean doValidateGFlags,
       @Nullable Consumer<AnsibleConfigureServers.Params> installSoftwareParamsCustomizer,
       @Nullable Consumer<AnsibleConfigureServers.Params> gflagsParamsCustomizer) {
 
@@ -2609,15 +2610,18 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                   .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
             });
 
-    String softwareVersion = taskParams().getPrimaryCluster().userIntent.ybSoftwareVersion;
-    // Validate GFlags through RPC
-    boolean skipRuntimeGflagValidation =
-        confGetter.getGlobalConf(GlobalConfKeys.skipRuntimeGflagValidation);
-    if (!skipRuntimeGflagValidation) {
-      if (Util.compareYBVersions(
-              softwareVersion, "2024.2.0.0-b1", "2.27.0.0-b1", true /* suppressFormatError */)
-          >= 0) {
-        createValidateGFlagsTask(null /* newClusters */, true /* useCLIBinary */, softwareVersion);
+    if (doValidateGFlags) {
+      String softwareVersion = taskParams().getPrimaryCluster().userIntent.ybSoftwareVersion;
+      // Validate GFlags through RPC
+      boolean skipRuntimeGflagValidation =
+          confGetter.getGlobalConf(GlobalConfKeys.skipRuntimeGflagValidation);
+      if (!skipRuntimeGflagValidation) {
+        if (Util.compareYBVersions(
+                softwareVersion, "2024.2.0.0-b1", "2.27.0.0-b1", true /* suppressFormatError */)
+            >= 0) {
+          createValidateGFlagsTask(
+              null /* newClusters */, true /* useCLIBinary */, softwareVersion);
+        }
       }
     }
 
@@ -2696,6 +2700,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       Universe universe,
       Set<NodeDetails> nodesToBeCreated,
       boolean ignoreNodeStatus,
+      boolean doValidateGFlags,
       @Nullable Consumer<AnsibleSetupServer.Params> setupServerParamsCustomizer,
       @Nullable Consumer<AnsibleConfigureServers.Params> installSoftwareParamsCustomizer,
       @Nullable Consumer<AnsibleConfigureServers.Params> gflagsParamsCustomizer) {
@@ -2714,6 +2719,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         nodesToConfigureMaster,
         nodesToBeCreated,
         isFallThrough,
+        doValidateGFlags,
         installSoftwareParamsCustomizer,
         gflagsParamsCustomizer);
   }
