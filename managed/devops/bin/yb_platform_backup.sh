@@ -448,25 +448,6 @@ create_backup() {
       metadata_dir="/opt/yugabyte"
       target_dir="/opt/yugabyte/yugaware/data"
     fi
-    # Use a timestamped subdirectory to avoid conflicts with other backups
-    # This is nanosecond precision, highly unlikely to conflict with other backups, but we have
-    # retries for safety.
-    possible_target_dir="${target_dir}/backup_$(date +%s%N)"
-    for i in {1..10}; do
-      if [ -d "${possible_target_dir}" ]; then
-        echo "Backup directory ${possible_target_dir} already exists, wait for 1 second and retry"
-        sleep 1
-        possible_target_dir="${target_dir}/backup_$(date +%s%N)"
-      else
-        break
-      fi
-    done
-    if [ -d "${possible_target_dir}" ]; then
-      echo "Backup directory ${possible_target_dir} already exists, exiting"
-      exit 1
-    fi
-    target_dir="${possible_target_dir}"
-    mkdir -p ${target_dir}
     if [[ "${yba_installer}" = true ]]; then
       version=$(basename $(realpath ${data_dir}/software/active))
       metadata_regex="**/${version}/**/yugaware/conf/${VERSION_METADATA}"
@@ -486,7 +467,7 @@ create_backup() {
 
   tar_name="${output_path}/backup_${now}.tar"
   tgz_name="${output_path}/backup_${now}.tgz"
-  db_backup_path="${target_dir}/${PLATFORM_DUMP_FNAME}"
+  db_backup_path="${data_dir}/${PLATFORM_DUMP_FNAME}"
   trap 'delete_db_backup ${db_backup_path}' RETURN
   if [[ "$ybdb" = true ]]; then
     create_ybdb_backup "${db_backup_path}" "${db_username}" "${db_host}" "${db_port}" \
@@ -512,9 +493,9 @@ create_backup() {
 
   # Backup prometheus data.
   if [[ "$exclude_prometheus" = false ]]; then
-    trap 'run_sudo_cmd "rm -rf ${target_dir}/${PROMETHEUS_SNAPSHOT_DIR}"' RETURN
+    trap 'run_sudo_cmd "rm -rf ${data_dir}/${PROMETHEUS_SNAPSHOT_DIR}"' RETURN
     echo "Creating prometheus snapshot..."
-    set_prometheus_data_dir "${prometheus_host}" "${prometheus_port}" "${target_dir}" \
+    set_prometheus_data_dir "${prometheus_host}" "${prometheus_port}" "${data_dir}" \
       "${prometheus_protocol}"
     snapshot_cmd="curl -k -X POST \
       ${prometheus_protocol}://${prometheus_host}:${prometheus_port}/api/v1/admin/tsdb/snapshot"
@@ -523,16 +504,16 @@ create_backup() {
     fi
     snapshot_dir=$( $snapshot_cmd | ${PYTHON_EXECUTABLE} -c \
       "import sys, json; print(json.load(sys.stdin)['data']['name'])")
-    mkdir -p "$target_dir/$PROMETHEUS_SNAPSHOT_DIR"
+    mkdir -p "$data_dir/$PROMETHEUS_SNAPSHOT_DIR"
     run_sudo_cmd "cp -aR ${PROMETHEUS_DATA_DIR}/snapshots/${snapshot_dir} \
-    ${target_dir}/${PROMETHEUS_SNAPSHOT_DIR}"
+    ${data_dir}/${PROMETHEUS_SNAPSHOT_DIR}"
     run_sudo_cmd "rm -rf ${PROMETHEUS_DATA_DIR}/snapshots/${snapshot_dir}"
   FIND_OPTIONS+=( -o -path "**/${PROMETHEUS_SNAPSHOT_DIR}/**" )
   fi
   # Close out paths in FIND_OPTIONS with a close-paren, and  add -exec
   FIND_OPTIONS+=( \\\) -exec tar $TAR_OPTIONS \{} + )
   echo "Creating platform backup package..."
-  cd ${target_dir}
+  cd ${data_dir}
 
   eval find -L ${FIND_OPTIONS[@]}
 
@@ -540,8 +521,8 @@ create_backup() {
   cleanup "${tar_name}"
   delete_db_backup "${db_backup_path}"
 
-  # Delete the target directory now that backup is done.
-  docker_aware_cmd "yugaware" "rm -rf ${target_dir}"
+  # Delete the version metadata backup if we had created it earlier
+  docker_aware_cmd "yugaware" "rm -f ${data_dir}/${VERSION_METADATA_BACKUP}"
 
   echo "Finished creating backup ${tgz_name}"
   modify_service yb-platform restart
