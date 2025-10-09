@@ -1,5 +1,8 @@
 import { ImageBundle } from '../../../../../../components/configRedesign/providerRedesign/types';
-import { UniverseInfo, UniverseSpec } from '../../../../../../v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import {
+  UniverseInfo,
+  UniverseSpec
+} from '../../../../../../v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { AccessKey, CloudType } from '../../../../../features/universe/universe-form/utils/dto';
 import {
   CLOUD,

@@ -8,6 +8,7 @@ import {
 } from './AddGeoPartitionContext';
 import { GeoPartitionResilience } from './steps/GeoPartitionResilience';
 import { GeoPartitionNodesAndAvailability } from './steps/GeoPartitionNodesAndAvailability';
+import { GeoPartitionReviewAndSummary } from './steps/GeoPartitionReviewAndSummary';
 
 export const SwitchGeoPartitionSteps = () => {
   const [{ activeStep }] = (useContext(
@@ -17,7 +18,7 @@ export const SwitchGeoPartitionSteps = () => {
     [AddGeoPartitionSteps.GENERAL_SETTINGS]: <GeoPartitionGeneralSettings />,
     [AddGeoPartitionSteps.RESILIENCE_AND_REGIONS]: <GeoPartitionResilience />,
     [AddGeoPartitionSteps.NODES_AND_AVAILABILITY_ZONES]: <GeoPartitionNodesAndAvailability />,
-    [AddGeoPartitionSteps.REVIEW]: <div>Summary and Costs</div>
+    [AddGeoPartitionSteps.REVIEW]: <GeoPartitionReviewAndSummary />
   };
 
   const [, { get }] = useMap<Record<number, JSX.Element>>(mappings);

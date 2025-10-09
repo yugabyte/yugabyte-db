@@ -17,7 +17,10 @@ import {
 } from '@yugabyte-ui-library/core';
 import { Region } from '../../../../../features/universe/universe-form/utils/dto';
 import { styled } from '@material-ui/core';
-import { getUniverseResources, useCreateUniverse } from '../../../../../../v2/api/universe/universe';
+import {
+  getUniverseResources,
+  useCreateUniverse
+} from '../../../../../../v2/api/universe/universe';
 import { mapCreateUniversePayload } from '../../CreateUniverseUtils';
 import { YBLoadingCircleIcon } from '@app/components/common/indicators';
 
@@ -105,7 +108,7 @@ export const ReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
     forwardRef,
     () => ({
       onNext: () => {
-        createUniverse
+        return createUniverse
           .mutateAsync({
             data: payload
           })
@@ -130,11 +133,11 @@ export const ReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
 
   const icon = useGetMapIcons({ type: MarkerType.REGION_SELECTED });
 
-  if(isLoadingPricing){
+  if (isLoadingPricing) {
     return <YBLoadingCircleIcon />;
   }
 
-  const costDaily = pricingData?.price_per_hour ? (pricingData.price_per_hour * 24) : 0.00;
+  const costDaily = pricingData?.price_per_hour ? pricingData.price_per_hour * 24 : 0.0;
   const costMonthly = costDaily * 31;
 
   return (
@@ -219,16 +222,20 @@ export const ReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
             <Money />
             <StyledBoldValue>{t('universeTotal')}</StyledBoldValue>
           </div>
-          <StyledBoldValue style={{ width: '120px', textAlign: 'right' }}>${costDaily.toFixed(2)}</StyledBoldValue>
-          <StyledBoldValue style={{ width: '120px', textAlign: 'right' }}>${costMonthly.toFixed(2)}</StyledBoldValue>
+          <StyledBoldValue style={{ width: '120px', textAlign: 'right' }}>
+            ${costDaily.toFixed(2)}
+          </StyledBoldValue>
+          <StyledBoldValue style={{ width: '120px', textAlign: 'right' }}>
+            ${costMonthly.toFixed(2)}
+          </StyledBoldValue>
         </StyledFooter>
       </StyledPanel>
       <YBMaps
-        dataTestId='yb-maps-review-and-summary'
+        dataTestId="yb-maps-review-and-summary"
         mapHeight={360}
         coordinates={[
-          [0,0],
-          [0,0]
+          [0, 0],
+          [0, 0]
         ]}
         initialBounds={undefined}
         mapWidth={360}
