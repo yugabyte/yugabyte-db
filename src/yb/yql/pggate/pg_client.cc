@@ -225,6 +225,7 @@ ExchangeFuture<Data>::Result ExchangeFuture<Data>::get() {
 
 template <class LWReqPB, class LWRespPB, class ResTp, tserver::PgSharedExchangeReqType ShExcReqType>
 struct PgClientData : public FetchBigDataCallback {
+  using RequestType = LWReqPB;
   using ResultType = ResTp;
   static constexpr tserver::PgSharedExchangeReqType kSharedExchangeRequestType = ShExcReqType;
 
@@ -874,9 +875,10 @@ class PgClient::Impl : public BigDataFetcher {
       auto& exchange = session_shared_mem_->exchange();
       auto out = exchange.Obtain(kHeaderSize + kMetadataSize + data->req.SerializedSize());
       if (out) {
+        auto timeout = GetTimeout<typename Data::RequestType>();
         *reinterpret_cast<uint8_t *>(out) = Data::kSharedExchangeRequestType;
         out += sizeof(uint8_t);
-        LittleEndian::Store64(out, timeout_.ToMilliseconds());
+        LittleEndian::Store64(out, timeout.ToMilliseconds());
         out += sizeof(uint64_t);
         out = pointer_cast<std::byte*>(metadata.SerializeToArray(to_uchar_ptr(out)));
         const auto size = data->req.SerializedSize();
@@ -893,13 +895,14 @@ class PgClient::Impl : public BigDataFetcher {
           data->promise.set_value(MakeExchangeResult(*data, status));
           return data->promise.get_future();
         }
-        data->SetupExchange(&exchange, this, timeout_);
+        data->SetupExchange(&exchange, this, timeout);
         return ExchangeFuture<Data>(std::move(data));
       }
     }
     data->controller.set_invoke_callback_mode(rpc::InvokeCallbackMode::kReactorThread);
     (proxy_.get()->*method)(
-        data->req, &data->resp, SetupController(&data->controller), [data] {
+        data->req, &data->resp, SetupController<typename Data::RequestType>(&data->controller),
+        [data] {
           data->promise.set_value(MakeExchangeResult(*data, data->controller.CheckedResponse()));
         });
     return data->promise.get_future();
@@ -1634,15 +1637,22 @@ class PgClient::Impl : public BigDataFetcher {
   }
 
   template <typename T = void>
+  MonoDelta GetTimeout() {
+    if constexpr (std::is_same_v<T, tserver::PgAcquireAdvisoryLockRequestPB> ||
+                  std::is_same_v<T, tserver::LWPgAcquireObjectLockRequestPB>) {
+      return std::min(timeout_, lock_timeout_);
+    }
+    return timeout_;
+  }
+
+  template <typename T = void>
   rpc::RpcController* SetupController(
       rpc::RpcController* controller,
       CoarseTimePoint deadline = CoarseTimePoint()) {
     if (deadline != CoarseTimePoint()) {
       controller->set_deadline(deadline);
-    } else if constexpr (std::is_same_v<T, tserver::PgAcquireAdvisoryLockRequestPB>) {
-      controller->set_timeout(std::min(timeout_, lock_timeout_));
     } else {
-      controller->set_timeout(timeout_);
+      controller->set_timeout(GetTimeout<T>());
     }
     return controller;
   }
