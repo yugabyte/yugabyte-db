@@ -1779,6 +1779,70 @@ class PgIndexBackfillClientDeadline : public PgIndexBackfillBlockDoBackfill {
   }
 };
 
+// https://github.com/yugabyte/yugabyte-db/issues/28849
+TEST_P(PgIndexBackfillTest, MultipleIndexesFirstOneInvalid) {
+  auto conn = CHECK_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE table foo(id int, id2 int)"));
+  // Insert values so that id contain duplicate values, id2 contais unique values.
+  ASSERT_OK(conn.Execute("INSERT INTO foo values (1, 1), (2, 2)"));
+  ASSERT_OK(conn.Execute("INSERT INTO foo values (1, 3), (2, 4)"));
+  // Do CONCURRENTLY to trigger the multi-stage index creation.
+  auto status = conn.Execute("CREATE UNIQUE INDEX CONCURRENTLY id_idx ON foo(id)");
+  ASSERT_TRUE(status.IsNetworkError()) << status;
+  ASSERT_STR_CONTAINS(status.ToString(), "duplicate key value violates unique constraint");
+
+  // Before fixing 28849, this moved the permission of id_idx from
+  // INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING to INDEX_PERM_DELETE_ONLY_WHILE_REMOVING
+  ASSERT_OK(conn.Execute("CREATE UNIQUE INDEX CONCURRENTLY id_idx2 ON foo(id2)"));
+
+  // Before fixing 28849, this moved the permission of id_idx from
+  // INDEX_PERM_DELETE_ONLY_WHILE_REMOVING to INDEX_PERM_INDEX_UNUSED, INDEX_PERM_INDEX_UNUSED
+  // caused the docdb table for id_idx to be deleted.
+  ASSERT_OK(conn.Execute("CREATE UNIQUE INDEX CONCURRENTLY id_idx3 ON foo(id2)"));
+
+  // As a result, this INSERT failed with OBJECT_NOT_FOUND error.
+  ASSERT_OK(conn.Execute("INSERT INTO foo VALUES (5, 5)"));
+  status = conn.Execute("INSERT INTO foo VALUES (5, 6)");
+  // Although id_idx is in an invalid state, it still enforces that new values inserted
+  // must be unique according to id_idx, id_idx2 and id_idx3. We have already inserted
+  // a new value 5 for id, a second insertion of 5 for id causes id_idx to detect
+  // unique constraint violation.
+  ASSERT_TRUE(status.IsNetworkError()) << status;
+  ASSERT_STR_CONTAINS(status.ToString(), "duplicate key value violates unique constraint");
+
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto count_indexes_fn = [&client]() -> int {
+    auto tables = CHECK_RESULT(client->ListTables());
+    int count = 0;
+    for (const auto& table : tables) {
+      if (table.namespace_name() != kDatabaseName)
+        continue;
+      const auto& table_name = table.table_name();
+      if (table_name == "id_idx" || table_name == "id_idx2" || table_name == "id_idx3") {
+        count++;
+      }
+    }
+    return count;
+  };
+
+  // Make sure that the indexes exists in DocDB metadata.
+  ASSERT_EQ(count_indexes_fn(), 3);
+
+  // Make sure drop index works.
+  ASSERT_OK(conn.Execute("DROP INDEX id_idx"));
+  ASSERT_OK(conn.Execute("DROP INDEX id_idx2"));
+  ASSERT_OK(conn.Execute("DROP INDEX id_idx3"));
+
+  // Make sure that the index is gone.
+  // Check postgres metadata.
+  auto value = ASSERT_RESULT(conn_->FetchRow<PGUint64>(
+      "SELECT COUNT(*) FROM pg_class WHERE relname like 'id_idx%'"));
+  ASSERT_EQ(value, 0);
+
+  // Check DocDB metadata.
+  ASSERT_EQ(count_indexes_fn(), 0);
+}
+
 INSTANTIATE_TEST_CASE_P(, PgIndexBackfillClientDeadline, ::testing::Bool());
 
 // Make sure that the postgres timeout when waiting for backfill to finish causes the index to not
