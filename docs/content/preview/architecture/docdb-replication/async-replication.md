@@ -85,7 +85,7 @@ Concurrent updates and deletes of the same primary key row can result in inconsi
 For YSQL, if there are indexes involved then the write can result in corruption of the index. Concurrent updates, and deletes to the primary key row, or the same index row (including INCLUDED columns) can also result in corruption of the index. 
 Foreign Key and Unique constraints and other user defined constraints cannot be guaranteed for data that is concurrently written to from both universes.
 
-If the source universe fails, the target universe may be left in an inconsistent state where some source universe transactions have only some of their writes applied in the target universe (these are called _torn transactions_). This inconsistency will not automatically heal over time and may need to be manually resolved.
+If the source universe fails, the target universe may end up in an inconsistent state where some transactions from the source have only some of their writes applied in the target (these are called _torn transactions_). This inconsistency does not automatically heal over time and may need to be manually resolved.
 
 
 ### Transactional replication
