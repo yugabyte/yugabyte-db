@@ -2451,7 +2451,7 @@ tserver_async_replication_lag_micros:
 
 cdcsdk_flush_lag:
   metric: "cdcsdk_flush_lag"
-  operator: "/ 1000"
+  operator: "/ 1000000"
   function: "max by (saved_name)"
   panel_group: "Tablet Server"
   layout:
@@ -2459,7 +2459,7 @@ cdcsdk_flush_lag:
     xaxis:
       type: "date"
     yaxis:
-      ticksuffix: "&nbsp;ms"
+      ticksuffix: "&nbsp;s"
       alias:
         "cdcsdk_flush_lag": "Current Lag"
 
@@ -2487,6 +2487,7 @@ cdcsdk_change_event_count:
     xaxis:
       type: "date"
     yaxis:
+      ticksuffix: "&nbsp;ops/s"
       alias:
         "cdcsdk_change_event_count": "Messages Emitted"
 
@@ -2501,7 +2502,7 @@ cdcsdk_traffic_sent:
     xaxis:
       type: "date"
     yaxis:
-      ticksuffix: "&nbsp;MB"
+      ticksuffix: "&nbsp;MB/s"
       alias:
         "cdcsdk_traffic_sent": "Messages Emitted size"
 
