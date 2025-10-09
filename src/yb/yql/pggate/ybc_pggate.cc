@@ -2003,6 +2003,10 @@ bool YBCPgIsDdlMode() {
   return pgapi->IsDdlMode();
 }
 
+bool YBCPgIsDdlModeWithRegularTransactionBlock() {
+  return pgapi->IsDdlModeWithRegularTransactionBlock();
+}
+
 bool YBCCurrentTransactionUsesFastPath() {
   auto result = pgapi->CurrentTransactionUsesFastPath();
   if (!result.ok()) {
