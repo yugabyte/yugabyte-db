@@ -660,7 +660,7 @@ Please do not do that as it is error-prone.
 A smarter way to do it is to get a patch of the upstream changes, prefix all paths to the appropriate location in [yugabyte/yugabyte-db][repo-yugabyte-db], then apply that modified patch in [yugabyte/yugabyte-db][repo-yugabyte-db].
 It is quite hacky, and it doesn't preserve [Git author information](#git-author-information).
 
-The best way to do it is using the subtree merge strategy.
+Perhaps the best way to do it is using the subtree merge strategy.
 This requires having the source repository's commit present in the destination repository.
 Then, a cherry-pick can be done directly.
 
@@ -669,13 +669,13 @@ That commit exists locally in your `postgres` repository, and it also exists in 
 Either can be used as a remote in order to get the commit: for this example, let's use the fork as that process may be more familiar to people.
 
 ```sh
-git remote add fork-pg https://github.com/<your_username>/postgres
-git fetch fork-pg <full_commit_hash>
-git cherry-pick --strategy subtree -Xsubtree=src/postgres <full_commit_hash>
+git remote add postgres-fork https://github.com/<my_user>/postgres
+git fetch postgres-fork <commit>
+git cherry-pick --strategy subtree -Xsubtree=src/postgres <commit>
 ```
 
 This can get tedious in case you point-imported multiple commits at once, and you want to resolve all merge conflicts in one go rather than one-by-one.
-In that case, you can construct a squash commit of the source commits locally, then subtree cherry-pick that.
+In that case, you can construct a squash commit of the source commits, then subtree cherry-pick that.
 For example:
 
 ```sh
@@ -683,8 +683,8 @@ pushd ~/code/postgres
 git switch -c tmp-squash heads/yb-pg15
 git merge --squash <feature_branch>
 popd
-git remote add local-pg ~/code/postgres
-git fetch local-pg tmp-squash
+git remote add local-postgres ~/code/postgres
+git fetch local-postgres tmp-squash
 git cherry-pick --strategy subtree -Xsubtree=src/postgres local-postgres/tmp-squash
 ```
 
