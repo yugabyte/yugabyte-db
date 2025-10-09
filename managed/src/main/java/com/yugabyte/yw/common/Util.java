@@ -19,6 +19,7 @@ import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.logging.LogUtil;
@@ -1200,6 +1201,41 @@ public class Util {
       ConfigHelper configHelper,
       YsqlQueryExecutor ysqlQueryExecutor,
       RuntimeConfGetter confGetter) {
+    // Skip ownership validation if attach/detach feature is not enabled
+    boolean attachDetachEnabled = confGetter.getGlobalConf(GlobalConfKeys.attachDetachEnabled);
+    if (!attachDetachEnabled) {
+      log.debug(
+          "Skipping ownership validation for universe {} (attach/detach feature not enabled)",
+          universe.getName());
+      return;
+    }
+
+    UniverseDefinitionTaskParams.Cluster primaryCluster =
+        universe.getUniverseDetails().getPrimaryCluster();
+    if (primaryCluster == null || primaryCluster.userIntent == null) {
+      log.warn(
+          "Skipping ownership validation for universe {} due to missing primary cluster or user"
+              + " intent",
+          universe.getName());
+      return;
+    }
+
+    UniverseDefinitionTaskParams.UserIntent primaryIntent = primaryCluster.userIntent;
+
+    // Skip ownership validation for older DB versions that don't support attach/detach
+    String dbVersion = primaryIntent.ybSoftwareVersion;
+    if (dbVersion == null
+        || compareYBVersions(
+                dbVersion, "2024.2.0.0-b1", "2.23.1.0-b29", true /* suppressFormatError */)
+            < 0) {
+      log.debug(
+          "Skipping ownership validation for universe {} with DB version {} (older than minimum"
+              + " required for attach/detach)",
+          universe.getName(),
+          dbVersion);
+      return;
+    }
+
     if (universe.getUniverseDetails().universeDetached) {
       throw new PlatformServiceException(
           BAD_REQUEST,
@@ -1232,13 +1268,21 @@ public class Util {
 
     UUID storedYwUuid = getStoredYwUuid(universe, ysqlQueryExecutor, confGetter);
 
+    // If we cannot retrieve ownership info (e.g., YCQL-only universe), skip validation
+    if (storedYwUuid == null) {
+      log.debug(
+          "Cannot determine ownership for universe {} (YSQL not available), assuming owned",
+          universe.getName());
+      return true;
+    }
+
     // If stored YW UUID is DETACHED_UNIVERSE_UUID, the universe is orphaned and operations should
     // not be allowed
-    if (storedYwUuid == AttachDetachSpec.DETACHED_UNIVERSE_UUID) {
+    if (storedYwUuid.equals(AttachDetachSpec.DETACHED_UNIVERSE_UUID)) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(
-              "Universe %s has no owner. Operations are not allowed on orphaned" + " universes.",
+              "Universe %s has no owner. Operations are not allowed on orphaned universes.",
               universe.getName()));
     }
     return currentYwUuid.equals(storedYwUuid);
@@ -1249,6 +1293,13 @@ public class Util {
     try {
       YsqlQueryExecutor.ConsistencyInfoResp consistencyInfo =
           ysqlQueryExecutor.getConsistencyInfo(universe);
+      // Return null if consistency info could not be retrieved (e.g., YCQL-only universe)
+      if (consistencyInfo == null) {
+        log.debug(
+            "Could not retrieve consistency info for universe {} (likely YSQL is not enabled)",
+            universe.getName());
+        return null;
+      }
       return consistencyInfo.getYwUUID();
     } catch (Exception e) {
       log.error("Failed to query YW UUID for universe {}: {}", universe.getName(), e);

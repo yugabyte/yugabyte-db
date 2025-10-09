@@ -188,6 +188,7 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
           UniverseDefinitionTaskParams.UserIntent userIntent =
               new UniverseDefinitionTaskParams.UserIntent();
           userIntent.providerType = Common.CloudType.aws;
+          userIntent.ybSoftwareVersion = "2.20.0.0-b1";
           universeDetails.upsertPrimaryCluster(userIntent, null);
           universe.setUniverseDetails(universeDetails);
         };
