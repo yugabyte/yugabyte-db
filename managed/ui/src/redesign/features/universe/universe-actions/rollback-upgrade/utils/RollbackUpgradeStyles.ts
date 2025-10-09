@@ -55,6 +55,14 @@ export const dbUpgradeFormStyles = makeStyles((theme) => ({
     color: 'grey',
     padding: '2px 6px',
     fontSize: '10px'
+  },
+  warningBanner: {
+    display: 'flex',
+    flexDirection: 'row',
+    width: '100%',
+    padding: theme.spacing(1),
+    backgroundColor: '#FFEEC8',
+    borderRadius: '8px'
   }
 }));
 
