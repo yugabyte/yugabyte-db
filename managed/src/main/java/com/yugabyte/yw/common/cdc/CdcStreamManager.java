@@ -10,10 +10,14 @@
 package com.yugabyte.yw.common.cdc;
 
 import com.cronutils.utils.VisibleForTesting;
+import com.yugabyte.yw.common.NodeUniverseManager;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.CDCReplicationSlotResponse;
 import com.yugabyte.yw.forms.CDCReplicationSlotResponse.CDCReplicationSlotDetails;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -34,10 +38,12 @@ public class CdcStreamManager {
   public static final Logger LOG = LoggerFactory.getLogger(CdcStreamManager.class);
 
   private final YBClientService ybClientService;
+  private final NodeUniverseManager nodeUniverseManager;
 
   @Inject
-  public CdcStreamManager(YBClientService clientService) {
+  public CdcStreamManager(YBClientService clientService, NodeUniverseManager nodeUniverseManager) {
     this.ybClientService = clientService;
+    this.nodeUniverseManager = nodeUniverseManager;
   }
 
   public List<CdcStream> getAllCdcStreams(Universe universe) throws Exception {
@@ -132,7 +138,9 @@ public class CdcStreamManager {
       streamsToDelete.add(streamId);
 
       DeleteCDCStreamResponse response =
-          client.deleteCDCStream(streamsToDelete, true /*ignoreErrors*/, true /*forceDelete*/);
+          client.deleteCDCStream(streamsToDelete, true /* ignoreErrors */, true /*
+                                                                                 * forceDelete
+                                                                                 */);
 
       if (response.hasError()) {
         throw new Exception(response.errorMessage());
@@ -163,13 +171,55 @@ public class CdcStreamManager {
         CDCReplicationSlotDetails details = new CDCReplicationSlotDetails();
         details.streamID = streamInfo.getStreamId();
         details.slotName = streamInfo.getCdcsdkYsqlReplicationSlotName();
-        // Skip cdc streams which does not have name as an replication slot is supposed to have
+        // Skip cdc streams which does not have name as an replication slot is supposed
+        // to have
         // name and yb-admin streams does not have name.
         if (StringUtils.isEmpty(details.slotName)) {
           LOG.info("Skipping slot {} in replication slot response.", details.slotName);
           continue;
         }
-        details.state = options.get("state");
+
+        String walStatus = null;
+        NodeDetails randomTServer = null;
+        try {
+          randomTServer = CommonUtils.getARandomLiveTServer(universe);
+        } catch (IllegalStateException ise) {
+          LOG.error("Error while querying replication slot: status: {}", details.streamID, ise);
+          continue;
+        }
+        String query =
+            "SELECT wal_status "
+                + "FROM pg_replication_slots "
+                + "WHERE yb_stream_id='"
+                + details.streamID
+                + "';";
+        ShellResponse shellResponse =
+            nodeUniverseManager.runYsqlCommand(randomTServer, universe, "yugabyte", query);
+
+        try {
+          String commandOutput = shellResponse.extractRunCommandOutput();
+          // commandOutput would be like
+          //  wal_status
+          //  ----------------
+          //  lost
+          //  (1 row)
+          String[] lines = commandOutput.split("\n");
+          if (lines.length >= 3) {
+            walStatus = lines[2].trim();
+            // walStatus will be "lost" or "reserved"
+
+          }
+        } catch (RuntimeException e) {
+          LOG.error("Failed to extract wal_status from shell response:", e);
+        }
+        if ("reserved".equals(walStatus)) {
+          details.state = "ACTIVE";
+        } else if ("lost".equals(walStatus)) {
+          details.state = "EXPIRED";
+        } else {
+          details.state = "UNKNOWN";
+        }
+
         if (namespaceList == null) {
           namespaceList = client.getNamespacesList().getNamespacesList();
         }
