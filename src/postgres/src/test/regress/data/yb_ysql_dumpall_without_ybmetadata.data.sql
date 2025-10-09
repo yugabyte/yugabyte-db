@@ -331,6 +331,48 @@ COPY public.tbl_with_grp_with_spc (a) FROM stdin;
 \.
 
 
+--
+-- Statistics for Name: table1; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'table1',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: table2; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'table2',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tbl_with_grp_with_spc; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl_with_grp_with_spc',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
 SET default_tablespace = tsp2;
 
 --
@@ -355,6 +397,34 @@ CREATE INDEX idx2 ON public.table2 USING lsm (name HASH);
 
 REVOKE USAGE ON SCHEMA public FROM PUBLIC;
 GRANT ALL ON SCHEMA public TO PUBLIC;
+
+
+--
+-- Statistics for Name: idx1; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'idx1',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: idx2; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'idx2',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
 
 
 --

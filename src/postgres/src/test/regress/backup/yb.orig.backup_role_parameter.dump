@@ -92,6 +92,20 @@ COPY public.test_table (id) FROM stdin;
 
 
 --
+-- Statistics for Name: test_table; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'test_table',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
 -- Name: SCHEMA public; Type: ACL; Schema: -; Owner: pg_database_owner
 --
 
@@ -132,6 +146,20 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE pg_catalog.pg_stat_statements_info TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 \endif
+
+
+--
+-- Statistics for Name: test_table_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'test_table_pkey',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
 
 
 -- YB: re-enable auto analyze after all catalog changes
