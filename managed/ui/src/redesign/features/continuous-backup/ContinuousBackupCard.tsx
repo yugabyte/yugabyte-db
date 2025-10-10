@@ -16,6 +16,9 @@ import {
 } from './ConfigureContinuousBackupModal';
 import { formatDatetime } from '../../helpers/DateUtils';
 import { DeleteContinuousBackupConfigModal } from './DeleteContinuousBackupConfigModal';
+import { getIsLastPlatformBackupOld } from './utils';
+import { ApiPermissionMap } from '../rbac/ApiAndUserPermMapping';
+import { RbacValidator } from '../rbac/common/RbacApiPermValidator';
 
 interface ContinuousBackupCardProps {
   continuousBackupConfig: ContinuousBackup;
@@ -97,7 +100,6 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
-const RECENT_BACKUP_THRESHOLD_HOURS = 24;
 const TRANSLATION_KEY_PREFIX = 'continuousBackup.continuousBackupCard';
 
 export const ContinuousBackupCard = ({ continuousBackupConfig }: ContinuousBackupCardProps) => {
@@ -113,7 +115,6 @@ export const ContinuousBackupCard = ({ continuousBackupConfig }: ContinuousBacku
   const openDeleteContinuousBackupModal = () => setIsDeleteContinuousBackupModalOpen(true);
   const closeDeleteContinuousBackupModal = () => setIsDeleteContinuousBackupModalOpen(false);
 
-  const currentTime = moment();
   const lastBackupTime = continuousBackupConfig.info?.last_backup;
   const storageLocation = continuousBackupConfig.info?.storage_location;
   const handleStorageLocationCopy = () => {
@@ -121,21 +122,24 @@ export const ContinuousBackupCard = ({ continuousBackupConfig }: ContinuousBacku
       copy(storageLocation);
     }
   };
-  const shouldShowNoRecentBackupBanner =
-    currentTime.diff(lastBackupTime, 'hours') > RECENT_BACKUP_THRESHOLD_HOURS;
+  const shouldShowNoRecentBackupBanner = getIsLastPlatformBackupOld(continuousBackupConfig);
   return (
     <div className={classes.card}>
       <div className={classes.cardHeader}>
         <Typography variant="h5">{t('title')}</Typography>
         <div className={classes.cardActionsContainer}>
-          <YBButton variant="secondary" onClick={openConfigureContinuousBackupModal}>
-            <PenIcon className={classes.icon} />
-            <Typography variant="body2">{t('edit', { keyPrefix: 'common' })}</Typography>
-          </YBButton>
-          <YBButton variant="secondary" onClick={openDeleteContinuousBackupModal}>
-            <TrashIcon className={classes.icon} />
-            <Typography variant="body2">{t('button.remove')}</Typography>
-          </YBButton>
+          <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_CONTINUOUS_YBA_BACKUP} isControl>
+            <YBButton variant="secondary" onClick={openConfigureContinuousBackupModal}>
+              <PenIcon className={classes.icon} />
+              <Typography variant="body2">{t('edit', { keyPrefix: 'common' })}</Typography>
+            </YBButton>
+          </RbacValidator>
+          <RbacValidator accessRequiredOn={ApiPermissionMap.DELETE_CONTINUOUS_YBA_BACKUP} isControl>
+            <YBButton variant="secondary" onClick={openDeleteContinuousBackupModal}>
+              <TrashIcon className={classes.icon} />
+              <Typography variant="body2">{t('button.remove')}</Typography>
+            </YBButton>
+          </RbacValidator>
         </div>
       </div>
       <div className={classes.cardBody}>

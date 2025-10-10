@@ -203,7 +203,7 @@
     x-yba-api-authz:
       - requiredPermission:
           resourceType: other
-          action: read
+          action: SUPER_ADMIN_ACTIONS
         resourceLocation:
           path: customers
           sourceType: endpoint
@@ -244,7 +244,7 @@
     x-yba-api-authz:
       - requiredPermission:
           resourceType: other
-          action: read
+          action: SUPER_ADMIN_ACTIONS
         resourceLocation:
           path: customers
           sourceType: endpoint
@@ -295,7 +295,7 @@
     x-yba-api-authz:
       - requiredPermission:
           resourceType: other
-          action: read
+          action: SUPER_ADMIN_ACTIONS
         resourceLocation:
           path: customers
           sourceType: endpoint
@@ -324,7 +324,7 @@
     x-yba-api-authz:
       - requiredPermission:
           resourceType: other
-          action: read
+          action: SUPER_ADMIN_ACTIONS
         resourceLocation:
           path: customers
           sourceType: endpoint
@@ -365,7 +365,7 @@
     x-yba-api-authz:
       - requiredPermission:
           resourceType: other
-          action: read
+          action: SUPER_ADMIN_ACTIONS
         resourceLocation:
           path: customers
           sourceType: endpoint
@@ -406,7 +406,7 @@
     x-yba-api-authz:
       - requiredPermission:
           resourceType: other
-          action: read
+          action: SUPER_ADMIN_ACTIONS
         resourceLocation:
           path: customers
           sourceType: endpoint
