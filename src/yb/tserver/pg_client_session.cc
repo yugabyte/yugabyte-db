@@ -136,6 +136,7 @@ DECLARE_bool(ysql_yb_allow_replication_slot_ordering_modes);
 DECLARE_bool(ysql_yb_enable_advisory_locks);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_enable_object_locking_infra);
 DECLARE_bool(TEST_ysql_yb_enable_ddl_savepoint_support);
 
 DECLARE_string(ysql_sequence_cache_method);
@@ -3691,7 +3692,11 @@ class PgClientSession::Impl {
         RenewSignature(used_read_time));
   }
 
-  [[nodiscard]] bool IsObjectLockingEnabled() const { return ts_lock_manager() != nullptr; }
+  [[nodiscard]] bool IsObjectLockingEnabled() const {
+    return ts_lock_manager() != nullptr &&
+           FLAGS_enable_object_locking_for_table_locks &&
+           FLAGS_ysql_enable_object_locking_infra;
+  }
 
   Result<TransactionMetadata> NextObjectLockingTxnMeta(
       TransactionFullLocality locality, CoarseTimePoint deadline) {

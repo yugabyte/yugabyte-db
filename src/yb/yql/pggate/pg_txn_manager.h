@@ -154,6 +154,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
         [this, original_value] { is_read_time_history_cutoff_disabled_ = original_value; });
   }
 
+  bool EnableTableLocking() const;
+
  private:
   class SerialNo {
    public:
