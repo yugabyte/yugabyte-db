@@ -12,6 +12,7 @@ import slackLogo from './images/slack-logo-full.svg';
 import githubLogo from './images/github-light-small.png';
 import ybLogoImage from '../YBLogo/images/yb_ybsymbol_dark.png';
 import YBLogo from '../YBLogo/YBLogo';
+import docs from '../../../redesign/assets/book_open_blue.svg';
 import FIPSIcon from '../../../redesign/assets/fips.svg';
 
 import './stylesheets/Footer.scss';
@@ -86,6 +87,21 @@ export const Footer = () => {
               className="social-media-logo"
               src={ybLogoImage}
               width="85"
+            />
+          </span>
+        </a>
+        <a
+          href="https://docs.yugabyte.com"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <span className='social-media-cta'>
+            <span>Read docs</span>
+            <img
+              alt="YugabyteDB Docs"
+              className="social-media-logo docs-logo"
+              src={docs}
+              width="15"
             />
           </span>
         </a>
