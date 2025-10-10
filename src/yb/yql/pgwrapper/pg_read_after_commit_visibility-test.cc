@@ -184,7 +184,7 @@ class PgReadAfterCommitVisibilityTest : public PgMiniTestBase {
   // Setup to create the postmaster process corresponding to the tserver idx.
   Status CreateSupervisor(int idx) {
     auto pg_ts = cluster_->mini_tablet_server(idx);
-    auto port = cluster_->AllocateFreePort();
+    auto port = pg_ts->server()->pgsql_proxy_bind_address().port();
     PgProcessConf pg_process_conf = VERIFY_RESULT(PgProcessConf::CreateValidateAndRunInitDb(
         AsString(Endpoint(pg_ts->bound_rpc_addr().address(), port)),
         pg_ts->options()->fs_opts.data_paths.front() + "/pg_data"));

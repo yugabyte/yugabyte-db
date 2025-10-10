@@ -1370,13 +1370,6 @@ YbIsNonAlterableRelation(Relation rel)
 	return IsSystemRelation(rel) && rel->rd_rel->relkind != RELKIND_VIEW;
 }
 
-static bool
-YbSessionUserIsPostgres()
-{
-	const char *username = GetUserNameFromId(GetSessionUserId(), true);
-	return username && strcmp(username, "postgres") == 0;
-}
-
 typedef struct YbUpdateRelationCacheState
 {
 	bool		sys_relations_update_required;
@@ -6440,23 +6433,30 @@ RelationCacheInitializePhase3(void)
 			}
 		}
 
-		const bool enable_relcache_init_optimization =
+		bool enable_relcache_init_optimization =
 			*(YBCGetGFlags()->ysql_enable_relcache_init_optimization);
+
+		/*
+		 * If MaxConnections <= 3 and we have not reserved any backends, we are
+		 * very short of connections. Let's not bother with an extra internal
+		 * relcache init connection for the optimization.
+		 */
+		if (MaxConnections <= 3 && ReservedBackends == 0)
+			enable_relcache_init_optimization = false;
+
 		/*
 		 * If catalog_preload_required is true, this connection will incur a memory spike
 		 * on purpose anyway, no need to trigger an internal connection.
 		 * IsBinaryUpgrade=true indicates we are doing catalog restore during a
 		 * major version update. In this case local tserver is actually yb-master
 		 * which has not implemented YBCTriggerRelcacheInitConnection.
-		 * We allow superuser postgres connections to rebuild relcache init file
-		 * because there is not an easy way to tell whether a connection is internally
-		 * generated or not.
+		 * We allow internal connections to rebuild relcache init file.
 		 */
 		if (enable_relcache_init_optimization &&
 			YBIsDBCatalogVersionMode() &&
 			needNewCacheFile &&
 			!catalog_preload_required &&
-			!YbSessionUserIsPostgres() &&
+			!yb_is_internal_connection &&
 			!IsBinaryUpgrade)
 		{
 			const char *dbname = YBCGetDatabaseName(MyDatabaseId);

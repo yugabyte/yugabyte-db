@@ -1485,4 +1485,6 @@ extern uint64_t YbGetRetryCount(YbTxnError kind);
 extern uint64_t YbGetTotalRetryCount();
 extern YbTxnError YbSqlErrorCodeToTransactionError(int sqlerrcode);
 
+extern bool yb_is_internal_connection;
+
 #endif							/* PG_YB_UTILS_H */
