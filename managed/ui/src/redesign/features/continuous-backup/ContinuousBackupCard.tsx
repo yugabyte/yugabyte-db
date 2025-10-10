@@ -16,6 +16,7 @@ import {
 } from './ConfigureContinuousBackupModal';
 import { useFormatDatetime } from '../../helpers/DateUtils';
 import { DeleteContinuousBackupConfigModal } from './DeleteContinuousBackupConfigModal';
+import { getIsLastPlatformBackupOld } from './utils';
 
 interface ContinuousBackupCardProps {
   continuousBackupConfig: ContinuousBackup;
@@ -97,7 +98,6 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
-const RECENT_BACKUP_THRESHOLD_HOURS = 24;
 const TRANSLATION_KEY_PREFIX = 'continuousBackup.continuousBackupCard';
 
 export const ContinuousBackupCard = ({ continuousBackupConfig }: ContinuousBackupCardProps) => {
@@ -114,7 +114,6 @@ export const ContinuousBackupCard = ({ continuousBackupConfig }: ContinuousBacku
   const openDeleteContinuousBackupModal = () => setIsDeleteContinuousBackupModalOpen(true);
   const closeDeleteContinuousBackupModal = () => setIsDeleteContinuousBackupModalOpen(false);
 
-  const currentTime = moment();
   const lastBackupTime = continuousBackupConfig.info?.last_backup;
   const storageLocation = continuousBackupConfig.info?.storage_location;
   const handleStorageLocationCopy = () => {
@@ -122,8 +121,7 @@ export const ContinuousBackupCard = ({ continuousBackupConfig }: ContinuousBacku
       copy(storageLocation);
     }
   };
-  const shouldShowNoRecentBackupBanner =
-    currentTime.diff(lastBackupTime, 'hours') > RECENT_BACKUP_THRESHOLD_HOURS;
+  const shouldShowNoRecentBackupBanner = getIsLastPlatformBackupOld(continuousBackupConfig);
   return (
     <div className={classes.card}>
       <div className={classes.cardHeader}>

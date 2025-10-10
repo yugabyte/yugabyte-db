@@ -2699,6 +2699,12 @@
           "editFailedLabel": "Failed to apply changes to automated platform backup"
         }
       },
+      "restoreOverExistingUniversesWarningModal": {
+        "title": "Are you sure?",
+        "restoreOverExistingUniversesWarning": "Restoring from a backup can cause serious issues for your existing universes, including <bold>data loss</bold>, as the backup may not be consistent with the current state of the universes.",
+        "confirmationInstructions": "Type “Accept Risk” to continue",
+        "submitButton": "Accept Risk and Continue"
+      },
       "deleteContinuousBackupModal": {
         "title": "Disable Automated Platform Backups",
         "deleteConfirmation": "Are you sure you want to disable automated platform backups? This will delete the automated platform backup configuration. To re-enable, you will need to to set up the confirguration again.",
@@ -2727,7 +2733,7 @@
           "createBackupTaskFailed": "One-time platform export failed."
         }
       },
-      "restoreYbaBackupModal": {
+      "restoreYbaBackupFormModal": {
         "title": "Restore Platform Backup",
         "instructions": "Choose how you want to restore your platform backup",
         "option": {
@@ -2751,6 +2757,7 @@
           "folder": "Folder",
           "backupFolderHelperText": "The most recent backup from this folder will be used for the restore."
         },
+        "ybaRestartWarning": "<bold>Note!</bold> As part of the restore process, YugabyteDB Anywhere will restart itself automatically.",
         "submitButton": "Restore",
         "error": {
           "backupTypeRequired": "Please select a backup type"

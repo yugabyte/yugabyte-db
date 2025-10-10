@@ -4,7 +4,7 @@ import { Typography } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 import { YBButton } from '../../../redesign/components/YBButton/YBButton';
-import { RestoreYbaBackupModal } from '../../../redesign/features/continuous-backup/RestoreYbaBackupModal';
+import { RestoreYbaBackupFormModal } from '../../../redesign/features/continuous-backup/RestoreYbaBackupFormModal';
 import { ReactComponent as BriefcaseIcon } from '@app/redesign/assets/briefcase.svg';
 import { ReactComponent as BulbIcon } from '@app/redesign/assets/bulb2.svg';
 
@@ -104,7 +104,7 @@ export const OnboardingPanel = () => {
       </div>
 
       {isRestoreYbaBackupModalOpen && (
-        <RestoreYbaBackupModal
+        <RestoreYbaBackupFormModal
           modalProps={{ open: isRestoreYbaBackupModalOpen, onClose: closeRestoreYbaBackupModal }}
         />
       )}
