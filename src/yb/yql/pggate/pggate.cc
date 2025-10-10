@@ -716,7 +716,7 @@ void PgApiImpl::InitSession(YbcPgExecStatsState& session_stats, bool is_binary_u
 
   pg_session_ = make_scoped_refptr<PgSession>(
       pg_client_, pg_txn_manager_, pg_callbacks_, session_stats, is_binary_upgrade,
-      wait_event_watcher_, buffering_settings_, enable_table_locking_);
+      wait_event_watcher_, buffering_settings_);
 }
 
 uint64_t PgApiImpl::GetSessionID() const { return pg_client_.SessionID(); }

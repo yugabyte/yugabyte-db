@@ -65,8 +65,7 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
       YbcPgExecStatsState& stats_state,
       bool is_pg_binary_upgrade,
       std::reference_wrapper<const WaitEventWatcher> wait_event_watcher,
-      BufferingSettings& buffering_settings,
-      bool enable_table_locking);
+      BufferingSettings& buffering_settings);
   ~PgSession();
 
   // Resets the read point for catalog tables.
@@ -377,8 +376,6 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
   const bool is_major_pg_version_upgrade_;
 
   const WaitEventWatcher& wait_event_watcher_;
-
-  const bool enable_table_locking_;
 };
 
 template<class PB>

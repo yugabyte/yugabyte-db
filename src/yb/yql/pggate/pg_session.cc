@@ -486,8 +486,7 @@ PgSession::PgSession(
     YbcPgExecStatsState& stats_state,
     bool is_pg_binary_upgrade,
     std::reference_wrapper<const WaitEventWatcher> wait_event_watcher,
-    BufferingSettings& buffering_settings,
-    bool enable_table_locking)
+    BufferingSettings& buffering_settings)
     : pg_client_(pg_client),
       pg_txn_manager_(std::move(pg_txn_manager)),
       metrics_(stats_state),
@@ -501,8 +500,7 @@ PgSession::PgSession(
           },
           buffering_settings_),
       is_major_pg_version_upgrade_(is_pg_binary_upgrade),
-      wait_event_watcher_(wait_event_watcher),
-      enable_table_locking_(enable_table_locking) {
+      wait_event_watcher_(wait_event_watcher) {
   Update(&buffering_settings_);
 }
 
@@ -1365,7 +1363,7 @@ Status PgSession::ReleaseAllAdvisoryLocks(uint32_t db_oid) {
 }
 
 Status PgSession::AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLockMode mode) {
-  if (!PREDICT_FALSE(enable_table_locking_)) {
+  if (!PREDICT_FALSE(pg_txn_manager_->EnableTableLocking())) {
     // Object locking feature is not enabled. YB makes best efforts to achieve necessary semantics
     // using mechanisms like catalog version update by DDLs, DDLs aborting on progress DMLs etc.
     // Also skip object locking during initdb bootstrap mode, since it's a single-process,
