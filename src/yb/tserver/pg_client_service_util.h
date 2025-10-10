@@ -50,7 +50,9 @@ namespace yb::tserver {
 template <class RequestPB>
 void TryUpdateAshWaitState(const RequestPB& req) {
   if (req.has_ash_metadata()) {
-    ash::WaitStateInfo::UpdateMetadataFromPB(req.ash_metadata());
+    if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
+      wait_state->UpdateMetadataFromPB(req.ash_metadata());
+    }
   }
 }
 
