@@ -2008,6 +2008,61 @@ Status ClusterAdminClient::FlushSysCatalog() {
   return res.ok() ? Status::OK() : res.status();
 }
 
+Status ClusterAdminClient::ClearCache(MonoDelta timeout) {
+  cout << "Clearing block cache on all tablet servers..." << endl;
+  // Get all tablet servers in the cluster
+  RepeatedPtrField<master::ListTabletServersResponsePB::Entry> servers;
+  RETURN_NOT_OK(ListTabletServers(&servers));
+  if (servers.empty()) {
+    return STATUS(IllegalState, "No tablet servers found in cluster");
+  }
+  LOG(INFO) << "Found " << servers.size() << " tablet servers" << endl;
+
+  // Send ClearCache RPC to each tablet server
+  int successful_clears = 0;
+  for (const auto& server : servers) {
+    if (!server.has_alive() || !server.alive()) {
+      LOG(WARNING) << "Skipping dead tablet server " << server.instance_id().permanent_uuid();
+      continue;
+    }
+    if (!server.has_registration() ||
+        server.registration().common().private_rpc_addresses().empty()) {
+      LOG(WARNING) << "Skipping tablet server " << server.instance_id().permanent_uuid()
+                   << " with no RPC address";
+      continue;
+    }
+    auto ts_uuid = server.instance_id().permanent_uuid();
+    HostPort ts_addr = HostPortFromPB(server.registration().common().private_rpc_addresses(0));
+    tserver::ClearCacheRequestPB req;
+    tserver::ClearCacheResponsePB resp;
+    TabletServerAdminServiceProxy ts_proxy(proxy_cache_.get(), ts_addr);
+    LOG(INFO) << "Clearing cache on tablet server " << ts_uuid << " at " << ts_addr;
+    auto result = InvokeRpc(&TabletServerAdminServiceProxy::ClearCache, ts_proxy, req);
+    if (!result.ok()) {
+      LOG(WARNING) << "Failed to clear cache on tablet server " << ts_uuid << ": " << result.status();
+      continue;
+    }
+    resp = *result;
+    if (resp.has_error()) {
+      LOG(WARNING) << "Tablet server " << ts_uuid << " returned error: "
+                   << StatusFromPB(resp.error().status());
+      continue;
+    }
+    successful_clears++;
+    LOG(INFO) << "Cleared cache on tablet server " << ts_uuid;
+    if (resp.has_cache_capacity_bytes()) {
+      LOG(INFO) << " (capacity: " << resp.cache_capacity_bytes() << " bytes)";
+    }
+    LOG(INFO) << endl;
+  }
+  if (successful_clears == 0) {
+    return STATUS(RuntimeError, "Failed to clear cache on any tablet servers");
+  }
+  cout << "Successfully cleared cache on " << successful_clears << "/"
+       << servers.size() << " tablet servers" << endl;
+  return Status::OK();
+}
+
 Status ClusterAdminClient::CompactSysCatalog() {
   master::CompactSysCatalogRequestPB req;
   auto res = InvokeRpc(
