@@ -597,8 +597,9 @@ DEFINE_test_flag(int32, system_table_num_tablets, -1,
     "Number of tablets to use when creating the system tables. "
     "If -1, the number of tablets will follow the value provided in the CreateTable request.");
 
-DEFINE_test_flag(bool, enable_tablespace_based_transaction_placement, false,
-                 "Enable support for tablespace-based transaction locality.");
+DEFINE_RUNTIME_AUTO_bool(enable_tablespace_based_transaction_placement, kLocalPersisted,
+                         false, true,
+                         "Enable support for tablespace-based transaction locality.");
 
 DECLARE_bool(enable_pg_cron);
 DECLARE_bool(enable_truncate_cdcsdk_table);
@@ -5114,7 +5115,7 @@ Status CatalogManager::GetPlacementLocalTransactionStatusTablets(
     return Status::OK();
   }
   SharedLock lock(mutex_);
-  const bool add_tablespace_tablets = FLAGS_TEST_enable_tablespace_based_transaction_placement;
+  const bool add_tablespace_tablets = FLAGS_enable_tablespace_based_transaction_placement;
   for (const auto& [tablespace_oid, tablespace_info] : local_tables.tablespaces) {
     if (tablespace_info.tables.empty()) {
       continue;
@@ -13874,19 +13875,33 @@ Status CatalogManager::RegisterFlagCallbacks() {
   if (!flag_callbacks_.empty()) {
     return Status::OK();
   }
-  LOG(INFO) << this << ": register";
   flag_callbacks_.emplace_back(VERIFY_RESULT(RegisterFlagUpdateCallback(
-      &FLAGS_TEST_enable_tablespace_based_transaction_placement,
+      &FLAGS_enable_tablespace_based_transaction_placement,
       Format(
           "CatalogManager($0): Increment transaction tables version when "
           "enable_tablespace_based_transaction_placement enabled.",
           static_cast<void*>(this)),
       [this] {
-        auto status = IncrementTransactionTablesVersion();
+        if (!transaction_tables_config_.get()) {
+          // This happens if callback is called during startup. Safe to just skip since in this
+          // case the autoflag wasn't promoted -- it was already set from the start.
+          return;
+        }
+        Status status = background_tasks_thread_pool_->SubmitFunc(
+            [this] {
+              auto status = IncrementTransactionTablesVersion();
+              if (!status.ok()) {
+                LOG(DFATAL)
+                    << "Failed to increment transaction tables version, tablespace-based "
+                       "transaction placement may not be available until next increment or "
+                       "restart: " << status;
+              }
+            });
         if (!status.ok()) {
           LOG(DFATAL)
-              << "Failed to increment transaction tables version, tablespace-based transaction "
-                 "placement may be available until next increment or restart: " << status;
+              << "Failed to schedule task to increment transaction tables version, "
+                 "tablespace-based transaction placement may not be available until next increment "
+                 "or restart: " << status;
         }
       })));
   return Status::OK();

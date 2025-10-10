@@ -224,7 +224,7 @@ const SubTransactionMetadata& YBSubTransaction::get() const { return sub_txn_; }
 
 class YBTransaction::Impl final : public internal::TxnBatcherIf {
  public:
-  Impl(TransactionManager* manager, YBTransaction* transaction, TransactionLocality locality)
+  Impl(TransactionManager* manager, YBTransaction* transaction, TransactionFullLocality locality)
       : trace_(Trace::MaybeGetNewTrace()),
         wait_state_(ash::WaitStateInfo::CurrentWaitState()),
         manager_(manager),
@@ -665,17 +665,42 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
   internal::InFlightOp* FindOpWithLocalityViolation(
       internal::InFlightOpsGroupsWithMetadata* ops_info) REQUIRES(mutex_) {
-    if (metadata_.locality != TransactionLocality::LOCAL) {
+    if (metadata_.locality.IsGlobal()) {
       return nullptr;
     }
     for (auto& group : ops_info->groups) {
       auto& first_op = *group.begin;
-      auto tablet = first_op.tablet;
-      if (!tablet->IsLocalRegion()) {
-        return &first_op;
+      switch (metadata_.locality.locality) {
+        case TransactionLocality::REGION_LOCAL:
+          if (!first_op.tablet->IsLocalRegion()) {
+            return &first_op;
+          }
+          break;
+        case TransactionLocality::TABLESPACE_LOCAL:
+          if (auto tablespace_oid = GetOpTablespaceOid(first_op);
+              !tablespace_oid || metadata_.locality.tablespace_oid != *tablespace_oid) {
+            return &first_op;
+          }
+          break;
+        default:
+          LOG(DFATAL) << "Unexpected locality: " << metadata_.locality;
+          return nullptr;
       }
     }
     return nullptr;
+  }
+
+  std::optional<PgTablespaceOid> GetOpTablespaceOid(internal::InFlightOp& op) {
+    auto* yb_op = op.yb_op.get();
+    switch (yb_op->type()) {
+      case YBOperation::Type::PGSQL_READ:
+        return down_cast<YBPgsqlReadOp*>(yb_op)->request().tablespace_oid();
+      case YBOperation::Type::PGSQL_WRITE:
+        return down_cast<YBPgsqlWriteOp*>(yb_op)->request().tablespace_oid();
+      default:
+        LOG(DFATAL) << "Unexpected op type: " << yb_op->type();
+        return std::nullopt;
+    }
   }
 
   Result<bool> StartPromotionToGlobalIfNecessary(
@@ -708,7 +733,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   Status EnsureGlobal(const CoarseTimePoint& deadline) EXCLUDES(mutex_) {
     {
       UniqueLock lock(mutex_);
-      if (metadata_.locality == TransactionLocality::GLOBAL) {
+      if (metadata_.locality.IsGlobal()) {
         return Status::OK();
       }
       RETURN_NOT_OK(StartPromotionToGlobal());
@@ -718,7 +743,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   }
 
   Status StartPromotionToGlobal() REQUIRES(mutex_) {
-    if (metadata_.locality == TransactionLocality::GLOBAL) {
+    if (metadata_.locality.IsGlobal()) {
       return STATUS(IllegalState, "Global transactions cannot be promoted");
     }
 
@@ -728,7 +753,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       LOG_WITH_PREFIX(DFATAL) << "Attempting to promote transaction not in running state";
     }
     ready_ = false;
-    metadata_.locality = TransactionLocality::GLOBAL;
+    metadata_.locality = TransactionFullLocality::Global();
 
     transaction_status_move_tablets_.reserve(tablets_.size());
     transaction_status_move_handles_.reserve(tablets_.size());
@@ -2476,7 +2501,7 @@ CoarseTimePoint AdjustDeadline(CoarseTimePoint deadline) {
   return deadline;
 }
 
-YBTransaction::YBTransaction(TransactionManager* manager, TransactionLocality locality)
+YBTransaction::YBTransaction(TransactionManager* manager, TransactionFullLocality locality)
     : impl_(new Impl(manager, this, locality)) {
 }
 

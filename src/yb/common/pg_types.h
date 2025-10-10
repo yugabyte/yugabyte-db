@@ -26,6 +26,8 @@ using PgOid = uint32_t;
 static constexpr PgOid kPgInvalidOid = 0;
 static constexpr PgOid kPgByteArrayOid = 17;
 
+using PgTablespaceOid = PgOid;
+
 // A struct to identify a Postgres object by oid and the database oid it belongs to.
 struct PgObjectId {
   PgOid database_oid = kPgInvalidOid;
