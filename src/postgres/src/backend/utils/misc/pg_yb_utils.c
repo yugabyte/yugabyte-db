@@ -8127,7 +8127,7 @@ YbInvalidationMessagesTableExists()
 }
 
 bool		yb_is_calling_internal_sql_for_ddl = false;
-
+bool		yb_is_internal_connection = false;
 char *
 YbGetPotentiallyHiddenOidText(Oid oid)
 {

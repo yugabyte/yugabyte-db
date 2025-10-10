@@ -2939,7 +2939,7 @@ class ColocationClientTest: public ClientTest {
 
   Status InitPostgres() {
     auto pg_ts = RandomElement(cluster_->mini_tablet_servers());
-    auto port = cluster_->AllocateFreePort();
+    auto port = pg_ts->server()->pgsql_proxy_bind_address().port();
     pgwrapper::PgProcessConf pg_process_conf =
         VERIFY_RESULT(pgwrapper::PgProcessConf::CreateValidateAndRunInitDb(
             AsString(Endpoint(pg_ts->bound_rpc_addr().address(), port)),

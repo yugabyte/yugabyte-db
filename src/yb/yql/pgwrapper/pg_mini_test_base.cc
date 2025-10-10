@@ -81,11 +81,13 @@ void PgMiniTestBase::SetUp() {
   const auto pg_ts_idx = 0;
   const auto pg_addr = server::TEST_RpcAddress(pg_ts_idx + 1, server::Private::kTrue);
   auto pg_port = cluster_->AllocateFreePort();
+  auto host_port = HostPort(pg_addr, pg_port);
   // The 'pgsql_proxy_bind_address' flag must be set before starting the cluster. Each
   // tserver will store this address when it starts. Setting the 'pgsql_proxy_bind_address' flag
   // is needed for tserver local PG connections.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_bind_address)
-      = HostPort(pg_addr, pg_port).ToString();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_bind_address) = host_port.ToString();
+
+  cluster_->SetPgTServerSelected(pg_ts_idx, host_port);
 
   ASSERT_OK(cluster_->Start(ExtraTServerOptions()));
 
