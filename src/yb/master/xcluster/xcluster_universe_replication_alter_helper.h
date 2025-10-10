@@ -73,7 +73,6 @@ class AlterUniverseReplicationHelper {
       scoped_refptr<UniverseReplicationInfo> universe,
       const AddTablesToReplicationData& add_table_data);
 
-  Master& master_;
   CatalogManager& catalog_manager_;
   SysCatalogTable& sys_catalog_;
   XClusterManager& xcluster_manager_;

@@ -27,8 +27,7 @@ namespace yb::master {
 
 AlterUniverseReplicationHelper::AlterUniverseReplicationHelper(
     Master& master, CatalogManager& catalog_manager, const LeaderEpoch& epoch)
-    : master_(master),
-      catalog_manager_(catalog_manager),
+    : catalog_manager_(catalog_manager),
       sys_catalog_(*catalog_manager.sys_catalog()),
       xcluster_manager_(*catalog_manager.GetXClusterManagerImpl()),
       epoch_(epoch) {}

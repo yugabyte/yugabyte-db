@@ -56,7 +56,6 @@ AddBiDirectionalIndexToXClusterTargetTask::AddBiDirectionalIndexToXClusterTarget
       universe_(universe),
       remote_client_(std::move(remote_client)),
       xcluster_manager_(*master.catalog_manager()->GetXClusterManager()),
-      master_(master),
       deadline_(deadline) {}
 
 std::string AddBiDirectionalIndexToXClusterTargetTask::description() const {

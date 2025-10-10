@@ -59,7 +59,7 @@
 using std::string;
 using std::vector;
 
-using yb::operator"" _MB;
+using yb::operator""_MB;
 using namespace std::literals;
 using namespace std::placeholders;
 using yb::client::YBMetaDataCache;

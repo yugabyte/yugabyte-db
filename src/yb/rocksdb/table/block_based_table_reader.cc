@@ -73,7 +73,7 @@
 #include "yb/util/string_util.h"
 #include "yb/util/tostring.h"
 
-using yb::operator"" _KB;
+using yb::operator""_KB;
 
 DEFINE_RUNTIME_uint64(rocksdb_iterator_sequential_disk_reads_for_auto_readahead, 4,
     "Enable readahead when RocksDB iterator attempts to perform a configured number of sequential "

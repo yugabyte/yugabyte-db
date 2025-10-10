@@ -117,7 +117,7 @@ constexpr ColumnIdRep kFirstColumnIdRep = 0;
 const ColumnId kFirstColumnId(kFirstColumnIdRep);
 
 template<char... digits>
-ColumnId operator"" _ColId() {
+ColumnId operator""_ColId() {
   return ColumnId(ColumnIdHelper<digits...>());
 }
 

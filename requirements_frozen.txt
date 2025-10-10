@@ -18,7 +18,7 @@ downloadutil==1.0.4
 idna==3.10
 iniconfig==2.1.0
 jmespath==1.0.1
-llvm-installer==1.4.11
+llvm-installer==1.4.12
 mypy==1.15.0
 mypy_extensions==1.1.0
 overrides==7.7.0

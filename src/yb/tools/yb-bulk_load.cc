@@ -71,7 +71,7 @@ using yb::client::YBTable;
 using yb::client::YBTableName;
 using yb::docdb::DocWriteBatch;
 using yb::docdb::InitMarkerBehavior;
-using yb::operator"" _GB;
+using yb::operator""_GB;
 
 DEFINE_NON_RUNTIME_string(master_addresses, "",
     "Comma-separated list of YB Master server addresses");

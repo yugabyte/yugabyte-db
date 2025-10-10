@@ -28,9 +28,7 @@ class CdcsdkManager : public CdcsdkManagerIf {
   void RunBgTasks(const LeaderEpoch& epoch) override;
 
  private:
-  Master& master_;
   CatalogManager& catalog_manager_;
-  SysCatalogTable& sys_catalog_;
 };
 
 }  // namespace yb::master

@@ -35,7 +35,7 @@ using TableStreamIdsMap = std::unordered_map<TableId, std::list<CDCStreamInfoPtr
 
 CdcsdkManager::CdcsdkManager(
     Master& master, CatalogManager& catalog_manager, SysCatalogTable& sys_catalog)
-    : master_(master), catalog_manager_(catalog_manager), sys_catalog_(sys_catalog) {}
+    : catalog_manager_(catalog_manager) {}
 
 CdcsdkManager::~CdcsdkManager() = default;
 

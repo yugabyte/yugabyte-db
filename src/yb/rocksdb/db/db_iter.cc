@@ -134,7 +134,7 @@ class DBIter final : public Iterator {
     max_skip_ = max_sequential_skip_in_iterations;
   }
 
-  virtual ~DBIter() {
+  ~DBIter() {
     EnsureStatusIsChecked();
     EnsureValidIsChecked();
     if (statistics_) {
@@ -227,7 +227,7 @@ class DBIter final : public Iterator {
   }
 #endif // ROCKSDB_TRACK_SET_VALID
 
-  virtual void SetIter(InternalIterator* iter) {
+  void SetIter(InternalIterator* iter) {
     assert(iter_ == nullptr);
     iter_ = iter;
     if (iter_ && iter_pinned_) {
@@ -261,7 +261,7 @@ class DBIter final : public Iterator {
       return status_;
     }
   }
-  virtual Status PinData() {
+  Status PinData() {
     Status s;
     if (iter_) {
       s = iter_->PinData();
@@ -273,7 +273,7 @@ class DBIter final : public Iterator {
     }
     return s;
   }
-  virtual Status ReleasePinnedData() {
+  Status ReleasePinnedData() {
     Status s;
     if (iter_) {
       s = iter_->ReleasePinnedData();
@@ -284,7 +284,7 @@ class DBIter final : public Iterator {
     return s;
   }
 
-  virtual Status GetProperty(std::string prop_name,
+  Status GetProperty(std::string prop_name,
                              std::string* prop) override {
     if (prop == nullptr) {
       return STATUS(InvalidArgument, "prop is nullptr");
