@@ -215,6 +215,10 @@ void XClusterPoller::CompleteShutdown() {
   if (output_client_) {
     output_client_->CompleteShutdown();
   }
+  if (ddl_queue_handler_) {
+    // Only clean up the ddl queue handler after all other tasks have completed.
+    ddl_queue_handler_->Shutdown();
+  }
 
   XClusterAsyncExecutor::CompleteShutdown();
 
