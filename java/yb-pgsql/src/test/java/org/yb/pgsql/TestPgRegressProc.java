@@ -34,6 +34,7 @@ public class TestPgRegressProc extends BasePgRegressTest {
     Map<String, String> flagMap = super.getTServerFlags();
     // Setting the below flag stabilizes yb_lock_status tests.
     flagMap.put("TEST_delay_before_get_old_transactions_heartbeat_intervals", "2");
+    flagMap.put("skip_prefix_locks", "false");
     return flagMap;
   }
 
