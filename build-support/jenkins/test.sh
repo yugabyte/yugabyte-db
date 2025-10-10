@@ -316,7 +316,10 @@ if [[ ${YB_COMPILE_ONLY} != "1" ]]; then
       if [[ ${YB_BUILD_CPP} == "1" ]]; then
         run_tests_extra_args+=( "--cpp" )
       fi
-      if [[ ${YB_RUN_AFFECTED_TESTS_ONLY} == "1" ]]; then
+      if [[ -n "${YB_TEST_LIST_FILE:-}" && -f "$YB_TEST_LIST_FILE" ]]; then
+        log "Using test list file: $YB_TEST_LIST_FILE"
+        run_tests_extra_args+=( "--test_list" "$YB_TEST_LIST_FILE" )
+      elif [[ ${YB_RUN_AFFECTED_TESTS_ONLY} == "1" ]]; then
         test_conf_path="${BUILD_ROOT}/test_conf.json"
         # YB_GIT_COMMIT_FOR_DETECTING_TESTS allows overriding the commit to use to detect the set
         # of tests to run. Useful when testing this script.
@@ -330,6 +333,14 @@ if [[ ${YB_COMPILE_ONLY} != "1" ]]; then
         )
         run_tests_extra_args+=( "--test_conf" "${test_conf_path}" )
         unset test_conf_path
+      fi
+      if [[ -n "${SPARK_IGNORE_FILE:-}" && -f "$SPARK_IGNORE_FILE" ]]; then
+        log "Using ignore list file: $SPARK_IGNORE_FILE"
+        run_tests_extra_args+=( "--ignore_list" "$SPARK_IGNORE_FILE" )
+      fi
+      if [[ -n "${SPARK_DISABLE_FILE:-}" && -f "$SPARK_DISABLE_FILE" ]]; then
+        log "Using disable list file: $SPARK_DISABLE_FILE"
+        run_tests_extra_args+=( "--disable_list" "$SPARK_DISABLE_FILE" )
       fi
       if is_linux || (is_mac && ! is_src_root_on_nfs); then
         log "Will create an archive for Spark workers with all the code instead of using NFS."
@@ -356,7 +367,7 @@ if [[ ${YB_COMPILE_ONLY} != "1" ]]; then
         log "Some tests that were run on Spark failed"
       fi
       set -u
-      unset extra_args
+      unset run_tests_extra_args
     else
       log "Neither C++ or Java tests are enabled, nothing to run on Spark."
     fi

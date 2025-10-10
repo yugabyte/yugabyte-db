@@ -249,6 +249,14 @@ class SimpleTestDescriptor:
             self.class_name == other_test_descriptor.class_name and
             self.test_name == other_test_descriptor.test_name)
 
+    # Check name but not binary
+    def matches(self, other: object) -> bool:
+        other_test_descriptor = cast(SimpleTestDescriptor, other)
+        return (
+            self.language == other_test_descriptor.language and
+            self.class_name == other_test_descriptor.class_name and
+            self.test_name == other_test_descriptor.test_name)
+
     def __hash__(self) -> int:
         return hash((
             self.language,

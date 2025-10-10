@@ -164,7 +164,7 @@ log "Removing old JSON-based test report files"
   rm -f test_results.json test_failures.json
 )
 
-activate_virtualenv
+YB_VERBOSE=true activate_virtualenv
 set_pythonpath
 
 # -------------------------------------------------------------------------------------------------
