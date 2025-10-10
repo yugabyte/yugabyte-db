@@ -361,10 +361,10 @@ concept PbWith_AshMetadataPB = requires (const Pb& t) {
   t.ash_metadata();
 }; // NOLINT
 
-template <PbWith_AshMetadataPB Pb>
-void TryUpdateAshWaitState(const Pb& req) {
+template <class RequestPB>
+void TryUpdateAshWaitState(const RequestPB& req) {
   if (req.has_ash_metadata()) {
-    ash::WaitStateInfo::UpdateMetadataFromPB(req.ash_metadata());
+    ash::WaitStateInfo::UpdateCurrentMetadataFromPB(req.ash_metadata());
   }
 }
 

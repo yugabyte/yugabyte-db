@@ -404,6 +404,13 @@ Result<PgTxnSnapshot> GetLocalPgTxnSnapshotImpl(
       FullyDecodePgTxnSnapshotLocalId(snapshot_id_uuid)));
 }
 
+template <class Req>
+void UpdateAshMetadataFrom(const Req* req) {
+  if (req->has_ash_metadata()) {
+    ash::WaitStateInfo::UpdateCurrentMetadataFromPB(req->ash_metadata());
+  }
+}
+
 } // namespace
 
 typedef ListTabletsResponsePB::StatusAndSchemaPB StatusAndSchemaPB;
@@ -1214,7 +1221,7 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
   TRACE("UpdateTransaction");
 
   if (req->has_ash_metadata()) {
-    ash::WaitStateInfo::UpdateMetadataFromPB(req->ash_metadata());
+    ash::WaitStateInfo::UpdateCurrentMetadataFromPB(req->ash_metadata());
   }
 
   if (req->state().status() == TransactionStatus::CREATED &&
@@ -1352,7 +1359,7 @@ void TabletServiceImpl::AbortTransaction(const AbortTransactionRequestPB* req,
   TRACE("AbortTransaction");
 
   if (req->has_ash_metadata()) {
-    ash::WaitStateInfo::UpdateMetadataFromPB(req->ash_metadata());
+    ash::WaitStateInfo::UpdateCurrentMetadataFromPB(req->ash_metadata());
   }
 
   UpdateClock(*req, server_->Clock());
@@ -2406,8 +2413,10 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
     return;
   }
 
-  if (req->has_ash_metadata()) {
-    ash::WaitStateInfo::UpdateMetadataFromPB(req->ash_metadata());
+  if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
+    if (req->has_ash_metadata()) {
+      wait_state->UpdateMetadataFromPB(req->ash_metadata());
+    }
   }
   auto status = PerformWrite(req, resp, &context);
   if (!status.ok()) {
@@ -2440,8 +2449,10 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
     return;
   }
 
-  if (req->has_ash_metadata()) {
-    ash::WaitStateInfo::UpdateMetadataFromPB(req->ash_metadata());
+  if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
+    if (req->has_ash_metadata()) {
+      wait_state->UpdateMetadataFromPB(req->ash_metadata());
+    }
   }
   PerformRead(server_, this, req, resp, std::move(context));
 }

@@ -31,6 +31,9 @@
 #include <inttypes.h>
 #include <algorithm>
 #include <string>
+
+#include "yb/ash/wait_state.h"
+
 #include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/wal_manager.h"
 #include "yb/rocksdb/db.h"
@@ -38,6 +41,7 @@
 #include "yb/rocksdb/transaction_log.h"
 #include "yb/rocksdb/util/file_util.h"
 #include "yb/rocksdb/port/port.h"
+
 #include "yb/util/random_util.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
@@ -55,6 +59,7 @@ namespace checkpoint {
 // The directory should not already exist and will be created by this API.
 // The directory will be an absolute path
 Status CreateCheckpoint(DB* db, const std::string& checkpoint_dir) {
+  SCOPED_WAIT_STATUS(RocksDB_CreateCheckpoint);
   if (!db->GetCheckpointEnv()->IsPlainText()) {
     return STATUS(InvalidArgument, "db's checkpoint env is not plaintext.");
   }
