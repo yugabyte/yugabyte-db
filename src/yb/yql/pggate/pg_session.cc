@@ -1324,9 +1324,13 @@ Result<int64_t> PgSession::GetCronLastMinute() { return pg_client_.GetCronLastMi
 
 Status PgSession::AcquireAdvisoryLock(
     const YbcAdvisoryLockId& lock_id, YbcAdvisoryLockMode mode, bool wait, bool session) {
+  std::string lock_id_str;
   YbcFlushDebugContext debug_context {};
   debug_context.reason = YbcFlushReason::YB_ACQUIRE_ADVISORY_LOCK;
-  debug_context.strarg1 = yb_debug_log_docdb_requests ? ToString(lock_id).c_str() : nullptr;
+  if (yb_debug_log_docdb_requests) {
+    lock_id_str = ToString(lock_id);
+    debug_context.strarg1 = lock_id_str.c_str();
+  }
   RETURN_NOT_OK(FlushBufferedOperations(debug_context));
   tserver::PgAcquireAdvisoryLockRequestPB req;
   AdvisoryLockRequestInitCommon(req, pg_client_.SessionID(), lock_id, mode);
@@ -1379,9 +1383,13 @@ Status PgSession::AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLoc
     return Status::OK();
   }
   VLOG(1) << "Lock acquisition via shared memory not available";
+  std::string lock_id_str;
   YbcFlushDebugContext debug_context {};
   debug_context.reason = YbcFlushReason::YB_ACQUIRE_OBJECT_LOCK;
-  debug_context.strarg1 = yb_debug_log_docdb_requests ? ToString(lock_id).c_str() : nullptr;
+  if (yb_debug_log_docdb_requests) {
+    lock_id_str = ToString(lock_id);
+    debug_context.strarg1 = lock_id_str.c_str();
+  }
 
   return pg_txn_manager_->AcquireObjectLock(
       VERIFY_RESULT(FlushBufferedOperations(debug_context)), lock_id, mode);

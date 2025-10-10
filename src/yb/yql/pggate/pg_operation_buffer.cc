@@ -374,12 +374,14 @@ class PgOperationBuffer::Impl {
       if (PREDICT_FALSE(!keys_.insert(row_id).second)) {
         RETURN_NOT_OK(CheckDuplicateInsertForFastPathCopy(table, stmt_type, need_transaction));
 
+        std::string ybctid_hex;
         YbcFlushDebugContext debug_context {};
         debug_context.reason = YB_CONFLICTING_KEY_WRITE;
         debug_context.oidarg = table.pg_table_id().object_oid;
         if (need_flush_context) {
           debug_context.strarg1 = table.table_name().table_name().c_str();
-          debug_context.strarg2 = row_id.ybctid().ToDebugHexString().c_str();
+          ybctid_hex = row_id.ybctid().ToDebugHexString();
+          debug_context.strarg2 = ybctid_hex.c_str();
         }
         RETURN_NOT_OK(Flush(debug_context));
         keys_.insert(row_id);
