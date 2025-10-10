@@ -53,7 +53,7 @@ Before patching or upgrading the operating system, verify that the Linux version
 
 {{< warning title="Azure SSH user restriction" >}}
 
-For Azure deployments, changing the SSH user from the original image bundle is currently not supported and will cause VM image upgrade to fail. Ensure that the SSH user configured in your Azure provider matches the default SSH user of the target Linux image.
+For Azure deployments, changing the SSH user from the original image bundle is currently not supported and will cause VM image upgrade to fail. Ensure that the SSH user configured in your new image bundle matches the user of the existing image bundle in the Azure provider.
 
 {{< /warning >}}
 
