@@ -39,7 +39,13 @@ However, on-premises cron-based universes must be upgraded manually. To do this,
 
 ## Node provisioning
 
-As of v2024.2, [legacy node provisioning](../../prepare/server-nodes-software/software-on-prem-legacy/) workflows have been deprecated. Going forward, provision nodes for on-premises universes using the `node-agent-provision.sh` script. For more information, refer to [Automatically provision on-premises nodes](../../prepare/server-nodes-software/software-on-prem/).
+As of v2024.2, [legacy on-premises node provisioning](../../prepare/server-nodes-software/software-on-prem-legacy/) workflows have been deprecated. Going forward, provision nodes for on-premises universes using the `node-agent-provision.sh` script. For more information, refer to [Automatically provision on-premises nodes](../../prepare/server-nodes-software/software-on-prem/).
+
+{{< warning title="Legacy provisioning no longer available in v2025.2" >}}
+
+v2025.2 (available late 2025) will not support legacy node provisioning. Before upgrading to 2025.2, be sure to update your node provisioning workflows to support automatic provisioning.
+
+{{< /warning >}}
 
 To upgrade a running on-premises universe to automatic provisioning, follow the [node patching](../../manage-deployments/upgrade-nodes/) procedure.
 
