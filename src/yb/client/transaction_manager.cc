@@ -30,6 +30,7 @@
 
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
+#include "yb/util/metrics.h"
 #include "yb/util/rw_mutex.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -45,6 +46,26 @@ DEFINE_UNKNOWN_uint64(transaction_manager_queue_limit, 500,
 DEFINE_test_flag(string, transaction_manager_preferred_tablet, "",
                  "For testing only. If non-empty, transaction manager will try to use the status "
                  "tablet with id matching this flag, if present in the list of status tablets.");
+
+METRIC_DEFINE_counter(server, transaction_promotions,
+                      "Number of transactions being promoted to global transactions",
+                      yb::MetricUnit::kTransactions,
+                      "Number of transactions being promoted to global transactions");
+
+METRIC_DEFINE_counter(server, initially_global_transactions,
+                      "Number of transactions that were started as global transactions",
+                      yb::MetricUnit::kTransactions,
+                      "Number of transactions that were started as global transactions");
+
+METRIC_DEFINE_counter(server, initially_region_local_transactions,
+                      "Number of transactions that were started as region-local transactions",
+                      yb::MetricUnit::kTransactions,
+                      "Number of transactions that were started as reigon-local transactions");
+
+METRIC_DEFINE_counter(server, initially_tablespace_local_transactions,
+                      "Number of transactions that were started as tablespace-local transactions",
+                      yb::MetricUnit::kTransactions,
+                      "Number of transactions that were started as tablespace-local transactions");
 
 DECLARE_string(placement_cloud);
 DECLARE_string(placement_region);
@@ -286,6 +307,15 @@ class TransactionManager::Impl {
         tasks_pool_(FLAGS_transaction_manager_queue_limit),
         invoke_callback_tasks_(FLAGS_transaction_manager_queue_limit) {
     CHECK(clock);
+    if (auto metric_entity = client_->metric_entity()) {
+      transaction_promotions_ = METRIC_transaction_promotions.Instantiate(metric_entity);
+      initially_global_transactions_ =
+          METRIC_initially_global_transactions.Instantiate(metric_entity);
+      initially_region_local_transactions_ =
+          METRIC_initially_region_local_transactions.Instantiate(metric_entity);
+      initially_tablespace_local_transactions_ =
+          METRIC_initially_tablespace_local_transactions.Instantiate(metric_entity);
+    }
   }
 
   ~Impl() {
@@ -397,6 +427,22 @@ class TransactionManager::Impl {
     closed_.store(true);
   }
 
+  scoped_refptr<Counter> transaction_promotions_metric() const {
+    return transaction_promotions_;
+  }
+
+  scoped_refptr<Counter> initially_global_transactions_metric() const {
+    return initially_global_transactions_;
+  }
+
+  scoped_refptr<Counter> initially_region_local_transactions_metric() const {
+    return initially_region_local_transactions_;
+  }
+
+  scoped_refptr<Counter> initially_tablespace_local_transactions_metric() const {
+    return initially_tablespace_local_transactions_;
+  }
+
  private:
   YBClient* const client_;
   scoped_refptr<ClockBase> clock_;
@@ -407,6 +453,13 @@ class TransactionManager::Impl {
   yb::rpc::TasksPool<LoadStatusTabletsTask> tasks_pool_;
   yb::rpc::TasksPool<InvokeCallbackTask> invoke_callback_tasks_;
   yb::rpc::Rpcs rpcs_;
+
+  // These are incremented by YBTransaction, but we keep them here so that the counters are not
+  // deleted/recreated after a period of idleness.
+  scoped_refptr<Counter> transaction_promotions_;
+  scoped_refptr<Counter> initially_global_transactions_;
+  scoped_refptr<Counter> initially_region_local_transactions_;
+  scoped_refptr<Counter> initially_tablespace_local_transactions_;
 };
 
 TransactionManager::TransactionManager(
@@ -472,6 +525,22 @@ bool TransactionManager::IsClosing() {
 
 void TransactionManager::SetClosing() {
   impl_->SetClosing();
+}
+
+scoped_refptr<Counter> TransactionManager::transaction_promotions_metric() const {
+  return impl_->transaction_promotions_metric();
+}
+
+scoped_refptr<Counter> TransactionManager::initially_global_transactions_metric() const {
+  return impl_->initially_global_transactions_metric();
+}
+
+scoped_refptr<Counter> TransactionManager::initially_region_local_transactions_metric() const {
+  return impl_->initially_region_local_transactions_metric();
+}
+
+scoped_refptr<Counter> TransactionManager::initially_tablespace_local_transactions_metric() const {
+  return impl_->initially_tablespace_local_transactions_metric();
 }
 
 TransactionManager::TransactionManager(TransactionManager&& rhs) = default;

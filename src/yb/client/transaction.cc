@@ -116,11 +116,6 @@ DEFINE_RUNTIME_bool(disable_heartbeat_send_involved_tablets, false,
                     "transactions. This behavior is needed to support fetching old transactions "
                     "and their involved tablets in order to support yb_lock_status/pg_locks.");
 
-METRIC_DEFINE_counter(server, transaction_promotions,
-                      "Number of transactions being promoted to global transactions",
-                      yb::MetricUnit::kTransactions,
-                      "Number of transactions being promoted to global transactions");
-
 namespace yb {
 namespace client {
 
@@ -243,6 +238,25 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     metadata_.locality = locality;
     CompleteConstruction();
     VLOG_WITH_PREFIX(2) << "Started, metadata: " << metadata_;
+
+    scoped_refptr<Counter> initial_locality_metric;
+    switch (metadata_.locality.locality) {
+      case TransactionLocality::GLOBAL:
+        initial_locality_metric = manager_->initially_global_transactions_metric();
+        break;
+      case TransactionLocality::REGION_LOCAL:
+        initial_locality_metric = manager_->initially_region_local_transactions_metric();
+        break;
+      case TransactionLocality::TABLESPACE_LOCAL:
+        initial_locality_metric = manager_->initially_tablespace_local_transactions_metric();
+        break;
+      default:
+        LOG(DFATAL) << "Unexpected locality: " << metadata_.locality;
+        break;
+    }
+    if (initial_locality_metric) {
+      IncrementCounter(initial_locality_metric);
+    }
   }
 
   Impl(TransactionManager* manager, YBTransaction* transaction, const TransactionMetadata& metadata)
@@ -1281,11 +1295,6 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     old_abort_handle_ = manager_->rpcs().InvalidHandle();
     rollback_heartbeat_handle_ = manager_->rpcs().InvalidHandle();
     old_rollback_heartbeat_handle_ = manager_->rpcs().InvalidHandle();
-
-    auto metric_entity = manager_->client()->metric_entity();
-    if (metric_entity) {
-      transaction_promotions_ = METRIC_transaction_promotions.Instantiate(metric_entity);
-    }
   }
 
   void CompleteInit(IsolationLevel isolation) {
@@ -1844,7 +1853,9 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
                               : "n/a")
                           << " to tablet " << metadata_.status_tablet;
 
-      IncrementCounter(transaction_promotions_);
+      if (auto transaction_promotions = manager_->transaction_promotions_metric()) {
+        IncrementCounter(transaction_promotions);
+      }
     } else {
       // If status_tablet_ is set already, then this is the case where first-op promotion
       // finished before lookup of old status tablet.
@@ -2591,8 +2602,6 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   size_t running_requests_ GUARDED_BY(mutex_) = 0;
   // Set to true after commit record is replicated. Used only during transaction sealing.
   bool commit_replicated_ GUARDED_BY(mutex_) = false;
-
-  scoped_refptr<Counter> transaction_promotions_;
 
   // Session level advisory lock requests launch a docdb distributed txn that lives for the lifetime
   // of the pg session. The below field keeps track of the active request version as seen on the
