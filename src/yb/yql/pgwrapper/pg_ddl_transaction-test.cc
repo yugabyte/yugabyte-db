@@ -14,7 +14,11 @@
 
 #include "yb/client/client-test-util.h"
 
+#include "yb/common/ql_type.h"
+
 #include "yb/master/catalog_manager_if.h"
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
 #include "yb/util/async_util.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -29,6 +33,44 @@ namespace yb::pgwrapper {
 const std::string kDatabase = "yugabyte";
 const auto kTableName = "test";
 const auto kTableName2 = "test2";
+
+YB_STRONGLY_TYPED_BOOL(MarkedForDeletion);
+YB_STRONGLY_TYPED_BOOL(TestCommit);
+
+enum class DdlOp : uint8_t {
+  kNone = 0,
+  kCreate = 1 << 0,
+  kAlter = 1 << 1,
+  kDrop = 1 << 2,
+};
+
+inline DdlOp operator|(DdlOp a, DdlOp b) {
+  return static_cast<DdlOp>(static_cast<uint8_t>(a) | static_cast<uint8_t>(b));
+}
+
+inline DdlOp operator&(DdlOp a, DdlOp b) {
+  return static_cast<DdlOp>(static_cast<uint8_t>(a) & static_cast<uint8_t>(b));
+}
+
+inline void VerifyDdlOps(const yb::master::YsqlDdlTxnVerifierStatePB& state, DdlOp expected_ops) {
+  if ((expected_ops & DdlOp::kCreate) == DdlOp::kCreate) {
+    ASSERT_TRUE(state.contains_create_table_op());
+  } else {
+    ASSERT_FALSE(state.contains_create_table_op());
+  }
+
+  if ((expected_ops & DdlOp::kAlter) == DdlOp::kAlter) {
+    ASSERT_TRUE(state.contains_alter_table_op());
+  } else {
+    ASSERT_FALSE(state.contains_alter_table_op());
+  }
+
+  if ((expected_ops & DdlOp::kDrop) == DdlOp::kDrop) {
+    ASSERT_TRUE(state.contains_drop_table_op());
+  } else {
+    ASSERT_FALSE(state.contains_drop_table_op());
+  }
+}
 
 class PgDdlTransactionTest : public LibPqTestBase {
  public:
@@ -199,8 +241,6 @@ TEST_F(PgDdlTransactionTest, TestReadCommittedTxnDdlDisabled) {
   ASSERT_OK(conn.Execute("INSERT INTO foo (id, new_col) VALUES (1, 42)"));
 }
 
-YB_STRONGLY_TYPED_BOOL(TestCommit);
-
 class PgDdlSavepointMiniClusterTest : public PgMiniTestBase,
                                       public ::testing::WithParamInterface<TestCommit> {
  protected:
@@ -213,6 +253,61 @@ class PgDdlSavepointMiniClusterTest : public PgMiniTestBase,
     // ysql_ddl_txn_verifier_state.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = false;
     pgwrapper::PgMiniTestBase::SetUp();
+  }
+
+  struct PersistedColumnInformation {
+    std::string name;
+    PersistentDataType persistent_data_type;
+    MarkedForDeletion marked_for_deletion;
+  };
+
+  void ValidateSchemaColumns(
+      const SchemaPB& schema,
+      const std::vector<PersistedColumnInformation>& expected_column_informations) {
+    std::unordered_map<std::string, const ColumnSchemaPB*> schema_columns;
+    for (const auto& column : schema.columns()) {
+      schema_columns[column.name()] = &column;
+    }
+
+    EXPECT_EQ(schema_columns.size(), expected_column_informations.size());
+    for (const auto& [column_name, expected_column_type, expected_marked_for_deletion] :
+         expected_column_informations) {
+      SCOPED_TRACE(Format("column_name: $0", column_name));
+      auto column_info = *ASSERT_NOTNULL(FindOrNull(schema_columns, column_name));
+      EXPECT_EQ(column_info->type().main(), expected_column_type);
+      EXPECT_EQ(
+          MarkedForDeletion(column_info->marked_for_deletion()), expected_marked_for_deletion);
+    }
+  }
+
+  struct ColumnInformation {
+    std::string name;
+    DataType data_type;
+  };
+
+  void ValidateTabletSchema(
+      const TableId table_id, const std::vector<ColumnInformation>& expected_column_informations) {
+    auto tablet_peers = ListTableTabletPeers(cluster_.get(), table_id, ListPeersFilter::kLeaders);
+
+    for (const auto& peer : tablet_peers) {
+      auto tablet = peer->shared_tablet_maybe_null();
+      if (!tablet) {
+        continue;
+      }
+
+      auto table_schema = ASSERT_RESULT(tablet->metadata()->GetTableInfo(table_id))->schema();
+      std::unordered_map<std::string, const ColumnSchema*> schema_columns;
+      for (const auto& column : table_schema.columns()) {
+        schema_columns[column.name()] = &column;
+      }
+
+      EXPECT_EQ(schema_columns.size(), expected_column_informations.size());
+      for (const auto& [column_name, expected_column_type] : expected_column_informations) {
+        SCOPED_TRACE(Format("column_name: $0", column_name));
+        auto column_info = *ASSERT_NOTNULL(FindOrNull(schema_columns, column_name));
+        EXPECT_EQ(column_info->type()->main(), expected_column_type);
+      }
+    }
   }
 };
 
@@ -243,20 +338,30 @@ TEST_P(PgDdlSavepointMiniClusterTest, TestTransactionStateMultipleSubTransaction
   auto new_table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "yugabyte", kTableName2));
   auto new_table_info = catalog_manager.GetTableInfo(new_table_id);
 
-  // 'table' must have 3 ddl verification states due to 2 savepoints
+  // 'table' must have 3 ddl verification states due to the 2 savepoints 'a' and 'b'. Savepoint 'c'
+  // is not relevant here since it is after the DROP TABLE. The CREATE TABLE post that creates a new
+  // DocDB table with a different table_id.
   auto table_verifier_states = table_info->LockForRead()->ysql_ddl_txn_verifier_state();
   ASSERT_EQ(table_verifier_states.size(), 3);
-  ASSERT_TRUE(table_verifier_states[0].contains_create_table_op());
-  ASSERT_TRUE(table_verifier_states[1].contains_alter_table_op());
-  ASSERT_TRUE(table_verifier_states[2].contains_drop_table_op());
+  VerifyDdlOps(table_verifier_states[0], DdlOp::kCreate);
+  VerifyDdlOps(table_verifier_states[1], DdlOp::kAlter);
+  VerifyDdlOps(table_verifier_states[2], DdlOp::kDrop);
   ASSERT_TRUE(table_info->LockForRead()->is_being_created_by_ysql_ddl_txn());
   ASSERT_TRUE(table_info->LockForRead()->is_being_altered_by_ysql_ddl_txn());
   ASSERT_TRUE(table_info->LockForRead()->is_being_deleted_by_ysql_ddl_txn());
+  ValidateSchemaColumns(
+      table_verifier_states[1].previous_schema(),
+      {{.name = "k",
+        .persistent_data_type = PersistentDataType::INT32,
+        .marked_for_deletion = MarkedForDeletion::kFalse},
+       {.name = "v",
+        .persistent_data_type = PersistentDataType::INT32,
+        .marked_for_deletion = MarkedForDeletion::kFalse}});
 
   // 'new_table' must have only 1 ddl verification state
   auto new_table_verifier_states = new_table_info->LockForRead()->ysql_ddl_txn_verifier_state();
   ASSERT_EQ(new_table_verifier_states.size(), 1);
-  ASSERT_TRUE(new_table_verifier_states[0].contains_create_table_op());
+  VerifyDdlOps(new_table_verifier_states[0], DdlOp::kCreate);
   ASSERT_TRUE(new_table_info->LockForRead()->is_being_created_by_ysql_ddl_txn());
   ASSERT_FALSE(new_table_info->LockForRead()->is_being_altered_by_ysql_ddl_txn());
   ASSERT_FALSE(new_table_info->LockForRead()->is_being_deleted_by_ysql_ddl_txn());
@@ -277,7 +382,7 @@ TEST_P(PgDdlSavepointMiniClusterTest, TestTransactionStateRollForwards) {
   auto& catalog_mgr = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
 
   ASSERT_OK(conn.ExecuteFormat(
-      "CREATE TABLE $0 (a int, b text, c text, d text, e text, f text)", kTableName));
+      "CREATE TABLE $0 (a int primary key, b text, c text, d text, e text, f text)", kTableName));
   ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTableName2));
   ASSERT_OK(conn.Execute("BEGIN"));
 
@@ -290,14 +395,56 @@ TEST_P(PgDdlSavepointMiniClusterTest, TestTransactionStateRollForwards) {
   auto table = catalog_mgr.GetTableInfo(table_id);
   auto table_verifier_states = table->LockForRead()->ysql_ddl_txn_verifier_state();
   ASSERT_EQ(table_verifier_states.size(), 2);
-  ASSERT_TRUE(table_verifier_states[0].contains_alter_table_op());
-  ASSERT_TRUE(table_verifier_states[1].contains_alter_table_op());
+  VerifyDdlOps(table_verifier_states[0], DdlOp::kAlter);
+  // All columns from 'a' to 'f' exist including 'b'.
+  ValidateSchemaColumns(
+      table_verifier_states[0].previous_schema(),
+      {{.name = "a",
+        .persistent_data_type = PersistentDataType::INT32,
+        .marked_for_deletion = MarkedForDeletion::kFalse},
+       {.name = "b",
+        .persistent_data_type = PersistentDataType::STRING,
+        .marked_for_deletion = MarkedForDeletion::kFalse},
+       {.name = "c",
+        .persistent_data_type = PersistentDataType::STRING,
+        .marked_for_deletion = MarkedForDeletion::kFalse},
+       {.name = "d",
+        .persistent_data_type = PersistentDataType::STRING,
+        .marked_for_deletion = MarkedForDeletion::kFalse},
+       {.name = "e",
+        .persistent_data_type = PersistentDataType::STRING,
+        .marked_for_deletion = MarkedForDeletion::kFalse},
+       {.name = "f",
+        .persistent_data_type = PersistentDataType::STRING,
+        .marked_for_deletion = MarkedForDeletion::kFalse}});
+  VerifyDdlOps(table_verifier_states[1], DdlOp::kAlter);
+  // 'b' must be marked for deletion due to the DROP COLUMN operation.
+  ValidateSchemaColumns(
+      table_verifier_states[1].previous_schema(),
+      {{.name = "a",
+        .persistent_data_type = PersistentDataType::INT32,
+        .marked_for_deletion = MarkedForDeletion::kFalse},
+       {.name = "b",
+        .persistent_data_type = PersistentDataType::STRING,
+        .marked_for_deletion = MarkedForDeletion::kTrue},
+       {.name = "c",
+        .persistent_data_type = PersistentDataType::STRING,
+        .marked_for_deletion = MarkedForDeletion::kFalse},
+       {.name = "d",
+        .persistent_data_type = PersistentDataType::STRING,
+        .marked_for_deletion = MarkedForDeletion::kFalse},
+       {.name = "e",
+        .persistent_data_type = PersistentDataType::STRING,
+        .marked_for_deletion = MarkedForDeletion::kFalse},
+       {.name = "f",
+        .persistent_data_type = PersistentDataType::STRING,
+        .marked_for_deletion = MarkedForDeletion::kFalse}});
 
   auto table_id_2 = ASSERT_RESULT(GetTableIdByTableName(client.get(), "yugabyte", kTableName2));
   auto table_2 = catalog_mgr.GetTableInfo(table_id_2);
   auto table_2_verifier_states = table_2->LockForRead()->ysql_ddl_txn_verifier_state();
   ASSERT_EQ(table_2_verifier_states.size(), 1);
-  ASSERT_TRUE(table_2_verifier_states[0].contains_drop_table_op());
+  VerifyDdlOps(table_2_verifier_states[0], DdlOp::kDrop);
 
   if (GetParam()) {
     ASSERT_OK(conn.Execute("COMMIT"));
@@ -317,7 +464,7 @@ TEST_P(PgDdlSavepointMiniClusterTest, TestRollbackToSavepoints) {
 
   ASSERT_OK(conn.Execute("BEGIN"));
   ASSERT_OK(conn.ExecuteFormat(
-      "CREATE TABLE $0 (a int, b text, c text, d text, e text, f text)", kTableName));
+      "CREATE TABLE $0 (a int primary key, b text, c text, d text, e text, f text)", kTableName));
   ASSERT_OK(conn.Execute("SAVEPOINT a"));
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN g TEXT", kTableName));
   ASSERT_OK(conn.Execute("SAVEPOINT b"));
@@ -327,23 +474,94 @@ TEST_P(PgDdlSavepointMiniClusterTest, TestRollbackToSavepoints) {
 
   ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT c"));
   auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "yugabyte", kTableName));
+  // Column 'b' won't exist as it has been dropped before the savepoint 'c'.
+  ValidateTabletSchema(
+      table_id, {{.name = "a", .data_type = DataType::INT32},
+                 {.name = "c", .data_type = DataType::STRING},
+                 {.name = "d", .data_type = DataType::STRING},
+                 {.name = "e", .data_type = DataType::STRING},
+                 {.name = "f", .data_type = DataType::STRING},
+                 {.name = "g", .data_type = DataType::STRING}});
+
   auto table = catalog_mgr.GetTableInfo(table_id);
   auto table_verifier_states = table->LockForRead()->ysql_ddl_txn_verifier_state();
   ASSERT_EQ(table_verifier_states.size(), 3);
-  ASSERT_TRUE(table_verifier_states[0].contains_create_table_op());
-  ASSERT_TRUE(table_verifier_states[1].contains_alter_table_op());
-  ASSERT_TRUE(table_verifier_states[2].contains_alter_table_op());
+  VerifyDdlOps(table_verifier_states[0], DdlOp::kCreate);
+  VerifyDdlOps(table_verifier_states[1], DdlOp::kAlter);
+  // Column 'g' won't exist in the previous_schema since it was created as part of savepoint 'b'.
+  ValidateSchemaColumns(
+      table_verifier_states[1].previous_schema(),
+      {{.name = "a",
+        .persistent_data_type = PersistentDataType::INT32,
+        .marked_for_deletion = MarkedForDeletion::kFalse},
+       {.name = "b",
+        .persistent_data_type = PersistentDataType::STRING,
+        .marked_for_deletion = MarkedForDeletion::kFalse},
+       {.name = "c",
+        .persistent_data_type = PersistentDataType::STRING,
+        .marked_for_deletion = MarkedForDeletion::kFalse},
+       {.name = "d",
+        .persistent_data_type = PersistentDataType::STRING,
+        .marked_for_deletion = MarkedForDeletion::kFalse},
+       {.name = "e",
+        .persistent_data_type = PersistentDataType::STRING,
+        .marked_for_deletion = MarkedForDeletion::kFalse},
+       {.name = "f",
+        .persistent_data_type = PersistentDataType::STRING,
+        .marked_for_deletion = MarkedForDeletion::kFalse}});
+  VerifyDdlOps(table_verifier_states[2], DdlOp::kAlter);
+  // Column 'g' exists now in previous_schema.
+  ValidateSchemaColumns(
+      table_verifier_states[2].previous_schema(),
+      {{.name = "a",
+        .persistent_data_type = PersistentDataType::INT32,
+        .marked_for_deletion = MarkedForDeletion::kFalse},
+       {.name = "b",
+        .persistent_data_type = PersistentDataType::STRING,
+        .marked_for_deletion = MarkedForDeletion::kFalse},
+       {.name = "c",
+        .persistent_data_type = PersistentDataType::STRING,
+        .marked_for_deletion = MarkedForDeletion::kFalse},
+       {.name = "d",
+        .persistent_data_type = PersistentDataType::STRING,
+        .marked_for_deletion = MarkedForDeletion::kFalse},
+       {.name = "e",
+        .persistent_data_type = PersistentDataType::STRING,
+        .marked_for_deletion = MarkedForDeletion::kFalse},
+       {.name = "f",
+        .persistent_data_type = PersistentDataType::STRING,
+        .marked_for_deletion = MarkedForDeletion::kFalse},
+       {.name = "g",
+        .persistent_data_type = PersistentDataType::STRING,
+        .marked_for_deletion = MarkedForDeletion::kFalse}});
 
   ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT b"));
+  // Drop of column 'b' must be rolled back now.
+  ValidateTabletSchema(
+      table_id, {{.name = "a", .data_type = DataType::INT32},
+                 {.name = "b", .data_type = DataType::STRING},
+                 {.name = "c", .data_type = DataType::STRING},
+                 {.name = "d", .data_type = DataType::STRING},
+                 {.name = "e", .data_type = DataType::STRING},
+                 {.name = "f", .data_type = DataType::STRING},
+                 {.name = "g", .data_type = DataType::STRING}});
   table_verifier_states = table->LockForRead()->ysql_ddl_txn_verifier_state();
   ASSERT_EQ(table_verifier_states.size(), 2);
-  ASSERT_TRUE(table_verifier_states[0].contains_create_table_op());
-  ASSERT_TRUE(table_verifier_states[1].contains_alter_table_op());
+  VerifyDdlOps(table_verifier_states[0], DdlOp::kCreate);
+  VerifyDdlOps(table_verifier_states[1], DdlOp::kAlter);
 
   ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT a"));
+  // Column 'g' doesn't exist anymore.
+  ValidateTabletSchema(
+      table_id, {{.name = "a", .data_type = DataType::INT32},
+                 {.name = "b", .data_type = DataType::STRING},
+                 {.name = "c", .data_type = DataType::STRING},
+                 {.name = "d", .data_type = DataType::STRING},
+                 {.name = "e", .data_type = DataType::STRING},
+                 {.name = "f", .data_type = DataType::STRING}});
   table_verifier_states = table->LockForRead()->ysql_ddl_txn_verifier_state();
   ASSERT_EQ(table_verifier_states.size(), 1);
-  ASSERT_TRUE(table_verifier_states[0].contains_create_table_op());
+  VerifyDdlOps(table_verifier_states[0], DdlOp::kCreate);
 
   if (GetParam()) {
     ASSERT_OK(conn.Execute("COMMIT"));
@@ -362,7 +580,7 @@ TEST_P(PgDdlSavepointMiniClusterTest, TestRollbackToSavepointWithDropCreateTable
   ASSERT_OK(conn.ExecuteFormat("DROP TABLE IF EXISTS $0", kTableName));
 
   ASSERT_OK(conn.ExecuteFormat(
-    "CREATE TABLE $0 (a int, b text, c text, d text, e text, f text)", kTableName));
+    "CREATE TABLE $0 (a int primary key, b text, c text, d text, e text, f text)", kTableName));
   auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "yugabyte", kTableName));
   auto table = catalog_mgr.GetTableInfo(table_id);
 
@@ -373,7 +591,7 @@ TEST_P(PgDdlSavepointMiniClusterTest, TestRollbackToSavepointWithDropCreateTable
 
   auto table_verifier_states = table->LockForRead()->ysql_ddl_txn_verifier_state();
   ASSERT_EQ(table_verifier_states.size(), 1);
-  ASSERT_TRUE(table_verifier_states[0].contains_drop_table_op());
+  VerifyDdlOps(table_verifier_states[0], DdlOp::kDrop);
 
   // Get the id of the table created with the same name but after the drop statement.
   // The GetTableIdByTableName function cannot be used here because it returns the id of the first
@@ -392,10 +610,16 @@ TEST_P(PgDdlSavepointMiniClusterTest, TestRollbackToSavepointWithDropCreateTable
   ASSERT_FALSE(table_id_after_drop.empty());
   auto table_after_drop = catalog_mgr.GetTableInfo(table_id_after_drop);
   ASSERT_EQ(table_after_drop->LockForRead()->ysql_ddl_txn_verifier_state().size(), 1);
-  ASSERT_TRUE(
-      table_after_drop->LockForRead()->ysql_ddl_txn_verifier_state()[0].contains_create_table_op());
+  VerifyDdlOps(table_after_drop->LockForRead()->ysql_ddl_txn_verifier_state()[0], DdlOp::kCreate);
 
   ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT a"));
+  ValidateTabletSchema(
+      table_id, {{.name = "a", .data_type = DataType::INT32},
+                 {.name = "b", .data_type = DataType::STRING},
+                 {.name = "c", .data_type = DataType::STRING},
+                 {.name = "d", .data_type = DataType::STRING},
+                 {.name = "e", .data_type = DataType::STRING},
+                 {.name = "f", .data_type = DataType::STRING}});
   ASSERT_FALSE(table->LockForRead()->has_ysql_ddl_txn_verifier_state());
   ASSERT_FALSE(table_after_drop->LockForRead()->has_ysql_ddl_txn_verifier_state());
 
@@ -426,12 +650,14 @@ TEST_P(PgDdlSavepointMiniClusterTest, TestRollbackToSavepointWithNestedSavepoint
   // Rollback to savepoint a -> should remove column 'c', 'd', and bring back column 'b'.
   ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT a"));
   auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "yugabyte", kTableName));
+  ValidateTabletSchema(
+      table_id, {{"ybrowid", DataType::BINARY},
+                 {"a", DataType::INT32},
+                 {"b", DataType::INT32}});
   auto table = catalog_mgr.GetTableInfo(table_id);
   auto table_verifier_states = table->LockForRead()->ysql_ddl_txn_verifier_state();
   ASSERT_EQ(table_verifier_states.size(), 1);
-  ASSERT_TRUE(table_verifier_states[0].contains_create_table_op());
-  ASSERT_FALSE(table_verifier_states[0].contains_alter_table_op());
-  ASSERT_FALSE(table_verifier_states[0].contains_drop_table_op());
+  VerifyDdlOps(table_verifier_states[0], DdlOp::kCreate);
   auto table_schema = ASSERT_RESULT(table->GetSchema());
   ASSERT_EQ(table_schema.num_columns(), 3); // Only column 'ybrowid', 'a' and 'b'.
   ASSERT_EQ(table_schema.columns()[0].name(), "ybrowid");
@@ -441,8 +667,8 @@ TEST_P(PgDdlSavepointMiniClusterTest, TestRollbackToSavepointWithNestedSavepoint
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN e TEXT", kTableName));
   table_verifier_states = table->LockForRead()->ysql_ddl_txn_verifier_state();
   ASSERT_EQ(table_verifier_states.size(), 2);
-  ASSERT_TRUE(table_verifier_states[0].contains_create_table_op());
-  ASSERT_TRUE(table_verifier_states[1].contains_alter_table_op());
+  VerifyDdlOps(table_verifier_states[0], DdlOp::kCreate);
+  VerifyDdlOps(table_verifier_states[1], DdlOp::kAlter);
 
   if (GetParam()) {
     ASSERT_OK(conn.Execute("COMMIT"));
@@ -483,12 +709,14 @@ TEST_P(PgDdlSavepointMiniClusterTest, TestRollbackToSavepointWithReleaseSavepoin
 
   // Rollback to savepoint a -> should bring bring the earlier table with column 'a' and 'b'.
   ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT a"));
+  ValidateTabletSchema(
+      table_id, {{"ybrowid", DataType::BINARY},
+                 {"a", DataType::INT32},
+                 {"b", DataType::INT32}});
   auto table = catalog_mgr.GetTableInfo(table_id);
   auto table_verifier_states = table->LockForRead()->ysql_ddl_txn_verifier_state();
   ASSERT_EQ(table_verifier_states.size(), 1);
-  ASSERT_TRUE(table_verifier_states[0].contains_create_table_op());
-  ASSERT_FALSE(table_verifier_states[0].contains_alter_table_op());
-  ASSERT_FALSE(table_verifier_states[0].contains_drop_table_op());
+  VerifyDdlOps(table_verifier_states[0], DdlOp::kCreate);
   auto table_schema = ASSERT_RESULT(table->GetSchema());
   ASSERT_EQ(table_schema.num_columns(), 3); // Only column 'ybrowid', 'a' and 'b'.
   ASSERT_EQ(table_schema.columns()[0].name(), "ybrowid");
@@ -502,8 +730,8 @@ TEST_P(PgDdlSavepointMiniClusterTest, TestRollbackToSavepointWithReleaseSavepoin
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN e TEXT", kTableName));
   table_verifier_states = table->LockForRead()->ysql_ddl_txn_verifier_state();
   ASSERT_EQ(table_verifier_states.size(), 2);
-  ASSERT_TRUE(table_verifier_states[0].contains_create_table_op());
-  ASSERT_TRUE(table_verifier_states[1].contains_alter_table_op());
+  VerifyDdlOps(table_verifier_states[0], DdlOp::kCreate);
+  VerifyDdlOps(table_verifier_states[1], DdlOp::kAlter);
 
   if (GetParam()) {
     ASSERT_OK(conn.Execute("COMMIT"));
