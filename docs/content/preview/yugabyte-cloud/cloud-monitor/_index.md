@@ -38,6 +38,7 @@ Monitor database and cluster performance in real time. Access performance monito
 | [Live queries](cloud-queries-live/) | The cluster **Live Queries** tab shows the queries that are currently "in-flight" on your cluster. |
 | [Slow queries](cloud-queries-slow/) | The cluster **YSQL Slow  Queries** tab shows queries run on the cluster, sorted by running time. Evaluate the slowest running YSQL queries that have been run on the cluster. |
 | [Insights](cloud-advisor/) | Scan clusters for performance optimizations, including index and schema changes, and detect potentially hot nodes. |
+| [Anomalies](monitor-anomalies/) | Monitor your cluster for anomalies in performance. |
 
 ### Integrations
 
