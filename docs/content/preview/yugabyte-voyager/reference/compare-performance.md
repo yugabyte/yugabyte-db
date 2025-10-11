@@ -13,9 +13,9 @@ tags:
 type: docs
 ---
 
-Compare query performance between the source database and the target YugabyteDB database (YugabyteDB release {{<release "2025.1">}} and later).
+Compare query performance between the source database and the target YugabyteDB database.
 
-This command analyzes statistics collected during [assess migration](../assess-migration/) from the source database and compares it with statistics collected from the target YugabyteDB database.
+This command analyzes statistics collected during [assess migration](../assess-migration/) from the source database, compares it with statistics collected from the target YugabyteDB database, The command generates both HTML and JSON reports for easy query comparison.
 
 ## Syntax
 

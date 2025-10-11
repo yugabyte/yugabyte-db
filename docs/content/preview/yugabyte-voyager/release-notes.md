@@ -23,11 +23,30 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, where `YYYY` is the release year, `M` is the month, and `N` is the number of the release in that month.
 
+## v2025.10.1 - October 14, 2025
+
+### New feature
+
+- Export schema automatically exports all primary key constraints as hash-sharded for better distribution of data, and unique key constraints as range-sharded to avoid any potential hotspots.
+Use the [skip-performance-recommendations](../reference/schema-migration/export-schema/#arguments) flag to skip this automatic change.
+
+### Enhancements
+
+- Added support for all supported YugabyteDB versions to the [compare-performance](../reference/compare-performance/) command.
+- Enhanced the compare-performance HTML report for the "Slowdown ratio" and "Impact" of each query in the **All Queries** tab.
+- Enhanced Oracle assessment report to mention the `--allow-oracle-clob-data-export` flag for the support of CLOB datatype export.
+
+### Bug fixes
+
+- Fixed import schema to properly handle session variables during connection retries, ensuring DDL state consistency.
+- Fixed import data or import data file to allow users to run without the `--start-clean` flag, after creating missing tables following guardrail failures.
+- Fixed a scenario where compare-performance fails to generate a JSON report if there are some entries in `pg_stat_statements` having zero calls.
+
 ## v2025.9.3 - September 30, 2025
 
 ### New feature
 
-- {{<tags/feature/tp>}} Added the ability to analyze, compare, and summarize workload query performance between the source database and the target YugabyteDB database using the [compare-performance](../reference/compare-performance/) command. The command generates both HTML and JSON reports for easy comparison.
+- {{<tags/feature/tp>}} Added the ability to analyze, compare, and summarize workload query performance between the source database and the target YugabyteDB database using the [compare-performance](../reference/compare-performance/) command. The command generates both HTML and JSON reports for easy query comparison.
 
   Note that this feature is supported for YugabyteDB release {{<release "2025.1">}} and later.
 
