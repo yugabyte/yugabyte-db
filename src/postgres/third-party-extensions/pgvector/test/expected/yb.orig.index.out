@@ -9,8 +9,7 @@ CREATE TABLE items (id bigserial PRIMARY KEY, embedding vector(3));
 ERROR:  all nodes in the cluster need to upgrade before creating a vector table
 SET yb_enable_docdb_vector_type = true;
 CREATE TABLE items (id bigserial PRIMARY KEY, embedding vector(3)) SPLIT INTO 1 TABLETS;
-CREATE INDEX ON items USING ybdummyann (embedding vector_l2_ops);
-WARNING:  ybdummyann is meant for internal-testing only and does not yield ordered results
+CREATE INDEX ON items USING ybhnsw (embedding vector_l2_ops);
 INSERT INTO items VALUES (1, '[1.0, 0.4, 0.3]');
 INSERT INTO items VALUES (2, '[0.001, 0.432, 0.32]');
 \d items
@@ -21,7 +20,7 @@ INSERT INTO items VALUES (2, '[0.001, 0.432, 0.32]');
  embedding | vector(3) |           |          | 
 Indexes:
     "items_pkey" PRIMARY KEY, lsm (id HASH)
-    "items_embedding_idx" ybdummyann (embedding)
+    "items_embedding_idx" ybhnsw (embedding)
 
 EXPLAIN (COSTS OFF) SELECT * FROM items ORDER BY embedding <-> '[1.0, 0.4, 0.3]' LIMIT 5;
                        QUERY PLAN                        
@@ -39,10 +38,10 @@ SELECT * FROM items ORDER BY embedding <-> '[1.0, 0.4, 0.3]' LIMIT 5;
 (2 rows)
 
 EXPLAIN (COSTS OFF) SELECT embedding FROM items ORDER BY embedding <-> '[1.0, 0.4, 0.3]' LIMIT 5;
-                        QUERY PLAN                        
-----------------------------------------------------------
+                       QUERY PLAN                        
+---------------------------------------------------------
  Limit
-   ->  Index Only Scan using items_embedding_idx on items
+   ->  Index Scan using items_embedding_idx on items
          Order By: (embedding <-> '[1,0.4,0.3]'::vector)
 (3 rows)
 
@@ -289,8 +288,7 @@ ERROR:  different vector dimensions 10 and 3
 
 DROP INDEX items_embedding_idx;
 -- Dummy implementation, should only provide Exact ANN within a tablet.
-CREATE INDEX ON items USING ybdummyann (embedding vector_l2_ops);
-WARNING:  ybdummyann is meant for internal-testing only and does not yield ordered results
+CREATE INDEX ON items USING ybhnsw (embedding vector_l2_ops);
 EXPLAIN (COSTS OFF) SELECT * FROM items ORDER BY embedding <-> '[1,1,1,1,1,1,1,1,1,1]';
                          QUERY PLAN                          
 -------------------------------------------------------------

@@ -129,7 +129,7 @@ enum PgVectorDistanceType {
 
 enum PgVectorIndexType {
   UNKNOWN_IDX = 0;
-  DUMMY = 1;
+  DEPRECATED_DUMMY = 1;
   IVFFLAT = 2;
   HNSW = 3;
 }

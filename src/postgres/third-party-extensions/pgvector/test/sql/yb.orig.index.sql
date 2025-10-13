@@ -3,7 +3,7 @@ SET yb_enable_docdb_vector_type = false;
 CREATE TABLE items (id bigserial PRIMARY KEY, embedding vector(3));
 SET yb_enable_docdb_vector_type = true;
 CREATE TABLE items (id bigserial PRIMARY KEY, embedding vector(3)) SPLIT INTO 1 TABLETS;
-CREATE INDEX ON items USING ybdummyann (embedding vector_l2_ops);
+CREATE INDEX ON items USING ybhnsw (embedding vector_l2_ops);
 INSERT INTO items VALUES (1, '[1.0, 0.4, 0.3]');
 INSERT INTO items VALUES (2, '[0.001, 0.432, 0.32]');
 \d items
@@ -92,7 +92,7 @@ SELECT * FROM items ORDER BY embedding <-> '[1.0, 0.4, 0.3]' LIMIT 5;
 DROP INDEX items_embedding_idx;
 
 -- Dummy implementation, should only provide Exact ANN within a tablet.
-CREATE INDEX ON items USING ybdummyann (embedding vector_l2_ops);
+CREATE INDEX ON items USING ybhnsw (embedding vector_l2_ops);
 EXPLAIN (COSTS OFF) SELECT * FROM items ORDER BY embedding <-> '[1,1,1,1,1,1,1,1,1,1]';
 SELECT * FROM items ORDER BY embedding <-> '[1,1,1,1,1,1,1,1,1,1]';
 

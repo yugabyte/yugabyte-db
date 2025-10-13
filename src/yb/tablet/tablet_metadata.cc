@@ -505,7 +505,7 @@ bool TableInfo::IsVectorIndex() const {
 
 bool TableInfo::NeedVectorIndex() const {
   return IsVectorIndex() &&
-         index_info->vector_idx_options().idx_type() != PgVectorIndexType::DUMMY;
+         index_info->vector_idx_options().idx_type() != PgVectorIndexType::DEPRECATED_DUMMY;
 }
 
 MetricAttributeMap TableInfo::CreateMetricAttributeMap() const {

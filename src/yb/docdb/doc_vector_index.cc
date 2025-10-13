@@ -140,7 +140,7 @@ auto GetVectorLSMFactory(
   switch (options.idx_type()) {
     case PgVectorIndexType::HNSW:
       return VectorLSMFactory<LSM>(block_cache, options, mem_tracker);
-    case PgVectorIndexType::DUMMY: [[fallthrough]];
+    case PgVectorIndexType::DEPRECATED_DUMMY: [[fallthrough]];
     case PgVectorIndexType::IVFFLAT: [[fallthrough]];
     case PgVectorIndexType::UNKNOWN_IDX:
       break;

@@ -615,7 +615,7 @@ std::string GetVectorIndexChunkFileExtension(const PgVectorIdxOptionsPB& options
   switch (options.idx_type()) {
     case PgVectorIndexType::HNSW:
       return "." + boost::to_lower_copy(HnswBackend_Name(options.hnsw().backend()));
-    case PgVectorIndexType::DUMMY: [[fallthrough]];
+    case PgVectorIndexType::DEPRECATED_DUMMY: [[fallthrough]];
     case PgVectorIndexType::IVFFLAT: [[fallthrough]];
     case PgVectorIndexType::UNKNOWN_IDX:
       break;
