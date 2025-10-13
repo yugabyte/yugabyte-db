@@ -67,7 +67,7 @@ step s1_serializable_txn: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 step s1_update: UPDATE t SET v1 = add_with_limit(v1, v2, 35) WHERE k = 1;
 step s2_update: UPDATE t SET v2 = add_with_limit(v2, v1, 35) WHERE k = 1;
 step s1_commit: COMMIT;
-ERROR:  could not serialize access due to concurrent update (query layer retry isn't possible because this is not the first command in the transaction. Consider using READ COMMITTED isolation level.)
+ERROR:  current transaction is expired or aborted (query layer retry isn't possible because this is not the first command in the transaction. Consider using READ COMMITTED isolation level.)
 step s1_select: select *, v1 + v2 from t;
 k|v1|v2|?column?
 -+--+--+--------
@@ -84,7 +84,7 @@ step s1_repeatable_read_txn: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 step s1_update: UPDATE t SET v1 = add_with_limit(v1, v2, 35) WHERE k = 1;
 step s2_update: UPDATE t SET v2 = add_with_limit(v2, v1, 35) WHERE k = 1;
 step s1_commit: COMMIT;
-ERROR:  could not serialize access due to concurrent update (query layer retry isn't possible because this is not the first command in the transaction. Consider using READ COMMITTED isolation level.)
+ERROR:  current transaction is expired or aborted (query layer retry isn't possible because this is not the first command in the transaction. Consider using READ COMMITTED isolation level.)
 step s1_select: select *, v1 + v2 from t;
 k|v1|v2|?column?
 -+--+--+--------
@@ -193,7 +193,7 @@ step s2_update_case:
   UPDATE t SET v2 = CASE WHEN v1 + v2 < 35 THEN v1 + v2 ELSE 0 END WHERE k = 1;
 
 step s1_commit: COMMIT;
-ERROR:  could not serialize access due to concurrent update (query layer retry isn't possible because this is not the first command in the transaction. Consider using READ COMMITTED isolation level.)
+ERROR:  current transaction is expired or aborted (query layer retry isn't possible because this is not the first command in the transaction. Consider using READ COMMITTED isolation level.)
 step s1_select: select *, v1 + v2 from t;
 k|v1|v2|?column?
 -+--+--+--------
@@ -214,7 +214,7 @@ step s2_update_case:
   UPDATE t SET v2 = CASE WHEN v1 + v2 < 35 THEN v1 + v2 ELSE 0 END WHERE k = 1;
 
 step s1_commit: COMMIT;
-ERROR:  could not serialize access due to concurrent update (query layer retry isn't possible because this is not the first command in the transaction. Consider using READ COMMITTED isolation level.)
+ERROR:  current transaction is expired or aborted (query layer retry isn't possible because this is not the first command in the transaction. Consider using READ COMMITTED isolation level.)
 step s1_select: select *, v1 + v2 from t;
 k|v1|v2|?column?
 -+--+--+--------
