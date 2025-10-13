@@ -1679,4 +1679,20 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Skip auto flags and YSQL migration files validation",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> upgradeMasterStagePauseDurationMs =
+      new ConfKeyInfo<>(
+          "yb.upgrade.upgrade_master_stage_pause_duration_ms",
+          ScopeType.UNIVERSE,
+          "Upgrade Master Sleep Time Per AZ",
+          "Time to sleep after upgrading masters in each AZ",
+          ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> upgradeTServerStagePauseDurationMs =
+      new ConfKeyInfo<>(
+          "yb.upgrade.upgrade_tserver_stage_pause_duration_ms",
+          ScopeType.UNIVERSE,
+          "Upgrade TServer Sleep Time Per AZ",
+          "Time to sleep after upgrading tservers in each AZ",
+          ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

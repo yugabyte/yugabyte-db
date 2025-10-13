@@ -1181,7 +1181,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         .collect(Collectors.toList());
   }
 
-  private static List<UUID> sortAZs(
+  protected static List<UUID> sortAZs(
       UniverseDefinitionTaskParams.Cluster cluster, Universe universe) {
     List<UUID> result = new ArrayList<>();
     Map<UUID, Integer> indexByUUID = new HashMap<>();

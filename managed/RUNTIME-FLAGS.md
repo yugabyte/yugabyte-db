@@ -335,3 +335,5 @@
 | "Timeout for catalog upgrade admin operations" | "yb.upgrade.catalog_upgrade_admin_ops_timeout_ms" | "UNIVERSE" | "Timeout for catalog upgrade admin operations in milliseconds" | "Long" |
 | "Whether to check if correct THP settings are applied" | "yb.health_checks.check_thp" | "UNIVERSE" | "Whether to check if correct Transparent Huge Pages settings are applied" | "Boolean" |
 | "Skip auto flags and YSQL migration files validation" | "yb.upgrade.skip_autoflags_and_ysql_migration_files_validation" | "UNIVERSE" | "Skip auto flags and YSQL migration files validation" | "Boolean" |
+| "Upgrade Master Sleep Time Per AZ" | "yb.upgrade.upgrade_master_stage_pause_duration_ms" | "UNIVERSE" | "Time to sleep after upgrading masters in each AZ" | "Long" |
+| "Upgrade TServer Sleep Time Per AZ" | "yb.upgrade.upgrade_tserver_stage_pause_duration_ms" | "UNIVERSE" | "Time to sleep after upgrading tservers in each AZ" | "Long" |
