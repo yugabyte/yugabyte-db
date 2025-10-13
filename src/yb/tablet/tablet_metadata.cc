@@ -463,7 +463,7 @@ TableInfoPtr TableInfo::TEST_CreateWithLogPrefix(
 
 bool TableInfo::NeedVectorIndex() const {
   return index_info && index_info->is_vector_index() &&
-         index_info->vector_idx_options().idx_type() != PgVectorIndexType::DUMMY;
+         index_info->vector_idx_options().idx_type() != PgVectorIndexType::DEPRECATED_DUMMY;
 }
 
 Status KvStoreInfo::LoadTablesFromPB(

@@ -212,10 +212,6 @@ class PgsqlReadOperation : public DocExprExecutor {
   // Execute a READ operator for a given scalar argument.
   Result<std::tuple<size_t, bool>> ExecuteScalar();
 
-  // Execute a READ operator for a given vector search.
-  Result<std::tuple<size_t, bool>> ExecuteVectorSearch(
-      const DocReadContext& doc_read_context, const PgVectorReadOptionsPB& options);
-
   // Execute a READ operator for a given batch of keys.
   template <class KeyProvider>
   Result<size_t> ExecuteBatchKeys(KeyProvider& key_provider);

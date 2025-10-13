@@ -34,7 +34,6 @@ set(VECTOR_INDEX_SRCS
   vector_id.cc
   vector_lsm.cc
   vector_lsm_metadata.cc
-  vectorann.cc
   )
 
 set(VECTOR_INDEX_LIBS
