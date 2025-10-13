@@ -62,8 +62,10 @@ YB_DEFINE_ENUM(ResetMode, (kKeepFirst)(kKeepLast));
 namespace internal {
 
 struct ThreadSafeArenaTraits {
-  typedef std::atomic<uint8_t*> pointer;
-  typedef std::mutex mutex_type;
+  using pointer = std::atomic<uint8_t*>;
+  using mutex_type = std::mutex;
+
+  static constexpr bool kLockBytesAllowed = false;
 
   template<class T>
   struct MakeAtomic {
@@ -84,6 +86,8 @@ struct ThreadSafeArenaTraits {
 struct ArenaTraits {
   using pointer = uint8_t*;
   using mutex_type = SingleThreadedMutex;
+
+  static constexpr bool kLockBytesAllowed = true;
 
   template<class T>
   struct MakeAtomic {
@@ -199,6 +203,14 @@ class ArenaBase {
     return AllocateBytesAligned(size, 1);
   }
 
+  template <typename U = Traits>
+  std::enable_if_t<U::kLockBytesAllowed && std::is_same_v<U, Traits>, Slice> LockBytes(
+      size_t min_size) {
+    return DoLockBytes(min_size);
+  }
+
+  void ConsumeBytes(size_t size);
+
   // Allocate bytes, ensuring a specified alignment.
   // NOTE: alignment MUST be a power of two, or else this will break.
   void* AllocateBytesAligned(size_t size, size_t alignment);
@@ -243,6 +255,11 @@ class ArenaBase {
   // Fallback for AllocateBytes non-fast-path
   void* AllocateBytesFallback(const size_t size, const size_t align);
 
+  Slice LockBytesFallback(size_t min_size);
+
+  template <class Functor>
+  auto AllocateComponent(size_t min_size, Functor functor);
+
   // Tries to allocate of maximal size between minimum_size and requested_size
   Buffer NewBuffer(size_t requested_size, size_t minimum_size);
 
@@ -266,6 +283,8 @@ class ArenaBase {
   inline void ReleaseStoreCurrent(Component* c) {
     return current_.store(c, std::memory_order_release);
   }
+
+  Slice DoLockBytes(size_t min_size);
 
   BufferAllocator* const buffer_allocator_;
 
@@ -380,6 +399,14 @@ class ArenaComponent {
 
   uint8_t *AllocateBytesAligned(const size_t size, const size_t alignment);
 
+  // If there are at least `min_size` bytes free at the end of this component, then
+  // returns Slice pointing to begin of those bytes with size of total available bytes.
+  // Slice contains at least `min_size` bytes.
+  // Otherwise, returns empty Slice.
+  Slice LockBytes(size_t min_size);
+
+  void ConsumeBytes(size_t size);
+
   uint8_t* begin() {
     return const_cast<uint8_t*>(begin_of_this() + sizeof(*this));
   }
@@ -488,7 +515,12 @@ std::shared_ptr<Result> ArenaMakeShared(
   return std::shared_ptr<Result>(arena, result);
 }
 
-std::shared_ptr<ThreadSafeArena> SharedArena();
+using ArenaPtr = std::shared_ptr<Arena>;
+using ThreadSafeArenaPtr = std::shared_ptr<ThreadSafeArena>;
+
+ThreadSafeArenaPtr SharedThreadSafeArena();
+ArenaPtr SharedArena();
+ArenaPtr SharedSmallArena();
 
 } // namespace yb
 

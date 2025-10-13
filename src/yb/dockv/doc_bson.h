@@ -18,9 +18,9 @@
 
 namespace yb::dockv {
 
-void BsonKeyToComparableBinary(const Slice& slice, KeyBuffer* dest);
+void BsonKeyToComparableBinary(Slice slice, KeyBuffer& dest);
 
-void BsonKeyToComparableBinaryDescending(const Slice& slice, KeyBuffer* dest);
+void BsonKeyToComparableBinaryDescending(Slice slice, KeyBuffer& dest);
 
 Status BsonKeyFromComparableBinary(Slice* slice, std::string* result);
 Result<const char*> BsonKeyFromComparableBinary(

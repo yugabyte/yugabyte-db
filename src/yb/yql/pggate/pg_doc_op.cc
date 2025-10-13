@@ -1011,7 +1011,7 @@ void PgDocReadOp::InitializeYbctidOperators() {
   if (!pgsql_op_arena_) {
     // First batch, create arena for operations
     DCHECK(pgsql_ops_.empty());
-    pgsql_op_arena_ = SharedArena();
+    pgsql_op_arena_ = SharedThreadSafeArena();
   } else if (active_op_count_ == 0) {
     // All past operations are done, can perform full reset to release memory
     pgsql_ops_.clear();

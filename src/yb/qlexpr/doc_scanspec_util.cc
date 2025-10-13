@@ -13,11 +13,14 @@
 
 #include "yb/qlexpr/doc_scanspec_util.h"
 
-#include "yb/qlexpr/ql_scanspec.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
+
+#include "yb/dockv/key_entry_value.h"
 #include "yb/dockv/primitive_value.h"
 #include "yb/dockv/value_type.h"
+
+#include "yb/qlexpr/ql_scanspec.h"
 
 namespace yb::qlexpr {
 

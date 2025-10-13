@@ -478,7 +478,7 @@ std::string PrefetcherOptions::ToString() const {
 class PgSysTablePrefetcher::Impl {
  public:
   explicit Impl(const PrefetcherOptions& options)
-      : arena_(SharedArena()), options_(options) {
+      : arena_(SharedThreadSafeArena()), options_(options) {
     VLOG(1) << "Starting prefetcher with " << options_.ToString();
   }
 

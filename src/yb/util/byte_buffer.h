@@ -235,6 +235,10 @@ class ByteBufferBase {
     return Slice(ptr(), size_);
   }
 
+  uint8_t* SuffixStart(size_t len) {
+    return mutable_data() + size_ - len;
+  }
+
   const uint8_t* data() const {
     return pointer_cast<const uint8_t*>(ptr());
   }

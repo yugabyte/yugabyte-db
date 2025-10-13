@@ -17,6 +17,7 @@
 
 #include "yb/consensus/raft_consensus.h"
 
+#include "yb/dockv/key_entry_value.h"
 #include "yb/dockv/primitive_value.h"
 
 #include "yb/integration-tests/cql_test_base.h"

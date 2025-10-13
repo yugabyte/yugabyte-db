@@ -78,6 +78,7 @@ class Uuid {
   Slice AsSlice() const;
 
   // Encodes the UUID into the time comparable uuid to be stored in RocksDB.
+  std::string EncodedToComparable() const;
   void EncodeToComparable(uint8_t* output) const;
   void EncodeToComparable(std::string* bytes) const;
 

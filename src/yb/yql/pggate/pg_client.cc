@@ -968,7 +968,7 @@ class PgClient::Impl : public BigDataFetcher {
       tserver::LWPgFetchDataResponsePB* fetch_resp;
       rpc::RpcController* controller;
     };
-    auto arena = SharedArena();
+    auto arena = SharedThreadSafeArena();
     auto info = std::shared_ptr<FetchBigDataInfo>(arena, arena->NewObject<FetchBigDataInfo>());
     info->callback = callback;
     info->fetch_req = arena->NewArenaObject<tserver::LWPgFetchDataRequestPB>();

@@ -19,6 +19,8 @@
 
 #include <boost/preprocessor/seq/for_each.hpp>
 
+#include "yb/common/constants.h"
+
 #include "yb/util/enums.h"
 #include "yb/util/math_util.h"
 #include "yb/util/slice.h"
@@ -281,6 +283,16 @@ constexpr inline bool IsSpecialKeyEntryType(KeyEntryType value_type) {
          value_type == KeyEntryType::kGreaterThanIntentType;
 }
 
+constexpr inline bool IsInfinity(KeyEntryType entry_type) {
+  return entry_type == KeyEntryType::kLowest || entry_type == KeyEntryType::kHighest;
+}
+
+constexpr inline KeyEntryType NullKeyEntryType(SortingType sorting) {
+  return sorting == SortingType::kAscendingNullsLast || sorting == SortingType::kDescendingNullsLast
+      ? KeyEntryType::kNullHigh
+      : KeyEntryType::kNullLow;
+}
+
 // Decode the first byte of the given slice as a ValueType.
 inline ValueEntryType DecodeValueEntryType(Slice value) {
   return value.empty() ? ValueEntryType::kInvalid : static_cast<ValueEntryType>(value.data()[0]);
@@ -300,7 +312,7 @@ inline ValueEntryType ConsumeValueEntryType(Slice& slice) {
   return ConsumeValueEntryType(&slice);
 }
 
-inline KeyEntryType DecodeKeyEntryType(const Slice& value) {
+inline KeyEntryType DecodeKeyEntryType(Slice value) {
   return value.empty() ? KeyEntryType::kInvalid : static_cast<KeyEntryType>(value.data()[0]);
 }
 

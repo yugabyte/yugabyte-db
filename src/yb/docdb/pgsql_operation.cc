@@ -3094,17 +3094,12 @@ Status PgsqlLockOperation::Init(
 
   auto& schema = doc_read_context->schema();
 
-  dockv::KeyEntryValues hashed_components;
-  dockv::KeyEntryValues range_components;
-  RETURN_NOT_OK(QLKeyColumnValuesToPrimitiveValues(
+  auto hashed_components = VERIFY_RESULT(dockv::QLKeyColumnValuesToPrimitiveValues(
       request_.lock_id().lock_partition_column_values(), schema, 0,
-      schema.num_hash_key_columns(),
-      &hashed_components));
-  RETURN_NOT_OK(QLKeyColumnValuesToPrimitiveValues(
+      schema.num_hash_key_columns()));
+  auto range_components = VERIFY_RESULT(dockv::QLKeyColumnValuesToPrimitiveValues(
       request_.lock_id().lock_range_column_values(), schema,
-      schema.num_hash_key_columns(),
-      schema.num_range_key_columns(),
-      &range_components));
+      schema.num_hash_key_columns(), schema.num_range_key_columns()));
   SCHECK(!hashed_components.empty(), InvalidArgument, "No hashed column values provided");
   doc_key_ = DocKey(
       schema, request_.hash_code(), std::move(hashed_components), std::move(range_components));

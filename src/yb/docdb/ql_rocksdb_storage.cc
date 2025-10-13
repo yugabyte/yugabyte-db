@@ -73,10 +73,8 @@ Status QLRocksDBStorage::BuildYQLScanSpec(
                            ? std::make_optional<int32_t>(request.max_hash_code())
                            : std::nullopt;
 
-  dockv::KeyEntryValues hashed_components;
-  RETURN_NOT_OK(QLKeyColumnValuesToPrimitiveValues(
-      request.hashed_column_values(), schema, 0, schema.num_hash_key_columns(),
-      &hashed_components));
+  auto hashed_components = VERIFY_RESULT(dockv::QLKeyColumnValuesToPrimitiveValues(
+      request.hashed_column_values(), schema, 0, schema.num_hash_key_columns()));
 
   dockv::SubDocKey start_sub_doc_key;
   // Decode the start SubDocKey from the paging state and set scan start key and hybrid time.
