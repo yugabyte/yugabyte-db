@@ -106,6 +106,7 @@ using SingleMetricWatcher = MetricWatcher<SingleMetricDescriber>;
 [[nodiscard]] bool HasTransactionError(const Status& status);
 [[nodiscard]] bool IsRetryable(const Status& status);
 [[nodiscard]] bool IsSerializeAccessError(const Status& status);
+[[nodiscard]] bool IsAbortError(const Status& status);
 
 [[nodiscard]] std::string_view SerializeAccessErrorMessageSubstring();
 [[nodiscard]] std::string MaxQueryLayerRetriesConf(uint16_t max_retries);

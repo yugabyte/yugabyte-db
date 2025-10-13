@@ -888,7 +888,7 @@ TEST_F_EX(PgMiniTest, SerializableReadOnly, PgMiniTestFailOnConflict) {
     ASSERT_EQ(PgsqlError(status), YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE) << status;
   } else {
     ASSERT_TRUE(s.IsNetworkError()) << s;
-    ASSERT_TRUE(IsSerializeAccessError(s)) << s;
+    ASSERT_TRUE(IsSerializeAccessError(s) || IsAbortError(s)) << s;
     ASSERT_STR_CONTAINS(s.ToString(), "conflicts with higher priority transaction");
   }
 }

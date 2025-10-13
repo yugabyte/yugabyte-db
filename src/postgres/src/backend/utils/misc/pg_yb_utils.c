@@ -814,6 +814,14 @@ GetStatusMsgAndArgumentsByCode(const uint32_t pg_err_code, YBCStatus s,
 			(*msg_args)[0] = FetchUniqueConstraintName(YBCStatusRelationOid(s));
 			break;
 		case ERRCODE_YB_TXN_ABORTED:
+			*msg_buf = "current transaction is expired or aborted";
+			*msg_nargs = 0;
+			*msg_args = NULL;
+
+			*detail_buf = status_msg;
+			*detail_nargs = status_nargs;
+			*detail_args = status_args;
+			break;
 		case ERRCODE_YB_TXN_CONFLICT:
 			*msg_buf = "could not serialize access due to concurrent update";
 			*msg_nargs = 0;

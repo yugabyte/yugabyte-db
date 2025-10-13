@@ -513,7 +513,7 @@ void RunningTransaction::NotifyWaiters(int64_t serial_no, HybridTime time_of_sta
               "last known: $2 at $3",
               waiter.read_ht, waiter.global_limit_ht, TransactionStatus_Name(transaction_status),
               time_of_status),
-          Slice(), PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_CONFLICT)));
+          Slice(), PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED)));
     }
   }
 }
