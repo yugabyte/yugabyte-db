@@ -2996,13 +2996,26 @@ TEST_F(PgLibPqTest, LoadBalanceMultipleTablegroups) {
   VerifyLoadBalance(ts_loads);
 }
 
+class PgLibPqTestDisableObjectLocking : public PgLibPqTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    AppendFlagToAllowedPreviewFlagsCsv(
+        options->extra_tserver_flags, "enable_object_locking_for_table_locks");
+    AppendFlagToAllowedPreviewFlagsCsv(
+        options->extra_tserver_flags, "ysql_yb_ddl_transaction_block_enabled");
+    options->extra_tserver_flags.emplace_back("--enable_object_locking_for_table_locks=false");
+    options->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
+  }
+};
+
 // Override the base test to start a cluster with transparent retries on cache version mismatch
 // disabled.
-class PgLibPqTestNoRetry : public PgLibPqTest {
+class PgLibPqTestDisableObjectLockingNoRetry : public PgLibPqTestDisableObjectLocking {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.emplace_back(
         "--TEST_ysql_disable_transparent_cache_refresh_retry=true");
+    PgLibPqTestDisableObjectLocking::UpdateMiniClusterOptions(options);
   }
 };
 
@@ -3073,13 +3086,17 @@ void PgLibPqTest::TestCacheRefreshRetry(const bool is_retry_disabled) {
   }
 }
 
+// Object locking is disabled to allow catalog version mismatches for testing.
 TEST_F_EX(PgLibPqTest,
           CacheRefreshRetryDisabled,
-          PgLibPqTestNoRetry) {
+          PgLibPqTestDisableObjectLockingNoRetry) {
   TestCacheRefreshRetry(true /* is_retry_disabled */);
 }
 
-TEST_F(PgLibPqTest, CacheRefreshRetryEnabled) {
+// Object locking is disabled to allow catalog version mismatches for testing.
+TEST_F_EX(PgLibPqTest,
+          CacheRefreshRetryEnabled,
+          PgLibPqTestDisableObjectLocking) {
   TestCacheRefreshRetry(false /* is_retry_disabled */);
 }
 
