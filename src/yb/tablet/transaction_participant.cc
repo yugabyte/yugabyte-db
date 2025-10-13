@@ -1447,7 +1447,7 @@ class TransactionParticipant::Impl
 
       auto& transaction = *it;
       RETURN_NOT_OK_SET_CODE(transaction->CheckPromotionAllowed(),
-                             PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_CONFLICT));
+                             PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED));
       txn_status_res = DoUpdateTransactionStatusLocation(*transaction, new_status_tablet);
       TransactionsModifiedUnlocked(&min_running_notifier);
     }
