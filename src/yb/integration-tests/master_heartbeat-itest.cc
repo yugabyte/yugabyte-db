@@ -761,7 +761,13 @@ void GlobalTransactionTableCreationTest::SetUp() {
   opts.num_masters = 3;
   opts.num_tablet_servers = 3;
   opts.enable_ysql = true;
-  opts.extra_tserver_flags = {Format("--placement_uuid=$0", placement_uuid_)};
+  opts.extra_tserver_flags = {
+      Format("--placement_uuid=$0", placement_uuid_),
+      // TODO(#27854): We get stuck with object locking when there is no system.transactions
+      // table. Disabling it for now until we fix the underlying issue.
+      "--enable_object_locking_for_table_locks=false",
+      "--allowed_preview_flags_csv=enable_object_locking_for_table_locks",
+  };
   cluster_ = std::make_unique<ExternalMiniCluster>(opts);
   ASSERT_OK(cluster_->Start());
 }
