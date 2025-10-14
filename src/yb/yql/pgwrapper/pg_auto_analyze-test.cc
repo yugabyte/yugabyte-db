@@ -1257,9 +1257,6 @@ class PgConcurrentDDLAnalyzeTest : public LibPqTestBase {
                                              })
                                    .Connect());
 
-    const std::string wait_string = "sleeping for 20000000 us before next ddl";
-    const std::string wait_time_str = "'20s'";
-
     ASSERT_OK(conn1.Execute("CREATE DATABASE " + another_db_name));
     ASSERT_OK(conn1.Execute("CREATE ROLE role1"));
 
@@ -1352,9 +1349,52 @@ class PgConcurrentDDLAnalyzeTest : public LibPqTestBase {
     ASSERT_OK(conn2.Execute("SET yb_use_internal_auto_analyze_service_conn=false;"));
     thread_holder.JoinAll();
   }
+
+  const std::string wait_string = "sleeping for 20000000 us before next ddl";
+  const std::string wait_time_str = "'20s'";
 };
 
 TEST_F(PgConcurrentDDLAnalyzeTest, ConcurrentDDLAnalyze) { testConcurrentDDLAnalyze(); }
+
+TEST_F(PgConcurrentDDLAnalyzeTest, ConcurrentDDLWithinTxnAnalyze) {
+    auto* ts1 = cluster_->tserver_daemons()[0];
+    auto* ts2 = cluster_->tserver_daemons()[1];
+    auto conn1 = ASSERT_RESULT(PGConnBuilder({
+                                                 .host = ts1->bind_host(),
+                                                 .port = ts1->ysql_port(),
+                                             })
+                                   .Connect());
+    auto conn2 = ASSERT_RESULT(PGConnBuilder({
+                                                 .host = ts2->bind_host(),
+                                                 .port = ts2->ysql_port(),
+                                             })
+                                   .Connect());
+    for (int i = 1; i <= 4; i++) {
+      ASSERT_OK(conn1.ExecuteFormat(
+          "CREATE TABLE test$0 (k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS", i));
+      ASSERT_OK(conn1.ExecuteFormat("INSERT INTO test$0 (SELECT * FROM generate_series(1,10))", i));
+    }
+
+    // All DDLs on conn1 are delayed 20s prior to commit. Top-level retries are disabled.
+    ASSERT_OK(conn1.ExecuteFormat(
+        "SET yb_test_delay_next_ddl=$0; SET yb_max_query_layer_retries=0;"
+        "SET log_min_messages=DEBUG1", wait_time_str));
+    ASSERT_OK(conn2.Execute("SET yb_max_query_layer_retries=0; SET log_min_messages=DEBUG1;"));
+
+    TestThreadHolder thread_holder;
+    // Case: A regular DDL within a txn block cannot be interrupted by (auto) ANALYZE
+    thread_holder.AddThreadFunctor([&conn1]() -> void {
+        ASSERT_OK(conn1.Execute("SET yb_use_internal_auto_analyze_service_conn=true"));
+        ASSERT_NOK(conn1.Execute("ANALYZE test1, test2"));
+        ASSERT_OK(conn1.Execute("SET yb_use_internal_auto_analyze_service_conn=false"));
+    });
+    ASSERT_OK(LogWaiter(ts1, wait_string).WaitFor(30s));
+    ASSERT_OK(conn2.Execute("BEGIN"));
+    ASSERT_OK(conn2.Execute("INSERT INTO test3 SELECT i, i FROM generate_series(11,100) i"));
+    ASSERT_OK(conn2.Execute("ALTER TABLE test4 ADD COLUMN v2 INT"));
+    ASSERT_OK(conn2.Execute("COMMIT"));
+    thread_holder.JoinAll();
+}
 
 class PgConcurrentDDLAnalyzeTestTxnDDL : public PgConcurrentDDLAnalyzeTest {
  protected:

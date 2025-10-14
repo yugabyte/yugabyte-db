@@ -387,8 +387,7 @@ Status PgTxnManager::CalculateIsolation(
     IsLocalObjectLockOp is_local_object_lock_op) {
   if (yb_ddl_transaction_block_enabled ? IsDdlModeWithSeparateTransaction() : IsDdlMode()) {
     VLOG_TXN_STATE(2);
-    if (!priority_.has_value())
-      priority_ = NewPriority(txn_priority_requirement);
+    priority_ = NewPriority(txn_priority_requirement);
     return Status::OK();
   }
 
