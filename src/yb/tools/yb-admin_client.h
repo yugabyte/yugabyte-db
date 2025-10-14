@@ -317,7 +317,7 @@ class ClusterAdminClient {
 
   Result<std::string> GetMasterLeaderUuid();
 
-  Status GetYsqlCatalogVersion();
+  Status GetYsqlCatalogVersion(const TypedNamespaceName& ns);
 
   Result<rapidjson::Document> DdlLog();
 

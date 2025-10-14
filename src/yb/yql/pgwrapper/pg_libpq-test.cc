@@ -1066,8 +1066,8 @@ class PgLibPqReadFromSysCatalogTest : public PgLibPqTest {
     auto conn = VERIFY_RESULT(Connect());
     auto client = VERIFY_RESULT(cluster_->CreateClient());
 
-    uint64_t ver_orig;
-    RETURN_NOT_OK(client->GetYsqlCatalogMasterVersion(&ver_orig));
+    uint64_t ver_orig = 0;
+    RETURN_NOT_OK(client->GetYsqlDBCatalogMasterVersion("postgres", &ver_orig));
     auto enable_inval_messages = VERIFY_RESULT(
         cluster_->tablet_server(0)->GetFlag("ysql_yb_enable_invalidation_messages"));
     auto num_iter = FLAGS_num_iter;
@@ -1083,8 +1083,8 @@ class PgLibPqReadFromSysCatalogTest : public PgLibPqTest {
       LOG(INFO) << "ITERATION " << i;
       RETURN_NOT_OK(BumpCatalogVersion(1, &conn, i % 2 == 1 ? "NOSUPERUSER" : "SUPERUSER"));
       LOG(INFO) << "Fetching CatalogVersion. Expecting " << i + ver_orig;
-      uint64_t ver;
-      RETURN_NOT_OK(client->GetYsqlCatalogMasterVersion(&ver));
+      uint64_t ver = 0;
+      RETURN_NOT_OK(client->GetYsqlDBCatalogMasterVersion("postgres", &ver));
       SCHECK_EQ(ver_orig + i, ver, IllegalState, "unexpected master catalog version");
     }
     return Status::OK();
