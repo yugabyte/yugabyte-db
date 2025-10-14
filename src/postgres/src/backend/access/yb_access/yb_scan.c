@@ -256,6 +256,17 @@ YbBindColumnCondBetween(YbScanDesc ybScan,
 						bool start_valid, bool start_inclusive, Datum value,
 						bool end_valid, bool end_inclusive, Datum value_end)
 {
+	/* Special handling of quals on ybctid column. */
+	if (attnum == YBTupleIdAttributeNumber)
+	{
+		HandleYBStatus(YBCPgDmlBindBounds(ybScan->handle,
+										  start_valid ? value : 0,
+										  start_inclusive,
+										  end_valid ? value_end : 0,
+										  end_inclusive));
+		return;
+	}
+
 	Oid			atttypid = ybc_get_atttypid(bind_desc, attnum);
 	Oid			attcollation = YBEncodingCollation(ybScan->handle, attnum,
 												   ybc_get_attcollation(bind_desc,
@@ -730,8 +741,8 @@ ybcFetchNextIndexTuple(YbScanDesc ybScan, ScanDirection dir)
 				tuple = index_form_tuple(RelationGetDescr(index), ivalues, inulls);
 				if (syscols.ybctid != NULL)
 				{
-					INDEXTUPLE_YBCTID(tuple) = PointerGetDatum(syscols.ybctid);
-					ybcUpdateFKCache(ybScan, INDEXTUPLE_YBCTID(tuple));
+					INDEXTUPLE_BASECTID(tuple) = PointerGetDatum(syscols.ybctid);
+					ybcUpdateFKCache(ybScan, INDEXTUPLE_BASECTID(tuple));
 				}
 			}
 			else
@@ -739,12 +750,16 @@ ybcFetchNextIndexTuple(YbScanDesc ybScan, ScanDirection dir)
 				tuple = index_form_tuple(tupdesc, values, nulls);
 				if (syscols.ybbasectid != NULL)
 				{
-					INDEXTUPLE_YBCTID(tuple) = PointerGetDatum(syscols.ybbasectid);
-					ybcUpdateFKCache(ybScan, INDEXTUPLE_YBCTID(tuple));
+					INDEXTUPLE_BASECTID(tuple) = PointerGetDatum(syscols.ybbasectid);
+					ybcUpdateFKCache(ybScan, INDEXTUPLE_BASECTID(tuple));
 				}
+
+				/* Fields used by yb_index_check() */
 				if (syscols.ybuniqueidxkeysuffix != NULL)
-						tuple->t_ybuniqueidxkeysuffix =
-							PointerGetDatum(syscols.ybuniqueidxkeysuffix);
+					tuple->t_ybuniqueidxkeysuffix =
+						PointerGetDatum(syscols.ybuniqueidxkeysuffix);
+				if (syscols.ybctid != NULL)
+					tuple->t_ybindexrowybctid = PointerGetDatum(syscols.ybctid);
 			}
 			break;
 		}

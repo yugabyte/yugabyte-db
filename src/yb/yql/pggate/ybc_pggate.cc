@@ -200,6 +200,7 @@ DECLARE_bool(use_fast_backward_scan);
 DECLARE_uint32(ysql_max_invalidation_message_queue_size);
 DECLARE_uint32(max_replication_slots);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
+DECLARE_int32(timestamp_history_retention_interval_sec);
 
 /* Constants for replication slot LSN types */
 const std::string YBC_LSN_TYPE_SEQUENCE = "SEQUENCE";
@@ -1546,12 +1547,12 @@ YbcStatus YBCPgDmlBindHashCodes(
 }
 
 YbcStatus YBCPgDmlBindBounds(
-    YbcPgStatement handle, const char* lower_bound, size_t lower_bound_len,
-    bool lower_bound_inclusive, const char* upper_bound, size_t upper_bound_len,
-    bool upper_bound_inclusive) {
+    YbcPgStatement handle, uint64_t lower_bound_ybctid, bool lower_bound_inclusive,
+    uint64_t upper_bound_ybctid, bool upper_bound_inclusive) {
   return ToYBCStatus(pgapi->DmlBindBounds(
-      handle, Slice(lower_bound, lower_bound_len), lower_bound_inclusive,
-      Slice(upper_bound, upper_bound_len), upper_bound_inclusive));
+      handle, lower_bound_ybctid ? YbctidAsSlice(lower_bound_ybctid) : Slice(),
+      lower_bound_inclusive, upper_bound_ybctid ? YbctidAsSlice(upper_bound_ybctid) : Slice(),
+      upper_bound_inclusive));
 }
 
 YbcStatus YBCPgDmlBindRange(YbcPgStatement handle,
@@ -2346,6 +2347,8 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
           &FLAGS_ysql_enable_read_request_cache_for_connection_auth,
       .ysql_enable_scram_channel_binding = &FLAGS_ysql_enable_scram_channel_binding,
       .TEST_ysql_conn_mgr_auth_delay_ms = &FLAGS_TEST_ysql_conn_mgr_auth_delay_ms,
+      .timestamp_history_retention_interval_sec =
+          &FLAGS_timestamp_history_retention_interval_sec,
   };
   // clang-format on
   return &accessor;

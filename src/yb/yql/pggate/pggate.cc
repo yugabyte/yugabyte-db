@@ -536,7 +536,7 @@ Result<dockv::KeyBytes> PgApiImpl::TupleIdBuilder::Build(
     }
 
     if (attr->is_null) {
-      values->emplace_back(dockv::KeyEntryType::kNullLow);
+      values->emplace_back(dockv::KeyEntryValue::NullValue(column.desc().sorting_type()));
       continue;
     }
     if (attr->attr_num == std::to_underlying(PgSystemAttrNum::kYBRowId)) {

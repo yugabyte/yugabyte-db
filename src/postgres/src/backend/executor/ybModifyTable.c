@@ -30,6 +30,7 @@
 #include "access/xact.h"
 #include "access/yb_scan.h"
 #include "catalog/catalog.h"
+#include "catalog/heap.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_attribute.h"
 #include "catalog/pg_auth_members_d.h"
@@ -174,23 +175,29 @@ YBCComputeYBTupleIdFromSlot(Relation rel, TupleTableSlot *slot)
 		 * Don't need to fill in for the DocDB RowId column, however we still
 		 * need to add the column to the statement to construct the ybctid.
 		 */
-		if (attnum != YBRowIdAttributeNumber)
+		if (attnum > 0)
 		{
-			Oid			type_id = ((attnum > 0) ?
-								   TupleDescAttr(slot->tts_tupleDescriptor,
-												 attnum - 1)->atttypid :
-								   InvalidOid);
+			Oid			type_id = TupleDescAttr(slot->tts_tupleDescriptor,
+												attnum - 1)->atttypid;
 
 			next_attr->type_entity = YbDataTypeFromOidMod(attnum, type_id);
 			next_attr->collation_id = ybc_get_attcollation(RelationGetDescr(rel), attnum);
 			next_attr->datum = slot_getattr(slot, attnum, &next_attr->is_null);
 		}
-		else
+		else if (attnum == YBRowIdAttributeNumber)
 		{
 			next_attr->datum = 0;
 			next_attr->is_null = false;
 			next_attr->type_entity = NULL;
 			next_attr->collation_id = InvalidOid;
+		}
+		else
+		{
+			Oid			type_id = SystemAttributeDefinition(attnum)->atttypid;
+
+			next_attr->type_entity = YbDataTypeFromOidMod(attnum, type_id);
+			next_attr->collation_id = ybc_get_attcollation(RelationGetDescr(rel), attnum);
+			next_attr->datum = slot_getsysattr(slot, attnum, &next_attr->is_null);
 		}
 		YbcPgColumnInfo column_info = {0};
 
