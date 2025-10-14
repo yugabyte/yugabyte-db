@@ -647,9 +647,9 @@ YBIsReadCommittedSupported()
 	{
 
 #ifdef NDEBUG
-		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_yb_enable_read_committed_isolation", false);
-#else
 		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_yb_enable_read_committed_isolation", true);
+#else
+		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_yb_enable_read_committed_isolation", false);
 #endif
 	}
 	return cached_value;
