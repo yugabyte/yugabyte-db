@@ -65,6 +65,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.TestUtils;
 import org.yb.minicluster.MiniYBClusterBuilder;
+import org.yb.minicluster.MiniYBDaemon;
 import org.yb.minicluster.YsqlSnapshotVersion;
 import org.yb.util.BuildTypeUtil;
 import org.yb.util.CatchingThread;
@@ -1000,6 +1001,11 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
    */
   @Test
   public void upgradeIsIdempotentSingleConn() throws Exception {
+    MiniYBDaemon tserver = (MiniYBDaemon) miniCluster.getTabletServers().values().toArray()[0];
+    String value = tserver.getFlag("ysql_enable_auto_analyze");
+    LOG.info("ysql_enable_auto_analyze has value {}", value);
+    boolean auto_analyze_enabled = value.equals("true");
+
     recreateWithYsqlVersion(YsqlSnapshotVersion.PG15_12);
     createDbConnections();
 
@@ -1027,12 +1033,13 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
             totalNumConns += numConns;
           }
 
-          // We expect to have up to 3 other connections:
+          // We expect to have up to 3 or 4 other connections:
           // * BasePgSQLTest#connection (always active).
           // * An upgrade connection (picks an arbitrary tserver once, and connects/disconnects
           //   to it during work).
           // * Idempotency checking worker connection.
-          assertLessThanOrEqualTo(totalNumConns, 3L);
+          // * Auto analyze connection.
+          assertLessThanOrEqualTo(totalNumConns, auto_analyze_enabled ? 4L : 3L);
           Thread.sleep(500);
         }
       }
