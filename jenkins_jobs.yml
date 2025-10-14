@@ -29,14 +29,14 @@ jobs:
     architecture: aarch64
     release_artifact: true
 
-  - os: mac13
+  - os: mac14
     compiler: clang
     build_type: release
     architecture: arm64
     test_opts: YB_TEST_YB_CONTROLLER=0
     release_artifact: true
 
-  - os: mac13
+  - os: mac14
     compiler: clang
     build_type: release
     architecture: x86_64
