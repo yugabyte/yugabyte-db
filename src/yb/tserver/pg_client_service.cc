@@ -909,7 +909,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
       PgGetCatalogMasterVersionResponsePB* resp,
       rpc::RpcContext* context) {
     uint64_t version;
-    RETURN_NOT_OK(client().GetYsqlCatalogMasterVersion(&version));
+    RETURN_NOT_OK(client().DEPRECATED_GetYsqlCatalogMasterVersion(&version));
     resp->set_version(version);
     return Status::OK();
   }

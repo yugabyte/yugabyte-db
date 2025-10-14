@@ -1197,10 +1197,21 @@ Status add_transaction_tablet_action(
   return Status::OK();
 }
 
-const auto ysql_catalog_version_args = "";
+const auto ysql_catalog_version_args = "[ysql.][<database_name>]";
 Status ysql_catalog_version_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  RETURN_NOT_OK_PREPEND(client->GetYsqlCatalogVersion(), "Unable to get catalog version");
+  if (args.size() >= 2) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  TypedNamespaceName ns;
+  if (args.size() >= 1) {
+    ns = VERIFY_RESULT(ParseNamespaceName(args[0], YQL_DATABASE_PGSQL));
+  }
+
+  RETURN_NOT_OK_PREPEND(
+      client->GetYsqlCatalogVersion(ns),
+      Format("Unable to get catalog version for YSQL database: $0", ns.name));
   return Status::OK();
 }
 

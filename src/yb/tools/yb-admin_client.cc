@@ -2316,9 +2316,17 @@ Status ClusterAdminClient::GetXClusterConfig() {
   return Status::OK();
 }
 
-Status ClusterAdminClient::GetYsqlCatalogVersion() {
+Status ClusterAdminClient::GetYsqlCatalogVersion(const TypedNamespaceName& ns) {
   uint64_t version = 0;
-  RETURN_NOT_OK(yb_client_->GetYsqlCatalogMasterVersion(&version));
+  if (ns.name.empty()) {
+    RETURN_NOT_OK(yb_client_->DEPRECATED_GetYsqlCatalogMasterVersion(&version));
+  } else {
+    SCHECK_EQ(
+        ns.db_type, YQL_DATABASE_PGSQL, InvalidArgument,
+        Format("Wrong database type: $0", YQLDatabase_Name(ns.db_type)));
+    RETURN_NOT_OK(yb_client_->GetYsqlDBCatalogMasterVersion(ns.name, &version));
+  }
+
   cout << "Version: "  << version << endl;
   return Status::OK();
 }
