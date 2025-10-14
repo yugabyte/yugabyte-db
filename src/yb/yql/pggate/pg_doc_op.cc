@@ -252,16 +252,19 @@ Result<PgDocResult*> PgsqlResultStream::GetNextDocResult() {
   return nullptr;
 }
 
-void PgsqlResultStream::EmplaceDocResult(
+uint64_t PgsqlResultStream::EmplaceDocResult(
     rpc::SidecarHolder&& data, const LWPgsqlResponsePB& response) {
   results_queue_.emplace_back(std::move(data), response);
+  uint64_t rows_received = results_queue_.back().row_count();
   VLOG_WITH_FUNC(3) << "Operation " << (op_ ? op_->ToString() : "<empty>")
-                    << " received new response with " << results_queue_.back().row_count()
+                    << " received new response with " << rows_received
                     << " rows. Now has " << results_queue_.size() << " responses in the queue";
   // immediately discard empty response
   if (results_queue_.back().is_eof()) {
     results_queue_.pop_back();
+    return 0;
   }
+  return rows_received;
 }
 
 int64_t PgsqlResultStream::NextRowOrder() {
@@ -286,11 +289,10 @@ Result<PgDocResult*> PgDocResultStream::NextDocResult() {
   return pgsql_op_stream ? pgsql_op_stream->GetNextDocResult() : nullptr;
 }
 
-Status PgDocResultStream::EmplaceOpDocResult(
+Result<uint64_t> PgDocResultStream::EmplaceOpDocResult(
     const PgsqlOpPtr& op, rpc::SidecarHolder&& data, const LWPgsqlResponsePB& response) {
   auto& stream = VERIFY_RESULT_REF(FindReadStream(op, response));
-  stream.EmplaceDocResult(std::move(data), response);
-  return Status::OK();
+  return stream.EmplaceDocResult(std::move(data), response);
 }
 
 Result<bool> PgDocResultStream::GetNextRow(
@@ -745,7 +747,15 @@ Status PgDocOp::ProcessCallResponse(const rpc::CallResponse& response) {
     // so that pg_gate can send responses to the postgres layer in the correct order.
 
     auto rows_data = VERIFY_RESULT(response.GetSidecarHolder(op_response->rows_data_sidecar()));
-    RETURN_NOT_OK(ResultStream().EmplaceOpDocResult(op, std::move(rows_data), *op_response));
+
+    // rows_data contains the row count, as well as the row data received from the docdb in Slice
+    // format. Since EmplaceOpDocResult already takes the slice and extracts the number of rows
+    // received, we are using that get the row count and increment the metric with the row count.
+    auto rows_received = VERIFY_RESULT(
+        ResultStream().EmplaceOpDocResult(op, std::move(rows_data), *op_response));
+
+    DCHECK_NOTNULL(pg_session_)->metrics().RecordStorageRowsReceived(
+        ResolveRelationType(*op, *table_), rows_received);
   }
 
   return Status::OK();

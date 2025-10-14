@@ -6883,6 +6883,7 @@ aggregateStats(YbInstrumentation *instr, const YbcPgExecStats *exec_stats)
 	instr->tbl_read_ops += exec_stats->tables.read_ops;
 	instr->tbl_writes += exec_stats->tables.writes;
 	instr->tbl_reads.rows_scanned += exec_stats->tables.rows_scanned;
+	instr->tbl_reads.rows_received += exec_stats->tables.rows_received;
 
 	/* Secondary Index stats */
 	instr->index_reads.count += exec_stats->indices.reads;
@@ -6890,6 +6891,7 @@ aggregateStats(YbInstrumentation *instr, const YbcPgExecStats *exec_stats)
 	instr->index_read_ops += exec_stats->indices.read_ops;
 	instr->index_writes += exec_stats->indices.writes;
 	instr->index_reads.rows_scanned += exec_stats->indices.rows_scanned;
+	instr->index_reads.rows_received += exec_stats->indices.rows_received;
 
 	/* System Catalog stats */
 	instr->catalog_reads.count += exec_stats->catalog.reads;
@@ -6897,6 +6899,7 @@ aggregateStats(YbInstrumentation *instr, const YbcPgExecStats *exec_stats)
 	instr->catalog_read_ops += exec_stats->catalog.read_ops;
 	instr->catalog_writes += exec_stats->catalog.writes;
 	instr->catalog_reads.rows_scanned += exec_stats->catalog.rows_scanned;
+	instr->catalog_reads.rows_received += exec_stats->catalog.rows_received;
 
 	/* Flush stats */
 	instr->write_flushes.count += exec_stats->num_flushes;
@@ -6920,6 +6923,7 @@ getDiffReadWriteStats(const YbcPgExecReadWriteStats *current,
 			current->writes - old->writes,
 			current->read_wait - old->read_wait,
 			current->rows_scanned - old->rows_scanned,
+			current->rows_received - old->rows_received
 	};
 }
 

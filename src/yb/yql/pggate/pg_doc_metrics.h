@@ -41,6 +41,7 @@ class PgDocMetrics {
   void FlushRequest(uint64_t wait_time);
   void RecordRequestMetrics(const LWPgsqlRequestMetricsPB& metrics, bool is_read);
   void RecordStorageRowsRead(TableType relation, uint64_t row);
+  void RecordStorageRowsReceived(TableType relation, uint64_t row);
   void RecordRowRemovedByIndexRecheck();
 
   // A helper function to compute the wait time of a function

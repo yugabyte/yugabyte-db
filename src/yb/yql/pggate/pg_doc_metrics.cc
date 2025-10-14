@@ -37,6 +37,10 @@ inline void IncRowsScanned(YbcPgExecReadWriteStats* stat, uint64_t count) {
   stat->rows_scanned += count;
 }
 
+inline void IncRowsReceived(YbcPgExecReadWriteStats* stat, uint64_t count) {
+  stat->rows_received += count;
+}
+
 YbcPgExecReadWriteStats& GetStat(YbcPgExecStatsState* state, TableType relation) {
   switch (relation) {
     case TableType::SYSTEM:
@@ -138,6 +142,10 @@ void PgDocMetrics::RecordRequestMetrics(const LWPgsqlRequestMetricsPB& metrics, 
 
 void PgDocMetrics::RecordStorageRowsRead(TableType relation, uint64_t rows) {
   IncRowsScanned(&GetStat(&state_, relation), rows);
+}
+
+void PgDocMetrics::RecordStorageRowsReceived(TableType relation, uint64_t rows) {
+  IncRowsReceived(&GetStat(&state_, relation), rows);
 }
 
 void PgDocMetrics::RecordRowRemovedByIndexRecheck() {
