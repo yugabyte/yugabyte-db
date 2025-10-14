@@ -100,7 +100,9 @@ std::unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
     const ReadOperationData& read_operation_data,
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter = nullptr,
     const Slice* iterate_upper_bound = nullptr,
-    FastBackwardScan use_fast_backward_scan = FastBackwardScan::kFalse);
+    FastBackwardScan use_fast_backward_scan = FastBackwardScan::kFalse,
+    AvoidUselessNextInsteadOfSeek avoid_useless_next_instead_of_seek =
+        AvoidUselessNextInsteadOfSeek::kFalse);
 
 // Set `cache_restart_block_keys` to kTrue to allow underlying block iterator to cache block
 // entries per restart block. This could be useful for a backward scan, but should not be used for

@@ -17,6 +17,7 @@
 #include "yb/common/read_hybrid_time.h"
 
 #include "yb/docdb/bounded_rocksdb_iterator.h"
+#include "yb/docdb/iter_util.h"
 #include "yb/docdb/transaction_status_cache.h"
 
 #include "yb/dockv/key_bytes.h"
@@ -92,11 +93,12 @@ struct EncodedReadHybridTime {
 class IntentAwareIterator final {
  public:
   IntentAwareIterator(
-      const DocDB& doc_db,
-      const rocksdb::ReadOptions& read_opts,
+      const DocDB& doc_db, const rocksdb::ReadOptions& read_opts,
       const ReadOperationData& read_operation_data,
       const TransactionOperationContext& txn_op_context,
-      FastBackwardScan use_fast_backward_scan = FastBackwardScan::kFalse);
+      FastBackwardScan use_fast_backward_scan = FastBackwardScan::kFalse,
+      AvoidUselessNextInsteadOfSeek avoid_useless_next_instead_of_seek =
+          AvoidUselessNextInsteadOfSeek::kFalse);
 
   IntentAwareIterator(const IntentAwareIterator& other) = delete;
   void operator=(const IntentAwareIterator& other) = delete;
@@ -363,8 +365,8 @@ class IntentAwareIterator final {
   const EncodedReadHybridTime encoded_read_time_;
 
   const TransactionOperationContext txn_op_context_;
-  BoundedRocksDbIterator intent_iter_;
-  BoundedRocksDbIterator iter_;
+  OptimizedRocksDbIterator<BoundedRocksDbIterator> intent_iter_;
+  OptimizedRocksDbIterator<BoundedRocksDbIterator> iter_;
 
   // regular_value_ contains value for the current entry from regular db.
   // Empty if there is no current value in regular db.
@@ -400,7 +402,7 @@ class IntentAwareIterator final {
   // Reusable buffer to prepare seek key to avoid reallocating temporary buffers in critical paths.
   KeyBuffer seek_buffer_;
   FetchedEntry entry_;
-  BoundedRocksDbIterator* entry_source_ = nullptr;
+  OptimizedRocksDbIterator<BoundedRocksDbIterator>* entry_source_ = nullptr;
 
 #ifndef NDEBUG
   void DebugSeekTriggered();

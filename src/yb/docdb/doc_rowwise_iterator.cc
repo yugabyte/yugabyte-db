@@ -142,7 +142,8 @@ Status DocRowwiseIterator::InitForTableType(
   CheckInitOnce();
   table_type_ = table_type;
   ignore_ttl_ = (table_type_ == TableType::PGSQL_TABLE_TYPE);
-  RETURN_NOT_OK(InitIterator(BloomFilterOptions::Inactive()));
+  RETURN_NOT_OK(
+      InitIterator(BloomFilterOptions::Inactive(), AvoidUselessNextInsteadOfSeek::kFalse));
 
   if (sub_doc_key.empty() || add_table_prefix_to_key) {
     dockv::DocKeyEncoder(&row_key_).Schema(*schema_);
@@ -160,7 +161,8 @@ Status DocRowwiseIterator::InitForTableType(
 
 Status DocRowwiseIterator::Init(
     const qlexpr::YQLScanSpec& doc_spec, SkipSeek skip_seek,
-    AllowVariableBloomFilter allow_variable_bloom_filter) {
+    AllowVariableBloomFilter allow_variable_bloom_filter,
+    AvoidUselessNextInsteadOfSeek avoid_useless_next_instead_of_seek) {
   table_type_ = doc_spec.client_type() == YQL_CLIENT_CQL ? TableType::YQL_TABLE_TYPE
                                                          : TableType::PGSQL_TABLE_TYPE;
   ignore_ttl_ = table_type_ == TableType::PGSQL_TABLE_TYPE;
@@ -210,7 +212,8 @@ Status DocRowwiseIterator::Init(
       allow_variable_bloom_filter));
 
   RETURN_NOT_OK(InitIterator(
-      scan_choices_->BloomFilterOptions(), doc_spec.QueryId(), CreateFileFilter(doc_spec)));
+      scan_choices_->BloomFilterOptions(), avoid_useless_next_instead_of_seek, doc_spec.QueryId(),
+      CreateFileFilter(doc_spec)));
 
   if (!skip_seek) {
     if (is_forward_scan_) {
@@ -504,6 +507,7 @@ Result<DocHybridTime> DocRowwiseIterator::GetTableTombstoneTime(Slice root_doc_k
 
 Status DocRowwiseIterator::InitIterator(
     const BloomFilterOptions& bloom_filter,
+    AvoidUselessNextInsteadOfSeek avoid_useless_next_instead_of_seek,
     const rocksdb::QueryId query_id,
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter) {
   if (table_type_ == TableType::PGSQL_TABLE_TYPE) {
@@ -528,7 +532,8 @@ Status DocRowwiseIterator::InitIterator(
       read_operation_data_,
       file_filter,
       nullptr /* iterate_upper_bound */,
-      FastBackwardScan{use_fast_backward_scan_});
+      FastBackwardScan{use_fast_backward_scan_},
+      avoid_useless_next_instead_of_seek);
   InitResult();
 
   const auto scan_choices_has_upperbound =

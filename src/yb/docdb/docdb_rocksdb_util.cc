@@ -327,7 +327,8 @@ unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
     const ReadOperationData& read_operation_data,
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter,
     const Slice* iterate_upper_bound,
-    const FastBackwardScan use_fast_backward_scan) {
+    const FastBackwardScan use_fast_backward_scan,
+    const AvoidUselessNextInsteadOfSeek avoid_useless_next_instead_of_seek) {
   // Current policy is to enable restart block keys caching only when fast backward scan is enabled.
   const auto cache_restart_block_keys = rocksdb::CacheRestartBlockKeys { use_fast_backward_scan };
 
@@ -336,7 +337,8 @@ unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
       doc_db.regular, bloom_filter, query_id, std::move(file_filter), iterate_upper_bound,
       cache_restart_block_keys, GetRegularDBStatistics(read_operation_data.statistics));
   return std::make_unique<IntentAwareIterator>(
-      doc_db, read_opts, read_operation_data, txn_op_context, use_fast_backward_scan);
+      doc_db, read_opts, read_operation_data, txn_op_context,
+      use_fast_backward_scan, avoid_useless_next_instead_of_seek);
 }
 
 BoundedRocksDbIterator CreateIntentsIteratorWithHybridTimeFilter(
