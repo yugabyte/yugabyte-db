@@ -823,7 +823,8 @@ uint16_t YBCCompoundHash(const char *key, size_t length);
 void YBCPgDeleteFromForeignKeyReferenceCache(YbcPgOid table_relfilenode_oid, uint64_t ybctid);
 void YBCPgAddIntoForeignKeyReferenceCache(YbcPgOid table_relfilenode_oid, uint64_t ybctid);
 YbcStatus YBCPgForeignKeyReferenceCacheDelete(const YbcPgYBTupleIdDescriptor* descr);
-YbcStatus YBCForeignKeyReferenceExists(const YbcPgYBTupleIdDescriptor* descr, bool* res);
+YbcStatus YBCForeignKeyReferenceExists(
+    const YbcPgYBTupleIdDescriptor* descr, bool relation_is_region_local, bool* res);
 YbcStatus YBCAddForeignKeyReferenceIntent(
     const YbcPgYBTupleIdDescriptor* descr, bool relation_is_region_local,
     bool is_deferred_trigger);

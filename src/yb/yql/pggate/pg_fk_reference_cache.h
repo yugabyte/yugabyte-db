@@ -42,7 +42,8 @@ class PgFKReferenceCache {
   void Clear();
   void DeleteReference(const LightweightTableYbctid& key);
   void AddReference(const LightweightTableYbctid& key);
-  Result<bool> IsReferenceExists(PgOid database_id, const LightweightTableYbctid& key);
+  Result<bool> IsReferenceExists(
+      PgOid database_id, const LightweightTableYbctid& key, bool is_region_local);
   Status AddIntent(
       PgOid database_id, const LightweightTableYbctid& key, const IntentOptions& options);
   void OnDeferredTriggersProcessingStarted();

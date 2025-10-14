@@ -2185,9 +2185,9 @@ ReadHybridTime PgApiImpl::GetCatalogReadTime() const {
 }
 
 Result<bool> PgApiImpl::ForeignKeyReferenceExists(
-    PgOid table_id, const Slice& ybctid, PgOid database_id) {
+    PgOid table_id, const Slice& ybctid, bool is_region_local, PgOid database_id) {
   return fk_reference_cache_.IsReferenceExists(
-      database_id, LightweightTableYbctid{table_id, ybctid});
+      database_id, LightweightTableYbctid{table_id, ybctid}, is_region_local);
 }
 
 Status PgApiImpl::AddForeignKeyReferenceIntent(

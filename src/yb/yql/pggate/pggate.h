@@ -740,7 +740,8 @@ class PgApiImpl {
   // Foreign key reference caching.
   void DeleteForeignKeyReference(PgOid table_id, const Slice& ybctid);
   void AddForeignKeyReference(PgOid table_id, const Slice& ybctid);
-  Result<bool> ForeignKeyReferenceExists(PgOid table_id, const Slice& ybctid, PgOid database_id);
+  Result<bool> ForeignKeyReferenceExists(
+      PgOid table_id, const Slice& ybctid, bool is_region_local, PgOid database_id);
   Status AddForeignKeyReferenceIntent(
     PgOid table_id, const Slice& ybctid, const PgFKReferenceCache::IntentOptions& options,
     PgOid database_id);
