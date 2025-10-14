@@ -92,6 +92,9 @@ DEFINE_RUNTIME_uint32(ysql_auto_analyze_min_cooldown_per_table,
                        10000,
                        "The minimum cooldown time in milliseconds for the auto analyze service "
                        "to trigger an ANALYZE on a table again after it has been analyzed.");
+DEFINE_RUNTIME_uint32(ysql_auto_analyze_db_connect_timeout_ms, 5000,
+                      "The timeout when trying to connect to the local PG instance for the PG "
+                      "auto analyze service.");
 DEFINE_test_flag(uint64, ysql_auto_analyze_max_history_entries, 5,
                  "The maximum number of analyze history entries to keep for each table.");
 DECLARE_bool(ysql_enable_auto_analyze);
@@ -758,7 +761,9 @@ Result<pgwrapper::PGConn> PgAutoAnalyzeService::EstablishDBConnection(
     bool* is_deleted_or_renamed) {
   // Connect to PG database.
   const auto& dbname = namespace_id_to_name_[namespace_id];
-  auto conn_result = connect_to_pg_func_(dbname, std::nullopt);
+  auto conn_result = connect_to_pg_func_(
+      dbname, CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(GetAtomicFlag(
+                                           &FLAGS_ysql_auto_analyze_db_connect_timeout_ms)));
   // If connection setup fails,  continue
   // doing ANALYZEs on tables in other databases.
   if (!conn_result) {
