@@ -1186,9 +1186,20 @@ Status YBClient::ReservePgsqlOids(
   return Status::OK();
 }
 
-Status YBClient::GetYsqlCatalogMasterVersion(uint64_t *ysql_catalog_version) {
+Status YBClient::DEPRECATED_GetYsqlCatalogMasterVersion(uint64_t *ysql_catalog_version) {
   GetYsqlCatalogConfigRequestPB req;
   GetYsqlCatalogConfigResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Client, req, resp, GetYsqlCatalogConfig);
+  *ysql_catalog_version = resp.version();
+  return Status::OK();
+}
+
+Status YBClient::GetYsqlDBCatalogMasterVersion(
+    const string& database_name, uint64_t *ysql_catalog_version) {
+  GetYsqlCatalogConfigRequestPB req;
+  GetYsqlCatalogConfigResponsePB resp;
+  req.mutable_namespace_()->set_database_type(YQL_DATABASE_PGSQL);
+  req.mutable_namespace_()->set_name(database_name);
   CALL_SYNC_LEADER_MASTER_RPC_EX(Client, req, resp, GetYsqlCatalogConfig);
   *ysql_catalog_version = resp.version();
   return Status::OK();

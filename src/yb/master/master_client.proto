@@ -212,6 +212,7 @@ message ReservePgsqlOidsResponsePB {
 }
 
 message GetYsqlCatalogConfigRequestPB {
+  optional NamespaceIdentifierPB namespace = 1;
 }
 
 message GetYsqlCatalogConfigResponsePB {
