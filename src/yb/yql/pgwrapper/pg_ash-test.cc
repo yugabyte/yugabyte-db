@@ -13,6 +13,7 @@
 #include "yb/ash/wait_state.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/debug.h"
 #include "yb/util/test_thread_holder.h"
 
 #include "yb/yql/pgwrapper/libpq_test_base.h"
@@ -859,9 +860,8 @@ TEST_F(PgAshTest, TestTServerMetadataSerializer) {
   static constexpr auto kTableName = "test_table";
 
   ASSERT_OK(conn_->Execute(Format("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTableName)));
-  for (int i = 0; i < 1000; ++i) {
-    ASSERT_OK(conn_->Execute(Format("INSERT INTO $0 VALUES ($1, $1)", kTableName, i)));
-  }
+  ASSERT_OK(conn_->Execute(Format("INSERT INTO $0 SELECT i, i FROM generate_series($1, $2) AS i",
+      kTableName, 1, (kIsDebug ? 100000 : 10000000))));
 
   auto query_id = ASSERT_RESULT(conn_->FetchRow<int64_t>(
       "SELECT queryid FROM pg_stat_statements WHERE query LIKE 'INSERT INTO%'"));
