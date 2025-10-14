@@ -171,7 +171,8 @@ Result<std::unique_ptr<YQLRowwiseIteratorIf>> QLRocksDBStorage::GetIteratorForYb
         lower_doc_key,
         upper_doc_key),
       skip_seek,
-      AllowVariableBloomFilter::kTrue));
+      AllowVariableBloomFilter::kTrue,
+      AvoidUselessNextInsteadOfSeek::kTrue));
   return std::move(doc_iter);
 }
 

@@ -76,7 +76,9 @@ class DocRowwiseIterator final : public YQLRowwiseIteratorIf {
   // Init QL read scan.
   Status Init(
       const qlexpr::YQLScanSpec& spec, SkipSeek skip_seek = SkipSeek::kFalse,
-      AllowVariableBloomFilter allow_variable_bloom_filter = AllowVariableBloomFilter::kFalse);
+      AllowVariableBloomFilter allow_variable_bloom_filter = AllowVariableBloomFilter::kFalse,
+      AvoidUselessNextInsteadOfSeek avoid_useless_next_instead_of_seek =
+          AvoidUselessNextInsteadOfSeek::kFalse);
 
   bool IsFetchedRowStatic() const override;
 
@@ -175,6 +177,7 @@ class DocRowwiseIterator final : public YQLRowwiseIteratorIf {
 
   Status InitIterator(
       const BloomFilterOptions& bloom_filter,
+      AvoidUselessNextInsteadOfSeek avoid_useless_next_instead_of_seek,
       const rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       std::shared_ptr<rocksdb::ReadFileFilter> file_filter = nullptr);
 

@@ -18,6 +18,7 @@
 #include "yb/common/ql_value.h"
 #include "yb/common/transaction-test-util.h"
 
+#include "yb/docdb/bounded_rocksdb_iterator.h"
 #include "yb/docdb/cql_operation.h"
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
@@ -396,8 +397,9 @@ TEST_F(DocOperationTest, TestRedisSetKVWithTTL) {
   // Read key from rocksdb.
   const auto doc_key = DocKey::FromRedisKey(123, "abc").Encode();
   rocksdb::ReadOptions read_opts;
-  auto iter = std::unique_ptr<rocksdb::Iterator>(db->NewIterator(read_opts));
-  ROCKSDB_SEEK(iter.get(), doc_key.AsSlice());
+  auto iter = OptimizedRocksDbIterator<BoundedRocksDbIterator>(
+      BoundedRocksDbIterator(db, read_opts, &KeyBounds::kNoBounds));
+  ROCKSDB_SEEK(iter, doc_key.AsSlice());
   ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
 
   // Verify correct ttl.
