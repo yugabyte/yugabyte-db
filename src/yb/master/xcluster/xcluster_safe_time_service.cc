@@ -133,10 +133,11 @@ void XClusterSafeTimeService::ProcessTaskPeriodically() {
   }
 }
 
-Status XClusterSafeTimeService::GetXClusterSafeTimeInfoFromMap(
-    const LeaderEpoch& epoch, GetXClusterSafeTimeResponsePB* resp) {
+Status XClusterSafeTimeService::ComputeAndGetXClusterSafeTimeInfo(
+    const LeaderEpoch& epoch, GetXClusterSafeTimeResponsePB& resp) {
   // Recompute safe times again before fetching maps.
   RETURN_NOT_OK(ComputeSafeTime(epoch.leader_term));
+
   const auto& current_safe_time_map = GetXClusterNamespaceToSafeTimeMap();
   XClusterNamespaceToSafeTimeMap max_safe_time_map;
   {
@@ -147,7 +148,7 @@ Status XClusterSafeTimeService::GetXClusterSafeTimeInfoFromMap(
 
   for (const auto& [namespace_id, safe_time] : current_safe_time_map) {
     // First set all the current safe time values.
-    auto entry = resp->add_namespace_safe_times();
+    auto entry = resp.add_namespace_safe_times();
     entry->set_namespace_id(namespace_id);
     entry->set_safe_time_ht(safe_time.ToUint64());
     // Safe time lag is calculated as (current time - current safe time).
@@ -177,7 +178,7 @@ Status XClusterSafeTimeService::GetXClusterSafeTimeInfoFromMap(
 }
 
 Result<XClusterNamespaceToSafeTimeMap> XClusterSafeTimeService::GetFilteredXClusterSafeTimeMap(
-    const XClusterSafeTimeFilter& filter) {
+    const XClusterSafeTimeFilter& filter) const {
   switch (filter) {
     case XClusterSafeTimeFilter::NONE:
       return GetXClusterNamespaceToSafeTimeMap();
@@ -189,8 +190,7 @@ Result<XClusterNamespaceToSafeTimeMap> XClusterSafeTimeService::GetFilteredXClus
 
 // If the filter removes all tables, then this returns master leader's safe time.
 Result<HybridTime> XClusterSafeTimeService::GetXClusterSafeTimeForNamespace(
-    const int64_t leader_term, const NamespaceId& namespace_id,
-    const XClusterSafeTimeFilter& filter) {
+    const NamespaceId& namespace_id, const XClusterSafeTimeFilter& filter) const {
   SharedLock lock(mutex_);
   SCHECK(safe_time_table_ready_, IllegalState, "Safe time table is not ready yet.");
 
@@ -603,7 +603,7 @@ Result<bool> XClusterSafeTimeService::CreateTableRequired() {
   return !producer_tablet_namespace_map_.empty();
 }
 
-XClusterNamespaceToSafeTimeMap XClusterSafeTimeService::GetXClusterNamespaceToSafeTimeMap() {
+XClusterNamespaceToSafeTimeMap XClusterSafeTimeService::GetXClusterNamespaceToSafeTimeMap() const {
   return master_->xcluster_manager()->GetXClusterNamespaceToSafeTimeMap();
 }
 

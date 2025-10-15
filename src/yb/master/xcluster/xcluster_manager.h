@@ -109,8 +109,7 @@ class XClusterManager : public XClusterManagerIf,
       GetXClusterSafeTimeForNamespaceResponsePB* resp, rpc::RpcContext* rpc,
       const LeaderEpoch& epoch);
   Result<HybridTime> GetXClusterSafeTimeForNamespace(
-      const LeaderEpoch& epoch, const NamespaceId& namespace_id,
-      const XClusterSafeTimeFilter& filter) override;
+      const NamespaceId& namespace_id, const XClusterSafeTimeFilter& filter) const override;
 
   Status RefreshXClusterSafeTimeMap(const LeaderEpoch& epoch) override;
 
