@@ -1856,8 +1856,8 @@ Status RaftConsensus::CheckLeaderRequestUnlocked(
     // If the index is in our log but the terms are not the same abort down to the leader's
     // preceding id.
     if (term_mismatch) {
-      // Since we are holding the lock ApplyPendingOperationsUnlocked would be invoked between
-      // those two.
+      // Since we are holding the lock ApplyPendingOperationsUnlocked will not be invoked between
+      // these two calls.
       RETURN_NOT_OK(state_->AbortOpsAfterUnlocked(deduped_req->preceding_op_id.index));
       RETURN_NOT_OK(log_->ResetLastSyncedEntryOpId(deduped_req->preceding_op_id));
     }
