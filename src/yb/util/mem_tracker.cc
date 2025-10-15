@@ -131,12 +131,13 @@ METRIC_DEFINE_counter(server, mem_tracker_gc_tcmalloc_bytes_released,
                       "Only positive values are recorded; concurrent allocations during GC "
                       "may cause negative apparent releases which are not counted.");
 
-METRIC_DEFINE_histogram(server, mem_tracker_gc_tcmalloc_bytes_per_call,
-                        "MemTracker GC TCMalloc Bytes Per Call",
+METRIC_DEFINE_histogram(server, mem_tracker_gc_tcmalloc_bytes_per_gc,
+                        "MemTracker GC TCMalloc Bytes Per GC",
                         yb::MetricUnit::kBytes,
-                        "Histogram of bytes released per call to MemTracker::GcTcmallocIfNeeded(). "
-                        "Only positive values are recorded; concurrent allocations during GC "
-                        "may cause negative apparent releases which are recorded as 0.",
+                        "Histogram of bytes released per garbage collection event in "
+                        "MemTracker::GcTcmallocIfNeeded(). Only records when GC actually occurs. "
+                        "Concurrent allocations during GC may cause negative apparent releases "
+                        "which are not recorded.",
                         60000000LU /* 60MB as max value */, 2 /* 2 digits precision */);
 
 namespace yb {
@@ -797,12 +798,8 @@ void MemTracker::GcTcmallocIfNeeded() {
     if (gc_tcmalloc_bytes_released_metric_ && bytes_released > 0) {
       gc_tcmalloc_bytes_released_metric_->IncrementBy(bytes_released);
     }
-    if (gc_tcmalloc_bytes_per_call_metric_ && bytes_released > 0) {
-      gc_tcmalloc_bytes_per_call_metric_->Increment(bytes_released);
-    }
-  } else {
-    if (gc_tcmalloc_bytes_per_call_metric_) {
-      gc_tcmalloc_bytes_per_call_metric_->Increment(0);
+    if (gc_tcmalloc_bytes_per_gc_metric_ && bytes_released > 0) {
+      gc_tcmalloc_bytes_per_gc_metric_->Increment(bytes_released);
     }
   }
 #endif  // YB_TCMALLOC_ENABLED
@@ -892,12 +889,12 @@ void MemTracker::TEST_SetReleasedMemorySinceGC(int64_t value) {
 
 scoped_refptr<Counter> MemTracker::gc_tcmalloc_calls_metric_;
 scoped_refptr<Counter> MemTracker::gc_tcmalloc_bytes_released_metric_;
-scoped_refptr<Histogram> MemTracker::gc_tcmalloc_bytes_per_call_metric_;
+scoped_refptr<Histogram> MemTracker::gc_tcmalloc_bytes_per_gc_metric_;
 
 void MemTracker::InitializeGcMetrics(const scoped_refptr<MetricEntity>& metric_entity) {
   gc_tcmalloc_calls_metric_ = METRIC_mem_tracker_gc_tcmalloc_calls.Instantiate(metric_entity);
   gc_tcmalloc_bytes_released_metric_ = METRIC_mem_tracker_gc_tcmalloc_bytes_released.Instantiate(metric_entity);
-  gc_tcmalloc_bytes_per_call_metric_ = METRIC_mem_tracker_gc_tcmalloc_bytes_per_call.Instantiate(metric_entity);
+  gc_tcmalloc_bytes_per_gc_metric_ = METRIC_mem_tracker_gc_tcmalloc_bytes_per_gc.Instantiate(metric_entity);
 }
 
 scoped_refptr<MetricEntity> MemTracker::metric_entity() const {

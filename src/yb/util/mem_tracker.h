@@ -441,7 +441,7 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
  private:
   static scoped_refptr<Counter> gc_tcmalloc_calls_metric_;
   static scoped_refptr<Counter> gc_tcmalloc_bytes_released_metric_;
-  static scoped_refptr<Histogram> gc_tcmalloc_bytes_per_call_metric_;
+  static scoped_refptr<Histogram> gc_tcmalloc_bytes_per_gc_metric_;
 
   template<class GC>
   using GarbageCollectorsContainer = boost::container::small_vector<GC, 8>;
