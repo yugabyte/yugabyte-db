@@ -17,6 +17,7 @@
 
 #include "yb/ash/wait_state.h"
 
+#include "yb/common/common_net.h"
 #include "yb/common/transaction.h"
 
 #include "yb/client/client.h"
@@ -109,6 +110,7 @@ class TransactionTableState {
     std::lock_guard lock(mutex_);
     if (!initialized_.load() || status_tablets_version_ < new_version) {
       tablets_ = std::move(tablets);
+      tablespace_contains_tablespace_.clear();
       has_region_local_tablets_.store(!tablets_.region_local_tablets.empty());
       status_tablets_version_ = new_version;
       initialized_.store(true);
@@ -122,6 +124,24 @@ class TransactionTableState {
   bool HasAnyTransactionLocalStatusTablets(PgTablespaceOid tablespace_oid) {
     SharedLock lock(mutex_);
     return tablets_.tablespaces.contains(tablespace_oid);
+  }
+
+  bool TablespaceContainsTablespace(PgTablespaceOid lhs, PgTablespaceOid rhs) {
+    if (lhs == rhs) {
+      return true;
+    }
+
+    {
+      SharedLock lock(mutex_);
+      auto itr = tablespace_contains_tablespace_.find({lhs, rhs});
+      if (PREDICT_TRUE(itr != tablespace_contains_tablespace_.end())) {
+        return itr->second;
+      }
+    }
+
+    std::lock_guard lock(mutex_);
+    return tablespace_contains_tablespace_.try_emplace(
+        {lhs, rhs}, CalculateTablespaceContainsTablespace(lhs, rhs)).first->second;
   }
 
   uint64_t GetStatusTabletsVersion() EXCLUDES(mutex_) {
@@ -184,6 +204,26 @@ class TransactionTableState {
     FATAL_INVALID_ENUM_VALUE(TransactionLocality, locality.locality);
   }
 
+  bool CalculateTablespaceContainsTablespace(PgTablespaceOid lhs, PgTablespaceOid rhs)
+      REQUIRES(mutex_) {
+    // If a tablespace oid is not in tablets_.tablespaces, that means that we have no status
+    // tablet information for the tablespace, and thus are not able to meaningfully process a
+    // tablespace-local(tablespace) locality. So we treat such a case as global, and thus:
+    // - LHS not found: LHS is global => contains everything
+    // - LHS found, RHS not found: RHS is global => does not contain LHS (which is not global)
+    auto lhs_itr = tablets_.tablespaces.find(lhs);
+    if (lhs_itr == tablets_.tablespaces.end()) {
+      return true;
+    }
+    auto rhs_itr = tablets_.tablespaces.find(rhs);
+    if (rhs_itr == tablets_.tablespaces.end()) {
+      return false;
+    }
+
+    return PlacementInfoContainsPlacementInfo(
+        lhs_itr->second.placement_info, rhs_itr->second.placement_info);
+  }
+
   LocalTabletFilter local_tablet_filter_;
 
   // Set to true once transaction tablets have been loaded at least once. global_tablets
@@ -200,6 +240,15 @@ class TransactionTableState {
   uint64_t status_tablets_version_ GUARDED_BY(mutex_) = 0;
 
   TransactionStatusTablets tablets_ GUARDED_BY(mutex_);
+
+  struct TablespaceOidPair {
+    PgTablespaceOid first;
+    PgTablespaceOid second;
+
+    bool operator==(const TablespaceOidPair&) const = default;
+    YB_STRUCT_DEFINE_HASH(TablespaceOidPair, first, second);
+  };
+  std::unordered_map<TablespaceOidPair, bool> tablespace_contains_tablespace_ GUARDED_BY(mutex_);
 };
 
 const CloudInfoPB& GetPlacementFromGFlags() {
@@ -415,6 +464,10 @@ class TransactionManager::Impl {
     return table_state_.HasAnyTransactionLocalStatusTablets(tablespace_oid);
   }
 
+  bool TablespaceContainsTablespace(PgTablespaceOid lhs, PgTablespaceOid rhs) {
+    return table_state_.TablespaceContainsTablespace(lhs, rhs);
+  }
+
   uint64_t GetLoadedStatusTabletsVersion() {
     return table_state_.GetStatusTabletsVersion();
   }
@@ -501,6 +554,10 @@ bool TransactionManager::RegionLocalTransactionsPossible() {
 
 bool TransactionManager::TablespaceLocalTransactionsPossible(PgTablespaceOid tablespace_oid) {
   return impl_->TablespaceLocalTransactionsPossible(tablespace_oid);
+}
+
+bool TransactionManager::TablespaceContainsTablespace(PgTablespaceOid lhs, PgTablespaceOid rhs) {
+  return impl_->TablespaceContainsTablespace(lhs, rhs);
 }
 
 uint64_t TransactionManager::GetLoadedStatusTabletsVersion() {

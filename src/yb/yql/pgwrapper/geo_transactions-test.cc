@@ -940,7 +940,7 @@ class GeoTransactionsTablespaceLocalityTest : public GeoTransactionsTest {
             },
             {
               "cloud": "cloud0",
-              "region": "rack2",
+              "region": "rack3",
               "zone": "zone",
               "min_num_replicas": 1
             }
@@ -959,7 +959,7 @@ class GeoTransactionsTablespaceLocalityTest : public GeoTransactionsTest {
             },
             {
               "cloud": "cloud0",
-              "region": "rack3",
+              "region": "rack2",
               "zone": "zone",
               "min_num_replicas": 1
             }
@@ -1125,6 +1125,32 @@ TEST_F(GeoTransactionsTablespaceLocalityTest, TestFK) {
       kTablespace1, kTableName, kTableNameFK,
       SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
       ExpectedLocality::kGlobal);
+}
+
+TEST_F(GeoTransactionsTablespaceLocalityTest, TestLargeToSmall) {
+  constexpr int kTablesPerRegion = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_promote_nonlocal_transactions_to_global) = false;
+  SetupTablesAndTablespaces(kTablesPerRegion);
+
+  CheckSuccess(
+      kTablespace1, kTableName, GetTableName(kLocalRegion),
+      SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      ExpectedLocality::kLocal);
+  CheckAbort(
+      kTableName, GetTableName(kOtherRegion),
+      SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      1 /* num_aborts */);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_promote_nonlocal_transactions_to_global) = true;
+
+  CheckSuccess(
+      kTablespace1, kTableName, GetTableName(kLocalRegion),
+      SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      ExpectedLocality::kLocal);
+  CheckSuccess(
+      kTablespace1, kTableName, GetTableName(kOtherRegion),
+      SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      ExpectedLocality::kNoCheck);
 }
 
 TEST_F(GeoTransactionsTablespaceLocalityTest, TestAlterSetTablespace) {

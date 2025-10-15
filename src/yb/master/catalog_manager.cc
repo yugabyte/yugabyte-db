@@ -80,6 +80,7 @@
 #include "yb/common/colocated_util.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/common_flags.h"
+#include "yb/common/common_net.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/common/common_util.h"
 #include "yb/common/constants.h"
@@ -5098,9 +5099,8 @@ CatalogManager::GetPlacementLocalTransactionStatusTables(const CloudInfoPB& plac
 
     if ((FLAGS_TEST_consider_all_local_transaction_tables_local &&
          !txn_table_placement->placement_blocks().empty()) ||
-        CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(*txn_table_placement, placement)) {
-      bool is_region_local =
-          !CatalogManagerUtil::DoesPlacementInfoSpanMultipleRegions(*txn_table_placement);
+        PlacementInfoContainsCloudInfo(*txn_table_placement, placement)) {
+      bool is_region_local = !PlacementInfoSpansMultipleRegions(*txn_table_placement);
       out_tables->push_back({table, is_region_local});
     }
   }
