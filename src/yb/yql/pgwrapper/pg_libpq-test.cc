@@ -5046,6 +5046,15 @@ TEST_F_EX(PgLibPqTest, ConcurrentAnalyzeWithDDL, PgLibPqTestTableLocksDisabled) 
   auto conn = ASSERT_RESULT(Connect());
   auto conn2 = ASSERT_RESULT(Connect());
 
+  // Create a few tables so ANALYZE has some work to do.
+  for (int i = 1; i <= 3; i++) {
+    ASSERT_OK(conn2.Execute(
+        "CREATE TABLE test" + std::to_string(i) +
+        "(k SERIAL PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+    ASSERT_OK(conn2.Execute(
+        "INSERT INTO test" + std::to_string(i) + "(v) (SELECT * FROM generate_series(1,10))"));
+  }
+
   std::atomic<bool> stop = false;
   // Execute concurrent DDLs in separate threads.
   std::thread analyze_thread([&conn, &stop] {

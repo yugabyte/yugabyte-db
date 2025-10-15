@@ -2685,6 +2685,8 @@ YBAddDdlTxnState(YbDdlMode mode)
 	 */
 	if (ddl_transaction_state.use_regular_txn_block)
 	{
+		elog(DEBUG3, "YBAddDdlTxnState: adding mode = %d", mode);
+
 		/*
 		 * We can arrive here in two cases:
 		 * 1. When there has been a DDL statement before in the transaction
@@ -2717,6 +2719,8 @@ YBAddDdlTxnState(YbDdlMode mode)
 	HandleYBStatus(YBCPgSetDdlStateInPlainTransaction());
 	ddl_transaction_state.use_regular_txn_block = true;
 	ddl_transaction_state.catalog_modification_aspects.pending |= mode;
+	YbMaybeLockMasterCatalogVersion();
+	elog(DEBUG3, "YBAddDdlTxnState: new DDL in txn block, mode = %d", mode);
 }
 
 void
@@ -4331,7 +4335,6 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 									 " React with thumbs up to raise its priority.")));
 
 				YBAddDdlTxnState(ddl_mode.value);
-				YbMaybeLockMasterCatalogVersion();
 			}
 
 			if (YbShouldIncrementLogicalClientVersion(pstmt) &&
