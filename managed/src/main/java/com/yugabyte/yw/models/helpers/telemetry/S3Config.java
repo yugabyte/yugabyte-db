@@ -14,6 +14,7 @@ import java.time.Instant;
 import javax.validation.constraints.Size;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import play.data.validation.Constraints;
@@ -42,6 +43,7 @@ public class S3Config extends TelemetryProviderConfig {
   @ApiModelProperty(value = "S3 Prefix Key (root directory inside bucket)", accessMode = READ_WRITE)
   private String directoryPrefix = "yb-logs/";
 
+  @Getter
   public enum S3Partition {
     hour("hour"),
     minute("minute");
@@ -55,10 +57,6 @@ public class S3Config extends TelemetryProviderConfig {
     @Override
     public String toString() {
       return this.name();
-    }
-
-    public String getState() {
-      return this.granularity;
     }
 
     public static S3Partition fromString(String input) {
@@ -79,7 +77,7 @@ public class S3Config extends TelemetryProviderConfig {
   private String roleArn;
 
   @ApiModelProperty(value = "File prefix", accessMode = READ_WRITE)
-  private String filePrefix = "yb-otel";
+  private String filePrefix = "yb-otel-";
 
   @ApiModelProperty(value = "Marshaler", accessMode = READ_WRITE)
   private OTLPMarshaler marshaler = OTLPMarshaler.OTLP_JSON;
@@ -101,7 +99,7 @@ public class S3Config extends TelemetryProviderConfig {
       value =
           "Force Path Style. Set this to true to force the request to use path-style addressing",
       accessMode = READ_WRITE)
-  private boolean forcePathStyle = false;
+  private Boolean forcePathStyle = false;
 
   @ApiModelProperty(
       value =
