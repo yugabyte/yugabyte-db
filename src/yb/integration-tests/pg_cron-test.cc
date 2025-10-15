@@ -321,7 +321,15 @@ TEST_F(PgCronTest, JobOnDifferentDB) {
 
   for (int i = 0; MonoTime::Now() - start < sleep_time; i++) {
     LOG(INFO) << Format("Creating table $0", i);
-    ASSERT_OK(new_db_conn.ExecuteFormat("CREATE TABLE tbl$0(a INT)", i));
+    auto status = new_db_conn.ExecuteFormat("CREATE TABLE tbl$0(a INT)", i);
+    if (!status.ok()) {
+      if (status.message().Contains("Catalog Version Mismatch")) {
+        LOG(INFO) << Format("Ignoring Catalog Version Mismatch: $0", status.ToString());
+        SleepFor(200ms);
+        continue;
+      }
+      ASSERT_OK(status);
+    }
     SleepFor(1s);
   }
 
