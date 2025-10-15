@@ -28,11 +28,11 @@ class TSHeartbeatRequestPB;
 class TSHeartbeatResponsePB;
 
 class PostTabletCreateTaskBase;
-class XClusterInboundReplicationGroupSetupTaskIf;
 class UniverseReplicationInfo;
+class XClusterConsumerReplicationStatusPB;
+class XClusterInboundReplicationGroupSetupTaskIf;
 class XClusterSafeTimeService;
 struct XClusterInboundReplicationGroupStatus;
-class XClusterConsumerReplicationStatusPB;
 struct XClusterSetupUniverseReplicationData;
 
 class XClusterTargetManager {
@@ -54,8 +54,7 @@ class XClusterTargetManager {
       GetXClusterSafeTimeForNamespaceResponsePB* resp, const LeaderEpoch& epoch);
 
   Result<HybridTime> GetXClusterSafeTimeForNamespace(
-      const LeaderEpoch& epoch, const NamespaceId& namespace_id,
-      const XClusterSafeTimeFilter& filter);
+      const NamespaceId& namespace_id, const XClusterSafeTimeFilter& filter) const;
 
   Status RefreshXClusterSafeTimeMap(const LeaderEpoch& epoch);
 
@@ -230,11 +229,11 @@ class XClusterTargetManager {
   // table statuses.
   Result<XClusterInboundReplicationGroupStatus> GetUniverseReplicationInfo(
       const SysUniverseReplicationEntryPB& replication_info_pb,
-      const SysClusterConfigEntryPB& cluster_config_pb) const;
+      const SysClusterConfigEntryPB& cluster_config_pb,
+      const XClusterNamespaceToSafeTimeMap& namespace_safe_time) const;
 
   Status RefreshLocalAutoFlagConfig(const LeaderEpoch& epoch);
   Status DoRefreshLocalAutoFlagConfig(const LeaderEpoch& epoch);
-
 
   // Populate the response with the errors for the given replication group.
   Status PopulateReplicationGroupErrors(
