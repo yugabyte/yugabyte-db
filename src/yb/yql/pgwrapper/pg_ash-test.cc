@@ -905,4 +905,71 @@ TEST_F(PgAshMasterMetadataSerializerTest, TestMasterMetadataSerializer) {
   ASSERT_GT(count, 0);
 }
 
-}  // namespace yb::pgwrapper
+TEST_F(PgAshTest, TestUserIdConsistency) {
+  // Test: Check current userid and verify it matches between ASH and pg_user
+  static constexpr auto kTableName = "a";
+
+  // Create a table and insert data to generate ASH samples (following the blueprint)
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (k INT)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (generate_series(1, 100000))",
+                                 kTableName));
+
+  // Get current user ID from pg_authid (pg_user is a view on pg_authid)
+  auto current_user_id = ASSERT_RESULT(conn_->FetchRow<pgwrapper::PGOid>(
+      "SELECT oid FROM pg_authid WHERE rolname = current_user"));
+
+  // Query ASH to get distinct user IDs
+  auto user_ids = ASSERT_RESULT((conn_->FetchRows<pgwrapper::PGOid>(
+      "SELECT DISTINCT ysql_userid FROM yb_active_session_history "
+      "WHERE sample_time >= current_timestamp - interval '5 minutes' "
+      "ORDER BY ysql_userid")));
+
+  // Verify that we have some ASH samples
+  ASSERT_GT(user_ids.size(), 0) << "No ASH samples found";
+
+  // Verify that all user IDs in ASH match the current user ID
+  const auto non_zero_user_id = ASSERT_RESULT(conn_->FetchRow<pgwrapper::PGOid>(
+      "SELECT DISTINCT ysql_userid FROM yb_active_session_history "
+      "WHERE sample_time >= current_timestamp - interval '5 minutes' "
+      "AND ysql_userid != 0 ORDER BY ysql_userid"));
+
+  ASSERT_EQ(non_zero_user_id, current_user_id)
+      << "User ID in ASH does not match current user ID";
+}
+
+
+TEST_F(PgAshTest, TestUserIdChangeReflectedInAsh) {
+  const std::string kUser1 = "ash_user1";
+
+  ASSERT_OK(conn_->ExecuteFormat("CREATE ROLE $0", kUser1));
+
+  const auto orig_user_oid = ASSERT_RESULT(conn_->FetchRow<pgwrapper::PGOid>(
+      "SELECT oid FROM pg_authid WHERE rolname = current_user"));
+  const auto user1_oid = ASSERT_RESULT(conn_->FetchRow<pgwrapper::PGOid>(
+      Format("SELECT oid FROM pg_authid WHERE rolname = '$0'", kUser1)));
+
+  const std::string sleep_query = "SELECT pg_sleep(1)";
+
+  ASSERT_OK(conn_->Fetch(sleep_query));
+  const std::string ash_count_query =
+      "SELECT COUNT(*) FROM yb_active_session_history "
+      "WHERE ysql_userid = $0 AND sample_time >= current_timestamp - interval '5 minutes'";
+
+  const auto orig_user_ash_count = ASSERT_RESULT(
+      conn_->FetchRow<int64_t>(Format(ash_count_query, orig_user_oid)));
+  ASSERT_GT(orig_user_ash_count, 0);
+
+  ASSERT_OK(conn_->ExecuteFormat("SET SESSION AUTHORIZATION $0", kUser1));
+  ASSERT_OK(conn_->Fetch(sleep_query));
+  const auto user1_ash_count = ASSERT_RESULT(
+      conn_->FetchRow<int64_t>(Format(ash_count_query, user1_oid)));
+  ASSERT_GT(user1_ash_count, 0);
+
+  ASSERT_OK(conn_->Execute("RESET SESSION AUTHORIZATION"));
+  ASSERT_OK(conn_->Fetch(sleep_query));
+  const auto orig_user_ash_count_after_reset = ASSERT_RESULT(
+      conn_->FetchRow<int64_t>(Format(ash_count_query, orig_user_oid)));
+  ASSERT_GT(orig_user_ash_count_after_reset, 0);
+}
+
+} // namespace yb::pgwrapper
