@@ -44,7 +44,7 @@ export const DatabaseSettings = forwardRef<StepsRef>((_, forwardRef) => {
     forwardRef,
     () => ({
       onNext: () => {
-        return methods.handleSubmit((data) => {
+        methods.handleSubmit((data) => {
           saveDatabaseSettings(data);
           moveToNextPage();
         })();

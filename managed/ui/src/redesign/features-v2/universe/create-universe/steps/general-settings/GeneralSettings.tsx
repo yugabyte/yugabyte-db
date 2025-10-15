@@ -63,7 +63,7 @@ export const GeneralSettings = forwardRef<StepsRef>((_, forwardRef) => {
     forwardRef,
     () => ({
       onNext: () => {
-        return methods.handleSubmit((data) => {
+        methods.handleSubmit((data) => {
           saveGeneralSettings(data);
           moveToNextPage();
         })();

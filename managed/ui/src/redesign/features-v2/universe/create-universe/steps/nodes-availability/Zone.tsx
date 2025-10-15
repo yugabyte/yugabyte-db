@@ -53,7 +53,7 @@ export const Zone: FC<ZoneProps> = ({ control, index, region, remove }) => {
   );
 
   const [showPreferredInfoModal, setShowPreferredInfoModal] = useState(false);
-  
+
   const preferredMenuItems = isPrefferedAllowed
     ? Array.from({ length: resilienceAndRegionsSettings?.replicationFactor ?? 0 }, (_, i) => (
         <StyledPreferedMenuItem key={i} value={i}>
@@ -77,20 +77,17 @@ export const Zone: FC<ZoneProps> = ({ control, index, region, remove }) => {
       <Return style={{ marginTop: '24px' }} />
       <Controller
         control={control}
-        name={`availabilityZones.${region.code}.${index}`}
+        name={`availabilityZones.${region.code}.${index}.name`}
         render={({ field }) => (
           <YBSelect
             label="Availability Zone"
             sx={{ width: '300px' }}
-            value={field.value.name}
+            value={field.value}
             onChange={(e) => {
-              const selectedZone = region.zones.find((z) => z.name === e.target.value);
-              if (selectedZone) {
-                field.onChange(selectedZone);
-              }
+              field.onChange(e.target.value);
             }}
             menuProps={menuProps}
-            dataTestId="availability-zone-select"
+            dataTestId='availability-zone-select'
           >
             {region.zones.map((zone) => (
               <MenuItem key={zone.uuid} value={zone.name}>
@@ -118,7 +115,7 @@ export const Zone: FC<ZoneProps> = ({ control, index, region, remove }) => {
               resilienceAndRegionsSettings?.resilienceFormMode === ResilienceFormMode.GUIDED &&
               resilienceAndRegionsSettings?.faultToleranceType !== FaultToleranceType.NONE
             }
-            dataTestId="availability-zone-node-count-input"
+            dataTestId='availability-zone-node-count-input'
           />
         )}
       />
@@ -146,9 +143,10 @@ export const Zone: FC<ZoneProps> = ({ control, index, region, remove }) => {
               }}
               menuProps={menuProps}
               renderValue={(value) => {
+                console.warn(value);
                 return value === 'false' ? 'No' : `Rank ${parseInt(value as string) + 1}`;
               }}
-              dataTestId="availability-zone-preferred-select"
+              dataTestId='availability-zone-preferred-select'
             >
               {preferredMenuItems}
             </YBSelect>

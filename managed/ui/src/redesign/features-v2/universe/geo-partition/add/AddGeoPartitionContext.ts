@@ -6,14 +6,12 @@ import {
   ResilienceFormMode,
   ResilienceType
 } from '../../create-universe/steps/resilence-regions/dtos';
-import { UniverseRespResponse } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 
 export interface GeoPartition {
   name: string;
   tablespaceName: string;
   resilience?: ResilienceAndRegionsProps;
   nodesAndAvailability?: NodeAvailabilityProps;
-  universeData?: UniverseRespResponse;
 }
 
 export interface AddGeoPartitionContextProps {
@@ -21,7 +19,6 @@ export interface AddGeoPartitionContextProps {
   activeGeoPartitionIndex: number;
   activeStep: number;
   isNewGeoPartition: boolean;
-  universeData?: UniverseRespResponse;
 }
 
 export enum AddGeoPartitionSteps {
@@ -38,10 +35,10 @@ export const initialAddGeoPartitionFormState: AddGeoPartitionContextProps = {
       tablespaceName: 'Tablespace 1',
       resilience: {
         regions: [],
-        faultToleranceType: FaultToleranceType.NONE,
+        faultToleranceType: FaultToleranceType.AZ_LEVEL,
         nodeCount: 1,
         replicationFactor: 3,
-        resilienceFormMode: ResilienceFormMode.GUIDED,
+        resilienceFormMode: ResilienceFormMode.FREE_FORM,
         resilienceType: ResilienceType.REGULAR
       },
       nodesAndAvailability: {
@@ -93,10 +90,6 @@ export const addGeoPartitionFormMethods = (context: AddGeoPartitionContextProps)
   setIsNewGeoPartition: (isNew: boolean) => ({
     ...context,
     isNewGeoPartition: isNew
-  }),
-  setUniverseData: (universeData: UniverseRespResponse) => ({
-    ...context,
-    universeData
   })
 });
 

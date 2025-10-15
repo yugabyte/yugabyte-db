@@ -254,7 +254,7 @@ export default (store) => {
         onChange={checkIfAuthenticated}
       />
       <Route
-        path="/universes/:uuid/add-geo-partition"
+        path="/universe/:uuid/add-geo-partition"
         component={(props) => <AddGeoPartition isNewGeoPartition {...props} />}
         onEnter={authenticatedSession}
         onChange={checkIfAuthenticated}

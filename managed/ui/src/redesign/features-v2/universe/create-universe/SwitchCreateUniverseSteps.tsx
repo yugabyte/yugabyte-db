@@ -36,10 +36,7 @@ import { ResilienceType } from './steps/resilence-regions/dtos';
  * @param currentComponentRef - The ref to the current component
  * @returns The steps mappings
  */
-function getStepsMappings(
-  resilieceType: ResilienceType,
-  currentComponentRef: React.RefObject<StepsRef>
-) {
+function getStepsMappings(resilieceType: ResilienceType, currentComponentRef: React.RefObject<StepsRef>) {
   // If the resilience type is single node, we need to adjust the steps by 1
   // because the single node does not have the nodes availability step
   const adjust = resilieceType === ResilienceType.SINGLE_NODE ? 1 : 0;
@@ -52,15 +49,11 @@ function getStepsMappings(
     [CreateUniverseSteps.DATABASE - adjust]: <DatabaseSettings ref={currentComponentRef} />,
     [CreateUniverseSteps.SECURITY - adjust]: <SecuritySettings ref={currentComponentRef} />,
     [CreateUniverseSteps.ADVANCED_PROXY - adjust]: <ProxySettings ref={currentComponentRef} />,
-    [CreateUniverseSteps.ADVANCED_OTHER - adjust]: (
-      <OtherAdvancedSettings ref={currentComponentRef} />
-    ),
+    [CreateUniverseSteps.ADVANCED_OTHER - adjust]: <OtherAdvancedSettings ref={currentComponentRef} />,
     [CreateUniverseSteps.REVIEW - adjust]: <ReviewAndSummary ref={currentComponentRef} />
   };
   if (adjust === 0) {
-    mappings[CreateUniverseSteps.NODES_AVAILABILITY] = (
-      <NodesAvailability ref={currentComponentRef} />
-    );
+    mappings[CreateUniverseSteps.NODES_AVAILABILITY] = <NodesAvailability ref={currentComponentRef} />;
   }
   return mappings;
 }
@@ -71,9 +64,7 @@ const SwitchCreateUniverseSteps = forwardRef((_props, forwardRef) => {
   ) as unknown) as CreateUniverseContextMethods;
 
   const currentComponentRef = useRef<StepsRef>(null);
-  const [, { get, setAll }] = useMap<Record<number, JSX.Element>>(
-    getStepsMappings(resilienceType!, currentComponentRef)
-  );
+  const [, { get, setAll }] = useMap<Record<number, JSX.Element>>(getStepsMappings(resilienceType!, currentComponentRef));
   useImperativeHandle(forwardRef, () => currentComponentRef.current, [
     currentComponentRef.current,
     activeStep
@@ -89,7 +80,7 @@ const SwitchCreateUniverseSteps = forwardRef((_props, forwardRef) => {
 
   useEffect(() => {
     if (activeStep === CreateUniverseSteps.RESILIENCE_AND_REGIONS) {
-      setAll(getStepsMappings(resilienceType!, currentComponentRef));
+        setAll(getStepsMappings(resilienceType!, currentComponentRef));
     }
   }, [resilienceType, activeStep]);
 

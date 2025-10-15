@@ -58,7 +58,7 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
     forwardRef,
     () => ({
       onNext: () => {
-        return methods.handleSubmit((data) => {
+        methods.handleSubmit((data) => {
           saveOtherAdvancedSettings(data);
           moveToNextPage();
         })();

@@ -42,6 +42,7 @@ export const RegionCard: FC<RegionCardProps> = ({ region, index }) => {
 
   const az = watch(`availabilityZones.${region.code}`);
   const nodesPerAz = watch('nodeCountPerAz');
+
   const addAvailabilityZone = () => {
     const azToAdd = region.zones.find((zone) => !az.find((a) => a.name === zone.name));
     if (!azToAdd) return;
@@ -58,12 +59,7 @@ export const RegionCard: FC<RegionCardProps> = ({ region, index }) => {
         <Typography color="textSecondary" variant="body1">
           {t('region', { region_count: index + 1 })}
         </Typography>
-        <YBTagv2
-          text={`${getFlagFromRegion(region.code)}  ${region.name} (${region.code})`}
-          variant="primary"
-          filled
-          noGradient
-        />
+        <YBTagv2 text={`${getFlagFromRegion(region.code)}  ${region.name} (${region.code})`} variant='primary' filled noGradient />
       </div>
       <div
         style={{

@@ -3617,11 +3617,8 @@
         "title": "General Settings",
         "displayName": "Display Name",
         "addGeoPartition": "Add Geo Partition",
-        "addNewGeoPartition": "Add New Geo Partition",
         "tablespaceName": "Tablespace Name",
-        "tablespaceNameHelpText": "Tablespace name <b>CANNOT</b> be modified after geo partition creation.",
-        "existingRegions": "Existing Regions",
-        "helpText": "Use Geo-partitioning to optimize regional data placement for low-latency access or GDPR compliance. <a>Learn more</a>"
+        "tablespaceNameHelpText": "Tablespace name <b>CANNOT</b> be modified after geo partition creation."
       }
     }
   }
