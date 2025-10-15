@@ -133,7 +133,7 @@ METRIC_DEFINE_histogram(server, mem_tracker_gc_tcmalloc_bytes_per_call,
                         "MemTracker GC TCMalloc Bytes Per Call",
                         yb::MetricUnit::kBytes,
                         "Histogram of bytes released per call to MemTracker::GcTcmallocIfNeeded()",
-                        60000000 /* 60MB as max value */, 2 /* 2 digits precision */);
+                        60000000LU /* 60MB as max value */, 2 /* 2 digits precision */);
 
 namespace yb {
 
