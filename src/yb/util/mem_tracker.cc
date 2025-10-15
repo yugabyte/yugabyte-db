@@ -127,12 +127,16 @@ METRIC_DEFINE_counter(server, mem_tracker_gc_tcmalloc_calls,
 METRIC_DEFINE_counter(server, mem_tracker_gc_tcmalloc_bytes_released,
                       "MemTracker GC TCMalloc Bytes Released",
                       yb::MetricUnit::kBytes,
-                      "Total number of bytes released by MemTracker::GcTcmallocIfNeeded()");
+                      "Total number of bytes released by MemTracker::GcTcmallocIfNeeded(). "
+                      "Only positive values are recorded; concurrent allocations during GC "
+                      "may cause negative apparent releases which are not counted.");
 
 METRIC_DEFINE_histogram(server, mem_tracker_gc_tcmalloc_bytes_per_call,
                         "MemTracker GC TCMalloc Bytes Per Call",
                         yb::MetricUnit::kBytes,
-                        "Histogram of bytes released per call to MemTracker::GcTcmallocIfNeeded()",
+                        "Histogram of bytes released per call to MemTracker::GcTcmallocIfNeeded(). "
+                        "Only positive values are recorded; concurrent allocations during GC "
+                        "may cause negative apparent releases which are recorded as 0.",
                         60000000LU /* 60MB as max value */, 2 /* 2 digits precision */);
 
 namespace yb {
@@ -786,6 +790,9 @@ void MemTracker::GcTcmallocIfNeeded() {
     }
 
     int64_t final_overhead = GetTCMallocPageHeapFreeBytes();
+    // bytes_released could theoretically be negative if memory increased during GC
+    // due to concurrent allocations. The > 0 check prevents recording negative values
+    // in the metrics, which could skew the statistics.
     int64_t bytes_released = initial_overhead - final_overhead;
     if (gc_tcmalloc_bytes_released_metric_ && bytes_released > 0) {
       gc_tcmalloc_bytes_released_metric_->IncrementBy(bytes_released);
