@@ -48,7 +48,7 @@ For information on xCluster deployment architecture, replication scenarios, and 
 
 - Set the YB-TServer [cdc_wal_retention_time_secs](../../../reference/configuration/all-flags-yb-tserver/#cdc-wal-retention-time-secs) flag to 86400 on both source and target.
 
-    This flag determines the duration for which WAL is retained on the source in case of a network partition or a complete outage of the target. For xCluster Replication, you should set the flag to a value greater than the default. The goal is to retain write-ahead logs (WALs) during a network partition or target outage until replication can be restarted. Setting this to 86400 (24 hours) is a good rule of thumb, but you should also consider how quickly you will be able to recover from a network partition or target outage.
+    This flag determines the duration for which write-ahead log (WAL) is retained on the source in case of a network partition or a complete outage of the target. For xCluster replication, set the flag to a value greater than the default. The goal is to retain WALs during a network partition or target outage until replication can be restarted. While setting this value to 86400 (24 hours) is a good starting point, you should also consider how quickly you will be able to recover from a network partition or target outage.
 
 - Make sure all YB-Master and YB-TServer flags are set to the same value on both the source and target universes.
 
