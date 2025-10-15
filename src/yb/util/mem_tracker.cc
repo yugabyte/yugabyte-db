@@ -124,13 +124,6 @@ METRIC_DEFINE_counter(server, mem_tracker_gc_tcmalloc_calls,
                       yb::MetricUnit::kOperations,
                       "Number of times MemTracker::GcTcmallocIfNeeded() has been called");
 
-METRIC_DEFINE_counter(server, mem_tracker_gc_tcmalloc_bytes_released,
-                      "MemTracker GC TCMalloc Bytes Released",
-                      yb::MetricUnit::kBytes,
-                      "Total number of bytes released by MemTracker::GcTcmallocIfNeeded(). "
-                      "Only positive values are recorded; concurrent allocations during GC "
-                      "may cause negative apparent releases which are not counted.");
-
 METRIC_DEFINE_histogram(server, mem_tracker_gc_tcmalloc_bytes_per_gc,
                         "MemTracker GC TCMalloc Bytes Per GC",
                         yb::MetricUnit::kBytes,
@@ -795,9 +788,6 @@ void MemTracker::GcTcmallocIfNeeded() {
     // due to concurrent allocations. The > 0 check prevents recording negative values
     // in the metrics, which could skew the statistics.
     int64_t bytes_released = initial_overhead - final_overhead;
-    if (gc_tcmalloc_bytes_released_metric_ && bytes_released > 0) {
-      gc_tcmalloc_bytes_released_metric_->IncrementBy(bytes_released);
-    }
     if (gc_tcmalloc_bytes_per_gc_metric_ && bytes_released > 0) {
       gc_tcmalloc_bytes_per_gc_metric_->Increment(bytes_released);
     }
@@ -888,12 +878,10 @@ void MemTracker::TEST_SetReleasedMemorySinceGC(int64_t value) {
 }
 
 scoped_refptr<Counter> MemTracker::gc_tcmalloc_calls_metric_;
-scoped_refptr<Counter> MemTracker::gc_tcmalloc_bytes_released_metric_;
 scoped_refptr<Histogram> MemTracker::gc_tcmalloc_bytes_per_gc_metric_;
 
 void MemTracker::InitializeGcMetrics(const scoped_refptr<MetricEntity>& metric_entity) {
   gc_tcmalloc_calls_metric_ = METRIC_mem_tracker_gc_tcmalloc_calls.Instantiate(metric_entity);
-  gc_tcmalloc_bytes_released_metric_ = METRIC_mem_tracker_gc_tcmalloc_bytes_released.Instantiate(metric_entity);
   gc_tcmalloc_bytes_per_gc_metric_ = METRIC_mem_tracker_gc_tcmalloc_bytes_per_gc.Instantiate(metric_entity);
 }
 
