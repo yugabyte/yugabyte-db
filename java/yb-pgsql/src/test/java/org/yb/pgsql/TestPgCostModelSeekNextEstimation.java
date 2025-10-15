@@ -519,6 +519,7 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
     flagMap.put("ysql_enable_packed_row_for_colocated_table", "true");
     // Disable auto analyze for CBO seek and next metrics test.
     flagMap.put("ysql_enable_auto_analyze", "false");
+    flagMap.put("vmodule", "transaction=2");
     return flagMap;
   }
 
