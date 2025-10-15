@@ -999,6 +999,8 @@ Status PopulateCDCSDKIntentRecord(
         auto table_info = *tablet_info_result;
         table_id = table_info->table_id;
         if (!IsColocatedTableQualifiedForStreaming(table_id, metadata)) {
+          *write_id = intent.write_id;
+          *reverse_index_key = intent.reverse_index_key;
           continue;
         }
 
