@@ -728,7 +728,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
           break;
         case TransactionLocality::TABLESPACE_LOCAL:
           if (auto tablespace_oid = GetOpTablespaceOid(first_op);
-              !tablespace_oid || metadata_.locality.tablespace_oid != *tablespace_oid) {
+              !tablespace_oid || !manager_->TablespaceContainsTablespace(
+                  metadata_.locality.tablespace_oid, *tablespace_oid)) {
             return &first_op;
           }
           break;

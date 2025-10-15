@@ -68,6 +68,8 @@ class TransactionManager {
 
   bool TablespaceLocalTransactionsPossible(PgTablespaceOid tablespace_oid);
 
+  bool TablespaceContainsTablespace(PgTablespaceOid lhs, PgTablespaceOid rhs);
+
   uint64_t GetLoadedStatusTabletsVersion();
 
   void Shutdown();
