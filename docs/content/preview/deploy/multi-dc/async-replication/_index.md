@@ -54,4 +54,4 @@ For information on xCluster deployment architecture, replication scenarios, and 
 
 - Monitor CPU usage and ensure it remains below 65%. Note that xCluster replication typically incurs a 20% CPU overhead.
 
-- Monitor disk space usage and ensure it remains below 65%. Allocate sufficient disk space to accommodate WALs generated based on `cdc_wal_retention_time_secs`.
+- Monitor disk space usage and ensure it remains under 65%. Allocate sufficient disk space to accommodate WALs generated based on `cdc_wal_retention_time_secs`.
