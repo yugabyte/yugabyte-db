@@ -303,18 +303,18 @@ NOTICE:  update_v2 invoked with v2 = 2 where h = 3
 NOTICE:  New value of v1 = 3 where h = 3
 NOTICE:  New value of v2 = 3 where h = 3
 UPDATE t_simple SET v1 = h, v2 = v1 WHERE h IN (4, 5, 6);
+NOTICE:  update_v1 invoked with v1 = 4 where h = 4
+NOTICE:  update_v2 invoked with v2 = 4 where h = 4
 NOTICE:  update_v1 invoked with v1 = 5 where h = 5
 NOTICE:  update_v2 invoked with v2 = 5 where h = 5
 NOTICE:  update_v1 invoked with v1 = 6 where h = 6
 NOTICE:  update_v2 invoked with v2 = 6 where h = 6
-NOTICE:  update_v1 invoked with v1 = 4 where h = 4
-NOTICE:  update_v2 invoked with v2 = 4 where h = 4
+NOTICE:  New value of v1 = 5 where h = 4
+NOTICE:  New value of v2 = 5 where h = 4
 NOTICE:  New value of v1 = 6 where h = 5
 NOTICE:  New value of v2 = 6 where h = 5
 NOTICE:  New value of v1 = 7 where h = 6
 NOTICE:  New value of v2 = 7 where h = 6
-NOTICE:  New value of v1 = 5 where h = 4
-NOTICE:  New value of v2 = 5 where h = 4
 SELECT * FROM t_simple ORDER BY h;
  h  | v1 | v2 | v3 | v4 
 ----+----+----+----+----
