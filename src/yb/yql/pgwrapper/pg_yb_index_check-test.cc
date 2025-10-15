@@ -78,5 +78,29 @@ TEST_F(PgYbIndexCheckTest, YbIndexCheckSnapshotTooOld) {
   ASSERT_OK((conn.Fetch("SELECT yb_index_check('abcd_b_c_d_idx'::regclass)")));
 }
 
+TEST_F(PgYbIndexCheckTest, YbIndexCheckRestartReadRequired) {
+  auto conn = ASSERT_RESULT(Connect());
+  int rowcount = 1000;
+  ASSERT_OK(conn.Execute("SET yb_max_query_layer_retries=0"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE abcd(a int primary key, b int, c int, d int) SPLIT INTO 1 TABLETS;"));
+  ASSERT_OK(conn.Execute("CREATE INDEX abcd_b_c_d_idx ON abcd (b ASC) INCLUDE (c, d)"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO abcd SELECT i, i, i, i FROM generate_series(1, $0) i", rowcount));
+
+  CountDownLatch latch(1);
+  TestThreadHolder holder;
+  holder.AddThreadFunctor([this, &stop = holder.stop_flag(), &latch, &rowcount] {
+    auto conn2 = ASSERT_RESULT(Connect());
+    latch.CountDown();
+    while (!stop.load()) {
+      CHECK_OK(conn2.ExecuteFormat("INSERT INTO abcd VALUES ($0, $0, $0, $0)", ++rowcount));
+    }
+  });
+
+  latch.Wait();
+  ASSERT_OK((conn.Fetch("SELECT yb_index_check('abcd_b_c_d_idx'::regclass)")));
+}
+
 } // namespace pgwrapper
 } // namespace yb
