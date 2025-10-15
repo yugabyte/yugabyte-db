@@ -151,7 +151,7 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
       bool liveness_column_expected = false) {
     auto iter = MakeIterator(
         projection, doc_read_context, txn_op_context, doc_db, read_operation_data, pending_op);
-    iter->InitForTableType(YQL_TABLE_TYPE);
+    CHECK_OK(iter->InitForTableType(YQL_TABLE_TYPE));
     return iter;
   }
 

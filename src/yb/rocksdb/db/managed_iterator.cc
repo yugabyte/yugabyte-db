@@ -199,8 +199,8 @@ const KeyValueEntry& ManagedIterator::Next() {
   return entry_;
 }
 
-void ManagedIterator::UpdateFilterKey(Slice user_key_for_filter) {
-  mutable_iter_->UpdateFilterKey(user_key_for_filter);
+void ManagedIterator::UpdateFilterKey(Slice user_key_for_filter, Slice seek_key) {
+  mutable_iter_->UpdateFilterKey(user_key_for_filter, seek_key);
 }
 
 const KeyValueEntry& ManagedIterator::Entry() const {

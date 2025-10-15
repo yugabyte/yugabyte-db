@@ -968,7 +968,7 @@ class StrongConflictChecker {
           /* iterate_upper_bound = */ nullptr,
           rocksdb::CacheRestartBlockKeys::kFalse);
     }
-    value_iter_.UpdateFilterKey(intent_key);
+    value_iter_.UpdateFilterKey(intent_key, Slice());
     const auto* entry = &value_iter_.Seek(intent_key);
 
     VLOG_WITH_PREFIX_AND_FUNC(4)

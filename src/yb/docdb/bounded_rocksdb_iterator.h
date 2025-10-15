@@ -71,7 +71,7 @@ class BoundedRocksDbIterator final : public rocksdb::Iterator {
   }
 
   void UseFastNext(bool value) override;
-  void UpdateFilterKey(Slice user_key_for_filter) override;
+  void UpdateFilterKey(Slice user_key_for_filter, Slice seek_key) override;
 
  private:
   const rocksdb::KeyValueEntry& FilterEntry(const rocksdb::KeyValueEntry& entry) const;

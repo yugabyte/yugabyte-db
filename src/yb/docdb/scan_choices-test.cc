@@ -18,6 +18,7 @@
 #include "yb/common/schema.h"
 
 #include "yb/docdb/doc_pgsql_scanspec.h"
+#include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/hybrid_scan_choices.h"
 #include "yb/docdb/scan_choices.h"
 
@@ -175,13 +176,15 @@ void ScanChoicesTest::SetupCondition(
 // Initializes an instance of ScanChoices in choices_
 void ScanChoicesTest::InitializeScanChoicesInstance(
     const Schema& schema, const PgsqlConditionPB& cond) {
+  auto doc_read_context = DocReadContext::TEST_Create(schema);
   current_schema_ = &schema;
   dockv::KeyEntryValues empty_components;
   DocPgsqlScanSpec spec(
       schema, rocksdb::kDefaultQueryId, empty_components, empty_components, &cond,
       std::nullopt /* hash_code */, std::nullopt /* max_hash_code */, DocKey(), true);
   const auto& bounds = spec.bounds();
-  choices_ = down_pointer_cast<HybridScanChoices>(ScanChoices::Create(schema, spec, bounds, {}));
+  choices_ = down_pointer_cast<HybridScanChoices>(CHECK_RESULT(ScanChoices::Create(
+      doc_read_context, spec, bounds, {}, AllowVariableBloomFilter::kFalse)));
 }
 
 bool ScanChoicesTest::IsScanChoicesFinished() {
@@ -255,7 +258,7 @@ void ScanChoicesTest::AdjustForRangeConstraints() {
       // if the upper bound we adjusted to was non-inclusive. SkipTargetsUpTo should've shifted
       // the set of active options in this case.
       if (is_inclusive && !IsScanChoicesFinished()) {
-        EXPECT_OK(choices_->DoneWithCurrentTarget());
+        EXPECT_OK(choices_->DoneWithCurrentTarget(false, false));
       }
       return;
     }
@@ -289,7 +292,7 @@ void ScanChoicesTest::CheckOptions(const std::vector<std::vector<OptionRange>> &
     target.AppendGroupEnd();
     EXPECT_OK(choices_->SkipTargetsUpTo(target));
     if (!IsScanChoicesFinished()) {
-      EXPECT_OK(choices_->DoneWithCurrentTarget());
+      EXPECT_OK(choices_->DoneWithCurrentTarget(false, false));
     }
     AdjustForRangeConstraints();
     expected_it++;

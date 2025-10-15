@@ -174,8 +174,7 @@ class YQLScanSpec {
       const Schema& schema,
       bool is_forward_scan,
       rocksdb::QueryId query_id,
-      std::unique_ptr<const QLScanRange>
-          range_bounds,
+      std::unique_ptr<const QLScanRange> range_bounds,
       size_t prefix_length)
       : client_type_(client_type),
         schema_(schema),

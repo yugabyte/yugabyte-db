@@ -15,6 +15,9 @@
 
 #include "yb/docdb/scan_choices.h"
 
+#include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/intent_aware_iterator.h"
+
 #include "yb/dockv/key_entry_value.h"
 #include "yb/dockv/value_type.h"
 
@@ -182,6 +185,8 @@ class OptionRange {
   RangeMatch MatchEx(const dockv::KeyEntryValue& value) const;
   bool SatisfiesInclusivity(RangeMatch match) const;
 
+  bool Fixed() const;
+
   std::string ToString() const;
 
  private:
@@ -217,6 +222,7 @@ class ScanTarget {
   size_t PrefixSize() const;
   bool IsExtremal(size_t column_idx) const;
   bool NeedGroupEnd(size_t column_idx) const;
+  Slice SliceUpToColumn(size_t last_column_idx) const;
 
   std::string ToString() const;
 
@@ -247,10 +253,16 @@ class ScanTarget {
   struct ColumnInfo {
     size_t end;
     bool extremal;
+
+    std::string ToString() const {
+      return YB_STRUCT_TO_STRING(end, extremal);
+    }
   };
 
   boost::container::small_vector<ColumnInfo, 0x10> columns_;
 };
+
+using ScanOptions = std::vector<std::vector<OptionRange>>;
 
 class HybridScanChoices : public ScanChoices {
  public:
@@ -258,19 +270,6 @@ class HybridScanChoices : public ScanChoices {
   // A filter of the form col1 IN (1,2) is converted to col1 IN ([[1], [1]], [[2], [2]]).
   // And filter of the form (col2, col3) IN ((3,4), (5,6)) is converted to
   // (col2, col3) IN ([[3, 4], [3, 4]], [[5, 6], [5, 6]]).
-
-  HybridScanChoices(
-      const Schema& schema,
-      const dockv::KeyBytes& lower_doc_key,
-      const dockv::KeyBytes& upper_doc_key,
-      bool is_forward_scan,
-      const std::vector<ColumnId>& options_col_ids,
-      const std::shared_ptr<std::vector<qlexpr::OptionList>>& options,
-      const qlexpr::QLScanRange* range_bounds,
-      const ColGroupHolder& col_groups,
-      const size_t prefix_length,
-      Slice table_key_prefix);
-
   HybridScanChoices(
       const Schema& schema,
       const qlexpr::YQLScanSpec& doc_spec,
@@ -278,14 +277,21 @@ class HybridScanChoices : public ScanChoices {
       const dockv::KeyBytes& upper_doc_key,
       Slice table_key_prefix);
 
+  Status Init(const DocReadContext& doc_read_context);
+
   bool Finished() const override {
     return finished_;
   }
 
-  Result<bool> InterestedInRow(dockv::KeyBytes* row_key, IntentAwareIterator* iter) override;
+  Result<bool> InterestedInRow(dockv::KeyBytes* row_key, IntentAwareIterator& iter) override;
   Result<bool> AdvanceToNextRow(dockv::KeyBytes* row_key,
-                                IntentAwareIterator* iter,
+                                IntentAwareIterator& iter,
                                 bool current_fetched_row_skipped) override;
+  Result<bool> PrepareIterator(IntentAwareIterator& iter, Slice table_key_prefix) override;
+
+  docdb::BloomFilterOptions BloomFilterOptions() override {
+    return bloom_filter_options_;
+  }
 
  private:
   friend class ScanChoicesTest;
@@ -294,8 +300,11 @@ class HybridScanChoices : public ScanChoices {
 
   // Sets scan_target_ to the first tuple in the filter space that is >= new_target.
   Result<bool> SkipTargetsUpTo(Slice new_target);
-  Result<bool> DoneWithCurrentTarget(bool current_row_skipped = false);
-  void SeekToCurrentTarget(IntentAwareIterator* db_iter);
+  // not_found is true when the current scan choice is not found.
+  // This can happen when the iterator's upperbound is set in variable bloom filter mode.
+  // Moves to the next scan choice.
+  Result<bool> DoneWithCurrentTarget(bool current_row_skipped, bool not_found);
+  void SeekToCurrentTarget(IntentAwareIterator& db_iter);
 
   // Also updates the checkpoint to latest seen ht from iter.
   bool CurrentTargetMatchesKey(Slice curr, IntentAwareIterator* iter);
@@ -330,11 +339,16 @@ class HybridScanChoices : public ScanChoices {
   // Sets an entire group to a particular logical option index.
   void SetGroup(size_t opt_list_idx, size_t opt_index);
 
+  // Updates the bloom filter key and the upper bound to the current scan target when using
+  // variable bloom filter.
+  void UpdateUpperBound(IntentAwareIterator* iterator);
+
   const bool is_forward_scan_;
   ScanTarget scan_target_;
   bool finished_ = false;
   bool has_hash_columns_ = false;
   size_t num_hash_cols_;
+  size_t num_bloom_filter_cols_;
 
   // True if CurrentTargetMatchesKey should return true all the time as
   // the filter this ScanChoices iterates over is trivial.
@@ -344,7 +358,7 @@ class HybridScanChoices : public ScanChoices {
   // scan key values based on given IN-lists and range filters.
 
   // The following encodes the list of option we are iterating over
-  std::vector<std::vector<OptionRange>> scan_options_;
+  ScanOptions scan_options_;
 
   // Vector of references to currently active elements being used in scan_options_.
   // current_scan_target_ranges_[i] gives us the current OptionRange
@@ -377,6 +391,11 @@ class HybridScanChoices : public ScanChoices {
   size_t schema_num_keys_;
 
   MaxSeenHtData max_seen_ht_checkpoint_ = {};
+
+  docdb::BloomFilterOptions bloom_filter_options_;
+
+  KeyBytes upper_bound_;
+  std::optional<IntentAwareIteratorUpperboundScope> iterator_bound_scope_;
 };
 
 } // namespace yb::docdb

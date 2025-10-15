@@ -1051,7 +1051,7 @@ Status SysCatalogTable::ReadYsqlDBCatalogVersionImplWithReadTime(
         &cond, std::nullopt /* hash_code */, std::nullopt /* max_hash_code */);
     RETURN_NOT_OK(iter->Init(spec));
   } else {
-    iter->InitForTableType(read_data.table_info->table_type);
+    RETURN_NOT_OK(iter->InitForTableType(read_data.table_info->table_type));
   }
 
   while (VERIFY_RESULT(iter->FetchNext(&source_row))) {

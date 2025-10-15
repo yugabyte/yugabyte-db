@@ -1691,7 +1691,7 @@ Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
     docdb::SkipSeek skip_seek) const {
   auto iter = VERIFY_RESULT(NewUninitializedDocRowIterator(
       projection, read_hybrid_time, table_id, deadline, AllowBootstrappingState::kFalse));
-  iter->InitForTableType(table_type_, Slice(), skip_seek);
+  RETURN_NOT_OK(iter->InitForTableType(table_type_, Slice(), skip_seek));
   return std::move(iter);
 }
 
@@ -2594,7 +2594,7 @@ Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::CreateCDCSnapshotIt
   }
   auto iter = VERIFY_RESULT(NewUninitializedDocRowIterator(
       projection, time, table_id, CoarseTimePoint::max(), AllowBootstrappingState::kFalse));
-  iter->InitForTableType(table_type_, encoded_next_key);
+  RETURN_NOT_OK(iter->InitForTableType(table_type_, encoded_next_key));
   return std::move(iter);
 }
 
@@ -3265,7 +3265,8 @@ Status Tablet::BackfillIndexes(
   if (!backfill_from.empty()) {
     VLOG(1) << "Resuming backfill from " << b2a_hex(backfill_from);
     *backfilled_until = backfill_from;
-    iter->SeekTuple(Slice(backfill_from));
+    // For backfill we just position to current position, so filter key is not used.
+    iter->SeekTuple(Slice(backfill_from), docdb::UpdateFilterKey::kFalse);
   }
 
   string resume_backfill_from;
@@ -3537,7 +3538,7 @@ Status Tablet::VerifyTableConsistencyForCQL(
 
   if (!start_key.empty()) {
     VLOG(2) << "Starting verify index from " << b2a_hex(start_key);
-    iter->SeekTuple(Slice(start_key));
+    iter->SeekTuple(Slice(start_key), docdb::UpdateFilterKey::kFalse);
   }
 
   constexpr int kProgressInterval = 1000;

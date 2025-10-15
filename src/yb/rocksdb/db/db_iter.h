@@ -87,7 +87,7 @@ class ArenaWrappedDBIter final : public Iterator {
   void RevalidateAfterUpperBoundChange() override;
 
  private:
-  void UpdateFilterKey(Slice user_key_for_filter) override;
+  void UpdateFilterKey(Slice user_key_for_filter, Slice seek_key) override;
 
   DBIter* db_iter_;
   Arena arena_;
