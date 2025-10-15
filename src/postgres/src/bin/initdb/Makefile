@@ -36,9 +36,7 @@ $(error YB_BUILD_ROOT is not set)
 endif
 
 LIBS += -L$(YB_BUILD_ROOT)/lib
-ifneq ($(YB_BUILD_TYPE), compilecmds)
 LIBS += -lyb_util -lyb_pggate $(YB_PG_EXE_LD_FLAGS_AFTER_YB_LIBS)
-endif
 
 OBJS = \
 	$(WIN32RES) \
