@@ -7,7 +7,6 @@ import { mainTheme } from './redesign/theme/mainTheme';
 import { initReactI18next } from 'react-i18next';
 import { Provider } from 'react-redux';
 import { Router, browserHistory } from 'react-router';
-import { IntlProvider } from 'react-intl';
 import { QueryClient, QueryClientProvider } from 'react-query';
 import fetchRoutes from './routes';
 import configureStore from './store/configureStore.js';
@@ -45,13 +44,11 @@ const AppWrapper = () => (
     <QueryClientProvider client={queryClient}>
       <YBThemeProvider theme={ybaTheme}>
         <ThemeProvider theme={mainTheme}>
-          <IntlProvider locale="en">
-            <Router history={browserHistory}>
-              <CssBaseline />
-              <YBCssBaseline />
-              {fetchRoutes(store)}
-            </Router>
-          </IntlProvider>
+          <Router history={browserHistory}>
+            <CssBaseline />
+            <YBCssBaseline />
+            {fetchRoutes(store)}
+          </Router>
         </ThemeProvider>
       </YBThemeProvider>
     </QueryClientProvider>
