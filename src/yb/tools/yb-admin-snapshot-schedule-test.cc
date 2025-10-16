@@ -2806,6 +2806,25 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlSequenceU
 }
 
 TEST_P(
+    YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam,
+    RestoreWithDropMaterializedViewAndDropColumn) {
+  // Test restoring to before a drop materialized view and drop column (regression test for #23740).
+  auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test_table(id int, name text, age int, description text, place text, "
+      "salary int, primary key(id ASC));"));
+  ASSERT_OK(conn.Execute("CREATE MATERIALIZED VIEW mat_view as SELECT * FROM test_table"));
+  auto t1 = ASSERT_RESULT(GetCurrentTime());
+  ASSERT_OK(conn.Execute("DROP MATERIALIZED VIEW mat_view"));
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP COLUMN salary"));
+  ASSERT_OK(conn.Execute("CREATE MATERIALIZED VIEW mat_view as SELECT * FROM test_table"));
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, t1));
+  conn = ASSERT_RESULT(ConnectToRestoredDb());
+}
+
+TEST_P(
     YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlSequenceVerifyPartialRestore) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
