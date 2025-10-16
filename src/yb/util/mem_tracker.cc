@@ -882,7 +882,8 @@ scoped_refptr<Histogram> MemTracker::gc_tcmalloc_bytes_per_gc_metric_;
 
 void MemTracker::InitializeGcMetrics(const scoped_refptr<MetricEntity>& metric_entity) {
   gc_tcmalloc_calls_metric_ = METRIC_mem_tracker_gc_tcmalloc_calls.Instantiate(metric_entity);
-  gc_tcmalloc_bytes_per_gc_metric_ = METRIC_mem_tracker_gc_tcmalloc_bytes_per_gc.Instantiate(metric_entity);
+  gc_tcmalloc_bytes_per_gc_metric_ =
+      METRIC_mem_tracker_gc_tcmalloc_bytes_per_gc.Instantiate(metric_entity);
 }
 
 scoped_refptr<MetricEntity> MemTracker::metric_entity() const {
