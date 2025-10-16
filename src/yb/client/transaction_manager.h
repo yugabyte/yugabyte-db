@@ -28,6 +28,8 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
+#include "yb/util/metrics_fwd.h"
+
 namespace yb {
 namespace client {
 
@@ -69,6 +71,14 @@ class TransactionManager {
   uint64_t GetLoadedStatusTabletsVersion();
 
   void Shutdown();
+
+  scoped_refptr<Counter> transaction_promotions_metric() const;
+
+  scoped_refptr<Counter> initially_global_transactions_metric() const;
+
+  scoped_refptr<Counter> initially_region_local_transactions_metric() const;
+
+  scoped_refptr<Counter> initially_tablespace_local_transactions_metric() const;
 
  private:
   class Impl;
