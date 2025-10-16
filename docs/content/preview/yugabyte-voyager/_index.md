@@ -23,7 +23,7 @@ Use YugabyteDB Voyager to manage end-to-end database migration, including cluste
 
 {{< sections/text-with-right-image
   title="Get Started"
-  description="Complete a simple migration in 15 minutes with our quick start guide, or install YugabyteDB Voyager on different operating systems."
+  description="Install YugabyteDB Voyager and perform an end-to-end offline migration with our quick start guide."
   imageTransparent=true
   buttonText="Quick start"
   buttonUrl="quickstart/"
