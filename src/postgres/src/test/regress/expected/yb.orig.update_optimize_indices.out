@@ -653,13 +653,12 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_types_table SET v1 = 1, v3 = '{"b
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
-         Storage Flush Requests: 1
  Storage Read Requests: 1
  Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
- Storage Flush Requests: 2
-(14 rows)
+ Storage Flush Requests: 1
+(13 rows)
 
 -- One with white spaces
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_types_table SET v1 = 1, v2 = '{    "b" : 2   ,     "a" :  1}'::jsonb WHERE h = 1;
@@ -1173,13 +1172,12 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE numeric_table SET v1 = 1.2345670, v2 =
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
-         Storage Flush Requests: 1
  Storage Read Requests: 1
  Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
- Storage Flush Requests: 2
-(14 rows)
+ Storage Flush Requests: 1
+(13 rows)
 
 -- Casting from infinity to infinity should not cause a change in representation.
 -- Note that NUMERIC does not support infinity prior to PG 14.

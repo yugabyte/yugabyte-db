@@ -189,3 +189,7 @@ DEFINE_NON_RUNTIME_bool(ysql_use_optimized_relcache_update, true,
 
 DEFINE_RUNTIME_double(max_buffer_size_to_rpc_limit_ratio, 0.9, "the max buffer size is set to "
                       "max_buffer_size_to_rpc_limit_ratio*FLAGS_rpc_max_message_size.");
+
+DEFINE_RUNTIME_bool(ysql_optimize_index_row_rewrites, true, "When enabled, operations that rewrite "
+    "index rows will be optimized to reduce the number of network round trips.");
+TAG_FLAG(ysql_optimize_index_row_rewrites, advanced);
