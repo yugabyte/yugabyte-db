@@ -124,21 +124,30 @@ class PgDocReadOpCached : private PgDocReadOpCachedHelper, public PgDocOp {
 Status UpdateMetricOnGettingResponse(
     const LWFunction<Status()>& getter, const PgDocResponse::MetricInfo& info,
     PgDocMetrics& metrics) {
-  if (info.is_write) {
-    // Update session stats instrumentation for write requests only. Writes are buffered and flushed
-    // asynchronously, and thus it is not possible to correlate wait/execution times directly with
-    // the request. We update instrumentation for writes exactly once, after successfully sending an
-    // RPC request to the underlying storage layer.
+  // Update session stats instrumentation for write requests only. Writes are buffered and flushed
+  // asynchronously, and thus it is not possible to correlate wait/execution times directly with
+  // the request. We update instrumentation for writes exactly once, after successfully sending an
+  // RPC request to the underlying storage layer.
+  if (info.is_write && info.is_buffered == IsOpBuffered::kTrue) {
+    // For buffered writes, we only track the write request without timing.
+    // Timing will be tracked when the buffer is actually flushed.
     metrics.WriteRequest(info.table_type);
     return getter();
   }
-  // Update session stats instrumentation only for read requests. Reads are executed
-  // synchronously with respect to Postgres query execution, and thus it is possible to
-  // correlate wait/execution times directly with the request. We update instrumentation for
-  // reads exactly once, upon receiving a success response from the underlying storage layer.
+  // For non-buffered writes and reads, track timing information
   uint64_t wait_time = 0;
   RETURN_NOT_OK(metrics.CallWithDuration(getter, &wait_time));
-  metrics.ReadRequest(info.table_type, wait_time);
+  if (info.is_write) {
+    // Non-buffered write: track both write and flush
+    metrics.WriteRequest(info.table_type);
+    metrics.FlushRequest(wait_time);
+  } else {
+    // Update session stats instrumentation only for read requests. Reads are executed
+    // synchronously with respect to Postgres query execution, and thus it is possible to
+    // correlate wait/execution times directly with the request. We update instrumentation for
+    // reads exactly once, upon receiving a success response from the underlying storage layer.
+    metrics.ReadRequest(info.table_type, wait_time);
+  }
   return Status::OK();
 }
 
@@ -827,10 +836,21 @@ Status PgDocOp::CompleteRequests() {
 Result<PgDocResponse> PgDocOp::DefaultSender(
     PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
     HybridTime in_txn_limit, ForceNonBufferable force_non_bufferable, IsForWritePgDoc is_write) {
-  const PgDocResponse::MetricInfo metrics{ResolveRelationType(**ops, table), is_write};
+  PgDocResponse::MetricInfo metrics{
+    ResolveRelationType(**ops, table), is_write, IsOpBuffered(!force_non_bufferable)};
   auto result = PgDocResponse{VERIFY_RESULT(session->RunAsync(
       ops, ops_count, table, in_txn_limit, force_non_bufferable)), metrics};
   if (!result.Valid()) {
+    // session->RunAsync() calls PgSession::DoRunAsync() -> RunHelper::Flush().
+    // RunHelper::Flush() returns PerformFuture() (empty constructor) when ops_info_.ops.Empty()
+    // is true, meaning all operations were buffered. The empty PerformFuture makes
+    // result.Valid() return false, indicating the operation was queued for later execution
+    // rather than sent immediately. Buffered operations will have their flush requests
+    // counted when the buffer is eventually flushed.
+    // Operations flushing returns an invalid result.
+    // when all operations are buffered and not performed immediately.
+    // These ops will have their metrics counted when the buffer is flushed eventually.
+    metrics.is_buffered = IsOpBuffered::kTrue;
     RETURN_NOT_OK(UpdateMetricOnRequestBuffering(metrics, session->metrics()));
   }
   return result;

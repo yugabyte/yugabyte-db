@@ -326,7 +326,7 @@ Result<rpc::CallResponsePtr> Run(
           make_lw_function(MakeGenerator(ops)),
           BuildCacheOptions(arena, session->catalog_read_time(), ops, *options.caching_info))
       : session->RunAsync(make_lw_function(MakeGenerator(ops)), HybridTime())),
-      {TableType::SYSTEM, IsForWritePgDoc::kFalse});
+      {TableType::SYSTEM, IsForWritePgDoc::kFalse, IsOpBuffered::kFalse});
   return VERIFY_RESULT(response.Get(*session)).response;
 }
 
