@@ -7811,7 +7811,7 @@ YbCalculateTimeDifferenceInMicros(TimestampTz yb_start_time)
 static bool
 YbIsDDLOrInitDBMode()
 {
-	return YBCPgIsDdlMode() || YBCIsInitDbModeEnvVarSet();
+	return (YBCPgIsDdlMode() && !YBCPgIsDdlModeWithRegularTransactionBlock()) || YBCIsInitDbModeEnvVarSet();
 }
 
 bool
