@@ -1875,7 +1875,7 @@ Result<uint64_t> PgApiImpl::GetSharedCatalogVersion(std::optional<PgOid> db_oid)
     // If db_oid is for a newly created database, it may not have an entry allocated in shared
     // memory. It can also be a race condition case where the database db_oid we are trying to
     // connect to is recently dropped from another node. Let's wait with 500ms interval until the
-    // entry shows up or until a 10-second timeout.
+    // entry shows up or until a 30-second timeout.
     auto status = LoggedWaitFor(
         [this, &db_oid]() -> Result<bool> {
           auto info = VERIFY_RESULT(pg_client_.GetTserverCatalogVersionInfo(
@@ -1892,7 +1892,7 @@ Result<uint64_t> PgApiImpl::GetSharedCatalogVersion(std::optional<PgOid> db_oid)
           }
           return catalog_version_db_index_ ? true : false;
         },
-        10s /* timeout */,
+        30s /* timeout */,
         Format("Database $0 is not ready in Yugabyte shared memory", *db_oid),
         500ms /* initial_delay */,
         1.0 /* delay_multiplier */);
@@ -1928,12 +1928,12 @@ Result<bool> PgApiImpl::CatalogVersionTableInPerdbMode() {
     // heartbeat response from yb-master that has set a value in
     // catalog_version_table_in_perdb_mode_ in the shared memory object
     // yet. Let's wait with 500ms interval until a value is set or until
-    // a 20-second timeout.
+    // a 30-second timeout.
     auto status = LoggedWaitFor(
         [this]() -> Result<bool> {
           return tserver_shared_object_->catalog_version_table_in_perdb_mode().has_value();
         },
-        20s /* timeout */,
+        30s /* timeout */,
         "catalog_version_table mode not set in shared memory, "
         "tserver not ready to serve requests",
         500ms /* initial_delay */,
