@@ -937,8 +937,8 @@ class PgClient::Impl : public BigDataFetcher {
     if (lock_id.relation_oid >= kPgFirstNormalObjectId) {
       auto tablespace_itr = tablespace_map_.find(PgObjectId(lock_id.db_oid, lock_id.relation_oid));
       if (tablespace_itr == tablespace_map_.end()) {
-        LOG(WARNING) << "Tablespace not found for db_oid=" << lock_id.db_oid
-                     << " relation_oid=" << lock_id.relation_oid;
+        VLOG(2) << "Tablespace not found for db_oid=" << lock_id.db_oid
+                << " relation_oid=" << lock_id.relation_oid;
       } else {
         lock_oid->set_tablespace_oid(tablespace_itr->second);
       }
