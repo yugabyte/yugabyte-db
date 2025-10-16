@@ -49,6 +49,17 @@ extern bool yb_non_ddl_txn_for_sys_tables_allowed;
 extern bool yb_force_global_transaction;
 
 /*
+ * Toggles whether to force use of tablespace-local locality instead of region locality.
+ */
+extern bool yb_force_tablespace_locality;
+
+/*
+ * Specify oid for tablespace to use for tablespace-local locality. Automatic selection is used
+ * if 0 (default value).
+ */
+extern uint32_t yb_force_tablespace_locality_oid;
+
+/*
  * Guc that toggles whether strict inequalities are pushed down.
  */
 extern bool yb_pushdown_strict_inequality;

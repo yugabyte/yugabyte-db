@@ -25,6 +25,10 @@ bool yb_format_funcs_include_yb_metadata = false;
 
 bool yb_force_global_transaction = false;
 
+bool yb_force_tablespace_locality = false;
+
+uint32_t yb_force_tablespace_locality_oid = 0;
+
 bool suppress_nonpg_logs = false;
 
 bool yb_binary_restore = false;
