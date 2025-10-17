@@ -669,7 +669,11 @@ PgApiImpl::PgApiImpl(
       pg_client_(
           wait_event_watcher_, pg_shared_data_->next_perform_op_serial_no, tablespace_map_),
       clock_(new server::HybridClock()),
-      enable_table_locking_(ShouldEnableTableLocks()),
+      // For parallel query, multiple PgTxnManager(s) make parallel requests to pg_client_session
+      // projecting as a single ysql backend. When object locking is enabled, only the leader worker
+      // should acquire object locks and issue finish transaction rpcs to ensure correctness.
+      enable_table_locking_(
+          ShouldEnableTableLocks() && !init_postgres_info.parallel_leader_session_id),
       pg_txn_manager_(new PgTxnManager(&pg_client_, clock_, pg_callbacks_, enable_table_locking_)),
       ybctid_reader_provider_(pg_session_),
       fk_reference_cache_(ybctid_reader_provider_, buffering_settings_, tablespace_map_),
