@@ -193,7 +193,25 @@ target:
 
 Refer to the [offline-migration.yaml](https://github.com/yugabyte/yb-voyager/blob/{{< yb-voyager-release >}}/yb-voyager/config-templates/offline-migration.yaml) template for more information on the available global, source, and target configuration parameters supported by Voyager.
 
-## Configure yugabyted UI
+## Configure control plane
+
+<ul class="nav nav-tabs nav-tabs-yb">
+  <li>
+    <a href="#yugabyted" class="nav-link active" id="yugabyted-tab" data-bs-toggle="tab" role="tab" aria-controls="yugabyted" aria-selected="true">
+      <img src="/icons/database.svg" alt="Server Icon">
+      yugabyted
+    </a>
+  </li>
+  <li>
+    <a href="#yugabyted-aeon" class="nav-link" id="yugabyted-aeon-tab" data-bs-toggle="tab" role="tab" aria-controls="yugabyted-aeon" aria-selected="false">
+      <img src="/icons/cloud.svg" alt="Cloud Icon">
+      yugabyted Aeon
+    </a>
+  </li>
+</ul>
+
+<div class="tab-content">
+  <div id="yugabyted" class="tab-pane fade show active" role="tabpanel" aria-labelledby="yugabyted-tab">
 
 You can use [yugabyted UI](/preview/reference/configuration/yugabyted/) to view the migration assessment report, and to visualize and review the database migration workflow performed by YugabyteDB Voyager.
 
@@ -212,10 +230,38 @@ Configure the yugabyted UI as follows:
         yugabyted-db-conn-string: postgresql://yugabyte:yugabyte@127.0.0.1:5433
         ```
 
-        {{< note title="Note" >}}
+      {{< note title="Note" >}}
 
 Don't include the `dbname` parameter in the connection string; the default `yugabyte` database is used to store the meta information for showing the migration in the yugabyted UI.
-        {{< /note >}}
+      {{< /note >}}
+
+  </div>
+  <div id="yugabyted-aeon" class="tab-pane fade" role="tabpanel" aria-labelledby="yugabyted-aeon-tab">
+
+You can use [YugabyteDB Aeon](/preview/reference/configuration/yugabyted/) to view the migration assessment report, and to visualize and review the database migration workflow performed by YugabyteDB Voyager.
+
+Configure YugabyteDB Aeon as follows:
+
+  1. Start a YugabyteDB Aeon cluster. Refer to the steps described in [Create your Sandbox cluster](/preview/yugabyte-cloud/cloud-quickstart/#create-your-sandbox-cluster). Skip this step if you already have a YugabyteDB Aeon cluster as your [target database](#prepare-the-target-database).
+
+  1. To see the Voyager migration workflow details in the UI, set the following configuration parameters before starting the migration:
+
+        ```yaml
+        ### Control plane type refers to the deployment type of YugabyteDB
+        control-plane-type: yugabyted aeon
+
+        ### YSQL connection string
+        ### Provide the standard PostgreSQL connection parameters, including user name, host name, and port. For example, postgresql://yugabyte:yugabyte@127.0.0.1:5433
+        yugabyted-db-conn-string: postgresql://yugabyte:yugabyte@127.0.0.1:5433
+        ```
+
+      {{< note title="Note" >}}
+
+Don't include the `dbname` parameter in the connection string; the default `yugabyte` database is used to store the meta information for showing the migration in the yugabyted UI.
+      {{< /note >}}
+
+  </div>
+</div>
 
 ## Assess migration
 

@@ -13,7 +13,7 @@ type: docs
 showRightNav: true
 ---
 
-This quick start guide describes the steps to perform an offline migration of a PostgreSQL database to YugabyteDB using YugabyteDB Voyager with YugabyteDB Aeon as the target database.
+This quick start guide describes the steps to perform an offline migration of a PostgreSQL database to YugabyteDB using YugabyteDB Voyager with your target database in YugabyteDB Aeon.
 
 ## Prerequisites
 
@@ -167,7 +167,7 @@ The `assess-migration` command generates a detailed assessment report with:
      - Enable any recommended features in your cluster settings
      - Note any schema changes recommended for optimal performance
 
-## Migrate to YugabyteDB Aeon
+## Migrate to a YugabyteDB Aeon cluster
 
 Proceed with schema and data migration using the following steps:
 
@@ -261,7 +261,7 @@ yb-voyager export data --config-file migration-config.yaml
    - Test basic CRUD operations
    - Verify application functionality
 
-## End migration
+### End migration
 
 [Complete the migration](../migrate/migrate-steps/#end-migration) as follows:
 
@@ -275,7 +275,7 @@ yb-voyager end migration --config-file migration-config.yaml \
 
 ## What's next?
 
-- [Migration options](../migrate/live-migrate/): Perform offline or live migration without downtime
+- [Migration options](../migrate/): Perform offline or live migration without downtime
 - [Performance tuning](../reference/performance/): Optimize migration speed
 - [Bulk data loading](../migrate/bulk-data-load/): Import from CSV files
 
