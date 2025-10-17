@@ -2412,7 +2412,7 @@ YbGetPrefetchableTableInfo(YbPFetchTable table)
 		[YB_PFETCH_TABLE_PG_PROC] =
 		(YbPFetchTableInfo) {ProcedureRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX,.cat_cache = {PROCOID, PROCNAMEARGSNSP}}},
 		[YB_PFETCH_TABLE_PG_RANGE] =
-		(YbPFetchTableInfo) {RangeRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_NO_INDEX,.cat_cache = {RANGETYPE}}},
+		(YbPFetchTableInfo) {RangeRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX,.cat_cache = {RANGETYPE,RANGEMULTIRANGE}}},
 		[YB_PFETCH_TABLE_PG_REWRITE] =
 		(YbPFetchTableInfo) {RewriteRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_NO_INDEX,.cat_cache = {RULERELNAME}}},
 		[YB_PFETCH_TABLE_PG_STATISTIC] =
