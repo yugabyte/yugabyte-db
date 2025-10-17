@@ -681,6 +681,7 @@ Status TabletServer::RegisterServices() {
 
   auto pg_client_service_holder = std::make_shared<PgClientServiceHolder>(
         *this, tablet_manager_->client_future(), clock(),
+        std::bind(&TabletServer::TransactionManager, this),
         std::bind(&TabletServer::TransactionPool, this), mem_tracker(), metric_entity(),
         messenger(), permanent_uuid(), options(), xcluster_context_.get(),
         &pg_node_level_mutation_counter_);

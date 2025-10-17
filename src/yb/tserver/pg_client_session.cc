@@ -21,6 +21,7 @@
 #include <mutex>
 #include <optional>
 #include <queue>
+#include <ranges>
 #include <set>
 #include <string>
 #include <tuple>
@@ -37,6 +38,7 @@
 #include "yb/client/table.h"
 #include "yb/client/table_alterer.h"
 #include "yb/client/transaction.h"
+#include "yb/client/transaction_manager.h"
 #include "yb/client/yb_op.h"
 
 #include "yb/common/common.pb.h"
@@ -111,6 +113,11 @@ DEFINE_RUNTIME_bool(use_tablespace_based_transaction_placement, false,
 
 DEFINE_RUNTIME_uint64(big_shared_memory_segment_session_expiration_time_ms, 5000,
     "Time to release unused allocated big memory segment from session to pool.");
+
+DEFINE_test_flag(bool, perform_ignore_pg_is_region_local, false,
+    "Ignore the is_all_region_local field of PgPerformOptionsPB. The intended state is for "
+    "everything to work when this field is not set, as the field is only left in for upgrade from "
+    "older versions and to be removed in the future.");
 
 DECLARE_bool(vector_index_dump_stats);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
@@ -1495,6 +1502,10 @@ template <>
 
 bool IsReadPointResetRequested(const PgPerformOptionsPB& options) {
   return options.has_read_time() && !options.read_time().has_read_ht();
+}
+
+PgTablespaceOid GetOpTablespaceOid(const PgPerformOpPB& op) {
+  return op.has_write() ? op.write().tablespace_oid() : op.read().tablespace_oid();
 }
 
 } // namespace
@@ -3620,23 +3631,52 @@ class PgClientSession::Impl {
   }
 
   TransactionFullLocality GetTargetTransactionLocality(const PgPerformRequestPB& request) const {
-    if (!FLAGS_use_tablespace_based_transaction_placement &&
-        !request.options().force_tablespace_locality()) {
-      return request.options().is_all_region_local()
-          ? TransactionFullLocality::RegionLocal() : TransactionFullLocality::Global();
+    auto tablespace_oids = request.ops() | std::views::transform(GetOpTablespaceOid);
+
+    if (FLAGS_use_tablespace_based_transaction_placement ||
+        request.options().force_tablespace_locality()) {
+      if (auto oid = request.options().force_tablespace_locality_oid()) {
+        return TransactionFullLocality::TablespaceLocal(oid);
+      }
+      return CalculateTablespaceBasedLocality(tablespace_oids);
     }
 
-    if (auto oid = request.options().force_tablespace_locality_oid()) {
-      return TransactionFullLocality::TablespaceLocal(oid);
+    // TODO: is_all_region_local() handles exactly two cases that tablespace oid check does not:
+    // 1. until upgrade is finalized (enable_tablespace_based_transaction_placement autoflag on
+    //    master), tablespace oid check does not work, so it is needed to avoid global latencies
+    //    during the upgrade. This is only for upgrades from before 2025.1.2/2025.2.0.
+    // 2. if auto_create_local_transaction_tables is OFF (not default), and transaction tables
+    //    are manually created, tablespace oid will not be mapped to a transaction table, and
+    //    TablespaceIsRegionLocal() returns false. But this case is not really supported, aside
+    //    from use setting up some unit tests.
+    // Once these are no longer of concern, is_all_region_local and corresponding code in
+    // pggate/pg can be removed.
+    if (!FLAGS_TEST_perform_ignore_pg_is_region_local && request.options().is_all_region_local()) {
+      return TransactionFullLocality::RegionLocal();
     }
+    return CalculateRegionBasedLocality(tablespace_oids);
+  }
 
+  TransactionFullLocality CalculateRegionBasedLocality(
+      std::ranges::range auto&& tablespace_oids) const {
+    auto& transaction_manager = context_.transaction_manager_provider();
+    bool all_region_local = transaction_manager.RegionLocalTransactionsPossible();
+    for (PgTablespaceOid oid : tablespace_oids) {
+      all_region_local = all_region_local && transaction_manager.TablespaceIsRegionLocal(oid);
+    }
+    return all_region_local
+        ? TransactionFullLocality::RegionLocal() : TransactionFullLocality::Global();
+  }
+
+  TransactionFullLocality CalculateTablespaceBasedLocality(
+      std::ranges::range auto&& tablespace_oids) const {
+    auto& transaction_manager = context_.transaction_manager_provider();
     PgTablespaceOid tablespace_oid = kInvalidOid;
-    for (const auto& op : request.ops()) {
-      PgTablespaceOid oid =
-          op.has_write() ? op.write().tablespace_oid() : op.read().tablespace_oid();
-      if (tablespace_oid == kInvalidOid) {
+    for (PgTablespaceOid oid : tablespace_oids) {
+      if (tablespace_oid == kInvalidOid ||
+          transaction_manager.TablespaceContainsTablespace(oid, tablespace_oid)) {
         tablespace_oid = oid;
-      } else if (tablespace_oid != oid) {
+      } else if (!transaction_manager.TablespaceContainsTablespace(tablespace_oid, oid)) {
         return TransactionFullLocality::Global();
       }
     }
