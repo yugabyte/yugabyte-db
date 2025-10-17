@@ -310,6 +310,6 @@ public class TelemetryProviderService {
 
   public void validateTelemetryProvider(TelemetryProvider provider) {
     this.apiHelper = getApiHelper();
-    provider.getConfig().validate(this.apiHelper);
+    provider.getConfig().validate(this.apiHelper, this.confGetter);
   }
 }

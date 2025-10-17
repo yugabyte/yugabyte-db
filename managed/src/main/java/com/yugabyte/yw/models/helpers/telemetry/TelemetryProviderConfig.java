@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonSubTypes.Type;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.yugabyte.yw.common.ApiHelper;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import io.swagger.annotations.ApiModelProperty.AccessMode;
@@ -27,5 +28,11 @@ public class TelemetryProviderConfig {
 
   public void validate(ApiHelper apiHelper) {
     // To be overridden in child classes if validation is required.
+    validate(apiHelper, null);
+  }
+
+  public void validate(ApiHelper apiHelper, RuntimeConfGetter confGetter) {
+    // Default implementation calls the single-parameter version for backward compatibility
+    validate(apiHelper, confGetter);
   }
 }

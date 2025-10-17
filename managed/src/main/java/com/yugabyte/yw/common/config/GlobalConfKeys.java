@@ -502,6 +502,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Allow the usage of OTLP Exporter in Telemetry Provider.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> telemetrySkipConnectivityValidations =
+      new ConfKeyInfo<>(
+          "yb.telemetry.skip_connectivity_validations",
+          ScopeType.GLOBAL,
+          "Skip connectivity validations while creating Telemetry Provider",
+          "Skip connectivity and permission validations while creating Telemetry Provider.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> hcvTokenRenewPercent =
       new ConfKeyInfo<>(
           "yb.kms.hcv_token_renew_percent",

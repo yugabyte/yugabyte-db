@@ -8,6 +8,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -110,7 +111,7 @@ public class LokiConfig extends TelemetryProviderConfig {
   }
 
   @Override
-  public void validate(ApiHelper apiHelper) {
+  public void validate(ApiHelper apiHelper, RuntimeConfGetter confGetter) {
 
     if (endpoint == null || endpoint.isEmpty()) {
       throw new PlatformServiceException(BAD_REQUEST, "Loki endpoint is required.");
@@ -140,6 +141,10 @@ public class LokiConfig extends TelemetryProviderConfig {
               0, endpoint.length() - TelemetryProviderService.LOKI_PUSH_ENDPOINT.length());
     }
 
+    if (TelemetryProviderUtil.skipConnectivityValidation(confGetter)) {
+      log.info("Skipping Loki endpoint validation as per config.");
+      return;
+    }
     HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
 
     int maxRetries = 5;
@@ -211,7 +216,11 @@ public class LokiConfig extends TelemetryProviderConfig {
 
       throw new PlatformServiceException(BAD_REQUEST, errorMsg.toString());
     }
+    log.info("Successfully validated Loki endpoint and connectivity.");
+  }
 
-    log.info("Successfully validated Loki config.");
+  @Override
+  public void validate(ApiHelper apiHelper) {
+    validate(apiHelper, null);
   }
 }

@@ -5,6 +5,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.io.ByteArrayInputStream;
@@ -130,7 +131,7 @@ public class S3Config extends TelemetryProviderConfig {
   }
 
   @Override
-  public void validate(ApiHelper apiHelper) {
+  public void validate(ApiHelper apiHelper, RuntimeConfGetter confGetter) {
 
     if (StringUtils.isBlank(region)) {
       throw new PlatformServiceException(BAD_REQUEST, "Region is required");
@@ -166,6 +167,11 @@ public class S3Config extends TelemetryProviderConfig {
       builder.endpointOverride(URI.create(normalizeEndpoint(endpoint)));
     }
 
+    if (TelemetryProviderUtil.skipConnectivityValidation(confGetter)) {
+      log.info("Skipping validation of S3 connectivity and permissions.");
+      return;
+    }
+
     S3Client s3 = builder.build();
 
     // Create a unique key with prefix so we don't overwrite anything
@@ -196,5 +202,10 @@ public class S3Config extends TelemetryProviderConfig {
       s3.close();
     }
     log.info("Successfully validated S3 config.");
+  }
+
+  @Override
+  public void validate(ApiHelper apiHelper) {
+    validate(apiHelper, null);
   }
 }
