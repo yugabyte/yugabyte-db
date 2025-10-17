@@ -11,9 +11,7 @@ BEGIN
 	-- Note that buffered writes may not be flushed at the the statement boundary for
 	-- statements in stored procedures/functions, and are instead done so before the start of other
 	-- statements in the procedure or at the end of the procedure.
-	SET yb_explain_hide_non_deterministic_fields = off;
-	EXECUTE 'EXPLAIN (ANALYZE, DIST, DEBUG, COSTS OFF, FORMAT JSON)' || query INTO output;
-	RESET yb_explain_hide_non_deterministic_fields;
+	EXECUTE 'EXPLAIN (ANALYZE, DIST, COSTS OFF, FORMAT JSON)' || query INTO output;
 	SELECT json_extract_path(output->0, 'Transaction')::TEXT INTO txn_type;
 	ASSERT (CASE WHEN txn_type = '"Fast Path"' THEN TRUE ELSE FALSE END) = expected;
 END;
