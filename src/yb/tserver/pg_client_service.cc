@@ -540,7 +540,9 @@ class PgClientServiceImpl::Impl : public SessionProvider {
   explicit Impl(
       std::reference_wrapper<const TabletServerIf> tablet_server,
       const std::shared_future<client::YBClient*>& client_future,
-      const scoped_refptr<ClockBase>& clock, TransactionPoolProvider transaction_pool_provider,
+      const scoped_refptr<ClockBase>& clock,
+      TransactionManagerProvider transaction_manager_provider,
+      TransactionPoolProvider transaction_pool_provider,
       rpc::Messenger* messenger, const TserverXClusterContextIf* xcluster_context,
       PgMutationCounter* pg_node_level_mutation_counter, MetricEntity* metric_entity,
       const MemTrackerPtr& parent_mem_tracker, const std::string& permanent_uuid,
@@ -548,6 +550,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
       : tablet_server_(tablet_server.get()),
         client_future_(client_future),
         clock_(clock),
+        transaction_manager_provider_(std::move(transaction_manager_provider)),
         transaction_pool_provider_(std::move(transaction_pool_provider)),
         messenger_(*messenger),
         table_cache_(client_future_),
@@ -577,7 +580,8 @@ class PgClientServiceImpl::Impl : public SessionProvider {
             .lock_owner_registry =
                 tablet_server_.ObjectLockSharedStateManager()
                     ? &tablet_server_.ObjectLockSharedStateManager()->registry()
-                    : nullptr},
+                    : nullptr,
+            .transaction_manager_provider = transaction_manager_provider_},
         cdc_state_table_(client_future_),
         txn_snapshot_manager_(
             instance_id_,
@@ -2703,6 +2707,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
   const TabletServerIf& tablet_server_;
   std::shared_future<client::YBClient*> client_future_;
   const scoped_refptr<ClockBase> clock_;
+  TransactionManagerProvider transaction_manager_provider_;
   TransactionPoolProvider transaction_pool_provider_;
   rpc::Messenger& messenger_;
   PgTableCache table_cache_;
@@ -2779,7 +2784,8 @@ class PgClientServiceImpl::Impl : public SessionProvider {
 PgClientServiceImpl::PgClientServiceImpl(
     std::reference_wrapper<const TabletServerIf> tablet_server,
     const std::shared_future<client::YBClient*>& client_future,
-    const scoped_refptr<ClockBase>& clock, TransactionPoolProvider transaction_pool_provider,
+    const scoped_refptr<ClockBase>& clock, TransactionManagerProvider transaction_manager_provider,
+    TransactionPoolProvider transaction_pool_provider,
     const std::shared_ptr<MemTracker>& parent_mem_tracker,
     const scoped_refptr<MetricEntity>& entity, rpc::Messenger* messenger,
     const std::string& permanent_uuid, const server::ServerBaseOptions& tablet_server_opts,
@@ -2787,7 +2793,8 @@ PgClientServiceImpl::PgClientServiceImpl(
     PgMutationCounter* pg_node_level_mutation_counter)
     : PgClientServiceIf(entity),
       impl_(new Impl(
-          tablet_server, client_future, clock, std::move(transaction_pool_provider), messenger,
+          tablet_server, client_future, clock, std::move(transaction_manager_provider),
+          std::move(transaction_pool_provider), messenger,
           xcluster_context, pg_node_level_mutation_counter, entity.get(), parent_mem_tracker,
           permanent_uuid, tablet_server_opts)) {}
 

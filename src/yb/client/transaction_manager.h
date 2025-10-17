@@ -66,6 +66,8 @@ class TransactionManager {
 
   bool RegionLocalTransactionsPossible();
 
+  bool TablespaceIsRegionLocal(PgTablespaceOid tablespace_oid);
+
   bool TablespaceLocalTransactionsPossible(PgTablespaceOid tablespace_oid);
 
   bool TablespaceContainsTablespace(PgTablespaceOid lhs, PgTablespaceOid rhs);
