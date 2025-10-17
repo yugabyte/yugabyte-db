@@ -22,12 +22,7 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
  * Runs the pg_regress test suite on YB code.
  */
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
-public class TestPgRegressJoin2 extends BasePgRegressTest {
-  @Override
-  public int getTestMethodTimeoutSec() {
-    return 1800;
-  }
-
+public class TestPgRegressPgJoin extends BasePgRegressTestPorted {
   // (Auto-Analyze #28057) Query plans change after enabling auto analyze.
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
@@ -36,7 +31,7 @@ public class TestPgRegressJoin2 extends BasePgRegressTest {
   }
 
   @Test
-  public void testPgRegressJoin2() throws Exception {
-    runPgRegressTest("yb_pg_join2_schedule");
+  public void schedule() throws Exception {
+    runPgRegressTest("yb_pg_join_schedule");
   }
 }
