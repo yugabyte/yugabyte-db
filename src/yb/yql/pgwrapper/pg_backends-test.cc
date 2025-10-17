@@ -388,6 +388,7 @@ class PgBackendsTestNoWaitQueues : public PgBackendsTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     PgBackendsTest::UpdateMiniClusterOptions(options);
     options->extra_tserver_flags.push_back("--enable_wait_queues=false");
+    options->extra_tserver_flags.push_back("--yb_enable_read_committed_isolation=true");
   }
 
   // Simulates a transaction conflict scenario to test retry counting
