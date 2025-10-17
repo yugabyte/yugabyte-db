@@ -4458,6 +4458,52 @@ TEST_F_EX(PgLibPqTest, PgEnumPreloadMinPreloadTest, BasePgEnumPreloadMinimalPrel
   RunTest(false /* preloaded */);
 }
 
+// Test that preloading pg_range prevents cache misses on the RANGEMULTIRANGE catcache.
+class PgRangeTest : public PgLibPqTest,
+      public ::testing::WithParamInterface<bool> {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    const bool is_pg_range_preloaded = GetParam();
+    if (is_pg_range_preloaded) {
+      options->extra_tserver_flags.push_back(
+          "--ysql_catalog_preload_additional_table_list=pg_range");
+    }
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(, PgRangeTest,
+                        ::testing::Values(false, true));
+
+TEST_P(PgRangeTest, PgRangeCatalogCacheTest) {
+  const bool is_pg_range_preloaded = GetParam();
+  auto conn = ASSERT_RESULT(Connect());
+
+  // An integer multirange.
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE resource_schedule ("
+      "    resource_id    INT PRIMARY KEY,"
+      "    active_hours   INT4MULTIRANGE)"));
+
+  auto start_value = ASSERT_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_range"));
+
+  auto conn2 = ASSERT_RESULT(Connect());
+
+  // Trigger RANGEMULTIRANGE and RANGETYPE.
+  ASSERT_OK(conn2.Execute("INSERT INTO resource_schedule (resource_id, active_hours)"
+                          "VALUES (101, '{[9,12), [13,17)}')"));
+
+  auto end_value = ASSERT_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_range"));
+
+  LOG(INFO) << "pg_range cache misses start value: " << start_value.value
+            << " end value: " << end_value.value;
+
+  if (is_pg_range_preloaded) {
+    ASSERT_EQ(end_value.value, start_value.value);
+  } else {
+    ASSERT_EQ(end_value.value, start_value.value + 2);
+  }
+};
+
 class PgLibPqCreateSequenceNamespaceRaceTest : public PgLibPqTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.emplace_back(
