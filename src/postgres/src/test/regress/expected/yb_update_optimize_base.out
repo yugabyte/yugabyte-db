@@ -51,7 +51,8 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v = v + 1 WHERE h 
  Storage Rows Scanned: 0
  Storage Write Requests: 1
  Storage Flush Requests: 0
-(7 rows)
+ Transaction: Fast Path
+(8 rows)
 
 -- Point updates that include the primary key in the targetlist
 -- These queries do not go through the distributed transaction path either
@@ -934,7 +935,8 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE a_test SET v1 = v1, v2 = v2 + 1 WHERE 
  Storage Rows Scanned: 0
  Storage Write Requests: 1
  Storage Flush Requests: 0
-(7 rows)
+ Transaction: Fast Path
+(8 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE a_test SET v1 = v1, v2 = v2 + 1 WHERE v1 = 1;
                                QUERY PLAN
@@ -1029,7 +1031,8 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET v1 = v1 + 1 WHERE k = 
  Storage Rows Scanned: 0
  Storage Write Requests: 1
  Storage Flush Requests: 0
-(7 rows)
+ Transaction: Fast Path
+(8 rows)
 
 -- The queries below should use the distributed transaction path.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET k = v1 - 1, v1 = v1 + 1 WHERE k = 1;
@@ -1231,7 +1234,8 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET v1 = v1 + 1 WHERE k = 
  Storage Rows Scanned: 0
  Storage Write Requests: 1
  Storage Flush Requests: 0
-(7 rows)
+ Transaction: Fast Path
+(8 rows)
 
 -- The queries below should use the distributed transaction path.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET k = v1 - 1, v1 = v1 + 1 WHERE k = 1;

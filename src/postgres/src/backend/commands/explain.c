@@ -1447,7 +1447,7 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 				ExplainPropertyFloat("Storage Execution Time", "ms",
 									 total_rpc_wait / 1000000.0, 3, es);
 
-			if (es->yb_debug && YBCCurrentTransactionUsesFastPath())
+			if (YBCCurrentTransactionUsesFastPath())
 				ExplainPropertyText("Transaction", "Fast Path", es);
 		}
 

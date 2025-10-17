@@ -11,7 +11,7 @@ BEGIN
 	-- Note that buffered writes may not be flushed at the the statement boundary for
 	-- statements in stored procedures/functions, and are instead done so before the start of other
 	-- statements in the procedure or at the end of the procedure.
-	EXECUTE 'EXPLAIN (ANALYZE, DIST, DEBUG, COSTS OFF, FORMAT JSON)' || query INTO output;
+	EXECUTE 'EXPLAIN (ANALYZE, DIST, COSTS OFF, FORMAT JSON)' || query INTO output;
 	SELECT json_extract_path(output->0, 'Transaction')::TEXT INTO txn_type;
 	ASSERT (CASE WHEN txn_type = '"Fast Path"' THEN TRUE ELSE FALSE END) = expected;
 END;
@@ -562,7 +562,8 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE single_row SET v1 = 1 WHERE 1 = k; -- 
  Storage Rows Scanned: 0
  Storage Write Requests: 1
  Storage Flush Requests: 0
-(7 rows)
+ Transaction: Fast Path
+(8 rows)
 
 -- Adding secondary index should force re-planning, which would
 -- then not choose single-row plan due to the secondary index.
