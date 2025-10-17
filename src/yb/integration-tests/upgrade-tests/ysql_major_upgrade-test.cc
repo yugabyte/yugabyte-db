@@ -2286,4 +2286,33 @@ TEST_F(YsqlMajorUpgradeTest, IndexWithRenamedColumn) {
     "Number of partitions: 1 (Use \\d+ to list them.)\n\n");
 }
 
+TEST_F(YsqlMajorUpgradeTest, NamespaceMapConsistencyAfterFailedUpgrade) {
+  ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
+
+  // Enable failure injection for second yugabyte creation attempt
+  ASSERT_OK(cluster_->SetFlagOnMasters(
+      "TEST_fail_yugabyte_namespace_creation_on_second_attempt", "true"));
+
+  // First upgrade attempt - will fail during pg_restore when creating yugabyte
+  ASSERT_NOK(PerformYsqlMajorCatalogUpgrade());
+
+  // Rollback the failed upgrade
+  ASSERT_OK(RollbackYsqlMajorCatalogVersion());
+
+  // Disable the failure injection
+  ASSERT_OK(cluster_->SetFlagOnMasters(
+      "TEST_fail_yugabyte_namespace_creation_on_second_attempt", "false"));
+
+  // Second upgrade attempt should succeed (this would fail without the fix)
+  ASSERT_OK(PerformYsqlMajorCatalogUpgrade());
+
+  // Complete the upgrade
+  ASSERT_OK(RestartAllTServersInCurrentVersion(kNoDelayBetweenNodes));
+  ASSERT_OK(FinalizeUpgrade());
+
+  // Verify we can connect and query
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte"));
+  ASSERT_OK(conn.Fetch("SELECT 1"));
+}
+
 }  // namespace yb
