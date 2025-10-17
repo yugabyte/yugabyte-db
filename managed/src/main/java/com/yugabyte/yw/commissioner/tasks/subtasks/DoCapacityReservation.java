@@ -92,7 +92,7 @@ public class DoCapacityReservation extends ServerSubTaskBase {
       } else if (provider.getCloudCode() == Common.CloudType.aws) {
         UniverseDefinitionTaskParams.AwsReservationInfo awsReservationInfo =
             fillAwsReservationInfo(capacityReservationState);
-        doAwsReservation(awsReservationInfo, provider, retries, sleepMs);
+        doAwsReservation(universe, awsReservationInfo, provider, retries, sleepMs);
       } else {
         throw new UnsupportedOperationException("Not supported for " + provider.getCloudCode());
       }
@@ -268,6 +268,7 @@ public class DoCapacityReservation extends ServerSubTaskBase {
   }
 
   private void doAwsReservation(
+      Universe universe,
       UniverseDefinitionTaskParams.AwsReservationInfo awsReservationInfo,
       Provider provider,
       int retries,
@@ -309,7 +310,12 @@ public class DoCapacityReservation extends ServerSubTaskBase {
                                 zoneReservation.getRegion(),
                                 reservation.getZone(),
                                 instanceType,
-                                count);
+                                count,
+                                Map.of(
+                                    "universe-name",
+                                    universe.getName(),
+                                    "universe-uuid",
+                                    universe.getUniverseUUID().toString()));
                         log.info(
                             "Created reservation {} for {}", capacityReservation, instanceType);
                         reservation.setReservationName(capacityReservation);

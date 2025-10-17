@@ -65,3 +65,7 @@ SELECT * FROM test_table ORDER BY a;
 ROLLBACK TO SAVEPOINT svpt;
 SELECT * FROM test_table ORDER BY a;
 ROLLBACK;
+
+-- #28955: CREATE INDEX (separate DDL transaction) works when savepoint is enabled.
+CREATE TABLE employees(id INT PRIMARY KEY, code VARCHAR(20) UNIQUE, department VARCHAR(50));
+CREATE INDEX idx_department ON employees(department);

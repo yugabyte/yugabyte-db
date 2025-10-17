@@ -229,7 +229,13 @@ Status PgCreateTable::Exec(
   if (transaction_metadata) {
     table_creator->part_of_transaction(transaction_metadata);
   }
-  table_creator->part_of_sub_transaction(sub_transaction_id);
+
+  // sub_transaction_id can be 0 when the CREATE INDEX statement is executed in separate DDL
+  // transactions even when transactional DDL is enabled. For separate DDL transactions, we do not
+  // support savepoints, so don't forward an invalid value of sub_transaction_id to yb-master.
+  if (sub_transaction_id >= kMinSubTransactionId) {
+    table_creator->part_of_sub_transaction(sub_transaction_id);
+  }
 
   table_creator->timeout(deadline - CoarseMonoClock::now());
 

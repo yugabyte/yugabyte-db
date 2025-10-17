@@ -114,6 +114,7 @@
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
 
+#include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
@@ -1311,7 +1312,8 @@ Status TabletServer::TriggerRelcacheInitConnection(
     } else {
       // In case there are multiple concurrent racing threads, this thread is the winner.
       started_superuser_connection = true;
-      LOG(INFO) << "Relcache init connection request to database " << dbname << " starting";
+      LOG(INFO) << "Relcache init connection request to database " << dbname
+                << " starting from tserver " << this << " to " << pgsql_proxy_bind_address();
 
       auto p = std::make_shared<std::promise<Status>>();
       future_for_this_request = p->get_future().share();
@@ -1345,8 +1347,6 @@ Status TabletServer::TriggerRelcacheInitConnection(
 
 void TabletServer::MakeRelcacheInitConnection(std::promise<Status>* p, const std::string& dbname) {
   auto deadline = CoarseMonoClock::Now() + default_client_timeout();
-  // We assume CreateInternalPGConn connects as "postgres". If not the unit test
-  // ConcurrentNonSuperuserNewConnectionsTest will fail.
   auto status = ResultToStatus(CreateInternalPGConn(dbname, deadline));
   if (status.ok()) {
     LOG(INFO) << "Relcache init connection to database " << dbname << " succeeded";

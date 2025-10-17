@@ -560,7 +560,10 @@ class PgClient::Impl : public BigDataFetcher {
     proxy_->HeartbeatAsync(
         req, &heartbeat_resp_, PrepareHeartbeatController(),
         [this, create] {
-      auto status = ResponseStatus(heartbeat_resp_);
+      auto status = heartbeat_controller_.status();
+      if (status.ok()) {
+        status = ResponseStatus(heartbeat_resp_);;
+      }
       if (create) {
         if (!status.ok()) {
           create_session_promise_.set_value(status);
@@ -937,8 +940,8 @@ class PgClient::Impl : public BigDataFetcher {
     if (lock_id.relation_oid >= kPgFirstNormalObjectId) {
       auto tablespace_itr = tablespace_map_.find(PgObjectId(lock_id.db_oid, lock_id.relation_oid));
       if (tablespace_itr == tablespace_map_.end()) {
-        LOG(WARNING) << "Tablespace not found for db_oid=" << lock_id.db_oid
-                     << " relation_oid=" << lock_id.relation_oid;
+        VLOG(2) << "Tablespace not found for db_oid=" << lock_id.db_oid
+                << " relation_oid=" << lock_id.relation_oid;
       } else {
         lock_oid->set_tablespace_oid(tablespace_itr->second);
       }

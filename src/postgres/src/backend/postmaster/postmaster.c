@@ -150,6 +150,7 @@
 #include "storage/procsignal.h"
 #include "storage/sinvaladt.h"
 #include "yb/util/debug/leak_annotations.h"
+#include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pg_shared_mem.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "yb_ash.h"

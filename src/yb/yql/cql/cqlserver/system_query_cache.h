@@ -26,8 +26,9 @@
 
 #include "yb/rpc/io_thread_pool.h"
 
+#include "yb/util/condition_variable.h"
 #include "yb/util/monotime.h"
-#include "yb/util/one_time_bool.h"
+#include "yb/util/mutex.h"
 
 #include "yb/yql/cql/ql/util/statement_params.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
@@ -60,7 +61,19 @@ class SystemQueryCache {
   void InitializeQueries();
   void RefreshCache();
   void ScheduleRefreshCache(bool now);
-  void ExecuteSync(const std::string& stmt, Status* status, ExecutedResult::SharedPtr* result_ptr);
+  Result<ExecutedResult::SharedPtr> ExecuteSync(const std::string& stmt);
+
+  struct CallbackState {
+    Status status;
+    ExecutedResult::SharedPtr result;
+    bool callback_done;
+
+    CallbackState() : callback_done(false) {}
+  };
+
+  void ExecuteSyncCallback(
+      std::shared_ptr<CallbackState> state, const Status& status,
+      const ExecutedResult::SharedPtr& result);
 
   cqlserver::CQLServiceImpl* const service_impl_;
   std::vector<std::string> queries_;
@@ -69,6 +82,8 @@ class SystemQueryCache {
       GUARDED_BY(cache_mutex_);
   MonoTime last_updated_ GUARDED_BY(cache_mutex_);
   std::mutex cache_mutex_;
+  Mutex request_mutex_;
+  ConditionVariable request_cv_{&request_mutex_};
 
   // Required for executing statements
   ql::StatementParameters stmt_params_;
@@ -77,7 +92,7 @@ class SystemQueryCache {
   std::unique_ptr<yb::rpc::IoThreadPool> pool_;
   // The scheduler used to refresh the system queries.
   std::unique_ptr<yb::rpc::Scheduler> scheduler_;
-  OneTimeBool shutting_down_;
+  bool shutting_down_ GUARDED_BY (request_mutex_);
 };
 
 } // namespace cqlserver

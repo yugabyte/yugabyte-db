@@ -600,10 +600,16 @@ TEST_F(CreateTableITest, TestTransactionStatusTableCreation) {
   // Tell the Master leader to wait for 3 TS to join before creating the
   // transaction status table.
   vector<string> master_flags = {
-        "--txn_table_wait_min_ts_count=3"
+      "--txn_table_wait_min_ts_count=3"
+  };
+  vector<string> tserver_flags = {
+      // TODO(#27854): We get stuck with object locking when there is no system.transactions
+      // table. Disabling it for now until we fix the underlying issue.
+      "--enable_object_locking_for_table_locks=false",
+      "--allowed_preview_flags_csv=enable_object_locking_for_table_locks",
   };
   // We also need to enable ysql.
-  ASSERT_NO_FATALS(StartCluster({}, master_flags, 1, 1, true));
+  ASSERT_NO_FATALS(StartCluster(tserver_flags, master_flags, 1, 1, true));
 
   // Check that the transaction table hasn't been created yet.
   YQLDatabase db = YQL_DATABASE_CQL;

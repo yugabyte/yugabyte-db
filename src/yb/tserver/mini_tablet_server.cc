@@ -72,6 +72,7 @@ using yb::tablet::TabletPeer;
 DECLARE_bool(rpc_server_allow_ephemeral_ports);
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_int32(TEST_nodes_per_cloud);
+DECLARE_string(pgsql_proxy_bind_address);
 
 DEFINE_test_flag(bool, private_broadcast_address, false,
                  "Use private address for broadcast address in tests.");
@@ -131,6 +132,10 @@ Result<std::unique_ptr<MiniTabletServer>> MiniTabletServer::CreateMiniTabletServ
 Status MiniTabletServer::Start(
     WaitTabletsBootstrapped wait_tablets_bootstrapped, WaitToAcceptPgConnections wait_for_pg) {
   CHECK(!started_);
+  if (!pgsql_proxy_bind_address_.empty()) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_bind_address) = pgsql_proxy_bind_address_;
+  }
+
   TEST_SetThreadPrefixScoped prefix_se(ToString());
 
   std::unique_ptr<TabletServer> server(new TabletServer(opts_));
@@ -143,6 +148,7 @@ Status MiniTabletServer::Start(
   RETURN_NOT_OK(Reconnect());
 
   started_ = true;
+  LOG(INFO) << "Started tserver " << server_.get() << " at " << server_->pgsql_proxy_bind_address();
   if (wait_tablets_bootstrapped) {
     RETURN_NOT_OK(WaitStarted());
   }

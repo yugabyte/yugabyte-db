@@ -19275,6 +19275,89 @@
       },
       "type" : "object"
     },
+    "S3Config" : {
+      "allOf" : [
+        {
+          "$ref" : "#/definitions/TelemetryProviderConfig"
+        },
+        {
+          "description" : "S3 Config",
+          "properties" : {
+            "accessKey" : {
+              "description" : "Access Key",
+              "maxLength" : 2147483647,
+              "minLength" : 1,
+              "type" : "string"
+            },
+            "bucket" : {
+              "description" : "S3 bucket",
+              "maxLength" : 2147483647,
+              "minLength" : 1,
+              "type" : "string"
+            },
+            "directoryPrefix" : {
+              "description" : "S3 Prefix Key (root directory inside bucket)",
+              "type" : "string"
+            },
+            "disableSSL" : {
+              "description" : "Disable SSL",
+              "type" : "boolean"
+            },
+            "endpoint" : {
+              "description" : "Endpoint. Overrides the endpoint used by the exporter instead of constructing it from region and bucket",
+              "type" : "string"
+            },
+            "filePrefix" : {
+              "description" : "File prefix",
+              "type" : "string"
+            },
+            "forcePathStyle" : {
+              "description" : "Force Path Style. Set this to true to force the request to use path-style addressing",
+              "type" : "boolean"
+            },
+            "marshaler" : {
+              "description" : "Marshaler",
+              "enum" : [
+                "OTLP_JSON",
+                "SUMO_IC"
+              ],
+              "type" : "string"
+            },
+            "partition" : {
+              "description" : "S3 Partition",
+              "enum" : [
+                "hour",
+                "minute"
+              ],
+              "type" : "string"
+            },
+            "region" : {
+              "description" : "Region",
+              "maxLength" : 2147483647,
+              "minLength" : 1,
+              "type" : "string"
+            },
+            "roleArn" : {
+              "description" : "Role ARN",
+              "type" : "string"
+            },
+            "secretKey" : {
+              "description" : "Secret Key",
+              "maxLength" : 2147483647,
+              "minLength" : 1,
+              "type" : "string"
+            }
+          },
+          "required" : [
+            "accessKey",
+            "bucket",
+            "region",
+            "secretKey"
+          ],
+          "type" : "object"
+        }
+      ]
+    },
     "S3Location" : {
       "properties" : {
         "paths" : {

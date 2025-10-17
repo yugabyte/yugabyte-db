@@ -39,7 +39,7 @@ Ensure the universes have the following characteristics:
 
 - Monitor CPU use and keep it at 65% or less.
 - Monitor disk space and keep its use under 65%.
-- Set the YB-TServer [log_min_seconds_to_retain](../../../../reference/configuration/yb-tserver/#log-min-seconds-to-retain) flag to 86400 on both source and target.
+- Set the YB-TServer [cdc_wal_retention_time_secs](../../../../reference/configuration/all-flags-yb-tserver/#cdc-wal-retention-time-secs) flag to 86400 on both source and target.
 
     This flag determines the duration for which WAL is retained on the source in case of a network partition or a complete outage of the target. For xCluster Replication, you should set the flag to a value greater than the default. The goal is to retain write-ahead logs (WALs) during a network partition or target outage until replication can be restarted. Setting this to 86400 (24 hours) is a good rule of thumb, but you should also consider how quickly you will be able to recover from a network partition or target outage.
 

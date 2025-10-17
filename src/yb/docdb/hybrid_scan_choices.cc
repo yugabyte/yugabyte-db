@@ -663,7 +663,11 @@ Result<bool> HybridScanChoices::SkipTargetsUpTo(Slice new_target) {
     << "scan_target_ validation failed: "
     << scan_target_.ToString();
   VLOG_WITH_FUNC(2) << "current_scan_target is " << scan_target_.ToString();
-  UpdateUpperBound(nullptr);
+  if (is_options_done_ && bloom_filter_options_.mode() == BloomFilterMode::kVariable) {
+    finished_ = true;
+  } else {
+    UpdateUpperBound(nullptr);
+  }
   return true;
 }
 
