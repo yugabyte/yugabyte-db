@@ -253,6 +253,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   //                 The reverse is also true: a transaction can be marked as read-only and still
   //                 have writes (before it was marked as read-only). So, no conclusion can be drawn
   //                 about the transaction's read-only status based on the has_writes_ flag.
+  //                 This flag does not include writes made for object locking.
   bool has_writes_ = false;
 
   const bool enable_table_locking_;
