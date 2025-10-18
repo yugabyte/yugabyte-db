@@ -105,6 +105,10 @@ static void generate_mergejoin_paths(PlannerInfo *root,
 static bool yb_has_non_evaluable_bnl_clauses(Path *outer_path,
 											 Path *inner_path,
 											 List *rinfos);
+static bool yb_batched_clause_final_check(Path *outer_path,
+										  Path *inner_path,
+										  JoinPathExtraData *extra,
+										  Relids outerrelids);
 
 
 /*
@@ -806,45 +810,14 @@ try_nestloop_path(PlannerInfo *root,
 			}
 		}
 
-		if (IsYugaByteEnabled() && YB_PATH_NEEDS_BATCHED_RELS(inner_path))
+		if (IsYugaByteEnabled() &&
+			!yb_batched_clause_final_check(outer_path,
+										   inner_path,
+										   extra,
+										   outerrelids))
 		{
-			/*
-			 * YB: Check to make sure this is a valid BNL.
-			 */
-			if (yb_has_non_evaluable_bnl_clauses(outer_path,
-												 inner_path,
-												 extra->restrictlist) ||
-				(yb_has_non_evaluable_bnl_clauses(outer_path,
-												  inner_path,
-												  inner_path->param_info
-												  ->ppi_clauses)))
-			{
-				bms_free(required_outer);
-				return;
-			}
-		}
-
-		if (IsYugaByteEnabled())
-		{
-			/*
-			 * YB: Check to see if there are any conflicting unbatched and batched
-			 * requirements.
-			 */
-			Relids		unbatched = bms_union(YB_PATH_REQ_OUTER_UNBATCHED(inner_path),
-											  YB_PATH_REQ_OUTER_UNBATCHED(outer_path));
-			Relids		batched = bms_union(YB_PATH_REQ_OUTER_BATCHED(outer_path),
-											YB_PATH_REQ_OUTER_BATCHED(inner_path));
-			bool		yb_is_nl_batched = bms_overlap(YB_PATH_REQ_OUTER_BATCHED(inner_path),
-													   outerrelids);
-
-			if (bms_overlap(unbatched, batched) ||
-				(yb_is_nl_batched && bms_overlap(unbatched, outerrelids)))
-			{
-				bms_free(required_outer);
-				bms_free(unbatched);
-				bms_free(batched);
-				return;
-			}
+			bms_free(required_outer);
+			return;
 		}
 
 		add_path(joinrel, (Path *)
@@ -882,6 +855,8 @@ try_partial_nestloop_path(PlannerInfo *root,
 {
 	JoinCostWorkspace workspace;
 
+	Relids		yb_outerrelids = outer_path->parent->relids;
+
 	/*
 	 * If the inner path is parameterized, the parameterization must be fully
 	 * satisfied by the proposed outer path.  Parameterized partial paths are
@@ -907,6 +882,8 @@ try_partial_nestloop_path(PlannerInfo *root,
 
 		if (!bms_is_subset(inner_paramrels, outerrelids))
 			return;
+
+		yb_outerrelids = outerrelids;
 	}
 
 	/*
@@ -932,6 +909,15 @@ try_partial_nestloop_path(PlannerInfo *root,
 		 */
 		if (!inner_path)
 			return;
+	}
+
+	if (IsYugaByteEnabled() &&
+		!yb_batched_clause_final_check(outer_path,
+									   inner_path,
+									   extra,
+									   yb_outerrelids))
+	{
+		return;
 	}
 
 	/* Might be good enough to be worth trying, so let's try it. */
@@ -2550,4 +2536,55 @@ yb_has_non_evaluable_bnl_clauses(Path *outer_path, Path *inner_path,
 		}
 	}
 	return false;
+}
+
+/*
+ * yb_batched_clause_final_check
+ *	  Perform final checks on evaluability and batching consistency of the
+ *    clauses before adding the BNL path.
+ *    Returns true if batching is possible, otherwise return false.
+ */
+static bool
+yb_batched_clause_final_check(Path *outer_path,
+							  Path *inner_path,
+							  JoinPathExtraData *extra,
+							  Relids outerrelids)
+{
+	if (YB_PATH_NEEDS_BATCHED_RELS(inner_path))
+	{
+		/*
+		 * Check to make sure this is a valid BNL.
+		 */
+		if (yb_has_non_evaluable_bnl_clauses(outer_path,
+											 inner_path,
+											 extra->restrictlist) ||
+			(yb_has_non_evaluable_bnl_clauses(outer_path,
+											  inner_path,
+											  inner_path->param_info
+											  ->ppi_clauses)))
+		{
+			return false;
+		}
+	}
+
+	/*
+	 * Check to see if there are any conflicting unbatched and batched
+	 * requirements.
+	 */
+	Relids		unbatched = bms_union(YB_PATH_REQ_OUTER_UNBATCHED(inner_path),
+									  YB_PATH_REQ_OUTER_UNBATCHED(outer_path));
+	Relids		batched = bms_union(YB_PATH_REQ_OUTER_BATCHED(outer_path),
+									YB_PATH_REQ_OUTER_BATCHED(inner_path));
+	bool		yb_is_nl_batched = bms_overlap(YB_PATH_REQ_OUTER_BATCHED(inner_path),
+											   outerrelids);
+
+	if (bms_overlap(unbatched, batched) ||
+		(yb_is_nl_batched && bms_overlap(unbatched, outerrelids)))
+	{
+		bms_free(unbatched);
+		bms_free(batched);
+		return false;
+	}
+
+	return true;
 }
