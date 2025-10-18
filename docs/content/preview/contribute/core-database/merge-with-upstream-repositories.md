@@ -587,20 +587,21 @@ However, when it does happen, the issues that were inadvertently closed need to 
 ### Git multiple remotes
 
 When it comes to merging upstream repositories, you will likely have to manage multiple remote repositories.
-This section will illustrate a workflow for that using the PostgreSQL repository as an example.
+This section illustrates a workflow for that using the PostgreSQL repository as an example.
 
-First, please get a good understanding of git remotes.
-[This short article](https://dev.to/hashcode01/add-a-second-remote-origin-to-git-35a7) covers the concept well.
+{{< tip title="Tip" >}}
+It is highly recommended that you get a good understanding of git remotes. Refer to [this article](https://dev.to/hashcode01/add-a-second-remote-origin-to-git-35a7) for the concepts.
+{{< /tip >}}
 
-YugabyteDB's [yugabyte/postgres][repo-postgres] repo does not have all branches of upstream PostgreSQL nor is it guaranteed to be synced.
+YugabyteDB's [yugabyte/postgres][repo-postgres] repository does not have all branches of upstream PostgreSQL, nor is it guaranteed to be synced.
 The common case workflow is to have at least two remotes: one for [yugabyte/postgres][repo-postgres] and one for upstream PostgreSQL.
-The upstream PostgreSQL remote can be set up in one of several ways:
+The upstream PostgreSQL remote can be set up in one of the following ways:
 
 - HTTP protocol: `https://git.postgresql.org/git/postgresql.git`
 - HTTP protocol (mirror): `https://github.com/postgres/postgres`
 
-Fetch commits from the upstream PostgreSQL repository, and do work on branches based off commits in the [yugabyte/postgres][repo-postgres] repository.
-Here is an example `git remote -v` output after setting up the two remotes:
+You fetch commits from the upstream PostgreSQL repository and perform your work on branches that base off commits in the [yugabyte/postgres][repo-postgres] repository.
+An example `git remote -v` output after you set up the two remotes is as follows:
 
 ```
 pg      https://git.postgresql.org/git/postgresql.git (fetch)
