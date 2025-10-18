@@ -590,7 +590,8 @@ When it comes to merging upstream repositories, you will likely have to manage m
 This section illustrates a workflow for that using the PostgreSQL repository as an example.
 
 {{< tip title="Tip" >}}
-It is highly recommended that you get a good understanding of git remotes. Refer to [this article](https://dev.to/hashcode01/add-a-second-remote-origin-to-git-35a7) for the concepts.
+It is highly recommended that you get a good understanding of git remotes.
+Refer to [this article](https://dev.to/hashcode01/add-a-second-remote-origin-to-git-35a7) for the concepts.
 {{< /tip >}}
 
 YugabyteDB's [yugabyte/postgres][repo-postgres] repository does not have all branches of upstream PostgreSQL, nor is it guaranteed to be synced.
