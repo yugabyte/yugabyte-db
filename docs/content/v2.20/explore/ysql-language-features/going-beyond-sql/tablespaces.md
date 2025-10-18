@@ -223,6 +223,33 @@ Time: 337.154 ms
 
 ## Leader preference
 
+{{< note title=" " >}}
+
+The example below expects the following servers to be added to the cluster:
+
+```sh
+./bin/yugabyted start                               \
+  --base_dir=/home/yugabyte/127.0.0.8/yugabyte-data \
+  --advertise_address=127.0.0.8                     \
+  --join=127.0.0.1                                  \
+  --cloud_location=aws.us-east-1.us-east-1b
+
+./bin/yugabyted start                               \
+  --base_dir=/home/yugabyte/127.0.0.9/yugabyte-data \
+  --advertise_address=127.0.0.9                     \
+  --join=127.0.0.1                                  \
+  --cloud_location=aws.us-east-2.us-east-2a
+
+  ./bin/yugabyted start                              \
+  --base_dir=/home/yugabyte/127.0.0.10/yugabyte-data \
+  --advertise_address=127.0.0.10                     \
+  --join=127.0.0.1                                   \
+  --cloud_location=aws.us-west-1.us-west-1a
+```
+
+{{< /note >}}
+
+
 Leader preference helps optimize workloads that require distribution of data over multiple zones for zone-level fault tolerance, but which have clients only in a subset of those zones. It overrides the default behavior of spreading the tablet leaders across all placement zones of the tablespace, and instead places them closer to the clients.
 
 The leaders handle all [reads](../../../linear-scalability/scaling-reads/) and [writes](../../../linear-scalability/scaling-writes/), which reduces the number of network hops, which in turn reduces latency for increased performance. Leader preference allows you to specify the zones in which to place the leaders when the system is stable, and fallback zones when an outage or maintenance occurs in the preferred zones.
