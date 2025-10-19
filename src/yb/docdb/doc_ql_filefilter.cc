@@ -133,11 +133,11 @@ bool HybridTimeFileFilter::Filter(const rocksdb::FdWithBoundaries& file) const {
 
 std::shared_ptr<rocksdb::ReadFileFilter> CreateFileFilter(const qlexpr::YQLScanSpec& scan_spec) {
   std::vector<bool> lower_bound_incl;
-  auto lower_bound = scan_spec.RangeComponents(true, &lower_bound_incl);
+  auto lower_bound = scan_spec.RangeComponents(qlexpr::BoundType::kLower, &lower_bound_incl);
   CHECK_EQ(lower_bound.size(), lower_bound_incl.size());
 
   std::vector<bool> upper_bound_incl;
-  auto upper_bound = scan_spec.RangeComponents(false, &upper_bound_incl);
+  auto upper_bound = scan_spec.RangeComponents(qlexpr::BoundType::kUpper, &upper_bound_incl);
   CHECK_EQ(upper_bound.size(), upper_bound_incl.size());
   if (lower_bound.empty() && upper_bound.empty()) {
     return std::shared_ptr<rocksdb::ReadFileFilter>();

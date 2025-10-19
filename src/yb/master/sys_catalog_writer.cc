@@ -249,10 +249,7 @@ Status EnumerateSysCatalog(
   QLConditionPB cond;
   cond.set_op(QL_OP_AND);
   QLAddInt8Condition(&cond, schema.column_id(type_col_idx), QL_OP_EQUAL, entry_type);
-  const dockv::KeyEntryValues empty_hash_components;
-  docdb::DocQLScanSpec spec(
-      schema, std::nullopt /* hash_code */, std::nullopt /* max_hash_code */, empty_hash_components,
-      &cond, nullptr /* if_req */, rocksdb::kDefaultQueryId);
+  docdb::DocQLScanSpec spec(schema, &cond);
   RETURN_NOT_OK(doc_iter->Init(spec));
 
   qlexpr::QLTableRow value_map;
@@ -284,10 +281,7 @@ Status EnumerateAllSysCatalogEntries(
   const auto metadata_col_idx = VERIFY_RESULT(schema.ColumnIndexByName(
       kSysCatalogTableColMetadata));
 
-  const dockv::KeyEntryValues empty_hash_components;
-  docdb::DocQLScanSpec spec(
-      schema, std::nullopt /* hash_code */, std::nullopt /* max_hash_code */, empty_hash_components,
-      nullptr /* req */, nullptr /* if_req */, rocksdb::kDefaultQueryId);
+  docdb::DocQLScanSpec spec(schema, nullptr);
   RETURN_NOT_OK(doc_iter->Init(spec));
 
   qlexpr::QLTableRow value_map;

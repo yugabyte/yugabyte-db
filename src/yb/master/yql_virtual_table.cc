@@ -86,9 +86,8 @@ Status YQLVirtualTable::BuildYQLScanSpec(
   if (include_static_columns) {
     return STATUS(IllegalState, "system table contains no static columns");
   }
-  const dockv::KeyEntryValues empty_vec;
   spec->reset(new docdb::DocQLScanSpec(
-      schema, /* hash_code = */ std::nullopt, /* max_hash_code = */ std::nullopt, empty_vec,
+      schema, /* hash_code = */ std::nullopt, /* max_hash_code = */ std::nullopt, nullptr, {},
       request.has_where_expr() ? &request.where_expr().condition() : nullptr,
       request.has_if_expr() ? &request.if_expr().condition() : nullptr, rocksdb::kDefaultQueryId,
       request.is_forward_scan()));

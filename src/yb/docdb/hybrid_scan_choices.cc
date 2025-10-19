@@ -36,8 +36,8 @@ using dockv::DocKey;
 
 namespace {
 
-BoundComp CompareBound(const KeyEntryValue& lhs, const KeyEntryValue& rhs) {
-  int res = lhs.CompareTo(rhs);
+BoundComp CompareBound(Slice lhs, Slice rhs) {
+  int res = lhs.compare(rhs);
   return res < 0 ? BoundComp::kIn
                  : (res > 0 ? BoundComp::kOut : BoundComp::kAtBound);
 }
@@ -68,9 +68,9 @@ bool BloomFilterAllowed(size_t num_options, const ScanOptions& options) {
 
 } // namespace
 
-RangeMatch OptionRange::MatchEx(const dockv::KeyEntryValue& value) const {
+RangeMatch OptionRange::MatchEx(Slice value) const {
   if (fixed_point_) {
-    int cmp = lower_.CompareTo(value);
+    int cmp = lower_.compare(value);
     return cmp == 0 ? RangeMatch{BoundComp::kAtBound, BoundComp::kAtBound}
                     : (cmp < 0 ? RangeMatch{BoundComp::kIn, BoundComp::kOut}
                                : RangeMatch{BoundComp::kOut, BoundComp::kIn});
@@ -83,7 +83,7 @@ bool OptionRange::SatisfiesInclusivity(RangeMatch match) const {
          docdb::SatisfiesInclusivity(match.upper, upper_inclusive_);
 }
 
-bool OptionRange::Match(const dockv::KeyEntryValue& value) const {
+bool OptionRange::Match(Slice value) const {
   if (fixed_point_) {
     return lower_ == value;
   }
@@ -206,7 +206,7 @@ bool ScanTarget::IsExtremal(size_t column_idx) const {
 }
 
 bool HybridScanChoices::CurrentTargetMatchesKey(Slice curr, IntentAwareIterator* iter) {
-  VLOG_WITH_FUNC(3) << " checking if acceptable ? "
+  VLOG_WITH_FUNC(3) << "Checking if acceptable ? "
           << (scan_target_.Match(curr) ? "YEP" : "NOPE")
           << ": " << DocKey::DebugSliceToString(curr) << " vs "
           << scan_target_.ToString();
@@ -229,7 +229,7 @@ HybridScanChoices::HybridScanChoices(
     Slice table_key_prefix)
     : is_forward_scan_(doc_spec.is_forward_scan()),
       scan_target_(
-          table_key_prefix, doc_spec.is_forward_scan(),
+          table_key_prefix, is_forward_scan_,
           schema.has_yb_hash_code() ? schema.num_hash_key_columns() + 1
                                     : std::numeric_limits<size_t>::max(),
           schema.num_dockey_components()),
@@ -240,7 +240,8 @@ HybridScanChoices::HybridScanChoices(
       col_groups_(doc_spec.options_groups()),
       prefix_length_(doc_spec.prefix_length()),
       schema_num_keys_(schema.num_dockey_components()),
-      bloom_filter_options_(BloomFilterOptions::Inactive()) {
+      bloom_filter_options_(BloomFilterOptions::Inactive()),
+      arena_(doc_spec.arena_ptr()) {
   auto last_filtered_idx = std::numeric_limits<size_t>::max();
 
   const auto& options_col_ids = doc_spec.options_indexes();
@@ -276,9 +277,9 @@ HybridScanChoices::HybridScanChoices(
         // As of D15647 we do not send empty options.
         // This is kept for backward compatibility during rolling upgrades.
         current_options.emplace_back(
-            KeyEntryValue(KeyEntryType::kHighest),
+            Slice(&dockv::KeyEntryTypeAsChar::kHighest, 1),
             true,
-            KeyEntryValue(KeyEntryType::kLowest),
+            Slice(&dockv::KeyEntryTypeAsChar::kLowest, 1),
             true,
             current_options.size(),
             current_options.size() + 1);
@@ -323,18 +324,17 @@ HybridScanChoices::HybridScanChoices(
       // list of the given range bound
       const auto col_sort_type =
           col_id.rep() == kYbHashCodeColId ? SortingType::kAscending
-              : schema.column(schema.find_column_by_id( col_id)).sorting_type();
+              : schema.column(schema.find_column_by_id(col_id)).sorting_type();
       const auto range = range_bounds->RangeFor(col_id);
-      const auto lower = GetQLRangeBoundAsPVal(range, col_sort_type, true /* lower_bound */);
-      const auto lower_inclusive = GetQLRangeBoundIsInclusive(range, col_sort_type, true);
-      const auto upper = GetQLRangeBoundAsPVal(range, col_sort_type, false /* upper_bound */);
-      const auto upper_inclusive = GetQLRangeBoundIsInclusive(range, col_sort_type, false);
+      auto lower = range.BoundAsSlice(doc_spec.arena(), col_sort_type, qlexpr::BoundType::kLower);
+      const auto lower_inclusive = range.BoundIsInclusive(col_sort_type, qlexpr::BoundType::kLower);
+      auto upper = range.BoundAsSlice(doc_spec.arena(), col_sort_type, qlexpr::BoundType::kUpper);
+      const auto upper_inclusive = range.BoundIsInclusive(col_sort_type, qlexpr::BoundType::kUpper);
 
       VLOG_WITH_FUNC(4)
           << "Column: " << idx << "/" << col_id << " range: "
           << (lower_inclusive ? "[" : "(") << lower.ToString() << "-" << upper.ToString()
           << (upper_inclusive ? "]" : ")");
-
       current_options.emplace_back(
           lower,
           lower_inclusive,
@@ -345,7 +345,8 @@ HybridScanChoices::HybridScanChoices(
 
       col_groups_.BeginNewGroup();
       col_groups_.AddToLatestGroup(scan_options_.size());
-      if (!upper.IsInfinity() || !lower.IsInfinity()) {
+      if (!IsInfinity(dockv::DecodeKeyEntryType(upper)) ||
+          !IsInfinity(dockv::DecodeKeyEntryType(lower))) {
         last_filtered_idx = idx;
       }
     } else {
@@ -357,9 +358,9 @@ HybridScanChoices::HybridScanChoices(
       col_groups_.BeginNewGroup();
       col_groups_.AddToLatestGroup(scan_options_.size());
       current_options.emplace_back(
-          KeyEntryValue(KeyEntryType::kLowest),
+          Slice(&dockv::KeyEntryTypeAsChar::kLowest, 1),
           true,
-          KeyEntryValue(KeyEntryType::kHighest),
+          Slice(&dockv::KeyEntryTypeAsChar::kHighest, 1),
           true,
           current_options.size(),
           current_options.size() + 1);
@@ -464,7 +465,8 @@ void HybridScanChoices::SetGroup(size_t opt_list_idx, size_t opt_index) {
 
 Result<bool> HybridScanChoices::SkipTargetsUpTo(Slice new_target) {
   VLOG_WITH_FUNC(2)
-      << "Updating current target to be >= " << DocKey::DebugSliceToString(new_target);
+      << "Updating current target to be >= " << DocKey::DebugSliceToString(new_target)
+      << ", ranges size: " << current_scan_target_ranges_.size();
   DCHECK(!Finished());
   is_options_done_ = false;
 
@@ -549,7 +551,7 @@ Result<bool> HybridScanChoices::SkipTargetsUpTo(Slice new_target) {
     }
     auto target_value_start = decoder.left_input().data();
     if (decode_status.ok()) {
-      decode_status = decoder.DecodeKeyEntryValue(&target_value);
+      decode_status = decoder.DecodeKeyEntryValue();
     }
     Slice target_value_slice(target_value_start, decoder.left_input().data());
     if (!decode_status.ok()) {
@@ -564,7 +566,7 @@ Result<bool> HybridScanChoices::SkipTargetsUpTo(Slice new_target) {
 
     // If it's in range then good, continue after appending the target value
     // column.
-    if (auto match = current_option.MatchEx(target_value);
+    if (auto match = current_option.MatchEx(target_value_slice);
         current_option.SatisfiesInclusivity(match)) {
       scan_target_.Append(target_value_slice, match.Last(is_forward_scan_));
       continue;
@@ -582,12 +584,12 @@ Result<bool> HybridScanChoices::SkipTargetsUpTo(Slice new_target) {
     auto [begin, end] = GetSearchSpaceBounds(option_list_idx);
 
     auto it = is_forward_scan_
-        ? std::lower_bound(begin, end, target_value,
-                           [](const OptionRange& lhs, const KeyEntryValue& value) {
+        ? std::lower_bound(begin, end, target_value_slice,
+                           [](const OptionRange& lhs, Slice value) {
                              return lhs.upper() < value;
                            })
-        : std::lower_bound(begin, end, target_value,
-                           [](const OptionRange& lhs, const KeyEntryValue& value) {
+        : std::lower_bound(begin, end, target_value_slice,
+                           [](const OptionRange& lhs, Slice value) {
                              return lhs.lower() > value;
                            });
 
@@ -607,7 +609,7 @@ Result<bool> HybridScanChoices::SkipTargetsUpTo(Slice new_target) {
 
     // If we are within a range then target_value itself should work
 
-    auto match = it->MatchEx(target_value);
+    auto match = it->MatchEx(target_value_slice);
     if (match.lower != BoundComp::kOut && match.upper != BoundComp::kOut) {
       if (it->SatisfiesInclusivity(match)) {
         scan_target_.Append(target_value_slice, match.Last(is_forward_scan_));
@@ -1013,7 +1015,8 @@ void HybridScanChoices::UpdateUpperBound(IntentAwareIterator* iter) {
 
 std::string OptionRange::ToString() const {
   return Format(
-      "$0$1, $2$3", lower_inclusive_ ? "[" : "(", lower_, upper_, upper_inclusive_ ? "]" : ")");
+      "$0$1, $2$3", lower_inclusive_ ? "[" : "(", lower_.ToDebugHexString(),
+      upper_.ToDebugHexString(), upper_inclusive_ ? "]" : ")");
 }
 
 

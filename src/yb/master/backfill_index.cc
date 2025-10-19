@@ -164,14 +164,7 @@ Result<bool> GetPgIndexStatus(
     cond.add_operands()->set_column_id(indexrelid_col_id);
     cond.set_op(QL_OP_EQUAL);
     cond.add_operands()->mutable_value()->set_uint32_value(idx_oid);
-    const dockv::KeyEntryValues empty_key_components;
-    docdb::DocPgsqlScanSpec spec(pg_index_schema,
-                                 rocksdb::kDefaultQueryId,
-                                 empty_key_components,
-                                 empty_key_components,
-                                 &cond,
-                                 std::nullopt /* hash_code */,
-                                 std::nullopt /* max_hash_code */);
+    docdb::DocPgsqlScanSpec spec(pg_index_schema, &cond);
     RETURN_NOT_OK(iter->Init(spec));
   }
 

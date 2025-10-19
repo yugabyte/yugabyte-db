@@ -415,13 +415,13 @@ Status DoGetRangePartitionBounds(const Schema& schema,
   const auto& condition_expr = request.condition_expr();
   if (condition_expr.has_condition() &&
       implicit_cast<size_t>(range_cols.size()) < schema.num_range_key_columns()) {
-    auto prefixed_range_components = VERIFY_RESULT(qlexpr::InitKeyColumnPrimitiveValues(
+    auto prefixed_range_components = VERIFY_RESULT(qlexpr::InitKeyColumnValues(
         range_cols, schema, schema.num_hash_key_columns()));
     qlexpr::QLScanRange scan_range(schema, condition_expr.condition());
     *lower_bound = qlexpr::GetRangeKeyScanSpec(
-        schema, &prefixed_range_components, &scan_range, nullptr, true /* lower_bound */);
+        schema, &prefixed_range_components, &scan_range, nullptr, qlexpr::BoundType::kLower);
     *upper_bound = qlexpr::GetRangeKeyScanSpec(
-        schema, &prefixed_range_components, &scan_range, nullptr, false /* upper_bound */);
+        schema, &prefixed_range_components, &scan_range, nullptr, qlexpr::BoundType::kUpper);
   } else if (!range_cols.empty()) {
     *lower_bound = VERIFY_RESULT(GetRangeComponents(schema, range_cols, true));
     *upper_bound = VERIFY_RESULT(GetRangeComponents(schema, range_cols, false));

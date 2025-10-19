@@ -13,12 +13,12 @@
 
 #pragma once
 
-#include "yb/docdb/scan_choices.h"
+#include "yb/common/doc_hybrid_time.h"
 
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/intent_aware_iterator.h"
+#include "yb/docdb/scan_choices.h"
 
-#include "yb/dockv/key_entry_value.h"
 #include "yb/dockv/value_type.h"
 
 #include "yb/qlexpr/ql_scanspec.h"
@@ -105,8 +105,8 @@ struct RangeMatch {
 class OptionRange {
  public:
   OptionRange(
-      const dockv::KeyEntryValue& lower, bool lower_inclusive,
-      const dockv::KeyEntryValue& upper, bool upper_inclusive,
+      Slice lower, bool lower_inclusive,
+      Slice upper, bool upper_inclusive,
       size_t begin_idx, size_t end_idx)
       : lower_(lower),
         lower_inclusive_(lower_inclusive),
@@ -117,7 +117,7 @@ class OptionRange {
         fixed_point_(lower_inclusive && upper_inclusive && lower == upper) {}
 
   OptionRange(
-      const dockv::KeyEntryValue& single, size_t begin_idx, size_t end_idx)
+      Slice single, size_t begin_idx, size_t end_idx)
       : lower_(single),
         lower_inclusive_(true),
         upper_(single),
@@ -126,41 +126,16 @@ class OptionRange {
         end_idx_(end_idx),
         fixed_point_(true) {}
 
-  // Convenience constructors for testing
-  OptionRange(int begin, int end, SortOrder sort_order = SortOrder::kAscending)
-      : OptionRange(
-            {dockv::KeyEntryValue::Int32(begin, sort_order)}, true,
-            {dockv::KeyEntryValue::Int32(end, sort_order)}, true, 0, 0) {}
-
-  OptionRange(int value, SortOrder sort_order = SortOrder::kAscending) // NOLINT
-      : OptionRange(value, value, sort_order) {}
-
-  OptionRange(int bound, bool upper, SortOrder sort_order = SortOrder::kAscending)
-      : OptionRange(
-            {upper ? dockv::KeyEntryValue(dockv::KeyEntryType::kNullLow)
-                   : dockv::KeyEntryValue::Int32(bound, sort_order)},
-            !upper,
-            {upper ? dockv::KeyEntryValue::Int32(bound, sort_order)
-                   : dockv::KeyEntryValue(dockv::KeyEntryType::kNullHigh)},
-            upper, 0, 0) {}
-
-  OptionRange()
-      : OptionRange(
-            {dockv::KeyEntryValue(dockv::KeyEntryType::kLowest)},
-            false,
-            {dockv::KeyEntryValue(dockv::KeyEntryType::kHighest)},
-            false, 0, 0) {}
-
-  const dockv::KeyEntryValue& lower() const { return lower_; }
+  Slice lower() const { return lower_; }
   bool lower_inclusive() const { return lower_inclusive_; }
-  const dockv::KeyEntryValue& upper() const { return upper_; }
+  Slice upper() const { return upper_; }
   bool upper_inclusive() const { return upper_inclusive_; }
 
   bool fixed_point() const {
     return fixed_point_;
   }
 
-  const dockv::KeyEntryValue& first_bound(bool is_forward) const {
+  Slice first_bound(bool is_forward) const {
     return is_forward ? lower_ : upper_;
   }
 
@@ -168,7 +143,7 @@ class OptionRange {
     return is_forward ? lower_inclusive_ : upper_inclusive_;
   }
 
-  const dockv::KeyEntryValue& last_bound(bool is_forward) const {
+  Slice last_bound(bool is_forward) const {
     return is_forward ? upper_ : lower_;
   }
 
@@ -181,8 +156,8 @@ class OptionRange {
 
   bool HasIndex(size_t opt_index) const { return begin_idx_ <= opt_index && opt_index < end_idx_; }
 
-  bool Match(const dockv::KeyEntryValue& value) const;
-  RangeMatch MatchEx(const dockv::KeyEntryValue& value) const;
+  bool Match(Slice value) const;
+  RangeMatch MatchEx(Slice value) const;
   bool SatisfiesInclusivity(RangeMatch match) const;
 
   bool Fixed() const;
@@ -190,20 +165,13 @@ class OptionRange {
   std::string ToString() const;
 
  private:
-  dockv::KeyEntryValue lower_;
+  Slice lower_;
   bool lower_inclusive_;
-  dockv::KeyEntryValue upper_;
+  Slice upper_;
   bool upper_inclusive_;
   size_t begin_idx_;
   size_t end_idx_;
   bool fixed_point_;
-
-  friend class ScanChoicesTest;
-  bool operator==(const OptionRange& other) const {
-    return lower_inclusive() == other.lower_inclusive() &&
-           upper_inclusive() == other.upper_inclusive() && lower() == other.lower() &&
-           upper() == other.upper();
-  }
 };
 
 inline std::ostream& operator<<(std::ostream& str, const OptionRange& opt) {
@@ -396,6 +364,8 @@ class HybridScanChoices : public ScanChoices {
 
   KeyBytes upper_bound_;
   std::optional<IntentAwareIteratorUpperboundScope> iterator_bound_scope_;
+
+  ArenaPtr arena_;
 };
 
 } // namespace yb::docdb

@@ -354,7 +354,8 @@ int NumScanRows() {
 
 constexpr int kScanBlockSize = 1000;
 
-std::string CreateTableWithNValuesCommand(int num_columns, int num_keys = 1) {
+std::string CreateTableWithNValuesCommand(
+    int num_columns, int num_keys = 1, int num_text_keys = 0) {
   std::string result = "CREATE TABLE t (";
   std::string pk = "";
   for (auto column : Range(num_keys + num_columns)) {
@@ -363,7 +364,11 @@ std::string CreateTableWithNValuesCommand(int num_columns, int num_keys = 1) {
     }
     if (column < num_keys) {
       auto key_name = Format("k$0", column);
-      result += key_name + " INT";
+      if (column >= num_text_keys) {
+        result += key_name + " INT";
+      } else {
+        result += key_name + " TEXT";
+      }
       if (!pk.empty()) {
         pk += ", ";
       }
@@ -381,10 +386,18 @@ std::string CreateTableWithNValuesCommand(int num_columns, int num_keys = 1) {
 
 constexpr int kValueRange = 100000000;
 
-std::string InsertNValuesCommand(int num_columns) {
-  std::string result = "INSERT INTO t VALUES (generate_series($0, $1)";
+std::string InsertNValuesCommand(int num_columns, int num_text_columns = 0) {
+  std::string result = "INSERT INTO t VALUES (";
   for (int i = 0; i != num_columns; ++i) {
-    result += Format(", trunc(random()*$0)", kValueRange);
+    std::string column_value = i == 0 ? "generate_series($0, $1)"
+                                      : Format("trunc(random()*$0)", kValueRange);
+    if (i < num_text_columns) {
+      column_value = Format("CONCAT('$0', $1)", RandomHumanReadableString(32), column_value);
+    }
+    if (i != 0) {
+      result += ", ";
+    }
+    result += column_value;
   }
   result += ")";
   return result;
@@ -421,6 +434,21 @@ TEST_F_EX(PgSingleTServerTest, ScanWithChoices, PgMiniBigPrefetchTest) {
 
   auto create_cmd = CreateTableWithNValuesCommand(kNumColumns, 2);
   auto insert_cmd = InsertNValuesCommand(kNumColumns + 1);
+  const std::string select_cmd = Format("SELECT COUNT(*) FROM t WHERE k1 > $0", kValueRange / 2);
+  SetupTableAndRunBenchmark(
+      create_cmd, insert_cmd, select_cmd, NumScanRows(), kScanBlockSize, FLAGS_TEST_scan_reads,
+      /* compact= */ false, /* aggregate= */ true);
+}
+
+TEST_F_EX(PgSingleTServerTest, ScanWithTextChoices, PgMiniBigPrefetchTest) {
+  constexpr int kNumColumns = 3;
+  constexpr int kNumTextColumns = 1;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
+
+  auto create_cmd = CreateTableWithNValuesCommand(kNumColumns, 2, kNumTextColumns);
+  auto insert_cmd = InsertNValuesCommand(kNumColumns + 1, kNumTextColumns);
   const std::string select_cmd = Format("SELECT COUNT(*) FROM t WHERE k1 > $0", kValueRange / 2);
   SetupTableAndRunBenchmark(
       create_cmd, insert_cmd, select_cmd, NumScanRows(), kScanBlockSize, FLAGS_TEST_scan_reads,
@@ -713,8 +741,8 @@ TEST_F_EX(
 
     // Ensure that all rows in the table have the same value.
     auto common_value_for_all_rows = ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0));
-    for (auto i = 1; i < num_rows; ++i) {
-      ASSERT_EQ(common_value_for_all_rows, ASSERT_RESULT(GetValue<int32_t>(res.get(), i, 0)));
+    for (auto j = 1; i < num_rows; ++i) {
+      ASSERT_EQ(common_value_for_all_rows, ASSERT_RESULT(GetValue<int32_t>(res.get(), j, 0)));
     }
     ASSERT_OK(read_conn.Execute("COMMIT"));
   }

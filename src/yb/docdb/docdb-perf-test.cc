@@ -126,6 +126,7 @@ class DocDBPerfTest : public DocDBTestBase {
     }
 
     upperbound.AppendKeyEntryType(dockv::KeyEntryType::kHighest);
+    upperbound.AppendGroupEnd();
 
     LOG(INFO) << "Wrote " << count << ", validating performance";
     TestScanNext(count, "Next");
