@@ -109,3 +109,10 @@ ROLLBACK TO SAVEPOINT sp_after_alter;
 ROLLBACK TO SAVEPOINT sp_after_index;
 ROLLBACK TO SAVEPOINT sp_initial_state;
 COMMIT;
+
+-- #29013: Savepoint rollback due to failure in first DDL statement of a
+-- transaction block doesn't lead to a crash.
+BEGIN;
+SAVEPOINT sp_before_constraint_change;
+ALTER TABLE employees DROP CONSTRAINT positive_salary;
+COMMIT;
