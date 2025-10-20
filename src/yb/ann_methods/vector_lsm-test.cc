@@ -57,6 +57,9 @@ namespace yb::ann_methods {
 using vector_index::VectorId;
 
 using FloatVectorLSM = vector_index::VectorLSM<std::vector<float>, float>;
+using InsertEntries = typename FloatVectorLSM::InsertEntries;
+using MergeFilter = vector_index::VectorLSMMergeFilter;
+using MergeFilterPtr = vector_index::VectorLSMMergeFilterPtr;
 
 using TestUsearchIndexFactory = vector_index::MakeVectorIndexFactory<
     SimplifiedUsearchIndexFactory, FloatVectorLSM>;
@@ -211,10 +214,37 @@ class VectorLSMTest : public YBTest, public testing::WithParamInterface<ANNMetho
 
   void TestBackgroundCompactionSizeRatio(bool test_metrics);
 
+  MergeFilterPtr GetMergeFilter();
+
+  void SetMergeFilter(MergeFilterPtr&& filter);
+
+  void SetMergeFilter(rocksdb::FilterDecision decision) {
+    SetMergeFilter(CreateDummyMergeFilter(decision));
+  }
+
+  template <typename FilterImpl>
+  struct FilterProxy : public MergeFilter {
+    FilterImpl filter;
+    explicit FilterProxy(FilterImpl&& impl) : filter(std::move(impl)) {}
+    rocksdb::FilterDecision Filter(VectorId vector_id) override {
+      return filter(vector_id);
+    }
+  };
+
+  static MergeFilterPtr CreateDummyMergeFilter(rocksdb::FilterDecision decision) {
+    auto filter = [decision](VectorId vector_id) {
+      VLOG(1) << "DummyMergeFilter: " << vector_id << " => " << decision;
+      return decision;
+    };
+    return std::make_unique<FilterProxy<decltype(filter)>>(std::move(filter));
+  }
+
   rpc::ThreadPool thread_pool_;
   PriorityThreadPool priority_thread_pool_;
   SimpleVectorLSMKeyValueStorage key_value_storage_;
-  FloatVectorLSM::InsertEntries  inserted_entries_;
+  InsertEntries inserted_entries_;
+  simple_spinlock merge_filter_mutex_;
+  MergeFilterPtr merge_filter_;
 
   std::unique_ptr<MetricRegistry> metric_registry_ = std::make_unique<MetricRegistry>();
   MetricEntityPtr vector_index_metric_entity_ =
@@ -372,14 +402,7 @@ Status VectorLSMTest::OpenVectorLSM(
     .insert_thread_pool = &thread_pool_,
     .compaction_token = std::make_shared<PriorityThreadPoolToken>(priority_thread_pool_),
     .frontiers_factory = [] { return std::make_unique<TestFrontiers>(); },
-    .vector_merge_filter_factory = [] {
-      struct DummyFilter : public vector_index::VectorLSMMergeFilter {
-        rocksdb::FilterDecision Filter(VectorId vector_id) override {
-          return rocksdb::FilterDecision::kKeep;
-        }
-      };
-      return std::make_unique<DummyFilter>();
-    },
+    .vector_merge_filter_factory = [this] { return GetMergeFilter(); },
     .file_extension = "",
     .metric_entity = vector_index_metric_entity_,
   };
@@ -448,6 +471,22 @@ Result<std::vector<std::string>> VectorLSMTest::GetFiles(FloatVectorLSM& lsm) {
     return lhs.size() < rhs.size() || (lhs.size() == rhs.size() && lhs < rhs);
   });
   return files;
+}
+
+MergeFilterPtr VectorLSMTest::GetMergeFilter() {
+  if (!merge_filter_) {
+    SetMergeFilter(rocksdb::FilterDecision::kKeep);
+  }
+  auto filter = [this](VectorId vector_id) {
+    std::lock_guard lock(merge_filter_mutex_);
+    return merge_filter_->Filter(vector_id);
+  };
+  return std::make_unique<FilterProxy<decltype(filter)>>(std::move(filter));
+}
+
+void VectorLSMTest::SetMergeFilter(MergeFilterPtr&& filter) {
+  std::lock_guard lock(merge_filter_mutex_);
+  merge_filter_ = std::move(filter);
 }
 
 TEST_P(VectorLSMTest, Simple) {
@@ -572,6 +611,68 @@ TEST_P(VectorLSMTest, MultipleChunksSimpleCompaction) {
   ASSERT_STR_EQ(files, Format("[0.meta, 1.meta, 2.meta, vectorindex_$0]", compacted_idx));
 }
 
+// The purpose of this test is to make sure compaction works fine if all chunks got
+// filtered out during the compaction, https://github.com/yugabyte/yugabyte-db/issues/29016.
+TEST_P(VectorLSMTest, AllVectorsRemovalCompaction) {
+  constexpr size_t kDimensions = 4;
+  constexpr size_t kNumEntries = GetNumEntriesByDimensions(kDimensions);
+
+  // Turn off background compactions to not interfere with manual compaction.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+
+  // Discard all vectors on compaction.
+  SetMergeFilter(rocksdb::FilterDecision::kDiscard);
+
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, kDimensions, 2 * kNumEntries));
+  ASSERT_OK(InsertCube(lsm, kDimensions, 2 * kNumEntries));
+  ASSERT_EQ(kNumEntries, inserted_entries_.size());
+  ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+  ASSERT_OK(lsm.Flush(/* wait = */ true));
+  ASSERT_EQ(1, lsm.TEST_NextManifestFileNo());
+  VerifyVectorLSM(lsm, kDimensions);
+
+  // Compact single file into a single file.
+  ASSERT_OK(lsm.Compact(/* wait = */ true));
+  ASSERT_EQ(1, lsm.NumImmutableChunks());
+  ASSERT_EQ(2, lsm.TEST_NextManifestFileNo());
+
+  // Wait for cleanup is completed and check files on disk.
+  while (lsm.TEST_ObsoleteFilesCleanupInProgress()) {
+    SleepFor(MonoDelta::FromSeconds(1));
+  }
+  auto files = AsString(ASSERT_RESULT(GetFiles(lsm)));
+  ASSERT_STR_EQ(files, "[0.meta, 1.meta]");
+
+  // Verify results.
+  inserted_entries_.clear();
+  VerifyVectorLSM(lsm, kDimensions);
+
+  // Make sure further writes work fine.
+  SetMergeFilter(rocksdb::FilterDecision::kKeep);
+  ASSERT_OK(InsertCube(lsm, kDimensions, 2 * kNumEntries));
+  ASSERT_EQ(kNumEntries, inserted_entries_.size());
+  ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+  ASSERT_OK(lsm.Flush(/* wait = */ true));
+  ASSERT_EQ(2, lsm.TEST_NextManifestFileNo());
+  VerifyVectorLSM(lsm, kDimensions);
+  files = AsString(ASSERT_RESULT(GetFiles(lsm)));
+  ASSERT_STR_EQ(files, "[0.meta, 1.meta, vectorindex_2]");
+
+  // Make sure further compaction works fine.
+  ASSERT_OK(lsm.Compact(/* wait = */ true));
+  ASSERT_EQ(1, lsm.NumImmutableChunks());
+  ASSERT_EQ(3, lsm.TEST_NextManifestFileNo());
+  VerifyVectorLSM(lsm, kDimensions);
+
+  // Wait for cleanup is completed and check files on disk.
+  while (lsm.TEST_ObsoleteFilesCleanupInProgress()) {
+    SleepFor(MonoDelta::FromSeconds(1));
+  }
+  files = AsString(ASSERT_RESULT(GetFiles(lsm)));
+  ASSERT_STR_EQ(files, "[0.meta, 1.meta, 2.meta, vectorindex_3]");
+}
+
 TEST_P(VectorLSMTest, BackgroundCompactionSizeAmp) {
   constexpr size_t kDimensions = 8;
   constexpr size_t kNumChunks  = 6;
@@ -590,7 +691,7 @@ TEST_P(VectorLSMTest, BackgroundCompactionSizeAmp) {
   ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kDefaultChunkSize));
 
   for (size_t n = 0; n < kNumChunks; ++n) {
-    // Check files right before the backgorund compaction would trigger.
+    // Check files right before the background compaction would trigger.
     if (n == kNumChunks - 1) {
       std::stringstream expected_files;
       expected_files << "0.meta";
@@ -618,7 +719,7 @@ TEST_P(VectorLSMTest, BackgroundCompactionSizeAmp) {
   // should trigger next background compaction.
   FLAGS_vector_index_compaction_size_amp_max_percent = 100;
   for (size_t n = 0; n < kNumChunks; ++n) {
-    // Check files right before the backgorund compaction would trigger.
+    // Check files right before the background compaction would trigger.
     if (n == kNumChunks - 1) {
       std::stringstream expected_files;
       expected_files << "0.meta, " << "vectorindex_" << last_chunk_id;
@@ -704,8 +805,8 @@ void VectorLSMTest::TestBackgroundCompactionSizeRatio(bool test_metrics) {
   ASSERT_OK(WaitForCompactionsDone(lsm));
 
   // Background compaction won't consider min chunks because min merge width is greater than the
-  // number of min chunks. And the most earlist chunk doesn't meet the criteria of size ratio as it
-  // is too large. So, it is expected to end up with 1 large chunk, 2 min chunks and 1 new
+  // number of min chunks. And the most earliest chunk doesn't meet the criteria of size ratio
+  // as it is too large. So, it is expected to end up with 1 large chunk, 2 min chunks and 1 new
   // compacted chunk.
   if (test_metrics) {
     // The write metric should be incremented by the size of the new chunk created by compaction.
