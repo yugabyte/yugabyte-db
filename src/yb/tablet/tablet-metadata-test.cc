@@ -158,5 +158,35 @@ TEST_F(TestRaftGroupMetadata, TestDeleteTabletDataClearsDisk) {
   ASSERT_FALSE(env_->DirExists(tablet->metadata()->snapshots_dir()));
 }
 
+TEST_F(TestRaftGroupMetadata, NamespaceIdPreservedAcrossSchemaChanges) {
+  // Verify that namespace_id is preserved across schema updates and packed schema insertions.
+  auto tablet = harness_->tablet();
+  auto* meta = tablet->metadata();
+
+  // Simulate namespace backfill.
+  const NamespaceId kNamespaceId = "0123456789abcdef0123456789abcdef";
+  ASSERT_OK(meta->set_namespace_id(kNamespaceId));
+  ASSERT_EQ(meta->primary_table_info()->namespace_id, kNamespaceId);
+
+  auto initial_table_info = meta->primary_table_info();
+  const Schema initial_schema = initial_table_info->schema();
+  const auto initial_version = initial_table_info->schema_version;
+  const qlexpr::IndexMap& index_map = *initial_table_info->index_map;
+  const TableId& table_id = initial_table_info->table_id;
+
+  // Perform schema changes and verify that namespace_id is preserved.
+
+  // 1. SetSchema.
+  meta->SetSchema(
+      initial_schema, index_map, /* deleted_cols */ {}, initial_version + 1, OpId() /* op_id */,
+      table_id);
+  ASSERT_EQ(meta->primary_table_info()->namespace_id, kNamespaceId);
+
+  // 2. InsertPackedSchemaForXClusterTarget.
+  meta->InsertPackedSchemaForXClusterTarget(
+      initial_schema, index_map, initial_version + 3, OpId() /* op_id */, table_id);
+  ASSERT_EQ(meta->primary_table_info()->namespace_id, kNamespaceId);
+}
+
 } // namespace tablet
 } // namespace yb
