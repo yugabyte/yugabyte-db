@@ -878,7 +878,11 @@ class VectorLSM<Vector, DistanceResult>::CompactionTask : public PriorityThreadP
 
     // TODO(vector_index): leverage the suspender.
     auto status = DoRun();
-    LOG_WITH_PREFIX(INFO) << "Done: " << status;
+    if (status.ok() || status.IsShutdownInProgress()) {
+      LOG_WITH_PREFIX(INFO) << "Done: " << status;
+    } else {
+      LOG_WITH_PREFIX(DFATAL) << "Failed: " << status;
+    }
     Completed(status);
 
     if (last_serial_no == lsm_.LastSerialNo()) {
@@ -2475,18 +2479,24 @@ VectorLSM<Vector, DistanceResult>::DoCompactChunks(const ImmutableChunkPtrs& inp
 
     LOG_WITH_PREFIX(INFO) << "Chunks merge done [vectors: " << merged_index->Size() << "]";
 
-    // Save new index to disk.
-    VectorIndexPtr new_index;
-    std::tie(merged_index_file, new_index) = VERIFY_RESULT(SaveIndexToFile(
-        *merged_index, NextSerialNo()));
-    if (new_index) {
-      merged_index = new_index;
+    // All vectors could be filtered out. Make sure there's data for saving to disk.
+    if (!merged_index->Size()) {
+      LOG_WITH_PREFIX(INFO) << "Compaction done, no chunk to save";
+    } else {
+      // Save new index to disk.
+      VectorIndexPtr new_index;
+      std::tie(merged_index_file, new_index) = VERIFY_RESULT(SaveIndexToFile(
+          *merged_index, NextSerialNo()));
+      if (new_index) {
+        merged_index = new_index;
+      }
+      LOG_WITH_PREFIX(INFO)
+          << "Compaction done, new chunk " << merged_index_file->ToString() << " saved to disk";
     }
-    LOG_WITH_PREFIX(INFO)
-        << "Compaction done, new chunk " << merged_index_file->ToString() << " saved to disk";
   }
 
-  // Create new immutable chunk for further processing.
+  // Create new immutable chunk for further processing. If nothing got merged
+  // or merged chunk was empty, it would contain frontiers only.
   return std::make_shared<ImmutableChunk>(
       input_chunks.front()->order_no, std::move(merged_index_file), std::move(merged_index),
       std::move(merged_frontiers), ImmutableChunkState::kOnDisk);
