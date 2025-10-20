@@ -430,6 +430,7 @@ class MergingPgDocResultStream : public PgDocResultStream {
 //--------------------------------------------------------------------------------------------------
 
 YB_STRONGLY_TYPED_BOOL(IsForWritePgDoc);
+YB_STRONGLY_TYPED_BOOL(IsOpBuffered);
 
 // Helper class to wrap PerformFuture and custom response provider.
 // No memory allocations is required in case of using PerformFuture.
@@ -444,15 +445,18 @@ class PgDocResponse {
   };
 
   struct MetricInfo {
-    MetricInfo(TableType table_type_, IsForWritePgDoc is_write_)
-        : table_type(table_type_), is_write(is_write_) {}
+    MetricInfo(TableType table_type_,
+               IsForWritePgDoc is_write_,
+               IsOpBuffered is_buffered_)
+        : table_type(table_type_), is_write(is_write_), is_buffered(is_buffered_) {}
 
     TableType table_type;
     IsForWritePgDoc is_write;
+    IsOpBuffered is_buffered;
   };
 
   struct FutureInfo {
-    FutureInfo() : metrics(TableType::USER, IsForWritePgDoc::kFalse) {}
+    FutureInfo() : metrics(TableType::USER, IsForWritePgDoc::kFalse, IsOpBuffered::kFalse) {}
     FutureInfo(PerformFuture&& future_, const MetricInfo& metrics_)
         : future(std::move(future_)), metrics(metrics_) {}
 

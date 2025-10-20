@@ -561,13 +561,14 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE single_row SET v1 = 1 WHERE 1 = k; -- 
  Update on single_row (actual rows=0 loops=1)
    ->  Result single_row (actual rows=1 loops=1)
          Storage Table Write Requests: 1
+         Storage Flush Requests: 1
  Storage Read Requests: 0
  Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 1
- Storage Flush Requests: 0
+ Storage Flush Requests: 1
  Transaction: Fast Path
-(9 rows)
+(10 rows)
 
 -- Adding secondary index should force re-planning, which would
 -- then not choose single-row plan due to the secondary index.
@@ -2841,13 +2842,14 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO p_test VALUES (1, 1);
  Insert on p_test (actual rows=0 loops=1)
    ->  Result *RESULT* (actual rows=1 loops=1)
          Storage Table Write Requests: 1
+         Storage Flush Requests: 1
  Storage Read Requests: 0
  Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 1
- Storage Flush Requests: 0
+ Storage Flush Requests: 1
  Transaction: Fast Path
-(9 rows)
+(10 rows)
 
 -- Inserting multiple rows should not be eligible for single-shard, even if all
 -- inserts may end up in the same partition.
@@ -3066,12 +3068,13 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE p_test SET k = k + 15 WHERE k = 1;
          Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 2
+         Storage Flush Requests: 1
  Storage Read Requests: 1
  Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 2
- Storage Flush Requests: 1
-(13 rows)
+ Storage Flush Requests: 2
+(14 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE p_test SET k = k + 15 WHERE k IN (2, 3);
                                 QUERY PLAN                                
@@ -3084,12 +3087,13 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE p_test SET k = k + 15 WHERE k IN (2, 3
          Storage Table Read Ops: 1
          Storage Table Rows Scanned: 2
          Storage Table Write Requests: 4
+         Storage Flush Requests: 2
  Storage Read Requests: 1
  Storage Read Ops: 1
  Storage Rows Scanned: 2
  Storage Write Requests: 4
- Storage Flush Requests: 1
-(13 rows)
+ Storage Flush Requests: 3
+(14 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE p_test SET k = (k + 15) % 20 WHERE k IN (4, 14);
                                    QUERY PLAN                                   
@@ -3104,19 +3108,20 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE p_test SET k = (k + 15) % 20 WHERE k I
                Storage Table Read Ops: 2
                Storage Table Rows Scanned: 1
                Storage Table Write Requests: 2
+               Storage Flush Requests: 1
          ->  Index Scan using p_test_2_pkey on p_test_2 (actual rows=1 loops=1)
                Index Cond: (k = ANY ('{4,14}'::integer[]))
                Storage Table Read Requests: 1
                Storage Table Read Ops: 2
                Storage Table Rows Scanned: 1
                Storage Table Write Requests: 2
-               Storage Flush Requests: 1
+               Storage Flush Requests: 2
  Storage Read Requests: 2
  Storage Read Ops: 4
  Storage Rows Scanned: 2
  Storage Write Requests: 4
- Storage Flush Requests: 2
-(22 rows)
+ Storage Flush Requests: 4
+(23 rows)
 
 -- Row movement between partitions, one of which has indexes or triggers.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE p_test SET k = (k + 11) % 30 WHERE k IN (13, 23);
@@ -3133,6 +3138,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE p_test SET k = (k + 11) % 30 WHERE k I
                Storage Table Rows Scanned: 1
                Storage Table Write Requests: 2
                Storage Index Write Requests: 1
+               Storage Flush Requests: 1
          ->  Index Scan using p_test_3_pkey on p_test_3 p_test_2 (actual rows=1 loops=1)
                Index Cond: (k = ANY ('{13,23}'::integer[]))
                Storage Table Read Requests: 1
@@ -3140,13 +3146,13 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE p_test SET k = (k + 11) % 30 WHERE k I
                Storage Table Rows Scanned: 1
                Storage Table Write Requests: 2
                Storage Index Write Requests: 1
-               Storage Flush Requests: 1
+               Storage Flush Requests: 2
  Storage Read Requests: 2
  Storage Read Ops: 4
  Storage Rows Scanned: 2
  Storage Write Requests: 6
- Storage Flush Requests: 2
-(24 rows)
+ Storage Flush Requests: 4
+(25 rows)
 
 INSERT INTO p_test VALUES (1, 1);
 DELETE FROM p_test WHERE k % 10 = 2;
@@ -3164,6 +3170,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE p_test SET k = (k + 11) % 30 WHERE k I
                Storage Table Read Ops: 1
                Storage Table Rows Scanned: 1
                Storage Table Write Requests: 2
+               Storage Flush Requests: 1
          ->  Index Scan using p_test_2_pkey on p_test_2 (actual rows=1 loops=1)
                Index Cond: (k = ANY ('{21,1,11}'::integer[]))
                Storage Table Read Requests: 1
@@ -3171,7 +3178,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE p_test SET k = (k + 11) % 30 WHERE k I
                Storage Table Rows Scanned: 1
                Storage Table Write Requests: 2
                Storage Index Write Requests: 1
-               Storage Flush Requests: 1
+               Storage Flush Requests: 2
          ->  Index Scan using p_test_3_pkey on p_test_3 (actual rows=1 loops=1)
                Index Cond: (k = ANY ('{21,1,11}'::integer[]))
                Storage Table Read Requests: 1
@@ -3179,13 +3186,13 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE p_test SET k = (k + 11) % 30 WHERE k I
                Storage Table Rows Scanned: 1
                Storage Table Write Requests: 2
                Storage Index Write Requests: 1
-               Storage Flush Requests: 1
+               Storage Flush Requests: 2
  Storage Read Requests: 3
  Storage Read Ops: 3
  Storage Rows Scanned: 3
  Storage Write Requests: 8
- Storage Flush Requests: 3
-(32 rows)
+ Storage Flush Requests: 6
+(33 rows)
 
 SELECT * FROM p_test ORDER BY k;
  k  | v  
