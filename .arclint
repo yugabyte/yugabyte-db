@@ -53,18 +53,6 @@
      "(^yugabyted-ui/ui/package-lock.json)"
   ],
   "linters": {
-    "go-files": {
-         "type": "golint",
-         "include": "(^managed/yba-cli/.*[.]go$)"
-     },
-     "go-files-length": {
-         "type": "text",
-        "text.max-line-length": 120,
-         "include": "(^managed/yba-cli/.*[.]go$)",
-         "severity": {
-             "2": "disabled"
-         }
-     },
     "script-and-regex.script": {
       "type": "script-and-regex",
       "include": "(^managed/.*[.]java$)",
