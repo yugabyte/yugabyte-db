@@ -1179,6 +1179,18 @@ class TransactionProvider {
     }
   }
 
+  std::optional<TransactionMetadata> NextTxnMetaForPlainIfExists(CoarseTimePoint deadline) {
+    if (!next_plain_) {
+      return std::nullopt;
+    }
+    auto res = NextTxnMetaForPlain(deadline, true /* is_for_release */);
+    if (!res.ok()) {
+      LOG(DFATAL) << "Unexpected error while fetching existing plain re-usable txn";
+      return std::nullopt;
+    }
+    return *res;
+  }
+
   Result<TransactionMetadata> NextTxnMetaForPlain(
       CoarseTimePoint deadline, bool is_for_release = false) {
     client::internal::InFlightOpsGroupsWithMetadata ops_info;
@@ -3626,10 +3638,16 @@ class PgClientSession::Impl {
       plain_session_has_exclusive_object_locks_.store(false);
       DEBUG_ONLY_TEST_SYNC_POINT("PlainTxnStateReset");
     }
-    auto txn_id = txn
-        ? txn->id()
-        : VERIFY_RESULT(NextObjectLockingTxnMeta(deadline, is_final_release)).transaction_id;
-    return DoReleaseObjectLocks(txn_id, subtxn_id, deadline, has_exclusive_locks);
+    if (txn) {
+      return DoReleaseObjectLocks(txn->id(), subtxn_id, deadline, has_exclusive_locks);
+    }
+    // It could happen that transaction_provider_.next_plain_ is null when txn finish
+    // calls are redundant. If so, treat it as a no-op instead of setting next_plain_.
+    auto opt_txn_meta = transaction_provider_.NextTxnMetaForPlainIfExists(deadline);
+    return opt_txn_meta
+        ? DoReleaseObjectLocks(
+              opt_txn_meta->transaction_id, subtxn_id, deadline, has_exclusive_locks)
+        : Status::OK();
   }
 
   Status DoReleaseObjectLocks(
@@ -3668,10 +3686,8 @@ class PgClientSession::Impl {
 
   [[nodiscard]] bool IsObjectLockingEnabled() const { return ts_lock_manager() != nullptr; }
 
-  Result<TransactionMetadata> NextObjectLockingTxnMeta(
-      CoarseTimePoint deadline, bool is_final_release = false) {
-    auto txn_meta = VERIFY_RESULT(
-        transaction_provider_.NextTxnMetaForPlain(deadline, is_final_release));
+  Result<TransactionMetadata> NextObjectLockingTxnMeta(CoarseTimePoint deadline) {
+    auto txn_meta = VERIFY_RESULT(transaction_provider_.NextTxnMetaForPlain(deadline));
     RegisterLockOwner(txn_meta.transaction_id, txn_meta.status_tablet);
     return txn_meta;
   }
