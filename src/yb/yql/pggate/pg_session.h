@@ -41,6 +41,7 @@
 #include "yb/yql/pggate/pg_perform_future.h"
 #include "yb/yql/pggate/pg_setup_perform_options_accessor_tag.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
+#include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pg_txn_manager.h"
 
 namespace yb::pggate {
@@ -376,6 +377,7 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
   const bool is_major_pg_version_upgrade_;
 
   const WaitEventWatcher& wait_event_watcher_;
+  TablespaceCache tablespace_cache_;
 };
 
 template<class PB>

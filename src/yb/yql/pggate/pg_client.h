@@ -167,8 +167,7 @@ class PgClient {
  public:
   PgClient(
       std::reference_wrapper<const WaitEventWatcher> wait_event_watcher,
-      std::atomic<uint64_t>& next_perform_op_serial_no,
-      const TablespaceMap& tablespace_map);
+      std::atomic<uint64_t>& next_perform_op_serial_no);
   ~PgClient();
 
   Status Start(rpc::ProxyCache* proxy_cache,
@@ -275,7 +274,8 @@ class PgClient {
       docdb::ObjectLockFastpathLockType lock_type);
 
   Status AcquireObjectLock(
-      tserver::PgPerformOptionsPB* options, const YbcObjectLockId& lock_id, YbcObjectLockMode mode);
+      tserver::PgPerformOptionsPB* options, const YbcObjectLockId& lock_id, YbcObjectLockMode mode,
+      std::optional<PgTablespaceOid> tablespace_oid);
 
   Result<bool> CheckIfPitrActive();
 

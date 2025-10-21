@@ -667,7 +667,7 @@ PgApiImpl::PgApiImpl(
       pg_shared_data_(
           *init_postgres_info.shared_data, !init_postgres_info.parallel_leader_session_id),
       pg_client_(
-          wait_event_watcher_, pg_shared_data_->next_perform_op_serial_no, tablespace_map_),
+          wait_event_watcher_, pg_shared_data_->next_perform_op_serial_no),
       clock_(new server::HybridClock()),
       // For parallel query, multiple PgTxnManager(s) make parallel requests to pg_client_session
       // projecting as a single ysql backend. When object locking is enabled, only the leader worker

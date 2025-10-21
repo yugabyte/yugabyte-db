@@ -133,7 +133,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
       const YbcObjectLockId& lock_id, docdb::ObjectLockFastpathLockType lock_type);
 
   Status AcquireObjectLock(
-      SetupPerformOptionsAccessorTag tag, const YbcObjectLockId& lock_id, YbcObjectLockMode mode);
+      SetupPerformOptionsAccessorTag tag, const YbcObjectLockId& lock_id, YbcObjectLockMode mode,
+      std::optional<PgTablespaceOid> tablespace_oid);
   struct DdlState {
     bool has_docdb_schema_changes = false;
     bool force_catalog_modification = false;
