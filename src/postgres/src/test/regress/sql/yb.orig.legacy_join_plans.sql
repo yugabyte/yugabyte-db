@@ -23,7 +23,7 @@ insert into t2r select i, i, i % 10000, i % 10000, (i / 10000) * 10000, i from g
 
 
 \getenv abs_srcdir PG_ABS_SRCDIR
-\set filename :abs_srcdir '/data/yb.orig.legacy_join_plan_queries.sql'
+\set filename :abs_srcdir '/yb_commands/legacy_join_plan_queries.sql'
 
 ----------------
 -- Unanalyzed --
