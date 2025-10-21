@@ -2015,15 +2015,21 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
         Row reinitdbRow = reinitdbRows.get(i);
         Row migratedRow = migratedRows.get(i);
         if (tableName.equals("pg_collation") &&
-            !reinitdbRow.getString(SysCatalogSnapshot.COLLNAME_COL_IDX).startsWith("en_US")) {
+            reinitdbRow.getString(SysCatalogSnapshot.COLLNAME_COL_IDX).startsWith("en_US")) {
           /*
            * Different flavors of Linux have different versions of libc,
            * which provides the en_US.utf8 collation.
            * We're comparing the current snapshot to one generated on an Alma8 machine,
            * so we might get a mismatch in the collversion column. Ignore it for now.
            */
-          reinitdbRow.elems.set(SysCatalogSnapshot.COLLVERSION_COL_IDX, null);
-          migratedRow.elems.set(SysCatalogSnapshot.COLLVERSION_COL_IDX, null);
+          String reinitdbCollVersion =
+              reinitdbRow.getString(SysCatalogSnapshot.COLLVERSION_COL_IDX);
+          String migratedCollVersion =
+              migratedRow.getString(SysCatalogSnapshot.COLLVERSION_COL_IDX);
+          if ("2.34".equals(reinitdbCollVersion) && "2.28".equals(migratedCollVersion)) {
+            reinitdbRow.elems.set(SysCatalogSnapshot.COLLVERSION_COL_IDX, null);
+            migratedRow.elems.set(SysCatalogSnapshot.COLLVERSION_COL_IDX, null);
+          }
         }
         // PG15 and PG11 initdb generate different default privileges for relacl of pg_class:
         // PG11: {=r/postgres,postgres=arwdDxt/postgres}
