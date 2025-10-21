@@ -73,6 +73,34 @@ public class MetricsExportConfigParams extends UpgradeTaskParams {
       log.error(errorMessage);
       throw new PlatformServiceException(BAD_REQUEST, errorMessage);
     }
+
+    if (metricsExportConfig.getScrapeIntervalSeconds() <= 0) {
+      String errorMessage =
+          "Scrape interval seconds cannot be set to <=0 during metrics export configuration for"
+              + " universe "
+              + universe.getUniverseUUID();
+      log.error(errorMessage);
+      throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+    }
+
+    if (metricsExportConfig.getScrapeTimeoutSeconds() <= 0) {
+      String errorMessage =
+          "Scrape timeout seconds cannot be set to <=0 during metrics export configuration for"
+              + " universe "
+              + universe.getUniverseUUID();
+      log.error(errorMessage);
+      throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+    }
+
+    if (metricsExportConfig.getScrapeIntervalSeconds()
+        < metricsExportConfig.getScrapeTimeoutSeconds()) {
+      String errorMessage =
+          "Scrape interval seconds cannot be less than scrape timeout seconds during metrics export"
+              + " configuration for universe "
+              + universe.getUniverseUUID();
+      log.error(errorMessage);
+      throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+    }
   }
 
   public static class Converter extends BaseConverter<MetricsExportConfigParams> {}
