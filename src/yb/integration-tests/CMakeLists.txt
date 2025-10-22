@@ -302,26 +302,14 @@ if("${COMPILER_FAMILY}" STREQUAL "gcc8")
   YB_TEST_TARGET_COMPILE_OPTIONS(cassandra_cpp_driver-test PUBLIC "-Wno-class-memaccess")
 endif()
 
+ADD_YB_TEST(wait_states-itest)
+YB_TEST_TARGET_LINK_LIBRARIES(wait_states-itest yb-cql pg_wrapper_test_base)
+
 function(ADD_YB_CQL_TEST TEST_NAME)
   ADD_YB_TEST(${TEST_NAME})
   YB_TEST_TARGET_INCLUDE_DIRECTORIES(${TEST_NAME} PUBLIC ${CASS_DRIVER_INTERNAL_INCLUDE})
   YB_TEST_TARGET_LINK_LIBRARIES(${TEST_NAME} yb-cql)
 endfunction()
-
-ADD_YB_TEST(wait_states-itest)
-YB_TEST_TARGET_LINK_LIBRARIES(wait_states-itest yb-cql pg_wrapper_test_base)
-
-ADD_YB_TEST(minicluster-snapshot-test)
-YB_TEST_TARGET_LINK_LIBRARIES(minicluster-snapshot-test pg_wrapper_test_base)
-
-ADD_YB_TEST(disk_full-test)
-YB_TEST_TARGET_LINK_LIBRARIES(disk_full-test pg_wrapper_test_base)
-
-ADD_YB_TEST(sequence_utility-itest)
-YB_TEST_TARGET_LINK_LIBRARIES(sequence_utility-itest pg_wrapper_test_base)
-
-ADD_YB_TEST(upgrade-tests/ysql_ddl_whitelist-test)
-YB_TEST_TARGET_LINK_LIBRARIES(upgrade-tests/ysql_ddl_whitelist-test pg_wrapper_test_base)
 
 ADD_YB_TEST(upgrade-tests/ysql_major_upgrade_role_profiles-test)
 YB_TEST_TARGET_LINK_LIBRARIES(upgrade-tests/ysql_major_upgrade_role_profiles-test pg_wrapper_test_base)
@@ -334,7 +322,16 @@ ADD_YB_CQL_TEST(cql_geo_transactions-test)
 ADD_YB_CQL_TEST(external_mini_cluster_secure_test)
 ADD_YB_CQL_TEST(tablet_limits_integration_test)
 
-ADD_YB_TEST(documentdb/documentdb_test)
-YB_TEST_TARGET_LINK_LIBRARIES(documentdb/documentdb_test pg_wrapper_test_base)
+function(ADD_YB_PG_TEST TEST_NAME)
+  ADD_YB_TEST(${TEST_NAME})
+  YB_TEST_TARGET_LINK_LIBRARIES(${TEST_NAME} pg_wrapper_test_base)
+endfunction()
+
+ADD_YB_PG_TEST(async_writes-test)
+ADD_YB_PG_TEST(disk_full-test)
+ADD_YB_PG_TEST(documentdb/documentdb_test)
+ADD_YB_PG_TEST(minicluster-snapshot-test)
+ADD_YB_PG_TEST(sequence_utility-itest)
+ADD_YB_PG_TEST(upgrade-tests/ysql_ddl_whitelist-test)
 
 set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS_SAVED})

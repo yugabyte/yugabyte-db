@@ -39,6 +39,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flags.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
 
 DEFINE_test_flag(int32, tablet_inject_latency_on_apply_write_txn_ms, 0,
@@ -68,6 +69,17 @@ Status WriteOperation::Prepare(IsLeaderSide is_leader_side) {
 Status WriteOperation::DoAborted(const Status& status) {
   TRACE("FINISH: aborting operation");
   return status;
+}
+
+void WriteOperation::SetAsyncWrite(boost::function<void(OpId)> callback) {
+  added_to_leader_callback_ = std::move(callback);
+}
+
+void WriteOperation::AddedAsPending(const TabletPtr& tablet) {
+  if (added_to_leader_callback_) {
+    added_to_leader_callback_(op_id());
+    added_to_leader_callback_ = {};
+  }
 }
 
 // FIXME: Since this is called as a void in a thread-pool callback,

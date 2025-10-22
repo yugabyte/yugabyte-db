@@ -2522,6 +2522,7 @@ Status TabletServiceImpl::PerformWrite(
   VLOG(2) << "Received Write RPC: " << req->DebugString();
 
   UpdateClock(*req, server_->Clock());
+  TEST_SYNC_POINT_CALLBACK("TabletServiceImpl::PerformWrite", const_cast<WriteRequestPB*>(req));
 
   auto tablet =
       VERIFY_RESULT(LookupLeaderTablet(server_->tablet_peer_lookup(), req->tablet_id(), resp));
@@ -2630,6 +2631,30 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
   if (!status.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), std::move(status), &context);
   }
+}
+
+void TabletServiceImpl::WaitForAsyncWrite(
+    const WaitForAsyncWriteRequestPB* req, WaitForAsyncWriteResponsePB* resp,
+    rpc::RpcContext context) {
+  auto callback = [resp, context_ptr = std::make_shared<rpc::RpcContext>(std::move(context))](
+                      const Status& status) {
+    if (!status.ok()) {
+      SetupErrorAndRespond(resp->mutable_error(), status, context_ptr.get());
+      return;
+    }
+    context_ptr->RespondSuccess();
+  };
+
+  // We dont need the leader check here because if the peer gracefully transitioned to a follower
+  // we still want to succeed previously committed async writes received by this peer.
+  auto tablet_result = LookupTabletPeer(server_->tablet_peer_lookup(), req->tablet_id());
+  if (!tablet_result) {
+    callback(tablet_result.status());
+    return;
+  }
+
+  tablet_result->tablet_peer->RegisterAsyncWriteCompletion(
+      OpId::FromPB(req->op_id()), std::move(callback));
 }
 
 void TabletServiceImpl::Read(const ReadRequestPB* req,

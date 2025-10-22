@@ -34,10 +34,11 @@
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 #include "yb/tools/tools_test_utils.h"
 
-DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_bool(enable_wait_queues);
-DECLARE_uint64(max_clock_skew_usec);
+DECLARE_bool(yb_enable_read_committed_isolation);
+DECLARE_bool(ysql_enable_async_writes);
 DECLARE_string(ysql_pg_conf_csv);
+DECLARE_uint64(max_clock_skew_usec);
 
 METRIC_DECLARE_counter(picked_read_time_on_docdb);
 
@@ -317,6 +318,9 @@ TEST_F(PgReadTimeTest, CheckReadTimePickingLocation) {
   // latest read point). For each statement, if the new read time for that statement can be picked
   // on docdb, ensure it is.
   ASSERT_OK(conn.StartTransaction(IsolationLevel::READ_COMMITTED));
+  // Disable async writes, since the metrics are only updated after the entire write query including
+  // the quorum commit completes. The client conn wont wait for these until the final commit.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_async_writes) = false;
   CheckReadTimePickedOnDocdb(
       [&conn, kTable]() {
         ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k=1", kTable));
@@ -343,6 +347,7 @@ TEST_F(PgReadTimeTest, CheckReadTimePickingLocation) {
       }, 2 /* expected_num_picked_read_time_on_doc_db_metric */);
 
   ASSERT_OK(conn.CommitTransaction());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_async_writes) = true;
 
   // 10. Pipeline, copy a file to a table by fast-path transation. Only single tserver is involved
   // during copy.

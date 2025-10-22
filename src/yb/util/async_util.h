@@ -73,6 +73,7 @@ class Synchronizer {
   // This version of AsStatusCallback is for cases when the callback can outlive the synchronizer.
   // The callback holds a weak pointer to the synchronizer.
   static StatusCallback AsStatusCallback(const std::shared_ptr<Synchronizer>& synchronizer);
+  static StdStatusCallback AsStdStatusCallback(const std::shared_ptr<Synchronizer>& synchronizer);
 
   StatusFunctor AsStatusFunctor() {
     return std::bind(&Synchronizer::StatusCB, this, std::placeholders::_1);

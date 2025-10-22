@@ -69,6 +69,15 @@ StatusCallback Synchronizer::AsStatusCallback(const std::shared_ptr<Synchronizer
   return Bind(CallStatusCBMaybe, weak_sync);
 }
 
+StdStatusCallback Synchronizer::AsStdStatusCallback(
+    const std::shared_ptr<Synchronizer>& synchronizer) {
+  DCHECK(!synchronizer->assigned_);
+  // No need to set must_wait_ here -- the callback knows whether Synchronizer still exists.
+  return [weak_sync = std::weak_ptr<Synchronizer>(synchronizer)](const Status& status) {
+    CallStatusCBMaybe(weak_sync, status);
+  };
+}
+
 Status Synchronizer::WaitUntil(const std::chrono::steady_clock::time_point& time) {
   std::unique_lock<std::mutex> lock(mutex_);
   auto predicate = [this] { return assigned_; };

@@ -130,6 +130,10 @@ DEFINE_test_flag(bool, follower_reject_update_consensus_requests, false,
 DEFINE_test_flag(bool, follower_pause_update_consensus_requests, false,
                  "Whether a follower will pause all UpdateConsensus() requests.");
 
+DEFINE_test_flag(int32, delay_update_consensus_requests_ms, 0,
+    "Delay execution of UpdateConsensus() requests for specified amount of milliseconds during "
+    "tests");
+
 DEFINE_test_flag(int32, follower_reject_update_consensus_requests_seconds, 0,
                  "Whether a follower will return an error for all UpdateConsensus() requests for "
                  "the first TEST_follower_reject_update_consensus_requests_seconds seconds after "
@@ -1146,7 +1150,9 @@ Status RaftConsensus::BecomeReplicaUnlocked(
     WithholdElectionAfterStepDown(new_leader_uuid);
   }
 
-  state_->ClearLeaderUnlocked();
+  state_->BecomeReplicaUnlocked();
+
+  state_->context()->BecomeReplica();
 
   // FD should be running while we are a follower.
   EnableFailureDetector(initial_fd_wait);
@@ -1400,7 +1406,7 @@ void RaftConsensus::UpdateMajorityReplicated(
       majority_replicated_data.op_id, committed_op_id, &committed_index_changed,
       last_applied_op_id);
   if (s.ok() && state_->GetLeaderStateUnlocked().ok()) {
-    s = state_->context()->MajorityReplicated();
+    s = state_->context()->MajorityReplicated(*committed_op_id);
   }
   if (PREDICT_FALSE(!s.ok())) {
     string msg = Format("Unable to mark committed up to $0: $1", majority_replicated_data.op_id, s);
@@ -1578,6 +1584,8 @@ Status RaftConsensus::Update(
     auto delay = TEST_delay_update_.load(std::memory_order_acquire);
     if (delay != MonoDelta::kZero) {
       std::this_thread::sleep_for(delay.ToSteadyDuration());
+    } else if (FLAGS_TEST_delay_update_consensus_requests_ms != 0) {
+      std::this_thread::sleep_for(1ms * FLAGS_TEST_delay_update_consensus_requests_ms);
     }
   }
 

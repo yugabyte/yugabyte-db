@@ -704,13 +704,12 @@ Result<ReadOpsResult> PeerMessageQueue::ReadFromLogCache(
       // retry.
       return s;
     } else if (s.IsIncomplete()) {
-      // IsIncomplete() means that we tried to read beyond the head of the log (in the future).
-      // KUDU-1078 points to a fix of this log spew issue that we've ported. This should not
-      // happen under normal circumstances.
-      LOG_WITH_PREFIX(ERROR) << "Error trying to read ahead of the log "
-                                      << "while preparing peer request: "
-                                      << s.ToString() << ". Destination peer: "
-                                      << peer_uuid;
+      // IsIncomplete() means that we tried to read beyond the head of the log (in the future). This
+      // is usually a sign that this peer is under load and is about to step down as leader. See
+      // KUDU-1078.
+      LOG_WITH_PREFIX(INFO)
+          << "Error trying to read ahead of the log while preparing peer request: " << s
+          << ". Destination peer: " << peer_uuid;
       return s;
     } else {
       LOG_WITH_PREFIX(FATAL)

@@ -49,6 +49,7 @@ import "yb/tserver/tserver_types.proto";
 
 service TabletServerService {
   rpc Write(WriteRequestPB) returns (WriteResponsePB);
+  rpc WaitForAsyncWrite(WaitForAsyncWriteRequestPB) returns (WaitForAsyncWriteResponsePB);
   rpc Read(ReadRequestPB) returns (ReadResponsePB);
   rpc VerifyTableRowRange(VerifyTableRowRangeRequestPB)
       returns (VerifyTableRowRangeResponsePB);

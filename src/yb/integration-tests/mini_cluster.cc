@@ -1484,14 +1484,14 @@ Status StartAllMasters(MiniCluster* cluster) {
   return Status::OK();
 }
 
-void SetupConnectivity(
+void SetupConnectivityWith(
     rpc::Messenger* messenger, const IpAddress& address, Connectivity connectivity) {
   switch (connectivity) {
     case Connectivity::kOn:
-      messenger->RestoreConnectivityTo(address);
+      messenger->RestoreConnectivityWith(address);
       return;
     case Connectivity::kOff:
-      messenger->BreakConnectivityTo(address);
+      messenger->BreakConnectivityWith(address);
       return;
   }
   FATAL_INVALID_ENUM_VALUE(Connectivity, connectivity);
@@ -1505,11 +1505,11 @@ Status SetupConnectivity(
       // TEST_RpcAddress is 1-indexed; we expect from_idx/to_idx to be 0-indexed.
       auto address = VERIFY_RESULT(HostToAddress(TEST_RpcAddress(to_idx + 1, type)));
       if (from_idx < cluster->num_masters()) {
-        SetupConnectivity(
+        SetupConnectivityWith(
             cluster->mini_master(from_idx)->master()->messenger(), address, connectivity);
       }
       if (from_idx < cluster->num_tablet_servers()) {
-        SetupConnectivity(
+        SetupConnectivityWith(
             cluster->mini_tablet_server(from_idx)->server()->messenger(), address, connectivity);
       }
     }
@@ -1520,6 +1520,22 @@ Status SetupConnectivity(
 
 Status BreakConnectivity(MiniCluster* cluster, size_t idx1, size_t idx2) {
   return SetupConnectivity(cluster, idx1, idx2, Connectivity::kOff);
+}
+
+Status SetupConnectivityWithAll(MiniCluster* cluster, size_t idx, Connectivity connectivity) {
+  const auto max_idx = std::max(cluster->num_masters(), cluster->num_tablet_servers());
+  for (size_t i = 0; i < max_idx; ++i) {
+    if (i == idx) {
+      continue;
+    }
+    RETURN_NOT_OK(SetupConnectivity(cluster, idx, i, connectivity));
+  }
+
+  return Status::OK();
+}
+
+Status BreakConnectivityWithAll(MiniCluster* cluster, size_t idx) {
+  return SetupConnectivityWithAll(cluster, idx, Connectivity::kOff);
 }
 
 Result<size_t> ServerWithLeaders(MiniCluster* cluster) {

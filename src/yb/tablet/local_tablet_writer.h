@@ -60,6 +60,11 @@ class LocalTabletWriter : public WriteQueryContext {
   Status Write(QLWriteRequestPB* req);
   Status WriteBatch(Batch* batch);
 
+  void RegisterAsyncWrite(const OpId& op_id) override {}
+  void RegisterAsyncWriteCompletion(const OpId& op_id, StdStatusCallback&& callback) override {
+    callback(Status::OK());
+  }
+
  private:
   void Submit(std::unique_ptr<Operation> operation, int64_t term) override;
   Result<HybridTime> ReportReadRestart() override;

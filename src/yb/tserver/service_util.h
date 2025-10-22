@@ -323,7 +323,7 @@ Status CheckPeerIsLeader(const tablet::TabletPeer& tablet_peer);
 // allow_split_tablet specifies whether to reject requests to tablets which have been already
 // split.
 Status CheckPeerIsReady(
-    const tablet::TabletPeer& tablet_peer, AllowSplitTablet allow_split_tablet);
+  const tablet::TabletPeer& tablet_peer, AllowSplitTablet allow_split_tablet);
 
 Result<std::shared_ptr<tablet::AbstractTablet>> GetTablet(
     TabletPeerLookupIf* tablet_manager, const TabletId& tablet_id,

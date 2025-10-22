@@ -138,6 +138,8 @@ class WriteQuery {
 
   void Complete(const Status& status);
 
+  void InvokeCallback(const Status& status);
+
   Status InitExecute(ExecuteMode mode);
 
   void ExecuteDone(const Status& status);

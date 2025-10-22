@@ -36,6 +36,8 @@
 #include <string>
 #include <vector>
 
+#include <boost/function.hpp>
+
 #include "yb/tablet/operations/operation.h"
 #include "yb/tablet/operations.messages.h"
 
@@ -66,6 +68,10 @@ class WriteOperation : public OperationBase<OperationType::kWrite, LWWritePB>  {
   bool use_mvcc() const override {
     return true;
   }
+
+  void SetAsyncWrite(boost::function<void(OpId)> callback);
+
+  void AddedAsPending(const TabletPtr& tablet) override;
 
  private:
   // Executes a Prepare for a write transaction
@@ -99,6 +105,8 @@ class WriteOperation : public OperationBase<OperationType::kWrite, LWWritePB>  {
   Status DoAborted(const Status& status) override;
 
   HybridTime WriteHybridTime() const override;
+
+  boost::function<void(OpId)> added_to_leader_callback_;
 };
 
 }  // namespace tablet
