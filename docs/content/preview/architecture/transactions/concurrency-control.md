@@ -1276,7 +1276,7 @@ The `SKIP LOCKED` clause is supported in both concurrency control policies and p
 
 {{<tags/feature/tp idea="812">}}Advisory locks are available in {{<release "2.25.1.0">}} and later.
 
-[Advisory locks](../../../explore/transactions/advisory-locks/) provide a cooperative, application-managed mechanism for controlling access to custom resources, offering a lighter-weight alternative to row or table locks. In YugabyteDB, all acquired advisory locks are globally visible across all nodes and sessions via the dedicated `pg_advisory_locks` system table, ensuring distributed coordination.
+[Advisory locks](../../../explore/transactions/explicit-locking/#advisory-locks) provide a cooperative, application-managed mechanism for controlling access to custom resources, offering a lighter-weight alternative to row or table locks. In YugabyteDB, all acquired advisory locks are globally visible across all nodes and sessions via the dedicated `pg_advisory_locks` system table, ensuring distributed coordination.
 
 Advisory locks are diabled by default. To enable and configure advisory locks, use the [Advisory lock flags](../../../reference/configuration/yb-tserver/#advisory-lock-flags).
 
