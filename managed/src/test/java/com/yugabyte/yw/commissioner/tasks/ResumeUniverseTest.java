@@ -219,10 +219,11 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
     Region region = Region.getByCode(azuProvider, "region-1");
     verifyCapacityReservationAZU(
         defaultUniverse.getUniverseUUID(),
-        region,
-        Map.of(
-            defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
-            Map.of("1", Arrays.asList("host-n1", "host-n2", "host-n3"))));
+        AzureReservationGroup.of(
+            region,
+            Map.of(
+                defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
+                Map.of("1", Arrays.asList("host-n1", "host-n2", "host-n3")))));
 
     verifyNodeInteractionsCapacityReservation(
         12,

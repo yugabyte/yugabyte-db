@@ -243,9 +243,11 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
 
     verifyCapacityReservationAZU(
         universe.getUniverseUUID(),
-        region,
-        Map.of(
-            rrInstanceType, Map.of("1", Arrays.asList("host-readonly1-n1", "host-readonly1-n2"))));
+        AzureReservationGroup.of(
+            region,
+            Map.of(
+                rrInstanceType,
+                Map.of("1", Arrays.asList("host-readonly1-n1", "host-readonly1-n2")))));
 
     verifyNodeInteractionsCapacityReservation(
         18,

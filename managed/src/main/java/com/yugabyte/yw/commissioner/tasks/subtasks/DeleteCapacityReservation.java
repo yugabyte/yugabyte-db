@@ -7,9 +7,11 @@ import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.cloud.azu.AZUClientFactory;
 import com.yugabyte.yw.cloud.azu.AZUResourceGroupApiClient;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
 import com.yugabyte.yw.common.utils.CapacityReservationUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.metrics.CapacityReservationMetrics;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import java.util.ArrayList;
@@ -24,15 +26,18 @@ import play.libs.Json;
 public class DeleteCapacityReservation extends ServerSubTaskBase {
   private AZUClientFactory azuClientFactory;
   private CloudAPI.Factory cloudAPIFactory;
+  private CapacityReservationMetrics reservationMetrics;
 
   @Inject
   protected DeleteCapacityReservation(
       BaseTaskDependencies baseTaskDependencies,
       AZUClientFactory azuClientFactory,
-      CloudAPI.Factory cloudAPIFactory) {
+      CloudAPI.Factory cloudAPIFactory,
+      CapacityReservationMetrics reservationMetrics) {
     super(baseTaskDependencies);
     this.azuClientFactory = azuClientFactory;
     this.cloudAPIFactory = cloudAPIFactory;
+    this.reservationMetrics = reservationMetrics;
   }
 
   public static class Params extends ServerSubTaskParams {}
@@ -85,10 +90,22 @@ public class DeleteCapacityReservation extends ServerSubTaskBase {
                             .forEach(
                                 (zoneId, reservation) -> {
                                   if (reservations.remove(reservation.getReservationName())) {
-                                    apiClient.deleteCapacityReservation(
-                                        regionReservation.getGroupName(),
+                                    log.debug(
+                                        "Deleting reservation {} with {} vms",
                                         reservation.getReservationName(),
                                         reservation.getVmNames());
+                                    reservationMetrics.wrapWithMetrics(
+                                        universe.getUniverseUUID(),
+                                        reservation.getVmNames().size(),
+                                        Common.CloudType.azu,
+                                        CapacityReservationUtil.ReservationAction.RELEASE,
+                                        () -> {
+                                          apiClient.deleteCapacityReservation(
+                                              regionReservation.getGroupName(),
+                                              reservation.getReservationName(),
+                                              reservation.getVmNames());
+                                          return null;
+                                        });
                                   } else {
                                     log.debug(
                                         "Reservation {} is not found",
@@ -96,12 +113,21 @@ public class DeleteCapacityReservation extends ServerSubTaskBase {
                                   }
                                 });
                       });
+              // This should not happen but just for the sake of safety.
               reservations.forEach(
                   r ->
                       apiClient.deleteCapacityReservation(
                           regionReservation.getGroupName(), r, Collections.emptySet()));
               log.debug("Deleting region reservation {}", regionReservation.getGroupName());
-              apiClient.deleteCapacityReservationGroup(regionReservation.getGroupName());
+              reservationMetrics.wrapWithMetrics(
+                  universe.getUniverseUUID(),
+                  1,
+                  Common.CloudType.azu,
+                  CapacityReservationUtil.ReservationAction.DELETE_GROUP,
+                  () -> {
+                    apiClient.deleteCapacityReservationGroup(regionReservation.getGroupName());
+                    return null;
+                  });
             } else {
               log.debug("Group not found: {}", regionReservation.getGroupName());
             }
@@ -122,10 +148,22 @@ public class DeleteCapacityReservation extends ServerSubTaskBase {
                           .forEach(
                               (zoneId, reservation) -> {
                                 if (zoneReservation.getReservationName() != null) {
-                                  cloudAPI.deleteCapacityReservation(
-                                      provider,
-                                      zoneReservation.getRegion(),
-                                      reservation.getReservationName());
+                                  log.debug(
+                                      "Deleting reservation {} with {} vms",
+                                      reservation.getReservationName(),
+                                      reservation.getVmNames());
+                                  reservationMetrics.wrapWithMetrics(
+                                      universe.getUniverseUUID(),
+                                      reservation.getVmNames().size(),
+                                      Common.CloudType.aws,
+                                      CapacityReservationUtil.ReservationAction.RELEASE,
+                                      () -> {
+                                        cloudAPI.deleteCapacityReservation(
+                                            provider,
+                                            zoneReservation.getRegion(),
+                                            reservation.getReservationName());
+                                        return null;
+                                      });
                                 }
                               });
                     });
