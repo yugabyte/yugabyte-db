@@ -746,6 +746,7 @@ Status Log::Init() {
     RETURN_NOT_OK(reader_->GetSegmentsSnapshot(&segments));
     const ReadableLogSegmentPtr& active_segment = VERIFY_RESULT(segments.back());
     active_segment_sequence_number_ = active_segment->header().sequence_number();
+    active_segment_ondisk_size_ = active_segment->file_size();
     LOG_WITH_PREFIX(INFO) << "Opened existing logs. Last segment is " << active_segment->path();
 
     // In case where TServer process reboots, we need to reload the wal file size into the metric,
@@ -1157,6 +1158,7 @@ Result<bool> Log::ReuseAsActiveSegment(const scoped_refptr<ReadableLogSegment>& 
     std::lock_guard lock(active_segment_mutex_);
     active_segment_ = std::move(new_segment);
   }
+  active_segment_ondisk_size_ = VERIFY_RESULT(active_segment_->SizeOnDisk());
   LOG(INFO) << "Successfully restored footer_builder_ and log_index_ for segment: "
             << recover_segment->path() << ". Reopen the file for write with starting offset: "
             << file_size;
