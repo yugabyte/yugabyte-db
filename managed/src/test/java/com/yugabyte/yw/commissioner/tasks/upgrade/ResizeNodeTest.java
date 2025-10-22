@@ -1617,22 +1617,22 @@ public class ResizeNodeTest extends UpgradeTaskTest {
 
     verifyCapacityReservationAZU(
         defaultUniverse.getUniverseUUID(),
-        region1,
-        Map.of(
-            newInstanceType, Map.of("1", Arrays.asList(nodesByAZ.get("1"), rrNodesByAZ.get("1")))));
-
-    verifyCapacityReservationAZU(
-        defaultUniverse.getUniverseUUID(),
-        region2,
-        Map.of(
-            newInstanceType,
+        AzureReservationGroup.of(
+            region1,
             Map.of(
-                "2",
-                Arrays.asList(nodesByAZ.get("2")),
-                "3",
-                Arrays.asList(nodesByAZ.get("3")),
-                "4",
-                Arrays.asList(rrNodesByAZ.get("4")))));
+                newInstanceType,
+                Map.of("1", Arrays.asList(nodesByAZ.get("1"), rrNodesByAZ.get("1"))))),
+        AzureReservationGroup.of(
+            region2,
+            Map.of(
+                newInstanceType,
+                Map.of(
+                    "2",
+                    Arrays.asList(nodesByAZ.get("2")),
+                    "3",
+                    Arrays.asList(nodesByAZ.get("3")),
+                    "4",
+                    Arrays.asList(rrNodesByAZ.get("4"))))));
 
     verifyNodeInteractionsCapacityReservation(
         21,
