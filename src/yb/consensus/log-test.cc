@@ -588,20 +588,25 @@ TEST_F(LogTest, TestCorruptLogInHeader) {
   DoCorruptionTest(FLIP_BYTE, IN_HEADER, STATUS(Corruption, ""), 3);
 }
 
-// Tests log metrics for WAL files size
+// Tests log size metrics are tracked correctly at runtime.
 TEST_F(LogTest, TestLogMetrics) {
   BuildLog();
-// Set a small segment size so that we have roll overs.
+  // Set a small segment size so that we have rollovers.
   log_->SetMaxSegmentSizeForTests(990);
-  const int kNumEntriesPerBatch = 100;
-
-  OpIdPB op_id = MakeOpId(1, 1);
 
   SegmentSequence segments;
   ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(segments.size(), 1);
 
+  // Verify the active segment size tracker was initialized to the segment pre-allocation size.
+  string path = CHECK_RESULT(segments.back()).get()->path();
+  struct stat st;
+  ASSERT_EQ(stat(path.c_str(), &st), 0);
+  ASSERT_EQ(log_->active_segment_ondisk_size_, st.st_size);
+
   // Create at least 3 segments.
+  const int kNumEntriesPerBatch = 100;
+  OpIdPB op_id = MakeOpId(1, 1);
   while (segments.size() < 3) {
     ASSERT_OK(AppendNoOps(&op_id, kNumEntriesPerBatch));
     // Update the segments
@@ -612,15 +617,57 @@ TEST_F(LogTest, TestLogMetrics) {
   uint64_t real_wal_size = 0;
 
   for (const scoped_refptr<ReadableLogSegment>& segment : segments) {
-    struct stat st;
     ASSERT_EQ(stat(segment->path().c_str(), &st), 0);
     uint64_t size_on_disk = st.st_size;
     real_wal_size += size_on_disk;
     LOG(INFO) << "Log size: " << size_on_disk << ", path: " << segment->path();
   }
 
-  ASSERT_OK(log_->Close());
   ASSERT_EQ(real_wal_size, metrics_wal_size);
+}
+
+// Tests log size metrics are initialized properly when latest log segment is reused on log open.
+TEST_F(LogTest, TestLogMetricsWithSegmentReuse) {
+  const size_t reuse_threshold = 512_KB;
+
+  // log_->Close() simulates crash now (refer DoReuseLastSegmentTest()).
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_abrupt_server_restart) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_file_close) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_reuse_unclosed_segment_threshold_bytes) = reuse_threshold;
+
+  BuildLog();
+  SegmentSequence segments;
+  ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
+  ASSERT_EQ(segments.size(), 1);
+
+  // Fill segment about half-way to the reuse-threshold.
+  ssize_t size = 0;
+  ssize_t size_limit = reuse_threshold / 2;
+  const int kNumEntriesPerBatch = 100;
+  OpIdPB op_id = MakeOpId(1, 1);
+  while (size < size_limit) {
+    ASSERT_OK(AppendNoOps(&op_id, kNumEntriesPerBatch, &size));
+  }
+
+  // Verify we are still in the first segment.
+  ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
+  size_t segment_num_before_crash = segments.size();
+  ASSERT_EQ(segment_num_before_crash, 1);
+
+  // Simulate crash.
+  ASSERT_OK(log_->Close());
+
+  BuildLog();
+  ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
+  // Make sure segments number didn't get increase after restart; segment was reused.
+  ASSERT_EQ(segments.size(), segment_num_before_crash);
+
+  // Verify the active segment size tracker and metrics were initialized properly.
+  string path = CHECK_RESULT(segments.back()).get()->path();
+  struct stat st;
+  ASSERT_EQ(stat(path.c_str(), &st), 0);
+  ASSERT_EQ(log_->active_segment_ondisk_size_, st.st_size);
+  ASSERT_EQ(log_->metrics_->wal_size->value(), st.st_size);
 }
 
 // Verify presence of min_start_time_running_txns in footer of closed segments.

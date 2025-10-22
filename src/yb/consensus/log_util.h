@@ -34,8 +34,6 @@
 
 #include <sys/stat.h>
 
-#include <iosfwd>
-#include <map>
 #include <memory>
 #include <string>
 #include <vector>
