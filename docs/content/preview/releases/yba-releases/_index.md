@@ -20,7 +20,7 @@ cascade:
 | [v2.20](v2.20/) {{<tags/release/lts>}} | {{< yb-eol-dates "v2.20" release >}} | {{< yb-eol-dates "v2.20" EOM >}} | {{< yb-eol-dates "v2.20" EOL >}} |
 
 {{< warning title="Replicated end of life" >}}
-YugabyteDB Anywhere will end support for Replicated installation at the **end of 2024**. For new installations of YugabyteDB Anywhere, use [YBA Installer](../../yugabyte-platform/install-yugabyte-platform/install-software/installer/). To migrate existing Replicated YugabyteDB Anywhere installations to YBA Installer, refer to [Migrate from Replicated](../../yugabyte-platform/install-yugabyte-platform/migrate-replicated/).
+YugabyteDB Anywhere will end support for Replicated installation at the **end of 2024**. For new installations of YugabyteDB Anywhere, use [YBA Installer](/v2.20/yugabyte-platform/install-yugabyte-platform/install-software/installer/). To migrate existing Replicated YugabyteDB Anywhere installations to YBA Installer, refer to [Migrate from Replicated](/v2.20/yugabyte-platform/install-yugabyte-platform/migrate-replicated/).
 {{< /warning >}}
 
 For end-of-life releases, see [Releases at end of life](../ybdb-releases/#eol-releases).
