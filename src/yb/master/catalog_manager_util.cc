@@ -581,7 +581,10 @@ Status ExecutePgsqlStatements(
       req, resp.get(), controller.get(), [controller, resp, cb = std::move(callback)]() {
         Status status = controller->status();
         if (status.ok() && resp->has_error()) {
-          status = StatusFromPB(resp->error().status());
+          // Underlying error code could be NetworkError from libpq. Convert it to IllegalState.
+          status = STATUS_FORMAT(
+              IllegalState, "Error executing pgsql statements: $0",
+              resp->error().status().message());
         }
         cb(status);
       });
