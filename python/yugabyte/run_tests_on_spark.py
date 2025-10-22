@@ -908,6 +908,7 @@ def collect_cpp_tests(
     """
     Collect C++ test programs to run.
     @param cpp_test_program_filter_list: a list of C++ test program names to be used as a filter
+    @param test_descriptor_filter_list: a list of individual test cases to be used as a filter
     """
 
     global_conf = yb_dist_tests.get_global_conf()
@@ -1012,15 +1013,22 @@ def collect_cpp_tests(
             )
 
     if test_descriptor_filter_list:
-        missing_tests = [
+        cpp_test_descriptor_filter_list = [
             test_descriptor for test_descriptor in test_descriptor_filter_list
             # C++ tests have TEST_DESCRIPTOR_SEPARATOR in the test descriptor.
+            # Also remove tests that are not in the cpp_test_program_filter_list.
             if (TEST_DESCRIPTOR_SEPARATOR in test_descriptor and
-                test_descriptor not in test_descriptor_strs)
+                (not cpp_test_program_filter_list or
+                 os.path.basename(test_descriptor.split(TEST_DESCRIPTOR_SEPARATOR)[0])
+                 in cpp_test_program_filter_list))
+        ]
+        missing_tests = [
+            test_descriptor for test_descriptor in cpp_test_descriptor_filter_list
+            if test_descriptor not in test_descriptor_strs
         ]
         if missing_tests:
             raise RuntimeError(f"Missing tests: {missing_tests}")
-        test_descriptor_strs = test_descriptor_filter_list
+        test_descriptor_strs = cpp_test_descriptor_filter_list
 
     return [yb_dist_tests.TestDescriptor(s) for s in test_descriptor_strs]
 
