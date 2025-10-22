@@ -1945,7 +1945,7 @@ You can run yugabyted in a Docker container. For more information, see the [Quic
 
 The following example shows how to create a multi-region universe. If the `~/yb_docker_data` directory already exists, delete and re-create it.
 
-Note that the `--join` flag only accepts a label that conform to DNS syntax, so name your Docker container accordingly using only letters, numbers, and hyphens. When joining, you can use the DNS name or IP address of any existing, active node in the universe.
+Note that the `--join` flag only accepts a label that conforms to DNS syntax, so name your Docker container accordingly using only letters, numbers, and hyphens. When joining, you can use the DNS name or IP address of any existing, active node in the universe.
 
 ```sh
 rm -rf ~/yb_docker_data
