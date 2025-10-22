@@ -107,7 +107,8 @@ EOF
   fi
 
   if [ "$SUDO_ACCESS" = "true" ]; then\
-    su - yugabyte -c "$BIN_DIR/configure_earlyoom_service.sh -a $ACTION -c \"$EARLYOOM_ARGS\""
+    su - yugabyte -c "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u yugabyte)/bus \
+       $BIN_DIR/configure_earlyoom_service.sh -a $ACTION -c \"$EARLYOOM_ARGS\""
   else
     $BIN_DIR/configure_earlyoom_service.sh -a $ACTION -c "$EARLYOOM_ARGS"
   fi
