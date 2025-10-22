@@ -199,6 +199,7 @@ typedef enum YbIntCounters
 	YB_INT_CONFLICT_RETRIES,
 	YB_INT_READ_RESTART_RETRIES,
 	YB_INT_TOTAL_RETRIES,
+	YB_INT_DOCDB_ROWS_RETURNED,
 
 	YB_INT_COUNTERS_LAST = YB_NUM_COUNTERS_INT
 } YbIntCounters;
@@ -2024,6 +2025,8 @@ pgss_store(const char *query, uint64 queryId,
 				yb_instr.tbl_writes + yb_instr.index_writes;
 			e->counters.yb_counters.counters[YB_INT_DOCDB_ROWS_SCANNED] +=
 				yb_instr.tbl_reads.rows_scanned + yb_instr.index_reads.rows_scanned;
+			e->counters.yb_counters.counters[YB_INT_DOCDB_ROWS_RETURNED] +=
+				yb_instr.tbl_reads.rows_received + yb_instr.index_reads.rows_received;
 
 			e->counters.yb_counters.counters_dbl[YB_DBL_CATALOG_WAIT_TIME_MS] +=
 				(yb_instr.catalog_reads.wait_time) / 1000000.0;
@@ -2532,10 +2535,7 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 			values[i++] = Int64GetDatumFast(tmp.yb_counters.counters[YB_INT_DOCDB_READ_OPS]);
 			values[i++] = Int64GetDatumFast(tmp.yb_counters.counters[YB_INT_DOCDB_WRITE_OPS]);
 			values[i++] = Int64GetDatumFast(tmp.yb_counters.counters[YB_INT_DOCDB_ROWS_SCANNED]);
-
-			/* TODO(#28505): Add docdb_rows_returned */
-			nulls[i++] = true;
-
+			values[i++] = Int64GetDatumFast(tmp.yb_counters.counters[YB_INT_DOCDB_ROWS_RETURNED]);
 			values[i++] = Float8GetDatumFast(tmp.yb_counters.counters_dbl[YB_DBL_DOCDB_WAIT_TIME_MS]);
 			values[i++] = Int64GetDatumFast(tmp.yb_counters.counters[YB_INT_CONFLICT_RETRIES]);
 			values[i++] = Int64GetDatumFast(tmp.yb_counters.counters[YB_INT_READ_RESTART_RETRIES]);

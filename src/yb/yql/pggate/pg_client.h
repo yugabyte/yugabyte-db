@@ -274,7 +274,8 @@ class PgClient {
       docdb::ObjectLockFastpathLockType lock_type);
 
   Status AcquireObjectLock(
-      tserver::PgPerformOptionsPB* options, const YbcObjectLockId& lock_id, YbcObjectLockMode mode);
+      tserver::PgPerformOptionsPB* options, const YbcObjectLockId& lock_id, YbcObjectLockMode mode,
+      std::optional<PgTablespaceOid> tablespace_oid);
 
   Result<bool> CheckIfPitrActive();
 

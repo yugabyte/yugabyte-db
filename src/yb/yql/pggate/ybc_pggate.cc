@@ -1400,8 +1400,11 @@ YbcStatus YBCPgDmlAppendTarget(YbcPgStatement handle, YbcPgExpr target) {
   return ToYBCStatus(pgapi->DmlAppendTarget(handle, target));
 }
 
-YbcStatus YbPgDmlAppendQual(YbcPgStatement handle, YbcPgExpr qual, bool is_for_secondary_index) {
-  return ToYBCStatus(pgapi->DmlAppendQual(handle, qual, is_for_secondary_index));
+YbcStatus YbPgDmlAppendQual(
+    YbcPgStatement handle, YbcPgExpr qual, uint32_t serialization_version,
+    bool is_for_secondary_index) {
+  return ToYBCStatus(pgapi->DmlAppendQual(
+      handle, qual, serialization_version, is_for_secondary_index));
 }
 
 YbcStatus YbPgDmlAppendColumnRef(
@@ -2000,6 +2003,10 @@ bool YBCPgIsDdlMode() {
   return pgapi->IsDdlMode();
 }
 
+bool YBCPgIsDdlModeWithRegularTransactionBlock() {
+  return pgapi->IsDdlModeWithRegularTransactionBlock();
+}
+
 bool YBCCurrentTransactionUsesFastPath() {
   auto result = pgapi->CurrentTransactionUsesFastPath();
   if (!result.ok()) {
@@ -2032,9 +2039,13 @@ void YBCPgAddIntoForeignKeyReferenceCache(YbcPgOid table_relfilenode_oid, uint64
   pgapi->AddForeignKeyReference(table_relfilenode_oid, YbctidAsSlice(ybctid));
 }
 
-YbcStatus YBCForeignKeyReferenceExists(const YbcPgYBTupleIdDescriptor *source, bool* res) {
-  return ProcessYbctid(*source, [res, source](auto table_id, const auto& ybctid) -> Status {
-    *res = VERIFY_RESULT(pgapi->ForeignKeyReferenceExists(table_id, ybctid, source->database_oid));
+YbcStatus YBCForeignKeyReferenceExists(
+  const YbcPgYBTupleIdDescriptor *source, bool relation_is_region_local, bool* res) {
+  return ProcessYbctid(
+    *source,
+    [res, source, relation_is_region_local](auto table_id, const auto& ybctid) -> Status {
+    *res = VERIFY_RESULT(pgapi->ForeignKeyReferenceExists(
+        table_id, ybctid, relation_is_region_local, source->database_oid));
     return Status::OK();
   });
 }

@@ -356,6 +356,104 @@ COPY public.t7 (a, b, c, d) FROM stdin;
 
 
 --
+-- Statistics for Name: t1; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 't1',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: t2; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 't2',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: t3; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 't3',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: t4; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 't4',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: t5; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 't5',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: t6; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 't6',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: t7; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 't7',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
 -- Name: i1; Type: INDEX; Schema: public; Owner: yugabyte_test
 --
 
@@ -452,10 +550,94 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 
 
 --
+-- Statistics for Name: i1; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'i1',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: i2; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'i2',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: i21; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'i21',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: i3; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'i3',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
 -- Name: mv1; Type: MATERIALIZED VIEW DATA; Schema: public; Owner: yugabyte_test
 --
 
 REFRESH MATERIALIZED VIEW public.mv1;
+
+
+--
+-- Statistics for Name: mv1; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'mv1',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: t7_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 't7_pkey',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
 
 
 -- YB: re-enable auto analyze after all catalog changes

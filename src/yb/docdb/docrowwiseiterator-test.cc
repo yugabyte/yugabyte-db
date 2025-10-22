@@ -151,7 +151,7 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
       bool liveness_column_expected = false) {
     auto iter = MakeIterator(
         projection, doc_read_context, txn_op_context, doc_db, read_operation_data, pending_op);
-    iter->InitForTableType(YQL_TABLE_TYPE);
+    CHECK_OK(iter->InitForTableType(YQL_TABLE_TYPE));
     return iter;
   }
 
@@ -554,6 +554,7 @@ void DocRowwiseIteratorTest::CreateIteratorAndValidate(
 void DocRowwiseIteratorTest::TestClusteredFilterRange() {
   InsertTestRangeData();
 
+  auto arena = SharedSmallArena();
   const KeyEntryValues hashed_components{KeyEntryValue::Int32(5)};
 
   QLConditionPB cond;
@@ -568,7 +569,8 @@ void DocRowwiseIteratorTest::TestClusteredFilterRange() {
   option1->add_elems()->set_int32_value(6);
 
   DocQLScanSpec spec(
-      test_range_schema, kFixedHashCode, kFixedHashCode, hashed_components, &cond, nullptr,
+      test_range_schema, kFixedHashCode, kFixedHashCode, arena,
+      dockv::TEST_KeyEntryValuesToSlices(*arena, hashed_components), &cond, nullptr,
       rocksdb::kDefaultQueryId);
 
   CreateIteratorAndValidate(
@@ -613,11 +615,7 @@ void DocRowwiseIteratorTest::TestClusteredFilterRangeWithTableTombstone() {
 
   DocDBDebugDumpToConsole();
 
-  const KeyEntryValues empty_key_components;
-  std::optional<int32_t> empty_hash_code;
-  DocPgsqlScanSpec spec(
-      test_schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, &cond,
-      empty_hash_code, empty_hash_code);
+  DocPgsqlScanSpec spec(test_schema, &cond);
 
   CreateIteratorAndValidate(
       test_schema, ReadHybridTime::FromMicros(2000), spec,
@@ -662,7 +660,7 @@ void DocRowwiseIteratorTest::TestClusteredFilterRangeWithTableTombstoneReverseSc
   std::optional<int32_t> empty_hash_code;
   static const DocKey default_doc_key;
   DocPgsqlScanSpec spec(
-      test_schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, &cond,
+      test_schema, rocksdb::kDefaultQueryId, nullptr, {}, empty_key_components, &cond,
       empty_hash_code, empty_hash_code, default_doc_key, /* is_forward_scan */ false);
 
   CreateIteratorAndValidate(
@@ -696,8 +694,10 @@ void DocRowwiseIteratorTest::TestClusteredFilterHybridScan() {
   option2->add_elems()->set_string_value(UK);
   option2->add_elems()->set_string_value(AREA1);
 
+  auto arena = SharedSmallArena();
   DocQLScanSpec spec(
-      population_schema, kFixedHashCode, kFixedHashCode, hashed_components, &cond, nullptr,
+      population_schema, kFixedHashCode, kFixedHashCode, arena,
+      TEST_KeyEntryValuesToSlices(*arena, hashed_components), &cond, nullptr,
       rocksdb::kDefaultQueryId);
 
   CreateIteratorAndValidate(
@@ -729,8 +729,10 @@ void DocRowwiseIteratorTest::TestClusteredFilterSubsetCol() {
   option2->add_elems()->set_string_value(EUROPE);
   option2->add_elems()->set_string_value(UK);
 
+  auto arena = SharedSmallArena();
   DocQLScanSpec spec(
-      population_schema, kFixedHashCode, kFixedHashCode, hashed_components, &cond, nullptr,
+      population_schema, kFixedHashCode, kFixedHashCode, arena,
+      dockv::TEST_KeyEntryValuesToSlices(*arena, hashed_components), &cond, nullptr,
       rocksdb::kDefaultQueryId);
 
   CreateIteratorAndValidate(
@@ -764,8 +766,10 @@ void DocRowwiseIteratorTest::TestClusteredFilterSubsetCol2() {
   option2->add_elems()->set_string_value(UK);
   option2->add_elems()->set_string_value(AREA1);
 
+  auto arena = SharedSmallArena();
   DocQLScanSpec spec(
-      population_schema, kFixedHashCode, kFixedHashCode, hashed_components, &cond, nullptr,
+      population_schema, kFixedHashCode, kFixedHashCode, arena,
+      dockv::TEST_KeyEntryValuesToSlices(*arena, hashed_components), &cond, nullptr,
       rocksdb::kDefaultQueryId);
 
   CreateIteratorAndValidate(
@@ -805,8 +809,10 @@ void DocRowwiseIteratorTest::TestClusteredFilterMultiIn() {
   auto cond2_options = cond2->add_operands()->mutable_value()->mutable_list_value();
   cond2_options->add_elems()->set_string_value(AREA1);
 
+  auto arena = SharedSmallArena();
   DocQLScanSpec spec(
-      population_schema, kFixedHashCode, kFixedHashCode, hashed_components, &cond, nullptr,
+      population_schema, kFixedHashCode, kFixedHashCode, arena,
+      dockv::TEST_KeyEntryValuesToSlices(*arena, hashed_components), &cond, nullptr,
       rocksdb::kDefaultQueryId);
 
   CreateIteratorAndValidate(
@@ -840,8 +846,10 @@ void DocRowwiseIteratorTest::TestClusteredFilterEmptyIn() {
   auto cond2_options = cond2->add_operands()->mutable_value()->mutable_list_value();
   cond2_options->add_elems()->set_string_value(AREA1);
 
+  auto arena = SharedSmallArena();
   DocQLScanSpec spec(
-      population_schema, kFixedHashCode, kFixedHashCode, hashed_components, &cond, nullptr,
+      population_schema, kFixedHashCode, kFixedHashCode, arena,
+      dockv::TEST_KeyEntryValuesToSlices(*arena, hashed_components), &cond, nullptr,
       rocksdb::kDefaultQueryId);
 
   // No rows match the index scan => no rows should be seen by max_seen_ht.
@@ -2219,16 +2227,7 @@ void DocRowwiseIteratorTest::TestLastSeenHtRollback(
   option2->add_elems()->set_string_value(strKeyHigh);
   option2->add_elems()->set_int64_value(intKeyHigh);
 
-  const KeyEntryValues empty_key_components;
-  std::optional<int32_t> empty_hash_code;
-  DocPgsqlScanSpec spec(
-      doc_read_context().schema(),
-      rocksdb::kDefaultQueryId,
-      empty_key_components,
-      empty_key_components,
-      &cond,
-      empty_hash_code,
-      empty_hash_code);
+  DocPgsqlScanSpec spec(doc_read_context().schema(), &cond);
 
   LOG(INFO) << Format(
       "SELECT ... WHERE key IN (key$0, key$1) at time=$2",
@@ -2300,17 +2299,8 @@ void DocRowwiseIteratorTest::TestHtRollbackWithKeyOps(const std::vector<KeyOpHtR
       op4->mutable_value()->set_bool_value(!strict_ineq1);
       op5->mutable_value()->set_bool_value(!strict_ineq2);
 
-      const KeyEntryValues empty_key_components;
-      std::optional<int32_t> empty_hash_code;
       auto schema = doc_read_context().schema();
-      DocPgsqlScanSpec spec(
-          schema,
-          rocksdb::kDefaultQueryId,
-          empty_key_components,
-          empty_key_components,
-          &cond,
-          empty_hash_code,
-          empty_hash_code);
+      DocPgsqlScanSpec spec(schema, &cond);
 
       // Compute expected values.
       std::string expected;

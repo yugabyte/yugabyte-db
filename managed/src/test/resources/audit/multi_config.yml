@@ -7,7 +7,6 @@ exporters:
     region: us-west2
     retry_on_failure: {enabled: true, initial_interval: 1m, max_elapsed_time: 1800m,
       max_interval: 1800m}
-    sending_queue: {enabled: false, storage: file_storage/queue}
   googlecloud/11111111-1111-1111-1111-111111111111: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$GCPCloudMonitoringExporter
     log: {default_log_name: YugabyteDB}
     project: project

@@ -4086,8 +4086,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       Set<NodeDetails> nodeDetailsSet,
       CapacityReservationUtil.OperationType operationType,
       Predicate<NodeDetails> nodeFilter) {
-    // There is no sense in using capacity reservation for a single node.
-    if (nodeDetailsSet.size() < 2) {
+    if (nodeDetailsSet.isEmpty()) {
       return false;
     }
     Universe universe = getUniverse();

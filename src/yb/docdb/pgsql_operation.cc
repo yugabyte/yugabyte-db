@@ -78,18 +78,12 @@
 #include "yb/util/trace.h"
 #include "yb/util/yb_pg_errcodes.h"
 
-#include "yb/vector_index/vectorann.h"
+#include "yb/vector_index/vector_index_if.h"
 
 #include "yb/yql/pggate/util/pg_doc_data.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
 using namespace std::literals;
-
-using yb::vector_index::ANNPagingState;
-using yb::vector_index::DocKeyWithDistance;
-using yb::vector_index::IndexableVectorType;
-using yb::vector_index::DummyANNFactory;
-using yb::vector_index::VectorANN;
 
 DECLARE_bool(ysql_disable_index_backfill);
 
@@ -357,9 +351,9 @@ class DocKeyAccessor {
       return Apply(req.ybctid_column_value());
     }
 
-    auto hashed_components = VERIFY_RESULT(qlexpr::InitKeyColumnPrimitiveValues(
+    auto hashed_components = VERIFY_RESULT(qlexpr::InitKeyColumnValues(
         req.partition_column_values(), schema_, 0 /* start_idx */));
-    auto range_components = VERIFY_RESULT(qlexpr::InitKeyColumnPrimitiveValues(
+    auto range_components = VERIFY_RESULT(qlexpr::InitKeyColumnValues(
         req.range_column_values(), schema_, schema_.num_hash_key_columns()));
     // A SELECT on the unique index column currently takes a strong lock on the top-level key at the
     // serializable isolation level. TODO: Optimize with weak lock.
@@ -550,7 +544,7 @@ Result<std::unique_ptr<YQLRowwiseIteratorIf>> CreateYbctidIterator(
       SkipSeek skip_seek) {
   return data.ql_storage.GetIteratorForYbctid(
       data.request.stmt_id(), projection, read_context, data.txn_op_context,
-      data.read_operation_data, bounds, data.pending_op, skip_seek, UseVariableBloomFilter::kTrue);
+      data.read_operation_data, bounds, data.pending_op, skip_seek);
 }
 
 class FilteringIterator {
@@ -2115,59 +2109,6 @@ class PgsqlReadRequestYbctidProvider {
   std::optional<int64> current_order_;
 };
 
-template<IndexableVectorType Vector>
-class ANNKeyProvider {
- public:
-  explicit ANNKeyProvider(
-      const DocReadContext& doc_read_context, PgsqlResponsePB& response, size_t prefetch_size,
-      const Vector& query_vec, VectorANN<Vector>* ann, const ANNPagingState& paging_state)
-      : response_(response), prefetch_size_(prefetch_size), query_vec_(query_vec), ann_(ann) {
-    next_batch_paging_state_ = paging_state;
-    CHECK_GT(prefetch_size_, 0);
-  }
-
-  bool RefillBatch() {
-    CHECK(key_batch_.empty());
-    auto batch = ann_->GetTopKVectors(
-        query_vec_, prefetch_size_, next_batch_paging_state_.distance(),
-        next_batch_paging_state_.main_key(), false);
-
-    std::sort(batch.begin(), batch.end(), std::less<DocKeyWithDistance>());
-    key_batch_.insert(key_batch_.end(), batch.begin(), batch.end());
-    if (key_batch_.empty()) {
-      return false;
-    }
-    next_batch_paging_state_ =
-        ANNPagingState(key_batch_.back().distance_, key_batch_.back().dockey_);
-    return true;
-  }
-
-  Slice FetchKey() {
-    if (key_batch_.empty() && !RefillBatch()) {
-      return Slice();
-    }
-
-    auto ret = key_batch_.front();
-    current_entry_ = ret;
-    key_batch_.pop_front();
-    return ret.dockey_;
-  }
-
-  ANNPagingState GetNextBatchPagingState() const { return next_batch_paging_state_; }
-
-  void AddedKeyToResultSet() { response_.add_vector_index_distances(current_entry_->distance_); }
-
- private:
-  PgsqlResponsePB& response_;
-  size_t prefetch_size_;
-  const FloatVector& query_vec_;
-  VectorANN<Vector>* ann_;
-  std::deque<DocKeyWithDistance> key_batch_;
-  ANNPagingState next_batch_paging_state_;
-
-  std::optional<DocKeyWithDistance> current_entry_;
-};
-
 Result<size_t> PgsqlReadOperation::Execute() {
   // Verify that this request references no columns marked for deletion.
   RETURN_NOT_OK(VerifyNoRefColsMarkedForDeletion(data_.doc_read_context.schema(), request_));
@@ -2205,9 +2146,6 @@ Result<size_t> PgsqlReadOperation::Execute() {
     } else {
       std::tie(fetched_rows, has_paging_state) = VERIFY_RESULT(ExecuteSample());
     }
-  } else if (request_.has_vector_idx_options()) {
-    std::tie(fetched_rows, has_paging_state) = VERIFY_RESULT(ExecuteVectorSearch(
-        data_.doc_read_context, request_.vector_idx_options()));
   } else if (request_.index_request().has_vector_idx_options()) {
     fetched_rows = VERIFY_RESULT(ExecuteVectorLSMSearch(
         request_.index_request().vector_idx_options()));
@@ -2680,91 +2618,6 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteSampleBlockBased() {
   return std::tuple<size_t, bool>{fetched_items, false};
 }
 
-Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteVectorSearch(
-     const DocReadContext& doc_read_context, const PgVectorReadOptionsPB& options) {
-  // Build the vectorann and then make an index_doc_read_context on the vectorann
-  // to get the index iterator. Then do ExecuteBatchKeys on the index iterator.
-  RSTATUS_DCHECK(options.has_vector(), InvalidArgument, "Query vector not provided");
-
-  auto query_vec = options.vector().binary_value();
-
-  auto ysql_query_vec = pointer_cast<const vector_index::YSQLVector*>(query_vec.data());
-
-  auto query_vec_ref = VERIFY_RESULT(
-      VectorANN<FloatVector>::GetVectorFromYSQLWire(*ysql_query_vec, query_vec.size()));
-
-  DummyANNFactory<FloatVector> ann_factory;
-  auto ann_store = ann_factory.Create(ysql_query_vec->dim);
-
-  dockv::ReaderProjection index_doc_projection;
-
-  auto key_col_id = doc_read_context.schema().column_id(0);
-
-  // Building the schema to extract the vector and key from the main DocDB store.
-  // Vector should be the first value after the key.
-  auto vector_col_id =
-      doc_read_context.schema().column_id(doc_read_context.schema().num_key_columns());
-  index_doc_projection.Init(doc_read_context.schema(), {key_col_id, vector_col_id});
-
-  FilteringIterator table_iter(&table_iter_);
-  RETURN_NOT_OK(table_iter.Init(data_, request_, index_doc_projection, doc_read_context));
-  dockv::PgTableRow row(index_doc_projection);
-  const auto& table_id = request_.table_id();
-
-  // Build the VectorANN.
-  for (;;) {
-    const auto fetch_result =
-        VERIFY_RESULT(FetchTableRow(table_id, &table_iter, nullptr /* index */, &row));
-    // If changing this code, see also PgsqlReadOperation::ExecuteBatchKeys.
-    if (fetch_result == FetchResult::NotFound) {
-      break;
-    }
-    ++scanned_table_rows_;
-    if (fetch_result == FetchResult::Found) {
-      auto vec_value = row.GetValueByColumnId(vector_col_id);
-      if (!vec_value.has_value()) {
-        continue;
-      }
-
-      // Add the vector to the ANN store
-      auto encoded = dockv::EncodedDocVectorValue::FromSlice(vec_value->binary_value());
-      auto vec = VERIFY_RESULT(VectorANN<FloatVector>::GetVectorFromYSQLWire(encoded.data));
-      auto doc_iter = down_cast<DocRowwiseIterator*>(table_iter_.get());
-      ann_store->Add(VERIFY_RESULT(encoded.DecodeId()), std::move(vec), doc_iter->GetTupleId());
-    }
-  }
-
-  // Check for paging state.
-  ANNPagingState ann_paging_state;
-  if (request_.has_paging_state()) {
-    ann_paging_state =
-        ANNPagingState{request_.paging_state().distance(), request_.paging_state().main_key()};
-  }
-
-  // All rows have been added to the ANN store, now we can create the iterator.
-  auto initial_prefetch_size = request_.vector_idx_options().prefetch_size();
-  initial_prefetch_size = std::max(initial_prefetch_size, 25);
-
-  ANNKeyProvider key_provider(
-      doc_read_context, response_, initial_prefetch_size, query_vec_ref, ann_store.get(),
-      ann_paging_state);
-  auto fetched_rows = VERIFY_RESULT(ExecuteBatchKeys(key_provider));
-
-  auto next_paging_state = key_provider.GetNextBatchPagingState();
-
-  // Set paging state.
-  bool has_paging_state = !next_paging_state.valid();
-  if (has_paging_state) {
-    auto* paging_state = response_.mutable_paging_state();
-    paging_state->set_distance(next_paging_state.distance());
-    paging_state->set_main_key(next_paging_state.main_key().ToBuffer());
-
-    BindReadTimeToPagingState(data_.read_operation_data.read_time);
-  }
-
-  return std::tuple<size_t, bool>{fetched_rows, has_paging_state};
-}
-
 Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOptionsPB& options) {
   RSTATUS_DCHECK(
       data_.vector_index, IllegalState, "Search vector when vector index is null: $0", request_);
@@ -2842,10 +2695,11 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteScalar() {
   // columns and key columns.
   auto doc_projection = CreateProjection(data_.doc_read_context.schema(), request_);
   FilteringIterator table_iter(&table_iter_);
-  RETURN_NOT_OK(table_iter.Init(data_, request_, doc_projection, data_.doc_read_context));
 
   std::optional<IndexState> index_state;
   if (data_.index_doc_read_context) {
+    RETURN_NOT_OK(table_iter.InitForYbctid(data_, doc_projection, data_.doc_read_context, {}));
+
     const auto& index_schema = data_.index_doc_read_context->schema();
     const auto idx = index_schema.find_column("ybidxbasectid");
     SCHECK_NE(idx, Schema::kColumnNotFound, Corruption, "ybidxbasectid not found in index schema");
@@ -2853,6 +2707,8 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteScalar() {
         index_schema, request_.index_request(), &index_iter_, index_schema.column_id(idx));
     RETURN_NOT_OK(index_state->iter.Init(
         data_, request_.index_request(), index_state->projection, *data_.index_doc_read_context));
+  } else {
+    RETURN_NOT_OK(table_iter.Init(data_, request_, doc_projection, data_.doc_read_context));
   }
 
   // Set scan end time. We want to iterate as long as we can, but stop before client timeout.
@@ -3238,17 +3094,12 @@ Status PgsqlLockOperation::Init(
 
   auto& schema = doc_read_context->schema();
 
-  dockv::KeyEntryValues hashed_components;
-  dockv::KeyEntryValues range_components;
-  RETURN_NOT_OK(QLKeyColumnValuesToPrimitiveValues(
+  auto hashed_components = VERIFY_RESULT(dockv::QLKeyColumnValuesToPrimitiveValues(
       request_.lock_id().lock_partition_column_values(), schema, 0,
-      schema.num_hash_key_columns(),
-      &hashed_components));
-  RETURN_NOT_OK(QLKeyColumnValuesToPrimitiveValues(
+      schema.num_hash_key_columns()));
+  auto range_components = VERIFY_RESULT(dockv::QLKeyColumnValuesToPrimitiveValues(
       request_.lock_id().lock_range_column_values(), schema,
-      schema.num_hash_key_columns(),
-      schema.num_range_key_columns(),
-      &range_components));
+      schema.num_hash_key_columns(), schema.num_range_key_columns()));
   SCHECK(!hashed_components.empty(), InvalidArgument, "No hashed column values provided");
   doc_key_ = DocKey(
       schema, request_.hash_code(), std::move(hashed_components), std::move(range_components));

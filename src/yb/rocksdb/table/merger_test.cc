@@ -263,7 +263,7 @@ void MergerTest::TestFilter(bool forward_only) {
       continue;
     }
     const auto& key = all_keys_[i];
-    filter_iterator_->UpdateFilterKey(key);
+    filter_iterator_->UpdateFilterKey(key, Slice());
     {
       const KeyValueEntry* entry;
       if (key > prev_key && rnd_.OneIn(2)) {

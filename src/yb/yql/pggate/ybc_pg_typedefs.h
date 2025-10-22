@@ -464,6 +464,7 @@ typedef struct {
   uint64_t writes;
   uint64_t read_wait;
   uint64_t rows_scanned;
+  uint64_t rows_received;
 } YbcPgExecReadWriteStats;
 
 typedef struct {

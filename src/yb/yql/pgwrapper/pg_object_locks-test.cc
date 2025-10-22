@@ -59,6 +59,7 @@ DECLARE_bool(TEST_tserver_enable_ysql_lease_refresh);
 DECLARE_int64(olm_poll_interval_ms);
 DECLARE_string(vmodule);
 DECLARE_bool(ysql_enable_auto_analyze);
+DECLARE_int32(pg_client_extra_timeout_ms);
 
 using namespace std::literals;
 
@@ -814,6 +815,45 @@ TEST_F(PgObjectLocksTest, RetryExclusiveLockOnTserverLeaseRefresh) {
       status_future.wait_for(2s * kTimeMultiplier * kDefaultMasterYSQLLeaseTTLMilli),
       std::future_status::ready);
   ASSERT_OK(status_future.get());
+  ASSERT_OK(conn1.CommitTransaction());
+}
+
+TEST_F(PgObjectLocksTest, VerifyLockTimeout) {
+  constexpr int kLockTimeoutDurationMs = 3000;
+  constexpr int kExtraTimeoutMs = 1000;
+
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(setup_conn.Execute("INSERT INTO t VALUES (1, 1)"));
+
+  auto conn1 = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn1.Execute("LOCK TABLE t IN ACCESS EXCLUSIVE MODE;"));
+
+  ASSERT_OK(conn2.ExecuteFormat("SET lock_timeout='$0ms';", kLockTimeoutDurationMs));
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+
+  std::future<Status> conn2_lock_future = std::async(std::launch::async, [&]() -> Status {
+    return conn2.Execute("LOCK TABLE t IN ACCESS EXCLUSIVE MODE;");
+  });
+
+  // Wait briefly to confirm that conn2 is actually blocking on the lock.
+  ASSERT_EQ(conn2_lock_future.wait_for(
+      std::chrono::seconds(1)), std::future_status::timeout);
+
+  auto expected_timeout_ms =
+      kLockTimeoutDurationMs + FLAGS_pg_client_extra_timeout_ms + kExtraTimeoutMs;
+  ASSERT_EQ(conn2_lock_future.wait_for(
+      std::chrono::milliseconds(expected_timeout_ms * kTimeMultiplier)), std::future_status::ready);
+
+  // Verify the lock attempt fails with lock timeout error.
+  Status result = conn2_lock_future.get();
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.ToString(), "Timed out");
+
+  // Conn1 should still be able to commit
   ASSERT_OK(conn1.CommitTransaction());
 }
 

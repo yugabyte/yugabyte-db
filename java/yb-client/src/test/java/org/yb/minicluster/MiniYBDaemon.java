@@ -17,10 +17,14 @@ import com.google.common.collect.Lists;
 import com.google.common.net.HostAndPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import static org.yb.AssertionWrappers.assertNotNull;
 import org.yb.client.TestUtils;
 import org.yb.util.*;
 
 import java.io.*;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -437,4 +441,33 @@ public class MiniYBDaemon {
     ProcessUtil.executeSimple(cmdLine, " ");
   }
 
+  public String getFlag(String flagName) throws Exception{
+    URL url = new URL("http", bindIp, webPort, "/varz?raw=true");
+    LOG.info("Fetching flags from: {}", url);
+    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+    conn.setRequestMethod("GET");
+    if (conn.getResponseCode() != 200) {
+      throw new RuntimeException("HTTP varz request failed with code: " + conn.getResponseCode());
+    }
+
+    List<String> responseLines = new ArrayList<>();
+    try (BufferedReader reader = new BufferedReader(
+           new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
+      String line;
+      while ((line = reader.readLine()) != null) {
+        responseLines.add(line);
+      }
+    }
+    String flagTag = "--" + flagName;
+    String flagStr = null;
+    for (String str : responseLines) {
+      if (str.length() > flagTag.length() && str.substring(0, flagTag.length()).equals(flagTag)) {
+        LOG.info("found flag " + str);
+        flagStr = str;
+        break;
+      }
+    }
+    assertNotNull(flagStr);
+    return flagStr.substring(flagStr.indexOf("=") + 1);
+  }
 }

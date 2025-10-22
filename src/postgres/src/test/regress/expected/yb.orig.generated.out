@@ -44,13 +44,14 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET v2 = v2 + 1 WHERE k = 1;
  Update on t0_gen (actual rows=0 loops=1)
    ->  Result t0_gen (actual rows=1 loops=1)
          Storage Table Write Requests: 1
+         Storage Flush Requests: 1
  Storage Read Requests: 0
  Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 1
- Storage Flush Requests: 0
+ Storage Flush Requests: 1
  Transaction: Fast Path
-(9 rows)
+(10 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET v2 = (random() * 10)::int WHERE k = 2;
                  QUERY PLAN                  
@@ -58,13 +59,14 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t0_gen SET v2 = (random() * 10)::int W
  Update on t0_gen (actual rows=0 loops=1)
    ->  Result t0_gen (actual rows=1 loops=1)
          Storage Table Write Requests: 1
+         Storage Flush Requests: 1
  Storage Read Requests: 0
  Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 1
- Storage Flush Requests: 0
+ Storage Flush Requests: 1
  Transaction: Fast Path
-(9 rows)
+(10 rows)
 
 -- Updates involving generated columns should not be eligible for single-row optimization
 -- and should not be pushed down.
@@ -591,13 +593,14 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t1_gen SET v3 = 2 WHERE k = 2;
  Update on t1_gen (actual rows=0 loops=1)
    ->  Result t1_gen (actual rows=1 loops=1)
          Storage Table Write Requests: 1
+         Storage Flush Requests: 1
  Storage Read Requests: 0
  Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 1
- Storage Flush Requests: 0
+ Storage Flush Requests: 1
  Transaction: Fast Path
-(9 rows)
+(10 rows)
 
 SELECT * FROM t1_gen WHERE k IN (1, 2) ORDER BY k;
  k | k_gen  | v1 | v2 | v3 | v1_v2_gen 

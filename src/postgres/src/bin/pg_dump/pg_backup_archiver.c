@@ -217,8 +217,8 @@ InitDumpOptions(DumpOptions *opts)
 	opts->dumpSections = DUMP_UNSECTIONED;
 	opts->dumpSchema = true;
 	opts->dumpData = true;
-	/* YB: Do not dump statistics by default */
-	opts->dumpStatistics = false;
+	/* YB: Dump statistics by default */
+	opts->dumpStatistics = true;
 }
 
 /*

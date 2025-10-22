@@ -89,8 +89,8 @@ class FilteringIterator : public InternalIterator {
     return iterator_->GetProperty(std::move(prop_name), prop);
   }
 
-  void UpdateFilterKey(Slice user_key_for_filter) override {
-    iterator_->UpdateFilterKey(user_key_for_filter);
+  const KeyValueEntry& UpdateFilterKey(Slice user_key_for_filter, Slice seek_key) override {
+    return iterator_->UpdateFilterKey(user_key_for_filter, seek_key);
   }
 
   const KeyValueEntry& ApplyFilter(bool backward) {

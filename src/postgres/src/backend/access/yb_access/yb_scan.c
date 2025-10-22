@@ -70,7 +70,9 @@
 #include "utils/spccache.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
 #include "yb/yql/pggate/ybc_gflags.h"
+#include "ybgate/ybgate_api.h"
 
 typedef struct YbAttnumBmsState
 {
@@ -3132,6 +3134,8 @@ YbApplyPushdownImpl(YbcPgStatement dml, const YbPushdownExprs *pushdown,
 		return;
 
 	YbAppendColumnRefsImpl(dml, pushdown->colrefs, is_for_secondary_index);
+	const uint32_t serialization_version = yb_major_version_upgrade_compatibility > 0
+		? yb_major_version_upgrade_compatibility : YbgGetPgVersion();
 
 	ListCell   *lc;
 
@@ -3139,7 +3143,7 @@ YbApplyPushdownImpl(YbcPgStatement dml, const YbPushdownExprs *pushdown,
 	{
 		Expr	   *expr = lfirst(lc);
 
-		HandleYBStatus(YbPgDmlAppendQual(dml, YBCNewEvalExprCall(dml, expr),
+		HandleYBStatus(YbPgDmlAppendQual(dml, YBCNewEvalExprCall(dml, expr), serialization_version,
 										 is_for_secondary_index));
 	}
 }

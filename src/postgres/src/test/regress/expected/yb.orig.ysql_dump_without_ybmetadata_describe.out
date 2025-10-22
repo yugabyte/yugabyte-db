@@ -83,13 +83,13 @@ Indexes:
  public     | p1                      | c1                                |            | CREATE UNIQUE INDEX c1 ON public.p1 USING lsm (a HASH, b ASC)
  public     | p2                      | c2                                |            | CREATE UNIQUE INDEX c2 ON public.p2 USING lsm (a ASC, b ASC)
  public     | p3                      | c3                                |            | CREATE UNIQUE INDEX c3 ON public.p3 USING lsm ((a, b) HASH, c ASC)
+ public     | level1_1                | level1_1_c3_idx                   |            | CREATE INDEX level1_1_c3_idx ON public.level1_1 USING lsm (c3 DESC)
+ public     | level2_1                | level2_1_c3_idx                   |            | CREATE INDEX level2_1_c3_idx ON public.level2_1 USING lsm (c3 ASC)
  public     | part_uniq_const         | part_uniq_const_unique            |            | CREATE UNIQUE INDEX part_uniq_const_unique ON ONLY public.part_uniq_const USING lsm (v1 HASH, v2 ASC)
  public     | part_uniq_const_30_50   | part_uniq_const_30_50_v1_v2_key   |            | CREATE UNIQUE INDEX part_uniq_const_30_50_v1_v2_key ON public.part_uniq_const_30_50 USING lsm (v1 HASH, v2 ASC)
  public     | part_uniq_const_50_100  | part_uniq_const_50_100_v1_v2_key  |            | CREATE UNIQUE INDEX part_uniq_const_50_100_v1_v2_key ON public.part_uniq_const_50_100 USING lsm (v1 HASH, v2 ASC)
  public     | part_uniq_const_50_100  | part_uniq_const_50_100_v2_uniq    |            | CREATE UNIQUE INDEX part_uniq_const_50_100_v2_uniq ON public.part_uniq_const_50_100 USING lsm (v2 ASC)
  public     | part_uniq_const_default | part_uniq_const_default_v1_v2_key |            | CREATE UNIQUE INDEX part_uniq_const_default_v1_v2_key ON public.part_uniq_const_default USING lsm (v1 HASH, v2 ASC)
- public     | level1_1                | level1_1_c3_idx                   |            | CREATE INDEX level1_1_c3_idx ON public.level1_1 USING lsm (c3 DESC)
- public     | level2_1                | level2_1_c3_idx                   |            | CREATE INDEX level2_1_c3_idx ON public.level2_1 USING lsm (c3 ASC)
 (13 rows)
 
                Table "public.level0"

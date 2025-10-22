@@ -15,8 +15,6 @@ public interface UniverseMetricsExportConfigParamsMapper {
 
   @Mapping(source = "installOtelCollector", target = "installOtelCollector")
   @Mapping(source = "metricsExportConfig", target = "metricsExportConfig")
-  @Mapping(source = "sleepAfterTserverRestartMillis", target = "sleepAfterTServerRestartMillis")
-  @Mapping(source = "sleepAfterMasterRestartMillis", target = "sleepAfterMasterRestartMillis")
   MetricsExportConfigParams copyToV1MetricsExportConfigParams(
       ConfigureMetricsExportSpec source, @MappingTarget MetricsExportConfigParams target);
 }

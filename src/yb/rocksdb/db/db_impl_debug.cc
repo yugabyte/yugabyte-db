@@ -191,4 +191,13 @@ Status DBImpl::TEST_GetAllImmutableCFOptions(
   return Status::OK();
 }
 
+CompactionFileExcluderPtr DBImpl::TEST_SetExcludeFromCompaction(
+    ColumnFamilyHandle* column_family, CompactionFileExcluderPtr exclude_from_compaction) {
+  auto* cfd = down_cast<ColumnFamilyHandleImpl*>(column_family)->cfd();
+  {
+    InstrumentedMutexLock lock(&mutex_);
+    return cfd->TEST_SetExcludeFromCompaction(std::move(exclude_from_compaction));
+  }
+}
+
 }  // namespace rocksdb

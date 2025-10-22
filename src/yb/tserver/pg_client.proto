@@ -1303,6 +1303,7 @@ message PgAcquireObjectLockRequestPB {
     uint64 relation_oid = 2;
     uint64 object_oid = 3;
     uint64 object_sub_oid = 4;
+    uint32 tablespace_oid = 5;
   }
   LockOId lock_oid = 3;
 

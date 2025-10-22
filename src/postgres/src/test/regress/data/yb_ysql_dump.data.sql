@@ -2654,6 +2654,704 @@ SELECT pg_catalog.setval('public.tbl2_a_seq', 1, false);
 
 
 --
+-- Statistics for Name: hints; Type: STATISTICS DATA; Schema: hint_plan; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'hint_plan',
+	'relname', 'hints',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: chat_user; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'chat_user',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: hash_tbl_pk_with_include_clause; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'hash_tbl_pk_with_include_clause',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: hash_tbl_pk_with_multiple_included_columns; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'hash_tbl_pk_with_multiple_included_columns',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: level0; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'level0',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: level1_0; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'level1_0',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: level1_1; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'level1_1',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: level2_0; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'level2_0',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: level2_1; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'level2_1',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: p1; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'p1',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: p2; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'p2',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: part_uniq_const; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'part_uniq_const',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: part_uniq_const_30_50; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'part_uniq_const_30_50',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: part_uniq_const_50_100; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'part_uniq_const_50_100',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: part_uniq_const_default; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'part_uniq_const_default',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: pre_split_range; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'pre_split_range',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: range_tbl_pk_with_include_clause; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'range_tbl_pk_with_include_clause',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: range_tbl_pk_with_multiple_included_columns; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'range_tbl_pk_with_multiple_included_columns',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: rls_private; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'rls_private',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: rls_public; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'rls_public',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tbl1; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl1',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tbl10; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl10',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tbl11; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl11',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tbl12; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl12',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tbl13; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl13',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tbl2; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl2',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tbl3; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl3',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tbl4; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl4',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tbl5; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl5',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tbl6; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl6',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tbl7; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl7',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tbl8; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl8',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tbl9; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl9',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tgroup_after_options; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tgroup_after_options',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tgroup_empty_options; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tgroup_empty_options',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tgroup_in_between_options; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tgroup_in_between_options',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tgroup_no_options_and_tgroup; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tgroup_no_options_and_tgroup',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tgroup_one_option; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tgroup_one_option',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tgroup_one_option_and_tgroup; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tgroup_one_option_and_tgroup',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tgroup_options; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tgroup_options',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tgroup_options_and_tgroup; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tgroup_options_and_tgroup',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tgroup_options_tgroup_and_custom_colocation_id; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tgroup_options_tgroup_and_custom_colocation_id',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tgroup_with_spc; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tgroup_with_spc',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: th1; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'th1',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: th2; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'th2',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: th3; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'th3',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tr1; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tr1',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tr2; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tr2',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: uaccount; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'uaccount',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Name: hints_norm_and_app; Type: INDEX; Schema: hint_plan; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16552'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16552'::pg_catalog.oid);
+
+CREATE UNIQUE INDEX NONCONCURRENTLY hints_norm_and_app ON hint_plan.hints USING lsm (norm_query_string HASH, application_name ASC) SPLIT INTO 3 TABLETS;
+
+
+--
 -- Name: p1 c1; Type: CONSTRAINT; Schema: public; Owner: yugabyte_test
 --
 
@@ -2681,6 +3379,42 @@ CREATE UNIQUE INDEX NONCONCURRENTLY c2 ON public.p2 USING lsm (v HASH) SPLIT INT
 
 ALTER TABLE ONLY public.p2
     ADD CONSTRAINT c2 UNIQUE USING INDEX c2;
+
+
+--
+-- Name: level1_1_c3_idx; Type: INDEX; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16634'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16634'::pg_catalog.oid);
+
+CREATE INDEX NONCONCURRENTLY level1_1_c3_idx ON public.level1_1 USING lsm (c3 DESC);
+
+
+--
+-- Name: level2_1_c3_idx; Type: INDEX; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16643'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16643'::pg_catalog.oid);
+
+CREATE INDEX NONCONCURRENTLY level2_1_c3_idx ON public.level2_1 USING lsm (c3 ASC);
+
+
+--
+-- Name: non_unique_idx_with_include_clause; Type: INDEX; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16580'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16580'::pg_catalog.oid);
+
+CREATE UNIQUE INDEX NONCONCURRENTLY non_unique_idx_with_include_clause ON public.hash_tbl_pk_with_include_clause USING lsm (k1 HASH, k2 ASC) INCLUDE (v) SPLIT INTO 3 TABLETS;
 
 
 --
@@ -2748,54 +3482,6 @@ SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16617'::pg_catalog.
 
 ALTER TABLE ONLY public.part_uniq_const_default
     ADD CONSTRAINT part_uniq_const_default_v1_v2_key UNIQUE  (v1, v2);
-
-
---
--- Name: hints_norm_and_app; Type: INDEX; Schema: hint_plan; Owner: yugabyte_test
---
-
-
--- For binary upgrade, must preserve pg_class oids and relfilenodes
-SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16552'::pg_catalog.oid);
-SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16552'::pg_catalog.oid);
-
-CREATE UNIQUE INDEX NONCONCURRENTLY hints_norm_and_app ON hint_plan.hints USING lsm (norm_query_string HASH, application_name ASC) SPLIT INTO 3 TABLETS;
-
-
---
--- Name: level1_1_c3_idx; Type: INDEX; Schema: public; Owner: yugabyte_test
---
-
-
--- For binary upgrade, must preserve pg_class oids and relfilenodes
-SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16634'::pg_catalog.oid);
-SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16634'::pg_catalog.oid);
-
-CREATE INDEX NONCONCURRENTLY level1_1_c3_idx ON public.level1_1 USING lsm (c3 DESC);
-
-
---
--- Name: level2_1_c3_idx; Type: INDEX; Schema: public; Owner: yugabyte_test
---
-
-
--- For binary upgrade, must preserve pg_class oids and relfilenodes
-SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16643'::pg_catalog.oid);
-SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16643'::pg_catalog.oid);
-
-CREATE INDEX NONCONCURRENTLY level2_1_c3_idx ON public.level2_1 USING lsm (c3 ASC);
-
-
---
--- Name: non_unique_idx_with_include_clause; Type: INDEX; Schema: public; Owner: yugabyte_test
---
-
-
--- For binary upgrade, must preserve pg_class oids and relfilenodes
-SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16580'::pg_catalog.oid);
-SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16580'::pg_catalog.oid);
-
-CREATE UNIQUE INDEX NONCONCURRENTLY non_unique_idx_with_include_clause ON public.hash_tbl_pk_with_include_clause USING lsm (k1 HASH, k2 ASC) INCLUDE (v) SPLIT INTO 3 TABLETS;
 
 
 --
@@ -3182,6 +3868,776 @@ ALTER DEFAULT PRIVILEGES FOR ROLE regress_rls_alice GRANT SELECT ON TABLES  TO r
 
 ALTER DEFAULT PRIVILEGES FOR ROLE rls_user REVOKE ALL ON TABLES  FROM rls_user;
 ALTER DEFAULT PRIVILEGES FOR ROLE rls_user GRANT SELECT,REFERENCES,TRIGGER,TRUNCATE,UPDATE ON TABLES  TO rls_user;
+
+
+--
+-- Statistics for Name: hints_norm_and_app; Type: STATISTICS DATA; Schema: hint_plan; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'hint_plan',
+	'relname', 'hints_norm_and_app',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: hints_pkey; Type: STATISTICS DATA; Schema: hint_plan; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'hint_plan',
+	'relname', 'hints_pkey',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: c1; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'c1',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: c2; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'c2',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: chat_user_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'chat_user_pkey',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: hash_tbl_pk_with_include_clause_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'hash_tbl_pk_with_include_clause_pkey',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: hash_tbl_pk_with_multiple_included_columns_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'hash_tbl_pk_with_multiple_included_columns_pkey',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: level1_0_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'level1_0_pkey',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: level1_1_c3_idx; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'level1_1_c3_idx',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: level1_1_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'level1_1_pkey',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: level2_1_c3_idx; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'level2_1_c3_idx',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: level2_1_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'level2_1_pkey',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: non_unique_idx_with_include_clause; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'non_unique_idx_with_include_clause',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: p1_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'p1_pkey',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: p2_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'p2_pkey',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: part_uniq_const_30_50_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'part_uniq_const_30_50_pkey',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: part_uniq_const_30_50_v1_v2_key; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'part_uniq_const_30_50_v1_v2_key',
+	'relpages', '0'::integer,
+	'reltuples', '1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: part_uniq_const_50_100_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'part_uniq_const_50_100_pkey',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: part_uniq_const_50_100_v1_v2_key; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'part_uniq_const_50_100_v1_v2_key',
+	'relpages', '0'::integer,
+	'reltuples', '1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: part_uniq_const_50_100_v2_uniq; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'part_uniq_const_50_100_v2_uniq',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: part_uniq_const_default_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'part_uniq_const_default_pkey',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: part_uniq_const_default_v1_v2_key; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'part_uniq_const_default_v1_v2_key',
+	'relpages', '0'::integer,
+	'reltuples', '1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: part_uniq_const_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'part_uniq_const_pkey',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: part_uniq_const_unique; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'part_uniq_const_unique',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: pre_split_range_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'pre_split_range_pkey',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: range_tbl_pk_with_include_clause_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'range_tbl_pk_with_include_clause_pkey',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: range_tbl_pk_with_multiple_included_columns_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'range_tbl_pk_with_multiple_included_columns_pkey',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: rls_private_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'rls_private_pkey',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: rls_public_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'rls_public_pkey',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tbl10_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl10_pkey',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tbl11_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl11_pkey',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tbl12_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl12_pkey',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tbl13_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl13_pkey',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tbl3_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl3_pkey',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tbl4_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl4_pkey',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tbl5_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl5_pkey',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tbl6_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl6_pkey',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tbl7_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl7_pkey',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tbl8_idx; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl8_idx',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tbl8_idx2; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl8_idx2',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tbl8_idx3; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl8_idx3',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tbl8_idx4; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl8_idx4',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tbl8_idx5; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl8_idx5',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tbl8_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl8_pkey',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tbl9_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl9_pkey',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: th2_c_b_idx; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'th2_c_b_idx',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: th2_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'th2_pkey',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: th3_c_b_idx; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'th3_c_b_idx',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: th3_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'th3_pkey',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tr1_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tr1_pkey',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tr2_c_b_a_idx; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tr2_c_b_a_idx',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tr2_c_idx; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tr2_c_idx',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tr2_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tr2_pkey',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: uaccount_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'uaccount_pkey',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: unique_idx_with_include_clause; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'unique_idx_with_include_clause',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
 
 
 -- YB: re-enable auto analyze after all catalog changes

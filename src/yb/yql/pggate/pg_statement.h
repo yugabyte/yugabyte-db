@@ -63,7 +63,7 @@ YB_DEFINE_TYPED_ENUM(StmtOp, uint8_t,
 class PgStatement : public PgMemctx::Registrable {
  public:
   explicit PgStatement(const PgSession::ScopedRefPtr& pg_session)
-      : pg_session_(pg_session), arena_(SharedArena()) {
+      : pg_session_(pg_session), arena_(SharedThreadSafeArena()) {
   }
 
   virtual ~PgStatement() = default;

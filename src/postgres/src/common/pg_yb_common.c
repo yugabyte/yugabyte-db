@@ -34,6 +34,7 @@
 
 #include "common/pg_yb_common.h"
 #include "utils/elog.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 
 bool
 YBCIsEnvVarTrue(const char *env_var_name)
@@ -177,19 +178,19 @@ YBIsNonTxnCopyEnabled()
 const char *
 YBGetCurrentCloud()
 {
-	return getenv("FLAGS_placement_cloud");
+	return YBCGetGFlags()->placement_cloud;
 }
 
 const char *
 YBGetCurrentRegion()
 {
-	return getenv("FLAGS_placement_region");
+	return YBCGetGFlags()->placement_region;
 }
 
 const char *
 YBGetCurrentZone()
 {
-	return getenv("FLAGS_placement_zone");
+	return YBCGetGFlags()->placement_zone;
 }
 
 const char *

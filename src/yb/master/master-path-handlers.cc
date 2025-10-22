@@ -3130,8 +3130,7 @@ void MasterPathHandlers::HandleXCluster(
 
     output << "<pre class=\"prettyprint\">"
            << "state: " << inbound_replication_group.state
-           << "\ndisable_stream: " << BoolToString(inbound_replication_group.disable_stream)
-           << "\ntype: "
+           << (inbound_replication_group.disable_stream ? " (DISABLED)" : "") << "\ntype: "
            << xcluster::ShortReplicationType(inbound_replication_group.replication_type)
            << "\nmaster_addrs: " << inbound_replication_group.master_addrs;
     if (!inbound_replication_group.db_scoped_info.empty()) {

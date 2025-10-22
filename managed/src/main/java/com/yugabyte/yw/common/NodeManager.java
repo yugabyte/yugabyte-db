@@ -103,6 +103,7 @@ import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig;
 import com.yugabyte.yw.models.helpers.telemetry.GCPCloudMonitoringConfig;
+import com.yugabyte.yw.models.helpers.telemetry.S3Config;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -3071,6 +3072,18 @@ public class NodeManager extends DevopsBase {
     }
   }
 
+  private void addAwsCredentialsToCommandArgs(
+      String accessKey, String secretKey, List<String> commandArgs) {
+    if (StringUtils.isNotEmpty(accessKey)) {
+      commandArgs.add("--otel_col_aws_access_key");
+      commandArgs.add(accessKey);
+    }
+    if (StringUtils.isNotEmpty(secretKey)) {
+      commandArgs.add("--otel_col_aws_secret_key");
+      commandArgs.add(secretKey);
+    }
+  }
+
   private void addOtelColArgsForExporters(
       List<String> commandArgs, UUID exporterUUID, UUID universeUUID, UUID nodeUUID) {
     TelemetryProvider telemetryProvider = telemetryProviderService.get(exporterUUID);
@@ -3078,14 +3091,13 @@ public class NodeManager extends DevopsBase {
       case AWS_CLOUDWATCH -> {
         AWSCloudWatchConfig awsCloudWatchConfig =
             (AWSCloudWatchConfig) telemetryProvider.getConfig();
-        if (StringUtils.isNotEmpty(awsCloudWatchConfig.getAccessKey())) {
-          commandArgs.add("--otel_col_aws_access_key");
-          commandArgs.add(awsCloudWatchConfig.getAccessKey());
-        }
-        if (StringUtils.isNotEmpty(awsCloudWatchConfig.getSecretKey())) {
-          commandArgs.add("--otel_col_aws_secret_key");
-          commandArgs.add(awsCloudWatchConfig.getSecretKey());
-        }
+        addAwsCredentialsToCommandArgs(
+            awsCloudWatchConfig.getAccessKey(), awsCloudWatchConfig.getSecretKey(), commandArgs);
+      }
+      case S3 -> {
+        S3Config s3Config = (S3Config) telemetryProvider.getConfig();
+        addAwsCredentialsToCommandArgs(
+            s3Config.getAccessKey(), s3Config.getSecretKey(), commandArgs);
       }
       case GCP_CLOUD_MONITORING -> {
         GCPCloudMonitoringConfig gcpCloudMonitoringConfig =

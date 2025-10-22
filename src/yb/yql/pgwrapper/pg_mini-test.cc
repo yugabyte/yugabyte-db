@@ -97,6 +97,7 @@ DECLARE_bool(ysql_yb_enable_ash);
 DECLARE_bool(ysql_yb_enable_replica_identity);
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
+DECLARE_bool(enable_object_locking_for_table_locks);
 
 DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
@@ -136,6 +137,7 @@ DECLARE_uint64(max_clock_skew_usec);
 DECLARE_uint64(pg_client_heartbeat_interval_ms);
 DECLARE_uint64(pg_client_session_expiration_ms);
 DECLARE_uint64(rpc_max_message_size);
+DECLARE_bool(ysql_enable_relcache_init_optimization);
 
 METRIC_DECLARE_entity(tablet);
 METRIC_DECLARE_gauge_uint64(aborted_transactions_pending_cleanup);
@@ -215,6 +217,13 @@ class PgMiniTest : public PgMiniTestBase {
 };
 
 class PgMiniTestSingleNode : public PgMiniTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    PgMiniTest::SetUp();
+  }
+
   size_t NumTabletServers() override {
     return 1;
   }
@@ -904,7 +913,7 @@ TEST_F_EX(PgMiniTest, SerializableReadOnly, PgMiniTestFailOnConflict) {
     ASSERT_EQ(PgsqlError(status), YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE) << status;
   } else {
     ASSERT_TRUE(s.IsNetworkError()) << s;
-    ASSERT_TRUE(IsSerializeAccessError(s)) << s;
+    ASSERT_TRUE(IsSerializeAccessError(s) || IsAbortError(s)) << s;
     ASSERT_STR_CONTAINS(s.ToString(), "conflicts with higher priority transaction");
   }
 }
@@ -2897,22 +2906,30 @@ Status MockAbortFailure(
     yb::tserver::PgFinishTransactionResponsePB* resp, yb::rpc::RpcContext* context) {
   LOG(INFO) << "FinishTransaction called for session: " << req->session_id();
 
-  // ASH collector takes session id 1, the subsequent connections take 2 and 3
-  if (req->session_id() == 2) {
+  // ASH collector takes session id 1.
+  // If --ysql_enable_relcache_init_optimization=false, then the subsequent connections
+  // take 2 and 3.
+  // If --ysql_enable_relcache_init_optimization=true, we will have an additional
+  // internal relcache init connection as 2, so the subsequent connections take 3 and 4.
+  uint64_t intended_session_id = FLAGS_ysql_enable_relcache_init_optimization ? 4 : 3;
+  if (req->session_id() < intended_session_id) {
     context->CloseConnection();
     // The return status should not matter here.
     return Status::OK();
-  } else if (req->session_id() == 3) {
+  }
+  if (req->session_id() == intended_session_id) {
     return STATUS(NetworkError, "Mocking network failure on FinishTransaction");
   }
 
-  return Status::OK();
+  LOG(FATAL) << "Unexpected session id: " << req->session_id();
 }
 
-class PgRecursiveAbortTest : public PgMiniTestSingleNode {
+class PgRecursiveAbortTest : public PgMiniTestSingleNode,
+                             public ::testing::WithParamInterface<bool> {
  public:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_pg_client_mock) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_relcache_init_optimization) = GetParam();
     PgMiniTest::SetUp();
   }
 
@@ -2927,7 +2944,10 @@ class PgRecursiveAbortTest : public PgMiniTestSingleNode {
   }
 };
 
-TEST_F(PgRecursiveAbortTest, AbortOnTserverFailure) {
+INSTANTIATE_TEST_CASE_P(, PgRecursiveAbortTest,
+                        ::testing::Values(false, true));
+
+TEST_P(PgRecursiveAbortTest, AbortOnTserverFailure) {
   PGConn conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t1 (k INT)"));
 
@@ -2954,7 +2974,7 @@ TEST_F(PgRecursiveAbortTest, AbortOnTserverFailure) {
   ASSERT_NOK(conn.Execute("INSERT INTO t2 VALUES (1)"));
 }
 
-TEST_F(PgRecursiveAbortTest, MockAbortFailure) {
+TEST_P(PgRecursiveAbortTest, MockAbortFailure) {
   PGConn conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t1 (k INT)"));
   ASSERT_OK(conn.StartTransaction(SNAPSHOT_ISOLATION));

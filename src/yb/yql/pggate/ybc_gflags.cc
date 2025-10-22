@@ -134,6 +134,9 @@ DECLARE_uint32(ysql_max_invalidation_message_queue_size);
 DECLARE_uint32(max_replication_slots);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
+DECLARE_string(placement_cloud);
+DECLARE_string(placement_region);
+DECLARE_string(placement_zone);
 
 namespace {
 
@@ -231,6 +234,9 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_enable_scram_channel_binding = &FLAGS_ysql_enable_scram_channel_binding,
       .TEST_ysql_conn_mgr_auth_delay_ms = &FLAGS_TEST_ysql_conn_mgr_auth_delay_ms,
       .ysql_enable_relcache_init_optimization = &FLAGS_ysql_enable_relcache_init_optimization,
+      .placement_cloud = FLAGS_placement_cloud.c_str(),
+      .placement_region = FLAGS_placement_region.c_str(),
+      .placement_zone = FLAGS_placement_zone.c_str()
   };
   // clang-format on
   return &accessor;

@@ -145,3 +145,5 @@ bool yb_allow_dockey_bounds = true;
 bool yb_xcluster_target_ddl_bypass = false;
 
 bool yb_ignore_read_time_in_walsender = false;
+
+bool enable_object_locking_infra = true;

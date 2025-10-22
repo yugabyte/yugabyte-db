@@ -450,7 +450,9 @@ class PgApiImpl {
   // All DML statements
   Status DmlAppendTarget(PgStatement *handle, PgExpr *expr);
 
-  Status DmlAppendQual(PgStatement *handle, PgExpr *expr, bool is_for_secondary_index);
+  Status DmlAppendQual(
+      PgStatement *handle, PgExpr *expr, uint32_t serialization_version,
+      bool is_for_secondary_index);
 
   Status DmlAppendColumnRef(PgStatement *handle, PgColumnRef *colref, bool is_for_secondary_index);
 
@@ -694,6 +696,7 @@ class PgApiImpl {
   Result<Uuid> GetActiveTransaction() const;
   Status GetActiveTransactions(YbcPgSessionTxnInfo* infos, size_t num_infos);
   bool IsDdlMode() const;
+  bool IsDdlModeWithRegularTransactionBlock() const;
   Result<bool> CurrentTransactionUsesFastPath() const;
 
   //------------------------------------------------------------------------------------------------
@@ -738,7 +741,8 @@ class PgApiImpl {
   // Foreign key reference caching.
   void DeleteForeignKeyReference(PgOid table_id, const Slice& ybctid);
   void AddForeignKeyReference(PgOid table_id, const Slice& ybctid);
-  Result<bool> ForeignKeyReferenceExists(PgOid table_id, const Slice& ybctid, PgOid database_id);
+  Result<bool> ForeignKeyReferenceExists(
+      PgOid table_id, const Slice& ybctid, bool is_region_local, PgOid database_id);
   Status AddForeignKeyReferenceIntent(
     PgOid table_id, const Slice& ybctid, const PgFKReferenceCache::IntentOptions& options,
     PgOid database_id);
@@ -949,6 +953,8 @@ class PgApiImpl {
 
   const WaitEventWatcher wait_event_watcher_;
 
+  TablespaceMap tablespace_map_;
+
   PgSharedDataHolder pg_shared_data_;
 
   // TODO Rename to client_ when YBClient is removed.
@@ -970,7 +976,6 @@ class PgApiImpl {
   TupleIdBuilder tuple_id_builder_;
   BufferingSettings buffering_settings_;
   YbctidReaderProvider ybctid_reader_provider_;
-  TablespaceMap tablespace_map_;
   PgFKReferenceCache fk_reference_cache_;
   ExplicitRowLockBuffer explicit_row_lock_buffer_;
 

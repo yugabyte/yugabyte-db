@@ -695,17 +695,13 @@
         "tagName": "Tag Name",
         "tagValue": "Value"
       },
-      "resizeNodeModal": {
-        "confirmResizeCheckbox": "Confirm Resize Nodes",
-        "modalTitle": "Resize Nodes",
-        "cancelLabel": "Cancel",
-        "confirmLabel": "Confirm",
-        "modalDescription": "This operation will be performed without restart",
-        "timeDelayLabel": "Rolling Upgrade Delay Between Servers (secs)"
-      },
       "smartResizeModal": {
-        "modalDescription": "This operation will migrate this universe and all its data to a completely new set of nodes Or alternatively you could try smart resize (This will change VM image {{value}} for existing nodes)",
-        "buttonLabel": "Do Smart Resize"
+        "modalTitle": "Confirm Smart Resize Update",
+        "confirmResizeCheckbox": "Confirm Resize Nodes",
+        "timeDelayLabel": "Rolling Upgrade Delay Between Servers (secs)",
+        "modalDescription": "This operation {{value}} {{value2}} for existing nodes",
+        "modalDescriptionNonRestart": "This operation will be performed without restart",
+        "buttonLabel": "Proceed"
       },
       "placementModal": {
         "modalTitle": "Confirm Update",
@@ -2699,6 +2695,12 @@
           "editFailedLabel": "Failed to apply changes to automated platform backup"
         }
       },
+      "restoreOverExistingUniversesWarningModal": {
+        "title": "Are you sure?",
+        "restoreOverExistingUniversesWarning": "Restoring from a backup can cause serious issues for your existing universes, including <bold>data loss</bold>, as the backup may not be consistent with the current state of the universes.",
+        "confirmationInstructions": "Type “Accept Risk” to continue",
+        "submitButton": "Accept Risk and Continue"
+      },
       "deleteContinuousBackupModal": {
         "title": "Disable Automated Platform Backups",
         "deleteConfirmation": "Are you sure you want to disable automated platform backups? This will delete the automated platform backup configuration. To re-enable, you will need to to set up the confirguration again.",
@@ -2727,7 +2729,7 @@
           "createBackupTaskFailed": "One-time platform export failed."
         }
       },
-      "restoreYbaBackupModal": {
+      "restoreYbaBackupFormModal": {
         "title": "Restore Platform Backup",
         "instructions": "Choose how you want to restore your platform backup",
         "option": {
@@ -2751,6 +2753,7 @@
           "folder": "Folder",
           "backupFolderHelperText": "The most recent backup from this folder will be used for the restore."
         },
+        "ybaRestartWarning": "<bold>Note!</bold> As part of the restore process, YugabyteDB Anywhere will restart itself automatically.",
         "submitButton": "Restore",
         "error": {
           "backupTypeRequired": "Please select a backup type"
@@ -2853,7 +2856,9 @@
           "splunk": "Splunk",
           "awsCloudWatch": "AWS CloudWatch",
           "gcpCloudMonitoring": "GCP Cloud Logging",
-          "dynatrace": "Dynatrace"
+          "dynatrace": "Dynatrace",
+          "s3": "S3",
+          "otlp": "OTLP"
         },
         "exportSupport": {
           "metrics": "Metrics",

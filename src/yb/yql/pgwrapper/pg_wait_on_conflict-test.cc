@@ -1393,8 +1393,8 @@ void PgWaitQueuesTest::TestMultiTabletFairness() const {
         EXPECT_OK(execute_status);
       } else {
         EXPECT_NOK(execute_status);
-        ASSERT_STR_CONTAINS(
-            execute_status.ToString(), "could not serialize access due to concurrent update");
+        ASSERT_TRUE(IsSerializeAccessError(execute_status) || IsAbortError(execute_status))
+            << execute_status;
         ASSERT_STR_CONTAINS(
             execute_status.ToString(), "pgsql error 40001");
       }

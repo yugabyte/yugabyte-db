@@ -1,6 +1,6 @@
--- This file is meant to test and track the optimizer's plan choices with BNL
--- enabled. yb.orig.join_batching on the other hand is meant to test BNL execution
--- and planning when we force the creation of a BNL.
+--
+-- Test plan choices involving BNL
+--
 CREATE TABLE p1 (a int, b int, c varchar, primary key(a,b));
 INSERT INTO p1 SELECT i, i % 25, to_char(i, 'FM0000') FROM generate_series(0, 599) i WHERE i % 2 = 0;
 CREATE INDEX p1_b_idx ON p1 (b ASC);

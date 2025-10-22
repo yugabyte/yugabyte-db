@@ -338,18 +338,101 @@ COPY public.tbl5 (k, v) FROM stdin;
 
 
 --
--- Name: tbl5 tbl5_v_key; Type: CONSTRAINT; Schema: public; Owner: yugabyte_test
+-- Statistics for Name: htest; Type: STATISTICS DATA; Schema: public; Owner: -
 --
 
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'htest',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
 
--- For binary upgrade, must preserve pg_class oids and relfilenodes
-SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16418'::pg_catalog.oid);
-SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16418'::pg_catalog.oid);
 
-CREATE UNIQUE INDEX NONCONCURRENTLY tbl5_v_key ON public.tbl5 USING lsm (v ASC) WITH (colocation_id=20006);
+--
+-- Statistics for Name: htest_1; Type: STATISTICS DATA; Schema: public; Owner: -
+--
 
-ALTER TABLE ONLY public.tbl5
-    ADD CONSTRAINT tbl5_v_key UNIQUE USING INDEX tbl5_v_key;
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'htest_1',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tbl; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tbl2; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl2',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tbl3; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl3',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tbl4; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl4',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tbl5; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl5',
+	'relpages', '0'::integer,
+	'reltuples', '-1'::real,
+	'relallvisible', '0'::integer
+);
 
 
 --
@@ -401,6 +484,21 @@ CREATE UNIQUE INDEX NONCONCURRENTLY tbl3_v_idx ON public.tbl3 USING lsm (v HASH)
 
 
 --
+-- Name: tbl5 tbl5_v_key; Type: CONSTRAINT; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16418'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16418'::pg_catalog.oid);
+
+CREATE UNIQUE INDEX NONCONCURRENTLY tbl5_v_key ON public.tbl5 USING lsm (v ASC) WITH (colocation_id=20006);
+
+ALTER TABLE ONLY public.tbl5
+    ADD CONSTRAINT tbl5_v_key UNIQUE USING INDEX tbl5_v_key;
+
+
+--
 -- Name: tbl_v_idx; Type: INDEX; Schema: public; Owner: yugabyte_test
 --
 
@@ -443,6 +541,146 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);
 GRANT SELECT ON TABLE pg_catalog.pg_stat_statements_info TO PUBLIC;
 SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 \endif
+
+
+--
+-- Statistics for Name: partial_idx; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'partial_idx',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: partial_unique_idx; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'partial_unique_idx',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tbl2_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl2_pkey',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tbl2_v2_idx; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl2_v2_idx',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tbl3_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl3_pkey',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tbl3_v_idx; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl3_v_idx',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tbl4_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl4_pkey',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tbl5_v_key; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl5_v_key',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tbl_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl_pkey',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: tbl_v_idx; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'tbl_v_idx',
+	'relpages', '0'::integer,
+	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
 
 
 -- YB: re-enable auto analyze after all catalog changes

@@ -247,7 +247,7 @@ const T& empty_message() {
 
 template <class T, class... Args>
 std::shared_ptr<T> SharedMessage(Args&&... args) {
-  auto arena = SharedArena();
+  auto arena = SharedThreadSafeArena();
   auto* t = arena->NewArenaObject<T>(std::forward<Args>(args)...);
   return std::shared_ptr<T>(std::move(arena), t);
 }

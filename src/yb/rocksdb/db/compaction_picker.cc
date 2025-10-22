@@ -1392,7 +1392,7 @@ std::vector<std::vector<UniversalCompactionPicker::SortedRun>>
 UniversalCompactionPicker::CalculateSortedRuns(
     const VersionStorageInfo& vstorage,
     const ImmutableCFOptions& ioptions,
-    const std::function<bool(const FileMetaData& file)>& exclude_from_compaction) {
+    const CompactionFileExcluder& exclude_from_compaction) {
   std::vector<std::vector<SortedRun>> ret(1);
   MarkL0FilesForDeletion(&vstorage, &ioptions);
 

@@ -36,6 +36,7 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterNamespaceConfig;
 import com.yugabyte.yw.models.XClusterTableConfig;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.ebean.PagedList;
@@ -768,6 +769,16 @@ public class SupportBundleUtil {
     saveMetadata(customer, destDir, jsonData, "users.json");
   }
 
+  public void getCustomerConfigsMetadata(Customer customer, String destDir) {
+    // Gather metadata.
+    List<CustomerConfig> customerConfigs = CustomerConfig.getAll(customer.getUuid());
+    JsonNode jsonData =
+        RedactingService.filterSecretFields(Json.toJson(customerConfigs), RedactionTarget.LOGS);
+
+    // Save the above collected metadata.
+    saveMetadata(customer, destDir, jsonData, "customer_configs.json");
+  }
+
   public void getTaskMetadata(Customer customer, String destDir, Date startDate, Date endDate) {
     // Gather metadata for customer_task table.
     int pageSize = 10, pageIndex = 0;
@@ -904,6 +915,7 @@ public class SupportBundleUtil {
     ignoreExceptions(() -> getUniversesMetadata(customer, destDir));
     ignoreExceptions(() -> getProvidersMetadata(customer, destDir));
     ignoreExceptions(() -> getUsersMetadata(customer, destDir));
+    ignoreExceptions(() -> getCustomerConfigsMetadata(customer, destDir));
     ignoreExceptions(() -> getTaskMetadata(customer, destDir, startDate, endDate));
     ignoreExceptions(() -> getInstanceTypeMetadata(customer, destDir));
     ignoreExceptions(() -> getHaMetadata(customer, destDir));

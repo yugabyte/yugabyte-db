@@ -316,15 +316,7 @@ class DBIter final : public Iterator {
 
   void RevalidateAfterUpperBoundChange() override {
     if (direction_ == kForward) {
-      const auto& entry = iter_->Entry();
-      if (entry) {
-        entry_.key = ExtractUserKey(entry.key);
-        SetValid(entry.value);
-        // To prevent ROCKSDB_CATCH_MISSING_VALID_CHECK failure when FindNextUserEntry calls
-        // SetValid.
-        DCHECK(Valid());
-        FindNextUserEntry(/* skipping= */ false);
-      }
+      UpdateEntryAfterRevalidation(iter_->Entry());
     }
   }
 
@@ -332,11 +324,35 @@ class DBIter final : public Iterator {
     fast_next_ = value;
   }
 
-  void UpdateFilterKey(Slice user_key_for_filter) override {
-    iter_->UpdateFilterKey(user_key_for_filter);
+  void UpdateFilterKey(Slice user_key_for_filter, Slice seek_key) override {
+    if (!seek_key.empty()) {
+      seek_key = PrepareKeyBuffer(seek_key, key_buffer_);
+    }
+    UpdateEntryAfterRevalidation(iter_->UpdateFilterKey(user_key_for_filter, seek_key));
   }
 
  private:
+  void UpdateEntryAfterRevalidation(const KeyValueEntry& entry) {
+    if (!entry) {
+      return;
+    }
+    entry_.key = ExtractUserKey(entry.key);
+    SetValid(entry.value);
+    // To prevent ROCKSDB_CATCH_MISSING_VALID_CHECK failure when FindNextUserEntry calls
+    // SetValid.
+    DCHECK(Valid());
+    FindNextUserEntry(/* skipping= */ false);
+  }
+
+  Slice PrepareKeyBuffer(Slice key, yb::ByteBuffer<kKeyBufferSize>& buffer) {
+    buffer.Clear();
+    auto target_size = key.size();
+    char* out = buffer.GrowByAtLeast(target_size + sizeof(uint64_t));
+    key.CopyTo(out);
+    EncodeFixed64(out + target_size, PackSequenceAndType(sequence_, kValueTypeForSeek));
+    return buffer.AsSlice();
+  }
+
   void ReverseToBackward();
   void PrevInternal();
   void FindParseableKey(ParsedInternalKey* ikey, Direction direction);
@@ -956,15 +972,9 @@ void DBIter::FindParseableKey(ParsedInternalKey* ikey, Direction direction) {
 }
 
 const KeyValueEntry& DBIter::Seek(Slice target) {
-  key_buffer_.Clear();
-  auto target_size = target.size();
-  char* out = key_buffer_.GrowByAtLeast(target_size + sizeof(uint64_t));
-  target.CopyTo(out);
-  EncodeFixed64(out + target_size, PackSequenceAndType(sequence_, kValueTypeForSeek));
-
   {
     PERF_TIMER_GUARD(seek_internal_seek_time);
-    iter_->Seek(key_buffer_.AsSlice());
+    iter_->Seek(PrepareKeyBuffer(target, key_buffer_));
   }
 
   if (iter_->Valid()) {
@@ -1108,8 +1118,8 @@ void ArenaWrappedDBIter::UseFastNext(bool value) {
   db_iter_->UseFastNext(value);
 }
 
-void ArenaWrappedDBIter::UpdateFilterKey(Slice user_key_for_filter) {
-  return db_iter_->UpdateFilterKey(user_key_for_filter);
+void ArenaWrappedDBIter::UpdateFilterKey(Slice user_key_for_filter, Slice seek_key) {
+  return db_iter_->UpdateFilterKey(user_key_for_filter, seek_key);
 }
 
 ArenaWrappedDBIter* NewArenaWrappedDbIterator(

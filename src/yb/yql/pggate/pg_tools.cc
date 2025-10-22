@@ -124,14 +124,32 @@ Slice YbctidAsSlice(const PgTypeInfo& pg_types, uint64_t ybctid) {
   return Slice(value, bytes);
 }
 
-const std::string ToString(const YbcObjectLockId& lock_id) {
-  return Format("object { db_oid: $0, table_oid: $1, object_id: $2, object_sub_oid: $3 }",
-                lock_id.db_oid, lock_id.relation_oid, lock_id.object_oid, lock_id.object_sub_oid);
+std::string ToString(const YbcObjectLockId& lock_id) {
+  return Format(
+      "object { db_oid: $0, table_oid: $1, object_id: $2, object_sub_oid: $3 }",
+      lock_id.db_oid, lock_id.relation_oid, lock_id.object_oid, lock_id.object_sub_oid);
 }
 
-const std::string ToString(const YbcAdvisoryLockId& lock_id) {
-  return Format("advisory lock { db_oid: $0, classid: $1, object_oid: $2, object_sub_oid: $3 } ",
-                lock_id.database_id, lock_id.classid, lock_id.objid, lock_id.objsubid);
+std::string ToString(const YbcAdvisoryLockId& lock_id) {
+  return Format(
+      "advisory lock { db_oid: $0, classid: $1, object_oid: $2, object_sub_oid: $3 } ",
+      lock_id.database_id, lock_id.classid, lock_id.objid, lock_id.objsubid);
+}
+
+TablespaceCache::TablespaceCache(size_t capacity) : impl_(capacity) {}
+
+std::optional<PgTablespaceOid> TablespaceCache::Get(PgObjectId table_oid) {
+  const auto i = impl_.find(table_oid);
+  return i != impl_.end() ? std::optional(i->tablespace_oid) : std::nullopt;
+}
+
+void TablespaceCache::Put(PgObjectId table_oid, PgTablespaceOid tablespace_oid) {
+  auto i = impl_.insert(Info{.key = table_oid, .tablespace_oid = tablespace_oid});
+  i->tablespace_oid = tablespace_oid;
+}
+
+void TablespaceCache::Clear() {
+  impl_.clear();
 }
 
 } // namespace yb::pggate

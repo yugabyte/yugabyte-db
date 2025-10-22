@@ -1100,9 +1100,7 @@ public class YbcBackupUtil {
         extendedArgsBuilder.setUseTablespaces(true);
       }
       extendedArgsBuilder.setSaveRetentionWindow(true);
-      // Removing backup of roles temporarily. There are some issues we need to work out before
-      // fully implementing this.
-      // extendedArgsBuilder.setUseRoles(tableParams.getUseRoles());
+      extendedArgsBuilder.setUseRoles(tableParams.getUseRoles());
       extendedArgsBuilder.setRevertToPreRolesBehaviour(tableParams.getRevertToPreRolesBehaviour());
       if (Util.compareYBVersions(
               ybdbSoftwareVersion,
@@ -1224,10 +1222,8 @@ public class YbcBackupUtil {
           backupStorageInfo.getRevertToPreRolesBehaviour());
       extendedArgsBuilder.setErrorIfTablespacesExists(
           backupStorageInfo.getErrorIfTablespacesExists());
-      /* Removing backup of roles temporarily. There are some issues we need to work out before
-      fully implementing this.
+      extendedArgsBuilder.setUsePrivileges(backupStorageInfo.getUsePrivileges());
       extendedArgsBuilder.setErrorIfRolesExists(backupStorageInfo.getErrorIfRolesExists());
-      */
     }
 
     // Only skip ignore errors if requested by the user AND the backup supports 'dump_role_checks'.

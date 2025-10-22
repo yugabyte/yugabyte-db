@@ -28,13 +28,14 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = 1 WHERE h = 1
  Update on pkey_only_table (actual rows=0 loops=1)
    ->  Result pkey_only_table (actual rows=1 loops=1)
          Storage Table Write Requests: 1
+         Storage Flush Requests: 1
  Storage Read Requests: 0
  Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 1
- Storage Flush Requests: 0
+ Storage Flush Requests: 1
  Transaction: Fast Path
-(9 rows)
+(10 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = 1, v2 = 1 WHERE h = 1;
                       QUERY PLAN                      
@@ -42,13 +43,14 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = 1, v2 = 1 WHE
  Update on pkey_only_table (actual rows=0 loops=1)
    ->  Result pkey_only_table (actual rows=1 loops=1)
          Storage Table Write Requests: 1
+         Storage Flush Requests: 1
  Storage Read Requests: 0
  Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 1
- Storage Flush Requests: 0
+ Storage Flush Requests: 1
  Transaction: Fast Path
-(9 rows)
+(10 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = 2 WHERE h = 1;
                       QUERY PLAN                      
@@ -56,13 +58,14 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = 2 WHERE h = 1
  Update on pkey_only_table (actual rows=0 loops=1)
    ->  Result pkey_only_table (actual rows=1 loops=1)
          Storage Table Write Requests: 1
+         Storage Flush Requests: 1
  Storage Read Requests: 0
  Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 1
- Storage Flush Requests: 0
+ Storage Flush Requests: 1
  Transaction: Fast Path
-(9 rows)
+(10 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = 3, v2 = 3 WHERE h = 1;
                       QUERY PLAN                      
@@ -70,13 +73,14 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = 3, v2 = 3 WHE
  Update on pkey_only_table (actual rows=0 loops=1)
    ->  Result pkey_only_table (actual rows=1 loops=1)
          Storage Table Write Requests: 1
+         Storage Flush Requests: 1
  Storage Read Requests: 0
  Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 1
- Storage Flush Requests: 0
+ Storage Flush Requests: 1
  Transaction: Fast Path
-(9 rows)
+(10 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = v1 + 1, v2 = v1 + 1 WHERE h = 1;
                       QUERY PLAN                      
@@ -84,13 +88,14 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = v1 + 1, v2 = 
  Update on pkey_only_table (actual rows=0 loops=1)
    ->  Result pkey_only_table (actual rows=1 loops=1)
          Storage Table Write Requests: 1
+         Storage Flush Requests: 1
  Storage Read Requests: 0
  Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 1
- Storage Flush Requests: 0
+ Storage Flush Requests: 1
  Transaction: Fast Path
-(9 rows)
+(10 rows)
 
 -- Setting index column in the update should trigger a read, but no update of the index
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET h = 1 WHERE h = 1;
@@ -658,13 +663,12 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_types_table SET v1 = 1, v3 = '{"b
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
-         Storage Flush Requests: 1
  Storage Read Requests: 1
  Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
- Storage Flush Requests: 2
-(14 rows)
+ Storage Flush Requests: 1
+(13 rows)
 
 -- One with white spaces
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_types_table SET v1 = 1, v2 = '{    "b" : 2   ,     "a" :  1}'::jsonb WHERE h = 1;
@@ -1178,13 +1182,12 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE numeric_table SET v1 = 1.2345670, v2 =
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
-         Storage Flush Requests: 1
  Storage Read Requests: 1
  Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
- Storage Flush Requests: 2
-(14 rows)
+ Storage Flush Requests: 1
+(13 rows)
 
 -- Casting from infinity to infinity should not cause a change in representation.
 -- Note that NUMERIC does not support infinity prior to PG 14.

@@ -109,7 +109,7 @@ auto GetVectorLSMFactory(
   switch (options.idx_type()) {
     case PgVectorIndexType::HNSW:
       return VectorLSMFactory<LSM>(block_cache, options, mem_tracker);
-    case PgVectorIndexType::DUMMY: [[fallthrough]];
+    case PgVectorIndexType::DEPRECATED_DUMMY: [[fallthrough]];
     case PgVectorIndexType::IVFFLAT: [[fallthrough]];
     case PgVectorIndexType::UNKNOWN_IDX:
       break;
@@ -123,7 +123,7 @@ std::string GetFileExtension(const PgVectorIdxOptionsPB& options) {
   switch (options.idx_type()) {
     case PgVectorIndexType::HNSW:
       return "." + boost::to_lower_copy(HnswBackend_Name(options.hnsw().backend()));
-    case PgVectorIndexType::DUMMY: [[fallthrough]];
+    case PgVectorIndexType::DEPRECATED_DUMMY: [[fallthrough]];
     case PgVectorIndexType::IVFFLAT: [[fallthrough]];
     case PgVectorIndexType::UNKNOWN_IDX:
       break;

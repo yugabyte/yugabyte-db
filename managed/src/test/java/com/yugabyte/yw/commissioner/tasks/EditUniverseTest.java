@@ -614,7 +614,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     assertEquals(nodes, universe.getUniverseDetails().nodeDetailsSet.size());
     assertTrue(universe.getUniverseDetails().autoRollbackPerformed);
-    assertNull(universe.getUniverseDetails().updatingTaskUUID);
+    assertNotNull(universe.getUniverseDetails().updatingTaskUUID);
     assertNull(universe.getUniverseDetails().placementModificationTaskUuid);
   }
 
@@ -646,7 +646,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     assertEquals(nodes, universe.getUniverseDetails().nodeDetailsSet.size());
     assertTrue(universe.getUniverseDetails().autoRollbackPerformed);
-    assertNull(universe.getUniverseDetails().updatingTaskUUID);
+    assertNotNull(universe.getUniverseDetails().updatingTaskUUID);
     assertNull(universe.getUniverseDetails().placementModificationTaskUuid);
   }
 

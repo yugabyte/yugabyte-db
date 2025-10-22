@@ -37,6 +37,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/string_util.h"
+#include "yb/util/unique_lock.h"
 
 #include "yb/yql/cql/cqlserver/cql_processor.h"
 #include "yb/yql/cql/cqlserver/cql_service.h"
@@ -129,7 +130,7 @@ const char* SYSTEM_QUERIES[] = {
 };
 
 SystemQueryCache::SystemQueryCache(cqlserver::CQLServiceImpl* service_impl)
-  : service_impl_(service_impl), stmt_params_() {
+  : service_impl_(service_impl), stmt_params_(), shutting_down_(false) {
 
   cache_ = std::make_unique<std::unordered_map<std::string, RowsResult::SharedPtr>>();
   last_updated_ = MonoTime::kMin;
@@ -203,9 +204,14 @@ MonoDelta SystemQueryCache::GetStaleness() {
 }
 
 void SystemQueryCache::Shutdown() {
-  if (!shutting_down_.Set()) {
-    return;
+  {
+    UniqueLock lock(request_mutex_);
+    if (shutting_down_) {
+      return;
+    }
+    shutting_down_ = true;
   }
+  request_cv_.Signal();
   if (pool_) {
     scheduler_->Shutdown();
     pool_->Shutdown();
@@ -219,12 +225,9 @@ void SystemQueryCache::RefreshCache() {
   ADOPT_WAIT_STATE(ash::WaitStateInfo::CreateIfAshIsEnabled<ash::WaitStateInfo>());
   auto new_cache = std::make_unique<std::unordered_map<std::string, RowsResult::SharedPtr>>();
   for (const auto& query : queries_) {
-    Status status;
-    ExecutedResult::SharedPtr result;
-    ExecuteSync(query, &status, &result);
-
-    if (status.ok()) {
-      auto rows_result = std::dynamic_pointer_cast<RowsResult>(result);
+    auto result = ExecuteSync(query);
+    if (result.ok()) {
+      auto rows_result = std::dynamic_pointer_cast<RowsResult>(*result);
       if (FLAGS_cql_system_query_cache_empty_responses ||
           rows_result->GetRowBlock()->row_count() > 0) {
         (*new_cache)[query] = rows_result;
@@ -232,7 +235,8 @@ void SystemQueryCache::RefreshCache() {
         LOG(INFO) << "Skipping empty result for statement: " << query;
       }
     } else {
-      LOG(WARNING) << "Could not execute statement: " << query << "; status: " << status.ToString();
+      LOG(WARNING) << "Could not execute statement: " << query
+                   << "; status: " << result.status().ToString();
       // We don't want to update the cache with no data; instead we'll let the
       // stale cache persist.
       ScheduleRefreshCache(false /* now */);
@@ -241,7 +245,7 @@ void SystemQueryCache::RefreshCache() {
   }
 
   {
-    const std::lock_guard l(cache_mutex_);
+    std::lock_guard l(cache_mutex_);
     cache_ = std::move(new_cache);
     last_updated_ = MonoTime::Now();
   }
@@ -263,25 +267,47 @@ void SystemQueryCache::ScheduleRefreshCache(bool now) {
       }, std::chrono::milliseconds(now ? 0 : FLAGS_cql_update_system_query_cache_msecs));
 }
 
-void SystemQueryCache::ExecuteSync(
-    const std::string& stmt, Status* status, ExecutedResult::SharedPtr* result_ptr) {
+Result<ExecutedResult::SharedPtr> SystemQueryCache::ExecuteSync(const std::string& stmt) {
   const auto processor = service_impl_->GetProcessor();
   if (!processor.ok()) {
     LOG(DFATAL) << "Unable to get CQLProcessor for system query cache";
-    *status = processor.status();
-    return;
+    return processor.status();
   }
-
-  Synchronizer sync;
-  const auto callback = [](Synchronizer* sync, ExecutedResult::SharedPtr* result_ptr,
-      const Status& status, const ExecutedResult::SharedPtr& result) {
-    *result_ptr = result;
-    sync->StatusCB(status);
-  };
-
-  (*processor)->RunAsync(stmt, stmt_params_, yb::Bind(+callback, &sync, result_ptr));
-  *status = sync.Wait();
+  auto state = std::make_shared<CallbackState>();
+  (*processor)
+      ->RunAsync(
+          stmt, stmt_params_,
+          yb::Bind(&SystemQueryCache::ExecuteSyncCallback, Unretained(this), state));
+  {
+    UniqueLock lock(request_mutex_);
+    while (!shutting_down_ && !state->callback_done) {
+      request_cv_.Wait();
+    }
+    if (shutting_down_) {
+      return STATUS(ShutdownInProgress, "Shutting down");
+    }
+  }
   (*processor)->Release();
+  if (state->status.ok()) {
+    return state->result;
+  } else {
+    return state->status;
+  }
+}
+
+void SystemQueryCache::ExecuteSyncCallback(
+    std::shared_ptr<CallbackState> state, const Status& status,
+    const ExecutedResult::SharedPtr& result) {
+  if (status.ok()) {
+    state->result = result;
+  } else {
+    state->status = status;
+  }
+  {
+    UniqueLock l(request_mutex_);
+    state->callback_done = true;
+  }
+  request_cv_.Signal();
 }
 
 } // namespace cqlserver

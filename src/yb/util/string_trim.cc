@@ -19,11 +19,8 @@
 #include <string>
 
 using std::string;
-using std::vector;
-using std::istringstream;
 
-namespace yb {
-namespace util {
+namespace yb::util {
 
 string ApplyEagerLineContinuation(const string& s) {
   string result;
@@ -65,8 +62,8 @@ size_t CountLeadingSpaces(const string& line) {
 }  // anonymous namespace
 
 string LeftShiftTextBlock(const std::string& s) {
-  istringstream input(s);
-  vector<string> lines;
+  std::istringstream input(s);
+  std::vector<string> lines;
 
   // Split the string into lines.  This could be implemented with boost::split with less data
   // copying and memory allocation.
@@ -113,7 +110,7 @@ std::string TrimTrailingWhitespaceFromEveryLine(std::string s) {
     if (ch == '\r' || ch == '\n') {
       *write_it++ = ch;
       first_it_to_delete = i;
-    } else if (!std::isspace(ch)) {
+    } else if (!std::isspace(static_cast<unsigned char>(ch))) {
       while (first_it_to_delete != i) {
         *write_it++ = *first_it_to_delete++;
       }
@@ -124,5 +121,29 @@ std::string TrimTrailingWhitespaceFromEveryLine(std::string s) {
   return s;
 }
 
-}  // namespace util
-}  // namespace yb
+std::string TrimWhitespaceFromEveryLine(std::string str) {
+  auto write_it = str.begin();
+  auto rm_it = str.end();
+  for (auto it = str.begin(); it != str.end(); ++it) {
+    auto ch = *it;
+    if (ch == '\r' || ch == '\n') {
+      *write_it++ = ch;
+      rm_it = str.end(); // Reset to skip leading pred(ch) in the next line.
+    } else if (!std::isspace(static_cast<unsigned char>(ch))) {
+      if (rm_it == str.end()) {
+        // It is the very first !pred(ch) in the current line.
+        rm_it = it;
+      }
+      // Covers two cases in one shot:
+      // 1) Copies a continuous interval of pred(ch) which should be kept because
+      //    the current symbol is !pred(ch).
+      // 2) Copies the current symbol as it is !pred(ch).
+      while (rm_it <= it) {
+        *write_it++ = *rm_it++;
+      }
+    }
+  }
+  return str.erase(write_it - str.begin());
+}
+
+} // namespace yb::util

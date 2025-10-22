@@ -20,6 +20,7 @@
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_ttl_util.h"
 #include "yb/docdb/key_bounds.h"
+#include "yb/dockv/doc_vector_id.h"
 #include "yb/dockv/packed_row.h"
 #include "yb/dockv/packed_value.h"
 #include "yb/docdb/pgsql_operation.h"
@@ -627,9 +628,9 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed
   }
 
  private:
-  // Assigns prev_subdoc_key_ from memory addressed by data. The length of key is taken from
+  // Assigns prev_key_ from memory addressed by data. The length of key is taken from
   // sub_key_ends_ and same_bytes are reused.
-  void AssignPrevSubDocKey(const char* data, size_t same_bytes);
+  void AssignPrevKey(const char* data, size_t same_bytes);
 
   Status PassToNextFeed(const Slice& key, const Slice& value, size_t doc_key_serial) {
     if (last_passed_doc_key_serial_ != doc_key_serial) {
@@ -697,9 +698,9 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed
   rocksdb::BoundaryValuesExtractor* boundary_extractor_;
   ValueBuffer new_value_buffer_;
 
-  std::vector<char> prev_subdoc_key_;
+  std::vector<char> prev_key_;
 
-  // Result of DecodeDocKeyAndSubKeyEnds for prev_subdoc_key_.
+  // Result of DecodeMetaSubKeyEnds() or DecodeDocKeyAndSubKeyEnds() for prev_key_.
   boost::container::small_vector<size_t, 16> sub_key_ends_;
 
   size_t last_passed_doc_key_serial_ = 0;
@@ -768,6 +769,53 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed
 
 // ------------------------------------------------------------------------------------------------
 
+namespace {
+
+inline bool IsMetaKey(dockv::KeyEntryType key_type) {
+  // Checking for regular db meta keys only since it is not expected DocDBCompactionFeed
+  // to be used for intents db.
+  return dockv::IsRegularDBMetaKeyType(key_type);
+}
+
+Result<size_t> DecodeMetaKeySize(Slice key) {
+  switch (dockv::DecodeKeyEntryType(key)) {
+    case yb::dockv::KeyEntryType::kVectorIndexMetadata:
+      return dockv::EncodedDocVectorKeySize(key);
+
+    case dockv::KeyEntryType::kTransactionApplyState:
+      // It could be handled by DocKey since it matches its expected structure.
+      return dockv::DocKey::EncodedSize(key, dockv::DocKeyPart::kWholeDocKey);
+
+    default: {
+      auto status = STATUS_FORMAT(
+          InvalidArgument, "Unexpected meta key $0", key.ToDebugHexString());
+      LOG_WITH_FUNC(DFATAL) << status;
+      return status;
+    }
+  }
+}
+
+// A caller must take care the `key` is a MetaKey.
+Status DecodeMetaSubKeyEnds(Slice key, boost::container::small_vector_base<size_t>& out) {
+  // Sanity checks for input args.
+  DCHECK(IsMetaKey(dockv::DecodeKeyEntryType(key)));
+
+  if (out.empty()) {
+    const auto size = VERIFY_RESULT(DecodeMetaKeySize(key));
+    out.push_back(size);
+  } else {
+    // It is supposed that if `out` contains more than zero elements, then the first one should
+    // match corresponding meta key and it is not expected to have any meta sub keys as of now.
+    // Let's make a DEBUG only sanity check for the scenario.
+    DCHECK_EQ(out.size(), 1);
+    DCHECK_EQ(out.front(), VERIFY_RESULT(DecodeMetaKeySize(key)));
+  }
+
+  return Status::OK();
+}
+
+} // namespace
+
 Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) {
   if (!feed_usage_logged_) {
     // TODO: switch this to VLOG if it becomes too chatty.
@@ -777,18 +825,22 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
     feed_usage_logged_ = true;
   }
 
-  auto key = internal_key.WithoutSuffix(rocksdb::kLastInternalComponentSize);
+  const auto key = internal_key.WithoutSuffix(rocksdb::kLastInternalComponentSize);
+  const auto key_type = dockv::DecodeKeyEntryType(key);
+  const auto is_sub_doc_key = !IsMetaKey(key_type);
 
   VLOG(4) << "Feed: " << internal_key.ToDebugHexString() << "/"
           << dockv::SubDocKey::DebugSliceToString(key) << " => " << value.ToDebugHexString();
 
-  // TODO(vector_index) implement better handing for vector index metadata, it's kept in SST now.
-  if (dockv::DecodeKeyEntryType(key) == dockv::KeyEntryType::kVectorIndexMetadata) {
-    return ForwardToNextFeed(internal_key, value);
+  // Just remove intent records from regular DB, because it was a beta feature.
+  // Currently intents are stored in separate DB. Added for backward compatibility.
+  if (key_type == dockv::KeyEntryType::kObsoleteIntentPrefix) {
+    return Status::OK();
   }
 
-  if (!IsWithinBounds(key_bounds_, key) &&
-      dockv::DecodeKeyEntryType(key) != dockv::KeyEntryType::kTransactionApplyState) {
+  // TODO(vector_index): filter out vector index reverse mapping record if its ybctid is out of
+  // key_bounds, should be covered by https://github.com/yugabyte/yugabyte-db/issues/24076.
+  if (is_sub_doc_key && !IsWithinBounds(key_bounds_, key)) {
     // If we reach this point, then we're processing a record which should have been excluded by
     // proper use of GetLiveRanges(). We include this as a sanity check, but we should never get
     // here.
@@ -798,14 +850,8 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
     return Status::OK();
   }
 
-  // Just remove intent records from regular DB, because it was beta feature.
-  // Currently intents are stored in separate DB.
-  if (dockv::DecodeKeyEntryType(key) == dockv::KeyEntryType::kObsoleteIntentPrefix) {
-    return Status::OK();
-  }
-
   auto same_bytes = strings::MemoryDifferencePos(
-      key.data(), prev_subdoc_key_.data(), std::min(key.size(), prev_subdoc_key_.size()));
+      key.data(), prev_key_.data(), std::min(key.size(), prev_key_.size()));
 
   // The number of initial components (including cotable_id, document key and subkeys) that this
   // SubDocKey shares with previous one. This does not care about the hybrid_time field.
@@ -825,23 +871,28 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
 
   VLOG_WITH_FUNC(4) << "num_shared_components: " << num_shared_components << ", overwrite: "
                     << AsString(overwrite_);
-  // First component is cotable and second component doc_key, so num_shared_components <= 1 means
-  // new row.
-  if (num_shared_components <= 1) {
-    VLOG_WITH_FUNC(4) << "Flush on num_shared_components: " << num_shared_components;
+
+  // Check if a key has been changed. It depends on the type of the record:
+  // - for SubDocKey, the first component is a cotable and the second component is a DocKey,
+  //   so num_shared_components < 2 means a new row (same cotable does not mean the same row).
+  // - for MetaKey, only two types are supported: kVectorReverseMapping and kTransactionApplyState,
+  //   both consist of a single component (Id), so num_shared_components < 1 means a new row.
+  if (num_shared_components < (is_sub_doc_key ? 2 : 1)) {
+    VLOG_WITH_FUNC(4) << "Flush on new key, num_shared_components: " << num_shared_components;
     RETURN_NOT_OK(packed_row_.Flush());
     ++doc_key_serial_;
   }
 
   sub_key_ends_.resize(num_shared_components);
 
-  RETURN_NOT_OK(dockv::SubDocKey::DecodeDocKeyAndSubKeyEnds(key, &sub_key_ends_));
-  RETURN_NOT_OK(packed_row_.UpdateCoprefix(key.Prefix(sub_key_ends_[0])));
+  if (is_sub_doc_key) {
+    RETURN_NOT_OK(dockv::SubDocKey::DecodeDocKeyAndSubKeyEnds(key, &sub_key_ends_));
+    VLOG_WITH_FUNC(4) << "SubDocKey sub_key_ends: " << AsString(sub_key_ends_);
 
-  bool key_contains_cotable_prefix = false;
-  if (key[0] == dockv::KeyEntryTypeAsChar::kTableId) {
-    VLOG(4) << "Key " << key.ToDebugHexString() << " contains cotable prefix";
-    key_contains_cotable_prefix = true;
+    RETURN_NOT_OK(packed_row_.UpdateCoprefix(key.Prefix(sub_key_ends_[0])));
+  } else {
+    RETURN_NOT_OK(DecodeMetaSubKeyEnds(key, sub_key_ends_));
+    VLOG_WITH_FUNC(4) << "MetaKey sub_key_ends: " << AsString(sub_key_ends_);
   }
 
   const size_t new_stack_size = sub_key_ends_.size();
@@ -850,6 +901,7 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   // SubDocKey.
   if (num_shared_components < overwrite_.size()) {
     overwrite_.erase(overwrite_.begin() + num_shared_components, overwrite_.end());
+    DVLOG_WITH_FUNC(4) << "Adjusted overwrite: " << AsString(overwrite_);
   }
   EncodedDocHybridTime encoded_doc_ht;
   RETURN_NOT_OK(DocHybridTime::EncodedFromEnd(key, &encoded_doc_ht));
@@ -906,12 +958,13 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   // overwritten.
   if (overwrite_.size() < new_stack_size - 1) {
     overwrite_.resize(new_stack_size - 1, {prev_overwrite_ht, LastExpiration()});
+    DVLOG_WITH_FUNC(4) << "Resize overwrite: " << AsString(overwrite_);
   }
 
   Expiration popped_exp = overwrite_.empty() ? Expiration() : overwrite_.back().expiration;
   // This will happen in case previous key has the same document key and subkeys as the current
   // key, and the only difference is in the hybrid_time. We want to replace the hybrid_time at the
-  // top of the overwrite_ht stack in this case.
+  // top of the overwrite_ht stack in this case. It's a common case for vector index mapping.
   if (overwrite_.size() == new_stack_size) {
     overwrite_.pop_back();
   }
@@ -919,6 +972,8 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   // Check whether current key is the same as the previous key, except for the timestamp.
   if (same_bytes != sub_key_ends_.back()) {
     within_merge_block_ = false;
+  } else {
+    VLOG_WITH_FUNC(4) << "Same key as previous except HT";
   }
 
   // See if we found a higher hybrid time not exceeding the history cutoff hybrid time at which the
@@ -931,20 +986,21 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   EncodedDocHybridTime encoded_chosen_doc_ht =
       encoded_history_cutoff_information_.primary_cutoff_encoded;
   // For cotables on master, use the cotables_cutoff_ht.
-  if (key_contains_cotable_prefix &&
+  if (key_type == dockv::KeyEntryType::kTableId &&
       retention_directive_.history_cutoff.cotables_cutoff_ht) {
     encoded_chosen_doc_ht =
         encoded_history_cutoff_information_.cotables_cutoff_encoded;
     chosen_doc_ht =
         retention_directive_.history_cutoff.cotables_cutoff_ht;
   }
-  VLOG(4) << "Chosen hybrid time cutoff: " << encoded_chosen_doc_ht.ToString();
+  VLOG_WITH_FUNC(4) << "Chosen hybrid time cutoff: " << encoded_chosen_doc_ht.ToString();
+
   if (encoded_doc_ht > encoded_chosen_doc_ht) {
-    AssignPrevSubDocKey(key.cdata(), same_bytes);
+    AssignPrevKey(key.cdata(), same_bytes);
     overwrite_.push_back({prev_overwrite_ht, LastExpiration()});
     VLOG_WITH_FUNC(4)
         << "Feed to next because of history cutoff: " << encoded_doc_ht.ToString() << ", "
-        << encoded_chosen_doc_ht.ToString();
+        << encoded_chosen_doc_ht.ToString() << ", overwrite: " << AsString(overwrite_);
     auto value_slice = value;
     RETURN_NOT_OK(ValueControlFields::Decode(&value_slice));
     if (IsPackedRow(dockv::DecodeValueEntryType(value_slice))) {
@@ -972,16 +1028,16 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   //
   // TODO: could there be a case when there is still a read request running that uses an old schema,
   //       and we end up removing some data that the client expects to see?
-  VLOG(4) << "Sub key ends: " << AsString(sub_key_ends_);
   if (sub_key_ends_.size() > 1) {
+    DCHECK(is_sub_doc_key);
     // 0 - end of cotable id section.
     // 1 - end of doc key section.
     // Column ID is the first subkey in every row.
     auto doc_key_size = sub_key_ends_[1];
-    auto key_type = dockv::DecodeKeyEntryType(key[doc_key_size]);
-    VLOG_WITH_FUNC(4) << "First subkey type: " << key_type;
-    if (key_type == dockv::KeyEntryType::kColumnId ||
-        key_type == dockv::KeyEntryType::kSystemColumnId) {
+    auto sub_key_type = dockv::DecodeKeyEntryType(key[doc_key_size]);
+    VLOG_WITH_FUNC(4) << "First subkey type: " << sub_key_type;
+    if (sub_key_type == dockv::KeyEntryType::kColumnId ||
+        sub_key_type == dockv::KeyEntryType::kSystemColumnId) {
       Slice column_id_slice = key.WithoutPrefix(doc_key_size + 1);
       auto column_id = VERIFY_RESULT(ColumnId::Decode(&column_id_slice));
 
@@ -1009,10 +1065,10 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
       if (start_packing) {
         RETURN_NOT_OK(packed_row_.StartPacking(
             internal_key, doc_key_size, encoded_doc_ht, doc_key_serial_));
-        AssignPrevSubDocKey(key.cdata(), same_bytes);
+        AssignPrevKey(key.cdata(), same_bytes);
       }
       if (packed_row_.can_start_packing() && packed_row_.active()) {
-        if (key_type == dockv::KeyEntryType::kSystemColumnId &&
+        if (sub_key_type == dockv::KeyEntryType::kSystemColumnId &&
             column_id == dockv::KeyEntryValue::kLivenessColumn.GetColumnId()) {
           return Status::OK();
         }
@@ -1042,12 +1098,13 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   auto expiration = CalcExpiration(is_ttl_row, popped_exp, control_fields.ttl, &lazy_ht);
 
   overwrite_.push_back({overwrite_ht, expiration});
+  DVLOG_WITH_FUNC(4) << "Overwrite: " << AsString(overwrite_);
 
   if (overwrite_.size() != new_stack_size) {
     return STATUS_FORMAT(Corruption, "Overwrite size does not match new_stack_size: $0 vs $1",
                          overwrite_.size(), new_stack_size);
   }
-  AssignPrevSubDocKey(key.cdata(), same_bytes);
+  AssignPrevKey(key.cdata(), same_bytes);
 
   // If we are backfilling an index table, we want to preserve the delete markers in the table
   // until the backfill process is completed. For other normal use cases, delete markers/tombstones
@@ -1059,7 +1116,9 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   // compactions. However, we do need to update the overwrite hybrid time stack in this case (as we
   // just did), because this deletion (tombstone) entry might be the only reason for cleaning up
   // more entries appearing at earlier hybrid times.
+  // TODO(vector_index): optimization https://github.com/yugabyte/yugabyte-db/issues/28755.
   if (value_type == dockv::ValueEntryType::kTombstone && !CanHaveOtherDataBefore(encoded_doc_ht)) {
+    DVLOG_WITH_FUNC(4) << "Skipping due to Tombstoned value and no data before";
     return Status::OK();
   }
 
@@ -1095,6 +1154,7 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
       expiration.ttl += overwrite_.back().expiration.write_ht.PhysicalDiff(
           VERIFY_RESULT(lazy_ht.Get()));
       overwrite_.back().expiration.ttl = expiration.ttl;
+      DVLOG_WITH_FUNC(4) << "Last component expiration: " << expiration.ToString();
     }
 
     control_fields.ttl = expiration.ttl;
@@ -1124,11 +1184,10 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   return ForwardToNextFeed(internal_key, new_value);
 }
 
-void DocDBCompactionFeed::AssignPrevSubDocKey(
-    const char* data, size_t same_bytes) {
+void DocDBCompactionFeed::AssignPrevKey(const char* data, size_t same_bytes) {
   size_t size = sub_key_ends_.back();
-  prev_subdoc_key_.resize(size);
-  memcpy(prev_subdoc_key_.data() + same_bytes, data + same_bytes, size - same_bytes);
+  prev_key_.resize(size);
+  memcpy(prev_key_.data() + same_bytes, data + same_bytes, size - same_bytes);
 }
 
 // DocDB compaction feed. A new instance of this class is created for every compaction.
@@ -1199,16 +1258,18 @@ rocksdb::UserFrontierPtr DocDBCompactionContext::GetLargestUserFrontier() const 
 }
 
 std::vector<std::pair<Slice, Slice>> DocDBCompactionContext::GetLiveRanges() const {
-  static constexpr char kApplyStateEndChar = dockv::KeyEntryTypeAsChar::kTransactionApplyState + 1;
+  static constexpr char kMetaRegionEnd = dockv::KeyEntryTypeAsChar::kTransactionApplyState + 1;
   if (!key_bounds_ || (key_bounds_->lower.empty() && key_bounds_->upper.empty())) {
     return {};
   }
-  auto end_apply_state_region = Slice(&kApplyStateEndChar, 1);
-  auto first_range = std::make_pair(Slice(), end_apply_state_region);
+
+  // TODO: consider concatenating into a single range if first_range.second == second_range.first.
+  // This could happen if lower < end_apply_state_region.
+  auto meta_region_end = Slice(&kMetaRegionEnd, 1);
+  auto first_range = std::make_pair(Slice(), meta_region_end);
   auto second_range = std::make_pair(
-    key_bounds_->lower.AsSlice().Less(end_apply_state_region)
-        ? end_apply_state_region
-        : key_bounds_->lower.AsSlice(),
+    key_bounds_->lower.AsSlice().Less(meta_region_end)
+        ? meta_region_end : key_bounds_->lower.AsSlice(),
     key_bounds_->upper.AsSlice());
 
   return {first_range, second_range};
