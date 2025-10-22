@@ -666,9 +666,14 @@ PgApiImpl::PgApiImpl(
       }),
       pg_shared_data_(
           *init_postgres_info.shared_data, !init_postgres_info.parallel_leader_session_id),
-      pg_client_(wait_event_watcher_, pg_shared_data_->next_perform_op_serial_no),
+      pg_client_(
+          wait_event_watcher_, pg_shared_data_->next_perform_op_serial_no),
       clock_(new server::HybridClock()),
-      enable_table_locking_(ShouldEnableTableLocks()),
+      // For parallel query, multiple PgTxnManager(s) make parallel requests to pg_client_session
+      // projecting as a single ysql backend. When object locking is enabled, only the leader worker
+      // should acquire object locks and issue finish transaction rpcs to ensure correctness.
+      enable_table_locking_(
+          ShouldEnableTableLocks() && !init_postgres_info.parallel_leader_session_id),
       pg_txn_manager_(new PgTxnManager(&pg_client_, clock_, pg_callbacks_, enable_table_locking_)),
       ybctid_reader_provider_(pg_session_),
       fk_reference_cache_(ybctid_reader_provider_, buffering_settings_, tablespace_map_),
@@ -711,7 +716,7 @@ void PgApiImpl::InitSession(YbcPgExecStatsState& session_stats, bool is_binary_u
 
   pg_session_ = make_scoped_refptr<PgSession>(
       pg_client_, pg_txn_manager_, pg_callbacks_, session_stats, is_binary_upgrade,
-      wait_event_watcher_, buffering_settings_, enable_table_locking_);
+      wait_event_watcher_, buffering_settings_);
 }
 
 uint64_t PgApiImpl::GetSessionID() const { return pg_client_.SessionID(); }
@@ -1371,9 +1376,12 @@ Status PgApiImpl::DmlAppendTarget(PgStatement* handle, PgExpr* target) {
   return VERIFY_RESULT_REF(GetStatementAs<PgDml>(handle)).AppendTarget(target);
 }
 
-Status PgApiImpl::DmlAppendQual(PgStatement* handle, PgExpr* qual, bool is_for_secondary_index) {
+Status PgApiImpl::DmlAppendQual(
+    PgStatement* handle, PgExpr* qual, uint32_t serialization_version,
+    bool is_for_secondary_index) {
   return VERIFY_RESULT_REF(
-      GetStatementAs<PgDmlRead>(handle)).AppendQual(qual, is_for_secondary_index);
+      GetStatementAs<PgDmlRead>(handle)).AppendQual(
+          qual, serialization_version, is_for_secondary_index);
 }
 
 Status PgApiImpl::DmlAppendColumnRef(
@@ -1871,7 +1879,7 @@ Result<uint64_t> PgApiImpl::GetSharedCatalogVersion(std::optional<PgOid> db_oid)
     // If db_oid is for a newly created database, it may not have an entry allocated in shared
     // memory. It can also be a race condition case where the database db_oid we are trying to
     // connect to is recently dropped from another node. Let's wait with 500ms interval until the
-    // entry shows up or until a 10-second timeout.
+    // entry shows up or until a 30-second timeout.
     auto status = LoggedWaitFor(
         [this, &db_oid]() -> Result<bool> {
           auto info = VERIFY_RESULT(pg_client_.GetTserverCatalogVersionInfo(
@@ -1888,7 +1896,7 @@ Result<uint64_t> PgApiImpl::GetSharedCatalogVersion(std::optional<PgOid> db_oid)
           }
           return catalog_version_db_index_ ? true : false;
         },
-        10s /* timeout */,
+        30s /* timeout */,
         Format("Database $0 is not ready in Yugabyte shared memory", *db_oid),
         500ms /* initial_delay */,
         1.0 /* delay_multiplier */);
@@ -1924,12 +1932,12 @@ Result<bool> PgApiImpl::CatalogVersionTableInPerdbMode() {
     // heartbeat response from yb-master that has set a value in
     // catalog_version_table_in_perdb_mode_ in the shared memory object
     // yet. Let's wait with 500ms interval until a value is set or until
-    // a 20-second timeout.
+    // a 30-second timeout.
     auto status = LoggedWaitFor(
         [this]() -> Result<bool> {
           return tserver_shared_object_->catalog_version_table_in_perdb_mode().has_value();
         },
-        20s /* timeout */,
+        30s /* timeout */,
         "catalog_version_table mode not set in shared memory, "
         "tserver not ready to serve requests",
         500ms /* initial_delay */,
@@ -2169,6 +2177,10 @@ bool PgApiImpl::IsDdlMode() const {
   return pg_txn_manager_->IsDdlMode();
 }
 
+bool PgApiImpl::IsDdlModeWithRegularTransactionBlock() const {
+  return pg_txn_manager_->IsDdlModeWithRegularTransactionBlock();
+}
+
 Result<bool> PgApiImpl::CurrentTransactionUsesFastPath() const {
   return pg_session_->CurrentTransactionUsesFastPath();
 }
@@ -2182,9 +2194,9 @@ ReadHybridTime PgApiImpl::GetCatalogReadTime() const {
 }
 
 Result<bool> PgApiImpl::ForeignKeyReferenceExists(
-    PgOid table_id, const Slice& ybctid, PgOid database_id) {
+    PgOid table_id, const Slice& ybctid, bool is_region_local, PgOid database_id) {
   return fk_reference_cache_.IsReferenceExists(
-      database_id, LightweightTableYbctid{table_id, ybctid});
+      database_id, LightweightTableYbctid{table_id, ybctid}, is_region_local);
 }
 
 Status PgApiImpl::AddForeignKeyReferenceIntent(
@@ -2539,6 +2551,10 @@ void PgApiImpl::ClearTablespaceOid(uint32_t db_oid, uint32_t table_oid) {
   CHECK(id.IsValid());
   VLOG(1) << __func__ << ": " << yb::ToString(id);
   CHECK_EQ(tablespace_map_.erase(id), 1) << yb::ToString(id);
+}
+
+Status PgApiImpl::TriggerRelcacheInitConnection(const std::string& dbname) {
+  return pg_client_.TriggerRelcacheInitConnection(dbname);
 }
 
 } // namespace yb::pggate

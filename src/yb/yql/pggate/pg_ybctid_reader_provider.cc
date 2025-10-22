@@ -111,7 +111,7 @@ class PrecastRequestSender {
           auto& info = *i++;
           return TO{.operation = &info.operation, .table = info.table};
         }), HybridTime())),
-        {TableType::USER, IsForWritePgDoc::kFalse});
+        {TableType::USER, IsForWritePgDoc::kFalse, IsOpBuffered::kFalse});
     *provider_state_ = VERIFY_RESULT(response.Get(session));
     return Status::OK();
   }

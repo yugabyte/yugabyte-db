@@ -62,6 +62,7 @@
 
 DECLARE_bool(enable_ysql_conn_mgr);
 DECLARE_int32(ysql_conn_mgr_max_pools);
+DECLARE_bool(openssl_require_fips);
 
 DEPRECATE_FLAG(string, pg_proxy_bind_address, "02_2024");
 
@@ -355,7 +356,7 @@ DEFINE_NON_RUNTIME_string(ysql_cron_database_name, "yugabyte",
 DEFINE_NON_RUNTIME_bool(ysql_trust_local_yugabyte_connections, true,
             "Trust YSQL connections via the local socket from the yugabyte user.");
 
-DEFINE_NON_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_query_diagnostics, false,
+DEFINE_NON_RUNTIME_PG_FLAG(bool, yb_enable_query_diagnostics, false,
     "Enables the collection of query diagnostics data for YSQL queries, "
     "facilitating the creation of diagnostic bundles.");
 
@@ -394,6 +395,19 @@ DEFINE_RUNTIME_PG_FLAG(
     "When a process exits, log a peak heap snapshot showing the "
     "approximate memory usage of each malloc call stack if its peak RSS "
     "is greater than or equal to this threshold in KB. Set to -1 to disable.");
+
+const char* const AUTH_METHOD_MD5 = "md5";
+const char* const AUTH_METHOD_SCRAM = "scram-sha-256";
+const char* const AUTH_METHOD_TRUST = "trust";
+
+DEFINE_NON_RUNTIME_string(ysql_auth_method, AUTH_METHOD_MD5,
+    "Authentication method for YSQL connections. Valid values: 'md5', 'scram-sha-256'. "
+    "scram-sha-256 is preferred for better security. "
+    "If openssl_require_fips is true then by default authentication method will be set to "
+    "scram-sha-256 and the value of ysql_auth_method will be ignored. "
+    "Note: Explicit auth methods in ysql_hba_conf_csv take precedence over this flag.");
+DEFINE_validator(ysql_auth_method, FLAG_IN_SET_VALIDATOR("scram-sha-256", "md5"));
+DEFINE_NEW_INSTALL_STRING_VALUE(ysql_auth_method, "scram-sha-256");
 
 using gflags::CommandLineFlagInfo;
 using std::string;
@@ -698,7 +712,9 @@ Result<string> WritePgHbaConfig(const PgProcessConf& conf) {
   // Add auto-generated config for the enable auth and enable_tls flags.
   if (FLAGS_ysql_enable_auth || conf.enable_tls) {
     const auto host_type =  conf.enable_tls ? "hostssl" : "host";
-    const auto auth_method = FLAGS_ysql_enable_auth ? "md5" : "trust";
+    const auto auth_method = FLAGS_ysql_enable_auth
+        ? (FLAGS_openssl_require_fips ? AUTH_METHOD_SCRAM : FLAGS_ysql_auth_method)
+        : AUTH_METHOD_TRUST;
     lines.push_back(Format("$0 all all all $1", host_type, auth_method));
   }
 

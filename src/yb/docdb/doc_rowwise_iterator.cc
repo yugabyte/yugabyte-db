@@ -136,13 +136,14 @@ void DocRowwiseIterator::SetSchema(const Schema& schema) {
   schema_ = &schema;
 }
 
-void DocRowwiseIterator::InitForTableType(
+Status DocRowwiseIterator::InitForTableType(
     TableType table_type, Slice sub_doc_key, SkipSeek skip_seek,
     AddTablePrefixToKey add_table_prefix_to_key) {
   CheckInitOnce();
   table_type_ = table_type;
   ignore_ttl_ = (table_type_ == TableType::PGSQL_TABLE_TYPE);
-  InitIterator(BloomFilterOptions::Inactive());
+  RETURN_NOT_OK(
+      InitIterator(BloomFilterOptions::Inactive(), AvoidUselessNextInsteadOfSeek::kFalse));
 
   if (sub_doc_key.empty() || add_table_prefix_to_key) {
     dockv::DocKeyEncoder(&row_key_).Schema(*schema_);
@@ -154,11 +155,14 @@ void DocRowwiseIterator::InitForTableType(
   has_bound_key_ = false;
 
   scan_choices_ = ScanChoices::CreateEmpty();
+
+  return Status::OK();
 }
 
 Status DocRowwiseIterator::Init(
     const qlexpr::YQLScanSpec& doc_spec, SkipSeek skip_seek,
-    UseVariableBloomFilter use_variable_bloom_filter) {
+    AllowVariableBloomFilter allow_variable_bloom_filter,
+    AvoidUselessNextInsteadOfSeek avoid_useless_next_instead_of_seek) {
   table_type_ = doc_spec.client_type() == YQL_CLIENT_CQL ? TableType::YQL_TABLE_TYPE
                                                          : TableType::PGSQL_TABLE_TYPE;
   ignore_ttl_ = table_type_ == TableType::PGSQL_TABLE_TYPE;
@@ -171,17 +175,6 @@ Status DocRowwiseIterator::Init(
   auto bounds = doc_spec.bounds();
   VLOG(2) << "DocKey Bounds " << DocKey::DebugSliceToString(bounds.lower.AsSlice()) << ", "
           << DocKey::DebugSliceToString(bounds.upper.AsSlice());
-
-  // TODO(bogdan): decide if this is a good enough heuristic for using blooms for scans.
-  const bool is_fixed_point_get =
-      !bounds.lower.empty() &&
-      VERIFY_RESULT(HashedOrFirstRangeComponentsEqual(bounds.lower, bounds.upper));
-  auto bloom_filter = BloomFilterOptions::Inactive();
-  if (is_fixed_point_get) {
-    bloom_filter = BloomFilterOptions::Fixed(bounds.lower.AsSlice());
-  } else if (use_variable_bloom_filter) {
-    bloom_filter = BloomFilterOptions::Variable();
-  }
 
   if (is_forward_scan_) {
     has_bound_key_ = !bounds.upper.empty();
@@ -206,8 +199,6 @@ Status DocRowwiseIterator::Init(
     }
   }
 
-  InitIterator(bloom_filter, doc_spec.QueryId(), CreateFileFilter(doc_spec));
-
   if (has_bound_key_) {
     if (is_forward_scan_) {
       bounds.upper = bound_key_;
@@ -215,8 +206,15 @@ Status DocRowwiseIterator::Init(
       bounds.lower = bound_key_;
     }
   }
-  scan_choices_ = ScanChoices::Create(
-      *schema_, doc_spec, bounds, doc_read_context_.table_key_prefix());
+
+  scan_choices_ = VERIFY_RESULT(ScanChoices::Create(
+      doc_read_context_, doc_spec, bounds, doc_read_context_.table_key_prefix(),
+      allow_variable_bloom_filter));
+
+  RETURN_NOT_OK(InitIterator(
+      scan_choices_->BloomFilterOptions(), avoid_useless_next_instead_of_seek, doc_spec.QueryId(),
+      CreateFileFilter(doc_spec)));
+
   if (!skip_seek) {
     if (is_forward_scan_) {
       Seek(bounds.lower);
@@ -314,7 +312,7 @@ Slice DocRowwiseIterator::GetRowKey() const {
   return row_key_;
 }
 
-void DocRowwiseIterator::SeekTuple(Slice tuple_id) {
+void DocRowwiseIterator::SeekTuple(Slice tuple_id, docdb::UpdateFilterKey update_filter_key) {
   // If cotable id / colocation id is present in the table schema, then
   // we need to prepend it in the tuple key to seek.
   if (schema_->has_cotable_id() || schema_->has_colocation_id()) {
@@ -338,7 +336,9 @@ void DocRowwiseIterator::SeekTuple(Slice tuple_id) {
     tuple_key_->AppendRawBytes(tuple_id);
     tuple_id = *tuple_key_;
   }
-  UpdateFilterKey(tuple_id);
+  if (update_filter_key) {
+    UpdateFilterKey(tuple_id);
+  }
   Seek(tuple_id);
 
   row_key_.Clear();
@@ -505,8 +505,9 @@ Result<DocHybridTime> DocRowwiseIterator::GetTableTombstoneTime(Slice root_doc_k
   return doc_ht;
 }
 
-void DocRowwiseIterator::InitIterator(
+Status DocRowwiseIterator::InitIterator(
     const BloomFilterOptions& bloom_filter,
+    AvoidUselessNextInsteadOfSeek avoid_useless_next_instead_of_seek,
     const rocksdb::QueryId query_id,
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter) {
   if (table_type_ == TableType::PGSQL_TABLE_TYPE) {
@@ -531,19 +532,27 @@ void DocRowwiseIterator::InitIterator(
       read_operation_data_,
       file_filter,
       nullptr /* iterate_upper_bound */,
-      FastBackwardScan{use_fast_backward_scan_});
+      FastBackwardScan{use_fast_backward_scan_},
+      avoid_useless_next_instead_of_seek);
   InitResult();
 
-  auto prefix = shared_key_prefix();
-  if (is_forward_scan_ && has_bound_key_ &&
-      bound_key_.data().data()[0] != dockv::KeyEntryTypeAsChar::kHighest) {
-    DCHECK(bound_key_.AsSlice().starts_with(prefix))
-        << "Bound key: " << bound_key_.AsSlice().ToDebugHexString()
-        << ", prefix: " << prefix.ToDebugHexString();
-    upperbound_scope_.emplace(bound_key_, db_iter_.get());
-  } else {
-    DCHECK(!upperbound().empty());
-    upperbound_scope_.emplace(upperbound(), db_iter_.get());
+  const auto scan_choices_has_upperbound =
+      scan_choices_ &&
+      VERIFY_RESULT(scan_choices_->PrepareIterator(
+          *db_iter_, doc_read_context_.table_key_prefix()));
+
+  if (!scan_choices_has_upperbound) {
+    auto prefix = shared_key_prefix();
+    if (is_forward_scan_ && has_bound_key_ &&
+        bound_key_.data().data()[0] != dockv::KeyEntryTypeAsChar::kHighest) {
+      DCHECK(bound_key_.AsSlice().starts_with(prefix))
+          << "Bound key: " << bound_key_.AsSlice().ToDebugHexString()
+          << ", prefix: " << prefix.ToDebugHexString();
+      upperbound_scope_.emplace(bound_key_, db_iter_.get());
+    } else {
+      DCHECK(!upperbound().empty());
+      upperbound_scope_.emplace(upperbound(), db_iter_.get());
+    }
   }
 
   if (use_fast_backward_scan_) {
@@ -557,6 +566,7 @@ void DocRowwiseIterator::InitIterator(
   }
 
   VLOG_WITH_FUNC(4) << "Initialization done";
+  return Status::OK();
 }
 
 void DocRowwiseIterator::ConfigureForYsql() {
@@ -580,11 +590,13 @@ void DocRowwiseIterator::Refresh(SeekFilter seek_filter) {
 }
 
 void DocRowwiseIterator::UpdateFilterKey(Slice user_key_for_filter) {
+  DCHECK(!scan_choices_ || scan_choices_->BloomFilterOptions().mode() != BloomFilterMode::kInactive)
+      << "Mode: " << scan_choices_->BloomFilterOptions().mode();
   db_iter_->UpdateFilterKey(user_key_for_filter);
 }
 
 void DocRowwiseIterator::Seek(Slice key) {
-  VLOG_WITH_FUNC(3) << " Seeking to " << key << "/" << dockv::DocKey::DebugSliceToString(key);
+  VLOG_WITH_FUNC(3) << key << "/" << dockv::DocKey::DebugSliceToString(key);
 
   DCHECK(!done_);
 
@@ -630,7 +642,7 @@ inline void DocRowwiseIterator::SeekPrevDocKey(Slice key) {
 Status DocRowwiseIterator::AdvanceIteratorToNextDesiredRow(bool row_finished,
                                                            bool current_fetched_row_skipped) {
   if (seek_filter_ == SeekFilter::kAll && !IsFetchedRowStatic() &&
-      VERIFY_RESULT(scan_choices_->AdvanceToNextRow(&row_key_, db_iter_.get(),
+      VERIFY_RESULT(scan_choices_->AdvanceToNextRow(&row_key_, *db_iter_,
                                                     current_fetched_row_skipped))) {
     return Status::OK();
   }
@@ -702,6 +714,12 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
 
     const auto& key_data = VERIFY_RESULT_REF(db_iter_->Fetch());
     if (!key_data) {
+      // It could happen that iterator did not find anything because of upper bound limit from
+      // scan choices. So need to update it and retry.
+      if (seek_filter_ == SeekFilter::kAll && !IsFetchedRowStatic() &&
+          VERIFY_RESULT(scan_choices_->AdvanceToNextRow(nullptr, *db_iter_, true))) {
+        continue;
+      }
       done_ = true;
       return false;
     }
@@ -744,7 +762,7 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
 
     bool is_static_column = IsFetchedRowStatic();
     if (!is_static_column &&
-        !VERIFY_RESULT(scan_choices_->InterestedInRow(&row_key_, db_iter_.get()))) {
+        !VERIFY_RESULT(scan_choices_->InterestedInRow(&row_key_, *db_iter_))) {
       continue;
     }
 

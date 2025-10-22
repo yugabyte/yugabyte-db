@@ -177,8 +177,13 @@ relation_statistics_update(FunctionCallInfo fcinfo)
 
 	ReleaseSysCache(ctup);
 
-	if (IsYugaByteEnabled() && !yb_use_regular_txn_block)
-		YBDecrementDdlNestingLevel();
+	if (IsYugaByteEnabled())
+	{
+		if (yb_use_regular_txn_block)
+			YBMergeDdlTxnState();
+		else
+			YBDecrementDdlNestingLevel();
+	}
 
 	/* release the lock, consistent with vac_update_relstats() */
 	table_close(crel, RowExclusiveLock);

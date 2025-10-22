@@ -12351,5 +12351,73 @@ TEST_F(CDCSDKYsqlTest, TestConcurrentStreamCreationOnCatalogTables) {
       tablet_peer->get_cdc_min_replicated_index());
 }
 
+TEST_F(CDCSDKYsqlTest, TestLargeTxnOnCatalogTablet) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_dynamic_table_support) = false;
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) = true;
+
+  // Reduce the number of intents fetched in a batch  for CDC to simulate a large txn.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_max_stream_intent_records) = 2;
+
+  ASSERT_OK(SetUpWithParams(1 /* rf */, 3 /* num_masters*/));
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  // Create a table after slot creation. This will result in a multi-shard txn on sys catalog
+  // tablet.
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.Execute("CREATE TABLE test_1 (a int primary key, b text)"));
+
+  // Call GetChanges on master and assert that we are getting a checkpoint record with valid
+  // write_id and reverse_index_key.
+  auto change_resp = ASSERT_RESULT(GetChangesFromMaster(stream_id));
+
+  ASSERT_FALSE(change_resp.has_error());
+  ASSERT_FALSE(change_resp.cdc_sdk_checkpoint().key().empty());
+  ASSERT_NE(change_resp.cdc_sdk_checkpoint().write_id(), 0);
+}
+
+TEST_F(CDCSDKYsqlTest, TestLargeTxnOnUnqualifiedColocatedTable) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_max_stream_intent_records) = 2;
+
+  ASSERT_OK(SetUpWithParams(1 /* rf */, 1 /* num_masters */, true /* colocated */));
+
+  const vector<string> table_list_suffix = {"_1", "_2"};
+  const int kNumTables = 2;
+  vector<YBTableName> table(kNumTables);
+  int idx = 0;
+  vector<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> tablets(kNumTables);
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  // Create 2 colocated tables. The test_table_1 will not have a primary key and as a result it will
+  // not be included in the stream metadata, hence making it an unqualified table.
+  for (idx = 0; idx < kNumTables; idx++) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0$1(id1 int $2);", kTableName, table_list_suffix[idx],
+        idx ? "primary key" : ""));
+    table[idx] = ASSERT_RESULT(GetTable(
+        &test_cluster_, kNamespaceName, Format("$0$1", kTableName, table_list_suffix[idx])));
+    ASSERT_OK(test_client()->GetTablets(
+        table[idx], 0, &tablets[idx], /* partition_list_version = */ nullptr));
+  }
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  // Perform a large txn on the unqualified colocated table. Note that we have reduced the
+  // value of FLAGS_cdc_max_stream_intent_records for this txn to be considered a "large txn".
+  ASSERT_OK(
+      conn.ExecuteFormat("INSERT INTO $0 values (generate_series(1,100))", table[0].table_name()));
+
+  // Call GetChanges on the colocated tablet and assert that we receive a non-empty key and
+  // write-id.
+  auto change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets[0]));
+  ASSERT_FALSE(change_resp.has_error());
+  ASSERT_FALSE(change_resp.cdc_sdk_checkpoint().key().empty());
+  ASSERT_NE(change_resp.cdc_sdk_checkpoint().write_id(), 0);
+}
+
 }  // namespace cdc
 }  // namespace yb

@@ -386,17 +386,13 @@ Status QLWriteOperation::InitializeKeys(const bool hashed_key, const bool primar
   // Populate the hashed and range components in the same order as they are in the table schema.
   const auto& hashed_column_values = request_.hashed_column_values();
   const auto& range_column_values = request_.range_column_values();
-  dockv::KeyEntryValues hashed_components;
-  dockv::KeyEntryValues range_components;
-  RETURN_NOT_OK(QLKeyColumnValuesToPrimitiveValues(
+  auto hashed_components = VERIFY_RESULT(dockv::QLKeyColumnValuesToPrimitiveValues(
       hashed_column_values, doc_read_context_->schema(), 0,
-      doc_read_context_->schema().num_hash_key_columns(),
-      &hashed_components));
-  RETURN_NOT_OK(QLKeyColumnValuesToPrimitiveValues(
+      doc_read_context_->schema().num_hash_key_columns()));
+  auto range_components = VERIFY_RESULT(dockv::QLKeyColumnValuesToPrimitiveValues(
       range_column_values, doc_read_context_->schema(),
       doc_read_context_->schema().num_hash_key_columns(),
-      doc_read_context_->schema().num_range_key_columns(),
-      &range_components));
+      doc_read_context_->schema().num_range_key_columns()));
 
   // need_pk - true is we should construct pk_key_key_
   const bool need_pk = primary_key && !pk_doc_key_;
@@ -1201,10 +1197,10 @@ Status QLWriteOperation::ApplyDelete(
         nullptr, AddKeysMode::kAll));
 
     // Construct the scan spec basing on the WHERE condition.
-    vector<KeyEntryValue> hashed_components;
-    RETURN_NOT_OK(QLKeyColumnValuesToPrimitiveValues(
+    auto arena = SharedSmallArena();
+    auto hashed_components = VERIFY_RESULT(dockv::QLKeyColumnValuesToPrimitiveValues(
         request_.hashed_column_values(), doc_read_context_->schema(), 0,
-        doc_read_context_->schema().num_hash_key_columns(), &hashed_components));
+        doc_read_context_->schema().num_hash_key_columns(), *arena));
 
     std::optional<int32_t> hash_code =
         request_.has_hash_code() ? std::make_optional<int32_t>(request_.hash_code()) : std::nullopt;
@@ -1212,8 +1208,7 @@ Status QLWriteOperation::ApplyDelete(
     const auto include_static_columns_in_scan =
         range_covers_whole_partition_key && doc_read_context_->schema().has_statics();
     DocQLScanSpec spec(
-        doc_read_context_->schema(), hash_code,
-        hash_code,  // max hash code.
+        doc_read_context_->schema(), hash_code, /* max_hash_code= */ hash_code, arena,
         hashed_components, request_.has_where_expr() ? &request_.where_expr().condition() : nullptr,
         nullptr, request_.query_id(), true /* is_forward_scan */, include_static_columns_in_scan);
 
@@ -1901,10 +1896,8 @@ Status QLReadOperation::SetPagingStateIfNecessary(YQLRowwiseIteratorIf* iter,
 }
 
 Status QLReadOperation::GetIntents(const Schema& schema, LWKeyValueWriteBatchPB* out) {
-  dockv::KeyEntryValues hashed_components;
-  RETURN_NOT_OK(QLKeyColumnValuesToPrimitiveValues(
-      request_.hashed_column_values(), schema, 0, schema.num_hash_key_columns(),
-      &hashed_components));
+  auto hashed_components = VERIFY_RESULT(dockv::QLKeyColumnValuesToPrimitiveValues(
+      request_.hashed_column_values(), schema, 0, schema.num_hash_key_columns()));
   auto* pair = out->add_read_pairs();
   if (hashed_components.empty()) {
     // Empty hashed components mean that we don't have primary key at all, but request

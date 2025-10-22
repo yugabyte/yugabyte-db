@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <optional>
+#include <ranges>
 #include <utility>
 
 #include "yb/client/table_info.h"
@@ -79,6 +80,7 @@ DEFINE_RUNTIME_uint32(ysql_max_invalidation_message_queue_size, 1024,
 
 namespace yb::pggate {
 namespace {
+constexpr size_t kTablespaceCacheCapacity = 1024;
 
 template<class Container, class Key>
 void Erase(Container* container, const Key& key) {
@@ -291,6 +293,24 @@ std::optional<ReadTimeAction> MakeReadTimeActionForFlush(const PgTxnManager& txn
       ? ReadTimeAction::RESET : ReadTimeAction::ENSURE_IS_SET;
 }
 
+template<class Req>
+std::optional<PgTablespaceOid> DoFetchTablespaceOid(const Req& req) {
+  return req.has_tablespace_oid() ? std::optional(req.tablespace_oid()) : std::nullopt;
+}
+
+auto FetchTablespaceOid(const PgsqlOp& op) {
+  return op.is_read()
+      ? DoFetchTablespaceOid(down_cast<const PgsqlReadOp&>(op).read_request())
+      : DoFetchTablespaceOid(down_cast<const PgsqlWriteOp&>(op).write_request());
+}
+
+void Update(TablespaceCache& cache, const PgTableDesc& table, const PgsqlOp& op) {
+  const auto tablespace_oid = FetchTablespaceOid(op);
+  if (tablespace_oid) {
+    cache.Put(table.relfilenode_id(), *tablespace_oid);
+  }
+}
+
 } // namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -486,8 +506,7 @@ PgSession::PgSession(
     YbcPgExecStatsState& stats_state,
     bool is_pg_binary_upgrade,
     std::reference_wrapper<const WaitEventWatcher> wait_event_watcher,
-    BufferingSettings& buffering_settings,
-    bool enable_table_locking)
+    BufferingSettings& buffering_settings)
     : pg_client_(pg_client),
       pg_txn_manager_(std::move(pg_txn_manager)),
       metrics_(stats_state),
@@ -502,7 +521,7 @@ PgSession::PgSession(
           buffering_settings_),
       is_major_pg_version_upgrade_(is_pg_binary_upgrade),
       wait_event_watcher_(wait_event_watcher),
-      enable_table_locking_(enable_table_locking) {
+      tablespace_cache_(kTablespaceCacheCapacity) {
   Update(&buffering_settings_);
 }
 
@@ -702,6 +721,7 @@ void PgSession::InvalidateAllTablesCache(uint64_t min_ysql_catalog_version) {
 
   table_cache_min_ysql_catalog_version_ = min_ysql_catalog_version;
   table_cache_.clear();
+  tablespace_cache_.Clear();
 }
 
 void PgSession::UpdateTableCacheMinVersion(uint64_t min_ysql_catalog_version) {
@@ -933,10 +953,8 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
     }
   }
 
-  options.set_force_global_transaction(yb_force_global_transaction);
-  options.set_is_all_region_local(std::all_of(
-          ops.operations().begin(), ops.operations().end(),
-          [](const auto& op) { return op->is_region_local(); }));
+  options.set_is_all_region_local(std::ranges::all_of(
+      ops.operations(), [](const auto& op) { return op->is_region_local(); }));
 
   // For DDLs, ysql_upgrades and PGCatalog accesses, we always use the default read-time
   // and effectively skip xcluster_database_consistency which enables reads as of xcluster safetime.
@@ -1213,6 +1231,7 @@ Result<PerformFuture> PgSession::DoRunAsync(
         DCHECK(!table_op.IsEmpty());
         const auto& table = *table_op.table;
         const auto& op = *table_op.operation;
+        Update(tablespace_cache_, table, *op);
         const auto session_type = VERIFY_RESULT(GetRequiredSessionType(
             *pg_txn_manager_, table, *op, non_ddl_txn_for_sys_tables_allowed));
         RSTATUS_DCHECK_EQ(
@@ -1322,9 +1341,13 @@ Result<int64_t> PgSession::GetCronLastMinute() { return pg_client_.GetCronLastMi
 
 Status PgSession::AcquireAdvisoryLock(
     const YbcAdvisoryLockId& lock_id, YbcAdvisoryLockMode mode, bool wait, bool session) {
+  std::string lock_id_str;
   YbcFlushDebugContext debug_context {};
   debug_context.reason = YbcFlushReason::YB_ACQUIRE_ADVISORY_LOCK;
-  debug_context.strarg1 = yb_debug_log_docdb_requests ? ToString(lock_id).c_str() : nullptr;
+  if (yb_debug_log_docdb_requests) {
+    lock_id_str = ToString(lock_id);
+    debug_context.strarg1 = lock_id_str.c_str();
+  }
   RETURN_NOT_OK(FlushBufferedOperations(debug_context));
   tserver::PgAcquireAdvisoryLockRequestPB req;
   AdvisoryLockRequestInitCommon(req, pg_client_.SessionID(), lock_id, mode);
@@ -1362,27 +1385,31 @@ Status PgSession::ReleaseAllAdvisoryLocks(uint32_t db_oid) {
 }
 
 Status PgSession::AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLockMode mode) {
-  if (!PREDICT_FALSE(enable_table_locking_)) {
+  if (!PREDICT_FALSE(pg_txn_manager_->EnableTableLocking())) {
     // Object locking feature is not enabled. YB makes best efforts to achieve necessary semantics
     // using mechanisms like catalog version update by DDLs, DDLs aborting on progress DMLs etc.
     // Also skip object locking during initdb bootstrap mode, since it's a single-process,
     // non-concurrent setup with no running tservers and transaction status tablets.
     // During a ysql-major-upgrade initdb/pg_upgrade may run when the cluster is still serving
-    // traffic. However, YB gurantees that there will be no DDLs running at that time.
+    // traffic. However, YB guarantees that there will be no DDLs running at that time.
     return Status::OK();
   }
-
   auto fastpath_lock_type = docdb::MakeObjectLockFastpathLockType(TableLockType(mode));
   if (fastpath_lock_type && pg_txn_manager_->TryAcquireObjectLock(lock_id, *fastpath_lock_type)) {
     return Status::OK();
   }
   VLOG(1) << "Lock acquisition via shared memory not available";
+  std::string lock_id_str;
   YbcFlushDebugContext debug_context {};
   debug_context.reason = YbcFlushReason::YB_ACQUIRE_OBJECT_LOCK;
-  debug_context.strarg1 = yb_debug_log_docdb_requests ? ToString(lock_id).c_str() : nullptr;
+  if (yb_debug_log_docdb_requests) {
+    lock_id_str = ToString(lock_id);
+    debug_context.strarg1 = lock_id_str.c_str();
+  }
 
   return pg_txn_manager_->AcquireObjectLock(
-      VERIFY_RESULT(FlushBufferedOperations(debug_context)), lock_id, mode);
+      VERIFY_RESULT(FlushBufferedOperations(debug_context)),
+      lock_id, mode, tablespace_cache_.Get({lock_id.db_oid, lock_id.relation_oid}));
 }
 
 }  // namespace yb::pggate

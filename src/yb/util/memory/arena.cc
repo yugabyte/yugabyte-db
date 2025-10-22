@@ -78,6 +78,22 @@ uint8_t* ArenaComponent<Traits>::AllocateBytesAligned(const size_t size, const s
 }
 
 template <class Traits>
+Slice ArenaComponent<Traits>::LockBytes(size_t min_size) {
+  if (position_ + min_size <= end_) {
+    ASAN_UNPOISON_MEMORY_REGION(position_, end_ - position_);
+    return Slice(position_, end_);
+  }
+  return {};
+}
+
+template <class Traits>
+void ArenaComponent<Traits>::ConsumeBytes(size_t size) {
+  DCHECK_GE(end_ - position_, size);
+  position_ += size;
+  ASAN_POISON_MEMORY_REGION(position_, end_ - position_);
+}
+
+template <class Traits>
 inline void ArenaComponent<Traits>::AsanUnpoison(const void* addr, size_t size) {
 #ifdef ADDRESS_SANITIZER
   std::lock_guard l(asan_lock_);
@@ -145,15 +161,27 @@ void *ArenaBase<Traits>::AllocateBytesFallback(const size_t size, const size_t a
   // It's possible another thread raced with us and already allocated
   // a new component, in which case we should try the "fast path" again
   Component* cur = CHECK_NOTNULL(AcquireLoadCurrent());
-  void * result = cur->AllocateBytesAligned(size, align);
+  void* result = cur->AllocateBytesAligned(size, align);
   if (PREDICT_FALSE(result != nullptr)) return result;
 
+  return AllocateComponent(size, [size, align](ArenaComponent<Traits>* component) -> void* {
+    if (!component) {
+      return nullptr;
+    }
+    return component->AllocateBytesAligned(size, align);
+  });
+}
+
+template <class Traits>
+template <class Functor>
+auto ArenaBase<Traits>::AllocateComponent(size_t min_size, Functor functor) {
   // Really need to allocate more space.
-  const size_t buffer_size = size + sizeof(Component);
+  const size_t buffer_size = min_size + sizeof(Component);
   // But, allocate enough, even if the request is large. In this case,
   // might violate the max_element_size bound.
-  size_t next_component_size = std::max(std::min(2 * cur->full_size(), max_buffer_size_),
-                                        buffer_size);
+  auto next_component_size = std::max(
+      std::min(2 * CHECK_NOTNULL(AcquireLoadCurrent())->full_size(), max_buffer_size_),
+      buffer_size);
 
   // If soft quota is exhausted we will only get the "minimal" amount of memory
   // we ask for. In this case if we always use "size" as minimal, we may degrade
@@ -166,18 +194,45 @@ void *ArenaBase<Traits>::AllocateBytesFallback(const size_t size, const size_t a
   CHECK_LE(minimal, next_component_size);
   // Now, just make sure we can actually get the memory.
   Buffer buffer = NewBufferInTwoAttempts(next_component_size, minimal, buffer_size);
-  if (!buffer) return nullptr;
+  if (!buffer) {
+    return functor(nullptr);
+  }
 
   // Now, must succeed. The component has at least 'size' bytes.
   ASAN_UNPOISON_MEMORY_REGION(buffer.data(), sizeof(Component));
   auto component = new (buffer.data()) Component(buffer.size(), AcquireLoadCurrent());
-  result = component->AllocateBytesAligned(size, align);
-  CHECK(result != nullptr);
+  auto result = functor(component);
 
   // Now add it to the arena.
   AddComponentUnlocked(std::move(buffer), component);
 
   return result;
+}
+
+template <class Traits>
+Slice ArenaBase<Traits>::DoLockBytes(size_t min_size) {
+  auto result = AcquireLoadCurrent()->LockBytes(min_size);
+  if (result.empty()) {
+    result = LockBytesFallback(min_size);
+  }
+  DCHECK_GE(result.size(), min_size);
+  return result;
+}
+
+template <class Traits>
+void ArenaBase<Traits>::ConsumeBytes(size_t size) {
+  AcquireLoadCurrent()->ConsumeBytes(size);
+}
+
+template <class Traits>
+Slice ArenaBase<Traits>::LockBytesFallback(size_t min_size) {
+  std::lock_guard lock(component_lock_);
+  return AllocateComponent(min_size, [min_size](ArenaComponent<Traits>* component) -> Slice {
+    if (!component) {
+      return {};
+    }
+    return component->LockBytes(min_size);
+  });
 }
 
 template <class Traits>
@@ -285,11 +340,14 @@ template class ArenaBase<ArenaTraits>;
 namespace {
 
 struct AllocatedBuffer {
+  size_t allocation_size;
+
   char* address = nullptr;
   size_t size = std::numeric_limits<size_t>::max();
 
+  explicit AllocatedBuffer(size_t size) : allocation_size(size) {}
+
   char* Allocate(size_t bytes, size_t alignment) {
-    auto allocation_size = Arena::kStartBlockSize;
     auto* allocated = static_cast<char*>(malloc(allocation_size));
     auto* result = align_up(allocated, alignment);
     address = align_up(pointer_cast<char*>(result + bytes), 16);
@@ -346,6 +404,7 @@ class SharedArenaAllocator {
   AllocatedBuffer* buffer_;
 };
 
+template <class A>
 class PreallocatedArena {
  public:
   explicit PreallocatedArena(const AllocatedBuffer& buffer)
@@ -353,23 +412,35 @@ class PreallocatedArena {
         arena_(&allocator_, buffer.size) {
   }
 
-  ThreadSafeArena& arena() {
+  A& arena() {
     return arena_;
   }
 
  private:
   PreallocatedBufferAllocator allocator_;
-  ThreadSafeArena arena_;
+  A arena_;
 };
+
+template <class A>
+std::shared_ptr<A> SharedArenaImpl(size_t allocation_size) {
+  AllocatedBuffer buffer(allocation_size);
+  SharedArenaAllocator<A> allocator(&buffer);
+  auto preallocated_arena = std::allocate_shared<PreallocatedArena<A>>(allocator, buffer);
+  return std::shared_ptr<A>(std::move(preallocated_arena), &preallocated_arena->arena());
+}
 
 } // namespace
 
-std::shared_ptr<ThreadSafeArena> SharedArena() {
-  AllocatedBuffer buffer;
-  SharedArenaAllocator<Arena> allocator(&buffer);
-  auto preallocated_arena = std::allocate_shared<PreallocatedArena>(allocator, buffer);
-  return std::shared_ptr<ThreadSafeArena>(
-      std::move(preallocated_arena), &preallocated_arena->arena());
+ThreadSafeArenaPtr SharedThreadSafeArena() {
+  return SharedArenaImpl<ThreadSafeArena>(ThreadSafeArena::kStartBlockSize);
+}
+
+ArenaPtr SharedArena() {
+  return SharedArenaImpl<Arena>(Arena::kStartBlockSize);
+}
+
+ArenaPtr SharedSmallArena() {
+  return SharedArenaImpl<Arena>(1024);
 }
 
 }  // namespace yb

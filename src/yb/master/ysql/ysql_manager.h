@@ -15,10 +15,11 @@
 
 #include "yb/common/read_hybrid_time.h"
 
-#include "yb/master/ysql/ysql_manager_if.h"
-#include "yb/master/ysql/ysql_catalog_config.h"
-
 #include "yb/master/master_admin.pb.h"
+#include "yb/master/ysql/ysql_catalog_config.h"
+#include "yb/master/ysql/ysql_manager_if.h"
+
+#include "yb/rpc/scheduler.h"
 
 namespace yb {
 
@@ -34,7 +35,10 @@ class YsqlManager : public YsqlManagerIf {
  public:
   YsqlManager(Master& master, CatalogManager& catalog_manager, SysCatalogTable& sys_catalog);
 
-  virtual ~YsqlManager() = default;
+  ~YsqlManager() override = default;
+
+  void StartShutdown();
+  void CompleteShutdown();
 
   void Clear();
 
@@ -131,8 +135,30 @@ class YsqlManager : public YsqlManagerIf {
       const PgTableAllOids& oids,
       const ReadHybridTime& read_time = ReadHybridTime()) const override;
 
+  void RunBgTasks(const LeaderEpoch& epoch);
+
  private:
   Result<bool> StartRunningInitDbIfNeededInternal(const LeaderEpoch& epoch);
+
+  Status CreatePgAutoAnalyzeService(const LeaderEpoch& epoch);
+
+  void StartTablespaceBgTaskIfStopped();
+
+  // Helper function to schedule the next iteration of the tablespace info task.
+  void ScheduleRefreshTablespaceInfoTask(const bool schedule_now = false);
+
+  // Background task that refreshes the in-memory state for YSQL tables with their associated
+  // tablespace info.
+  // Note: This function should only ever be called by StartTablespaceBgTaskIfStopped().
+  void RefreshTablespaceInfoPeriodically();
+
+  void StartPgCatalogVersionsBgTaskIfStopped();
+
+  // Helper function to schedule the next iteration of the pg catalog versions task.
+  void ScheduleRefreshPgCatalogVersionsTask(bool schedule_now = false);
+
+  // Background task that refreshes the in-memory map for YSQL pg_yb_catalog_version table.
+  void RefreshPgCatalogVersionInfoPeriodically();
 
   Master& master_;
   CatalogManager& catalog_manager_;
@@ -146,6 +172,16 @@ class YsqlManager : public YsqlManagerIf {
   std::atomic<bool> pg_proc_exists_{false};
 
   bool advisory_locks_table_created_ = false;
+
+  bool pg_auto_analyze_service_created_ = false;
+
+  // Whether the periodic job to update tablespace info is running.
+  std::atomic<bool> tablespace_bg_task_running_;
+
+  rpc::ScheduledTaskTracker refresh_ysql_tablespace_info_task_;
+
+  std::atomic<bool> pg_catalog_versions_bg_task_running_ = {false};
+  rpc::ScheduledTaskTracker refresh_ysql_pg_catalog_versions_task_;
 
   DISALLOW_COPY_AND_ASSIGN(YsqlManager);
 };

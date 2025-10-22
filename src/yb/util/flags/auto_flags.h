@@ -117,17 +117,20 @@ auto AutoFlagValueAsString(const T& value) {
 // FLAG_<name>_initial_val_is_not_valid.
 #define _DEFINE_AUTO(type, name, flag_class, initial_val, target_val, txt) \
   static_assert( \
-      yb::auto_flags_internal::BOOST_PP_CAT(IsValid_, type)(initial_val), \
-      "Initial value of AutoFlag " BOOST_PP_STRINGIZE(name) " '" BOOST_PP_STRINGIZE(initial_val) "' is not assignable to " BOOST_PP_STRINGIZE(type)); \
+      yb::flags_internal::BOOST_PP_CAT(IsValid_, type)(initial_val), \
+      "Initial value of AutoFlag " BOOST_PP_STRINGIZE(name) " '" \
+      BOOST_PP_STRINGIZE(initial_val) "' is not assignable to " BOOST_PP_STRINGIZE(type)); \
   static_assert( \
-      yb::auto_flags_internal::BOOST_PP_CAT(IsValid_, type)(target_val), \
-      "Target value of AutoFlag " BOOST_PP_STRINGIZE(name) " '" BOOST_PP_STRINGIZE(target_val) "' is not assignable to " BOOST_PP_STRINGIZE(type)); \
+      yb::flags_internal::BOOST_PP_CAT(IsValid_, type)(target_val), \
+      "Target value of AutoFlag " BOOST_PP_STRINGIZE(name) " '" \
+      BOOST_PP_STRINGIZE(target_val) "' is not assignable to " BOOST_PP_STRINGIZE(type)); \
   static_assert( \
       (initial_val) != (target_val), \
       "Initial and target value of AutoFlag " BOOST_PP_STRINGIZE(name) " are the same"); \
   BOOST_PP_CAT(DEFINE_RUNTIME_, type)(name, initial_val, txt); \
   namespace { \
-  yb::auto_flags_internal::AutoFlagDescRegisterer BOOST_PP_CAT(afr_, name)(BOOST_PP_STRINGIZE(name),                                    /* name */ \
+  yb::auto_flags_internal::AutoFlagDescRegisterer BOOST_PP_CAT(afr_, name)( \
+      BOOST_PP_STRINGIZE(name),                 /* name */ \
       &BOOST_PP_CAT(FLAGS_, name),              /* flag_ptr */ \
       ::yb::AutoFlagClass::flag_class,          /* flag_class */ \
       ::yb::AutoFlagValueAsString(initial_val), /* initial_val */ \
@@ -138,20 +141,21 @@ auto AutoFlagValueAsString(const T& value) {
 
 #define _DEFINE_AUTO_string(name, flag_class, initial_val, target_val, txt) \
   static_assert( \
-      yb::auto_flags_internal::IsValid_string(initial_val), \
+      yb::flags_internal::IsValid_string(initial_val), \
       "Initial value of AutoFlag " BOOST_PP_STRINGIZE(name) " '" initial_val \
-                                                            "' is not assignable to string"); \
+               "' is not assignable to string"); \
   static_assert( \
-      yb::auto_flags_internal::IsValid_string(target_val), \
+      yb::flags_internal::IsValid_string(target_val), \
       "Target value of AutoFlag " BOOST_PP_STRINGIZE(name) " '" target_val \
                                                            "' is not assignable to string"); \
   static_assert( \
-      yb::auto_flags_internal::StringsNotEqual(initial_val, target_val), \
+      yb::flags_internal::StringsNotEqual(initial_val, target_val), \
       "Initial and " \
       "target value of AutoFlag " BOOST_PP_STRINGIZE(name) " are the same"); \
   DEFINE_RUNTIME_string(name, initial_val, txt); \
   namespace { \
-  yb::auto_flags_internal::AutoFlagDescRegisterer BOOST_PP_CAT(afr_, name)(BOOST_PP_STRINGIZE(name),                         /* name */ \
+  yb::auto_flags_internal::AutoFlagDescRegisterer BOOST_PP_CAT(afr_, name)( \
+      BOOST_PP_STRINGIZE(name),          /* name */ \
       &BOOST_PP_CAT(FLAGS_, name),   /* flag_ptr */ \
       yb::AutoFlagClass::flag_class, /* flag_class */ \
       initial_val,                   /* initial_val */ \
@@ -161,44 +165,6 @@ auto AutoFlagValueAsString(const T& value) {
   TAG_FLAG(name, stable)
 
 namespace auto_flags_internal {
-
-constexpr bool StringsNotEqual(char const* a, char const* b) {
-    return std::string_view(a) != b;
-}
-
-template <typename T>
-constexpr bool IsValid_bool(T a) {
-  return std::is_same<bool, decltype(a)>::value;
-}
-
-template <typename T>
-constexpr bool IsValid_int32(T a) {
-  return std::is_same<int32_t, decltype(a)>::value;
-}
-
-template <typename T>
-constexpr bool IsValid_int64(T a) {
-  return std::is_same<int64_t, decltype(a)>::value || std::is_same<uint32_t, decltype(a)>::value ||
-         std::is_same<int32_t, decltype(a)>::value;
-}
-
-template <typename T>
-constexpr bool IsValid_uint64(T a) {
-  return std::is_same<uint64_t, decltype(a)>::value || std::is_same<uint32_t, decltype(a)>::value ||
-         std::is_same<int32_t, decltype(a)>::value;
-}
-
-template <typename T>
-constexpr bool IsValid_double(T a) {
-  return std::is_same<double, decltype(a)>::value || std::is_same<int64_t, decltype(a)>::value ||
-         std::is_same<uint32_t, decltype(a)>::value || std::is_same<int32_t, decltype(a)>::value;
-}
-
-template <typename T>
-constexpr bool IsValid_string(T a) {
-  return std::is_same<std::string, decltype(a)>::value ||
-         std::is_same<const char*, decltype(a)>::value || std::is_same<char*, decltype(a)>::value;
-}
 
 void SetAutoFlagDescription(const AutoFlagDescription* desc);
 

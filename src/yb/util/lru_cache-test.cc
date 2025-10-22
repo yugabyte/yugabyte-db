@@ -51,4 +51,20 @@ TEST(LRUCacheTest, Erase) {
   ASSERT_EQ(AsString(cache), "[5, 2]");
 }
 
+TEST(LRUCacheTest, Find) {
+  LRUCache<int> cache(5);
+  cache.insert(1);
+  cache.insert(2);
+  cache.insert(3);
+  cache.insert(4);
+  cache.insert(5);
+  auto last = std::prev(cache.end());
+  ASSERT_EQ(*last, 1);
+  auto i = cache.find(10);
+  ASSERT_EQ(i, cache.end());
+  i = cache.find(1);
+  ASSERT_NE(i, cache.end());
+  ASSERT_EQ(AsString(cache), "[1, 5, 4, 3, 2]");
+}
+
 } // namespace yb

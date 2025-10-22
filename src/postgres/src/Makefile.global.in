@@ -274,6 +274,8 @@ LLVM_CPPFLAGS = @LLVM_CPPFLAGS@
 LLVM_CFLAGS = @LLVM_CFLAGS@
 LLVM_CXXFLAGS = @LLVM_CXXFLAGS@
 
+YB_CCLD = @CXX@
+
 # Kind-of compilers
 
 BISON = @BISON@
@@ -828,7 +830,7 @@ endif
 # since we put -l switches into LDFLAGS and those are order-sensitive.
 # In addition, include CFLAGS and LDFLAGS_EX per project conventions.
 %: %.o
-	$(CC) $(CFLAGS) $^ $(LDFLAGS) $(LDFLAGS_EX) $(LIBS) -o $@$(X)
+	$(YB_CCLD) $(CFLAGS) $^ $(LDFLAGS) $(LDFLAGS_EX) $(LIBS) -o $@$(X)
 
 ifndef PGXS
 

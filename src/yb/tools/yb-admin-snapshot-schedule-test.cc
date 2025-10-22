@@ -110,6 +110,12 @@ Result<size_t> GetTabletCount(
   return tablets.size();
 }
 
+Result<std::vector<master::TabletLocationsPB>> GetTablets(
+    TestAdminClient* client, IncludeInactive include_inactive = IncludeInactive::kFalse) {
+  return client->GetTabletLocations(
+      client::kTableName.namespace_name(), client::kTableName.table_name(), include_inactive);
+}
+
 } // namespace
 
 YB_DEFINE_ENUM(YsqlColocationConfig, (kNotColocated)(kDBColocated)(kTablegroup));
@@ -1180,11 +1186,6 @@ class YbAdminSnapshotScheduleTestWithYsqlParam
       public ::testing::WithParamInterface<ScheduleRestoreTestParams> {
  public:
   void SetUp() override {
-    if (GetRestoreType() == RestoreType::kClone && IsAsan()) {
-      LOG(INFO) << "This test is disabled in ASAN as ysql_dump fails due to memory leaks inherited "
-                << "from pg_dump.";
-      GTEST_SKIP();
-    }
     YbAdminSnapshotScheduleTestWithYsql::SetUp();
   }
 
@@ -2791,6 +2792,25 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlSequenceU
 }
 
 TEST_P(
+    YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam,
+    RestoreWithDropMaterializedViewAndDropColumn) {
+  // Test restoring to before a drop materialized view and drop column (regression test for #23740).
+  auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test_table(id int, name text, age int, description text, place text, "
+      "salary int, primary key(id ASC));"));
+  ASSERT_OK(conn.Execute("CREATE MATERIALIZED VIEW mat_view as SELECT * FROM test_table"));
+  auto t1 = ASSERT_RESULT(GetCurrentTime());
+  ASSERT_OK(conn.Execute("DROP MATERIALIZED VIEW mat_view"));
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP COLUMN salary"));
+  ASSERT_OK(conn.Execute("CREATE MATERIALIZED VIEW mat_view as SELECT * FROM test_table"));
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, t1));
+  conn = ASSERT_RESULT(ConnectToRestoredDb());
+}
+
+TEST_P(
     YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlSequenceVerifyPartialRestore) {
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
@@ -4237,7 +4257,8 @@ class YbAdminRestoreAfterSplitTest : public YbAdminSnapshotScheduleTest {
             "--enable_automatic_tablet_splitting=false",
             "--enable_transactional_ddl_gc=false",
             "--leader_lease_duration_ms=6000",
-            "--leader_failure_max_missed_heartbeat_periods=12" };
+            "--leader_failure_max_missed_heartbeat_periods=12"
+            };
   }
 
   std::vector<std::string> ExtraTSFlags() override {
@@ -4601,6 +4622,73 @@ TEST_F(YbAdminRestoreAfterSplitTest, TestRestoreUncompactedChildTabletAndSplit) 
       table_name, /* wait_for_parent_deletion */ false, tablets[0].tablet_id()));
   // SplitTablet does most work asynchronously, so sanity check the tablet count here.
   ASSERT_EQ(ASSERT_RESULT(GetTabletCount(test_admin_client_.get())), 3);
+}
+
+TEST_F(YbAdminRestoreAfterSplitTest, SplitTabletTwice) {
+  const int kNumRows = 10000;
+
+  // Create exactly one tserver so that we only have to invalidate one cache.
+  SetRf1Flags();
+
+  auto schedule_id = ASSERT_RESULT(PrepareCql());
+
+  auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
+
+  // Insert enough data to cause splitting.
+  ASSERT_RESULT(CreateTableAndInsertData(&conn, kNumRows));
+  auto original_tablets =
+      ASSERT_RESULT(GetTablets(test_admin_client_.get(), IncludeInactive::kTrue));
+  ASSERT_EQ(original_tablets.size(), 1);
+  LOG(INFO) << "Grandparent tablet is: " << original_tablets[0].tablet_id();
+
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+
+  ASSERT_OK(test_admin_client_->SplitTabletAndWait(
+      client::kTableName.namespace_name(), client::kTableName.table_name(),
+      /* wait_for_parent_deletion */ true));
+
+  // Read data so that the partitions in the cache get updated to the
+  // post-split values.
+  int rows = ASSERT_RESULT(GetRowCount(&conn));
+  ASSERT_EQ(rows, kNumRows);
+
+  // There should be 2 tablets since we split 1 to 2.
+  auto tablets = ASSERT_RESULT(GetTablets(test_admin_client_.get(), IncludeInactive::kTrue));
+
+  auto parent_tablet = tablets[0];
+  LOG(INFO) << "Splitting parent tablet " << parent_tablet.tablet_id();
+  ASSERT_OK(test_admin_client_->SplitTabletAndWait(
+      client::kTableName.namespace_name(), client::kTableName.table_name(),
+      /* wait_for_parent_deletion */ true, parent_tablet.tablet_id()));
+
+  // Perform a restoration.
+  LOG(INFO) << "First restore";
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+  rows = ASSERT_RESULT(GetRowCount(&conn));
+  ASSERT_EQ(rows, kNumRows);
+
+  // There should be 1 tablet. The split children should have been deleted.
+  auto tablets_after_restore =
+      ASSERT_RESULT(GetTablets(test_admin_client_.get(), IncludeInactive::kTrue));
+  LOG(INFO) << "After restore we have " << tablets_after_restore.size() << " tablets";
+  for (const auto& tablet : tablets_after_restore) {
+    LOG(INFO) << "After restore we have " << tablet.tablet_id();
+  }
+  ASSERT_EQ(tablets_after_restore.size(), 1);
+
+  auto original_tablet = original_tablets[0];
+  ASSERT_OK(test_admin_client_->SplitTabletAndWait(
+      client::kTableName.namespace_name(), client::kTableName.table_name(),
+      /* wait_for_parent_deletion */ true, original_tablet.tablet_id()));
+  auto tablets_after_final_split =
+      ASSERT_RESULT(GetTablets(test_admin_client_.get(), IncludeInactive::kTrue));
+  LOG(INFO) << Format("Tablets post final split:");
+  for (const auto& tablet : tablets_after_final_split) {
+    LOG(INFO) << "Tablet id: " << tablet.tablet_id();
+  }
+  ASSERT_OK(client_->DeleteTable(client::kTableName));
+  ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
 }
 
 TEST_F(YbAdminRestoreDuringSplit, VerifyParentNotHiddenPostRestore) {

@@ -1663,6 +1663,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     userIntent.numNodes = 3;
     userIntent.ybSoftwareVersion = "2.21.1.1-b1";
     userIntent.accessKeyCode = "demo-access";
+    userIntent.universeName = "universe-test";
     userIntent.regionList = ImmutableList.of(region1.getUuid(), region2.getUuid());
     PlacementInfo pi = new PlacementInfo();
     PlacementInfoUtil.addPlacementZone(az1.getUuid(), pi, 1, 1, false);

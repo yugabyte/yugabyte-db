@@ -102,6 +102,8 @@ class Webserver : public WebCallbackRegistry {
 
   bool ContainsFlag(const std::string& flag) const;
 
+  const std::string& DocRoot() const;
+
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;

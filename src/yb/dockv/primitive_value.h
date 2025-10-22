@@ -37,8 +37,6 @@
 #include "yb/util/timestamp.h"
 #include "yb/util/uuid.h"
 
-#include "yb/dockv/key_entry_value.h"
-
 namespace yb::dockv {
 
 // Used for extending a list.

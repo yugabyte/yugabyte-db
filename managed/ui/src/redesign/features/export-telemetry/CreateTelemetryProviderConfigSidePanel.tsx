@@ -78,7 +78,7 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
     },
     {
       onSuccess: (data: any) => {
-        toast.success('Create export configuration', data?.name);
+        toast.success('Created export configuration', data?.name);
         onClose();
       },
       onError: (error) => {
@@ -523,7 +523,7 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
             disabled={isViewMode}
             descriptionText={
               <span>
-                <Trans i18nKey={'gcpDescription'} />
+                <Trans i18nKey={`${TRANSLATION_KEY_PREFIX}.gcpDescription`} />
               </span>
             }
           />

@@ -105,16 +105,19 @@ YbMaybeLockMasterCatalogVersion()
 	 * When auto analyze is turned on, we don't want ANALYZE DDL triggered by auto analyze to
 	 * abort user DDLs. To achieve this, regular DDLs take a FOR KEY SHARE lock on the catalog version
 	 * row with a high priority (see pg_session.cc) while ANALYZE triggered by auto analyze takes
-	 * a low priority FOR UPDATE lock on the row.
-	 * (1) Global DDLs (i.e., those that modify shared catalog tables) will increment all catalog
-	 *		 versions. We still only lock the catalog version of the current database. So, they might
-	 *		 still face the problem described above that ANALYZE can abort global DDL run on a
-	 *       different DB.
+	 * a low priority FOR UPDATE lock on all rows of the catalog version table.
+	 * (1) Global DDLs (i.e., those that modify shared catalog tables) increment all catalog
+	 *		 versions at the end of the DDL but only lock the catalog version of the current database
+	 *       when they start. To enable them to abort ANALYZE on different DBs that can conflict with
+	 *       them, ANALYZE locks all rows of catalog version table. It is challenging to identify a
+	 *       global DDL at the start of a DDL so the other way around does not work.
 	 * (2) We enable this feature only if the invalidation messages are used and per-database catalog
 	 *		 version mode is enabled.
+	 *
+	 * TODO(#27037): Re-enable table locks check when concurrent DDL is ready.
 	 */
 	if (yb_user_ddls_preempt_auto_analyze &&
-		!*YBCGetGFlags()->enable_object_locking_for_table_locks &&
+	/* !*YBCGetGFlags()->enable_object_locking_for_table_locks && */
 		YbIsInvalidationMessageEnabled() && YBIsDBCatalogVersionMode())
 	{
 		elog(DEBUG3, "Locking catalog version for db oid %d", MyDatabaseId);
@@ -921,13 +924,15 @@ YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version,
 								  false /* is_region_local */ ,
 								  &ybc_stmt));
 
-	Datum		oid_datum = Int32GetDatum(db_oid);
-	YbcPgExpr	pkey_expr = YBCNewConstant(ybc_stmt, oid_attrdesc->atttypid,
-										   oid_attrdesc->attcollation, oid_datum,
-										   false /* is_null */ );
+	if (!(acquire_lock && yb_use_internal_auto_analyze_service_conn))
+	{
+		Datum		oid_datum = Int32GetDatum(db_oid);
+		YbcPgExpr	pkey_expr = YBCNewConstant(ybc_stmt, oid_attrdesc->atttypid,
+											   oid_attrdesc->attcollation,
+											   oid_datum, false /* is_null */ );
 
-	HandleYBStatus(YBCPgDmlBindColumn(ybc_stmt, 1, pkey_expr));
-
+		HandleYBStatus(YBCPgDmlBindColumn(ybc_stmt, 1, pkey_expr));
+	}
 	for (AttrNumber attnum = 1; attnum <= natts; ++attnum)
 		YbDmlAppendTargetRegularAttr(&Desc_pg_yb_catalog_version[attnum - 1],
 									 ybc_stmt);

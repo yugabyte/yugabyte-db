@@ -19,7 +19,7 @@ YugabyteDB exports metrics through various endpoints in JSON, HTML, and Promethe
 
 This section describes the most frequently used metrics, along with how you can consume them.
 
-For information on query tuning, refer to [Query tuning](../../../explore/query-1-performance/).
+For information on query tuning, refer to [Query tuning](../../../launch-and-manage/monitor-and-alert/query-tuning/).
 
 ## Frequently used metrics
 

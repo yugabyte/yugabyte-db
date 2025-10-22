@@ -489,7 +489,7 @@ class PgCatalogVersionTest : public LibPqTestBase {
     // Create a number of databases.
     auto conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
     const auto yugabyte_db_oid = ASSERT_RESULT(GetDatabaseOid(&conn_yugabyte, kYugabyteDatabase));
-    const int num_databases = 10;
+    const int num_databases = IsTsan() ? 5 : 10;
     for (int i = 0; i < num_databases; ++i) {
       ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE DATABASE test_db$0", i));
     }
@@ -533,7 +533,11 @@ class PgCatalogVersionTest : public LibPqTestBase {
                               "yb_pg_stat_get_backend_local_catalog_version(NULL) "
                               "WHERE datid != 1 ORDER BY datid ASC, local_catalog_version ASC";
     auto result = ASSERT_RESULT((conn_yugabyte.FetchAllAsString(query)));
-    const string expected =
+    const string expected = IsTsan() ?
+        Format("$0, 16; "
+               "16384, 1; 16385, 2; 16385, 3; 16386, 4; 16386, 5; 16386, 6; "
+               "16387, 7; 16387, 8; 16387, 9; 16387, 10; "
+               "16388, 11; 16388, 12; 16388, 13; 16388, 14; 16388, 15", yugabyte_db_oid) :
         Format("$0, 56; "
                "16384, 1; 16385, 2; 16385, 3; 16386, 4; 16386, 5; 16386, 6; "
                "16387, 7; 16387, 8; 16387, 9; 16387, 10; "
@@ -1740,7 +1744,18 @@ TEST_F(PgCatalogVersionTest, NonBreakingDDLMode) {
   ASSERT_OK(conn1.Execute("ABORT"));
 }
 
-TEST_F(PgCatalogVersionTest, NonIncrementingDDLMode) {
+class PgCatalogVersionNonIncrementingDDLModeTest
+    : public PgCatalogVersionTest,
+      public ::testing::WithParamInterface<bool> {
+};
+
+INSTANTIATE_TEST_CASE_P(, PgCatalogVersionNonIncrementingDDLModeTest,
+                        ::testing::Values(false, true));
+
+TEST_P(PgCatalogVersionNonIncrementingDDLModeTest, NonIncrementingDDLMode) {
+  const bool enable_inval_messages = GetParam();
+  enable_inval_messages ? RestartClusterWithInvalMessageEnabled()
+                        : RestartClusterWithInvalMessageDisabled();
   const string kDatabaseName = "yugabyte";
 
   auto conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
@@ -1776,36 +1791,56 @@ TEST_F(PgCatalogVersionTest, NonIncrementingDDLMode) {
 
   // Let's start over, but this time use yb_make_next_ddl_statement_nonincrementing to suppress
   // incrementing catalog version.
+  // If invalidation messages are enabled, then yb_make_next_ddl_statement_nonincrementing
+  // should not have any effect at all.
   ASSERT_OK(conn.Execute("SET yb_make_next_ddl_statement_nonincrementing TO TRUE"));
   ASSERT_OK(conn.Execute("REVOKE SELECT ON t1 FROM public"));
   new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
-  ASSERT_EQ(new_version, version);
+  if (enable_inval_messages) {
+    ASSERT_EQ(new_version, version + 1);
+  } else {
+    ASSERT_EQ(new_version, version);
+  }
 
   ASSERT_OK(conn.Execute("SET yb_make_next_ddl_statement_nonincrementing TO TRUE"));
   ASSERT_OK(conn.Execute("GRANT SELECT ON t1 TO public"));
   new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
-  ASSERT_EQ(new_version, version);
+  if (enable_inval_messages) {
+    ASSERT_EQ(new_version, version + 2);
+  } else {
+    ASSERT_EQ(new_version, version);
+  }
 
   ASSERT_OK(conn.Execute("SET yb_make_next_ddl_statement_nonincrementing TO TRUE"));
   ASSERT_OK(conn.Execute("CREATE INDEX idx3 ON t1(a)"));
   new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
   // By default CREATE INDEX runs concurrently and its algorithm requires to bump up catalog
   // version 3 times, only the first bump is suppressed.
-  ASSERT_EQ(new_version, version + 2);
+  if (enable_inval_messages) {
+    ASSERT_EQ(new_version, version + 5);
+  } else {
+    ASSERT_EQ(new_version, version + 2);
+  }
   version = new_version;
 
   ASSERT_OK(conn.Execute("SET yb_make_next_ddl_statement_nonincrementing TO TRUE"));
   ASSERT_OK(conn.Execute("CREATE INDEX NONCONCURRENTLY idx4 ON t1(a)"));
   new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
-  ASSERT_EQ(new_version, version);
+  if (enable_inval_messages) {
+    ASSERT_EQ(new_version, version + 1);
+  } else {
+    ASSERT_EQ(new_version, version);
+  }
 
-  // Verify that the session variable yb_make_next_ddl_statement_nonbreaking auto-resets to false.
+  // Verify that the session variable yb_make_next_ddl_statement_nonincrementing auto-resets
+  // to false.
+  version = new_version;
   ASSERT_OK(conn.Execute("REVOKE SELECT ON t1 FROM public"));
   new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
   ASSERT_EQ(new_version, version + 1);
   version = new_version;
 
-  // Since yb_make_next_ddl_statement_nonbreaking auto-resets to false, we should see catalog
+  // Since yb_make_next_ddl_statement_nonincrementing auto-resets to false, we should see catalog
   // version gets bumped up as before.
   ASSERT_OK(conn.Execute("GRANT SELECT ON t1 TO public"));
   new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
@@ -1823,7 +1858,7 @@ TEST_F(PgCatalogVersionTest, NonIncrementingDDLMode) {
   version = new_version;
 
   // Now test the scenario where we create a new table, followed by create index nonconcurrently
-  // on the new table. Use yb_make_next_ddl_statement_nonbreaking to suppress catalog version
+  // on the new table. Use yb_make_next_ddl_statement_nonincrementing to suppress catalog version
   // increment on the create index statement.
   // First create a second connection conn2.
   auto conn2 = ASSERT_RESULT(ConnectToDB(kDatabaseName));
@@ -1832,7 +1867,11 @@ TEST_F(PgCatalogVersionTest, NonIncrementingDDLMode) {
   ASSERT_OK(conn.Execute("SET yb_make_next_ddl_statement_nonincrementing TO TRUE"));
   ASSERT_OK(conn.Execute("CREATE INDEX NONCONCURRENTLY a_idx ON demo (a)"));
   new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
-  ASSERT_EQ(new_version, version);
+  if (enable_inval_messages) {
+    ASSERT_EQ(new_version, version + 1);
+  } else {
+    ASSERT_EQ(new_version, version);
+  }
 
   // Sanity test on conn2 write, count, select and delete on the new table created on conn.
   ASSERT_OK(conn2.Execute("INSERT INTO demo SELECT n, n FROM generate_series(1,100) n"));
@@ -1913,7 +1952,7 @@ TEST_F(PgCatalogVersionTest, DisableNopAlterRoleOptimization) {
 }
 
 TEST_F(PgCatalogVersionTest, SimulateDelayedHeartbeatResponse) {
-  RestartClusterWithDBCatalogVersionMode({"--TEST_delay_set_catalog_version_table_mode_count=30"});
+  RestartClusterWithDBCatalogVersionMode({"--TEST_delay_set_catalog_version_table_mode_count=40"});
   auto status = ResultToStatus(Connect());
   ASSERT_TRUE(status.IsNetworkError()) << status;
   ASSERT_STR_CONTAINS(status.ToString(),
@@ -2161,6 +2200,14 @@ TEST_F(PgCatalogVersionTest, InvalMessageSanityTest) {
     ASSERT_OK(conn.Execute("CREATE TABLE foo(id TEXT)"));
   }
   ASSERT_OK(conn.Execute("DROP TABLE foo"));
+
+  auto yugabyte_db_oid = ASSERT_RESULT(GetDatabaseOid(&conn, kYugabyteDatabase));
+  // Get the little endian formatted string of yugabyte db oid.
+  auto byte_swapped_yugabyte_db_oid = std::byteswap(yugabyte_db_oid);
+  char buffer[9]; // 8 characters for the hex string + 1 for the null terminator
+  snprintf(buffer, sizeof(buffer), "%08x", byte_swapped_yugabyte_db_oid);
+  auto yugabyte_db_oid_str = std::string(buffer);
+
   auto query = "SELECT current_version, encode(messages, 'hex') "
                "FROM pg_yb_invalidation_messages"s;
   auto expected_result0 =
@@ -2181,7 +2228,7 @@ TEST_F(PgCatalogVersionTest, InvalMessageSanityTest) {
       "0003600000000000000d034000021e2d2ca0000000000000000fb00000000000000d0340"
       "000300a00000000000000000000fb00000000000000d0340000300a00000000000000000"
       "000fe00000000000000d0340000004000000000000000000000fb00000000000000d0340"
-      "000300a00000000000000000000";
+      "000300a00000000000000000000"s;
   auto expected_result1 =
       "2, 5000000000000000d034000040c1eb0a00000000000000004f00000000000000d0340"
       "0005ac4b85300000000000000005000000000000000d034000047a2537b0000000000000"
@@ -2201,7 +2248,11 @@ TEST_F(PgCatalogVersionTest, InvalMessageSanityTest) {
       "0004657085300000000000000003600000000000000d034000021e2d2ca0000000000000"
       "000fb00000000000000d0340000300a00000000000000000000fb00000000000000d0340"
       "000300a00000000000000000000fe00000000000000d0340000004000000000000000000"
-      "000fb00000000000000d0340000300a00000000000000000000";
+      "000fb00000000000000d0340000300a00000000000000000000"s;
+  // The hard-coded litten-endian yugabyte db oid text.
+  auto hard_coded_yugabyte_db_oid_str = "d0340000";
+  ReplaceAll(&expected_result0, hard_coded_yugabyte_db_oid_str , yugabyte_db_oid_str);
+  ReplaceAll(&expected_result1, hard_coded_yugabyte_db_oid_str, yugabyte_db_oid_str);
   auto result = ASSERT_RESULT(conn.FetchAllAsString(query));
   if (choice) {
     ASSERT_EQ(result, expected_result1);
@@ -2642,14 +2693,15 @@ TEST_F(PgCatalogVersionTest, InvalMessageAlterTableRefreshTest) {
 }
 
 TEST_F(PgCatalogVersionTest, InvalMessageLocalCatalogVersion) {
-  RestartClusterWithInvalMessageEnabled();
+  RestartClusterWithInvalMessageEnabled({ "--ysql_enable_auto_analyze=false" });
   InvalMessageLocalCatalogVersionHelper();
 }
 
 TEST_F(PgCatalogVersionTest, InvalMessageGarbageCollection) {
   RestartClusterWithInvalMessageEnabled(
       { "--check_lagging_catalog_versions_interval_secs=5",
-        "--min_invalidation_message_retention_time_secs=1" });
+        "--min_invalidation_message_retention_time_secs=1",
+        "--ysql_enable_auto_analyze=false" });
   InvalMessageLocalCatalogVersionHelper();
 }
 
@@ -3311,10 +3363,10 @@ TEST_F(PgCatalogVersionTest, InvalMessageDeltaTableLoad) {
               << ", get_schema_count_after: " << get_schema_count_after;
     if (i == 0) {
       ASSERT_EQ(open_table_count_after - open_table_count_before, 143);
-      ASSERT_EQ(get_schema_count_after - get_schema_count_before, 681);
+      ASSERT_EQ(get_schema_count_after - get_schema_count_before, 656);
     } else {
       ASSERT_EQ(open_table_count_after - open_table_count_before, 638);
-      ASSERT_EQ(get_schema_count_after - get_schema_count_before, 781);
+      ASSERT_EQ(get_schema_count_after - get_schema_count_before, 756);
     }
   }
 }
@@ -3377,7 +3429,7 @@ TEST_P(PgCatalogVersionConnManagerTest,
   auto master_read_count_after = ASSERT_RESULT(GetMasterReadRPCCount());
   LOG(INFO) << ", master_read_count_before: " << master_read_count_before
             << ", master_read_count_after: " << master_read_count_after;
-  auto expected_count = (enable_ysql_conn_mgr ? 1 : 3) * num_logical_connections + 1;
+  auto expected_count = (enable_ysql_conn_mgr ? 1 : 3) * num_logical_connections;
   ASSERT_EQ(master_read_count_after - master_read_count_before, expected_count);
 }
 
@@ -3610,7 +3662,11 @@ TEST_P(PgCatalogVersionConnManagerTest,
 
 TEST_F(PgCatalogVersionTest, NewConnectionRelCachePreloadTest) {
   // Disable auto analyze because it makes the number of the metric: RelCachePreload flaky.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = "false";
+  // Also set ysql_enable_relcache_init_optimization=false to show concurrent new connections
+  // all trying to rebuild the relcache init file.
+  RestartClusterWithInvalMessageEnabled(
+    { "--ysql_enable_auto_analyze=false",
+      "--ysql_enable_relcache_init_optimization=false" });
   // Wait a bit for the webserver background process to get ready to serve curl request.
   SleepFor(2s);
   auto conn_yugabyte = ASSERT_RESULT(Connect());
@@ -3659,6 +3715,57 @@ TEST_F(PgCatalogVersionTest, NewConnectionRelCachePreloadTest) {
   LOG(INFO) << "authorized_connections: " << authorized_connections;
   // Total authorized connections should also include those "subsequent" connections that did
   // not trigger relcache preload, so the number should be more than relcache_preloads.
+  ASSERT_GT(authorized_connections, relcache_preloads);
+}
+
+TEST_F(PgCatalogVersionTest, ConcurrentNonSuperuserNewConnectionsTest) {
+  const int num_databases = ReleaseVsDebugVsAsanVsTsanVsApple(10, 10, 10, 4, 3);
+  const int connections_perdb = 10;
+  // TSAN build needs more max allowed connections.
+  RestartClusterWithInvalMessageEnabled(
+      { Format("--ysql_max_connections=$0", connections_perdb * 2),
+        "--ysql_enable_relcache_init_optimization=true",
+        "--ysql_enable_auto_analyze=false",
+        "--ysql_pg_conf_csv=log_connections=1,log_disconnections=1",
+        "--vmodule=tablet_server=1" });
+  // Wait a bit for the webserver background process to get ready to serve curl request.
+  SleepFor(2s);
+  auto conn_yugabyte = ASSERT_RESULT(Connect());
+  constexpr auto* kTestUser = "test_user";
+  std::vector<string> dbnames;
+  for (int i = 0; i < num_databases; i++) {
+    dbnames.push_back(Format("$0_$1", kTestDatabase, i));
+  }
+  ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE USER $0", kTestUser));
+  for (int i = 0; i < num_databases; i++) {
+    ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE DATABASE $0", dbnames[i]));
+  }
+
+  auto initialCount = GetNumRelCachePreloads();
+  LOG(INFO) << "initialCount: " << initialCount;
+  ASSERT_GT(initialCount, 0);
+
+  // Increments the catalog version.
+  ASSERT_OK(IncrementAllDBCatalogVersions(conn_yugabyte, IsBreakingCatalogVersionChange::kFalse));
+
+  // Concurrently creates a number of connections.
+  TestThreadHolder thread_holder;
+  for (int i = 0; i < num_databases; i++) {
+    for (int j = 0; j < connections_perdb; j++) {
+      thread_holder.AddThreadFunctor([this, dbname = dbnames[i]] {
+        // It appears that the libpq connection library automatically retries
+        // until a timeout of 60s. That's why we can have a max connections only
+        // 10 but serving these 100 connections.
+        auto conn_test = ASSERT_RESULT(ConnectToDBAsUser(dbname, kTestUser));
+      });
+    }
+  }
+  thread_holder.Stop();
+
+  auto relcache_preloads = GetNumRelCachePreloads();
+  ASSERT_EQ(relcache_preloads, initialCount + num_databases);
+  auto authorized_connections = GetNumAuthorizedConnections();
+  LOG(INFO) << "authorized_connections: " << authorized_connections;
   ASSERT_GT(authorized_connections, relcache_preloads);
 }
 

@@ -4322,8 +4322,13 @@ RemoveTempRelations(Oid tempNamespaceId)
 					PERFORM_DELETION_QUIETLY |
 					PERFORM_DELETION_SKIP_ORIGINAL |
 					PERFORM_DELETION_SKIP_EXTENSIONS);
-	if (IsYugaByteEnabled() && !yb_use_regular_txn_block)
-		YBDecrementDdlNestingLevel();
+	if (IsYugaByteEnabled())
+	{
+		if (yb_use_regular_txn_block)
+			YBMergeDdlTxnState();
+		else
+			YBDecrementDdlNestingLevel();
+	}
 }
 
 /*

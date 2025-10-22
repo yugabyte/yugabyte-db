@@ -54,9 +54,11 @@ class GeoTransactionsTestBase : public pgwrapper::PgMiniTestBase {
 
   Result<TableId> GetTransactionTableId(int region);
 
-  void StartDeleteTransactionTable(int region);
+  Result<TableId> GetTransactionTableId(const std::string& name);
 
-  void WaitForDeleteTransactionTableToFinish(int region);
+  void StartDeleteTransactionTable(std::string_view tablespace);
+
+  void WaitForDeleteTransactionTableToFinish(std::string_view tablespace);
 
   void CreateMultiRegionTransactionTable();
 
@@ -88,6 +90,8 @@ class GeoTransactionsTestBase : public pgwrapper::PgMiniTestBase {
 
   void ValidateAllTabletLeaderInZone(std::vector<TabletId> tablet_uuids, int region);
   bool AllTabletLeaderInZone(std::vector<TabletId> tablet_uuids, int region);
+
+  static Status WarmupTablespaceCache(pgwrapper::PGConn& conn, std::string_view table);
 
   Result<PgTablespaceOid> GetTablespaceOid(std::string_view tablespace) const;
   Result<PgTablespaceOid> GetTablespaceOidForRegion(int region) const;

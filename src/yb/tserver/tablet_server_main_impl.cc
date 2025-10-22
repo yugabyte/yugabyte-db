@@ -132,6 +132,8 @@ DECLARE_bool(ysql_conn_mgr_use_unix_conn);
 namespace yb {
 namespace tserver {
 
+const auto kShutdownGraceTimeBeforeDumpingStackThreads = MonoDelta::FromSeconds(30);
+
 void SetProxyAddress(std::string* flag, const std::string& name,
   uint16_t port, bool override_port = false) {
   if (flag->empty() || override_port) {
@@ -224,6 +226,234 @@ void RunIOService(
   }
 }
 
+struct Services {
+  std::unique_ptr<TerminationMonitor> termination_monitor;
+  std::unique_ptr<TabletServer> tablet_server;
+  std::unique_ptr<TserverCallHome> call_home;
+  std::unique_ptr<PgSupervisor> pg_supervisor;
+  std::unique_ptr<ysql_conn_mgr_wrapper::YsqlConnMgrSupervisor> ysql_conn_mgr_supervisor;
+  std::unique_ptr<RedisServer> redis_server;
+  std::unique_ptr<CQLServer> cql_server;
+  std::unique_ptr<boost::asio::io_service> io_service;
+  scoped_refptr<Thread> io_service_thread;
+  std::unique_ptr<LlvmProfileDumper> llvm_profile_dumper;
+};
+
+// StartServices borrows its output as a reference so that the Services object is not allocated
+// locally inside StartServices. This way partially initialized services do not have their
+// destructors called if StartServices returns early due to an error.
+Status StartServices(Services& services) {
+  services.termination_monitor = TerminationMonitor::Create();
+
+  SetProxyAddresses();
+
+  auto tablet_server_options = VERIFY_RESULT(TabletServerOptions::CreateTabletServerOptions());
+  Factory factory;
+
+  services.tablet_server = factory.CreateTabletServer(tablet_server_options);
+  // ----------------------------------------------------------------------------------------------
+  // Starting to instantiate servers
+  // ----------------------------------------------------------------------------------------------
+
+  LOG(INFO) << "Initializing tablet server...";
+  RETURN_NOT_OK(services.tablet_server->Init());
+  LOG(INFO) << "Starting tablet server...";
+  UlimitUtil::InitUlimits();
+  LOG(INFO) << "ulimit cur(max)..." << UlimitUtil::GetUlimitInfo();
+  RETURN_NOT_OK(services.tablet_server->Start());
+  LOG(INFO) << "Tablet server successfully started.";
+
+  services.tablet_server->SharedObject()->SetPid(getpid());
+
+  // Set the locale to match the YB PG defaults. This should be kept in line with
+  // the locale set in the initdb process (setlocales)
+  setlocale(LC_ALL, "en_US.UTF-8");
+  setlocale(LC_COLLATE, "C");
+
+  services.call_home = std::make_unique<TserverCallHome>(services.tablet_server.get());
+  services.call_home->ScheduleCallHome();
+
+  bool ysql_lease_enabled = false;
+  bool ysql_conn_mgr_enabled = FLAGS_enable_ysql_conn_mgr;
+  if (FLAGS_start_pgsql_proxy || FLAGS_enable_ysql) {
+    auto pg_process_conf_result = PgProcessConf::CreateValidateAndRunInitDb(
+        FLAGS_pgsql_proxy_bind_address,
+        tablet_server_options.fs_opts.data_paths.front() + "/pg_data");
+    RETURN_NOT_OK(pg_process_conf_result);
+    RETURN_NOT_OK(docdb::DocPgInit());
+    auto& pg_process_conf = *pg_process_conf_result;
+    pg_process_conf.master_addresses = tablet_server_options.master_addresses_flag;
+    RETURN_NOT_OK(pg_process_conf.SetSslConf(
+        services.tablet_server->options(), *services.tablet_server->fs_manager()));
+    LOG(INFO) << "Starting PostgreSQL server listening on " << pg_process_conf.listen_addresses
+              << ", port " << pg_process_conf.pg_port;
+
+    services.pg_supervisor =
+        std::make_unique<PgSupervisor>(pg_process_conf, services.tablet_server.get());
+    ysql_lease_enabled = IsYsqlLeaseEnabled();
+    if (ysql_lease_enabled) {
+      if (ysql_conn_mgr_enabled) {
+        // Normally when the lease is enabled we don't spawn a postgres process until acquiring a
+        // lease. However the ysql connection manager seems to peel configuration from the postgres
+        // process. Starting up the connection manager fails unless postgres is currently running.
+        // So if it's configured, keep the pg process alive while we spawn the ysql connection
+        // manager.
+        RETURN_NOT_OK(services.pg_supervisor->Start());
+      } else {
+        // If the ysql lease feature is enabled, we don't want to accept pg connections until the
+        // tserver acquires a lease from the master leader.
+        RETURN_NOT_OK(services.pg_supervisor->InitPaused());
+        RETURN_NOT_OK(services.tablet_server->StartYSQLLeaseRefresher());
+      }
+    } else {
+      RETURN_NOT_OK(services.pg_supervisor->Start());
+      RETURN_NOT_OK(services.tablet_server->StartYSQLLeaseRefresher());
+    }
+  }
+
+  if (ysql_conn_mgr_enabled) {
+    LOG(INFO) << "Starting Ysql Connection Manager on port " << FLAGS_ysql_conn_mgr_port;
+
+    ysql_conn_mgr_wrapper::YsqlConnMgrConf ysql_conn_mgr_conf =
+        ysql_conn_mgr_wrapper::YsqlConnMgrConf(
+          tablet_server_options.fs_opts.data_paths.front());
+    ysql_conn_mgr_conf.yb_tserver_key_ = UInt64ToString(
+        services.tablet_server->GetSharedMemoryPostgresAuthKey());
+
+    RETURN_NOT_OK(ysql_conn_mgr_conf.SetSslConf(
+        services.tablet_server->options(), *services.tablet_server->fs_manager()));
+
+    if (FLAGS_use_client_to_server_encryption && !FLAGS_ysql_conn_mgr_use_unix_conn)
+      LOG(FATAL) << "Client to server encryption can not be enabled "
+                 << " in Ysql Connection Manager with ysql_conn_mgr_use_unix_conn"
+                 << " disabled.";
+
+    // Construct the config file for the Ysql Connection Manager process.
+    const auto conn_mgr_shmem_key = FLAGS_enable_ysql_conn_mgr_stats
+                                        ? services.pg_supervisor->GetYsqlConnManagerStatsShmkey()
+                                        : 0;
+    services.ysql_conn_mgr_supervisor =
+        std::make_unique<ysql_conn_mgr_wrapper::YsqlConnMgrSupervisor>(
+            ysql_conn_mgr_conf, conn_mgr_shmem_key);
+
+    RETURN_NOT_OK(services.ysql_conn_mgr_supervisor->Start());
+
+    // Set the shared memory key for tserver so it can access stats as well.
+    services.tablet_server->SetYsqlConnMgrStatsShmemKey(conn_mgr_shmem_key);
+    if (ysql_lease_enabled) {
+      // Now that the connection manager has been spawned we can kill the postgres process and wait
+      // for a lease.
+      RETURN_NOT_OK(services.pg_supervisor->Pause());
+      RETURN_NOT_OK(services.tablet_server->StartYSQLLeaseRefresher());
+    }
+  }
+
+  if (FLAGS_start_redis_proxy) {
+    RedisServerOptions redis_server_options;
+    redis_server_options.rpc_opts.rpc_bind_addresses = FLAGS_redis_proxy_bind_address;
+    redis_server_options.webserver_opts.port = FLAGS_redis_proxy_webserver_port;
+    redis_server_options.master_addresses_flag = tablet_server_options.master_addresses_flag;
+    redis_server_options.SetMasterAddresses(tablet_server_options.GetMasterAddresses());
+    redis_server_options.dump_info_path =
+        (tablet_server_options.dump_info_path.empty()
+              ? ""
+              : tablet_server_options.dump_info_path + "-redis");
+    services.redis_server.reset(
+        new RedisServer(redis_server_options, services.tablet_server.get()));
+    LOG(INFO) << "Starting redis server...";
+    RETURN_NOT_OK(services.redis_server->Start());
+    LOG(INFO) << "Redis server successfully started.";
+  }
+
+  scoped_refptr<Thread> io_service_thread;
+  if (FLAGS_start_cql_proxy) {
+    CQLServerOptions cql_server_options;
+    cql_server_options.rpc_opts.rpc_bind_addresses = FLAGS_cql_proxy_bind_address;
+    cql_server_options.broadcast_rpc_address = FLAGS_cql_proxy_broadcast_rpc_address;
+    cql_server_options.webserver_opts.port = FLAGS_cql_proxy_webserver_port;
+    cql_server_options.master_addresses_flag = tablet_server_options.master_addresses_flag;
+    cql_server_options.SetMasterAddresses(tablet_server_options.GetMasterAddresses());
+    cql_server_options.dump_info_path =
+        (tablet_server_options.dump_info_path.empty()
+              ? ""
+              : tablet_server_options.dump_info_path + "-cql");
+
+    services.io_service = std::make_unique<boost::asio::io_service>();
+    services.cql_server = factory.CreateCQLServer(
+        cql_server_options, services.io_service.get(), services.tablet_server.get());
+    LOG(INFO) << "Starting CQL server...";
+    RETURN_NOT_OK(services.cql_server->Start());
+    LOG(INFO) << "CQL server successfully started.";
+
+    auto termination_monitor_p = services.termination_monitor.get();
+    RETURN_NOT_OK(Thread::Create(
+        "io_service", "loop", &RunIOService,
+        [termination_monitor_p]() { termination_monitor_p->Terminate(); },
+        services.io_service.get(), &services.io_service_thread));
+  }
+
+  services.llvm_profile_dumper = std::make_unique<LlvmProfileDumper>();
+  return services.llvm_profile_dumper->Start();
+}
+
+Status ShutdownServicesImpl(Services& services) {
+  services.llvm_profile_dumper.reset();
+
+  if (services.io_service) {
+    services.io_service->stop();
+    if (services.io_service_thread) {
+      RETURN_NOT_OK(ThreadJoiner(services.io_service_thread.get()).Join());
+    }
+  }
+
+  if (services.cql_server) {
+    LOG(WARNING) << "Stopping CQL server";
+    services.cql_server->Shutdown();
+  }
+
+  if (services.redis_server) {
+    LOG(WARNING) << "Stopping Redis server";
+    services.redis_server->Shutdown();
+  }
+
+  // We must stop the pg backend supervisor before shutting down the tserver.
+  // Otherwise the tserver could give up its lease while it continues to server queries.
+  if (services.pg_supervisor) {
+    LOG(WARNING) << "Stopping PostgreSQL";
+    services.pg_supervisor->Stop();
+  }
+
+  if (services.ysql_conn_mgr_supervisor) {
+    LOG(WARNING) << "Stopping Ysql Connection Manager process";
+    services.ysql_conn_mgr_supervisor->Stop();
+  }
+
+  if (services.call_home) {
+    services.call_home->Shutdown();
+  }
+
+  LOG(WARNING) << "Stopping Tablet server";
+  services.tablet_server->Shutdown();
+  return Status::OK();
+}
+
+Status ShutdownServices(Services& services) {
+  auto shutdown_thread =
+      VERIFY_RESULT(Thread::Make("shutdown_thread", "shutdown_thread", [&services]() {
+        WARN_NOT_OK(ShutdownServicesImpl(services), "Failed to shut down services");
+      }));
+  auto status = ThreadJoiner(shutdown_thread.get())
+                    .give_up_after(kShutdownGraceTimeBeforeDumpingStackThreads)
+                    .Join();
+  if (!status.ok()) {
+    std::stringstream ss;
+    RenderAllThreadStacks(ss);
+    LOG(INFO) << "Tablet server services failed to shut down in time, dumping all thread stacks:\n"
+              << ss.str();
+  }
+  return ThreadJoiner(shutdown_thread.get()).Join();
+}
+
 int TabletServerMain(int argc, char** argv) {
 #ifndef NDEBUG
   HybridTime::TEST_SetPrettyToString(true);
@@ -246,196 +476,12 @@ int TabletServerMain(int argc, char** argv) {
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(MasterTServerParseFlagsAndInit(
       TabletServerOptions::kServerType, /*is_master=*/false, &argc, &argv));
 
-  auto termination_monitor = TerminationMonitor::Create();
+  Services services;
+  LOG_AND_RETURN_FROM_MAIN_NOT_OK(StartServices(services));
 
-  SetProxyAddresses();
+  services.termination_monitor->WaitForTermination();
 
-  auto tablet_server_options = TabletServerOptions::CreateTabletServerOptions();
-  LOG_AND_RETURN_FROM_MAIN_NOT_OK(tablet_server_options);
-  Factory factory;
-
-  auto server = factory.CreateTabletServer(*tablet_server_options);
-  // ----------------------------------------------------------------------------------------------
-  // Starting to instantiate servers
-  // ----------------------------------------------------------------------------------------------
-
-  LOG(INFO) << "Initializing tablet server...";
-  LOG_AND_RETURN_FROM_MAIN_NOT_OK(server->Init());
-  LOG(INFO) << "Starting tablet server...";
-  UlimitUtil::InitUlimits();
-  LOG(INFO) << "ulimit cur(max)..." << UlimitUtil::GetUlimitInfo();
-  LOG_AND_RETURN_FROM_MAIN_NOT_OK(server->Start());
-  LOG(INFO) << "Tablet server successfully started.";
-
-  server->SharedObject()->SetPid(getpid());
-
-  // Set the locale to match the YB PG defaults. This should be kept in line with
-  // the locale set in the initdb process (setlocales)
-  setlocale(LC_ALL, "en_US.UTF-8");
-  setlocale(LC_COLLATE, "C");
-
-  std::unique_ptr<TserverCallHome> call_home;
-  call_home = std::make_unique<TserverCallHome>(server.get());
-  call_home->ScheduleCallHome();
-
-  std::unique_ptr<PgSupervisor> pg_supervisor;
-  bool ysql_lease_enabled = false;
-  bool ysql_conn_mgr_enabled = FLAGS_enable_ysql_conn_mgr;
-  if (FLAGS_start_pgsql_proxy || FLAGS_enable_ysql) {
-    auto pg_process_conf_result = PgProcessConf::CreateValidateAndRunInitDb(
-        FLAGS_pgsql_proxy_bind_address,
-        tablet_server_options->fs_opts.data_paths.front() + "/pg_data");
-    LOG_AND_RETURN_FROM_MAIN_NOT_OK(pg_process_conf_result);
-    LOG_AND_RETURN_FROM_MAIN_NOT_OK(docdb::DocPgInit());
-    auto& pg_process_conf = *pg_process_conf_result;
-    pg_process_conf.master_addresses = tablet_server_options->master_addresses_flag;
-    LOG_AND_RETURN_FROM_MAIN_NOT_OK(
-        pg_process_conf.SetSslConf(server->options(), *server->fs_manager()));
-    LOG(INFO) << "Starting PostgreSQL server listening on "
-              << pg_process_conf.listen_addresses << ", port " << pg_process_conf.pg_port;
-
-    pg_supervisor = std::make_unique<PgSupervisor>(pg_process_conf, server.get());
-    // If the ysql lease feature is enabled, we don't want to accept pg connections until the
-    // tserver acquires a lease from the master leader.
-    ysql_lease_enabled = IsYsqlLeaseEnabled();
-    if (!ysql_lease_enabled) {
-      LOG_AND_RETURN_FROM_MAIN_NOT_OK(pg_supervisor->Start());
-      LOG_AND_RETURN_FROM_MAIN_NOT_OK(server->StartYSQLLeaseRefresher());
-    } else if (ysql_conn_mgr_enabled) {
-      // Normally when the lease is enabled we don't spawn a postgres process until acquiring a
-      // lease. However the ysql connection manager seems to peel configuration from the postgres
-      // process. Starting up the connection manager fails unless postgres is currently running. So
-      // if it's configured, keep the pg process alive while we spawn the ysql connection manager.
-      LOG_AND_RETURN_FROM_MAIN_NOT_OK(pg_supervisor->Start());
-    } else {
-      LOG_AND_RETURN_FROM_MAIN_NOT_OK(pg_supervisor->InitPaused());
-      LOG_AND_RETURN_FROM_MAIN_NOT_OK(server->StartYSQLLeaseRefresher());
-    }
-  }
-
-  std::unique_ptr<ysql_conn_mgr_wrapper::YsqlConnMgrSupervisor> ysql_conn_mgr_supervisor;
-  if (ysql_conn_mgr_enabled) {
-    LOG(INFO) << "Starting Ysql Connection Manager on port " << FLAGS_ysql_conn_mgr_port;
-
-    ysql_conn_mgr_wrapper::YsqlConnMgrConf ysql_conn_mgr_conf =
-        ysql_conn_mgr_wrapper::YsqlConnMgrConf(
-          tablet_server_options->fs_opts.data_paths.front());
-    ysql_conn_mgr_conf.yb_tserver_key_ = UInt64ToString(
-        server->GetSharedMemoryPostgresAuthKey());
-
-    LOG_AND_RETURN_FROM_MAIN_NOT_OK(
-        ysql_conn_mgr_conf.SetSslConf(server->options(), *server->fs_manager()));
-
-    if (FLAGS_use_client_to_server_encryption && !FLAGS_ysql_conn_mgr_use_unix_conn)
-      LOG(FATAL) << "Client to server encryption can not be enabled "
-                 << " in Ysql Connection Manager with ysql_conn_mgr_use_unix_conn"
-                 << " disabled.";
-
-    // Construct the config file for the Ysql Connection Manager process.
-    const auto conn_mgr_shmem_key =
-        FLAGS_enable_ysql_conn_mgr_stats ? pg_supervisor->GetYsqlConnManagerStatsShmkey() : 0;
-    ysql_conn_mgr_supervisor = std::make_unique<ysql_conn_mgr_wrapper::YsqlConnMgrSupervisor>(
-        ysql_conn_mgr_conf,
-        conn_mgr_shmem_key);
-
-    LOG_AND_RETURN_FROM_MAIN_NOT_OK(ysql_conn_mgr_supervisor->Start());
-
-    // Set the shared memory key for tserver so it can access stats as well.
-    server->SetYsqlConnMgrStatsShmemKey(conn_mgr_shmem_key);
-    if (ysql_lease_enabled) {
-      // Now that the connection manager has been spawned we can kill the postgres process and wait
-      // for a lease.
-      LOG_AND_RETURN_FROM_MAIN_NOT_OK(pg_supervisor->Pause());
-      LOG_AND_RETURN_FROM_MAIN_NOT_OK(server->StartYSQLLeaseRefresher());
-    }
-  }
-
-  std::unique_ptr<RedisServer> redis_server;
-  if (FLAGS_start_redis_proxy) {
-    RedisServerOptions redis_server_options;
-    redis_server_options.rpc_opts.rpc_bind_addresses = FLAGS_redis_proxy_bind_address;
-    redis_server_options.webserver_opts.port = FLAGS_redis_proxy_webserver_port;
-    redis_server_options.master_addresses_flag = tablet_server_options->master_addresses_flag;
-    redis_server_options.SetMasterAddresses(tablet_server_options->GetMasterAddresses());
-    redis_server_options.dump_info_path =
-        (tablet_server_options->dump_info_path.empty()
-              ? ""
-              : tablet_server_options->dump_info_path + "-redis");
-    redis_server.reset(new RedisServer(redis_server_options, server.get()));
-    LOG(INFO) << "Starting redis server...";
-    LOG_AND_RETURN_FROM_MAIN_NOT_OK(redis_server->Start());
-    LOG(INFO) << "Redis server successfully started.";
-  }
-
-  std::unique_ptr<CQLServer> cql_server;
-  std::unique_ptr<boost::asio::io_service> io_service;
-  scoped_refptr<Thread> io_service_thread;
-  if (FLAGS_start_cql_proxy) {
-    CQLServerOptions cql_server_options;
-    cql_server_options.rpc_opts.rpc_bind_addresses = FLAGS_cql_proxy_bind_address;
-    cql_server_options.broadcast_rpc_address = FLAGS_cql_proxy_broadcast_rpc_address;
-    cql_server_options.webserver_opts.port = FLAGS_cql_proxy_webserver_port;
-    cql_server_options.master_addresses_flag = tablet_server_options->master_addresses_flag;
-    cql_server_options.SetMasterAddresses(tablet_server_options->GetMasterAddresses());
-    cql_server_options.dump_info_path =
-        (tablet_server_options->dump_info_path.empty()
-              ? ""
-              : tablet_server_options->dump_info_path + "-cql");
-
-    io_service = std::make_unique<boost::asio::io_service>();
-    cql_server = factory.CreateCQLServer(cql_server_options, io_service.get(), server.get());
-    LOG(INFO) << "Starting CQL server...";
-    LOG_AND_RETURN_FROM_MAIN_NOT_OK(cql_server->Start());
-    LOG(INFO) << "CQL server successfully started.";
-
-    LOG_AND_RETURN_FROM_MAIN_NOT_OK(Thread::Create(
-        "io_service", "loop", &RunIOService,
-        [&termination_monitor]() { termination_monitor->Terminate(); }, io_service.get(),
-        &io_service_thread));
-  }
-
-  auto llvm_profile_dumper_result = std::make_unique<LlvmProfileDumper>();
-  LOG_AND_RETURN_FROM_MAIN_NOT_OK(llvm_profile_dumper_result->Start());
-
-  termination_monitor->WaitForTermination();
-
-  llvm_profile_dumper_result.reset();
-
-  if (io_service) {
-    io_service->stop();
-    if (io_service_thread) {
-      LOG_AND_RETURN_FROM_MAIN_NOT_OK(ThreadJoiner(io_service_thread.get()).Join());
-    }
-  }
-
-  if (cql_server) {
-    LOG(WARNING) << "Stopping CQL server";
-    cql_server->Shutdown();
-  }
-
-  if (redis_server) {
-    LOG(WARNING) << "Stopping Redis server";
-    redis_server->Shutdown();
-  }
-
-  // We must stop the pg backend supervisor before shutting down the tserver.
-  // Otherwise the tserver could give up its lease while it continues to server queries.
-  if (pg_supervisor) {
-    LOG(WARNING) << "Stopping PostgreSQL";
-    pg_supervisor->Stop();
-  }
-
-  if (ysql_conn_mgr_supervisor) {
-    LOG(WARNING) << "Stopping Ysql Connection Manager process";
-    ysql_conn_mgr_supervisor->Stop();
-  }
-
-  if (call_home) {
-    call_home->Shutdown();
-  }
-
-  LOG(WARNING) << "Stopping Tablet server";
-  server->Shutdown();
+  LOG_AND_RETURN_FROM_MAIN_NOT_OK(ShutdownServices(services));
 
   // Best effort flush of log without any mutex.
   google::FlushLogFilesUnsafe(0);

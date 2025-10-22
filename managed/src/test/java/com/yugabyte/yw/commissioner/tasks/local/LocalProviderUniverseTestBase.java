@@ -640,9 +640,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
       userIntent.enableClientToNodeEncrypt = true;
     }
     userIntent.specificGFlags =
-        SpecificGFlags.construct(
-            Map.of("transaction_table_num_tablets", "3"),
-            Map.of("transaction_table_num_tablets", "3"));
+        SpecificGFlags.construct(Map.of("transaction_table_num_tablets", "3"), Map.of());
     userIntent.deviceInfo.storageType = PublicCloudConstants.StorageType.Local;
     return userIntent;
   }
@@ -1148,11 +1146,19 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
   }
 
   protected SpecificGFlags getGFlags(String... additional) {
-    Map<String, String> gflags = new HashMap<>(GFLAGS);
+    Map<String, String> masterGFlags = new HashMap<>(GFLAGS);
+    Map<String, String> tserverGFlags = new HashMap<>(GFLAGS);
     for (int i = 0; i < additional.length / 2; i++) {
-      gflags.put(additional[i], additional[i + 1]);
+      masterGFlags.put(additional[i], additional[i + 1]);
+      tserverGFlags.put(additional[i], additional[i + 1]);
     }
-    return SpecificGFlags.construct(gflags, gflags);
+    // Remove master-only flags from tserver
+    tserverGFlags.remove(GFlagsUtil.LOAD_BALANCER_INITIAL_DELAY_SECS);
+    tserverGFlags.remove("transaction_table_num_tablets");
+    tserverGFlags.remove("load_balancer_max_over_replicated_tablets");
+    tserverGFlags.remove("load_balancer_max_concurrent_adds");
+    tserverGFlags.remove("load_balancer_max_concurrent_removals");
+    return SpecificGFlags.construct(masterGFlags, tserverGFlags);
   }
 
   public static String getAllErrorsStr(TaskInfo taskInfo) {

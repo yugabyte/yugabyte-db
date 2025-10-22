@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { YBButton } from '../../components';
 import { CreateYbaBackupModal } from './CreateYbaBackupModal';
+import { RestoreYbaBackupFormModal } from './RestoreYbaBackupFormModal';
 import { RestoreYbaBackupModal } from './RestoreYbaBackupModal';
 
 const TRANSLATION_KEY_PREFIX = 'continuousBackup.actionBar';

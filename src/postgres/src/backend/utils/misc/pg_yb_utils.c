@@ -63,6 +63,7 @@
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_db_role_setting.h"
+#include "catalog/pg_enum.h"
 #include "catalog/pg_inherits.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_opclass.h"
@@ -146,7 +147,8 @@ uint64_t
 YBGetActiveCatalogCacheVersion()
 {
 	if (yb_catalog_version_type == CATALOG_VERSION_CATALOG_TABLE &&
-		YBGetDdlNestingLevel() > 0)
+		(YBGetDdlNestingLevel() > 0 ||
+		 (YBIsDdlTransactionBlockEnabled() && YBIsCurrentStmtDdl())))
 		return yb_catalog_cache_version + 1;
 
 	return yb_catalog_cache_version;
@@ -939,6 +941,14 @@ GetStatusMsgAndArgumentsByCode(const uint32_t pg_err_code, YbcStatus s,
 			(*msg_args)[0] = FetchUniqueConstraintName(YBCStatusRelationOid(s));
 			break;
 		case ERRCODE_YB_TXN_ABORTED:
+			*msg_buf = "current transaction is expired or aborted";
+			*msg_nargs = 0;
+			*msg_args = NULL;
+
+			*detail_buf = status_msg;
+			*detail_nargs = status_nargs;
+			*detail_args = status_args;
+			break;
 		case ERRCODE_YB_TXN_CONFLICT:
 			*msg_buf = "could not serialize access due to concurrent update";
 			*msg_nargs = 0;
@@ -2675,6 +2685,8 @@ YBAddDdlTxnState(YbDdlMode mode)
 	 */
 	if (ddl_transaction_state.use_regular_txn_block)
 	{
+		elog(DEBUG3, "YBAddDdlTxnState: adding mode = %d", mode);
+
 		/*
 		 * We can arrive here in two cases:
 		 * 1. When there has been a DDL statement before in the transaction
@@ -2707,6 +2719,18 @@ YBAddDdlTxnState(YbDdlMode mode)
 	HandleYBStatus(YBCPgSetDdlStateInPlainTransaction());
 	ddl_transaction_state.use_regular_txn_block = true;
 	ddl_transaction_state.catalog_modification_aspects.pending |= mode;
+	YbMaybeLockMasterCatalogVersion();
+	elog(DEBUG3, "YBAddDdlTxnState: new DDL in txn block, mode = %d", mode);
+}
+
+void
+YBMergeDdlTxnState()
+{
+	Assert(yb_ddl_transaction_block_enabled);
+
+	const bool	has_change = YbHasDdlMadeChanges();
+	MergeCatalogModificationAspects(&ddl_transaction_state.catalog_modification_aspects,
+									has_change);
 }
 
 void
@@ -4126,8 +4150,24 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 	 * will cause a catalog version to increment. Note that we also disable breaking
 	 * catalog change as well because it does not make sense to only increment
 	 * breaking breaking catalog version.
+	 * If incremental catalog cache refresh is enabled, we ignore
+	 * yb_make_next_ddl_statement_nonincrementing. Consider this example where
+	 * each ddl statement increments the catalog version.
+	 * BEGIN;
+	 *   SET yb_make_next_ddl_statement_nonincrementing = true;
+	 *   ddl_statement_1;
+	 *   SET yb_make_next_ddl_statement_nonincrementing = true;
+	 *   ddl_statement_2;
+	 *   ddl_statement_3;
+	 * END;
+	 * In full refresh mode, ddl_statement_3 would have caused a full catalog cache
+	 * refresh which will allow a PG backend to see the effect of ddl_statement_1
+	 * and ddl_statement_2. In incremental refresh mode, ddl_statement_3 only causes
+	 * an incremental catalog cache refresh and the effect of ddl_statement_1 and
+	 * ddl_statement_2 are lost.
 	 */
-	if (yb_make_next_ddl_statement_nonincrementing)
+	if (yb_make_next_ddl_statement_nonincrementing &&
+		!YbIsInvalidationMessageEnabled())
 	{
 		is_version_increment = false;
 		is_breaking_change = false;
@@ -4295,7 +4335,6 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 									 " React with thumbs up to raise its priority.")));
 
 				YBAddDdlTxnState(ddl_mode.value);
-				YbMaybeLockMasterCatalogVersion();
 			}
 
 			if (YbShouldIncrementLogicalClientVersion(pstmt) &&
@@ -4326,6 +4365,8 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 
 			if (use_separate_ddl_transaction)
 				YBDecrementDdlNestingLevel();
+			else
+				YBMergeDdlTxnState();
 
 			/*
 			 * Reset the is_top_level_ddl_active for this statement as it is
@@ -6517,6 +6558,10 @@ YbRegisterSysTableForPrefetching(int sys_table_id)
 			sys_table_index_id = ConstraintRelidTypidNameIndexId;
 			sys_only_filter_attr = Anum_pg_constraint_oid;
 			break;
+		case EnumRelationId:	/* pg_enum */
+			sys_table_index_id = EnumTypIdLabelIndexId;
+			sys_only_filter_attr = Anum_pg_enum_oid;
+			break;
 		case IndexRelationId:	/* pg_index */
 			sys_table_index_id = IndexIndrelidIndexId;
 			sys_only_filter_attr = Anum_pg_index_indexrelid;
@@ -6595,7 +6640,7 @@ YbRegisterSysTableForPrefetching(int sys_table_id)
 			}
 	}
 
-	if (!*YBCGetGFlags()->ysql_minimal_catalog_caches_preload)
+	if (!YbUseMinimalCatalogCachesPreload())
 		sys_only_filter_attr = InvalidAttrNumber;
 
 	YBCRegisterSysTableForPrefetching(db_id, sys_table_id, sys_table_index_id,
@@ -6841,6 +6886,7 @@ aggregateStats(YbInstrumentation *instr, const YbcPgExecStats *exec_stats)
 	instr->tbl_read_ops += exec_stats->tables.read_ops;
 	instr->tbl_writes += exec_stats->tables.writes;
 	instr->tbl_reads.rows_scanned += exec_stats->tables.rows_scanned;
+	instr->tbl_reads.rows_received += exec_stats->tables.rows_received;
 
 	/* Secondary Index stats */
 	instr->index_reads.count += exec_stats->indices.reads;
@@ -6848,6 +6894,7 @@ aggregateStats(YbInstrumentation *instr, const YbcPgExecStats *exec_stats)
 	instr->index_read_ops += exec_stats->indices.read_ops;
 	instr->index_writes += exec_stats->indices.writes;
 	instr->index_reads.rows_scanned += exec_stats->indices.rows_scanned;
+	instr->index_reads.rows_received += exec_stats->indices.rows_received;
 
 	/* System Catalog stats */
 	instr->catalog_reads.count += exec_stats->catalog.reads;
@@ -6855,6 +6902,7 @@ aggregateStats(YbInstrumentation *instr, const YbcPgExecStats *exec_stats)
 	instr->catalog_read_ops += exec_stats->catalog.read_ops;
 	instr->catalog_writes += exec_stats->catalog.writes;
 	instr->catalog_reads.rows_scanned += exec_stats->catalog.rows_scanned;
+	instr->catalog_reads.rows_received += exec_stats->catalog.rows_received;
 
 	/* Flush stats */
 	instr->write_flushes.count += exec_stats->num_flushes;
@@ -6878,6 +6926,7 @@ getDiffReadWriteStats(const YbcPgExecReadWriteStats *current,
 			current->writes - old->writes,
 			current->read_wait - old->read_wait,
 			current->rows_scanned - old->rows_scanned,
+			current->rows_received - old->rows_received
 	};
 }
 
@@ -7762,7 +7811,7 @@ YbCalculateTimeDifferenceInMicros(TimestampTz yb_start_time)
 static bool
 YbIsDDLOrInitDBMode()
 {
-	return YBCPgIsDdlMode() || YBCIsInitDbModeEnvVarSet();
+	return (YBCPgIsDdlMode() && !YBCPgIsDdlModeWithRegularTransactionBlock()) || YBCIsInitDbModeEnvVarSet();
 }
 
 bool
@@ -8078,7 +8127,7 @@ YbInvalidationMessagesTableExists()
 }
 
 bool		yb_is_calling_internal_sql_for_ddl = false;
-
+bool		yb_is_internal_connection = false;
 char *
 YbGetPotentiallyHiddenOidText(Oid oid)
 {
@@ -8211,6 +8260,24 @@ YbUseTserverResponseCacheForAuth(uint64_t shared_catalog_version)
 	if (shared_catalog_version == YB_CATCACHE_VERSION_UNINITIALIZED)
 		return false;
 	return true;
+}
+
+bool
+YbCatalogPreloadRequired()
+{
+	return YbNeedAdditionalCatalogTables() || !*YBCGetGFlags()->ysql_use_relcache_file;
+}
+
+bool
+YbUseMinimalCatalogCachesPreload()
+{
+	if (*YBCGetGFlags()->ysql_minimal_catalog_caches_preload)
+		return true;
+	if (YbNeedAdditionalCatalogTables())
+		return false;
+	if (yb_is_internal_connection)
+		return true;
+	return false;
 }
 
 /* Comparison function for sorting strings in a List */

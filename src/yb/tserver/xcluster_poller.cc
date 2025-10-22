@@ -215,6 +215,10 @@ void XClusterPoller::CompleteShutdown() {
   if (output_client_) {
     output_client_->CompleteShutdown();
   }
+  if (ddl_queue_handler_) {
+    // Only clean up the ddl queue handler after all other tasks have completed.
+    ddl_queue_handler_->Shutdown();
+  }
 
   XClusterAsyncExecutor::CompleteShutdown();
 
@@ -285,12 +289,14 @@ void XClusterPoller::UpdateSafeTime(HybridTime new_time) {
       break;
     }
     if (producer_safe_time_.compare_exchange_strong(existing, new_time)) {
+      VLOG_WITH_PREFIX(2) << Format("Updated safe time from $0 -> $1", existing, new_time);
       break;
     }
   }
 }
 
 void XClusterPoller::InvalidateSafeTime() {
+  VLOG_WITH_PREFIX(2) << "Invalidating safe time";
   producer_safe_time_.store(HybridTime::kInvalid);
 }
 

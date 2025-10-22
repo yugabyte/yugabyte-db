@@ -2695,15 +2695,6 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestBeforeImageNotExistErrorPropa
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
   ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}));
 
-  // Setting the flag to mimic tablet not in available state. The expectation is that
-  // CDCServiceImpl::GetConsistentChanges() should not return an error since such error is expected
-  // to be retryable.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_mimic_tablet_not_in_available_state) = true;
-  ASSERT_OK(GetConsistentChangesFromCDC(stream_id));
-
-  // Resetting the test flag.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_mimic_tablet_not_in_available_state) = false;
-
   map<std::string, uint32_t> col_val_map1, col_val_map2;
   col_val_map1.insert({"col2", 9});
   col_val_map1.insert({"col3", 10});
@@ -2722,6 +2713,28 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestBeforeImageNotExistErrorPropa
   } else {
     ASSERT_NOK_STR_CONTAINS(
         GetConsistentChangesFromCDC(stream_id), "Failed to get the beforeimage");
+  }
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestRetryableErrorsNotSentToWalsender) {
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}));
+
+  vector<TestSimulateErrorCode> error_codes = {
+      TestSimulateErrorCode::PeerNotStarted, TestSimulateErrorCode::TabletUnavailable,
+      TestSimulateErrorCode::PeerNotLeader, TestSimulateErrorCode::PeerNotReadyToServe,
+      TestSimulateErrorCode::LogSegmentFooterNotFound};
+
+  for (auto error_code : error_codes) {
+    // Setting the flag to mimic retryable errors. The expectation is that
+    // CDCServiceImpl::GetConsistentChanges() should not return an error since such error is
+    // expected to be retryable.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_simulate_error_for_get_changes) = error_code;
+    auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+    ASSERT_FALSE(change_resp.has_error());
   }
 }
 

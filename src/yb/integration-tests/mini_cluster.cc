@@ -114,6 +114,8 @@ DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
 DECLARE_string(fs_data_dirs);
 DECLARE_string(use_private_ip);
 DECLARE_bool(TEST_enable_ysql_operation_lease_expiry_check);
+DECLARE_string(pgsql_proxy_bind_address);
+DECLARE_uint64(TEST_pg_auth_key);
 
 namespace yb {
 
@@ -449,6 +451,27 @@ Status MiniCluster::AddTabletServer(
   if (options_.ts_env) {
     tablet_server->options()->env = options_.ts_env;
   }
+
+  // FLAGS_pgsql_proxy_bind_address is used by tablet_server to make local PG connections.
+  // Normally different tablet_server need to have different FLAGS_pgsql_proxy_bind_address.
+  // if FLAGS_TEST_pg_auth_key != 0, then we assume there is only one PG postmaster process
+  // started by the test and we let all tservers in the cluster make local PG connections to
+  // this same PG postmaster.
+  if (FLAGS_TEST_pg_auth_key == 0) {
+    if (!pg_ts_selected_.has_value() || new_idx != (*pg_ts_selected_).first) {
+      const auto pg_addr = server::TEST_RpcAddress(new_idx + 1, server::Private::kTrue);
+      auto pg_port = AllocateFreePort();
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_bind_address)
+        = HostPort(pg_addr, pg_port).ToString();
+    } else {
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_bind_address)
+        = (*pg_ts_selected_).second.ToString();
+    }
+  }
+
+  LOG(INFO) << "new_idx: " << new_idx
+            << ", FLAGS_pgsql_proxy_bind_address: " << FLAGS_pgsql_proxy_bind_address;
+  tablet_server->set_pgsql_proxy_bind_address(FLAGS_pgsql_proxy_bind_address);
 
   RETURN_NOT_OK(tablet_server->Start(tserver::WaitTabletsBootstrapped::kFalse));
 

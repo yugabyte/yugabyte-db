@@ -837,12 +837,6 @@ To begin, export the schema from the source database. Once exported, analyze the
 
 #### Export schema
 
-{{< warning title="Technical Advisory" >}}
-
-{{<ta 2968>}} : Import schema fails on all Voyager installs done after August 14, 2025. Impacts [v1.1](../../release-notes/#v1-1-march-7-2023) to [v2025.8.1](../../release-notes/#v2025-8-1-august-5-2025).
-
-{{< /warning >}}
-
 The `yb-voyager export schema` command extracts the schema from the source database, converts it into PostgreSQL format (if the source database is Oracle or MySQL), and dumps the SQL DDL files in the `EXPORT_DIR/schema/*` directories.
 
 **For PostgreSQL migrations**:
@@ -890,12 +884,6 @@ Note that if the source database is PostgreSQL and you haven't already run `asse
 Refer to [export schema](../../reference/schema-migration/export-schema/) for more information.
 
 #### Analyze schema
-
-{{< warning title="Technical Advisory" >}}
-
-{{<ta 2968>}} : Import schema fails on all Voyager installs done after August 14, 2025. Impacts [v1.1](../../release-notes/#v1-1-march-7-2023) to [v2025.8.1](../../release-notes/#v2025-8-1-august-5-2025).
-
-{{< /warning >}}
 
 The schema exported in the previous step may not yet be suitable for importing into YugabyteDB. Even though YugabyteDB is PostgreSQL compatible, given its distributed nature, you may need to make minor manual changes to the schema.
 
@@ -956,12 +944,6 @@ To learn more about modelling strategies using YugabyteDB, refer to [Data modeli
 {{< /note >}}
 
 ### Import schema
-
-{{< warning title="Technical Advisory" >}}
-
-{{<ta 2968>}} :  Import schema fails on all Voyager installs done after August 14, 2025. Impacts [v1.1](../../release-notes/#v1-1-march-7-2023) to [v2025.8.1](../../release-notes/#v2025-8-1-august-5-2025).
-
-{{< /warning >}}
 
 Import the schema using the `yb-voyager import schema` command.
 
@@ -1607,7 +1589,7 @@ yb-voyager cutover status --export-dir <EXPORT_DIR>
 
 ### Validate query performance
 
-{{<tags/feature/tp>}} You can compare query performance between the source database and the target YugabyteDB database (YugabyteDB release {{<release "2025.1">}} and later) using the [yb-voyager compare-performance](../../reference/compare-performance/) command.
+{{<tags/feature/tp>}} You can compare query performance between the source database and the target YugabyteDB database using the [yb-voyager compare-performance](../../reference/compare-performance/) command.
 
 This command analyzes statistics collected during [assess migration](../assess-migration/) from the source database and compares it with statistics collected from the target YugabyteDB database.
 

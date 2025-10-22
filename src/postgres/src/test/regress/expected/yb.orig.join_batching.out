@@ -1,4 +1,821 @@
+--
+-- Test BNL plan correctness
+--
 SET enable_bitmapscan = false; -- TODO(#20573): update bitmap scan cost model
+-- Force BNL
+SET enable_hashjoin = off;
+SET enable_mergejoin = off;
+SET enable_seqscan = off;
+SET enable_material = off;
+SET yb_prefer_bnl = on;
+SET enable_nestloop = off;
+SET yb_bnl_batch_size = 3;
+--------------------------------------------------------
+-- Try some queries from yb.port.join with BNL forced --
+--------------------------------------------------------
+CREATE TABLE J1_TBL (
+  i integer,
+  j integer,
+  t text
+);
+CREATE TABLE J2_TBL (
+  i integer,
+  k integer
+);
+INSERT INTO J1_TBL VALUES (1, 4, 'one');
+INSERT INTO J1_TBL VALUES (2, 3, 'two');
+INSERT INTO J1_TBL VALUES (3, 2, 'three');
+INSERT INTO J1_TBL VALUES (4, 1, 'four');
+INSERT INTO J1_TBL VALUES (5, 0, 'five');
+INSERT INTO J1_TBL VALUES (6, 6, 'six');
+INSERT INTO J1_TBL VALUES (7, 7, 'seven');
+INSERT INTO J1_TBL VALUES (8, 8, 'eight');
+INSERT INTO J1_TBL VALUES (0, NULL, 'zero');
+INSERT INTO J1_TBL VALUES (NULL, NULL, 'null');
+INSERT INTO J1_TBL VALUES (NULL, 0, 'zero');
+INSERT INTO J2_TBL VALUES (1, -1);
+INSERT INTO J2_TBL VALUES (2, 2);
+INSERT INTO J2_TBL VALUES (3, -3);
+INSERT INTO J2_TBL VALUES (2, 4);
+INSERT INTO J2_TBL VALUES (5, -5);
+INSERT INTO J2_TBL VALUES (5, -5);
+INSERT INTO J2_TBL VALUES (0, NULL);
+INSERT INTO J2_TBL VALUES (NULL, NULL);
+INSERT INTO J2_TBL VALUES (NULL, 0);
+--
+-- CORRELATION NAMES
+-- Make sure that table/column aliases are supported
+-- before diving into more complex join syntax.
+--
+SELECT '' AS "xxx", *
+  FROM J1_TBL AS tx order by 1, 2, 3, 4;
+ xxx | i | j |   t   
+-----+---+---+-------
+     | 0 |   | zero
+     | 1 | 4 | one
+     | 2 | 3 | two
+     | 3 | 2 | three
+     | 4 | 1 | four
+     | 5 | 0 | five
+     | 6 | 6 | six
+     | 7 | 7 | seven
+     | 8 | 8 | eight
+     |   | 0 | zero
+     |   |   | null
+(11 rows)
+
+SELECT '' AS "xxx", *
+  FROM J1_TBL tx  order by 1, 2, 3, 4;
+ xxx | i | j |   t   
+-----+---+---+-------
+     | 0 |   | zero
+     | 1 | 4 | one
+     | 2 | 3 | two
+     | 3 | 2 | three
+     | 4 | 1 | four
+     | 5 | 0 | five
+     | 6 | 6 | six
+     | 7 | 7 | seven
+     | 8 | 8 | eight
+     |   | 0 | zero
+     |   |   | null
+(11 rows)
+
+SELECT '' AS "xxx", *
+  FROM J1_TBL AS t1 (a, b, c)  order by 1, 2, 3, 4;
+ xxx | a | b |   c   
+-----+---+---+-------
+     | 0 |   | zero
+     | 1 | 4 | one
+     | 2 | 3 | two
+     | 3 | 2 | three
+     | 4 | 1 | four
+     | 5 | 0 | five
+     | 6 | 6 | six
+     | 7 | 7 | seven
+     | 8 | 8 | eight
+     |   | 0 | zero
+     |   |   | null
+(11 rows)
+
+SELECT '' AS "xxx", *
+  FROM J1_TBL t1 (a, b, c)  order by 1, 2, 3, 4;
+ xxx | a | b |   c   
+-----+---+---+-------
+     | 0 |   | zero
+     | 1 | 4 | one
+     | 2 | 3 | two
+     | 3 | 2 | three
+     | 4 | 1 | four
+     | 5 | 0 | five
+     | 6 | 6 | six
+     | 7 | 7 | seven
+     | 8 | 8 | eight
+     |   | 0 | zero
+     |   |   | null
+(11 rows)
+
+SELECT '' AS "xxx", *
+  FROM J1_TBL t1 (a, b, c), J2_TBL t2 (d, e)  order by 1, 2, 3, 4, 5, 6;
+ xxx | a | b |   c   | d | e  
+-----+---+---+-------+---+----
+     | 0 |   | zero  | 0 |   
+     | 0 |   | zero  | 1 | -1
+     | 0 |   | zero  | 2 |  2
+     | 0 |   | zero  | 2 |  4
+     | 0 |   | zero  | 3 | -3
+     | 0 |   | zero  | 5 | -5
+     | 0 |   | zero  | 5 | -5
+     | 0 |   | zero  |   |  0
+     | 0 |   | zero  |   |   
+     | 1 | 4 | one   | 0 |   
+     | 1 | 4 | one   | 1 | -1
+     | 1 | 4 | one   | 2 |  2
+     | 1 | 4 | one   | 2 |  4
+     | 1 | 4 | one   | 3 | -3
+     | 1 | 4 | one   | 5 | -5
+     | 1 | 4 | one   | 5 | -5
+     | 1 | 4 | one   |   |  0
+     | 1 | 4 | one   |   |   
+     | 2 | 3 | two   | 0 |   
+     | 2 | 3 | two   | 1 | -1
+     | 2 | 3 | two   | 2 |  2
+     | 2 | 3 | two   | 2 |  4
+     | 2 | 3 | two   | 3 | -3
+     | 2 | 3 | two   | 5 | -5
+     | 2 | 3 | two   | 5 | -5
+     | 2 | 3 | two   |   |  0
+     | 2 | 3 | two   |   |   
+     | 3 | 2 | three | 0 |   
+     | 3 | 2 | three | 1 | -1
+     | 3 | 2 | three | 2 |  2
+     | 3 | 2 | three | 2 |  4
+     | 3 | 2 | three | 3 | -3
+     | 3 | 2 | three | 5 | -5
+     | 3 | 2 | three | 5 | -5
+     | 3 | 2 | three |   |  0
+     | 3 | 2 | three |   |   
+     | 4 | 1 | four  | 0 |   
+     | 4 | 1 | four  | 1 | -1
+     | 4 | 1 | four  | 2 |  2
+     | 4 | 1 | four  | 2 |  4
+     | 4 | 1 | four  | 3 | -3
+     | 4 | 1 | four  | 5 | -5
+     | 4 | 1 | four  | 5 | -5
+     | 4 | 1 | four  |   |  0
+     | 4 | 1 | four  |   |   
+     | 5 | 0 | five  | 0 |   
+     | 5 | 0 | five  | 1 | -1
+     | 5 | 0 | five  | 2 |  2
+     | 5 | 0 | five  | 2 |  4
+     | 5 | 0 | five  | 3 | -3
+     | 5 | 0 | five  | 5 | -5
+     | 5 | 0 | five  | 5 | -5
+     | 5 | 0 | five  |   |  0
+     | 5 | 0 | five  |   |   
+     | 6 | 6 | six   | 0 |   
+     | 6 | 6 | six   | 1 | -1
+     | 6 | 6 | six   | 2 |  2
+     | 6 | 6 | six   | 2 |  4
+     | 6 | 6 | six   | 3 | -3
+     | 6 | 6 | six   | 5 | -5
+     | 6 | 6 | six   | 5 | -5
+     | 6 | 6 | six   |   |  0
+     | 6 | 6 | six   |   |   
+     | 7 | 7 | seven | 0 |   
+     | 7 | 7 | seven | 1 | -1
+     | 7 | 7 | seven | 2 |  2
+     | 7 | 7 | seven | 2 |  4
+     | 7 | 7 | seven | 3 | -3
+     | 7 | 7 | seven | 5 | -5
+     | 7 | 7 | seven | 5 | -5
+     | 7 | 7 | seven |   |  0
+     | 7 | 7 | seven |   |   
+     | 8 | 8 | eight | 0 |   
+     | 8 | 8 | eight | 1 | -1
+     | 8 | 8 | eight | 2 |  2
+     | 8 | 8 | eight | 2 |  4
+     | 8 | 8 | eight | 3 | -3
+     | 8 | 8 | eight | 5 | -5
+     | 8 | 8 | eight | 5 | -5
+     | 8 | 8 | eight |   |  0
+     | 8 | 8 | eight |   |   
+     |   | 0 | zero  | 0 |   
+     |   | 0 | zero  | 1 | -1
+     |   | 0 | zero  | 2 |  2
+     |   | 0 | zero  | 2 |  4
+     |   | 0 | zero  | 3 | -3
+     |   | 0 | zero  | 5 | -5
+     |   | 0 | zero  | 5 | -5
+     |   | 0 | zero  |   |  0
+     |   | 0 | zero  |   |   
+     |   |   | null  | 0 |   
+     |   |   | null  | 1 | -1
+     |   |   | null  | 2 |  2
+     |   |   | null  | 2 |  4
+     |   |   | null  | 3 | -3
+     |   |   | null  | 5 | -5
+     |   |   | null  | 5 | -5
+     |   |   | null  |   |  0
+     |   |   | null  |   |   
+(99 rows)
+
+SELECT '' AS "xxx", t1.a, t2.e
+  FROM J1_TBL t1 (a, b, c), J2_TBL t2 (d, e)
+  WHERE t1.a = t2.d  order by 1, 2, 3;
+ xxx | a | e  
+-----+---+----
+     | 0 |   
+     | 1 | -1
+     | 2 |  2
+     | 2 |  4
+     | 3 | -3
+     | 5 | -5
+     | 5 | -5
+(7 rows)
+
+--
+--
+-- Inner joins (equi-joins)
+--
+--
+--
+-- Inner joins (equi-joins) with USING clause
+-- The USING syntax changes the shape of the resulting table
+-- by including a column in the USING clause only once in the result.
+--
+-- Inner equi-join on specified column
+SELECT '' AS "xxx", *
+  FROM J1_TBL INNER JOIN J2_TBL USING (i) order by 1, 2, 3, 4, 5;
+ xxx | i | j |   t   | k  
+-----+---+---+-------+----
+     | 0 |   | zero  |   
+     | 1 | 4 | one   | -1
+     | 2 | 3 | two   |  2
+     | 2 | 3 | two   |  4
+     | 3 | 2 | three | -3
+     | 5 | 0 | five  | -5
+     | 5 | 0 | five  | -5
+(7 rows)
+
+-- Same as above, slightly different syntax
+SELECT '' AS "xxx", *
+  FROM J1_TBL JOIN J2_TBL USING (i) order by 1, 2, 3, 4, 5;
+ xxx | i | j |   t   | k  
+-----+---+---+-------+----
+     | 0 |   | zero  |   
+     | 1 | 4 | one   | -1
+     | 2 | 3 | two   |  2
+     | 2 | 3 | two   |  4
+     | 3 | 2 | three | -3
+     | 5 | 0 | five  | -5
+     | 5 | 0 | five  | -5
+(7 rows)
+
+SELECT '' AS "xxx", *
+  FROM J1_TBL t1 (a, b, c) JOIN J2_TBL t2 (a, d) USING (a)
+  ORDER BY a, d;
+ xxx | a | b |   c   | d  
+-----+---+---+-------+----
+     | 0 |   | zero  |   
+     | 1 | 4 | one   | -1
+     | 2 | 3 | two   |  2
+     | 2 | 3 | two   |  4
+     | 3 | 2 | three | -3
+     | 5 | 0 | five  | -5
+     | 5 | 0 | five  | -5
+(7 rows)
+
+SELECT '' AS "xxx", *
+  FROM J1_TBL t1 (a, b, c) JOIN J2_TBL t2 (a, b) USING (b)
+  ORDER BY b, t1.a;
+ xxx | b | a |   c   | a 
+-----+---+---+-------+---
+     | 0 | 5 | five  |  
+     | 0 |   | zero  |  
+     | 2 | 3 | three | 2
+     | 4 | 1 | one   | 2
+(4 rows)
+
+--
+-- NATURAL JOIN
+-- Inner equi-join on all columns with the same name
+--
+SELECT '' AS "xxx", *
+  FROM J1_TBL NATURAL JOIN J2_TBL order by 1, 2, 3, 4, 5;
+ xxx | i | j |   t   | k  
+-----+---+---+-------+----
+     | 0 |   | zero  |   
+     | 1 | 4 | one   | -1
+     | 2 | 3 | two   |  2
+     | 2 | 3 | two   |  4
+     | 3 | 2 | three | -3
+     | 5 | 0 | five  | -5
+     | 5 | 0 | five  | -5
+(7 rows)
+
+SELECT '' AS "xxx", *
+  FROM J1_TBL t1 (a, b, c) NATURAL JOIN J2_TBL t2 (a, d) order by 1, 2, 3, 4, 5;
+ xxx | a | b |   c   | d  
+-----+---+---+-------+----
+     | 0 |   | zero  |   
+     | 1 | 4 | one   | -1
+     | 2 | 3 | two   |  2
+     | 2 | 3 | two   |  4
+     | 3 | 2 | three | -3
+     | 5 | 0 | five  | -5
+     | 5 | 0 | five  | -5
+(7 rows)
+
+SELECT '' AS "xxx", *
+  FROM J1_TBL t1 (a, b, c) NATURAL JOIN J2_TBL t2 (d, a) order by 1, 2, 3, 4, 5;
+ xxx | a | b |  c   | d 
+-----+---+---+------+---
+     | 0 |   | zero |  
+     | 2 | 3 | two  | 2
+     | 4 | 1 | four | 2
+(3 rows)
+
+-- mismatch number of columns
+-- currently, Postgres will fill in with underlying names
+SELECT '' AS "xxx", *
+  FROM J1_TBL t1 (a, b) NATURAL JOIN J2_TBL t2 (a) order by 1, 2, 3, 4, 5;
+ xxx | a | b |   t   | k  
+-----+---+---+-------+----
+     | 0 |   | zero  |   
+     | 1 | 4 | one   | -1
+     | 2 | 3 | two   |  2
+     | 2 | 3 | two   |  4
+     | 3 | 2 | three | -3
+     | 5 | 0 | five  | -5
+     | 5 | 0 | five  | -5
+(7 rows)
+
+--
+-- Inner joins (equi-joins)
+--
+SELECT '' AS "xxx", *
+  FROM J1_TBL JOIN J2_TBL ON (J1_TBL.i = J2_TBL.i) order by 1, 2, 3, 4, 5, 6;
+ xxx | i | j |   t   | i | k  
+-----+---+---+-------+---+----
+     | 0 |   | zero  | 0 |   
+     | 1 | 4 | one   | 1 | -1
+     | 2 | 3 | two   | 2 |  2
+     | 2 | 3 | two   | 2 |  4
+     | 3 | 2 | three | 3 | -3
+     | 5 | 0 | five  | 5 | -5
+     | 5 | 0 | five  | 5 | -5
+(7 rows)
+
+SELECT '' AS "xxx", *
+  FROM J1_TBL JOIN J2_TBL ON (J1_TBL.i = J2_TBL.k) order by 1, 2, 3, 4, 5, 6;
+ xxx | i | j |  t   | i | k 
+-----+---+---+------+---+---
+     | 0 |   | zero |   | 0
+     | 2 | 3 | two  | 2 | 2
+     | 4 | 1 | four | 2 | 4
+(3 rows)
+
+--
+-- Non-equi-joins
+--
+SELECT '' AS "xxx", *
+  FROM J1_TBL JOIN J2_TBL ON (J1_TBL.i <= J2_TBL.k) order by 1, 2, 3, 4, 5, 6;
+ xxx | i | j |   t   | i | k 
+-----+---+---+-------+---+---
+     | 0 |   | zero  | 2 | 2
+     | 0 |   | zero  | 2 | 4
+     | 0 |   | zero  |   | 0
+     | 1 | 4 | one   | 2 | 2
+     | 1 | 4 | one   | 2 | 4
+     | 2 | 3 | two   | 2 | 2
+     | 2 | 3 | two   | 2 | 4
+     | 3 | 2 | three | 2 | 4
+     | 4 | 1 | four  | 2 | 4
+(9 rows)
+
+--
+-- Outer joins
+-- Note that OUTER is a noise word
+--
+SELECT '' AS "xxx", *
+  FROM J1_TBL LEFT OUTER JOIN J2_TBL USING (i)
+  ORDER BY i, k, t;
+ xxx | i | j |   t   | k  
+-----+---+---+-------+----
+     | 0 |   | zero  |   
+     | 1 | 4 | one   | -1
+     | 2 | 3 | two   |  2
+     | 2 | 3 | two   |  4
+     | 3 | 2 | three | -3
+     | 4 | 1 | four  |   
+     | 5 | 0 | five  | -5
+     | 5 | 0 | five  | -5
+     | 6 | 6 | six   |   
+     | 7 | 7 | seven |   
+     | 8 | 8 | eight |   
+     |   |   | null  |   
+     |   | 0 | zero  |   
+(13 rows)
+
+SELECT '' AS "xxx", *
+  FROM J1_TBL LEFT JOIN J2_TBL USING (i)
+  ORDER BY i, k, t;
+ xxx | i | j |   t   | k  
+-----+---+---+-------+----
+     | 0 |   | zero  |   
+     | 1 | 4 | one   | -1
+     | 2 | 3 | two   |  2
+     | 2 | 3 | two   |  4
+     | 3 | 2 | three | -3
+     | 4 | 1 | four  |   
+     | 5 | 0 | five  | -5
+     | 5 | 0 | five  | -5
+     | 6 | 6 | six   |   
+     | 7 | 7 | seven |   
+     | 8 | 8 | eight |   
+     |   |   | null  |   
+     |   | 0 | zero  |   
+(13 rows)
+
+SELECT '' AS "xxx", *
+  FROM J1_TBL RIGHT OUTER JOIN J2_TBL USING (i) order by 1, 2, 3, 4, 5;
+ xxx | i | j |   t   | k  
+-----+---+---+-------+----
+     | 0 |   | zero  |   
+     | 1 | 4 | one   | -1
+     | 2 | 3 | two   |  2
+     | 2 | 3 | two   |  4
+     | 3 | 2 | three | -3
+     | 5 | 0 | five  | -5
+     | 5 | 0 | five  | -5
+     |   |   |       |  0
+     |   |   |       |   
+(9 rows)
+
+SELECT '' AS "xxx", *
+  FROM J1_TBL RIGHT JOIN J2_TBL USING (i) order by 1, 2, 3, 4, 5;
+ xxx | i | j |   t   | k  
+-----+---+---+-------+----
+     | 0 |   | zero  |   
+     | 1 | 4 | one   | -1
+     | 2 | 3 | two   |  2
+     | 2 | 3 | two   |  4
+     | 3 | 2 | three | -3
+     | 5 | 0 | five  | -5
+     | 5 | 0 | five  | -5
+     |   |   |       |  0
+     |   |   |       |   
+(9 rows)
+
+SELECT '' AS "xxx", *
+  FROM J1_TBL FULL OUTER JOIN J2_TBL USING (i)
+  ORDER BY i, k, t;
+ xxx | i | j |   t   | k  
+-----+---+---+-------+----
+     | 0 |   | zero  |   
+     | 1 | 4 | one   | -1
+     | 2 | 3 | two   |  2
+     | 2 | 3 | two   |  4
+     | 3 | 2 | three | -3
+     | 4 | 1 | four  |   
+     | 5 | 0 | five  | -5
+     | 5 | 0 | five  | -5
+     | 6 | 6 | six   |   
+     | 7 | 7 | seven |   
+     | 8 | 8 | eight |   
+     |   |   |       |  0
+     |   |   | null  |   
+     |   | 0 | zero  |   
+     |   |   |       |   
+(15 rows)
+
+SELECT '' AS "xxx", *
+  FROM J1_TBL FULL JOIN J2_TBL USING (i)
+  ORDER BY i, k, t;
+ xxx | i | j |   t   | k  
+-----+---+---+-------+----
+     | 0 |   | zero  |   
+     | 1 | 4 | one   | -1
+     | 2 | 3 | two   |  2
+     | 2 | 3 | two   |  4
+     | 3 | 2 | three | -3
+     | 4 | 1 | four  |   
+     | 5 | 0 | five  | -5
+     | 5 | 0 | five  | -5
+     | 6 | 6 | six   |   
+     | 7 | 7 | seven |   
+     | 8 | 8 | eight |   
+     |   |   |       |  0
+     |   |   | null  |   
+     |   | 0 | zero  |   
+     |   |   |       |   
+(15 rows)
+
+SELECT '' AS "xxx", *
+  FROM J1_TBL LEFT JOIN J2_TBL USING (i) WHERE (k = 1) order by 1, 2, 3, 4, 5;
+ xxx | i | j | t | k 
+-----+---+---+---+---
+(0 rows)
+
+SELECT '' AS "xxx", *
+  FROM J1_TBL LEFT JOIN J2_TBL USING (i) WHERE (i = 1) order by 1, 2, 3, 4, 5;
+ xxx | i | j |  t  | k  
+-----+---+---+-----+----
+     | 1 | 4 | one | -1
+(1 row)
+
+--
+-- semijoin selectivity for <>
+--
+-- explain (costs off)
+-- select * from int4_tbl i4, tenk1 a
+-- where exists(select * from tenk1 b
+--              where a.twothousand = b.twothousand and a.fivethous <> b.fivethous)
+--       and i4.f1 = a.tenthous;
+--
+-- More complicated constructs
+--
+--
+-- Multiway full join
+--
+CREATE TABLE t1 (name TEXT, n INTEGER);
+CREATE TABLE t2 (name TEXT, n INTEGER);
+CREATE TABLE t3 (name TEXT, n INTEGER);
+INSERT INTO t1 VALUES ( 'bb', 11 );
+INSERT INTO t2 VALUES ( 'bb', 12 );
+INSERT INTO t2 VALUES ( 'cc', 22 );
+INSERT INTO t2 VALUES ( 'ee', 42 );
+INSERT INTO t3 VALUES ( 'bb', 13 );
+INSERT INTO t3 VALUES ( 'cc', 23 );
+INSERT INTO t3 VALUES ( 'dd', 33 );
+SELECT * FROM t1 FULL JOIN t2 USING (name) FULL JOIN t3 USING (name) order by 1, 2, 3, 4;
+ name | n  | n  | n  
+------+----+----+----
+ bb   | 11 | 12 | 13
+ cc   |    | 22 | 23
+ dd   |    |    | 33
+ ee   |    | 42 |   
+(4 rows)
+
+--
+-- Test interactions of join syntax and subqueries
+--
+-- Basic cases (we expect planner to pull up the subquery here)
+SELECT * FROM
+(SELECT * FROM t2) as s2
+INNER JOIN
+(SELECT * FROM t3) s3
+USING (name) order by 1, 2, 3;
+ name | n  | n  
+------+----+----
+ bb   | 12 | 13
+ cc   | 22 | 23
+(2 rows)
+
+SELECT * FROM
+(SELECT * FROM t2) as s2
+LEFT JOIN
+(SELECT * FROM t3) s3
+USING (name) order by 1, 2, 3;
+ name | n  | n  
+------+----+----
+ bb   | 12 | 13
+ cc   | 22 | 23
+ ee   | 42 |   
+(3 rows)
+
+SELECT * FROM
+(SELECT * FROM t2) as s2
+FULL JOIN
+(SELECT * FROM t3) s3
+USING (name) order by 1, 2, 3;
+ name | n  | n  
+------+----+----
+ bb   | 12 | 13
+ cc   | 22 | 23
+ dd   |    | 33
+ ee   | 42 |   
+(4 rows)
+
+-- Cases with non-nullable expressions in subquery results;
+-- make sure these go to null as expected
+SELECT * FROM
+(SELECT name, n as s2_n, 2 as s2_2 FROM t2) as s2
+NATURAL INNER JOIN
+(SELECT name, n as s3_n, 3 as s3_2 FROM t3) s3 order by 1, 2, 3, 4, 5;
+ name | s2_n | s2_2 | s3_n | s3_2 
+------+------+------+------+------
+ bb   |   12 |    2 |   13 |    3
+ cc   |   22 |    2 |   23 |    3
+(2 rows)
+
+SELECT * FROM
+(SELECT name, n as s2_n, 2 as s2_2 FROM t2) as s2
+NATURAL LEFT JOIN
+(SELECT name, n as s3_n, 3 as s3_2 FROM t3) s3 order by 1, 2, 3, 4, 5;
+ name | s2_n | s2_2 | s3_n | s3_2 
+------+------+------+------+------
+ bb   |   12 |    2 |   13 |    3
+ cc   |   22 |    2 |   23 |    3
+ ee   |   42 |    2 |      |     
+(3 rows)
+
+SELECT * FROM
+(SELECT name, n as s2_n, 2 as s2_2 FROM t2) as s2
+NATURAL FULL JOIN
+(SELECT name, n as s3_n, 3 as s3_2 FROM t3) s3 order by 1, 2, 3, 4;
+ name | s2_n | s2_2 | s3_n | s3_2 
+------+------+------+------+------
+ bb   |   12 |    2 |   13 |    3
+ cc   |   22 |    2 |   23 |    3
+ dd   |      |      |   33 |    3
+ ee   |   42 |    2 |      |     
+(4 rows)
+
+SELECT * FROM
+(SELECT name, n as s1_n, 1 as s1_1 FROM t1) as s1
+NATURAL INNER JOIN
+(SELECT name, n as s2_n, 2 as s2_2 FROM t2) as s2
+NATURAL INNER JOIN
+(SELECT name, n as s3_n, 3 as s3_2 FROM t3) s3 order by 1, 2, 3, 4, 5, 6, 7;
+ name | s1_n | s1_1 | s2_n | s2_2 | s3_n | s3_2 
+------+------+------+------+------+------+------
+ bb   |   11 |    1 |   12 |    2 |   13 |    3
+(1 row)
+
+SELECT * FROM
+(SELECT name, n as s1_n, 1 as s1_1 FROM t1) as s1
+NATURAL FULL JOIN
+(SELECT name, n as s2_n, 2 as s2_2 FROM t2) as s2
+NATURAL FULL JOIN
+(SELECT name, n as s3_n, 3 as s3_2 FROM t3) s3 order by 1, 2, 3, 4, 5, 6, 7;
+ name | s1_n | s1_1 | s2_n | s2_2 | s3_n | s3_2 
+------+------+------+------+------+------+------
+ bb   |   11 |    1 |   12 |    2 |   13 |    3
+ cc   |      |      |   22 |    2 |   23 |    3
+ dd   |      |      |      |      |   33 |    3
+ ee   |      |      |   42 |    2 |      |     
+(4 rows)
+
+SELECT * FROM
+(SELECT name, n as s1_n FROM t1) as s1
+NATURAL FULL JOIN
+  (SELECT * FROM
+    (SELECT name, n as s2_n FROM t2) as s2
+    NATURAL FULL JOIN
+    (SELECT name, n as s3_n FROM t3) as s3
+  ) ss2 order by 1, 2, 3, 4;
+ name | s1_n | s2_n | s3_n 
+------+------+------+------
+ bb   |   11 |   12 |   13
+ cc   |      |   22 |   23
+ dd   |      |      |   33
+ ee   |      |   42 |     
+(4 rows)
+
+SELECT * FROM
+(SELECT name, n as s1_n FROM t1) as s1
+NATURAL FULL JOIN
+  (SELECT * FROM
+    (SELECT name, n as s2_n, 2 as s2_2 FROM t2) as s2
+    NATURAL FULL JOIN
+    (SELECT name, n as s3_n FROM t3) as s3
+  ) ss2 order by 1, 2, 3, 4, 5;
+ name | s1_n | s2_n | s2_2 | s3_n 
+------+------+------+------+------
+ bb   |   11 |   12 |    2 |   13
+ cc   |      |   22 |    2 |   23
+ dd   |      |      |      |   33
+ ee   |      |   42 |    2 |     
+(4 rows)
+
+-- Test for propagation of nullability constraints into sub-joins
+create temp table x (x1 int, x2 int);
+insert into x values (1,11);
+insert into x values (2,22);
+insert into x values (3,null);
+insert into x values (4,44);
+insert into x values (5,null);
+create temp table y (y1 int, y2 int);
+insert into y values (1,111);
+insert into y values (2,222);
+insert into y values (3,333);
+insert into y values (4,null);
+select * from x order by 1, 2;
+ x1 | x2 
+----+----
+  1 | 11
+  2 | 22
+  3 |   
+  4 | 44
+  5 |   
+(5 rows)
+
+select * from y order by 1, 2;
+ y1 | y2  
+----+-----
+  1 | 111
+  2 | 222
+  3 | 333
+  4 |    
+(4 rows)
+
+select * from x left join y on (x1 = y1 and x2 is not null) order by 1, 2, 3, 4;
+ x1 | x2 | y1 | y2  
+----+----+----+-----
+  1 | 11 |  1 | 111
+  2 | 22 |  2 | 222
+  3 |    |    |    
+  4 | 44 |  4 |    
+  5 |    |    |    
+(5 rows)
+
+select * from x left join y on (x1 = y1 and y2 is not null) order by 1, 2, 3, 4;
+ x1 | x2 | y1 | y2  
+----+----+----+-----
+  1 | 11 |  1 | 111
+  2 | 22 |  2 | 222
+  3 |    |  3 | 333
+  4 | 44 |    |    
+  5 |    |    |    
+(5 rows)
+
+select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
+on (x1 = xx1) order by 1, 2, 3, 4, 5, 6;
+ x1 | x2 | y1 | y2  | xx1 | xx2 
+----+----+----+-----+-----+-----
+  1 | 11 |  1 | 111 |   1 |  11
+  2 | 22 |  2 | 222 |   2 |  22
+  3 |    |  3 | 333 |   3 |    
+  4 | 44 |  4 |     |   4 |  44
+  5 |    |    |     |   5 |    
+(5 rows)
+
+select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
+on (x1 = xx1 and x2 is not null) order by 1, 2, 3, 4, 5, 6;
+ x1 | x2 | y1 | y2  | xx1 | xx2 
+----+----+----+-----+-----+-----
+  1 | 11 |  1 | 111 |   1 |  11
+  2 | 22 |  2 | 222 |   2 |  22
+  3 |    |  3 | 333 |     |    
+  4 | 44 |  4 |     |   4 |  44
+  5 |    |    |     |     |    
+(5 rows)
+
+select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
+on (x1 = xx1 and y2 is not null) order by 1, 2, 3, 4, 5, 6;
+ x1 | x2 | y1 | y2  | xx1 | xx2 
+----+----+----+-----+-----+-----
+  1 | 11 |  1 | 111 |   1 |  11
+  2 | 22 |  2 | 222 |   2 |  22
+  3 |    |  3 | 333 |   3 |    
+  4 | 44 |  4 |     |     |    
+  5 |    |    |     |     |    
+(5 rows)
+
+select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
+on (x1 = xx1 and xx2 is not null) order by 1, 2, 3, 4, 5, 6;
+ x1 | x2 | y1 | y2  | xx1 | xx2 
+----+----+----+-----+-----+-----
+  1 | 11 |  1 | 111 |   1 |  11
+  2 | 22 |  2 | 222 |   2 |  22
+  3 |    |  3 | 333 |     |    
+  4 | 44 |  4 |     |   4 |  44
+  5 |    |    |     |     |    
+(5 rows)
+
+-- these should NOT give the same answers as above
+select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
+on (x1 = xx1) where (x2 is not null) order by 1;
+ x1 | x2 | y1 | y2  | xx1 | xx2 
+----+----+----+-----+-----+-----
+  1 | 11 |  1 | 111 |   1 |  11
+  2 | 22 |  2 | 222 |   2 |  22
+  4 | 44 |  4 |     |   4 |  44
+(3 rows)
+
+select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
+on (x1 = xx1) where (y2 is not null) order by 1;
+ x1 | x2 | y1 | y2  | xx1 | xx2 
+----+----+----+-----+-----+-----
+  1 | 11 |  1 | 111 |   1 |  11
+  2 | 22 |  2 | 222 |   2 |  22
+  3 |    |  3 | 333 |   3 |    
+(3 rows)
+
+select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
+on (x1 = xx1) where (xx2 is not null) order by 1;
+ x1 | x2 | y1 | y2  | xx1 | xx2 
+----+----+----+-----+-----+-----
+  1 | 11 |  1 | 111 |   1 |  11
+  2 | 22 |  2 | 222 |   2 |  22
+  4 | 44 |  4 |     |   4 |  44
+(3 rows)
+
+-------------------------------
+-- Original tests start here --
+-------------------------------
 CREATE TABLE p1 (a int, b int, c varchar, primary key(a,b));
 INSERT INTO p1 SELECT i, i % 25, to_char(i, 'FM0000') FROM generate_series(0, 599) i WHERE i % 2 = 0;
 CREATE INDEX p1_b_idx ON p1 (b ASC);
@@ -17,14 +834,6 @@ INSERT INTO p5 SELECT i / 10, i % 10, to_char(i, 'FM0000') FROM generate_series(
 CREATE INDEX p5_hash ON p5((a,b) hash);
 CREATE INDEX p5_hash_asc ON p5(a hash, b asc);
 ANALYZE p5;
--- We're testing nested loop join batching in this file
-SET enable_hashjoin = off;
-SET enable_mergejoin = off;
-SET enable_seqscan = off;
-SET enable_material = off;
-SET yb_prefer_bnl = on;
-SET enable_nestloop = off;
-SET yb_bnl_batch_size = 3;
 EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 100 AND t2.a <= 100;
                      QUERY PLAN                      
 -----------------------------------------------------
@@ -82,14 +891,14 @@ SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a + 1 WHERE t1.a <= 100 AND t2.a <= 
   10 | 10 | 0010 |  9 |  9 | 0009
   70 | 20 | 0070 | 69 | 19 | 0069
   88 | 13 | 0088 | 87 | 12 | 0087
-  58 |  8 | 0058 | 57 |  7 | 0057
  100 |  0 | 0100 | 99 | 24 | 0099
+  58 |  8 | 0058 | 57 |  7 | 0057
   64 | 14 | 0064 | 63 | 13 | 0063
   76 |  1 | 0076 | 75 |  0 | 0075
-  94 | 19 | 0094 | 93 | 18 | 0093
   28 |  3 | 0028 | 27 |  2 | 0027
-  40 | 15 | 0040 | 39 | 14 | 0039
+  94 | 19 | 0094 | 93 | 18 | 0093
   34 |  9 | 0034 | 33 |  8 | 0033
+  40 | 15 | 0040 | 39 | 14 | 0039
    4 |  4 | 0004 |  3 |  3 | 0003
 (17 rows)
 
@@ -235,17 +1044,17 @@ select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a 
   6 |  6 | 0006 |  5 | 5 | 0055
  12 | 12 | 0012 |    |   | 
  16 | 16 | 0016 |    |   | 
- 10 | 10 | 0010 |  9 | 9 | 0099
   4 |  4 | 0004 |  3 | 3 | 0033
+ 10 | 10 | 0010 |  9 | 9 | 0099
  18 | 18 | 0018 |    |   | 
- 30 |  5 | 0030 | 29 | 4 | 0294
   2 |  2 | 0002 |  1 | 1 | 0011
+ 30 |  5 | 0030 | 29 | 4 | 0294
   0 |  0 | 0000 |    |   | 
   8 |  8 | 0008 |  7 | 7 | 0077
  14 | 14 | 0014 |    |   | 
  22 | 22 | 0022 |    |   | 
- 28 |  3 | 0028 | 27 | 2 | 0272
  26 |  1 | 0026 | 25 | 0 | 0250
+ 28 |  3 | 0028 | 27 | 2 | 0272
  24 | 24 | 0024 |    |   | 
  20 | 20 | 0020 |    |   | 
 (16 rows)
@@ -267,8 +1076,8 @@ select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a 
   6 |  6 | 0006 |  5 | 5 | 0055
  12 | 12 | 0012 |    |   | 
  16 | 16 | 0016 |    |   | 
- 10 | 10 | 0010 |  9 | 9 | 0099
   4 |  4 | 0004 |  3 | 3 | 0033
+ 10 | 10 | 0010 |  9 | 9 | 0099
  18 | 18 | 0018 |    |   | 
   2 |  2 | 0002 |  1 | 1 | 0011
  30 |  5 | 0030 | 29 | 4 | 0294
@@ -816,8 +1625,8 @@ SELECT * FROM p1 t1 WHERE EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.b) AND t1.
  22 | 22 | 0022
  20 | 20 | 0020
  10 | 10 | 0010
- 18 | 18 | 0018
   2 |  2 | 0002
+ 18 | 18 | 0018
  16 | 16 | 0016
   6 |  6 | 0006
  12 | 12 | 0012
@@ -1622,16 +2431,16 @@ EXPLAIN (COSTS OFF) SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b
 SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1nulls.a ASC LIMIT 10;
  a | b 
 ---+---
+ 0 | 4
  0 | 5
- 0 | 6
+ 0 | 9
+ 0 | 9
+ 0 | 4
+ 0 | 7
+ 0 | 7
  0 | 8
  0 | 8
  0 | 5
- 0 | 7
- 0 | 7
- 0 | 9
- 0 | 9
- 0 | 6
 (10 rows)
 
 EXPLAIN (COSTS OFF) SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1nulls.a ASC NULLS FIRST LIMIT 10;
@@ -1649,16 +2458,16 @@ EXPLAIN (COSTS OFF) SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b
 SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1nulls.a ASC NULLS FIRST LIMIT 10;
  a | b 
 ---+---
+   | 8
+   | 8
+   | 8
+   | 8
    | 9
    | 9
-   | 8
-   | 8
-   | 8
-   | 8
  0 | 7
  0 | 7
- 0 | 9
- 0 | 9
+ 0 | 8
+ 0 | 8
 (10 rows)
 
 EXPLAIN (COSTS OFF) SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1nulls.a ASC NULLS FIRST, q1nulls.b DESC LIMIT 10;
@@ -1890,10 +2699,10 @@ insert into g2 values (2,4), (6,8);
 /*+Leading((g1 (g2 main))) Set(enable_hashjoin off) Set(enable_mergejoin off) Set(yb_bnl_batch_size 3) Set(enable_material off) Set(enable_seqscan on)*/ select main.* from g1,g2,main where main.h1 = g1.h and main.h2 = g2.h and main.r2 = g1.r and main.r1 = g2.r;
  h1 | h2 | r1 | r2 
 ----+----+----+----
-  5 |  6 |  8 |  7
-  5 |  2 |  4 |  7
   1 |  6 |  8 |  3
   1 |  2 |  4 |  3
+  5 |  6 |  8 |  7
+  5 |  2 |  4 |  7
 (4 rows)
 
 drop table g1;
@@ -1970,193 +2779,6 @@ create table ss3(a int, b int, primary key(a asc, b asc));
 drop table ss1;
 drop table ss2;
 drop table ss3;
-SELECT '' AS "xxx", *
-  FROM J1_TBL AS tx order by 1, 2, 3, 4;
- xxx | i | j |   t   
------+---+---+-------
-     | 0 |   | zero
-     | 1 | 4 | one
-     | 2 | 3 | two
-     | 3 | 2 | three
-     | 4 | 1 | four
-     | 5 | 0 | five
-     | 6 | 6 | six
-     | 7 | 7 | seven
-     | 8 | 8 | eight
-     |   | 0 | zero
-     |   |   | null
-(11 rows)
-
-SELECT '' AS "xxx", *
-  FROM J1_TBL tx  order by 1, 2, 3, 4;
- xxx | i | j |   t   
------+---+---+-------
-     | 0 |   | zero
-     | 1 | 4 | one
-     | 2 | 3 | two
-     | 3 | 2 | three
-     | 4 | 1 | four
-     | 5 | 0 | five
-     | 6 | 6 | six
-     | 7 | 7 | seven
-     | 8 | 8 | eight
-     |   | 0 | zero
-     |   |   | null
-(11 rows)
-
-SELECT '' AS "xxx", *
-  FROM J1_TBL AS t1 (a, b, c)  order by 1, 2, 3, 4;
- xxx | a | b |   c   
------+---+---+-------
-     | 0 |   | zero
-     | 1 | 4 | one
-     | 2 | 3 | two
-     | 3 | 2 | three
-     | 4 | 1 | four
-     | 5 | 0 | five
-     | 6 | 6 | six
-     | 7 | 7 | seven
-     | 8 | 8 | eight
-     |   | 0 | zero
-     |   |   | null
-(11 rows)
-
-SELECT '' AS "xxx", *
-  FROM J1_TBL t1 (a, b, c)  order by 1, 2, 3, 4;
- xxx | a | b |   c   
------+---+---+-------
-     | 0 |   | zero
-     | 1 | 4 | one
-     | 2 | 3 | two
-     | 3 | 2 | three
-     | 4 | 1 | four
-     | 5 | 0 | five
-     | 6 | 6 | six
-     | 7 | 7 | seven
-     | 8 | 8 | eight
-     |   | 0 | zero
-     |   |   | null
-(11 rows)
-
-SELECT '' AS "xxx", *
-  FROM J1_TBL t1 (a, b, c), J2_TBL t2 (d, e)  order by 1, 2, 3, 4, 5, 6;
- xxx | a | b |   c   | d | e  
------+---+---+-------+---+----
-     | 0 |   | zero  | 0 |   
-     | 0 |   | zero  | 1 | -1
-     | 0 |   | zero  | 2 |  2
-     | 0 |   | zero  | 2 |  4
-     | 0 |   | zero  | 3 | -3
-     | 0 |   | zero  | 5 | -5
-     | 0 |   | zero  | 5 | -5
-     | 0 |   | zero  |   |  0
-     | 0 |   | zero  |   |   
-     | 1 | 4 | one   | 0 |   
-     | 1 | 4 | one   | 1 | -1
-     | 1 | 4 | one   | 2 |  2
-     | 1 | 4 | one   | 2 |  4
-     | 1 | 4 | one   | 3 | -3
-     | 1 | 4 | one   | 5 | -5
-     | 1 | 4 | one   | 5 | -5
-     | 1 | 4 | one   |   |  0
-     | 1 | 4 | one   |   |   
-     | 2 | 3 | two   | 0 |   
-     | 2 | 3 | two   | 1 | -1
-     | 2 | 3 | two   | 2 |  2
-     | 2 | 3 | two   | 2 |  4
-     | 2 | 3 | two   | 3 | -3
-     | 2 | 3 | two   | 5 | -5
-     | 2 | 3 | two   | 5 | -5
-     | 2 | 3 | two   |   |  0
-     | 2 | 3 | two   |   |   
-     | 3 | 2 | three | 0 |   
-     | 3 | 2 | three | 1 | -1
-     | 3 | 2 | three | 2 |  2
-     | 3 | 2 | three | 2 |  4
-     | 3 | 2 | three | 3 | -3
-     | 3 | 2 | three | 5 | -5
-     | 3 | 2 | three | 5 | -5
-     | 3 | 2 | three |   |  0
-     | 3 | 2 | three |   |   
-     | 4 | 1 | four  | 0 |   
-     | 4 | 1 | four  | 1 | -1
-     | 4 | 1 | four  | 2 |  2
-     | 4 | 1 | four  | 2 |  4
-     | 4 | 1 | four  | 3 | -3
-     | 4 | 1 | four  | 5 | -5
-     | 4 | 1 | four  | 5 | -5
-     | 4 | 1 | four  |   |  0
-     | 4 | 1 | four  |   |   
-     | 5 | 0 | five  | 0 |   
-     | 5 | 0 | five  | 1 | -1
-     | 5 | 0 | five  | 2 |  2
-     | 5 | 0 | five  | 2 |  4
-     | 5 | 0 | five  | 3 | -3
-     | 5 | 0 | five  | 5 | -5
-     | 5 | 0 | five  | 5 | -5
-     | 5 | 0 | five  |   |  0
-     | 5 | 0 | five  |   |   
-     | 6 | 6 | six   | 0 |   
-     | 6 | 6 | six   | 1 | -1
-     | 6 | 6 | six   | 2 |  2
-     | 6 | 6 | six   | 2 |  4
-     | 6 | 6 | six   | 3 | -3
-     | 6 | 6 | six   | 5 | -5
-     | 6 | 6 | six   | 5 | -5
-     | 6 | 6 | six   |   |  0
-     | 6 | 6 | six   |   |   
-     | 7 | 7 | seven | 0 |   
-     | 7 | 7 | seven | 1 | -1
-     | 7 | 7 | seven | 2 |  2
-     | 7 | 7 | seven | 2 |  4
-     | 7 | 7 | seven | 3 | -3
-     | 7 | 7 | seven | 5 | -5
-     | 7 | 7 | seven | 5 | -5
-     | 7 | 7 | seven |   |  0
-     | 7 | 7 | seven |   |   
-     | 8 | 8 | eight | 0 |   
-     | 8 | 8 | eight | 1 | -1
-     | 8 | 8 | eight | 2 |  2
-     | 8 | 8 | eight | 2 |  4
-     | 8 | 8 | eight | 3 | -3
-     | 8 | 8 | eight | 5 | -5
-     | 8 | 8 | eight | 5 | -5
-     | 8 | 8 | eight |   |  0
-     | 8 | 8 | eight |   |   
-     |   | 0 | zero  | 0 |   
-     |   | 0 | zero  | 1 | -1
-     |   | 0 | zero  | 2 |  2
-     |   | 0 | zero  | 2 |  4
-     |   | 0 | zero  | 3 | -3
-     |   | 0 | zero  | 5 | -5
-     |   | 0 | zero  | 5 | -5
-     |   | 0 | zero  |   |  0
-     |   | 0 | zero  |   |   
-     |   |   | null  | 0 |   
-     |   |   | null  | 1 | -1
-     |   |   | null  | 2 |  2
-     |   |   | null  | 2 |  4
-     |   |   | null  | 3 | -3
-     |   |   | null  | 5 | -5
-     |   |   | null  | 5 | -5
-     |   |   | null  |   |  0
-     |   |   | null  |   |   
-(99 rows)
-
-SELECT '' AS "xxx", t1.a, t2.e
-  FROM J1_TBL t1 (a, b, c), J2_TBL t2 (d, e)
-  WHERE t1.a = t2.d  order by 1, 2, 3;
- xxx | a | e  
------+---+----
-     | 0 |   
-     | 1 | -1
-     | 2 |  2
-     | 2 |  4
-     | 3 | -3
-     | 5 | -5
-     | 5 | -5
-(7 rows)
-
 create table p1(a int, primary key(a asc));
 create table p2(a int, primary key(a asc));
 create table p3(a int, primary key(a asc));
@@ -2442,575 +3064,6 @@ LEFT OUTER JOIN ss2 ON ss2.a = (
 DROP TABLE other;
 DROP TABLE ss1;
 DROP TABLE ss2;
---
---
--- Inner joins (equi-joins)
---
---
---
--- Inner joins (equi-joins) with USING clause
--- The USING syntax changes the shape of the resulting table
--- by including a column in the USING clause only once in the result.
---
--- Inner equi-join on specified column
-SELECT '' AS "xxx", *
-  FROM J1_TBL INNER JOIN J2_TBL USING (i) order by 1, 2, 3, 4, 5;
- xxx | i | j |   t   | k  
------+---+---+-------+----
-     | 0 |   | zero  |   
-     | 1 | 4 | one   | -1
-     | 2 | 3 | two   |  2
-     | 2 | 3 | two   |  4
-     | 3 | 2 | three | -3
-     | 5 | 0 | five  | -5
-     | 5 | 0 | five  | -5
-(7 rows)
-
--- Same as above, slightly different syntax
-SELECT '' AS "xxx", *
-  FROM J1_TBL JOIN J2_TBL USING (i) order by 1, 2, 3, 4, 5;
- xxx | i | j |   t   | k  
------+---+---+-------+----
-     | 0 |   | zero  |   
-     | 1 | 4 | one   | -1
-     | 2 | 3 | two   |  2
-     | 2 | 3 | two   |  4
-     | 3 | 2 | three | -3
-     | 5 | 0 | five  | -5
-     | 5 | 0 | five  | -5
-(7 rows)
-
-SELECT '' AS "xxx", *
-  FROM J1_TBL t1 (a, b, c) JOIN J2_TBL t2 (a, d) USING (a)
-  ORDER BY a, d;
- xxx | a | b |   c   | d  
------+---+---+-------+----
-     | 0 |   | zero  |   
-     | 1 | 4 | one   | -1
-     | 2 | 3 | two   |  2
-     | 2 | 3 | two   |  4
-     | 3 | 2 | three | -3
-     | 5 | 0 | five  | -5
-     | 5 | 0 | five  | -5
-(7 rows)
-
-SELECT '' AS "xxx", *
-  FROM J1_TBL t1 (a, b, c) JOIN J2_TBL t2 (a, b) USING (b)
-  ORDER BY b, t1.a;
- xxx | b | a |   c   | a 
------+---+---+-------+---
-     | 0 | 5 | five  |  
-     | 0 |   | zero  |  
-     | 2 | 3 | three | 2
-     | 4 | 1 | one   | 2
-(4 rows)
-
---
--- NATURAL JOIN
--- Inner equi-join on all columns with the same name
---
-SELECT '' AS "xxx", *
-  FROM J1_TBL NATURAL JOIN J2_TBL order by 1, 2, 3, 4, 5;
- xxx | i | j |   t   | k  
------+---+---+-------+----
-     | 0 |   | zero  |   
-     | 1 | 4 | one   | -1
-     | 2 | 3 | two   |  2
-     | 2 | 3 | two   |  4
-     | 3 | 2 | three | -3
-     | 5 | 0 | five  | -5
-     | 5 | 0 | five  | -5
-(7 rows)
-
-SELECT '' AS "xxx", *
-  FROM J1_TBL t1 (a, b, c) NATURAL JOIN J2_TBL t2 (a, d) order by 1, 2, 3, 4, 5;
- xxx | a | b |   c   | d  
------+---+---+-------+----
-     | 0 |   | zero  |   
-     | 1 | 4 | one   | -1
-     | 2 | 3 | two   |  2
-     | 2 | 3 | two   |  4
-     | 3 | 2 | three | -3
-     | 5 | 0 | five  | -5
-     | 5 | 0 | five  | -5
-(7 rows)
-
-SELECT '' AS "xxx", *
-  FROM J1_TBL t1 (a, b, c) NATURAL JOIN J2_TBL t2 (d, a) order by 1, 2, 3, 4, 5;
- xxx | a | b |  c   | d 
------+---+---+------+---
-     | 0 |   | zero |  
-     | 2 | 3 | two  | 2
-     | 4 | 1 | four | 2
-(3 rows)
-
--- mismatch number of columns
--- currently, Postgres will fill in with underlying names
-SELECT '' AS "xxx", *
-  FROM J1_TBL t1 (a, b) NATURAL JOIN J2_TBL t2 (a) order by 1, 2, 3, 4, 5;
- xxx | a | b |   t   | k  
------+---+---+-------+----
-     | 0 |   | zero  |   
-     | 1 | 4 | one   | -1
-     | 2 | 3 | two   |  2
-     | 2 | 3 | two   |  4
-     | 3 | 2 | three | -3
-     | 5 | 0 | five  | -5
-     | 5 | 0 | five  | -5
-(7 rows)
-
---
--- Inner joins (equi-joins)
---
-SELECT '' AS "xxx", *
-  FROM J1_TBL JOIN J2_TBL ON (J1_TBL.i = J2_TBL.i) order by 1, 2, 3, 4, 5, 6;
- xxx | i | j |   t   | i | k  
------+---+---+-------+---+----
-     | 0 |   | zero  | 0 |   
-     | 1 | 4 | one   | 1 | -1
-     | 2 | 3 | two   | 2 |  2
-     | 2 | 3 | two   | 2 |  4
-     | 3 | 2 | three | 3 | -3
-     | 5 | 0 | five  | 5 | -5
-     | 5 | 0 | five  | 5 | -5
-(7 rows)
-
-SELECT '' AS "xxx", *
-  FROM J1_TBL JOIN J2_TBL ON (J1_TBL.i = J2_TBL.k) order by 1, 2, 3, 4, 5, 6;
- xxx | i | j |  t   | i | k 
------+---+---+------+---+---
-     | 0 |   | zero |   | 0
-     | 2 | 3 | two  | 2 | 2
-     | 4 | 1 | four | 2 | 4
-(3 rows)
-
---
--- Non-equi-joins
---
-SELECT '' AS "xxx", *
-  FROM J1_TBL JOIN J2_TBL ON (J1_TBL.i <= J2_TBL.k) order by 1, 2, 3, 4, 5, 6;
- xxx | i | j |   t   | i | k 
------+---+---+-------+---+---
-     | 0 |   | zero  | 2 | 2
-     | 0 |   | zero  | 2 | 4
-     | 0 |   | zero  |   | 0
-     | 1 | 4 | one   | 2 | 2
-     | 1 | 4 | one   | 2 | 4
-     | 2 | 3 | two   | 2 | 2
-     | 2 | 3 | two   | 2 | 4
-     | 3 | 2 | three | 2 | 4
-     | 4 | 1 | four  | 2 | 4
-(9 rows)
-
---
--- Outer joins
--- Note that OUTER is a noise word
---
-SELECT '' AS "xxx", *
-  FROM J1_TBL LEFT OUTER JOIN J2_TBL USING (i)
-  ORDER BY i, k, t;
- xxx | i | j |   t   | k  
------+---+---+-------+----
-     | 0 |   | zero  |   
-     | 1 | 4 | one   | -1
-     | 2 | 3 | two   |  2
-     | 2 | 3 | two   |  4
-     | 3 | 2 | three | -3
-     | 4 | 1 | four  |   
-     | 5 | 0 | five  | -5
-     | 5 | 0 | five  | -5
-     | 6 | 6 | six   |   
-     | 7 | 7 | seven |   
-     | 8 | 8 | eight |   
-     |   |   | null  |   
-     |   | 0 | zero  |   
-(13 rows)
-
-SELECT '' AS "xxx", *
-  FROM J1_TBL LEFT JOIN J2_TBL USING (i)
-  ORDER BY i, k, t;
- xxx | i | j |   t   | k  
------+---+---+-------+----
-     | 0 |   | zero  |   
-     | 1 | 4 | one   | -1
-     | 2 | 3 | two   |  2
-     | 2 | 3 | two   |  4
-     | 3 | 2 | three | -3
-     | 4 | 1 | four  |   
-     | 5 | 0 | five  | -5
-     | 5 | 0 | five  | -5
-     | 6 | 6 | six   |   
-     | 7 | 7 | seven |   
-     | 8 | 8 | eight |   
-     |   |   | null  |   
-     |   | 0 | zero  |   
-(13 rows)
-
-SELECT '' AS "xxx", *
-  FROM J1_TBL RIGHT OUTER JOIN J2_TBL USING (i) order by 1, 2, 3, 4, 5;
- xxx | i | j |   t   | k  
------+---+---+-------+----
-     | 0 |   | zero  |   
-     | 1 | 4 | one   | -1
-     | 2 | 3 | two   |  2
-     | 2 | 3 | two   |  4
-     | 3 | 2 | three | -3
-     | 5 | 0 | five  | -5
-     | 5 | 0 | five  | -5
-     |   |   |       |  0
-     |   |   |       |   
-(9 rows)
-
-SELECT '' AS "xxx", *
-  FROM J1_TBL RIGHT JOIN J2_TBL USING (i) order by 1, 2, 3, 4, 5;
- xxx | i | j |   t   | k  
------+---+---+-------+----
-     | 0 |   | zero  |   
-     | 1 | 4 | one   | -1
-     | 2 | 3 | two   |  2
-     | 2 | 3 | two   |  4
-     | 3 | 2 | three | -3
-     | 5 | 0 | five  | -5
-     | 5 | 0 | five  | -5
-     |   |   |       |  0
-     |   |   |       |   
-(9 rows)
-
-SELECT '' AS "xxx", *
-  FROM J1_TBL FULL OUTER JOIN J2_TBL USING (i)
-  ORDER BY i, k, t;
- xxx | i | j |   t   | k  
------+---+---+-------+----
-     | 0 |   | zero  |   
-     | 1 | 4 | one   | -1
-     | 2 | 3 | two   |  2
-     | 2 | 3 | two   |  4
-     | 3 | 2 | three | -3
-     | 4 | 1 | four  |   
-     | 5 | 0 | five  | -5
-     | 5 | 0 | five  | -5
-     | 6 | 6 | six   |   
-     | 7 | 7 | seven |   
-     | 8 | 8 | eight |   
-     |   |   |       |  0
-     |   |   | null  |   
-     |   | 0 | zero  |   
-     |   |   |       |   
-(15 rows)
-
-SELECT '' AS "xxx", *
-  FROM J1_TBL FULL JOIN J2_TBL USING (i)
-  ORDER BY i, k, t;
- xxx | i | j |   t   | k  
------+---+---+-------+----
-     | 0 |   | zero  |   
-     | 1 | 4 | one   | -1
-     | 2 | 3 | two   |  2
-     | 2 | 3 | two   |  4
-     | 3 | 2 | three | -3
-     | 4 | 1 | four  |   
-     | 5 | 0 | five  | -5
-     | 5 | 0 | five  | -5
-     | 6 | 6 | six   |   
-     | 7 | 7 | seven |   
-     | 8 | 8 | eight |   
-     |   |   |       |  0
-     |   |   | null  |   
-     |   | 0 | zero  |   
-     |   |   |       |   
-(15 rows)
-
-SELECT '' AS "xxx", *
-  FROM J1_TBL LEFT JOIN J2_TBL USING (i) WHERE (k = 1) order by 1, 2, 3, 4, 5;
- xxx | i | j | t | k 
------+---+---+---+---
-(0 rows)
-
-SELECT '' AS "xxx", *
-  FROM J1_TBL LEFT JOIN J2_TBL USING (i) WHERE (i = 1) order by 1, 2, 3, 4, 5;
- xxx | i | j |  t  | k  
------+---+---+-----+----
-     | 1 | 4 | one | -1
-(1 row)
-
---
--- semijoin selectivity for <>
---
--- explain (costs off)
--- select * from int4_tbl i4, tenk1 a
--- where exists(select * from tenk1 b
---              where a.twothousand = b.twothousand and a.fivethous <> b.fivethous)
---       and i4.f1 = a.tenthous;
---
--- More complicated constructs
---
---
--- Multiway full join
---
-SELECT * FROM t1 FULL JOIN t2 USING (name) FULL JOIN t3 USING (name) order by 1, 2, 3, 4;
- name | n  | n  | n  
-------+----+----+----
- bb   | 11 | 12 | 13
- cc   |    | 22 | 23
- dd   |    |    | 33
- ee   |    | 42 |   
-(4 rows)
-
---
--- Test interactions of join syntax and subqueries
---
--- Basic cases (we expect planner to pull up the subquery here)
-SELECT * FROM
-(SELECT * FROM t2) as s2
-INNER JOIN
-(SELECT * FROM t3) s3
-USING (name) order by 1, 2, 3;
- name | n  | n  
-------+----+----
- bb   | 12 | 13
- cc   | 22 | 23
-(2 rows)
-
-SELECT * FROM
-(SELECT * FROM t2) as s2
-LEFT JOIN
-(SELECT * FROM t3) s3
-USING (name) order by 1, 2, 3;
- name | n  | n  
-------+----+----
- bb   | 12 | 13
- cc   | 22 | 23
- ee   | 42 |   
-(3 rows)
-
-SELECT * FROM
-(SELECT * FROM t2) as s2
-FULL JOIN
-(SELECT * FROM t3) s3
-USING (name) order by 1, 2, 3;
- name | n  | n  
-------+----+----
- bb   | 12 | 13
- cc   | 22 | 23
- dd   |    | 33
- ee   | 42 |   
-(4 rows)
-
--- Cases with non-nullable expressions in subquery results;
--- make sure these go to null as expected
-SELECT * FROM
-(SELECT name, n as s2_n, 2 as s2_2 FROM t2) as s2
-NATURAL INNER JOIN
-(SELECT name, n as s3_n, 3 as s3_2 FROM t3) s3 order by 1, 2, 3, 4, 5;
- name | s2_n | s2_2 | s3_n | s3_2 
-------+------+------+------+------
- bb   |   12 |    2 |   13 |    3
- cc   |   22 |    2 |   23 |    3
-(2 rows)
-
-SELECT * FROM
-(SELECT name, n as s2_n, 2 as s2_2 FROM t2) as s2
-NATURAL LEFT JOIN
-(SELECT name, n as s3_n, 3 as s3_2 FROM t3) s3 order by 1, 2, 3, 4, 5;
- name | s2_n | s2_2 | s3_n | s3_2 
-------+------+------+------+------
- bb   |   12 |    2 |   13 |    3
- cc   |   22 |    2 |   23 |    3
- ee   |   42 |    2 |      |     
-(3 rows)
-
-SELECT * FROM
-(SELECT name, n as s2_n, 2 as s2_2 FROM t2) as s2
-NATURAL FULL JOIN
-(SELECT name, n as s3_n, 3 as s3_2 FROM t3) s3 order by 1, 2, 3, 4;
- name | s2_n | s2_2 | s3_n | s3_2 
-------+------+------+------+------
- bb   |   12 |    2 |   13 |    3
- cc   |   22 |    2 |   23 |    3
- dd   |      |      |   33 |    3
- ee   |   42 |    2 |      |     
-(4 rows)
-
-SELECT * FROM
-(SELECT name, n as s1_n, 1 as s1_1 FROM t1) as s1
-NATURAL INNER JOIN
-(SELECT name, n as s2_n, 2 as s2_2 FROM t2) as s2
-NATURAL INNER JOIN
-(SELECT name, n as s3_n, 3 as s3_2 FROM t3) s3 order by 1, 2, 3, 4, 5, 6, 7;
- name | s1_n | s1_1 | s2_n | s2_2 | s3_n | s3_2 
-------+------+------+------+------+------+------
- bb   |   11 |    1 |   12 |    2 |   13 |    3
-(1 row)
-
-SELECT * FROM
-(SELECT name, n as s1_n, 1 as s1_1 FROM t1) as s1
-NATURAL FULL JOIN
-(SELECT name, n as s2_n, 2 as s2_2 FROM t2) as s2
-NATURAL FULL JOIN
-(SELECT name, n as s3_n, 3 as s3_2 FROM t3) s3 order by 1, 2, 3, 4, 5, 6, 7;
- name | s1_n | s1_1 | s2_n | s2_2 | s3_n | s3_2 
-------+------+------+------+------+------+------
- bb   |   11 |    1 |   12 |    2 |   13 |    3
- cc   |      |      |   22 |    2 |   23 |    3
- dd   |      |      |      |      |   33 |    3
- ee   |      |      |   42 |    2 |      |     
-(4 rows)
-
-SELECT * FROM
-(SELECT name, n as s1_n FROM t1) as s1
-NATURAL FULL JOIN
-  (SELECT * FROM
-    (SELECT name, n as s2_n FROM t2) as s2
-    NATURAL FULL JOIN
-    (SELECT name, n as s3_n FROM t3) as s3
-  ) ss2 order by 1, 2, 3, 4;
- name | s1_n | s2_n | s3_n 
-------+------+------+------
- bb   |   11 |   12 |   13
- cc   |      |   22 |   23
- dd   |      |      |   33
- ee   |      |   42 |     
-(4 rows)
-
-SELECT * FROM
-(SELECT name, n as s1_n FROM t1) as s1
-NATURAL FULL JOIN
-  (SELECT * FROM
-    (SELECT name, n as s2_n, 2 as s2_2 FROM t2) as s2
-    NATURAL FULL JOIN
-    (SELECT name, n as s3_n FROM t3) as s3
-  ) ss2 order by 1, 2, 3, 4, 5;
- name | s1_n | s2_n | s2_2 | s3_n 
-------+------+------+------+------
- bb   |   11 |   12 |    2 |   13
- cc   |      |   22 |    2 |   23
- dd   |      |      |      |   33
- ee   |      |   42 |    2 |     
-(4 rows)
-
--- Test for propagation of nullability constraints into sub-joins
-create temp table x (x1 int, x2 int);
-insert into x values (1,11);
-insert into x values (2,22);
-insert into x values (3,null);
-insert into x values (4,44);
-insert into x values (5,null);
-create temp table y (y1 int, y2 int);
-insert into y values (1,111);
-insert into y values (2,222);
-insert into y values (3,333);
-insert into y values (4,null);
-select * from x order by 1, 2;
- x1 | x2 
-----+----
-  1 | 11
-  2 | 22
-  3 |   
-  4 | 44
-  5 |   
-(5 rows)
-
-select * from y order by 1, 2;
- y1 | y2  
-----+-----
-  1 | 111
-  2 | 222
-  3 | 333
-  4 |    
-(4 rows)
-
-select * from x left join y on (x1 = y1 and x2 is not null) order by 1, 2, 3, 4;
- x1 | x2 | y1 | y2  
-----+----+----+-----
-  1 | 11 |  1 | 111
-  2 | 22 |  2 | 222
-  3 |    |    |    
-  4 | 44 |  4 |    
-  5 |    |    |    
-(5 rows)
-
-select * from x left join y on (x1 = y1 and y2 is not null) order by 1, 2, 3, 4;
- x1 | x2 | y1 | y2  
-----+----+----+-----
-  1 | 11 |  1 | 111
-  2 | 22 |  2 | 222
-  3 |    |  3 | 333
-  4 | 44 |    |    
-  5 |    |    |    
-(5 rows)
-
-select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
-on (x1 = xx1) order by 1, 2, 3, 4, 5, 6;
- x1 | x2 | y1 | y2  | xx1 | xx2 
-----+----+----+-----+-----+-----
-  1 | 11 |  1 | 111 |   1 |  11
-  2 | 22 |  2 | 222 |   2 |  22
-  3 |    |  3 | 333 |   3 |    
-  4 | 44 |  4 |     |   4 |  44
-  5 |    |    |     |   5 |    
-(5 rows)
-
-select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
-on (x1 = xx1 and x2 is not null) order by 1, 2, 3, 4, 5, 6;
- x1 | x2 | y1 | y2  | xx1 | xx2 
-----+----+----+-----+-----+-----
-  1 | 11 |  1 | 111 |   1 |  11
-  2 | 22 |  2 | 222 |   2 |  22
-  3 |    |  3 | 333 |     |    
-  4 | 44 |  4 |     |   4 |  44
-  5 |    |    |     |     |    
-(5 rows)
-
-select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
-on (x1 = xx1 and y2 is not null) order by 1, 2, 3, 4, 5, 6;
- x1 | x2 | y1 | y2  | xx1 | xx2 
-----+----+----+-----+-----+-----
-  1 | 11 |  1 | 111 |   1 |  11
-  2 | 22 |  2 | 222 |   2 |  22
-  3 |    |  3 | 333 |   3 |    
-  4 | 44 |  4 |     |     |    
-  5 |    |    |     |     |    
-(5 rows)
-
-select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
-on (x1 = xx1 and xx2 is not null) order by 1, 2, 3, 4, 5, 6;
- x1 | x2 | y1 | y2  | xx1 | xx2 
-----+----+----+-----+-----+-----
-  1 | 11 |  1 | 111 |   1 |  11
-  2 | 22 |  2 | 222 |   2 |  22
-  3 |    |  3 | 333 |     |    
-  4 | 44 |  4 |     |   4 |  44
-  5 |    |    |     |     |    
-(5 rows)
-
--- these should NOT give the same answers as above
-select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
-on (x1 = xx1) where (x2 is not null) order by 1;
- x1 | x2 | y1 | y2  | xx1 | xx2 
-----+----+----+-----+-----+-----
-  1 | 11 |  1 | 111 |   1 |  11
-  2 | 22 |  2 | 222 |   2 |  22
-  4 | 44 |  4 |     |   4 |  44
-(3 rows)
-
-select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
-on (x1 = xx1) where (y2 is not null) order by 1;
- x1 | x2 | y1 | y2  | xx1 | xx2 
-----+----+----+-----+-----+-----
-  1 | 11 |  1 | 111 |   1 |  11
-  2 | 22 |  2 | 222 |   2 |  22
-  3 |    |  3 | 333 |   3 |    
-(3 rows)
-
-select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
-on (x1 = xx1) where (xx2 is not null) order by 1;
- x1 | x2 | y1 | y2  | xx1 | xx2 
-----+----+----+-----+-----+-----
-  1 | 11 |  1 | 111 |   1 |  11
-  2 | 22 |  2 | 222 |   2 |  22
-  4 | 44 |  4 |     |   4 |  44
-(3 rows)
-
 -- Tests for EXPLAIN output of BNL
 -- These tests ensure we don't resolve fieldnames for batched expressions in Index Cond
 CREATE FUNCTION public.dummy(OUT a integer, OUT b integer)

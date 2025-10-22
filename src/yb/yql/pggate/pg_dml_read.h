@@ -62,7 +62,7 @@ class PgDmlRead : public PgDml {
 
   // Append a filter condition.
   // Supported expression kind is serialized Postgres expression.
-  Status AppendQual(PgExpr* qual, bool is_for_secondary_index);
+  Status AppendQual(PgExpr* qual, uint32_t serialization_version, bool is_for_secondary_index);
 
   // Allocate binds.
   virtual void PrepareBinds();

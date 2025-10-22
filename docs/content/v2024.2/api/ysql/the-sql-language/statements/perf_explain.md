@@ -171,4 +171,4 @@ For details on these metrics, see [Cache and storage subsystems](../../../../../
 
 - [INSERT](../dml_insert/)
 - [SELECT](../dml_select/)
-- [Analyze queries with EXPLAIN](../../../../../explore/query-1-performance/explain-analyze/)
+- [Analyze queries with EXPLAIN](../../../../../launch-and-manage/monitor-and-alert/query-tuning/explain-analyze/)

@@ -494,6 +494,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Allow the usage of S3 Exporter in Telemetry Provider.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> telemetryAllowOTLP =
+      new ConfKeyInfo<>(
+          "yb.telemetry.allow_otlp",
+          ScopeType.GLOBAL,
+          "Allow OTLP Exporter in Telemetry Provider",
+          "Allow the usage of OTLP Exporter in Telemetry Provider.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Integer> hcvTokenRenewPercent =
       new ConfKeyInfo<>(
           "yb.kms.hcv_token_renew_percent",
@@ -809,6 +817,16 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ScopeType.GLOBAL,
           "Allow universes to be detached/attached",
           "Allow universes to be detached from a source platform and attached to dest platform",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowAutoProviderToK8sPlatform =
+      new ConfKeyInfo<>(
+          "yb.attach_detach.allow_auto_provider_to_k8s_platform",
+          ScopeType.GLOBAL,
+          "Allow auto-provider K8s universes to attach to K8s-based YBA",
+          "Allow Kubernetes auto-provider universes to be attached to Kubernetes-based YBA. "
+              + "Note that you must only attach auto-provider universe to Kubernetes-based YBA "
+              + "if the destination and source YBA exist on the same Kubernetes cluster",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> transactionalXClusterEnabled =
@@ -1202,6 +1220,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ScopeType.GLOBAL,
           "Enable publishing thread dumps to GCS",
           "Enable publishing thread dumps to GCS",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> ybcDiagSupportBundlesGCSEnabled =
+      new ConfKeyInfo<>(
+          "yb.diag.support_bundles.gcs.enabled",
+          ScopeType.GLOBAL,
+          "Enable publishing support bundles to GCS",
+          "Enable publishing support bundles to GCS",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> blockOperatorApiResources =

@@ -73,6 +73,12 @@ void Uuid::EncodeToComparable(uint8_t* output) const {
   memcpy(output + kUuidMsbSize, boost_uuid_.data + kUuidMsbSize, kUuidLsbSize);
 }
 
+std::string Uuid::EncodedToComparable() const {
+  std::string result;
+  EncodeToComparable(&result);
+  return result;
+}
+
 void Uuid::EncodeToComparable(std::string* bytes) const {
   uint8_t output[kUuidSize];
   EncodeToComparable(output);

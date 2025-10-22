@@ -269,6 +269,7 @@
         "additionalStepInfo": "After the upgrade is completed, you'll need to manually finalize the upgrade to finish the process.",
         "configureUpgrade": "2. Configure upgrade details",
         "rolllingUpgradeLabel": "Rolling upgrade (upgrade nodes one at a time)",
+        "nonRollingWarning": "<strong>Non-rolling rollback will cause database downtime.</strong><br /> The database will be unavailable for the duration of the rollback.",
         "upgradeDelayLabel": "Upgrade delay between Nodes:",
         "numNodesToRollingUpgrade": "Max batch size: ",
         "rollingUpgradeMsg": "Refers to the number of nodes that can be unavailable during upgrade process across AZs. This can possibly affect the performance of the cluster till the upgrade is finished",
@@ -277,7 +278,7 @@
         "footerMsg3": "Before upgrading, perform a full backup of your universe.",
         "rollbackPrevious": "roll back to the previous version",
         "avoidDisruption": "Avoid disruption to xCluster configuration",
-        "pitrNotSupported":"If you have PITR configured, after the upgrade <b>you cannot restore</b> to a time prior to the upgrade",
+        "pitrNotSupported": "If you have PITR configured, after the upgrade <b>you cannot restore</b> to a time prior to the upgrade",
         "xClusterWarning2": "If you are using xCluster DR, you <b>cannot fail over</b> while upgrading the DR replica, <b>or switch over</b> while upgrading either the DR primary or replica.",
         "xclusterWarning": "This universe is part of one or more xCluster configurations. To minimize disruption, upgrade the target universe first.",
         "rollbackUpgradeTite": "Roll Back Upgrade",
@@ -676,7 +677,10 @@
           "enableNodeToNodeTLS": "Enable Node-to-Node TLS",
           "enableNodeToNodeTLSHelper": "Enable Node-to-Node encryption to use TLS enabled connections for communication between different Universe nodes.",
           "rootCertificate": "Root Certificate",
-          "rootCertificatePlaceHolder": "Create New Certificate"
+          "clientToNodeCertificate": "Client-to-Node Certificate",
+          "rootCertificatePlaceHolder": "Create New Certificate",
+          "clientCAAndRootCASame": "Use the same certificate for “Node to Node” and “Client to Node” encryption",
+          "enableBothNodeAndClientTLS": "Enable “Node to Node” and “Client to Node” Encryption"
         },
         "placeholder": {
           "enterYSQLPassword": "Enter YSQL auth password",
@@ -691,17 +695,13 @@
         "tagName": "Tag Name",
         "tagValue": "Value"
       },
-      "resizeNodeModal": {
-        "confirmResizeCheckbox": "Confirm Resize Nodes",
-        "modalTitle": "Resize Nodes",
-        "cancelLabel": "Cancel",
-        "confirmLabel": "Confirm",
-        "modalDescription": "This operation will be performed without restart",
-        "timeDelayLabel": "Rolling Upgrade Delay Between Servers (secs)"
-      },
       "smartResizeModal": {
-        "modalDescription": "This operation will migrate this universe and all its data to a completely new set of nodes Or alternatively you could try smart resize (This will change VM image {{value}} for existing nodes)",
-        "buttonLabel": "Do Smart Resize"
+        "modalTitle": "Confirm Smart Resize Update",
+        "confirmResizeCheckbox": "Confirm Resize Nodes",
+        "timeDelayLabel": "Rolling Upgrade Delay Between Servers (secs)",
+        "modalDescription": "This operation {{value}} {{value2}} for existing nodes",
+        "modalDescriptionNonRestart": "This operation will be performed without restart",
+        "buttonLabel": "Proceed"
       },
       "placementModal": {
         "modalTitle": "Confirm Update",
@@ -2695,6 +2695,12 @@
           "editFailedLabel": "Failed to apply changes to automated platform backup"
         }
       },
+      "restoreOverExistingUniversesWarningModal": {
+        "title": "Are you sure?",
+        "restoreOverExistingUniversesWarning": "Restoring from a backup can cause serious issues for your existing universes, including <bold>data loss</bold>, as the backup may not be consistent with the current state of the universes.",
+        "confirmationInstructions": "Type “Accept Risk” to continue",
+        "submitButton": "Accept Risk and Continue"
+      },
       "deleteContinuousBackupModal": {
         "title": "Disable Automated Platform Backups",
         "deleteConfirmation": "Are you sure you want to disable automated platform backups? This will delete the automated platform backup configuration. To re-enable, you will need to to set up the confirguration again.",
@@ -2723,7 +2729,7 @@
           "createBackupTaskFailed": "One-time platform export failed."
         }
       },
-      "restoreYbaBackupModal": {
+      "restoreYbaBackupFormModal": {
         "title": "Restore Platform Backup",
         "instructions": "Choose how you want to restore your platform backup",
         "option": {
@@ -2747,6 +2753,7 @@
           "folder": "Folder",
           "backupFolderHelperText": "The most recent backup from this folder will be used for the restore."
         },
+        "ybaRestartWarning": "<bold>Note!</bold> As part of the restore process, YugabyteDB Anywhere will restart itself automatically.",
         "submitButton": "Restore",
         "error": {
           "backupTypeRequired": "Please select a backup type"
@@ -2849,7 +2856,9 @@
           "splunk": "Splunk",
           "awsCloudWatch": "AWS CloudWatch",
           "gcpCloudMonitoring": "GCP Cloud Logging",
-          "dynatrace": "Dynatrace"
+          "dynatrace": "Dynatrace",
+          "s3": "S3",
+          "otlp": "OTLP"
         },
         "exportSupport": {
           "metrics": "Metrics",

@@ -28,13 +28,18 @@
 #include "yb/util/logging.h"
 #include "yb/util/status_format.h"
 
-namespace yb {
-namespace docdb {
+namespace yb::docdb {
 
 using dockv::DocKey;
 using dockv::KeyBytes;
 using dockv::KeyEntryType;
 using dockv::KeyEntryValue;
+
+namespace {
+
+const dockv::KeyEntryValues kEmptyKeyComponents;
+
+}
 
 DocPgsqlScanSpec::DocPgsqlScanSpec(
     const Schema& schema,
@@ -45,9 +50,9 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
     const DocKey& start_doc_key,
     bool is_forward_scan,
     const size_t prefix_length)
-    : PgsqlScanSpec(
-          schema, is_forward_scan, query_id, /* range_bounds = */ nullptr, prefix_length),
-      hashed_components_(nullptr),
+    : YQLScanSpec(
+          YQL_CLIENT_PGSQL, schema, is_forward_scan, query_id, /* range_bounds = */ nullptr,
+          prefix_length, SharedSmallArena()),
       range_components_(nullptr),
       options_groups_(schema.num_dockey_components()),
       hash_code_(hash_code),
@@ -85,7 +90,8 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
 DocPgsqlScanSpec::DocPgsqlScanSpec(
     const Schema& schema,
     const rocksdb::QueryId query_id,
-    std::reference_wrapper<const dockv::KeyEntryValues> hashed_components,
+    const ArenaPtr& arena,
+    const std::vector<Slice>& encoded_hashed_components,
     std::reference_wrapper<const dockv::KeyEntryValues> range_components,
     const PgsqlConditionPB* condition,
     const std::optional<int32_t> hash_code,
@@ -95,11 +101,10 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
     const DocKey& lower_doc_key,
     const DocKey& upper_doc_key,
     const size_t prefix_length)
-    : PgsqlScanSpec(
-          schema, is_forward_scan, query_id,
+    : YQLScanSpec(
+          YQL_CLIENT_PGSQL, schema, is_forward_scan, query_id,
           condition ? std::make_unique<qlexpr::QLScanRange>(schema, *condition) : nullptr,
-          prefix_length),
-      hashed_components_(&hashed_components.get()),
+          prefix_length, arena ? arena : SharedSmallArena()),
       range_components_(&range_components.get()),
       options_groups_(schema.num_dockey_components()),
       hash_code_(hash_code),
@@ -108,7 +113,7 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
   bounds_.lower = lower_doc_key.Encode();
   bounds_.upper = upper_doc_key.Encode();
 
-  if (!hashed_components_->empty() && schema.num_hash_key_columns() > 0) {
+  if (!encoded_hashed_components.empty() && schema.num_hash_key_columns() > 0) {
     options_ = std::make_shared<std::vector<qlexpr::OptionList>>(schema.num_dockey_components());
     options_col_ids_.reserve(schema.num_dockey_components());
 
@@ -121,15 +126,15 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
     options_groups_.AddToLatestGroup(0);
     options_col_ids_.emplace_back(ColumnId(kYbHashCodeColId));
 
-    (*options_)[0].push_back(KeyEntryValue::UInt16Hash(hash_code_.value()));
-    DCHECK(hashed_components_->size() == schema.num_hash_key_columns());
+    (*options_)[0].push_back(dockv::EncodedHashCode(*arena, hash_code_.value()));
+    DCHECK_EQ(encoded_hashed_components.size(), schema.num_hash_key_columns());
     for (size_t col_idx = 0; col_idx < schema.num_hash_key_columns(); ++col_idx) {
       // Adding 1 to col_idx to account for hash_code column
       options_groups_.AddToLatestGroup(schema.get_dockey_component_idx(col_idx));
       options_col_ids_.emplace_back(schema.column_id(col_idx));
 
-      (*options_)[schema.get_dockey_component_idx(col_idx)]
-          .push_back(std::move((*hashed_components_)[col_idx]));
+      (*options_)[schema.get_dockey_component_idx(col_idx)].push_back(
+          encoded_hashed_components[col_idx]);
     }
   }
 
@@ -144,7 +149,7 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
     InitOptions(*condition);
   }
 
-  auto calculated_bounds = CalculateBounds(schema);
+  auto calculated_bounds = CalculateBounds(encoded_hashed_components, schema);
   if (lower_doc_key.empty() || calculated_bounds.lower > bounds_.lower) {
     bounds_.lower = std::move(calculated_bounds.lower);
   }
@@ -156,6 +161,10 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
 
   CompleteBounds();
 }
+
+DocPgsqlScanSpec::DocPgsqlScanSpec(const Schema& schema, const PgsqlConditionPB* condition)
+    : DocPgsqlScanSpec(schema, rocksdb::kDefaultQueryId, nullptr, {}, kEmptyKeyComponents,
+                       condition, std::nullopt, std::nullopt) {}
 
 void DocPgsqlScanSpec::InitOptions(const PgsqlConditionPB& condition) {
   switch (condition.op()) {
@@ -201,7 +210,7 @@ void DocPgsqlScanSpec::InitOptions(const PgsqlConditionPB& condition) {
           return;
         }
 
-        auto sortingType = get_sorting_type(col_idx);
+        auto sorting_type = get_sorting_type(col_idx);
 
         // Adding the offset if yb_hash_code is present after schema usages. Schema does not know
         // about yb_hash_code_column
@@ -212,8 +221,8 @@ void DocPgsqlScanSpec::InitOptions(const PgsqlConditionPB& condition) {
         options_groups_.AddToLatestGroup(key_idx);
 
         if (condition.op() == QL_OP_EQUAL) {
-          auto pv = KeyEntryValue::FromQLValuePBForKey(condition.operands(1).value(), sortingType);
-          (*options_)[key_idx].push_back(std::move(pv));
+          (*options_)[key_idx].push_back(dockv::EncodedKeyEntryValue(
+              arena(), condition.operands(1).value(), sorting_type));
         } else { // QL_OP_IN
           DCHECK_EQ(condition.op(), QL_OP_IN);
           DCHECK(rhs.value().has_list_value());
@@ -226,8 +235,8 @@ void DocPgsqlScanSpec::InitOptions(const PgsqlConditionPB& condition) {
           for (int i = 0; i < opt_size; i++) {
             int elem_idx = is_reverse_order ? opt_size - i - 1 : i;
             const auto &elem = options.elems(elem_idx);
-            auto pv = KeyEntryValue::FromQLValuePBForKey(elem, sortingType);
-            (*options_)[key_idx].push_back(std::move(pv));
+            (*options_)[key_idx].push_back(dockv::EncodedKeyEntryValue(
+                arena(), elem, sorting_type));
           }
         }
       } else if (lhs.has_tuple()) {
@@ -275,10 +284,9 @@ void DocPgsqlScanSpec::InitOptions(const PgsqlConditionPB& condition) {
           DCHECK_EQ(total_cols, value.elems_size());
           for (size_t i = start_range_col_idx; i < total_cols; i++) {
             // hash codes are always sorted ascending.
-            auto option = KeyEntryValue::FromQLValuePBForKey(value.elems(static_cast<int>(i)),
-                                                             get_sorting_type(col_idxs[i]));
             auto options_idx = schema().get_dockey_component_idx(col_idxs[i]);
-            (*options_)[options_idx].push_back(std::move(option));
+            (*options_)[options_idx].push_back(dockv::EncodedKeyEntryValue(
+                arena(), value.elems(narrow_cast<int>(i)), get_sorting_type(col_idxs[i])));
           }
         } else if (condition.op() == QL_OP_IN) {
           // There should be no range columns before start_range_col_idx in col_idxs
@@ -328,12 +336,12 @@ void DocPgsqlScanSpec::InitOptions(const PgsqlConditionPB& condition) {
               const auto sorting_type = get_sorting_type(col_idxs[j]);
 
               // For hash tuples, the first element always contains the yb_hash_code
-              auto option = (j == 0 && col_idxs[j] == kYbHashCodeColId)
-                ? KeyEntryValue::UInt16Hash(value.elems(static_cast<int>(j)).int32_value())
-                : KeyEntryValue::FromQLValuePBForKey(value.elems(static_cast<int>(j)),
-                                                     sorting_type);
               auto options_idx = schema().get_dockey_component_idx(col_idxs[j]);
-              (*options_)[options_idx].push_back(std::move(option));
+              const auto& value_elem = value.elems(narrow_cast<int>(j));
+              auto value_slice = j == 0 && col_idxs[j] == kYbHashCodeColId
+                  ? dockv::EncodedHashCode(arena(), value_elem.int32_value())
+                  : dockv::EncodedKeyEntryValue(arena(), value_elem, sorting_type);
+              (*options_)[options_idx].push_back(value_slice);
             }
           }
         }
@@ -347,52 +355,68 @@ void DocPgsqlScanSpec::InitOptions(const PgsqlConditionPB& condition) {
   }
 }
 
-qlexpr::ScanBounds DocPgsqlScanSpec::CalculateBounds(const Schema& schema) const {
+qlexpr::ScanBounds DocPgsqlScanSpec::CalculateBounds(
+    const std::vector<Slice>& encoded_hashed_components, const Schema& schema) const {
   bool has_hash_columns = schema.num_hash_key_columns() > 0;
 
   // The first column in a hash partitioned table is the hash code column.
   bool has_in_hash_options = has_hash_columns && options_ && !options_->empty()
       && !(*options_)[schema.get_dockey_component_idx(0)].empty();
-  dockv::KeyEntryValues hashed_components;
+  std::vector<Slice> hashed_components;
   hashed_components.reserve(schema.num_hash_key_columns());
 
-  int32_t hash_code;
-  int32_t max_hash_code;
-  auto append_hashed_component = false;
-  if (hashed_components_->empty() && has_in_hash_options) {
+  Slice hash_code;
+  Slice max_hash_code;
+  auto append_hashed_component = encoded_hashed_components.empty() && has_in_hash_options;
+
+  dockv::KeyBytes key_buffer;
+
+  if (append_hashed_component) {
     DCHECK_GE(options_->size(),
               schema.num_hash_key_columns() + schema.has_yb_hash_code());
-    append_hashed_component = true;
-    hash_code = static_cast<int32_t>((*options_)[0].front().GetUInt16Hash());
-    max_hash_code = static_cast<int32_t>((*options_)[0].back().GetUInt16Hash());
-  } else {
-    hash_code = hash_code_.value_or(std::numeric_limits<DocKeyHash>::min());
-    max_hash_code = max_hash_code_.value_or(std::numeric_limits<DocKeyHash>::max());
-    hashed_components = *hashed_components_;
+    hash_code = (*options_)[0].front();
+    max_hash_code = (*options_)[0].back();
+  } else if (has_hash_columns) {
+    AppendHash(hash_code_.value_or(std::numeric_limits<DocKeyHash>::min()), &key_buffer);
+    auto hash_code_size = key_buffer.size();
+    AppendHash(max_hash_code_.value_or(std::numeric_limits<DocKeyHash>::max()), &key_buffer);
+    auto key_buffer_slice = key_buffer.AsSlice();
+    // hash_code is encoded hash_code_ or min possible hash code.
+    hash_code = key_buffer_slice.Prefix(hash_code_size);
+    // max_hash_code is encoded max_hash_code_ or max possible hash code.
+    max_hash_code = key_buffer_slice.WithoutPrefix(hash_code_size);
+    for (const auto& component : encoded_hashed_components) {
+      hashed_components.push_back(component);
+    }
   }
+
+  VLOG_WITH_FUNC(4)
+      << "hash_code: " << hash_code.ToDebugHexString()
+      << ", max_hash_code: " << max_hash_code.ToDebugHexString()
+      << ", append_hashed_component: " << append_hashed_component
+      << ", has_hash_columns: " << has_hash_columns;
 
   qlexpr::ScanBounds bounds;
   auto lower_bound_encoder = dockv::DocKeyEncoder(&bounds.lower).Schema(schema);
   auto upper_bound_encoder = dockv::DocKeyEncoder(&bounds.upper).Schema(schema);
 
   bool hash_components_unset =
-      has_hash_columns &&
-      (hashed_components.empty() && hashed_components_->empty() && !append_hashed_component);
+      has_hash_columns && encoded_hashed_components.empty() && !append_hashed_component;
   if (hash_components_unset) {
     // use lower bound hash code if set in request (for scans using token)
-    if (hash_code) {
-      lower_bound_encoder.HashAndRange(hash_code,
-                                       {KeyEntryValue(KeyEntryType::kLowest)},
-                                       {KeyEntryValue(KeyEntryType::kLowest)});
+    if (hash_code_) {
+      bounds.lower.AppendRawBytes(hash_code);
+      bounds.lower.AppendKeyEntryType(KeyEntryType::kLowest);
     }
+
     // use upper bound hash code if set in request (for scans using token)
     if (max_hash_code_) {
-      upper_bound_encoder.HashAndRange(max_hash_code,
-                                       {KeyEntryValue(KeyEntryType::kHighest)},
-                                       {KeyEntryValue(KeyEntryType::kHighest)});
-    } else {
-      bounds.upper.AppendKeyEntryTypeBeforeGroupEnd(KeyEntryType::kHighest);
+      bounds.upper.AppendRawBytes(max_hash_code);
     }
+    bounds.upper.AppendKeyEntryType(KeyEntryType::kHighest);
+
+    VLOG_WITH_FUNC(4) << bounds.ToString();
+
     return bounds;
   }
 
@@ -410,7 +434,7 @@ qlexpr::ScanBounds DocPgsqlScanSpec::CalculateBounds(const Schema& schema) const
     }
     lower_bound_encoder.
         Hash(hash_code, hashed_components).
-        Range(DoRangeComponents(true, nullptr, &lower_trivial));
+        Range(DoRangeComponents(qlexpr::BoundType::kLower, nullptr, &lower_trivial));
 
     if (append_hashed_component) {
       hashed_components.clear();
@@ -420,29 +444,34 @@ qlexpr::ScanBounds DocPgsqlScanSpec::CalculateBounds(const Schema& schema) const
     }
     upper_bound_encoder.
         Hash(max_hash_code, hashed_components).
-        Range(DoRangeComponents(false, nullptr, &upper_trivial));
+        Range(DoRangeComponents(qlexpr::BoundType::kUpper, nullptr, &upper_trivial));
   } else {
+    VLOG_WITH_FUNC(4) << "range_components: " << AsString(range_components_);
     single_hash = true;
-    lower_bound_encoder.NoHash().Range(DoRangeComponents(true, nullptr, &lower_trivial));
-    upper_bound_encoder.NoHash().Range(DoRangeComponents(false, nullptr, &upper_trivial));
+    lower_bound_encoder.NoHash().Range(DoRangeComponents(
+        qlexpr::BoundType::kLower, nullptr, &lower_trivial));
+    upper_bound_encoder.NoHash().Range(DoRangeComponents(
+        qlexpr::BoundType::kUpper, nullptr, &upper_trivial));
   }
   bounds.trivial = single_hash && lower_trivial && upper_trivial;
+
+  VLOG_WITH_FUNC(4) << bounds.ToString();
 
   return bounds;
 }
 
-dockv::KeyEntryValues DocPgsqlScanSpec::RangeComponents(const bool lower_bound,
+dockv::KeyEntryValues DocPgsqlScanSpec::RangeComponents(qlexpr::BoundType bound_type,
                                                         std::vector<bool>* inclusivities) const {
-  return DoRangeComponents(lower_bound, inclusivities);
+  return DoRangeComponents(bound_type, inclusivities);
 }
 
 dockv::KeyEntryValues DocPgsqlScanSpec::DoRangeComponents(
-    const bool lower_bound, std::vector<bool>* inclusivities, bool* trivial) const {
+    qlexpr::BoundType bound_type, std::vector<bool>* inclusivities, bool* trivial) const {
   return GetRangeKeyScanSpec(schema(),
                              range_components_,
                              range_bounds(),
                              inclusivities,
-                             lower_bound,
+                             bound_type,
                              false,
                              trivial);
 }
@@ -479,5 +508,4 @@ const DocKey& DocPgsqlScanSpec::DefaultStartDocKey() {
   return result;
 }
 
-}  // namespace docdb
-}  // namespace yb
+}  // namespace yb::docdb

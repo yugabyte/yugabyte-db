@@ -58,6 +58,7 @@ public class TelemetryProviderControllerTest extends FakeDBApplication {
     RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.dbAuditLoggingEnabled.getKey(), "true");
     RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.telemetryAllowLoki.getKey(), "true");
     RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.telemetryAllowS3.getKey(), "true");
+    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.telemetryAllowOTLP.getKey(), "true");
 
     doNothing().when(mockTelemetryProviderService).throwExceptionIfRuntimeFlagDisabled();
     doNothing().when(mockTelemetryProviderService).validateTelemetryProvider(any());

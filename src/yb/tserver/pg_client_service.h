@@ -72,6 +72,7 @@ class TserverXClusterContextIf;
     (GetTablePartitionList) \
     (GetTserverCatalogMessageLists) \
     (SetTserverCatalogMessageList) \
+    (TriggerRelcacheInitConnection) \
     (GetTserverCatalogVersionInfo) \
     (GetXClusterRole) \
     (Heartbeat) \
@@ -120,7 +121,9 @@ class PgClientServiceImpl : public PgClientServiceIf {
   explicit PgClientServiceImpl(
       std::reference_wrapper<const TabletServerIf> tablet_server,
       const std::shared_future<client::YBClient*>& client_future,
-      const scoped_refptr<ClockBase>& clock, TransactionPoolProvider transaction_pool_provider,
+      const scoped_refptr<ClockBase>& clock,
+      TransactionManagerProvider transaction_manager_provider,
+      TransactionPoolProvider transaction_pool_provider,
       const std::shared_ptr<MemTracker>& parent_mem_tracker,
       const scoped_refptr<MetricEntity>& entity, rpc::Messenger* messenger,
       const std::string& permanent_uuid, const server::ServerBaseOptions& tablet_server_opts,

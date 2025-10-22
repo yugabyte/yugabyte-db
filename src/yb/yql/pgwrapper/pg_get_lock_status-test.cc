@@ -76,6 +76,8 @@ class PgGetLockStatusTest : public PgLocksTestBase {
  protected:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
     PgLocksTestBase::SetUp();
   }
 
@@ -908,6 +910,8 @@ TEST_F(PgGetLockStatusTest, TestLockStatusRespHasHostNodeSet) {
     auto conn = VERIFY_RESULT(Connect());
     return conn.ExecuteFormat("UPDATE $0 SET v=v+1 WHERE k=$1", table, key);
   });
+  // Sleep to ensure the transaction heartbeat has been propagated.
+  SleepFor(1s * kTimeMultiplier);
 
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.ExecuteFormat("SET yb_locks_min_txn_age='$0ms'", kMinTxnAgeMs));
@@ -917,24 +921,13 @@ TEST_F(PgGetLockStatusTest, TestLockStatusRespHasHostNodeSet) {
 
   // Try simulating GetLockStatus requests to tablets querying for fast path transactions alone.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_returning_old_transactions) = true;
-  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64>(kPgLocksQuery)), expected_lock_count);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64>(kPgLocksQuery)), 0);
 
   ASSERT_OK(session.conn->CommitTransaction());
   ASSERT_OK(status_future.get());
 }
 
-class PgGetLockStatusTestEnableObjectLocks : public PgGetLockStatusTest {
- protected:
-  void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
-    PgGetLockStatusTest::SetUp();
-  }
-};
-
-TEST_F_EX(
-    PgGetLockStatusTest, TestPgLocksFiltersForObjectLocks,
-    PgGetLockStatusTestEnableObjectLocks) {
+TEST_F(PgGetLockStatusTest, TestPgLocksFiltersForObjectLocks) {
   constexpr auto table = "foo";
   constexpr int kWaitTimeSeconds = 3;
 
@@ -997,12 +990,13 @@ TEST_F_EX(
   thread_holder.WaitAndStop(20s * kTimeMultiplier);
 }
 
-class PgGetLockStatusTestDisableObjectLocks : public PgGetLockStatusTest {
+class PgGetLockStatusTestDisableObjectLocks : public PgLocksTestBase {
  protected:
   void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = false;
-    PgGetLockStatusTest::SetUp();
+    PgLocksTestBase::SetUp();
   }
 };
 
@@ -1078,12 +1072,13 @@ TEST_F(PgGetLockStatusTestRF3, TestPrioritizeLocksOfOlderTxns) {
   thread_holder.WaitAndStop(20s * kTimeMultiplier);
 }
 
-class PgGetLockStatusTestRF3DisableObjectLocks : public PgGetLockStatusTestRF3 {
- protected:
-  void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = false;
-    PgGetLockStatusTestRF3::SetUp();
+class PgGetLockStatusTestRF3DisableObjectLocks : public PgGetLockStatusTestDisableObjectLocks {
+  size_t NumTabletServers() override {
+    return 3;
+  }
+
+  void OverrideMiniClusterOptions(MiniClusterOptions* options) override {
+    options->transaction_table_num_tablets = 4;
   }
 };
 
@@ -1320,21 +1315,20 @@ TEST_F(PgGetLockStatusTest, FetchLocksAmidstTransactionCommit) {
 }
 #endif // NDEBUG
 
-class PgGetLockStatusTestFastElection : public PgGetLockStatusTestRF3 {
+// TODO: Enable object locking and transactional ddl once #27850 is resolved.
+class PgGetLockStatusTestFastElection : public PgGetLockStatusTestRF3DisableObjectLocks {
  protected:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_failure_max_missed_heartbeat_periods) = 4;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_raft_heartbeat_interval_ms) = 100;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_lease_duration_ms) = 400;
-    // TODO: Enable object locking and transactional ddl once #27850 is resolved.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = false;
-    PgGetLockStatusTestRF3::SetUp();
+    PgGetLockStatusTestRF3DisableObjectLocks::SetUp();
   }
 };
 
 TEST_F_EX(
-    PgGetLockStatusTestRF3, YB_DISABLE_TEST_IN_TSAN(TestPgLocksAfterTserverShutdown),
+    PgGetLockStatusTestRF3DisableObjectLocks,
+    YB_DISABLE_TEST_IN_TSAN(TestPgLocksAfterTserverShutdown),
     PgGetLockStatusTestFastElection) {
   const auto kTable = "foo";
   const auto kTimeoutSecs = 25 * kTimeMultiplier;

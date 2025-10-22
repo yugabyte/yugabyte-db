@@ -163,6 +163,8 @@ class Webserver::Impl {
     tcmalloc_logging_enabled_.store(enable_tcmalloc_logging, std::memory_order_release);
   }
 
+  const std::string& DocRoot() const { return opts_.doc_root; }
+
  private:
   // Container class for a list of path handler callbacks for a single URL.
   class PathHandler {
@@ -906,4 +908,8 @@ void Webserver::SetFlags(std::unordered_set<std::string>&& flags) {
 }
 
 bool Webserver::ContainsFlag(const std::string& flag) const { return impl_->ContainsFlag(flag); }
+
+const std::string& Webserver::DocRoot() const {
+  return impl_->DocRoot();
+}
 } // namespace yb

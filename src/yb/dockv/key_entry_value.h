@@ -28,8 +28,10 @@
 #include "yb/dockv/dockv_fwd.h"
 
 #include "yb/gutil/integral_types.h"
+
 #include "yb/util/algorithm_util.h"
 #include "yb/util/kv_util.h"
+#include "yb/util/memory/arena_fwd.h"
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/slice.h"
 #include "yb/util/strongly_typed_bool.h"
@@ -39,7 +41,6 @@
 namespace yb::dockv {
 
 class KeyEntryValue;
-using FrozenContainer = KeyEntryValues;
 
 enum class SystemColumnIds : ColumnIdRep {
   kLivenessColumn = 0  // Stores the TTL for QL rows inserted using an INSERT statement.
@@ -243,5 +244,43 @@ inline KeyEntryValues MakeKeyEntryValues(T... args) {
   AppendKeyEntryValues(&v, args...);
   return v;
 }
+
+struct KeyEntryValueFactory {
+  using ResultType = KeyEntryValue;
+
+  KeyEntryValue operator()(dockv::KeyEntryType type) const {
+    return dockv::KeyEntryValue(type);
+  }
+
+  KeyEntryValue operator()(const QLValuePB& value, SortingType sorting_type) const {
+    return dockv::KeyEntryValue::FromQLValuePBForKey(value, sorting_type);
+  }
+
+  KeyEntryValue operator()(const LWQLValuePB& value, SortingType sorting_type) const {
+    return dockv::KeyEntryValue::FromQLValuePBForKey(value, sorting_type);
+  }
+};
+
+Slice EncodedKeyEntryValue(Arena& arena, const QLValuePB& pb, SortingType sorting_type);
+Slice EncodedKeyEntryValue(Arena& arena, const LWQLValuePB& pb, SortingType sorting_type);
+Slice EncodedHashCode(Arena& arena, uint16_t val);
+
+struct KeyEntryValueAsSliceFactory {
+  using ResultType = Slice;
+
+  Slice operator()(dockv::KeyEntryType type) const;
+
+  Slice operator()(const QLValuePB& pb, SortingType sorting_type) const {
+    return EncodedKeyEntryValue(arena, pb, sorting_type);
+  }
+
+  Slice operator()(const LWQLValuePB& pb, SortingType sorting_type) const {
+    return EncodedKeyEntryValue(arena, pb, sorting_type);
+  }
+
+  Arena& arena;
+};
+
+std::vector<Slice> TEST_KeyEntryValuesToSlices(Arena& arena, const KeyEntryValues& values);
 
 }  // namespace yb::dockv

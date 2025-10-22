@@ -1239,7 +1239,11 @@ OpId TabletPeer::GetLatestCheckPoint() {
 Result<NamespaceId> TabletPeer::GetNamespaceId() {
   auto tablet = VERIFY_RESULT(shared_tablet());
   RETURN_NOT_OK(BackfillNamespaceIdIfNeeded(*tablet->metadata(), *client_future().get()));
-  return tablet->metadata()->namespace_id();
+  auto namespace_id = tablet->metadata()->namespace_id();
+  RSTATUS_DCHECK(
+      !namespace_id.empty(), IllegalState, "Namespace ID is empty for tablet $0",
+      tablet->tablet_id());
+  return namespace_id;
 }
 
 HybridTime TabletPeer::GetMinStartHTRunningTxnsOrLeaderSafeTime() {
@@ -2017,6 +2021,11 @@ Status BackfillNamespaceIdIfNeeded(
   SCHECK_FORMAT(
       !namespace_id.empty(), IllegalState, "Could not get namespace ID for $0", namespace_name);
   return metadata.set_namespace_id(namespace_id);
+}
+
+bool TabletPeer::IsRunning() const {
+  auto state = state_.load(std::memory_order_acquire);
+  return state == RaftGroupStatePB::RUNNING;
 }
 
 }  // namespace yb::tablet

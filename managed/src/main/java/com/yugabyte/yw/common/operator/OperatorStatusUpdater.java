@@ -74,6 +74,11 @@ public interface OperatorStatusUpdater {
     // no-op implementation
   }
 
+  default void updateDrConfigStatus(
+      com.yugabyte.yw.models.DrConfig drConfig, String taskName, UUID taskUUID) {
+    // no-op implementation
+  }
+
   default void updateYBUniverseStatus(
       Universe universe,
       KubernetesResourceDetails universeName,

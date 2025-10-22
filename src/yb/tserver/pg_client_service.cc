@@ -217,7 +217,7 @@ class LockablePgClientSession {
         lifetime_(lifetime), expiration_(NewExpiration()) {
   }
 
-  Status StartExchange(const std::string& instance_id, ThreadPool& thread_pool) {
+  Status StartExchange(const std::string& instance_id, YBThreadPool& thread_pool) {
     shared_mem_manager_ = VERIFY_RESULT(PgSessionSharedMemoryManager::Make(
         instance_id, id(), Create::kTrue));
     session_.SetupSharedObjectLocking(shared_mem_manager_.object_locking_data());
@@ -540,7 +540,9 @@ class PgClientServiceImpl::Impl : public SessionProvider {
   explicit Impl(
       std::reference_wrapper<const TabletServerIf> tablet_server,
       const std::shared_future<client::YBClient*>& client_future,
-      const scoped_refptr<ClockBase>& clock, TransactionPoolProvider transaction_pool_provider,
+      const scoped_refptr<ClockBase>& clock,
+      TransactionManagerProvider transaction_manager_provider,
+      TransactionPoolProvider transaction_pool_provider,
       rpc::Messenger* messenger, const TserverXClusterContextIf* xcluster_context,
       PgMutationCounter* pg_node_level_mutation_counter, MetricEntity* metric_entity,
       const MemTrackerPtr& parent_mem_tracker, const std::string& permanent_uuid,
@@ -548,6 +550,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
       : tablet_server_(tablet_server.get()),
         client_future_(client_future),
         clock_(clock),
+        transaction_manager_provider_(std::move(transaction_manager_provider)),
         transaction_pool_provider_(std::move(transaction_pool_provider)),
         messenger_(*messenger),
         table_cache_(client_future_),
@@ -577,7 +580,8 @@ class PgClientServiceImpl::Impl : public SessionProvider {
             .lock_owner_registry =
                 tablet_server_.ObjectLockSharedStateManager()
                     ? &tablet_server_.ObjectLockSharedStateManager()->registry()
-                    : nullptr},
+                    : nullptr,
+            .transaction_manager_provider = transaction_manager_provider_},
         cdc_state_table_(client_future_),
         txn_snapshot_manager_(
             instance_id_,
@@ -663,12 +667,12 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     resp->set_session_id(session_id);
     if (FLAGS_pg_client_use_shared_memory) {
       std::call_once(exchange_thread_pool_once_flag_, [this] {
-        CHECK_OK(ThreadPoolBuilder("shmem_exchange")
-                     .set_min_threads(1)
-                     .unlimited_threads()
-                     .set_idle_timeout(FLAGS_shmem_exchange_idle_timeout_ms * 1ms)
-                     .set_max_queue_size(0)
-                     .Build(&exchange_thread_pool_));
+        exchange_thread_pool_ = std::make_unique<YBThreadPool>(ThreadPoolOptions {
+          .name = "shmem_exchange",
+          .max_workers = ThreadPoolOptions::kUnlimitedWorkersWithoutQueue,
+          .min_workers = 1,
+          .idle_timeout = MonoDelta::FromMilliseconds(FLAGS_shmem_exchange_idle_timeout_ms),
+        });
       });
       auto status = session_info->session().StartExchange(instance_id_, *exchange_thread_pool_);
       if (status.ok()) {
@@ -714,6 +718,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     if (it == sessions_.end()) {
       return;
     }
+    VLOG(2) << "Requesting session expiry for session " << session_id << " with pid " << pid;
     (**it).session().SetExpiration(now);
     session_expiration_queue_.emplace(now, session_id);
     ScheduleCheckExpiredSessions(now);
@@ -904,7 +909,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
       PgGetCatalogMasterVersionResponsePB* resp,
       rpc::RpcContext* context) {
     uint64_t version;
-    RETURN_NOT_OK(client().GetYsqlCatalogMasterVersion(&version));
+    RETURN_NOT_OK(client().DEPRECATED_GetYsqlCatalogMasterVersion(&version));
     resp->set_version(version);
     return Status::OK();
   }
@@ -2105,6 +2110,18 @@ class PgClientServiceImpl::Impl : public SessionProvider {
         db_oid, is_breaking_change, new_catalog_version, message_list);
   }
 
+  Status TriggerRelcacheInitConnection(
+      const PgTriggerRelcacheInitConnectionRequestPB& req,
+      PgTriggerRelcacheInitConnectionResponsePB* resp,
+      rpc::RpcContext* context) {
+    TriggerRelcacheInitConnectionRequestPB request;
+    TriggerRelcacheInitConnectionResponsePB response;
+    const auto& database_name = req.database_name();
+    request.set_database_name(database_name);
+    return const_cast<TabletServerIf&>(tablet_server_).TriggerRelcacheInitConnection(
+        request, &response);
+  }
+
   Status IsObjectPartOfXRepl(
     const PgIsObjectPartOfXReplRequestPB& req, PgIsObjectPartOfXReplResponsePB* resp,
     rpc::RpcContext* context) {
@@ -2234,6 +2251,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     }
     std::vector<SessionInfoPtr> not_ready_sessions;
     for (const auto& session : expired_sessions) {
+      VLOG(1) << "Starting shutdown for expired session ID: " << session->id();
       session->session().StartShutdown(/* pg_service_shutting_donw= */ false);
       txn_snapshot_manager_.UnregisterAll(session->id());
     }
@@ -2552,7 +2570,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
   }
 
   Result<SessionInfoPtr> GetSessionInfo(uint64_t session_id) {
-    DCHECK_NE(session_id, 0);
+    RSTATUS_DCHECK_NE(session_id, static_cast<uint64_t>(0), InvalidArgument, "Bad session id");
     SharedLock lock(mutex_);
     auto it = sessions_.find(session_id);
     if (PREDICT_FALSE(it == sessions_.end())) {
@@ -2701,6 +2719,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
   const TabletServerIf& tablet_server_;
   std::shared_future<client::YBClient*> client_future_;
   const scoped_refptr<ClockBase> clock_;
+  TransactionManagerProvider transaction_manager_provider_;
   TransactionPoolProvider transaction_pool_provider_;
   rpc::Messenger& messenger_;
   PgTableCache table_cache_;
@@ -2742,7 +2761,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
 
   const std::string instance_id_;
   std::once_flag exchange_thread_pool_once_flag_;
-  std::unique_ptr<ThreadPool> exchange_thread_pool_;
+  std::unique_ptr<YBThreadPool> exchange_thread_pool_;
 
   PgSharedMemoryPool shared_mem_pool_;
 
@@ -2777,7 +2796,8 @@ class PgClientServiceImpl::Impl : public SessionProvider {
 PgClientServiceImpl::PgClientServiceImpl(
     std::reference_wrapper<const TabletServerIf> tablet_server,
     const std::shared_future<client::YBClient*>& client_future,
-    const scoped_refptr<ClockBase>& clock, TransactionPoolProvider transaction_pool_provider,
+    const scoped_refptr<ClockBase>& clock, TransactionManagerProvider transaction_manager_provider,
+    TransactionPoolProvider transaction_pool_provider,
     const std::shared_ptr<MemTracker>& parent_mem_tracker,
     const scoped_refptr<MetricEntity>& entity, rpc::Messenger* messenger,
     const std::string& permanent_uuid, const server::ServerBaseOptions& tablet_server_opts,
@@ -2785,7 +2805,8 @@ PgClientServiceImpl::PgClientServiceImpl(
     PgMutationCounter* pg_node_level_mutation_counter)
     : PgClientServiceIf(entity),
       impl_(new Impl(
-          tablet_server, client_future, clock, std::move(transaction_pool_provider), messenger,
+          tablet_server, client_future, clock, std::move(transaction_manager_provider),
+          std::move(transaction_pool_provider), messenger,
           xcluster_context, pg_node_level_mutation_counter, entity.get(), parent_mem_tracker,
           permanent_uuid, tablet_server_opts)) {}
 

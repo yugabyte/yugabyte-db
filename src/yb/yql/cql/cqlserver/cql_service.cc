@@ -187,6 +187,9 @@ void CQLServiceImpl::CompleteInit() {
 }
 
 void CQLServiceImpl::Shutdown() {
+  if (system_cache_) {
+    system_cache_->Shutdown();
+  }
   decltype(processors_) processors;
   {
     std::lock_guard guard(processors_mutex_);
@@ -198,9 +201,6 @@ void CQLServiceImpl::Shutdown() {
   }
   if (metadata_cache_) {
     metadata_cache_->Shutdown();
-  }
-  if (system_cache_) {
-    system_cache_->Shutdown();
   }
 }
 

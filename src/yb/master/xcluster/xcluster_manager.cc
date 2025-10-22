@@ -344,9 +344,8 @@ Status XClusterManager::GetXClusterSafeTimeForNamespace(
 }
 
 Result<HybridTime> XClusterManager::GetXClusterSafeTimeForNamespace(
-    const LeaderEpoch& epoch, const NamespaceId& namespace_id,
-    const XClusterSafeTimeFilter& filter) {
-  return XClusterTargetManager::GetXClusterSafeTimeForNamespace(epoch, namespace_id, filter);
+    const NamespaceId& namespace_id, const XClusterSafeTimeFilter& filter) const {
+  return XClusterTargetManager::GetXClusterSafeTimeForNamespace(namespace_id, filter);
 }
 
 Status XClusterManager::RefreshXClusterSafeTimeMap(const LeaderEpoch& epoch) {

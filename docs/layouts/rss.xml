@@ -10,6 +10,13 @@
 {{- if ge $limit 1 -}}
 {{- $pages = $pages | first $limit -}}
 {{- end -}}
+{{- $sectionName := "" -}}
+{{- with .File }}
+  {{- with .Dir }}
+    {{- $splitPath := split (trim . "/") "/" }}
+    {{- $sectionName = index (last 1 $splitPath) 0 }}
+  {{- end }}
+{{- end }}
 {{- printf "<?xml version=\"1.0\" encoding=\"utf-8\" standalone=\"yes\"?>" | safeHTML }}
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
@@ -24,7 +31,10 @@
     {{- end -}}
     {{ range $pages }}{{ if not .Params.private }}
     <item>
-      <title>{{ .Title }}</title>
+      <title>
+        {{- .Title -}}
+        {{- if and (eq $sectionName "techadvisories") (.Params.headerTitle) -}}: {{ .Params.headerTitle }}{{- end -}}
+      </title>
       <link>{{ .Permalink }}</link>
       <pubDate>{{ .Lastmod.UTC.Format "Mon, 02 Jan 2006 15:04:05 -0700" | safeHTML }}</pubDate>
       <guid>{{ .Permalink }}</guid>

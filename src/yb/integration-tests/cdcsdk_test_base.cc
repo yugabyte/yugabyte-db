@@ -137,7 +137,9 @@ Status CDCSDKTestBase::SetUpWithParams(
     // The 'pgsql_proxy_bind_address' flag must be set before starting the cluster. Each
     // tserver will store this address when it starts.
     pg_port = test_cluster_.mini_cluster_->AllocateFreePort();
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_bind_address) = Format("$0:$1", pg_addr, pg_port);
+    auto host_port = HostPort(pg_addr, pg_port);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_bind_address) = host_port.ToString();
+    test_cluster_.mini_cluster_->SetPgTServerSelected(pg_ts_idx, host_port);
   }
 
   RETURN_NOT_OK(test_cluster()->Start());

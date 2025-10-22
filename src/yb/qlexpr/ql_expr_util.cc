@@ -16,14 +16,18 @@
 #include "yb/common/pgsql_protocol.messages.h"
 #include "yb/common/schema.h"
 
+#include "yb/dockv/key_entry_value.h"
+
 #include "yb/qlexpr/ql_expr.h"
 
 namespace yb::qlexpr {
 
 namespace {
 
-Result<dockv::KeyEntryValue> EvalExpr(
-    const PgsqlExpressionPB& expr, const Schema& schema, SortingType sorting_type) {
+template <class Factory>
+Result<typename Factory::ResultType> EvalExpr(
+    Factory& factory, const PgsqlExpressionPB& expr, const Schema& schema,
+    SortingType sorting_type) {
   // TODO(neil) The current setup only works for CQL as it assumes primary key value must not
   // be dependent on any column values. This needs to be fixed as PostgreSQL expression might
   // require a read from a table.
@@ -33,23 +37,25 @@ Result<dockv::KeyEntryValue> EvalExpr(
   QLExprResult result;
   RETURN_NOT_OK(executor.EvalExpr(expr, nullptr, result.Writer(), &schema));
 
-  return dockv::KeyEntryValue::FromQLValuePB(result.Value(), sorting_type);
+  return factory(result.Value(), sorting_type);
 }
 
-Result<dockv::KeyEntryValue> EvalExpr(
-    const LWPgsqlExpressionPB& expr, const Schema& schema, SortingType sorting_type) {
+template <class Factory>
+Result<typename Factory::ResultType> EvalExpr(
+    Factory& factory, const LWPgsqlExpressionPB& expr, const Schema& schema,
+    SortingType sorting_type) {
   QLExprExecutor executor;
   QLExprResult result;
   RETURN_NOT_OK(executor.EvalExpr(expr.ToGoogleProtobuf(), nullptr, result.Writer(), &schema));
 
-  return dockv::KeyEntryValue::FromQLValuePB(result.Value(), sorting_type);
+  return factory(result.Value(), sorting_type);
 }
 
 // ------------------------------------------------------------------------------------------------
-template <class Col>
-Result<std::vector<dockv::KeyEntryValue>> DoInitKeyColumnPrimitiveValues(
-    const Col &column_values, const Schema &schema, size_t start_idx) {
-  std::vector<dockv::KeyEntryValue> values;
+template <class Factory, class Col>
+Result<std::vector<typename Factory::ResultType>> DoInitKeyColumnValues(
+    Factory& factory, const Col& column_values, const Schema& schema, size_t start_idx) {
+  std::vector<typename Factory::ResultType> values;
   values.reserve(column_values.size());
   size_t column_idx = start_idx;
   for (const auto& column_value : column_values) {
@@ -62,10 +68,9 @@ Result<std::vector<dockv::KeyEntryValue>> DoInitKeyColumnPrimitiveValues(
     const auto sorting_type = schema.column(column_idx).sorting_type();
     if (column_value.has_value()) {
       const auto& value = column_value.value();
-      values.push_back(IsNull(value) ? dockv::KeyEntryValue::NullValue(sorting_type)
-                                     : dockv::KeyEntryValue::FromQLValuePB(value, sorting_type));
+      values.push_back(factory(value, sorting_type));
     } else {
-      values.push_back(VERIFY_RESULT(EvalExpr(column_value, schema, sorting_type)));
+      values.push_back(VERIFY_RESULT(EvalExpr(factory, column_value, schema, sorting_type)));
     }
     column_idx++;
   }
@@ -74,15 +79,35 @@ Result<std::vector<dockv::KeyEntryValue>> DoInitKeyColumnPrimitiveValues(
 
 } // namespace
 
-Result<std::vector<dockv::KeyEntryValue>> InitKeyColumnPrimitiveValues(
-    const google::protobuf::RepeatedPtrField<PgsqlExpressionPB> &column_values,
+Result<std::vector<dockv::KeyEntryValue>> InitKeyColumnValues(
+    const google::protobuf::RepeatedPtrField<PgsqlExpressionPB>& column_values,
     const Schema &schema, size_t start_idx) {
-  return DoInitKeyColumnPrimitiveValues(column_values, schema, start_idx);
+  dockv::KeyEntryValueFactory factory;
+  return DoInitKeyColumnValues(factory, column_values, schema, start_idx);
 }
 
-Result<std::vector<dockv::KeyEntryValue>> InitKeyColumnPrimitiveValues(
+Result<std::vector<dockv::KeyEntryValue>> InitKeyColumnValues(
     const ArenaList<LWPgsqlExpressionPB> &column_values, const Schema &schema, size_t start_idx) {
-  return DoInitKeyColumnPrimitiveValues(column_values, schema, start_idx);
+  dockv::KeyEntryValueFactory factory;
+  return DoInitKeyColumnValues(factory, column_values, schema, start_idx);
+}
+
+Result<std::vector<Slice>> InitKeyColumnValueSlices(
+    Arena& arena,
+    const google::protobuf::RepeatedPtrField<PgsqlExpressionPB>& column_values,
+    const Schema& schema,
+    size_t start_idx) {
+  dockv::KeyEntryValueAsSliceFactory factory{arena};
+  return DoInitKeyColumnValues(factory, column_values, schema, start_idx);
+}
+
+Result<std::vector<Slice>> InitKeyColumnValueSlices(
+    Arena& arena,
+    const ArenaList<LWPgsqlExpressionPB>& column_values,
+    const Schema& schema,
+    size_t start_idx) {
+  dockv::KeyEntryValueAsSliceFactory factory{arena};
+  return DoInitKeyColumnValues(factory, column_values, schema, start_idx);
 }
 
 }  // namespace yb::qlexpr

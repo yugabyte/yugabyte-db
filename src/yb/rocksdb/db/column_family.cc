@@ -910,6 +910,13 @@ Status ColumnFamilyData::SetOptions(
   return s;
 }
 
+CompactionFileExcluderPtr ColumnFamilyData::TEST_SetExcludeFromCompaction(
+    CompactionFileExcluderPtr exclude_from_compaction) {
+  return std::exchange(
+      mutable_cf_options_.exclude_from_compaction,
+      std::move(exclude_from_compaction));
+}
+
 ColumnFamilySet::ColumnFamilySet(const std::string& dbname,
                                  const DBOptions* db_options,
                                  const EnvOptions& env_options,

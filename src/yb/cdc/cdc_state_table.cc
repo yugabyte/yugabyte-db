@@ -369,6 +369,30 @@ Result<CDCStateTableEntry> DeserializeRow(
   }
   return entry;
 }
+
+class FlushCallbackState {
+ public:
+  FlushCallbackState() : callback_done(false) {}
+
+  static std::shared_ptr<FlushCallbackState> Create() {
+    return std::make_shared<FlushCallbackState>();
+  }
+
+  void CallbackDone(client::FlushStatus&& other, const ShutDownState& shutdown) {
+    flush_status = std::move(other);
+    shutdown.UpdateAndBroadcast(callback_done);
+  }
+
+  Status GetStatus() { return flush_status.status; }
+
+  Status WaitForCallbackOrShutdown(const ShutDownState& shutdown) {
+    return shutdown.WaitForShutdownOr(callback_done);
+  }
+
+ private:
+  bool callback_done;
+  client::FlushStatus flush_status;
+};
 }  // namespace
 
 CDCStateTable::CDCStateTable(std::shared_future<client::YBClient*> client_future)
@@ -695,8 +719,13 @@ Result<std::optional<CDCStateTableEntry>> CDCStateTable::TryFetchEntry(
   req_read->mutable_column_refs()->add_ids(kCdcStreamIdColumnId);
 
   cdc_table->AddColumns(columns, req_read);
-  // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
-  RETURN_NOT_OK(session->TEST_ApplyAndFlush(read_op));
+  session->Apply(read_op);
+  auto callback_state = FlushCallbackState::Create();
+  session->FlushAsync([this, callback_state](client::FlushStatus* flush_status) {
+    callback_state->CallbackDone(std::move(*flush_status), shutdown_);
+  });
+  RETURN_NOT_OK(callback_state->WaitForCallbackOrShutdown(shutdown_));
+  RETURN_NOT_OK(callback_state->GetStatus());
   auto row_block = ql::RowsResult(read_op.get()).GetRowBlock();
   if (row_block->row_count() == 0) {
     return std::nullopt;
@@ -712,6 +741,41 @@ Result<std::optional<CDCStateTableEntry>> CDCStateTable::TryFetchEntry(
 
   VLOG(1) << "TryFetchEntry row: " << entry.ToString();
   return entry;
+}
+
+void CDCStateTable::Shutdown() {
+  shutdown_.SetShuttingDown();
+}
+
+bool ShutDownState::SetShuttingDown() {
+  {
+    std::lock_guard lock(mutex_);
+    if (shutting_down_) {
+      return false;
+    }
+    shutting_down_ = true;
+  }
+  cv_.Broadcast();
+  return true;
+}
+
+Status ShutDownState::WaitForShutdownOr(bool& state) const {
+  UniqueLock lock(mutex_);
+  while (!shutting_down_ && !state) {
+    cv_.Wait();
+  }
+  if (shutting_down_) {
+    return STATUS(ShutdownInProgress, "Shutting down");
+  }
+  return Status::OK();
+}
+
+void ShutDownState::UpdateAndBroadcast(bool& var) const {
+  {
+    std::lock_guard lock(mutex_);
+    var = true;
+  }
+  cv_.Broadcast();
 }
 
 Result<CDCStateTableEntry> CdcStateTableIterator::operator*() const {

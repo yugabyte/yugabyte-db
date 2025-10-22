@@ -2852,18 +2852,299 @@ SELECT * FROM crypto_hash_t1 WHERE sha4 = sha512(v1);
 CREATE TABLE x (t timestamptz);
 BEGIN;
 INSERT INTO x VALUES (now());
+INSERT INTO x VALUES (CURRENT_TIMESTAMP);
+-- both of these queries should return the same result
 SELECT COUNT(*) FROM x WHERE t = now();
  count 
 -------
-     1
+     2
 (1 row)
 
+SELECT COUNT(*) FROM x WHERE t = CURRENT_TIMESTAMP;
+ count 
+-------
+     2
+(1 row)
+
+-- both of these filters should be pushed down
 EXPLAIN SELECT * FROM x WHERE t = now();
                       QUERY PLAN                      
 ------------------------------------------------------
  Seq Scan on x  (cost=0.00..105.00 rows=1000 width=8)
    Storage Filter: (t = now())
 (2 rows)
+
+EXPLAIN SELECT * FROM x WHERE t = CURRENT_TIMESTAMP;
+                      QUERY PLAN                      
+------------------------------------------------------
+ Seq Scan on x  (cost=0.00..105.00 rows=1000 width=8)
+   Storage Filter: (t = CURRENT_TIMESTAMP)
+(2 rows)
+
+COMMIT;
+-- Test different SQL Value Functions.
+CREATE TABLE time_test (
+    ts timestamptz,
+    ts_prec timestamptz(3),
+    t timetz,
+    t_prec timetz(2),
+    local_ts timestamp,
+    local_ts_prec timestamp(3),
+    local_t time,
+    local_t_prec time(2),
+    d date
+);
+CREATE TABLE other_sql_value_functions (
+    current_user_val name,
+    session_user_val name,
+    user_val name,
+    current_role_val name,
+    current_catalog_val name,
+    current_schema_val name
+);
+BEGIN;
+-- Test time/date SQL value functions
+INSERT INTO time_test VALUES (
+    CURRENT_TIMESTAMP,
+    CURRENT_TIMESTAMP(3),
+    CURRENT_TIME,
+    CURRENT_TIME(2),
+    LOCALTIMESTAMP,
+    LOCALTIMESTAMP(3),
+    LOCALTIME,
+    LOCALTIME(2),
+    CURRENT_DATE
+);
+EXPLAIN (COSTS OFF) SELECT * FROM time_test WHERE ts = CURRENT_TIMESTAMP;
+                 QUERY PLAN                 
+--------------------------------------------
+ Seq Scan on time_test
+   Storage Filter: (ts = CURRENT_TIMESTAMP)
+(2 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM time_test WHERE ts_prec = CURRENT_TIMESTAMP(3);
+                     QUERY PLAN                     
+----------------------------------------------------
+ Seq Scan on time_test
+   Storage Filter: (ts_prec = CURRENT_TIMESTAMP(3))
+(2 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM time_test WHERE t = CURRENT_TIME;
+              QUERY PLAN              
+--------------------------------------
+ Seq Scan on time_test
+   Storage Filter: (t = CURRENT_TIME)
+(2 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM time_test WHERE t_prec = CURRENT_TIME(2);
+                  QUERY PLAN                  
+----------------------------------------------
+ Seq Scan on time_test
+   Storage Filter: (t_prec = CURRENT_TIME(2))
+(2 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM time_test WHERE d = CURRENT_DATE;
+              QUERY PLAN              
+--------------------------------------
+ Seq Scan on time_test
+   Storage Filter: (d = CURRENT_DATE)
+(2 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM time_test WHERE ts = CURRENT_TIMESTAMP AND d = CURRENT_DATE;
+                             QUERY PLAN                              
+---------------------------------------------------------------------
+ Seq Scan on time_test
+   Storage Filter: ((ts = CURRENT_TIMESTAMP) AND (d = CURRENT_DATE))
+(2 rows)
+
+SELECT COUNT(*) FROM time_test WHERE ts = CURRENT_TIMESTAMP;
+ count 
+-------
+     1
+(1 row)
+
+SELECT COUNT(*) FROM time_test WHERE ts_prec = CURRENT_TIMESTAMP(3);
+ count 
+-------
+     1
+(1 row)
+
+SELECT COUNT(*) FROM time_test WHERE t = CURRENT_TIME;
+ count 
+-------
+     1
+(1 row)
+
+SELECT COUNT(*) FROM time_test WHERE t_prec = CURRENT_TIME(2);
+ count 
+-------
+     1
+(1 row)
+
+SELECT COUNT(*) FROM time_test WHERE d = CURRENT_DATE;
+ count 
+-------
+     1
+(1 row)
+
+SELECT COUNT(*) FROM time_test WHERE ts = CURRENT_TIMESTAMP AND d = CURRENT_DATE;
+ count 
+-------
+     1
+(1 row)
+
+-- Test LOCALTIME variants (without timezone)
+EXPLAIN SELECT * FROM time_test WHERE local_t = LOCALTIME;
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Seq Scan on time_test  (cost=0.00..105.00 rows=1000 width=76)
+   Storage Filter: (local_t = LOCALTIME)
+(2 rows)
+
+EXPLAIN SELECT * FROM time_test WHERE local_t_prec = LOCALTIME(2);
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Seq Scan on time_test  (cost=0.00..105.00 rows=1000 width=76)
+   Storage Filter: (local_t_prec = LOCALTIME(2))
+(2 rows)
+
+EXPLAIN SELECT * FROM time_test WHERE local_ts = LOCALTIMESTAMP;
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Seq Scan on time_test  (cost=0.00..105.00 rows=1000 width=76)
+   Storage Filter: (local_ts = LOCALTIMESTAMP)
+(2 rows)
+
+EXPLAIN SELECT * FROM time_test WHERE local_ts_prec = LOCALTIMESTAMP(3);
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Seq Scan on time_test  (cost=0.00..105.00 rows=1000 width=76)
+   Storage Filter: (local_ts_prec = LOCALTIMESTAMP(3))
+(2 rows)
+
+SELECT COUNT(*) FROM time_test WHERE local_t = LOCALTIME;
+ count 
+-------
+     1
+(1 row)
+
+SELECT COUNT(*) FROM time_test WHERE local_t_prec = LOCALTIME(2);
+ count 
+-------
+     1
+(1 row)
+
+SELECT COUNT(*) FROM time_test WHERE local_ts = LOCALTIMESTAMP;
+ count 
+-------
+     1
+(1 row)
+
+SELECT COUNT(*) FROM time_test WHERE local_ts_prec = LOCALTIMESTAMP(3);
+ count 
+-------
+     1
+(1 row)
+
+-- Test user/role/schema SQL value functions
+INSERT INTO other_sql_value_functions VALUES (
+    CURRENT_USER,
+    SESSION_USER,
+    USER,
+    CURRENT_ROLE,
+    CURRENT_CATALOG,
+    CURRENT_SCHEMA
+);
+EXPLAIN (COSTS OFF) SELECT * FROM other_sql_value_functions WHERE current_user_val = CURRENT_USER;
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Seq Scan on other_sql_value_functions
+   Storage Filter: (current_user_val = CURRENT_USER)
+(2 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM other_sql_value_functions WHERE session_user_val = SESSION_USER;
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Seq Scan on other_sql_value_functions
+   Storage Filter: (session_user_val = SESSION_USER)
+(2 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM other_sql_value_functions WHERE user_val = USER;
+              QUERY PLAN               
+---------------------------------------
+ Seq Scan on other_sql_value_functions
+   Storage Filter: (user_val = USER)
+(2 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM other_sql_value_functions WHERE current_role_val = CURRENT_ROLE;
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Seq Scan on other_sql_value_functions
+   Storage Filter: (current_role_val = CURRENT_ROLE)
+(2 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM other_sql_value_functions WHERE current_catalog_val = CURRENT_CATALOG;
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Seq Scan on other_sql_value_functions
+   Storage Filter: (current_catalog_val = CURRENT_CATALOG)
+(2 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM other_sql_value_functions WHERE current_schema_val = CURRENT_SCHEMA;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Seq Scan on other_sql_value_functions
+   Storage Filter: (current_schema_val = CURRENT_SCHEMA)
+(2 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM other_sql_value_functions WHERE current_user_val = CURRENT_USER AND current_schema_val = CURRENT_SCHEMA;
+                                           QUERY PLAN                                            
+-------------------------------------------------------------------------------------------------
+ Seq Scan on other_sql_value_functions
+   Storage Filter: ((current_user_val = CURRENT_USER) AND (current_schema_val = CURRENT_SCHEMA))
+(2 rows)
+
+SELECT current_user_val FROM other_sql_value_functions WHERE current_user_val = CURRENT_USER;
+ current_user_val 
+------------------
+ yugabyte
+(1 row)
+
+SELECT session_user_val FROM other_sql_value_functions WHERE session_user_val = SESSION_USER;
+ session_user_val 
+------------------
+ yugabyte
+(1 row)
+
+SELECT user_val FROM other_sql_value_functions WHERE user_val = USER;
+ user_val 
+----------
+ yugabyte
+(1 row)
+
+SELECT current_role_val FROM other_sql_value_functions WHERE current_role_val = CURRENT_ROLE;
+ current_role_val 
+------------------
+ yugabyte
+(1 row)
+
+SELECT current_catalog_val FROM other_sql_value_functions WHERE current_catalog_val = CURRENT_CATALOG;
+ current_catalog_val 
+---------------------
+ yugabyte
+(1 row)
+
+SELECT current_schema_val FROM other_sql_value_functions WHERE current_schema_val = CURRENT_SCHEMA;
+ current_schema_val 
+--------------------
+ public
+(1 row)
+
+SELECT * FROM other_sql_value_functions WHERE current_user_val = CURRENT_USER AND current_schema_val = CURRENT_SCHEMA;
+ current_user_val | session_user_val | user_val | current_role_val | current_catalog_val | current_schema_val 
+------------------+------------------+----------+------------------+---------------------+--------------------
+ yugabyte         | yugabyte         | yugabyte | yugabyte         | yugabyte            | public
+(1 row)
 
 COMMIT;
 -----------------------------------
@@ -2898,3 +3179,5 @@ DROP TABLE crypto_hash_t1;
 DROP TYPE rt;
 DROP TYPE two_int;
 DROP TYPE two_text;
+DROP TABLE time_test;
+DROP TABLE other_sql_value_functions;

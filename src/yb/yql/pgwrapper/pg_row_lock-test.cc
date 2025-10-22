@@ -21,6 +21,7 @@
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
+DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_bool(ysql_skip_row_lock_for_update);
@@ -221,14 +222,13 @@ TEST_F(PgRowLockTest, SelectForKeyShareWithRestart) {
     const auto table = "foo";
     auto conn = ASSERT_RESULT(Connect());
 
+    ASSERT_OK(conn.ExecuteFormat("DROP TABLE IF EXISTS $0", table));
     ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0(k INT, v INT)", table));
     ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT generate_series(1, 100), 1", table));
     ASSERT_OK(cluster_->FlushTablets());
 
     ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
     ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k=1 FOR KEY SHARE", table));
-
-    ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", table));
   });
 }
 
@@ -256,7 +256,16 @@ TEST_F(PgRowLockTest, AdvisoryLocksNotSupported) {
   });
 }
 
-TEST_F(PgRowLockTest, ObjectLocksNotSupported) {
+class PgRowLockTestDisableObjectLock : public PgRowLockTest {
+ protected:
+  void SetUp() override {
+    // Test verifies "<lock mode> not supported yet" errors when object locking is disabled.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
+    PgRowLockTest::SetUp();
+  }
+};
+
+TEST_F_EX(PgRowLockTest, ObjectLocksNotSupported, PgRowLockTestDisableObjectLock) {
   RunTestTwice([this]() {
     auto conn = ASSERT_RESULT(Connect());
     ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));

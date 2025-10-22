@@ -184,6 +184,10 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
                                      GetTserverCatalogMessageListsResponsePB* resp,
                                      rpc::RpcContext context) override;
 
+  void TriggerRelcacheInitConnection(const TriggerRelcacheInitConnectionRequestPB* req,
+                                     TriggerRelcacheInitConnectionResponsePB* resp,
+                                     rpc::RpcContext context) override;
+
   void ListMasterServers(const ListMasterServersRequestPB* req,
                          ListMasterServersResponsePB* resp,
                          rpc::RpcContext context) override;

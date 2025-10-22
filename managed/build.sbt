@@ -193,13 +193,13 @@ libraryDependencies ++= Seq(
   // Be careful when changing azure library versions.
   // Make sure all itests and existing functionality works as expected.
   // Used below azure versions from azure-sdk-bom:1.2.6
-  "com.azure" % "azure-core-http-netty" % "1.16.1",
-  "com.azure" % "azure-core" % "1.56.0",
-  "com.azure" % "azure-identity" % "1.17.0",
-  "com.azure" % "azure-security-keyvault-keys" % "4.10.2",
-  "com.azure" % "azure-storage-blob" % "12.31.2",
-  "com.azure" % "azure-storage-blob-batch" % "12.27.2",
-  "com.azure.resourcemanager" % "azure-resourcemanager" % "2.54.0",
+  "com.azure" % "azure-core-http-netty" % "1.16.2",
+  "com.azure" % "azure-core" % "1.57.0",
+  "com.azure" % "azure-identity" % "1.18.1",
+  "com.azure" % "azure-security-keyvault-keys" % "4.10.3",
+  "com.azure" % "azure-storage-blob" % "12.31.3",
+  "com.azure" % "azure-storage-blob-batch" % "12.27.3",
+  "com.azure.resourcemanager" % "azure-resourcemanager" % "2.55.0",
   "com.azure.resourcemanager" % "azure-resourcemanager-marketplaceordering" % "1.0.0",
   "jakarta.mail" % "jakarta.mail-api" % "2.1.2",
   "org.eclipse.angus" % "jakarta.mail" % "1.0.0",
@@ -223,11 +223,11 @@ libraryDependencies ++= Seq(
   "commons-codec" % "commons-codec" % "1.16.0",
   "com.google.apis" % "google-api-services-compute" % "v1-rev20241008-2.0.0",
   "com.google.apis" % "google-api-services-iam" % "v1-rev20240918-2.0.0",
-  "com.google.cloud" % "google-cloud-compute" % "1.62.0",
-  "com.google.cloud" % "google-cloud-storage" % "2.43.2",
-  "com.google.cloud" % "google-cloud-kms" % "2.55.0",
-  "com.google.cloud" % "google-cloud-resourcemanager" % "1.54.0",
-  "com.google.cloud" % "google-cloud-logging" % "3.17.2",
+  "com.google.cloud" % "google-cloud-compute" % "1.87.0",
+  "com.google.cloud" % "google-cloud-storage" % "2.58.1",
+  "com.google.cloud" % "google-cloud-kms" % "2.79.0",
+  "com.google.cloud" % "google-cloud-resourcemanager" % "1.78.0",
+  "com.google.cloud" % "google-cloud-logging" % "3.23.6",
   "com.google.oauth-client" % "google-oauth-client" % "1.35.0",
   "org.projectlombok" % "lombok" % "1.18.26",
   "com.squareup.okhttp3" % "okhttp" % "4.12.0",
@@ -940,7 +940,7 @@ runPlatform := {
 }
 
 libraryDependencies += "org.yb" % "yb-client" % "0.8.108-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.3-b9"
+libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.3-b11"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b35"
 
 libraryDependencies ++= Seq(
@@ -1010,6 +1010,7 @@ val jacksonLibs = Seq(
   "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor",
   "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml",
   "com.fasterxml.jackson.dataformat" % "jackson-dataformat-yaml",
+  "com.fasterxml.jackson.dataformat" % "jackson-dataformat-toml",
   "com.fasterxml.jackson.module"     % "jackson-module-parameter-names",
   "com.fasterxml.jackson.module"     %% "jackson-module-scala",
 )

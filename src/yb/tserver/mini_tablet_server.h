@@ -175,6 +175,9 @@ class MiniTabletServer {
   void SetPgServerHandlers(
       std::function<Status(void)> start_pg, std::function<void(void)> shutdown_pg,
       std::function<pgwrapper::PGConnSettings(void)> get_pg_conn_settings);
+  void set_pgsql_proxy_bind_address(const std::string& pgsql_proxy_bind_address) {
+    pgsql_proxy_bind_address_ = pgsql_proxy_bind_address;
+  }
 
  private:
   bool started_;
@@ -187,6 +190,7 @@ class MiniTabletServer {
   std::function<Status(void)> start_pg_;
   std::function<void(void)> shutdown_pg_;
   std::function<pgwrapper::PGConnSettings(void)> get_pg_conn_settings_;
+  std::string pgsql_proxy_bind_address_;
 };
 
 }  // namespace tserver

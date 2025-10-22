@@ -46,10 +46,7 @@ DECLARE_bool(force_global_transactions);
 DECLARE_bool(TEST_track_last_transaction);
 DECLARE_bool(TEST_name_transaction_tables_with_tablespace_id);
 
-namespace yb {
-
-namespace client {
-
+namespace yb::client {
 namespace {
 
 const auto kStatusTabletCacheRefreshTimeout = MonoDelta::FromMilliseconds(20000) * kTimeMultiplier;
@@ -122,20 +119,25 @@ void GeoTransactionsTestBase::CreateTransactionTable(int region) {
 }
 
 Result<TableId> GeoTransactionsTestBase::GetTransactionTableId(int region) {
-  std::string name = strings::Substitute("transactions_region$0", region);
-  auto table_name = YBTableName(YQL_DATABASE_CQL, master::kSystemNamespaceName, name);
-  return client::GetTableId(client_.get(), table_name);
+  return GetTransactionTableId(Format("transactions_region$0", region));
 }
 
-void GeoTransactionsTestBase::StartDeleteTransactionTable(int region) {
+Result<TableId> GeoTransactionsTestBase::GetTransactionTableId(const std::string& name) {
+  return client::GetTableId(
+      client_.get(), YBTableName(YQL_DATABASE_CQL, master::kSystemNamespaceName, name));
+}
+
+void GeoTransactionsTestBase::StartDeleteTransactionTable(std::string_view tablespace) {
   auto current_version = GetCurrentVersion();
-  auto table_id = ASSERT_RESULT(GetTransactionTableId(region));
+  auto tablespace_oid = ASSERT_RESULT(GetTablespaceOid(tablespace));
+  auto table_id = ASSERT_RESULT(GetTransactionTableId(Format("transactions_$0", tablespace_oid)));
   ASSERT_OK(client_->DeleteTable(table_id, false /* wait */));
   WaitForStatusTabletsVersion(current_version + 1);
 }
 
-void GeoTransactionsTestBase::WaitForDeleteTransactionTableToFinish(int region) {
-  auto table_id = GetTransactionTableId(region);
+void GeoTransactionsTestBase::WaitForDeleteTransactionTableToFinish(std::string_view tablespace) {
+  auto tablespace_oid = ASSERT_RESULT(GetTablespaceOid(tablespace));
+  auto table_id = GetTransactionTableId(Format("transactions_$0", tablespace_oid));
   if (!table_id.ok() && table_id.status().IsNotFound()) {
     return;
   }
@@ -336,10 +338,9 @@ bool GeoTransactionsTestBase::AllTabletLeaderInZone(
 
 Result<PgTablespaceOid> GeoTransactionsTestBase::GetTablespaceOid(
     std::string_view tablespace) const {
-  auto conn = EXPECT_RESULT(Connect());
-  LOG(INFO) << tablespace;
-  return EXPECT_RESULT(conn.FetchRow<pgwrapper::PGOid>(Format(
-      "SELECT oid FROM pg_catalog.pg_tablespace WHERE spcname = '$0'", tablespace)));
+  auto conn = VERIFY_RESULT(Connect());
+  return conn.FetchRow<pgwrapper::PGOid>(Format(
+      "SELECT oid FROM pg_catalog.pg_tablespace WHERE spcname = '$0'", tablespace));
 }
 
 Result<PgTablespaceOid> GeoTransactionsTestBase::GetTablespaceOidForRegion(int region) const {
@@ -380,5 +381,13 @@ Result<std::vector<TabletId>> GeoTransactionsTestBase::GetStatusTablets(
   }
 }
 
-} // namespace client
-} // namespace yb
+Status GeoTransactionsTestBase::WarmupTablespaceCache(
+    pgwrapper::PGConn& conn, std::string_view table) {
+  // Force tablespace information into cache. Since SERIALIZABLE replicates reads, this also
+  // serves to ensure transaction is not reused (for object locking enabled cases).
+  RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+  RETURN_NOT_OK(conn.FetchFormat("SELECT * FROM $0 LIMIT 1", table));
+  return conn.RollbackTransaction();
+}
+
+} // namespace yb::client

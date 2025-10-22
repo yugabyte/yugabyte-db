@@ -14,12 +14,14 @@ interface RootCertificateFieldProps {
   disabled: boolean;
   isPrimary: boolean;
   isCreateMode: boolean;
+  fieldName: string;
 }
 
 export const RootCertificateField: FC<RootCertificateFieldProps> = ({
   disabled,
   isPrimary,
-  isCreateMode
+  isCreateMode,
+  fieldName
 }) => {
   const { control, setValue } = useFormContext<UniverseFormData>();
   const classes = useFormFieldStyles();
@@ -35,7 +37,7 @@ export const RootCertificateField: FC<RootCertificateFieldProps> = ({
   );
 
   const handleChange = (e: ChangeEvent<{}>, option: any) => {
-    setValue(ROOT_CERT_FIELD, option?.uuid);
+    setValue(fieldName as keyof UniverseFormData, option?.uuid);
   };
 
   const renderOption = (option: Record<string, string>): React.ReactNode => {
@@ -66,14 +68,17 @@ export const RootCertificateField: FC<RootCertificateFieldProps> = ({
 
   return (
     <Controller
-      name={ROOT_CERT_FIELD}
+      name={fieldName as keyof UniverseFormData}
       control={control}
       render={({ field, fieldState }) => {
         const value = certificates.find((i) => i.uuid === field.value) ?? '';
         return (
           <Box display="flex" width="100%" data-testid="RootCertificateField-Container">
             <YBLabel dataTestId="RootCertificateField-Label">
-              {t('universeForm.securityConfig.encryptionSettings.rootCertificate')}
+              {
+                fieldName === ROOT_CERT_FIELD ? t('universeForm.securityConfig.encryptionSettings.rootCertificate')
+                : t('universeForm.securityConfig.encryptionSettings.clientToNodeCertificate')
+              }
             </YBLabel>
             <Box flex={1} className={classes.defaultTextBox}>
               <YBAutoComplete

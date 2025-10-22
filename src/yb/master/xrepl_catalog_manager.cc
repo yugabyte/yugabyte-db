@@ -41,6 +41,7 @@
 #include "yb/master/xcluster/master_xcluster_util.h"
 #include "yb/master/xcluster/xcluster_manager.h"
 #include "yb/master/xcluster_consumer_registry_service.h"
+#include "yb/master/xcluster/xcluster_replication_group.h"
 #include "yb/master/xcluster_rpc_tasks.h"
 #include "yb/master/ysql/ysql_manager_if.h"
 
@@ -3881,8 +3882,20 @@ Status CatalogManager::UpdateConsumerOnProducerSplit(
         MasterError(MasterErrorPB::INVALID_REQUEST));
   }
 
-  auto cluster_config = ClusterConfig();
-  auto l = cluster_config->LockForWrite();
+  auto consumer_table_id = req->consumer_table_id();
+  // If the consumer table ID is not provided (only for upgrade cases) get it from the stream entry.
+  if (consumer_table_id.empty()) {
+    consumer_table_id = VERIFY_RESULT(GetConsumerTableIdForStreamId(
+        *this, xcluster::ReplicationGroupId(req->replication_group_id()),
+        VERIFY_RESULT(xrepl::StreamId::FromString(req->stream_id()))));
+  }
+
+  auto locked_config_and_ranges =
+      VERIFY_RESULT(LockClusterConfigAndGetTableKeyRanges(*this, consumer_table_id));
+  auto& cluster_config = locked_config_and_ranges.cluster_config;
+  auto& l = locked_config_and_ranges.write_lock;
+  auto& consumer_tablet_keys = locked_config_and_ranges.table_key_ranges;
+
   auto replication_group_map =
       l.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
   auto producer_entry = FindOrNull(*replication_group_map, req->replication_group_id());
@@ -3896,6 +3909,9 @@ Status CatalogManager::UpdateConsumerOnProducerSplit(
         NotFound, "Unable to find the stream entry for universe $0, stream $1",
         req->replication_group_id(), req->stream_id());
   }
+  SCHECK_EQ(
+      stream_entry->consumer_table_id(), consumer_table_id, InvalidArgument,
+      "Consumer table ID provided in request does not match the stream entry");
 
   SplitTabletIds split_tablet_id{
       .source = req->producer_split_tablet_info().tablet_id(),
@@ -3904,7 +3920,6 @@ Status CatalogManager::UpdateConsumerOnProducerSplit(
           req->producer_split_tablet_info().new_tablet2_id()}};
 
   auto split_key = req->producer_split_tablet_info().split_partition_key();
-  auto consumer_tablet_keys = VERIFY_RESULT(GetTableKeyRanges(stream_entry->consumer_table_id()));
   bool found_source = false, found_all_split_children = false;
   RETURN_NOT_OK(UpdateTabletMappingOnProducerSplit(
       consumer_tablet_keys, split_tablet_id, split_key, &found_source, &found_all_split_children,

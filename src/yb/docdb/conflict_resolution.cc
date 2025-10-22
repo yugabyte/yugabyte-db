@@ -955,21 +955,21 @@ class StrongConflictChecker {
     if (PREDICT_FALSE(!FLAGS_TEST_file_to_dump_keys_checked_for_conflict_in_regular_db.empty())) {
       RETURN_NOT_OK(TEST_DumpRegularDbKeyToCheck(intent_key));
     }
-    if (!value_iter_.Initialized()) {
+    if (!value_iter_->Initialized()) {
       auto hybrid_time_file_filter =
           FLAGS_docdb_ht_filter_conflict_with_committed ? CreateHybridTimeFileFilter(read_time_)
                                                         : nullptr;
-      value_iter_ = CreateRocksDBIterator(
+      value_iter_ = OptimizedRocksDbIterator<BoundedRocksDbIterator>(CreateRocksDBIterator(
           resolver_.doc_db().regular,
           resolver_.doc_db().key_bounds,
           BloomFilterOptions::Variable(),
           rocksdb::kDefaultQueryId,
           hybrid_time_file_filter,
           /* iterate_upper_bound = */ nullptr,
-          rocksdb::CacheRestartBlockKeys::kFalse);
+          rocksdb::CacheRestartBlockKeys::kFalse));
     }
-    value_iter_.UpdateFilterKey(intent_key);
-    const auto* entry = &value_iter_.Seek(intent_key);
+    value_iter_->UpdateFilterKey(intent_key, Slice());
+    const auto* entry = &value_iter_->Seek(intent_key);
 
     VLOG_WITH_PREFIX_AND_FUNC(4)
         << "Overwrite; Seek: " << intent_key.ToDebugString() << " ("
@@ -1033,10 +1033,10 @@ class StrongConflictChecker {
       buffer_.Reset(existing_key);
       // Already have ValueType::kHybridTime at the end
       buffer_.AppendHybridTime(DocHybridTime::kMin);
-      entry = &ROCKSDB_SEEK(&value_iter_, buffer_.AsSlice());
+      entry = &ROCKSDB_SEEK(value_iter_, buffer_.AsSlice());
     }
 
-    return value_iter_.status();
+    return value_iter_->status();
   }
 
  private:
@@ -1059,7 +1059,7 @@ class StrongConflictChecker {
   KeyBytes& buffer_;
 
   // RocksDb iterator with bloom filter can be reused in case keys has same hash component.
-  BoundedRocksDbIterator value_iter_;
+  OptimizedRocksDbIterator<BoundedRocksDbIterator> value_iter_;
 };
 
 class ConflictResolverContextBase : public ConflictResolverContext {

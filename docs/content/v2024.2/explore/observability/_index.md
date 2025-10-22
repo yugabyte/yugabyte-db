@@ -67,8 +67,8 @@ The pg_stat_statements extension tracks and aggregates statistics for SQL querie
 
 By analyzing the pg_stat_statements view, database administrators can identify slow, frequently executed, or resource-intensive queries, making it a powerful tool for performance tuning. It is straightforward to use — enable the extension and query the view to gain insights into query patterns and optimize database performance.
 
-{{<lead link="../query-1-performance/pg-stat-statements">}}
-To get more info on query level statistics, see [pg_stat_statements](../query-1-performance/pg-stat-statements)
+{{<lead link="../../launch-and-manage/monitor-and-alert/query-tuning/pg-stat-statements">}}
+To get more info on query level statistics, see [pg_stat_statements](../../launch-and-manage/monitor-and-alert/query-tuning/pg-stat-statements)
 {{</lead>}}
 
 ## Live queries

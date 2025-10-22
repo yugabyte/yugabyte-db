@@ -5205,6 +5205,17 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 	 * remains set to 0.
 	 *
 	 * YB: also handle YB insert on conflict read batching.
+	 * YB: also mark the YB-backed relation as applicable for index-only scans
+	 * for the DO NOTHING clause. Currently, the DO UPDATE clause is not supported.
+	 * Non-YB-backed relations are not applicable for this optimization:
+	 * - Index scans in PG relations use a dirty snapshot to perform lockless
+	 *   conflict checks on the arbiter index. Further, transaction visibility
+	 *   information is not stored in index tuples, so the conflict check must
+	 *   visit the main table tuple to verify that the tuple is indeed visible.
+	 * - YB conflict checks mirror PG's lock acquisition behavior and scans on
+	 *   YB relations are always performed on a clean snapshot. This allows
+	 *   the main table scan to be skipped as there is no lock to be acquired
+	 *   and no visibility information to be checked.
 	 */
 	if (operation == CMD_INSERT)
 	{
@@ -5225,6 +5236,9 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 
 		if (YbIsInsertOnConflictReadBatchingPossible(resultRelInfo))
 			resultRelInfo->ri_ybIocBatchingPossible = true;
+
+		if (IsYBRelation(rel) && node->onConflictAction == ONCONFLICT_NOTHING)
+			resultRelInfo->ri_ybUseIndexOnlyScanForIocRead = true;
 	}
 
 	/*

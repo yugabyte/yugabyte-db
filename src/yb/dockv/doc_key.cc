@@ -21,6 +21,7 @@
 
 #include "yb/dockv/doc_kv_util.h"
 #include "yb/dockv/doc_path.h"
+#include "yb/dockv/doc_vector_id.h"
 #include "yb/dockv/primitive_value.h"
 #include "yb/dockv/value_type.h"
 
@@ -1004,6 +1005,13 @@ std::string SubDocKey::DebugSliceToString(Slice slice) {
 }
 
 Result<std::string> SubDocKey::DebugSliceToStringAsResult(Slice slice) {
+  // TODO: it is required to implement a new set of generic functions to print different types of
+  // DocDB key (MetaKey, SubDocKey), keeping this method and DebugSliceToString() for SubDocKey.
+  // Possible location could be doc_kv_util.h/.cc, possible naming -- DocDBKeyToDebugHexString().
+  if (slice.starts_with(KeyEntryTypeAsChar::kVectorIndexMetadata)) {
+    return dockv::DocVectorMetaKeyToString(slice);
+  }
+
   SubDocKey key;
   auto status = key.DecodeFrom(&slice, HybridTimeRequired::kFalse, AllowSpecial::kTrue);
   if (status.ok()) {

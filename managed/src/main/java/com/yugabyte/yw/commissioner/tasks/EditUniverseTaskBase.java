@@ -192,6 +192,7 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
           universe,
           nodesToProvision,
           false /* ignore node status check */,
+          false /* do validation of gflags */,
           setupServerParams -> {
             setupServerParams.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
             setupServerParams.rebootNodeAllowed = true;

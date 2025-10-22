@@ -255,22 +255,23 @@ TAG_FLAG(backfill_index_client_rpc_timeout_ms, advanced);
 DEFINE_RUNTIME_int32(ycql_num_tablets, -1,
     "The number of tablets per YCQL table. Default value is -1. "
     "Colocated tables are not affected. "
-    "If its value is not set then (1) the value of yb_num_shards_per_tserver is used "
-    "in conjunction with the number of tservers to determine the tablet count, (2) in case of "
-    "low number of CPU cores (<4) and enable_automatic_tablet_splitting is set to true, "
+    "If its value is not set (equals to -1) then (1) the value of yb_num_shards_per_tserver is "
+    "used in conjunction with the number of tservers to determine the tablet count, (2) in case "
+    "of low number of CPU cores (<4) and enable_automatic_tablet_splitting is set to true, "
     "neither the number of tservers nor yb_num_shards_per_tserver are taken into account "
-    "to determine the tablet count, the value is determined on base the number of CPU cores only."
+    "to determine the tablet count, the value is determined based on the number of CPU cores only."
     "If the user explicitly specifies a value of the tablet count in the Create Table "
     "DDL statement (with tablets = x syntax) then it takes precedence over the value "
     "of this flag. Needs to be set at tserver.");
 
-DEFINE_RUNTIME_int32(ysql_num_tablets, -1,
-    "The number of tablets per YSQL table. Default value is -1. "
-    "If its value is not set then (1) the value of ysql_num_shards_per_tserver is used "
-    "in conjunction with the number of tservers to determine the tablet count, (2) in case of "
-    "low number of CPU cores (<4) and enable_automatic_tablet_splitting is set to true, "
+DEFINE_RUNTIME_int32(ysql_num_tablets, 1,
+    "The number of tablets per YSQL table. Default value is 1 and is recommended only if "
+    "enable_automatic_tablet_splitting is true, otherwise the value might need to be set to -1. "
+    "If its value is not set (equals to -1) then (1) the value of ysql_num_shards_per_tserver is "
+    "used in conjunction with the number of tservers to determine the tablet count, (2) in case "
+    "of low number of CPU cores (<4) and enable_automatic_tablet_splitting is set to true, "
     "neither the number of tservers nor ysql_num_shards_per_tserver are taken into account "
-    "to determine the tablet count, the value is determined on base the number of CPU cores only."
+    "to determine the tablet count, the value is determined based on the number of CPU cores only."
     "If the user explicitly specifies a value of the tablet count in the Create Table "
     "DDL statement (split into x tablets syntax) then it takes precedence over the "
     "value of this flag. Needs to be set at tserver.");
@@ -1185,9 +1186,20 @@ Status YBClient::ReservePgsqlOids(
   return Status::OK();
 }
 
-Status YBClient::GetYsqlCatalogMasterVersion(uint64_t *ysql_catalog_version) {
+Status YBClient::DEPRECATED_GetYsqlCatalogMasterVersion(uint64_t *ysql_catalog_version) {
   GetYsqlCatalogConfigRequestPB req;
   GetYsqlCatalogConfigResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Client, req, resp, GetYsqlCatalogConfig);
+  *ysql_catalog_version = resp.version();
+  return Status::OK();
+}
+
+Status YBClient::GetYsqlDBCatalogMasterVersion(
+    const string& database_name, uint64_t *ysql_catalog_version) {
+  GetYsqlCatalogConfigRequestPB req;
+  GetYsqlCatalogConfigResponsePB resp;
+  req.mutable_namespace_()->set_database_type(YQL_DATABASE_PGSQL);
+  req.mutable_namespace_()->set_name(database_name);
   CALL_SYNC_LEADER_MASTER_RPC_EX(Client, req, resp, GetYsqlCatalogConfig);
   *ysql_catalog_version = resp.version();
   return Status::OK();
@@ -1928,13 +1940,14 @@ Status YBClient::BootstrapProducer(
 
 Status YBClient::UpdateConsumerOnProducerSplit(
     const xcluster::ReplicationGroupId& replication_group_id, const xrepl::StreamId& stream_id,
-    const master::ProducerSplitTabletInfoPB& split_info) {
+    const master::ProducerSplitTabletInfoPB& split_info, const TableId& consumer_table_id) {
   SCHECK(!replication_group_id.empty(), InvalidArgument, "Producer id is required.");
   SCHECK(stream_id, InvalidArgument, "Stream id is required.");
 
   UpdateConsumerOnProducerSplitRequestPB req;
   req.set_replication_group_id(replication_group_id.ToString());
   req.set_stream_id(stream_id.ToString());
+  req.set_consumer_table_id(consumer_table_id);
   req.mutable_producer_split_tablet_info()->CopyFrom(split_info);
 
   UpdateConsumerOnProducerSplitResponsePB resp;
@@ -2658,6 +2671,20 @@ Status YBClient::WaitForDdlVerificationToFinish(const TransactionMetadata& txn) 
       MonoDelta::FromSeconds(FLAGS_ddl_verification_timeout_multiplier *
                              default_admin_operation_timeout().ToSeconds());
   return data_->WaitForDdlVerificationToFinish(txn, deadline);
+}
+
+Status YBClient::RollbackDocdbSchemaToSubtxn(
+    const TransactionMetadata& txn, SubTransactionId sub_txn_id) {
+  auto deadline = CoarseMonoClock::Now() + default_rpc_timeout();
+  return data_->RollbackDocdbSchemaToSubtxn(txn, sub_txn_id, deadline);
+}
+
+Status YBClient::WaitForRollbackDocdbSchemaToSubtxnToFinish(
+    const TransactionMetadata& txn, SubTransactionId sub_txn_id) {
+  auto deadline = CoarseMonoClock::Now() +
+      MonoDelta::FromSeconds(FLAGS_ddl_verification_timeout_multiplier *
+                             default_admin_operation_timeout().ToSeconds());
+  return data_->WaitForRollbackDocdbSchemaToSubtxnToFinish(txn, sub_txn_id, deadline);
 }
 
 Result<bool> YBClient::CheckIfPitrActive() {

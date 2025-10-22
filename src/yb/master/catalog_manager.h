@@ -172,6 +172,10 @@ YB_DEFINE_ENUM(YsqlDdlVerificationState,
 // this table's DocDB schema.
 YB_DEFINE_ENUM(TxnState, (kUnknown)(kCommitted)(kAborted)(kNoChange));
 
+YB_DEFINE_ENUM(YsqlDdlSubTransactionRollbackState,
+    (kDdlSubTxnRollbackInProgress)
+    (kDdlSubTxnRollbackPostProcessingFailed));
+
 YB_DEFINE_ENUM(
     DeleteYsqlDBTablesType,
     (kNormal)                // Reglar DB drop. Can we used during both normal operations and major
@@ -346,8 +350,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Status CreateTestEchoService(const LeaderEpoch& epoch);
 
-  Status CreatePgAutoAnalyzeService(const LeaderEpoch& epoch);
-
   Status CreatePgCronService(const LeaderEpoch& epoch) EXCLUDES(mutex_);
 
   // Get the information about an in-progress create operation.
@@ -520,19 +522,46 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Status HandleAbortedYsqlDdlTxn(const YsqlTableDdlTxnState txn_data);
 
-  Status ClearYsqlDdlTxnState(const YsqlTableDdlTxnState txn_data);
+  Status YsqlRollbackDocdbSchemaToSubTxn(const std::string& pb_txn_id,
+                                    const SubTransactionId sub_txn_id,
+                                    const LeaderEpoch& epoch);
+
+  Status YsqlRollbackDocdbSchemaToSubTxnHelper(TableInfo* table,
+                                          const TransactionId& txn_id,
+                                          const SubTransactionId sub_txn_id,
+                                          const LeaderEpoch& epoch);
+
+  // Rollback all the DDL state changes made by the YSQL transaction from the end till
+  // rollback_till_ddl_state_index of ysql_ddl_txn_verifier_state i.e.
+  // ysql_ddl_txn_verifier_state[rollback_till_ddl_state_index, end)
+  Status RollbackYsqlTxnDdlStates(
+      const YsqlTableDdlTxnState txn_data, bool is_rollback_to_subtxn,
+      int rollback_till_ddl_state_index = 0);
+
+  Status ClearYsqlDdlTxnState(const YsqlTableDdlTxnState txn_data,
+                              int rollback_till_ddl_state_index = 0);
 
   Status YsqlDdlTxnAlterTableHelper(const YsqlTableDdlTxnState txn_data,
                                     const std::vector<DdlLogEntry>& ddl_log_entries,
                                     const std::string& new_table_name,
-                                    bool success);
+                                    bool success,
+                                    int rollback_till_ddl_state_index = 0);
 
-  Status YsqlDdlTxnDropTableHelper(const YsqlTableDdlTxnState txn_data, bool success);
+  Status YsqlDdlTxnDropTableHelper(
+      const YsqlTableDdlTxnState txn_data, bool success, bool is_rollback_to_subtxn = false);
 
   void UpdateDdlVerificationStateUnlocked(const TransactionId& txn,
                                           YsqlDdlVerificationState state)
       REQUIRES_SHARED(ddl_txn_verifier_mutex_);
   void UpdateDdlVerificationState(const TransactionId& txn, YsqlDdlVerificationState state);
+
+  void UpdateDdlRollbackToSubTxnStateUnlocked(const TransactionId& txn,
+                                              const SubTransactionId sub_txn_id,
+                                              YsqlDdlSubTransactionRollbackState state)
+      REQUIRES_SHARED(ddl_txn_verifier_mutex_);
+  void UpdateDdlRollbackToSubTxnState(const TransactionId& txn,
+                                      const SubTransactionId sub_txn_id,
+                                      YsqlDdlSubTransactionRollbackState state);
 
   bool HasDdlVerificationState(const TransactionId& txn) const EXCLUDES(ddl_txn_verifier_mutex_);
   void RemoveDdlTransactionStateUnlocked(
@@ -541,6 +570,12 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   void RemoveDdlTransactionState(
       const TableId& table_id, const std::vector<TransactionId>& txn_ids)
+      EXCLUDES(ddl_txn_verifier_mutex_);
+
+  void RemoveDdlRollbackToSubTxnStateUnlocked(const TableId& table_id, TransactionId txn_id)
+      REQUIRES(ddl_txn_verifier_mutex_);
+
+  void RemoveDdlRollbackToSubTxnState(const TableId& table_id, TransactionId txn_id)
       EXCLUDES(ddl_txn_verifier_mutex_);
 
   Status TriggerDdlVerificationIfNeeded(const TransactionMetadata& txn, const LeaderEpoch& epoch);
@@ -1260,6 +1295,18 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       rpc::RpcContext* rpc,
       const LeaderEpoch& epoch);
 
+  Status RollbackDocdbSchemaToSubtxn(
+      const RollbackDocdbSchemaToSubtxnRequestPB* req,
+      RollbackDocdbSchemaToSubtxnResponsePB* resp,
+      rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+
+  Status IsRollbackDocdbSchemaToSubtxnDone(
+      const IsRollbackDocdbSchemaToSubtxnDoneRequestPB* req,
+      IsRollbackDocdbSchemaToSubtxnDoneResponsePB* resp,
+      rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+
   Status GetStatefulServiceLocation(
       const GetStatefulServiceLocationRequestPB* req,
       GetStatefulServiceLocationResponsePB* resp);
@@ -1702,6 +1749,21 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   rpc::Scheduler& Scheduler() override;
 
+  // Submit a task to run on the background thread pool.
+  Status SubmitBackgroundTask(const std::function<void()>& func);
+
+
+  // Below functions are temporarily made public until they can be moved into YsqlManager.
+
+  // Helper function to refresh the tablespace info.
+  Status DoRefreshTablespaceInfo(const LeaderEpoch& epoch);
+
+  void ResetCachedCatalogVersions()
+      EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
+
+  // Refresh the in-memory map for YSQL pg_yb_catalog_version table.
+  void RefreshPgCatalogVersionInfo() EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
+
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;
@@ -2096,8 +2158,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const TablespaceIdToReplicationInfoMap& tablespace_info,
       const TableToTablespaceIdMap& table_to_tablespace_map, const LeaderEpoch& epoch);
 
-  void StartTablespaceBgTaskIfStopped();
-
   // Report metrics.
   void ReportMetrics();
 
@@ -2439,6 +2499,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   mutable MutexType backfill_mutex_;
   std::unordered_set<TableId> pending_backfill_tables_ GUARDED_BY(backfill_mutex_);
 
+  std::unique_ptr<CdcsdkManager> cdcsdk_manager_;
+
   std::unique_ptr<XClusterManager> xcluster_manager_;
 
   std::unique_ptr<YsqlManager> ysql_manager_;
@@ -2533,17 +2595,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Return the table->tablespace mapping by reading the pg catalog tables.
   Result<std::shared_ptr<TableToTablespaceIdMap>> GetYsqlTableToTablespaceMap(
       const TablespaceIdToReplicationInfoMap& tablespace_info) EXCLUDES(mutex_);
-
-  // Background task that refreshes the in-memory state for YSQL tables with their associated
-  // tablespace info.
-  // Note: This function should only ever be called by StartTablespaceBgTaskIfStopped().
-  void RefreshTablespaceInfoPeriodically();
-
-  // Helper function to schedule the next iteration of the tablespace info task.
-  void ScheduleRefreshTablespaceInfoTask(const bool schedule_now = false);
-
-  // Helper function to refresh the tablespace info.
-  Status DoRefreshTablespaceInfo(const LeaderEpoch& epoch);
 
   size_t GetNumLiveTServersForPlacement(const PlacementId& placement_id);
 
@@ -2959,15 +3010,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status BumpVersionAndStoreClusterConfig(
       ClusterConfigInfo* cluster_config, ClusterConfigInfo::WriteLock* l);
 
-  // Background task that refreshes the in-memory map for YSQL pg_yb_catalog_version table.
-  void RefreshPgCatalogVersionInfoPeriodically()
-      EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
-  // Helper function to schedule the next iteration of the pg catalog versions task.
-  void ScheduleRefreshPgCatalogVersionsTask(bool schedule_now = false);
-
-  void StartPgCatalogVersionsBgTaskIfStopped();
-  void ResetCachedCatalogVersions()
-      EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
   Status GetYsqlAllDBCatalogVersionsImpl(DbOidToCatalogVersionMap* versions);
   Result<DbOidVersionToMessageListMap> GetYsqlCatalogInvalationMessagesImpl();
 
@@ -3054,11 +3096,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // shared_ptr and read from it.
   std::shared_ptr<YsqlTablespaceManager> tablespace_manager_ GUARDED_BY(tablespace_mutex_);
 
-  // Whether the periodic job to update tablespace info is running.
-  std::atomic<bool> tablespace_bg_task_running_;
-
-  rpc::ScheduledTaskTracker refresh_ysql_tablespace_info_task_;
-
   struct YsqlDdlTransactionState {
     // Indicates whether the transaction is committed or aborted or unknown.
     TxnState txn_state;
@@ -3076,6 +3113,16 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
     std::unordered_set<TableId> nochange_tables;
   };
 
+  struct YsqlDdlSubTransactionRollbackMetadata {
+    // The sub-transaction to which this transaction is getting rolled back to.
+    SubTransactionId sub_txn;
+
+    YsqlDdlSubTransactionRollbackState state;
+
+    // The table info objects of the tables affected by this rollback to sub-transaction operation.
+    std::vector<TableInfoPtr> tables;
+  };
+
   // This map stores the transaction ids of all the DDL transactions undergoing verification.
   // For each transaction, it also stores pointers to the table info objects of the tables affected
   // by that transaction.
@@ -3083,6 +3130,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   std::unordered_map<TransactionId, YsqlDdlTransactionState>
       ysql_ddl_txn_verfication_state_map_ GUARDED_BY(ddl_txn_verifier_mutex_);
+
+  // Stores the transaction ids of all the transactions undergoing rollback to a sub-transaction.
+  std::unordered_map<TransactionId, YsqlDdlSubTransactionRollbackMetadata>
+      ysql_ddl_txn_undergoing_subtransaction_rollback_map_ GUARDED_BY(ddl_txn_verifier_mutex_);
 
   ServerRegistrationPB server_registration_;
 
@@ -3162,9 +3213,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   // True when the cluster is a producer of a valid replication stream.
   std::atomic<bool> cdc_enabled_{false};
-
-  std::atomic<bool> pg_catalog_versions_bg_task_running_ = {false};
-  rpc::ScheduledTaskTracker refresh_ysql_pg_catalog_versions_task_;
 
   // For per-database catalog version mode upgrade support: when the gflag
   // --ysql_enable_db_catalog_version_mode is true, whether the table

@@ -13,6 +13,8 @@
 
 package com.yugabyte.yw.models;
 
+import static com.yugabyte.yw.common.Util.CONSISTENCY_CHECK_TABLE_NAME;
+import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
@@ -22,17 +24,23 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseContainer.ImportExportRelease;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.utils.FileUtils;
+import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
 import com.yugabyte.yw.models.helpers.provider.region.KubernetesRegionInfo;
@@ -42,7 +50,6 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -54,8 +61,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.zip.GZIPOutputStream;
 import lombok.Builder;
 import lombok.Data;
@@ -76,6 +81,9 @@ public class AttachDetachSpec {
   private static final String PUB_PERMISSIONS = "r--------";
   private static final String DEFAULT_PERMISSIONS = "rw-r--r--";
 
+  public static final UUID DETACHED_UNIVERSE_UUID = new UUID(0L, 0L);
+  public static final String DETACHED_HOST = "";
+
   public Universe universe;
 
   // Contains Region, AvailabilityZone, and AccessKey entities.
@@ -86,6 +94,8 @@ public class AttachDetachSpec {
   public List<PriceComponent> priceComponents;
 
   public List<CertificateInfo> certificateInfoList;
+
+  public Map<UUID, ImageBundle> imageBundles;
 
   public List<NodeInstance> nodeInstances;
 
@@ -141,10 +151,9 @@ public class AttachDetachSpec {
       // Save provivision script for on-prem provider.
       exportProvisionInstanceScript(tarOS);
 
-      // Save ybc and software release files.
+      // Save software release files.
       if (!this.skipReleases) {
         exportYBSoftwareReleases(tarOS);
-        exportYbcReleases(tarOS);
       }
     }
 
@@ -224,30 +233,6 @@ public class AttachDetachSpec {
     log.debug("Added software release {} to tar gz file.", universeVersion);
   }
 
-  private void exportYbcReleases(TarArchiveOutputStream tarArchive) throws IOException {
-    File ybcReleaseFolder = new File(this.oldPlatformPaths.ybcReleasePath);
-    String universeYbcVersion = this.universe.getUniverseDetails().getYbcSoftwareVersion();
-    if (this.universe.getUniverseDetails().isYbcInstalled() && ybcReleaseFolder.isDirectory()) {
-      File[] ybcTarFiles = ybcReleaseFolder.listFiles();
-      Pattern ybcVersionPattern =
-          Pattern.compile(String.format("%s-", Pattern.quote(universeYbcVersion)));
-      if (ybcTarFiles != null) {
-        // Need to add folder to tar gz file, otherwise, there are issues with untar.
-        tarArchive.putArchiveEntry(tarArchive.createArchiveEntry(ybcReleaseFolder, "ybcRelease/"));
-        tarArchive.closeArchiveEntry();
-
-        for (File ybcTarFile : ybcTarFiles) {
-          Matcher matcher = ybcVersionPattern.matcher(ybcTarFile.getName());
-          boolean matchFound = matcher.find();
-          if (matchFound) {
-            Util.addFilesToTarGZ(ybcTarFile.getAbsolutePath(), "ybcRelease/", tarArchive);
-          }
-        }
-      }
-      log.debug("Added ybc release {} to tar gz file.", universeYbcVersion);
-    }
-  }
-
   // Retrieve unmasked details from provider, region, and availability zone.
   public ObjectNode setIgnoredJsonProperties(ObjectNode attachDetachSpecObj) {
     ProviderDetails unmaskedProviderDetails = this.provider.getDetails();
@@ -286,8 +271,6 @@ public class AttachDetachSpec {
 
     String storagePath = platformPaths.storagePath;
     String releasesPath = platformPaths.releasesPath;
-    String ybcReleasePath = platformPaths.ybcReleasePath;
-    String ybcReleasesPath = platformPaths.ybcReleasesPath;
 
     String specBasePath = storagePath + "/attach-detach-specs/import";
     String specName = AttachDetachSpec.generateSpecName(false);
@@ -311,9 +294,6 @@ public class AttachDetachSpec {
     if (!attachDetachSpec.skipReleases) {
       // Import the ybsoftwareversions, etc if exists.
       attachDetachSpec.importSoftwareReleases(specFolderPath, releasesPath);
-
-      // Import the ybcsoftware version, etc if exists.
-      attachDetachSpec.setupAndImportYbcReleases(specFolderPath, ybcReleasePath, ybcReleasesPath);
     }
 
     // Update universe related metadata due to platform switch.
@@ -420,68 +400,27 @@ public class AttachDetachSpec {
     }
   }
 
-  private void setupAndImportYbcReleases(
-      String specFolderPath, String ybcReleasePath, String ybcReleasesPath) throws IOException {
-    File releasesDir = new File(ybcReleasesPath);
-    if (!releasesDir.isDirectory()) {
-      try {
-        Files.createDirectories(Paths.get(ybcReleasesPath));
-        log.debug("Created ybc releases folder as it was not found.");
-      } catch (AccessDeniedException e) {
-        throw new PlatformServiceException(
-            BAD_REQUEST, "Cannot create YBC releases directory due to insufficient permissions.");
-      }
-    } else if (!releasesDir.canWrite()) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Cannot write into YBC releases directory due to insufficient permissions.");
-    }
-
-    // Import ybc releases
-    File srcYbcReleaseDir = new File(String.format("%s/%s", specFolderPath, "ybcRelease"));
-    File destYbcReleaseDir = new File(ybcReleasePath);
-
-    if (srcYbcReleaseDir.isDirectory()) {
-      // Create destination directory if it doesn't exist
-      if (!destYbcReleaseDir.exists()) {
-        Files.createDirectories(destYbcReleaseDir.toPath());
-        log.debug("Created destination YBC release directory as it was not found.");
-      }
-
-      // Check if destination is writable
-      if (destYbcReleaseDir.canWrite()) {
-        File[] sourceFiles = srcYbcReleaseDir.listFiles();
-        if (sourceFiles != null) {
-          for (File sourceFile : sourceFiles) {
-            File destFile = new File(destYbcReleaseDir, sourceFile.getName());
-            if (destFile.exists()) {
-              log.debug("File {} already exists, skipping copy.", destFile.getPath());
-            } else {
-              // Copy only if file doesn't exist
-              if (sourceFile.isFile()) {
-                org.apache.commons.io.FileUtils.copyFile(sourceFile, destFile);
-              } else if (sourceFile.isDirectory()) {
-                org.apache.commons.io.FileUtils.copyDirectory(sourceFile, destFile);
-              }
-            }
-          }
-        }
-        log.debug("Finished importing ybc software release.");
-      } else {
-        log.warn("Cannot write to destination directory: {}", destYbcReleaseDir.getPath());
-        throw new PlatformServiceException(
-            BAD_REQUEST,
-            "Could not write ybc software release to directory "
-                + destYbcReleaseDir.getPath()
-                + " due to insufficient permissions.");
-      }
-    }
-  }
-
   private void updateUniverseDetails(Customer customer) {
     Long customerId = customer.getId();
     this.universe.setCustomerId(customerId);
 
     this.universe.setConfig(this.universeConfig);
+    // Update ImageBundle references in clusters
+    if (this.imageBundles != null && !this.imageBundles.isEmpty()) {
+      UniverseDefinitionTaskParams universeDetails = this.universe.getUniverseDetails();
+
+      for (UniverseDefinitionTaskParams.Cluster cluster : universeDetails.clusters) {
+        if (cluster.userIntent.imageBundleUUID != null) {
+          ImageBundle matchingBundle = this.imageBundles.get(cluster.userIntent.imageBundleUUID);
+
+          if (matchingBundle != null) {
+            // Ensure the cluster references the correct ImageBundle
+            cluster.userIntent.imageBundleUUID = matchingBundle.getUuid();
+          }
+        }
+      }
+      this.universe.setUniverseDetails(universeDetails);
+    }
   }
 
   private void updateProviderDetails(String storagePath, Customer customer) {
@@ -607,6 +546,16 @@ public class AttachDetachSpec {
     }
   }
 
+  private void updateImageBundleDetails(Customer customer) {
+    if (this.imageBundles != null) {
+      for (ImageBundle imageBundle : this.imageBundles.values()) {
+        if (imageBundle.getProvider() != null) {
+          imageBundle.getProvider().setCustomerUUID(customer.getUuid());
+        }
+      }
+    }
+  }
+
   private void updateUniverseMetadata(String storagePath, Customer customer) {
 
     // Update universe information with new customer information and universe config.
@@ -628,11 +577,18 @@ public class AttachDetachSpec {
     updateScheduleDetails(customer);
 
     updateCustomerConfigDetails(customer);
+
+    updateImageBundleDetails(customer);
   }
 
   @Transactional
   public void save(
-      PlatformPaths platformPaths, ReleaseManager releaseManager, SwamperHelper swamperHelper) {
+      PlatformPaths platformPaths,
+      ReleaseManager releaseManager,
+      SwamperHelper swamperHelper,
+      ConfigHelper configHelper,
+      YsqlQueryExecutor ysqlQueryExecutor,
+      RuntimeConfGetter confGetter) {
 
     // Check if provider exists, if not, save all entities related to provider (Region,
     // AvailabilityZone, AccessKey).
@@ -744,6 +700,21 @@ public class AttachDetachSpec {
       }
     }
 
+    if (this.imageBundles != null) {
+      for (ImageBundle imageBundle : this.imageBundles.values()) {
+        if (ImageBundle.get(imageBundle.getUuid()) == null) {
+          imageBundle.setProvider(this.provider);
+          imageBundle.save();
+          log.info(
+              "Saved ImageBundle: {} for provider: {}",
+              imageBundle.getName(),
+              this.provider.getUuid());
+        } else {
+          log.info("ImageBundle {} already exists, skipping save", imageBundle.getUuid());
+        }
+      }
+    }
+
     for (Schedule schedule : this.schedules) {
       if (!Schedule.maybeGet(schedule.getScheduleUUID()).isPresent()) {
         schedule.save();
@@ -757,7 +728,7 @@ public class AttachDetachSpec {
     }
 
     if (!this.skipReleases) {
-      // Update and save software releases and ybc software releases.
+      // Update and save software releases.
       if (ybReleaseMetadata != null) {
         String universeVersion =
             this.universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
@@ -779,7 +750,7 @@ public class AttachDetachSpec {
         }
       }
 
-      // Imports local ybc and software releases.
+      // Imports local software releases.
       releaseManager.importLocalReleases();
       releaseManager.updateCurrentReleases();
     }
@@ -788,11 +759,95 @@ public class AttachDetachSpec {
     UniverseDefinitionTaskParams universeDetails = this.universe.getUniverseDetails();
     universeDetails.updateInProgress = false;
     universeDetails.updateSucceeded = true;
+    universeDetails.universeDetached = false;
     this.universe.setUniverseDetails(universeDetails);
     this.universe.save();
 
     // Update prometheus files.
     swamperHelper.writeUniverseTargetJson(this.universe);
+
+    // Update the Consistency table with new YwUuid
+    updateYwUuidInConsistencyTable(this.universe, configHelper, ysqlQueryExecutor, confGetter);
+  }
+
+  private void updateYwUuidInConsistencyTable(
+      Universe universe,
+      ConfigHelper configHelper,
+      YsqlQueryExecutor ysqlQueryExecutor,
+      RuntimeConfGetter confGetter) {
+    try {
+      UUID currentYwUuid = configHelper.getYugawareUUID();
+
+      if (currentYwUuid == null) {
+        log.warn("Current YugabyteDB Anywhere UUID not found, cannot update consistency table");
+        return;
+      }
+
+      UUID storedYwUuid = Util.getStoredYwUuid(universe, ysqlQueryExecutor, confGetter);
+      if (storedYwUuid != null && !storedYwUuid.equals(DETACHED_UNIVERSE_UUID)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Universe already has an owner "
+                + storedYwUuid
+                + ", please delete universe metadata from this YBA"
+                + " instance.");
+      }
+
+      try {
+        NodeDetails node = CommonUtils.getServerToRunYsqlQuery(universe, true);
+
+        String updateQuery =
+            String.format(
+                "UPDATE %s SET yw_uuid = '%s', yw_host = '%s' WHERE seq_num = (SELECT MAX(seq_num)"
+                    + " FROM %s)",
+                CONSISTENCY_CHECK_TABLE_NAME,
+                currentYwUuid,
+                Util.getYwHostnameOrIP(),
+                CONSISTENCY_CHECK_TABLE_NAME);
+
+        RunQueryFormData runQueryFormData = new RunQueryFormData();
+        runQueryFormData.setDbName(SYSTEM_PLATFORM_DB);
+        runQueryFormData.setQuery(updateQuery);
+
+        JsonNode ysqlResponse =
+            ysqlQueryExecutor.executeQueryInNodeShell(
+                universe,
+                runQueryFormData,
+                node,
+                confGetter.getConfForScope(universe, UniverseConfKeys.ysqlConsistencyTimeoutSecs));
+
+        if (ysqlResponse != null && ysqlResponse.has("error")) {
+          log.warn(
+              "Could not update YW UUID in consistency check table: {}",
+              ysqlResponse.get("error").asText());
+        } else {
+          log.info(
+              "Updated YW UUID in consistency check table for universe: {}", universe.getName());
+        }
+
+      } catch (IllegalStateException e) {
+        log.warn(
+            "Could not find valid tserver to update YW UUID for universe {}: {}",
+            universe.getName(),
+            e);
+      } catch (Exception e) {
+        log.error(
+            "Error while trying query to update YW UUID for universe {}: {}",
+            universe.getName(),
+            e);
+        throw e;
+      }
+    } catch (Exception e) {
+      log.error(
+          "Error in updating YW UUID in consistency table for universe {}: {}",
+          universe.getName(),
+          e);
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR,
+          String.format(
+              "Failed to update YW UUID in consistency table for universe %s. %s",
+              universe.getName(), e.getMessage()));
+    }
   }
 
   public static String generateSpecName(boolean isExport) {
@@ -812,11 +867,5 @@ public class AttachDetachSpec {
 
     @JsonProperty("releasesPath")
     public String releasesPath;
-
-    @JsonProperty("ybcReleasePath")
-    public String ybcReleasePath;
-
-    @JsonProperty("ybcReleasesPath")
-    public String ybcReleasesPath;
   }
 }

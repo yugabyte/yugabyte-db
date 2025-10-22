@@ -57,63 +57,6 @@ Result<size_t> CheckHybridTimeSizeAndValueType(const Slice& key) {
 
 namespace {
 
-// Finds a compile-time constant character in string.
-// Returns end if the character is not found.
-template<char kChar>
-const char* Find(const char* begin, const char* end) {
-  if (kChar == 0) {
-    return begin + strnlen(begin, end - begin);
-  }
-  auto result = static_cast<const char*>(memchr(begin, kChar, end - begin));
-  return result ? result : end;
-}
-
-template<char kChar, class Ch>
-void Xor(Ch* begin, Ch* end) {
-  if (kChar == 0) {
-    return;
-  }
-  for (; begin != end; ++begin) {
-    *begin ^= kChar;
-  }
-}
-
-template<char kChar, class Out>
-void Xor(Out* out, size_t old_size) {
-  Xor<kChar>(out->data() + old_size, out->data() + out->size());
-}
-
-template<char kChar>
-void Xor(ValueBuffer* out, size_t old_size) {
-  Xor<kChar>(out->mutable_data() + old_size, out->mutable_data() + out->size());
-}
-
-template <bool desc>
-void AppendEncodedStrToKey(const Slice& s, KeyBuffer *dest) {
-  const auto* p = s.cdata();
-  const auto* end = s.cend();
-  size_t old_size = dest->size();
-  for (;;) {
-    const auto* stop = Find<'\0'>(p, end);
-    if (stop == end) {
-      dest->append(p, end);
-      break;
-    }
-    dest->append(p, stop + 1);
-    dest->push_back(1);
-    p = stop + 1;
-  }
-  if (desc) {
-    Xor<'\xff'>(dest->mutable_data() + old_size, dest->mutable_data() + dest->size());
-  }
-}
-
-template <char A>
-inline void TerminateEncodedKeyStr(KeyBuffer *dest) {
-  char buf[2] = {A, A};
-  dest->append(buf, sizeof(buf));
-}
-
 template<char kEndOfString, class Out>
 Result<const char*> DecodeEncodedStr(const char* p, const char* end, Out* result) {
   static_assert(kEndOfString == '\0' || kEndOfString == '\xff',
@@ -123,7 +66,7 @@ Result<const char*> DecodeEncodedStr(const char* p, const char* end, Out* result
 
   // Loop invariant: remaining bytes to be processed are [p, end)
   do {
-    auto stop = Find<kEndOfString>(p, end);
+    auto stop = internal::Find<kEndOfString>(p, end);
     if (PREDICT_FALSE(stop >= end - 1)) {
       if (stop == end) {
         if (p == end) {
@@ -154,7 +97,7 @@ Result<const char*> DecodeEncodedStr(const char* p, const char* end, Out* result
     result->append(p, stop + 1);
     p = stop + 2;
   } while (p != end);
-  Xor<kEndOfString>(result, old_size);
+  internal::Xor<kEndOfString>(result, old_size);
   return p;
 }
 
@@ -195,22 +138,6 @@ Result<std::string> FullyDecodeString(const Slice& encoded_str, const Decoder& d
 }
 
 } // namespace
-
-void AppendZeroEncodedStrToKey(const Slice& s, KeyBuffer *dest) {
-  AppendEncodedStrToKey<false>(s, dest);
-}
-
-void AppendComplementZeroEncodedStrToKey(const Slice& s, KeyBuffer *dest) {
-  AppendEncodedStrToKey<true>(s, dest);
-}
-
-void TerminateZeroEncodedKeyStr(KeyBuffer *dest) {
-  TerminateEncodedKeyStr<'\0'>(dest);
-}
-
-void TerminateComplementZeroEncodedKeyStr(KeyBuffer *dest) {
-  TerminateEncodedKeyStr<'\xff'>(dest);
-}
 
 Status DecodeComplementZeroEncodedStr(Slice* slice, std::string* result) {
   if (result == nullptr) {

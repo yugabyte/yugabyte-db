@@ -228,6 +228,10 @@ class Master : public tserver::DbServerBase {
       uint32_t db_oid, bool is_breaking_change, uint64_t new_catalog_version,
       const std::optional<std::string>& message_list);
 
+  Status TriggerRelcacheInitConnection(
+    const tserver::TriggerRelcacheInitConnectionRequestPB& req,
+    tserver::TriggerRelcacheInitConnectionResponsePB *resp);
+
   void EnableCDCService();
 
   Status ReloadKeysAndCertificates() override;

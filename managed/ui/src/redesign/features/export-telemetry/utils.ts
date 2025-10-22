@@ -2,6 +2,7 @@ import { Cluster, Universe } from '@app/redesign/helpers/dtos';
 import { getPrimaryCluster } from '@app/utils/universeUtilsTyped';
 import { TelemetryProviderItem, TelemetryProviderType } from './types';
 import { TelemetryProvider } from './dtos';
+import { assertUnreachableCase } from '@app/utils/errorHandlingUtils';
 /**
  * Although we support more than one universe log exporter config from the backend,
  * the designed UI for YBA supports only a single log exporter config per universe.
@@ -21,8 +22,39 @@ export const getUniverseMetricsExportConfig = (universe: Universe) => {
   return primaryCluster ? getClusterMetricsExportConfig(primaryCluster) : undefined;
 };
 
-export const getIsMetricsExportSupported = (telemetryProvider: TelemetryProvider) =>
-  telemetryProvider.config.type === TelemetryProviderType.DATA_DOG;
+export const getIsMetricsExportSupported = (telemetryProvider: TelemetryProvider) => {
+  switch (telemetryProvider.config.type) {
+    case TelemetryProviderType.DATA_DOG:
+    case TelemetryProviderType.DYNATRACE:
+      return true;
+    case TelemetryProviderType.AWS_CLOUDWATCH:
+    case TelemetryProviderType.GCP_CLOUD_MONITORING:
+    case TelemetryProviderType.LOKI:
+    case TelemetryProviderType.SPLUNK:
+    case TelemetryProviderType.S3:
+    case TelemetryProviderType.OTLP:
+      return false;
+    default:
+      return assertUnreachableCase(telemetryProvider.config.type);
+  }
+};
+
+export const getIsLogsExportSupported = (telemetryProvider: TelemetryProvider) => {
+  switch (telemetryProvider.config.type) {
+    case TelemetryProviderType.DATA_DOG:
+    case TelemetryProviderType.AWS_CLOUDWATCH:
+    case TelemetryProviderType.GCP_CLOUD_MONITORING:
+    case TelemetryProviderType.LOKI:
+    case TelemetryProviderType.SPLUNK:
+    case TelemetryProviderType.S3:
+    case TelemetryProviderType.OTLP:
+      return true;
+    case TelemetryProviderType.DYNATRACE:
+      return false;
+    default:
+      return assertUnreachableCase(telemetryProvider.config.type);
+  }
+};
 
 export const getIsTelemetryProviderConfigInUse = (telemetryProviderItem: TelemetryProviderItem) => {
   return (

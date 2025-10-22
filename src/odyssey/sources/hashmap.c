@@ -132,6 +132,23 @@ static inline od_hashmap_elt_t *od_bucket_search(od_hashmap_bucket_t *b,
 	return NULL;
 }
 
+static inline od_hashmap_list_item_t *yb_od_bucket_search_by_keyhash(od_hashmap_bucket_t *b,
+						      od_hash_t keyhash)
+{
+	od_list_t *i;
+	od_list_foreach(&(b->nodes->link), i)
+	{
+		od_hashmap_list_item_t *item;
+		item = od_container_of(i, od_hashmap_list_item_t, link);
+		od_hash_t hash = od_murmur_hash(item->key.data, item->key.len);
+		if (hash == keyhash) {
+			// find
+			return item;
+		}
+	}
+	return NULL;
+}
+
 static inline int od_hashmap_elt_copy(od_hashmap_elt_t *dst,
 				      od_hashmap_elt_t *src)
 {
@@ -183,6 +200,21 @@ int od_hashmap_insert(od_hashmap_t *hm, od_hash_t keyhash,
 
 	pthread_mutex_unlock(&hm->buckets[bucket_index]->mu);
 	return ret;
+}
+
+bool yb_od_hashmap_find_key_and_remove(od_hashmap_t *hm, od_hash_t keyhash)
+{
+	size_t bucket_index = keyhash % hm->size;
+	pthread_mutex_lock(&hm->buckets[bucket_index]->mu);
+
+	od_hashmap_list_item_t *item = yb_od_bucket_search_by_keyhash(hm->buckets[bucket_index], keyhash);
+	if (item != NULL) {
+		od_hashmap_list_item_free(item);
+		pthread_mutex_unlock(&hm->buckets[bucket_index]->mu);
+		return true;
+	}
+	pthread_mutex_unlock(&hm->buckets[bucket_index]->mu);
+	return false;
 }
 
 od_hashmap_elt_t *od_hashmap_find(od_hashmap_t *hm, od_hash_t keyhash,

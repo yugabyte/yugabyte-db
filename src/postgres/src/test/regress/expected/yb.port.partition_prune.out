@@ -2668,9 +2668,9 @@ select * from stable_qual_pruning where a < localtimestamp;
  Append (actual rows=0 loops=1)
    Subplans Removed: 1
    ->  Seq Scan on stable_qual_pruning1 stable_qual_pruning_1 (actual rows=0 loops=1)
-         Filter: (a < LOCALTIMESTAMP)
+         Storage Filter: (a < LOCALTIMESTAMP)
    ->  Seq Scan on stable_qual_pruning2 stable_qual_pruning_2 (actual rows=0 loops=1)
-         Filter: (a < LOCALTIMESTAMP)
+         Storage Filter: (a < LOCALTIMESTAMP)
 (6 rows)
 
 -- timestamp < timestamptz comparison is only stable, not immutable

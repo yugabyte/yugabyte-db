@@ -210,7 +210,7 @@ AddTableToXClusterTargetTask::GetXClusterSafeTimeWithoutDdlQueue() {
   const auto namespace_id = table_info_->namespace_id();
 
   auto safe_time_res = xcluster_manager_.GetXClusterSafeTimeForNamespace(
-      epoch_, namespace_id, XClusterSafeTimeFilter::DDL_QUEUE);
+      namespace_id, XClusterSafeTimeFilter::DDL_QUEUE);
   if (!safe_time_res) {
     if (!safe_time_res.status().IsNotFound()) {
       return safe_time_res.status();

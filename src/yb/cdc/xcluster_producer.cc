@@ -342,6 +342,10 @@ Status GetChangesForXCluster(const XClusterGetChangesContext& context) {
   *context.last_readable_opid_index = read_result.majority_replicated_index;
 
   if (update_apply_safe_time) {
+    VLOG(4) << "Updating apply safe time for tablet " << context.tablet_id
+            << ", stream: " << context.stream_id << ", last_apply_safe_time: " << leader_safe_time
+            << ", apply_safe_time_checkpoint_op_id: " << read_result.majority_replicated_index
+            << ", last_apply_safe_time_update_time: " << now.ToString();
     DCHECK(!stream_tablet_metadata->last_apply_safe_time_.is_valid());
     stream_tablet_metadata->last_apply_safe_time_ = leader_safe_time;
 
@@ -450,6 +454,13 @@ Status GetChangesForXCluster(const XClusterGetChangesContext& context) {
   SCHECK_EQ(
       term, consensus->LeaderTerm(), NotFound,
       Format("Leader term for tablet has changed", context.tablet_id));
+
+  VLOG(3) << "Sending GetChanges response for tablet " << context.tablet_id
+          << ", stream: " << context.stream_id
+          << ", checkpoint: " << context.resp->checkpoint().ShortDebugString()
+          << ", safe_hybrid_time: " << context.resp->safe_hybrid_time()
+          << ", wal_segment_index: " << context.resp->wal_segment_index()
+          << ", num_records: " << context.resp->records_size();
 
   return Status::OK();
 }

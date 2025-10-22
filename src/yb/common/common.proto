@@ -129,7 +129,7 @@ enum PgVectorDistanceType {
 
 enum PgVectorIndexType {
   UNKNOWN_IDX = 0;
-  DUMMY = 1;
+  DEPRECATED_DUMMY = 1;
   IVFFLAT = 2;
   HNSW = 3;
 }
@@ -736,6 +736,8 @@ message AshMetadataPB {
   optional int32 pid = 9;
   // PG database OID. This will be 0 for YCQL.
   optional uint32 database_id = 8;
+  // YSQL user OID. This field will not be set for YCQL.
+  optional uint32 user_id = 10;
 }
 
 // Some optional/additional fields that is collected in addition to the wait

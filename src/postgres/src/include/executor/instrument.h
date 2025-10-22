@@ -74,6 +74,7 @@ typedef struct YbPgRpcStats
 	double		count;			/* # of RPCs */
 	double		rows_scanned;	/* # of rows scanned by RPCs */
 	double		wait_time;		/* RPC wait time (ns) */
+  double		rows_received; /* # of rows received from RPCs */
 } YbPgRpcStats;
 
 typedef struct YbInstrumentation

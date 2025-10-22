@@ -11,7 +11,8 @@ extensions:
     directory: /mnt/d0/otel-collector/queue
 processors:
   attributes/metrics_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$AttributesProcessor
-    actions: []
+    actions:
+    - {action: upsert, key: tag, value: value}
   batch/metrics_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$BatchProcessor {
     send_batch_max_size: 1000, send_batch_size: 100, timeout: 10s}
   memory_limiter/metrics_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$MemoryLimiterProcessor {

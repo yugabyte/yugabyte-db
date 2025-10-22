@@ -76,13 +76,13 @@
 #include "yb/util/yb_pg_errcodes.h"
 
 DECLARE_uint64(transaction_heartbeat_usec);
-DEFINE_UNKNOWN_double(transaction_max_missed_heartbeat_periods, 10.0,
-              "Maximum heartbeat periods that a pending transaction can miss before the "
-              "transaction coordinator expires the transaction. The total expiration time in "
-              "microseconds is transaction_heartbeat_usec times "
-              "transaction_max_missed_heartbeat_periods. The value passed to this flag may be "
-              "fractional.");
-DEFINE_UNKNOWN_uint64(transaction_check_interval_usec, 500000,
+DEFINE_RUNTIME_double(transaction_max_missed_heartbeat_periods, 30.0,
+    "Maximum heartbeat periods that a pending transaction can miss before the "
+    "transaction coordinator expires the transaction. The total expiration time in "
+    "microseconds is transaction_heartbeat_usec times "
+    "transaction_max_missed_heartbeat_periods. The value passed to this flag may be "
+    "fractional.");
+DEFINE_NON_RUNTIME_uint64(transaction_check_interval_usec, 500000,
     "Transaction check interval in usec.");
 DEFINE_UNKNOWN_uint64(transaction_resend_applying_interval_usec, 5000000,
               "Transaction resend applying interval in usec.");
@@ -1875,7 +1875,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
           if (leader) {
             metrics_.Increment(TabletCounters::kExpiredTransactions);
             bool modified = index.modify(it, [](TransactionState& state) {
-              VLOG(4) << state.LogPrefix() << "Cleanup expired transaction";
+              YB_LOG_EVERY_N_SECS(INFO, 1) << state.LogPrefix() << "Cleanup expired transaction";
               state.Abort();
             });
             DCHECK(modified);

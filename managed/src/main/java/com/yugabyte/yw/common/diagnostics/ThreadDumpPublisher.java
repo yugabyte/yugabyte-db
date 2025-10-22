@@ -6,10 +6,15 @@ import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import java.io.StringWriter;
 import java.lang.management.ManagementFactory;
+import java.lang.management.ThreadInfo;
+import java.lang.management.ThreadMXBean;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.time.Duration;
-import java.util.HashMap;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
@@ -21,37 +26,32 @@ import org.apache.commons.lang3.RandomStringUtils;
 
 @Slf4j
 @Singleton
-public class ThreadDumpPublisher {
+public class ThreadDumpPublisher extends BasePublisher<StringWriter> {
   private static final Duration scheduleDelay = Duration.ofSeconds(20);
-  private static final String DESTINATION_TAG = "destination";
-
-  /** Implement this to support different destinations (S3, local volumes etc) */
-  @FunctionalInterface
-  interface Destination {
-    boolean publish(StringWriter threadDump);
-  }
 
   private final PlainTextThreadDumpFormatter plainTextFormatter =
       new PlainTextThreadDumpFormatter();
-  private final RuntimeConfigFactory runtimeConfigFactory;
-  private final Map<String, Destination> destinations = new HashMap<>();
   private final PlatformScheduler scheduler;
-  private final Metric.Counter publishFailureCounter =
-      Kamon.counter(
-          "yba_thread_dump_publish_failed", "Counter of failed attempts to publish a thread dump");
-  private final Metric.Counter prepareFailureCounter =
-      Kamon.counter(
-          "yba_thread_dump_prepare_failed",
-          "Counter of failed attempts to prepare a thread dump for publishing");
+  private final String basePath;
+  private final Metric.Counter prepareFailureCounter;
 
   @Inject
   public ThreadDumpPublisher(
       RuntimeConfigFactory runtimeConfigFactory, PlatformScheduler scheduler) {
-    this.runtimeConfigFactory = runtimeConfigFactory;
+    super(runtimeConfigFactory, "yba_thread_dump");
     this.scheduler = scheduler;
 
-    String instance;
+    prepareFailureCounter =
+        Kamon.counter(
+            "yba_thread_dump_prepare_failed",
+            "Counter of failed attempts to prepare content for publishing");
 
+    ThreadMXBean threadMXBean = ManagementFactory.getThreadMXBean();
+    if (threadMXBean.isThreadCpuTimeSupported() && !threadMXBean.isThreadCpuTimeEnabled()) {
+      threadMXBean.setThreadCpuTimeEnabled(true);
+    }
+
+    String instance;
     try {
       instance = InetAddress.getLocalHost().getHostName();
     } catch (UnknownHostException e) {
@@ -59,10 +59,19 @@ public class ThreadDumpPublisher {
       log.error(String.format("Could not retrieve hostname, instance name set to %s", instance), e);
     }
 
-    prepareFailureCounter.withoutTags().increment(0);
+    Config staticConf = runtimeConfigFactory.staticApplicationConf();
+    String namespace =
+        staticConf.hasPath("yb.diag.namespace") ? staticConf.getString("yb.diag.namespace") : null;
+    basePath =
+        String.join(
+            "/", "thread-dumps", "yba", namespace == null ? instance : namespace + "/" + instance);
+    initializeDestinations();
+  }
 
+  @Override
+  protected void createDestinations() {
     try {
-      destinations.put("gcs", new GCSDestination(runtimeConfigFactory, instance));
+      destinations.put("gcs", new GCSDestination(runtimeConfigFactory));
       publishFailureCounter.withTag(DESTINATION_TAG, "gcs").increment(0);
     } catch (ConfigException e) {
       log.error("Missing or invalid GCS config", e);
@@ -80,45 +89,33 @@ public class ThreadDumpPublisher {
    * yb.diag.thread_dumps.{dest}.enabled runtime config
    */
   private void collectAndPublish() {
-    Config globalRuntimeConfig = runtimeConfigFactory.globalRuntimeConf();
-
-    Map<String, Destination> enabledDestinations =
-        destinations.entrySet().stream()
-            .filter(
-                e -> {
-                  String dumpThreadsFlagPath =
-                      String.format("yb.diag.thread_dumps.%s.enabled", e.getKey());
-                  return (globalRuntimeConfig.hasPath(dumpThreadsFlagPath)
-                      && globalRuntimeConfig.getBoolean(dumpThreadsFlagPath));
-                })
-            .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-
-    if (enabledDestinations.isEmpty()) {
-      return;
-    }
-
     StringWriter threadDump;
 
     try {
-      threadDump =
-          plainTextFormatter.format(ManagementFactory.getThreadMXBean().dumpAllThreads(true, true));
+      ThreadMXBean threadMXBean = ManagementFactory.getThreadMXBean();
+      ThreadInfo[] threads = threadMXBean.dumpAllThreads(true, true);
+      Map<Long, Long> cpuTimes =
+          Arrays.stream(threads)
+              .collect(
+                  Collectors.toMap(
+                      ThreadInfo::getThreadId,
+                      t -> threadMXBean.getThreadCpuTime(t.getThreadId())));
+      threadDump = plainTextFormatter.format(threads, cpuTimes);
     } catch (Exception e) {
       log.error("Failed to prepare a thread dump", e);
       prepareFailureCounter.withoutTags().increment(1);
       return;
     }
 
-    for (Map.Entry<String, Destination> destinationEntry : enabledDestinations.entrySet()) {
-      String name = destinationEntry.getKey();
+    OffsetDateTime now = OffsetDateTime.now(ZoneId.of("UTC"));
+    String blobPath =
+        String.join(
+            "/",
+            basePath,
+            DateTimeFormatter.ISO_LOCAL_DATE.format(now),
+            now.getHour() + ":00",
+            DateTimeFormatter.ISO_LOCAL_TIME.format(now));
 
-      try {
-        if (!destinationEntry.getValue().publish(threadDump)) {
-          publishFailureCounter.withTag(DESTINATION_TAG, name).increment(1);
-        }
-      } catch (Exception e) {
-        log.error(String.format("Failed to publish a thread dump to destination '%s'", name), e);
-        publishFailureCounter.withTag(DESTINATION_TAG, name).increment(1);
-      }
-    }
+    publishToEnabledDestinations(threadDump, blobPath);
   }
 }

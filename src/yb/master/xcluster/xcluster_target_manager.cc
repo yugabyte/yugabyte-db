@@ -155,7 +155,7 @@ void XClusterTargetManager::CreateXClusterSafeTimeTableAndStartService() {
 Status XClusterTargetManager::GetXClusterSafeTime(
     GetXClusterSafeTimeResponsePB* resp, const LeaderEpoch& epoch) {
   RETURN_NOT_OK_SET_CODE(
-      safe_time_service_->GetXClusterSafeTimeInfoFromMap(epoch, resp),
+      safe_time_service_->ComputeAndGetXClusterSafeTimeInfo(epoch, *resp),
       MasterError(MasterErrorPB::INTERNAL_ERROR));
 
   // Also fill out the namespace_name for each entry.
@@ -199,16 +199,14 @@ Status XClusterTargetManager::GetXClusterSafeTimeForNamespace(
 
   RETURN_NOT_OK(safe_time_service_->ComputeSafeTime(epoch.leader_term));
   auto safe_time_ht =
-      VERIFY_RESULT(GetXClusterSafeTimeForNamespace(epoch, req->namespace_id(), req->filter()));
+      VERIFY_RESULT(GetXClusterSafeTimeForNamespace(req->namespace_id(), req->filter()));
   resp->set_safe_time_ht(safe_time_ht.ToUint64());
   return Status::OK();
 }
 
 Result<HybridTime> XClusterTargetManager::GetXClusterSafeTimeForNamespace(
-    const LeaderEpoch& epoch, const NamespaceId& namespace_id,
-    const XClusterSafeTimeFilter& filter) {
-  return safe_time_service_->GetXClusterSafeTimeForNamespace(
-      epoch.leader_term, namespace_id, filter);
+    const NamespaceId& namespace_id, const XClusterSafeTimeFilter& filter) const {
+  return safe_time_service_->GetXClusterSafeTimeForNamespace(namespace_id, filter);
 }
 
 Status XClusterTargetManager::RefreshXClusterSafeTimeMap(const LeaderEpoch& epoch) {
@@ -429,9 +427,11 @@ XClusterTargetManager::GetXClusterStatus() const {
   const auto cluster_config_pb = VERIFY_RESULT(catalog_manager_.GetClusterConfig());
   const auto replication_infos = catalog_manager_.GetAllXClusterUniverseReplicationInfos();
 
+  const auto namespace_safe_time = GetXClusterNamespaceToSafeTimeMap();
+
   for (const auto& replication_info : replication_infos) {
-    auto replication_group_status =
-        VERIFY_RESULT(GetUniverseReplicationInfo(replication_info, cluster_config_pb));
+    auto replication_group_status = VERIFY_RESULT(
+        GetUniverseReplicationInfo(replication_info, cluster_config_pb, namespace_safe_time));
 
     for (auto& [_, tables] : replication_group_status.table_statuses_by_namespace) {
       for (auto& table : tables) {
@@ -454,7 +454,8 @@ XClusterTargetManager::GetXClusterStatus() const {
 
 Result<XClusterInboundReplicationGroupStatus> XClusterTargetManager::GetUniverseReplicationInfo(
     const SysUniverseReplicationEntryPB& replication_info_pb,
-    const SysClusterConfigEntryPB& cluster_config_pb) const {
+    const SysClusterConfigEntryPB& cluster_config_pb,
+    const XClusterNamespaceToSafeTimeMap& namespace_safe_time) const {
   XClusterInboundReplicationGroupStatus result;
   result.replication_group_id =
       xcluster::ReplicationGroupId(replication_info_pb.replication_group_id());
@@ -475,10 +476,18 @@ Result<XClusterInboundReplicationGroupStatus> XClusterTargetManager::GetUniverse
     for (const auto& namespace_info : replication_info_pb.db_scoped_info().namespace_infos()) {
       result.db_scope_namespace_id_map[namespace_info.consumer_namespace_id()] =
           namespace_info.producer_namespace_id();
+
       result.db_scoped_info += Format(
           "\n  namespace: $0\n    consumer_namespace_id: $1\n    producer_namespace_id: $2",
           catalog_manager_.GetNamespaceName(namespace_info.consumer_namespace_id()),
           namespace_info.consumer_namespace_id(), namespace_info.producer_namespace_id());
+
+      auto safe_time_info = FindOrNull(namespace_safe_time, namespace_info.consumer_namespace_id());
+      if (safe_time_info) {
+        result.db_scoped_info += Format(
+            "\n    safe_time: $0",
+            Timestamp(safe_time_info->GetPhysicalValueMicros()).ToHumanReadableTime());
+      }
     }
   }
 
@@ -566,6 +575,23 @@ Status XClusterTargetManager::PopulateXClusterStatusJson(JsonWriter& jw) const {
   }
   jw.EndArray();
 
+  const auto safe_time_map = GetXClusterNamespaceToSafeTimeMap();
+  if (!safe_time_map.empty()) {
+    jw.String("safe_time_map");
+    jw.StartArray();
+    for (const auto& [namespace_id, safe_time] : safe_time_map) {
+      jw.StartObject();
+      jw.String("consumer_namespace_id");
+      jw.String(namespace_id);
+
+      jw.String("safe_time");
+      jw.String(safe_time.ToString());
+
+      jw.EndObject();
+    }
+    jw.EndArray();
+  }
+
   jw.String("consumer_registry");
   jw.Protobuf(cluster_config.consumer_registry());
 
@@ -602,10 +628,12 @@ Result<XClusterInboundReplicationGroupStatus> XClusterTargetManager::GetUniverse
   auto replication_info = catalog_manager_.GetUniverseReplication(replication_group_id);
   SCHECK_FORMAT(replication_info, NotFound, "Replication group $0 not found", replication_group_id);
 
+  static const XClusterNamespaceToSafeTimeMap empty_namespace_safe_time;
+
   const auto cluster_config = VERIFY_RESULT(catalog_manager_.GetClusterConfig());
   // Make pb copy to avoid potential deadlock while calling GetUniverseReplicationInfo.
   auto pb = replication_info->LockForRead()->pb;
-  return GetUniverseReplicationInfo(pb, cluster_config);
+  return GetUniverseReplicationInfo(pb, cluster_config, empty_namespace_safe_time);
 }
 
 Status XClusterTargetManager::ClearXClusterFieldsAfterYsqlDDL(
@@ -1035,9 +1063,12 @@ Status XClusterTargetManager::HandleTabletSplit(
     return Status::OK();
   }
 
-  auto consumer_tablet_keys = VERIFY_RESULT(catalog_manager_.GetTableKeyRanges(consumer_table_id));
-  auto cluster_config = catalog_manager_.ClusterConfig();
-  auto l = cluster_config->LockForWrite();
+  auto locked_config_and_ranges =
+      VERIFY_RESULT(LockClusterConfigAndGetTableKeyRanges(catalog_manager_, consumer_table_id));
+  auto& cluster_config = locked_config_and_ranges.cluster_config;
+  auto& l = locked_config_and_ranges.write_lock;
+  auto& consumer_tablet_keys = locked_config_and_ranges.table_key_ranges;
+
   for (const auto& [replication_group_id, stream_id] : stream_ids) {
     // Fetch the stream entry so we can update the mappings.
     auto replication_group_map =

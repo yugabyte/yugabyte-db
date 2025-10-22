@@ -115,6 +115,8 @@ export const CreateUniverse: FC = () => {
       clusterOperation: ClusterModes.CREATE,
       currentClusterType: contextState.clusterType,
       rootCA: primaryData.instanceConfig.rootCA,
+      clientRootCA : primaryData.instanceConfig.rootAndClientRootCASame ? '' : primaryData.instanceConfig.clientRootCA,
+      rootAndClientRootCASame: primaryData.instanceConfig.rootAndClientRootCASame,
       userAZSelected: false,
       resetAZConfig: false,
       enableYbc: featureFlags.released.enableYbc || featureFlags.test.enableYbc,

@@ -217,7 +217,7 @@ To confirm that the information is correct, click **Show details** or **Actions 
 ## Delete a KMS configuration
 
 {{<note title="Note">}}
-Without a KMS configuration, you would longer be able to decrypt universe keys that were encrypted using the master key in the KMS configuration. Even after a key is rotated out of service, it may still be needed to decrypt data in backups and snapshots that were created while it was active. For this reason, you can only delete a KMS configuration if it has never been used by any universes.
+Without a KMS configuration, you would no longer be able to decrypt universe keys that were encrypted using the master key in the KMS configuration. Even after a key is rotated out of service, it may still be needed to decrypt data in backups and snapshots that were created while it was active. For this reason, you can only delete a KMS configuration if it has never been used by any universes.
 {{</note>}}
 
 To delete a KMS configuration, navigate to **Configs > Security > Encryption At Rest** to open a list of existing configurations and click its corresponding **Actions > Delete Configuration**.

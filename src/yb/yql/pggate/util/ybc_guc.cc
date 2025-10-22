@@ -25,6 +25,10 @@ bool yb_format_funcs_include_yb_metadata = false;
 
 bool yb_force_global_transaction = false;
 
+bool yb_force_tablespace_locality = false;
+
+uint32_t yb_force_tablespace_locality_oid = 0;
+
 bool suppress_nonpg_logs = false;
 
 bool yb_binary_restore = false;
@@ -141,3 +145,5 @@ bool yb_allow_dockey_bounds = true;
 bool yb_xcluster_target_ddl_bypass = false;
 
 bool yb_ignore_read_time_in_walsender = false;
+
+bool enable_object_locking_infra = true;

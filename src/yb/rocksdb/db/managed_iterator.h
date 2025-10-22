@@ -62,7 +62,7 @@ class ManagedIterator final : public Iterator {
   const KeyValueEntry& SeekToFirst() override;
   const KeyValueEntry& Seek(Slice target) override;
   const KeyValueEntry& Next() override;
-  void UpdateFilterKey(Slice user_key_for_filter) override;
+  void UpdateFilterKey(Slice user_key_for_filter, Slice seek_key) override;
 
   Status status() const override;
   void ReleaseIter(bool only_old);

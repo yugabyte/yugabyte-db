@@ -63,13 +63,13 @@ TAG_FLAG(webserver_interface, advanced);
 
 // We use an empty default value here because we can't call GetDefaultDocumentRoot from flag
 // initilization. Instead, we call GetDefaultDocumentRoot if we find that the flag is empty.
-DEFINE_UNKNOWN_string(webserver_doc_root, "",
+DEFINE_NON_RUNTIME_string(webserver_doc_root, "",
     "Files under <webserver_doc_root> are accessible via the debug webserver. "
     "Defaults to $YB_HOME/www, or if $YB_HOME is not set, disables the document "
     "root");
 TAG_FLAG(webserver_doc_root, advanced);
 
-DEFINE_UNKNOWN_bool(webserver_enable_doc_root, true,
+DEFINE_NON_RUNTIME_bool(webserver_enable_doc_root, true,
     "If true, webserver may serve static files from the webserver_doc_root");
 TAG_FLAG(webserver_enable_doc_root, advanced);
 

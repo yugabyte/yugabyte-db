@@ -114,6 +114,36 @@ class VariableFilter {
     return true;
   }
 
+  // Recheck filter for iterators that were not matching it previously.
+  // If iterator matches updated filter, then add this iterator to the heap.
+  // If it is the first time when iterator being added to the heap, then seek_key is used
+  // to position the iterator.
+  //
+  // Returns true iff heap was updated, false otherwise.
+  template <class Heap>
+  bool RecheckFilter(Slice seek_key, Heap& heap) {
+    if (filter_context_.version <= checked_user_key_for_filter_version_) {
+      return false;
+    }
+    checked_user_key_for_filter_version_ = filter_context_.version;
+    bool result = false;
+    yb::EraseIf([this, &heap, &result, seek_key](auto* child) {
+      if (!child->UpdateUserKeyForFilter(filter_context_)) {
+        return false;
+      }
+      if (!child->Valid()) {
+        const auto& entry = child->Seek(seek_key);
+        if (!entry.Valid()) {
+          return true;
+        }
+      }
+      result = true;
+      heap.push(child);
+      return true;
+    }, &iterators_not_matching_filter_);
+    return result;
+  }
+
   void ResetMatchedState() {
     iterators_not_matching_filter_.clear();
     checked_user_key_for_filter_version_ = filter_context_.version;
@@ -183,6 +213,11 @@ class NoFilter {
  public:
   template <class Heap>
   bool SeekUpdatingHeap(Slice target, Heap& heap) {
+    return false;
+  }
+
+  template <class Heap>
+  bool RecheckFilter(Slice seek_key, Heap& heap) {
     return false;
   }
 
@@ -540,9 +575,13 @@ class MergingIteratorBase final
     return current_->IsKeyPinned();
   }
 
-  void UpdateFilterKey(Slice user_key_for_filter) override {
+  const KeyValueEntry& UpdateFilterKey(Slice user_key_for_filter, Slice seek_key) override {
     LOG_IF(DFATAL, direction_ != Direction::kForward) << "Update filter with wrong direction";
     child_iterator_filter_.UpdateUserKeyForFilter(user_key_for_filter);
+    if (!seek_key.empty() && child_iterator_filter_.RecheckFilter(seek_key, minHeap_)) {
+      return CurrentForward();
+    }
+    return Entry();
   }
 
  private:
@@ -606,6 +645,10 @@ class MergingIteratorBase final
   // forward.  Lazily initialize it to save memory.
   std::unique_ptr<MergerMaxIterHeap<IteratorWrapperType>> maxHeap_;
 
+  // Updates current_ after updating minHeap_ (used when direction_ is kForward).
+  // Also removes top iterators from the heap, that does not match filter.
+  //
+  // Returns entry pointed by current_.
   const KeyValueEntry& CurrentForward() {
     DCHECK(direction_ == Direction::kForward);
     min_heap_best_root_child_ = 0;

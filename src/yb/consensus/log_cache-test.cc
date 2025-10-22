@@ -99,19 +99,21 @@ class LogCacheTest : public YBTest {
 
   void SetUp() override {
     YBTest::SetUp();
-    fs_manager_.reset(new FsManager(env_.get(), GetTestPath("fs_root"), "tserver_test"));
+    fs_manager_ = std::make_unique<FsManager>(env_.get(), GetTestPath("fs_root"), "tserver_test");
     ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());
     ASSERT_OK(fs_manager_->CheckAndOpenFileSystemRoots());
     ASSERT_OK(ThreadPoolBuilder("log").Build(&log_thread_pool_));
+    read_wal_mem_tracker_ =
+        MemTracker::FindOrCreateTracker(GetReadWalMemoryLimit(), "Log Reader Memory");
     ASSERT_OK(log::Log::Open(log::LogOptions(),
                             kTestTablet,
                             fs_manager_->GetFirstTabletWalDirOrDie(kTestTable, kTestTablet),
                             fs_manager_->uuid(),
                             schema_,
                             /*schema_version=*/0,
-                            /*table_metrics_entity=*/nullptr,
-                            /*tablet_metrics_entity=*/nullptr,
-                            /*read_wal_mem_tracker=*/nullptr,
+                            /*table_metric_entity=*/nullptr,
+                            /*tablet_metric_entity=*/nullptr,
+                            read_wal_mem_tracker_,
                             log_thread_pool_.get(),
                             log_thread_pool_.get(),
                             log_thread_pool_.get(),
@@ -130,12 +132,14 @@ class LogCacheTest : public YBTest {
     // Blow away the memtrackers before creating the new cache.
     cache_.reset();
 
-    cache_.reset(new LogCache(
-        metric_entity_, log_.get(), nullptr /* mem_tracker */, kPeerUuid, kTestTablet));
+    cache_ = std::make_unique<LogCache>(
+        metric_entity_, log_.get(), nullptr /* mem_tracker */, kPeerUuid, kTestTablet);
     cache_->Init(preceding_id);
   }
 
  protected:
+  virtual int64_t GetReadWalMemoryLimit() { return /*no limit*/ -1; }
+
   static void FatalOnError(const Status& s) {
     ASSERT_OK(s);
   }
@@ -162,6 +166,7 @@ class LogCacheTest : public YBTest {
   const Schema schema_;
   MetricRegistry metric_registry_;
   scoped_refptr<MetricEntity> metric_entity_;
+  std::shared_ptr<MemTracker> read_wal_mem_tracker_;
   std::unique_ptr<FsManager> fs_manager_;
   std::unique_ptr<ThreadPool> log_thread_pool_;
   std::unique_ptr<LogCache> cache_;
@@ -177,29 +182,31 @@ TEST_F(LogCacheTest, TestAppendAndGetMessages) {
   ASSERT_GE(cache_->metrics_.size->value(), 5 * kNumMessages);
   ASSERT_OK(log_->WaitUntilAllFlushed());
 
-  auto read_result = ASSERT_RESULT(cache_->ReadOps(0, 8_MB));
+  auto read_result = ASSERT_RESULT(cache_->ReadOps(0, 8_MB, log::ObeyMemoryLimit::kFalse));
   EXPECT_EQ(kNumMessages, read_result.messages.size());
   EXPECT_EQ(OpIdStrForIndex(0), OpIdToString(read_result.preceding_op));
 
   // Get starting in the middle of the cache.
-  read_result = ASSERT_RESULT(cache_->ReadOps(kMessageIndex1, 8_MB));
+  read_result = ASSERT_RESULT(cache_->ReadOps(kMessageIndex1, 8_MB, log::ObeyMemoryLimit::kFalse));
   EXPECT_EQ(kNumMessages - kMessageIndex1, read_result.messages.size());
   EXPECT_EQ(OpIdStrForIndex(kMessageIndex1), OpIdToString(read_result.preceding_op));
   EXPECT_EQ(MakeOpIdForIndex(kMessageIndex1 + 1), OpId::FromPB(read_result.messages[0]->id()));
 
   // Get at the end of the cache.
-  read_result = ASSERT_RESULT(cache_->ReadOps(kNumMessages, 8_MB));
+  read_result = ASSERT_RESULT(cache_->ReadOps(kNumMessages, 8_MB, log::ObeyMemoryLimit::kFalse));
   EXPECT_EQ(0, read_result.messages.size());
   EXPECT_EQ(OpIdStrForIndex(kNumMessages), OpIdToString(read_result.preceding_op));
 
   // Get messages from the beginning until some point in the middle of the cache.
-  read_result = ASSERT_RESULT(cache_->ReadOps(0, kMessageIndex1, 8_MB));
+  read_result =
+      ASSERT_RESULT(cache_->ReadOps(0, kMessageIndex1, 8_MB, log::ObeyMemoryLimit::kFalse));
   EXPECT_EQ(kMessageIndex1, read_result.messages.size());
   EXPECT_EQ(OpIdStrForIndex(0), OpIdToString(read_result.preceding_op));
   EXPECT_EQ(MakeOpIdForIndex(1), OpId::FromPB(read_result.messages[0]->id()));
 
   // Get messages from some point in the middle of the cache until another point.
-  read_result = ASSERT_RESULT(cache_->ReadOps(kMessageIndex1, kMessageIndex2, 8_MB));
+  read_result = ASSERT_RESULT(
+      cache_->ReadOps(kMessageIndex1, kMessageIndex2, 8_MB, log::ObeyMemoryLimit::kFalse));
   EXPECT_EQ(kMessageIndex2 - kMessageIndex1, read_result.messages.size());
   EXPECT_EQ(OpIdStrForIndex(kMessageIndex1), OpIdToString(read_result.preceding_op));
   EXPECT_EQ(MakeOpIdForIndex(kMessageIndex1 + 1), OpId::FromPB(read_result.messages[0]->id()));
@@ -210,7 +217,7 @@ TEST_F(LogCacheTest, TestAppendAndGetMessages) {
 
   // Can still read data that was evicted, since it got written through.
   int start = (kNumMessages / 2) - 10;
-  read_result = ASSERT_RESULT(cache_->ReadOps(start, 8_MB));
+  read_result = ASSERT_RESULT(cache_->ReadOps(start, 8_MB, log::ObeyMemoryLimit::kFalse));
   EXPECT_EQ(kNumMessages - start, read_result.messages.size());
   EXPECT_EQ(OpIdStrForIndex(start), OpIdToString(read_result.preceding_op));
   EXPECT_EQ(MakeOpIdForIndex(start + 1), OpId::FromPB(read_result.messages[0]->id()));
@@ -244,7 +251,7 @@ TEST_F(LogCacheTest, ShouldNotEvictUnsyncedOpFromCache) {
   ASSERT_EQ(cache_->num_cached_ops(), 1);
 
   // Can be read from cache.
-  auto read_result = ASSERT_RESULT(cache_->ReadOps(0, 8_MB));
+  auto read_result = ASSERT_RESULT(cache_->ReadOps(0, 8_MB, log::ObeyMemoryLimit::kFalse));
   EXPECT_EQ(1, read_result.messages.size());
   EXPECT_EQ(OpIdStrForIndex(0), OpIdToString(read_result.preceding_op));
 
@@ -275,13 +282,69 @@ TEST_F(LogCacheTest, TestAlwaysYieldsAtLeastOneMessage) {
   ASSERT_OK(log_->WaitUntilAllFlushed());
 
   // We should get one of them, even though we only ask for 100 bytes
-  auto read_result = ASSERT_RESULT(cache_->ReadOps(0, 100));
+  auto read_result = ASSERT_RESULT(cache_->ReadOps(0, 100, log::ObeyMemoryLimit::kFalse));
   ASSERT_EQ(1, read_result.messages.size());
 
   // Should yield one op also in the 'cache miss' case.
   cache_->EvictThroughOp(50);
-  read_result = ASSERT_RESULT(cache_->ReadOps(0, 100));
+  read_result = ASSERT_RESULT(cache_->ReadOps(0, 100, log::ObeyMemoryLimit::kFalse));
   ASSERT_EQ(1, read_result.messages.size());
+}
+
+class LogCacheLimitTest : public LogCacheTest {
+ protected:
+  int64_t GetReadWalMemoryLimit() override { return 1_MB; }
+};
+
+TEST_F(LogCacheLimitTest, TestAdequateLogReaderMemory) {
+  // Append a bunch of small ops to the cache.
+  const int kOps = 40;
+  const auto kPayloadSize = 100;
+  ASSERT_OK(AppendReplicateMessagesToCache(1, kOps, kPayloadSize));
+  // Ensure ops are only on disk.
+  ASSERT_OK(log_->WaitUntilAllFlushed());
+  cache_->EvictThroughOp(kOps + 10);
+
+  // All the ops together should fit below GetReadWalMemoryLimit() so we should expect to read
+  // everything.
+  auto read_result = cache_->ReadOps(0, 4_MB, log::ObeyMemoryLimit::kTrue);
+  ASSERT_OK(read_result);
+  EXPECT_EQ(read_result->messages.size(), kOps);
+  ASSERT_FALSE(read_result->have_more_messages);
+}
+
+TEST_F(LogCacheLimitTest, TestInsufficientLogReaderMemory) {
+  // Append a bunch of large ops to the cache.
+  const int kOps = 40;
+  const auto kPayloadSize = GetReadWalMemoryLimit() * 2;
+  ASSERT_OK(AppendReplicateMessagesToCache(1, kOps, kPayloadSize));
+  // Ensure ops are only on disk.
+  ASSERT_OK(log_->WaitUntilAllFlushed());
+  cache_->EvictThroughOp(kOps + 10);
+
+  // GetReadWalMemoryLimit() is smaller than a single op so we should not read anything so expect
+  // Busy result.
+  auto read_result = cache_->ReadOps(0, 4_MB, log::ObeyMemoryLimit::kTrue);
+  ASSERT_NOK(read_result);
+  ASSERT_TRUE(read_result.status().IsBusy()) << read_result.status();
+}
+
+TEST_F(LogCacheLimitTest, TestPartialLogReaderMemory) {
+  // Append a bunch of large ops to the cache.
+  const int kOps = 40;
+  const auto kPayloadSize = GetReadWalMemoryLimit() / 10;
+  ASSERT_OK(AppendReplicateMessagesToCache(1, kOps, kPayloadSize));
+  // Ensure ops are only on disk.
+  ASSERT_OK(log_->WaitUntilAllFlushed());
+  cache_->EvictThroughOp(kOps + 10);
+
+  // Here GetReadWalMemoryLimit() is sufficient to get several operations but not all of them.
+  // Accordingly we expect to get only some of the operations returned.
+  auto read_result = cache_->ReadOps(0, 4_MB, log::ObeyMemoryLimit::kTrue);
+  ASSERT_OK(read_result);
+  EXPECT_GE(read_result->messages.size(), 1);
+  EXPECT_LT(read_result->messages.size(), kOps);
+  EXPECT_TRUE(read_result->have_more_messages);
 }
 
 // Tests that the cache returns STATUS(NotFound, "") if queried for messages after an
@@ -293,18 +356,18 @@ TEST_F(LogCacheTest, TestCacheEdgeCases) {
   ASSERT_OK(log_->WaitUntilAllFlushed());
 
   // Test when the searched index is MinimumOpId().index().
-  auto read_result = ASSERT_RESULT(cache_->ReadOps(0, 100));
+  auto read_result = ASSERT_RESULT(cache_->ReadOps(0, 100, log::ObeyMemoryLimit::kFalse));
   ASSERT_EQ(1, read_result.messages.size());
   ASSERT_EQ(yb::OpId(0, 0), read_result.preceding_op);
 
   // Test when 'after_op_index' is the last index in the cache.
-  read_result = ASSERT_RESULT(cache_->ReadOps(1, 100));
+  read_result = ASSERT_RESULT(cache_->ReadOps(1, 100, log::ObeyMemoryLimit::kFalse));
   ASSERT_EQ(0, read_result.messages.size());
   ASSERT_EQ(yb::OpId(0, 1), read_result.preceding_op);
 
   // Now test the case when 'after_op_index' is after the last index
   // in the cache.
-  auto failed_result = cache_->ReadOps(2, 100);
+  auto failed_result = cache_->ReadOps(2, 100, log::ObeyMemoryLimit::kFalse);
   ASSERT_FALSE(failed_result.ok());
   ASSERT_TRUE(failed_result.status().IsIncomplete())
       << "unexpected status: " << failed_result.status();
@@ -312,7 +375,7 @@ TEST_F(LogCacheTest, TestCacheEdgeCases) {
   // Evict entries from the cache, and ensure that we can still read
   // entries at the beginning of the log.
   cache_->EvictThroughOp(50);
-  read_result = ASSERT_RESULT(cache_->ReadOps(0, 100));
+  read_result = ASSERT_RESULT(cache_->ReadOps(0, 100, log::ObeyMemoryLimit::kFalse));
   ASSERT_EQ(1, read_result.messages.size());
   ASSERT_EQ(yb::OpId(0, 0), read_result.preceding_op);
 }
@@ -471,7 +534,7 @@ TEST_F(LogCacheTest, TestMTReadAndWrite) {
         std::this_thread::sleep_for(5ms);
         continue;
       }
-      auto read_result = ASSERT_RESULT(cache_->ReadOps(index, 1_MB));
+      auto read_result = ASSERT_RESULT(cache_->ReadOps(index, 1_MB, log::ObeyMemoryLimit::kFalse));
       index += read_result.messages.size();
     }
   });

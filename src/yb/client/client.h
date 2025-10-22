@@ -532,7 +532,11 @@ class YBClient {
       bool use_secondary_space, uint32_t* begin_oid, uint32_t* end_oid,
       uint32_t* oid_cache_invalidations_count = nullptr);
 
-  Status GetYsqlCatalogMasterVersion(uint64_t *ysql_catalog_version);
+  // Deprecated. Use instead per-db version below.
+  Status DEPRECATED_GetYsqlCatalogMasterVersion(uint64_t *ysql_catalog_version);
+
+  Status GetYsqlDBCatalogMasterVersion(
+      const std::string& database_name, uint64_t *ysql_catalog_version);
 
   // Grant permission with given arguments.
   Status GrantRevokePermission(
@@ -739,7 +743,7 @@ class YBClient {
   // Update consumer pollers after a producer side tablet split.
   Status UpdateConsumerOnProducerSplit(
       const xcluster::ReplicationGroupId& replication_group_id, const xrepl::StreamId& stream_id,
-      const master::ProducerSplitTabletInfoPB& split_info);
+      const master::ProducerSplitTabletInfoPB& split_info, const TableId& consumer_table_id);
 
   // Update after a producer DDL change. Returns if caller should wait for a similar Consumer DDL.
   Status UpdateConsumerOnProducerMetadata(
@@ -999,6 +1003,11 @@ class YBClient {
   Status ReportYsqlDdlTxnStatus(const TransactionMetadata& txn, bool is_committed);
 
   Status WaitForDdlVerificationToFinish(const TransactionMetadata& txn);
+
+  Status RollbackDocdbSchemaToSubtxn(const TransactionMetadata& txn, SubTransactionId sub_txn_id);
+
+  Status WaitForRollbackDocdbSchemaToSubtxnToFinish(
+      const TransactionMetadata& txn, SubTransactionId sub_txn_id);
 
   Result<bool> CheckIfPitrActive();
 

@@ -654,9 +654,9 @@ RI_FKey_check(TriggerData *trigdata)
 
 		if (descr)
 		{
-			bool		found = false;
+			bool found = false;
 
-			HandleYBStatus(YBCForeignKeyReferenceExists(descr, &found));
+			HandleYBStatus(YBCForeignKeyReferenceExists(descr, YBCIsRegionLocal(fk_rel), &found));
 			pfree(descr);
 			if (!found)
 			{

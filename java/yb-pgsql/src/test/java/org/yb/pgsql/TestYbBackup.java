@@ -141,46 +141,74 @@ public class TestYbBackup extends BasePgSQLTest {
     return 2;
   }
 
-  private void testPgRegressStyleUtil(
-    String testName,
-    String backupPopulatePath,
-    String restoreDbName,
-    String expectedRestoreDumpPath,
-    String restoreDescribePath,
-    String expectedRestoreDescribePath) throws Exception {
-
+  private File runYsqlsh(String sqlPath, String comment, String dbName) throws Exception {
+    final int tserverIndex = 0;
     File pgRegressDir = PgRegressBuilder.PG_REGRESS_DIR;
-
-    // Populate the backup db as specified
-    int tserverIndex = 0;
     File ysqlshExec = new File(pgBinDir, "ysqlsh");
-    File inputFile  = new File(pgRegressDir, backupPopulatePath);
+    File inputFile  = new File(pgRegressDir, sqlPath);
+    File outputFile = new File(pgRegressDir, "results/" + inputFile.getName() + ".out");
+    outputFile.getParentFile().mkdirs();
 
-    ProcessUtil.executeSimple(Arrays.asList(
+    List<String> ysqlsh_args = new ArrayList<>(Arrays.asList(
       ysqlshExec.toString(),
       "-h", getPgHost(tserverIndex),
       "-p", Integer.toString(getPgPort(tserverIndex)),
       "-U", TEST_PG_USER,
-      "-v", "ON_ERROR_STOP=1",
-      "-f", inputFile.toString()
-    ), "ysqlsh (" + testName + ")");
+      "-f", inputFile.toString(),
+      "-o", outputFile.toString(),
+      "-v", "ON_ERROR_STOP=1"
+    ));
 
+    if (!dbName.isEmpty()) {
+        ysqlsh_args.add("-d");
+        ysqlsh_args.add(dbName);
+    }
 
-    // Perform the backup
+    ProcessUtil.executeSimple(ysqlsh_args, "ysqlsh (" + comment + ")");
+    return outputFile;
+  }
+
+  private void testPgRegressStyleUtil(
+      String testName,
+      String backupPopulateSqlPath,
+      String cleanUpSqlPath,
+      String restoreDbName,
+      String expectedRestoreDumpPath,
+      String restoreDescribeSqlPath,
+      String expectedRestoreDescribePath) throws Exception {
+
+    File pgRegressDir = PgRegressBuilder.PG_REGRESS_DIR;
+
+    // Populate the backup db as specified.
+    runYsqlsh(backupPopulateSqlPath, "populate db " + testName, "");
+
+    // Perform the backup.
     String backupDir = YBBackupUtil.getTempBackupDir();
     String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
-        "--keyspace", "ysql.yugabyte");
+        "--keyspace", "ysql.yugabyte", "--backup_roles");
     if (!TestUtils.useYbController()) {
       backupDir = new JSONObject(output).getString("snapshot_url");
     }
 
-    // Perform the restore
-    YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql." + restoreDbName);
+    // Clean up before restoring.
+    if (!cleanUpSqlPath.isEmpty()) {
+      runYsqlsh(cleanUpSqlPath, "clean up db " + testName, "");
+    }
+
+    // Perform the restore.
+    List<String> backupArgs = new ArrayList<>(Arrays.asList(
+        "--keyspace", "ysql." + restoreDbName, "--restore_roles", "--use_roles"));
+    if (TestUtils.useYbController()) {
+      backupArgs.add("--use_privileges");
+    }
+
+    YBBackupUtil.runYbBackupRestore(backupDir, backupArgs);
     File expected = new File(pgRegressDir, expectedRestoreDumpPath);
     File actual   = new File(pgRegressDir, "results/" + expected.getName());
     actual.getParentFile().mkdirs();
 
-    // Validate that a dump of the restored db matches what we expect
+    // Validate that a dump of the restored db matches what we expect.
+    final int tserverIndex = 0;
     File ysqlDumpExec = new File(pgBinDir, "ysql_dump");
     List<String> args = new ArrayList<>(Arrays.asList(
       ysqlDumpExec.toString(),
@@ -195,23 +223,10 @@ public class TestYbBackup extends BasePgSQLTest {
     ProcessUtil.executeSimple(args, "ysql_dump (" + testName + ")" );
     TestYsqlDump.assertOutputFile(expected, actual);
 
-    // Additional validations
-    File restoreDescFile = new File(pgRegressDir, restoreDescribePath);
+    // Additional validations.
     File expectedRestoreDesc = new File(pgRegressDir, expectedRestoreDescribePath);
-    File actualDesc   = new File(pgRegressDir, "results/" + expectedRestoreDesc.getName());
-    actualDesc.getParentFile().mkdirs();
-
-    List<String> ysqlsh_args = new ArrayList<>(Arrays.asList(
-      ysqlshExec.toString(),
-      "-h", getPgHost(tserverIndex),
-      "-p", Integer.toString(getPgPort(tserverIndex)),
-      "-U", DEFAULT_PG_USER,
-      "-f", restoreDescFile.toString(),
-      "-o", actualDesc.toString(),
-      "-d", restoreDbName,
-      "-v", "ON_ERROR_STOP=1"
-    ));
-    ProcessUtil.executeSimple(ysqlsh_args, "ysqlsh (validate describes " + testName + ")");
+    File actualDesc =
+        runYsqlsh(restoreDescribeSqlPath, "validate describes " + testName, restoreDbName);
     TestYsqlDump.assertOutputFile(expectedRestoreDesc, actualDesc);
   }
 
@@ -2716,11 +2731,12 @@ public class TestYbBackup extends BasePgSQLTest {
   public void testPgRegressStyle() throws Exception {
     testPgRegressStyleUtil(
       "yb.orig.backup_restore",
-      "sql/yb.orig.backup_restore.sql",
+      "backup/yb.orig.backup_restore.sql",
+      "",
       "db2",
-      "expected/yb.orig.backup_restore.out",
-      "sql/yb.orig.backup_restore_describe.sql",
-      "expected/yb.orig.backup_restore_describe.out"
+      "backup/yb.orig.backup_restore.dump",
+      "backup/yb.orig.backup_restore_describe.sql",
+      "backup/yb.orig.backup_restore_describe.out"
     );
   }
 
@@ -2728,11 +2744,25 @@ public class TestYbBackup extends BasePgSQLTest {
   public void testBackupRoleParameter() throws Exception {
     testPgRegressStyleUtil(
       "yb.orig.backup_role_parameter",
-      "sql/yb.orig.backup_role_parameter.sql",
+      "backup/yb.orig.backup_role_parameter.sql",
+      "",
       "db2",
-      "expected/yb.orig.backup_role_parameter.out",
-      "sql/yb.orig.backup_role_parameter_describe.sql",
-      "expected/yb.orig.backup_role_parameter_describe.out"
+      "backup/yb.orig.backup_role_parameter.dump",
+      "backup/yb.orig.backup_role_parameter_describe.sql",
+      "backup/yb.orig.backup_role_parameter_describe.out"
+    );
+  }
+
+  @Test
+  public void testBackupRoles() throws Exception {
+    testPgRegressStyleUtil(
+      "yb.orig.backup_roles",
+      "backup/yb.orig.backup_roles.sql",
+      "backup/yb.orig.backup_roles_cleanup.sql",
+      "db2",
+      "backup/yb.orig.backup_roles.dump",
+      "backup/yb.orig.backup_roles_describe.sql",
+      "backup/yb.orig.backup_roles_describe.out"
     );
   }
 

@@ -96,10 +96,8 @@
 
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
-DEFINE_UNKNOWN_int32(master_rpc_timeout_ms, 30000 * yb::kTimeMultiplier,
+DEFINE_NON_RUNTIME_int32(master_rpc_timeout_ms, 1500,
              "Timeout for retrieving master registration over RPC.");
-TAG_FLAG(master_rpc_timeout_ms, experimental);
-
 DEFINE_UNKNOWN_int32(master_yb_client_default_timeout_ms, 60000,
              "Default timeout for the YBClient embedded into the master.");
 
@@ -108,6 +106,7 @@ DEFINE_NON_RUNTIME_int32(master_backup_svc_queue_length, 50,
 TAG_FLAG(master_backup_svc_queue_length, advanced);
 
 DECLARE_bool(master_join_existing_universe);
+DECLARE_bool(TEST_running_test);
 
 METRIC_DEFINE_entity(cluster);
 
@@ -185,6 +184,11 @@ Master::Master(const MasterOptions& opts)
       maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)) {
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
       GetAtomicFlag(&FLAGS_inbound_rpc_memory_limit), mem_tracker()));
+
+  // Set higher timeout to avoid test flakiness.
+  if (FLAGS_TEST_running_test) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_rpc_timeout_ms) = 30000 * yb::kTimeMultiplier;
+  }
 
   LOG(INFO) << "yb::master::Master created at " << this;
   LOG(INFO) << "yb::master::TSManager created at " << ts_manager_.get();
@@ -331,8 +335,8 @@ Status Master::RegisterServices() {
       FLAGS_master_svc_queue_length,
       std::make_shared<tserver::PgClientServiceImpl>(
           *master_tablet_server_, client_future(), clock(),
-          std::bind(&Master::TransactionPool, this), mem_tracker(), metric_entity(), messenger(),
-          fs_manager_->uuid(), options())));
+          std::bind(&Master::TransactionManager, this), std::bind(&Master::TransactionPool, this),
+          mem_tracker(), metric_entity(), messenger(), fs_manager_->uuid(), options())));
 
   return Status::OK();
 }
@@ -725,6 +729,12 @@ Status Master::SetTserverCatalogMessageList(
   // This is called during major upgrade when pg_restore executes SQL commands
   // from the restore script.
   return Status::OK();
+}
+
+Status Master::TriggerRelcacheInitConnection(
+    const tserver::TriggerRelcacheInitConnectionRequestPB& req,
+    tserver::TriggerRelcacheInitConnectionResponsePB *resp) {
+  return STATUS_FORMAT(NotSupported, "Unexpected call of $0", __FUNCTION__);
 }
 
 void Master::EnableCDCService() {

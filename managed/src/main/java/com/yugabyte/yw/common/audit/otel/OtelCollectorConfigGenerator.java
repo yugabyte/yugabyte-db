@@ -33,6 +33,7 @@ import com.yugabyte.yw.models.helpers.telemetry.ExportType;
 import com.yugabyte.yw.models.helpers.telemetry.GCPCloudMonitoringConfig;
 import com.yugabyte.yw.models.helpers.telemetry.LokiConfig;
 import com.yugabyte.yw.models.helpers.telemetry.ProviderType;
+import com.yugabyte.yw.models.helpers.telemetry.S3Config;
 import com.yugabyte.yw.models.helpers.telemetry.SplunkConfig;
 import java.io.BufferedWriter;
 import java.io.FileWriter;
@@ -114,6 +115,7 @@ public class OtelCollectorConfigGenerator {
   private static final String EXPORTER_PREFIX_GCP_CLOUD_MONITORING = "googlecloud/";
   private static final String EXPORTER_PREFIX_LOKI = "loki/";
   private static final String EXPORTER_PREFIX_DYNATRACE = "otlphttp/";
+  private static final String EXPORTER_PREFIX_S3 = "awss3/";
 
   // Export type prefixes
   private static final String EXPORT_TYPE_PREFIX_QUERY_LOGS = "query_logs_";
@@ -366,6 +368,7 @@ public class OtelCollectorConfigGenerator {
       // additional tags.
       for (UniverseMetricsExporterConfig exporterConfig :
           metricsExportConfig.getUniverseMetricsExporterConfig()) {
+        List<String> processorNames = new ArrayList<>();
         // Create a new pipeline for metrics export.
         OtelCollectorConfigFormat.Pipeline pipeline = new OtelCollectorConfigFormat.Pipeline();
 
@@ -379,9 +382,14 @@ public class OtelCollectorConfigGenerator {
 
         // Add AttributesProcessor for metrics.
         String attributesProcessorName = PROCESSOR_PREFIX_ATTRIBUTES + exportTypeAndUUIDString;
-        collectorConfigFormat
-            .getProcessors()
-            .put(attributesProcessorName, createAttributesProcessor(exporterConfig));
+        OtelCollectorConfigFormat.AttributesProcessor attributesProcessor =
+            createMetricsExporterAttributesProcessor(exporterConfig);
+        if (attributesProcessor != null
+            && !CollectionUtils.isEmpty(attributesProcessor.getActions())) {
+          collectorConfigFormat.getProcessors().put(attributesProcessorName, attributesProcessor);
+          // Add AttributesProcessor to the pipeline
+          processorNames.add(attributesProcessorName);
+        }
 
         // Add BatchProcessor for metrics.
         String batchProcessorName = PROCESSOR_PREFIX_BATCH + exportTypeAndUUIDString;
@@ -391,6 +399,8 @@ public class OtelCollectorConfigGenerator {
         batchProcessor.setSend_batch_max_size(exporterConfig.getSendBatchMaxSize());
         batchProcessor.setTimeout(exporterConfig.getSendBatchTimeoutSeconds().toString() + "s");
         collectorConfigFormat.getProcessors().put(batchProcessorName, batchProcessor);
+        // Add BatchProcessor to the pipeline
+        processorNames.add(batchProcessorName);
 
         // Add MemoryLimiterProcessor for metrics.
         String memoryLimiterProcessorName =
@@ -403,11 +413,7 @@ public class OtelCollectorConfigGenerator {
         collectorConfigFormat
             .getProcessors()
             .put(memoryLimiterProcessorName, memoryLimiterProcessor);
-
-        // Add all the processor names to the pipeline
-        List<String> processorNames = new ArrayList<>();
-        processorNames.add(attributesProcessorName);
-        processorNames.add(batchProcessorName);
+        // Add MemoryLimiterProcessor to the pipeline
         processorNames.add(memoryLimiterProcessorName);
 
         if (!StringUtils.isBlank(exporterConfig.getMetricsPrefix())) {
@@ -429,6 +435,7 @@ public class OtelCollectorConfigGenerator {
           collectorConfigFormat
               .getProcessors()
               .put(metricTransformProcessorName, metricTransformProcessor);
+          // Add MetricTransformProcessor to the pipeline
           processorNames.add(metricTransformProcessorName);
         }
 
@@ -441,10 +448,11 @@ public class OtelCollectorConfigGenerator {
           collectorConfigFormat
               .getProcessors()
               .put(cumulativetodeltaProcessorName, cumulativetodeltaProcessor);
+          // Add CumulativeToDeltaProcessor to the pipeline
           processorNames.add(cumulativetodeltaProcessorName);
         }
 
-        // Add processors to the pipeline
+        // Add all the processor names to the pipeline
         pipeline.setProcessors(processorNames);
 
         // Add metrics exporter for each active exporter config
@@ -1108,14 +1116,20 @@ public class OtelCollectorConfigGenerator {
     return scrapeConfig;
   }
 
-  private OtelCollectorConfigFormat.AttributesProcessor createAttributesProcessor(
+  private OtelCollectorConfigFormat.AttributesProcessor createMetricsExporterAttributesProcessor(
       UniverseMetricsExporterConfig exporterConfig) {
-    // Add additional tags from the exporter config.
+    TelemetryProvider telemetryProvider =
+        telemetryProviderService.getOrBadRequest(exporterConfig.getExporterUuid());
+
     List<OtelCollectorConfigFormat.AttributeAction> attributeActions = new ArrayList<>();
-    for (Map.Entry<String, String> entry : exporterConfig.getAdditionalTags().entrySet()) {
-      attributeActions.add(
-          new OtelCollectorConfigFormat.AttributeAction(
-              entry.getKey(), entry.getValue(), "upsert", null));
+    // Override or add tags from the exporter config.
+    if (MapUtils.isNotEmpty(telemetryProvider.getTags())) {
+      attributeActions.addAll(getTagsToAttributeActions(telemetryProvider.getTags()));
+    }
+
+    // Override or add additional tags from the log config payload.
+    if (MapUtils.isNotEmpty(exporterConfig.getAdditionalTags())) {
+      attributeActions.addAll(getTagsToAttributeActions(exporterConfig.getAdditionalTags()));
     }
 
     OtelCollectorConfigFormat.AttributesProcessor processor =
@@ -1554,6 +1568,29 @@ public class OtelCollectorConfigGenerator {
             exporterName, setExporterCommonConfig(awsCloudWatchExporter, false, true, exportType));
 
         break;
+      case S3:
+        S3Config s3Config = (S3Config) telemetryProvider.getConfig();
+        OtelCollectorConfigFormat.AWSS3Exporter s3Exporter =
+            new OtelCollectorConfigFormat.AWSS3Exporter();
+        s3Exporter.setMarshaler(s3Config.getMarshaler().getName());
+        OtelCollectorConfigFormat.S3UploaderConfig s3UploaderConfig =
+            new OtelCollectorConfigFormat.S3UploaderConfig();
+        s3UploaderConfig.setS3_bucket(s3Config.getBucket());
+        s3UploaderConfig.setS3_prefix(s3Config.getDirectoryPrefix());
+        s3UploaderConfig.setS3_partition(s3Config.getPartition().getGranularity());
+        s3UploaderConfig.setRole_arn(s3Config.getRoleArn());
+        s3UploaderConfig.setFile_prefix(s3Config.getFilePrefix());
+        s3UploaderConfig.setRegion(s3Config.getRegion());
+        s3UploaderConfig.setEndpoint(s3Config.getEndpoint());
+        s3UploaderConfig.setS3_force_path_style(s3Config.getForcePathStyle());
+        s3UploaderConfig.setDisable_ssl(s3Config.getDisableSSL());
+        s3Exporter.setS3uploader(s3UploaderConfig);
+
+        exporterName = EXPORTER_PREFIX_S3 + exportTypeAndUUIDString;
+
+        exporters.put(exporterName, setExporterCommonConfig(s3Exporter, false, false, exportType));
+        break;
+
       case GCP_CLOUD_MONITORING:
         GCPCloudMonitoringConfig gcpCloudMonitoringConfig =
             (GCPCloudMonitoringConfig) telemetryProvider.getConfig();
@@ -1634,15 +1671,19 @@ public class OtelCollectorConfigGenerator {
       retryConfig.setMax_interval(maxInterval);
       retryConfig.setMax_elapsed_time(maxElapsedTime);
       exporter.setRetry_on_failure(retryConfig);
+    } else {
+      exporter.setRetry_on_failure(null);
     }
     if (exportType == ExportType.AUDIT_LOGS) {
       OtelCollectorConfigFormat.QueueConfig queueConfig =
           new OtelCollectorConfigFormat.QueueConfig();
       if (setQueueEnabled) {
         queueConfig.setEnabled(true);
+        queueConfig.setStorage("file_storage/queue");
+        exporter.setSending_queue(queueConfig);
+      } else {
+        exporter.setSending_queue(null);
       }
-      queueConfig.setStorage("file_storage/queue");
-      exporter.setSending_queue(queueConfig);
     }
     return exporter;
   }
@@ -1672,23 +1713,30 @@ public class OtelCollectorConfigGenerator {
     return "/mnt/d0";
   }
 
+  private void addAwsCredentialsToSecretEnv(
+      String accessKey, String secretKey, List<Object> secretEnv) {
+    if (StringUtils.isNotEmpty(accessKey)) {
+      String encodedAccessKey = Base64.getEncoder().encodeToString(accessKey.getBytes());
+      secretEnv.add(ImmutableMap.of("envName", "AWS_ACCESS_KEY_ID", "envValue", encodedAccessKey));
+    }
+    if (StringUtils.isNotEmpty(secretKey)) {
+      String encodedSecretKey = Base64.getEncoder().encodeToString(secretKey.getBytes());
+      secretEnv.add(
+          ImmutableMap.of("envName", "AWS_SECRET_ACCESS_KEY", "envValue", encodedSecretKey));
+    }
+  }
+
   private void appendSecretEnv(TelemetryProvider telemetryProvider, List<Object> secretEnv) {
     switch (telemetryProvider.getConfig().getType()) {
       case AWS_CLOUDWATCH:
         AWSCloudWatchConfig awsCloudWatchConfig =
             (AWSCloudWatchConfig) telemetryProvider.getConfig();
-        if (StringUtils.isNotEmpty(awsCloudWatchConfig.getAccessKey())) {
-          String encodedAccessKey =
-              Base64.getEncoder().encodeToString(awsCloudWatchConfig.getAccessKey().getBytes());
-          secretEnv.add(
-              ImmutableMap.of("envName", "AWS_ACCESS_KEY_ID", "envValue", encodedAccessKey));
-        }
-        if (StringUtils.isNotEmpty(awsCloudWatchConfig.getSecretKey())) {
-          String encodedSecretKey =
-              Base64.getEncoder().encodeToString(awsCloudWatchConfig.getSecretKey().getBytes());
-          secretEnv.add(
-              ImmutableMap.of("envName", "AWS_SECRET_ACCESS_KEY", "envValue", encodedSecretKey));
-        }
+        addAwsCredentialsToSecretEnv(
+            awsCloudWatchConfig.getAccessKey(), awsCloudWatchConfig.getSecretKey(), secretEnv);
+        break;
+      case S3:
+        S3Config s3Config = (S3Config) telemetryProvider.getConfig();
+        addAwsCredentialsToSecretEnv(s3Config.getAccessKey(), s3Config.getSecretKey(), secretEnv);
         break;
       case GCP_CLOUD_MONITORING:
         GCPCloudMonitoringConfig gcpCloudMonitoringConfig =

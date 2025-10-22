@@ -274,7 +274,8 @@ class PgClient {
       docdb::ObjectLockFastpathLockType lock_type);
 
   Status AcquireObjectLock(
-      tserver::PgPerformOptionsPB* options, const YbcObjectLockId& lock_id, YbcObjectLockMode mode);
+      tserver::PgPerformOptionsPB* options, const YbcObjectLockId& lock_id, YbcObjectLockMode mode,
+      std::optional<PgTablespaceOid> tablespace_oid);
 
   Result<bool> CheckIfPitrActive();
 
@@ -293,6 +294,8 @@ class PgClient {
   Result<tserver::PgSetTserverCatalogMessageListResponsePB> SetTserverCatalogMessageList(
       uint32_t db_oid, bool is_breaking_change,
       uint64_t new_catalog_version, const std::optional<std::string>& message_list);
+
+  Status TriggerRelcacheInitConnection(const std::string& dbname);
 
   Result<tserver::PgCreateReplicationSlotResponsePB> CreateReplicationSlot(
       tserver::PgCreateReplicationSlotRequestPB* req, CoarseTimePoint deadline);

@@ -502,7 +502,8 @@ YbcStatus YBCPgDmlAppendTarget(YbcPgStatement handle, YbcPgExpr target);
 // Only serialized Postgres expressions are allowed.
 // Multiple quals added to the same statement are implicitly AND'ed.
 YbcStatus YbPgDmlAppendQual(
-    YbcPgStatement handle, YbcPgExpr qual, bool is_for_secondary_index);
+    YbcPgStatement handle, YbcPgExpr qual, uint32_t serialization_version,
+    bool is_for_secondary_index);
 
 // Add column reference needed to evaluate serialized Postgres expression.
 // PgExpr's other than serialized Postgres expressions are inspected and if they contain any
@@ -757,6 +758,7 @@ YbcTxnPriorityRequirement YBCGetTransactionPriorityType();
 YbcStatus YBCPgGetSelfActiveTransaction(YbcPgUuid *txn_id, bool *is_null);
 YbcStatus YBCPgActiveTransactions(YbcPgSessionTxnInfo *infos, size_t num_infos);
 bool YBCPgIsDdlMode();
+bool YBCPgIsDdlModeWithRegularTransactionBlock();
 bool YBCCurrentTransactionUsesFastPath();
 
 // System validation -------------------------------------------------------------------------------
@@ -822,7 +824,8 @@ uint16_t YBCCompoundHash(const char *key, size_t length);
 void YBCPgDeleteFromForeignKeyReferenceCache(YbcPgOid table_relfilenode_oid, uint64_t ybctid);
 void YBCPgAddIntoForeignKeyReferenceCache(YbcPgOid table_relfilenode_oid, uint64_t ybctid);
 YbcStatus YBCPgForeignKeyReferenceCacheDelete(const YbcPgYBTupleIdDescriptor* descr);
-YbcStatus YBCForeignKeyReferenceExists(const YbcPgYBTupleIdDescriptor* descr, bool* res);
+YbcStatus YBCForeignKeyReferenceExists(
+    const YbcPgYBTupleIdDescriptor* descr, bool relation_is_region_local, bool* res);
 YbcStatus YBCAddForeignKeyReferenceIntent(
     const YbcPgYBTupleIdDescriptor* descr, bool relation_is_region_local,
     bool is_deferred_trigger);
@@ -1045,6 +1048,8 @@ void YBCClearTablespaceOid(YbcPgOid db_oid, YbcPgOid table_oid);
 
 YbcStatus YBCInitTransaction(const YbcPgInitTransactionData *data);
 YbcStatus YBCCommitTransactionIntermediate(const YbcPgInitTransactionData *data);
+
+YbcStatus YBCTriggerRelcacheInitConnection(const char* dbname);
 
 #ifdef __cplusplus
 }  // extern "C"

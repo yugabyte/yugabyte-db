@@ -44,6 +44,10 @@ import { auditLogStyles } from '../utils/AuditLogStyles';
 import TreeIcon from '../../../../../assets/tree.svg';
 import AddCircleIcon from '../.././../../../assets/add-circle.svg';
 import InfoMessageIcon from '../../../../../assets/info-message.svg';
+import {
+  getIsLogsExportSupported,
+  getIsMetricsExportSupported
+} from '@app/redesign/features/export-telemetry/utils';
 
 interface AuditLogSettingProps {
   open: boolean;
@@ -356,7 +360,7 @@ export const AuditLogSettings: FC<AuditLogSettingProps> = ({
                         'data-testid': 'AuditLogSettings-ExportSelect'
                       }}
                     >
-                      {telemetryProviders?.map((tp) => {
+                      {telemetryProviders?.filter(getIsLogsExportSupported).map((tp) => {
                         return (
                           <MenuItem
                             className={classes.exportMenuItem}

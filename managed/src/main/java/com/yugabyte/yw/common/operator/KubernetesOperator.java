@@ -12,6 +12,7 @@ import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
+import com.yugabyte.yw.common.dr.DrConfigHelper;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
@@ -26,10 +27,12 @@ import io.fabric8.kubernetes.client.informers.ResourceEventHandler;
 import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
 import io.fabric8.kubernetes.client.informers.SharedInformerFactory;
 import io.yugabyte.operator.v1alpha1.Backup;
+import io.yugabyte.operator.v1alpha1.DrConfig;
 import io.yugabyte.operator.v1alpha1.Release;
 import io.yugabyte.operator.v1alpha1.RestoreJob;
 import io.yugabyte.operator.v1alpha1.StorageConfig;
 import io.yugabyte.operator.v1alpha1.SupportBundle;
+import io.yugabyte.operator.v1alpha1.YBCertificate;
 import java.lang.Thread.UncaughtExceptionHandler;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
@@ -42,6 +45,7 @@ public class KubernetesOperator {
   @Inject private GFlagsValidation gFlagsValidation;
   @Inject private CustomerConfigService ccs;
   @Inject private BackupHelper backupHelper;
+  @Inject private DrConfigHelper drConfigHelper;
   @Inject protected ValidatingFormFactory formFactory;
 
   @Inject private Commissioner commissioner;
@@ -58,6 +62,8 @@ public class KubernetesOperator {
 
   public MixedOperation<Release, KubernetesResourceList<Release>, Resource<Release>> releasesClient;
   public MixedOperation<Backup, KubernetesResourceList<Backup>, Resource<Backup>> backupClient;
+  public MixedOperation<DrConfig, KubernetesResourceList<DrConfig>, Resource<DrConfig>>
+      drConfigClient;
   public MixedOperation<RestoreJob, KubernetesResourceList<RestoreJob>, Resource<RestoreJob>>
       restoreJobClient;
 
@@ -67,6 +73,9 @@ public class KubernetesOperator {
   public MixedOperation<
           SupportBundle, KubernetesResourceList<SupportBundle>, Resource<SupportBundle>>
       supportBundleClient;
+  public MixedOperation<
+          YBCertificate, KubernetesResourceList<YBCertificate>, Resource<YBCertificate>>
+      ybCertificateClient;
 
   public static final Logger LOG = LoggerFactory.getLogger(KubernetesOperator.class);
 
@@ -94,12 +103,16 @@ public class KubernetesOperator {
                   this.scClient = client.resources(StorageConfig.class);
                   this.backupClient = client.resources(Backup.class);
                   this.restoreJobClient = client.resources(RestoreJob.class);
+                  this.drConfigClient = client.resources(DrConfig.class);
 
                   this.supportBundleClient = client.resources(SupportBundle.class);
+                  this.ybCertificateClient = client.resources(YBCertificate.class);
                   SharedIndexInformer<Release> ybSoftwareReleaseIndexInformer;
                   SharedIndexInformer<StorageConfig> ybStorageConfigIndexInformer;
                   SharedIndexInformer<Backup> ybBackupIndexInformer;
+                  SharedIndexInformer<DrConfig> ybDrConfigIndexInformer;
                   SharedIndexInformer<RestoreJob> ybRestoreJobIndexInformer;
+                  SharedIndexInformer<YBCertificate> ybCertificateIndexInformer;
 
                   SharedIndexInformer<SupportBundle> ybSupportBundleIndexInformer;
                   long resyncPeriodInMillis = 10 * 60 * 1000L;
@@ -159,6 +172,23 @@ public class KubernetesOperator {
                                 },
                                 resyncPeriodInMillis);
 
+                    ybDrConfigIndexInformer =
+                        client
+                            .resources(DrConfig.class)
+                            .inNamespace(namespace)
+                            .inform(
+                                new ResourceEventHandler<>() {
+                                  @Override
+                                  public void onAdd(DrConfig d) {}
+
+                                  @Override
+                                  public void onUpdate(DrConfig d1, DrConfig d2) {}
+
+                                  @Override
+                                  public void onDelete(DrConfig b, boolean deletedFinalUnknown) {}
+                                },
+                                resyncPeriodInMillis);
+
                     ybRestoreJobIndexInformer =
                         client
                             .resources(RestoreJob.class)
@@ -192,6 +222,23 @@ public class KubernetesOperator {
                                       SupportBundle b1, boolean deletedFinalUnknown) {}
                                 },
                                 resyncPeriodInMillis);
+                    ybCertificateIndexInformer =
+                        client
+                            .resources(YBCertificate.class)
+                            .inNamespace(namespace)
+                            .inform(
+                                new ResourceEventHandler<>() {
+                                  @Override
+                                  public void onAdd(YBCertificate cm) {}
+
+                                  @Override
+                                  public void onUpdate(YBCertificate cm1, YBCertificate cm2) {}
+
+                                  @Override
+                                  public void onDelete(
+                                      YBCertificate cm, boolean deletedFinalUnknown) {}
+                                },
+                                resyncPeriodInMillis);
                   } else {
                     // Listen to all namespaces, use the factory to build informer.
                     ybSoftwareReleaseIndexInformer =
@@ -201,12 +248,18 @@ public class KubernetesOperator {
                             StorageConfig.class, resyncPeriodInMillis);
                     ybBackupIndexInformer =
                         informerFactory.sharedIndexInformerFor(Backup.class, resyncPeriodInMillis);
+                    ybDrConfigIndexInformer =
+                        informerFactory.sharedIndexInformerFor(
+                            DrConfig.class, resyncPeriodInMillis);
                     ybRestoreJobIndexInformer =
                         informerFactory.sharedIndexInformerFor(
                             RestoreJob.class, resyncPeriodInMillis);
                     ybSupportBundleIndexInformer =
                         informerFactory.sharedIndexInformerFor(
                             SupportBundle.class, resyncPeriodInMillis);
+                    ybCertificateIndexInformer =
+                        informerFactory.sharedIndexInformerFor(
+                            YBCertificate.class, resyncPeriodInMillis);
                   }
                   LOG.info("Finished setting up SharedIndexInformers");
 
@@ -242,12 +295,29 @@ public class KubernetesOperator {
                       new StorageConfigReconciler(
                           ybStorageConfigIndexInformer, scClient, ccs, namespace, operatorUtils);
 
+                  YBCertificateReconciler ybCertificateReconciler =
+                      new YBCertificateReconciler(
+                          ybCertificateIndexInformer,
+                          ybCertificateClient,
+                          namespace,
+                          operatorUtils,
+                          confGetter);
+
                   BackupReconciler backupReconciler =
                       new BackupReconciler(
                           ybBackupIndexInformer,
                           backupClient,
                           backupHelper,
                           formFactory,
+                          namespace,
+                          ybStorageConfigIndexInformer,
+                          operatorUtils);
+
+                  DrConfigReconciler drConfigReconciler =
+                      new DrConfigReconciler(
+                          ybDrConfigIndexInformer,
+                          drConfigClient,
+                          drConfigHelper,
                           namespace,
                           ybStorageConfigIndexInformer,
                           operatorUtils);
@@ -268,7 +338,9 @@ public class KubernetesOperator {
                   startedInformersFuture.get();
                   releaseReconciler.run();
                   scReconciler.run();
+                  ybCertificateReconciler.run();
                   backupReconciler.run();
+                  drConfigReconciler.run();
                   restoreJobReconciler.run();
                   supportBundleReconciler.run();
 

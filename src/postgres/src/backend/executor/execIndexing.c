@@ -138,6 +138,7 @@ static bool check_exclusion_or_unique_constraint(Relation heap, Relation index,
 												 EState *estate, bool newIndex,
 												 CEOUC_WAIT_MODE waitMode,
 												 bool errorOK,
+												 bool ybUseIndexOnlyScan,
 												 ItemPointer conflictTid,
 												 TupleTableSlot **ybConflictSlot);
 
@@ -154,6 +155,12 @@ static void yb_batch_fetch_conflicting_rows(int idx,
 											ResultRelInfo *resultRelInfo,
 											YbInsertOnConflictBatchState *yb_ioc_state,
 											EState *estate);
+static bool yb_fetch_conflicting_index_rowids(Relation heap,
+											  Relation index,
+											  IndexInfo *indexInfo,
+											  ScanKey scan_key,
+											  EState *estate,
+											  YbInsertOnConflictBatchState *yb_ioc_state);
 
 /* ----------------------------------------------------------------
  *		ExecOpenIndices
@@ -416,7 +423,9 @@ YbExecDoInsertIndexTuple(ResultRelInfo *resultRelInfo,
 												 indexRelation, indexInfo,
 												 tupleid, values, isnull,
 												 estate, false,
-												 waitMode, violationOK, NULL,
+												 waitMode, violationOK,
+												 resultRelInfo->ri_ybUseIndexOnlyScanForIocRead,
+												 NULL,
 												 NULL /* ybConflictSlot */ );
 	}
 
@@ -1128,6 +1137,7 @@ ExecCheckIndexConstraints(ResultRelInfo *resultRelInfo, TupleTableSlot *slot,
 												 indexInfo, &invalidItemPtr,
 												 values, isnull, estate, false,
 												 CEOUC_WAIT, true,
+												 resultRelInfo->ri_ybUseIndexOnlyScanForIocRead,
 												 conflictTid,
 												 ybConflictSlot);
 		if (!satisfiesConstraint)
@@ -1190,6 +1200,7 @@ check_exclusion_or_unique_constraint(Relation heap, Relation index,
 									 EState *estate, bool newIndex,
 									 CEOUC_WAIT_MODE waitMode,
 									 bool violationOK,
+									 bool ybUseIndexOnlyScan,
 									 ItemPointer conflictTid,
 									 TupleTableSlot **ybConflictSlot)
 {
@@ -1254,6 +1265,18 @@ check_exclusion_or_unique_constraint(Relation heap, Relation index,
 							   index_collations[i],
 							   constr_procs[i],
 							   values[i]);
+	}
+
+	/*
+	 * YB note: For tables backed by YugabyteDB storage, short-circuit the
+	 * uniqueness conflict check by performing an index-only scan. See note in
+	 * ExecInitModifyTable for more info.
+	 */
+	if (ybUseIndexOnlyScan)
+	{
+		Assert(IsYBRelation(heap) && indexInfo->ii_UniqueOps);
+		return !yb_fetch_conflicting_index_rowids(heap, index, indexInfo,
+												  scankeys, estate, NULL);
 	}
 
 	/*
@@ -1444,7 +1467,9 @@ check_exclusion_constraint(Relation heap, Relation index,
 	(void) check_exclusion_or_unique_constraint(heap, index, indexInfo, tupleid,
 												values, isnull,
 												estate, newIndex,
-												CEOUC_WAIT, false, NULL,
+												CEOUC_WAIT, false,
+												false /* ybUseIndexOnlyScan */ ,
+												NULL,
 												NULL /* ybConflictSlot */ );
 }
 
@@ -1919,6 +1944,11 @@ yb_batch_fetch_conflicting_rows(int idx, ResultRelInfo *resultRelInfo,
 		this_scan_key->sk_subtype = RECORDOID;
 	}
 
+	if (resultRelInfo->ri_ybUseIndexOnlyScanForIocRead)
+		return (void) yb_fetch_conflicting_index_rowids(heap, index, indexInfo,
+														this_scan_key, estate,
+														yb_ioc_state);
+
 	/*
 	 * Need a TupleTableSlot to put existing tuples in.
 	 *
@@ -1951,6 +1981,7 @@ yb_batch_fetch_conflicting_rows(int idx, ResultRelInfo *resultRelInfo,
 		Assert(indexInfo->ii_NullsNotDistinct ||
 			   !YbIsAnyIndexKeyColumnNull(indexInfo,
 										  existing_isnull));
+		Assert(yb_ioc_state);
 
 		oldcontext = MemoryContextSwitchTo(estate->es_query_cxt);
 		YbcPgInsertOnConflictKeyInfo info = {existing_slot};
@@ -1969,6 +2000,75 @@ yb_batch_fetch_conflicting_rows(int idx, ResultRelInfo *resultRelInfo,
 
 	econtext->ecxt_scantuple = save_scantuple;
 	ExecDropSingleTupleTableSlot(existing_slot);
+}
+
+/*
+ * This function performs an IndexOnlyScan to fetch 'index' tuples that conflict
+ * with the given 'scan_key'. This function assumes that:
+ *  - For indexes where NULLs-are-distinct, the scan key does not contain any NULL values.
+ *  - The result of the scan does not require rechecks.
+ * Returns a bool indicating whether any conflicting rows were found.
+ * This function is invoked in two modes:
+ *  - Batched INSERT ... ON CONFLICT: where the in-memory map is updated with
+ *    the conflicting index keys.
+ *  - Non-batched INSERT ... ON CONFLICT: where the function returns as soon a
+ *    conflict is found.
+ */
+static bool
+yb_fetch_conflicting_index_rowids(Relation heap,
+								  Relation index,
+								  IndexInfo *indexInfo,
+								  ScanKey scan_key,
+								  EState *estate,
+								  YbInsertOnConflictBatchState *yb_ioc_state)
+{
+	IndexScanDesc index_only_scan = index_beginscan(heap, index, estate->es_snapshot, 1, 0);
+	ItemPointer tid;
+	bool row_found = false;
+
+	index_only_scan->xs_want_itup = true;
+	index_rescan(index_only_scan, scan_key, 1, NULL, 0);
+
+	while ((tid = index_getnext_tid(index_only_scan, NoMovementScanDirection)) != NULL)
+	{
+		row_found = true;
+		/* Do not bother unpacking the tuple for non-batched INSERT ... ON CONFLICT. */
+		if (!yb_ioc_state)
+			break;
+
+		/*
+		 * The rest of the loop serves to update the in-memory map with the
+		 * conflicting index keys for batched INSERT ... ON CONFLICT.
+		 */
+		Datum		existing_values[INDEX_MAX_KEYS];
+		bool		existing_isnull[INDEX_MAX_KEYS];
+		MemoryContext oldcontext;
+
+		Assert(index_only_scan->xs_itup);
+		index_deform_tuple(index_only_scan->xs_itup,
+						   index_only_scan->xs_itupdesc,
+						   existing_values,
+						   existing_isnull);
+
+		/*
+		 * In nulls-are-distinct mode, the index keys having NULL values are
+		 * filtered out above, and will not be a part of the index scan result.
+		 */
+		Assert(indexInfo->ii_NullsNotDistinct ||
+			   !YbIsAnyIndexKeyColumnNull(indexInfo,
+										  existing_isnull));
+
+		oldcontext = MemoryContextSwitchTo(estate->es_query_cxt);
+		YbcPgYBTupleIdDescriptor *descr = YBCBuildUniqueIndexYBTupleId(index,
+																	   existing_values,
+																	   existing_isnull);
+		HandleYBStatus(YBCPgAddInsertOnConflictKey(descr, yb_ioc_state, NULL /* info */ ));
+		MemoryContextSwitchTo(oldcontext);
+	}
+
+	index_endscan(index_only_scan);
+
+	return row_found;
 }
 
 bool

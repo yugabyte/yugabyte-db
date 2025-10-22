@@ -354,7 +354,8 @@ int NumScanRows() {
 
 constexpr int kScanBlockSize = 1000;
 
-std::string CreateTableWithNValuesCommand(int num_columns, int num_keys = 1) {
+std::string CreateTableWithNValuesCommand(
+    int num_columns, int num_keys = 1, int num_text_keys = 0) {
   std::string result = "CREATE TABLE t (";
   std::string pk = "";
   for (auto column : Range(num_keys + num_columns)) {
@@ -363,7 +364,11 @@ std::string CreateTableWithNValuesCommand(int num_columns, int num_keys = 1) {
     }
     if (column < num_keys) {
       auto key_name = Format("k$0", column);
-      result += key_name + " INT";
+      if (column >= num_text_keys) {
+        result += key_name + " INT";
+      } else {
+        result += key_name + " TEXT";
+      }
       if (!pk.empty()) {
         pk += ", ";
       }
@@ -381,10 +386,18 @@ std::string CreateTableWithNValuesCommand(int num_columns, int num_keys = 1) {
 
 constexpr int kValueRange = 100000000;
 
-std::string InsertNValuesCommand(int num_columns) {
-  std::string result = "INSERT INTO t VALUES (generate_series($0, $1)";
+std::string InsertNValuesCommand(int num_columns, int num_text_columns = 0) {
+  std::string result = "INSERT INTO t VALUES (";
   for (int i = 0; i != num_columns; ++i) {
-    result += Format(", trunc(random()*$0)", kValueRange);
+    std::string column_value = i == 0 ? "generate_series($0, $1)"
+                                      : Format("trunc(random()*$0)", kValueRange);
+    if (i < num_text_columns) {
+      column_value = Format("CONCAT('$0', $1)", RandomHumanReadableString(32), column_value);
+    }
+    if (i != 0) {
+      result += ", ";
+    }
+    result += column_value;
   }
   result += ")";
   return result;
@@ -421,6 +434,21 @@ TEST_F_EX(PgSingleTServerTest, ScanWithChoices, PgMiniBigPrefetchTest) {
 
   auto create_cmd = CreateTableWithNValuesCommand(kNumColumns, 2);
   auto insert_cmd = InsertNValuesCommand(kNumColumns + 1);
+  const std::string select_cmd = Format("SELECT COUNT(*) FROM t WHERE k1 > $0", kValueRange / 2);
+  SetupTableAndRunBenchmark(
+      create_cmd, insert_cmd, select_cmd, NumScanRows(), kScanBlockSize, FLAGS_TEST_scan_reads,
+      /* compact= */ false, /* aggregate= */ true);
+}
+
+TEST_F_EX(PgSingleTServerTest, ScanWithTextChoices, PgMiniBigPrefetchTest) {
+  constexpr int kNumColumns = 3;
+  constexpr int kNumTextColumns = 1;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
+
+  auto create_cmd = CreateTableWithNValuesCommand(kNumColumns, 2, kNumTextColumns);
+  auto insert_cmd = InsertNValuesCommand(kNumColumns + 1, kNumTextColumns);
   const std::string select_cmd = Format("SELECT COUNT(*) FROM t WHERE k1 > $0", kValueRange / 2);
   SetupTableAndRunBenchmark(
       create_cmd, insert_cmd, select_cmd, NumScanRows(), kScanBlockSize, FLAGS_TEST_scan_reads,
@@ -713,8 +741,8 @@ TEST_F_EX(
 
     // Ensure that all rows in the table have the same value.
     auto common_value_for_all_rows = ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0));
-    for (auto i = 1; i < num_rows; ++i) {
-      ASSERT_EQ(common_value_for_all_rows, ASSERT_RESULT(GetValue<int32_t>(res.get(), i, 0)));
+    for (auto j = 1; i < num_rows; ++i) {
+      ASSERT_EQ(common_value_for_all_rows, ASSERT_RESULT(GetValue<int32_t>(res.get(), j, 0)));
     }
     ASSERT_OK(read_conn.Execute("COMMIT"));
   }
@@ -2097,6 +2125,115 @@ TEST_F(PgSingleTServerTest, IterKeyInvalidationDuringBackwardScan) {
     LOG(INFO) << "Rows: " << rows;
     ASSERT_EQ(rows, Format("$0, 1", i));
   }
+}
+
+TEST_F(PgSingleTServerTest, BloomFilterIn) {
+  constexpr int kIterations = 1000;
+  constexpr int32_t kMinKey = 1;
+  constexpr int32_t kMaxKey = 20;
+
+  use_colocation_ = false;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (k INT PRIMARY KEY, v INT) "
+      "SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO test (SELECT i * 4, i * 2 FROM GENERATE_SERIES(1, 5) AS i)"));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO test (SELECT i * 4 - 2, i * 2 - 1 FROM GENERATE_SERIES(1, 5) AS i)"));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto peers = ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), "test"));
+  ASSERT_EQ(peers.size(), 1);
+  auto get_useful = [
+      stats = ASSERT_RESULT(peers.front()->shared_tablet())->regulardb_statistics()] {
+    return stats->getTickerCount(rocksdb::BLOOM_FILTER_USEFUL);
+  };
+
+  auto useful_before = get_useful();
+  std::mt19937_64 rng(42);
+  for (int i = 0; i != kIterations; ++i) {
+    auto pattern = RandomUniformInt<uintptr_t>(0, (1ULL << (kMaxKey - kMinKey + 1)) - 1, &rng);
+    std::vector<int32_t> keys;
+    for (int k : std::views::iota(kMinKey, kMaxKey + 1)) {
+      if (pattern & (1ULL << (k - kMinKey))) {
+        keys.push_back(k);
+      }
+    }
+
+    auto rows = ASSERT_RESULT((conn.FetchRows<int32_t, int32_t>(
+        Format("SELECT k, v FROM test WHERE k IN ($0)", JoinElements(keys, ", ")))));
+    LOG(INFO) << "Rows: " << AsString(rows) << ", useful: " << get_useful();
+
+    std::vector<int32_t> found_keys;
+
+    for (const auto& [k, v] : rows) {
+      found_keys.push_back(k);
+      ASSERT_EQ(v * 2, k);
+    }
+
+    std::sort(found_keys.begin(), found_keys.end());
+    std::vector<int32_t> expected_keys;
+    for (const auto k : keys) {
+      if (!(k & 1)) {
+        expected_keys.push_back(k);
+      }
+    }
+
+    ASSERT_EQ(AsString(expected_keys), AsString(found_keys));
+  }
+
+  ASSERT_GT(get_useful(), useful_before);
+}
+
+class PgSmallBlockCacheTest : public PgSingleTServerTest {
+  void OverrideMiniClusterOptions(MiniClusterOptions* options) override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_cache_size_bytes) = 1_MB;
+  }
+};
+
+TEST_F_EX(PgSingleTServerTest, BloomFilterPerf, PgSmallBlockCacheTest) {
+  constexpr int kIterations = 1000;
+  auto payload = RandomHumanReadableString(5_KB);
+  constexpr int32_t kNumDiskRows = RegularBuildVsDebugVsSanitizers(100, 10, 1) * 1000;
+  constexpr int32_t kNumMemoryRows = 50;
+
+  use_colocation_ = false;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (k INT PRIMARY KEY, v TEXT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test (SELECT i * 2, '$1' FROM GENERATE_SERIES(0, $0) AS i)",
+      kNumDiskRows - 1, payload));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test (SELECT i * $1 + 1, '' FROM GENERATE_SERIES(0, $0) AS i)",
+      kNumMemoryRows - 1, kNumDiskRows / kNumMemoryRows));
+
+  std::mt19937_64 rng(42);
+  auto start = MonoTime::Now();
+  std::vector<int32_t> keys;
+  for (int i = 0; i != kIterations; ++i) {
+    auto pattern = RandomUniformInt<uintptr_t>(0, (1ULL << kNumMemoryRows) - 1, &rng);
+    keys.clear();
+    for (int k : std::views::iota(0, kNumMemoryRows)) {
+      if (pattern & (1ULL << k)) {
+        keys.push_back(k * (kNumDiskRows / kNumMemoryRows) + 1);
+      }
+    }
+
+    auto max_length = ASSERT_RESULT(conn.FetchRow<int32_t>(
+        Format("SELECT MAX(LENGTH(v)) FROM test WHERE k IN ($0)", JoinElements(keys, ", "))));
+    ASSERT_EQ(max_length, 0);
+  }
+  auto finish = MonoTime::Now();
+  LOG(INFO) << "Time passed: " << finish - start;
 }
 
 }  // namespace pgwrapper

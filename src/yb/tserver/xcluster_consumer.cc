@@ -758,6 +758,8 @@ Status XClusterConsumer::PublishXClusterSafeTimeInternal() {
     for (auto& [producer_info, poller] : pollers_map_) {
       if (xcluster_context_.SafeTimeComputationRequired(poller->GetConsumerNamespaceId())) {
         auto safe_time = poller->GetSafeTime();
+        VLOG_IF_WITH_FUNC(2, safe_time.is_special()) << Format(
+            "Found special safe time for producer tablet $0: $1", producer_info, safe_time);
         if (!safe_time.is_special()) {
           safe_time_map[producer_info] = safe_time;
         }

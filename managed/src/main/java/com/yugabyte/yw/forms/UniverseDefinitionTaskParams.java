@@ -317,6 +317,13 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2025.1.0.0")
   public AdditionalServicesStateData additionalServicesStateData;
 
+  // This tracks whether the universe is detached. This flag is set when a universe is detached, and
+  // reset when it is attached to a YBA. The delete metadata API can only be called if this flag is
+  // set.
+  @ApiModelProperty(value = "YbaApi Internal. True if a universe has been detached")
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2025.2.0.0")
+  public boolean universeDetached = false;
+
   @Setter
   @Getter
   @ApiModelProperty(

@@ -22,6 +22,7 @@
 #include "yb/common/types.h"
 
 #include "yb/dockv/key_bytes.h"
+#include "yb/dockv/key_entry_value.h"
 #include "yb/dockv/primitive_value.h"
 #include "yb/dockv/value_type.h"
 
@@ -33,6 +34,7 @@
 #include "yb/util/result.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/tsan_util.h"
 
 using std::map;
 using std::string;
@@ -43,10 +45,125 @@ namespace yb::dockv {
 
 namespace {
 
+QLValuePB RandomQLValuePB(std::mt19937_64& rng);
+
+QLValuePB::ValueCase RandomValueCaseKeyType(std::mt19937_64& rng) {
+  for (;;) {
+    auto result = static_cast<QLValuePB::ValueCase>(
+        RandomUniformInt(0, static_cast<int>(QLValuePB::kBsonValue), &rng));
+    if (result != QLValuePB::kJsonbValue && result != QLValuePB::kMapValue &&
+        result != QLValuePB::kSetValue && result != QLValuePB::kListValue &&
+        result != QLValuePB::kTupleValue) {
+      return result;
+    }
+  }
+}
+
+QLValuePB RandomQLValuePB(QLValuePB::ValueCase value_case, std::mt19937_64& rng) {
+  QLValuePB result;
+  switch (value_case) {
+    case QLValuePB::kInt8Value:
+      result.set_int8_value(RandomUniformInt<int8_t>(&rng));
+      break;
+    case QLValuePB::kInt16Value:
+      result.set_int16_value(RandomUniformInt<int16_t>(&rng));
+      break;
+    case QLValuePB::kInt32Value:
+      result.set_int32_value(RandomUniformInt<int32_t>(&rng));
+      break;
+    case QLValuePB::kInt64Value:
+      result.set_int64_value(RandomUniformInt<int64_t>(&rng));
+      break;
+    case QLValuePB::kFloatValue:
+      result.set_float_value(RandomUniformReal<float>(&rng));
+      break;
+    case QLValuePB::kDoubleValue:
+      result.set_double_value(RandomUniformReal<double>(&rng));
+      break;
+    case QLValuePB::kStringValue:
+      result.set_string_value(RandomHumanReadableString(
+          RandomUniformInt<size_t>(0, 10000, &rng), &rng));
+      break;
+    case QLValuePB::kBoolValue:
+      result.set_bool_value(RandomUniformBool(&rng));
+      break;
+    case QLValuePB::kTimestampValue:
+      result.set_timestamp_value(RandomUniformInt<int64_t>(&rng));
+      break;
+    case QLValuePB::kBinaryValue:
+      result.set_binary_value(RandomString(RandomUniformInt<size_t>(0, 10000, &rng), &rng));
+      break;
+    case QLValuePB::kInetaddressValue:
+      result.set_inetaddress_value(RandomString(RandomUniformBool(&rng) ? 4 : 16, &rng));
+      break;
+    case QLValuePB::kDecimalValue:
+      result.set_decimal_value(RandomString(RandomUniformInt<size_t>(1, 10000, &rng), &rng));
+      break;
+    case QLValuePB::kVarintValue:
+      result.set_varint_value(RandomString(RandomUniformInt<size_t>(1, 10000, &rng), &rng));
+      break;
+    case QLValuePB::kFrozenValue: {
+        auto len = RandomUniformInt<size_t>(0, 16, &rng);
+        auto& elems = *result.mutable_frozen_value()->mutable_elems();
+        for (size_t i = 0; i != len; ++i) {
+          elems.Add(RandomQLValuePB(rng));
+        }
+      }
+      break;
+    case QLValuePB::kUuidValue:
+      result.set_uuid_value(Uuid::Generate().AsSlice().ToBuffer());
+      break;
+    case QLValuePB::kTimeuuidValue: {
+        auto uuid = Uuid::Generate();
+        uuid.data()[6] = (boost::uuids::uuid::version_time_based << 4);
+        result.set_timeuuid_value(uuid.AsSlice().ToBuffer());
+      } break;
+    case QLValuePB::kDateValue:
+      result.set_date_value(RandomUniformInt<uint32_t>(&rng));
+      break;
+    case QLValuePB::kTimeValue:
+      result.set_time_value(RandomUniformInt<int64_t>(&rng));
+      break;
+    case QLValuePB::kUint32Value:
+      result.set_uint32_value(RandomUniformInt<uint32_t>(&rng));
+      break;
+    case QLValuePB::kUint64Value:
+      result.set_uint64_value(RandomUniformInt<uint64_t>(&rng));
+      break;
+    case QLValuePB::kVirtualValue: {
+        auto value = static_cast<QLVirtualValuePB>(RandomUniformInt(1, 6, &rng));
+        if (value == QLVirtualValuePB::TOMBSTONE) {
+          value = QLVirtualValuePB::NULL_LOW;
+        }
+        result.set_virtual_value(value);
+      } break;
+    case QLValuePB::kGinNullValue:
+      result.set_gin_null_value(RandomUniformInt<uint32_t>(1, 3, &rng));
+      break;
+    case QLValuePB::kBsonValue:
+      result.set_bson_value(RandomString(RandomUniformInt<size_t>(0, 10000, &rng), &rng));
+      break;
+    case QLValuePB::VALUE_NOT_SET:
+      break;
+    case QLValuePB::kMapValue: [[fallthrough]];
+    case QLValuePB::kSetValue: [[fallthrough]];
+    case QLValuePB::kListValue: [[fallthrough]];
+    case QLValuePB::kJsonbValue: [[fallthrough]];
+    case QLValuePB::kTupleValue:
+      break;
+  }
+  CHECK_EQ(result.value_case(), value_case);
+  return result;
+}
+
+QLValuePB RandomQLValuePB(std::mt19937_64& rng) {
+  return RandomQLValuePB(RandomValueCaseKeyType(rng), rng);
+}
+
 void EncodeAndDecode(const KeyEntryValue& primitive_value) {
   KeyBytes key_bytes = primitive_value.ToKeyBytes();
   KeyEntryValue decoded;
-  rocksdb::Slice slice = key_bytes.AsSlice();
+  auto slice = key_bytes.AsSlice();
   ASSERT_OK_PREPEND(
       decoded.DecodeFromKey(&slice),
       Substitute(
@@ -489,7 +606,7 @@ TEST(PrimitiveValueTest, TestAllTypesComparisons) {
       KeyEntryValue::MakeBson(RandomHumanReadableString(10)));
 }
 
-void ValidateEncodedKeyEntryType(const DataType& data_type) {
+void ValidateEncodedKeyEntryType(DataType data_type) {
   KeyEntryValue key_entry_value;
   switch (data_type) {
     case DataType::NULL_VALUE_TYPE:
@@ -571,6 +688,27 @@ TEST(PrimitiveValueTest, ValidateEncodedKeyEntryTypeSize) {
         ASSERT_TRUE(type_info->var_length())
             << "Fixed datatype expected varlength: " << QLType::ToCQLString(data_type);
       }
+    }
+  }
+}
+
+TEST(PrimitiveValueTest, RandomQLValuePBToKeyEntryEncoding) {
+  constexpr size_t kIterations = ReleaseVsDebugVsAsanVsTsan(100, 10, 1, 1) * 10000;
+  std::mt19937_64 rng(42);
+  KeyBytes key_bytes;
+  Arena arena;
+  for (auto i = 0; i != kIterations; ++i) {
+    if (i % 1000 == 0) {
+      LOG(INFO) << "Iteration: " << i;
+    }
+    auto value = RandomQLValuePB(rng);
+    for (auto sorting_type : SortingTypeList()) {
+      key_bytes.Clear();
+      arena.Reset(ResetMode::kKeepFirst);
+      auto key_entry_value = KeyEntryValue::FromQLValuePBForKey(value, sorting_type);
+      key_entry_value.AppendToKey(&key_bytes);
+      auto encoded_slice = EncodedKeyEntryValue(arena, value, sorting_type);
+      ASSERT_EQ(key_bytes.AsSlice(), encoded_slice) << "Value: " << AsString(value);
     }
   }
 }
