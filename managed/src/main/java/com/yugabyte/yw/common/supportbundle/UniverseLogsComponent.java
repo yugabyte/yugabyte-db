@@ -21,6 +21,7 @@ import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
@@ -109,6 +110,37 @@ class UniverseLogsComponent implements SupportBundleComponent {
     String ynpLogDir = getYnpLogDir(node.cloudInfo.private_ip);
     Map<String, Long> allFilesMap =
         getFilesListWithSizes(customer, null, universe, startDate, endDate, node);
+
+    List<String> pgUpgradeLogs = new ArrayList<>();
+    allFilesMap
+        .keySet()
+        .removeIf(
+            filePath -> {
+              if (filePath.contains("/pg_upgrade_data/")
+                  || filePath.contains("/pg_upgrade_data_")) {
+                pgUpgradeLogs.add(filePath);
+                return true;
+              }
+              return false;
+            });
+
+    if (!pgUpgradeLogs.isEmpty()) {
+      List<String> relativePaths =
+          pgUpgradeLogs.stream()
+              .map(filePath -> Paths.get(mountPath).relativize(Paths.get(filePath)).toString())
+              .collect(Collectors.toList());
+      supportBundleUtil.downloadNodeLevelComponent(
+          universeInfoHandler,
+          customer,
+          universe,
+          bundlePath,
+          node,
+          mountPath,
+          relativePaths,
+          this.getClass().getSimpleName(),
+          false);
+    }
+
     // Collect YNP log file if present.
     if (ynpLogDir != null) {
       String ynpLogPath = ynpLogDir + "/" + YNP_LOG_FILE;
@@ -296,20 +328,79 @@ class UniverseLogsComponent implements SupportBundleComponent {
 
     // Collect YNP logs as part of this component.
     String ynpLogDir = getYnpLogDir(node.cloudInfo.private_ip);
-    if (ynpLogDir == null) {
+    if (ynpLogDir != null) {
+      Map<String, Long> ynpLogDirFiles =
+          nodeUniverseManager.getNodeFilePathAndSizes(
+              node, universe, ynpLogDir, /* maxDepth */ 1, /* fileType */ "f");
+      String ynpLogPath = ynpLogDir + "/" + YNP_LOG_FILE;
+      if (ynpLogDirFiles.containsKey(ynpLogPath)) {
+        finalMap.put(ynpLogPath, ynpLogDirFiles.get(ynpLogPath));
+      }
+    } else {
       log.warn(
           "Skipping YNP logs collection on node {} as location cannot be determined.",
           node.nodeName);
-      return finalMap;
     }
 
-    Map<String, Long> ynpLogDirFiles =
-        nodeUniverseManager.getNodeFilePathAndSizes(
-            node, universe, ynpLogDir, /* maxDepth */ 1, /* fileType */ "f");
-    String ynpLogPath = ynpLogDir + "/" + YNP_LOG_FILE;
-    if (ynpLogDirFiles.containsKey(ynpLogPath)) {
-      finalMap.put(ynpLogPath, ynpLogDirFiles.get(ynpLogPath));
+    String masterInitdbPath = nodeHomeDir + "/master/logs/initdb.log";
+    if (nodeUniverseManager.checkNodeIfFileExists(node, universe, masterInitdbPath)) {
+      Map<String, Long> masterFiles =
+          nodeUniverseManager.getNodeFilePathAndSizes(
+              node, universe, nodeHomeDir + "/master/logs", 1, "f");
+      if (masterFiles.containsKey(masterInitdbPath)) {
+        finalMap.put(masterInitdbPath, masterFiles.get(masterInitdbPath));
+      }
     }
+
+    String tserverInitdbPath = nodeHomeDir + "/tserver/logs/initdb.log";
+    if (nodeUniverseManager.checkNodeIfFileExists(node, universe, tserverInitdbPath)) {
+      Map<String, Long> tserverFiles =
+          nodeUniverseManager.getNodeFilePathAndSizes(
+              node, universe, nodeHomeDir + "/tserver/logs", 1, "f");
+      if (tserverFiles.containsKey(tserverInitdbPath)) {
+        finalMap.put(tserverInitdbPath, tserverFiles.get(tserverInitdbPath));
+      }
+    }
+
+    if (nodeUniverseManager.checkNodeIfFileExists(node, universe, mountPath)) {
+      Map<String, Long> mountPathDirs =
+          nodeUniverseManager.getNodeFilePathAndSizes(node, universe, mountPath, 1, "d");
+
+      List<String> pgUpgradeBasePaths = new ArrayList<>();
+      for (String dirPath : mountPathDirs.keySet()) {
+        String dirName =
+            dirPath.startsWith("/") ? dirPath : Paths.get(mountPath, dirPath).toString();
+        if (dirName.contains("pg_upgrade_data")) {
+          String outputDir = dirName + "/pg_upgrade_output.d";
+          if (nodeUniverseManager.checkNodeIfFileExists(node, universe, outputDir)) {
+            pgUpgradeBasePaths.add(outputDir);
+          }
+        }
+      }
+
+      for (String pgUpgradeBasePath : pgUpgradeBasePaths) {
+        Map<String, Long> allEntriesInPgUpgrade =
+            nodeUniverseManager.getNodeFilePathAndSizes(node, universe, pgUpgradeBasePath, 1, "d");
+
+        List<String> timestampDirs = new ArrayList<>();
+        for (String dirName : allEntriesInPgUpgrade.keySet()) {
+          if (!dirName.equals(pgUpgradeBasePath)) {
+            String fullPath = dirName.startsWith("/") ? dirName : pgUpgradeBasePath + "/" + dirName;
+            timestampDirs.add(fullPath.replaceAll("/+$", ""));
+          }
+        }
+
+        for (String timestampDirPath : timestampDirs) {
+          String logPath = timestampDirPath + "/log";
+          if (nodeUniverseManager.checkNodeIfFileExists(node, universe, logPath)) {
+            Map<String, Long> logFiles =
+                nodeUniverseManager.getNodeFilePathAndSizes(node, universe, logPath, 1, "f");
+            finalMap.putAll(logFiles);
+          }
+        }
+      }
+    }
+
     return finalMap;
   }
 
