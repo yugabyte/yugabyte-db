@@ -1959,6 +1959,13 @@
         "numberOfKeyspace": "Number of Keyspaces",
         "numberOfDatabase": "Number of Databases"
       },
+      "rolesConfig": {
+        "title": " Restore Roles",
+        "checkboxTitle": "Restore global roles",
+        "checkboxHelpText": "<b>Note!</b> If selected, all the global roles in the target universe will be restored.",
+        "checkboxHelpText2": "<b>Note!</b> If selected, the restore will fail as the roleis already in the target database, else the role will not be restored.",
+        "checkboxTitle2": "Fail restore if role already exists in target database"
+      },
       "prefetch": {
         "loadingText": "Fetching Incremental Backups..."
       },

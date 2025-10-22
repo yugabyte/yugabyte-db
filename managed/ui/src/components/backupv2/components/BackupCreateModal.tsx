@@ -173,7 +173,8 @@ const initialValues = {
   incremental_backup_frequency: 1,
   incremental_backup_frequency_type: INCREMENTAL_BACKUP_DURATION_OPTIONS[1],
   isTableByTableBackup: false,
-  useTablespaces: false
+  useTablespaces: false,
+  useRoles: false
 };
 
 export const BackupCreateModal: FC<BackupCreateModalProps> = ({
@@ -890,6 +891,24 @@ function BackupConfigurationForm({
           </Col>
         )}
       </Row>
+      
+      <Row>
+        <Col lg={12} className="no-padding tablespaces">
+          <div>Role backup options</div>
+          <Row>
+            <Col lg={12} className="no-padding">
+              <Field
+                name="useRoles"
+                component={YBCheckBox}
+                disabled={isEditMode || isIncrementalBackup}
+                checkState={values['useRoles']}
+              />
+              Backup global roles
+            </Col>
+          </Row>
+        </Col>
+      </Row>
+      
       {isScheduledBackup && !isEditBackupMode && (
         <Row>
           <div>Set backup intervals</div>
