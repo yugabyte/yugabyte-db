@@ -601,19 +601,26 @@ TEST_F(LogTest, TestLogMetrics) {
   ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(segments.size(), 1);
 
+  // Create at least 3 segments.
   while (segments.size() < 3) {
     ASSERT_OK(AppendNoOps(&op_id, kNumEntriesPerBatch));
     // Update the segments
     ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
   }
 
+  uint64_t metrics_wal_size = log_->metrics_->wal_size->value();
+  uint64_t real_wal_size = 0;
+
+  for (const scoped_refptr<ReadableLogSegment>& segment : segments) {
+    struct stat st;
+    ASSERT_EQ(stat(segment->path().c_str(), &st), 0);
+    uint64_t size_on_disk = st.st_size;
+    real_wal_size += size_on_disk;
+    LOG(INFO) << "Log size: " << size_on_disk << ", path: " << segment->path();
+  }
+
   ASSERT_OK(log_->Close());
-
-  int64_t wal_size_old = log_->metrics_->wal_size->value();
-  BuildLog();
-  int64_t wal_size_new = log_->metrics_->wal_size->value();
-
-  ASSERT_EQ(wal_size_old, wal_size_new);
+  ASSERT_EQ(real_wal_size, metrics_wal_size);
 }
 
 // Verify presence of min_start_time_running_txns in footer of closed segments.

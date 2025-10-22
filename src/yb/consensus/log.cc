@@ -753,11 +753,14 @@ Status Log::Init() {
     // In case where TServer process reboots, we need to reload the wal file size into the metric,
     // otherwise we do nothing
     if (metrics_ && metrics_->wal_size->value() == 0) {
-      std::for_each(segments.begin(), segments.end(),
-                    [this](const auto& segment) {
-                    this->metrics_->wal_size->IncrementBy(segment->file_size());});
+      for (const auto& segment : segments) {
+        int64_t size = segment->file_size();
+        this->metrics_->wal_size->IncrementBy(size);
+        VLOG_WITH_PREFIX(4)
+            << "Incremented wal size by " << size
+            << " to " << this->metrics_->wal_size->value();
+      }
     }
-
   }
 
   if (durable_wal_write_) {
@@ -816,9 +819,6 @@ Status Log::CloseCurrentSegment() {
                                                            &footer_builder_);
   }
 
-  if (status.ok() && metrics_) {
-      metrics_->wal_size->IncrementBy(active_segment_->Size());
-  }
   return status;
 }
 
@@ -987,17 +987,23 @@ Status Log::DoAppend(LogEntryBatch* entry_batch, SkipWalWrite skip_wal_write) {
     }
 
     // If the size of this entry overflows the current segment, get a new one.
+    bool segment_will_overflow =
+      active_segment_->Size() + entry_batch_bytes + kEntryHeaderSize > cur_max_segment_size_;
     if (allocation_state() == SegmentAllocationState::kAllocationNotStarted) {
-      if (active_segment_->Size() + entry_batch_bytes + kEntryHeaderSize > cur_max_segment_size_) {
+      if (segment_will_overflow) {
         LOG_WITH_PREFIX(INFO) << "Max segment size " << cur_max_segment_size_ << " reached. "
                               << "Starting new segment allocation.";
         RETURN_NOT_OK(AsyncAllocateSegment());
         if (!options_.async_preallocate_segments) {
           RETURN_NOT_OK(RollOver());
+          // Rollover prevents potential overflow.
+          segment_will_overflow = false;
         }
       }
     } else if (allocation_state() == SegmentAllocationState::kAllocationFinished) {
       RETURN_NOT_OK(RollOver());
+      // Rollover prevents potential overflow.
+      segment_will_overflow = false;
     } else {
       VLOG_WITH_PREFIX(1) << "Segment allocation already in progress...";
     }
@@ -1014,6 +1020,19 @@ Status Log::DoAppend(LogEntryBatch* entry_batch, SkipWalWrite skip_wal_write) {
 
     if (metrics_) {
       metrics_->bytes_logged->IncrementBy(active_segment_->written_offset() - start_offset);
+      VLOG_WITH_PREFIX(4) << "Total bytes logged: " << metrics_->bytes_logged->value();
+
+      // Check if append grew log file beyond pre-allocated size.
+      if (segment_will_overflow) {
+        int64_t size_on_disk = VERIFY_RESULT(active_segment_->SizeOnDisk());
+        if (size_on_disk != active_segment_ondisk_size_) {
+          metrics_->wal_size->IncrementBy(size_on_disk - active_segment_ondisk_size_);
+          VLOG_WITH_PREFIX(4)
+              << "Incremented wal size by " << (size_on_disk - active_segment_ondisk_size_)
+              << " to " << metrics_->wal_size->value();
+          active_segment_ondisk_size_ = size_on_disk;
+        }
+      }
     }
 
     // Populate the offset and sequence number for the entry batch if we did a WAL write.
@@ -1613,6 +1632,9 @@ Status Log::GC(int64_t min_op_idx, int32_t* num_gced) {
 
       if (metrics_) {
         metrics_->wal_size->IncrementBy(-1 * segment->file_size());
+        VLOG_WITH_PREFIX(4)
+            << "Decremented wal size by " << segment->file_size()
+            << " to " << metrics_->wal_size->value();
       }
     }
 
@@ -2054,6 +2076,17 @@ Status Log::SwitchToAllocatedSegment() {
       read_wal_mem_tracker_));
   RETURN_NOT_OK(readable_segment->Init(header, new_segment->first_entry_offset()));
   RETURN_NOT_OK(reader_->AppendEmptySegment(readable_segment));
+
+  if (metrics_) {
+    // Add the pre-allocated segment size to metric.
+    int64_t segment_size = VERIFY_RESULT(new_segment->SizeOnDisk());
+    metrics_->wal_size->IncrementBy(segment_size);
+    active_segment_ondisk_size_ = segment_size;
+    VLOG_WITH_PREFIX(4)
+        << "Incremented wal size by " << segment_size
+        << " to " << metrics_->wal_size->value();
+  }
+
   // Now set 'active_segment_' to the new segment.
   {
     std::lock_guard lock(active_segment_mutex_);
@@ -2082,6 +2115,17 @@ Status Log::ReplaceSegmentInReaderUnlocked() {
   RETURN_NOT_OK(readable_segment->Init(active_segment_->header(),
                                        active_segment_->footer(),
                                        active_segment_->first_entry_offset()));
+
+  if (metrics_) {
+    // The log may grow or truncate during close, hence update the log size metric before switching
+    // to the new segment.
+    int64_t size_on_disk = readable_segment->file_size();
+    metrics_->wal_size->IncrementBy(size_on_disk - active_segment_ondisk_size_);
+    VLOG_WITH_PREFIX(4)
+        << "Incremented wal size by " << (size_on_disk - active_segment_ondisk_size_)
+        << " to " << metrics_->wal_size->value();
+    active_segment_ondisk_size_ = 0;
+  }
 
   return reader_->ReplaceLastSegment(readable_segment);
 }

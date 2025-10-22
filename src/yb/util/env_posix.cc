@@ -255,6 +255,16 @@ static Status DoOpen(const string& filename, Env::CreateMode mode, int* fd, int 
   return Status::OK();
 }
 
+// Get logical on-disk file size using file descriptor.
+Result<uint64_t> GetLogicalFileSize(int fd, const string& filename) {
+  ThreadRestrictions::AssertIOAllowed();
+  struct stat st;
+  if (fstat(fd, &st) == -1) {
+    return STATUS_IO_ERROR(filename, errno);
+  }
+  return st.st_size;
+}
+
 template <class Extractor>
 Result<uint64_t> GetFileStat(const std::string& fname, const char* event, Extractor extractor) {
   TRACE_EVENT1("io", event, "path", fname);
@@ -454,6 +464,11 @@ class PosixWritableFile : public WritableFile {
 
   uint64_t Size() const override {
     return filesize_;
+  }
+
+  Result<uint64_t> SizeOnDisk() const override {
+    TRACE_EVENT1("io", "PosixWritableFile::SizeOnDisk", "path", filename_);
+    return GetLogicalFileSize(fd_, filename_);
   }
 
   const string& filename() const override { return filename_; }
@@ -922,15 +937,9 @@ class PosixRWFile final : public RWFile {
     return s;
   }
 
-  Status Size(uint64_t* size) const override {
+  Result<uint64_t> Size() const override {
     TRACE_EVENT1("io", "PosixRWFile::Size", "path", filename_);
-    ThreadRestrictions::AssertIOAllowed();
-    struct stat st;
-    if (fstat(fd_, &st) == -1) {
-      return STATUS_IO_ERROR(filename_, errno);
-    }
-    *size = st.st_size;
-    return Status::OK();
+    return GetLogicalFileSize(fd_, filename_);
   }
 
   const string& filename() const override {
