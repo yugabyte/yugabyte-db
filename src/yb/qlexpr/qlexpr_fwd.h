@@ -21,7 +21,6 @@ namespace yb::qlexpr {
 
 class IndexInfo;
 class IndexMap;
-class PgsqlScanSpec;
 class QLExprExecutor;
 class QLTableRow;
 class QLResultSet;

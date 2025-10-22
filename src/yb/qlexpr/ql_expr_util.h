@@ -13,17 +13,31 @@
 
 #pragma once
 
-#include "yb/dockv/key_entry_value.h"
+#include <google/protobuf/repeated_ptr_field.h>
+
+#include "yb/dockv/dockv_fwd.h"
 
 #include "yb/util/memory/arena_list.h"
 
 namespace yb::qlexpr {
 
-Result<std::vector<dockv::KeyEntryValue>> InitKeyColumnPrimitiveValues(
-    const google::protobuf::RepeatedPtrField<PgsqlExpressionPB> &column_values,
-    const Schema &schema, size_t start_idx);
+Result<std::vector<dockv::KeyEntryValue>> InitKeyColumnValues(
+    const google::protobuf::RepeatedPtrField<PgsqlExpressionPB>& column_values,
+    const Schema& schema, size_t start_idx);
 
-Result<std::vector<dockv::KeyEntryValue>> InitKeyColumnPrimitiveValues(
+Result<std::vector<dockv::KeyEntryValue>> InitKeyColumnValues(
     const ArenaList<LWPgsqlExpressionPB> &column_values, const Schema &schema, size_t start_idx);
+
+Result<std::vector<Slice>> InitKeyColumnValueSlices(
+    Arena& arena,
+    const google::protobuf::RepeatedPtrField<PgsqlExpressionPB>& column_values,
+    const Schema& schema,
+    size_t start_idx);
+
+Result<std::vector<Slice>> InitKeyColumnValueSlices(
+    Arena& arena,
+    const ArenaList<LWPgsqlExpressionPB>& column_values,
+    const Schema &schema,
+    size_t start_idx);
 
 }  // namespace yb::qlexpr

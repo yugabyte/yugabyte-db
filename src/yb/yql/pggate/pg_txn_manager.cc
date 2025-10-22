@@ -255,6 +255,10 @@ PgTxnManager::PgTxnManager(
       pg_callbacks_(pg_callbacks),
       enable_table_locking_(enable_table_locking) {}
 
+bool PgTxnManager::EnableTableLocking() const {
+  return enable_table_locking_ && enable_object_locking_infra;
+}
+
 PgTxnManager::~PgTxnManager() {
   // Abort the transaction before the transaction manager gets destroyed.
   WARN_NOT_OK(
@@ -393,15 +397,16 @@ Status PgTxnManager::CalculateIsolation(
     return RecreateTransaction(SavePriority::kFalse);
   }
 
-  if (!read_only_op)
+  if (!read_only_op && !is_local_object_lock_op) {
     has_writes_ = true;
+  }
 
   // Force use of a docdb distributed txn for YSQL read only transactions involving savepoints when
   // object locking feature is enabled (only for isolation != read committed case).
   //
   // TODO(table-locks): Need to explicitly handle READ_COMMITTED case since YSQL internally bumps up
   // subtxn id for every statement. Else, every RC read-only txn would burn a docdb txn.
-  if (PREDICT_FALSE(enable_table_locking_) && active_sub_transaction_id_ > kMinSubTransactionId &&
+  if (PREDICT_FALSE(EnableTableLocking()) && active_sub_transaction_id_ > kMinSubTransactionId &&
       pg_isolation_level_ != PgIsolationLevel::READ_COMMITTED) {
     read_only_op = false;
   }
@@ -565,7 +570,7 @@ Status PgTxnManager::FinishPlainTransaction(
   }
 
   const auto is_read_only = isolation_level_ == IsolationLevel::NON_TRANSACTIONAL;
-  if (is_read_only && !PREDICT_FALSE(enable_table_locking_)) {
+  if (is_read_only && !PREDICT_FALSE(EnableTableLocking())) {
     VLOG_TXN_STATE(2) << "This was a read-only transaction, nothing to commit.";
     ResetTxnAndSession();
     return Status::OK();
@@ -942,7 +947,7 @@ Status PgTxnManager::RollbackToSubTransaction(
     return Status::OK();
   }
   if (isolation_level_ == IsolationLevel::NON_TRANSACTIONAL &&
-      !PREDICT_FALSE(enable_table_locking_)) {
+      !PREDICT_FALSE(EnableTableLocking())) {
     VLOG(4) << "This isn't a distributed transaction, so nothing to rollback.";
     return Status::OK();
   }
@@ -970,14 +975,15 @@ bool PgTxnManager::TryAcquireObjectLock(
 
 Status PgTxnManager::AcquireObjectLock(
     SetupPerformOptionsAccessorTag tag,
-    const YbcObjectLockId& lock_id, YbcObjectLockMode mode) {
+    const YbcObjectLockId& lock_id, YbcObjectLockMode mode,
+    std::optional<PgTablespaceOid> tablespace_oid) {
   RETURN_NOT_OK(CalculateIsolation(
       false /* read_only, doesn't matter */,
       GetTxnPriorityRequirement(RowMarkType::ROW_MARK_ABSENT),
       IsLocalObjectLockOp(mode <= YbcObjectLockMode::YB_OBJECT_ROW_EXCLUSIVE_LOCK)));
   tserver::PgPerformOptionsPB options;
   RETURN_NOT_OK(SetupPerformOptions(tag, &options));
-  RETURN_NOT_OK(client_->AcquireObjectLock(&options, lock_id, mode));
+  RETURN_NOT_OK(client_->AcquireObjectLock(&options, lock_id, mode, tablespace_oid));
   DEBUG_ONLY(DEBUG_UpdateLastObjectLockingInfo());
   return Status::OK();
 }

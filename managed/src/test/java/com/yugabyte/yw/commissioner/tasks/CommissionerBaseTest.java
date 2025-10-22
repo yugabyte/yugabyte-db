@@ -401,7 +401,13 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     lenient()
         .when(
             cloudAPI.createCapacityReservation(
-                any(), anyString(), anyString(), anyString(), anyString(), any(Integer.class)))
+                any(),
+                anyString(),
+                anyString(),
+                anyString(),
+                anyString(),
+                any(Integer.class),
+                any()))
         .thenAnswer(
             invocation -> {
               String reservationName = invocation.getArgument(1);
@@ -1097,7 +1103,13 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                         Mockito.eq(zoneData.region),
                         Mockito.eq("az-" + zone),
                         Mockito.eq(instanceType),
-                        Mockito.eq(Integer.valueOf(zoneData.nodes.size())));
+                        Mockito.eq(Integer.valueOf(zoneData.nodes.size())),
+                        Mockito.eq(
+                            Map.of(
+                                "universe-name",
+                                "universe-test",
+                                "universe-uuid",
+                                universeUUID.toString())));
 
                 verify(cloudAPI)
                     .deleteCapacityReservation(

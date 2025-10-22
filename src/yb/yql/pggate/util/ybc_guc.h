@@ -175,6 +175,7 @@ extern char* yb_default_replica_identity;
  */
 extern bool yb_enable_consistent_replication_from_hash_range;
 
+extern bool enable_object_locking_infra;
 /*
  * xcluster consistency level
  */

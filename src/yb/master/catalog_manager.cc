@@ -602,12 +602,15 @@ DEFINE_RUNTIME_AUTO_bool(enable_tablespace_based_transaction_placement, kLocalPe
                          false, true,
                          "Enable support for tablespace-based transaction locality.");
 
+DEFINE_test_flag(bool, fail_yugabyte_namespace_creation_on_second_attempt, false,
+    "Fail CopyPgsqlSysTables for yugabyte database on the second creation attempt "
+    "to simulate failure during pg_restore phase of YSQL major upgrade");
+
 DECLARE_bool(enable_pg_cron);
 DECLARE_bool(enable_truncate_cdcsdk_table);
 DECLARE_bool(ysql_yb_enable_replica_identity);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 DECLARE_bool(TEST_ysql_yb_enable_ddl_savepoint_support);
-
 namespace yb::master {
 
 using std::shared_ptr;
@@ -3631,14 +3634,32 @@ Status CatalogManager::GetYsqlCatalogConfig(const GetYsqlCatalogConfigRequestPB*
                                             rpc::RpcContext* rpc) {
   VLOG(1) << "GetYsqlCatalogConfig request: " << req->ShortDebugString();
   if (PREDICT_FALSE(FLAGS_TEST_get_ysql_catalog_version_from_sys_catalog)) {
-    uint64_t catalog_version;
-    uint64_t last_breaking_version;
-    RETURN_NOT_OK(GetYsqlCatalogVersion(&catalog_version, &last_breaking_version));
+    uint64_t catalog_version = 0;
+    RETURN_NOT_OK(GetYsqlCatalogVersion(&catalog_version, nullptr /* last_breaking_version */));
     resp->set_version(catalog_version);
     return Status::OK();
   }
 
-  resp->set_version(ysql_manager_->GetYsqlCatalogVersion());
+  // Use new API with YSQL DB Name only with ysql_enable_db_catalog_version_mode = true.
+  // Use old API without YSQL DB Name only with ysql_enable_db_catalog_version_mode = false.
+  SCHECK_EQ(
+      FLAGS_ysql_enable_db_catalog_version_mode, req->has_namespace_(), IllegalState,
+      Format("Invalid per-database catalog version mode = $0",
+             FLAGS_ysql_enable_db_catalog_version_mode));
+
+  if (!req->has_namespace_()) {
+    LOG(WARNING) << "Called deprecated version of " << __func__
+                 << " without DB. Use per-db version. Request PB: " << req->ShortDebugString();
+    resp->set_version(ysql_manager_->GetYsqlCatalogVersion());
+    return Status::OK();
+  }
+
+  auto ns = VERIFY_RESULT(FindNamespace(req->namespace_()));
+  const uint32_t db_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(ns->id()));
+  uint64_t catalog_version = 0;
+  RETURN_NOT_OK(GetYsqlDBCatalogVersion(
+      db_oid, &catalog_version, nullptr /* last_breaking_version */));
+  resp->set_version(catalog_version);
   return Status::OK();
 }
 
@@ -3647,6 +3668,16 @@ Status CatalogManager::CopyPgsqlSysTables(const NamespaceInfo& ns,
                                           const LeaderEpoch& epoch) {
   if (tables.empty()) {
     return Status::OK();
+  }
+  if (FLAGS_TEST_fail_yugabyte_namespace_creation_on_second_attempt && ns.name() == "yugabyte") {
+    static int32_t attempt = 0;
+    attempt++;
+    LOG(INFO) << "TEST: yugabyte namespace creation attempt #" << attempt;
+
+    if (attempt == 2) {
+      LOG(INFO) << "TEST: Injecting failure on yugabyte creation attempt 2";
+      return STATUS(InternalError, "TEST: Injected CopyPgsqlSysTables failure for yugabyte");
+    }
   }
   const uint32_t database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(ns.id()));
   vector<TableId> source_table_ids;
@@ -8981,9 +9012,12 @@ void CatalogManager::ProcessPendingNamespace(
     // Do not set on-disk state here. The loader treats the PREPARING state as FAILED.
     if (ysql_manager_->IsMajorUpgradeInProgress()) {
       metadata.set_ysql_next_major_version_state(SysNamespaceEntryPB::NEXT_VER_FAILED);
-    } else {
-      metadata.set_state(SysNamespaceEntryPB::FAILED);
+      ns_write_lock.Commit();
+      // During a major version upgrade, we must not remove the namespace from the in-memory maps,
+      // so return early.
+      return;
     }
+    metadata.set_state(SysNamespaceEntryPB::FAILED);
     ns_write_lock.Commit();
     LOG(WARNING) << status.ToString();
     LockGuard lock(mutex_);

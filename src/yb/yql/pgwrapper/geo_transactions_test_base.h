@@ -91,7 +91,7 @@ class GeoTransactionsTestBase : public pgwrapper::PgMiniTestBase {
   void ValidateAllTabletLeaderInZone(std::vector<TabletId> tablet_uuids, int region);
   bool AllTabletLeaderInZone(std::vector<TabletId> tablet_uuids, int region);
 
-  Status WarmupTablespaceCache(pgwrapper::PGConn& conn, std::string_view table);
+  static Status WarmupTablespaceCache(pgwrapper::PGConn& conn, std::string_view table);
 
   Result<PgTablespaceOid> GetTablespaceOid(std::string_view tablespace) const;
   Result<PgTablespaceOid> GetTablespaceOidForRegion(int region) const;

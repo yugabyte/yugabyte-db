@@ -493,12 +493,10 @@ class PgClient::Impl : public BigDataFetcher {
  public:
   Impl(
       std::reference_wrapper<const WaitEventWatcher> wait_event_watcher,
-      std::atomic<uint64_t>& next_perform_op_serial_no,
-      const TablespaceMap& tablespace_map)
+      std::atomic<uint64_t>& next_perform_op_serial_no)
     : heartbeat_poller_(std::bind(&Impl::Heartbeat, this, false)),
       wait_event_watcher_(wait_event_watcher),
-      next_perform_op_serial_no_(next_perform_op_serial_no),
-      tablespace_map_(tablespace_map) {
+      next_perform_op_serial_no_(next_perform_op_serial_no) {
     tablet_server_count_cache_.fill(0);
   }
 
@@ -560,7 +558,10 @@ class PgClient::Impl : public BigDataFetcher {
     proxy_->HeartbeatAsync(
         req, &heartbeat_resp_, PrepareHeartbeatController(),
         [this, create] {
-      auto status = ResponseStatus(heartbeat_resp_);
+      auto status = heartbeat_controller_.status();
+      if (status.ok()) {
+        status = ResponseStatus(heartbeat_resp_);;
+      }
       if (create) {
         if (!status.ok()) {
           create_session_promise_.set_value(status);
@@ -924,24 +925,18 @@ class PgClient::Impl : public BigDataFetcher {
 
   Status AcquireObjectLock(
       tserver::PgPerformOptionsPB* options, const YbcObjectLockId& lock_id,
-      YbcObjectLockMode mode) {
+      YbcObjectLockMode mode, std::optional<PgTablespaceOid> tablespace_oid) {
     object_locks_arena_.Reset(ResetMode::kKeepLast);
     tserver::LWPgAcquireObjectLockRequestPB req(&object_locks_arena_);
     req.set_session_id(session_id_);
     *req.mutable_options() = std::move(*options);
-    auto* lock_oid = req.mutable_lock_oid();
-    lock_oid->set_database_oid(lock_id.db_oid);
-    lock_oid->set_relation_oid(lock_id.relation_oid);
-    lock_oid->set_object_oid(lock_id.object_oid);
-    lock_oid->set_object_sub_oid(lock_id.object_sub_oid);
-    if (lock_id.relation_oid >= kPgFirstNormalObjectId) {
-      auto tablespace_itr = tablespace_map_.find(PgObjectId(lock_id.db_oid, lock_id.relation_oid));
-      if (tablespace_itr == tablespace_map_.end()) {
-        LOG(WARNING) << "Tablespace not found for db_oid=" << lock_id.db_oid
-                     << " relation_oid=" << lock_id.relation_oid;
-      } else {
-        lock_oid->set_tablespace_oid(tablespace_itr->second);
-      }
+    auto& lock_oid = *req.mutable_lock_oid();
+    lock_oid.set_database_oid(lock_id.db_oid);
+    lock_oid.set_relation_oid(lock_id.relation_oid);
+    lock_oid.set_object_oid(lock_id.object_oid);
+    lock_oid.set_object_sub_oid(lock_id.object_sub_oid);
+    if (tablespace_oid) {
+      lock_oid.set_tablespace_oid(*tablespace_oid);
     }
     req.set_lock_type(static_cast<tserver::ObjectLockMode>(mode));
 
@@ -1755,8 +1750,6 @@ class PgClient::Impl : public BigDataFetcher {
   InterprocessMappedRegion big_mapped_region_;
   ThreadSafeArena object_locks_arena_;
   std::atomic<uint64_t>& next_perform_op_serial_no_;
-
-  const TablespaceMap& tablespace_map_;
 };
 
 std::string DdlMode::ToString() const {
@@ -1774,9 +1767,8 @@ void DdlMode::ToPB(tserver::PgFinishTransactionRequestPB_DdlModePB* dest) const 
 
 PgClient::PgClient(
     std::reference_wrapper<const WaitEventWatcher> wait_event_watcher,
-    std::atomic<uint64_t>& seq_number,
-    const TablespaceMap& tablespace_map)
-    : impl_(new Impl(wait_event_watcher, seq_number, tablespace_map)) {}
+    std::atomic<uint64_t>& seq_number)
+    : impl_(new Impl(wait_event_watcher, seq_number)) {}
 
 PgClient::~PgClient() = default;
 
@@ -1959,14 +1951,15 @@ PerformResultFuture PgClient::PerformAsync(
 }
 
 bool PgClient::TryAcquireObjectLockInSharedMemory(
-    SubTransactionId subtxn_id, const YbcObjectLockId& lock_id,
+    SubTransactionId subtxn_id, const YbcObjectLockId& pg_lock_id,
     docdb::ObjectLockFastpathLockType lock_type) {
-  return impl_->TryAcquireObjectLockInSharedMemory(subtxn_id, lock_id, lock_type);
+  return impl_->TryAcquireObjectLockInSharedMemory(subtxn_id, pg_lock_id, lock_type);
 }
 
 Status PgClient::AcquireObjectLock(
-    tserver::PgPerformOptionsPB* options, const YbcObjectLockId& lock_id, YbcObjectLockMode mode) {
-  return impl_->AcquireObjectLock(options, lock_id, mode);
+    tserver::PgPerformOptionsPB* options, const YbcObjectLockId& lock_id, YbcObjectLockMode mode,
+    std::optional<PgTablespaceOid> tablespace_oid) {
+  return impl_->AcquireObjectLock(options, lock_id, mode, tablespace_oid);
 }
 
 Result<bool> PgClient::CheckIfPitrActive() {

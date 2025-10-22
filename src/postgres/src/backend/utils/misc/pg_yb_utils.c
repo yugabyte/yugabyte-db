@@ -2685,6 +2685,8 @@ YBAddDdlTxnState(YbDdlMode mode)
 	 */
 	if (ddl_transaction_state.use_regular_txn_block)
 	{
+		elog(DEBUG3, "YBAddDdlTxnState: adding mode = %d", mode);
+
 		/*
 		 * We can arrive here in two cases:
 		 * 1. When there has been a DDL statement before in the transaction
@@ -2717,6 +2719,8 @@ YBAddDdlTxnState(YbDdlMode mode)
 	HandleYBStatus(YBCPgSetDdlStateInPlainTransaction());
 	ddl_transaction_state.use_regular_txn_block = true;
 	ddl_transaction_state.catalog_modification_aspects.pending |= mode;
+	YbMaybeLockMasterCatalogVersion();
+	elog(DEBUG3, "YBAddDdlTxnState: new DDL in txn block, mode = %d", mode);
 }
 
 void
@@ -4331,7 +4335,6 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 									 " React with thumbs up to raise its priority.")));
 
 				YBAddDdlTxnState(ddl_mode.value);
-				YbMaybeLockMasterCatalogVersion();
 			}
 
 			if (YbShouldIncrementLogicalClientVersion(pstmt) &&
@@ -6637,7 +6640,7 @@ YbRegisterSysTableForPrefetching(int sys_table_id)
 			}
 	}
 
-	if (!*YBCGetGFlags()->ysql_minimal_catalog_caches_preload)
+	if (!YbUseMinimalCatalogCachesPreload())
 		sys_only_filter_attr = InvalidAttrNumber;
 
 	YBCRegisterSysTableForPrefetching(db_id, sys_table_id, sys_table_index_id,
@@ -7808,7 +7811,7 @@ YbCalculateTimeDifferenceInMicros(TimestampTz yb_start_time)
 static bool
 YbIsDDLOrInitDBMode()
 {
-	return YBCPgIsDdlMode() || YBCIsInitDbModeEnvVarSet();
+	return (YBCPgIsDdlMode() && !YBCPgIsDdlModeWithRegularTransactionBlock()) || YBCIsInitDbModeEnvVarSet();
 }
 
 bool
@@ -8124,7 +8127,7 @@ YbInvalidationMessagesTableExists()
 }
 
 bool		yb_is_calling_internal_sql_for_ddl = false;
-
+bool		yb_is_internal_connection = false;
 char *
 YbGetPotentiallyHiddenOidText(Oid oid)
 {
@@ -8257,6 +8260,24 @@ YbUseTserverResponseCacheForAuth(uint64_t shared_catalog_version)
 	if (shared_catalog_version == YB_CATCACHE_VERSION_UNINITIALIZED)
 		return false;
 	return true;
+}
+
+bool
+YbCatalogPreloadRequired()
+{
+	return YbNeedAdditionalCatalogTables() || !*YBCGetGFlags()->ysql_use_relcache_file;
+}
+
+bool
+YbUseMinimalCatalogCachesPreload()
+{
+	if (*YBCGetGFlags()->ysql_minimal_catalog_caches_preload)
+		return true;
+	if (YbNeedAdditionalCatalogTables())
+		return false;
+	if (yb_is_internal_connection)
+		return true;
+	return false;
 }
 
 /* Comparison function for sorting strings in a List */

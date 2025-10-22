@@ -217,7 +217,7 @@ class LockablePgClientSession {
         lifetime_(lifetime), expiration_(NewExpiration()) {
   }
 
-  Status StartExchange(const std::string& instance_id, ThreadPool& thread_pool) {
+  Status StartExchange(const std::string& instance_id, YBThreadPool& thread_pool) {
     shared_mem_manager_ = VERIFY_RESULT(PgSessionSharedMemoryManager::Make(
         instance_id, id(), Create::kTrue));
     session_.SetupSharedObjectLocking(shared_mem_manager_.object_locking_data());
@@ -667,12 +667,12 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     resp->set_session_id(session_id);
     if (FLAGS_pg_client_use_shared_memory) {
       std::call_once(exchange_thread_pool_once_flag_, [this] {
-        CHECK_OK(ThreadPoolBuilder("shmem_exchange")
-                     .set_min_threads(1)
-                     .unlimited_threads()
-                     .set_idle_timeout(FLAGS_shmem_exchange_idle_timeout_ms * 1ms)
-                     .set_max_queue_size(0)
-                     .Build(&exchange_thread_pool_));
+        exchange_thread_pool_ = std::make_unique<YBThreadPool>(ThreadPoolOptions {
+          .name = "shmem_exchange",
+          .max_workers = ThreadPoolOptions::kUnlimitedWorkersWithoutQueue,
+          .min_workers = 1,
+          .idle_timeout = MonoDelta::FromMilliseconds(FLAGS_shmem_exchange_idle_timeout_ms),
+        });
       });
       auto status = session_info->session().StartExchange(instance_id_, *exchange_thread_pool_);
       if (status.ok()) {
@@ -909,7 +909,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
       PgGetCatalogMasterVersionResponsePB* resp,
       rpc::RpcContext* context) {
     uint64_t version;
-    RETURN_NOT_OK(client().GetYsqlCatalogMasterVersion(&version));
+    RETURN_NOT_OK(client().DEPRECATED_GetYsqlCatalogMasterVersion(&version));
     resp->set_version(version);
     return Status::OK();
   }
@@ -2570,7 +2570,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
   }
 
   Result<SessionInfoPtr> GetSessionInfo(uint64_t session_id) {
-    DCHECK_NE(session_id, 0);
+    RSTATUS_DCHECK_NE(session_id, static_cast<uint64_t>(0), InvalidArgument, "Bad session id");
     SharedLock lock(mutex_);
     auto it = sessions_.find(session_id);
     if (PREDICT_FALSE(it == sessions_.end())) {
@@ -2761,7 +2761,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
 
   const std::string instance_id_;
   std::once_flag exchange_thread_pool_once_flag_;
-  std::unique_ptr<ThreadPool> exchange_thread_pool_;
+  std::unique_ptr<YBThreadPool> exchange_thread_pool_;
 
   PgSharedMemoryPool shared_mem_pool_;
 

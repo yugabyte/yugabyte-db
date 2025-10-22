@@ -133,7 +133,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
       const YbcObjectLockId& lock_id, docdb::ObjectLockFastpathLockType lock_type);
 
   Status AcquireObjectLock(
-      SetupPerformOptionsAccessorTag tag, const YbcObjectLockId& lock_id, YbcObjectLockMode mode);
+      SetupPerformOptionsAccessorTag tag, const YbcObjectLockId& lock_id, YbcObjectLockMode mode,
+      std::optional<PgTablespaceOid> tablespace_oid);
   struct DdlState {
     bool has_docdb_schema_changes = false;
     bool force_catalog_modification = false;
@@ -153,6 +154,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
     return ScopeExit(
         [this, original_value] { is_read_time_history_cutoff_disabled_ = original_value; });
   }
+
+  bool EnableTableLocking() const;
 
  private:
   class SerialNo {
@@ -251,6 +254,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   //                 The reverse is also true: a transaction can be marked as read-only and still
   //                 have writes (before it was marked as read-only). So, no conclusion can be drawn
   //                 about the transaction's read-only status based on the has_writes_ flag.
+  //                 This flag does not include writes made for object locking.
   bool has_writes_ = false;
 
   const bool enable_table_locking_;

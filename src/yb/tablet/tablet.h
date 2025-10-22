@@ -805,9 +805,9 @@ class Tablet : public AbstractTablet,
     return additional_metadata_.erase(key);
   }
 
-  void InitRocksDBOptions(
-      rocksdb::Options* options, const std::string& log_prefix,
-      rocksdb::BlockBasedTableOptions table_options = rocksdb::BlockBasedTableOptions());
+  void InitRocksDBBaseOptions(rocksdb::Options* options);
+
+  void InitRocksDBOptions(rocksdb::Options* options, const std::string& log_prefix);
 
   TabletRetentionPolicy* RetentionPolicy() override {
     return retention_policy_.get();

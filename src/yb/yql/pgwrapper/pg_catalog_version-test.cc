@@ -1952,7 +1952,7 @@ TEST_F(PgCatalogVersionTest, DisableNopAlterRoleOptimization) {
 }
 
 TEST_F(PgCatalogVersionTest, SimulateDelayedHeartbeatResponse) {
-  RestartClusterWithDBCatalogVersionMode({"--TEST_delay_set_catalog_version_table_mode_count=30"});
+  RestartClusterWithDBCatalogVersionMode({"--TEST_delay_set_catalog_version_table_mode_count=40"});
   auto status = ResultToStatus(Connect());
   ASSERT_TRUE(status.IsNetworkError()) << status;
   ASSERT_STR_CONTAINS(status.ToString(),
@@ -3363,10 +3363,10 @@ TEST_F(PgCatalogVersionTest, InvalMessageDeltaTableLoad) {
               << ", get_schema_count_after: " << get_schema_count_after;
     if (i == 0) {
       ASSERT_EQ(open_table_count_after - open_table_count_before, 143);
-      ASSERT_EQ(get_schema_count_after - get_schema_count_before, 681);
+      ASSERT_EQ(get_schema_count_after - get_schema_count_before, 656);
     } else {
       ASSERT_EQ(open_table_count_after - open_table_count_before, 638);
-      ASSERT_EQ(get_schema_count_after - get_schema_count_before, 781);
+      ASSERT_EQ(get_schema_count_after - get_schema_count_before, 756);
     }
   }
 }
@@ -3429,7 +3429,7 @@ TEST_P(PgCatalogVersionConnManagerTest,
   auto master_read_count_after = ASSERT_RESULT(GetMasterReadRPCCount());
   LOG(INFO) << ", master_read_count_before: " << master_read_count_before
             << ", master_read_count_after: " << master_read_count_after;
-  auto expected_count = (enable_ysql_conn_mgr ? 1 : 3) * num_logical_connections + 1;
+  auto expected_count = (enable_ysql_conn_mgr ? 1 : 3) * num_logical_connections;
   ASSERT_EQ(master_read_count_after - master_read_count_before, expected_count);
 }
 
@@ -3662,7 +3662,11 @@ TEST_P(PgCatalogVersionConnManagerTest,
 
 TEST_F(PgCatalogVersionTest, NewConnectionRelCachePreloadTest) {
   // Disable auto analyze because it makes the number of the metric: RelCachePreload flaky.
-  RestartClusterWithInvalMessageEnabled({ "--ysql_enable_auto_analyze=false" });
+  // Also set ysql_enable_relcache_init_optimization=false to show concurrent new connections
+  // all trying to rebuild the relcache init file.
+  RestartClusterWithInvalMessageEnabled(
+    { "--ysql_enable_auto_analyze=false",
+      "--ysql_enable_relcache_init_optimization=false" });
   // Wait a bit for the webserver background process to get ready to serve curl request.
   SleepFor(2s);
   auto conn_yugabyte = ASSERT_RESULT(Connect());

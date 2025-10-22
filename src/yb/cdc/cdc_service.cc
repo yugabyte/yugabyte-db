@@ -4166,6 +4166,7 @@ void CDCServiceImpl::Shutdown() {
   if (!shutting_down_.Set()) {
     return;
   }
+  cdc_state_table_->Shutdown();
   if (update_peers_and_metrics_thread_) {
     update_peers_and_metrics_thread_->Join();
   }

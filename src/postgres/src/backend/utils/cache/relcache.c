@@ -118,6 +118,7 @@
 #include "utils/yb_inheritscache.h"
 #include "utils/yb_tuplecache.h"
 #include "yb/yql/pggate/ybc_gflags.h"
+#include <inttypes.h>
 
 #define RELCACHE_INIT_FILEMAGIC		0x573266	/* version ID value */
 
@@ -1370,13 +1371,6 @@ YbIsNonAlterableRelation(Relation rel)
 	return IsSystemRelation(rel) && rel->rd_rel->relkind != RELKIND_VIEW;
 }
 
-static bool
-YbSessionUserIsPostgres()
-{
-	const char *username = GetUserNameFromId(GetSessionUserId(), true);
-	return username && strcmp(username, "postgres") == 0;
-}
-
 typedef struct YbUpdateRelationCacheState
 {
 	bool		sys_relations_update_required;
@@ -2426,7 +2420,7 @@ YbGetPrefetchableTableInfo(YbPFetchTable table)
 		[YB_PFETCH_TABLE_PG_PROC] =
 		(YbPFetchTableInfo) {ProcedureRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX,.cat_cache = {PROCOID, PROCNAMEARGSNSP}}},
 		[YB_PFETCH_TABLE_PG_RANGE] =
-		(YbPFetchTableInfo) {RangeRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_NO_INDEX,.cat_cache = {RANGETYPE}}},
+		(YbPFetchTableInfo) {RangeRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_WITH_INDEX,.cat_cache = {RANGETYPE,RANGEMULTIRANGE}}},
 		[YB_PFETCH_TABLE_PG_REWRITE] =
 		(YbPFetchTableInfo) {RewriteRelationId, {YB_TABLE_CACHE_TYPE_CAT_CACHE_NO_INDEX,.cat_cache = {RULERELNAME}}},
 		[YB_PFETCH_TABLE_PG_STATISTIC] =
@@ -2965,7 +2959,7 @@ static YbcStatus
 YbPreloadRelCacheImpl(YbRunWithPrefetcherContext *ctx)
 {
 	YbNumRelCachePreloads++;
-	if (Log_connections)
+	if (Log_connections || *(YBCGetGFlags()->ysql_enable_relcache_init_optimization))
 		elog(LOG, "Preloading relcache for database %u, session user id: %u",
 			 MyDatabaseId, GetSessionUserId());
 
@@ -6373,9 +6367,7 @@ RelationCacheInitializePhase3(void)
 		 * again and re-compute needNewCacheFile.
 		 */
 		Assert(OidIsValid(MyDatabaseId));
-		needNewCacheFile = !load_relcache_init_file(true) &&
-			!YbNeedAdditionalCatalogTables() &&
-			*YBCGetGFlags()->ysql_use_relcache_file;
+		needNewCacheFile = !load_relcache_init_file(true) && !YbCatalogPreloadRequired();
 	}
 
 	/*
@@ -6414,9 +6406,8 @@ RelationCacheInitializePhase3(void)
 	{
 		Assert(!YBCIsSysTablePrefetchingStarted());
 
-		bool		catalog_preload_required = (YBCIsInitDbModeEnvVarSet() ||
-										  YbNeedAdditionalCatalogTables() ||
-										  !*YBCGetGFlags()->ysql_use_relcache_file);
+		bool		catalog_preload_required = YBCIsInitDbModeEnvVarSet() ||
+											   YbCatalogPreloadRequired();
 		bool		preload_rel_cache = needNewCacheFile || catalog_preload_required;
 
 		if (preload_rel_cache)
@@ -6440,23 +6431,30 @@ RelationCacheInitializePhase3(void)
 			}
 		}
 
-		const bool enable_relcache_init_optimization =
+		bool enable_relcache_init_optimization =
 			*(YBCGetGFlags()->ysql_enable_relcache_init_optimization);
+
+		/*
+		 * If MaxConnections <= 3 and we have not reserved any backends, we are
+		 * very short of connections. Let's not bother with an extra internal
+		 * relcache init connection for the optimization.
+		 */
+		if (MaxConnections <= 3 && ReservedBackends == 0)
+			enable_relcache_init_optimization = false;
+
 		/*
 		 * If catalog_preload_required is true, this connection will incur a memory spike
 		 * on purpose anyway, no need to trigger an internal connection.
 		 * IsBinaryUpgrade=true indicates we are doing catalog restore during a
 		 * major version update. In this case local tserver is actually yb-master
 		 * which has not implemented YBCTriggerRelcacheInitConnection.
-		 * We allow superuser postgres connections to rebuild relcache init file
-		 * because there is not an easy way to tell whether a connection is internally
-		 * generated or not.
+		 * We allow internal connections to rebuild relcache init file.
 		 */
 		if (enable_relcache_init_optimization &&
 			YBIsDBCatalogVersionMode() &&
 			needNewCacheFile &&
 			!catalog_preload_required &&
-			!YbSessionUserIsPostgres() &&
+			!yb_is_internal_connection &&
 			!IsBinaryUpgrade)
 		{
 			const char *dbname = YBCGetDatabaseName(MyDatabaseId);
@@ -8607,7 +8605,8 @@ load_relcache_init_file(bool shared)
 				nailed_indexes,
 				magic;
 	int			i;
-	uint64		ybc_stored_cache_version = 0;
+	uint64_t	ybc_stored_cache_version = 0;
+	bool		yb_stale_version = false;
 
 	/*
 	 * YB: Disable shared init file in per database catalog version mode when
@@ -8636,16 +8635,18 @@ load_relcache_init_file(bool shared)
 	 * TODO: either put this under a GUC variable or remove the old code
 	 * below.
 	 */
-	if (IsYugaByteEnabled() &&
-		(YbNeedAdditionalCatalogTables() ||
-		 !*YBCGetGFlags()->ysql_use_relcache_file))
+	if (IsYugaByteEnabled() && YbCatalogPreloadRequired())
 		return false;
 
 	RelCacheInitFileName(initfilename, shared);
 
 	fp = AllocateFile(initfilename, PG_BINARY_R);
 	if (fp == NULL)
+	{
+		if (IsYugaByteEnabled())
+			YBC_LOG_INFO("DEBUG: cannot open init file %s", initfilename);
 		return false;
+	}
 
 	/*
 	 * Read the index relcache entries from the file.  Note we will not enter
@@ -8680,6 +8681,7 @@ load_relcache_init_file(bool shared)
 		 */
 		if (YbGetCatalogCacheVersion() > ybc_stored_cache_version)
 		{
+			yb_stale_version = true;
 			unlink_initfile(initfilename, ERROR);
 			goto read_failed;
 		}
@@ -9073,6 +9075,15 @@ read_failed:
 	pfree(rels);
 	FreeFile(fp);
 
+	if (IsYugaByteEnabled())
+	{
+		if (yb_stale_version)
+			YBC_LOG_INFO("DEBUG: init file %s is stale: %" PRIu64 " < %" PRIu64,
+						 initfilename,
+						 ybc_stored_cache_version, YbGetCatalogCacheVersion());
+		else
+			YBC_LOG_INFO("DEBUG: init file %s is corrupted", initfilename);
+	}
 	return false;
 }
 
@@ -9134,10 +9145,10 @@ write_relcache_init_file(bool shared)
 	if (fwrite(&magic, 1, sizeof(magic), fp) != sizeof(magic))
 		elog(FATAL, "could not write init file");
 
+	const uint64_t catalog_cache_version = YbGetCatalogCacheVersion();
 	if (IsYugaByteEnabled())
 	{
 		/* Write the ysql_catalog_version */
-		const uint64_t catalog_cache_version = YbGetCatalogCacheVersion();
 
 		if (fwrite(&catalog_cache_version,
 				   1,
@@ -9281,10 +9292,23 @@ write_relcache_init_file(bool shared)
 		 * file on failure.
 		 */
 		if (rename(tempfilename, finalfilename) < 0)
+		{
+			if (IsYugaByteEnabled())
+				YBC_LOG_INFO("DEBUG: rename %s to %s failed, catalog version %" PRIu64,
+							 tempfilename, finalfilename, catalog_cache_version);
 			unlink(tempfilename);
+		}
+		else if (IsYugaByteEnabled() &&
+				 *(YBCGetGFlags()->ysql_enable_relcache_init_optimization))
+			YBC_LOG_INFO("DEBUG: rename %s to %s succeeded, catalog version %" PRIu64,
+						 tempfilename, finalfilename, catalog_cache_version);
 	}
 	else
 	{
+		if (IsYugaByteEnabled())
+			YBC_LOG_INFO("DEBUG: unlink the already-obsolete %s, catalog_version %" PRIu64,
+						 tempfilename, catalog_cache_version);
+
 		/* Delete the already-obsolete temp file */
 		unlink(tempfilename);
 	}
