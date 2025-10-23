@@ -674,7 +674,7 @@ struct MemTrackerData {
 const MemTrackerData& CollectMemTrackerData(const MemTrackerPtr& tracker, int depth,
                                             std::vector<MemTrackerData>* output);
 
-std::string DumpMemoryUsage();
+void DumpMemoryUsage();
 
 // Checks whether it is ok to proceed with action having specified score under current memory
 // conditions.
