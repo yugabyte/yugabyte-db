@@ -1271,3 +1271,75 @@ Refer to [#5680](https://github.com/yugabyte/yugabyte-db/issues/5680) for limita
 The `NOWAIT` clause for row-level explicit locking doesn't apply to the `Fail-on-Conflict` mode as there is no waiting. It does apply to the `Wait-on-Conflict` policy but is currently supported only for Read Committed isolation. [#12166](https://github.com/yugabyte/yugabyte-db/issues/12166) will extend support for this in the `Wait-on-Conflict` mode for the other isolation levels.
 
 The `SKIP LOCKED` clause is supported in both concurrency control policies and provides a transaction with the capability to skip locking without any error when a conflict is detected. However, it isn't supported for Serializable isolation. [#11761](https://github.com/yugabyte/yugabyte-db/issues/5683) tracks support for `SKIP LOCKED` in Serializable isolation.
+
+## Advisory locks
+
+{{<tags/feature/tp idea="812">}}Advisory locks are available in {{<release "2.25.1.0">}} and later.
+
+Advisory locks provide a cooperative, application-managed mechanism for controlling access to custom resources, offering a lighter-weight alternative to row or table locks. In YugabyteDB, all acquired advisory locks are globally visible across all nodes and sessions via the dedicated `pg_advisory_locks` system table, ensuring distributed coordination.
+
+Advisory locks are disabled by default. To enable and configure advisory locks, use the [Advisory lock flags](../../../reference/configuration/yb-tserver/#advisory-lock-flags).
+
+### Using advisory locks
+
+Advisory locks in YugabyteDB are semantically identical to PostgreSQL, and are managed using the same functions. Refer to [Advisory lock functions](https://www.postgresql.org/docs/15/functions-admin.html#FUNCTIONS-ADVISORY-LOCKS) in the PostgreSQL documentation.
+
+You can acquire an advisory lock in the following ways:
+
+- Session level
+
+    Once acquired at session level, the advisory lock is held until it is explicitly released or the session ends.
+
+    Unlike standard lock requests, session-level advisory lock requests do not honor transaction semantics: a lock acquired during a transaction that is later rolled back will still be held following the rollback, and likewise an unlock is effective even if the calling transaction fails later. A lock can be acquired multiple times by its owning process; for each completed lock request there must be a corresponding unlock request before the lock is actually released.
+
+    ```sql
+    SELECT pg_advisory_lock(10);
+    ```
+
+- Transaction level
+
+    Transaction-level lock requests, on the other hand, behave more like regular row-level lock requests: they are automatically released at the end of the transaction, and there is no explicit unlock operation. This behavior is often more convenient than the session-level behavior for short-term usage of an advisory lock.
+
+    ```sql
+    SELECT pg_advisory_xact_lock(10);
+    ```
+
+Advisory locks can also be exclusive or shared:
+
+- Exclusive Lock
+
+    Only one session/transaction can hold the lock at a time. Other sessions/transactions can't acquire the lock until the lock is released.
+
+    ```sql
+    select pg_advisory_lock(10);
+    select pg_advisory_xact_lock(10);
+    ```
+
+- Shared Lock
+
+    Multiple sessions/transactions can hold the lock simultaneously. However, no session/transaction can acquire an exclusive lock while shared locks are held.
+
+    ```sql
+    select pg_advisory_lock_shared(10);
+    select pg_advisory_xact_lock_shared(10);
+    ```
+
+Finally, advisory locks can be blocking or non-blocking:
+
+- Blocking lock
+
+    The process trying to acquire the lock waits until the lock is acquired.
+
+    ```sql
+    select pg_advisory_lock(10);
+    select pg_advisory_xact_lock(10);
+    ```
+
+- Non-blocking lock
+
+    The process immediately returns a boolean value stating if the lock is acquired or not.
+
+    ```sql
+    select pg_try_advisory_lock(10);
+    select pg_try_advisory_xact_lock(10);
+    ```
