@@ -25,13 +25,15 @@ If you are running YugabyteDB Anywhere on a [deprecated OS](../../../reference/c
 
 ## Python for YugabyteDB Anywhere
 
-YugabyteDB Anywhere v2024.2 requires Python v3.6 to v3.11. YugabyteDB Anywhere v2025.1 and later requires Python v3.10-3.11. If you are running YugabyteDB Anywhere on a system with an earlier Python, you will need to update Python on your system before you can upgrade YugabyteDB Anywhere to v2024.2 or later. (Note that this requirement applies only to the node running YugabyteDB Anywhere.)
+YugabyteDB Anywhere v2024.2 requires Python v3.8 to v3.11. YugabyteDB Anywhere v2025.1 and later requires Python v3.10-3.11. If you are running YugabyteDB Anywhere on a system with an earlier Python, you will need to update Python on your system before you can upgrade YugabyteDB Anywhere to v2024.2 or later. (Note that this requirement applies only to the node running YugabyteDB Anywhere.)
 
 In addition, both python and python3 must symbolically link to Python 3. Refer to [Prerequisites to deploy YBA on a VM](../../prepare/server-yba/).
 
 ## cron-based universes
 
 cron-based universes will no longer be supported in YugabyteDB Anywhere v2025.2 (LTS release planned for end of 2025) and later. Before you will be able to upgrade to v2025.2 or later, all your universes must be using systemd.
+
+To update cron-based universes, first upgrade YugabyteDB Anywhere to v2024.2.2 or later, and then refer to the steps in [Prepare to upgrade a universe](/v2024.2/yugabyte-platform/manage-deployments/upgrade-software-prepare/).
 
 ## Node provisioning
 
@@ -57,14 +59,14 @@ What action you take will depend on the type of provider used to create a univer
 
 | Provider | Action |
 | :--- | :--- |
-| AWS, Google, Azure | No user action is needed.<br><br>For new universes, YBA automatically configures nodes with the correct THP settings.<br><br>For existing universes that lack THP or have THP mis-configured, YugabyteDB Anywhere will automatically configure THP as part any universe task that causes node re-provisioning. For example, upgrading Linux to apply security patches to nodes. |
+| AWS, Google, Azure | Minimal user action needed.<br><br>For new universes, YBA automatically configures nodes with the correct THP settings.<br><br>For existing universes that lack THP or have THP mis-configured, YugabyteDB Anywhere will automatically configure THP as part any universe task that causes node re-provisioning. For example, upgrading Linux to apply security patches to nodes. |
 | On-premises | Some user action is needed.<br><br>New nodes that you provision using [automatic provisioning](../../prepare/server-nodes-software/software-on-prem/) are automatically configured with the correct THP settings.<br><br>For existing nodes that lack THP or have THP mis-configured, THP settings are automatically configured during node re-provisioning if you follow the procedure for boot disk replacement as described in [Patch and upgrade the system](../../manage-deployments/upgrade-nodes/). You can do this when performing a regular Linux security patch (monthly, quarterly). |
 
 ## Node agent
 
 YugabyteDB Anywhere v2025.2 (LTS release planned for end of 2025) and later require universes have node agent running on their nodes. Before you will be able to upgrade to v2025.2 or later, all your universes must be using node agent.
 
-To upgrade a universe to node agent, you can follow the [node patching](../../manage-deployments/upgrade-nodes/) procedure.
+To upgrade a universe to node agent, first upgrade YugabyteDB Anywhere to v2024.2.5 or later, and then refer to the steps in [Prepare to upgrade a universe](/v2024.2/yugabyte-platform/manage-deployments/upgrade-software-prepare/).
 
 ## xCluster
 

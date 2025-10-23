@@ -62,7 +62,7 @@ Installation requires a license file. To obtain your license, contact your sales
 
 ### Python for YugabyteDB Anywhere
 
-Python v3.6 to v3.11 must be pre-installed.
+Python v3.8 to v3.11 must be pre-installed.
 
 Both python and python3 must symbolically link to Python 3. One way to achieve this is to use alternatives. For example:
 

@@ -83,7 +83,7 @@ If you have a Replicated installation that uses HTTP and you migrate to YBA Inst
 
 Affected releases: All
 
-Workaround: Refer to [Migration and high availability](/v2.20/yugabyte-platform/install-yugabyte-platform/install-yugabyte-platform/migrate-replicated/#in-place-migration-and-high-availability).
+Workaround: Refer to [Migration and high availability](/v2.20/yugabyte-platform/install-yugabyte-platform/migrate-replicated/#in-place-migration-and-high-availability).
 
 ## Running low on free disk space
 
