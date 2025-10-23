@@ -28,8 +28,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/random.h"
 
-namespace yb {
-namespace rpc {
+namespace yb::rpc {
 
 class Messenger;
 
@@ -62,7 +61,7 @@ class Messenger;
 // into Snooze() be greater than GetMinimumPeriod().
 class PeriodicTimer : public std::enable_shared_from_this<PeriodicTimer> {
  public:
-  typedef std::function<void(void)> RunTaskFunctor;
+  using RunTaskFunctor = std::function<void ()>;
 
   struct Options {
     Options();
@@ -202,8 +201,10 @@ class PeriodicTimer : public std::enable_shared_from_this<PeriodicTimer> {
   // Whether the timer is running or not.
   bool started_;
 
+  // If not Max, then the time Callback() (not the user functor) is scheduled to run.
+  MonoTime expected_callback_time_;
+
   DISALLOW_COPY_AND_ASSIGN(PeriodicTimer);
 };
 
-} // namespace rpc
-} // namespace yb
+} // namespace yb::rpc
