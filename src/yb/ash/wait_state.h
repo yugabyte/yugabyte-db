@@ -316,6 +316,7 @@ struct AshMetadata {
   uint64_t query_id = 0;
   pid_t pid = 0;
   uint32_t database_id = 0;
+  uint32_t user_id = 0;
   int64_t rpc_request_id = 0;
   HostPort client_host_port{};
   uint8_t addr_family = AF_UNSPEC;
@@ -340,6 +341,9 @@ struct AshMetadata {
     }
     if (other.database_id != 0) {
       database_id = other.database_id;
+    }
+    if (other.user_id != 0) {
+      user_id = other.user_id;
     }
     if (other.rpc_request_id != 0) {
       rpc_request_id = other.rpc_request_id;
@@ -395,6 +399,11 @@ struct AshMetadata {
     } else {
       pb->clear_database_id();
     }
+    if (user_id != 0) {
+      pb->set_user_id(user_id);
+    } else {
+      pb->clear_user_id();
+    }
     if (rpc_request_id != 0) {
       pb->set_rpc_request_id(rpc_request_id);
     } else {
@@ -436,6 +445,7 @@ struct AshMetadata {
         pb.query_id(),                         // query_id
         pb.pid(),                              // pid
         pb.database_id(),                      // database_id
+        pb.user_id(),                          // user_id
         pb.rpc_request_id(),                   // rpc_request_id
         HostPortFromPB(pb.client_host_port()), // client_host_port
         static_cast<uint8_t>(pb.addr_family()) // addr_family
