@@ -649,6 +649,12 @@ TEST_F(AdminCliTestForTableLocks, ReleaseExclusiveLocksUsingTxnIdAndSubtxnId) {
   const std::string table_name = "test_table";
   ASSERT_OK(conn1.ExecuteFormat("CREATE TABLE $0 (id INT PRIMARY KEY, value TEXT)", table_name));
 
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return !VERIFY_RESULT(HasLocksMaster());
+      },
+      10s * kTimeMultiplier, "Wait for master to be release locks asynchronously"));
+
   ASSERT_OK(conn1.Execute("BEGIN"));
   ASSERT_FALSE(ASSERT_RESULT(HasLocksMaster()));
   ASSERT_FALSE(ASSERT_RESULT(HasLocksTServer(kTServerIndex)));
@@ -743,6 +749,12 @@ TEST_F(AdminCliTestForTableLocks, ReleaseSharedLocksThroughMaster) {
 
   const std::string table_name = "test_table";
   ASSERT_OK(conn1.ExecuteFormat("CREATE TABLE $0 (id INT PRIMARY KEY, value TEXT)", table_name));
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return !VERIFY_RESULT(HasLocksMaster());
+      },
+      10s * kTimeMultiplier, "Wait for master to be release locks asynchronously"));
 
   ASSERT_OK(conn1.Execute("BEGIN"));
   ASSERT_OK(conn1.ExecuteFormat("LOCK TABLE $0 IN ACCESS SHARE MODE", table_name));
