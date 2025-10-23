@@ -156,41 +156,36 @@ install_pywheels() {
         exit 1
     fi
 
-    # Install packages in specific order to handle build dependencies
-    if [[ "$PYTHON_MAJOR_MINOR" == "3.6" || "$PYTHON_MAJOR_MINOR" == "3.7"
-         || "$PYTHON_MAJOR_MINOR" == "3.8" ]]; then
-        echo "Installing packages in order for Python 3.6/3.7/3.8 compatibility..."
-
-        # Install setuptools and wheel first
-        $PIP_CMD install --no-index --ignore-installed $extra_pip_flags \
-            --find-links="$WHEEL_DIR" setuptools==59.6.0 wheel==0.37.1 || {
-            echo "Error installing setuptools and wheel"
-            exit 1
-        }
-        $PIP_CMD install --no-index --ignore-installed $extra_pip_flags \
-            --find-links="$WHEEL_DIR" -r "$REQUIREMENTS_FILE" || {
-            echo "Error installing packages from requirements file"
-            exit 1
-        }
+    # Detect pip capability for --no-build-isolation
+    if $PIP_CMD install --help 2>&1 | grep -q -- '--no-build-isolation'; then
+        NO_BUILD_ISOLATION="--no-build-isolation"
     else
-        echo "Installing packages in order for Python 3.9+ compatibility..."
-        # Install setuptools and wheel first for Python 3.9+
-        $PIP_CMD install --no-index --ignore-installed $extra_pip_flags \
-            --find-links="$WHEEL_DIR" setuptools==78.1.1 wheel==0.43.0 || {
-            echo "Error installing setuptools and wheel"
-            exit 1
-        }
-        # For Python 3.8+, install all packages at once
-        $PIP_CMD install --no-index --no-build-isolation --ignore-installed $extra_pip_flags \
-            --find-links="$WHEEL_DIR" -r "$REQUIREMENTS_FILE" || {
-            echo "Retrying without --no-build-isolation installing packages from requirements file"
-            $PIP_CMD install --no-index --ignore-installed --find-links="$WHEEL_DIR" $extra_pip_flags \
-                -r "$REQUIREMENTS_FILE" || {
-                echo "Error installing packages from requirements file"
-                exit 1
-            }
-        }
+        echo "Warning: pip does not support --no-build-isolation, skipping it."
+        NO_BUILD_ISOLATION=""
     fi
+
+    echo "Installing setuptools and wheel..."
+    if [[ "$PYTHON_MAJOR_MINOR" =~ ^(3\.6|3\.7|3\.8)$ ]]; then
+        SETUPTOOLS_VER=59.6.0
+        WHEEL_VER=0.37.1
+    else
+        SETUPTOOLS_VER=78.1.1
+        WHEEL_VER=0.43.0
+    fi
+
+    # Step 1: bootstrap setuptools and wheel
+    $PIP_CMD install --no-index --ignore-installed $extra_pip_flags \
+        --find-links="$WHEEL_DIR" setuptools==$SETUPTOOLS_VER wheel==$WHEEL_VER || {
+        echo "Error installing setuptools/wheel"
+        exit 1
+    }
+    # Step 2: install all other requirements
+    echo "Installing remaining packages..."
+    $PIP_CMD install --no-index $NO_BUILD_ISOLATION $extra_pip_flags \
+        --find-links="$WHEEL_DIR" -r "$REQUIREMENTS_FILE" || {
+        echo "Error installing requirements packages"
+        exit 1
+    }
     echo "All packages installed successfully."
 }
 
