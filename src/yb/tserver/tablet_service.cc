@@ -917,7 +917,7 @@ void TabletServiceAdminImpl::BackfillIndex(
   Status backfill_status;
   std::string backfilled_until;
   std::unordered_set<TableId> failed_indexes;
-  size_t number_rows_processed = 0;
+  uint64_t number_rows_processed = 0;
   if (is_pg_table) {
     if (!req->has_namespace_name()) {
       SetupErrorAndRespond(

@@ -286,6 +286,15 @@ public class TestUtils {
   }
 
   /**
+   * @return a subdirectory in the resources directory named using the class's name.  This assumes
+   * the convention that each test class gets its own corresponding resources directory.  Does not
+   * check for existence of the directory.
+   */
+  public static File getClassResourceDir(Class<?> testClass) {
+    return new File(testClass.getClassLoader().getResource(testClass.getSimpleName()).getFile());
+  }
+
+  /**
    * Check if the given port is free on the given network interface.
    *
    * @param bindInterface the network interface to bind to

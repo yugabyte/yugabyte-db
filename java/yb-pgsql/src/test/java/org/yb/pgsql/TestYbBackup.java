@@ -143,10 +143,10 @@ public class TestYbBackup extends BasePgSQLTest {
 
   private File runYsqlsh(String sqlPath, String comment, String dbName) throws Exception {
     final int tserverIndex = 0;
-    File pgRegressDir = PgRegressBuilder.PG_REGRESS_DIR;
+    File testDir = TestUtils.getClassResourceDir(getClass());
     File ysqlshExec = new File(pgBinDir, "ysqlsh");
-    File inputFile  = new File(pgRegressDir, sqlPath);
-    File outputFile = new File(pgRegressDir, "results/" + inputFile.getName() + ".out");
+    File inputFile  = new File(testDir, sqlPath);
+    File outputFile = new File(testDir, "results/" + inputFile.getName() + ".out");
     outputFile.getParentFile().mkdirs();
 
     List<String> ysqlsh_args = new ArrayList<>(Arrays.asList(
@@ -176,8 +176,7 @@ public class TestYbBackup extends BasePgSQLTest {
       String expectedRestoreDumpPath,
       String restoreDescribeSqlPath,
       String expectedRestoreDescribePath) throws Exception {
-
-    File pgRegressDir = PgRegressBuilder.PG_REGRESS_DIR;
+    File testDir = TestUtils.getClassResourceDir(getClass());
 
     // Populate the backup db as specified.
     runYsqlsh(backupPopulateSqlPath, "populate db " + testName, "");
@@ -203,8 +202,8 @@ public class TestYbBackup extends BasePgSQLTest {
     }
 
     YBBackupUtil.runYbBackupRestore(backupDir, backupArgs);
-    File expected = new File(pgRegressDir, expectedRestoreDumpPath);
-    File actual   = new File(pgRegressDir, "results/" + expected.getName());
+    File expected = new File(testDir, expectedRestoreDumpPath);
+    File actual   = new File(testDir, "results/" + expected.getName());
     actual.getParentFile().mkdirs();
 
     // Validate that a dump of the restored db matches what we expect.
@@ -224,7 +223,7 @@ public class TestYbBackup extends BasePgSQLTest {
     TestYsqlDump.assertOutputFile(expected, actual);
 
     // Additional validations.
-    File expectedRestoreDesc = new File(pgRegressDir, expectedRestoreDescribePath);
+    File expectedRestoreDesc = new File(testDir, expectedRestoreDescribePath);
     File actualDesc =
         runYsqlsh(restoreDescribeSqlPath, "validate describes " + testName, restoreDbName);
     TestYsqlDump.assertOutputFile(expectedRestoreDesc, actualDesc);
@@ -2731,12 +2730,12 @@ public class TestYbBackup extends BasePgSQLTest {
   public void testPgRegressStyle() throws Exception {
     testPgRegressStyleUtil(
       "yb.orig.backup_restore",
-      "backup/yb.orig.backup_restore.sql",
+      "yb.orig.backup_restore.sql",
       "",
       "db2",
-      "backup/yb.orig.backup_restore.dump",
-      "backup/yb.orig.backup_restore_describe.sql",
-      "backup/yb.orig.backup_restore_describe.out"
+      "yb.orig.backup_restore.dump",
+      "yb.orig.backup_restore_describe.sql",
+      "yb.orig.backup_restore_describe.out"
     );
   }
 
@@ -2744,12 +2743,12 @@ public class TestYbBackup extends BasePgSQLTest {
   public void testBackupRoleParameter() throws Exception {
     testPgRegressStyleUtil(
       "yb.orig.backup_role_parameter",
-      "backup/yb.orig.backup_role_parameter.sql",
+      "yb.orig.backup_role_parameter.sql",
       "",
       "db2",
-      "backup/yb.orig.backup_role_parameter.dump",
-      "backup/yb.orig.backup_role_parameter_describe.sql",
-      "backup/yb.orig.backup_role_parameter_describe.out"
+      "yb.orig.backup_role_parameter.dump",
+      "yb.orig.backup_role_parameter_describe.sql",
+      "yb.orig.backup_role_parameter_describe.out"
     );
   }
 
@@ -2757,12 +2756,12 @@ public class TestYbBackup extends BasePgSQLTest {
   public void testBackupRoles() throws Exception {
     testPgRegressStyleUtil(
       "yb.orig.backup_roles",
-      "backup/yb.orig.backup_roles.sql",
-      "backup/yb.orig.backup_roles_cleanup.sql",
+      "yb.orig.backup_roles.sql",
+      "yb.orig.backup_roles_cleanup.sql",
       "db2",
-      "backup/yb.orig.backup_roles.dump",
-      "backup/yb.orig.backup_roles_describe.sql",
-      "backup/yb.orig.backup_roles_describe.out"
+      "yb.orig.backup_roles.dump",
+      "yb.orig.backup_roles_describe.sql",
+      "yb.orig.backup_roles_describe.out"
     );
   }
 

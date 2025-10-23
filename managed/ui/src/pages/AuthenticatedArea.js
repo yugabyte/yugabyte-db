@@ -12,7 +12,6 @@ import AuthenticatedComponentContainer from '../components/Authenticated/Authent
 import { StandbyInstanceOverlay } from '../components/ha';
 import { YBLoading } from '../components/common/indicators';
 import { BindShortCutKeys } from './BindShortcutKeys';
-import { YBIntroDialog } from './YBIntroDialog';
 import { Footer } from '../components/common/footer/Footer';
 import {
   RBAC_RUNTIME_FLAG,
@@ -134,7 +133,6 @@ const RBACAuthenticatedArea = (props) => {
   return (
     <AuthenticatedComponentContainer>
       <BindShortCutKeys {...props} />
-      <YBIntroDialog />
       <StandbyInstanceOverlay />
       <NavBarContainer />
       <div className="container-body">{props.children}</div>

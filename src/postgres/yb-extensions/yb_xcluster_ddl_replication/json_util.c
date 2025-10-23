@@ -60,13 +60,19 @@ AddBoolJsonEntry(JsonbParseState *state, char *key_buf, bool val)
 void
 AddStringJsonEntry(JsonbParseState *state, char *key_buf, const char *val)
 {
+	AddNStringJsonEntry(state, key_buf, val, strlen(val));
+}
+
+void
+AddNStringJsonEntry(JsonbParseState *state, char *key_buf, const char *val, Size len)
+{
 	AddJsonKey(state, key_buf);
 
 	JsonbValue	value;
 
 	value.type = jbvString;
-	value.val.string.len = strlen(val);
-	value.val.string.val = pstrdup(val);
+	value.val.string.len = len;
+	value.val.string.val = pnstrdup(val, len);
 
 	(void) pushJsonbValue(&state, WJB_VALUE, &value);
 }

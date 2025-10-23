@@ -141,7 +141,7 @@ export const DBVersionField = ({ disabled }: DBVersionFieldProps): ReactElement 
   );
 
   useEffect(() => {
-    if (isOsPatchingEnabled && !disabled) {
+    if (isOsPatchingEnabled && !disabled && getValues(SOFTWARE_VERSION_FIELD) === null) {
       setValue(SOFTWARE_VERSION_FIELD, null);
     }
   }, [cpuArch, isOsPatchingEnabled]);
