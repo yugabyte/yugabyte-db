@@ -563,7 +563,7 @@ void PgVectorIndexTest::TestSimple(bool table_exists) {
       "SELECT * FROM test" + IndexQuerySuffix("[1.0, 0.4, 0.3]", 5)));
   ASSERT_EQ(result, "1, [1, 0.5, 0.25]; 2, [0.125, 0.375, 0.25]");
 
-  LOG(INFO) << "Memory usage:\n" << DumpMemoryUsage();
+  DumpMemoryUsage();
 }
 
 TEST_P(PgVectorIndexTest, Simple) {
