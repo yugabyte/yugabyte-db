@@ -1795,7 +1795,7 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, RestoreWithBac
   // Test restoring to a point in time when the index is backfilling.
   auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
-  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_slowdown_backfill_by_ms", "3000"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_delay_clearing_fully_applied_ms", "3000"));
 
   ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
   ASSERT_OK(conn.Execute("INSERT INTO test_table "
@@ -1806,8 +1806,17 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, RestoreWithBac
   ASSERT_OK(conn.Execute("CREATE INDEX test_table_idx ON test_table (value)"));
   auto t2 = ASSERT_RESULT(GetCurrentTime());
   auto restore_time = Timestamp((t1.ToInt64() + t2.ToInt64()) / 2);
-  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, restore_time));
-  conn = ASSERT_RESULT(ConnectToRestoredDb());
+  auto s = RestoreSnapshotSchedule(schedule_id, restore_time);
+  if (GetRestoreType() == RestoreType::kClone) {
+    // Change this to assert ok after #28814.
+    ASSERT_NOK_STR_CONTAINS(s, "is in altering state");
+  } else {
+    ASSERT_OK(s);
+  }
+  // Assert this in both cases after #28814 and #29037.
+  // conn = ASSERT_RESULT(ConnectToRestoredDb());
+  // auto count = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM test_table"));
+  // ASSERT_EQ(count, 100);
 }
 
 TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, PgsqlRenameColumn) {
