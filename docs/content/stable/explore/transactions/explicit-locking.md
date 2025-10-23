@@ -112,7 +112,7 @@ YSQL also supports advisory locks, where the application manages concurrent acce
 
 In PostgreSQL, if an advisory lock is taken on one session, all sessions should be able to see the advisory locks acquired by any other session. Similarly, in YugabyteDB, if an advisory lock is acquired on one session, all the sessions should be able to see the advisory locks regardless of the node the session is connected to. This is achieved via the pg_advisory_locks system table, which is dedicated to hosting advisory locks. All advisory lock requests are stored in this system table.
 
-Advisory locks are enabled by default. You can configure advisory locks using the [Advisory lock flags](../../../reference/configuration/yb-tserver/#advisory-lock-flags).
+Advisory locks are available in v2025.1 or later, and enabled by default. Y You can configure advisory locks using the [Advisory lock flags](../../../reference/configuration/yb-tserver/#advisory-lock-flags).
 
 For more information on using the locks, refer to [Advisory locks](../../../architecture/transactions/concurrency-control/#advisory-locks).
 
