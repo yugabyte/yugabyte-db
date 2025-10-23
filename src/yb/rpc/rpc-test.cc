@@ -1092,7 +1092,7 @@ void TestCantAllocateReadBuffer(CalculatorServiceProxy* proxy) {
     proxy->EchoAsync(req, &resp, controller.get(), latch.CountDownCallback());
     if ((i + 1) % 10 == 0) {
       LOG(INFO) << "Sent " << i + 1 << " calls.";
-      LOG(INFO) << DumpMemoryUsage();
+      DumpMemoryUsage();
     }
     controllers.push_back(std::move(controller));
   }
@@ -1120,7 +1120,7 @@ void TestCantAllocateReadBuffer(CalculatorServiceProxy* proxy) {
 
   ASSERT_OK(wait_status);
 
-  LOG(INFO) << DumpMemoryUsage();
+  DumpMemoryUsage();
   {
     constexpr auto target_memory_consumption = kMemoryLimitHardBytes * 0.6;
     wait_status = LoggedWaitFor(
@@ -1138,7 +1138,7 @@ void TestCantAllocateReadBuffer(CalculatorServiceProxy* proxy) {
         }, 10s * kTimeMultiplier,
         Format("Waiting until memory consumption is less than $0 ...",
                HumanReadableNumBytes::ToString(target_memory_consumption)));
-    LOG(INFO) << DumpMemoryUsage();
+    DumpMemoryUsage();
     ASSERT_OK(wait_status);
   }
 
