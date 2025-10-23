@@ -11,5 +11,5 @@ DROP INDEX IF EXISTS i_nulltest_ba;
 CREATE INDEX i_nulltest_ba ON nulltest (b ASC, a ASC);
 
 \getenv abs_srcdir PG_ABS_SRCDIR
-\set filename :abs_srcdir '/data/yb.orig.index_scan_null_queries.sql'
+\set filename :abs_srcdir '/yb_commands/index_scan_null_queries.sql'
 \i :filename

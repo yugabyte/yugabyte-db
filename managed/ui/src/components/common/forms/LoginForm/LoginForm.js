@@ -45,9 +45,6 @@ class LoginForm extends Component {
         this.props.resetCustomerError();
         browserHistory.goBack();
       } else {
-        if (localStorage.getItem('__yb_intro_dialog__') !== 'hidden') {
-          localStorage.setItem('__yb_intro_dialog__', 'new');
-        }
         browserHistory.push('/');
       }
     }
@@ -61,9 +58,6 @@ class LoginForm extends Component {
   runSSO() {
     const searchParam = new URLSearchParams(window.location.search);
     const pathToRedirect = searchParam.get('orig_url');
-    if (localStorage.getItem('__yb_intro_dialog__') !== 'hidden') {
-      localStorage.setItem('__yb_intro_dialog__', 'new');
-    }
     window.location.replace(
       pathToRedirect
         ? `${ROOT_URL}/third_party_login?orig_url=${pathToRedirect}`

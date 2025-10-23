@@ -16,7 +16,7 @@ create index i_t2r_k3 on t2r (k3 asc);
 create unique index i_t2r_k4k5 on t2r (k4 asc, k5 asc);
 insert into t2r select i, i, i % 10000, i % 10000, (i / 10000) * 10000, i from generate_series(1, 100000) i;
 \getenv abs_srcdir PG_ABS_SRCDIR
-\set filename :abs_srcdir '/data/yb.orig.legacy_join_plan_queries.sql'
+\set filename :abs_srcdir '/yb_commands/legacy_join_plan_queries.sql'
 ----------------
 -- Unanalyzed --
 ----------------
