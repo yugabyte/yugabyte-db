@@ -272,3 +272,16 @@ IsMatViewCommand(CommandTag command_tag)
 		command_tag == CMDTAG_REFRESH_MATERIALIZED_VIEW ||
 		command_tag == CMDTAG_DROP_MATERIALIZED_VIEW;
 }
+
+bool
+IsExtensionDdl(CommandTag command_tag)
+{
+	if (command_tag == CMDTAG_CREATE_EXTENSION ||
+		command_tag == CMDTAG_DROP_EXTENSION ||
+		command_tag == CMDTAG_ALTER_EXTENSION)
+	{
+		return true;
+	}
+
+	return false;
+}

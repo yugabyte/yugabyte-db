@@ -731,6 +731,7 @@ class PostgresBuilder(YbBuildToolBase):
                     'src/postgres/**/expected/*.out',
                     'src/postgres/**/specs/*.spec',
                     'src/postgres/**/sql/*.sql',
+                    'src/postgres/**/yb_commands/*.sql',
                     'src/postgres/.clang-format',
                     'src/yb/yql/pggate/**/README',
                 ]))

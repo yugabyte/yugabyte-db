@@ -94,4 +94,6 @@ extern char *get_typname(Oid pg_type_oid);
 
 extern bool IsMatViewCommand(CommandTag command_tag);
 
+extern bool IsExtensionDdl(CommandTag command_tag);
+
 #endif

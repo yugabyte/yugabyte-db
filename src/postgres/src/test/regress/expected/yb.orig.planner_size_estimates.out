@@ -7,7 +7,7 @@ INSERT INTO s_100 SELECT i, i FROM (SELECT generate_series(1, 100) i) t;
 SET yb_enable_optimizer_statistics = FALSE;
 ANALYZE;
 \getenv abs_srcdir PG_ABS_SRCDIR
-\set filename :abs_srcdir '/data/yb.orig.planner_size_estimates_cmds.sql'
+\set filename :abs_srcdir '/yb_commands/planner_size_estimates_cmds.sql'
 \i :filename
 EXPLAIN (ANALYZE, SUMMARY off, TIMING off) SELECT * FROM s_10000;
                                         QUERY PLAN                                         
