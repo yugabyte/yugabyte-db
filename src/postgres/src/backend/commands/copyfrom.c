@@ -1374,11 +1374,17 @@ yb_process_more_batches:
 	}
 	else
 	{
+		YbcFlushDebugContext yb_debug_context = {
+			.reason = YB_COPY_BATCH,
+			.uintarg = processed,
+			.strarg1 = RelationGetRelationName(cstate->rel),
+		};
+
 		/*
 		 * We need to flush buffered operations so that error callback is
 		 * executed
 		 */
-		YBFlushBufferedOperations();
+		YBFlushBufferedOperations(&yb_debug_context);
 
 		/* Update progress of the COPY command as well */
 		pgstat_progress_update_param(PROGRESS_COPY_TUPLES_PROCESSED, processed);

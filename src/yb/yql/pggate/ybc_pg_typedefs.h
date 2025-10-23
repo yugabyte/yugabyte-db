@@ -1015,6 +1015,48 @@ typedef enum {
   XCLUSTER_ROLE_AUTOMATIC_TARGET = 4,
 } YbcXClusterReplicationRole;
 
+typedef enum {
+  // Transaction control
+  YB_BEGIN_SUBTRANSACTION,
+  YB_END_SUBTRANSACTION,
+  YB_ACTIVATE_SUBTRANSACTION,
+  YB_ROLLBACK_TO_SUBTRANSACTION,
+  YB_COMMIT_TRANSACTION,
+
+  // Snapshot management
+  YB_GET_TRANSACTION_SNAPSHOT,
+  YB_CHANGE_TRANSACTION_SNAPSHOT,
+
+  // DDLs
+  YB_ENTER_DDL_TRANSACTION_MODE,
+  YB_EXIT_DDL_TRANSACTION_MODE,
+
+  // Functions, stored procedures and utilities
+  YB_UNBATCHABLE_SQL_STMT_IN_SQL_FUNCTION,
+  YB_UNBATCHABLE_PL_STMT,
+  YB_UNBATCHABLE_SQL_STMT_IN_PL_FUNCTION,
+  YB_COPY_BATCH,
+
+  // Miscellaneous
+  YB_SWITCH_TO_DB_CATALOG_VERSION_MODE,
+  YB_CATALOG_TABLE_PREFETCH,
+  YB_END_OF_TOP_LEVEL_STMT,
+  YB_END_OPERATIONS_BUFFERING,
+
+  // Internal buffer control
+  YB_BUFFER_FULL,
+  YB_CONFLICTING_KEY_WRITE,
+  YB_CONFLICTING_READ,
+} YbcFlushReason;
+
+typedef struct {
+  YbcFlushReason reason;
+  uint64_t uintarg;
+  YbcPgOid oidarg;
+  const char* strarg1;
+  const char* strarg2;
+} YbcFlushDebugContext;
+
 typedef struct {
   int64_t xact_start_timestamp;
   bool xact_read_only;

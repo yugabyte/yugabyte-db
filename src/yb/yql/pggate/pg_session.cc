@@ -372,10 +372,15 @@ class PgSession::RunHelper {
       // write operations. Since the writes and catalog reads belong to different session types (as
       // per PgClientSession), we can't send them to the local tserver proxy in 1 rpc, so we flush
       // the buffer before performing catalog reads.
+      YbcFlushDebugContext debug_context;
+      debug_context.reason = YB_CONFLICTING_READ;
+      debug_context.oidarg = table.pg_table_id().object_oid;
+      debug_context.strarg1 = table.table_name().table_name().c_str();
+
       if ((IsTransactional() && in_txn_limit_) || IsCatalog()) {
-          RETURN_NOT_OK(buffer.Flush());
+        RETURN_NOT_OK(buffer.Flush(debug_context));
       } else {
-        ops_info_.ops = VERIFY_RESULT(buffer.Take(IsTransactional()));
+        ops_info_.ops = VERIFY_RESULT(buffer.Take(IsTransactional(), debug_context));
         ops_info_.num_ops_taken_from_buffer = ops_info_.ops.Size();
         read_only = read_only && ops_info_.ops.Empty();
       }
@@ -446,8 +451,14 @@ class PgSession::RunHelper {
       DCHECK_EQ(ops_info_.num_ops_taken_from_buffer, buffered_ops.Size());
       ops_info_.ops = std::move(ops);
       ops_info_.num_ops_taken_from_buffer = 0;
+
+      YbcFlushDebugContext debug_context;
+      debug_context.reason = YB_CONFLICTING_READ;
+      debug_context.oidarg = table.pg_table_id().object_oid;
+      debug_context.strarg1 = table.table_name().table_name().c_str();
+
       RETURN_NOT_OK(VERIFY_RESULT(pg_session_.FlushOperations(
-          std::move(buffered_ops), IsTransactional())).Get());
+        std::move(buffered_ops), IsTransactional(), debug_context)).Get());
     }
     ops_info_.ops.Add(std::move(op), table);
     return Status::OK();
@@ -483,8 +494,10 @@ PgSession::PgSession(
       pg_callbacks_(pg_callbacks),
       buffering_settings_(buffering_settings),
       buffer_(
-          [this](BufferableOperations&& ops, bool transactional) {
-            return FlushOperations(std::move(ops), transactional);
+          [this](
+              BufferableOperations&& ops, bool transactional,
+              const YbcFlushDebugContext& debug_context) {
+            return FlushOperations(std::move(ops), transactional, debug_context);
           },
           buffering_settings_),
       is_major_pg_version_upgrade_(is_pg_binary_upgrade),
@@ -710,7 +723,7 @@ Status PgSession::StartOperationsBuffering() {
 Status PgSession::StopOperationsBuffering() {
   SCHECK(buffering_enabled_, IllegalState, "Buffering hasn't been started");
   buffering_enabled_ = false;
-  return FlushBufferedOperations();
+  return FlushBufferedOperations(YB_END_OPERATIONS_BUFFERING);
 }
 
 void PgSession::ResetOperationsBuffering() {
@@ -718,8 +731,90 @@ void PgSession::ResetOperationsBuffering() {
   buffering_enabled_ = false;
 }
 
-Status PgSession::FlushBufferedOperations() {
-  return buffer_.Flush();
+std::string PgSession::FlushReasonToString(const YbcFlushDebugContext& debug_context) const {
+  switch (debug_context.reason) {
+    // Transaction control
+    case YbcFlushReason::YB_BEGIN_SUBTRANSACTION:
+      return Format("due to begin of new subtransaction for $0 (current SubTransactionId: $1)",
+                    debug_context.strarg1 ? debug_context.strarg1 : "unnamed txn",
+                    debug_context.uintarg);
+    case YbcFlushReason::YB_END_SUBTRANSACTION:
+      return Format("due to end of subtransaction with SubTransactionId $0", debug_context.uintarg);
+    case YbcFlushReason::YB_ACTIVATE_SUBTRANSACTION:
+      return Format("due to activation of subtransaction with SubTransactionId $0",
+                    debug_context.uintarg);
+    case YbcFlushReason::YB_ROLLBACK_TO_SUBTRANSACTION:
+      return Format("due to rollback to subtransaction with SubTransactionId $0",
+                    debug_context.uintarg);
+    case YbcFlushReason::YB_COMMIT_TRANSACTION:
+      return Format("due to commit of plain transaction ($0)",
+                    debug_context.oidarg == kInvalidOid ?
+                    "contains no DDL ops" :
+                    Format("contains DDL on database with OID $0", debug_context.oidarg));
+
+    // Snapshot management
+    case YbcFlushReason::YB_GET_TRANSACTION_SNAPSHOT:
+      return Format("before getting a new transaction snapshot (current read point: $0) in "
+                    "Read Committed isolation", debug_context.uintarg);
+    case YbcFlushReason::YB_CHANGE_TRANSACTION_SNAPSHOT:
+      return Format("before restoring transaction snapshot corresponding to read point $0",
+                    debug_context.uintarg);
+
+    // DDLs
+    case YbcFlushReason::YB_ENTER_DDL_TRANSACTION_MODE:
+      return "due to entering DDL mode";
+    case YbcFlushReason::YB_EXIT_DDL_TRANSACTION_MODE:
+      return "due to exiting DDL mode";
+
+    // Functions, stored procedures and utilities
+    case YbcFlushReason::YB_UNBATCHABLE_SQL_STMT_IN_SQL_FUNCTION:
+      return Format("before executing non-DML statement $0 (see CmdType in nodes.h) "
+                    "in SQL function '$1'", debug_context.uintarg, debug_context.strarg1);
+    case YbcFlushReason::YB_UNBATCHABLE_PL_STMT:
+      return Format("before executing PL statement of type '$0' in function '$1'",
+                    debug_context.strarg1, debug_context.strarg2);
+    case YbcFlushReason::YB_UNBATCHABLE_SQL_STMT_IN_PL_FUNCTION:
+      return Format("before executing SQL statement with command tag '$0' in PL function '$1'",
+                    debug_context.strarg1, debug_context.strarg2);
+    case YbcFlushReason::YB_COPY_BATCH:
+      return Format("after copying batch of tuples for table '$0' (total tuples processed: $1)",
+                    debug_context.strarg1, debug_context.uintarg);
+
+    // Miscellaneous reasons
+    case YbcFlushReason::YB_SWITCH_TO_DB_CATALOG_VERSION_MODE:
+      return Format("switch from global to per-database catalog version mode "
+                    "(current DB OID: $0)", debug_context.oidarg);
+    case YbcFlushReason::YB_CATALOG_TABLE_PREFETCH:
+      return "before prefetching catalog tables";
+    case YbcFlushReason::YB_END_OF_TOP_LEVEL_STMT:
+      return "at the end of top-level statement";
+    case YbcFlushReason::YB_END_OPERATIONS_BUFFERING:
+      return "at the end of operations buffering";
+
+    // Internal buffer control
+    case YbcFlushReason::YB_BUFFER_FULL:
+      return Format("due to buffer being full (ops size: $0 bytes)", debug_context.uintarg);
+    case YbcFlushReason::YB_CONFLICTING_KEY_WRITE:
+      return Format("before enqueueing a conflicting write operation on table '$0' with OID $1$2",
+                    debug_context.strarg1, debug_context.oidarg,
+                    debug_context.strarg2 ? Format(" (key: $0)", debug_context.strarg2) : "");
+    case YbcFlushReason::YB_CONFLICTING_READ:
+      return Format("before performing a non-bufferable read operation on table '$0' with OID $1",
+                    debug_context.strarg1, debug_context.oidarg);
+  }
+
+  return "for unknown reason"; // keep compiler happy
+}
+
+Status PgSession::FlushBufferedOperations(
+    const YbcFlushDebugContext& debug_context) {
+  return buffer_.Flush(debug_context);
+}
+
+Status PgSession::FlushBufferedOperations(YbcFlushReason reason) {
+  YbcFlushDebugContext debug_context;
+  debug_context.reason = reason;
+  return FlushBufferedOperations(debug_context);
 }
 
 void PgSession::DropBufferedOperations() {
@@ -761,10 +856,11 @@ Result<bool> PgSession::IsInitDbDone() {
   return pg_client_.IsInitDbDone();
 }
 
-Result<FlushFuture> PgSession::FlushOperations(BufferableOperations&& ops, bool transactional) {
+Result<FlushFuture> PgSession::FlushOperations(
+    BufferableOperations&& ops, bool transactional, const YbcFlushDebugContext& debug_context) {
   if (PREDICT_FALSE(yb_debug_log_docdb_requests)) {
-    LOG_WITH_PREFIX(INFO) << "Flushing buffered operations, using "
-                          << (transactional ? "transactional" : "non-transactional")
+    LOG_WITH_PREFIX(INFO) << "Flushing buffered operations " << FlushReasonToString(debug_context)
+                          << " using " << (transactional ? "transactional" : "non-transactional")
                           << " session (num ops: " << ops.Size() << ")";
   }
 
@@ -1019,6 +1115,9 @@ Status PgSession::SetupIsolationAndPerformOptionsForDdl(
 }
 
 Status PgSession::SetActiveSubTransaction(SubTransactionId id) {
+  YbcFlushDebugContext debug_context;
+  debug_context.reason = YbcFlushReason::YB_ACTIVATE_SUBTRANSACTION;
+  debug_context.uintarg = id;
   // It's required that we flush all buffered operations before changing the SubTransactionMetadata
   // used by the underlying batcher and RPC logic, as this will snapshot the current
   // SubTransactionMetadata for use in construction of RPCs for already-queued operations, thereby
@@ -1026,20 +1125,23 @@ Status PgSession::SetActiveSubTransaction(SubTransactionId id) {
   // already queued operations may incorrectly use this newly modified SubTransactionMetadata when
   // they are eventually sent to DocDB.
   VLOG(4) << "SetActiveSubTransactionId " << id;
-  RETURN_NOT_OK(FlushBufferedOperations());
+  RETURN_NOT_OK(FlushBufferedOperations(debug_context));
   pg_txn_manager_->SetActiveSubTransactionId(id);
 
   return Status::OK();
 }
 
 Status PgSession::RollbackToSubTransaction(SubTransactionId id) {
+  YbcFlushDebugContext debug_context;
+  debug_context.reason = YbcFlushReason::YB_ROLLBACK_TO_SUBTRANSACTION;
+  debug_context.uintarg = id;
   // See comment in SetActiveSubTransaction -- we must flush buffered operations before updating any
   // SubTransactionMetadata.
   // TODO(read committed): performance improvement -
   // don't wait for ops which have already been sent ahead by pg_session i.e., to the batcher, then
   // rpc layer and beyond. For such ops, rely on aborted sub txn list in status tablet to invalidate
   // writes which will be asynchronously written to txn participants.
-  RETURN_NOT_OK(FlushBufferedOperations());
+  RETURN_NOT_OK(FlushBufferedOperations(debug_context));
   const auto status = pg_txn_manager_->RollbackToSubTransaction(id);
   VLOG_WITH_FUNC(4) << "id: " << id << ", error: " << status;
   return status;
@@ -1170,7 +1272,10 @@ Result<PerformFuture> PgSession::RunAsync(
     const ReadOperationGenerator& generator, CacheOptions&& cache_options) {
   RSTATUS_DCHECK(!cache_options.key_value.empty(), InvalidArgument, "Cache key can't be empty");
   // Ensure no buffered requests will be added to cached request.
-  RETURN_NOT_OK(buffer_.Flush());
+  YbcFlushDebugContext debug_context;
+  debug_context.reason = YbcFlushReason::YB_CATALOG_TABLE_PREFETCH;
+  debug_context.strarg1 = cache_options.key_value.c_str();
+  RETURN_NOT_OK(buffer_.Flush(debug_context));
   return DoRunAsync(generator, HybridTime(), ForceNonBufferable::kFalse, std::move(cache_options));
 }
 

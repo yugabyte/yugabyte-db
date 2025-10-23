@@ -1385,8 +1385,8 @@ void PgApiImpl::ResetOperationsBuffering() {
   pg_session_->ResetOperationsBuffering();
 }
 
-Status PgApiImpl::FlushBufferedOperations() {
-  return pg_session_->FlushBufferedOperations();
+Status PgApiImpl::FlushBufferedOperations(const YbcFlushDebugContext& debug_context) {
+  return pg_session_->FlushBufferedOperations(debug_context);
 }
 
 Status PgApiImpl::AdjustOperationsBuffering(int multiple) {
@@ -1928,7 +1928,11 @@ Status PgApiImpl::CommitPlainTransaction(const std::optional<PgDdlCommitInfo>& d
       pg_session_->IsInsertOnConflictBufferEmpty(),
       IllegalState, "Expected INSERT ... ON CONFLICT buffer to be empty");
   fk_reference_cache_.Clear();
-  RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
+
+  YbcFlushDebugContext debug_context;
+  debug_context.reason = YbcFlushReason::YB_COMMIT_TRANSACTION;
+  debug_context.oidarg = ddl_commit_info.has_value() ? ddl_commit_info->db_oid : kInvalidOid;
+  RETURN_NOT_OK(pg_session_->FlushBufferedOperations(debug_context));
   return pg_txn_manager_->CommitPlainTransaction(ddl_commit_info);
 }
 
@@ -1972,7 +1976,7 @@ Status PgApiImpl::SetDdlStateInPlainTransaction() {
 
 Status PgApiImpl::EnterSeparateDdlTxnMode() {
   // Flush all buffered operations as ddl txn use its own transaction session.
-  RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
+  RETURN_NOT_OK(pg_session_->FlushBufferedOperations(YB_ENTER_DDL_TRANSACTION_MODE));
   pg_session_->ResetHasCatalogWriteOperationsInDdlMode();
   return pg_txn_manager_->EnterSeparateDdlTxnMode();
 }
@@ -1983,7 +1987,7 @@ bool PgApiImpl::HasWriteOperationsInDdlTxnMode() const {
 
 Status PgApiImpl::ExitSeparateDdlTxnMode(PgOid db_oid, bool is_silent_modification) {
   // Flush all buffered operations as ddl txn use its own transaction session.
-  RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
+  RETURN_NOT_OK(pg_session_->FlushBufferedOperations(YB_EXIT_DDL_TRANSACTION_MODE));
   RETURN_NOT_OK(pg_txn_manager_->ExitSeparateDdlTxnModeWithCommit(db_oid, is_silent_modification));
   // Next reads from catalog tables have to see changes made by the DDL transaction.
   ResetCatalogReadTime();
@@ -1996,7 +2000,10 @@ Status PgApiImpl::ClearSeparateDdlTxnMode() {
 }
 
 Status PgApiImpl::SetActiveSubTransaction(SubTransactionId id) {
-  RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
+  YbcFlushDebugContext debug_context;
+  debug_context.reason = YbcFlushReason::YB_ACTIVATE_SUBTRANSACTION;
+  debug_context.uintarg = id;
+  RETURN_NOT_OK(pg_session_->FlushBufferedOperations(debug_context));
   return pg_session_->SetActiveSubTransaction(id);
 }
 
@@ -2354,7 +2361,10 @@ YbcReadPointHandle PgApiImpl::GetCurrentReadPoint() const {
 }
 
 Status PgApiImpl::RestoreReadPoint(YbcReadPointHandle read_point) {
-  RETURN_NOT_OK(FlushBufferedOperations());
+  YbcFlushDebugContext debug_context;
+  debug_context.reason = YbcFlushReason::YB_CHANGE_TRANSACTION_SNAPSHOT;
+  debug_context.uintarg = read_point;
+  RETURN_NOT_OK(FlushBufferedOperations(debug_context));
   return pg_txn_manager_->RestoreReadPoint(read_point);
 }
 
