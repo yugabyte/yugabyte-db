@@ -460,7 +460,8 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB> {
 
   bool is_running() const {
     // Historically, we have always treated PREPARING (tablets not yet ready) and RUNNING as the
-    // same. Changing it now will require all callers of this function to be aware of the new state.
+    // same, so preparing is also considered running even though the tablets are not all running.
+    // ALTERING tables are running.
     return pb.state() == SysTablesEntryPB::PREPARING || pb.state() == SysTablesEntryPB::RUNNING ||
            pb.state() == SysTablesEntryPB::ALTERING;
   }
