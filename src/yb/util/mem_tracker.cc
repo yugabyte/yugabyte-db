@@ -639,7 +639,9 @@ SoftLimitExceededResult MemTracker::SoftLimitExceeded(double* score) {
   // Soft limit exceeded.
   // Dump heap snapshot for debugging if this is the root tracker (and we have not dumped recently).
   if (IsRoot()) {
-    DumpHeapSnapshotUnlessThrottled();
+    if (DumpHeapSnapshotUnlessThrottled()) {
+      DumpMemoryUsage();
+    }
   }
   return SoftLimitExceededResult {
     .tracker_path = ToString(),
@@ -874,35 +876,39 @@ const MemTrackerData& CollectMemTrackerData(const MemTrackerPtr& tracker, int de
   return (*output)[idx];
 }
 
-std::string DumpMemTrackers() {
-  std::ostringstream out;
+namespace {
+
+void DumpMemTrackerData(const MemTrackerData& data, std::ostream& out) {
+  const auto& tracker = data.tracker;
+  const std::string current_consumption_str =
+      HumanReadableNumBytes::ToString(tracker->consumption());
+  out << std::string(data.depth, ' ') << tracker->id() << ": ";
+  if (!data.consumption_excluded_from_ancestors || data.tracker->UpdateConsumption()) {
+    out << current_consumption_str;
+  } else {
+    auto full_consumption_str = HumanReadableNumBytes::ToString(
+        tracker->consumption() + data.consumption_excluded_from_ancestors);
+    out << current_consumption_str << " (" << full_consumption_str << ")";
+  }
+}
+
+void DumpMemTrackers() {
+  LOG(INFO) << "Mem trackers:";
   std::vector<MemTrackerData> trackers;
   CollectMemTrackerData(MemTracker::GetRootTracker(), 0, &trackers);
   for (const auto& data : trackers) {
-    const auto& tracker = data.tracker;
-    const std::string current_consumption_str =
-        HumanReadableNumBytes::ToString(tracker->consumption());
-    out << std::string(data.depth, ' ') << tracker->id() << ": ";
-    if (!data.consumption_excluded_from_ancestors || data.tracker->UpdateConsumption()) {
-      out << current_consumption_str;
-    } else {
-      auto full_consumption_str = HumanReadableNumBytes::ToString(
-          tracker->consumption() + data.consumption_excluded_from_ancestors);
-      out << current_consumption_str << " (" << full_consumption_str << ")";
-    }
-    out << std::endl;
+    DumpMemTrackerData(data, LOG(INFO));
   }
-  return out.str();
 }
 
-std::string DumpMemoryUsage() {
-  std::ostringstream out;
+} // namespace
+
+void DumpMemoryUsage() {
   auto tcmalloc_stats = TcMallocStats();
   if (!tcmalloc_stats.empty()) {
-    out << "TCMalloc stats: \n" << tcmalloc_stats << "\n";
+    LOG(INFO) << "TCMalloc stats: \n" << tcmalloc_stats;
   }
-  out << "Memory usage: \n" << DumpMemTrackers();
-  return out.str();
+  DumpMemTrackers();
 }
 
 bool CheckMemoryPressureWithLogging(
