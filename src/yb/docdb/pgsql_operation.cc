@@ -351,9 +351,9 @@ class DocKeyAccessor {
       return Apply(req.ybctid_column_value());
     }
 
-    auto hashed_components = VERIFY_RESULT(qlexpr::InitKeyColumnPrimitiveValues(
+    auto hashed_components = VERIFY_RESULT(qlexpr::InitKeyColumnValues(
         req.partition_column_values(), schema_, 0 /* start_idx */));
-    auto range_components = VERIFY_RESULT(qlexpr::InitKeyColumnPrimitiveValues(
+    auto range_components = VERIFY_RESULT(qlexpr::InitKeyColumnValues(
         req.range_column_values(), schema_, schema_.num_hash_key_columns()));
     // A SELECT on the unique index column currently takes a strong lock on the top-level key at the
     // serializable isolation level. TODO: Optimize with weak lock.

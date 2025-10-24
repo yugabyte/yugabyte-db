@@ -38,26 +38,25 @@ class LRUCache {
 
  public:
   using const_iterator = typename Impl::const_iterator;
-  using iterator = typename Impl::const_iterator;
 
   explicit LRUCache(size_t capacity) : capacity_(capacity) {}
 
   // Insert entry in cache.
   template<class V>
-  iterator insert(V&& value) {
+  const_iterator insert(V&& value) {
     return FinalizeInsertion(impl_.push_front(std::forward<V>(value)));
   }
 
-  iterator Insert(const Value& value) {
+  const_iterator Insert(const Value& value) {
     return insert(value);
   }
 
-  iterator Insert(Value&& value) {
+  const_iterator Insert(Value&& value) {
     return insert(std::move(value));
   }
 
   template<class... Args>
-  iterator emplace(Args&&... args) {
+  const_iterator emplace(Args&&... args) {
     return FinalizeInsertion(impl_.emplace_front(std::forward<Args>(args)...));
   }
 
@@ -76,6 +75,15 @@ class LRUCache {
   template<class Key>
   bool contains(const Key& key) const {
     return impl_.template get<IdTag>().contains(key);
+  }
+
+  template<class Key>
+  const_iterator find(const Key& key) {
+    auto i = impl_.template project<0>(impl_.template get<IdTag>().find(key));
+    if (i != impl_.end()) {
+      MoveFront(i);
+    }
+    return i;
   }
 
   // Erase by usage order iterator
@@ -98,14 +106,24 @@ class LRUCache {
     return impl_.end();
   }
 
+  void clear() {
+    impl_.clear();
+  }
+
  private:
-  iterator FinalizeInsertion(const std::pair<iterator, bool>& insertion_result) {
+  const_iterator FinalizeInsertion(const std::pair<const_iterator, bool>& insertion_result) {
     if (!insertion_result.second) {
-      impl_.relocate(impl_.begin(), insertion_result.first);
+      MoveFront(insertion_result.first);
     } else if (impl_.size() > capacity_) {
       impl_.pop_back();
     }
     return insertion_result.first;
+  }
+
+  void MoveFront(const_iterator i) {
+    if (i != impl_.begin()) {
+      impl_.relocate(impl_.begin(), i);
+    }
   }
 
   const size_t capacity_;

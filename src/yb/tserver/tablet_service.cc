@@ -302,6 +302,7 @@ DEFINE_RUNTIME_bool(reject_writes_when_disk_full, kRejectWritesWhenDiskFullDefau
     "Reject incoming writes to the tablet if we are running out of disk space.");
 
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_enable_object_locking_infra);
 
 METRIC_DEFINE_gauge_uint64(server, ts_split_op_added, "Split OPs Added to Leader",
     yb::MetricUnit::kOperations, "Number of split operations added to the leader's Raft log.");
@@ -916,7 +917,7 @@ void TabletServiceAdminImpl::BackfillIndex(
   Status backfill_status;
   std::string backfilled_until;
   std::unordered_set<TableId> failed_indexes;
-  size_t number_rows_processed = 0;
+  uint64_t number_rows_processed = 0;
   if (is_pg_table) {
     if (!req->has_namespace_name()) {
       SetupErrorAndRespond(
@@ -3776,6 +3777,13 @@ void TabletServiceImpl::ClearMetacache(
 void TabletServiceImpl::AcquireObjectLocks(
     const AcquireObjectLockRequestPB* req, AcquireObjectLockResponsePB* resp,
     rpc::RpcContext context) {
+  if (!FLAGS_ysql_enable_object_locking_infra) {
+    return SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS(NotSupported,
+               "Object locking is not available until the cluster upgrade is finalized."),
+        &context);
+  }
   if (!FLAGS_enable_object_locking_for_table_locks) {
     return SetupErrorAndRespond(
         resp->mutable_error(),
@@ -3798,11 +3806,6 @@ void TabletServiceImpl::AcquireObjectLocks(
 void TabletServiceImpl::ReleaseObjectLocks(
     const ReleaseObjectLockRequestPB* req, ReleaseObjectLockResponsePB* resp,
     rpc::RpcContext context) {
-  if (!PREDICT_FALSE(FLAGS_enable_object_locking_for_table_locks)) {
-    return SetupErrorAndRespond(
-        resp->mutable_error(),
-        STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"), &context);
-  }
   TRACE("Start ReleaseObjectLocks");
   VLOG(2) << "Received ReleaseObjectLocks RPC: " << req->DebugString();
 

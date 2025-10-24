@@ -41,6 +41,7 @@
 #include "yb/yql/pggate/pg_perform_future.h"
 #include "yb/yql/pggate/pg_setup_perform_options_accessor_tag.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
+#include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pg_txn_manager.h"
 
 namespace yb::pggate {
@@ -65,8 +66,7 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
       YbcPgExecStatsState& stats_state,
       bool is_pg_binary_upgrade,
       std::reference_wrapper<const WaitEventWatcher> wait_event_watcher,
-      BufferingSettings& buffering_settings,
-      bool enable_table_locking);
+      BufferingSettings& buffering_settings);
   ~PgSession();
 
   // Resets the read point for catalog tables.
@@ -377,8 +377,7 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
   const bool is_major_pg_version_upgrade_;
 
   const WaitEventWatcher& wait_event_watcher_;
-
-  const bool enable_table_locking_;
+  TablespaceCache tablespace_cache_;
 };
 
 template<class PB>

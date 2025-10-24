@@ -276,6 +276,26 @@ public class OtelCollectorConfigFormat {
 
   @Data
   @EqualsAndHashCode(callSuper = true)
+  public static class AWSS3Exporter extends Exporter {
+    private String marshaler;
+    private S3UploaderConfig s3uploader;
+  }
+
+  @Data
+  public static class S3UploaderConfig {
+    private String endpoint;
+    private String s3_bucket;
+    private String region;
+    private String s3_prefix;
+    private String s3_partition;
+    private String role_arn;
+    private String file_prefix;
+    private Boolean s3_force_path_style;
+    private Boolean disable_ssl;
+  }
+
+  @Data
+  @EqualsAndHashCode(callSuper = true)
   public static class GCPCloudMonitoringExporter extends Exporter {
     private String project;
     private GCPCloudMonitoringLog log;

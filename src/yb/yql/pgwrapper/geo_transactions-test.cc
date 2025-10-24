@@ -1196,7 +1196,7 @@ TEST_F(GeoTransactionsTablespaceLocalityTest, TestSessionVariableOverride) {
       SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
       ExpectedLocality::kGlobal, force_tablespace_auto_select);
 
-  auto force_tablespace_bad_select = [this](pgwrapper::PGConn& conn) -> Status {
+  auto force_tablespace_bad_select = [](pgwrapper::PGConn& conn) -> Status {
     RETURN_NOT_OK(conn.Execute("SET yb_force_tablespace_locality = true"));
     // Normal user oids start at 16384, so this should not map to anything, and we can test
     // that it becomes global.

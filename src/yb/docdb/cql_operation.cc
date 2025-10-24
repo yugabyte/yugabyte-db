@@ -1197,9 +1197,10 @@ Status QLWriteOperation::ApplyDelete(
         nullptr, AddKeysMode::kAll));
 
     // Construct the scan spec basing on the WHERE condition.
+    auto arena = SharedSmallArena();
     auto hashed_components = VERIFY_RESULT(dockv::QLKeyColumnValuesToPrimitiveValues(
         request_.hashed_column_values(), doc_read_context_->schema(), 0,
-        doc_read_context_->schema().num_hash_key_columns()));
+        doc_read_context_->schema().num_hash_key_columns(), *arena));
 
     std::optional<int32_t> hash_code =
         request_.has_hash_code() ? std::make_optional<int32_t>(request_.hash_code()) : std::nullopt;
@@ -1207,8 +1208,7 @@ Status QLWriteOperation::ApplyDelete(
     const auto include_static_columns_in_scan =
         range_covers_whole_partition_key && doc_read_context_->schema().has_statics();
     DocQLScanSpec spec(
-        doc_read_context_->schema(), hash_code,
-        hash_code,  // max hash code.
+        doc_read_context_->schema(), hash_code, /* max_hash_code= */ hash_code, arena,
         hashed_components, request_.has_where_expr() ? &request_.where_expr().condition() : nullptr,
         nullptr, request_.query_id(), true /* is_forward_scan */, include_static_columns_in_scan);
 

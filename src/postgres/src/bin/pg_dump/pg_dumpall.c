@@ -931,6 +931,9 @@ dumpRoles(PGconn *conn)
 		 * In Yugabyte major upgrade, there are additional roles already created
 		 * by initdb.
 		 * yb_superuser is created outside of initdb, so it needs to be included.
+		 * Note: If additional special roles with "yb_" prefix are added in the
+		 * future, they must also be excluded in the preflight check function
+		 * yb_check_yb_role_prefix() in check.c
 		 */
 		if (IsYugabyteEnabled && binary_upgrade &&
 			strncmp(rolename, "yb_", 3) == 0 &&

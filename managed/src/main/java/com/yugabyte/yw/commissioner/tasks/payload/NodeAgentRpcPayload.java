@@ -54,6 +54,7 @@ import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig;
 import com.yugabyte.yw.models.helpers.telemetry.GCPCloudMonitoringConfig;
+import com.yugabyte.yw.models.helpers.telemetry.S3Config;
 import com.yugabyte.yw.nodeagent.ConfigureServerInput;
 import com.yugabyte.yw.nodeagent.DownloadSoftwareInput;
 import com.yugabyte.yw.nodeagent.InstallOtelCollectorInput;
@@ -182,6 +183,16 @@ public class NodeAgentRpcPayload {
         ManageOtelCollector.OtelCollectorVersion,
         ManageOtelCollector.OtelCollectorPlatform,
         architecture);
+  }
+
+  private void setAwsCredentialsInBuilder(
+      String accessKey, String secretKey, InstallOtelCollectorInput.Builder builder) {
+    if (StringUtils.isNotEmpty(accessKey)) {
+      builder.setOtelColAwsAccessKey(accessKey);
+    }
+    if (StringUtils.isNotEmpty(secretKey)) {
+      builder.setOtelColAwsSecretKey(secretKey);
+    }
   }
 
   private DownloadSoftwareInput.Builder fillYbReleaseMetadata(
@@ -582,14 +593,15 @@ public class NodeAgentRpcPayload {
       case AWS_CLOUDWATCH -> {
         AWSCloudWatchConfig awsCloudWatchConfig =
             (AWSCloudWatchConfig) telemetryProvider.getConfig();
-        if (StringUtils.isNotEmpty(awsCloudWatchConfig.getAccessKey())) {
-          installOtelCollectorInputBuilder.setOtelColAwsAccessKey(
-              awsCloudWatchConfig.getAccessKey());
-        }
-        if (StringUtils.isNotEmpty(awsCloudWatchConfig.getSecretKey())) {
-          installOtelCollectorInputBuilder.setOtelColAwsSecretKey(
-              awsCloudWatchConfig.getSecretKey());
-        }
+        setAwsCredentialsInBuilder(
+            awsCloudWatchConfig.getAccessKey(),
+            awsCloudWatchConfig.getSecretKey(),
+            installOtelCollectorInputBuilder);
+      }
+      case S3 -> {
+        S3Config s3Config = (S3Config) telemetryProvider.getConfig();
+        setAwsCredentialsInBuilder(
+            s3Config.getAccessKey(), s3Config.getSecretKey(), installOtelCollectorInputBuilder);
       }
       case GCP_CLOUD_MONITORING -> {
         GCPCloudMonitoringConfig gcpCloudMonitoringConfig =

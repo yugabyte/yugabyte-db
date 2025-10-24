@@ -1070,7 +1070,7 @@ Default: false
 
 ## Advisory lock flags
 
-To learn about advisory locks, see [Advisory locks](../../../explore/transactions/explicit-locking/#advisory-locks).
+To learn about advisory locks, see [Advisory locks](../../../architecture/transactions/concurrency-control/#advisory-locks).
 
 ##### --ysql_yb_enable_advisory_locks
 

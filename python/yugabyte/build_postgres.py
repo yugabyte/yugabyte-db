@@ -712,30 +712,29 @@ class PostgresBuilder(YbBuildToolBase):
         with WorkDirContext(YB_SRC_ROOT):
             # Postgres files.
             pathspec = [
+                'CMakeLists.txt',
+                'build-support/build_postgres',
+                'python/yugabyte/build_postgres.py',
                 'src/postgres',
                 'src/yb/yql/pggate',
-                'python/yugabyte/build_postgres.py',
-                'build-support/build_postgres',
-                'CMakeLists.txt',
             ]
             git_version = self.get_git_version()
             if git_version and git_version >= semantic_version.Version('1.9.0'):
                 # Git version 1.8.5 allows specifying glob pathspec, and Git version 1.9.0 allows
                 # specifying negative pathspec.  Use them to exclude changes to regress test files
                 # not needed for build.
-                pathspec.extend([
-                    ':(glob,exclude)src/postgres/**/*_schedule',
-                    ':(glob,exclude)src/postgres/**/data/*.csv',
-                    ':(glob,exclude)src/postgres/**/data/*.data',
-                    ':(glob,exclude)src/postgres/**/expected/*.out',
-                    ':(glob,exclude)src/postgres/**/input/*.source',
-                    ':(glob,exclude)src/postgres/**/output/*.source',
-                    ':(glob,exclude)src/postgres/**/specs/*.spec',
-                    ':(glob,exclude)src/postgres/**/sql/*.sql',
-                    ':(glob,exclude)src/postgres/.clang-format',
-                    ':(glob,exclude)src/postgres/src/test/regress/README',
-                    ':(glob,exclude)src/postgres/src/test/regress/yb_lint_regress_schedule.sh',
-                ])
+                pathspec.extend(map(lambda path: ':(glob,exclude)' + path, [
+                    'src/postgres/**/*_schedule',
+                    'src/postgres/**/README',
+                    'src/postgres/**/data/*.csv',
+                    'src/postgres/**/data/*.data',
+                    'src/postgres/**/expected/*.out',
+                    'src/postgres/**/specs/*.spec',
+                    'src/postgres/**/sql/*.sql',
+                    'src/postgres/**/yb_commands/*.sql',
+                    'src/postgres/.clang-format',
+                    'src/yb/yql/pggate/**/README',
+                ]))
             # Get the most recent commit that touched postgres files.
             git_hash = subprocess.check_output(
                 ['git', '--no-pager', 'log', '-n', '1', '--format=%H', '--'] + pathspec

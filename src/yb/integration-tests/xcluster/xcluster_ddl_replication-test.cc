@@ -40,6 +40,8 @@
 #include "yb/util/sync_point.h"
 #include "yb/util/tsan_util.h"
 
+#include "yb/yql/pgwrapper/libpq_utils.h"
+
 DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
 DECLARE_bool(enable_pg_cron);
 DECLARE_int32(timestamp_history_retention_interval_sec);
@@ -534,12 +536,12 @@ TEST_F(XClusterDDLReplicationTest, CreateTableWithEnum) {
 
 }
 
-TEST_F(XClusterDDLReplicationTest, BlockMultistatementQuery) {
+TEST_F(XClusterDDLReplicationTest, MultistatementQuery) {
   ASSERT_OK(SetUpClustersAndReplication());
 
   // Have to do this through ysqlsh -c since that sends the whole
   // query string as a single command.
-  auto call_multistatement_query = [&](const std::string& query) {
+  auto call_multistatement_query = [&](const std::string& query) -> Status {
     std::vector<std::string> args;
     args.push_back(GetPgToolPath("ysqlsh"));
     args.push_back("--host");
@@ -551,25 +553,32 @@ TEST_F(XClusterDDLReplicationTest, BlockMultistatementQuery) {
     args.push_back("-c");
     args.push_back(query);
 
-    auto s = CallAdminVec(args);
-    LOG(INFO) << "Command output: " << s;
-    ASSERT_NOK(s);
-    ASSERT_TRUE(
-        s.status().message().Contains("only a single DDL command is allowed in the query string"));
+    auto output = VERIFY_RESULT(CallAdminVec(args));
+    LOG(INFO) << "Command output: " << output;
+    return Status::OK();
   };
 
-  call_multistatement_query(
-      "CREATE TABLE multistatement(i int PRIMARY KEY);"
-      "INSERT INTO multistatement VALUES (1);");
-  call_multistatement_query(
-      "SELECT 1;"
-      "CREATE TABLE multistatement(i int PRIMARY KEY);");
-  call_multistatement_query(
-      "CREATE TABLE multistatement1(i int PRIMARY KEY);"
-      "CREATE TABLE multistatement2(i int PRIMARY KEY);");
-  call_multistatement_query(
-      "CREATE TABLE multistatement(i int);"
-      "CREATE UNIQUE INDEX ON multistatement(i);");
+  ASSERT_OK(
+      call_multistatement_query("CREATE TABLE tbl1(i int PRIMARY KEY);"
+                                "INSERT INTO tbl1 VALUES (1);"));
+  ASSERT_OK(
+      call_multistatement_query("SELECT 1;"
+                                "CREATE TABLE tbl2(i int PRIMARY KEY);"));
+  ASSERT_OK(
+      call_multistatement_query("CREATE TEMP TABLE tmp1(i int PRIMARY KEY);"
+                                "DROP TABLE tmp1;"
+                                "INSERT INTO tbl2 VALUES(3);"
+                                "CREATE TABLE tbl3(i int PRIMARY KEY);"));
+  ASSERT_OK(
+      call_multistatement_query("CREATE TABLE tbl4(key int);"
+                                "CREATE UNIQUE INDEX ON tbl4(key);"));
+
+  ASSERT_OK(
+      call_multistatement_query("INSERT INTO tbl4 VALUES (1);"
+                                "DROP TABLE tbl1, tbl2;"));
+
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifyWrittenRecords(std::vector<TableName>{"tbl4"}));
 }
 
 TEST_F(XClusterDDLReplicationTest, CreateIndex) {
@@ -3600,6 +3609,117 @@ TEST_F(XClusterDDLReplicationTest, CreateTableAs) {
   VerifyRowCount(kIntoTableCase3, 10);
   ASSERT_OK(VerifyWrittenRecords({kIntoTableCase3}));
   InsertAndVerify(kIntoTableCase3, /*initial_row_count=*/10);
+}
+
+// Verify pg_partman + pg_cron + Switchover works.
+TEST_F(XClusterDDLReplicationSwitchoverTest, PartmanExtension) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_pg_cron) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = "cron.yb_job_list_refresh_interval=10";
+
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(RunOnBothClusters([this](Cluster* cluster) -> Status {
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
+    RETURN_NOT_OK(conn.Execute("CREATE SCHEMA partman"));
+    RETURN_NOT_OK(conn.Execute("CREATE EXTENSION pg_partman WITH SCHEMA partman"));
+    RETURN_NOT_OK(conn.Execute("CREATE EXTENSION pg_cron"));
+    return Status::OK();
+  }));
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  ASSERT_RESULT(producer_conn_->Fetch(R"#(
+    SELECT cron.schedule(
+        'Run maintenance job',
+        '5 seconds',
+        'SELECT partman.run_maintenance()'
+    );)#"));
+
+  ASSERT_OK(producer_conn_->Execute(R"#(
+    CREATE TABLE orders(
+      order_id SERIAL,
+      order_date DATE NOT NULL,
+      customer_id INT) PARTITION BY RANGE (order_date);)#"));
+
+  ASSERT_OK(producer_conn_->FetchAllAsString(R"#(
+    SELECT partman.create_parent(
+      p_parent_table => 'public.orders',
+      p_control => 'order_date',
+      p_type => 'native',
+      p_interval => 'monthly',
+      p_premake => 1);)#"));
+
+  int64_t expected_table_count = 4;
+
+  auto validate_table_count = [this, &expected_table_count]() {
+    const auto select_table_names =
+        "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public'";
+
+    ASSERT_OK(LoggedWaitFor(
+        [this, select_table_names, expected_table_count]() -> Result<bool> {
+          auto table_count = VERIFY_RESULT(producer_conn_->FetchRow<int64_t>(select_table_names));
+          return table_count == expected_table_count;
+          // Wait for 3x the cron job interval.
+        },
+        MonoDelta::FromMinutes(3),
+        Format("Wait for Producer table count to be $0", expected_table_count)));
+
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+    auto table_count = ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>(select_table_names));
+    ASSERT_EQ(table_count, expected_table_count);
+  };
+
+  ASSERT_NO_FATALS(validate_table_count());
+
+  // Insert some data into the table and verify it is replicated.
+  const auto select_data = "SELECT customer_id FROM orders ORDER BY order_date";
+  ASSERT_OK(
+      producer_conn_->Execute("INSERT INTO orders (order_date, customer_id) VALUES (current_date, "
+                              "1), (current_date + 1, 2)"));
+  auto producer_data = ASSERT_RESULT(producer_conn_->FetchAllAsString(select_data));
+  ASSERT_EQ(producer_data, "1; 2");
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  auto consumer_data = ASSERT_RESULT(consumer_conn_->FetchAllAsString(select_data));
+  ASSERT_EQ(consumer_data, producer_data);
+
+  // Update the premake so that cron job creates one more partition.
+  ASSERT_OK(producer_conn_->Execute("UPDATE partman.part_config SET premake = 2"));
+  expected_table_count++;
+  ASSERT_NO_FATALS(validate_table_count());
+
+  ASSERT_OK(Switchover());
+
+  // Update premake again after the switchover.
+  ASSERT_OK(producer_conn_->Execute("UPDATE partman.part_config SET premake = 3"));
+  expected_table_count++;
+  ASSERT_NO_FATALS(validate_table_count());
+
+  // Make sure we can drop the extension, but we cannot recreate it while the database is in
+  // automatic mode.
+  ASSERT_OK(producer_conn_->Execute("DROP EXTENSION pg_partman"));
+  ASSERT_NOK_STR_CONTAINS(
+      producer_conn_->Execute("CREATE EXTENSION pg_partman WITH SCHEMA partman"),
+      "Extension pg_partman is not supported because it contains unsupported DDLs within the "
+      "extension script");
+}
+
+TEST_F(XClusterDDLReplicationTest, FuncWithDDLsAndDMLs) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  // create a function which takes a table name as an argument and creates a table with that name
+  // and inserts 10 rows into it.
+  ASSERT_OK(producer_conn_->Execute(
+      R"#(
+      CREATE FUNCTION create_and_insert_table(table_name text)
+      RETURNS void AS $$ BEGIN
+        EXECUTE 'CREATE TABLE ' || quote_ident(table_name) || ' (key int PRIMARY KEY)';
+        EXECUTE 'INSERT INTO ' || quote_ident(table_name) || ' VALUES (1), (2), (3), (4), (5), (6),
+          (7), (8), (9), (10)';
+      END;
+      $$ LANGUAGE plpgsql;
+      )#"));
+  ASSERT_OK(producer_conn_->FetchAllAsString("SELECT create_and_insert_table('test_table');"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifyWrittenRecords(std::vector<TableName>{"test_table"}));
 }
 
 }  // namespace yb

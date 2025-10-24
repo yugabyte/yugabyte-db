@@ -532,7 +532,11 @@ class YBClient {
       bool use_secondary_space, uint32_t* begin_oid, uint32_t* end_oid,
       uint32_t* oid_cache_invalidations_count = nullptr);
 
-  Status GetYsqlCatalogMasterVersion(uint64_t *ysql_catalog_version);
+  // Deprecated. Use instead per-db version below.
+  Status DEPRECATED_GetYsqlCatalogMasterVersion(uint64_t *ysql_catalog_version);
+
+  Status GetYsqlDBCatalogMasterVersion(
+      const std::string& database_name, uint64_t *ysql_catalog_version);
 
   // Grant permission with given arguments.
   Status GrantRevokePermission(

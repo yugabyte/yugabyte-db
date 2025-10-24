@@ -1952,7 +1952,7 @@ TEST_F(PgCatalogVersionTest, DisableNopAlterRoleOptimization) {
 }
 
 TEST_F(PgCatalogVersionTest, SimulateDelayedHeartbeatResponse) {
-  RestartClusterWithDBCatalogVersionMode({"--TEST_delay_set_catalog_version_table_mode_count=30"});
+  RestartClusterWithDBCatalogVersionMode({"--TEST_delay_set_catalog_version_table_mode_count=40"});
   auto status = ResultToStatus(Connect());
   ASSERT_TRUE(status.IsNetworkError()) << status;
   ASSERT_STR_CONTAINS(status.ToString(),

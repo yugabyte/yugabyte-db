@@ -1,6 +1,7 @@
-# src/test/regress/yb_pg_join2_schedule
+# src/test/regress/yb_join_schedule
 #
 ####################################################################################################
-# This includes additional tests for Join Clause
+# This includes tests for Joins
 ####################################################################################################
-test: yb.orig.join_batching2
+test: yb.orig.join_batching
+test: yb.orig.join_batching_parallel

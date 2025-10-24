@@ -50,63 +50,76 @@ bool AreColumnsContinous(qlexpr::ColumnListVector col_idxs) {
 
 }  // namespace
 
+DocQLScanSpec::DocQLScanSpec(const Schema& schema, const QLConditionPB* cond)
+    : DocQLScanSpec(schema, /* hash_code= */ std::nullopt, /* max_hash_code= */ std::nullopt,
+                    /* arena= */ nullptr, /* hashed_components= */ {}, cond, nullptr /* if_req */,
+                    rocksdb::kDefaultQueryId) {
+}
+
 DocQLScanSpec::DocQLScanSpec(
     const Schema& schema,
     const dockv::DocKey& doc_key,
     const rocksdb::QueryId query_id,
     const bool is_forward_scan,
     const size_t prefix_length)
+    : DocQLScanSpec(schema, doc_key.Encode(), query_id, is_forward_scan, prefix_length) {
+}
+
+DocQLScanSpec::DocQLScanSpec(
+    const Schema& schema,
+    KeyBytes&& encoded_doc_key,
+    const rocksdb::QueryId query_id,
+    const bool is_forward_scan,
+    const size_t prefix_length)
     : qlexpr::QLScanSpec(
           schema, is_forward_scan, query_id, /* range_bounds = */ nullptr, prefix_length,
           std::make_shared<DocExprExecutor>()),
-      hashed_components_(nullptr),
       options_groups_(0),
       include_static_columns_(false),
-      doc_key_(doc_key.Encode()) {
+      doc_key_(std::move(encoded_doc_key)) {
   CompleteBounds();
 }
 
 DocQLScanSpec::DocQLScanSpec(
     const Schema& schema, const std::optional<int32_t> hash_code,
     const std::optional<int32_t> max_hash_code,
-    std::reference_wrapper<const dockv::KeyEntryValues> hashed_components,
+    const ArenaPtr& arena,
+    const std::vector<Slice>& hashed_components,
     const QLConditionPB* condition, const QLConditionPB* if_condition,
     const rocksdb::QueryId query_id, const bool is_forward_scan, const bool include_static_columns,
     const dockv::DocKey& start_doc_key, const size_t prefix_length)
     : qlexpr::QLScanSpec(
           schema, is_forward_scan, query_id,
           condition ? std::make_unique<qlexpr::QLScanRange>(schema, *condition) : nullptr,
-          prefix_length, condition, if_condition, std::make_shared<DocExprExecutor>()),
+          prefix_length, condition, if_condition, std::make_shared<DocExprExecutor>(), arena),
       hash_code_(hash_code),
       max_hash_code_(max_hash_code),
-      hashed_components_(&hashed_components.get()),
       options_groups_(schema.num_dockey_components()),
       include_static_columns_(include_static_columns),
       start_doc_key_(start_doc_key.empty() ? KeyBytes() : start_doc_key.Encode()) {
-  bounds_.lower = bound_key(true);
-  bounds_.upper = bound_key(false);
-  if (!hashed_components_->empty() && schema.num_hash_key_columns()) {
+  bounds_.lower = BoundKey(hashed_components, qlexpr::BoundType::kLower);
+  bounds_.upper = BoundKey(hashed_components, qlexpr::BoundType::kUpper);
+  if (!hashed_components.empty() && schema.num_hash_key_columns()) {
     options_ = std::make_shared<std::vector<qlexpr::OptionList>>(schema.num_dockey_components());
     // should come here if we are not batching hash keys as a part of IN condition
     options_groups_.BeginNewGroup();
     options_groups_.AddToLatestGroup(0);
     options_col_ids_.emplace_back(ColumnId(kYbHashCodeColId));
-    (*options_)[0].push_back(KeyEntryValue::UInt16Hash(hash_code_.value()));
-    DCHECK(hashed_components_->size() == schema.num_hash_key_columns());
+    (*options_)[0].push_back(dockv::EncodedHashCode(*arena, hash_code_.value()));
+    DCHECK_EQ(hashed_components.size(), schema.num_hash_key_columns());
 
     for (size_t col_idx = 0; col_idx < schema.num_hash_key_columns(); ++col_idx) {
       options_groups_.AddToLatestGroup(schema.get_dockey_component_idx(col_idx));
       options_col_ids_.emplace_back(schema.column_id(col_idx));
 
-      (*options_)[schema.get_dockey_component_idx(col_idx)].push_back(
-          std::move((*hashed_components_)[col_idx]));
+      (*options_)[schema.get_dockey_component_idx(col_idx)].push_back(hashed_components[col_idx]);
     }
   }
 
   // If the hash key is fixed and we have range columns with IN condition, try to construct the
   // exact list of range options to scan for.
   const auto rangebounds = range_bounds();
-  if (!hashed_components_->empty() && schema.num_range_key_columns() > 0 && rangebounds &&
+  if (!hashed_components.empty() && schema.num_range_key_columns() > 0 && rangebounds &&
       rangebounds->has_in_range_options()) {
     DCHECK(condition);
     if (!options_) {
@@ -167,8 +180,8 @@ void DocQLScanSpec::InitOptions(const QLConditionPB& condition) {
         options_groups_.AddToLatestGroup(key_idx);
 
         if (condition.op() == QL_OP_EQUAL) {
-          auto pv = KeyEntryValue::FromQLValuePBForKey(rhs.value(), sorting_type);
-          (*options_)[key_idx].push_back(std::move(pv));
+          (*options_)[key_idx].push_back(dockv::EncodedKeyEntryValue(
+              arena(), rhs.value(), sorting_type));
         } else {  // QL_OP_IN
           DCHECK_EQ(condition.op(), QL_OP_IN);
           DCHECK(rhs.value().has_list_value());
@@ -180,9 +193,8 @@ void DocQLScanSpec::InitOptions(const QLConditionPB& condition) {
           auto is_reverse_order = get_scan_direction(col_idx);
           for (int i = 0; i < opt_size; i++) {
             int elem_idx = is_reverse_order ? opt_size - i - 1 : i;
-            const auto& elem = options.elems(elem_idx);
-            auto pv = KeyEntryValue::FromQLValuePBForKey(elem, sorting_type);
-            (*options_)[key_idx].push_back(std::move(pv));
+            (*options_)[key_idx].push_back(dockv::EncodedKeyEntryValue(
+                arena(), options.elems(elem_idx), sorting_type));
           }
         }
       } else if (lhs.has_tuple()) {
@@ -211,11 +223,9 @@ void DocQLScanSpec::InitOptions(const QLConditionPB& condition) {
           DCHECK_EQ(total_cols, value.elems_size());
           for (size_t i = 0; i < total_cols; i++) {
             auto sorting_type = get_sorting_type(col_idxs[i]);
-            auto option =
-                KeyEntryValue::FromQLValuePBForKey(value.elems(static_cast<int>(i)), sorting_type);
-            auto options_idx =
-              schema().get_dockey_component_idx(col_idxs[i]);
-            (*options_)[options_idx].push_back(std::move(option));
+            auto options_idx = schema().get_dockey_component_idx(col_idxs[i]);
+            (*options_)[options_idx].push_back(dockv::EncodedKeyEntryValue(
+                arena(), value.elems(static_cast<int>(i)), sorting_type));
           }
         } else if (condition.op() == QL_OP_IN) {
           DCHECK(rhs.value().has_list_value());
@@ -244,13 +254,12 @@ void DocQLScanSpec::InitOptions(const QLConditionPB& condition) {
               const auto sorting_type = get_sorting_type(col_idxs[j]);
               // For hash tuples, the first element always contains the yb_hash_code
               DCHECK(col_idxs[j] != kYbHashCodeColId || j == 0);
-              auto option = (col_idxs[j] == kYbHashCodeColId)
-                  ? KeyEntryValue::UInt16Hash(value.elems(static_cast<int>(j)).int32_value())
-                  : KeyEntryValue::FromQLValuePBForKey(value.elems(static_cast<int>(j)),
-                                                       sorting_type);
-              auto options_idx =
-                schema().get_dockey_component_idx(col_idxs[j]);
-              (*options_)[options_idx].push_back(std::move(option));
+              auto options_idx = schema().get_dockey_component_idx(col_idxs[j]);
+              const auto& value_elem = value.elems(static_cast<int>(j));
+              auto value_slice = col_idxs[j] == kYbHashCodeColId
+                  ? dockv::EncodedHashCode(arena(), value_elem.int32_value())
+                  : dockv::EncodedKeyEntryValue(arena(), value_elem, sorting_type);
+              (*options_)[options_idx].push_back(value_slice);
             }
           }
         }
@@ -265,19 +274,26 @@ void DocQLScanSpec::InitOptions(const QLConditionPB& condition) {
   }
 }
 
-KeyBytes DocQLScanSpec::bound_key(const bool lower_bound) const {
+KeyBytes DocQLScanSpec::BoundKey(
+    const std::vector<Slice>& hashed_components, qlexpr::BoundType bound_type) const {
   KeyBytes result;
   auto encoder = dockv::DocKeyEncoder(&result).CotableId(Uuid::Nil());
 
   // If no hashed_component use hash lower/upper bounds if set.
-  if (hashed_components_->empty()) {
-    // use lower bound hash code if set in request (for scans using token)
-    if (lower_bound && hash_code_) {
-      encoder.HashAndRange(*hash_code_, {KeyEntryValue(dockv::KeyEntryType::kLowest)}, {});
-    }
-    // use upper bound hash code if set in request (for scans using token)
-    if (!lower_bound && max_hash_code_) {
-      encoder.HashAndRange(*max_hash_code_, {KeyEntryValue(dockv::KeyEntryType::kHighest)}, {});
+  if (hashed_components.empty()) {
+    switch (bound_type) {
+      // use lower bound hash code if set in request (for scans using token)
+      case qlexpr::BoundType::kLower:
+        if (hash_code_) {
+          encoder.HashAndRange(*hash_code_, {KeyEntryValue(dockv::KeyEntryType::kLowest)}, {});
+        }
+        break;
+      case qlexpr::BoundType::kUpper:
+        // use upper bound hash code if set in request (for scans using token)
+        if (max_hash_code_) {
+          encoder.HashAndRange(*max_hash_code_, {KeyEntryValue(dockv::KeyEntryType::kHighest)}, {});
+        }
+        break;
     }
     return result;
   }
@@ -287,18 +303,18 @@ KeyBytes DocQLScanSpec::bound_key(const bool lower_bound) const {
   DCHECK(max_hash_code_);
   DCHECK_EQ(*hash_code_, *max_hash_code_);
   auto hash_code = static_cast<DocKeyHash>(*hash_code_);
-  encoder.HashAndRange(hash_code, *hashed_components_, RangeComponents(lower_bound));
+  encoder.HashAndRange(hash_code, hashed_components, RangeComponents(bound_type));
   return result;
 }
 
-dockv::KeyEntryValues DocQLScanSpec::RangeComponents(bool lower_bound,
+dockv::KeyEntryValues DocQLScanSpec::RangeComponents(qlexpr::BoundType bound_type,
                                                      std::vector<bool>* inclusivities) const {
   return GetRangeKeyScanSpec(
       schema(),
       nullptr /* prefixed_range_components */,
       range_bounds(),
       inclusivities,
-      lower_bound,
+      bound_type,
       include_static_columns_);
 }
 namespace {

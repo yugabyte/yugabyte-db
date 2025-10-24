@@ -2225,7 +2225,7 @@ Timeout, in milliseconds, for the node-level mutation reporting RPC to the Auto 
 
 Support for advisory locks is {{<tags/feature/tp idea="812">}}. To use the flags, you must add them to [allowed_preview_flags_csv](#allowed-preview-flags-csv).
 
-To learn about advisory locks, see [Advisory locks](../../../explore/transactions/explicit-locking/#advisory-locks).
+To learn about advisory locks, see [Advisory locks](../../../architecture/transactions/concurrency-control/#advisory-locks).
 
 ##### --ysql_yb_enable_advisory_locks
 
