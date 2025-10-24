@@ -1930,14 +1930,14 @@ YbCullArray(ArrayType *arrayval,
 /*
  * Bind scalar array ops and row array ops.
  *
- * i represents the scan key index we are focusing on.
+ * skey_index represents the scan key index we are focusing on.
  *
  * is_for_precheck signifies that the caller only wants to use this for
  * predetermine-recheck purposes, so don't actually do binds but still
  * calculate all_ordinary_keys_bound.
  * TODO(jason): do a proper cleanup.
  */
-static bool
+static void
 YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 				  int skey_index, bool is_for_precheck, bool is_column_bound[],
 				  bool *bail_out)
@@ -1961,6 +1961,9 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 
 	if (YbIsRowHeader(key))
 	{
+		Bitmapset  *newly_bound_idxs = NULL;
+		int			bound_idx;
+
 		/*
 		 * Get num subkeys and their attnums in this rowkey (exclude header).
 		 * See skey.h and ybExtractScanKeys for layout details.
@@ -1969,16 +1972,30 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 		row_nkeys = YbGetLengthOfKey(&ybScan->keys[skey_index]) - 1;
 		row_attnums = &scan_plan->bind_key_attnums[skey_index + 1];
 
+		/* If any column is already bound, give up. */
 		for (int row_idx = 0; row_idx < row_nkeys; row_idx++)
 		{
-			int			bound_idx =
-				YBAttnumToBmsIndex(relation, row_attnums[row_idx]);
+			bound_idx = YBAttnumToBmsIndex(relation, row_attnums[row_idx]);
 
 			if (is_column_bound[bound_idx])
-				return false;
-			else
-				is_column_bound[bound_idx] = true;
+			{
+				ybScan->all_ordinary_keys_bound = false;
+				return;
+			}
+
+			newly_bound_idxs = bms_add_member(newly_bound_idxs, bound_idx);
 		}
+
+		/*
+		 * All columns are bindable: mark them as bound before proceeding to
+		 * bind them.
+		 */
+		while ((bound_idx = bms_first_member(newly_bound_idxs)) >= 0)
+		{
+			is_column_bound[bound_idx] = true;
+		}
+
+		bms_free(newly_bound_idxs);
 	}
 	else
 	{
@@ -1986,10 +2003,12 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 											scalar_attnum);
 		scalar_val_typid = key->sk_subtype;
 		scalar_null_bound = false;
+		Assert(!is_column_bound[YBAttnumToBmsIndex(relation, scalar_attnum)]);
+		is_column_bound[YBAttnumToBmsIndex(relation, scalar_attnum)] = true;
 	}
 
 	if (is_for_precheck)
-		return true;
+		return;
 
 	/*
 	 * Get array from keys.  See skey.h and ybExtractScanKeys for layout
@@ -2014,7 +2033,7 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 	{
 		*bail_out = true;
 		pfree(elem_values);
-		return false;
+		return;
 	}
 
 	if (is_row)
@@ -2031,8 +2050,6 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 							elem_values, scalar_null_bound);
 
 	pfree(elem_values);
-
-	return true;
 }
 
 /*
@@ -2279,15 +2296,15 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, bool is_for_precheck)
 				else if (YbIsSearchArray(key))
 				{
 					bool		bail_out = false;
-					bool		is_bound = YbBindSearchArray(ybScan, scan_plan, i,
-															 is_for_precheck,
-															 is_column_bound,
-															 &bail_out);
+
+					/* YbBindSearchArray updates is_column_bound. */
+					YbBindSearchArray(ybScan, scan_plan, i,
+									  is_for_precheck,
+									  is_column_bound,
+									  &bail_out);
 
 					if (bail_out)
 						return false;
-
-					is_column_bound[idx] |= is_bound;
 				}
 				break;
 
