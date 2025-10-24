@@ -116,6 +116,11 @@ Create a database user and provide the user with READ access to all the resource
     ```yaml
     # Global settings
     export-dir: <absolute-path-to-export-dir>
+    apiKey: <API_KEY>
+    accountId: // This will be autofilled in YugabyteDB Aeon
+    projectId: // This will be autofilled in YugabyteDB Aeon
+    clusterId: // This will be autofilled in YugabyteDB Aeon
+    domain: // This will be autofilled in YugabyteDB Aeon
 
     # Source database (PostgreSQL)
     source:
