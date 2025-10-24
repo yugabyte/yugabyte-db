@@ -666,7 +666,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         isReadOnlyCluster);
     if (!tserversToAdd.isEmpty()) {
       installThirdPartyPackagesTaskK8s(
-          universe, InstallThirdPartySoftwareK8s.SoftwareUpgradeType.JWT_JWKS);
+          universe, InstallThirdPartySoftwareK8s.SoftwareUpgradeType.JWT_JWKS, taskParams());
     }
 
     if (!mastersToAdd.isEmpty()) {
