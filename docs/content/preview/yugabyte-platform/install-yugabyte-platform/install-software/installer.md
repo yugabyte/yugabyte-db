@@ -8,8 +8,6 @@ aliases:
   - /preview/yugabyte-platform/install-yugabyte-platform/install-software/
   - /preview/yugabyte-platform/install-yugabyte-platform/install-software/default/
   - /preview/yugabyte-platform/install-yugabyte-platform/migrate-replicated/
-  - /preview/yugabyte-platform/upgrade/upgrade-yp-replicated/
-
 menu:
   preview_yugabyte-platform:
     parent: install-yugabyte-platform
