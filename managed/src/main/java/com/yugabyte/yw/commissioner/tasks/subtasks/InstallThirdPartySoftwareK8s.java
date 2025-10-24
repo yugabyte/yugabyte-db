@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -55,6 +56,7 @@ public class InstallThirdPartySoftwareK8s extends AbstractTaskBase {
   public static class Params extends AbstractTaskParams {
     public UUID universeUUID;
     public SoftwareUpgradeType softwareType;
+    @Nullable public UniverseDefinitionTaskParams universeParams;
   }
 
   @Override
@@ -75,6 +77,12 @@ public class InstallThirdPartySoftwareK8s extends AbstractTaskBase {
   @Override
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    // Set universe details clusters as task params clusters
+    // Required for tasks like EditKubernetesUniverse where new AZs are added
+    // and haven't been saved yet. Node details are saved.
+    if (taskParams().universeParams != null) {
+      universe.getUniverseDetails().clusters = taskParams().universeParams.clusters;
+    }
     SoftwareUpgradeType softwareType = taskParams().softwareType;
     switch (softwareType) {
       case XXHSUM:
