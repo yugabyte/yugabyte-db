@@ -393,8 +393,9 @@ Status PgTxnManager::CalculateIsolation(
     return RecreateTransaction(SavePriority::kFalse);
   }
 
-  if (!read_only_op)
+  if (!read_only_op && !is_local_object_lock_op) {
     has_writes_ = true;
+  }
 
   // Force use of a docdb distributed txn for YSQL read only transactions involving savepoints when
   // object locking feature is enabled (only for isolation != read committed case).
