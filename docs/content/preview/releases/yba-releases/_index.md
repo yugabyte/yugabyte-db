@@ -20,7 +20,7 @@ cascade:
 | [v2.20](v2.20/) {{<tags/release/lts>}} | {{< yb-eol-dates "v2.20" release >}} | {{< yb-eol-dates "v2.20" EOM >}} | {{< yb-eol-dates "v2.20" EOL >}} |
 
 {{< warning title="Replicated end of life" >}}
-YugabyteDB Anywhere will end support for Replicated installation at the **end of 2024**. For new installations of YugabyteDB Anywhere, use [YBA Installer](../../yugabyte-platform/install-yugabyte-platform/install-software/installer/). To migrate existing Replicated YugabyteDB Anywhere installations to YBA Installer, refer to [Migrate from Replicated](../../yugabyte-platform/install-yugabyte-platform/migrate-replicated/).
+YugabyteDB Anywhere ended support for Replicated installation at the **end of 2024**. For new installations of YugabyteDB Anywhere, use [YBA Installer](/preview/yugabyte-platform/install-yugabyte-platform/install-software/installer/). You can migrate existing Replicated YugabyteDB Anywhere installations using YBA Installer; refer to [Migrate from Replicated](/v2.20/yugabyte-platform/install-yugabyte-platform/migrate-replicated/).
 {{< /warning >}}
 
 For end-of-life releases, see [Releases at end of life](../ybdb-releases/#eol-releases).
@@ -55,10 +55,6 @@ For information on managing YugabyteDB releases and upgrading universes using Yu
 ## Upgrading YugabyteDB Anywhere
 
 Keep YugabyteDB Anywhere up-to-date with the latest stable version to get the latest fixes and improvements, as well as to be able to deploy the latest releases of YugabyteDB.
-
-{{< warning title="Replicated end of life" >}}
-YugabyteDB Anywhere will end support for Replicated installation at the end of 2024. You can migrate existing Replicated YugabyteDB Anywhere installations using YBA Installer. To perform the migration, you must first upgrade to YugabyteDB Anywhere v2.20.1 or later using Replicated.
-{{< /warning >}}
 
 You can't use YugabyteDB Anywhere to deploy versions of YugabyteDB that are newer than your YugabyteDB Anywhere instance. To upgrade a universe to a more recent version of YugabyteDB, you may first have to upgrade YugabyteDB Anywhere.
 
