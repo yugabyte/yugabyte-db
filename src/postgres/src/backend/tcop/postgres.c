@@ -4575,6 +4575,17 @@ YBRefreshCacheWrapperImpl(uint64_t catalog_master_version, bool is_retry,
 bool
 YBRefreshCacheUsingInvalMsgs()
 {
+	/*
+	 * We only want to accept invalidation messages at a "safe point". It is not a
+	 * "safe point" if prefetching is started because we want to ensure reading a
+	 * consistent set of catalog tables. If we allowed invalidation messages we may
+	 * see some catalog tuples removed which can cause PANIC error if such tuples
+	 * are considered as critical. Also we do not want the local catalog version to
+	 * change as a result of applying invalidation messages because that can become
+	 * inconsistent with the set of catalog tables just read.
+	 */
+	if (YBCIsSysTablePrefetchingStarted())
+		return false;
 	return YBRefreshCacheWrapperImpl(YB_CATCACHE_VERSION_UNINITIALIZED,
 									 false /* is_retry */ ,
 									 false /* full_refresh_allowed */ );
@@ -4583,6 +4594,11 @@ YBRefreshCacheUsingInvalMsgs()
 static void
 YBRefreshCacheWrapper(uint64_t catalog_master_version, bool is_retry)
 {
+	/*
+	 * We should only reach here when prefetching is stopped. In other words, this is
+	 * a "safe point".
+	 */
+	Assert(!YBCIsSysTablePrefetchingStarted());
 	(void) YBRefreshCacheWrapperImpl(catalog_master_version, is_retry, true);
 }
 
