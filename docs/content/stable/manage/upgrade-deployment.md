@@ -15,7 +15,7 @@ type: docs
 {{< page-finder/head text="Upgrade YugabyteDB" subtle="across different products">}}
   {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" current="" >}}
   {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" url="../../yugabyte-platform/manage-deployments/upgrade-software/" >}}
-  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/preview/yugabyte-cloud/cloud-clusters/cloud-maintenance/" >}}
+  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/preview/yugabyte-cloud/cloud-clusters/database-upgrade/" >}}
 {{< /page-finder/head >}}
 
 {{< tip title="Tip" >}}
@@ -32,7 +32,7 @@ The `data`, `log`, and `conf` directories are typically stored in a fixed locati
 Review the following information before starting an upgrade.
 {{< /warning >}}
 {{< warning title="YSQL major version upgrades" >}}
-To upgrade YugabyteDB to a version based on a different version of PostgreSQL (for example, from v2024.2 based on PG 11 to v2.25 or later based on PG 15), you need to perform additional steps. Refer to [YSQL major upgrade](../ysql-major-upgrade-yugabyted/).
+To upgrade YugabyteDB to a version based on a different version of PostgreSQL (for example, from v2024.2 based on PG 11 to v2025.1 or later based on PG 15), you need to perform additional steps. Refer to [YSQL major upgrade](../ysql-major-upgrade-yugabyted/).
 {{< /warning >}}
 
 - Make sure your operating system is up to date. If your universe is running on a [deprecated OS](../../reference/configuration/operating-systems/), you need to update your OS before you can upgrade to the next major YugabyteDB release.
