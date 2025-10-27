@@ -1231,6 +1231,84 @@
   [stable_api.params]
     showSection = true
 
+########## Menus for "v2.25"
+
+[["v2.25"]]
+  weight = 1
+  ["v2.25".params]
+    productsDropdown = true
+
+[["v2.25"]]
+  name = "Overview"
+  weight = 2
+  identifier = "yugabytedb"
+  url = "/v2.25/"
+  ["v2.25".params]
+    showSection = true
+
+[["v2.25"]]
+  name = "Quick Start"
+  weight = 4
+  identifier = "quick-start"
+  url = "/preview/quick-start/macos/"
+  ["v2.25".params]
+    showSection = true
+    hideChildren = true
+
+[["v2.25"]]
+  name = "Explore"
+  weight = 5
+  identifier = "explore"
+  url = "/v2.25/explore/"
+  ["v2.25".params]
+    classes = "separator"
+    showSection = true
+
+[["v2.25"]]
+  name = "Secure"
+  weight = 8
+  identifier = "secure"
+  url = "/v2.25/secure/"
+  ["v2.25".params]
+    showSection = true
+
+[["v2.25"]]
+  name = "Launch and Manage"
+  weight = 9
+  identifier = "launch-and-manage"
+  url = "/v2.25/launch-and-manage/"
+  ["v2.25".params]
+    showSection = true
+
+[["v2.25"]]
+  name = "Reference"
+  weight = 10
+  identifier = "reference"
+  ["v2.25".params]
+    showSection = true
+
+[["v2.25"]]
+  name = "Troubleshoot"
+  parent = "launch-and-manage"
+  url = "/preview/troubleshoot/"
+
+[["v2.25"]]
+  name = "Benchmark"
+  weight = 11
+  identifier = "benchmark"
+  url = "/v2.25/benchmark/"
+  ["v2.25".params]
+    classes = "separator"
+    showSection = true
+
+[["v2.25"]]
+  name = "Contribute"
+  weight = 13
+  identifier = "contribute"
+  url = "/preview/contribute/"
+  ["v2.25".params]
+    showSection = true
+
 ########## Menus for "v2024.2"
 
 [["v2024.2"]]
