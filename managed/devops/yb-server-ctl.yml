@@ -51,8 +51,7 @@
             systemd_log_level: "{{ 'SYSTEMD_LOG_LEVEL=debug ' if systemd_debug_log else '' }}"
         - name: Set the systemd prefix for user level
           set_fact:
-            systemd_prefix: "{{ systemd_log_level }}systemctl --user"
-          when: systemd_user.stat.exists
+            systemd_prefix: "{{ systemd_log_level }}{{ 'systemctl --user' if systemd_user.stat.exists else 'sudo systemctl'}}"
         - name: Set systemd name
           set_fact:
             systemd_process: "{{ process if process == 'otel-collector' else 'yb-' ~ process }}"
