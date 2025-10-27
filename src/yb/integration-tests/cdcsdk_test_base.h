@@ -59,7 +59,6 @@ DECLARE_bool(cdc_send_null_before_image_if_not_exists);
 DECLARE_bool(enable_tablet_split_of_replication_slot_streamed_tables);
 DECLARE_bool(TEST_simulate_load_txn_for_cdc);
 DECLARE_bool(TEST_dcheck_for_missing_schema_packing);
-DECLARE_bool(TEST_cdcsdk_fail_before_updating_cdc_state);
 
 namespace yb {
 using client::YBClient;
