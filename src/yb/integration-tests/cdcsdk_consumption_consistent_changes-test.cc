@@ -2724,9 +2724,12 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestRetryableErrorsNotSentToWalse
   ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}));
 
   vector<TestSimulateErrorCode> error_codes = {
-      TestSimulateErrorCode::PeerNotStarted, TestSimulateErrorCode::TabletUnavailable,
-      TestSimulateErrorCode::PeerNotLeader, TestSimulateErrorCode::PeerNotReadyToServe,
-      TestSimulateErrorCode::LogSegmentFooterNotFound};
+      TestSimulateErrorCode::PeerNotStarted,
+      TestSimulateErrorCode::TabletUnavailable,
+      TestSimulateErrorCode::PeerNotLeader,
+      TestSimulateErrorCode::PeerNotReadyToServe,
+      TestSimulateErrorCode::LogSegmentFooterNotFound,
+      TestSimulateErrorCode::LogIndexCacheEntryNotFound};
 
   for (auto error_code : error_codes) {
     // Setting the flag to mimic retryable errors. The expectation is that
