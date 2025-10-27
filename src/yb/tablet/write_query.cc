@@ -277,15 +277,19 @@ void WriteQuery::DoStartSynchronization(const Status& status) {
   if (client_request_ && client_request_->use_async_write()) {
     VLOG(2) << "Performing Async write: " << client_request_->ShortDebugString();
     operation_->SetAsyncWrite(
-        [query = this](OpId opid) -> void {
+        [query = this](Result<OpId> opid) -> void {
           // TODO: Add metrics for async writes.
           // Query is still pending, but we are ready to invoke the callback.
 
-          query->context_->RegisterAsyncWrite(opid);
-          opid.ToPB(query->response_->mutable_async_write_op_id());
+          Status status;
+          if (opid.ok()) {
+            query->context_->RegisterAsyncWrite(*opid);
+            opid->ToPB(query->response_->mutable_async_write_op_id());
+          } else {
+            status = std::move(opid.status());
+          }
 
           TEST_SYNC_POINT("WriteQuery::BeforeCallbackInvoke");
-          Status status;
           TEST_SYNC_POINT_CALLBACK("WriteQuery::SetCallbackStatus", &status);
           query->InvokeCallback(status);
           TEST_SYNC_POINT("WriteQuery::AfterCallbackInvoke");

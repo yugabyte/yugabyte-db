@@ -1215,7 +1215,11 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     VLOG_WITH_PREFIX_AND_FUNC(4) << YB_STRUCT_TO_STRING(tablet_id, op_id);
 
     std::lock_guard l(async_write_query_mutex_);
-    return InsertIfNotPresent(&inflight_async_writes_[tablet_id].op_ids, op_id);
+    auto& write_query = inflight_async_writes_[tablet_id];
+    DCHECK(write_query.op_ids.empty() || write_query.op_ids.begin()->term == op_id.term)
+        << "Received async write op_id with different term. OpId: " << op_id
+        << ", expected term: " << write_query.op_ids.begin()->term;
+    return InsertIfNotPresent(&write_query.op_ids, op_id);
   }
 
   void RecordAsyncWriteCompletion(
@@ -1226,30 +1230,30 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     std::vector<StdStatusCallback> waiters;
     {
       std::lock_guard l(async_write_query_mutex_);
-      auto table_it = inflight_async_writes_.find(tablet_id);
-      if (table_it == inflight_async_writes_.end()) {
+      auto write_query = inflight_async_writes_.find(tablet_id);
+      if (write_query == inflight_async_writes_.end()) {
         // Maybe we got stale responses from multiple retries on the rpc. We dont care about the
         // status in such cases.
         return;
       }
 
-      auto& tablet_data = table_it->second;
+      auto& tablet_data = write_query->second;
 
       if (status.ok()) {
         // Partition key is not needed for searching.
         tablet_data.op_ids.erase(op_id);
         if (tablet_data.op_ids.empty()) {
           waiters = std::move(tablet_data.waiters_);
-          inflight_async_writes_.erase(table_it);
+          inflight_async_writes_.erase(write_query);
         }
       } else if (async_write_status_.ok()) {
         async_write_status_ = status;
       }
 
       if (!async_write_status_.ok() || inflight_async_writes_.empty()) {
-        for (auto& [_, tablet_data] : inflight_async_writes_) {
-          MoveCollection(&tablet_data.waiters_, &waiters);
-          tablet_data.waiters_.clear();
+        for (auto& [_, write_query] : inflight_async_writes_) {
+          MoveCollection(&write_query.waiters_, &waiters);
+          write_query.waiters_.clear();
         }
 
         if (async_write_commit_waiter_) {
@@ -1264,9 +1268,11 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     }
   }
 
-  bool HasPendingAsyncWrites(const TabletId& tablet_id) const EXCLUDES(async_write_query_mutex_) {
+  std::optional<int64_t> GetPendingAsyncWriteTerm(const TabletId& tablet_id) const
+      EXCLUDES(async_write_query_mutex_) {
     std::lock_guard l(async_write_query_mutex_);
-    return inflight_async_writes_.contains(tablet_id);
+    auto write_query = FindOrNull(inflight_async_writes_, tablet_id);
+    return write_query ? std::optional<int64_t>(write_query->op_ids.begin()->term) : std::nullopt;
   }
 
   void WaitForAsyncWrites(const TabletId& tablet_id, StdStatusCallback&& callback) {
@@ -1277,9 +1283,9 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       if (status.ok()) {
         // If the tablet has a pending write then we are guaranteed that its parent tablets do not
         // have pending writes, since new writes wait for the parent tablets writes to complete.
-        auto tablet_it = FindOrNull(inflight_async_writes_, tablet_id);
-        if (tablet_it) {
-          tablet_it->waiters_.emplace_back(std::move(callback));
+        auto write_query = FindOrNull(inflight_async_writes_, tablet_id);
+        if (write_query) {
+          write_query->waiters_.emplace_back(std::move(callback));
           VLOG_WITH_PREFIX_AND_FUNC(4)
               << "Waiting for async writes: " << YB_STRUCT_TO_STRING(tablet_id, status);
           return;
@@ -2844,8 +2850,8 @@ void YBTransaction::RecordAsyncWriteCompletion(
   return impl_->RecordAsyncWriteCompletion(tablet_id, op_id, status);
 }
 
-bool YBTransaction::HasPendingAsyncWrites(const TabletId& tablet_id) const {
-  return impl_->HasPendingAsyncWrites(tablet_id);
+std::optional<int64_t> YBTransaction::GetPendingAsyncWriteTerm(const TabletId& tablet_id) const {
+  return impl_->GetPendingAsyncWriteTerm(tablet_id);
 }
 
 void YBTransaction::WaitForAsyncWrites(const TabletId& tablet_id, StdStatusCallback&& callback) {

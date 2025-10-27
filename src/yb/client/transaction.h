@@ -221,7 +221,7 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   bool RecordAsyncWrite(const TabletId& tablet_id, const OpId& op_id);
   void RecordAsyncWriteCompletion(
       const TabletId& tablet_id, const OpId& op_id, const Status& status);
-  bool HasPendingAsyncWrites(const TabletId& tablet_id) const;
+  std::optional<int64_t> GetPendingAsyncWriteTerm(const TabletId& tablet_id) const;
   void WaitForAsyncWrites(const TabletId& tablet_id, StdStatusCallback&& callback);
 
  private:

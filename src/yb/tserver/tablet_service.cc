@@ -2578,9 +2578,16 @@ Status TabletServiceImpl::PerformWrite(
 
   auto context_ptr = std::make_shared<RpcContext>(std::move(*context));
 
-  const auto leader_term = req->has_leader_term() && req->leader_term() != OpId::kUnknownTerm
-                               ? req->leader_term()
-                               : tablet.leader_term;
+  auto leader_term = tablet.leader_term;
+  if (req->has_leader_term() && req->leader_term() != OpId::kUnknownTerm) {
+    leader_term = req->leader_term();
+    if (leader_term != tablet.leader_term) {
+      auto status =
+          STATUS_FORMAT(InvalidArgument, "Tablet $0 Leader term changed", req->tablet_id());
+      SetupErrorAndRespond(resp->mutable_error(), std::move(status), context_ptr.get());
+      return Status::OK();
+    }
+  }
 
   auto query = std::make_unique<tablet::WriteQuery>(
       leader_term, context_ptr->GetClientDeadline(), tablet.peer.get(), tablet.tablet,

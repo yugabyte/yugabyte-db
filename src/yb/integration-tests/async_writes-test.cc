@@ -30,7 +30,7 @@ DECLARE_bool(enable_load_balancing);
 DECLARE_bool(TEST_do_not_replicate_async_writes);
 DECLARE_bool(use_create_table_leader_hint);
 DECLARE_bool(yb_enable_read_committed_isolation);
-DECLARE_bool(ysql_enable_async_writes);
+DECLARE_bool(ysql_enable_write_pipelining);
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_double(transaction_max_missed_heartbeat_periods);
 DECLARE_int32(raft_heartbeat_interval_ms);
@@ -45,7 +45,7 @@ class YSqlAsyncWriteTest : public pgwrapper::PgMiniTestBase {
  public:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_async_writes) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_write_pipelining) = true;
 
     // These tests stepdown the leader, so we need to disable load balancing.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
@@ -563,9 +563,8 @@ END $$$$;)",
   ASSERT_OK(ValidateData(expected_value));
 }
 
-// Make sure async writes are not blocked by follower network delay, but reads are blocked by the
-// async writes.
-TEST_F(YSqlAsyncWriteTest, ReadsBlockedByAsyncWrites) {
+// Make sure async writes and subsequent reads are not blocked by follower network delay.
+TEST_F(YSqlAsyncWriteTest, ReadsNotBlockedByAsyncWrites) {
   ASSERT_OK(
       conn_->ExecuteFormat("CREATE TABLE $0 (a INT PRIMARY KEY) SPLIT INTO 1 TABLETS", kTableName));
   ASSERT_OK(conn_->Execute("BEGIN TRANSACTION"));
@@ -586,24 +585,20 @@ TEST_F(YSqlAsyncWriteTest, ReadsBlockedByAsyncWrites) {
   LOG(INFO) << "Insert time: " << MonoDelta(now - insert_start_time);
   ASSERT_LT(now - insert_start_time, 5s);
 
-  Synchronizer sync;
-  TestThreadHolder thread_holder;
-  std::string result;
-  thread_holder.AddThread([this, callback = sync.AsStdStatusCallback(), &result]() {
-    result = ASSERT_RESULT(conn_->FetchAllAsString(Format("SELECT * FROM $0", kTableName)));
-    callback(Status::OK());
-  });
-
-  // Read should be blocked by the delay.
-  ASSERT_NOK(sync.WaitFor(10s));
+  // Read should be unblocked by the delay.
+  const auto read_start_time = CoarseMonoClock::now();
+  auto result = ASSERT_RESULT(conn_->FetchAllAsString(Format("SELECT * FROM $0", kTableName)));
+  now = CoarseMonoClock::now();
+  LOG(INFO) << "Read time: " << MonoDelta(now - read_start_time);
+  ASSERT_LT(now - read_start_time, 5s);
+  ASSERT_EQ(result, "1");
 
   for (auto& peer : follower_peers) {
     ASSERT_RESULT(peer->GetRaftConsensus())->TEST_DelayUpdate(0s);
   }
 
-  // Read should be unblocked.
-  ASSERT_OK(sync.WaitFor(delay_duration + 10s));
-  ASSERT_EQ(result, "1");
+  // Wait for the heartbeats to resume.
+  SleepFor(delay_duration + 5s);
 
   ASSERT_OK(conn_->CommitTransaction());
 
