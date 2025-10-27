@@ -23,7 +23,7 @@ YugabyteDB uses v1.3.1 of PostgreSQL Anonymizer.
 
 ## Enable Anonymizer
 
-While in early access, to enable the Anonymizer extension, you set the YB-TServer `--enable_pg_anonymizer` flag to true. For example, using [yugabyted](../../../reference/configuration/yugabyted/), you would do the following:
+To enable the Anonymizer extension, you set the YB-TServer `--enable_pg_anonymizer` flag to true. For example, using [yugabyted](../../../reference/configuration/yugabyted/), you would do the following:
 
 ```sh
 ./bin/yugabyted start --tserver_flags="enable_pg_anonymizer=true"
@@ -156,7 +156,7 @@ SELECT * FROM people; -- non masked user can read original values
 ```
 
 ```output
- id | firstname | lastname |   phone    
+ id | firstname | lastname |   phone
 ----+-----------+----------+------------
  1  | John      | Doe      | 1234567890
 ```
@@ -175,7 +175,7 @@ SELECT * FROM people;
 ```
 
 ```output
- id | firstname | lastname |   phone    
+ id | firstname | lastname |   phone
 ----+-----------+----------+------------
  1  | John      | Doe      | 1234567890
 ```
@@ -193,7 +193,7 @@ SELECT * FROM people;
 ```
 
 ```output
- id | firstname | lastname |   phone    
+ id | firstname | lastname |   phone
 ----+-----------+----------+------------
  1  | John      | Doe      | 12******90
 ```
@@ -235,7 +235,7 @@ SELECT * FROM people;
 ```
 
 ```output
- id | firstname | lastname |   phone    
+ id | firstname | lastname |   phone
 ----+-----------+----------+------------
  1  | John      | Doe      | 12******90
 ```
@@ -274,7 +274,7 @@ SELECT * FROM people;
 ```
 
 ```output
- id | firstname | lastname |   phone    
+ id | firstname | lastname |   phone
 ----+-----------+----------+------------
  1  | John      | Bryant   | 12******90
 ```
@@ -307,7 +307,7 @@ SELECT * FROM people;
 ```
 
 ```output
- id |  firstname   |   lastname   |   phone    
+ id |  firstname   |   lastname   |   phone
 ----+--------------+--------------+------------
  1  | CONFIDENTIAL | CONFIDENTIAL | 12******90
 ```

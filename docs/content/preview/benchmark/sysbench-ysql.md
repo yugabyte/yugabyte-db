@@ -30,8 +30,7 @@ $ export PATH=$PATH:/path/to/ysqlsh
 
 ### Install sysbench
 
-Install sysbench on a machine which satisfies the Prerequisites using one of 
-the following options:
+Install sysbench on a machine which satisfies the Prerequisites using one of the following options:
 
 <ul class="nav nav-tabs nav-tabs-yb">
     <li>
@@ -80,7 +79,7 @@ RHEL package is only for EL8
 ```sh
 wget https://github.com/yugabyte/sysbench/releases/download/1.0.0-yb/sysbench-1.0.0-1.el8.x86_64.rpm
 
-sudo yum install -y sysbench-1.0.0-1.el8.x86_64.rpm 
+sudo yum install -y sysbench-1.0.0-1.el8.x86_64.rpm
 ```
 
   </div>

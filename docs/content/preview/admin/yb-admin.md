@@ -451,7 +451,7 @@ yb-admin \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
-* *db-type*: The type of database. Valid values include `ysql` and `ycql`.
+* *db-type*: The type of database. Valid values are `ysql` and `ycql`.
 * *namespace*: The name of the database (for YSQL) or keyspace (for YCQL).
 * *table*: The name of the table to compact.
 * *timeout-in-seconds*: Specifies duration (in seconds) yb-admin waits for compaction to end. Default is `20`.

@@ -1875,7 +1875,6 @@ Starting from version 2.18, the default is `-1`. Previously it was `4`.
 
 {{< /note >}}
 
-
 ##### --full_compaction_pool_max_threads
 
 {{% tags/wrap %}}
@@ -2144,6 +2143,7 @@ Enable the Auto Analyze service, which automatically runs ANALYZE to update tabl
 
 {{% tags/wrap %}}
 
+
 Default: `false`
 {{% /tags/wrap %}}
 
@@ -2273,7 +2273,7 @@ Set this flag to `false` to enable online index backfill. When set to `false`, o
 
 For details on how online index backfill works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
 
-#### --num_concurrent_backfills_allowed
+##### --num_concurrent_backfills_allowed
 
 {{% tags/wrap %}}
 

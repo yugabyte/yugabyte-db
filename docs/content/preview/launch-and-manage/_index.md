@@ -36,7 +36,7 @@ type: indexpage
   {{<index/item
     title="Best practices"
     body="Operations tips for YugabyteDB databases."
-    href="monitor-and-alert/"
+    href="../best-practices-operations/"
     icon="fa-thin fa-thumbs-up">}}
 
   {{<index/item
