@@ -126,6 +126,7 @@ public class GFlagsUtil {
   public static final String USE_PRIVATE_IP = "use_private_ip";
   public static final String WEBSERVER_PORT = "webserver_port";
   public static final String WEBSERVER_INTERFACE = "webserver_interface";
+  public static final String OPENSSL_REQUIRE_FIPS = "openssl_require_fips";
   public static final String REDIS_PROXY_BIND_ADDRESS = "redis_proxy_bind_address";
   public static final String REDIS_PROXY_WEBSERVER_PORT = "redis_proxy_webserver_port";
   public static final String POSTMASTER_CGROUP = "postmaster_cgroup";
@@ -312,6 +313,10 @@ public class GFlagsUtil {
       extra_gflags.put(FS_DATA_DIRS, mountPoints);
     } else {
       throw new RuntimeException("mountpoints and numVolumes are missing from taskParam");
+    }
+
+    if (universe.getUniverseDetails().fipsEnabled) {
+      extra_gflags.put(OPENSSL_REQUIRE_FIPS, "true");
     }
 
     boolean isMultiRegion =

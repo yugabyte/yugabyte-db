@@ -75,7 +75,7 @@ public class CustomerConfigValidator extends BaseBeanValidator {
         new CustomerConfigStorageGCSValidator(beanValidator, factory, gcpUtil));
     validators.put(
         CustomerConfigPasswordPolicyData.class,
-        new CustomerConfigPasswordPolicyValidator(beanValidator));
+        new CustomerConfigPasswordPolicyValidator(beanValidator, runtimeConfGetter));
     validators.put(
         CustomerConfigAlertsPreferencesData.class,
         new CustomerConfigAlertsPreferencesValidator(beanValidator, runtimeConfGetter));
