@@ -49,7 +49,8 @@ class CDCSDKVirtualWAL {
       {Status::Code::kIllegalState, "Tablet not running"},
       {Status::Code::kNotFound, "Not leader for"},
       {Status::Code::kLeaderNotReadyToServe, "Not ready to serve"},
-      {Status::Code::kNotFound, "Footer for segment"}};
+      {Status::Code::kNotFound, "Footer for segment"},
+      {Status::Code::kNotFound, "Log index cache entry for op index"}};
 
   Status InitVirtualWALInternal(
       const std::unordered_set<TableId>& table_list, const HostPort hostport,
