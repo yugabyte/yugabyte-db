@@ -18,6 +18,7 @@
 
 #include "yb/master/mini_master.h"
 #include "yb/tablet/tablet_peer.h"
+#include "yb/util/debug-util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/sync_point.h"
@@ -43,6 +44,7 @@ DECLARE_int32(tserver_unresponsive_timeout_ms);
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_int32(leader_lease_duration_ms);
+DECLARE_bool(TEST_pause_get_lock_status);
 
 using namespace std::literals;
 using std::string;
@@ -1160,6 +1162,50 @@ TEST_F_EX(
   thread_holder.WaitAndStop(5s * kTimeMultiplier);
 }
 #endif // NDEBUG
+
+TEST_F(PgGetLockStatusTestRF3, PgLocksDuringTabletLeaderStepdown) {
+  auto setup_conn = ASSERT_RESULT(Connect());
+  auto conn_pg_locks = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(setup_conn.Execute(
+      "CREATE TABLE test (k INT PRIMARY KEY, v INT) SPLIT INTO 10 TABLETS;"));
+  ASSERT_OK(setup_conn.Execute("INSERT INTO test VALUES (1, 1)"));
+  ASSERT_OK(setup_conn.StartTransaction(IsolationLevel::READ_COMMITTED));
+  ASSERT_OK(setup_conn.Execute("UPDATE test SET v = v + 1 WHERE k = 1"));
+
+  TestThreadHolder thread_holder;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_get_lock_status) = true;
+  const auto table_id = ASSERT_RESULT(GetTableIDFromTableName("test"));
+  auto leader_peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+  for (const auto& leader_peer : leader_peers) {
+    thread_holder.AddThreadFunctor([leader_peer, this] {
+      auto* leader_ts = cluster_->find_tablet_server(leader_peer->permanent_uuid());
+      size_t idx = 0;
+      for (; idx < cluster_->num_tablet_servers(); ++idx) {
+        if (leader_ts == cluster_->mini_tablet_server(idx)) {
+          break;
+        }
+      }
+      leader_ts = cluster_->mini_tablet_server((idx + 1) % cluster_->num_tablet_servers());
+      TEST_PAUSE_IF_FLAG(TEST_pause_get_lock_status);
+      LOG(INFO) << "Stepping down tablet " << leader_peer->tablet_id();
+      ASSERT_OK(StepDown(leader_peer, leader_ts->server()->permanent_uuid(), ForceStepDown::kTrue));
+      LOG(INFO) << "Stepdown completed for tablet " << leader_peer->tablet_id();
+    });
+  }
+
+  thread_holder.AddThreadFunctor([&conn_pg_locks] {
+    ASSERT_OK(conn_pg_locks.ExecuteFormat("SET yb_locks_min_txn_age='$0s'", 0));
+    auto lock_output = ASSERT_RESULT(conn_pg_locks.FetchAllAsString(
+        "SELECT * FROM pg_locks WHERE relation = 'test'::regclass"));
+  });
+
+  std::this_thread::sleep_for(1000ms * kTimeMultiplier);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_get_lock_status) = false;
+
+  thread_holder.WaitAndStop(10000ms * kTimeMultiplier);
+  ASSERT_OK(setup_conn.RollbackTransaction());
+}
 
 TEST_F(PgGetLockStatusTest, TestPgLocksOutputAfterTableRewrite) {
   const auto colo_db = "colo_db";
