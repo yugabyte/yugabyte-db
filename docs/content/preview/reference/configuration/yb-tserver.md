@@ -616,6 +616,15 @@ Default: `200`
 
 Sets the maximum number of rows per transaction per tablet to return in [pg_locks](../../../explore/observability/pg-locks/). Set to 0 to return all results.
 
+##### yb_default_copy_from_rows_per_transaction
+
+{{% tags/wrap %}}
+
+Default: `20000`
+{{% /tags/wrap %}}
+
+Sets the batch number of rows to copy from the source to table when running [COPY](../../../api/ysql/the-sql-language/statements/cmd_copy/).
+
 ## Networking
 
 ### RPC and binding addresses
