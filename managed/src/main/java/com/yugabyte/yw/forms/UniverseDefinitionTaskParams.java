@@ -161,6 +161,10 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   @ApiModelProperty public SoftwareUpgradeState softwareUpgradeState = SoftwareUpgradeState.Ready;
 
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2025.2.0.0")
+  @ApiModelProperty(value = "YbaApi Internal. FIPS compatibility is enabled for universe")
+  public boolean fipsEnabled = false;
+
   // Set to true when software rollback is allowed.
   @ApiModelProperty(
       value = "Available since YBA version 2.20.2.0",
@@ -974,7 +978,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     public boolean defaultServiceScopeAZ = true;
 
     @ApiModelProperty public String awsArnString;
-
     @ApiModelProperty() public boolean enableLB = false;
 
     // When this is set to true, YW will setup the universe to communicate by way of hostnames

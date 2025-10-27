@@ -1247,6 +1247,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     // Go over master flags.
     Map<String, String> masterGFlags =
         GFlagsUtil.getGFlagsForAZ(azUUID, ServerType.MASTER, cluster, taskUniverseDetails.clusters);
+    if (universeFromDBParams.fipsEnabled) {
+      masterGFlags.put(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "true");
+    }
     if (placementCloud != null && masterGFlags.get("placement_cloud") == null) {
       masterGFlags.put("placement_cloud", placementCloud);
     }
@@ -1309,7 +1312,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         .enableYSQL) { // In the UI, we can choose not to show these entries for read replica.
       tserverGFlags.put("enable_ysql", "false");
     }
-
+    if (universeFromDBParams.fipsEnabled) {
+      tserverGFlags.put(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "true");
+    }
     if (primaryClusterIntent.enableYSQL) {
       // For now, set a default value for the ysql server rpc port.
       // TO DO:
