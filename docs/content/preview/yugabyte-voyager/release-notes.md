@@ -17,6 +17,18 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, where `YYYY` is the release year, `M` is the month, and `N` is the number of the release in that month.
 
+## v2025.10.2 - October 28, 2025
+
+### Enhancements
+
+- Tables having the first column of primary key as timestamp/date are now configured to be range-sharded by default.
+Use the [skip-performance-recommendations](../reference/schema-migration/export-schema/#arguments) flag to skip this automatic change.
+- Added support for columns `tsvector`, `array of ENUMs` when the [YugabyteDB Connector](../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/) is used in `export-data-from-target` in the fall-forward/fall-back workflows of live migration.
+
+### Bug fix
+
+- Fixed a bug where import-data fails if a table that has a sequence attached to it is part of the exclude-table-list, and is not created on the target YugabyteDB.
+
 ## v2025.10.1 - October 14, 2025
 
 ### New feature
