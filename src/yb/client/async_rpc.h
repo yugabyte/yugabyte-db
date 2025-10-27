@@ -65,6 +65,7 @@ struct AsyncRpcData {
   InFlightOps ops;
   bool need_metadata = false;
   bool use_async_write = false;
+  int64_t leader_term = OpId::kUnknownTerm;
 };
 
 struct FlushExtraResult {

@@ -399,7 +399,7 @@ void AsyncRpc::SendRpcToTserver(int attempt_num) {
     CallRemoteMethod();
   };
 
-  batcher_->WaitForAsyncWrites(tablet().tablet_id(), std::move(callback));
+  callback(Status::OK());
 }
 
 template <class Req, class Resp>
@@ -409,6 +409,9 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(
   // TODO(#26139): this set_allocated_* call is not safe.
   req_.set_allocated_tablet_id(const_cast<std::string*>(&tablet_invoker_.tablet()->tablet_id()));
   req_.set_include_trace(IsTracingEnabled());
+  if (data.leader_term != OpId::kUnknownTerm) {
+    req_.set_leader_term(data.leader_term);
+  }
   const ConsistentReadPoint* read_point = batcher_->read_point();
   bool has_read_time = false;
   if (read_point) {

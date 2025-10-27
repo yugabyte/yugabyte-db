@@ -86,9 +86,9 @@ DEFINE_test_flag(double, simulate_tablet_lookup_does_not_match_partition_key_pro
                  "range of the resolved tablet's partition.");
 DEFINE_test_flag(bool, fail_batcher_rpc, false, "Fail batcher RPCs for testing purposes.");
 
-DEFINE_RUNTIME_PREVIEW_bool(ysql_enable_async_writes, false,
-    "Enable asynchronous quorum commit for writes. When enabled, multiple write statements in a "
-    "transaction can execute concurrently, reducing overall latency.");
+DEFINE_RUNTIME_PREVIEW_bool(ysql_enable_write_pipelining, false,
+    "Enable pipelining of write statements within a transaction. When enabled, multiple read and "
+    "write statements in a transaction are executed concurrently, reducing overall latency.");
 
 using std::pair;
 using std::shared_ptr;
@@ -112,7 +112,7 @@ const auto kGeneralErrorStatus = STATUS(IOError, Batcher::kErrorReachingOutToTSe
 
 bool UseAsyncWrites(YBTableType table_type, TransactionId txn_id) {
   // Use async writes for transactional writes in YSQL, or if the test flag is enabled.
-  return FLAGS_ysql_enable_async_writes && table_type == YBTableType::PGSQL_TABLE_TYPE &&
+  return FLAGS_ysql_enable_write_pipelining && table_type == YBTableType::PGSQL_TABLE_TYPE &&
          !txn_id.IsNil();
 }
 
@@ -675,8 +675,12 @@ std::shared_ptr<AsyncRpc> Batcher::CreateRpc(
 
   const auto& first_op = group.begin->yb_op;
   auto transaction = this->transaction();
-  if (!data.need_metadata && transaction && transaction->HasPendingAsyncWrites(tablet_id)) {
-    data.need_metadata = true;
+  if (transaction) {
+    auto term_opt = transaction->GetPendingAsyncWriteTerm(tablet_id);
+    if (term_opt) {
+      data.leader_term = *term_opt;
+      data.need_metadata = true;
+    }
   }
 
   const auto op_group = first_op->group();
