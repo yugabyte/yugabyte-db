@@ -100,7 +100,6 @@ DEFINE_test_flag(uint64, vector_index_delay_saving_first_chunk_ms, 0,
 DECLARE_int32(compaction_priority_start_bound);
 DECLARE_int32(compaction_priority_step_size);
 
-
 namespace yb::vector_index {
 
 namespace bi = boost::intrusive;
@@ -1050,6 +1049,9 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
   std::lock_guard lock(mutex_);
 
   options_ = std::move(options);
+  if (options_.metric_entity) {
+    metrics_ = std::make_unique<vector_index::VectorLSMMetrics>(options_.metric_entity);
+  }
   insert_registry_ = std::make_unique<InsertRegistry>(
       options_.log_prefix, *options_.insert_thread_pool);
   merge_registry_ = std::make_unique<MergeRegistry>(
@@ -1807,6 +1809,15 @@ size_t VectorLSM<Vector, DistanceResult>::TEST_NextManifestFileNo() const {
   return next_manifest_file_no_;
 }
 
+// Get the file size of the chunk with the highest serial number.
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+uint64_t VectorLSM<Vector, DistanceResult>::TEST_LatestChunkSize() const {
+  SharedLock lock(mutex_);
+  CHECK(!immutable_chunks_.empty());
+  auto it_chunk = std::ranges::max_element(immutable_chunks_, {}, &ImmutableChunk::serial_no);
+  return (*it_chunk)->file_size();
+}
+
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 DistanceResult VectorLSM<Vector, DistanceResult>::Distance(
     const Vector& lhs, const Vector& rhs) const {
@@ -2436,6 +2447,11 @@ Status VectorLSM<Vector, DistanceResult>::DoCompact(
   VLOG_WITH_PREFIX(2) << "Picked chunks: " << AsString(scope);
 
   auto merged_chunk = VERIFY_RESULT(DoCompactChunks(scope.chunks()));
+
+  if (metrics_) {
+    // TODO(vector_index): include metadata file update in write metrics.
+    metrics_->compact_write_bytes->IncrementBy(merged_chunk->file_size());
+  }
 
   // A new chunk must be in a manifested state to put into the immutable chunks collection to
   // keep the data consistence, as the old chunks are in manifested state. This means, manifest
