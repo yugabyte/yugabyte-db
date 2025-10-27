@@ -1979,7 +1979,7 @@ class PgClientSession::Impl {
     }
 
     RSTATUS_DCHECK(transaction->HasSubTransaction(subtxn_id), InvalidArgument,
-                  Format("Transaction $0 of kind $1 doesn't have sub transaction $2",
+                   Format("Transaction $0 of kind $1 doesn't have sub transaction $2",
                           transaction->id(),
                           kind == PgClientSessionKind::kPlain ? "kPlain" : "kDdl",
                           subtxn_id));
