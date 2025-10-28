@@ -2051,6 +2051,7 @@
             "DeleteImageBundle",
             "EditImageBundle",
             "Detach",
+            "RollbackDetach",
             "DeleteAttachDetachMetadata",
             "Unlock",
             "LdapUniverseSync",

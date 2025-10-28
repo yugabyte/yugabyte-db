@@ -1701,6 +1701,48 @@
           sourceType: endpoint
     x-yba-api-since: 2025.2.0.0
     x-yba-api-visibility: preview
+  delete:
+    operationId: rollbackDetachUniverse
+    summary: Rollback detach universe
+    description: |
+      Invoke this from the YBA that should reclaim ownership of a universe that is currently in a detached
+      state (ie. if this API has been invoked on the universe POST /customers/{cUUID}/universes/{uniUUID}/detach, 
+      on that YBA instance). A Universe can be managed only by a single instance of YBA at any time. So, 
+      for cases where the universe was attached to another YBA 
+      (ie. using POST /customers/{cUUID}/universes/{uniUUID}/attach), only isForceRollback=true 
+      can be used to rollback the detach operation in such case.
+    tags:
+      - Universe
+    parameters:
+      - name: isForceRollback
+        in: query
+        description: Force rollback without checking current owner or detached state.
+        schema:
+          type: boolean
+          default: false
+        required: false
+    responses:
+      '200':
+        description: Successfully rolled back detach universe operation
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: RollbackDetach
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: update
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+    x-yba-api-since: 2025.2.0.0
+    x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/attach':
   parameters:
     - name: cUUID
