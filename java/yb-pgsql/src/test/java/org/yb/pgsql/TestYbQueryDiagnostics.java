@@ -606,18 +606,9 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         return path;
     }
 
-    private void validateAshData(Path ashPath) throws Exception {
+    private void validateAshData(Path ashPath, Timestamp startTime,Timestamp endTime)
+        throws Exception {
         try (Statement statement = connection.createStatement()) {
-            ResultSet resultSet = statement.executeQuery(
-                    "SELECT * FROM yb_query_diagnostics_status");
-            if (!resultSet.next())
-                fail("yb_query_diagnostics_status view does not have expected data");
-
-            Timestamp startTime = resultSet.getTimestamp("start_time");
-            long diagnosticsIntervalSec = resultSet.getLong("diagnostics_interval_sec");
-            Timestamp endTime = new Timestamp(startTime.getTime() +
-                    (diagnosticsIntervalSec * 1000L));
-
             statement.execute("CREATE TABLE temp_ash_data" +
                     "(LIKE yb_active_session_history INCLUDING ALL)");
             String copyCmd = "COPY temp_ash_data FROM '" + ashPath.toString() +
@@ -1303,6 +1294,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
         try (Statement statement = connection.createStatement()) {
             String queryId = getQueryIdFromPgStatStatements(statement, "%PREPARE%");
+            Timestamp startTime = new Timestamp(System.currentTimeMillis());
             Path bundleDataPath = runQueryDiagnostics(statement, queryId, params);
 
             /*
@@ -1314,12 +1306,14 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
                 statement.execute("EXECUTE stmt('var1', 1, 1.1)");
             }
 
-            waitForBundleCompletion(queryId, statement, 2 * diagnosticsInterval);
+            waitForBundleCompletion(queryId, statement, diagnosticsInterval);
+            waitForDatabaseConnectionBgWorker();
+            Timestamp endTime = new Timestamp(System.currentTimeMillis());
 
             Path ashPath = getFilePathFromBaseDir(bundleDataPath,
                     "active_session_history.csv");
 
-            validateAshData(ashPath);
+            validateAshData(ashPath, startTime, endTime);
         }
     }
 
@@ -1786,12 +1780,14 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
             String queryId = getQueryIdFromPgStatStatements(statement,
                     "WITH%");
+            Timestamp startTime = new Timestamp(System.currentTimeMillis());
             Path bundleDataPath = runQueryDiagnostics(statement, queryId, queryDiagnosticsParams);
 
             statement.execute(complexQuery);
 
             waitForBundleCompletion(queryId, statement, diagnosticsInterval);
             waitForDatabaseConnectionBgWorker();
+            Timestamp endTime = new Timestamp(System.currentTimeMillis());
 
             Path bindVariablesPath = getFilePathFromBaseDir(bundleDataPath,
                     "constants_and_bind_variables.csv");
@@ -1815,7 +1811,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
                                 new String(Files.readAllBytes(schemaDetailsPath),
                                            StandardCharsets.UTF_8));
 
-            validateAshData(ashPath);
+            validateAshData(ashPath, startTime, endTime);
 
             validatePgssData(pgssPath, queryId, 1);
         }
@@ -1848,6 +1844,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             statement.execute(longQuery.toString());
 
             String queryId = getQueryIdFromPgStatStatements(statement, "SELECT CASE%");
+            Timestamp startTime = new Timestamp(System.currentTimeMillis());
             Path bundleDataPath = runQueryDiagnostics(statement, queryId, queryDiagnosticsParams);
 
             // Execute the long query again to ensure it is captured
@@ -1855,6 +1852,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
             waitForBundleCompletion(queryId, statement, diagnosticsInterval);
             waitForDatabaseConnectionBgWorker();
+            Timestamp endTime = new Timestamp(System.currentTimeMillis());
 
             // Validate the results
             Path bindVariablesPath = getFilePathFromBaseDir(bundleDataPath,
@@ -1882,7 +1880,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             validateAgainstFile("src/test/resources/expected/long_query_schema_details.out",
                                 new String(Files.readAllBytes(schemaDetailsPath),
                                            StandardCharsets.UTF_8));
-            validateAshData(ashPath);
+            validateAshData(ashPath, startTime, endTime);
             validatePgssData(pgssPath, queryId, 1);
         }
     }
