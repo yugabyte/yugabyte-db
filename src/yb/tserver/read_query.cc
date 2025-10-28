@@ -279,21 +279,29 @@ Status ReadQuery::DoPerform() {
   const auto has_row_mark = IsValidRowMarkType(batch_row_mark);
 
   LeaderTabletPeer leader_peer;
-  auto tablet_peer = peer_tablet.tablet_peer;
 
-  if (serializable_isolation || has_row_mark) {
+  if (serializable_isolation || has_row_mark || req_->has_leader_term()) {
     // At this point we expect that we don't have pure read serializable transactions, and
     // always write read intents to detect conflicts with other writes.
     leader_peer = VERIFY_RESULT(LookupLeaderTablet(
         server_.tablet_peer_lookup(), req_->tablet_id(), resp_, std::move(peer_tablet)));
-    // Serializable read adds intents, i.e. writes data.
-    // We should check for memory pressure in this case.
-    RETURN_NOT_OK(CheckWriteThrottling(req_->rejection_score(), leader_peer.peer.get()));
     abstract_tablet_ = VERIFY_RESULT(leader_peer.peer->shared_tablet());
+
+    if (serializable_isolation || has_row_mark) {
+      // Serializable read adds intents, i.e. writes data.
+      // We should check for memory pressure in this case.
+      RETURN_NOT_OK(CheckWriteThrottling(req_->rejection_score(), leader_peer.peer.get()));
+    }
+
+    if (req_->has_leader_term()) {
+      SCHECK_EQ(
+          req_->leader_term(), leader_peer.leader_term, InvalidArgument,
+          Format("Tablet $0 leader changed during async write", req_->tablet_id()));
+    }
   } else {
     abstract_tablet_ = VERIFY_RESULT(read_tablet_provider_.GetTabletForRead(
-        req_->tablet_id(), std::move(peer_tablet.tablet_peer),
-        req_->consistency_level(), AllowSplitTablet::kFalse, resp_));
+        req_->tablet_id(), std::move(peer_tablet.tablet_peer), req_->consistency_level(),
+        AllowSplitTablet::kFalse, resp_));
     leader_peer.leader_term = OpId::kUnknownTerm;
   }
 
@@ -310,6 +318,7 @@ Status ReadQuery::DoPerform() {
   }
 
   // For virtual tables held at master the tablet peer may not be found.
+  auto tablet_peer = peer_tablet.tablet_peer;
   if (!tablet_peer) {
     tablet_peer = ResultToValue(
         server_.tablet_peer_lookup()->GetServingTablet(req_->tablet_id()), {});

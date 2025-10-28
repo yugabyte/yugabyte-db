@@ -238,6 +238,29 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       pauseGroup.addSubTask(pauseTask);
     }
 
+    if (universe.getUniverseDetails().getReadOnlyClusters().size() > 0) {
+      log.info("Creating pause Kubernetes universe tasks for read only cluster");
+      Cluster readOnlyCluster = universe.getUniverseDetails().getReadOnlyClusters().get(0);
+      KubernetesPlacement readOnlyPlacement =
+          new KubernetesPlacement(readOnlyCluster.placementInfo, true);
+      for (Entry<UUID, Map<String, String>> entry : readOnlyPlacement.configs.entrySet()) {
+        UUID azUUID = entry.getKey();
+        String azCode = isMultiAz ? AvailabilityZone.get(azUUID).getCode() : null;
+        Map<String, String> config = entry.getValue();
+        KubernetesCommandExecutor pauseReadonlyTask =
+            createPauseKubernetesUniverseTaskAZ(
+                universeName,
+                taskParams().nodePrefix,
+                azCode,
+                config,
+                0, // No masters in read only cluster
+                true, // isReadOnlyCluster
+                taskParams().useNewHelmNamingStyle,
+                taskParams().getUniverseUUID());
+        pauseGroup.addSubTask(pauseReadonlyTask);
+      }
+    }
+
     getRunnableTask().addSubTaskGroup(pauseGroup);
   }
 
@@ -278,6 +301,31 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
               providerUUID);
 
       resumeGroup.addSubTask(resumeTask);
+    }
+
+    if (universe.getUniverseDetails().getReadOnlyClusters().size() > 0) {
+      log.info("Creating resume Kubernetes universe tasks for read only cluster");
+      Cluster readOnlyCluster = universe.getUniverseDetails().getReadOnlyClusters().get(0);
+      providerUUID = UUID.fromString(readOnlyCluster.userIntent.provider);
+      KubernetesPlacement readOnlyPlacement =
+          new KubernetesPlacement(readOnlyCluster.placementInfo, true);
+      for (Entry<UUID, Map<String, String>> entry : readOnlyPlacement.configs.entrySet()) {
+        UUID azUUID = entry.getKey();
+        String azCode = isMultiAz ? AvailabilityZone.get(azUUID).getCode() : null;
+        Map<String, String> config = entry.getValue();
+        KubernetesCommandExecutor resumeReadonlyTask =
+            createResumeKubernetesUniverseTaskAZ(
+                universeName,
+                taskParams().nodePrefix,
+                azCode,
+                config,
+                0, // No masters in read only cluster
+                true, // isReadOnlyCluster
+                taskParams().useNewHelmNamingStyle,
+                taskParams().getUniverseUUID(),
+                providerUUID);
+        resumeGroup.addSubTask(resumeReadonlyTask);
+      }
     }
     getRunnableTask().addSubTaskGroup(resumeGroup);
 

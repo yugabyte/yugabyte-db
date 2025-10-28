@@ -261,3 +261,19 @@ INSERT INTO test_trigger_table(name, age, email) VALUES ('Charlie', 28, 'charlie
 ALTER TABLE test_trigger_table ENABLE TRIGGER trg_log_changes;
 SELECT id, name, age, email FROM test_trigger_table;
 SELECT action, row_id FROM trigger_log;
+
+-- #29058: REINDEX of partitioned table works.
+CREATE TABLE test_partitioned (i int, j int) PARTITION BY LIST (j);
+CREATE INDEX NONCONCURRENTLY ON test_partitioned (i);
+CREATE TABLE test_partitioned_odd PARTITION OF test_partitioned FOR VALUES IN (1, 3, 5, 7, 9);
+CREATE TABLE test_partitioned_even PARTITION OF test_partitioned FOR VALUES IN (2, 4, 6, 8);
+INSERT INTO test_partitioned SELECT (2 * g), g FROM generate_series(1, 9) g;
+-- Mark all partitions are invalid before REINDEX.
+UPDATE pg_index SET indisvalid = false
+    WHERE indexrelid = 'test_partitioned_i_idx'::regclass;
+UPDATE pg_index SET indisvalid = false
+    WHERE indexrelid = 'test_partitioned_odd_i_idx'::regclass;
+UPDATE pg_index SET indisvalid = false
+    WHERE indexrelid = 'test_partitioned_even_i_idx'::regclass;
+\c
+REINDEX INDEX test_partitioned_i_idx;

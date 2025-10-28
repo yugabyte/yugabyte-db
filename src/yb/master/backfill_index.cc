@@ -40,14 +40,15 @@
 #include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/substitute.h"
 
-#include "yb/master/master_fwd.h"
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_fwd.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/tablet_split_manager.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
+#include "yb/master/ysql/ysql_manager_if.h"
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
@@ -137,47 +138,6 @@ using tserver::TabletServerErrorPB;
 
 namespace {
 
-// Peek into pg_index table to get an index (boolean) status from YSQL perspective.
-Result<bool> GetPgIndexStatus(
-    CatalogManager* catalog_manager,
-    const TableId& idx_id,
-    const std::string& status_col_name) {
-  const auto pg_index_id =
-      GetPgsqlTableId(VERIFY_RESULT(GetPgsqlDatabaseOid(idx_id)), kPgIndexTableOid);
-
-  const auto catalog_tablet = VERIFY_RESULT(catalog_manager->tablet_peer()->shared_tablet());
-  const Schema& pg_index_schema =
-      VERIFY_RESULT(catalog_tablet->metadata()->GetTableInfo(pg_index_id))->schema();
-
-  const auto indexrelid_col_id = VERIFY_RESULT(pg_index_schema.ColumnIdByName("indexrelid")).rep();
-  const auto status_col_id = VERIFY_RESULT(pg_index_schema.ColumnIdByName(status_col_name)).rep();
-  dockv::ReaderProjection projection(pg_index_schema, {indexrelid_col_id, status_col_id});
-
-  const auto idx_oid = VERIFY_RESULT(GetPgsqlTableOid(idx_id));
-
-  auto iter = VERIFY_RESULT(catalog_tablet->NewUninitializedDocRowIterator(
-      projection, {} /* read_hybrid_time */, pg_index_id));
-
-  // Filtering by 'indexrelid' == idx_oid.
-  {
-    PgsqlConditionPB cond;
-    cond.add_operands()->set_column_id(indexrelid_col_id);
-    cond.set_op(QL_OP_EQUAL);
-    cond.add_operands()->mutable_value()->set_uint32_value(idx_oid);
-    docdb::DocPgsqlScanSpec spec(pg_index_schema, &cond);
-    RETURN_NOT_OK(iter->Init(spec));
-  }
-
-  // Expecting one row at most.
-  qlexpr::QLTableRow row;
-  if (VERIFY_RESULT(iter->FetchNext(&row))) {
-    return row.GetColumn(status_col_id)->bool_value();
-  }
-
-  // For practical purposes, an absent index is the same as having false status column value.
-  return false;
-}
-
 // Before advancing index permissions, we need to make sure Postgres side has advanced sufficiently
 // - that the state tracked in pg_index haven't fallen behind from the desired permission
 // for more than one step.
@@ -188,14 +148,20 @@ Result<bool> ShouldProceedWithPgsqlIndexPermissionUpdate(
   // TODO(alex, jason): Add the appropriate cases for dropping index path
   switch (new_perm) {
     case INDEX_PERM_WRITE_AND_DELETE: {
-      auto live = VERIFY_RESULT(GetPgIndexStatus(catalog_manager, idx_id, "indislive"));
+      const auto db_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(idx_id));
+      const auto index_oid = VERIFY_RESULT(GetPgsqlTableOid(idx_id));
+      auto live = VERIFY_RESULT(
+          catalog_manager->GetYsqlManager().GetPgIndexStatus(db_oid, index_oid, "indislive"));
       if (!live) {
         VLOG(1) << "Index " << idx_id << " is not yet live, skipping permission update";
       }
       return live;
     }
     case INDEX_PERM_DO_BACKFILL: {
-      auto ready = VERIFY_RESULT(GetPgIndexStatus(catalog_manager, idx_id, "indisready"));
+      const auto db_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(idx_id));
+      const auto index_oid = VERIFY_RESULT(GetPgsqlTableOid(idx_id));
+      auto ready = VERIFY_RESULT(
+          catalog_manager->GetYsqlManager().GetPgIndexStatus(db_oid, index_oid, "indisready"));
       if (!ready) {
         VLOG(1) << "Index " << idx_id << " is not yet ready, skipping permission update";
       }

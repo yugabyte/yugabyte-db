@@ -130,6 +130,9 @@ import play.mvc.Http.Status;
 @Singleton
 public class UniverseCRUDHandler {
 
+  private static final String FIPS_STABLE_RELEASE = "2025.2.0.0-b18";
+  private static final String FIPS_PREVIEW_RELEASE = "2.29.0.0-b31";
+
   private static final Logger LOG = LoggerFactory.getLogger(UniverseCRUDHandler.class);
 
   @Inject private Commissioner commissioner;
@@ -387,6 +390,10 @@ public class UniverseCRUDHandler {
         && !(userIntent.providerType.equals(Common.CloudType.onprem)
             && provider.getDetails().skipProvisioning)) {
       userIntent.accessKeyCode = appConfig.getString("yb.security.default.access.key");
+    }
+    if (appConfig.getBoolean(CommonUtils.FIPS_ENABLED)) {
+      // Always create FIPS enabled universe on FIPS enabled YBA
+      taskParams.fipsEnabled = true;
     }
     try {
       Universe universe = PlacementInfoUtil.getUniverseForParams(taskParams);
@@ -945,6 +952,14 @@ public class UniverseCRUDHandler {
           servicesStateData.setEarlyoomEnabled(enableEarlyoom);
           taskParams.additionalServicesStateData = servicesStateData;
         }
+      }
+
+      if (taskParams.fipsEnabled
+          && Util.compareYBVersions(
+                  userIntent.ybSoftwareVersion, FIPS_STABLE_RELEASE, FIPS_PREVIEW_RELEASE, true)
+              < 0) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "DB release " + userIntent.ybSoftwareVersion + " does not support FIPS");
       }
     }
 

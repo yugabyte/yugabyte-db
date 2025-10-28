@@ -6776,6 +6776,12 @@ load_critical_index(Oid indexoid, Oid heapoid)
 	LockRelationOid(indexoid, AccessShareLock);
 	if (IsYugaByteEnabled())
 	{
+		/*
+		 * The prefetcher must be started to ensure we do not accept any
+		 * invalidation messages which can remove relcache entries that we
+		 * have just built.
+		 */
+		Assert(YBCIsSysTablePrefetchingStarted());
 		RelationIdCacheLookup(indexoid, ird);
 	}
 	else
