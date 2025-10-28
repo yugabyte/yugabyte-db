@@ -41,6 +41,7 @@ import java.nio.file.Path;
 import java.security.KeyStore;
 import java.security.SecureRandom;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -690,6 +691,14 @@ public class AWSUtil implements CloudUtil {
       if (backup == null) {
         log.error("Could not find matching backup, aborting restore.");
         return null;
+      }
+
+      // Validate backup file is less than 1 day old
+      if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.allowYbaRestoreWithOldBackup)) {
+        if (backup.lastModified().isBefore(Instant.now().minus(1, ChronoUnit.DAYS))) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "YBA restore is not allowed when backup file is more than 1 day old");
+        }
       }
 
       // Construct full local filepath with same name as remote backup

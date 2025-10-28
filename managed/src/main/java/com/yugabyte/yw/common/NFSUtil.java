@@ -532,6 +532,13 @@ public class NFSUtil implements StorageUtil {
         return null;
       }
 
+      if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.allowYbaRestoreWithOldBackup)) {
+        if (latestBackup.lastModified() < System.currentTimeMillis() - (1000 * 60 * 60 * 24)) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "YBA restore is not allowed when backup file is more than 1 day old");
+        }
+      }
+
       // Ensure the local directory exists
       if (!localDir.toFile().exists() && !localDir.toFile().mkdirs()) {
         log.warn("Failed to create local directory: {}", localDir.toAbsolutePath());

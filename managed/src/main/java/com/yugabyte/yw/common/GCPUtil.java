@@ -58,6 +58,7 @@ import java.nio.channels.Channels;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -1102,6 +1103,15 @@ public class GCPUtil implements CloudUtil {
       if (mostRecentBackup == null) {
         log.warn("Could not find YB Anywhere backup in gs://{}", cLInfo.bucket);
         return null;
+      }
+
+      if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.allowYbaRestoreWithOldBackup)) {
+        if (mostRecentBackup
+            .getUpdateTimeOffsetDateTime()
+            .isBefore(OffsetDateTime.now().minusDays(1))) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "YBA restore is not allowed when backup file is more than 1 day old");
+        }
       }
 
       log.info(
