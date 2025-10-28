@@ -1181,7 +1181,7 @@ class PgIndexBackfillGinStress : public PgIndexBackfillTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     PgIndexBackfillTest::UpdateMiniClusterOptions(options);
     options->extra_master_flags.push_back("--index_backfill_rpc_max_retries=0");
-    options->extra_master_flags.push_back("--replication_factor=1");
+    options->replication_factor = 1;
     options->extra_tserver_flags.push_back("--enable_automatic_tablet_splitting=false");
     options->extra_tserver_flags.push_back("--ysql_num_tablets=1");
   }
