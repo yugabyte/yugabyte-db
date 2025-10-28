@@ -623,7 +623,7 @@ Sets the maximum number of rows per transaction per tablet to return in [pg_lock
 Default: `20000`
 {{% /tags/wrap %}}
 
-Sets the batch number of rows to copy from the source to table when running [COPY](../../../api/ysql/the-sql-language/statements/cmd_copy/).
+Sets the maximum batch size per transaction when using [COPY FROM](../../../api/ysql/the-sql-language/statements/cmd_copy/).
 
 ## Networking
 
