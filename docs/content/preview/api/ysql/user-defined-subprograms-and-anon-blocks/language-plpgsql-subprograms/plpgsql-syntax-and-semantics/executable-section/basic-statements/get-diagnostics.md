@@ -117,7 +117,7 @@ begin
   -- s.f2() invokes s.f3()
   -- s.f3() does the "insert".
   diags := s.f1();
-  
+
   -- Sanity checks.
   get diagnostics rows := row_count;
   assert rows = 0;
@@ -140,11 +140,11 @@ select s.f0() as "Values seen in s.f3().";
 This is the result:
 
 ```output
-                      Values seen in s.f3().                       
+                      Values seen in s.f3().
 -------------------------------------------------------------------
  diags.found:  true
  diags.rows:   5
- 
+
  diags.ctx:                                                       +
  PL/pgSQL function s.f3(integer,integer) line 9 at GET DIAGNOSTICS+
  PL/pgSQL function s.f2(integer) line 6 at RETURN                 +
@@ -155,7 +155,7 @@ This is the result:
 You might like to select the rows from _s.t_ as a further sanity check. This is the result:
 
 ```output
- k  |  v  
+ k  |  v
 ----+-----
   7 |  70
   8 |  80
@@ -163,4 +163,3 @@ You might like to select the rows from _s.t_ as a further sanity check. This is 
  10 | 100
  11 | 110
 ```
-

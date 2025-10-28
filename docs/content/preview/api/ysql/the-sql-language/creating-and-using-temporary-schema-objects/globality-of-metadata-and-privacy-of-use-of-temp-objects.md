@@ -75,7 +75,7 @@ Repeat this for a reasonable number of newly started sessions. Three is enough. 
 With _"Session 0"_ through _"Session 3"_, you'll see (something like) this in _"Session 0"_:
 
 ```output
- name | is_my_temp |  schema   
+ name | is_my_temp |  schema
 ------+------------+-----------
  t    | false      | pg_temp_3
  t    | false      | pg_temp_4
@@ -91,7 +91,7 @@ create table pg_temp.t
 using a schema-qualified identifier for the temporary table that starts with the alias _pg_temp_, has created a differently-named temporary schema. This, of course, must be the case because a schema-object is uniquely identified by its name and the name of the schema where it lives—and the table always has the same name, _t_. You'll then see this in _"Session 2"_:
 
 ```output
- name | is_my_temp |  schema   
+ name | is_my_temp |  schema
 ------+------------+-----------
  t    | true       | pg_temp_3
  t    | false      | pg_temp_4
@@ -169,7 +169,7 @@ select i from pg_temp.f();
 This is the result:
 
 ```output
- i  
+ i
 ----
  17
  42
@@ -186,7 +186,7 @@ execute qry;
 This is the result:
 
 ```output
- name |   kind   | is_my_temp |  schema   
+ name |   kind   | is_my_temp |  schema
 ------+----------+------------+-----------
  t    | table    | true       | pg_temp_2
  f    | function | true       | pg_temp_2
@@ -201,7 +201,7 @@ select k from pg_temp_2.t order by k;
 and
 
 ```plpgsql
-select i from pg_temp_2.f(); 
+select i from pg_temp_2.f();
 ```
 
 Now start a second session and do this:
@@ -215,7 +215,7 @@ execute qry;
 Just as the tests in the section [Demonstrate the globality of metadata](./#demonstrate-the-globality-of-metadata) led to expect, you'll see this:
 
 ```output
- name |   kind   | is_my_temp |  schema   
+ name |   kind   | is_my_temp |  schema
 ------+----------+------------+-----------
  t    | table    | false      | pg_temp_2
  f    | function | false      | pg_temp_2
@@ -230,7 +230,7 @@ select k from pg_temp_2.t order by k;
 and
 
 ```plpgsql
-select i from pg_temp_2.f(); 
+select i from pg_temp_2.f();
 ```
 
 Each of these attempts fails with the same error:

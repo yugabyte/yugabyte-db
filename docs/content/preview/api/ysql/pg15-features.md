@@ -18,21 +18,13 @@ type: docs
 
 The YugabyteDB YSQL API reuses a fork of the PostgreSQL [query layer](../../../architecture/query-layer/). This architecture allows YSQL to support most PostgreSQL features, such as data types, queries, expressions, operators and functions, stored procedures, triggers, extensions, and so on - all of which are expected to work identically on both database systems.
 
-Initially based on PostgreSQL 11.2, YSQL has been continuously enhanced with features, improvements, and security fixes pulled from PostgreSQL 12+, in addition to our own improvements. With {{<release "2.25">}}, YugabyteDB now adds support for PostgreSQL 15, which brings many new features and improvements.
+Initially based on PostgreSQL 11.2, YSQL has been continuously enhanced with features, improvements, and security fixes pulled from PostgreSQL 12+, in addition to our own improvements. Starting with {{<release "2025.1">}} (stable) and {{<release "2.25">}} (preview), YugabyteDB is based on PostgreSQL 15, which brings many new features and improvements.
 
 {{<lead link="https://www.yugabyte.com/blog/yugabytedb-moves-beyond-postgresql-11/">}}
 Learn more about the [journey to PostgreSQL 15](https://www.yugabyte.com/blog/yugabytedb-moves-beyond-postgresql-11/).
 {{</lead>}}
 
-## Try it out
-
-PostgreSQL 15 support is in Tech Preview and included with the YugabyteDB 2.25 preview release.
-
-| Product | To try it out |
-| :--- | :--- |
-| YugabyteDB | Follow the instructions in [Quick Start](/preview/quick-start/macos/).<br>For information on upgrading a PostgreSQL 11-based universe (v2024.2 and earlier) to a version based on PostgreSQL 15 (v2.25.1 or later), refer to [YSQL major upgrade](../../../manage/ysql-major-upgrade-yugabyted/). |
-| YugabyteDB&nbsp;Anywhere | [Install YugabyteDB Anywhere v2.25.0.0 or later](../../../yugabyte-platform/install-yugabyte-platform/install-software/installer/#quick-start) and [create a universe](../../../yugabyte-platform/create-deployments/create-universe-multi-zone/) using DB Version 2.25.0.0 or later. |
-| YugabyteDB Aeon| [Create a Sandbox cluster](/preview/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/) with the Database version set to Preview Track (v2.25). |
+Note that upgrading a PostgreSQL 11-based universe ({{<release "2024.2">}} and earlier) to a version based on PostgreSQL 15 requires additional steps. For more information, refer to [YSQL major upgrade](../../../manage/ysql-major-upgrade-yugabyted/).
 
 ## What's new
 

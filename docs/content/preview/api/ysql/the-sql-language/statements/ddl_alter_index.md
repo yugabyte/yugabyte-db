@@ -41,9 +41,9 @@ Renaming an index is a non-blocking metadata change operation.
 
 #### ALTER [ COLUMN ] column_number SET STATISTICS *integer*
 
-Set the per-column statistics-gathering target for subsequent ANALYZE operations. It can only be used on index columns that are defined as an expression. 
-Since expressions lack a unique name, we refer to them using the ordinal number of the index column. 
-The value can be set in the range 0 to 10000. The default `-1` uses the system default statistics target (`default_statistics_target`). 
+Set the per-column statistics-gathering target for subsequent ANALYZE operations. It can only be used on index columns that are defined as an expression.
+Since expressions lack a unique name, we refer to them using the ordinal number of the index column.
+The value can be set in the range 0 to 10000. The default `-1` uses the system default statistics target (`default_statistics_target`).
 
 ```sql
 yugabyte=# CREATE TABLE attmp (initial int4, a int4 default 3, b name,d float8,e float4);
@@ -68,8 +68,8 @@ lsm, for table "public.attmp"
 
 #### SET TABLESPACE *tablespace_name*
 
-Asynchronously change the tablespace of an existing index. 
-The tablespace change will immediately reflect in the config of the index, however the tablet move by the load balancer happens in the background. 
+Asynchronously change the tablespace of an existing index.
+The tablespace change will immediately reflect in the config of the index, however the tablet move by the load balancer happens in the background.
 While the load balancer is performing the move it is perfectly safe from a correctness perspective to do reads and writes, however some query optimization that happens based on the data location may be off while data is being moved.
 
 

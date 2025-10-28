@@ -193,7 +193,7 @@ select pkg.value_of_a();
 This is the result:
 
 ```output
- value_of_a 
+ value_of_a
 ------------
          19
 ```

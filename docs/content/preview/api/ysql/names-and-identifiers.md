@@ -51,7 +51,7 @@ The catalog tables list the _names_ of artifacts; SQL statements and PL/pgSQL so
   ```plpgsql
   \c yugabyte yugabyte
   set client_min_messages = error;
-  
+
   do $body$
   declare
     ten_ascii7_chars          constant text not null := 'a123456789';
@@ -62,32 +62,32 @@ The catalog tables list the _names_ of artifacts; SQL statements and PL/pgSQL so
                                                         ten_ascii7_chars||
                                                         ten_ascii7_chars||
                                                         ten_ascii7_chars;
-  
+
     sixty_three_ascii7_chars  constant text not null := substr(seventy_ascii7_chars, 1, 63);
-  
+
     drop_role constant text not null :=
       'drop role if exists %I';
-  
+
     cr_role constant text not null :=
       'create role %I';
-  
+
     qry constant text not null :=
       $$
         select rolname
         from pg_roles
         where rolname ~'^%s';
       $$;
-  
+
     role_name text not null := '';
   begin
     execute format(drop_role, seventy_ascii7_chars);
     execute format(cr_role,   seventy_ascii7_chars);
-  
+
     execute format(qry, ten_ascii7_chars) into strict role_name;
-  
+
     assert length(sixty_three_ascii7_chars) = 63;
     assert role_name = sixty_three_ascii7_chars;
-  
+
     execute format(drop_role, sixty_three_ascii7_chars);
   end;
   $body$;
@@ -119,7 +119,7 @@ select
 This is the result:
 
 ```output
- Test 1 | Test 2 |   Test 3    
+ Test 1 | Test 2 |   Test 3
 --------+--------+-------------
  _123   | "1dog" | "dog$house"
 ```
@@ -161,7 +161,7 @@ select
 This is the result:
 
 ```output
- Norwegian | French  | Russian  | Chinese 
+ Norwegian | French  | Russian  | Chinese
 -----------+---------+----------+---------
  "høyde"   | "école" | "правда" | "速度"
 ```
@@ -186,7 +186,7 @@ Each _create table_ completes without error. This outcome might surprise you. In
 - Pictograms, in languages like Chinese, like `速` and `度` simply have no concept of case.
 - It gets even harder to understand the rules if identifiers are written using, say, Hebrew or Arabic script where the reading order is from right to left.
 
-You can use the _quote_ident()_ function to implement a simple _boolean_ function to test if a name is a common name thus: 
+You can use the _quote_ident()_ function to implement a simple _boolean_ function to test if a name is a common name thus:
 
 ```plpgsql
 create function s.is_common(nam in text)
@@ -205,7 +205,7 @@ select
 This is the result:
 
 ```output
- is_common('_123') | is_common('1dog') 
+ is_common('_123') | is_common('1dog')
 -------------------+-------------------
  true              | false
 ```
@@ -278,7 +278,7 @@ The identifier for the object with the common name _my_table_ is written, in the
 Here's the query result:
 
 ```output
- k | V  
+ k | V
 ---+----
  1 | 17
  2 | 42
@@ -309,7 +309,7 @@ Notice that the selected columns in the three catalog tables that the query join
 This is the output:
 
 ```output
- SCHEMA_NAME | TABLE_NAME | COLUMN_NAME 
+ SCHEMA_NAME | TABLE_NAME | COLUMN_NAME
 -------------+------------+-------------
  My Schema   | my_table   | V
  My Schema   | my_table   | k

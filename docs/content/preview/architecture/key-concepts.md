@@ -69,7 +69,7 @@ Hybrid time/timestamp is a monotonically increasing timestamp derived using [Hyb
 [Transaction](#transaction) isolation levels define the degree to which transactions are isolated from each other. Isolation levels determine how changes made by one transaction become visible to other concurrent transactions. {{<link dest="../../explore/transactions/isolation-levels/">}}
 
 {{<tip>}}
-YugabyteDB offers 3 isolation levels - [Serializable](../../explore/transactions/isolation-levels/#serializable-isolation), [Snapshot](../../explore/transactions/isolation-levels/#snapshot-isolation) and [Read committed](../../explore/transactions/isolation-levels/#read-committed-isolation) - in the {{<product "ysql">}} API and one isolation level - [Snapshot](../../develop/learn/transactions/acid-transactions-ycql/) - in the {{<product "ycql">}} API.
+YugabyteDB offers 3 isolation levels - [Serializable](../../explore/transactions/isolation-levels/#serializable-isolation), [Snapshot](../../explore/transactions/isolation-levels/#snapshot-isolation) and [Read committed](../../explore/transactions/isolation-levels/#read-committed-isolation) - in the {{<product "ysql">}} API and one isolation level - [Snapshot](/preview/develop/learn/transactions/acid-transactions-ycql/) - in the {{<product "ycql">}} API.
 {{</tip>}}
 
 ## Leader balancing
@@ -122,7 +122,7 @@ Designating one region as preferred can reduce the number of network hops needed
 
 Regardless of the preferred region setting, data is replicated across all the regions in the cluster to ensure region-level fault tolerance.
 
-You can enable [follower reads](#follower-reads) to serve reads from non-preferred regions. In cases where the cluster has [read replicas](#read-replica-cluster) and a client connects to a read replica, reads are served from the replica; writes continue to be handled by the preferred region. {{<link dest="../../develop/build-global-apps/global-database/">}}
+You can enable [follower reads](#follower-reads) to serve reads from non-preferred regions. In cases where the cluster has [read replicas](#read-replica-cluster) and a client connects to a read replica, reads are served from the replica; writes continue to be handled by the preferred region. {{<link dest="/preview/develop/build-global-apps/global-database/">}}
 
 ## Primary cluster
 
