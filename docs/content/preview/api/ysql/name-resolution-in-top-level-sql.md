@@ -12,7 +12,7 @@ type: docs
 ---
 
 {{< tip title="Regard the PostgreSQL documentation as the canonical definitional reference for SQL syntax." >}}
-In particular, see the section [SQL Syntax](https://www.postgresql.org/docs/15/sql-syntax.html) within the enclosing section [The SQL Language](https://www.postgresql.org/docs/15/sql.html). The discussion of name resolution in top-level SQL statements rests on the notions that the [SQL Syntax](https://www.postgresql.org/docs/15/sql-syntax.html) section explains.
+In particular, see the section [SQL Syntax](https://www.postgresql.org/docs/15/sql-syntax.html) in the enclosing section [The SQL Language](https://www.postgresql.org/docs/15/sql.html). The discussion of name resolution in top-level SQL statements rests on the notions that the [SQL Syntax](https://www.postgresql.org/docs/15/sql-syntax.html) section explains.
 {{< /tip >}}
 
 This section deals mainly with name resolution for the schema-objects that a SQL statement references and how this depends critically on the _search_path_. Name resolution for secondary objects, like columns in relations, is sketched briefly, at the end.
@@ -87,7 +87,7 @@ execute qry;
 This is the result:
 
 ```output
- search_path | row from pg_class 
+ search_path | row from pg_class
 -------------+-------------------
  "my schema" | xyz_table
 ```
@@ -120,7 +120,7 @@ execute qry;
 This is the new result:
 
 ```output
- search_path | row from pg_class 
+ search_path | row from pg_class
 -------------+-------------------
  ""          | xyz_table
 ```
@@ -141,7 +141,7 @@ execute qry;
 This is the new result:
 
 ```output
-       search_path       |      row from pg_class      
+       search_path       |      row from pg_class
 -------------------------+-----------------------------
  "my schema", pg_catalog | xyz in "my schema".pg_class
 ```
@@ -165,7 +165,7 @@ execute qry;
 This is the new result:
 
 ```output
-       search_path       |    row from pg_class    
+       search_path       |    row from pg_class
 -------------------------+-------------------------
  "my schema", pg_catalog | xyz in pg_temp.pg_class
 ```
@@ -184,7 +184,7 @@ Better still, ensure that the role as which client-side sessions connect doesn't
 This restores the earlier (and presumably intended) result:
 
 ```output
-           search_path            |      row from pg_class      
+           search_path            |      row from pg_class
 ----------------------------------+-----------------------------
  "my schema", pg_catalog, pg_temp | xyz in "my schema".pg_class
 ```
@@ -244,7 +244,7 @@ execute qry;
 This is the result:
 
 ```output
- 1 = 1 | 17 = 42 | 17 = 42 baroque syntax 
+ 1 = 1 | 17 = 42 | 17 = 42 baroque syntax
 -------+---------+------------------------
  false | true    | false
 ```
@@ -259,7 +259,7 @@ execute qry;
 This is the result:
 
 ```output
- 1 = 1 | 17 = 42 | 17 = 42 baroque syntax 
+ 1 = 1 | 17 = 42 | 17 = 42 baroque syntax
 -------+---------+------------------------
  true  | false   | false
 ```
@@ -278,7 +278,7 @@ The tests have shown that you cannot exclude either _pg_temp_ or _pg_catalog_ fr
 
 - If the definition of _search_path_ mentions neither _pg_temp_ nor _pg_catalog_, then the effective search order that name resolution uses is:
 
-  ```output 
+  ```output
   pg_temp, [everything that the definition did mention, in that order], pg_catalog
   ```
 
@@ -318,7 +318,7 @@ select area(2.0, 3.0);
 This is the result:
 
 ```output
- area 
+ area
 ------
  6.00
 ```

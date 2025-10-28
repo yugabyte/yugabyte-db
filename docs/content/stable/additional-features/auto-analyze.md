@@ -55,7 +55,7 @@ On the other hand, `ysql_auto_analyze_scale_factor` is especially important for 
 
 In addition, `ysql_auto_analyze_batch_size` controls the maximum number of tables the Auto Analyze service tries to analyze in a single ANALYZE statement. The default is 10. Setting this flag to a larger value can potentially reduce the number of YSQL catalog cache refreshes if Auto Analyze decides to ANALYZE many tables in the same database at the same time.
 
-For more information on flags used to configure the Auto Analyze service, refer to [Auto Analyze service flags](../../reference/configuration/yb-tserver#auto-analyze-service-flags).
+For more information on flags used to configure the Auto Analyze service, refer to [Auto Analyze service flags](../../reference/configuration/yb-tserver/#auto-analyze-service-flags).
 
 ## Example
 

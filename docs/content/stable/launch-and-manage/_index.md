@@ -34,6 +34,12 @@ type: indexpage
     icon="fa-thin fa-chart-column">}}
 
   {{<index/item
+    title="Best practices"
+    body="Operations tips for YugabyteDB databases."
+    href="../best-practices-operations/"
+    icon="fa-thin fa-thumbs-up">}}
+
+  {{<index/item
     title="Troubleshoot"
     body="Diagnose and solve YugabyteDB cluster and node issues."
     href="/preview/troubleshoot/"

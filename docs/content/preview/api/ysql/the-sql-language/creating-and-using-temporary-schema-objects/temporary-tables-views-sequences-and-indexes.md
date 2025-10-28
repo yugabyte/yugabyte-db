@@ -64,7 +64,7 @@ execute qry;
 This is the result:
 
 ```output
- name |   kind   | is_my_temp |  schema   
+ name |   kind   | is_my_temp |  schema
 ------+----------+------------+-----------
  t    | table    | true       | pg_temp_2
  v    | view     | true       | pg_temp_2

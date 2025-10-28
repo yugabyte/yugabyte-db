@@ -72,15 +72,15 @@ To begin, generate and configure certificates using the following steps:
     └── node.127.0.0.1.key
     ```
 
-1. Enable TLS encryption by setting the `ENABLE_TLS` variable to point to the directory where the certificates are stored, and set the `use_client_to_server_encryption` flag to true as follows:
+    `node.127.0.0.1.crt` and `node.127.0.0.1.key` are the default values for the `ssl_cert_file` and `ssl_key_file` server-side configuration for a YSQL node. If your local IP is not 127.0.0.1, then use the appropriate local IP to name the two files. Alternatively, use [ysql_pg_conf_csv](../../../reference/configuration/all-flags-yb-tserver/#ysql-pg-conf-csv) to set `ssl_cert_file` and `ssl_key_file` to the appropriate values.
+
+1. Set the `ENABLE_TLS` variable to point to the directory where the certificates are stored, and set the `use_client_to_server_encryption` flag to true as follows:
 
     ```sh
     $ cd ~/var/generated_certs/127.0.0.1
     $ CERTS=$(pwd)
     $ ENABLE_TLS="use_client_to_server_encryption=true,certs_for_client_dir=$CERTS"
     ```
-
-1. `node.127.0.0.1.crt` and `node.127.0.0.1.key` are the default values for the `ssl_cert_file` and `ssl_key_file` server-side configuration for a YSQL node. If your local IP is not 127.0.0.1, then use the appropriate local IP to name the two files. Alternatively, use [ysql_pg_conf_csv](../../../reference/configuration/all-flags-yb-tserver/#ysql-pg-conf-csv) to set `ssl_cert_file` and `ssl_key_file` to the appropriate values.
 
 ### TLS without authentication
 

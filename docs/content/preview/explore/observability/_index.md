@@ -119,7 +119,7 @@ To understand how to view and use lock information, see [pg_locks](./pg-locks)
 
 ## Active Session History
 
-{{<tags/feature/ea idea="830">}} Active Session History (ASH) offers insight into current and past system activity by periodically sampling session behavior in the database. ASH functionality extends to [YSQL](../../api/ysql/), [YCQL](../../api/ycql/), and [YB-TServer](../../architecture/yb-tserver/) processes, and helps you to conduct analytical queries, perform aggregations, and troubleshoot performance issues.
+Active Session History (ASH) offers insight into current and past system activity by periodically sampling session behavior in the database. ASH functionality extends to [YSQL](../../api/ysql/), [YCQL](../../api/ycql/), and [YB-TServer](../../architecture/yb-tserver/) processes, and helps you to conduct analytical queries, perform aggregations, and troubleshoot performance issues.
 
 {{<lead link="./active-session-history">}}
 To learn more, see [Active Session History](./active-session-history)

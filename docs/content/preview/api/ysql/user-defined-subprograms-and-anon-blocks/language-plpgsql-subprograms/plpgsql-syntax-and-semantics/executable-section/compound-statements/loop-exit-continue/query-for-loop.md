@@ -66,12 +66,12 @@ select s.f(2, 4);
 This is the result:
 
 ```plpgsql
- 1         0         
- 2         5         
- 3         10        
- 4         15        
- 5         20        
- 
+ 1         0
+ 2         5
+ 3         10
+ 4         15
+ 5         20
+
  5
  10
  15
@@ -140,7 +140,7 @@ select k_out, v_out from s.g(3, 7);
 This is the result:
 
 ```output
- k_out | v_out 
+ k_out | v_out
 -------+-------
      3 |    13
      4 |    18
@@ -195,7 +195,7 @@ This is the result:
  2         5
  3         10
  4         15
- 
+
  7         30
  8         35
  9         40
@@ -296,7 +296,7 @@ create function s.f(k_lo in int, k_hi in int)
 as $body$
 declare
   qry constant text not null := '
-    select k, v 
+    select k, v
     from s.t
     where k between $1 and $2
     order by k;';
@@ -315,7 +315,7 @@ select k, v from s.f(5, 8);
 This is the result:
 
 ```output
- k | v  
+ k | v
 ---+----
  5 | 20
  6 | 25
@@ -359,7 +359,7 @@ select k, v from s.g(5, 8);
 This is the result:
 
 ```output
- k | v  
+ k | v
 ---+----
  5 | 23
  6 | 28

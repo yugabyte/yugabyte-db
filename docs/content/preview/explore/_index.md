@@ -127,4 +127,3 @@ Whether you're setting up your first YugabyteDB cluster, evaluating YugabyteDB f
   >}}
 
 {{< /sections/3-boxes >}}
-

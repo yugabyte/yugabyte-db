@@ -510,7 +510,7 @@ CDC record for UPDATE (using schema version 1):
 
 ## Colocated tables
 
-YugabyteDB supports streaming of changes from [colocated tables](../../../../additional-features/colocation). The connector can be configured with regular configuration properties and deployed for streaming.
+YugabyteDB supports streaming of changes from [colocated tables](../../../../additional-features/colocation/). The connector can be configured with regular configuration properties and deployed for streaming.
 
 {{< note title="Note" >}}
 

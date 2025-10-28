@@ -23,7 +23,7 @@ return value:      jsonb
 **Notes:** The syntax _"order by... nulls first"_ within the parentheses of the aggregate function (a generic feature of aggregate functions) isn't useful here because the order of the _key-value_ pairs of a JSON _object_ has no semantic significance.
 
 {{< note title="JSON objects and their keys." >}}
-A _JSON object_ is a set of key-value pairs where each key is (taken to be) unique and the order is undefined and insignificant. (See also the accounts of the [`jsonb_set()` and `jsonb_insert()`](../jsonb-set-jsonb-insert) functions.) 
+A _JSON object_ is a set of key-value pairs where each key is (taken to be) unique and the order is undefined and insignificant. (See also the accounts of the [`jsonb_set()` and `jsonb_insert()`](../jsonb-set-jsonb-insert) functions.)
 
 This means that if a _key-value_ pair is specified more than once, in any context that defines an _object_ value, then the one that is most recently specified wins. Here's a simple example:
 

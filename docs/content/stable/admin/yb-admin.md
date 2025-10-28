@@ -2930,7 +2930,9 @@ Concurrent operations in a cluster can lead to various transactional conflicts, 
 
 #### finalize_upgrade
 
-Finalizes an upgrade after a successful [YSQL major upgrade](../../manage/ysql-major-upgrade-local/). Note that `finalize_upgrade` is a cluster-level operation; you don't need to run it on every node.
+Finalizes an upgrade after a successful [YSQL major upgrade](../../manage/ysql-major-upgrade-local/). You can run this command from any node in the cluster.
+
+Note that `finalize_upgrade` is a cluster-level operation; you don't need to run it on every node.
 
 **Syntax**
 
