@@ -1306,7 +1306,7 @@ For details on how online index backfill works, see the [Online Index Backfill](
 
 Default: `true`
 
-#### --num_concurrent_backfills_allowed
+##### --num_concurrent_backfills_allowed
 
 [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) uses a number of distributed workers to backfill older data from the main table into the index table. This flag sets the number of concurrent index backfill jobs that are allowed to execute on each yb-tserver process. By default, the number of jobs is set automatically as follows:
 

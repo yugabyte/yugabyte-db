@@ -2031,7 +2031,7 @@ If `enable_wait_queues=true`, this controls the rate at which each tablet's wait
 
 ### DDL concurrency flags
 
-##### ysql_enable_db_catalog_version_mode
+##### --ysql_enable_db_catalog_version_mode
 
 {{% tags/wrap %}}
 
@@ -2081,7 +2081,7 @@ To re-enable the per database catalog version mode using the following steps:
 1. Shut down the cluster.
 1. Start the cluster with `--ysql_enable_db_catalog_version_mode=true`.
 
-##### enable_heartbeat_pg_catalog_versions_cache
+##### --enable_heartbeat_pg_catalog_versions_cache
 
 {{% tags/wrap %}}
 
@@ -2113,7 +2113,7 @@ Configure the YugabyteDB [cost-based optimizer](../../../architecture/query-laye
 
 See also the [yb_enable_cbo](#yb-enable-cbo) configuration parameter. If this flag is set, the parameter takes precedence.
 
-##### ysql_yb_enable_cbo
+##### --ysql_yb_enable_cbo
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
@@ -2138,7 +2138,7 @@ To fully enable the Auto Analyze service, you need to enable `ysql_enable_auto_a
 
 See also [Auto Analyze Service Master flags](../yb-master/#auto-analyze-service-flags).
 
-##### ysql_enable_auto_analyze_service
+##### --ysql_enable_auto_analyze_service
 
 {{% tags/wrap %}}
 {{<tags/feature/ea idea="590">}}
@@ -2149,7 +2149,7 @@ Default: `false`
 
 Enable the Auto Analyze service, which automatically runs ANALYZE to update table statistics for tables that have changed more than a configurable threshold.
 
-##### ysql_enable_table_mutation_counter
+##### --ysql_enable_table_mutation_counter
 
 {{% tags/wrap %}}
 
@@ -2158,7 +2158,7 @@ Default: `false`
 
 Enable per table mutation (INSERT, UPDATE, DELETE) counting. The Auto Analyze service runs ANALYZE when the number of mutations of a table exceeds the threshold determined by the [ysql_auto_analyze_threshold](#ysql-auto-analyze-threshold) and [ysql_auto_analyze_scale_factor](#ysql-auto-analyze-scale-factor) settings.
 
-##### ysql_auto_analyze_threshold
+##### --ysql_auto_analyze_threshold
 
 {{% tags/wrap %}}
 
@@ -2168,7 +2168,7 @@ Default: `50`
 
 The minimum number of mutations needed to run ANALYZE on a table.
 
-##### ysql_auto_analyze_scale_factor
+##### --ysql_auto_analyze_scale_factor
 
 {{% tags/wrap %}}
 
@@ -2180,7 +2180,7 @@ The fraction defining when sufficient mutations have been accumulated to run ANA
 
 ANALYZE runs when the mutation count exceeds `ysql_auto_analyze_scale_factor * <table_size> + ysql_auto_analyze_threshold`, where table_size is the value of the `reltuples` column in the `pg_class` catalog.
 
-##### ysql_auto_analyze_batch_size
+##### --ysql_auto_analyze_batch_size
 
 {{% tags/wrap %}}
 
@@ -2190,7 +2190,7 @@ Default: `10`
 
 The maximum number of tables the Auto Analyze service tries to analyze in a single ANALYZE statement.
 
-##### ysql_cluster_level_mutation_persist_interval_ms
+##### --ysql_cluster_level_mutation_persist_interval_ms
 
 {{% tags/wrap %}}
 
@@ -2200,7 +2200,7 @@ Default: `10000`
 
 Interval at which the reported node level table mutation counts are persisted to the underlying auto-analyze mutations table.
 
-##### ysql_cluster_level_mutation_persist_rpc_timeout_ms
+##### --ysql_cluster_level_mutation_persist_rpc_timeout_ms
 
 {{% tags/wrap %}}
 
@@ -2210,7 +2210,7 @@ Default: `10000`
 
 Timeout for the RPCs used to persist mutation counts in the auto-analyze mutations table.
 
-##### ysql_node_level_mutation_reporting_interval_ms
+##### --ysql_node_level_mutation_reporting_interval_ms
 
 {{% tags/wrap %}}
 
@@ -2220,7 +2220,7 @@ Default: `5000`
 
 Interval, in milliseconds, at which the node-level table mutation counts are sent to the Auto Analyze service, which tracks table mutation counts at the cluster level.
 
-##### ysql_node_level_mutation_reporting_timeout_ms
+##### --ysql_node_level_mutation_reporting_timeout_ms
 
 {{% tags/wrap %}}
 
@@ -2282,7 +2282,7 @@ Set this flag to `false` to enable online index backfill. When set to `false`, o
 
 For details on how online index backfill works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
 
-#### --num_concurrent_backfills_allowed
+##### --num_concurrent_backfills_allowed
 
 {{% tags/wrap %}}
 
@@ -2297,7 +2297,7 @@ Default: `-1` (automatic setting)
 
 Increasing the number of backfill jobs can allow the index creation to complete faster, however setting it to a higher number can impact foreground workload operations and also increase the chance of failures and retries of backfill jobs if CPU usage becomes too high.
 
-##### backfill_index_client_rpc_timeout_ms
+##### --backfill_index_client_rpc_timeout_ms
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
@@ -2306,7 +2306,8 @@ Default: `86400000` (1 day)
 
 Timeout (in milliseconds) for the backfill stage of a concurrent CREATE INDEX.
 
-##### backfill_index_timeout_grace_margin_ms
+##### --backfill_index_timeout_grace_margin_ms
+
 {{% tags/wrap %}}
 
 
@@ -2315,7 +2316,7 @@ Default: `-1`, where the system automatically calculates the value to be approxi
 
 The time to exclude from the YB-Master flag [ysql_index_backfill_rpc_timeout_ms](../yb-master/#ysql-index-backfill-rpc-timeout-ms) in order to return results to YB-Master in the specified deadline. Should be set to at least the amount of time each batch would require, and less than `ysql_index_backfill_rpc_timeout_ms`.
 
-##### backfill_index_write_batch_size
+##### --backfill_index_write_batch_size
 
 {{% tags/wrap %}}
 
