@@ -59,6 +59,7 @@ You can set the collection level to the following:
 | NORMAL (default) | Collects all server-level metrics, and essential table-level metrics (required for YugabyteDB Anywhere UI and alerts). |
 | MINIMAL | Collects limited list of server-level metrics (required for YugabyteDB Anywhere UI and alerts), and very limited table-level metrics (required for alerts and table size display). |
 | OFF | Disables metric collection. |
+| TABLE_OFF | Collects only server-level metrics. |
 
 The collection level directly affects what data appears in monitoring interfaces. With NORMAL level, all UI components display full metrics. However, when MINIMAL is configured, most per-table monitoring screens display "No Data" messages, though table size information and essential alerts continue functioning. This provides a way to reduce monitoring overhead while maintaining core operational visibility.
 
