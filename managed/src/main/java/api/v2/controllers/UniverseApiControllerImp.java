@@ -204,6 +204,12 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
   }
 
   @Override
+  public void rollbackDetachUniverse(
+      Request request, UUID cUUID, UUID uniUUID, Boolean isForceRollback) throws Exception {
+    universeHandler.rollbackDetachUniverse(request, cUUID, uniUUID, isForceRollback);
+  }
+
+  @Override
   public UniverseResourceDetails getUniverseResources(
       Request request, UUID cUUID, UniverseCreateSpec universeSpec) throws Exception {
     return universeHandler.getUniverseResources(request, cUUID, universeSpec);

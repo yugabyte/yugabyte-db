@@ -534,6 +534,75 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     }
   }
 
+  @Transactional
+  public void rollbackDetachUniverse(
+      Request request, UUID customerUUID, UUID universeUUID, Boolean isForceRollback)
+      throws IOException {
+    checkAttachDetachEnabled();
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
+
+    String dbVersion =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    validateUniverseVersionForAttachDetach(dbVersion);
+
+    UUID currentYwUuid = configHelper.getYugawareUUID();
+    if (currentYwUuid == null) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Current YugabyteDB Anywhere UUID not found");
+    }
+
+    UUID storedYwUuid = Util.getStoredYwUuid(universe, ysqlQueryExecutor, confGetter);
+
+    boolean forceRollback = Boolean.TRUE.equals(isForceRollback);
+
+    if (!forceRollback) {
+      if (!universe.getUniverseDetails().universeDetached) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Universe is not in detached state. Cannot rollback detach for a universe that is not"
+                + " detached. Use isForceRollback=true to override this check.");
+      }
+
+      if (storedYwUuid == null) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Cannot determine universe owner (YSQL not available). Since ownership cannot be"
+                + " checked, this operation could allow multiple YBAs to control same universe."
+                + " Proceed with caution and use isForceRollback=true to rollback anyway.");
+      }
+
+      if (!storedYwUuid.equals(AttachDetachSpec.DETACHED_UNIVERSE_UUID)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "Universe owner is not DETACHED_UNIVERSE_UUID (current owner: %s). "
+                    + "Cannot rollback detach for a universe that already has an owner. "
+                    + "Use isForceRollback=true to override this check.",
+                storedYwUuid));
+      }
+    }
+
+    log.info(
+        "Rolling back detach for universe {} (isForceRollback={}). Resetting universeDetached to"
+            + " false and updating owner to {}",
+        universe.getName(),
+        forceRollback,
+        currentYwUuid);
+
+    try {
+      universe = setUniverseDetachedState(universe, false);
+
+      if (storedYwUuid != null) {
+        updateYwUuidInConsistencyTable(universe, currentYwUuid, Util.getYwHostnameOrIP());
+      }
+
+      log.info("Successfully rolled back detach for universe {}", universe.getName());
+    } finally {
+      universe = Util.unlockUniverse(universe);
+    }
+  }
+
   private void validateProviderCompatibility(Provider sourceProvider) {
     if (sourceProvider.getCloudCode() == Common.CloudType.kubernetes) {
       if (!isYBARunningOnKubernetes()) {
@@ -614,6 +683,12 @@ public class UniverseManagementHandler extends ApiControllerUtils {
   }
 
   private void detachDbFromYBA(Universe universe) {
+    updateYwUuidInConsistencyTable(
+        universe, AttachDetachSpec.DETACHED_UNIVERSE_UUID, AttachDetachSpec.DETACHED_HOST);
+  }
+
+  private void updateYwUuidInConsistencyTable(
+      Universe universe, UUID targetYwUuid, String targetYwHost) {
     try {
       NodeDetails node = CommonUtils.getServerToRunYsqlQuery(universe, true);
 
@@ -622,8 +697,8 @@ public class UniverseManagementHandler extends ApiControllerUtils {
               "UPDATE %s SET yw_uuid = '%s', yw_host = '%s' WHERE seq_num = (SELECT MAX(seq_num)"
                   + " FROM %s)",
               Util.CONSISTENCY_CHECK_TABLE_NAME,
-              AttachDetachSpec.DETACHED_UNIVERSE_UUID.toString(),
-              AttachDetachSpec.DETACHED_HOST,
+              targetYwUuid.toString(),
+              targetYwHost,
               Util.CONSISTENCY_CHECK_TABLE_NAME);
 
       RunQueryFormData runQueryFormData = new RunQueryFormData();
@@ -641,32 +716,30 @@ public class UniverseManagementHandler extends ApiControllerUtils {
         throw new PlatformServiceException(
             INTERNAL_SERVER_ERROR,
             String.format(
-                "Error while marking universe as detached in consistency check table: %s",
+                "Error while updating YW UUID in consistency check table: %s",
                 ysqlResponse.get("error").asText()));
       }
       log.info(
-          "Marked universe as detached (yw_uuid={}, yw_host='{}') in consistency check table for"
-              + " universe: {}",
-          AttachDetachSpec.DETACHED_UNIVERSE_UUID,
-          AttachDetachSpec.DETACHED_HOST,
+          "Updated YW UUID to {} and YW host to '{}' in consistency check table for universe: {}",
+          targetYwUuid,
+          targetYwHost,
           universe.getName());
     } catch (IllegalStateException e) {
       log.error(
-          "Failed to find valid tserver to mark universe as detached for universe {}: {}",
+          "Failed to find valid tserver to update YW UUID for universe {}: {}",
           universe.getName(),
           e);
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR,
           String.format(
-              "Could not find valid tserver to mark universe as detached for universe %s: %s",
+              "Failed to find valid tserver to update YW UUID for universe %s: %s",
               universe.getName(), e.getMessage()));
     } catch (Exception e) {
-      log.error("Failed to mark universe as detached for universe {}: {}", universe.getName(), e);
+      log.error("Error updating YW UUID for universe {}: {}", universe.getName(), e);
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR,
           String.format(
-              "Error marking universe as detached for universe %s: %s",
-              universe.getName(), e.getMessage()));
+              "Failed to update YW UUID for universe %s: %s", universe.getName(), e.getMessage()));
     }
   }
 

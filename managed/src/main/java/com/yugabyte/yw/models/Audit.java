@@ -608,6 +608,9 @@ public class Audit extends Model {
     @EnumValue("Detach")
     Detach,
 
+    @EnumValue("Rollback Detach")
+    RollbackDetach,
+
     @EnumValue("Delete Attach/Detach Metadata")
     DeleteAttachDetachMetadata,
 
