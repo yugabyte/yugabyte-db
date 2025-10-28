@@ -1130,6 +1130,17 @@ public class AZUtil implements CloudUtil {
         return null;
       }
 
+      // Validate backup file is less than 1 day old
+      if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.allowYbaRestoreWithOldBackup)) {
+        if (mostRecentBackup
+            .getProperties()
+            .getLastModified()
+            .isBefore(OffsetDateTime.now().minusDays(1))) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "YBA restore is not allowed when backup file is more than 1 day old");
+        }
+      }
+
       log.info("Downloading backup {}/{}", container, mostRecentBackup.getName());
       File localFile = localDir.resolve(mostRecentBackupName).toFile();
       Files.createDirectories(localFile.getParentFile().toPath());
