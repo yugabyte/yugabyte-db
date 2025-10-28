@@ -211,3 +211,10 @@ Ensure there are no `server_blacklist` entries returned by the command:
 ```sh
 ~/master/bin/yb-admin --master_addresses $MASTERS get_universe_config
 ```
+
+{{< note title="Note" >}}
+
+`DEAD` servers will show up in the yb-tserver list in yb-master as an artifact of the cached state in the current yb-master leader's memory. This cache is cleared after 24 hours. The quickest way to refresh this is to elect a new yb-master leader. 
+The `yb-admin` cli provides us a subroutine to do exactly that with [`master_leader_stepdown`](../../admin/yb-admin/#master-leader-stepdown). 
+
+{{< /note >}}
