@@ -27,7 +27,7 @@ Use the [skip-performance-recommendations](../reference/schema-migration/export-
 
 ### Bug fix
 
-- Fixed a bug where import-data fails if a table that has a sequence attached to it is part of the exclude-table-list, and is not created on the target YugabyteDB.
+- Fixed a bug where import-data fails if a table that has a sequence is part of the exclude-table-list, and is not created on the target YugabyteDB.
 
 ## v2025.10.1 - October 14, 2025
 
