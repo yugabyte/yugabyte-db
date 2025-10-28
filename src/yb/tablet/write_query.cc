@@ -839,11 +839,14 @@ Status WriteQuery::DoExecute() {
     auto transaction_id = VERIFY_RESULT(FullyDecodeTransactionId(
       write_batch.transaction().transaction_id()));
 
-    const bool should_skip_prefix_locks = FLAGS_skip_prefix_locks &&
+    bool should_skip_prefix_locks = FLAGS_skip_prefix_locks &&
         FLAGS_skip_prefix_locks_for_upgrade && FLAGS_ysql_enable_packed_row;
+    fast_mode_txn_scope_ = VERIFY_RESULT(transaction_participant->ShouldUseFastMode(
+        isolation_level_, should_skip_prefix_locks, transaction_id));
+    should_skip_prefix_locks = SkipPrefixLocks(fast_mode_txn_scope_.active(), isolation_level_);
+    write_batch.mutable_transaction()->set_skip_prefix_locks(should_skip_prefix_locks);
     skip_prefix_locks = should_skip_prefix_locks ?
         dockv::SkipPrefixLocks::kTrue : dockv::SkipPrefixLocks::kFalse;
-    write_batch.mutable_transaction()->set_skip_prefix_locks(should_skip_prefix_locks);
     VLOG_WITH_FUNC(4) << "Choose skip_prefix_locks:" << skip_prefix_locks << ", isolation_level:"
         << isolation_level_ << ", transaction id:" << transaction_id;
     if (skip_prefix_locks && isolation_level_ == IsolationLevel::SERIALIZABLE_ISOLATION &&

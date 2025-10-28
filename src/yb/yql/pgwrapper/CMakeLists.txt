@@ -183,6 +183,7 @@ ADD_YB_TEST(orphaned_tablet_cleanup-test)
 ADD_YB_TEST(pg_retryable_request-test)
 ADD_YB_TEST(pg_advisory_lock-test)
 ADD_YB_TEST(pg_yb_index_check-test)
+ADD_YB_TEST(pg_skip_prefix_lock-test)
 
 # This is really a tool, not a test, but uses a lot of existing test infrastructure.
 ADD_YB_TEST(create_initial_sys_catalog_snapshot)

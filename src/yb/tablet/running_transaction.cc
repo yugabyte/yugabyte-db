@@ -62,7 +62,8 @@ RunningTransaction::RunningTransaction(TransactionMetadata metadata,
       abort_handle_(context->rpcs_.InvalidHandle()),
       apply_intents_task_(&context->applier_, context, &apply_data_),
       abort_check_ht_(base_time_for_abort_check_ht_calculation.AddDelta(
-                          1ms * FLAGS_transaction_abort_check_interval_ms)) {
+                          1ms * FLAGS_transaction_abort_check_interval_ms)),
+      fast_mode_scope_(context->CreateFastModeTransactionScope(metadata_)) {
 }
 
 RunningTransaction::~RunningTransaction() {

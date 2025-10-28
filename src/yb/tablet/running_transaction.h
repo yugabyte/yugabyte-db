@@ -243,6 +243,8 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
 
   // Whether or not transaction has any batches replicated by retryable requests.
   bool has_retryable_requests_replicated_ = false;
+
+  FastModeTransactionScope fast_mode_scope_;
 };
 
 Status MakeAbortedStatus(const TransactionId& id);
