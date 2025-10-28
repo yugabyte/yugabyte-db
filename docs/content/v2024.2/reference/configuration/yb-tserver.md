@@ -1944,6 +1944,12 @@ Sets the maximum number of rows per transaction per tablet to return in [pg_lock
 
 Default: `200`
 
+##### yb_default_copy_from_rows_per_transaction
+
+Sets the maximum batch size per transaction when using [COPY FROM](../../../api/ysql/the-sql-language/statements/cmd_copy/).
+
+Default: `20000`
+
 ## Admin UI
 
 The Admin UI for the YB-TServer is available at `http://localhost:9000`.
