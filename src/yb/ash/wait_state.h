@@ -135,6 +135,10 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     (kIndexWrite)
     (kTableWrite)
     (kWaitingOnTServer)
+    (kTransactionCommit)
+    (kTransactionTerminate)
+    (kTransactionRollbackToSavepoint)
+    (kTransactionCancel)
 
     // Common wait states
     ((kOnCpu_Active, YB_ASH_MAKE_EVENT(Common)))
