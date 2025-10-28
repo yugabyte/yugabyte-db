@@ -215,11 +215,13 @@ class DocVectorIndexImpl : public DocVectorIndex {
   DocVectorIndexImpl(
       const TableId& table_id, Slice indexed_table_key_prefix, ColumnId column_id,
       HybridTime hybrid_time, DocVectorIndexedTableContextPtr indexed_table_context,
-      const hnsw::BlockCachePtr& block_cache, const MemTrackerPtr& mem_tracker)
+      const hnsw::BlockCachePtr& block_cache, const MemTrackerPtr& mem_tracker,
+      const MetricEntityPtr& metric_entity)
       : table_id_(table_id), indexed_table_key_prefix_(indexed_table_key_prefix),
         column_id_(column_id), hybrid_time_(hybrid_time),
         indexed_table_context_(std::move(indexed_table_context)),
-        block_cache_(block_cache), mem_tracker_(mem_tracker) {
+        block_cache_(block_cache), mem_tracker_(mem_tracker),
+        metric_entity_(metric_entity) {
     DCHECK_ONLY_NOTNULL(indexed_table_context_.get());
   }
 
@@ -271,6 +273,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
       .frontiers_factory = [] { return std::make_unique<docdb::ConsensusFrontiers>(); },
       .vector_merge_filter_factory = std::move(merge_filter_factory),
       .file_extension = GetFileExtension(idx_options),
+      .metric_entity = metric_entity_,
     };
     return lsm_.Open(std::move(lsm_options));
   }
@@ -418,6 +421,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
   const DocVectorIndexedTableContextPtr indexed_table_context_;
   const hnsw::BlockCachePtr block_cache_;
   const MemTrackerPtr mem_tracker_;
+  const MetricEntityPtr metric_entity_;
   std::string index_id_;
 
   using LSM = vector_index::VectorLSM<Vector, DistanceResult>;
@@ -457,11 +461,12 @@ Result<DocVectorIndexPtr> CreateDocVectorIndex(
     const qlexpr::IndexInfo& index_info,
     DocVectorIndexedTableContextPtr indexed_table_context,
     const hnsw::BlockCachePtr& block_cache,
-    const MemTrackerPtr& mem_tracker) {
+    const MemTrackerPtr& mem_tracker,
+    const MetricEntityPtr& metric_entity) {
   auto& options = index_info.vector_idx_options();
   auto result = std::make_shared<DocVectorIndexImpl<std::vector<float>, float>>(
       index_info.table_id(), indexed_table_key_prefix, ColumnId(options.column_id()), hybrid_time,
-      std::move(indexed_table_context), block_cache, mem_tracker);
+      std::move(indexed_table_context), block_cache, mem_tracker, metric_entity);
   RETURN_NOT_OK(result->Open(log_prefix, data_root_dir, thread_pool_provider, options));
   return result;
 }
