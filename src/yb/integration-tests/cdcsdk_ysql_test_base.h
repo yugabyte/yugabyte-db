@@ -139,6 +139,7 @@ DECLARE_int32(retryable_request_timeout_secs);
 DECLARE_bool(save_index_into_wal_segments);
 DECLARE_bool(TEST_skip_process_apply);
 DECLARE_bool(TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication);
+DECLARE_bool(cdcsdk_update_restart_time_when_nothing_to_stream);
 
 namespace yb {
 
@@ -653,6 +654,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
           "Tablets in cdc_state for the stream doesnt match the expected set");
 
   Result<int> GetStateTableRowCount();
+
+  Result<OpId> GetCheckpointFromStateTable(
+      const xrepl::StreamId& stream_id, const TabletId& tablet_id);
 
   Status VerifyStateTableAndStreamMetadataEntriesCount(
       const xrepl::StreamId& stream_id, const size_t& state_table_entries,
