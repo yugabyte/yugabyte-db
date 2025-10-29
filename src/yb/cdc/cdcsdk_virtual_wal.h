@@ -56,11 +56,9 @@ class CDCSDKVirtualWAL {
       const std::unordered_set<TableId>& new_tables, const HostPort hostport,
       const CoarseTimePoint deadline);
 
-  bool ShouldPopulateExplicitCheckpoint(const TabletId& tablet_id);
-
  private:
   struct GetChangesRequestInfo {
-    uint64_t safe_hybrid_time;
+    int64_t safe_hybrid_time;
     int32_t wal_segment_index;
 
     // The following fields will be used to populate from_cdc_sdk_checkpoint object of the next
@@ -318,8 +316,6 @@ class CDCSDKVirtualWAL {
   // The time at which slot entry was last read to compare restart lsn with the last shipped lsn.
   HybridTime last_restart_lsn_read_time_ = HybridTime::kInvalid;
 
-  // The last slot restart time which was updated in the cdc_state table.
-  uint64_t last_persisted_record_id_commit_time_;
 };
 
 }  // namespace cdc
