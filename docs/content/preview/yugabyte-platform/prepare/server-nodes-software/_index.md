@@ -115,13 +115,13 @@ The script performs the following steps:
 1. Ensure that all the THP settings are correctly set.
 
     ```sh
-    cat /sys/kernel/mm/transparent_hugepage/enabled 
+    cat /sys/kernel/mm/transparent_hugepage/enabled
     ```
 
     Should return "always".
 
     ```sh
-    cat /sys/kernel/mm/transparent_hugepage/defrag 
+    cat /sys/kernel/mm/transparent_hugepage/defrag
     ```
 
     Should return "defer+madvise".

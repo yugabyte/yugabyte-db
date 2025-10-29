@@ -91,7 +91,6 @@ Specify the instance to use for the universe nodes:
   Refer to [Create cloud provider configuration](../../configure-yugabyte-platform/aws/).
 
 - Select the **Instance Type** to use for the nodes in the universe.
-
 - Specify the number and size of the storage volumes, and the storage type.
 
 #### Additional AWS fields

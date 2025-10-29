@@ -11,11 +11,11 @@ menu:
 type: docs
 ---
 
-In case of most task failures in YugabyteDB Anywhere (YBA) universes (VMs or Kubernetes), you can retry the tasks from the YBA UI or via an [equivalent API](https://api-docs.yugabyte.com/docs/yugabyte-platform/68aaf7829e04f-retry-a-universe-task).
+In case of most task failures in YugabyteDB Anywhere universes (VMs or Kubernetes), you can retry the tasks from YugabyteDB Anywhere or via an [equivalent API](https://api-docs.yugabyte.com/docs/yugabyte-platform/68aaf7829e04f-retry-a-universe-task).
 
 To retry a failed task, do one of the following:
 
-- Navigate to **Universes**, select your universe, and click **Retry task** as per the following illustration:
+- Navigate to your universe, and click **Retry task** as per the following illustration:
 
     ![Retry task](/images/yp/retry-task1.png)
 
@@ -31,7 +31,9 @@ Critical task failures, such as scaling a universe, placement changes, software 
 
 Note that some operations, such as taking [universe backups](../../back-up-restore-universes/) or creating [support bundles](../../troubleshoot/universe-issues/#use-support-bundles), can always be attempted even after such failures.
 
-For some failures, a retry of the task might continue to fail indefinitely. For example, an incorrect flag value might have been specified during a flag update operation. In this case, you would run a new flag update operation with the corrected flag value instead of retrying the failed operation. You can fix the operation parameters instead of retrying for the following operations:
+#### When to avoid retrying
+
+For some failures, a retry of the task might continue to fail indefinitely. For example, an incorrect flag value might have been specified during a flag update operation. In such cases, run a new flag update operation with the corrected flag value instead of retrying the failed operation. You can fix the operation parameters instead of retrying for the following operations:
 
 - [Flag updates](../edit-config-flags/)
 - [Upgrade Linux Version](../upgrade-nodes/)

@@ -41,7 +41,7 @@ Use YBA Installer to install YugabyteDB Anywhere on a host, either online or air
 
 After the installation is complete, you can use YBA Installer to manage your installation. This includes backup and restore, upgrading, basic licensing, and uninstalling the software.
 
-You can also use YBA Installer to migrate an existing Replicated installation. Note that you may first need to use Replicated to upgrade your YBA to version 2.20.1; refer to [Migrate from Replicated](/v2.20/yugabyte-platform/install-yugabyte-platform/migrate-replicated/).
+You can also use YBA Installer to migrate an existing Replicated installation. Note that you may first need to use Replicated to upgrade your YBA to v2.20.1; refer to [Migrate from Replicated](/v2.20/yugabyte-platform/install-yugabyte-platform/migrate-replicated/).
 
 {{< note title="Root permissions" >}}
 YBA Installer also supports non-root installation. Refer to [Non-sudo installation](#non-sudo-installation).
@@ -83,7 +83,7 @@ To install YugabyteDB Anywhere using YBA Installer, do the following:
 
 After the installation succeeds, you can immediately start using YBA.
 
-If the installation fails due to permissions or other issues, you can retry after running `yba-ctl clean all` to remove all traces of the previous attempt.
+If the installation fails due to permissions or other issues, you can retry after running `yba-ctl clean --all` to remove all traces of the previous attempt.
 
 For more detailed installation instructions and information on how to use YBA Installer to manage your installation, refer to the following sections.
 
