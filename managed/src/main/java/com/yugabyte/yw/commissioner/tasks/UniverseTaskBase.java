@@ -4161,11 +4161,21 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   public SubTaskGroup installThirdPartyPackagesTaskK8s(
       Universe universe, InstallThirdPartySoftwareK8s.SoftwareUpgradeType upgradeType) {
+    return installThirdPartyPackagesTaskK8s(universe, upgradeType, null /* universeParams */);
+  }
+
+  public SubTaskGroup installThirdPartyPackagesTaskK8s(
+      Universe universe,
+      InstallThirdPartySoftwareK8s.SoftwareUpgradeType upgradeType,
+      @Nullable UniverseDefinitionTaskParams universeParams) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("InstallingThirdPartySoftware");
     InstallThirdPartySoftwareK8s task = createTask(InstallThirdPartySoftwareK8s.class);
     InstallThirdPartySoftwareK8s.Params params = new InstallThirdPartySoftwareK8s.Params();
     params.universeUUID = universe.getUniverseUUID();
     params.softwareType = upgradeType;
+    if (universeParams != null) {
+      params.universeParams = universeParams;
+    }
     task.initialize(params);
 
     subTaskGroup.addSubTask(task);
