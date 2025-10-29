@@ -170,8 +170,6 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
             createGFlagsUpgradeTaskForYSQLMajorUpgrade(
                 universe, YsqlMajorVersionUpgradeState.ROLLBACK_COMPLETE);
 
-            createCleanUpPGUpgradeDataDirTask();
-
             if (requireAdditionalSuperUserForCatalogUpgrade) {
               createManageCatalogUpgradeSuperUserTask(Action.DELETE_USER);
             }
