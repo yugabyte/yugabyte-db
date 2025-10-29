@@ -5,6 +5,8 @@
 package cmd
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"os"
 
@@ -62,6 +64,40 @@ var addLicenseCmd = &cobra.Command{
 	},
 }
 
+var printLicenseCmd = &cobra.Command{
+	Use:   "print",
+	Short: "Print the license for YugabyteDB Anywhere.",
+	Args:  cobra.NoArgs,
+	Run: func(cmd *cobra.Command, args []string) {
+		var lic *license.License
+		var err error
+		if licensePath == "" {
+			lic, err = license.FromInstalledLicense()
+			if err != nil {
+				log.Fatal("failed to get installed license: " + err.Error())
+			}
+		} else {
+			lic, err = license.FromFile(licensePath)
+			if err != nil {
+				log.Fatal("failed to get license from file: " + err.Error())
+			}
+		}
+		decoded, err := base64.StdEncoding.DecodeString(lic.EncodedData)
+		if err != nil {
+			log.Fatal("failed to decode license: " + err.Error())
+		}
+		var jsonData interface{}
+		if err := json.Unmarshal(decoded, &jsonData); err != nil {
+			log.Fatal("failed to parse license JSON: " + err.Error())
+		}
+		prettyJSON, err := json.MarshalIndent(jsonData, "", "  ")
+		if err != nil {
+			log.Fatal("failed to format license JSON: " + err.Error())
+		}
+		fmt.Println(string(prettyJSON))
+	},
+}
+
 // License prints out any licensing requirements that YBA Installer currently has
 // (none currently).
 func InstallLicense() {
@@ -80,6 +116,7 @@ func InstallLicense() {
 func init() {
 	baseLicenseCmd.AddCommand(addLicenseCmd)
 	baseLicenseCmd.AddCommand(validateLicenseCmd)
+	baseLicenseCmd.AddCommand(printLicenseCmd)
 	baseLicenseCmd.PersistentFlags().StringVarP(&licensePath, "license-path", "l", "",
 		"Path to a YugabyteDB Anywhere license file")
 	addLicenseCmd.MarkFlagRequired("license-path")
