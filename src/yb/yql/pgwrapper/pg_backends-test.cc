@@ -60,6 +60,7 @@ class PgBackendsTest : public LibPqTestBase {
   }
 
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->replication_factor = 1;
     options->extra_master_flags.insert(
         options->extra_master_flags.end(),
         {
@@ -68,7 +69,6 @@ class PgBackendsTest : public LibPqTestBase {
           Format("--catalog_manager_bg_task_wait_ms=$0", kCatalogManagerBgTaskWaitMs),
           Format("--wait_for_ysql_backends_catalog_version_master_tserver_rpc_timeout_ms=$0",
                  kMasterTserverRpcTimeoutSec * 1000),
-          "--replication_factor=1",
           "--TEST_master_ui_redirect_to_leader=false",
         });
     // Disable auto analyze because it introduces flakiness in catalog version-related tests.
@@ -497,7 +497,7 @@ class PgBackendsTestRf3 : public PgBackendsTest {
 
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     PgBackendsTest::UpdateMiniClusterOptions(options);
-    options->extra_master_flags.push_back("--replication_factor=3");
+    options->replication_factor = 3;
   }
 
  protected:

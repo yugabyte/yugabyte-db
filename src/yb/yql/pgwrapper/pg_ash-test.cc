@@ -85,7 +85,7 @@ class PgAshMasterMetadataSerializerTest : public PgAshTest {
 class PgAshSingleNode : public PgAshTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_master_flags.push_back("--replication_factor=1");
+    options->replication_factor = 1;
     PgAshTest::UpdateMiniClusterOptions(options);
   }
 

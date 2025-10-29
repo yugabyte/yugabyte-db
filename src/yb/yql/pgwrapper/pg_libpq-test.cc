@@ -2535,7 +2535,7 @@ namespace {
 
 class PgLibPqTestRF1: public PgLibPqTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_master_flags.emplace_back("--replication_factor=1");
+    options->replication_factor = 1;
   }
 
   int GetNumMasters() const override {

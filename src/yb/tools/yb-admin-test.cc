@@ -221,7 +221,6 @@ TEST_F(AdminCliTest, TestChangeConfig) {
 
   std::vector<std::string> master_flags = {
     "--catalog_manager_wait_for_new_tablets_to_elect_leader=false"s,
-    "--replication_factor=2"s,
     "--use_create_table_leader_hint=false"s,
   };
   std::vector<std::string> ts_flags = {
@@ -316,7 +315,6 @@ TEST_F(AdminCliTest, TestDeleteTable) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 1;
 
   vector<string> ts_flags, master_flags;
-  master_flags.push_back("--replication_factor=1");
   BuildAndStart(ts_flags, master_flags);
   string master_address = ToString(cluster_->master()->bound_rpc_addr());
 
@@ -340,7 +338,6 @@ TEST_F(AdminCliTest, TestDeleteIndex) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 1;
 
   vector<string> ts_flags, master_flags;
-  master_flags.push_back("--replication_factor=1");
   ts_flags.push_back("--index_backfill_upperbound_for_user_enforced_txn_duration_ms=12000");
   BuildAndStart(ts_flags, master_flags);
   string master_address = ToString(cluster_->master()->bound_rpc_addr());
@@ -1375,7 +1372,7 @@ TEST_F_EX(AdminCliTest, ListTabletDefaultTenTablets, AdminCliListTabletsTest) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 1;
 
-  ASSERT_NO_FATALS(BuildAndStart({}, {"--replication_factor=1"}));
+  ASSERT_NO_FATALS(BuildAndStart({}, {}));
 
   YBSchema schema;
   YBSchemaBuilder schema_builder;
