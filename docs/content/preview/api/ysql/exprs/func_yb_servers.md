@@ -24,7 +24,7 @@ The function returns the following information.
 |            host | Internal IP address of the node.                                   |
 |            port | Port at which the service will accept connections.                 |
 | num_connections | Number of active connections to the node.                         |
-|       node_type | Type of the node. One of `primary`, `readreplica`                 |
+|       node_type | Type of the node. One of `primary`,`readreplica` .               |
 |           cloud | Name of cloud provider. For example, `aws`, `gcp`.                    |
 |          region | Name of the region in which the node is located. For example, `us-east-1`. |
 |            zone | Name of the zone in which the node is located. For example, `us-east-1a`.  |
