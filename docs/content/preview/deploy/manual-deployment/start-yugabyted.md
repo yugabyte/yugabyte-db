@@ -101,6 +101,8 @@ To create a secure multi-zone cluster:
 
     Set the `--backup_daemon` flag to true if you want to perform backup and restore operations.
 
+    For the second node, use the IP address of the first node in the `--join` flag:
+
     Add flags to `--tserver_flags` as required.
 
     ```sh
@@ -111,6 +113,8 @@ To create a secure multi-zone cluster:
         --fault_tolerance=zone \
         --tserver_flags="enable_ysql_conn_mgr=true"
     ```
+
+    For the third node, you can use the IP address of any currently running node in the universe (for example, the first or the second node) in the `--join` flag:
 
     ```sh
     ./bin/yugabyted start --secure --advertise_address=<IP_of_VM_3> \
