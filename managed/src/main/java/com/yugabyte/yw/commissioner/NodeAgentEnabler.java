@@ -285,27 +285,6 @@ public class NodeAgentEnabler {
   }
 
   /**
-   * Checks if the universe should be marked for to skip node agent installation. It returns true
-   * for all the eligible universes even if the background installation may not happen because it is
-   * not supported. This is for audit and future changes.
-   *
-   * @param universe the given universe.
-   * @return true if it should be marked and installation should be skipped, else false.
-   */
-  public boolean shouldSkipInstallAndMarkUniverse(Universe universe) {
-    // Migration is still not complete.
-    if (universe.getUniverseDetails().installNodeAgent) {
-      return true;
-    }
-    // As migration is complete, do not check the provider details field if the runtime config is
-    // true.
-    return !isNodeAgentEnabled(
-            universe,
-            p -> !confGetter.getGlobalConf(GlobalConfKeys.nodeAgentDisableBgInstallPostMigration))
-        .orElse(false);
-  }
-
-  /**
    * Checks if node agent client is enabled for the provider and the universe if it is non-null.
    * Client check adds additional requirements.
    *
