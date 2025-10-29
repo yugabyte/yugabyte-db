@@ -647,12 +647,10 @@ void DBIter::MergeValuesNewToOld() {
       // ignore corruption if there is any.
       const Slice val = iter_->value();
       {
-        StopWatchNano timer(env_, statistics_ != nullptr);
+        StopWatchNano timer(env_, statistics_, MERGE_OPERATION_TOTAL_TIME);
         PERF_TIMER_GUARD(merge_operator_time_nanos);
         user_merge_operator_->FullMerge(ikey.user_key, &val, operands,
                                         &saved_value_, logger_);
-        RecordTick(statistics_, MERGE_OPERATION_TOTAL_TIME,
-                   timer.ElapsedNanos());
       }
       // iter_ is positioned after put
       iter_->Next();
@@ -668,7 +666,7 @@ void DBIter::MergeValuesNewToOld() {
   }
 
   {
-    StopWatchNano timer(env_, statistics_ != nullptr);
+    StopWatchNano timer(env_, statistics_, MERGE_OPERATION_TOTAL_TIME);
     PERF_TIMER_GUARD(merge_operator_time_nanos);
     // we either exhausted all internal keys under this user key, or hit
     // a deletion marker.
@@ -676,7 +674,6 @@ void DBIter::MergeValuesNewToOld() {
     // client can differentiate this scenario and do things accordingly.
     user_merge_operator_->FullMerge(entry_.key, nullptr, operands,
                                     &saved_value_, logger_);
-    RecordTick(statistics_, MERGE_OPERATION_TOTAL_TIME, timer.ElapsedNanos());
   }
 }
 
@@ -821,25 +818,21 @@ bool DBIter::FindValueForCurrentKey() {
       return false;
     case kTypeMerge:
       if (last_not_merge_type == kTypeDeletion) {
-        StopWatchNano timer(env_, statistics_ != nullptr);
+        StopWatchNano timer(env_, statistics_, MERGE_OPERATION_TOTAL_TIME);
         PERF_TIMER_GUARD(merge_operator_time_nanos);
         user_merge_operator_->FullMerge(entry_.key, nullptr,
                                         merge_operands_, &saved_value_,
                                         logger_);
-        RecordTick(statistics_, MERGE_OPERATION_TOTAL_TIME,
-                   timer.ElapsedNanos());
       } else {
         assert(last_not_merge_type == kTypeValue);
         std::string last_put_value = saved_value_;
         Slice temp_slice(last_put_value);
         {
-          StopWatchNano timer(env_, statistics_ != nullptr);
+          StopWatchNano timer(env_, statistics_, MERGE_OPERATION_TOTAL_TIME);
           PERF_TIMER_GUARD(merge_operator_time_nanos);
           user_merge_operator_->FullMerge(entry_.key, &temp_slice,
                                           merge_operands_, &saved_value_,
                                           logger_);
-          RecordTick(statistics_, MERGE_OPERATION_TOTAL_TIME,
-                     timer.ElapsedNanos());
         }
       }
       break;
@@ -895,11 +888,10 @@ bool DBIter::FindValueForCurrentKeyUsingSeek() {
       !user_comparator_->Equal(ikey.user_key, entry_.key) ||
       ikey.type == kTypeDeletion || ikey.type == kTypeSingleDeletion) {
     {
-      StopWatchNano timer(env_, statistics_ != nullptr);
+      StopWatchNano timer(env_, statistics_, MERGE_OPERATION_TOTAL_TIME);
       PERF_TIMER_GUARD(merge_operator_time_nanos);
       user_merge_operator_->FullMerge(entry_.key, nullptr, operands,
                                       &saved_value_, logger_);
-      RecordTick(statistics_, MERGE_OPERATION_TOTAL_TIME, timer.ElapsedNanos());
     }
     // Make iter_ valid and point to saved_key_
     if (!iter_->Valid() ||
@@ -913,11 +905,9 @@ bool DBIter::FindValueForCurrentKeyUsingSeek() {
 
   const Slice& val = iter_->value();
   {
-    StopWatchNano timer(env_, statistics_ != nullptr);
+    StopWatchNano timer(env_, statistics_, MERGE_OPERATION_TOTAL_TIME);
     PERF_TIMER_GUARD(merge_operator_time_nanos);
-    user_merge_operator_->FullMerge(entry_.key, &val, operands,
-                                    &saved_value_, logger_);
-    RecordTick(statistics_, MERGE_OPERATION_TOTAL_TIME, timer.ElapsedNanos());
+    user_merge_operator_->FullMerge(entry_.key, &val, operands, &saved_value_, logger_);
   }
   SetValid();
   return true;
