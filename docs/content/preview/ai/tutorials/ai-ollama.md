@@ -6,9 +6,9 @@ description: Learn to build LLM applications using Ollama.
 image: /images/tutorials/ai/icons/ollama-icon.svg
 headcontent: Use YugabyteDB as the database backend for LLM applications
 menu:
-  preview_develop:
+  preview_ai:
     identifier: tutorials-ai-ollama
-    parent: tutorials-ai-vector
+    parent: ai-tutorials
     weight: 60
 type: docs
 ---

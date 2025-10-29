@@ -5,9 +5,9 @@ linkTitle: Hello RAG
 description: Build a Retrieval-Augmented Generation (RAG) pipeline with YugabyteDB
 headcontent: Build a Retrieval-Augmented Generation pipeline with YugabyteDB
 menu:
-  preview_develop:
+  preview_ai:
     identifier: tutorials-rag-hello
-    parent: tutorials-ai-rag
+    parent: ai-tutorials
     weight: 40
 type: docs
 ---

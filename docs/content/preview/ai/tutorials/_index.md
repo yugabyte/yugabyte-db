@@ -1,15 +1,9 @@
 ---
-title: Artificial Intelligence with YugabyteDB
-headerTitle: Develop applications with AI and YugabyteDB
-linkTitle: AI
-description: How to Develop Applications with AI and YugabyteDB
-image:
-headcontent: Add a scalable and highly-available database to your AI projects
-menu:
-  preview_develop:
-    parent: tutorials
-    identifier: tutorials-ai
-    weight: 30
+title: "AI tutorials"
+headerTitle: "AI tutorials"
+linkTitle: "Tutorials"
+description: "Learn how to build AI applications with YugabyteDB through step-by-step tutorials"
+headcontent: "Learn how to build AI applications with YugabyteDB through step-by-step tutorials"
 type: indexpage
 showRightNav: true
 cascade:
@@ -27,7 +21,6 @@ cascade:
 {{</index/block>}}
 
 {{<index/block>}}
-
 {{<index/item
     title="Similarity Search using Azure AI"
     body="Build a scalable generative AI application using YugabyteDB as the database backend."
@@ -39,7 +32,6 @@ cascade:
     body="Deploy generative AI applications using Google Vertex AI and YugabyteDB."
     href="google-vertex-ai/"
     icon="/images/tutorials/google/icons/Google-Vertex-AI-Icon.svg">}}
-
 {{</index/block>}}
 
 ## Vector basics
@@ -61,7 +53,6 @@ cascade:
 ## Agentic, multiple data sources, and multi-step reasoning
 
 {{<index/block>}}
-
 {{<index/item
     title="YugabyteDB MCP Server"
     body="Get LLMs to interact directly with YugabyteDB."

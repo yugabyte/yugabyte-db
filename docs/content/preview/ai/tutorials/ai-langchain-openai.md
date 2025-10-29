@@ -6,9 +6,9 @@ description: Learn to build context-aware LLM applications using LangChain and O
 image: /images/tutorials/ai/icons/langchain-icon.svg
 headcontent: Query your database using natural language
 menu:
-  preview_develop:
+  preview_ai:
     identifier: tutorials-ai-langchain-openai
-    parent: tutorials-ai-agentic
+    parent: ai-tutorials
     weight: 60
 type: docs
 ---

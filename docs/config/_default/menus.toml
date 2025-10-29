@@ -115,15 +115,24 @@
     excludeVersion = true
 
 [[main]]
-  name = "Integrations"
+  name = "AI"
   weight = 3
+  url = "/preview/ai/"
+  [main.params]
+    excludeVersion = true
+    description = "Build AI applications with YugabyteDB - RAG, vector search, LLMs"
+    imageUrl = "/icons/ai.svg"
+
+[[main]]
+  name = "Integrations"
+  weight = 4
   url = "/preview/integrations/"
   [main.params]
     excludeVersion = true
 
 [[main]]
   name = "API"
-  weight = 4
+  weight = 5
   identifier = "yugabyte-apis"
   url = "/api/"
 
@@ -737,30 +746,6 @@
     showSection = true
 
 [[preview_develop]]
-  name = "RAG"
-  weight = 10
-  parent = "tutorials-ai"
-  identifier = "tutorials-ai-rag"
-  [preview_develop.params]
-    showSection = true
-
-[[preview_develop]]
-  name = "Vector basics"
-  weight = 20
-  parent = "tutorials-ai"
-  identifier = "tutorials-ai-vector"
-  [preview_develop.params]
-    showSection = true
-
-[[preview_develop]]
-  name = "Agentic"
-  weight = 30
-  parent = "tutorials-ai"
-  identifier = "tutorials-ai-agentic"
-  [preview_develop.params]
-    showSection = true
-
-[[preview_develop]]
   name = "Cloud"
   weight = 40
   parent = "tutorials"
@@ -774,6 +759,25 @@
   parent = "tutorials"
   identifier = "tutorials-cdc"
   [preview_develop.params]
+    showSection = true
+
+########## Menus (in preview) for AI
+
+[[preview_ai]]
+  name = "AI"
+  weight = 3
+  identifier = "ai"
+  url = "/preview/ai/"
+  [preview_ai.params]
+    showSection = true
+
+[[preview_ai]]
+  name = "Tutorials"
+  weight = 10
+  identifier = "ai-tutorials"
+  parent = "ai"
+  url = "/preview/ai/tutorials/"
+  [preview_ai.params]
     showSection = true
 
 ########## Menus (in preview) for APIs
