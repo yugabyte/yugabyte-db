@@ -228,9 +228,23 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 			 * are constructing is only used by the planner --- the executor
 			 * still needs to insert into "invalid" indexes, if they're marked
 			 * indisready.
+			 *
+			 * YB note: Proceed to load the index's expressions and predicate
+			 * for YB-backed relations into the index's relcache entry even
+			 * if the index is invalid. This information will be used by the
+			 * planner to optimize UPDATE queries, much before the execution
+			 * layer has had a chance to load it. Skip populating the index's
+			 * optimizer info so that the planner recognizes that the index is
+			 * not ready for scans.
 			 */
 			if (!index->indisvalid)
 			{
+				if (IsYBRelation(relation))
+				{
+					(void) RelationGetIndexExpressions(indexRelation);
+					(void) RelationGetIndexPredicate(indexRelation);
+				}
+
 				index_close(indexRelation, NoLock);
 				continue;
 			}
