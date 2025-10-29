@@ -27,28 +27,28 @@ YugabyteDB is an open source PostgreSQL-compatible distributed database for clou
   >}}
 {{< /sections/2-boxes >}}
 
-## Develop for YugabyteDB
+## Operations
 
 {{< sections/3-boxes>}}
   {{< sections/3-box-card
-    title="Build a Hello World application"
-    description="Use your favorite programming language to build an application that connects to a YugabyteDB cluster."
-    buttonText="Build"
-    buttonUrl="/preview/develop/tutorials/build-apps/"
+    title="Deploy YugabyteDB"
+    description="Deploy to the public cloud, a private data center, or Kubernetes."
+    buttonText="Deploy"
+    buttonUrl="/preview/deploy/"
   >}}
 
   {{< sections/3-box-card
-    title="Connect using drivers and ORMs"
-    description="Connect applications to your database using familiar third-party divers and ORMs and YugabyteDB Smart Drivers."
-    buttonText="Connect"
-    buttonUrl="/preview/develop/drivers-orms/"
+    title="Add advanced capabilities"
+    description="Set up change data capture, built-in connection pooling, PostgreSQL extensions, and more."
+    buttonText="Add"
+    buttonUrl="/preview/additional-features/"
   >}}
 
   {{< sections/3-box-card
-    title="Use familiar APIs"
-    description="Get up to speed quickly using YugabyteDB's PostgreSQL-compatible YSQL and Cassandra-based YCQL APIs."
-    buttonText="Develop"
-    buttonUrl="/preview/api/"
+    title="Manage your deployment"
+    description="Back up, scale, and upgrade your deployment."
+    buttonText="Manage"
+    buttonUrl="/preview/manage/"
   >}}
 
 {{< /sections/3-boxes >}}

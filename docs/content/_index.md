@@ -50,17 +50,17 @@ YugabyteDB provides PostgreSQL without limits and is an excellent fit for new or
     linkUrl4="/preview/explore/"
   >}}
   {{< sections/3-box-card
-    title="Develop"
-    description="Build global applications using familiar APIs and drivers."
-    linkText1="Global applications"
-    linkUrl1="/preview/develop/build-global-apps/"
-    linkText2="Hybrid and multi-cloud"
-    linkUrl2="/preview/develop/multi-cloud/"
-    linkText3="Drivers and ORMs"
-    linkUrl3="/preview/develop/drivers-orms/"
+    title="AI"
+    description="Add a scalable and highly-available database to your AI projects."
+    linkText1="RAG"
+    linkUrl1="/preview/develop/tutorials/ai/hello-rag/"
+    linkText2="YugabyteDB MCP Server"
+    linkUrl2="/preview/develop/tutorials/ai/mcp-server/"
+    linkText3="Vector AI"
+    linkUrl3="/preview/develop/tutorials/ai/ai-ollama/"
     linkText4="Explore more"
     linkClass4="more"
-    linkUrl4="/preview/develop/"
+    linkUrl4="/preview/develop/tutorials/ai/"
   >}}
   {{< sections/3-box-card
     title="Under the hood"
@@ -77,7 +77,48 @@ YugabyteDB provides PostgreSQL without limits and is an excellent fit for new or
   >}}
 {{< /sections/3-boxes >}}
 
+## Develop for YugabyteDB
+
+{{< sections/3-boxes>}}
+  {{< sections/3-box-card
+    title="Build a Hello World application"
+    description="Use your favorite programming language to build an application that connects to a YugabyteDB cluster."
+    buttonText="Build"
+    buttonUrl="/preview/develop/tutorials/build-apps/"
+  >}}
+
+  {{< sections/3-box-card
+    title="Connect using drivers and ORMs"
+    description="Connect applications to your database using familiar third-party divers and ORMs and YugabyteDB Smart Drivers."
+    buttonText="Connect"
+    buttonUrl="/preview/develop/drivers-orms/"
+  >}}
+
+  {{< sections/3-box-card
+    title="Use familiar APIs"
+    description="Get up to speed quickly using YugabyteDB's PostgreSQL-compatible YSQL and Cassandra-based YCQL APIs."
+    buttonText="Develop"
+    buttonUrl="/preview/api/"
+  >}}
+
+{{< /sections/3-boxes >}}
+
 <!--
+
+  {{< sections/3-box-card
+    title="Develop"
+    description="Build global applications using familiar APIs and drivers."
+    linkText1="Global applications"
+    linkUrl1="/preview/develop/build-global-apps/"
+    linkText2="Hybrid and multi-cloud"
+    linkUrl2="/preview/develop/multi-cloud/"
+    linkText3="Drivers and ORMs"
+    linkUrl3="/preview/develop/drivers-orms/"
+    linkText4="Explore more"
+    linkClass4="more"
+    linkUrl4="/preview/develop/"
+  >}}
+
 ## Introduction to YugabyteDB
 
 ##### Video: [Introducing YugabyteDB: The Distributed SQL Database for Mission-Critical Applications](https://www.youtube.com/watch?v=j24p07Frw00)
