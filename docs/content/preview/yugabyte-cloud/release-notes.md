@@ -23,6 +23,10 @@ rightNav:
 
 #### October 29, 2025
 
+##### Improvements
+
+- Improvements to network infrastructure for even more reliable scaling and even lower risk of disruptions.
+
 ##### Database
 
 - Early Access track updated to 2025.1.1.2.
