@@ -2849,6 +2849,26 @@ Result<int> CDCSDKYsqlTest::GetStateTableRowCount() {
   return num;
 }
 
+Result<OpId> CDCSDKYsqlTest::GetCheckpointFromStateTable(
+    const xrepl::StreamId& stream_id, const TabletId& tablet_id) {
+  auto cdc_state_table = MakeCDCStateTable(test_client());
+  Status s;
+  auto table_range = VERIFY_RESULT(
+      cdc_state_table.GetTableRange(CDCStateTableEntrySelector().IncludeCheckpoint(), &s));
+
+  for (auto row_result : table_range) {
+    RETURN_NOT_OK(row_result);
+    auto row = *row_result;
+    if (row.key.tablet_id == tablet_id && row.key.stream_id == stream_id) {
+      return *row.checkpoint;
+    }
+  }
+
+  return STATUS_FORMAT(
+      NotFound, "Checkpoint not found for tablet $0 stream $1 in state table", tablet_id,
+      stream_id);
+}
+
 Status CDCSDKYsqlTest::VerifyStateTableAndStreamMetadataEntriesCount(
     const xrepl::StreamId& stream_id, const size_t& state_table_entries,
     const size_t& qualified_table_ids_count, const size_t& unqualified_table_ids_count,
