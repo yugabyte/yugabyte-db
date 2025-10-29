@@ -156,7 +156,7 @@ To create a multi-zone cluster, do the following:
         --fault_tolerance=zone
     ```
 
-1. Start the second and the third node on two separate VMs using the `--join` flag, as follows:
+1. Start the second and the third node on two separate VMs using the `--join` flag.
 
     For the second node, use the IP address of the first node in the `--join` flag:
 
