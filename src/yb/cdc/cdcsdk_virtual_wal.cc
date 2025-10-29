@@ -477,23 +477,24 @@ Status CDCSDKVirtualWAL::InitLSNAndTxnIDGenerators(
   last_decided_pub_refresh_time =
       ParseLastDecidedPubRefreshTime(*entry_opt.last_decided_pub_refresh_time);
 
-  auto commit_time = *entry_opt.record_id_commit_time;
+  last_persisted_record_id_commit_time_ = HybridTime(*entry_opt.record_id_commit_time);
   // Values from the slot's entry will be used to form a unique record ID corresponding to a COMMIT
   // record with commit_time set to the record_id_commit_time field of the state table.
   std::string commit_record_docdb_txn_id = "";
   TabletId commit_record_table_id = "";
   std::string commit_record_primary_key = "";
   last_seen_unique_record_id_ = std::make_shared<CDCSDKUniqueRecordID>(CDCSDKUniqueRecordID(
-      false /* publication_refresh_record*/, RowMessage::COMMIT, commit_time,
-      commit_record_docdb_txn_id, std::numeric_limits<uint64_t>::max(),
-      std::numeric_limits<uint32_t>::max(), commit_record_table_id, commit_record_primary_key));
+      false /* publication_refresh_record*/, RowMessage::COMMIT,
+      last_persisted_record_id_commit_time_.ToUint64(), commit_record_docdb_txn_id,
+      std::numeric_limits<uint64_t>::max(), std::numeric_limits<uint32_t>::max(),
+      commit_record_table_id, commit_record_primary_key));
 
   last_shipped_commit.commit_lsn = last_seen_lsn_;
   last_shipped_commit.commit_txn_id = last_seen_txn_id_;
   last_shipped_commit.commit_record_unique_id = last_seen_unique_record_id_;
   last_shipped_commit.last_pub_refresh_time = last_pub_refresh_time;
 
-  virtual_wal_safe_time_ = HybridTime(commit_time);
+  virtual_wal_safe_time_ = last_persisted_record_id_commit_time_;
 
   return Status::OK();
 }
@@ -564,6 +565,7 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
     if (record->row_message().op() == RowMessage_Op_DDL) {
       auto records = resp->add_cdc_sdk_proto_records();
       VLOG_WITH_PREFIX(1) << "Shipping DDL record: " << record->ShortDebugString();
+      last_seen_ddl_commit_time_ = HybridTime(record->row_message().commit_time());
       records->CopyFrom(*record);
       metadata.ddl_records++;
       continue;
@@ -879,6 +881,13 @@ Status CDCSDKVirtualWAL::PopulateGetChangesRequest(
   req_checkpoint->set_key(next_req_info.key);
   req_checkpoint->set_write_id(next_req_info.write_id);
 
+  if (!ShouldPopulateExplicitCheckpoint()) {
+    VLOG_WITH_PREFIX(1) << "Will not be populating the explicit checkpoint with GetChanges "
+                        << "request since we have unacknowledged DDL(s). Sending request as "
+                        << req->ShortDebugString();
+    return Status::OK();
+  }
+
   auto explicit_checkpoint = req->mutable_explicit_cdc_sdk_checkpoint();
   if (!commit_meta_and_last_req_map_.empty()) {
     const auto& last_sent_req_for_begin_map =
@@ -939,6 +948,15 @@ Status CDCSDKVirtualWAL::AddRecordsToTabletQueue(
   }
 
   return Status::OK();
+}
+
+// We do not assign LSNs to DDL records. As a result we can only infer the acknowledgement of the
+// RELATION messages based on the acknowledgement of subsequent DMLs. Upon encountering DDLs, we
+// stop sending explicit checkpoint in the GetChanges requests until the restart time crosses the
+// last seen DDL's commit time, hence signifying its acknowledgement.
+bool CDCSDKVirtualWAL::ShouldPopulateExplicitCheckpoint() {
+  return !last_seen_ddl_commit_time_.is_valid() ||
+         (last_persisted_record_id_commit_time_ > last_seen_ddl_commit_time_);
 }
 
 Status CDCSDKVirtualWAL::UpdateTabletCheckpointForNextRequest(
@@ -1278,6 +1296,9 @@ Status CDCSDKVirtualWAL::UpdateSlotEntryInCDCState(
   YB_CDC_LOG_WITH_PREFIX_EVERY_N_SECS_OR_VLOG(oss, 300, 1);
 
   RETURN_NOT_OK(cdc_service_->cdc_state_table_->UpdateEntries({entry}));
+
+  // Update the local copy of slot restart time after successfully updating the cdc_state entry.
+  last_persisted_record_id_commit_time_ = HybridTime(*entry.record_id_commit_time);
 
   return Status::OK();
 }

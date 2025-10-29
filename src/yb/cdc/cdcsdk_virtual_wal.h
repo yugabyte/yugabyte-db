@@ -204,6 +204,8 @@ class CDCSDKVirtualWAL {
 
   Status UpdateRestartTimeIfRequired();
 
+  bool ShouldPopulateExplicitCheckpoint();
+
   CDCServiceImpl* cdc_service_;
 
   xrepl::StreamId stream_id_;
@@ -328,6 +330,11 @@ class CDCSDKVirtualWAL {
   // The time at which slot entry was last read to compare restart lsn with the last shipped lsn.
   HybridTime last_restart_lsn_read_time_ = HybridTime::kInvalid;
 
+  // The commit time of the last (latest) DDL record encountered by the virtual WAL.
+  HybridTime last_seen_ddl_commit_time_ = HybridTime::kInvalid;
+
+  // The last slot restart time which was updated in the cdc_state table.
+  HybridTime last_persisted_record_id_commit_time_;
 };
 
 }  // namespace cdc
