@@ -170,7 +170,6 @@
 | "Node Agent Server Cert Expiry Notice" | "yb.node_agent.server_cert_expiry_notice" | "GLOBAL" | "Duration to start notifying about expiry before node agent server cert actually expires" | "Duration" |
 | "Disable Node Agent Configure Server" | "yb.node_agent.disable_configure_server" | "GLOBAL" | "Disable server configuration RPCs in node agent. Defaults to ansible if it is enabled." | "Boolean" |
 | "Enable Node Agent Message Compression" | "yb.node_agent.enable_message_compression" | "GLOBAL" | "Enable compression for message sent over node agent channel." | "Boolean" |
-| "Disable Node Agent Background Installation After Migration" | "yb.node_agent.disable_bg_install_post_migration" | "GLOBAL" | "Install node agent synchronously during a task instead after migration if it is true." | "Boolean" |
 | "GCP Blob Delete Retry Count" | "yb.gcp.blob_delete_retry_count" | "GLOBAL" | "Number of times to retry deleting blobs in GCP. This is used to handle the case where the blob deletion fails due to some transient error." | "Integer" |
 | "Node Agent Client Connection Cache Size" | "yb.node_agent.connection_cache_size" | "GLOBAL" | "Cache size for node agent client connections" | "Integer" |
 | "Node Agent Client Connection Time-out" | "yb.node_agent.connect_timeout" | "GLOBAL" | "Client connection time-out for node agent." | "Duration" |
