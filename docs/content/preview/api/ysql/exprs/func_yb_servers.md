@@ -20,7 +20,7 @@ type: docs
 The function returns the following information.
 
 |      Name       |                            Description                            |
-| --------------: | :---------------------------------------------------------------- |
+| :-------------- | :---------------------------------------------------------------- |
 |            host | Internal IP address of the node.                                   |
 |            port | Port at which the service will accept connections.                 |
 | num_connections | Number of active connections to the node.                         |
