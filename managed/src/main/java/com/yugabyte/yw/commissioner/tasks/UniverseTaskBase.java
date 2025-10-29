@@ -2169,16 +2169,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       throw new IllegalArgumentException(errMsg);
     }
     int serverPort = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerPort);
-    NodeAgentEnabler nodeAgentEnabler = getInstanceOf(NodeAgentEnabler.class);
-    if (reinstall == false && nodeAgentEnabler.shouldSkipInstallAndMarkUniverse(universe)) {
-      // Reinstall forces direct installation in the same task.
-      log.info(
-          "Skipping node agent installation for universe {} as it is not enabled",
-          universe.getUniverseUUID());
-      nodeAgentEnabler.markUniverse(universe.getUniverseUUID());
-      return subTaskGroup;
-    }
-    nodeAgentEnabler.cancelForUniverse(universe.getUniverseUUID());
+    getInstanceOf(NodeAgentEnabler.class).cancelForUniverse(universe.getUniverseUUID());
     Customer customer = Customer.get(universe.getCustomerId());
     filterNodesForInstallNodeAgent(universe, nodes, reinstall /* includeOnPremManual */)
         .forEach(

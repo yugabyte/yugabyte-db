@@ -3832,6 +3832,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       createServerInfoTasks(nodes).setSubTaskGroupType(SubTaskGroupType.Provisioning);
     }
 
+    if (universeDetails.installNodeAgent || universeDetails.nodeAgentMissing) {
+      createInstallNodeAgentTasks(universe, nodes, true /* force install */)
+          .setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
+      createWaitForNodeAgentTasks(nodes).setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
+    }
     // Optimistically rotate node-to-node server certificates before starting DB processes
     // Also see CertsRotate
     if (universeDetails.rootCA != null) {
