@@ -212,6 +212,8 @@ class CDCSDKVirtualWAL {
 
   bool DeterminePubRefreshFromMasterRecord(const RecordInfo& record_info);
 
+  bool ShouldPopulateExplicitCheckpoint();
+
   CDCServiceImpl* cdc_service_;
 
   xrepl::StreamId stream_id_;
@@ -348,6 +350,12 @@ class CDCSDKVirtualWAL {
 
   // Indicates whether any of the publications being polled is an "ALL TABLES" publication.
   bool pub_all_tables_ = false;
+
+  // The commit time of the last (latest) DDL record encountered by the virtual WAL.
+  HybridTime last_seen_ddl_commit_time_ = HybridTime::kInvalid;
+
+  // The last slot restart time which was updated in the cdc_state table.
+  HybridTime last_persisted_record_id_commit_time_;
 };
 
 }  // namespace cdc
