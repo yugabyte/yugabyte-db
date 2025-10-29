@@ -25,7 +25,7 @@ rightNav:
 
 ##### Improvements
 
-- Improvements to network infrastructure for even more reliable scaling and even lower risk of disruptions.
+- Improvements to network and peering infrastructure, to provide even more reliable scaling, and lower risk of disruptions, particularly when scaling across regions.
 
 ##### Database
 
