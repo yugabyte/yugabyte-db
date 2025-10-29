@@ -224,8 +224,8 @@ class BlockBasedTable : public TableReader {
   class IndexIteratorHolder;
 
   // Returns filter block handle for fixed-size bloom filter using filter index and filter key.
-  Status GetFixedSizeFilterBlockHandle(const Slice& filter_key,
-      BlockHandle* filter_block_handle) const;
+  Status GetFixedSizeFilterBlockHandle(
+      const Slice& filter_key, BlockHandle* filter_block_handle, Statistics* statistics) const;
 
   // Returns key to be added to filter or verified against filter based on internal_key.
   Slice GetFilterKeyFromInternalKey(Slice internal_key) const;
