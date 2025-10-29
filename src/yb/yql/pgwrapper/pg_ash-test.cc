@@ -626,6 +626,10 @@ TEST_F_EX(PgWaitEventAuxTest, PgCDCServiceRPCs, PgCDCWaitEventAux) {
   // wait for DestroyVirtualWALForCDC RPC to be called
   SleepFor(2s * kTimeMultiplier);
 
+  const auto walsender_samples = ASSERT_RESULT(conn_->FetchRow<PGUint64>(
+      "SELECT COUNT(*) FROM yb_active_session_history WHERE query_id = 11"));
+  ASSERT_GT(walsender_samples, 0);
+
   ASSERT_OK(CheckWaitEventAux());
 }
 
