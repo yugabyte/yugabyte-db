@@ -21,6 +21,12 @@ rightNav:
 
 ### 2025
 
+#### October 29, 2025
+
+##### Database
+
+- Early Access track updated to 2025.1.1.2.
+
 #### October 7, 2025
 
 ##### New features
