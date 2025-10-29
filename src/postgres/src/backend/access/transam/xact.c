@@ -1944,12 +1944,19 @@ int YBGetEffectivePggateIsolationLevel() {
 	return mapped_pg_isolation_level;
 }
 
+static TimestampTz
+ToUnixEpochUs(TimestampTz pg_timestamp)
+{
+	return pg_timestamp +
+		((POSTGRES_EPOCH_JDATE - UNIX_EPOCH_JDATE) * SECS_PER_DAY * USECS_PER_SEC);
+}
+
 void
 YBInitializeTransaction(void)
 {
 	if (YBTransactionsEnabled())
 	{
-		HandleYBStatus(YBCPgBeginTransaction(xactStartTimestamp));
+		HandleYBStatus(YBCPgBeginTransaction(ToUnixEpochUs(xactStartTimestamp)));
 
 		HandleYBStatus(
 			YBCPgSetTransactionIsolationLevel(YBGetEffectivePggateIsolationLevel()));

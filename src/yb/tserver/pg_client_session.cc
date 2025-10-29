@@ -1664,7 +1664,6 @@ Result<PgClientSession::SetupSessionResult> PgClientSession::SetupSession(
         InvalidArgument,
         Format("Expected active_sub_transaction_id to be >= $0", kMinSubTransactionId));
     transaction->SetActiveSubTransaction(options.active_sub_transaction_id());
-    RETURN_NOT_OK(transaction->SetPgTxnStart(options.pg_txn_start_us()));
   }
 
   return SetupSessionResult{
@@ -1745,6 +1744,7 @@ Status PgClientSession::DoBeginTransactionIfNecessary(
   txn = transaction_builder_(
     IsDDL::kFalse, client::ForceGlobalTransaction(options.force_global_transaction()), deadline);
   txn->SetLogPrefixTag(kTxnLogPrefixTag, id_);
+  RETURN_NOT_OK(txn->SetPgTxnStart(options.pg_txn_start_us()));
   if ((isolation == IsolationLevel::SNAPSHOT_ISOLATION ||
            isolation == IsolationLevel::READ_COMMITTED) &&
       txn_serial_no_ == options.txn_serial_no()) {
