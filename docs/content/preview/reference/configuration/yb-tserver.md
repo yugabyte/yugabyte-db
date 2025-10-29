@@ -279,7 +279,7 @@ To override this flag on a per-scrape basis, you can adjust the URL parameter `m
 Default: `true`
 {{% /tags/wrap %}}
 
-Whether to dump intentsdb statistics to prometheus metrics.
+Whether to dump IntentsDB statistics to Prometheus metrics.
 
 ## PostgreSQL configuration parameters
 
