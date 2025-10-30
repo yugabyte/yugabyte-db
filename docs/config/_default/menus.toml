@@ -1309,7 +1309,7 @@
   ["v2.25".params]
     showSection = true
 
-########## Menus (in "v2024.2") for YB Anywhere section
+########## Menus (in "v2.25") for YB Anywhere section
 
 [["v2.25_yugabyte-platform"]]
   weight = 1
@@ -1324,7 +1324,7 @@
     showSection = true
     hideLink = true
 
-########## Menus (in "v2024.2") for APIs
+########## Menus (in "v2.25") for APIs
 
 [["v2.25_api"]]
   name = "API"
@@ -1384,8 +1384,6 @@
   url = "/preview/yugabyte-cloud/managed-automation/managed-api/"
   ["v2.25_api".params]
     showSection = true
-
-
 
 ########## Menus for "v2024.2"
 
