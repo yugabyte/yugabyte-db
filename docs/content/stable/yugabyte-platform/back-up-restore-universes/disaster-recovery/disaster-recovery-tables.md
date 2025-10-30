@@ -27,12 +27,7 @@ DDL operations must only be performed on the Primary universe. All schema change
 
   {{% tab header="Semi-automatic mode" lang="semi-automatic-mode" %}}
 
-For each DDL statement:
-
-1. Execute the DDL on the DR primary, waiting for it to complete.
-1. Execute the DDL on the DR replica, waiting for it to complete.
-
-After both steps are complete, the YugabyteDB Anywhere UI should reflect any added/removed tables in the Tables listing for this DR configuration.
+DDL operations must only be performed on the Primary universe. All schema changes are automatically replicated to the Standby universe.
 
   {{% /tab %}}
 
