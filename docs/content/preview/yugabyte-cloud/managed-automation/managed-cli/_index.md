@@ -19,7 +19,7 @@ rightNav:
 
 The [YugabyteDB Aeon Command Line Interface](https://github.com/yugabyte/ybm-cli) (ybm) is an open source tool that enables you to interact with YugabyteDB Aeon accounts using commands in your command-line shell. With minimal configuration, you can start running commands from the command line that implement functionality equivalent to that provided by the browser-based YugabyteDB Aeon interface.
 
-Reference documentation for yba CLI commands and their flags is available in the [Docs folder](https://github.com/yugabyte/ybm-cli/blob/main/docs/ybm.md) of the GitHub repository.
+Reference documentation for ybm CLI commands and their flags is available in the [Docs folder](https://github.com/yugabyte/ybm-cli/blob/main/docs/ybm.md) of the GitHub repository.
 
 {{< youtube id="wAtP7qzYhgU" title="Use the ybm CLI to manage clusters in YugabyteDB Aeon" >}}
 
