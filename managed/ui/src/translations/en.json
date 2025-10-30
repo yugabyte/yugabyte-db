@@ -2677,6 +2677,11 @@
           "storageConfig": "Storage Config",
           "folderName": "Folder Name"
         },
+        "error": {
+          "backupFrequencyMustBePositiveInteger": "Please enter a positive integer.",
+          "backupFrequencyMustBeGreaterThanOrEqualTo2": "Minimum 2 minutes.",
+          "backupFrequencyMustBeLessThanOrEqualTo1440": "Maximum 1440 minutes (24 hours)."
+        },
         "tip": {
           "performanceImpact": "Platform backups don't significantly impact performance.",
           "copiesRetained": "Only the 3 most recent copies are retained, as older backups are more likely to be inconsistent with the current state of your universes."

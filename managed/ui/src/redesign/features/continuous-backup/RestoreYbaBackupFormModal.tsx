@@ -263,7 +263,7 @@ export const RestoreYbaBackupFormModal = ({ modalProps }: RestoreYbaBackupFormMo
       buttonProps={{ primary: { disabled: isFormDisabled } }}
       isSubmitting={formMethods.formState.isSubmitting}
       size="lg"
-      minHeight={800}
+      minHeight="fit-content"
       submitTestId={`${MODAL_NAME}-SubmitButton`}
       cancelTestId={`${MODAL_NAME}-CancelButton`}
       {...modalProps}
