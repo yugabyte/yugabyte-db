@@ -244,7 +244,9 @@ public class HighAvailabilityConfig extends Model {
     }
   }
 
-  // Invoke the function after acquiring the lock. If the lock cannot acquired, null is returned.
+  // Invoke the function after acquiring the lock. The function in the argument should return
+  // non-null if the lock is acquired to distinguish between lock acquisition failure vs actual
+  // value.
   public static <T> Optional<T> doWithTryLock(
       UUID haConfigUuid, Function<HighAvailabilityConfig, T> function) {
     if (KEY_LOCK.tryLock(haConfigUuid)) {
@@ -255,6 +257,6 @@ public class HighAvailabilityConfig extends Model {
         KEY_LOCK.releaseLock(haConfigUuid);
       }
     }
-    return null;
+    return Optional.empty();
   }
 }

@@ -3634,6 +3634,18 @@ WalSndWakeup(void)
 {
 	int			i;
 
+	/*
+	 * YB: We do not rely on WalSndWakeup mechanism to wake up walsenders in YB's
+	 * logical replication. After every GetConsistentChanges call, walsender
+	 * sleeps for a fixed amount of time based on
+	 * yb_walsender_poll_sleep_duration_empty_ms /
+	 * yb_walsender_poll_sleep_duration_nonempty_ms. However, the PG
+	 * checkpointer process calls this function and failures to acquire spin
+	 * lock can lead to unnecessary core dumps. Hence we return early here.
+	 */
+	if (YBIsEnabledInPostgresEnvVar())
+		return;
+
 	for (i = 0; i < max_wal_senders; i++)
 	{
 		Latch	   *latch;

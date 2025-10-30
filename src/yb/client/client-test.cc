@@ -2899,6 +2899,10 @@ TEST_F(ClientTest, TestMetacacheRefreshWhenSentToWrongLeader) {
   ASSERT_EQ(attempt_num, 2);
 }
 
+// Note: This class has custom initialization for postgres instead of using
+// MiniTabletServer::SetPgServerHandlers. Hence tests would not work if they restart the tserver
+// hosting the ysql connections, and try to create a new connection. Avoid inheriting this class
+// for other tests.
 class ColocationClientTest: public ClientTest {
  public:
   void SetUp() override {
@@ -2952,9 +2956,11 @@ class ColocationClientTest: public ClientTest {
               << ":" << pg_process_conf.pg_port << ", data: " << pg_process_conf.data_dir
               << ", pgsql webserver port: " << FLAGS_pgsql_proxy_webserver_port;
     pg_supervisor_ = std::make_unique<pgwrapper::PgSupervisor>(pg_process_conf, pg_ts->server());
-    RETURN_NOT_OK(pg_supervisor_->Start());
+    RETURN_NOT_OK(pg_supervisor_->StartAndMaybePause());
 
     pg_host_port_ = HostPort(pg_process_conf.listen_addresses, pg_process_conf.pg_port);
+
+    RETURN_NOT_OK(pg_ts->server()->StartYSQLLeaseRefresher());
     return Status::OK();
   }
 

@@ -100,7 +100,7 @@ public class InternalHAController extends Controller {
                         BAD_REQUEST, "Cannot import instances for a leader");
                   }
                   return replicationManager.importPlatformInstances(
-                      config, newInstances, new Date(timestamp));
+                      c, newInstances, new Date(timestamp));
                 })
             .orElseThrow(
                 () -> new PlatformServiceException(529, "Server is busy with ongoing HA process"));
@@ -146,7 +146,7 @@ public class InternalHAController extends Controller {
     return HighAvailabilityConfig.doWithTryLock(
             config.getUuid(),
             c -> {
-              Optional<PlatformInstance> localInstance = config.getLocal();
+              Optional<PlatformInstance> localInstance = c.getLocal();
               if (localInstance.isPresent() && leader.equals(localInstance.get().getAddress())) {
                 throw new PlatformServiceException(
                     BAD_REQUEST, "Backup originated on the node itself. Leader: " + leader);

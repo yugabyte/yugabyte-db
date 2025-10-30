@@ -39,6 +39,7 @@
 #include "pgstat.h"
 #include "postmaster/bgworker.h"
 #include "postmaster/interrupt.h"
+#include "replication/walsender.h"
 #include "storage/ipc.h"
 #include "storage/latch.h"
 #include "storage/lwlock.h"
@@ -189,9 +190,7 @@ YbAshInit(void)
 	YbAshInstallHooks();
 	/* Keep the default query id in the stack */
 	query_id_stack.top_index = 0;
-	query_id_stack.query_ids[0] = MyProc->isBackgroundWorker
-		? YBCGetConstQueryId(QUERY_ID_TYPE_BACKGROUND_WORKER)
-		: YBCGetConstQueryId(QUERY_ID_TYPE_DEFAULT);
+	query_id_stack.query_ids[0] = YbAshGetConstQueryId();
 	query_id_stack.num_query_ids_not_pushed = 0;
 
 	EnableQueryId();
@@ -497,12 +496,15 @@ yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 	PG_END_TRY();
 }
 
-static uint64
-GetDefaultQueryId()
+uint64
+YbAshGetConstQueryId()
 {
-	YbcAshConstQueryIdType type =
-		IsBackgroundWorker ? QUERY_ID_TYPE_BACKGROUND_WORKER
-		: QUERY_ID_TYPE_DEFAULT;
+	YbcAshConstQueryIdType type = QUERY_ID_TYPE_DEFAULT;
+
+	if (am_walsender)
+		type = QUERY_ID_TYPE_WALSENDER;
+	else if (IsBackgroundWorker)
+		type = QUERY_ID_TYPE_BACKGROUND_WORKER;
 
 	return YBCGetConstQueryId(type);
 }
@@ -536,7 +538,7 @@ YbAshResetQueryId(uint64 query_id)
 
 		if (prev_query_id != 0)
 		{
-			if (prev_query_id == GetDefaultQueryId())
+			if (prev_query_id == YbAshGetConstQueryId())
 			{
 				query_id_to_be_popped_before_push = query_id;
 				pop_query_id_before_push = true;
