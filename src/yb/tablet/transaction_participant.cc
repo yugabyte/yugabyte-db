@@ -23,6 +23,7 @@
 #include <boost/multi_index/member.hpp>
 #include <boost/multi_index/ordered_index.hpp>
 
+#include "yb/client/client.h"
 #include "yb/client/transaction_rpc.h"
 
 #include "yb/common/pgsql_error.h"
@@ -149,6 +150,25 @@ METRIC_DEFINE_event_stats(tablet, conflict_resolution_num_keys_scanned,
                                "Total Keys Scanned During Conflict Resolution",
                                yb::MetricUnit::kKeys,
                                "Number of keys scanned during conflict resolution)");
+METRIC_DEFINE_simple_counter(
+    tablet, fast_mode_si_transactions,
+    "Total number of fast mode serializable transactions and operations in participant",
+    yb::MetricUnit::kTransactions);
+METRIC_DEFINE_simple_counter(
+    tablet, fast_mode_rr_rc_transactions,
+    "Total number of fast mode RR/RC transactions and operations in participant",
+    yb::MetricUnit::kTransactions);
+METRIC_DEFINE_simple_counter(tablet, slow_mode_si_transactions,
+    "Total number of slow mode serializable transactions in participant",
+    yb::MetricUnit::kTransactions);
+METRIC_DEFINE_simple_gauge_uint64(
+    tablet, current_fast_mode_si_transactions,
+    "Current number of fast mode serializable transactions and operations in participant",
+    yb::MetricUnit::kTransactions);
+METRIC_DEFINE_simple_gauge_uint64(
+    tablet, current_fast_mode_rr_rc_transactions,
+    "Current number of fast mode RR/RC transactions and operations in participant",
+    yb::MetricUnit::kTransactions);
 
 DEFINE_test_flag(int32, txn_participant_inject_latency_on_apply_update_txn_ms, 0,
                  "How much latency to inject when a update txn operation is applied.");
@@ -166,12 +186,30 @@ DEFINE_test_flag(bool, skip_process_apply, false,
 DEFINE_test_flag(bool, load_transactions_sync, false,
                  "If true, the test will block until the loader has finished loading all txns.");
 
+DEFINE_RUNTIME_bool(skip_prefix_locks_wait_all_transactions_loaded, true,
+                    "If true, always wait until the loader has finished loading all txns during "
+                    "choosing the skip prefix locks mode for RR/RC transactions");
+
+DEFINE_test_flag(bool, skip_prefix_locks_invariance_check, false,
+                 "If true, do some sanity check for skip prefix lock. For example, when a txn is "
+                 "added to participant.");
+
+DEFINE_test_flag(bool, skip_prefix_locks_skip_fast_mode_removal, false,
+                 "If true, will skip removing a fast mode transaction");
+
+DEFINE_test_flag(uint64, wait_inactive_transaction_cleanup_sleep_ms, 0,
+                 "The amount of time the thread sleeps while waiting for the transaction to be "
+                 "cleaned up");
+
 namespace yb {
 namespace tablet {
 
 namespace {
 
 YB_STRONGLY_TYPED_BOOL(PostApplyCleanup);
+
+constexpr size_t kSIModeIdx = 0;
+constexpr size_t kRRRCModeIdx = 1;
 
 } // namespace
 
@@ -222,6 +260,15 @@ class TransactionParticipant::Impl
         METRIC_conflict_resolution_latency.Instantiate(entity);
     metric_conflict_resolution_num_keys_scanned_ =
         METRIC_conflict_resolution_num_keys_scanned.Instantiate(entity);
+    metric_fast_mode_transactions_[kSIModeIdx] =
+        METRIC_fast_mode_si_transactions.Instantiate(entity);
+    metric_fast_mode_transactions_[kRRRCModeIdx] =
+        METRIC_fast_mode_rr_rc_transactions.Instantiate(entity);
+    metric_slow_mode_si_transactions_ = METRIC_slow_mode_si_transactions.Instantiate(entity);
+    metric_current_fast_mode_si_transactions_ =
+        METRIC_current_fast_mode_si_transactions.Instantiate(entity, 0);
+    metric_current_fast_mode_rr_rc_transactions_ =
+        METRIC_current_fast_mode_rr_rc_transactions.Instantiate(entity, 0);
   }
 
   ~Impl() {
@@ -1534,6 +1581,106 @@ class TransactionParticipant::Impl
     }
   }
 
+  // If the txn exist in 'transactions_' map, return the current skip_prefix_locks setting.
+  // If the txn is new one, choose whether to enable skip prefix lock based on isolation,
+  // skip_prefix_locks flag, and the fast mode counters.
+  // If the status of txn is undetermined during txn loading, choose slow mode for snapshot
+  // and read committed txn, or wait until the loading finishes for serializable txn.
+  Result<FastModeTransactionScope> ShouldUseFastMode(
+      IsolationLevel isolation, bool skip_prefix_locks, const TransactionId& id) {
+    VLOG_WITH_PREFIX(4) << "Choose skip prefix locks mode. The transaction " << id
+                        << " isolation:" << isolation << "skip_prefix_locks:"
+                        << skip_prefix_locks;
+
+    if (!VERIFY_RESULT(loader_.Completed())) {
+      // transaction loader is still running and we are not sure whether the txn exists in the
+      // participant. In this case, it is always safe to use a slow mode regardless of the current
+      // mode the txn may be using. But for now, we're opting for a conservative approach by waiting
+      // for all transactions to load.
+      VLOG_WITH_PREFIX(4) << "The transaction " << id << " may not have been loaded yet. "
+                          << " isolation:" << isolation
+                          << "skip_prefix_locks:" << skip_prefix_locks;
+      if (!FLAGS_skip_prefix_locks_wait_all_transactions_loaded &&
+          isolation != IsolationLevel::SERIALIZABLE_ISOLATION) {
+        // Use slow mode if the txn is not loaded yet. Instead of wait the txn to be loaded,
+        // we can use slow mode for this operation even if the fast mode is used by previous
+        // operation of the txn in this participant. It is safe because we never overwrite
+        // the mode stored in the intent txn metadata.
+        VLOG_WITH_PREFIX(4) << "Choosing slow mode";
+        return FastModeTransactionScope();
+      } else {
+        VLOG_WITH_PREFIX(4) << "Waiting for all the transactions to be loaded. transaction id: "
+                            << id << " isolation: " << isolation
+                            << " skip_prefix_locks:" << skip_prefix_locks;
+        RETURN_NOT_OK(loader_.WaitAllLoaded());
+        VLOG_WITH_PREFIX(4) << "All the transactions have been loaded";
+        if (PREDICT_FALSE(FLAGS_TEST_skip_prefix_locks_invariance_check) &&
+                          FLAGS_TEST_wait_inactive_transaction_cleanup_sleep_ms > 0) {
+          // sleep for a while so that inactive transactions will be cleaned up in the leader.
+          // This is required to simulate the case where both snapshot and serializable can have
+          // fast mode transactions simultaneously in the unit test.
+          AtomicFlagSleepMs(&FLAGS_TEST_wait_inactive_transaction_cleanup_sleep_ms);
+        }
+      }
+    }
+
+    std::lock_guard lock(mutex_);
+
+    // Check the fast-mode counters to make a decision.
+    switch (isolation) {
+      case IsolationLevel::SNAPSHOT_ISOLATION: FALLTHROUGH_INTENDED;
+      case IsolationLevel::READ_COMMITTED:
+        if (skip_prefix_locks && !HasFastModeSerializableTransactions()) {
+          return FastModeTransactionScope(shared_from_this(), kRRRCModeIdx);
+        }
+        return FastModeTransactionScope();
+      case IsolationLevel::SERIALIZABLE_ISOLATION:
+        if (!skip_prefix_locks && !HasFastModeRRRCTransactions()) {
+          return FastModeTransactionScope(shared_from_this(), kSIModeIdx);
+        }
+        return FastModeTransactionScope();
+      default:
+        break;
+    }
+    LOG(FATAL) << "Should never reach here";
+  }
+
+  void IncrementFastModeCounter(size_t idx) {
+    VLOG_WITH_PREFIX(4) << "Increment fast mode counter. idx:" << idx;
+
+    ++num_fast_mode_transactions_[idx];
+    metric_fast_mode_transactions_[idx]->Increment();
+
+    if (PREDICT_FALSE(FLAGS_TEST_skip_prefix_locks_invariance_check)) {
+      TEST_CheckFastModeCounters();
+    }
+  }
+
+  void DecrementFastModeCounter(size_t idx) {
+    VLOG_WITH_PREFIX(4) << "Decrement fast mode counter. idx:" << idx;
+
+    --num_fast_mode_transactions_[idx];
+  }
+
+  std::pair<uint64_t, uint64_t> GetNumFastModeTransactions() {
+    std::lock_guard lock(mutex_);
+    return std::make_pair(num_fast_mode_transactions_[kSIModeIdx].load(),
+                          num_fast_mode_transactions_[kRRRCModeIdx].load());
+  }
+
+  FastModeTransactionScope CreateFastModeTransactionScope(
+      const TransactionMetadata& metadata) override {
+    if (!IsFastMode(metadata)) {
+      if (metadata.isolation == IsolationLevel::SERIALIZABLE_ISOLATION) {
+        metric_slow_mode_si_transactions_->Increment();
+      }
+      return {};
+    }
+    auto idx = metadata.isolation == IsolationLevel::SERIALIZABLE_ISOLATION ? kSIModeIdx
+                                                                            : kRRRCModeIdx;
+    return {shared_from_this(), idx};
+  }
+
  private:
   class AbortCheckTimeTag;
   class StartTimeTag;
@@ -2230,6 +2377,11 @@ class TransactionParticipant::Impl
       }
       CleanTransactionsQueue(&graceful_cleanup_queue_, &min_running_notifier);
       CleanDeadlockedTransactionsMapUnlocked();
+
+      metric_current_fast_mode_si_transactions_->set_value(
+          num_fast_mode_transactions_[kSIModeIdx]);
+      metric_current_fast_mode_rr_rc_transactions_->set_value(
+          num_fast_mode_transactions_[kRRRCModeIdx]);
     }
 
     if (ANNOTATE_UNPROTECTED_READ(FLAGS_transactions_poll_check_aborted)) {
@@ -2444,6 +2596,123 @@ class TransactionParticipant::Impl
     }
   }
 
+  bool HasFastModeSerializableTransactions() {
+    return num_fast_mode_transactions_[kSIModeIdx] > 0;
+  }
+
+  bool HasFastModeRRRCTransactions() {
+    return num_fast_mode_transactions_[kRRRCModeIdx] > 0;
+  }
+
+  // Checks to ensure both Serialiable and RR/RC should not have active transactions
+  // simultaneously.
+  void TEST_CheckFastModeCounters() {
+    // A lock should already b acquired
+    CHECK(!mutex_.try_lock());
+    LOG(INFO) << "fast_mode_rr_rc_transactions size=" << num_fast_mode_transactions_[kRRRCModeIdx]
+              << ",fast_mode_si_transactions size:" << num_fast_mode_transactions_[kSIModeIdx];
+    if (HasFastModeSerializableTransactions() && HasFastModeRRRCTransactions()) {
+      LOG(INFO) << "Both Serialiable and RR/RC have fast mode transactions";
+    }
+    int num_active_rr_rc = 0;
+    int num_active_si = 0;
+    for (const auto& transaction : transactions_) {
+      auto& metadata = transaction->metadata();
+      if (!IsFastMode(metadata)) {
+        continue;
+      }
+      bool inactive = CHECK_RESULT(TEST_IsTransactionInactive(metadata));
+      if (metadata.isolation == IsolationLevel::SERIALIZABLE_ISOLATION) {
+        num_active_si += inactive ? 0 : 1;
+      } else {
+        num_active_rr_rc += inactive ? 0 : 1;
+      }
+      LOG(INFO) << "transaction: " << metadata.ToString() << ". inactive:" << inactive;
+    }
+    CHECK(num_active_rr_rc == 0 || num_active_si == 0)
+        << "both Serialiable and RR/RC have active fast mode transactions."
+        << "num_active_rr_rc=" << num_active_rr_rc << ", num_active_si=" << num_active_si;
+
+  }
+
+  Result<std::vector<TabletId>> TEST_GetAllStatusTablets() {
+    LOG_WITH_PREFIX(INFO) << "TEST_GetAllStatusTablets";
+    auto client = VERIFY_RESULT(participant_context_.client());
+    CloudInfoPB placement;
+    auto tablets_result = VERIFY_RESULT(client->GetTransactionStatusTablets(placement));
+
+    std::vector<TabletId> all_tablets;
+    all_tablets.reserve(
+        tablets_result.global_tablets.size() +
+        tablets_result.region_local_tablets.size());
+
+    // Add global tablets
+    all_tablets.insert(all_tablets.end(),
+        tablets_result.global_tablets.begin(),
+        tablets_result.global_tablets.end());
+
+    // Add placement-local tablets
+    all_tablets.insert(all_tablets.end(),
+        tablets_result.region_local_tablets.begin(),
+        tablets_result.region_local_tablets.end());
+
+    return all_tablets;
+  }
+
+  Result<bool> TEST_IsTransactionInactive(const TransactionMetadata& metadata) {
+    LOG(INFO) << "Checking transaction: " << metadata;
+    auto it = transactions_.find(metadata.transaction_id);
+    if (it != transactions_.end()) {
+      auto& txn = **it;
+      // If transaction is aborted or has a valid commit time, it's inactive
+      if (txn.WasAborted() || txn.local_commit_time().is_valid()) {
+        return true;
+      }
+    }
+
+    // Transaction not found locally, check if it was recently removed
+    if (recently_removed_transactions_.count(metadata.transaction_id) != 0) {
+      // Transaction was recently removed, so it's inactive
+      return true;
+    }
+
+    LOG(INFO) << "Checking status tablet";
+    Result<bool> inactive = true;
+    TransactionStatusResolver resolver(
+        &participant_context_, &rpcs_, FLAGS_max_transactions_in_status_request,
+        [&inactive](const std::vector<TransactionStatusInfo>& status_infos) {
+          if (status_infos.empty()) {
+            LOG(INFO) << "the transaction doesn't exist";
+            return;
+          }
+
+          // We should only get one status info for our single transaction
+          const auto& info = status_infos[0];
+          bool is_active = (info.status == TransactionStatus::CREATED ||
+                            info.status == TransactionStatus::PENDING);
+          LOG(INFO) << "the transaction status: " << info.status;
+          if (is_active) {
+            inactive = !is_active;
+          }
+        });
+
+    if (!metadata.status_tablet.empty()) {
+      resolver.Add(metadata.status_tablet, metadata.transaction_id);
+    } else {
+      auto v = VERIFY_RESULT(TEST_GetAllStatusTablets());
+      for (auto& status_tablet : v) {
+        LOG(INFO) << "list status_tablet=" << status_tablet;
+        resolver.Add(status_tablet, metadata.transaction_id);
+      }
+    }
+    LOG(INFO) << "Starting status tablet check";
+    resolver.Start(CoarseMonoClock::now() + 1s * FLAGS_transaction_abort_check_timeout_ms);
+    RETURN_NOT_OK(resolver.ResultFuture().get());
+    LOG(INFO) << "the transaction is inactive:" << inactive << ", metadata:" << metadata.ToString();
+    resolver.Shutdown();
+    return inactive;
+  }
+
   struct ImmediateCleanupQueueEntry {
     int64_t request_id;
     TransactionId transaction_id;
@@ -2546,6 +2815,10 @@ class TransactionParticipant::Impl
   scoped_refptr<Counter> metric_transaction_not_found_;
   scoped_refptr<EventStats> metric_conflict_resolution_latency_;
   scoped_refptr<EventStats> metric_conflict_resolution_num_keys_scanned_;
+  std::array<scoped_refptr<Counter>, 2> metric_fast_mode_transactions_;
+  scoped_refptr<Counter> metric_slow_mode_si_transactions_;
+  scoped_refptr<AtomicGauge<uint64_t>> metric_current_fast_mode_si_transactions_;
+  scoped_refptr<AtomicGauge<uint64_t>> metric_current_fast_mode_rr_rc_transactions_;
 
   TransactionLoader loader_;
   std::atomic<bool> closing_{false};
@@ -2587,6 +2860,12 @@ class TransactionParticipant::Impl
   std::mutex pending_applies_mutex_;
   std::vector<std::pair<TabletId, TransactionId>> pending_applies_
       GUARDED_BY(pending_applies_mutex_);
+
+  // Counters for fast mode transactions. The first counter tracks serializable transactions, and
+  // the second tracks RR/RC transactions. Each counter is incremented by one for every running fast
+  // mode transaction or operation within such a transaction, and decremented by one when the
+  // transaction or operation completes.
+  std::array<std::atomic<int64_t>, 2> num_fast_mode_transactions_{0, 0};
 };
 
 TransactionParticipant::TransactionParticipant(
@@ -2605,6 +2884,15 @@ void TransactionParticipant::Start() {
 
 Result<bool> TransactionParticipant::Add(const TransactionMetadata& metadata) {
   return impl_->Add(metadata);
+}
+
+Result<FastModeTransactionScope> TransactionParticipant::ShouldUseFastMode(
+    IsolationLevel isolation, bool skip_prefix_locks, const TransactionId& id) {
+  return impl_->ShouldUseFastMode(isolation, skip_prefix_locks, id);
+}
+
+std::pair<uint64_t, uint64_t> TransactionParticipant::GetNumFastModeTransactions() {
+  return impl_->GetNumFastModeTransactions();
 }
 
 Result<TransactionMetadata> TransactionParticipant::PrepareMetadata(
@@ -2844,6 +3132,42 @@ Status TransactionParticipant::ProcessRecentlyAppliedTransactions() {
 
 void TransactionParticipant::ForceRefreshWaitersForBlocker(const TransactionId& txn_id) {
   return impl_->ForceRefreshWaitersForBlocker(txn_id);
+}
+
+FastModeTransactionScope::FastModeTransactionScope(
+    std::shared_ptr<TransactionParticipant::Impl> participant, size_t idx)
+    : participant_(std::move(participant)), idx_(idx) {
+  participant_->IncrementFastModeCounter(idx_);
+}
+
+FastModeTransactionScope::FastModeTransactionScope(const FastModeTransactionScope& rhs)
+    : participant_(rhs.participant_), idx_(rhs.idx_) {
+  participant_->IncrementFastModeCounter(idx_);
+}
+
+FastModeTransactionScope::FastModeTransactionScope(FastModeTransactionScope&& rhs)
+    : participant_(std::move(rhs.participant_)), idx_(rhs.idx_) {
+}
+
+void FastModeTransactionScope::operator=(const FastModeTransactionScope& rhs) {
+  Reset();
+  participant_ = rhs.participant_;
+  idx_ = rhs.idx_;
+  participant_->IncrementFastModeCounter(idx_);
+}
+
+void FastModeTransactionScope::operator=(FastModeTransactionScope&& rhs) {
+  Reset();
+  participant_ = std::move(rhs.participant_);
+  idx_ = rhs.idx_;
+}
+
+void FastModeTransactionScope::Reset() {
+  if (!participant_) {
+    return;
+  }
+  participant_->DecrementFastModeCounter(idx_);
+  participant_ = nullptr;
 }
 
 }  // namespace tablet

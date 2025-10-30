@@ -158,7 +158,7 @@ select del as "Deleted rows" from s.f(5, 7);
 This is the result:
 
 ```output
- Deleted rows 
+ Deleted rows
 --------------
            15
            16
@@ -252,7 +252,7 @@ where
 This is the result:
 
 ```output
- Schema name 
+ Schema name
 -------------
  My Schema
 ```
@@ -278,7 +278,7 @@ where
 This is the result:
 
 ```output
- Table name 
+ Table name
 ------------
  My Table
 ```
@@ -304,7 +304,7 @@ select
 This is the result:
 
 ```output
-       common name       |        exotic name        
+       common name       |        exotic name
 -------------------------+---------------------------
  select * from employees | select * from "Pay Grade"
 ```
@@ -322,7 +322,7 @@ select
 This is the result:
 
 ```output
-   int literal    |   boolean literal   |    text literal    
+   int literal    |   boolean literal   |    text literal
 ------------------+---------------------+--------------------
  select '42'::int | select 't'::boolean | select 'My Schema'
 ```
@@ -357,7 +357,7 @@ select s.val as k, s.val*10 as v from s;
 This, of course, is the result:
 
 ```output
- k | v  
+ k | v
 ---+----
  1 | 10
  2 | 20

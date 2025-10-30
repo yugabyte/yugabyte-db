@@ -2535,7 +2535,7 @@ namespace {
 
 class PgLibPqTestRF1: public PgLibPqTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_master_flags.emplace_back("--replication_factor=1");
+    options->replication_factor = 1;
   }
 
   int GetNumMasters() const override {
@@ -3283,6 +3283,12 @@ class CoordinatedRunner {
 } // namespace
 
 TEST_F(PgLibPqTest, PagingReadRestart) {
+  // TODO(#28042): Enable deadlock detection once the false deadlock issue (with object locking
+  // enabled) is addressed.
+  cluster_->AddExtraFlagOnTServers("disable_deadlock_detection", "true");
+  cluster_->Shutdown(ExternalMiniCluster::NodeSelectionMode::TS_ONLY);
+  ASSERT_OK(cluster_->Restart());
+
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY)"));
   ASSERT_OK(conn.Execute("INSERT INTO t SELECT generate_series(1, 5000)"));

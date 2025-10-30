@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-By default, YugabyteDB provides synchronous replication and strong consistency across geo-distributed data centers. A cross-cluster (xCluster) deployment provides high throughput asynchronous replication across two data centers or cloud regions.
+By default, YugabyteDB provides synchronous replication and strong consistency across geo-distributed data centers. A cross-universe (xCluster) deployment provides high throughput asynchronous replication across two data centers or cloud regions.
 
 xCluster provides the following benefits:
 

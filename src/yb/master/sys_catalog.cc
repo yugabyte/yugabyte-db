@@ -1464,6 +1464,41 @@ Result<PgOid> SysCatalogTable::ReadPgClassColumnWithOidValue(
   return oid;
 }
 
+Result<bool> SysCatalogTable::ReadPgIndexBoolColumn(
+    const PgOid database_oid, const PgOid index_oid, const string& column_name,
+    const ReadHybridTime& read_time) {
+  TRACE_EVENT0("master", "ReadPgIndexBoolColumn");
+
+  auto read_data = VERIFY_RESULT(TableReadData(database_oid, kPgIndexTableOid, read_time));
+  const auto& schema = read_data.schema();
+
+  const auto indexrelid_col_id = VERIFY_RESULT(schema.ColumnIdByName("indexrelid")).rep();
+  const auto result_col_idx = VERIFY_RESULT(schema.ColumnIndexByName(column_name));
+  const auto result_col_id = schema.column_id(result_col_idx).rep();
+
+  dockv::ReaderProjection projection(schema, {indexrelid_col_id, result_col_id});
+  auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
+  auto request_scope = VERIFY_RESULT(VERIFY_RESULT(Tablet())->CreateRequestScope());
+  {
+    PgsqlConditionPB cond;
+    cond.add_operands()->set_column_id(indexrelid_col_id);
+    cond.set_op(QL_OP_EQUAL);
+    cond.add_operands()->mutable_value()->set_uint32_value(index_oid);
+    docdb::DocPgsqlScanSpec spec(schema, &cond);
+    RETURN_NOT_OK(iter->Init(spec));
+  }
+
+  bool value = false;
+  qlexpr::QLTableRow row;
+  if (VERIFY_RESULT(iter->FetchNext(&row))) {
+    const auto& result_col = row.GetValue(result_col_id);
+    SCHECK(result_col, Corruption, "Could not read " + column_name + " column from pg_index");
+    value = result_col->get().bool_value();
+  }
+
+  return value;
+}
+
 Result<PgOidToStringMap> SysCatalogTable::ReadPgNamespaceNspnameMap(const PgOid database_oid) {
   TRACE_EVENT0("master", "ReadPgNamespaceNspnameMap");
 

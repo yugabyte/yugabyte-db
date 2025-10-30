@@ -917,7 +917,7 @@ void TabletServiceAdminImpl::BackfillIndex(
   Status backfill_status;
   std::string backfilled_until;
   std::unordered_set<TableId> failed_indexes;
-  uint64_t number_rows_processed = 0;
+  uint64_t num_rows_read_from_table_for_backfill = 0;
   if (is_pg_table) {
     if (!req->has_namespace_name()) {
       SetupErrorAndRespond(
@@ -952,7 +952,7 @@ void TabletServiceAdminImpl::BackfillIndex(
         req->namespace_name(),
         server_->GetSharedMemoryPostgresAuthKey(),
         is_xcluster_automatic_mode_target,
-        &number_rows_processed,
+        &num_rows_read_from_table_for_backfill,
         &backfilled_until);
     if (backfill_status.IsIllegalState()) {
       DCHECK_EQ(failed_indexes.size(), 0) << "We don't support batching in YSQL yet";
@@ -967,7 +967,7 @@ void TabletServiceAdminImpl::BackfillIndex(
         req->start_key(),
         deadline,
         read_at,
-        &number_rows_processed,
+        &num_rows_read_from_table_for_backfill,
         &backfilled_until,
         &failed_indexes);
   } else {
@@ -984,7 +984,7 @@ void TabletServiceAdminImpl::BackfillIndex(
 
   resp->set_backfilled_until(backfilled_until);
   resp->set_propagated_hybrid_time(server_->Clock()->Now().ToUint64());
-  resp->set_number_rows_processed(number_rows_processed);
+  resp->set_num_rows_read_from_table_for_backfill(num_rows_read_from_table_for_backfill);
 
   if (!backfill_status.ok()) {
     VLOG(2) << " Failed indexes are " << yb::ToString(failed_indexes);
@@ -2629,9 +2629,16 @@ Status TabletServiceImpl::PerformWrite(
 
   auto context_ptr = std::make_shared<RpcContext>(std::move(*context));
 
-  const auto leader_term = req->has_leader_term() && req->leader_term() != OpId::kUnknownTerm
-                               ? req->leader_term()
-                               : tablet.leader_term;
+  auto leader_term = tablet.leader_term;
+  if (req->has_leader_term() && req->leader_term() != OpId::kUnknownTerm) {
+    leader_term = req->leader_term();
+    if (leader_term != tablet.leader_term) {
+      auto status =
+          STATUS_FORMAT(InvalidArgument, "Tablet $0 Leader term changed", req->tablet_id());
+      SetupErrorAndRespond(resp->mutable_error(), std::move(status), context_ptr.get());
+      return Status::OK();
+    }
+  }
 
   auto query = std::make_unique<tablet::WriteQuery>(
       leader_term, context_ptr->GetClientDeadline(), tablet.peer.get(), tablet.tablet,

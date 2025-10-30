@@ -1474,6 +1474,12 @@ To override this flag on a per-scrape basis, you can adjust the URL parameter `m
 
 Default: `UINT32_MAX`
 
+##### --export_intentdb_metrics
+
+Whether to dump IntentsDB statistics to Prometheus metrics.
+
+Default: `true`
+
 ## Catalog flags
 
 Catalog cache flags are {{<tags/feature/ea idea="599">}}. For information on setting these flags, see [Customize preloading of YSQL catalog caches](../../../best-practices-operations/ysql-catalog-cache-tuning-guide/).
@@ -1662,7 +1668,7 @@ For details on how online index backfill works, see the [Online Index Backfill](
 
 Default: `true`
 
-#### --num_concurrent_backfills_allowed
+##### --num_concurrent_backfills_allowed
 
 [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) uses a number of distributed workers to backfill older data from the main table into the index table. This flag sets the number of concurrent index backfill jobs that are allowed to execute on each yb-tserver process. By default, the number of jobs is set automatically as follows:
 
@@ -1943,6 +1949,12 @@ Default: `16`
 Sets the maximum number of rows per transaction per tablet to return in [pg_locks](../../../explore/observability/pg-locks/). Set to 0 to return all results.
 
 Default: `200`
+
+##### yb_default_copy_from_rows_per_transaction
+
+Sets the maximum batch size per transaction when using [COPY FROM](../../../api/ysql/the-sql-language/statements/cmd_copy/).
+
+Default: `20000`
 
 ## Admin UI
 

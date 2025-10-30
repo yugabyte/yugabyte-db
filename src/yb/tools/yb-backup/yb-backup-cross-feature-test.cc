@@ -405,11 +405,9 @@ TEST_F_EX(
 // 3. backup
 // 4. restore, which will initially create [sic] 4 pre-split tablets then realize the partition
 //    boundaries differ
-TEST_F_EX(YBBackupTest,
-          YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLManualTabletSplit),
-          YBBackupTestNumTablets) {
-  // TODO(Yamen): Remove this skip once GH-29002 is fixed.
-  GTEST_SKIP() << "Temporarily disabled until GH-29002 is fixed";
+TEST_F_EX(
+    YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLManualTabletSplit),
+    YBBackupTestNumTablets) {
   const string table_name = "mytbl";
 
   // Create table.
@@ -986,11 +984,9 @@ TEST_F_EX(YBBackupTest,
 // 3. split the index on its hidden column into 3 tablets
 // 4. backup
 // 5. restore
-TEST_F_EX(YBBackupTest,
-          YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLTabletSplitRangeIndexOnHiddenColumn),
-          YBBackupTestNumTablets) {
-  // TODO(Yamen): Remove this skip once GH-29002 is fixed.
-  GTEST_SKIP() << "Temporarily disabled until GH-29002 is fixed";
+TEST_F_EX(
+    YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLTabletSplitRangeIndexOnHiddenColumn),
+    YBBackupTestNumTablets) {
   const string table_name = "mytbl";
   const string index_name = "myidx";
 
@@ -2171,8 +2167,6 @@ class YBBackupTestOneTablet : public YBBackupTest {
 TEST_F_EX(
     YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestScanSplitTableAfterRestore),
     YBBackupTestOneTablet) {
-  // TODO(Yamen): Remove this skip once GH-29002 is fixed.
-  GTEST_SKIP() << "Temporarily disabled until GH-29002 is fixed";
   const string table_name = "mytbl";
 
   ASSERT_OK(cluster_->SetFlagOnTServers("TEST_skip_post_split_compaction", "true"));
@@ -2235,8 +2229,6 @@ TEST_F_EX(
 TEST_F_EX(
     YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestRestoreUncompactedChildTabletAndSplit),
     YBBackupTestOneTablet) {
-  // TODO(Yamen): Remove this skip once GH-29002 is fixed.
-  GTEST_SKIP() << "Temporarily disabled until GH-29002 is fixed";
   const string table_name = "mytbl";
 
   ASSERT_OK(cluster_->SetFlagOnTServers("TEST_skip_post_split_compaction", "true"));
@@ -2558,9 +2550,8 @@ INSTANTIATE_TEST_CASE_P(
 
 class YBBackupCrossColocation : public YBBackupTestWithPackedRowsAndColocation {};
 
+// TODO(Yamen): Enable test in sasnitizers tracked by GH-29039.
 TEST_P(YBBackupCrossColocation, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLRestoreWithInvalidIndex)) {
-  // TODO(Yamen): Remove this skip once GH-28986 is fixed.
-  GTEST_SKIP() << "Temporarily disabled until GH-28986 is fixed";
   ASSERT_NO_FATALS(CreateTable("CREATE TABLE t1 (id INT NOT NULL, c1 INT, PRIMARY KEY (id))"));
   for (int i = 0; i < 3; ++i) {
     ASSERT_NO_FATALS(InsertOneRow(Format("INSERT INTO t1 (id, c1) VALUES ($0, $0)", i)));
@@ -3037,12 +3028,12 @@ TEST_P(YBBackupTestWithTableRewrite,
   ));
 }
 
+// TODO(Yamen): Enable test in sasnitizers tracked by GH-29039.
 // Test that backup and restore succeed after unsuccessful rewrite operations are executed
 // on tables, indexes and materialized views.
-TEST_P(YBBackupTestWithTableRewrite,
+TEST_P(
+    YBBackupTestWithTableRewrite,
     YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLBackupAndRestoreAfterFailedRewrite)) {
-  // TODO(Yamen): Remove this skip once GH-28986 is fixed.
-  GTEST_SKIP() << "Temporarily disabled until GH-28986 is fixed";
   ASSERT_OK(cluster_->SetFlagOnMasters("enable_transactional_ddl_gc", "false"));
   ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_ddl_rollback_enabled", "false"));
   SetUpTestData(true /* failedRewrite */);

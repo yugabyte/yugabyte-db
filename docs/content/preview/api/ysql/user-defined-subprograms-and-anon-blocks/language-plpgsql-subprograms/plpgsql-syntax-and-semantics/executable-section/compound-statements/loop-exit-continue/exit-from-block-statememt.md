@@ -13,7 +13,7 @@ type: docs
 showRightNav: true
 ---
 
-The _exit_ statement is legal, and has well-defined semantics, within a simple block statement, even when it isn't inside a _loop_ statement. This means that you can use it anywhere in the PL/pgSQL text that defines the implementation of a _do_ statement or a _language plpgsql_ subprogram. If you label the top-level block statement that defines the implementation with, for example, _top level block_, then use can use this: 
+The _exit_ statement is legal, and has well-defined semantics, within a simple block statement, even when it isn't inside a _loop_ statement. This means that you can use it anywhere in the PL/pgSQL text that defines the implementation of a _do_ statement or a _language plpgsql_ subprogram. If you label the top-level block statement that defines the implementation with, for example, _top level block_, then use can use this:
 
 ```plpgsql
 exit top_level_block when <boolean expresssion>:

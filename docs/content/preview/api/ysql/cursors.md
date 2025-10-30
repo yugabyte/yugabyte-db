@@ -72,7 +72,7 @@ select v from s.t order by v;
 This is the result set from the final _select_, as expected:
 
 ```output
-   v   
+   v
 -------
  cat
  dog
@@ -254,7 +254,7 @@ select count(*) from pg_cursors;
 An invocation of _"select count(*) from pg_cursors"_, immediately after starting a session, will inevitably report that no _cursors_ exist. The first _pg_cursors_ query (within the ongoing transaction) produces this result:
 
 ```output
-     name     | is_holdable 
+     name     | is_holdable
 --------------+-------------
  Is Holdable  | true
  Not Holdable | false
@@ -263,7 +263,7 @@ An invocation of _"select count(*) from pg_cursors"_, immediately after starting
 And the _pg_cursors_ query immediately after committing the transaction produces this result:
 
 ```output
-     name     | is_holdable 
+     name     | is_holdable
 --------------+-------------
  Is Holdable  | true
 ```
@@ -324,7 +324,7 @@ rollback;
 This is the result:
 
 ```output
-      name      | is_scrollable 
+      name      | is_scrollable
 ----------------+---------------
  Is Scrollable  | true
  Not Scrollable | false
@@ -340,7 +340,7 @@ In other words:
 - When you create a cursor and specify _no scroll_, you're saying that you will allow changing the current position in the result set in only the _forward_ direction.
 - When you create a cursor and specify _scroll_, you're saying that you will allow changing the current position in the result set in both the _forward_ direction and the _backward_ direction.
 
-Notice that your choice with the _move_[\*](#beware-issue-6514) statement, to change the current position by just a single row or by many rows is an orthogonal choice to the direction in which you move. Similarly, your choice with the _fetch_ statement, to fetch just a single row or many rows is an orthogonal choice to the direction[\*](#beware-issue-6514) in which you fetch. 
+Notice that your choice with the _move_[\*](#beware-issue-6514) statement, to change the current position by just a single row or by many rows is an orthogonal choice to the direction in which you move. Similarly, your choice with the _fetch_ statement, to fetch just a single row or many rows is an orthogonal choice to the direction[\*](#beware-issue-6514) in which you fetch.
 
 - There is no way to create a _cursor_ so that changing the current position in the result set by more than one row, except by consecutive fetches, is prevented.
 

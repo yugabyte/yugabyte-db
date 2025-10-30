@@ -11,6 +11,7 @@
 // under the License.
 
 #include <memory>
+#include <optional>
 #include <queue>
 #include <unordered_set>
 
@@ -496,12 +497,14 @@ Result<std::vector<TableDescription>> CatalogManager::CollectTablesAsOfTime(
     const auto tablet_id = tablet_id_slice.ToString();
     SysTabletsEntryPB tablet_pb =
         VERIFY_RESULT(pb_util::ParseFromSlice<SysTabletsEntryPB>(metadata_slice));
-
-    if (tablet_pb.state() != SysTabletsEntryPB::RUNNING) {
+    // TODO(Yamen): Handle split tablet issue GH-29059.
+    if (tablet_pb.state() == SysTabletsEntryPB::DELETED ||
+        tablet_pb.state() == SysTabletsEntryPB::REPLACED) {
       return Status::OK();
     }
 
-    if (tables_to_tablets.contains(tablet_pb.table_id())) {
+    if (tables_to_tablets.contains(tablet_pb.table_id()) &&
+        tablet_pb.split_tablet_ids_size() == 0) {
       VLOG_WITH_PREFIX_AND_FUNC(2) << "Including tablet " << tablet_id << " for table "
                                    << tablet_pb.table_id() << " as of time " << read_time;
       tables_to_tablets[tablet_pb.table_id()].tablets_entries.push_back(
@@ -629,15 +632,13 @@ Status CatalogManager::RepackSnapshotsForBackup(
 
     unordered_set<TableId> tables_to_skip;
     for (SysRowEntry& entry : *sys_entry.mutable_entries()) {
-      BackupRowEntryPB* const backup_entry = snapshot.add_backup_entries();
-
       // Setup BackupRowEntryPB fields.
       // Set BackupRowEntryPB::pg_schema_name for YSQL table to disambiguate in case tables
       // in different schema have same name.
+      std::optional<string> pg_schema_name_to_set;
       if (entry.type() == SysRowEntryType::TABLE) {
         // Skip repacking the special table sequences_data as sequences are backed up in ysql_dump
         if (entry.id() == kPgSequencesDataTableId) {
-          snapshot.mutable_backup_entries()->RemoveLast();
           // Keep track of table so we skip its tablets as well. Note, since tablets always
           // follow their table in sys_entry, we don't need to check previous tablet entries.
           tables_to_skip.insert(entry.id());
@@ -678,7 +679,6 @@ Status CatalogManager::RepackSnapshotsForBackup(
             if (res.status().IsNotFound() &&
                 MasterError(res.status()) == MasterErrorPB::DOCDB_TABLE_NOT_COMMITTED) {
               LOG(WARNING) << "Skipping backup of table " << table_info->id() << " : " << res;
-              snapshot.mutable_backup_entries()->RemoveLast();
               // Keep track of table so we skip its tablets as well. Note, since tablets
               // always follow their table in sys_entry, we don't need to check previous
               // tablet entries.
@@ -691,7 +691,22 @@ Status CatalogManager::RepackSnapshotsForBackup(
           }
           const string pg_schema_name = res.get();
           VLOG(1) << "PG Schema: " << pg_schema_name << " for table " << table_info->ToString();
-          backup_entry->set_pg_schema_name(pg_schema_name);
+          // If this DocDB table is an index, check pg_index.indisvalid as of the snapshot time and
+          // skip exporting invalid indexes.
+          if (table_info->is_index()) {
+            const auto oids = VERIFY_RESULT(table_info->GetPgTableAllOids());
+            const bool is_valid = VERIFY_RESULT(GetYsqlManager().GetPgIndexStatus(
+                oids.database_oid, oids.pg_table_oid, "indisvalid", snapshot_hybrid_time));
+            if (!is_valid) {
+              LOG(INFO) << "Skipping backup of invalid index table " << table_info->id();
+              // Keep track of table so we skip its tablets as well. Note, since tablets
+              // always follow their table in sys_entry, we don't need to check previous
+              // tablet entries.
+              tables_to_skip.insert(table_info->id());
+              continue;
+            }
+          }
+          pg_schema_name_to_set = pg_schema_name;
         }
       } else if (!tables_to_skip.empty() && entry.type() == SysRowEntryType::TABLET) {
         // Note: Ordering here is important, we expect tablet entries only after their table entry.
@@ -699,12 +714,14 @@ Status CatalogManager::RepackSnapshotsForBackup(
         if (tables_to_skip.contains(meta.table_id())) {
           LOG(WARNING) << "Skipping backup of tablet " << entry.id() << " since its table "
                        << meta.table_id() << " was skipped.";
-          snapshot.mutable_backup_entries()->RemoveLast();
           continue;
         }
       }
 
-      // Init BackupRowEntryPB::entry.
+      BackupRowEntryPB* const backup_entry = snapshot.add_backup_entries();
+      if (pg_schema_name_to_set.has_value()) {
+        backup_entry->set_pg_schema_name(*pg_schema_name_to_set);
+      }
       backup_entry->mutable_entry()->Swap(&entry);
     }
 
@@ -1445,10 +1462,20 @@ Result<RepeatedPtrField<BackupRowEntryPB>> CatalogManager::GetBackupEntriesAsOfT
       [&source_ns_id, &tables_to_tablets, &colocation_parent_table_id, &found_colocated_user_table](
           const Slice& id, const Slice& data) -> Status {
         auto pb = VERIFY_RESULT(pb_util::ParseFromSlice<SysTablesEntryPB>(data));
-        if (pb.namespace_id() == source_ns_id && pb.state() == SysTablesEntryPB::RUNNING &&
+        // Skip including tables in PREPARING state, even though they are normally considered
+        // running because their tablets are not all created, so they are not ready to be cloned.
+        // The table is also not committed in PG while it is still PREPARING.
+        if (pb.namespace_id() == source_ns_id &&
+            (pb.state() == SysTablesEntryPB::RUNNING || pb.state() == SysTablesEntryPB::ALTERING) &&
             pb.hide_state() == SysTablesEntryPB_HideState_VISIBLE &&
             !pb.schema().table_properties().is_ysql_catalog_table()) {
-          VLOG_WITH_FUNC(1) << "Found SysTablesEntryPB: " << pb.ShortDebugString();
+          if (pb.state() == SysTablesEntryPB::ALTERING) {
+            // This should be fixed after #28814.
+            return STATUS_FORMAT(
+                IllegalState, "Table $0 is in altering state (cloning to a time when a DDL is in "
+                "progress is not supported yet. See GitHub issue #28814.)", id.ToBuffer());
+          }
+          VLOG_WITH_FUNC(1) << "Included SysTablesEntryPB: " << pb.ShortDebugString();
           const auto id_str = id.ToBuffer();
           if (pb.colocated()) {
             if (IsColocationParentTableId(id_str)) {
@@ -1460,6 +1487,8 @@ Result<RepeatedPtrField<BackupRowEntryPB>> CatalogManager::GetBackupEntriesAsOfT
           // Tables and tablets will be added to backup entries at the end.
           tables_to_tablets.insert(std::make_pair(
               id_str, TableWithTabletsEntries(pb, SysTabletsEntriesWithIds())));
+        } else {
+          VLOG_WITH_FUNC(2) << "Skipped SysTablesEntryPB: " << pb.ShortDebugString();
         }
         return Status::OK();
       }));
@@ -1482,9 +1511,11 @@ Result<RepeatedPtrField<BackupRowEntryPB>> CatalogManager::GetBackupEntriesAsOfT
         // when running ImportSnapshot.
         if (tables_to_tablets.contains(pb.table_id()) && pb.split_tablet_ids_size() == 0 &&
             pb.state() != SysTabletsEntryPB::DELETED && pb.state() != SysTabletsEntryPB::REPLACED) {
-          VLOG_WITH_FUNC(1) << "Found SysTabletsEntryPB: " << pb.ShortDebugString();
+          VLOG_WITH_FUNC(1) << "Included SysTabletsEntryPB: " << pb.ShortDebugString();
           tables_to_tablets[pb.table_id()].tablets_entries.push_back(
               std::make_pair(id.ToBuffer(), pb));
+        } else {
+          VLOG_WITH_FUNC(2) << "Skipped SysTabletsEntryPB: " << pb.ShortDebugString();
         }
         return Status::OK();
       }));

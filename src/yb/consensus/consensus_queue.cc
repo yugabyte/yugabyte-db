@@ -739,7 +739,7 @@ Result<ReadOpsResult> PeerMessageQueue::ReadFromLogCacheForXRepl(
 
   auto result = ReadFromLogCache(
       after_op_index, to_index, FLAGS_consensus_max_batch_size_bytes, local_peer_uuid_,
-      log::ObeyMemoryLimit::kTrue, deadline, fetch_single_entry);
+      obey_memory_limit, deadline, fetch_single_entry);
   if (PREDICT_FALSE(!result.ok()) && PREDICT_TRUE(result.status().IsNotFound())) {
     const std::string premature_gc_warning = Format(
         "The logs from index $0 have been garbage collected and cannot be read ", after_op_index);

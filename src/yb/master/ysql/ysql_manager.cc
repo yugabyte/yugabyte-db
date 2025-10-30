@@ -328,6 +328,12 @@ Result<std::string> YsqlManager::GetPgSchemaName(
   return sys_catalog_.ReadPgNamespaceNspname(oids.database_oid, relnamespace_oid, read_time);
 }
 
+Result<bool> YsqlManager::GetPgIndexStatus(
+    PgOid database_oid, PgOid index_oid, const std::string& status_col_name,
+    const ReadHybridTime& read_time) const {
+  return sys_catalog_.ReadPgIndexBoolColumn(database_oid, index_oid, status_col_name, read_time);
+}
+
 void YsqlManager::RunBgTasks(const LeaderEpoch& epoch) {
   if (!FLAGS_enable_ysql) {
     return;

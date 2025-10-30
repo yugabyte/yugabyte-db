@@ -69,7 +69,7 @@ void TsRecoveryITest::StartCluster(const vector<string>& extra_tserver_flags,
   opts.num_tablet_servers = num_tablet_servers;
   opts.extra_tserver_flags = extra_tserver_flags;
   if (num_tablet_servers < 3) {
-    opts.extra_master_flags.push_back("--replication_factor=1");
+    opts.replication_factor = 1;
   }
   cluster_.reset(new ExternalMiniCluster(opts));
   ASSERT_OK(cluster_->Start());

@@ -44,6 +44,7 @@ class CDCSDKConsumptionConsistentChangesTest : public CDCSDKYsqlTest {
   void TestSlotRowDeletion(bool multiple_streams);
   void TestColocatedUpdateWithIndex(bool use_pk_as_index);
   void TestColocatedUpdateAffectingNoRows(bool use_multi_shard);
+  void TestExplcictCheckpointMovementAfterDDL(bool no_activity_post_ddl);
 };
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVirtualWAL) {
@@ -2724,9 +2725,12 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestRetryableErrorsNotSentToWalse
   ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}));
 
   vector<TestSimulateErrorCode> error_codes = {
-      TestSimulateErrorCode::PeerNotStarted, TestSimulateErrorCode::TabletUnavailable,
-      TestSimulateErrorCode::PeerNotLeader, TestSimulateErrorCode::PeerNotReadyToServe,
-      TestSimulateErrorCode::LogSegmentFooterNotFound};
+      TestSimulateErrorCode::PeerNotStarted,
+      TestSimulateErrorCode::TabletUnavailable,
+      TestSimulateErrorCode::PeerNotLeader,
+      TestSimulateErrorCode::PeerNotReadyToServe,
+      TestSimulateErrorCode::LogSegmentFooterNotFound,
+      TestSimulateErrorCode::LogIndexCacheEntryNotFound};
 
   for (auto error_code : error_codes) {
     // Setting the flag to mimic retryable errors. The expectation is that
@@ -4562,83 +4566,157 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestColocatedMultiShardUpdateAffe
   TestColocatedUpdateAffectingNoRows(true /* use_multi_shard*/);
 }
 
-TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCheckpointNoUpdateUponCdcStateUpdateFailure) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_interval_secs) = 0;
+void CDCSDKConsumptionConsistentChangesTest::TestExplcictCheckpointMovementAfterDDL(
+    bool no_activity_post_ddl) {
+  // We do not want the mechanism to move restart time forward when nothing is left to stream to
+  // interfere with this test. We will enable this mechanism only for no_activity_post_ddl case.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_when_nothing_to_stream) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+
+  google::SetVLOGLevel("cdcsdk_virtual_wal", 3);
   ASSERT_OK(SetUpWithParams(
       3 /* rf */, 1 /* num_masters */, false /* colocated */,
       true /* cdc_populate_safepoint_record */));
 
-  // Create a table with 1 tablet.
-  const uint32_t num_tablets = 1;
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  auto table =
+      ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, 1 /* num_tablets*/));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr /* partition_list_version */));
-  ASSERT_EQ(tablets.size(), num_tablets);
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
 
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
-
-  ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}, kVWALSessionId1));
-
-  //  We sleep for 5 seconds to ensure that leader safe time has moved beyond consistent snapshot
-  //  time.
-  SleepFor(MonoDelta::FromSeconds(5));
-
-  // Insert 1 record, consume and acknowledge it.
-  ASSERT_OK(WriteRows(0, 1, &test_cluster_));
-  auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 3);
-
-  // Acknowledging this record should move the restart time forward.
-  auto commit_lsn = change_resp.cdc_sdk_proto_records().Get(2).row_message().pg_lsn();
-  ASSERT_OK(UpdateAndPersistLSN(stream_id, commit_lsn, commit_lsn));
-
-  auto slot_entry = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
-  auto restart_time_1 = slot_entry->record_id_commit_time;
-
-  // Introduce a DDL and then add a failure so that the entry cannot be updated in cdc_state table.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_fail_before_updating_cdc_state) = true;
-
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
-  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD col_2 int DEFAULT 123;", kTableName));
-
-  // Insert more records.
-  ASSERT_OK(WriteRows(1, 2, &test_cluster_));
-  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 4 /* DDL + BEGIN + INSERT + COMMIT */);
-
-  // The call to UpdateAndPersistLSN would fail because of our artificially introduced
-  // failure resulting in a scenario where the local map will be truncated but the update
-  // to cdc_state table has failed.
-  commit_lsn = change_resp.cdc_sdk_proto_records().Get(3).row_message().pg_lsn();
-  ASSERT_NOK(UpdateAndPersistLSN(stream_id, commit_lsn, commit_lsn));
-
-  // Ensure that another GetChanges has been called to simulate the scenario
-  // of an explicit checkpoint being sent to individual tablets.
-  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
-
-  // Assert that restart time has not moved forward.
-  slot_entry = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
-  auto restart_time_2 = slot_entry->record_id_commit_time;
-  ASSERT_EQ(restart_time_2, restart_time_1);
-
-  // Restart virtual WAL now and ensure that there is no failure now.
-  ASSERT_OK(DestroyVirtualWAL());
   ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}));
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_fail_before_updating_cdc_state) = false;
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (1, 1)"));
 
-  // Upon restart, since the slot restart time is not updated, we should be getting the
-  // DDL and the INSERT record again.
+  auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 3);
+  auto restart_lsn = change_resp.cdc_sdk_proto_records()[2].row_message().pg_lsn();
+  ASSERT_OK(UpdateAndPersistLSN(stream_id, restart_lsn, restart_lsn));
+
+  // The explicit checkpoint will be persisted in the next GetChanges call after
+  // UpdateAndPersistLSN.
   change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 4 /* DDL + BEGIN + INSERT + COMMIT */);
 
-  // Update the slot restart time and ensure that it has moved forward now.
-  commit_lsn = change_resp.cdc_sdk_proto_records().Get(3).row_message().pg_lsn();
-  ASSERT_OK(UpdateAndPersistLSN(stream_id, commit_lsn, commit_lsn));
+  OpId old_checkpoint, new_checkpoint;
+  old_checkpoint = ASSERT_RESULT(GetCheckpointFromStateTable(stream_id, tablets[0].tablet_id()));
 
-  slot_entry = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
-  auto restart_time_3 = slot_entry->record_id_commit_time;
-  ASSERT_GT(restart_time_3, restart_time_1);
+  // Perform a DDL.
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN value_2 int"));
+
+  if (no_activity_post_ddl) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_when_nothing_to_stream) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_interval_secs) = 0;
+
+    // Sleep to ensure that leader safe time moves forward.
+    SleepFor(MonoDelta::FromSeconds(10 * kTimeMultiplier));
+
+    // Keep calling GetConsistentChanges. Eventually the restart time will be moved beoynd the DDL's
+    // commit time based on the SAFEPOINT records. After this we will move the checkpoint forward.
+    ASSERT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          change_resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+          new_checkpoint =
+              VERIFY_RESULT(GetCheckpointFromStateTable(stream_id, tablets[0].tablet_id()));
+          return new_checkpoint.index > old_checkpoint.index;
+        },
+        MonoDelta::FromSeconds(120), "Timed out waiting for checkpoint to move forward"));
+  } else {
+    // Insert and consume a DML after the DDL.
+    ASSERT_OK(conn.Execute("INSERT INTO test_table values (2, 2, 2)"));
+
+    change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+    ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 4);
+
+    // Since we haven't acknowledged anything after getting the old_checkpoint, the checkpoints in
+    // the state table should not move.
+    new_checkpoint = ASSERT_RESULT(GetCheckpointFromStateTable(stream_id, tablets[0].tablet_id()));
+    ASSERT_EQ(old_checkpoint.term, new_checkpoint.term);
+    ASSERT_EQ(old_checkpoint.index, new_checkpoint.index);
+
+    // Acknowledge the DML and call GetConsistentChanges that will persist the updated explicit
+    // checkpoint.
+    restart_lsn = change_resp.cdc_sdk_proto_records()[3].row_message().pg_lsn();
+    ASSERT_OK(UpdateAndPersistLSN(stream_id, restart_lsn, restart_lsn));
+    change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+
+    new_checkpoint = ASSERT_RESULT(GetCheckpointFromStateTable(stream_id, tablets[0].tablet_id()));
+  }
+
+  ASSERT_GT(new_checkpoint.index, old_checkpoint.index);
+}
+
+TEST_F(
+    CDCSDKConsumptionConsistentChangesTest,
+    TestExplcictCheckpointMovementAfterDDLWithNoActivityPostDDL) {
+  TestExplcictCheckpointMovementAfterDDL(true /* no_activity_post_ddl*/);
+}
+
+TEST_F(
+    CDCSDKConsumptionConsistentChangesTest,
+    TestExplcictCheckpointMovementAfterDDLWithActivityPostDDL) {
+  TestExplcictCheckpointMovementAfterDDL(false /* no_activity_post_ddl*/);
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestExplcictCheckpointMovementAfterMultipleDDL) {
+  // We do not want the mechanism to move restart time forward when nothing is left to stream to
+  // interfere with this test.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_when_nothing_to_stream) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+
+  ASSERT_OK(SetUpWithParams(
+      3 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* cdc_populate_safepoint_record */));
+
+  auto table =
+      ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, 1 /* num_tablets*/));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}));
+
+  auto old_checkpoint =
+      ASSERT_RESULT(GetCheckpointFromStateTable(stream_id, tablets[0].tablet_id()));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  // Perform DDL 1.
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN value_2 int"));
+
+  // Insert row 1 and consume it.
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1,1,1)"));
+  auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 4);
+  auto commit_lsn_1 = change_resp.cdc_sdk_proto_records()[3].row_message().pg_lsn();
+
+  // Perform DDL 2
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN value_3 int"));
+
+  // Insert row 2 and consume it.
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2,2,2,2)"));
+  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 4);
+  auto commit_lsn_2 = change_resp.cdc_sdk_proto_records()[3].row_message().pg_lsn();
+
+  // Acknowledge row 1 and call GetConsistentChanges.
+  ASSERT_OK(UpdateAndPersistLSN(stream_id, commit_lsn_1, commit_lsn_1));
+  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+
+  // Since we have an unacknowledged DDL (DDL 2), we will not move the checkpoint forward.
+  auto new_checkpoint =
+      ASSERT_RESULT(GetCheckpointFromStateTable(stream_id, tablets[0].tablet_id()));
+  ASSERT_EQ(old_checkpoint.term, new_checkpoint.term);
+  ASSERT_EQ(old_checkpoint.index, new_checkpoint.index);
+
+  // Acknowledge row 2 and call GetConsistentChanges to send explicit checkpoint.
+  ASSERT_OK(UpdateAndPersistLSN(stream_id, commit_lsn_2, commit_lsn_2));
+  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+
+  // Now that all the DDLs have been acknowledged, we should move the checkpoint forward.
+  new_checkpoint = ASSERT_RESULT(GetCheckpointFromStateTable(stream_id, tablets[0].tablet_id()));
+  ASSERT_GT(new_checkpoint.index, old_checkpoint.index);
 }
 
 }  // namespace cdc

@@ -14,7 +14,7 @@ type: docs
 
 The YugabyteDB YSQL API reuses a fork of the PostgreSQL [query layer](../../../architecture/query-layer/). This architecture allows YSQL to support most PostgreSQL features, such as data types, queries, expressions, operators and functions, stored procedures, triggers, extensions, and so on - all of which are expected to work identically on both database systems.
 
-Initially based on PostgreSQL 11.2, YSQL has been continuously enhanced with features, improvements, and security fixes pulled from PostgreSQL 12+, in addition to our own improvements. YugabyteDB {{<release "2025.1">}} is based on PostgreSQL 15, which brings many new features and improvements.
+Initially based on PostgreSQL 11.2, YSQL has been continuously enhanced with features, improvements, and security fixes pulled from PostgreSQL 12+, in addition to our own improvements. Starting with {{<release "2025.1">}} (stable) and {{<release "2.25">}} (preview), YugabyteDB is based on PostgreSQL 15, which brings many new features and improvements.
 
 {{<lead link="https://www.yugabyte.com/blog/yugabytedb-moves-beyond-postgresql-11/">}}
 Learn more about the [journey to PostgreSQL 15](https://www.yugabyte.com/blog/yugabytedb-moves-beyond-postgresql-11/).

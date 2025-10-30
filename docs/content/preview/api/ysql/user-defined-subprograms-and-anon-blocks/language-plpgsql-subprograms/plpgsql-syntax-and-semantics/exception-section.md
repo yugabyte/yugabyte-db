@@ -224,7 +224,7 @@ select (c.rec).outcome, (c.rec).a::text, (c.rec).b from c;
 This is the result:
 
 ```output
- outcome |           a            |  b   
+ outcome |           a            |  b
 ---------+------------------------+------
  OK      | 0.50000000000000000000 | Nice
 ```
@@ -239,7 +239,7 @@ select (c.rec).outcome, (c.rec).a::text, (c.rec).b from c;
 This is the result:
 
 ```output
-                  outcome                   | a  | b 
+                  outcome                   | a  | b
 --------------------------------------------+----+---
  Caught "division_by_zero" in "s.callee()". | -1 | -
 ```
@@ -254,7 +254,7 @@ select (c.rec).outcome, (c.rec).a::text, (c.rec).b from c;
 This is the result:
 
 ```output
-                        outcome                         | a  | b 
+                        outcome                         | a  | b
 --------------------------------------------------------+----+---
  Caught "string_data_right_truncation" in "s.caller()". | -1 | -
 ```
@@ -513,7 +513,7 @@ This attempts to insert a row with the same value for the primary key column, _k
  column:      -
  datatype:    -
  constraint:  -
- 
+
  context:
  PL/pgSQL function s.f(text) line 5 at statement block                                          +
  PL/pgSQL function s.f_outcome(text) line 4 during statement block local variable initialization
@@ -547,7 +547,7 @@ This attempts to update the existing row to set _c1_, which is declared with a _
  column:      c1
  datatype:    -
  constraint:  -
- 
+
  context:
  SQL statement "update s.t set c1 = null where k = 1"                                           +
  PL/pgSQL function s.f(text) line 10 at SQL statement                                           +
@@ -565,7 +565,7 @@ where connamespace = (select oid from pg_namespace where nspname = 's');
 This is the result:
 
 ```output
- conname 
+ conname
 ---------
  d_ok
  t_c2_nn
@@ -598,7 +598,7 @@ sqlstate:    string_data_right_truncation
  column:      -
  datatype:    -
  constraint:  -
- 
+
  context:
  SQL statement "update s.t set c1 = 'mouse' where k = 1"                                        +
  PL/pgSQL function s.f(text) line 12 at SQL statement                                           +
@@ -631,7 +631,7 @@ This attempts to update the existing row to set _c2_, which is declared using th
  column:      -
  datatype:    d
  constraint:  d_ok
- 
+
  context:
  SQL statement "update s.t set c2 = 7 where k = 1"                                              +
  PL/pgSQL function s.f(text) line 14 at SQL statement                                           +
@@ -664,7 +664,7 @@ This attempts to update the existing row to set _c2_ to _null_. But the table _s
  column:      -
  datatype:    -
  constraint:  t_c2_nn
- 
+
  context:
  SQL statement "update s.t set c2 = null where k = 1"                                           +
  PL/pgSQL function s.f(text) line 16 at SQL statement                                           +

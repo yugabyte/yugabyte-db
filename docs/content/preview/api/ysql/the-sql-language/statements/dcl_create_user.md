@@ -62,11 +62,11 @@ GRANT CREATE ON SCHEMA public TO <username>;
   ```plpgsql
   yugabyte=# DO $$
   DECLARE time TIMESTAMP := now() + INTERVAL '4 HOURS';
-  BEGIN 
+  BEGIN
     EXECUTE format(
-      'CREATE USER Edwin WITH PASSWORD ''secure_password'' VALID UNTIL ''%s'';', 
+      'CREATE USER Edwin WITH PASSWORD ''secure_password'' VALID UNTIL ''%s'';',
       time
-    ); 
+    );
   END
   $$;
   ```

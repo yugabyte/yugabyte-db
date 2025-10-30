@@ -105,7 +105,7 @@ Do the following to drop a table from the source database source_db:
 
     ```output
              List of relations
-     Schema |  Name   | Type  |  Owner   
+     Schema |  Name   | Type  |  Owner
     --------+---------+-------+----------
      public | table_1 | table | yugabyte
      public | table_2 | table | yugabyte

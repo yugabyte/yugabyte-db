@@ -40,7 +40,7 @@ void InstrumentedMutex::Lock() {
   uint64_t wait_time_micros = 0;
   if (ShouldReportToStats(env_, stats_)) {
     {
-      StopWatch sw(env_, nullptr, 0, &wait_time_micros);
+      StopWatchMicro sw(env_, &wait_time_micros);
       LockInternal();
     }
     RecordTick(stats_, stats_code_, wait_time_micros);
@@ -59,7 +59,7 @@ void InstrumentedCondVar::Wait() {
   uint64_t wait_time_micros = 0;
   if (ShouldReportToStats(env_, stats_)) {
     {
-      StopWatch sw(env_, nullptr, 0, &wait_time_micros);
+      StopWatchMicro sw(env_, &wait_time_micros);
       WaitInternal();
     }
     RecordTick(stats_, stats_code_, wait_time_micros);
@@ -79,7 +79,7 @@ bool InstrumentedCondVar::TimedWait(uint64_t abs_time_us) {
   bool result = false;
   if (ShouldReportToStats(env_, stats_)) {
     {
-      StopWatch sw(env_, nullptr, 0, &wait_time_micros);
+      StopWatchMicro sw(env_, &wait_time_micros);
       result = TimedWaitInternal(abs_time_us);
     }
     RecordTick(stats_, stats_code_, wait_time_micros);

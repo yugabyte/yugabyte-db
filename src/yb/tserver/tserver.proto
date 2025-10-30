@@ -264,6 +264,8 @@ message ReadRequestPB {
   reserved 17; // ASH metadata is now passed in RequestHeader PB
 
   optional int64 raft_config_opid_index = 18;
+
+  optional int64 leader_term = 19;
 }
 
 message ReadResponsePB {

@@ -146,7 +146,7 @@ cat /proc/cpuinfo | grep sse4.2
 
 - SSDs (solid state disks) are required.
 
-  <!-- - YugabyteDB Anywhere additionally supports the use of GCP Hyperdisks when deploying universes on GCP (specifically, the Balanced and Extreme options).
+  <!-- for v2.27 - YugabyteDB Anywhere additionally supports the use of GCP Hyperdisks when deploying universes on GCP (specifically, the Balanced and Extreme options).
 
   Note: These disk types are only available in some GCP regions. -->
 

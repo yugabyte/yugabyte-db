@@ -432,11 +432,12 @@ class Benchmark {
     uint64_t bytes_written = 0;
     uint64_t bytes_read = 0;
     uint64_t read_hits = 0;
-    StopWatchNano timer(Env::Default(), true);
-    RunThreads(&threads, &bytes_written, &bytes_read, true, &read_hits);
-    auto elapsed_time = static_cast<double>(timer.ElapsedNanos() / 1000);
-    std::cout << "Elapsed time: " << static_cast<int>(elapsed_time) << " us"
-              << std::endl;
+    uint64_t elapsed_micros;
+    {
+      StopWatchMicro timer(Env::Default(), &elapsed_micros);
+      RunThreads(&threads, &bytes_written, &bytes_read, true, &read_hits);
+    }
+    std::cout << "Elapsed time: " << elapsed_micros << " us" << std::endl;
 
     if (bytes_written > 0) {
       auto MiB_written = static_cast<double>(bytes_written) / (1 << 20);

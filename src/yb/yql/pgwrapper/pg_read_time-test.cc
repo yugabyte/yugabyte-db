@@ -36,7 +36,7 @@
 
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(yb_enable_read_committed_isolation);
-DECLARE_bool(ysql_enable_async_writes);
+DECLARE_bool(ysql_enable_write_pipelining);
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_string(ysql_pg_conf_csv);
 DECLARE_uint64(max_clock_skew_usec);
@@ -313,7 +313,7 @@ TEST_F(PgReadTimeTest, CheckReadTimePickingLocation) {
   ASSERT_OK(conn.StartTransaction(IsolationLevel::READ_COMMITTED));
   // Disable async writes, since the metrics are only updated after the entire write query including
   // the quorum commit completes. The client conn wont wait for these until the final commit.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_async_writes) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_write_pipelining) = false;
   CheckReadTimePickedOnDocdb(
       [&conn, kTable]() {
         ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k=1", kTable));
@@ -340,7 +340,7 @@ TEST_F(PgReadTimeTest, CheckReadTimePickingLocation) {
       }, 2 /* expected_num_picked_read_time_on_doc_db_metric */);
 
   ASSERT_OK(conn.CommitTransaction());
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_async_writes) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_write_pipelining) = true;
 
   // 10. Pipeline, copy a file to a table by fast-path transation. Only single tserver is involved
   // during copy.

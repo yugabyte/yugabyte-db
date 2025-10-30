@@ -38,7 +38,7 @@ The YugabyteDB Helm chart has been tested with the following software versions:
 - Kubernetes 1.20 or later with nodes such that a total of 12 CPU cores and 18 GB RAM can be allocated to YugabyteDB. This can be three nodes with 4 CPU core and 6 GB RAM allocated to YugabyteDB.
 - Helm 3.4 or later.
 - YugabyteDB Docker image (yugabytedb/yugabyte) 2.1.0 or later
-- For optimal performance, ensure you have set the appropriate [system limits using `ulimit`](../../../../manual-deployment/system-config/#ulimits) on each node in your Kubernetes cluster.
+- For optimal performance, ensure you have set the appropriate [system configuration](../../../../manual-deployment/system-config/) on each node in your Kubernetes cluster.
 
 Confirm that `helm` and `kubectl` are configured correctly, as follows:
 

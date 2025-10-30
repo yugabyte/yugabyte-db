@@ -606,18 +606,9 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         return path;
     }
 
-    private void validateAshData(Path ashPath) throws Exception {
+    private void validateAshData(Path ashPath, Timestamp startTime,Timestamp endTime)
+        throws Exception {
         try (Statement statement = connection.createStatement()) {
-            ResultSet resultSet = statement.executeQuery(
-                    "SELECT * FROM yb_query_diagnostics_status");
-            if (!resultSet.next())
-                fail("yb_query_diagnostics_status view does not have expected data");
-
-            Timestamp startTime = resultSet.getTimestamp("start_time");
-            long diagnosticsIntervalSec = resultSet.getLong("diagnostics_interval_sec");
-            Timestamp endTime = new Timestamp(startTime.getTime() +
-                    (diagnosticsIntervalSec * 1000L));
-
             statement.execute("CREATE TABLE temp_ash_data" +
                     "(LIKE yb_active_session_history INCLUDING ALL)");
             String copyCmd = "COPY temp_ash_data FROM '" + ashPath.toString() +
@@ -1133,21 +1124,26 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
      *
      * This test creates three different query diagnostics bundles:
      * 1. A successful bundle that completes normally
-     * 2. A bundle that encounters a file permission error
-     * 3. A long-running bundle that remains in progress
+     * 2. A bundle that remains in progress
+     * 3. A bundle that is cancelled
+     * 4. A bundle that has a file permission error
      *
      * For the successful bundle:
      * - Verifies that the bundle completes with "Success" status
      * - Checks for "No query executed" warning when no queries are run
      *
-     * For the error bundle:
+     * For the in progress bundle:
+     * - Verifies that the bundle shows "In Progress" status
+     *
+     * For the cancelled bundle:
+     * - Cancels the in progress bundle using the yb_cancel_query_diagnostics() function
+     * - Verifies that the bundle shows "Cancelled" status
+     * - Checks for the correct error message about bundle being cancelled
+     *
+     * For the file permission error bundle:
      * - Creates a permission error by restricting directory access
      * - Verifies that the bundle has "Error" status
      * - Confirms the correct error message about permission denial
-     *
-     * For the in-progress bundle:
-     * - Sets a long diagnostics interval (120 seconds)
-     * - Verifies that the bundle shows "In Progress" status
      *
      * Each bundle's status, path, description, and parameters are verified
      * against expected values in the yb_query_diagnostics_status view.
@@ -1193,6 +1189,49 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             assertQueryDiagnosticsStatus(expectedSuccessBundleViewEntry, successBundleViewEntry);
 
             /*
+             * In Progress bundle
+             */
+            String inProgressQueryId = generateUniqueQueryId();
+            QueryDiagnosticsParams inProgressRunParams = new QueryDiagnosticsParams(
+                120 /* diagnosticsInterval */,
+                75 /* explainSampleRate */,
+                false /* explainAnalyze */,
+                false /* explainDist */,
+                false /* explainDebug */,
+                15 /* bindVarQueryMinDuration */);
+
+            /* Trigger the bundle for 120 seconds to ensure it remains in In Progress state */
+            Path inProgressBundlePath = runQueryDiagnostics(statement, inProgressQueryId,
+                                                            inProgressRunParams);
+
+            /* Assert that the In Progress bundle is present in the view */
+            QueryDiagnosticsStatus inProgressBundleViewEntry = getViewData(statement,
+                                                                      inProgressQueryId,
+                                                                      "status='In Progress'");
+
+            /* Create the expected bundle data */
+            QueryDiagnosticsStatus expectedInProgressBundleViewEntry = new QueryDiagnosticsStatus(
+                inProgressBundlePath, "In Progress", "", inProgressRunParams);
+            assertQueryDiagnosticsStatus(expectedInProgressBundleViewEntry,
+                                         inProgressBundleViewEntry);
+
+            /*
+             * Cancelled bundle
+             */
+            statement.execute("SELECT yb_cancel_query_diagnostics('" + inProgressQueryId + "')");
+
+            /* Assert that the Cancelled bundle is present in the view */
+            QueryDiagnosticsStatus cancelledBundleViewEntry = getViewData(statement,
+                                                                    inProgressQueryId,
+                                                                    "status='Cancelled'");
+
+            /* Create the expected bundle data */
+            QueryDiagnosticsStatus expectedCancelledBundleViewEntry = new QueryDiagnosticsStatus(
+                inProgressBundlePath, "Cancelled", "Bundle was cancelled", inProgressRunParams);
+            assertQueryDiagnosticsStatus(expectedCancelledBundleViewEntry,
+                                         cancelledBundleViewEntry);
+
+            /*
              * Error bundle
              */
             String queryDiagnosticsPath = successfulBundlePath.getParent().getParent().toString();
@@ -1231,32 +1270,6 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
             /* Reset permissions to allow test cleanup */
             recreateFolderWithPermissions(queryDiagnosticsPath, 666);
-
-            /*
-             * In Progress bundle
-             */
-            String inProgressQueryId = generateUniqueQueryId();
-            QueryDiagnosticsParams inProgressRunParams = new QueryDiagnosticsParams(
-                120 /* diagnosticsInterval */,
-                75 /* explainSampleRate */,
-                false /* explainAnalyze */,
-                false /* explainDist */,
-                false /* explainDebug */,
-                15 /* bindVarQueryMinDuration */);
-
-            /* Trigger the bundle for 120 seconds to ensure it remains in In Progress state */
-            Path inProgressBundlePath = runQueryDiagnostics(statement, inProgressQueryId,
-                                                            inProgressRunParams);
-
-            /* Assert that the In Progress bundle is present in the view */
-            QueryDiagnosticsStatus inProgressBundleViewEntry = getViewData(statement,
-                                                                      inProgressQueryId,
-                                                                      "status='In Progress'");
-            /* Create the expected bundle data */
-            QueryDiagnosticsStatus expectedInProgressBundleViewEntry = new QueryDiagnosticsStatus(
-                inProgressBundlePath, "In Progress", "", inProgressRunParams);
-            assertQueryDiagnosticsStatus(expectedInProgressBundleViewEntry,
-                                         inProgressBundleViewEntry);
         }
     }
 
@@ -1303,6 +1316,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
         try (Statement statement = connection.createStatement()) {
             String queryId = getQueryIdFromPgStatStatements(statement, "%PREPARE%");
+            Timestamp startTime = new Timestamp(System.currentTimeMillis());
             Path bundleDataPath = runQueryDiagnostics(statement, queryId, params);
 
             /*
@@ -1314,12 +1328,14 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
                 statement.execute("EXECUTE stmt('var1', 1, 1.1)");
             }
 
-            waitForBundleCompletion(queryId, statement, 2 * diagnosticsInterval);
+            waitForBundleCompletion(queryId, statement, diagnosticsInterval);
+            waitForDatabaseConnectionBgWorker();
+            Timestamp endTime = new Timestamp(System.currentTimeMillis());
 
             Path ashPath = getFilePathFromBaseDir(bundleDataPath,
                     "active_session_history.csv");
 
-            validateAshData(ashPath);
+            validateAshData(ashPath, startTime, endTime);
         }
     }
 
@@ -1786,12 +1802,14 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
             String queryId = getQueryIdFromPgStatStatements(statement,
                     "WITH%");
+            Timestamp startTime = new Timestamp(System.currentTimeMillis());
             Path bundleDataPath = runQueryDiagnostics(statement, queryId, queryDiagnosticsParams);
 
             statement.execute(complexQuery);
 
             waitForBundleCompletion(queryId, statement, diagnosticsInterval);
             waitForDatabaseConnectionBgWorker();
+            Timestamp endTime = new Timestamp(System.currentTimeMillis());
 
             Path bindVariablesPath = getFilePathFromBaseDir(bundleDataPath,
                     "constants_and_bind_variables.csv");
@@ -1815,7 +1833,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
                                 new String(Files.readAllBytes(schemaDetailsPath),
                                            StandardCharsets.UTF_8));
 
-            validateAshData(ashPath);
+            validateAshData(ashPath, startTime, endTime);
 
             validatePgssData(pgssPath, queryId, 1);
         }
@@ -1848,6 +1866,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             statement.execute(longQuery.toString());
 
             String queryId = getQueryIdFromPgStatStatements(statement, "SELECT CASE%");
+            Timestamp startTime = new Timestamp(System.currentTimeMillis());
             Path bundleDataPath = runQueryDiagnostics(statement, queryId, queryDiagnosticsParams);
 
             // Execute the long query again to ensure it is captured
@@ -1855,6 +1874,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
             waitForBundleCompletion(queryId, statement, diagnosticsInterval);
             waitForDatabaseConnectionBgWorker();
+            Timestamp endTime = new Timestamp(System.currentTimeMillis());
 
             // Validate the results
             Path bindVariablesPath = getFilePathFromBaseDir(bundleDataPath,
@@ -1882,7 +1902,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             validateAgainstFile("src/test/resources/expected/long_query_schema_details.out",
                                 new String(Files.readAllBytes(schemaDetailsPath),
                                            StandardCharsets.UTF_8));
-            validateAshData(ashPath);
+            validateAshData(ashPath, startTime, endTime);
             validatePgssData(pgssPath, queryId, 1);
         }
     }

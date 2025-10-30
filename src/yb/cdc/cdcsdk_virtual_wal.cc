@@ -98,10 +98,6 @@ DEFINE_RUNTIME_bool(cdcsdk_update_restart_time_when_nothing_to_stream, true,
     "equal to the last shipped lsn");
 TAG_FLAG(cdcsdk_update_restart_time_when_nothing_to_stream, advanced);
 
-DEFINE_test_flag(bool, cdcsdk_fail_before_updating_cdc_state, false,
-    "Used in tests to simulate a failure where we end up truncating the local commit map "
-    "but fail to update the same entries in the cdc_state table.");
-
 DECLARE_uint64(cdc_stream_records_threshold_size_bytes);
 DECLARE_bool(ysql_yb_enable_consistent_replication_from_hash_range);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
@@ -510,7 +506,7 @@ Status CDCSDKVirtualWAL::InitLSNAndTxnIDGenerators(
   last_decided_pub_refresh_time =
       ParseLastDecidedPubRefreshTime(*entry_opt.last_decided_pub_refresh_time);
 
-  last_persisted_record_id_commit_time_ = *entry_opt.record_id_commit_time;
+  last_persisted_record_id_commit_time_ = HybridTime(*entry_opt.record_id_commit_time);
   // Values from the slot's entry will be used to form a unique record ID corresponding to a COMMIT
   // record with commit_time set to the record_id_commit_time field of the state table.
   std::string commit_record_docdb_txn_id = "";
@@ -518,7 +514,7 @@ Status CDCSDKVirtualWAL::InitLSNAndTxnIDGenerators(
   std::string commit_record_primary_key = "";
   last_seen_unique_record_id_ = std::make_shared<CDCSDKUniqueRecordID>(CDCSDKUniqueRecordID(
       false /* publication_refresh_record*/, RowMessage::COMMIT,
-      last_persisted_record_id_commit_time_, commit_record_docdb_txn_id,
+      last_persisted_record_id_commit_time_.ToUint64(), commit_record_docdb_txn_id,
       std::numeric_limits<uint64_t>::max(), std::numeric_limits<uint32_t>::max(),
       commit_record_table_id, commit_record_primary_key));
 
@@ -527,7 +523,7 @@ Status CDCSDKVirtualWAL::InitLSNAndTxnIDGenerators(
   last_shipped_commit.commit_record_unique_id = last_seen_unique_record_id_;
   last_shipped_commit.last_pub_refresh_time = last_pub_refresh_time;
 
-  virtual_wal_safe_time_ = HybridTime(last_persisted_record_id_commit_time_);
+  virtual_wal_safe_time_ = last_persisted_record_id_commit_time_;
 
   return Status::OK();
 }
@@ -625,6 +621,7 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
     if (record->row_message().op() == RowMessage_Op_DDL) {
       auto records = resp->add_cdc_sdk_proto_records();
       VLOG_WITH_PREFIX(1) << "Shipping DDL record: " << record->ShortDebugString();
+      last_seen_ddl_commit_time_ = HybridTime(record->row_message().commit_time());
       records->CopyFrom(*record);
       metadata.ddl_records++;
       continue;
@@ -918,28 +915,6 @@ Status CDCSDKVirtualWAL::GetChangesInternal(
   return Status::OK();
 }
 
-// We should not send explicit checkpoint to a tablet if its safe_hybrid_time is greater than
-// restart time. This can happen if write to cdc_state table fails during UpdateAndPersistLSN.
-bool CDCSDKVirtualWAL::ShouldPopulateExplicitCheckpoint(const TabletId& tablet_id) {
-  // When commit meta map is empty, the explicit checkpoint is sent from the tablet_next_req_map_
-  // and hence we compare the values from the same with persisted restart time.
-  if (commit_meta_and_last_req_map_.empty()) {
-    const GetChangesRequestInfo& next_req_info = tablet_next_req_map_[tablet_id];
-    return next_req_info.safe_hybrid_time <= last_persisted_record_id_commit_time_;
-  }
-
-  const auto& last_sent_req_for_begin_map =
-      commit_meta_and_last_req_map_.begin()->second.last_sent_req_for_begin_map;
-  if (last_sent_req_for_begin_map.contains(tablet_id)) {
-    const LastSentGetChangesRequestInfo& last_sent_req_info =
-        last_sent_req_for_begin_map.at(tablet_id);
-    return last_sent_req_info.safe_hybrid_time <= last_persisted_record_id_commit_time_;
-  } else {
-    VLOG_WITH_PREFIX(1) << "Couldnt find last_sent_from_op_id for tablet_id: " << tablet_id;
-    return false;
-  }
-}
-
 Status CDCSDKVirtualWAL::PopulateGetChangesRequest(
     const TabletId& tablet_id, GetChangesRequestPB* req) {
   RSTATUS_DCHECK(
@@ -962,9 +937,10 @@ Status CDCSDKVirtualWAL::PopulateGetChangesRequest(
   req_checkpoint->set_key(next_req_info.key);
   req_checkpoint->set_write_id(next_req_info.write_id);
 
-  if (!ShouldPopulateExplicitCheckpoint(tablet_id)) {
+  if (!ShouldPopulateExplicitCheckpoint()) {
     VLOG_WITH_PREFIX(1) << "Will not be populating the explicit checkpoint with GetChanges "
-                        << "request. Sending request as " << req->ShortDebugString();
+                        << "request since we have unacknowledged DDL(s). Sending request as "
+                        << req->ShortDebugString();
     return Status::OK();
   }
 
@@ -1028,6 +1004,15 @@ Status CDCSDKVirtualWAL::AddRecordsToTabletQueue(
   }
 
   return Status::OK();
+}
+
+// We do not assign LSNs to DDL records. As a result we can only infer the acknowledgement of the
+// RELATION messages based on the acknowledgement of subsequent DMLs. Upon encountering DDLs, we
+// stop sending explicit checkpoint in the GetChanges requests until the restart time crosses the
+// last seen DDL's commit time, hence signifying its acknowledgement.
+bool CDCSDKVirtualWAL::ShouldPopulateExplicitCheckpoint() {
+  return !last_seen_ddl_commit_time_.is_valid() ||
+         (last_persisted_record_id_commit_time_ > last_seen_ddl_commit_time_);
 }
 
 Status CDCSDKVirtualWAL::UpdateTabletCheckpointForNextRequest(
@@ -1301,10 +1286,6 @@ Result<uint64_t> CDCSDKVirtualWAL::UpdateAndPersistLSNInternal(
   pub_refresh_times.erase(
       pub_refresh_times.begin(), pub_refresh_times.upper_bound(pub_refresh_trim_time));
 
-  if (PREDICT_FALSE(FLAGS_TEST_cdcsdk_fail_before_updating_cdc_state)) {
-    return STATUS(InternalError, "Returning artificial status for testing purposes.");
-  }
-
   RETURN_NOT_OK(UpdateSlotEntryInCDCState(
       confirmed_flush_lsn, record_metadata, use_vwal_safe_time, last_trimmed_pub_refresh_time));
   last_received_restart_lsn = restart_lsn_hint;
@@ -1376,8 +1357,8 @@ Status CDCSDKVirtualWAL::UpdateSlotEntryInCDCState(
 
   RETURN_NOT_OK(cdc_service_->cdc_state_table_->UpdateEntries({entry}));
 
-  // Update the local copy of slot restart time upon successfully updating the cdc_state entry.
-  last_persisted_record_id_commit_time_ = *entry.record_id_commit_time;
+  // Update the local copy of slot restart time after successfully updating the cdc_state entry.
+  last_persisted_record_id_commit_time_ = HybridTime(*entry.record_id_commit_time);
 
   return Status::OK();
 }

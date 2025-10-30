@@ -535,4 +535,8 @@ inline bool IsFastMode(const struct TransactionMetadata& metadata) {
   return IsFastMode(metadata.skip_prefix_locks, metadata.isolation);
 }
 
+inline bool SkipPrefixLocks(bool fast_mode, IsolationLevel isolation) {
+  return (isolation == IsolationLevel::SERIALIZABLE_ISOLATION) != fast_mode;
+}
+
 } // namespace yb

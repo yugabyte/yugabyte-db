@@ -96,7 +96,7 @@ Alternatively, you can also create a `master.conf` file with the following flags
 $ ./bin/yb-master --flagfile master.conf >& /home/centos/disk1/yb-master.out &
 ```
 
-### Verify health
+### Verify Master health
 
 Make sure all the three YB-Masters are now working as expected by inspecting the INFO log. The default logs directory is always inside the first directory specified in the [`--fs_data_dirs`](../../../reference/configuration/yb-master/#fs-data-dirs) flag.
 
@@ -231,7 +231,7 @@ replication_info {
 }
 ```
 
-### Verify health
+### Verify TServer health
 
 Make sure all YB-TServer servers are working as expected by inspecting the INFO log. The default logs directory is always inside the first directory specified in the [`--fs_data_dirs`](../../../reference/configuration/yb-tserver/#fs-data-dirs) flag.
 

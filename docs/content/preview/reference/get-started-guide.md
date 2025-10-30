@@ -124,7 +124,7 @@ Find resources for getting started, migrating existing databases, using your dat
 [Distributed PostgreSQL Essentials for Developers: Hands-on Course](https://www.youtube.com/watch?v=rqJBFQ-4Hgk)
 : Build a scalable and fault-tolerant movie recommendation service.
 
-[Best practices](../../develop/best-practices-develop/)
+[Best practices](/preview/develop/best-practices-develop/)
 : Tips and tricks to build applications for high performance and availability.
 
 [Drivers and ORMs](/preview/develop/drivers-orms/)

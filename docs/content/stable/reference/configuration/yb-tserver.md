@@ -272,6 +272,15 @@ Introduced in version 2.21.1.0, this flag limits the number of Prometheus metric
 
 To override this flag on a per-scrape basis, you can adjust the URL parameter `max_metric_entries`.
 
+##### --export_intentdb_metrics
+
+{{% tags/wrap %}}
+
+Default: `true`
+{{% /tags/wrap %}}
+
+Whether to dump IntentsDB statistics to Prometheus metrics.
+
 ## PostgreSQL configuration parameters
 
 YugabyteDB uses [PostgreSQL server configuration parameters](https://www.postgresql.org/docs/15/config-setting.html) to apply server configuration settings to new server instances.
@@ -616,6 +625,15 @@ Default: `200`
 {{% /tags/wrap %}}
 
 Sets the maximum number of rows per transaction per tablet to return in [pg_locks](../../../explore/observability/pg-locks/). Set to 0 to return all results.
+
+##### yb_default_copy_from_rows_per_transaction
+
+{{% tags/wrap %}}
+
+Default: `20000`
+{{% /tags/wrap %}}
+
+Sets the maximum batch size per transaction when using [COPY FROM](../../../api/ysql/the-sql-language/statements/cmd_copy/).
 
 ## Networking
 
@@ -1880,6 +1898,7 @@ Starting from version 2.18, the default is `-1`. Previously it was `4`.
 
 {{% tags/wrap %}}
 
+
 Default: `1`
 {{% /tags/wrap %}}
 
@@ -1888,6 +1907,7 @@ The maximum number of threads allowed for non-admin full compactions. This inclu
 ##### --full_compaction_pool_max_queue_size
 
 {{% tags/wrap %}}
+
 
 Default: `500`
 {{% /tags/wrap %}}
@@ -1898,6 +1918,7 @@ The maximum number of full compaction tasks that can be queued simultaneously. T
 
 {{% tags/wrap %}}
 
+
 Default: `60`
 {{% /tags/wrap %}}
 
@@ -1907,25 +1928,30 @@ The interval at which the full compaction task will check for tablets eligible f
 
 {{% tags/wrap %}}
 
+
 Default: `300`
 {{% /tags/wrap %}}
 
 Window of time in seconds over which DocDB read statistics are analyzed for the purpose of triggering full compactions to improve read performance. Both [auto_compact_percent_obsolete](#auto-compact-percent-obsolete) and [auto_compact_min_obsolete_keys_found](#auto-compact-min-obsolete-keys-found) are evaluated over this period of time.
+
 `auto_compact_stat_window_seconds` must be evaluated as a multiple of [auto_compact_check_interval_sec](#auto-compact-check-interval-sec), and will be rounded up to meet this constraint. For example, if `auto_compact_stat_window_seconds` is set to `100` and `auto_compact_check_interval_sec` is set to `60`, it will be rounded up to `120` at runtime.
 
 ##### --auto_compact_percent_obsolete
 
 {{% tags/wrap %}}
 
+
 Default: `99`
 {{% /tags/wrap %}}
 
 The percentage of obsolete keys (over total keys) read over the [auto_compact_stat_window_seconds](#auto-compact-stat-window-seconds) window of time required to trigger an automatic full compaction on a tablet. Only keys that are past their history retention (and thus can be garbage collected) are counted towards this threshold.
+
 For example, if the flag is set to `99` and 100000 keys are read over that window of time, and 99900 of those are obsolete and past their history retention, a full compaction will be triggered (subject to other conditions).
 
 ##### --auto_compact_min_obsolete_keys_found
 
 {{% tags/wrap %}}
+
 
 Default: `10000`
 {{% /tags/wrap %}}
@@ -1936,6 +1962,7 @@ Minimum number of keys that must be read over the last [auto_compact_stat_window
 
 {{% tags/wrap %}}
 
+
 Default: `0`
 {{% /tags/wrap %}}
 
@@ -1944,6 +1971,7 @@ Minimum wait time between statistics-based and scheduled full compactions. To be
 ##### --scheduled_full_compaction_frequency_hours
 
 {{% tags/wrap %}}
+
 
 Default: `0`
 {{% /tags/wrap %}}
@@ -1954,10 +1982,12 @@ The frequency with which full compactions should be scheduled on tablets. `0` in
 
 {{% tags/wrap %}}
 
+
 Default: `33`
 {{% /tags/wrap %}}
 
 Percentage of [scheduled_full_compaction_frequency_hours](#scheduled-full-compaction-frequency-hours) to be used as jitter when determining full compaction schedule per tablet. Must be a value between `0` and `100`. Jitter is introduced to prevent many tablets from being scheduled for full compactions at the same time.
+
 Jitter is deterministically computed when scheduling a compaction, between 0 and (frequency * jitter factor) hours. Once computed, the jitter is subtracted from the intended compaction frequency to determine the tablet's next compaction time.
 
 Example: If `scheduled_full_compaction_frequency_hours` is `720` hours (that is, 30 days), and `scheduled_full_compaction_jitter_factor_percentage` is `33` percent, each tablet will be scheduled for compaction every `482` hours to `720` hours.
@@ -1965,6 +1995,7 @@ Example: If `scheduled_full_compaction_frequency_hours` is `720` hours (that is,
 ##### --automatic_compaction_extra_priority
 
 {{% tags/wrap %}}
+
 
 Default: `50`
 {{% /tags/wrap %}}
@@ -2009,7 +2040,7 @@ If `enable_wait_queues=true`, this controls the rate at which each tablet's wait
 
 ### DDL concurrency flags
 
-##### ysql_enable_db_catalog_version_mode
+##### --ysql_enable_db_catalog_version_mode
 
 {{% tags/wrap %}}
 
@@ -2059,7 +2090,7 @@ To re-enable the per database catalog version mode using the following steps:
 1. Shut down the cluster.
 1. Start the cluster with `--ysql_enable_db_catalog_version_mode=true`.
 
-##### enable_heartbeat_pg_catalog_versions_cache
+##### --enable_heartbeat_pg_catalog_versions_cache
 
 {{% tags/wrap %}}
 
@@ -2091,7 +2122,7 @@ Configure the YugabyteDB [cost-based optimizer](../../../architecture/query-laye
 
 See also the [yb_enable_cbo](#yb-enable-cbo) configuration parameter. If this flag is set, the parameter takes precedence.
 
-##### ysql_yb_enable_cbo
+##### --ysql_yb_enable_cbo
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
@@ -2116,7 +2147,7 @@ To fully enable the Auto Analyze service, you need to enable `ysql_enable_auto_a
 
 See also [Auto Analyze Service Master flags](../yb-master/#auto-analyze-service-flags).
 
-##### ysql_enable_auto_analyze_service
+##### --ysql_enable_auto_analyze_service
 
 {{% tags/wrap %}}
 {{<tags/feature/ea idea="590">}}
@@ -2127,7 +2158,7 @@ Default: `false`
 
 Enable the Auto Analyze service, which automatically runs ANALYZE to update table statistics for tables that have changed more than a configurable threshold.
 
-##### ysql_enable_table_mutation_counter
+##### --ysql_enable_table_mutation_counter
 
 {{% tags/wrap %}}
 
@@ -2137,7 +2168,7 @@ Default: `false`
 
 Enable per table mutation (INSERT, UPDATE, DELETE) counting. The Auto Analyze service runs ANALYZE when the number of mutations of a table exceeds the threshold determined by the [ysql_auto_analyze_threshold](#ysql-auto-analyze-threshold) and [ysql_auto_analyze_scale_factor](#ysql-auto-analyze-scale-factor) settings.
 
-##### ysql_auto_analyze_threshold
+##### --ysql_auto_analyze_threshold
 
 {{% tags/wrap %}}
 
@@ -2147,7 +2178,7 @@ Default: `50`
 
 The minimum number of mutations needed to run ANALYZE on a table.
 
-##### ysql_auto_analyze_scale_factor
+##### --ysql_auto_analyze_scale_factor
 
 {{% tags/wrap %}}
 
@@ -2159,7 +2190,7 @@ The fraction defining when sufficient mutations have been accumulated to run ANA
 
 ANALYZE runs when the mutation count exceeds `ysql_auto_analyze_scale_factor * <table_size> + ysql_auto_analyze_threshold`, where table_size is the value of the `reltuples` column in the `pg_class` catalog.
 
-##### ysql_auto_analyze_batch_size
+##### --ysql_auto_analyze_batch_size
 
 {{% tags/wrap %}}
 
@@ -2169,7 +2200,7 @@ Default: `10`
 
 The maximum number of tables the Auto Analyze service tries to analyze in a single ANALYZE statement.
 
-##### ysql_cluster_level_mutation_persist_interval_ms
+##### --ysql_cluster_level_mutation_persist_interval_ms
 
 {{% tags/wrap %}}
 
@@ -2179,7 +2210,7 @@ Default: `10000`
 
 Interval at which the reported node level table mutation counts are persisted to the underlying auto-analyze mutations table.
 
-##### ysql_cluster_level_mutation_persist_rpc_timeout_ms
+##### --ysql_cluster_level_mutation_persist_rpc_timeout_ms
 
 {{% tags/wrap %}}
 
@@ -2189,7 +2220,7 @@ Default: `10000`
 
 Timeout for the RPCs used to persist mutation counts in the auto-analyze mutations table.
 
-##### ysql_node_level_mutation_reporting_interval_ms
+##### --ysql_node_level_mutation_reporting_interval_ms
 
 {{% tags/wrap %}}
 
@@ -2199,7 +2230,7 @@ Default: `5000`
 
 Interval, in milliseconds, at which the node-level table mutation counts are sent to the Auto Analyze service, which tracks table mutation counts at the cluster level.
 
-##### ysql_node_level_mutation_reporting_timeout_ms
+##### --ysql_node_level_mutation_reporting_timeout_ms
 
 {{% tags/wrap %}}
 
@@ -2211,7 +2242,7 @@ Timeout, in milliseconds, for the node-level mutation reporting RPC to the Auto 
 
 ### Advisory lock flags
 
-To learn about advisory locks, see [Advisory locks](../../../explore/transactions/explicit-locking/#advisory-locks).
+To learn about advisory locks, see [Advisory locks](../../../architecture/transactions/concurrency-control/#advisory-locks).
 
 ##### --ysql_yb_enable_advisory_locks
 
@@ -2273,7 +2304,7 @@ Default: `-1` (automatic setting)
 
 Increasing the number of backfill jobs can allow the index creation to complete faster, however setting it to a higher number can impact foreground workload operations and also increase the chance of failures and retries of backfill jobs if CPU usage becomes too high.
 
-##### backfill_index_client_rpc_timeout_ms
+##### --backfill_index_client_rpc_timeout_ms
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
@@ -2282,7 +2313,7 @@ Default: `86400000` (1 day)
 
 Timeout (in milliseconds) for the backfill stage of a concurrent CREATE INDEX.
 
-##### backfill_index_timeout_grace_margin_ms
+##### --backfill_index_timeout_grace_margin_ms
 {{% tags/wrap %}}
 
 
@@ -2291,7 +2322,7 @@ Default: `-1`, where the system automatically calculates the value to be approxi
 
 The time to exclude from the YB-Master flag [ysql_index_backfill_rpc_timeout_ms](../yb-master/#ysql-index-backfill-rpc-timeout-ms) in order to return results to YB-Master in the specified deadline. Should be set to at least the amount of time each batch would require, and less than `ysql_index_backfill_rpc_timeout_ms`.
 
-##### backfill_index_write_batch_size
+##### --backfill_index_write_batch_size
 
 {{% tags/wrap %}}
 
@@ -2586,7 +2617,7 @@ Specifies the time zone for displaying and interpreting timestamps.
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-Default: Uses the YSQL display format.
+Default: Uses the ISO, MDY display format.
 {{% /tags/wrap %}}
 
 Specifies the display format for data and time values.

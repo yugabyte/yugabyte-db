@@ -214,7 +214,7 @@ The pg_partman `create_parent()` function requires an access exclusive lock on t
 
 ### Advisory locks
 
-[Advisory locks](../../../explore/transactions/explicit-locking/#advisory-locks), used in some pg_partman functions to create or drop/delete partitioned tables, are not currently supported in pg_partman in YugabyteDB. Attempts to acquire these locks are disabled.
+[Advisory locks](../../../architecture/transactions/concurrency-control/#advisory-locks), used in some pg_partman functions to create or drop/delete partitioned tables, are not currently supported in pg_partman in YugabyteDB. Attempts to acquire these locks are disabled.
 
 ### Background worker process
 
@@ -398,6 +398,6 @@ Although not recommended, it is possible to use pg_partman using the following s
 
 During normal operations, as DDLs occur on the source universe, monitor the pg_audit log (on the source universe) to detect partition-related DDLs.
 
-When you detect partition-related DDLs, follow the instructions in [Handling DDL changes](../../../deploy/multi-dc/async-replication/async-deployment/#handling-ddl-changes) to issue the same DDL command on the replica universe and include the table in xCluster replication.
+When you detect partition-related DDLs, follow the instructions in [Handling DDL changes](/preview/deploy/multi-dc/async-replication/async-deployment/#handling-ddl-changes) to issue the same DDL command on the replica universe and include the table in xCluster replication.
 
 Note that the sequence of operations can vary by DDL command (for example, CREATE partition and DROP partition require different follow-up actions in different orders).

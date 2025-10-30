@@ -67,9 +67,9 @@ For convenience, you can configure the CLI with a default API token as follows:
 
   At the prompt, paste your API token and press Enter.
 
-  By default, this writes the value to the CLI configuration file `$HOME/.yba-cli.yaml`.
+  By default, this writes the value to the CLI configuration file `$HOME/.yba-cli/.yba-cli.yaml`.
 
-  You can create multiple configuration files, and switch between them using the [--config](#global-flags) flag. You can add any of the other [global flags](#global-flags) to your configuration files.
+  You can create multiple configuration files, and switch between them using the `--config` flag, or `--directory` flag if you want to maintain the configuration files in a directory. See [Global flags](#global-flags) for more details.
 
 - Using [environment variables](#environment-variables). Environment variables must begin with `YBA_`. For example:
 
@@ -142,6 +142,9 @@ The following flags can be passed in with any command. These flags can also be a
 
 --config string
 : Configuration file (default is `$HOME/.yba-cli.yaml`).
+
+--directory string
+: Directory containing YBA CLI configuration and generated files. If specified, the CLI looks for a configuration file named `.yba-cli.yaml` in this directory. Default is `$HOME/.yba-cli/`.
 
 --debug
 : Use debug mode, same as `--logLevel debug`.

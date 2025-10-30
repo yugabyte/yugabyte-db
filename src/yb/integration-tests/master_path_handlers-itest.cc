@@ -944,8 +944,9 @@ class MasterPathHandlersExternalItest : public MasterPathHandlersBaseItest<Exter
     opts_.extra_tserver_flags.push_back("--placement_zone=z${index}");
     opts_.extra_tserver_flags.push_back("--placement_uuid=" + kLivePlacementUuid);
     opts_.extra_tserver_flags.push_back("--follower_unavailable_considered_failed_sec=10");
-    const auto rf = opts_.replication_factor > 0 ? opts_.replication_factor : 3;
-    opts_.extra_master_flags.push_back(Format("--replication_factor=$0", rf));
+    if (opts_.replication_factor <= 0) {
+      opts_.replication_factor = 3;
+    }
 
     MasterPathHandlersBaseItest<ExternalMiniCluster>::SetUp();
 
@@ -954,13 +955,13 @@ class MasterPathHandlersExternalItest : public MasterPathHandlersBaseItest<Exter
     ASSERT_OK(yb_admin_client_->Init());
 
     std::string placement_infos;
-    for (int i = 0; i < rf; i++) {
+    for (int i = 0; i < opts_.replication_factor; i++) {
       placement_infos += Format("c.r.z$0:1", i);
-      if (i < rf - 1) {
+      if (i < opts_.replication_factor - 1) {
         placement_infos += ",";
       }
     }
-    ASSERT_OK(yb_admin_client_->ModifyPlacementInfo(placement_infos, rf,
+    ASSERT_OK(yb_admin_client_->ModifyPlacementInfo(placement_infos, opts_.replication_factor,
         kLivePlacementUuid));
   }
 

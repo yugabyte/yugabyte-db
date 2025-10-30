@@ -63,7 +63,8 @@ class TabletVectorIndexes : public TabletComponent {
       Tablet* tablet,
       const VectorIndexThreadPoolProvider& thread_pool_provider,
       const VectorIndexPriorityThreadPoolProvider& priority_thread_pool_provider,
-      const hnsw::BlockCachePtr& block_cache);
+      const hnsw::BlockCachePtr& block_cache,
+      MetricRegistry* metric_registry);
 
   Status Open(const docdb::ConsensusFrontier* frontier);
 
@@ -132,6 +133,7 @@ class TabletVectorIndexes : public TabletComponent {
   const VectorIndexPriorityThreadPoolProvider priority_thread_pool_provider_;
   const hnsw::BlockCachePtr block_cache_;
   const MemTrackerPtr mem_tracker_;
+  MetricRegistry* metric_registry_ = nullptr;
 
   std::atomic<bool> has_vector_indexes_{false};
   std::atomic<bool> has_vector_deletion_{false};

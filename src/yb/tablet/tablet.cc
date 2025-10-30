@@ -778,7 +778,8 @@ Tablet::Tablet(const TabletInitData& data)
       this,
       data.vector_index_thread_pool_provider,
       data.vector_index_priority_thread_pool_provider,
-      data.vector_index_block_cache);
+      data.vector_index_block_cache,
+      data.metric_registry);
 
   snapshot_coordinator_ = data.snapshot_coordinator;
 

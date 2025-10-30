@@ -39,6 +39,7 @@
 #include "pgstat.h"
 #include "postmaster/bgworker.h"
 #include "postmaster/interrupt.h"
+#include "replication/walsender.h"
 #include "storage/ipc.h"
 #include "storage/latch.h"
 #include "storage/lwlock.h"
@@ -189,9 +190,7 @@ YbAshInit(void)
 	YbAshInstallHooks();
 	/* Keep the default query id in the stack */
 	query_id_stack.top_index = 0;
-	query_id_stack.query_ids[0] = MyProc->isBackgroundWorker
-		? YBCGetConstQueryId(QUERY_ID_TYPE_BACKGROUND_WORKER)
-		: YBCGetConstQueryId(QUERY_ID_TYPE_DEFAULT);
+	query_id_stack.query_ids[0] = YbAshGetConstQueryId();
 	query_id_stack.num_query_ids_not_pushed = 0;
 
 	EnableQueryId();
@@ -497,12 +496,15 @@ yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 	PG_END_TRY();
 }
 
-static uint64
-GetDefaultQueryId()
+uint64
+YbAshGetConstQueryId()
 {
-	YbcAshConstQueryIdType type =
-		IsBackgroundWorker ? QUERY_ID_TYPE_BACKGROUND_WORKER
-		: QUERY_ID_TYPE_DEFAULT;
+	YbcAshConstQueryIdType type = QUERY_ID_TYPE_DEFAULT;
+
+	if (am_walsender)
+		type = QUERY_ID_TYPE_WALSENDER;
+	else if (IsBackgroundWorker)
+		type = QUERY_ID_TYPE_BACKGROUND_WORKER;
 
 	return YBCGetConstQueryId(type);
 }
@@ -536,7 +538,7 @@ YbAshResetQueryId(uint64 query_id)
 
 		if (prev_query_id != 0)
 		{
-			if (prev_query_id == GetDefaultQueryId())
+			if (prev_query_id == YbAshGetConstQueryId())
 			{
 				query_id_to_be_popped_before_push = query_id;
 				pop_query_id_before_push = true;
@@ -975,16 +977,8 @@ YbAshGetNextCircularBufferSlot(void)
 Datum
 yb_active_session_history(PG_FUNCTION_ARGS)
 {
-	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
-	TupleDesc	tupdesc;
-	Tuplestorestate *tupstore;
-	MemoryContext per_query_ctx;
-	MemoryContext oldcontext;
-	int			i;
+	FuncCallContext *funcctx;
 	static int	ncols = 0;
-
-	if (ncols < ACTIVE_SESSION_HISTORY_COLS_V6)
-		ncols = YbGetNumberOfFunctionOutputColumns(F_YB_ACTIVE_SESSION_HISTORY);
 
 	/* ASH must be loaded first */
 	if (!yb_ash)
@@ -992,60 +986,58 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("ysql_yb_enable_ash gflag must be enabled")));
 
-	/* check to see if caller supports us returning a tuplestore */
-	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("set-valued function called in context that cannot accept a set")));
+	if (ncols < ACTIVE_SESSION_HISTORY_COLS_V6)
+		ncols = YbGetNumberOfFunctionOutputColumns(F_YB_ACTIVE_SESSION_HISTORY);
 
-	if (!(rsinfo->allowedModes & SFRM_Materialize))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("materialize mode required, but it is not " \
-						"allowed in this context")));
+	/* Stuff done only on the first call of the function */
+	if (SRF_IS_FIRSTCALL())
+	{
+		MemoryContext oldcontext;
+		TupleDesc	tupdesc;
 
-	/* Switch context to construct returned data structures */
-	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
-	oldcontext = MemoryContextSwitchTo(per_query_ctx);
+		funcctx = SRF_FIRSTCALL_INIT();
+		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 
-	/* Build a tuple descriptor */
-	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
-		ereport(ERROR,
-				(errmsg_internal("return type must be a row type")));
+		/* Build a tuple descriptor for our result type */
+		if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+			ereport(ERROR,
+					(errmsg_internal("return type must be a row type")));
 
-	tupstore = tuplestore_begin_heap(true, false, work_mem);
-	rsinfo->returnMode = SFRM_Materialize;
-	rsinfo->setResult = tupstore;
-	rsinfo->setDesc = tupdesc;
+		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
+		funcctx->max_calls = yb_ash->max_entries;
 
-	MemoryContextSwitchTo(oldcontext);
+		/* Acquire buffer lock (will be released when iteration completes) */
+		YbAshAcquireBufferLock(false /* exclusive */ );
+		MemoryContextSwitchTo(oldcontext);
+	}
 
-	YbAshAcquireBufferLock(false /* exclusive */ );
-
-	for (i = 0; i < yb_ash->max_entries; ++i)
+	funcctx = SRF_PERCALL_SETUP();
+	if (funcctx->call_cntr < funcctx->max_calls)
 	{
 		Datum		values[ncols];
 		bool		nulls[ncols];
+		HeapTuple	tuple;
+
 		int			j = 0;
+
+		YbcAshSample *sample = &yb_ash->circular_buffer[funcctx->call_cntr];
+		YbcAshMetadata *metadata = &sample->metadata;
+
 		pg_uuid_t	root_request_id;
 		pg_uuid_t	top_level_node_id;
 
-		/*
-		 * 22 bytes required for ipv4 and 48 for ipv6 (including null
-		 * character)
-		 */
-		char		client_node_ip[48];
+		if (sample->sample_time == 0)
+		{
+			/* The circular buffer is not fully filled yet */
+			YbAshReleaseBufferLock();
+			SRF_RETURN_DONE(funcctx);
+		}
 
 		memset(values, 0, sizeof(values));
 		memset(nulls, 0, sizeof(nulls));
 
-		YbcAshSample *sample = &yb_ash->circular_buffer[i];
-		YbcAshMetadata *metadata = &sample->metadata;
-
-		if (sample->sample_time != 0)
-			values[j++] = TimestampTzGetDatum(sample->sample_time);
-		else
-			break;				/* The circular buffer is not fully filled yet */
+		/* Build the output tuple values */
+		values[j++] = TimestampTzGetDatum(sample->sample_time);
 
 		uchar_to_uuid(metadata->root_request_id, &root_request_id);
 		values[j++] = UUIDPGetDatum(&root_request_id);
@@ -1070,15 +1062,17 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 
 		if (metadata->addr_family == AF_INET || metadata->addr_family == AF_INET6)
 		{
-			client_ip_to_string(metadata->client_addr, metadata->client_port, metadata->addr_family,
-								client_node_ip);
+			char		client_node_ip[48];	/* 22 bytes for ipv4, 48 for ipv6 */
+			client_ip_to_string(metadata->client_addr, metadata->client_port,
+								metadata->addr_family, client_node_ip);
 			values[j++] = CStringGetTextDatum(client_node_ip);
 		}
 		else
 		{
 			/*
-			 * internal operations such as flushes and compactions are not tied to any client
-			 * and they might have the addr_family as AF_UNSPEC
+			 * internal operations such as flushes and compactions are not
+			 * tied to any client and they might have the addr_family as
+			 * AF_UNSPEC
 			 */
 			Assert(metadata->addr_family == AF_UNIX || metadata->addr_family == AF_UNSPEC);
 			nulls[j++] = true;
@@ -1087,8 +1081,9 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 		if (sample->aux_info[0] != '\0')
 		{
 			/*
-			 * In PG samples, the wait event aux buffer will be [ash::PggateRPC, 0, ...],
-			 * the 0-th index contains the rpc enum value, the 1-st and subsequent indexes contains 0.
+			 * In PG samples, the wait event aux buffer will be
+			 * [ash::PggateRPC, 0, ...], the 0-th index contains the rpc enum
+			 * value, the 1-st and subsequent indexes contains 0.
 			 */
 			values[j++] = sample->aux_info[0] != 0 && sample->aux_info[1] == 0
 				? CStringGetTextDatum(YBCGetPggateRPCName(sample->aux_info[0]))
@@ -1116,15 +1111,14 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 		if (ncols >= ACTIVE_SESSION_HISTORY_COLS_V6)
 			values[j++] = ObjectIdGetDatum(metadata->user_id);
 
-		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
+		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
+		SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
 	}
-
-	YbAshReleaseBufferLock();
-
-	/* clean up and return the tuplestore */
-	tuplestore_donestoring(tupstore);
-
-	return (Datum) 0;
+	else
+	{
+		YbAshReleaseBufferLock();
+		SRF_RETURN_DONE(funcctx);
+	}
 }
 
 static void

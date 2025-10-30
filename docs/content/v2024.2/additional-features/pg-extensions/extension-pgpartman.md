@@ -212,7 +212,7 @@ The pg_partman `create_parent()` function requires an access exclusive lock on t
 
 ### Advisory locks
 
-Advisory locks, used in some pg_partman functions to create, drop/delete partitioned tables, are not supported in YugabyteDB. Attempts to acquire these locks are disabled.
+Advisory locks, used in some pg_partman functions to create, drop/delete partitioned tables, are not currently supported in YugabyteDB. Attempts to acquire these locks are disabled.
 
 ### Background worker process
 

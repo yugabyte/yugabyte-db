@@ -229,10 +229,11 @@ public class TestYsqlDump extends BasePgSQLTest {
         "ysql_dumpall" /* binaryName */,
         "" /* dumpedDatabaseName */,
         "yb.orig.ysql_dumpall.sql" /* inputFileRelativePath */,
-        "yb_ysql_dumpall.data.sql" /* expectedDumpRelativePath */,
+        "yb_ysql_dumpall_with_dump_role_checks.data.sql" /* expectedDumpRelativePath */,
         "results/yb.orig.ysql_dumpall.out" /* outputFileRelativePath */,
         IncludeYbMetadata.ON,
-        NoTableSpaces.OFF);
+        NoTableSpaces.OFF,
+        DumpRoleChecks.ON);
 
     // ysql_dumpall cannot be imported as it has DDL that cannot be repeated
     // like CREATE ROLE postgres
@@ -577,7 +578,6 @@ public class TestYsqlDump extends BasePgSQLTest {
 
     // Verify the dump matches what is expected
     assertOutputFile(expected, actual);
-
   }
 
   /** Compare the expected output and the actual output. */

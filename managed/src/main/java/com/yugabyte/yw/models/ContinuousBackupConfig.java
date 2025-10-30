@@ -98,4 +98,28 @@ public class ContinuousBackupConfig extends Model {
     this.storageLocation = storageLocation;
     this.update();
   }
+
+  public long getFrequencyInMilliseconds() {
+    switch (this.getFrequencyTimeUnit()) {
+      case NANOSECONDS:
+        return this.getFrequency() / 100000;
+      case MICROSECONDS:
+        return this.getFrequency() / 1000;
+      case MILLISECONDS:
+        return this.getFrequency();
+      case SECONDS:
+        return this.getFrequency() * 1000;
+      case MINUTES:
+        return this.getFrequency() * 1000 * 60;
+      case HOURS:
+        return this.getFrequency() * 1000 * 60 * 60;
+      case DAYS:
+        return this.getFrequency() * 1000 * 60 * 60 * 24;
+      case MONTHS:
+        return this.getFrequency() * 1000 * 60 * 60 * 24 * 30;
+      case YEARS:
+        return this.getFrequency() * 1000 * 60 * 60 * 24 * 365;
+    }
+    return this.getFrequency();
+  }
 }

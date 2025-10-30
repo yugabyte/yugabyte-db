@@ -42,8 +42,8 @@ Renaming a materialized view is a non-blocking metadata change operation.
 
 #### SET TABLESPACE *tablespace_name*
 
-Asynchronously change the tablespace of an existing materialized view. 
-The tablespace change will immediately reflect in the config of the materialized view, however the tablet move by the load balancer happens in the background. 
+Asynchronously change the tablespace of an existing materialized view.
+The tablespace change will immediately reflect in the config of the materialized view, however the tablet move by the load balancer happens in the background.
 While the load balancer is performing the move it is perfectly safe from a correctness perspective to do reads and writes, however some query optimization that happens based on the data location may be off while data is being moved.
 
 

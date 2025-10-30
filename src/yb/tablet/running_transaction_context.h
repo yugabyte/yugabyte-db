@@ -97,6 +97,9 @@ class RunningTransactionContext {
 
   virtual bool Closing() const = 0;
 
+  virtual FastModeTransactionScope CreateFastModeTransactionScope(
+      const TransactionMetadata& metadata) = 0;
+
  protected:
   friend class RunningTransaction;
 

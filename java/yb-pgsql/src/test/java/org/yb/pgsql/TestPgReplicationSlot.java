@@ -4456,152 +4456,6 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   }
 
   @Test
-  public void testNoFailureWhenCdcStateUpdateFails() throws Exception {
-    Map<String, String> serverFlags = getTServerFlags();
-    serverFlags.put("cdc_state_checkpoint_update_interval_ms", "0");
-    restartClusterWithFlags(Collections.emptyMap(), serverFlags);
-
-    final String slotName = "test_cdc_update_failure_slot";
-
-    try (Statement stmt = connection.createStatement()) {
-      // Create table with single tablet, serial primary key, and text column with
-      // default value.
-      stmt.execute("DROP TABLE IF EXISTS test_cdc_failure_table");
-      stmt.execute("CREATE TABLE test_cdc_failure_table (id SERIAL PRIMARY KEY, "
-                    + "text_col TEXT DEFAULT 'default_val')");
-      stmt.execute("CREATE PUBLICATION pub FOR TABLE test_cdc_failure_table");
-    }
-
-    // Create replication slot and initiate replication stream.
-    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
-    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
-    createSlot(replConnection, slotName, YB_OUTPUT_PLUGIN_NAME);
-
-    PGReplicationStream stream = replConnection.replicationStream()
-        .logical()
-        .withSlotName(slotName)
-        .withStartPosition(LogSequenceNumber.valueOf(0L))
-        .withSlotOption("proto_version", 1)
-        .withSlotOption("publication_names", "pub")
-        .start();
-
-    // Insert a record and consume it.
-    try (Statement stmt = connection.createStatement()) {
-      stmt.execute("INSERT INTO test_cdc_failure_table (text_col) VALUES ('first_record')");
-    }
-
-    // RELATION + BEGIN + INSERT + COMMIT.
-    List<PgOutputMessage> firstInsertMessages = receiveMessage(stream, 4);
-    assertEquals("Expected 4 messages for first insert", 4, firstInsertMessages.size());
-
-    // Flush the LSN.
-    stream.setFlushedLSN(stream.getLastReceiveLSN());
-    stream.forceUpdateStatus();
-
-    // Disable the test flag.
-    miniCluster
-        .getTabletServers()
-        .keySet()
-        .forEach(
-            ts -> {
-              try {
-                setServerFlag(ts, "TEST_cdcsdk_fail_before_updating_cdc_state", "true");
-              } catch (Exception e) {
-                throw new RuntimeException(e);
-              }
-            });
-
-    // Add a column to the table and insert one more record.
-    try (Statement stmt = connection.createStatement()) {
-      stmt.execute("ALTER TABLE test_cdc_failure_table ADD COLUMN new_col INT DEFAULT 42");
-      stmt.execute("INSERT INTO test_cdc_failure_table (text_col, new_col) "
-                    + "VALUES ('second_record', 100)");
-    }
-
-    // Consume the records (RELATION + BEGIN + INSERT + COMMIT).
-    List<PgOutputMessage> ddlAndInsertMessages = receiveMessage(stream, 4);
-    assertEquals(4, ddlAndInsertMessages.size());
-
-    // Flush the LSN - this would fail writing to the cdc_state since the failure flag is enabled.
-    try {
-      stream.setFlushedLSN(stream.getLastReceiveLSN());
-      stream.forceUpdateStatus();
-    } catch (Exception e) {
-      assertTrue(e.getMessage().contains("Returning artificial status for testing purposes"));
-    }
-
-    // Sleep so that we can ensure that GetChanges gets executed with the updated values.
-    Thread.sleep(kMultiplier * 5 * 1000);
-
-    // Close the stream and connection before restarting.
-    try {
-      stream.close();
-    } catch (Exception e) {
-      assertTrue(e.getMessage().contains("Returning artificial status for testing purposes"));
-    }
-    conn.close();
-
-    // Disable the test flag.
-    miniCluster
-        .getTabletServers()
-        .keySet()
-        .forEach(
-            ts -> {
-              try {
-                setServerFlag(ts, "TEST_cdcsdk_fail_before_updating_cdc_state", "false");
-              } catch (Exception e) {
-                throw new RuntimeException(e);
-              }
-            });
-
-    // Reconnect and create a new stream.
-    conn = getConnectionBuilder().withTServer(0).replicationConnect();
-    replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
-
-    stream = replConnection.replicationStream()
-        .logical()
-        .withSlotName(slotName)
-        .withStartPosition(LogSequenceNumber.valueOf(0L))
-        .withSlotOption("proto_version", 1)
-        .withSlotOption("publication_names", "pub")
-        .start();
-
-    try (Statement stmt = connection.createStatement()) {
-      stmt.execute("INSERT INTO test_cdc_failure_table (text_col, new_col) "
-                    + "VALUES ('third_record', 100)");
-    }
-
-    // Consume the records again (should get the DDL and second insert again due to restart)
-    // i.e. RELATION + BEGIN + INSERT + COMMIT + BEGIN + INSERT + COMMIT.
-    List<PgOutputMessage> restartMessages = receiveMessage(stream, 7);
-    assertEquals(7, restartMessages.size());
-
-    // Validate that we have received everything
-    // Total expected messages: 4 (first relation + begin, insert1, commit)
-    // + 4 (DDL + begin, insert2, commit) + 4 (DDL + begin, insert2, commit)
-    // + 3 (begin, insert3, commit) = 15
-    assertEquals(15,
-        firstInsertMessages.size() + ddlAndInsertMessages.size() + restartMessages.size());
-
-    // Verify the content of the messages
-    // Check that we have the ALTER TABLE DDL message
-    boolean foundDdlMessage = false;
-    for (PgOutputMessage msg : ddlAndInsertMessages) {
-      if (msg instanceof PgOutputRelationMessage) {
-        PgOutputRelationMessage relationMsg = (PgOutputRelationMessage) msg;
-        if (relationMsg.name.equals("test_cdc_failure_table")) {
-          foundDdlMessage = true;
-          break;
-        }
-      }
-    }
-    assertTrue("Should have found DDL message for the table", foundDdlMessage);
-
-    stream.close();
-    conn.close();
-  }
-
-  @Test
   public void testPgoutputWithChangeReplicaIdentityNotInPublication() throws Exception {
     final String slotName = "test_pgoutput_and_change_slot";
     try (Statement stmt = connection.createStatement()) {
@@ -4673,6 +4527,97 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     assertEquals(expectedResult, result);
 
     // Close this stream and the connection.
+    stream.close();
+    conn.close();
+  }
+
+  @Test
+  public void testRestartAfterDdl() throws Exception {
+    Map<String, String> serverFlags = getTServerFlags();
+    serverFlags.put("cdc_state_checkpoint_update_interval_ms", "0");
+    restartClusterWithFlags(Collections.emptyMap(), serverFlags);
+
+    final String slotName = "test_cdc_restart_after_ddl";
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS test_table");
+      stmt.execute("CREATE TABLE test_table (id SERIAL PRIMARY KEY, "
+                    + "text_col TEXT DEFAULT 'default_val')");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE test_table");
+    }
+
+    // Create replication slot and initiate replication stream.
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, slotName, YB_OUTPUT_PLUGIN_NAME);
+
+    PGReplicationStream stream = replConnection.replicationStream()
+        .logical()
+        .withSlotName(slotName)
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .withSlotOption("proto_version", 1)
+        .withSlotOption("publication_names", "pub")
+        .start();
+
+    // Insert a record and consume it.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO test_table (text_col) VALUES ('first_record')");
+    }
+
+    // RELATION + BEGIN + INSERT + COMMIT.
+    List<PgOutputMessage> firstInsertMessages = receiveMessage(stream, 4);
+    assertEquals("Expected 4 messages for first insert", 4, firstInsertMessages.size());
+
+    // Flush the LSN.
+    stream.setFlushedLSN(stream.getLastReceiveLSN());
+    stream.forceUpdateStatus();
+
+    // Perform a DDL and insert a record with new schema.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("ALTER TABLE test_table ADD COLUMN new_col INT DEFAULT 42");
+      stmt.execute("INSERT INTO test_table (text_col, new_col) VALUES ('second_record', 100)");
+    }
+
+    // Consume the records (RELATION + BEGIN + INSERT + COMMIT). These records are
+    // not acknowledged yet so we should receive them again after restart.
+    List<PgOutputMessage> ddlAndInsertMessages = receiveMessage(stream, 4);
+    assertEquals(4, ddlAndInsertMessages.size());
+
+    // Sleep to ensure that walsender calls GetConsistentChanges.
+    Thread.sleep(kMultiplier * 5 * 1000);
+
+    // Close the stream and connection and then restart.
+    stream.close();
+    conn.close();
+
+    conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+
+    stream = replConnection.replicationStream()
+        .logical()
+        .withSlotName(slotName)
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .withSlotOption("proto_version", 1)
+        .withSlotOption("publication_names", "pub")
+        .start();
+
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO test_table (text_col, new_col) VALUES ('third_record', 100)");
+    }
+
+    // Consume the records again (we should receive the DDL and second insert again).
+    // i.e. RELATION + BEGIN + INSERT + COMMIT + BEGIN + INSERT + COMMIT.
+    List<PgOutputMessage> restartMessages = receiveMessage(stream, 7);
+    assertEquals(7, restartMessages.size());
+
+    // Validate that we have received everything
+    // Total expected messages: 4 (first relation + begin, insert1, commit)
+    // + 4 (DDL + begin, insert2, commit) + 4 (DDL + begin, insert2, commit)
+    // + 3 (begin, insert3, commit) = 15
+    assertEquals(15,
+        firstInsertMessages.size() + ddlAndInsertMessages.size() + restartMessages.size());
+
     stream.close();
     conn.close();
   }

@@ -590,9 +590,9 @@ Result<std::pair<std::vector<TableId>, std::vector<TableId>>>
       if (batched_tables.size() == FLAGS_ysql_auto_analyze_batch_size
           || table_id == tables_to_analyze.back()) {
         auto table_names = TableNamesForAnalyzeCmd(batched_tables);
-        VLOG(1) << "In YSQL database: " << dbname
-                <<  ", run ANALYZE statement for tables in batch: "
-                << analyze_query << table_names;
+        LOG(INFO) << "In YSQL database: " << dbname
+                  <<  ", run ANALYZE statement for tables in batch: "
+                  << analyze_query << table_names;
         auto s = conn.Execute(analyze_query + table_names);
         if (s.ok()) {
           analyzed_tables.insert(analyzed_tables.end(), batched_tables.begin(),

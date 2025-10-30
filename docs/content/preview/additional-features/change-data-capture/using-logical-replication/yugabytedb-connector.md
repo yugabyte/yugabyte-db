@@ -1396,7 +1396,7 @@ Debezium uses [replication slots](https://www.postgresql.org/docs/15/logicaldeco
 
 Because a replication slot can only be used by a single connector, it is essential to create a unique replication slot for each connector. Although when a connector is not active, YugabyteDB may allow other connectors to consume the replication slot - which could be dangerous as it may lead to data loss as a slot will emit each change just once.
 
-In addition to replication slot, Debezium uses publication to stream events when using the `pgoutput`or `yboutput` plugin. Similar to replication slot, publication is at database level and is defined for a set of tables. Thus, you'll need a unique publication for each connector, unless the connectors work on same set of tables. For more information about the options for enabling Debezium to create publications, see `publication.autocreate.mode`.
+In addition to replication slot, the connector uses publication to stream events when using the `pgoutput`or `yboutput` plugin. Similar to replication slot, publication is at database level and is defined for a set of tables. Thus, you'll need a unique publication for each connector, unless the connectors work on same set of tables. For more information about the options for enabling the connector to create publications, see `publication.autocreate.mode`.
 
 See `slot.name` and `publication.name` on how to set a unique replication slot name and publication name for each connector.
 

@@ -29,6 +29,7 @@
 #include "yb/tablet/tablet_fwd.h"
 
 #include "yb/util/kv_util.h"
+#include "yb/util/metrics.h"
 
 #include "yb/vector_index/vector_index_fwd.h"
 
@@ -137,6 +138,7 @@ Result<DocVectorIndexPtr> CreateDocVectorIndex(
     const qlexpr::IndexInfo& index_info,
     DocVectorIndexedTableContextPtr indexed_table_context,
     const hnsw::BlockCachePtr& block_cache,
-    const MemTrackerPtr& mem_tracker);
+    const MemTrackerPtr& mem_tracker,
+    const MetricEntityPtr& metric_entity);
 
 }  // namespace yb::docdb
