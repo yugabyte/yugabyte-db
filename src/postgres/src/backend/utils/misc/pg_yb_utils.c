@@ -2247,6 +2247,10 @@ bool		yb_enable_invalidation_messages = true;
 bool		yb_enable_invalidate_table_cache_entry = true;
 int			yb_invalidation_message_expiration_secs = 10;
 int			yb_max_num_invalidation_messages = 4096;
+bool		yb_enable_parallel_scan_colocated = true;
+bool		yb_enable_parallel_scan_hash_sharded = false;
+bool		yb_enable_parallel_scan_range_sharded = false;
+bool		yb_enable_parallel_scan_system = false;
 bool        yb_make_all_ddl_statements_incrementing = false;
 
 /* DEPRECATED */
