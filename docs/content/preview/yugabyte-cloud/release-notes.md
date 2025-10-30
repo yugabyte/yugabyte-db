@@ -21,6 +21,16 @@ rightNav:
 
 ### 2025
 
+#### October 29, 2025
+
+##### Improvements
+
+- Improvements to network and peering infrastructure, to provide even more reliable scaling, and lower risk of disruptions, particularly when scaling across regions.
+
+##### Database
+
+- Early Access track updated to 2025.1.1.2.
+
 #### October 7, 2025
 
 ##### New features
