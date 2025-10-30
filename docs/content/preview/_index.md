@@ -22,7 +22,7 @@ YugabyteDB is an open source PostgreSQL-compatible distributed database for clou
     title="Explore distributed SQL"
     description="Explore the features of distributed SQL, with examples."
     buttonText="Explore"
-    buttonUrl="/preview/explore/"
+    buttonUrl="explore/"
     imageAlt="Yugabyte cloud" imageUrl="/images/homepage/yugabyte-in-cloud.svg"
   >}}
 {{< /sections/2-boxes >}}
@@ -34,21 +34,21 @@ YugabyteDB is an open source PostgreSQL-compatible distributed database for clou
     title="Deploy YugabyteDB"
     description="Deploy to the public cloud, a private data center, or Kubernetes."
     buttonText="Deploy"
-    buttonUrl="/preview/deploy/"
+    buttonUrl="deploy/"
   >}}
 
   {{< sections/3-box-card
     title="Add advanced capabilities"
     description="Set up change data capture, built-in connection pooling, PostgreSQL extensions, and more."
     buttonText="Add"
-    buttonUrl="/preview/additional-features/"
+    buttonUrl="additional-features/"
   >}}
 
   {{< sections/3-box-card
     title="Manage your deployment"
     description="Back up, scale, and upgrade your deployment."
     buttonText="Manage"
-    buttonUrl="/preview/manage/"
+    buttonUrl="manage/"
   >}}
 
 {{< /sections/3-boxes >}}
