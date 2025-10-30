@@ -1231,6 +1231,160 @@
   [stable_api.params]
     showSection = true
 
+########## Menus for "v2.25"
+
+[["v2.25"]]
+  weight = 1
+  ["v2.25".params]
+    productsDropdown = true
+
+[["v2.25"]]
+  name = "Overview"
+  weight = 2
+  identifier = "yugabytedb"
+  url = "/v2.25/"
+  ["v2.25".params]
+    showSection = true
+
+[["v2.25"]]
+  name = "Quick Start"
+  weight = 4
+  identifier = "quick-start"
+  url = "/preview/quick-start/macos/"
+  ["v2.25".params]
+    showSection = true
+    hideChildren = true
+
+[["v2.25"]]
+  name = "Explore"
+  weight = 5
+  identifier = "explore"
+  url = "/v2.25/explore/"
+  ["v2.25".params]
+    classes = "separator"
+    showSection = true
+
+[["v2.25"]]
+  name = "Secure"
+  weight = 8
+  identifier = "secure"
+  url = "/v2.25/secure/"
+  ["v2.25".params]
+    showSection = true
+
+[["v2.25"]]
+  name = "Launch and Manage"
+  weight = 9
+  identifier = "launch-and-manage"
+  url = "/v2.25/launch-and-manage/"
+  ["v2.25".params]
+    showSection = true
+
+[["v2.25"]]
+  name = "Reference"
+  weight = 10
+  identifier = "reference"
+  ["v2.25".params]
+    showSection = true
+
+[["v2.25"]]
+  name = "Troubleshoot"
+  parent = "launch-and-manage"
+  url = "/preview/troubleshoot/"
+
+[["v2.25"]]
+  name = "Benchmark"
+  weight = 11
+  identifier = "benchmark"
+  url = "/v2.25/benchmark/"
+  ["v2.25".params]
+    classes = "separator"
+    showSection = true
+
+[["v2.25"]]
+  name = "Contribute"
+  weight = 13
+  identifier = "contribute"
+  url = "/preview/contribute/"
+  ["v2.25".params]
+    showSection = true
+
+########## Menus (in "v2.25") for YB Anywhere section
+
+[["v2.25_yugabyte-platform"]]
+  weight = 1
+  ["v2.25_yugabyte-platform".params]
+    productsDropdown = true
+
+[["v2.25_yugabyte-platform"]]
+  name = "Overview"
+  weight = 2
+  identifier = "yugabytedb-anywhere"
+  ["v2.25_yugabyte-platform".params]
+    showSection = true
+    hideLink = true
+
+########## Menus (in "v2.25") for APIs
+
+[["v2.25_api"]]
+  name = "API"
+  weight = 2
+  identifier = "api"
+  url = "/v2.25/api/"
+  ["v2.25_api".params]
+    classes = "separator"
+    showSection = true
+
+[["v2.25_api"]]
+  name = "YSQL"
+  weight = 10
+  identifier = "api-ysql"
+  url = "/v2.25/api/ysql/"
+  ["v2.25_api".params]
+    showSection = true
+
+[["v2.25_api"]]
+  name = "YCQL"
+  weight = 11
+  identifier = "api-cassandra"
+  url = "/v2.25/api/ycql/"
+  ["v2.25_api".params]
+    classes = "separator"
+    showSection = true
+
+[["v2.25_api"]]
+  name = "ysqlsh"
+  weight = 20
+  identifier = "ysqlsh"
+  url = "/v2.25/api/ysqlsh/"
+  ["v2.25_api".params]
+    showSection = true
+
+[["v2.25_api"]]
+  name = "ycqlsh"
+  weight = 21
+  identifier = "ycqlsh"
+  url = "/v2.25/api/ycqlsh/"
+  ["v2.25_api".params]
+    classes = "separator"
+    showSection = true
+
+[["v2.25_api"]]
+  name = "YugabyteDB Anywhere API"
+  weight = 30
+  identifier = "yugabytedb-anywhere-api"
+  url = "/v2.25/yugabyte-platform/anywhere-automation/anywhere-api/"
+  ["v2.25_api".params]
+    showSection = true
+
+[["v2.25_api"]]
+  name = "YugabyteDB Aeon API"
+  weight = 31
+  identifier = "yugabytedb-managed-api"
+  url = "/preview/yugabyte-cloud/managed-automation/managed-api/"
+  ["v2.25_api".params]
+    showSection = true
+
 ########## Menus for "v2024.2"
 
 [["v2024.2"]]
