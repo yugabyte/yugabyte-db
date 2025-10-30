@@ -821,7 +821,7 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testRotateCertsKubernetesPartialServerCertRotationFailure()
+  public void testRotateCertsKubernetesPartialServerCertRotation()
       throws IOException, NoSuchAlgorithmException {
     Customer c = ModelFactory.testCustomer();
     Universe u = createKubernetesUniverse(c);
@@ -834,7 +834,8 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
             universe -> {
               UniverseDefinitionTaskParams details = universe.getUniverseDetails();
               details.rootCA = existingRootCA;
-              details.getPrimaryCluster().userIntent.enableClientToNodeEncrypt = false;
+              details.getPrimaryCluster().userIntent.enableClientToNodeEncrypt = true;
+              details.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt = true;
               universe.setUniverseDetails(details);
             });
 
@@ -859,14 +860,44 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
     params.rootAndClientRootCASame = true;
     params.rootCA = existingRootCA;
 
+    // Only server cert rotation
     PlatformServiceException exception =
         assertThrows(
             PlatformServiceException.class, () -> handler.rotateCerts(params, c, updatedUniverse));
 
     assertEquals(
-        "Cannot rotate only one of server or client certificates at a time. "
-            + "Both must be rotated together for Kubernetes universes.",
+        "Cannot rotate only node to node certificate when client to node encryption is enabled.",
         exception.getMessage());
+
+    params.selfSignedClientCertRotate = true; // Only client cert rotation
+    params.selfSignedServerCertRotate = false;
+
+    // Only client cert rotation
+    exception =
+        assertThrows(
+            PlatformServiceException.class, () -> handler.rotateCerts(params, c, updatedUniverse));
+    assertEquals(
+        "Cannot rotate only client to node certificate when node to node encryption is enabled.",
+        exception.getMessage());
+
+    params.selfSignedClientCertRotate = true;
+    params.selfSignedServerCertRotate = true;
+
+    // Mock the static method
+    try (MockedStatic<CertificateHelper> mockedCertificateHelper =
+        mockStatic(CertificateHelper.class)) {
+      mockedCertificateHelper
+          .when(() -> CertificateHelper.createClientCertificate(any(), any(), any()))
+          .thenReturn(null);
+
+      UUID fakeTaskUUID =
+          FakeDBApplication.buildTaskInfo(null, TaskType.CertsRotateKubernetesUpgrade);
+      when(mockCommissioner.submit(any(TaskType.class), any(ITaskParams.class)))
+          .thenReturn(fakeTaskUUID);
+
+      // Rotate both server and client cert rotation
+      handler.rotateCerts(params, c, updatedUniverse);
+    }
   }
 
   @Test
