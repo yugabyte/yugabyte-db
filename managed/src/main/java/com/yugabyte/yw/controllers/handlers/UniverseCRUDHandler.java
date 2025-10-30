@@ -1097,7 +1097,7 @@ public class UniverseCRUDHandler {
           universe.updateConfig(ImmutableMap.of(Universe.HTTPS_ENABLED_UI, "true"));
         }
 
-        maybeSetMemoryLimitGflags(customer, universe, primaryCluster);
+        maybeSetNewInstallGflags(customer, universe, primaryCluster);
       }
 
       // other configs enabled by default
@@ -2596,38 +2596,48 @@ public class UniverseCRUDHandler {
         });
   }
 
-  private void maybeSetMemoryLimitGflags(
+  private void maybeSetNewInstallGflags(
       Customer customer, Universe universe, Cluster primaryCluster) {
 
-    if (null == primaryCluster
-        || runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled")
-        || Util.compareYBVersions(
+    Map<String, String> newInstallMasterGflags = new HashMap<>();
+    Map<String, String> newInstallTserverGflags = new HashMap<>();
+
+    if (primaryCluster != null
+        && primaryCluster.userIntent.providerType.isVM()
+        && !primaryCluster.userIntent.dedicatedNodes
+        && !runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled")
+        && Util.compareYBVersions(
                 primaryCluster.userIntent.ybSoftwareVersion, "2024.2.0.0", "2.25.0.0", true)
-            < 0
-        || !primaryCluster.userIntent.providerType.isVM()
-        || primaryCluster.userIntent.dedicatedNodes) {
-      return;
+            >= 0) {
+      newInstallMasterGflags.putAll(
+          Map.of(
+              "enforce_tablet_replica_limits",
+              "true",
+              "split_respects_tablet_replica_limits",
+              "true"));
+      newInstallTserverGflags.putAll(Map.of("use_memory_defaults_optimized_for_ysql", "true"));
     }
 
-    Map<String, String> masterNewInstGflags =
-        new HashMap<>(
-            Map.of(
-                "enforce_tablet_replica_limits",
-                "true",
-                "split_respects_tablet_replica_limits",
-                "true"));
-    Map<String, String> tserverNewInstGFlags = new HashMap<>();
-
-    Map<String, String> memNewInstFlag = Map.of("use_memory_defaults_optimized_for_ysql", "true");
-    tserverNewInstGFlags.putAll(memNewInstFlag);
-    masterNewInstGflags.putAll(memNewInstFlag);
+    // Add new flags for versions >= 2.29.0.0 or 2025.2.0.0
+    if (primaryCluster != null
+        && Util.compareYBVersions(
+                primaryCluster.userIntent.ybSoftwareVersion, "2025.2.0.0", "2.29.0.0", true)
+            >= 0
+        && primaryCluster.userIntent.enableYSQL) {
+      Map<String, String> newFlags =
+          Map.of(
+              "yb_enable_read_committed_isolation", "true",
+              "ysql_pg_conf_csv", "yb_enable_cbo=on");
+      newInstallTserverGflags.putAll(newFlags);
+      newInstallMasterGflags.putAll(newFlags);
+    }
 
     SpecificGFlags.PerProcessFlags newInstallGFlags = new SpecificGFlags.PerProcessFlags();
-    if (!tserverNewInstGFlags.isEmpty()) {
-      newInstallGFlags.value.put(ServerType.TSERVER, tserverNewInstGFlags);
+    if (!newInstallTserverGflags.isEmpty()) {
+      newInstallGFlags.value.put(ServerType.TSERVER, newInstallTserverGflags);
     }
-    if (!masterNewInstGflags.isEmpty()) {
-      newInstallGFlags.value.put(ServerType.MASTER, masterNewInstGflags);
+    if (!newInstallMasterGflags.isEmpty()) {
+      newInstallGFlags.value.put(ServerType.MASTER, newInstallMasterGflags);
     }
     LOG.info(
         "Setting new install gflags to {} on universe {}",
