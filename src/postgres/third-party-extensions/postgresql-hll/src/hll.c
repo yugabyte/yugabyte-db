@@ -69,6 +69,10 @@
 
 #include "MurmurHash3.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+#include "yb_ysql_conn_mgr_helper.h"
+
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;
 #endif
@@ -2832,6 +2836,15 @@ hll_set_max_sparse(PG_FUNCTION_ARGS)
         ereport(ERROR,
                 (errcode(ERRCODE_DATA_EXCEPTION),
                  errmsg("sparse threshold must be in range [-1,MAXINT]")));
+
+    // YB: The max sparse threshold is set only on the backend where the query is executed.
+    // To ensure that the logical connection uses the same physical connection, we make the
+    // connection sticky.
+    if (YbIsClientYsqlConnMgr())
+    {
+        elog(LOG, "Incrementing sticky object count for setting hll max sparse to %d", maxsparse);
+        increment_sticky_object_count();
+    }
 
     g_max_sparse = maxsparse;
 
