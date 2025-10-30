@@ -5,6 +5,7 @@ package com.yugabyte.yw.common.certmgmt.castore;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
+import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
@@ -24,26 +25,35 @@ import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
+import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.tuple.ImmutablePair;
 
 @Singleton
 @Slf4j
 public class YBATrustStoreManager implements TrustStoreManager {
 
-  public static final String JVM_DEFAULT_KEYSTORE_TYPE = "JKS";
+  public static final String KEYSTORE_TYPE_JKS = "JKS";
+  public static final String KEYSTORE_TYPE_PKCS12 = "PKCS12";
+  public static final String KEYSTORE_TYPE_BCFKS = "BCFKS";
 
   public static final String BCFKS_TRUSTSTORE_FILE_NAME = "ybBcfksCaCerts";
 
   public static final String PKCS12_TRUSTSTORE_FILE_NAME = "ybPkcs12CaCerts";
+  public static final String PKCS12_TRUSTSTORE_CONVERTED_FILE_NAME = "ybPkcs12CaCerts.backup";
   private static final String YB_JAVA_HOME_PATHS = "yb.wellKnownCA.trustStore.javaHomePaths";
 
   private final RuntimeConfGetter runtimeConfGetter;
 
   private final Config config;
+
+  private TrustStoreInfo ybaTrustStoreInfo;
+  private TrustStoreInfo javaTrustStoreInfo;
 
   @Inject
   public YBATrustStoreManager(RuntimeConfGetter runtimeConfGetter, Config config) {
@@ -51,29 +61,17 @@ public class YBATrustStoreManager implements TrustStoreManager {
     this.config = config;
   }
 
-  /** Creates a trust-store with only custom CA certificates in pkcs12 format. */
-  public boolean addCertificate(
-      String certPath,
-      String certAlias,
-      String trustStoreHome,
-      char[] trustStorePassword,
-      boolean suppressErrors)
+  /** Creates a trust-store with only custom CA certificates. */
+  public void addCertificate(
+      String certPath, String certAlias, String trustStoreHome, boolean suppressErrors)
       throws KeyStoreException, CertificateException, IOException, PlatformServiceException {
 
-    log.debug("Trying to update YBA's truststore ...");
+    log.debug("Trying to update YBA truststore ...");
     // Get the existing trust bundle.
     TrustStoreInfo trustStoreInfo = getYbaTrustStoreInfo(trustStoreHome);
     log.debug("Updating truststore {}", trustStoreInfo);
 
-    boolean doesTrustStoreExist = new File(trustStoreInfo.getPath()).exists();
-    KeyStore trustStore = null;
-    if (!doesTrustStoreExist) {
-      File trustStoreFile = new File(trustStoreInfo.getPath());
-      trustStoreFile.createNewFile();
-      log.debug("Created an empty YBA trust-store");
-    }
-
-    trustStore = getTrustStore(trustStoreInfo, trustStorePassword, !doesTrustStoreExist);
+    KeyStore trustStore = getTrustStore(trustStoreInfo, true, true);
     if (trustStore == null) {
       String errMsg = "Truststore cannot be null";
       log.error(errMsg);
@@ -93,17 +91,16 @@ public class YBATrustStoreManager implements TrustStoreManager {
       trustStore.setCertificateEntry(alias, certificates.get(i));
     }
     // Update the trust store in file-system.
-    saveTrustStore(trustStoreInfo, trustStore, trustStorePassword);
+    saveTrustStore(trustStoreInfo, trustStore);
     log.debug(
         "Truststore '{}' now has a certificate with alias '{}'",
         trustStoreInfo.getPath(),
         certAlias);
 
-    // Backup up YBA's pkcs12 trust store in DB.
+    // Backup up YBA trust store in DB.
     FileData.addToBackup(Collections.singletonList(trustStoreInfo.getPath()));
 
-    log.info("Custom CA certificate added in YBA's pkcs12 trust-store");
-    return !doesTrustStoreExist;
+    log.info("Custom CA certificate added in YBA trust-store");
   }
 
   public void replaceCertificate(
@@ -111,14 +108,13 @@ public class YBATrustStoreManager implements TrustStoreManager {
       String newCertPath,
       String certAlias,
       String trustStoreHome,
-      char[] trustStorePassword,
       boolean suppressErrors)
       throws IOException, KeyStoreException, CertificateException {
 
     // Get the existing trust bundle.
     TrustStoreInfo trustStoreInfo = getYbaTrustStoreInfo(trustStoreHome);
-    log.debug("Trying to replace cert {} in YBA's truststore {}", certAlias, trustStoreInfo);
-    KeyStore trustStore = getTrustStore(trustStoreInfo, trustStorePassword, false);
+    log.debug("Trying to replace cert {} in YBA truststore {}", certAlias, trustStoreInfo);
+    KeyStore trustStore = getTrustStore(trustStoreInfo, false, true);
     if (trustStore == null) {
       String errMsg = "Truststore cannot be null";
       log.error(errMsg);
@@ -150,20 +146,19 @@ public class YBATrustStoreManager implements TrustStoreManager {
       String alias = certAlias + "-" + i;
       trustStore.setCertificateEntry(alias, newCertificates.get(i));
     }
-    saveTrustStore(trustStoreInfo, trustStore, trustStorePassword);
+    saveTrustStore(trustStoreInfo, trustStore);
 
-    // Backup up YBA's pkcs12 trust store in DB.
+    // Backup up YBA trust store in DB.
     FileData.addToBackup(Collections.singletonList(trustStoreInfo.getPath()));
 
     log.info(
         "Truststore '{}' updated with new cert at alias '{}'", trustStoreInfo.getPath(), certAlias);
   }
 
-  private void saveTrustStore(
-      TrustStoreInfo trustStoreInfo, KeyStore trustStore, char[] trustStorePassword) {
+  private void saveTrustStore(TrustStoreInfo trustStoreInfo, KeyStore trustStore) {
     if (trustStore != null) {
       try (FileOutputStream storeOutputStream = new FileOutputStream(trustStoreInfo.getPath())) {
-        trustStore.store(storeOutputStream, trustStorePassword);
+        trustStore.store(storeOutputStream, trustStoreInfo.getPassword().toCharArray());
         log.debug("Trust store written to {}", trustStoreInfo.getPath());
       } catch (IOException
           | KeyStoreException
@@ -176,46 +171,36 @@ public class YBATrustStoreManager implements TrustStoreManager {
     }
   }
 
-  protected KeyStore getTrustStore(
-      TrustStoreInfo trustStoreInfo, char[] trustStorePassword, boolean init) {
-    try (FileInputStream storeInputStream = new FileInputStream(trustStoreInfo.getPath())) {
+  protected KeyStore getTrustStore(TrustStoreInfo trustStoreInfo, boolean init, boolean logError) {
+    try {
       KeyStore trustStore = KeyStore.getInstance(trustStoreInfo.getType());
-      if (init) {
-        trustStore.load(null, trustStorePassword);
+      char[] password =
+          trustStoreInfo.getPassword() != null ? trustStoreInfo.getPassword().toCharArray() : null;
+      if (init && !Files.exists(Path.of(trustStoreInfo.getPath()))) {
+        trustStore.load(null, password);
       } else {
-        trustStore.load(storeInputStream, trustStorePassword);
+        try (FileInputStream storeInputStream = new FileInputStream(trustStoreInfo.getPath())) {
+          trustStore.load(storeInputStream, password);
+        }
       }
       return trustStore;
     } catch (IOException | KeyStoreException | NoSuchAlgorithmException | CertificateException e) {
-      String msg =
-          String.format("Failed to get pkcs12 trust store. Error %s", e.getLocalizedMessage());
-      log.error(msg, e);
+      String msg = String.format("Failed to get trust store. Error %s", e.getLocalizedMessage());
+      if (logError) {
+        log.error(msg, e);
+      }
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, msg);
     }
   }
 
-  protected KeyStore getTrustStore(String trustStorePath, char[] trustStorePassword, String type) {
-    KeyStore trustStore = null;
-    try (FileInputStream storeInputStream = new FileInputStream(trustStorePath)) {
-      trustStore = KeyStore.getInstance(type);
-      trustStore.load(storeInputStream, trustStorePassword);
-    } catch (Exception e) {
-      throw new RuntimeException("Couldn't load trust store " + trustStorePath, e);
-    }
-    return trustStore;
-  }
-
+  @Override
   public void remove(
-      String certPath,
-      String certAlias,
-      String trustStoreHome,
-      char[] trustStorePassword,
-      boolean suppressErrors)
+      String certPath, String certAlias, String trustStoreHome, boolean suppressErrors)
       throws KeyStoreException, IOException, CertificateException {
-    log.info("Removing cert {} from YBA's pkcs12 truststore ...", certAlias);
+    log.info("Removing cert {} from YBA truststore ...", certAlias);
 
     TrustStoreInfo trustStoreInfo = getYbaTrustStoreInfo(trustStoreHome);
-    KeyStore trustStore = getTrustStore(trustStoreInfo, trustStorePassword, false);
+    KeyStore trustStore = getTrustStore(trustStoreInfo, false, true);
     List<Certificate> certificates = getX509Certificate(certPath);
     for (int i = 0; i < certificates.size(); i++) {
       String alias = certAlias + "-" + i;
@@ -232,96 +217,178 @@ public class YBATrustStoreManager implements TrustStoreManager {
         trustStore.deleteEntry(alias);
       }
     }
-    saveTrustStore(trustStoreInfo, trustStore, trustStorePassword);
+    saveTrustStore(trustStoreInfo, trustStore);
     log.debug(
         "Truststore '{}' now does not have a CA certificate '{}'",
         trustStoreInfo.getPath(),
         certAlias);
 
-    log.info("Custom CA certs deleted in YBA's pkcs12 truststore");
+    log.info("Custom CA certs deleted from YBA truststore");
   }
 
-  // ------------- methods for Java defaults ----------------
-  private Map<String, String> maybeGetJavaxNetSslTrustStore() {
-    String javaxNetSslTrustStore =
-        runtimeConfGetter.getGlobalConf(GlobalConfKeys.javaxNetSslTrustStore);
-    String javaxNetSslTrustStoreType =
-        runtimeConfGetter.getGlobalConf(GlobalConfKeys.javaxNetSslTrustStoreType);
-    String javaxNetSslTrustStorePassword =
-        runtimeConfGetter.getGlobalConf(GlobalConfKeys.javaxNetSslTrustStorePassword);
-    log.debug(
-        "Javax truststore is: {}, type is: {}", javaxNetSslTrustStore, javaxNetSslTrustStoreType);
-    if (!com.cronutils.utils.StringUtils.isEmpty(javaxNetSslTrustStore)
-        && Files.exists(Paths.get(javaxNetSslTrustStore))) {
-      Map<String, String> javaxNetSslMap = new HashMap<>();
-      javaxNetSslMap.put("path", javaxNetSslTrustStore);
-      if (!com.cronutils.utils.StringUtils.isEmpty(javaxNetSslTrustStoreType)) {
-        javaxNetSslMap.put("type", javaxNetSslTrustStoreType);
+  protected Map<String, String> getJavaDefaultConfig() {
+    TrustStoreInfo info = getJavaTrustStoreInfo();
+    return info.toPlayConfig();
+  }
+
+  protected KeyStore getJavaDefaultKeystore() {
+    TrustStoreInfo info = getJavaTrustStoreInfo();
+    return getTrustStore(info, false, true);
+  }
+
+  public TrustStoreInfo getYbaTrustStoreInfo(String trustStoreHome) {
+    if (ybaTrustStoreInfo != null) {
+      return ybaTrustStoreInfo;
+    }
+    synchronized (this) {
+      if (ybaTrustStoreInfo != null) {
+        return ybaTrustStoreInfo;
       }
-      if (!com.cronutils.utils.StringUtils.isEmpty(javaxNetSslTrustStorePassword)) {
-        javaxNetSslMap.put("password", javaxNetSslTrustStorePassword);
+
+      TrustStoreInfo trustStoreInfo =
+          new TrustStoreInfo(
+              getTrustStorePath(trustStoreHome, BCFKS_TRUSTSTORE_FILE_NAME),
+              KEYSTORE_TYPE_BCFKS,
+              getTruststorePassword());
+
+      String legacyStorePath = getTrustStorePath(trustStoreHome, PKCS12_TRUSTSTORE_FILE_NAME);
+      if (Files.exists(Path.of(legacyStorePath))) {
+        log.info("Legacy truststore file {} exists - converting to BCFKS", legacyStorePath);
+        // Convert it to BCFKS for backward compatibility.
+        List<TrustStoreInfo> candidates =
+            ImmutableList.of(
+                new TrustStoreInfo(
+                    getTrustStorePath(trustStoreHome, PKCS12_TRUSTSTORE_FILE_NAME),
+                    KEYSTORE_TYPE_PKCS12,
+                    getTruststorePassword()),
+                new TrustStoreInfo(
+                    getTrustStorePath(trustStoreHome, PKCS12_TRUSTSTORE_FILE_NAME),
+                    KEYSTORE_TYPE_JKS,
+                    getTruststorePassword()));
+        ImmutablePair<TrustStoreInfo, KeyStore> loadedStore = loadFirstOf(candidates);
+        if (loadedStore == null) {
+          throw new PlatformServiceException(
+              INTERNAL_SERVER_ERROR, "Failed to load legacy keystore file");
+        }
+        KeyStore storeToConvert = loadedStore.getRight();
+        KeyStore convertedStore = getTrustStore(trustStoreInfo, true, true);
+        try {
+          storeToConvert
+              .aliases()
+              .asIterator()
+              .forEachRemaining(
+                  alias -> {
+                    try {
+                      convertedStore.setCertificateEntry(
+                          alias, storeToConvert.getCertificate(alias));
+                    } catch (KeyStoreException e) {
+                      throw new RuntimeException(
+                          "Failed to convert certificate with alias " + alias, e);
+                    }
+                  });
+        } catch (KeyStoreException e) {
+          log.error("Failed to convert keystore to BCFKS format", e);
+          throw new PlatformServiceException(
+              INTERNAL_SERVER_ERROR, "Failed to convert keystore to BCFKS format");
+        }
+        saveTrustStore(trustStoreInfo, convertedStore);
+        try {
+          // Backup up converted YBA trust store in DB and remove legacy from backup.
+          FileData.upsertFileInDB(trustStoreInfo.getPath(), false);
+          File legacyKeystoreFile = new File(loadedStore.getLeft().getPath());
+          File legacyKeystoreBackupFile =
+              new File(getTrustStorePath(trustStoreHome, PKCS12_TRUSTSTORE_CONVERTED_FILE_NAME));
+          FileUtils.moveFile(legacyKeystoreFile, legacyKeystoreBackupFile);
+          FileData.deleteFileFromDB(legacyKeystoreFile.getPath());
+          // Just in case also store backup of old truststore in the DB.
+          FileData.upsertFileInDB(legacyKeystoreBackupFile.getPath(), false);
+        } catch (IOException e) {
+          log.error("Failed to backup converted keystore file {}", trustStoreInfo.getPath(), e);
+          throw new PlatformServiceException(
+              INTERNAL_SERVER_ERROR, "Failed to backup converted keystore file");
+        }
       }
-      return javaxNetSslMap;
+      this.ybaTrustStoreInfo = trustStoreInfo;
+      return ybaTrustStoreInfo;
+    }
+  }
+
+  public TrustStoreInfo getJavaTrustStoreInfo() {
+    if (javaTrustStoreInfo != null) {
+      return javaTrustStoreInfo;
+    }
+    synchronized (this) {
+      if (javaTrustStoreInfo != null) {
+        return javaTrustStoreInfo;
+      }
+
+      List<TrustStoreInfo> candidates = new ArrayList<>();
+
+      // Java looks for trust-store in these files by default in this order.
+      // NOTE: If adding any custom path, we must add the ordered default path as well, if they
+      // exist.
+      String javaxNetSslTrustStore =
+          runtimeConfGetter.getGlobalConf(GlobalConfKeys.javaxNetSslTrustStore);
+      String javaxNetSslTrustStoreType =
+          runtimeConfGetter.getGlobalConf(GlobalConfKeys.javaxNetSslTrustStoreType);
+      String javaxNetSslTrustStorePassword =
+          runtimeConfGetter.getGlobalConf(GlobalConfKeys.javaxNetSslTrustStorePassword);
+      log.debug(
+          "Javax truststore is: {}, type is: {}", javaxNetSslTrustStore, javaxNetSslTrustStoreType);
+      if (StringUtils.isNotEmpty(javaxNetSslTrustStore)
+          && Files.exists(Paths.get(javaxNetSslTrustStore))) {
+        if (StringUtils.isNotEmpty(javaxNetSslTrustStoreType)) {
+          candidates.add(
+              new TrustStoreInfo(
+                  javaxNetSslTrustStore, javaxNetSslTrustStoreType, javaxNetSslTrustStorePassword));
+        } else {
+          // Try both legacy types
+          candidates.add(
+              new TrustStoreInfo(
+                  javaxNetSslTrustStore, KEYSTORE_TYPE_JKS, javaxNetSslTrustStorePassword));
+          candidates.add(
+              new TrustStoreInfo(
+                  javaxNetSslTrustStore, KEYSTORE_TYPE_PKCS12, javaxNetSslTrustStorePassword));
+        }
+      }
+
+      List<String> javaHomePaths = config.getStringList(YB_JAVA_HOME_PATHS);
+      log.debug("Java home certificate paths are {}", javaHomePaths);
+      for (String javaPath : javaHomePaths) {
+        // Try both types - as JVMs can use both in theory
+        candidates.add(new TrustStoreInfo(javaPath, KEYSTORE_TYPE_JKS, null));
+        candidates.add(new TrustStoreInfo(javaPath, KEYSTORE_TYPE_PKCS12, null));
+      }
+
+      ImmutablePair<TrustStoreInfo, KeyStore> loadedStore = loadFirstOf(candidates);
+      if (loadedStore == null) {
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR, "Failed to load java keystore file");
+      }
+      this.javaTrustStoreInfo = loadedStore.getLeft();
+      return javaTrustStoreInfo;
+    }
+  }
+
+  private ImmutablePair<TrustStoreInfo, KeyStore> loadFirstOf(List<TrustStoreInfo> candidates) {
+    for (TrustStoreInfo candidate : candidates) {
+      log.info("Attempting to load truststore {}", candidate);
+      try {
+        if (!Files.exists(Path.of(candidate.getPath()))) {
+          log.warn("Truststore file {} does not exist", candidate);
+          continue;
+        }
+        KeyStore loaded = getTrustStore(candidate, false, false);
+        log.info("Successfully loaded {}", candidate);
+        return ImmutablePair.of(candidate, loaded);
+      } catch (Exception e) {
+        log.warn("Failed to load {}", candidate, e);
+      }
     }
     return null;
   }
 
-  protected Map<String, String> getJavaDefaultConfig() {
-    // Java looks for trust-store in these files by default in this order.
-    // NOTE: If adding any custom path, we must add the ordered default path as well, if they exist.
-    Map<String, String> javaxNetSslMap = maybeGetJavaxNetSslTrustStore();
-    if (javaxNetSslMap != null) {
-      return javaxNetSslMap;
-    }
-
-    Map<String, String> javaSSLConfigMap = new HashMap<>();
-    List<String> javaHomePaths = config.getStringList(YB_JAVA_HOME_PATHS);
-    log.debug("Java home certificate paths are {}", javaHomePaths);
-    for (String javaPath : javaHomePaths) {
-      if (Files.exists(Paths.get(javaPath))) {
-        javaSSLConfigMap.put("path", javaPath);
-        javaSSLConfigMap.put("type", JVM_DEFAULT_KEYSTORE_TYPE); // pkcs12
-      }
-    }
-    log.info("Java SSL config is:{}", javaSSLConfigMap);
-    return javaSSLConfigMap;
-  }
-
-  protected KeyStore getJavaDefaultKeystore() {
-    KeyStore javaStore = null;
-    Map<String, String> javaxNetSslMap = maybeGetJavaxNetSslTrustStore();
-
-    // Java looks for trust-store in these files by default in this order.
-    // NOTE: If adding any custom path, we must add the ordered default path as well, if they exist.
-    if (javaxNetSslMap != null) {
-      javaStore =
-          getTrustStore(
-              javaxNetSslMap.get("path"),
-              javaxNetSslMap.get("password").toCharArray(),
-              JVM_DEFAULT_KEYSTORE_TYPE);
-      return javaStore;
-    }
-
-    List<String> javaHomePaths = config.getStringList(YB_JAVA_HOME_PATHS);
-    log.debug("Java home cert paths are {}", javaHomePaths);
-    for (String javaPath : javaHomePaths) {
-      if (Files.exists(Paths.get(javaPath))) {
-        javaStore = getTrustStore(javaPath, null, "JKS");
-        break;
-      }
-    }
-    return javaStore;
-  }
-
-  public TrustStoreInfo getYbaTrustStoreInfo(String trustStoreHome) {
-    // Get the existing trust bundle.
-    String trustStorePath = getTrustStorePath(trustStoreHome, PKCS12_TRUSTSTORE_FILE_NAME);
-    if (Files.exists(Path.of(trustStorePath))) {
-      // PKSC12 bundle for backward compatibility
-      return new TrustStoreInfo(trustStorePath, "PKCS12");
-    }
-    // BCFKS bundle for fresh installed YBAs to simplify FIPS migration
-    return new TrustStoreInfo(
-        getTrustStorePath(trustStoreHome, BCFKS_TRUSTSTORE_FILE_NAME), "BCFKS");
+  private String getTruststorePassword() {
+    return "global-truststore-password";
   }
 }

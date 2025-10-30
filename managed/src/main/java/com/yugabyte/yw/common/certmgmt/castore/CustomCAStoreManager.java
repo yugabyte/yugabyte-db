@@ -55,7 +55,6 @@ public class CustomCAStoreManager {
 
     boolean suppressErrors = false;
     UUID certId = UUID.randomUUID();
-    char[] trustStorePassword = getTruststorePassword();
     log.info("Uploading custom CA certificate => name: '{}', customerId: '{}'", name, customerId);
 
     List<TrustStoreManager> trustStoreManagersToRollback = new ArrayList<>();
@@ -74,7 +73,7 @@ public class CustomCAStoreManager {
       CertificateHelper.writeCertBundleToCertPath(x509CACerts, certPath);
       log.debug("CA certificate {} written to local filesystem and DB", certId);
       for (TrustStoreManager caMgr : trustStoreManagers) {
-        caMgr.addCertificate(certPath, name, trustStoreHome, trustStorePassword, suppressErrors);
+        caMgr.addCertificate(certPath, name, trustStoreHome, suppressErrors);
         trustStoreManagersToRollback.add(caMgr);
       }
 
@@ -96,7 +95,7 @@ public class CustomCAStoreManager {
         boolean deleted = CustomCaCertificateInfo.delete(customerId, certId);
         log.debug(deleted ? "DB rolled back" : "Nothing to rollback in DB");
         for (TrustStoreManager tsm : trustStoreManagersToRollback) {
-          tsm.remove(certPath, name, trustStoreHome, trustStorePassword, suppressErrors);
+          tsm.remove(certPath, name, trustStoreHome, suppressErrors);
         }
         log.debug("Rolled back runtime trust-stores");
         purge(new File(certPath).getParentFile());
@@ -108,7 +107,6 @@ public class CustomCAStoreManager {
     }
 
     notifyListeners();
-    log.debug("All trust-store listeners notified");
 
     return certId;
   }
@@ -157,7 +155,6 @@ public class CustomCAStoreManager {
     UUID newCertId = null;
     String newCertPath = null;
     boolean suppressErrors = false;
-    char[] truststorePassword = getTruststorePassword();
     List<TrustStoreManager> trustStoreManagersToRollback = new ArrayList<>();
     try {
       List<X509Certificate> newX509CACerts = getCertChain(customerId, name, newCertContents);
@@ -167,7 +164,7 @@ public class CustomCAStoreManager {
 
       for (TrustStoreManager caStoreManager : trustStoreManagers) {
         caStoreManager.replaceCertificate(
-            oldCertPath, newCertPath, name, trustStoreHome, truststorePassword, suppressErrors);
+            oldCertPath, newCertPath, name, trustStoreHome, suppressErrors);
         trustStoreManagersToRollback.add(caStoreManager);
       }
       log.debug("Replaced on all runtime trust-stores");
@@ -195,13 +192,7 @@ public class CustomCAStoreManager {
       suppressErrors = true; // Rollback errors need not be reported to user.
       try {
         for (TrustStoreManager tSM : trustStoreManagersToRollback) {
-          tSM.replaceCertificate(
-              newCertPath,
-              oldCertPath,
-              name,
-              trustStoreHome,
-              getTruststorePassword(),
-              suppressErrors);
+          tSM.replaceCertificate(newCertPath, oldCertPath, name, trustStoreHome, suppressErrors);
         }
         log.debug("Rolled back all runtime trust-stores");
 
@@ -233,7 +224,6 @@ public class CustomCAStoreManager {
     }
 
     notifyListeners();
-    log.debug("All trust-store listeners notified");
 
     return newCertId;
   }
@@ -249,12 +239,11 @@ public class CustomCAStoreManager {
 
     boolean deleted = false;
     boolean suppressErrors = false;
-    char[] truststorePassword = getTruststorePassword();
     List<TrustStoreManager> trustStoreManagersToRollback = new ArrayList<>();
 
     try {
       for (TrustStoreManager caMgr : trustStoreManagers) {
-        caMgr.remove(certPath, cert.getName(), trustStoreHome, truststorePassword, suppressErrors);
+        caMgr.remove(certPath, cert.getName(), trustStoreHome, suppressErrors);
         trustStoreManagersToRollback.add(caMgr);
       }
       log.debug("Removed from all runtime trust-stores");
@@ -271,8 +260,7 @@ public class CustomCAStoreManager {
       try {
         suppressErrors = true;
         for (TrustStoreManager tSM : trustStoreManagersToRollback) {
-          tSM.addCertificate(
-              certPath, cert.getName(), trustStoreHome, truststorePassword, suppressErrors);
+          tSM.addCertificate(certPath, cert.getName(), trustStoreHome, suppressErrors);
         }
       } catch (Exception ex) {
         log.warn("Cannot complete rollback delete operation due to: ", ex);
@@ -291,7 +279,6 @@ public class CustomCAStoreManager {
     log.info("Deleted CA certificate {}", certId);
 
     notifyListeners();
-    log.debug("All trust-store listeners notified");
 
     return deleted;
   }
@@ -322,12 +309,12 @@ public class CustomCAStoreManager {
         Map<String, String> trustStoreMap = new HashMap<>();
         trustStoreMap.put("path", javaTrustStorePathStr);
         trustStoreMap.put("type", trustStoreInfo.getType());
-        trustStoreMap.put("password", new String(getTruststorePassword()));
+        trustStoreMap.put("password", trustStoreInfo.getPassword());
         ybaJavaKeyStoreConfig.add(trustStoreMap);
       }
     }
 
-    log.debug("YBA's custom java trust store config is {}", ybaJavaKeyStoreConfig);
+    log.debug("YBA custom java trust store config is {}", ybaJavaKeyStoreConfig);
     return ybaJavaKeyStoreConfig;
   }
 
@@ -340,10 +327,7 @@ public class CustomCAStoreManager {
       // Truststore file is not created yet.
       return null;
     }
-    KeyStore pkcs12Store =
-        ybaTrustStoreManager.getTrustStore(
-            trustStoreInfo.getPath(), getTruststorePassword(), trustStoreInfo.getType());
-    return pkcs12Store;
+    return ybaTrustStoreManager.getTrustStore(trustStoreInfo, false, true);
   }
 
   public KeyStore getYbaAndJavaKeyStore() {
@@ -360,7 +344,7 @@ public class CustomCAStoreManager {
         }
       }
     } catch (KeyStoreException e) {
-      log.error("Failed to get aliases from YBA's custom keystore", e);
+      log.error("Failed to get aliases from YBA custom keystore", e);
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getLocalizedMessage());
     }
     return ybaJavaKeyStore;
@@ -424,11 +408,6 @@ public class CustomCAStoreManager {
         });
   }
 
-  private char[] getTruststorePassword() {
-    // TODO: remove hard coded password.
-    return "global-truststore-password".toCharArray();
-  }
-
   public boolean isEnabled() {
     return true;
   }
@@ -442,6 +421,7 @@ public class CustomCAStoreManager {
     for (CustomTrustStoreListener listener : trustStoreListeners) {
       listener.truststoreUpdated();
     }
+    log.debug("All trust-store listeners notified");
   }
 
   public boolean areCustomCAsPresent() {
