@@ -375,6 +375,7 @@ struct PGConnSettings {
   std::string password = {};
   std::string replication = {};
   size_t connect_timeout = 0;
+  bool yb_auto_analyze = false;
 };
 
 class PGConnBuilder {
@@ -408,7 +409,8 @@ class PGConnPerf {
 // authentication).
 PGConnBuilder CreateInternalPGConnBuilder(
     const HostPort& pgsql_proxy_bind_address, const std::string& database_name,
-    uint64_t postgres_auth_key, const std::optional<CoarseTimePoint>& deadline);
+    uint64_t postgres_auth_key, const std::optional<CoarseTimePoint>& deadline,
+    bool yb_auto_analyze = false);
 
 Result<std::string> ResultAsString(
     PGresult* res, const std::string& column_sep = DefaultColumnSeparator(),

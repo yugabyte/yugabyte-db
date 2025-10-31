@@ -711,7 +711,7 @@ Status TabletServer::RegisterServices() {
                                 const CoarseTimePoint& deadline) {
       return pgwrapper::CreateInternalPGConnBuilder(pgsql_proxy_bind_address(), database_name,
                                                     GetSharedMemoryPostgresAuthKey(),
-                                                    deadline).Connect();
+                                                    deadline, true).Connect();
     };
     auto pg_auto_analyze_service =
         std::make_shared<stateful_service::PgAutoAnalyzeService>(metric_entity(), client_future(),

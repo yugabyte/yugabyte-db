@@ -72,6 +72,7 @@ typedef struct {
   const bool*     ysql_enable_scram_channel_binding;
   const uint32_t* TEST_ysql_conn_mgr_auth_delay_ms;
   const bool*     ysql_enable_relcache_init_optimization;
+  const bool*     TEST_ysql_bypass_auto_analyze_auth_check;
 } YbcPgGFlagsAccessor;
 
 const YbcPgGFlagsAccessor* YBCGetGFlags();
