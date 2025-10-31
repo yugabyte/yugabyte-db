@@ -181,6 +181,7 @@ public class SessionController extends AbstractPlatformController {
   }
 
   @ApiOperation(
+      notes = "Available since YBA version 2.20.0.",
       nickname = "getSessionInfo",
       value =
           "Get current user and customer uuid. This will not generate or return the API token, use"
@@ -188,6 +189,7 @@ public class SessionController extends AbstractPlatformController {
       authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH),
       response = SessionInfo.class)
   @With(TokenAuthenticator.class)
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.20.0")
   @AuthzPath
   public Result getSessionInfo(Http.Request request) {
     Users user = CommonUtils.getUserFromContext();

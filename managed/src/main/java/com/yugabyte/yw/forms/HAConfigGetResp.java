@@ -1,6 +1,7 @@
 /* Copyright 2024 YugabyteDB, Inc. and Contributors */
 package com.yugabyte.yw.forms;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.common.HaConfigStates.GlobalState;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
@@ -30,8 +31,9 @@ public class HAConfigGetResp {
     return haConfig.getClusterKey();
   }
 
-  @ApiModelProperty(value = "HA last failover")
+  @ApiModelProperty(value = "HA last failover", example = "2022-12-12T13:07:18Z")
   @JsonProperty("last_failover")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   public Date getLastFailover() {
     return haConfig.getLastFailover();
   }
