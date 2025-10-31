@@ -185,7 +185,7 @@ DROP TABLE test_method;
 
 CREATE TABLE sample (h int primary key);
 INSERT INTO sample VALUES (24), (262095);
-SELECT * FROM sample WHERE h in (24, 262095) ORDER BY h;
+SELECT * FROM sample WHERE h = ANY('{{{24, 101}, {911, 262095}}}') ORDER BY h;
 DROP TABLE sample;
 
 CREATE TABLE in_with_single_asc_key (r INT, v INT, PRIMARY KEY(r ASC)) SPLIT AT VALUES((100));
