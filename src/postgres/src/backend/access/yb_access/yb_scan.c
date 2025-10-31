@@ -1821,7 +1821,6 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 					  ARR_ELEMTYPE(arrayval),
 					  elmlen, elmbyval, elmalign,
 					  &elem_values, &elem_nulls, &num_elems);
-	Assert(ARR_NDIM(arrayval) <= 2);
 
 	/*
 	 * Compress out any null elements.  We can ignore them since we assume
