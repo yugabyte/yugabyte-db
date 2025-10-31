@@ -361,6 +361,7 @@ Result<ApplyTransactionState> GetIntentsBatchForCDC(
     const TransactionId& transaction_id,
     const KeyBounds* key_bounds,
     const ApplyTransactionState* stream_state,
+    const SubtxnSet& aborted,
     rocksdb::DB* intents_db,
     std::vector<IntentKeyValueForCDC>* key_value_intents) {
   KeyBytes txn_reverse_index_prefix;
@@ -448,6 +449,13 @@ Result<ApplyTransactionState> GetIntentsBatchForCDC(
             write_id = decoded_value.write_id;
 
             if (decoded_value.body.starts_with(dockv::ValueEntryTypeAsChar::kRowLock)) {
+              reverse_index_iter.Next();
+              continue;
+            }
+
+            // Skip intents from aborted subtransactions (Ex: From rolled-back savepoints).
+            // These writes were never committed and should not be streamed to CDC.
+            if (aborted.Test(decoded_value.subtransaction_id)) {
               reverse_index_iter.Next();
               continue;
             }
