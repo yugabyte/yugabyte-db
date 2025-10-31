@@ -2129,6 +2129,7 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 	char	   *yb_auth_backend_remote_host = NULL;
 	char		yb_logical_conn_type = 'U'; /* Unencrypted */
 	bool		yb_logical_conn_type_provided = false;
+	bool		yb_auto_analyze_backend = false;
 
 	pq_startmsgread();
 
@@ -2426,6 +2427,17 @@ retry1:
 				yb_logical_conn_type = *pstrdup(valptr);
 				yb_logical_conn_type_provided = true;
 			}
+			else if (YBIsEnabledInPostgresEnvVar()
+					 && strcmp(nameptr, "yb_auto_analyze") == 0)
+			{
+				if (!parse_bool(valptr, &yb_auto_analyze_backend))
+					ereport(FATAL,
+							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							 errmsg("invalid value for parameter \"%s\": \"%s\"",
+									"yb_auto_analyze",
+									valptr),
+							 errhint("Valid values are: \"false\", 0, \"true\", 1.")));
+			}
 			else if (strncmp(nameptr, "_pq_.", 5) == 0)
 			{
 				/*
@@ -2559,6 +2571,8 @@ retry1:
 
 	if (am_walsender)
 		MyBackendType = B_WAL_SENDER;
+	else if (yb_auto_analyze_backend)
+		MyBackendType = YB_AUTO_ANALYZE_BACKEND;
 	else
 		MyBackendType = B_BACKEND;
 

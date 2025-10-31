@@ -361,6 +361,7 @@ typedef enum BackendType
 	B_LOGGER,
 	YB_YSQL_CONN_MGR,
 	YB_YSQL_CONN_MGR_WAL_SENDER,
+	YB_AUTO_ANALYZE_BACKEND,
 } BackendType;
 
 extern PGDLLIMPORT BackendType MyBackendType;

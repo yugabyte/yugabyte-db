@@ -122,6 +122,10 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_relcache_init_optimization, true,
     "disconnected. Instead an internal super user connection is made to perform the "
     "relcache init file rebuild.");
 
+DEFINE_test_flag(bool, ysql_bypass_auto_analyze_auth_check, false,
+    "Bypass the yb-tserver-key authentication method check when connecting using "
+    "yb_auto_analyze backend type.");
+
 DECLARE_bool(ysql_enable_colocated_tables_with_tablespaces);
 DECLARE_bool(TEST_ysql_enable_db_logical_client_version_mode);
 DECLARE_bool(TEST_ysql_yb_enable_ddl_savepoint_support);
@@ -236,7 +240,8 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_enable_relcache_init_optimization = &FLAGS_ysql_enable_relcache_init_optimization,
       .placement_cloud = FLAGS_placement_cloud.c_str(),
       .placement_region = FLAGS_placement_region.c_str(),
-      .placement_zone = FLAGS_placement_zone.c_str()
+      .placement_zone = FLAGS_placement_zone.c_str(),
+      .TEST_ysql_bypass_auto_analyze_auth_check = &FLAGS_TEST_ysql_bypass_auto_analyze_auth_check,
   };
   // clang-format on
   return &accessor;

@@ -36,6 +36,7 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/logging_test_util.h"
+#include "yb/util/pg_util.h"
 #include "yb/util/string_case.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
@@ -1403,6 +1404,61 @@ TEST_F(PgConcurrentDDLAnalyzeTest, ConcurrentDDLWithinTxnAnalyze) {
     ASSERT_OK(conn2.Execute("ALTER TABLE test4 ADD COLUMN v2 INT"));
     ASSERT_OK(conn2.Execute("COMMIT"));
     thread_holder.JoinAll();
+}
+
+class PgConcurrentCreateIndexTest : public PgConcurrentDDLAnalyzeTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.emplace_back(
+            "--ysql_yb_wait_for_backends_catalog_version_timeout=5000");
+    options->extra_tserver_flags.emplace_back(
+            "--wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms=1000");
+    options->extra_tserver_flags.emplace_back(
+            "--TEST_ysql_bypass_auto_analyze_auth_check=true");
+    PgConcurrentDDLAnalyzeTest::UpdateMiniClusterOptions(options);
+  }
+};
+
+TEST_F(PgConcurrentCreateIndexTest, ConcurrentCreateIndex) {
+    auto* ts1 = cluster_->tserver_daemons()[0];
+    auto* ts2 = cluster_->tserver_daemons()[1];
+    // Set the read buffer memory limit so that we can successfully establish a connection, but
+    // fail ANALYZEing a table with large primary keys.
+    ts2->AddExtraFlag("read_buffer_memory_limit", "4000000");
+    // Shutdown() is needed before calling Restart().
+    ts2->Shutdown();
+    ASSERT_OK(ts2->Restart());
+    auto conn1 = ASSERT_RESULT(PGConnBuilder({
+      .host = ts1->bind_host(),
+      .port = ts1->ysql_port(),
+    }).Connect());
+    auto conn2 = ASSERT_RESULT(PGConnBuilder({
+      .host = PgDeriveSocketDir(HostPort(ts2->bind_host(), ts2->ysql_port())),
+      .port = ts2->ysql_port(),
+      .user = "yugabyte",
+      .yb_auto_analyze = true,
+    }).Connect());
+
+    ASSERT_OK(conn1.Execute("CREATE TABLE test (k TEXT PRIMARY KEY)"));
+    ASSERT_OK(conn1.Execute("INSERT INTO test SELECT repeat('abcdefg', 100) || '-' || s::TEXT "
+                            "FROM generate_series(1, 10000) AS s"));
+    TestThreadHolder thread_holder;
+    CountDownLatch latch{1};
+    thread_holder.AddThreadFunctor([&conn2, &latch]() -> void {
+        const auto backend_type =
+            ASSERT_RESULT(conn2.FetchRow<std::string>("SELECT backend_type FROM pg_stat_activity "
+                                                       "WHERE pid = pg_backend_pid()"));
+        ASSERT_EQ(backend_type, "yb auto analyze backend");
+        ASSERT_OK(conn2.Execute("SET yb_use_internal_auto_analyze_service_conn=true"));
+        latch.CountDown();
+        auto status = conn2.Execute("ANALYZE test");
+    });
+    // Wait for ANALYZE starts and hangs in conn2.
+    latch.Wait();
+    std::this_thread::sleep_for(3s);
+    ASSERT_OK(conn1.Execute("CREATE INDEX idx ON test(k)"));
+    // TODO(#28915): Force shutdown of ts2 because ANALYZE hangs.
+    ts2->Shutdown(SafeShutdown::kFalse);
 }
 
 class PgConcurrentDDLAnalyzeTestTxnDDL : public PgConcurrentDDLAnalyzeTest {
