@@ -64,6 +64,7 @@ typedef struct YbcRpczEntry {
   char *backend_status;
   char *host;
   char *port;
+  int64 pss_mem_bytes;
 } YbcRpczEntry;
 
 typedef struct {
