@@ -44,6 +44,8 @@
 #include <boost/optional.hpp>
 
 #include "yb/gutil/ref_counted.h"
+
+#include "yb/util/enums.h"
 #include "yb/util/high_water_mark.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
@@ -313,13 +315,22 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   // TcMalloc holds onto released memory and very slowly (if ever) releases it back to
   // the OS. This is problematic since it is memory we are not constantly tracking which
   // can cause us to go way over mem limits.
-  static void GcTcmallocIfNeeded();
+  // Returns whether we've really attempted to do GC.
+  static bool GcTcmallocIfNeeded();
 
   // Tries to update consumption from external source.
-  // Returns true if consumption was updated, false otherwise.
+  // For example, for root mem tracker such external source is totally allocated bytes info from
+  // TCMalloc statistics.
   //
-  // Currently it uses totally allocated bytes by tcmalloc for root mem tracker when available.
-  bool UpdateConsumption(bool force = false);
+  // Possible return values:
+  // - true  - if mem tracker has external source and consumption was updated.
+  // - false - if mem tracker has no external source OR update was skipped (for example, only
+  //           periodic update is allowed due to perf reasons).
+  bool MaybeUpdateConsumption(bool force = false);
+
+  bool HasExternalSource() {
+    return consumption_functor_ ? true : false;
+  }
 
   // Increases consumption of this tracker and its ancestors by 'bytes'.
   void Consume(int64_t bytes);
@@ -381,7 +392,7 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   }
 
   int64_t GetUpdatedConsumption(bool force = false) {
-    UpdateConsumption(force);
+    MaybeUpdateConsumption(force);
     return consumption();
   }
 
@@ -463,6 +474,12 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
       CreateMetrics create_metrics,
       const std::string& metric_name);
 
+  bool ShouldForceUpdateConsumption() const;
+  void IncrementBy(int64_t amount);
+  bool TryIncrementBy(int64_t amount);
+  void DoUpdateConsumption();
+  void IncrementMetricBy(int64_t amount);
+
   // Variant of FindTracker() that:
   // 1. Must be called with a non-NULL parent, and
   // 2. Must be called with parent->child_trackers_lock_ held.
@@ -477,6 +494,8 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   const std::string descr_;
   std::shared_ptr<MemTracker> parent_;
   CoarseTimePoint next_consumption_update_ = CoarseTimePoint::min();
+  std::atomic<int64_t> consumption_lower_bound_for_update_;
+  std::atomic<int64_t> consumption_upper_bound_for_update_;
 
   class TrackerMetrics;
   std::unique_ptr<TrackerMetrics> metrics_;
