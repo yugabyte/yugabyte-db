@@ -5691,7 +5691,7 @@ static struct config_real ConfigureNamesReal[] =
 			GUC_EXPLAIN
 		},
 		&parallel_tuple_cost,
-		DEFAULT_PARALLEL_TUPLE_COST, 0, DBL_MAX,
+		YB_DEFAULT_PARALLEL_TUPLE_COST, 0, DBL_MAX,	/* YB: change default */
 		NULL, NULL, NULL
 	},
 	{
@@ -5702,7 +5702,7 @@ static struct config_real ConfigureNamesReal[] =
 			GUC_EXPLAIN
 		},
 		&parallel_setup_cost,
-		DEFAULT_PARALLEL_SETUP_COST, 0, DBL_MAX,
+		YB_DEFAULT_PARALLEL_SETUP_COST, 0, DBL_MAX,	/* YB: change default */
 		NULL, NULL, NULL
 	},
 	{
