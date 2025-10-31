@@ -330,9 +330,9 @@ static void JsonOutputMemTrackers(const std::vector<MemTrackerData>& trackers,
     jw.String("peak_consumption_bytes");
     jw.Int64(tracker->peak_consumption());
 
-    // UpdateConsumption returns true if consumption is taken from external source,
-    // for instance tcmalloc stats. So we should show only it in this case.
-    if (data.consumption_excluded_from_ancestors && !data.tracker->UpdateConsumption()) {
+    // Only show consumption_excluded_from_ancestors for mem trackers whose consumption is NOT taken
+    // from an external source (for instance tcmalloc stats).
+    if (data.consumption_excluded_from_ancestors && !data.tracker->HasExternalSource()) {
       jw.String("full_consumption_bytes");
       jw.Int64(tracker->consumption() + data.consumption_excluded_from_ancestors);
     }
@@ -402,14 +402,14 @@ static void HtmlOutputMemTrackers(const std::vector<MemTrackerData>& trackers,
       *output << "    <td>" << tracker_id << "</td>";
     }
 
-    // UpdateConsumption returns true if consumption is taken from external source,
-    // for instance tcmalloc stats. So we should show only it in this case.
-    if (!data.consumption_excluded_from_ancestors || data.tracker->UpdateConsumption()) {
-      *output << Format("<td>$0</td>", current_consumption_str);
-    } else {
+    // Only show consumption_excluded_from_ancestors for mem trackers whose consumption is NOT taken
+    // from an external source (for instance tcmalloc stats).
+    if (data.consumption_excluded_from_ancestors && !data.tracker->HasExternalSource()) {
       auto full_consumption_str = HumanReadableNumBytes::ToString(
           tracker->consumption() + data.consumption_excluded_from_ancestors);
       *output << Format("<td>$0 ($1)</td>", current_consumption_str, full_consumption_str);
+    } else {
+      *output << Format("<td>$0</td>", current_consumption_str);
     }
     *output << Format("<td>$0</td><td>$1</td>\n", peak_consumption_str, limit_str);
     *output << "  </tr>\n";
