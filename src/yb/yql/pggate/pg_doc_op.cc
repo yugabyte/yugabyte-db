@@ -936,6 +936,14 @@ const std::vector<const LWQLValuePB*>& InPermutationGenerator::NextPermutation()
   return current_permutation_;
 }
 
+void InPermutationGenerator::Reset() {
+  done_ = false;
+  current_permutation_.assign(current_permutation_.size(), nullptr);
+  for (auto& expr : source_exprs_) {
+    expr.ResetPos();
+  }
+}
+
 void InPermutationGenerator::Next() {
   DCHECK(!done_);
   for (auto& expr : source_exprs_) {
@@ -1308,22 +1316,31 @@ InPermutationGenerator PgDocReadOp::InitializeHashPermutationStates() {
 }
 
 Result<bool> PgDocReadOp::PopulateNextHashPermutationOps() {
+  // Create permutation state, if it does not exist.
+  // We keep permutation state between batches, but need operations cleanup
+  // Permutations and operations are reset between parallel ranges, in this case we need to clone
+  // a new set of operations.
   if (!hash_permutations_) {
     hash_permutations_.emplace(InitializeHashPermutationStates());
+  } else {
+    ResetInactivePgsqlOps();
+  }
+  // Continue with operations if any are still in flight
+  if (active_op_count_ > 0) {
+    return false;
+  }
+
+  // Setup arena to control memory footprint
+  if (!pgsql_op_arena_) {
+    pgsql_op_arena_ = SharedThreadSafeArena();
+  }
+  // Setup operations
+  if (pgsql_ops_.empty()) {
     auto max_op_count = std::min(hash_permutations_->Size(),
                                  IsHashBatchingEnabled() ?
                                      table_->GetPartitionListSize() :
                                      implicit_cast<size_t>(FLAGS_ysql_request_limit));
-    DCHECK(!pgsql_op_arena_);
-    DCHECK(pgsql_ops_.empty());
-    pgsql_op_arena_ = SharedThreadSafeArena();
     ClonePgsqlOps(max_op_count);
-  } else {
-    ResetInactivePgsqlOps();
-    // Continue with operations still in flight
-    if (active_op_count_ > 0) {
-      return false;
-    }
   }
   if (IsHashBatchingEnabled()) {
     const auto batch_count = table_->GetPartitionList();
@@ -1642,6 +1659,9 @@ Status PgDocReadOp::ResetPgsqlOps() {
   pgsql_ops_.clear();
   if (pgsql_op_arena_) {
     pgsql_op_arena_->Reset(ResetMode::kKeepLast);
+  }
+  if (hash_permutations_) {
+    hash_permutations_->Reset();
   }
   request_population_completed_ = false;
   return Status::OK();
