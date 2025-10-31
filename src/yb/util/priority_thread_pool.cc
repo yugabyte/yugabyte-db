@@ -455,7 +455,7 @@ class PriorityThreadPoolTokenContext {
 class PriorityThreadPoolToken::Impl : public PriorityThreadPoolTokenContext {
  public:
   ~Impl();
-  explicit Impl(PriorityThreadPool& pool);
+  Impl(PriorityThreadPool& pool, size_t max_concurrency);
 
   bool UpdateTaskPriority(size_t serial_no);
   bool PrioritizeTask(size_t serial_no);
@@ -1201,8 +1201,8 @@ std::mutex* PriorityThreadPool::TEST_mutex() {
 // PriorityThreadPoolToken::Impl
 // ------------------------------------------------------------------------------------------------
 
-PriorityThreadPoolToken::Impl::Impl(PriorityThreadPool& pool)
-    : pool_(pool), pool_ticket_(pool_.ticket()) {
+PriorityThreadPoolToken::Impl::Impl(PriorityThreadPool& pool, size_t max_concurrency)
+    : pool_(pool), pool_ticket_(pool_.ticket()), max_concurency_(max_concurrency) {
   LOG(INFO) << "PriorityThreadPoolToken created: " << AsString(this);
 }
 
@@ -1438,8 +1438,8 @@ void PriorityThreadPoolTokenTask::Execute(
 
 PriorityThreadPoolToken::~PriorityThreadPoolToken() = default;
 
-PriorityThreadPoolToken::PriorityThreadPoolToken(PriorityThreadPool& pool)
-    : impl_(new Impl(pool)) {
+PriorityThreadPoolToken::PriorityThreadPoolToken(PriorityThreadPool& pool, size_t max_concurrency)
+    : impl_(new Impl(pool, max_concurrency)) {
 }
 
 bool PriorityThreadPoolToken::UpdateTaskPriority(size_t serial_no) {

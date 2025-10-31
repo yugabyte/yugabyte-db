@@ -137,12 +137,12 @@ bool TEST_block_after_backfilling_first_vector_index_chunks = false;
 TabletVectorIndexes::TabletVectorIndexes(
     Tablet* tablet,
     const VectorIndexThreadPoolProvider& thread_pool_provider,
-    const VectorIndexPriorityThreadPoolProvider& priority_thread_pool_provider,
+    const VectorIndexCompactionTokenProvider& compaction_token_provider,
     const hnsw::BlockCachePtr& block_cache,
     MetricRegistry* metric_registry)
     : TabletComponent(tablet),
       thread_pool_provider_(thread_pool_provider),
-      priority_thread_pool_provider_(priority_thread_pool_provider),
+      compaction_token_provider_(compaction_token_provider),
       block_cache_(block_cache),
       mem_tracker_(MemTracker::CreateTracker(-1, "vector_indexes", tablet->mem_tracker())),
       metric_registry_(metric_registry) {
@@ -202,8 +202,7 @@ Status TabletVectorIndexes::DoCreateIndex(
     return docdb::DocVectorIndexThreadPools {
         .thread_pool = thread_pool_provider_(VectorIndexThreadPoolType::kBackground),
         .insert_thread_pool = thread_pool_provider_(VectorIndexThreadPoolType::kInsert),
-        .compaction_thread_pool =
-            priority_thread_pool_provider_(VectorIndexPriorityThreadPoolType::kCompaction),
+        .compaction_token = compaction_token_provider_(),
     };
   };
 

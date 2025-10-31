@@ -777,7 +777,7 @@ Tablet::Tablet(const TabletInitData& data)
   vector_indexes_ = std::make_unique<TabletVectorIndexes>(
       this,
       data.vector_index_thread_pool_provider,
-      data.vector_index_priority_thread_pool_provider,
+      data.vector_index_compaction_token_provider,
       data.vector_index_block_cache,
       data.metric_registry);
 
