@@ -4633,5 +4633,68 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestExplcictCheckpointMovementAft
   ASSERT_GT(new_checkpoint.index, old_checkpoint.index);
 }
 
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCDCWithSavePoint) {
+  ASSERT_OK(SetUpWithParams(
+    1 /* rf */, 1 /* num_masters */, false /* colocated */,
+    true /* cdc_populate_safepoint_record */));
+
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr /* partition_list_version */));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (1, 1)"));
+  ASSERT_OK(conn.Execute("SAVEPOINT sp1"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (2, 2)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (3, 3)"));
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT sp1"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (2, 2)"));
+  ASSERT_OK(conn.Execute("END"));
+
+  ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}));
+  auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+
+  // We should get BEGIN + insert 1 + insert 4 + COMMIT.
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 4);
+
+  // Multiple rollback to savepoints.
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (3, 3)"));
+  ASSERT_OK(conn.Execute("SAVEPOINT sp1"));
+  ASSERT_OK(conn.Execute("SAVEPOINT sp2"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (4, 4)"));
+  ASSERT_OK(conn.Execute("SAVEPOINT sp3"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (5, 5)"));
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT sp3"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (5, 5)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (6, 6)"));
+  ASSERT_OK(conn.Execute("RELEASE SAVEPOINT sp2"));
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT sp1"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (5, 5)"));
+  ASSERT_OK(conn.Execute("END"));
+
+  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+
+  // We should get BEGIN + insert 1 + insert 6 + COMMIT
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 4);
+
+  // No rows present post rollback to savepoint.
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("SAVEPOINT sp1"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (6, 6)"));
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT sp1"));
+  ASSERT_OK(conn.Execute("END"));
+
+  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+
+  // We should get BEGIN + COMMIT
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 2);
+}
 }  // namespace cdc
 }  // namespace yb

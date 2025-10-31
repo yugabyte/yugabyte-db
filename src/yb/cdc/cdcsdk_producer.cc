@@ -1820,6 +1820,7 @@ void FillCommitRecord(
 Status ProcessIntents(
     const OpId& op_id,
     const TransactionId& transaction_id,
+    const SubtxnSet& aborted,
     const StreamMetadata& metadata,
     const EnumOidLabelMap& enum_oid_label_map,
     const CompositeAttsMap& composite_atts_map,
@@ -1841,7 +1842,8 @@ Status ProcessIntents(
     FillBeginRecord(transaction_id, commit_time, resp, throughput_metrics);
   }
 
-  RETURN_NOT_OK(tablet->GetIntentsForCDC(transaction_id, keyValueIntents, stream_state));
+  RETURN_NOT_OK(tablet->GetIntentsForCDC(transaction_id, aborted, keyValueIntents,
+    stream_state));
   VLOG(1) << "The size of intentKeyValues for transaction id: " << transaction_id
           << ", with apply record op_id : " << op_id << ", is: " << (*keyValueIntents).size();
 
@@ -1896,9 +1898,10 @@ Status ProcessIntents(
   return Status::OK();
 }
 
-Status PrcoessIntentsWithInvalidSchemaRetry(
+Status ProcessIntentsWithInvalidSchemaRetry(
     const OpId& op_id,
     const TransactionId& transaction_id,
+    const SubtxnSet& aborted,
     const StreamMetadata& metadata,
     const EnumOidLabelMap& enum_oid_label_map,
     const CompositeAttsMap& composite_atts_map,
@@ -1917,9 +1920,9 @@ Status PrcoessIntentsWithInvalidSchemaRetry(
   const auto& records_size_before = resp->cdc_sdk_proto_records_size();
 
   auto status = ProcessIntents(
-      op_id, transaction_id, metadata, enum_oid_label_map, composite_atts_map, request_source, resp,
-      consumption, checkpoint, tablet_peer, keyValueIntents, stream_state, client,
-      cached_schema_details, schema_packing_storages, commit_time, throughput_metrics);
+      op_id, transaction_id, aborted, metadata, enum_oid_label_map, composite_atts_map,
+      request_source, resp, consumption, checkpoint, tablet_peer, keyValueIntents, stream_state,
+      client, cached_schema_details, schema_packing_storages, commit_time, throughput_metrics);
 
   if (!status.ok()) {
     VLOG_WITH_FUNC(1) << "Received error status: " << status.ToString()
@@ -1941,9 +1944,9 @@ Status PrcoessIntentsWithInvalidSchemaRetry(
     }
 
     status = ProcessIntents(
-        op_id, transaction_id, metadata, enum_oid_label_map, composite_atts_map, request_source,
-        resp, consumption, checkpoint, tablet_peer, keyValueIntents, stream_state, client,
-        cached_schema_details, schema_packing_storages, commit_time, throughput_metrics);
+        op_id, transaction_id, aborted, metadata, enum_oid_label_map, composite_atts_map,
+        request_source, resp, consumption, checkpoint, tablet_peer, keyValueIntents, stream_state,
+        client, cached_schema_details, schema_packing_storages, commit_time, throughput_metrics);
   }
 
   return status;
@@ -2773,11 +2776,14 @@ Status GetChangesForCDCSDK(
     RETURN_NOT_OK(reverse_index_key_slice.consume_byte(dockv::KeyEntryTypeAsChar::kTransactionId));
     auto transaction_id = VERIFY_RESULT(DecodeTransactionId(&reverse_index_key_slice));
 
-    RETURN_NOT_OK(PrcoessIntentsWithInvalidSchemaRetry(
-        op_id, transaction_id, stream_metadata, enum_oid_label_map, composite_atts_map,
-        request_source, resp, &consumption, &checkpoint, tablet_peer, &keyValueIntents,
-        &stream_state, client, cached_schema_details, schema_packing_storages, commit_timestamp,
-        throughput_metrics));
+    auto aborted_subtxns = VERIFY_RESULT(SubtxnSet::FromPB(
+      wal_records[wal_segment_index]->transaction_state().aborted().set()));
+
+    RETURN_NOT_OK(ProcessIntentsWithInvalidSchemaRetry(
+        op_id, transaction_id, aborted_subtxns, stream_metadata, enum_oid_label_map,
+        composite_atts_map, request_source, resp, &consumption, &checkpoint, tablet_peer,
+        &keyValueIntents, &stream_state, client, cached_schema_details,
+        schema_packing_storages, commit_timestamp, throughput_metrics));
 
     if (checkpoint.write_id() == 0 && checkpoint.key().empty() && wal_records.size()) {
       AcknowledgeStreamedMultiShardTxn(
@@ -2804,8 +2810,7 @@ Status GetChangesForCDCSDK(
       LOG(INFO) << "Tablet split detected for tablet " << tablet_id
                 << ", moving to children tablets immediately";
 
-      return STATUS_FORMAT(
-        TabletSplit, "Tablet split detected on $0", tablet_id);
+      return STATUS_FORMAT(TabletSplit, "Tablet split detected on $0", tablet_id);
     }
 
     std::vector<std::shared_ptr<yb::consensus::LWReplicateMsg>> wal_records, all_checkpoints;
@@ -2879,8 +2884,7 @@ Status GetChangesForCDCSDK(
         if (resp_records_size >= resp_max_size) {
           VLOG(1) << "Response records size crossed the thresold size. Will stream rest of the "
                      "records in next GetChanges Call. resp_records_size: "
-                  << resp_records_size
-                  << ", threshold: " << resp_max_size
+                  << resp_records_size << ", threshold: " << resp_max_size
                   << ", resp_num_records: " << resp_num_records << ", tablet_id: " << tablet_id;
           break;
         }
@@ -2932,6 +2936,9 @@ Status GetChangesForCDCSDK(
               auto txn_id = VERIFY_RESULT(
                   FullyDecodeTransactionId(msg->transaction_state().transaction_id()));
 
+              auto aborted_subtxns = VERIFY_RESULT(
+                SubtxnSet::FromPB(msg->transaction_state().aborted().set()));
+
               // It is possible for a transaction to have two APPLYs in WAL. This check
               // prevents us from streaming the same transaction twice in the same GetChanges
               // call.
@@ -2955,8 +2962,9 @@ Status GetChangesForCDCSDK(
                       << msg->id().ShortDebugString() << ", tablet_id: " << tablet_id
                       << ", transaction_id: " << txn_id << ", commit_time: " << *commit_timestamp;
 
-              RETURN_NOT_OK(PrcoessIntentsWithInvalidSchemaRetry(
-                  op_id, txn_id, stream_metadata, enum_oid_label_map, composite_atts_map,
+              RETURN_NOT_OK(ProcessIntentsWithInvalidSchemaRetry(
+                  op_id, txn_id, aborted_subtxns,
+                  stream_metadata, enum_oid_label_map, composite_atts_map,
                   request_source, resp, &consumption, &checkpoint, tablet_peer, &intents,
                   &new_stream_state, client, cached_schema_details, schema_packing_storages,
                   msg->transaction_state().commit_hybrid_time(), throughput_metrics));
@@ -3054,9 +3062,8 @@ Status GetChangesForCDCSDK(
               for (auto column : current_schema.columns()) {
                 if (column.marked_for_deletion()) {
                   has_columns_marked_for_deletion = true;
-                  LOG(INFO)
-                      << "The CHANGE_METADATA_OP contains a column marked for deletion. Will NOT "
-                         "populate a DDL record corresponding to it.";
+                  LOG(INFO) << "The CHANGE_METADATA_OP contains a column marked for deletion. "
+                  << "Will NOT populate a DDL record corresponding to it.";
                   break;
                 }
               }
@@ -3197,9 +3204,7 @@ Status GetChangesForCDCSDK(
   if (!snapshot_operation && report_tablet_split) {
     LOG(INFO) << "Tablet split detected for tablet " << tablet_id
               << ", moving to children tablets immediately";
-    return STATUS_FORMAT(
-      TabletSplit, "Tablet split detected on $0", tablet_id
-    );
+    return STATUS_FORMAT(TabletSplit, "Tablet split detected on $0", tablet_id);
   }
 
   if (consumption) {
