@@ -46,10 +46,13 @@
 #undef max
 #endif
 
+// TODO: forward declarations should be moved to "yb/rocksdb/rocksdb_fwd.h".
 namespace yb {
 
 class MemTracker;
 class PriorityThreadPool;
+class PriorityThreadPoolToken;
+using PriorityThreadPoolTokenPtr = std::shared_ptr<PriorityThreadPoolToken>;
 
 }
 

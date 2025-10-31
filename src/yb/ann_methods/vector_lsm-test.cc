@@ -38,9 +38,9 @@ DECLARE_bool(TEST_usearch_exact);
 DECLARE_bool(TEST_vector_index_skip_manifest_update_during_shutdown);
 DECLARE_bool(vector_index_disable_compactions);
 DECLARE_int32(vector_index_files_number_compaction_trigger);
-DECLARE_int32(vector_index_max_size_amplification_percent);
+DECLARE_int32(vector_index_compaction_size_amp_max_percent);
 DECLARE_int32(vector_index_compaction_size_ratio_percent);
-DECLARE_int32(vector_index_compaction_min_merge_width);
+DECLARE_int32(vector_index_compaction_size_ratio_min_merge_width);
 DECLARE_uint64(TEST_vector_index_delay_saving_first_chunk_ms);
 DECLARE_uint64(vector_index_compaction_always_include_size_threshold);
 
@@ -370,7 +370,7 @@ Status VectorLSMTest::OpenVectorLSM(
     .vectors_per_chunk = vectors_per_chunk,
     .thread_pool = &thread_pool_,
     .insert_thread_pool = &thread_pool_,
-    .compaction_thread_pool = &priority_thread_pool_,
+    .compaction_token = std::make_shared<PriorityThreadPoolToken>(priority_thread_pool_),
     .frontiers_factory = [] { return std::make_unique<TestFrontiers>(); },
     .vector_merge_filter_factory = [] {
       struct DummyFilter : public vector_index::VectorLSMMergeFilter {
@@ -584,7 +584,7 @@ TEST_P(VectorLSMTest, BackgroundCompactionSizeAmp) {
 
   // Ensure background compaction flags.
   FLAGS_vector_index_files_number_compaction_trigger = narrow_cast<int32_t>(kNumChunks / 2);
-  FLAGS_vector_index_max_size_amplification_percent  = narrow_cast<int32_t>((kNumChunks - 1) * 100);
+  FLAGS_vector_index_compaction_size_amp_max_percent = narrow_cast<int32_t>((kNumChunks - 1) * 100);
 
   FloatVectorLSM lsm;
   ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kDefaultChunkSize));
@@ -616,7 +616,7 @@ TEST_P(VectorLSMTest, BackgroundCompactionSizeAmp) {
   // Trigger background compaction on the same size. At this point there's one big chunk which
   // is approximately equal to the size of six random chunks. So, inserting six more chunks
   // should trigger next background compaction.
-  FLAGS_vector_index_max_size_amplification_percent = 100;
+  FLAGS_vector_index_compaction_size_amp_max_percent = 100;
   for (size_t n = 0; n < kNumChunks; ++n) {
     // Check files right before the backgorund compaction would trigger.
     if (n == kNumChunks - 1) {
@@ -658,12 +658,12 @@ void VectorLSMTest::TestBackgroundCompactionSizeRatio(bool test_metrics) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_disable_compactions) = true;
 
   // Turn off compactions by size amp to not interfere with compactions by size ratio.
-  FLAGS_vector_index_max_size_amplification_percent = -1;
+  FLAGS_vector_index_compaction_size_amp_max_percent = -1;
 
   // Ensure background compaction flags.
   FLAGS_vector_index_compaction_always_include_size_threshold = 0;
   FLAGS_vector_index_files_number_compaction_trigger = narrow_cast<int32_t>(kNumChunks / 2);
-  FLAGS_vector_index_compaction_min_merge_width = kNumMinChunks + 1;
+  FLAGS_vector_index_compaction_size_ratio_min_merge_width = kNumMinChunks + 1;
 
   // Round up to the nearest tens (e.g. 1.33 => 40%).
   FLAGS_vector_index_compaction_size_ratio_percent = -100 + 10 * static_cast<int>(

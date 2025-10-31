@@ -190,7 +190,7 @@ class PriorityThreadPoolToken {
  public:
   virtual ~PriorityThreadPoolToken();
 
-  explicit PriorityThreadPoolToken(PriorityThreadPool& pool);
+  explicit PriorityThreadPoolToken(PriorityThreadPool& pool, size_t max_concurrency = 0);
 
   // Updates task priority in the underlying pool. Has no effect on deferred task.
   // Returns true if the change was successful.

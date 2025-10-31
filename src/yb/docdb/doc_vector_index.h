@@ -22,6 +22,7 @@
 
 #include "yb/qlexpr/qlexpr_fwd.h"
 
+#include "yb/rocksdb/options.h"
 #include "yb/rocksdb/rocksdb_fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"
@@ -123,7 +124,7 @@ struct DocVectorIndexThreadPools {
   rpc::ThreadPool* insert_thread_pool;
 
   // Used for compactions.
-  PriorityThreadPool* compaction_thread_pool;
+  PriorityThreadPoolTokenPtr compaction_token;
 };
 using DocVectorIndexThreadPoolProvider = std::function<DocVectorIndexThreadPools()>;
 

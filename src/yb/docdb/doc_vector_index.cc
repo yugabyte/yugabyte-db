@@ -269,7 +269,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
       .vectors_per_chunk = FLAGS_vector_index_initial_chunk_size,
       .thread_pool = thread_pools.thread_pool,
       .insert_thread_pool = thread_pools.insert_thread_pool,
-      .compaction_thread_pool = thread_pools.compaction_thread_pool,
+      .compaction_token = thread_pools.compaction_token,
       .frontiers_factory = [] { return std::make_unique<docdb::ConsensusFrontiers>(); },
       .vector_merge_filter_factory = std::move(merge_filter_factory),
       .file_extension = GetFileExtension(idx_options),
