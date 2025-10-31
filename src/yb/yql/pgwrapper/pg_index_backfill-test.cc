@@ -85,6 +85,13 @@ class PgIndexBackfillTest : public LibPqTestBase {
         Format("--ysql_num_shards_per_tserver=$0", kTabletsPerServer));
   }
 
+  Status CheckIndexConsistency(const std::string& index_name) {
+    LOG(INFO) << "Running index consistency checker for index: " << index_name;
+    RETURN_NOT_OK(conn_->Fetch(Format("SELECT yb_index_check('$0'::regclass)", index_name)));
+    LOG(INFO) << "Index consistency check successfully completed for index: " << index_name;
+    return Status::OK();
+  }
+
  protected:
   Result<bool> IsAtTargetIndexStateFlags(
       const std::string& index_name,
@@ -2600,6 +2607,132 @@ TEST_F_EX(PgIndexBackfillTest, ConcurrentDelete, PgIndexBackfill1kRowsPerSec) {
   ASSERT_OK(WaitForIndexScan(query));
   ASSERT_EQ(ASSERT_RESULT(conn_->FetchRow<PGUint64>(query)), 0);
   thread_holder_.JoinAll();
+}
+
+class PgIndexBackfillReadBeforeConcurrentUpdate : public PgIndexBackfillBlockDoBackfill {
+ public:
+  void SetUp() override {
+    PgIndexBackfillBlockDoBackfill::SetUp();
+
+    ASSERT_OK(conn_->ExecuteFormat(
+        "CREATE TABLE $0 (i int UNIQUE, j int)", kTableName));
+    ASSERT_OK(conn_->ExecuteFormat(
+        "INSERT INTO $0 (SELECT i, i FROM generate_series(1, 5) AS i)", kTableName));
+  }
+
+  void CreateIndexSimultaneously(
+      const std::string& index_name, const std::string& index_definition) {
+    thread_holder_.AddThreadFunctor([this, index_name, index_definition] {
+      LOG(INFO) << "Begin create index " << index_name;
+      PGConn index_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+      ASSERT_OK(index_conn.Execute(index_definition));
+      LOG(INFO) << "Done create index " << index_name;
+    });
+  }
+
+  void CreateExpressionIndexSimultaneously(const std::string& index_name) {
+    auto index_definition = Format(
+        "CREATE INDEX $0 ON $1 ((j * j) ASC)", index_name, kTableName);
+    CreateIndexSimultaneously(index_name, index_definition);
+  }
+
+  void CreatePartialIndexSimultaneously(const std::string& index_name) {
+    auto index_definition = Format(
+        "CREATE INDEX $0 ON $1 (j ASC) WHERE j > 2", index_name, kTableName);
+    CreateIndexSimultaneously(index_name, index_definition);
+  }
+ protected:
+  const CoarseDuration kThreadWaitTime = 60s;
+  const IndexStateFlags index_state_flags =
+      IndexStateFlags {IndexStateFlag::kIndIsLive, IndexStateFlag::kIndIsReady};
+};
+
+// Simulate the following:
+//   Session A                                    Session B
+//   ------------------------------------         -------------------------------------------
+//   CREATE TABLE (i UNIQUE, j)
+//   INSERT (i, i) for i in [1..5]
+//
+//   CREATE INDEX ( f(j) ) -- expr index
+//   - indislive=true
+//   - indisready=true
+//   - backfill stage
+//     - get safe time for read
+//                                                UPDATE j = j + 100 WHERE i = 1
+//                                                (DELETE (1, i=1) from index)
+//                                                (INSERT (10201, i=1) to index)
+//     - do the actual backfill
+//       (insert (1, i=1) to index)
+//   - indisvalid=true
+TEST_F(PgIndexBackfillReadBeforeConcurrentUpdate, ExpressionIndex) {
+  const string kExprIndex = "idx_expr_j";
+  std::atomic<int> updates(0);
+
+  // Initiate creation of the expression index that will block after acquiring backfill safe time.
+  CreateExpressionIndexSimultaneously(kExprIndex);
+
+  thread_holder_.AddThreadFunctor([this, &updates, &kExprIndex] {
+    LOG(INFO) << "Begin write thread";
+    ASSERT_OK(WaitForIndexStateFlags(index_state_flags, kExprIndex));
+    ASSERT_OK(WaitForBackfillSafeTime(kYBTableName));
+
+    // DELETE (j=1) from the index
+    // INSERT (j=10201) into the index
+    LOG(INFO) << "running UPDATE on i = 1";
+    ASSERT_OK(conn_->ExecuteFormat("UPDATE $0 SET j = j + 100 WHERE i = 1", kTableName));
+    updates++;
+  });
+
+  LOG(INFO) << "Unblock backfill...";
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"));
+
+  thread_holder_.WaitAndStop(kThreadWaitTime);
+  ASSERT_EQ(updates.load(std::memory_order_acquire), 1);
+
+  ASSERT_OK(CheckIndexConsistency(kExprIndex));
+}
+
+// A similar test to the ExpressionIndex above, but for partial indexes.
+TEST_F(PgIndexBackfillReadBeforeConcurrentUpdate, PartialIndex) {
+  const string kPartialIndex = "idx_partial_j";
+  std::atomic<int> updates(0);
+  int key = 2;
+
+  // Initiate creation of the partial index that will block after acquiring backfill safe time.
+  CreatePartialIndexSimultaneously(kPartialIndex);
+
+  thread_holder_.AddThreadFunctor([this, &key, &updates, &kPartialIndex] {
+    LOG(INFO) << "Begin write thread";
+    ASSERT_OK(WaitForIndexStateFlags(index_state_flags, kPartialIndex));
+    ASSERT_OK(WaitForBackfillSafeTime(kYBTableName));
+
+    // Case 1: INSERT (j=102) into the index
+    LOG(INFO) << "running UPDATE on i = " << key;
+    ASSERT_OK(conn_->ExecuteFormat("UPDATE $0 SET j = j + 100 WHERE i = $1", kTableName, key));
+    key++;
+    updates++;
+
+    // Case 2: INSERT (j=103) into the index
+    //         DELETE (j=3) from the index
+    LOG(INFO) << "running UPDATE on i = " << key;
+    ASSERT_OK(conn_->ExecuteFormat("UPDATE $0 SET j = j + 100 WHERE i = $1", kTableName, key));
+    key++;
+    updates++;
+
+    // Case 3: DELETE (j=4) from the index
+    LOG(INFO) << "running UPDATE on i = " << key;
+    ASSERT_OK(conn_->ExecuteFormat("UPDATE $0 SET j = j - 100 WHERE i = $1", kTableName, key));
+    key++;
+    updates++;
+  });
+
+  LOG(INFO) << "Unblock backfill...";
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"));
+
+  thread_holder_.WaitAndStop(kThreadWaitTime);
+  ASSERT_EQ(updates.load(std::memory_order_acquire), 3);
+
+  ASSERT_OK(CheckIndexConsistency(kPartialIndex));
 }
 
 } // namespace yb::pgwrapper
