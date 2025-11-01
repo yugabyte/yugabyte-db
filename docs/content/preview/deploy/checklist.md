@@ -2,7 +2,7 @@
 title: Deployment checklist for YugabyteDB clusters
 headerTitle: Deployment checklist
 linkTitle: Deployment checklist
-description: Checklist to review system requirements, configuration details, and so on, when deploying the YugabyteDB database to production or for performance testing.
+description: Review system requirements and configuration details before deploying YugabyteDB to production or for performance testing.
 menu:
   preview:
     identifier: checklist
@@ -47,19 +47,58 @@ YugabyteDB is designed to run on bare-metal machines, virtual machines (VMs), an
 
 You should allocate adequate CPU and RAM. YugabyteDB has adequate defaults for running on a wide range of machines, and has been tested from 2 core to 64 core machines, and up to 200GB RAM.
 
-**Minimum requirement**
+<ul class="nav nav-tabs nav-tabs-yb">
+  <li >
+    <a href="#yugabyted" class="nav-link active" id="yugabyted-tab" data-bs-toggle="tab" role="tab" aria-controls="yugabyted" aria-selected="true">
+      <img src="/icons/database.svg" alt="Server Icon">
+      Manual and Kubernetes
+    </a>
+  </li>
+  <li>
+    <a href="#platform" class="nav-link" id="platform-tab" data-bs-toggle="tab" role="tab" aria-controls="platform" aria-selected="false">
+      <img src="/icons/server.svg" alt="Server Icon">
+      YugabyteDB Anywhere
+    </a>
+  </li>
+  <li>
+    <a href="#aeon" class="nav-link" id="aeon-tab" data-bs-toggle="tab" role="tab" aria-controls="aeon" aria-selected="false">
+      <img src="/icons/cloud.svg" alt="Cloud Icon">
+      YugabyteDB Aeon
+    </a>
+  </li>
+</ul>
 
-- 2 cores
-- 2GB RAM
+<div class="tab-content">
+  <div id="yugabyted" class="tab-pane fade show active" role="tabpanel" aria-labelledby="yugabyted-tab">
 
-**Production requirement**
+| vCPU minimum | vCPU production | RAM minimum | RAM production |
+| :--- | :--- | :--- | :--- |
+| 2 | Dedicated Masters<br>8 vCPU for each TServer and Master<br><br>Combined<br>16 vCPU | Dedicated Masters<br>2GB for each TServer and Master<br><br>Combined<br>4GB | Dedicated Masters<br>8GB each for each TServer and Master<br><br>Combined<br>16GB<br><br>32GB recommended |
 
-- YCQL - 16+ cores and 32GB+ RAM
-- YSQL - 16+ cores and 64GB+ RAM
+If you are running Masters on their own dedicated servers, you can reduce vCPU and RAM compared to running Masters and TServers on the same server.
 
-Add more CPU (compared to adding more RAM) to improve performance.
+  </div>
+  <div id="platform" class="tab-pane fade" role="tabpanel" aria-labelledby="platform-tab">
+
+| vCPU minimum | vCPU production | RAM minimum | RAM production |
+| :--- | :--- | :--- | :--- |
+| 4 | 16 minimum | 4GB | 64GB |
+
+  </div>
+  <div id="aeon" class="tab-pane fade" role="tabpanel" aria-labelledby="aeon-tab">
+
+In YugabyteDB Aeon, RAM is automatically allocated at 4GB per vCPU.
+
+| vCPU minimum | vCPU production | RAM minimum | RAM production |
+| :--- | :--- | :--- | :--- |
+| 2 (minimal usage) | 8 minimum<br>16 recommended | 4GB per vCPU | 4GB per vCPU |
+
+  </div>
+</div>
 
 **Additional considerations**
+
+Add more CPU (compared to adding more RAM) to improve performance.
 
 For typical Online Transaction Processing (OLTP) workloads, YugabyteDB performance improves with more aggregate CPU in the cluster. You can achieve this by using larger nodes or adding more nodes to a cluster. Note that if you do not have enough CPUs, this will manifest itself as higher latencies and eventually dropped requests.
 
