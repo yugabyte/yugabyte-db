@@ -561,7 +561,7 @@
 [[preview_integrations]]
   name = "Drivers and ORMs"
   weight = 3
-  url = "/preview/drivers-orms/"
+  url = "/preview/develop/drivers-orms/"
   [preview_integrations.params]
     showSection = true
 
