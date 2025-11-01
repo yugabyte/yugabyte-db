@@ -24,6 +24,13 @@ cascade:
     body="Build a Retrieval-Augmented Generation (RAG) pipeline with YugabyteDB."
     href="hello-rag/"
     icon="fa-thin fa-vector-circle">}}
+
+{{<index/item
+    title="langchain-yugabytedb integration"
+    body="Use YugabyteDB as a vector store with LangChain to develop RAG apps."
+    href="../../../integrations/langchain/"
+    icon="/images/tutorials/ai/icons/langchain-icon.svg">}}
+
 {{</index/block>}}
 
 {{<index/block>}}
@@ -39,6 +46,7 @@ cascade:
     body="Deploy generative AI applications using Google Vertex AI and YugabyteDB."
     href="google-vertex-ai/"
     icon="/images/tutorials/google/icons/Google-Vertex-AI-Icon.svg">}}
+
 
 {{</index/block>}}
 
