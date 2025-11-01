@@ -440,7 +440,10 @@ class PgClient::Impl : public BigDataFetcher {
     proxy_->HeartbeatAsync(
         req, &heartbeat_resp_, PrepareHeartbeatController(),
         [this, create] {
-      auto status = ResponseStatus(heartbeat_resp_);
+      auto status = heartbeat_controller_.status();
+      if (status.ok()) {
+        status = ResponseStatus(heartbeat_resp_);;
+      }
       if (create) {
         if (!status.ok()) {
           create_session_promise_.set_value(status);

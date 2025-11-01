@@ -2037,7 +2037,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
   }
 
   Result<SessionInfoPtr> GetSessionInfo(uint64_t session_id) {
-    DCHECK_NE(session_id, 0);
+    RSTATUS_DCHECK_NE(session_id, static_cast<uint64_t>(0), InvalidArgument, "Bad session id");
     SharedLock lock(mutex_);
     auto it = sessions_.find(session_id);
     if (PREDICT_FALSE(it == sessions_.end())) {
