@@ -1341,6 +1341,22 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable the Kubernetes provider quick validation",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableAwsProviderValidation =
+      new ConfKeyInfo<>(
+          "yb.provider.aws_provider_validation",
+          ScopeType.GLOBAL,
+          "AWS provider validation",
+          "Enable AWS Provider quick validation",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableOnPremProviderValidation =
+      new ConfKeyInfo<>(
+          "yb.provider.onprem_provider_validation",
+          ScopeType.GLOBAL,
+          "OnPrem provider validation",
+          "Enable OnPrem Provider quick validation",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> maxYbcUpgradePollResultTries =
       new ConfKeyInfo<>(
           "ybc.upgrade.poll_result_tries",

@@ -147,6 +147,8 @@
 | "XCluster isBootstrapRequired rpc max parallel threads" | "yb.xcluster.is_bootstrap_required_rpc_pool.max_threads" | "GLOBAL" | "Sets the maximum allowed number of threads to be run concurrently for xcluster isBootstrapRequired rpc" | "Integer" |
 | "Auto create user on SSO login" | "yb.security.oidc_enable_auto_create_users" | "GLOBAL" | "Enable user creation on SSO login" | "Boolean" |
 | "Kubernetes provider validation" | "yb.provider.kubernetes_provider_validation" | "GLOBAL" | "Enable the Kubernetes provider quick validation" | "Boolean" |
+| "AWS provider validation" | "yb.provider.aws_provider_validation" | "GLOBAL" | "Enable AWS Provider quick validation" | "Boolean" |
+| "OnPrem provider validation" | "yb.provider.onprem_provider_validation" | "GLOBAL" | "Enable OnPrem Provider quick validation" | "Boolean" |
 | "YBC poll upgrade result tries" | "ybc.upgrade.poll_result_tries" | "GLOBAL" | "YBC poll upgrade result tries count." | "Integer" |
 | "YBC poll upgrade result Sleep time" | "ybc.upgrade.poll_result_sleep_ms" | "GLOBAL" | "YBC poll upgrade result sleep time." | "Long" |
 | "HA Shutdown Level" | "yb.ha.shutdown_level" | "GLOBAL" | "When to shutdown - 0 for never, 1 for promotion, 2 for promotion and demotion" | "Integer" |
