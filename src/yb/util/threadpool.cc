@@ -61,6 +61,7 @@ using strings::Substitute;
 using std::unique_ptr;
 using std::deque;
 
+bool TEST_fail_to_create_second_thread_in_thread_pool_without_queue = false;
 
 ThreadPoolMetrics::~ThreadPoolMetrics() = default;
 
@@ -479,7 +480,15 @@ Status ThreadPool::DoSubmit(const std::shared_ptr<Runnable> task, ThreadPoolToke
   int inactive_threads = num_threads_ - active_threads_;
   int64_t additional_threads = (queue_.size() + threads_from_this_submit) - inactive_threads;
   if (additional_threads > 0 && num_threads_ < max_threads_) {
-    Status status = CreateThreadUnlocked();
+    Status status;
+    if (TEST_fail_to_create_second_thread_in_thread_pool_without_queue &&
+        max_threads_ == std::numeric_limits<int>::max() &&
+        max_queue_size_ == 0 &&
+        active_threads_ != 0) {
+      status = STATUS_FORMAT(RuntimeError, "TEST: Artificial start thread failure");
+    } else {
+      status = CreateThreadUnlocked();
+    }
     if (!status.ok()) {
       // If we failed to create a thread, but there are still some other
       // worker threads, log a warning message and continue.
