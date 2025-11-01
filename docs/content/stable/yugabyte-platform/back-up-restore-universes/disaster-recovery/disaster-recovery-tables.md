@@ -34,6 +34,12 @@ For each DDL statement:
 
 After both steps are complete, the YugabyteDB Anywhere UI should reflect any added/removed tables in the Tables listing for this DR configuration.
 
+In addition, keep in mind the following:
+
+- If you are using Colocated tables, you CREATE TABLE on DR primary, then CREATE TABLE on DR replica making sure that you force the Colocation ID to be identical to that on DR primary.
+- If you try to make a DDL change on DR primary and it fails, you must also make the same attempt on DR replica and get the same failure.
+- TRUNCATE TABLE is not supported. To truncate a table, pause replication, truncate the table on both primary and standby, and resume replication.
+
   {{% /tab %}}
 
   {{% tab header="Manual mode" lang="manual-mode" %}}
@@ -51,15 +57,15 @@ You should perform these actions in a specific order, depending on whether perfo
 | ALTER TABLE<br>ADD CONSTRAINT UNIQUE | Execute on Primary | Execute on Replica | [Reconcile configuration](#reconcile-configuration) |
 | ALTER TABLE<br>DROP CONSTRAINT<br>(unique constraints only) | Execute on Replica | Execute on Primary | [Reconcile configuration](#reconcile-configuration) |
 
-  {{% /tab %}}
-
-{{</tabpane >}}
-
 In addition, keep in mind the following:
 
 - If you are using Colocated tables, you CREATE TABLE on DR primary, then CREATE TABLE on DR replica making sure that you force the Colocation ID to be identical to that on DR primary.
 - If you try to make a DDL change on DR primary and it fails, you must also make the same attempt on DR replica and get the same failure.
 - TRUNCATE TABLE is not supported. To truncate a table, pause replication, truncate the table on both primary and standby, and resume replication.
+
+  {{% /tab %}}
+
+{{</tabpane >}}
 
 Use the following guidance when managing tables and indexes in universes with DR configured.
 
