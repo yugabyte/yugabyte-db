@@ -6,9 +6,9 @@ description: Learn to build RAG applications using LlamaIndex and OpenAI.
 image: /images/tutorials/ai/icons/llamaindex-icon.svg
 headcontent: Use YugabyteDB as the database backend for RAG applications
 menu:
-  preview_develop:
+  preview_ai:
     identifier: tutorials-ai-llamaindex-openai
-    parent: tutorials-ai-agentic
+    parent: ai-tutorials
     weight: 60
 type: docs
 ---

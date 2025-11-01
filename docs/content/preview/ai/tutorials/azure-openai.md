@@ -8,9 +8,9 @@ headcontent: Use YugabyteDB as the database backend for Azure OpenAI application
 aliases:
   - /tutorials/azure/azure-openai/
 menu:
-  preview_develop:
+  preview_ai:
     identifier: tutorials-azure-openai
-    parent: tutorials-ai-rag
+    parent: ai-tutorials
     weight: 40
 type: docs
 ---

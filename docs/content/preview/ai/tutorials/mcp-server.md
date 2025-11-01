@@ -5,9 +5,9 @@ linkTitle: YugabyteDB MCP Server
 description: Get LLMs to interact directly with YugabyteDB using a MCP server
 headcontent: Get LLMs to interact directly with YugabyteDB
 menu:
-  preview_develop:
+  preview_ai:
     identifier: tutorials-mcp-server
-    parent: tutorials-ai-agentic
+    parent: ai-tutorials
     weight: 20
 type: docs
 ---
