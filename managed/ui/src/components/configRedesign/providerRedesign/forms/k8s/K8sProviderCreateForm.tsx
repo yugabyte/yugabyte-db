@@ -50,7 +50,7 @@ import {
   getIsFormDisabled,
   readFileAsText,
   handleFormSubmitServerError,
-  UseProviderValidationEnabled
+  useIsProviderValidationEnabled
 } from '../utils';
 import { YBLoading } from '../../../../common/indicators';
 import { api, suggestedKubernetesConfigQueryKey } from '../../../../../redesign/helpers/api';
@@ -130,14 +130,13 @@ export const K8sProviderCreateForm = ({
     }
   );
 
-  const {
-    isLoading: isProviderValidationLoading,
-    isValidationEnabled
-  } = UseProviderValidationEnabled(CloudType.kubernetes);
+  const { isRuntimeConfigLoading, isValidationEnabled } = useIsProviderValidationEnabled(
+    CloudType.kubernetes
+  );
   if (
     (enableSuggestedConfigFeature &&
       (suggestedKubernetesConfigQuery.isLoading || suggestedKubernetesConfigQuery.isIdle)) ||
-    isProviderValidationLoading
+    isRuntimeConfigLoading
   ) {
     return <YBLoading />;
   }
