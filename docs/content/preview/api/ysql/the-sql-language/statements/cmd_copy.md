@@ -125,7 +125,7 @@ Default: 0, no rows are skipped.
 
 ## Copy with fast-path transaction for colocated tables
 
-YugabyteDB supports a fast-path mode for the COPY command on colocated tables (v2.25.1 and later), which can significantly improve performance during data import.
+YugabyteDB supports a fast-path mode for the COPY command on colocated tables, which can significantly improve performance during data import.
 
 ### Enable fast-path COPY
 

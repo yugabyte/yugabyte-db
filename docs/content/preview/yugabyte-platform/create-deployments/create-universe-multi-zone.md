@@ -97,6 +97,15 @@ Specify the instance to use for the universe nodes:
 
 - Choose the AWS **EBS Type** between IO1, GP2, and GP3.
 - Specify the **Provisioned IOPS** (IO1 and GP3 only) and **Provisioned Throughput** (GP3 only) for your disk in advance to ensure a consistent performance level.
+- {{<tags/feature/ea idea="2329">}}Enable **EBS Volume Encryption** (AWS only) to create a universe with AWS EBS volume-level encryption, using a custom AWS Key Management Service (KMS) configuration.
+
+  Select the **Key Management Service Config** you created. See [Create a KMS configuration](../../security/create-kms-config/aws-kms/#create-a-kms-configuration).
+
+  While in Early Access, EBS Volume Encryption is not available in YugabyteDB Anywhere by default. To make it available, set the _Allow Cloud Volume Encryption_ Global Runtime Configuration option (config key `yb.universe.allow_cloud_volume_encryption`) to true. Refer to [Manage runtime configuration settings](../../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
+
+  You can use AWS EBS volume-level encryption and YugabyteDB Anywhere envelope [Encryption at rest](../../security/enable-encryption-at-rest/) (EAR) at the same time. Configure each one with its own KMS config; you cannot use the same KMS config for both.
+
+  Currently, you cannot use EBS volume-level encryption for multi-region universe deployments, because an instance in one region cannot access the KMS key in another region.
 
 ### Security Configurations
 

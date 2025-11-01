@@ -4,8 +4,6 @@ headerTitle: YugabyteDB Anywhere CLI
 linkTitle: yba CLI
 description: Use YugabyteDB Anywhere CLI to create and manage resources in YBA.
 headcontent: Install the CLI, configure default settings, and set up autocompletion
-tags:
-  feature: early-access
 menu:
   preview_yugabyte-platform:
     parent: anywhere-automation
@@ -22,9 +20,27 @@ Reference documentation for yba CLI commands and their flags is available in the
 
 The CLI can only be used with YugabyteDB Anywhere v2024.1 or later.
 
-The CLI is {{<tags/feature/ea idea="1879">}}. Commands and options may change before {{<tags/feature/ga>}}.
-
 ## Install CLI
+
+You can install and use the YugabyteDB Anywhere CLI in two ways.
+
+### Option 1: Download and extract
+
+1. Download and extract the YugabyteDB Anywhere CLI by entering the following commands:
+
+    ```sh
+    wget https://downloads.yugabyte.com/releases/{{<yb-version version="stable" format="long">}}/yba_cli-{{<yb-version     version="stable" format="build">}}-linux-amd64.tar.gz
+    tar -xf yba_cli-{{<yb-version version="stable" format="build">}}-linux-amd64.tar.gz
+    cd yba_cli-{{<yb-version version="stable" format="build">}}-linux-amd64/
+    ```
+
+1. Verify that the package is available:
+
+    ```sh
+    ./yba help
+    ```
+
+### Option 2: Use included binary
 
 The CLI binary is already included in your YugabyteDB Anywhere installation at the following location:
 

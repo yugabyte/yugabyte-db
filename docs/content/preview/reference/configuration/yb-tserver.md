@@ -391,8 +391,9 @@ Bitmap scans are only supported for LSM indexes.
 ##### yb_enable_bitmapscan
 
 {{% tags/wrap %}}
-{{<tags/feature/ea idea="1092">}}
+
 Default: `false`
+
 {{% /tags/wrap %}}
 
 Enables or disables the query planner's use of bitmap scans for YugabyteDB relations. Both [enable_bitmapscan](#enable-bitmapscan) and `yb_enable_bitmapscan` must be set to true for a YugabyteDB relation to use a bitmap scan. If `yb_enable_bitmapscan` is false, the planner never uses a YugabyteDB bitmap scan.
@@ -1481,7 +1482,7 @@ Packed row size limit for YCQL. The default value is 0 (use block size as limit)
 
 ### Catalog flags
 
-Catalog cache flags are {{<tags/feature/ea idea="599">}}. For information on setting these flags, see [Customize preloading of YSQL catalog caches](../../../best-practices-operations/ysql-catalog-cache-tuning-guide/).
+For information on setting these flags, see [Customize preloading of YSQL catalog caches](../../../best-practices-operations/ysql-catalog-cache-tuning-guide/).
 
 ##### --ysql_catalog_preload_additional_table_list
 
@@ -2241,16 +2242,13 @@ Timeout, in milliseconds, for the node-level mutation reporting RPC to the Auto 
 
 ### Advisory lock flags
 
-Support for advisory locks is {{<tags/feature/tp idea="812">}}. To use the flags, you must add them to [allowed_preview_flags_csv](#allowed-preview-flags-csv).
-
 To learn about advisory locks, see [Advisory locks](../../../architecture/transactions/concurrency-control/#advisory-locks).
 
 ##### --ysql_yb_enable_advisory_locks
 
 {{% tags/wrap %}}
-{{<tags/feature/tp>}}
 {{<tags/feature/t-server>}}
-Default: `false`
+Default: `true`
 {{% /tags/wrap %}}
 
 Enables advisory locking.
@@ -2815,6 +2813,30 @@ Default: `true`
 {{% /tags/wrap %}}
 
 Controls whether YSQL follower reads that specify a not-yet-safe read time should be rejected. This will force them to go to the leader, which will likely be faster than waiting for safe time to catch up.
+
+##### --enable_ysql_operation_lease
+
+{{% tags/wrap %}}
+
+
+Default: `true`
+{{% /tags/wrap %}}
+
+Enables the [YSQL lease mechanism](../../../architecture/transactions/concurrency-control/#ysql-lease-mechanism).
+
+On YB-TServers, a new PostgreSQL process is spawned only after establishing a lease with the YB-Master leader. The flag also controls whether the background YB-TServer task makes lease refresh requests.
+
+##### --ysql_lease_refresher_interval_ms
+
+{{% tags/wrap %}}
+
+
+Default: `1000` (1 second)
+{{% /tags/wrap %}}
+
+Determines the interval a YB-TServer waits before initiating another YSQL lease refresh RPC.
+
+Refer to [YSQL lease mechanism](../../../architecture/transactions/concurrency-control/#ysql-lease-refresher-interval-ms) for more details.
 
 ### YCQL
 

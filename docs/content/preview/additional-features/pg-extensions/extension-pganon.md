@@ -3,8 +3,6 @@ title: PostgreSQL Anonymizer extension
 headerTitle: PostgreSQL Anonymizer extension
 linkTitle: Anonymizer
 description: Using the PostgreSQL Anonymizer extension in YugabyteDB
-tags:
-  feature: early-access
 menu:
   preview:
     identifier: extension-pganon

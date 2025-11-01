@@ -44,11 +44,11 @@ To see your deployed universes, navigate to **Dashboard** or **Universes**. To v
     href="remove-nodes/"
     icon="fa-thin fa-wrench">}}
 
-  {{<index/item
-    title="Retry tasks"
-    body="Retry failed tasks."
+   {{<index/item
+    title="Monitor tasks"
+    body="Monitor and manage tasks."
     href="retry-failed-task/"
-    icon="fa-thin fa-rotate-right">}}
+    icon="fa-thin fa-magnifying-glass">}}
 
   {{<index/item
     title="xCluster Replication"

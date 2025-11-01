@@ -16,6 +16,8 @@ Upgrading YugabyteDB from a version based on PostgreSQL 11 (all versions prior t
 
 The upgrade is fully online. While the upgrade is in progress, you have full and uninterrupted read and write access to your cluster.
 
+Performing a YSQL major upgrade on a universe with [CDC with logical replication](../../additional-features/change-data-capture/using-logical-replication/) requires additional steps.
+
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
     <a href="../ysql-major-upgrade-yugabyted/" class="nav-link">
@@ -31,13 +33,16 @@ The upgrade is fully online. While the upgrade is in progress, you have full and
     </a>
   </li>
 
+  <li>
+    <a href="../ysql-major-upgrade-logical-replication/" class="nav-link">
+      <i class="icon-shell"></i>
+      Logical Replication
+    </a>
+  </li>
+
 </ul>
 
 ## Before you begin
-
-{{< warning >}}
-v2.25 is a preview release that is only meant for evaluation purposes and should not be used in production.
-{{< /warning >}}
 
 - All DDL statements, except ones related to Temporary table and Refresh Materialized View, are blocked for the duration of the upgrade. Consider executing all DDLs before the upgrade, and pause any jobs that might run DDLs. DMLs are allowed.
 - Upgrade client drivers.
