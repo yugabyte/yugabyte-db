@@ -3141,7 +3141,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_ddl_transaction_block_enabled,
-		false,
+		kEnableDdlTransactionBlocks,
 		NULL, NULL, NULL
 	},
 
