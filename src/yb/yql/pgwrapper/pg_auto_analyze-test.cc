@@ -1237,6 +1237,15 @@ class PgConcurrentDDLAnalyzeTest : public LibPqTestBase {
         options->extra_tserver_flags, "enable_object_locking_for_table_locks");
 
     options->extra_tserver_flags.emplace_back("--enable_object_locking_for_table_locks=false");
+
+    // The test is specifically written for cases when txn ddl is disabled.
+    // For the enabled case, see PgConcurrentDDLAnalyzeTestTxnDDL below.
+    AppendFlagToAllowedPreviewFlagsCsv(
+        options->extra_tserver_flags, "ysql_yb_ddl_transaction_block_enabled");
+    AppendFlagToAllowedPreviewFlagsCsv(
+        options->extra_master_flags, "ysql_yb_ddl_transaction_block_enabled");
+    options->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
+
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vmodule) = "libpqutils*=1";
   }
 
