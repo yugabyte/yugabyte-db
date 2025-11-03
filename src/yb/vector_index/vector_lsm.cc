@@ -95,8 +95,8 @@ DEFINE_RUNTIME_uint32(vector_index_compaction_size_ratio_max_merge_width, 0,
 DEFINE_RUNTIME_bool(vector_index_dump_stats, false,
     "Whether to dump stats related to vector index search.");
 
-DEFINE_RUNTIME_bool(vector_index_disable_compactions, true,
-    "Disable Vector LSM background compactions.");
+DEFINE_RUNTIME_bool(vector_index_enable_compactions, true,
+    "Enable Vector LSM background compactions.");
 
 DEFINE_test_flag(bool, vector_index_skip_manifest_update_during_shutdown, false,
     "Whether VectorLSM manifest update should be skipped after shutdown has been initiated");
@@ -2620,7 +2620,7 @@ VectorLSM<Vector, DistanceResult>::RegisterManualCompaction(StdStatusCallback ca
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 void VectorLSM<Vector, DistanceResult>::ScheduleBackgroundCompaction() {
-  if (FLAGS_vector_index_disable_compactions) {
+  if (!FLAGS_vector_index_enable_compactions) {
     VLOG_WITH_PREFIX(2) << "Background compactions disabled by gflag";
     return;
   }

@@ -50,7 +50,7 @@
 DECLARE_bool(TEST_skip_process_apply);
 DECLARE_bool(TEST_use_custom_varz);
 DECLARE_bool(TEST_usearch_exact);
-DECLARE_bool(vector_index_disable_compactions);
+DECLARE_bool(vector_index_enable_compactions);
 DECLARE_bool(vector_index_no_deletions_skip_filter_check);
 DECLARE_bool(vector_index_use_hnswlib);
 DECLARE_bool(vector_index_use_yb_hnsw);
@@ -114,7 +114,7 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
   void SetUp() override {
     FLAGS_TEST_use_custom_varz = true;
     FLAGS_TEST_usearch_exact = true;
-    FLAGS_vector_index_disable_compactions = false;
+    FLAGS_vector_index_enable_compactions = true;
     FLAGS_vector_index_num_compactions_limit = 0;
     switch (Engine()) {
       case VectorIndexEngine::kUsearch:

@@ -36,7 +36,7 @@ using namespace std::literals;
 
 DECLARE_bool(TEST_usearch_exact);
 DECLARE_bool(TEST_vector_index_skip_manifest_update_during_shutdown);
-DECLARE_bool(vector_index_disable_compactions);
+DECLARE_bool(vector_index_enable_compactions);
 DECLARE_int32(vector_index_files_number_compaction_trigger);
 DECLARE_int32(vector_index_compaction_size_amp_max_percent);
 DECLARE_int32(vector_index_compaction_size_ratio_percent);
@@ -176,7 +176,7 @@ class VectorLSMTest : public YBTest, public testing::WithParamInterface<ANNMetho
   }
 
   void SetUp() override {
-    FLAGS_vector_index_disable_compactions = false;
+    FLAGS_vector_index_enable_compactions = true;
     YBTest::SetUp();
   }
 
@@ -515,7 +515,7 @@ TEST_P(VectorLSMTest, SingleChunkSimpleCompaction) {
   constexpr size_t kNumEntries = GetNumEntriesByDimensions(kDimensions);
 
   // Turn off background compactions to not interfere with manual compaction.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_disable_compactions) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
 
   FloatVectorLSM lsm;
   ASSERT_OK(OpenVectorLSM(lsm, kDimensions, 2 * kNumEntries));
@@ -561,7 +561,7 @@ TEST_P(VectorLSMTest, MultipleChunksSimpleCompaction) {
   static_assert(kNumEntries > 2 * kDefaultChunkSize);
 
   // Turn off background compactions to not interfere with manual compaction.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_disable_compactions) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
 
   constexpr size_t kBlocksPerChunk = 5;
   constexpr size_t kBlockSize = kDefaultChunkSize / kBlocksPerChunk;
@@ -618,7 +618,7 @@ TEST_P(VectorLSMTest, AllVectorsRemovalCompaction) {
   constexpr size_t kNumEntries = GetNumEntriesByDimensions(kDimensions);
 
   // Turn off background compactions to not interfere with manual compaction.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_disable_compactions) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
 
   // Discard all vectors on compaction.
   SetMergeFilter(rocksdb::FilterDecision::kDiscard);
@@ -678,7 +678,7 @@ TEST_P(VectorLSMTest, BackgroundCompactionSizeAmp) {
   constexpr size_t kNumChunks  = 6;
 
   // Make sure background compaction are turned on.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_disable_compactions) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = true;
 
   // Turn off compactions by size ratio to not interfere with compactions by size amp.
   FLAGS_vector_index_compaction_size_ratio_percent = -100;
@@ -756,7 +756,7 @@ void VectorLSMTest::TestBackgroundCompactionSizeRatio(bool test_metrics) {
   constexpr size_t kChunkSize = 1 + kLargeChunkNumVectors; // To trigger explicit flush.
 
   // Turn background compaction off to prepare files.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_disable_compactions) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
 
   // Turn off compactions by size amp to not interfere with compactions by size ratio.
   FLAGS_vector_index_compaction_size_amp_max_percent = -1;
@@ -800,7 +800,7 @@ void VectorLSMTest::TestBackgroundCompactionSizeRatio(bool test_metrics) {
   }
 
   // Insert the last min chunk to trigger background compaction.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_disable_compactions) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = true;
   ASSERT_OK(InsertRandomAndFlush(lsm, kDimensions, num_vectors_by_file[kNumChunks - 1]));
   ASSERT_OK(WaitForCompactionsDone(lsm));
 
@@ -871,7 +871,7 @@ TEST_P(VectorLSMTest, SimpleCompactionMetrics) {
   static_assert(kNumEntriesPerChunk <= kDefaultChunkSize);
 
   // Turn off background compactions to not interfere with manual compaction.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_disable_compactions) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
 
   FloatVectorLSM lsm;
   ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kDefaultChunkSize));
