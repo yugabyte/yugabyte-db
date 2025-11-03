@@ -44,6 +44,10 @@ In addition, keep in mind the following:
 
   {{% tab header="Manual mode" lang="manual-mode" %}}
 
+{{< warning title="Warning" >}}
+Fully Manual xCluster replication is deprecated and not recommended due to the operational complexity involved.
+{{< /warning >}}
+
 You should perform these actions in a specific order, depending on whether performing a CREATE, DROP, ALTER, and so forth, as indicated by the sequence number of the operation in the table below.
 
 | DDL | Step 1 | Step 2 | Step 3 |
