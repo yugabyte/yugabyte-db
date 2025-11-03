@@ -5889,16 +5889,16 @@
           ],
           "type" : "string"
         },
-        "geoPartitions" : {
-          "description" : "WARNING: This is a preview API that could change. Geo partitions for cluster",
-          "items" : {
-            "$ref" : "#/definitions/GeoPartitionInfo"
-          },
-          "type" : "array"
-        },
         "index" : {
           "format" : "int32",
           "type" : "integer"
+        },
+        "partitions" : {
+          "description" : "WARNING: This is a preview API that could change. Geo partitions for cluster",
+          "items" : {
+            "$ref" : "#/definitions/PartitionInfo"
+          },
+          "type" : "array"
         },
         "placementInfo" : {
           "$ref" : "#/definitions/PlacementInfo"
@@ -9527,28 +9527,6 @@
         "TSERVER" : {
           "$ref" : "#/definitions/GFlagValidationDetails",
           "description" : "WARNING: This is a preview API that could change. Validation details for tserver"
-        }
-      },
-      "type" : "object"
-    },
-    "GeoPartitionInfo" : {
-      "description" : "WARNING: This is a preview API that could change. Information about Geo partition",
-      "properties" : {
-        "defaultPartition" : {
-          "type" : "boolean"
-        },
-        "name" : {
-          "type" : "string"
-        },
-        "placement" : {
-          "$ref" : "#/definitions/PlacementInfo"
-        },
-        "tableSpaceInfo" : {
-          "$ref" : "#/definitions/TableSpaceInfo"
-        },
-        "uuid" : {
-          "format" : "uuid",
-          "type" : "string"
         }
       },
       "type" : "object"
@@ -14180,6 +14158,29 @@
       "required" : [
         "backupUUID"
       ],
+      "type" : "object"
+    },
+    "PartitionInfo" : {
+      "description" : "WARNING: This is a preview API that could change. Information about Geo partition",
+      "properties" : {
+        "defaultPartition" : {
+          "type" : "boolean"
+        },
+        "name" : {
+          "type" : "string"
+        },
+        "placement" : {
+          "$ref" : "#/definitions/PlacementInfo"
+        },
+        "replicationFactor" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "uuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        }
+      },
       "type" : "object"
     },
     "PerBackupLocationKeyspaceTables" : {

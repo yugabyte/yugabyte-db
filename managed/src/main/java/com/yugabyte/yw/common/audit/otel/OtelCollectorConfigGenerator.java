@@ -33,6 +33,7 @@ import com.yugabyte.yw.models.helpers.telemetry.DynatraceConfig;
 import com.yugabyte.yw.models.helpers.telemetry.ExportType;
 import com.yugabyte.yw.models.helpers.telemetry.GCPCloudMonitoringConfig;
 import com.yugabyte.yw.models.helpers.telemetry.LokiConfig;
+import com.yugabyte.yw.models.helpers.telemetry.OTLPConfig;
 import com.yugabyte.yw.models.helpers.telemetry.ProviderType;
 import com.yugabyte.yw.models.helpers.telemetry.S3Config;
 import com.yugabyte.yw.models.helpers.telemetry.SplunkConfig;
@@ -40,9 +41,6 @@ import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.nio.file.Path;
 import java.util.*;
-import java.util.Base64;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -517,7 +515,7 @@ public class OtelCollectorConfigGenerator {
                   String exporterName =
                       appendExporterConfig(
                           telemetryProvider,
-                          collectorConfigFormat.getExporters(),
+                          collectorConfigFormat,
                           new ArrayList<>(),
                           ExportType.AUDIT_LOGS);
                   appendSecretEnv(telemetryProvider, secretEnv);
@@ -1162,10 +1160,7 @@ public class OtelCollectorConfigGenerator {
 
     String exporterName =
         appendExporterConfig(
-            telemetryProvider,
-            collectorConfigFormat.getExporters(),
-            new ArrayList<>(),
-            ExportType.METRICS);
+            telemetryProvider, collectorConfigFormat, new ArrayList<>(), ExportType.METRICS);
 
     return exporterName;
   }
@@ -1253,14 +1248,14 @@ public class OtelCollectorConfigGenerator {
     NodeDetails nodeDetails = universe.getNode(nodeName);
     TelemetryProvider telemetryProvider =
         telemetryProviderService.getOrBadRequest(logsExporterConfig.getExporterUuid());
-    Map<String, OtelCollectorConfigFormat.Exporter> exporters = collectorConfig.getExporters();
     String exporterName;
     List<OtelCollectorConfigFormat.AttributeAction> attributeActions = new ArrayList<>();
     OtelCollectorConfigFormat.AttributesProcessor attributesProcessor =
         new OtelCollectorConfigFormat.AttributesProcessor();
 
     exporterName =
-        appendExporterConfig(telemetryProvider, exporters, attributeActions, ExportType.AUDIT_LOGS);
+        appendExporterConfig(
+            telemetryProvider, collectorConfig, attributeActions, ExportType.AUDIT_LOGS);
 
     // Add common log attributes, log prefix extraction, and tags
     AuditLogRegexGenerator.LogRegexResult regexResult =
@@ -1326,14 +1321,14 @@ public class OtelCollectorConfigGenerator {
     NodeDetails nodeDetails = universe.getNode(nodeName);
     TelemetryProvider telemetryProvider =
         telemetryProviderService.getOrBadRequest(logsExporterConfig.getExporterUuid());
-    Map<String, OtelCollectorConfigFormat.Exporter> exporters = collectorConfig.getExporters();
     String exporterName;
     List<OtelCollectorConfigFormat.AttributeAction> attributeActions = new ArrayList<>();
     OtelCollectorConfigFormat.AttributesProcessor attributesProcessor =
         new OtelCollectorConfigFormat.AttributesProcessor();
 
     exporterName =
-        appendExporterConfig(telemetryProvider, exporters, attributeActions, ExportType.QUERY_LOGS);
+        appendExporterConfig(
+            telemetryProvider, collectorConfig, attributeActions, ExportType.QUERY_LOGS);
 
     // Add common log attributes, log prefix extraction, and tags
     AuditLogRegexGenerator.LogRegexResult regexResult =
@@ -1527,11 +1522,14 @@ public class OtelCollectorConfigGenerator {
 
   private String appendExporterConfig(
       TelemetryProvider telemetryProvider,
-      Map<String, OtelCollectorConfigFormat.Exporter> exporters,
+      OtelCollectorConfigFormat collectorConfig,
       List<OtelCollectorConfigFormat.AttributeAction> attributeActions,
       ExportType exportType) {
     String exporterName;
     String exportTypeAndUUIDString = exportTypeAndUUID(telemetryProvider.getUuid(), exportType);
+    Map<String, OtelCollectorConfigFormat.Exporter> exporters = collectorConfig.getExporters();
+    Map<String, OtelCollectorConfigFormat.Extension> extensions = collectorConfig.getExtensions();
+    boolean setExtension = false;
     switch (telemetryProvider.getConfig().getType()) {
       case DATA_DOG:
         DataDogConfig dataDogConfig = (DataDogConfig) telemetryProvider.getConfig();
@@ -1675,12 +1673,94 @@ public class OtelCollectorConfigGenerator {
         exporterName = EXPORTER_PREFIX_LOKI + exportTypeAndUUIDString;
         exporters.put(exporterName, setExporterCommonConfig(lokiExporter, true, true, exportType));
         break;
+      case OTLP:
+        OTLPConfig otlpConfig = (OTLPConfig) telemetryProvider.getConfig();
+        OtelCollectorConfigFormat.OTLPExporter otlpExporter =
+            new OtelCollectorConfigFormat.OTLPExporter();
+
+        otlpExporter.setEndpoint(otlpConfig.getEndpoint());
+        otlpExporter.setTimeout(otlpConfig.getTimeoutSeconds() + "s");
+        otlpExporter.setCompression(otlpConfig.getCompression().name());
+        otlpExporter.setHeaders(otlpConfig.getHeaders());
+
+        OtelCollectorConfigFormat.TlsSettings otlpTLSSettings =
+            new OtelCollectorConfigFormat.TlsSettings();
+        otlpTLSSettings.setInsecure_skip_verify(true);
+        otlpExporter.setTls(otlpTLSSettings);
+
+        if (otlpConfig.getLogsEndpoint() != null && !otlpConfig.getLogsEndpoint().isEmpty()) {
+          otlpExporter.setLogs_endpoint(otlpConfig.getLogsEndpoint());
+        }
+
+        // Add authentication extension if auth type is not NoAuth
+        String authExtensionName;
+        switch (otlpConfig.getAuthType()) {
+          case BasicAuth:
+            OtelCollectorConfigFormat.BasicAuthExtension basicAuthExt =
+                new OtelCollectorConfigFormat.BasicAuthExtension();
+            OtelCollectorConfigFormat.ClientAuth clientAuth =
+                new OtelCollectorConfigFormat.ClientAuth();
+            clientAuth.setUsername(otlpConfig.getBasicAuth().getUsername());
+            clientAuth.setPassword(otlpConfig.getBasicAuth().getPassword());
+            basicAuthExt.setClient_auth(clientAuth);
+
+            authExtensionName = "basicauth/" + exportTypeAndUUIDString;
+            extensions.put(authExtensionName, basicAuthExt);
+
+            // Set the auth reference in the exporter
+            OtelCollectorConfigFormat.AuthConfig basicAuthConfig =
+                new OtelCollectorConfigFormat.AuthConfig();
+            basicAuthConfig.setAuthenticator(authExtensionName);
+            otlpExporter.setAuth(basicAuthConfig);
+            setExtension = true;
+            break;
+
+          case BearerToken:
+            OtelCollectorConfigFormat.BearerTokenAuthExtension bearerAuthExt =
+                new OtelCollectorConfigFormat.BearerTokenAuthExtension();
+            bearerAuthExt.setBearer_token(otlpConfig.getBearerToken().getToken());
+
+            authExtensionName = "bearertoken/" + exportTypeAndUUIDString;
+            extensions.put(authExtensionName, bearerAuthExt);
+
+            // Set the auth reference in the exporter
+            OtelCollectorConfigFormat.AuthConfig bearerAuthConfig =
+                new OtelCollectorConfigFormat.AuthConfig();
+            bearerAuthConfig.setAuthenticator(authExtensionName);
+            otlpExporter.setAuth(bearerAuthConfig);
+            setExtension = true;
+            break;
+
+          case NoAuth:
+            // No authentication extension needed
+            break;
+
+          default:
+            throw new IllegalArgumentException(
+                "Unsupported auth type: " + otlpConfig.getAuthType());
+        }
+
+        String exporterTypePrefix = otlpConfig.getProtocol().getExporterType();
+
+        exporterName = exporterTypePrefix + "/" + exportTypeAndUUIDString;
+        exporters.put(exporterName, setExporterCommonConfig(otlpExporter, true, true, exportType));
+
+        break;
       default:
         throw new IllegalArgumentException(
             "Exporter type "
                 + telemetryProvider.getConfig().getType().name()
                 + " is not supported.");
     }
+
+    // Update service extensions to include any dynamically added extensions (e.g., auth
+    // extensions)
+    if (collectorConfig.getService() != null && setExtension) {
+      collectorConfig
+          .getService()
+          .setExtensions(new ArrayList<>(collectorConfig.getExtensions().keySet()));
+    }
+
     return exporterName;
   }
 

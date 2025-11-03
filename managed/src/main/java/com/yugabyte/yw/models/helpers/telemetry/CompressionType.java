@@ -1,19 +1,11 @@
 package com.yugabyte.yw.models.helpers.telemetry;
 
 public enum CompressionType {
-  gzip("gzip"),
-  none("none"),
-  snappy("snappy"),
-  zstd("zstd");
-  private final String type;
-
-  CompressionType(String type) {
-    this.type = type;
-  }
-
-  public String getType() {
-    return type;
-  }
+  // These are directly substituted to the OtelConfig, cannot be changed
+  gzip,
+  none,
+  snappy,
+  zstd;
 
   @Override
   public String toString() {
@@ -22,7 +14,7 @@ public enum CompressionType {
 
   public static CompressionType fromString(String input) {
     for (CompressionType name : CompressionType.values()) {
-      if (name.type.equalsIgnoreCase(input)) {
+      if (name.toString().equalsIgnoreCase(input)) {
         return name;
       }
     }

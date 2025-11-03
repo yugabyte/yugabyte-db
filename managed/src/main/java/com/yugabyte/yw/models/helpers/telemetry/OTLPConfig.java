@@ -64,6 +64,10 @@ public class OTLPConfig extends TelemetryProviderConfig {
       this.exporterType = exporterType;
     }
 
+    public String getExporterType() {
+      return this.exporterType;
+    }
+
     @Override
     public String toString() {
       return this.name();
