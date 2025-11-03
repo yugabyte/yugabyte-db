@@ -642,6 +642,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
       uint64_t debug_id) REQUIRES(lock_);
 
   void MakeRelcacheInitConnection(std::promise<Status>* p, const std::string& dbname);
+  void RelcacheInitConnectionDone(std::promise<Status>* p, const std::string& dbname,
+                                  const Status& status);
 
   std::string log_prefix_;
 

@@ -848,6 +848,11 @@ public class Util {
     if (nodeInUniverse == null) {
       return null;
     }
+    return getIpToUse(universe, nodeInUniverse, cloudEnabled);
+  }
+
+  public static String getIpToUse(
+      Universe universe, NodeDetails nodeInUniverse, boolean cloudEnabled) {
     if (GFlagsUtil.isUseSecondaryIP(universe, nodeInUniverse, cloudEnabled)) {
       return nodeInUniverse.cloudInfo.secondary_private_ip;
     }

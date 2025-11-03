@@ -6,7 +6,6 @@ import { Row, Col } from 'react-bootstrap';
 import moment from 'moment';
 import pluralize from 'pluralize';
 import PropTypes from 'prop-types';
-import { FormattedDate, FormattedRelative } from 'react-intl';
 import { ClusterInfoPanelContainer, YBWidget } from '../../panels';
 import {
   OverviewMetricsContainer,
@@ -159,6 +158,8 @@ class AlertInfoPanel extends PureComponent {
       errorHeader = <Link className="fa fa-exclamation-triangle text-red" to={'/alerts'} />;
     }
     if (alerts.alertsList) {
+      // eslint-disable-next-line no-console
+      console.log('alerts', alerts);
       const lastUpdateDate = alerts.updated && moment(alerts.updated);
       const healthCheckInfoItems = [
         {
@@ -176,9 +177,7 @@ class AlertInfoPanel extends PureComponent {
           data: lastUpdateDate ? (
             <span className="text-lightgray text-light">
               <i className={'fa fa-clock-o'}></i> Updated{' '}
-              <span className={'text-dark text-normal'}>
-                <FormattedRelative value={lastUpdateDate} />
-              </span>
+              <span className={'text-dark text-normal'}>{lastUpdateDate.fromNow()}</span>
             </span>
           ) : null
         }
@@ -295,9 +294,7 @@ class HealthInfoPanel extends PureComponent {
           data: lastUpdateDate ? (
             <span className="text-lightgray text-light">
               <i className={'fa fa-clock-o'}></i> Updated{' '}
-              <span className={'text-dark text-normal'}>
-                <FormattedRelative value={lastUpdateDate} unit="day" />
-              </span>
+              <span className={'text-dark text-normal'}>{lastUpdateDate.fromNow()}</span>
             </span>
           ) : null
         }
@@ -735,83 +732,6 @@ export default class UniverseOverviewNew extends Component {
     return (
       <Col lg={4} xs={12}>
         {mapWidget}
-      </Col>
-    );
-  };
-
-  getDatabaseWidget = (universeInfo, tasks) => {
-    const lastUpdateDate = this.getLastUpdateDate();
-    const {
-      universe: { currentUniverse },
-      updateAvailable,
-      currentCustomer
-    } = this.props;
-    const showUpdate =
-      updateAvailable && !isDisabled(currentCustomer.data.features, 'universes.actions');
-    const universePaused = currentUniverse?.data?.universeDetails?.universePaused;
-    const updateInProgress = currentUniverse?.data?.universeDetails?.updateInProgress;
-
-    const upgradeLink = () => {
-      return updateInProgress ? (
-        <span>
-          Upgrade <span className="badge badge-pill badge-orange">{updateAvailable}</span>
-        </span>
-      ) : (
-        <RbacValidator
-          accessRequiredOn={{
-            onResource: universeInfo.universeUUID,
-            ...ApiPermissionMap.MODIFY_UNIVERSE
-          }}
-          isControl
-        >
-          <a
-            onClick={(e) => {
-              this.props.showSoftwareUpgradesModal(e);
-              e.preventDefault();
-            }}
-            href="/"
-          >
-            Upgrade <span className="badge badge-pill badge-orange">{updateAvailable}</span>
-          </a>
-        </RbacValidator>
-      );
-    };
-    const infoWidget = (
-      <YBWidget
-        className={'overview-widget-database'}
-        headerRight={showUpdate && !universePaused ? upgradeLink() : null}
-        noHeader
-        size={1}
-        body={
-          <FlexContainer className={'cost-widget centered'} direction={'row'}>
-            <FlexShrink>
-              <span className="version__label">{'Version'}</span>
-            </FlexShrink>
-            <FlexShrink>
-              <DatabasePanel universeInfo={universeInfo} tasks={tasks} />
-            </FlexShrink>
-            <FlexShrink>
-              {lastUpdateDate && (
-                <div className="text-lightgray text-light">
-                  <span className={'fa fa-clock-o'}></span> Upgraded{' '}
-                  <span className={'text-dark text-normal'}>
-                    <FormattedDate
-                      value={lastUpdateDate}
-                      year="numeric"
-                      month="short"
-                      day="2-digit"
-                    />
-                  </span>
-                </div>
-              )}
-            </FlexShrink>
-          </FlexContainer>
-        }
-      />
-    );
-    return (
-      <Col lg={4} md={4} sm={4} xs={6}>
-        {infoWidget}
       </Col>
     );
   };

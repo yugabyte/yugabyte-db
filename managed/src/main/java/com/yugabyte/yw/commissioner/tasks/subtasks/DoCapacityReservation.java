@@ -14,6 +14,7 @@ import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.utils.CapacityReservationUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.metrics.CapacityReservationMetrics;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -37,15 +38,18 @@ public class DoCapacityReservation extends ServerSubTaskBase {
 
   private AZUClientFactory azuClientFactory;
   private CloudAPI.Factory cloudAPIFactory;
+  private CapacityReservationMetrics reservationMetrics;
 
   @Inject
   protected DoCapacityReservation(
       BaseTaskDependencies baseTaskDependencies,
       AZUClientFactory azuClientFactory,
-      CloudAPI.Factory cloudAPIFactory) {
+      CloudAPI.Factory cloudAPIFactory,
+      CapacityReservationMetrics reservationMetrics) {
     super(baseTaskDependencies);
     this.azuClientFactory = azuClientFactory;
     this.cloudAPIFactory = cloudAPIFactory;
+    this.reservationMetrics = reservationMetrics;
   }
 
   public static class Params extends ServerSubTaskParams {
@@ -175,10 +179,21 @@ public class DoCapacityReservation extends ServerSubTaskBase {
 
             if (!createdGroups.contains(regionReservation.getGroupName())) {
               String groupId =
-                  apiClient.createCapacityReservationGroup(
-                      regionReservation.getGroupName(),
-                      regionReservation.getRegion(),
-                      regionReservation.getZones());
+                  reservationMetrics.wrapWithMetrics(
+                      universe.getUniverseUUID(),
+                      1,
+                      Common.CloudType.azu,
+                      CapacityReservationUtil.ReservationAction.CREATE_GROUP,
+                      () ->
+                          apiClient.createCapacityReservationGroup(
+                              regionReservation.getGroupName(),
+                              regionReservation.getRegion(),
+                              regionReservation.getZones(),
+                              Map.of(
+                                  "universe-name",
+                                  universe.getName(),
+                                  "universe-uuid",
+                                  universe.getUniverseUUID().toString())));
               log.info("Created group {}", groupId);
               createdGroups.add(regionReservation.getGroupName());
             }
@@ -203,18 +218,24 @@ public class DoCapacityReservation extends ServerSubTaskBase {
                             reservation.getVmNames());
                         Integer count = reservation.getVmNames().size();
                         String capacityReservation =
-                            apiClient.createCapacityReservation(
-                                regionReservation.getGroupName(),
-                                regionReservation.getRegion(),
-                                zoneID,
-                                instanceReservationName,
-                                instanceType,
+                            reservationMetrics.wrapWithMetrics(
+                                universe.getUniverseUUID(),
                                 count,
-                                Map.of(
-                                    "universe-name",
-                                    universe.getName(),
-                                    "universe-uuid",
-                                    universe.getUniverseUUID().toString()));
+                                Common.CloudType.azu,
+                                CapacityReservationUtil.ReservationAction.RESERVE,
+                                () ->
+                                    apiClient.createCapacityReservation(
+                                        regionReservation.getGroupName(),
+                                        regionReservation.getRegion(),
+                                        zoneID,
+                                        instanceReservationName,
+                                        instanceType,
+                                        count,
+                                        Map.of(
+                                            "universe-name",
+                                            universe.getName(),
+                                            "universe-uuid",
+                                            universe.getUniverseUUID().toString())));
                         log.info(
                             "Created reservation {} for {}", capacityReservation, instanceType);
                         reservation.setReservationName(capacityReservation);
@@ -304,18 +325,24 @@ public class DoCapacityReservation extends ServerSubTaskBase {
                             reservation.getVmNames());
                         Integer count = reservation.getVmNames().size();
                         String capacityReservation =
-                            cloudAPI.createCapacityReservation(
-                                provider,
-                                reservationName,
-                                zoneReservation.getRegion(),
-                                reservation.getZone(),
-                                instanceType,
+                            reservationMetrics.wrapWithMetrics(
+                                universe.getUniverseUUID(),
                                 count,
-                                Map.of(
-                                    "universe-name",
-                                    universe.getName(),
-                                    "universe-uuid",
-                                    universe.getUniverseUUID().toString()));
+                                Common.CloudType.aws,
+                                CapacityReservationUtil.ReservationAction.RESERVE,
+                                () ->
+                                    cloudAPI.createCapacityReservation(
+                                        provider,
+                                        reservationName,
+                                        zoneReservation.getRegion(),
+                                        reservation.getZone(),
+                                        instanceType,
+                                        count,
+                                        Map.of(
+                                            "universe-name",
+                                            universe.getName(),
+                                            "universe-uuid",
+                                            universe.getUniverseUUID().toString())));
                         log.info(
                             "Created reservation {} for {}", capacityReservation, instanceType);
                         reservation.setReservationName(capacityReservation);

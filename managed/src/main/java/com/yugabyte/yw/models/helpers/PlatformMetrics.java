@@ -121,7 +121,8 @@ public enum PlatformMetrics {
       "Local filepath for universe DB version is missing", Unit.STATUS, false),
   // XCluster
   XCLUSTER_METRIC_PROCESSOR_STATUS("xCluster metrics processor status", Unit.STATUS),
-  XCLUSTER_TABLE_STATUS("XCluster table status", Unit.STATUS);
+  XCLUSTER_TABLE_STATUS("XCluster table status", Unit.STATUS),
+  CAPACITY_RESERVATION_ENABLED_STATUS("Capacity reservation status", Unit.STATUS);
 
   private final String help;
   private final Unit unit;

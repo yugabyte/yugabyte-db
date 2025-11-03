@@ -293,6 +293,12 @@ extern bool yb_mixed_mode_saop_pushdown;
 
 extern bool yb_use_internal_auto_analyze_service_conn;
 
+// Keep in sync with the same definition in common_flags.cc
+#ifdef NDEBUG
+#define kEnableDdlTransactionBlocks true
+#else
+#define kEnableDdlTransactionBlocks false
+#endif
 extern bool yb_ddl_transaction_block_enabled;
 
 extern bool yb_disable_ddl_transaction_block_for_read_committed;

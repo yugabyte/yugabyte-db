@@ -26,10 +26,10 @@ properties:
   leader_affinity:
     description: Affinitizes raft leaders to this AZ.
     type: boolean
-  lb_name:
-    description: The Load Balancer id.
-    type: string
   leader_preference:
     description: Priority of zone (for leaders placement). Values have to be contiguous non-zero integers. Multiple zones can have the same value. A lower value indicates higher zone priority.
     type: integer
     format: int32
+  lb_name:
+    description: The Load Balancer id.
+    type: string

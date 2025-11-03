@@ -1,7 +1,6 @@
 import { render, screen } from '../../../test-utils';
 import { within } from '@testing-library/dom';
 import userEvent from '@testing-library/user-event';
-import { IntlProvider } from 'react-intl';
 
 import { mockProps } from './UniverseViewMockData';
 import { UniverseView } from '../../universes';
@@ -10,11 +9,7 @@ describe('UniverseView render basic test', () => {
   const universeCount = mockProps.universe.universeList.data.length;
 
   beforeEach(() => {
-    render(
-      <IntlProvider locale="en">
-        <UniverseView {...mockProps} />
-      </IntlProvider>
-    );
+    render(<UniverseView {...mockProps} />);
   });
   it('renders the list of universes in list view', () => {
     const universeList = screen.getByRole('list', { name: /universe list/i });

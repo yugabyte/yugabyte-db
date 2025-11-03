@@ -410,6 +410,7 @@ public class CertsRotateParams extends UpgradeTaskParams {
   // Sets additional task params for Kubernetes universes
   private void setAdditionalTaskParamsForKubernetes(Universe universe) {
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
     UUID currentRootCA = universeDetails.rootCA;
 
     if ((rootCA != null && !rootCA.equals(currentRootCA))) {
@@ -417,10 +418,18 @@ public class CertsRotateParams extends UpgradeTaskParams {
     } else if (selfSignedServerCertRotate && selfSignedClientCertRotate) {
       rootCARotationType = CertRotationType.ServerCert;
     } else if (selfSignedServerCertRotate || selfSignedClientCertRotate) {
-      throw new PlatformServiceException(
-          Status.BAD_REQUEST,
-          "Cannot rotate only one of server or client certificates at a time. "
-              + "Both must be rotated together for Kubernetes universes.");
+      rootCARotationType = CertRotationType.ServerCert;
+      if (!selfSignedClientCertRotate && userIntent.enableClientToNodeEncrypt) {
+        throw new PlatformServiceException(
+            Status.BAD_REQUEST,
+            "Cannot rotate only node to node certificate when client to node encryption is"
+                + " enabled.");
+      } else if (!selfSignedServerCertRotate && userIntent.enableNodeToNodeEncrypt) {
+        throw new PlatformServiceException(
+            Status.BAD_REQUEST,
+            "Cannot rotate only client to node certificate when node to node encryption is"
+                + " enabled.");
+      }
     }
   }
 

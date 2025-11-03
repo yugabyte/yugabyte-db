@@ -139,6 +139,7 @@ public class DecommissionNode extends EditUniverseTaskBase {
           .getUniverseDetails()
           .upsertCluster(
               taskParamsCluster.userIntent,
+              taskParamsCluster.getPartitions(),
               taskParamsCluster.placementInfo,
               taskParamsCluster.uuid);
 

@@ -1356,7 +1356,7 @@ public class ShellKubernetesManager extends KubernetesManager {
             universe.getName(),
             cluster.clusterType.equals(ClusterType.PRIMARY) ? "primary" : "replica",
             serverType.name().toLowerCase());
-    PlacementInfo pi = cluster.placementInfo;
+    PlacementInfo pi = cluster.getOverallPlacement();
     boolean isReadOnlyCluster = cluster.clusterType == ClusterType.ASYNC;
     KubernetesPlacement placement = new KubernetesPlacement(pi, isReadOnlyCluster);
     Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
@@ -1406,7 +1406,7 @@ public class ShellKubernetesManager extends KubernetesManager {
       return;
     }
     String pdbPolicyYaml = generatePDBPolicyYaml(universe, cluster, serverType);
-    PlacementInfo pi = cluster.placementInfo;
+    PlacementInfo pi = cluster.getOverallPlacement();
     boolean isReadOnlyCluster = cluster.clusterType == ClusterType.ASYNC;
     KubernetesPlacement placement = new KubernetesPlacement(pi, isReadOnlyCluster);
     Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));

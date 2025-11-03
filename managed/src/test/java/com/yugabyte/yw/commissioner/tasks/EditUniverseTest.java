@@ -368,10 +368,11 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
 
     verifyCapacityReservationAZU(
         universe.getUniverseUUID(),
-        region,
-        Map.of(
-            universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
-            Map.of("1", Arrays.asList("host-n4", "host-n5"))));
+        AzureReservationGroup.of(
+            region,
+            Map.of(
+                universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
+                Map.of("1", Arrays.asList("host-n4", "host-n5")))));
 
     verifyNodeInteractionsCapacityReservation(
         37,

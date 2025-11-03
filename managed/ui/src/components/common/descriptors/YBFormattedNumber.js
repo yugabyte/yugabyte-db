@@ -1,14 +1,31 @@
 // Copyright (c) YugabyteDB, Inc.
 
 import { Component } from 'react';
-import { FormattedNumber } from 'react-intl';
+import { formatNumber } from '../../../utils/Formatters';
 import { isFinite } from 'lodash';
 
 export default class YBFormattedNumber extends Component {
   render() {
-    if (!isFinite(this.props.value)) {
+    const {
+      value,
+      formatStyle = 'decimal',
+      maximumFractionDigits,
+      currency = 'USD',
+      ...otherProps
+    } = this.props;
+
+    if (!isFinite(value)) {
       return <span>n/a</span>;
     }
-    return <FormattedNumber {...this.props} style={this.props.formattedNumberStyle} />;
+
+    const formattedValue = formatNumber(value, {
+      formatOptions: {
+        maximumFractionDigits: maximumFractionDigits ?? 2,
+        style: formatStyle,
+        currency: currency
+      }
+    });
+
+    return <span {...otherProps}>{formattedValue}</span>;
   }
 }

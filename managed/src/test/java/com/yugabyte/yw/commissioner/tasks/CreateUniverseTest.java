@@ -259,6 +259,11 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     Universe universe = createUniverseForProvider("universe-test", azuProvider);
     List<AvailabilityZone> zones = Arrays.asList(zone1, zone2, zone3);
     UniverseDefinitionTaskParams taskParams = getTaskParams(false, universe);
+    PlacementInfo placementInfo = new PlacementInfo();
+    for (AvailabilityZone zone : zones) {
+      PlacementInfoUtil.addPlacementZone(zone.getUuid(), placementInfo);
+    }
+    taskParams.getPrimaryCluster().placementInfo = placementInfo;
     int i = 0;
     for (NodeDetails nodeDetails : taskParams.nodeDetailsSet) {
       AvailabilityZone zone = zones.get(i++ % zones.size());
@@ -289,17 +294,16 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
             });
     verifyCapacityReservationAZU(
         universe.getUniverseUUID(),
-        region1,
-        Map.of(
-            universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
-            Map.of("1", nodesByAZ.get(zone1.getUuid()))));
-
-    verifyCapacityReservationAZU(
-        universe.getUniverseUUID(),
-        region2,
-        Map.of(
-            overridenInstanceType,
-            Map.of("2", nodesByAZ.get(zone2.getUuid()), "3", nodesByAZ.get(zone3.getUuid()))));
+        AzureReservationGroup.of(
+            region1,
+            Map.of(
+                universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
+                Map.of("1", nodesByAZ.get(zone1.getUuid())))),
+        AzureReservationGroup.of(
+            region2,
+            Map.of(
+                overridenInstanceType,
+                Map.of("2", nodesByAZ.get(zone2.getUuid()), "3", nodesByAZ.get(zone3.getUuid())))));
 
     List<String> nonZ1Nodes = new ArrayList<>();
     nonZ1Nodes.addAll(nodesByAZ.get(zone2.getUuid()));
@@ -352,6 +356,11 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     Universe universe = createUniverseForProvider("universe-test", azuProvider);
     List<AvailabilityZone> zones = Arrays.asList(zone1, zone2, zone3);
     UniverseDefinitionTaskParams taskParams = getTaskParams(false, universe);
+    PlacementInfo placementInfo = new PlacementInfo();
+    for (AvailabilityZone zone : zones) {
+      PlacementInfoUtil.addPlacementZone(zone.getUuid(), placementInfo);
+    }
+    taskParams.getPrimaryCluster().placementInfo = placementInfo;
     int i = 0;
     for (NodeDetails nodeDetails : taskParams.nodeDetailsSet) {
       AvailabilityZone zone = zones.get(i++ % zones.size());
@@ -382,10 +391,11 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
             });
     verifyCapacityReservationAZU(
         universe.getUniverseUUID(),
-        region1,
-        Map.of(
-            universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
-            Map.of("1", nodesByAZ.get(zone1.getUuid()))));
+        AzureReservationGroup.of(
+            region1,
+            Map.of(
+                universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
+                Map.of("1", nodesByAZ.get(zone1.getUuid())))));
 
     String region2Group =
         DoCapacityReservation.getCapacityReservationGroupName(universeUUID, region2.getCode());
@@ -410,6 +420,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
 
   @Test
   public void testCreateUniverseWithCapacityReservationAwsSuccess() {
+
     RuntimeConfigEntry.upsertGlobal(ProviderConfKeys.enableCapacityReservationAws.getKey(), "true");
     Region region1 = Region.getByCode(defaultProvider, "region-1");
     AvailabilityZone zone1 = AvailabilityZone.getOrCreate(region1, "az-1", "az 1", "subnet");
@@ -419,6 +430,11 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     Universe universe = createUniverseForProvider("universe-test", defaultProvider);
     List<AvailabilityZone> zones = Arrays.asList(zone1, zone2, zone3);
     UniverseDefinitionTaskParams taskParams = getTaskParams(false, universe);
+    PlacementInfo placementInfo = new PlacementInfo();
+    for (AvailabilityZone zone : zones) {
+      PlacementInfoUtil.addPlacementZone(zone.getUuid(), placementInfo);
+    }
+    taskParams.getPrimaryCluster().placementInfo = placementInfo;
     int i = 0;
     for (NodeDetails nodeDetails : taskParams.nodeDetailsSet) {
       AvailabilityZone zone = zones.get(i++ % zones.size());
@@ -452,10 +468,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
         universe.getUniverseUUID(),
         Map.of(
             universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
-            Map.of("1", new ZoneData("region-1", nodesByAZ.get(zone1.getUuid())))));
-
-    verifyCapacityReservationAws(
-        universe.getUniverseUUID(),
+            Map.of("1", new ZoneData("region-1", nodesByAZ.get(zone1.getUuid())))),
         Map.of(
             overridenInstanceType,
             Map.of(
@@ -517,13 +530,6 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     assertEquals(Success, taskInfo.getTaskState());
     universe = Universe.getOrBadRequest(universeUUID);
 
-    verifyCapacityReservationAZU(
-        universe.getUniverseUUID(),
-        region1,
-        Map.of(
-            universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
-            Map.of("1", Arrays.asList("host-n1", "host-n2", "host-n3"))));
-
     Map<String, String> readonlyNodes = new HashMap<>();
     UUID rrClusterID = universe.getUniverseDetails().getReadOnlyClusters().get(0).uuid;
 
@@ -540,13 +546,19 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
 
     verifyCapacityReservationAZU(
         universe.getUniverseUUID(),
-        region2,
-        Map.of(
-            rrInstanceType,
+        AzureReservationGroup.of(
+            region1,
             Map.of(
-                "2", Arrays.asList(readonlyNodes.get("2")),
-                "3", Arrays.asList(readonlyNodes.get("3")),
-                "4", Arrays.asList(readonlyNodes.get("4")))));
+                universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
+                Map.of("1", Arrays.asList("host-n1", "host-n2", "host-n3")))),
+        AzureReservationGroup.of(
+            region2,
+            Map.of(
+                rrInstanceType,
+                Map.of(
+                    "2", Arrays.asList(readonlyNodes.get("2")),
+                    "3", Arrays.asList(readonlyNodes.get("3")),
+                    "4", Arrays.asList(readonlyNodes.get("4"))))));
 
     verifyNodeInteractionsCapacityReservation(
         69,
@@ -607,6 +619,9 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
 
     verifyCapacityReservationAws(
         universe.getUniverseUUID(),
+        Map.of(
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
+            Map.of("1", new ZoneData("region-1", Arrays.asList("host-n3", "host-n2", "host-n1")))),
         Map.of(
             rrInstanceType,
             Map.of(
@@ -690,7 +705,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
     taskParams.getPrimaryCluster().userIntent.dedicatedNodes = true;
     PlacementInfoUtil.SelectMastersResult selectMastersResult =
         PlacementInfoUtil.selectMasters(
-            null, taskParams.nodeDetailsSet, null, true, taskParams.clusters);
+            null, taskParams.nodeDetailsSet, n -> true, true, taskParams.clusters);
     selectMastersResult.addedMasters.forEach(taskParams.nodeDetailsSet::add);
     PlacementInfoUtil.dedicateNodes(taskParams.nodeDetailsSet);
     TaskInfo taskInfo = submitTask(taskParams);

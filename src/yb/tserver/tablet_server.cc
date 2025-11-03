@@ -1320,7 +1320,7 @@ Status TabletServer::TriggerRelcacheInitConnection(
         [this, p, dbname](const Status& status) {
           if (!status.ok()) {
             LOG(INFO) << status;
-            p->set_value(status);
+            RelcacheInitConnectionDone(p.get(), dbname, status);
             return;
           }
           MakeRelcacheInitConnection(p.get(), dbname);
@@ -1330,7 +1330,6 @@ Status TabletServer::TriggerRelcacheInitConnection(
   auto timeout = default_client_timeout();
   std::future_status status = future_for_this_request.wait_for(timeout.ToSteadyDuration());
 
-  // Clean up dbname from the map so that next winner can create superuser connection.
   if (started_superuser_connection) {
     std::lock_guard l(lock_);
     in_flight_superuser_connections_.erase(dbname);
@@ -1342,6 +1341,17 @@ Status TabletServer::TriggerRelcacheInitConnection(
                        dbname);
 }
 
+void TabletServer::RelcacheInitConnectionDone(
+    std::promise<Status>* p, const std::string& dbname, const Status& status) {
+  // Do set_value and erase atomically.
+  std::lock_guard l(lock_);
+
+  // Fulfill the promise, unblocking all waiting threads for this task.
+  p->set_value(status);
+  // Clean up dbname from the map so that next winner can create superuser connection.
+  in_flight_superuser_connections_.erase(dbname);
+}
+
 void TabletServer::MakeRelcacheInitConnection(std::promise<Status>* p, const std::string& dbname) {
   auto deadline = CoarseMonoClock::Now() + default_client_timeout();
   auto status = ResultToStatus(CreateInternalPGConn(dbname, deadline));
@@ -1350,8 +1360,7 @@ void TabletServer::MakeRelcacheInitConnection(std::promise<Status>* p, const std
   } else {
     LOG(INFO) << "Relcache init connection to database " << dbname << " failed: " << status;
   }
-  // Fulfill the promise, unblocking all waiting threads for this task.
-  p->set_value(status);
+  RelcacheInitConnectionDone(p, dbname, status);
 }
 
 void TabletServer::SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_breaking_version) {

@@ -1351,7 +1351,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
 
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.nodePrefix = "univConfCreate";
-    taskParams.upsertPrimaryCluster(getTestUserIntent(r, p, i, 5), null);
+    taskParams.upsertPrimaryCluster(getTestUserIntent(r, p, i, 5), null, null);
     PlacementInfoUtil.updateUniverseDefinition(
         taskParams, customer.getId(), taskParams.getPrimaryCluster().uuid, CREATE);
     UniverseDefinitionTaskParams.Cluster primaryCluster = taskParams.getPrimaryCluster();
@@ -1420,7 +1420,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
     UniverseDefinitionTaskParams.UserIntent userIntent = getTestUserIntent(r, p, i, 5);
     userIntent.providerType = Common.CloudType.onprem;
     userIntent.instanceType = "type.small";
-    taskParams.upsertPrimaryCluster(userIntent, null);
+    taskParams.upsertPrimaryCluster(userIntent, null, null);
     taskParams.nodeDetailsSet = new HashSet<>();
     UniverseDefinitionTaskParams.Cluster primaryCluster = taskParams.getPrimaryCluster();
 
@@ -1523,7 +1523,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
     userIntent.instanceType = "type.small";
     taskParams.nodeDetailsSet = new HashSet<>();
 
-    taskParams.upsertPrimaryCluster(userIntent, null);
+    taskParams.upsertPrimaryCluster(userIntent, null, null);
 
     return taskParams;
   }

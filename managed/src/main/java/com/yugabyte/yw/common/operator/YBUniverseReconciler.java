@@ -87,6 +87,7 @@ import play.libs.Json;
 import play.mvc.Result;
 
 @Slf4j
+// This doesn't support geo partitions as of now.
 public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
 
   private static final String DELETE_FINALIZER_THREAD_NAME_PREFIX = "universe-delete-finalizer-";

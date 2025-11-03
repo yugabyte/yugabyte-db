@@ -23,7 +23,7 @@ import org.yb.util.BuildTypeUtil;
  * Runs the pg_regress test suite on YB code.
  */
 @RunWith(value=YBTestRunner.class)
-public class TestPgRegressParallel2 extends BasePgRegressTest {
+public class TestPgRegressParallelPlans extends BasePgRegressTest {
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;
@@ -39,9 +39,9 @@ public class TestPgRegressParallel2 extends BasePgRegressTest {
   }
 
   @Test
-  public void testPgRegressParallelPlan() throws Exception {
+  public void schedule() throws Exception {
     if (!BuildTypeUtil.isSanitizerBuild()) {
-      runPgRegressTest("yb_parallel_plan_schedule");
+      runPgRegressTest("yb_parallel_plans_schedule");
     }
   }
 }

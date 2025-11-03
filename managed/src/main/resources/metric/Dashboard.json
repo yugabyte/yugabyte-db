@@ -12521,7 +12521,7 @@
       "max" : null,
       "min" : null,
       "show" : true,
-      "format" : ""
+      "format" : "ops/s"
     }, {
       "format" : "short",
       "label" : null,
@@ -12705,7 +12705,7 @@
       "max" : null,
       "min" : null,
       "show" : true,
-      "format" : "ms"
+      "format" : "s"
     }, {
       "format" : "short",
       "label" : null,
@@ -12723,7 +12723,7 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Current Lag",
-      "expr" : "max by (saved_name)(cdcsdk_flush_lag{node_prefix=~\"$dbcluster\"}) / 1000",
+      "expr" : "max by (saved_name)(cdcsdk_flush_lag{node_prefix=~\"$dbcluster\"}) / 1000000",
       "refId" : "A"
     } ],
     "gridPos" : {
@@ -12797,7 +12797,7 @@
       "max" : null,
       "min" : null,
       "show" : true,
-      "format" : "MB"
+      "format" : "MB/s"
     }, {
       "format" : "short",
       "label" : null,

@@ -1,5 +1,5 @@
 SET client_min_messages = 'warning';
-DROP DATABASE IF EXISTS colocated_db;
+DROP DATABASE IF EXISTS colocated_db WITH (force);
 CREATE DATABASE colocated_db WITH colocation = on;
 ALTER DATABASE colocated_db SET yb_enable_optimizer_statistics = on;
 ALTER DATABASE colocated_db SET yb_enable_base_scans_cost_model = on;
@@ -50,7 +50,7 @@ INSERT INTO t1m
 ANALYZE t1m;
 \c colocated_db
 --
--- Should choose serial seq scan
+-- Should choose SERIAL seq scan
 --
 EXPLAIN (COSTS off, SUMMARY off)
 SELECT id, k1 FROM t1m t;
@@ -60,7 +60,7 @@ SELECT id, k1 FROM t1m t;
 (1 row)
 
 --
--- Should choose serial index scan
+-- Should choose SERIAL index scan
 --
 EXPLAIN (COSTS off, SUMMARY off)
 SELECT id, k1, k2, k3, length(v) FROM t1m t WHERE id BETWEEN 500000-(100/2-1) AND 500000+(100/2);
@@ -135,7 +135,7 @@ SELECT 0 FROM t1m t WHERE id BETWEEN 500000-(100000/2-1) AND 500000+(100000/2);
 (2 rows)
 
 --
--- Should choose serial index only scan
+-- Should choose SERIAL index only scan
 --
 EXPLAIN (COSTS off, SUMMARY off)
 SELECT k1, k2, k3 FROM t1m t WHERE k1 = 5000;
@@ -154,7 +154,66 @@ SELECT k1, k2, k3 FROM t1m t WHERE k1 BETWEEN 5000-(4/2 - 1) AND 5000+(4/2);
 (2 rows)
 
 --
--- Should choose parallel seq scan
+-- Should choose SERIAL append plan
+--
+EXPLAIN (COSTS off, SUMMARY off)
+SELECT sum(k1), sum(k2), sum(k3), avg(k1+id), avg(k2+k3)
+FROM (SELECT id, k1, k2, k3 FROM t1m t1 WHERE id BETWEEN 500000-(10/2-1) AND 500000+(10/2)
+      UNION ALL
+      SELECT -1, k1, k2, k3 FROM t1m t2 WHERE k1 = 5000
+      UNION ALL
+      SELECT -2, k1, k2, k3 len FROM t1m t3 WHERE id = 100
+      UNION ALL
+      SELECT -3, k1, k2, k3 FROM t1m t4 WHERE k1 = 4500
+) v;
+                             QUERY PLAN                              
+---------------------------------------------------------------------
+ Aggregate
+   ->  Append
+         ->  Subquery Scan on "*SELECT* 1"
+               ->  Index Scan using t1m_pkey on t1m t1
+                     Index Cond: ((id >= 499996) AND (id <= 500005))
+         ->  Subquery Scan on "*SELECT* 2"
+               ->  Index Only Scan using t1m_k1k2k3 on t1m t2
+                     Index Cond: (k1 = 5000)
+         ->  Subquery Scan on "*SELECT* 3"
+               ->  Index Scan using t1m_pkey on t1m t3
+                     Index Cond: (id = 100)
+         ->  Subquery Scan on "*SELECT* 4"
+               ->  Index Only Scan using t1m_k1k2k3 on t1m t4
+                     Index Cond: (k1 = 4500)
+(14 rows)
+
+EXPLAIN (COSTS off, SUMMARY off)
+SELECT sum(k1), sum(k2), sum(k3), avg(k1+id), avg(k2+k3)
+FROM (SELECT id, k1, k2, k3 FROM t1m t1 WHERE id BETWEEN 500000-(10/2-1) AND 500000+(10/2)
+      UNION ALL
+      SELECT -1, k1, k2, k3 FROM t1m t2 WHERE k1 = 5000
+      UNION ALL
+      SELECT -2, k1, k2, k3 len FROM t1m t3 WHERE id = 100
+      UNION ALL
+      SELECT -3, k1, k2, k3 FROM t1m t4 WHERE k1 <= 300
+) v;
+                             QUERY PLAN                              
+---------------------------------------------------------------------
+ Aggregate
+   ->  Append
+         ->  Subquery Scan on "*SELECT* 1"
+               ->  Index Scan using t1m_pkey on t1m t1
+                     Index Cond: ((id >= 499996) AND (id <= 500005))
+         ->  Subquery Scan on "*SELECT* 2"
+               ->  Index Only Scan using t1m_k1k2k3 on t1m t2
+                     Index Cond: (k1 = 5000)
+         ->  Subquery Scan on "*SELECT* 3"
+               ->  Index Scan using t1m_pkey on t1m t3
+                     Index Cond: (id = 100)
+         ->  Subquery Scan on "*SELECT* 4"
+               ->  Index Only Scan using t1m_k1k2k3 on t1m t4
+                     Index Cond: (k1 <= 300)
+(14 rows)
+
+--
+-- Should choose PARALLEL seq scan
 --
 EXPLAIN (COSTS off, SUMMARY off)
 SELECT id, k1, k2, k3, length(v) FROM t1m t;
@@ -166,7 +225,7 @@ SELECT id, k1, k2, k3, length(v) FROM t1m t;
 (3 rows)
 
 --
--- Should choose parallel index scan
+-- Should choose PARALLEL index scan
 --
 EXPLAIN (COSTS off, SUMMARY off)
 SELECT id, k1, k2, k3, length(v) FROM t1m t WHERE k1 BETWEEN 5000-(200/2 - 1) AND 5000+(200/2);
@@ -218,18 +277,8 @@ SELECT id, k1, k2, k3, length(v) FROM t1m t ORDER BY id;
 (3 rows)
 
 --
--- Should choose parallel index only scan
+-- Should choose PARALLEL index only scan
 --
-EXPLAIN (COSTS off, SUMMARY off)
-SELECT k1, k2, k3 FROM t1m t WHERE k2 BETWEEN 5000-(200/2 - 1) AND 5000+(200/2);
-                        QUERY PLAN                        
-----------------------------------------------------------
- Gather
-   Workers Planned: 2
-   ->  Parallel Index Only Scan using t1m_k1k2k3 on t1m t
-         Index Cond: ((k2 >= 4901) AND (k2 <= 5100))
-(4 rows)
-
 EXPLAIN (COSTS off, SUMMARY off)
 SELECT k1, k2, k3 FROM t1m t WHERE k3 BETWEEN 5000-(1000/2 - 1) AND 5000+(1000/2);
                         QUERY PLAN                        
@@ -241,9 +290,43 @@ SELECT k1, k2, k3 FROM t1m t WHERE k3 BETWEEN 5000-(1000/2 - 1) AND 5000+(1000/2
 (4 rows)
 
 --
+-- Should choose PARALLEL append/gather plan
+--
+EXPLAIN (COSTS off, SUMMARY off)
+SELECT sum(k1), sum(k2), sum(k3), avg(k1+id), avg(k2+k3)
+FROM (SELECT id, k1, k2, k3 FROM t1m t1 WHERE id BETWEEN 500000-(10/2-1) AND 500000+(10/2)
+      UNION ALL
+      SELECT -1, k1, k2, k3 FROM t1m t2 WHERE k3 = 5000
+      UNION ALL
+      SELECT -2, k1, k2, k3 len FROM t1m t3 WHERE id = 100
+      UNION ALL
+      SELECT -3, k1, k2, k3 FROM t1m t4 WHERE k3 <= 300
+) v;
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Gather
+         Workers Planned: 2
+         ->  Partial Aggregate
+               ->  Parallel Append
+                     ->  Subquery Scan on "*SELECT* 4"
+                           ->  Parallel Index Only Scan using t1m_k1k2k3 on t1m t4
+                                 Index Cond: (k3 <= 300)
+                     ->  Subquery Scan on "*SELECT* 2"
+                           ->  Parallel Index Only Scan using t1m_k1k2k3 on t1m t2
+                                 Index Cond: (k3 = 5000)
+                     ->  Subquery Scan on "*SELECT* 1"
+                           ->  Parallel Index Scan using t1m_pkey on t1m t1
+                                 Index Cond: ((id >= 499996) AND (id <= 500005))
+                     ->  Subquery Scan on "*SELECT* 3"
+                           ->  Parallel Index Scan using t1m_pkey on t1m t3
+                                 Index Cond: (id = 100)
+(17 rows)
+
+--
 -- Should choose index only scan by default, and should be parallelized
 -- with parallel_tuple_cost set to 0.01.  These queries run faster in parallel
--- but but only marginally, so it's better not to parallelize them by default.
+-- but only marginally, so it's better not to parallelize them by default.
 --
 EXPLAIN (COSTS off, SUMMARY off)
 SELECT k1, k2, k3 FROM t1m t;

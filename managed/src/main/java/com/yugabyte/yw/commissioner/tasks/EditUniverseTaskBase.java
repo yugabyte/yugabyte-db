@@ -286,6 +286,12 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
     createPlacementInfoTask(null /* additional blacklist */, taskParams().clusters)
         .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
 
+    if (cluster.isGeoPartitioned() && cluster.userIntent.enableYSQL) {
+      // Currently we rely on user to modify partitions correctly after doing edit.
+      // So we don't check tablespace placement, only the existence.
+      createTablespacesTasks(cluster.getPartitions(), true);
+    }
+
     if (!nodesToBeRemoved.isEmpty()) {
       // Wait for %age completion of the tablet move from master.
       createWaitForDataMoveTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);

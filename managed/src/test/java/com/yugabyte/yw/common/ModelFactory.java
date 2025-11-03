@@ -336,7 +336,7 @@ public class ModelFactory {
       node2.cloudInfo.private_ip = "127.0.0.2";
       params.nodeDetailsSet.add(node2);
     }
-    params.upsertPrimaryCluster(userIntent, pi);
+    params.upsertPrimaryCluster(userIntent, null, pi);
     return Universe.create(params, customerId);
   }
 
@@ -371,7 +371,7 @@ public class ModelFactory {
     params.setEnableYbc(enableYbc);
     params.setYbcInstalled(enableYbc);
     params.nodePrefix = Util.getNodePrefix(customerId, universeName);
-    params.upsertPrimaryCluster(userIntent, pi);
+    params.upsertPrimaryCluster(userIntent, null, pi);
     Universe u = Universe.create(params, customerId);
     Map<String, String> config = new HashMap<>();
     config.put(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString());

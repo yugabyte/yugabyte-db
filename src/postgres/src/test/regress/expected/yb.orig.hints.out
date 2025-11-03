@@ -97,7 +97,7 @@ explain (hints on, costs off) select * from t1 where a1=1;
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Seq Scan on t1
    Storage Filter: (a1 = 1)
- Generated hints: /*+ SeqScan(t1) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ SeqScan(t1) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (3 rows)
 
 -- Simple join query.
@@ -113,7 +113,7 @@ explain (hints on, costs on) select * from t1, t2 where a1<5 and b1=b2 order by 
                Cache Mode: logical
                ->  Index Scan using t1_a1_asc_b1_asc_idx on t1  (cost=0.00..0.08 rows=0 width=68)
                      Index Cond: ((a1 < 5) AND (b1 = t2.b2))
- Generated hints: /*+ Leading((t2 t1)) SeqScan(t2) IndexScan(t1 t1_a1_asc_b1_asc_idx) NestLoop(t1 t2) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading((t2 t1)) SeqScan(t2) IndexScan(t1 t1_a1_asc_b1_asc_idx) NestLoop(t1 t2) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (10 rows)
 
 -- Force an index and change the join order.
@@ -125,7 +125,7 @@ explain (hints on, costs on) select * from t1, t2 where a1<5 and b1=b2 order by 
    ->  Index Scan Backward using t1_a1_desc_idx on t1
          Index Cond: (a1 < 5)
    ->  Seq Scan on t2
- Generated hints: /*+ Leading((t1 t2)) IndexScan(t1 t1_a1_desc_idx) SeqScan(t2) NestLoop(t1 t2) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading((t1 t2)) IndexScan(t1 t1_a1_desc_idx) SeqScan(t2) NestLoop(t1 t2) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (6 rows)
 
 -- OK since t1 and t2 do not have to be directly joined. Should not generate warnings.
@@ -161,7 +161,7 @@ explain (hints on, costs on) select * from t1, t2 where a1<5 and b1=b2 order by 
          ->  Hash
                ->  Index Scan using t2_pkey on t2
                      Index Cond: (unn2 = 1)
- Generated hints: /*+ Leading(((t0 t1) t2)) SeqScan(t0) SeqScan(t1) HashJoin(t0 t1) IndexScan(t2 t2_pkey) HashJoin(t0 t1 t2) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading(((t0 t1) t2)) SeqScan(t0) SeqScan(t1) HashJoin(t0 t1) IndexScan(t2 t2_pkey) HashJoin(t0 t1 t2) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (12 rows)
 
 -- Force t2-t0 join first and make this inner input to hash join with t1. Should see no errors/warnings.
@@ -178,7 +178,7 @@ explain (hints on, costs on) select * from t1, t2 where a1<5 and b1=b2 order by 
                      ->  Index Scan using t2_pkey on t2
                            Index Cond: (unn2 = 1)
                      ->  Seq Scan on t0
- Generated hints: /*+ Leading((t1 (t2 t0))) SeqScan(t1) IndexScan(t2 t2_pkey) SeqScan(t0) NestLoop(t0 t2) HashJoin(t0 t1 t2) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading((t1 (t2 t0))) SeqScan(t1) IndexScan(t2 t2_pkey) SeqScan(t0) NestLoop(t0 t2) HashJoin(t0 t1 t2) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (11 rows)
 
 -- 'dt' should appear in the EXPLAIN since a subquery scan is required. No warnings/errors expected.
@@ -211,7 +211,7 @@ explain (hints on, costs off) select count(*) from t1, t2, t3, (select b4 from t
                Cache Mode: logical
                ->  Index Only Scan using t2_a2_idx on t2
                      Index Cond: (a2 = t3.a3)
- Generated hints: /*+ Leading((((t3 dt) t1) t2)) SeqScan(t3) HashJoin(dt t3) IndexOnlyScan(t1 t1_a1_desc_idx) NestLoop(dt t1 t3) IndexOnlyScan(t2 t2_a2_idx) NestLoop(dt t1 t2 t3)  Leading((t5 t4)) SeqScan(t5) SeqScan(t4) HashJoin(t4 t5) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading((((t3 dt) t1) t2)) SeqScan(t3) HashJoin(dt t3) IndexOnlyScan(t1 t1_a1_desc_idx) NestLoop(dt t1 t3) IndexOnlyScan(t2 t2_a2_idx) NestLoop(dt t1 t2 t3)  Leading((t5 t4)) SeqScan(t5) SeqScan(t4) HashJoin(t4 t5) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (27 rows)
 
 -- 'dt' will not appear in the EXPLAIN since a subquery scan is not required. (Removed a GROUP BY column so simple subquery scan is removed).
@@ -274,7 +274,7 @@ explain (hints on, costs off) select count(*) from t1, t2, t3, (select b4 from t
                Cache Mode: logical
                ->  Index Only Scan using t2_a2_idx on t2
                      Index Cond: (a2 = t3.a3)
- Generated hints: /*+ Leading((((t3 dt) t1) t2)) SeqScan(t3) HashJoin(dt t3) IndexOnlyScan(t1 t1_a1_desc_idx) NestLoop(dt t1 t3) IndexOnlyScan(t2 t2_a2_idx) NestLoop(dt t1 t2 t3)  Leading((t5 t4)) SeqScan(t5) SeqScan(t4) HashJoin(t4 t5) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading((((t3 dt) t1) t2)) SeqScan(t3) HashJoin(dt t3) IndexOnlyScan(t1 t1_a1_desc_idx) NestLoop(dt t1 t3) IndexOnlyScan(t2 t2_a2_idx) NestLoop(dt t1 t2 t3)  Leading((t5 t4)) SeqScan(t5) SeqScan(t4) HashJoin(t4 t5) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (26 rows)
 
 -- Force a bushy plan.
@@ -363,7 +363,7 @@ explain (hints on, costs off) select count(*) from t1, t2, t3 where a1=a2 and a1
                                  ->  HashAggregate
                                        Group Key: t5.a5, t5.b5
                                        ->  Seq Scan on t5
- Generated hints: /*+ Leading((t3 (((t1 ANY_subquery) t2) ANY_subquery_1))) SeqScan(t3) SeqScan(t1) HashJoin(ANY_subquery t1) IndexScan(t2 t2_a2_idx) NestLoop(ANY_subquery t1 t2) HashJoin(ANY_subquery ANY_subquery_1 t1 t2) HashJoin(ANY_subquery ANY_subquery_1 t1 t2 t3)  SeqScan(t4)  SeqScan(t5) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading((t3 (((t1 ANY_subquery) t2) ANY_subquery_1))) SeqScan(t3) SeqScan(t1) HashJoin(ANY_subquery t1) IndexScan(t2 t2_a2_idx) NestLoop(ANY_subquery t1 t2) HashJoin(ANY_subquery ANY_subquery_1 t1 t2) HashJoin(ANY_subquery ANY_subquery_1 t1 t2 t3)  SeqScan(t4)  SeqScan(t5) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (27 rows)
 
 -- Change join order and use all merge joins.
@@ -395,7 +395,7 @@ explain (hints on, costs off) select count(*) from t1, t2, t3 where a1=a2 and a1
          ->  Sort
                Sort Key: t2.a2, t2.b2
                ->  Seq Scan on t2
- Generated hints: /*+ Leading((((t1 ANY_subquery) ANY_subquery_1) t2)) SeqScan(t1) MergeJoin(ANY_subquery t1) NestLoop(ANY_subquery ANY_subquery_1 t1) SeqScan(t2) MergeJoin(ANY_subquery ANY_subquery_1 t1 t2)  SeqScan(t4)  SeqScan(t5) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading((((t1 ANY_subquery) ANY_subquery_1) t2)) SeqScan(t1) MergeJoin(ANY_subquery t1) NestLoop(ANY_subquery ANY_subquery_1 t1) SeqScan(t2) MergeJoin(ANY_subquery ANY_subquery_1 t1 t2)  SeqScan(t4)  SeqScan(t5) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (26 rows)
 
 -- Hint generation for VALUES clause(s). Should see no errors/warnings.
@@ -415,7 +415,7 @@ explain (hints on, costs off) select val1.c1 from (values(1, 1), (2, 2), (3, 3))
                ->  Values Scan on "*VALUES*"
    ->  Index Only Scan using t1_a1_desc_idx on t1
          Index Cond: (a1 = ANY (ARRAY[t0.a0, $1, $2, ..., $1023]))
- Generated hints: /*+ Leading((((t0 *VALUES*_1) *VALUES*) t1)) SeqScan(t0) HashJoin(*VALUES*_1 t0) HashJoin(*VALUES* *VALUES*_1 t0) IndexOnlyScan(t1 t1_a1_desc_idx) YbBatchedNL(*VALUES* *VALUES*_1 t0 t1) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading((((t0 *VALUES*_1) *VALUES*) t1)) SeqScan(t0) HashJoin(*VALUES*_1 t0) HashJoin(*VALUES* *VALUES*_1 t0) IndexOnlyScan(t1 t1_a1_desc_idx) YbBatchedNL(*VALUES* *VALUES*_1 t0 t1) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (14 rows)
 
 -- Change query and force cross join between VALUES derived tables. Should work fine.
@@ -434,7 +434,7 @@ explain (hints on, costs off) select val1.c1 from (values(1, 1), (2, 2), (3, 3))
                ->  Seq Scan on t1
    ->  Hash
          ->  Seq Scan on t0
- Generated hints: /*+ Leading((((*VALUES* *VALUES*_1) t1) t0)) NestLoop(*VALUES* *VALUES*_1) SeqScan(t1) HashJoin(*VALUES* *VALUES*_1 t1) SeqScan(t0) HashJoin(*VALUES* *VALUES*_1 t0 t1) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading((((*VALUES* *VALUES*_1) t1) t0)) NestLoop(*VALUES* *VALUES*_1) SeqScan(t1) HashJoin(*VALUES* *VALUES*_1 t1) SeqScan(t0) HashJoin(*VALUES* *VALUES*_1 t0 t1) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (13 rows)
 
 -- Disable all join methods but hint the query. Should still give plan defined by hints.
@@ -461,7 +461,7 @@ set enable_mergejoin to 0; set enable_hashjoin to 0; set enable_nestloop to 0;
                            ->  Hash
                                  ->  Index Scan using t5_pkey on t5
                                        Index Cond: (unn5 = 1)
- Generated hints: /*+ Leading(((t2 t1) dt)) SeqScan(t2) IndexScan(t1 t1_a1_asc_b1_asc_idx) YbBatchedNL(t1 t2) NestLoop(dt t1 t2)  Leading((t4 (t3 t5))) SeqScan(t4) SeqScan(t3) IndexScan(t5 t5_pkey) HashJoin(t3 t5) HashJoin(t3 t4 t5) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading(((t2 t1) dt)) SeqScan(t2) IndexScan(t1 t1_a1_asc_b1_asc_idx) YbBatchedNL(t1 t2) NestLoop(dt t1 t2)  Leading((t4 (t3 t5))) SeqScan(t4) SeqScan(t3) IndexScan(t5 t5_pkey) HashJoin(t3 t5) HashJoin(t3 t4 t5) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (20 rows)
 
 reset enable_mergejoin; reset enable_hashjoin; reset enable_nestloop;
@@ -488,7 +488,7 @@ reset enable_mergejoin; reset enable_hashjoin; reset enable_nestloop;
                Cache Mode: logical
                ->  Index Only Scan using t2_a2_idx on t2
                      Index Cond: (a2 = t3.a3)
- Generated hints: /*+ Leading(((((t5 t4) t1) t3) t2)) SeqScan(t5) SeqScan(t4) HashJoin(t4 t5) SeqScan(t1) NestLoop(t1 t4 t5) SeqScan(t3) HashJoin(t1 t3 t4 t5) IndexOnlyScan(t2 t2_a2_idx) NestLoop(t1 t2 t3 t4 t5) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading(((((t5 t4) t1) t3) t2)) SeqScan(t5) SeqScan(t4) HashJoin(t4 t5) SeqScan(t1) NestLoop(t1 t4 t5) SeqScan(t3) HashJoin(t1 t3 t4 t5) IndexOnlyScan(t2 t2_a2_idx) NestLoop(t1 t2 t3 t4 t5) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (20 rows)
 
 -- Query with derived tables but no actual tables. Will have *RESULT* type names in generated hints.
@@ -518,7 +518,7 @@ ON sub1.key1 = sub2.key3;
                ->  Result *RESULT*_2
                ->  Result *RESULT*_3
                      One-Time Filter: false
- Generated hints: /*+ Leading((*RESULT* (*RESULT*_1 (*RESULT*_2 *RESULT*_3)))) NestLoop(*RESULT*_2 *RESULT*_3) NestLoop(*RESULT*_1 *RESULT*_2 *RESULT*_3) NestLoop(*RESULT* *RESULT*_1 *RESULT*_2 *RESULT*_3) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading((*RESULT* (*RESULT*_1 (*RESULT*_2 *RESULT*_3)))) NestLoop(*RESULT*_2 *RESULT*_3) NestLoop(*RESULT*_1 *RESULT*_2 *RESULT*_3) NestLoop(*RESULT* *RESULT*_1 *RESULT*_2 *RESULT*_3) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (10 rows)
 
 -- Lateral join
@@ -546,7 +546,7 @@ where i41.a1 > 0;
                      ->  Index Only Scan using t1_a1_desc_idx on t1 i43
                            Index Cond: (a1 > 1)
                      ->  Seq Scan on t1 i42
- Generated hints: /*+ Leading((i41 (i81 (i43 i42)))) IndexScan(i41 t1_a1_desc_idx) SeqScan(i81) IndexOnlyScan(i43 t1_a1_desc_idx) SeqScan(i42) NestLoop(i42 i43) NestLoop(i42 i43 i81) NestLoop(i41 i42 i43 i81) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading((i41 (i81 (i43 i42)))) IndexScan(i41 t1_a1_desc_idx) SeqScan(i81) IndexOnlyScan(i43 t1_a1_desc_idx) SeqScan(i42) NestLoop(i42 i43) NestLoop(i42 i43 i81) NestLoop(i41 i42 i43 i81) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (12 rows)
 
 -- Outer joins and VALUES clause.
@@ -580,7 +580,7 @@ where unn1 < 4 and ch1 > ch2;
                      Storage Filter: (unn1 < 4)
    ->  Materialize
          ->  Seq Scan on t3
- Generated hints: /*+ Leading((((t2 *RESULT*) t1) t3)) SeqScan(t2) NestLoop(*RESULT* t2) SeqScan(t1) HashJoin(*RESULT* t1 t2) SeqScan(t3) NestLoop(*RESULT* t1 t2 t3) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading((((t2 *RESULT*) t1) t3)) SeqScan(t2) NestLoop(*RESULT* t2) SeqScan(t1) HashJoin(*RESULT* t1 t2) SeqScan(t3) NestLoop(*RESULT* t1 t2 t3) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (16 rows)
 
 -- Hints with CTEs. Should work.
@@ -606,7 +606,7 @@ where unn1 < 4 and ch1 > ch2;
          ->  CTE Scan on cte1 y
          ->  Hash
                ->  CTE Scan on cte1 x
- Generated hints: /*+ Leading((y x)) HashJoin(x y) Leading(((t2 t1) t0)) SeqScan(t2) IndexOnlyScan(t1 t1_a1_desc_idx) NestLoop(t1 t2) SeqScan(t0) HashJoin(t0 t1 t2) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading((y x)) HashJoin(x y) Leading(((t2 t1) t0)) SeqScan(t2) IndexOnlyScan(t1 t1_a1_desc_idx) NestLoop(t1 t2) SeqScan(t0) HashJoin(t0 t1 t2) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (20 rows)
 
 -- Complex query;
@@ -698,7 +698,7 @@ explain (hints on, costs off) select count(*) from t1, t2, t3, t4, t5, t6, t7, t
                Cache Mode: logical
                ->  Index Only Scan using t1_a1_desc_idx on t1
                      Index Cond: (a1 = t2.a2)
- Generated hints: /*+ Leading(((((t10 (((((((t7_1 t3_1) t6_1) t8_1) (t5_1 t4_1)) (t10_1 t9_1)) t2_1) t1_1)) ((((t9 t3) t8) (t6 t5)) (t7 t4))) t2) t1)) SeqScan(t10) SeqScan(t7_1) SeqScan(t3_1) HashJoin(t3_1 t7_1) SeqScan(t6_1) HashJoin(t3_1 t6_1 t7_1) SeqScan(t8_1) HashJoin(t3_1 t6_1 t7_1 t8_1) SeqScan(t5_1) SeqScan(t4_1) HashJoin(t4_1 t5_1) HashJoin(t3_1 t4_1 t5_1 t6_1 t7_1 t8_1) SeqScan(t10_1) SeqScan(t9_1) NestLoop(t10_1 t9_1) HashJoin(t10_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) IndexOnlyScan(t2_1 t2_a2_idx) NestLoop(t10_1 t2_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) IndexOnlyScan(t1_1 t1_a1_desc_idx) NestLoop(t10_1 t1_1 t2_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) NestLoop(t10 t10_1 t1_1 t2_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) SeqScan(t9) SeqScan(t3) HashJoin(t3 t9) SeqScan(t8) HashJoin(t3 t8 t9) SeqScan(t6) SeqScan(t5) HashJoin(t5 t6) HashJoin(t3 t5 t6 t8 t9) SeqScan(t7) SeqScan(t4) HashJoin(t4 t7) HashJoin(t3 t4 t5 t6 t7 t8 t9) HashJoin(t10 t10_1 t1_1 t2_1 t3 t3_1 t4 t4_1 t5 t5_1 t6 t6_1 t7 t7_1 t8 t8_1 t9 t9_1) IndexOnlyScan(t2 t2_a2_idx) NestLoop(t10 t10_1 t1_1 t2 t2_1 t3 t3_1 t4 t4_1 t5 t5_1 t6 t6_1 t7 t7_1 t8 t8_1 t9 t9_1) IndexOnlyScan(t1 t1_a1_desc_idx) NestLoop(t1 t10 t10_1 t1_1 t2 t2_1 t3 t3_1 t4 t4_1 t5 t5_1 t6 t6_1 t7 t7_1 t8 t8_1 t9 t9_1) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 20) Set(join_collapse_limit 20) Set(geqo false) */
+ Generated hints: /*+ Leading(((((t10 (((((((t7_1 t3_1) t6_1) t8_1) (t5_1 t4_1)) (t10_1 t9_1)) t2_1) t1_1)) ((((t9 t3) t8) (t6 t5)) (t7 t4))) t2) t1)) SeqScan(t10) SeqScan(t7_1) SeqScan(t3_1) HashJoin(t3_1 t7_1) SeqScan(t6_1) HashJoin(t3_1 t6_1 t7_1) SeqScan(t8_1) HashJoin(t3_1 t6_1 t7_1 t8_1) SeqScan(t5_1) SeqScan(t4_1) HashJoin(t4_1 t5_1) HashJoin(t3_1 t4_1 t5_1 t6_1 t7_1 t8_1) SeqScan(t10_1) SeqScan(t9_1) NestLoop(t10_1 t9_1) HashJoin(t10_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) IndexOnlyScan(t2_1 t2_a2_idx) NestLoop(t10_1 t2_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) IndexOnlyScan(t1_1 t1_a1_desc_idx) NestLoop(t10_1 t1_1 t2_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) NestLoop(t10 t10_1 t1_1 t2_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) SeqScan(t9) SeqScan(t3) HashJoin(t3 t9) SeqScan(t8) HashJoin(t3 t8 t9) SeqScan(t6) SeqScan(t5) HashJoin(t5 t6) HashJoin(t3 t5 t6 t8 t9) SeqScan(t7) SeqScan(t4) HashJoin(t4 t7) HashJoin(t3 t4 t5 t6 t7 t8 t9) HashJoin(t10 t10_1 t1_1 t2_1 t3 t3_1 t4 t4_1 t5 t5_1 t6 t6_1 t7 t7_1 t8 t8_1 t9 t9_1) IndexOnlyScan(t2 t2_a2_idx) NestLoop(t10 t10_1 t1_1 t2 t2_1 t3 t3_1 t4 t4_1 t5 t5_1 t6 t6_1 t7 t7_1 t8 t8_1 t9 t9_1) IndexOnlyScan(t1 t1_a1_desc_idx) NestLoop(t1 t10 t10_1 t1_1 t2 t2_1 t3 t3_1 t4 t4_1 t5 t5_1 t6 t6_1 t7 t7_1 t8 t8_1 t9 t9_1) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 20) Set(join_collapse_limit 20) Set(geqo false) */
 (86 rows)
 
 /*+ Leading(((((t10 (((((((t7_1 t3_1) t6_1) t8_1) (t5_1 t4_1)) (t10_1 t9_1)) t2_1) t1_1)) ((((t9 t3) t8) (t6 t5)) (t7 t4))) t2) t1)) SeqScan(t10) SeqScan(t7_1) SeqScan(t3_1) HashJoin(t3_1 t7_1) SeqScan(t6_1) HashJoin(t3_1 t6_1 t7_1) SeqScan(t8_1) HashJoin(t3_1 t6_1 t7_1 t8_1) SeqScan(t5_1) SeqScan(t4_1) HashJoin(t4_1 t5_1) HashJoin(t3_1 t4_1 t5_1 t6_1 t7_1 t8_1) SeqScan(t10_1) SeqScan(t9_1) NestLoop(t10_1 t9_1) HashJoin(t10_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) IndexOnlyScan(t2_1 t2_a2_idx) YbBatchedNL(t10_1 t2_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) IndexOnlyScan(t1_1 t1_a1_asc_idx) YbBatchedNL(t10_1 t1_1 t2_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) NestLoop(t10 t10_1 t1_1 t2_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) SeqScan(t9) SeqScan(t3) HashJoin(t3 t9) SeqScan(t8) HashJoin(t3 t8 t9) SeqScan(t6) SeqScan(t5) HashJoin(t5 t6) HashJoin(t3 t5 t6 t8 t9) SeqScan(t7) SeqScan(t4) HashJoin(t4 t7) HashJoin(t3 t4 t5 t6 t7 t8 t9) HashJoin(t10 t10_1 t1_1 t2_1 t3 t3_1 t4 t4_1 t5 t5_1 t6 t6_1 t7 t7_1 t8 t8_1 t9 t9_1) IndexOnlyScan(t2 t2_a2_idx) YbBatchedNL(t10 t10_1 t1_1 t2 t2_1 t3 t3_1 t4 t4_1 t5 t5_1 t6 t6_1 t7 t7_1 t8 t8_1 t9 t9_1) IndexOnlyScan(t1 t1_a1_asc_idx) YbBatchedNL(t1 t10 t10_1 t1_1 t2 t2_1 t3 t3_1 t4 t4_1 t5 t5_1 t6 t6_1 t7 t7_1 t8 t8_1 t9 t9_1) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 20) Set(join_collapse_limit 20) Set(geqo false) */ explain (hints on, costs off) select count(*) from t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, (select a1 x from t1, t2, t3, t4, t5, t6, t7, t8, t9, t10 where a1=a2 and a1=a3 and a1=a4 and a1=a5 and a5=a6 and a5=a7 and a5=a8 and a5=a9 and b7=1) dt where a1=a2 and a1=a3 and a1=a4 and a1=a5 and a5=a6 and a5=a7 and a5=a8 and a5=a9 and b7=1 and a1=x;
@@ -786,7 +786,7 @@ explain (hints on, costs off) select count(*) from t1, t2, t3, t4, t5, t6, t7, t
                Cache Mode: logical
                ->  Index Only Scan using t1_a1_asc_idx on t1
                      Index Cond: (a1 = t2.a2)
- Generated hints: /*+ Leading(((((t10 (((((((t7_1 t3_1) t6_1) t8_1) (t5_1 t4_1)) (t10_1 t9_1)) t2_1) t1_1)) ((((t9 t3) t8) (t6 t5)) (t7 t4))) t2) t1)) SeqScan(t10) SeqScan(t7_1) SeqScan(t3_1) HashJoin(t3_1 t7_1) SeqScan(t6_1) HashJoin(t3_1 t6_1 t7_1) SeqScan(t8_1) HashJoin(t3_1 t6_1 t7_1 t8_1) SeqScan(t5_1) SeqScan(t4_1) HashJoin(t4_1 t5_1) HashJoin(t3_1 t4_1 t5_1 t6_1 t7_1 t8_1) SeqScan(t10_1) SeqScan(t9_1) NestLoop(t10_1 t9_1) HashJoin(t10_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) IndexOnlyScan(t2_1 t2_a2_idx) YbBatchedNL(t10_1 t2_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) IndexOnlyScan(t1_1 t1_a1_asc_idx) YbBatchedNL(t10_1 t1_1 t2_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) NestLoop(t10 t10_1 t1_1 t2_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) SeqScan(t9) SeqScan(t3) HashJoin(t3 t9) SeqScan(t8) HashJoin(t3 t8 t9) SeqScan(t6) SeqScan(t5) HashJoin(t5 t6) HashJoin(t3 t5 t6 t8 t9) SeqScan(t7) SeqScan(t4) HashJoin(t4 t7) HashJoin(t3 t4 t5 t6 t7 t8 t9) HashJoin(t10 t10_1 t1_1 t2_1 t3 t3_1 t4 t4_1 t5 t5_1 t6 t6_1 t7 t7_1 t8 t8_1 t9 t9_1) IndexOnlyScan(t2 t2_a2_idx) NestLoop(t10 t10_1 t1_1 t2 t2_1 t3 t3_1 t4 t4_1 t5 t5_1 t6 t6_1 t7 t7_1 t8 t8_1 t9 t9_1) IndexOnlyScan(t1 t1_a1_asc_idx) NestLoop(t1 t10 t10_1 t1_1 t2 t2_1 t3 t3_1 t4 t4_1 t5 t5_1 t6 t6_1 t7 t7_1 t8 t8_1 t9 t9_1) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 20) Set(join_collapse_limit 20) Set(geqo false) */
+ Generated hints: /*+ Leading(((((t10 (((((((t7_1 t3_1) t6_1) t8_1) (t5_1 t4_1)) (t10_1 t9_1)) t2_1) t1_1)) ((((t9 t3) t8) (t6 t5)) (t7 t4))) t2) t1)) SeqScan(t10) SeqScan(t7_1) SeqScan(t3_1) HashJoin(t3_1 t7_1) SeqScan(t6_1) HashJoin(t3_1 t6_1 t7_1) SeqScan(t8_1) HashJoin(t3_1 t6_1 t7_1 t8_1) SeqScan(t5_1) SeqScan(t4_1) HashJoin(t4_1 t5_1) HashJoin(t3_1 t4_1 t5_1 t6_1 t7_1 t8_1) SeqScan(t10_1) SeqScan(t9_1) NestLoop(t10_1 t9_1) HashJoin(t10_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) IndexOnlyScan(t2_1 t2_a2_idx) YbBatchedNL(t10_1 t2_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) IndexOnlyScan(t1_1 t1_a1_asc_idx) YbBatchedNL(t10_1 t1_1 t2_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) NestLoop(t10 t10_1 t1_1 t2_1 t3_1 t4_1 t5_1 t6_1 t7_1 t8_1 t9_1) SeqScan(t9) SeqScan(t3) HashJoin(t3 t9) SeqScan(t8) HashJoin(t3 t8 t9) SeqScan(t6) SeqScan(t5) HashJoin(t5 t6) HashJoin(t3 t5 t6 t8 t9) SeqScan(t7) SeqScan(t4) HashJoin(t4 t7) HashJoin(t3 t4 t5 t6 t7 t8 t9) HashJoin(t10 t10_1 t1_1 t2_1 t3 t3_1 t4 t4_1 t5 t5_1 t6 t6_1 t7 t7_1 t8 t8_1 t9 t9_1) IndexOnlyScan(t2 t2_a2_idx) NestLoop(t10 t10_1 t1_1 t2 t2_1 t3 t3_1 t4 t4_1 t5 t5_1 t6 t6_1 t7 t7_1 t8 t8_1 t9 t9_1) IndexOnlyScan(t1 t1_a1_asc_idx) NestLoop(t1 t10 t10_1 t1_1 t2 t2_1 t3 t3_1 t4 t4_1 t5 t5_1 t6 t6_1 t7 t7_1 t8 t8_1 t9 t9_1) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 20) Set(join_collapse_limit 20) Set(geqo false) */
 (83 rows)
 
 -- Correlated subquery with multiple blocks. Should not give any warnings/errors.
@@ -816,7 +816,7 @@ explain (hints on, costs off) select * from t1 left join t2 on a1=a2 or b1+b2 no
                              Storage Filter: (c3 <> (t1.c1 - t2.c2))
            ->  Hash
                  ->  Seq Scan on t5
- Generated hints: /*+ Leading((t1 t2)) IndexScan(t1 t1_a1_desc_idx) SeqScan(t2) NestLoop(t1 t2) Leading(((t4 t3) t5)) SeqScan(t4) SeqScan(t3) HashJoin(t3 t4) SeqScan(t5) HashJoin(t3 t4 t5) Leading((t5_1 t4_1)) SeqScan(t5_1) SeqScan(t4_1) NestLoop(t4_1 t5_1) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading((t1 t2)) IndexScan(t1 t1_a1_desc_idx) SeqScan(t2) NestLoop(t1 t2) Leading(((t4 t3) t5)) SeqScan(t4) SeqScan(t3) HashJoin(t3 t4) SeqScan(t5) HashJoin(t3 t4 t5) Leading((t5_1 t4_1)) SeqScan(t5_1) SeqScan(t4_1) NestLoop(t4_1 t5_1) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (24 rows)
 
 -- Try a view that is a security barrier. Should see an inherited hint alias.
@@ -852,7 +852,7 @@ explain (hints on, costs off) select sum(a1+x) from v1, t1, t2 where x=a1 and x=
                Cache Mode: logical
                ->  Index Scan using t2_pkey on t2
                      Index Cond: (unn2 = t1.a1)
- Generated hints: /*+ Leading(((v1 t1) t2)) SeqScan(t1) HashJoin(t1 v1) IndexScan(t2 t2_pkey) NestLoop(t1 t2 v1)  Leading(((t3 t2_1) t1_1)) SeqScan(t3) IndexScan(t2_1 t2_a2_idx) NestLoop(t2_1 t3) IndexOnlyScan(t1_1 t1_a1_desc_idx) NestLoop(t1_1 t2_1 t3) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading(((v1 t1) t2)) SeqScan(t1) HashJoin(t1 v1) IndexScan(t2 t2_pkey) NestLoop(t1 t2 v1)  Leading(((t3 t2_1) t1_1)) SeqScan(t3) IndexScan(t2_1 t2_a2_idx) NestLoop(t2_1 t3) IndexOnlyScan(t1_1 t1_a1_desc_idx) NestLoop(t1_1 t2_1 t3) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (29 rows)
 
 -- View on a view. Should see 2 inherited hint aliases and no warnings/errors.
@@ -885,7 +885,7 @@ explain (hints on, costs off) select sum(a1+x) from v2, t1, t2 where x=a1 and x=
                ->  Seq Scan on t1
          ->  Index Scan using t2_pkey on t2
                Index Cond: (unn2 = ANY (ARRAY[t1.a1, $4, $5, ..., $1026]))
- Generated hints: /*+ Leading(((v2 t1) t2)) SeqScan(t1) NestLoop(t1 v2) IndexScan(t2 t2_pkey) YbBatchedNL(t1 t2 v2)   Leading(((t3 t1_1) t2_1)) SeqScan(t3) IndexOnlyScan(t1_1 t1_a1_desc_idx) NestLoop(t1_1 t3) IndexScan(t2_1 t2_a2_idx) NestLoop(t1_1 t2_1 t3) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading(((v2 t1) t2)) SeqScan(t1) NestLoop(t1 v2) IndexScan(t2 t2_pkey) YbBatchedNL(t1 t2 v2)   Leading(((t3 t1_1) t2_1)) SeqScan(t3) IndexOnlyScan(t1_1 t1_a1_desc_idx) NestLoop(t1_1 t3) IndexScan(t2_1 t2_a2_idx) NestLoop(t1_1 t2_1 t3) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (26 rows)
 
 -- Views with set ops. Should get no warnings/errors.
@@ -918,7 +918,7 @@ explain (hints on, costs off) select * from v3, t9 where z=a9;
                                        ->  Seq Scan on t7 t7_1
                            ->  Hash
                                  ->  Seq Scan on t8 t8_1
- Generated hints: /*+ Leading((t9 v3)) SeqScan(t9) HashJoin(t9 v3)   Leading(((t9_1 t7) t8)) SeqScan(t9_1) SeqScan(t7) HashJoin(t7 t9_1) SeqScan(t8) HashJoin(t7 t8 t9_1)  Leading(((t9_2 t7_1) t8_1)) SeqScan(t9_2) SeqScan(t7_1) HashJoin(t7_1 t9_2) SeqScan(t8_1) HashJoin(t7_1 t8_1 t9_2) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading((t9 v3)) SeqScan(t9) HashJoin(t9 v3)   Leading(((t9_1 t7) t8)) SeqScan(t9_1) SeqScan(t7) HashJoin(t7 t9_1) SeqScan(t8) HashJoin(t7 t8 t9_1)  Leading(((t9_2 t7_1) t8_1)) SeqScan(t9_2) SeqScan(t7_1) HashJoin(t7_1 t9_2) SeqScan(t8_1) HashJoin(t7_1 t8_1 t9_2) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (26 rows)
 
 create temporary view v4 as select a7, a8, a9 z from t7, t8, t9 where a7=a8 and a7=a9 intersect all select a7, a8, a9 from t7, t8, t9 where a7=a8 and a7=a9;
@@ -952,7 +952,7 @@ explain (hints on, costs off) select * from v4, t9 where z=a9;
                                                    ->  Seq Scan on t7 t7_1
                                        ->  Hash
                                              ->  Seq Scan on t8 t8_1
- Generated hints: /*+ Leading((t9 v4)) SeqScan(t9) HashJoin(t9 v4)    Leading(((t9_1 t7) t8)) SeqScan(t9_1) SeqScan(t7) HashJoin(t7 t9_1) SeqScan(t8) HashJoin(t7 t8 t9_1)   Leading(((t9_2 t7_1) t8_1)) SeqScan(t9_2) SeqScan(t7_1) HashJoin(t7_1 t9_2) SeqScan(t8_1) HashJoin(t7_1 t8_1 t9_2) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading((t9 v4)) SeqScan(t9) HashJoin(t9 v4)    Leading(((t9_1 t7) t8)) SeqScan(t9_1) SeqScan(t7) HashJoin(t7 t9_1) SeqScan(t8) HashJoin(t7 t8 t9_1)   Leading(((t9_2 t7_1) t8_1)) SeqScan(t9_2) SeqScan(t7_1) HashJoin(t7_1 t9_2) SeqScan(t8_1) HashJoin(t7_1 t8_1 t9_2) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (28 rows)
 
 create temporary view v5 as select a7, a8, a9 z from t7, t8, t9 where a7=a8 and a7=a9 except all select a7, a8, a9 from t7, t8, t9 where a7=a8 and a7=a9;
@@ -986,7 +986,7 @@ explain (hints on, costs off) select * from v5, t9 where z=a9;
                                                    ->  Seq Scan on t7 t7_1
                                        ->  Hash
                                              ->  Seq Scan on t8 t8_1
- Generated hints: /*+ Leading((t9 v5)) SeqScan(t9) HashJoin(t9 v5)    Leading(((t9_1 t7) t8)) SeqScan(t9_1) SeqScan(t7) HashJoin(t7 t9_1) SeqScan(t8) HashJoin(t7 t8 t9_1)   Leading(((t9_2 t7_1) t8_1)) SeqScan(t9_2) SeqScan(t7_1) HashJoin(t7_1 t9_2) SeqScan(t8_1) HashJoin(t7_1 t8_1 t9_2) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading((t9 v5)) SeqScan(t9) HashJoin(t9 v5)    Leading(((t9_1 t7) t8)) SeqScan(t9_1) SeqScan(t7) HashJoin(t7 t9_1) SeqScan(t8) HashJoin(t7 t8 t9_1)   Leading(((t9_2 t7_1) t8_1)) SeqScan(t9_2) SeqScan(t7_1) HashJoin(t7_1 t9_2) SeqScan(t8_1) HashJoin(t7_1 t8_1 t9_2) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (28 rows)
 
 CREATE OR REPLACE FUNCTION func1(integer, integer) RETURNS integer
@@ -1009,7 +1009,7 @@ explain (hints on, costs off) select * from t1, t2, t3 where a1<a2 and a1=a3 and
                      Cache Mode: binary
                      ->  Index Scan using t1_a1_desc_idx on t1
                            Index Cond: ((a1 < t2.a2) AND (a1 = 0))
- Generated hints: /*+ Leading((t3 (t2 t1))) SeqScan(t3) SeqScan(t2) IndexScan(t1 t1_a1_desc_idx) NestLoop(t1 t2) NestLoop(t1 t2 t3) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading((t3 (t2 t1))) SeqScan(t3) SeqScan(t2) IndexScan(t1 t1_a1_desc_idx) NestLoop(t1 t2) NestLoop(t1 t2 t3) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (12 rows)
 
 CREATE OR REPLACE FUNCTION func2(integer, integer) RETURNS TABLE(f1 int, f2 text)
@@ -1034,7 +1034,7 @@ explain (hints on, costs off) select f2 from t1, t2, t3, func2(1, 2) funky where
                      Cache Mode: binary
                      ->  Index Only Scan using t1_a1_desc_idx on t1
                            Index Cond: (a1 < t2.a2)
- Generated hints: /*+ Leading(((t3 funky) (t2 t1))) SeqScan(t3) HashJoin(funky t3) SeqScan(t2) IndexOnlyScan(t1 t1_a1_desc_idx) NestLoop(t1 t2) HashJoin(funky t1 t2 t3) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading(((t3 funky) (t2 t1))) SeqScan(t3) HashJoin(funky t3) SeqScan(t2) IndexOnlyScan(t1 t1_a1_desc_idx) NestLoop(t1 t2) HashJoin(funky t1 t2 t3) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (16 rows)
 
 -- Make sure uniqueness can be proved using indices for hinted query generated for internal hint test.
@@ -1055,7 +1055,7 @@ explain (hints on, costs off) select 1 from t2, t3, t1 where a1=a2 and a1=a3 and
          Cache Mode: logical
          ->  Index Only Scan using t2_a2_idx on t2
                Index Cond: (a2 = t1.a1)
- Generated hints: /*+ Leading(((t3 t1) t2)) SeqScan(t3) IndexScan(t1 t1_a1_desc_idx) NestLoop(t1 t3) IndexOnlyScan(t2 t2_a2_idx) NestLoop(t1 t2 t3) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading(((t3 t1) t2)) SeqScan(t3) IndexScan(t1 t1_a1_desc_idx) NestLoop(t1 t3) IndexOnlyScan(t2 t2_a2_idx) NestLoop(t1 t2 t3) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (15 rows)
 
 -- Check hint generation for partitioned tables.
@@ -1063,7 +1063,7 @@ explain (hints on, costs off) select 1 from t2, t3, t1 where a1=a2 and a1=a3 and
  * Unexpected error until https://github.com/yugabyte/yugabyte-db/issues/28070 is fixed.
  */
 explain (hints on, costs off) select count(*) from prt1 p1 join prt2 p2 on p1.a=p2.a;
-INFO:  pg_hint_plan: hint syntax error at or near " Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) "
+INFO:  pg_hint_plan: hint syntax error at or near " Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) "
 DETAIL:  MergeJoin hint requires at least two relations.
 WARNING:  errors found in hints
 WARNING:  error in hint: MergeJoin(p2)
@@ -1088,7 +1088,7 @@ WARNING:  unused hints, and/or hints causing errors, exist
                      ->  Seq Scan on prt2_p1 p2_1
                      ->  Seq Scan on prt2_p2 p2_2
                      ->  Seq Scan on prt2_p3 p2_3
- Generated hints: /*+ MergeJoin(p2) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ MergeJoin(p2) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (19 rows)
 
 -- Partitioned table where all partition-wise joins are forced to be merge joins. Should give no warnings/errors.
@@ -1151,7 +1151,7 @@ SET enable_partitionwise_join to true;
                            Index Cond: (b = 10)
                      ->  Index Only Scan using iprt1_p2_a on prt1_p2 t1_1
                            Index Cond: (a = 10)
- Generated hints: /*+   Leading((t1 t2)) IndexScan(t1 iprt1_p1_a) SeqScan(t2) MergeJoin(t1 t2)   Leading((t2_1 t1_1)) IndexScan(t2_1 iprt2_p2_b) IndexOnlyScan(t1_1 iprt1_p2_a) NestLoop(t1_1 t2_1) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+   Leading((t1 t2)) IndexScan(t1 iprt1_p1_a) SeqScan(t2) MergeJoin(t1 t2)   Leading((t2_1 t1_1)) IndexScan(t2_1 iprt2_p2_b) IndexOnlyScan(t1_1 iprt1_p2_a) NestLoop(t1_1 t2_1) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (19 rows)
 
 -- Turn off join partitioning and try hinting. Should work fine.
@@ -1175,7 +1175,7 @@ SET enable_partitionwise_join to false;
                            Storage Filter: (b = 0)
                      ->  Seq Scan on prt1_p3 t1_3
                            Storage Filter: (b = 0)
- Generated hints: /*+ Leading((t2 t1)) HashJoin(t1 t2) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading((t2 t1)) HashJoin(t1 t2) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (17 rows)
 
 -- Make sure the internal hint test passes.
@@ -1198,7 +1198,7 @@ explain (hints on, costs off) SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t
                      ->  Seq Scan on prt2_p1 t2_1
                      ->  Seq Scan on prt2_p2 t2_2
                      ->  Seq Scan on prt2_p3 t2_3
- Generated hints: /*+ Leading((t1 t2)) HashJoin(t1 t2) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading((t1 t2)) HashJoin(t1 t2) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (17 rows)
 
 -- Test hint table using query id instead of query text.
@@ -1306,7 +1306,7 @@ explain (hints on, costs off, verbose on) select * from information_schema.colum
                                              ->  Seq Scan on pg_catalog.pg_namespace nc
                                                    Output: nc.nspname, nc.oid
                                                    Filter: (NOT pg_is_other_temp_schema(nc.oid))
- Generated hints: /*+ Leading(((dep seq) ((co nco) (nt (((((c a) t) (bt nbt)) ad) nc))))) IndexScan(dep pg_depend_reference_index) SeqScan(seq) HashJoin(dep seq) IndexScan(co pg_collation_oid_index) SeqScan(nco) NestLoop(co nco) SeqScan(nt) SeqScan(c) IndexScan(a pg_attribute_relid_attnum_index) NestLoop(a c) IndexScan(t pg_type_oid_index) NestLoop(a c t) IndexScan(bt pg_type_oid_index) IndexScan(nbt pg_namespace_oid_index) NestLoop(bt nbt) NestLoop(a bt c nbt t) SeqScan(ad) HashJoin(a ad bt c nbt t) SeqScan(nc) HashJoin(a ad bt c nbt nc t) HashJoin(a ad bt c nbt nc nt t) MergeJoin(a ad bt c co nbt nc nco nt t) HashJoin(a ad bt c co dep nbt nc nco nt seq t) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 12) Set(join_collapse_limit 12) Set(geqo false) */
+ Generated hints: /*+ Leading(((dep seq) ((co nco) (nt (((((c a) t) (bt nbt)) ad) nc))))) IndexScan(dep pg_depend_reference_index) SeqScan(seq) HashJoin(dep seq) IndexScan(co pg_collation_oid_index) SeqScan(nco) NestLoop(co nco) SeqScan(nt) SeqScan(c) IndexScan(a pg_attribute_relid_attnum_index) NestLoop(a c) IndexScan(t pg_type_oid_index) NestLoop(a c t) IndexScan(bt pg_type_oid_index) IndexScan(nbt pg_namespace_oid_index) NestLoop(bt nbt) NestLoop(a bt c nbt t) SeqScan(ad) HashJoin(a ad bt c nbt t) SeqScan(nc) HashJoin(a ad bt c nbt nc t) HashJoin(a ad bt c nbt nc nt t) MergeJoin(a ad bt c co nbt nc nco nt t) HashJoin(a ad bt c co dep nbt nc nco nt seq t) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 12) Set(join_collapse_limit 12) Set(geqo false) */
 (90 rows)
 
 delete from hint_plan.hints;
@@ -1327,7 +1327,7 @@ reset pg_hint_plan.yb_use_query_id_for_hinting;
                ->  Hash
                      ->  Seq Scan on t1
                            Storage Filter: (unn1 = 1)
- Generated hints: /*+ Leading((t3 (t2 t1))) SeqScan(t3) SeqScan(t2) SeqScan(t1) HashJoin(t1 t2) HashJoin(t1 t2 t3) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading((t3 (t2 t1))) SeqScan(t3) SeqScan(t2) SeqScan(t1) HashJoin(t1 t2) HashJoin(t1 t2 t3) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (11 rows)
 
 /*+ leading(t2 t1 t3) hashjoin(t1 t2) */ explain (hints on, costs off) select 1 from t1, t2, t3 where a1=a2 and a1=a3 and unn1=1;
@@ -1343,7 +1343,7 @@ reset pg_hint_plan.yb_use_query_id_for_hinting;
                ->  Hash
                      ->  Seq Scan on t1
                            Storage Filter: (unn1 = 1)
- Generated hints: /*+ Leading((t3 (t2 t1))) SeqScan(t3) SeqScan(t2) SeqScan(t1) HashJoin(t1 t2) HashJoin(t1 t2 t3) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading((t3 (t2 t1))) SeqScan(t3) SeqScan(t2) SeqScan(t1) HashJoin(t1 t2) HashJoin(t1 t2 t3) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (11 rows)
 
 set pg_hint_plan.yb_bad_hint_mode to error;
@@ -1378,7 +1378,7 @@ set pg_hint_plan.yb_bad_hint_mode to error;
                                                      ->  Hash
                                                            ->  Seq Scan on t5 dt_1
                                                                  Storage Filter: (b5 = t1.b1)
- Generated hints: /*+ SeqScan(t1) Leading(((t3 t1_1) (t2 dt))) SeqScan(t3) IndexOnlyScan(t1_1 t1_a1_desc_idx) NestLoop(t1_1 t3) SeqScan(t2) HashJoin(dt t2) NestLoop(dt t1_1 t2 t3)  Leading((t4 dt_1)) SeqScan(t4) SeqScan(dt_1) HashJoin(dt_1 t4) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ SeqScan(t1) Leading(((t3 t1_1) (t2 dt))) SeqScan(t3) IndexOnlyScan(t1_1 t1_a1_desc_idx) NestLoop(t1_1 t3) SeqScan(t2) HashJoin(dt t2) NestLoop(dt t1_1 t2 t3)  Leading((t4 dt_1)) SeqScan(t4) SeqScan(dt_1) HashJoin(dt_1 t4) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (28 rows)
 
 -- Should get no error.
@@ -1414,7 +1414,7 @@ set pg_hint_plan.yb_bad_hint_mode to error;
                                          ->  Seq Scan on t4
                                          ->  Hash
                                                ->  Seq Scan on t5 t1_2
- Generated hints: /*+ SeqScan(t1) Leading((((t3 t1_1) t2) dt)) SeqScan(t3) IndexScan(t1_1 t1_a1_desc_idx) NestLoop(t1_1 t3) IndexOnlyScan(t2 t2_a2_idx) NestLoop(t1_1 t2 t3) HashJoin(dt t1_1 t2 t3)  Leading((t4 t1_2)) SeqScan(t4) SeqScan(t1_2) HashJoin(t1_2 t4) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ SeqScan(t1) Leading((((t3 t1_1) t2) dt)) SeqScan(t3) IndexScan(t1_1 t1_a1_desc_idx) NestLoop(t1_1 t3) IndexOnlyScan(t2 t2_a2_idx) NestLoop(t1_1 t2 t3) HashJoin(dt t1_1 t2 t3)  Leading((t4 t1_2)) SeqScan(t4) SeqScan(t1_2) HashJoin(t1_2 t4) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (30 rows)
 
 -- Simple delete with index hint. Should work.
@@ -1424,7 +1424,7 @@ set pg_hint_plan.yb_bad_hint_mode to error;
  Delete on t1
    ->  Index Scan using t1_a1_asc_b1_asc_idx on t1
          Index Cond: (a1 = 5)
- Generated hints: /*+ IndexScan(t1 t1_a1_asc_b1_asc_idx) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ IndexScan(t1 t1_a1_asc_b1_asc_idx) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (4 rows)
 
 -- Use alias for t1. Should work.
@@ -1434,7 +1434,7 @@ set pg_hint_plan.yb_bad_hint_mode to error;
  Delete on t1 x
    ->  Index Scan using t1_a1_asc_b1_asc_idx on t1 x
          Index Cond: (a1 = 5)
- Generated hints: /*+ IndexScan(x t1_a1_asc_b1_asc_idx) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ IndexScan(x t1_a1_asc_b1_asc_idx) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (4 rows)
 
 CREATE OR REPLACE FUNCTION dummy(OUT a integer, OUT b integer)
@@ -1453,7 +1453,7 @@ EXPLAIN (costs off, hints on) SELECT 1 FROM pg_type t, (SELECT dummy() as x) AS 
          ->  Result *RESULT*
    ->  Hash
          ->  Seq Scan on pg_type t
- Generated hints: /*+ Leading((ss t)) SeqScan(t) HashJoin(ss t) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading((ss t)) SeqScan(t) HashJoin(ss t) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (7 rows)
 
 -- Hint generation should work.
@@ -1471,7 +1471,7 @@ EXPLAIN (costs off, hints on) SELECT 1 FROM tbl, (SELECT dummy() as x) AS ss, (S
                      ->  Result *RESULT*
                ->  Hash
                      ->  Seq Scan on tbl
- Generated hints: /*+ Leading((ss2 (ss tbl))) SeqScan(tbl) HashJoin(ss tbl) HashJoin(ss ss2 tbl) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading((ss2 (ss tbl))) SeqScan(tbl) HashJoin(ss tbl) HashJoin(ss ss2 tbl) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (12 rows)
 
 -- Insert should work using t1_1 as alias.
@@ -1504,7 +1504,7 @@ EXPLAIN (costs off, hints on) SELECT 1 FROM tbl, (SELECT dummy() as x) AS ss, (S
                                  ->  Seq Scan on t5 dt_1
                                  ->  Hash
                                        ->  Seq Scan on t4
- Generated hints: /*+ Leading((((t3 t1_1) t2) dt)) SeqScan(t3) IndexScan(t1_1 t1_a1_desc_idx) NestLoop(t1_1 t3) IndexOnlyScan(t2 t2_a2_idx) NestLoop(t1_1 t2 t3) HashJoin(dt t1_1 t2 t3)  Leading((dt_1 t4)) SeqScan(dt_1) SeqScan(t4) HashJoin(dt_1 t4) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading((((t3 t1_1) t2) dt)) SeqScan(t3) IndexScan(t1_1 t1_a1_desc_idx) NestLoop(t1_1 t3) IndexOnlyScan(t2 t2_a2_idx) NestLoop(t1_1 t2 t3) HashJoin(dt t1_1 t2 t3)  Leading((dt_1 t4)) SeqScan(dt_1) SeqScan(t4) HashJoin(dt_1 t4) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (27 rows)
 
 -- Should work since we are forcing a cross join t2-t3 (planner would not normally try this join).
@@ -1669,7 +1669,7 @@ explain (hints on, costs off) SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t
                      ->  Seq Scan on prt2_p1 t2_1
                      ->  Seq Scan on prt2_p2 t2_2
                      ->  Seq Scan on prt2_p3 t2_3
- Generated hints: /*+ Leading((t1 t2)) HashJoin(t1 t2) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading((t1 t2)) HashJoin(t1 t2) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (17 rows)
 
 reset yb_enable_parallel_append;
@@ -1747,7 +1747,7 @@ WARNING:  replanning without hints
                Cache Mode: logical
                ->  Index Scan using t1_a1_asc_b1_asc_idx on t1
                      Index Cond: ((a1 < 5) AND (b1 = t2.b2))
- Generated hints: /*+ Leading((t2 t1)) SeqScan(t2) IndexScan(t1 t1_a1_asc_b1_asc_idx) NestLoop(t1 t2) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading((t2 t1)) SeqScan(t2) IndexScan(t1 t1_a1_asc_b1_asc_idx) NestLoop(t1 t2) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (10 rows)
 
 set pg_hint_plan.yb_bad_hint_mode to warn;
@@ -1765,7 +1765,7 @@ WARNING:  unused hints, and/or hints causing errors, exist
          Cache Mode: logical
          ->  Index Scan using t1_a1_asc_b1_asc_idx on t1
                Index Cond: ((a1 = 1) AND (b1 = t2.b2))
- Generated hints: /*+ Leading((t2 t1)) SeqScan(t2) IndexScan(t1 t1_a1_asc_b1_asc_idx) NestLoop(t1 t2) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading((t2 t1)) SeqScan(t2) IndexScan(t1 t1_a1_asc_b1_asc_idx) NestLoop(t1 t2) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (8 rows)
 
 -- No plan can be found using the hint. Should generate warnings.
@@ -1779,7 +1779,7 @@ WARNING:  unused hints, and/or hints causing errors, exist
    ->  Seq Scan on t2 tab
          Storage Filter: (b2 < 10)
          Partial Aggregate: true
- Generated hints: /*+ SeqScan(tab) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ SeqScan(tab) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (5 rows)
 
 -- No plan can be found using the hint. Should generate warnings.
@@ -1792,7 +1792,7 @@ WARNING:  unused hints, and/or hints causing errors, exist
    ->  Seq Scan on t2 tab
          Storage Filter: (b2 < 10)
          Partial Aggregate: true
- Generated hints: /*+ SeqScan(tab) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ SeqScan(tab) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (5 rows)
 
 -- This hint makes sense but currently there cannot be > 1 join method hint for the same set of tables so will give warnings/errors.
@@ -1814,7 +1814,7 @@ WARNING:  unused hints, and/or hints causing errors, exist
                Cache Mode: logical
                ->  Index Only Scan using t2_a2_idx on t2
                      Index Cond: (a2 = t1.a1)
- Generated hints: /*+ Leading((t1 t2)) SeqScan(t1) IndexOnlyScan(t2 t2_a2_idx) NestLoop(t1 t2) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading((t1 t2)) SeqScan(t1) IndexOnlyScan(t2 t2_a2_idx) NestLoop(t1 t2) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (9 rows)
 
 -- Try to force t0-t1 join. Should see errors/warnings since this is not a legal join order.
@@ -1835,7 +1835,7 @@ WARNING:  unused hints, and/or hints causing errors, exist
                            Cache Mode: logical
                            ->  Index Only Scan using t2_a2_idx on t2 (UID 45)
                                  Index Cond: (a2 = t1.a1)
- Generated hints: /*+ Leading((t0 (t1 t2))) SeqScan(t0) IndexOnlyScan(t1 t1_a1_asc_b1_asc_idx) IndexOnlyScan(t2 t2_a2_idx) NestLoop(t1 t2) NestLoop(t0 t1 t2) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading((t0 (t1 t2))) SeqScan(t0) IndexOnlyScan(t1 t1_a1_asc_b1_asc_idx) IndexOnlyScan(t2 t2_a2_idx) NestLoop(t1 t2) NestLoop(t0 t1 t2) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (13 rows)
 
 -- Syntax error. Should see warnings/error.
@@ -1851,7 +1851,7 @@ WARNING:  no valid hints found, planning query without hints
          ->  Seq Scan on t5
          ->  Hash
                ->  Seq Scan on t4
- Generated hints: /*+ Leading((t5 t4)) SeqScan(t5) SeqScan(t4) HashJoin(t4 t5) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading((t5 t4)) SeqScan(t5) SeqScan(t4) HashJoin(t4 t5) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (7 rows)
 
 -- Fix the syntax error and try again. No joy since NLJ cannot be used for FULL join. Will give warnings.
@@ -1866,7 +1866,7 @@ WARNING:  unused hints, and/or hints causing errors, exist
          ->  Seq Scan on t5 (UID 2)
          ->  Hash (UID 8)
                ->  Seq Scan on t4 (UID 1)
- Generated hints: /*+ Leading((t5 t4)) SeqScan(t5) SeqScan(t4) HashJoin(t4 t5) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading((t5 t4)) SeqScan(t5) SeqScan(t4) HashJoin(t4 t5) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (7 rows)
 
 -- Cannot do a ROJ so should get a warning.
@@ -1927,7 +1927,7 @@ WARNING:  unused hints, and/or hints causing errors, exist
                Cache Mode: logical
                ->  Index Only Scan using t2_a2_idx on t2
                      Index Cond: (a2 = t3.a3)
- Generated hints: /*+ Leading(((((t5 t4) t1) t3) t2)) SeqScan(t5) SeqScan(t4) HashJoin(t4 t5) SeqScan(t1) NestLoop(t1 t4 t5) SeqScan(t3) HashJoin(t1 t3 t4 t5) IndexOnlyScan(t2 t2_a2_idx) NestLoop(t1 t2 t3 t4 t5) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading(((((t5 t4) t1) t3) t2)) SeqScan(t5) SeqScan(t4) HashJoin(t4 t5) SeqScan(t1) NestLoop(t1 t4 t5) SeqScan(t3) HashJoin(t1 t3 t4 t5) IndexOnlyScan(t2 t2_a2_idx) NestLoop(t1 t2 t3 t4 t5) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (20 rows)
 
 -- Hint a cross join with bad table name ROWS hint. Should get warnings/errors.
@@ -1956,7 +1956,7 @@ WARNING:  unused hints, and/or hints causing errors, exist
                Cache Mode: logical
                ->  Index Only Scan using t2_a2_idx on t2
                      Index Cond: (a2 = t3.a3)
- Generated hints: /*+ Leading(((((t5 t4) t1) t3) t2)) SeqScan(t5) SeqScan(t4) HashJoin(t4 t5) SeqScan(t1) NestLoop(t1 t4 t5) SeqScan(t3) HashJoin(t1 t3 t4 t5) IndexOnlyScan(t2 t2_a2_idx) NestLoop(t1 t2 t3 t4 t5) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading(((((t5 t4) t1) t3) t2)) SeqScan(t5) SeqScan(t4) HashJoin(t4 t5) SeqScan(t1) NestLoop(t1 t4 t5) SeqScan(t3) HashJoin(t1 t3 t4 t5) IndexOnlyScan(t2 t2_a2_idx) NestLoop(t1 t2 t3 t4 t5) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (20 rows)
 
 -- Syntax error in parallel hint. Should get warnings/errors.
@@ -1971,7 +1971,7 @@ WARNING:  unused hints, and/or hints causing errors, exist
  Finalize Aggregate
    ->  Seq Scan on t1
          Partial Aggregate: true
- Generated hints: /*+ SeqScan(t1) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ SeqScan(t1) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (4 rows)
 
 -- Bad table name in parallel hint. Should get warnings/errors.
@@ -1984,7 +1984,7 @@ WARNING:  unused hints, and/or hints causing errors, exist
  Finalize Aggregate
    ->  Seq Scan on t1
          Partial Aggregate: true
- Generated hints: /*+ SeqScan(t1) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ SeqScan(t1) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (4 rows)
 
 -- Use bad name 't22' in hint. Should get warnings and whatever plan was found without the bad leading hint.
@@ -2013,7 +2013,7 @@ WARNING:  unused hints, and/or hints causing errors, exist
                Cache Mode: logical
                ->  Index Only Scan using t2_a2_idx on t2
                      Index Cond: (a2 = t3.a3)
- Generated hints: /*+ Leading((((t5 t1) (t4 t3)) t2)) SeqScan(t5) SeqScan(t1) NestLoop(t1 t5) SeqScan(t4) SeqScan(t3) HashJoin(t3 t4) HashJoin(t1 t3 t4 t5) IndexOnlyScan(t2 t2_a2_idx) NestLoop(t1 t2 t3 t4 t5) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading((((t5 t1) (t4 t3)) t2)) SeqScan(t5) SeqScan(t1) NestLoop(t1 t5) SeqScan(t4) SeqScan(t3) HashJoin(t3 t4) HashJoin(t1 t3 t4 t5) IndexOnlyScan(t2 t2_a2_idx) NestLoop(t1 t2 t3 t4 t5) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (20 rows)
 
 -- Turn on flag to force failure on bad hint and try query. Should get an error.
@@ -2051,7 +2051,7 @@ WARNING:  replanning without hints
                Cache Mode: logical
                ->  Index Only Scan using t2_a2_idx on t2
                      Index Cond: (a2 = t3.a3)
- Generated hints: /*+ Leading((((t5 t1) (t4 t3)) t2)) SeqScan(t5) SeqScan(t1) NestLoop(t1 t5) SeqScan(t4) SeqScan(t3) HashJoin(t3 t4) HashJoin(t1 t3 t4 t5) IndexOnlyScan(t2 t2_a2_idx) NestLoop(t1 t2 t3 t4 t5) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading((((t5 t1) (t4 t3)) t2)) SeqScan(t5) SeqScan(t1) NestLoop(t1 t5) SeqScan(t4) SeqScan(t3) HashJoin(t3 t4) HashJoin(t1 t3 t4 t5) IndexOnlyScan(t2 t2_a2_idx) NestLoop(t1 t2 t3 t4 t5) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (20 rows)
 
 set pg_hint_plan.yb_bad_hint_mode to error;
@@ -2102,7 +2102,7 @@ WARNING:  unused hints, and/or hints causing errors, exist
                      ->  HashAggregate (UID 10)
                            Group Key: t5.a5, t5.b5
                            ->  Seq Scan on t5 (UID 7)
- Generated hints: /*+ Leading((((t1 ANY_subquery) t2) ANY_subquery_1)) IndexOnlyScan(t1 t1_a1_asc_b1_asc_idx) NestLoop(ANY_subquery t1) IndexScan(t2 t2_a2_idx) NestLoop(ANY_subquery t1 t2) NestLoop(ANY_subquery ANY_subquery_1 t1 t2)  SeqScan(t4)  SeqScan(t5) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading((((t1 ANY_subquery) t2) ANY_subquery_1)) IndexOnlyScan(t1 t1_a1_asc_b1_asc_idx) NestLoop(ANY_subquery t1) IndexScan(t2 t2_a2_idx) NestLoop(ANY_subquery t1 t2) NestLoop(ANY_subquery ANY_subquery_1 t1 t2)  SeqScan(t4)  SeqScan(t5) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (23 rows)
 
 set pg_hint_plan.yb_bad_hint_mode to replan;
@@ -2125,7 +2125,7 @@ WARNING:  replanning without hints
                            Index Cond: (a1 < t2.a2)
          ->  Hash (UID 70)
                ->  Seq Scan on t3 (UID 39)
- Generated hints: /*+ Leading(((t2 t1) t3)) SeqScan(t2) IndexOnlyScan(t1 t1_a1_desc_idx) NestLoop(t1 t2) SeqScan(t3) HashJoin(t1 t2 t3) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.10) Set(parallel_setup_cost 1000.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading(((t2 t1) t3)) SeqScan(t2) IndexOnlyScan(t1 t1_a1_desc_idx) NestLoop(t1 t2) SeqScan(t3) HashJoin(t1 t2 t3) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (13 rows)
 
 set pg_hint_plan.yb_bad_hint_mode to warn;

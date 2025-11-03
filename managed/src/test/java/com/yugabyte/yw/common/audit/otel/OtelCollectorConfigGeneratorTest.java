@@ -36,6 +36,7 @@ import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.YSQLQueryLogConfig;
 import com.yugabyte.yw.models.helpers.telemetry.*;
+import com.yugabyte.yw.models.helpers.telemetry.AuthCredentials.AuthType;
 import com.yugabyte.yw.models.helpers.telemetry.TelemetryProviderConfig;
 import java.io.BufferedWriter;
 import java.io.File;
@@ -251,7 +252,7 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     LokiConfig config = new LokiConfig();
     config.setType(ProviderType.LOKI);
     config.setEndpoint("http://loki:3100");
-    config.setAuthType(LokiConfig.LokiAuthType.NoAuth);
+    config.setAuthType(AuthType.NoAuth);
 
     TelemetryProvider telemetryProvider =
         createTelemetryProvider(new UUID(0, 0), "Loki", ImmutableMap.of("tag", "value"), config);
@@ -268,7 +269,7 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     LokiConfig config = new LokiConfig();
     config.setType(ProviderType.LOKI);
     config.setEndpoint("http://loki:3100");
-    config.setAuthType(LokiConfig.LokiAuthType.NoAuth);
+    config.setAuthType(AuthType.NoAuth);
 
     TelemetryProvider telemetryProvider =
         createTelemetryProvider(new UUID(0, 0), "Loki", ImmutableMap.of("tag", "value"), config);
