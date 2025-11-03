@@ -31,6 +31,8 @@ import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data.RegionLoc
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.FilterInputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -1136,15 +1138,68 @@ public class AWSUtil implements CloudUtil {
           GetObjectRequest.builder().bucket(bucketName).key(objectPrefix).build();
       ResponseInputStream<GetObjectResponse> objectStream = s3Client.getObject(getObjectRequest);
       if (objectStream == null) {
+        maybeEnableCertVerification();
+        s3Client.close();
+        s3Client = null; // Set to null to prevent double cleanup in catch block
         throw new PlatformServiceException(
             INTERNAL_SERVER_ERROR, "No object was found at the specified location: " + cloudPath);
       }
-      return objectStream;
-    } finally {
-      maybeEnableCertVerification();
+      // Capture s3Client in a final variable for use in the anonymous class
+      final S3Client finalS3Client = s3Client;
+      // Clear the reference so we don't close it in the catch block
+      s3Client = null;
+      // Wrap the stream to ensure S3Client is closed when the stream is closed.
+      // The S3Client must remain open while the stream is in use, otherwise the stream
+      // becomes unusable since it's tied to the client's HTTP connection.
+      return new FilterInputStream(objectStream) {
+        private volatile boolean closed = false;
+
+        @Override
+        public void close() throws IOException {
+          if (closed) {
+            return;
+          }
+          closed = true;
+          try {
+            // Close the ResponseInputStream first. If the stream has already reached EOF,
+            // the underlying HTTP connection may have been auto-closed, which can cause
+            // a SocketException. We catch and ignore this since it's harmless.
+            try {
+              super.close();
+            } catch (java.net.SocketException e) {
+              // Socket already closed - this is harmless and can happen when the stream
+              // reaches EOF before explicit close. Log at trace level for debugging.
+              log.trace("Socket already closed when closing ResponseInputStream", e);
+            }
+          } finally {
+            maybeEnableCertVerification();
+            try {
+              finalS3Client.close();
+            } catch (Exception e) {
+              // Log but don't propagate - client close failures shouldn't prevent cleanup
+              log.warn("Error closing S3Client", e);
+            }
+          }
+        }
+      };
+    } catch (PlatformServiceException e) {
+      // Re-throw PlatformServiceException as-is
+      // Clean up if client was created but stream wasn't returned
       if (s3Client != null) {
+        maybeEnableCertVerification();
         s3Client.close();
       }
+      throw e;
+    } catch (Exception e) {
+      // Handle any other exceptions and ensure cleanup
+      if (s3Client != null) {
+        maybeEnableCertVerification();
+        s3Client.close();
+      } else {
+        maybeEnableCertVerification();
+      }
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Failed to get cloud file input stream: " + e.getMessage());
     }
   }
 
