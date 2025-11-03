@@ -5,7 +5,7 @@ linkTitle: Legal
 description: Learn about Yugabyte licenses and third-party software.
 headcontent: Learn about YugabyteDB licenses and third-party software.
 menu:
-  preview:
+  stable:
     identifier: legal
     parent: misc
     weight: 3000

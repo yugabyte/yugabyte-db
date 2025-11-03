@@ -4,7 +4,7 @@ headerTitle: Go
 linkTitle: Go
 description: Go Drivers and ORMs support for YugabyteDB.
 menu:
-  preview:
+  stable:
     identifier: go-drivers
     parent: drivers-orms
     weight: 510

@@ -3,8 +3,6 @@ title: Java drivers, ORMs, and frameworks
 headerTitle: Java
 linkTitle: Java
 description: Java drivers and ORMs support for YugabyteDB.
-aliases:
-  - /stable/integrations/jdbc-drivers/
 menu:
   v2.25:
     identifier: java-drivers

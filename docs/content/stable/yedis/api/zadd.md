@@ -3,7 +3,7 @@ title: ZADD
 linkTitle: ZADD
 description: ZADD
 menu:
-  preview:
+  stable:
     parent: api-yedis
     weight: 2500
 aliases:

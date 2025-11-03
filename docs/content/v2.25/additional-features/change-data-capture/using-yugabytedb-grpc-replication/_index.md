@@ -6,9 +6,6 @@ description: CDC using YugabyteDB gRPC replication protocol.
 headcontent: Capture changes made to data in the database
 tags:
   feature: early-access
-aliases:
-  - /stable/explore/change-data-capture/cdc-overview/
-  - /stable/explore/change-data-capture/using-yugabytedb-grpc-replication/
 menu:
   v2.25:
     identifier: explore-change-data-capture-grpc-replication

@@ -8,7 +8,7 @@ aliases:
   - /stable/yugabyte-cloud/cloud-network/vpc-peers/
   - /stable/yugabyte-cloud/cloud-secure-clusters/cloud-vpcs/
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-platform:
     identifier: cloud-vpcs
     parent: cloud-basics
     weight: 20

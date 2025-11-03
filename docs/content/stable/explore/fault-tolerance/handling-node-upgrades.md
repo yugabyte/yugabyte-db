@@ -5,7 +5,7 @@ linkTitle: Periodic maintenance
 description: No service disruption during node upgrades and periodic maintenance
 headcontent: Be resilient to service disruption during node upgrades
 menu:
-  preview:
+  stable:
     identifier: handling-node-upgrades
     parent: fault-tolerance
     weight: 50

@@ -5,8 +5,6 @@ linkTitle: Go Drivers
 description: Go PQ Driver for YSQL
 tags:
   other: ysql
-aliases:
-  - /stable/reference/drivers/go/pq-reference/
 menu:
   v2.25:
     name: Go Drivers

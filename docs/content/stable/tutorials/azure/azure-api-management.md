@@ -6,7 +6,7 @@ description: Learn to deploy APIs using Azure API Management and YugabyteDB, cov
 image: /images/tutorials/azure/icons/API-Management-Icon.svg
 headcontent: Use YugabyteDB as the database backend for your API
 menu:
-  preview_tutorials:
+  stable_tutorials:
     identifier: tutorials-azure-api-management
     parent: tutorials-azure
     weight: 60

@@ -7,7 +7,7 @@ headcontent: Connect clients to remote YugabyteDB clusters that have client-to-s
 aliases:
   - /secure/tls-encryption/connect-to-cluster
 menu:
-  preview:
+  stable:
     identifier: connect-to-cluster
     parent: tls-encryption
     weight: 40

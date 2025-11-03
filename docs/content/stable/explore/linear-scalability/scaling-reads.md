@@ -7,7 +7,7 @@ headcontent: Read performance when scaling horizontally
 aliases:
   - /stable/architecture/core-functions/read-path
 menu:
-  preview:
+  stable:
     identifier: scaling-reads
     parent: explore-scalability
     weight: 30

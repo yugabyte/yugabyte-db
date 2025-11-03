@@ -10,7 +10,7 @@ aliases:
   - /stable/architecture/concepts/single-node/
   - /stable/key-concepts/
 menu:
-  preview:
+  stable:
     identifier: architecture-concepts-universe
     parent: reference
     weight: 10

@@ -7,7 +7,7 @@ aliases:
   - /stable/develop/learn/data-modeling-ycql/
   - /stable/develop/data-modeling-ysql/
 menu:
-  preview:
+  stable:
     identifier: data-modeling
     parent: develop
     weight: 40

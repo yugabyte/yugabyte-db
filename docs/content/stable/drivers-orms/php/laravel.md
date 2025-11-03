@@ -5,7 +5,7 @@ linkTitle: Use an ORM
 description: Laravel ORM support for YugabyteDB
 headcontent: Laravel ORM support for YugabyteDB
 menu:
-  preview:
+  stable:
     identifier: laravel-orm
     parent: php-drivers
     weight: 500

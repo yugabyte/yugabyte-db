@@ -6,7 +6,7 @@ headcontent: Use your browser to connect to YugabyteDB Aeon databases
 aliases:
   - /stable/yugabyte-cloud/cloud-quickstart/qs-connect/
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-platform:
     identifier: connect-cloud-shell
     parent: cloud-connect
     weight: 10

@@ -3,7 +3,7 @@ title: Security architecture drilldown
 linkTitle: Security architecture drilldown
 description: Explore the security architecture of YugabyteDB Aeon data, our fully managed YugabyteDB-as-a-Service.
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-platform:
     parent: cloud-security
     identifier: cloud-security-features
 weight: 10

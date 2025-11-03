@@ -4,7 +4,7 @@ headerTitle: ALTER SCHEMA
 linkTitle: ALTER SCHEMA
 description: Use the ALTER SCHEMA statement to change the definition of a schema.
 menu:
-  preview_api:
+  stable_api:
     identifier: ddl_alter_schema
     parent: statements
 aliases:

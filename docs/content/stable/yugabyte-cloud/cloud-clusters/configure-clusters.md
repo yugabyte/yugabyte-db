@@ -4,7 +4,7 @@ linkTitle: Scale and configure clusters
 description: Scale YugabyteDB Aeon clusters.
 headcontent: Scale clusters horizontally and vertically
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-platform:
     identifier: configure-clusters
     parent: cloud-clusters
     weight: 100

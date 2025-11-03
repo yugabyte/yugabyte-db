@@ -6,7 +6,7 @@ description: Compare Azure Cosmos database with YugabyteDB.
 aliases:
   - /comparisons/azure-cosmos/
 menu:
-  preview_faq:
+  stable_faq:
     identifier: azure-cosmos
     identifier: comparisons-cosmos
     parent: comparisons

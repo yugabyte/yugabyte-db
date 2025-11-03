@@ -4,7 +4,7 @@ headerTitle: Transaction priorities
 linkTitle: Transaction priorities
 description: Details about Transaction priorities in YSQL
 menu:
-  preview:
+  stable:
     identifier: architecture-transaction-priorities
     parent: architecture-acid-transactions
     weight: 700

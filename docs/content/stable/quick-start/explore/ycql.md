@@ -8,7 +8,7 @@ aliases:
   - /stable/quick-start/test-cassandra/
   - /stable/quick-start/test-ycql/
 menu:
-  preview:
+  stable:
     parent: quick-start
     name: Explore distributed SQL
     identifier: explore-dsql-2-ycql

@@ -3,7 +3,7 @@ title: PEXPIREAT
 linkTitle: PEXPIREAT
 description: PEXPIREAT
 menu:
-  preview:
+  stable:
     parent: api-yedis
     weight: 2234
 aliases:

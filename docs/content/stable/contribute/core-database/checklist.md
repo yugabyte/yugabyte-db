@@ -5,7 +5,7 @@ linkTitle: Contribution checklist
 description: Review the steps to start contributing code and documentation.
 headcontent: Checklist for contributing to the core database.
 menu:
-  preview:
+  stable:
     identifier: contribute-checklist
     parent: core-database
     weight: 2911

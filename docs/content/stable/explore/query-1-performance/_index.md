@@ -7,7 +7,7 @@ headcontent: Optimize query performance
 aliases:
   - /stable/explore/query-1-performance/query-tuning-intro/
 menu:
-  preview:
+  stable:
     identifier: query-tuning
     parent: explore
     weight: 300

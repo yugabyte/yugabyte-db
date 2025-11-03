@@ -4,7 +4,7 @@ linkTitle: Smart drivers
 description: Use YugabyteDB drivers to improve performance with partition-aware load balancing and JSON support for YCQL
 headcontent: Manage partition-aware load balancing automatically using YCQL drivers
 menu:
-  preview:
+  stable:
     identifier: smart-drivers-ycql
     parent: drivers-orms
     weight: 400

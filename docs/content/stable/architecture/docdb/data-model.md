@@ -7,7 +7,7 @@ headcontent: Understand how DocDB stores table rows as keys and values
 aliases:
   - /stable/architecture/docdb/persistence/
 menu:
-  preview:
+  stable:
     identifier: docdb-data-model
     parent: docdb
     weight: 100

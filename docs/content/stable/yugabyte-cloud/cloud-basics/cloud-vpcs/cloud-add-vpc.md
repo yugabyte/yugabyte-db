@@ -5,7 +5,7 @@ linkTitle: VPCs
 description: Manage your YugabyteDB Aeon VPCs.
 headcontent: Manage your YugabyteDB Aeon VPCs
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-platform:
     identifier: cloud-add-vpc
     parent: cloud-vpcs
     weight: 20

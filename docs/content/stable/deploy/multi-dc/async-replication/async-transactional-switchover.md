@@ -5,7 +5,7 @@ linkTitle: Switchover
 description: Switchover using transactional xCluster replication between universes
 headContent: Switch application traffic to the standby universe without data loss
 menu:
-  preview:
+  stable:
     parent: async-replication-transactional
     identifier: async-transactional-switchover
     weight: 40

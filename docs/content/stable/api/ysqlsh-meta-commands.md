@@ -7,7 +7,7 @@ headcontent: Run commands without querying the database
 aliases:
   - /stable/admin/ysqlsh-meta-commands/
 menu:
-  preview_api:
+  stable_api:
     identifier: ysqlsh-meta-commands
     parent: ysqlsh
     weight: 10

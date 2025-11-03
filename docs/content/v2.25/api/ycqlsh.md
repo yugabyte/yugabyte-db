@@ -4,10 +4,6 @@ headerTitle: ycqlsh
 linkTitle: ycqlsh
 description: Shell for interacting with the YugabyteDB YCQL API.
 headcontent: Shell for interacting with the YugabyteDB YCQL API
-aliases:
-  - /develop/tools/cqlsh/
-  - /stable/develop/tools/cqlsh/
-  - /stable/admin/ycqlsh/
 rightNav:
   hideH4: true
 type: docs

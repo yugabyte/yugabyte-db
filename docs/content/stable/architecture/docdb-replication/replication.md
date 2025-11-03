@@ -7,7 +7,7 @@ headContent: Synchronous replication using the Raft consensus protocol
 aliases:
   - /stable/architecture/concepts/docdb/replication/
 menu:
-  preview:
+  stable:
     identifier: architecture-docdb-replication-default
     parent: architecture-docdb-replication
     weight: 200

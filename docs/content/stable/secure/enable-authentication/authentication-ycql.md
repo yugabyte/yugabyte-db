@@ -5,7 +5,7 @@ description: Enable users in YCQL.
 aliases:
   - /stable/secure/enable-authentication/ycql/
 menu:
-  preview:
+  stable:
     name: Enable users
     identifier: enable-authentication-2-ycql
     parent: enable-authentication

@@ -5,7 +5,7 @@ linkTitle: metrics-exporter
 description: YugabyteDB Aeon CLI reference metrics-exporter resource.
 headcontent: Manage metrics export configuration
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-platform:
     identifier: managed-cli-metrics-exporter
     parent: managed-cli-reference
     weight: 20

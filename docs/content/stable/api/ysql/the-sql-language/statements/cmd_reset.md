@@ -6,7 +6,7 @@ description: Use the RESET statement to restore the value of a run-time paramete
 aliases:
   - /stable/api/ysql/the-sql-language/cmd_reset
 menu:
-  preview_api:
+  stable_api:
     identifier: cmd_reset
     parent: statements
 aliases:

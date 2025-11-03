@@ -7,7 +7,7 @@ aliases:
   - /stable/deploy/yugabyte-cloud/create-clusters/
   - /stable/yugabyte-cloud/create-clusters/
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-platform:
     identifier: create-single-region
     parent: create-clusters
     weight: 50

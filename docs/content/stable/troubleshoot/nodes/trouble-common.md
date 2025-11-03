@@ -4,7 +4,7 @@ linkTitle: Common error messages
 headerTitle: Common error messages
 description: How to understand and recover from common error messages
 menu:
-  preview:
+  stable:
     parent: troubleshoot-nodes
     weight: 50
 type: docs

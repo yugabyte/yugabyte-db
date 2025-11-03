@@ -5,7 +5,7 @@ linkTitle: db-audit-logs-exporter
 description: YugabyteDB Aeon CLI reference db-audit-logs-exporter resource.
 headcontent: Manage database audit log export configuration
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-platform:
     identifier: managed-cli-db-audit-logs-exporter
     parent: managed-cli-reference
     weight: 20

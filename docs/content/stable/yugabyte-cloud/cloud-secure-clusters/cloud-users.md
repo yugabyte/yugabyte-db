@@ -5,7 +5,7 @@ linkTitle: Database authorization
 description: The default YugabyteDB users and roles available in YugabyteDB Aeon clusters.
 headcontent: Default YugabyteDB users and roles in YugabyteDB Aeon clusters
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-platform:
     identifier: cloud-users
     parent: cloud-secure-clusters
     weight: 300

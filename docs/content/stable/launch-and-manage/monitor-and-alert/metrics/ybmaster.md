@@ -7,7 +7,7 @@ description: Learn about YugabyteDB's YB-Master metrics, and how to select and u
 aliases:
   - /launch-and-manage/monitor-and-alert/metrics/ybmaster/
 menu:
-  preview:
+  stable:
     identifier: yb-master-metrics
     parent: metrics-overview
     weight: 140

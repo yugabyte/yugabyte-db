@@ -4,9 +4,6 @@ headerTitle: Backup and restore
 linkTitle: Backup and restore
 description: Back up and restore YugabyteDB
 headcontent: Create backups and restore your data
-aliases:
-  - /manage/backup-restore/
-  - /stable/backup-restore/
 menu:
   v2.25:
     identifier: backup-restore

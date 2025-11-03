@@ -6,7 +6,7 @@ description: Verify if the migration was successful
 tags:
   other: ycql
 menu:
-  preview:
+  stable:
     identifier: verify-migration-ycql
     parent: manage-bulk-import-export
     weight: 740

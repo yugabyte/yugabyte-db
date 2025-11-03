@@ -5,7 +5,7 @@ linkTitle: Integrations
 description: Set up links to third-party tools in YugabyteDB Aeon.
 headcontent: Set up links to third-party tools
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-platform:
     identifier: managed-integrations
     parent: cloud-monitor
     weight: 600

@@ -9,7 +9,7 @@ aliases:
   - /stable/architecture/layered-architecture/
   - /stable/architecture/overview/
 menu:
-  preview:
+  stable:
     identifier: deploy
     parent: launch-and-manage
     weight: 10

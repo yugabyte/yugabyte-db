@@ -5,7 +5,7 @@ linkTitle: Build apps using ORMs
 description: Build a REST application using ORMs with YugabyteDB
 headcontent: Learn how to use your favorite ORM with YugabyteDB
 menu:
-  preview:
+  stable:
     identifier: orm-tutorials
     parent: drivers-orms
     weight: 610

@@ -8,7 +8,7 @@ tags:
 aliases:
 - /stable/reference/drivers/python/postgres-psycopg2-reference/
 menu:
-  preview:
+  stable:
     name: Python drivers
     identifier: ref-postgres-psycopg2-driver
     parent: python-drivers

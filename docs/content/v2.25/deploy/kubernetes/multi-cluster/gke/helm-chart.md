@@ -9,8 +9,6 @@ menu:
     name: Google Kubernetes Engine
     identifier: k8s-mc-gke-1
     weight: 628
-aliases:
-  - /stable/deploy/kubernetes/multi-cluster/gke
 type: docs
 ---
 

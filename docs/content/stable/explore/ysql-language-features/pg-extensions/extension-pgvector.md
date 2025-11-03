@@ -4,7 +4,7 @@ headerTitle: pgvector extension
 linkTitle: pgvector
 description: Using the pgvector extension in YugabyteDB
 menu:
-  preview:
+  stable:
     identifier: extension-pgvector
     parent: pg-extensions
     weight: 20

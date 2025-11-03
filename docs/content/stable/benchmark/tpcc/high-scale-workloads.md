@@ -4,7 +4,7 @@ headerTitle: Testing high scale workloads of TPC-C benchmark
 linkTitle: Testing high scale workloads
 headcontent: Understand how YugabyteDB performs with high scale workloads
 menu:
-  preview:
+  stable:
     identifier: tpcc-high-scale
     parent: tpcc
     weight: 300

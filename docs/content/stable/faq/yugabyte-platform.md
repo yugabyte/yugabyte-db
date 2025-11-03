@@ -6,7 +6,7 @@ description: Answers to common questions about YugabyteDB Anywhere.
 aliases:
   - /stable/faq/enterprise-edition/
 menu:
-  preview_faq:
+  stable_faq:
     identifier: faq-yugabyte-platform
     parent: faq
     weight: 20

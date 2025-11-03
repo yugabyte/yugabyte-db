@@ -12,7 +12,7 @@ aliases:
   - /stable/quick-start/build-apps/java/
   - /stable/integrations/jdbc-drivers/
 menu:
-  preview:
+  stable:
     identifier: java-driver-1-yugabyte-jdbc
     parent: java-drivers
     weight: 500

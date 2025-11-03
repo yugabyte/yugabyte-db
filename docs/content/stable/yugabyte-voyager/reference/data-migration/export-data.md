@@ -4,7 +4,7 @@ headcontent: yb-voyager export data
 linkTitle: export data
 description: YugabyteDB Voyager export data reference
 menu:
-  preview_yugabyte-voyager:
+  stable_yugabyte-voyager:
     identifier: voyager-export-data
     parent: data-migration
     weight: 20

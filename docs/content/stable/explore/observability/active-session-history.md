@@ -7,7 +7,7 @@ headcontent: Get real-time and historical information about active sessions to a
 tags:
   feature: early-access
 menu:
-  preview:
+  stable:
     identifier: ash
     parent: explore-observability
     weight: 860

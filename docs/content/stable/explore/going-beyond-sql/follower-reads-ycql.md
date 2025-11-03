@@ -7,7 +7,7 @@ aliases:
   - /stable/explore/tunable-reads/
   - /stable/explore/follower-reads/
 menu:
-  preview:
+  stable:
     identifier: follower-reads-ycql
     parent: going-beyond-sql
     weight: 120

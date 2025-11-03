@@ -3,7 +3,7 @@ title: TSRANGEBYTIME
 linkTitle: TSRANGEBYTIME
 description: TSRANGEBYTIME
 menu:
-  preview:
+  stable:
     parent: api-yedis
     weight: 2440
 aliases:

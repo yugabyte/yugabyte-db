@@ -5,7 +5,7 @@ linkTitle: Troubleshoot
 description: Troubleshoot issues in YugabyteDB Voyager.
 headcontent: Diagnose and troubleshoot issues when migrating to YugabyteDB using YugabyteDB Voyager
 menu:
-  preview_yugabyte-voyager:
+  stable_yugabyte-voyager:
     identifier: voyager-troubleshoot
     parent: yugabytedb-voyager
     weight: 105

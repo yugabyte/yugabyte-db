@@ -3,7 +3,7 @@ title: HEXISTS
 linkTitle: HEXISTS
 description: HEXISTS
 menu:
-  preview:
+  stable:
     parent: api-yedis
     weight: 2110
 aliases:

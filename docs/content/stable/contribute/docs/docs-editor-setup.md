@@ -4,7 +4,7 @@ headerTitle: 'Optional: editor setup'
 linkTitle: Editor setup
 description: Optional setup steps for selected text editors
 menu:
-  preview:
+  stable:
     identifier: docs-editor-setup
     parent: docs-build
     weight: 2913

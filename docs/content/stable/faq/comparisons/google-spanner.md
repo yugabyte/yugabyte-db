@@ -6,7 +6,7 @@ description: Compare Google Cloud Spanner database with YugabyteDB.
 aliases:
   - /comparisons/google-spanner/
 menu:
-  preview_faq:
+  stable_faq:
     parent: comparisons
     identifier: comparisons-spanner
     weight: 1074

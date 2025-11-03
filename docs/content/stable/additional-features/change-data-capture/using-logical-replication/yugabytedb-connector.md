@@ -6,7 +6,7 @@ description: YugabyteDB connector for Change Data Capture in YugabyteDB.
 aliases:
   - /stable/explore/change-data-capture/using-logical-replication/yugabytedb-connector/
 menu:
-  preview:
+  stable:
     parent: explore-change-data-capture-logical-replication
     identifier: yugabytedb-connector
     weight: 70

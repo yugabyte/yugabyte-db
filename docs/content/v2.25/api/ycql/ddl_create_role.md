@@ -7,9 +7,6 @@ menu:
   v2.25_api:
     parent: api-cassandra
     weight: 1235
-aliases:
-  - /stable/api/cassandra/ddl_create_role
-  - /stable/api/ycql/ddl_create_role
 type: docs
 ---
 

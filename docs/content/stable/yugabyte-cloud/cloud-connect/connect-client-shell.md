@@ -4,7 +4,7 @@ linkTitle: Client shell
 description: Connect to YugabyteDB Aeon clusters from your desktop using a client shell
 headcontent: Connect to YugabyteDB Aeon databases from your desktop
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-platform:
     identifier: connect-client-shell
     parent: cloud-connect
     weight: 20

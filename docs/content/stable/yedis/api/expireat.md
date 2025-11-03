@@ -3,7 +3,7 @@ title: EXPIREAT
 linkTitle: EXPIREAT
 description: EXPIREAT
 menu:
-  preview:
+  stable:
     parent: api-yedis
     weight: 2062
 aliases:

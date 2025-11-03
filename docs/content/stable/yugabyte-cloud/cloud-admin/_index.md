@@ -5,7 +5,7 @@ linkTitle: Billing
 description: Manage plans, billing, and invoicing.
 headcontent: Manage your plan and payment, and review invoices and usage
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-platform:
     parent: yugabytedb-managed
     identifier: cloud-admin
     weight: 600

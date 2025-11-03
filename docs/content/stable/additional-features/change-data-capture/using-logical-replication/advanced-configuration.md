@@ -7,7 +7,7 @@ headcontent: Tune your CDC configuration
 aliases:
   - /stable/explore/change-data-capture/using-logical-replication/advanced-configuration/
 menu:
-  preview:
+  stable:
     parent: explore-change-data-capture-logical-replication
     identifier: advanced-configurations
     weight: 40

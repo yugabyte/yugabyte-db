@@ -7,7 +7,7 @@ aliases:
   - /stable/explore/date-and-time/
   - /stable/develop/learn/date-and-time/
 menu:
-  preview:
+  stable:
     parent: learn
     name: Date and time
     identifier: date-and-time-1-ysql

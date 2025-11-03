@@ -8,7 +8,7 @@ tags:
 aliases:
   - /stable/reference/drivers/ysql-client-drivers/
 menu:
-  preview:
+  stable:
     identifier: ysql-client-libraries
     parent: drivers-orms
     weight: 2000

@@ -5,7 +5,7 @@ linkTitle: Hot shards
 tags:
   other: ysql
 menu:
-  preview:
+  stable:
     identifier: data-modeling-hot-shard
     parent: data-modeling
     weight: 300

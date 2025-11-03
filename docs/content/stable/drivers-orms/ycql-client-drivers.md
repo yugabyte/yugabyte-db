@@ -8,7 +8,7 @@ tags:
 aliases:
   - /stable/reference/drivers/ycql-client-drivers/
 menu:
-  preview:
+  stable:
     identifier: ycql-client-libraries
     parent: drivers-orms
     weight: 2001

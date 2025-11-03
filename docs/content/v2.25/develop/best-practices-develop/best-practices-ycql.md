@@ -4,8 +4,6 @@ headerTitle: Best practices for YCQL applications
 linkTitle: YCQL applications
 description: Tips and tricks to build YCQL applications
 headcontent: Tips and tricks to build YCQL applications for high performance and availability
-aliases:
-  - /stable/develop/best-practices-ycql/
 menu:
   v2.25:
     identifier: best-practices-ycql

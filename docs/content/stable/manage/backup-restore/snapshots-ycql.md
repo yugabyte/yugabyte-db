@@ -4,7 +4,7 @@ headerTitle: Distributed snapshots for YCQL
 linkTitle: Distributed snapshots
 description: Distributed snapshots for YCQL.
 menu:
-  preview:
+  stable:
     identifier: snapshots-2-ycql
     parent: backup-restore
     weight: 705

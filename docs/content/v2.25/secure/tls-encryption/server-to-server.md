@@ -4,8 +4,6 @@ headerTitle: Enable encryption in transit
 linkTitle: Enable encryption in transit
 description: Enable encryption (using TLS) for client- and server-server communication.
 headcontent: Enable encryption (using TLS) for client- and server-server communication
-aliases:
-    - /stable/secure/tls-encryption/client-to-server/
 menu:
   v2.25:
     identifier: server-to-server

@@ -7,7 +7,7 @@ headcontent: Keep table statistics up to date automatically
 tags:
   feature: early-access
 menu:
-  preview:
+  stable:
     identifier: auto-analyze
     parent: query-tuning
     weight: 700

@@ -4,7 +4,7 @@ headerTitle: Find the right page or section
 linkTitle: Docs layout
 description: Find the right location in the YugabyteDB docs
 menu:
-  preview:
+  stable:
     identifier: docs-layout
     parent: docs
     weight: 2912

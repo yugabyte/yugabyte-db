@@ -4,7 +4,7 @@ headerTitle: YugabyteDB gRPC connector transformers
 linkTitle: Connector transformers
 description: YugabyteDB gRPC connector transformers for Change Data Capture.
 menu:
-  preview:
+  stable:
     parent: debezium-connector-yugabytedb
     identifier: yugabytedb-grpc-connector-transformers
     weight: 50

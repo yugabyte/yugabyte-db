@@ -5,7 +5,7 @@ linkTitle: role
 description: YugabyteDB Aeon CLI reference Role resource.
 headcontent: Manage roles
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-platform:
     identifier: managed-cli-role
     parent: managed-cli-reference
     weight: 20

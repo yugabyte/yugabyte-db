@@ -3,7 +3,7 @@ title: Ataccama DQ Analyzer
 linkTitle: Ataccama DQ Analyzer
 description: Use Ataccama DQ Analyzer with YSQL API
 menu:
-  preview_integrations:
+  stable_integrations:
     identifier: ataccama
     parent: data-discovery
     weight: 571

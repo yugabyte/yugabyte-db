@@ -8,7 +8,7 @@ aliases:
   - /stable/develop/client-drivers/php/
   - /stable/quick-start/build-apps/php/
 menu:
-  preview:
+  stable:
     identifier: php-ysql-driver
     parent: php-drivers
     weight: 410

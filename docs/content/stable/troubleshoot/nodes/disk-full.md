@@ -4,7 +4,7 @@ linkTitle: Disk full
 headerTitle: Disk full issue
 description: Learn how to address YugaByteDB node data drive full issues
 menu:
-  preview:
+  stable:
     parent: troubleshoot-nodes
     weight: 40
 type: docs

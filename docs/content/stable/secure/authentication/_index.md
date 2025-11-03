@@ -5,7 +5,7 @@ linkTitle: Authentication methods
 description: Verify that users and clients are who they say they are.
 headcontent: Verify that users and clients are who they say they are
 menu:
-  preview:
+  stable:
     identifier: authentication
     parent: secure
     weight: 720

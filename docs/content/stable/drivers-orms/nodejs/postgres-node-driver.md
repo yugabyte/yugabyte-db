@@ -4,7 +4,7 @@ headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a node.js application using node-postgres Driver
 menu:
-  preview:
+  stable:
     identifier: node-driver-2-postgres
     parent: nodejs-drivers
     weight: 500

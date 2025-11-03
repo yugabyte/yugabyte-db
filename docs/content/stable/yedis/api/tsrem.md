@@ -3,7 +3,7 @@ title: TSREM
 linkTitle: TSREM
 description: TSREM
 menu:
-  preview:
+  stable:
     parent: api-yedis
     weight: 2450
 aliases:

@@ -7,7 +7,7 @@ aliases:
   - /stable/manage/backup-restore/back-up-data-ycql/
   - /stable/manage/backup-restore/restore-data-ycql/
 menu:
-  preview:
+  stable:
     identifier: export-import-data-ycql
     parent: backup-restore
     weight: 703

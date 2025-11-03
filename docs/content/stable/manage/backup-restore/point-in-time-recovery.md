@@ -8,7 +8,7 @@ aliases:
   - /stable/manage/backup-restore/point-in-time-restore-ycql
   - /stable/yugabyte-platform/back-up-restore-universes/point-in-time
 menu:
-  preview:
+  stable:
     identifier: point-in-time-recovery
     parent: backup-restore
     weight: 705

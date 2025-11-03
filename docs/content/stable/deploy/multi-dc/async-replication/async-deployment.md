@@ -7,7 +7,7 @@ headContent: Deploy non-transactional uni- (master-follower) and bi- (multi-mast
 aliases:
   - /stable/deploy/multi-dc/2dc-deployment
 menu:
-  preview:
+  stable:
     parent: async-replication
     identifier: async-deployment
     weight: 20

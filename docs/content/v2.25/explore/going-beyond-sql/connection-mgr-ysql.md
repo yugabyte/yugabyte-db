@@ -6,9 +6,6 @@ description: Built-in server-side connection pooler for YSQL
 headcontent: Built-in server-side connection pooler for YSQL
 tags:
   feature: early-access
-aliases:
-   - /stable/explore/connection-manager/connection-mgr-ysql/
-   - /stable/explore/connection-manager/
 menu:
   v2.25:
     name: Built-in connection pooling

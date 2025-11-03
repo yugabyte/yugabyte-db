@@ -6,7 +6,7 @@ description: Compare CockroachDB with YugabyteDB in terms of database performanc
 aliases:
   - /comparisons/cockroachdb/
 menu:
-  preview_faq:
+  stable_faq:
     parent: comparisons
     identifier: comparisons-cockroachdb
     weight: 1075

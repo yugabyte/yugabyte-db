@@ -6,7 +6,7 @@ description: Learn about exporting YugabyteDB metrics and monitoring the cluster
 aliases:
   - /stable/explore/observability/prometheus-integration/macos/
 menu:
-  preview:
+  stable:
     parent: explore-observability
     identifier: prometheus-integration
     weight: 235

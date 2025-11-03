@@ -3,10 +3,6 @@ title: Point-in-time recovery
 headerTitle: Point-in-time recovery
 linkTitle: Point-in-time recovery
 description: Restore data to a specific point in time in YugabyteDB
-aliases:
-  - /stable/manage/backup-restore/point-in-time-restore
-  - /stable/manage/backup-restore/point-in-time-restore-ycql
-  - /stable/yugabyte-platform/back-up-restore-universes/point-in-time
 menu:
   v2.25:
     identifier: point-in-time-recovery

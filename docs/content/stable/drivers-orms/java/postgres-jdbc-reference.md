@@ -8,7 +8,7 @@ tags:
 aliases:
 - /stable/reference/drivers/java/postgres-jdbc-reference/
 menu:
-  preview:
+  stable:
     name: JDBC Drivers
     identifier: ref-2-postgres-jdbc-driver
     parent: java-drivers

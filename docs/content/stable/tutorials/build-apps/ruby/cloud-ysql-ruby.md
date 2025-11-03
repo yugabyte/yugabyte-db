@@ -6,7 +6,7 @@ headContent: "Client driver: Ruby Pg"
 aliases:
   - /stable/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-ruby/
 menu:
-  preview_tutorials:
+  stable_tutorials:
     parent: build-apps
     name: Ruby
     identifier: cloud-ruby

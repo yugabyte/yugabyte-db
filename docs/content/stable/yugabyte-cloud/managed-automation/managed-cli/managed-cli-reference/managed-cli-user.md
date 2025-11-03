@@ -5,7 +5,7 @@ linkTitle: user
 description: YugabyteDB Aeon CLI reference user resource.
 headcontent: Manage users
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-platform:
     identifier: managed-cli-user
     parent: managed-cli-reference
     weight: 20

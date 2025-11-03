@@ -7,7 +7,7 @@ aliases:
   - /develop/learn/strings-and-text/
   - /stable/develop/learn/strings-and-text/
 menu:
-  preview:
+  stable:
     identifier: strings-and-text-1-ysql
     parent: learn
     weight: 570

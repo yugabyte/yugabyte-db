@@ -9,9 +9,6 @@ menu:
     identifier: primary-key-ysql
     parent: explore-indexes-constraints-ysql
     weight: 200
-aliases:
-  - /stable/explore/ysql-language-features/constraints/
-  - /stable/explore/indexes-constraints/constraints/
 type: docs
 ---
 

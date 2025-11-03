@@ -3,7 +3,7 @@ title: Metabase
 linkTitle: Metabase
 description: Metabase
 menu:
-  preview_integrations:
+  stable_integrations:
     identifier: metabase
     parent: tools
     weight: 70

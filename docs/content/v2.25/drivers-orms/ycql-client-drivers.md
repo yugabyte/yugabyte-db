@@ -5,8 +5,6 @@ linkTitle: Additional drivers
 description: Lists the client drivers that you can use to build and access YCQL applications.
 tags:
   other: ycql
-aliases:
-  - /stable/reference/drivers/ycql-client-drivers/
 menu:
   v2.25:
     identifier: ycql-client-libraries

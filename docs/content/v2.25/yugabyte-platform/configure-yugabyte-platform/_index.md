@@ -11,9 +11,6 @@ menu:
     params:
       classes: separator
       hideLink: true
-aliases:
-  - /stable/yugabyte-platform/overview/configure/
-  - /stable/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/
 type: indexpage
 ---
 

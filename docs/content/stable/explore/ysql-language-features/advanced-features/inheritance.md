@@ -3,7 +3,7 @@ title: Table inheritance
 linkTitle: Table inheritance
 description: Table inheritance in YSQL
 menu:
-  preview:
+  stable:
     identifier: advanced-features-inheritance
     parent: advanced-features
     weight: 900

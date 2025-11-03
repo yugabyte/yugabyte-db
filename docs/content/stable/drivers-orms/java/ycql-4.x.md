@@ -6,7 +6,7 @@ description: Connect a Java application using YCQL 4.15 driver
 tags:
   other: ycql
 menu:
-  preview:
+  stable:
     identifier: ycql-java-driver-4.x
     parent: java-drivers
     weight: 500

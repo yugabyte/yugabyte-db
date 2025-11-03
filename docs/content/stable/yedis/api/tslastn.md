@@ -3,7 +3,7 @@ title: TSLASTN
 linkTitle: TSLASTN
 description: TSLASTN
 menu:
-  preview:
+  stable:
     parent: api-yedis
     weight: 2430
 aliases:

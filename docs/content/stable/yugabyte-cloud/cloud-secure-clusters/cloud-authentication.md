@@ -7,7 +7,7 @@ aliases:
   - /stable/yugabyte-cloud/cloud-connect/cloud-secure-clusters/cloud-authentication/
   - /stable/secure/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-platform:
     identifier: cloud-authentication
     parent: cloud-secure-clusters
     weight: 450

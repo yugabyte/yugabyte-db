@@ -3,7 +3,7 @@ title: Enable users in YSQL
 headerTitle: Enable users in YSQL
 description: Enable users in YSQL.
 menu:
-  preview:
+  stable:
     name: Enable users
     identifier: enable-authentication-1-ysql
     parent: enable-authentication

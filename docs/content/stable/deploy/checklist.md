@@ -4,7 +4,7 @@ headerTitle: Deployment checklist
 linkTitle: Deployment checklist
 description: Checklist to review system requirements, configuration details, and so on, when deploying the YugabyteDB database to production or for performance testing.
 menu:
-  preview:
+  stable:
     identifier: checklist
     parent: deploy
     weight: 10

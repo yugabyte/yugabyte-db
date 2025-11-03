@@ -7,7 +7,7 @@ headcontent: Expire data using time-to-live
 tags:
   other: ycql
 menu:
-  preview:
+  stable:
     identifier: timeseries-automatic-expiration
     parent: common-patterns-timeseries
     weight: 300

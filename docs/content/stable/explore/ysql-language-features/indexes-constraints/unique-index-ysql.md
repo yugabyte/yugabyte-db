@@ -5,7 +5,7 @@ linkTitle: Unique indexes
 description: Using Unique indexes in YSQL
 headContent: Explore unique indexes in YugabyteDB using YSQL
 menu:
-  preview:
+  stable:
     identifier: unique-index-ysql
     parent: explore-indexes-constraints-ysql
     weight: 230

@@ -3,7 +3,7 @@ title: Expressions and operators
 linkTitle: Expressions and operators
 description: Expressions and operators in YSQL
 menu:
-  preview:
+  stable:
     identifier: explore-ysql-language-features-expressions-operators
     parent: explore-ysql-language-features
     weight: 500

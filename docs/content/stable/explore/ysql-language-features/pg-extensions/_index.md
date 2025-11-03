@@ -5,7 +5,7 @@ linkTitle: PostgreSQL extensions
 description: Summary of supported PostgreSQL extensions
 summary: Reference for YSQL extensions
 menu:
-  preview:
+  stable:
     identifier: pg-extensions
     parent: explore-ysql-language-features
     weight: 1000

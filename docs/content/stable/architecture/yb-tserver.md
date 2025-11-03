@@ -7,7 +7,7 @@ headcontent: Serve application data and manage tablets
 aliases:
   - /stable/architecture/concepts/yb-tserver/
 menu:
-  preview:
+  stable:
     identifier: architecture-concepts-yb-tserver
     parent: architecture
     weight: 1200

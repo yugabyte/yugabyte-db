@@ -10,7 +10,7 @@ aliases:
   - /stable/deploy/kubernetes/helm-chart/
   - /stable/deploy/kubernetes/helm-configuration/
 menu:
-  preview:
+  stable:
     parent: deploy-kubernetes-sz
     name: Open Source
     identifier: k8s-oss-1

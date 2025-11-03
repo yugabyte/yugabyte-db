@@ -9,8 +9,6 @@ menu:
     identifier: unique-index-ysql
     parent: explore-indexes-constraints-ysql
     weight: 230
-aliases:
-  - /stable/explore/ysql-language-features/indexes-1/
 type: docs
 ---
 

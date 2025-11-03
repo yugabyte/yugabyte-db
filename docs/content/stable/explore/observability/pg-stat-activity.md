@@ -6,7 +6,7 @@ aliases:
   - /stable/explore/query-1-performance/pg-stat-activity/
 headerTitle: View live queries with pg_stat_activity
 menu:
-  preview:
+  stable:
     identifier: pg-stat-activity
     parent: explore-observability
     weight: 300

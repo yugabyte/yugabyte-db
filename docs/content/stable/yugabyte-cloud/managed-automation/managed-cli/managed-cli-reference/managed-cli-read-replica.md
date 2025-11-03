@@ -5,7 +5,7 @@ linkTitle: cluster read-replica
 description: YugabyteDB Aeon CLI reference Cluster Read Replica resource.
 headcontent: Manage cluster read replicas
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-platform:
     identifier: managed-cli-read-replica
     parent: managed-cli-reference
     weight: 20

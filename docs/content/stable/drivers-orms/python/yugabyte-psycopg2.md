@@ -4,7 +4,7 @@ headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a Python application using YugabyteDB Psycopg2 Smart Driver for YSQL
 menu:
-  preview:
+  stable:
     identifier: yugabyte-psycopg2-driver
     parent: python-drivers
     weight: 500

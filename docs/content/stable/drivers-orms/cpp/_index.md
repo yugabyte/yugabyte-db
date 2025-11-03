@@ -4,7 +4,7 @@ headerTitle: C++
 linkTitle: C++
 description: C++ Drivers and ORMs support for YugabyteDB.
 menu:
-  preview:
+  stable:
     identifier: cpp-drivers
     parent: drivers-orms
     weight: 560

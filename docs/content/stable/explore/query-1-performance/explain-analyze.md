@@ -4,7 +4,7 @@ linkTitle: Analyze queries
 description: Query optimization with EXPLAIN and EXPLAIN ANALYZE
 headerTitle: Analyze queries with EXPLAIN
 menu:
-  preview:
+  stable:
     identifier: explain-analyze
     parent: query-tuning
     weight: 500

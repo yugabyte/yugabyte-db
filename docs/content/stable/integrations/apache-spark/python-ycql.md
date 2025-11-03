@@ -6,7 +6,7 @@ description: Learn how to build a Python application using Apache Spark and Yuga
 aliases:
   - /stable/integrations/apache-spark/python/
 menu:
-  preview_integrations:
+  stable_integrations:
     identifier: apache-spark-3-python-ycql
     parent: apache-spark
     weight: 576

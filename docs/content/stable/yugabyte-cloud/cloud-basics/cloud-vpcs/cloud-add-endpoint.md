@@ -5,7 +5,7 @@ linkTitle: Private service endpoints
 description: Manage cluster private service endpoints.
 headcontent: Connect clusters to applications using a private link service
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-platform:
     identifier: cloud-add-endpoint
     parent: cloud-vpcs
     weight: 35

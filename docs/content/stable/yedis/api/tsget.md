@@ -3,7 +3,7 @@ title: TSGET
 linkTitle: TSGET
 description: TSGET
 menu:
-  preview:
+  stable:
     parent: api-yedis
     weight: 2420
 aliases:

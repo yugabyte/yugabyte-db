@@ -5,9 +5,6 @@ linkTitle: Go Drivers
 description: Go PGX Smart Driver for YSQL
 tags:
   other: ysql
-aliases:
-  - /stable/reference/drivers/go/
-  - /stable/reference/drivers/go/yb-pgx-reference/
 menu:
   v2.25:
     name: Go Drivers

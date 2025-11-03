@@ -4,8 +4,6 @@ headerTitle: YB-Master metrics
 linkTitle: YB-Master metrics
 headcontent: Monitor table and tablet operations
 description: Learn about YugabyteDB's YB-Master metrics, and how to select and use the metrics.
-aliases:
-  - /launch-and-manage/monitor-and-alert/metrics/ybmaster/
 menu:
   v2.25:
     identifier: yb-master-metrics

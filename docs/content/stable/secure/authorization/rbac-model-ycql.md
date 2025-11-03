@@ -5,7 +5,7 @@ headerTitle: Role-based access overview
 description: Overview of the role-based access control (RBAC) model in YCQL.
 headcontent: How role-based access control works
 menu:
-  preview:
+  stable:
     identifier: rbac-model-ycql
     parent: authorization
     weight: 716

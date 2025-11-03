@@ -8,7 +8,7 @@ aliases:
   - /stable/develop/learn/ttl-data-expiry/
   - /stable/develop/learn/ttl-data-expiration/
 menu:
-  preview:
+  stable:
     identifier: ttl-data-expiration-ysql
     parent: learn
     weight: 581

@@ -4,7 +4,7 @@ linkTitle: SQL compatibility
 description: Summary of YugabyteDB's conformance to the SQL standard
 headcontent: YugabyteDB supports most standard SQL features
 menu:
-  preview_api:
+  stable_api:
     identifier: explore-ysql-language-feature-support
     parent: api-ysql
     weight: 120

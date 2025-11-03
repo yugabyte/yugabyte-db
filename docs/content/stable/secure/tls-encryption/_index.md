@@ -7,7 +7,7 @@ headcontent: Enable encryption in transit (using TLS) to protect network communi
 aliases:
   - /secure/tls-encryption/
 menu:
-  preview:
+  stable:
     identifier: tls-encryption
     parent: secure
     weight: 725

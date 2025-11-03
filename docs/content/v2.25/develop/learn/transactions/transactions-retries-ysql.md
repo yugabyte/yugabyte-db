@@ -3,8 +3,6 @@ title: Transaction retries in YSQL
 headerTitle: Transaction retries in YSQL
 linkTitle: Transaction retries
 description: Learn how to retry transactions in YSQL.
-aliases:
-   - /stable/develop/learn/transactions-retries-ysql/
 menu:
   v2.25:
     identifier: transactions-retries-ysql

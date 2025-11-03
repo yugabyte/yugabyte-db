@@ -2,9 +2,6 @@
 title: Learn application development
 linkTitle: Learn app development
 description: Learn to develop YugabyteDB applications
-aliases:
-  - /develop/learn/
-  - /stable/develop/learn/sql-nosql/
 menu:
   v2.25:
     identifier: learn

@@ -6,7 +6,7 @@ description: Learn how YugabyteDB uses hash and range sharding for horizontal sc
 aliases:
   - /stable/explore/linear-scalability/sharding-data/
 menu:
-  preview:
+  stable:
     identifier: docdb-sharding
     parent: architecture-docdb-sharding
     weight: 1142

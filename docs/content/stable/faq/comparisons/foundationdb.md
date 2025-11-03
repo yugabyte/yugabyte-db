@@ -6,7 +6,7 @@ description: Compare FoundationDB with YugabyteDB.
 aliases:
   - /comparisons/foundationdb/
 menu:
-  preview_faq:
+  stable_faq:
     parent: comparisons
     identifier: comparisons-foundationdb
     weight: 1100

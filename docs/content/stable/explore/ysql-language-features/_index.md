@@ -7,7 +7,7 @@ headcontent: Explore core SQL features in YSQL
 aliases:
   - /stable/explore/ysql-language-features/schema/
 menu:
-  preview:
+  stable:
     identifier: explore-ysql-language-features
     parent: explore
     weight: 100

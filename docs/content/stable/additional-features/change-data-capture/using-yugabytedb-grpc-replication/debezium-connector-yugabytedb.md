@@ -11,7 +11,7 @@ aliases:
   - /stable/explore/change-data-capture/debezium-connector-yugabytedb
   - /stable/explore/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/
 menu:
-  preview:
+  stable:
     parent: explore-change-data-capture-grpc-replication
     identifier: debezium-connector-yugabytedb
     weight: 50

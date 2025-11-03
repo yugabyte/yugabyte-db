@@ -7,7 +7,7 @@ headcontent: Peer your cluster VPC with a VPC in AWS
 aliases:
   - /stable/yugabyte-cloud/cloud-basics/cloud-vpcs/cloud-configure-provider/
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-platform:
     identifier: cloud-add-vpc-1-aws
     parent: cloud-add-peering
     weight: 50

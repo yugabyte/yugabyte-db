@@ -8,7 +8,7 @@ aliases:
   - /stable/explore/change-data-capture/cdc-get-started/
   - /stable/explore/change-data-capture/using-yugabytedb-grpc-replication/cdc-get-started/
 menu:
-  preview:
+  stable:
     parent: explore-change-data-capture-grpc-replication
     identifier: cdc-get-started
     weight: 10

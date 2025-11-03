@@ -6,7 +6,7 @@ description: Operators for comparing two arrays
 aliases:
   - /stable/compare/ysql/
 menu:
-  preview_api:
+  stable_api:
     identifier: array-comparison
     parent: array-functions-operators
     weight: 20

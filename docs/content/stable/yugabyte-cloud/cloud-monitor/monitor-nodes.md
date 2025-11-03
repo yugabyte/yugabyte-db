@@ -5,7 +5,7 @@ linkTitle: Monitor nodes
 description: Monitor the status of your nodes.
 headcontent: Monitor the status of your nodes
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-platform:
     identifier: monitor-nodes
     parent: cloud-monitor
     weight: 620

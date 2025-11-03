@@ -3,7 +3,7 @@ title: APPEND
 linkTitle: APPEND
 description: APPEND
 menu:
-  preview:
+  stable:
     parent: api-yedis
     weight: 2010
 aliases:

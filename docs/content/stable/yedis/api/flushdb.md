@@ -3,7 +3,7 @@ title: FLUSHDB
 linkTitle: FLUSHDB
 description: FLUSHDB
 menu:
-  preview:
+  stable:
     parent: api-yedis
     weight: 2065
 aliases:

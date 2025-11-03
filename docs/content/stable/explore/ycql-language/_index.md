@@ -5,7 +5,7 @@ linkTitle: YCQL features
 description: Explore core features in YCQL
 headcontent: Explore core features in YCQL
 menu:
-  preview:
+  stable:
     identifier: explore-ycql-language
     parent: explore
     weight: 200

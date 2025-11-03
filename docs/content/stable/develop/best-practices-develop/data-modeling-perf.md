@@ -5,7 +5,7 @@ linkTitle: YSQL data modeling
 description: Tips and tricks for building YSQL applications
 headcontent: Tips and tricks for building YSQL applications
 menu:
-  preview:
+  stable:
     identifier: data-modeling-perf
     parent: best-practices-develop
     weight: 10

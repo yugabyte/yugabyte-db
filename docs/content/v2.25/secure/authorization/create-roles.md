@@ -9,8 +9,6 @@ menu:
     identifier: create-roles
     parent: authorization
     weight: 717
-aliases:
-  - /stable/secure/authorization/ysql-create-roles/
 type: docs
 ---
 

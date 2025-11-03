@@ -7,7 +7,7 @@ aliases:
   - /stable/develop/learn/data-types-ysql/
   - /stable/develop/learn/data-types/
 menu:
-  preview:
+  stable:
     identifier: explore-ysql-language-features-data-types
     parent: explore-ysql-language-features
     weight: 200

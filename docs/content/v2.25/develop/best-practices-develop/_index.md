@@ -4,8 +4,6 @@ headerTitle: Best practices
 linkTitle: Best practices
 description: Tips and tricks to build applications
 headcontent: Tips and tricks to build applications for high performance and availability
-aliases:
-  - /stable/develop/best-practices-ysql/
 menu:
   v2.25:
     identifier: best-practices-develop

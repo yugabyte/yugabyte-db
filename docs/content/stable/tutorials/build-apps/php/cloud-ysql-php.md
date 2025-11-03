@@ -6,7 +6,7 @@ headContent: "Client driver: php-pgsql"
 aliases:
   - /stable/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-php/
 menu:
-  preview_tutorials:
+  stable_tutorials:
     parent: build-apps
     name: PHP
     identifier: cloud-php

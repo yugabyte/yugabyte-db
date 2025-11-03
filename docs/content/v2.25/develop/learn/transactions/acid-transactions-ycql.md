@@ -3,8 +3,6 @@ title: ACID Transactions in YCQL
 headerTitle: Transactions in YCQL
 linkTitle: Transactions
 description: Learn how ACID transactions work in YCQL on YugabyteDB.
-aliases:
-  - /stable/develop/learn/acid-transactions-ycql/
 menu:
   v2.25:
     identifier: acid-transactions-2-ycql

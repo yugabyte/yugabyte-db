@@ -4,7 +4,7 @@ headerTitle: Elixir
 linkTitle: Elixir
 description: Elixir Drivers and ORMs support for YugabyteDB.
 menu:
-  preview:
+  stable:
     identifier: elixir-drivers
     parent: drivers-orms
     weight: 540

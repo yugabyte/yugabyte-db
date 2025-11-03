@@ -3,7 +3,7 @@ title: RENAME
 linkTitle: RENAME
 description: RENAME
 menu:
-  preview:
+  stable:
     parent: api-yedis
     weight: 2265
 aliases:

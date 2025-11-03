@@ -4,8 +4,6 @@ headerTitle: Use an ORM
 linkTitle: Use an ORM
 description: Go GORM support for YugabyteDB
 headcontent: Go ORM support for YugabyteDB
-aliases:
-  - /integrations/gorm/
 menu:
   v2.25:
     identifier: go-orm

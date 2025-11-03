@@ -6,7 +6,7 @@ description: Java drivers and ORMs support for YugabyteDB.
 aliases:
   - /stable/integrations/jdbc-drivers/
 menu:
-  preview:
+  stable:
     identifier: java-drivers
     parent: drivers-orms
     weight: 500

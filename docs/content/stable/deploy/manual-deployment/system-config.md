@@ -4,7 +4,7 @@ headerTitle: 1. System configuration
 linkTitle: 1. System configuration
 description: How to configure system parameters to get the YugabyteDB database cluster to run correctly.
 menu:
-  preview:
+  stable:
     identifier: deploy-manual-deployment-system-config
     parent: deploy-manual-deployment
     weight: 611

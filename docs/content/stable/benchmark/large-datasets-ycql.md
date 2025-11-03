@@ -5,7 +5,7 @@ linkTitle: Large datasets
 description: Benchmark YCQL performance with large datasets
 headcontent: Benchmark YCQL performance with large datasets
 menu:
-  preview:
+  stable:
     identifier: large-datasets-1-ycql
     parent: benchmark
     weight: 7

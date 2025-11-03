@@ -3,7 +3,7 @@ title: SISMEMBER
 linkTitle: SISMEMBER
 description: SISMEMBER
 menu:
-  preview:
+  stable:
     parent: api-yedis
     weight: 2290
 aliases:

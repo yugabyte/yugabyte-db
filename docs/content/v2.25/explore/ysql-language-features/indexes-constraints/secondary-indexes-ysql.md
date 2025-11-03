@@ -9,9 +9,6 @@ menu:
     identifier: secondary-indexes-ysql
     parent: explore-indexes-constraints-ysql
     weight: 210
-aliases:
-  - /stable/explore/ysql-language-features/indexes-1/
-  - /stable/explore/indexes-constraints/secondary-indexes/
 type: docs
 ---
 

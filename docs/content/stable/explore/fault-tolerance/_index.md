@@ -8,7 +8,7 @@ aliases:
   - /stable/explore/postgresql/fault-tolerance/
   - /stable/explore/fault-tolerance-macos/
 menu:
-  preview:
+  stable:
     identifier: fault-tolerance
     parent: explore
     weight: 220

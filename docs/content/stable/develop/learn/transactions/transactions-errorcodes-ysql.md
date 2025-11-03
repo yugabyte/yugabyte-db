@@ -6,7 +6,7 @@ description: Understand the error codes returned during transactions.
 aliases:
   - /stable/develop/learn/acid-transactions/error-codes
 menu:
-  preview:
+  stable:
     identifier: transaction-errorcodes-ysql
     parent: acid-transactions-1-ysql
     weight: 570

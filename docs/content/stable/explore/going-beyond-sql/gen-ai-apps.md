@@ -4,7 +4,7 @@ headerTitle: Gen-AI applications
 linkTitle: Gen-AI apps
 headcontent: Build a virtual assistant for YugabyteDB
 menu:
-  preview:
+  stable:
     identifier: gen-ai-apps
     parent: going-beyond-sql
     weight: 700

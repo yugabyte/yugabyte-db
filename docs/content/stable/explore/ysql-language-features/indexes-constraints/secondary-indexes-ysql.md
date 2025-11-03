@@ -5,7 +5,7 @@ linkTitle: Secondary indexes
 description: Overview of Secondary indexes in YSQL
 headContent: Explore secondary indexes in YugabyteDB using YSQL
 menu:
-  preview:
+  stable:
     identifier: secondary-indexes-ysql
     parent: explore-indexes-constraints-ysql
     weight: 210

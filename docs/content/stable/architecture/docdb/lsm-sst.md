@@ -5,7 +5,7 @@ linkTitle: LSM & SST
 description: Internals of how an LSM creates and manages SSTs.
 headcontent: Learn the internals of how an LSM creates and manages SSTs
 menu:
-  preview:
+  stable:
     identifier: docdb-lsm-sst
     parent: docdb
     weight: 300

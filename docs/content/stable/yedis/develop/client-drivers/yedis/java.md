@@ -6,7 +6,7 @@ description: Use Java to build a YugabyteDB application that interacts with YEDI
 aliases:
   - /stable/yedis/develop/client-drivers/java
 menu:
-  preview:
+  stable:
     identifier: client-drivers-yedis-java
     parent: develop-yedis
 type: docs

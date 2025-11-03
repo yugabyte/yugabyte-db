@@ -7,9 +7,6 @@ menu:
   v2.25_api:
     parent: api-cassandra
     weight: 1200
-aliases:
-  - /stable/api/cassandra/ddl_alter_keyspace
-  - /stable/api/ycql/ddl_alter_keyspace
 type: docs
 ---
 

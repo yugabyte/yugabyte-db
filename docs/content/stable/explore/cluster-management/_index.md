@@ -7,7 +7,7 @@ headcontent: Cluster management in YugabyteDB
 aliases:
   - /stable/admin/cluster-management/add-remove-nodes/
 menu:
-  preview:
+  stable:
     identifier: explore-cluster-management
     parent: explore
     weight: 290

@@ -5,7 +5,7 @@ linkTitle: cluster
 description: YugabyteDB Aeon CLI reference Cluster resource.
 headcontent: Manage clusters
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-platform:
     identifier: managed-cli-cluster
     parent: managed-cli-reference
     weight: 20

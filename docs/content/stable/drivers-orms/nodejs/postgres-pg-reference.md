@@ -8,7 +8,7 @@ tags:
 aliases:
 - /stable/reference/drivers/nodejs/postgres-pg-reference/
 menu:
-  preview:
+  stable:
     name: Node.js Drivers
     identifier: ref-2-postgres-pg-driver
     parent: nodejs-drivers

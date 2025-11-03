@@ -5,7 +5,7 @@ linkTitle: usage
 description: YugabyteDB Aeon CLI reference usage resource.
 headcontent: Output cluster usage
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-platform:
     identifier: managed-cli-usage
     parent: managed-cli-reference
     weight: 20

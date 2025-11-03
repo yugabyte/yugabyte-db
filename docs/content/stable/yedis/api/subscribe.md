@@ -3,7 +3,7 @@ title: SUBSCRIBE
 linkTitle: SUBSCRIBE
 description: SUBSCRIBE
 menu:
-  preview:
+  stable:
     parent: api-yedis
     weight: 2552
 aliases:

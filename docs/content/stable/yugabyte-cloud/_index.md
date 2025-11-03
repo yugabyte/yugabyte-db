@@ -6,7 +6,7 @@ headcontent: Fully managed YugabyteDB-as-a-Service
 aliases:
   - /stable/deploy/yugabyte-cloud/
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-platform:
     name: "Overview"
     identifier: yugabyte-cloud
     parent: yugabytedb-managed

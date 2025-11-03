@@ -3,7 +3,7 @@ title: ZSCORE
 linkTitle: ZSCORE
 description: ZSCORE
 menu:
-  preview:
+  stable:
     parent: api-yedis
     weight: 2545
 aliases:

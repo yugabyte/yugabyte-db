@@ -5,7 +5,7 @@ linkTitle: Build global applications
 description: Build globally distributed applications.
 headcontent: Learn how to design globally distributed applications using simple patterns
 menu:
-  preview:
+  stable:
     identifier: build-global-apps
     parent: develop
     weight: 50

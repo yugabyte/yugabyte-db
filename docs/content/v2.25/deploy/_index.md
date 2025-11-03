@@ -4,10 +4,6 @@ headerTitle: Deploy YugabyteDB
 linkTitle: Deploy
 description: How to deploy the YugabyteDB database to any public cloud or private data center or Kubernetes. Includes checklist and manual deployment options as well.
 headcontent: Deploy to the public cloud, a private data center, or Kubernetes
-aliases:
-  - /deploy/
-  - /stable/architecture/layered-architecture/
-  - /stable/architecture/overview/
 menu:
   v2.25:
     identifier: deploy

@@ -5,7 +5,7 @@ linkTitle: Troubleshoot
 description: Troubleshooting YSQL Connection Manager problems
 headcontent: Troubleshoot issues with YSQL Connection Manager
 menu:
-  preview:
+  stable:
     identifier: ycm-troubleshoot
     parent: connection-manager
     weight: 60

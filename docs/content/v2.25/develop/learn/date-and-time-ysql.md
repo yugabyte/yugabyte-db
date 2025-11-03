@@ -3,9 +3,6 @@ title: Date and time in YSQL
 headerTitle: Date and time
 linkTitle: Date and time
 description: Learn how to work with date and time in YSQL.
-aliases:
-  - /stable/explore/date-and-time/
-  - /stable/develop/learn/date-and-time/
 menu:
   v2.25:
     parent: learn

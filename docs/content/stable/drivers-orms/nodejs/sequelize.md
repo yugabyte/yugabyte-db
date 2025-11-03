@@ -7,7 +7,7 @@ headcontent: Node.js ORM support for YugabyteDB
 aliases:
   - /integrations/sequelize/
 menu:
-  preview:
+  stable:
     identifier: node-orm-1-sequelize
     parent: nodejs-drivers
     weight: 600

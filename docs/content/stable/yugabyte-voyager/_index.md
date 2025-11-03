@@ -11,7 +11,7 @@ aliases:
   - /stable/voyager/
   - /stable/tools/voyager/
 menu:
-  preview_yugabyte-voyager:
+  stable_yugabyte-voyager:
     name: "Overview"
     identifier: yugabyte-voyager
     parent: yugabytedb-voyager

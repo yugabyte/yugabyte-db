@@ -4,7 +4,7 @@ linkTitle: What's new
 description: YugabyteDB Voyager release notes.
 headcontent: New features, key enhancements, and bug fixes
 menu:
-  preview_yugabyte-voyager:
+  stable_yugabyte-voyager:
     identifier: release-notes
     parent: yugabytedb-voyager
     weight: 106

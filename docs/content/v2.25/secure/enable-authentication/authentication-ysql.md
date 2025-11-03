@@ -8,8 +8,6 @@ menu:
     identifier: enable-authentication-1-ysql
     parent: enable-authentication
     weight: 715
-aliases:
-  - /stable/secure/enable-authentication/ysql/
 type: docs
 ---
 

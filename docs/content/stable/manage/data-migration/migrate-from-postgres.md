@@ -4,7 +4,7 @@ headerTitle: Migrate from PostgreSQL
 linkTitle: Migrate from PostgreSQL
 description: Guide to migration from PostgreSQL
 menu:
-  preview:
+  stable:
     identifier: migrate-from-postgres
     parent: manage-bulk-import-export
     weight: 750

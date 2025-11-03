@@ -14,7 +14,7 @@ aliases:
   - /stable/explore/postgresql/expressions/
   - /stable/explore/postgresql/views/
 menu:
-  preview:
+  stable:
     parent: quick-start
     name: Explore distributed SQL
     identifier: explore-dsql-1-ysql

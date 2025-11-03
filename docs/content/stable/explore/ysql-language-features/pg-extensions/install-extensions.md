@@ -5,7 +5,7 @@ linkTitle: Install extensions
 description: Install PostgreSQL extensions for use with YugabyteDB
 headcontent: Add extensions to your YugabyteDB installation
 menu:
-  preview:
+  stable:
     identifier: install-extensions
     parent: pg-extensions
     weight: 10

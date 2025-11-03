@@ -10,7 +10,7 @@ aliases:
   - /stable/explore/change-data-capture/cdc-overview/
   - /stable/explore/change-data-capture/using-yugabytedb-grpc-replication/
 menu:
-  preview:
+  stable:
     identifier: explore-change-data-capture-grpc-replication
     parent: explore-change-data-capture
     weight: 280

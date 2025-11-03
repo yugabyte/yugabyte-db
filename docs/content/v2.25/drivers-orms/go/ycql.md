@@ -3,8 +3,6 @@ title: YugabyteDB Go driver for YCQL
 headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a Go application using YugabyteDB Go driver for YCQL
-aliases:
-  - /stable/tutorials/build-apps/go/cloud-ycql-go/
 menu:
   v2.25:
     identifier: go-4-yb-pgx-driver-ycql

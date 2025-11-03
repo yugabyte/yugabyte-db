@@ -3,7 +3,7 @@ title: Import data without a superuser
 linktitle: Non-superuser data import
 description: Importing data without a superuser in YugabyteDB
 menu:
-  preview_yugabyte-voyager:
+  stable_yugabyte-voyager:
     identifier: yb-voyager-superuser
     parent: yb-voyager-misc
     weight: 120

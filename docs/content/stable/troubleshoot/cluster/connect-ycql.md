@@ -7,7 +7,7 @@ tags:
 aliases:
   - /troubleshoot/cluster/connect-cassandra/
 menu:
-  preview:
+  stable:
     parent: troubleshoot-cluster
     weight: 822
 type: docs

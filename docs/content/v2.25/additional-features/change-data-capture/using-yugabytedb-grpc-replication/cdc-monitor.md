@@ -4,9 +4,6 @@ headerTitle: Monitor
 linkTitle: Monitor
 description: Monitor Change Data Capture in YugabyteDB.
 headcontent: Monitor deployed CDC connectors
-aliases:
-  - /stable/explore/change-data-capture/cdc-monitor/
-  - /stable/explore/change-data-capture/using-yugabytedb-grpc-replication/cdc-monitor/
 menu:
   v2.25:
     parent: explore-change-data-capture-grpc-replication

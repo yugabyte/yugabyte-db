@@ -4,7 +4,7 @@ linkTitle: Advanced features
 description: Advanced features in YSQL
 headcontent:  Explore advanced features in YSQL
 menu:
-  preview:
+  stable:
     identifier: advanced-features
     parent: explore-ysql-language-features
     weight: 900

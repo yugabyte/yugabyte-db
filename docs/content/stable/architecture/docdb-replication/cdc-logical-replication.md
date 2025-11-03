@@ -9,7 +9,7 @@ tags:
 aliases:
   - /stable/explore/logical-replication/
 menu:
-  preview:
+  stable:
     parent: architecture-docdb-replication
     identifier: architecture-docdb-replication-cdc-logical-replication
     weight: 500

@@ -5,7 +5,7 @@ linkTitle: Keywords
 description: YSQL API keywords.
 summary: Reference for YSQL API
 menu:
-  preview_api:
+  stable_api:
     identifier: api-ysql-keywords
     parent: ysql-language-elements
     weight: 90

@@ -7,7 +7,7 @@ headcontent: Tips and tricks to build YCQL applications for high performance and
 aliases:
   - /stable/develop/best-practices-ycql/
 menu:
-  preview:
+  stable:
     identifier: best-practices-ycql
     parent: best-practices-develop
     weight: 40

@@ -8,7 +8,7 @@ tags:
 aliases:
   - /stable/reference/drivers/go/pq-reference/
 menu:
-  preview:
+  stable:
     name: Go Drivers
     identifier: ref-3-pq-go-driver
     parent: go-drivers

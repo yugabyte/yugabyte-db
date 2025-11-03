@@ -8,7 +8,7 @@ aliases:
   - /stable/benchmark/performance/
   - /stable/benchmark/key-value-workload
 menu:
-  preview:
+  stable:
     identifier: key-value-workload-1-ycql
     parent: benchmark
     weight: 6

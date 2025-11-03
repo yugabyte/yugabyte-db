@@ -5,7 +5,7 @@ description: JanusGraph
 aliases:
   - /develop/ecosystem-integrations/janusgraph/
 menu:
-  preview_integrations:
+  stable_integrations:
     identifier: janusgraph
     parent: integrations-other
     weight: 571

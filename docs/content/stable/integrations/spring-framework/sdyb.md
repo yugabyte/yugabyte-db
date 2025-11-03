@@ -4,7 +4,7 @@ linkTitle: Spring Data YugabyteDB
 description: Spring Data YugabyteDB
 aliases:
 menu:
-  preview_integrations:
+  stable_integrations:
     identifier: sdyb
     parent: spring-framework
     weight: 578

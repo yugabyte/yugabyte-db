@@ -3,7 +3,7 @@ title: Testing horizontal scalability with TPC-C
 headerTitle: Testing horizontal scalability with TPC-C
 linkTitle: Testing horizontal scalability
 menu:
-  preview:
+  stable:
     identifier: tpcc-horizontal-scalability
     parent: tpcc
     weight: 200

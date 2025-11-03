@@ -3,10 +3,6 @@ title: C++ libpqxx driver for YSQL
 headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a C++ application using libpqxx
-aliases:
-  - /develop/client-drivers/cpp/
-  - /stable/develop/client-drivers/cpp/
-  - /stable/quick-start/build-apps/cpp/
 menu:
   v2.25:
     identifier: cpp-ysql-driver

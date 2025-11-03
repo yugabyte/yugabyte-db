@@ -7,7 +7,7 @@ headcontent: Utility for deploying and managing YugabyteDB
 aliases:
   - /stable/deploy/docker/
 menu:
-  preview:
+  stable:
     identifier: yugabyted
     parent: configuration
     weight: 100

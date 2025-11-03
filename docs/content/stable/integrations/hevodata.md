@@ -4,7 +4,7 @@ linkTitle: Hevo Data
 description: Use Hevo Data with YSQL API
 aliases:
 menu:
-  preview_integrations:
+  stable_integrations:
     identifier: hevodata
     parent: data-integration
     weight: 571

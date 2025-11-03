@@ -4,7 +4,7 @@ headerTitle: Docs style guide
 linkTitle: Style guide
 description: YugabyteDB documentation style guide
 menu:
-  preview:
+  stable:
     identifier: docs-style
     parent: docs
     weight: 2950

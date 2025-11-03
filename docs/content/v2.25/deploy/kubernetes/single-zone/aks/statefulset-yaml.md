@@ -9,8 +9,6 @@ menu:
     name: Azure Kubernetes Service
     identifier: k8s-aks-2
     weight: 624
-aliases:
-  - /stable/deploy/kubernetes/aks/statefulset-yaml/
 type: docs
 ---
 

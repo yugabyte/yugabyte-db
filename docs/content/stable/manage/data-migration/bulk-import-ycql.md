@@ -8,7 +8,7 @@ tags:
 aliases:
   - /stable/manage/data-migration/ycql/bulk-import/
 menu:
-  preview:
+  stable:
     identifier: manage-bulk-import-ycql
     parent: manage-bulk-import-export
     weight: 730

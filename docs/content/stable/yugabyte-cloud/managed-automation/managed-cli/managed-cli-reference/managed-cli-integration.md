@@ -5,7 +5,7 @@ linkTitle: integration
 description: YugabyteDB Aeon CLI reference integration resource.
 headcontent: Manage integration configuration
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-platform:
     identifier: managed-cli-integration
     parent: managed-cli-reference
     weight: 20

@@ -3,7 +3,7 @@ title: PTTL
 linkTitle: PTTL
 description: PTTL
 menu:
-  preview:
+  stable:
     parent: api-yedis
     weight: 2235
 aliases:

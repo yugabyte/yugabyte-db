@@ -8,7 +8,7 @@ aliases:
   - /stable/introduction/overview/
   - /stable/introduction/benefits/
 menu:
-  preview_faq:
+  stable_faq:
     identifier: faq-general
     parent: faq
     weight: 10

@@ -7,7 +7,7 @@ headcontent: Built-in server-side connection pooler for YSQL
 tags:
   feature: early-access
 menu:
-  preview:
+  stable:
     identifier: connection-manager
     parent: additional-features
     weight: 10

@@ -8,7 +8,7 @@ aliases:
   - /manage/backup-restore/
   - /stable/backup-restore/
 menu:
-  preview:
+  stable:
     identifier: backup-restore
     parent: manage
     weight: 702

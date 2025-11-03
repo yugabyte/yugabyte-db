@@ -3,7 +3,7 @@ title: SETRANGE
 linkTitle: SETRANGE
 description: SETRANGE
 menu:
-  preview:
+  stable:
     parent: api-yedis
     weight: 2280
 aliases:

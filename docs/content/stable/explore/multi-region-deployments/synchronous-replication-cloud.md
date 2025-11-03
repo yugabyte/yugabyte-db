@@ -5,7 +5,7 @@ linkTitle: Synchronous (3+ regions)
 description: Global data distributed using synchronous replication across regions using YugabyteDB Aeon.
 headcontent: Distribute data synchronously across regions
 menu:
-  preview:
+  stable:
     identifier: explore-multi-region-deployments-sync-replication-2-cloud
     parent: explore-multi-region-deployments
     weight: 710

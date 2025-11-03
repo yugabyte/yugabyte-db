@@ -3,7 +3,7 @@ title: GitDev
 linkTitle: Cloud-native development
 description: Integrated development environments as code and configuration
 menu:
-  preview:
+  stable:
     identifier: gitdev
     parent: develop
     weight: 590

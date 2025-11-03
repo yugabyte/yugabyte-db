@@ -3,7 +3,7 @@ title: Supported versions
 linkTitle: Supported versions
 description: Supported versions of Python drivers, ORMs and AppDev frameworks
 menu:
-  preview:
+  stable:
     identifier: python-compatibility
     parent: python-drivers
     weight: 800

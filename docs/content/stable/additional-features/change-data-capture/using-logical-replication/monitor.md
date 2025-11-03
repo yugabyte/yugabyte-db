@@ -6,7 +6,7 @@ description: Monitor Change Data Capture in YugabyteDB.
 aliases:
   - /stable/explore/change-data-capture/using-logical-replication/monitor/
 menu:
-  preview:
+  stable:
     parent: explore-change-data-capture-logical-replication
     identifier: monitor
     weight: 30

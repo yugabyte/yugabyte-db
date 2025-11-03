@@ -6,7 +6,7 @@ description: How to manually start the YB-Masters Server service for your Yugaby
 aliases:
   - /stable/deploy/manual-deployment/start-tservers/
 menu:
-  preview:
+  stable:
     identifier: deploy-2-manual
     parent: deploy-manual-deployment
     weight: 613

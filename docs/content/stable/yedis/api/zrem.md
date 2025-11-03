@@ -3,7 +3,7 @@ title: ZREM
 linkTitle: ZREM
 description: ZREM
 menu:
-  preview:
+  stable:
     parent: api-yedis
     weight: 2530
 aliases:

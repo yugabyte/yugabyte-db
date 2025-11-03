@@ -3,7 +3,7 @@ title: UNSUBSCRIBE
 linkTitle: UNSUBSCRIBE
 description: UNSUBSCRIBE
 menu:
-  preview:
+  stable:
     parent: api-yedis
     weight: 2553
 aliases:

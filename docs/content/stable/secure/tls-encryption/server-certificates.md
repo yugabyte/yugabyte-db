@@ -8,7 +8,7 @@ aliases:
   - /secure/tls-encryption/prepare-nodes
   - /stable/secure/tls-encryption/prepare-nodes
 menu:
-  preview:
+  stable:
     identifier: prepare-nodes
     parent: tls-encryption
     weight: 10

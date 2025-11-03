@@ -4,7 +4,7 @@ headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect an application using YugabyteDB Python driver for YCQL
 menu:
-  preview:
+  stable:
     identifier: ycql-python-driver
     parent: python-drivers
     weight: 530

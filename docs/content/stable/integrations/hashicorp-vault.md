@@ -4,7 +4,7 @@ linkTitle: Hashicorp Vault
 description: Use YSQL plugin for Hashicorp Vault
 aliases:
 menu:
-  preview_integrations:
+  stable_integrations:
     identifier: hashicorp-vault
     parent: integrations-security
     weight: 571

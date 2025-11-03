@@ -5,7 +5,7 @@ linkTitle: Monitor
 description: Overview of monitoring and alerts for YugabyteDB databases
 headcontent: Monitor cluster performance and activity
 menu:
-  preview:
+  stable:
     identifier: monitor-and-alert
     parent: launch-and-manage
     weight: 60

@@ -6,7 +6,7 @@ headContent: "Client driver: libpq"
 aliases:
   - /stable/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-c/
 menu:
-  preview_tutorials:
+  stable_tutorials:
     parent: build-apps
     name: C
     identifier: cloud-c

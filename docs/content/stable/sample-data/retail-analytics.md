@@ -6,7 +6,7 @@ description: Explore this retail analytics sample database on YugabyteDB using Y
 aliases:
   - /develop/realworld-apps/retail-analytics/
 menu:
-  preview:
+  stable:
     identifier: retail-analytics
     parent: sample-data
     weight: 500

@@ -4,7 +4,7 @@ headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect an application using YugabyteDB Node.js driver for YCQL
 menu:
-  preview:
+  stable:
     identifier: node-driver-3-ycql
     parent: nodejs-drivers
     weight: 500

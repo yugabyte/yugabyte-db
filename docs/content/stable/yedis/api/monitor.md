@@ -3,7 +3,7 @@ title: MONITOR
 linkTitle: MONITOR
 description: MONITOR
 menu:
-  preview:
+  stable:
     parent: api-yedis
     weight: 2218
 aliases:

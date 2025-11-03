@@ -4,7 +4,7 @@ headerTitle: Use an ORM
 linkTitle: Use an ORM
 description: Python Django ORM support for YugabyteDB
 menu:
-  preview:
+  stable:
     identifier: django-orm
     parent: python-drivers
     weight: 600

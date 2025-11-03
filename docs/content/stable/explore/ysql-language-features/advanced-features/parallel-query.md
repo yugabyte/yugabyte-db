@@ -5,7 +5,7 @@ description: Parallel queries in YSQL
 tags:
   feature: early-access
 menu:
-  preview:
+  stable:
     identifier: advanced-features-parallel-query
     parent: advanced-features
     weight: 600

@@ -3,8 +3,6 @@ title: Batch operations in YSQL
 headerTitle: Batch operations
 linkTitle: Batch operations
 description: Learn how batch operations in YSQL send a set of operations as a single RPC call rather than one by one as individual RPC calls.
-aliases:
-  - /stable/develop/learn/batch-operations/
 menu:
   v2.25:
     identifier: batch-operations-2-ysql

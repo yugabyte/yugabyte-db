@@ -3,7 +3,7 @@ title: INCRBY
 linkTitle: INCRBY
 description: INCRBY
 menu:
-  preview:
+  stable:
     parent: api-yedis
     weight: 2215
 aliases:

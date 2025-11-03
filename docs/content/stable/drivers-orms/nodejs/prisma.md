@@ -5,7 +5,7 @@ linkTitle: Use an ORM
 description: Node.js Prisma ORM support for YugabyteDB
 headcontent: Node.js ORM support for YugabyteDB
 menu:
-  preview:
+  stable:
     identifier: node-orm-2-prisma
     parent: nodejs-drivers
     weight: 600

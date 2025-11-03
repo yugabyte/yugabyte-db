@@ -9,11 +9,6 @@ menu:
     identifier: pg-extensions
     parent: explore-ysql-language-features
     weight: 1000
-aliases:
-  - /stable/explore/ysql-language-features/advanced-features/extensions/
-  - /stable/api/ysql/extensions/
-  - /stable/explore/ysql-language-features/pg-extensions/extension-postgis/
-  - /stable/explore/ysql-language-features/pg-extensions/extension-pgsql-postal/
 showRightNav: true
 type: indexpage
 ---

@@ -5,7 +5,7 @@ linkTitle: Deploy clusters
 description: Deploy clusters in YugabyteDB Aeon.
 headcontent: Deploy production-ready clusters
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-platform:
     parent: yugabytedb-managed
     identifier: cloud-basics
     weight: 25

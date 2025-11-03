@@ -4,7 +4,7 @@ headerTitle: Apache Superset
 linkTitle: Apache Superset
 description: Use Apache Superset to explore and visulize data in YugabyteDB.
 menu:
-  preview_integrations:
+  stable_integrations:
     identifier: superset
     parent: tools
     weight: 20

@@ -5,7 +5,7 @@ linkTitle: Use an ORM
 description: Go PG ORM support for YugabyteDB
 headcontent: Go ORM support for YugabyteDB
 menu:
-  preview:
+  stable:
     identifier: pg-orm
     parent: go-drivers
     weight: 600

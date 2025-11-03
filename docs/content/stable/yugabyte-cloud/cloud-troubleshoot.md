@@ -5,7 +5,7 @@ linkTitle: Troubleshoot
 description: Troubleshoot issues in YugabyteDB Aeon.
 headcontent: Diagnose and troubleshoot issues with YugabyteDB clusters and YugabyteDB Aeon
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-platform:
     identifier: cloud-troubleshoot
     parent: yugabytedb-managed
     weight: 850

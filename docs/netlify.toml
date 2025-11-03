@@ -1201,6 +1201,14 @@
   to = "/stable/:splat"
   force = true
 
+# Redirect old preview URLs to stable
+# Matches everything under /preview and forwards path & query
+[[redirects]]
+  from = "/preview/*"
+  to = "/stable/:splat"
+  status = 301
+  force = true
+
 ##########################################################
 
 # Hugo resource caching plugin configuration

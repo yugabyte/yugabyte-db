@@ -7,7 +7,7 @@ aliases:
   - /stable/explore/backup-restore/point-in-time-recovery-ysql
   - /stable/explore/backup-restore/point-in-time-recovery
 menu:
-  preview:
+  stable:
     identifier: cluster-management-point-in-time-recovery
     parent: explore-cluster-management
     weight: 704

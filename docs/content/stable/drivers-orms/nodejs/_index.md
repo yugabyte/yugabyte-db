@@ -4,7 +4,7 @@ headerTitle: Node.js
 linkTitle: Node.js
 description: Node.js Drivers and ORMs support for YugabyteDB.
 menu:
-  preview:
+  stable:
     identifier: nodejs-drivers
     parent: drivers-orms
     weight: 530

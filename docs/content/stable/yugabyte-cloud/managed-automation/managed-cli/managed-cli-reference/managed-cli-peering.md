@@ -5,7 +5,7 @@ linkTitle: vpc peering
 description: YugabyteDB Aeon CLI reference VPC Peering resource.
 headcontent: Manage account peering connections
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-platform:
     identifier: managed-cli-peering
     parent: managed-cli-reference
     weight: 20

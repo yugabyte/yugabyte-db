@@ -3,7 +3,7 @@ title: TTL
 linkTitle: TTL
 description: TTL
 menu:
-  preview:
+  stable:
     parent: api-yedis
     weight: 2470
 aliases:

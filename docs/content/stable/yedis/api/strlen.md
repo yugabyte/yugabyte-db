@@ -3,7 +3,7 @@ title: STRLEN
 linkTitle: STRLEN
 description: STRLEN
 menu:
-  preview:
+  stable:
     parent: api-yedis
     weight: 2320
 aliases:

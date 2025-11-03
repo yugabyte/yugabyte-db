@@ -4,7 +4,7 @@ headcontent: yb-voyager import data
 linkTitle: import data
 description: YugabyteDB Voyager import data reference
 menu:
-  preview_yugabyte-voyager:
+  stable_yugabyte-voyager:
     identifier: voyager-import-data
     parent: data-migration
     weight: 60

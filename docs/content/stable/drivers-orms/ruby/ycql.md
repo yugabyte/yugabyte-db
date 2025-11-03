@@ -4,7 +4,7 @@ headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect an application using YugabyteDB Ruby driver for YCQL
 menu:
-  preview:
+  stable:
     identifier: ycql-ruby-driver
     parent: ruby-drivers
     weight: 420

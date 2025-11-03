@@ -4,8 +4,6 @@ headerTitle: Encryption in transit
 linkTitle: Encryption in transit
 description: Enable encryption in transit (using TLS) to protect network communication.
 headcontent: Enable encryption in transit (using TLS) to protect network communication
-aliases:
-  - /secure/tls-encryption/
 menu:
   v2.25:
     identifier: tls-encryption

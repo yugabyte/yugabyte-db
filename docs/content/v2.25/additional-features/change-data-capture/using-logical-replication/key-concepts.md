@@ -4,8 +4,6 @@ headerTitle: Key concepts
 linkTitle: Key concepts
 description: Change Data Capture in YugabyteDB.
 headcontent: PostgreSQL logical replication concepts
-aliases:
-  - /stable/explore/change-data-capture/using-logical-replication/key-concepts/
 menu:
   v2.25:
     parent: explore-change-data-capture-logical-replication

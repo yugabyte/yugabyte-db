@@ -5,7 +5,7 @@ linkTitle: Federated authentication
 description: Use federated authentication for single sign-on.
 headContent: Single sign-on using an identity provider
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-platform:
     identifier: federated-4-ping
     parent: managed-authentication
     weight: 20

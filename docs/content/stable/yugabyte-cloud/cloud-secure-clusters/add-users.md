@@ -4,7 +4,7 @@ linkTitle: Add database users
 description: Add users to YugabyteDB Aeon clusters
 headcontent: Grant team members and applications access to your database
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-platform:
     identifier: add-users
     parent: cloud-secure-clusters
     weight: 350

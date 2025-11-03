@@ -5,7 +5,7 @@ linkTitle: Migrate
 description: Import and export data in YugabyteDB.
 headcontent: Export data and schema from other databases and import into YugabyteDB
 menu:
-  preview:
+  stable:
     identifier: manage-bulk-import-export
     parent: manage
     weight: 703

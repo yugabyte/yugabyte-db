@@ -4,7 +4,7 @@ headerTitle: Rust
 linkTitle: Rust
 description: Rust Drivers and ORMs support for YugabyteDB.
 menu:
-  preview:
+  stable:
     identifier: rust-drivers
     parent: drivers-orms
     weight: 600

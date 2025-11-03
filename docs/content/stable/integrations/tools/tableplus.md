@@ -8,7 +8,7 @@ aliases:
   - /stable/develop/tools/tableplus/
   - /stable/tools/tableplus/
 menu:
-  preview_integrations:
+  stable_integrations:
     identifier: tableplus
     parent: tools
     weight: 95

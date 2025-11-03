@@ -10,7 +10,7 @@ aliases:
   - /stable/yedis/quick-start/test-redis/
   - /stable/api/yedis/quick-start/
 menu:
-  preview:
+  stable:
     parent: yedis
     weight: 2800
 type: indexpage

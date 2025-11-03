@@ -8,7 +8,7 @@ tags:
 aliases:
   - /stable/reference/drivers/csharp/postgres-npgsql-reference/
 menu:
-  preview:
+  stable:
     name: C# Drivers
     identifier: ref-2-postgres-npgsql-driver
     parent: csharp-drivers

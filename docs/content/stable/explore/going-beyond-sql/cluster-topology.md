@@ -4,7 +4,7 @@ headerTitle: Cluster topology
 linkTitle: Cluster topology
 headcontent: List the servers in your cluster
 menu:
-  preview:
+  stable:
     identifier: show-cluster-topology
     parent: going-beyond-sql
     weight: 400

@@ -3,7 +3,7 @@ title: PSETEX
 linkTitle: PSETEX
 description: PSETEX
 menu:
-  preview:
+  stable:
     parent: api-yedis
     weight: 2272
 aliases:

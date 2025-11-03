@@ -8,7 +8,7 @@ cascade:
   tags:
     feature: early-access
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-platform:
     parent: cloud-clusters
     identifier: disaster-recovery-aeon
     weight: 500

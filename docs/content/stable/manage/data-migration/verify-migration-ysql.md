@@ -6,7 +6,7 @@ description: Verify if the migration was successful
 tags:
   other: ysql
 menu:
-  preview:
+  stable:
     identifier: verify-migration-ysql
     parent: manage-bulk-import-export
     weight: 739

@@ -6,7 +6,7 @@ description: Clone your database in YugabyteDB for data recovery, development, a
 tags:
   feature: early-access
 menu:
-  preview:
+  stable:
     identifier: instant-db-clone
     parent: backup-restore
     weight: 706

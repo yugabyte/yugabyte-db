@@ -5,7 +5,7 @@ linkTitle: auth
 description: YugabyteDB Aeon CLI reference auth resource.
 headcontent: Authenticate ybm CLI
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-platform:
     identifier: managed-cli-auth
     parent: managed-cli-reference
     weight: 20

@@ -5,7 +5,7 @@ linkTitle: Failover
 description: Unplanned failover to a target cluster
 headContent: Failover of application traffic to the DR target
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-platform:
     parent: disaster-recovery-aeon
     identifier: disaster-recovery-failover-aeon
     weight: 30

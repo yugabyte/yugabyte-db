@@ -5,7 +5,7 @@ linkTitle: Configure a CLion project
 description: Configure a CLion project for building YugabyteDB using cmake or ninja.
 headcontent: Use the CLion IDE with YugabyteDB
 menu:
-  preview:
+  stable:
     identifier: configure-clion
     parent: core-database
     weight: 2912

@@ -9,7 +9,7 @@ aliases:
   - /stable/reference/drivers/csharp/
   - /stable/reference/drivers/csharp/yb-npgsql-reference/
 menu:
-  preview:
+  stable:
     name: C# Drivers
     identifier: ref-1-yb-npgsql-driver
     parent: csharp-drivers

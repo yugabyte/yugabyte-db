@@ -8,7 +8,7 @@ tags:
 aliases:
   - /stable/tutorials/build-apps/java/ycql
 menu:
-  preview:
+  stable:
     identifier: ycql-java-driver
     parent: java-drivers
     weight: 500

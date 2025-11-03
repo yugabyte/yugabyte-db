@@ -4,8 +4,6 @@ headerTitle: Cluster management
 linkTitle: Cluster management
 description: Cluster management in YugabyteDB
 headcontent: Cluster management in YugabyteDB
-aliases:
-  - /stable/admin/cluster-management/add-remove-nodes/
 menu:
   v2.25:
     identifier: explore-cluster-management

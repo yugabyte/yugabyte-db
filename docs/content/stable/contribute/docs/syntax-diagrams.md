@@ -5,7 +5,7 @@ linkTitle: Syntax diagrams
 description: Edit syntax diagrams
 headcontent: How to edit syntax diagrams
 menu:
-  preview:
+  stable:
     identifier: docs-syntax-diagrams
     parent: docs-edit
     weight: 3000

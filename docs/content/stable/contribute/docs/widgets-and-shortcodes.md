@@ -4,7 +4,7 @@ headerTitle: Widgets and shortcodes
 linkTitle: Widgets and shortcodes
 description: Widgets and shortcodes
 menu:
-  preview:
+  stable:
     identifier: widgets-and-shortcodes
     parent: docs-edit
     weight: 2915

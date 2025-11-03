@@ -9,7 +9,7 @@ description: Case study to show the use of percentile_cont() to illustrate the w
 aliases:
   - /stable/api/ysql/exprs/aggregate_functions/case-study-the-6895997-rule/
 menu:
-  preview_api:
+  stable_api:
     identifier: case-study-the-68–95–997-rule
     parent: aggregate-functions
     weight: 100

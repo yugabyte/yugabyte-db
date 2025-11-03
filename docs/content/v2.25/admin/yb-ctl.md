@@ -8,8 +8,6 @@ menu:
     identifier: yb-ctl
     parent: admin
     weight: 90
-aliases:
-  - /admin/yb-ctl
 type: docs
 rightNav:
   hideH4: true

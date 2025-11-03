@@ -8,7 +8,7 @@ tags:
 aliases:
 - /stable/reference/drivers/rust/rust-postgres-reference/
 menu:
-  preview:
+  stable:
     name: Rust Drivers
     identifier: ref-rust-postgres-driver
     parent: rust-drivers

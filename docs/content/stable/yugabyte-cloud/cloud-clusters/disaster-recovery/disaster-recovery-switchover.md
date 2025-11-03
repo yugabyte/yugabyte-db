@@ -5,7 +5,7 @@ linkTitle: Switchover
 description: Switchover using disaster recovery
 headContent: Switch application traffic to the DR target
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-platform:
     parent: disaster-recovery-aeon
     identifier: disaster-recovery-switchover-aeon
     weight: 40

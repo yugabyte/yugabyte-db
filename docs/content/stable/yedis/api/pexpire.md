@@ -3,7 +3,7 @@ title: PEXPIRE
 linkTitle: PEXPIRE
 description: PEXPIRE
 menu:
-  preview:
+  stable:
     parent: api-yedis
     weight: 2233
 aliases:

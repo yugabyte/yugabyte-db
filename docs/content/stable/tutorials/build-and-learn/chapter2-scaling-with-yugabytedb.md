@@ -4,7 +4,7 @@ headerTitle: "Chapter 2: Scaling with YugabyteDB"
 linkTitle: Scaling with YugabyteDB
 description: Migrate from a single-server PostgreSQL instance to a distributed YugabyteDB cluster
 menu:
-  preview_tutorials:
+  stable_tutorials:
     identifier: chapter2-scaling-with-yugabytedb
     parent: tutorials-build-and-learn
     weight: 3

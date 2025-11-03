@@ -10,7 +10,7 @@ aliases:
    - /stable/explore/connection-manager/connection-mgr-ysql/
    - /stable/explore/connection-manager/
 menu:
-  preview:
+  stable:
     name: Built-in connection pooling
     identifier: explore-conn-mgr-ysql
     parent: going-beyond-sql

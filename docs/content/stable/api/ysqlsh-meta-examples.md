@@ -7,7 +7,7 @@ headcontent: Examples of ysqlsh meta-commands
 aliases:
   - /stable/admin/ysqlsh-meta-examples/
 menu:
-  preview_api:
+  stable_api:
     identifier: ysqlsh-meta-examples
     parent: ysqlsh-meta-commands
     weight: 20

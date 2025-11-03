@@ -7,7 +7,7 @@ aliases:
   - /troubleshoot/cluster/replace-master/
   - /stable/troubleshoot/cluster/replace-master/
 menu:
-  preview:
+  stable:
     identifier: replace-failed-master
     parent: troubleshoot-cluster
     weight: 831

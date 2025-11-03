@@ -8,7 +8,7 @@ aliases:
   - /stable/explore/change-data-capture/cdc-monitor/
   - /stable/explore/change-data-capture/using-yugabytedb-grpc-replication/cdc-monitor/
 menu:
-  preview:
+  stable:
     parent: explore-change-data-capture-grpc-replication
     identifier: cdc-monitor
     weight: 20

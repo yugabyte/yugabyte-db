@@ -6,8 +6,6 @@ description: Partition data for efficient data management
 headcontent: Partition data for efficient data management
 tags:
   other: ysql
-aliases:
-   - /stable/common-patterns/timeseries/partitioning-by-time/
 menu:
   v2.25:
     identifier: timeseries-partition-by-time

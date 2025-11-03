@@ -5,8 +5,6 @@ linkTitle: Additional drivers
 description: Lists the client drivers that you can use to connect to and interact with the YSQL API.
 tags:
   other: ysql
-aliases:
-  - /stable/reference/drivers/ysql-client-drivers/
 menu:
   v2.25:
     identifier: ysql-client-libraries

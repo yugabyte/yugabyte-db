@@ -9,7 +9,7 @@ tags:
 aliases:
   - /stable/explore/change-data-capture/using-logical-replication/
 menu:
-  preview:
+  stable:
     identifier: explore-change-data-capture-logical-replication
     parent: explore-change-data-capture
     weight: 240

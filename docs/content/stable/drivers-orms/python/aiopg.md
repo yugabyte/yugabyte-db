@@ -6,7 +6,7 @@ description: Connect a Python application using aiopg Driver for YSQL
 aliases:
   - /integrations/aiopg/
 menu:
-  preview:
+  stable:
     identifier: ysql-aiopg
     parent: python-drivers
     weight: 520

@@ -6,7 +6,7 @@ description: Contribute to the documentation
 image: fa-thin fa-books
 headcontent: How to contribute to the YugabyteDB documentation
 menu:
-  preview:
+  stable:
     identifier: docs
     parent: contribute
     weight: 2910

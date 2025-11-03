@@ -6,7 +6,7 @@ description: Read data at a specific point in time for data recovery and analysi
 tags:
   feature: tech-preview
 menu:
-  preview:
+  stable:
     identifier: time-travel-query
     parent: backup-restore
     weight: 750

@@ -3,7 +3,7 @@ title: SETEX
 linkTitle: SETEX
 description: SETEX
 menu:
-  preview:
+  stable:
     parent: api-yedis
     weight: 2271
 aliases:

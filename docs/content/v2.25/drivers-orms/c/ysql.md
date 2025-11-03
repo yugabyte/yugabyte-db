@@ -3,10 +3,6 @@ title: C libpq Driver for YSQL
 headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a C application using libpq driver
-aliases:
-  - /develop/client-drivers/c/
-  - /stable/develop/client-drivers/c/
-  - /stable/quick-start/build-apps/c/
 menu:
   v2.25:
     identifier: libpq-c-driver

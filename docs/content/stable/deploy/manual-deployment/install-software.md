@@ -4,7 +4,7 @@ headerTitle: 2. Install software
 linkTitle: 2. Install software
 description: How to manually install YugabyteDB database on each node.
 menu:
-  preview:
+  stable:
     identifier: deploy-manual-deployment-install-software
     parent: deploy-manual-deployment
     weight: 612

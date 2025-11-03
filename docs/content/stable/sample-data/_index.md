@@ -4,7 +4,7 @@ linkTitle: Sample datasets
 description: Sample datasets
 headcontent: Explore the YugabyteDB YSQL API using sample datasets.
 menu:
-  preview:
+  stable:
     identifier: sample-data
     parent: reference
     weight: 2950

@@ -6,7 +6,7 @@ description: Using the PostgreSQL Anonymizer extension in YugabyteDB
 tags:
   feature: early-access
 menu:
-  preview:
+  stable:
     identifier: extension-pganon
     parent: pg-extensions
     weight: 20

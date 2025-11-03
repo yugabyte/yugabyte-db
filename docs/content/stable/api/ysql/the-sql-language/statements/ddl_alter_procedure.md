@@ -4,7 +4,7 @@ headerTitle: ALTER PROCEDURE
 linkTitle: ALTER PROCEDURE
 description: Change properties of an existing procedure.
 menu:
-  preview_api:
+  stable_api:
     identifier: ddl_alter_procedure
     parent: statements
 type: docs

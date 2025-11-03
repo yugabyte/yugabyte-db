@@ -5,7 +5,7 @@ linkTitle: Run the examples
 description: Set up clusters to run Explore examples.
 headcontent: Set up YugabyteDB to run Explore examples
 menu:
-  preview:
+  stable:
     identifier: cluster-setup-1-local
     parent: explore
     weight: 5

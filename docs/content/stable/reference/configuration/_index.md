@@ -7,7 +7,7 @@ headcontent: Configure core database services
 aliases:
   - /stable/reference
 menu:
-  preview:
+  stable:
     identifier: configuration
     parent: reference
     weight: 2600

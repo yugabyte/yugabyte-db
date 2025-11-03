@@ -4,7 +4,7 @@ headerTitle: Other issues
 linkTitle: Other issues
 description: Troubleshoot miscellaneous other issues in YugabyteDB
 menu:
-  preview:
+  stable:
     identifier: troubleshoot-miscellaneous
     parent: troubleshoot
     weight: 400

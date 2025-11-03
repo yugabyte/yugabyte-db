@@ -7,7 +7,7 @@ headcontent: Authorize users using role-based access control
 aliases:
   - /secure/authorization/
 menu:
-  preview:
+  stable:
     identifier: authorization
     parent: secure
     weight: 722

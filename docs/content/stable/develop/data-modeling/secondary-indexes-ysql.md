@@ -5,7 +5,7 @@ linkTitle: Secondary indexes
 tags:
   other: ysql
 menu:
-  preview:
+  stable:
     identifier: data-modeling-indexes
     parent: data-modeling
     weight: 200

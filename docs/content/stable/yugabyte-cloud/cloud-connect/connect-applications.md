@@ -7,7 +7,7 @@ aliases:
   - /stable/yugabyte-cloud/cloud-examples/
   - /stable/yugabyte-cloud/cloud-examples/connect-application/
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-platform:
     identifier: connect-applications
     parent: cloud-connect
     weight: 30

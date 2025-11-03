@@ -7,7 +7,7 @@ headcontent: Create optimal execution plans for queries
 tags:
   other: ysql
 menu:
-  preview:
+  stable:
     identifier: ysql-yb-enable-cbo
     parent: best-practices-operations
     weight: 60

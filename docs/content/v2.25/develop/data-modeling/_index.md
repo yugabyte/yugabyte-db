@@ -2,10 +2,6 @@
 title: Distributed Data modeling
 linkTitle: Data modeling
 description: Data modeling in a distributed database
-aliases:
-  - /stable/develop/learn/data-modeling-ysql/
-  - /stable/develop/learn/data-modeling-ycql/
-  - /stable/develop/data-modeling-ysql/
 menu:
   v2.25:
     identifier: data-modeling

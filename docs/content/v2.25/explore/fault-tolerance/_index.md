@@ -4,9 +4,6 @@ headerTitle: Resiliency, high availability, and fault tolerance
 linkTitle: Resiliency
 description: Simulate fault tolerance and resilience in a local YugabyteDB database universe.
 headcontent: Survive and recover from outages
-aliases:
-  - /stable/explore/postgresql/fault-tolerance/
-  - /stable/explore/fault-tolerance-macos/
 menu:
   v2.25:
     identifier: fault-tolerance

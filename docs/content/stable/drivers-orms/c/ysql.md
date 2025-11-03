@@ -8,7 +8,7 @@ aliases:
   - /stable/develop/client-drivers/c/
   - /stable/quick-start/build-apps/c/
 menu:
-  preview:
+  stable:
     identifier: libpq-c-driver
     parent: c-drivers
     weight: 410

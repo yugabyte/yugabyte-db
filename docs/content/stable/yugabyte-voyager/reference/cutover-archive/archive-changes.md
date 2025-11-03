@@ -4,7 +4,7 @@ headcontent: yb-voyager archive changes
 linkTitle: archive changes
 description: YugabyteDB Voyager archive changes reference
 menu:
-  preview_yugabyte-voyager:
+  stable_yugabyte-voyager:
     identifier: voyager-archive-changes
     parent: cutover-archive
     weight: 150

@@ -5,7 +5,7 @@ linkTitle: GIN indexes
 description: Generalized inverted indexes in YSQL
 headContent: Explore GIN indexes using YSQL
 menu:
-  preview:
+  stable:
     identifier: indexes-constraints-gin
     parent: explore-indexes-constraints-ysql
     weight: 260

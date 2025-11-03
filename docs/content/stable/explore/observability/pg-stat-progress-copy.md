@@ -6,7 +6,7 @@ headerTitle: View COPY status with pg_stat_progress_copy
 aliases:
   - /stable/explore/query-1-performance/pg-stat-progress-copy/
 menu:
-  preview:
+  stable:
     identifier: pg-stat-progress-copy
     parent: explore-observability
     weight: 400

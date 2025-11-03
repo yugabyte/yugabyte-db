@@ -4,7 +4,7 @@ headerTitle: "Chapter 4: Going geo-distributed with YugabyteDB"
 linkTitle: Going geo-distributed
 description: Scaling read and write workloads across distant locations with the latency-optimized geo-partitioning design pattern
 menu:
-  preview_tutorials:
+  stable_tutorials:
     identifier: chapter4-going-global
     parent: tutorials-build-and-learn
     weight: 5

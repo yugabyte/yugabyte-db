@@ -3,9 +3,6 @@ title: Strings and text in YSQL
 headerTitle: Strings and text
 linkTitle: Strings and text
 description: Learn how to work with string and text data types in YSQL.
-aliases:
-  - /develop/learn/strings-and-text/
-  - /stable/develop/learn/strings-and-text/
 menu:
   v2.25:
     identifier: strings-and-text-1-ysql

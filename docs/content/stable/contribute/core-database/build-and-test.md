@@ -7,7 +7,7 @@ headcontent: Building and testing with yb_build.sh.
 aliases:
   - /stable/contribute/core-database/run-unit-tests/
 menu:
-  preview:
+  stable:
     identifier: build-and-test
     parent: core-database
     weight: 2913

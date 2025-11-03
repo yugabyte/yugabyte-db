@@ -4,7 +4,7 @@ headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a C++ application using YugabyteDB C++ driver for YCQL
 menu:
-  preview:
+  stable:
     identifier: cpp-ycql-driver
     parent: cpp-drivers
     weight: 420

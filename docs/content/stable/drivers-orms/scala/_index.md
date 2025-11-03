@@ -4,7 +4,7 @@ headerTitle: Scala
 linkTitle: Scala
 description: Scala Drivers and ORMs support for YugabyteDB.
 menu:
-  preview:
+  stable:
     identifier: scala-drivers
     parent: drivers-orms
     weight: 610

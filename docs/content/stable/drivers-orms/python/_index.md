@@ -4,7 +4,7 @@ headerTitle: Python
 linkTitle: Python
 description: Python Drivers and ORMs support for YugabyteDB.
 menu:
-  preview:
+  stable:
     identifier: python-drivers
     parent: drivers-orms
     weight: 520

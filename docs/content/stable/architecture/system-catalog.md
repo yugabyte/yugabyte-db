@@ -3,7 +3,7 @@ title: System catalog tables and views
 linkTitle: System catalog
 headcontent: Tables and views that show information about the database
 menu:
-  preview:
+  stable:
     identifier: architecture-system-catalog
     parent: architecture
     weight: 550

@@ -4,9 +4,6 @@ headerTitle: Create cloud provider configuration
 linkTitle: Cloud providers
 description: Configure the Amazon Web Services (AWS) provider configuration.
 headContent: For deploying universes on AWS
-aliases:
-  - /stable/deploy/enterprise-edition/configure-cloud-providers/aws
-  - /stable/yugabyte-platform/deploy/configure-cloud-providers/aws
 menu:
   v2.25_yugabyte-platform:
     identifier: set-up-cloud-provider-1-aws

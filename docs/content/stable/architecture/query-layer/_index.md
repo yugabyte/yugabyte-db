@@ -6,7 +6,7 @@ description: Understand how a query is processed
 aliases:
   - /stable/architecture/query-layer/overview/
 menu:
-  preview:
+  stable:
     identifier: architecture-query-layer
     parent: architecture
     weight: 500

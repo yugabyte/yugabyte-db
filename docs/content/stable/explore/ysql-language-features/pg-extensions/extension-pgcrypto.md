@@ -4,7 +4,7 @@ headerTitle: pgcrypto extension
 linkTitle: pgcrypto
 description: Using the pgcrypto extension in YugabyteDB
 menu:
-  preview:
+  stable:
     identifier: extension-pgcrypto
     parent: pg-extensions
     weight: 20

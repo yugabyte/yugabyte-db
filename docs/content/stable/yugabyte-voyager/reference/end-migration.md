@@ -4,7 +4,7 @@ headcontent: yb-voyager end migration
 linkTitle: End migration
 description: YugabyteDB Voyager end migration reference
 menu:
-  preview_yugabyte-voyager:
+  stable_yugabyte-voyager:
     identifier: end-migration-voyager
     parent: yb-voyager-cli
     weight: 100

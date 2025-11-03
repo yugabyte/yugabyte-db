@@ -6,7 +6,7 @@ headerTitle: View metadata for YSQL/YCQL/system tablets on a server
 tags:
   feature: tech-preview
 menu:
-  preview:
+  stable:
     identifier: yb-local-tablets
     parent: explore-observability
     weight: 320

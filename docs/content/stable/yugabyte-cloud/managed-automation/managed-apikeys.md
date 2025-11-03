@@ -7,7 +7,7 @@ headcontent: Use API keys to authenticate with automation tools
 aliases:
   - /stable/yugabyte-cloud/cloud-admin/cloud-admin-apikeys/
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-platform:
     identifier: managed-apikeys
     parent: managed-automation
     weight: 10
