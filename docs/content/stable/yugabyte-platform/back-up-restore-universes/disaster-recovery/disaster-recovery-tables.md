@@ -67,7 +67,7 @@ In addition, keep in mind the following:
 
 {{</tabpane >}}
 
-Use the following guidance when managing tables and indexes in universes with DR configured.
+Use the following guidance when managing tables and indexes in universes when DR is configured in Manual mode.
 
 ## Tables
 
