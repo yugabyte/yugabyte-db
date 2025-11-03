@@ -40,6 +40,7 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.Util;
@@ -73,7 +74,9 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
 import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig;
 import com.yugabyte.yw.models.helpers.telemetry.ProviderType;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import play.mvc.Http.Request;
@@ -386,6 +389,13 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
       throw new PlatformServiceException(BAD_REQUEST, errorMessage);
     }
 
+    // Block k8s universes from configuring metrics export for now.
+    if (userIntent.providerType.equals(CloudType.kubernetes)) {
+      String errorMessage = "Metrics export is not supported for kubernetes based universes.";
+      log.error(errorMessage);
+      throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+    }
+
     // Verify if exporter config is set to export active.
     if (v1Params.getMetricsExportConfig().isExportActive()) {
       // If exporter config is set to export active, verify if any exporter is configured.
@@ -427,8 +437,24 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
           throw new PlatformServiceException(BAD_REQUEST, errorMessage);
         }
       }
-    }
 
+      // Verify if the exporter credentials are consistent on the universe.
+      // Applies to AWS and GCP TPs since they are exported as environment variables on the DB
+      // nodes.
+      Set<UUID> metricsExportExporterUuids =
+          v1Params.getMetricsExportConfig().getUniverseMetricsExporterConfig().stream()
+              .map(UniverseMetricsExporterConfig::getExporterUuid)
+              .collect(Collectors.toSet());
+      if (!telemetryProviderService.areTPsCredentialsConsistentOnUniverse(
+          universe, null, null, metricsExportExporterUuids)) {
+        String errorMessage =
+            "Exporter credentials are not consistent on universe '"
+                + universe.getUniverseUUID()
+                + "'.";
+        log.error(errorMessage);
+        throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+      }
+    }
     v1Params.verifyParams(universe, true);
 
     // Submit the task to the commissioner

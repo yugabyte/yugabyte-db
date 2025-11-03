@@ -69,7 +69,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -634,6 +636,23 @@ public class UpgradeUniverseHandler {
         }
       }
 
+      // Verify if the exporter credentials are consistent on the universe.
+      // Applies to AWS and GCP TPs since they are exported as environment variables on the DB
+      // nodes.
+      Set<UUID> auditLogExporterUuids =
+          requestParams.auditLogConfig.getUniverseLogsExporterConfig().stream()
+              .map(UniverseLogsExporterConfig::getExporterUuid)
+              .collect(Collectors.toSet());
+      if (!telemetryProviderService.areTPsCredentialsConsistentOnUniverse(
+          universe, auditLogExporterUuids, null, null)) {
+        String errorMessage =
+            "Exporter credentials are not consistent on universe '"
+                + universe.getUniverseUUID()
+                + "'.";
+        log.error(errorMessage);
+        throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+      }
+
       // For Kubernetes provider, verify the universe version is compatible with otel exporter.
       if (userIntent.providerType.equals(CloudType.kubernetes)
           && !KubernetesUtil.isExporterSupported(userIntent.ybSoftwareVersion)) {
@@ -729,6 +748,23 @@ public class UpgradeUniverseHandler {
 
       if (userIntent.providerType.equals(CloudType.kubernetes)) {
         String errorMessage = "Query log exporter is not supported for kubernetes provider.";
+        log.error(errorMessage);
+        throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+      }
+
+      // Verify if the exporter credentials are consistent on the universe.
+      // Applies to AWS and GCP TPs since they are exported as environment variables on the DB
+      // nodes.
+      Set<UUID> queryLogExporterUuids =
+          requestParams.queryLogConfig.getUniverseLogsExporterConfig().stream()
+              .map(UniverseQueryLogsExporterConfig::getExporterUuid)
+              .collect(Collectors.toSet());
+      if (!telemetryProviderService.areTPsCredentialsConsistentOnUniverse(
+          universe, null, queryLogExporterUuids, null)) {
+        String errorMessage =
+            "Exporter credentials are not consistent on universe '"
+                + universe.getUniverseUUID()
+                + "'.";
         log.error(errorMessage);
         throw new PlatformServiceException(BAD_REQUEST, errorMessage);
       }
