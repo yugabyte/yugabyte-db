@@ -1473,7 +1473,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "If this flag is enabled, user will be able to create telemetry providers and"
               + " enable/disable metrics export on universes.",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> allowConnectionPooling =
       new ConfKeyInfo<>(
           "yb.universe.allow_connection_pooling",

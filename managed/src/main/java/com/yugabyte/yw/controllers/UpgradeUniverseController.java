@@ -480,7 +480,9 @@ public class UpgradeUniverseController extends AuthenticatedController {
    * @return Result indicating the success of the modification operation
    */
   @ApiOperation(
-      notes = "YbaApi Internal. Modifies the audit logging configuration for a universe.",
+      notes =
+          "WARNING: This is a preview API that could change. Modifies the audit logging"
+              + " configuration for a universe.",
       value = "Modify Audit Logging Configuration",
       nickname = "modifyAuditLogging",
       response = YBPTask.class)
@@ -491,7 +493,7 @@ public class UpgradeUniverseController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.AuditLogConfigParams",
           required = true,
           paramType = "body"))
-  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
