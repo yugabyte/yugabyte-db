@@ -298,6 +298,10 @@ DEFINE_test_flag(bool, fail_table_creation_at_preparing_state, false,
                  "This is only used in tests to simulate a failure that occurs when a table in "
                  "process of creation is still in PREPARING state.");
 
+DEFINE_test_flag(bool, fail_alter_table_after_commit, false,
+    "If true, return an error after in-memory commit of the ALTER TABLE operation."
+    "Used to force ALTER to fail at a deterministic spot.");
+
 DEFINE_test_flag(bool, pause_before_send_hinted_election, false,
                  "Inside StartElectionIfReady, pause before sending request for hinted election");
 
@@ -7739,9 +7743,6 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
         Substitute("Alter table version=$0 ts=$1", table_pb.version(), LocalTimeAsString()));
   }
 
-  RETURN_NOT_OK(UpdateSysCatalogWithNewSchema(
-      table, ddl_log_entries, new_namespace_id, new_table_name, epoch, resp));
-
   // Remove the old name. Not present if PGSQL.
   if (table->GetTableType() != PGSQL_TABLE_TYPE &&
       (req->has_new_namespace() || req->has_new_table_name())) {
@@ -7785,10 +7786,18 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
       table_pb.mutable_ysql_ddl_txn_verifier_state(0)->set_contains_alter_table_op(true);
     }
   }
+
+  RETURN_NOT_OK(UpdateSysCatalogWithNewSchema(
+    table, ddl_log_entries, new_namespace_id, new_table_name, epoch, resp));
   // Update the in-memory state.
   TRACE("Committing in-memory state");
   l.Commit();
   lock.unlock();
+
+  TEST_SYNC_POINT("YBBackupTestWithColocationParam::AlterTableDocDBTableCommitted");
+  if (PREDICT_FALSE(FLAGS_TEST_fail_alter_table_after_commit)) {
+    return STATUS(IllegalState, "Injected failure after in-memory commit");
+  }
 
   if (need_remove_ddl_state) {
     RemoveDdlTransactionState(table->id(), {txn_id});
