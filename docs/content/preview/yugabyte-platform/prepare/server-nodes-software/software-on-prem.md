@@ -16,11 +16,14 @@ rightNav:
 
 When deploying universes using an on-premises provider, YugabyteDB Anywhere relies on you to manually create the VMs for the database nodes and provide these pre-created VMs to YugabyteDB Anywhere.
 
-With the on-premises provider, you must provide one, three, five, or more VM(s) with the following installed:
+## Prerequisites
 
-- [Supported Linux OS](../#linux-os)
-- [Additional software](../#additional-software)
-- If you are not connected to the Internet, [additional software for airgapped](../#additional-software-for-airgapped-deployment)
+- Provide one, three, five, or more VM(s) with the following installed:
+  - [Supported Linux OS](../#linux-os)
+  - [Additional software](../#additional-software)
+  - If you are not connected to the Internet, [additional software for airgapped](../#additional-software-for-airgapped-deployment)
+
+- YugabyteDB Anywhere is [installed and running](../../../install-yugabyte-platform/).
 
 ## How to prepare the nodes for use in a database cluster
 
