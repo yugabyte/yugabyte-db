@@ -195,8 +195,6 @@ class InstallNodeAgent(BaseYnpModule):
             return super().render_templates(context)
 
         node_agent_enabled = False
-        yba_url = context.get('url')
-        skip_tls_verify = not yba_url.lower().startswith('https')
         self._cleanup(context)
 
         try:
