@@ -6367,9 +6367,7 @@ RelationCacheInitializePhase3(void)
 		 * again and re-compute needNewCacheFile.
 		 */
 		Assert(OidIsValid(MyDatabaseId));
-		needNewCacheFile = !load_relcache_init_file(true) &&
-			!YbNeedAdditionalCatalogTables() &&
-			*YBCGetGFlags()->ysql_use_relcache_file;
+		needNewCacheFile = !load_relcache_init_file(true) && !YbCatalogPreloadRequired();
 	}
 
 	/*
@@ -6408,9 +6406,8 @@ RelationCacheInitializePhase3(void)
 	{
 		Assert(!YBCIsSysTablePrefetchingStarted());
 
-		bool		catalog_preload_required = (YBCIsInitDbModeEnvVarSet() ||
-										  YbNeedAdditionalCatalogTables() ||
-										  !*YBCGetGFlags()->ysql_use_relcache_file);
+		bool		catalog_preload_required = YBCIsInitDbModeEnvVarSet() ||
+											   YbCatalogPreloadRequired();
 		bool		preload_rel_cache = needNewCacheFile || catalog_preload_required;
 
 		if (preload_rel_cache)
@@ -8644,9 +8641,7 @@ load_relcache_init_file(bool shared)
 	 * TODO: either put this under a GUC variable or remove the old code
 	 * below.
 	 */
-	if (IsYugaByteEnabled() &&
-		(YbNeedAdditionalCatalogTables() ||
-		 !*YBCGetGFlags()->ysql_use_relcache_file))
+	if (IsYugaByteEnabled() && YbCatalogPreloadRequired())
 		return false;
 
 	RelCacheInitFileName(initfilename, shared);

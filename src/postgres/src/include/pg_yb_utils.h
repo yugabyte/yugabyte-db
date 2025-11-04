@@ -1503,4 +1503,7 @@ extern YbTxnError YbSqlErrorCodeToTransactionError(int sqlerrcode);
 
 extern bool yb_is_internal_connection;
 
+extern bool YbCatalogPreloadRequired();
+extern bool YbUseMinimalCatalogCachesPreload();
+
 #endif							/* PG_YB_UTILS_H */
