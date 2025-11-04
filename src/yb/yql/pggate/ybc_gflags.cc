@@ -116,7 +116,7 @@ DEFINE_NON_RUNTIME_bool(
     "as connection manager does not support SCRAM with channel binding and enabling it would "
     "cause different behaviour vis-a-vis direct connections to postgres.");
 
-DEFINE_NON_RUNTIME_bool(ysql_enable_relcache_init_optimization, false,
+DEFINE_NON_RUNTIME_bool(ysql_enable_relcache_init_optimization, true,
     "If applicable, new connections that need to rebuild relcache init file will not "
     "do it directly which can cause memory spike on such a new connection until it is "
     "disconnected. Instead an internal super user connection is made to perform the "
