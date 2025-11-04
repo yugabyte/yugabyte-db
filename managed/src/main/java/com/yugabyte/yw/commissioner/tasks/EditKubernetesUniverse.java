@@ -96,6 +96,14 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     if (isFirstTry()) {
       createValidateDiskSizeOnEdit(universe);
     }
+    if (universe.getUniverseDetails().getPrimaryCluster().isGeoPartitioned()
+        && universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL) {
+      Cluster primaryCluster = taskParams().getPrimaryCluster();
+      createTablespaceValidationOnRemoveTask(
+          primaryCluster.uuid,
+          primaryCluster.getOverallPlacement(),
+          taskParams().getPrimaryCluster().getPartitions());
+    }
   }
 
   @Override
@@ -156,9 +164,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       13) Remove the old masters and tservers.
       */
 
-      PlacementInfo primaryPI = primaryCluster.placementInfo;
+      PlacementInfo primaryPI = primaryCluster.getOverallPlacement();
       int numMasters = primaryCluster.userIntent.replicationFactor;
-      PlacementInfoUtil.selectNumMastersAZ(primaryPI, numMasters);
+      PlacementInfoUtil.selectNumMastersAZ(
+          primaryPI, numMasters, PlacementInfoUtil.getZonesForMasters(primaryCluster));
       KubernetesPlacement primaryPlacement =
           new KubernetesPlacement(primaryPI, /*isReadOnlyCluster*/ false);
 
@@ -176,7 +185,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       Cluster existingPrimaryCluster = universeDetails.getPrimaryCluster();
       PlacementInfo existingPrimaryPI = existingPrimaryCluster.placementInfo;
       int existingNumMasters = existingPrimaryCluster.userIntent.replicationFactor;
-      PlacementInfoUtil.selectNumMastersAZ(existingPrimaryPI, existingNumMasters);
+      PlacementInfoUtil.selectNumMastersAZ(
+          existingPrimaryPI,
+          existingNumMasters,
+          PlacementInfoUtil.getZonesForMasters(existingPrimaryCluster));
       KubernetesPlacement existingPrimaryPlacement =
           new KubernetesPlacement(existingPrimaryPI, /*isReadOnlyCluster*/ false);
       String existingMasterAddresses =
@@ -225,6 +237,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         taskParams()
             .upsertCluster(
                 primaryCluster.userIntent,
+                primaryCluster.getPartitions(),
                 primaryCluster.placementInfo,
                 primaryCluster.uuid,
                 primaryCluster.clusterType);
@@ -544,6 +557,12 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       createWaitForLoadBalanceTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
     }
 
+    if (newCluster.isGeoPartitioned() && newCluster.userIntent.enableYSQL) {
+      // Currently we rely on user to modify partitions correctly after doing edit.
+      // So we don't check tablespace placement, only the existence.
+      createTablespacesTasks(newCluster.getPartitions(), true);
+    }
+
     // Handle Namespaced services ownership change/delete
     addHandleKubernetesNamespacedServices(
             false /* readReplicaDelete */,
@@ -674,7 +693,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         isReadOnlyCluster);
     if (!tserversToAdd.isEmpty()) {
       installThirdPartyPackagesTaskK8s(
-          universe, InstallThirdPartySoftwareK8s.SoftwareUpgradeType.JWT_JWKS);
+          universe, InstallThirdPartySoftwareK8s.SoftwareUpgradeType.JWT_JWKS, taskParams());
     }
 
     if (!mastersToAdd.isEmpty()) {
@@ -1308,7 +1327,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       boolean isReadOnlyCluster = newCluster.clusterType.equals(ClusterType.ASYNC);
       if (!isReadOnlyCluster) {
         int numTotalMasters = newIntent.replicationFactor;
-        PlacementInfoUtil.selectNumMastersAZ(newPI, numTotalMasters);
+        PlacementInfoUtil.selectNumMastersAZ(
+            newPI, numTotalMasters, PlacementInfoUtil.getZonesForMasters(newCluster));
       }
       KubernetesPlacement newPlacement = new KubernetesPlacement(newPI, isReadOnlyCluster),
           curPlacement = new KubernetesPlacement(curPI, isReadOnlyCluster);

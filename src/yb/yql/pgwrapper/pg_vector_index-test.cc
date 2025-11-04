@@ -62,6 +62,7 @@ DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_uint32(vector_index_concurrent_reads);
 DECLARE_uint32(vector_index_concurrent_writes);
+DECLARE_uint32(vector_index_num_compactions_limit);
 DECLARE_uint64(vector_index_initial_chunk_size);
 DECLARE_uint64(vector_index_max_insert_tasks);
 
@@ -114,6 +115,7 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
     FLAGS_TEST_use_custom_varz = true;
     FLAGS_TEST_usearch_exact = true;
     FLAGS_vector_index_disable_compactions = false;
+    FLAGS_vector_index_num_compactions_limit = 0;
     switch (Engine()) {
       case VectorIndexEngine::kUsearch:
         FLAGS_vector_index_use_hnswlib = false;

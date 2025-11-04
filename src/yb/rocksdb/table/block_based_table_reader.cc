@@ -542,6 +542,8 @@ bool BloomFilterAwareFileFilter::Filter(
     const QueryOptions& options, Slice user_key, FilterKeyCache* filter_key_cache,
     TableReader* reader) const {
   auto table = down_cast<BlockBasedTable*>(reader);
+  auto* statistics = options.statistics ? options.statistics : table->rep_->ioptions.statistics;
+  StopWatchNano sw(table->rep_->ioptions.env, statistics, BLOOM_FILTER_TIME_NANOS);
   if (PREDICT_FALSE(table->rep_->filter_type != FilterType::kFixedSizeFilter)) {
     // For non fixed-size filters - take file into account. We are only using fixed-size bloom
     // filters for DocDB, so not need to support others.
@@ -1145,8 +1147,9 @@ FilterBlockReader* BlockBasedTable::ReadFilterBlock(const BlockHandle& filter_ha
   return nullptr;
 }
 
-Status BlockBasedTable::GetFixedSizeFilterBlockHandle(const Slice& filter_key,
-    BlockHandle* filter_block_handle) const {
+Status BlockBasedTable::GetFixedSizeFilterBlockHandle(
+    const Slice& filter_key, BlockHandle* filter_block_handle, Statistics* statistics) const {
+  StopWatchNano sw(rep_->ioptions.env, statistics, GET_FIXED_SIZE_FILTER_BLOCK_HANDLE_NANOS);
   // Determine block of fixed-size bloom filter using filter index. It is expected `NewIterator()`
   // is reusing `fiter` and not creating a new iterator (multi-level index case).
   BlockIter fiter;
@@ -1184,8 +1187,7 @@ Slice BlockBasedTable::GetFilterKeyFromUserKey(
 }
 
 BlockBasedTable::CachableEntry<FilterBlockReader> BlockBasedTable::GetFilter(
-    const QueryOptions& options,
-    const Slice* filter_key) const {
+    const QueryOptions& options, const Slice* filter_key) const {
   const bool is_fixed_size_filter = rep_->filter_type == FilterType::kFixedSizeFilter;
 
   // Key is required for fixed size filter.
@@ -1214,11 +1216,14 @@ BlockBasedTable::CachableEntry<FilterBlockReader> BlockBasedTable::GetFilter(
     return {};
   }
 
+  auto* statistics = options.statistics ? options.statistics : rep_->ioptions.statistics;
+
   const BlockHandle* filter_block_handle;
   // Determine filter block handle
   BlockHandle fixed_size_filter_block_handle;
   if (is_fixed_size_filter) {
-    Status s = GetFixedSizeFilterBlockHandle(*filter_key, &fixed_size_filter_block_handle);
+    Status s =
+        GetFixedSizeFilterBlockHandle(*filter_key, &fixed_size_filter_block_handle, statistics);
     if (s.ok()) {
       if (fixed_size_filter_block_handle.IsNull()) {
         // Key is beyond filter index - return stub filter.
@@ -1239,6 +1244,7 @@ BlockBasedTable::CachableEntry<FilterBlockReader> BlockBasedTable::GetFilter(
   }
 
   // Fetching from the cache
+  StopWatchNano sw(rep_->ioptions.env, statistics, GET_FILTER_BLOCK_FROM_CACHE_NANOS);
   char cache_key_buffer[block_based_table::kCacheKeyBufferSize];
   auto filter_block_cache_key = GetCacheKey(rep_->base_reader_with_cache_prefix->cache_key_prefix,
       *filter_block_handle, cache_key_buffer);
@@ -1465,7 +1471,7 @@ BlockBasedTable::ReadBlockFromFileAndMaybePutToCache(
     // Don't uncompress for now if we need to fill compressed block cache.
     // It will be uncompressed by PutDataBlockToCache.
     const auto skip_uncompress = ro.fill_cache && block_cache_compressed != nullptr;
-    StopWatch sw(rep_->ioptions.env, statistics, READ_BLOCK_GET_MICROS);
+    StopWatchMicro sw(rep_->ioptions.env, statistics, READ_BLOCK_GET_MICROS);
     RETURN_NOT_OK(block_based_table::ReadBlockFromFile(
         block_info.file_reader, rep_->footer, ro, block_info.handle, &raw_block, rep_->ioptions.env,
         rep_->mem_tracker, /* do_uncompress = */ !skip_uncompress));

@@ -62,7 +62,7 @@ In addition, your Azure application needs to have a [resource group](https://lea
 
 ```sh
 Network Contributor
-Virtual Machine Contributor 
+Virtual Machine Contributor
 ```
 
 You can optionally create a resource group for network resources if you want network interfaces to be created separately. The network resource group must have the `Network Contributor` permission.

@@ -29,7 +29,7 @@ export function backupConfigFormatter(row, configList) {
 }
 
 export function percentFormatter(cell) {
-  return <YBFormattedNumber value={cell / 100} formattedNumberStyle={'percent'} />;
+  return <YBFormattedNumber value={cell / 100} formatStyle={'percent'} />;
 }
 
 export function successStringFormatter(cell, row) {

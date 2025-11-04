@@ -222,7 +222,7 @@ RpcServerBase::RpcServerBase(string name, const ServerBaseOptions& options,
     auto root = MemTracker::GetRootTracker();
     root->SetPollChildrenConsumptionFunctors([]() {
           for (auto& tracker : common_mem_trackers->trackers) {
-            tracker->UpdateConsumption();
+            tracker->MaybeUpdateConsumption();
           }
         });
   }

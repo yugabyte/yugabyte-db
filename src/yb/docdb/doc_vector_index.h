@@ -22,6 +22,7 @@
 
 #include "yb/qlexpr/qlexpr_fwd.h"
 
+#include "yb/rocksdb/options.h"
 #include "yb/rocksdb/rocksdb_fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"
@@ -29,6 +30,7 @@
 #include "yb/tablet/tablet_fwd.h"
 
 #include "yb/util/kv_util.h"
+#include "yb/util/metrics.h"
 
 #include "yb/vector_index/vector_index_fwd.h"
 
@@ -122,7 +124,7 @@ struct DocVectorIndexThreadPools {
   rpc::ThreadPool* insert_thread_pool;
 
   // Used for compactions.
-  PriorityThreadPool* compaction_thread_pool;
+  PriorityThreadPoolTokenPtr compaction_token;
 };
 using DocVectorIndexThreadPoolProvider = std::function<DocVectorIndexThreadPools()>;
 
@@ -137,6 +139,7 @@ Result<DocVectorIndexPtr> CreateDocVectorIndex(
     const qlexpr::IndexInfo& index_info,
     DocVectorIndexedTableContextPtr indexed_table_context,
     const hnsw::BlockCachePtr& block_cache,
-    const MemTrackerPtr& mem_tracker);
+    const MemTrackerPtr& mem_tracker,
+    const MetricEntityPtr& metric_entity);
 
 }  // namespace yb::docdb

@@ -1341,6 +1341,22 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable the Kubernetes provider quick validation",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableAwsProviderValidation =
+      new ConfKeyInfo<>(
+          "yb.provider.aws_provider_validation",
+          ScopeType.GLOBAL,
+          "AWS provider validation",
+          "Enable AWS Provider quick validation",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableOnPremProviderValidation =
+      new ConfKeyInfo<>(
+          "yb.provider.onprem_provider_validation",
+          ScopeType.GLOBAL,
+          "OnPrem provider validation",
+          "Enable OnPrem Provider quick validation",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> maxYbcUpgradePollResultTries =
       new ConfKeyInfo<>(
           "ybc.upgrade.poll_result_tries",
@@ -1728,14 +1744,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ScopeType.GLOBAL,
           "Enable Node Agent Message Compression",
           "Enable compression for message sent over node agent channel.",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> nodeAgentDisableBgInstallPostMigration =
-      new ConfKeyInfo<>(
-          "yb.node_agent.disable_bg_install_post_migration",
-          ScopeType.GLOBAL,
-          "Disable Node Agent Background Installation After Migration",
-          "Install node agent synchronously during a task instead after migration if it is true.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableTaskRuntimeInfoOnRetry =

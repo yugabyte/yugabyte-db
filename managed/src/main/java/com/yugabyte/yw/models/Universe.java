@@ -1299,7 +1299,7 @@ public class Universe extends Model {
       UserIntent userIntent = Json.fromJson(detailsJson.get("userIntent"), UserIntent.class);
       PlacementInfo placementInfo =
           Json.fromJson(detailsJson.get("placementInfo"), PlacementInfo.class);
-      universe.universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
+      universe.universeDetails.upsertPrimaryCluster(userIntent, null, placementInfo);
     }
     return universe;
   }

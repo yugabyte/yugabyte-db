@@ -1768,4 +1768,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Time to sleep after upgrading tservers in each AZ",
           ConfDataType.LongType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> checkTablespacesBeforeEdit =
+      new ConfKeyInfo<>(
+          "yb.checks.tablespaces_before_edit.enabled",
+          ScopeType.UNIVERSE,
+          "Check if edit operation will affect existing tablespaces",
+          "Check if edit operation will affect existing tablespaces",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

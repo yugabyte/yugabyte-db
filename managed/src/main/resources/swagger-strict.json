@@ -2315,9 +2315,6 @@
         "kubernetesUpgradeSupported" : {
           "type" : "boolean"
         },
-        "mastersInDefaultRegion" : {
-          "type" : "boolean"
-        },
         "nextClusterIndex" : {
           "format" : "int32",
           "type" : "integer"
@@ -2810,7 +2807,8 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "TablespaceValidationOnRemove"
           ],
           "type" : "string"
         },
@@ -4389,6 +4387,18 @@
       ],
       "type" : "object"
     },
+    "BearerToken" : {
+      "properties" : {
+        "token" : {
+          "description" : "Bearer Token",
+          "type" : "string"
+        }
+      },
+      "required" : [
+        "token"
+      ],
+      "type" : "object"
+    },
     "BootstrapBackupParams" : {
       "description" : "Backup parameters for bootstrapping",
       "properties" : {
@@ -5008,9 +5018,6 @@
         "kubernetesUpgradeSupported" : {
           "type" : "boolean"
         },
-        "mastersInDefaultRegion" : {
-          "type" : "boolean"
-        },
         "nextClusterIndex" : {
           "format" : "int32",
           "type" : "integer"
@@ -5509,7 +5516,8 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "TablespaceValidationOnRemove"
           ],
           "type" : "string"
         },
@@ -5834,6 +5842,13 @@
             "ADDON"
           ],
           "type" : "string"
+        },
+        "geoPartitions" : {
+          "description" : "WARNING: This is a preview API that could change. Geo partitions for cluster",
+          "items" : {
+            "$ref" : "#/definitions/GeoPartitionInfo"
+          },
+          "type" : "array"
         },
         "index" : {
           "format" : "int32",
@@ -8073,9 +8088,6 @@
         "kubernetesUpgradeSupported" : {
           "type" : "boolean"
         },
-        "mastersInDefaultRegion" : {
-          "type" : "boolean"
-        },
         "nextClusterIndex" : {
           "format" : "int32",
           "type" : "integer"
@@ -8568,7 +8580,8 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "TablespaceValidationOnRemove"
           ],
           "type" : "string"
         },
@@ -8863,9 +8876,6 @@
             "type" : "string"
           },
           "type" : "object"
-        },
-        "mastersInDefaultRegion" : {
-          "type" : "boolean"
         },
         "nextClusterIndex" : {
           "format" : "int32",
@@ -9365,7 +9375,8 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "TablespaceValidationOnRemove"
           ],
           "type" : "string"
         },
@@ -9458,6 +9469,28 @@
         "TSERVER" : {
           "$ref" : "#/definitions/GFlagValidationDetails",
           "description" : "WARNING: This is a preview API that could change. Validation details for tserver"
+        }
+      },
+      "type" : "object"
+    },
+    "GeoPartitionInfo" : {
+      "description" : "WARNING: This is a preview API that could change. Information about Geo partition",
+      "properties" : {
+        "defaultPartition" : {
+          "type" : "boolean"
+        },
+        "name" : {
+          "type" : "string"
+        },
+        "placement" : {
+          "$ref" : "#/definitions/PlacementInfo"
+        },
+        "tableSpaceInfo" : {
+          "$ref" : "#/definitions/TableSpaceInfo"
+        },
+        "uuid" : {
+          "format" : "uuid",
+          "type" : "string"
         }
       },
       "type" : "object"
@@ -10282,9 +10315,6 @@
         "kubernetesUpgradeSupported" : {
           "type" : "boolean"
         },
-        "mastersInDefaultRegion" : {
-          "type" : "boolean"
-        },
         "nextClusterIndex" : {
           "format" : "int32",
           "type" : "integer"
@@ -10780,7 +10810,8 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "TablespaceValidationOnRemove"
           ],
           "type" : "string"
         },
@@ -11001,9 +11032,6 @@
           "type" : "string"
         },
         "kubernetesUpgradeSupported" : {
-          "type" : "boolean"
-        },
-        "mastersInDefaultRegion" : {
           "type" : "boolean"
         },
         "nextClusterIndex" : {
@@ -11498,7 +11526,8 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "TablespaceValidationOnRemove"
           ],
           "type" : "string"
         },
@@ -11746,7 +11775,8 @@
               "description" : "Auth Type",
               "enum" : [
                 "BasicAuth",
-                "NoAuth"
+                "NoAuth",
+                "BearerToken"
               ],
               "type" : "string"
             },
@@ -13786,6 +13816,78 @@
       ],
       "type" : "object"
     },
+    "OTLPConfig" : {
+      "allOf" : [
+        {
+          "$ref" : "#/definitions/TelemetryProviderConfig"
+        },
+        {
+          "description" : "OTLP Config",
+          "properties" : {
+            "authType" : {
+              "description" : "Auth Type",
+              "enum" : [
+                "BasicAuth",
+                "NoAuth",
+                "BearerToken"
+              ],
+              "type" : "string"
+            },
+            "basicAuth" : {
+              "$ref" : "#/definitions/BasicAuthCredentials",
+              "description" : "Basic Auth Credentials"
+            },
+            "bearerToken" : {
+              "$ref" : "#/definitions/BearerToken",
+              "description" : "Bearer Token"
+            },
+            "compression" : {
+              "description" : "Compression",
+              "enum" : [
+                "gzip",
+                "none",
+                "snappy",
+                "zstd"
+              ],
+              "type" : "string"
+            },
+            "endpoint" : {
+              "description" : "End Point. For HTTP protcol logs export \"/v1/logs\" will be appended.",
+              "type" : "string"
+            },
+            "headers" : {
+              "additionalProperties" : {
+                "type" : "string"
+              },
+              "description" : "Headers",
+              "type" : "object"
+            },
+            "logsEndpoint" : {
+              "description" : "Logs endpoint. The target URL to send log data to (e.g.: https://example.com:4318/v1/logs). If this setting is present the endpoint setting is ignored logs. Allowed only for HTTP protocol",
+              "type" : "string"
+            },
+            "protocol" : {
+              "description" : "Protocol",
+              "enum" : [
+                "gRPC",
+                "HTTP"
+              ],
+              "type" : "string"
+            },
+            "timeoutSeconds" : {
+              "description" : "Timeout in seconds",
+              "format" : "int32",
+              "type" : "integer"
+            }
+          },
+          "required" : [
+            "authType",
+            "endpoint"
+          ],
+          "type" : "object"
+        }
+      ]
+    },
     "OidcGroupToYbaRolesData" : {
       "properties" : {
         "oidcGroupToYbaRolesPairs" : {
@@ -15196,9 +15298,6 @@
         "kubernetesUpgradeSupported" : {
           "type" : "boolean"
         },
-        "mastersInDefaultRegion" : {
-          "type" : "boolean"
-        },
         "nextClusterIndex" : {
           "format" : "int32",
           "type" : "integer"
@@ -15691,7 +15790,8 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "TablespaceValidationOnRemove"
           ],
           "type" : "string"
         },
@@ -16218,9 +16318,6 @@
           },
           "type" : "object"
         },
-        "mastersInDefaultRegion" : {
-          "type" : "boolean"
-        },
         "nextClusterIndex" : {
           "format" : "int32",
           "type" : "integer"
@@ -16719,7 +16816,8 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "TablespaceValidationOnRemove"
           ],
           "type" : "string"
         },
@@ -17050,9 +17148,6 @@
           "type" : "string"
         },
         "kubernetesUpgradeSupported" : {
-          "type" : "boolean"
-        },
-        "mastersInDefaultRegion" : {
           "type" : "boolean"
         },
         "nextClusterIndex" : {
@@ -17547,7 +17642,8 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "TablespaceValidationOnRemove"
           ],
           "type" : "string"
         },
@@ -18561,9 +18657,6 @@
         "kubernetesUpgradeSupported" : {
           "type" : "boolean"
         },
-        "mastersInDefaultRegion" : {
-          "type" : "boolean"
-        },
         "nextClusterIndex" : {
           "format" : "int32",
           "type" : "integer"
@@ -19056,7 +19149,8 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "TablespaceValidationOnRemove"
           ],
           "type" : "string"
         },
@@ -19696,7 +19790,8 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "TablespaceValidationOnRemove"
           ],
           "type" : "string"
         },
@@ -20095,7 +20190,8 @@
               "DeleteCapacityReservation",
               "DisablePitrConfig",
               "EnablePitrConfig",
-              "UpdateAndPersistKubernetesImmutableYbc"
+              "UpdateAndPersistKubernetesImmutableYbc",
+              "TablespaceValidationOnRemove"
             ],
             "type" : "string"
           },
@@ -20421,9 +20517,6 @@
           "type" : "string"
         },
         "kubernetesUpgradeSupported" : {
-          "type" : "boolean"
-        },
-        "mastersInDefaultRegion" : {
           "type" : "boolean"
         },
         "nextClusterIndex" : {
@@ -20918,7 +21011,8 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "TablespaceValidationOnRemove"
           ],
           "type" : "string"
         },
@@ -21516,9 +21610,6 @@
         "kubernetesUpgradeSupported" : {
           "type" : "boolean"
         },
-        "mastersInDefaultRegion" : {
-          "type" : "boolean"
-        },
         "nextClusterIndex" : {
           "format" : "int32",
           "type" : "integer"
@@ -22011,7 +22102,8 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "TablespaceValidationOnRemove"
           ],
           "type" : "string"
         },
@@ -22833,9 +22925,6 @@
         "kubernetesUpgradeSupported" : {
           "type" : "boolean"
         },
-        "mastersInDefaultRegion" : {
-          "type" : "boolean"
-        },
         "nextClusterIndex" : {
           "format" : "int32",
           "type" : "integer"
@@ -23328,7 +23417,8 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "TablespaceValidationOnRemove"
           ],
           "type" : "string"
         },
@@ -23504,9 +23594,6 @@
         "kubernetesUpgradeSupported" : {
           "type" : "boolean"
         },
-        "mastersInDefaultRegion" : {
-          "type" : "boolean"
-        },
         "nextClusterIndex" : {
           "format" : "int32",
           "type" : "integer"
@@ -23999,7 +24086,8 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "TablespaceValidationOnRemove"
           ],
           "type" : "string"
         },
@@ -24426,9 +24514,6 @@
         },
         "itestS3PackagePath" : {
           "type" : "string"
-        },
-        "mastersInDefaultRegion" : {
-          "type" : "boolean"
         },
         "nextClusterIndex" : {
           "format" : "int32",
@@ -24925,7 +25010,8 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "TablespaceValidationOnRemove"
           ],
           "type" : "string"
         },
@@ -25064,9 +25150,6 @@
         },
         "itestS3PackagePath" : {
           "type" : "string"
-        },
-        "mastersInDefaultRegion" : {
-          "type" : "boolean"
         },
         "nextClusterIndex" : {
           "format" : "int32",
@@ -25560,7 +25643,8 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "TablespaceValidationOnRemove"
           ],
           "type" : "string"
         },
@@ -25699,9 +25783,6 @@
         },
         "itestS3PackagePath" : {
           "type" : "string"
-        },
-        "mastersInDefaultRegion" : {
-          "type" : "boolean"
         },
         "nextClusterIndex" : {
           "format" : "int32",
@@ -26195,7 +26276,8 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "TablespaceValidationOnRemove"
           ],
           "type" : "string"
         },
@@ -26845,9 +26927,6 @@
         "kubernetesUpgradeSupported" : {
           "type" : "boolean"
         },
-        "mastersInDefaultRegion" : {
-          "type" : "boolean"
-        },
         "nextClusterIndex" : {
           "format" : "int32",
           "type" : "integer"
@@ -27340,7 +27419,8 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "TablespaceValidationOnRemove"
           ],
           "type" : "string"
         },
@@ -27967,9 +28047,6 @@
         "kubernetesUpgradeSupported" : {
           "type" : "boolean"
         },
-        "mastersInDefaultRegion" : {
-          "type" : "boolean"
-        },
         "nextClusterIndex" : {
           "format" : "int32",
           "type" : "integer"
@@ -28462,7 +28539,8 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "TablespaceValidationOnRemove"
           ],
           "type" : "string"
         },

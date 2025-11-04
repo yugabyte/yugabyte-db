@@ -1,0 +1,56 @@
+CALL TEST_reset();
+SELECT yb_xcluster_ddl_replication.get_replication_role();
+ get_replication_role 
+----------------------
+ source
+(1 row)
+
+CREATE TABLE products (
+    id INT PRIMARY KEY,
+    category TEXT,
+    price NUMERIC
+);
+CREATE MATERIALIZED VIEW product_summary AS
+  SELECT category, COUNT(*) as item_count
+  FROM products
+  GROUP BY category;
+-- TODO(#28514): Uncomment this test case as part of new materialized view implementation
+-- COMMENT ON MATERIALIZED VIEW product_summary
+--   IS 'Stores the total count of products per category.';
+ALTER MATERIALIZED VIEW product_summary RENAME TO product_inventory;
+REFRESH MATERIALIZED VIEW product_inventory;
+DROP MATERIALIZED VIEW product_inventory;
+SELECT yb_data FROM public.TEST_filtered_ddl_queue() ORDER BY ddl_end_time;
+                                                                                                                            yb_data                                                                                                                            
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"user": "yugabyte", "query": "CREATE TABLE products (\n    id INT PRIMARY KEY,\n    category TEXT,\n    price NUMERIC\n)", "schema": "public", "version": 1, "command_tag": "CREATE TABLE", "new_rel_map": [{"rel_name": "products", "relfile_oid": "***"}]}
+(1 row)
+
+-- Test dropping materialized views using other DROP commands
+-- DROP SCHEMA
+CREATE SCHEMA IF NOT EXISTS permanent_schema;
+CREATE TABLE permanent_schema.my_table (id INT);
+CREATE MATERIALIZED VIEW permanent_schema.my_mview AS SELECT 'hello' AS greeting;
+DROP SCHEMA permanent_schema CASCADE;
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to materialized view permanent_schema.my_mview
+drop cascades to table permanent_schema.my_table
+ERROR:  unsupported drop of materialized view permanent_schema.my_mview
+DETAIL:  This database is being replicated using xCluster automatic mode, which only supports dropping materialized views via DROP MATERIALIZED VIEW.
+HINT:  Drop materialized views using DROP MATERIALIZED VIEW.
+-- DROP ROLE
+CREATE ROLE drop_me_role;
+SET ROLE drop_me_role;
+CREATE TEMP TABLE my_temp_object (id INT);
+CREATE MATERIALIZED VIEW my_mview AS SELECT 'hello' AS greeting;
+RESET ROLE;
+DROP OWNED BY drop_me_role;
+ERROR:  unsupported drop of materialized view public.my_mview
+DETAIL:  This database is being replicated using xCluster automatic mode, which only supports dropping materialized views via DROP MATERIALIZED VIEW.
+HINT:  Drop materialized views using DROP MATERIALIZED VIEW.
+select * from TEST_verify_replicated_ddls();
+ test_verify_replicated_ddls 
+-----------------------------
+ t
+(1 row)
+

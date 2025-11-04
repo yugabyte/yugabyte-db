@@ -32,6 +32,7 @@ import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.yb.client.YBClient;
 
 @Slf4j
@@ -116,6 +117,8 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
       Map<UUID, List<NodeDetails>> nodesGroupedByAZs,
       GFlagsValidation.GFlagsValidationErrors gFlagsValidationErrors) {
 
+    boolean hasAnyFailure = false;
+
     for (Map.Entry<UUID, List<NodeDetails>> nodesMappedWithAZ : nodesGroupedByAZs.entrySet()) {
       UUID azUuid = nodesMappedWithAZ.getKey();
       List<NodeDetails> nodesInAZ = nodesMappedWithAZ.getValue();
@@ -124,13 +127,19 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
         validateGFlagsForAZ(
             azUuid, nodesInAZ, cluster, newCluster, universe, gFlagsValidationErrors);
         log.info("Completed gflags validation for AZ {}", azUuid);
-        return;
       } catch (Exception e) {
-        log.warn("Failed to validate gflags in AZ {} (will retry on next AZ)", azUuid, e);
+        log.warn("Failed to validate gflags in AZ {} (going to next AZ)", azUuid, e);
+        hasAnyFailure = true;
       }
     }
-    throw new PlatformServiceException(
-        BAD_REQUEST, "Failed to validate gflags on all AZs in cluster " + cluster.uuid);
+
+    // If any AZ failed validation, throw exception
+    if (hasAnyFailure) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Failed to validate gflags in one or more AZs in cluster " + cluster.uuid);
+    }
+
+    log.info(String.format("Completed gflags validation for all AZs in cluster %s", cluster.uuid));
   }
 
   private void validateGFlagsForAZ(
@@ -162,16 +171,16 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
             buildGFlagsForValidation(
                 masterNode, cluster, newCluster, universe, ServerType.MASTER, azUuid);
       } catch (Exception e) {
-        log.error("Error in collecting master gflags from node: {}", e);
+        log.error(
+            "Error in collecting master gflags from node {} in AZ {}",
+            masterNode.nodeName,
+            azUuid,
+            e);
         throw new PlatformServiceException(
             BAD_REQUEST,
             String.format(
-                "Failed to collect master gflags from node"
-                    + masterNode.nodeName
-                    + "in AZ"
-                    + azUuid
-                    + ": "
-                    + e));
+                "Failed to collect master gflags from node '%s' in AZ '%s': %s",
+                masterNode.nodeName, azUuid, e.getMessage()));
       }
     }
 
@@ -181,16 +190,16 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
             buildGFlagsForValidation(
                 tserverNode, cluster, newCluster, universe, ServerType.TSERVER, azUuid);
       } catch (Exception e) {
-        log.error("Error in collecting tserver gflags from node: {}", e);
+        log.error(
+            "Error in collecting tserver gflags from node {} in AZ {}",
+            tserverNode.nodeName,
+            azUuid,
+            e);
         throw new PlatformServiceException(
             BAD_REQUEST,
             String.format(
-                "Failed to collect tserver gflags from node"
-                    + tserverNode.nodeName
-                    + "in AZ"
-                    + azUuid
-                    + ": "
-                    + e));
+                "Failed to collect tserver gflags from node '%s' in AZ '%s': %s",
+                tserverNode.nodeName, azUuid, e.getMessage()));
       }
     }
 
@@ -286,14 +295,59 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
       }
     }
 
-    nodeManager.processGFlags(
-        config,
-        universe,
-        node,
-        getAnsibleConfigureServerParams(
-            node, serverType, UpgradeTaskType.GFlags, UpgradeTaskParams.UpgradeTaskSubType.None),
-        gflags,
-        useHostname);
+    try {
+      nodeManager.processGFlags(
+          config,
+          universe,
+          node,
+          getAnsibleConfigureServerParams(
+              node, serverType, UpgradeTaskType.GFlags, UpgradeTaskParams.UpgradeTaskSubType.None),
+          gflags,
+          useHostname);
+    } catch (Exception e) {
+      // At this point - already caught an exception, now checking if CSV related.
+      if (e.getMessage() != null && e.getMessage().contains("CSV")) {
+        List<String> csvGflags =
+            gflags.keySet().stream()
+                .filter(key -> key.endsWith("_csv"))
+                .collect(Collectors.toList());
+
+        if (!csvGflags.isEmpty()) {
+          String csvGflagDetails =
+              csvGflags.stream()
+                  .map(
+                      key ->
+                          key
+                              + "='"
+                              + RedactingService.redactSensitiveInfoInString(
+                                  gflags.get(key), taskParams().ybSoftwareVersion, gFlagsValidation)
+                              + "'")
+                  .collect(Collectors.joining(", "));
+
+          log.error(
+              "Failed to process CSV gflag(s) for {} on node {} in AZ {}. CSV gflags: [{}]",
+              serverType,
+              node.nodeName,
+              azUuid,
+              csvGflagDetails,
+              e);
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              String.format(
+                  "Failed to process CSV gflag(s) for %s on node '%s': %s. CSV gflag(s) present:"
+                      + " [%s]. Please check for malformed CSV values (e.g., unclosed quotes,"
+                      + " invalid format).",
+                  serverType, node.nodeName, e.getMessage(), csvGflagDetails));
+        }
+      }
+      log.error(
+          "Failed to process gflags for {} on node {} in AZ {}",
+          serverType,
+          node.nodeName,
+          azUuid,
+          e);
+      throw e;
+    }
 
     log.info(
         "Combined gflags for server type {} on node {} in AZ {}: {}",
@@ -313,9 +367,10 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
       serverGFlagsValidationErrors = gFlagsValidation.validateGFlags(client, gflags, serverType);
       return serverGFlagsValidationErrors;
     } catch (Exception e) {
-      log.error("Error in validating gflags with YBClient: {}", e);
+      log.error("Error in validating gflags with YBClient", e);
       throw new PlatformServiceException(
-          BAD_REQUEST, String.format("Failed to validate gflags with YBClient: {}", e));
+          BAD_REQUEST,
+          String.format("Failed to validate gflags with YBClient: %s", e.getMessage()));
     }
   }
 
@@ -384,10 +439,8 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
             "Shell response returned with non-zero exit code with message: {}",
             RedactingService.redactSensitiveInfoInString(
                 response.message, taskParams().ybSoftwareVersion, gFlagsValidation));
-        // An existing flag's value was invalid or a flag not recognised by the yb-server binary was
-        // sent (unknown command line flag)
-        if ((response.message.contains("Invalid value") && response.message.contains("for flag"))
-            || response.message.contains("unknown command line flag")) {
+        // All gflag validation errors from the binary start with "ERROR" prefix.
+        if (response.message.contains("ERROR")) {
           serverGFlagsValidationErrors.put(
               serverType.toString(),
               "Invalid gflags detected. "
@@ -402,14 +455,20 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
         }
       }
     } catch (Exception e) {
-      log.warn(
-          "Error while validating gflags on node: {} using yb-server CLI. {}",
-          node.nodeName,
+      String fullExceptionString = ExceptionUtils.getStackTrace(e);
+      String redactedFullException =
           RedactingService.redactSensitiveInfoInString(
-              e.toString(), taskParams().ybSoftwareVersion, gFlagsValidation));
+              fullExceptionString, taskParams().ybSoftwareVersion, gFlagsValidation);
+
+      log.warn(
+          "Error while validating gflags on node {} using yb-server CLI:\n{}",
+          node.nodeName,
+          redactedFullException);
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR,
-          "Error validating flags "
+          "Error validating flags on node '"
+              + node.nodeName
+              + "': "
               + RedactingService.redactSensitiveInfoInString(
                   e.getMessage(), taskParams().ybSoftwareVersion, gFlagsValidation));
     }

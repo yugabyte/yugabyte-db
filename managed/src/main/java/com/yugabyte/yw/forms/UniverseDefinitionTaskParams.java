@@ -220,7 +220,13 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @ApiModelProperty public boolean useNewHelmNamingStyle = false;
 
   // Place all masters into default region flag.
-  @ApiModelProperty public boolean mastersInDefaultRegion = true;
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2025.2")
+  @ApiModelProperty(
+      value =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2025.2.</b> "
+              + "With geo partitioning support, default region is replaced with default partition")
+  @Deprecated
+  public boolean mastersInDefaultRegion = true;
 
   // true iff created through a k8s CR and controlled by the
   // Kubernetes Operator.
@@ -443,6 +449,13 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.27.0.0")
     private CapacityReservationState capacityReservationState;
 
+    @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.27.0.0")
+    @Getter
+    @Setter
+    @ApiModelProperty(
+        value = "WARNING: This is a preview API that could change. Geo partitions for cluster")
+    private List<PartitionInfo> partitions;
+
     /** Default to PRIMARY. */
     private Cluster() {
       this(ClusterType.PRIMARY, new UserIntent());
@@ -516,7 +529,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       if (uuid == null) {
         throw new IllegalStateException("Cluster uuid should not be null");
       }
-      if (placementInfo == null) {
+      if (placementInfo == null && CollectionUtils.isEmpty(partitions)) {
         throw new IllegalStateException("Placement should be provided");
       }
       checkDeviceInfo(userIntent.deviceInfo);
@@ -635,6 +648,39 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
                   + storageType.name());
         }
       }
+    }
+
+    @JsonIgnore
+    public boolean isGeoPartitioned() {
+      return partitions != null && partitions.size() > 1;
+    }
+
+    @JsonIgnore
+    public PartitionInfo getDefaultPartition() {
+      return partitions == null
+          ? null
+          : partitions.stream().filter(g -> g.defaultPartition).findFirst().get();
+    }
+
+    @JsonIgnore
+    public PlacementInfo getOverallPlacement() {
+      if (!CollectionUtils.isEmpty(partitions)) {
+        PlacementInfo result = new PlacementInfo();
+        // TODO Sort?
+        for (PartitionInfo partition : partitions) {
+          partition
+              .getPlacement()
+              .azStream()
+              .forEach(
+                  az -> {
+                    int rf = partition.isDefaultPartition() ? az.replicationFactor : 0;
+                    PlacementInfoUtil.addPlacementZone(
+                        az.uuid, result, rf, az.numNodesInAZ, az.isAffinitized);
+                  });
+        }
+        return result;
+      }
+      return placementInfo;
     }
   }
 
@@ -825,6 +871,18 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     public boolean allNull() {
       return Stream.of(this.getAzOverrides(), this.getPerProcess()).allMatch(Objects::isNull);
     }
+  }
+
+  @ApiModel(
+      description =
+          "WARNING: This is a preview API that could change." + " Information about Geo partition")
+  @Data
+  public static class PartitionInfo {
+    @ApiModelProperty UUID uuid = UUID.randomUUID();
+    @Constraints.Required() @ApiModelProperty private String name;
+    @ApiModelProperty private boolean defaultPartition;
+    @ApiModelProperty private PlacementInfo placement;
+    @ApiModelProperty private int replicationFactor;
   }
 
   /** The user defined intent for the universe. */
@@ -1354,33 +1412,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return false;
     }
 
-    public boolean onlyRegionsChanged(UserIntent other) {
-      if (universeName.equals(other.universeName)
-          && provider.equals(other.provider)
-          && providerType == other.providerType
-          && replicationFactor == other.replicationFactor
-          && newRegionsAdded(regionList, other.regionList)
-          && Objects.equals(preferredRegion, other.preferredRegion)
-          && instanceType.equals(other.instanceType)
-          && numNodes == other.numNodes
-          && ybSoftwareVersion.equals(other.ybSoftwareVersion)
-          && (accessKeyCode == null || accessKeyCode.equals(other.accessKeyCode))
-          && assignPublicIP == other.assignPublicIP
-          && useSpotInstance == other.useSpotInstance
-          && spotPrice.equals(other.spotPrice)
-          && assignStaticPublicIP == other.assignStaticPublicIP
-          && useTimeSync == other.useTimeSync
-          && dedicatedNodes == other.dedicatedNodes
-          && Objects.equals(masterInstanceType, other.masterInstanceType)) {
-        return true;
-      }
-      return false;
-    }
-
-    private static boolean newRegionsAdded(List<UUID> left, List<UUID> right) {
-      return (new HashSet<>(left)).containsAll(new HashSet<>(right));
-    }
-
     /**
      * Helper API to check if the set of regions is the same in two lists. Does not validate that
      * the UUIDs correspond to actual, existing Regions.
@@ -1456,7 +1487,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
    * @param placementInfo PlacementInfo describing the placement of the primary cluster.
    * @return the updated/inserted primary cluster.
    */
-  public Cluster upsertPrimaryCluster(UserIntent userIntent, PlacementInfo placementInfo) {
+  public Cluster upsertPrimaryCluster(
+      UserIntent userIntent, List<PartitionInfo> partitions, PlacementInfo placementInfo) {
     Cluster primaryCluster = getPrimaryCluster();
     if (primaryCluster != null) {
       if (userIntent != null) {
@@ -1465,10 +1497,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       if (placementInfo != null) {
         primaryCluster.placementInfo = placementInfo;
       }
+      primaryCluster.setPartitions(partitions);
     } else {
       primaryCluster =
           new Cluster(ClusterType.PRIMARY, (userIntent == null) ? new UserIntent() : userIntent);
       primaryCluster.placementInfo = placementInfo;
+      primaryCluster.setPartitions(partitions);
       clusters.add(primaryCluster);
     }
     return primaryCluster;
@@ -1481,12 +1515,16 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
    *
    * @param userIntent UserIntent describing the cluster.
    * @param placementInfo PlacementInfo describing the placement of the cluster.
+   * @param partitions List of geo partition infos.
    * @param clusterUuid uuid of the cluster we want to change.
    * @return the updated/inserted cluster.
    */
   public Cluster upsertCluster(
-      UserIntent userIntent, PlacementInfo placementInfo, UUID clusterUuid) {
-    return upsertCluster(userIntent, placementInfo, clusterUuid, ClusterType.ASYNC);
+      UserIntent userIntent,
+      List<PartitionInfo> partitions,
+      PlacementInfo placementInfo,
+      UUID clusterUuid) {
+    return upsertCluster(userIntent, partitions, placementInfo, clusterUuid, ClusterType.ASYNC);
   }
 
   /**
@@ -1496,12 +1534,14 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
    *
    * @param userIntent UserIntent describing the cluster.
    * @param placementInfo PlacementInfo describing the placement of the cluster.
+   * @param partitions List of geo partition infos.
    * @param clusterUuid uuid of the cluster we want to change.
    * @param clusterType type of the cluster we want to change.
    * @return the updated/inserted cluster.
    */
   public Cluster upsertCluster(
       UserIntent userIntent,
+      List<PartitionInfo> partitions,
       PlacementInfo placementInfo,
       UUID clusterUuid,
       ClusterType clusterType) {
@@ -1513,9 +1553,11 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       if (placementInfo != null) {
         cluster.placementInfo = placementInfo;
       }
+      cluster.setPartitions(partitions);
     } else {
       cluster = new Cluster(clusterType, userIntent == null ? new UserIntent() : userIntent);
       cluster.placementInfo = placementInfo;
+      cluster.setPartitions(partitions);
       clusters.add(cluster);
     }
     cluster.setUuid(clusterUuid);
@@ -1684,7 +1726,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       if (cluster.userIntent.enableLB) {
         // Get AZs in cluster
         List<PlacementInfo.PlacementAZ> azList =
-            PlacementInfoUtil.getAZsSortedByNumNodes(cluster.placementInfo);
+            PlacementInfoUtil.getAZsSortedByNumNodes(cluster.getOverallPlacement());
         for (PlacementInfo.PlacementAZ placementAZ : azList) {
           String lbName = placementAZ.lbName;
           AvailabilityZone az = AvailabilityZone.getOrBadRequest(placementAZ.uuid);

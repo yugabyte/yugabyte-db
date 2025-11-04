@@ -4,7 +4,6 @@ import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
@@ -29,82 +28,17 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class LokiConfig extends TelemetryProviderConfig {
 
-  public enum LokiAuthType {
-    BasicAuth("BasicAuth"),
-    NoAuth("NoAuth");
-
-    private final String state;
-
-    LokiAuthType(String state) {
-      this.state = state;
-    }
-
-    @Override
-    public String toString() {
-      return this.name();
-    }
-
-    public String getState() {
-      return this.state;
-    }
-
-    public static LokiAuthType fromString(String input) {
-      for (LokiAuthType state : LokiAuthType.values()) {
-        if (state.state.equalsIgnoreCase(input)) {
-          return state;
-        }
-      }
-      throw new IllegalArgumentException(
-          "No enum constant " + LokiAuthType.class.getName() + "." + input);
-    }
-  }
-
-  public static class BasicAuthCredentials {
-    @ApiModelProperty(value = "Username", accessMode = READ_WRITE, required = true)
-    private String username;
-
-    @ApiModelProperty(value = "Password", accessMode = READ_WRITE, required = true)
-    private String password;
-
-    @JsonIgnore
-    @ApiModelProperty(hidden = true)
-    public boolean isEmpty() {
-      // Check if username or password is null or empty
-      return username == null || username.isEmpty() || password == null || password.isEmpty();
-    }
-
-    public BasicAuthCredentials() {}
-
-    public BasicAuthCredentials(String username, String password) {
-      this.username = username;
-      this.password = password;
-    }
-
-    public String getUsername() {
-      return username;
-    }
-
-    public String getPassword() {
-      return password;
-    }
-
-    @Override
-    public String toString() {
-      return "BasicAuthCredentials{" + "username='" + username + '\'' + ", password='******'" + '}';
-    }
-  }
-
   @ApiModelProperty(value = "End Point", accessMode = READ_WRITE, required = true)
   private String endpoint;
 
   @ApiModelProperty(value = "Auth Type", accessMode = READ_WRITE, required = true)
-  private LokiAuthType authType;
+  private AuthCredentials.AuthType authType;
 
   @ApiModelProperty(value = "Organization/Tenant ID", accessMode = READ_WRITE)
   private String organizationID;
 
   @ApiModelProperty(value = "Basic Auth Credentials", accessMode = READ_WRITE)
-  private BasicAuthCredentials basicAuth;
+  private AuthCredentials.BasicAuthCredentials basicAuth;
 
   public LokiConfig() {
     setType(ProviderType.LOKI);
@@ -121,14 +55,9 @@ public class LokiConfig extends TelemetryProviderConfig {
       throw new PlatformServiceException(BAD_REQUEST, "Loki auth type is required.");
     }
 
-    if (authType == LokiAuthType.BasicAuth && (basicAuth == null || basicAuth.isEmpty())) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Credentials are required when auth type is basic.");
-    }
+    AuthCredentials.checkBasicAuthCredentials(authType, basicAuth);
 
-    if (authType != LokiAuthType.BasicAuth && basicAuth != null && !basicAuth.isEmpty()) {
-      throw new PlatformServiceException(BAD_REQUEST, "Basic auth credentials are not required.");
-    }
+    AuthCredentials.bearerTokenNotSupported(authType);
 
     if (endpoint.endsWith("/")) {
       endpoint = endpoint.substring(0, endpoint.length() - 1);
@@ -160,7 +89,7 @@ public class LokiConfig extends TelemetryProviderConfig {
         HttpRequest.Builder requestBuilder =
             HttpRequest.newBuilder().uri(readyUri).timeout(Duration.ofSeconds(3)).GET();
 
-        if (authType == LokiAuthType.BasicAuth) {
+        if (authType == AuthCredentials.AuthType.BasicAuth) {
           String authHeader =
               "Basic "
                   + Base64.getEncoder()

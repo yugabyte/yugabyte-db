@@ -62,7 +62,7 @@ public class UpdateUniverseIntent extends UniverseTaskBase {
 
             if (taskParams().updatePlacementInfo) {
               List<NodeDetails> clusterNodeDetails = taskParams().clusterNodeDetails;
-              PlacementInfoUtil.updatePlacementInfo(clusterNodeDetails, cluster.placementInfo);
+              PlacementInfoUtil.updatePlacementInfo(clusterNodeDetails, cluster);
 
               cluster.userIntent.numNodes = clusterNodeDetails.size();
               log.info(
@@ -75,7 +75,11 @@ public class UpdateUniverseIntent extends UniverseTaskBase {
             }
             universe
                 .getUniverseDetails()
-                .upsertCluster(cluster.userIntent, cluster.placementInfo, cluster.uuid);
+                .upsertCluster(
+                    cluster.userIntent,
+                    cluster.getPartitions(),
+                    cluster.placementInfo,
+                    cluster.uuid);
             universe.setUniverseDetails(universeDetails);
           };
       // Perform the update. If unsuccessful, this will throw a runtime exception which we do not

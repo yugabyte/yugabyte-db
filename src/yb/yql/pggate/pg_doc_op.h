@@ -689,6 +689,7 @@ class InExpressionWrapper {
 
   bool Next();
   void GetValues(std::vector<const LWQLValuePB*>* permutation);
+  void ResetPos() { pos_ = 0; }
 
  private:
   InExpressionWrapper(
@@ -719,6 +720,7 @@ class InPermutationGenerator {
 
   bool HasPermutation() { return !done_; }
   const std::vector<const LWQLValuePB*>& NextPermutation();
+  void Reset();
 
  private:
   friend class InPermutationBuilder;
@@ -823,25 +825,25 @@ class PgDocReadOp : public PgDocOp {
   // - When an operator completes the execution, it is marked as inactive and available for the
   //   exection of the next hash permutation.
   Result<bool> PopulateNextHashPermutationOps();
-  void InitializeHashPermutationStates();
+  InPermutationGenerator InitializeHashPermutationStates();
 
-  // Binds the given values to the given read request.
-  // Hash column values are bound to partition_column_values, range column values are added as
-  // equality conditions to the condition_expr.
-  void BindExprsRegular(
-      LWPgsqlReadRequestPB* read_req, const std::vector<const LWQLValuePB*>& values);
-
-  Result<LWPgsqlExpressionPB*> PrepareInitialHashConditionList(size_t partition);
+  // Binds the given values to the given read operation.
+  // Hash column values are bound to the request's partition_column_values, range column values are
+  // added as equality conditions to the condition_expr.
+  // Performs boundary check, if the request range is empty, returns false
+  Result<bool> BindExprsRegular(
+    LWPgsqlReadRequestPB& read_req, const std::vector<const LWQLValuePB*>& values);
 
   // Binds the given values to the partition defined by hash column values.
-  // The hash_in_conds_ conveniently holds references to initialized RHSs of the batched IN
-  // expression. The hash_in_conds_ elements are lazily initialized when the partition is first
-  // referenced.
-  Status BindExprsToBatch(const std::vector<const LWQLValuePB*>& values);
+  // The partition_batches vector for each partition stores the flag indicating the partition
+  // has been initialized, and the references to initialized RHSs of the batched IN expression,
+  // or null, if the partition batch is inactive.
+  // Batch may be inactive if it has not been yet initialized, or its request range is empty.
+  Result<bool> BindExprsToBatch(
+      std::vector<std::pair<bool, LWPgsqlExpressionPB*>>& partition_batches,
+      const std::vector<const LWQLValuePB*>& values);
 
-  // Helper functions for PopulateNextHashPermutationOps
-  // Prepares a new read request from the pool of inactive operators.
-  LWPgsqlReadRequestPB* PrepareReadReq();
+  Result<LWPgsqlExpressionPB*> InitHashPermutationBatch(LWPgsqlReadRequestPB& read_req);
 
   // Create operators by partitions.
   // - Optimization for aggregating or filtering requests.
@@ -901,11 +903,8 @@ class PgDocReadOp : public PgDocOp {
   // is_hash_batched_ indicates if multiple permutations can be batched into one request as part of
   // the condition_expr condition instead of making one request per permutation with updated
   // partition_column_values. PgGate makes one batch per tablet.
-  // hash_in_conds_ is used in batch mode, and contains direct pointers to the IN conditions
-  // of respective partition requests where permutations are placed.
   std::optional<InPermutationGenerator> hash_permutations_;
   std::optional<bool> is_hash_batched_;
-  std::vector<LWPgsqlExpressionPB*> hash_in_conds_;
 };
 
 //--------------------------------------------------------------------------------------------------

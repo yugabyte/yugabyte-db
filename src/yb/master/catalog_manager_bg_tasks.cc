@@ -242,23 +242,16 @@ void CatalogManagerBgTasks::RunOnceAsLeader(const LeaderEpoch& epoch) {
   }
   TryResumeBackfillForTables(epoch, &table_map);
 
-  // Do the LB enabling check
-  if (!processed_tablets) {
-    if (catalog_manager_->TimeSinceElectedLeader() >
-        MonoDelta::FromSeconds(FLAGS_load_balancer_initial_delay_secs)) {
-      auto start = CoarseMonoClock::Now();
-      catalog_manager_->load_balance_policy_->RunLoadBalancer(epoch);
-      load_balancer_duration_->Increment(ToMilliseconds(CoarseMonoClock::now() - start));
-    }
-  }
-
-  std::vector<scoped_refptr<TableInfo>> tables;
+  std::vector<TableInfoPtr> tables;
   TabletInfoMap tablet_info_map;
   {
     CatalogManager::SharedLock lock(catalog_manager_->mutex_);
     auto tables_it = catalog_manager_->tables_->GetPrimaryTables();
     tables = std::vector(std::begin(tables_it), std::end(tables_it));
     tablet_info_map = *catalog_manager_->tablet_map_;
+  }
+  if (!processed_tablets) {
+    MaybeRunLoadBalancer(epoch, tables, tablet_info_map);
   }
   master_->tablet_split_manager().MaybeDoSplitting(tables, tablet_info_map, epoch);
 
@@ -289,6 +282,18 @@ void CatalogManagerBgTasks::RunOnceAsLeader(const LeaderEpoch& epoch) {
 
   // Abort inactive YSQL BackendsCatalogVersionJob jobs.
   master_->ysql_backends_manager()->AbortInactiveJobs();
+}
+
+void CatalogManagerBgTasks::MaybeRunLoadBalancer(
+    const LeaderEpoch& epoch, const std::vector<TableInfoPtr>& tables,
+    const TabletInfoMap& tablets) {
+  if (catalog_manager_->TimeSinceElectedLeader() <=
+      MonoDelta::FromSeconds(FLAGS_load_balancer_initial_delay_secs)) {
+    return;
+  }
+  auto start = CoarseMonoClock::Now();
+  catalog_manager_->load_balance_policy_->RunLoadBalancer(epoch, tables, tablets);
+  load_balancer_duration_->Increment(ToMilliseconds(CoarseMonoClock::now() - start));
 }
 
 void CatalogManagerBgTasks::Run() {

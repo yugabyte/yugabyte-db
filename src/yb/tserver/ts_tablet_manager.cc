@@ -124,6 +124,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/priority_thread_pool.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
@@ -299,32 +300,33 @@ TAG_FLAG(allow_compaction_failures_for_tablet_ids, hidden);
 TAG_FLAG(allow_compaction_failures_for_tablet_ids, advanced);
 
 DEFINE_NON_RUNTIME_uint32(deleted_tablet_cache_max_size, 10000,
-                          "Maximum size for the cache of recently deleted tablet ids. Used to "
-                          "reject remote bootstrap requests for recently deleted tablets.");
+    "Maximum size for the cache of recently deleted tablet ids. Used to "
+    "reject remote bootstrap requests for recently deleted tablets.");
 
 DEFINE_RUNTIME_bool(
     reject_rbs_for_deleted_tablet, true,
     "Whether to reject a request to RBS a tablet that the receiving tserver has recently deleted.");
 
 DEFINE_UNKNOWN_int32(flush_bootstrap_state_pool_max_threads, -1,
-                     "The maximum number of threads used to flush retryable requests");
+    "The maximum number of threads used to flush retryable requests");
 
 DEFINE_test_flag(bool, disable_flush_on_shutdown, false,
-                 "Whether to disable flushing memtable on shutdown.");
+    "Whether to disable flushing memtable on shutdown.");
 
 DEFINE_test_flag(bool, pause_delete_tablet, false,
-                 "Make DeletTablet stuck.");
+    "Make DeleteTablet stuck.");
 
 DEFINE_test_flag(bool, crash_before_clone_target_marked_ready, false,
-                 "Whether to crash before marking the target tablet of a clone op as "
-                 "TABLET_DATA_READY.");
+    "Whether to crash before marking the target tablet of a clone op as TABLET_DATA_READY.");
 
 DEFINE_test_flag(bool, crash_before_mark_clone_attempted, false,
-                 "Whether to crash before marking a clone op as completed on the source tablet.");
+    "Whether to crash before marking a clone op as completed on the source tablet.");
 
 DEFINE_NON_RUNTIME_uint32(vector_index_concurrent_writes, 0,
-                          "Number of threads used by vector index thread pool. "
-                          "0 - use number of CPUs for it.");
+    "Number of threads used by vector index thread pool. 0 - use number of CPUs for it.");
+
+DEFINE_RUNTIME_uint32(vector_index_num_compactions_limit, 1,
+    "Number of vector index compaction per tserver. 0 - no limit per tserver.");
 
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(disable_deadlock_detection);
@@ -631,8 +633,12 @@ Status TSTabletManager::Init() {
       [this] { UpdateAllowCompactionFailures(); })));
   flag_callbacks_.emplace_back(VERIFY_RESULT(RegisterFlagUpdateCallback(
       &FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec,
-      "RocksDBCompactFlushRateLimiter",
+      "rocksdb_compact_flush_rate_limit_bytes_per_sec",
       [this] { UpdateCompactFlushRateLimitBytesPerSec(); })));
+  flag_callbacks_.emplace_back(VERIFY_RESULT(RegisterFlagUpdateCallback(
+      &FLAGS_vector_index_num_compactions_limit,
+      "vector_index_compactions_limit",
+      [this] { UpdateVectorIndexCompactionLimit(); })));
 
   // Start the threadpool we'll use to open tablets.
   // This has to be done in Init() instead of the constructor, since the
@@ -2106,8 +2112,8 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         .vector_index_thread_pool_provider = [this](auto type) {
           return VectorIndexThreadPool(type);
         },
-        .vector_index_priority_thread_pool_provider = [this](auto type) {
-          return VectorIndexPriorityThreadPool(type);
+        .vector_index_compaction_token_provider = [this]() {
+          return VectorIndexCompactionToken();
         },
         .vector_index_block_cache = vector_index_block_cache_,
     };
@@ -3603,6 +3609,26 @@ void TSTabletManager::UpdateAllowCompactionFailures() {
   }
 }
 
+void TSTabletManager::UpdateVectorIndexCompactionLimit() {
+  PriorityThreadPoolToken* token = nullptr;
+  {
+    std::lock_guard lock(vector_index_thread_pool_mutex_);
+    token = vector_index_compaction_token_.get();
+  }
+
+  if (!token) {
+    LOG_WITH_PREFIX(WARNING) <<
+        "Vector index priority thread pool does not configured, "
+        "ignoring 'vector_index_compactions_limit' gflag update";
+    return;
+  }
+
+  const auto compactions_limit = FLAGS_vector_index_num_compactions_limit;
+  token->SetMaxConcurrency(compactions_limit);
+  LOG_WITH_PREFIX(INFO) <<
+      "Vector index priority thread pool max concurency is set to " << compactions_limit;
+}
+
 rpc::ThreadPool* TSTabletManager::VectorIndexThreadPool(tablet::VectorIndexThreadPoolType type) {
   auto& thread_pool_ptr = vector_index_thread_pools_[std::to_underlying(type)];
   auto result = thread_pool_ptr.get();
@@ -3627,11 +3653,13 @@ rpc::ThreadPool* TSTabletManager::VectorIndexThreadPool(tablet::VectorIndexThrea
   return result;
 }
 
-PriorityThreadPool* TSTabletManager::VectorIndexPriorityThreadPool(
-    tablet::VectorIndexPriorityThreadPoolType type) {
-  // Currently there's only one type of priority thread pool, which is used for compacitons.
-  DCHECK_EQ(type, tablet::VectorIndexPriorityThreadPoolType::kCompaction);
-  return docdb::GetGlobalPriorityThreadPool();
+PriorityThreadPoolTokenPtr TSTabletManager::VectorIndexCompactionToken() {
+  std::lock_guard lock(vector_index_thread_pool_mutex_);
+  if (!vector_index_compaction_token_) {
+    vector_index_compaction_token_ = std::make_shared<PriorityThreadPoolToken>(
+        *docdb::GetGlobalPriorityThreadPool(), FLAGS_vector_index_num_compactions_limit);
+  }
+  return vector_index_compaction_token_;
 }
 
 Status DeleteTabletData(const RaftGroupMetadataPtr& meta,

@@ -244,7 +244,8 @@ export const ConfigureContinuousBackupModal = (props: ConfigureContinuousBackupM
     props.operation === ConfigureContinuousBackupOperation.EDIT
       ? {
           backupFrequency:
-            props.continuousBackupConfig.spec?.frequency ?? DEFAULT_BACKUP_FREQUENCY_MINUTE
+            props.continuousBackupConfig.spec?.frequency ?? DEFAULT_BACKUP_FREQUENCY_MINUTE,
+          storageSubfolder: props.continuousBackupConfig.spec?.backup_dir
         }
       : { backupFrequency: DEFAULT_BACKUP_FREQUENCY_MINUTE };
   const formMethods = useForm<ConfigureContinuousBackupFormValues>({

@@ -3271,7 +3271,7 @@ TEST_F(XClusterDDLReplicationTest, TruncateTable) {
   {
     ASSERT_OK(producer_conn_->Execute("CREATE TEMP TABLE tbl_tmp(id int)"));
     const auto expected_err_msg =
-        "unsupported mix of temporary and persisted objects in DDL command";
+        "unsupported mix of temporary and permanent objects";
     ASSERT_NOK_STR_CONTAINS(
         producer_conn_->Execute("TRUNCATE TABLE tbl_tmp, tbl1"), expected_err_msg);
     ASSERT_NOK_STR_CONTAINS(

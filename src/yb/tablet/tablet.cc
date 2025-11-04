@@ -777,8 +777,9 @@ Tablet::Tablet(const TabletInitData& data)
   vector_indexes_ = std::make_unique<TabletVectorIndexes>(
       this,
       data.vector_index_thread_pool_provider,
-      data.vector_index_priority_thread_pool_provider,
-      data.vector_index_block_cache);
+      data.vector_index_compaction_token_provider,
+      data.vector_index_block_cache,
+      data.metric_registry);
 
   snapshot_coordinator_ = data.snapshot_coordinator;
 
@@ -2630,7 +2631,8 @@ Status Tablet::WritePostApplyMetadata(std::span<const PostApplyTransactionMetada
 
 // We batch this as some tx could be very large and may not fit in one batch
 Status Tablet::GetIntentsForCDC(
-    const TransactionId& id, std::vector<docdb::IntentKeyValueForCDC>* key_value_intents,
+    const TransactionId& id, const SubtxnSet& aborted,
+    std::vector<docdb::IntentKeyValueForCDC>* key_value_intents,
     docdb::ApplyTransactionState* stream_state) {
   auto scoped_read_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
   RETURN_NOT_OK(scoped_read_operation);
@@ -2638,7 +2640,7 @@ Status Tablet::GetIntentsForCDC(
   docdb::ApplyTransactionState new_stream_state;
 
   new_stream_state = VERIFY_RESULT(docdb::GetIntentsBatchForCDC(
-      id, &key_bounds_, stream_state, intents_db_.get(), key_value_intents));
+      id, &key_bounds_, stream_state, aborted, intents_db_.get(), key_value_intents));
   stream_state->key = new_stream_state.key;
   stream_state->write_id = new_stream_state.write_id;
 

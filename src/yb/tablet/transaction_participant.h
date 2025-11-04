@@ -105,6 +105,8 @@ struct TransactionalBatchData {
   }
 };
 
+class FastModeTransactionScope;
+
 // TransactionParticipant manages running transactions, i.e. transactions that have intents in
 // appropriate tablet. Since this class manages transactions of tablet there is separate class
 // instance per tablet.
@@ -266,12 +268,50 @@ class TransactionParticipant : public TransactionStatusManager {
 
   void ForceRefreshWaitersForBlocker(const TransactionId& txn_id);
 
+  // Returns a 'FastModeTransactionScope' indicating whether the fast mode should be used. Based on
+  // the isolation level and the returned value, we can determine whether to skip the prefix lock.
+  Result<FastModeTransactionScope> ShouldUseFastMode(
+      IsolationLevel isolation, bool skip_prefix_locks, const TransactionId& id);
+  std::pair<uint64_t, uint64_t> GetNumFastModeTransactions();
+
  private:
   Result<int64_t> RegisterRequest() override;
   void UnregisterRequest(int64_t request) override;
 
+  friend class FastModeTransactionScope;
+
   class Impl;
   std::shared_ptr<Impl> impl_;
+};
+
+class FastModeTransactionScope {
+ public:
+  FastModeTransactionScope() = default;
+  FastModeTransactionScope(std::shared_ptr<TransactionParticipant::Impl> participant, size_t idx);
+
+  FastModeTransactionScope(const FastModeTransactionScope& rhs);
+  FastModeTransactionScope(FastModeTransactionScope&& rhs);
+
+  void operator=(const FastModeTransactionScope& rhs);
+  void operator=(FastModeTransactionScope&& rhs);
+
+  ~FastModeTransactionScope() {
+    Reset();
+  }
+
+  bool active() const {
+    return participant_ != nullptr;
+  }
+
+  explicit operator bool() const {
+    return active();
+  }
+
+  void Reset();
+
+ private:
+  std::shared_ptr<TransactionParticipant::Impl> participant_;
+  size_t idx_ = 0;
 };
 
 } // namespace tablet

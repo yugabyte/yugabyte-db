@@ -52,6 +52,8 @@ namespace yb::tablet {
 
 namespace {
 
+METRIC_DEFINE_entity(vector_index);
+
 class IndexedTableContext : public docdb::DocVectorIndexedTableContext {
  public:
   IndexedTableContext(Tablet& tablet, const TableInfo& indexed_table, ColumnId vector_column_id)
@@ -135,13 +137,15 @@ bool TEST_block_after_backfilling_first_vector_index_chunks = false;
 TabletVectorIndexes::TabletVectorIndexes(
     Tablet* tablet,
     const VectorIndexThreadPoolProvider& thread_pool_provider,
-    const VectorIndexPriorityThreadPoolProvider& priority_thread_pool_provider,
-    const hnsw::BlockCachePtr& block_cache)
+    const VectorIndexCompactionTokenProvider& compaction_token_provider,
+    const hnsw::BlockCachePtr& block_cache,
+    MetricRegistry* metric_registry)
     : TabletComponent(tablet),
       thread_pool_provider_(thread_pool_provider),
-      priority_thread_pool_provider_(priority_thread_pool_provider),
+      compaction_token_provider_(compaction_token_provider),
       block_cache_(block_cache),
-      mem_tracker_(MemTracker::CreateTracker(-1, "vector_indexes", tablet->mem_tracker())) {
+      mem_tracker_(MemTracker::CreateTracker(-1, "vector_indexes", tablet->mem_tracker())),
+      metric_registry_(metric_registry) {
 }
 
 Status TabletVectorIndexes::Open(const docdb::ConsensusFrontier* frontier)
@@ -198,20 +202,33 @@ Status TabletVectorIndexes::DoCreateIndex(
     return docdb::DocVectorIndexThreadPools {
         .thread_pool = thread_pool_provider_(VectorIndexThreadPoolType::kBackground),
         .insert_thread_pool = thread_pool_provider_(VectorIndexThreadPoolType::kInsert),
-        .compaction_thread_pool =
-            priority_thread_pool_provider_(VectorIndexPriorityThreadPoolType::kCompaction),
+        .compaction_token = compaction_token_provider_(),
     };
   };
 
   auto indexed_table_context = std::make_unique<IndexedTableContext>(
       tablet(), *indexed_table, ColumnId(index_table.index_info->vector_idx_options().column_id()));
 
+  MetricEntityPtr vector_index_metric_entity;
+  if (metric_registry_) {
+    MetricEntity::AttributeMap attrs;
+    attrs["table_id"] = index_table.table_id;
+    attrs["table_name"] = index_table.table_name;
+    attrs["table_type"] = TableType_Name(index_table.table_type);
+    // Use the namespace name from the base table since the namespace name is not populated in
+    // index_table object.
+    attrs["namespace_name"] = indexed_table->namespace_name;
+    vector_index_metric_entity =
+        METRIC_ENTITY_vector_index.Instantiate(metric_registry_, index_table.table_id, attrs);
+  }
+
   auto vector_index = VERIFY_RESULT(docdb::CreateDocVectorIndex(
       AddSuffixToLogPrefix(LogPrefix(), Format(" VI $0", index_table.table_id)),
       metadata().rocksdb_dir(), vector_index_thread_pool_provider,
       indexed_table->doc_read_context->table_key_prefix(), index_table.hybrid_time,
       *index_table.index_info, std::move(indexed_table_context), block_cache_,
-      MemTracker::CreateTracker(-1, index_table.table_id, mem_tracker_)));
+      MemTracker::CreateTracker(-1, index_table.table_id, mem_tracker_),
+      vector_index_metric_entity));
 
   if (!bootstrap) {
     auto read_op = tablet().CreateScopedRWOperationBlockingRocksDbShutdownStart();

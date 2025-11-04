@@ -13,8 +13,8 @@
 
 #include "yb/util/priority_thread_pool.h"
 
-#include <unordered_map>
 #include <mutex>
+#include <unordered_map>
 
 #include <boost/container/stable_vector.hpp>
 #include <boost/multi_index/hashed_index.hpp>
@@ -30,6 +30,7 @@
 #include "yb/util/locks.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/shared_lock.h"
 #include "yb/util/unique_lock.h"
 
 using namespace std::placeholders;
@@ -39,18 +40,15 @@ namespace yb {
 namespace {
 
 const Status kRemoveTaskStatus = STATUS(Aborted, "Task removed from priority thread pool");
-const Status kShutdownStatus = STATUS(Aborted, "Priority thread pool shutdown");
+const Status kShutdownStatus = STATUS(ShutdownInProgress, "Priority thread pool shutdown");
 const Status kNoWorkersStatus = STATUS(Aborted, "No workers to perform task");
 
-typedef std::unique_ptr<PriorityThreadPoolTask> TaskPtr;
 class PriorityThreadPoolWorker;
+using TaskPtr = std::unique_ptr<PriorityThreadPoolTask>;
 
-static constexpr int kEmptyQueueTaskPriority = -1;
-static constexpr int kEmptyQueueGroupNoPriority = -1;
-static constexpr int kNoGroupPriority = 0;
-
-YB_STRONGLY_TYPED_BOOL(PickTask);
-
+constexpr int kEmptyQueueTaskPriority = -1;
+constexpr int kEmptyQueueGroupNoPriority = -1;
+constexpr int kNoGroupPriority = 0;
 
 // ------------------------------------------------------------------------------------------------
 // Compare Priorities
@@ -154,7 +152,7 @@ class PriorityThreadPoolInternalTask {
     task_priority_.store(value, std::memory_order_relaxed);
   }
 
-  // Returns true if the group no priority was succesfully set.
+  // Returns true if the group no priority was successfully set.
   // Returns false otherwise.
   bool SetGroupNoPriority(int value) {
     std::lock_guard lock(group_no_priority_mutex_);
@@ -216,16 +214,37 @@ class PriorityThreadPoolInternalTask {
   std::mutex& thread_pool_mutex_;
 };
 
+} // namespace
+
+// ------------------------------------------------------------------------------------------------
+// PriorityThreadPoolTaskExecutor
+// ------------------------------------------------------------------------------------------------
+
+// Used to access PriorityThreadPoolTask's internal Execute() method.
+class PriorityThreadPoolTaskExecutor {
+ public:
+  static void Run(
+      PriorityThreadPoolTask& task, const Status& status,
+      PriorityThreadPoolSuspender* suspender = nullptr) {
+    task.Execute(PriorityThreadPoolTask::ExecuteTag{}, status, suspender);
+  }
+};
+
+namespace {
+
 // ------------------------------------------------------------------------------------------------
 // PriorityThreadPoolWorkerContext
 // ------------------------------------------------------------------------------------------------
 
 class PriorityThreadPoolWorkerContext {
  public:
-  virtual void PauseIfNecessary(PriorityThreadPoolWorker* worker) = 0;
-  virtual bool WorkerFinished(PriorityThreadPoolWorker* worker) = 0;
-  virtual void TaskAborted(const PriorityThreadPoolInternalTask* task) = 0;
   virtual ~PriorityThreadPoolWorkerContext() {}
+
+  virtual void PauseIfNecessary(PriorityThreadPoolWorker* worker) = 0;
+  virtual void NotifyTaskAborted(const PriorityThreadPoolInternalTask* task) = 0;
+
+  // Returns true if the worker picked another task.
+  virtual bool NotifyWorkerFinished(PriorityThreadPoolWorker* worker) = 0;
 };
 
 // ------------------------------------------------------------------------------------------------
@@ -254,12 +273,12 @@ class PriorityThreadPoolWorker : public PriorityThreadPoolSuspender {
     }
     YB_PROFILE(cond_.notify_one());
     if (task) {
-      task->task()->Run(kShutdownStatus, nullptr /* suspender */);
-      context_->TaskAborted(task);
+      PriorityThreadPoolTaskExecutor::Run(*task->task(), kShutdownStatus);
+      context_->NotifyTaskAborted(task);
     }
   }
 
-  // It is invoked from WorkerFinished to directly assign a new task.
+  // It is invoked from NotifyWorkerFinished to directly assign a new task.
   void SetTask(const PriorityThreadPoolInternalTask* task) EXCLUDES(mutex_) {
     task_ = task;
   }
@@ -283,8 +302,8 @@ class PriorityThreadPoolWorker : public PriorityThreadPoolSuspender {
         yb::ReverseLock<decltype(lock)> rlock(lock);
         for (;;) {
           VLOG(4) << "Worker " << this << " running task: " << task_->ToString();
-          task_->task()->Run(Status::OK(), this);
-          if (!context_->WorkerFinished(this)) {
+          PriorityThreadPoolTaskExecutor::Run(*task_->task(), Status::OK(), this);
+          if (!context_->NotifyWorkerFinished(this)) {
             break;
           }
         }
@@ -304,8 +323,8 @@ class PriorityThreadPoolWorker : public PriorityThreadPoolSuspender {
     }
     YB_PROFILE(cond_.notify_one());
     if (task) {
-      task->task()->Run(kShutdownStatus, nullptr /* suspender */);
-      context_->TaskAborted(task);
+      PriorityThreadPoolTaskExecutor::Run(*task->task(), kShutdownStatus);
+      context_->NotifyTaskAborted(task);
     }
   }
 
@@ -422,9 +441,78 @@ std::atomic<size_t> task_serial_no_(1);
 
 } // namespace
 
+// ------------------------------------------------------------------------------------------------
+// PriorityThreadPoolToken::Impl
+// ------------------------------------------------------------------------------------------------
+
+class PriorityThreadPoolTokenContext {
+ public:
+  virtual ~PriorityThreadPoolTokenContext() = default;
+  virtual void NotifyTaskCompleted(size_t serial_no) = 0;
+  virtual void NotifyTaskDestroyed(size_t serial_no) = 0;
+};
+
+class PriorityThreadPoolToken::Impl : public PriorityThreadPoolTokenContext {
+ public:
+  ~Impl();
+  Impl(PriorityThreadPool& pool, size_t max_concurrency);
+
+  bool UpdateTaskPriority(size_t serial_no);
+  bool PrioritizeTask(size_t serial_no);
+
+  void Remove(void* task_key);
+  void SetMaxConcurrency(size_t new_limit);
+  void ScheduleTasks();
+
+  Status Submit(PriorityThreadPoolTokenTaskPtr* task);
+
+  void StartShutdown();
+  void CompleteShutdown();
+
+  std::string ToString() const;
+
+ private:
+  void SanitizeTask(size_t serial_no);
+  void NotifyTaskCompleted(size_t serial_no) override;
+  void NotifyTaskDestroyed(size_t serial_no) override;
+
+  bool EraseActiveTask(size_t serial_no) EXCLUDES(mutex_);
+  void EraseDeferredTasks(
+      const Status& status, std::optional<void*> task_key = std::nullopt) EXCLUDES(mutex_);
+
+  std::string ToStringUnlocked() const REQUIRES_SHARED(mutex_);
+  static std::string TaskToString(const PriorityThreadPoolTokenTask& task);
+
+  PriorityThreadPool& pool_;
+  const std::shared_ptr<void> pool_ticket_;
+
+  mutable rw_spinlock mutex_;
+  size_t max_concurency_ GUARDED_BY(mutex_) = 0;
+
+  using DeferredTaskMap = std::map<size_t, PriorityThreadPoolTokenTaskPtr>;
+  DeferredTaskMap deferred_tasks_ GUARDED_BY(mutex_);
+
+  using ActiveTaskMap = std::unordered_map<size_t, PriorityThreadPoolTokenTask*>;
+  ActiveTaskMap active_tasks_ GUARDED_BY(mutex_);
+  std::condition_variable_any active_tasks_erase_cv_;
+};
+
+// ------------------------------------------------------------------------------------------------
+// PriorityThreadPoolTask
+// ------------------------------------------------------------------------------------------------
+
 PriorityThreadPoolTask::PriorityThreadPoolTask()
     : serial_no_(task_serial_no_.fetch_add(1, std::memory_order_acq_rel)) {
 }
+
+void PriorityThreadPoolTask::Execute(
+    ExecuteTag, const Status& status, PriorityThreadPoolSuspender* suspender) {
+  return Run(status, suspender);
+}
+
+// ------------------------------------------------------------------------------------------------
+// PriorityThreadPool::Impl
+// ------------------------------------------------------------------------------------------------
 
 // Maintains priority queue of added tasks and vector of free workers.
 // One of them is always empty.
@@ -446,9 +534,20 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
     StartShutdown();
     CompleteShutdown();
 
+    // All tasks should have been removed by this point.
     std::lock_guard lock(mutex_);
-    LOG_IF(DFATAL, !tasks_.empty()) << "Shutting down a non-empty priority thread pool: "
-                                    << StateToStringUnlocked();
+    LOG_IF(DFATAL, !tasks_.empty())
+        << "Shutting down a non-empty priority thread pool: " << StateToStringUnlocked();
+
+    // All tickets should have been returned by this point.
+    // TODO: a busy wait can be used on ticket.expired() instead.
+    std::weak_ptr<void> ticket = std::exchange(ticket_, nullptr);
+    LOG_IF(DFATAL, !ticket.expired()) <<
+        "Shutting down a priority thread pool with num of active tickets = " << ticket.use_count();
+  }
+
+  std::shared_ptr<void> ticket() const {
+    return ticket_;
   }
 
   Status Submit(int task_priority, TaskPtr* task, const uint64_t group_no) {
@@ -515,6 +614,7 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
     {
       std::lock_guard lock(mutex_);
       for (auto it = tasks_.begin(); it != tasks_.end();) {
+        VLOG(2) << "Task: " << it->ToString();
         auto state = it->state();
         if (state == PriorityThreadPoolTaskState::kNotStarted) {
           NotifyStateChangedFrom(*it, PriorityThreadPoolTaskState::kNotStarted);
@@ -755,17 +855,17 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
   }
 
   void AbortTasks(const std::vector<TaskPtr>& tasks, const Status& abort_status) {
-    VLOG(2) << "Aborting tasks: " << AsString(tasks)
-            << " with status: " << abort_status;
+    VLOG(2) << "Aborting tasks: " << AsString(tasks) << " with status: " << abort_status;
     for (const auto& task : tasks) {
-      task->Run(abort_status, nullptr /* suspender */);
+      PriorityThreadPoolTaskExecutor::Run(*task, abort_status);
     }
   }
 
-  bool WorkerFinished(PriorityThreadPoolWorker* worker) EXCLUDES(mutex_) override {
+  // It is expected to be triggered from the Worker::Run() thread.
+  bool NotifyWorkerFinished(PriorityThreadPoolWorker* worker) EXCLUDES(mutex_) override {
     std::lock_guard lock(mutex_);
     TaskFinished(worker->task());
-    if (!DoWorkerFinished(worker)) {
+    if (!TryAssignTask(worker)) {
       free_workers_.push_back(worker);
       worker->SetTask(nullptr);
       return false;
@@ -774,7 +874,7 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
     return true;
   }
 
-  bool DoWorkerFinished(PriorityThreadPoolWorker* worker) REQUIRES(mutex_) {
+  bool TryAssignTask(PriorityThreadPoolWorker* worker) REQUIRES(mutex_) {
     if (tasks_.empty()) {
       VLOG(4) << "No tasks left for " << worker;
       return false;
@@ -787,11 +887,11 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
         ResumeWorker(tasks_.project<PriorityTag>(it));
         return false;
       case PriorityThreadPoolTaskState::kNotStarted:
+        VLOG(4) << "Picked task " << it->task()->ToString() << " for " << worker;
         // Change State From Queued
         NotifyStateChangedFrom(*it, PriorityThreadPoolTaskState::kNotStarted);
         worker->SetTask(&*it);
         SetWorker(tasks_.project<PriorityTag>(it), worker);
-        VLOG(4) << "Picked task " << it->task()->ToString() << " for " << worker;
         // Change State To Active
         NotifyStateChangedTo(*it, PriorityThreadPoolTaskState::kRunning);
         return true;
@@ -812,7 +912,7 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
   }
 
   // Task finished, adjust desired and unwanted tasks.
-  void TaskAborted(const PriorityThreadPoolInternalTask* task) override {
+  void NotifyTaskAborted(const PriorityThreadPoolInternalTask* task) override {
     VLOG(3) << "Aborted " << task->ToString();
     std::lock_guard lock(mutex_);
     TaskFinished(task);
@@ -871,7 +971,7 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
       REQUIRES(mutex_) {
     int group_no_priority = kNoGroupPriority;
     if (prioritize_by_group_no_) {
-      std::unordered_map<size_t, int>::iterator iter = active_tasks_per_group_.find(group_no);
+      auto iter = active_tasks_per_group_.find(group_no);
       if (iter == active_tasks_per_group_.end()) {
           active_tasks_per_group_.insert(std::make_pair(group_no, 0));
       }
@@ -909,8 +1009,7 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
       const PriorityThreadPoolInternalTask& task,
       const PriorityThreadPoolTaskState state) REQUIRES(mutex_) {
     task.task()->StateChangedTo(state);
-    if (prioritize_by_group_no_
-        && state == PriorityThreadPoolTaskState::kRunning) {
+    if (prioritize_by_group_no_ && state == PriorityThreadPoolTaskState::kRunning) {
       ++active_tasks_per_group_[task.group_no()];
       UpdateGroupNoPriority(task.group_no());
     }
@@ -922,9 +1021,13 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
       const PriorityThreadPoolInternalTask& task,
       const PriorityThreadPoolTaskState state) REQUIRES(mutex_) {
     task.task()->StateChangedFrom(state);
-    if (prioritize_by_group_no_
-        && state == PriorityThreadPoolTaskState::kRunning) {
-      --active_tasks_per_group_[task.group_no()];
+    if (prioritize_by_group_no_ && state == PriorityThreadPoolTaskState::kRunning) {
+      auto& num_active_tasks = active_tasks_per_group_[task.group_no()];
+      if (num_active_tasks > 0) {
+        --num_active_tasks;
+      } else {
+        LOG(DFATAL) << "Possible corruption, unexpected num_active_tasks = " << num_active_tasks;
+      }
       UpdateGroupNoPriority(task.group_no());
     }
   }
@@ -986,8 +1089,11 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
   std::atomic<int> max_task_priority_to_defer_{kEmptyQueueTaskPriority};
   std::atomic<int> max_group_no_priority_to_defer_{kEmptyQueueGroupNoPriority};
 
-  // Map to Store Active Counts
+  // Map from group_no to number of active tasks in the group.
   std::unordered_map<size_t, int> active_tasks_per_group_ GUARDED_BY(mutex_);
+
+  // Controls the number of active references to the pool.
+  std::shared_ptr<void> ticket_ = std::make_shared<size_t>();
 
   // Tag for index ordered by original priority and serial no.
   // Used to determine desired tasks to run.
@@ -1075,6 +1181,10 @@ bool PriorityThreadPool::PrioritizeTask(size_t serial_no) {
   return impl_->PrioritizeTask(serial_no);
 }
 
+std::shared_ptr<void> PriorityThreadPool::ticket() const {
+  return impl_->ticket();
+}
+
 void PriorityThreadPool::TEST_SetThreadCreationFailureProbability(double probability) {
   return impl_->TEST_SetThreadCreationFailureProbability(probability);
 }
@@ -1085,6 +1195,287 @@ size_t PriorityThreadPool::TEST_num_tasks_pending() {
 
 std::mutex* PriorityThreadPool::TEST_mutex() {
   return impl_->TEST_mutex();
+}
+
+// ------------------------------------------------------------------------------------------------
+// PriorityThreadPoolToken::Impl
+// ------------------------------------------------------------------------------------------------
+
+PriorityThreadPoolToken::Impl::Impl(PriorityThreadPool& pool, size_t max_concurrency)
+    : pool_(pool), pool_ticket_(pool_.ticket()), max_concurency_(max_concurrency) {
+  LOG(INFO) << "PriorityThreadPoolToken created: " << AsString(this);
+}
+
+PriorityThreadPoolToken::Impl::~Impl() {
+  StartShutdown();
+  CompleteShutdown();
+
+  // Sanity check to make sure all tasks were run/aborted.
+  {
+    SharedLock lock(mutex_);
+    LOG_IF(DFATAL, active_tasks_.size())
+        << "Shutting down a token with active tasks still running "
+        << static_cast<void*>(this) << ToStringUnlocked();
+    LOG_IF(DFATAL, deferred_tasks_.size())
+        << "Shutting down a token with deferred tasks still queued "
+        << static_cast<void*>(this) << ToStringUnlocked();
+  }
+
+  LOG(INFO) << "PriorityThreadPoolToken destroyed: " << AsString(this);
+}
+
+bool PriorityThreadPoolToken::Impl::EraseActiveTask(size_t serial_no) {
+  bool erased = false;
+  {
+    std::lock_guard lock(mutex_);
+    erased = active_tasks_.erase(serial_no);
+  }
+  if (erased) {
+    YB_PROFILE(active_tasks_erase_cv_.notify_all());
+  }
+  return erased;
+}
+
+void PriorityThreadPoolToken::Impl::EraseDeferredTasks(
+    const Status& status, std::optional<void*> task_key) {
+  decltype(deferred_tasks_) tasks;
+  {
+    std::lock_guard lock(mutex_);
+    if (!task_key.has_value()) {
+      std::swap(tasks, deferred_tasks_);
+    } else {
+      auto it = deferred_tasks_.begin();
+      while (it != deferred_tasks_.end()) {
+        if (it->second->ShouldRemoveWithKey(*task_key)) {
+          tasks.insert(std::move(*it));
+          it = deferred_tasks_.erase(it);
+        } else {
+          ++it;
+        }
+      }
+    }
+  }
+
+  for (auto& task : tasks) {
+    PriorityThreadPoolTaskExecutor::Run(*task.second, status);
+  }
+}
+
+bool PriorityThreadPoolToken::Impl::UpdateTaskPriority(size_t serial_no) {
+  // Try get active task priority.
+  int priority;
+  {
+    SharedLock lock(mutex_);
+    auto it = active_tasks_.find(serial_no);
+    if (it == active_tasks_.end()) {
+      return false;
+    }
+    priority = it->second->priority();
+  }
+
+  return pool_.ChangeTaskPriority(serial_no, priority);
+}
+
+bool PriorityThreadPoolToken::Impl::PrioritizeTask(size_t serial_no) {
+  return pool_.PrioritizeTask(serial_no);
+}
+
+void PriorityThreadPoolToken::Impl::Remove(void* task_key) {
+  EraseDeferredTasks(kRemoveTaskStatus, task_key);
+  pool_.Remove(task_key);
+}
+
+void PriorityThreadPoolToken::Impl::SetMaxConcurrency(size_t new_limit) {
+  {
+    std::lock_guard lock(mutex_);
+    max_concurency_ = new_limit;
+    VLOG_WITH_FUNC(1) << "new max_concurency: " << max_concurency_;
+  }
+  ScheduleTasks();
+}
+
+void PriorityThreadPoolToken::Impl::StartShutdown() {
+  EraseDeferredTasks(kShutdownStatus);
+}
+
+void PriorityThreadPoolToken::Impl::CompleteShutdown() {
+  UniqueLock lock(mutex_);
+  active_tasks_erase_cv_.wait(
+      lock, [this]() NO_THREAD_SAFETY_ANALYSIS { return active_tasks_.empty(); });
+}
+
+void PriorityThreadPoolToken::Impl::ScheduleTasks() {
+  VLOG_WITH_FUNC(4) << "Checking for next deferred tasks to schedule";
+
+  // Get as many tasks as possible.
+  std::vector<PriorityThreadPoolTokenTaskPtr> tasks_to_submit;
+  {
+    std::lock_guard lock(mutex_);
+    size_t num_active_tasks = active_tasks_.size();
+    if (max_concurency_ && num_active_tasks >= max_concurency_) {
+      VLOG_WITH_FUNC(2) <<
+          "Unable to schedule more tasks, num_active_tasks: " << num_active_tasks <<
+          ", max_concurency: " << max_concurency_;
+      return;
+    }
+
+    size_t num_tasks = deferred_tasks_.size();
+    if (max_concurency_) {
+      num_tasks = std::min(num_tasks, max_concurency_ - num_active_tasks);
+    }
+
+    if (num_tasks == 0) {
+      return;
+    }
+
+    tasks_to_submit.reserve(num_tasks);
+    auto it = deferred_tasks_.begin();
+    auto it_end = std::next(it, num_tasks);
+    while (it != it_end) {
+      active_tasks_.emplace(it->first, it->second.get());
+      tasks_to_submit.push_back(std::move(it->second));
+      it = deferred_tasks_.erase(it);
+    }
+  }
+
+  // Schedule picked tasks.
+  VLOG_WITH_FUNC(2) << "Tasks to submit: " << AsString(tasks_to_submit);
+  for (auto& task : tasks_to_submit) {
+    const auto priority = task->priority();
+    const auto group_no = task->group_no();
+    auto status = pool_.Submit(priority, &task, group_no);
+    if (!status.ok()) {
+      // We can tolerate if task cannot be submitted, but pool shutdown is expected only.
+      LOG_IF(DFATAL, !status.IsShutdownInProgress())
+          << "Failed to start a deferred task, serial_no: " << task->SerialNo()
+          << ", status: " << status;
+      EraseActiveTask(task->SerialNo());
+      PriorityThreadPoolTaskExecutor::Run(*task, status);
+    }
+  }
+}
+
+Status PriorityThreadPoolToken::Impl::Submit(PriorityThreadPoolTokenTaskPtr* task) {
+  VLOG_WITH_FUNC(4) << "Adding deferred task: " << TaskToString(**task);
+
+  // Add to a list of deferred tasks.
+  const size_t serial_no = task->get()->SerialNo();
+  {
+    std::lock_guard lock(mutex_);
+    deferred_tasks_.emplace(serial_no, std::move(*task));
+  }
+
+  ScheduleTasks();
+  return Status::OK();
+}
+
+void PriorityThreadPoolToken::Impl::SanitizeTask(size_t serial_no) {
+  SharedLock lock(mutex_);
+  if (deferred_tasks_.contains(serial_no)) {
+    // That is literally cannot happen and means some kind of a corruption, because a task
+    // has been deleting from deferred queue before it is submitting to the pool.
+    LOG_WITH_FUNC(FATAL) << Format(
+        "Possible corruption, task {serial_no: $0} cannot be in deferred queue!", serial_no);
+  }
+}
+
+void PriorityThreadPoolToken::Impl::NotifyTaskCompleted(size_t serial_no) {
+  VLOG_WITH_FUNC(2) << Format("Task { serial_no: $0 }", serial_no);
+  SanitizeTask(serial_no);
+
+  // Remove task from the active tasks collection.
+  if (EraseActiveTask(serial_no)) {
+    VLOG_WITH_FUNC(4) << "Active task completed";
+  } else {
+    LOG_WITH_FUNC(DFATAL) << Format(
+        "Task { serial_no: $0 } not found in the active tasks collection!", serial_no);
+  }
+
+  ScheduleTasks();
+}
+
+void PriorityThreadPoolToken::Impl::NotifyTaskDestroyed(size_t serial_no) {
+  VLOG_WITH_FUNC(2) << Format("Task { serial_no: $0 }", serial_no);
+  SanitizeTask(serial_no);
+
+  // It is expected the task is being removed from the map in NotifyTaskCompleted.
+  if (PREDICT_FALSE(EraseActiveTask(serial_no))) {
+    LOG_WITH_FUNC(DFATAL) << Format(
+        "Task { serial_no: $0 } should have been deleted on completion!", serial_no);
+  }
+}
+
+std::string PriorityThreadPoolToken::Impl::TaskToString(const PriorityThreadPoolTokenTask& task) {
+  return Format("$0, context: $1", AsString(&task), static_cast<const void*>(&task.context()));
+}
+
+std::string PriorityThreadPoolToken::Impl::ToString() const {
+  SharedLock lock(mutex_);
+  return ToStringUnlocked();
+}
+
+std::string PriorityThreadPoolToken::Impl::ToStringUnlocked() const {
+  return YB_CLASS_TO_STRING(max_concurency, active_tasks, deferred_tasks);
+}
+
+// ------------------------------------------------------------------------------------------------
+// PriorityThreadPoolToken::Task
+// ------------------------------------------------------------------------------------------------
+
+PriorityThreadPoolTokenTask::~PriorityThreadPoolTokenTask() {
+  context_.NotifyTaskDestroyed(serial_no_);
+}
+
+void PriorityThreadPoolTokenTask::Execute(
+    ExecuteTag tag, const Status& status, PriorityThreadPoolSuspender* suspender) {
+  PriorityThreadPoolTask::Execute(std::move(tag), status, suspender);
+  context_.NotifyTaskCompleted(serial_no_);
+}
+
+// ------------------------------------------------------------------------------------------------
+// Forwarding method calls for the "pointer to impl" idiom
+// ------------------------------------------------------------------------------------------------
+
+PriorityThreadPoolToken::~PriorityThreadPoolToken() = default;
+
+PriorityThreadPoolToken::PriorityThreadPoolToken(PriorityThreadPool& pool, size_t max_concurrency)
+    : impl_(new Impl(pool, max_concurrency)) {
+}
+
+bool PriorityThreadPoolToken::UpdateTaskPriority(size_t serial_no) {
+  return impl_->UpdateTaskPriority(serial_no);
+}
+
+bool PriorityThreadPoolToken::PrioritizeTask(size_t serial_no) {
+  return impl_->PrioritizeTask(serial_no);
+}
+
+void PriorityThreadPoolToken::Remove(void* task_key) {
+  return impl_->Remove(task_key);
+}
+
+void PriorityThreadPoolToken::SetMaxConcurrency(size_t new_limit) {
+  return impl_->SetMaxConcurrency(new_limit);
+}
+
+Status PriorityThreadPoolToken::Submit(PriorityThreadPoolTokenTaskPtr* task) {
+  return impl_->Submit(task);
+}
+
+void PriorityThreadPoolToken::StartShutdown() {
+  return impl_->StartShutdown();
+}
+
+void PriorityThreadPoolToken::CompleteShutdown() {
+  return impl_->CompleteShutdown();
+}
+
+PriorityThreadPoolTokenContext& PriorityThreadPoolToken::context() const {
+  return *impl_;
+}
+
+std::string PriorityThreadPoolToken::ToString() const {
+  return impl_->ToString();
 }
 
 } // namespace yb

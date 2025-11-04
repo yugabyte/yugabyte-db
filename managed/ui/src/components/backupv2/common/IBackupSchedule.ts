@@ -18,6 +18,7 @@ interface ScheduleTaskParams {
   minNumBackupsToRetain: number;
   schedulingFrequency: number;
   useTablespaces: boolean;
+  useRoles: boolean;
   parallelism: number;
   tableUUIDList: string[];
   universeUUID: string;

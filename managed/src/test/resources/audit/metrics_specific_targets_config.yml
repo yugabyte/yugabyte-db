@@ -12,6 +12,14 @@ extensions:
 processors:
   attributes/metrics_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$AttributesProcessor
     actions:
+    - {action: upsert, key: host, value: test-node}
+    - {action: upsert, key: yugabyte.node_name, value: test-node}
+    - {action: upsert, key: yugabyte.cloud, value: ''}
+    - {action: upsert, key: yugabyte.universe_uuid, value: 00000000-0000-0000-0000-000000000000}
+    - {action: upsert, key: yugabyte.node_type, value: PRIMARY}
+    - {action: upsert, key: yugabyte.region, value: ''}
+    - {action: upsert, key: yugabyte.zone, value: ''}
+    - {action: upsert, key: yugabyte.purpose, value: DATA_DOG_METRICS_EXPORT}
     - {action: upsert, key: tag, value: value}
     - {action: upsert, key: test, value: specific_targets}
   batch/metrics_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$BatchProcessor {

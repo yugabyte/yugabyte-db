@@ -732,7 +732,7 @@ public class ImportController extends AuthenticatedController {
     placementInfo.cloudList.add(placementCloud);
 
     // Add the placement info and user intent.
-    Cluster cluster = taskParams.upsertPrimaryCluster(userIntent, placementInfo);
+    Cluster cluster = taskParams.upsertPrimaryCluster(userIntent, null, placementInfo);
     // Create the node details set. This is a partial set that contains only the master nodes.
     taskParams.nodeDetailsSet = new HashSet<>();
 

@@ -18,6 +18,7 @@ import play.libs.Json;
 
 @Slf4j
 public class CapacityReservationUtil {
+
   public static final String CAPACITY_RESERVATION_KEY = "CapacityReservationKey";
 
   public static final Pattern AZURE_VM_PATTERN =
@@ -53,6 +54,13 @@ public class CapacityReservationUtil {
     {"F", "x", ""},
     {"L", "s,as", "3"},
   };
+
+  public enum ReservationAction {
+    RESERVE,
+    RELEASE,
+    CREATE_GROUP,
+    DELETE_GROUP;
+  }
 
   public static boolean azureCheckInstanceTypeIsSupported(String instanceType) {
     try {
@@ -184,28 +192,39 @@ public class CapacityReservationUtil {
 
   public static boolean isReservationSupported(
       RuntimeConfGetter confGetter, Provider provider, OperationType operationType) {
-    ConfKeyInfo<Boolean> enabledFlag = null;
+    if (!isReservationEnabled(confGetter, provider)) {
+      return false;
+    }
     ConfKeyInfo<List> operationsList = null;
     switch (provider.getCloudCode()) {
       case azu:
-        enabledFlag = ProviderConfKeys.enableCapacityReservationAzure;
         operationsList = GlobalConfKeys.capacityReservationOperationsAzure;
         break;
       case aws:
-        enabledFlag = ProviderConfKeys.enableCapacityReservationAws;
         operationsList = GlobalConfKeys.capacityReservationOperationsAws;
         break;
     }
-    if (enabledFlag == null) {
-      return false;
-    }
-    if (!confGetter.getConfForScope(provider, enabledFlag)) {
-      return false;
-    }
+
     if (operationsList != null) {
       List<String> supportedList = confGetter.getGlobalConf(operationsList);
       return supportedList.contains(operationType.name());
     }
     return false;
+  }
+
+  public static boolean isReservationEnabled(RuntimeConfGetter confGetter, Provider provider) {
+    ConfKeyInfo<Boolean> enabledFlag = null;
+    switch (provider.getCloudCode()) {
+      case azu:
+        enabledFlag = ProviderConfKeys.enableCapacityReservationAzure;
+        break;
+      case aws:
+        enabledFlag = ProviderConfKeys.enableCapacityReservationAws;
+        break;
+    }
+    if (enabledFlag == null) {
+      return false;
+    }
+    return confGetter.getConfForScope(provider, enabledFlag);
   }
 }

@@ -2904,14 +2904,14 @@ TEST_F(PgMiniTest, TestAppliedTransactionsStateInFlight) {
 Status MockAbortFailure(
     const yb::tserver::PgFinishTransactionRequestPB* req,
     yb::tserver::PgFinishTransactionResponsePB* resp, yb::rpc::RpcContext* context) {
-  LOG(INFO) << "FinishTransaction called for session: " << req->session_id();
-
   // ASH collector takes session id 1.
   // If --ysql_enable_relcache_init_optimization=false, then the subsequent connections
   // take 2 and 3.
   // If --ysql_enable_relcache_init_optimization=true, we will have an additional
   // internal relcache init connection as 2, so the subsequent connections take 3 and 4.
   uint64_t intended_session_id = FLAGS_ysql_enable_relcache_init_optimization ? 4 : 3;
+  LOG(INFO) << "FinishTransaction called for session: " << req->session_id()
+            << ", intended_session_id: " << intended_session_id;
   if (req->session_id() < intended_session_id) {
     context->CloseConnection();
     // The return status should not matter here.
@@ -2955,19 +2955,21 @@ TEST_P(PgRecursiveAbortTest, AbortOnTserverFailure) {
   ASSERT_OK(conn.StartTransaction(SNAPSHOT_ISOLATION));
   // Run a command to ensure that the transaction is created in the backend.
   ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1)"));
-  auto handle = MockFinishTransaction(MockAbortFailure);
-  auto status = conn.Execute("CREATE TABLE t2 (k INT)");
-  // With transactional DDL enabled, "CREATE TABLE t2" won't auto-commit. So we need to explicitly
-  // commit to trigger our expected failure.
-  // This also means that the connection `conn` remains as `CONNECTION_OK` as the transaction gets
-  // aborted due to the failure during COMMIT.
-  if (IsTransactionalDdlEnabled()) {
-    status = conn.Execute("COMMIT");
-    ASSERT_EQ(conn.ConnStatus(), CONNECTION_OK);
-  } else {
-    ASSERT_EQ(conn.ConnStatus(), CONNECTION_BAD);
+  {
+    auto handle = MockFinishTransaction(MockAbortFailure);
+    auto status = conn.Execute("CREATE TABLE t2 (k INT)");
+    // With transactional DDL enabled, "CREATE TABLE t2" won't auto-commit. So we need to explicitly
+    // commit to trigger our expected failure.
+    // This also means that the connection `conn` remains as `CONNECTION_OK` as the transaction gets
+    // aborted due to the failure during COMMIT.
+    if (IsTransactionalDdlEnabled()) {
+      status = conn.Execute("COMMIT");
+      ASSERT_EQ(conn.ConnStatus(), CONNECTION_OK);
+    } else {
+      ASSERT_EQ(conn.ConnStatus(), CONNECTION_BAD);
+    }
+    ASSERT_TRUE(status.IsNetworkError());
   }
-  ASSERT_TRUE(status.IsNetworkError());
 
   // Insert will fail since the table 't2' doesn't exist.
   conn = ASSERT_RESULT(Connect());

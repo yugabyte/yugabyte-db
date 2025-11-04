@@ -1959,6 +1959,13 @@
         "numberOfKeyspace": "Number of Keyspaces",
         "numberOfDatabase": "Number of Databases"
       },
+      "rolesConfig": {
+        "title": " Restore Roles",
+        "checkboxTitle": "Restore global roles",
+        "checkboxHelpText": "<b>Note!</b> If selected, all the global roles in the target universe will be restored.",
+        "checkboxHelpText2": "<b>Note!</b> If selected, the restore will fail as the roleis already in the target database, else the role will not be restored.",
+        "checkboxTitle2": "Fail restore if role already exists in target database"
+      },
       "prefetch": {
         "loadingText": "Fetching Incremental Backups..."
       },
@@ -2720,7 +2727,7 @@
           "universeMetrics": "Universe Metrics (Prometheus Data)"
         },
         "exportDestination": "Export Destination",
-        "exportDestinationPlaceholder": "Path to local directory. ex. /opt/yba_backups",
+        "exportDestinationPlaceholder": "Path to local directory. ex. /opt/yugabyte/yba_backups",
         "submitButton": "Export",
         "toast": {
           "createBackupRequestSuccess": "Exporting platform...",
@@ -2739,7 +2746,7 @@
         "localBackup": {
           "provideBackupFilePath": "Provide the backup file path",
           "filePath": "File Path",
-          "filePathPlaceholder": "/opt/yugabyte/oneTimeBackup"
+          "filePathPlaceholder": "ex. /opt/yugabyte/yba_backups/<backupFileName>"
         },
         "cloudBackup": {
           "configureBackupStorageConfigPrompt": {
@@ -2750,7 +2757,7 @@
           "selectStorageConfig": "Select the storage config that contains the backup",
           "storageConfig": "Storage config",
           "selectBackupFolder": "Specify the backup folder",
-          "folder": "Folder",
+          "folder": "Folder Name",
           "backupFolderHelperText": "The most recent backup from this folder will be used for the restore."
         },
         "ybaRestartWarning": "<bold>Note!</bold> As part of the restore process, YugabyteDB Anywhere will restart itself automatically.",

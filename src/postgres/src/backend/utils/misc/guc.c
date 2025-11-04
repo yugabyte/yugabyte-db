@@ -3141,7 +3141,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_ddl_transaction_block_enabled,
-		false,
+		kEnableDdlTransactionBlocks,
 		NULL, NULL, NULL
 	},
 
@@ -3613,6 +3613,49 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_enable_parallel_scan_colocated", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("When set, allows parallel scan of the colocated relations"),
+			NULL,
+			GUC_EXPLAIN
+		},
+		&yb_enable_parallel_scan_colocated,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_parallel_scan_hash_sharded", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("When set, allows parallel scan of the hash sharded relations"),
+			NULL,
+			GUC_EXPLAIN
+		},
+		&yb_enable_parallel_scan_hash_sharded,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_parallel_scan_range_sharded", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("When set, allows parallel scan of the range sharded relations"),
+			NULL,
+			GUC_EXPLAIN
+		},
+		&yb_enable_parallel_scan_range_sharded,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_parallel_scan_system", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("When set, allows parallel scan of the system relations"),
+			NULL,
+			GUC_EXPLAIN
+		},
+		&yb_enable_parallel_scan_system,
+		false,
+		NULL, NULL, NULL
+	},
 
 
 	{
@@ -5691,7 +5734,7 @@ static struct config_real ConfigureNamesReal[] =
 			GUC_EXPLAIN
 		},
 		&parallel_tuple_cost,
-		DEFAULT_PARALLEL_TUPLE_COST, 0, DBL_MAX,
+		YB_DEFAULT_PARALLEL_TUPLE_COST, 0, DBL_MAX,	/* YB: change default */
 		NULL, NULL, NULL
 	},
 	{
@@ -5702,7 +5745,7 @@ static struct config_real ConfigureNamesReal[] =
 			GUC_EXPLAIN
 		},
 		&parallel_setup_cost,
-		DEFAULT_PARALLEL_SETUP_COST, 0, DBL_MAX,
+		YB_DEFAULT_PARALLEL_SETUP_COST, 0, DBL_MAX,	/* YB: change default */
 		NULL, NULL, NULL
 	},
 	{

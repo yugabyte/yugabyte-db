@@ -62,7 +62,7 @@ You can manually provision each node using the pre-provisioning Python script, a
         --yba_url https://10.98.0.40:9000 \
         --node_name onprem_node1 \
         --instance_type c5.large \
-        --zone_name us-west-2a 
+        --zone_name us-west-2a
     ```
 
     Expect the following output and password prompt:

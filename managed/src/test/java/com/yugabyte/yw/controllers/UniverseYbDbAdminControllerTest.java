@@ -183,7 +183,7 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
     UniverseDefinitionTaskParams.UserIntent userIntent = details.getPrimaryCluster().userIntent;
     userIntent.enableYSQLAuth = true;
     userIntent.enableYCQLAuth = true;
-    details.upsertPrimaryCluster(userIntent, null);
+    details.upsertPrimaryCluster(userIntent, null, null);
     u.setUniverseDetails(details);
     u.save();
     if (isCloudCustomer) {
@@ -229,7 +229,7 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
     UniverseDefinitionTaskParams.UserIntent userIntent = details.getPrimaryCluster().userIntent;
     userIntent.enableYSQLAuth = true;
     userIntent.enableYCQLAuth = true;
-    details.upsertPrimaryCluster(userIntent, null);
+    details.upsertPrimaryCluster(userIntent, null, null);
     u.setUniverseDetails(details);
     u.save();
     ObjectNode bodyJson =
@@ -280,7 +280,7 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
     UniverseDefinitionTaskParams.UserIntent userIntent = details.getPrimaryCluster().userIntent;
     userIntent.enableYSQLAuth = true;
     userIntent.enableYCQLAuth = true;
-    details.upsertPrimaryCluster(userIntent, null);
+    details.upsertPrimaryCluster(userIntent, null, null);
     u.setUniverseDetails(details);
     u.save();
     ObjectNode bodyJson =
@@ -479,7 +479,7 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
     userIntent.enableYSQLAuth = enableYSQLAuth;
     userIntent.enableYCQL = enableYCQL;
     userIntent.enableYCQLAuth = enableYCQLAuth;
-    details.upsertPrimaryCluster(userIntent, null);
+    details.upsertPrimaryCluster(userIntent, null, null);
     universe.setUniverseDetails(details);
     universe.save();
   }

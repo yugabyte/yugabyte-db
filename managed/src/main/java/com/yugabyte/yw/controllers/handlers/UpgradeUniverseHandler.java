@@ -419,6 +419,37 @@ public class UpgradeUniverseHandler {
     log.debug(
         "rotateCerts called with rootCA: {}",
         (requestParams.rootCA != null) ? requestParams.rootCA.toString() : "NULL");
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    if (userIntent.enableNodeToNodeEncrypt && requestParams.rootCA == null) {
+      requestParams.rootCA =
+          certificateHelper.createRootCA(
+              runtimeConfigFactory.staticApplicationConf(),
+              universe.getUniverseDetails().nodePrefix,
+              customer.getUuid());
+      log.info(
+          "Created rootCA: {} for universe {}", requestParams.rootCA, universe.getUniverseUUID());
+    }
+    if (userIntent.enableClientToNodeEncrypt
+        && !userIntent.providerType.equals(CloudType.kubernetes)
+        && requestParams.getClientRootCA() == null) {
+      if (!requestParams.rootAndClientRootCASame) {
+        requestParams.setClientRootCA(
+            certificateHelper.createClientRootCA(
+                runtimeConfigFactory.staticApplicationConf(),
+                universe.getUniverseDetails().nodePrefix,
+                customer.getUuid()));
+        log.info(
+            "Created clientRootCA: {} for universe {}",
+            requestParams.getClientRootCA(),
+            universe.getUniverseUUID());
+      } else {
+        requestParams.setClientRootCA(requestParams.rootCA);
+        log.info(
+            "ClientRootCA is same as rootCA: {} for universe {}",
+            requestParams.getClientRootCA(),
+            universe.getUniverseUUID());
+      }
+    }
     // Temporary fix for PLAT-4791 until PLAT-4653 fixed.
     if (universe.getUniverseDetails().getReadOnlyClusters().size() > 0
         && requestParams.getReadOnlyClusters().size() == 0) {
@@ -426,7 +457,7 @@ public class UpgradeUniverseHandler {
     }
     // Verify request params
     requestParams.verifyParams(universe, true);
-    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+
     // Generate client certs if rootAndClientRootCASame is true and rootCA is self-signed.
     // This is there only for legacy support, no need if rootCA and clientRootCA are different.
     if (userIntent.enableClientToNodeEncrypt && requestParams.rootAndClientRootCASame) {

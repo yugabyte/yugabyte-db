@@ -28,9 +28,9 @@
       {
       "series": "v2024.2",
       "display": "v2024.2 (LTS)",
-      "version": "2024.2.5.1",
-      "versionShort": "2024.2.5",
-      "appVersion": "2024.2.5.1-b1",
+      "version": "2024.2.6.0",
+      "versionShort": "2024.2.6",
+      "appVersion": "2024.2.6.0-b94",
       "isStable": true,
       "isLTS": true,
       "initialRelease": "2024-12-09",

@@ -657,11 +657,11 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
       const std::string& source_addr, const std::string& debug_session_string);
 
   void UpdateCompactFlushRateLimitBytesPerSec();
-
   void UpdateAllowCompactionFailures();
+  void UpdateVectorIndexCompactionLimit();
 
   rpc::ThreadPool* VectorIndexThreadPool(tablet::VectorIndexThreadPoolType type);
-  PriorityThreadPool* VectorIndexPriorityThreadPool(tablet::VectorIndexPriorityThreadPoolType type);
+  PriorityThreadPoolTokenPtr VectorIndexCompactionToken();
 
   const CoarseTimePoint start_time_;
 
@@ -846,6 +846,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   std::array<AtomicUniquePtr<rpc::ThreadPool>, tablet::kVectorIndexThreadPoolTypeMapSize>
       vector_index_thread_pools_;
   hnsw::BlockCachePtr vector_index_block_cache_;
+  PriorityThreadPoolTokenPtr vector_index_compaction_token_
+      GUARDED_BY(vector_index_thread_pool_mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(TSTabletManager);
 };

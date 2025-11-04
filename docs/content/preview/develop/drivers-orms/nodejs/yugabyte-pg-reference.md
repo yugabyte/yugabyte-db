@@ -134,7 +134,9 @@ To create a multi-zone cluster, do the following:
         --fault_tolerance=zone
     ```
 
-1. Start the second and the third node on two separate VMs using the `--join` flag, as follows:
+1. Start the second and the third node on two separate VMs using the `--join` flag.
+
+    For the second node, use the IP address of the first node in the `--join` flag:
 
     ```sh
     ./bin/yugabyted start --advertise_address=127.0.0.2 \
@@ -143,6 +145,8 @@ To create a multi-zone cluster, do the following:
         --cloud_location=aws.us-east-1.us-east-1a \
         --fault_tolerance=zone
     ```
+
+    For the third node, you can use the IP address of any currently running node in the universe (for example, the first or the second node) in the `--join` flag:
 
     ```sh
     ./bin/yugabyted start --advertise_address=127.0.0.3 \
