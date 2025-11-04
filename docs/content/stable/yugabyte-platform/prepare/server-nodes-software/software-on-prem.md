@@ -30,7 +30,7 @@ After you have created the VMs with the operating system and additional software
 1. Modify the configuration file.
 1. Run the provisioning script (as root or via sudo).
 
-These steps prepare the node for use by YugabyteDB Anywhere. If you have already [installed YugabyteDB Anywhere](../../../install-yugabyte-platform/) and it is running (recommended), the script additionally creates (or updates) an [on-premises provider](../../../configure-yugabyte-platform/on-premises/) with the node already added.
+These steps prepare the node for use by YugabyteDB Anywhere, including setting ulimits and transparent hugepages. If you have already [installed YugabyteDB Anywhere](../../../install-yugabyte-platform/) and it is running (recommended), the script additionally creates (or updates) an [on-premises provider](../../../configure-yugabyte-platform/on-premises/) with the node already added.
 
 Root or sudo privileges are only required to provision the nodes. After the node is provisioned (with [YugabyteDB Anywhere node agent](/preview/faq/yugabyte-platform/#what-is-a-node-agent) installed), sudo is no longer required.
 
@@ -148,9 +148,11 @@ sudo ./node-agent-provision.sh
 
 The script provisions the node and installs node agent, and then runs preflight checks to ensure the node is ready for use.
 
-If specified, node agent creates the on-premises provider configuration; or, if the provider already exists, adds the instance to the provider.
+If specified, node agent also creates the on-premises provider configuration; or, if the provider configuration already exists, adds the instance to the provider.
 
-After the node is provisioned, YugabyteDB Anywhere does not need sudo access to the node.
+After the node is provisioned, reboot the node.
+
+If the preflight check fails, rebooting the node may solve some issues (for example, incorrect ulimit settings).
 
 #### Preflight check
 
