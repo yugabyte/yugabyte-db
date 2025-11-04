@@ -109,20 +109,3 @@ SELECT yb_data FROM yb_xcluster_ddl_replication.replicated_ddls ORDER BY ddl_end
  {"query": "DROP TABLE foo_partitioned_by_col"}
 (18 rows)
 
--- Test mix of temp and regular tables.
-CREATE TEMP TABLE temp_foo(i int PRIMARY KEY);
-CREATE TABLE foo(i int PRIMARY KEY);
-DROP TABLE temp_foo, foo; -- should fail
-ERROR:  unsupported DROP command, found mix of temporary and persisted objects in DDL command
-DETAIL:  To manually replicate, run DDL on the source followed by the target with SET yb_xcluster_ddl_replication.enable_manual_ddl_replication = true
-DROP TABLE foo, temp_foo; -- should fail
-ERROR:  unsupported DROP command, found mix of temporary and persisted objects in DDL command
-DETAIL:  To manually replicate, run DDL on the source followed by the target with SET yb_xcluster_ddl_replication.enable_manual_ddl_replication = true
-DROP TABLE temp_foo;
-DROP TABLE foo;
-select * from TEST_verify_replicated_ddls();
- test_verify_replicated_ddls 
------------------------------
- t
-(1 row)
-

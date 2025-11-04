@@ -59,10 +59,11 @@
 #include "utils/palloc.h"
 #include "utils/rel.h"
 
-#define DDL_END_OBJID_COLUMN_ID		  1
-#define DDL_END_COMMAND_TAG_COLUMN_ID 2
-#define DDL_END_SCHEMA_NAME_COLUMN_ID 3
-#define DDL_END_COMMAND_COLUMN_ID     4
+#define DDL_END_CLASSID_COLUMN_ID	  1
+#define DDL_END_OBJID_COLUMN_ID		  2
+#define DDL_END_COMMAND_TAG_COLUMN_ID 3
+#define DDL_END_SCHEMA_NAME_COLUMN_ID 4
+#define DDL_END_COMMAND_COLUMN_ID     5
 
 #define SQL_DROP_CLASS_ID_COLUMN_ID	     1
 #define SQL_DROP_IS_TEMP_COLUMN_ID	     2
@@ -578,9 +579,10 @@ AddTypeInfo(Oid pg_type_oid, char *schema, List **type_info_list)
 
 typedef struct YbCommandInfo
 {
-	Oid         oid;
-	char       *command_tag_name;
-	char       *schema;             /* may be NULL */
+	Oid			class_id;
+	Oid			oid;
+	char	   *command_tag_name;
+	char	   *schema;			/* may be NULL */
 	CollectedCommand *command;
 } YbCommandInfo;
 
@@ -590,10 +592,12 @@ GetSourceEventTriggerDDLCommands(YbCommandInfo **info_array_out)
 	StringInfoData query_buf;
 	initStringInfo(&query_buf);
 	appendStringInfo(&query_buf,
-					 "SELECT objid, command_tag, schema_name, command FROM "
-					 "pg_catalog.pg_event_trigger_ddl_commands()");
-	int			exec_res = SPI_execute(query_buf.data, /* readonly */ true,
-									   /* tcount */ 0);
+					 "SELECT classid, objid, command_tag, schema_name, command "
+					 "FROM pg_catalog.pg_event_trigger_ddl_commands()");
+	int			exec_res = SPI_execute(query_buf.data,
+									   true,	/* readonly */
+									   0);	/* tcount */
+
 	if (exec_res != SPI_OK_SELECT)
 		elog(ERROR, "SPI_exec failed (error %d): %s", exec_res, query_buf.data);
 
@@ -614,7 +618,13 @@ GetSourceEventTriggerDDLCommands(YbCommandInfo **info_array_out)
 		if (command_tag != CMDTAG_GRANT && command_tag != CMDTAG_REVOKE
 			&& command_tag != CMDTAG_ALTER_DEFAULT_PRIVILEGES)
 		{
+			info->class_id = SPI_GetOid(spi_tuple, DDL_END_CLASSID_COLUMN_ID);
 			info->oid = SPI_GetOid(spi_tuple, DDL_END_OBJID_COLUMN_ID);
+		}
+		else
+		{
+			info->class_id = InvalidOid;
+			info->oid = InvalidOid;
 		}
 		info->schema = SPI_GetText(spi_tuple, DDL_END_SCHEMA_NAME_COLUMN_ID);
 		info->command = GetCollectedCommand(spi_tuple, DDL_END_COMMAND_COLUMN_ID);
@@ -715,7 +725,8 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 	List       *sequence_info_list = NIL;
 	List       *type_info_list = NIL;
 	bool		found_temp = false;
-	bool		found_matview = false;
+	bool		found_materialized_view_command = false;
+
 	/*
 	 * As long as there is at least one command that needs to be replicated, we
 	 * will set this to true and replicate the entire query string.
@@ -729,11 +740,17 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 		CommandTag  command_tag = GetCommandTagEnum(info->command_tag_name);
 		char       *schema = info->schema;
 
+		bool		is_temporary_object = IsTempSchema(schema);
 		/*
-		 * The below works for objects with names but not nameless parts.
-		 * TODO(#25885): add code to handle nameless parts.
+		 * The above works for most objects, but in a few cases Postgres does
+		 * not provide the schema; we thus have to handle those separately here.
 		 */
-		bool is_temporary_object = IsTempSchema(schema);
+		if (info->class_id == PolicyRelationId)
+			is_temporary_object = IsTemporaryPolicy(info->oid);
+		else if (info->class_id == TriggerRelationId)
+			is_temporary_object = IsTemporaryTrigger(info->oid);
+		else if (info->class_id == RewriteRelationId)
+			is_temporary_object = IsTemporaryRule(info->oid);
 		found_temp |= is_temporary_object;
 
 		if (command_tag == CMDTAG_CREATE_TABLE ||
@@ -824,7 +841,7 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 		}
 		else if (IsMatViewCommand(command_tag))
 		{
-			found_matview = true;
+			found_materialized_view_command = true;
 		}
 		else if (IsPassThroughDdlSupported(command_tag_name))
 		{
@@ -841,15 +858,24 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 	{
 		if (found_temp)
 			ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				errmsg("unsupported mix of temporary and persisted objects in DDL command"),
-				errdetail("%s", kManualReplicationErrorMsg)));
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("unsupported mix of temporary and permanent objects"),
+					 errdetail("This database is being replicated using xCluster "
+							   "automatic mode, which does not support DDLs "
+							   "that simultaneously use both temporary and "
+							   "permanent objects."),
+					 errhint("Using multiple commands, manipulate the temporary "
+							 "objects separately from the permanent ones.")));
 
-		if (found_matview)
+		/* The next error should not be possible. */
+		/* TODO(#28514): remove this code because it will no longer be an error. */
+		if (found_materialized_view_command)
 			ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				errmsg("unsupported mix of materialized view and other DDL commands"),
-				errdetail("%s", kManualReplicationErrorMsg)));
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("unsupported mix of materialized view and other DDLs"),
+					 errdetail("This database is being replicated using xCluster "
+							   "automatic mode, which does not support this "
+							   "command.")));
 	}
 
 	ProcessNewRelationsList(state, &new_rel_list);
@@ -902,7 +928,9 @@ bool
 ProcessSourceEventTriggerDroppedObjects(CommandTag	tag)
 {
 	/*
-	 * Matview related DDLs are not replicated.
+	 * We choose to not replicate materialized view DDLs (e.g., DROP
+	 * MATERIALIZED VIEW).  Note that commands like DROP SCHEMA can also drop
+	 * materialized views and are handled separately below.
 	 */
 	if (IsMatViewCommand(tag))
 		return false;
@@ -918,12 +946,13 @@ ProcessSourceEventTriggerDroppedObjects(CommandTag	tag)
 	if (exec_res != SPI_OK_SELECT)
 		elog(ERROR, "SPI_exec failed (error %d): %s", exec_res, query_buf.data);
 
+	bool		found_temp = false;
 	/*
 	 * As long as there is at least one command that needs to be replicated, we
 	 * will set this to true and replicate the entire query string.
 	 */
 	bool		should_replicate_ddl = false;
-	bool		found_temp = false;
+
 	for (int row = 0; row < SPI_processed; row++)
 	{
 		HeapTuple	spi_tuple = SPI_tuptable->vals[row];
@@ -940,6 +969,7 @@ ProcessSourceEventTriggerDroppedObjects(CommandTag	tag)
 		if (is_temp)
 		{
 			found_temp = true;
+			/* Postgres does not support temporary materialized views. */
 			continue;
 		}
 
@@ -963,7 +993,6 @@ ProcessSourceEventTriggerDroppedObjects(CommandTag	tag)
 			case OperatorRelationId:
 			case PolicyRelationId:
 			case ProcedureRelationId:
-			case RelationRelationId:
 			case RewriteRelationId:
 			case StatisticExtRelationId:
 			case TriggerRelationId:
@@ -976,6 +1005,31 @@ ProcessSourceEventTriggerDroppedObjects(CommandTag	tag)
 			case UserMappingRelationId:
 				should_replicate_ddl = true;
 				break;
+			case RelationRelationId:
+			{
+				const char *object_type = SPI_GetText(spi_tuple,
+													  SQL_DROP_OBJECT_TYPE_COLUMN_ID);
+				const char *schema_name = SPI_GetText(spi_tuple,
+													  SQL_DROP_SCHEMA_NAME_COLUMN_ID);
+				const char *object_name = SPI_GetText(spi_tuple,
+													  SQL_DROP_OBJECT_NAME_COLUMN_ID);
+				bool is_materialized_view = !strcmp(object_type, "materialized "
+																 "view");
+				if (is_materialized_view)
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("unsupported drop of materialized view %s.%s",
+									schema_name, object_name),
+							 errdetail("This database is being replicated using "
+									   "xCluster automatic mode, which only "
+									   "supports dropping materialized views "
+									   "via DROP MATERIALIZED VIEW."),
+							 errhint("Drop materialized views using DROP "
+									 "MATERIALIZED VIEW.")));
+
+				should_replicate_ddl = true;
+			}
+			break;
 			default:
 				{
 					const char *object_type = SPI_GetText(spi_tuple,
@@ -986,7 +1040,7 @@ ProcessSourceEventTriggerDroppedObjects(CommandTag	tag)
 														  SQL_DROP_OBJECT_NAME_COLUMN_ID);
 
 					elog(ERROR,
-						 "Unsupported Drop DDL for xCluster replicated DB: %s "
+						 "unsupported Drop DDL for xCluster replicated DB: %s "
 						 "(class_id: %d), object_name: %s.%s\n%s",
 						 object_type, class_id, schema_name, object_name,
 						 kManualReplicationErrorMsg);
@@ -997,9 +1051,13 @@ ProcessSourceEventTriggerDroppedObjects(CommandTag	tag)
 	if (found_temp && should_replicate_ddl)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("unsupported DROP command, found mix of "
-						"temporary and persisted objects in DDL command"),
-				 errdetail("%s", kManualReplicationErrorMsg)));
+				 errmsg("cannot drop temporary and permanent objects in one command"),
+				 errdetail("This database is being replicated using xCluster "
+						   "automatic mode, which does not support DDLs "
+						   "that simultaneously drop both temporary and "
+						   "permanent objects."),
+				 errhint("Drop the temporary objects separately from the "
+						 "permanent ones using multiple commands.")));
 
 	return should_replicate_ddl;
 }
