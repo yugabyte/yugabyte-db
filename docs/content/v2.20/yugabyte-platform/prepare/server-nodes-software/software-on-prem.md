@@ -98,7 +98,7 @@ Configure data directories or mount points for the node (typically `/data`). If 
 
 Edit the `node-agent-provision.yaml` file in the scripts directory.
 
-Set the following options in the provisioning file to the correct values:
+The following table describes options that are changed for a typical installation. The file is commented; you can [review the file](https://github.com/yugabyte/yugabyte-db/blob/{{< yb-version version="v2.20" format="short">}}/managed/node-agent/resources/node-agent-provision.yaml) and its default settings on GitHub.
 
 | Option | Value |
 | :--- | :--- |
