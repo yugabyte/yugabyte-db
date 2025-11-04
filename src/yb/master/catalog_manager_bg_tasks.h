@@ -71,6 +71,10 @@ class CatalogManagerBgTasks final {
   void RunOnceAsLeader(const LeaderEpoch& epoch);
 
  private:
+  void MaybeRunLoadBalancer(
+      const LeaderEpoch& epoch, const std::vector<TableInfoPtr>& tables,
+      const TabletInfoMap& tablets);
+
   std::atomic<bool> closing_;
   bool pending_updates_;
   mutable Mutex lock_;
