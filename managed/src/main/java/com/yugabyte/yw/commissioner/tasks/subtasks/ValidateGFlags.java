@@ -161,9 +161,17 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
     Map<String, String> tserverGFlagsValidationErrors = new HashMap<>();
 
     NodeDetails masterNode =
-        nodesInAZ.stream().filter(node -> node.isMaster).findFirst().orElse(null);
+        nodesInAZ.stream()
+            .filter(node -> node.isMaster)
+            .filter(node -> node.cloudInfo != null && node.cloudInfo.private_ip != null)
+            .findFirst()
+            .orElse(null);
     NodeDetails tserverNode =
-        nodesInAZ.stream().filter(node -> node.isTserver).findFirst().orElse(null);
+        nodesInAZ.stream()
+            .filter(node -> node.isTserver)
+            .filter(node -> node.cloudInfo != null && node.cloudInfo.private_ip != null)
+            .findFirst()
+            .orElse(null);
 
     if (masterNode != null) {
       try {
@@ -261,7 +269,9 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
 
     boolean useHostname =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.useHostname
-            || !isIpAddress(node.cloudInfo.private_ip);
+            || (node.cloudInfo != null
+                && node.cloudInfo.private_ip != null
+                && !isIpAddress(node.cloudInfo.private_ip));
 
     // GFlags set by platform
     Map<String, String> gflags =
