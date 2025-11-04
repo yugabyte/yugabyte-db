@@ -1492,6 +1492,7 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
 
     protected void forceParallel(Statement stmt) throws Exception {
       stmt.execute("SET yb_enable_base_scans_cost_model TO true");
+      stmt.execute("SET yb_enable_parallel_scan_colocated TO true");
       stmt.execute("SET yb_parallel_range_rows TO 1");
       stmt.execute("SET parallel_setup_cost TO 0");
       stmt.execute("SET parallel_tuple_cost TO 0");

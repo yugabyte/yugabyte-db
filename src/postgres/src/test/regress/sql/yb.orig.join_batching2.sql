@@ -49,6 +49,7 @@ SET yb_bnl_batch_size = 3;
 set yb_enable_cbo = on;
 
 
+set yb_enable_parallel_scan_colocated TO true;
 set yb_parallel_range_rows = 10;
 set yb_parallel_range_size = '1MB';
 

@@ -784,6 +784,14 @@ extern int	yb_invalidation_message_expiration_secs;
 extern int	yb_max_num_invalidation_messages;
 
 /*
+ * Enable parallel query for different relation sharding types
+ */
+extern bool	yb_enable_parallel_scan_colocated;
+extern bool	yb_enable_parallel_scan_hash_sharded;
+extern bool	yb_enable_parallel_scan_range_sharded;
+extern bool	yb_enable_parallel_scan_system;
+
+/*
  * If set to true, all DDL statements will cause the catalog version to increment.
  */
 extern bool yb_make_all_ddl_statements_incrementing;

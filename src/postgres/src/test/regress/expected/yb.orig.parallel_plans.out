@@ -3,6 +3,7 @@ DROP DATABASE IF EXISTS colocated_db WITH (force);
 CREATE DATABASE colocated_db WITH colocation = on;
 ALTER DATABASE colocated_db SET yb_enable_optimizer_statistics = on;
 ALTER DATABASE colocated_db SET yb_enable_base_scans_cost_model = on;
+ALTER DATABASE colocated_db SET yb_enable_parallel_scan_colocated TO true;
 ALTER DATABASE colocated_db SET yb_fetch_row_limit = 0;
 ALTER DATABASE colocated_db SET yb_fetch_size_limit = '1MB';
 ALTER DATABASE colocated_db SET yb_parallel_range_rows = 10000;

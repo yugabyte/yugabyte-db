@@ -11,6 +11,7 @@ DROP DATABASE IF EXISTS px_colocated WITH (force);
 CREATE DATABASE px_colocated WITH colocation = on;
 ALTER DATABASE px_colocated SET yb_parallel_range_rows = 1000;
 ALTER DATABASE px_colocated SET yb_enable_parallel_append = on;
+ALTER DATABASE px_colocated SET yb_enable_parallel_scan_colocated TO true;
 ALTER DATABASE px_colocated SET yb_enable_cbo = on;
 \c px_colocated
 -- Enable partitionwise aggregate, which by default is disabled.

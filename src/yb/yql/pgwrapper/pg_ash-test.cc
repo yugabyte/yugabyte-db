@@ -530,6 +530,7 @@ TEST_F_EX(PgWaitEventAuxTest, ParallelRPCs, PgParallelWaitEventAux) {
   // Enable parallel queries
   ASSERT_OK(conn.Execute("SET yb_parallel_range_rows to 1"));
   ASSERT_OK(conn.Execute("SET yb_enable_base_scans_cost_model to true"));
+  ASSERT_OK(conn.Execute("SET yb_enable_parallel_scan_colocated to true"));
 
   // Encourage use of parallel plans
   ASSERT_OK(conn.Execute("SET parallel_setup_cost = 0"));
@@ -707,6 +708,7 @@ TEST_F(PgBgWorkersTest, ValidateBgWorkers) {
     // Encourage use of parallel plans
     ASSERT_OK(conn.Execute("SET yb_parallel_range_rows to 1"));
     ASSERT_OK(conn.Execute("SET yb_enable_base_scans_cost_model to true"));
+    ASSERT_OK(conn.Execute("SET yb_enable_parallel_scan_colocated to true"));
     ASSERT_OK(conn.Execute("SET parallel_setup_cost = 0"));
     ASSERT_OK(conn.Execute("SET parallel_tuple_cost = 0"));
 

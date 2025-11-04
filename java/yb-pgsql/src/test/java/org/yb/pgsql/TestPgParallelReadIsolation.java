@@ -73,6 +73,7 @@ public class TestPgParallelReadIsolation extends BasePgSQLTest {
 
   private void forceParallel(Statement stmt) throws SQLException {
     stmt.executeUpdate("SET yb_enable_base_scans_cost_model TO true");
+    stmt.executeUpdate("SET yb_enable_parallel_scan_colocated TO true");
     stmt.executeUpdate("SET yb_parallel_range_rows TO 1");
     stmt.executeUpdate("SET parallel_setup_cost TO 0");
     stmt.executeUpdate("SET parallel_tuple_cost TO 0");
