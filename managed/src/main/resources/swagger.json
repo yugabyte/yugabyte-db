@@ -40942,6 +40942,200 @@
         ]
       }
     },
+    "/api/v1/customers/{cUUID}/telemetry_provider" : {
+      "get" : {
+        "description" : "WARNING: This is a preview API that could change. List All Telemetry Providers",
+        "operationId" : "listAllTelemetryProviders",
+        "parameters" : [
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "cUUID",
+            "required" : true,
+            "type" : "string"
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/TelemetryProvider"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/TelemetryProvider"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "summary" : "List All Telemetry Providers",
+        "tags" : [
+          "Telemetry Provider"
+        ]
+      },
+      "post" : {
+        "description" : "WARNING: This is a preview API that could change. Create Telemetry Provider",
+        "operationId" : "createTelemetry",
+        "parameters" : [
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "cUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "in" : "query",
+            "name" : "request",
+            "required" : false
+          },
+          {
+            "in" : "body",
+            "name" : "providerData",
+            "required" : true,
+            "schema" : {
+              "$ref" : "#/definitions/TelemetryProvider"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/TelemetryProvider"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/TelemetryProvider"
+            }
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "summary" : "Create Telemetry Provider",
+        "tags" : [
+          "Telemetry Provider"
+        ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/telemetry_provider/{intUUID}" : {
+      "delete" : {
+        "description" : "WARNING: This is a preview API that could change. Delete a Telemetry Provider",
+        "operationId" : "deleteTelemetryProvider",
+        "parameters" : [
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "cUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "intUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "in" : "query",
+            "name" : "request",
+            "required" : false
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "summary" : "Delete a telemetry provider",
+        "tags" : [
+          "Telemetry Provider"
+        ]
+      },
+      "get" : {
+        "description" : "WARNING: This is a preview API that could change. Get Telemetry Provider",
+        "operationId" : "getTelemetryProvider",
+        "parameters" : [
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "cUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "intUUID",
+            "required" : true,
+            "type" : "string"
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/TelemetryProvider"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/TelemetryProvider"
+            }
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "summary" : "Get Telemetry Provider",
+        "tags" : [
+          "Telemetry Provider"
+        ]
+      }
+    },
     "/api/v1/customers/{cUUID}/universes" : {
       "get" : {
         "description" : "Available since YBA version 2.2.0.0.",
@@ -41256,6 +41450,67 @@
         "summary" : "Get a universe",
         "tags" : [
           "Universe management"
+        ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/audit_log_config" : {
+      "post" : {
+        "description" : "WARNING: This is a preview API that could change. Modifies the audit logging configuration for a universe.",
+        "operationId" : "modifyAuditLogging",
+        "parameters" : [
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "cUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "uniUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "in" : "query",
+            "name" : "request",
+            "required" : false
+          },
+          {
+            "description" : "Audit Logging Configuration",
+            "in" : "body",
+            "name" : "auditLoggingConfig",
+            "required" : true,
+            "schema" : {
+              "$ref" : "#/definitions/AuditLogConfigParams"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "summary" : "Modify Audit Logging Configuration",
+        "tags" : [
+          "Universe Upgrades Management"
         ]
       }
     },
@@ -48653,6 +48908,9 @@
     },
     {
       "name" : "Table management"
+    },
+    {
+      "name" : "Telemetry Provider"
     },
     {
       "name" : "Universe CDC Management"
