@@ -3082,7 +3082,7 @@ class PgClientSession::Impl {
       EnsureSession(kind, deadline);
       RETURN_NOT_OK(GetDdlTransactionMetadata(
           true /* use_transaction */, false /* use_regular_transaction_block */, deadline,
-          options.priority()));
+          options.priority(), options.pg_txn_start_us()));
     } else {
       DCHECK(kind == PgClientSessionKind::kPlain);
       auto& session = EnsureSession(kind, deadline);
@@ -3332,7 +3332,8 @@ class PgClientSession::Impl {
   // All DDLs use kHighestPriority unless specified otherwise.
   Result<const TransactionMetadata*> GetDdlTransactionMetadata(
       bool use_transaction, bool use_regular_transaction_block, CoarseTimePoint deadline,
-      uint64_t priority = kHighPriTxnUpperBound) {
+      uint64_t priority = kHighPriTxnUpperBound,
+      uint64_t pg_txn_start_us = 0) {
     if (!use_transaction) {
       return nullptr;
     }
@@ -3360,6 +3361,8 @@ class PgClientSession::Impl {
       const auto isolation = FLAGS_ysql_serializable_isolation_for_ddl_txn
           ? IsolationLevel::SERIALIZABLE_ISOLATION : IsolationLevel::SNAPSHOT_ISOLATION;
       txn = transaction_provider_.Take<PgClientSessionKind::kDdl>(deadline);
+      RETURN_NOT_OK(txn->SetPgTxnStart(
+          pg_txn_start_us ? pg_txn_start_us : MonoTime::Now().ToUint64()));
       RETURN_NOT_OK(txn->Init(isolation));
       txn->SetPriority(priority);
       txn->SetLogPrefixTag(kTxnLogPrefixTag, id_);

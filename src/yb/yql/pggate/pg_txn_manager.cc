@@ -744,6 +744,7 @@ Status PgTxnManager::SetupPerformOptions(
   options->set_txn_serial_no(serial_no_.txn());
   options->set_active_sub_transaction_id(active_sub_transaction_id_);
   options->set_xcluster_target_ddl_bypass(yb_xcluster_target_ddl_bypass);
+  options->set_pg_txn_start_us(pg_txn_start_us_);
 
   if (use_saved_priority_) {
     options->set_use_existing_priority(true);
@@ -770,8 +771,6 @@ Status PgTxnManager::SetupPerformOptions(
     options->set_read_time_manipulation(
         GetActualReadTimeManipulator(isolation_level_, read_time_manipulation_, read_time_action));
     read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
-    // pg_txn_start_us is similarly only used for kPlain transactions.
-    options->set_pg_txn_start_us(pg_txn_start_us_);
     // Only clamp read-only txns/stmts.
     // Do not clamp in the serializable case since
     // - SERIALIZABLE reads do not pick read time until later.
