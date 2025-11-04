@@ -1091,6 +1091,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Result<scoped_refptr<NamespaceInfo>> FindNamespaceByIdUnlocked(
       const NamespaceId& id) const REQUIRES_SHARED(mutex_);
 
+  Result<scoped_refptr<NamespaceInfo>> FindNamespaceByName(
+      YQLDatabase db_type, const std::string& name) const;
+  Result<scoped_refptr<NamespaceInfo>> FindNamespaceByNameUnlocked(
+      YQLDatabase db_type, const std::string& name) const REQUIRES_SHARED(mutex_);
+
   Result<scoped_refptr<TableInfo>> FindTableUnlocked(
       const TableIdentifierPB& table_identifier, bool include_deleted = true) const
       REQUIRES_SHARED(mutex_);
@@ -1684,14 +1689,15 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Status BackfillMetadataForXRepl(const TableInfoPtr& table_info, const LeaderEpoch& epoch);
 
-  Result<TabletInfoPtr> GetTabletInfo(const TabletId& tablet_id) override
-      EXCLUDES(mutex_);
-
-  // Gets the set of table IDs that belong to the sys.catalog tablet.
-  std::unordered_set<TableId> GetSysCatalogTableIds() EXCLUDES(mutex_);
+  Result<TabletInfoPtr> GetTabletInfo(const TabletId& tablet_id) override EXCLUDES(mutex_);
 
   // Gets the tablet info for each tablet id, or nullptr if the tablet was not found.
   TabletInfos GetTabletInfos(const std::vector<TabletId>& ids) override;
+
+  bool IsColocatedNamespace(const NamespaceId& ns_id) const EXCLUDES(mutex_);
+
+  // Gets the set of table IDs that belong to the sys.catalog tablet.
+  std::unordered_set<TableId> GetSysCatalogTableIds() EXCLUDES(mutex_);
 
   // Mark specified CDC streams as DELETING/DELETING_METADATA so they can be removed later.
   Status DropXReplStreams(
@@ -2710,7 +2716,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   // Helper function for ImportTableEntry.
   Result<bool> CheckTableForImport(
-      scoped_refptr<TableInfo> table, ExternalTableSnapshotData* snapshot_data)
+      const scoped_refptr<TableInfo>& table, ExternalTableSnapshotData* snapshot_data)
       REQUIRES_SHARED(mutex_);
 
   Status ImportNamespaceEntry(
