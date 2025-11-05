@@ -9,8 +9,6 @@ menu:
     identifier: ycsb-1-ysql
     parent: benchmark
     weight: 5
-aliases:
-  - /benchmark/ycsb/
 type: docs
 ---
 
