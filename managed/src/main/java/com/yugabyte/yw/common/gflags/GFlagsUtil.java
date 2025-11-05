@@ -1575,6 +1575,24 @@ public class GFlagsUtil {
     }
   }
 
+  // Extract out the flag names from the undefok gflag.
+  public static Set<String> extractUndefokFlags(Map<String, String> gflags) {
+    Set<String> undefokFlags = new HashSet<>();
+    String undefokValue = gflags.get(UNDEFOK);
+
+    if (StringUtils.isNotBlank(undefokValue)) {
+      String[] flagNames = undefokValue.split(",");
+      for (String flagName : flagNames) {
+        String trimmedFlagName = flagName.trim();
+        if (!trimmedFlagName.isEmpty()) {
+          undefokFlags.add(trimmedFlagName);
+        }
+      }
+    }
+
+    return undefokFlags;
+  }
+
   private static void mergeHostAndPort(
       Map<String, String> userGFlags, String addressKey, int port) {
     String val = userGFlags.get(addressKey);
