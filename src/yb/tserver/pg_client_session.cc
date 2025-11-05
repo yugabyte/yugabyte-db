@@ -12,6 +12,7 @@
 //
 
 #include "yb/tserver/pg_client_session.h"
+
 #include <sys/types.h>
 
 #include <algorithm>
@@ -20,15 +21,12 @@
 #include <chrono>
 #include <mutex>
 #include <optional>
-#include <queue>
 #include <set>
 #include <span>
 #include <string>
 #include <tuple>
 #include <unordered_map>
 #include <vector>
-
-#include "yb/cdc/cdc_service.h"
 
 #include "yb/client/batcher.h"
 #include "yb/client/client.h"
@@ -43,8 +41,8 @@
 
 #include "yb/common/common.pb.h"
 #include "yb/common/common_util.h"
-#include "yb/common/ql_type.h"
 #include "yb/common/pgsql_error.h"
+#include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction_error.h"
 #include "yb/common/transaction_priority.h"
@@ -64,17 +62,15 @@
 #include "yb/tserver/pg_sequence_cache.h"
 #include "yb/tserver/pg_shared_mem_pool.h"
 #include "yb/tserver/pg_table_cache.h"
-#include "yb/tserver/pg_txn_snapshot_manager.h"
 #include "yb/tserver/service_util.h"
 #include "yb/tserver/ts_local_lock_manager.h"
-#include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/tserver/tserver_shared_mem.h"
+#include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/tserver/ysql_advisory_lock_table.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/cast.h"
 #include "yb/util/enums.h"
-#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/lw_function.h"
 #include "yb/util/pb_util.h"
@@ -112,6 +108,12 @@ DEFINE_RUNTIME_bool(use_tablespace_based_transaction_placement, false,
 
 DEFINE_RUNTIME_uint64(big_shared_memory_segment_session_expiration_time_ms, 5000,
     "Time to release unused allocated big memory segment from session to pool.");
+
+DEFINE_RUNTIME_bool(xcluster_target_manual_override, false,
+    "When set, arbitrary DDLs, DMLs, and sequence manipulation functions are allowed on an "
+    "automatic-mode target database.  This is likely to cause data loss, so consult with "
+    "YugabyteDB support before using.");
+TAG_FLAG(xcluster_target_manual_override, hidden);
 
 DEFINE_test_flag(
     bool, request_unknown_tables_during_perform, false,
@@ -399,7 +401,7 @@ Status ProcessUsedReadTime(uint64_t session_id,
         !used_read_time->value, IllegalState,
         "Multiple used_read_time are not expected: $0, $1",
         used_read_time->value, op_used_read_time);
-    *used_read_time = {read_op.used_tablet(), op_used_read_time};
+    *used_read_time = {.tablet_id = read_op.used_tablet(), .value = op_used_read_time};
   }
   return Status::OK();
 }
@@ -1049,7 +1051,7 @@ client::YBSessionPtr CreateSession(
 
 HybridTime GetInTxnLimit(const PgPerformOptionsPB& options, ClockBase* clock) {
   if (!options.has_in_txn_limit_ht()) {
-    return HybridTime();
+    return {};
   }
   auto in_txn_limit = HybridTime::FromPB(options.in_txn_limit_ht().value());
   return in_txn_limit ? in_txn_limit : clock->Now();
@@ -1191,7 +1193,7 @@ class TransactionProvider {
     // next_plain_ exists, so the locality passed here doesn't matter as we won't be creating
     // a new transaction.
     auto res = NextTxnMetaForPlain(
-        TransactionFullLocality::RegionLocal(), deadline, true /* is_for_release */);
+        TransactionFullLocality::RegionLocal(), deadline, /*is_for_release=*/true);
     if (!res.ok()) {
       LOG(DFATAL) << "Unexpected error while fetching existing plain re-usable txn";
       return std::nullopt;
@@ -2100,6 +2102,8 @@ class PgClientSession::Impl {
   Status UpdateSequenceTuple(
       const PgUpdateSequenceTupleRequestPB& req, PgUpdateSequenceTupleResponsePB* resp,
       rpc::RpcContext* context) {
+    RETURN_NOT_OK(ValidateSequenceModificationFunctionForXCluster(req.db_oid()));
+
     PgObjectId table_oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
     auto table = VERIFY_RESULT(table_cache().Get(table_oid.GetYbTableId()));
 
@@ -2187,6 +2191,8 @@ class PgClientSession::Impl {
       rpc::RpcContext* context) {
     using pggate::PgDocData;
     using pggate::PgWireDataHeader;
+
+    RETURN_NOT_OK(ValidateSequenceModificationFunctionForXCluster(req.db_oid()));
 
     const auto inc_by = req.inc_by();
     std::shared_ptr<PgSequenceCache::Entry> cache_entry;
@@ -2834,13 +2840,16 @@ class PgClientSession::Impl {
     if (options.yb_non_ddl_txn_for_sys_tables_allowed() || !xcluster_context()) {
       return Status::OK();
     }
+    bool is_automatic_target = xcluster_context()->GetXClusterRole(options.namespace_id()) ==
+                               XClusterNamespaceInfoPB::AUTOMATIC_TARGET;
+    if (is_automatic_target && FLAGS_xcluster_target_manual_override) {
+      return Status::OK();
+    }
 
     if (options.ddl_mode()) {
       // In xCluster Automatic mode, DDLs are not allowed on the target database unless it is run
       // via the target poller or in forced manual mode.
-      if (xcluster_context()->GetXClusterRole(options.namespace_id()) ==
-              XClusterNamespaceInfoPB::AUTOMATIC_TARGET &&
-          !options.xcluster_target_ddl_bypass()) {
+      if (is_automatic_target && !options.xcluster_target_ddl_bypass()) {
         // Force catalog modifications is set for temp table, and in-place materialized view
         // refresh. These DDLs are safe to perform on xCluster target in automatic mode.
         for (const auto& op : data->req.ops()) {
@@ -2868,6 +2877,21 @@ class PgClientSession::Impl {
       }
     }
 
+    return Status::OK();
+  }
+
+  Status ValidateSequenceModificationFunctionForXCluster(int64_t db_oid) {
+    if (FLAGS_xcluster_target_manual_override) {
+      return Status::OK();
+    }
+    if (xcluster_context() &&
+        xcluster_context()->GetXClusterRole(GetPgsqlNamespaceId(narrow_cast<uint32_t>(db_oid))) ==
+            XClusterNamespaceInfoPB::AUTOMATIC_TARGET) {
+      return STATUS(
+          IllegalState,
+          "Sequence manipulation functions are forbidden on a database that is the target of "
+          "automatic mode xCluster replication");
+    }
     return Status::OK();
   }
 

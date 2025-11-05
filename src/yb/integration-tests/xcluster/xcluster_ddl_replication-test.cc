@@ -51,6 +51,7 @@ DECLARE_int32(xcluster_ddl_queue_max_retries_per_ddl);
 DECLARE_int64(xcluster_ddl_queue_advisory_lock_key);
 DECLARE_uint32(xcluster_consistent_wal_safe_time_frequency_ms);
 DECLARE_uint32(xcluster_max_old_schema_versions);
+DECLARE_bool(xcluster_target_manual_override);
 DECLARE_string(ysql_cron_database_name);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_uint32(ysql_oid_cache_prefetch_size);
@@ -3469,58 +3470,145 @@ TEST_F(XClusterDDLReplicationTest, MatViewWithPartitions) {
   ASSERT_NOK(consumer_conn_->FetchAllAsString("SELECT * FROM pmv_renamed ORDER BY b"));
 }
 
-// Validate that the user cannot run arbitrary DDLs on the target cluster when in automatic mode.
-TEST_F(XClusterDDLReplicationTest, DDLsOnTarget) {
-  ASSERT_OK(SetUpClustersAndReplication());
+class XClusterTargetBlockingTest : public XClusterDDLReplicationTest {
+ public:
+  void SetUp() override {
+    TEST_SETUP_SUPER(XClusterDDLReplicationTest);
+    ASSERT_OK(SetUpClustersAndReplication());
 
-  ASSERT_OK(producer_conn_->Execute("CREATE TABLE tbl1(a int, b text)"));
-  ASSERT_OK(producer_conn_->Execute("CREATE MATERIALIZED VIEW test_mv AS SELECT a FROM tbl1"));
-  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+    ASSERT_OK(producer_conn_->Execute("CREATE TABLE tbl1(a int, b text)"));
+    ASSERT_OK(producer_conn_->Execute("CREATE TABLE tbl2(a int, b text)"));
+    ASSERT_OK(producer_conn_->Execute("CREATE MATERIALIZED VIEW test_mv1 AS SELECT a FROM tbl1"));
+    ASSERT_OK(producer_conn_->Execute("CREATE MATERIALIZED VIEW test_mv2 AS SELECT a FROM tbl1"));
+    ASSERT_OK(producer_conn_->Execute("CREATE SEQUENCE test_sequence1"));
+    ASSERT_OK(producer_conn_->Execute("CREATE SEQUENCE test_sequence2"));
 
-  constexpr auto kExpectedErrorMsg =
-      "DDL operations are forbidden on a database that is the target of automatic mode xCluster "
-      "replication";
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  }
 
+  // These should all be valid regardless of whether the preceding DDLs in this list failed.
   const std::vector<std::string> kDisallowedDDLs = {
-      "CREATE TABLE test_table (id int PRIMARY KEY, name text)",
+      "CREATE TABLE new_test_table (id int PRIMARY KEY, name text)",
       "CREATE INDEX ON tbl1 (b)",
       "ALTER TABLE tbl1 ADD COLUMN age int",
       "ALTER TABLE tbl1 ADD PRIMARY KEY (a)",
       "ALTER TABLE tbl1 DROP COLUMN b",
+      "TRUNCATE TABLE tbl1",
+      "DROP TABLE tbl2 CASCADE",
+
       "CREATE MATERIALIZED VIEW new_mv AS SELECT * FROM tbl1",
-      "REFRESH MATERIALIZED VIEW test_mv",
-      "ALTER MATERIALIZED VIEW test_mv RENAME TO test_mv_renamed",
-      "DROP MATERIALIZED VIEW IF EXISTS test_mv",
-      "DROP TABLE tbl1 CASCADE",
-      "CREATE TYPE test_type AS ENUM ('A', 'B')",
-      "CREATE SCHEMA test_schema",
-      "CREATE SEQUENCE test_sequence",
+      "REFRESH MATERIALIZED VIEW test_mv1",
+      "ALTER MATERIALIZED VIEW test_mv2 RENAME TO test_mv_renamed",
+      "DROP MATERIALIZED VIEW IF EXISTS test_mv1",
+
+      "CREATE SEQUENCE new_test_sequence",
+      "ALTER SEQUENCE test_sequence1 START WITH 10000",
+      "ALTER SEQUENCE test_sequence1 RESTART WITH 20000",
+      "DROP SEQUENCE test_sequence2",
+
+      "CREATE TYPE new_test_type AS ENUM ('A', 'B')",
+      "CREATE SCHEMA new_test_schema",
   };
+
+  // Precondition: ddl is from kDisallowedDDLs.
+  bool DdlCreatesDocdbTable(const std::string& ddl) {
+    return ddl.contains("CREATE TABLE") || ddl.contains("CREATE INDEX") ||
+           ddl.contains("ADD PRIMARY KEY") || ddl.contains("CREATE MATERIALIZED VIEW") ||
+           ddl.contains("REFRESH MATERIALIZED VIEW") || ddl.contains("TRUNCATE TABLE");
+  }
+};
+
+// Validate that the user cannot run arbitrary DDLs on the target cluster when in automatic mode.
+TEST_F(XClusterTargetBlockingTest, DdlsOnTarget) {
+  constexpr auto kExpectedErrorMsg =
+      "forbidden on a database that is the target of automatic mode xCluster "
+      "replication";
 
   for (const auto& ddl : kDisallowedDDLs) {
     LOG(INFO) << "Executing: " << ddl;
-    if (ddl.contains("CREATE INDEX")) {
+    if (ddl.contains("CREATE INDEX") || ddl.contains("TRUNCATE TABLE")) {
       // TODO(#28135): Create index creates a DocDB table before making pg catalog changes causing
-      // it to fail with a bootstrapping error.
+      // it to fail with a bootstrapping error.  Ditto for TRUNCATE TABLE.
       ASSERT_NOK(consumer_conn_->Execute(ddl));
     } else {
       ASSERT_NOK_STR_CONTAINS(consumer_conn_->Execute(ddl), kExpectedErrorMsg);
     }
   }
 
-  // With manual mode we should be able to execute DDLs except those that create new DocDB Tables.
+  // Ensure sequence-altering DDLs (including DROP) did not modify sequences_data.
+  auto sequence_next = ASSERT_RESULT(
+      producer_conn_->FetchRow<pgwrapper::PGUint64>("SELECT nextval('test_sequence1')"));
+  EXPECT_LT(sequence_next, 100);
+  EXPECT_OK(producer_conn_->FetchRow<pgwrapper::PGUint64>("SELECT nextval('test_sequence2')"));
+}
+
+// With manual mode we should be able to execute DDLs except those that create new DocDB Tables.
+TEST_F(XClusterTargetBlockingTest, DdlsOnTargetManualMode) {
   ASSERT_OK(consumer_conn_->Execute(
       "SET yb_xcluster_ddl_replication.enable_manual_ddl_replication TO TRUE"));
+
   for (const auto& ddl : kDisallowedDDLs) {
     LOG(INFO) << "Executing: " << ddl;
-    if (ddl.contains("CREATE TABLE") || ddl.contains("CREATE INDEX") ||
-        ddl.contains("ADD PRIMARY KEY") || ddl.contains("CREATE MATERIALIZED VIEW") ||
-        ddl.contains("REFRESH MATERIALIZED VIEW")) {
-      ASSERT_NOK(consumer_conn_->Execute(ddl));
+    // ALTER SEQUENCE ... RESTART cannot be run in manual mode because it tries to execute a
+    // sequence manipulation function, which cannot be overridden using manual mode (it is not
+    // passed the status of that mode).
+    if (DdlCreatesDocdbTable(ddl) || ddl.contains("RESTART")) {
+      EXPECT_NOK(consumer_conn_->Execute(ddl));
     } else {
-      ASSERT_OK(consumer_conn_->Execute(ddl));
+      EXPECT_OK(consumer_conn_->Execute(ddl));
     }
   }
+}
+
+// Using the override gflag, DDLs that do not create DocDB tables can be run on the target cluster
+// in automatic mode.
+TEST_F(XClusterTargetBlockingTest, DdlsOnTargetGflagOverride) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_target_manual_override) = true;
+
+  for (const auto& ddl : kDisallowedDDLs) {
+    LOG(INFO) << "Executing: " << ddl;
+    if (DdlCreatesDocdbTable(ddl)) {
+      EXPECT_NOK(consumer_conn_->Execute(ddl));
+    } else {
+      EXPECT_OK(consumer_conn_->Execute(ddl));
+    }
+  }
+}
+
+TEST_F(XClusterTargetBlockingTest, SequenceBumpsOnTarget) {
+  // All sequence manipulation functions work on the source:
+  EXPECT_OK(producer_conn_->FetchRow<pgwrapper::PGUint64>("SELECT nextval('test_sequence1')"));
+  EXPECT_OK(producer_conn_->FetchRow<pgwrapper::PGUint64>("SELECT currval('test_sequence1')"));
+  EXPECT_OK(producer_conn_->FetchRow<pgwrapper::PGUint64>("SELECT lastval()"));
+  EXPECT_OK(
+      producer_conn_->FetchRow<pgwrapper::PGUint64>("SELECT setval('test_sequence1', 1, true)"));
+
+  // But non-read-only sequence manipulation functions do not work on the target:
+  ASSERT_NOK_STR_CONTAINS(
+      consumer_conn_->FetchRow<pgwrapper::PGUint64>("SELECT nextval('test_sequence1')"),
+      "Sequence manipulation functions are forbidden");
+  ASSERT_NOK_STR_CONTAINS(
+      consumer_conn_->FetchRow<pgwrapper::PGUint64>("SELECT setval('test_sequence1', 1, true)"),
+      "Sequence manipulation functions are forbidden");
+  // {curr,last}val give errors unless nextval has been successfully called in the current session
+
+  // Verify manual override works.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_target_manual_override) = true;
+  ASSERT_OK(consumer_conn_->FetchRow<pgwrapper::PGUint64>("SELECT nextval('test_sequence1')"));
+  ASSERT_OK(
+      consumer_conn_->FetchRow<pgwrapper::PGUint64>("SELECT setval('test_sequence1', 1, true)"));
+}
+
+TEST_F(XClusterTargetBlockingTest, DmlsOnTarget) {
+  constexpr auto kExpectedErrorMsg =
+      "Data modification is forbidden on database that is the target of a transactional xCluster "
+      "replication";
+
+  auto ddl = "INSERT INTO tbl1 VALUES (1, 'foo')";
+  ASSERT_NOK_STR_CONTAINS(consumer_conn_->Execute(ddl), kExpectedErrorMsg);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_target_manual_override) = true;
+  ASSERT_OK(consumer_conn_->Execute(ddl));
 }
 
 // Make sure we can run ANALYZE on both clusters.
