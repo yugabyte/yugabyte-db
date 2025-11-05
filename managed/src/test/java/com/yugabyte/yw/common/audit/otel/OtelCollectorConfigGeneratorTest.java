@@ -43,6 +43,7 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.charset.Charset;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import org.apache.commons.io.FileUtils;
@@ -288,6 +289,61 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
             1000);
 
     generateAndAssertConfig(null, queryLogConfig, null, "audit/loki_query_log_config.yml");
+  }
+
+  @Test
+  public void generateOtelColConfigYsqlPlusOTLP() {
+    OTLPConfig config = new OTLPConfig();
+    config.setType(ProviderType.OTLP);
+    config.setEndpoint("http://otlp:3100");
+    config.setAuthType(AuthType.BasicAuth);
+
+    AuthCredentials.BasicAuthCredentials authCredentials =
+        new AuthCredentials.BasicAuthCredentials();
+    authCredentials.setUsername("username");
+    authCredentials.setPassword("password");
+    config.setBasicAuth(authCredentials);
+
+    Map<String, String> headers = new HashMap<>();
+    headers.put("header1", "value1");
+    headers.put("header2", "value2");
+    config.setHeaders(headers);
+
+    TelemetryProvider telemetryProvider =
+        createTelemetryProvider(new UUID(0, 0), "OTLP", ImmutableMap.of("tag", "value"), config);
+
+    AuditLogConfig auditLogConfig =
+        createAuditLogConfigWithYSQL(
+            telemetryProvider.getUuid(), ImmutableMap.of("additionalTag", "otherValue"));
+
+    generateAndAssertConfig(auditLogConfig, null, null, "audit/otlp_config.yml");
+  }
+
+  @Test
+  public void generateOtelColConfigYsqlQueryLogPlusOTLP() {
+    OTLPConfig config = new OTLPConfig();
+    config.setType(ProviderType.OTLP);
+    config.setEndpoint("http://otlp:3100");
+    config.setAuthType(AuthType.NoAuth);
+    config.setTimeoutSeconds(10);
+
+    TelemetryProvider telemetryProvider =
+        createTelemetryProvider(new UUID(0, 0), "OTLP", ImmutableMap.of("tag", "value"), config);
+
+    QueryLogConfig queryLogConfig =
+        createQueryLogConfig(
+            telemetryProvider.getUuid(),
+            ImmutableMap.of("additionalTag", "otherValue"),
+            YSQLQueryLogConfig.YSQLLogStatement.ALL,
+            YSQLQueryLogConfig.YSQlLogMinErrorStatement.ERROR,
+            YSQLQueryLogConfig.YSQLLogErrorVerbosity.VERBOSE,
+            true,
+            true,
+            true,
+            true,
+            1000);
+
+    generateAndAssertConfig(null, queryLogConfig, null, "audit/otlp_query_log_config.yml");
   }
 
   @Test
