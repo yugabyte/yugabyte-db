@@ -79,7 +79,7 @@ export const EnableContinuousBackupPrompt = ({
         <Typography className={classes.promptPrimaryText} variant="body2">
           {t('featureDescription')}
         </Typography>
-        <RbacValidator accessRequiredOn={ApiPermissionMap.CREATE_CONTINUOUS_BACKUP} isControl>
+        <RbacValidator accessRequiredOn={ApiPermissionMap.CREATE_CONTINUOUS_YBA_BACKUP} isControl>
           <YBButton
             style={{ minWidth: '200px' }}
             variant="primary"

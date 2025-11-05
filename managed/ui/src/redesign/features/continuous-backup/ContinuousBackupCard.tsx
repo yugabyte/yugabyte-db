@@ -17,6 +17,8 @@ import {
 import { useFormatDatetime } from '../../helpers/DateUtils';
 import { DeleteContinuousBackupConfigModal } from './DeleteContinuousBackupConfigModal';
 import { getIsLastPlatformBackupOld } from './utils';
+import { ApiPermissionMap } from '../rbac/ApiAndUserPermMapping';
+import { RbacValidator } from '../rbac/common/RbacApiPermValidator';
 
 interface ContinuousBackupCardProps {
   continuousBackupConfig: ContinuousBackup;
@@ -127,14 +129,18 @@ export const ContinuousBackupCard = ({ continuousBackupConfig }: ContinuousBacku
       <div className={classes.cardHeader}>
         <Typography variant="h5">{t('title')}</Typography>
         <div className={classes.cardActionsContainer}>
-          <YBButton variant="secondary" onClick={openConfigureContinuousBackupModal}>
-            <PenIcon className={classes.icon} />
-            <Typography variant="body2">{t('edit', { keyPrefix: 'common' })}</Typography>
-          </YBButton>
-          <YBButton variant="secondary" onClick={openDeleteContinuousBackupModal}>
-            <TrashIcon className={classes.icon} />
-            <Typography variant="body2">{t('button.remove')}</Typography>
-          </YBButton>
+          <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_CONTINUOUS_YBA_BACKUP} isControl>
+            <YBButton variant="secondary" onClick={openConfigureContinuousBackupModal}>
+              <PenIcon className={classes.icon} />
+              <Typography variant="body2">{t('edit', { keyPrefix: 'common' })}</Typography>
+            </YBButton>
+          </RbacValidator>
+          <RbacValidator accessRequiredOn={ApiPermissionMap.DELETE_CONTINUOUS_YBA_BACKUP} isControl>
+            <YBButton variant="secondary" onClick={openDeleteContinuousBackupModal}>
+              <TrashIcon className={classes.icon} />
+              <Typography variant="body2">{t('button.remove')}</Typography>
+            </YBButton>
+          </RbacValidator>
         </div>
       </div>
       <div className={classes.cardBody}>
