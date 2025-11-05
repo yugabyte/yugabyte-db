@@ -2648,6 +2648,12 @@ YbTrackAlteredTableId(Oid relid)
 void
 YBIncrementDdlNestingLevel(YbDdlMode mode)
 {
+	if (YBIsDdlTransactionBlockEnabled() && IsTransactionBlock())
+	{
+		elog(ERROR,
+				"YBIncrementDdlNestingLevel: autonomous DDL not exepcted inside a transaction block");
+	}
+
 	if (ddl_transaction_state.nesting_level == 0)
 	{
 		/*
