@@ -475,40 +475,6 @@ void MergeSharedPreloadLibraries(const string& src, vector<string>* defaults) {
   defaults->insert(defaults->end(), new_items.begin(), new_items.end());
 }
 
-Status ReadCSVValues(const string& csv, vector<string>* lines) {
-  // Function reads CSV string in the following format:
-  // - fields are divided with comma (,)
-  // - fields with comma (,) or double-quote (") are quoted with double-quote (")
-  // - pair of double-quote ("") in quoted field represents single double-quote (")
-  //
-  // Examples:
-  // 1,"two, 2","three ""3""", four , -> ['1', 'two, 2', 'three "3"', ' four ', '']
-  // 1,"two                           -> Malformed CSV (quoted field 'two' is not closed)
-  // 1, "two"                         -> Malformed CSV (quoted field 'two' has leading spaces)
-  // 1,two "2"                        -> Malformed CSV (field with " must be quoted)
-  // 1,"tw"o"                         -> Malformed CSV (no separator after quoted field 'tw')
-
-  const std::regex exp(R"(^(?:([^,"]+)|(?:"((?:[^"]|(?:""))*)\"))(?:(?:,)|(?:$)))");
-  auto i = csv.begin();
-  const auto end = csv.end();
-  std::smatch match;
-  while (i != end && std::regex_search(i, end, match, exp)) {
-    // Replace pair of double-quote ("") with single double-quote (") in quoted field.
-    if (match[2].length() > 0) {
-      lines->emplace_back(match[2].first, match[2].second);
-      boost::algorithm::replace_all(lines->back(), "\"\"", "\"");
-    } else {
-      lines->emplace_back(match[1].first, match[1].second);
-    }
-    i += match.length();
-  }
-  SCHECK(i == end, InvalidArgument, Format("Malformed CSV '$0'", csv));
-  if (!csv.empty() && csv.back() == ',') {
-    lines->emplace_back();
-  }
-  return Status::OK();
-}
-
 // Make sure that the parameter values do not contain '\n' since each line is a separate parameter.
 Status ValidateConfValuesBasic(const vector<string>& lines) {
   for (const string& parameter : lines) {
