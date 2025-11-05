@@ -5319,14 +5319,16 @@ std::string IncrementedCopy(Slice key) {
 
 } // namespace
 
-Status Tablet::AbortActiveTransactions(CoarseTimePoint deadline) const {
+Status Tablet::AbortActiveTransactions(
+    CoarseTimePoint deadline, std::optional<TransactionId>&& exclude_txn_id) const {
   if (transaction_participant() == nullptr) {
     return Status::OK();
   }
   HybridTime max_cutoff = HybridTime::kMax;
   LOG(INFO) << "Aborting transactions that started prior to " << max_cutoff << " for tablet id "
             << tablet_id();
-  return transaction_participant()->StopActiveTxnsPriorTo(max_cutoff, deadline);
+  return transaction_participant()->StopActiveTxnsPriorTo(
+      max_cutoff, deadline, exclude_txn_id.has_value() ? &*exclude_txn_id : nullptr);
 }
 
 Status Tablet::GetTabletKeyRanges(

@@ -245,7 +245,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
       const TabletId& tablet_id, tablet::TabletDataState delete_type,
       tablet::ShouldAbortActiveTransactions should_abort_active_txns,
       const std::optional<int64_t>& cas_config_opid_index_less_or_equal, bool hide_only,
-      bool keep_data, std::optional<TabletServerErrorPB::Code>* error_code);
+      bool keep_data, std::optional<TabletServerErrorPB::Code>* error_code,
+      std::optional<TransactionId>&& exclude_aborting_txn_id = std::nullopt);
 
   // Lookup the given tablet peer by its ID. Returns nullptr if the tablet peer is not found.
   //

@@ -217,6 +217,10 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTaskWithTable {
     keep_data_ = value;
   }
 
+  void set_exclude_aborting_transaction_id(TransactionId value) {
+    exclude_aborting_transaction_id_ = value;
+  }
+
   TabletId tablet_id() const override { return tablet_id_; }
 
  protected:
@@ -232,6 +236,7 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTaskWithTable {
   tserver::DeleteTabletResponsePB resp_;
   bool hide_only_ = false;
   bool keep_data_ = false;
+  std::optional<TransactionId> exclude_aborting_transaction_id_{std::nullopt};
 
  private:
   Status SetPendingDelete(AddPendingDelete add_pending_delete);

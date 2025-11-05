@@ -1840,10 +1840,15 @@ void TabletServiceAdminImpl::DeleteTablet(const DeleteTabletRequestPB* req,
     cas_config_opid_index_less_or_equal = req->cas_config_opid_index_less_or_equal();
   }
   std::optional<TabletServerErrorPB::Code> error_code;
+  std::optional<TransactionId> txn_id;
+  if (req->has_transaction_id()) {
+    txn_id = CHECK_RESULT(TransactionId::FromString(req->transaction_id()));
+  }
   Status s = server_->tablet_manager()->DeleteTablet(
       req->tablet_id(), delete_type,
       tablet::ShouldAbortActiveTransactions(req->should_abort_active_txns()),
-      cas_config_opid_index_less_or_equal, req->hide_only(), req->keep_data(), &error_code);
+      cas_config_opid_index_less_or_equal, req->hide_only(), req->keep_data(), &error_code,
+      std::move(txn_id));
   if (PREDICT_FALSE(!s.ok())) {
     HandleErrorResponse(resp, &context, s, error_code);
     return;
