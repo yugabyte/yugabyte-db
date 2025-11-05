@@ -95,6 +95,11 @@ class KubernetesListInstancesMethod(ListInstancesMethod):
     def __init__(self, base_command):
         super(KubernetesListInstancesMethod, self).__init__(base_command)
 
+    def add_extra_args(self):
+        super(KubernetesListInstancesMethod, self).add_extra_args()
+        self.parser.add_argument("--namespace", default="default",
+                                 help="Kubernetes namespace (default: default)")
+
     def callback(self, args):
         logging.debug(f"Listing Kubernetes instances with args: {args}")
 
