@@ -11122,6 +11122,10 @@ void CatalogManager::SendDeleteTabletRequest(
   }
   if (table != nullptr) {
     table->AddTask(call);
+    TransactionId txn_id = TransactionId::Nil();
+    if (IsTableDeletionDueToRollbackToSubTxn(table, txn_id)) {
+      call->set_exclude_aborting_transaction_id(txn_id);
+    }
   }
 
   auto status = ScheduleTask(call);

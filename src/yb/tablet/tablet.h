@@ -971,7 +971,8 @@ class Tablet : public AbstractTablet,
         max_key_length, std::move(callback), colocated_table_id);
   }
 
-  Status AbortActiveTransactions(CoarseTimePoint deadline) const;
+  Status AbortActiveTransactions(
+      CoarseTimePoint deadline, std::optional<TransactionId>&& exclude_txn_id = std::nullopt) const;
 
   // TODO: Move mutex to private section.
   // Lock used to serialize the creation of RocksDB checkpoints.

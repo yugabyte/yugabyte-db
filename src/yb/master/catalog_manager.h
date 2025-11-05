@@ -533,6 +533,14 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
                                           const SubTransactionId sub_txn_id,
                                           const LeaderEpoch& epoch);
 
+  // Returns true if the table deletion is happening due to a rollback to sub-transaction operation.
+  // If returning true, the txn_id field is populated with the transaction that it undergoing the
+  // rollback to sub-transaction operation.
+  // NOTE: This function must only be called when we know that the table is being deleted i.e. it
+  // assumes that the table is being deleted.
+  bool IsTableDeletionDueToRollbackToSubTxn(
+      const scoped_refptr<TableInfo>& table, TransactionId& txn_id);
+
   // Rollback all the DDL state changes made by the YSQL transaction from the end till
   // rollback_till_ddl_state_index of ysql_ddl_txn_verifier_state i.e.
   // ysql_ddl_txn_verifier_state[rollback_till_ddl_state_index, end)

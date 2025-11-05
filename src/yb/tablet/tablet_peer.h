@@ -193,11 +193,13 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   void CompleteShutdown(DisableFlushOnShutdown disable_flush_on_shutdown, AbortOps abort_ops);
 
   // Abort active transactions on the tablet after shutdown is initiated.
-  void AbortActiveTransactions() const;
+  void AbortActiveTransactions(
+      std::optional<TransactionId>&& exclude_aborting_txn_id = std::nullopt) const;
 
   Status Shutdown(
       ShouldAbortActiveTransactions should_abort_active_txns,
-      DisableFlushOnShutdown disable_flush_on_shutdown);
+      DisableFlushOnShutdown disable_flush_on_shutdown,
+      std::optional<TransactionId>&& exclude_aborting_txn_id = std::nullopt);
 
   // Check that the tablet is in a RUNNING state.
   Status CheckRunning() const;

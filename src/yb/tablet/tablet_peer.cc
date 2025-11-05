@@ -614,14 +614,15 @@ void TabletPeer::WaitUntilShutdown() {
 
 Status TabletPeer::Shutdown(
     ShouldAbortActiveTransactions should_abort_active_txns,
-    DisableFlushOnShutdown disable_flush_on_shutdown) {
+    DisableFlushOnShutdown disable_flush_on_shutdown,
+    std::optional<TransactionId>&& exclude_aborting_txn_id) {
   auto is_shutdown_initiated = StartShutdown();
 
   if (should_abort_active_txns) {
     // Once raft group state enters QUIESCING state,
     // new queries cannot be processed from then onwards.
     // Aborting any remaining active transactions in the tablet.
-    AbortActiveTransactions();
+    AbortActiveTransactions(std::move(exclude_aborting_txn_id));
   }
 
   if (is_shutdown_initiated) {
@@ -632,14 +633,15 @@ Status TabletPeer::Shutdown(
   return Status::OK();
 }
 
-void TabletPeer::AbortActiveTransactions() const {
+void TabletPeer::AbortActiveTransactions(
+    std::optional<TransactionId>&& exclude_aborting_txn_id) const {
   if (!tablet_) {
     return;
   }
   auto deadline =
       CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(FLAGS_ysql_transaction_abort_timeout_ms);
   WARN_NOT_OK(
-      tablet_->AbortActiveTransactions(deadline),
+      tablet_->AbortActiveTransactions(deadline, std::move(exclude_aborting_txn_id)),
       "Cannot abort transactions for tablet " + tablet_->tablet_id());
 }
 
