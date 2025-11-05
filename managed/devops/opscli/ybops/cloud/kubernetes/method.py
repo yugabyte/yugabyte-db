@@ -21,13 +21,23 @@ class KubernetesCreateInstancesMethod(CreateInstancesMethod):
     def update_ansible_vars_with_args(self, args):
         """Override to set connection_type to kubectl."""
         super(KubernetesCreateInstancesMethod, self).update_ansible_vars_with_args(args)
-        # Set connection type to kubectl for kubernetes cloud
         self.extra_vars['connection_type'] = 'kubectl'
-        # Map pod name and namespace to kubectl options
+
+        # Extract namespace from runtime_args if provided
+        if hasattr(args, 'runtime_args') and args.runtime_args:
+            try:
+                runtime_args = json.loads(args.runtime_args)
+                if 'YB_NAMESPACE' in runtime_args:
+                    args.namespace = runtime_args['YB_NAMESPACE']
+            except (json.JSONDecodeError, TypeError) as e:
+                logging.warning(f"Failed to parse runtime_args: {str(e)}")
+
         host_info = self.cloud.get_host_info(args)
         if host_info:
             self.extra_vars['kubectl_pod'] = host_info['name']
             self.extra_vars['kubectl_namespace'] = host_info.get('namespace', 'default')
+            if host_info.get('container'):
+                self.extra_vars['kubectl_container'] = host_info['container']
             if hasattr(args, 'kubeconfig') and args.kubeconfig:
                 self.extra_vars['kubectl_kubeconfig'] = args.kubeconfig
 
@@ -47,13 +57,23 @@ class KubernetesProvisionInstancesMethod(ProvisionInstancesMethod):
     def update_ansible_vars_with_args(self, args):
         """Override to set connection_type to kubectl."""
         super(KubernetesProvisionInstancesMethod, self).update_ansible_vars_with_args(args)
-        # Set connection type to kubectl for kubernetes cloud
         self.extra_vars['connection_type'] = 'kubectl'
-        # Map pod name and namespace to kubectl options
+
+        # Extract namespace from runtime_args if provided
+        if hasattr(args, 'runtime_args') and args.runtime_args:
+            try:
+                runtime_args = json.loads(args.runtime_args)
+                if 'YB_NAMESPACE' in runtime_args:
+                    args.namespace = runtime_args['YB_NAMESPACE']
+            except (json.JSONDecodeError, TypeError) as e:
+                logging.warning(f"Failed to parse runtime_args: {str(e)}")
+
         host_info = self.cloud.get_host_info(args)
         if host_info:
             self.extra_vars['kubectl_pod'] = host_info['name']
             self.extra_vars['kubectl_namespace'] = host_info.get('namespace', 'default')
+            if host_info.get('container'):
+                self.extra_vars['kubectl_container'] = host_info['container']
             if hasattr(args, 'kubeconfig') and args.kubeconfig:
                 self.extra_vars['kubectl_kubeconfig'] = args.kubeconfig
 
@@ -106,21 +126,12 @@ def _setup_kubectl_connection(method_instance, args):
     """Helper function to set up kubectl connection parameters in extra_vars.
     This should be called by all Kubernetes methods that need remote execution.
     """
-    # Extract namespace and container from runtime_args if provided
-    namespace = args.namespace if hasattr(args, 'namespace') else 'default'
-    container = None
-
+    # Extract namespace from runtime_args if provided
     if hasattr(args, 'runtime_args') and args.runtime_args:
         try:
             runtime_args = json.loads(args.runtime_args)
             if 'YB_NAMESPACE' in runtime_args:
-                namespace = runtime_args['YB_NAMESPACE']
-                # Set it on args so get_host_info can use it
-                args.namespace = namespace
-                logging.info(f"Using namespace from runtime_args: {namespace}")
-            if 'YB_CONTAINER' in runtime_args:
-                container = runtime_args['YB_CONTAINER']
-                logging.info(f"Using container from runtime_args: {container}")
+                args.namespace = runtime_args['YB_NAMESPACE']
         except (json.JSONDecodeError, TypeError) as e:
             logging.warning(f"Failed to parse runtime_args: {str(e)}")
 
@@ -128,9 +139,9 @@ def _setup_kubectl_connection(method_instance, args):
     if host_info:
         method_instance.extra_vars['connection_type'] = 'kubectl'
         method_instance.extra_vars['kubectl_pod'] = host_info['name']
-        method_instance.extra_vars['kubectl_namespace'] = host_info.get('namespace', namespace)
-        if container:
-            method_instance.extra_vars['kubectl_container'] = container
+        method_instance.extra_vars['kubectl_namespace'] = host_info.get('namespace', 'default')
+        if host_info.get('container'):
+            method_instance.extra_vars['kubectl_container'] = host_info['container']
         if hasattr(args, 'kubeconfig') and args.kubeconfig:
             method_instance.extra_vars['kubectl_kubeconfig'] = args.kubeconfig
 

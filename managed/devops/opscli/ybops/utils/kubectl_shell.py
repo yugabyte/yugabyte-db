@@ -24,7 +24,6 @@ class KubectlClient(object):
         self.namespace = namespace
         self.kubeconfig = kubeconfig
         self.container = container
-        logging.info(f"Initialized KubectlClient for pod: {pod_name} in namespace: {namespace}")
 
     def _build_kubectl_cmd(self, command):
         """Build the base kubectl exec command."""
@@ -134,37 +133,42 @@ class KubectlClient(object):
         if self.kubeconfig:
             kubectl_cmd.extend(["--kubeconfig", self.kubeconfig])
 
-        kubectl_cmd.extend([
-            "cp",
-            "-n", self.namespace,
-            local_path,
-            f"{self.pod_name}:{remote_path}"
-        ])
+        kubectl_cmd.extend(["cp", "-n", self.namespace])
 
         if self.container:
             kubectl_cmd.extend(["-c", self.container])
 
+        kubectl_cmd.extend([local_path, f"{self.pod_name}:{remote_path}"])
+
         logging.debug(f"Copying file with command: {' '.join(kubectl_cmd)}")
 
         try:
-            subprocess.run(
+            result = subprocess.run(
                 kubectl_cmd,
                 capture_output=True,
                 text=True,
                 check=True
             )
 
+            if result.stderr:
+                logging.warning(f"kubectl cp stderr: {result.stderr}")
+
+            logging.info(f"kubectl cp completed with rc={result.returncode}")
+
             # Apply chmod if specified
             if kwargs.get('chmod'):
                 # Mask out file type bits, keep permission bits, and ensure execution bit is set
                 permissions = (kwargs.get('chmod') & 0o7777) | 0o0111
                 chmod_cmd = f"chmod {permissions:o} {remote_path}"
+                logging.debug(f"Applying chmod: {chmod_cmd}")
                 self.exec_command(chmod_cmd, output_only=True)
 
-            logging.info(f"Successfully copied {local_path} to {self.pod_name}:{remote_path}")
-
         except subprocess.CalledProcessError as e:
+            logging.error(f"kubectl cp failed: stdout={e.stdout}, stderr={e.stderr}, rc={e.returncode}")
             raise YBOpsRuntimeError(f"Failed to copy file {local_path} to pod: {e.stderr}")
+        except Exception as e:
+            logging.error(f"Unexpected error during kubectl cp: {str(e)}")
+            raise
 
     def download_file_from_remote_server(self, remote_file_name, local_file_name, **kwargs):
         """
@@ -180,15 +184,12 @@ class KubectlClient(object):
         if self.kubeconfig:
             kubectl_cmd.extend(["--kubeconfig", self.kubeconfig])
 
-        kubectl_cmd.extend([
-            "cp",
-            "-n", self.namespace,
-            f"{self.pod_name}:{remote_file_name}",
-            local_file_name
-        ])
+        kubectl_cmd.extend(["cp", "-n", self.namespace])
 
         if self.container:
             kubectl_cmd.extend(["-c", self.container])
+
+        kubectl_cmd.extend([f"{self.pod_name}:{remote_file_name}", local_file_name])
 
         logging.debug(f"Downloading file with command: {' '.join(kubectl_cmd)}")
 

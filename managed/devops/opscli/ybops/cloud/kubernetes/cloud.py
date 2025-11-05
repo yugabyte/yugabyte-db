@@ -39,7 +39,7 @@ class KubernetesCloud(AbstractCloud):
             kubeconfig: Path to kubeconfig file (optional)
 
         Returns:
-            Actual pod name (e.g., ybdemo-eu-west-1a-zgwp-yb-master-0)
+            Tuple of (pod_name, container_name) where container_name is 'yb-master' or 'yb-tserver'
         """
         # Parse the node name to extract server type, index, and zone
         # Format: yb-master-0 or yb-master-0_eu-west-1a
@@ -48,6 +48,7 @@ class KubernetesCloud(AbstractCloud):
         zone = parts[1] if len(parts) > 1 else None  # eu-west-1a (optional)
 
         # Determine server type and extract pod index
+        # The server type is also the container name
         if base_name.startswith('yb-master-'):
             server_type = 'yb-master'
             pod_index = base_name[len('yb-master-'):]
@@ -94,8 +95,9 @@ class KubernetesCloud(AbstractCloud):
                     f"No pod found for node '{node_name}' with labels "
                     f"component={server_type}, pod-index={pod_index}{zone_info}")
 
-            logging.info(f"Resolved node name '{node_name}' to pod '{result.stdout.strip()}'")
-            return result.stdout.strip()
+            pod_name = result.stdout.strip()
+            logging.debug(f"Resolved node name '{node_name}' to pod '{pod_name}' with container '{server_type}'")
+            return pod_name, server_type
 
         except subprocess.CalledProcessError as e:
             raise YBOpsRuntimeError(f"Failed to find pod for node '{node_name}': {e.stderr}")
@@ -114,8 +116,8 @@ class KubernetesCloud(AbstractCloud):
         namespace = args.namespace if hasattr(args, 'namespace') else "default"
         kubeconfig = args.kubeconfig if hasattr(args, 'kubeconfig') else None
 
-        # Find the actual pod name using label selectors
-        actual_pod_name = self._find_pod_by_labels(node_name, namespace, kubeconfig)
+        # Find the actual pod name and container using label selectors
+        actual_pod_name, container_name = self._find_pod_by_labels(node_name, namespace, kubeconfig)
 
         result = dict(
             name=actual_pod_name,  # Use actual pod name for kubectl exec
@@ -125,6 +127,7 @@ class KubernetesCloud(AbstractCloud):
             region=args.region if hasattr(args, 'region') else "local",
             zone=args.zone if hasattr(args, 'zone') else "local",
             namespace=namespace,
+            container=container_name,  # Include container name derived from node name
             instance_type="kubernetes-pod",
             server_type=AbstractInstancesMethod.YB_SERVER_TYPE
         )
