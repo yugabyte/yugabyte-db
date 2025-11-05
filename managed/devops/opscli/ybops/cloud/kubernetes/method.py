@@ -34,6 +34,9 @@ class KubernetesCreateInstancesMethod(CreateInstancesMethod):
 
         host_info = self.cloud.get_host_info(args)
         if host_info:
+            # Clear any pre-existing kubectl_container to avoid stale values
+            self.extra_vars.pop('kubectl_container', None)
+
             self.extra_vars['kubectl_pod'] = host_info['name']
             self.extra_vars['kubectl_namespace'] = host_info.get('namespace', 'default')
             if host_info.get('container'):
@@ -70,6 +73,9 @@ class KubernetesProvisionInstancesMethod(ProvisionInstancesMethod):
 
         host_info = self.cloud.get_host_info(args)
         if host_info:
+            # Clear any pre-existing kubectl_container to avoid stale values
+            self.extra_vars.pop('kubectl_container', None)
+
             self.extra_vars['kubectl_pod'] = host_info['name']
             self.extra_vars['kubectl_namespace'] = host_info.get('namespace', 'default')
             if host_info.get('container'):
@@ -137,6 +143,9 @@ def _setup_kubectl_connection(method_instance, args):
 
     host_info = method_instance.cloud.get_host_info(args)
     if host_info:
+        # Clear any pre-existing kubectl_container to avoid stale values
+        method_instance.extra_vars.pop('kubectl_container', None)
+
         method_instance.extra_vars['connection_type'] = 'kubectl'
         method_instance.extra_vars['kubectl_pod'] = host_info['name']
         method_instance.extra_vars['kubectl_namespace'] = host_info.get('namespace', 'default')

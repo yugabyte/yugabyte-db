@@ -67,15 +67,12 @@ class KubernetesCloud(AbstractCloud):
 
         kubectl_cmd.extend(["-n", namespace])
 
-        # Add label selectors
-        kubectl_cmd.extend([
-            "-l", f"app.kubernetes.io/component={server_type}",
-            "-l", f"apps.kubernetes.io/pod-index={pod_index}"
-        ])
-
-        # Add zone label if present
+        # Build label selector (comma-separated for AND logic)
+        labels = f"app.kubernetes.io/name={server_type},apps.kubernetes.io/pod-index={pod_index}"
         if zone:
-            kubectl_cmd.extend(["-l", f"yugabyte.io/zone={zone}"])
+            labels += f",yugabyte.io/zone={zone}"
+
+        kubectl_cmd.extend(["-l", labels])
 
         kubectl_cmd.extend(["-o", "jsonpath={.items[0].metadata.name}"])
 
@@ -96,7 +93,6 @@ class KubernetesCloud(AbstractCloud):
                     f"component={server_type}, pod-index={pod_index}{zone_info}")
 
             pod_name = result.stdout.strip()
-            logging.debug(f"Resolved node name '{node_name}' to pod '{pod_name}' with container '{server_type}'")
             return pod_name, server_type
 
         except subprocess.CalledProcessError as e:
