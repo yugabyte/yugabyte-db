@@ -27,6 +27,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
@@ -211,6 +212,9 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
       }
     }
 
+    masterGFlagsForAZ = filterUndefokFlags(masterGFlagsForAZ);
+    tserverGFlagsForAZ = filterUndefokFlags(tserverGFlagsForAZ);
+
     if (taskParams().useCLIBinary) {
       if (!masterGFlagsForAZ.isEmpty()) {
         masterGFlagsValidationErrors.putAll(
@@ -368,6 +372,23 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
             gflags.toString(), taskParams().ybSoftwareVersion, gFlagsValidation));
 
     return gflags;
+  }
+
+  private Map<String, String> filterUndefokFlags(Map<String, String> gflags) {
+    Set<String> undefokFlags = GFlagsUtil.extractUndefokFlags(gflags);
+
+    if (undefokFlags.isEmpty()) {
+      return gflags;
+    }
+
+    Map<String, String> filteredGFlags = new HashMap<>(gflags);
+    for (String undefokFlag : undefokFlags) {
+      if (filteredGFlags.containsKey(undefokFlag)) {
+        filteredGFlags.remove(undefokFlag);
+      }
+    }
+
+    return filteredGFlags;
   }
 
   private Map<String, String> validateGFlagsWithYBClient(
