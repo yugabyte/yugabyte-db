@@ -208,7 +208,9 @@ public class DoCapacityReservation extends ServerSubTaskBase {
                       (zoneID, reservation) -> {
                         String instanceReservationName =
                             getInstanceReservationName(instanceType, zoneID);
-                        if (processedReservations.contains(instanceReservationName)) {
+                        String uniqueName =
+                            regionReservation.getRegion() + "%" + instanceReservationName;
+                        if (processedReservations.contains(uniqueName)) {
                           return;
                         }
                         log.debug(
@@ -239,7 +241,7 @@ public class DoCapacityReservation extends ServerSubTaskBase {
                         log.info(
                             "Created reservation {} for {}", capacityReservation, instanceType);
                         reservation.setReservationName(capacityReservation);
-                        processedReservations.add(instanceReservationName);
+                        processedReservations.add(uniqueName);
                       });
             }
           }
