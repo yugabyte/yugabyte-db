@@ -1,0 +1,9 @@
+{{ if .Lastmod }}
+  <p style="font-size:0.9em;color:#777;margin-top:2em;">
+    Last updated: {{ .Lastmod.Format "Jan 02, 2006" }}
+  </p>
+{{ else }}
+  <p style="font-size:0.9em;color:#777;margin-top:2em;">
+    Last updated: N/A
+  </p>
+{{ end }}
