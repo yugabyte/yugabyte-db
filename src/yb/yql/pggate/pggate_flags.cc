@@ -157,9 +157,9 @@ DEFINE_NON_RUNTIME_uint32(
     "for regex functions. ");
 
 #ifdef NDEBUG
-constexpr bool kEnableReadCommitted = false;
-#else
 constexpr bool kEnableReadCommitted = true;
+#else
+constexpr bool kEnableReadCommitted = false;
 #endif
 DEFINE_NON_RUNTIME_bool(
     yb_enable_read_committed_isolation, kEnableReadCommitted,

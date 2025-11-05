@@ -2057,7 +2057,8 @@
             "UpdateProxyConfig",
             "CloneNamespace",
             "UpdateAdditionalServicesState",
-            "KubernetesToggleImmutableYbc"
+            "KubernetesToggleImmutableYbc",
+            "OperatorImportUniverse"
           ],
           "example" : "Create User",
           "readOnly" : true,
@@ -2822,6 +2823,7 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
+            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
@@ -5558,6 +5560,7 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
+            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
@@ -8626,6 +8629,7 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
+            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
@@ -9429,6 +9433,7 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
+            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
@@ -10850,6 +10855,7 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
+            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
@@ -11582,6 +11588,7 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
+            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
@@ -15922,6 +15929,7 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
+            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
@@ -16965,6 +16973,7 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
+            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
@@ -17795,6 +17804,7 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
+            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
@@ -19314,6 +19324,7 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
+            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
@@ -19955,6 +19966,7 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
+            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
@@ -20355,6 +20367,7 @@
               "ConfigureOOMServiceOnNode",
               "CheckSshConnection",
               "FetchServerConf",
+              "OperatorImportUniverse",
               "DoCapacityReservation",
               "DeleteCapacityReservation",
               "DisablePitrConfig",
@@ -21180,6 +21193,7 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
+            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
@@ -22275,6 +22289,7 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
+            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
@@ -23594,6 +23609,7 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
+            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
@@ -24267,6 +24283,7 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
+            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
@@ -25195,6 +25212,7 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
+            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
@@ -25832,6 +25850,7 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
+            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
@@ -26469,6 +26488,7 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
+            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
@@ -27616,6 +27636,7 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
+            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
@@ -28815,6 +28836,7 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
+            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
@@ -41524,53 +41546,6 @@
         "summary" : "Import a universe - deprecated",
         "tags" : [
           "Universe actions"
-        ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/{uUUID}/operator_import/precheck" : {
-      "post" : {
-        "description" : "WARNING: This is a preview API that could change: import operator universe",
-        "operationId" : "operatorImportUniverse",
-        "parameters" : [
-          {
-            "format" : "uuid",
-            "in" : "path",
-            "name" : "cUUID",
-            "required" : true,
-            "type" : "string"
-          },
-          {
-            "format" : "uuid",
-            "in" : "path",
-            "name" : "uUUID",
-            "required" : true,
-            "type" : "string"
-          }
-        ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPTask"
-            }
-          }
-        },
-        "responsesObject" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPTask"
-            }
-          }
-        },
-        "security" : [
-          {
-            "apiKeyAuth" : [ ]
-          }
-        ],
-        "summary" : "Import a universe and related resources to be managed by the kubernetes operator",
-        "tags" : [
-          "preview"
         ]
       }
     },

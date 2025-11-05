@@ -19,8 +19,10 @@ import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.backuprestore.ScheduleTaskHelper;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.operator.utils.KubernetesClientFactory;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.common.operator.utils.OperatorWorkQueue;
+import com.yugabyte.yw.common.operator.utils.UniverseImporter;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.backuprestore.BackupScheduleTaskParams;
@@ -60,6 +62,8 @@ public class ScheduledBackupReconcilerTest extends FakeDBApplication {
   private YBInformerFactory mockInformerFactory;
   private SharedIndexInformer<BackupSchedule> mockScheduleInformer;
   private SharedIndexInformer<StorageConfig> mockScInformer;
+  private KubernetesClientFactory mockKubernetesClientFactory;
+  private UniverseImporter mockUniverseImporter;
   private MixedOperation<
           BackupSchedule, KubernetesResourceList<BackupSchedule>, Resource<BackupSchedule>>
       mockResourceClient;
@@ -85,6 +89,8 @@ public class ScheduledBackupReconcilerTest extends FakeDBApplication {
     mockFormFactory = Mockito.mock(ValidatingFormFactory.class);
     mockConfGetter = Mockito.mock(RuntimeConfGetter.class);
     mockYbClientService = Mockito.mock(YBClientService.class);
+    mockKubernetesClientFactory = Mockito.mock(KubernetesClientFactory.class);
+    mockUniverseImporter = Mockito.mock(UniverseImporter.class);
     mockOperatorUtils =
         spy(
             new OperatorUtils(
@@ -92,8 +98,11 @@ public class ScheduledBackupReconcilerTest extends FakeDBApplication {
                 mockReleaseManager,
                 mockYbcManager,
                 mockFormFactory,
-                mockYbClientService));
+                mockYbClientService,
+                mockKubernetesClientFactory,
+                mockUniverseImporter));
     mockClient = Mockito.mock(KubernetesClient.class);
+    when(mockKubernetesClientFactory.getKubernetesClientWithConfig(any())).thenReturn(mockClient);
     mockInformerFactory = Mockito.mock(YBInformerFactory.class);
     mockScheduleTaskHelper = Mockito.mock(ScheduleTaskHelper.class);
     mockScheduleInformer = Mockito.mock(SharedIndexInformer.class);

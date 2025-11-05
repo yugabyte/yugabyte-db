@@ -2491,6 +2491,7 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
   const std::string num_lagging_backends_query = Format(
       "SELECT count(*) FROM pg_stat_activity WHERE"
       " backend_type != 'walsender' AND backend_type != 'yb-conn-mgr walsender'"
+      " AND backend_type != 'yb auto analyze backend'"
       " AND catalog_version < $0 AND datid = $1$2",
       catalog_version, database_oid,
       (req->has_requestor_pg_backend_pid() ?
