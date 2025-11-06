@@ -1678,6 +1678,10 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     this.clientRootCA = clientRootCA;
   }
 
+  public UUID getRawClientRootCA() {
+    return clientRootCA;
+  }
+
   /**
    * Helper API to retrieve nodes that are in a specified cluster.
    *
