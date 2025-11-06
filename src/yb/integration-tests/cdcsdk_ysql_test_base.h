@@ -143,6 +143,7 @@ DECLARE_int32(TEST_cdc_simulate_error_for_get_changes);
 DECLARE_bool(TEST_fail_cdc_setting_retention_barriers_on_apply);
 DECLARE_int32(update_min_cdc_indices_master_interval_secs);
 DECLARE_bool(cdcsdk_update_restart_time_when_nothing_to_stream);
+DECLARE_string(TEST_cdc_tablet_id_to_stall_state_table_updates);
 
 namespace yb {
 
