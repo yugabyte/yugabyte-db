@@ -224,10 +224,10 @@ Status TabletVectorIndexes::DoCreateIndex(
 
   auto vector_index = VERIFY_RESULT(docdb::CreateDocVectorIndex(
       AddSuffixToLogPrefix(LogPrefix(), Format(" VI $0", index_table.table_id)),
-      metadata().rocksdb_dir(), vector_index_thread_pool_provider,
-      indexed_table->doc_read_context->table_key_prefix(), index_table.hybrid_time,
-      *index_table.index_info, std::move(indexed_table_context), block_cache_,
-      MemTracker::CreateTracker(-1, index_table.table_id, mem_tracker_),
+      metadata().vector_index_dir(index_table.index_info->vector_idx_options()),
+      vector_index_thread_pool_provider, indexed_table->doc_read_context->table_key_prefix(),
+      index_table.hybrid_time, *index_table.index_info, std::move(indexed_table_context),
+      block_cache_, MemTracker::CreateTracker(-1, index_table.table_id, mem_tracker_),
       vector_index_metric_entity));
 
   if (!bootstrap) {

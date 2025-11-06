@@ -45,8 +45,6 @@ DECLARE_bool(vector_index_skip_filter_check);
 
 namespace yb::docdb {
 
-const std::string kVectorIndexDirPrefix = "vi-";
-
 namespace {
 
 vector_index::DistanceKind ConvertDistanceKind(PgVectorDistanceType dist_type) {
@@ -213,12 +211,12 @@ template<vector_index::IndexableVectorType Vector,
 class DocVectorIndexImpl : public DocVectorIndex {
  public:
   DocVectorIndexImpl(
-      const TableId& table_id, Slice indexed_table_key_prefix, ColumnId column_id,
-      HybridTime hybrid_time, DocVectorIndexedTableContextPtr indexed_table_context,
+      const TableId& table_id, const PgVectorIdxOptionsPB& options, HybridTime hybrid_time,
+      Slice indexed_table_key_prefix, DocVectorIndexedTableContextPtr indexed_table_context,
       const hnsw::BlockCachePtr& block_cache, const MemTrackerPtr& mem_tracker,
       const MetricEntityPtr& metric_entity)
       : table_id_(table_id), indexed_table_key_prefix_(indexed_table_key_prefix),
-        column_id_(column_id), hybrid_time_(hybrid_time),
+        options_(options), hybrid_time_(hybrid_time),
         indexed_table_context_(std::move(indexed_table_context)),
         block_cache_(block_cache), mem_tracker_(mem_tracker),
         metric_entity_(metric_entity) {
@@ -237,8 +235,12 @@ class DocVectorIndexImpl : public DocVectorIndex {
     return lsm_.StorageDir();
   }
 
+  const PgVectorIdxOptionsPB& options() const override {
+    return options_;
+  }
+
   ColumnId column_id() const override {
-    return column_id_;
+    return ColumnId(options_.column_id());
   }
 
   HybridTime hybrid_time() const override {
@@ -250,29 +252,27 @@ class DocVectorIndexImpl : public DocVectorIndex {
   }
 
   Status Open(const std::string& log_prefix,
-              const std::string& data_root_dir,
-              const DocVectorIndexThreadPoolProvider& thread_pool_provider,
-              const PgVectorIdxOptionsPB& idx_options) {
+              const std::string& storage_dir,
+              const DocVectorIndexThreadPoolProvider& thread_pool_provider) {
     auto merge_filter_factory = [this]() -> typename LSM::Options::MergeFilterFactory::result_type {
       auto iter = VERIFY_RESULT(indexed_table_context_->CreateIterator(HybridTime::kMax));
       return std::make_unique<VectorMergeFilter>(lsm_.LogPrefix(), std::move(iter));
     };
 
-    index_id_ = idx_options.id();
     name_ = RemoveLogPrefixColon(log_prefix);
     auto thread_pools = thread_pool_provider();
     typename LSM::Options lsm_options = {
       .log_prefix = log_prefix,
-      .storage_dir = GetStorageDir(data_root_dir, DirName()),
+      .storage_dir = storage_dir,
       .vector_index_factory = VERIFY_RESULT((GetVectorLSMFactory<Vector, DistanceResult>(
-          block_cache_, idx_options, mem_tracker_))),
+          block_cache_, options_, mem_tracker_))),
       .vectors_per_chunk = FLAGS_vector_index_initial_chunk_size,
       .thread_pool = thread_pools.thread_pool,
       .insert_thread_pool = thread_pools.insert_thread_pool,
       .compaction_token = thread_pools.compaction_token,
       .frontiers_factory = [] { return std::make_unique<docdb::ConsensusFrontiers>(); },
       .vector_merge_filter_factory = std::move(merge_filter_factory),
-      .file_extension = GetFileExtension(idx_options),
+      .file_extension = GetFileExtension(options_),
       .metric_entity = metric_entity_,
     };
     return lsm_.Open(std::move(lsm_options));
@@ -382,7 +382,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
   }
 
   Status CreateCheckpoint(const std::string& out) override {
-    return lsm_.CreateCheckpoint(GetStorageCheckpointDir(out, DirName()));
+    return lsm_.CreateCheckpoint(out);
   }
 
   const std::string& ToString() const override {
@@ -410,21 +410,16 @@ class DocVectorIndexImpl : public DocVectorIndex {
   }
 
  private:
-  std::string DirName() const {
-    return kVectorIndexDirPrefix + index_id_;
-  }
+  using LSM = vector_index::VectorLSM<Vector, DistanceResult>;
 
   const TableId table_id_;
   const KeyBuffer indexed_table_key_prefix_;
-  const ColumnId column_id_;
+  const PgVectorIdxOptionsPB options_;
   const HybridTime hybrid_time_;
   const DocVectorIndexedTableContextPtr indexed_table_context_;
   const hnsw::BlockCachePtr block_cache_;
   const MemTrackerPtr mem_tracker_;
   const MetricEntityPtr metric_entity_;
-  std::string index_id_;
-
-  using LSM = vector_index::VectorLSM<Vector, DistanceResult>;
 
   std::string name_;
   LSM lsm_;
@@ -454,7 +449,7 @@ void DocVectorIndex::ApplyReverseEntry(
 
 Result<DocVectorIndexPtr> CreateDocVectorIndex(
     const std::string& log_prefix,
-    const std::string& data_root_dir,
+    const std::string& storage_dir,
     const DocVectorIndexThreadPoolProvider& thread_pool_provider,
     Slice indexed_table_key_prefix,
     HybridTime hybrid_time,
@@ -463,11 +458,10 @@ Result<DocVectorIndexPtr> CreateDocVectorIndex(
     const hnsw::BlockCachePtr& block_cache,
     const MemTrackerPtr& mem_tracker,
     const MetricEntityPtr& metric_entity) {
-  auto& options = index_info.vector_idx_options();
   auto result = std::make_shared<DocVectorIndexImpl<std::vector<float>, float>>(
-      index_info.table_id(), indexed_table_key_prefix, ColumnId(options.column_id()), hybrid_time,
+      index_info.table_id(), index_info.vector_idx_options(), hybrid_time, indexed_table_key_prefix,
       std::move(indexed_table_context), block_cache, mem_tracker, metric_entity);
-  RETURN_NOT_OK(result->Open(log_prefix, data_root_dir, thread_pool_provider, options));
+  RETURN_NOT_OK(result->Open(log_prefix, storage_dir, thread_pool_provider));
   return result;
 }
 

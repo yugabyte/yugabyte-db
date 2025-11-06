@@ -50,6 +50,8 @@ namespace yb::docdb {
 using dockv::DocPath;
 
 const std::string kIntentsDirName = "intents";
+const std::string kSnapshotsDirName = "snapshots";
+const std::string kVectorIndexDirPrefix = "vi-";
 
 Status SetValueFromQLBinaryWrapper(
     QLValuePB ql_value, const int pg_data_type,
@@ -85,7 +87,7 @@ rocksdb::DB* DocDBRocksDBUtil::intents_db() {
 }
 
 std::string DocDBRocksDBUtil::IntentsDBDir() {
-  return GetStorageDir(rocksdb_dir_, "intents");
+  return GetStorageDir(rocksdb_dir_, kIntentsDirName);
 }
 
 Status DocDBRocksDBUtil::OpenRocksDB() {
@@ -589,6 +591,10 @@ std::string GetStorageDir(const std::string& data_dir, const std::string& storag
 
 std::string GetStorageCheckpointDir(const std::string& data_dir, const std::string& storage) {
   return JoinPathSegments(data_dir, storage);
+}
+
+std::string GetVectorIndexStorageName(const PgVectorIdxOptionsPB& options) {
+  return kVectorIndexDirPrefix + options.id();
 }
 
 Status MoveChild(Env& env, const std::string& data_dir, const std::string& child) {
