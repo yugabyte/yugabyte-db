@@ -69,6 +69,7 @@ ROLLBACK;
 -- #28955: CREATE INDEX (separate DDL transaction) works when savepoint is enabled.
 CREATE TABLE employees(id INT PRIMARY KEY, code VARCHAR(20) UNIQUE, department VARCHAR(50));
 CREATE INDEX idx_department ON employees(department);
+DROP TABLE employees;
 
 -- #28956: Transaction doesn't self abort
 CREATE TABLE projects (id INT PRIMARY KEY, project_name VARCHAR(100));
@@ -81,3 +82,30 @@ INSERT INTO project_logs VALUES (1, 'Initial log');
 -- This will drop table project_logs but shouldn't abort the entire transaction.
 ROLLBACK TO SAVEPOINT sp_mixed;
 SELECT project_name FROM projects WHERE id = 101;
+
+-- #28957: Rollback to savepoint of ALTER TABLE should complete and not run forever
+CREATE TABLE departments (
+    dept_id INT PRIMARY KEY,
+    dept_name VARCHAR(50)
+);
+CREATE TABLE employees (
+    emp_id INT PRIMARY KEY,
+    emp_name VARCHAR(50),
+    department_id INT,
+    FOREIGN KEY (department_id) REFERENCES departments(dept_id)
+);
+INSERT INTO departments VALUES (1, 'Engineering'), (2, 'Sales');
+INSERT INTO employees VALUES (101, 'Alice', 1), (102, 'Bob', 2);
+BEGIN;
+SAVEPOINT sp_initial_state;
+UPDATE employees SET department_id = 2 WHERE emp_name = 'Alice';
+CREATE INDEX idx_emp_dept ON employees(department_id);
+SAVEPOINT sp_after_index;
+ALTER TABLE employees ADD COLUMN start_date DATE;
+INSERT INTO employees (emp_id, emp_name, department_id, start_date) VALUES (103, 'Charlie', 1, '2025-10-15');
+SAVEPOINT sp_after_alter;
+TRUNCATE TABLE departments; -- This will fail
+ROLLBACK TO SAVEPOINT sp_after_alter;
+ROLLBACK TO SAVEPOINT sp_after_index;
+ROLLBACK TO SAVEPOINT sp_initial_state;
+COMMIT;

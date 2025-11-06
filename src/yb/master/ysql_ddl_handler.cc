@@ -749,10 +749,17 @@ void CatalogManager::RemoveDdlTransactionStateUnlocked(
           return table->id() == table_id;
     });
     DCHECK_LE(num_tables, 1);
+
+    // If savepoint support is enabled, also delete from the
+    // ysql_ddl_txn_undergoing_subtransaction_rollback_map_ map since the entire
+    // txn is going away for the table.
+    if (FLAGS_TEST_ysql_yb_enable_ddl_savepoint_support) {
+      RemoveDdlRollbackToSubTxnStateUnlocked(table_id, txn_id);
+    }
+
     if (tables.empty()) {
       LOG(INFO) << "Erasing DDL Verification state for " << txn_id;
       ysql_ddl_txn_verfication_state_map_.erase(iter);
-      ysql_ddl_txn_undergoing_subtransaction_rollback_map_.erase(txn_id);
       // At this point, we can be sure that the docdb schema changes have been applied.
       // For instance, consider the case of an ALTER.
       // 1. Either the alter waits inline successfully before issuing the commit,
