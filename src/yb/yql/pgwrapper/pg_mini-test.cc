@@ -3018,7 +3018,15 @@ TEST_F(PgMiniTest, KillPGInTheMiddleOfBatcherOperation) {
   ASSERT_FALSE(select_complete.load());
 
   LOG(INFO) << "Restarting Postgres";
-  ASSERT_OK(RestartPostgres());
+  // TODO(GH28670): RestartPostgres doesn't work here. Not sure why.
+  // But the test passes if we send SIGQUIT to the pg process instead of SIGKILL in
+  // ProcessSupervisor::KillAndChangeState. SIGKILL is not recommended to send to postgres.
+  // https://www.postgresql.org/docs/current/server-shutdown.html
+  // We need to switch to SIGQUIT or another signal.
+  // When we do that we can switch to using RestartPostgres here and switch these two methods to
+  // private access.
+  StopPostgres();
+  ASSERT_OK(StartPostgres());
   // Wait for the Sessions to be killed.
   SleepFor(5s);
 
