@@ -2999,9 +2999,14 @@ public class NodeManager extends DevopsBase {
     if (auditLogConfig == null && queryLogConfig == null && metricsExportConfig == null) {
       return;
     }
-    if ((auditLogConfig != null && !OtelCollectorUtil.isAuditLogEnabledInUniverse(auditLogConfig))
-        && (queryLogConfig != null
-            && !OtelCollectorUtil.isQueryLogEnabledInUniverse(queryLogConfig))) {
+    // Check if any config exists and is enabled. If none are enabled, return early.
+    boolean anyConfigEnabled =
+        (auditLogConfig != null && OtelCollectorUtil.isAuditLogEnabledInUniverse(auditLogConfig))
+            || (queryLogConfig != null
+                && OtelCollectorUtil.isQueryLogEnabledInUniverse(queryLogConfig))
+            || (metricsExportConfig != null
+                && OtelCollectorUtil.isMetricsExportEnabledInUniverse(metricsExportConfig));
+    if (!anyConfigEnabled) {
       return;
     }
     if (auditLogConfig != null && auditLogConfig.getYcqlAuditConfig() != null) {

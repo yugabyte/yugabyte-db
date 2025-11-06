@@ -33,6 +33,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntentOverrides;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.ProxyConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -243,6 +244,7 @@ public interface UserIntentMapper {
     }
     userIntent.auditLogConfig = toV1AuditLogConfig(clusterSpec.getAuditLogConfig());
     userIntent.queryLogConfig = toV1QueryLogConfig(clusterSpec.getQueryLogConfig());
+    userIntent.metricsExportConfig = toV1MetricsExportConfig(clusterSpec.getMetricsExportConfig());
     userIntent.specificGFlags = clusterSpecToSpecificGFlags(clusterSpec);
 
     return userIntent;
@@ -400,6 +402,9 @@ public interface UserIntentMapper {
   AuditLogConfig toV1AuditLogConfig(api.v2.models.AuditLogConfig v2AuditLogConfig);
 
   QueryLogConfig toV1QueryLogConfig(api.v2.models.QueryLogConfig v2QueryLogConfig);
+
+  MetricsExportConfig toV1MetricsExportConfig(
+      api.v2.models.MetricsExportConfig v2MetricsExportConfig);
 
   default UserIntent fillUserIntentFromClusterNetworkingSpec(
       ClusterNetworkingSpec clusterNetworkingSpec, UserIntent userIntent) {

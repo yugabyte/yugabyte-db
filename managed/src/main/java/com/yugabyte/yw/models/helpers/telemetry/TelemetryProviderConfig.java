@@ -34,6 +34,5 @@ public class TelemetryProviderConfig {
 
   public void validate(ApiHelper apiHelper, RuntimeConfGetter confGetter) {
     // Default implementation calls the single-parameter version for backward compatibility
-    validate(apiHelper, confGetter);
   }
 }
