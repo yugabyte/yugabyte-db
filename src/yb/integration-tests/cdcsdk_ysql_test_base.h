@@ -139,6 +139,7 @@ DECLARE_bool(save_index_into_wal_segments);
 DECLARE_bool(TEST_skip_process_apply);
 DECLARE_int32(TEST_cdc_simulate_error_for_get_changes);
 DECLARE_bool(cdcsdk_update_restart_time_when_nothing_to_stream);
+DECLARE_string(TEST_cdc_tablet_id_to_stall_state_table_updates);
 
 namespace yb {
 
