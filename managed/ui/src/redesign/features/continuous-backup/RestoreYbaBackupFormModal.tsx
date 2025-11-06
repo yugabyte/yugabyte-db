@@ -20,6 +20,8 @@ import { api, CUSTOMER_CONFIG_QUERY_KEY } from '@app/redesign/helpers/api';
 import { ReactComponent as SelectedIcon } from '@app/redesign/assets/circle-selected.svg';
 import { ReactComponent as UnselectedIcon } from '@app/redesign/assets/circle-empty.svg';
 import { ReactComponent as WarningIcon } from '@app/redesign/assets/alert.svg';
+import { RbacValidator } from '../rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../rbac/ApiAndUserPermMapping';
 
 import toastStyles from '../../../redesign/styles/toastStyles.module.scss';
 
@@ -278,32 +280,44 @@ export const RestoreYbaBackupFormModal = ({ modalProps }: RestoreYbaBackupFormMo
             render={({ field: { onChange } }) => (
               <Box display="flex" gridGap={theme.spacing(1)}>
                 <Box width="50%">
-                  <div
-                    className={clsx(
-                      classes.optionCard,
-                      backupType === BackupType.CLOUD && classes.selected
-                    )}
-                    onClick={() => handleOptionCardClick(BackupType.CLOUD, onChange)}
+                  <RbacValidator
+                    accessRequiredOn={ApiPermissionMap.RESTORE_CONTINUOUS_YBA_BACKUP}
+                    isControl
+                    overrideStyle={{ display: 'unset' }}
                   >
-                    <Typography variant="body1">{t('option.cloudBackup')}</Typography>
-                    <Box display="flex" alignItems="center" marginLeft="auto">
-                      {backupType === BackupType.CLOUD ? <SelectedIcon /> : <UnselectedIcon />}
-                    </Box>
-                  </div>
+                    <div
+                      className={clsx(
+                        classes.optionCard,
+                        backupType === BackupType.CLOUD && classes.selected
+                      )}
+                      onClick={() => handleOptionCardClick(BackupType.CLOUD, onChange)}
+                    >
+                      <Typography variant="body1">{t('option.cloudBackup')}</Typography>
+                      <Box display="flex" alignItems="center" marginLeft="auto">
+                        {backupType === BackupType.CLOUD ? <SelectedIcon /> : <UnselectedIcon />}
+                      </Box>
+                    </div>
+                  </RbacValidator>
                 </Box>
                 <Box width="50%">
-                  <div
-                    className={clsx(
-                      classes.optionCard,
-                      backupType === BackupType.LOCAL && classes.selected
-                    )}
-                    onClick={() => handleOptionCardClick(BackupType.LOCAL, onChange)}
+                  <RbacValidator
+                    accessRequiredOn={ApiPermissionMap.RESTORE_ISOLATED_YBA_BACKUP}
+                    isControl
+                    overrideStyle={{ display: 'unset' }}
                   >
-                    <Typography variant="body1">{t('option.localBackup')}</Typography>
-                    <Box display="flex" alignItems="center" marginLeft="auto">
-                      {backupType === BackupType.LOCAL ? <SelectedIcon /> : <UnselectedIcon />}
-                    </Box>
-                  </div>
+                    <div
+                      className={clsx(
+                        classes.optionCard,
+                        backupType === BackupType.LOCAL && classes.selected
+                      )}
+                      onClick={() => handleOptionCardClick(BackupType.LOCAL, onChange)}
+                    >
+                      <Typography variant="body1">{t('option.localBackup')}</Typography>
+                      <Box display="flex" alignItems="center" marginLeft="auto">
+                        {backupType === BackupType.LOCAL ? <SelectedIcon /> : <UnselectedIcon />}
+                      </Box>
+                    </div>
+                  </RbacValidator>
                 </Box>
               </Box>
             )}
