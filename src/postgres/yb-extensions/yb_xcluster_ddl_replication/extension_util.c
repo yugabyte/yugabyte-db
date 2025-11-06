@@ -329,15 +329,6 @@ get_typname(Oid pg_type_oid)
 }
 
 bool
-IsMatViewCommand(CommandTag command_tag)
-{
-	return command_tag == CMDTAG_CREATE_MATERIALIZED_VIEW ||
-		command_tag == CMDTAG_ALTER_MATERIALIZED_VIEW ||
-		command_tag == CMDTAG_REFRESH_MATERIALIZED_VIEW ||
-		command_tag == CMDTAG_DROP_MATERIALIZED_VIEW;
-}
-
-bool
 IsExtensionDdl(CommandTag command_tag)
 {
 	if (command_tag == CMDTAG_CREATE_EXTENSION ||

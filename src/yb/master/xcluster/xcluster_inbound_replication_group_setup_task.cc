@@ -604,9 +604,7 @@ Status XClusterInboundReplicationGroupSetupTask::ValidateTableListForDbScoped() 
   std::set<TableId> validated_tables;
   for (const auto& namespace_id : data_.target_namespace_ids) {
     auto table_designators = VERIFY_RESULT(GetTablesEligibleForXClusterReplication(
-        catalog_manager_, namespace_id,
-        /*include_sequences_data=*/
-        data_.automatic_ddl_mode));
+        catalog_manager_, namespace_id, data_.automatic_ddl_mode));
 
     std::vector<TableId> missing_tables;
 
