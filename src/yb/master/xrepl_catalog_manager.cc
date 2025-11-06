@@ -3736,10 +3736,10 @@ Status CatalogManager::BootstrapProducer(
   ns_id.set_database_type(req->db_type());
   ns_id.set_name(req->namespace_name());
   auto ns = VERIFY_RESULT(FindNamespace(ns_id));
-  // We can skip sequence data, since that is only used in db scoped xCluster which does not call
-  // this function.
+  // This is only called in non-DB-scoped xCluster, so is_automatic_ddl_mode is false (this will
+  // skip getting sequences data and materialized views).
   auto all_tables = VERIFY_RESULT(
-      GetTablesEligibleForXClusterReplication(*this, ns->id(), /*include_sequences_data= */ false));
+      GetTablesEligibleForXClusterReplication(*this, ns->id(), /*is_automatic_ddl_mode=*/false));
 
   cdc::BootstrapProducerRequestPB bootstrap_req;
   master::TSDescriptorPtr ts = nullptr;

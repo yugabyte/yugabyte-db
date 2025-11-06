@@ -431,4 +431,8 @@ TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateTableAs) {
   ASSERT_OK(VerifyDataMatch());
 }
 
+TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressMaterializedViews) {
+  ASSERT_OK(TestPgRegress({"matview_create.sql", "matview_drop.sql"}));
+}
+
 }  // namespace yb

@@ -3249,37 +3249,140 @@ TEST_F(XClusterDDLReplicationTest, TempTableDDLs) {
   ASSERT_EQ(resp.entry().tables_size(), 2);
 }
 
-// Make sure we can run a variety of DDLs related to materialized views on both clusters.
-TEST_F(XClusterDDLReplicationTest, MatViewDDLs) {
+TEST_F(XClusterDDLReplicationTest, MatViewWithIndex) {
   ASSERT_OK(SetUpClustersAndReplication());
 
-  ASSERT_OK(producer_conn_->Execute("CREATE TABLE tbl1(a int)"));
-  ASSERT_OK(producer_conn_->Execute("INSERT INTO tbl1 VALUES (1), (2), (3)"));
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE base_tbl(a int PRIMARY KEY, b text)"));
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO base_tbl VALUES (1,'x'),(2,'y'),(3,'z')"));
+
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE MATERIALIZED VIEW mat_view AS SELECT a, b FROM base_tbl WHERE a > 1"));
+  ASSERT_OK(producer_conn_->Execute("CREATE UNIQUE INDEX mat_view_b_key ON mat_view(b)"));
+  ASSERT_OK(producer_conn_->Execute("REFRESH MATERIALIZED VIEW mat_view"));
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
 
-  master::GetUniverseReplicationResponsePB resp;
-  ASSERT_OK(VerifyUniverseReplication(&resp));
-  ASSERT_EQ(resp.entry().tables_size(), 3);  // ddl_queue + base_table + tbl1 + sequences_data
+  auto producer_rows =
+      ASSERT_RESULT(producer_conn_->FetchAllAsString("SELECT * FROM mat_view ORDER BY b"));
+  auto consumer_rows =
+      ASSERT_RESULT(consumer_conn_->FetchAllAsString("SELECT * FROM mat_view ORDER BY b"));
+  ASSERT_EQ(producer_rows, consumer_rows);
 
-  // Create a materialized view on the producer.
-  auto perform_mv_ddls = [this](pgwrapper::PGConn& conn) -> Result<std::string> {
-    RETURN_NOT_OK(conn.Execute("CREATE MATERIALIZED VIEW mv1 AS SELECT * FROM tbl1 WHERE a > 1"));
-    RETURN_NOT_OK(conn.Execute("REFRESH MATERIALIZED VIEW mv1"));
-    RETURN_NOT_OK(conn.Execute("ALTER MATERIALIZED VIEW mv1 RENAME TO mv2"));
-    RETURN_NOT_OK(WaitForSafeTimeToAdvanceToNow());
-    auto view_data = VERIFY_RESULT(conn.FetchAllAsString("SELECT * FROM mv2 ORDER BY a"));
-    RETURN_NOT_OK(conn.Execute("DROP MATERIALIZED VIEW mv2"));
-    return view_data;
-  };
+  // Write more rows and reverify.
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO base_tbl VALUES (4,'a'),(5,'b'),(6,'c')"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  // No refresh occurred, so the rows should still all be the same.
+  auto new_producer_rows =
+      ASSERT_RESULT(producer_conn_->FetchAllAsString("SELECT * FROM mat_view ORDER BY b"));
+  auto new_consumer_rows =
+      ASSERT_RESULT(consumer_conn_->FetchAllAsString("SELECT * FROM mat_view ORDER BY b"));
+  ASSERT_EQ(new_producer_rows, new_consumer_rows);
+  ASSERT_EQ(consumer_rows, new_consumer_rows);
 
-  auto producer_data = ASSERT_RESULT(perform_mv_ddls(*producer_conn_));
-  ASSERT_EQ(producer_data, "2; 3");
-  auto consumer_data = ASSERT_RESULT(perform_mv_ddls(*consumer_conn_));
+  // Refresh and verify.
+  ASSERT_OK(producer_conn_->Execute("REFRESH MATERIALIZED VIEW mat_view"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  new_producer_rows =
+      ASSERT_RESULT(producer_conn_->FetchAllAsString("SELECT * FROM mat_view ORDER BY b"));
+  new_consumer_rows =
+      ASSERT_RESULT(consumer_conn_->FetchAllAsString("SELECT * FROM mat_view ORDER BY b"));
+  ASSERT_EQ(new_producer_rows, new_consumer_rows);
+  ASSERT_NE(new_consumer_rows, consumer_rows);
+  LOG(INFO) << "old_consumer_rows: " << consumer_rows;
+  LOG(INFO) << "new_consumer_rows: " << new_consumer_rows;
+}
 
-  ASSERT_EQ(consumer_data, producer_data);
+TEST_F(XClusterDDLReplicationTest, MatViewWithColocation) {
+  auto params = XClusterDDLReplicationTestBase::kDefaultParams;
+  params.is_colocated = true;
+  ASSERT_OK(SetUpClustersAndReplication(params));
 
-  ASSERT_OK(VerifyUniverseReplication(&resp));
-  ASSERT_EQ(resp.entry().tables_size(), 3);
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE base_table(a int PRIMARY KEY)"));
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO base_table VALUES (1),(2),(3)"));
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE MATERIALIZED VIEW coloc_mv AS SELECT * FROM base_table WHERE a >= 2 WITH DATA"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  auto producer_rows =
+      ASSERT_RESULT(producer_conn_->FetchAllAsString("SELECT * FROM coloc_mv ORDER BY a"));
+  auto consumer_rows =
+      ASSERT_RESULT(consumer_conn_->FetchAllAsString("SELECT * FROM coloc_mv ORDER BY a"));
+  ASSERT_EQ(producer_rows, consumer_rows);
+
+  // Delete some rows and refresh.
+  ASSERT_OK(producer_conn_->Execute("DELETE FROM base_table WHERE a = 2"));
+  ASSERT_OK(producer_conn_->Execute("REFRESH MATERIALIZED VIEW coloc_mv"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  producer_rows =
+      ASSERT_RESULT(producer_conn_->FetchAllAsString("SELECT * FROM coloc_mv ORDER BY a"));
+  consumer_rows =
+      ASSERT_RESULT(consumer_conn_->FetchAllAsString("SELECT * FROM coloc_mv ORDER BY a"));
+  ASSERT_EQ(producer_rows, consumer_rows);
+  ASSERT_EQ(consumer_rows, "3");
+
+  // Test REFRESH WITH NO DATA.
+  ASSERT_OK(producer_conn_->Execute("REFRESH MATERIALIZED VIEW coloc_mv WITH NO DATA"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_NOK_STR_CONTAINS(
+      producer_conn_->FetchAllAsString("SELECT * FROM coloc_mv ORDER BY a"),
+      "has not been populated");
+  ASSERT_NOK_STR_CONTAINS(
+      consumer_conn_->FetchAllAsString("SELECT * FROM coloc_mv ORDER BY a"),
+      "has not been populated");
+}
+
+TEST_F(XClusterDDLReplicationTest, MatViewWithPartitions) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE base_table(a int PRIMARY KEY, b text) PARTITION BY RANGE (a)"));
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE p1 PARTITION OF base_table FOR VALUES FROM (1) TO (5)"));
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE p2 PARTITION OF base_table FOR VALUES FROM (5) TO (10)"));
+  ASSERT_OK(producer_conn_->Execute(
+      "INSERT INTO base_table SELECT i, 'v' || i FROM generate_series(1,9) i"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE MATERIALIZED VIEW pmv AS SELECT a, b FROM base_table WHERE a % 2 = 0"));
+  ASSERT_OK(producer_conn_->Execute("CREATE INDEX pmv_b_idx ON pmv(b)"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  ASSERT_OK(producer_conn_->Execute("REFRESH MATERIALIZED VIEW pmv"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  auto producer_rows =
+      ASSERT_RESULT(producer_conn_->FetchAllAsString("SELECT * FROM pmv ORDER BY b"));
+  auto consumer_rows =
+      ASSERT_RESULT(consumer_conn_->FetchAllAsString("SELECT * FROM pmv ORDER BY b"));
+  ASSERT_EQ(producer_rows, consumer_rows);
+
+  // Test rename and drop.
+  ASSERT_OK(producer_conn_->Execute("ALTER MATERIALIZED VIEW pmv RENAME TO pmv_renamed"));
+  // Delete some rows.
+  ASSERT_OK(producer_conn_->Execute("DELETE FROM base_table WHERE a = 2 OR a = 8"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  // Rows should not have changed.
+  consumer_rows =
+      ASSERT_RESULT(consumer_conn_->FetchAllAsString("SELECT * FROM pmv_renamed ORDER BY b"));
+  ASSERT_EQ(producer_rows, consumer_rows);
+
+  // Refresh and verify.
+  ASSERT_OK(producer_conn_->Execute("REFRESH MATERIALIZED VIEW pmv_renamed"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  producer_rows =
+      ASSERT_RESULT(producer_conn_->FetchAllAsString("SELECT * FROM pmv_renamed ORDER BY b"));
+  consumer_rows =
+      ASSERT_RESULT(consumer_conn_->FetchAllAsString("SELECT * FROM pmv_renamed ORDER BY b"));
+  ASSERT_EQ(producer_rows, consumer_rows);
+
+  // Drop and verify.
+  ASSERT_OK(producer_conn_->Execute("DROP MATERIALIZED VIEW pmv_renamed"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Verify the materialized view is gone on the consumer.
+  ASSERT_NOK(consumer_conn_->FetchAllAsString("SELECT * FROM pmv_renamed ORDER BY b"));
 }
 
 // Validate that the user cannot run arbitrary DDLs on the target cluster when in automatic mode.
@@ -3287,6 +3390,7 @@ TEST_F(XClusterDDLReplicationTest, DDLsOnTarget) {
   ASSERT_OK(SetUpClustersAndReplication());
 
   ASSERT_OK(producer_conn_->Execute("CREATE TABLE tbl1(a int, b text)"));
+  ASSERT_OK(producer_conn_->Execute("CREATE MATERIALIZED VIEW test_mv AS SELECT a FROM tbl1"));
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
 
   constexpr auto kExpectedErrorMsg =
@@ -3297,8 +3401,13 @@ TEST_F(XClusterDDLReplicationTest, DDLsOnTarget) {
       "CREATE TABLE test_table (id int PRIMARY KEY, name text)",
       "CREATE INDEX ON tbl1 (b)",
       "ALTER TABLE tbl1 ADD COLUMN age int",
+      "ALTER TABLE tbl1 ADD PRIMARY KEY (a)",
       "ALTER TABLE tbl1 DROP COLUMN b",
-      "DROP TABLE tbl1",
+      "CREATE MATERIALIZED VIEW new_mv AS SELECT * FROM tbl1",
+      "REFRESH MATERIALIZED VIEW test_mv",
+      "ALTER MATERIALIZED VIEW test_mv RENAME TO test_mv_renamed",
+      "DROP MATERIALIZED VIEW IF EXISTS test_mv",
+      "DROP TABLE tbl1 CASCADE",
       "CREATE TYPE test_type AS ENUM ('A', 'B')",
       "CREATE SCHEMA test_schema",
       "CREATE SEQUENCE test_sequence",
@@ -3320,7 +3429,9 @@ TEST_F(XClusterDDLReplicationTest, DDLsOnTarget) {
       "SET yb_xcluster_ddl_replication.enable_manual_ddl_replication TO TRUE"));
   for (const auto& ddl : kDisallowedDDLs) {
     LOG(INFO) << "Executing: " << ddl;
-    if (ddl.contains("CREATE TABLE") || ddl.contains("CREATE INDEX")) {
+    if (ddl.contains("CREATE TABLE") || ddl.contains("CREATE INDEX") ||
+        ddl.contains("ADD PRIMARY KEY") || ddl.contains("CREATE MATERIALIZED VIEW") ||
+        ddl.contains("REFRESH MATERIALIZED VIEW")) {
       ASSERT_NOK(consumer_conn_->Execute(ddl));
     } else {
       ASSERT_OK(consumer_conn_->Execute(ddl));

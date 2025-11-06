@@ -111,6 +111,7 @@ static List *rewritten_table_oid_list = NIL;
 	X(CMDTAG_ALTER_DOMAIN) \
 	X(CMDTAG_ALTER_EXTENSION) \
 	X(CMDTAG_ALTER_FUNCTION) \
+	X(CMDTAG_ALTER_MATERIALIZED_VIEW) \
 	X(CMDTAG_ALTER_OPERATOR) \
 	X(CMDTAG_ALTER_OPERATOR_CLASS) \
 	X(CMDTAG_ALTER_OPERATOR_FAMILY) \
@@ -725,7 +726,6 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 	List       *sequence_info_list = NIL;
 	List       *type_info_list = NIL;
 	bool		found_temp = false;
-	bool		found_materialized_view_command = false;
 
 	/*
 	 * As long as there is at least one command that needs to be replicated, we
@@ -756,7 +756,8 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 		if (command_tag == CMDTAG_CREATE_TABLE ||
 			command_tag == CMDTAG_CREATE_INDEX ||
 			command_tag == CMDTAG_CREATE_TABLE_AS ||
-			command_tag == CMDTAG_SELECT_INTO)
+			command_tag == CMDTAG_SELECT_INTO ||
+			command_tag == CMDTAG_CREATE_MATERIALIZED_VIEW)
 		{
 			should_replicate_ddl |=
 				ShouldReplicateNewRelation(obj_id, &new_rel_list, /* is_table_rewrite */ false);
@@ -837,11 +838,15 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 			if (!is_temporary_object)
 				should_replicate_ddl |=
 					ShouldReplicateTruncatedRelation(obj_id, &new_rel_list);
-
 		}
-		else if (IsMatViewCommand(command_tag))
+		else if (command_tag == CMDTAG_REFRESH_MATERIALIZED_VIEW)
 		{
-			found_materialized_view_command = true;
+			/* Refresh is a table rewrite. */
+			should_replicate_ddl |=
+				ShouldReplicateNewRelation(obj_id, &new_rel_list,
+										   /* is_table_rewrite= */ true);
+			const char *schema_name = info->schema;
+			ProcessRewrittenIndexes(obj_id, schema_name, &new_rel_list);
 		}
 		else if (IsPassThroughDdlSupported(command_tag_name))
 		{
@@ -854,28 +859,17 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 		}
 	}
 
-	if (should_replicate_ddl)
+	if (should_replicate_ddl && found_temp)
 	{
-		if (found_temp)
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("unsupported mix of temporary and permanent objects"),
-					 errdetail("This database is being replicated using xCluster "
-							   "automatic mode, which does not support DDLs "
-							   "that simultaneously use both temporary and "
-							   "permanent objects."),
-					 errhint("Using multiple commands, manipulate the temporary "
-							 "objects separately from the permanent ones.")));
-
-		/* The next error should not be possible. */
-		/* TODO(#28514): remove this code because it will no longer be an error. */
-		if (found_materialized_view_command)
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("unsupported mix of materialized view and other DDLs"),
-					 errdetail("This database is being replicated using xCluster "
-							   "automatic mode, which does not support this "
-							   "command.")));
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("unsupported mix of temporary and permanent objects"),
+				 errdetail("This database is being replicated using xCluster "
+							 "automatic mode, which does not support DDLs "
+							 "that simultaneously use both temporary and "
+							 "permanent objects."),
+				 errhint("Using multiple commands, manipulate the temporary "
+						 "objects separately from the permanent ones.")));
 	}
 
 	ProcessNewRelationsList(state, &new_rel_list);
@@ -927,14 +921,6 @@ ProcessSourceEventTriggerTableRewrite()
 bool
 ProcessSourceEventTriggerDroppedObjects(CommandTag	tag)
 {
-	/*
-	 * We choose to not replicate materialized view DDLs (e.g., DROP
-	 * MATERIALIZED VIEW).  Note that commands like DROP SCHEMA can also drop
-	 * materialized views and are handled separately below.
-	 */
-	if (IsMatViewCommand(tag))
-		return false;
-
 	StringInfoData query_buf;
 
 	initStringInfo(&query_buf);
@@ -993,6 +979,7 @@ ProcessSourceEventTriggerDroppedObjects(CommandTag	tag)
 			case OperatorRelationId:
 			case PolicyRelationId:
 			case ProcedureRelationId:
+			case RelationRelationId:
 			case RewriteRelationId:
 			case StatisticExtRelationId:
 			case TriggerRelationId:
@@ -1005,31 +992,6 @@ ProcessSourceEventTriggerDroppedObjects(CommandTag	tag)
 			case UserMappingRelationId:
 				should_replicate_ddl = true;
 				break;
-			case RelationRelationId:
-			{
-				const char *object_type = SPI_GetText(spi_tuple,
-													  SQL_DROP_OBJECT_TYPE_COLUMN_ID);
-				const char *schema_name = SPI_GetText(spi_tuple,
-													  SQL_DROP_SCHEMA_NAME_COLUMN_ID);
-				const char *object_name = SPI_GetText(spi_tuple,
-													  SQL_DROP_OBJECT_NAME_COLUMN_ID);
-				bool is_materialized_view = !strcmp(object_type, "materialized "
-																 "view");
-				if (is_materialized_view)
-					ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("unsupported drop of materialized view %s.%s",
-									schema_name, object_name),
-							 errdetail("This database is being replicated using "
-									   "xCluster automatic mode, which only "
-									   "supports dropping materialized views "
-									   "via DROP MATERIALIZED VIEW."),
-							 errhint("Drop materialized views using DROP "
-									 "MATERIALIZED VIEW.")));
-
-				should_replicate_ddl = true;
-			}
-			break;
 			default:
 				{
 					const char *object_type = SPI_GetText(spi_tuple,
