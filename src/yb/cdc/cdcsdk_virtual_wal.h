@@ -76,7 +76,7 @@ class CDCSDKVirtualWAL {
 
  private:
   struct GetChangesRequestInfo {
-    int64_t safe_hybrid_time;
+    uint64_t safe_hybrid_time;
     int32_t wal_segment_index;
 
     // The following fields will be used to populate from_cdc_sdk_checkpoint object of the next
@@ -136,7 +136,9 @@ class CDCSDKVirtualWAL {
       const TabletId& parent_tablet_id = "");
 
   Status UpdateTabletMapsOnSplit(
-      const TabletId& parent_tablet_id, const std::vector<TabletId> children_tablets);
+      const TabletId& parent_tablet_id,
+      const std::vector<std::pair<TabletId, GetChangesRequestInfo>>
+          children_tablet_to_next_req_info);
 
   Status GetChangesInternal(
       const std::unordered_set<TabletId> tablet_to_poll_list, const HostPort hostport,
