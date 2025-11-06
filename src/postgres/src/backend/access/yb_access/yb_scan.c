@@ -3659,6 +3659,41 @@ ybc_heap_endscan(TableScanDesc tsdesc)
 
 /* --------------------------------------------------------------------------------------------- */
 
+/*
+ * ybcGetForeignRelSize
+ *		Obtain relation size estimates for a foreign table
+ */
+void
+ybcGetForeignRelSize(PlannerInfo *root,
+					 RelOptInfo *baserel,
+					 Oid foreigntableid)
+{
+	if (baserel->tuples < 0)
+		baserel->tuples = YBC_DEFAULT_NUM_ROWS;
+
+	/* Set the estimate for the total number of rows (tuples) in this table. */
+	if (yb_enable_base_scans_cost_model ||
+		yb_enable_optimizer_statistics)
+	{
+		set_baserel_size_estimates(root, baserel);
+	}
+	else
+	{
+		/*
+		 * Initialize the estimate for the number of rows returned by this
+		 * query.  This does not yet take into account the restriction clauses,
+		 * but it will be updated later by ybcIndexCostEstimate once it
+		 * inspects the clauses.
+		 */
+		baserel->rows = baserel->tuples;
+	}
+
+	/*
+	 * Test any indexes of rel for applicability also.
+	 */
+	check_index_predicates(root, baserel);
+}
+
 void
 ybcCostEstimate(RelOptInfo *baserel, Selectivity selectivity,
 				bool is_backwards_scan, bool is_seq_scan,

@@ -70,7 +70,6 @@
 #include "access/yb_scan.h"
 #include "catalog/pg_database.h"
 #include "executor/ybExpr.h"
-#include "executor/yb_fdw.h"
 #include "miscadmin.h"
 #include "nodes/pg_list.h"
 #include "pg_yb_utils.h"
@@ -242,12 +241,7 @@ make_one_rel(PlannerInfo *root, List *joinlist)
 				{
 					ListCell   *lc;
 
-					/*
-					 * Set the YugaByte FDW routine because we will use the foreign
-					 * scan API below.
-					 */
 					relation->is_yb_relation = true;
-					relation->fdwroutine = (FdwRoutine *) yb_fdw_handler();
 					foreach(lc, relation->baserestrictinfo)
 					{
 						RestrictInfo *ri = lfirst_node(RestrictInfo, lc);
@@ -1043,7 +1037,11 @@ set_foreign_size(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	set_foreign_size_estimates(root, rel);
 
 	/* Let FDW adjust the size estimates, if it can */
-	rel->fdwroutine->GetForeignRelSize(root, rel, rte->relid);
+	/* YB: for YB relations, use legacy code instead */
+	if (rel->is_yb_relation)
+		ybcGetForeignRelSize(root, rel, rte->relid);
+	else
+		rel->fdwroutine->GetForeignRelSize(root, rel, rte->relid);
 
 	/* ... but do not let it set the rows estimate to zero */
 	rel->rows = clamp_row_est(rel->rows);
