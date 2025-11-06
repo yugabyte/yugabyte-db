@@ -429,7 +429,11 @@ TEST_F(DeleteTableTest, TestDeleteEmptyTable) {
         req, &resp, &rpc));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_EQ(1, resp.errors_size());
-    ASSERT_STR_CONTAINS(resp.errors(0).ShortDebugString(), "code: NOT_FOUND");
+    auto error_msg = resp.errors(0).ShortDebugString();
+    if (error_msg.find("code: NOT_FOUND") == error_msg.npos &&
+        error_msg.find("code: DELETED") == error_msg.npos) {
+      FAIL() << "Expected NOT_FOUND or DELETED, instead got: " << error_msg;
+    }
   }
 
   // 4) The master 'dump-entities' page should not list the deleted table or tablets.

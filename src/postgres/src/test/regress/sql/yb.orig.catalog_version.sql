@@ -412,10 +412,6 @@ ANALYZE analyze_table, analyze_table2;
 SELECT relname, reltuples FROM pg_class WHERE relname = 'analyze_table' OR relname = 'analyze_table2' ORDER BY relname;
 SELECT min(t), max(t) FROM analyze_table;
 SELECT min(t), max(t) FROM analyze_table2;
--- Without specifying tables, ANALYZE update statistics for all tables.
--- Verify catalog version bumps once for every table.
-ANALYZE;
-:display_catalog_version;
 
 -- Verify no-op ALTER ROLE
 CREATE ROLE test_role;
@@ -505,3 +501,10 @@ SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, false, 
 :display_all;
 SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, true, '', 10);
 :display_all;
+
+-- Without specifying tables, ANALYZE update statistics for all tables.
+-- Verify catalog version bumps once for every table.
+ANALYZE;
+:display_catalog_version;
+-- It is best to add any new test before this block ('ANALYZE;'). This minimizes the
+-- changes required to the expected output when introducing a new catalog table.

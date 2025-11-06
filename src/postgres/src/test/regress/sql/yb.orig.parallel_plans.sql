@@ -1,6 +1,6 @@
 SET client_min_messages = 'warning';
 
-DROP DATABASE IF EXISTS colocated_db;
+DROP DATABASE IF EXISTS colocated_db WITH (force);
 
 CREATE DATABASE colocated_db WITH colocation = on;
 
@@ -10,7 +10,6 @@ ALTER DATABASE colocated_db SET yb_fetch_row_limit = 0;
 ALTER DATABASE colocated_db SET yb_fetch_size_limit = '1MB';
 ALTER DATABASE colocated_db SET yb_parallel_range_rows = 10000;
 ALTER DATABASE colocated_db SET yb_parallel_range_size = '1MB';
-
 
 \c colocated_db
 
@@ -24,6 +23,7 @@ CREATE TABLE t1m (id int, k1 int, k2 int, k3 int, v char(1536),
     PRIMARY KEY (id ASC)) WITH (COLOCATION = on);
 
 CREATE INDEX NONCONCURRENTLY t1m_k1k2k3 ON t1m (k1 ASC, k2 ASC, k3 ASC);
+
 
 -- To avoid temporary file limit error, store shuffled column values in separate
 -- temp tables first then join them together.
@@ -67,7 +67,7 @@ ANALYZE t1m;
 \c colocated_db
 
 --
--- Should choose serial seq scan
+-- Should choose SERIAL seq scan
 --
 
 EXPLAIN (COSTS off, SUMMARY off)
@@ -75,7 +75,7 @@ SELECT id, k1 FROM t1m t;
 
 
 --
--- Should choose serial index scan
+-- Should choose SERIAL index scan
 --
 
 EXPLAIN (COSTS off, SUMMARY off)
@@ -107,7 +107,7 @@ SELECT 0 FROM t1m t WHERE id BETWEEN 500000-(100000/2-1) AND 500000+(100000/2);
 
 
 --
--- Should choose serial index only scan
+-- Should choose SERIAL index only scan
 --
 
 EXPLAIN (COSTS off, SUMMARY off)
@@ -118,7 +118,34 @@ SELECT k1, k2, k3 FROM t1m t WHERE k1 BETWEEN 5000-(4/2 - 1) AND 5000+(4/2);
 
 
 --
--- Should choose parallel seq scan
+-- Should choose SERIAL append plan
+--
+
+EXPLAIN (COSTS off, SUMMARY off)
+SELECT sum(k1), sum(k2), sum(k3), avg(k1+id), avg(k2+k3)
+FROM (SELECT id, k1, k2, k3 FROM t1m t1 WHERE id BETWEEN 500000-(10/2-1) AND 500000+(10/2)
+      UNION ALL
+      SELECT -1, k1, k2, k3 FROM t1m t2 WHERE k1 = 5000
+      UNION ALL
+      SELECT -2, k1, k2, k3 len FROM t1m t3 WHERE id = 100
+      UNION ALL
+      SELECT -3, k1, k2, k3 FROM t1m t4 WHERE k1 = 4500
+) v;
+
+EXPLAIN (COSTS off, SUMMARY off)
+SELECT sum(k1), sum(k2), sum(k3), avg(k1+id), avg(k2+k3)
+FROM (SELECT id, k1, k2, k3 FROM t1m t1 WHERE id BETWEEN 500000-(10/2-1) AND 500000+(10/2)
+      UNION ALL
+      SELECT -1, k1, k2, k3 FROM t1m t2 WHERE k1 = 5000
+      UNION ALL
+      SELECT -2, k1, k2, k3 len FROM t1m t3 WHERE id = 100
+      UNION ALL
+      SELECT -3, k1, k2, k3 FROM t1m t4 WHERE k1 <= 300
+) v;
+
+
+--
+-- Should choose PARALLEL seq scan
 --
 
 EXPLAIN (COSTS off, SUMMARY off)
@@ -126,7 +153,7 @@ SELECT id, k1, k2, k3, length(v) FROM t1m t;
 
 
 --
--- Should choose parallel index scan
+-- Should choose PARALLEL index scan
 --
 
 EXPLAIN (COSTS off, SUMMARY off)
@@ -144,21 +171,35 @@ SELECT id, k1, k2, k3, length(v) FROM t1m t WHERE k2 BETWEEN 5000-(1000/2 - 1) A
 EXPLAIN (COSTS off, SUMMARY off)
 SELECT id, k1, k2, k3, length(v) FROM t1m t ORDER BY id;
 
---
--- Should choose parallel index only scan
---
 
-EXPLAIN (COSTS off, SUMMARY off)
-SELECT k1, k2, k3 FROM t1m t WHERE k2 BETWEEN 5000-(200/2 - 1) AND 5000+(200/2);
+--
+-- Should choose PARALLEL index only scan
+--
 
 EXPLAIN (COSTS off, SUMMARY off)
 SELECT k1, k2, k3 FROM t1m t WHERE k3 BETWEEN 5000-(1000/2 - 1) AND 5000+(1000/2);
 
 
 --
+-- Should choose PARALLEL append/gather plan
+--
+
+EXPLAIN (COSTS off, SUMMARY off)
+SELECT sum(k1), sum(k2), sum(k3), avg(k1+id), avg(k2+k3)
+FROM (SELECT id, k1, k2, k3 FROM t1m t1 WHERE id BETWEEN 500000-(10/2-1) AND 500000+(10/2)
+      UNION ALL
+      SELECT -1, k1, k2, k3 FROM t1m t2 WHERE k3 = 5000
+      UNION ALL
+      SELECT -2, k1, k2, k3 len FROM t1m t3 WHERE id = 100
+      UNION ALL
+      SELECT -3, k1, k2, k3 FROM t1m t4 WHERE k3 <= 300
+) v;
+
+
+--
 -- Should choose index only scan by default, and should be parallelized
 -- with parallel_tuple_cost set to 0.01.  These queries run faster in parallel
--- but but only marginally, so it's better not to parallelize them by default.
+-- but only marginally, so it's better not to parallelize them by default.
 --
 
 EXPLAIN (COSTS off, SUMMARY off)

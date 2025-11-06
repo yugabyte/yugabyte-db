@@ -1,0 +1,28 @@
+title: ClusterPartitionSpec
+description: 'Cluster Partition specification. Part of ClusterSpec, ClusterAddSpec and ClusterEditSpec. Future substitute for placement_spec. Cluster should contain one or more geo partitions (one of them should be default partition). Readonly replicas now can have only single partition.'
+type: object
+required:
+  - name
+  - placement
+  - default_partition
+  - replication_factor
+properties:
+  uuid:
+    description: System generated partition uuid used to lookup corresponding GeoPartitionSpec. This is not a user input.
+    type: string
+    format: uuid
+    example: 19ebde21-d537-47dc-8fab-3edc243c6f68
+    readOnly: true
+  name:
+    description: The name of geo partition
+    type: string
+  default_partition:
+    description: Whether the partition is default (all masters are put only into this partition)
+    type: boolean
+    example: false
+  replication_factor:
+    description: The replication factor for the partition.
+    type: integer
+    format: int32
+  placement:
+    $ref: "./ClusterPlacementSpec.yaml"

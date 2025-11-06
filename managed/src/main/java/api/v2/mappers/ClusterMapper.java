@@ -34,10 +34,12 @@ public interface ClusterMapper {
   @Mapping(target = "placementSpec", source = "placementInfo")
   @Mapping(target = "useSpotInstance", source = "userIntent.useSpotInstance")
   @Mapping(target = "gflags", source = "userIntent")
+  @Mapping(target = "partitionsSpec", source = "partitions")
   ClusterSpec toV2ClusterSpec(Cluster v1Cluster);
 
   @Mapping(target = "userIntent", source = ".")
   @Mapping(target = "placementInfo", source = "placementSpec")
+  @Mapping(target = "partitions", source = "partitionsSpec")
   // null check is required here to avoid overwriting the auto generated uuid with null
   @Mapping(target = "uuid", nullValueCheckStrategy = NullValueCheckStrategy.ALWAYS)
   Cluster toV1Cluster(ClusterSpec clusterSpec);
@@ -47,6 +49,7 @@ public interface ClusterMapper {
 
   @Mapping(target = "userIntent", source = ".")
   @Mapping(target = "placementInfo", source = "placementSpec")
+  @Mapping(target = "partitions", source = "partitionsSpec")
   Cluster toV1ClusterFromClusterEditSpec(
       ClusterEditSpec clusterEditSpec, @MappingTarget Cluster v1Cluster);
 
@@ -68,6 +71,7 @@ public interface ClusterMapper {
 
   @BeanMapping(nullValueCheckStrategy = NullValueCheckStrategy.ALWAYS)
   @Mapping(target = "placementSpec", ignore = true)
+  @Mapping(target = "partitionsSpec", ignore = true)
   ClusterSpec deepCopyClusterSpecWithoutPlacementSpec(
       ClusterSpec source, @MappingTarget ClusterSpec target);
 
@@ -76,6 +80,7 @@ public interface ClusterMapper {
 
   @BeanMapping(nullValueCheckStrategy = NullValueCheckStrategy.ALWAYS)
   @Mapping(target = "placementSpec", ignore = true)
+  @Mapping(target = "partitionsSpec", ignore = true)
   ClusterEditSpec deepCopyClusterEditSpecWithoutPlacementSpec(
       ClusterSpec source, @MappingTarget ClusterEditSpec target);
 
@@ -85,6 +90,7 @@ public interface ClusterMapper {
 
   @Mapping(target = "userIntent", source = ".")
   @Mapping(target = "placementInfo", source = "placementSpec")
+  @Mapping(target = "partitions", source = "partitionsSpec")
   Cluster overwriteClusterAddSpec(
       ClusterAddSpec clusterAddSpec, @MappingTarget Cluster newReadReplica);
 

@@ -752,7 +752,7 @@ public abstract class KubernetesManager {
     if (!primary.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
       return null;
     } else {
-      PlacementInfo pi = universeDetails.getPrimaryCluster().placementInfo;
+      PlacementInfo pi = universeDetails.getPrimaryCluster().getOverallPlacement();
 
       boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
       Map<UUID, Map<String, String>> azToConfig = KubernetesUtil.getConfigPerAZ(pi);

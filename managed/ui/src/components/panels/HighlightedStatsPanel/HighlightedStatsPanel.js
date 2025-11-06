@@ -42,7 +42,7 @@ export default class HighlightedStatsPanel extends Component {
       <YBFormattedNumber
         value={totalCost}
         maximumFractionDigits={2}
-        formattedNumberStyle="currency"
+        formatStyle="currency"
         currency="USD"
       />
     );

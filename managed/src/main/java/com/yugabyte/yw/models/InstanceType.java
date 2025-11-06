@@ -72,7 +72,7 @@ public class InstanceType extends Model {
           "m3.", "c5.", "c5d.", "c4.", "c3.", "i3.", "m4.", "m5.", "m5a.", "m6i.", "m6a.", "m7i.",
           "m7a.", "c6i.", "c6a.", "c7a.", "c7i.");
   private static final List<String> GRAVITON_AWS_INSTANCE_PREFIXES_SUPPORTED =
-      ImmutableList.of("m6g.", "c6gd.", "c6g.", "t4g.");
+      ImmutableList.of("m6g.", "c6gd.", "c6g.", "t4g.", "r6g.", "r7g.", "r8g.");
   private static final List<String> CLOUD_AWS_INSTANCE_PREFIXES_SUPPORTED =
       ImmutableList.of(
           "m3.", "c5.", "c5d.", "c4.", "c3.", "i3.", "t2.", "t3.", "t4g.", "m6i.", "m5.");

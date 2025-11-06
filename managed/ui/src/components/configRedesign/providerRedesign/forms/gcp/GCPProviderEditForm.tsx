@@ -36,7 +36,7 @@ import {
 import { FieldGroup } from '../components/FieldGroup';
 import { SubmitInProgress } from '../components/SubmitInProgress';
 import {
-  UseProviderValidationEnabled,
+  useIsProviderValidationEnabled,
   addItem,
   constructAccessKeysEditPayload,
   deleteItem,
@@ -225,10 +225,9 @@ export const GCPProviderEditForm = ({
 
   const isOsPatchingEnabled = IsOsPatchingEnabled();
   const sshConfigureMsg = ConfigureSSHDetailsMsg();
-  const {
-    isLoading: isProviderValidationLoading,
-    isValidationEnabled
-  } = UseProviderValidationEnabled(CloudType.gcp);
+  const { isRuntimeConfigLoading, isValidationEnabled } = useIsProviderValidationEnabled(
+    CloudType.gcp
+  );
 
   if (hostInfoQuery.isError) {
     return (
@@ -249,7 +248,7 @@ export const GCPProviderEditForm = ({
     hostInfoQuery.isIdle ||
     customerRuntimeConfigQuery.isLoading ||
     customerRuntimeConfigQuery.isIdle ||
-    isProviderValidationLoading
+    isRuntimeConfigLoading
   ) {
     return <YBLoading />;
   }

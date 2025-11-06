@@ -5,8 +5,6 @@ linkTitle: Point-in-time recovery
 description: Restore data from a specific point in time in YugabyteDB for YCQL
 aliases:
   - /preview/explore/backup-restore/point-in-time-recovery-ycql
-  - /preview/explore/backup-restore/point-in-time-recovery
-  - /preview/explore/backup-restore
 menu:
   preview:
     identifier: cluster-management-point-in-time-recovery-ycql

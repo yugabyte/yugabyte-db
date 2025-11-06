@@ -19,6 +19,7 @@ export interface BackupObjectsModel {
   } | null;
   // only for YSQL
   useTablespaces: IBackup['useTablespaces'];
+  useRoles: IBackup['useRoles'];
   // only for YCQL. select all or selected tables
   tableBackupType: Backup_Options_Type;
   // only for YCQL. selected tables

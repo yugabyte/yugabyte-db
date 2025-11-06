@@ -221,6 +221,9 @@ message DeleteTabletRequestPB {
 
   // Do not delete tablet data.
   optional bool keep_data = 8;
+
+  // Transactions will be aborted except the one with this id which triggered the DeleteTablet.
+  optional bytes transaction_id = 9; // 16 byte uuid
 }
 
 message DeleteTabletResponsePB {

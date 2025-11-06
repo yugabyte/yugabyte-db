@@ -689,7 +689,3 @@ GET /customers/:cUUID/ybdb_release/extract_metadata/:rUUID                     c
 # Upload API
 POST /customers/:cUUID/ybdb_release/upload                                     com.yugabyte.yw.controllers.ReleasesUploadController.upload(cUUID: java.util.UUID, request: Request)
 GET /customers/:cUUID/ybdb_release/upload/:rUUID                               com.yugabyte.yw.controllers.ReleasesUploadController.get(cUUID: java.util.UUID, rUUID: java.util.UUID, request: Request)
-
-# Migrate resources to be kubernetes operator owned
-POST /customers/:cUUID/universes/:uUUID/operator_import                        com.yugabyte.yw.controllers.OperatorResourceMigrateController.importUniverse(cUUID: java.util.UUID, uUUID: java.util.UUID)
-POST /customers/:cUUID/universes/:uUUID/operator_import/precheck               com.yugabyte.yw.controllers.OperatorResourceMigrateController.importUniverse(cUUID: java.util.UUID, uUUID: java.util.UUID)

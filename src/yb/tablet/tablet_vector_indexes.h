@@ -62,7 +62,7 @@ class TabletVectorIndexes : public TabletComponent {
   TabletVectorIndexes(
       Tablet* tablet,
       const VectorIndexThreadPoolProvider& thread_pool_provider,
-      const VectorIndexPriorityThreadPoolProvider& priority_thread_pool_provider,
+      const VectorIndexCompactionTokenProvider& compaction_token_provider,
       const hnsw::BlockCachePtr& block_cache,
       MetricRegistry* metric_registry);
 
@@ -130,7 +130,7 @@ class TabletVectorIndexes : public TabletComponent {
       REQUIRES(vector_indexes_mutex_);
 
   const VectorIndexThreadPoolProvider thread_pool_provider_;
-  const VectorIndexPriorityThreadPoolProvider priority_thread_pool_provider_;
+  const VectorIndexCompactionTokenProvider compaction_token_provider_;
   const hnsw::BlockCachePtr block_cache_;
   const MemTrackerPtr mem_tracker_;
   MetricRegistry* metric_registry_ = nullptr;

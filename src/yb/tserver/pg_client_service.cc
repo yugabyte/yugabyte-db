@@ -76,6 +76,7 @@
 #include "yb/tserver/ts_local_lock_manager.h"
 #include "yb/tserver/ysql_advisory_lock_table.h"
 
+#include "yb/util/debug-util.h"
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
@@ -97,10 +98,19 @@ DEFINE_UNKNOWN_uint64(pg_client_session_expiration_ms, 60000,
 
 DECLARE_bool(pg_client_use_shared_memory);
 
-DEFINE_RUNTIME_int32(get_locks_status_max_retry_attempts, 2,
+DEFINE_RUNTIME_int32(get_locks_status_max_retry_attempts, 5,
                      "Maximum number of retries that will be performed for GetLockStatus "
                      "requests that fail in the validation phase due to unseen responses from "
                      "some of the involved tablets.");
+
+DEFINE_RUNTIME_int32(pg_locks_max_tablet_lookup_retries, 5,
+                     "Maximum number of retries when fetching tablet locations during "
+                     "pg_locks queries. Retries occur when tablets have no elected leader "
+                     "or when handling tablet splits.");
+
+DEFINE_RUNTIME_int32(pg_locks_retry_delay_ms, 200,
+                     "Delay in milliseconds between retries during pg_locks operations. "
+                     "Applied when  retrying tablet location lookups and GetLockStatus requests");
 
 DEFINE_test_flag(uint64, delay_before_get_old_transactions_heartbeat_intervals, 0,
                  "When non-zero, we sleep for set transaction heartbeat interval periods before "
@@ -143,6 +153,9 @@ DEFINE_NON_RUNTIME_int64(shmem_exchange_idle_timeout_ms, 2000 * yb::kTimeMultipl
 DEFINE_test_flag(bool, enable_ysql_operation_lease_expiry_check, true,
                  "Whether tservers should monitor their ysql op lease and kill their hosted pg "
                  "sessions when it expires. Only available as a flag for tests.");
+
+DEFINE_test_flag(bool, pause_get_lock_status, false,
+    "Whether tservers should pause before sending GetLockStatus requests.");
 
 DECLARE_uint64(cdc_intent_retention_ms);
 DECLARE_uint64(transaction_heartbeat_usec);
@@ -1022,7 +1035,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
   // retries the operation with split child tablet ids. On encountering further tablet split
   // errors, returns a bad status.
   Result<std::vector<RemoteTabletServerPtr>> ReplaceSplitTabletsAndGetLocations(
-      GetLockStatusRequestPB* req, bool is_within_retry = false) {
+      GetLockStatusRequestPB* req, int retry_attempt = 0) {
     std::vector<TabletId> tablet_ids;
     tablet_ids.reserve(req->transactions_by_tablet().size());
     for (const auto& [tablet_id, _] : req->transactions_by_tablet()) {
@@ -1054,15 +1067,35 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     }
     if (!resp.errors().empty()) {
       // Re-request location info of updated tablet set if not already in the retry context.
-      return is_within_retry ? combined_status : ReplaceSplitTabletsAndGetLocations(req, true);
+      if (retry_attempt > FLAGS_pg_locks_max_tablet_lookup_retries) {
+        return combined_status;
+      }
+      VLOG(1) << "Retrying tablet location lookup after handling splits "
+              << "(attempt " << retry_attempt + 1 << ")";
+      AtomicFlagSleepMs(&FLAGS_pg_locks_retry_delay_ms);
+      return ReplaceSplitTabletsAndGetLocations(req, ++retry_attempt);
     }
 
     std::unordered_set<std::string> tserver_uuids;
     for (const auto& tablet_location_pb : resp.tablet_locations()) {
+      bool has_leader = false;
       for (const auto& replica : tablet_location_pb.replicas()) {
         if (replica.role() == PeerRole::LEADER) {
           tserver_uuids.insert(replica.ts_info().permanent_uuid());
+          has_leader = true;
+          break;
         }
+      }
+      if (!has_leader) {
+        if (retry_attempt > FLAGS_pg_locks_max_tablet_lookup_retries) {
+          return STATUS(IllegalState, Format(
+                        "No leader found for tablet $0 after $1 attempts",
+                        tablet_location_pb.tablet_id(), retry_attempt));
+        }
+        LOG_WITH_FUNC(INFO) << "Tablet " << tablet_location_pb.tablet_id()
+                            << " have no leader, retrying (attempt " << retry_attempt + 1 << ")";
+        AtomicFlagSleepMs(&FLAGS_pg_locks_retry_delay_ms);
+        return ReplaceSplitTabletsAndGetLocations(req, ++retry_attempt);
       }
     }
     return tablet_server_.GetRemoteTabletServers(tserver_uuids);
@@ -1252,6 +1285,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     if (include_single_shard_waiters) {
       lock_status_req.set_max_single_shard_waiter_start_time_us(max_single_shard_waiter_start_time);
     }
+    TEST_PAUSE_IF_FLAG(TEST_pause_get_lock_status);
     auto remote_tservers_with_locks = VERIFY_RESULT(
         ReplaceSplitTabletsAndGetLocations(&lock_status_req));
     return DoGetLockStatus(&lock_status_req, resp, context, remote_tservers_with_locks);
@@ -1474,6 +1508,10 @@ class PgClientServiceImpl::Impl : public SessionProvider {
             IllegalState, "Expected to see involved tablet(s) $0 in PgGetLockStatusResponsePB",
             req->ShortDebugString());
       }
+      LOG_WITH_FUNC(INFO) << "Retrying DoGetLockStatus for remaining tablets "
+                          << "(attempt " << retry_attempt + 1 << "). Due to missing tablets: "
+                          << req->ShortDebugString();
+      AtomicFlagSleepMs(&FLAGS_pg_locks_retry_delay_ms);
       PgGetLockStatusResponsePB sub_resp;
       for (const auto& node_txn_pair : resp->transactions_by_node()) {
         sub_resp.mutable_transactions_by_node()->insert(node_txn_pair);

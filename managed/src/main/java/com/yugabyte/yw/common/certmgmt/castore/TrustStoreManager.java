@@ -10,8 +10,12 @@ import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import lombok.ToString.Exclude;
 import lombok.Value;
+import org.apache.commons.lang3.StringUtils;
 
 public interface TrustStoreManager {
   default String getTrustStorePath(String trustStoreHome, String trustStoreFileName) {
@@ -32,20 +36,10 @@ public interface TrustStoreManager {
     }
   }
 
-  boolean addCertificate(
-      String certPath,
-      String name,
-      String trustStoreHome,
-      char[] trustStorePassword,
-      boolean suppressErrors)
+  void addCertificate(String certPath, String name, String trustStoreHome, boolean suppressErrors)
       throws KeyStoreException, CertificateException, IOException;
 
-  void remove(
-      String certPath,
-      String name,
-      String trustStoreHome,
-      char[] trustStorePassword,
-      boolean suppressErrors)
+  void remove(String certPath, String name, String trustStoreHome, boolean suppressErrors)
       throws CertificateException, IOException, KeyStoreException;
 
   void replaceCertificate(
@@ -53,7 +47,6 @@ public interface TrustStoreManager {
       String newCertPath,
       String name,
       String trustStoreHome,
-      char[] truststorePassword,
       boolean suppressErrors)
       throws CertificateException, IOException, KeyStoreException, NoSuchAlgorithmException;
 
@@ -63,5 +56,16 @@ public interface TrustStoreManager {
   class TrustStoreInfo {
     String path;
     String type;
+    @Exclude String password;
+
+    public Map<String, String> toPlayConfig() {
+      Map<String, String> config = new HashMap<>();
+      config.put("path", path);
+      config.put("type", type);
+      if (StringUtils.isNotEmpty(password)) {
+        config.put("password", password);
+      }
+      return config;
+    }
   }
 }

@@ -1881,10 +1881,11 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 
 			if (type == KIWI_FE_CLOSE_PREPARED_STATEMENT) {
 				retstatus = OD_SKIP;
-				od_debug(
+				od_log(
 					&instance->logger,
-					"ingore closing prepared statement, report its closed",
-					client, server, "statement: %.*s",
+					"close prepared statement",
+					client, server, "ignore closing prepared statement: %.*s, report it as closed "
+					"by returning a close complete message from connection manager",
 					name_len, name);
 
 				machine_msg_t *pmsg;

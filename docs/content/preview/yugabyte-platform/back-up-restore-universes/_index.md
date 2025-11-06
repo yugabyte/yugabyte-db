@@ -8,7 +8,6 @@ aliases:
   - /preview/manage/enterprise-edition/backup-restore
   - /preview/manage/enterprise-edition/back-up-restore-data
   - /preview/yugabyte-platform/manage/backup-restore-data
-  - /preview/yugabyte-platform/back-up-restore-universes/back-up-universe-data/
 menu:
   preview_yugabyte-platform:
     parent: yugabytedb-anywhere

@@ -5151,6 +5151,7 @@ YbWaitForBackendsCatalogVersion()
 								 " pg_stat_activity WHERE"
 								 " backend_type != 'walsender' AND"
 								 " backend_type != 'yb-conn-mgr walsender' AND"
+								 " backend_type != 'yb auto analyze backend' AND"
 								 " catalog_version < %" PRIu64
 								 " AND datid = %u;",
 								 catalog_version,

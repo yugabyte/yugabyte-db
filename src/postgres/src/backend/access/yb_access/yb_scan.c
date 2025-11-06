@@ -1819,7 +1819,6 @@ YbCullArray(ArrayType *arrayval,
 					  elmlen, elmbyval, elmalign,
 					  &elem_values, &elem_nulls, &num_elems);
 	*culled_elem_values = elem_values;
-	Assert(ARR_NDIM(arrayval) <= 2);
 
 	int			num_valid = 0;
 	bool		retain_nulls = YbSearchArrayRetainNulls(key);

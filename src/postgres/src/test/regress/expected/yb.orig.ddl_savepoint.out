@@ -118,3 +118,19 @@ ROLLBACK;
 -- #28955: CREATE INDEX (separate DDL transaction) works when savepoint is enabled.
 CREATE TABLE employees(id INT PRIMARY KEY, code VARCHAR(20) UNIQUE, department VARCHAR(50));
 CREATE INDEX idx_department ON employees(department);
+-- #28956: Transaction doesn't self abort
+CREATE TABLE projects (id INT PRIMARY KEY, project_name VARCHAR(100));
+INSERT INTO projects (id, project_name) VALUES (101, 'Project Alpha');
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+UPDATE projects SET project_name = 'Project Phoenix' WHERE id = 101;
+SAVEPOINT sp_mixed;
+CREATE TABLE project_logs (log_id INT, entry TEXT);
+INSERT INTO project_logs VALUES (1, 'Initial log');
+-- This will drop table project_logs but shouldn't abort the entire transaction.
+ROLLBACK TO SAVEPOINT sp_mixed;
+SELECT project_name FROM projects WHERE id = 101;
+  project_name   
+-----------------
+ Project Phoenix
+(1 row)
+

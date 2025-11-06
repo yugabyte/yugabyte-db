@@ -5,12 +5,6 @@ linkTitle: Connect an app
 description: Connect a Java application using YugabyteDB JDBC Smart Driver
 tags:
   other: ysql
-aliases:
-  - /develop/client-drivers/java/
-  - /preview/develop/client-drivers/java/
-  - /preview/develop/build-apps/java/
-  - /preview/quick-start/build-apps/java/
-  - /preview/integrations/jdbc-drivers/
 menu:
   preview_develop:
     identifier: java-driver-1-yugabyte-jdbc

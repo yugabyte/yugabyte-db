@@ -65,6 +65,7 @@ import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.NodeUIApiHelper;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseContainer;
@@ -2169,16 +2170,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       throw new IllegalArgumentException(errMsg);
     }
     int serverPort = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerPort);
-    NodeAgentEnabler nodeAgentEnabler = getInstanceOf(NodeAgentEnabler.class);
-    if (reinstall == false && nodeAgentEnabler.shouldSkipInstallAndMarkUniverse(universe)) {
-      // Reinstall forces direct installation in the same task.
-      log.info(
-          "Skipping node agent installation for universe {} as it is not enabled",
-          universe.getUniverseUUID());
-      nodeAgentEnabler.markUniverse(universe.getUniverseUUID());
-      return subTaskGroup;
-    }
-    nodeAgentEnabler.cancelForUniverse(universe.getUniverseUUID());
+    getInstanceOf(NodeAgentEnabler.class).cancelForUniverse(universe.getUniverseUUID());
     Customer customer = Customer.get(universe.getCustomerId());
     filterNodesForInstallNodeAgent(universe, nodes, reinstall /* includeOnPremManual */)
         .forEach(
@@ -2526,6 +2518,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
   }
 
+  public DumpEntitiesResponse dumpDbEntities(
+      Universe universe, @Nullable Predicate<DumpEntitiesResponse> moreStopCondition) {
+    return dumpDbEntities(universe, moreStopCondition, this.nodeUIApiHelper);
+  }
+
   /**
    * Fetch DB entities from /dump-entities endpoint.
    *
@@ -2533,8 +2530,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param moreStopCondition more stop condition to be checked if needed.
    * @return the API response.
    */
-  public DumpEntitiesResponse dumpDbEntities(
-      Universe universe, @Nullable Predicate<DumpEntitiesResponse> moreStopCondition) {
+  public static DumpEntitiesResponse dumpDbEntities(
+      Universe universe,
+      @Nullable Predicate<DumpEntitiesResponse> moreStopCondition,
+      NodeUIApiHelper nodeUIApiHelper) {
     // Wait for a maximum of 10 seconds for url to succeed.
     NodeDetails masterLeaderNode = universe.getMasterLeaderNode();
     HostAndPort masterLeaderHostPort =
@@ -2639,7 +2638,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                 ? currentNode.cloudInfo.secondary_private_ip
                 : currentNode.cloudInfo.private_ip,
             currentNode.tserverRpcPort);
-    return dumpEntitiesResponse.getTabletsByTserverAddress(currentNodeHP);
+    return dumpEntitiesResponse.getTabletIdsByTserverAddress(currentNodeHP);
   }
 
   /**
@@ -2659,7 +2658,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           universe,
           r -> {
             for (HostAndPort hp : backlistedHostAndPorts) {
-              Set<String> tabletIds = r.getTabletsByTserverAddress(hp);
+              Set<String> tabletIds = r.getTabletIdsByTserverAddress(hp);
               if (log.isDebugEnabled()) {
                 log.debug(
                     "Number of tablets on tserver {} is {} tablets. Example tablets {}...",

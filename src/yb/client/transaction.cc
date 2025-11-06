@@ -1051,7 +1051,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   }
 
   bool HasSubTransaction(SubTransactionId id) {
-    return subtransaction_.active() && subtransaction_.HasSubTransaction(id);
+    return subtransaction_.HasSubTransaction(id);
   }
 
   Status RollbackToSubTransaction(SubTransactionId id, CoarseTimePoint deadline) EXCLUDES(mutex_) {

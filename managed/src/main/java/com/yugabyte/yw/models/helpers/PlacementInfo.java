@@ -8,6 +8,7 @@ import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -26,10 +27,14 @@ public class PlacementInfo {
     @ApiModelProperty public String code;
     // The list of region in this cloud we want to place data in.
     @ApiModelProperty public List<PlacementRegion> regionList = new ArrayList<>();
+
     // UUID of default region. For universes with more AZs than RF, the default
     // placement for user tables will be RF AZs in the default region. This is
     // commonly encountered in geo-partitioning use cases.
-    @ApiModelProperty public UUID defaultRegion;
+    /**
+     * @deprecated Instead use default GeoPartition
+     */
+    @Deprecated @ApiModelProperty public UUID defaultRegion;
 
     @Override
     public String toString() {
@@ -110,6 +115,11 @@ public class PlacementInfo {
     return cloudList.stream()
         .flatMap(cloud -> cloud.regionList.stream())
         .flatMap(region -> region.azList.stream());
+  }
+
+  @JsonIgnore
+  public Set<UUID> getAllAZUUIDs() {
+    return azStream().map(az -> az.uuid).collect(Collectors.toSet());
   }
 
   @JsonIgnore

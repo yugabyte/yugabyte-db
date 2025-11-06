@@ -531,6 +531,14 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
                                           const SubTransactionId sub_txn_id,
                                           const LeaderEpoch& epoch);
 
+  // Returns true if the table deletion is happening due to a rollback to sub-transaction operation.
+  // If returning true, the txn_id field is populated with the transaction that it undergoing the
+  // rollback to sub-transaction operation.
+  // NOTE: This function must only be called when we know that the table is being deleted i.e. it
+  // assumes that the table is being deleted.
+  bool IsTableDeletionDueToRollbackToSubTxn(
+      const scoped_refptr<TableInfo>& table, TransactionId& txn_id);
+
   // Rollback all the DDL state changes made by the YSQL transaction from the end till
   // rollback_till_ddl_state_index of ysql_ddl_txn_verifier_state i.e.
   // ysql_ddl_txn_verifier_state[rollback_till_ddl_state_index, end)
@@ -1090,6 +1098,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Result<scoped_refptr<NamespaceInfo>> FindNamespaceByIdUnlocked(
       const NamespaceId& id) const REQUIRES_SHARED(mutex_);
+
+  Result<scoped_refptr<NamespaceInfo>> FindNamespaceByName(
+      YQLDatabase db_type, const std::string& name) const;
+  Result<scoped_refptr<NamespaceInfo>> FindNamespaceByNameUnlocked(
+      YQLDatabase db_type, const std::string& name) const REQUIRES_SHARED(mutex_);
 
   Result<scoped_refptr<TableInfo>> FindTableUnlocked(
       const TableIdentifierPB& table_identifier, bool include_deleted = true) const
@@ -1684,14 +1697,15 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Status BackfillMetadataForXRepl(const TableInfoPtr& table_info, const LeaderEpoch& epoch);
 
-  Result<TabletInfoPtr> GetTabletInfo(const TabletId& tablet_id) override
-      EXCLUDES(mutex_);
-
-  // Gets the set of table IDs that belong to the sys.catalog tablet.
-  std::unordered_set<TableId> GetSysCatalogTableIds() EXCLUDES(mutex_);
+  Result<TabletInfoPtr> GetTabletInfo(const TabletId& tablet_id) override EXCLUDES(mutex_);
 
   // Gets the tablet info for each tablet id, or nullptr if the tablet was not found.
   TabletInfos GetTabletInfos(const std::vector<TabletId>& ids) override;
+
+  bool IsColocatedNamespace(const NamespaceId& ns_id) const EXCLUDES(mutex_);
+
+  // Gets the set of table IDs that belong to the sys.catalog tablet.
+  std::unordered_set<TableId> GetSysCatalogTableIds() EXCLUDES(mutex_);
 
   // Mark specified CDC streams as DELETING/DELETING_METADATA so they can be removed later.
   Status DropXReplStreams(
@@ -2451,8 +2465,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   scoped_refptr<AtomicGauge<uint64_t>> metric_max_follower_heartbeat_delay_;
 
-  friend class ClusterLoadBalancer;
-
   // Policy for load balancing tablets on tablet servers.
   std::unique_ptr<ClusterLoadBalancer> load_balance_policy_;
 
@@ -2712,7 +2724,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   // Helper function for ImportTableEntry.
   Result<bool> CheckTableForImport(
-      scoped_refptr<TableInfo> table, ExternalTableSnapshotData* snapshot_data)
+      const scoped_refptr<TableInfo>& table, ExternalTableSnapshotData* snapshot_data)
       REQUIRES_SHARED(mutex_);
 
   Status ImportNamespaceEntry(

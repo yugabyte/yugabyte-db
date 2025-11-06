@@ -647,9 +647,9 @@ YBIsReadCommittedSupported()
 	{
 
 #ifdef NDEBUG
-		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_yb_enable_read_committed_isolation", false);
-#else
 		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_yb_enable_read_committed_isolation", true);
+#else
+		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_yb_enable_read_committed_isolation", false);
 #endif
 	}
 	return cached_value;
@@ -2647,6 +2647,12 @@ YbTrackAlteredTableId(Oid relid)
 void
 YBIncrementDdlNestingLevel(YbDdlMode mode)
 {
+	if (YBIsDdlTransactionBlockEnabled() && IsTransactionBlock())
+	{
+		elog(ERROR,
+				"YBIncrementDdlNestingLevel: autonomous DDL not exepcted inside a transaction block");
+	}
+
 	if (ddl_transaction_state.nesting_level == 0)
 	{
 		/*

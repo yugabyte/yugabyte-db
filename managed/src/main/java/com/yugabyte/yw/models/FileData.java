@@ -39,6 +39,7 @@ import org.apache.commons.io.FilenameUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
+import play.inject.Injector;
 
 @Entity
 @Data
@@ -98,17 +99,20 @@ public class FileData extends Model {
     return new HashSet<>();
   }
 
-  public static void writeFileToDB(String file) {
-    RuntimeConfGetter confGetter =
-        StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
-    writeFileToDB(file, AppConfigHelper.getStoragePath(), confGetter);
+  public static void writeFileToDB(String file, boolean validateSize) {
+    writeFileToDB(file, AppConfigHelper.getStoragePath(), validateSize);
   }
 
-  public static void writeFileToDB(
-      String file, String storagePath, RuntimeConfGetter runtimeConfGetter) {
+  public static void writeFileToDB(String file, String storagePath) {
+    writeFileToDB(file, storagePath, true);
+  }
+
+  public static void writeFileToDB(String file, String storagePath, boolean validateSize) {
     try {
       File f = new File(file);
-      validateFileSize(f, runtimeConfGetter);
+      if (validateSize) {
+        validateFileSize(f);
+      }
 
       Matcher parentUUIDMatcher = Pattern.compile(UUID_PATTERN).matcher(file);
       UUID parentUUID = null;
@@ -129,8 +133,12 @@ public class FileData extends Model {
       String content = Base64.getEncoder().encodeToString(Files.readAllBytes(Paths.get(file)));
       FileData.create(parentUUID, filePath, fileExtension, content);
     } catch (Exception e) {
-      Boolean suppressExceptionsDuringSync =
-          runtimeConfGetter.getGlobalConf(GlobalConfKeys.fsStatelessSuppressError);
+      Injector injector = StaticInjectorHolder.injector();
+      boolean suppressExceptionsDuringSync =
+          injector != null
+              && injector
+                  .instanceOf(RuntimeConfGetter.class)
+                  .getGlobalConf(GlobalConfKeys.fsStatelessSuppressError);
       if (suppressExceptionsDuringSync) {
         LOG.error(e.getMessage());
       } else {
@@ -139,9 +147,10 @@ public class FileData extends Model {
     }
   }
 
-  private static void validateFileSize(File f, RuntimeConfGetter runtimeConfGetter) {
-    long maxAllowedFileSize =
-        runtimeConfGetter.getGlobalConf(GlobalConfKeys.fsStatelessMaxFileSizeBytes);
+  private static void validateFileSize(File f) {
+    RuntimeConfGetter confGetter =
+        StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
+    long maxAllowedFileSize = confGetter.getGlobalConf(GlobalConfKeys.fsStatelessMaxFileSizeBytes);
     if (f.exists()) {
       if (maxAllowedFileSize < f.length()) {
         String msg =
@@ -218,23 +227,28 @@ public class FileData extends Model {
     }
   }
 
+  public static boolean upsertFileInDB(String filePath) throws IOException {
+    return upsertFileInDB(filePath, true);
+  }
+
   /**
    * Updates the latest record if there is at least one with the specified filePath already, else
    * inserts the record.
    *
    * @param filePath
+   * @param validateSize
    * @return true if updated, false if inserted
    * @throws IOException
    */
-  public static boolean upsertFileInDB(String filePath) throws IOException {
+  public static boolean upsertFileInDB(String filePath, boolean validateSize) throws IOException {
     String relativeFilePath = getRelativePath(filePath);
     FileData fileData = getLatest(relativeFilePath);
-    if (fileData == null) writeFileToDB(filePath);
+    if (fileData == null) writeFileToDB(filePath, validateSize);
     else {
       File file = new File(filePath);
-      RuntimeConfGetter confGetter =
-          StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
-      validateFileSize(file, confGetter);
+      if (validateSize) {
+        validateFileSize(file);
+      }
       fileData.setFileContent(getContents(Files.readAllBytes(new File(filePath).toPath())));
       fileData.setTimestamp(new Date());
       fileData.update();

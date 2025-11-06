@@ -70,7 +70,8 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
     Cluster cluster = taskParams().getReadOnlyClusters().get(0);
     universe
         .getUniverseDetails()
-        .upsertCluster(cluster.userIntent, cluster.placementInfo, cluster.uuid);
+        .upsertCluster(
+            cluster.userIntent, cluster.getPartitions(), cluster.placementInfo, cluster.uuid);
     updateTaskDetailsInDB(taskParams());
   }
 

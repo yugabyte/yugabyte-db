@@ -51,6 +51,8 @@ sudo bash ./bin/configure_ptp.sh
 
 Although optional, configuring ClockBound improves clock accuracy by several orders of magnitude. ClockBound requires chrony and can be used in conjunction with PTP.
 
+Clockbound is supported on AWS and GCP. Azure is not supported.
+
 Configure ClockBound using the `configure_clockbound.sh` script in the bin directory of your YugabyteDB home directory as follows:
 
 ```sh
@@ -61,7 +63,7 @@ After configuring ClockBound, you must configure the YB-TServer and YB-Master se
 
 If the ClockBound agent is configured with PTP, use a more aggressive clock error estimate such as `clockbound_clock_error_estimate_usec=100`.
 
-### Verify ClockBound configuration
+#### Verify ClockBound configuration
 
 Verify that ClockBound is configured properly using the following command:
 

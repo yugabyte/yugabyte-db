@@ -13,7 +13,10 @@
 
 #include "yb/tserver/server_main_util.h"
 
+#include <algorithm>
 #include <iostream>
+#include <boost/algorithm/string/trim.hpp>
+#include "yb/util/string_case.h"
 
 #if YB_ABSL_ENABLED
 #include "absl/debugging/symbolize.h"
@@ -31,6 +34,7 @@
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flags.h"
 #include "yb/util/mem_tracker.h"
+#include "yb/util/pg_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
 
@@ -49,6 +53,8 @@ DECLARE_int64(memory_limit_hard_bytes);
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_bool(ysql_enable_auto_analyze_service);
 DECLARE_bool(ysql_enable_table_mutation_counter);
+DECLARE_string(ysql_pg_conf_csv);
+DECLARE_string(ysql_yb_enable_cbo);
 
 namespace yb {
 
@@ -125,40 +131,106 @@ void AdjustMemoryLimitsIfNeeded(bool is_master) {
   AdjustMemoryLimits(values);
 }
 
-// If auto analyze service is used based on old deprecated flags,
-// adjust new flags' values based on the deprecated flags to make auto analyze
-// service behaves consistently.
-// When using deprecated flags, only setting both FLAGS_ysql_enable_auto_analyze
-// and FLAGS_ysql_enable_table_mutation_counter makes auto analyze service runable,
-// so ysql_enable_auto_analyze is set in the following precedence order
-//    1. Any explicit user set value for ysql_enable_auto_analyze.
-//    2. If not set explicitly,
-//          2.1 If ysql_enable_auto_analyze_service and ysql_enable_table_mutation_counter are set
-//              explicitly. Use their values to set value for ysql_enable_auto_analyze.
-//              ysql_enable_auto_analyze is true only if both ysql_enable_auto_analyze_service and
-//              ysql_enable_table_mutation_counter are true.
-//          2.2 If not both of ysql_enable_auto_analyze_service and
-//              ysql_enable_table_mutation_counter are set explicity,
-//              use ysql_enable_auto_analyze default value.
+// Return the lower case value of a GUC set in a CSV string (FLAGS_ysql_pg_conf_csv),
+// accounting for the following
+// 1. GUC keys and values are case insensitive
+// 2. A GUC can be repeated multiple times, the final value is what matters
+//    (consistent with WritePostgresConfig)
+std::optional<std::string> FindGUCValue(
+    const std::string& guc_key, const std::vector<std::string>& user_configs) {
+  std::optional<std::string> result;
+  for (const auto& config : user_configs) {
+    const auto lower_case_config = yb::ToLowerCase(config);
+    if (lower_case_config.find(guc_key) == std::string::npos) {
+      continue;
+    }
+    const auto pos = lower_case_config.find('=');
+    if (pos != std::string::npos) {
+      std::string config_key = boost::trim_copy(lower_case_config.substr(0, pos));
+      std::string config_value = boost::trim_copy(lower_case_config.substr(pos + 1));
+      if (config_key == guc_key) {
+        result = config_value;
+      }
+    }
+  }
+  return result;
+}
+
+// Auto analyze flag can have different defaults based on other flags like
+// older (deprecated) auto analyze flags or the cbo flags. In any case, an explict
+// user set flag value should be respected as-is.
 void AdjustAutoAnalyzeFlagIfNeeded() {
-  // Check if the flag is explictly set.
-  if (!google::GetCommandLineFlagInfoOrDie("ysql_enable_auto_analyze").is_default)
+  // If the auto analyze flag is explictly set, do not change it.
+  if (!google::GetCommandLineFlagInfoOrDie("ysql_enable_auto_analyze").is_default) {
+    LOG(INFO) << "Flag: ysql_enable_auto_analyze has been set to " << FLAGS_ysql_enable_auto_analyze
+              << " by explicit config in command line";
     return;
-  bool old_value_of_new_flag = FLAGS_ysql_enable_auto_analyze;
-  // check if the old flags are enabled.
-  bool auto_analyze_enabled_using_old_flags
-    = FLAGS_ysql_enable_auto_analyze_service && FLAGS_ysql_enable_table_mutation_counter;
+  }
+
+  // When we change ysql_yb_enable_cbo to default on, we need to update the logic here, so adding
+  // a DCHECK to catch this situation.
+  DCHECK(
+      !(google::GetCommandLineFlagInfoOrDie("ysql_yb_enable_cbo").is_default &&
+        FLAGS_ysql_yb_enable_cbo == "on"));
+
+  // If ysql_yb_enable_cbo was explicitly set by user, then ysql_enable_auto_analyze flag is set to
+  // true whenever it is on. The reasoning is that CBO in legacy mode
+  // can have more unpredictable behavior when ANALYZE is run, so we don't want to run ANALYZE
+  // automatically.
+  bool cbo_flag_on = false;
+  std::string cbo_reason = "";
+  const std::vector<std::string> cbo_on_values = {"on", "true", "1", "yes"};
+  if (!google::GetCommandLineFlagInfoOrDie("ysql_yb_enable_cbo").is_default) {
+    if (std::find(
+            cbo_on_values.begin(), cbo_on_values.end(),
+            yb::ToLowerCase(FLAGS_ysql_yb_enable_cbo)) != cbo_on_values.end()) {
+      cbo_flag_on = true;
+      cbo_reason = "ysql_yb_enable_cbo flag was explicitly set by user to '" +
+                   FLAGS_ysql_yb_enable_cbo + "'";
+    }
+  } else {
+    // If ysql_pg_conf_csv contains yb_enable_cbo=on, then ysql_enable_auto_analyze is set to true.
+    // Note that ysql_pg_conf_csv has lower precedence than user-set ysql_yb_enable_cbo.
+    std::vector<std::string> user_configs;
+    std::optional<std::string> cbo_guc_value;
+    if (!FLAGS_ysql_pg_conf_csv.empty() &&
+        ReadCSVValues(FLAGS_ysql_pg_conf_csv, &user_configs).ok() &&
+        (cbo_guc_value = FindGUCValue("yb_enable_cbo", user_configs)).has_value() &&
+        std::find(cbo_on_values.begin(), cbo_on_values.end(), cbo_guc_value.value()) !=
+            cbo_on_values.end()) {
+      cbo_flag_on = true;
+      cbo_reason = "yb_enable_cbo was set to " + cbo_guc_value.value() + " in ysql_pg_conf_csv";
+    }
+  }
+
+  if (cbo_flag_on) {
+    google::SetCommandLineOptionWithMode(
+      "ysql_enable_auto_analyze", "true", google::SET_FLAG_IF_DEFAULT);
+    LOG(INFO) << "Flag: ysql_yb_enable_auto_analyze was auto-set to "
+              << FLAGS_ysql_enable_auto_analyze << " because " << cbo_reason;
+    return;
+  }
+
+  // If ysql_enable_auto_analyze_service and ysql_enable_table_mutation_counter are set
+  // explicitly, use their values to set value for ysql_enable_auto_analyze.
+  // ysql_enable_auto_analyze is true only if both ysql_enable_auto_analyze_service and
+  // ysql_enable_table_mutation_counter are true.
+  const bool old_value_of_new_flag = FLAGS_ysql_enable_auto_analyze;
+  const bool auto_analyze_enabled_using_old_flags =
+      FLAGS_ysql_enable_auto_analyze_service && FLAGS_ysql_enable_table_mutation_counter;
   if (auto_analyze_enabled_using_old_flags) {
-    // set new flag default.
     google::SetCommandLineOptionWithMode("ysql_enable_auto_analyze", "true",
                                          google::SET_FLAG_IF_DEFAULT);
 
-    LOG(INFO) << "Flag: ysql_enable_auto_analyze was auto-set to "
-              << FLAGS_ysql_enable_auto_analyze
+    LOG(INFO) << "Flag: ysql_enable_auto_analyze was auto-set to " << FLAGS_ysql_enable_auto_analyze
               << " from its default value of " << old_value_of_new_flag
-              << ". Flags: ysql_enable_auto_analyze_service and "
-              << "ysql_enable_table_mutation_counter are deprecated.";
+              << "because it was enabled by the following deprecated flags"
+              << " - ysql_enable_auto_analyze_service and ysql_enable_table_mutation_counter.";
+    return;
   }
+
+  LOG(INFO) << "Not changing ysql_enable_auto_analyze from its default value "
+            << FLAGS_ysql_enable_auto_analyze;
 }
 
 }  // anonymous namespace

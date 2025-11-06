@@ -403,6 +403,8 @@ func InitViper() {
 	viper.SetDefault("service_username", DefaultServiceUser)
 	viper.SetDefault("installRoot", "/opt/yugabyte")
 
+	viper.SetDefault("platform.fd_limit", 16384)
+
 	viper.SetDefault("prometheus.remoteWrite.enabled", false)
 	viper.SetDefault("prometheus.scrapeConfig.node.scheme", "http")
 	viper.SetDefault("prometheus.scrapeConfig.node-agent.scheme", "http")

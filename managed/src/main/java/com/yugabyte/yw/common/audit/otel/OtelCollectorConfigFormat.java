@@ -257,6 +257,23 @@ public class OtelCollectorConfigFormat {
 
   @Data
   @EqualsAndHashCode(callSuper = true)
+  public static class OTLPExporter extends Exporter {
+    private String endpoint;
+    private String compression;
+    private Map<String, String> headers;
+    private TlsSettings tls;
+    private String timeout;
+    private String logs_endpoint;
+    private AuthConfig auth;
+  }
+
+  @Data
+  public static class AuthConfig {
+    private String authenticator;
+  }
+
+  @Data
+  @EqualsAndHashCode(callSuper = true)
   public static class SplunkExporter extends Exporter {
     private String token;
     private String endpoint;
@@ -324,6 +341,24 @@ public class OtelCollectorConfigFormat {
     private boolean on_rebound;
     private int rebound_needed_threshold_mib;
     private int rebound_trigger_threshold_mib;
+  }
+
+  @Data
+  @EqualsAndHashCode(callSuper = true)
+  public static class BasicAuthExtension extends Extension {
+    private ClientAuth client_auth;
+  }
+
+  @Data
+  public static class ClientAuth {
+    private String username;
+    private String password;
+  }
+
+  @Data
+  @EqualsAndHashCode(callSuper = true)
+  public static class BearerTokenAuthExtension extends Extension {
+    private String bearer_token;
   }
 
   @Data

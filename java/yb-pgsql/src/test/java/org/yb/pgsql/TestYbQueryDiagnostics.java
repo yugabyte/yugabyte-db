@@ -21,6 +21,7 @@ import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
@@ -771,11 +772,10 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
     private void ImportStatistics() throws Exception {
         try (Statement statement = connection.createStatement()) {
-            String importStatsPath = "src/test/resources/import_statistics.sql";
-
             try {
-                Path path = Paths.get(importStatsPath);
-                List<String> sqlStatements = Files.readAllLines(path);
+                File statsFile = new File(TestUtils.getClassResourceDir(getClass()),
+                                          "import_statistics.sql");
+                List<String> sqlStatements = Files.readAllLines(statsFile.toPath());
                 for (String sql : sqlStatements) {
                     LOG.info("Executing SQL: " + sql);
                     if (!sql.trim().isEmpty() && !sql.trim().startsWith("--")) {
@@ -795,10 +795,9 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
                "CROSS JOIN test_schema.table2 t2";
     }
 
-    private void validateAgainstFile(String expectedFilePath, String actualData) throws Exception{
-
-        Path expectedOutputPath = Paths.get(expectedFilePath);
-        String expectedOutput = new String(Files.readAllBytes(expectedOutputPath),
+    private void validateAgainstFile(String expectedFilename, String actualData) throws Exception{
+        File expectedFile = new File(TestUtils.getClassResourceDir(getClass()), expectedFilename);
+        String expectedOutput = new String(Files.readAllBytes(expectedFile.toPath()),
                                            StandardCharsets.UTF_8);
 
         assertEquals("Output does not match expected output while validating against file",
@@ -885,7 +884,8 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         return complexQuery;
     }
 
-    private void validateExplainPlan(Path explainPlanPath, String filePath) throws Exception {
+    private void validateExplainPlan(Path explainPlanPath,
+                                     String expectedFilename) throws Exception {
         /* Read the contents of the explain_plan.txt file */
         String explainPlan = new String(Files.readAllBytes(explainPlanPath),
                                         StandardCharsets.UTF_8);
@@ -908,7 +908,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
                 })
                 .collect(Collectors.joining("\n"));
 
-        validateAgainstFile(filePath, filteredExplainPlan);
+        validateAgainstFile(expectedFilename, filteredExplainPlan);
     }
 
     private String getLongQueryWith5000Constants(List<String> constants) throws Exception {
@@ -1589,7 +1589,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             assertGreaterThan("schema_details.txt file is empty",
                               Files.size(schemaDetailsPath) , 0L);
 
-            validateAgainstFile("src/test/resources/expected/schema_details.out",
+            validateAgainstFile("schema_details.out",
                                 new String(Files.readAllBytes(schemaDetailsPath)));
         }
     }
@@ -1825,11 +1825,10 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             validateConstantsOrBindVarData(bindVariablesPath, noOfConstantsPerLine,
                     "1,1,3,'1 year',100,1,100");
 
-            validateExplainPlan(explainPlanPath,
-                "src/test/resources/expected/complex_query_explain_plan.out");
+            validateExplainPlan(explainPlanPath, "complex_query_explain_plan.out");
 
             /* Read the contents of the schema_details.txt file */
-            validateAgainstFile("src/test/resources/expected/complex_query_schema_details.out",
+            validateAgainstFile("complex_query_schema_details.out",
                                 new String(Files.readAllBytes(schemaDetailsPath),
                                            StandardCharsets.UTF_8));
 
@@ -1897,9 +1896,8 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
             validateConstantsOrBindVarData(bindVariablesPath, noOfConstantsPerLine,
                                            concatenatedConstants);
-            validateExplainPlan(explainPlanPath,
-                "src/test/resources/expected/long_query_explain_plan.out");
-            validateAgainstFile("src/test/resources/expected/long_query_schema_details.out",
+            validateExplainPlan(explainPlanPath, "long_query_explain_plan.out");
+            validateAgainstFile("long_query_schema_details.out",
                                 new String(Files.readAllBytes(schemaDetailsPath),
                                            StandardCharsets.UTF_8));
             validateAshData(ashPath, startTime, endTime);
@@ -2140,8 +2138,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
              */
             Path explainPlanPath = getFilePathFromBaseDir(bundleDataPath,
                     "explain_plan.txt");
-            validateExplainPlan(explainPlanPath,
-                "src/test/resources/expected/other_db_explain_plan.out");
+            validateExplainPlan(explainPlanPath, "other_db_explain_plan.out");
 
             Path pgssPath = getFilePathFromBaseDir(bundleDataPath,
                     "pg_stat_statements.csv");
@@ -2151,8 +2148,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
             Path schemaDetailsPath = getFilePathFromBaseDir(bundleDataPath,
                     "schema_details.txt");
-            validateAgainstFile(
-                "src/test/resources/expected/other_db_schema_details.out",
+            validateAgainstFile("other_db_schema_details.out",
                                 new String(Files.readAllBytes(schemaDetailsPath)));
         }
     }
@@ -2412,9 +2408,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             String statisticsJsonContent = new String(Files.readAllBytes(statisticsJsonPath));
             LOG.info("Statistics JSON content:\n" + statisticsJsonContent);
 
-            validateAgainstFile(
-                    "src/test/resources/expected/statistics_json.out",
-                    statisticsJsonContent);
+            validateAgainstFile("statistics_json.out", statisticsJsonContent);
         }
     }
 }

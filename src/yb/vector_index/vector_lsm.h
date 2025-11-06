@@ -79,7 +79,7 @@ struct VectorLSMOptions {
   size_t vectors_per_chunk;
   rpc::ThreadPool* thread_pool;
   rpc::ThreadPool* insert_thread_pool;
-  PriorityThreadPool* compaction_thread_pool;
+  PriorityThreadPoolTokenPtr compaction_token;
   FrontiersFactory frontiers_factory;
   MergeFilterFactory vector_merge_filter_factory;
   std::string file_extension;

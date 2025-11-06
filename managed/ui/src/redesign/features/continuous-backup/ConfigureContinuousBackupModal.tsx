@@ -1,4 +1,4 @@
-import { makeStyles, Typography } from '@material-ui/core';
+import { FormHelperText, makeStyles, Typography } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
 import { SubmitHandler, useForm } from 'react-hook-form';
@@ -249,7 +249,8 @@ export const ConfigureContinuousBackupModal = (props: ConfigureContinuousBackupM
         }
       : { backupFrequency: DEFAULT_BACKUP_FREQUENCY_MINUTE };
   const formMethods = useForm<ConfigureContinuousBackupFormValues>({
-    defaultValues
+    defaultValues,
+    mode: 'onChange'
   });
 
   const onSubmit: SubmitHandler<ConfigureContinuousBackupFormValues> = async (formValues) => {
@@ -294,7 +295,11 @@ export const ConfigureContinuousBackupModal = (props: ConfigureContinuousBackupM
               <BackupStorageConfigSelectField
                 reset={formMethods.reset}
                 {...(defaultStorageConfigUuid && { defaultStorageConfigUuid })}
-                useControllerProps={{ control: formMethods.control, name: 'storageConfig' }}
+                useControllerProps={{
+                  control: formMethods.control,
+                  name: 'storageConfig',
+                  rules: { required: t('formFieldRequired', { keyPrefix: 'common' }) }
+                }}
                 autoSizeMinWidth={INPUT_FIELD_WIDTH_PX}
               />
             </div>
@@ -311,9 +316,7 @@ export const ConfigureContinuousBackupModal = (props: ConfigureContinuousBackupM
                 name="storageSubfolder"
                 disabled={isFormDisabled}
                 rules={{
-                  validate: {
-                    required: (configName) => !!configName || t('error.requiredField')
-                  }
+                  required: t('formFieldRequired', { keyPrefix: 'common' })
                 }}
               />
             </div>
@@ -328,13 +331,39 @@ export const ConfigureContinuousBackupModal = (props: ConfigureContinuousBackupM
                   control={formMethods.control}
                   name="backupFrequency"
                   type="number"
-                  inputProps={{ min: 1 }}
+                  inputProps={{ min: 2, max: 1440 }}
+                  rules={{
+                    required: t('formFieldRequired', { keyPrefix: 'common' }),
+                    min: {
+                      value: 2,
+                      message: t('error.backupFrequencyMustBeGreaterThanOrEqualTo2')
+                    },
+                    max: {
+                      value: 1440,
+                      message: t('error.backupFrequencyMustBeLessThanOrEqualTo1440')
+                    },
+                    validate: {
+                      pattern: (value) => {
+                        const integerPattern = /^\d+$/;
+                        return (
+                          integerPattern.test(value?.toString() ?? '') ||
+                          t('error.backupFrequencyMustBePositiveInteger')
+                        );
+                      }
+                    }
+                  }}
+                  hideInlineError
                   disabled={isFormDisabled}
                 />
                 <Typography variant="body2">
                   {t('duration.minutes', { keyPrefix: 'common' }).toLocaleLowerCase()}
                 </Typography>
               </div>
+              {formMethods.formState.errors.backupFrequency?.message && (
+                <FormHelperText error={true}>
+                  {formMethods.formState.errors.backupFrequency.message}
+                </FormHelperText>
+              )}
               <div className={classes.tipContainer}>
                 <div>
                   <TipIcon />

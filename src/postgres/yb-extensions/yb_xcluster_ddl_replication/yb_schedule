@@ -5,5 +5,9 @@ test: routines
 test: create_drop_table
 test: create_drop_index
 
+test: mixed_temporary_and_persistent
+test: truncate
+test: materialized_views
+
 test: colocated_setup
 test: create_colocated_table

@@ -503,8 +503,8 @@ TEST_F(XClusterDBScopedTest, DisableAutoTableProcessing) {
 
 class XClusterDBScopedTestWithTwoDBs : public XClusterDBScopedTest {
  public:
-  Status SetUpClusters() {
-    RETURN_NOT_OK(XClusterYsqlTestBase::SetUpClusters());
+  Status SetUpClusters(SetupParams params = {}) {
+    RETURN_NOT_OK(XClusterYsqlTestBase::SetUpClusters(params));
 
     RETURN_NOT_OK(RunOnBothClusters([this](Cluster* cluster) -> Status {
       RETURN_NOT_OK(CreateDatabase(cluster, namespace_name2_));
@@ -634,7 +634,10 @@ TEST_F(XClusterDBScopedTestWithTwoDBsAutomaticDDLMode, AddRemoveNamespace) {
 // Remove a namespaces from replication when the target side is down.
 TEST_F_EX(XClusterDBScopedTest, RemoveNamespaceWhenTargetIsDown, XClusterDBScopedTestWithTwoDBs) {
   // Setup replication with both databases.
-  ASSERT_OK(SetUpClusters());
+  // TODO(#29233): Remove below logic of not waiting for pg once the GH is addressed.
+  SetupParams params;
+  params.wait_for_pg = false;
+  ASSERT_OK(SetUpClusters(params));
   ASSERT_OK(CheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
   auto source_xcluster_client = client::XClusterClient(*producer_client());
@@ -685,7 +688,10 @@ TEST_F_EX(XClusterDBScopedTest, RemoveNamespaceWhenTargetIsDown, XClusterDBScope
 
 // Remove a namespaces from replication when the source side is down.
 TEST_F_EX(XClusterDBScopedTest, RemoveNamespaceWhenSourceIsDown, XClusterDBScopedTestWithTwoDBs) {
-  ASSERT_OK(SetUpClusters());
+  // TODO(#29233): Remove below logic of not waiting for pg once the GH is addressed.
+  SetupParams params;
+  params.wait_for_pg = false;
+  ASSERT_OK(SetUpClusters(params));
   ASSERT_OK(CheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
   auto source_xcluster_client = client::XClusterClient(*producer_client());
@@ -766,7 +772,10 @@ TEST_F(XClusterDBScopedTest, Delete) {
 
 // Delete replication when the target side is down.
 TEST_F(XClusterDBScopedTest, DeleteWhenTargetIsDown) {
-  ASSERT_OK(SetUpClusters());
+  // TODO(#29233): Remove below logic of not waiting for pg once the GH is addressed.
+  SetupParams params;
+  params.wait_for_pg = false;
+  ASSERT_OK(SetUpClusters(params));
   ASSERT_OK(CheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
@@ -815,7 +824,10 @@ TEST_F(XClusterDBScopedTest, DeleteWhenTargetIsDown) {
 
 // Delete replication when the source side is down.
 TEST_F(XClusterDBScopedTest, DeleteWhenSourceIsDown) {
-  ASSERT_OK(SetUpClusters());
+  // TODO(#29233): Remove below logic of not waiting for pg once the GH is addressed.
+  SetupParams params;
+  params.wait_for_pg = false;
+  ASSERT_OK(SetUpClusters(params));
   ASSERT_OK(CheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
 

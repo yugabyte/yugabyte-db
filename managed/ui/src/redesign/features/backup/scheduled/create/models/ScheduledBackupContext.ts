@@ -65,6 +65,7 @@ export const initialScheduledBackupContextState: ScheduledBackupContext = {
     backupObjects: {
       keyspace: null,
       useTablespaces: true,
+      useRoles: false,
       selectedTables: [],
       tableBackupType: Backup_Options_Type.ALL
     },

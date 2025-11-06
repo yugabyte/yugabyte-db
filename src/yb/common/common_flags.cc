@@ -169,7 +169,13 @@ DEFINE_test_flag(bool, check_catalog_version_overflow, false,
 DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_invalidation_messages, true,
     "True to enable invalidation messages");
 
-DEFINE_NON_RUNTIME_PG_PREVIEW_FLAG(bool, yb_ddl_transaction_block_enabled, false,
+// Keep in sync with the same definition in ybc_guc.h
+#ifdef NDEBUG
+constexpr bool kEnableDdlTransactionBlocks = true;
+#else
+constexpr bool kEnableDdlTransactionBlocks = false;
+#endif
+DEFINE_NON_RUNTIME_PG_FLAG(bool, yb_ddl_transaction_block_enabled, kEnableDdlTransactionBlocks,
     "If true, DDL operations in YSQL will execute within the active transaction"
     "block instead of their separate transactions.");
 

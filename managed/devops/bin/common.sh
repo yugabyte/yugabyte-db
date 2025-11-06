@@ -74,8 +74,8 @@ set_python_executable() {
 # -------------------------------------------------------------------------------------------------
 # Constants
 # -------------------------------------------------------------------------------------------------
-readonly PYTHON3_EXECUTABLES=('python3.11' 'python3' 'python3.10')
-readonly PYTHON3_VERSIONS=('python3.11' 'python3.10')
+readonly PYTHON3_EXECUTABLES=('python3.11' 'python3' 'python3.10' 'python3.12' 'python3.13')
+readonly PYTHON3_VERSIONS=('python3.11' 'python3.10' 'python3.12' 'python3.13')
 readonly LINUX_PLATFORMS=('manylinux2014_x86_64-cp-310-cp310' 'manylinux2014_x86_64-cp-311-cp311')
 readonly MACOS_PLATFORMS=('macosx-10.10-x86_64-cp-310-cp310' 'macosx-10.10-x86_64-cp-311-cp311')
 DOCKER_PEX_IMAGE_NAME="yba-devops-pex-builder"

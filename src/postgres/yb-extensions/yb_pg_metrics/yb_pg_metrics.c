@@ -589,7 +589,8 @@ pullRpczEntries(void)
 			rpcz[i].leader_pid = -1;
 			PGPROC	   *proc = NULL;
 
-			if (beentry->st_backendType == B_BACKEND)
+			if (beentry->st_backendType == B_BACKEND ||
+				beentry->st_backendType == YB_AUTO_ANALYZE_BACKEND)
 				proc = BackendPidGetProc(rpcz[i].proc_id);
 			else if (beentry->st_backendType != YB_YSQL_CONN_MGR)
 			{

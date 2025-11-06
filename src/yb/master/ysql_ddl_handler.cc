@@ -1210,4 +1210,70 @@ Status CatalogManager::IsRollbackDocdbSchemaToSubtxnDone(
              : Status::OK();
 }
 
+bool CatalogManager::IsTableDeletionDueToRollbackToSubTxn(
+    const scoped_refptr<TableInfo>& table, TransactionId& txn_id) {
+  if (!FLAGS_TEST_ysql_yb_enable_ddl_savepoint_support) {
+    return false;
+  }
+
+  // Get the transaction id (if exists) that is modifying the table.
+  {
+    auto l = table->LockForRead();
+    auto txn_id_res = l->GetCurrentDdlTransactionId();
+    if (!txn_id_res.ok() || txn_id_res->IsNil()) {
+      // Transaction ID will always be present in case of rollback to sub-transaction operation.
+      return false;
+    }
+    txn_id = *txn_id_res;
+  }
+
+  SubTransactionId rolled_back_sub_transaction_id;
+  {
+    LockGuard lock(ddl_txn_verifier_mutex_);
+    const auto rollback_to_subtxn_state =
+        FindOrNull(ysql_ddl_txn_undergoing_subtransaction_rollback_map_, txn_id);
+    if (rollback_to_subtxn_state == nullptr) {
+      // No rollback to sub-txn operation is in progress for this transaction.
+      return false;
+    }
+
+    auto tables_itr = std::find_if(
+        rollback_to_subtxn_state->tables.begin(), rollback_to_subtxn_state->tables.end(),
+        [&table](const TableInfoPtr& table_info) {
+          return table_info->id() == table->id(); });
+    if (tables_itr == rollback_to_subtxn_state->tables.end()) {
+      // This table is not undergoing rollback to sub-transaction operation.
+      // Either it has already completed or it wasn't affected.
+      return false;
+    }
+
+    rolled_back_sub_transaction_id = rollback_to_subtxn_state->sub_txn;
+  }
+
+  auto l = table->LockForRead();
+  // Ensure this table is still being modified by the same transaction id.
+  auto txn_id_res = l->GetCurrentDdlTransactionId();
+  if (!txn_id_res.ok() || txn_id_res->IsNil() || txn_id != *txn_id_res) {
+    // Table is now:
+    // 1. Not under any DDL anymore i.e. completed
+    // 2. Undergoing DDL via a different transaction
+    // None of these cases should happen because this would indicate that the transaction finished
+    // and got cleaned up even before the table deletion finished.
+    // Crash in DEBUG so that we can find out cases where this is happening.
+    // Return false in RELEASE to avoid crash. There is no correctness issue with returning false as
+    // this function is used to avoid self-abort of transaction. When we return false, no txn are
+    // excluded i.e. all get aborted as part of tablet deletion.
+    LOG(DFATAL) << "DDL transaction id for table: " << table
+                << " changed while DeleteTable was in progress. old: " << txn_id
+                << ", new: " << txn_id_res;
+    return false;
+  }
+
+  // The table must be created within or after the rolled back sub-transaction.
+  const YsqlDdlTxnVerifierStatePB& first_ddl_state = l->ysql_ddl_txn_verifier_state_first();
+  return first_ddl_state.contains_create_table_op() &&
+         first_ddl_state.has_sub_transaction_id() &&
+         first_ddl_state.sub_transaction_id() >= rolled_back_sub_transaction_id;
+}
+
 } // namespace yb::master

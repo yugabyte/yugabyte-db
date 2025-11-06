@@ -467,6 +467,9 @@ bool AsyncDeleteReplica::SendRequest(int attempt) {
   bool should_abort_active_txns = !table() ||
                                   table()->LockForRead()->started_deleting();
   req.set_should_abort_active_txns(should_abort_active_txns);
+  if (should_abort_active_txns && exclude_aborting_transaction_id_.has_value()) {
+    req.set_transaction_id(exclude_aborting_transaction_id_->ToString());
+  }
 
   ts_admin_proxy_->DeleteTabletAsync(req, &resp_, &rpc_, BindRpcCallback());
   VLOG_WITH_PREFIX(1) << "Send delete tablet request to " << permanent_uuid_
