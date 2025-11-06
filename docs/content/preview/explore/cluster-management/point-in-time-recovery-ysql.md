@@ -6,6 +6,7 @@ description: Restore data from a specific point in time in YugabyteDB for YSQL
 aliases:
   - /preview/explore/backup-restore/point-in-time-recovery-ysql
   - /preview/explore/backup-restore/point-in-time-recovery
+  - /preview/explore/backup-restore
 menu:
   preview:
     identifier: cluster-management-point-in-time-recovery
