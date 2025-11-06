@@ -68,8 +68,10 @@ class StopWatch {
     if (!elapsed_ && !stats_enabled_) {
       return;
     }
-    const auto elapsed = (env_->NowCpuCycles() - start_time_) /
-                         (base::CyclesPerSecond() / UnitsInSecond(kTimeResolution));
+    // Multiply first and then divide to minimize rounding error (important for some tests), use
+    // double to avoid overflow.
+    const auto elapsed = 1.0 * (env_->NowCpuCycles() - start_time_) *
+                         UnitsInSecond(kTimeResolution) / base::CyclesPerSecond();
     if (elapsed_) {
       *elapsed_ = elapsed;
     }
