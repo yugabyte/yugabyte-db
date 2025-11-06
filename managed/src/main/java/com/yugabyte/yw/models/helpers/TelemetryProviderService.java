@@ -269,13 +269,15 @@ public class TelemetryProviderService {
         List<UniverseQueryLogsExporterConfig> universeLogsExporterConfigs =
             primaryUserIntent.getQueryLogConfig().getUniverseLogsExporterConfig();
 
-        // Check if the provider is in the list of export configs in the audit log config.
+        // Check if the provider is in the list of export configs in the query log config.
         for (UniverseQueryLogsExporterConfig config : universeLogsExporterConfigs) {
           if (config != null && providerUUID.equals(config.getExporterUuid())) {
             return true;
           }
         }
       }
+
+      // Check if the provider is in the list of metrics export exporters.
       if (primaryUserIntent.getMetricsExportConfig() != null
           && primaryUserIntent.getMetricsExportConfig().getUniverseMetricsExporterConfig()
               != null) {
