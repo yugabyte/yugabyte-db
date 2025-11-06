@@ -67,7 +67,6 @@ namespace yb::tablet {
 using TableInfoMap = std::unordered_map<TableId, TableInfoPtr>;
 
 extern const int64 kNoDurableMemStore;
-extern const std::string kSnapshotsDirName;
 
 const uint64_t kNoLastFullCompactionTime = HybridTime::kMin.ToUint64();
 
@@ -403,6 +402,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   const std::string& rocksdb_dir() const { return kv_store_.rocksdb_dir; }
   std::string intents_rocksdb_dir() const;
   std::string snapshots_dir() const;
+  std::string vector_index_dir(const PgVectorIdxOptionsPB& vector_index_options) const;
 
   const std::string& lower_bound_key() const { return kv_store_.lower_bound_key; }
   const std::string& upper_bound_key() const { return kv_store_.upper_bound_key; }

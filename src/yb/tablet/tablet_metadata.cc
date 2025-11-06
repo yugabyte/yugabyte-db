@@ -123,7 +123,6 @@ std::string MakeTableInfoLogPrefix(
 } // namespace
 
 const int64 kNoDurableMemStore = -1;
-const std::string kSnapshotsDirName = "snapshots";
 
 // ============================================================================
 //  Raft group metadata
@@ -2411,7 +2410,13 @@ std::string RaftGroupMetadata::intents_rocksdb_dir() const {
 }
 
 std::string RaftGroupMetadata::snapshots_dir() const {
-  return docdb::GetStorageDir(kv_store_.rocksdb_dir, kSnapshotsDirName);
+  return docdb::GetStorageDir(kv_store_.rocksdb_dir, docdb::kSnapshotsDirName);
+}
+
+std::string RaftGroupMetadata::vector_index_dir(
+    const PgVectorIdxOptionsPB& vector_index_options) const {
+  return docdb::GetStorageDir(
+      kv_store_.rocksdb_dir, docdb::GetVectorIndexStorageName(vector_index_options));
 }
 
 docdb::KeyBounds RaftGroupMetadata::MakeKeyBounds() const {
