@@ -2315,7 +2315,7 @@ void SetBackfillSpecForYsqlBackfill(
   auto limit = in_spec.limit();
   PgsqlBackfillSpecPB out_spec;
   out_spec.set_limit(limit);
-  out_spec.set_count(in_spec.count() + row_count);
+  out_spec.set_count(in_spec.count() + static_cast<uint64_t>(row_count));
   response->set_is_backfill_batch_done(!response->has_paging_state());
   if (limit >= 0 && out_spec.count() >= limit) {
     // Hint postgres to stop scanning now. And set up the
@@ -3031,7 +3031,7 @@ Status Tablet::AlterWalRetentionSecs(ChangeMetadataOperation* operation) {
 
 namespace {
 
-string GenerateSerializedBackfillSpec(size_t batch_size, const string& next_row_to_backfill) {
+string GenerateSerializedBackfillSpec(uint64_t batch_size, const string& next_row_to_backfill) {
   PgsqlBackfillSpecPB backfill_spec;
   std::string serialized_backfill_spec;
   // Note that although we set the desired batch_size as the limit, postgres
@@ -3100,14 +3100,14 @@ struct BackfillParams {
   CoarseTimePoint start_time;
   CoarseTimePoint deadline;
   size_t rate_per_sec;
-  size_t batch_size;
+  uint64_t batch_size;
   CoarseTimePoint modified_deadline;
 };
 
 // Slow down before the next batch to throttle the rate of processing.
 void MaybeSleepToThrottleBackfill(
     const CoarseTimePoint& start_time,
-    size_t number_of_rows_processed) {
+    uint64_t number_of_rows_processed) {
   if (FLAGS_backfill_index_rate_rows_per_sec <= 0) {
     return;
   }
@@ -3126,7 +3126,7 @@ void MaybeSleepToThrottleBackfill(
 
 bool CanProceedToBackfillMoreRows(
     const BackfillParams& backfill_params,
-    size_t number_of_rows_processed) {
+    uint64_t number_of_rows_processed) {
   auto now = CoarseMonoClock::Now();
   if (now > backfill_params.modified_deadline ||
       (FLAGS_TEST_backfill_paging_size > 0 &&
@@ -3141,7 +3141,7 @@ bool CanProceedToBackfillMoreRows(
 bool CanProceedToBackfillMoreRows(
     const BackfillParams& backfill_params,
     const string& backfilled_until,
-    size_t number_of_rows_processed) {
+    uint64_t number_of_rows_processed) {
   if (backfilled_until.empty()) {
     // The backfill is done for this tablet. No need to do another batch.
     return false;
@@ -3169,7 +3169,7 @@ Status Tablet::BackfillIndexesForYsql(
     const std::string& database_name,
     const uint64_t postgres_auth_key,
     bool is_xcluster_target,
-    size_t* number_of_rows_processed,
+    uint64_t* number_of_rows_processed,
     std::string* backfilled_until) {
   LOG(INFO) << "Begin " << __func__ << " of tablet " << tablet_id() << " at " << read_time
             << " from row \"" << strings::b2a_hex(backfill_from)
@@ -3312,7 +3312,7 @@ Status Tablet::BackfillIndexes(
     const std::string& backfill_from,
     const CoarseTimePoint deadline,
     const HybridTime read_time,
-    size_t* number_of_rows_processed,
+    uint64_t* number_of_rows_processed,
     std::string* backfilled_until,
     std::unordered_set<TableId>* failed_indexes) {
   TRACE(__func__);

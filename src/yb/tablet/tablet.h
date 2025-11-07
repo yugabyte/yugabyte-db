@@ -184,7 +184,7 @@ class Tablet : public AbstractTablet,
       const std::string& database_name,
       const uint64_t postgres_auth_key,
       bool is_xcluster_target,
-      size_t* number_of_rows_processed,
+      uint64_t* number_of_rows_processed,
       std::string* backfilled_until);
 
   Status VerifyIndexTableConsistencyForCQL(
@@ -256,7 +256,7 @@ class Tablet : public AbstractTablet,
       const std::string& backfill_from,
       const CoarseTimePoint deadline,
       const HybridTime read_time,
-      size_t* number_of_rows_processed,
+      uint64_t* number_of_rows_processed,
       std::string* backfilled_until,
       std::unordered_set<TableId>* failed_indexes);
 

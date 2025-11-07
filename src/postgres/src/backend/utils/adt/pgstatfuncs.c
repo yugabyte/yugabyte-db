@@ -569,7 +569,9 @@ pg_stat_get_progress_info(PG_FUNCTION_ARGS)
 			 * the relevant entry
 			 */
 			beentry->st_progress_param[PROGRESS_CREATEIDX_TUPLES_DONE]
-				= *index_progress_iterator;
+				= (*index_progress_iterator > PG_INT64_MAX ?
+				   PG_INT64_MAX :
+				   (int64) *index_progress_iterator);
 			index_progress_iterator++;
 		}
 
