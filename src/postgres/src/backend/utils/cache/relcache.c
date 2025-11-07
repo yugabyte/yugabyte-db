@@ -117,6 +117,7 @@
 #include "utils/relcache.h"
 #include "utils/yb_inheritscache.h"
 #include "utils/yb_tuplecache.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
 #include "yb/yql/pggate/ybc_gflags.h"
 #include <inttypes.h>
 
@@ -1561,6 +1562,9 @@ YBLoadRelations(YbUpdateRelationCacheState *state)
 		/* make sure relation is marked as having no open file yet */
 		relation->rd_smgr = NULL;
 
+		if (yb_debug_log_catcache_events)
+			elog(LOG, "Insert relcache entry %p for %s (oid %u)", relation,
+				 RelationGetRelationName(relation), relid);
 		RelationCacheInsert(relation, true);
 
 		/* It's fully valid */
@@ -2970,9 +2974,12 @@ static YbcStatus
 YbPreloadRelCacheImpl(YbRunWithPrefetcherContext *ctx)
 {
 	YbNumRelCachePreloads++;
-	if (Log_connections || *(YBCGetGFlags()->ysql_enable_relcache_init_optimization))
-		elog(LOG, "Preloading relcache for database %u, session user id: %u",
-			 MyDatabaseId, GetSessionUserId());
+	int log_level =
+		(Log_connections ||
+		 yb_debug_log_catcache_events ||
+		 *(YBCGetGFlags()->ysql_enable_relcache_init_optimization)) ? LOG : DEBUG1;
+	elog(log_level, "Preloading relcache for database %u, session user id: %u, yb_read_time: %" PRIu64,
+		 MyDatabaseId, GetSessionUserId(), yb_read_time);
 
 	/*
 	 * During relcache loading postgres reads the data from multiple sys tables.
@@ -3426,7 +3433,7 @@ retry:
 
 		INSTR_TIME_SET_CURRENT(duration);
 		INSTR_TIME_SUBTRACT(duration, start);
-		elog(LOG, "Rebuilding relcache entry for %s (oid %d) took %ld us",
+		elog(LOG, "Building relcache entry %p for %s (oid %u) took %ld us", relation,
 			 RelationGetRelationName(relation), RelationGetRelid(relation),
 			 INSTR_TIME_GET_MICROSEC(duration));
 	}
@@ -4712,6 +4719,10 @@ RelationClearRelation(Relation relation, bool rebuild)
 	 */
 	if (!rebuild)
 	{
+		if (yb_debug_log_catcache_events)
+			elog(LOG, "Delete relcache entry %p for %s (oid %u)", relation,
+				 RelationGetRelationName(relation), RelationGetRelid(relation));
+
 		/* Remove it from the hash table */
 		RelationCacheDelete(relation);
 
@@ -4814,6 +4825,10 @@ RelationClearRelation(Relation relation, bool rebuild)
 			 */
 			elog(ERROR, "relation %u deleted while still in use", save_relid);
 		}
+
+		if (yb_debug_log_catcache_events)
+			elog(LOG, "Rebuild relcache entry %p for %s (oid %u)", relation,
+				 RelationGetRelationName(relation), save_relid);
 
 		keep_tupdesc = equalTupleDescs(relation->rd_att, newrel->rd_att);
 		keep_rules = equalRuleLocks(relation->rd_rules, newrel->rd_rules);
@@ -9079,7 +9094,13 @@ load_relcache_init_file(bool shared, bool yb_retry)
 	for (relno = 0; relno < num_rels; relno++)
 	{
 		if (YBIsDBCatalogVersionMode())
+		{
+			Relation relation = rels[relno];
+			if (yb_debug_log_catcache_events)
+				elog(LOG, "Reinsert relcache entry %p for %s (oid %u)", relation,
+					 RelationGetRelationName(relation), RelationGetRelid(relation));
 			YbRelationCacheReinsert(rels[relno], shared, yb_retry);
+		}
 		else
 			RelationCacheInsert(rels[relno], false);
 	}

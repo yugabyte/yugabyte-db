@@ -6805,6 +6805,7 @@ assign_yb_read_time(const char *newval, void *extra)
 	unsigned long long value_ull;
 	bool		is_ht_unit;
 
+	elog(DEBUG1, "Setting yb_read_time to %s", newval);
 	parse_yb_read_time(newval, &value_ull, &is_ht_unit);
 	/*
 	 * Don't refresh the sys caches in case the read time value didn't change.
@@ -7789,7 +7790,6 @@ YBCUpdateYbReadTimeAndInvalidateRelcache(uint64_t read_time_ht)
 	char		read_time[50];
 
 	sprintf(read_time, "%llu ht", (unsigned long long) read_time_ht);
-	elog(DEBUG1, "Setting yb_read_time to %s ", read_time);
 	assign_yb_read_time(read_time, NULL);
 	YbRelationCacheInvalidate();
 }
@@ -7797,7 +7797,6 @@ YBCUpdateYbReadTimeAndInvalidateRelcache(uint64_t read_time_ht)
 void
 YBCResetYbReadTimeAndInvalidateRelcache()
 {
-	elog(DEBUG1, "Setting yb_read_time to 0");
 	assign_yb_read_time("0", NULL);
 	YbRelationCacheInvalidate();
 }
