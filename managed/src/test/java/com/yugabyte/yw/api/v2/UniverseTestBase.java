@@ -423,6 +423,7 @@ public class UniverseTestBase extends UniverseControllerTestBase {
   protected UniverseCreateSpec getUniverseCreateSpecV2Geo() {
     UniverseCreateSpec universeCreateSpec = getUniverseCreateSpecV2();
     ClusterSpec clusterSpec = universeCreateSpec.getSpec().getClusters().get(0);
+    clusterSpec.setPlacementSpec(null);
     List<ClusterPartitionSpec> geoPartitionSpecList = new ArrayList<>();
     int numNodes = 0;
     for (int i = 0; i < 3; i++) {
@@ -430,9 +431,10 @@ public class UniverseTestBase extends UniverseControllerTestBase {
       geoPartitionSpec.setName("geo" + i);
       geoPartitionSpec.setDefaultPartition(i == 0);
       int numNodesInGeo = 5 + i;
-      PlacementCloud placementCloud =
-          placementFromProvider(i, numNodesInGeo, i == 0 ? clusterSpec.getReplicationFactor() : 0);
+      int rf = i == 0 ? clusterSpec.getReplicationFactor() : 3;
+      PlacementCloud placementCloud = placementFromProvider(i, numNodesInGeo, rf);
       geoPartitionSpec.setPlacement(new ClusterPlacementSpec().cloudList(List.of(placementCloud)));
+      geoPartitionSpec.setReplicationFactor(rf);
       numNodes += numNodesInGeo;
       geoPartitionSpecList.add(geoPartitionSpec);
     }
@@ -1334,7 +1336,7 @@ public class UniverseTestBase extends UniverseControllerTestBase {
       assertThat(v2Az.getName(), is(dbAz.name));
       assertThat(v2Az.getNumNodesInAz(), is(dbAz.numNodesInAZ));
       int v2RF = Optional.ofNullable(v2Az.getReplicationFactor()).orElse(0);
-      assertThat(v2RF, is(dbAz.replicationFactor));
+      assertThat(v2Az.getName() + " has replication factor", v2RF, is(dbAz.replicationFactor));
       assertThat(v2Az.getSecondarySubnet(), is(dbAz.secondarySubnet));
       assertThat(v2Az.getSubnet(), is(dbAz.subnet));
       assertThat(

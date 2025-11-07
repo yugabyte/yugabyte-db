@@ -394,7 +394,7 @@ public class PlacementInfoUtil {
 
     LOG.info("Set of nodes after node configure: {}.", taskParams.nodeDetailsSet);
     for (UniverseDefinitionTaskParams.PartitionInfo partition : cluster.getPartitions()) {
-      checkAndSetPerAZRF(partition.getPlacement(), cluster.userIntent.replicationFactor);
+      checkAndSetPerAZRF(partition.getPlacement(), partition.getReplicationFactor());
     }
     finalSanityCheckConfigure(cluster, taskParams.getNodesInCluster(cluster.uuid));
   }
