@@ -401,7 +401,8 @@ INSERT INTO base VALUES (1); -- TODO(#26677): remove this workaround.
 REFRESH MATERIALIZED VIEW CONCURRENTLY mv;
 :display_catalog_version;
 
--- Verify ANALYZE increments catalog version and is not a breaking change.
+-- Verify ANALYZE increments catalog version once for every involved table
+-- and is not a breaking change.
 CREATE TABLE analyze_table (t int);
 CREATE TABLE analyze_table2 (t int);
 INSERT INTO analyze_table select generate_series(1,100);
@@ -411,10 +412,6 @@ ANALYZE analyze_table, analyze_table2;
 SELECT relname, reltuples FROM pg_class WHERE relname = 'analyze_table' OR relname = 'analyze_table2' ORDER BY relname;
 SELECT min(t), max(t) FROM analyze_table;
 SELECT min(t), max(t) FROM analyze_table2;
--- Without specifying tables, ANALYZE update statistics for all tables.
--- Verify catalog version only bumps once.
-ANALYZE;
-:display_catalog_version;
 
 -- Verify no-op ALTER ROLE
 CREATE ROLE test_role;
@@ -466,7 +463,7 @@ ALTER ROLE test_role;
 SET yb_non_ddl_txn_for_sys_tables_allowed=1;
 DELETE FROM pg_yb_invalidation_messages;
 SET yb_non_ddl_txn_for_sys_tables_allowed=0;
-\set display_all 'SELECT * FROM pg_yb_catalog_version; SELECT db_oid, current_version, messages FROM pg_yb_invalidation_messages'
+\set display_all 'SELECT datname, current_version, last_breaking_version FROM pg_yb_catalog_version JOIN pg_database ON db_oid = oid ORDER BY datname; SELECT datname, current_version, messages FROM pg_yb_invalidation_messages JOIN pg_database ON db_oid = oid ORDER BY datname'
 SET yb_non_ddl_txn_for_sys_tables_allowed TO on;
 SET yb_disable_catalog_version_check TO on;
 
@@ -504,3 +501,10 @@ SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, false, 
 :display_all;
 SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, true, '', 10);
 :display_all;
+
+-- Without specifying tables, ANALYZE update statistics for all tables.
+-- Verify catalog version bumps once for every table.
+ANALYZE;
+:display_catalog_version;
+-- It is best to add any new test before this block ('ANALYZE;'). This minimizes the
+-- changes required to the expected output when introducing a new catalog table.

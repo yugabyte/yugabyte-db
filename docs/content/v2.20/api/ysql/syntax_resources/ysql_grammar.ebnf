@@ -202,8 +202,8 @@ alter_sequence_options = [ 'AS' seq_data_type ]  \
 
 seq_data_type = ( 'smallint' | 'integer' | 'bigint' ) ;
 
-(* 'ALTER' 'SERVER' *) 
-alter_server = 'ALTER' 'SERVER' server_name 
+(* 'ALTER' 'SERVER' *)
+alter_server = 'ALTER' 'SERVER' server_name
                [ 'VERSION' server_version ] \
                [ 'OPTIONS' '(' alter_fdw_options ')' ]
                [ 'OWNER' 'TO' new_owner ] ;
@@ -502,7 +502,7 @@ link_symbol = text_literal ;
 
 sql_stmt_list = sql_stmt ';' { sql_stmt ';' } ;
 
-alterable_fn_and_proc_attribute =  ( 
+alterable_fn_and_proc_attribute =  (
                       'SET' run_time_parameter ( 'TO' value | '=' value | 'FROM' 'CURRENT' )
                       | 'RESET' run_time_parameter
                       | 'RESET' 'ALL'
@@ -535,7 +535,7 @@ create_foreign_table = 'CREATE' 'FOREIGN' 'TABLE' ['IF' 'NOT' 'EXISTS'] table_na
                        'SERVER' server_name
                        [ 'OPTIONS' '(' fdw_options ')' ] ;
 
-foreign_table_elem = ( column_name data_type 
+foreign_table_elem = ( column_name data_type
               [ 'OPTIONS' '(' fdw_options ')' ]
               [ 'COLLATE' collation ]
               [ column_constraint { column_constraint } ] ) | table_constraint ;
@@ -549,6 +549,7 @@ create_index = 'CREATE' [ 'UNIQUE' ] 'INDEX' [ 'CONCURRENTLY' | 'NONCONCURRENTLY
                [ 'USING' access_method_name ]
                '(' index_elem { ',' index_elem } ')' \
                [ 'INCLUDE' '(' column_name { ',' column_name } ')' ] \
+               [ 'WITH' '(' ( 'COLOCATION_ID' '=' int_literal ) ')' ] \
                [ 'TABLESPACE' tablespace_name ] \
                [ 'SPLIT' ( 'INTO' int_literal 'TABLETS'
                       | 'AT' 'VALUES' '(' split_row { ',' split_row } ')' ) ]
@@ -680,7 +681,8 @@ server_type = text_literal ;
 (* 'CREATE' 'TABLE' *)
 create_table = 'CREATE' [ 'TEMPORARY' | 'TEMP' ] 'TABLE' [ 'IF' 'NOT' 'EXISTS' ] table_name
                  '(' [ table_elem { ',' table_elem } ] ')'  \
-                 [ 'WITH' '(' ( 'COLOCATION' '=' ('true' | 'false') | storage_parameters ) ')'
+                 [ 'PARTITION' 'BY' { 'RANGE' | 'LIST' | 'HASH' } '(' { column_name | ( expression ) } [ operator_class_name ] [, ...] ')' ] \
+                 [ 'WITH' '(' ( 'COLOCATION' '=' ('true' | 'false') | 'COLOCATION_ID' '=' int_literal | storage_parameters ) ')'
                       | 'WITHOUT' 'OIDS' ] \
                  [ 'TABLESPACE' tablespace_name ]
                  [ 'SPLIT' ( 'INTO' positive_int_literal 'TABLETS'
@@ -908,6 +910,10 @@ drop_group = 'DROP' 'GROUP' [ 'IF' 'EXISTS' ] role_name { ',' role_name } ;
 
 (* 'DROP' 'MATERIALIZED' 'VIEW' *)
 drop_matview = 'DROP' 'MATERIALIZED' 'VIEW' [ 'IF' 'EXISTS' ] matview_name \
+               [ 'CASCADE' | 'RESTRICT' ] ;
+
+(* 'DROP' 'VIEW' *)
+drop_view = 'DROP' 'VIEW' [ 'IF' 'EXISTS' ] qualified_name \
                [ 'CASCADE' | 'RESTRICT' ] ;
 
 (* 'DROP' 'OPERATOR' *)
@@ -1494,7 +1500,7 @@ plpgsql_executable_stmt = ( plpgsql_basic_stmt | plpgsql_compound_stmt ) ;
 
 (* 'Basic statement' *)
 plpgsql_basic_stmt = (
-    'NULL'                               | 
+    'NULL'                               |
     plpgsql_assert_stmt                  |
     plpgsql_assignment_stmt              |
     plpgsql_close_cursor_stmt            |
@@ -1528,7 +1534,7 @@ plpgsql_get_diagnostics_stmt = 'GET' [ 'CURRENT' ] 'DIAGNOSTICS' plpgsql_diagnos
 
 plpgsql_diagnostics_item = ( variable | formal_arg ) ( ':=' | '=' ) plpgsql_diagnostics_item_name ;
 
-plpgsql_diagnostics_item_name = ( 'PG_CONTEXT' | 
+plpgsql_diagnostics_item_name = ( 'PG_CONTEXT' |
                                   'ROW_COUNT'  |
                                   'RESULT_OID' ) ;
 
@@ -1537,7 +1543,7 @@ plpgsql_get_stacked_diagnostics_stmt = 'GET' 'STACKED' 'DIAGNOSTICS' plpgsql_sta
 
 plpgsql_stacked_diagnostics_item = ( variable | formal_arg ) ( ':=' | '=' ) plpgsql_stacked_diagnostics_item_name ;
 
-plpgsql_stacked_diagnostics_item_name = ( 'RETURNED_SQLSTATE'    | 
+plpgsql_stacked_diagnostics_item_name = ( 'RETURNED_SQLSTATE'    |
                                   'MESSAGE_TEXT'         |
                                   'PG_EXCEPTION_DETAIL'  |
                                   'PG_EXCEPTION_HINT'    |

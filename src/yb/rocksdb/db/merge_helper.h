@@ -3,9 +3,9 @@
 //  LICENSE file in the root directory of this source tree. An additional grant
 //  of patent rights can be found in the PATENTS file in the same directory.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -58,7 +58,6 @@ class MergeHelper {
         level_(level),
         keys_(),
         operands_(),
-        filter_timer_(env_),
         stats_(stats) {
     assert(user_comparator_ != nullptr);
   }
@@ -149,8 +148,6 @@ class MergeHelper {
   // valid up to the next MergeUntil call
   std::deque<std::string> keys_;    // Keeps track of the sequence of keys seen
   std::deque<std::string> operands_;  // Parallel with keys_; stores the values
-
-  StopWatchNano filter_timer_;
   Statistics* stats_;
 };
 

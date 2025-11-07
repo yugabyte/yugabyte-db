@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.controllers;
 
@@ -19,6 +19,7 @@ import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
+import com.yugabyte.yw.forms.KubernetesToggleImmutableYbcParams;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.ProxyConfigUpdateParams;
@@ -354,6 +355,49 @@ public class UpgradeUniverseController extends AuthenticatedController {
   }
 
   /**
+   * API that set useYbdbInbuiltYbc in universe.
+   *
+   * @param customerUuid ID of customer
+   * @param universeUuid ID of universe
+   * @return Result of update operation with task id
+   */
+  @YbaApi(
+      visibility = YbaApiVisibility.PREVIEW,
+      sinceYBAVersion = "2025.2.0.0",
+      runtimeConfigScope = ScopeType.UNIVERSE)
+  @ApiOperation(
+      value = "Upgrade Kubernetes universe to toggle immutable YBC",
+      notes =
+          "WARNING: This is a preview API that could change. Queues a task to toggle immutable YBC"
+              + " on Kubernetes universe.",
+      nickname = "kubernetesToggleImmutableYbc",
+      response = YBPTask.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "Kubernetes_toggle_immutable_ybc",
+          value = "Kubernetes Toggle Immutable Ybc Params",
+          dataType = "com.yugabyte.yw.forms.KubernetesToggleImmutableYbcParams",
+          required = true,
+          paramType = "body"))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
+  public Result kubernetesToggleImmutableYbc(
+      UUID customerUuid, UUID universeUuid, Http.Request request) {
+    return requestHandler(
+        request,
+        upgradeUniverseHandler::kubernetesToggleImmutableYbc,
+        KubernetesToggleImmutableYbcParams.class,
+        Audit.ActionType.KubernetesToggleImmutableYbc,
+        customerUuid,
+        universeUuid);
+  }
+
+  /**
    * API that rotates custom certificates for onprem universes. Supports rolling and non-rolling
    * upgrade of the universe.
    *
@@ -436,7 +480,9 @@ public class UpgradeUniverseController extends AuthenticatedController {
    * @return Result indicating the success of the modification operation
    */
   @ApiOperation(
-      notes = "YbaApi Internal. Modifies the audit logging configuration for a universe.",
+      notes =
+          "WARNING: This is a preview API that could change. Modifies the audit logging"
+              + " configuration for a universe.",
       value = "Modify Audit Logging Configuration",
       nickname = "modifyAuditLogging",
       response = YBPTask.class)
@@ -447,7 +493,7 @@ public class UpgradeUniverseController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.AuditLogConfigParams",
           required = true,
           paramType = "body"))
-  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =

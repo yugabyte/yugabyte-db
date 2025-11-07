@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -11,6 +11,8 @@
 // under the License.
 //
 #include "yb/docdb/doc_write_batch.h"
+
+#include <boost/logic/tribool.hpp>
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/ql_value.h"
@@ -96,7 +98,7 @@ Status DocWriteBatch::SeekToKeyPrefix(LazyIterator* iter, HasAncestor has_ancest
   current_entry_.value_type = ValueEntryType::kInvalid;
 
   // Check the cache first.
-  boost::optional<DocWriteBatchCache::Entry> cached_entry = cache_.Get(key_prefix_);
+  std::optional<DocWriteBatchCache::Entry> cached_entry = cache_.Get(key_prefix_);
   if (cached_entry) {
     current_entry_ = *cached_entry;
     subdoc_exists_ = current_entry_.value_type != ValueEntryType::kTombstone;
@@ -425,6 +427,7 @@ Status DocWriteBatch::SetPrimitiveInternal(
       put_batch_.push_back({
         .key = key_prefix_.ToStringBuffer(),
         .value = std::string(1, dockv::ValueEntryTypeAsChar::kObject),
+        .pk_is_known = boost::indeterminate,
       });
 
       // Update our local cache to record the fact that we're adding this subdocument, so that
@@ -441,10 +444,12 @@ Status DocWriteBatch::SetPrimitiveInternal(
     if (write_id) {
       put_batch_[*write_id].key = key_prefix_.ToStringBuffer();
       kv_pair_ptr = &put_batch_[*write_id];
+      kv_pair_ptr->pk_is_known = pk_is_known_;
     } else {
       put_batch_.push_back({
         .key = key_prefix_.ToStringBuffer(),
         .value = std::string(),
+        .pk_is_known = pk_is_known_,
       });
       kv_pair_ptr = &put_batch_.back();
     }
@@ -893,6 +898,11 @@ void DocWriteBatch::MoveToWriteBatchPB(LWKeyValueWriteBatchPB *kv_pb) const {
     auto* kv_pair = kv_pb->add_write_pairs();
     kv_pair->dup_key(entry.key);
     kv_pair->dup_value(entry.value);
+    // Set pk_is_known it if has valid value. For pgsql write operation, pk_is_known is set in
+    // PgsqlWriteOperation. For explicit row lock, pk_is_known is set during handling read query.
+    if (!boost::indeterminate(entry.pk_is_known)) {
+      kv_pair->set_pk_is_known(static_cast<bool>(entry.pk_is_known));
+    }
   }
   if (!delete_vector_ids_.empty()) {
     kv_pb->dup_delete_vector_ids(delete_vector_ids_.AsSlice());
@@ -901,6 +911,17 @@ void DocWriteBatch::MoveToWriteBatchPB(LWKeyValueWriteBatchPB *kv_pb) const {
   if (has_ttl()) {
     kv_pb->set_ttl(ttl_ns());
   }
+}
+
+IntraTxnWriteId DocWriteBatch::ReserveWriteId() {
+  put_batch_.emplace_back();
+  return narrow_cast<IntraTxnWriteId>(put_batch_.size()) - 1;
+}
+
+void DocWriteBatch::RollbackReservedWriteId(IntraTxnWriteId write_id) {
+  LOG_IF(DFATAL, write_id != narrow_cast<IntraTxnWriteId>(put_batch_.size()) - 1)
+      << "Rollback unexpected write ID: " << write_id << ", expected: " << put_batch_.size() - 1;
+  put_batch_.pop_back();
 }
 
 // ------------------------------------------------------------------------------------------------

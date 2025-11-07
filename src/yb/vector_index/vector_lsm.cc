@@ -48,6 +48,11 @@ DEFINE_RUNTIME_uint64(vector_index_max_insert_tasks, 1000,
     "When this limit is reached, new inserts are blocked until necessary amount "
     "of tasks is released.");
 
+DEFINE_RUNTIME_uint64(vector_index_max_merge_tasks, 100,
+    "Limit for number of merge subtasks for vector index compaction. "
+    "The same thread pool as for inserts is used to run merge tasks. "
+    "Set to 0 to disable usage of insert thread pool for merge tasks.");
+
 DEFINE_RUNTIME_uint64(vector_index_task_pool_size, 1000,
     "Pool size of insert subtasks for vector index. "
     "Pool is just used to avoid memory allocations and does not limit the total "
@@ -69,22 +74,29 @@ DEFINE_RUNTIME_int32(vector_index_compaction_priority_step_size, -1,
 DEFINE_RUNTIME_int32(vector_index_files_number_compaction_trigger, 5,
     "Number of files to trigger Vector LSM background compaction.");
 
-DEFINE_RUNTIME_int32(vector_index_max_size_amplification_percent, 200,
+DEFINE_RUNTIME_int32(vector_index_compaction_size_amp_max_percent, 200,
     "The max size amplification for vector index background compaction. "
     "Set to -1 to disable compactions by size amplification.");
+
+DEFINE_RUNTIME_uint32(vector_index_compaction_size_amp_max_merge_width, 0,
+    "The maximum number of chunks in a single background compaction by size amplification. "
+    "0 - no limit.");
 
 DEFINE_RUNTIME_int32(vector_index_compaction_size_ratio_percent, 20,
     "The percentage upto which chunks that are larger are include in vector index "
     "background compaction. Set to -100 to disable compactions by size ratio.");
 
-DEFINE_RUNTIME_int32(vector_index_compaction_min_merge_width, 4,
+DEFINE_RUNTIME_int32(vector_index_compaction_size_ratio_min_merge_width, 4,
     "The minimum number of chunks in a single background compaction by size ratio.");
+
+DEFINE_RUNTIME_uint32(vector_index_compaction_size_ratio_max_merge_width, 0,
+    "The maximum number of chunks in a single background compaction by size ratio. 0 - no limit.");
 
 DEFINE_RUNTIME_bool(vector_index_dump_stats, false,
     "Whether to dump stats related to vector index search.");
 
-DEFINE_RUNTIME_bool(vector_index_disable_compactions, true,
-    "Disable Vector LSM background compactions.");
+DEFINE_RUNTIME_bool(vector_index_enable_compactions, true,
+    "Enable Vector LSM background compactions.");
 
 DEFINE_test_flag(bool, vector_index_skip_manifest_update_during_shutdown, false,
     "Whether VectorLSM manifest update should be skipped after shutdown has been initiated");
@@ -94,7 +106,6 @@ DEFINE_test_flag(uint64, vector_index_delay_saving_first_chunk_ms, 0,
 
 DECLARE_int32(compaction_priority_start_bound);
 DECLARE_int32(compaction_priority_step_size);
-
 
 namespace yb::vector_index {
 
@@ -138,9 +149,33 @@ int32_t CompactionPriorityStepSize() {
   return step_size >= 0 ? step_size : FLAGS_compaction_priority_step_size;
 }
 
-size_t CompactionMinMergeWidth() {
-  const auto width = make_unsigned(FLAGS_vector_index_compaction_min_merge_width);
+size_t SizeRatioCompactionMinMergeWidth() {
+  const auto width = make_unsigned(FLAGS_vector_index_compaction_size_ratio_min_merge_width);
   return std::max<size_t>(width, 2); // Must be at least two chunks.
+}
+
+size_t SizeRatioCompactionMaxMergeWidth() {
+  auto width = FLAGS_vector_index_compaction_size_ratio_max_merge_width;
+  if (width == 0) {
+    width = std::numeric_limits<decltype(width)>::max();
+  }
+
+  // Should not be lower than min merge width.
+  return std::max<size_t>(width, SizeRatioCompactionMinMergeWidth());
+}
+
+size_t SizeAmpCompactionMinMergeWidth() {
+  return 2; // Must be at least two chunks.
+}
+
+size_t SizeAmpCompactionMaxMergeWidth() {
+  auto width = FLAGS_vector_index_compaction_size_amp_max_merge_width;
+  if (width == 0) {
+    width = std::numeric_limits<decltype(width)>::max();
+  }
+
+  // Should not be lower than min merge width.
+  return std::max<size_t>(width, SizeAmpCompactionMinMergeWidth());
 }
 
 size_t FilesNumberCompactionTrigger() {
@@ -190,22 +225,29 @@ class VectorLSMFileMetaData final {
 };
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+class VectorLSMInsertRegistryBase;
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 class VectorLSMInsertTask :
     public rpc::ThreadPoolTask,
     public bi::list_base_hook<bi::link_mode<bi::normal_link>> {
  public:
-  using LSM = VectorLSM<Vector, DistanceResult>;
-  using InsertRegistry = typename LSM::InsertRegistry;
-  using VectorWithDistance = typename LSM::VectorWithDistance;
-  using SearchHeap = std::priority_queue<VectorWithDistance>;
-  using MutableChunkPtr = typename LSM::MutableChunkPtr;
+  using InsertRegistry = VectorLSMInsertRegistryBase<Vector, DistanceResult>;
+  using InsertCallback = boost::function<void(const Status&)>;
+  using VectorIndexPtr = typename VectorLSM<Vector, DistanceResult>::VectorIndexPtr;
 
-  explicit VectorLSMInsertTask(LSM& lsm) : lsm_(lsm) {}
+  explicit VectorLSMInsertTask(InsertRegistry& registry) : registry_(registry) {
+  }
 
-  void Bind(const MutableChunkPtr& chunk) {
-    DCHECK(!chunk_);
-    DCHECK_ONLY_NOTNULL(chunk->index);
-    chunk_ = chunk;
+  void Bind(const VectorIndexPtr& index, InsertCallback insert_callback) {
+    DCHECK(index);
+    DCHECK(insert_callback);
+    DCHECK(!index_);
+    DCHECK(!insert_callback_);
+    DCHECK(vectors_.empty());
+
+    index_ = index;
+    insert_callback_ = std::move(insert_callback);
   }
 
   void Add(VectorId vector_id, Vector&& vector) {
@@ -213,18 +255,48 @@ class VectorLSMInsertTask :
   }
 
   void Run() override {
-    DCHECK(chunk_.get());
-    DCHECK(chunk_->index.get());
-    for (const auto& [vector_id, vector] : vectors_) {
-      lsm_.CheckFailure(chunk_->index->Insert(vector_id, vector));
-    }
-    auto new_tasks = --chunk_->num_tasks;
-    if (new_tasks == 0) {
-      DCHECK(chunk_->save_callback);
-      chunk_->save_callback();
-      chunk_->save_callback = {};
-    }
+    insert_callback_(DoInsert());
+    insert_callback_ = {};
   }
+
+  void Done(const Status&) override {
+    {
+      std::lock_guard lock(mutex_);
+      index_ = nullptr;
+      vectors_.clear();
+    }
+
+    // We are not really interested in the status as it could indicate shutting down
+    // or abortion due to shutting down only. Make sure to unset done_callback_ before calling it.
+    registry_.TaskDone(this);
+  }
+
+  const InsertRegistry& registry() const {
+    return registry_;
+  }
+
+ protected:
+  Status DoInsert() {
+    DCHECK(index_);
+    for (const auto& [vector_id, vector] : vectors_) {
+      RETURN_NOT_OK(index_->Insert(vector_id, vector));
+    }
+    return Status::OK();
+  }
+
+  mutable rw_spinlock mutex_;
+  InsertRegistry& registry_;
+  VectorIndexPtr index_;
+  InsertCallback insert_callback_;
+  std::vector<std::pair<VectorId, Vector>> vectors_;
+};
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+class VectorLSMInsertTaskSearchWrapper final : public VectorLSMInsertTask<Vector, DistanceResult> {
+ public:
+  using Base = VectorLSMInsertTask<Vector, DistanceResult>;
+  using VectorWithDistance = typename VectorLSM<Vector, DistanceResult>::VectorWithDistance;
+  using SearchHeap = std::priority_queue<VectorWithDistance>;
 
   void Search(
       SearchHeap& heap, const Vector& query_vector, const SearchOptions& options) const {
@@ -233,7 +305,7 @@ class VectorLSMInsertTask :
       if (!options.filter(id)) {
         continue;
       }
-      auto distance = chunk_->index->Distance(query_vector, vector);
+      auto distance = index_->Distance(query_vector, vector);
       VectorWithDistance vertex(id, distance);
       if (heap.size() < options.max_num_results) {
         heap.push(vertex);
@@ -244,29 +316,22 @@ class VectorLSMInsertTask :
     }
   }
 
-  void Done(const Status& status) override;
-
  private:
-  mutable rw_spinlock mutex_;
-  LSM& lsm_;
-  MutableChunkPtr chunk_;
-  std::vector<std::pair<VectorId, Vector>> vectors_;
+  // The class is just a wrapper variables must be defined.
+  using Base::mutex_;
+  using Base::index_;
+  using Base::vectors_;
 };
 
 // Registry for all active Vector LSM insert subtasks.
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-class VectorLSMInsertRegistry {
+class VectorLSMInsertRegistryBase {
  public:
-  using LSM = VectorLSM<Vector, DistanceResult>;
-  using VectorIndex = typename LSM::VectorIndex;
-  using VectorWithDistance = typename LSM::VectorWithDistance;
   using InsertTask = VectorLSMInsertTask<Vector, DistanceResult>;
   using InsertTaskList = boost::intrusive::list<InsertTask>;
   using InsertTaskPtr = std::unique_ptr<InsertTask>;
-  using MutableChunkPtr = typename VectorLSM<Vector, DistanceResult>::MutableChunkPtr;
 
-  VectorLSMInsertRegistry(const std::string& log_prefix, rpc::ThreadPool& thread_pool)
-      : log_prefix_(log_prefix), thread_pool_(thread_pool) {}
+  virtual ~VectorLSMInsertRegistryBase() = default;
 
   void Shutdown() {
     for (;;) {
@@ -276,43 +341,9 @@ class VectorLSMInsertRegistry {
           break;
         }
       }
-      YB_LOG_EVERY_N_SECS(INFO, 1) << LogPrefix() << "Waiting for vector insertion tasks to finish";
+      YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 1) << "Waiting for vector insertion tasks to finish";
       std::this_thread::sleep_for(100ms);
     }
-  }
-
-  InsertTaskList AllocateTasks(
-      LSM& lsm, const MutableChunkPtr& chunk, size_t num_tasks) EXCLUDES(mutex_) {
-    InsertTaskList result;
-    {
-      UniqueLock lock(mutex_);
-      while (allocated_tasks_ &&
-             allocated_tasks_ + num_tasks >= FLAGS_vector_index_max_insert_tasks) {
-        // TODO(vector_index) Pass timeout here.
-        if (allocated_tasks_cond_.wait_for(GetLockForCondition(lock), 1s) ==
-                std::cv_status::timeout) {
-          auto allocated_tasks = allocated_tasks_;
-          lock.unlock();
-          LOG_WITH_FUNC(WARNING)
-              << "Long wait to allocate " << num_tasks << " tasks, allocated: " << allocated_tasks
-              << ", allowed: " << FLAGS_vector_index_max_insert_tasks;
-          lock.lock();
-        }
-      }
-      allocated_tasks_ += num_tasks;
-      for (size_t left = num_tasks; left-- > 0;) {
-        InsertTaskPtr task;
-        if (task_pool_.empty()) {
-          task = std::make_unique<InsertTask>(lsm);
-        } else {
-          task = std::move(task_pool_.back());
-          task_pool_.pop_back();
-        }
-        task->Bind(chunk);
-        result.push_back(*task.release());
-      }
-    }
-    return result;
   }
 
   void ExecuteTasks(InsertTaskList& list) EXCLUDES(mutex_) {
@@ -324,26 +355,19 @@ class VectorLSMInsertRegistry {
   }
 
   void TaskDone(InsertTask* raw_task) EXCLUDES(mutex_) {
-    InsertTaskPtr task(raw_task);
-    std::lock_guard lock(mutex_);
-    --allocated_tasks_;
-    allocated_tasks_cond_.notify_all();
-    active_tasks_.erase(active_tasks_.iterator_to(*raw_task));
-    if (task_pool_.size() < FLAGS_vector_index_task_pool_size) {
-      task_pool_.push_back(std::move(task));
-    }
-  }
+    DCHECK_ONLY_NOTNULL(raw_task);
+    DCHECK_EQ(this, &raw_task->registry());
 
-  typename VectorIndex::SearchResult Search(
-      const Vector& query_vector, const SearchOptions& options) {
-    typename InsertTask::SearchHeap heap;
+    InsertTaskPtr task(raw_task);
     {
-      SharedLock lock(mutex_);
-      for (const auto& task : active_tasks_) {
-        task.Search(heap, query_vector, options);
+      std::lock_guard lock(mutex_);
+      --allocated_tasks_;
+      active_tasks_.erase(active_tasks_.iterator_to(*raw_task));
+      if (task_pool_.size() < FLAGS_vector_index_task_pool_size) {
+        task_pool_.push_back(std::move(task));
       }
+      DoTaskDoneUnlocked();
     }
-    return ReverseHeapToVector(heap);
   }
 
   bool HasRunningTasks() {
@@ -351,33 +375,155 @@ class VectorLSMInsertRegistry {
     return !active_tasks_.empty();
   }
 
- private:
+ protected:
+  using VectorIndexPtr = typename InsertTask::VectorIndexPtr;
+  using InsertCallback = typename InsertTask::InsertCallback;
+
+  VectorLSMInsertRegistryBase(const std::string& log_prefix, rpc::ThreadPool& thread_pool)
+      : log_prefix_(log_prefix), thread_pool_(thread_pool) {}
+
   const std::string& LogPrefix() const {
     return log_prefix_;
+  }
+
+  InsertTaskList DoAllocateTasks(
+      size_t num_tasks, const VectorIndexPtr& index,
+      InsertCallback&& insert_callback) REQUIRES(mutex_) {
+    InsertTaskList result;
+    allocated_tasks_ += num_tasks;
+    for (size_t left = num_tasks; left-- > 0;) {
+      InsertTaskPtr task;
+      if (task_pool_.empty()) {
+        task = std::make_unique<InsertTask>(*this);
+      } else {
+        task = std::move(task_pool_.back());
+        task_pool_.pop_back();
+      }
+
+      // Make sure insert_callback is not moved but copied as it is used in several tasks.
+      task->Bind(index, insert_callback);
+
+      result.push_back(*task.release());
+    }
+    return result;
+  }
+
+  virtual void DoTaskDoneUnlocked() REQUIRES(mutex_) {
+    // Nothing to do, could be used in derived classes.
   }
 
   const std::string log_prefix_;
   rpc::ThreadPool& thread_pool_;
   std::shared_mutex mutex_;
-  std::condition_variable_any allocated_tasks_cond_;
   size_t allocated_tasks_ GUARDED_BY(mutex_) = 0;
   InsertTaskList active_tasks_ GUARDED_BY(mutex_);
   std::vector<InsertTaskPtr> task_pool_ GUARDED_BY(mutex_);
 };
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-void VectorLSMInsertTask<Vector, DistanceResult>::Done(const Status& status) {
-  {
-    std::lock_guard lock(mutex_);
-    chunk_ = nullptr;
-    vectors_.clear();
+class VectorLSMInsertRegistry : public VectorLSMInsertRegistryBase<Vector, DistanceResult> {
+ public:
+  using Base = VectorLSMInsertRegistryBase<Vector, DistanceResult>;
+  using InsertTask = typename Base::InsertTask;
+  using InsertTaskList = typename Base::InsertTaskList;
+  using SearchResults  = typename VectorLSM<Vector, DistanceResult>::SearchResults;
+
+  VectorLSMInsertRegistry(const std::string& log_prefix, rpc::ThreadPool& thread_pool)
+      : Base(log_prefix, thread_pool) {}
+
+  template <typename... Args>
+  InsertTaskList AllocateTasks(size_t num_tasks, Args&&... args) EXCLUDES(mutex_) {
+    UniqueLock lock(mutex_);
+    while (allocated_tasks_ &&
+            allocated_tasks_ + num_tasks >= FLAGS_vector_index_max_insert_tasks) {
+      // TODO(vector_index) Pass timeout here.
+      if (allocated_tasks_cond_.wait_for(GetLockForCondition(lock), 1s) ==
+              std::cv_status::timeout) {
+        auto allocated_tasks = allocated_tasks_;
+        lock.unlock();
+        LOG_WITH_FUNC(WARNING)
+            << "Long wait to allocate " << num_tasks << " tasks, allocated: " << allocated_tasks
+            << ", allowed: " << FLAGS_vector_index_max_insert_tasks;
+        lock.lock();
+      }
+    }
+
+    return DoAllocateTasks(num_tasks, std::forward<Args>(args)...);
   }
-  lsm_.insert_registry_->TaskDone(this);
-}
+
+  void DoTaskDoneUnlocked() override REQUIRES(mutex_) {
+    allocated_tasks_cond_.notify_all();
+  }
+
+  SearchResults Search(const Vector& query_vector, const SearchOptions& options) {
+    using SearchWrapper = VectorLSMInsertTaskSearchWrapper<Vector, DistanceResult>;
+    using SearchHeap = typename SearchWrapper::SearchHeap;
+    SearchHeap heap;
+    {
+      SharedLock lock(mutex_);
+      for (const auto& task : active_tasks_) {
+        static_cast<const SearchWrapper&>(task).Search(heap, query_vector, options);
+      }
+    }
+    return ReverseHeapToVector(heap);
+  }
+
+ private:
+  using Base::LogPrefix;
+  using Base::DoAllocateTasks;
+  using Base::mutex_;
+  using Base::active_tasks_;
+  using Base::allocated_tasks_;
+
+  std::condition_variable_any allocated_tasks_cond_;
+};
+
+// Registry for all active Vector LSM insert subtasks.
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+class VectorLSMMergeRegistry : public VectorLSMInsertRegistryBase<Vector, DistanceResult> {
+ public:
+  using Base = VectorLSMInsertRegistryBase<Vector, DistanceResult>;
+  using InsertTaskList = typename Base::InsertTaskList;
+
+  VectorLSMMergeRegistry(const std::string& log_prefix, rpc::ThreadPool& thread_pool)
+      : Base(log_prefix, thread_pool) {}
+
+  template <typename... Args>
+  InsertTaskList AllocateTasks(size_t num_tasks, Args&&... args) EXCLUDES(mutex_) {
+    // Sanity check for the case the flag has been set to 0 right before calling this method.
+    size_t max_tasks = MaxCapacity();
+    if (max_tasks == 0) {
+      max_tasks = 1;
+      LOG_WITH_PREFIX(INFO) << "Max merge tasks flag is 0, using 1 instead";
+    }
+
+    {
+      UniqueLock lock(mutex_);
+      if (allocated_tasks_ >= max_tasks) {
+        return {};
+      }
+
+      num_tasks = std::min(num_tasks, max_tasks - allocated_tasks_);
+      return DoAllocateTasks(num_tasks, std::forward<Args>(args)...);
+    }
+  }
+
+  size_t MaxCapacity() const {
+    return FLAGS_vector_index_max_merge_tasks;
+  }
+
+ protected:
+  using Base::LogPrefix;
+  using Base::DoAllocateTasks;
+  using Base::mutex_;
+  using Base::allocated_tasks_;
+};
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 struct VectorLSM<Vector, DistanceResult>::MutableChunk {
   VectorIndexPtr index;
+
+  // Must be accessed under VectorLSM::mutex_.
   size_t num_entries = 0;
 
   // See comments for kRunningMark.
@@ -388,6 +534,9 @@ struct VectorLSM<Vector, DistanceResult>::MutableChunk {
   std::function<void()> save_callback;
 
   rocksdb::UserFrontiersPtr user_frontiers;
+
+  // Used to indicates this chunk insertion failed and hence save_callback should not be called.
+  std::atomic<bool> insertion_failed { false };
 
   // Returns true if registration was successful. Otherwise, new mutable chunk should be allocated.
   // Invoked when owning VectorLSM holds the mutex.
@@ -405,10 +554,18 @@ struct VectorLSM<Vector, DistanceResult>::MutableChunk {
     return true;
   }
 
-  void Insert(VectorLSM& lsm, VectorId vector_id, const Vector& vector) {
-    lsm.CheckFailure(index->Insert(vector_id, vector));
+  void InsertTaskDone() {
+    auto new_tasks = --num_tasks;
+    if (new_tasks == 0) {
+      DCHECK(save_callback);
+      if (!insertion_failed.load(std::memory_order::acquire)) {
+        save_callback();
+      }
+      save_callback = {};
+    }
   }
 
+  // Must be triggered under VectorLSM::mutex_.
   ImmutableChunkPtr Immutate(size_t order_no, std::promise<Status>* flush_promise) {
     // Move should not be used for index as the mutable chunk could still be used by other
     // entities, for example by VectorLSMInsertTask.
@@ -517,11 +674,11 @@ struct VectorLSM<Vector, DistanceResult>::ImmutableChunk {
   }
 
   bool TryLockForCompaction() {
-    return TrySetUnderCompation(true);
+    return TrySetUnderCompaction(true);
   }
 
   void UnlockForCompaction() {
-    [[maybe_unused]] bool success = TrySetUnderCompation(false);
+    [[maybe_unused]] bool success = TrySetUnderCompaction(false);
     DCHECK(success);
   }
 
@@ -550,7 +707,7 @@ struct VectorLSM<Vector, DistanceResult>::ImmutableChunk {
   }
 
  private:
-  bool TrySetUnderCompation(bool value) {
+  bool TrySetUnderCompaction(bool value) {
     return under_compaction.exchange(value) != value;
   }
 };
@@ -670,7 +827,8 @@ struct VectorLSM<Vector, DistanceResult>::CompactionContext {
 };
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-class VectorLSM<Vector, DistanceResult>::CompactionTask : public PriorityThreadPoolTask {
+class VectorLSM<Vector, DistanceResult>::CompactionTask : public PriorityThreadPoolTokenTask {
+  using Base = PriorityThreadPoolTokenTask;
   using LSM = VectorLSM<Vector, DistanceResult>;
 
  public:
@@ -679,7 +837,8 @@ class VectorLSM<Vector, DistanceResult>::CompactionTask : public PriorityThreadP
       CompactionType compaction_type = CompactionType::kBackground,
       CompactionScope&& compaction_scope = {},
       StdStatusCallback&& callback = {})
-      : lsm_(lsm),
+      : Base(lsm.options_.compaction_token->context()),
+        lsm_(lsm),
         log_prefix_(Format("$0[TASK $1] ", lsm.LogPrefix(), SerialNo())),
         compaction_type_(compaction_type),
         compaction_scope_(std::move(compaction_scope)),
@@ -691,7 +850,11 @@ class VectorLSM<Vector, DistanceResult>::CompactionTask : public PriorityThreadP
     return compaction_type_;
   }
 
-  int Priority() const {
+  uint64_t group_no() const override {
+    return kDefaultGroupNo;
+  }
+
+  int priority() const override {
     return priority_.load(std::memory_order::acquire);
   }
 
@@ -715,7 +878,11 @@ class VectorLSM<Vector, DistanceResult>::CompactionTask : public PriorityThreadP
 
     // TODO(vector_index): leverage the suspender.
     auto status = DoRun();
-    LOG_WITH_PREFIX(INFO) << "Done: " << status;
+    if (status.ok() || status.IsShutdownInProgress()) {
+      LOG_WITH_PREFIX(INFO) << "Done: " << status;
+    } else {
+      LOG_WITH_PREFIX(DFATAL) << "Failed: " << status;
+    }
     Completed(status);
 
     if (last_serial_no == lsm_.LastSerialNo()) {
@@ -804,15 +971,12 @@ VectorLSM<Vector, DistanceResult>::~VectorLSM() {
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::DoCheckRunning(
     const char* file_name, int line_number) const {
-  {
-    SharedLock lock(mutex_);
-    if (!stopping_) {
-      return Status::OK();
-    }
+  if (shutdown_controller_.IsRunning()) {
+    return Status::OK();
   }
 
-  auto status = Status(Status::kShutdownInProgress,
-                       file_name, line_number, "Vector LSM is shutting down");
+  Status status {
+      Status::kShutdownInProgress, file_name, line_number, "VectorLSM is shutting down" };
   LOG_WITH_PREFIX(INFO) << status;
   return status;
 }
@@ -827,18 +991,31 @@ bool VectorLSM<Vector, DistanceResult>::IsShuttingDown() const {
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 void VectorLSM<Vector, DistanceResult>::StartShutdown() {
-  std::lock_guard lock(mutex_);
-  stopping_ = true;
+  auto scope = shutdown_controller_.StartShutdown();
+  if (!scope) {
+    LOG_IF_WITH_PREFIX(DFATAL, !scope.status().IsShutdownInProgress()) << scope.status();
+    return;
+  }
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 void VectorLSM<Vector, DistanceResult>::CompleteShutdown() {
-  LOG_IF_WITH_PREFIX(DFATAL, RUNNING_STATUS().ok()) << "Vector LSM is not shutting down";
+  auto scope = shutdown_controller_.CompleteShutdown();
+  if (!scope) {
+    LOG_IF_WITH_PREFIX(DFATAL, !scope.status().IsShutdownInProgress()) << scope.status();
+    return;
+  }
 
   if (!insert_registry_) {
     return; // Was not opened.
   }
   insert_registry_->Shutdown();
+
+  if (merge_registry_) {
+    merge_registry_->Shutdown();
+  }
+
+  // Wait for all chunks to be saved.
   auto start_time = CoarseMonoClock::now();
   auto last_warning_time = start_time;
   MonoDelta report_interval = 1s;
@@ -862,10 +1039,12 @@ void VectorLSM<Vector, DistanceResult>::CompleteShutdown() {
   }
 
   // Remove not started compaction tasks from the thread pool.
-  options_.compaction_thread_pool->Remove(this);
+  options_.compaction_token->Remove(this);
 
   // Prioritize remaining compaction tasks and wait for compactions to be completed.
   {
+    // TODO(vector_index): probably options_.compaction_token->PrioritizeTask() should
+    // be triggered here.
     UniqueLock lock(compaction_tasks_mutex_);
     for (auto* task : compaction_tasks_) {
       task->UpdatePriority();
@@ -899,17 +1078,26 @@ inline void VectorLSM<Vector, DistanceResult>::CheckFailure(const Status& status
     }
     existing_status = failed_status_;
   }
-  YB_LOG_EVERY_N_SECS(WARNING, 1)
-      << LogPrefix() << "Vector LSM already in failed state: " << existing_status
+  YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 1)
+      << "Vector LSM already in failed state: " << existing_status
       << ", while trying to set new failed state: " << status;
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
+  // Explicitly set the state of the controller for the cases when vector index can be reopened
+  // after being shutdown.
+  RETURN_NOT_OK(shutdown_controller_.Start());
+
   std::lock_guard lock(mutex_);
 
   options_ = std::move(options);
+  if (options_.metric_entity) {
+    metrics_ = std::make_unique<vector_index::VectorLSMMetrics>(options_.metric_entity);
+  }
   insert_registry_ = std::make_unique<InsertRegistry>(
+      options_.log_prefix, *options_.insert_thread_pool);
+  merge_registry_ = std::make_unique<MergeRegistry>(
       options_.log_prefix, *options_.insert_thread_pool);
 
   RETURN_NOT_OK(env_->CreateDirs(options_.storage_dir));
@@ -1067,7 +1255,19 @@ Status VectorLSM<Vector, DistanceResult>::Insert(
 
   size_t entries_per_task = ceil_div(entries.size(), num_tasks);
 
-  auto tasks = insert_registry_->AllocateTasks(*this, chunk, num_tasks);
+  auto tasks = insert_registry_->AllocateTasks(
+      num_tasks, chunk->index,
+      [this, chunk](const Status& status) {
+        if (!status.ok()) {
+          auto failure = status.CloneAndPrepend("VectorLSM insertion failed");
+          LOG(ERROR) << LogPrefix() << failure;
+          CheckFailure(failure);
+          chunk->insertion_failed.store(false, std::memory_order::release);
+        }
+        chunk->InsertTaskDone();
+      });
+  DCHECK_EQ(num_tasks, tasks.size());
+
   auto tasks_it = tasks.begin();
   size_t index_in_task = 0;
   for (auto& [vector_id, v] : entries) {
@@ -1349,8 +1549,8 @@ auto VectorLSM<Vector, DistanceResult>::SaveIndexToFile(VectorIndex& index, uint
 
   const auto file_size = VERIFY_RESULT(env_->GetFileSize(file_path));
   LOG_WITH_PREFIX(INFO) << Format(
-      "Saved vector index on disk, serial_no: $0, num entries: $1, file size: $2",
-      serial_no, actual_index.Size(), file_size);
+      "Saved vector index on disk, serial_no: $0, num entries: $1, file size: $2, path: $3",
+      serial_no, actual_index.Size(), file_size, file_path);
 
   return std::make_pair(CreateVectorLSMFileMetaData(actual_index, serial_no, file_size), new_index);
 }
@@ -1375,6 +1575,7 @@ Status VectorLSM<Vector, DistanceResult>::DoSaveChunk(const ImmutableChunkPtr& c
 
   WritableFile* manifest_file = nullptr;
   ImmutableChunkPtr writing_chunk;
+  const bool stopping = !shutdown_controller_.IsRunning();
   {
     std::lock_guard lock(mutex_);
     if (new_index) {
@@ -1383,7 +1584,7 @@ Status VectorLSM<Vector, DistanceResult>::DoSaveChunk(const ImmutableChunkPtr& c
       chunk->index = new_index;
     }
     chunk->state = ImmutableChunkState::kOnDisk;
-    if (stopping_ && FLAGS_TEST_vector_index_skip_manifest_update_during_shutdown) {
+    if (stopping && FLAGS_TEST_vector_index_skip_manifest_update_during_shutdown) {
       return TEST_SkipManifestUpdateDuringShutdown();
     }
 
@@ -1478,6 +1679,7 @@ void VectorLSM<Vector, DistanceResult>::SaveChunk(const ImmutableChunkPtr& chunk
   if (TEST_sleep_during_flush && chunk->order_no) {
     SleepFor(TEST_sleep_during_flush);
   }
+
   auto status = DoSaveChunk(chunk);
   if (status.ok()) {
     return;
@@ -1485,12 +1687,7 @@ void VectorLSM<Vector, DistanceResult>::SaveChunk(const ImmutableChunkPtr& chunk
 
   chunk->Flushed(status);
   LOG_WITH_PREFIX(DFATAL) << "Save chunk failed: " << status;
-  {
-    std::lock_guard lock(mutex_);
-    if (failed_status_.ok()) {
-      failed_status_ = status;
-    }
-  }
+  CheckFailure(status);
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -1507,7 +1704,9 @@ Status VectorLSM<Vector, DistanceResult>::DoFlush(std::promise<Status>* promise)
   auto tasks = mutable_chunk_->num_tasks -= kRunningMark;
   RSTATUS_DCHECK_LT(tasks, kRunningMark, RuntimeError, "Wrong value for num_tasks");
   if (tasks == 0) {
-    options_.insert_thread_pool->EnqueueFunctor(mutable_chunk_->save_callback);
+    if (!mutable_chunk_->insertion_failed.load(std::memory_order::acquire)) {
+      options_.insert_thread_pool->EnqueueFunctor(mutable_chunk_->save_callback);
+    }
     // TODO(vector_index): Optimize memory allocation related to save callback
     mutable_chunk_->save_callback = {};
   }
@@ -1651,6 +1850,15 @@ template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 size_t VectorLSM<Vector, DistanceResult>::TEST_NextManifestFileNo() const {
   SharedLock lock(mutex_);
   return next_manifest_file_no_;
+}
+
+// Get the file size of the chunk with the highest serial number.
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+uint64_t VectorLSM<Vector, DistanceResult>::TEST_LatestChunkSize() const {
+  SharedLock lock(mutex_);
+  CHECK(!immutable_chunks_.empty());
+  auto it_chunk = std::ranges::max_element(immutable_chunks_, {}, &ImmutableChunk::serial_no);
+  return (*it_chunk)->file_size();
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -1853,7 +2061,7 @@ template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 typename VectorLSM<Vector, DistanceResult>::CompactionScope
 VectorLSM<Vector, DistanceResult>::PickChunksBySizeAmplification() const {
   // Percentage flexibility while reducing size amplification.
-  const auto ratio = FLAGS_vector_index_max_size_amplification_percent;
+  const auto ratio = FLAGS_vector_index_compaction_size_amp_max_percent;
   if (ratio < 0) {
     VLOG_WITH_PREFIX(2) << "Size amplification compactions disabled by gflag";
     return {};
@@ -1873,15 +2081,22 @@ VectorLSM<Vector, DistanceResult>::PickChunksBySizeAmplification() const {
 
     base_chunk_size = base_chunk->file_size();
     if (base_chunk_size) {
+      VLOG_WITH_PREFIX(3) << "Size amp base candidate " << base_chunk->ToShortString();
       break;
     }
   }
 
   // Get the longest span of the candidates ready for the compaction.
-  size_t num_candidates_on_disk = 0;
+  const auto max_width = SizeAmpCompactionMaxMergeWidth();
+  size_t num_candidates_on_disk = 1; // Account base chunk.
   uint64_t candidates_size = 0;
   auto candidate_end = base_chunk_it + 1;
   for (; candidate_end != immutable_chunks_.end(); ++candidate_end) {
+    if (num_candidates_on_disk >= max_width) {
+        VLOG_WITH_PREFIX(3) << Format("Size amp reached max number of candidates ($0)", max_width);
+        break;
+    }
+
     const auto& candidate = *candidate_end;
     if (!candidate->ReadyForCompaction()) {
       VLOG_WITH_PREFIX(3)
@@ -1895,7 +2110,7 @@ VectorLSM<Vector, DistanceResult>::PickChunksBySizeAmplification() const {
     VLOG_WITH_PREFIX(3) << "Size amp candidate " << candidate->ToShortString();
   }
 
-  if (num_candidates_on_disk == 0) {
+  if (num_candidates_on_disk < SizeAmpCompactionMinMergeWidth()) {
     VLOG_WITH_PREFIX(2) << Format("Size amp not needed due to not enough candidates on disk");
   }
 
@@ -1925,12 +2140,13 @@ VectorLSM<Vector, DistanceResult>::PickChunksBySizeRatio() const {
     return {};
   }
 
-  const auto min_width = CompactionMinMergeWidth();
+  const auto min_width = SizeRatioCompactionMinMergeWidth();
   if (immutable_chunks_.size() < min_width) {
     VLOG_WITH_PREFIX(2) << "Size ratio compactions not needed, not enough candidates";
     return {};
   }
 
+  const auto max_width = SizeRatioCompactionMaxMergeWidth();
   const uint64_t always_include_size_threshold =
       FLAGS_vector_index_compaction_always_include_size_threshold;
 
@@ -1952,6 +2168,12 @@ VectorLSM<Vector, DistanceResult>::PickChunksBySizeRatio() const {
     // Check if the succeeding chunks need compaction.
     auto succeeding_it = it + 1;
     for (; succeeding_it != immutable_chunks_.rend(); ++succeeding_it) {
+      if (num_candidates_on_disk >= max_width) {
+        VLOG_WITH_PREFIX(3)
+            << Format("Size ratio reached max number of candidates ($0)", max_width);
+        break;
+      }
+
       if (!(*succeeding_it)->ReadyForCompaction()) {
         VLOG_WITH_PREFIX(3)
             << "Size ratio stopping at candidate not ready for compaction "
@@ -2018,6 +2240,194 @@ VectorLSM<Vector, DistanceResult>::PickChunksForCompaction() const {
   return {};
 }
 
+namespace {
+
+// An iterator that merges multiple vector index iterators and filters out entries.
+template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+class FilteringIterator {
+ public:
+  using LSM = VectorLSM<Vector, DistanceResult>;
+  using VectorIndex = typename LSM::VectorIndex;
+  using VectorIndexPtr = typename LSM::VectorIndexPtr;
+  using VectorIndexPtrs = std::vector<VectorIndexPtr>;
+  using InnerIterator = typename VectorIndex::Iterator;
+  using Iterator = typename VectorIndexPtrs::iterator;
+  using ValueType = typename VectorIndex::IteratorValue;
+
+  FilteringIterator(Iterator&& begin, Iterator&& end, VectorLSMMergeFilter& filter)
+      : filter_(filter),
+        outer_it_ (std::move(begin)),
+        outer_end_(std::move(end)) {
+  }
+
+  FilteringIterator(VectorIndexPtrs& indexes, VectorLSMMergeFilter& filter)
+      : FilteringIterator(indexes.begin(), indexes.end(), filter) {
+  }
+
+  bool Valid() const {
+    return outer_it_ != outer_end_;
+  }
+
+  ValueType& operator*() {
+    DCHECK(Valid());
+    return value_;
+  }
+
+  ValueType* operator->() {
+    DCHECK(Valid());
+    return &value_;
+  }
+
+  bool Next() {
+    if (!Valid()) {
+      return false;
+    }
+
+    bool update_inner_iterator = false;
+    if (inner_it_.Valid()) {
+      DCHECK(inner_it_ != inner_end_);
+      ++inner_it_;
+    } else {
+      // Iterator has been just created, that's a first call to Next().
+      update_inner_iterator = true;
+    }
+
+    while (outer_it_ != outer_end_) {
+      if (update_inner_iterator) {
+        inner_it_  = (*outer_it_)->begin();
+        inner_end_ = (*outer_it_)->end();
+      }
+
+      while (inner_it_ != inner_end_) {
+        value_ = *inner_it_;
+        if (filter_.Filter(value_.first) == rocksdb::FilterDecision::kKeep) {
+          return true;
+        }
+        ++inner_it_;
+      }
+
+      ++outer_it_;
+      update_inner_iterator = true;
+    }
+
+    return false;
+  }
+
+ private:
+  VectorLSMMergeFilter& filter_;
+  Iterator outer_it_;
+  Iterator outer_end_;
+  InnerIterator inner_it_ { nullptr };
+  InnerIterator inner_end_ { nullptr };
+  ValueType value_;
+};
+
+void PopulateMergeTasks(auto& tasks, size_t num_vectors_per_task, auto& source_iterator) {
+  DCHECK(source_iterator.Valid());
+  for (auto tasks_it = tasks.begin(); tasks_it != tasks.end(); ++tasks_it) {
+    size_t vectors_in_task = 0;
+    while (++vectors_in_task <= num_vectors_per_task) {
+      if (!source_iterator.Next()) {
+        return;
+      }
+      tasks_it->Add(source_iterator->first, std::move(source_iterator->second));
+    }
+  }
+}
+
+} // namespace
+
+template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+class Merger {
+ public:
+  using LSM = VectorLSM<Vector, DistanceResult>;
+  using VectorIndexPtr = typename LSM::VectorIndexPtr;
+  using Iterator = FilteringIterator<Vector, DistanceResult>;
+  using MergeRegistry = VectorLSMMergeRegistry<Vector, DistanceResult>;
+
+  Merger(LSM& lsm, MergeRegistry& merge_registry)
+      : lsm_(lsm), merge_registry_(merge_registry) {
+  }
+
+  Status Merge(size_t source_size, Iterator& source_iterator, VectorIndexPtr target_index) {
+    if (merge_registry_.MaxCapacity() == 0) {
+      return DoMerge(source_iterator, std::move(target_index));
+    } else {
+      return DoMergeWithThreadPool(source_size, source_iterator, std::move(target_index));
+    }
+  }
+
+ private:
+  const std::string& LogPrefix() const {
+    return lsm_.LogPrefix();
+  }
+
+  Status DoMerge(Iterator& source_iterator, VectorIndexPtr target_index) {
+    // Let's be more conservative and don't check shutdown status on every inserted vector.
+    const size_t min_iterations_to_check_shutdown =
+        std::min<size_t>(2, 200000 / target_index->Dimensions());
+    size_t num_iterations_to_check_shutdown = min_iterations_to_check_shutdown;
+
+    // The only available way to merge vector indexes at the moment is to add all the vectors
+    // to a new vector index, filtering outdated vectors out.
+    while (source_iterator.Next()) {
+      RETURN_NOT_OK(target_index->Insert(source_iterator->first, source_iterator->second));
+
+      if (--num_iterations_to_check_shutdown == 0) {
+        RETURN_NOT_OK(lsm_.RUNNING_STATUS());
+        num_iterations_to_check_shutdown = min_iterations_to_check_shutdown;
+      }
+    }
+
+    return Status::OK();
+  }
+
+  Status DoMergeWithThreadPool(
+      size_t source_size, Iterator& source_iterator, VectorIndexPtr target_index) {
+    size_t num_total_tasks = ceil_div<size_t>(source_size, FLAGS_vector_index_task_size);
+    size_t num_vectors_per_task = ceil_div(source_size, num_total_tasks);
+
+    size_t num_scheduled_tasks = 0;
+    std::atomic<size_t> num_completed_tasks = 0;
+
+    while (source_iterator.Valid()) {
+      RETURN_NOT_OK(lsm_.RUNNING_STATUS());
+
+      auto tasks = merge_registry_.AllocateTasks(
+          num_total_tasks, target_index,
+          [&num_completed_tasks](const Status&) {
+            // TODO: Handle failure
+            num_completed_tasks.fetch_add(1, std::memory_order::relaxed);
+          });
+
+      VLOG_WITH_PREFIX(3) << "Allocated " << tasks.size() << " merge tasks";
+
+      if (tasks.empty()) {
+        std::this_thread::sleep_for(200ms);
+        continue;
+      }
+
+      PopulateMergeTasks(tasks, num_vectors_per_task, source_iterator);
+
+      RETURN_NOT_OK(lsm_.RUNNING_STATUS());
+
+      num_scheduled_tasks += tasks.size();
+      merge_registry_.ExecuteTasks(tasks);
+    }
+
+    // Wait for everything got merged.
+    while (num_scheduled_tasks != num_completed_tasks.load(std::memory_order::relaxed)) {
+      std::this_thread::sleep_for(200ms);
+    }
+
+    LOG_WITH_PREFIX(INFO) << "Chunks merge done via " << num_scheduled_tasks << " tasks";
+    return Status::OK();
+  }
+
+  LSM& lsm_;
+  MergeRegistry& merge_registry_;
+};
+
 template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Result<typename VectorLSM<Vector, DistanceResult>::ImmutableChunkPtr>
 VectorLSM<Vector, DistanceResult>::DoCompactChunks(const ImmutableChunkPtrs& input_chunks) {
@@ -2053,52 +2463,40 @@ VectorLSM<Vector, DistanceResult>::DoCompactChunks(const ImmutableChunkPtrs& inp
 
     RSTATUS_DCHECK(options_.vector_merge_filter_factory,
                    IllegalState, "Vector merge filter factory must be specified");
-    auto merge_filter = options_.vector_merge_filter_factory();
+    auto merge_filter = VERIFY_RESULT(options_.vector_merge_filter_factory());
 
-    // Let's be more conservative and don't check shutdown status on every inserted vector.
-    const size_t min_iterations_to_check_shutdown =
-        std::min<size_t>(2, 200000 / merged_index->Dimensions());
-    size_t num_iterations_to_check_shutdown = min_iterations_to_check_shutdown;
+    FilteringIterator<Vector, DistanceResult> iterator(indexes, *merge_filter);
 
-    // The only available way to merge vector indexes at the moment is to add all the vectors
-    // to a new vector index, filtering outdated vectors out.
-    for (const auto& index : indexes) {
-      for (const auto& [vector_id, vector] : *index) {
-        if (merge_filter->Filter(vector_id) == rocksdb::FilterDecision::kKeep) {
-          RETURN_NOT_OK(merged_index->Insert(vector_id, vector));
-        }
-
-        if (--num_iterations_to_check_shutdown == 0) {
-          RETURN_NOT_OK(RUNNING_STATUS());
-          num_iterations_to_check_shutdown = min_iterations_to_check_shutdown;
-        }
-      }
-    }
+    Merger<Vector, DistanceResult> merger(*this, *this->merge_registry_);
+    RETURN_NOT_OK(merger.Merge(input_size, iterator, merged_index));
 
     if (TEST_sleep_on_merged_chunk_populated) {
       SleepFor(TEST_sleep_on_merged_chunk_populated);
-      num_iterations_to_check_shutdown = 1; // To force checking shutting down status.
     }
 
     // Check shutting down in progress before saving new vector index on disk.
-    if (num_iterations_to_check_shutdown) {
-      RETURN_NOT_OK(RUNNING_STATUS());
-    }
+    RETURN_NOT_OK(RUNNING_STATUS());
 
     LOG_WITH_PREFIX(INFO) << "Chunks merge done [vectors: " << merged_index->Size() << "]";
 
-    // Save new index to disk.
-    VectorIndexPtr new_index;
-    std::tie(merged_index_file, new_index) = VERIFY_RESULT(SaveIndexToFile(
-        *merged_index, NextSerialNo()));
-    if (new_index) {
-      merged_index = new_index;
+    // All vectors could be filtered out. Make sure there's data for saving to disk.
+    if (!merged_index->Size()) {
+      LOG_WITH_PREFIX(INFO) << "Compaction done, no chunk to save";
+    } else {
+      // Save new index to disk.
+      VectorIndexPtr new_index;
+      std::tie(merged_index_file, new_index) = VERIFY_RESULT(SaveIndexToFile(
+          *merged_index, NextSerialNo()));
+      if (new_index) {
+        merged_index = new_index;
+      }
+      LOG_WITH_PREFIX(INFO)
+          << "Compaction done, new chunk " << merged_index_file->ToString() << " saved to disk";
     }
-    LOG_WITH_PREFIX(INFO)
-        << "Compaction done, new chunk " << merged_index_file->ToString() << " saved to disk";
   }
 
-  // Create new immutable chunk for further processing.
+  // Create new immutable chunk for further processing. If nothing got merged
+  // or merged chunk was empty, it would contain frontiers only.
   return std::make_shared<ImmutableChunk>(
       input_chunks.front()->order_no, std::move(merged_index_file), std::move(merged_index),
       std::move(merged_frontiers), ImmutableChunkState::kOnDisk);
@@ -2112,6 +2510,11 @@ Status VectorLSM<Vector, DistanceResult>::DoCompact(
   VLOG_WITH_PREFIX(2) << "Picked chunks: " << AsString(scope);
 
   auto merged_chunk = VERIFY_RESULT(DoCompactChunks(scope.chunks()));
+
+  if (metrics_) {
+    // TODO(vector_index): include metadata file update in write metrics.
+    metrics_->compact_write_bytes->IncrementBy(merged_chunk->file_size());
+  }
 
   // A new chunk must be in a manifested state to put into the immutable chunks collection to
   // keep the data consistence, as the old chunks are in manifested state. This means, manifest
@@ -2217,13 +2620,17 @@ VectorLSM<Vector, DistanceResult>::RegisterManualCompaction(StdStatusCallback ca
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 void VectorLSM<Vector, DistanceResult>::ScheduleBackgroundCompaction() {
-  if (FLAGS_vector_index_disable_compactions) {
+  if (!FLAGS_vector_index_enable_compactions) {
     VLOG_WITH_PREFIX(2) << "Background compactions disabled by gflag";
     return;
   }
 
   if (!auto_compactions_enabled_) {
     VLOG_WITH_PREFIX(2) << "Background compactions disabled";
+    return;
+  }
+
+  if (!RUNNING_STATUS().ok()) {
     return;
   }
 
@@ -2235,9 +2642,6 @@ void VectorLSM<Vector, DistanceResult>::ScheduleBackgroundCompaction() {
   size_t num_manifested_chunks_on_disk = 0;
   {
     SharedLock lock(mutex_);
-    if (stopping_) {
-      return;
-    }
 
     num_manifested_chunks_on_disk = std::ranges::count_if(
         immutable_chunks_,
@@ -2269,6 +2673,7 @@ void VectorLSM<Vector, DistanceResult>::ScheduleBackgroundCompaction() {
     // compaction and in case of success create and submit the task -- but it is better to not
     // setup picked chunks for the compaction task letting it pick large scope on execution.
     task = std::make_unique<CompactionTask>(*this);
+    VLOG_WITH_PREFIX(2) << "Created background compaction task: " << task->ToString();
     RegisterUnlocked(*task);
   }
 
@@ -2317,6 +2722,20 @@ Status VectorLSM<Vector, DistanceResult>::Compact(bool wait) {
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+Status VectorLSM<Vector, DistanceResult>::WaitForCompaction() {
+  // Wait for manual compaction task is completed. Returns immediately if there's no ongoing
+  // manual compaction task.
+  UniqueLock lock(compaction_tasks_mutex_);
+  compaction_tasks_cv_.wait(
+      lock,
+      [this]() NO_THREAD_SAFETY_ANALYSIS {
+        return !ContainsTask(compaction_tasks_, CompactionType::kManual);
+      });
+
+  return Status::OK();
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 void VectorLSM<Vector, DistanceResult>::RegisterUnlocked(CompactionTask& task) {
   // Sanity check.
   DCHECK(!compaction_tasks_.contains(&task));
@@ -2345,7 +2764,7 @@ void VectorLSM<Vector, DistanceResult>::Deregister(CompactionTask& task) {
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::SubmitTask(CompactionTaskPtr task) {
   // TODO(vector-index): specify disk_group_no during submitting.
-  auto submitted = options_.compaction_thread_pool->Submit(task->Priority(), &task);
+  auto submitted = options_.compaction_token->Submit(&task);
   if (!submitted.ok()) {
     LOG_WITH_PREFIX(ERROR) << "Failed to submit task " << task->ToString()
                            << ", status: " << submitted;
@@ -2358,6 +2777,7 @@ Status VectorLSM<Vector, DistanceResult>::SubmitTask(CompactionTaskPtr task) {
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 template<typename Lock>
 void VectorLSM<Vector, DistanceResult>::WaitForCompactionTasksDone(Lock& lock) {
+  DCHECK_EQ(lock.mutex(), &compaction_tasks_mutex_);
   compaction_tasks_cv_.wait(
       lock, [this]() NO_THREAD_SAFETY_ANALYSIS { return compaction_tasks_.empty(); });
 }

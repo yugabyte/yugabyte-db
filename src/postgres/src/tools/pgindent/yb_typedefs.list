@@ -67,6 +67,7 @@ YbCounters
 YbCreateProfileStmt
 YbCreateTableGroupStmt
 YbCustomCache
+YbDatabaseAndRelfileNodeOid
 YbDatabaseConnectionWorkerInfo
 YbDatumDecodeOptions
 YbDdlMode
@@ -75,10 +76,12 @@ YbDdlTransactionState
 YbDefaultSysScan
 YbDefaultSysScanData
 YbDetailSorter
+YbDoubleCounters
 YbDropProfileStmt
 YbEndFn_t
 YbEnumLabelAssignmentMapEntry
 YbEnumLabelMapEntry
+YbExplainCommitStatState
 YbExplainExecStats
 YbExplainState
 YbExprColrefDesc
@@ -108,6 +111,9 @@ YbIndexProcessorState
 YbInsertOnConflictBatchState
 YbInsertOnConflictPhase
 YbInstrumentation
+YbIntCounters
+YbIssueDetectionCheck
+YbIssueDetectionPlan
 YbLockMechanism
 YbLogicalClientVersionType
 YbLsmBuildState
@@ -129,7 +135,6 @@ YbPartitionPruneStepFuncOp
 YbPathInfo
 YbPgAttributeRow
 YbPgBackendCatalogVersionStatus
-YbPgEventMetric
 YbPgExecOutParam
 YbPgFdwServerType
 YbPgFuncCallContextData
@@ -216,6 +221,8 @@ YbcConnectionMetrics
 YbcConstSliceSet
 YbcConstSliceVector
 YbcCstringToTextWithLenFn
+YbcFlushDebugContext
+YbcFlushReason
 YbcGetTableKeyRangesCallback
 YbcHeapSnapshotSample
 YbcLsnType
@@ -250,10 +257,14 @@ YbcPgExplicitRowLockStatus
 YbcPgExpr
 YbcPgFunction
 YbcPgGFlagsAccessor
+YbcPgGlobalTabletsDescriptor
+YbcPgInitPostgresInfo
+YbcPgInitTransactionData
 YbcPgInsertOnConflictKeyInfo
 YbcPgInsertOnConflictKeyState
 YbcPgJwtAuthOptions
 YbcPgLastKnownCatalogVersionInfo
+YbcPgLocalTabletsDescriptor
 YbcPgMemctx
 YbcPgMetricsCaptureType
 YbcPgOid
@@ -266,6 +277,7 @@ YbcPgServerMetricsInfo
 YbcPgSession
 YbcPgSessionState
 YbcPgSessionTxnInfo
+YbcPgSharedDataPlaceholder
 YbcPgSplitDatum
 YbcPgStatement
 YbcPgSysColumns
@@ -291,6 +303,7 @@ YbcPostgresCallbacks
 YbcReadAfterCommitVisibilityEnum
 YbcReadHybridTime
 YbcReadPointHandle
+YbcRecordTempRelationDDL_hook_type
 YbcReplicationSlotDescriptor
 YbcReplicationSlotHashRange
 YbcRpczEntry
@@ -304,6 +317,7 @@ YbcTablePropertiesData
 YbcTcmallocStats
 YbcTxnPriorityRequirement
 YbcTypeEntityProvider
+YbcUpdateInitPostgresMetricsFn
 YbcWaitEventDescriptor
 YbcWaitEventInfo
 YbcWaitEventInfoPtr

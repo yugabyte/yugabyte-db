@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -83,8 +83,9 @@ class CreateTableLimitTestRF1 : public CreateTableLimitTestBase {
     options.enable_ysql = true;
     options.num_tablet_servers = 1;
     options.num_masters = 1;
+    options.replication_factor = 1;
     options.extra_master_flags = {
-        "--replication_factor=1", "--enable_load_balancing=false",
+        "--enable_load_balancing=false",
         "--initial_tserver_registration_duration_secs=0",
         "--enforce_tablet_replica_limits=true"};
     return options;

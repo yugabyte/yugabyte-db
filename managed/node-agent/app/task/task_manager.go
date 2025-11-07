@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package task
 
@@ -269,6 +269,12 @@ func (m *TaskManager) Subscribe(
 				callbackData := &TaskCallbackData{State: tInfo.future.State()}
 				callbackData.ExitCode = taskStatus.ExitStatus.Code
 				callbackData.Error, size = taskStatus.ExitStatus.Error.StringWithLen()
+				if size == 0 {
+					if _, err := tInfo.future.Get(); err != nil {
+						// Use the error as it may contain additional cancellation message.
+						callbackData.Error = err.Error()
+					}
+				}
 				err := callback(callbackData)
 				if err != nil {
 					return err

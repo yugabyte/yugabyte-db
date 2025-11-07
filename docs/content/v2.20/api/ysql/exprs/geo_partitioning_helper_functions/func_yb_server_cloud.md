@@ -4,7 +4,7 @@ headerTitle: yb_server_cloud()
 linkTitle: yb_server_cloud()
 description: Returns the cloud provider of the currently connected node
 menu:
-  v2.20:
+  v2.20_api:
     identifier: api-ysql-exprs-yb_server_cloud
     parent: geo-partitioning-helper-functions
 type: docs

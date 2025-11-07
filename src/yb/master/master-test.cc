@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -127,7 +127,8 @@ class MasterTest : public MasterTestBase {
   Result<scoped_refptr<NamespaceInfo>> FindNamespaceByName(
       YQLDatabase db_type, const std::string& name);
 
-  Result<TSHeartbeatResponsePB> SendNewTSRegistrationHeartbeat(const std::string& uuid);
+  Result<TSHeartbeatResponsePB> SendNewTSRegistrationHeartbeat(
+      const std::string& uuid, int64_t instance_seqno);
 
  private:
   // Used by SendNewTSRegistrationHeartbeat to avoid host port collisions.
@@ -2604,11 +2605,8 @@ TEST_P(NamespaceTest, RenameNamespace) {
   const NamespaceName other_ns_new_name = "testns_newname";
   {
     AlterNamespaceResponsePB resp;
-    ASSERT_OK(AlterNamespace(other_ns_name,
-                             other_ns_id,
-                             boost::none /* database_type */,
-                             other_ns_new_name,
-                             &resp));
+    ASSERT_OK(AlterNamespace(
+        other_ns_name, other_ns_id, std::nullopt /* database_type */, other_ns_new_name, &resp));
   }
   {
     ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
@@ -2778,16 +2776,16 @@ TEST_F(MasterTest, RefreshYsqlLeaseWithoutRegistration) {
 
 TEST_F(MasterTest, RefreshYsqlLease) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql_operation_lease) = true;
-  const std::string kTsUUID1 = "ts-uuid1";
-  const std::string kTsUUID2 = "ts-uuid2";
+  const std::string kTsUUID = "ts-uuid1";
+  constexpr uint64_t kSeqno = 1;
 
-  auto reg_resp1 = ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTsUUID1));
+  auto reg_resp1 = ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTsUUID, kSeqno));
   ASSERT_FALSE(reg_resp1.needs_reregister());
 
   auto ddl_client = MasterDDLClient{std::move(*proxy_ddl_)};
   auto lease_refresh_send_time_ms = MonoTime::Now().GetDeltaSinceMin().ToMilliseconds();
-  auto info = ASSERT_RESULT(ddl_client.RefreshYsqlLease(
-      kTsUUID1, /* instance_seqno */ 1, lease_refresh_send_time_ms, {}));
+  auto info =
+      ASSERT_RESULT(ddl_client.RefreshYsqlLease(kTsUUID, kSeqno, lease_refresh_send_time_ms, {}));
   ASSERT_TRUE(info.new_lease());
   ASSERT_EQ(info.lease_epoch(), 1);
   ASSERT_GT(
@@ -2797,25 +2795,80 @@ TEST_F(MasterTest, RefreshYsqlLease) {
   // todo(zdrudi): but we need to do this and check the bootstrap entries...
   // Refresh lease again. Since we omitted current lease epoch, master leader should still say this
   // is a new lease.
-  info = ASSERT_RESULT(ddl_client.RefreshYsqlLease(
-      kTsUUID1, /* instance_seqno */ 1, lease_refresh_send_time_ms, {}));
+  info =
+      ASSERT_RESULT(ddl_client.RefreshYsqlLease(kTsUUID, kSeqno, lease_refresh_send_time_ms, {}));
   ASSERT_TRUE(info.new_lease());
   ASSERT_EQ(info.lease_epoch(), 1);
   ASSERT_GT(info.lease_expiry_time_ms(), lease_refresh_send_time_ms);
 
   // Refresh lease again. We included current lease epoch but it's incorrect.
-  info = ASSERT_RESULT(
-      ddl_client.RefreshYsqlLease(kTsUUID1, /* instance_seqno */ 1, lease_refresh_send_time_ms, 0));
+  info = ASSERT_RESULT(ddl_client.RefreshYsqlLease(kTsUUID, kSeqno, lease_refresh_send_time_ms, 0));
   ASSERT_TRUE(info.new_lease());
   ASSERT_EQ(info.lease_epoch(), 1);
   ASSERT_GT(info.lease_expiry_time_ms(), lease_refresh_send_time_ms);
 
   // Refresh lease again. Current lease epoch is correct so master leader should not set new lease
   // bit.
-  info = ASSERT_RESULT(
-      ddl_client.RefreshYsqlLease(kTsUUID1, /* instance_seqno */ 1, lease_refresh_send_time_ms, 1));
+  info = ASSERT_RESULT(ddl_client.RefreshYsqlLease(kTsUUID, kSeqno, lease_refresh_send_time_ms, 1));
   ASSERT_FALSE(info.new_lease());
   ASSERT_GT(info.lease_expiry_time_ms(), lease_refresh_send_time_ms);
+}
+
+TEST_F(MasterTest, RelinquishLease) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql_operation_lease) = true;
+  const std::string kTsUUID = "ts-uuid1";
+  constexpr uint64_t kSeqno1 = 1;
+  auto reg_resp1 = ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTsUUID, kSeqno1));
+  ASSERT_FALSE(reg_resp1.needs_reregister());
+
+  auto ddl_client = MasterDDLClient{std::move(*proxy_ddl_)};
+  auto info1 = ASSERT_RESULT(ddl_client.RefreshYsqlLease(
+      kTsUUID, kSeqno1, MonoTime::Now().GetDeltaSinceMin().ToMilliseconds(), {}));
+  ASSERT_TRUE(info1.new_lease());
+  ASSERT_EQ(info1.lease_epoch(), 1);
+
+  ASSERT_OK(ddl_client.RelinquishYsqlLease(kTsUUID, kSeqno1));
+  auto list_ts = ASSERT_RESULT(cluster_client_->ListTabletServers());
+  ASSERT_EQ(list_ts.servers_size(), 1);
+  ASSERT_FALSE(list_ts.servers(0).lease_info().is_live());
+
+  // We should be able to get a new lease for a new instance of the ts.
+  constexpr uint64_t kSeqno2 = 2;
+  auto reg_resp2 = ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTsUUID, kSeqno2));
+  ASSERT_FALSE(reg_resp2.needs_reregister());
+  auto info2 = ASSERT_RESULT(ddl_client.RefreshYsqlLease(
+      kTsUUID, kSeqno2, MonoTime::Now().GetDeltaSinceMin().ToMilliseconds(), {}));
+  ASSERT_TRUE(info2.new_lease());
+  ASSERT_EQ(info2.lease_epoch(), 2);
+}
+
+TEST_F(MasterTest, RelinquishLeaseOfReplacedTS) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql_operation_lease) = true;
+  const std::string kTsUUID = "ts-uuid1";
+  constexpr uint64_t kSeqno1 = 1;
+  auto reg_resp1 = ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTsUUID, kSeqno1));
+  ASSERT_FALSE(reg_resp1.needs_reregister());
+
+  auto ddl_client = MasterDDLClient{std::move(*proxy_ddl_)};
+  auto info1 = ASSERT_RESULT(ddl_client.RefreshYsqlLease(
+      kTsUUID, kSeqno1, MonoTime::Now().GetDeltaSinceMin().ToMilliseconds(), {}));
+  ASSERT_TRUE(info1.new_lease());
+  ASSERT_EQ(info1.lease_epoch(), 1);
+
+  // Simulate a second ts process replacing the first.
+  constexpr uint64_t kSeqno2 = 2;
+  auto reg_resp2 = ASSERT_RESULT(SendNewTSRegistrationHeartbeat(kTsUUID, kSeqno2));
+  ASSERT_FALSE(reg_resp2.needs_reregister());
+  auto info2 = ASSERT_RESULT(ddl_client.RefreshYsqlLease(
+      kTsUUID, kSeqno2, MonoTime::Now().GetDeltaSinceMin().ToMilliseconds(), {}));
+  ASSERT_TRUE(info2.new_lease());
+  ASSERT_EQ(info2.lease_epoch(), 2);
+
+  // Send relinquish lease request from the first ts instance.
+  auto status = ddl_client.RelinquishYsqlLease(kTsUUID, kSeqno1);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(
+      status.ToString(), "Relinquish lease request for a replaced tserver instance");
 }
 
 Result<TSHeartbeatResponsePB> MasterTest::SendHeartbeat(
@@ -2842,7 +2895,8 @@ Result<TSHeartbeatResponsePB> MasterTest::SendHeartbeat(
   return resp;
 }
 
-Result<TSHeartbeatResponsePB> MasterTest::SendNewTSRegistrationHeartbeat(const std::string& uuid) {
+Result<TSHeartbeatResponsePB> MasterTest::SendNewTSRegistrationHeartbeat(
+    const std::string& uuid, int64_t instance_seqno) {
   TSRegistrationPB reg;
   *reg.mutable_common()->add_private_rpc_addresses() =
       MakeHostPortPB("localhost", 1000 + registered_ts_count_);
@@ -2852,7 +2906,7 @@ Result<TSHeartbeatResponsePB> MasterTest::SendNewTSRegistrationHeartbeat(const s
 
   TSToMasterCommonPB common;
   common.mutable_ts_instance()->set_permanent_uuid(uuid);
-  common.mutable_ts_instance()->set_instance_seqno(1);
+  common.mutable_ts_instance()->set_instance_seqno(instance_seqno);
   auto result = SendHeartbeat(common, reg);
   if (result.ok()) {
     registered_ts_count_++;

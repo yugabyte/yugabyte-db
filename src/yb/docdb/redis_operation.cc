@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -190,7 +190,7 @@ Result<RedisDataType> GetRedisValueType(
   SubDocument doc;
   bool doc_found = false;
   // Use the cached entry if possible to determine the value type.
-  boost::optional<DocWriteBatchCache::Entry> cached_entry;
+  std::optional<DocWriteBatchCache::Entry> cached_entry;
   if (doc_write_batch) {
     cached_entry = doc_write_batch->LookupCache(encoded_subdoc_key);
   }
@@ -1436,11 +1436,11 @@ Status RedisReadOperation::ExecuteHGetAllLikeCommands(ValueEntryType value_type,
 
   // TODO(dtxn) - pass correct transaction context when we implement cross-shard transactions
   // support for Redis.
-  GetRedisSubDocumentData data = { encoded_doc_key, &doc, &doc_found };
-  data.deadline_info = deadline_info_.get_ptr();
+  GetRedisSubDocumentData data = {encoded_doc_key, &doc, &doc_found};
+  data.deadline_info = &deadline_info_.value();
 
-  bool has_cardinality_subkey = value_type == ValueEntryType::kRedisSortedSet ||
-                                value_type == ValueEntryType::kRedisList;
+  bool has_cardinality_subkey =
+      value_type == ValueEntryType::kRedisSortedSet || value_type == ValueEntryType::kRedisList;
   bool return_array_response = add_keys || add_values;
 
   if (has_cardinality_subkey) {
@@ -1532,7 +1532,7 @@ Status RedisReadOperation::ExecuteCollectionGetRangeByBounds(
     SubDocument doc;
     bool doc_found = false;
     GetRedisSubDocumentData data = {encoded_doc_key, &doc, &doc_found};
-    data.deadline_info = deadline_info_.get_ptr();
+    data.deadline_info = &deadline_info_.value();
     data.low_subkey = &low_subkey;
     data.high_subkey = &high_subkey;
 
@@ -1589,7 +1589,7 @@ Status RedisReadOperation::ExecuteCollectionGetRangeByBounds(
     SubDocument doc;
     bool doc_found = false;
     GetRedisSubDocumentData data = {encoded_doc_key, &doc, &doc_found};
-    data.deadline_info = deadline_info_.get_ptr();
+    data.deadline_info = &deadline_info_.value();
     data.low_subkey = &low_subkey;
     data.high_subkey = &high_subkey;
     data.limit = request_.range_request_limit();
@@ -1678,8 +1678,8 @@ Status RedisReadOperation::ExecuteCollectionGetRange() {
 
       SubDocument doc;
       bool doc_found = false;
-      GetRedisSubDocumentData data = { encoded_doc_key, &doc, &doc_found};
-      data.deadline_info = deadline_info_.get_ptr();
+      GetRedisSubDocumentData data = {encoded_doc_key, &doc, &doc_found};
+      data.deadline_info = &deadline_info_.value();
       data.low_index = &low_bound;
       data.high_index = &high_bound;
 
@@ -1715,27 +1715,27 @@ namespace {
 // Assumes every value has a TTL, and the TTL is stored in the row with this key.
 // Also observe that tombstone checking only works because we assume the key has
 // no ancestors.
-Result<boost::optional<Expiration>> GetTtl(
+Result<std::optional<Expiration>> GetTtl(
     const Slice& encoded_subdoc_key, IntentAwareIterator* iter) {
-  auto dockey_size =
-    VERIFY_RESULT(DocKey::EncodedSize(encoded_subdoc_key, dockv::DocKeyPart::kWholeDocKey));
-  Slice key_slice(encoded_subdoc_key.data(), dockey_size);
-  iter->Seek(key_slice, SeekFilter::kAll);
-  auto key_data = VERIFY_RESULT_REF(iter->Fetch());
-  if (!key_data) {
-    return boost::none;
-  }
-  if (!key_data.key.compare(key_slice)) {
+    auto dockey_size =
+        VERIFY_RESULT(DocKey::EncodedSize(encoded_subdoc_key, dockv::DocKeyPart::kWholeDocKey));
+    Slice key_slice(encoded_subdoc_key.data(), dockey_size);
+    iter->Seek(key_slice, SeekFilter::kAll);
+    auto key_data = VERIFY_RESULT_REF(iter->Fetch());
+    if (!key_data) {
+    return std::nullopt;
+    }
+    if (!key_data.key.compare(key_slice)) {
     dockv::Value doc_value{dockv::PrimitiveValue(ValueEntryType::kInvalid)};
     RETURN_NOT_OK(doc_value.Decode(key_data.value));
     if (doc_value.value_type() != ValueEntryType::kTombstone) {
       return Expiration(VERIFY_RESULT(key_data.write_time.Decode()).hybrid_time(), doc_value.ttl());
     }
-  }
-  return boost::none;
+    }
+    return std::nullopt;
 }
 
-} // namespace
+}  // namespace
 
 Status RedisReadOperation::ExecuteGetTtl() {
   const RedisKeyValuePB& kv = request_.key_value();
@@ -1756,7 +1756,7 @@ Status RedisReadOperation::ExecuteGetTtl() {
     return Status::OK();
   }
 
-  auto exp = maybe_ttl_exp.get();
+  auto exp = maybe_ttl_exp.value();
   if (exp.ttl.Equals(ValueControlFields::kMaxTtl)) {
     response_.set_int_response(-1);
     return Status::OK();
@@ -2049,7 +2049,7 @@ Status RedisReadOperation::ExecuteKeys() {
     if (!key_data) {
       break;
     }
-    if (deadline_info_.get_ptr()) {
+    if (deadline_info_) {
       RETURN_NOT_OK(deadline_info_->CheckDeadlinePassed());
     }
     auto key = key_data.key;
@@ -2070,10 +2070,10 @@ Status RedisReadOperation::ExecuteKeys() {
     }
 
     GetRedisSubDocumentData data = {key, &result, &doc_found};
-    data.deadline_info = deadline_info_.get_ptr();
+    data.deadline_info = &deadline_info_.value();
     data.return_type_only = true;
-    RETURN_NOT_OK(GetRedisSubDocument(iterator_.get(), data, /* projection */ nullptr,
-                                      SeekFwdSuffices::kFalse));
+    RETURN_NOT_OK(GetRedisSubDocument(
+        iterator_.get(), data, /* projection */ nullptr, SeekFwdSuffices::kFalse));
 
     if (doc_found) {
       if (--threshold < 0) {

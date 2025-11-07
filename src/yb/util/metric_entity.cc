@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -178,7 +178,8 @@ AggregationLevels MetricEntity::ReconstructPrometheusAttributesUnlocked() {
 
   const std::string& prototype_type = prototype_->name();
   prometheus_attributes_.clear();
-  if (prototype_type == "tablet" || prototype_type == "table") {
+  if (prototype_type == "tablet" || prototype_type == "table" ||
+      prototype_type == kVectorIndexMetricEntityName) {
     aggregation_id_for_pre_aggregation_ = attributes_["table_id"];
     prometheus_attributes_["table_id"] = aggregation_id_for_pre_aggregation_;
     prometheus_attributes_["table_name"] = attributes_["table_name"];

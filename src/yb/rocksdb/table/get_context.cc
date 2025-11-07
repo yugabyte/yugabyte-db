@@ -3,9 +3,9 @@
 //  LICENSE file in the root directory of this source tree. An additional grant
 //  of patent rights can be found in the PATENTS file in the same directory.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -122,13 +122,11 @@ bool GetContext::SaveValue(const ParsedInternalKey& parsed_key,
           if (value_ != nullptr) {
             bool merge_success = false;
             {
-              StopWatchNano timer(env_, statistics_ != nullptr);
+              StopWatchNano timer(env_, statistics_, MERGE_OPERATION_TOTAL_TIME);
               PERF_TIMER_GUARD(merge_operator_time_nanos);
               merge_success = merge_operator_->FullMerge(
                   user_key_, &value, merge_context_->GetOperands(), value_,
                   logger_);
-              RecordTick(statistics_, MERGE_OPERATION_TOTAL_TIME,
-                         timer.ElapsedNanosSafe());
             }
             if (!merge_success) {
               RecordTick(statistics_, NUMBER_MERGE_FAILURES);
@@ -150,13 +148,11 @@ bool GetContext::SaveValue(const ParsedInternalKey& parsed_key,
           if (value_ != nullptr) {
             bool merge_success = false;
             {
-              StopWatchNano timer(env_, statistics_ != nullptr);
+              StopWatchNano timer(env_, statistics_, MERGE_OPERATION_TOTAL_TIME);
               PERF_TIMER_GUARD(merge_operator_time_nanos);
               merge_success = merge_operator_->FullMerge(
                   user_key_, nullptr, merge_context_->GetOperands(), value_,
                   logger_);
-              RecordTick(statistics_, MERGE_OPERATION_TOTAL_TIME,
-                         timer.ElapsedNanosSafe());
             }
             if (!merge_success) {
               RecordTick(statistics_, NUMBER_MERGE_FAILURES);

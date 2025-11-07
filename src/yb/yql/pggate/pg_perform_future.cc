@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -29,13 +29,14 @@ Status PatchStatus(const Status& status, const PgObjectIds& relations) {
   }
 
   const auto max_relation_index = relations.size();
-  const auto op_index = OpIndex::ValueFromStatus(status).get_value_or(max_relation_index);
+  const auto op_index = OpIndex::ValueFromStatus(status).value_or(max_relation_index);
   if (op_index < max_relation_index) {
     static const auto duplicate_key_status =
         STATUS(AlreadyPresent, PgsqlError(YBPgErrorCode::YB_PG_UNIQUE_VIOLATION));
     const auto& actual_status =
         PgsqlRequestStatus(status) == PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR
-          ? duplicate_key_status : status;
+            ? duplicate_key_status
+            : status;
     return actual_status.CloneAndAddErrorCode(RelationOid(relations[op_index].object_oid));
   }
   return status;

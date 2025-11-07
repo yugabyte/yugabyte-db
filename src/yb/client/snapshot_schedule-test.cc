@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -187,9 +187,9 @@ TEST_F(SnapshotScheduleTest, TablegroupGC) {
   TablespaceId tablespace_id = "";
   auto client = ASSERT_RESULT(cluster_->CreateClient());
 
-  ASSERT_OK(client->CreateNamespace(namespace_name, YQL_DATABASE_PGSQL, "" /* creator */,
-                                     "" /* ns_id */, "" /* src_ns_id */,
-                                     boost::none /* next_pg_oid */, nullptr /* txn */, false));
+  ASSERT_OK(client->CreateNamespace(
+      namespace_name, YQL_DATABASE_PGSQL, "" /* creator */, "" /* ns_id */, "" /* src_ns_id */,
+      std::nullopt /* next_pg_oid */, nullptr /* txn */, false));
   {
     auto namespaces = ASSERT_RESULT(client->ListNamespaces());
     for (const auto& ns : namespaces) {
@@ -373,20 +373,19 @@ TEST_F(SnapshotScheduleTest, DeletedNamespace) {
   const std::string db_name = "demo";
   // Create namespace.
   int32_t db_oid = 16900;
-  ASSERT_OK(client_->CreateNamespace(db_name, YQL_DATABASE_PGSQL, "" /* creator */,
-                                     GetPgsqlNamespaceId(db_oid), "" /* src_ns_id */,
-                                     boost::none /* next_pg_oid */, nullptr /* txn */, false));
+  ASSERT_OK(client_->CreateNamespace(
+      db_name, YQL_DATABASE_PGSQL, "" /* creator */, GetPgsqlNamespaceId(db_oid),
+      "" /* src_ns_id */, std::nullopt /* next_pg_oid */, nullptr /* txn */, false));
   // Drop the namespace.
   ASSERT_OK(client_->DeleteNamespace(db_name, YQL_DATABASE_PGSQL));
   // Create namespace again.
   db_oid++;
-  ASSERT_OK(client_->CreateNamespace(db_name, YQL_DATABASE_PGSQL, "" /* creator */,
-                                     GetPgsqlNamespaceId(db_oid), "" /* src_ns_id */,
-                                     boost::none /* next_pg_oid */, nullptr /* txn */, false));
+  ASSERT_OK(client_->CreateNamespace(
+      db_name, YQL_DATABASE_PGSQL, "" /* creator */, GetPgsqlNamespaceId(db_oid),
+      "" /* src_ns_id */, std::nullopt /* next_pg_oid */, nullptr /* txn */, false));
   // Create schedule and PITR.
   auto schedule_id = ASSERT_RESULT(snapshot_util_->CreateSchedule(
-      nullptr, YQL_DATABASE_PGSQL, db_name,
-      WaitSnapshot::kTrue, kInterval, kRetention));
+      nullptr, YQL_DATABASE_PGSQL, db_name, WaitSnapshot::kTrue, kInterval, kRetention));
   // Validate the filter has namespace id set.
   auto schedule = ASSERT_RESULT(snapshot_util_->ListSchedules(schedule_id));
   ASSERT_EQ(schedule.size(), 1);

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -1255,8 +1255,9 @@ void TestBackfillIndexTable(
         if (!backfill_job) {
           return backfill_job.status();
         }
-        const auto number_rows_processed = backfill_job->num_rows_processed();
-        return number_rows_processed >= kLowerBound;
+        const auto num_rows_read_from_table_for_backfill =
+            backfill_job->num_rows_read_from_table_for_backfill();
+        return num_rows_read_from_table_for_backfill >= kLowerBound;
       }, kMaxWait),
       "Could not get BackfillJobPB. May be OK, if the backfill is already done.");
 
@@ -1358,11 +1359,7 @@ TEST_F_EX(CppCassandraDriverTest, WaitForSplitsToComplete, CppCassandraDriverTes
   const std::string table_id = ASSERT_RESULT(GetTableIdByTableName(
       client_.get(), kNamespace, kTableName));
 
-  ASSERT_OK(client_->FlushTables(
-      {table_id},
-      false /* add_indexes */,
-      3 /* timeout_secs */,
-      false /* is_compaction */));
+  ASSERT_OK(client_->FlushTables({table_id}, MonoDelta::FromSeconds(3)));
 
   // Create a split that will not complete until we set the test flag to true.
   ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_tserver_get_split_key", "true"));

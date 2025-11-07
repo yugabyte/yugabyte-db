@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 YugaByte, Inc. and Contributors
+ * Copyright 2019 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -50,7 +50,7 @@ public class DeleteNode extends NodeTaskBase {
               removeNodeByName(taskParams().nodeName, universeDetails.nodeDetailsSet);
               // Update Placement Info to reflect new nodeDetailSet
               Set<NodeDetails> clusterNodes = universeDetails.getNodesInCluster(cluster.uuid);
-              updatePlacementInfo(clusterNodes, cluster.placementInfo);
+              updatePlacementInfo(clusterNodes, cluster);
 
               // Update userIntent to reflect new numNodes
               cluster.userIntent.numNodes =

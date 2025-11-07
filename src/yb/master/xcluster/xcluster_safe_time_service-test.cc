@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -58,7 +58,7 @@ class XClusterSafeTimeServiceMocked : public XClusterSafeTimeService {
     return OK();
   }
 
-  XClusterNamespaceToSafeTimeMap GetXClusterNamespaceToSafeTimeMap() override {
+  XClusterNamespaceToSafeTimeMap GetXClusterNamespaceToSafeTimeMap() const override {
     return safe_time_map_;
   }
 
@@ -133,13 +133,13 @@ class XClusterSafeTimeServiceTest : public YBTest {
   Result<HybridTime> GetXClusterSafeTimeWithNoFilter(
       XClusterSafeTimeServiceMocked& safe_time_service, const NamespaceId& namespace_id) {
     return safe_time_service.GetXClusterSafeTimeForNamespace(
-        dummy_leader_term, namespace_id, XClusterSafeTimeFilter::NONE);
+        namespace_id, XClusterSafeTimeFilter::NONE);
   }
 
   Result<HybridTime> GetXClusterSafeTimeFilterOutDdlQueue(
       XClusterSafeTimeServiceMocked& safe_time_service, const NamespaceId& namespace_id) {
     return safe_time_service.GetXClusterSafeTimeForNamespace(
-        dummy_leader_term, namespace_id, XClusterSafeTimeFilter::DDL_QUEUE);
+        namespace_id, XClusterSafeTimeFilter::DDL_QUEUE);
   }
 };
 

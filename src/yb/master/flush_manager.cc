@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -26,11 +26,7 @@
 #include "yb/util/status_log.h"
 #include "yb/util/trace.h"
 
-namespace yb {
-namespace master {
-
-using std::map;
-using std::vector;
+namespace yb::master {
 
 Status FlushManager::FlushTables(const FlushTablesRequestPB* req,
                                  FlushTablesResponsePB* resp,
@@ -52,7 +48,7 @@ Status FlushManager::FlushTables(const FlushTablesRequestPB* req,
       catalog_manager_->CollectTables(req->tables(), req->add_indexes()));
 
   // Per TS tablet lists for all provided tables.
-  map<TabletServerId, vector<TabletId>> ts_tablet_map;
+  std::map<TabletServerId, std::vector<TabletId>> ts_tablet_map;
   scoped_refptr<TableInfo> table;
 
   for (const TableDescription& table_description : tables) {
@@ -104,9 +100,13 @@ Status FlushManager::FlushTables(const FlushTablesRequestPB* req,
   // Send FlushTablets requests to all Tablet Servers (one TS - one request).
   auto deadline = rpc ? ToSteady(rpc->GetClientDeadline()) : MonoTime::Max();
   for (const auto& ts : ts_tablet_map) {
+    // Start the background task to send the FlushTablets RPC to the Tablet Server.
     // Using last table async task queue.
-    SendFlushTabletsRequest(
-        ts.first, table, ts.second, flush_id, is_compaction, req->regular_only(), epoch, deadline);
+    auto call = std::make_shared<AsyncFlushTablets>(
+      master_, catalog_manager_->AsyncTaskPool(), ts.first, table, ts.second, flush_id,
+      is_compaction, req->flags(), epoch, deadline);
+    table->AddTask(call);
+    WARN_NOT_OK(catalog_manager_->ScheduleTask(call), "Failed to send flush tablets request");
   }
 
   resp->set_flush_request_id(flush_id);
@@ -139,21 +139,6 @@ Status FlushManager::IsFlushTablesDone(const IsFlushTablesDoneRequestPB* req,
   VLOG(1) << "IsFlushTablesDone request: " << req->flush_request_id()
           << " Done: " << resp->done() << " Success " << resp->success();
   return Status::OK();
-}
-
-void FlushManager::SendFlushTabletsRequest(const TabletServerId& ts_uuid,
-                                           const scoped_refptr<TableInfo>& table,
-                                           const vector<TabletId>& tablet_ids,
-                                           const FlushRequestId& flush_id,
-                                           const bool is_compaction,
-                                           const bool regular_only,
-                                           const LeaderEpoch& epoch,
-                                           MonoTime deadline) {
-  auto call = std::make_shared<AsyncFlushTablets>(
-      master_, catalog_manager_->AsyncTaskPool(), ts_uuid, table, tablet_ids, flush_id,
-      is_compaction, regular_only, epoch, deadline);
-  table->AddTask(call);
-  WARN_NOT_OK(catalog_manager_->ScheduleTask(call), "Failed to send flush tablets request");
 }
 
 void FlushManager::HandleFlushTabletsRpcFinish(const FlushRequestId& flush_id,
@@ -224,5 +209,4 @@ void FlushManager::DeleteCompleteFlushRequests() {
   }
 }
 
-} // namespace master
-} // namespace yb
+} // namespace yb::master

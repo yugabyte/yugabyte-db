@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -29,24 +29,8 @@ dockv::KeyEntryValues GetRangeKeyScanSpec(
     const dockv::KeyEntryValues* prefixed_range_components,
     const QLScanRange* scan_range,
     std::vector<bool>* inclusivities,
-    bool lower_bound,
+    BoundType bound_type,
     bool include_static_columns = false,
     bool* trivial = nullptr);
-
-// Gets the lower/upper bound value of the given range
-dockv::KeyEntryValue GetQLRangeBoundAsPVal(const QLScanRange::QLRange& ql_range,
-                                           SortingType sorting_type,
-                                           bool lower_bound);
-
-const boost::optional<QLScanRange::QLBound> &GetQLRangeBound(
-    const QLScanRange::QLRange& ql_range,
-    SortingType sorting_type,
-    bool lower_bound);
-
-// Gets whether the lower/upper bound of the given range is inclusive
-bool GetQLRangeBoundIsInclusive(
-    const QLScanRange::QLRange& ql_range,
-    SortingType sorting_type,
-    bool lower_bound);
 
 }  // namespace yb::qlexpr

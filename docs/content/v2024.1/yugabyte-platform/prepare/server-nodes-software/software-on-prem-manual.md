@@ -1,9 +1,9 @@
 ---
-title: YugabyteDB Anywhere on-premises node provisioning
+title: Legacy manual on-premises node provisioning
 headerTitle: Legacy provisioning
 linkTitle: Legacy provisioning
-description: Software requirements for on-premises provider nodes.
-headContent: How to meet the software prerequisites for database nodes
+description: How to provision on-premises provider nodes using legacy manual method.
+headContent: Prepare a VM for deploying universes on-premises
 menu:
   v2024.1_yugabyte-platform:
     identifier: software-on-prem-4-manual
@@ -11,6 +11,10 @@ menu:
     weight: 10
 type: docs
 ---
+
+{{< warning title="Legacy provisioning deprecated" >}}
+Legacy provisioning of on-premises nodes is deprecated. Before you can upgrade YugabyteDB Anywhere to v2025.2, all universes must be updated to use node agent and provisioned using the [node agent script](../software-on-prem/#run-the-provisioning-script). For more information, refer to [Prepare to upgrade](../../../upgrade/prepare-to-upgrade/).
+{{< /warning >}}
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
@@ -383,6 +387,7 @@ You can install systemd-specific database service unit files, as follows:
 
     [Service]
     # Start
+    ExecStartPre=/home/yugabyte/bin/clock-sync.sh
     ExecStart=/home/yugabyte/master/bin/yb-master --flagfile /home/yugabyte/master/conf/server.conf
     Restart=on-failure
     RestartSec=5
@@ -420,6 +425,7 @@ You can install systemd-specific database service unit files, as follows:
 
     [Service]
     # Start
+    ExecStartPre=/home/yugabyte/bin/clock-sync.sh
     ExecStart=/home/yugabyte/tserver/bin/yb-tserver --flagfile /home/yugabyte/tserver/conf/server.conf
     Restart=on-failure
     RestartSec=5

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -44,6 +44,7 @@ class CDCSDKConsumptionConsistentChangesTest : public CDCSDKYsqlTest {
   void TestSlotRowDeletion(bool multiple_streams);
   void TestColocatedUpdateWithIndex(bool use_pk_as_index);
   void TestColocatedUpdateAffectingNoRows(bool use_multi_shard);
+  void TestExplcictCheckpointMovementAfterDDL(bool no_activity_post_ddl);
 };
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVirtualWAL) {
@@ -1990,6 +1991,183 @@ TEST_F(
   CheckRecordCount(final_resp, total_dml_performed);
 }
 
+TEST_F(
+    CDCSDKConsumptionConsistentChangesTest,
+    TestChildTabletPolledFromLatestCheckpointOnVWALRestart) {
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* populate_safepoint_record */));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> p_tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &p_tablets, nullptr));
+  ASSERT_EQ(p_tablets.size(), 1);
+
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  // Table having key:value_1 column
+  ASSERT_OK(WriteRows(0 /* start */, 10 /* end */, &test_cluster_));
+
+  ASSERT_OK(WaitForFlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+  WaitUntilSplitIsSuccesful(p_tablets.Get(0).tablet_id(), table);
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_after_split;
+  ASSERT_OK(
+      test_client()->GetTablets(
+          table, 0, &tablets_after_split, nullptr, RequireTabletsRunning::kFalse,
+          master::IncludeInactive::kTrue));
+  // tablets_after_split should have 3 tablets - one parent & two childrens
+  ASSERT_EQ(tablets_after_split.size(), 3);
+
+  // Stalling the updates to cdc state table for one of the child tablets
+  for (const auto& tablet : tablets_after_split) {
+    if (tablet.tablet_id() != p_tablets.Get(0).tablet_id()) {
+      FLAGS_TEST_cdc_tablet_id_to_stall_state_table_updates = tablet.tablet_id();
+      break;
+    }
+  }
+
+  ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}));
+
+  // Doing 4 iterations of GetConsistentChanges:
+  // - 1st call will report the tablet split error to VWAL and VWAL will successfully replace parent
+  // tablet with its children tablets, creating tablet_queues for them.
+  // - 2nd call's response will return records > 0 from the children tablets.
+  // - 3rd and 4th calls are required to update the explicit checkpoint of tablet-stream entry in
+  // cdc state table for child tablet other than
+  // FLAGS_TEST_cdc_tablet_id_to_stall_state_table_updates.
+  for (int i = 1; i <= 4; i++) {
+    auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+    if (change_resp.cdc_sdk_proto_records_size() > 0) {
+      ASSERT_EQ(i, 2);  // Only 2nd call should return records.
+      auto last_record = change_resp.cdc_sdk_proto_records().rbegin();
+      auto last_lsn = last_record->row_message().pg_lsn();
+      ASSERT_OK(UpdateAndPersistLSN(stream_id, last_lsn, last_lsn));
+    }
+  }
+
+  // Restarting the VWAL. Although both the child tablets were already polled, however as we are
+  // simulating the situation where only one of the child tablet got polled (since the other
+  // child's tablet-stream entry in cdc state table is not updated to reflect that),
+  // VWAL on restart thinks that both the child tablets are not being polled yet and so create
+  // parent tablet's queue again.
+  ASSERT_OK(DestroyVirtualWAL());
+  ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}));
+
+  // Doing 2 iterations of GetConsistentChanges:
+  // - 1st one will still report the tablet split error on VWAL side (and returns zero records in
+  // response).
+  // - 2nd one's response shouldn't get any records as records for both child tablets were already
+  // polled before the restart.
+  for (int i = 1; i <= 2; i++) {
+    auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+    ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 0);
+  }
+}
+
+TEST_F(
+    CDCSDKConsumptionConsistentChangesTest, TestChildrenTabletsCheckpointMoveAheadOfParentTablet) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* populate_safepoint_record */));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> p_tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &p_tablets, nullptr));
+  ASSERT_EQ(p_tablets.size(), 1);
+
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}));
+
+  vector<uint64_t> commit_lsn;
+
+  // Performing some INSERT transactions and polling the records so as to populate VWAL's
+  // commit_meta_and_last_req_map_.
+  for (int i = 1; i <= 4; i++) {
+    ASSERT_OK(WriteRows(i /* start */, i + 1 /* end */, &test_cluster_));
+    auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+    ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 3);
+    auto record = change_resp.cdc_sdk_proto_records().Get(2);
+    ASSERT_EQ(record.row_message().op(), RowMessage::COMMIT);
+    commit_lsn.push_back(record.row_message().pg_lsn());
+  }
+
+  // Updating and persisting LSN only till 2nd txn's commit LSN.
+  ASSERT_OK(UpdateAndPersistLSN(stream_id, commit_lsn[1], commit_lsn[1] + 1));
+  auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 0);
+  auto checkpoint_1 = ASSERT_RESULT(
+      GetStreamCheckpointInCdcState(test_client(), stream_id, p_tablets[0].tablet_id()));
+  ASSERT_GT(checkpoint_1, OpId(1, 1));
+
+  // Splitting the tablet
+  ASSERT_OK(WaitForFlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+  WaitUntilSplitIsSuccesful(p_tablets.Get(0).tablet_id(), table);
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_after_split;
+  ASSERT_OK(
+      test_client()->GetTablets(
+          table, 0, &tablets_after_split, nullptr, RequireTabletsRunning::kFalse,
+          master::IncludeInactive::kTrue));
+  // tablets_after_split should have 3 tablets - one parent & two childrens
+  ASSERT_EQ(tablets_after_split.size(), 3);
+
+  // Next GetConsistentChanges() call will report the tablet split error with 0 records.
+  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 0);
+
+  // Updating and persisting LSN till 3rd txn's commit LSN. Note that this txn was streamed when
+  // parent tablet hadn't split.
+  ASSERT_OK(UpdateAndPersistLSN(stream_id, commit_lsn[2], commit_lsn[2] + 1));
+
+  ASSERT_OK(WriteRows(100 /* start */, 101 /* end */, &test_cluster_));
+  // Next 2 GetConsistentChanges() call will return records from each child tablet.
+  for (int i = 1; i <= 2; i++) {
+    change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+    if (change_resp.cdc_sdk_proto_records_size() > 0) {
+      ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 3);
+      auto record = change_resp.cdc_sdk_proto_records().Get(2);
+      ASSERT_EQ(record.row_message().op(), RowMessage::COMMIT);
+      commit_lsn.push_back(record.row_message().pg_lsn());
+    }
+  }
+
+  // - The parent tablet's checkpoint will not move ahead as it isn't polled for any records after
+  // the split.
+  // - The checkpoint of child tablets will also not move ahead of checkpoint_1 as VWAL's
+  // commit_meta_and_last_req_map_ will have empty last_sent_req_for_begin_map in its first element
+  // for child tablets. And so no explicit checkpoint was sent by VWAL in previous GetChanges() call
+  // for each child tablet.
+  for (const auto& tablet : tablets_after_split) {
+    auto checkpoint =
+        ASSERT_RESULT(GetStreamCheckpointInCdcState(test_client(), stream_id, tablet.tablet_id()));
+    ASSERT_EQ(checkpoint, checkpoint_1);
+  }
+
+  // Updating and persisting commit LSN of last txn.
+  ASSERT_OK(UpdateAndPersistLSN(stream_id, commit_lsn.back(), commit_lsn.back()));
+  // Next 2 GetConsistentChanges() call will poll each child tablet.
+  for (int i = 1; i <= 2; i++) {
+    change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+    ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 0);
+  }
+
+  // The child tablets checkpoint should have moved ahead of checkpoint_1.
+  for (const auto& tablet : tablets_after_split) {
+    if (tablet.tablet_id() == p_tablets[0].tablet_id()) {
+      continue;
+    }
+    auto checkpoint =
+        ASSERT_RESULT(GetStreamCheckpointInCdcState(test_client(), stream_id, tablet.tablet_id()));
+    ASSERT_GT(checkpoint, checkpoint_1);
+  }
+}
+
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestDynamicTablesAddition) {
   uint64_t publication_refresh_interval = 5;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 1_KB;
@@ -2680,6 +2858,65 @@ TEST_F(
   auto slot_row = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
   ASSERT_EQ(tablet_peer_1->get_cdc_sdk_safe_time(), slot_row->record_id_commit_time);
   ASSERT_EQ(tablet_peer_2->get_cdc_sdk_safe_time(), slot_row->record_id_commit_time);
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestBeforeImageNotExistErrorPropagation) {
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+  uint32_t num_cols = 3;
+  auto table = ASSERT_RESULT(CreateTable(
+    &test_cluster_, kNamespaceName, kTableName, 1, true, false, 0, false, "", "public", num_cols));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  // Set the replica identity to FULL. This is needed to get before image in update operation.
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 REPLICA IDENTITY FULL", kTableName));
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}));
+
+  map<std::string, uint32_t> col_val_map1, col_val_map2;
+  col_val_map1.insert({"col2", 9});
+  col_val_map1.insert({"col3", 10});
+  col_val_map2.insert({"col2", 10});
+  col_val_map2.insert({"col3", 11});
+  ASSERT_OK(UpdateRowsHelper(1, 2, &test_cluster_, true, 1, col_val_map1, col_val_map2, num_cols));
+
+  // Getting the consistent changes from stream and expecting a non-ok status due to "Failed to get
+  // the beforeimage" error. This error occurs when an UPDATE follows an INSERT for the same row in
+  // the same transaction, and the before image is unavailable.
+  // However, when packed rows are enabled, all the UPDATE operation/s of the same row gets absorbed
+  // into the INSERT operation and hence the before image is not required. In that case, we expect
+  // GetConsistentChanges to return the records without any error.
+  if (FLAGS_ysql_enable_packed_row) {
+    ASSERT_OK(GetConsistentChangesFromCDC(stream_id));
+  } else {
+    ASSERT_NOK_STR_CONTAINS(
+        GetConsistentChangesFromCDC(stream_id), "Failed to get the beforeimage");
+  }
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestRetryableErrorsNotSentToWalsender) {
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}));
+
+  vector<TestSimulateErrorCode> error_codes = {
+      TestSimulateErrorCode::PeerNotStarted,
+      TestSimulateErrorCode::TabletUnavailable,
+      TestSimulateErrorCode::PeerNotLeader,
+      TestSimulateErrorCode::PeerNotReadyToServe,
+      TestSimulateErrorCode::LogSegmentFooterNotFound,
+      TestSimulateErrorCode::LogIndexCacheEntryNotFound};
+
+  for (auto error_code : error_codes) {
+    // Setting the flag to mimic retryable errors. The expectation is that
+    // CDCServiceImpl::GetConsistentChanges() should not return an error since such error is
+    // expected to be retryable.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_simulate_error_for_get_changes) = error_code;
+    auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+    ASSERT_FALSE(change_resp.has_error());
+  }
 }
 
 // This test verifies the behaviour of VWAL when the publication refresh interval is changed when
@@ -4506,84 +4743,221 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestColocatedMultiShardUpdateAffe
   TestColocatedUpdateAffectingNoRows(true /* use_multi_shard*/);
 }
 
-TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCheckpointNoUpdateUponCdcStateUpdateFailure) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_interval_secs) = 0;
+void CDCSDKConsumptionConsistentChangesTest::TestExplcictCheckpointMovementAfterDDL(
+    bool no_activity_post_ddl) {
+  // We do not want the mechanism to move restart time forward when nothing is left to stream to
+  // interfere with this test. We will enable this mechanism only for no_activity_post_ddl case.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_when_nothing_to_stream) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+
+  google::SetVLOGLevel("cdcsdk_virtual_wal", 3);
   ASSERT_OK(SetUpWithParams(
       3 /* rf */, 1 /* num_masters */, false /* colocated */,
       true /* cdc_populate_safepoint_record */));
 
-  // Create a table with 1 tablet.
+  auto table =
+      ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, 1 /* num_tablets*/));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (1, 1)"));
+
+  auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 3);
+  auto restart_lsn = change_resp.cdc_sdk_proto_records()[2].row_message().pg_lsn();
+  ASSERT_OK(UpdateAndPersistLSN(stream_id, restart_lsn, restart_lsn));
+
+  // The explicit checkpoint will be persisted in the next GetChanges call after
+  // UpdateAndPersistLSN.
+  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+
+  OpId old_checkpoint, new_checkpoint;
+  old_checkpoint = ASSERT_RESULT(GetCheckpointFromStateTable(stream_id, tablets[0].tablet_id()));
+
+  // Perform a DDL.
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN value_2 int"));
+
+  if (no_activity_post_ddl) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_when_nothing_to_stream) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_interval_secs) = 0;
+
+    // Sleep to ensure that leader safe time moves forward.
+    SleepFor(MonoDelta::FromSeconds(10 * kTimeMultiplier));
+
+    // Keep calling GetConsistentChanges. Eventually the restart time will be moved beoynd the DDL's
+    // commit time based on the SAFEPOINT records. After this we will move the checkpoint forward.
+    ASSERT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          change_resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+          new_checkpoint =
+              VERIFY_RESULT(GetCheckpointFromStateTable(stream_id, tablets[0].tablet_id()));
+          return new_checkpoint.index > old_checkpoint.index;
+        },
+        MonoDelta::FromSeconds(120), "Timed out waiting for checkpoint to move forward"));
+  } else {
+    // Insert and consume a DML after the DDL.
+    ASSERT_OK(conn.Execute("INSERT INTO test_table values (2, 2, 2)"));
+
+    change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+    ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 4);
+
+    // Since we haven't acknowledged anything after getting the old_checkpoint, the checkpoints in
+    // the state table should not move.
+    new_checkpoint = ASSERT_RESULT(GetCheckpointFromStateTable(stream_id, tablets[0].tablet_id()));
+    ASSERT_EQ(old_checkpoint.term, new_checkpoint.term);
+    ASSERT_EQ(old_checkpoint.index, new_checkpoint.index);
+
+    // Acknowledge the DML and call GetConsistentChanges that will persist the updated explicit
+    // checkpoint.
+    restart_lsn = change_resp.cdc_sdk_proto_records()[3].row_message().pg_lsn();
+    ASSERT_OK(UpdateAndPersistLSN(stream_id, restart_lsn, restart_lsn));
+    change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+
+    new_checkpoint = ASSERT_RESULT(GetCheckpointFromStateTable(stream_id, tablets[0].tablet_id()));
+  }
+
+  ASSERT_GT(new_checkpoint.index, old_checkpoint.index);
+}
+
+TEST_F(
+    CDCSDKConsumptionConsistentChangesTest,
+    TestExplcictCheckpointMovementAfterDDLWithNoActivityPostDDL) {
+  TestExplcictCheckpointMovementAfterDDL(true /* no_activity_post_ddl*/);
+}
+
+TEST_F(
+    CDCSDKConsumptionConsistentChangesTest,
+    TestExplcictCheckpointMovementAfterDDLWithActivityPostDDL) {
+  TestExplcictCheckpointMovementAfterDDL(false /* no_activity_post_ddl*/);
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestExplcictCheckpointMovementAfterMultipleDDL) {
+  // We do not want the mechanism to move restart time forward when nothing is left to stream to
+  // interfere with this test.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_when_nothing_to_stream) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+
+  ASSERT_OK(SetUpWithParams(
+      3 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* cdc_populate_safepoint_record */));
+
+  auto table =
+      ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, 1 /* num_tablets*/));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}));
+
+  auto old_checkpoint =
+      ASSERT_RESULT(GetCheckpointFromStateTable(stream_id, tablets[0].tablet_id()));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  // Perform DDL 1.
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN value_2 int"));
+
+  // Insert row 1 and consume it.
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1,1,1)"));
+  auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 4);
+  auto commit_lsn_1 = change_resp.cdc_sdk_proto_records()[3].row_message().pg_lsn();
+
+  // Perform DDL 2
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN value_3 int"));
+
+  // Insert row 2 and consume it.
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2,2,2,2)"));
+  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 4);
+  auto commit_lsn_2 = change_resp.cdc_sdk_proto_records()[3].row_message().pg_lsn();
+
+  // Acknowledge row 1 and call GetConsistentChanges.
+  ASSERT_OK(UpdateAndPersistLSN(stream_id, commit_lsn_1, commit_lsn_1));
+  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+
+  // Since we have an unacknowledged DDL (DDL 2), we will not move the checkpoint forward.
+  auto new_checkpoint =
+      ASSERT_RESULT(GetCheckpointFromStateTable(stream_id, tablets[0].tablet_id()));
+  ASSERT_EQ(old_checkpoint.term, new_checkpoint.term);
+  ASSERT_EQ(old_checkpoint.index, new_checkpoint.index);
+
+  // Acknowledge row 2 and call GetConsistentChanges to send explicit checkpoint.
+  ASSERT_OK(UpdateAndPersistLSN(stream_id, commit_lsn_2, commit_lsn_2));
+  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+
+  // Now that all the DDLs have been acknowledged, we should move the checkpoint forward.
+  new_checkpoint = ASSERT_RESULT(GetCheckpointFromStateTable(stream_id, tablets[0].tablet_id()));
+  ASSERT_GT(new_checkpoint.index, old_checkpoint.index);
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCDCWithSavePoint) {
+  ASSERT_OK(SetUpWithParams(
+    1 /* rf */, 1 /* num_masters */, false /* colocated */,
+    true /* cdc_populate_safepoint_record */));
+
   const uint32_t num_tablets = 1;
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr /* partition_list_version */));
   ASSERT_EQ(tablets.size(), num_tablets);
 
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
 
-  ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}, kVWALSessionId1));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (1, 1)"));
+  ASSERT_OK(conn.Execute("SAVEPOINT sp1"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (2, 2)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (3, 3)"));
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT sp1"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (2, 2)"));
+  ASSERT_OK(conn.Execute("END"));
 
-  //  We sleep for 5 seconds to ensure that leader safe time has moved beyond consistent snapshot
-  //  time.
-  SleepFor(MonoDelta::FromSeconds(5));
-
-  // Insert 1 record, consume and acknowledge it.
-  ASSERT_OK(WriteRows(0, 1, &test_cluster_));
-  auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 3);
-
-  // Acknowledging this record should move the restart time forward.
-  auto commit_lsn = change_resp.cdc_sdk_proto_records().Get(2).row_message().pg_lsn();
-  ASSERT_OK(UpdateAndPersistLSN(stream_id, commit_lsn, commit_lsn));
-
-  auto slot_entry = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
-  auto restart_time_1 = slot_entry->record_id_commit_time;
-
-  // Introduce a DDL and then add a failure so that the entry cannot be updated in cdc_state table.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_fail_before_updating_cdc_state) = true;
-
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
-  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD col_2 int DEFAULT 123;", kTableName));
-
-  // Insert more records.
-  ASSERT_OK(WriteRows(1, 2, &test_cluster_));
-  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 4 /* DDL + BEGIN + INSERT + COMMIT */);
-
-  // The call to UpdateAndPersistLSN would fail because of our artificially introduced
-  // failure resulting in a scenario where the local map will be truncated but the update
-  // to cdc_state table has failed.
-  commit_lsn = change_resp.cdc_sdk_proto_records().Get(3).row_message().pg_lsn();
-  ASSERT_NOK(UpdateAndPersistLSN(stream_id, commit_lsn, commit_lsn));
-
-  // Ensure that another GetChanges has been called to simulate the scenario
-  // of an explicit checkpoint being sent to individual tablets.
-  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
-
-  // Assert that restart time has not moved forward.
-  slot_entry = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
-  auto restart_time_2 = slot_entry->record_id_commit_time;
-  ASSERT_EQ(restart_time_2, restart_time_1);
-
-  // Restart virtual WAL now and ensure that there is no failure now.
-  ASSERT_OK(DestroyVirtualWAL());
   ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}));
+  auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_fail_before_updating_cdc_state) = false;
+  // We should get BEGIN + insert 1 + insert 4 + COMMIT.
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 4);
 
-  // Upon restart, since the slot restart time is not updated, we should be getting the
-  // DDL and the INSERT record again.
+  // Multiple rollback to savepoints.
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (3, 3)"));
+  ASSERT_OK(conn.Execute("SAVEPOINT sp1"));
+  ASSERT_OK(conn.Execute("SAVEPOINT sp2"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (4, 4)"));
+  ASSERT_OK(conn.Execute("SAVEPOINT sp3"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (5, 5)"));
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT sp3"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (5, 5)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (6, 6)"));
+  ASSERT_OK(conn.Execute("RELEASE SAVEPOINT sp2"));
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT sp1"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (5, 5)"));
+  ASSERT_OK(conn.Execute("END"));
+
   change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 4 /* DDL + BEGIN + INSERT + COMMIT */);
 
-  // Update the slot restart time and ensure that it has moved forward now.
-  commit_lsn = change_resp.cdc_sdk_proto_records().Get(3).row_message().pg_lsn();
-  ASSERT_OK(UpdateAndPersistLSN(stream_id, commit_lsn, commit_lsn));
+  // We should get BEGIN + insert 1 + insert 6 + COMMIT
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 4);
 
-  slot_entry = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
-  auto restart_time_3 = slot_entry->record_id_commit_time;
-  ASSERT_GT(restart_time_3, restart_time_1);
+  // No rows present post rollback to savepoint.
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("SAVEPOINT sp1"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (6, 6)"));
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT sp1"));
+  ASSERT_OK(conn.Execute("END"));
+
+  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+
+  // We should get BEGIN + COMMIT
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 2);
 }
-
 }  // namespace cdc
 }  // namespace yb

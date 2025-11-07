@@ -3,9 +3,9 @@
 //  LICENSE file in the root directory of this source tree. An additional grant
 //  of patent rights can be found in the PATENTS file in the same directory.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -33,6 +33,11 @@
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
+
+DEFINE_RUNTIME_bool(rocksdb_collect_bloom_filter_time_metrics, false,
+    "Collect bloom filter time metrics. Should only be used for perf investigations since those "
+    "metrics are in hot path and could affect queries execution time.");
+TAG_FLAG(rocksdb_collect_bloom_filter_time_metrics, hidden);
 
 namespace rocksdb {
 
@@ -152,6 +157,9 @@ constexpr std::pair<Histograms, const char *> HistogramsNameMap[] = {
     {BYTES_PER_READ, "rocksdb_bytes_per_read"},
     {BYTES_PER_WRITE, "rocksdb_bytes_per_write"},
     {BYTES_PER_MULTIGET, "rocksdb_bytes_per_multiget"},
+    {BLOOM_FILTER_TIME_NANOS, "rocksdb_bloom_filter_time_nanos"},
+    {GET_FIXED_SIZE_FILTER_BLOCK_HANDLE_NANOS, "rocksdb_get_fixed_size_filter_block_handle_nanos"},
+    {GET_FILTER_BLOCK_FROM_CACHE_NANOS, "rocksdb_get_filter_block_from_cache_nanos"},
 };
 
 namespace {
@@ -456,6 +464,17 @@ void ScopedStatistics::MergeAndClear(Statistics* target) {
       target->addHistogram(i, histograms_[i]);
       histograms_[i].Reset(yb::PreserveTotalStats::kFalse);
     }
+  }
+}
+
+bool Statistics::HistEnabledForType(uint32_t type) const {
+  switch (type) {
+    case BLOOM_FILTER_TIME_NANOS: [[fallthrough]];
+    case GET_FILTER_BLOCK_FROM_CACHE_NANOS: [[fallthrough]];
+    case GET_FIXED_SIZE_FILTER_BLOCK_HANDLE_NANOS:
+      return FLAGS_rocksdb_collect_bloom_filter_time_metrics;
+    default:
+      return type < HISTOGRAM_ENUM_MAX;
   }
 }
 

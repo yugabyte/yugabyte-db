@@ -1,8 +1,9 @@
-// Copyright (c) YugaByte, Inc
+// Copyright (c) YugabyteDB, Inc
 
 package com.yugabyte.yw.commissioner;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
@@ -30,8 +31,10 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -493,5 +496,19 @@ public class YbcUpgradeTest extends FakeDBApplication {
     assertEquals(2, ybcVersions.size());
     assertEquals(version, ybcVersions.get(0));
     assertEquals("UNKNOWN", ybcVersions.get(1));
+  }
+
+  @Test
+  public void testYbcUpgradeNotAllowedOnInbuiltYbc() {
+    UniverseUpdater updater =
+        u -> {
+          UniverseDefinitionTaskParams params = u.getUniverseDetails();
+          params.setEnableYbc(true);
+          params.setYbcInstalled(true);
+          params.setYbcSoftwareVersion("2.0.0-b0");
+          params.getPrimaryCluster().userIntent.setUseYbdbInbuiltYbc(true);
+        };
+    defaultUniverse = Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater);
+    assertFalse(ybcUpgrade.canUpgradeYBCOnK8s(defaultUniverse, NEW_YBC_VERSION));
   }
 }

@@ -5,7 +5,7 @@ headerTitle: Functions for linear regression analysis
 description: Describes the functionality of the covar_pop(), covar_samp(), corr(), and regr_%() family of YSQL aggregate functions for linear regression analysis
 image: /images/section_icons/api/subsection.png
 menu:
-  v2.20:
+  v2.20_api:
     identifier: linear-regression
     parent: aggregate-function-syntax-semantics
     weight: 50
@@ -77,7 +77,7 @@ The same test table recipe serves for illustrating all of the functions for line
 
 where _"delta"_ is picked, for each _"x"_ value from a pseudorandom normal distribution with specified mean and standard deviation.
 
-The procedure _"populate_t()"_ lets you try different values for _"slope"_, _"intercept"_, and for the size and variability of _"delta"_. It uses the function `normal_rand()`, brought by the [tablefunc](../../../../../../explore/ysql-language-features/pg-extensions/#tablefunc-example) extension.
+The procedure _"populate_t()"_ lets you try different values for _"slope"_, _"intercept"_, and for the size and variability of _"delta"_. It uses the function `normal_rand()`, brought by the [tablefunc](../../../../../../additional-features/pg-extensions/#tablefunc-example) extension.
 
 ```plpgsql
 drop procedure if exists populate_t(

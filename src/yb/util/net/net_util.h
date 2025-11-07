@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -36,7 +36,6 @@
 #include <memory>
 
 #include <boost/container/small_vector.hpp>
-#include <boost/optional/optional_fwd.hpp>
 
 #include "yb/util/flags.h"
 
@@ -218,11 +217,10 @@ static std::string HostPortPBToString(const PB& pb) {
 }
 
 Status HostToAddresses(
-    const std::string& host,
-    boost::container::small_vector_base<IpAddress>* addresses);
+    const std::string& host, boost::container::small_vector_base<IpAddress>* addresses);
 
 Result<IpAddress> HostToAddress(const std::string& host);
-boost::optional<IpAddress> TryFastResolve(const std::string& host);
+std::optional<IpAddress> TryFastResolve(const std::string& host);
 Result<IpAddress> ParseIpAddress(const std::string& host);
 
 // Returns true if host_str is 0.0.0.0 or [::]

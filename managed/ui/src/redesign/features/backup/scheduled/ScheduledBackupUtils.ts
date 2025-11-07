@@ -1,7 +1,7 @@
 /*
  * Created on Thu Jul 18 2024
  *
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License")
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
@@ -12,8 +12,9 @@ import { groupBy, isArray } from 'lodash';
 import {
   BACKUP_API_TYPES,
   Backup_Options_Type,
-  IStorageConfig,
-  ITable
+  CustomerConfig,
+  ITable,
+  StorageConfig
 } from '../../../../components/backupv2';
 import {
   ExtendedBackupScheduleProps,
@@ -27,13 +28,15 @@ export const DEFAULT_MIN_INCREMENTAL_BACKUP_INTERVAL = 1800; //in secs
 
 // group storage configs by provider type
 
-export const groupStorageConfigs = (storageConfigs: IStorageConfig[]) => {
+export const groupStorageConfigs = (storageConfigs: CustomerConfig[]) => {
   if (!isArray(storageConfigs)) {
     return [];
   }
-  const filteredConfigs = storageConfigs.filter((c: IStorageConfig) => c.type === 'STORAGE');
+  const filteredConfigs = storageConfigs.filter(
+    (config: CustomerConfig) => config.type === 'STORAGE'
+  ) as StorageConfig[];
 
-  const configs = filteredConfigs.map((c: IStorageConfig) => {
+  const configs = filteredConfigs.map((c) => {
     return {
       value: c.configUUID,
       label: c.configName,
@@ -42,7 +45,7 @@ export const groupStorageConfigs = (storageConfigs: IStorageConfig[]) => {
     };
   });
 
-  return Object.entries(groupBy(configs, (c: IStorageConfig) => c.name)).map(([label, options]) => {
+  return Object.entries(groupBy(configs, (config) => config.name)).map(([label, options]) => {
     return { label, options };
   });
 };

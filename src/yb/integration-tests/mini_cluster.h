@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -287,6 +287,8 @@ class MiniCluster : public MiniClusterBase {
 
   std::string GetClusterId() { return options_.cluster_id; }
 
+  bool WasUnsafeShutdown() const override { return false; }
+
   HostPort YsqlHostport() const override {
     CHECK(ysql_hostport_ != HostPort());
     return ysql_hostport_;
@@ -299,6 +301,10 @@ class MiniCluster : public MiniClusterBase {
   std::string GetTabletServerHTTPAddresses() const override;
 
   rpc::ProxyCache& proxy_cache() override { return *proxy_cache_; }
+
+  void SetPgTServerSelected(size_t pg_ts_idx, const HostPort& pgsql_proxy_bind_address) {
+     pg_ts_selected_ = std::make_pair(pg_ts_idx, pgsql_proxy_bind_address);
+  }
 
  private:
 
@@ -337,6 +343,7 @@ class MiniCluster : public MiniClusterBase {
   std::unique_ptr<rpc::Messenger> messenger_;
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
   HostPort ysql_hostport_;
+  std::optional<std::pair<size_t, HostPort>> pg_ts_selected_;
 };
 
 // Requires that skewed clock is registered as physical clock.
@@ -478,6 +485,11 @@ YB_DEFINE_ENUM(Connectivity, (kOn)(kOff));
 Status BreakConnectivity(MiniCluster* cluster, size_t idx1, size_t idx2);
 Status SetupConnectivity(
     MiniCluster* cluster, size_t idx1, size_t idx2, Connectivity connectivity);
+
+Status BreakConnectivityWithAll(MiniCluster* cluster, size_t idx);
+Status SetupConnectivityWithAll(
+    MiniCluster* cluster, size_t idx, Connectivity connectivity = Connectivity::kOn);
+
 Result<size_t> ServerWithLeaders(MiniCluster* cluster);
 
 // Sets FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec and also adjusts rate limiter

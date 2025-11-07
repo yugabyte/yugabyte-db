@@ -111,7 +111,7 @@ The following table describes optional flags you can include with the `restoreBa
 | Flag | Description | Default |
 | :--- | :---------- | :------ |
 | -h, --help | Help for `restoreBackup`. | |
-| --migration | Restore from a Replicated installation. For information on migrating from Replicated, refer to [Migrate from Replicated](../../install-yugabyte-platform/migrate-replicated/). | false |
+| --migration | Restore from a Replicated installation. For information on migrating from Replicated, refer to [Migrate from Replicated](/v2.20/yugabyte-platform/install-yugabyte-platform/migrate-replicated/). | false |
 | --skip_dbdrop | Skip dropping the YugabyteDB Anywhere database before a migration restore. Valid only if --migration is true. | false |
 | --skip_restart | Don't restart processes during command execution. | true |
 | &#8209;&#8209;use_system_pg | Use system path's `pg_restore` as opposed to installed binary. | false |

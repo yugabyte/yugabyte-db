@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -51,6 +51,8 @@ public class TestPgSelect extends BasePgSQLTest {
     flagMap.put("ysql_enable_packed_row", "false");
     flagMap.put("enable_object_lock_fastpath", "false");
     flagMap.put("pg_client_use_shared_memory", "false");
+    // Disable auto analyze because it introduce flakiness to query plans.
+    flagMap.put("ysql_enable_auto_analyze", "false");
     return flagMap;
   }
 

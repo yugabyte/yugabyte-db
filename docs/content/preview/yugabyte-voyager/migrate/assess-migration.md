@@ -37,7 +37,7 @@ When running migration assessment, keep in mind the following:
 
 - The recommendations are based on testing using a [RF3](../../../architecture/docdb-replication/replication/#replication-factor) YugabyteDB cluster on instance types with 4GiB memory per core and running v2024.1.
 
-- To detect unsupported query constructs, ensure the [pg_stat_statements extension](../../../explore/ysql-language-features/pg-extensions/extension-pgstatstatements/) is properly installed and enabled on source.
+- To detect unsupported query constructs, ensure the [pg_stat_statements extension](../../../additional-features/pg-extensions/extension-pgstatstatements/) is properly installed and enabled on source.
 
 - To disable unsupported query construct detection, set the environment variable `REPORT_UNSUPPORTED_QUERY_CONSTRUCTS=false`.
 
@@ -56,28 +56,123 @@ The following table describes the type of data that is collected during a migrat
 | Performance metrics | Optional | Voyager captures performance metrics from the database (IOPS) for rightsizing the target environment. |
 | Server or database credentials | No | No server or database credentials are collected. |
 
-## Get started with migration assessment
+## Prepare for migration assessment
 
-To get started with migration assessment, do the following:
+Before you run a migration assessment, do the following:
 
 1. [Install yb-voyager](../../install-yb-voyager/).
-1. Install YugabyteDB to view migration assessment report in the [yugabyted](/preview/reference/configuration/yugabyted/) UI. Using the yugabyted UI, you can visualize and review the database migration workflow performed by YugabyteDB Voyager.
-    1. Start a local YugabyteDB cluster. Refer to the steps described in [Use a local cluster](/preview/quick-start/macos/).
-    1. To see the Voyager migration workflow details in the UI, set the following environment variables before starting the migration:
 
-        ```sh
-        export CONTROL_PLANE_TYPE=yugabyted
-        export YUGABYTED_DB_CONN_STRING=<ysql-connection-parameters>
+1. Prepare the source database as follows: <br>
+
+    Create a new database user, and assign the necessary user permissions.
+    <ul class="nav nav-tabs nav-tabs-yb">
+      <li >
+        <a href="#postgresql" class="nav-link active" id="postgresql-tab" data-bs-toggle="tab" role="tab" aria-controls="postgresql" aria-selected="true">
+          <i class="icon-postgres" aria-hidden="true"></i>
+          PostgreSQL
+        </a>
+      </li>
+      <li>
+        <a href="#oracle" class="nav-link" id="oracle-tab" data-bs-toggle="tab" role="tab" aria-controls="oracle" aria-selected="true">
+          <i class="icon-oracle" aria-hidden="true"></i>
+          Oracle
+        </a>
+      </li>
+    </ul>
+
+    <div class="tab-content">
+      <div id="postgresql" class="tab-pane fade show active" role="tabpanel" aria-labelledby="postgresql-tab">
+      {{% includeMarkdown "./postgresql.md" %}}
+      </div>
+      <div id="oracle" class="tab-pane fade" role="tabpanel" aria-labelledby="oracle-tab">
+      {{% includeMarkdown "./oracle.md" %}}
+      </div>
+    </div>
+
+1. Create an export directory on a file system that has enough space to keep the entire source database. Ideally, create this export directory inside a parent folder named after your migration for better organization. For example:
+
+    ```sh
+    mkdir -p $HOME/<migration-name>/export-dir
+    ```
+
+    You need to provide the full path to your export directory in the `export-dir` parameter of your [configuration file](../../reference/configuration-file/), or in the `--export-dir` flag when running `yb-voyager` commands.
+
+1. Set up a [configuration file](../../reference/configuration-file/) to specify the parameters required when running Voyager commands (v2025.6.2 or later).
+
+    To get started, copy the `offline-migration.yaml` template configuration file from one of the following locations to the migration folder you created (for example, `$HOME/my-migration/`):<br><br>
+
+    {{< tabpane text=true >}}
+
+  {{% tab header="Linux (apt/yum/airgapped)" lang="linux" %}}
+
+```bash
+/opt/yb-voyager/config-templates/offline-migration.yaml
+```
+
+  {{% /tab %}}
+
+  {{% tab header="MacOS (Homebrew)" lang="macos" %}}
+
+```bash
+$(brew --cellar)/yb-voyager@<voyager-version>/<voyager-version>/config-templates/offline-migration.yaml
+```
+
+Replace `<voyager-version>` with your installed Voyager version, for example, `2025.5.2`.
+
+  {{% /tab %}}
+
+  {{< /tabpane >}}
+
+    Set the export-dir and source arguments in the configuration file:
+
+    ```yaml
+    # Replace the argument values with those applicable for your migration.
+
+    export-dir: <absolute-path-to-export-dir>
+
+    source:
+      db-type: <source-db-type>
+      db-host: <source-db-host>
+      db-port: <source-db-port>
+      db-name: <source-db-name>
+      db-schema: <source-db-schema> # Not applicable for MySQL
+      db-user: <source-db-user>
+      db-password: <source-db-password> # Enclose the password in single quotes if it contains special characters.
+    ```
+
+### Configure yugabyted UI
+
+You can use [yugabyted UI](/preview/reference/configuration/yugabyted/) to view the migration assessment report, and to visualize and review the database migration workflow performed by YugabyteDB Voyager.
+
+To be able to view the assessment report in the yugabyted UI, do the following:
+
+  1. Start a local YugabyteDB cluster. Refer to the steps described in [Use a local cluster](/preview/quick-start/macos/).
+
+      {{< note title="Note" >}}
+  After a migration assessment, if you choose to migrate using the open source YugabyteDB, you will be using this same local cluster as your [target database](../../introduction/#target-database).
+      {{< /note >}}
+
+  1. Set the following configuration parameters before starting the migration:
+
+        ```yaml
+        ### Control plane type refers to the deployment type of YugabyteDB
+        control-plane-type: yugabyted
+
+        ### YSQL connection string
+        ### Provide the standard PostgreSQL connection parameters, including user name, host name, and port. For example, postgresql://yugabyte:yugabyte@127.0.0.1:5433
+        yugabyted-db-conn-string: postgresql://yugabyte:yugabyte@127.0.0.1:5433
         ```
-
-        Provide the standard PostgreSQL connection parameters, including user name, host name, and port. For example, `postgresql://yugabyte:yugabyte@127.0.0.1:5433`
 
         {{< note title="Note" >}}
 
 Don't include the `dbname` parameter in the connection string; the default `yugabyte` database is used to store the meta information for showing the migration in the yugabyted UI.
         {{< /note >}}
 
-1. Assess your migration.
+## Assess migration
+
+Assess your migration using the following steps:
+
+1. Run the assessment.
 
     Voyager supports two primary modes for conducting migration assessments, depending on your access to the source database as follows:<br><br>
 
@@ -139,26 +234,20 @@ You can perform the following steps with these scripts:
 For the most accurate migration assessment, the source database must be actively handling its typical workloads at the time the metadata is gathered. This ensures that the recommendations for sharding strategies and cluster sizing are well-aligned with the database's real-world performance and operational needs.
     {{< /warning >}}
 
-1. View the assessment report.
-
-    Use the yugabyted UI to review the assessment report, which includes migration strategies, complexity, and effort estimates.
-
-    After generating the report, navigate to the **Migrations** tab in the yugabyted UI at <http://127.0.0.1:15433> to see the available migrations.
+1. After generating the report, navigate to the **Migrations** tab in the yugabyted UI at <http://127.0.0.1:15433> to see the available migrations. The report in the yugabyted UI includes migration strategies, complexity, and effort estimates.
 
     ![Migration Landing Page](/images/migrate/migration-list-page.png)
     ![Migration Assessment Page](/images/migrate/ybd-assessment-page.png)
 
-1. Create a target YugabyteDB cluster as follows:
+      {{<tip title="Report recommendations">}}
+Depending on the recommendations in the assessment report, do the following when you proceed with migration:
 
-    1. Create a cluster in [Enhanced PostgreSQL Compatibility Mode](../../../develop/postgresql-compatibility/), based on the sizing recommendations in the assessment report.
+1. Create your target YugabyteDB cluster in [Enhanced PostgreSQL Compatibility Mode](../../../reference/configuration/postgresql-compatibility/).
 
-        For a universe in YugabyteDB Anywhere, [enable compatibility mode](../../../develop/postgresql-compatibility/#yugabytedb-anywhere) by setting flags on the universe.
+    If you are using YugabyteDB Anywhere, [enable compatibility mode](../../../reference/configuration/postgresql-compatibility/#yugabytedb-anywhere) by setting the **More > Edit Postgres Compatibility** option.
 
-    1. Create a database with colocation set to TRUE.
-
-        ```sql
-        CREATE DATABASE <TARGET_DB_NAME> with COLOCATION=TRUE;
-        ```
+1. The assessment provides recommendations on which tables in the source database to colocate, so when you prepare your target database, create the database with [colocation](../../../additional-features/colocation/#databases) set to TRUE.
+        {{</tip>}}
 
 1. Proceed with migration with one of the migration workflows:
 
@@ -241,3 +330,4 @@ After the bulk assessment is completed, the top-level directory specified using 
 ## Learn more
 
 - [Assess migration CLI](../../reference/assess-migration/)
+- [Compare performance](../../reference/compare-performance/)

@@ -420,7 +420,6 @@ INFO:  exception caught
 -- Test to validate that PL/pgSQL function triggers can be executed without
 -- additional flushes.
 --
-SET yb_explain_hide_non_deterministic_fields TO true;
 CREATE TABLE t_test (k INT PRIMARY KEY, v INT);
 CREATE TABLE t_audit (k INT);
 CREATE OR REPLACE FUNCTION sample_trigger() RETURNS trigger
@@ -729,7 +728,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (29, 29), (30, 30);
  Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 8
- Storage Flush Requests: 5
+ Storage Flush Requests: 3
 (9 rows)
 
 SELECT * FROM t_test ORDER BY k;

@@ -3,9 +3,9 @@
 //  LICENSE file in the root directory of this source tree. An additional grant
 //  of patent rights can be found in the PATENTS file in the same directory.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -25,6 +25,8 @@
 
 #include <algorithm>
 #include <chrono>
+
+#include "yb/gutil/sysinfo.h"
 
 #include "yb/rocksdb/port/sys_time.h"
 #include "yb/rocksdb/rate_limiter.h"
@@ -703,6 +705,11 @@ uint64_t MockEnv::NowMicros() {
 
 uint64_t MockEnv::NowNanos() {
   return EnvWrapper::NowNanos() + fake_sleep_micros_.load() * 1000;
+}
+
+uint64_t MockEnv::NowCpuCycles() {
+  return EnvWrapper::NowCpuCycles() + fake_sleep_micros_.load() * base::CyclesPerSecond() /
+                                          UnitsInSecond(TimeResolution::kMicros);
 }
 
 // Non-virtual functions, specific to MockEnv

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.models.helpers;
 
@@ -8,6 +8,7 @@ import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -26,10 +27,14 @@ public class PlacementInfo {
     @ApiModelProperty public String code;
     // The list of region in this cloud we want to place data in.
     @ApiModelProperty public List<PlacementRegion> regionList = new ArrayList<>();
+
     // UUID of default region. For universes with more AZs than RF, the default
     // placement for user tables will be RF AZs in the default region. This is
     // commonly encountered in geo-partitioning use cases.
-    @ApiModelProperty public UUID defaultRegion;
+    /**
+     * @deprecated Instead use default GeoPartition
+     */
+    @Deprecated @ApiModelProperty public UUID defaultRegion;
 
     @Override
     public String toString() {
@@ -86,6 +91,9 @@ public class PlacementInfo {
     @ApiModelProperty public boolean isAffinitized;
     // The Load Balancer id.
     @ApiModelProperty public String lbName;
+    // Priority of zone (for leaders placement). Values have to be contiguous non-zero integers.
+    // Multiple zones can have the same value. A lower value indicates higher zone priority.
+    @ApiModelProperty public int leaderPreference;
 
     @Override
     public String toString() {
@@ -110,6 +118,11 @@ public class PlacementInfo {
   }
 
   @JsonIgnore
+  public Set<UUID> getAllAZUUIDs() {
+    return azStream().map(az -> az.uuid).collect(Collectors.toSet());
+  }
+
+  @JsonIgnore
   public PlacementAZ findByAZUUID(UUID azUUID) {
     return azStream().filter(az -> Objects.equals(azUUID, az.uuid)).findFirst().orElse(null);
   }
@@ -121,5 +134,10 @@ public class PlacementInfo {
       ret += cloud;
     }
     return ret;
+  }
+
+  @JsonIgnore
+  public boolean hasRankOrdering() {
+    return azStream().anyMatch(az -> az.leaderPreference > 0);
   }
 }

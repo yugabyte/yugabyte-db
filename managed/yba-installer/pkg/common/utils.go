@@ -1,5 +1,5 @@
 /*
-* Copyright (c) YugaByte, Inc.
+* Copyright (c) YugabyteDB, Inc.
  */
 
 package common
@@ -402,6 +402,8 @@ func InitViper() {
 	// Init Viper
 	viper.SetDefault("service_username", DefaultServiceUser)
 	viper.SetDefault("installRoot", "/opt/yugabyte")
+
+	viper.SetDefault("platform.fd_limit", 16384)
 
 	viper.SetDefault("prometheus.remoteWrite.enabled", false)
 	viper.SetDefault("prometheus.scrapeConfig.node.scheme", "http")

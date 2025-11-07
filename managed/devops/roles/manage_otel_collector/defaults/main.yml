@@ -1,4 +1,4 @@
-# Copyright 2023 YugaByte, Inc. and Contributors
+# Copyright 2023 YugabyteDB, Inc. and Contributors
 #
 # Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
 # may not use this file except in compliance with the License. You
@@ -17,3 +17,4 @@ otel_col_log_cleanup_env: "{{ yb_home_dir }}/otel-collector/log_cleanup_env"
 otel_col_version: "0.90.0"
 otel_col_platform: "linux"
 otel_col_arch: "{{ 'arm64' if ansible_architecture == 'aarch64' else 'amd64'}}"
+otel_col_max_memory: "2048"

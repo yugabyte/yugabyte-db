@@ -1,4 +1,4 @@
-// Copyright (c) Yugabyte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.models;
 
@@ -624,7 +624,13 @@ public class Audit extends Model {
     CloneNamespace,
 
     @EnumValue("Update Additional Services State")
-    UpdateAdditionalServicesState
+    UpdateAdditionalServicesState,
+
+    @EnumValue("Set Immutable Ybc on Kubernetes Universe")
+    KubernetesToggleImmutableYbc,
+
+    @EnumValue("Import Universe to the Kubernetes Operator")
+    OperatorImportUniverse,
   }
 
   // An auto incrementing, user-friendly ID for the audit entry.

@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -25,7 +25,6 @@
 #include <vector>
 
 #include <boost/functional/hash.hpp>
-#include <boost/optional.hpp>
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/column_id.h"
@@ -112,18 +111,20 @@ class IndexInfo {
     return backfill_error_message_;
   }
 
-  uint64_t num_rows_processed_by_backfill_job() const {
-    return num_rows_processed_by_backfill_job_;
+  uint64_t num_rows_read_from_table_for_backfill() const {
+    return num_rows_read_from_table_for_backfill_;
+  }
+
+  double num_rows_backfilled_in_index() const {
+    return num_rows_backfilled_in_index_;
   }
 
   std::string ToString() const;
 
   // Same as "IsExprCovered" but only search the key columns.
-  boost::optional<size_t> FindKeyIndex(const std::string& key_name) const;
+  std::optional<size_t> FindKeyIndex(const std::string& key_name) const;
 
-  bool use_mangled_column_name() const {
-    return use_mangled_column_name_;
-  }
+  bool use_mangled_column_name() const { return use_mangled_column_name_; }
 
   bool has_index_by_expr() const {
     return has_index_by_expr_;
@@ -156,10 +157,8 @@ class IndexInfo {
   const std::vector<ColumnId> indexed_range_column_ids_; // Range column ids in the indexed table.
   const IndexPermissions index_permissions_ = INDEX_PERM_READ_WRITE_AND_DELETE;
   const std::string backfill_error_message_;
-  // When the backfill job is cleared, this is set to the number of indexed table rows processed by
-  // the backfill job. The (default) value is zero, otherwise. For partial indexes, this includes
-  // non-matching rows of the indexed table.
-  const uint64_t num_rows_processed_by_backfill_job_ = 0;
+  const uint64_t num_rows_read_from_table_for_backfill_ = 0;
+  const double num_rows_backfilled_in_index_ = 0;
 
   // Column ids covered by the index (include indexed columns).
   std::unordered_set<ColumnId, boost::hash<ColumnIdRep>> covered_column_ids_;

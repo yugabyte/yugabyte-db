@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.common.operator.annotations;
 
@@ -50,14 +50,13 @@ public class BlockOperatorResourceHandler extends Action<BlockOperatorResource> 
         Universe universe = Universe.getOrBadRequest(universeUUID);
         if (universe.getUniverseDetails().isKubernetesOperatorControlled) {
           log.warn(
-              "blocking api call %s, universe is owned by kubernetes operator", request.path());
+              "blocking api call {}, universe is owned by kubernetes operator", request.path());
           return CompletableFuture.completedFuture(
               Results.forbidden("resource is controlled by kubernetes operator"));
         }
         return delegate.call(request);
       case PROVIDER:
-        Pattern pattern =
-            Pattern.compile(String.format(".*/universe/.*/providers/%s/?.*", UUID_PATTERN));
+        Pattern pattern = Pattern.compile(String.format(".*/providers/%s/?.*", UUID_PATTERN));
         UUID providerUUID = getUUIDFromPath(pattern, request.path());
         if (providerUUID == null) {
           log.debug("No provider UUID found, assuming resource is not owned by the operator");
@@ -68,13 +67,13 @@ public class BlockOperatorResourceHandler extends Action<BlockOperatorResource> 
             && provider.getDetails().getCloudInfo().kubernetes != null
             && provider.getDetails().getCloudInfo().kubernetes.isKubernetesOperatorControlled) {
           log.warn(
-              "blocking api call %s, provider is owned by kubernetes operator", request.path());
+              "blocking api call {}, provider is owned by kubernetes operator", request.path());
           return CompletableFuture.completedFuture(
               Results.forbidden("resource is controlled by kubernetes operator"));
         }
         return delegate.call(request);
       default:
-        log.warn("unknown resource %s, skipping operator owned check", configuration.resource());
+        log.warn("unknown resource {}, skipping operator owned check", configuration.resource());
         return delegate.call(request);
     }
   }

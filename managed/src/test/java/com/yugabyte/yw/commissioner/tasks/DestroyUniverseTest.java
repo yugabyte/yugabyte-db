@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks;
 
@@ -106,6 +106,7 @@ public class DestroyUniverseTest extends UniverseModifyBaseTest {
     userIntent.regionList =
         defaultProvider.getAllRegions().stream().map(Region::getUuid).collect(Collectors.toList());
     userIntent.useSystemd = true;
+    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
 
     String caFile = createTempFile("destroy_universe_test", "ca.crt", "test content");
     certFolder = new File(caFile).getParentFile();

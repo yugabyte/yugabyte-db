@@ -235,6 +235,33 @@ Status HandleExtensionOnDropReplication(
 
 }  // namespace
 
+Result<LockedConfigAndTableKeyRanges> LockClusterConfigAndGetTableKeyRanges(
+    CatalogManager& catalog_manager, const TableId& consumer_table_id) {
+  // To avoid races with other updates to table key ranges (eg tablet splits), we need to get the
+  // table key ranges under a consistent cluster config version.
+  // But since GetTableKeyRanges grabs mutex_, that needs to be called before
+  // cluster_config->LockForWrite (we grab the mutex_ before LockForWrite in the loaders).
+  // To avoid holding mutex_ for a long time, we optimistically get the lock and retry if needed.
+  while (true) {
+    int32_t cluster_version = 0;
+    {
+      auto cc = catalog_manager.ClusterConfig();
+      auto l = cc->LockForRead();
+      cluster_version = l->pb.version();
+    }
+
+    auto ranges = VERIFY_RESULT(catalog_manager.GetTableKeyRanges(consumer_table_id));
+
+    auto cc = catalog_manager.ClusterConfig();
+    auto wl = cc->LockForWrite();
+    if (wl->pb.version() != cluster_version) {
+      continue;
+    }
+
+    return LockedConfigAndTableKeyRanges(std::move(cc), std::move(wl), std::move(ranges));
+  }
+}
+
 Result<std::optional<std::pair<bool, uint32>>> ValidateAutoFlagsConfig(
     UniverseReplicationInfo& replication_info, const AutoFlagsConfigPB& local_config) {
   auto master_addresses = replication_info.LockForRead()->pb.producer_master_addresses();
@@ -338,7 +365,7 @@ std::optional<NamespaceId> GetProducerNamespaceIdInternal(
 Result<bool> ShouldAddTableToReplicationGroup(
     UniverseReplicationInfo& universe, const TableInfo& table_info,
     CatalogManager& catalog_manager) {
-  if (!IsTableEligibleForXClusterReplication(table_info)) {
+  if (!IsTableEligibleForXClusterReplication(table_info, universe.IsAutomaticDdlMode())) {
     return false;
   }
 
@@ -447,6 +474,25 @@ Result<std::shared_ptr<client::XClusterRemoteClientHolder>> GetXClusterRemoteCli
   return client::XClusterRemoteClientHolder::Create(universe.ReplicationGroupId(), hp);
 }
 
+Result<TableId> GetConsumerTableIdForStreamId(
+    CatalogManager& catalog_manager, const xcluster::ReplicationGroupId& replication_group_id,
+    const xrepl::StreamId& stream_id) {
+  auto cluster_config = catalog_manager.ClusterConfig();
+  auto l = cluster_config->LockForRead();
+  const auto& consumer_registry = l->pb.consumer_registry();
+
+  const auto* producer_entry =
+      FindOrNull(consumer_registry.producer_map(), replication_group_id.ToString());
+  SCHECK(producer_entry, NotFound, Format("Missing replication group $0", replication_group_id));
+
+  const auto* stream_entry = FindOrNull(producer_entry->stream_map(), stream_id.ToString());
+  SCHECK(
+      stream_entry, NotFound,
+      Format("Missing replication group $0, stream $1", replication_group_id, stream_id));
+
+  return stream_entry->consumer_table_id();
+}
+
 Result<IsOperationDoneResult> IsSetupUniverseReplicationDone(
     const xcluster::ReplicationGroupId& replication_group_id, CatalogManager& catalog_manager) {
   // Cases for completion:
@@ -529,7 +575,7 @@ Status RemoveNamespaceFromReplicationGroup(
   }
 
   auto consumer_designators = VERIFY_RESULT(GetTablesEligibleForXClusterReplication(
-      catalog_manager, consumer_namespace_id, /*include_sequences_data=*/true));
+      catalog_manager, consumer_namespace_id, is_automatic_ddl_mode));
   std::unordered_set<TableId> consumer_table_ids;
   for (const auto& table_designator : consumer_designators) {
     consumer_table_ids.insert(table_designator.id);

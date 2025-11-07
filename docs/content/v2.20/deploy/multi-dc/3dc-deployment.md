@@ -199,4 +199,4 @@ replication_info {
 
 ## Verify the deployment
 
-Use the [`ysqlsh`](../../../admin/ysqlsh/) (for YSQL API) or [`ycqlsh`](../../../admin/ycqlsh/) (for YCQL API) shells to test connectivity to the cluster.
+Use the [`ysqlsh`](../../../api/ysqlsh/) (for YSQL API) or [`ycqlsh`](../../../api/ycqlsh/) (for YCQL API) shells to test connectivity to the cluster.

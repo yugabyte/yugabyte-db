@@ -1,5 +1,5 @@
 /*
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  */
 
 package security
@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/ear/earutil"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/universeutil"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
@@ -219,21 +220,16 @@ func earDisableRequest(
 }
 
 func getKMSConfigUUID(authAPI *client.AuthAPIClient, configName string) (string, error) {
-	r, response, err := authAPI.ListKMSConfigs().Execute()
+	kmsConfigsList, err := authAPI.GetListOfKMSConfigs(
+		"Universe",
+		"Master Key Rotation - Get KMS Configurations",
+	)
 	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(
-			response, err, "Universe", "Master Key Rotation - List")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		return "", err
 	}
-	for _, k := range r {
-		kmsConfig, err := util.ConvertToKMSConfig(k)
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		if strings.Compare(kmsConfig.Name, configName) == 0 {
-			return kmsConfig.ConfigUUID, nil
-		}
-
+	kmsConfigs := earutil.KMSConfigNameAndCodeFilter(configName, "", kmsConfigsList)
+	if len(kmsConfigs) > 0 {
+		return kmsConfigs[0].ConfigUUID, nil
 	}
 	return "", fmt.Errorf("No configurations with name: %s found\n", configName)
 }

@@ -1,8 +1,8 @@
 ---
-title: YugabyteDB Anywhere hardware requirements
-headerTitle: Hardware requirements for nodes
+title: Hardware requirements for servers running database nodes
+headerTitle: Hardware requirements for database nodes
 linkTitle: Hardware requirements
-description: Hardware prerequisites for cluster nodes.
+description: Hardware prerequisites for database nodes.
 headContent: CPU, memory, disk, and instance types required for YugabyteDB
 menu:
   v2024.2_yugabyte-platform:
@@ -58,6 +58,9 @@ Refer to [Hardware requirements](../../../deploy/checklist/#hardware-requirement
 - [CPU and RAM](../../../deploy/checklist/#cpu-and-ram)
 - [Verify support for SSE2 and SSE4.2](../../../deploy/checklist/#verify-support-for-sse2-and-sse4-2)
 - [Disks](../../../deploy/checklist/#disks)
+- [Ephemeral disks](../../../deploy/checklist/#ephemeral-disks)
+
+   **Note**: Ephemeral disks are currently supported only for on-premises provider and _not_ a public cloud provider (AWS, GCP, or Azure).
 
 When creating your VMs, create at least two virtual disks: one as the boot disk, and another for data and logs.
 

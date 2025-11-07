@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -193,11 +193,13 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   void CompleteShutdown(DisableFlushOnShutdown disable_flush_on_shutdown, AbortOps abort_ops);
 
   // Abort active transactions on the tablet after shutdown is initiated.
-  void AbortActiveTransactions() const;
+  void AbortActiveTransactions(
+      std::optional<TransactionId>&& exclude_aborting_txn_id = std::nullopt) const;
 
   Status Shutdown(
       ShouldAbortActiveTransactions should_abort_active_txns,
-      DisableFlushOnShutdown disable_flush_on_shutdown);
+      DisableFlushOnShutdown disable_flush_on_shutdown,
+      std::optional<TransactionId>&& exclude_aborting_txn_id = std::nullopt);
 
   // Check that the tablet is in a RUNNING state.
   Status CheckRunning() const;
@@ -331,6 +333,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   // If FLAGS_abort_active_txns_during_cdc_bootstrap is set then all active transactions are
   // aborted.
   Result<std::pair<OpId, HybridTime>> GetOpIdAndSafeTimeForXReplBootstrap() const;
+
+  bool IsRunning() const override;
 
   // Returns the amount of bytes that would be GC'd if RunLogGC() was called.
   //
@@ -505,6 +509,14 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   void SetTabletOnDiskSize(size_t total_on_disk_size);
 
+  void NotifyCommitedAsyncWrites(const OpId& committed_op_id) EXCLUDES(async_write_queries_mutex_);
+
+  void FailAllAsyncWrites(const Status& status) EXCLUDES(async_write_queries_mutex_);
+
+  void RegisterAsyncWrite(const OpId& op_id) override;
+  void RegisterAsyncWriteCompletion(const OpId& op_id, StdStatusCallback&& callback)
+      EXCLUDES(async_write_queries_mutex_) override;
+
  protected:
   friend class RefCountedThreadSafe<TabletPeer>;
   friend class TabletPeerTest;
@@ -600,7 +612,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   Result<FixedHybridTimeLease> HybridTimeLease(HybridTime min_allowed, CoarseTimePoint deadline);
   Result<HybridTime> PreparePeerRequest() override;
-  Status MajorityReplicated() override;
+  Status MajorityReplicated(const OpId& committed_op_id) override;
+  void BecomeReplica() override;
   void ChangeConfigReplicated(const consensus::RaftConfigPB& config) override;
   uint64_t NumSSTFiles() override;
   void ListenNumSSTFilesChanged(std::function<void()> listener) override;
@@ -639,6 +652,11 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   // and other files in those directories. This can be stale as it is only updated every
   // FLAGS_data_size_metric_updater_interval_sec seconds.
   std::atomic<size_t> total_on_disk_size_{0};
+
+  std::mutex async_write_queries_mutex_;
+  std::atomic<OpId> last_known_committed_op_id_;
+  std::deque<std::pair<OpId, std::vector<StdStatusCallback>>> in_flight_async_write_queries_
+      GUARDED_BY(async_write_queries_mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(TabletPeer);
 };

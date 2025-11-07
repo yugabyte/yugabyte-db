@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -114,26 +114,24 @@ class DocKeyTest : public YBTest {
     }
     return sub_doc_keys;
   }
-
-  string GetTestDescriptionForSubDocKey(const SubDocKey& sub_doc_key) {
-    auto encoded_key = sub_doc_key.Encode();
-    const char* kFormatStr =
-        "Encoded SubDocKey: $0\n"
-        "Encoded input binary data (partially human-readable): $1\n"
-        "Encoded input binary data (hex): $2\n"
-        "Encoded input binary data size: $3\n";
-    return yb::Format(
-        kFormatStr,
-        sub_doc_key,
-        FormatSliceAsStr(encoded_key.AsSlice()),
-        encoded_key.AsSlice().ToDebugHexString(),
-        encoded_key.size()
-    );
-  }
-
 };
 
 namespace {
+string GetTestDescriptionForSubDocKey(const SubDocKey& sub_doc_key) {
+  auto encoded_key = sub_doc_key.Encode();
+  const char* kFormatStr =
+      "Encoded SubDocKey: $0\n"
+      "Encoded input binary data (partially human-readable): $1\n"
+      "Encoded input binary data (hex): $2\n"
+      "Encoded input binary data size: $3\n";
+  return yb::Format(
+      kFormatStr,
+      sub_doc_key,
+      FormatSliceAsStr(encoded_key.AsSlice()),
+      encoded_key.AsSlice().ToDebugHexString(),
+      encoded_key.size()
+  );
+}
 
 int Sign(int x) {
   if (x < 0) return -1;
@@ -419,7 +417,9 @@ class IntentCollector {
                     Slice value,
                     KeyBytes* key,
                     LastKey,
-                    IsRowLock) {
+                    IsRowLock,
+                    IsTopLevelKey,
+                    boost::tribool) {
     out_->push_back(CollectedIntent{
       .ancestor_doc_key = ancestor_doc_key,
       .full_doc_key = full_doc_key,
@@ -435,6 +435,7 @@ class IntentCollector {
 
 TEST_F(DocKeyTest, TestDecodePrefixLengths) {
   for (const auto& sub_doc_key : GetVariedSubDocKeys()) {
+    LOG(INFO) << "sub_doc_key=" << sub_doc_key.ToString();
     const auto encoded_input = sub_doc_key.Encode();
     const DocKey& doc_key = sub_doc_key.doc_key();
     const Slice subdockey_slice = encoded_input.AsSlice();
@@ -491,6 +492,24 @@ TEST_F(DocKeyTest, TestDecodePrefixLengths) {
 
     ASSERT_OK(SubDocKey::DecodePrefixLengths(subdockey_slice, &prefix_lengths));
     ASSERT_EQ(yb::ToString(expected_prefix_lengths), yb::ToString(prefix_lengths));
+
+    boost::container::small_vector<size_t, 8> prefix_lengths_skip_prefix;
+    ASSERT_OK(SubDocKey::DecodePrefixLengthsWithSkipPrefix(
+        subdockey_slice, &prefix_lengths_skip_prefix));
+
+    // If the sub doc key contains range or sub keys, remove intermediate prefix including hash and
+    // all ranges except the last one.
+    if (num_range_keys > 0 || sub_doc_key.subkeys().size() > 0) {
+      bool has_id = doc_key.has_cotable_id() || doc_key.has_colocation_id();
+      auto take_last_n = sub_doc_key.subkeys().size() +
+        (num_range_keys > 0 || (doc_key.hashed_group().size() > 0 && !has_id) ? 1 : 0);
+      LOG(INFO) << "take_last_n=" << take_last_n << " prefix_lengths size="
+                << prefix_lengths.size();
+      std::rotate(prefix_lengths.begin() + (has_id ? 1 : 0),
+                  prefix_lengths.end() - take_last_n, prefix_lengths.end());
+      prefix_lengths.resize(take_last_n + (has_id ? 1 : 0));
+    }
+    ASSERT_EQ(prefix_lengths, prefix_lengths_skip_prefix);
   }
 }
 
@@ -557,139 +576,157 @@ TEST_F(DocKeyTest, DecodeDocKeyAndSubKeyEnds) {
   }
 }
 
+void TestEnumerateIntents(const SubDocKey& sub_doc_key,
+                          PartialRangeKeyIntents partial_range_key_intents,
+                          dockv::SkipPrefix skip_prefix_locks) {
+  const auto encoded_input = sub_doc_key.Encode();
+  const string test_description = Format(
+      "$0. Partial range key intents: $1, skip prefix locks: $2",
+      GetTestDescriptionForSubDocKey(sub_doc_key),
+      partial_range_key_intents ? "yes" : "no", skip_prefix_locks ? "yes" : "no");
+  SCOPED_TRACE(test_description);
+  const Slice subdockey_slice = encoded_input.AsSlice();
+
+  vector<CollectedIntent> collected_intents;
+  vector<CollectedIntent> collected_intents_old;
+  KeyBytes encoded_key_buffer;
+
+  VLOG(1) << "EnumerateIntents for: " << test_description;
+  ASSERT_OK(EnumerateIntents(
+      subdockey_slice,
+      /* value */ Slice("some_value"),
+      IntentCollector(&collected_intents),
+      &encoded_key_buffer,
+      partial_range_key_intents,
+      LastKey::kFalse,
+      skip_prefix_locks));
+
+  if (VLOG_IS_ON(1)) {
+    for (const auto& intent : collected_intents) {
+      auto intent_slice = intent.intent_key.AsSlice();
+
+      VLOG(1) << "Found intent: " << SubDocKey::DebugSliceToString(intent_slice)
+              << ", raw bytes: " << FormatSliceAsStr(intent_slice)
+              << ", ancestor_doc_key: " << intent.ancestor_doc_key;
+    }
+  }
+
+  std::vector<SubDocKey> expected_intents;
+  SubDocKey current_expected_intent;
+
+  if (sub_doc_key.doc_key().has_cotable_id() || sub_doc_key.doc_key().has_colocation_id()) {
+    DocKey table_id_only_doc_key;
+    if (sub_doc_key.doc_key().has_cotable_id()) {
+      table_id_only_doc_key.set_cotable_id(sub_doc_key.doc_key().cotable_id());
+    } else {
+      table_id_only_doc_key.set_colocation_id(sub_doc_key.doc_key().colocation_id());
+    }
+    current_expected_intent = SubDocKey(table_id_only_doc_key);
+    expected_intents.push_back(current_expected_intent);
+  } else {
+    expected_intents.push_back(SubDocKey());
+  }
+
+  if (!sub_doc_key.doc_key().hashed_group().empty()) {
+    if (sub_doc_key.doc_key().has_cotable_id()) {
+      current_expected_intent = SubDocKey(DocKey(
+          sub_doc_key.doc_key().cotable_id(),
+          sub_doc_key.doc_key().hash(),
+          sub_doc_key.doc_key().hashed_group()));
+    } else {
+      current_expected_intent = SubDocKey(DocKey(
+          sub_doc_key.doc_key().colocation_id(),
+          sub_doc_key.doc_key().hash(),
+          sub_doc_key.doc_key().hashed_group()));
+    }
+    expected_intents.push_back(current_expected_intent);
+  }
+
+  const auto& range_group = sub_doc_key.doc_key().range_group();
+  for (size_t range_idx = 0; range_idx < range_group.size(); ++range_idx) {
+    current_expected_intent.doc_key().range_group().push_back(range_group[range_idx]);
+    if (partial_range_key_intents || range_idx == range_group.size() - 1) {
+      expected_intents.push_back(current_expected_intent);
+    }
+  }
+
+  if (skip_prefix_locks && expected_intents.size() > 1) {
+    expected_intents[1] = expected_intents.back();
+    expected_intents.resize(2);
+  }
+
+  if (!sub_doc_key.doc_key().empty()) {
+    for (const auto& subkey : sub_doc_key.subkeys()) {
+      current_expected_intent.AppendSubKey(subkey);
+      expected_intents.push_back(current_expected_intent);
+    }
+  }
+
+  {
+    std::set<SubDocKey> expected_intents_set(expected_intents.begin(), expected_intents.end());
+    SCOPED_TRACE(Format("Expected intents: $0", yb::ToString(expected_intents_set)));
+
+    // There should be no duplicate intents in our set of expected intents.
+    ASSERT_EQ(expected_intents_set.size(), expected_intents.size());
+
+    const SubDocKey doc_key_only(sub_doc_key.doc_key());
+    ASSERT_TRUE(expected_intents_set.count(doc_key_only))
+        << "doc_key_only: " << doc_key_only;
+
+    SubDocKey hash_part_only(sub_doc_key);
+    hash_part_only.subkeys().clear();
+    hash_part_only.doc_key().range_group().clear();
+    hash_part_only.remove_hybrid_time();
+    if (!skip_prefix_locks || range_group.empty()) {
+      ASSERT_TRUE(expected_intents_set.count(hash_part_only))
+          << "hash_part_only: " << hash_part_only;
+    }
+  }
+
+  const size_t num_intents = std::min(expected_intents.size(), collected_intents.size());
+  for (size_t i = 0; i < num_intents; ++i) {
+    SubDocKey decoded_intent_key;
+    const auto& intent = collected_intents[i];
+    SCOPED_TRACE(Format("i=$0: generated intent bytes, partially human-readable: $1",
+                        i, FormatSliceAsStr(intent.intent_key.AsSlice())));
+    Slice intent_key_slice = intent.intent_key.AsSlice();
+    ASSERT_OK(decoded_intent_key.DecodeFrom(&intent_key_slice, HybridTimeRequired::kFalse));
+    ASSERT_EQ(0, intent_key_slice.size());
+    ASSERT_FALSE(decoded_intent_key.has_hybrid_time());
+    ASSERT_EQ(expected_intents[i].ToString(), decoded_intent_key.ToString());
+
+    SubDocKey a = expected_intents[i];
+    SubDocKey b = decoded_intent_key;
+    VLOG(1) << "Doc key matches: " << (a.doc_key() == b.doc_key());
+    VLOG(1) << "has_hybrid_time matches: " << (a.has_hybrid_time() == b.has_hybrid_time());
+    if (a.has_hybrid_time() && b.has_hybrid_time()) {
+      VLOG(1) << "HT matches: " << (a.hybrid_time() == b.hybrid_time());
+    }
+    VLOG(1) << "Subkeys match: " << (a.subkeys() == b.subkeys());
+
+    ASSERT_EQ(intent.full_doc_key, a.doc_key() == sub_doc_key.doc_key());
+    ASSERT_EQ(expected_intents[i], decoded_intent_key);
+    if (i < num_intents - 1) {
+      ASSERT_EQ(AncestorDocKey::kTrue, intent.ancestor_doc_key);
+      ASSERT_EQ(0, intent.value.size());
+    } else {
+      ASSERT_EQ(AncestorDocKey::kFalse, intent.ancestor_doc_key);
+      ASSERT_GT(intent.value.size(), 0);
+    }
+  }
+
+  ASSERT_EQ(expected_intents.size(), collected_intents.size())
+      << "Expected: " << yb::ToString(expected_intents) << "\n"
+      << "Collected: " << yb::ToString(collected_intents);
+}
+
 TEST_F(DocKeyTest, TestEnumerateIntents) {
   for (const auto& sub_doc_key : GetVariedSubDocKeys()) {
     for (auto partial_range_key_intents : PartialRangeKeyIntents::kValues) {
-      const auto encoded_input = sub_doc_key.Encode();
-      const string test_description = Format(
-          "$0. Partial range key intents: $1",
-          GetTestDescriptionForSubDocKey(sub_doc_key),
-          partial_range_key_intents ? "yes" : "no");
-      SCOPED_TRACE(test_description);
-      const Slice subdockey_slice = encoded_input.AsSlice();
-
-      vector<CollectedIntent> collected_intents;
-      vector<CollectedIntent> collected_intents_old;
-      KeyBytes encoded_key_buffer;
-
-      VLOG(1) << "EnumerateIntents for: " << test_description;
-      ASSERT_OK(EnumerateIntents(
-          subdockey_slice,
-          /* value */ Slice("some_value"),
-          IntentCollector(&collected_intents),
-          &encoded_key_buffer,
-          partial_range_key_intents));
-
-      if (VLOG_IS_ON(1)) {
-        for (const auto& intent : collected_intents) {
-          auto intent_slice = intent.intent_key.AsSlice();
-
-          VLOG(1) << "Found intent: " << SubDocKey::DebugSliceToString(intent_slice)
-                  << ", raw bytes: " << FormatSliceAsStr(intent_slice)
-                  << ", ancestor_doc_key: " << intent.ancestor_doc_key;
-        }
-      }
-
-      std::vector<SubDocKey> expected_intents;
-      SubDocKey current_expected_intent;
-
-      if (sub_doc_key.doc_key().has_cotable_id() || sub_doc_key.doc_key().has_colocation_id()) {
-        DocKey table_id_only_doc_key;
-        if (sub_doc_key.doc_key().has_cotable_id()) {
-          table_id_only_doc_key.set_cotable_id(sub_doc_key.doc_key().cotable_id());
-        } else {
-          table_id_only_doc_key.set_colocation_id(sub_doc_key.doc_key().colocation_id());
-        }
-        current_expected_intent = SubDocKey(table_id_only_doc_key);
-        expected_intents.push_back(current_expected_intent);
-      } else {
-        expected_intents.push_back(SubDocKey());
-      }
-
-      if (!sub_doc_key.doc_key().hashed_group().empty()) {
-        if (sub_doc_key.doc_key().has_cotable_id()) {
-          current_expected_intent = SubDocKey(DocKey(
-              sub_doc_key.doc_key().cotable_id(),
-              sub_doc_key.doc_key().hash(),
-              sub_doc_key.doc_key().hashed_group()));
-        } else {
-          current_expected_intent = SubDocKey(DocKey(
-              sub_doc_key.doc_key().colocation_id(),
-              sub_doc_key.doc_key().hash(),
-              sub_doc_key.doc_key().hashed_group()));
-        }
-        expected_intents.push_back(current_expected_intent);
-      }
-
-      const auto& range_group = sub_doc_key.doc_key().range_group();
-      for (size_t range_idx = 0; range_idx < range_group.size(); ++range_idx) {
-        current_expected_intent.doc_key().range_group().push_back(range_group[range_idx]);
-        if (partial_range_key_intents || range_idx == range_group.size() - 1) {
-          expected_intents.push_back(current_expected_intent);
-        }
-      }
-
-      if (!sub_doc_key.doc_key().empty()) {
-        for (const auto& subkey : sub_doc_key.subkeys()) {
-          current_expected_intent.AppendSubKey(subkey);
-          expected_intents.push_back(current_expected_intent);
-        }
-      }
-
-      {
-        std::set<SubDocKey> expected_intents_set(expected_intents.begin(), expected_intents.end());
-        SCOPED_TRACE(Format("Expected intents: $0", yb::ToString(expected_intents_set)));
-
-        // There should be no duplicate intents in our set of expected intents.
-        ASSERT_EQ(expected_intents_set.size(), expected_intents.size());
-
-        const SubDocKey doc_key_only(sub_doc_key.doc_key());
-        ASSERT_TRUE(expected_intents_set.count(doc_key_only))
-            << "doc_key_only: " << doc_key_only;
-
-        SubDocKey hash_part_only(sub_doc_key);
-        hash_part_only.subkeys().clear();
-        hash_part_only.doc_key().range_group().clear();
-        hash_part_only.remove_hybrid_time();
-        ASSERT_TRUE(expected_intents_set.count(hash_part_only))
-            << "hash_part_only: " << hash_part_only;
-      }
-
-      const size_t num_intents = std::min(expected_intents.size(), collected_intents.size());
-      for (size_t i = 0; i < num_intents; ++i) {
-        SubDocKey decoded_intent_key;
-        const auto& intent = collected_intents[i];
-        SCOPED_TRACE(Format("i=$0: generated intent bytes, partially human-readable: $1",
-                            i, FormatSliceAsStr(intent.intent_key.AsSlice())));
-        Slice intent_key_slice = intent.intent_key.AsSlice();
-        ASSERT_OK(decoded_intent_key.DecodeFrom(&intent_key_slice, HybridTimeRequired::kFalse));
-        ASSERT_EQ(0, intent_key_slice.size());
-        ASSERT_FALSE(decoded_intent_key.has_hybrid_time());
-        ASSERT_EQ(expected_intents[i].ToString(), decoded_intent_key.ToString());
-
-        SubDocKey a = expected_intents[i];
-        SubDocKey b = decoded_intent_key;
-        VLOG(1) << "Doc key matches: " << (a.doc_key() == b.doc_key());
-        VLOG(1) << "has_hybrid_time matches: " << (a.has_hybrid_time() == b.has_hybrid_time());
-        if (a.has_hybrid_time() && b.has_hybrid_time()) {
-          VLOG(1) << "HT matches: " << (a.hybrid_time() == b.hybrid_time());
-        }
-        VLOG(1) << "Subkeys match: " << (a.subkeys() == b.subkeys());
-
-        ASSERT_EQ(intent.full_doc_key, a.doc_key() == sub_doc_key.doc_key());
-        ASSERT_EQ(expected_intents[i], decoded_intent_key);
-        if (i < num_intents - 1) {
-          ASSERT_EQ(AncestorDocKey::kTrue, intent.ancestor_doc_key);
-          ASSERT_EQ(0, intent.value.size());
-        } else {
-          ASSERT_EQ(AncestorDocKey::kFalse, intent.ancestor_doc_key);
-          ASSERT_GT(intent.value.size(), 0);
-        }
-      }
-
-      ASSERT_EQ(expected_intents.size(), collected_intents.size())
-          << "Expected: " << yb::ToString(expected_intents) << "\n"
-          << "Collected: " << yb::ToString(collected_intents);
+      TestEnumerateIntents(sub_doc_key, partial_range_key_intents,
+                           dockv::SkipPrefix::kFalse);
+      TestEnumerateIntents(sub_doc_key, partial_range_key_intents,
+                           dockv::SkipPrefix::kTrue);
     }
   }
 }

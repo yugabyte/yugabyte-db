@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -573,7 +573,7 @@ ReadStatus YBSingleThreadedReader::PerformRead(
     QLAddStringHashValue(read_op->mutable_request(), key_str);
     table_->AddColumns({"k", "v"}, read_op->mutable_request());
     auto status = session_->TEST_ApplyAndFlush(read_op);
-    boost::optional<qlexpr::QLRowBlock> row_block;
+    std::optional<qlexpr::QLRowBlock> row_block;
     if (status.ok()) {
       auto result = read_op->MakeRowBlock();
       if (!result.ok()) {

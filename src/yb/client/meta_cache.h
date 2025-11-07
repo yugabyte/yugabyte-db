@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -247,12 +247,10 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
  public:
   static constexpr int64_t kUnknownOpIdIndex = -2;
 
-  RemoteTablet(std::string tablet_id,
-               dockv::Partition partition,
-               boost::optional<PartitionListVersion> partition_list_version,
-               uint64 split_depth,
-               const TabletId& split_parent_tablet_id,
-               int64_t raft_config_opid_index);
+  RemoteTablet(
+      std::string tablet_id, dockv::Partition partition,
+      std::optional<PartitionListVersion> partition_list_version, uint64 split_depth,
+      const TabletId& split_parent_tablet_id, int64_t raft_config_opid_index);
 
   ~RemoteTablet();
 
@@ -286,7 +284,7 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
   // serving partition_ key range.
   // This could be `none` for RemoteTablet instances requested by ID, because in that case we don't
   // get table partition list version from master.
-  boost::optional<PartitionListVersion> partition_list_version() const {
+  std::optional<PartitionListVersion> partition_list_version() const {
     return partition_list_version_;
   }
 
@@ -389,7 +387,7 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
   const std::string tablet_id_;
   const std::string log_prefix_;
   const dockv::Partition partition_;
-  const boost::optional<PartitionListVersion> partition_list_version_;
+  const std::optional<PartitionListVersion> partition_list_version_;
   const uint64 split_depth_;
   const TabletId split_parent_tablet_id_;
 
@@ -528,7 +526,7 @@ class LookupCallbackVisitor : public boost::static_visitor<> {
 
  private:
   const LookupCallbackParam param_;
-  const boost::optional<Status> error_status_;
+  const std::optional<Status> error_status_;
 };
 
 YB_STRONGLY_TYPED_BOOL(FailOnPartitionListRefreshed);
@@ -617,7 +615,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   // just skip updating cache for these tablets until they become running.
   Status ProcessTabletLocations(
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations,
-      boost::optional<PartitionListVersion> table_partition_list_version, LookupRpc* lookup_rpc,
+      std::optional<PartitionListVersion> table_partition_list_version, LookupRpc* lookup_rpc,
       AllowSplitTablet allow_split_tablets);
 
   void InvalidateTableCache(const YBTable& table);
@@ -672,16 +670,13 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
       int64_t request_no, const Status& status);
 
   void LookupByIdFailed(
-      const TabletId& tablet_id,
-      const std::shared_ptr<const YBTable>& table,
-      master::IncludeHidden include_hidden,
-      master::IncludeDeleted include_deleted,
-      const boost::optional<PartitionListVersion>& response_partition_list_version,
-      int64_t request_no,
-      const Status& status);
+      const TabletId& tablet_id, const std::shared_ptr<const YBTable>& table,
+      master::IncludeHidden include_hidden, master::IncludeDeleted include_deleted,
+      const std::optional<PartitionListVersion>& response_partition_list_version,
+      int64_t request_no, const Status& status);
 
-  void LookupFullTableFailed(const std::shared_ptr<const YBTable>& table,
-                             int64_t request_no, const Status& status);
+  void LookupFullTableFailed(
+      const std::shared_ptr<const YBTable>& table, int64_t request_no, const Status& status);
 
   class CallbackNotifier;
 
@@ -702,7 +697,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   // Lookup from cache the set of tablets corresponding to a tiven table.
   // Returns empty vector if the cache is invalid or a tablet is stale,
   // otherwise returns a list of tablets.
-  boost::optional<std::vector<RemoteTabletPtr>> FastLookupAllTabletsUnlocked(
+  std::optional<std::vector<RemoteTabletPtr>> FastLookupAllTabletsUnlocked(
       const std::shared_ptr<const YBTable>& table) REQUIRES_SHARED(mutex_);
 
   std::unordered_map<TableId, TableData>::iterator InitTableDataUnlocked(
@@ -734,7 +729,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
 
   Result<RemoteTabletPtr> ProcessTabletLocation(
       const master::TabletLocationsPB& locations, ProcessedTablesMap* processed_tables,
-      const boost::optional<PartitionListVersion>& table_partition_list_version,
+      const std::optional<PartitionListVersion>& table_partition_list_version,
       LookupRpc* lookup_rpc) REQUIRES(mutex_);
 
   YBClient* const client_;

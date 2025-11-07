@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.google.common.collect.ImmutableList;
@@ -14,6 +14,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -38,6 +39,8 @@ import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
+
+  protected UniverseDefinitionTaskParams prevState;
 
   @Inject
   public EditUniverseTaskBase(BaseTaskDependencies baseTaskDependencies) {
@@ -74,7 +77,7 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       createValidateDiskSizeOnNodeRemovalTasks(
           universe, cluster, taskParams().getNodesInCluster(cluster.uuid));
     }
-    createPreflightNodeCheckTasks(taskParams().clusters);
+    createPreflightNodeCheckTasks(universe, taskParams().clusters);
 
     createCheckCertificateConfigTask(universe, taskParams().clusters);
   }
@@ -114,7 +117,6 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       Cluster cluster,
       Set<NodeDetails> newMasters,
       Set<NodeDetails> mastersToStop,
-      boolean updateMasters,
       boolean forceDestroyServers) {
     UserIntent userIntent = cluster.userIntent;
     Set<NodeDetails> nodes = taskParams().getNodesInCluster(cluster.uuid);
@@ -190,6 +192,7 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
           universe,
           nodesToProvision,
           false /* ignore node status check */,
+          false /* do validation of gflags */,
           setupServerParams -> {
             setupServerParams.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
             setupServerParams.rebootNodeAllowed = true;
@@ -282,6 +285,12 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
     // Update placement info on master leader.
     createPlacementInfoTask(null /* additional blacklist */, taskParams().clusters)
         .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+
+    if (cluster.isGeoPartitioned() && cluster.userIntent.enableYSQL) {
+      // Currently we rely on user to modify partitions correctly after doing edit.
+      // So we don't check tablespace placement, only the existence.
+      createTablespacesTasks(cluster.getPartitions(), true);
+    }
 
     if (!nodesToBeRemoved.isEmpty()) {
       // Wait for %age completion of the tablet move from master.

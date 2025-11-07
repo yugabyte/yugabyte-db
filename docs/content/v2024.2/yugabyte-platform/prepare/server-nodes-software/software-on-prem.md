@@ -1,6 +1,6 @@
 ---
-title: YugabyteDB Anywhere node software requirements
-headerTitle: Automatically provision on-premises nodes
+title: Requirements for servers for database nodes using on-premises providers
+headerTitle: Automatically provision database nodes for on-premises providers
 linkTitle: On-premises provider
 description: Prepare a VM for deploying universes on-premises.
 headContent: Prepare a VM for deploying universes on-premises
@@ -10,9 +10,11 @@ menu:
     parent: server-nodes-software
     weight: 20
 type: docs
+rightNav:
+  hideH4: true
 ---
 
-When deploying database clusters using an on-premises provider, YugabyteDB Anywhere relies on you to manually create the VMs and provide these pre-created VMs to YugabyteDB Anywhere.
+When deploying universes using an on-premises provider, YugabyteDB Anywhere relies on you to manually create the VMs for the database nodes and provide these pre-created VMs to YugabyteDB Anywhere.
 
 With the on-premises provider, you must provide one, three, five, or more VM(s) with the following installed:
 
@@ -28,7 +30,7 @@ After you have created the VMs with the operating system and additional software
 1. Modify the configuration file.
 1. Run the provisioning script (as root or via sudo).
 
-These steps prepare the node for use by YugabyteDB Anywhere. If you have already installed YugabyteDB Anywhere and it is running, the last step additionally creates (or updates) an [on-premises provider](../../../configure-yugabyte-platform/on-premises/) with the node already added.
+These steps prepare the node for use by YugabyteDB Anywhere. If you have already [installed YugabyteDB Anywhere](../../../install-yugabyte-platform/) and it is running (recommended), the script additionally creates (or updates) an [on-premises provider](../../../configure-yugabyte-platform/on-premises/) with the node already added.
 
 Root or sudo privileges are only required to provision the nodes. After the node is provisioned (with [YugabyteDB Anywhere node agent](/preview/faq/yugabyte-platform/#what-is-a-node-agent) installed), sudo is no longer required.
 
@@ -105,7 +107,7 @@ Set the following options in the provisioning file to the correct values:
 | `node_ip` | The fully-qualified domain name or IP address of the node you are provisioning. Must be accessible to other nodes. |
 | `tmp_directory` | The directory on the node to use for storing temporary files during provisioning. |
 
-Optionally, if YugabyteDB Anywhere is already installed and running, you can set the following options to have node agent conveniently create (or update) the [on-premises provider configuration](../../../configure-yugabyte-platform/on-premises-provider/) where you want to add the node.
+Set the following options to have node agent create (or update) the [on-premises provider configuration](../../../configure-yugabyte-platform/on-premises-provider/) where you want to add the node. (YugabyteDB Anywhere must be installed and running.)
 
 | Option | Value |
 | :--- | :--- |
@@ -138,25 +140,25 @@ The following options are used for logging the provisioning itself.
 
 ### Run the provisioning script
 
-1. Run the preflight checks either as a root user, or via sudo as follows:
+Run the script either as a root user, or via sudo as follows:
 
-    ```sh
-    sudo ./node-agent-provision.sh --preflight_check
-    ```
+```sh
+sudo ./node-agent-provision.sh
+```
 
-1. Address any issues highlighted by the preflight checks.
-
-1. When the preflight checks pass, run the script either as a root user, or via sudo as follows:
-
-    ```sh
-    sudo ./node-agent-provision.sh
-    ```
-
-The script provisions the node and installs node agent.
+The script provisions the node and installs node agent, and then runs preflight checks to ensure the node is ready for use.
 
 If specified, node agent creates the on-premises provider configuration; or, if the provider already exists, adds the instance to the provider.
 
 After the node is provisioned, YugabyteDB Anywhere does not need sudo access to the node.
+
+#### Preflight check
+
+For troubleshooting, you can run the script's preflight checks separately as follows:
+
+```sh
+sudo ./node-agent-provision.sh --preflight_check
+```
 
 ## sudo whitelist
 

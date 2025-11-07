@@ -12,6 +12,6 @@ properties:
     type: array
     items:
       $ref: "./UniverseQueryLogsExporterConfig.yaml"
-  ysql_query_config:
+  ysql_query_log_config:
     description: YSQL query log config
     $ref: "./YSQLQueryLogConfig.yaml"

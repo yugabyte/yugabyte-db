@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 YugaByte, Inc. and Contributors
+ * Copyright 2019 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -100,7 +100,8 @@ public class AnsibleDestroyServer extends NodeTaskBase {
           "Onprem node {} has no IP in the universe {}",
           taskParams().nodeName,
           universe.getUniverseUUID());
-      NodeInstance.maybeGetByName(taskParams().nodeName).ifPresent(n -> n.clearNodeDetails());
+      NodeInstance.maybeGetByName(taskParams().nodeName, taskParams().nodeUuid)
+          .ifPresent(n -> n.clearNodeDetails());
       return;
     }
     boolean cleanupFailed = true;
@@ -154,7 +155,8 @@ public class AnsibleDestroyServer extends NodeTaskBase {
 
     if (userIntent.providerType == Common.CloudType.onprem
         && nodeDetails.state != NodeDetails.NodeState.Decommissioned) {
-      Optional<NodeInstance> nodeInstanceOpt = NodeInstance.maybeGetByName(taskParams().nodeName);
+      Optional<NodeInstance> nodeInstanceOpt =
+          NodeInstance.maybeGetByName(taskParams().nodeName, taskParams().nodeUuid);
       if (nodeInstanceOpt.isPresent()) {
         if (cleanupFailed) {
           log.info(

@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -131,7 +131,7 @@ std::string ToString(const Float& value) {
 template <class T>
 concept TypeWithStronglyDefinedToString =
     TypeWith_ToString<T> || TypeWith_to_string<T> || yb_tostring::TypeWithFree_to_string<T> ||
-    TypeWith_ShortDebugString<T> || TupleLikeType<T> || OptionalType<T> ||
+    TypeWith_ShortDebugString<T> || TupleLikeType<T> || StdOptionalType<T> ||
     std::is_integral_v<T> || std::is_floating_point_v<T>;
 
 template <class T>
@@ -201,7 +201,7 @@ decltype(auto) ToString(const T& value) {
   return out.str();
 }
 
-template <OptionalType T>
+template <StdOptionalType T>
 std::string ToString(const T& t);
 
 template <size_t Index, TupleLikeType Tuple>
@@ -262,7 +262,7 @@ void TupleToString(const Tuple& tuple, std::string* out) {
   }
 }
 
-template <OptionalType T>
+template <StdOptionalType T>
 std::string ToString(const T& t) {
   return t ? ToString(*t) : "<nullopt>";
 }

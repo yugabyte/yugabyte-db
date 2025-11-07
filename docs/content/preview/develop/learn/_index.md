@@ -5,11 +5,6 @@ description: Learn to develop YugabyteDB applications
 aliases:
   - /develop/learn/
   - /preview/develop/learn/sql-nosql/
-menu:
-  preview:
-    identifier: learn
-    parent: develop
-    weight: 560
 type: indexpage
 ---
 

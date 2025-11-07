@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -159,9 +159,8 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
   bool HasRetryableRequestsReplicated() const;
 
  private:
-  static boost::optional<TransactionStatus> GetStatusAt(
-      HybridTime time,
-      HybridTime last_known_status_hybrid_time,
+  static std::optional<TransactionStatus> GetStatusAt(
+      HybridTime time, HybridTime last_known_status_hybrid_time,
       TransactionStatus last_known_status);
 
   void SendStatusRequest(
@@ -244,6 +243,8 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
 
   // Whether or not transaction has any batches replicated by retryable requests.
   bool has_retryable_requests_replicated_ = false;
+
+  FastModeTransactionScope fast_mode_scope_;
 };
 
 Status MakeAbortedStatus(const TransactionId& id);

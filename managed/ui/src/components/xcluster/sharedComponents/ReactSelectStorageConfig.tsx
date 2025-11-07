@@ -13,7 +13,7 @@ import {
   YBReactSelectFieldProps
 } from '../../configRedesign/providerRedesign/components/YBReactSelect/YBReactSelectField';
 import { usePillStyles } from '../../../redesign/styles/styles';
-import { IStorageConfig as BackupStorageConfig } from '../../backupv2';
+import { CustomerConfig as BackupStorageConfig } from '../../backupv2';
 
 import { Optional } from '../../../redesign/helpers/types';
 

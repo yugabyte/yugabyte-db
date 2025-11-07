@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -62,6 +62,7 @@
 
 DECLARE_bool(enable_ysql_conn_mgr);
 DECLARE_int32(ysql_conn_mgr_max_pools);
+DECLARE_bool(openssl_require_fips);
 
 DEPRECATE_FLAG(string, pg_proxy_bind_address, "02_2024");
 
@@ -132,10 +133,10 @@ DEFINE_RUNTIME_string(ysql_pg_conf_csv, "",
     "Check https://www.postgresql.org/docs/current/view-pg-settings.html for information about "
     "which parameters take effect at runtime.");
 
-DEFINE_NON_RUNTIME_string(ysql_hba_conf_csv, "",
+DEFINE_RUNTIME_string(ysql_hba_conf_csv, "",
               "CSV formatted line represented list of postgres hba rules (in order)");
 TAG_FLAG(ysql_hba_conf_csv, sensitive_info);
-DEFINE_NON_RUNTIME_string(ysql_ident_conf_csv, "",
+DEFINE_RUNTIME_string(ysql_ident_conf_csv, "",
               "CSV formatted line represented list of postgres ident map rules (in order)");
 
 DEFINE_NON_RUNTIME_string(ysql_pg_conf, "",
@@ -264,8 +265,13 @@ DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_base_scans_cost_model, false,
 
 DEFINE_RUNTIME_PG_FLAG(string, yb_enable_cbo, "legacy_mode",
     "YSQL cost-based optimizer mode. Allowed values are 'legacy_mode', 'legacy_stats_mode', "
-    "'legacy_bnl_mode', 'legacy_stats_bnl_mode', "
+    "'legacy_bnl_mode', 'legacy_stats_bnl_mode', 'legacy_ignore_stats_bnl_mode', "
     "'off', and 'on'");
+
+DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_update_reltuples_after_create_index, false,
+    "Enables update of reltuples in pg_class for the base table and index after creating the "
+    "index. When disabled, reltuples of the base table will remain unchanged and index reltuples "
+    "will be set to 0 after the index is created.");
 
 DEFINE_RUNTIME_PG_FLAG(uint64, yb_fetch_row_limit, 1024,
     "Maximum number of rows to fetch per scan.");
@@ -292,6 +298,11 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_allow_block_based_sampling_algorithm,
 DEFINE_RUNTIME_AUTO_PG_FLAG(
     bool, yb_allow_separate_requests_for_sampling_stages, kLocalVolatile, false, true,
     "Allow using separate requests for block-based sampling stages");
+
+DEFINE_RUNTIME_AUTO_PG_FLAG(
+    bool, yb_allow_dockey_bounds, kLocalVolatile, false, true,
+    "If true, allow lower_bound/upper_bound fields of PgsqlReadRequestPB to be DocKeys. Only "
+    "applicable for hash-sharded tables.");
 
 DEFINE_RUNTIME_PG_FLAG(
     string, yb_default_replica_identity, "CHANGE",
@@ -350,7 +361,7 @@ DEFINE_NON_RUNTIME_string(ysql_cron_database_name, "yugabyte",
 DEFINE_NON_RUNTIME_bool(ysql_trust_local_yugabyte_connections, true,
             "Trust YSQL connections via the local socket from the yugabyte user.");
 
-DEFINE_NON_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_query_diagnostics, false,
+DEFINE_NON_RUNTIME_PG_FLAG(bool, yb_enable_query_diagnostics, false,
     "Enables the collection of query diagnostics data for YSQL queries, "
     "facilitating the creation of diagnostic bundles.");
 
@@ -370,6 +381,9 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_invalidate_table_cache_entry, true,
     "Enables invalidation of individual table cache entry on catalog cache refresh, "
     "only applicable when invalidation messages are enabled.");
 
+DEFINE_RUNTIME_PG_FLAG(int32, yb_test_reset_retry_counts, -1,
+    "Restricts the number of retries for transaction conflicts. For testing purposes.");
+
 DECLARE_bool(enable_pg_cron);
 DECLARE_bool(enable_object_locking_for_table_locks);
 
@@ -386,6 +400,19 @@ DEFINE_RUNTIME_PG_FLAG(
     "When a process exits, log a peak heap snapshot showing the "
     "approximate memory usage of each malloc call stack if its peak RSS "
     "is greater than or equal to this threshold in KB. Set to -1 to disable.");
+
+const char* const AUTH_METHOD_MD5 = "md5";
+const char* const AUTH_METHOD_SCRAM = "scram-sha-256";
+const char* const AUTH_METHOD_TRUST = "trust";
+
+DEFINE_NON_RUNTIME_string(ysql_auth_method, AUTH_METHOD_MD5,
+    "Authentication method for YSQL connections. Valid values: 'md5', 'scram-sha-256'. "
+    "scram-sha-256 is preferred for better security. "
+    "If openssl_require_fips is true then by default authentication method will be set to "
+    "scram-sha-256 and the value of ysql_auth_method will be ignored. "
+    "Note: Explicit auth methods in ysql_hba_conf_csv take precedence over this flag.");
+DEFINE_validator(ysql_auth_method, FLAG_IN_SET_VALIDATOR("scram-sha-256", "md5"));
+DEFINE_NEW_INSTALL_STRING_VALUE(ysql_auth_method, "scram-sha-256");
 
 using gflags::CommandLineFlagInfo;
 using std::string;
@@ -453,40 +480,6 @@ void MergeSharedPreloadLibraries(const string& src, vector<string>* defaults) {
   defaults->insert(defaults->end(), new_items.begin(), new_items.end());
 }
 
-Status ReadCSVValues(const string& csv, vector<string>* lines) {
-  // Function reads CSV string in the following format:
-  // - fields are divided with comma (,)
-  // - fields with comma (,) or double-quote (") are quoted with double-quote (")
-  // - pair of double-quote ("") in quoted field represents single double-quote (")
-  //
-  // Examples:
-  // 1,"two, 2","three ""3""", four , -> ['1', 'two, 2', 'three "3"', ' four ', '']
-  // 1,"two                           -> Malformed CSV (quoted field 'two' is not closed)
-  // 1, "two"                         -> Malformed CSV (quoted field 'two' has leading spaces)
-  // 1,two "2"                        -> Malformed CSV (field with " must be quoted)
-  // 1,"tw"o"                         -> Malformed CSV (no separator after quoted field 'tw')
-
-  const std::regex exp(R"(^(?:([^,"]+)|(?:"((?:[^"]|(?:""))*)\"))(?:(?:,)|(?:$)))");
-  auto i = csv.begin();
-  const auto end = csv.end();
-  std::smatch match;
-  while (i != end && std::regex_search(i, end, match, exp)) {
-    // Replace pair of double-quote ("") with single double-quote (") in quoted field.
-    if (match[2].length() > 0) {
-      lines->emplace_back(match[2].first, match[2].second);
-      boost::algorithm::replace_all(lines->back(), "\"\"", "\"");
-    } else {
-      lines->emplace_back(match[1].first, match[1].second);
-    }
-    i += match.length();
-  }
-  SCHECK(i == end, InvalidArgument, Format("Malformed CSV '$0'", csv));
-  if (!csv.empty() && csv.back() == ',') {
-    lines->emplace_back();
-  }
-  return Status::OK();
-}
-
 // Make sure that the parameter values do not contain '\n' since each line is a separate parameter.
 Status ValidateConfValuesBasic(const vector<string>& lines) {
   for (const string& parameter : lines) {
@@ -540,7 +533,8 @@ DEFINE_validator(ysql_enable_documentdb, &ValidateDocumentDB);
 // Keep the value list in sync with `yb_cost_model_options` in `guc.c`.
 DEFINE_validator(ysql_yb_enable_cbo,
     FLAG_IN_SET_VALIDATOR("off", "on", "legacy_mode", "legacy_stats_mode",
-                          "legacy_bnl_mode", "legacy_stats_bnl_mode"));
+                          "legacy_bnl_mode", "legacy_stats_bnl_mode",
+                          "legacy_ignore_stats_bnl_mode"));
 
 namespace {
 // Append any Pg gFlag with non default value, or non-promoted AutoFlag
@@ -689,7 +683,9 @@ Result<string> WritePgHbaConfig(const PgProcessConf& conf) {
   // Add auto-generated config for the enable auth and enable_tls flags.
   if (FLAGS_ysql_enable_auth || conf.enable_tls) {
     const auto host_type =  conf.enable_tls ? "hostssl" : "host";
-    const auto auth_method = FLAGS_ysql_enable_auth ? "md5" : "trust";
+    const auto auth_method = FLAGS_ysql_enable_auth
+        ? (FLAGS_openssl_require_fips ? AUTH_METHOD_SCRAM : FLAGS_ysql_auth_method)
+        : AUTH_METHOD_TRUST;
     lines.push_back(Format("$0 all all all $1", host_type, auth_method));
   }
 
@@ -946,7 +942,9 @@ Status PgWrapper::ReloadConfig() {
 }
 
 Status PgWrapper::UpdateAndReloadConfig() {
-  VERIFY_RESULT(WritePostgresConfig(conf_));
+  RETURN_NOT_OK(WritePostgresConfig(conf_));
+  RETURN_NOT_OK(WritePgHbaConfig(conf_));
+  RETURN_NOT_OK(WritePgIdentConfig(conf_));
   return ReloadConfig();
 }
 
@@ -1420,7 +1418,7 @@ Status PgSupervisor::UpdateAndReloadConfig() {
   return Status::OK();
 }
 
-Status PgSupervisor::RegisterReloadPgConfigCallback(const void* flag_ptr) {
+Status PgSupervisor::RegisterReloadConfigCallback(const void* flag_ptr) {
   // DeRegisterForPgFlagChangeNotifications is called before flag_callbacks_ is destroyed, so its
   // safe to bind to this.
   flag_callbacks_.emplace_back(VERIFY_RESULT(RegisterFlagUpdateCallback(
@@ -1438,11 +1436,13 @@ Status PgSupervisor::RegisterPgFlagChangeNotifications() {
     std::unordered_set<FlagTag> tags;
     GetFlagTags(flag.name, &tags);
     if (tags.contains(FlagTag::kPg)) {
-      RETURN_NOT_OK(RegisterReloadPgConfigCallback(flag.flag_ptr));
+      RETURN_NOT_OK(RegisterReloadConfigCallback(flag.flag_ptr));
     }
   }
 
-  RETURN_NOT_OK(RegisterReloadPgConfigCallback(&FLAGS_ysql_pg_conf_csv));
+  RETURN_NOT_OK(RegisterReloadConfigCallback(&FLAGS_ysql_pg_conf_csv));
+  RETURN_NOT_OK(RegisterReloadConfigCallback(&FLAGS_ysql_hba_conf_csv));
+  RETURN_NOT_OK(RegisterReloadConfigCallback(&FLAGS_ysql_ident_conf_csv));
 
   return Status::OK();
 }

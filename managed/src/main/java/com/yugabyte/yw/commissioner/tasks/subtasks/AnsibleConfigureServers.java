@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 YugaByte, Inc. and Contributors
+ * Copyright 2019 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you may not use this file
  * except in compliance with the License. You may obtain a copy of the License at
@@ -36,6 +36,7 @@ import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
+import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -109,6 +110,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     public boolean masterJoinExistingCluster = true;
 
     public AuditLogConfig auditLogConfig = null;
+    public QueryLogConfig queryLogConfig = null;
     public MetricsExportConfig metricsExportConfig = null;
     public Map<String, String> ybcGflags = new HashMap<>();
     public boolean overrideNodePorts = false;
@@ -211,7 +213,8 @@ public class AnsibleConfigureServers extends NodeTaskBase {
                   universe, nodeDetails, taskParams(), optional.get()),
               NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
         }
-      } else {
+      } else if (shouldInstallDbSoftware(
+          universe, taskParams().ignoreUseCustomImageConfig, taskParams().vmUpgradeTaskType)) {
         nodeAgentClient.runDownloadSoftware(
             optional.get(),
             nodeAgentRpcPayload.setupDownloadSoftwareBits(
@@ -234,16 +237,12 @@ public class AnsibleConfigureServers extends NodeTaskBase {
         nodeAgentRpcPayload.runServerGFlagsWithNodeAgent(
             optional.get(), universe, nodeDetails, ServerType.CONTROLLER.toString(), taskParams());
       }
-      if (taskParams().otelCollectorEnabled && taskParams().auditLogConfig != null) {
-        AuditLogConfig config = taskParams().auditLogConfig;
-        if (!((config.getYsqlAuditConfig() == null || !config.getYsqlAuditConfig().isEnabled())
-            && (config.getYcqlAuditConfig() == null || !config.getYcqlAuditConfig().isEnabled()))) {
-          nodeAgentClient.runInstallOtelCollector(
-              optional.get(),
-              nodeAgentRpcPayload.setupInstallOtelCollectorBits(
-                  universe, nodeDetails, taskParams(), optional.get()),
-              NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
-        }
+      if (taskParams().otelCollectorEnabled) {
+        nodeAgentClient.runInstallOtelCollector(
+            optional.get(),
+            nodeAgentRpcPayload.setupInstallOtelCollectorBits(
+                universe, nodeDetails, taskParams(), optional.get()),
+            NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
       }
       if (taskParams().cgroupSize > 0) {
         nodeAgentClient.runSetupCGroupInput(

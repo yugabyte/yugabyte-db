@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -12,6 +12,8 @@
 //
 
 #pragma once
+
+#include <boost/atomic/atomic_ref.hpp>
 
 #include "yb/common/common.pb.h"
 #include "yb/common/schema.h"
@@ -84,6 +86,12 @@ struct DocReadContext {
     return Slice(shared_key_prefix_buffer_.data(), shared_key_prefix_len_);
   }
 
+  // Tombstone time cache is valid only for colocated tables.
+  std::optional<DocHybridTime> table_tombstone_time() const;
+
+  // Tombstone time cache is valid only for colocated tables.
+  void set_table_tombstone_time(DocHybridTime table_tombstone_time) const;
+
   Slice upperbound() const {
     return Slice(upperbound_buffer_.data(), upperbound_len_);
   }
@@ -91,6 +99,9 @@ struct DocReadContext {
   Slice table_key_prefix() const {
     return Slice(shared_key_prefix_buffer_.data(), table_key_prefix_len_);
   }
+
+  Result<bool> HaveEqualBloomFilterKey(Slice lhs, Slice rhs) const;
+  size_t NumColumnsUsedByBloomFilterKey() const;
 
   void TEST_SetDefaultTimeToLive(uint64_t ttl_msec) {
     schema_.SetDefaultTimeToLive(ttl_msec);
@@ -147,6 +158,19 @@ struct DocReadContext {
   size_t table_key_prefix_len_ = 0;
 
   std::string log_prefix_;
+
+  // Cached tombstone time for the colocated table, initialized on the first read.
+  // The cache avoids repeated RocksDB tombstone lookups, improving bulk update performance.
+  // An initial value of kMax means the tombstone time is not yet cached.
+  //
+  // In the short window between writing a new tombstone (drop start) and completing the drop,
+  // a leader that has already read and cached the old tombstone time will not see the new mark,
+  // while a follower (with no cached value) will. This inconsistency can already occur today,
+  // since the tombstone write is replicated before the actual drop, meaning a leader read
+  // might see no rows while a follower can. Ideally, tombstone write and drop would be atomic
+  // to prevent users from seeing an empty table before it is fully dropped.
+  alignas(boost::atomic_ref<DocHybridTime>::required_alignment)
+  mutable DocHybridTime table_tombstone_time_ = DocHybridTime::kMax;
 };
 
 } // namespace yb::docdb

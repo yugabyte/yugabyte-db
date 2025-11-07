@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -28,7 +28,9 @@
 
 #include "yb/client/client_fwd.h"
 #include "yb/client/in_flight_op.h"
+#include "yb/common/pg_types.h"
 
+#include "yb/util/status_callback.h"
 #include "yb/util/status_fwd.h"
 
 namespace yb {
@@ -84,7 +86,7 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
  public:
   explicit YBTransaction(TransactionManager* manager,
-                         TransactionLocality locality = TransactionLocality::GLOBAL);
+                         TransactionFullLocality locality = TransactionFullLocality::Global());
 
   // Trick to allow std::make_shared with this ctor only from methods of this class.
   YBTransaction(TransactionManager* manager, const TransactionMetadata& metadata, PrivateOnlyTag);
@@ -109,6 +111,10 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   // Transaction is unusable before Init is called.
   Status Init(
       IsolationLevel isolation, const ReadHybridTime& read_time = ReadHybridTime());
+
+  void RestartStartTime();
+
+  void SetStartTimeIfNecessary();
 
   // Allows starting a transaction that reuses an existing read point.
   void InitWithReadPoint(IsolationLevel isolation, ConsistentReadPoint&& read_point);
@@ -177,7 +183,7 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
   void SetActiveSubTransaction(SubTransactionId id);
 
-  boost::optional<SubTransactionMetadataPB> GetSubTransactionMetadataPB() const;
+  std::optional<SubTransactionMetadataPB> GetSubTransactionMetadataPB() const;
 
   Status SetPgTxnStart(int64_t pg_txn_start_us);
 
@@ -209,6 +215,14 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   void SetBackgroundTransaction(const YBTransactionPtr& background_transaction);
 
   const ash::WaitStateInfoPtr wait_state();
+
+  // Records the Async Write OpId. Returns true if the query was recorded, false if it already
+  // existed.
+  bool RecordAsyncWrite(const TabletId& tablet_id, const OpId& op_id);
+  void RecordAsyncWriteCompletion(
+      const TabletId& tablet_id, const OpId& op_id, const Status& status);
+  std::optional<int64_t> GetPendingAsyncWriteTerm(const TabletId& tablet_id) const;
+  void WaitForAsyncWrites(const TabletId& tablet_id, StdStatusCallback&& callback);
 
  private:
   class Impl;

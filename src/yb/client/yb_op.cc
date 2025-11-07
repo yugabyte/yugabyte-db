@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -67,6 +67,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
 
 using namespace std::literals;
 
@@ -219,8 +220,12 @@ Status InitHashPartitionKey(
       request->set_max_hash_code(hash_code);
     }
 
-  } else if (request->has_lower_bound() || request->has_upper_bound()) {
-    // If the read request provides a scan boundary, use that to derive the partition key.
+  } else if (AreBoundsHashCode(*request)) {
+    // lower_bound / upper_bound are set to hash codes. This is possible during upgrade if the
+    // AutoFlag yb_allow_dockey_bounds is false to maintain backward compatibility.
+    DCHECK(dockv::PartitionSchema::IsValidHashPartitionKeyBound(request->lower_bound().key()));
+    DCHECK(dockv::PartitionSchema::IsValidHashPartitionKeyBound(request->upper_bound().key()));
+
     SetPartitionKey(request->lower_bound().key(), request);
 
     // Translate to hash-code bounds as well.
@@ -238,9 +243,32 @@ Status InitHashPartitionKey(
       }
       request->set_max_hash_code(hash);
     }
+  } else if (request->has_lower_bound() || request->has_upper_bound()) {
+    // lower_bound / upper_bound are set to dockeys.
+
+    if (request->has_lower_bound()) {
+      const auto lower_bound_hash_code =
+          VERIFY_RESULT(dockv::DocKey::DecodeHash(request->lower_bound().key()));
+      request->set_hash_code(lower_bound_hash_code);
+    }
+
+    if (request->has_upper_bound()) {
+      const auto upper_bound_hash_code =
+          VERIFY_RESULT(dockv::DocKey::DecodeHash(request->upper_bound().key()));
+      request->set_max_hash_code(upper_bound_hash_code);
+    }
+
+    auto partition_key = dockv::PartitionSchema::EncodeMultiColumnHashValue(request->hash_code());
+    SetPartitionKey(std::move(partition_key), request);
   } else {
     // Full scan. Default to empty key.
     request->clear_partition_key();
+  }
+
+  // Validate that the bounds are hash codes when the AutoFlag yb_allow_dockey_bounds is false and
+  // vice-versa.
+  if (request->has_lower_bound() || request->has_upper_bound()) {
+    DCHECK(AreBoundsHashCode(*request) ^ yb_allow_dockey_bounds);
   }
 
   return Status::OK();
@@ -387,13 +415,13 @@ Status DoGetRangePartitionBounds(const Schema& schema,
   const auto& condition_expr = request.condition_expr();
   if (condition_expr.has_condition() &&
       implicit_cast<size_t>(range_cols.size()) < schema.num_range_key_columns()) {
-    auto prefixed_range_components = VERIFY_RESULT(qlexpr::InitKeyColumnPrimitiveValues(
+    auto prefixed_range_components = VERIFY_RESULT(qlexpr::InitKeyColumnValues(
         range_cols, schema, schema.num_hash_key_columns()));
     qlexpr::QLScanRange scan_range(schema, condition_expr.condition());
     *lower_bound = qlexpr::GetRangeKeyScanSpec(
-        schema, &prefixed_range_components, &scan_range, nullptr, true /* lower_bound */);
+        schema, &prefixed_range_components, &scan_range, nullptr, qlexpr::BoundType::kLower);
     *upper_bound = qlexpr::GetRangeKeyScanSpec(
-        schema, &prefixed_range_components, &scan_range, nullptr, false /* upper_bound */);
+        schema, &prefixed_range_components, &scan_range, nullptr, qlexpr::BoundType::kUpper);
   } else if (!range_cols.empty()) {
     *lower_bound = VERIFY_RESULT(GetRangeComponents(schema, range_cols, true));
     *upper_bound = VERIFY_RESULT(GetRangeComponents(schema, range_cols, false));

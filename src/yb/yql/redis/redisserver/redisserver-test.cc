@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -763,7 +763,7 @@ class TestRedisService : public RedisTableTestBase {
   unique_ptr<FileLock> redis_port_lock_;
   unique_ptr<FileLock> redis_webserver_lock_;
   std::vector<uint8_t> resp_;
-  boost::optional<rpc::IoThreadPool> io_thread_pool_;
+  std::optional<rpc::IoThreadPool> io_thread_pool_;
   std::shared_ptr<RedisClient> test_client_;
 };
 
@@ -774,7 +774,6 @@ class NoLocalCallsRedisServiceTest : public TestRedisService {
     TestRedisService::SetUp();
   }
 };
-
 
 void TestRedisService::SetUp() {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_redis_service_yb_client_timeout_millis) = kDefaultTimeoutMs;
@@ -1016,7 +1015,7 @@ class TestRedisServiceCleanQueueOnShutdown : public TestRedisService {
   }
 
  private:
-  boost::optional<google::FlagSaver> saver_;
+  std::optional<google::FlagSaver> saver_;
 };
 
 TEST_F_EX(TestRedisService, AbortQueueOnShutdown, TestRedisServiceCleanQueueOnShutdown) {
@@ -1047,7 +1046,7 @@ class TestRedisServiceReceiveBufferOverflow : public TestRedisService {
   }
 
  private:
-  boost::optional<google::FlagSaver> saver_;
+  std::optional<google::FlagSaver> saver_;
   ValueChanger<uint64_t> redis_max_read_buffer_size_changer_;
 };
 

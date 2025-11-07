@@ -1,10 +1,11 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.commissioner.UpgradeTaskBase.SPLIT_FALLBACK;
 import static com.yugabyte.yw.commissioner.UpgradeTaskBase.isBatchRollEnabled;
 import static com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType.RotatingCert;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
@@ -16,6 +17,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.HookInserter;
 import com.yugabyte.yw.commissioner.ITask;
+import com.yugabyte.yw.commissioner.NodeAgentEnabler;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
@@ -32,14 +34,22 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.CheckClusterConsistency;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckLeaderlessTablets;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodesAreSafeToTakeDown;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckUnderReplicatedTablets;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTableSpaces;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteCapacityReservation;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteClusterFromUniverse;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DisablePitrConfig;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DoCapacityReservation;
+import com.yugabyte.yw.commissioner.tasks.subtasks.EnablePitrConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceExistCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageCatalogUpgradeSuperUser.Action;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistUseClockbound;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PreflightNodeCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetupYNP;
+import com.yugabyte.yw.commissioner.tasks.subtasks.TablespaceValidationOnRemove;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert.UpdateRootCertAction;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistAuditLoggingConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterAPIDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseCommunicationPorts;
@@ -55,10 +65,13 @@ import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TableSpaceStructures;
+import com.yugabyte.yw.common.TableSpaceUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
@@ -71,6 +84,7 @@ import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
+import com.yugabyte.yw.common.utils.CapacityReservationUtil;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.ConfigureDBApiParams;
 import com.yugabyte.yw.forms.RollMaxBatchSize;
@@ -84,9 +98,11 @@ import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HookScope.TriggerType;
+import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TaskInfo;
@@ -106,6 +122,7 @@ import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeStat
 import java.io.File;
 import java.io.IOException;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -122,6 +139,7 @@ import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -261,6 +279,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                 .getUniverseDetails()
                 .upsertPrimaryCluster(
                     taskParams().getPrimaryCluster().userIntent,
+                    taskParams().getPrimaryCluster().getPartitions(),
                     taskParams().getPrimaryCluster().placementInfo);
           } else {
             for (Cluster readOnlyCluster : taskParams().getReadOnlyClusters()) {
@@ -268,6 +287,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                   .getUniverseDetails()
                   .upsertCluster(
                       readOnlyCluster.userIntent,
+                      readOnlyCluster.getPartitions(),
                       readOnlyCluster.placementInfo,
                       readOnlyCluster.uuid);
             }
@@ -622,13 +642,13 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   private SelectMastersResult selectMasters(String masterLeader, boolean applySelection) {
     UniverseDefinitionTaskParams.Cluster primaryCluster = taskParams().getPrimaryCluster();
     if (primaryCluster != null) {
+      Set<UUID> zonesForMasters = PlacementInfoUtil.getZonesForMasters(primaryCluster);
+      log.debug("Zones for masters {}", zonesForMasters);
       SelectMastersResult result =
           PlacementInfoUtil.selectMasters(
               masterLeader,
               taskParams().nodeDetailsSet,
-              taskParams().mastersInDefaultRegion
-                  ? PlacementInfoUtil.getDefaultRegionCode(taskParams())
-                  : null,
+              node -> zonesForMasters.contains(node.azUuid),
               applySelection,
               taskParams().clusters);
       Set<NodeDetails> primaryNodes = taskParams().getNodesInCluster(primaryCluster.uuid);
@@ -667,9 +687,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param pi : the placement info in which the masters need to be placed.
    */
   public void selectNumMastersAZ(PlacementInfo pi) {
-    UserIntent userIntent = taskParams().getPrimaryCluster().userIntent;
+    Cluster cluster = taskParams().getPrimaryCluster();
+    UserIntent userIntent = cluster.userIntent;
     int numTotalMasters = userIntent.replicationFactor;
-    PlacementInfoUtil.selectNumMastersAZ(pi, numTotalMasters);
+    PlacementInfoUtil.selectNumMastersAZ(
+        pi, numTotalMasters, PlacementInfoUtil.getZonesForMasters(cluster));
   }
 
   // Utility method so that the same tasks can be executed in StopNodeInUniverse.java
@@ -1065,6 +1087,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Add audit log config from the primary cluster
       params.auditLogConfig =
           universe.getUniverseDetails().getPrimaryCluster().userIntent.auditLogConfig;
+      // Add query log config from the primary cluster
+      params.queryLogConfig =
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.queryLogConfig;
       params.metricsExportConfig =
           universe.getUniverseDetails().getPrimaryCluster().userIntent.metricsExportConfig;
 
@@ -1100,6 +1125,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           GFlagsUtil.getGFlagsForNode(
               node, serverType, cluster, universe.getUniverseDetails().clusters);
       params.useSystemd = userIntent.useSystemd;
+      params.cgroupSize = getCGroupSize(node);
       if (paramsCustomizer != null) {
         paramsCustomizer.accept(params);
       }
@@ -1395,6 +1421,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     params.auditLogConfig =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.auditLogConfig;
+    // Add query log config from the primary cluster
+    params.queryLogConfig =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.queryLogConfig;
     params.metricsExportConfig =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.metricsExportConfig;
     // Which user the node exporter service will run as
@@ -1530,6 +1559,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
       params.auditLogConfig =
           universe.getUniverseDetails().getPrimaryCluster().userIntent.auditLogConfig;
+      params.queryLogConfig =
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.queryLogConfig;
       params.metricsExportConfig =
           universe.getUniverseDetails().getPrimaryCluster().userIntent.metricsExportConfig;
       // Set if this node is a master in shell mode.
@@ -2130,9 +2161,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * Create preflight node check tasks for on-prem nodes in the clusters if the nodes are in
    * ToBeAdded state.
    *
+   * @param universe the universe
    * @param clusters the clusters
    */
-  public void createPreflightNodeCheckTasks(Collection<Cluster> clusters) {
+  public void createPreflightNodeCheckTasks(Universe universe, Collection<Cluster> clusters) {
     Set<Cluster> onPremClusters =
         clusters.stream()
             .filter(cluster -> cluster.userIntent.providerType == CloudType.onprem)
@@ -2146,6 +2178,26 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     if (CollectionUtils.isNotEmpty(nodesToProvision)) {
       createPreflightNodeCheckTasks(
           clusters, nodesToProvision, null /*rootCA*/, null /*clientRootCA*/);
+    }
+    Set<NodeDetails> nodesToBeRemoved =
+        PlacementInfoUtil.getNodesToBeRemoved(taskParams().nodeDetailsSet);
+    if (CollectionUtils.isNotEmpty(nodesToBeRemoved)) {
+      for (NodeDetails node : nodesToBeRemoved) {
+        NodeDetails universeNode = universe.getNode(node.nodeName);
+        if (universeNode == null) {
+          log.warn(
+              "Node {} is not found in the universe {}", node.nodeName, universe.getUniverseUUID());
+          continue;
+        }
+        NodeInstance.maybeGetByName(universeNode.nodeName, universeNode.nodeUuid)
+            .orElseThrow(
+                () ->
+                    new PlatformServiceException(
+                        BAD_REQUEST,
+                        String.format(
+                            "Node instance %s with UUID %s does not exist",
+                            node.nodeName, node.nodeUuid)));
+      }
     }
   }
 
@@ -2330,7 +2382,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    *
    * @param nodes a collection of nodes to be processed.
    */
-  public SubTaskGroup createYNPProvisioningTask(Universe universe, Collection<NodeDetails> nodes) {
+  public SubTaskGroup createYNPProvisioningTask(
+      Universe universe, Collection<NodeDetails> nodes, boolean isYbPrebuiltImage) {
     Map<UUID, Provider> nodeUuidProviderMap = new HashMap<>();
     SubTaskGroup subTaskGroup =
         createSubTaskGroup(YNPProvisioning.class.getSimpleName(), SubTaskGroupType.Provisioning);
@@ -2362,6 +2415,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           params.setUniverseUUID(universe.getUniverseUUID());
           params.nodeAgentInstallDir = installPath;
           params.remotePackagePath = taskParams().remotePackagePath;
+          params.isYbPrebuiltImage = isYbPrebuiltImage;
           if (StringUtils.isNotEmpty(n.sshUserOverride)) {
             params.sshUser = n.sshUserOverride;
           }
@@ -2373,6 +2427,33 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       getRunnableTask().addSubTaskGroup(subTaskGroup);
     }
     return subTaskGroup;
+  }
+
+  /**
+   * Checks if the DB software should be installed based on the custom image properties.
+   *
+   * @param universe the universe.
+   * @param ignoreUseCustomImageConfig flag which is used only when vmUpgradeTaskType is not set.
+   * @param vmUpgradeTaskType VM image upgrade type if set.
+   * @return true if software needs to be installed else false.
+   */
+  public boolean shouldInstallDbSoftware(
+      Universe universe,
+      boolean ignoreUseCustomImageConfig,
+      @Nullable VmUpgradeTaskType vmUpgradeTaskType) {
+    // This is ported from NodeManager.
+    if (vmUpgradeTaskType == VmUpgradeTaskType.VmUpgradeWithCustomImages) {
+      return false;
+    }
+    if (vmUpgradeTaskType == VmUpgradeTaskType.None
+        && !ignoreUseCustomImageConfig
+        && universe
+            .getConfig()
+            .getOrDefault(Universe.USE_CUSTOM_IMAGE, "false")
+            .equalsIgnoreCase("true")) {
+      return false;
+    }
+    return true;
   }
 
   /**
@@ -2451,7 +2532,15 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                 createSetupYNPTask(universe, filteredNodes)
                     .setSubTaskGroupType(SubTaskGroupType.Provisioning);
                 if (!useAnsibleProvisioning) {
-                  createYNPProvisioningTask(universe, filteredNodes)
+                  // TODO hack to get the custom params.
+                  AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
+                  if (setupParamsCustomizer != null) {
+                    setupParamsCustomizer.accept(params);
+                  }
+                  boolean isYbPrebuiltImage =
+                      !shouldInstallDbSoftware(
+                          universe, params.ignoreUseCustomImageConfig, params.vmUpgradeTaskType);
+                  createYNPProvisioningTask(universe, filteredNodes, isYbPrebuiltImage)
                       .setSubTaskGroupType(SubTaskGroupType.Provisioning);
                 }
               }
@@ -2506,6 +2595,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       Set<NodeDetails> mastersToBeConfigured,
       Set<NodeDetails> tServersToBeConfigured,
       boolean ignoreNodeStatus,
+      boolean doValidateGFlags,
       @Nullable Consumer<AnsibleConfigureServers.Params> installSoftwareParamsCustomizer,
       @Nullable Consumer<AnsibleConfigureServers.Params> gflagsParamsCustomizer) {
 
@@ -2528,6 +2618,21 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               createConfigureServerTasks(filteredNodes, installSoftwareParamsCustomizer)
                   .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
             });
+
+    if (doValidateGFlags) {
+      String softwareVersion = taskParams().getPrimaryCluster().userIntent.ybSoftwareVersion;
+      // Validate GFlags through RPC
+      boolean skipRuntimeGflagValidation =
+          confGetter.getGlobalConf(GlobalConfKeys.skipRuntimeGflagValidation);
+      if (!skipRuntimeGflagValidation) {
+        if (Util.compareYBVersions(
+                softwareVersion, "2024.2.0.0-b1", "2.27.0.0-b1", true /* suppressFormatError */)
+            >= 0) {
+          createValidateGFlagsTask(
+              null /* newClusters */, true /* useCLIBinary */, softwareVersion);
+        }
+      }
+    }
 
     // GFlags Task for masters.
     // State remains as SoftwareInstalled, so it is fine to call this one by one for master,
@@ -2604,6 +2709,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       Universe universe,
       Set<NodeDetails> nodesToBeCreated,
       boolean ignoreNodeStatus,
+      boolean doValidateGFlags,
       @Nullable Consumer<AnsibleSetupServer.Params> setupServerParamsCustomizer,
       @Nullable Consumer<AnsibleConfigureServers.Params> installSoftwareParamsCustomizer,
       @Nullable Consumer<AnsibleConfigureServers.Params> gflagsParamsCustomizer) {
@@ -2622,6 +2728,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         nodesToConfigureMaster,
         nodesToBeCreated,
         isFallThrough,
+        doValidateGFlags,
         installSoftwareParamsCustomizer,
         gflagsParamsCustomizer);
   }
@@ -3134,6 +3241,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // Add testing flag.
     params.itestS3PackagePath = taskParams().itestS3PackagePath;
     params.gflags = gflags;
+    params.cgroupSize = getCGroupSize(node);
     return params;
   }
 
@@ -3348,9 +3456,46 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * that there are no leaderless tablets
    */
   protected void addBasicPrecheckTasks() {
+    verifyNodeAgentInstallation();
     if (isFirstTry()) {
       checkLeaderlessTablets();
       verifyClustersConsistency();
+    }
+  }
+
+  /** Verify that node agents are installed. */
+  protected void verifyNodeAgentInstallation() {
+    Universe universe = getUniverse();
+    Provider provider =
+        Provider.getOrBadRequest(
+            UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
+    CloudType cloudType = provider.getCloudCode();
+    if (cloudType.isPublicCloud()
+        && cloudType == CloudType.onprem
+        && getInstanceOf(NodeAgentEnabler.class).isNodeAgentServerEnabled(provider, universe)) {
+      Set<String> nodeIps =
+          universe.getNodes().stream()
+              .filter(
+                  n ->
+                      n.state == NodeState.Live
+                          && n.cloudInfo != null
+                          && n.cloudInfo.private_ip != null)
+              .map(n -> n.cloudInfo.private_ip)
+              .collect(Collectors.toSet());
+      if (nodeIps.size() > 0) {
+        Map<String, NodeAgent> nodeAgents =
+            NodeAgent.getByIps(provider.getCustomerUUID(), nodeIps).stream()
+                .filter(NodeAgent::isActive)
+                .collect(Collectors.toMap(NodeAgent::getIp, Function.identity()));
+        Set<String> missingIps = new HashSet<>(Sets.difference(nodeIps, nodeAgents.keySet()));
+        if (missingIps.size() > 0) {
+          String errMsg =
+              String.format(
+                  "Node agents are not installed or in inactive states for IPs %s", missingIps);
+          log.error(errMsg);
+          throw new IllegalStateException(errMsg);
+        }
+      }
     }
   }
 
@@ -3490,7 +3635,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     List<String> command =
         ImmutableList.<String>builder()
             .add("pgrep")
-            .add("-flu")
+            .add("-xlu")
             .add("yugabyte")
             .add(processName)
             .add("2>/dev/null")
@@ -3696,6 +3841,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       createServerInfoTasks(nodes).setSubTaskGroupType(SubTaskGroupType.Provisioning);
     }
 
+    if (universeDetails.installNodeAgent || universeDetails.nodeAgentMissing) {
+      createInstallNodeAgentTasks(universe, nodes, true /* force install */)
+          .setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
+      createWaitForNodeAgentTasks(nodes).setSubTaskGroupType(SubTaskGroupType.ResumeUniverse);
+    }
     // Optimistically rotate node-to-node server certificates before starting DB processes
     // Also see CertsRotate
     if (universeDetails.rootCA != null) {
@@ -3813,13 +3963,37 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       log.info("Skipping upgrade finalization for universe : " + universe.getUniverseUUID());
     }
 
-    // Update PITR configs to set intermittentMinRecoverTimeInMillis to current time
-    // as PITR configs are only valid from the completion of software upgrade finalization
-    createUpdatePitrConfigIntermittentMinRecoverTimeTask();
+    // Re-enable PITR configs after successful upgrade finalization
+    // This also updates intermittentMinRecoverTimeInMillis for all PITR configs
+    createEnablePitrConfigTask();
 
     createUpdateUniverseSoftwareUpgradeStateTask(
         UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
         false /* isSoftwareRollbackAllowed */);
+  }
+
+  protected void createEnablePitrConfigTask() {
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup("EnablePitrConfig", SubTaskGroupType.ConfigureUniverse);
+    EnablePitrConfig.Params params = new EnablePitrConfig.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+
+    EnablePitrConfig task = createTask(EnablePitrConfig.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  public void createDisablePitrConfigTask() {
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup("DisablePitrConfig", SubTaskGroupType.ConfigureUniverse);
+    DisablePitrConfig.Params params = new DisablePitrConfig.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.ignoreErrors = true; // Ignore errors to not block upgrade if PITR configs don't exist
+    DisablePitrConfig task = createTask(DisablePitrConfig.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
   protected void createSetYBMajorVersionUpgradeCompatibility(
@@ -3900,5 +4074,186 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     subTaskGroup.addSubTask(task);
     subTaskGroup.setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  protected void createUniverseUpdateRootCertTask(UpdateRootCertAction updateAction) {
+    createUniverseUpdateRootCertTask(updateAction, null /* temporaryRootCAUUID */);
+  }
+
+  protected void createUniverseUpdateRootCertTask(
+      UpdateRootCertAction updateAction, UUID temporaryRootCAUUID) {
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup("UniverseUpdateRootCert", SubTaskGroupType.ConfigureUniverse);
+    UniverseUpdateRootCert.Params params = new UniverseUpdateRootCert.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.rootCA = taskParams().rootCA;
+    params.action = updateAction;
+    params.temporaryRootCAUUID = temporaryRootCAUUID;
+    UniverseUpdateRootCert task = createTask(UniverseUpdateRootCert.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  protected boolean createCapacityReservationsIfNeeded(
+      Set<NodeDetails> nodeDetailsSet,
+      CapacityReservationUtil.OperationType operationType,
+      Predicate<NodeDetails> nodeFilter) {
+    if (nodeDetailsSet.isEmpty()) {
+      return false;
+    }
+    Universe universe = getUniverse();
+    AtomicBoolean result = new AtomicBoolean();
+    Map<UUID, List<NodeDetails>> nodesByProvider =
+        nodeDetailsSet.stream()
+            .collect(
+                Collectors.groupingBy(
+                    n -> {
+                      Cluster cluster = taskParams().getClusterByUuid(n.placementUuid);
+                      if (cluster == null) {
+                        cluster = universe.getCluster(n.placementUuid);
+                      }
+                      return UUID.fromString(cluster.userIntent.provider);
+                    }));
+    nodesByProvider.forEach(
+        (providerUUID, nodes) -> {
+          Provider provider = Provider.getOrBadRequest(providerUUID);
+          if (CapacityReservationUtil.isReservationSupported(confGetter, provider, operationType)) {
+            Set<NodeDetails> currentlyAffectedNodes =
+                findNodesInUniverse(universe, new HashSet<>(nodes))
+                    .filter(nodeFilter)
+                    .collect(Collectors.toSet());
+            if (!currentlyAffectedNodes.isEmpty()) {
+              // If current nodes are already in target state (that's a retry),
+              // we don't need to create/update capacity reservations.
+              Map<String, String> nodeToInstanceTypeMap =
+                  nodeDetailsSet.stream()
+                      .collect(
+                          Collectors.toMap(
+                              n -> n.nodeName,
+                              n -> {
+                                Cluster cluster = taskParams().getClusterByUuid(n.placementUuid);
+                                if (cluster == null) {
+                                  cluster = universe.getCluster(n.placementUuid);
+                                }
+                                return cluster.userIntent.getInstanceTypeForNode(n);
+                              }));
+              createCapacityReservationTask(providerUUID, nodeToInstanceTypeMap, nodes);
+            }
+            // But still need to release capacity reservations though.
+            result.set(true);
+          }
+        });
+    return result.get();
+  }
+
+  protected void createCapacityReservationTask(
+      UUID providerUUID,
+      Map<String, String> nodeToInstanceType,
+      Collection<NodeDetails> nodesToProvision) {
+    TaskExecutor.SubTaskGroup subTaskGroup = createSubTaskGroup("CapacityReservation");
+    DoCapacityReservation.Params params = new DoCapacityReservation.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.providerUUID = providerUUID;
+    params.nodeToInstanceType = nodeToInstanceType;
+    params.nodes = new ArrayList<>(nodesToProvision);
+    // Create the task.
+    DoCapacityReservation task = createTask(DoCapacityReservation.class);
+    task.initialize(params);
+    // Add it to the task list.
+    subTaskGroup.addSubTask(task);
+    // Add the task list to the task queue.
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  protected void createDeleteCapacityReservationTask() {
+    TaskExecutor.SubTaskGroup subTaskGroup = createSubTaskGroup("ReleaseCapacityReservation");
+    DeleteCapacityReservation.Params params = new DeleteCapacityReservation.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    // Create the task.
+    DeleteCapacityReservation task = createTask(DeleteCapacityReservation.class);
+    task.initialize(params);
+    // Add it to the task list.
+    subTaskGroup.addSubTask(task);
+    // Add the task list to the task queue.
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  protected void createTablespacesTasks(
+      Collection<UniverseDefinitionTaskParams.PartitionInfo> partitionInfos,
+      boolean ignoreCurrentPlacement) {
+    List<TableSpaceStructures.TableSpaceInfo> tableSpaceInfoList = new ArrayList<>();
+    for (UniverseDefinitionTaskParams.PartitionInfo partition : partitionInfos) {
+      TableSpaceStructures.TableSpaceInfo tableSpaceInfo =
+          new TableSpaceStructures.TableSpaceInfo();
+      tableSpaceInfo.name = TableSpaceUtil.getTablespaceName(partition);
+      tableSpaceInfoList.add(tableSpaceInfo);
+      tableSpaceInfo.numReplicas = partition.getReplicationFactor();
+      List<TableSpaceStructures.PlacementBlock> blocks = new ArrayList<>();
+      for (PlacementInfo.PlacementCloud placementCloud : partition.getPlacement().cloudList) {
+        for (PlacementInfo.PlacementRegion placementRegion :
+            partition.getPlacement().cloudList.get(0).regionList) {
+          for (PlacementInfo.PlacementAZ placementAZ : placementRegion.azList) {
+            AvailabilityZone zone = AvailabilityZone.getOrBadRequest(placementAZ.uuid);
+            TableSpaceStructures.PlacementBlock block = new TableSpaceStructures.PlacementBlock();
+            block.minNumReplicas = placementAZ.replicationFactor;
+            block.zone = zone.getCode();
+            block.region = placementRegion.code;
+            block.cloud = placementCloud.code;
+            if (placementAZ.leaderPreference > 0) {
+              block.leaderPreference = placementAZ.leaderPreference;
+            }
+            blocks.add(block);
+          }
+        }
+      }
+      tableSpaceInfo.placementBlocks = blocks;
+    }
+    if (!tableSpaceInfoList.isEmpty()) {
+      CreateTableSpaces.Params taskParams = new CreateTableSpaces.Params();
+      taskParams.setUniverseUUID(getUniverse().getUniverseUUID());
+      taskParams.tablespaceInfos = tableSpaceInfoList;
+      taskParams.ignoreCurrentPlacement = ignoreCurrentPlacement;
+      TaskExecutor.SubTaskGroup subTaskGroup = createSubTaskGroup("CreateTablespaces");
+      CreateTableSpaces task = createTask(CreateTableSpaces.class);
+      task.initialize(taskParams);
+      task.setUserTaskUUID(getUserTaskUUID());
+      subTaskGroup.addSubTask(task);
+      getRunnableTask().addSubTaskGroup(subTaskGroup);
+    } else {
+      log.debug("No tablespaces provided");
+    }
+  }
+
+  protected void createTablespaceValidationOnRemoveTask(
+      UUID clusterUUID,
+      PlacementInfo targetPlacement,
+      List<UniverseDefinitionTaskParams.PartitionInfo> targetPartitions) {
+    doInPrecheckSubTaskGroup(
+        "TablespaceValidationOnRemove",
+        subTaskGroup -> {
+          TablespaceValidationOnRemove.Params params = new TablespaceValidationOnRemove.Params();
+          params.setUniverseUUID(taskParams().getUniverseUUID());
+          params.clusterUUID = clusterUUID;
+          params.targetPlacement = targetPlacement;
+          params.targetPartitions = targetPartitions;
+          TablespaceValidationOnRemove task = createTask(TablespaceValidationOnRemove.class);
+          task.initialize(params);
+          subTaskGroup.addSubTask(task);
+        });
+  }
+
+  protected void clearCapacityReservationOnError(Throwable t, Universe universe) {
+    if (universe.getUniverseDetails().getCapacityReservationState() != null
+        && !universe.getUniverseDetails().getCapacityReservationState().isEmpty()) {
+      try {
+        setTaskQueueAndRun(() -> createDeleteCapacityReservationTask());
+      } catch (Exception ignored) {
+        // Not throwing exception that will overwrite the current one.
+        log.error("Failed to delete capacity reservations", ignored);
+        t.addSuppressed(ignored);
+      }
+    }
   }
 }

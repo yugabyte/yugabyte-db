@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -42,7 +42,6 @@
 #include <vector>
 
 #include <boost/asio/strand.hpp>
-#include <boost/optional/optional.hpp>
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/ref_counted.h"
@@ -388,11 +387,9 @@ class ServicePoolImpl final : public InboundCallHandler {
     }
   }
 
-  const std::string& LogPrefix() const {
-    return log_prefix_;
-  }
+  const std::string& LogPrefix() const { return log_prefix_; }
 
-  boost::optional<int64_t> CallQueued(int64_t rpc_queue_limit) override {
+  std::optional<int64_t> CallQueued(int64_t rpc_queue_limit) override {
     auto queued_calls = queued_calls_.fetch_add(1, std::memory_order_acq_rel);
     if (queued_calls < 0) {
       YB_LOG_EVERY_N_SECS(DFATAL, 5) << "Negative number of queued calls: " << queued_calls;
@@ -401,7 +398,7 @@ class ServicePoolImpl final : public InboundCallHandler {
     size_t max_queued_calls = std::min(max_queued_calls_, implicit_cast<size_t>(rpc_queue_limit));
     if (implicit_cast<size_t>(queued_calls) >= max_queued_calls) {
       queued_calls_.fetch_sub(1, std::memory_order_relaxed);
-      return boost::none;
+      return std::nullopt;
     }
 
     rpcs_in_queue_->Increment();

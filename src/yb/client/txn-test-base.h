@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -135,8 +135,8 @@ class TransactionTestBase : public KeyValueTableTest<MiniClusterType> {
   std::shared_ptr<server::SkewedClock> skewed_clock_{
       std::make_shared<server::SkewedClock>(WallClock())};
   server::ClockPtr clock_{new server::HybridClock(skewed_clock_)};
-  boost::optional<TransactionManager> transaction_manager_;
-  boost::optional<TransactionManager> transaction_manager2_;
+  std::optional<TransactionManager> transaction_manager_;
+  std::optional<TransactionManager> transaction_manager2_;
 
   bool create_table_ = true;
   IsolationLevel isolation_level_ = IsolationLevel::SNAPSHOT_ISOLATION;

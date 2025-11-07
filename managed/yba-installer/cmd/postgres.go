@@ -1,5 +1,5 @@
 /*
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  */
 
 package cmd
@@ -752,3 +752,5 @@ func (pg Postgres) Reconfigure() error {
 	log.Info("Postgres reconfigured")
 	return nil
 }
+
+func (pg Postgres) PreUpgrade() error { return nil }

@@ -1,4 +1,4 @@
-# Copyright (c) YugaByte, Inc.
+# Copyright (c) YugabyteDB, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 # in compliance with the License.  You may obtain a copy of the License at
@@ -65,7 +65,6 @@ set(DOCDB_SRCS
         doc_reader.cc
         doc_reader_redis.cc
         doc_rowwise_iterator.cc
-        doc_rowwise_iterator_base.cc
         doc_vector_index.cc
         doc_write_batch.cc
         doc_write_batch_cache.cc
@@ -79,8 +78,9 @@ set(DOCDB_SRCS
         docdb_rocksdb_util.cc
         docdb_statistics.cc
         docdb_util.cc
+        hybrid_scan_choices.cc
         intent_aware_iterator.cc
-        intent_iterator.cc
+        intent_format.cc
         iter_util.cc
         key_bounds.cc
         kv_debug.cc
@@ -159,7 +159,6 @@ ADD_YB_TEST(docdb-ttl-test)
 ADD_YB_TEST(docdb-test-wrapper)
 ADD_YB_TEST(docrowwiseiterator-test)
 ADD_YB_TEST(non_transactional_batch_writer-test)
-ADD_YB_TEST(intent_iterator-test)
 ADD_YB_TEST(randomized_docdb-test)
 ADD_YB_TEST(scan_choices-test)
 ADD_YB_TEST(shared_lock_manager-test)

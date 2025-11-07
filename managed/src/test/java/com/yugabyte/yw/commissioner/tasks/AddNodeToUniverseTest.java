@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks;
 
@@ -147,7 +147,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
         u -> {
           NodeDetails node = u.getNode(nodeName);
           node.state = NodeState.Decommissioned;
-          NodeInstance.maybeGetByName(nodeName)
+          NodeInstance.maybeGetByName(nodeName, node.nodeUuid)
               .ifPresent(
                   nodeInstance -> {
                     nodeInstance.setState(NodeInstance.State.FREE);
@@ -203,6 +203,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.RunHooks,
           TaskType.SetupYNP,
           TaskType.YNPProvisioning,
+          TaskType.InstallNodeAgent,
           TaskType.SetNodeStatus, // to ServerSetup
           TaskType.RunHooks,
           TaskType.CheckLocale,
@@ -228,6 +229,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Adding")),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -265,6 +267,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.RunHooks,
           TaskType.SetupYNP,
           TaskType.YNPProvisioning,
+          TaskType.InstallNodeAgent,
           TaskType.SetNodeStatus,
           TaskType.RunHooks,
           TaskType.CheckLocale,
@@ -285,6 +288,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
 
   private static final List<JsonNode> ADD_NODE_TASK_DECOMISSIONED_NODE_EXPECTED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -327,6 +331,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.RunHooks,
           TaskType.SetupYNP,
           TaskType.YNPProvisioning,
+          TaskType.InstallNodeAgent,
           TaskType.SetNodeStatus, // provisioned
           TaskType.RunHooks,
           TaskType.CheckLocale,
@@ -362,6 +367,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Adding")),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -471,8 +477,8 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
       // a bump on the cluster config version. The actual number depends on the
       // number of invocations of saveUniverseDetails, so it can vary but the
       // important thing is that it is much more than the other case.
-      // 7 version increments + 1 modify blacklist.
-      verify(mockClient, times(14)).changeMasterClusterConfig(any());
+      // 7 version increments + 1 modify blacklist + 1 from YugawareMetadata init.
+      verify(mockClient, times(15)).changeMasterClusterConfig(any());
     } else {
       verify(mockClient, times(1)).changeMasterClusterConfig(any());
     }

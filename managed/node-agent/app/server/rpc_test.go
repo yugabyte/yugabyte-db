@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package server
 
@@ -70,6 +70,8 @@ func TestMain(m *testing.M) {
 	}
 	// Update with the actual address.
 	serverAddr = server.Addr()
+	// Wait for server to start before running tests.
+	time.Sleep(6 * time.Second)
 	log.Printf("Listening to server address %s", serverAddr)
 	code := m.Run()
 	server.Stop()
@@ -175,7 +177,7 @@ func TestSubmitTask(t *testing.T) {
 	}
 	defer conn.Close()
 	client := pb.NewNodeAgentClient(conn)
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	echoWord := "Hello Test"
 	taskID := taskUUID()
@@ -185,6 +187,7 @@ func TestSubmitTask(t *testing.T) {
 			Command: []string{"bash", "-c", cmd},
 		},
 	}}
+	t.Logf("Submitting task %s and command %s", taskID, cmd)
 	_, err = client.SubmitTask(ctx, &req)
 	if err != nil {
 		t.Fatalf("Failed to submit task - %s", err.Error())
@@ -261,6 +264,7 @@ func TestSubmitTaskTimeout(t *testing.T) {
 			Command: []string{"bash", "-c", cmd},
 		},
 	}}
+	t.Logf("Submitting task %s and command %s", taskID, cmd)
 	_, err = client.SubmitTask(ctx, &req)
 	if err != nil {
 		t.Fatalf("Failed to submit task - %s", err.Error())
@@ -507,5 +511,5 @@ func TestMetric(t *testing.T) {
 	if !strings.Contains(output, "nodeagent_") {
 		log.Fatal("No nodeagent metric found")
 	}
-	t.Logf(output)
+	t.Log(output)
 }

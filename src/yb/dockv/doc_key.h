@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -17,13 +17,13 @@
 #include <vector>
 
 #include <boost/container/small_vector.hpp>
-#include <boost/optional/optional.hpp>
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/constants.h"
 
 #include "yb/dockv/dockv_fwd.h"
 #include "yb/dockv/key_bytes.h"
+#include "yb/dockv/key_entry_value.h"
 #include "yb/dockv/primitive_value.h"
 
 #include "yb/util/ref_cnt_buffer.h"
@@ -320,12 +320,20 @@ class DocKey {
   KeyEntryValues range_group_;
 };
 
+inline void AppendToKey(const KeyEntryValue& value, KeyBytes& key_bytes) {
+  value.AppendToKey(&key_bytes);
+}
+
+inline void AppendToKey(Slice value, KeyBytes& key_bytes) {
+  key_bytes.AppendRawBytes(value);
+}
+
 template <class Collection>
-void AppendDocKeyItems(const Collection& doc_key_items, KeyBytes* result) {
+void AppendDocKeyItems(const Collection& doc_key_items, KeyBytes& result) {
   for (const auto& item : doc_key_items) {
-    item.AppendToKey(result);
+    AppendToKey(item, result);
   }
-  result->AppendGroupEnd();
+  result.AppendGroupEnd();
 }
 
 class DocKeyEncoderAfterHashStep {
@@ -334,7 +342,7 @@ class DocKeyEncoderAfterHashStep {
 
   template <class Collection>
   void Range(const Collection& range_group) {
-    AppendDocKeyItems(range_group, out_);
+    AppendDocKeyItems(range_group, *out_);
   }
 
  private:
@@ -365,7 +373,17 @@ class DocKeyEncoderAfterTableIdStep {
     // We are not setting the "more items in group" bit on the hash field because it is not part
     // of "hashed" or "range" groups.
     AppendHash(hash, out_);
-    AppendDocKeyItems(hashed_group, out_);
+    AppendDocKeyItems(hashed_group, *out_);
+
+    return DocKeyEncoderAfterHashStep(out_);
+  }
+
+  template <class Collection>
+  DocKeyEncoderAfterHashStep Hash(Slice hash, const Collection& hashed_group) {
+    // We are not setting the "more items in group" bit on the hash field because it is not part
+    // of "hashed" or "range" groups.
+    out_->AppendRawBytes(hash);
+    AppendDocKeyItems(hashed_group, *out_);
 
     return DocKeyEncoderAfterHashStep(out_);
   }
@@ -458,12 +476,11 @@ Result<bool> ConsumePrimitiveValueFromKey(Slice* slice);
 // Consume a group of document key components, ending with ValueType::kGroupEnd.
 // @param slice - the current point at which we are decoding a key
 // @param result - vector to append decoded values to.
-Status ConsumePrimitiveValuesFromKey(Slice* slice,
-                                     KeyEntryValues* result);
+Status ConsumePrimitiveValuesFromKey(Slice* slice, KeyEntryValues* result);
 
-Result<boost::optional<DocKeyHash>> DecodeDocKeyHash(const Slice& encoded_key);
+Result<std::optional<DocKeyHash>> DecodeDocKeyHash(const Slice& encoded_key);
 
-inline std::ostream& operator <<(std::ostream& out, const DocKey& doc_key) {
+inline std::ostream& operator<<(std::ostream& out, const DocKey& doc_key) {
   out << doc_key.ToString();
   return out;
 }
@@ -616,8 +633,8 @@ class SubDocKey {
   //
   // We don't use Result<...> to be able to reuse memory allocated by out.
   //
-  // When key does not start with a hash component, the returned prefix would start with the first
-  // range component.
+  // When key does not start with a hash component, the returned prefix would start with the
+  // cotable/ colocation id if one exists. Else, it would start with the first range component.
   //
   // For instance, for a (hash_value, h1, h2, r1, r2, s1) doc key the following values will be
   // returned:
@@ -661,6 +678,11 @@ class SubDocKey {
   // If out is not empty, then it will be interpreted as partial result for this decoding operation
   // and the appropriate prefix will be skipped.
   static Status DecodeDocKeyAndSubKeyEnds(
+      Slice slice, boost::container::small_vector_base<size_t>* out);
+
+  // Similar to DecodePrefixLengths, but excludes the intermediate prefix keys. Only keep row key,
+  // subkeys and the top level key (if it includes kColocationId or kTableId).
+  static Status DecodePrefixLengthsWithSkipPrefix(
       Slice slice, boost::container::small_vector_base<size_t>* out);
 
   // Attempts to decode a subkey at the beginning of the given slice, consuming the corresponding

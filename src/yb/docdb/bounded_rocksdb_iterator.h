@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -71,7 +71,7 @@ class BoundedRocksDbIterator final : public rocksdb::Iterator {
   }
 
   void UseFastNext(bool value) override;
-  void UpdateFilterKey(Slice user_key_for_filter) override;
+  void UpdateFilterKey(Slice user_key_for_filter, Slice seek_key) override;
 
  private:
   const rocksdb::KeyValueEntry& FilterEntry(const rocksdb::KeyValueEntry& entry) const;

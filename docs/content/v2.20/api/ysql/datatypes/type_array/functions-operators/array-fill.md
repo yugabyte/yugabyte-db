@@ -4,7 +4,7 @@ linkTitle: array_fill()
 headerTitle: array_fill()
 description: array_fill()
 menu:
-  v2.20:
+  v2.20_api:
     identifier: array-fill
     parent: array-functions-operators
 type: docs

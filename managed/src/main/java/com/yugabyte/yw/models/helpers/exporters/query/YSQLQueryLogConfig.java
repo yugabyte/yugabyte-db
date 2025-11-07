@@ -3,8 +3,6 @@ package com.yugabyte.yw.models.helpers.exporters.query;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 
-import com.yugabyte.yw.models.common.YbaApi;
-import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import javax.validation.constraints.NotNull;
@@ -72,20 +70,13 @@ public class YSQLQueryLogConfig {
       accessMode = READ_WRITE)
   private boolean logDisconnections = false;
 
-  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2024.1.1.0")
-  @ApiModelProperty(
-      value =
-          "YbaApi Internal. Log line prefix. This would be applied to both audit and query logs.",
-      accessMode = READ_WRITE)
-  private String logLinePrefix = "%m :%r :%u @ %d :[%p] : ";
-
   @NotNull
   @ApiModelProperty(
       value =
           "Log min duration statement, causes the duration of each completed statement to be logged"
               + " if the statement ran for at least the specified amount of time.",
       accessMode = READ_WRITE)
-  private int logMinDurationStatement = -1;
+  private Integer logMinDurationStatement = -1;
 
   public enum YSQlLogMinErrorStatement {
     ERROR

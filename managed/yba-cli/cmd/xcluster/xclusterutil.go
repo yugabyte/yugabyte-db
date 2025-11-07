@@ -1,5 +1,5 @@
 /*
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  */
 
 package xcluster
@@ -31,7 +31,7 @@ func GetSourceAndTargetXClusterUniverse(
 		sourceUniverseList, response, err := universeListRequest.Name(sourceUniverseName).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(
-				response, err, "XCluster",
+				response, err, "xCluster",
 				fmt.Sprintf("%s - Get Source Universe", operation))
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
@@ -47,7 +47,7 @@ func GetSourceAndTargetXClusterUniverse(
 		sourceUniverse, response, err = authAPI.GetUniverse(sourceUniverseUUID).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(
-				response, err, "XCluster",
+				response, err, "xCluster",
 				fmt.Sprintf("%s - Get Source Universe", operation))
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
@@ -66,7 +66,7 @@ func GetSourceAndTargetXClusterUniverse(
 		targetUniverseList, response, err := universeListRequest.Name(targetUniverseName).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(
-				response, err, "XCluster", fmt.Sprintf("%s - Get Target Universe", operation))
+				response, err, "xCluster", fmt.Sprintf("%s - Get Target Universe", operation))
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 		if len(targetUniverseList) < 1 {
@@ -81,7 +81,7 @@ func GetSourceAndTargetXClusterUniverse(
 		targetUniverse, response, err = authAPI.GetUniverse(targetUniverseUUID).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(
-				response, err, "XCluster", fmt.Sprintf("%s - Get Target Universe", operation))
+				response, err, "xCluster", fmt.Sprintf("%s - Get Target Universe", operation))
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 	}

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -60,10 +60,15 @@ using namespace std::literals;
 
 using yb::tserver::ListTabletsForTabletServerResponsePB;
 
-DECLARE_bool(TEST_hang_on_ddl_verification_progress);
 DECLARE_string(allowed_preview_flags_csv);
+DECLARE_bool(report_ysql_ddl_txn_status_to_master);
+DECLARE_string(TEST_block_alter_table);
+DECLARE_bool(TEST_fail_alter_table_after_commit);
+DECLARE_bool(TEST_hang_on_ddl_verification_progress);
+DECLARE_bool(TEST_pause_ddl_rollback);
 DECLARE_bool(TEST_ysql_disable_transparent_cache_refresh_retry);
 DECLARE_double(TEST_ysql_ddl_transaction_verification_failure_probability);
+DECLARE_bool(ysql_ddl_transaction_wait_for_ddl_verification);
 
 namespace yb {
 namespace pgwrapper {
@@ -73,9 +78,26 @@ class PgDdlAtomicityTest : public PgDdlAtomicityTestBase {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_master_flags.push_back("--ysql_transaction_bg_task_wait_ms=5000");
     options->extra_tserver_flags.push_back("--ysql_pg_conf_csv=log_statement=all");
-    options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
+    options->extra_tserver_flags.push_back(
+        Format("--ysql_yb_ddl_transaction_block_enabled=$0", TransactionalDdlEnabled()));
     AppendCsvFlagValue(options->extra_tserver_flags, "allowed_preview_flags_csv",
                        "ysql_yb_ddl_transaction_block_enabled");
+    options->extra_tserver_flags.push_back(
+        Format("--enable_object_locking_for_table_locks=$0", TableLocksEnabled()));
+    AppendCsvFlagValue(options->extra_tserver_flags, "allowed_preview_flags_csv",
+                       "enable_object_locking_for_table_locks");
+
+  }
+
+  virtual bool TransactionalDdlEnabled() const {
+    return true;
+  }
+
+  virtual bool TableLocksEnabled() const {
+    // The tests assert for transaction verification errors in case of concurrent/conflicting DDLs.
+    // But with object locks, conflicting DDLs get serialized, and the latter one times out with
+    // various potential errors. Hence disabling table locking for this test.
+    return false;
   }
 
   void CreateTable(const string& tablename) {
@@ -307,8 +329,14 @@ TEST_F(PgDdlAtomicityTest, FailureRecoveryTestWithAbortedTxn) {
 class PgDdlAtomicitySanityTest : public PgDdlAtomicityTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgDdlAtomicityTest::UpdateMiniClusterOptions(options);
     // TODO (#19975): Enable read committed isolation
     options->extra_tserver_flags.push_back("--yb_enable_read_committed_isolation=false");
+  }
+
+  bool TransactionalDdlEnabled() const override {
+    // Tests toggle ddl atomicity flag, which transactional ddl depends on.
+    return false;
   }
 };
 
@@ -1000,7 +1028,29 @@ TEST_F(PgDdlAtomicityTxnTest,
   ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET b = 2 WHERE a = 1", table()));
 }
 
-TEST_F(PgDdlAtomicitySanityTest, DmlWithAddColTest) {
+class PgDdlAtomicitySanityTestWithTableLocks : public PgDdlAtomicitySanityTest,
+                                               public ::testing::WithParamInterface<bool> {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgDdlAtomicitySanityTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back(
+        yb::Format("--enable_object_locking_for_table_locks=$0", TableLocksEnabled()));
+    options->extra_tserver_flags.push_back(
+        yb::Format("--ysql_yb_ddl_transaction_block_enabled=$0", TableLocksEnabled()));
+    AppendCsvFlagValue(
+        options->extra_tserver_flags, "allowed_preview_flags_csv",
+        "enable_object_locking_for_table_locks,ysql_yb_ddl_transaction_block_enabled");
+  }
+
+  bool TransactionalDdlEnabled() const override { return true; }
+  bool TableLocksEnabled() const override { return GetParam(); }
+};
+
+TEST_P(PgDdlAtomicitySanityTestWithTableLocks, DmlWithAddColTest) {
+  // Disable object locking for table locks so that we can test the DML with add-column.
+  // With table locks, the add-column operation will be blocked until the DML transaction
+  // is committed. This is because the add-column operation acquires an EXCLUSIVE lock on the table
+  // and the DML transaction acquires an ACCESS_SHARE lock on the table (at ts-1).
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   const string table = "dml_with_add_col_test";
   CreateTable(table);
@@ -1013,14 +1063,22 @@ TEST_F(PgDdlAtomicitySanityTest, DmlWithAddColTest) {
 
   // Conn2: Initiate rollback of the alter.
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "true"));
-  ASSERT_OK(conn2.TestFailDdl(AddColumnStmt(table)));
+  ASSERT_OK(conn2.Execute("SET statement_timeout = 8"));
 
-  // Conn1: Since we parallely added a column to the table, the add-column operation would have
-  // detected the distributed transaction locks acquired by this transaction on its tablets and
-  // aborted it. Add-column operation aborts all ongoing transactions on the table without
-  // exception as the transaction could now be in an erroneous state having used the schema
-  // without the newly added column.
-  ASSERT_NOK(conn1.Execute("COMMIT"));
+  if (TableLocksEnabled()) {
+    // Conn2 will have to fail because it cannot get the table locks held by conn1.
+    ASSERT_NOK(conn2.TestFailDdl(AddColumnStmt(table)));
+    ASSERT_OK(conn1.Execute("ABORT"));
+  } else {
+    ASSERT_OK(conn2.TestFailDdl(AddColumnStmt(table)));
+
+    // Conn1: Since we parallely added a column to the table, the add-column operation would have
+    // detected the distributed transaction locks acquired by this transaction on its tablets and
+    // aborted it. Add-column operation aborts all ongoing transactions on the table without
+    // exception as the transaction could now be in an erroneous state having used the schema
+    // without the newly added column.
+    ASSERT_NOK(conn1.Execute("COMMIT"));
+  }
 
   // Conn1: Non-transactional insert retry due to Schema version mismatch,
   // refreshing the table cache.
@@ -1043,6 +1101,10 @@ TEST_F(PgDdlAtomicitySanityTest, DmlWithAddColTest) {
   // transaction succeeds.
   ASSERT_OK(conn1.Execute("COMMIT"));
 }
+
+INSTANTIATE_TEST_CASE_P(
+    DmlAddColTestWithTableLocks, PgDdlAtomicitySanityTestWithTableLocks, ::testing::Bool(),
+    ::testing::PrintToStringParamName());
 
 // Test that DML transactions concurrent with an aborted DROP TABLE transaction
 // can commit successfully (both before and after the rollback is complete).`
@@ -1519,6 +1581,11 @@ class PgLibPqTableRewrite:
       options->extra_tserver_flags.push_back("--ysql_yb_ddl_rollback_enabled=true");
     }
   }
+
+  bool TransactionalDdlEnabled() const override {
+    return GetParam();
+  }
+
  protected:
   void SetupTestData() {
     auto conn = ASSERT_RESULT(Connect());
@@ -1647,6 +1714,18 @@ class PgDdlAtomicityMiniClusterTest : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_disable_transparent_cache_refresh_retry) = true;
     pgwrapper::PgMiniTestBase::SetUp();
   }
+
+  Status WaitForDdlVerificationToFinish(client::YBClient* client, const std::string& table_id) {
+    return LoggedWaitFor([&]() -> Result<bool> {
+      std::shared_ptr<client::YBTableInfo> table_info = std::make_shared<client::YBTableInfo>();
+      Synchronizer sync;
+      RETURN_NOT_OK(client->GetTableSchemaById(table_id, table_info, sync.AsStatusCallback()));
+      RETURN_NOT_OK(sync.Wait());
+      bool has_state = table_info->ysql_ddl_txn_verifier_state.has_value() &&
+             table_info->ysql_ddl_txn_verifier_state->size() > 0;
+      return !has_state;
+    }, MonoDelta::FromSeconds(60), "Wait for DDL verification to finish for table " + table_id);
+  }
 };
 
 TEST_F(PgDdlAtomicityMiniClusterTest, TestWaitForRollbackWithMasterRestart) {
@@ -1693,6 +1772,74 @@ TEST_F(PgDdlAtomicityMiniClusterTest, TestWaitForRollbackWithMasterRestart) {
   ASSERT_EQ(columns.size(), 2);
   ASSERT_EQ(columns[0].name(), "key");
   ASSERT_EQ(columns[1].name(), "num");
+}
+
+// Test that the ALTER TABLE operation is rolled back if a master crash occurs in the middle of the
+// ALTER TABLE operation (after the new DocDB schema is committed in-memory).
+TEST_F(PgDdlAtomicityMiniClusterTest, AlterTableRollbackOnMasterCrash) {
+  SyncPoint::GetInstance()->LoadDependency(
+      {{"YBBackupTestWithColocationParam::AlterTableDocDBTableCommitted",
+        "PgDdlAtomicitySanityTest::MasterRestart"}});
+  SyncPoint::GetInstance()->EnableProcessing();
+  // Prevent tserver from reporting the DDL txn status or waiting for verification
+  // before we restart the master leader.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_report_ysql_ddl_txn_status_to_master) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_transaction_wait_for_ddl_verification) = false;
+  auto conn = ASSERT_RESULT(Connect());
+  const auto kTableName = "drop_col";
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (key INT PRIMARY KEY, value INT)", kTableName));
+
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  const auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "yugabyte", kTableName));
+
+  // Wait for DDL verification of the previous create table operation to finish before starting the
+  // alter table operation. This is needed because we disabled
+  // ysql_ddl_transaction_wait_for_ddl_verification flag.
+  ASSERT_OK(WaitForDdlVerificationToFinish(client.get(), table_id));
+  TestThreadHolder thread_holder;
+
+  // Inject master-side failure right after the new DocDB schema is committed in-memory.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_alter_table_after_commit) = true;
+
+  // Start the thread to add a new column.
+  thread_holder.AddThreadFunctor([&stop = thread_holder.stop_flag(), &conn, kTableName] {
+    ASSERT_NOK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN num REAL", kTableName));
+  });
+  thread_holder.JoinAll();
+  // Wait until the alter operation commits the new DocDB schema.
+  TEST_SYNC_POINT("PgDdlAtomicitySanityTest::MasterRestart");
+  // Pause DDL rollback so we can check the reloaded TableInfo still has the
+  // ysql_ddl_txn_verifier_state before it is cleared by a rollback.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_ddl_rollback) = true;
+
+  // Restart master to simulate the case where a new master leader should rollback the alter table
+  // operation (after the new DocDB schema is committed in-memory).
+  ASSERT_OK(RestartMaster());
+  // Ensure verifier state exists
+  {
+    std::shared_ptr<client::YBTableInfo> info = std::make_shared<client::YBTableInfo>();
+    Synchronizer s;
+    ASSERT_OK(client->GetTableSchemaById(table_id, info, s.AsStatusCallback()));
+    ASSERT_OK(s.Wait());
+    ASSERT_TRUE(info->ysql_ddl_txn_verifier_state.has_value());
+    ASSERT_GT(info->ysql_ddl_txn_verifier_state->size(), 0);
+  }
+
+  // Unpause DDL rollback.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_ddl_rollback) = false;
+  // Wait for DDL transaction verification to complete after the new master reloads
+  // syscatalog (i.e. the verifier state is cleared).
+  ASSERT_OK(WaitForDdlVerificationToFinish(client.get(), table_id));
+  // Verify that alter table was rolled back.
+  std::shared_ptr<client::YBTableInfo> table_info = std::make_shared<client::YBTableInfo>();
+  Synchronizer sync;
+  ASSERT_OK(client->GetTableSchemaById(table_id, table_info, sync.AsStatusCallback()));
+  ASSERT_OK(sync.Wait());
+  LOG(INFO) << "table_info after rollback: " << table_info->schema.ToString();
+  const auto& columns = table_info->schema.columns();
+  ASSERT_EQ(columns.size(), 2);
+  ASSERT_EQ(columns[0].name(), "key");
+  ASSERT_EQ(columns[1].name(), "value");
 }
 
 // Test that the table cache is correctly invalidated after transaction verification

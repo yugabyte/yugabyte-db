@@ -67,9 +67,6 @@ SELECT * FROM parttrigtab_parent ORDER BY i;
 (4 rows)
 
 ABORT;
-DROP TRIGGER parttrigtrig_createdtrig ON parttrigtab_even; -- TODO: transactional DDL
-DROP TRIGGER parttrigtrig_createdtrig ON parttrigtab_odd; -- TODO: transactional DDL
-DROP TRIGGER noparttrigtrig ON noparttrigtab; -- TODO: transactional DDL
 -- How much of a LIMITed WITH statement is processed on demand and in
 -- ExecPostprocessPlan?  The | in the diagram below denotes where processing
 -- should pause and resume, were batching disabled.  With batching enabled,
@@ -133,9 +130,7 @@ SELECT * FROM parttrigtab_parent ORDER BY i;
 (11 rows)
 
 ABORT;
-DROP TRIGGER IF EXISTS parttrigtrig_odd ON parttrigtab_odd; -- YB: transactional DDL
-NOTICE:  trigger "parttrigtrig_odd" for relation "parttrigtab_odd" does not exist, skipping
-DROP TRIGGER IF EXISTS parttrigtrig_odd2 ON parttrigtab_odd; -- YB: transactional DDL
+DROP TRIGGER parttrigtrig_odd ON parttrigtab_odd;
 -- More LIMITed WITH statement getting processed on demand when reading tuples
 -- from input and in ON CONFLICT DO UPDATE, and in ExecPostprocessPlan.
 -- batch size 2: no issue
@@ -609,8 +604,6 @@ SELECT * FROM parttrigtab_parent ORDER BY i;
 (7 rows)
 
 ABORT;
-DROP TRIGGER parttrigtrig_createdtrig ON parttrigtab_even; -- TODO: transactional DDL
-DROP TRIGGER parttrigtrig_createtrigoneven ON parttrigtab_even; -- TODO: transactional DDL
 -- CREATE TRIGGER is visible to the parttrigtab_even table opened in the
 -- following trigger execution only because that opens the relation fresh.
 BEGIN;
@@ -663,8 +656,6 @@ SELECT * FROM parttrigtab_parent ORDER BY i;
 (12 rows)
 
 ABORT;
-DROP TRIGGER parttrigtrig_createdtrig ON parttrigtab_even; -- TODO: transactional DDL
-DROP TRIGGER parttrigtrig_createtrigoneven ON parttrigtab_even; -- TODO: transactional DDL
 -- CREATE TRIGGER is visible to the parttrigtab_even table opened in the three
 -- places that freshly open that table.
 BEGIN;
@@ -727,8 +718,6 @@ SELECT * FROM parttrigtab_parent ORDER BY i;
 (13 rows)
 
 ABORT;
-DROP TRIGGER parttrigtrig_createdtrig ON parttrigtab_even; -- TODO: transactional DDL
-DROP TRIGGER parttrigtrig_createtrigoneven ON parttrigtab_even; -- TODO: transactional DDL
 -- CREATE TRIGGER is visible to the parttrigtab_even table opened in the three
 -- places that freshly open that table.
 BEGIN;
@@ -790,8 +779,6 @@ SELECT * FROM parttrigtab_parent ORDER BY i;
 (13 rows)
 
 ABORT;
-DROP TRIGGER parttrigtrig_createdtrig ON parttrigtab_even; -- TODO: transactional DDL
-DROP TRIGGER parttrigtrig_createtrigoneven ON parttrigtab_even; -- TODO: transactional DDL
 -- CREATE TRIGGER is visible to the parttrigtab_even table opened in the two
 -- places that freshly open that table.
 CREATE OR REPLACE FUNCTION parttrigfunc_createtrigonodd() RETURNS trigger AS $$
@@ -853,8 +840,6 @@ SELECT * FROM parttrigtab_parent ORDER BY i;
 ABORT;
 -- DROP TRIGGER is visible to the parttrigtab_even table opened in the two
 -- places that freshly open that table.
-DROP TRIGGER parttrigtrig_createdtrig ON parttrigtab_odd; -- TODO: transactional DDL
-DROP TRIGGER parttrigtrig_createtrigonodd ON parttrigtab_even; -- TODO: transactional DDL
 CREATE OR REPLACE FUNCTION parttrigfunc_dropself() RETURNS trigger AS $$
     BEGIN
         RAISE NOTICE 'placeholder';
@@ -902,7 +887,6 @@ SELECT * FROM parttrigtab_parent ORDER BY i;
 
 ABORT;
 DROP TRIGGER IF EXISTS parttrigtrig_dropself ON parttrigtab_even;
-NOTICE:  trigger "parttrigtrig_dropself" for relation "parttrigtab_even" does not exist, skipping
 -- DROP TRIGGER is visible to the parttrigtab_even table opened in the two
 -- places that freshly open that table.
 CREATE TRIGGER parttrigtrig_dropself BEFORE INSERT ON parttrigtab_even FOR EACH ROW EXECUTE PROCEDURE parttrigfunc_dropself();
@@ -932,7 +916,6 @@ SELECT * FROM parttrigtab_parent ORDER BY i;
 
 ABORT;
 DROP TRIGGER IF EXISTS parttrigtrig_dropself ON parttrigtab_even;
-NOTICE:  trigger "parttrigtrig_dropself" for relation "parttrigtab_even" does not exist, skipping
 -- CREATE TRIGGER is visible to the parttrigtab_even table opened in the three
 -- places that freshly open that table.
 BEGIN;
@@ -989,8 +972,6 @@ SELECT * FROM parttrigtab_parent ORDER BY i;
 (8 rows)
 
 ABORT;
-DROP TRIGGER parttrigtrig_createdtrig ON parttrigtab_even; -- TODO: transactional DDL
-DROP TRIGGER noparttrigtrig ON noparttrigtab; -- TODO: transactional DDL
 -- CREATE TRIGGER is visible to the parttrigtab_even table opened in the three
 -- places that freshly open that table.
 BEGIN;
@@ -1050,5 +1031,3 @@ SELECT * FROM parttrigtab_parent ORDER BY i;
 (8 rows)
 
 ABORT;
-DROP TRIGGER parttrigtrig_createdtrig ON parttrigtab_even; -- TODO: transactional DDL
-DROP TRIGGER noparttrigtrig ON noparttrigtab; -- TODO: transactional DDL

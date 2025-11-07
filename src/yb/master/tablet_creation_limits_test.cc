@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -45,6 +45,9 @@ void SetTabletLimits(uint32_t tablet_replicas_per_core, uint32_t tablet_replicas
 
 Status CanCreateTabletReplicasEmptyBlacklist(
     int num_tablets, const ReplicationInfoPB& replication_info, const TSDescriptorVector& ts_descs);
+Status CanCreateTabletReplicasEmptyBlacklist(
+    std::vector<std::pair<ReplicationInfoPB, int>> replication_info_to_num_tablets,
+    const TSDescriptorVector& ts_descs);
 
 AggregatedClusterInfo ComputeAggregatedClusterInfoEmptyBlacklist(
     const TSDescriptorVector& ts_descs, const std::string& placement_uuid);
@@ -137,6 +140,24 @@ TEST(HomogeneousTabletLimitsTest, EnforcementFlagIndependentOfLimitFlags) {
   EXPECT_NOK(CanCreateTabletReplicasEmptyBlacklist(1, replication_info, ts_descriptors));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enforce_tablet_replica_limits) = false;
   EXPECT_OK(CanCreateTabletReplicasEmptyBlacklist(1, replication_info, ts_descriptors));
+}
+
+TEST(HomogeneousTabletLimitsTest, MultipleReplicationInfos) {
+  int64_t cores = 1;
+  int64_t memory = 1_GB;
+  TSDescriptorVector ts_descriptors =
+      ASSERT_RESULT(CreateHomogeneousTSDescriptors(3, kLivePlacementUUID, cores, memory));
+  auto rf1 = CreateReplicationInfo(1, kLivePlacementUUID);
+  auto rf3 = CreateReplicationInfo(3, kLivePlacementUUID);
+  SetTabletLimits(/* tablet_replicas_per_core */ 2, /* tablet_replicas_per_gib */ 2);
+
+  // Should be able to create 6 tablets (2 * 3) in a number of ways.
+  EXPECT_OK(CanCreateTabletReplicasEmptyBlacklist({{rf1, 6}}, ts_descriptors));
+  EXPECT_OK(CanCreateTabletReplicasEmptyBlacklist({{rf3, 2}}, ts_descriptors));
+  EXPECT_OK(CanCreateTabletReplicasEmptyBlacklist({{rf1, 3}, {rf3, 1}}, ts_descriptors));
+
+  // Should not be able to create 7 tablets.
+  EXPECT_NOK(CanCreateTabletReplicasEmptyBlacklist({{rf1, 4}, {rf3, 1}}, ts_descriptors));
 }
 
 TEST(ComputeAggregatedClusterInfoTest, SingleTS) {
@@ -269,6 +290,12 @@ Status CanCreateTabletReplicasEmptyBlacklist(
     int num_tablets, const ReplicationInfoPB& replication_info,
     const TSDescriptorVector& ts_descs) {
   return CanCreateTabletReplicas(num_tablets, replication_info, ts_descs, BlacklistSet());
+}
+
+Status CanCreateTabletReplicasEmptyBlacklist(
+    std::vector<std::pair<ReplicationInfoPB, int>> replication_info_to_num_tablets,
+    const TSDescriptorVector& ts_descs) {
+  return CanCreateTabletReplicas(replication_info_to_num_tablets, ts_descs, BlacklistSet());
 }
 
 AggregatedClusterInfo ComputeAggregatedClusterInfoEmptyBlacklist(

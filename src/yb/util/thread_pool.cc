@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -21,6 +21,7 @@
 
 #include <boost/intrusive/list.hpp>
 
+#include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/scope_exit.h"
@@ -35,6 +36,8 @@ DEFINE_NON_RUNTIME_uint64(
     default_idle_timeout_ms, 15000, "Default RPC YBThreadPool idle timeout value in milliseconds");
 
 namespace yb {
+
+bool TEST_fail_to_create_second_thread_in_thread_pool_without_queue = false;
 
 namespace {
 
@@ -278,7 +281,7 @@ class YBThreadPool::Impl {
   explicit Impl(ThreadPoolOptions options) : share_(std::move(options)) {
     LOG(INFO) << "Starting thread pool " << share_.options.ToString();
     for (size_t index = 0; index != options.min_workers; ++index) {
-      if (!TryStartNewWorker(nullptr, /* persistent = */ true)) {
+      if (!TryStartNewWorker(nullptr, /* persistent = */ true).ok()) {
         break;
       }
     }
@@ -304,9 +307,16 @@ class YBThreadPool::Impl {
       return true;
     }
 
-    if (TryStartNewWorker(task, /* persistent= */ false)) {
-      --adding_;
-      return true;
+    {
+      auto start_worker_status = TryStartNewWorker(task, /* persistent= */ false);
+      if (start_worker_status.ok()) {
+        --adding_;
+        return true;
+      } else if (share_.options.max_workers == ThreadPoolOptions::kUnlimitedWorkersWithoutQueue) {
+        task->Done(start_worker_status);
+        --adding_;
+        return false;
+      }
     }
 
     // We can get here in 3 cases:
@@ -320,7 +330,7 @@ class YBThreadPool::Impl {
     return true;
   }
 
-  bool TryStartNewWorker(ThreadPoolTask* task, bool persistent) EXCLUDES(mutex_) {
+  Status TryStartNewWorker(ThreadPoolTask* task, bool persistent) EXCLUDES(mutex_) {
     Worker* worker = nullptr;
     if (share_.num_workers++ < share_.options.max_workers) {
       std::lock_guard lock(mutex_);
@@ -329,13 +339,20 @@ class YBThreadPool::Impl {
         workers_.push_back(*(worker = new_worker.release()));
       }
     }
+    Status status;
     if (worker) {
-      auto status = worker->Start(++worker_counter_, task);
+      if (TEST_fail_to_create_second_thread_in_thread_pool_without_queue &&
+          share_.options.max_workers == ThreadPoolOptions::kUnlimitedWorkersWithoutQueue &&
+          worker_counter_ != 0) {
+        status = STATUS_FORMAT(RuntimeError, "TEST: Artificial start thread failure");
+      } else {
+        status = worker->Start(++worker_counter_, task);
+      }
       if (status.ok()) {
         if (task && share_.options.metrics.queue_time_us_stats) {
           share_.options.metrics.queue_time_us_stats->Increment(0);
         }
-        return true;
+        return Status::OK();
       }
       bool empty;
       {
@@ -352,9 +369,13 @@ class YBThreadPool::Impl {
       } else {
         LOG_WITH_PREFIX(WARNING) << "Unable to start worker: " << status;
       }
+    } else {
+      static const Status kReachedWorkersLimitStatus = STATUS(
+          RuntimeError, "Reached workers limit");
+      status = kReachedWorkersLimitStatus;
     }
     --share_.num_workers;
-    return false;
+    return status;
   }
 
   // Returns true if we found worker that will pick up this task, false otherwise.
@@ -371,7 +392,7 @@ class YBThreadPool::Impl {
       auto state = worker->Notify(task);
       switch (state) {
         case WorkerState::kWaitingTask:
-          if (share_.options.metrics.queue_time_us_stats) {
+          if (task && share_.options.metrics.queue_time_us_stats) {
             share_.options.metrics.queue_time_us_stats->Increment(0);
           }
           return true;

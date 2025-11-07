@@ -32,7 +32,7 @@
 #ifndef FRONTEND
 #include "storage/proc.h"		/* for MyProc */
 #endif
-
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 #define InvalidPid				(-1)
 
@@ -361,6 +361,7 @@ typedef enum BackendType
 	B_LOGGER,
 	YB_YSQL_CONN_MGR,
 	YB_YSQL_CONN_MGR_WAL_SENDER,
+	YB_AUTO_ANALYZE_BACKEND,
 } BackendType;
 
 extern PGDLLIMPORT BackendType MyBackendType;
@@ -491,8 +492,16 @@ extern void InitPostgres(const char *in_dbname, Oid dboid,
 						 const char *username, Oid useroid,
 						 bool load_session_libraries,
 						 bool override_allow_connections,
-						 char *out_dbname,
-						 uint64_t *yb_session_id);
+						 char *out_dbname);
+
+extern void YbInitPostgres(const char *in_dbname, Oid dboid,
+						   const char *username, Oid useroid,
+						   bool load_session_libraries,
+						   bool override_allow_connections,
+						   char *out_dbname,
+						   const YbcPgInitPostgresInfo *yb_info);
+extern long YbGetAuthorizedConnections();
+
 extern void BaseInit(void);
 
 /* in utils/init/miscinit.c */

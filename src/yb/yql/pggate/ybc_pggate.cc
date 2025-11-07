@@ -46,6 +46,7 @@
 #include "yb/server/clockbound_clock.h"
 #include "yb/server/skewed_clock.h"
 
+#include "yb/tablet/tablet.pb.h"
 #include "yb/tserver/pg_client.pb.h"
 #include "yb/util/atomic.h"
 #include "yb/util/curl_util.h"
@@ -83,92 +84,7 @@ DECLARE_int32(delay_alter_sequence_sec);
 
 DECLARE_int32(client_read_write_timeout_ms);
 
-DECLARE_bool(ysql_enable_colocated_tables_with_tablespaces);
-
-DECLARE_bool(TEST_ysql_enable_db_logical_client_version_mode);
-
-DEFINE_UNKNOWN_bool(ysql_enable_reindex, false,
-            "Enable REINDEX INDEX statement.");
-TAG_FLAG(ysql_enable_reindex, advanced);
-TAG_FLAG(ysql_enable_reindex, hidden);
-
-DEFINE_UNKNOWN_bool(ysql_disable_server_file_access, false,
-            "If true, disables read, write, and execute of local server files. "
-            "File access can be re-enabled if set to false.");
-
-DEFINE_NON_RUNTIME_bool(ysql_enable_profile, false, "Enable PROFILE feature.");
-
-DEFINE_test_flag(string, ysql_conn_mgr_dowarmup_all_pools_mode, "none",
-  "Enable precreation of server connections in every pool in Ysql Connection Manager and "
-  "choose the mode of attachment of idle server connections to clients to serve their queries. "
-  "ysql_conn_mgr_dowarmup is responsible for creating server connections only in "
-  "yugabyte (user), yugabyte (database) pool during the initialization of connection "
-  "manager process. This flag will create max(ysql_conn_mgr_min_conns_per_db, "
-  "3) number of server connections in any pool whenever there is a requirement to create the "
-  "first backend process in that particular pool.");
-
-DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_superuser_sticky, true,
-  "If enabled, make superuser connections sticky in Ysql Connection Manager.");
-
-DEFINE_NON_RUNTIME_int32(ysql_conn_mgr_max_query_size, 4096,
-  "Maximum size of the query which connection manager can process in the deploy phase or while"
-  "forwarding the client query");
-
-DEFINE_NON_RUNTIME_int32(ysql_conn_mgr_wait_timeout_ms, 10000,
-  "ysql_conn_mgr_wait_timeout_ms denotes the waiting time in ms, before getting timeout while "
-  "sending/receiving the packets at the socket in ysql connection manager. It is seen"
-  " asan builds requires large wait timeout than other builds");
-
-DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_stats_interval, 1,
-  "Interval (in secs) at which the stats for Ysql Connection Manager will be updated.");
-
-// This gflag should be deprecated but kept to avoid breaking some customer
-// clusters using it. Use ysql_catalog_preload_additional_table_list if possible.
-DEFINE_NON_RUNTIME_bool(ysql_catalog_preload_additional_tables, false,
-    "If true, YB catalog preloads a default set of tables upon connection "
-    "creation and cache refresh: pg_am,pg_amproc,pg_cast,pg_cast,pg_inherits,"
-    "pg_policy,pg_proc,pg_tablespace,pg_trigger.");
-
-DEFINE_NON_RUNTIME_string(ysql_catalog_preload_additional_table_list, "",
-    "A list of catalog tables that YSQL preloads additionally upon "
-    "connection start-up and cache refreshes. Catalog table names must start with pg_."
-    "Invalid catalog names are ignored. Comma separated. Example: pg_range,pg_proc."
-    "If both ysql_catalog_preload_additional_tables and "
-    "ysql_catalog_preload_additional_table_list are set, we take a union of "
-    "both the default list and the user-specified list.");
-
-DEFINE_NON_RUNTIME_bool(ysql_disable_global_impact_ddl_statements, false,
-            "If true, disable global impact ddl statements in per database catalog "
-            "version mode.");
-
 DEPRECATE_FLAG(bool, ysql_disable_per_tuple_memory_context_in_update_relattrs, "06_2023");
-
-DEFINE_NON_RUNTIME_bool(
-    ysql_minimal_catalog_caches_preload, false,
-    "Fill postgres' caches with system items only");
-
-DEFINE_RUNTIME_PREVIEW_bool(
-  ysql_conn_mgr_version_matching, false,
-  "If true, does selection of transactional backends based on logical client version");
-
-DEFINE_RUNTIME_PREVIEW_bool(
-    ysql_conn_mgr_version_matching_connect_higher_version, true,
-    "If ysql_conn_mgr_version_matching is enabled is enabled, then connect to higher version "
-    "server if this flag is set to true");
-
-DEFINE_NON_RUNTIME_bool(ysql_block_dangerous_roles, false,
-    "Block roles that can potentially be used to escalate to superuser privileges. Intended to be "
-    "used with superuser login disabled, such as in YBM. When true, this assumes those blocked "
-    "roles are not already in use.");
-
-DEFINE_RUNTIME_PREVIEW_bool(
-    ysql_enable_pg_export_snapshot, false,
-    "Enables the support for synchronizing snapshots across transactions, using pg_export_snapshot "
-    "and SET TRANSACTION SNAPSHOT");
-
-DEFINE_NON_RUNTIME_bool(ysql_enable_neghit_full_inheritscache, true,
-    "When set to true, a (fully) preloaded inherits cache returns negative cache hits"
-    " right away without incurring a master lookup");
 
 DEFINE_RUNTIME_PG_FLAG(
     bool, yb_user_ddls_preempt_auto_analyze, true,
@@ -180,40 +96,11 @@ DEFINE_RUNTIME_PG_FLAG(
     "concurrent DDLs block on each other for serialization. Also, this flag is valid only if "
     "ysql_enable_db_catalog_version_mode and yb_enable_invalidation_messages are enabled.");
 
-DEFINE_NON_RUNTIME_bool(ysql_enable_read_request_cache_for_connection_auth, false,
-            "If true, use tserver response cache for authorization processing "
-            "during connection setup. Only applicable when connection manager "
-            "is used.");
-
 DECLARE_bool(TEST_ash_debug_aux);
-DECLARE_bool(TEST_generate_ybrowid_sequentially);
-DECLARE_bool(TEST_ysql_log_perdb_allocated_new_objectid);
-DECLARE_bool(TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication);
-
-DECLARE_bool(use_fast_backward_scan);
-DECLARE_uint32(ysql_max_invalidation_message_queue_size);
-DECLARE_uint32(max_replication_slots);
 
 /* Constants for replication slot LSN types */
 const std::string YBC_LSN_TYPE_SEQUENCE = "SEQUENCE";
 const std::string YBC_LSN_TYPE_HYBRID_TIME = "HYBRID_TIME";
-
-namespace {
-
-bool PreloadAdditionalCatalogListValidator(const char* flag_name, const std::string& flag_val) {
-  for (const char& c : flag_val) {
-    if (c != '_' && c != ',' && !islower(c)) {
-      LOG_FLAG_VALIDATION_ERROR(flag_name, flag_val) << "Found invalid character '" << c << "'";
-      return false;
-    }
-  }
-
-  return true;
-}
-
-} // namespace
-
-DEFINE_validator(ysql_catalog_preload_additional_table_list, PreloadAdditionalCatalogListValidator);
 
 YbcRecordTempRelationDDL_hook_type YBCRecordTempRelationDDL_hook =
     &YBCDdlEnableForceCatalogModification;
@@ -285,7 +172,7 @@ inline std::optional<Bound> MakeBound(YbcPgBoundType type, uint16_t value) {
 
 void InitPgGateImpl(
     YbcPgTypeEntities type_entities, const YbcPgCallbacks& pg_callbacks,
-    YbcPgAshConfig& ash_config, std::optional<uint64_t> session_id) {
+    YbcPgAshConfig& ash_config, const YbcPgInitPostgresInfo& init_postgres_info) {
   // TODO: We should get rid of hybrid clock usage in YSQL backend processes (see #16034).
   // However, this is added to allow simulating and testing of some known bugs until we remove
   // HybridClock usage.
@@ -303,7 +190,7 @@ void InitPgGateImpl(
 #endif
 
   pgapi_shutdown_done.exchange(false);
-  pgapi = new PgApiImpl(type_entities, pg_callbacks, session_id, ash_config);
+  pgapi = new PgApiImpl(type_entities, pg_callbacks, init_postgres_info, ash_config);
 
   VLOG(1) << "PgGate open";
 }
@@ -388,6 +275,8 @@ void YBCStartSysTablePrefetchingImpl(std::optional<PrefetcherOptions::CachingInf
 
 PrefetchingCacheMode YBCMapPrefetcherCacheMode(YbcPgSysTablePrefetcherCacheMode mode) {
   switch (mode) {
+    case YB_YQL_PREFETCHER_TRUST_CACHE_AUTH:
+      return PrefetchingCacheMode::TRUST_CACHE_AUTH;
     case YB_YQL_PREFETCHER_TRUST_CACHE:
       return PrefetchingCacheMode::TRUST_CACHE;
     case YB_YQL_PREFETCHER_RENEW_CACHE_SOFT:
@@ -447,6 +336,7 @@ void AshCopyTServerSample(
   cb_metadata->pid = tserver_metadata.pid() ? tserver_metadata.pid()
                                             : pgapi->GetLocalTServerPid();
   cb_metadata->database_id = tserver_metadata.database_id();
+  cb_metadata->user_id = tserver_metadata.user_id();
   cb_sample->rpc_request_id = tserver_metadata.rpc_request_id();
   cb_sample->encoded_wait_event_code =
       ash::WaitStateInfo::AshEncodeWaitStateCodeWithComponent(
@@ -564,6 +454,40 @@ ReadHybridTime MakeReadHybridTime(const YbcReadHybridTime& read_time) {
   };
 }
 
+// YugabyteDB-specific binary upgrade flag
+static bool yb_is_binary_upgrade = false;
+
+
+Status YBCInitTransactionImpl(const YbcPgInitTransactionData& data) {
+  RETURN_NOT_OK(pgapi->BeginTransaction(data.xact_start_timestamp));
+  RETURN_NOT_OK(pgapi->SetTransactionIsolationLevel(data.effective_pggate_isolation_level));
+  RETURN_NOT_OK(pgapi->UpdateFollowerReadsConfig(
+      data.read_from_followers_enabled, data.follower_read_staleness_ms));
+  RETURN_NOT_OK(pgapi->SetTransactionReadOnly(data.xact_read_only));
+  RETURN_NOT_OK(pgapi->SetEnableTracing(data.enable_tracing));
+  return pgapi->SetTransactionDeferrable(data.xact_deferrable);
+}
+
+Status YBCCommitTransactionIntermediateImpl(const YbcPgInitTransactionData& data) {
+  const auto history_cutoff_guard = pgapi->TemporaryDisableReadTimeHistoryCutoff();
+  RETURN_NOT_OK(pgapi->CommitPlainTransaction());
+  return YBCInitTransactionImpl(data);
+}
+
+YbcPgTabletsDescriptor MakeYbcPgTabletsDescriptor(const tablet::TabletStatusPB& tablet_status) {
+  return {
+    .tablet_id = YBCPAllocStdString(tablet_status.tablet_id()),
+    .table_name = YBCPAllocStdString(tablet_status.table_name()),
+    .table_id = YBCPAllocStdString(tablet_status.table_id()),
+    .namespace_name = YBCPAllocStdString(tablet_status.namespace_name()),
+    .table_type = YBCPAllocStdString(HumanReadableTableType(tablet_status.table_type())),
+    .partition_key_start = YBCPAllocStdString(tablet_status.partition().partition_key_start()),
+    .partition_key_start_len = tablet_status.partition().partition_key_start().size(),
+    .partition_key_end = YBCPAllocStdString(tablet_status.partition().partition_key_end()),
+    .partition_key_end_len = tablet_status.partition().partition_key_end().size()
+  };
+}
+
 } // namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -573,13 +497,12 @@ ReadHybridTime MakeReadHybridTime(const YbcReadHybridTime& read_time) {
 extern "C" {
 
 void YBCInitPgGate(
-    YbcPgTypeEntities type_entities, const YbcPgCallbacks *pg_callbacks, uint64_t *session_id,
-    YbcPgAshConfig *ash_config) {
-  CHECK_OK(WithMaskedYsqlSignals([&type_entities, pg_callbacks,  session_id, ash_config] {
-    InitPgGateImpl(
-        type_entities, *pg_callbacks, *ash_config,
-        session_id ? std::optional(*session_id) : std::nullopt);
-    return static_cast<Status>(Status::OK());
+    YbcPgTypeEntities type_entities, const YbcPgCallbacks *pg_callbacks,
+    const YbcPgInitPostgresInfo *init_postgres_info, YbcPgAshConfig *ash_config) {
+  CHECK_OK(WithMaskedYsqlSignals(
+      [&type_entities, pg_callbacks, init_postgres_info, ash_config]() -> Status {
+        InitPgGateImpl(type_entities, *pg_callbacks, *ash_config, *init_postgres_info);
+        return Status::OK();
   }));
 }
 
@@ -1288,6 +1211,16 @@ YbcStatus YBCPgSetDBCatalogCacheVersion(
   return ToYBCStatus(pgapi->SetCatalogCacheVersion(handle, version, db_oid));
 }
 
+YbcStatus YBCPgSetTablespaceOid(YbcPgStatement handle, uint32_t tablespace_oid) {
+  return ToYBCStatus(pgapi->SetTablespaceOid(handle, tablespace_oid));
+}
+
+#ifndef NDEBUG
+void YBCPgCheckTablespaceOid(uint32_t db_oid, uint32_t table_oid, uint32_t tablespace_oid) {
+  pgapi->CheckTablespaceOid(db_oid, table_oid, tablespace_oid);
+}
+#endif
+
 YbcStatus YBCPgDmlModifiesRow(YbcPgStatement handle, bool *modifies_row) {
   return ExtractValueFromResult(pgapi->DmlModifiesRow(handle), modifies_row);
 }
@@ -1467,8 +1400,11 @@ YbcStatus YBCPgDmlAppendTarget(YbcPgStatement handle, YbcPgExpr target) {
   return ToYBCStatus(pgapi->DmlAppendTarget(handle, target));
 }
 
-YbcStatus YbPgDmlAppendQual(YbcPgStatement handle, YbcPgExpr qual, bool is_for_secondary_index) {
-  return ToYBCStatus(pgapi->DmlAppendQual(handle, qual, is_for_secondary_index));
+YbcStatus YbPgDmlAppendQual(
+    YbcPgStatement handle, YbcPgExpr qual, uint32_t serialization_version,
+    bool is_for_secondary_index) {
+  return ToYBCStatus(pgapi->DmlAppendQual(
+      handle, qual, serialization_version, is_for_secondary_index));
 }
 
 YbcStatus YbPgDmlAppendColumnRef(
@@ -1539,6 +1475,15 @@ YbcStatus YBCPgDmlBindHashCodes(
   return ToYBCStatus(pgapi->DmlBindHashCode(handle, start, end));
 }
 
+YbcStatus YBCPgDmlBindBounds(
+    YbcPgStatement handle, uint64_t lower_bound_ybctid, bool lower_bound_inclusive,
+    uint64_t upper_bound_ybctid, bool upper_bound_inclusive) {
+  return ToYBCStatus(pgapi->DmlBindBounds(
+      handle, lower_bound_ybctid ? YbctidAsSlice(lower_bound_ybctid) : Slice(),
+      lower_bound_inclusive, upper_bound_ybctid ? YbctidAsSlice(upper_bound_ybctid) : Slice(),
+      upper_bound_inclusive));
+}
+
 YbcStatus YBCPgDmlBindRange(YbcPgStatement handle,
                             const char *lower_bound, size_t lower_bound_len,
                             const char *upper_bound, size_t upper_bound_len) {
@@ -1590,8 +1535,8 @@ void YBCPgResetOperationsBuffering() {
   pgapi->ResetOperationsBuffering();
 }
 
-YbcStatus YBCPgFlushBufferedOperations() {
-  return ToYBCStatus(pgapi->FlushBufferedOperations());
+YbcStatus YBCPgFlushBufferedOperations(YbcFlushDebugContext *debug_context) {
+  return ToYBCStatus(pgapi->FlushBufferedOperations(*debug_context));
 }
 
 YbcStatus YBCPgAdjustOperationsBuffering(int multiple) {
@@ -1746,10 +1691,6 @@ YbcStatus YBCPgSetForwardScan(YbcPgStatement handle, bool is_forward_scan) {
 
 YbcStatus YBCPgSetDistinctPrefixLength(YbcPgStatement handle, int distinct_prefix_length) {
   return ToYBCStatus(pgapi->SetDistinctPrefixLength(handle, distinct_prefix_length));
-}
-
-YbcStatus YBCPgSetHashBounds(YbcPgStatement handle, uint16_t low_bound, uint16_t high_bound) {
-  return ToYBCStatus(pgapi->SetHashBounds(handle, low_bound, high_bound));
 }
 
 YbcStatus YBCPgExecSelect(YbcPgStatement handle, const YbcPgExecParameters *exec_params) {
@@ -1973,7 +1914,7 @@ bool YBCIsRestartReadPointRequested() {
 }
 
 YbcStatus YBCPgCommitPlainTransaction() {
-  return ToYBCStatus(pgapi->CommitPlainTransaction(std::nullopt /* ddl_commit_info */));
+  return ToYBCStatus(pgapi->CommitPlainTransaction());
 }
 
 YbcStatus YBCPgCommitPlainTransactionContainingDDL(
@@ -2062,6 +2003,10 @@ bool YBCPgIsDdlMode() {
   return pgapi->IsDdlMode();
 }
 
+bool YBCPgIsDdlModeWithRegularTransactionBlock() {
+  return pgapi->IsDdlModeWithRegularTransactionBlock();
+}
+
 bool YBCCurrentTransactionUsesFastPath() {
   auto result = pgapi->CurrentTransactionUsesFastPath();
   if (!result.ok()) {
@@ -2094,9 +2039,13 @@ void YBCPgAddIntoForeignKeyReferenceCache(YbcPgOid table_relfilenode_oid, uint64
   pgapi->AddForeignKeyReference(table_relfilenode_oid, YbctidAsSlice(ybctid));
 }
 
-YbcStatus YBCForeignKeyReferenceExists(const YbcPgYBTupleIdDescriptor *source, bool* res) {
-  return ProcessYbctid(*source, [res, source](auto table_id, const auto& ybctid) -> Status {
-    *res = VERIFY_RESULT(pgapi->ForeignKeyReferenceExists(table_id, ybctid, source->database_oid));
+YbcStatus YBCForeignKeyReferenceExists(
+  const YbcPgYBTupleIdDescriptor *source, bool relation_is_region_local, bool* res) {
+  return ProcessYbctid(
+    *source,
+    [res, source, relation_is_region_local](auto table_id, const auto& ybctid) -> Status {
+    *res = VERIFY_RESULT(pgapi->ForeignKeyReferenceExists(
+        table_id, ybctid, relation_is_region_local, source->database_oid));
     return Status::OK();
   });
 }
@@ -2106,11 +2055,11 @@ YbcStatus YBCAddForeignKeyReferenceIntent(
     bool is_deferred_trigger) {
   return ProcessYbctid(
       *source,
-      [is_region_local_relation, is_deferred_trigger](auto table_id, const auto& ybctid) {
-        pgapi->AddForeignKeyReferenceIntent(
+      [source, is_region_local_relation, is_deferred_trigger](auto table_id, const auto& ybctid) {
+        return pgapi->AddForeignKeyReferenceIntent(
             table_id, ybctid,
-            {.is_region_local = is_region_local_relation, .is_deferred = is_deferred_trigger});
-        return Status::OK();
+            {.is_region_local = is_region_local_relation, .is_deferred = is_deferred_trigger},
+            source->database_oid);
       });
 }
 
@@ -2186,19 +2135,6 @@ uint64_t YBCPgGetInsertOnConflictKeyCount(void* state) {
 }
 
 //--------------------------------------------------------------------------------------------------
-
-bool YBCIsInitDbModeEnvVarSet() {
-  static bool cached_value = false;
-  static bool cached = false;
-
-  if (!cached) {
-    const char* initdb_mode_env_var_value = getenv("YB_PG_INITDB_MODE");
-    cached_value = initdb_mode_env_var_value && strcmp(initdb_mode_env_var_value, "1") == 0;
-    cached = true;
-  }
-
-  return cached_value;
-}
 
 void YBCInitFlags() {
   SetAtomicFlag(GetAtomicFlag(&FLAGS_pggate_num_connections_to_server),
@@ -2285,79 +2221,6 @@ const unsigned char* YBCGetLocalTserverUuid() {
   return pgapi->GetLocalTserverUuid();
 }
 
-const YbcPgGFlagsAccessor* YBCGetGFlags() {
-  // clang-format off
-  static YbcPgGFlagsAccessor accessor = {
-      .log_ysql_catalog_versions                = &FLAGS_log_ysql_catalog_versions,
-      .ysql_catalog_preload_additional_tables   = &FLAGS_ysql_catalog_preload_additional_tables,
-      .ysql_disable_index_backfill              = &FLAGS_ysql_disable_index_backfill,
-      .ysql_disable_server_file_access          = &FLAGS_ysql_disable_server_file_access,
-      .ysql_enable_reindex                      = &FLAGS_ysql_enable_reindex,
-      .ysql_num_databases_reserved_in_db_catalog_version_mode =
-          &FLAGS_ysql_num_databases_reserved_in_db_catalog_version_mode,
-      .ysql_output_buffer_size                  = &FLAGS_ysql_output_buffer_size,
-      .ysql_output_flush_size                   = &FLAGS_ysql_output_flush_size,
-      .ysql_sequence_cache_minval               = &FLAGS_ysql_sequence_cache_minval,
-      .ysql_session_max_batch_size              = &FLAGS_ysql_session_max_batch_size,
-      .ysql_sleep_before_retry_on_txn_conflict  = &FLAGS_ysql_sleep_before_retry_on_txn_conflict,
-      .ysql_colocate_database_by_default        = &FLAGS_ysql_colocate_database_by_default,
-      .ysql_enable_read_request_caching         = &FLAGS_ysql_enable_read_request_caching,
-      .ysql_enable_profile                      = &FLAGS_ysql_enable_profile,
-      .ysql_disable_global_impact_ddl_statements =
-          &FLAGS_ysql_disable_global_impact_ddl_statements,
-      .ysql_minimal_catalog_caches_preload      = &FLAGS_ysql_minimal_catalog_caches_preload,
-      .ysql_enable_colocated_tables_with_tablespaces =
-          &FLAGS_ysql_enable_colocated_tables_with_tablespaces,
-      .ysql_enable_create_database_oid_collision_retry =
-          &FLAGS_ysql_enable_create_database_oid_collision_retry,
-      .ysql_catalog_preload_additional_table_list =
-          FLAGS_ysql_catalog_preload_additional_table_list.c_str(),
-      .ysql_use_relcache_file                   = &FLAGS_ysql_use_relcache_file,
-      .ysql_use_optimized_relcache_update       = &FLAGS_ysql_use_optimized_relcache_update,
-      .ysql_enable_pg_per_database_oid_allocator =
-          &FLAGS_ysql_enable_pg_per_database_oid_allocator,
-      .ysql_enable_db_catalog_version_mode =
-          &FLAGS_ysql_enable_db_catalog_version_mode,
-      .TEST_hide_details_for_pg_regress =
-          &FLAGS_TEST_hide_details_for_pg_regress,
-      .TEST_generate_ybrowid_sequentially =
-          &FLAGS_TEST_generate_ybrowid_sequentially,
-      .ysql_use_fast_backward_scan = &FLAGS_use_fast_backward_scan,
-      .TEST_ysql_conn_mgr_dowarmup_all_pools_mode =
-          FLAGS_TEST_ysql_conn_mgr_dowarmup_all_pools_mode.c_str(),
-      .TEST_ysql_enable_db_logical_client_version_mode =
-          &FLAGS_TEST_ysql_enable_db_logical_client_version_mode,
-      .ysql_conn_mgr_superuser_sticky = &FLAGS_ysql_conn_mgr_superuser_sticky,
-      .TEST_ysql_log_perdb_allocated_new_objectid =
-          &FLAGS_TEST_ysql_log_perdb_allocated_new_objectid,
-      .ysql_conn_mgr_version_matching = &FLAGS_ysql_conn_mgr_version_matching,
-      .ysql_conn_mgr_version_matching_connect_higher_version =
-          &FLAGS_ysql_conn_mgr_version_matching_connect_higher_version,
-      .ysql_block_dangerous_roles = &FLAGS_ysql_block_dangerous_roles,
-      .ysql_sequence_cache_method = FLAGS_ysql_sequence_cache_method.c_str(),
-      .ysql_conn_mgr_sequence_support_mode = FLAGS_ysql_conn_mgr_sequence_support_mode.c_str(),
-      .ysql_conn_mgr_max_query_size = &FLAGS_ysql_conn_mgr_max_query_size,
-      .ysql_conn_mgr_wait_timeout_ms = &FLAGS_ysql_conn_mgr_wait_timeout_ms,
-      .ysql_enable_pg_export_snapshot = &FLAGS_ysql_enable_pg_export_snapshot,
-      .ysql_enable_neghit_full_inheritscache =
-        &FLAGS_ysql_enable_neghit_full_inheritscache,
-      .enable_object_locking_for_table_locks =
-          &FLAGS_enable_object_locking_for_table_locks,
-      .ysql_max_invalidation_message_queue_size =
-          &FLAGS_ysql_max_invalidation_message_queue_size,
-      .ysql_max_replication_slots = &FLAGS_max_replication_slots,
-      .yb_max_recursion_depth = &FLAGS_yb_max_recursion_depth,
-      .ysql_conn_mgr_stats_interval =
-          &FLAGS_ysql_conn_mgr_stats_interval,
-      .ysql_enable_read_request_cache_for_connection_auth =
-          &FLAGS_ysql_enable_read_request_cache_for_connection_auth,
-      .TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication =
-          &FLAGS_TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication,
-  };
-  // clang-format on
-  return &accessor;
-}
-
 bool YBCPgIsYugaByteEnabled() {
   return pgapi;
 }
@@ -2421,14 +2284,31 @@ YbcStatus YBCGetTabletServerHosts(YbcServerDescriptor **servers, size_t *count) 
   return YBCStatusOK();
 }
 
+/*
+ * Get the index backfill progress.
+ *
+ * Returns the number of base table tuples scanned and index tuples inserted
+ * during the index backfill. If the backfill is in progress, it will report
+ * only the tuples scanned and inserted so far. After the backfill is completed,
+ * this function only returns the tuple scanned and inserted at the time of
+ * completion of the backfill, not the actual number of tuples in the base table
+ * and index currently.
+ *
+ * If an index is not found in the DocDB catalog, both return values are set to
+ * UINT64_MAX for this index.
+ *
+ * If num_rows_backfilled is NULL, it will not be populated.
+ */
 YbcStatus YBCGetIndexBackfillProgress(YbcPgOid* index_oids, YbcPgOid* database_oids,
-                                      uint64_t** backfill_statuses,
-                                      int num_indexes) {
+                                      uint64_t* num_rows_read_from_table,
+                                      double* num_rows_backfilled, int num_indexes) {
   std::vector<PgObjectId> index_ids;
   for (int i = 0; i < num_indexes; ++i) {
     index_ids.emplace_back(PgObjectId(database_oids[i], index_oids[i]));
   }
-  return ToYBCStatus(pgapi->GetIndexBackfillProgress(index_ids, backfill_statuses));
+  return ToYBCStatus(pgapi->GetIndexBackfillProgress(index_ids,
+                                                     num_rows_read_from_table,
+                                                     num_rows_backfilled));
 }
 
 //------------------------------------------------------------------------------------------------
@@ -3049,34 +2929,65 @@ YbcStatus YBCPgUpdateAndPersistLSN(
   return YBCStatusOK();
 }
 
-YbcStatus YBCLocalTablets(YbcPgTabletsDescriptor** tablets, size_t* count) {
-  const auto result = pgapi->TabletsMetadata();
+YbcStatus YBCLocalTablets(YbcPgLocalTabletsDescriptor** tablets, size_t* count) {
+  const auto result = pgapi->TabletsMetadata(/* local_only= */ true);
   if (!result.ok()) {
     return ToYBCStatus(result.status());
   }
   const auto& local_tablets = result.get().tablets();
   *count = local_tablets.size();
   if (!local_tablets.empty()) {
-    *tablets = static_cast<YbcPgTabletsDescriptor*>(
-        YBCPAlloc(sizeof(YbcPgTabletsDescriptor) * local_tablets.size()));
-    YbcPgTabletsDescriptor* dest = *tablets;
+    *tablets = static_cast<YbcPgLocalTabletsDescriptor*>(
+        YBCPAlloc(sizeof(YbcPgLocalTabletsDescriptor) * local_tablets.size()));
+    YbcPgLocalTabletsDescriptor* dest = *tablets;
     for (const auto& tablet : local_tablets) {
-      new (dest) YbcPgTabletsDescriptor {
-        .tablet_id = YBCPAllocStdString(tablet.tablet_id()),
-        .table_name = YBCPAllocStdString(tablet.table_name()),
-        .table_id = YBCPAllocStdString(tablet.table_id()),
-        .namespace_name = YBCPAllocStdString(tablet.namespace_name()),
-        .table_type = YBCPAllocStdString(HumanReadableTableType(tablet.table_type())),
-        .pgschema_name = YBCPAllocStdString(tablet.pgschema_name()),
-        .partition_key_start = YBCPAllocStdString(tablet.partition().partition_key_start()),
-        .partition_key_start_len = tablet.partition().partition_key_start().size(),
-        .partition_key_end = YBCPAllocStdString(tablet.partition().partition_key_end()),
-        .partition_key_end_len = tablet.partition().partition_key_end().size(),
-        .tablet_data_state = YBCPAllocStdString(TabletDataState_Name(tablet.tablet_data_state()))
+      new (dest) YbcPgLocalTabletsDescriptor {
+        .tablet_descriptor = MakeYbcPgTabletsDescriptor(tablet),
+        .tablet_data_state = YBCPAllocStdString(TabletDataState_Name(tablet.tablet_data_state())),
+        .pgschema_name = YBCPAllocStdString(tablet.pgschema_name())
       };
       ++dest;
     }
   }
+  return YBCStatusOK();
+}
+
+YbcStatus YBCTabletsMetadata(YbcPgGlobalTabletsDescriptor** tablets, size_t* count) {
+  const auto result = pgapi->TabletsMetadata(/* local_only= */ false);
+
+  if (!result.ok())
+    return ToYBCStatus(result.status());
+
+  const auto& tablet_metadatas = result.get().tablets();
+  *count = tablet_metadatas.size();
+
+  if (!tablet_metadatas.empty()) {
+    *tablets = static_cast<YbcPgGlobalTabletsDescriptor*>(
+        YBCPAlloc(sizeof(YbcPgGlobalTabletsDescriptor) * tablet_metadatas.size()));
+    YbcPgGlobalTabletsDescriptor* dest = *tablets;
+
+    for (const auto& tablet_metadata : tablet_metadatas) {
+      const char** replicas_array = nullptr;
+
+      if (!tablet_metadata.replicas().empty()) {
+        replicas_array = static_cast<const char**>(
+            YBCPAlloc(tablet_metadata.replicas().size() * sizeof(const char*)));
+
+        for (int i = 0; i < tablet_metadata.replicas().size(); ++i) {
+          replicas_array[i] = YBCPAllocStdString(tablet_metadata.replicas(i));
+        }
+      }
+
+      new (dest) YbcPgGlobalTabletsDescriptor {
+        .tablet_descriptor = MakeYbcPgTabletsDescriptor(tablet_metadata),
+        .replicas = replicas_array,
+        .replicas_count = static_cast<size_t>(tablet_metadata.replicas().size()),
+        .is_hash_partitioned = tablet_metadata.is_hash_partitioned()
+      };
+      ++dest;
+    }
+  }
+
   return YBCStatusOK();
 }
 
@@ -3243,6 +3154,34 @@ bool YBCPgYsqlMajorVersionUpgradeInProgress() {
    * DevNote: Keep this in sync with IsYsqlMajorVersionUpgradeInProgress.
    */
   return yb_major_version_upgrade_compatibility > 0 || !yb_upgrade_to_pg15_completed;
+}
+
+bool YBCIsBinaryUpgrade() {
+  return yb_is_binary_upgrade;
+}
+
+void YBCSetBinaryUpgrade(bool value) {
+  yb_is_binary_upgrade = value;
+}
+
+void YBCRecordTablespaceOid(YbcPgOid db_oid, YbcPgOid table_oid, YbcPgOid tablespace_oid) {
+  pgapi->RecordTablespaceOid(db_oid, table_oid, tablespace_oid);
+}
+
+void YBCClearTablespaceOid(YbcPgOid db_oid, YbcPgOid table_oid) {
+  pgapi->ClearTablespaceOid(db_oid, table_oid);
+}
+
+YbcStatus YBCInitTransaction(const YbcPgInitTransactionData *data) {
+  return ToYBCStatus(YBCInitTransactionImpl(*data));
+}
+
+YbcStatus YBCCommitTransactionIntermediate(const YbcPgInitTransactionData *data) {
+  return ToYBCStatus(YBCCommitTransactionIntermediateImpl(*data));
+}
+
+YbcStatus YBCTriggerRelcacheInitConnection(const char* dbname) {
+  return ToYBCStatus(pgapi->TriggerRelcacheInitConnection(dbname));
 }
 
 } // extern "C"

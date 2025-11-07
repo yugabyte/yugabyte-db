@@ -629,7 +629,7 @@ Notice that if you choose the _"masters&#95;with&#95;details"_ approach (either 
   set detail_name = 'bobcat'
   where master_pk = 2
   and detail_name = 'squirrel';
-  
+
   select
     master_pk,
     master_name,
@@ -658,7 +658,7 @@ Notice that if you choose the _"masters&#95;with&#95;details"_ approach (either 
   update masters_with_details
   set details = array_replace(details, '(3,squirrel)', '(3,bobcat)')
   where master_pk = 2;
-  
+
   select
     master_pk,
     master_name,
@@ -707,7 +707,7 @@ as $body$
 $body$;
 ```
 
-Now demonstrate the basic behavior _generate_subscripts():_ 
+Now demonstrate the basic behavior _generate_subscripts():_
 
 ```plpgsql
 select generate_subscripts(arr(), 1) as subscripts;
@@ -716,7 +716,7 @@ select generate_subscripts(arr(), 1) as subscripts;
 This is the result:
 
 ```output
- subscripts 
+ subscripts
 ------------
           1
           2
@@ -733,7 +733,7 @@ select generate_subscripts(arr(), 1, true) as subscripts;
 This is the result:
 
 ```output
- subscripts 
+ subscripts
 ------------
           4
           3
@@ -862,7 +862,7 @@ from generate_subscripts((select arr from t where k = 'Array One'), 1) as g(i);
 It produces this result:
 
 ```output
- i | arr 
+ i | arr
 ---+-----
  1 |  17
  2 |  42
@@ -902,7 +902,7 @@ order by k;
 It produces this result:
 
 ```output
-     k     | idx | a  
+     k     | idx | a
 -----------+-----+----
  Array One |   1 | 17
  Array One |   2 | 42
@@ -933,7 +933,7 @@ $body$;
 The result (after manually stripping the "INFO:" prompts), is the same as the SQL approach that uses `generate_subscripts()` with _cross join lateral_, shown above, produces:
 
 ```output
- 5 | 19 
+ 5 | 19
  6 | 47
  7 | 59
 ```

@@ -3,7 +3,7 @@
  * yb_catalog_version.h
  *	  utility functions related to the ysql catalog version table.
  *
- * Portions Copyright (c) YugaByte, Inc.
+ * Portions Copyright (c) YugabyteDB, Inc.
  *
  * src/include/catalog/yb_catalog_version.h
  *
@@ -49,6 +49,8 @@ extern void YbCreateMasterDBCatalogVersionTableEntry(Oid db_oid);
 
 /* Send a request to delete the master catalog version for the given database. */
 extern void YbDeleteMasterDBCatalogVersionTableEntry(Oid db_oid);
+
+extern void YbDeleteMasterDBInvalidationMessagesTableEntries(Oid db_oid);
 
 /* Annotate an DML request if it changes the catalog data (if needed). */
 extern bool YbMarkStatementIfCatalogVersionIncrement(YbcPgStatement ybc_stmt,

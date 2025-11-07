@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 package api.v2.mappers;
 
 import api.v2.models.CloudSpecificInfo;
@@ -24,6 +24,7 @@ import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.MetricsExportConfigParams;
+import com.yugabyte.yw.forms.QueryLogConfigParams;
 import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
@@ -111,6 +112,10 @@ public interface UniverseDefinitionTaskParamsMapper {
 
   @InheritConfiguration(name = "defaultMapping")
   public KubernetesOverridesUpgradeParams toKubernetesOverridesUpgradeParams(
+      UniverseDefinitionTaskParams source, @Context Request request);
+
+  @InheritConfiguration(name = "defaultMapping")
+  public QueryLogConfigParams toQueryLogConfigParams(
       UniverseDefinitionTaskParams source, @Context Request request);
 
   @InheritConfiguration(name = "defaultMapping")

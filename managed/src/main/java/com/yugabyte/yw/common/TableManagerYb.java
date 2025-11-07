@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.common;
 
@@ -93,7 +93,7 @@ public class TableManagerYb extends DevopsBase {
 
     if (region.getProviderCloudCode().equals(CloudType.kubernetes)) {
       for (Cluster cluster : universe.getUniverseDetails().clusters) {
-        PlacementInfo pi = cluster.placementInfo;
+        PlacementInfo pi = cluster.getOverallPlacement();
         podAddrToConfig.putAll(
             KubernetesUtil.getKubernetesConfigPerPod(
                 pi, universe.getUniverseDetails().getNodesInCluster(cluster.uuid)));

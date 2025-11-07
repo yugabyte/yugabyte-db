@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -24,8 +24,9 @@
 #include "yb/rpc/rpc_context.h"
 
 #include "yb/tablet/tablet_fwd.h"
-
 #include "yb/tablet/tablet_metrics.h"
+#include "yb/tablet/transaction_participant.h"
+
 #include "yb/tserver/tserver.fwd.h"
 
 #include "yb/util/operation_counter.h"
@@ -138,6 +139,8 @@ class WriteQuery {
 
   void Complete(const Status& status);
 
+  void InvokeCallback(const Status& status);
+
   Status InitExecute(ExecuteMode mode);
 
   void ExecuteDone(const Status& status);
@@ -163,6 +166,7 @@ class WriteQuery {
   Result<bool> CqlPrepareExecute();
   Result<bool> PgsqlPrepareExecute();
   Result<bool> PgsqlPrepareLock();
+  Result<bool> ExternalWritePrepareExecute();
 
   void SimpleExecuteDone(const Status& status);
   void RedisExecuteDone(const Status& status);
@@ -261,6 +265,10 @@ class WriteQuery {
   // to global_tablet_metrics_ once the WriteQuery object is destroyed.
   std::shared_ptr<TabletMetricsHolder> metrics_;
   docdb::DocDBStatistics scoped_statistics_;
+
+  // Set when the txn is in fast mode of serialization, snapshot, or read committed isolation
+  // levels.
+  FastModeTransactionScope fast_mode_txn_scope_;
 };
 
 }  // namespace tablet

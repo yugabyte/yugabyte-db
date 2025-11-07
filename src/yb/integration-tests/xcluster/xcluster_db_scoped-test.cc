@@ -27,6 +27,7 @@ DECLARE_string(certs_for_cdc_dir);
 DECLARE_bool(TEST_force_automatic_ddl_replication_mode);
 DECLARE_bool(disable_xcluster_db_scoped_new_table_processing);
 DECLARE_bool(xcluster_skip_health_check_on_replication_setup);
+DECLARE_bool(ysql_enable_auto_analyze);
 
 using namespace std::chrono_literals;
 
@@ -359,7 +360,7 @@ TEST_F(XClusterDBScopedTest, ColocatedDB) {
 
   auto producer_colocated_table_name = ASSERT_RESULT(CreateYsqlTable(
       /*idx=*/1, /*num_tablets=*/3, &producer_cluster_,
-      /*tablegroup_name=*/boost::none, /*colocated=*/true));
+      /*tablegroup_name=*/std::nullopt, /*colocated=*/true));
   std::shared_ptr<client::YBTable> producer_colocated_table;
   ASSERT_OK(producer_client()->OpenTable(producer_colocated_table_name, &producer_colocated_table));
 
@@ -375,7 +376,7 @@ TEST_F(XClusterDBScopedTest, ColocatedDB) {
 
   auto consumer_colocated_table_name = ASSERT_RESULT(CreateYsqlTable(
       /*idx=*/1, /*num_tablets=*/3, &consumer_cluster_,
-      /*tablegroup_name=*/boost::none, /*colocated=*/true));
+      /*tablegroup_name=*/std::nullopt, /*colocated=*/true));
   std::shared_ptr<client::YBTable> consumer_colocated_table;
   ASSERT_OK(consumer_client()->OpenTable(consumer_colocated_table_name, &consumer_colocated_table));
 
@@ -406,7 +407,7 @@ TEST_F(XClusterDBScopedTest, ColocatedDB) {
 
   auto producer_colocated_table2_name = ASSERT_RESULT(CreateYsqlTable(
       /*idx=*/3, /*num_tablets=*/3, &producer_cluster_,
-      /*tablegroup_name=*/boost::none, /*colocated=*/true));
+      /*tablegroup_name=*/std::nullopt, /*colocated=*/true));
   std::shared_ptr<client::YBTable> producer_colocated_table2;
   ASSERT_OK(
       producer_client()->OpenTable(producer_colocated_table2_name, &producer_colocated_table2));
@@ -414,7 +415,7 @@ TEST_F(XClusterDBScopedTest, ColocatedDB) {
 
   auto consumer_colocated_table2_name = ASSERT_RESULT(CreateYsqlTable(
       /*idx=*/3, /*num_tablets=*/3, &consumer_cluster_,
-      /*tablegroup_name=*/boost::none, /*colocated=*/true));
+      /*tablegroup_name=*/std::nullopt, /*colocated=*/true));
   std::shared_ptr<client::YBTable> consumer_colocated_table2;
   ASSERT_OK(
       consumer_client()->OpenTable(consumer_colocated_table2_name, &consumer_colocated_table2));
@@ -502,14 +503,14 @@ TEST_F(XClusterDBScopedTest, DisableAutoTableProcessing) {
 
 class XClusterDBScopedTestWithTwoDBs : public XClusterDBScopedTest {
  public:
-  Status SetUpClusters() {
-    RETURN_NOT_OK(XClusterYsqlTestBase::SetUpClusters());
+  Status SetUpClusters(SetupParams params = {}) {
+    RETURN_NOT_OK(XClusterYsqlTestBase::SetUpClusters(params));
 
     RETURN_NOT_OK(RunOnBothClusters([this](Cluster* cluster) -> Status {
       RETURN_NOT_OK(CreateDatabase(cluster, namespace_name2_));
       auto table_name = VERIFY_RESULT(CreateYsqlTable(
           cluster, namespace_name2_, "" /* schema_name */, namespace2_table_name_,
-          /*tablegroup_name=*/boost::none, /*num_tablets=*/3));
+          /*tablegroup_name=*/std::nullopt, /*num_tablets=*/3));
 
       std::shared_ptr<client::YBTable> table;
       RETURN_NOT_OK(cluster->client_->OpenTable(table_name, &table));
@@ -633,7 +634,10 @@ TEST_F(XClusterDBScopedTestWithTwoDBsAutomaticDDLMode, AddRemoveNamespace) {
 // Remove a namespaces from replication when the target side is down.
 TEST_F_EX(XClusterDBScopedTest, RemoveNamespaceWhenTargetIsDown, XClusterDBScopedTestWithTwoDBs) {
   // Setup replication with both databases.
-  ASSERT_OK(SetUpClusters());
+  // TODO(#29233): Remove below logic of not waiting for pg once the GH is addressed.
+  SetupParams params;
+  params.wait_for_pg = false;
+  ASSERT_OK(SetUpClusters(params));
   ASSERT_OK(CheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
   auto source_xcluster_client = client::XClusterClient(*producer_client());
@@ -684,7 +688,10 @@ TEST_F_EX(XClusterDBScopedTest, RemoveNamespaceWhenTargetIsDown, XClusterDBScope
 
 // Remove a namespaces from replication when the source side is down.
 TEST_F_EX(XClusterDBScopedTest, RemoveNamespaceWhenSourceIsDown, XClusterDBScopedTestWithTwoDBs) {
-  ASSERT_OK(SetUpClusters());
+  // TODO(#29233): Remove below logic of not waiting for pg once the GH is addressed.
+  SetupParams params;
+  params.wait_for_pg = false;
+  ASSERT_OK(SetUpClusters(params));
   ASSERT_OK(CheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
   auto source_xcluster_client = client::XClusterClient(*producer_client());
@@ -765,7 +772,10 @@ TEST_F(XClusterDBScopedTest, Delete) {
 
 // Delete replication when the target side is down.
 TEST_F(XClusterDBScopedTest, DeleteWhenTargetIsDown) {
-  ASSERT_OK(SetUpClusters());
+  // TODO(#29233): Remove below logic of not waiting for pg once the GH is addressed.
+  SetupParams params;
+  params.wait_for_pg = false;
+  ASSERT_OK(SetUpClusters(params));
   ASSERT_OK(CheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
@@ -814,7 +824,10 @@ TEST_F(XClusterDBScopedTest, DeleteWhenTargetIsDown) {
 
 // Delete replication when the source side is down.
 TEST_F(XClusterDBScopedTest, DeleteWhenSourceIsDown) {
-  ASSERT_OK(SetUpClusters());
+  // TODO(#29233): Remove below logic of not waiting for pg once the GH is addressed.
+  SetupParams params;
+  params.wait_for_pg = false;
+  ASSERT_OK(SetUpClusters(params));
   ASSERT_OK(CheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
@@ -1056,6 +1069,8 @@ TEST_F(XClusterDBScopedTest, CreateDropTablesWithPITR) {
 }
 
 TEST_F(XClusterDBScopedTest, RangedPartitionsWithIndex) {
+  // Disable auto analyze becauses the query plan changes.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
   ASSERT_OK(SetUpClusters());
 
   ASSERT_OK(CheckpointReplicationGroup());
@@ -1065,6 +1080,8 @@ TEST_F(XClusterDBScopedTest, RangedPartitionsWithIndex) {
 }
 
 TEST_F(XClusterDBScopedTest, ColocatedRangedPartitionsWithIndex) {
+  // Disable auto analyze becauses the query plan changes.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
   namespace_name = "colocated_db";
   SetupParams param;
   param.is_colocated = true;
@@ -1074,10 +1091,10 @@ TEST_F(XClusterDBScopedTest, ColocatedRangedPartitionsWithIndex) {
 
   ASSERT_OK(CreateYsqlTable(
       /*idx=*/1, /*num_tablets=*/1, &producer_cluster_,
-      /*tablegroup_name=*/boost::none, /*colocated=*/true));
+      /*tablegroup_name=*/std::nullopt, /*colocated=*/true));
   ASSERT_OK(CreateYsqlTable(
       /*idx=*/1, /*num_tablets=*/1, &consumer_cluster_,
-      /*tablegroup_name=*/boost::none, /*colocated=*/true));
+      /*tablegroup_name=*/std::nullopt, /*colocated=*/true));
 
   ASSERT_OK(CheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());

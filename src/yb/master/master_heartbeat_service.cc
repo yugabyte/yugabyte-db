@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -612,13 +612,9 @@ void MasterHeartbeatServiceImpl::DeleteOrphanedTabletReplica(
   LOG(INFO) << "Null tablet reported, possibly the TS was not around when the "
                "table was being deleted. Sending DeleteTablet RPC to this TS.";
   catalog_manager_->SendDeleteTabletRequest(
-    tablet_id,
-    tablet::TABLET_DATA_DELETED /* delete_type */,
-    boost::none /* cas_config_opid_index_less_or_equal */,
-    nullptr /* table */,
-    ts_desc->id(),
-    "Report from an orphaned tablet" /* reason */,
-    epoch);
+      tablet_id, tablet::TABLET_DATA_DELETED /* delete_type */,
+      std::nullopt /* cas_config_opid_index_less_or_equal */, nullptr /* table */, ts_desc->id(),
+      "Report from an orphaned tablet" /* reason */, epoch);
 }
 
 Result<bool> MasterHeartbeatServiceImpl::ProcessTabletReport(
@@ -843,7 +839,7 @@ Status MasterHeartbeatServiceImpl::ProcessTabletReportBatch(
       // where that might be possible (tablet creation timeout & replacement).
       rpcs->push_back(catalog_manager_->MakeDeleteReplicaTask(
           ts_desc->permanent_uuid(), table, tablet_id, TABLET_DATA_DELETED,
-          boost::none /* cas_config_opid_index_less_or_equal */, epoch, msg));
+          std::nullopt /* cas_config_opid_index_less_or_equal */, epoch, msg));
       continue;
     }
 
@@ -900,7 +896,7 @@ Status MasterHeartbeatServiceImpl::ProcessTabletReportBatch(
                 << " (" << msg << "): Sending hide request for this tablet";
       auto task = catalog_manager_->MakeDeleteReplicaTask(
           ts_desc->permanent_uuid(), table, tablet_id, TABLET_DATA_DELETED,
-          boost::none /* cas_config_opid_index_less_or_equal */, epoch, msg);
+          std::nullopt /* cas_config_opid_index_less_or_equal */, epoch, msg);
       task->set_hide_only(true);
       rpcs->push_back(task);
     }

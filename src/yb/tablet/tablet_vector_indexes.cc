@@ -44,7 +44,7 @@
 using namespace std::literals;
 
 DEFINE_test_flag(int32, sleep_before_vector_index_backfill_seconds, 0,
-                 "Sleep specified amount of seconds before doing vector index backfill.");
+    "Sleep specified amount of seconds before doing vector index backfill.");
 
 DECLARE_uint64(vector_index_initial_chunk_size);
 
@@ -52,28 +52,52 @@ namespace yb::tablet {
 
 namespace {
 
-class IndexedTableReader {
+METRIC_DEFINE_entity(vector_index);
+
+class IndexedTableContext : public docdb::DocVectorIndexedTableContext {
  public:
-  IndexedTableReader(
-      std::reference_wrapper<const TableInfo> indexed_table,
-      const docdb::DocVectorIndex& vector_index)
-      : indexed_table_(indexed_table),
-        projection_(indexed_table_.schema(), {vector_index.column_id()}),
-        row_(projection_) {
+  IndexedTableContext(Tablet& tablet, const TableInfo& indexed_table, ColumnId vector_column_id)
+      : tablet_(tablet),
+        indexed_table_id_(indexed_table.table_id),
+        projection_(indexed_table.schema(), { vector_column_id }) {
   }
 
-  Result<std::unique_ptr<docdb::DocRowwiseIterator>> CreateIterator(
-      Tablet& tablet, HybridTime read_ht, std::optional<Slice> start_key) {
-    auto result = VERIFY_RESULT(tablet.NewUninitializedDocRowIterator(
-        projection_, ReadHybridTime::SingleTime(read_ht), indexed_table_.table_id));
-    result->InitForTableType(
+  Result<docdb::DocRowwiseIteratorPtr> CreateIterator(HybridTime read_ht) const override {
+    return CreateIterator(read_ht, std::nullopt);
+  }
+
+  Result<docdb::DocRowwiseIteratorPtr> CreateIterator(
+      HybridTime read_ht, std::optional<Slice> start_key) const {
+    // TODO(vector_index): for reverse mapping we probably do not need to create txn_op_ctx inside
+    // NewUninitializedDocRowIterator as the mapping is located only in regular db; this will
+    // allow to save Seek and Next on intent_iter_ of IntentAwareIterator.
+    auto result = VERIFY_RESULT(tablet_.NewUninitializedDocRowIterator(
+        projection_, ReadHybridTime::SingleTime(read_ht), indexed_table_id_));
+    RETURN_NOT_OK(result->InitForTableType(
         TableType::PGSQL_TABLE_TYPE, start_key ? *start_key : Slice(), docdb::SkipSeek(!start_key),
-        docdb::AddTablePrefixToKey::kTrue);
+        docdb::AddTablePrefixToKey::kTrue));
     return result;
   }
 
-  Status Init(Tablet& tablet, HybridTime read_ht, Slice start_key) {
-    iter_ = VERIFY_RESULT(CreateIterator(tablet, read_ht, start_key));
+  const dockv::ReaderProjection& projection() const {
+    return projection_;
+  }
+
+ private:
+  Tablet& tablet_;
+  TableId indexed_table_id_;
+  dockv::ReaderProjection projection_;
+};
+
+class IndexedTableReader {
+ public:
+  explicit IndexedTableReader(const docdb::DocVectorIndex& vector_index)
+      : context_(down_cast<const IndexedTableContext&>(vector_index.indexed_table_context())),
+        row_(context_.projection()) {
+  }
+
+  Status Init(HybridTime read_ht, Slice start_key) {
+    iter_ = VERIFY_RESULT(context_.CreateIterator(read_ht, start_key));
     return Status::OK();
   }
 
@@ -100,10 +124,9 @@ class IndexedTableReader {
   }
 
  private:
-  const TableInfo& indexed_table_;
-  dockv::ReaderProjection projection_;
+  const IndexedTableContext& context_;
   dockv::PgTableRow row_;
-  std::unique_ptr<docdb::DocRowwiseIterator> iter_;
+  docdb::DocRowwiseIteratorPtr iter_;
 };
 
 } // namespace
@@ -114,17 +137,23 @@ bool TEST_block_after_backfilling_first_vector_index_chunks = false;
 TabletVectorIndexes::TabletVectorIndexes(
     Tablet* tablet,
     const VectorIndexThreadPoolProvider& thread_pool_provider,
-    const VectorIndexPriorityThreadPoolProvider& priority_thread_pool_provider,
-    const hnsw::BlockCachePtr& block_cache)
+    const VectorIndexCompactionTokenProvider& compaction_token_provider,
+    const hnsw::BlockCachePtr& block_cache,
+    MetricRegistry* metric_registry)
     : TabletComponent(tablet),
       thread_pool_provider_(thread_pool_provider),
-      priority_thread_pool_provider_(priority_thread_pool_provider),
+      compaction_token_provider_(compaction_token_provider),
       block_cache_(block_cache),
-      mem_tracker_(MemTracker::CreateTracker(-1, "vector_indexes", tablet->mem_tracker())) {
+      mem_tracker_(MemTracker::CreateTracker(-1, "vector_indexes", tablet->mem_tracker())),
+      metric_registry_(metric_registry) {
 }
 
 Status TabletVectorIndexes::Open(const docdb::ConsensusFrontier* frontier)
     NO_THREAD_SAFETY_ANALYSIS {
+  // Explicitly set the state of the controller, since table storages can be reopened
+  // after being shutdown.
+  RETURN_NOT_OK(shutdown_controller_.Start());
+
   if (frontier && frontier->has_vector_deletion()) {
     SetHasVectorDeletion();
   }
@@ -159,6 +188,8 @@ Status TabletVectorIndexes::CreateIndex(
 
 Status TabletVectorIndexes::DoCreateIndex(
     const TableInfo& index_table, const TableInfoPtr& indexed_table, bool bootstrap) {
+  SCHECK(shutdown_controller_.IsRunning(), ShutdownInProgress, "Tablet vector indexes shutdown");
+
   has_vector_indexes_ = true;
   if (vector_indexes_map_.count(index_table.table_id)) {
     LOG(DFATAL) << "Vector index for " << index_table.table_id << " already exists";
@@ -171,17 +202,34 @@ Status TabletVectorIndexes::DoCreateIndex(
     return docdb::DocVectorIndexThreadPools {
         .thread_pool = thread_pool_provider_(VectorIndexThreadPoolType::kBackground),
         .insert_thread_pool = thread_pool_provider_(VectorIndexThreadPoolType::kInsert),
-        .compaction_thread_pool =
-            priority_thread_pool_provider_(VectorIndexPriorityThreadPoolType::kCompaction),
+        .compaction_token = compaction_token_provider_(),
     };
   };
+
+  auto indexed_table_context = std::make_unique<IndexedTableContext>(
+      tablet(), *indexed_table, ColumnId(index_table.index_info->vector_idx_options().column_id()));
+
+  MetricEntityPtr vector_index_metric_entity;
+  if (metric_registry_) {
+    MetricEntity::AttributeMap attrs;
+    attrs["table_id"] = index_table.table_id;
+    attrs["table_name"] = index_table.table_name;
+    attrs["table_type"] = TableType_Name(index_table.table_type);
+    // Use the namespace name from the base table since the namespace name is not populated in
+    // index_table object.
+    attrs["namespace_name"] = indexed_table->namespace_name;
+    vector_index_metric_entity =
+        METRIC_ENTITY_vector_index.Instantiate(metric_registry_, index_table.table_id, attrs);
+  }
 
   auto vector_index = VERIFY_RESULT(docdb::CreateDocVectorIndex(
       AddSuffixToLogPrefix(LogPrefix(), Format(" VI $0", index_table.table_id)),
       metadata().rocksdb_dir(), vector_index_thread_pool_provider,
       indexed_table->doc_read_context->table_key_prefix(), index_table.hybrid_time,
-      *index_table.index_info, doc_db(), block_cache_,
-      MemTracker::CreateTracker(-1, index_table.table_id, mem_tracker_)));
+      *index_table.index_info, std::move(indexed_table_context), block_cache_,
+      MemTracker::CreateTracker(-1, index_table.table_id, mem_tracker_),
+      vector_index_metric_entity));
+
   if (!bootstrap) {
     auto read_op = tablet().CreateScopedRWOperationBlockingRocksDbShutdownStart();
     if (read_op.ok()) {
@@ -299,14 +347,18 @@ Status TabletVectorIndexes::Backfill(
     std::this_thread::sleep_for(FLAGS_TEST_sleep_before_vector_index_backfill_seconds * 1s);
   }
 
-  IndexedTableReader reader(indexed_table, *vector_index);
-  RETURN_NOT_OK(reader.Init(tablet(), backfill_ht, from_key));
+  IndexedTableReader reader(*vector_index);
+  RETURN_NOT_OK(reader.Init(backfill_ht, from_key));
 
   // Expecting one row at most.
   VectorIndexBackfillHelper helper(backfill_ht, op_id);
   for (;;) {
     if (tablet().IsShutdownRequested()) {
       LOG_WITH_FUNC(INFO) << "Exit: " << AsString(*vector_index);
+      return Status::OK();
+    }
+    if (!shutdown_controller_.IsRunning()) {
+      LOG_WITH_FUNC(INFO) << "Vector index shutdown: " << AsString(*vector_index);
       return Status::OK();
     }
     if (helper.num_chunks() && TEST_block_after_backfilling_first_vector_index_chunks) {
@@ -407,26 +459,52 @@ void TabletVectorIndexes::ScheduleBackfill(
   });
 }
 
-void TabletVectorIndexes::CompleteShutdown(std::vector<std::string>& out_paths) {
-  if (!has_vector_indexes_.load()) {
+void TabletVectorIndexes::StartShutdown() {
+  auto scope = shutdown_controller_.StartShutdown();
+  if (!scope) {
+    LOG_IF_WITH_PREFIX(DFATAL, !scope.status().IsShutdownInProgress()) << scope.status();
     return;
   }
-  decltype(vector_indexes_list_) vector_indexes_list;
+
+  if (!has_vector_indexes_.exchange(false)) {
+    return;
+  }
+
   {
     std::lock_guard lock(vector_indexes_mutex_);
-    vector_indexes_list.swap(vector_indexes_list_);
+    vector_indexes_cleanup_list_.swap(vector_indexes_list_);
     vector_indexes_map_.clear();
   }
-  if (!vector_indexes_list) {
+
+  if (!vector_indexes_cleanup_list_) {
     return;
   }
-  for (const auto& index : *vector_indexes_list) {
-    out_paths.push_back(index->path());
+
+  for (auto& index : *vector_indexes_cleanup_list_) {
+    index->StartShutdown();
   }
-  // TODO(vector_index) It could happen that there are external references to vector index.
-  // Wait actual shutdown.
 }
 
+void TabletVectorIndexes::CompleteShutdown(std::vector<std::string>& out_paths) {
+  auto scope = shutdown_controller_.CompleteShutdown();
+  if (!scope) {
+    LOG_IF_WITH_PREFIX(DFATAL, !scope.status().IsShutdownInProgress()) << scope.status();
+    return;
+  }
+
+  if (!vector_indexes_cleanup_list_) {
+    return;
+  }
+
+  for (auto& index : *vector_indexes_cleanup_list_) {
+    out_paths.push_back(index->path());
+    index->CompleteShutdown();
+  }
+
+  // TODO(vector_index) It could happen that there are external references to vector index.
+  // Wait actual shutdown.
+  vector_indexes_cleanup_list_->clear();
+}
 
 docdb::DocVectorIndexPtr TabletVectorIndexes::IndexForTableUnlocked(const TableId& table_id) const {
   auto it = vector_indexes_map_.find(table_id);
@@ -561,10 +639,10 @@ Status TabletVectorIndexes::Verify() {
     auto index_table = VERIFY_RESULT(metadata().GetTableInfo(vector_index->table_id()));
     auto indexed_table = VERIFY_RESULT(metadata().GetTableInfo(
         index_table->index_info->indexed_table_id()));
-    IndexedTableReader reader(*indexed_table, *vector_index);
-    RETURN_NOT_OK(reader.Init(tablet(), read_ht, Slice()));
-    auto reverse_index_iterator = VERIFY_RESULT(reader.CreateIterator(
-        tablet(), read_ht, std::nullopt));
+    IndexedTableReader reader(*vector_index);
+    RETURN_NOT_OK(reader.Init(read_ht, Slice()));
+    auto reverse_index_iterator = VERIFY_RESULT(
+        vector_index->indexed_table_context().CreateIterator(read_ht));
     while (VERIFY_RESULT(reader.FetchNext())) {
       auto value = dockv::EncodedDocVectorValue::FromSlice(reader.current_vector_slice());
       auto vector_id = VERIFY_RESULT(value.DecodeId());
@@ -625,6 +703,19 @@ void VectorIndexList::Compact() {
     WARN_NOT_OK(index->Compact(), "Compact vector index");
   }
 }
+
+Status VectorIndexList::WaitForCompaction() {
+  if (!list_) {
+    return Status::OK();
+  }
+
+  for (const auto& index : *list_) {
+    RETURN_NOT_OK(index->WaitForCompaction());
+  }
+
+  return Status::OK();
+}
+
 
 std::string VectorIndexList::ToString() const {
   return list_ ? AsString(*list_) : AsString(list_);

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
@@ -8,6 +8,8 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.payload.NodeAgentRpcPayload;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.utils.CapacityReservationUtil;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -31,6 +33,7 @@ public class ChangeInstanceType extends NodeTaskBase {
     public int cgroupSize = 0;
     // If configured will skip install-package role in ansible and use node-agent rpc instead.
     public boolean skipAnsiblePlaybookForCGroup = false;
+    public String capacityReservation;
   }
 
   @Override
@@ -60,6 +63,11 @@ public class ChangeInstanceType extends NodeTaskBase {
             .cloudInfo
             .instance_type,
         taskParams().instanceType);
+
+    UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(taskParams().placementUuid);
+    taskParams().capacityReservation =
+        CapacityReservationUtil.getReservationIfPresent(
+            getTaskCache(), cluster.userIntent.providerType, taskParams().nodeName);
 
     getNodeManager()
         .nodeCommand(NodeManager.NodeCommandType.Change_Instance_Type, taskParams())

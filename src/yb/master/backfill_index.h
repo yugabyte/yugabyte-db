@@ -73,7 +73,7 @@ class MultiStageAlterTable {
   // change is made.
   static Status ClearFullyAppliedAndUpdateState(
       CatalogManager* mgr, const scoped_refptr<TableInfo>& table,
-      boost::optional<uint32_t> expected_version, bool update_state_to_running,
+      std::optional<uint32_t> expected_version, bool update_state_to_running,
       const LeaderEpoch& epoch);
 
   // Copies the current schema, schema_version, indexes and index_info
@@ -87,18 +87,15 @@ class MultiStageAlterTable {
   // Returns whether any permissions were actually updated (leading to a version being incremented).
   static Result<bool> UpdateIndexPermission(
       CatalogManager* mgr, const scoped_refptr<TableInfo>& indexed_table,
-      const std::unordered_map<TableId, IndexPermissions>& perm_mapping,
-      const LeaderEpoch& epoch,
-      boost::optional<uint32_t> current_version = boost::none);
+      const std::unordered_map<TableId, IndexPermissions>& perm_mapping, const LeaderEpoch& epoch,
+      std::optional<uint32_t> current_version = std::nullopt);
 
  private:
   // Start Index Backfill process/step for the specified table/index.
-  static Status
-  StartBackfillingData(CatalogManager *catalog_manager,
-                       const scoped_refptr<TableInfo> &indexed_table,
-                       const std::vector<IndexInfoPB>& idx_infos,
-                       boost::optional<uint32_t> expected_version,
-                       const LeaderEpoch& epoch);
+  static Status StartBackfillingData(
+      CatalogManager* catalog_manager, const scoped_refptr<TableInfo>& indexed_table,
+      const std::vector<IndexInfoPB>& idx_infos, std::optional<uint32_t> expected_version,
+      const LeaderEpoch& epoch);
 };
 
 class BackfillTablet;
@@ -156,9 +153,9 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
 
   scoped_refptr<TableInfo> table() { return indexed_table_; }
 
-  Status UpdateRowsProcessedForIndexTable(const uint64_t number_rows_processed);
-
-  const uint64_t number_rows_processed() const { return number_rows_processed_; }
+  Status UpdateRowsProcessedForIndexTable(
+      const uint64_t num_rows_read_from_table_for_backfill,
+      const std::unordered_map<TableId, double>& num_rows_backfilled_in_index);
 
   const LeaderEpoch& epoch() const { return epoch_; }
 
@@ -212,7 +209,6 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   const scoped_refptr<TableInfo> indexed_table_;
   const std::vector<IndexInfoPB> index_infos_;
   int32_t schema_version_;
-  std::atomic<uint64> number_rows_processed_;
 
   std::atomic_bool done_{false};
   std::atomic_bool timestamp_chosen_{false};
@@ -266,8 +262,9 @@ class BackfillTablet : public std::enable_shared_from_this<BackfillTablet> {
   Status LaunchNextChunkOrDone();
   Status Done(
       const Status& status,
-      const boost::optional<std::string>& backfilled_until,
-      const uint64_t number_rows_processed,
+      const std::optional<std::string>& backfilled_until,
+      const uint64_t num_rows_read_from_table_for_backfill,
+      const std::unordered_map<TableId, double>& num_rows_backfilled_in_index,
       const std::unordered_set<TableId>& failed_indexes);
 
   Master* master() { return backfill_table_->master(); }
@@ -300,7 +297,8 @@ class BackfillTablet : public std::enable_shared_from_this<BackfillTablet> {
 
  private:
   Status UpdateBackfilledUntil(
-      const std::string& backfilled_until, const uint64_t number_rows_processed);
+      const std::string& backfilled_until, const uint64_t num_rows_read_from_table_for_backfill,
+      const std::unordered_map<TableId, double>& num_rows_backfilled_in_index);
 
   std::shared_ptr<BackfillTable> backfill_table_;
   const TabletInfoPtr tablet_;
@@ -398,6 +396,7 @@ class BackfillChunk : public RetryingTSRpcTaskWithTable {
   }
 
   const std::unordered_set<TableId> indexes_being_backfilled_;
+  std::unordered_map<TableId, double> num_rows_backfilled_in_index_;
   tserver::BackfillIndexResponsePB resp_;
   std::shared_ptr<BackfillTablet> backfill_tablet_;
   std::string start_key_;

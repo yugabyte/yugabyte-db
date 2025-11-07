@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 YugaByte, Inc. and Contributors
+ * Copyright 2022 YugabyteDB, Inc. and Contributors
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License")
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
@@ -76,12 +76,12 @@ export const YBReactSelectField = <T extends FieldValues>({
   };
   // We scale the width by multiplying the option label length by a constant factor and add a constant
   // width to account for accessory components like pills/badges.
-  const autosizedWidth = Math.max(
+  const autoSizedWidth = Math.max(
     (field.value?.label?.length ?? 0) * 11 + accessoryContainerWidthPx,
     autoSizeMinWidth ?? 300
   );
   return (
-    <Box width={width ?? (autoSizeMinWidth ? `${autosizedWidth}px` : '100%')} maxWidth={maxWidth}>
+    <Box width={width ?? (autoSizeMinWidth ? `${autoSizedWidth}px` : '100%')} maxWidth={maxWidth}>
       <div data-testid={`YBReactSelectField-${field.name}`}>
         <Select
           styles={reactSelectStyles}

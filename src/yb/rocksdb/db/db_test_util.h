@@ -3,9 +3,9 @@
 // LICENSE file in the root directory of this source tree. An additional grant
 // of patent rights can be found in the PATENTS file in the same directory.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -470,7 +470,7 @@ class SpecialEnv : public EnvWrapper {
     return s;
   }
 
-  virtual void SleepForMicroseconds(int micros) override {
+  void SleepForMicroseconds(int micros) override {
     sleep_counter_.Increment();
     if (no_sleep_ || time_elapse_only_sleep_) {
       addon_time_.fetch_add(micros);
@@ -480,7 +480,7 @@ class SpecialEnv : public EnvWrapper {
     }
   }
 
-  virtual Status GetCurrentTime(int64_t* unix_time) override {
+  Status GetCurrentTime(int64_t* unix_time) override {
     Status s;
     if (!time_elapse_only_sleep_) {
       s = target()->GetCurrentTime(unix_time);
@@ -491,14 +491,19 @@ class SpecialEnv : public EnvWrapper {
     return s;
   }
 
-  virtual uint64_t NowNanos() override {
+  uint64_t NowNanos() override {
     return (time_elapse_only_sleep_ ? 0 : target()->NowNanos()) +
            addon_time_.load() * 1000;
   }
 
-  virtual uint64_t NowMicros() override {
+  uint64_t NowMicros() override {
     return (time_elapse_only_sleep_ ? 0 : target()->NowMicros()) +
            addon_time_.load();
+  }
+
+  uint64_t NowCpuCycles() override {
+    return (time_elapse_only_sleep_ ? 0 : target()->NowCpuCycles()) +
+           addon_time_.load() * base::CyclesPerSecond() / UnitsInSecond(TimeResolution::kMicros);
   }
 
   Random rnd_;

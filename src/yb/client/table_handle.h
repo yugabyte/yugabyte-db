@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -16,7 +16,6 @@
 #include <unordered_map>
 
 #include <boost/functional/hash.hpp>
-#include <boost/optional.hpp>
 
 #include "yb/client/client_fwd.h"
 
@@ -159,7 +158,7 @@ struct TableIteratorOptions {
   TableIteratorOptions();
 
   YBConsistencyLevel consistency = YBConsistencyLevel::STRONG;
-  boost::optional<std::vector<std::string>> columns;
+  std::optional<std::vector<std::string>> columns;
   TableFilter filter;
   ReadHybridTime read_time;
   std::string tablet;
@@ -199,7 +198,7 @@ class TableIterator : public std::iterator<
   std::vector<std::string> partition_key_ends_;
   size_t executed_ops_ = 0;
   size_t ops_index_ = 0;
-  boost::optional<qlexpr::QLRowBlock> current_block_;
+  std::optional<qlexpr::QLRowBlock> current_block_;
   const QLPagingStatePB* paging_state_ = nullptr;
   size_t row_index_;
   YBSessionPtr session_;

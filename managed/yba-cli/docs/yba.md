@@ -52,6 +52,7 @@ yba [flags]
 * [yba runtime-config](yba_runtime-config.md)	 - Manage YugabyteDB Anywhere runtime configurations
 * [yba storage-config](yba_storage-config.md)	 - Manage YugabyteDB Anywhere storage configurations
 * [yba task](yba_task.md)	 - Manage YugabyteDB Anywhere tasks
+* [yba telemetry-provider](yba_telemetry-provider.md)	 - Manage YugabyteDB Anywhere telemetry providers
 * [yba tree](yba_tree.md)	 - Visualize the command tree
 * [yba universe](yba_universe.md)	 - Manage YugabyteDB Anywhere universes
 * [yba user](yba_user.md)	 - Manage YugabyteDB Anywhere users

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -53,6 +53,7 @@ struct ValueControlFields;
 
 using DocKeyHash = uint16_t;
 using KeyEntryValues = std::vector<KeyEntryValue>;
+using FrozenContainer = KeyEntryValues;
 
 enum class KeyEntryType;
 enum class ValueEntryType;
@@ -63,6 +64,9 @@ enum class YBHashSchema;
 YB_STRONGLY_TYPED_BOOL(AutoDecodeKeys);
 YB_STRONGLY_TYPED_BOOL(PartialRangeKeyIntents);
 YB_STRONGLY_TYPED_BOOL(UseHash);
+
+// Indicates whether skip prefix locks is enabled.
+YB_STRONGLY_TYPED_BOOL(SkipPrefixLocks);
 
 YB_DEFINE_ENUM(OperationKind, (kRead)(kWrite));
 
@@ -97,6 +101,6 @@ YB_DEFINE_ENUM(IntentType,
     ((kStrongWrite, kStrongIntentFlag | kWriteIntentFlag))
 );
 
-typedef EnumBitSet<IntentType> IntentTypeSet;
+using IntentTypeSet = EnumBitSet<IntentType>;
 
 }  // namespace yb::dockv

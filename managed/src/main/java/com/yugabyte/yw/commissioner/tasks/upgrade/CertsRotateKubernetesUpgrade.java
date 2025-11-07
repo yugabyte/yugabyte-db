@@ -1,30 +1,36 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
-import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
+import com.yugabyte.yw.commissioner.UpgradeTaskBase.MastersAndTservers;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase.UpgradeContext;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CertReloadTaskCreator;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert.UpdateRootCertAction;
-import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.CertsRotateParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.Universe;
-import java.io.File;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.util.Collections;
+import java.util.Set;
 import java.util.UUID;
-import javax.annotation.Nullable;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
+@Abortable
+@Retryable
 public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
 
   @Inject
@@ -47,117 +53,133 @@ public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
   @Override
   protected void createPrecheckTasks(Universe universe) {
     super.createPrecheckTasks(universe);
-    addBasicPrecheckTasks();
+    if (taskParams().rootCARotationType == null
+        || taskParams().rootCARotationType == CertsRotateParams.CertRotationType.None) {
+      throw new RuntimeException("RootCA rotation type is not set");
+    }
+    if (CertificateHelper.checkNode2NodeCertsExpiry(getUniverse())) {
+      if (taskParams().upgradeOption != UpgradeOption.NON_ROLLING_UPGRADE) {
+        throw new RuntimeException(
+            "Node-to-node certificates are expired, only non-rolling upgrade is supported");
+      }
+    } else {
+      addBasicPrecheckTasks();
+    }
   }
 
   @Override
   public void run() {
     runUpgrade(
         () -> {
-          Cluster cluster = getUniverse().getUniverseDetails().getPrimaryCluster();
-          UserIntent userIntent = cluster.userIntent;
-          String stableYbcVersion = confGetter.getGlobalConf(GlobalConfKeys.ybcStableVersion);
-
-          // Verify the request params and fail if invalid
           taskParams().verifyParams(getUniverse(), isFirstTry());
+          Universe universe = getUniverse();
 
-          // Update the rootCA in platform to have both old cert and new cert
-          // Here in the temporary multi-cert we will have old cert first and new cert later
-          // cert key will be pointing to old root cert key itself
-          // genSignedCert in helm chart will pick only the first cert present in the root chain
-          // So, generated node certs will still be of old rootCA after this step
-          UUID temporaryRootCAUUID = getTemporaryRootCAUUID();
-          createUniverseUpdateRootCertTask(UpdateRootCertAction.MultiCert, temporaryRootCAUUID);
-
-          // Create kubernetes upgrade task to rotate certs
-          createUpgradeTask(
-              getUniverse(),
-              userIntent.ybSoftwareVersion,
-              true /* upgradeMasters */,
-              true /* upgradeTservers */,
-              getUniverse().isYbcEnabled(),
-              stableYbcVersion,
-              getUpgradeContext(temporaryRootCAUUID));
-
-          // Now we will change the order of certs: new cert first, followed by old root cert
-          // Also cert key will be pointing to new root cert key
-          // This makes sure genSignedCert in helm chart generates node certs of new root cert
-          // Essentially equivalent to updating only node certs in this step
-          createUniverseUpdateRootCertTask(
-              UpdateRootCertAction.MultiCertReverse, null /* temporaryRootCAUUID */);
-          // Create kubernetes upgrade task to rotate certs
-          createUpgradeTask(
-              getUniverse(),
-              userIntent.ybSoftwareVersion,
-              true /* upgradeMasters */,
-              true /* upgradeTservers */,
-              getUniverse().isYbcEnabled(),
-              stableYbcVersion,
-              getUpgradeContext(temporaryRootCAUUID));
-
-          // Reset the temporary certs and update the universe to use new rootCA
-          createUniverseUpdateRootCertTask(
-              UpdateRootCertAction.Reset, null /* temporaryRootCAUUID */);
-
-          createUniverseSetTlsParamsTask();
-          // Create kubernetes upgrade task to rotate certs
-          createUpgradeTask(
-              getUniverse(),
-              userIntent.ybSoftwareVersion,
-              true /* upgradeMasters */,
-              true /* upgradeTservers */,
-              getUniverse().isYbcEnabled(),
-              stableYbcVersion,
-              getUpgradeContext(taskParams().rootCA));
+          if (taskParams().rootCARotationType == CertsRotateParams.CertRotationType.RootCert) {
+            createRootCertRotationTask(universe);
+          } else if (taskParams().rootCARotationType
+              == CertsRotateParams.CertRotationType.ServerCert) {
+            createServerCertRotationTask(universe);
+          } else {
+            throw new RuntimeException("Invalid rootCA rotation type");
+          }
         });
   }
 
-  private UUID getTemporaryRootCAUUID() {
-    try {
-      CertificateInfo oldRootCert =
-          CertificateInfo.getOrBadRequest(getUniverse().getUniverseDetails().rootCA);
-      CertificateInfo temporaryCert =
-          CertificateInfo.createCopy(
-              oldRootCert,
-              oldRootCert.getLabel() + EncryptionInTransitUtil.MULTI_ROOT_CERT_TMP_LABEL_SUFFIX,
-              new File(oldRootCert.getCertificate()).getAbsolutePath());
-      return temporaryCert.getUuid();
-    } catch (Exception e) {
-      log.error("Failed to create temporary multi cert", e);
-      throw new RuntimeException("Failed to create temporary multi cert", e);
+  private void createRootCertRotationTask(Universe universe) {
+    // Step 1: Create temporary multi-cert with old cert first, new cert later
+    // This ensures node certs are still generated with old rootCA
+    UUID temporaryRootCAUUID = CertificateHelper.getTemporaryRootCAUUID(universe);
+    createUniverseUpdateRootCertTask(UpdateRootCertAction.MultiCert, temporaryRootCAUUID);
+
+    // Step 1a: Update pods with temporary multi-cert
+    createRotateCertTask(universe, temporaryRootCAUUID);
+
+    // Step 2: Reverse the cert order - new cert first, old cert later
+    // This ensures node certs are generated with new rootCA
+    createUniverseUpdateRootCertTask(
+        UpdateRootCertAction.MultiCertReverse, null /* temporaryRootCAUUID */);
+
+    // Step 2a: Update pods with reversed multi-cert
+    createRotateCertTask(universe, temporaryRootCAUUID);
+
+    // Step 3: Reset to use only the new rootCA
+    createUniverseUpdateRootCertTask(UpdateRootCertAction.Reset, null /* temporaryRootCAUUID */);
+
+    // Step 3a: Update pods with final new rootCA
+    createRotateCertTask(universe, taskParams().rootCA);
+
+    // Update TLS parameters in the universe
+    createUniverseSetTlsParamsTask(getTaskSubGroupType());
+  }
+
+  private void createServerCertRotationTask(Universe universe) {
+    createRotateCertTask(universe, taskParams().rootCA);
+
+    // Update TLS parameters in the universe
+    createUniverseSetTlsParamsTask(getTaskSubGroupType());
+  }
+
+  private void createRotateCertTask(Universe universe, UUID rootCAUUID) {
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    String stableYbcVersion = confGetter.getGlobalConf(GlobalConfKeys.ybcStableVersion);
+    if (taskParams().upgradeOption == UpgradeOption.NON_RESTART_UPGRADE) {
+      createNonRestartUpgradeTask(universe, getUpgradeContext(rootCAUUID));
+      createKubernetesCertHotReloadTask(universe, getUserTaskUUID());
+    } else if (taskParams().upgradeOption == UpgradeOption.ROLLING_UPGRADE) {
+      createUpgradeTask(
+          getUniverse(),
+          userIntent.ybSoftwareVersion,
+          true /* upgradeMasters */,
+          true /* upgradeTservers */,
+          getUniverse().isYbcEnabled(),
+          stableYbcVersion,
+          getUpgradeContext(rootCAUUID));
+    } else {
+      createNonRollingUpgradeTask(
+          universe,
+          userIntent.ybSoftwareVersion,
+          true /* upgradeMasters */,
+          true /* upgradeTservers */,
+          getUniverse().isYbcEnabled(),
+          stableYbcVersion,
+          getUpgradeContext(rootCAUUID));
     }
   }
 
-  private void createUniverseUpdateRootCertTask(
-      UpdateRootCertAction updateAction, @Nullable UUID temporaryRootCAUUID) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("UniverseUpdateRootCert");
-    UniverseUpdateRootCert.Params params = new UniverseUpdateRootCert.Params();
-    params.setUniverseUUID(taskParams().getUniverseUUID());
-    params.rootCA = taskParams().rootCA;
-    params.action = updateAction;
-    params.temporaryRootCAUUID = temporaryRootCAUUID;
-    UniverseUpdateRootCert task = createTask(UniverseUpdateRootCert.class);
-    task.initialize(params);
-    subTaskGroup.addSubTask(task);
-    subTaskGroup.setSubTaskGroupType(getTaskSubGroupType());
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-  }
+  private void createKubernetesCertHotReloadTask(Universe universe, UUID userTaskUuid) {
+    MastersAndTservers nodes = getNodesToBeRestarted();
+    log.info(
+        "Creating Kubernetes cert reload task for {} master nodes and {} tserver nodes",
+        nodes.mastersList.size(),
+        nodes.tserversList.size());
 
-  private void createUniverseSetTlsParamsTask() {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("UniverseSetTlsParams");
-    UniverseSetTlsParams.Params params = new UniverseSetTlsParams.Params();
-    params.setUniverseUUID(taskParams().getUniverseUUID());
-    params.enableNodeToNodeEncrypt = getUserIntent().enableNodeToNodeEncrypt;
-    params.enableClientToNodeEncrypt = getUserIntent().enableClientToNodeEncrypt;
-    params.allowInsecure = getUniverse().getUniverseDetails().allowInsecure;
-    params.rootCA = taskParams().rootCA;
-    params.clientRootCA = getUniverse().getUniverseDetails().getClientRootCA();
-    params.rootAndClientRootCASame = getUniverse().getUniverseDetails().rootAndClientRootCASame;
-    UniverseSetTlsParams task = createTask(UniverseSetTlsParams.class);
-    task.initialize(params);
-    subTaskGroup.addSubTask(task);
-    subTaskGroup.setSubTaskGroupType(getTaskSubGroupType());
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    CertReloadTaskCreator taskCreator =
+        new CertReloadTaskCreator(
+            universe.getUniverseUUID(),
+            userTaskUuid,
+            getRunnableTask(),
+            getTaskExecutor(),
+            nodes.mastersList);
+
+    // Execute the cert reload tasks for both masters and tservers
+    taskCreator.run(nodes.mastersList, Collections.singleton(ServerType.MASTER));
+    taskCreator.run(nodes.tserversList, Collections.singleton(ServerType.TSERVER));
+
+    // Handle YBC if enabled
+    if (universe.isYbcEnabled()) {
+      String stableYbcVersion = confGetter.getGlobalConf(GlobalConfKeys.ybcStableVersion);
+      for (UniverseDefinitionTaskParams.Cluster cluster : universe.getUniverseDetails().clusters) {
+        Set<NodeDetails> tservers =
+            universe.getTserversInCluster(cluster.uuid).stream().collect(Collectors.toSet());
+        installYbcOnThePods(
+            tservers,
+            cluster.clusterType.equals(ClusterType.ASYNC),
+            stableYbcVersion,
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags);
+        performYbcAction(tservers, false, "stop");
+        createWaitForYbcServerTask(tservers);
+      }
+    }
   }
 
   private UpgradeContext getUpgradeContext(UUID rootCAUUID) {

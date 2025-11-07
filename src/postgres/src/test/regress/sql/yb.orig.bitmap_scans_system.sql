@@ -1,7 +1,6 @@
 --
 -- YB Bitmap Scans on System Tables (bitmap index scans + YB bitmap table scans)
 --
-SET yb_explain_hide_non_deterministic_fields = true;
 SET yb_enable_bitmapscan = true;
 SET enable_bitmapscan = true;
 
@@ -23,6 +22,5 @@ SET yb_enable_expression_pushdown = false;
     SELECT oid FROM pg_roles WHERE rolname = 'postgres' OR rolname LIKE 'pg_%' OR rolname LIKE 'yb_%');
 
 RESET yb_enable_expression_pushdown;
-RESET yb_explain_hide_non_deterministic_fields;
 RESET yb_enable_bitmapscan;
 RESET enable_bitmapscan;

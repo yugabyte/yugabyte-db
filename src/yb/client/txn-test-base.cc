@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -224,15 +224,14 @@ YBTransactionPtr CreateTransactionHelper(
 template <class MiniClusterType>
 YBTransactionPtr TransactionTestBase<MiniClusterType>::CreateTransaction(
     SetReadTime set_read_time) {
-  return CreateTransactionHelper(
-      transaction_manager_.get_ptr(), set_read_time, GetIsolationLevel());
+  return CreateTransactionHelper(&transaction_manager_.value(), set_read_time, GetIsolationLevel());
 }
 
 template <class MiniClusterType>
 YBTransactionPtr TransactionTestBase<MiniClusterType>::CreateTransaction2(
     SetReadTime set_read_time) {
   return CreateTransactionHelper(
-      transaction_manager2_.get_ptr(), set_read_time, GetIsolationLevel());
+      &transaction_manager2_.value(), set_read_time, GetIsolationLevel());
 }
 
 template <class MiniClusterType>

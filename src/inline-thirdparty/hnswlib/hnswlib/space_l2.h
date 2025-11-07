@@ -21,6 +21,8 @@ L2Sqr(const void *pVect1v, const void *pVect2v, const void *qty_ptr) {
 
 #if defined(USE_AVX512)
 
+PRAGMA_PUSH_AVX512_OPTIONS
+
 // Favor using AVX512 if available.
 static float
 L2SqrSIMD16ExtAVX512(const void *pVect1v, const void *pVect2v, const void *qty_ptr) {
@@ -52,9 +54,14 @@ L2SqrSIMD16ExtAVX512(const void *pVect1v, const void *pVect2v, const void *qty_p
 
     return (res);
 }
+
+PRAGMA_POP_OPTIONS
+
 #endif
 
 #if defined(USE_AVX)
+
+PRAGMA_PUSH_AVX_OPTIONS
 
 // Favor using AVX if available.
 static float
@@ -89,6 +96,8 @@ L2SqrSIMD16ExtAVX(const void *pVect1v, const void *pVect2v, const void *qty_ptr)
     _mm256_store_ps(TmpRes, sum);
     return TmpRes[0] + TmpRes[1] + TmpRes[2] + TmpRes[3] + TmpRes[4] + TmpRes[5] + TmpRes[6] + TmpRes[7];
 }
+
+PRAGMA_POP_OPTIONS
 
 #endif
 

@@ -3,9 +3,9 @@
 //  LICENSE file in the root directory of this source tree. An additional grant
 //  of patent rights can be found in the PATENTS file in the same directory.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -186,7 +186,6 @@ TEST_F(DynamicBloomTest, VaryingLengths) {
 }
 
 TEST_F(DynamicBloomTest, perf) {
-  StopWatchNano timer(Env::Default());
   uint32_t num_probes = static_cast<uint32_t>(FLAGS_num_probes);
 
   if (!FLAGS_enable_perf) {
@@ -200,50 +199,54 @@ TEST_F(DynamicBloomTest, perf) {
 
     DynamicBloom std_bloom(&arena, num_keys * 10, 0, num_probes);
 
-    timer.Start();
-    for (uint64_t i = 1; i <= num_keys; ++i) {
-      std_bloom.Add(Slice(reinterpret_cast<const char*>(&i), 8));
+    uint64_t elapsed;
+    {
+      StopWatchNano timer(Env::Default(), &elapsed);
+      for (uint64_t i = 1; i <= num_keys; ++i) {
+        std_bloom.Add(Slice(reinterpret_cast<const char*>(&i), 8));
+      }
     }
 
-    uint64_t elapsed = timer.ElapsedNanos();
     fprintf(stderr, "standard bloom, avg add latency %" PRIu64 "\n",
             elapsed / num_keys);
 
     uint32_t count = 0;
-    timer.Start();
-    for (uint64_t i = 1; i <= num_keys; ++i) {
-      if (std_bloom.MayContain(Slice(reinterpret_cast<const char*>(&i), 8))) {
-        ++count;
+    {
+      StopWatchNano timer(Env::Default(), &elapsed);
+      for (uint64_t i = 1; i <= num_keys; ++i) {
+        if (std_bloom.MayContain(Slice(reinterpret_cast<const char*>(&i), 8))) {
+          ++count;
+        }
       }
     }
     ASSERT_EQ(count, num_keys);
-    elapsed = timer.ElapsedNanos();
     fprintf(stderr, "standard bloom, avg query latency %" PRIu64 "\n",
             elapsed / count);
 
     // Locality enabled version
     DynamicBloom blocked_bloom(&arena, num_keys * 10, 1, num_probes);
 
-    timer.Start();
-    for (uint64_t i = 1; i <= num_keys; ++i) {
-      blocked_bloom.Add(Slice(reinterpret_cast<const char*>(&i), 8));
+    {
+      StopWatchNano timer(Env::Default(), &elapsed);
+      for (uint64_t i = 1; i <= num_keys; ++i) {
+        blocked_bloom.Add(Slice(reinterpret_cast<const char*>(&i), 8));
+      }
     }
 
-    elapsed = timer.ElapsedNanos();
     fprintf(stderr,
             "blocked bloom(enable locality), avg add latency %" PRIu64 "\n",
             elapsed / num_keys);
 
     count = 0;
-    timer.Start();
-    for (uint64_t i = 1; i <= num_keys; ++i) {
-      if (blocked_bloom.MayContain(
-              Slice(reinterpret_cast<const char*>(&i), 8))) {
-        ++count;
+    {
+      StopWatchNano timer(Env::Default(), &elapsed);
+      for (uint64_t i = 1; i <= num_keys; ++i) {
+        if (blocked_bloom.MayContain(Slice(reinterpret_cast<const char*>(&i), 8))) {
+          ++count;
+        }
       }
     }
 
-    elapsed = timer.ElapsedNanos();
     fprintf(stderr,
             "blocked bloom(enable locality), avg query latency %" PRIu64 "\n",
             elapsed / count);
@@ -252,7 +255,6 @@ TEST_F(DynamicBloomTest, perf) {
 }
 
 TEST_F(DynamicBloomTest, concurrent_with_perf) {
-  StopWatchNano timer(Env::Default());
   uint32_t num_probes = static_cast<uint32_t>(FLAGS_num_probes);
 
   uint32_t m_limit = FLAGS_enable_perf ? 8 : 1;
@@ -270,71 +272,71 @@ TEST_F(DynamicBloomTest, concurrent_with_perf) {
 
       DynamicBloom std_bloom(&arena, num_keys * 10, locality, num_probes);
 
-      timer.Start();
+      uint64_t elapsed;
+      {
+        StopWatchNano timer(Env::Default(), &elapsed);
 
-      std::function<void(size_t)> adder = [&](size_t t) {
-        for (uint64_t i = 1 + t; i <= num_keys; i += num_threads) {
-          std_bloom.AddConcurrently(
-              Slice(reinterpret_cast<const char*>(&i), 8));
+        std::function<void(size_t)> adder = [&](size_t t) {
+          for (uint64_t i = 1 + t; i <= num_keys; i += num_threads) {
+            std_bloom.AddConcurrently(Slice(reinterpret_cast<const char*>(&i), 8));
+          }
+        };
+        for (size_t t = 0; t < num_threads; ++t) {
+          threads.emplace_back(adder, t);
         }
-      };
-      for (size_t t = 0; t < num_threads; ++t) {
-        threads.emplace_back(adder, t);
-      }
-      while (threads.size() > 0) {
-        threads.back().join();
-        threads.pop_back();
+        while (threads.size() > 0) {
+          threads.back().join();
+          threads.pop_back();
+        }
       }
 
-      uint64_t elapsed = timer.ElapsedNanos();
       fprintf(stderr, "standard bloom, avg parallel add latency %" PRIu64
                       " nanos/key\n",
               elapsed / num_keys);
 
-      timer.Start();
+      {
+        StopWatchNano timer(Env::Default(), &elapsed);
 
-      std::function<void(size_t)> hitter = [&](size_t t) {
-        for (uint64_t i = 1 + t; i <= num_keys; i += num_threads) {
-          bool f =
-              std_bloom.MayContain(Slice(reinterpret_cast<const char*>(&i), 8));
-          ASSERT_TRUE(f);
+        std::function<void(size_t)> hitter = [&](size_t t) {
+          for (uint64_t i = 1 + t; i <= num_keys; i += num_threads) {
+            bool f = std_bloom.MayContain(Slice(reinterpret_cast<const char*>(&i), 8));
+            ASSERT_TRUE(f);
+          }
+        };
+        for (size_t t = 0; t < num_threads; ++t) {
+          threads.emplace_back(hitter, t);
         }
-      };
-      for (size_t t = 0; t < num_threads; ++t) {
-        threads.emplace_back(hitter, t);
-      }
-      while (threads.size() > 0) {
-        threads.back().join();
-        threads.pop_back();
+        while (threads.size() > 0) {
+          threads.back().join();
+          threads.pop_back();
+        }
       }
 
-      elapsed = timer.ElapsedNanos();
       fprintf(stderr, "standard bloom, avg parallel hit latency %" PRIu64
                       " nanos/key\n",
               elapsed / num_keys);
 
-      timer.Start();
-
       std::atomic<uint32_t> false_positives(0);
-      std::function<void(size_t)> misser = [&](size_t t) {
-        for (uint64_t i = num_keys + 1 + t; i <= 2 * num_keys;
-             i += num_threads) {
-          bool f =
-              std_bloom.MayContain(Slice(reinterpret_cast<const char*>(&i), 8));
-          if (f) {
-            ++false_positives;
+      {
+        StopWatchNano timer(Env::Default(), &elapsed);
+
+        std::function<void(size_t)> misser = [&](size_t t) {
+          for (uint64_t i = num_keys + 1 + t; i <= 2 * num_keys; i += num_threads) {
+            bool f = std_bloom.MayContain(Slice(reinterpret_cast<const char*>(&i), 8));
+            if (f) {
+              ++false_positives;
+            }
           }
+        };
+        for (size_t t = 0; t < num_threads; ++t) {
+          threads.emplace_back(misser, t);
         }
-      };
-      for (size_t t = 0; t < num_threads; ++t) {
-        threads.emplace_back(misser, t);
-      }
-      while (threads.size() > 0) {
-        threads.back().join();
-        threads.pop_back();
+        while (threads.size() > 0) {
+          threads.back().join();
+          threads.pop_back();
+        }
       }
 
-      elapsed = timer.ElapsedNanos();
       fprintf(stderr, "standard bloom, avg parallel miss latency %" PRIu64
                       " nanos/key, %f%% false positive rate\n",
               elapsed / num_keys, false_positives.load() * 100.0 / num_keys);

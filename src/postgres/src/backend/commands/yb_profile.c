@@ -3,7 +3,7 @@
  * yb_profile.c
  *        Commands to implement PROFILE functionality.
  *
- * Copyright (c) Yugabyte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License.  You may obtain a copy
@@ -654,6 +654,35 @@ YbSetRoleProfileStatus(Oid roleid, const char *rolename, char status)
 }
 
 /*
+ * YbHandleRoleProfileCatalogWritesDuringMajorUpgrade - Disable writes to
+ * pg_yb_profile and pg_yb_role_profile catalog tables during major version
+ * upgrade.
+ *
+ * returns
+ * true  - if major upgrade is in progress
+ * false - if major upgrade is not in progress
+ */
+static bool
+YbHandleRoleProfileCatalogWritesDuringMajorUpgrade()
+{
+	if (YBCPgYsqlMajorVersionUpgradeInProgress())
+	{
+		ereport(NOTICE,
+				(errmsg("login profile feature is partially disabled during "
+						"major YSQL upgrades."),
+				 errhint("Writes to pg catalog tables are disabled during YSQL "
+						 "major version upgrades. Login profile feature leads "
+						 "to YSQL internally tracking number of consecutive "
+						 "failed attempts during authentication. Due to the "
+						 "catalog writes being disallowed, no updates are made "
+						 "to the failed login attempts counter.")));
+		return true;
+	}
+
+	return false;
+}
+
+/*
  * YbResetFailedAttemptsIfAllowed - reset failed_attempts counter
  * This function does not check that the table exists. Since it is called
  * before the database is initialized, it expects its caller to verify that
@@ -666,6 +695,9 @@ YbResetFailedAttemptsIfAllowed(Oid roleid)
 {
 	HeapTuple	rolprftuple;
 	Form_pg_yb_role_profile rolprfform;
+
+	if (YbHandleRoleProfileCatalogWritesDuringMajorUpgrade())
+		return;
 
 	rolprftuple = yb_get_role_profile_tuple_by_role_oid(roleid);
 
@@ -712,6 +744,10 @@ YbMaybeIncFailedAttemptsAndDisableProfile(Oid roleid)
 	if (rolprfform->rolprfstatus != YB_ROLPRFSTATUS_OPEN)
 		/* Role is locked, do not change the count. */
 		return true;
+
+	if (YbHandleRoleProfileCatalogWritesDuringMajorUpgrade())
+		/* we know that the profile is in an unlocked state. */
+		return false;
 
 	prftuple = yb_get_profile_tuple(DatumGetObjectId(rolprfform->rolprfprofile));
 	if (!HeapTupleIsValid(prftuple))

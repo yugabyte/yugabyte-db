@@ -46,11 +46,11 @@ export-schema:
 ```
 
 | Path to the generated assessment report file (JSON format) to be used for applying recommendation to exported schema. |
-| --skip-recommendations |
+| --skip-colocation-recommendations |
 
 ```yaml{.nocopy}
 export-schema:
-  skip-recommendations:
+  skip-colocation-recommendations:
 ```
 
 | Disable applying recommendations in the exported schema suggested by the migration assessment report. <br> Default: false <br> Accepted parameters: true, false, yes, no, 0, 1 |
@@ -80,11 +80,11 @@ export-schema:
 
 | Use the Orafce extension. Oracle migrations only. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
 
-| --skip-performance-optimizations |
+| --skip-performance-recommendations |
 
 ```yaml{.nocopy}
 export-schema:
-  skip-performance-optimizations:
+  skip-performance-recommendations:
 ```
 
 | Disable automatic [performance optimizations](../../../known-issues/postgresql/#performance-optimizations) in the exported schema. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
@@ -224,9 +224,18 @@ send-diagnostics:
 ```
 
 | Enable or disable sending [diagnostics](../../../reference/diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
+
+| -l, --log-level |
+
+```yaml {.nocopy}
+log-level:
+```
+
+| Log level for yb-voyager. <br>Accepted values: trace, debug, info, warn, error, fatal, panic <br>Default: info |
 | --start-clean | — | Starts a fresh schema export after clearing the `schema` directory.<br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -h, --help | — | Command line help for schema. |
 | -y, --yes | — | Answer "yes" to all prompts during the export schema operation. <br>Default: false |
+| -c, --config-file | — | Path to a [configuration file](../../configuration-file). |
 
 {{</table>}}
 

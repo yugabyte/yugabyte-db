@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -56,6 +56,8 @@ class MiniClusterBase {
   Result<HostPort> GetLeaderMasterBoundRpcAddr();
 
   bool running() const { return running_.load(std::memory_order_acquire); }
+
+  virtual bool WasUnsafeShutdown() const = 0;
 
   virtual std::vector<scoped_refptr<ExternalYbController>> yb_controller_daemons() const = 0;
 

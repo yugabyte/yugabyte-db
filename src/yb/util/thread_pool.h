@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -142,6 +142,7 @@ struct ThreadPoolOptions {
   }
 
   static constexpr auto kUnlimitedWorkers = std::numeric_limits<decltype(max_workers)>::max();
+  static constexpr auto kUnlimitedWorkersWithoutQueue = kUnlimitedWorkers - 1;
 };
 
 // An object that can enqueue/submit tasks, e.g. a thread pool, a sub-pool, or a strand.

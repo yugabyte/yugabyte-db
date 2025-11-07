@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -15,8 +15,6 @@
 
 #include <memory>
 
-#include <boost/optional.hpp>
-
 #include "yb/common/common_fwd.h"
 
 #include "yb/docdb/docdb_fwd.h"
@@ -28,6 +26,8 @@ namespace yb {
 class Slice;
 
 namespace docdb {
+
+YB_STRONGLY_TYPED_BOOL(UpdateFilterKey);
 
 YB_DEFINE_ENUM(ReadKey, (kCurrent)(kNext));
 
@@ -79,7 +79,8 @@ class YQLRowwiseIteratorIf {
   virtual Slice GetRowKey() const;
 
   // Seeks to the given tuple by its id. See DocRowwiseIterator for details.
-  virtual void SeekTuple(Slice tuple_id);
+  virtual void SeekTuple(
+      Slice tuple_id, UpdateFilterKey update_filter_key = UpdateFilterKey::kTrue);
 
   // Seeks to first record after specified doc_key_prefix. Also accepts RocksDB-shortened doc key
   // (which could have last byte incremented, see rocksdb::ShortenedIndexBuilder).

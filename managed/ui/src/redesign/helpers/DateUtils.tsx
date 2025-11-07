@@ -1,7 +1,7 @@
 /*
  * Created on Fri Feb 03 2023
  *
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License")
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
@@ -67,6 +67,21 @@ export const formatDatetime = (
 ): string => {
   const momentObj = getMomentObject(date, inputTimeFormat);
   return timezone ? momentObj.tz(timezone).format(timeFormat) : momentObj.format(timeFormat);
+};
+
+/**
+ * Custom hook that returns a function to format datetime with user timezone from Redux
+ */
+export const useFormatDatetime = () => {
+  const userTimezone = useSelector((state: any) => state.customer?.currentUser?.data?.timezone);
+
+  return (
+    date: moment.MomentInput,
+    timeFormat: YBTimeFormats = YBTimeFormats.YB_DEFAULT_TIMESTAMP,
+    inputTimeFormat?: string
+  ): string => {
+    return formatDatetime(date, timeFormat, userTimezone, inputTimeFormat);
+  };
 };
 
 type FormatDateProps = {

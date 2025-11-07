@@ -3,9 +3,9 @@
 //  LICENSE file in the root directory of this source tree. An additional grant
 //  of patent rights can be found in the PATENTS file in the same directory.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -4335,7 +4335,7 @@ std::unique_ptr<SuperVersion> DBImpl::InstallSuperVersionAndScheduleWork(
 Status DBImpl::GetImpl(const ReadOptions& read_options,
                        ColumnFamilyHandle* column_family, const Slice& key,
                        std::string* value, bool* value_found) {
-  StopWatch sw(env_, stats_.get(), DB_GET);
+  StopWatchMicro sw(env_, stats_.get(), DB_GET);
   PERF_TIMER_GUARD(get_snapshot_time);
 
   auto cfh = down_cast<ColumnFamilyHandleImpl*>(column_family);
@@ -4396,7 +4396,7 @@ std::vector<Status> DBImpl::MultiGet(
     const std::vector<ColumnFamilyHandle*>& column_family,
     const std::vector<Slice>& keys, std::vector<std::string>* values) {
 
-  StopWatch sw(env_, stats_.get(), DB_MULTIGET);
+  StopWatchMicro sw(env_, stats_.get(), DB_MULTIGET);
   PERF_TIMER_GUARD(get_snapshot_time);
 
   struct MultiGetColumnFamilyData {
@@ -5279,7 +5279,7 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
     RecordTick(stats_.get(), WRITE_WITH_WAL);
   }
 
-  StopWatch write_sw(env_, db_options_.statistics.get(), DB_WRITE);
+  StopWatchMicro write_sw(env_, db_options_.statistics.get(), DB_WRITE);
 
 #ifndef NDEBUG
   auto num_write_waiters = write_waiters_.fetch_add(1, std::memory_order_acq_rel);
@@ -5546,7 +5546,7 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
       RecordTick(stats_.get(), WAL_FILE_BYTES, log_size);
       if (status.ok() && need_log_sync) {
         RecordTick(stats_.get(), WAL_FILE_SYNCED);
-        StopWatch sw(env_, stats_.get(), WAL_FILE_SYNC_MICROS);
+        StopWatchMicro sw(env_, stats_.get(), WAL_FILE_SYNC_MICROS);
         // It's safe to access logs_ with unlocked mutex_ here because:
         //  - we've set getting_synced=true for all logs,
         //    so other threads won't pop from logs_ while we're here,

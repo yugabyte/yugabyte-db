@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -33,7 +33,6 @@
 #include "yb/tablet/tablet_bootstrap.h"
 
 #include <map>
-#include <set>
 
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
@@ -63,16 +62,11 @@
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/dockv/value_type.h"
 
-#include "yb/gutil/casts.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/gutil/thread_annotations.h"
 
-#include "yb/master/sys_catalog_constants.h"
 #include "yb/rpc/rpc_fwd.h"
-#include "yb/rpc/lightweight_message.h"
 
-#include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/mvcc.h"
 #include "yb/tablet/operations/change_auto_flags_config_operation.h"
 #include "yb/tablet/operations/change_metadata_operation.h"
@@ -86,6 +80,7 @@
 #include "yb/tablet/snapshot_coordinator.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_state_manager.h"
+#include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_snapshots.h"
@@ -93,20 +88,17 @@
 #include "yb/tablet/transaction_coordinator.h"
 #include "yb/tablet/transaction_participant.h"
 
-#include "yb/tserver/backup.pb.h"
 #include "yb/tserver/ysql_advisory_lock_table.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/env_util.h"
 #include "yb/util/fault_injection.h"
-#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
-#include "yb/util/metric_entity.h"
 #include "yb/util/monotime.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/status_format.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/to_stream.h"
 
@@ -166,8 +158,7 @@ DEFINE_NON_RUNTIME_bool(skip_wal_replay_from_beginning_with_cdc, true,
 
 DECLARE_bool(enable_flush_retryable_requests);
 
-namespace yb {
-namespace tablet {
+namespace yb::tablet {
 
 using namespace std::literals; // NOLINT
 using namespace std::placeholders;
@@ -220,7 +211,7 @@ struct Entry {
   }
 };
 
-typedef std::map<int64_t, Entry> OpIndexToEntryMap;
+using OpIndexToEntryMap = std::map<int64_t, Entry>;
 
 // State kept during replay.
 struct ReplayState {
@@ -800,6 +791,7 @@ class TabletBootstrap {
             wal_path,
             tablet_->GetTableMetricsEntity().get(),
             tablet_->GetTabletMetricsEntity().get(),
+            data_.tablet_init_data.read_wal_mem_tracker,
             &log_reader_),
         "Could not open LogReader. Reason");
     return Status::OK();
@@ -873,6 +865,7 @@ class TabletBootstrap {
         metadata.primary_table_schema_version(),
         tablet_->GetTableMetricsEntity(),
         tablet_->GetTabletMetricsEntity(),
+        data_.tablet_init_data.read_wal_mem_tracker,
         append_pool_,
         allocation_pool_,
         log_sync_pool_,
@@ -1247,7 +1240,7 @@ class TabletBootstrap {
 
     if (test_hooks_) {
       const auto docdb_flushed_op_ids_override = test_hooks_->GetFlushedOpIdsOverride();
-      if (docdb_flushed_op_ids_override.is_initialized()) {
+      if (docdb_flushed_op_ids_override.has_value()) {
         LOG_WITH_PREFIX(INFO) << "Using test values of flushed DocDB OpIds: "
                               << docdb_flushed_op_ids_override->ToString();
         return *docdb_flushed_op_ids_override;
@@ -1320,12 +1313,11 @@ class TabletBootstrap {
 
     // Time point of the first entry of the last WAL segment, and how far back in time from it we
     // should retain other entries.
-    boost::optional<RestartSafeCoarseTimePoint> retryable_requests_replay_from_this_or_earlier_time;
+    std::optional<RestartSafeCoarseTimePoint> retryable_requests_replay_from_this_or_earlier_time;
 
     RestartSafeCoarseDuration retryable_requests_retain_interval =
         data_.bootstrap_retryable_requests && data_.retryable_requests
-            ? std::chrono::seconds(
-                  data_.retryable_requests->request_timeout_secs())
+            ? std::chrono::seconds(data_.retryable_requests->request_timeout_secs())
             : 0s;
     // If retryable_requests_retain_interval is 0s, set last_op_id_in_retryable_requests to
     // OpId::Max() to avoid replaying logs from last_op_id_in_retryable_requests if
@@ -1388,7 +1380,7 @@ class TabletBootstrap {
       }
       const RestartSafeCoarseTimePoint first_op_time = first_op_metadata.entry_time;
       const auto retryable_requests_replay_from_this_or_earlier_time_was_initialized =
-          retryable_requests_replay_from_this_or_earlier_time.is_initialized();
+          retryable_requests_replay_from_this_or_earlier_time.has_value();
 
       if (!retryable_requests_replay_from_this_or_earlier_time_was_initialized) {
         retryable_requests_replay_from_this_or_earlier_time =
@@ -2025,7 +2017,7 @@ class TabletBootstrap {
   log::SkipWalWrite skip_wal_rewrite_;
 
   // A way to inject flushed OpIds for regular and intents RocksDBs.
-  boost::optional<DocDbOpIds> TEST_docdb_flushed_op_ids_;
+  std::optional<DocDbOpIds> TEST_docdb_flushed_op_ids_;
 
   // This is populated if TEST_collect_replayed_op_ids is true.
   std::vector<OpId> TEST_replayed_op_ids_;
@@ -2062,5 +2054,4 @@ Status BootstrapTabletImpl(
   return bootstrap_status;
 }
 
-} // namespace tablet
-} // namespace yb
+} // namespace yb::tablet

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.common;
 
@@ -92,10 +92,8 @@ public class ProviderEditRestrictionManagerTest extends CommissionerBaseTest {
 
   @Before
   public void setUp() {
-    super.setUp();
     providerEditRestrictionManager =
         app.injector().instanceOf(ProviderEditRestrictionManager.class);
-    ;
   }
 
   @Test

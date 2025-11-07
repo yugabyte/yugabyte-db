@@ -1,10 +1,9 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 package com.yugabyte.yw.controllers;
 
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.DeletePitrConfig;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.BackupUtil.ApiType;
@@ -16,6 +15,7 @@ import com.yugabyte.yw.forms.CreatePitrConfigParams;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.RestoreSnapshotScheduleParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.forms.UpdatePitrConfigParams;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
@@ -62,16 +62,11 @@ public class PitrController extends AuthenticatedController {
 
   Commissioner commissioner;
   YBClientService ybClientService;
-  private SoftwareUpgradeHelper softwareUpgradeHelper;
 
   @Inject
-  public PitrController(
-      Commissioner commissioner,
-      YBClientService ybClientService,
-      SoftwareUpgradeHelper softwareUpgradeHelper) {
+  public PitrController(Commissioner commissioner, YBClientService ybClientService) {
     this.commissioner = commissioner;
     this.ybClientService = ybClientService;
-    this.softwareUpgradeHelper = softwareUpgradeHelper;
   }
 
   @ApiOperation(
@@ -116,9 +111,9 @@ public class PitrController extends AuthenticatedController {
         universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
     CreatePitrConfigParams taskParams = parseJsonAndValidate(request, CreatePitrConfigParams.class);
 
-    if (softwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(universe)) {
+    if (!universe.getUniverseDetails().softwareUpgradeState.equals(SoftwareUpgradeState.Ready)) {
       throw new PlatformServiceException(
-          BAD_REQUEST, "Cannot enable PITR when the universe is in the middle of a major upgrade");
+          BAD_REQUEST, "Cannot enable PITR when the universe is not in ready state");
     }
 
     if (taskParams.retentionPeriodInSeconds <= 0L) {
@@ -198,9 +193,9 @@ public class PitrController extends AuthenticatedController {
           BAD_REQUEST, "Cannot update PITR when the universe is in locked state");
     }
 
-    if (softwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(universe)) {
+    if (!universe.getUniverseDetails().softwareUpgradeState.equals(SoftwareUpgradeState.Ready)) {
       throw new PlatformServiceException(
-          BAD_REQUEST, "Cannot update PITR when the universe is in the middle of a major upgrade");
+          BAD_REQUEST, "Cannot update PITR when the universe is not in ready state");
     }
 
     PitrConfig pitrConfig = PitrConfig.getOrBadRequest(pitrConfigUUID);
@@ -340,9 +335,9 @@ public class PitrController extends AuthenticatedController {
           BAD_REQUEST, "Cannot perform PITR when the universe is in locked state");
     }
 
-    if (softwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(universe)) {
+    if (!universe.getUniverseDetails().softwareUpgradeState.equals(SoftwareUpgradeState.Ready)) {
       throw new PlatformServiceException(
-          BAD_REQUEST, "Cannot perform PITR when the universe is in the middle of a major upgrade");
+          BAD_REQUEST, "Cannot perform PITR when the universe is not in ready state");
     }
 
     RestoreSnapshotScheduleParams taskParams =
@@ -521,10 +516,9 @@ public class PitrController extends AuthenticatedController {
           BAD_REQUEST, "Cannot clone a namespace when the universe is in locked state");
     }
 
-    if (softwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(universe)) {
+    if (!universe.getUniverseDetails().softwareUpgradeState.equals(SoftwareUpgradeState.Ready)) {
       throw new PlatformServiceException(
-          BAD_REQUEST,
-          "Cannot clone namespace when the universe is in the middle of a major upgrade");
+          BAD_REQUEST, "Cannot clone namespace when the universe is not in ready state");
     }
 
     checkCloneCompatibleYbVersion(

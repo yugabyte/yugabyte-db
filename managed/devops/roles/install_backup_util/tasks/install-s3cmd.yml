@@ -1,4 +1,4 @@
-# Copyright 2020 YugaByte, Inc. and Contributors
+# Copyright 2020 YugabyteDB, Inc. and Contributors
 #
 # Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
 # may not use this file except in compliance with the License. You
@@ -19,7 +19,7 @@
 - block:
     - name: Set variables for package paths and python interpreter
       set_fact:
-        setuptools_package_path: "/usr/local/setuptools-44.1.1"
+        setuptools_package_path: "/usr/local/setuptools-59.6.0"
         python_magic_package_path: "/usr/local/python-magic-0.4.18"
         python_dateutil_package_path: "/usr/local/python-dateutil-2.8.2"
         s3cmd_package_path: "/usr/local/{{ s3cmd_package_name }}"
@@ -65,7 +65,7 @@
         owner: root
         group: root
       loop:
-        - "setuptools-44.1.1"
+        - "setuptools-59.6.0"
         - "python-magic-0.4.18"
         - "python-dateutil-2.8.2"
         - "{{ s3cmd_package_name }}"
@@ -80,7 +80,7 @@
         PYTHONPATH: "{{ setuptools_package_path }}:{{ python_magic_package_path }}:\
                      {{ setuptools_scm_package_path }}:{{ python_dateutil_package_path }}"
       loop:
-        - "setuptools-44.1.1"
+        - "setuptools-59.6.0"
         - "python-magic-0.4.18"
         - "setuptools_scm-1.17.0"
         - "python-dateutil-2.8.2"

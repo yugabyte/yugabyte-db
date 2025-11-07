@@ -15,7 +15,7 @@ type: docs
 {{< page-finder/head text="Upgrade YugabyteDB" subtle="across different products">}}
   {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" current="" >}}
   {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" url="../../yugabyte-platform/manage-deployments/upgrade-software/" >}}
-  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/preview/yugabyte-cloud/cloud-clusters/cloud-maintenance/" >}}
+  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/preview/yugabyte-cloud/cloud-clusters/database-upgrade/" >}}
 {{< /page-finder/head >}}
 
 {{< tip title="Tip" >}}
@@ -32,7 +32,7 @@ The `data`, `log`, and `conf` directories are typically stored in a fixed locati
 Review the following information before starting an upgrade.
 {{< /warning >}}
 {{< warning title="YSQL major version upgrades" >}}
-To upgrade YugabyteDB to a version based on a different version of PostgreSQL (for example, from v2024.2 based on PG 11 to v2.25 or later based on PG 15), you need to perform additional steps. Refer to [YSQL major upgrade](../ysql-major-upgrade-yugabyted/).
+To upgrade YugabyteDB to a version based on a different version of PostgreSQL (for example, from v2024.2 based on PG 11 to v2025.1 or later based on PG 15), you need to perform additional steps. Refer to [YSQL major upgrade](../ysql-major-upgrade-yugabyted/).
 {{< /warning >}}
 
 - Make sure your operating system is up to date. If your universe is running on a [deprecated OS](../../reference/configuration/operating-systems/), you need to update your OS before you can upgrade to the next major YugabyteDB release.
@@ -51,7 +51,18 @@ To upgrade YugabyteDB to a version based on a different version of PostgreSQL (f
 
 - You can upgrade from one stable version to another in one go, even across major versions, as long as they are in the same major YSQL version. For information on performing major YSQL version upgrades, refer to [YSQL major upgrade](../ysql-major-upgrade-yugabyted/).
 
-- After finalizing an upgrade, snapshots from the previous version can no longer be used for PITR. Backups taken on a newer version cannot be restored to universes running a previous version. Backups taken before the upgrade can be used for restore.
+- Backups
+
+  - Backups taken on a newer version cannot be restored to universes running a previous version.
+  - Backups taken during the upgrade cannot be restored to universes running a previous version.
+  - Backups taken before the upgrade _can_ be used for restore to the new version.
+
+- [Point-in-time-restore](../backup-restore/point-in-time-recovery/) (PITR)
+
+  - If you have PITR enabled, you must disable it before performing an upgrade. Re-enable it only after the upgrade is either finalized or rolled back.
+  - After the upgrade, PITR cannot be done to a time before the upgrade.
+
+- For more information, refer to [Upgrade FAQ](/preview/faq/operations-faq/#upgrade).
 
 ## Upgrade YugabyteDB cluster
 
@@ -92,7 +103,7 @@ cd /home/yugabyte/softwareyb-$NEW_VER/
 ./bin/post_install.sh
 ```
 
-If you are using PostgreSQL extensions, make sure to install the extensions in the new YugabyteDB version. Follow the instructions in [Install PostgreSQL extensions](../../explore/ysql-language-features/pg-extensions/install-extensions/).
+If you are using PostgreSQL extensions, make sure to install the extensions in the new YugabyteDB version. Follow the instructions in [Install PostgreSQL extensions](../../additional-features/pg-extensions/install-extensions/).
 
 #### 3. Upgrade YB-Masters
 

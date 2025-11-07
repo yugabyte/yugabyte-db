@@ -38,6 +38,7 @@ yba ear [flags]
 * [yba](yba.md)	 - yba - Command line tools to manage your YugabyteDB Anywhere (Self-managed Database-as-a-Service) resources.
 * [yba ear aws](yba_ear_aws.md)	 - Manage a YugabyteDB Anywhere AWS encryption at rest (EAR) configuration
 * [yba ear azure](yba_ear_azure.md)	 - Manage a YugabyteDB Anywhere Azure encryption at rest (EAR) configuration
+* [yba ear ciphertrust](yba_ear_ciphertrust.md)	 - Manage a YugabyteDB Anywhere CipherTrust encryption at rest (EAR) configuration
 * [yba ear delete](yba_ear_delete.md)	 - Delete a YugabyteDB Anywhere encryption at rest configuration
 * [yba ear describe](yba_ear_describe.md)	 - Describe a YugabyteDB Anywhere Encryption At Rest (EAR) configuration
 * [yba ear gcp](yba_ear_gcp.md)	 - Manage a YugabyteDB Anywhere GCP encryption at rest (EAR) configuration

@@ -155,9 +155,6 @@ proc_exit(int code)
 	}
 #endif
 
-	if (IsYugaByteEnabled())
-		YBOnPostgresBackendShutdown();
-
 	elog(DEBUG3, "exit(%d)", code);
 
 	exit(code);

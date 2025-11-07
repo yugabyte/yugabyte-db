@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 YugaByte, Inc. and Contributors
+ * Copyright 2022 YugabyteDB, Inc. and Contributors
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License")
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
@@ -30,7 +30,7 @@ import { LocationShape } from 'react-router/lib/PropTypes';
 import { NewStorageConfiguration } from '../config/Storage/StorageConfigurationNew';
 import { ProviderView } from './providerRedesign/providerView/ProviderView';
 import { StorageConfigurationContainer } from '../config';
-import { ExportLog } from '../../redesign/features/export-log/ExportLog';
+import { ExportTelemetryConfigurations } from '../../redesign/features/export-telemetry/ExportTelemetryConfiguration';
 import { YBErrorIndicator } from '../common/indicators';
 import { YBTabsPanel, YBTabsWithLinksPanel } from '../panels';
 import { assertUnreachableCase } from '../../utils/errorHandlingUtils';
@@ -83,11 +83,6 @@ export const DataCenterConfigRedesign = ({
     fetchGlobalRunTimeConfigs(true).then((res: any) => res.data)
   );
 
-  const isExportLogEnabled =
-    globalRuntimeConfigs?.data?.configEntries?.find(
-      (c: any) => c.key === RuntimeConfigKey.ENABLE_AUDIT_LOG
-    )?.value === 'true';
-
   // Validate the URL params.
   if (
     params.tab !== undefined &&
@@ -95,6 +90,16 @@ export const DataCenterConfigRedesign = ({
   ) {
     return <YBErrorIndicator customErrorMessage={t('error.pageNotFound')} />;
   }
+
+  const isExportLogEnabled =
+    globalRuntimeConfigs?.data?.configEntries?.find(
+      (c: any) => c.key === RuntimeConfigKey.ENABLE_AUDIT_LOG
+    )?.value === 'true';
+  const isMetricsExportEnabled =
+    globalRuntimeConfigs?.data?.configEntries?.find(
+      (config: any) => config.key === RuntimeConfigKey.METRICS_EXPORT_FEATURE_FLAG
+    )?.value === 'true';
+  const shouldShowTelemetryProviderTab = isExportLogEnabled || isMetricsExportEnabled;
 
   const defaultTab = isAvailable(currentCustomer.data.features, 'config.infra')
     ? ConfigTabKey.INFRA
@@ -230,9 +235,13 @@ export const DataCenterConfigRedesign = ({
             </Tab>
           )}
 
-          {isExportLogEnabled && (
-            <Tab eventKey={ConfigTabKey.LOG} title={t('tab.log.tabLabel')} key="log">
-              <ExportLog />
+          {shouldShowTelemetryProviderTab && (
+            <Tab
+              eventKey={ConfigTabKey.EXPORT_TELEMETRY}
+              title={t('tab.exportTelemetry.tabLabel')}
+              key="exportTelemetry"
+            >
+              <ExportTelemetryConfigurations />
             </Tab>
           )}
 

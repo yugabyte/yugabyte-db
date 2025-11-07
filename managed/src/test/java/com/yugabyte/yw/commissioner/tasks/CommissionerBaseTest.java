@@ -1,9 +1,10 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
@@ -17,6 +18,8 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 
@@ -27,17 +30,22 @@ import com.google.common.net.HostAndPort;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.cloud.aws.AWSInitializer;
+import com.yugabyte.yw.cloud.azu.AZUClientFactory;
+import com.yugabyte.yw.cloud.azu.AZUResourceGroupApiClient;
 import com.yugabyte.yw.cloud.gcp.GCPInitializer;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.DefaultExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.ExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.tasks.local.LocalProviderUniverseTestBase;
+import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckFollowerLag;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckLeaderlessTablets;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckUnderReplicatedTablets;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DoCapacityReservation;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.CloudQueryHelper;
@@ -45,6 +53,7 @@ import com.yugabyte.yw.common.CloudUtilFactory;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.LdapUtil;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NetworkManager;
@@ -60,6 +69,7 @@ import com.yugabyte.yw.common.ProviderEditRestrictionManager;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleasesUtils;
+import com.yugabyte.yw.common.RestoreManagerYb;
 import com.yugabyte.yw.common.ShellKubernetesManager;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.SoftwareUpgradeHelper;
@@ -88,27 +98,37 @@ import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponent;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponentFactory;
+import com.yugabyte.yw.common.utils.CapacityReservationUtil;
 import com.yugabyte.yw.controllers.handlers.GFlagsAuditHandler;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
+import com.yugabyte.yw.metrics.CapacityReservationMetrics;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.CustomerTask.TargetType;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.YugawareProperty;
+import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+import io.prometheus.client.Collector;
+import io.prometheus.client.CollectorRegistry;
+import io.prometheus.client.Gauge;
+import io.prometheus.client.Histogram;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -116,11 +136,14 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import kamon.instrumentation.play.GuiceModule;
+import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.jboss.logging.MDC;
 import org.junit.Before;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.play.CallbackController;
@@ -144,53 +167,59 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       "yb.security.custom_hooks.enable_custom_hooks";
   protected static final String ENABLE_SUDO_PATH = "yb.security.custom_hooks.enable_sudo";
 
-  protected AccessManager mockAccessManager;
-  protected NetworkManager mockNetworkManager;
+  protected AccessManager mockAccessManager = mock(AccessManager.class);
+  protected NetworkManager mockNetworkManager = mock(NetworkManager.class);
   protected Config mockConfig;
-  protected ConfigHelper mockConfigHelper;
-  protected AWSInitializer mockAWSInitializer;
-  protected GCPInitializer mockGCPInitializer;
-  protected YBClientService mockYBClient;
-  protected NodeManager mockNodeManager;
-  protected DnsManager mockDnsManager;
-  protected TableManager mockTableManager;
-  protected TableManagerYb mockTableManagerYb;
-  protected CloudQueryHelper mockCloudQueryHelper;
-  protected ShellKubernetesManager mockKubernetesManager;
-  protected SwamperHelper mockSwamperHelper;
-  protected CallHome mockCallHome;
-  protected CallbackController mockCallbackController;
-  protected PlayCacheSessionStore mockSessionStore;
-  protected ApiHelper mockApiHelper;
-  protected NodeUIApiHelper mockNodeUIApiHelper;
-  protected MetricQueryHelper mockMetricQueryHelper;
-  protected MetricService metricService;
-  protected AlertService alertService;
-  protected AlertDefinitionService alertDefinitionService;
-  protected AlertConfigurationService alertConfigurationService;
-  protected YcqlQueryExecutor mockYcqlQueryExecutor;
-  protected YsqlQueryExecutor mockYsqlQueryExecutor;
-  protected LdapUtil mockLdapUtil;
-  protected NodeUniverseManager mockNodeUniverseManager;
-  protected TaskExecutor taskExecutor;
-  protected EncryptionAtRestManager mockEARManager;
-  protected SupportBundleComponent mockSupportBundleComponent;
-  protected SupportBundleComponentFactory mockSupportBundleComponentFactory;
-  protected ReleaseManager mockReleaseManager;
-  protected GFlagsValidation mockGFlagsValidation;
-  protected AutoFlagUtil mockAutoFlagUtil;
-  protected ProviderEditRestrictionManager providerEditRestrictionManager;
-  protected BackupHelper mockBackupHelper;
-  protected PrometheusConfigManager mockPrometheusConfigManager;
-  protected YbcManager mockYbcManager;
-  protected OperatorStatusUpdaterFactory mockOperatorStatusUpdaterFactory;
-  protected OperatorStatusUpdater mockOperatorStatusUpdater;
-  protected CloudUtilFactory mockCloudUtilFactory;
-  protected ReleasesUtils mockReleasesUtils;
-  protected NodeAgentManager mockNodeAgentManager;
-  protected NodeAgentClient mockNodeAgentClient;
-  protected SoftwareUpgradeHelper mockSoftwareUpgradeHelper;
-  protected GFlagsAuditHandler mockGFlagsAuditHandler;
+  protected ConfigHelper mockConfigHelper = mock(ConfigHelper.class);
+  protected AWSInitializer mockAWSInitializer = mock(AWSInitializer.class);
+  protected GCPInitializer mockGCPInitializer = mock(GCPInitializer.class);
+  protected YBClientService mockYBClient = mock(YBClientService.class);
+  protected NodeManager mockNodeManager = mock(NodeManager.class);
+  protected DnsManager mockDnsManager = mock(DnsManager.class);
+  protected TableManager mockTableManager = mock(TableManager.class);
+  protected TableManagerYb mockTableManagerYb = mock(TableManagerYb.class);
+  protected CloudQueryHelper mockCloudQueryHelper = mock(CloudQueryHelper.class);
+  protected ShellKubernetesManager mockKubernetesManager = mock(ShellKubernetesManager.class);
+  protected SwamperHelper mockSwamperHelper = mock(SwamperHelper.class);
+  protected CallHome mockCallHome = mock(CallHome.class);
+  protected CallbackController mockCallbackController = mock(CallbackController.class);
+  protected PlayCacheSessionStore mockSessionStore = mock(PlayCacheSessionStore.class);
+  protected ApiHelper mockApiHelper = mock(ApiHelper.class);
+  protected NodeUIApiHelper mockNodeUIApiHelper = mock(NodeUIApiHelper.class);
+  protected MetricQueryHelper mockMetricQueryHelper = mock(MetricQueryHelper.class);
+  protected MetricService metricService = mock(MetricService.class);
+  protected AlertService alertService = mock(AlertService.class);
+  protected AlertDefinitionService alertDefinitionService = mock(AlertDefinitionService.class);
+  protected AlertConfigurationService alertConfigurationService =
+      mock(AlertConfigurationService.class);
+  protected YcqlQueryExecutor mockYcqlQueryExecutor = mock(YcqlQueryExecutor.class);
+  protected YsqlQueryExecutor mockYsqlQueryExecutor = mock(YsqlQueryExecutor.class);
+  protected LdapUtil mockLdapUtil = mock(LdapUtil.class);
+  protected NodeUniverseManager mockNodeUniverseManager = mock(NodeUniverseManager.class);
+  protected TaskExecutor taskExecutor = mock(TaskExecutor.class);
+  protected EncryptionAtRestManager mockEARManager = mock(EncryptionAtRestManager.class);
+  protected SupportBundleComponent mockSupportBundleComponent = mock(SupportBundleComponent.class);
+  protected SupportBundleComponentFactory mockSupportBundleComponentFactory =
+      mock(SupportBundleComponentFactory.class);
+  protected ReleaseManager mockReleaseManager = mock(ReleaseManager.class);
+  protected GFlagsValidation mockGFlagsValidation = mock(GFlagsValidation.class);
+  protected AutoFlagUtil mockAutoFlagUtil = mock(AutoFlagUtil.class);
+  protected ProviderEditRestrictionManager providerEditRestrictionManager =
+      mock(ProviderEditRestrictionManager.class);
+  protected BackupHelper mockBackupHelper = mock(BackupHelper.class);
+  protected PrometheusConfigManager mockPrometheusConfigManager =
+      mock(PrometheusConfigManager.class);
+  protected YbcManager mockYbcManager = mock(YbcManager.class);
+  protected OperatorStatusUpdaterFactory mockOperatorStatusUpdaterFactory =
+      mock(OperatorStatusUpdaterFactory.class);
+  protected OperatorStatusUpdater mockOperatorStatusUpdater = mock(OperatorStatusUpdater.class);
+  protected CloudUtilFactory mockCloudUtilFactory = mock(CloudUtilFactory.class);
+  protected ReleasesUtils mockReleasesUtils = mock(ReleasesUtils.class);
+  protected NodeAgentManager mockNodeAgentManager = mock(NodeAgentManager.class);
+  protected NodeAgentClient mockNodeAgentClient = mock(NodeAgentClient.class);
+  protected SoftwareUpgradeHelper mockSoftwareUpgradeHelper = mock(SoftwareUpgradeHelper.class);
+  protected GFlagsAuditHandler mockGFlagsAuditHandler = mock(GFlagsAuditHandler.class);
+  protected RestoreManagerYb restoreManagerYb = mock(RestoreManagerYb.class);
 
   protected BaseTaskDependencies mockBaseTaskDependencies =
       Mockito.mock(BaseTaskDependencies.class);
@@ -203,15 +232,48 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected Provider kubernetesProvider;
   protected SettableRuntimeConfigFactory factory;
   protected RuntimeConfGetter confGetter;
-  protected CloudAPI.Factory mockCloudAPIFactory;
+  protected CloudAPI.Factory mockCloudAPIFactory = mock(CloudAPI.Factory.class);
 
   protected Commissioner commissioner;
   protected CustomerTaskManager customerTaskManager;
   protected ReleaseManager.ReleaseMetadata releaseMetadata;
   protected ReleaseContainer releaseContainer;
+  protected ImageBundleUtil imageBundleUtil;
+  protected AZUClientFactory azuClientFactory = mock(AZUClientFactory.class);
+  protected AZUResourceGroupApiClient azuResourceGroupApiClient =
+      mock(AZUResourceGroupApiClient.class);
+  protected CloudAPI cloudAPI = mock(CloudAPI.class);
+
+  protected int failsOnCapacityReservation = 0;
+  protected Gauge capacityReservationGauge;
+  protected Histogram capacityReservationHistogram;
+  protected CapacityReservationMetrics reservationMetrics =
+      Mockito.mock(CapacityReservationMetrics.class);
 
   @Before
-  public void setUp() {
+  public void setUpBase() {
+    UUID yugawareUuid = UUID.randomUUID();
+    ObjectNode ywMetadata = Json.newObject();
+    ywMetadata.put("yugaware_uuid", yugawareUuid.toString());
+    ywMetadata.put("version", "2024.2.0.0-b1");
+    YugawareProperty.addConfigProperty(
+        ConfigHelper.ConfigType.YugawareMetadata.name(), ywMetadata, "Yugaware Metadata");
+
+    lenient().when(mockConfigHelper.getYugawareUUID()).thenReturn(yugawareUuid);
+
+    mockYsqlQueryExecutor = app.injector().instanceOf(YsqlQueryExecutor.class);
+    YsqlQueryExecutor.ConsistencyInfoResp consistencyInfo =
+        new YsqlQueryExecutor.ConsistencyInfoResp();
+    try {
+      java.lang.reflect.Field ywUuidField =
+          YsqlQueryExecutor.ConsistencyInfoResp.class.getDeclaredField("ywUuid");
+      ywUuidField.setAccessible(true);
+      ywUuidField.set(consistencyInfo, yugawareUuid);
+    } catch (Exception e) {
+      throw new RuntimeException("Failed to set yw_uuid in consistency info", e);
+    }
+    lenient().when(mockYsqlQueryExecutor.getConsistencyInfo(any())).thenReturn(consistencyInfo);
+
     mockConfig = spy(app.config());
     commissioner = app.injector().instanceOf(Commissioner.class);
     customerTaskManager = app.injector().instanceOf(CustomerTaskManager.class);
@@ -229,8 +291,21 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     taskExecutor = app.injector().instanceOf(TaskExecutor.class);
     providerEditRestrictionManager =
         app.injector().instanceOf(ProviderEditRestrictionManager.class);
-    mockCloudUtilFactory = mock(CloudUtilFactory.class);
-    mockReleasesUtils = mock(ReleasesUtils.class);
+    imageBundleUtil = app.injector().instanceOf(ImageBundleUtil.class);
+    lenient().when(azuClientFactory.getClient(any())).thenReturn(azuResourceGroupApiClient);
+    lenient().when(mockCloudAPIFactory.get(any())).thenReturn(cloudAPI);
+
+    CollectorRegistry collectorRegistry = new CollectorRegistry();
+    capacityReservationGauge = CapacityReservationMetrics.initReservationGauge(collectorRegistry);
+    capacityReservationHistogram =
+        CapacityReservationMetrics.initReservationTimeHistogram(collectorRegistry);
+    lenient().when(reservationMetrics.getReservationGauge()).thenReturn(capacityReservationGauge);
+    lenient()
+        .when(reservationMetrics.getReservationTimeHistogram())
+        .thenReturn(capacityReservationHistogram);
+    lenient()
+        .when(reservationMetrics.wrapWithMetrics(any(), anyInt(), any(), any(), any()))
+        .thenCallRealMethod();
 
     // Enable custom hooks in tests
     factory = app.injector().instanceOf(SettableRuntimeConfigFactory.class);
@@ -265,6 +340,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     when(mockBaseTaskDependencies.getGFlagsValidation()).thenReturn(mockGFlagsValidation);
     when(mockBaseTaskDependencies.getNodeUniverseManager()).thenReturn(mockNodeUniverseManager);
     when(mockBaseTaskDependencies.getNodeAgentClient()).thenReturn(mockNodeAgentClient);
+    when(mockBaseTaskDependencies.getImageBundleUtil()).thenReturn(imageBundleUtil);
+    when(mockBaseTaskDependencies.getRestoreManagerYb()).thenReturn(restoreManagerYb);
     releaseMetadata = ReleaseManager.ReleaseMetadata.create("1.0.0.0-b1");
     releaseContainer =
         new ReleaseContainer(releaseMetadata, mockCloudUtilFactory, mockConfig, mockReleasesUtils);
@@ -284,56 +361,89 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     lenient()
         .when(mockNodeAgentManager.getNodeAgentPackagePath(any(), any()))
         .thenReturn(Paths.get("/opt/yugabyte"));
-    NodeAgent nodeAgent = new NodeAgent();
-    nodeAgent.setIp("127.0.0.1");
-    nodeAgent.setName("nodeAgent");
-    nodeAgent.setHome("/opt/yugabyte");
-    nodeAgent.setUuid(UUID.randomUUID());
-    lenient().when(mockNodeAgentManager.create(any(), anyBoolean())).thenReturn(nodeAgent);
+    lenient()
+        .doAnswer(
+            inv -> {
+              NodeAgent nodeAgent = spy((NodeAgent) inv.getArgument(0));
+              nodeAgent.setUuid(UUID.randomUUID());
+              nodeAgent.setState(NodeAgent.State.REGISTERING);
+              lenient()
+                  .doAnswer(
+                      inv1 -> {
+                        nodeAgent.setState((NodeAgent.State) inv1.getArgument(0));
+                        return nodeAgent;
+                      })
+                  .when(nodeAgent)
+                  .saveState(any());
+              return nodeAgent;
+            })
+        .when(mockNodeAgentManager)
+        .create(any(), anyBoolean());
+    Map<String, Set<String>> reservationsByGroup = new HashMap<>();
+    lenient()
+        .when(
+            azuResourceGroupApiClient.createCapacityReservationGroup(
+                anyString(), anyString(), any(Set.class), any(Map.class)))
+        .thenAnswer(
+            invocation -> {
+              String groupName = invocation.getArgument(0);
+              reservationsByGroup.put(groupName, new HashSet<>());
+              return groupName;
+            });
+    Map<String, Integer> failsPerReservation = new HashMap<>();
+    lenient()
+        .when(
+            azuResourceGroupApiClient.createCapacityReservation(
+                anyString(),
+                anyString(),
+                anyString(),
+                anyString(),
+                anyString(),
+                any(Integer.class),
+                any(Map.class)))
+        .thenAnswer(
+            invocation -> {
+              String groupName = invocation.getArgument(0);
+              String reservationName = invocation.getArgument(3);
+              if (failsOnCapacityReservation > 0) {
+                Integer res = failsPerReservation.merge(reservationName, 1, Integer::sum);
+                if (res <= failsOnCapacityReservation) {
+                  throw new RuntimeException("Failing");
+                }
+              }
+              reservationsByGroup
+                  .computeIfAbsent(groupName, x -> new HashSet<>())
+                  .add(reservationName);
+              return reservationName;
+            });
+    lenient()
+        .when(azuResourceGroupApiClient.listCapacityReservationGroups())
+        .thenAnswer(invocation -> reservationsByGroup.keySet());
+    lenient()
+        .when(azuResourceGroupApiClient.listCapacityReservations(anyString()))
+        .thenAnswer(
+            invocation ->
+                reservationsByGroup.getOrDefault(invocation.getArgument(0), new HashSet<>()));
+    lenient()
+        .when(
+            cloudAPI.createCapacityReservation(
+                any(),
+                anyString(),
+                anyString(),
+                anyString(),
+                anyString(),
+                any(Integer.class),
+                any()))
+        .thenAnswer(
+            invocation -> {
+              String reservationName = invocation.getArgument(1);
+              return reservationName;
+            });
+    lenient().when(cloudAPI.isValidCreds(any())).thenReturn(true);
   }
 
   @Override
   protected Application provideApplication() {
-    mockAccessManager = mock(AccessManager.class);
-    mockNetworkManager = mock(NetworkManager.class);
-    mockConfigHelper = mock(ConfigHelper.class);
-    mockAWSInitializer = mock(AWSInitializer.class);
-    mockGCPInitializer = mock(GCPInitializer.class);
-    mockYBClient = mock(YBClientService.class);
-    mockNodeManager = mock(NodeManager.class);
-    mockDnsManager = mock(DnsManager.class);
-    mockCloudQueryHelper = mock(CloudQueryHelper.class);
-    mockTableManager = mock(TableManager.class);
-    mockTableManagerYb = mock(TableManagerYb.class);
-    mockKubernetesManager = mock(ShellKubernetesManager.class);
-    mockSwamperHelper = mock(SwamperHelper.class);
-    mockCallHome = mock(CallHome.class);
-    mockCallbackController = mock(CallbackController.class);
-    mockSessionStore = mock(PlayCacheSessionStore.class);
-    mockApiHelper = mock(ApiHelper.class);
-    mockNodeUIApiHelper = mock(NodeUIApiHelper.class);
-    mockMetricQueryHelper = mock(MetricQueryHelper.class);
-    mockYcqlQueryExecutor = mock(YcqlQueryExecutor.class);
-    mockYsqlQueryExecutor = mock(YsqlQueryExecutor.class);
-    mockLdapUtil = mock(LdapUtil.class);
-    mockNodeUniverseManager = mock(NodeUniverseManager.class);
-    mockEARManager = mock(EncryptionAtRestManager.class);
-    mockSupportBundleComponent = mock(SupportBundleComponent.class);
-    mockSupportBundleComponentFactory = mock(SupportBundleComponentFactory.class);
-    mockGFlagsValidation = mock(GFlagsValidation.class);
-    mockAutoFlagUtil = mock(AutoFlagUtil.class);
-    mockReleaseManager = mock(ReleaseManager.class);
-    mockCloudAPIFactory = mock(CloudAPI.Factory.class);
-    mockBackupHelper = mock(BackupHelper.class);
-    mockYbcManager = mock(YbcManager.class);
-    mockPrometheusConfigManager = mock(PrometheusConfigManager.class);
-    mockOperatorStatusUpdaterFactory = mock(OperatorStatusUpdaterFactory.class);
-    mockOperatorStatusUpdater = mock(OperatorStatusUpdater.class);
-    mockNodeAgentManager = mock(NodeAgentManager.class);
-    mockNodeAgentClient = mock(NodeAgentClient.class);
-    mockSoftwareUpgradeHelper = mock(SoftwareUpgradeHelper.class);
-    mockGFlagsAuditHandler = mock(GFlagsAuditHandler.class);
-
     return configureApplication(
             new GuiceApplicationBuilder()
                 .disable(GuiceModule.class)
@@ -378,10 +488,12 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                 .overrides(bind(NodeAgentClient.class).toInstance(mockNodeAgentClient))
                 .overrides(bind(SoftwareUpgradeHelper.class).toInstance(mockSoftwareUpgradeHelper))
                 .overrides(bind(GFlagsAuditHandler.class).toInstance(mockGFlagsAuditHandler))
+                .overrides(bind(AZUClientFactory.class).toInstance(azuClientFactory))
                 .overrides(
                     bind(PrometheusConfigManager.class).toInstance(mockPrometheusConfigManager))
                 .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager)))
         .overrides(bind(CloudAPI.Factory.class).toInstance(mockCloudAPIFactory))
+        .overrides(bind(CapacityReservationMetrics.class).toInstance(reservationMetrics))
         .overrides(
             bind(OperatorStatusUpdaterFactory.class).toInstance(mockOperatorStatusUpdaterFactory))
         .build();
@@ -950,6 +1062,235 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       when(mockClient.listLiveTabletServers()).thenReturn(listLiveTabletServersResponse);
     } catch (Exception e) {
       fail();
+    }
+  }
+
+  @Data
+  protected static class AzureReservationGroup {
+    final Region region;
+    final Map<String, Map<String, List<String>>> instanceTypeToZonesAndNodes;
+
+    public static AzureReservationGroup of(
+        Region region, Map<String, Map<String, List<String>>> mapping) {
+      return new AzureReservationGroup(region, mapping);
+    }
+  }
+
+  protected void verifyCapacityReservationAZU(UUID universeUUID, AzureReservationGroup... groups) {
+    List<Double> nodesCounts = new ArrayList<>();
+
+    for (int i = 0; i < groups.length; i++) {
+      verifyCapacityReservationAZUPerRegion(
+          universeUUID, groups[i].region, groups[i].instanceTypeToZonesAndNodes);
+      groups[i].instanceTypeToZonesAndNodes.values().stream()
+          .flatMap(x -> x.values().stream())
+          .forEach(nodes -> nodesCounts.add((double) nodes.size()));
+    }
+    validateMetrics(Common.CloudType.azu, nodesCounts, groups.length);
+  }
+
+  private void verifyCapacityReservationAZUPerRegion(
+      UUID universeUUID,
+      Region region,
+      Map<String, Map<String, List<String>>> instanceTypeToZonesAndNodes) {
+    String regionGroup =
+        DoCapacityReservation.getCapacityReservationGroupName(universeUUID, region.getCode());
+
+    Set<String> allZones =
+        instanceTypeToZonesAndNodes.values().stream()
+            .flatMap(zs -> zs.keySet().stream())
+            .collect(Collectors.toSet());
+
+    Map<String, String> tags =
+        Map.of("universe-name", "universe-test", "universe-uuid", universeUUID.toString());
+
+    verify(azuResourceGroupApiClient)
+        .createCapacityReservationGroup(
+            Mockito.eq(regionGroup),
+            Mockito.eq(region.getCode()),
+            Mockito.eq(allZones),
+            Mockito.eq(tags));
+
+    instanceTypeToZonesAndNodes.forEach(
+        (instanceType, map) -> {
+          map.forEach(
+              (zone, nodes) -> {
+                String instanceTypeRes =
+                    DoCapacityReservation.getInstanceReservationName(instanceType, zone);
+                verify(azuResourceGroupApiClient)
+                    .createCapacityReservation(
+                        Mockito.eq(regionGroup),
+                        Mockito.eq(region.getCode()),
+                        Mockito.eq(zone),
+                        Mockito.eq(instanceTypeRes),
+                        Mockito.eq(instanceType),
+                        Mockito.eq(Integer.valueOf(nodes.size())),
+                        Mockito.eq(tags));
+
+                verify(azuResourceGroupApiClient)
+                    .deleteCapacityReservation(
+                        Mockito.eq(regionGroup),
+                        Mockito.eq(instanceTypeRes),
+                        Mockito.eq(new HashSet<>(nodes)));
+              });
+        });
+
+    verify(azuResourceGroupApiClient).deleteCapacityReservationGroup(Mockito.eq(regionGroup));
+  }
+
+  private void validateMetrics(Common.CloudType cloudType, List<Double> batches, int groups) {
+    List<CapacityReservationUtil.ReservationAction> expectedActions = new ArrayList<>();
+    for (int i = 0; i < batches.size(); i++) {
+      expectedActions.add(CapacityReservationUtil.ReservationAction.RESERVE);
+      expectedActions.add(CapacityReservationUtil.ReservationAction.RELEASE);
+    }
+    if (cloudType == Common.CloudType.azu) {
+      for (int i = 0; i < groups; i++) {
+        expectedActions.add(CapacityReservationUtil.ReservationAction.CREATE_GROUP);
+        expectedActions.add(CapacityReservationUtil.ReservationAction.DELETE_GROUP);
+      }
+    }
+
+    Set<CapacityReservationUtil.ReservationAction> expectedActionsSet =
+        new HashSet<>(expectedActions);
+    List<Double> batchesToRelease = new ArrayList<>(batches);
+
+    Collector.MetricFamilySamples metricFamilySamples =
+        capacityReservationGauge.collect().stream()
+            .filter(s -> s.name.equals(CapacityReservationMetrics.RESERVATION))
+            .findFirst()
+            .get();
+
+    log.debug("Expected: {}", expectedActions);
+    log.debug("Expected nodes {}", batches);
+
+    for (Collector.MetricFamilySamples.Sample sample : metricFamilySamples.samples) {
+      log.debug("Getting {}", Json.toJson(sample));
+      Map<String, String> lablesMap = getLablesMap(sample);
+      assertEquals(cloudType.name(), lablesMap.get(KnownAlertLabels.CLOUD_TYPE.labelName()));
+      assertEquals("success", lablesMap.get(KnownAlertLabels.OPERATION_STATUS.labelName()));
+      CapacityReservationUtil.ReservationAction action =
+          CapacityReservationUtil.ReservationAction.valueOf(
+              lablesMap.get(KnownAlertLabels.OPERATION_TYPE.labelName()));
+      assertTrue(expectedActions.remove(action));
+      switch (action) {
+        case RESERVE:
+          assertTrue("Not found reserve of nodes " + sample.value, batches.remove(sample.value));
+          break;
+        case RELEASE:
+          assertTrue(
+              "Not found release of nodes " + sample.value, batchesToRelease.remove(sample.value));
+          break;
+        case CREATE_GROUP:
+        case DELETE_GROUP:
+          assertEquals(1d, sample.value, 0.000000001d);
+          break;
+      }
+    }
+    assertEquals(0, expectedActions.size());
+    assertEquals(0, batches.size());
+    assertEquals(0, batchesToRelease.size());
+
+    Collector.MetricFamilySamples timings =
+        capacityReservationHistogram.collect().stream()
+            .filter(s -> s.name.equals(CapacityReservationMetrics.RESERVATION_TIME))
+            .findFirst()
+            .get();
+
+    Set<CapacityReservationUtil.ReservationAction> histogramActions = new HashSet<>();
+    for (Collector.MetricFamilySamples.Sample sample : timings.samples) {
+      Map<String, String> lablesMap = getLablesMap(sample);
+      assertTrue(lablesMap.containsKey(KnownAlertLabels.CLOUD_TYPE.labelName()));
+      assertTrue(lablesMap.containsKey(KnownAlertLabels.OPERATION_STATUS.labelName()));
+      histogramActions.add(
+          CapacityReservationUtil.ReservationAction.valueOf(
+              lablesMap.get(KnownAlertLabels.OPERATION_TYPE.labelName())));
+    }
+    // Checking that all actions are included.
+    assertEquals(expectedActionsSet, histogramActions);
+  }
+
+  private Map<String, String> getLablesMap(Collector.MetricFamilySamples.Sample sample) {
+    Map<String, String> result = new HashMap<>();
+    for (int i = 0; i < sample.labelNames.size(); i++) {
+      result.put(sample.labelNames.get(i), sample.labelValues.get(i));
+    }
+    return result;
+  }
+
+  protected void verifyCapacityReservationAws(
+      UUID universeUUID, Map<String, Map<String, ZoneData>>... instanceTypeToZonesAndNodesArray) {
+
+    List<Double> nodesCounts = new ArrayList<>();
+    for (Map<String, Map<String, ZoneData>> instanceTypeToZonesAndNodes :
+        instanceTypeToZonesAndNodesArray) {
+      instanceTypeToZonesAndNodes.forEach(
+          (instanceType, map) -> {
+            map.forEach(
+                (zone, zoneData) -> {
+                  String instanceTypeRes =
+                      DoCapacityReservation.getZoneInstanceCapacityReservationName(
+                          universeUUID, "az-" + zone, instanceType);
+                  verify(cloudAPI)
+                      .createCapacityReservation(
+                          Mockito.eq(defaultProvider),
+                          Mockito.eq(instanceTypeRes),
+                          Mockito.eq(zoneData.region),
+                          Mockito.eq("az-" + zone),
+                          Mockito.eq(instanceType),
+                          Mockito.eq(Integer.valueOf(zoneData.nodes.size())),
+                          Mockito.eq(
+                              Map.of(
+                                  "universe-name",
+                                  "universe-test",
+                                  "universe-uuid",
+                                  universeUUID.toString())));
+                  nodesCounts.add((double) zoneData.nodes.size());
+                  verify(cloudAPI)
+                      .deleteCapacityReservation(
+                          Mockito.eq(defaultProvider),
+                          Mockito.eq(zoneData.region),
+                          Mockito.eq(instanceTypeRes));
+                });
+          });
+    }
+
+    validateMetrics(Common.CloudType.aws, nodesCounts, 0);
+  }
+
+  protected void verifyNodeInteractionsCapacityReservation(
+      int numberOfInvocations,
+      NodeManager.NodeCommandType commandType,
+      Function<NodeTaskParams, String> capacityExtractor,
+      Map<String, List<String>> reservationToNodes) {
+    ArgumentCaptor<NodeManager.NodeCommandType> typeArgumentCaptor =
+        ArgumentCaptor.forClass(NodeManager.NodeCommandType.class);
+    ArgumentCaptor<NodeTaskParams> nodeTaskParamCaptor =
+        ArgumentCaptor.forClass(NodeTaskParams.class);
+
+    verify(mockNodeManager, times(numberOfInvocations))
+        .nodeCommand(typeArgumentCaptor.capture(), nodeTaskParamCaptor.capture());
+
+    int j = 0;
+    List<NodeTaskParams> allParams = nodeTaskParamCaptor.getAllValues();
+    for (NodeManager.NodeCommandType allValue : typeArgumentCaptor.getAllValues()) {
+      if (allValue == commandType) {
+        NodeTaskParams nodeTaskParams = allParams.get(j);
+        String reservation = capacityExtractor.apply(nodeTaskParams);
+        assertNotNull(reservation);
+        assertTrue(reservationToNodes.get(reservation).contains(nodeTaskParams.nodeName));
+      }
+      j++;
+    }
+  }
+
+  protected class ZoneData {
+    public final String region;
+    public final List<String> nodes;
+
+    public ZoneData(String region, List<String> nodes) {
+      this.region = region;
+      this.nodes = nodes;
     }
   }
 }

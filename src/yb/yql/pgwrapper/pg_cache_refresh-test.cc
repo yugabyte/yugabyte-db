@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -27,6 +27,16 @@ const auto kTableName = "test"s;
 }
 
 class PgCacheRefreshTest : public LibPqTestBase {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    LibPqTestBase::UpdateMiniClusterOptions(opts);
+    // Tests here run DDLs concurrently with DMLs. Such behavior will not be possible
+    // with table locks enabled.
+    opts->extra_tserver_flags.emplace_back(
+        "--allowed_preview_flags_csv=enable_object_locking_for_table_locks");
+    opts->extra_tserver_flags.emplace_back("--enable_object_locking_for_table_locks=false");
+  }
+
  protected:
   void TestSetup(PGConn* conn) {
     ASSERT_OK(conn->ExecuteFormat("CREATE TABLE $0(id int)", kTableName));

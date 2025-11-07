@@ -72,10 +72,8 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
   protected Hook hook1, hook2;
   protected HookScope hookScope1, hookScope2;
 
-  @Override
   @Before
   public void setUp() {
-    super.setUp();
     Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
     Region.create(onPremProvider, "region-1", "Region 1", "yb-image-1");
     defaultUser = ModelFactory.testUser(defaultCustomer);
@@ -180,7 +178,11 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
     userIntent.accessKeyCode = "default-key";
     userIntent.replicationFactor = 3;
     userIntent.regionList = ImmutableList.of(region.getUuid());
-    userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
+    if (provider.getCloudCode() == Common.CloudType.azu) {
+      userIntent.instanceType = "Standard_D2as_v4";
+    } else {
+      userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
+    }
     Common.CloudType providerType = Common.CloudType.valueOf(provider.getCode());
     userIntent.providerType = providerType;
     userIntent.provider = provider.getUuid().toString();
@@ -202,27 +204,29 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
             result.getUniverseUUID(),
             ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
     if (providerType == Common.CloudType.onprem) {
-      Universe.saveDetails(
-          result.getUniverseUUID(),
-          u -> {
-            String instanceType = u.getNodes().iterator().next().cloudInfo.instance_type;
-            Map<UUID, Set<String>> onpremAzToNodes = new HashMap<>();
-            for (NodeDetails node : u.getNodes()) {
-              Set<String> nodeNames = onpremAzToNodes.getOrDefault(node.azUuid, new HashSet<>());
-              nodeNames.add(node.nodeName);
-              onpremAzToNodes.put(node.azUuid, nodeNames);
-            }
-            Cluster primaryCluster = u.getUniverseDetails().getPrimaryCluster();
-            Map<String, NodeInstance> nodeMap =
-                NodeInstance.pickNodes(primaryCluster.uuid, onpremAzToNodes, instanceType);
-            for (NodeDetails node : u.getNodes()) {
-              NodeInstance nodeInstance = nodeMap.get(node.nodeName);
-              if (nodeInstance != null) {
-                node.nodeUuid = nodeInstance.getNodeUuid();
-              }
-            }
-          },
-          false);
+      result =
+          Universe.saveDetails(
+              result.getUniverseUUID(),
+              u -> {
+                String instanceType = u.getNodes().iterator().next().cloudInfo.instance_type;
+                Map<UUID, Set<String>> onpremAzToNodes = new HashMap<>();
+                for (NodeDetails node : u.getNodes()) {
+                  Set<String> nodeNames =
+                      onpremAzToNodes.getOrDefault(node.azUuid, new HashSet<>());
+                  nodeNames.add(node.nodeName);
+                  onpremAzToNodes.put(node.azUuid, nodeNames);
+                }
+                Cluster primaryCluster = u.getUniverseDetails().getPrimaryCluster();
+                Map<String, NodeInstance> nodeMap =
+                    NodeInstance.pickNodes(primaryCluster.uuid, onpremAzToNodes, instanceType);
+                for (NodeDetails node : u.getNodes()) {
+                  NodeInstance nodeInstance = nodeMap.get(node.nodeName);
+                  if (nodeInstance != null) {
+                    node.nodeUuid = nodeInstance.getNodeUuid();
+                  }
+                }
+              },
+              false);
     }
 
     return result;

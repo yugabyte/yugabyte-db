@@ -1,5 +1,5 @@
 ---
-title: YugabyteDB Anywhere networking requirements
+title: YugabyteDB Anywhere software requirements for Kubernetes
 headerTitle: Prerequisites to deploy YBA on a VM
 linkTitle: Server for YBA
 description: Prerequisites for installing YugabyteDB Anywhere.

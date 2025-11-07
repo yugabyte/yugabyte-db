@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 import { Component } from 'react';
 import PropTypes from 'prop-types';
@@ -44,7 +44,7 @@ export default class YBCost extends Component {
       <YBFormattedNumber
         value={finalCost}
         maximumFractionDigits={2}
-        formattedNumberStyle="currency"
+        formatStyle="currency"
         currency="USD"
         multiplier={multiplier}
       />

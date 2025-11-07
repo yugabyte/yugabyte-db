@@ -6,9 +6,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -199,10 +199,20 @@ class Iterator : public Cleanable {
   }
 
   // Iterator could be created with filter in deferred mode specified via ReadOptions.
-  // In this case iterators for all sources (SST files and MemTables) are created.
-  // But it is allowed to update user key for filter via UpdateFilterKey.
-  // The filter does not change current entry, but applied during calls to Seek/Next.
-  virtual void UpdateFilterKey(Slice user_key_for_filter) = 0;
+  // In this case child iterators for all sources (SST files and MemTables) are created.
+  //
+  // UpdateFilterKey makes iterator only look into sources that may contain user_key_for_filter
+  // based on filter (for example, bloom filter). It does not change current entry, but applied
+  // during subsequent calls to Seek/Next.
+  //
+  // When `seek_key` is not empty, child iterators that are matching the updated filter and not yet
+  // positioned to some key will be positioned to seek_key.
+  // It is necessary for correctness of "seek forward" optimized function which by design should
+  // result in no-op if iterator position is already after target key.
+  // We need this because if some child iterator matching the updated filter contains seek_key, but
+  // is not positioned to seek_key, SeekForward(seek_key) will incorrectly skip this key if other
+  // child iterators are positioned after seek_key.
+  virtual void UpdateFilterKey(Slice user_key_for_filter, Slice seek_key) = 0;
 };
 
 class DataBlockAwareIndexIterator : public Iterator {

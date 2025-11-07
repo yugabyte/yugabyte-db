@@ -5,7 +5,7 @@ linkTitle: Four ways to specify offset
 description: Explains the four ways to specify the UTC offset. [YSQL]
 image: /images/section_icons/api/subsection.png
 menu:
-  v2.20:
+  v2.20_api:
     identifier: ways-to-spec-offset
     parent: timezones
     weight: 40

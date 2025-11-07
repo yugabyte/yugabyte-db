@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -43,6 +43,8 @@
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
 #include "yb/util/status_callback.h"
+
+#include "yb/util/concepts.h"
 
 namespace yb {
 
@@ -73,6 +75,7 @@ class Synchronizer {
   // This version of AsStatusCallback is for cases when the callback can outlive the synchronizer.
   // The callback holds a weak pointer to the synchronizer.
   static StatusCallback AsStatusCallback(const std::shared_ptr<Synchronizer>& synchronizer);
+  static StdStatusCallback AsStdStatusCallback(const std::shared_ptr<Synchronizer>& synchronizer);
 
   StatusFunctor AsStatusFunctor() {
     return std::bind(&Synchronizer::StatusCB, this, std::placeholders::_1);
@@ -121,13 +124,17 @@ std::future<Result> MakeFuture(const Functor& functor) {
 }
 
 template <class T>
-bool IsReady(const std::shared_future<T>& f) {
+concept FutureType = AnyOfTemplateTypes<T, std::future, std::shared_future>;
+
+template <FutureType F>
+bool IsReady(const F& f) {
   return f.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
 }
 
-template <class T>
-bool IsReady(const std::future<T>& f) {
-  return f.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
+template <FutureType F, class Clock, class Duration>
+Status Wait(const F& f, const std::chrono::time_point<Clock, Duration>& deadline) {
+  return f.wait_until(deadline) == std::future_status::ready
+      ? Status::OK() : STATUS(TimedOut, "Timeout waiting on future");
 }
 
 } // namespace yb

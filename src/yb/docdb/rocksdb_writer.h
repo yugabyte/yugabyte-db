@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -14,6 +14,8 @@
 #pragma once
 
 #include <span>
+
+#include <boost/logic/tribool.hpp>
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/hybrid_time.h"
@@ -72,7 +74,8 @@ class TransactionalWriter : public rocksdb::DirectWriter {
       dockv::PartialRangeKeyIntents partial_range_key_intents,
       const Slice& replicated_batches_state,
       IntraTxnWriteId intra_txn_write_id,
-      tablet::TransactionIntentApplier* applier);
+      tablet::TransactionIntentApplier* applier,
+      dockv::SkipPrefixLocks skip_prefix_locks = dockv::SkipPrefixLocks::kFalse);
 
   Status Apply(rocksdb::DirectWriteHandler& handler) override;
 
@@ -88,7 +91,8 @@ class TransactionalWriter : public rocksdb::DirectWriter {
   Status operator()(
       dockv::IntentTypeSet intent_types, dockv::AncestorDocKey ancestor_doc_key,
       dockv::FullDocKey full_doc_key, Slice value_slice, dockv::KeyBytes* key,
-      dockv::LastKey last_key);
+      dockv::LastKey last_key, dockv::IsRowLock is_row_lock, dockv::IsTopLevelKey is_top_level_key,
+      boost::tribool pk_is_known);
 
   Status Finish();
   Status AddWeakIntent(
@@ -106,6 +110,7 @@ class TransactionalWriter : public rocksdb::DirectWriter {
   IntraTxnWriteId write_id_ = 0;
   const LWTransactionMetadataPB* metadata_to_store_ = nullptr;
   tablet::TransactionIntentApplier* applier_;
+  dockv::SkipPrefixLocks skip_prefix_locks_ = dockv::SkipPrefixLocks::kFalse;
 
   // TODO(dtxn) weak & strong intent in one batch.
   // TODO(dtxn) extract part of code knowing about intents structure to lower level.
@@ -137,7 +142,7 @@ class IntentsWriterContext {
   virtual ~IntentsWriterContext() = default;
 
   // Called at the start of iteration. Passed key of the first found entry, if present.
-  virtual void Start(const boost::optional<Slice>& first_key) {}
+  virtual void Start(const std::optional<Slice>& first_key) {}
 
   // Called on every reverse index entry.
   // key - entry key.
@@ -243,23 +248,15 @@ using ApplyIntentsContextCompleteListener = boost::function<void(const Consensus
 class ApplyIntentsContext : public IntentsWriterContext, public FrontierSchemaVersionUpdater {
  public:
   ApplyIntentsContext(
-      const TabletId& tablet_id,
-      const TransactionId& transaction_id,
-      const ApplyTransactionState* apply_state,
-      const SubtxnSet& aborted,
-      HybridTime commit_ht,
-      HybridTime log_ht,
-      HybridTime file_filter_ht,
-      const OpId& apply_op_id,
-      const KeyBounds* key_bounds,
-      SchemaPackingProvider& schema_packing_provider,
-      ConsensusFrontiers& frontiers,
-      rocksdb::DB* intents_db,
-      const DocVectorIndexesPtr& vector_indexes,
-      const StorageSet& apply_to_storages,
+      const TabletId& tablet_id, const TransactionId& transaction_id,
+      const ApplyTransactionState* apply_state, const SubtxnSet& aborted, HybridTime commit_ht,
+      HybridTime log_ht, HybridTime file_filter_ht, const OpId& apply_op_id,
+      const KeyBounds* key_bounds, SchemaPackingProvider& schema_packing_provider,
+      ConsensusFrontiers& frontiers, rocksdb::DB* intents_db,
+      const DocVectorIndexesPtr& vector_indexes, const StorageSet& apply_to_storages,
       ApplyIntentsContextCompleteListener complete_listener);
 
-  void Start(const boost::optional<Slice>& first_key) override;
+  void Start(const std::optional<Slice>& first_key) override;
 
   Result<bool> Entry(
       const Slice& key, const Slice& value, bool metadata,

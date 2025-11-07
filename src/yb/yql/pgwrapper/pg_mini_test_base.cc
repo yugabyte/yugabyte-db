@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -40,6 +40,7 @@ DECLARE_int32(pggate_rpc_timeout_secs);
 DECLARE_string(pgsql_proxy_bind_address);
 DECLARE_int32(pgsql_proxy_webserver_port);
 DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_int32(ysql_num_tablets);
 DECLARE_int32(ysql_num_shards_per_tserver);
 DECLARE_string(ysql_pg_conf_csv);
 
@@ -62,6 +63,9 @@ void PgMiniTestBase::SetUp() {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_disable_index_backfill) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_num_shards_per_tserver) = 1;
 
+  // Make sure ysql_num_tablets are not specified to rely on other shard-related flags.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_num_tablets) = -1;
+
   master::SetDefaultInitialSysCatalogSnapshotFlags();
   MiniClusterTestWithClient::SetUp();
 
@@ -73,19 +77,19 @@ void PgMiniTestBase::SetUp() {
   OverrideMiniClusterOptions(&mini_cluster_opt);
   cluster_ = std::make_unique<MiniCluster>(mini_cluster_opt);
 
-  // Use TS-0 IP for PG server. YBC process and PG auto analyze service use this IP.
-  const auto pg_ts_idx = 0;
-  const auto pg_addr = server::TEST_RpcAddress(pg_ts_idx + 1, server::Private::kTrue);
+  const auto pg_addr = server::TEST_RpcAddress(kPgTsIndex + 1, server::Private::kTrue);
   auto pg_port = cluster_->AllocateFreePort();
+  auto host_port = HostPort(pg_addr, pg_port);
   // The 'pgsql_proxy_bind_address' flag must be set before starting the cluster. Each
   // tserver will store this address when it starts. Setting the 'pgsql_proxy_bind_address' flag
   // is needed for tserver local PG connections.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_bind_address)
-      = HostPort(pg_addr, pg_port).ToString();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_bind_address) = host_port.ToString();
+
+  cluster_->SetPgTServerSelected(kPgTsIndex, host_port);
 
   ASSERT_OK(cluster_->Start(ExtraTServerOptions()));
 
-  ASSERT_OK(SetupPGCallbacksAndStartPG(pg_port, pg_ts_idx, mini_cluster_opt.wait_for_pg));
+  ASSERT_OK(SetupPGCallbacksAndStartPG(pg_port, kPgTsIndex, mini_cluster_opt.wait_for_pg));
   DontVerifyClusterBeforeNextTearDown();
 
   ASSERT_OK(MiniClusterTestWithClient<MiniCluster>::CreateClient());
@@ -152,7 +156,7 @@ void PgMiniTestBase::StartPgSupervisor(uint16_t pg_port, const int pg_ts_idx) {
 }
 
 Status PgMiniTestBase::SetupPGCallbacksAndStartPG(
-    uint16_t pg_port, int pg_ts_idx, bool wait_for_pg) {
+    uint16_t pg_port, size_t pg_ts_idx, bool wait_for_pg) {
   RETURN_NOT_OK(WaitForInitDb(cluster_.get()));
 
   auto pg_process_conf = VERIFY_RESULT(CreatePgProcessConf(pg_port, pg_ts_idx));
@@ -204,9 +208,7 @@ Status PgMiniTestBase::StartPostgres() {
 }
 
 Status PgMiniTestBase::RestartPostgres() {
-  LOG(INFO) << "Restarting PostgreSQL server";
-  StopPostgres();
-  return StartPostgres();
+  return cluster_->mini_tablet_server(kPgTsIndex)->server()->RestartPG();
 }
 
 void PgMiniTestBase::OverrideMiniClusterOptions(MiniClusterOptions* options) {}

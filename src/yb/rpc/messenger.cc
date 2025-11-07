@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -123,6 +123,7 @@ MessengerBuilder::MessengerBuilder(std::string name)
       connection_keepalive_time_(FLAGS_rpc_default_keepalive_time_ms * 1ms),
       coarse_timer_granularity_(100ms),
       listen_protocol_(TcpStream::StaticProtocol()),
+      uncompressed_protocol_(TcpStream::StaticProtocol()),
       workers_limit_(FLAGS_rpc_workers_limit),
       num_connections_to_server_(GetAtomicFlag(&FLAGS_num_connections_to_server)) {
   AddStreamFactory(TcpStream::StaticProtocol(), TcpStream::Factory());
@@ -451,17 +452,17 @@ void Messenger::ShutdownThreadPools() {
 }
 
 void Messenger::UnregisterAllServices() {
-  if (!rpc_services_counter_stopped_) {
-    CHECK_OK(rpc_services_counter_.DisableAndWaitForOps(CoarseTimePoint::max(), Stop::kTrue));
-    rpc_services_counter_.UnlockExclusiveOpMutex();
-    rpc_services_counter_stopped_ = true;
+  if (!rpc_services_stopped_.Set()) {
+    return;
   }
+  CHECK_OK(rpc_services_counter_.DisableAndWaitForOps(CoarseTimePoint::max(), Stop::kTrue));
+  rpc_services_counter_.UnlockExclusiveOpMutex();
 
-  for (const auto& p : rpc_services_) {
-    p.second->StartShutdown();
+  for (const auto& [_, rpc_service]  : rpc_services_) {
+    rpc_service->StartShutdown();
   }
-  for (const auto& p : rpc_services_) {
-    p.second->CompleteShutdown();
+  for (const auto& [_, rpc_service] : rpc_services_) {
+    rpc_service->CompleteShutdown();
   }
 
   rpc_endpoints_.clear();
@@ -588,7 +589,8 @@ Messenger::Messenger(const MessengerBuilder &bld)
       log_prefix_(Format("Messenger($0, \"$1\"): ", static_cast<void*>(this), name_)),
       connection_context_factory_(bld.connection_context_factory_),
       stream_factories_(bld.stream_factories_),
-      listen_protocol_(bld.listen_protocol_),
+      listen_protocol_(*bld.listen_protocol_),
+      uncompressed_protocol_(*bld.uncompressed_protocol_),
       rpc_services_counter_(name_ + " endpoints"),
       metric_entity_(bld.metric_entity_),
       io_thread_pool_(name_, FLAGS_io_thread_pool_size),

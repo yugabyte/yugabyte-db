@@ -26,4 +26,14 @@ allOf:
         description: Custom prefix to be added to all the metrics. Can be customised to each exporter differently.
         type: string
         example: ybdb.
-        default: ybdb.
+        default: ''
+      memory_limit_mib:
+        description: Memory limit in MiB for the OpenTelemetry Collector process in the config file.
+        type: integer
+        example: 2048
+        default: 2048
+      memory_limit_check_interval_seconds:
+        description: Check interval in seconds for the MemoryLimiterProcessor.
+        type: integer
+        example: 10
+        default: 10

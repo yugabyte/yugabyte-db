@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -35,8 +35,6 @@
 #include <shared_mutex>
 #include <string>
 #include <vector>
-
-#include <boost/optional.hpp>
 
 #include "yb/client/client_fwd.h"
 
@@ -145,11 +143,11 @@ class TabletBootstrapTestHooksIf {
 
   // This is called during TabletBootstrap initialization so that the test can pretend certain
   // OpIds have been flushed in to regular and intents RocksDBs.
-  virtual boost::optional<DocDbOpIds> GetFlushedOpIdsOverride() const = 0;
+  virtual std::optional<DocDbOpIds> GetFlushedOpIdsOverride() const = 0;
 
   // This is called during TabletBootstrap initialization so that the test can pretent certain
   // OpId has been flushed in retryable requests;
-  virtual boost::optional<OpId> GetFlushedRetryableRequestsOpIdOverride() const = 0;
+  virtual std::optional<OpId> GetFlushedRetryableRequestsOpIdOverride() const = 0;
 
   // TabletBootstrap calls this when an operation is replayed.
   // replay_decision is true for transaction update operations that have already been applied to the

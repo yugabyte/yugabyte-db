@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common/shell"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components/ybactl"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components/yugaware"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
@@ -26,13 +27,13 @@ func rollbackUpgrade(backupDir string, state *ybactlstate.State) {
 		log.Warn(fmt.Sprintf("failed to reconfigure with old yba version: %s", out.Error.Error()))
 	}
 
-	// Stop YBA to prevent any potential schema changes PLAT-16051
-	if out := shell.Run(filepath.Join(common.YbactlInstallDir(), "yba-ctl"), "stop", "yb-platform"); !out.SucceededOrLog() {
-		log.Warn(fmt.Sprintf("failed to stop yba: %s", out.Error.Error()))
-	}
+	if state.RestoreDBOnRollback && backupDir != "" {
+		// Restore YBA data
+		// Stop YBA to prevent any potential schema changes PLAT-16051
+		if out := shell.Run(filepath.Join(common.YbactlInstallDir(), "yba-ctl"), "stop", "yb-platform"); !out.SucceededOrLog() {
+			log.Warn(fmt.Sprintf("failed to stop yba: %s", out.Error.Error()))
+		}
 
-	// Restore YBA data
-	if backupDir != "" {
 		backup := common.FindRecentBackup(backupDir)
 		log.Info(fmt.Sprintf("Rolling YBA data back from %s", backup))
 		err := RestoreBackupScriptHelper(backup, common.GetBaseInstall(), true, true, false, false, true,
@@ -44,14 +45,18 @@ func rollbackUpgrade(backupDir string, state *ybactlstate.State) {
 		if err != nil {
 			log.Warn(fmt.Sprintf("failed to restore backup: %s", err.Error()))
 		}
-	}
 
-	// Start old YBA up again
-	if out := shell.Run(filepath.Join(common.YbactlInstallDir(), "yba-ctl"), "start", "yb-platform"); !out.SucceededOrLog() {
-		log.Warn(fmt.Sprintf("failed to stop yba: %s", out.Error.Error()))
+		// Start old YBA up again
+		if out := shell.Run(filepath.Join(common.YbactlInstallDir(), "yba-ctl"), "start", "yb-platform"); !out.SucceededOrLog() {
+			log.Warn(fmt.Sprintf("failed to start yba: %s", out.Error.Error()))
+		}
+		state.RestoreDBOnRollback = false
+		if err := ybactlstate.StoreState(state); err != nil {
+			log.Warn("failed to write state: " + err.Error())
+		}
 	}
-
 	// Remove newest install
+
 	common.RemoveAll(common.GetSoftwareRoot())
 
 	// cleanup old backups
@@ -186,7 +191,7 @@ func upgradeCmd() *cobra.Command {
 			}
 
 			// Here is the postgres minor version/no upgrade workflow
-			if err := common.Upgrade(ybactl.Version); err != nil {
+			if err := common.PreUpgrade(ybactl.Version); err != nil {
 				if rollback {
 					rollbackUpgrade(backupDir, state)
 				}
@@ -213,16 +218,29 @@ func upgradeCmd() *cobra.Command {
 			}
 			*/
 
-			for service := range serviceManager.Services() {
-				log.Info("About to upgrade component " + service.Name())
-				if err := service.Upgrade(); err != nil {
-					if rollback {
-						rollbackUpgrade(backupDir, state)
+			serviceActionFnc := func(name string, action func(service components.Service) error) {
+				for service := range serviceManager.Services() {
+					log.Info("About to perform " + name + " on component " + service.Name())
+					if err := action(service); err != nil {
+						if rollback {
+							rollbackUpgrade(backupDir, state)
+						}
+						log.Fatal("Failed to perform " + name + " on " + service.Name() + ": " + err.Error())
 					}
-					log.Fatal("Upgrade of " + service.Name() + " failed: " + err.Error())
+					log.Info("Completed " + name + " of component " + service.Name())
 				}
-				log.Info("Completed upgrade of component " + service.Name())
 			}
+			// Perform pre-upgrade action for all the services.
+			serviceActionFnc("pre-upgrade", func(service components.Service) error {
+				return service.PreUpgrade()
+			})
+			state.RestoreDBOnRollback = true
+			if err := ybactlstate.StoreState(state); err != nil {
+				log.Fatal("failed to write state: " + err.Error())
+			}
+			serviceActionFnc("upgrade", func(service components.Service) error {
+				return service.Upgrade()
+			})
 
 			// Permissions update to be safe
 			if err := common.SetAllPermissions(); err != nil {
@@ -272,6 +290,7 @@ func upgradeCmd() *cobra.Command {
 
 			state.CurrentStatus = ybactlstate.InstalledStatus
 			state.Version = ybactl.Version
+			state.RestoreDBOnRollback = false
 			if err := ybactlstate.StoreState(state); err != nil {
 				log.Fatal("failed to write state: " + err.Error())
 			}

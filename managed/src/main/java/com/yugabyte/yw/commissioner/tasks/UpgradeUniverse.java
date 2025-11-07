@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 YugaByte, Inc. and Contributors
+ * Copyright 2019 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -1237,6 +1237,9 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
     // Add audit log config from the primary cluster
     params.auditLogConfig =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.auditLogConfig;
+    // Add query log config from primary cluster
+    params.queryLogConfig =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.queryLogConfig;
     params.metricsExportConfig =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.metricsExportConfig;
 

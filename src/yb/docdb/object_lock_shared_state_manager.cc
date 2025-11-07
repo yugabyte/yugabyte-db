@@ -83,43 +83,72 @@ ObjectLockOwnerRegistry::GetOwnerInfo(SessionLockOwnerTag tag) const {
 }
 
 void ObjectLockSharedStateManager::SetupShared(ObjectLockSharedState& shared) {
-  DCHECK(!shared_);
-  shared_ = &shared;
+  ParentProcessGuard g;
+  std::lock_guard lock(setup_mutex_);
+
+  DCHECK(!shared_.load(std::memory_order_relaxed));
+
+  shared_activate_ = shared.Activate(std::move(pre_setup_locks_));
+  shared_.store(&shared, std::memory_order_release);
 }
 
 size_t ObjectLockSharedStateManager::ConsumePendingSharedLockRequests(
     const LockRequestConsumer& consume) {
+  auto* shared = shared_.load(std::memory_order_relaxed);
   return CallWithRequestConsumer(
-      [this](auto&& c) PARENT_PROCESS_ONLY { return shared_->ConsumePendingLockRequests(c); },
+      shared,
+      [shared](auto&& c) PARENT_PROCESS_ONLY { return shared->ConsumePendingLockRequests(c); },
       consume);
 }
 
 size_t ObjectLockSharedStateManager::ConsumeAndAcquireExclusiveLockIntents(
     const LockRequestConsumer& consume, std::span<const ObjectLockPrefix*> object_ids) {
+  auto* shared = shared_.load(std::memory_order_relaxed);
+  if (PREDICT_FALSE(!shared)) {
+    std::lock_guard lock(setup_mutex_);
+    shared = shared_.load(std::memory_order_acquire);
+    if (!shared) {
+      for (const auto* object_id : object_ids) {
+        ++pre_setup_locks_[*object_id];
+      }
+      return 0uz;
+    }
+  }
+
   return CallWithRequestConsumer(
-      [this, object_ids](auto&& c) PARENT_PROCESS_ONLY {
-        return shared_->ConsumeAndAcquireExclusiveLockIntents(c, object_ids);
+      shared,
+      [shared, object_ids](auto&& c) PARENT_PROCESS_ONLY {
+        return shared->ConsumeAndAcquireExclusiveLockIntents(c, object_ids);
       },
       consume);
 }
 
 void ObjectLockSharedStateManager::ReleaseExclusiveLockIntent(
     const ObjectLockPrefix& object_id, size_t count) {
-  ParentProcessGuard g;
-  if (shared_) {
-    shared_->ReleaseExclusiveLockIntent(object_id, count);
+  auto* shared = shared_.load(std::memory_order_relaxed);
+  if (PREDICT_FALSE(!shared)) {
+    std::lock_guard lock(setup_mutex_);
+    shared = shared_.load(std::memory_order_acquire);
+    if (!shared) {
+      pre_setup_locks_[object_id] -= count;
+      return;
+    }
   }
+
+  ParentProcessGuard g;
+  shared->ReleaseExclusiveLockIntent(object_id, count);
 }
 
 TransactionId ObjectLockSharedStateManager::TEST_last_owner() const {
   ParentProcessGuard g;
-  return registry_.GetOwnerInfo(DCHECK_NOTNULL(shared_)->TEST_last_owner())->txn_id;
+  return registry_.GetOwnerInfo(
+      DCHECK_NOTNULL(shared_.load(std::memory_order_relaxed))->TEST_last_owner())->txn_id;
 }
 
 template<typename ConsumeMethod>
 size_t ObjectLockSharedStateManager::CallWithRequestConsumer(
-    ConsumeMethod&& method, const LockRequestConsumer& consume) {
-  if (!shared_) {
+    ObjectLockSharedState* shared, ConsumeMethod&& method, const LockRequestConsumer& consume) {
+  if (!shared) {
     return 0;
   }
 
@@ -138,6 +167,14 @@ size_t ObjectLockSharedStateManager::CallWithRequestConsumer(
               .key = MakeLockPrefix(request, entry_type),
               .intent_types = intent_types}});
     }
+
+    // Track fastpath object locks for pg_locks.
+    object_lock_tracker_->TrackLock(
+        ObjectLockContext{
+            owner_info->txn_id, request.subtxn_id, request.database_oid, request.relation_oid,
+            request.object_oid, request.object_sub_oid,
+            FastpathLockTypeToTableLockType(request.lock_type)},
+        ObjectLockState::GRANTED);
   };
 
   ParentProcessGuard g;

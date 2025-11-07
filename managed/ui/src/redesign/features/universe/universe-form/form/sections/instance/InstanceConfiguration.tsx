@@ -233,7 +233,7 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
           )
         }
         {
-          ebsVolumeEnabledInRuntimeConfig && ebsEnabled && (
+          ebsVolumeEnabledInRuntimeConfig && provider?.code === CloudType.aws && ebsEnabled && (
             <Box mt={2} mb={2}>
               <EBSKmsConfigField disabled={!isCreatePrimary} />
             </Box>

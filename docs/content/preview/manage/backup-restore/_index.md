@@ -71,6 +71,6 @@ In some circumstances, a backup can fail during high DDL activity. Avoid perform
     title="Time travel query"
     body="Query data as at a specific point in time."
     href="time-travel-query/"
-    icon="fa-thin fa-clock-rotate-left">}}
+    icon="fa-thin fa-police-box">}}
 
 {{</index/block>}}

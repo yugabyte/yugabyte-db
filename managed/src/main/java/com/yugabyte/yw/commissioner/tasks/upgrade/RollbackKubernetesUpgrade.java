@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
@@ -162,11 +162,11 @@ public class RollbackKubernetesUpgrade extends KubernetesUpgradeTaskBase {
             if (requireAdditionalSuperUserForCatalogUpgrade) {
               createManageCatalogUpgradeSuperUserTask(Action.DELETE_USER);
             }
-
-            // Update PITR configs to set intermittentMinRecoverTimeInMillis to current time
-            // as PITR configs are only valid from the completion of software rollback
-            createUpdatePitrConfigIntermittentMinRecoverTimeTask();
           }
+
+          // Re-enable PITR configs after successful rollback
+          // This also updates intermittentMinRecoverTimeInMillis for all PITR configs
+          createEnablePitrConfigTask();
 
           // Update Software version
           createUpdateSoftwareVersionTask(targetVersion, false /*isSoftwareUpdateViaVm*/)

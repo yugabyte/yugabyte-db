@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
@@ -93,6 +93,9 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
               true /* isSoftwareRollbackAllowed */);
 
           createStoreAutoFlagConfigVersionTask(taskParams().getUniverseUUID(), newVersion);
+
+          // Disable PITR configs at the start of software upgrade
+          createDisablePitrConfigTask();
 
           String password = null;
           boolean catalogUpgradeCompleted = false;

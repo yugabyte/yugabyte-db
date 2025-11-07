@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -22,8 +22,6 @@
 #include <future>
 #include <memory>
 #include <type_traits>
-
-#include <boost/optional/optional.hpp>
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/opid.h"
@@ -107,6 +105,8 @@ struct TransactionalBatchData {
   }
 };
 
+class FastModeTransactionScope;
+
 // TransactionParticipant manages running transactions, i.e. transactions that have intents in
 // appropriate tablet. Since this class manages transactions of tablet there is separate class
 // instance per tablet.
@@ -136,8 +136,8 @@ class TransactionParticipant : public TransactionStatusManager {
   // with new state of replicated batch indexes. Encoding does not matter for user of this function,
   // he should just append it to appropriate value.
   //
-  // Returns boost::none when transaction is unknown.
-  Result<boost::optional<std::pair<IsolationLevel, TransactionalBatchData>>> PrepareBatchData(
+  // Returns std::nullopt when transaction is unknown.
+  Result<std::optional<std::pair<IsolationLevel, TransactionalBatchData>>> PrepareBatchData(
       const TransactionId& id, size_t batch_idx,
       boost::container::small_vector_base<uint8_t>* encoded_replicated_batches,
       bool has_write_pairs);
@@ -146,7 +146,7 @@ class TransactionParticipant : public TransactionStatusManager {
 
   HybridTime LocalCommitTime(const TransactionId& id) override;
 
-  boost::optional<TransactionLocalState> LocalTxnData(const TransactionId& id) override;
+  std::optional<TransactionLocalState> LocalTxnData(const TransactionId& id) override;
 
   void RequestStatusAt(const StatusRequest& request) override;
 
@@ -179,13 +179,11 @@ class TransactionParticipant : public TransactionStatusManager {
   Status FillPriorities(
       boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) override;
 
-  Result<boost::optional<TabletId>> FindStatusTablet(const TransactionId& id) override;
+  Result<std::optional<TabletId>> FindStatusTablet(const TransactionId& id) override;
 
-  void GetStatus(const TransactionId& transaction_id,
-                 size_t required_num_replicated_batches,
-                 int64_t term,
-                 tserver::GetTransactionStatusAtParticipantResponsePB* response,
-                 rpc::RpcContext* context);
+  void GetStatus(
+      const TransactionId& transaction_id, size_t required_num_replicated_batches, int64_t term,
+      tserver::GetTransactionStatusAtParticipantResponsePB* response, rpc::RpcContext* context);
 
   TransactionParticipantContext* context() const;
 
@@ -270,12 +268,50 @@ class TransactionParticipant : public TransactionStatusManager {
 
   void ForceRefreshWaitersForBlocker(const TransactionId& txn_id);
 
+  // Returns a 'FastModeTransactionScope' indicating whether the fast mode should be used. Based on
+  // the isolation level and the returned value, we can determine whether to skip the prefix lock.
+  Result<FastModeTransactionScope> ShouldUseFastMode(
+      IsolationLevel isolation, bool skip_prefix_locks, const TransactionId& id);
+  std::pair<uint64_t, uint64_t> GetNumFastModeTransactions();
+
  private:
   Result<int64_t> RegisterRequest() override;
   void UnregisterRequest(int64_t request) override;
 
+  friend class FastModeTransactionScope;
+
   class Impl;
   std::shared_ptr<Impl> impl_;
+};
+
+class FastModeTransactionScope {
+ public:
+  FastModeTransactionScope() = default;
+  FastModeTransactionScope(std::shared_ptr<TransactionParticipant::Impl> participant, size_t idx);
+
+  FastModeTransactionScope(const FastModeTransactionScope& rhs);
+  FastModeTransactionScope(FastModeTransactionScope&& rhs);
+
+  void operator=(const FastModeTransactionScope& rhs);
+  void operator=(FastModeTransactionScope&& rhs);
+
+  ~FastModeTransactionScope() {
+    Reset();
+  }
+
+  bool active() const {
+    return participant_ != nullptr;
+  }
+
+  explicit operator bool() const {
+    return active();
+  }
+
+  void Reset();
+
+ private:
+  std::shared_ptr<TransactionParticipant::Impl> participant_;
+  size_t idx_ = 0;
 };
 
 } // namespace tablet

@@ -34,6 +34,7 @@ DECLARE_bool(ysql_conn_mgr_version_matching_connect_higher_version);
 DECLARE_int32(ysql_conn_mgr_max_query_size);
 DECLARE_int32(ysql_conn_mgr_wait_timeout_ms);
 DECLARE_int32(ysql_conn_mgr_max_pools);
+DECLARE_uint32(TEST_ysql_conn_mgr_auth_delay_ms);
 
 // TODO(janand) : GH #17837  Find the optimum value for `ysql_conn_mgr_idle_time`.
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_idle_time, 180,
@@ -143,7 +144,35 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_jitter_time, 120,
     "open beyond its idle timeout duration. This is to avoid sudden bursts of connections closing "
     "when dealing with connection burst sceanrios.");
 
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_max_phy_conn_percent, 85,
+  "This flag represents the percentage of ysql_max_connections as an approximate limit for "
+  "the physical connections that can be created through YSQL Connection Manager. For example, if "
+  "ysql_max_connections is 100 and this flag is set to 85, then YSQL Connection Manager will "
+  "assume a soft physical connection limit of 0.85 * ysql_max_connections, which is 85 in this "
+  "case.");
+
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_dump_heap_snapshot_interval, 0,
+    "Dump tcmalloc current heap snapshot of Ysql Connection Manager process. "
+    "If set to greater than 0, tcmalloc current heap snapshot will be dumped to the conn mgr "
+    "logs after every ysql_conn_mgr_dump_heap_snapshot_interval number of seconds.");
+
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcmalloc_sample_period, 1024 * 1024,
+    "Sets the interval at which TCMalloc should sample allocations for connection manager. "
+    "Sampling is disabled if this is set to 0. This flag will only be in effect if "
+    "ysql_conn_mgr_dump_heap_snapshot_interval is set to greater than 0 i.e if dumping heap "
+    "snapshots is enabled. Otherwise we keep the sample period same as what google tcmalloc "
+    "has set for connection manager process");
+
 namespace {
+
+bool ValidatePhysicalConnectionPercentage(const char* flag_name, uint32_t value) {
+  if (value < 1 || value > 100) {
+    LOG_FLAG_VALIDATION_ERROR(flag_name, value)
+        << "Physical connection percentage must be between 1 and 100.";
+    return false;
+  }
+  return true;
+}
 
 bool ValidateLogSettings(const char* flag_name, const std::string& value) {
   const std::unordered_set<std::string> valid_settings = {
@@ -173,6 +202,7 @@ bool ValidateLogSettings(const char* flag_name, const std::string& value) {
 } // namespace
 
 DEFINE_validator(ysql_conn_mgr_log_settings, &ValidateLogSettings);
+DEFINE_validator(ysql_conn_mgr_max_phy_conn_percent, &ValidatePhysicalConnectionPercentage);
 
 namespace yb {
 namespace ysql_conn_mgr_wrapper {
@@ -249,6 +279,22 @@ Status YsqlConnMgrWrapper::Start() {
               << "for collecting Ysql Connection Manager stats";
 
     proc_->SetEnv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME, std::to_string(stat_shm_key_));
+  }
+
+  unsetenv("YB_YSQL_CONN_MGR_DUMP_HEAP_SNAPSHOT_INTERVAL");
+  if (FLAGS_ysql_conn_mgr_dump_heap_snapshot_interval > 0) {
+    proc_->SetEnv("YB_YSQL_CONN_MGR_DUMP_HEAP_SNAPSHOT_INTERVAL",
+      std::to_string(FLAGS_ysql_conn_mgr_dump_heap_snapshot_interval));
+    LOG(INFO) << "TCMalloc heap snapshot is dumped to the conn mgr logs after every "
+              << FLAGS_ysql_conn_mgr_dump_heap_snapshot_interval << " seconds";
+  }
+  unsetenv("YB_YSQL_CONN_MGR_TCMALLOC_SAMPLE_PERIOD");
+  if (FLAGS_ysql_conn_mgr_dump_heap_snapshot_interval > 0 &&
+      FLAGS_ysql_conn_mgr_tcmalloc_sample_period > 0) {
+    proc_->SetEnv("YB_YSQL_CONN_MGR_TCMALLOC_SAMPLE_PERIOD",
+      std::to_string(FLAGS_ysql_conn_mgr_tcmalloc_sample_period));
+    LOG(INFO) << "TCMalloc sample period is set to: "
+              << FLAGS_ysql_conn_mgr_tcmalloc_sample_period << " bytes";
   }
 
   proc_->SetEnv(YSQL_CONN_MGR_WARMUP_DB, FLAGS_ysql_conn_mgr_warmup_db);

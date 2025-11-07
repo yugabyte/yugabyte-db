@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -56,12 +56,6 @@ void TabletServiceBackupImpl::TabletSnapshotOp(const TabletSnapshotOpRequestPB* 
     return;
   }
 
-  if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
-    if (req->tablet_id_size()) {
-      wait_state->UpdateAuxInfo({.tablet_id = req->tablet_id(0)});
-    }
-  }
-
   if (FLAGS_TEST_fail_tserver_snapshot_op) {
     auto status = STATUS_FORMAT(
         InvalidArgument,
@@ -77,6 +71,8 @@ void TabletServiceBackupImpl::TabletSnapshotOp(const TabletSnapshotOpRequestPB* 
     SetupErrorAndRespond(resp->mutable_error(), status, &context);
     return;
   }
+
+  ash::WaitStateInfo::UpdateCurrentTabletId(req->tablet_id(0));
 
   server::UpdateClock(*req, tablet_manager_->server()->Clock());
 

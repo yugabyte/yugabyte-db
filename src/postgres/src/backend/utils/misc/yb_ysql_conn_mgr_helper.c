@@ -1048,9 +1048,10 @@ YbSendParameterStatusForConnectionManager(const char *name, const char *value)
 	CHECK_FOR_INTERRUPTS();
 	StringInfoData msgbuf;
 
-	pq_beginmessage(&msgbuf, 'S');
+	pq_beginmessage(&msgbuf, 'r');
 	pq_sendstring(&msgbuf, name);
 	pq_sendstring(&msgbuf, value);
+	pq_sendbyte(&msgbuf, 0);	/* flags */
 	pq_endmessage(&msgbuf);
 
 	pq_flush();

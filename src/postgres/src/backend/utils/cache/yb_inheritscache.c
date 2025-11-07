@@ -6,7 +6,7 @@
  *		through the parent oid is O(1) operation. Lookup through the child oid is O(n) operation.
  *      The O(n) operation is acceptable because lookup via the child oid is comparatively rare and
  *      not worth creating another cache indexed by the child id.
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License.  You may obtain a copy of the License at
@@ -42,6 +42,7 @@
 #include "utils/resowner_private.h"
 #include "utils/syscache.h"
 #include "utils/yb_inheritscache.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 
 /*
  *   Parent oid -> list<child tuples>
@@ -251,9 +252,7 @@ YbPreloadPgInheritsCache()
 	table_close(relation, AccessShareLock);
 
 	if (*YBCGetGFlags()->ysql_enable_neghit_full_inheritscache &&
-		!*YBCGetGFlags()->ysql_minimal_catalog_caches_preload &&
-		(IS_NON_EMPTY_STR_FLAG(YBCGetGFlags()->ysql_catalog_preload_additional_table_list) ||
-		 *YBCGetGFlags()->ysql_catalog_preload_additional_tables))
+		YbNeedAdditionalCatalogTables() && !YbUseMinimalCatalogCachesPreload())
 	{
 		fully_loaded = true;
 	}

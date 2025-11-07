@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks;
 
@@ -40,10 +40,8 @@ public class CreateSupportBundleTest extends CommissionerBaseTest {
   private Customer customer;
   protected RuntimeConfigFactory runtimeConfigFactory;
 
-  @Override
   @Before
   public void setUp() {
-    super.setUp();
     when(mockOperatorStatusUpdaterFactory.create()).thenReturn(mockOperatorStatusUpdater);
     this.customer = ModelFactory.testCustomer();
     this.universe = ModelFactory.createUniverse(customer.getId());

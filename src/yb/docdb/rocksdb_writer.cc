@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -14,6 +14,7 @@
 #include "yb/docdb/rocksdb_writer.h"
 
 #include <boost/dynamic_bitset/dynamic_bitset.hpp>
+#include <boost/logic/tribool.hpp>
 
 #include "yb/common/row_mark.h"
 
@@ -23,6 +24,7 @@
 #include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb_compaction_context.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/intent_format.h"
 #include "yb/docdb/kv_debug.h"
 #include "yb/docdb/transaction_dump.h"
 
@@ -57,6 +59,7 @@ DEFINE_test_flag(bool, docdb_sort_weak_intents, false,
                 "Sort weak intents to make their order deterministic.");
 DEFINE_test_flag(bool, fail_on_replicated_batch_idx_set_in_txn_record, false,
                  "Fail when a set of replicated batch indexes is found in txn record.");
+
 
 namespace yb {
 namespace docdb {
@@ -215,7 +218,8 @@ TransactionalWriter::TransactionalWriter(
     dockv::PartialRangeKeyIntents partial_range_key_intents,
     const Slice& replicated_batches_state,
     IntraTxnWriteId intra_txn_write_id,
-    tablet::TransactionIntentApplier* applier)
+    tablet::TransactionIntentApplier* applier,
+    dockv::SkipPrefixLocks skip_prefix_locks)
     : put_batch_(put_batch),
       hybrid_time_(hybrid_time),
       transaction_id_(transaction_id),
@@ -223,7 +227,8 @@ TransactionalWriter::TransactionalWriter(
       partial_range_key_intents_(partial_range_key_intents),
       replicated_batches_state_(replicated_batches_state),
       intra_txn_write_id_(intra_txn_write_id),
-      applier_(applier) {
+      applier_(applier),
+      skip_prefix_locks_(skip_prefix_locks) {
 }
 
 // We have the following distinct types of data in this "intent store":
@@ -273,10 +278,13 @@ Status TransactionalWriter::Apply(rocksdb::DirectWriteHandler& handler) {
     RETURN_NOT_OK(EnumerateIntents(
         put_batch_.write_pairs(),
         [this, intent_types = dockv::GetIntentTypesForWrite(isolation_level_)](
-            auto ancestor_doc_key, auto full_doc_key, auto value, auto* key, auto last_key, auto) {
-          return (*this)(intent_types, ancestor_doc_key, full_doc_key, value, key, last_key);
+            auto ancestor_doc_key, auto full_doc_key, auto value, auto* key, auto last_key,
+            auto is_row_lock, auto is_top_level_key, auto pk_is_known) {
+          return (*this)(intent_types, ancestor_doc_key, full_doc_key, value, key, last_key,
+              is_row_lock, is_top_level_key, pk_is_known);
         },
-        partial_range_key_intents_));
+        partial_range_key_intents_,
+        skip_prefix_locks_));
   }
 
   if (put_batch_.has_delete_vector_ids()) {
@@ -303,7 +311,8 @@ Status TransactionalWriter::Apply(rocksdb::DirectWriteHandler& handler) {
       KeyBytes key(lock_pair.lock().key());
       RETURN_NOT_OK((*this)(dockv::GetIntentTypesForLock(lock_pair.mode()),
           dockv::AncestorDocKey::kFalse, dockv::FullDocKey::kFalse,
-          lock_pair.lock().value(), &key, dockv::LastKey::kTrue));
+          lock_pair.lock().value(), &key, dockv::LastKey::kTrue,
+          dockv::IsRowLock::kFalse, dockv::IsTopLevelKey::kFalse, boost::indeterminate));
     } else {
       RSTATUS_DCHECK(applier_, IllegalState, "Can't apply unlock operation without applier");
       // Unlock operation.
@@ -325,12 +334,13 @@ Status TransactionalWriter::Apply(rocksdb::DirectWriteHandler& handler) {
                    isolation_level_, row_mark_,
                    !put_batch_.write_pairs().empty() /* read_is_for_write_op */)](
             auto ancestor_doc_key, auto full_doc_key, const auto& value, auto* key, auto last_key,
-            auto is_row_lock) {
+            auto is_row_lock, auto is_top_level_key, auto pk_is_known) {
           return (*this)(
               dockv::GetIntentTypes(intent_types, is_row_lock), ancestor_doc_key, full_doc_key,
-              value, key, last_key);
+              value, key, last_key, is_row_lock, is_top_level_key, pk_is_known);
         },
-        partial_range_key_intents_));
+        partial_range_key_intents_,
+        skip_prefix_locks_));
   }
 
   return Finish();
@@ -339,12 +349,41 @@ Status TransactionalWriter::Apply(rocksdb::DirectWriteHandler& handler) {
 // Using operator() to pass this object conveniently to EnumerateIntents.
 Status TransactionalWriter::operator()(
     dockv::IntentTypeSet intent_types, dockv::AncestorDocKey ancestor_doc_key, dockv::FullDocKey,
-    Slice intent_value, dockv::KeyBytes* key, dockv::LastKey last_key) {
+    Slice intent_value, dockv::KeyBytes* key, dockv::LastKey last_key, dockv::IsRowLock is_row_lock,
+    dockv::IsTopLevelKey is_top_level_key, boost::tribool pk_is_known) {
   RSTATUS_DCHECK(intent_types.Any(), IllegalState, "Intent type set should not be empty");
   if (ancestor_doc_key) {
-    weak_intents_[key->data()] |= MakeWeak(intent_types);
-    return Status::OK();
+    const bool take_weak_lock = VERIFY_RESULT(ShouldTakeWeakLockForPrefix(
+        ancestor_doc_key, is_top_level_key, skip_prefix_locks_, isolation_level_,
+        pk_is_known, key));
+    if (take_weak_lock) {
+      weak_intents_[key->data()] |= take_weak_lock ? MakeWeak(intent_types) : intent_types;
+      return Status::OK();
+    }
+
+    if (!is_top_level_key) {
+      auto msg = Format("It is ancestor and trying take strong lock, but not top level key. "
+          "skip_prefix_locks: $0, isolation_level: $1, key: $2",
+          skip_prefix_locks_, isolation_level_, key->ToString());
+      RSTATUS_DCHECK(false, InvalidArgument, msg);;
+    }
+
+    const bool slow_mode_si = skip_prefix_locks_ &&
+        isolation_level_ == IsolationLevel::SERIALIZABLE_ISOLATION;
+    if (!slow_mode_si) {
+      auto msg = Format("Trying to take strong lock on a top level key,"
+          "but it is not in the slow mode of serializable level. skip_prefix_locks: $0, "
+          "isolation_level: $1, is_top_level_key: $2, key: $3",
+          skip_prefix_locks_, isolation_level_, is_top_level_key, key->ToString());
+      RSTATUS_DCHECK(false, InvalidArgument, msg);
+    }
+    if (is_row_lock) {
+      static const Slice kRowLockValue{&dockv::ValueEntryTypeAsChar::kRowLock, 1};
+      intent_value = kRowLockValue;
+    }
+
   }
+
   const auto transaction_value_type = ValueEntryTypeAsChar::kTransactionId;
   const auto write_id_value_type = ValueEntryTypeAsChar::kWriteId;
   IntraTxnWriteId big_endian_write_id = BigEndian::FromHost32(intra_txn_write_id_);
@@ -517,7 +556,7 @@ Status IntentsWriter::Apply(rocksdb::DirectWriteHandler& handler) {
   reverse_index_iter_.Seek(start_key_.empty() ? key_prefix : start_key_);
 
   context_.Start(
-      reverse_index_iter_.Valid() ? boost::make_optional(reverse_index_iter_.key()) : boost::none);
+      reverse_index_iter_.Valid() ? std::make_optional(reverse_index_iter_.key()) : std::nullopt);
 
   for (; reverse_index_iter_.Valid(); reverse_index_iter_.Next()) {
     const Slice key_slice(reverse_index_iter_.key());
@@ -631,7 +670,7 @@ Result<bool> ApplyIntentsContext::StoreApplyState(
   return true;
 }
 
-void ApplyIntentsContext::Start(const boost::optional<Slice>& first_key) {
+void ApplyIntentsContext::Start(const std::optional<Slice>& first_key) {
   if (!apply_state_) {
     return;
   }

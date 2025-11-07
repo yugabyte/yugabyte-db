@@ -56,6 +56,9 @@
 #include "utils/timeout.h"
 #include "utils/timestamp.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 /* GUC variables */
 int			DeadlockTimeout = 1000;
 int			StatementTimeout = 0;
@@ -473,9 +476,7 @@ InitProcess(void)
 	 * YB: TODO(asaha): Update the query_id for catalog calls in circular
 	 * buffer once it's calculated
 	 */
-	MyProc->yb_ash_metadata.query_id = IsBackgroundWorker
-		? YBCGetConstQueryId(QUERY_ID_TYPE_BACKGROUND_WORKER)
-		: YBCGetConstQueryId(QUERY_ID_TYPE_DEFAULT);
+	MyProc->yb_ash_metadata.query_id = YbAshGetConstQueryId();
 	MemSet(MyProc->yb_ash_metadata.client_addr, 0,
 		   sizeof(MyProc->yb_ash_metadata.client_addr));
 	MyProc->yb_ash_metadata.client_port = 0;
@@ -909,6 +910,9 @@ ProcKill(int code, Datum arg)
 	proc = MyProc;
 	MyProc = NULL;
 	DisownLatch(&proc->procLatch);
+
+	if (IsYugaByteEnabled())
+		YBOnPostgresBackendShutdown();
 
 	ReleaseProcToFreeList(proc);
 

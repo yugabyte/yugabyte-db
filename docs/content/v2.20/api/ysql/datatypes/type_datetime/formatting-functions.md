@@ -4,7 +4,7 @@ headerTitle: Date and time formatting functions
 linkTitle: Formatting functions
 description: Describes the date and time formatting functions. [YSQL]
 menu:
-  v2.20:
+  v2.20_api:
     identifier: date-time-formatting-functions
     parent: api-ysql-datatypes-datetime
     weight: 100

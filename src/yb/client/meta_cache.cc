@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -42,8 +42,6 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-
-#include <boost/optional/optional_io.hpp>
 
 #include "yb/ash/wait_state.h"
 
@@ -349,12 +347,10 @@ std::string ReplicasCount::ToString() {
 
 ////////////////////////////////////////////////////////////
 
-RemoteTablet::RemoteTablet(std::string tablet_id,
-                           dockv::Partition partition,
-                           boost::optional<PartitionListVersion> partition_list_version,
-                           uint64 split_depth,
-                           const TabletId& split_parent_tablet_id,
-                           int64_t raft_config_opid_index)
+RemoteTablet::RemoteTablet(
+    std::string tablet_id, dockv::Partition partition,
+    std::optional<PartitionListVersion> partition_list_version, uint64 split_depth,
+    const TabletId& split_parent_tablet_id, int64_t raft_config_opid_index)
     : tablet_id_(std::move(tablet_id)),
       log_prefix_(Format("T $0: ", tablet_id_)),
       partition_(std::move(partition)),
@@ -362,8 +358,7 @@ RemoteTablet::RemoteTablet(std::string tablet_id,
       split_depth_(split_depth),
       split_parent_tablet_id_(split_parent_tablet_id),
       stale_(false),
-      raft_config_opid_index_(raft_config_opid_index) {
-}
+      raft_config_opid_index_(raft_config_opid_index) {}
 
 RemoteTablet::~RemoteTablet() {
   if (PREDICT_FALSE(FLAGS_TEST_verify_all_replicas_alive)) {
@@ -872,8 +867,8 @@ class LookupRpc : public internal::ClientMasterRpcBase, public RequestCleanup {
 
  private:
   virtual Status ProcessTabletLocations(
-     const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations,
-     boost::optional<PartitionListVersion> table_partition_list_version) = 0;
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations,
+      std::optional<PartitionListVersion> table_partition_list_version) = 0;
 
   const int64_t request_no_;
 
@@ -944,13 +939,13 @@ Status GetFirstErrorForTabletById(const master::GetTableLocationsResponsePB& res
 }
 
 template <class Response>
-boost::optional<PartitionListVersion> GetPartitionListVersion(const Response& resp) {
+std::optional<PartitionListVersion> GetPartitionListVersion(const Response& resp) {
   return resp.has_partition_list_version()
-             ? boost::make_optional<PartitionListVersion>(resp.partition_list_version())
-             : boost::none;
+             ? std::make_optional<PartitionListVersion>(resp.partition_list_version())
+             : std::nullopt;
 }
 
-} // namespace
+}  // namespace
 
 template <class Response>
 void LookupRpc::DoProcessResponse(const Status& status, const Response& resp) {
@@ -1030,7 +1025,7 @@ class FullTableLookup : public ToStringable {
 
 Status MetaCache::ProcessTabletLocations(
     const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations,
-    boost::optional<PartitionListVersion> table_partition_list_version, LookupRpc* lookup_rpc,
+    std::optional<PartitionListVersion> table_partition_list_version, LookupRpc* lookup_rpc,
     AllowSplitTablet allow_split_tablets) {
   if (VLOG_IS_ON(2)) {
     VLOG_WITH_PREFIX_AND_FUNC(2) << "lookup_rpc: " << AsString(lookup_rpc);
@@ -1077,7 +1072,7 @@ Status MetaCache::ProcessTabletLocations(
 
 Result<RemoteTabletPtr> MetaCache::ProcessTabletLocation(
     const TabletLocationsPB& location, ProcessedTablesMap* processed_tables,
-    const boost::optional<PartitionListVersion>& table_partition_list_version,
+    const std::optional<PartitionListVersion>& table_partition_list_version,
     LookupRpc* lookup_rpc) {
   const std::string& tablet_id = location.tablet_id();
 
@@ -1132,10 +1127,9 @@ Result<RemoteTabletPtr> MetaCache::ProcessTabletLocation(
       };
       VLOG_WITH_PREFIX_AND_FUNC(4) << msg_formatter();
       if (table_partition_list_version.has_value()) {
-        if (table_partition_list_version.get() != table_data.partition_list->version) {
+        if (table_partition_list_version.value() != table_data.partition_list->version) {
           return STATUS(
-              TryAgain, msg_formatter(),
-              ClientError(ClientErrorCode::kTablePartitionListIsStale));
+              TryAgain, msg_formatter(), ClientError(ClientErrorCode::kTablePartitionListIsStale));
         }
         // We need to guarantee that table_data.tablets_by_partition cache corresponds to
         // table_data.partition_list (see comments for TableData::partitions).
@@ -1517,7 +1511,7 @@ class LookupByIdRpc : public LookupRpc {
 
   Status ProcessTabletLocations(
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations,
-      boost::optional<PartitionListVersion> table_partition_list_version) override {
+      std::optional<PartitionListVersion> table_partition_list_version) override {
     // Use cases like x-cluster and cdc access the split parent tablet explicitly by id post split.
     // Hence we expect to see split tablets in the response.
     return meta_cache()->ProcessTabletLocations(
@@ -1623,7 +1617,7 @@ class LookupFullTableRpc : public LookupRpc {
 
   Status ProcessTabletLocations(
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations,
-      boost::optional<PartitionListVersion> table_partition_list_version) override {
+      std::optional<PartitionListVersion> table_partition_list_version) override {
     // On LookupFullTableRpc, master reads from the active 'partitions_' map, so it would never
     // return location(s) containing split_tablet_ids.
     return meta_cache()->ProcessTabletLocations(
@@ -1788,7 +1782,7 @@ class LookupByKeyRpc : public LookupRpc {
 
   Status ProcessTabletLocations(
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations,
-      boost::optional<PartitionListVersion> table_partition_list_version) override {
+      std::optional<PartitionListVersion> table_partition_list_version) override {
     VLOG_WITH_PREFIX_AND_FUNC(2) << "partition_group_start: " << partition_group_start_.ToString();
     // This condition is guaranteed by VerifyResponse function:
     CHECK(resp_.partition_list_version() == partition_group_start_.partition_list_version);
@@ -1902,12 +1896,9 @@ void MetaCache::LookupFullTableFailed(const std::shared_ptr<const YBTable>& tabl
 }
 
 void MetaCache::LookupByIdFailed(
-    const TabletId& tablet_id,
-    const std::shared_ptr<const YBTable>& table,
-    master::IncludeHidden include_hidden,
-    master::IncludeDeleted include_deleted,
-    const boost::optional<PartitionListVersion>& response_partition_list_version,
-    int64_t request_no,
+    const TabletId& tablet_id, const std::shared_ptr<const YBTable>& table,
+    master::IncludeHidden include_hidden, master::IncludeDeleted include_deleted,
+    const std::optional<PartitionListVersion>& response_partition_list_version, int64_t request_no,
     const Status& status) {
   VLOG_WITH_PREFIX(1) << "Lookup for tablet " << tablet_id << ", failed with: " << status;
 
@@ -1998,24 +1989,24 @@ RemoteTabletPtr MetaCache::LookupTabletByKeyFastPathUnlocked(
   return nullptr;
 }
 
-boost::optional<std::vector<RemoteTabletPtr>> MetaCache::FastLookupAllTabletsUnlocked(
+std::optional<std::vector<RemoteTabletPtr>> MetaCache::FastLookupAllTabletsUnlocked(
     const std::shared_ptr<const YBTable>& table) {
   auto tablets = std::vector<RemoteTabletPtr>();
   auto it = tables_.find(table->id());
   if (PREDICT_FALSE(it == tables_.end())) {
     // No cache available for this table.
-    return boost::none;
+    return std::nullopt;
   }
 
   for (const auto& tablet : it->second.all_tablets) {
     if (tablet->stale()) {
-      return boost::none;
+      return std::nullopt;
     }
     tablets.push_back(tablet);
   }
 
   if (tablets.empty()) {
-    return boost::none;
+    return std::nullopt;
   }
   return tablets;
 }
@@ -2452,8 +2443,9 @@ Status MetaCache::ClearCacheEntries(const std::string& namespace_id) {
   std::set<TableId> db_tables_ids;
   std::set<TabletId> db_tablets_ids;
   for (const auto& [table_id, table_data] : tables_) {
-    // Escape sys catalog and parent table ids as they don't conform to a typical ysql table id
-    if (table_id == master::kSysCatalogTableId) {
+    // Escape sys catalog, ycql tables, and parent table ids as they don't conform to a typical
+    // ysql table id
+    if (table_id == master::kSysCatalogTableId || !IsPgsqlId(table_id)) {
       continue;
     } else if (IsColocationParentTableId(table_id)) {
       db_tables_ids.insert(table_id);

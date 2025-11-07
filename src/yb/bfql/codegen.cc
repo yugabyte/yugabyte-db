@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -31,7 +31,7 @@ namespace yb {
 namespace bfql {
 
 static const char *kFileStart =
-  "// Copyright (c) YugaByte, Inc.\n\n";
+  "// Copyright (c) YugabyteDB, Inc.\n\n";
 
 static const char *kFileNamespace =
   "namespace yb {\n"

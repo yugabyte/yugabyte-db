@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -149,6 +149,9 @@ message CreateTableRequestPB {
 
   // Additional internal table type for different special cases.
   optional InternalTableType internal_table_type = 34 [ default = GENERIC_TABLE ];
+
+  // For YSQL tables, the sub-transaction used by this DDL. If aborted, table will be removed.
+  optional uint32 sub_transaction_id = 35;
 }
 
 message CreateTableResponsePB {
@@ -385,6 +388,9 @@ message DeleteTableRequestPB {
   optional bool is_index_table = 2 [ default = false ];
   optional TransactionMetadataPB transaction = 3;
   optional bool ysql_yb_ddl_rollback_enabled = 4 [ default = false ];
+
+  // This is the sub-transaction performing the Delete operation.
+  optional uint32 sub_transaction_id = 5;
 }
 
 message DeleteTableResponsePB {
@@ -488,6 +494,9 @@ message AlterTableRequestPB {
   // For CDCSDK Stream creation with consistent snapshot
   optional bytes cdc_sdk_stream_id = 13;
   optional bool cdc_sdk_require_history_cutoff = 14;
+
+  // This is the sub-transaction performing the Alter operation.
+  optional uint32 sub_transaction_id = 15;
 }
 
 message AlterTableResponsePB {
@@ -659,6 +668,10 @@ message CreateTablegroupRequestPB {
 
   // This denotes the tablespace that this tablegroup is associated with.
   optional bytes tablespace_id = 4;
+
+  // This is the sub-transaction performing the operation. If the sub-transaction is rolled back,
+  // the tablegroup will be rolled back as well.
+  optional uint32 sub_transaction_id = 7;
 }
 
 message CreateTablegroupResponsePB {
@@ -680,6 +693,10 @@ message DeleteTablegroupRequestPB {
   // will be initiated upon receipt of this request.
   optional TransactionMetadataPB transaction = 3;
   optional bool ysql_yb_ddl_rollback_enabled = 4 [ default = false ];
+
+  // This is the sub-transaction performing the operation. If the sub-transaction is rolled back,
+  // the deletion of the tablegroup will be rolled back as well.
+  optional uint32 sub_transaction_id = 5;
 }
 
 message DeleteTablegroupResponsePB {
@@ -773,6 +790,29 @@ message IsYsqlDdlVerificationDoneResponsePB {
   optional bool done = 2;
 }
 
+message RollbackDocdbSchemaToSubtxnRequestPB {
+  // The transaction whose status is being reported.
+  optional bytes transaction_id = 1;
+
+  // The subtransaction to rollback to.
+  optional uint32 sub_transaction_id = 2;
+}
+
+message RollbackDocdbSchemaToSubtxnResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message IsRollbackDocdbSchemaToSubtxnDoneRequestPB {
+  optional TransactionMetadataPB transaction = 1;
+  optional uint32 sub_transaction_id = 2;
+}
+
+message IsRollbackDocdbSchemaToSubtxnDoneResponsePB {
+  optional MasterErrorPB error = 1;
+
+  optional bool done = 2;
+}
+
 // ============================================================================
 // Table/Object Locks
 // ============================================================================
@@ -847,6 +887,14 @@ message RefreshYsqlLeaseResponsePB {
   }
 }
 
+message RelinquishYsqlLeaseRequestPB {
+  optional NodeInstancePB instance = 1;
+}
+
+message RelinquishYsqlLeaseResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 service MasterDdl {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -902,6 +950,11 @@ service MasterDdl {
   rpc IsYsqlDdlVerificationDone(IsYsqlDdlVerificationDoneRequestPB) returns
       (IsYsqlDdlVerificationDoneResponsePB);
 
+  rpc RollbackDocdbSchemaToSubtxn(RollbackDocdbSchemaToSubtxnRequestPB) returns
+      (RollbackDocdbSchemaToSubtxnResponsePB);
+  rpc IsRollbackDocdbSchemaToSubtxnDone(IsRollbackDocdbSchemaToSubtxnDoneRequestPB) returns
+      (IsRollbackDocdbSchemaToSubtxnDoneResponsePB);
+
   rpc AcquireObjectLocksGlobal(AcquireObjectLocksGlobalRequestPB)
       returns (AcquireObjectLocksGlobalResponsePB) {
     option (yb.rpc.send_metadata) = true;
@@ -911,8 +964,9 @@ service MasterDdl {
     option (yb.rpc.send_metadata) = true;
   }
   rpc RefreshYsqlLease(RefreshYsqlLeaseRequestPB)
-    returns (RefreshYsqlLeaseResponsePB);
-
+      returns (RefreshYsqlLeaseResponsePB);
+  rpc RelinquishYsqlLease(RelinquishYsqlLeaseRequestPB)
+      returns (RelinquishYsqlLeaseResponsePB);
   rpc GetObjectLockStatus(GetObjectLockStatusRequestPB)
       returns (GetObjectLockStatusResponsePB);
 }

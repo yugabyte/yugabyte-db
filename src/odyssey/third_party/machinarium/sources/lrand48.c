@@ -15,8 +15,12 @@
 __thread unsigned short prng_seed[3];
 __thread unsigned short *prng_state = NULL;
 
-long int pg_lrand48(unsigned short *_rand48_seed);
-void pg_srand48(long seed, unsigned short *_rand48_seed);
+/*
+ * YB: Renamed due to conflict with PG function, see
+ * https://github.com/yandex/odyssey/issues/973
+ */
+long int mm_pg_lrand48(unsigned short *_rand48_seed);
+void mm_pg_srand48(long seed, unsigned short *_rand48_seed);
 
 void mm_lrand48_seed(void)
 {
@@ -38,12 +42,12 @@ void mm_lrand48_seed(void)
 	}
 
 	rand_seed ^= rand_seed_2;
-	pg_srand48(rand_seed, prng_seed);
+	mm_pg_srand48(rand_seed, prng_seed);
 	prng_state = prng_seed;
 }
 
 long int machine_lrand48(void)
 {
 	assert(prng_state);
-	return pg_lrand48(prng_state);
+	return mm_pg_lrand48(prng_state);
 }

@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -38,8 +38,6 @@
 #include <utility>
 #include <vector>
 
-#include <boost/optional/optional.hpp>
-#include "yb/util/logging.h"
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
@@ -60,6 +58,7 @@
 #include "yb/master/master.h"
 #include "yb/master/mini_master.h"
 
+#include "yb/util/logging.h"
 #include "yb/util/memory/arena_fwd.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"

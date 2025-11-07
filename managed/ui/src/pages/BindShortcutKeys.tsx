@@ -87,7 +87,7 @@ export const BindShortCutKeys = (props: any) => {
                         <td>View tasks</td>
                     </tr>
                     <tr>
-                        <td>CTRL + SHIFT +l</td>
+                        <td>CTRL + SHIFT + l</td>
                         <td>View universes</td>
                     </tr>
                 </tbody>

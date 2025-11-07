@@ -1,4 +1,4 @@
-// Copyright (c) Yugabyte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -60,6 +60,7 @@ class PgBackendsTest : public LibPqTestBase {
   }
 
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->replication_factor = 1;
     options->extra_master_flags.insert(
         options->extra_master_flags.end(),
         {
@@ -68,15 +69,16 @@ class PgBackendsTest : public LibPqTestBase {
           Format("--catalog_manager_bg_task_wait_ms=$0", kCatalogManagerBgTaskWaitMs),
           Format("--wait_for_ysql_backends_catalog_version_master_tserver_rpc_timeout_ms=$0",
                  kMasterTserverRpcTimeoutSec * 1000),
-          "--replication_factor=1",
           "--TEST_master_ui_redirect_to_leader=false",
         });
+    // Disable auto analyze because it introduces flakiness in catalog version-related tests.
     options->extra_tserver_flags.insert(
         options->extra_tserver_flags.end(),
         {
-          "--allowed_preview_flags_csv=master_ts_ysql_catalog_lease_ms",
+          "--allowed_preview_flags_csv=master_ts_ysql_catalog_lease_ms,ysql_enable_auto_analyze",
           Format("--master_ts_ysql_catalog_lease_ms=$0", kCatalogLeaseSec * 1000),
           "--ysql_yb_disable_wait_for_backends_catalog_version=false",
+          "--ysql_enable_auto_analyze=false"
         });
     if (FLAGS_verbose) {
       options->extra_master_flags.insert(
@@ -381,6 +383,21 @@ class PgBackendsTestConnLimit : public PgBackendsTest {
   }
 };
 
+class PgBackendsTestNoWaitQueues : public PgBackendsTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgBackendsTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back("--enable_wait_queues=false");
+    options->extra_tserver_flags.push_back("--yb_enable_read_committed_isolation=true");
+  }
+
+  // Simulates a transaction conflict scenario to test retry counting
+  void SimulateConflictRetries(PGConn& conn1, PGConn& conn2);
+
+  // Checks pg_stat_statements for the expected number of conflict retries
+  void CheckPgssConflictRetries(PGConn& conn1, int expected_retries);
+};
+
 TEST_F_EX(PgBackendsTest, ConnectionLimit, PgBackendsTestConnLimit) {
   WaitOutInitialCatalogLeasePeriod();
   LOG_WITH_FUNC(INFO) << "Beginning test";
@@ -480,7 +497,7 @@ class PgBackendsTestRf3 : public PgBackendsTest {
 
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     PgBackendsTest::UpdateMiniClusterOptions(options);
-    options->extra_master_flags.push_back("--replication_factor=3");
+    options->replication_factor = 3;
   }
 
  protected:
@@ -867,7 +884,23 @@ TEST_F_EX(PgBackendsTest, YB_RELEASE_ONLY_TEST(Stress), PgBackendsTestRf3) {
   thread_holder.Stop();
 }
 
-TEST_F_EX(PgBackendsTest, LostHeartbeats, PgBackendsTestRf3) {
+// The LostHeartbeats test relies on the fact that the tserver's catalog version is behind,
+// if the tserver is not getting heartbeat responses. However, table locks will cause the catalog
+// invalidations to be piggybacked on the ddl release request. So disable table locks for this test.
+class PgBackendsTestRf3TableLocksDisabled : public PgBackendsTestRf3 {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgBackendsTestRf3::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
+    AppendFlagToAllowedPreviewFlagsCsv(
+        options->extra_tserver_flags, "enable_object_locking_for_table_locks");
+    options->extra_master_flags.push_back("--enable_object_locking_for_table_locks=false");
+    AppendFlagToAllowedPreviewFlagsCsv(
+        options->extra_master_flags, "enable_object_locking_for_table_locks");
+  }
+};
+
+TEST_F_EX(PgBackendsTest, LostHeartbeats, PgBackendsTestRf3TableLocksDisabled) {
   constexpr auto kUser = "eve";
   ASSERT_OK(conn_->ExecuteFormat("CREATE USER $0", kUser));
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0tab (i int)", kUser));
@@ -909,7 +942,7 @@ TEST_F_EX(PgBackendsTest, LostHeartbeats, PgBackendsTestRf3) {
 // An unresponsive tserver that expires lease should be considered resolved.
 // TODO(#13369): a lease expiration should cause that tserver to block its backends, but that is
 // currently not done, so the test asserts the opposite of correctness (the user whose permission
-// was revoked is able to select).
+// was revoked sees permission denied error).
 Status PgBackendsTestRf3::TestTserverUnresponsive(bool keep_alive) {
   constexpr auto kUser = "eve";
   RETURN_NOT_OK(conn_->ExecuteFormat("CREATE USER $0", kUser));
@@ -921,6 +954,18 @@ Status PgBackendsTestRf3::TestTserverUnresponsive(bool keep_alive) {
   LOG(INFO) << "Selected ts index " << ts_idx << " (zero-indexed)";
 
   ExternalTabletServer* ts = cluster_->tserver_daemons()[ts_idx];
+
+  auto value = VERIFY_RESULT(ts->GetFlag("ysql_enable_relcache_init_optimization"));
+  if (value == "false") {
+    // Make an initial connection to DB "yugabyte" so that the next connection
+    // conn_user is not the first connection after the above ALTER TABLE statement
+    // which would have the side effect of preloading the catalog cache and docdb
+    // (table) cache entry for the newly created table before the first query is
+    // executed on conn_user.
+    LOG(INFO) << "Making the first connection after DDL to ts index " << ts_idx;
+    auto conn_after_alter = VERIFY_RESULT(ConnectToTs(*ts));
+  }
+
   PGConn conn_user = VERIFY_RESULT(PGConnBuilder({
         .host = ts->bind_host(),
         .port = ts->ysql_port(),
@@ -985,12 +1030,22 @@ Status PgBackendsTestRf3::TestTserverUnresponsive(bool keep_alive) {
 
   if (keep_alive) {
     LOG(INFO) << "Check that old connection on unresponsive tserver is blocked";
-    auto res = conn_user.FetchFormat("SELECT * FROM $0tab", kUser);
     LOG(INFO) << "Actually, old connection should not be blocked yet.  See first task of"
-              << " issue #13369.  Also, it works because ALTER TABLE is not a breaking catalog"
+              << " issue #13369. Also, it works because ALTER TABLE is not a breaking catalog"
               << " change.";
-    // TODO(#13369): change to SCHECK(!status.ok()), check status type, status msg.
-    RETURN_NOT_OK(res);
+    // Confirm that the connection is still performing as usual.
+    RETURN_NOT_OK(conn_user.Fetch("SELECT oid FROM pg_class"));
+    auto res = conn_user.FetchFormat("SELECT * FROM $0tab", kUser);
+    // TODO(#13369): check status type, status msg. We are getting permission denied error
+    // which means the connection is still performing as usual. If the connection is
+    // blocked, we should see a different error indicating that.
+    SCHECK(!res.ok(), IllegalState, "should not have permission");
+    Status s = res.status();
+    if (!s.IsNetworkError() ||
+        (s.message().ToBuffer().find(Format("permission denied for table $0tab", kUser)) ==
+         std::string::npos)) {
+      return s;
+    }
   }
 
   LOG(INFO) << "Make new connection in case conn_'s node was selected to be unresponsive";
@@ -1237,6 +1292,72 @@ TEST_F(PgBackendsTestRf3Block, LeaderChangeInFlightLater) {
   LOG(INFO) << "Time taken: " << time_taken;
 
   thread_holder.Stop();
+}
+
+void PgBackendsTestNoWaitQueues::SimulateConflictRetries(PGConn& conn1, PGConn& conn2) {
+  constexpr auto kWaitTime = 5s;
+
+  ASSERT_OK(conn1.Execute("BEGIN"));
+  ASSERT_OK(conn1.Execute("UPDATE test SET v = 5 WHERE k = 1"));
+
+  ASSERT_OK(conn2.Execute("BEGIN"));
+
+  std::atomic<bool> update_completed{false};
+  std::atomic<bool> update_success{false};
+  std::thread update_thread([&conn2, &update_completed, &update_success]() {
+    auto status = conn2.Execute("UPDATE test SET v = 6 WHERE k = 1");
+    update_success = status.ok();
+    update_completed = true;
+  });
+
+  SleepFor(kWaitTime);
+  ASSERT_OK(conn1.Execute("COMMIT"));
+
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_reset_retry_counts", "-1"));
+
+  update_thread.join();
+  ASSERT_TRUE(update_completed.load()) << "Session 2 update did not complete";
+  ASSERT_TRUE(update_success.load()) << "Session 2 update failed";
+
+  ASSERT_OK(conn2.Execute("COMMIT"));
+}
+
+void PgBackendsTestNoWaitQueues::CheckPgssConflictRetries(PGConn& conn1, int expected_retries) {
+  auto result = ASSERT_RESULT(conn1.FetchRows<int64_t>(
+      "SELECT conflict_retries FROM pg_stat_statements WHERE query LIKE '%UPDATE test%'"));
+
+  ASSERT_FALSE(result.empty()) << "No matching queries found in pg_stat_statements";
+  ASSERT_EQ(result[0], expected_retries)
+      << "Expected conflict_retries to be " << expected_retries
+      << ", but got " << result[0];
+}
+
+TEST_F_EX(PgBackendsTest, VerifyResetRetryCounts, PgBackendsTestNoWaitQueues) {
+  constexpr int kFirstRetryCount = 20;
+  constexpr int kSecondRetryCount = 10;
+  constexpr int kExpectedTotalRetries = kFirstRetryCount + kSecondRetryCount;
+
+  PGConn conn1 = ASSERT_RESULT(Connect());
+  PGConn conn2 = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn1.Execute("CREATE TABLE test (k int PRIMARY KEY, v int)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO test VALUES (1, 1)"));
+
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_reset_retry_counts",
+                                        std::to_string(kFirstRetryCount)));
+  SimulateConflictRetries(conn1, conn2);
+  CheckPgssConflictRetries(conn1, kFirstRetryCount);
+
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_reset_retry_counts",
+                                        std::to_string(kSecondRetryCount)));
+  SimulateConflictRetries(conn1, conn2);
+
+  /*
+   * This confirms that the retry count is reset as expected.
+   * Otherwise, if after the first retry, the retry count is not reset, then the total retry count
+   * will be kFirstRetryCount + kFirstRetryCount = 40.
+   */
+  CheckPgssConflictRetries(conn1, kExpectedTotalRetries);
 }
 
 } // namespace pgwrapper

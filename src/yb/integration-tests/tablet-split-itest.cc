@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -2038,7 +2038,7 @@ class  AutomaticTabletSplitAddServerITest: public AutomaticTabletSplitITest {
 
     // Replicate to the new tserver.
     ASSERT_OK(itest::AddServer(
-        leader, tablet_id, ts_map_[new_ts_id].get(), peer_type, boost::none, kRpcTimeout));
+        leader, tablet_id, ts_map_[new_ts_id].get(), peer_type, std::nullopt, kRpcTimeout));
 
     // Wait for config change reported to master.
     ASSERT_OK(itest::WaitForTabletConfigChange(tablet, new_ts_id, consensus::ADD_SERVER));
@@ -2084,8 +2084,7 @@ TEST_F(AutomaticTabletSplitAddServerITest, DoNotSplitTabletDoingRBS) {
   // Remove tablet from follower to let tablet live replicas == table replication factor
   // after adding a new tserver.
   ASSERT_OK(itest::RemoveServer(
-      ts_map_[leader_id].get(), tablet_id, ts_map_[follower_id].get(),
-      boost::none, kRpcTimeout));
+      ts_map_[leader_id].get(), tablet_id, ts_map_[follower_id].get(), std::nullopt, kRpcTimeout));
   ASSERT_OK(itest::WaitForTabletConfigChange(tablet, follower_id, consensus::REMOVE_SERVER));
 
   // Start rbs on it but pause before downloading wal.
@@ -2144,8 +2143,7 @@ TEST_F(AutomaticTabletSplitAddServerITest, DoNotSplitOverReplicatedTablet) {
 
   // Remove tablet from follower to let tablet live replicas == table replication factor.
   ASSERT_OK(itest::RemoveServer(
-      ts_map_[leader_id].get(), tablet_id,
-      ts_map_[follower_id].get(), boost::none, kRpcTimeout));
+      ts_map_[leader_id].get(), tablet_id, ts_map_[follower_id].get(), std::nullopt, kRpcTimeout));
   ASSERT_OK(itest::WaitForTabletConfigChange(tablet, follower_id, consensus::REMOVE_SERVER));
 
   // Should succeed to split since live replicas = 3 after RemoveServer.
@@ -3014,7 +3012,7 @@ TEST_F_EX(
   ASSERT_OK(WaitFor(
       [&source_tablet_id, ts_details_to_bootstrap]() -> Result<bool> {
         const auto s = itest::DeleteTablet(
-            ts_details_to_bootstrap, source_tablet_id, tablet::TABLET_DATA_TOMBSTONED, boost::none,
+            ts_details_to_bootstrap, source_tablet_id, tablet::TABLET_DATA_TOMBSTONED, std::nullopt,
             kRpcTimeout);
         if (s.ok()) {
           return true;
@@ -3893,14 +3891,13 @@ TEST_F_EX(TabletSplitITest, SplitWithParentTabletMove, TabletSplitExternalMiniCl
   // AddServer RPC only returns when CONFIG_CHANGE_OP is majority replicaed, so we do it async to
   // avoid deadlock inside test.
   TestThreadHolder thread_holder;
-  thread_holder.AddThreadFunctor(
-      [&, added_tserver_details = ts_map[added_tserver_id].get()]() {
-        auto status = itest::AddServer(
-            parent_leader_tserver_details, parent_tablet_id, added_tserver_details,
-            consensus::PeerMemberType::PRE_VOTER, boost::none, kTimeout);
-        ERROR_NOT_OK(status, "AddServer error: ");
-        ASSERT_OK(status);
-      });
+  thread_holder.AddThreadFunctor([&, added_tserver_details = ts_map[added_tserver_id].get()]() {
+    auto status = itest::AddServer(
+        parent_leader_tserver_details, parent_tablet_id, added_tserver_details,
+        consensus::PeerMemberType::PRE_VOTER, std::nullopt, kTimeout);
+    ERROR_NOT_OK(status, "AddServer error: ");
+    ASSERT_OK(status);
+  });
 
   // Give some time for RBS to start and reach downloading WAL files. We can't wait for this event
   // explicitly because with the fix RBS won't happen.

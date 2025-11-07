@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.models.helpers;
 
@@ -308,8 +308,8 @@ public class NodeConfigValidator {
       case INTERNET_CONNECTION:
       case PROMETHEUS_NO_NODE_EXPORTER:
       case HOME_DIR_EXISTS:
+      case HOME_DIR_MATCHES:
       case NODE_EXPORTER_RUNNING:
-      case SYSTEMD_SUDOER_ENTRY:
       case SUDO_ACCESS:
       case SSH_ACCESS:
       case OPENSSL:
@@ -374,7 +374,6 @@ public class NodeConfigValidator {
       case S3CMD:
       case SWAPPINESS:
       case LOCALE_PRESENT:
-      case SYSTEMD_SUDOER_ENTRY:
       case YB_HOME_DIR_CLEAN:
         {
           return false;

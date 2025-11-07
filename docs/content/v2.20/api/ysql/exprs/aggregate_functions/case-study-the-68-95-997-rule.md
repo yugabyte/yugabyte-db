@@ -7,7 +7,7 @@ headerTitle: >
   Case study: using aggregate functions to demonstrate the "68–95–99.7" rule
 description: Case study to show the use of percentile_cont() to illustrate the well-known "68–95–99.7" rule about a normal distribution.
 menu:
-  v2.20:
+  v2.20_api:
     identifier: case-study-the-68–95–997-rule
     parent: aggregate-functions
     weight: 100
@@ -20,7 +20,7 @@ This case study shows the use of aggregate functions to demonstrate the so-calle
 
 ## Populate the test table
 
-The demonstration uses the function `normal_rand()`, brought by the [tablefunc](../../../../../explore/ysql-language-features/pg-extensions/#tablefunc-example) extension, to populate the test table:
+The demonstration uses the function `normal_rand()`, brought by the [tablefunc](../../../../../additional-features/pg-extensions/#tablefunc-example) extension, to populate the test table:
 
 ```plpgsql
 drop table if exists t cascade;

@@ -74,6 +74,7 @@ typedef struct YbPgRpcStats
 	double		count;			/* # of RPCs */
 	double		rows_scanned;	/* # of rows scanned by RPCs */
 	double		wait_time;		/* RPC wait time (ns) */
+  double		rows_received; /* # of rows received from RPCs */
 } YbPgRpcStats;
 
 typedef struct YbInstrumentation
@@ -93,6 +94,7 @@ typedef struct YbInstrumentation
 	YbcPgExecStorageMetrics *write_metrics;
 
 	uint64_t	rows_removed_by_recheck;
+	uint64_t	commit_wait;
 } YbInstrumentation;
 
 typedef struct Instrumentation

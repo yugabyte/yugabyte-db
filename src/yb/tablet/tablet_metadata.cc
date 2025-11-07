@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -35,8 +35,6 @@
 #include <algorithm>
 #include <mutex>
 #include <string>
-
-#include <boost/optional.hpp>
 
 #include "yb/ash/wait_state.h"
 
@@ -186,6 +184,7 @@ TableInfo::TableInfo(const TableInfo& other,
                      const SchemaVersion schema_version)
     : table_id(other.table_id),
       namespace_name(other.namespace_name),
+      namespace_id(other.namespace_id),
       table_name(other.table_name),
       table_type(other.table_type),
       cotable_id(other.cotable_id),
@@ -213,6 +212,7 @@ TableInfo::TableInfo(const TableInfo& other,
                      const Schema& schema)
     : table_id(other.table_id),
       namespace_name(other.namespace_name),
+      namespace_id(other.namespace_id),
       table_name(other.table_name),
       table_type(other.table_type),
       cotable_id(other.cotable_id),
@@ -233,6 +233,7 @@ TableInfo::TableInfo(const TableInfo& other,
 TableInfo::TableInfo(const TableInfo& other, SchemaVersion min_schema_version)
     : table_id(other.table_id),
       namespace_name(other.namespace_name),
+      namespace_id(other.namespace_id),
       table_name(other.table_name),
       table_type(other.table_type),
       cotable_id(other.cotable_id),
@@ -465,7 +466,7 @@ TableInfoPtr TableInfo::TEST_CreateWithLogPrefix(
 
 bool TableInfo::NeedVectorIndex() const {
   return index_info && index_info->is_vector_index() &&
-         index_info->vector_idx_options().idx_type() != PgVectorIndexType::DUMMY;
+         index_info->vector_idx_options().idx_type() != PgVectorIndexType::DEPRECATED_DUMMY;
 }
 
 Status KvStoreInfo::LoadTablesFromPB(

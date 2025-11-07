@@ -1,4 +1,5 @@
 is_cloud={{ is_cloud | default(false) }}
+is_yb_prebuilt_image={{ is_yb_prebuilt_image | default(false) }}
 bin_path="/usr/local/bin"
 
 # Set system limits
@@ -50,8 +51,10 @@ ulimit -u {{ nproc_limit }}
 
 # Configure kernel settings
 # Set and persist vm.swappiness
-if ! grep -q "^vm.swappiness=" /etc/sysctl.conf; then
+if ! grep -q "^vm.swappiness" /etc/sysctl.conf; then
   echo "vm.swappiness={{ vm_swappiness }}" >> /etc/sysctl.conf
+else
+  sed -i "s/^vm.swappiness.*/vm.swappiness={{ vm_swappiness }}/" /etc/sysctl.conf
 fi
 sysctl -w vm.swappiness={{ vm_swappiness }}
 
@@ -71,21 +74,25 @@ fi
 
 if [[ "$is_cloud" == "True" ]]; then
   # Define paths and directories
-  DUMP_DIR="{{ yb_home_dir }}/cores/"
+  DUMP_DIR="{{ yb_home_dir }}/cores"
 
   # Ensure the cores directory exists with proper permissions
-  mkdir -p "$DUMP_DIR"
-  chmod 0755 "$DUMP_DIR"
-  chown "{{ yb_user }}:{{ yb_user }}" "$DUMP_DIR"
+  if [[ "$is_yb_prebuilt_image" == "True" ]] && [[ -L "$DUMP_DIR" ]]; then
+    echo "YB Prebuilt AMI detected, skipping creation of cores directory"
+  else
+    mkdir -p "$DUMP_DIR"
+    chmod 0755 "$DUMP_DIR"
+    chown "{{ yb_user }}:{{ yb_user }}" "$DUMP_DIR"
+  fi
 
   # Create core dump compression script
   cat << 'EOF' > "$bin_path/compress_core.sh"
 #!/bin/bash
-DUMP_DIR="/home/yugabyte/cores/"
+DUMP_DIR="{{ yb_home_dir }}/cores"
 CORE_FILE="$DUMP_DIR/$(basename $1).$$.gz"
 GZIP_PATH=$(PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" which gzip)
 if [[ -z "$GZIP_PATH" ]]; then
-  echo "gzip not found, aborting." >> /home/yugabyte/cores/custom_core_dump.log
+  echo "gzip not found, aborting." >> "$DUMP_DIR/custom_core_dump.log"
   exit 1
 fi
 /usr/bin/gzip >> "$CORE_FILE"

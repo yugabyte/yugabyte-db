@@ -1,4 +1,4 @@
-// Copyright YugaByte Inc.
+// Copyright YugabyteDB, Inc.
 
 import { connect } from 'react-redux';
 import { ListTables } from '..';

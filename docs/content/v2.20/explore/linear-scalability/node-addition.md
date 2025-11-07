@@ -62,11 +62,11 @@ The cluster is now scaled out completely.
 
 ## Load balancing
 
-Now that you have successfully added a node and scaled your cluster, applications can connect to any node and send queries. But how will your application know about the new nodes? For this, you can use a YugabyteDB [smart driver](../../../drivers-orms/smart-drivers/) in your application. Smart drivers automatically send traffic to newly added nodes when they become active. Although you can use an external load balancer, smart drivers are topology-aware and will fail over correctly when needed.
+Now that you have successfully added a node and scaled your cluster, applications can connect to any node and send queries. But how will your application know about the new nodes? For this, you can use a YugabyteDB [smart driver](/preview/develop/drivers-orms/smart-drivers/) in your application. Smart drivers automatically send traffic to newly added nodes when they become active. Although you can use an external load balancer, smart drivers are topology-aware and will fail over correctly when needed.
 
 ![Add a smart driver](/images/explore/scalability/node-addition-smart-driver.png)
 
 ## Learn more
 
 - Try it out: [Scale out a universe](../scaling-universe/)
-- [Smart drivers](../../../drivers-orms/smart-drivers/)
+- [Smart drivers](/preview/develop/drivers-orms/smart-drivers/)

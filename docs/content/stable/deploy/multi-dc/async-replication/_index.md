@@ -35,20 +35,23 @@ For information on xCluster deployment architecture, replication scenarios, and 
 
 - If the root certificates for the source and target universe are different, (for example, the node certificates for target and source nodes were not created on the same machine), copy the `ca.crt` for the source universe to all target nodes, and vice-versa. If the root certificate for both source and target universes is the same, you can skip this step.
 
-    Locate the `ca.crt` file for the source universe on any node at `<base-dir>/certs/ca.crt`. Copy this file to all target nodes at `<base-dir>/certs/xcluster/<replication-id>/`. The `<replication-id>` must be the same as you configured in Step 1.
-
-    Similarly, copy the `ca.crt` file for the target universe on any node at `<base-dir>/certs/ca.crt` to source universe nodes at `<base-dir>/certs/xcluster/<replication-id>/`.
+    1. For each YB-Master and YB-TServer on both the source and target universe, set the flag `certs_for_cdc_dir` to the parent directory (for example, `<home>/xcluster-certs`) where you want to store all the other universe's certificates for replication.
+    1. Find the certificate authority file used by the source universe (`ca.crt`). This should be stored in the [--certs_dir](../../../reference/configuration/yb-master/#certs-dir).
+    1. Copy this file to each node on the target universe. It needs to be copied to a directory named `<home>/xcluster-certs/xcluster-replication-id` (create the directory if it is not there).
+    1. Similarly, copy the `ca.crt` file for the target universe from any target universe node at `--certs_dir` to the source universe nodes at `<home>/xcluster-certs/<xcluster-replication-id>/` (create the directory if it is not there).
 
 - Global objects like users, roles, tablespaces are not managed by xCluster. You must explicitly create and manage these objects on both source and target universes.
 
+- For moving data out of YugabyteDB, set up CDC on the xCluster source universe. CDC on the xCluster target universe is not supported. CDC is not supported in bi-directional xCluster setups.
+
 ## Best practices
 
-- Set the YB-TServer [cdc_wal_retention_time_secs](../../../reference/configuration/all-flags-yb-tserver/#cdc-wal-retention-time-secs) flag to 86400 on both source and target universe.
+- Set the YB-TServer [cdc_wal_retention_time_secs](../../../reference/configuration/all-flags-yb-tserver/#cdc-wal-retention-time-secs) flag to 86400 on both source and target.
 
-    This flag determines the duration for which WAL is retained on the source universe in case of a network partition or a complete outage of the target universe. The value depends on how long a network partition of the source universe or an outage of the target universe can be tolerated.
+    This flag determines the duration for which write-ahead log (WAL) is retained on the source in case of a network partition or a complete outage of the target. For xCluster replication, set the flag to a value greater than the default. The goal is to retain WALs during a network partition or target outage until replication can be restarted. While setting this value to 86400 (24 hours) is a good starting point, you should also consider how quickly you will be able to recover from a network partition or target outage.
 
-- Make sure all YB-Master and YB-Tserver flags are set to the same value on both the source and target universes.
+- Make sure all YB-Master and YB-TServer flags are set to the same value on both the source and target universes.
 
-- Monitor CPU usage and ensure it remains below 65%. Note that xCluster replication typically incurs a 20% CPU overhead.
+- Monitor CPU usage and ensure it remains under 65%. Note that xCluster replication typically incurs a 20% CPU overhead.
 
-- Monitor disk space usage and ensure it remains below 65%. Allocate sufficient disk space to accommodate WALs generated based on the `cdc_wal_retention_time_secs` setting, which is higher than the default [log_min_seconds_to_retain](../../../reference/configuration/yb-tserver/#log-min-seconds-to-retain) value.
+- Monitor disk space usage and ensure it remains under 65%. Allocate sufficient disk space to accommodate WALs generated based on `cdc_wal_retention_time_secs`.

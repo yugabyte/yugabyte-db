@@ -272,6 +272,10 @@ standard_ExecutorStart(QueryDesc *queryDesc, int eflags)
 	InitPlan(queryDesc, eflags);
 
 	MemoryContextSwitchTo(oldcontext);
+
+	/* YB: Refresh the session stats before the start of the query */
+	if (yb_enable_pg_stat_statements_rpc_stats)
+		YbRefreshSessionStatsBeforeExecution();
 }
 
 /* ----------------------------------------------------------------

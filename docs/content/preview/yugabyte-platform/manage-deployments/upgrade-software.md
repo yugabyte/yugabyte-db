@@ -2,7 +2,7 @@
 title: Upgrade universes with a new version of YugabyteDB
 headerTitle: Upgrade the YugabyteDB software
 linkTitle: Upgrade database
-description: Use YugabyteDB Anywhere to upgrade the YugabyteDB software on universes.
+description: Upgrade universes managed by YugabyteDB Anywhere.
 headcontent: Perform rolling upgrades on live universe deployments
 menu:
   preview_yugabyte-platform:
@@ -15,7 +15,7 @@ type: docs
 {{< page-finder/head text="Upgrade YugabyteDB" subtle="across different products">}}
   {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" url="../../../manage/upgrade-deployment/" >}}
   {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" current="" >}}
-  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/preview/yugabyte-cloud/cloud-clusters/cloud-maintenance/" >}}
+  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/preview/yugabyte-cloud/cloud-clusters/database-upgrade/" >}}
 {{< /page-finder/head >}}
 
 You can upgrade the YugabyteDB release that is powering a universe to get new features and fixes included in the release.

@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -29,6 +29,12 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
+#include <zlib.h>
+
+#include "yb/gutil/casts.h"
+
+#include "yb/rocksdb/util/xxhash.h"
 
 #include "yb/util/crc.h"
 #include "yb/util/status.h"
@@ -74,6 +80,28 @@ TEST_F(CrcTest, TestCRC32C) {
   ASSERT_EQ(0xa9421b7, data_crc); // Known value from crcutil usage test program.
 }
 
+template <class F>
+void MeasureTime(const std::string_view& name, Slice buffer, const F& f) {
+  int kNumRuns = 1000;
+  if (AllowSlowTests()) {
+    kNumRuns = 40000;
+  }
+  const uint64_t kNumBytes = kNumRuns * buffer.size();
+  Stopwatch sw;
+  sw.start();
+  for (int i = 0; i < kNumRuns; i++) {
+    f(buffer);
+  }
+  sw.stop();
+  CpuTimes elapsed = sw.elapsed();
+  LOG(INFO) << Format("$0 runs of $6 on $1 bytes of data (total: $2 bytes)"
+                      " in $3 seconds; $4 bytes per millisecond, $5 bytes per nanosecond!",
+                      kNumRuns, buffer.size(), kNumBytes, elapsed.wall_seconds(),
+                      (kNumBytes / elapsed.wall_millis()),
+                      (kNumBytes / elapsed.wall),
+                      name);
+}
+
 // Simple benchmark of CRC32C throughput.
 // We should expect about 8 bytes per cycle in throughput on a single core.
 TEST_F(CrcTest, BenchmarkCRC32C) {
@@ -82,25 +110,17 @@ TEST_F(CrcTest, BenchmarkCRC32C) {
   size_t buflen;
   GenerateBenchmarkData(&buf, &buflen);
   data.reset(buf);
-  Crc* crc32c = GetCrc32cInstance();
-  int kNumRuns = 1000;
-  if (AllowSlowTests()) {
-    kNumRuns = 40000;
-  }
-  const uint64_t kNumBytes = kNumRuns * buflen;
-  Stopwatch sw;
-  sw.start();
-  for (int i = 0; i < kNumRuns; i++) {
+  Slice slice(buf, buflen);
+  MeasureTime("CRC32C", slice, [crc32c = GetCrc32cInstance()](Slice buffer) {
     uint64_t cksum;
-    crc32c->Compute(buf, buflen, &cksum);
-  }
-  sw.stop();
-  CpuTimes elapsed = sw.elapsed();
-  LOG(INFO) << Substitute("$0 runs of CRC32C on $1 bytes of data (total: $2 bytes)"
-                          " in $3 seconds; $4 bytes per millisecond, $5 bytes per nanosecond!",
-                          kNumRuns, buflen, kNumBytes, elapsed.wall_seconds(),
-                          (kNumBytes / elapsed.wall_millis()),
-                          (kNumBytes / elapsed.wall));
+    crc32c->Compute(buffer.data(), buffer.size(), &cksum);
+  });
+  MeasureTime("Adler32", slice, [](Slice buffer) {
+    adler32_z(0, buffer.data(), buffer.size());
+  });
+  MeasureTime("xxHash", slice, [](Slice buffer) {
+    rocksdb::XXH32(buffer.data(), narrow_cast<int>(buffer.size()), 0);
+  });
 }
 
 } // namespace crc

@@ -9,7 +9,7 @@
         "retryPolicy": {
           "maxAttempts": 5,
           "initialBackoff": "2s",
-          "maxBackoff": "10s",
+          "maxBackoff": "20s",
           "backoffMultiplier": 2,
           "retryableStatusCodes": [
             "UNAVAILABLE",

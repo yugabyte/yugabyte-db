@@ -8,20 +8,22 @@ menu:
   v2024.1:
     identifier: monitor-and-alert
     parent: launch-and-manage
-    weight: 30
+    weight: 60
 type: indexpage
 ---
 
-<div class="row">
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="metrics/">
-      <div class="head">
-        <div class="icon"><i class="fa-solid fa-chart-line"></i></div>
-        <div class="title">Metrics</div>
-      </div>
-      <div class="body">
-          Learn about selecting and using YugabyteDB metrics.
-      </div>
-    </a>
-  </div>
-</div>
+{{<index/block>}}
+
+  {{<index/item
+    title="Metrics"
+    body="Learn about selecting and using YugabyteDB metrics."
+    href="metrics/"
+    icon="fa-thin fa-chart-bar">}}
+
+  {{<index/item
+    title="Query tuning"
+    body="Optimize query performance with tuning techniques and tools."
+    href="query-tuning/"
+    icon="fa-thin fa-gauge-high">}}
+
+{{</index/block>}}

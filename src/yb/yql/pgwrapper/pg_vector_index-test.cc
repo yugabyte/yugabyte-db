@@ -25,6 +25,11 @@
 
 #include "yb/qlexpr/index.h"
 
+#include "yb/rocksdb/db/db_impl.h"
+#include "yb/rocksdb/db/filename.h"
+#include "yb/rocksdb/sst_dump_tool.h"
+
+#include "yb/tablet/kv_formatter.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_vector_indexes.h"
@@ -45,12 +50,19 @@
 DECLARE_bool(TEST_skip_process_apply);
 DECLARE_bool(TEST_use_custom_varz);
 DECLARE_bool(TEST_usearch_exact);
-DECLARE_bool(vector_index_disable_compactions);
+DECLARE_bool(vector_index_enable_compactions);
+DECLARE_bool(vector_index_no_deletions_skip_filter_check);
+DECLARE_bool(vector_index_use_hnswlib);
 DECLARE_bool(vector_index_use_yb_hnsw);
 DECLARE_bool(ysql_enable_packed_row);
+DECLARE_bool(ysql_enable_auto_analyze);
+DECLARE_bool(ysql_enable_auto_analyze_infra);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
+DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
+DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_uint32(vector_index_concurrent_reads);
 DECLARE_uint32(vector_index_concurrent_writes);
+DECLARE_uint32(vector_index_num_compactions_limit);
 DECLARE_uint64(vector_index_initial_chunk_size);
 DECLARE_uint64(vector_index_max_insert_tasks);
 
@@ -59,6 +71,7 @@ METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
 namespace yb::docdb {
 
 extern bool TEST_vector_index_filter_allowed;
+extern size_t TEST_vector_index_max_checked_entries;
 
 }
 
@@ -87,37 +100,51 @@ const unum::usearch::byte_t* VectorToBytePtr(const FloatVector& vector) {
   return pointer_cast<const unum::usearch::byte_t*>(vector.data());
 }
 
-using PgVectorIndexTestParams = std::tuple<bool, bool>;
+YB_DEFINE_ENUM(VectorIndexEngine, (kUsearch)(kYbHnsw)(kHnswlib));
 
-bool IsColocated(const PgVectorIndexTestParams& params) {
-  return std::get<0>(params);
-}
-
-bool UseYbHnsw(const PgVectorIndexTestParams& params) {
-  return std::get<1>(params);
-}
-
-class PgVectorIndexTest :
-    public PgMiniTestBase, public testing::WithParamInterface<PgVectorIndexTestParams> {
+class PgVectorIndexTestBase : public PgMiniTestBase {
  protected:
+  virtual bool IsColocated() const = 0;
+  virtual VectorIndexEngine Engine() const = 0;
+
+  virtual int GetFileNumCompactionTrigger() {
+    return 5;
+  }
+
   void SetUp() override {
     FLAGS_TEST_use_custom_varz = true;
     FLAGS_TEST_usearch_exact = true;
-    FLAGS_vector_index_disable_compactions = false;
-    FLAGS_vector_index_use_yb_hnsw = UseYbHnsw();
+    FLAGS_vector_index_enable_compactions = true;
+    FLAGS_vector_index_num_compactions_limit = 0;
+    switch (Engine()) {
+      case VectorIndexEngine::kUsearch:
+        FLAGS_vector_index_use_hnswlib = false;
+        FLAGS_vector_index_use_yb_hnsw = false;
+        break;
+      case VectorIndexEngine::kYbHnsw:
+        FLAGS_vector_index_use_hnswlib = false;
+        FLAGS_vector_index_use_yb_hnsw = true;
+        break;
+      case VectorIndexEngine::kHnswlib:
+        FLAGS_vector_index_use_hnswlib = true;
+        FLAGS_vector_index_use_yb_hnsw = false;
+        break;
+    }
+
+    // Make sure compaction has predictable trigger threshold.
+    FLAGS_rocksdb_level0_file_num_compaction_trigger = GetFileNumCompactionTrigger();
+
+    // Disable auto analyze in this test suite because auto analyze runs
+    // analyze which can violate the check used in this test suite:
+    // !TEST_fail_on_seq_scan_with_vector_indexes || pgsql_read_request.has_ybctid_column_value()
+    FLAGS_ysql_enable_auto_analyze = false;
+    // (Auto-Analyze #28666)
+    FLAGS_ysql_enable_auto_analyze_infra = false;
     itest::SetupQuickSplit(1_KB);
 
     PgMiniTestBase::SetUp();
 
     tablet::TEST_fail_on_seq_scan_with_vector_indexes = true;
-  }
-
-  bool IsColocated() const {
-    return pgwrapper::IsColocated(GetParam());
-  }
-
-  bool UseYbHnsw() const {
-    return pgwrapper::UseYbHnsw(GetParam());
   }
 
   std::string DbName() {
@@ -136,8 +163,8 @@ class PgVectorIndexTest :
       create_suffix = " WITH (COLOCATED = 1)";
       RETURN_NOT_OK(conn.ExecuteFormat("CREATE DATABASE colocated_db COLOCATION = true"));
       conn = VERIFY_RESULT(Connect());
-    } else if (num_tablets_) {
-      create_suffix += "SPLIT INTO 1 TABLETS";
+    } else if (num_pre_split_tablets_) {
+      create_suffix += Format("SPLIT INTO $0 TABLETS", num_pre_split_tablets_);
     }
     RETURN_NOT_OK(conn.Execute("CREATE EXTENSION vector"));
     RETURN_NOT_OK(conn.ExecuteFormat(
@@ -177,12 +204,6 @@ class PgVectorIndexTest :
   [[nodiscard]] bool RowsMatch(
       PGConn& conn, const std::string& filter, const std::vector<std::string>& expected,
       int64_t limit = -1);
-
-  void TestSimple(bool table_exists = false);
-  void TestManyRows(AddFilter add_filter, Backfill backfill = Backfill::kFalse);
-  void TestRestart(tablet::FlushFlags flush_flags);
-  void TestMetric(const std::string& expected);
-  void TestRandom();
 
   FloatVector RandomVector() {
     if (real_dimensions_ == 0) {
@@ -258,6 +279,28 @@ class PgVectorIndexTest :
     return Format(" ORDER BY $0 LIMIT $1", DistanceToQuery(vector), limit);
   }
 
+  Status RunSstDump(tablet::KVFormatter& formatter, const std::string& db_path) {
+    SCHECK(!db_path.empty(), InvalidArgument, "");
+
+    std::vector<std::string> input_args = {
+      "./sst_dump", Format("--file=$0", db_path),
+      "--output_format=decoded_regulardb", "--command=scan",
+    };
+
+    std::vector<char*> args;
+    for (auto& arg : input_args) {
+      args.push_back(arg.data());
+    }
+
+    rocksdb::SSTDumpTool tool(&formatter);
+    testing::internal::CaptureStdout();
+    auto ret = tool.Run(narrow_cast<int>(args.size()), args.data());
+    testing::internal::GetCapturedStdout();
+    return !ret ? Status::OK() : STATUS(RuntimeError, Format("sst_dump failed with $0", ret));
+  }
+
+  Status WaitNoBackgroundInserts();
+
   std::vector<FloatVector> vectors_;
   std::uniform_real_distribution<> distribution_;
   std::mt19937_64 rng_{42};
@@ -265,16 +308,196 @@ class PgVectorIndexTest :
   size_t dimensions_;
   size_t real_dimensions_;
   std::vector<size_t> shuffle_vector_;
-  int num_tablets_ = 0;
+  size_t num_pre_split_tablets_ = 0;
 };
 
-uint64_t SumHistograms(const std::vector<const HdrHistogram*>& histograms) {
-  uint64_t result = 0;
-  for (const auto* histogram : histograms) {
-    result += histogram->CurrentSum();
-  }
-  return result;
+Status PgVectorIndexTestBase::WaitNoBackgroundInserts() {
+  auto cond = [this]() -> Result<bool> {
+    auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
+    for (const auto& peer : peers) {
+      auto list = VERIFY_RESULT(peer->shared_tablet())->vector_indexes().List();
+      if (!list) {
+        continue;
+      }
+      for (const auto& index : *list) {
+        if (index->TEST_HasBackgroundInserts()) {
+          LOG(INFO) << "Index " << index->ToString() << " has background inserts";
+          return false;
+        }
+      }
+    }
+    return true;
+  };
+  return WaitFor(cond, 30s * kTimeMultiplier, "Wait no background inserts");
 }
+
+std::string VectorAsString(int64_t id) {
+  return Format("[$0, $1, $2]", id, id * 2, id * 3);
+}
+
+std::string BuildRow(int64_t id, const std::string& value) {
+  return Format("$0, $1", id, value);
+}
+
+std::string ExpectedRow(int64_t id) {
+  return BuildRow(id, VectorAsString(id));
+}
+
+std::vector<std::string> ExpectedRows(size_t limit) {
+  std::vector<std::string> expected;
+  for (size_t i = 1; i <= limit; ++i) {
+    expected.push_back(ExpectedRow(i));
+  }
+  return expected;
+}
+
+Status PgVectorIndexTestBase::InsertRows(PGConn& conn, size_t start_row, size_t end_row) {
+  RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  for (auto i = start_row; i <= end_row; ++i) {
+    RETURN_NOT_OK(conn.ExecuteFormat(
+       "INSERT INTO test VALUES ($0, '$1')", i, VectorAsString(i)));
+  }
+  return conn.CommitTransaction();
+}
+
+Status PgVectorIndexTestBase::InsertRandomRows(PGConn& conn, size_t num_rows) {
+  RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  for (size_t i = 0; i != num_rows; ++i) {
+    auto vector = RandomVector();
+    RETURN_NOT_OK(conn.ExecuteFormat(
+       "INSERT INTO test VALUES ($0, '$1')", vectors_.size(), AsString(vector)));
+    vectors_.push_back(std::move(vector));
+  }
+  return conn.CommitTransaction();
+}
+
+Result<PGConn> PgVectorIndexTestBase::MakeIndexAndFill(
+    size_t num_rows, Backfill backfill = Backfill::kFalse) {
+  auto conn = VERIFY_RESULT(MakeTable());
+  if (backfill) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_initial_chunk_size) = num_rows / 5 + 1;
+    RETURN_NOT_OK(InsertRows(conn, 1, num_rows));
+    std::future<void> future;
+    if (tablet::TEST_block_after_backfilling_first_vector_index_chunks) {
+      future = std::async([this] {
+        std::this_thread::sleep_for(1s);
+        CHECK_OK(cluster_->mini_tablet_server(1)->Restart());
+        ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_chunks)
+            = false;
+        std::this_thread::sleep_for(5s * kTimeMultiplier);
+      });
+    }
+    RETURN_NOT_OK(CreateIndex(conn));
+    if (future.valid()) {
+      future.get();
+    }
+  } else {
+    RETURN_NOT_OK(CreateIndex(conn));
+    RETURN_NOT_OK(InsertRows(conn, 1, num_rows));
+  }
+  return conn;
+}
+
+Result<PGConn> PgVectorIndexTestBase::MakeIndexAndFillRandom(size_t num_rows) {
+  auto conn = VERIFY_RESULT(MakeIndex(dimensions_));
+  RETURN_NOT_OK(InsertRandomRows(conn, num_rows));
+  return conn;
+}
+
+bool PgVectorIndexTestBase::RowsMatch(
+    PGConn& conn, const std::string& filter, const std::vector<std::string>& expected,
+    int64_t limit) {
+  if (limit >= 0 && make_unsigned(limit) < expected.size()) {
+    std::vector<std::string> new_expected(expected.begin(), expected.begin() + limit);
+    return RowsMatch(conn, filter, new_expected, limit);
+  }
+  auto query = Format(
+      "SELECT * FROM test AS t $0$1", filter,
+      IndexQuerySuffix("[0.0, 0.0, 0.0]", limit < 0 ? expected.size() : make_unsigned(limit)));
+  LOG_WITH_FUNC(INFO) << "   Query: " << AsString(query);
+  auto result = CHECK_RESULT((conn.FetchRows<RowAsString>(query)));
+  LOG_WITH_FUNC(INFO) << "  Result: " << AsString(result);
+  LOG_WITH_FUNC(INFO) << "Expected: " << AsString(expected);
+  bool ok = true;
+  if (result.size() != expected.size()) {
+    LOG_WITH_FUNC(INFO)
+        << "Wrong number of results: " << result.size() << ", while " << expected.size()
+        << " expected";
+    ok = false;
+  }
+  for (size_t i = 0; i != std::min(result.size(), expected.size()); ++i) {
+    if (result[i] != expected[i]) {
+      LOG_WITH_FUNC(INFO)
+          << "Wrong row " << i << ": " << result[i] << " instead of " << expected[i];
+      ok = false;
+    }
+  }
+  return ok;
+}
+
+void PgVectorIndexTestBase::VerifyRows(
+    PGConn& conn, const std::string& filter, const std::vector<std::string>& expected,
+    int64_t limit) {
+  ASSERT_TRUE(RowsMatch(conn, filter, expected, limit));
+}
+
+void PgVectorIndexTestBase::VerifyRows(
+    PGConn& conn, AddFilter add_filter, const std::vector<std::string>& expected, int64_t limit) {
+  VerifyRows(conn, add_filter ? "WHERE id + 3 <= 5" : "", expected, limit);
+}
+
+void PgVectorIndexTestBase::VerifyRead(PGConn& conn, size_t limit, AddFilter add_filter) {
+  VerifyRows(conn, add_filter, ExpectedRows(limit));
+}
+
+using PgVectorIndexTestParams = std::tuple<bool, VectorIndexEngine>;
+
+bool IsColocated(const PgVectorIndexTestParams& params) {
+  return std::get<0>(params);
+}
+
+VectorIndexEngine Engine(const PgVectorIndexTestParams& params) {
+  return std::get<1>(params);
+}
+
+std::string TestParamToString(const testing::TestParamInfo<PgVectorIndexTestParams>& param_info) {
+  auto engine = Engine(param_info.param);
+  return Format(
+      "$0$1",
+      IsColocated(param_info.param) ? "Colocated" : "Distributed",
+      engine == VectorIndexEngine::kUsearch ? "" : ToString(engine).substr(1));
+}
+
+template <typename TestClass> requires(std::is_base_of_v<PgVectorIndexTestBase, TestClass>)
+class PgVectorIndexTestParamsDecorator
+    : public TestClass,
+      public testing::WithParamInterface<PgVectorIndexTestParams> {
+ protected:
+  bool IsColocated() const override {
+    return pgwrapper::IsColocated(GetParam());
+  }
+
+  VectorIndexEngine Engine() const override {
+    return pgwrapper::Engine(GetParam());
+  }
+};
+
+#define MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(test_suite_name) \
+        INSTANTIATE_TEST_SUITE_P(, \
+            test_suite_name, \
+            testing::Combine(testing::Bool(), testing::ValuesIn(kVectorIndexEngineArray)), \
+            TestParamToString)
+
+class PgVectorIndexTest : public PgVectorIndexTestParamsDecorator<PgVectorIndexTestBase> {
+ protected:
+  void TestSimple(bool table_exists = false);
+  void TestManyRows(AddFilter add_filter, Backfill backfill = Backfill::kFalse);
+  void TestRestart(tablet::FlushFlags flush_flags);
+  void TestMetric(const std::string& expected);
+  void TestRandom();
+};
+
+MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgVectorIndexTest);
 
 void PgVectorIndexTest::TestSimple(bool table_exists) {
   docdb::TEST_vector_index_filter_allowed = false;
@@ -340,7 +563,7 @@ void PgVectorIndexTest::TestSimple(bool table_exists) {
       "SELECT * FROM test" + IndexQuerySuffix("[1.0, 0.4, 0.3]", 5)));
   ASSERT_EQ(result, "1, [1, 0.5, 0.25]; 2, [0.125, 0.375, 0.25]");
 
-  LOG(INFO) << "Memory usage:\n" << DumpMemoryUsage();
+  DumpMemoryUsage();
 }
 
 TEST_P(PgVectorIndexTest, Simple) {
@@ -371,131 +594,14 @@ TEST_P(PgVectorIndexTest, DropWithFlush) {
   ASSERT_OK(conn.Execute("DROP INDEX " + kVectorIndexName));
 }
 
-std::string VectorAsString(int64_t id) {
-  return Format("[$0, $1, $2]", id, id * 2, id * 3);
-}
-
-std::string BuildRow(int64_t id, const std::string& value) {
-  return Format("$0, $1", id, value);
-}
-
-std::string ExpectedRow(int64_t id) {
-  return BuildRow(id, VectorAsString(id));
-}
-
-std::vector<std::string> ExpectedRows(size_t limit) {
-  std::vector<std::string> expected;
-  for (size_t i = 1; i <= limit; ++i) {
-    expected.push_back(ExpectedRow(i));
-  }
-  return expected;
-}
-
-Status PgVectorIndexTest::InsertRows(PGConn& conn, size_t start_row, size_t end_row) {
-  RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-  for (auto i = start_row; i <= end_row; ++i) {
-    RETURN_NOT_OK(conn.ExecuteFormat(
-       "INSERT INTO test VALUES ($0, '$1')", i, VectorAsString(i)));
-  }
-  return conn.CommitTransaction();
-}
-
-Status PgVectorIndexTest::InsertRandomRows(PGConn& conn, size_t num_rows) {
-  RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-  for (size_t i = 0; i != num_rows; ++i) {
-    auto vector = RandomVector();
-    RETURN_NOT_OK(conn.ExecuteFormat(
-       "INSERT INTO test VALUES ($0, '$1')", vectors_.size(), AsString(vector)));
-    vectors_.push_back(std::move(vector));
-  }
-  return conn.CommitTransaction();
-}
-
-Result<PGConn> PgVectorIndexTest::MakeIndexAndFill(
-    size_t num_rows, Backfill backfill = Backfill::kFalse) {
-  auto conn = VERIFY_RESULT(MakeTable());
-  if (backfill) {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_initial_chunk_size) = num_rows / 5 + 1;
-    RETURN_NOT_OK(InsertRows(conn, 1, num_rows));
-    std::future<void> future;
-    if (tablet::TEST_block_after_backfilling_first_vector_index_chunks) {
-      future = std::async([this] {
-        std::this_thread::sleep_for(1s);
-        CHECK_OK(cluster_->mini_tablet_server(1)->Restart());
-        ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_chunks)
-            = false;
-        std::this_thread::sleep_for(5s * kTimeMultiplier);
-      });
-    }
-    RETURN_NOT_OK(CreateIndex(conn));
-    if (future.valid()) {
-      future.get();
-    }
-  } else {
-    RETURN_NOT_OK(CreateIndex(conn));
-    RETURN_NOT_OK(InsertRows(conn, 1, num_rows));
-  }
-  return conn;
-}
-
-Result<PGConn> PgVectorIndexTest::MakeIndexAndFillRandom(size_t num_rows) {
-  auto conn = VERIFY_RESULT(MakeIndex(dimensions_));
-  RETURN_NOT_OK(InsertRandomRows(conn, num_rows));
-  return conn;
-}
-
-bool PgVectorIndexTest::RowsMatch(
-    PGConn& conn, const std::string& filter, const std::vector<std::string>& expected,
-    int64_t limit) {
-  if (limit >= 0 && make_unsigned(limit) < expected.size()) {
-    std::vector<std::string> new_expected(expected.begin(), expected.begin() + limit);
-    return RowsMatch(conn, filter, new_expected, limit);
-  }
-  auto query = Format(
-      "SELECT * FROM test AS t $0$1", filter,
-      IndexQuerySuffix("[0.0, 0.0, 0.0]", limit < 0 ? expected.size() : make_unsigned(limit)));
-  LOG_WITH_FUNC(INFO) << "   Query: " << AsString(query);
-  auto result = CHECK_RESULT((conn.FetchRows<RowAsString>(query)));
-  LOG_WITH_FUNC(INFO) << "  Result: " << AsString(result);
-  LOG_WITH_FUNC(INFO) << "Expected: " << AsString(expected);
-  bool ok = true;
-  if (result.size() != expected.size()) {
-    LOG_WITH_FUNC(INFO)
-        << "Wrong number of results: " << result.size() << ", while " << expected.size()
-        << " expected";
-    ok = false;
-  }
-  for (size_t i = 0; i != std::min(result.size(), expected.size()); ++i) {
-    if (result[i] != expected[i]) {
-      LOG_WITH_FUNC(INFO)
-          << "Wrong row " << i << ": " << result[i] << " instead of " << expected[i];
-      ok = false;
-    }
-  }
-  return ok;
-}
-
-void PgVectorIndexTest::VerifyRows(
-    PGConn& conn, const std::string& filter, const std::vector<std::string>& expected,
-    int64_t limit) {
-  ASSERT_TRUE(RowsMatch(conn, filter, expected, limit));
-}
-
-void PgVectorIndexTest::VerifyRows(
-    PGConn& conn, AddFilter add_filter, const std::vector<std::string>& expected, int64_t limit) {
-  VerifyRows(conn, add_filter ? "WHERE id + 3 <= 5" : "", expected, limit);
-}
-
-void PgVectorIndexTest::VerifyRead(PGConn& conn, size_t limit, AddFilter add_filter) {
-  VerifyRows(conn, add_filter, ExpectedRows(limit));
-}
-
 void PgVectorIndexTest::TestManyRows(AddFilter add_filter, Backfill backfill) {
   constexpr size_t kNumRows = RegularBuildVsSanitizers(2000, 64);
-  const size_t query_limit = add_filter ? 1 : 5;
 
   auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows, backfill));
-  ASSERT_NO_FATALS(VerifyRead(conn, query_limit, add_filter));
+  ASSERT_NO_FATALS(VerifyRows(conn, add_filter, ExpectedRows(add_filter ? 2 : 5), /* limit= */ 5));
+  if (add_filter) {
+    ASSERT_NO_FATALS(VerifyRead(conn, /* limit= */ 1, add_filter));
+  }
 }
 
 TEST_P(PgVectorIndexTest, Split) {
@@ -522,7 +628,7 @@ TEST_P(PgVectorIndexTest, ManyRowsWithBackfill) {
 }
 
 TEST_P(PgVectorIndexTest, ManyRowsWithBackfillAndRestart) {
-  num_tablets_ = 1;
+  num_pre_split_tablets_ = 1;
   ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_block_after_backfilling_first_vector_index_chunks) = true;
   TestManyRows(AddFilter::kFalse, Backfill::kTrue);
   auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
@@ -718,6 +824,14 @@ TEST_P(PgVectorIndexTest, SnapshotSchedule) {
   ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
 }
 
+uint64_t SumHistograms(const std::vector<const HdrHistogram*>& histograms) {
+  uint64_t result = 0;
+  for (const auto* histogram : histograms) {
+    result += histogram->CurrentSum();
+  }
+  return result;
+}
+
 void PgVectorIndexTest::TestRandom() {
   constexpr size_t kLimit = 10;
   constexpr size_t kDimensionMultiplier = RegularBuildVsDebugVsSanitizers(96, 4, 4);
@@ -842,6 +956,8 @@ TEST_P(PgVectorIndexTest, Cosine) {
 }
 
 TEST_P(PgVectorIndexTest, EfSearch) {
+  FLAGS_vector_index_no_deletions_skip_filter_check = false;
+
   constexpr size_t kNumRows = 1000;
   constexpr int kIterations = 10;
   constexpr int kSmallEf = 1;
@@ -849,29 +965,19 @@ TEST_P(PgVectorIndexTest, EfSearch) {
 
   FLAGS_TEST_usearch_exact = false;
 
-  num_tablets_ = 1;
+  num_pre_split_tablets_ = 1;
   auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
   ASSERT_NO_FATALS(VerifyRead(conn, 1, AddFilter::kFalse));
+  ASSERT_OK(WaitNoBackgroundInserts());
 
-  std::unordered_map<int, std::vector<MonoDelta>> times;
   for (int i = 0; i != kIterations; ++i) {
     for (int ef : {kSmallEf, kBigEf}) {
       ASSERT_OK(conn.ExecuteFormat("SET ybhnsw.ef_search = $0", ef));
-      auto start = MonoTime::Now();
+      ANNOTATE_UNPROTECTED_WRITE(docdb::TEST_vector_index_max_checked_entries) = ef * 100;
       auto valid = RowsMatch(conn, "", ExpectedRows(1));
-      auto passed = MonoTime::Now() - start;
-      times[ef].push_back(passed);
       ASSERT_TRUE(valid || ef == kSmallEf);
     }
   }
-  std::ranges::sort(times[kSmallEf]);
-  std::ranges::sort(times[kBigEf]);
-
-  auto small_median = times[kSmallEf][kIterations / 2];
-  auto big_median = times[kBigEf][kIterations / 2];
-  LOG(INFO) << "ef=" << kSmallEf << ": " << small_median.ToPrettyString()
-            << ", ef=" << kBigEf << ": " << big_median.ToPrettyString();
-  ASSERT_LT(small_median, big_median);
 }
 
 TEST_P(PgVectorIndexTest, Paging) {
@@ -968,8 +1074,15 @@ TEST_P(PgVectorIndexTest, Options) {
         expected_options += Format("$0: $1", option_names[j], value);
         prev_value = value;
       }
-      if (UseYbHnsw()) {
-        expected_options += " backend: YB_HNSW";
+      switch (Engine()) {
+        case VectorIndexEngine::kUsearch:
+          break;
+        case VectorIndexEngine::kYbHnsw:
+          expected_options += " backend: YB_HNSW";
+          break;
+        case VectorIndexEngine::kHnswlib:
+          expected_options += " backend: HNSWLIB";
+          break;
       }
       if (!options.empty()) {
         options = " WITH (" + options + ")";
@@ -1028,16 +1141,449 @@ TEST_P(PgVectorIndexTest, Backup) {
   VerifyRead(restore_conn, 10, AddFilter::kFalse);
 }
 
-std::string TestParamToString(const testing::TestParamInfo<PgVectorIndexTestParams>& param_info) {
-  return Format(
-      "$0$1",
-      IsColocated(param_info.param) ? "Colocated" : "Distributed",
-      UseYbHnsw(param_info.param) ? "YbHnsw" : "");
+class PgVectorIndexSingleServerTestBase : public PgVectorIndexTestBase {
+ public:
+  PgVectorIndexSingleServerTestBase() {
+    num_pre_split_tablets_ = 1;
+  }
+
+ protected:
+  size_t NumTabletServers() override {
+    return 1;
+  }
+};
+
+class PgVectorIndexSingleServerTest
+    : public PgVectorIndexTestParamsDecorator<PgVectorIndexSingleServerTestBase> {
+};
+
+MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgVectorIndexSingleServerTest);
+
+// Expected Key -> Value format:
+// 1) MetaKey(VectorId(uuid), [HT{ ... }]) -> DocKey(...)
+// 2) MetaKey(VectorId(uuid), [HT{ ... }]) -> DEL
+// Value contains only unsigned integer.
+class TestKVFormatter : public tablet::KVFormatter {
+  const std::string kKVDelimiter = " -> ";
+
+ public:
+  std::string Format(
+      const Slice& key, const Slice& value, docdb::StorageDbType type) const override {
+    auto result = tablet::KVFormatter::Format(key, value, type);
+    if (!key.starts_with(dockv::KeyEntryTypeAsChar::kVectorIndexMetadata)) {
+      return result;
+    }
+
+    // Parse result into segments and collect entries by HT order.
+    static const std::string kMetaPrefix = "MetaKey(VectorId(";
+    CHECK(result.starts_with(kMetaPrefix));
+
+    // 1. Extract VectorId substring.
+    auto id_end = result.find(")", kMetaPrefix.length());
+    CHECK_NE(id_end, std::string::npos);
+    auto id = result.substr(kMetaPrefix.length(), id_end - kMetaPrefix.length());
+
+    // 2. Extract HT substing.
+    static const std::string kHTPrefix = "HT{";
+    auto ht_start = result.find(kHTPrefix, id_end + 1);
+    CHECK_NE(ht_start, std::string::npos);
+    ht_start += kHTPrefix.length();
+    CHECK_LT(ht_start, result.size());
+    auto ht_end = result.find("}", ht_start + 1);
+    CHECK_NE(ht_end, std::string::npos);
+    auto ht = result.substr(ht_start, ht_end - ht_start);
+
+    // 3. Extract Ybctid or DEL.
+    auto delim_pos = result.find(kKVDelimiter, ht_end + 1);
+    CHECK_NE(delim_pos, std::string::npos);
+    auto ybctid = result.substr(delim_pos + kKVDelimiter.length());
+
+    // 4. Keep inserted data.
+    entries_.emplace_back(
+        Entry{ .vector_id = std::move(id), .ht = std::move(ht), .ybctid = std::move(ybctid) });
+
+    return result;
+  }
+
+  std::string ExtractIdx(const std::string& ybctid) const {
+    // Expected formats of ybctid: "DocKey([], [1])" or "DocKey(0xeda9, [1], [])".
+    static const std::string kDocKeyPrefix = "DocKey(";
+    static const std::string kIdxDigits = "0123456789";
+
+    if (ybctid.rfind(kDocKeyPrefix, 0) != 0) {
+        return {};
+    }
+
+    // Find the first '[' to skip hash part.
+    auto start = ybctid.find('[', kDocKeyPrefix.length() - 1);
+    if (start == std::string::npos) {
+      return {};
+    }
+
+    // Find the first digit after '['.
+    start = ybctid.find_first_of(kIdxDigits, start);
+    if (start == std::string::npos) {
+      return {};
+    }
+
+    // Find where digits stop.
+    auto end = ybctid.find_first_not_of(kIdxDigits, start);
+    return ybctid.substr(start, end - start);
+  }
+
+  std::string FormatYbctid(const std::string& ybctid) const {
+    auto idx = ExtractIdx(ybctid);
+    CHECK(!idx.empty());
+    return yb::Format("ybctid_$0", idx);
+  }
+
+  std::string FormatVectorsMeta() const {
+    // 1. Sort all entries to have a consistent ordered.
+    std::ranges::sort(entries_, Entry::LessByHtAndYbctid);
+
+    // 2. Build vector id to vector label mapping, collecting all unique vector ids keeping
+    //    the order for a particular ybctid.
+    static const std::string kTombstone = "DEL";
+    for (const auto& entry : entries_) {
+      if (entry.ybctid == kTombstone) {
+        continue;
+      }
+
+      auto& vectors = ybctid_vectors_[entry.ybctid];
+      if (!vectors.insert(entry.vector_id).second) {
+        continue;
+      }
+
+      vector_labels_.insert({
+        entry.vector_id,
+        yb::Format("$0_vector_$1", FormatYbctid(entry.ybctid), vectors.size())
+      });
+    }
+
+    // 3. Build output excluding HT.
+    std::stringstream ss;
+    for (const auto& entry : entries_) {
+      ss << vector_labels_.at(entry.vector_id);
+      ss << kKVDelimiter;
+      ss << (entry.ybctid == kTombstone ? entry.ybctid : FormatYbctid(entry.ybctid));
+      ss << std::endl;
+    }
+    return ss.str();
+  }
+
+  void Clear(bool clean_vectors = false) {
+    entries_.clear();
+    if (clean_vectors) {
+      vector_labels_.clear();
+      ybctid_vectors_.clear();
+    }
+  }
+
+ private:
+  struct Entry {
+    std::string vector_id;
+    std::string ht;
+    std::string ybctid;
+
+    std::string ToString() const {
+      return yb::Format("{ $0 [$1] => $2 }", vector_id, ht, ybctid);
+    }
+
+    static bool LessByHtAndYbctid(const Entry& a, const Entry& b) {
+      if (&a == &b) {
+        return false; // The same entry.
+      }
+
+      if (a.ht == b.ht) {
+        // Sanity check: some entries may have same HT but vector_id and ybctid should be different.
+        CHECK_NE(a.vector_id, b.vector_id) << "a: " << a.ToString() << ", b: " << b.ToString();
+        CHECK_NE(a.ybctid, b.ybctid) << "a: " << a.ToString() << ", b: " << b.ToString();
+
+        return a.ybctid < b.ybctid;
+      }
+
+      return a.ht < b.ht;
+    }
+  };
+
+  // All vector index reverse mapping entries.
+  mutable std::vector<Entry> entries_;
+
+  // Mapping between vector id and vector label.
+  mutable std::unordered_map<std::string, std::string> vector_labels_;
+
+  // Collection of all vectors per ybctid.
+  mutable std::unordered_map<std::string, std::unordered_set<std::string>> ybctid_vectors_;
+};
+
+TEST_P(PgVectorIndexSingleServerTest, ReverseMappingCleanup) {
+  // Set number of files for background compaction explicitly.
+  constexpr auto kRetentionIntervalSec = 4;
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_timestamp_history_retention_interval_sec) = kRetentionIntervalSec;
+
+  auto conn = ASSERT_RESULT(MakeIndex());
+
+  // Get tablet and corresponding rocksdb dir.
+  auto table_peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(table_peers.size(), 1);
+  auto tablet = ASSERT_RESULT(table_peers.front()->shared_tablet());
+  const auto rocksdb_dir = tablet->metadata()->rocksdb_dir();
+  auto* db = tablet->regular_db();
+  auto* db_impl = down_cast<rocksdb::DBImpl*>(db);
+
+  // Setup helpers.
+  auto flush_tablet_and_wait = [&tablet, db_impl](const std::string& description) -> Status {
+    RETURN_NOT_OK(tablet->Flush(tablet::FlushMode::kSync, tablet::FlushFlags::kAllDbs));
+
+    // Wait for the files are really being flushed.
+    SleepFor(MonoDelta::FromMilliseconds(200));
+    return LoggedWaitFor([db_impl]() -> Result<bool> {
+      return db_impl->TEST_NumRunningFlushes() == 0;
+    }, MonoDelta::FromSeconds(4 * kRetentionIntervalSec), description);
+  };
+
+  auto compact_tablet = [&tablet] {
+    return tablet->ForceManualRocksDBCompact(docdb::SkipFlush::kTrue);
+  };
+
+  auto wait_for_compaction_done = [db_impl](const std::string& description) -> Status {
+    return LoggedWaitFor([db_impl]() -> Result<bool> {
+      return db_impl->TEST_NumBackgroundCompactionsScheduled() == 0 &&
+             db_impl->TEST_NumTotalRunningCompactions() == 0;
+      }, MonoDelta::FromSeconds(4 * kRetentionIntervalSec), description);
+  };
+
+  TestKVFormatter formatter;
+  auto run_sst_dump = [this, db, &formatter] -> Status {
+    formatter.Clear();
+    for (const auto& live_file : db->GetLiveFilesMetaData()) {
+      RETURN_NOT_OK(RunSstDump(formatter, live_file.BaseFilePath()));
+    }
+    return Status::OK();
+  };
+
+  // Initial insert.
+  ASSERT_OK(InsertRows(conn, /* start_row = */ 1, /* end_row = */ 5));
+  ASSERT_OK(flush_tablet_and_wait("Initial flush"));
+
+  // Make some changes to a next SST file.
+  ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 2"));
+  ASSERT_OK(conn.Execute("UPDATE test SET embedding = '[10, 20, 30]' WHERE id = 4"));
+  ASSERT_OK(flush_tablet_and_wait("Flush for inital updates"));
+
+  // Wait less than retention period and make sure no tombstoned reverse mapping records deleted.
+  SleepFor(MonoDelta::FromSeconds(kRetentionIntervalSec / 4.0));
+  ASSERT_OK(compact_tablet());
+  ASSERT_OK(wait_for_compaction_done("First compaction"));
+  ASSERT_EQ(1, db->GetLiveFilesMetaData().size());
+
+  ASSERT_OK(run_sst_dump());
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+      R"#(
+          ybctid_1_vector_1 -> ybctid_1
+          ybctid_2_vector_1 -> ybctid_2
+          ybctid_3_vector_1 -> ybctid_3
+          ybctid_4_vector_1 -> ybctid_4
+          ybctid_5_vector_1 -> ybctid_5
+          ybctid_2_vector_1 -> DEL
+          ybctid_4_vector_1 -> DEL
+          ybctid_4_vector_2 -> ybctid_4
+      )#",
+      formatter.FormatVectorsMeta());
+
+  // Wait enough time to make sure tombstoned records are deleted during full compactions if
+  // they are outside retention period.
+  SleepFor(MonoDelta::FromSeconds(kRetentionIntervalSec));
+  ASSERT_OK(compact_tablet());
+  ASSERT_OK(wait_for_compaction_done("Second compaction"));
+  ASSERT_EQ(1, db->GetLiveFilesMetaData().size());
+  const size_t oldest_file = db->GetLiveFilesMetaData().front().name_id;
+  LOG(INFO) << "Oldest file number [" << oldest_file << "] to be excluded from compaction";
+
+  ASSERT_OK(run_sst_dump());
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+      R"#(
+          ybctid_1_vector_1 -> ybctid_1
+          ybctid_3_vector_1 -> ybctid_3
+          ybctid_5_vector_1 -> ybctid_5
+          ybctid_4_vector_2 -> ybctid_4
+      )#",
+      formatter.FormatVectorsMeta());
+
+  // Let's produce more files.
+  ASSERT_OK(conn.Execute("UPDATE test SET embedding = '[11, 21, 31]' WHERE id = 4"));
+  ASSERT_OK(InsertRows(conn, /* start_row = */ 6, /* end_row = */ 7));
+  ASSERT_OK(flush_tablet_and_wait("Flush after update"));
+  ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 3"));
+  ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 6"));
+  ASSERT_OK(conn.Execute("UPDATE test SET embedding = '[12, 22, 32]' WHERE id = 4"));
+  ASSERT_OK(InsertRows(conn, /* start_row = */ 8, /* end_row = */ 8));
+  ASSERT_OK(flush_tablet_and_wait("Flush after deletes"));
+
+  // Keep the number of files to understand how many additional files should be produced to let
+  // a background compaction automatically happen. It is expected to have 3 files at this point,
+  // one - after comaction plus two - after two flushes, but in some cases an additional flush of
+  // an unknown nature may happen, producing one more file. That does not break the logic, but it's
+  // good to make additional research to understand where that flush comes from.
+  constexpr size_t kNumFilesExpected = 3;
+  const size_t num_files = db->GetLiveFilesMetaData().size();
+  if (num_files == kNumFilesExpected) {
+    LOG(INFO) << "Current number of files: " << num_files;
+  } else {
+    LOG(WARNING) << "Current number of files: " << num_files << ", expected: " << kNumFilesExpected;
+    ASSERT_GE(num_files, kNumFilesExpected);
+  }
+
+  // Make sure everything expected is seen after the flush.
+  ASSERT_OK(run_sst_dump());
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+      R"#(
+          ybctid_1_vector_1 -> ybctid_1
+          ybctid_3_vector_1 -> ybctid_3
+          ybctid_5_vector_1 -> ybctid_5
+          ybctid_4_vector_2 -> ybctid_4
+          ybctid_4_vector_2 -> DEL
+          ybctid_4_vector_3 -> ybctid_4
+          ybctid_6_vector_1 -> ybctid_6
+          ybctid_7_vector_1 -> ybctid_7
+          ybctid_3_vector_1 -> DEL
+          ybctid_6_vector_1 -> DEL
+          ybctid_4_vector_3 -> DEL
+          ybctid_4_vector_4 -> ybctid_4
+          ybctid_8_vector_1 -> ybctid_8
+      )#",
+      formatter.FormatVectorsMeta());
+
+  // Make deletes pass the retention period.
+  SleepFor(MonoDelta::FromSeconds(kRetentionIntervalSec + 1));
+  LOG(INFO) << "Passed enough time to make tombstones be outside retention period";
+
+  // Update exclude SST file functor to exclude exactly the oldest file, to simulate
+  // background compaction for N-1 latest files.
+  auto excluder = std::make_shared<rocksdb::CompactionFileExcluder>(
+      [oldest_file](const rocksdb::FileMetaData& file){
+        bool need_exclude = oldest_file == file.fd.GetNumber();
+        LOG(INFO) << (need_exclude ? "Excluding" : "Keeping") << " file: " << file.fd.ToString();
+        return need_exclude;
+      });
+  db_impl->TEST_SetExcludeFromCompaction(excluder);
+
+  // Need to add more files to trigger background compaction, adding 1 for the excluded file.
+  const size_t need_files = GetFileNumCompactionTrigger() - num_files + 1;
+  LOG(INFO) << "Need " << need_files << " files to trigger background compaction";
+  std::stringstream expected_tail;
+  for (size_t i = 0; i < need_files; ++i) {
+    const size_t key_idx = 9 + i;
+    ASSERT_OK(InsertRows(conn, /* start_row = */ key_idx, /* end_row = */ key_idx));
+    ASSERT_OK(flush_tablet_and_wait(Format("Flush $0 done", i)));
+    expected_tail << Format("ybctid_$0_vector_1 -> ybctid_$0\n", key_idx);
+    LOG(INFO) << "Flushed data to " << i << " out of " << need_files << " files";
+  }
+
+  // Give some time for background compaction to start.
+  SleepFor(MonoDelta::FromSeconds(1));
+  LOG(INFO) << "Background compaction should have been started";
+  ASSERT_OK(wait_for_compaction_done("Final compaction"));
+  ASSERT_EQ(2, db->GetLiveFilesMetaData().size());
+
+  // Check the final state in SST files.
+  ASSERT_OK(run_sst_dump());
+  auto output = formatter.FormatVectorsMeta();
+  LOG(INFO) << "Parsed SST dump output:\n" << output;
+
+  // Data from excluded file
+  // ybctid_1_vector_1 -> ybctid_1
+  // ybctid_3_vector_1 -> ybctid_3
+  // ybctid_5_vector_1 -> ybctid_5
+  // ybctid_4_vector_2 -> ybctid_4
+  //
+  // Other old files:
+  // ybctid_4_vector_2 -> DEL       => outside retention, but should be kept by min_other_ht
+  // ybctid_4_vector_3 -> ybctid_4  => outside retention, should be filtered due to newer value
+  // ybctid_6_vector_1 -> ybctid_6  => outside retention, should be filtered due to delete
+  // ybctid_7_vector_1 -> ybctid_7  => visible
+  // ybctid_3_vector_1 -> DEL       => outside retention, but should be kept by min_other_ht
+  // ybctid_6_vector_1 -> DEL       => outside retention, but should be kept by min_other_ht
+  // ybctid_4_vector_3 -> DEL       => outside retention, but should be kept by min_other_ht
+  // ybctid_4_vector_4 -> ybctid_4  => visible
+  // ybctid_8_vector_1 -> ybctid_8  => outside retention, but should be kept as updates too fresh.
+  //
+  // Fresh files: => fresh data, within retention period.
+  // ybctid_9_vector_1 -> ybctid_9
+  // ...
+  // ybctid_N_vector_3 -> ybctid_N
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(util::TrimWhitespaceFromEveryLine(
+      R"#(
+          ybctid_1_vector_1 -> ybctid_1
+          ybctid_3_vector_1 -> ybctid_3
+          ybctid_5_vector_1 -> ybctid_5
+          ybctid_4_vector_2 -> ybctid_4
+          ybctid_4_vector_2 -> DEL
+          ybctid_7_vector_1 -> ybctid_7
+          ybctid_3_vector_1 -> DEL
+          ybctid_6_vector_1 -> DEL
+          ybctid_4_vector_3 -> DEL
+          ybctid_4_vector_4 -> ybctid_4
+          ybctid_8_vector_1 -> ybctid_8
+      )#" + expected_tail.str()),
+      output);
 }
 
-INSTANTIATE_TEST_SUITE_P(
-    , PgVectorIndexTest,
-    testing::Combine(testing::Bool(), testing::Bool()),
-    TestParamToString);
+class PgVectorIndexUtilTest : public PgVectorIndexSingleServerTestBase {
+ protected:
+  bool IsColocated() const override {
+    return false;
+  }
+
+  VectorIndexEngine Engine() const override {
+    return VectorIndexEngine::kUsearch;
+  }
+
+  size_t NumTabletServers() override {
+    return 1;
+  }
+};
+
+TEST_F(PgVectorIndexUtilTest, SstDump) {
+  constexpr size_t kNumRows = 5;
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 2"));
+  ASSERT_OK(conn.Execute("UPDATE test SET embedding = '[10, 20, 30]' WHERE id = 4"));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto table_peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(table_peers.size(), 1);
+  auto tablet = ASSERT_RESULT(table_peers.front()->shared_tablet());
+  auto rocksdb_dir = tablet->metadata()->rocksdb_dir();
+  ASSERT_FALSE(rocksdb_dir.empty());
+  LOG(INFO) << "RocksDB dir: " << rocksdb_dir;
+
+  TestKVFormatter formatter;
+  ASSERT_OK(RunSstDump(formatter, rocksdb_dir));
+
+  auto output = formatter.FormatVectorsMeta();
+  LOG(INFO) << "Parsed SST dump output:\n" << output;
+
+  // The entires order is different from what sst_dump really prints, it's required to re-sort
+  // to be able to compare the expected results.
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+      R"#(
+          ybctid_1_vector_1 -> ybctid_1
+          ybctid_2_vector_1 -> ybctid_2
+          ybctid_3_vector_1 -> ybctid_3
+          ybctid_4_vector_1 -> ybctid_4
+          ybctid_5_vector_1 -> ybctid_5
+          ybctid_2_vector_1 -> DEL
+          ybctid_4_vector_1 -> DEL
+          ybctid_4_vector_2 -> ybctid_4
+      )#",
+      output);
+}
 
 }  // namespace yb::pgwrapper

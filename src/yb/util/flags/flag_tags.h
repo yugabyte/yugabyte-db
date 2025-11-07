@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -225,6 +225,45 @@ class FlagTagger {
 
 namespace flags_internal {
 bool RegisterFlagNewInstallValue(const std::string& flag_name, const std::string& value);
+
+constexpr bool StringsNotEqual(char const* a, char const* b) {
+    return std::string_view(a) != b;
+}
+
+template <typename T>
+constexpr bool IsValid_bool(T a) {
+  return std::is_same<bool, decltype(a)>::value;
+}
+
+template <typename T>
+constexpr bool IsValid_int32(T a) {
+  return std::is_same<int32_t, decltype(a)>::value;
+}
+
+template <typename T>
+constexpr bool IsValid_int64(T a) {
+  return std::is_same<int64_t, decltype(a)>::value || std::is_same<uint32_t, decltype(a)>::value ||
+         std::is_same<int32_t, decltype(a)>::value;
+}
+
+template <typename T>
+constexpr bool IsValid_uint64(T a) {
+  return std::is_same<uint64_t, decltype(a)>::value || std::is_same<uint32_t, decltype(a)>::value ||
+         std::is_same<int32_t, decltype(a)>::value;
+}
+
+template <typename T>
+constexpr bool IsValid_double(T a) {
+  return std::is_same<double, decltype(a)>::value || std::is_same<int64_t, decltype(a)>::value ||
+         std::is_same<uint32_t, decltype(a)>::value || std::is_same<int32_t, decltype(a)>::value;
+}
+
+template <typename T>
+constexpr bool IsValid_string(T a) {
+  return std::is_same<std::string, decltype(a)>::value ||
+         std::is_same<const char*, decltype(a)>::value || std::is_same<char*, decltype(a)>::value;
+}
+
 }  // namespace flags_internal
 
 } // namespace yb
@@ -243,6 +282,19 @@ bool RegisterFlagNewInstallValue(const std::string& flag_name, const std::string
   } \
   static_assert(true, "semi-colon required after this macro")
 
+#define DEFINE_NEW_INSTALL_STRING_VALUE(flag_name, flag_value) \
+  COMPILE_ASSERT(sizeof(BOOST_PP_CAT(FLAGS_, flag_name)), flag_does_not_exist); \
+  static_assert( \
+      yb::flags_internal::IsValid_string(flag_value), \
+      "Value is not valid for string flag " BOOST_PP_STRINGIZE(flag_name)); \
+  _TAG_FLAG(flag_name, ::yb::FlagTag::kHasNewInstallValue, hasNewInstallValue); \
+  namespace { \
+  auto BOOST_PP_CAT(_flag_new_install_value_, flag_name) = \
+      yb::flags_internal::RegisterFlagNewInstallValue( \
+          BOOST_PP_STRINGIZE(flag_name), flag_value); \
+  } \
+  static_assert(true, "semi-colon required after this macro")
+
 #define _DEFINE_FLAG_IN_FILE(name) BOOST_PP_CAT(name, _DefinedInFile)
 
 #define _DEFINE_flag(type, name, default_value, description) \
@@ -250,7 +302,7 @@ bool RegisterFlagNewInstallValue(const std::string& flag_name, const std::string
   DEFINE_##type(name, default_value, description)
 
 #define DEFINE_test_flag(type, name, default_value, description) \
-  BOOST_PP_CAT(DEFINE_, type)(TEST_##name, default_value, description " (For testing only!)"); \
+  _DEFINE_flag(type, BOOST_PP_CAT(TEST_, name), default_value, description " (For testing only!)");\
   TAG_FLAG(BOOST_PP_CAT(TEST_, name), unsafe); \
   TAG_FLAG(BOOST_PP_CAT(TEST_, name), hidden)
 

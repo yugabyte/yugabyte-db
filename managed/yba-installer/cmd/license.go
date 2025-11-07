@@ -1,10 +1,12 @@
 /*
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  */
 
 package cmd
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"os"
 
@@ -49,7 +51,7 @@ var validateLicenseCmd = &cobra.Command{
 
 var addLicenseCmd = &cobra.Command{
 	Use:     "add -l license_file",
-	Short:   "Add a license for YugabyteDB Anywhere.",
+	Short:   "Add a license for YugabyteDB Anywhere. (alias: update)",
 	Long:    "Add a license for YugabyteDB Anywhere. This can also overwrite an existing license.",
 	Aliases: []string{"update"},
 	Args:    cobra.NoArgs,
@@ -59,6 +61,40 @@ var addLicenseCmd = &cobra.Command{
 		}
 		InstallLicense()
 		log.Info("Added license, services can be started now")
+	},
+}
+
+var printLicenseCmd = &cobra.Command{
+	Use:   "print",
+	Short: "Print the license for YugabyteDB Anywhere.",
+	Args:  cobra.NoArgs,
+	Run: func(cmd *cobra.Command, args []string) {
+		var lic *license.License
+		var err error
+		if licensePath == "" {
+			lic, err = license.FromInstalledLicense()
+			if err != nil {
+				log.Fatal("failed to get installed license: " + err.Error())
+			}
+		} else {
+			lic, err = license.FromFile(licensePath)
+			if err != nil {
+				log.Fatal("failed to get license from file: " + err.Error())
+			}
+		}
+		decoded, err := base64.StdEncoding.DecodeString(lic.EncodedData)
+		if err != nil {
+			log.Fatal("failed to decode license: " + err.Error())
+		}
+		var jsonData interface{}
+		if err := json.Unmarshal(decoded, &jsonData); err != nil {
+			log.Fatal("failed to parse license JSON: " + err.Error())
+		}
+		prettyJSON, err := json.MarshalIndent(jsonData, "", "  ")
+		if err != nil {
+			log.Fatal("failed to format license JSON: " + err.Error())
+		}
+		fmt.Println(string(prettyJSON))
 	},
 }
 
@@ -80,6 +116,7 @@ func InstallLicense() {
 func init() {
 	baseLicenseCmd.AddCommand(addLicenseCmd)
 	baseLicenseCmd.AddCommand(validateLicenseCmd)
+	baseLicenseCmd.AddCommand(printLicenseCmd)
 	baseLicenseCmd.PersistentFlags().StringVarP(&licensePath, "license-path", "l", "",
 		"Path to a YugabyteDB Anywhere license file")
 	addLicenseCmd.MarkFlagRequired("license-path")

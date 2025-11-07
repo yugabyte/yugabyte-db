@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 YugaByte, Inc. and Contributors
+ * Copyright 2023 YugabyteDB, Inc. and Contributors
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License")
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
@@ -50,7 +50,7 @@ import {
   getIsFormDisabled,
   readFileAsText,
   handleFormSubmitServerError,
-  UseProviderValidationEnabled
+  useIsProviderValidationEnabled
 } from '../utils';
 import { YBLoading } from '../../../../common/indicators';
 import { api, suggestedKubernetesConfigQueryKey } from '../../../../../redesign/helpers/api';
@@ -130,14 +130,13 @@ export const K8sProviderCreateForm = ({
     }
   );
 
-  const {
-    isLoading: isProviderValidationLoading,
-    isValidationEnabled
-  } = UseProviderValidationEnabled(CloudType.kubernetes);
+  const { isRuntimeConfigLoading, isValidationEnabled } = useIsProviderValidationEnabled(
+    CloudType.kubernetes
+  );
   if (
     (enableSuggestedConfigFeature &&
       (suggestedKubernetesConfigQuery.isLoading || suggestedKubernetesConfigQuery.isIdle)) ||
-    isProviderValidationLoading
+    isRuntimeConfigLoading
   ) {
     return <YBLoading />;
   }

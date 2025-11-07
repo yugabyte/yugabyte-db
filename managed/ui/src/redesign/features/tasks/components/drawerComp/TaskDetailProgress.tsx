@@ -1,7 +1,7 @@
 /*
  * Created on Wed Dec 20 2023
  *
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License")
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
@@ -12,7 +12,7 @@ import { useTranslation } from 'react-i18next';
 import { Typography, makeStyles } from '@material-ui/core';
 import { YBProgress, YBProgressBarState } from '../../../../components/YBProgress/YBLinearProgress';
 import { TaskDrawerCompProps } from './dtos';
-import { TaskStates } from '../../dtos';
+import { TaskState } from '../../dtos';
 
 const useStyles = makeStyles(() => ({
   title: {
@@ -37,18 +37,18 @@ export const TaskDetailProgress: FC<TaskDrawerCompProps> = ({ currentTask }) => 
 
   const getProgressState = () => {
     switch (currentTask.status) {
-      case TaskStates.ABORT:
-      case TaskStates.ABORTED:
+      case TaskState.ABORT:
+      case TaskState.ABORTED:
         return YBProgressBarState.Warning;
-      case TaskStates.FAILURE:
+      case TaskState.FAILURE:
         return YBProgressBarState.Error;
-      case TaskStates.INITIALIZING:
-      case TaskStates.CREATED:
-      case TaskStates.RUNNING:
+      case TaskState.INITIALIZING:
+      case TaskState.CREATED:
+      case TaskState.RUNNING:
         return YBProgressBarState.InProgress;
-      case TaskStates.SUCCESS:
+      case TaskState.SUCCESS:
         return YBProgressBarState.Success;
-      case TaskStates.UNKNOWN:
+      case TaskState.UNKNOWN:
       default:
         return YBProgressBarState.Unknown;
     }

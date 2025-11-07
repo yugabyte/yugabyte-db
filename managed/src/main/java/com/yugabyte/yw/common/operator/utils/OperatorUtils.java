@@ -4,10 +4,13 @@ import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
@@ -20,25 +23,44 @@ import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.common.operator.helpers.KubernetesOverridesSerializer;
+import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupRequestParams.KeyspaceTable;
 import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.forms.DrConfigCreateForm;
+import com.yugabyte.yw.forms.DrConfigSetDatabasesForm;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
+import com.yugabyte.yw.forms.KubernetesProviderFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams;
+import com.yugabyte.yw.forms.XClusterConfigRestartFormData.RestartBootstrapParams;
 import com.yugabyte.yw.forms.YbcThrottleParametersResponse;
 import com.yugabyte.yw.forms.YbcThrottleParametersResponse.ThrottleParamValue;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.ReleaseArtifact;
+import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.configs.data.CustomerConfigData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageAzureData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.TimeUnit;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.ObjectMetaBuilder;
@@ -49,32 +71,54 @@ import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.ConfigBuilder;
 import io.fabric8.kubernetes.client.CustomResource;
 import io.fabric8.kubernetes.client.KubernetesClient;
-import io.fabric8.kubernetes.client.KubernetesClientBuilder;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.dsl.Resource;
 import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
 import io.fabric8.kubernetes.client.informers.cache.Lister;
 import io.yugabyte.operator.v1alpha1.Backup;
 import io.yugabyte.operator.v1alpha1.BackupSchedule;
+import io.yugabyte.operator.v1alpha1.BackupScheduleSpec;
 import io.yugabyte.operator.v1alpha1.BackupSpec;
 import io.yugabyte.operator.v1alpha1.BackupStatus;
+import io.yugabyte.operator.v1alpha1.DrConfig;
 import io.yugabyte.operator.v1alpha1.Release;
+import io.yugabyte.operator.v1alpha1.ReleaseSpec;
 import io.yugabyte.operator.v1alpha1.StorageConfig;
+import io.yugabyte.operator.v1alpha1.StorageConfigSpec;
+import io.yugabyte.operator.v1alpha1.YBProvider;
+import io.yugabyte.operator.v1alpha1.YBProviderSpec;
 import io.yugabyte.operator.v1alpha1.YBUniverse;
+import io.yugabyte.operator.v1alpha1.YBUniverseSpec;
 import io.yugabyte.operator.v1alpha1.releasespec.config.DownloadConfig;
+import io.yugabyte.operator.v1alpha1.releasespec.config.downloadconfig.Gcs;
+import io.yugabyte.operator.v1alpha1.releasespec.config.downloadconfig.Http;
+import io.yugabyte.operator.v1alpha1.releasespec.config.downloadconfig.S3;
+import io.yugabyte.operator.v1alpha1.releasespec.config.downloadconfig.gcs.CredentialsJsonSecret;
+import io.yugabyte.operator.v1alpha1.releasespec.config.downloadconfig.s3.SecretAccessKeySecret;
+import io.yugabyte.operator.v1alpha1.storageconfigspec.AwsSecretAccessKeySecret;
+import io.yugabyte.operator.v1alpha1.storageconfigspec.AzureStorageSasTokenSecret;
+import io.yugabyte.operator.v1alpha1.storageconfigspec.Data;
+import io.yugabyte.operator.v1alpha1.storageconfigspec.GcsCredentialsJsonSecret;
+import io.yugabyte.operator.v1alpha1.ybproviderspec.Regions;
+import io.yugabyte.operator.v1alpha1.ybproviderspec.regions.Zones;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YbcThrottleParameters;
+import java.nio.file.Paths;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.yb.CommonTypes.TableType;
+import org.yb.client.YBClient;
 import play.libs.Json;
 
 @Slf4j
@@ -82,12 +126,26 @@ public class OperatorUtils {
 
   public static final String IGNORE_RECONCILER_ADD_LABEL = "ignore-reconciler-add";
   public static final String YB_FINALIZER = "finalizer.k8soperator.yugabyte.com";
+  public static final String AUTO_PROVIDER_LABEL = "auto-provider";
+
+  private static final String[] ZONE_CONFIG_KEYS_TO_CHECK = {
+    "KUBENAMESPACE",
+    "OVERRIDES",
+    "KUBE_POD_ADDRESS_TEMPLATE",
+    "KUBE_DOMAIN",
+    "CERT-MANAGER-ISSUER-KIND",
+    "CERT-MANAGER-ISSUER-NAME",
+    "CERT-MANAGER-ISSUER-GROUP",
+    "STORAGE_CLASS"
+  };
 
   private final RuntimeConfGetter confGetter;
   private final String namespace;
   private final YbcManager ybcManager;
   private final ValidatingFormFactory validatingFormFactory;
-
+  private final YBClientService ybService;
+  private final KubernetesClientFactory kubernetesClientFactory;
+  private final UniverseImporter universeImporter;
   private Config _k8sClientConfig;
   private ReleaseManager releaseManager;
   private ObjectMapper objectMapper;
@@ -97,13 +155,19 @@ public class OperatorUtils {
       RuntimeConfGetter confGetter,
       ReleaseManager releaseManager,
       YbcManager ybcManager,
-      ValidatingFormFactory validatingFormFactory) {
+      ValidatingFormFactory validatingFormFactory,
+      YBClientService ybService,
+      KubernetesClientFactory kubernetesClientFactory,
+      UniverseImporter universeImporter) {
     this.releaseManager = releaseManager;
     this.confGetter = confGetter;
     this.ybcManager = ybcManager;
     namespace = confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorNamespace);
     this.validatingFormFactory = validatingFormFactory;
+    this.kubernetesClientFactory = kubernetesClientFactory;
     this.objectMapper = new ObjectMapper();
+    this.ybService = ybService;
+    this.universeImporter = universeImporter;
   }
 
   private synchronized Config getK8sClientConfig() {
@@ -137,6 +201,11 @@ public class OperatorUtils {
     return cust;
   }
 
+  public String getCustomerUUID() throws Exception {
+    Customer cust = getOperatorCustomer();
+    return cust.getUuid().toString();
+  }
+
   public Universe getUniverseFromNameAndNamespace(
       Long customerId, String universeName, String namespace) throws Exception {
     KubernetesResourceDetails ybUniverseResourceDetails = new KubernetesResourceDetails();
@@ -153,7 +222,7 @@ public class OperatorUtils {
 
   public YBUniverse getYBUniverse(KubernetesResourceDetails name) throws Exception {
     try (final KubernetesClient kubernetesClient =
-        new KubernetesClientBuilder().withConfig(getK8sClientConfig()).build()) {
+        kubernetesClientFactory.getKubernetesClientWithConfig(getK8sClientConfig())) {
       log.debug("lookup ybuniverse {}/{}", name.namespace, name.name);
       return kubernetesClient
           .resources(YBUniverse.class)
@@ -178,7 +247,7 @@ public class OperatorUtils {
   public <T extends CustomResource<?, ?>> OwnerReference getResourceOwnerReference(
       KubernetesResourceDetails resourceDetails, Class<T> clazz) throws Exception {
     try (final KubernetesClient kubernetesClient =
-        new KubernetesClientBuilder().withConfig(getK8sClientConfig()).build()) {
+        kubernetesClientFactory.getKubernetesClientWithConfig(getK8sClientConfig())) {
       T resource = getResource(resourceDetails, kubernetesClient.resources(clazz), clazz);
       return new OwnerReferenceBuilder()
           .withKind(resource.getKind())
@@ -260,8 +329,7 @@ public class OperatorUtils {
         || !currentUserIntent.masterDeviceInfo.volumeSize.equals(newMasterDeviceInfo.volumeSize);
   }
 
-  public String getKubernetesOverridesString(
-      io.yugabyte.operator.v1alpha1.ybuniversespec.KubernetesOverrides kubernetesOverrides) {
+  public String getKubernetesOverridesString(Object kubernetesOverrides) {
     if (kubernetesOverrides == null) {
       return null;
     }
@@ -338,6 +406,78 @@ public class OperatorUtils {
       }
     }
     return specificGFlags;
+  }
+
+  public boolean checkIfPlacementInfoChanged(
+      PlacementInfo oldPlacementInfo, YBUniverse ybUniverse) {
+    // If placement info is not set in the CR, return false
+    if (ybUniverse.getSpec().getPlacementInfo() == null) {
+      return false;
+    }
+    JsonNode oldPlacementCloud = objectMapper.valueToTree(oldPlacementInfo.cloudList.get(0));
+    JsonNode newPlacementCloud = objectMapper.valueToTree(ybUniverse.getSpec().getPlacementInfo());
+    if (oldPlacementCloud
+        .path("defaultRegion")
+        .asText()
+        .equals(newPlacementCloud.path("defaultRegion").asText())) {
+      return true;
+    }
+    Map<String, JsonNode> oldRegions = mapByCode(oldPlacementCloud.path("regionList"));
+    Map<String, JsonNode> newRegions = mapByCode(newPlacementCloud.path("regions"));
+
+    // Detect region changes
+    if (!oldRegions.keySet().equals(newRegions.keySet())) {
+      log.info("region mismatch for universe: {}", ybUniverse.getMetadata().getName());
+      return true;
+    }
+
+    // For each region, compare zones
+    for (String region : oldRegions.keySet()) {
+      // Need to map by name for zones
+      Map<String, JsonNode> oldZones = mapByName(oldRegions.get(region).path("azList"));
+      Map<String, JsonNode> newZones = mapByCode(newRegions.get(region).path("zones"));
+
+      if (!oldZones.keySet().equals(newZones.keySet())) {
+        log.info("az list mismatch for universe: {}", ybUniverse.getMetadata().getName());
+        return true;
+      }
+
+      // Compare zone fields
+      for (String zone : oldZones.keySet()) {
+        JsonNode oldZone = oldZones.get(zone);
+        JsonNode newZone = newZones.get(zone);
+
+        if (oldZone.path("numNodesInAZ").asInt(-1) != newZone.path("numNodes").asInt(-1)) {
+          return true;
+        }
+        if (oldZone.path("isAffinitized").asBoolean(false)
+            != newZone.path("preferred").asBoolean(false)) {
+          return true;
+        }
+      }
+    }
+    return false; // no changes
+  }
+
+  private static Map<String, JsonNode> mapByCode(JsonNode array) {
+    return mapByKey(array, "code");
+  }
+
+  private static Map<String, JsonNode> mapByName(JsonNode array) {
+    return mapByKey(array, "name");
+  }
+
+  private static Map<String, JsonNode> mapByKey(JsonNode array, String key) {
+    Map<String, JsonNode> map = new HashMap<>();
+    if (array != null && array.isArray()) {
+      for (JsonNode elem : array) {
+        String code = elem.path(key).asText(null);
+        if (code != null) {
+          map.put(code, elem);
+        }
+      }
+    }
+    return map;
   }
 
   public DeviceInfo mapDeviceInfo(io.yugabyte.operator.v1alpha1.ybuniversespec.DeviceInfo spec) {
@@ -464,6 +604,11 @@ public class OperatorUtils {
     log.trace("gflags mismatch: {}", mismatch);
     mismatch =
         mismatch
+            || checkIfPlacementInfoChanged(
+                u.getUniverseDetails().getPrimaryCluster().placementInfo, ybUniverse);
+    log.trace("placement info mismatch: {}", mismatch);
+    mismatch =
+        mismatch
             || shouldUpdateYbUniverse(
                 currentUserIntent, incomingNumNodes, incomingDeviceInfo, incomingMasterDeviceInfo);
     log.trace("nodes mismatch: {}", mismatch);
@@ -529,7 +674,7 @@ public class OperatorUtils {
     log.info("Removing Release {}", releaseMetadata.getName());
     Pair<String, ReleaseMetadata> releasePair = crToReleaseMetadata(release);
     try (final KubernetesClient kubernetesClient =
-        new KubernetesClientBuilder().withConfig(getK8sClientConfig()).build()) {
+        kubernetesClientFactory.getKubernetesClientWithConfig(getK8sClientConfig())) {
       if (releaseManager.getInUse(releasePair.getFirst())) {
         log.info("Release " + releasePair.getFirst() + " is in use!, Skipping deletion");
         return;
@@ -560,7 +705,7 @@ public class OperatorUtils {
 
   public Secret getSecret(String name, @Nullable String namespace) {
     try (final KubernetesClient kubernetesClient =
-        new KubernetesClientBuilder().withConfig(getK8sClientConfig()).build()) {
+        kubernetesClientFactory.getKubernetesClientWithConfig(getK8sClientConfig())) {
       if (StringUtils.isBlank(namespace)) {
         log.info("Getting secret '{}' from default namespace", name);
         namespace = "default";
@@ -735,7 +880,7 @@ public class OperatorUtils {
       String basebackupCrName, String namespace, Customer customer) throws Exception {
     Backup backup = null;
     try (final KubernetesClient kubernetesClient =
-        new KubernetesClientBuilder().withConfig(getK8sClientConfig()).build()) {
+        kubernetesClientFactory.getKubernetesClientWithConfig(getK8sClientConfig())) {
       backup =
           getResource(
               new KubernetesResourceDetails(basebackupCrName, namespace),
@@ -818,7 +963,7 @@ public class OperatorUtils {
     crStatus.setTaskUUID(backup.getTaskUUID().toString());
 
     try (final KubernetesClient kubernetesClient =
-        new KubernetesClientBuilder().withConfig(getK8sClientConfig()).build()) {
+        kubernetesClientFactory.getKubernetesClientWithConfig(getK8sClientConfig())) {
       kubernetesClient
           .resources(Backup.class)
           .inNamespace(params.getKubernetesResourceDetails().namespace)
@@ -837,6 +982,674 @@ public class OperatorUtils {
               "Unable to add cr resource: %s type: Backup",
               params.getKubernetesResourceDetails().name),
           e);
+    }
+  }
+
+  public void createProviderCrFromProviderEbean(
+      KubernetesProviderFormData providerData, String namespace) {
+    YBProvider providerCr = new YBProvider();
+    providerCr.setMetadata(buildMetadata(providerData, namespace));
+    providerCr.setSpec(buildSpec(providerData));
+
+    try (final KubernetesClient client =
+        kubernetesClientFactory.getKubernetesClientWithConfig(getK8sClientConfig())) {
+      client.resources(YBProvider.class).inNamespace(namespace).resource(providerCr).create();
+    } catch (Exception e) {
+      throw new RuntimeException(
+          String.format("Unable to add YBProvider CR: %s", providerData.name), e);
+    }
+  }
+
+  private ObjectMeta buildMetadata(KubernetesProviderFormData data, String namespace) {
+    return new ObjectMetaBuilder()
+        .withName(data.name)
+        .withNamespace(namespace)
+        .withLabels(Map.of(AUTO_PROVIDER_LABEL, "true"))
+        .withFinalizers(Collections.singletonList(YB_FINALIZER))
+        .build();
+  }
+
+  private YBProviderSpec buildSpec(KubernetesProviderFormData providerData) {
+    YBProviderSpec spec = new YBProviderSpec();
+    spec.setCloudInfo(parseCloudInfoConfig(providerData.config));
+
+    List<Regions> regions =
+        providerData.regionList.stream()
+            .map(
+                regionData -> {
+                  Regions region = new Regions();
+                  region.setCode(regionData.code);
+                  List<Zones> zones =
+                      regionData.zoneList.stream()
+                          .map(
+                              zone -> {
+                                Zones zoneSpec = new Zones();
+                                zoneSpec.setCode(zone.code);
+                                zoneSpec.setCloudInfo(parseZoneCloudInfoConfig(zone.config));
+                                return zoneSpec;
+                              })
+                          .collect(Collectors.toList());
+                  region.setZones(zones);
+                  return region;
+                })
+            .collect(Collectors.toList());
+
+    spec.setRegions(regions);
+    return spec;
+  }
+
+  public void checkAndDeleteAutoCreatedProvider(YBProvider provider, String namespace) {
+    try (final KubernetesClient kubernetesClient =
+        kubernetesClientFactory.getKubernetesClientWithConfig(getK8sClientConfig())) {
+      if (provider.getMetadata().getLabels().containsKey(AUTO_PROVIDER_LABEL)) {
+        kubernetesClient
+            .resources(YBProvider.class)
+            .inNamespace(namespace)
+            .resource(provider)
+            .delete();
+      }
+    } catch (Exception e) {
+      log.error("Exception in checking and deleting auto-created provider", e);
+    }
+  }
+
+  public Optional<YBProvider> maybeGetCRForProvider(String providerName, String namespace) {
+    try (final KubernetesClient client =
+        kubernetesClientFactory.getKubernetesClientWithConfig(getK8sClientConfig())) {
+      YBProvider cr =
+          client.resources(YBProvider.class).inNamespace(namespace).withName(providerName).get();
+      return Optional.ofNullable(cr);
+    } catch (Exception e) {
+      log.error(
+          "Failed to fetch YBProvider CR for name={} in namespace={}", providerName, namespace, e);
+      return Optional.empty();
+    }
+  }
+
+  // Parse cloud info config from the provider ebean and converts it to the form required by the
+  // operator.
+  private io.yugabyte.operator.v1alpha1.ybproviderspec.CloudInfo parseCloudInfoConfig(
+      Map<String, String> cloudInfo) {
+    io.yugabyte.operator.v1alpha1.ybproviderspec.CloudInfo cloudInfoSpec =
+        new io.yugabyte.operator.v1alpha1.ybproviderspec.CloudInfo();
+    cloudInfoSpec.setKubernetesProvider(
+        io.yugabyte.operator.v1alpha1.ybproviderspec.CloudInfo.KubernetesProvider.valueOf(
+            cloudInfo.get("KUBECONFIG_PROVIDER").toUpperCase()));
+    cloudInfoSpec.setKubernetesImageRegistry(cloudInfo.get("KUBECONFIG_IMAGE_REGISTRY"));
+    return cloudInfoSpec;
+  }
+
+  private io.yugabyte.operator.v1alpha1.ybproviderspec.regions.zones.CloudInfo
+      parseZoneCloudInfoConfig(Map<String, String> cloudInfo) {
+    io.yugabyte.operator.v1alpha1.ybproviderspec.regions.zones.CloudInfo cloudInfoSpec =
+        new io.yugabyte.operator.v1alpha1.ybproviderspec.regions.zones.CloudInfo();
+    cloudInfoSpec.setKubeDomain(cloudInfo.get("KUBE_DOMAIN"));
+    cloudInfoSpec.setKubernetesStorageClass(cloudInfo.get("STORAGE_CLASS"));
+    cloudInfoSpec.setKubeNamespace(cloudInfo.get("KUBENAMESPACE"));
+    cloudInfoSpec.setKubePodAddressTemplate(cloudInfo.get("KUBE_POD_ADDRESS_TEMPLATE"));
+    cloudInfoSpec.setCertManagerIssuerName(cloudInfo.get("CERT-MANAGER-ISSUER-NAME"));
+    cloudInfoSpec.setCertManagerIssuerGroup(cloudInfo.get("CERT-MANAGER-ISSUER-GROUP"));
+    cloudInfoSpec.setCertManagerIssuerKind(cloudInfo.get("CERT-MANAGER-ISSUER-KIND"));
+    return cloudInfoSpec;
+  }
+
+  public Provider getProviderReqFromProviderDetails(JsonNode providerDetails) {
+    return validatingFormFactory.getFormDataOrBadRequest(providerDetails, Provider.class);
+  }
+
+  public boolean hasRegionConfigChanged(
+      List<Region> newRegionList, List<Region> existingRegionList) {
+    // Early exit if sizes don't match
+    if (newRegionList.size() != existingRegionList.size()) {
+      log.info(
+          "Region count changed: new={}, existing={}",
+          newRegionList.size(),
+          existingRegionList.size());
+      return true;
+    }
+
+    for (Region newRegion : newRegionList) {
+      Region existingRegion = findByCode(existingRegionList, newRegion.getCode(), Region::getCode);
+
+      // If region doesn't exist, we need to add it
+      if (existingRegion == null) {
+        log.info("New region found: {}", newRegion.getCode());
+        return true;
+      }
+
+      // Check if zone count changed
+      if (newRegion.getZones().size() != existingRegion.getZones().size()) {
+        log.info(
+            "Zone count changed for region {}: new={}, existing={}",
+            newRegion.getCode(),
+            newRegion.getZones().size(),
+            existingRegion.getZones().size());
+        return true;
+      }
+
+      for (AvailabilityZone newZone : newRegion.getZones()) {
+        AvailabilityZone existingZone =
+            findByCode(existingRegion.getZones(), newZone.getCode(), AvailabilityZone::getCode);
+        // If zone doesn't exist, we need to add it
+        if (existingZone == null) {
+          log.info("New zone found: {} in region {}", newZone.getCode(), newRegion.getCode());
+          return true;
+        }
+        if (hasZoneConfigChanged(
+            CloudInfoInterface.fetchEnvVars(newZone),
+            CloudInfoInterface.fetchEnvVars(existingZone))) {
+          log.info("Zone config changed for zone {}", newZone.getCode());
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  private <T> T findByCode(List<T> items, String code, Function<T, String> codeExtractor) {
+    for (T item : items) {
+      if (code.equals(codeExtractor.apply(item))) {
+        return item;
+      }
+    }
+    return null;
+  }
+
+  private boolean hasZoneConfigChanged(
+      Map<String, String> newZone, Map<String, String> existingZone) {
+    for (String key : ZONE_CONFIG_KEYS_TO_CHECK) {
+      String newValue = newZone.getOrDefault(key, "");
+      String existingValue = existingZone.getOrDefault(key, "");
+      if (!Objects.equals(newValue, existingValue)) {
+        return true;
+      }
+    }
+    // Finally check if the kubeconfig has changed
+    return hasKubeConfigChanged(existingZone, newZone);
+  }
+
+  public boolean hasKubeConfigChanged(
+      Map<String, String> existingCloudInfo, Map<String, String> desiredCloudInfo) {
+    // Look for KUBECONFIG in the existing kubeconfig and extract the name of the kubeconfig file
+    // since we don't store the kubeconfig name in the provider.
+    String existingKubeConfigName =
+        extractKubeConfigName(existingCloudInfo.getOrDefault("KUBECONFIG", ""));
+    String desiredKubeConfigName = desiredCloudInfo.getOrDefault("KUBECONFIG_NAME", "");
+    return !Objects.equals(existingKubeConfigName, desiredKubeConfigName);
+  }
+
+  private String extractKubeConfigName(String kubeConfigPath) {
+    if (StringUtils.isBlank(kubeConfigPath)) {
+      return "";
+    }
+    return Paths.get(kubeConfigPath).getFileName().toString();
+  }
+
+  public DrConfigCreateForm getDrConfigCreateFormFromCr(
+      DrConfig drConfig, SharedIndexInformer<StorageConfig> scInformer) throws Exception {
+    ObjectNode crParams = objectMapper.valueToTree(drConfig.getSpec());
+    DrConfigCreateForm drConfigCreateForm =
+        getDrConfigCreateFormFromCr(crParams, drConfig.getMetadata().getNamespace(), scInformer);
+    drConfigCreateForm.setKubernetesResourceDetails(
+        KubernetesResourceDetails.fromResource(drConfig));
+    return drConfigCreateForm;
+  }
+
+  @VisibleForTesting
+  DrConfigCreateForm getDrConfigCreateFormFromCr(
+      ObjectNode crParams, String namespace, SharedIndexInformer<StorageConfig> scInformer)
+      throws Exception {
+
+    Customer cust = getOperatorCustomer();
+    String crSourceUniverseName = crParams.get("sourceUniverse").asText();
+    Universe sourceUniverse =
+        getUniverseFromNameAndNamespace(cust.getId(), crSourceUniverseName, namespace);
+    if (sourceUniverse == null) {
+      throw new Exception("No universe found with name " + crSourceUniverseName);
+    }
+    UUID sourceUniverseUUID = sourceUniverse.getUniverseUUID();
+
+    String crTargetUniverseName = crParams.get("targetUniverse").asText();
+    Universe targetUniverse =
+        getUniverseFromNameAndNamespace(cust.getId(), crTargetUniverseName, namespace);
+    if (targetUniverse == null) {
+      throw new Exception("No universe found with name " + crTargetUniverseName);
+    }
+    UUID targetUniverseUUID = targetUniverse.getUniverseUUID();
+
+    String crStorageConfig = crParams.get("storageConfig").asText();
+    UUID storageConfigUUID = getStorageConfigUUIDFromName(crStorageConfig, scInformer);
+    if (storageConfigUUID == null) {
+      throw new Exception("No storage config found with name " + crStorageConfig);
+    }
+
+    String drConfigName = crParams.get("name").asText();
+
+    TableType tableType = TableType.PGSQL_TABLE_TYPE;
+    YBClient client = ybService.getUniverseClient(sourceUniverse);
+    Map<String, String> namespaceNameNamespaceIdMap =
+        UniverseTaskBase.getKeyspaceNameKeyspaceIdMap(client, tableType);
+    JsonNode databasesNode = crParams.get("databases");
+    ArrayNode dbsArray = JsonNodeFactory.instance.arrayNode();
+
+    if (databasesNode != null && databasesNode.isArray()) {
+      for (JsonNode dbNode : databasesNode) {
+        String namespaceName = dbNode.asText().trim();
+        String namespaceId = namespaceNameNamespaceIdMap.get(namespaceName);
+        if (namespaceId == null) {
+          throw new IllegalArgumentException(
+              String.format(
+                  "A namespace with name '%s' and table type '%s' could not be found",
+                  namespaceName, tableType.name()));
+        }
+        dbsArray.add(namespaceId);
+      }
+    }
+
+    crParams.put("sourceUniverseUUID", sourceUniverseUUID.toString());
+    crParams.put("targetUniverseUUID", targetUniverseUUID.toString());
+    crParams.put("storageConfigUUID", storageConfigUUID.toString());
+    crParams.put("name", drConfigName);
+    crParams.put("dbs", dbsArray);
+
+    DrConfigCreateForm createForm =
+        validatingFormFactory.getFormDataOrBadRequest(crParams, DrConfigCreateForm.class);
+    BootstrapParams.BootstrapBackupParams backupRequestParams =
+        new BootstrapParams.BootstrapBackupParams();
+    backupRequestParams.storageConfigUUID = storageConfigUUID;
+    createForm.bootstrapParams = new RestartBootstrapParams();
+    createForm.bootstrapParams.backupRequestParams = backupRequestParams;
+
+    return createForm;
+  }
+
+  public DrConfigSetDatabasesForm getDrConfigSetDatabasesFormFromCr(
+      DrConfig drConfig, SharedIndexInformer<StorageConfig> scInformer) throws Exception {
+    JsonNode crParams = objectMapper.valueToTree(drConfig.getSpec());
+    DrConfigSetDatabasesForm drConfigSetDatabasesForm =
+        getDrConfigSetDatabasesFormFromCr(
+            crParams, drConfig.getMetadata().getNamespace(), scInformer);
+    drConfigSetDatabasesForm.setKubernetesResourceDetails(
+        KubernetesResourceDetails.fromResource(drConfig));
+    return drConfigSetDatabasesForm;
+  }
+
+  @VisibleForTesting
+  DrConfigSetDatabasesForm getDrConfigSetDatabasesFormFromCr(
+      JsonNode crParams, String namespace, SharedIndexInformer<StorageConfig> scInformer)
+      throws Exception {
+    Customer cust = getOperatorCustomer();
+    String crSourceUniverseName = ((ObjectNode) crParams).get("sourceUniverse").asText();
+    Universe sourceUniverse =
+        getUniverseFromNameAndNamespace(cust.getId(), crSourceUniverseName, namespace);
+    if (sourceUniverse == null) {
+      throw new Exception("No universe found with name " + crSourceUniverseName);
+    }
+    TableType tableType = TableType.PGSQL_TABLE_TYPE;
+    YBClient client = ybService.getUniverseClient(sourceUniverse);
+    Map<String, String> namespaceNameNamespaceIdMap =
+        UniverseTaskBase.getKeyspaceNameKeyspaceIdMap(client, tableType);
+    JsonNode databasesNode = ((ObjectNode) crParams).get("databases");
+    ArrayNode dbsArray = JsonNodeFactory.instance.arrayNode();
+    if (databasesNode != null && databasesNode.isArray()) {
+      for (JsonNode dbNode : databasesNode) {
+        String namespaceName = dbNode.asText().trim();
+        String namespaceId = namespaceNameNamespaceIdMap.get(namespaceName);
+        if (namespaceId == null) {
+          throw new IllegalArgumentException(
+              String.format(
+                  "A namespace with name '%s' and table type '%s' could not be found",
+                  namespaceName, tableType.name()));
+        }
+        dbsArray.add(namespaceId);
+      }
+    }
+
+    ((ObjectNode) crParams).put("dbs", dbsArray);
+
+    return validatingFormFactory.getFormDataOrBadRequest(crParams, DrConfigSetDatabasesForm.class);
+  }
+
+  /**
+   * Creates a Kubernetes Secret custom resource in the specified namespace. The method
+   * automatically base64-encodes the provided value and creates an Opaque type secret with the
+   * given key-value pair.
+   *
+   * @param name The name of the secret resource
+   * @param namespace The Kubernetes namespace where the secret will be created
+   * @param key The key under which the value will be stored in the secret
+   * @param value The raw value to be stored (will be automatically base64-encoded)
+   * @throws Exception If the secret creation fails or if there's an issue with the Kubernetes
+   *     client
+   */
+  public void createSecretCr(String name, String namespace, String key, String value)
+      throws Exception {
+    try (final KubernetesClient kubernetesClient =
+        kubernetesClientFactory.getKubernetesClientWithConfig(getK8sClientConfig())) {
+      if (kubernetesClient.secrets().inNamespace(namespace).withName(name).get() != null) {
+        log.info("Secret {} already exists, skipping creation", name);
+        return;
+      }
+      Secret secret = new Secret();
+      secret.setMetadata(new ObjectMetaBuilder().withName(name).withNamespace(namespace).build());
+      secret.setData(
+          Collections.singletonMap(key, Base64.getEncoder().encodeToString(value.getBytes())));
+      secret.setType("Opaque");
+      kubernetesClient.secrets().inNamespace(namespace).resource(secret).create();
+    } catch (Exception e) {
+      throw new Exception(String.format("Unable to create secret: %s type: Secret", name), e);
+    }
+  }
+
+  public void createReleaseCr(
+      com.yugabyte.yw.models.Release ybRelease,
+      ReleaseArtifact k8sArtifact,
+      ReleaseArtifact x86_64Artifact,
+      String namespace,
+      @Nullable String secretName)
+      throws Exception {
+    try (final KubernetesClient kubernetesClient =
+        kubernetesClientFactory.getKubernetesClientWithConfig(getK8sClientConfig())) {
+      if (kubernetesClient
+              .resources(Release.class)
+              .inNamespace(namespace)
+              .withName(ybRelease.getVersion())
+              .get()
+          != null) {
+        log.info("Release {} already exists, skipping creation", ybRelease.getVersion());
+        return;
+      }
+      Release release = new Release();
+      release.setMetadata(
+          new ObjectMetaBuilder()
+              .withName(ybRelease.getVersion())
+              .withNamespace(namespace)
+              .build());
+      ReleaseSpec releaseSpec = new ReleaseSpec();
+      io.yugabyte.operator.v1alpha1.releasespec.Config config =
+          new io.yugabyte.operator.v1alpha1.releasespec.Config();
+      config.setVersion(ybRelease.getVersion());
+      DownloadConfig downloadConfig = new DownloadConfig();
+      if (k8sArtifact.getS3File() != null) {
+        S3 s3 = new S3();
+        s3.setPaths(new io.yugabyte.operator.v1alpha1.releasespec.config.downloadconfig.s3.Paths());
+        s3.getPaths().setHelmChart(k8sArtifact.getS3File().path);
+        s3.getPaths().setHelmChartChecksum(k8sArtifact.getFormattedSha256());
+        s3.getPaths().setX86_64(x86_64Artifact.getS3File().path);
+        s3.getPaths().setX86_64_checksum(x86_64Artifact.getFormattedSha256());
+        s3.setSecretAccessKey(k8sArtifact.getS3File().secretAccessKey);
+        if (secretName != null) {
+          SecretAccessKeySecret secret = new SecretAccessKeySecret();
+          secret.setName(secretName);
+          secret.setNamespace(namespace);
+          s3.setSecretAccessKeySecret(secret);
+        }
+        downloadConfig.setS3(s3);
+      } else if (k8sArtifact.getGcsFile() != null) {
+        Gcs gcs = new Gcs();
+        gcs.setPaths(
+            new io.yugabyte.operator.v1alpha1.releasespec.config.downloadconfig.gcs.Paths());
+        gcs.getPaths().setHelmChart(k8sArtifact.getGcsFile().path);
+        gcs.getPaths().setHelmChartChecksum(k8sArtifact.getFormattedSha256());
+        gcs.getPaths().setX86_64(x86_64Artifact.getGcsFile().path);
+        gcs.getPaths().setX86_64_checksum(x86_64Artifact.getFormattedSha256());
+        if (secretName != null) {
+          CredentialsJsonSecret secret = new CredentialsJsonSecret();
+          secret.setName(secretName);
+          secret.setNamespace(namespace);
+          gcs.setCredentialsJsonSecret(secret);
+        }
+        downloadConfig.setGcs(gcs);
+      } else if (k8sArtifact.getPackageURL() != null) {
+        Http http = new Http();
+        http.setPaths(
+            new io.yugabyte.operator.v1alpha1.releasespec.config.downloadconfig.http.Paths());
+        http.getPaths().setHelmChart(k8sArtifact.getPackageURL());
+        http.getPaths().setHelmChartChecksum(k8sArtifact.getFormattedSha256());
+        http.getPaths().setX86_64(x86_64Artifact.getPackageURL());
+        http.getPaths().setX86_64_checksum(x86_64Artifact.getFormattedSha256());
+        downloadConfig.setHttp(http);
+      } else {
+        throw new Exception(
+            String.format("No download config found for release %s", ybRelease.getVersion()));
+      }
+      config.setDownloadConfig(downloadConfig);
+
+      releaseSpec.setConfig(config);
+      release.setSpec(releaseSpec);
+
+      kubernetesClient.resources(Release.class).inNamespace(namespace).resource(release).create();
+    }
+  }
+
+  public void createStorageConfigCr(
+      CustomerConfig cfg, String namespace, @Nullable String secretName) throws Exception {
+    try (final KubernetesClient kubernetesClient =
+        kubernetesClientFactory.getKubernetesClientWithConfig(getK8sClientConfig())) {
+      if (kubernetesClient
+              .resources(StorageConfig.class)
+              .inNamespace(namespace)
+              .withName(cfg.getName())
+              .get()
+          != null) {
+        log.info("Storage config {} already exists, skipping creation", cfg.getName());
+        return;
+      }
+      StorageConfig storageConfig = new StorageConfig();
+      storageConfig.setMetadata(
+          new ObjectMetaBuilder().withName(cfg.getConfigName()).withNamespace(namespace).build());
+      StorageConfigSpec spec = new StorageConfigSpec();
+      CustomerConfigData data = cfg.getDataObject();
+      Data specData = new Data();
+      switch (cfg.getName()) {
+        case CustomerConfigConsts.NAME_S3:
+          spec.setConfig_type(StorageConfigSpec.Config_type.STORAGE_S3);
+          CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) data;
+          specData.setAWS_ACCESS_KEY_ID(s3Data.awsAccessKeyId);
+          if (s3Data.awsHostBase != null) {
+            specData.setAWS_HOST_BASE(s3Data.awsHostBase);
+          }
+          specData.setUSE_IAM(s3Data.isIAMInstanceProfile);
+          specData.setBACKUP_LOCATION(s3Data.backupLocation);
+          specData.setPATH_STYLE_ACCESS(s3Data.isPathStyleAccess);
+          if (secretName != null) {
+            AwsSecretAccessKeySecret secret = new AwsSecretAccessKeySecret();
+            secret.setName(secretName);
+            secret.setNamespace(namespace);
+            spec.setAwsSecretAccessKeySecret(secret);
+          }
+          break;
+        case CustomerConfigConsts.NAME_GCS:
+          spec.setConfig_type(StorageConfigSpec.Config_type.STORAGE_GCS);
+          CustomerConfigStorageGCSData gcsData = (CustomerConfigStorageGCSData) data;
+          specData.setUSE_IAM(gcsData.useGcpIam);
+          specData.setBACKUP_LOCATION(gcsData.backupLocation);
+          if (secretName != null) {
+            GcsCredentialsJsonSecret secret = new GcsCredentialsJsonSecret();
+            secret.setName(secretName);
+            secret.setNamespace(namespace);
+            spec.setGcsCredentialsJsonSecret(secret);
+          }
+          break;
+        case CustomerConfigConsts.NAME_NFS:
+          spec.setConfig_type(StorageConfigSpec.Config_type.STORAGE_NFS);
+          CustomerConfigStorageNFSData nfsData = (CustomerConfigStorageNFSData) data;
+          specData.setBACKUP_LOCATION(nfsData.backupLocation);
+          break;
+        case CustomerConfigConsts.NAME_AZURE:
+          spec.setConfig_type(StorageConfigSpec.Config_type.STORAGE_AZ);
+          CustomerConfigStorageAzureData azData = (CustomerConfigStorageAzureData) data;
+          specData.setBACKUP_LOCATION(azData.backupLocation);
+          if (secretName != null) {
+            AzureStorageSasTokenSecret secret = new AzureStorageSasTokenSecret();
+            secret.setName(secretName);
+            secret.setNamespace(namespace);
+            spec.setAzureStorageSasTokenSecret(secret);
+          }
+          break;
+        default:
+          throw new Exception(String.format("Unsupported storage config type: %s", cfg.getName()));
+      }
+      spec.setData(specData);
+      storageConfig.setSpec(spec);
+      kubernetesClient
+          .resources(StorageConfig.class)
+          .inNamespace(namespace)
+          .resource(storageConfig)
+          .create();
+    } catch (Exception e) {
+      throw new Exception(
+          String.format("Unable to create storage config: %s type: StorageConfig", cfg.getName()),
+          e);
+    }
+  }
+
+  private long convertFrequencyToMillis(long frequency, TimeUnit timeUnit) {
+    switch (timeUnit) {
+      case DAYS:
+        return frequency * 24 * 60 * 60 * 1000;
+      case HOURS:
+        return frequency * 60 * 60 * 1000;
+      case MINUTES:
+        return frequency * 60 * 1000;
+      case SECONDS:
+        return frequency * 1000;
+      case MILLISECONDS:
+        return frequency;
+      case NANOSECONDS:
+        return frequency / 1000000;
+      case MICROSECONDS:
+        return frequency / 1000;
+        // TODO: how do we want to handle months and years?
+      case MONTHS:
+        log.warn("Months are not accurately supported for scheduling frequency, assuming 30 days");
+        return frequency * 30 * 24 * 60 * 60 * 1000; // Assume 30 days per month
+      case YEARS:
+        log.warn("Years are not accurately supported for scheduling frequency, assuming 365 days");
+        return frequency * 365 * 24 * 60 * 60 * 1000; // Assume 365 per year
+      default:
+        throw new RuntimeException("Unknown time unit: " + timeUnit);
+    }
+  }
+
+  public void createBackupScheduleCr(
+      Schedule ybBackupSchedule, String name, String storageConfigName, @Nullable String namespace)
+      throws Exception {
+    try (final KubernetesClient kubernetesClient =
+        kubernetesClientFactory.getKubernetesClientWithConfig(getK8sClientConfig())) {
+      if (kubernetesClient
+              .resources(BackupSchedule.class)
+              .inNamespace(namespace)
+              .withName(name)
+              .get()
+          != null) {
+        log.info("Backup schedule {} already exists, skipping creation", name);
+        return;
+      }
+      BackupRequestParams params =
+          Json.mapper().convertValue(ybBackupSchedule.getTaskParams(), BackupRequestParams.class);
+      BackupSchedule backupSchedule = new BackupSchedule();
+      backupSchedule.setMetadata(
+          new ObjectMetaBuilder().withName(name).withNamespace(namespace).build());
+      BackupScheduleSpec spec = new BackupScheduleSpec();
+      spec.setStorageConfig(storageConfigName);
+      spec.setUniverse(Universe.getOrBadRequest(ybBackupSchedule.getOwnerUUID()).getName());
+      spec.setBackupType(BackupScheduleSpec.BackupType.valueOf(params.backupType.toString()));
+      spec.setTableByTableBackup(params.tableByTableBackup);
+      spec.setKeyspace(params.keyspaceTableList.get(0).keyspace);
+      spec.setTimeBeforeDelete(params.timeBeforeDelete);
+      if (params.cronExpression != null) {
+        spec.setCronExpression(params.cronExpression);
+      }
+      if (params.schedulingFrequency != 0 && params.frequencyTimeUnit != null) {
+        spec.setSchedulingFrequency(
+            convertFrequencyToMillis(params.schedulingFrequency, params.frequencyTimeUnit));
+      } else if (params.incrementalBackupFrequency != 0
+          && params.incrementalBackupFrequencyTimeUnit != null) {
+        spec.setIncrementalBackupFrequency(
+            convertFrequencyToMillis(
+                params.incrementalBackupFrequency, params.incrementalBackupFrequencyTimeUnit));
+      }
+      spec.setEnablePointInTimeRestore(params.enablePointInTimeRestore);
+      backupSchedule.setSpec(spec);
+      kubernetesClient
+          .resources(BackupSchedule.class)
+          .inNamespace(namespace)
+          .resource(backupSchedule)
+          .create();
+    } catch (Exception e) {
+      throw new Exception(
+          String.format("Unable to create backup schedule: %s type: BackupSchedule", name), e);
+    }
+  }
+
+  public void createUniverseCr(Universe universe, String providerName, String namespace)
+      throws Exception {
+    try (final KubernetesClient kubernetesClient =
+        kubernetesClientFactory.getKubernetesClientWithConfig(getK8sClientConfig())) {
+      if (kubernetesClient
+              .resources(YBUniverse.class)
+              .inNamespace(namespace)
+              .withName(universe.getName())
+              .get()
+          != null) {
+        log.info("Universe {} already exists, skipping creation", universe.getName());
+        return;
+      }
+      YBUniverse ybUniverse = new YBUniverse();
+      ybUniverse.setMetadata(
+          new ObjectMetaBuilder().withName(universe.getName()).withNamespace(namespace).build());
+      YBUniverseSpec spec = new YBUniverseSpec();
+
+      // Basics
+      spec.setUniverseName(universe.getName());
+      spec.setNumNodes(
+          Long.valueOf(universe.getUniverseDetails().getPrimaryCluster().userIntent.numNodes));
+      spec.setReplicationFactor(
+          Long.valueOf(
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.replicationFactor));
+      spec.setEnableNodeToNodeEncrypt(
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.enableNodeToNodeEncrypt);
+      spec.setEnableClientToNodeEncrypt(
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.enableClientToNodeEncrypt);
+      spec.setYbSoftwareVersion(
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
+      spec.setProviderName(providerName);
+      spec.setEnableIPV6(universe.getUniverseDetails().getPrimaryCluster().userIntent.enableIPV6);
+      spec.setEnableLoadBalancer(
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.enableExposingService
+              == ExposingServiceState.EXPOSED);
+      spec.setPaused(universe.getUniverseDetails().universePaused);
+
+      // Set languages
+      universeImporter.setYcqlSpec(
+          spec,
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYCQL,
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYCQLAuth);
+      universeImporter.setYsqlSpec(
+          spec,
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL,
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQLAuth);
+
+      // Gflags
+      universeImporter.setGflagsSpecFromUniverse(spec, universe);
+
+      // Device info
+      universeImporter.setDeviceInfoSpecFromUniverse(spec, universe);
+      universeImporter.setMasterDeviceInfoSpecFromUniverse(spec, universe);
+
+      // Ybc throttle parameters
+      universeImporter.setYbcThrottleParametersSpecFromUniverse(spec, universe);
+
+      // Kubernetes overrides
+      universeImporter.setKubernetesOverridesSpecFromUniverse(spec, universe);
+
+      ybUniverse.setSpec(spec);
+      kubernetesClient
+          .resources(YBUniverse.class)
+          .inNamespace(namespace)
+          .resource(ybUniverse)
+          .create();
     }
   }
 }

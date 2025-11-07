@@ -5,6 +5,7 @@ import {
   TimeAggregation
 } from '../../components/metrics/dtos';
 import { MetricName } from '../../components/xcluster/constants';
+import { AuditLogConfig } from '../features/universe/universe-tabs/db-audit-logs/utils/types';
 import { YBTableRelationType } from './constants';
 import { DeepPartial } from './types';
 
@@ -147,6 +148,20 @@ export interface UserIntent {
   tserverGFlags: FlagsObject | FlagsArray;
   instanceTags: FlagsObject | FlagsArray;
   imageBundleUUID: string;
+  auditLogConfig?: AuditLogConfig;
+  metricsExportConfig?: {
+    scrapeIntervalSeconds: number;
+    scrapeTimeoutSeconds: number;
+    collectionLevel: string;
+    universeMetricsExporterConfig?: {
+      exporterUuid: string;
+      additionalTags: Record<string, string>;
+      sendBatchMaxSize: number;
+      sendBatchSize: number;
+      sendBatchTimeoutSeconds: number;
+      metricsPrefix: string;
+    }[];
+  };
 }
 
 export const ClusterType = {
@@ -259,6 +274,7 @@ export interface UniverseDetails {
   updateOptions: string[];
   useSpotInstance: boolean;
   universePaused: boolean;
+  otelCollectorEnabled: boolean;
 }
 
 export interface AllowedTasks {

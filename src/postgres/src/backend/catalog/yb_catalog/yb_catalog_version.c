@@ -3,7 +3,7 @@
  * yb_catalog_version.c
  *	  utility functions related to the ysql catalog version table.
  *
- * Portions Copyright (c) YugaByte, Inc.
+ * Portions Copyright (c) YugabyteDB, Inc.
  *
  *-------------------------------------------------------------------------
  */
@@ -23,8 +23,10 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_yb_catalog_version.h"
+#include "catalog/pg_yb_invalidation_messages.h"
 #include "catalog/schemapg.h"
 #include "catalog/yb_catalog_version.h"
+#include "executor/spi.h"
 #include "executor/ybExpr.h"
 #include "executor/ybModifyTable.h"
 #include "miscadmin.h"
@@ -36,8 +38,8 @@
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
-#include "yb/yql/pggate/ybc_pggate.h"
 
 YbCatalogVersionType yb_catalog_version_type = CATALOG_VERSION_UNSET;
 
@@ -103,19 +105,22 @@ YbMaybeLockMasterCatalogVersion()
 	 * When auto analyze is turned on, we don't want ANALYZE DDL triggered by auto analyze to
 	 * abort user DDLs. To achieve this, regular DDLs take a FOR KEY SHARE lock on the catalog version
 	 * row with a high priority (see pg_session.cc) while ANALYZE triggered by auto analyze takes
-	 * a low priority FOR UPDATE lock on the row.
-	 * (1) Global DDLs (i.e., those that modify shared catalog tables) will increment all catalog
-	 *		 versions. We still only lock the catalog version of the current database. So, they might
-	 *		 still face the problem described above that ANALYZE can abort global DDL run on a
-	 *       different DB.
+	 * a low priority FOR UPDATE lock on all rows of the catalog version table.
+	 * (1) Global DDLs (i.e., those that modify shared catalog tables) increment all catalog
+	 *		 versions at the end of the DDL but only lock the catalog version of the current database
+	 *       when they start. To enable them to abort ANALYZE on different DBs that can conflict with
+	 *       them, ANALYZE locks all rows of catalog version table. It is challenging to identify a
+	 *       global DDL at the start of a DDL so the other way around does not work.
 	 * (2) We enable this feature only if the invalidation messages are used and per-database catalog
 	 *		 version mode is enabled.
+	 *
+	 * TODO(#27037): Re-enable table locks check when concurrent DDL is ready.
 	 */
 	if (yb_user_ddls_preempt_auto_analyze &&
-		!*YBCGetGFlags()->enable_object_locking_for_table_locks &&
+	/* !(*YBCGetGFlags()->enable_object_locking_for_table_locks && enable_object_locking_infra) */
 		YbIsInvalidationMessageEnabled() && YBIsDBCatalogVersionMode())
 	{
-		elog(DEBUG1, "Locking catalog version for db oid %d", MyDatabaseId);
+		elog(DEBUG3, "Locking catalog version for db oid %d", MyDatabaseId);
 		YbGetMasterCatalogVersionImpl(true /* acquire_lock */ );
 	}
 }
@@ -760,6 +765,57 @@ YbCreateMasterDBCatalogVersionTableEntry(Oid db_oid)
 }
 
 void
+YbDeleteMasterDBInvalidationMessagesTableEntries(Oid db_oid)
+{
+	/*
+	 * Connect to SPI manager
+	 */
+	if (SPI_connect() != SPI_OK_CONNECT)
+		elog(ERROR, "SPI_connect failed");
+	char		query[100];
+
+	sprintf(query, "DELETE FROM pg_catalog.pg_yb_invalidation_messages WHERE db_oid = %u", db_oid);
+	SPIPlanPtr	plan = SPI_prepare(query, 0, NULL);
+
+	if (plan == NULL)
+		elog(ERROR, "SPI_prepare failed for \"%s\"", query);
+
+	bool		saved_yb_is_calling_internal_sql_for_ddl = yb_is_calling_internal_sql_for_ddl;
+	Oid			save_userid;
+	int			save_sec_context;
+
+	GetUserIdAndSecContext(&save_userid, &save_sec_context);
+	SetUserIdAndSecContext(BOOTSTRAP_SUPERUSERID,
+						   SECURITY_RESTRICTED_OPERATION);
+	yb_is_calling_internal_sql_for_ddl = true;
+	PG_TRY();
+	{
+		int			spirc = SPI_execute_plan(plan, NULL, NULL, false, 0);
+
+		yb_is_calling_internal_sql_for_ddl = saved_yb_is_calling_internal_sql_for_ddl;
+		SetUserIdAndSecContext(save_userid, save_sec_context);
+		if (spirc != SPI_OK_DELETE)
+			elog(ERROR, "SPI_execute_plan failed for \"%s\"", query);
+		ereport((*YBCGetGFlags()->log_ysql_catalog_versions ? LOG : DEBUG1),
+				(errmsg("%s: deleted %lu invalidation messages for database %u",
+						__func__, SPI_processed, db_oid)));
+	}
+	PG_CATCH();
+	{
+		yb_is_calling_internal_sql_for_ddl = saved_yb_is_calling_internal_sql_for_ddl;
+		SetUserIdAndSecContext(save_userid, save_sec_context);
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+	/*
+	 * Disconnect from SPI manager
+	 */
+	if (SPI_finish() != SPI_OK_FINISH)
+		elog(ERROR, "SPI_finish failed");
+}
+
+void
 YbDeleteMasterDBCatalogVersionTableEntry(Oid db_oid)
 {
 	Assert(YbGetCatalogVersionType() == CATALOG_VERSION_CATALOG_TABLE);
@@ -798,6 +854,14 @@ YbDeleteMasterDBCatalogVersionTableEntry(Oid db_oid)
 	Assert(rows_affected_count == 1);
 
 	RelationClose(rel);
+
+	/*
+	 * When invalidation messages are enabled, we also need to delete the
+	 * invalidation messages stored in pg_yb_invalidation_messages table
+	 * for db_oid.
+	 */
+	if (YbIsInvalidationMessageEnabled() && YbInvalidationMessagesTableExists())
+		YbDeleteMasterDBInvalidationMessagesTableEntries(db_oid);
 }
 
 YbCatalogVersionType
@@ -860,13 +924,15 @@ YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version,
 								  false /* is_region_local */ ,
 								  &ybc_stmt));
 
-	Datum		oid_datum = Int32GetDatum(db_oid);
-	YbcPgExpr	pkey_expr = YBCNewConstant(ybc_stmt, oid_attrdesc->atttypid,
-										   oid_attrdesc->attcollation, oid_datum,
-										   false /* is_null */ );
+	if (!(acquire_lock && yb_use_internal_auto_analyze_service_conn))
+	{
+		Datum		oid_datum = Int32GetDatum(db_oid);
+		YbcPgExpr	pkey_expr = YBCNewConstant(ybc_stmt, oid_attrdesc->atttypid,
+											   oid_attrdesc->attcollation,
+											   oid_datum, false /* is_null */ );
 
-	HandleYBStatus(YBCPgDmlBindColumn(ybc_stmt, 1, pkey_expr));
-
+		HandleYBStatus(YBCPgDmlBindColumn(ybc_stmt, 1, pkey_expr));
+	}
 	for (AttrNumber attnum = 1; attnum <= natts; ++attnum)
 		YbDmlAppendTargetRegularAttr(&Desc_pg_yb_catalog_version[attnum - 1],
 									 ybc_stmt);

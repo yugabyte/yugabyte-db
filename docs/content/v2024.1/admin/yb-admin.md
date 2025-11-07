@@ -11,13 +11,25 @@ menu:
 type: docs
 ---
 
-The `yb-admin` utility, located in the `bin` directory of YugabyteDB home, provides a command line interface for administering clusters.
+The yb-admin utility, located in the `bin` directory of YugabyteDB home, provides a command line interface for administering clusters.
 
-It invokes the [`yb-master`](../../reference/configuration/yb-master/) and [`yb-tserver`](../../reference/configuration/yb-tserver/) servers to perform the necessary administration.
+It invokes the [yb-master](../../reference/configuration/yb-master/) and [yb-tserver](../../reference/configuration/yb-tserver/) servers to perform the necessary administration.
+
+{{< note title="Using YugabyteDB Anywhere or YugabyteDB Aeon?" >}}
+
+yb-admin is intended to be used to administer manually created and managed universes only.
+
+If you are using [YugabyteDB Anywhere](../../yugabyte-platform/) or [YugabyteDB Aeon](/preview/yugabyte-cloud/), administer your universes using the respective UI, or, to use automation, use the respective API or CLI. For more information, refer to [YugabyteDB Anywhere automation](../../yugabyte-platform/anywhere-automation/) and [YugabyteDB Aeon automation](/preview/yugabyte-cloud/managed-automation/).
+
+**If you perform tasks on a YugabyteDB Anywhere-managed universe using yb-admin, the changes may not be reflected in YugabyteDB Anywhere.**
+
+If you are unsure whether a particular functionality in yb-admin is available in YugabyteDB Anywhere, contact {{% support-platform %}}.
+
+{{< /note >}}
 
 ## Syntax
 
-To use the `yb-admin` utility from the YugabyteDB home directory, run `./bin/yb-admin` using the following syntax.
+To use yb-admin from the YugabyteDB home directory, run `./bin/yb-admin` using the following syntax.
 
 ```sh
 yb-admin \
@@ -760,6 +772,7 @@ The following backup and snapshot commands are available:
 * [**delete_snapshot**](#delete-snapshot) deletes a snapshot's information
 * [**create_snapshot_schedule**](#create-snapshot-schedule) sets the schedule for snapshot creation
 * [**list_snapshot_schedules**](#list-snapshot-schedules) returns a list of all snapshot schedules
+* [**edit_snapshot_schedule**](#edit-snapshot-schedule) modifies the schedule for snapshot creation
 * [**restore_snapshot_schedule**](#restore-snapshot-schedule) restores all objects in a scheduled snapshot
 * [**delete_snapshot_schedule**](#delete-snapshot-schedule) deletes the specified snapshot schedule
 
@@ -1280,6 +1293,40 @@ yb-admin \
 }
 ```
 
+#### edit_snapshot_schedule
+
+Edits a snapshot schedule. A schedule consists of a list of objects to be included in a snapshot, a time interval at which to take snapshots for them, and a retention time.
+
+**Syntax**
+
+```sh
+yb-admin \
+    --master_addresses <master-addresses> \
+    edit_snapshot_schedule <schedule-id> \
+    <snapshot-interval> \
+    <retention-time> \
+    <filter-expression>
+```
+
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
+* *schedule-id*: The identifier (ID) of the schedule to be edited.
+* *snapshot-interval*: The frequency at which to take snapshots, in minutes.
+* *retention-time*: The number of minutes to keep a snapshot before deleting it.
+* *filter-expression*: The set of objects to include in the snapshot.
+
+The filter expression is a list of acceptable objects, which can be either raw tables, keyspaces (YCQL) in the format `keyspace_name`, or databases (YSQL) in the format `ysql.database_name`. For proper consistency guarantees, set this up _per-keyspace_ (YCQL) or _per-database_ (YSQL).
+
+**Example**
+
+Edit a snapshot schedule to take a snapshot of the YSQL database `yugabyte` once per minute, and retain each snapshot for 20 minutes:
+
+```sh
+./bin/yb-admin \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    edit_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
+    1 20 ysql.yugabyte
+```
+
 #### restore_snapshot_schedule
 
 Schedules group a set of items into a single tracking object (the *schedule*). When you restore, you can choose a particular schedule and a point in time, and revert the state of all affected objects back to the chosen time.
@@ -1437,7 +1484,7 @@ Having all tablet leaders reside in a single region reduces the number of networ
 
 * Tablespaces don't inherit cluster-level placement information, leader preference, or read replica configurations.
 
-* If the client application uses a smart driver, set the [topology keys](../../drivers-orms/smart-drivers/#topology-aware-load-balancing) to target the preferred zones.
+* If the client application uses a smart driver, set the [topology keys](/preview/develop/drivers-orms/smart-drivers/#topology-aware-load-balancing) to target the preferred zones.
 
 {{< /note >}}
 

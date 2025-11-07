@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -46,7 +46,7 @@ class TabletSplitter {
   // accessible from tablet peer's Raft consensus instance and initialized.
   virtual Status ApplyTabletSplit(
       SplitOperation* operation, log::Log* raft_log,
-      boost::optional<consensus::RaftConfigPB> raft_config) = 0;
+      std::optional<consensus::RaftConfigPB> raft_config) = 0;
 
   // See the comment for ApplyTabletSplit.
   virtual Status ApplyCloneTablet(

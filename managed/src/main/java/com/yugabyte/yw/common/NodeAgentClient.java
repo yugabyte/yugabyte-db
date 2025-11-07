@@ -1,4 +1,4 @@
-// Copyright (c) Yugabyte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.common;
 
@@ -296,7 +296,10 @@ public class NodeAgentClient {
       }
       Map<String, ?> serviceConfig = getServiceConfig(NODE_AGENT_SERVICE_CONFIG_FILE);
       if (MapUtils.isNotEmpty(serviceConfig)) {
-        channelBuilder.defaultServiceConfig(serviceConfig);
+        channelBuilder
+            .disableServiceConfigLookUp()
+            .defaultServiceConfig(serviceConfig)
+            .enableRetry();
       }
       return channelBuilder.build();
     }
@@ -423,7 +426,6 @@ public class NodeAgentClient {
       setCorrelationId();
       this.throwable = throwable;
       latch.countDown();
-      log.error("Error encountered for {} - {}", getId(), throwable.getMessage(), throwable);
     }
 
     @Override

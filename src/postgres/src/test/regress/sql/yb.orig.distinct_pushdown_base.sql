@@ -7,7 +7,6 @@ INSERT INTO t (SELECT 2, i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 
 -- Test the flag.
 SET yb_enable_distinct_pushdown TO off;
-SET yb_explain_hide_non_deterministic_fields = true;
 
 -- Do not pick Distinct Index Scan since the flag is off.
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM t;

@@ -1,7 +1,7 @@
 /*
  * Created on Wed Aug 09 2023
  *
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License")
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
@@ -50,11 +50,25 @@ export const setIsRbacEnabled = (flag: boolean) => {
 };
 
 export const isRbacEnabled = () => {
-  return localStorage.getItem(rbac_identifier) === 'true';
+  try {
+    if (typeof localStorage === 'undefined' || localStorage === null) {
+      return false;
+    }
+    return localStorage.getItem(rbac_identifier) === 'true';
+  } catch {
+    return false;
+  }
 };
 
 export const getRbacEnabledVal = () => {
-  return localStorage.getItem(rbac_identifier);
+  try {
+    if (typeof localStorage === 'undefined' || localStorage === null) {
+      return null;
+    }
+    return localStorage.getItem(rbac_identifier);
+  } catch {
+    return null;
+  }
 };
 
 export const clearRbacCreds = () => {

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.common;
 
@@ -575,6 +575,13 @@ public class NativeKubernetesManager extends KubernetesManager {
       boolean newNamingStyle) {
     // TODO Auto-generated method stub
     throw new UnsupportedOperationException("Unimplemented method 'getServerTypeGflagsChecksum'");
+  }
+
+  @Override
+  public String getCertChecksum(
+      String namespace, String helmReleaseName, Map<String, String> config) {
+    // TODO Auto-generated method stub
+    throw new UnsupportedOperationException("Unimplemented method 'getCertChecksum'");
   }
 
   @Override

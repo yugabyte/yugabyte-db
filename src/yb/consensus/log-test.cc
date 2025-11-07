@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -52,26 +52,25 @@
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/backoff_waiter.h"
-#include "yb/util/random.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/stopwatch.h"
-#include "yb/util/flags.h"
 
 DEFINE_NON_RUNTIME_int32(num_batches, 10000,
              "Number of batches to write to/read from the Log in TestWriteManyBatches");
 
-DECLARE_int32(log_min_segments_to_retain);
-DECLARE_bool(never_fsync);
-DECLARE_bool(writable_file_use_fsync);
-DECLARE_int32(o_direct_block_alignment_bytes);
-DECLARE_int32(o_direct_block_size_bytes);
 DECLARE_bool(TEST_simulate_abrupt_server_restart);
 DECLARE_bool(TEST_skip_file_close);
-DECLARE_int64(reuse_unclosed_segment_threshold_bytes);
-DECLARE_int32(min_segment_size_bytes_to_rollover_at_flush);
+DECLARE_bool(never_fsync);
+DECLARE_bool(writable_file_use_fsync);
 
-namespace yb {
-namespace log {
+DECLARE_int32(log_min_segments_to_retain);
+DECLARE_int32(min_segment_size_bytes_to_rollover_at_flush);
+DECLARE_int32(o_direct_block_alignment_bytes);
+DECLARE_int32(o_direct_block_size_bytes);
+
+DECLARE_int64(reuse_unclosed_segment_threshold_bytes);
+
+namespace yb::log {
 
 using namespace std::literals;
 
@@ -132,8 +131,8 @@ class LogTest : public LogTestBase {
     std::unique_ptr<RandomAccessFile> r_log_seg;
     RETURN_NOT_OK(fs_manager_->env()->NewRandomAccessFile(fqp, &r_log_seg));
 
-    scoped_refptr<ReadableLogSegment> readable_segment(
-        new ReadableLogSegment(fqp, shared_ptr<RandomAccessFile>(r_log_seg.release())));
+    scoped_refptr<ReadableLogSegment> readable_segment(new ReadableLogSegment(
+        fqp, shared_ptr<RandomAccessFile>(r_log_seg.release()), /*read_wal_mem_tracker=*/nullptr));
 
     LogSegmentHeaderPB header;
     header.set_sequence_number(sequence_number);
@@ -181,9 +180,10 @@ class LogTest : public LogTestBase {
     std::unique_ptr<LogReader> copied_log_reader;
     auto log_index = VERIFY_RESULT(LogIndex::NewLogIndex(log_copy_dir));
     RETURN_NOT_OK(LogReader::Open(
-        fs_manager_->env(), log_index, "Log reader: ",
-        log_copy_dir, /* table_metric_entity = */ nullptr,
-        /* tablet_metric_entity = */ nullptr, &copied_log_reader));
+        fs_manager_->env(), log_index, "Log reader: ", log_copy_dir,
+        /*table_metric_entity=*/nullptr,
+        /*tablet_metric_entity=*/nullptr,
+        /*read_wal_mem_tracker=*/nullptr, &copied_log_reader));
 
     return copied_log_reader;
   }
@@ -549,7 +549,8 @@ void LogTest::DoCorruptionTest(CorruptionType type, CorruptionPosition place,
   auto log_index = ASSERT_RESULT(LogIndex::NewLogIndex(log_->wal_dir_));
   ASSERT_OK(LogReader::Open(
       fs_manager_->env(), log_index, "Log reader: ", tablet_wal_path_,
-      /* table_metric_entity = */ nullptr, /* tablet_metric_entity = */ nullptr, &reader));
+      /*table_metric_entity=*/nullptr, /*tablet_metric_entity=*/nullptr,
+      /*read_wal_mem_tracker=*/nullptr, &reader));
   ASSERT_EQ(1, reader->num_segments());
 
   SegmentSequence segments;
@@ -587,32 +588,86 @@ TEST_F(LogTest, TestCorruptLogInHeader) {
   DoCorruptionTest(FLIP_BYTE, IN_HEADER, STATUS(Corruption, ""), 3);
 }
 
-// Tests log metrics for WAL files size
+// Tests log size metrics are tracked correctly at runtime.
 TEST_F(LogTest, TestLogMetrics) {
   BuildLog();
-// Set a small segment size so that we have roll overs.
+  // Set a small segment size so that we have rollovers.
   log_->SetMaxSegmentSizeForTests(990);
-  const int kNumEntriesPerBatch = 100;
-
-  OpIdPB op_id = MakeOpId(1, 1);
 
   SegmentSequence segments;
   ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(segments.size(), 1);
 
+  // Verify the active segment size tracker was initialized to the segment pre-allocation size.
+  string path = CHECK_RESULT(segments.back()).get()->path();
+  struct stat st;
+  ASSERT_EQ(stat(path.c_str(), &st), 0);
+  ASSERT_EQ(log_->active_segment_ondisk_size_, st.st_size);
+
+  // Create at least 3 segments.
+  const int kNumEntriesPerBatch = 100;
+  OpIdPB op_id = MakeOpId(1, 1);
   while (segments.size() < 3) {
     ASSERT_OK(AppendNoOps(&op_id, kNumEntriesPerBatch));
     // Update the segments
     ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
   }
 
+  uint64_t metrics_wal_size = log_->metrics_->wal_size->value();
+  uint64_t real_wal_size = 0;
+
+  for (const scoped_refptr<ReadableLogSegment>& segment : segments) {
+    ASSERT_EQ(stat(segment->path().c_str(), &st), 0);
+    uint64_t size_on_disk = st.st_size;
+    real_wal_size += size_on_disk;
+    LOG(INFO) << "Log size: " << size_on_disk << ", path: " << segment->path();
+  }
+
+  ASSERT_EQ(real_wal_size, metrics_wal_size);
+}
+
+// Tests log size metrics are initialized properly when latest log segment is reused on log open.
+TEST_F(LogTest, TestLogMetricsWithSegmentReuse) {
+  const size_t reuse_threshold = 512_KB;
+
+  // log_->Close() simulates crash now (refer DoReuseLastSegmentTest()).
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_abrupt_server_restart) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_file_close) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_reuse_unclosed_segment_threshold_bytes) = reuse_threshold;
+
+  BuildLog();
+  SegmentSequence segments;
+  ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
+  ASSERT_EQ(segments.size(), 1);
+
+  // Fill segment about half-way to the reuse-threshold.
+  ssize_t size = 0;
+  ssize_t size_limit = reuse_threshold / 2;
+  const int kNumEntriesPerBatch = 100;
+  OpIdPB op_id = MakeOpId(1, 1);
+  while (size < size_limit) {
+    ASSERT_OK(AppendNoOps(&op_id, kNumEntriesPerBatch, &size));
+  }
+
+  // Verify we are still in the first segment.
+  ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
+  size_t segment_num_before_crash = segments.size();
+  ASSERT_EQ(segment_num_before_crash, 1);
+
+  // Simulate crash.
   ASSERT_OK(log_->Close());
 
-  int64_t wal_size_old = log_->metrics_->wal_size->value();
   BuildLog();
-  int64_t wal_size_new = log_->metrics_->wal_size->value();
+  ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
+  // Make sure segments number didn't get increase after restart; segment was reused.
+  ASSERT_EQ(segments.size(), segment_num_before_crash);
 
-  ASSERT_EQ(wal_size_old, wal_size_new);
+  // Verify the active segment size tracker and metrics were initialized properly.
+  string path = CHECK_RESULT(segments.back()).get()->path();
+  struct stat st;
+  ASSERT_EQ(stat(path.c_str(), &st), 0);
+  ASSERT_EQ(log_->active_segment_ondisk_size_, st.st_size);
+  ASSERT_EQ(log_->metrics_->wal_size->value(), st.st_size);
 }
 
 // Verify presence of min_start_time_running_txns in footer of closed segments.
@@ -678,7 +733,9 @@ TEST_F(LogTest, TestSegmentRollover) {
 
   std::unique_ptr<LogReader> reader;
   ASSERT_OK(LogReader::Open(
-      fs_manager_->env(), nullptr, "Log reader: ", tablet_wal_path_, nullptr, nullptr, &reader));
+      fs_manager_->env(), /*index=*/nullptr, "Log reader: ", tablet_wal_path_,
+      /*table_metric_entity=*/nullptr, /*tablet_metric_entity=*/nullptr,
+      /*read_wal_mem_tracker=*/nullptr, &reader));
   ASSERT_OK(reader->GetSegmentsSnapshot(&segments));
 
   last_segment = ASSERT_RESULT(segments.back());
@@ -844,7 +901,8 @@ TEST_F(LogTest, TestGCWithLogRunning) {
     ReplicateMsgs repls;
     int64_t starting_op_segment_seq_num;
     Status s = log_->GetLogReader()->ReadReplicatesInRange(
-      1, 2, LogReader::kNoSizeLimit, &repls, &starting_op_segment_seq_num);
+        1, 2, LogReader::kNoSizeLimit, log::ObeyMemoryLimit::kFalse, &repls,
+        &starting_op_segment_seq_num);
     ASSERT_TRUE(s.IsNotFound()) << s.ToString();
   }
 
@@ -1013,8 +1071,9 @@ TEST_F(LogTest, TestWriteManyBatches) {
 
     std::unique_ptr<LogReader> reader;
     ASSERT_OK(LogReader::Open(
-        fs_manager_->env(), /* index= */ nullptr, "Log reader: ", tablet_wal_path_,
-        /* table_metric_entity= */ nullptr, /* tablet_metric_entity= */ nullptr, &reader));
+        fs_manager_->env(), /*index=*/nullptr, "Log reader: ", tablet_wal_path_,
+        /*table_metric_entity=*/nullptr, /*tablet_metric_entity=*/nullptr,
+        /*read_wal_mem_tracker=*/nullptr, &reader));
 
     SegmentSequence segments;
     ASSERT_OK(reader->GetSegmentsSnapshot(&segments));
@@ -1036,11 +1095,9 @@ TEST_F(LogTest, TestWriteManyBatches) {
 // seg003: 0.20 through 0.29
 // seg004: 0.30 through 0.39
 TEST_F(LogTest, TestLogReader) {
-  LogReader reader(fs_manager_->env(),
-                   scoped_refptr<LogIndex>(),
-                   "Log reader: ",
-                   nullptr,
-                   nullptr);
+  LogReader reader(
+      fs_manager_->env(), scoped_refptr<LogIndex>(), "Log reader: ", nullptr, nullptr,
+      /*read_wal_mem_tracker=*/nullptr);
   ASSERT_OK(reader.InitEmptyReaderForTests());
   ASSERT_OK(AppendNewEmptySegmentToReader(2, 10, &reader));
   ASSERT_OK(AppendNewEmptySegmentToReader(3, 20, &reader));
@@ -1241,9 +1298,9 @@ TEST_F(LogTest, TestReadLogWithReplacedReplicates) {
       {
         SCOPED_TRACE(Substitute("Reading $0-$1", start_index, end_index));
         consensus::ReplicateMsgs repls;
-        ASSERT_OK(reader->ReadReplicatesInRange(start_index, end_index,
-                                                LogReader::kNoSizeLimit, &repls,
-                                                &starting_op_segment_seq_num));
+        ASSERT_OK(reader->ReadReplicatesInRange(
+            start_index, end_index, LogReader::kNoSizeLimit, log::ObeyMemoryLimit::kFalse, &repls,
+            &starting_op_segment_seq_num));
         ASSERT_EQ(end_index - start_index + 1, repls.size());
         auto expected_index = start_index;
         for (const auto& repl : repls) {
@@ -1263,11 +1320,12 @@ TEST_F(LogTest, TestReadLogWithReplacedReplicates) {
       // Test a size-limited read.
       int size_limit = RandomUniformInt(1, 1000);
       {
-        SCOPED_TRACE(Substitute("Reading $0-$1 with size limit $2",
-                                start_index, end_index, size_limit));
+        SCOPED_TRACE(
+            Format("Reading $0-$1 with size limit $2", start_index, end_index, size_limit));
         ReplicateMsgs repls;
-        ASSERT_OK(reader->ReadReplicatesInRange(start_index, end_index, size_limit, &repls,
-                                                &starting_op_segment_seq_num));
+        ASSERT_OK(reader->ReadReplicatesInRange(
+            start_index, end_index, size_limit, log::ObeyMemoryLimit::kFalse, &repls,
+            &starting_op_segment_seq_num));
         ASSERT_LE(repls.size(), end_index - start_index + 1);
         int total_size = 0;
         auto expected_index = start_index;
@@ -1310,10 +1368,55 @@ TEST_F(LogTest, TestReadReplicatesHighIndex) {
   auto* reader = log_->GetLogReader();
   ReplicateMsgs repls;
   int64_t starting_op_segment_seq_num;
-  ASSERT_OK(reader->ReadReplicatesInRange(first_log_index, first_log_index + kSequenceLength - 1,
-                                          LogReader::kNoSizeLimit, &repls,
-                                          &starting_op_segment_seq_num));
+  ASSERT_OK(reader->ReadReplicatesInRange(
+      first_log_index, first_log_index + kSequenceLength - 1, LogReader::kNoSizeLimit,
+      log::ObeyMemoryLimit::kFalse, &repls, &starting_op_segment_seq_num));
   ASSERT_EQ(kSequenceLength, repls.size());
+}
+
+TEST_F(LogTest, TestReadReplicatesWithInsufficientMemory) {
+  const int64_t first_log_index = 1;
+  const int kSequenceLength = 10000;
+
+  BuildLog(10);
+  OpIdPB op_id;
+  op_id.set_term(first_log_index);
+  op_id.set_index(first_log_index);
+  ASSERT_OK(AppendNoOps(&op_id, kSequenceLength));
+
+  // Here the limit is so severe that we can't even read in a single batch; accordingly we expect to
+  // get Status Busy return.
+  auto* reader = log_->GetLogReader();
+  ReplicateMsgs repls;
+  int64_t starting_op_segment_seq_num;
+  auto s = reader->ReadReplicatesInRange(
+      first_log_index, first_log_index + kSequenceLength - 1, LogReader::kNoSizeLimit,
+      log::ObeyMemoryLimit::kTrue, &repls, &starting_op_segment_seq_num);
+  ASSERT_TRUE(s.IsBusy()) << s;
+}
+
+TEST_F(LogTest, TestReadReplicatesWithOnlyPartialMemory) {
+  const int64_t first_log_index = 1;
+  const int kSequenceLength = 10000;
+
+  BuildLog(10000);
+  OpIdPB op_id;
+  op_id.set_term(first_log_index);
+  op_id.set_index(first_log_index);
+  ASSERT_OK(AppendNoOps(&op_id, kSequenceLength));
+
+  // Here the limit is sufficient to get several batches but not all of them.  Accordingly we expect
+  // to get only some of the replicas returned.
+  auto* reader = log_->GetLogReader();
+  ReplicateMsgs repls;
+  int64_t starting_op_segment_seq_num;
+  auto s = reader->ReadReplicatesInRange(
+      first_log_index, first_log_index + kSequenceLength - 1, LogReader::kNoSizeLimit,
+      log::ObeyMemoryLimit::kTrue, &repls, &starting_op_segment_seq_num);
+  ASSERT_OK(s);
+  ASSERT_NE(repls.size(), kSequenceLength);
+  ASSERT_GE(repls.size(), 2);
+
 }
 
 TEST_F(LogTest, AllocateSegmentAndRollOver) {
@@ -1832,5 +1935,4 @@ TEST_F(LogTest, AsyncRolloverMarker) {
   ASSERT_EQ(log_->active_segment_sequence_number(), seq_no + 1);
 }
 
-} // namespace log
-} // namespace yb
+} // namespace yb::log

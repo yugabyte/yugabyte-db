@@ -273,8 +273,8 @@ set pg_hint_plan.yb_use_query_id_for_hinting to on;
 
 delete from hint_plan.hints;
 
--- Query id is expected to be 662787253122415527 for 'select * from information_schema.columns'.
-INSERT INTO hint_plan.hints (norm_query_string, application_name, hints) VALUES ('6627872531224155272', '', 'Leading(((dep seq) ((co nco) (nt (((((c a) t) (bt nbt)) ad) nc))))) set(yb_prefer_bnl false) set(yb_enable_batchednl false) Set(from_collapse_limit 12) Set(join_collapse_limit 12) Set(geqo false)');
+-- Query id is expected to be 520905088486409542 for 'select * from information_schema.columns'.
+INSERT INTO hint_plan.hints (norm_query_string, application_name, hints) VALUES ('520905088486409542', '', 'Leading(((dep seq) ((co nco) (nt (((((c a) t) (bt nbt)) ad) nc))))) set(yb_prefer_bnl false) set(yb_enable_batchednl false) Set(from_collapse_limit 12) Set(join_collapse_limit 12) Set(geqo false)');
 
 select * from hint_plan.hints;
 
@@ -324,6 +324,50 @@ EXPLAIN (costs off, hints on) SELECT 1 FROM tbl, (SELECT dummy() as x) AS ss, (S
 -- Should work since we are forcing a cross join t2-t3 (planner would not normally try this join).
 /*+ noNestLoop(t1 t2) noNestLoop(t1 t3) Leading(t2 t3) */ explain (costs off, uids on) select max(a1) from t1 join t2 on a1<a2 join t3 on a1>a3;
 
+-- Test hints affecting NestLoop and YBBatchedNL join methods.
+
+-- Turn on BNL preference.
+set yb_prefer_bnl to on;
+
+-- Should get NestLoop or YBBatchedNL based on cost.
+/*+ NestLoop(t1 t2) */ explain select a1 from t1 join t2 on a1=a2 order by a1;
+
+-- Should get HashJoin or MergeJoin since hint prevents both NestLoop and
+-- YBBatchedNL.
+/*+ NoNestLoop(t1 t2) */ explain select a1 from t1 join t2 on a1=a2 order by a1;
+
+-- Should get YBBatchedNL.
+/*+ YBBatchedNL(t1 t2) */ explain select a1 from t1 join t2 on a1=a2 order by a1;
+
+-- Should get NestLoop, HashJoin, or MergeJoin.
+/*+ NoYBBatchedNL(t1 t2) */ explain select a1 from t1 join t2 on a1=a2 order by a1;
+
+-- Turn off BNL preference.
+set yb_prefer_bnl to off;
+
+-- Should get NestLoop.
+/*+ NestLoop(t1 t2) */ explain select a1 from t1 join t2 on a1=a2 order by a1;
+
+-- Should get HashJoin, MergeJoin, or YBBatchedNL.
+/*+ NoNestLoop(t1 t2) */ explain select a1 from t1 join t2 on a1=a2 order by a1;
+
+-- Should get YBBatchedNL.
+/*+ YBBatchedNL(t1 t2) */ explain select a1 from t1 join t2 on a1=a2 order by a1;
+
+-- Should get NestLoop, HashJoin, or MergeJoin.
+/*+ NoYBBatchedNL(t1 t2) */ explain select a1 from t1 join t2 on a1=a2 order by a1;
+
+-- Should get HashJoin.
+/*+ NoYBBatchedNL(t1 t2) set(enable_nestloop off) set(enable_mergejoin off) */ explain select a1 from t1 join t2 on a1=a2
+ order by a1;
+
+reset yb_prefer_bnl;
+
+-- GH28072 - Make sure the internal hint test passes.
+set yb_enable_parallel_append = on;
+explain (hints on, costs off) SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.b = 0 ORDER BY t1.a, t2.b;
+reset yb_enable_parallel_append;
+
 -- NEGATIVE TESTS
 
 -- Try to use a bad index. Should get warnings.
@@ -357,6 +401,9 @@ set pg_hint_plan.yb_bad_hint_mode to warn;
 /*+ set(enable_seqscan off) */ explain (hints on, costs off) select count(*) from t2 tab where b2<10;
 
 -- This hint makes sense but currently there cannot be > 1 join method hint for the same set of tables so will give warnings/errors.
+-- Since pg_hint_plan.yb_bad_hint_mode==WARN, the noNestLoop hint is marked as a duplicate (and is not used) but the
+-- NoYbBatchedNL hint remains valid and is used. (This is an artifact of how the hint processing works.)
+-- Therefore, for this query and hints, NestLoop is a valid choice but BNL is not.
 /*+ noNestLoop(t1 t2) NoYbBatchedNL(t1 t2) */ explain (hints on, costs off) select max(a1) from t1 join t2 on a1=a2;
 
 -- Try to force t0-t1 join. Should see errors/warnings since this is not a legal join order.

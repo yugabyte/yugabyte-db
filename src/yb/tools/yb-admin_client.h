@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -33,8 +33,6 @@
 
 #include <string>
 #include <vector>
-
-#include <boost/optional.hpp>
 
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/xcluster_types.h"
@@ -163,16 +161,12 @@ class ClusterAdminClient {
 
   // Change the configuration of the specified tablet.
   Status ChangeConfig(
-      const TabletId& tablet_id,
-      const std::string& change_type,
-      const PeerId& peer_uuid,
-      const boost::optional<std::string>& member_type);
+      const TabletId& tablet_id, const std::string& change_type, const PeerId& peer_uuid,
+      const std::optional<std::string>& member_type);
 
   // Change the configuration of the master tablet.
   Status ChangeMasterConfig(
-      const std::string& change_type,
-      const std::string& peer_host,
-      uint16_t peer_port,
+      const std::string& change_type, const std::string& peer_host, uint16_t peer_port,
       const std::string& peer_uuid = "");
 
   Status DumpMasterState(bool to_console);
@@ -212,7 +206,7 @@ class ClusterAdminClient {
   // Launch backfill for (deferred) indexes on the specified table.
   Status LaunchBackfillIndexForTable(const client::YBTableName& table_name);
 
-  // Release object locks for specified tranaction
+  // Release object locks for specified transaction.
   Status ReleaseObjectLocksGlobal(const TransactionId& txn, uint32_t subtxn_id);
 
   // List all tablet servers known to master
@@ -248,15 +242,27 @@ class ClusterAdminClient {
 
   Status DropRedisTable();
 
-  Status FlushTables(const std::vector<client::YBTableName>& table_names,
-                     bool add_indexes,
-                     int timeout_secs,
-                     bool is_compaction);
+  Status FlushTables(
+      const std::vector<client::YBTableName>& table_names,
+      MonoDelta timeout = MonoDelta::FromSeconds(30),
+      bool add_indexes = false);
 
-  Status FlushTablesById(const std::vector<TableId>& table_id,
-                         bool add_indexes,
-                         int timeout_secs,
-                         bool is_compaction);
+  Status FlushTablesById(
+      const TableIds& table_id,
+      MonoDelta timeout = MonoDelta::FromSeconds(30),
+      bool add_indexes = false);
+
+  Status CompactTables(
+      const std::vector<client::YBTableName>& table_names,
+      MonoDelta timeout = MonoDelta::FromSeconds(30),
+      bool add_indexes = false,
+      bool add_vector_indexes = false);
+
+  Status CompactTablesById(
+      const TableIds& table_id,
+      MonoDelta timeout = MonoDelta::FromSeconds(30),
+      bool add_indexes = false,
+      bool add_vector_indexes = false);
 
   Status CompactionStatus(const client::YBTableName& table_name, bool show_tablets);
 
@@ -289,21 +295,20 @@ class ClusterAdminClient {
 
   Status GetXClusterConfig();
 
-  Status ChangeBlacklist(const std::vector<HostPort>& servers, bool add,
-      bool blacklist_leader);
+  Status ChangeBlacklist(const std::vector<HostPort>& servers, bool add, bool blacklist_leader);
 
-  Result<const master::NamespaceIdentifierPB&> GetNamespaceInfo(YQLDatabase db_type,
-                                                                const std::string& namespace_name);
+  Result<const master::NamespaceIdentifierPB&> GetNamespaceInfo(
+      YQLDatabase db_type, const NamespaceName& namespace_name);
 
   Status LeaderStepDownWithNewLeader(
-      const std::string& tablet_id,
-      const std::string& dest_ts_uuid);
+      const TabletId& tablet_id,
+      const TabletServerId& dest_ts_uuid);
 
   Status MasterLeaderStepDown(
       const std::string& leader_uuid,
       const std::string& new_leader_uuid = std::string());
 
-  Status SplitTablet(const std::string& tablet_id);
+  Status SplitTablet(const TabletId& tablet_id);
 
   Status DisableTabletSplitting(int64_t disable_duration_ms, const std::string& feature_name);
 
@@ -317,7 +322,7 @@ class ClusterAdminClient {
 
   Result<std::string> GetMasterLeaderUuid();
 
-  Status GetYsqlCatalogVersion();
+  Status GetYsqlCatalogVersion(const TypedNamespaceName& ns);
 
   Result<rapidjson::Document> DdlLog();
 
@@ -361,10 +366,11 @@ class ClusterAdminClient {
   Result<master::ListSnapshotsResponsePB> ListSnapshots(
       const ListSnapshotsFlags& flags, const TxnSnapshotId& snapshot_id = TxnSnapshotId::Nil(),
       bool prepare_for_backup = false, bool include_ddl_in_progress_tables = false);
-  Status CreateSnapshot(const std::vector<client::YBTableName>& tables,
-                        std::optional<int32_t> retention_duration_hours,
-                        const bool add_indexes = true,
-                        const int flush_timeout_secs = 0);
+  Status CreateSnapshot(
+      const std::vector<client::YBTableName>& tables,
+      std::optional<int32_t> retention_duration_hours,
+      const bool add_indexes = true,
+      const int flush_timeout_secs = 0);
   Status CreateNamespaceSnapshot(
       const TypedNamespaceName& ns, std::optional<int32_t> retention_duration_hours,
       bool add_indexes = true);

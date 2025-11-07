@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -105,7 +105,8 @@ public class TestBasicStatements extends BaseCQLTest {
       fail("Not expecting a client side timeout.");
     } catch (RuntimeException re) {
       LOG.info("Caught execption ", re);
-      assertTrue(re.getMessage().contains("passed its deadline"));
+      assertTrue(re.getMessage().contains("passed its deadline") ||
+                 re.getMessage().contains("timed out after"));
     }
 
     // destroy the cluster, without trying to clean up the tables etc.

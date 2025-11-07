@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -183,7 +183,7 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
     UniverseDefinitionTaskParams.UserIntent userIntent = details.getPrimaryCluster().userIntent;
     userIntent.enableYSQLAuth = true;
     userIntent.enableYCQLAuth = true;
-    details.upsertPrimaryCluster(userIntent, null);
+    details.upsertPrimaryCluster(userIntent, null, null);
     u.setUniverseDetails(details);
     u.save();
     if (isCloudCustomer) {
@@ -229,7 +229,7 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
     UniverseDefinitionTaskParams.UserIntent userIntent = details.getPrimaryCluster().userIntent;
     userIntent.enableYSQLAuth = true;
     userIntent.enableYCQLAuth = true;
-    details.upsertPrimaryCluster(userIntent, null);
+    details.upsertPrimaryCluster(userIntent, null, null);
     u.setUniverseDetails(details);
     u.save();
     ObjectNode bodyJson =
@@ -280,7 +280,7 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
     UniverseDefinitionTaskParams.UserIntent userIntent = details.getPrimaryCluster().userIntent;
     userIntent.enableYSQLAuth = true;
     userIntent.enableYCQLAuth = true;
-    details.upsertPrimaryCluster(userIntent, null);
+    details.upsertPrimaryCluster(userIntent, null, null);
     u.setUniverseDetails(details);
     u.save();
     ObjectNode bodyJson =
@@ -479,7 +479,7 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
     userIntent.enableYSQLAuth = enableYSQLAuth;
     userIntent.enableYCQL = enableYCQL;
     userIntent.enableYCQLAuth = enableYCQLAuth;
-    details.upsertPrimaryCluster(userIntent, null);
+    details.upsertPrimaryCluster(userIntent, null, null);
     universe.setUniverseDetails(details);
     universe.save();
   }

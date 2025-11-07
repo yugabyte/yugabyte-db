@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.common;
 
@@ -75,6 +75,9 @@ public abstract class PlatformGuiceApplicationBaseTest extends WithServer {
   @Before
   public void initMat() {
     mat = app.asScala().materializer();
+    // Play app is restarted for each test method that triggers shutdown on ShutdownHookHandler, but
+    // the static fields are not reset as the JVM does not restart.
+    Util.resetYbaShutdownStarted();
   }
 
   public Result doRequest(String method, String url) {

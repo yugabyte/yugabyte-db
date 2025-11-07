@@ -21,11 +21,6 @@ type: docs
   </li>
 
   <li>
-    <a href="../upgrade-yp-replicated/" class="nav-link">
-      <i class="fa-solid fa-cloud"></i>Replicated</a>
-  </li>
-
-  <li>
     <a href="../upgrade-yp-kubernetes/" class="nav-link active">
       <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>Kubernetes</a>
   </li>
@@ -67,7 +62,7 @@ The [YugabyteDB Kubernetes Operator](../../anywhere-automation/yb-kubernetes-ope
 1. Apply the following Custom Resource Definition:
 
     ```sh
-    kubectl apply -f https://raw.github.com/yugabyte/charts/2024.1/crds/concatenated_crd.yaml
+    kubectl apply -f https://raw.github.com/yugabyte/charts/{{< yb-version version="preview" format="short">}}/crds/concatenated_crd.yaml
     ```
 
 1. Get a list of Helm chart releases in namespace using the following command:

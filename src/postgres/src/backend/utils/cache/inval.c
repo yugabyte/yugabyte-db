@@ -130,6 +130,7 @@
 
 /* YB includes */
 #include "pg_yb_utils.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 #include <assert.h>
 #include <inttypes.h>
 #include <unistd.h>
@@ -745,6 +746,7 @@ LocalExecuteInvalidationMessage(SharedInvalidationMessage *msg)
 		if (msg->rc.dbId == MyDatabaseId || msg->rc.dbId == InvalidOid)
 		{
 			int			i;
+
 			if (YbCanTryInvalidateTableCacheEntry())
 			{
 				if (!OidIsValid(msg->rc.relId))
@@ -755,19 +757,24 @@ LocalExecuteInvalidationMessage(SharedInvalidationMessage *msg)
 				}
 				else
 				{
-					Relation    rel = YbRelationIdCacheLookup(msg->rc.relId);
+					Relation	rel = YbRelationIdCacheLookup(msg->rc.relId);
+
 					if (rel)
 					{
 						/* If rc.dbId is 0 it menas a shared catalog */
-						Oid         dbid = OidIsValid(msg->rc.dbId) ? MyDatabaseId : Template1DbOid;
+						Oid			dbid = OidIsValid(msg->rc.dbId) ? MyDatabaseId : Template1DbOid;
+
 						elog(DEBUG1, "relcache removing tuple for relation %u:%u", dbid, msg->rc.relId);
 						YBCPgAlterTableInvalidateTableByOid(dbid, YbGetRelfileNodeId(rel));
 					}
 					else
 					{
-						/* We assume the table cache entry did not exist or was already removed. */
+						/*
+						 * We assume the table cache entry did not exist or
+						 * was already removed.
+						 */
 						elog(DEBUG1, "relation for rc.relId %u not found, "
-									 "skipped table cache entry invalidation", msg->rc.relId);
+							 "skipped table cache entry invalidation", msg->rc.relId);
 					}
 				}
 			}
@@ -904,6 +911,7 @@ AcceptInvalidationMessages(void)
 {
 	if (OidIsValid(MyDatabaseId) &&
 		*YBCGetGFlags()->enable_object_locking_for_table_locks &&
+		enable_object_locking_infra &&
 		YbIsInvalidationMessageEnabled())
 	{
 		uint64_t	shared_catalog_version = YbGetSharedCatalogVersion();
@@ -932,6 +940,7 @@ AcceptInvalidationMessages(void)
 				 */
 				yb_refresh_cache_in_progress = true;
 
+				YBCPgResetCatalogReadTime();
 				if (YBRefreshCacheUsingInvalMsgs())
 				{
 					elog(DEBUG1,

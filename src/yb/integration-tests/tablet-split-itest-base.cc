@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -259,8 +259,7 @@ Result<std::pair<docdb::DocKeyHash, docdb::DocKeyHash>>
 
 template <class MiniClusterType>
 Status TabletSplitITestBase<MiniClusterType>::FlushTable(const TableId& table_id) {
-  return this->client_->FlushTables(
-      {table_id}, /* add_indexes = */ false, /* timeout_secs = */ 30, /* is_compaction = */ false);
+  return this->client_->FlushTables({table_id});
 }
 
 template <class MiniClusterType>
@@ -752,12 +751,11 @@ Status TabletSplitITest::CheckPostSplitTabletReplicasData(
       std::unordered_set<size_t> tablet_keys;
       while (VERIFY_RESULT(iter->FetchNext(&row))) {
       auto key_opt = row.GetValue(key_column_id);
-      SCHECK(key_opt.is_initialized(), InternalError, "Key is not initialized");
+      SCHECK(key_opt.has_value(), InternalError, "Key is not initialized");
       SCHECK_EQ(key_opt, row.GetValue(value_column_id), InternalError, "Wrong value for key");
-      auto key = key_opt->int32_value();
+      auto key = key_opt->get().int32_value();
       SCHECK(
-          tablet_keys.insert(key).second,
-          InternalError,
+          tablet_keys.insert(key).second, InternalError,
           Format("Duplicate key $0 in tablet $1", key, tablet->tablet_id()));
       SCHECK_GT(
           keys[key - 1]--,

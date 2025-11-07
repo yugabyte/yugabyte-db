@@ -1,5 +1,5 @@
 /*
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  */
 
 package xcluster
@@ -101,7 +101,7 @@ var listXClusterCmd = &cobra.Command{
 		for _, x := range xclusterUUIDs {
 			rGet, response, err := authAPI.GetXClusterConfig(x).Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(response, err, "XCluster", "List")
+				errMessage := util.ErrorFromHTTPResponse(response, err, "xCluster", "List")
 				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 			}
 			r = append(r, rGet)

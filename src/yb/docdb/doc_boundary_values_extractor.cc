@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -39,7 +39,7 @@ class DocBoundaryValuesExtractor : public rocksdb::BoundaryValuesExtractor {
   virtual ~DocBoundaryValuesExtractor() {}
 
   Status Extract(Slice user_key, rocksdb::UserBoundaryValueRefs* values) override {
-    if (dockv::IsInternalRecordKeyType(dockv::DecodeKeyEntryType(user_key))) {
+    if (dockv::IsMetaKeyType(dockv::DecodeKeyEntryType(user_key))) {
       // Skipping internal DocDB records.
       return Status::OK();
     }

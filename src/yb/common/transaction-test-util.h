@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -34,12 +34,10 @@ namespace yb {
 
 class TransactionStatusManagerMock : public TransactionStatusManager {
  public:
-  HybridTime LocalCommitTime(const TransactionId& id) override {
-    return HybridTime::kInvalid;
-  }
+  HybridTime LocalCommitTime(const TransactionId& id) override { return HybridTime::kInvalid; }
 
-  boost::optional<TransactionLocalState> LocalTxnData(const TransactionId& id) override {
-    return boost::none;
+  std::optional<TransactionLocalState> LocalTxnData(const TransactionId& id) override {
+    return std::nullopt;
   }
 
   void RequestStatusAt(const StatusRequest& request) override;
@@ -72,13 +70,11 @@ class TransactionStatusManagerMock : public TransactionStatusManager {
     return Status::OK();
   }
 
-  Result<boost::optional<TabletId>> FindStatusTablet(const TransactionId& id) override {
-    return boost::none;
+  Result<std::optional<TabletId>> FindStatusTablet(const TransactionId& id) override {
+    return std::nullopt;
   }
 
-  HybridTime MinRunningHybridTime() const override {
-    return HybridTime::kMin;
-  }
+  HybridTime MinRunningHybridTime() const override { return HybridTime::kMin; }
 
   Result<HybridTime> WaitForSafeTime(HybridTime safe_time, CoarseTimePoint deadline) override {
     return STATUS(NotSupported, "WaitForSafeTime not implemented");

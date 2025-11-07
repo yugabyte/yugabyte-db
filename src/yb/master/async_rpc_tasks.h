@@ -188,7 +188,7 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTaskWithTable {
       Master* master, ThreadPool* callback_pool, const std::string& permanent_uuid,
       const scoped_refptr<TableInfo>& table, TabletId tablet_id,
       tablet::TabletDataState delete_type,
-      boost::optional<int64_t> cas_config_opid_index_less_or_equal, LeaderEpoch epoch,
+      std::optional<int64_t> cas_config_opid_index_less_or_equal, LeaderEpoch epoch,
       AsyncTaskThrottlerBase* async_task_throttler, const std::string& reason)
       : RetrySpecificTSRpcTaskWithTable(
             master, callback_pool, permanent_uuid, table, std::move(epoch), async_task_throttler),
@@ -217,6 +217,10 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTaskWithTable {
     keep_data_ = value;
   }
 
+  void set_exclude_aborting_transaction_id(TransactionId value) {
+    exclude_aborting_transaction_id_ = value;
+  }
+
   TabletId tablet_id() const override { return tablet_id_; }
 
  protected:
@@ -227,11 +231,12 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTaskWithTable {
 
   const TabletId tablet_id_;
   const tablet::TabletDataState delete_type_;
-  const boost::optional<int64_t> cas_config_opid_index_less_or_equal_;
+  const std::optional<int64_t> cas_config_opid_index_less_or_equal_;
   const std::string reason_;
   tserver::DeleteTabletResponsePB resp_;
   bool hide_only_ = false;
   bool keep_data_ = false;
+  std::optional<TransactionId> exclude_aborting_transaction_id_{std::nullopt};
 
  private:
   Status SetPendingDelete(AddPendingDelete add_pending_delete);
@@ -278,9 +283,10 @@ class AsyncAlterTable : public AsyncTabletLeaderTask {
   uint32_t schema_version_;
   tserver::ChangeMetadataResponsePB resp_;
 
+  bool SendRequest(int attempt) override;
+
  private:
   void HandleResponse(int attempt) override;
-  bool SendRequest(int attempt) override;
   virtual void HandleInsertPackedSchema(tablet::ChangeMetadataRequestPB& req) { return; }
 
   TransactionId transaction_id_ = TransactionId::Nil();
@@ -323,6 +329,8 @@ class AsyncInsertPackedSchemaForXClusterTarget : public AsyncAlterTable {
 
  protected:
   void HandleInsertPackedSchema(tablet::ChangeMetadataRequestPB& req) override;
+
+  bool SendRequest(int attempt) override;
 
  private:
   SchemaPB packed_schema_;

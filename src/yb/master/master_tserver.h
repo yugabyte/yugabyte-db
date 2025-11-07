@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -74,6 +74,10 @@ class MasterTabletServer : public tserver::TabletServerIf,
   Status SetTserverCatalogMessageList(
       uint32_t db_oid, bool is_breaking_change, uint64_t new_catalog_version,
       const std::optional<std::string>& message_list) override;
+
+  Status TriggerRelcacheInitConnection(
+      const tserver::TriggerRelcacheInitConnectionRequestPB& req,
+      tserver::TriggerRelcacheInitConnectionResponsePB *resp) override;
 
   client::TransactionPool& TransactionPool() override;
 

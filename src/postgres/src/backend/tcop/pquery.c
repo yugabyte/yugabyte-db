@@ -818,7 +818,7 @@ PortalRun(Portal portal, long count, bool isTopLevel, bool run_once,
 		}
 
 		/*
-		 * YB? We flush buffered ops here to ensure that any errors in the ops
+		 * YB: We flush buffered ops here to ensure that any errors in the ops
 		 * can be caught by the PG_CATCH() and mark the portal failed. If some
 		 * ops are not flushed here and say flushed later at a place that
 		 * doesn't catch the error and mark the portal failed, it can result in
@@ -828,7 +828,13 @@ PortalRun(Portal portal, long count, bool isTopLevel, bool run_once,
 		 * earlier execution).
 		 */
 		if (isTopLevel)
-			YBFlushBufferedOperations();
+		{
+			YbcFlushDebugContext yb_debug_context = {
+				.reason = YB_END_OF_TOP_LEVEL_STMT,
+			};
+
+			YBFlushBufferedOperations(&yb_debug_context);
+		}
 	}
 	PG_CATCH();
 	{

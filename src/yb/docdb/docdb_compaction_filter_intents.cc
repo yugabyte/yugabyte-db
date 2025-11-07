@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -79,10 +79,10 @@ class DocDBIntentsCompactionFilter : public rocksdb::CompactionFilter {
 
   std::string LogPrefix() const;
 
-  Result<boost::optional<TransactionId>> FilterTransactionMetadata(
+  Result<std::optional<TransactionId>> FilterTransactionMetadata(
       const Slice& key, const Slice& existing_value);
 
-  Result<boost::optional<TransactionId>> FilterExternalIntent(const Slice& key);
+  Result<std::optional<TransactionId>> FilterExternalIntent(const Slice& key);
 
   Result<std::pair<TransactionId, OpId>> ParsePostApplyTransactionMetadata(
       const Slice& key, const Slice& existing_value);
@@ -172,7 +172,7 @@ rocksdb::FilterDecision DocDBIntentsCompactionFilter::Filter(
   return rocksdb::FilterDecision::kKeep;
 }
 
-Result<boost::optional<TransactionId>> DocDBIntentsCompactionFilter::FilterTransactionMetadata(
+Result<std::optional<TransactionId>> DocDBIntentsCompactionFilter::FilterTransactionMetadata(
     const Slice& key, const Slice& existing_value) {
   TransactionMetadataPB metadata_pb;
   if (!metadata_pb.ParseFromArray(
@@ -185,13 +185,13 @@ Result<boost::optional<TransactionId>> DocDBIntentsCompactionFilter::FilterTrans
   }
 
   if (write_time > compaction_start_time_) {
-    return boost::none;
+    return std::nullopt;
   }
 
   const uint64_t delta_micros = compaction_start_time_ - write_time;
   if (delta_micros <
       GetAtomicFlag(&FLAGS_aborted_intent_cleanup_ms) * MonoTime::kMillisecondsPerSecond) {
-    return boost::none;
+    return std::nullopt;
   }
 
   Slice key_slice = key;
@@ -220,7 +220,7 @@ DocDBIntentsCompactionFilter::ParsePostApplyTransactionMetadata(
   return std::make_pair(transaction_id, apply_op_id);
 }
 
-Result<boost::optional<TransactionId>> DocDBIntentsCompactionFilter::FilterExternalIntent(
+Result<std::optional<TransactionId>> DocDBIntentsCompactionFilter::FilterExternalIntent(
     const Slice& key) {
   Slice key_slice = key;
   // We know the first byte of the slice is kExternalTransactionId or kTransactionId, so we can
@@ -236,7 +236,7 @@ Result<boost::optional<TransactionId>> DocDBIntentsCompactionFilter::FilterExter
       GetAtomicFlag(&FLAGS_external_intent_cleanup_secs) * MonoTime::kMicrosecondsPerSecond) {
     return txn_id;
   }
-  return boost::none;
+  return std::nullopt;
 }
 
 void DocDBIntentsCompactionFilter::CompactionFinished() {

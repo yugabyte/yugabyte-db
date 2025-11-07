@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.common;
 
@@ -133,6 +133,7 @@ public class ShutdownHookHandler {
       log.error("Application is already shut down");
       return;
     }
+    Util.YBA_SHUTDOWN_STARTED = true;
     List<Hook<?>> list = new ArrayList<>(hooks.values());
     Collections.sort(list);
     int pos = 0;

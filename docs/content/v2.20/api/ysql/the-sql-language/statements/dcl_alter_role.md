@@ -4,7 +4,7 @@ headerTitle: ALTER ROLE
 linkTitle: ALTER ROLE
 description: Use the ALTER ROLE statement to change the attributes of a role (user or group).
 menu:
-  v2.20:
+  v2.20_api:
     identifier: dcl_alter_role
     parent: statements
 type: docs

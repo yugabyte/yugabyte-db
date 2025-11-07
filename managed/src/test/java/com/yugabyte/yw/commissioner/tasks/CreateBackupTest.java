@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks;
 
@@ -60,10 +60,8 @@ public class CreateBackupTest extends CommissionerBaseTest {
   private static final UUID TABLE_6_UUID = UUID.randomUUID();
   private static final UUID SYSTEM_TABLE_UUID = UUID.randomUUID();
 
-  @Override
   @Before
   public void setUp() {
-    super.setUp();
     when(mockOperatorStatusUpdaterFactory.create()).thenReturn(mockOperatorStatusUpdater);
     defaultCustomer = ModelFactory.testCustomer();
     defaultUniverse = ModelFactory.createUniverse();

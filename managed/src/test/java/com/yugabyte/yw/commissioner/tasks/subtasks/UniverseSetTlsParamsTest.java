@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
@@ -36,7 +36,7 @@ public class UniverseSetTlsParamsTest extends FakeDBApplication {
           UniverseDefinitionTaskParams uParams = defaultUniverse.getUniverseDetails();
           PlacementInfo pi = uParams.getPrimaryCluster().placementInfo;
           UserIntent ui = uParams.getPrimaryCluster().userIntent;
-          uParams.upsertCluster(ui, pi, null);
+          uParams.upsertPrimaryCluster(ui, null, pi);
         });
   }
 

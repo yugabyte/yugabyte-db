@@ -6,9 +6,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -39,6 +39,7 @@
 
 #include "yb/util/file_system.h"
 #include "yb/util/io.h"
+#include "yb/util/monotime.h"
 #include "yb/util/slice.h"
 #include "yb/util/status_fwd.h"
 
@@ -75,6 +76,8 @@ class Logger;
 class Directory;
 struct DBOptions;
 class RateLimiter;
+
+YB_DEFINE_ENUM(TimeResolution, (kMicros)(kNanos));
 
 typedef yb::SequentialFile SequentialFile;
 typedef yb::RandomAccessFile RandomAccessFile;
@@ -381,6 +384,8 @@ class Env {
   virtual uint64_t NowNanos() {
     return NowMicros() * 1000;
   }
+
+  virtual uint64_t NowCpuCycles() = 0;
 
   // Sleep/delay the thread for the perscribed number of micro-seconds.
   virtual void SleepForMicroseconds(int micros) = 0;
@@ -697,6 +702,7 @@ class EnvWrapper : public Env {
   virtual Status NewLogger(const std::string& fname,
                            std::shared_ptr<Logger>* result) override;
   uint64_t NowMicros() override { return target_->NowMicros(); }
+  uint64_t NowCpuCycles() override { return target_->NowCpuCycles(); }
   void SleepForMicroseconds(int micros) override {
     target_->SleepForMicroseconds(micros);
   }
@@ -737,5 +743,15 @@ class EnvWrapper : public Env {
 // when it is no longer needed.
 // *base_env must remain live while the result is in use.
 Env* NewMemEnv(Env* base_env);
+
+constexpr inline uint64_t UnitsInSecond(TimeResolution time_resolution) {
+  switch (time_resolution) {
+    case TimeResolution::kMicros:
+      return yb::MonoTime::kMicrosecondsPerSecond;
+    case TimeResolution::kNanos:
+      return yb::MonoTime::kNanosecondsPerSecond;
+  }
+  FATAL_INVALID_ENUM_VALUE(TimeResolution, time_resolution);
+}
 
 }  // namespace rocksdb

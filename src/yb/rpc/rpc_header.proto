@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -56,6 +56,8 @@ message RemoteMethodPB {
 
 // The header for the RPC request frame.
 message RequestHeader {
+  reserved 6;
+
   // A sequence number that is sent back in the Response. Hadoop specifies a uint32 and
   // casts it to a signed int. That is counterintuitive, so we use an int32 instead.
   // Allowed values (inherited from Hadoop):
@@ -77,9 +79,14 @@ message RequestHeader {
   repeated fixed32 sidecar_offsets = 4 [packed = true];
 
   optional AshMetadataPB metadata = 5;
+
+  // CRC32C for message body and header without CRC field. Use 15 as max 1 byte tag.
+  optional fixed32 crc = 15;
 }
 
 message ResponseHeader {
+  reserved 4;
+
   required int32 call_id = 1;
 
   // If this is set, then this is an error response and the
@@ -92,6 +99,8 @@ message ResponseHeader {
   // is the first byte after the bytes for this protobuf.
   repeated uint32 sidecar_offsets = 3;
 
+  // CRC32C for message body and header without CRC field. Use 15 as max 1 byte tag.
+  optional fixed32 crc = 15;
 }
 
 // An emtpy message. Since CQL RPC server bypasses protobuf to handle requests and responses but

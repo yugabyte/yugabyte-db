@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 YugaByte, Inc. and Contributors
+ * Copyright 2019 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you may not use this file
  * except in compliance with the License. You may obtain a copy of the License at
@@ -9,7 +9,8 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import static play.mvc.Http.Status.*;
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
@@ -23,6 +24,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.utils.CapacityReservationUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
@@ -129,10 +131,11 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
     for (Cluster cluster : taskParams().clusters) {
       universe
           .getUniverseDetails()
-          .upsertCluster(cluster.userIntent, cluster.placementInfo, cluster.uuid);
+          .upsertCluster(
+              cluster.userIntent, cluster.getPartitions(), cluster.placementInfo, cluster.uuid);
     }
     // Create preflight node check tasks for on-prem nodes.
-    createPreflightNodeCheckTasks(taskParams().clusters);
+    createPreflightNodeCheckTasks(universe, taskParams().clusters);
     // Create certificate config check tasks for on-prem nodes.
     createCheckCertificateConfigTask(universe, taskParams().clusters);
   }
@@ -148,7 +151,8 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
     for (Cluster cluster : taskParams().clusters) {
       universe
           .getUniverseDetails()
-          .upsertCluster(cluster.userIntent, cluster.placementInfo, cluster.uuid);
+          .upsertCluster(
+              cluster.userIntent, cluster.getPartitions(), cluster.placementInfo, cluster.uuid);
     }
     // Update task params.
     updateTaskDetailsInDB(taskParams());
@@ -226,12 +230,20 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
 
       createInstanceExistsCheckTasks(universe.getUniverseUUID(), taskParams(), universe.getNodes());
 
+      boolean deleteCapacityReservation =
+          createCapacityReservationsIfNeeded(
+              taskParams().nodeDetailsSet,
+              CapacityReservationUtil.OperationType.CREATE,
+              node ->
+                  node.state == NodeDetails.NodeState.ToBeAdded
+                      || node.state == NodeDetails.NodeState.Adding);
       // Provision the nodes.
       // State checking is enabled because the subtasks are not idempotent.
       createProvisionNodeTasks(
           universe,
           taskParams().nodeDetailsSet,
           false /* ignore node status check */,
+          true /* do validation of gflags */,
           setupServerParams -> {
             setupServerParams.rebootNodeAllowed = true;
           },
@@ -240,6 +252,9 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
             gFlagsParams.resetMasterState = true;
             gFlagsParams.masterJoinExistingCluster = false;
           });
+      if (deleteCapacityReservation) {
+        createDeleteCapacityReservationTask();
+      }
 
       Set<NodeDetails> primaryNodes = taskParams().getNodesInCluster(primaryCluster.uuid);
 
@@ -275,6 +290,10 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       createConfigureUniverseTasks(
           primaryCluster, newMasters, newTservers, null /* gflagsUpgradeSubtasks */);
 
+      if (primaryCluster.isGeoPartitioned() && primaryCluster.userIntent.enableYSQL) {
+        createTablespacesTasks(primaryCluster.getPartitions(), false);
+      }
+
       // Create Load Balancer map to add nodes to load balancer
       Map<LoadBalancerPlacement, LoadBalancerConfig> loadBalancerMap =
           createLoadBalancerMap(taskParams(), null, null, null);
@@ -287,6 +306,9 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
+      if (universe != null) {
+        clearCapacityReservationOnError(t, Universe.getOrBadRequest(universe.getUniverseUUID()));
+      }
       throw t;
     } finally {
       releaseReservedNodes();

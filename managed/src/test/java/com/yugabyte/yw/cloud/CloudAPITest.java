@@ -5,12 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
-import com.amazonaws.services.ec2.AmazonEC2;
-import com.amazonaws.services.elasticloadbalancingv2.AmazonElasticLoadBalancing;
-import com.amazonaws.services.elasticloadbalancingv2.model.DescribeLoadBalancersResult;
-import com.amazonaws.services.elasticloadbalancingv2.model.LoadBalancer;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.cloud.aws.AWSCloudImpl;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
@@ -31,6 +26,11 @@ import org.mockito.Mockito;
 import org.mockito.MockitoAnnotations;
 import play.api.Play;
 import play.libs.Json;
+import software.amazon.awssdk.services.ec2.Ec2Client;
+import software.amazon.awssdk.services.elasticloadbalancingv2.ElasticLoadBalancingV2Client;
+import software.amazon.awssdk.services.elasticloadbalancingv2.model.DescribeLoadBalancersRequest;
+import software.amazon.awssdk.services.elasticloadbalancingv2.model.DescribeLoadBalancersResponse;
+import software.amazon.awssdk.services.elasticloadbalancingv2.model.LoadBalancer;
 
 @Slf4j
 public class CloudAPITest extends FakeDBApplication {
@@ -42,9 +42,9 @@ public class CloudAPITest extends FakeDBApplication {
   private Region region;
   private AvailabilityZone az;
 
-  @Mock private AmazonEC2 mockEC2Client;
+  @Mock private Ec2Client mockEC2Client;
 
-  @Mock private AmazonElasticLoadBalancing mockELBClient;
+  @Mock private ElasticLoadBalancingV2Client mockELBClient;
 
   private AutoCloseable openedMocks;
 
@@ -70,11 +70,12 @@ public class CloudAPITest extends FakeDBApplication {
         IOUtils.toString(Play.class.getClassLoader().getResourceAsStream(mockJsonPath), "UTF-8");
     JsonNode mockJson = Json.parse(mockJsonString);
     JsonNode mockLBJson = mockJson.get("LoadBalancers").get(0);
-    LoadBalancer lb = new LoadBalancer();
-    lb.setLoadBalancerArn(mockLBJson.get("LoadBalancerArn").asText());
-    DescribeLoadBalancersResult mockResult = new DescribeLoadBalancersResult();
-    mockResult.setLoadBalancers(ImmutableList.of(lb));
-    when(mockELBClient.describeLoadBalancers(any())).thenReturn(mockResult);
+    LoadBalancer lb =
+        LoadBalancer.builder().loadBalancerArn(mockLBJson.get("LoadBalancerArn").asText()).build();
+    DescribeLoadBalancersResponse mockResult =
+        DescribeLoadBalancersResponse.builder().loadBalancers(lb).build();
+    when(mockELBClient.describeLoadBalancers(any(DescribeLoadBalancersRequest.class)))
+        .thenReturn(mockResult);
   }
 
   @Test
@@ -88,7 +89,7 @@ public class CloudAPITest extends FakeDBApplication {
         "arn:aws:elasticloadbalancing:"
             + "us-west-2:454529406029:loadbalancer/net/yb-spu-nlb/77d043677679338a";
     if (lb == null) log.debug("AWSTEST: LB NULL");
-    assertEquals(lb.getLoadBalancerArn(), lbArn);
+    assertEquals(lb.loadBalancerArn(), lbArn);
   }
 
   @After

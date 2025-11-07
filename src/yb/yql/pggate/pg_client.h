@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <future>
 #include <memory>
 #include <optional>
@@ -164,7 +165,9 @@ using WaitEventWatcher = std::function<PgWaitEventWatcher(ash::WaitStateCode, as
 
 class PgClient {
  public:
-  explicit PgClient(std::reference_wrapper<const WaitEventWatcher> wait_event_watcher);
+  PgClient(
+      std::reference_wrapper<const WaitEventWatcher> wait_event_watcher,
+      std::atomic<uint64_t>& next_perform_op_serial_no);
   ~PgClient();
 
   Status Start(rpc::ProxyCache* proxy_cache,
@@ -214,7 +217,8 @@ class PgClient {
   Status BackfillIndex(tserver::PgBackfillIndexRequestPB* req, CoarseTimePoint deadline);
 
   Status GetIndexBackfillProgress(const std::vector<PgObjectId>& index_ids,
-                                  uint64_t** backfill_statuses);
+                                  uint64_t* num_rows_read_from_table,
+                                  double* num_rows_backfilled);
 
   Result<yb::tserver::PgGetLockStatusResponsePB> GetLockStatusData(
       const std::string& table_id, const std::string& transaction_id);
@@ -271,7 +275,8 @@ class PgClient {
       docdb::ObjectLockFastpathLockType lock_type);
 
   Status AcquireObjectLock(
-      tserver::PgPerformOptionsPB* options, const YbcObjectLockId& lock_id, YbcObjectLockMode mode);
+      tserver::PgPerformOptionsPB* options, const YbcObjectLockId& lock_id, YbcObjectLockMode mode,
+      std::optional<PgTablespaceOid> tablespace_oid);
 
   Result<bool> CheckIfPitrActive();
 
@@ -290,6 +295,8 @@ class PgClient {
   Result<tserver::PgSetTserverCatalogMessageListResponsePB> SetTserverCatalogMessageList(
       uint32_t db_oid, bool is_breaking_change,
       uint64_t new_catalog_version, const std::optional<std::string>& message_list);
+
+  Status TriggerRelcacheInitConnection(const std::string& dbname);
 
   Result<tserver::PgCreateReplicationSlotResponsePB> CreateReplicationSlot(
       tserver::PgCreateReplicationSlotRequestPB* req, CoarseTimePoint deadline);
@@ -320,7 +327,7 @@ class PgClient {
   Result<cdc::UpdateAndPersistLSNResponsePB> UpdateAndPersistLSN(
       const std::string& stream_id, YbcPgXLogRecPtr restart_lsn, YbcPgXLogRecPtr confirmed_flush);
 
-  Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata();
+  Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata(bool local_only);
 
   Result<tserver::PgServersMetricsResponsePB> ServersMetrics();
 

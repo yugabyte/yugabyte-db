@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -45,6 +45,7 @@ using namespace std::literals;
 DECLARE_bool(TEST_dcheck_for_missing_schema_packing);
 DECLARE_bool(TEST_keep_intent_doc_ht);
 DECLARE_bool(TEST_skip_aborting_active_transactions_during_schema_change);
+DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_enable_pack_full_row_update);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
@@ -74,11 +75,20 @@ class PgPackedRowTest : public PackedRowTestBase<PgMiniTestBase>,
   void TestSstDump(bool specify_metadata, std::string* output);
   void TestAppliedSchemaVersion(bool colocated);
   void TestDropColocatedTable(bool use_transaction);
+
+  std::unique_ptr<client::SnapshotTestUtil> snapshot_util_;
+};
+
+class PgPackedRowTestDisableTableLocks : public PgPackedRowTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
+    PgPackedRowTest::SetUp();
+  }
+
   void TestCompactionWithConcurrentAggregate(
       PGConn& conn, const std::string& pre_compaction_query, const std::string& aggregate_query,
       int64_t expected_aggregate_result);
-
-  std::unique_ptr<client::SnapshotTestUtil> snapshot_util_;
 };
 
 TEST_P(PgPackedRowTest, Simple) {
@@ -1123,7 +1133,7 @@ TEST_P(PgPackedRowTest, DropColocatedTableWithTxn) {
   TestDropColocatedTable(true);
 }
 
-void PgPackedRowTest::TestCompactionWithConcurrentAggregate(
+void PgPackedRowTestDisableTableLocks::TestCompactionWithConcurrentAggregate(
     PGConn& conn, const std::string& pre_compaction_query, const std::string& aggregate_query,
       int64_t expected_aggregate_result) {
   auto conn2 = ASSERT_RESULT(Connect());
@@ -1152,7 +1162,7 @@ void PgPackedRowTest::TestCompactionWithConcurrentAggregate(
   ASSERT_EQ(value, expected_aggregate_result);
 }
 
-TEST_P(PgPackedRowTest, SchemaChangeAfterReadStart) {
+TEST_P(PgPackedRowTestDisableTableLocks, SchemaChangeAfterReadStart) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_dcheck_for_missing_schema_packing) = true;
 
@@ -1167,7 +1177,7 @@ TEST_P(PgPackedRowTest, SchemaChangeAfterReadStart) {
       1);
 }
 
-TEST_P(PgPackedRowTest, DropColumnAfterReadStart) {
+TEST_P(PgPackedRowTestDisableTableLocks, DropColumnAfterReadStart) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_dcheck_for_missing_schema_packing) = true;
 
@@ -1188,6 +1198,10 @@ TEST_P(PgPackedRowTest, DropColumnAfterReadStart) {
 
 INSTANTIATE_TEST_SUITE_P(
     , PgPackedRowTest, ::testing::ValuesIn(dockv::kPackedRowVersionArray),
+    PackedRowVersionToString);
+
+INSTANTIATE_TEST_SUITE_P(
+    , PgPackedRowTestDisableTableLocks, ::testing::ValuesIn(dockv::kPackedRowVersionArray),
     PackedRowVersionToString);
 
 } // namespace pgwrapper

@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -129,6 +129,9 @@ import play.mvc.Http.Status;
 
 @Singleton
 public class UniverseCRUDHandler {
+
+  private static final String FIPS_STABLE_RELEASE = "2025.2.0.0-b18";
+  private static final String FIPS_PREVIEW_RELEASE = "2.29.0.0-b31";
 
   private static final Logger LOG = LoggerFactory.getLogger(UniverseCRUDHandler.class);
 
@@ -375,7 +378,9 @@ public class UniverseCRUDHandler {
     if (userIntent.masterDeviceInfo != null && userIntent.dedicatedNodes) {
       userIntent.masterDeviceInfo.validate();
     }
-
+    if (cluster.placementInfo != null && cluster.placementInfo.hasRankOrdering()) {
+      PlacementInfoUtil.validatePriority(cluster.placementInfo);
+    }
     checkGeoPartitioningParameters(customer, taskParams, OpType.CONFIGURE);
 
     userIntent.masterGFlags = trimFlags(userIntent.masterGFlags);
@@ -385,6 +390,10 @@ public class UniverseCRUDHandler {
         && !(userIntent.providerType.equals(Common.CloudType.onprem)
             && provider.getDetails().skipProvisioning)) {
       userIntent.accessKeyCode = appConfig.getString("yb.security.default.access.key");
+    }
+    if (appConfig.getBoolean(CommonUtils.FIPS_ENABLED)) {
+      // Always create FIPS enabled universe on FIPS enabled YBA
+      taskParams.fipsEnabled = true;
     }
     try {
       Universe universe = PlacementInfoUtil.getUniverseForParams(taskParams);
@@ -700,7 +709,10 @@ public class UniverseCRUDHandler {
         c.userIntent.dedicatedNodes = true;
       }
 
-      PlacementInfoUtil.updatePlacementInfo(taskParams.getNodesInCluster(c.uuid), c.placementInfo);
+      if (c.placementInfo != null && c.placementInfo.hasRankOrdering()) {
+        PlacementInfoUtil.validatePriority(c.placementInfo);
+      }
+      PlacementInfoUtil.updatePlacementInfo(taskParams.getNodesInCluster(c.uuid), c);
       PlacementInfoUtil.finalSanityCheckConfigure(c, taskParams.getNodesInCluster(c.uuid));
 
       if (c.userIntent.specificGFlags != null) {
@@ -756,6 +768,14 @@ public class UniverseCRUDHandler {
       } else {
         taskParams.setEnableYbc(false);
         taskParams.setYbcSoftwareVersion(null);
+      }
+
+      if (userIntent.isUseYbdbInbuiltYbc()
+          && !KubernetesUtil.isUseYbdbInbuiltYbcSupported(userIntent.ybSoftwareVersion)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "YBDB inbuilt YBC cannot be used with software version: "
+                + userIntent.ybSoftwareVersion);
       }
 
       if (taskParams.isEnableYbc()) {
@@ -918,6 +938,7 @@ public class UniverseCRUDHandler {
         }
       }
       if (!Util.isOnPremManualProvisioning(taskParams)
+          && !Util.isKubernetesBasedUniverse(taskParams)
           && taskParams.additionalServicesStateData == null) {
         boolean enableEarlyoomFeature =
             confGetter.getConfForScope(customer, CustomerConfKeys.enableEarlyoomFeature);
@@ -931,6 +952,14 @@ public class UniverseCRUDHandler {
           servicesStateData.setEarlyoomEnabled(enableEarlyoom);
           taskParams.additionalServicesStateData = servicesStateData;
         }
+      }
+
+      if (taskParams.fipsEnabled
+          && Util.compareYBVersions(
+                  userIntent.ybSoftwareVersion, FIPS_STABLE_RELEASE, FIPS_PREVIEW_RELEASE, true)
+              < 0) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "DB release " + userIntent.ybSoftwareVersion + " does not support FIPS");
       }
     }
 
@@ -1068,7 +1097,7 @@ public class UniverseCRUDHandler {
           universe.updateConfig(ImmutableMap.of(Universe.HTTPS_ENABLED_UI, "true"));
         }
 
-        maybeSetMemoryLimitGflags(customer, universe, primaryCluster);
+        maybeSetNewInstallGflags(customer, universe, primaryCluster);
       }
 
       // other configs enabled by default
@@ -1228,7 +1257,7 @@ public class UniverseCRUDHandler {
       mergeNodeExporterInfo(u, taskParams);
     }
     PlacementInfoUtil.updatePlacementInfo(
-        taskParams.getNodesInCluster(primaryCluster.uuid), primaryCluster.placementInfo);
+        taskParams.getNodesInCluster(primaryCluster.uuid), primaryCluster);
     return submitEditUniverse(customer, u, taskParams, taskType, CustomerTask.TargetType.Universe);
   }
 
@@ -1236,8 +1265,7 @@ public class UniverseCRUDHandler {
       Customer customer, Universe u, UniverseDefinitionTaskParams taskParams) {
     Cluster cluster = getOnlyReadReplicaOrBadRequest(taskParams.getReadOnlyClusters());
     validateConsistency(u.getUniverseDetails().getPrimaryCluster(), cluster);
-    PlacementInfoUtil.updatePlacementInfo(
-        taskParams.getNodesInCluster(cluster.uuid), cluster.placementInfo);
+    PlacementInfoUtil.updatePlacementInfo(taskParams.getNodesInCluster(cluster.uuid), cluster);
     TaskType taskType = TaskType.EditUniverse;
     if (cluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
       taskType = TaskType.EditKubernetesUniverse;
@@ -1547,7 +1575,7 @@ public class UniverseCRUDHandler {
 
     // TODO: do we need this?
     PlacementInfoUtil.updatePlacementInfo(
-        taskParams.getNodesInCluster(addOnCluster.uuid), addOnCluster.placementInfo);
+        taskParams.getNodesInCluster(addOnCluster.uuid), addOnCluster);
 
     // Submit the task to create the cluster.
     UUID taskUUID = commissioner.submit(taskType, taskParams);
@@ -1659,7 +1687,7 @@ public class UniverseCRUDHandler {
     }
 
     PlacementInfoUtil.updatePlacementInfo(
-        taskParams.getNodesInCluster(readOnlyCluster.uuid), readOnlyCluster.placementInfo);
+        taskParams.getNodesInCluster(readOnlyCluster.uuid), readOnlyCluster);
 
     // Submit the task to create the cluster.
     UUID taskUUID = commissioner.submit(taskType, taskParams);
@@ -2418,6 +2446,9 @@ public class UniverseCRUDHandler {
 
     for (Cluster newCluster : taskParams.clusters) {
       Cluster curCluster = universe.getCluster(newCluster.uuid);
+      if (newCluster.placementInfo != null && newCluster.placementInfo.hasRankOrdering()) {
+        PlacementInfoUtil.validatePriority(newCluster.placementInfo);
+      }
       if (curCluster.userIntent.replicationFactor != newCluster.userIntent.replicationFactor
           && !rfChangeEnabled
           && curCluster.clusterType == ClusterType.PRIMARY) {
@@ -2438,6 +2469,30 @@ public class UniverseCRUDHandler {
                   + newBundle.getDetails().getArch());
         }
       }
+      if (CollectionUtils.isEmpty(newCluster.getPartitions())
+          != CollectionUtils.isEmpty(curCluster.getPartitions())) {
+        throw new PlatformServiceException(BAD_REQUEST, "Cannot change geo partitions state");
+      }
+      if (!CollectionUtils.isEmpty(newCluster.getPartitions())) {
+        Map<UUID, UniverseDefinitionTaskParams.PartitionInfo> currentMap =
+            curCluster.getPartitions().stream().collect(Collectors.toMap(g -> g.getUuid(), g -> g));
+        Map<UUID, UniverseDefinitionTaskParams.PartitionInfo> newMap =
+            newCluster.getPartitions().stream().collect(Collectors.toMap(g -> g.getUuid(), g -> g));
+        for (UniverseDefinitionTaskParams.PartitionInfo cur : currentMap.values()) {
+          UniverseDefinitionTaskParams.PartitionInfo newPartition = newMap.get(cur.getUuid());
+          if (newPartition == null) {
+            if (cur.isDefaultPartition()) {
+              throw new PlatformServiceException(
+                  BAD_REQUEST, "Cannot delete default partition " + cur.getName());
+            }
+          }
+          if (newCluster.clusterType == ClusterType.ASYNC && newMap.size() > 1) {
+            throw new PlatformServiceException(
+                BAD_REQUEST, "Multiple partitions for readonly cluster is not supported");
+          }
+        }
+      }
+
       Set<NodeDetails> nodeDetailsSet = taskParams.getNodesInCluster(newCluster.uuid);
       for (NodeDetails nodeDetails : nodeDetailsSet) {
         if (nodeDetails.state != NodeState.ToBeAdded
@@ -2523,6 +2578,16 @@ public class UniverseCRUDHandler {
                     "Cannot change proxy config for existing node %s" + " through EditUniverse",
                     nodeDetails.nodeName));
           }
+          if (!Objects.equals(curIntent.isUseYbdbInbuiltYbc(), newIntent.isUseYbdbInbuiltYbc())) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                String.format(
+                    "Cannot change YBC's deployment setting for existing node %s"
+                        + " through EditUniverse: from %s to %s",
+                    nodeDetails.nodeName,
+                    curIntent.isUseYbdbInbuiltYbc(),
+                    newIntent.isUseYbdbInbuiltYbc()));
+          }
         }
       }
       Set<NodeDetails> toBeAdded =
@@ -2554,38 +2619,48 @@ public class UniverseCRUDHandler {
         });
   }
 
-  private void maybeSetMemoryLimitGflags(
+  private void maybeSetNewInstallGflags(
       Customer customer, Universe universe, Cluster primaryCluster) {
 
-    if (null == primaryCluster
-        || runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled")
-        || Util.compareYBVersions(
+    Map<String, String> newInstallMasterGflags = new HashMap<>();
+    Map<String, String> newInstallTserverGflags = new HashMap<>();
+
+    if (primaryCluster != null
+        && primaryCluster.userIntent.providerType.isVM()
+        && !primaryCluster.userIntent.dedicatedNodes
+        && !runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled")
+        && Util.compareYBVersions(
                 primaryCluster.userIntent.ybSoftwareVersion, "2024.2.0.0", "2.25.0.0", true)
-            < 0
-        || !primaryCluster.userIntent.providerType.isVM()
-        || primaryCluster.userIntent.dedicatedNodes) {
-      return;
+            >= 0) {
+      newInstallMasterGflags.putAll(
+          Map.of(
+              "enforce_tablet_replica_limits",
+              "true",
+              "split_respects_tablet_replica_limits",
+              "true"));
+      newInstallTserverGflags.putAll(Map.of("use_memory_defaults_optimized_for_ysql", "true"));
     }
 
-    Map<String, String> masterNewInstGflags =
-        new HashMap<>(
-            Map.of(
-                "enforce_tablet_replica_limits",
-                "true",
-                "split_respects_tablet_replica_limits",
-                "true"));
-    Map<String, String> tserverNewInstGFlags = new HashMap<>();
-
-    Map<String, String> memNewInstFlag = Map.of("use_memory_defaults_optimized_for_ysql", "true");
-    tserverNewInstGFlags.putAll(memNewInstFlag);
-    masterNewInstGflags.putAll(memNewInstFlag);
+    // Add new flags for versions >= 2.29.0.0 or 2025.2.0.0
+    if (primaryCluster != null
+        && Util.compareYBVersions(
+                primaryCluster.userIntent.ybSoftwareVersion, "2025.2.0.0", "2.29.0.0", true)
+            >= 0
+        && primaryCluster.userIntent.enableYSQL) {
+      Map<String, String> newFlags =
+          Map.of(
+              "yb_enable_read_committed_isolation", "true",
+              "ysql_pg_conf_csv", "yb_enable_cbo=on");
+      newInstallTserverGflags.putAll(newFlags);
+      newInstallMasterGflags.putAll(newFlags);
+    }
 
     SpecificGFlags.PerProcessFlags newInstallGFlags = new SpecificGFlags.PerProcessFlags();
-    if (!tserverNewInstGFlags.isEmpty()) {
-      newInstallGFlags.value.put(ServerType.TSERVER, tserverNewInstGFlags);
+    if (!newInstallTserverGflags.isEmpty()) {
+      newInstallGFlags.value.put(ServerType.TSERVER, newInstallTserverGflags);
     }
-    if (!masterNewInstGflags.isEmpty()) {
-      newInstallGFlags.value.put(ServerType.MASTER, masterNewInstGflags);
+    if (!newInstallMasterGflags.isEmpty()) {
+      newInstallGFlags.value.put(ServerType.MASTER, newInstallMasterGflags);
     }
     LOG.info(
         "Setting new install gflags to {} on universe {}",

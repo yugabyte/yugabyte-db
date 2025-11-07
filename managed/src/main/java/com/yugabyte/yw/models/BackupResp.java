@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Backup.StorageConfigType;
+import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.helpers.TimeUnit;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Date;
@@ -41,4 +42,11 @@ public class BackupResp {
   CommonBackupInfo commonBackupInfo;
   String scheduleName;
   Boolean useTablespaces;
+
+  @ApiModelProperty(
+      value =
+          "WARNING: This is a preview API that could change. Indicates if role objects were backed"
+              + " up")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2025.2.0.0")
+  Boolean useRoles;
 }

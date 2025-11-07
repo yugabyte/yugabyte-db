@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2019 YugaByte, Inc. and Contributors
+# Copyright 2019 YugabyteDB, Inc. and Contributors
 #
 # Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
 # may not use this file except in compliance with the License. You
@@ -1052,6 +1052,16 @@ def create_instance(args):
         with open(args.boot_script, 'r') as script:
             vars["UserData"] = script.read()
 
+    # Capacity Reservation setup
+    if args.capacity_reservation:
+        vars["CapacityReservationSpecification"] = {
+            "CapacityReservationPreference": "capacity-reservations-only",
+            "CapacityReservationTarget": {
+                "CapacityReservationId": args.capacity_reservation
+            }
+        }
+        logging.info(f"[app] Using targeted capacity reservation: {args.capacity_reservation}")
+
     # Tag setup.
     def __create_tag(k, v):
         return {"Key": k, "Value": v}
@@ -1092,6 +1102,12 @@ def create_instance(args):
         options["SpotOptions"] = spotOptions
         vars["InstanceMarketOptions"] = options
         logging.info(f"[app] Using AWS spot instances with {options} options")
+
+        # Spot instances cannot consume capacity reservations
+        if args.capacity_reservation:
+            logging.warning("[app] Warning: Spot instances cannot use capacity reservations."
+                            "Reservation will be ignored.")
+            vars.pop("CapacityReservationSpecification", None)
 
     if args.imdsv2required:
         vars["MetadataOptions"] = {"HttpTokens": "required",
@@ -1219,7 +1235,8 @@ def modify_tags(region, instance_id, tags_to_set_str, tags_to_remove_str):
 def update_disk(args, instance_id):
     ec2_client = boto3.client('ec2', region_name=args.region)
     instance = get_client(args.region).Instance(instance_id)
-    ami_descr = describe_ami(args.region, args.machine_image if args.machine_image else instance.image_id)
+    ami_descr = describe_ami(args.region,
+                             args.machine_image if args.machine_image else instance.image_id)
     device_names = set(get_device_names(args.instance_type, args.num_volumes, args.region,
                                         get_predefined_devices(ami_descr)))
     vol_ids = list()
@@ -1267,12 +1284,25 @@ def update_disk(args, instance_id):
         _wait_for_disk_modifications(ec2_client, vol_ids)
 
 
-def change_instance_type(region, instance_id, instance_type):
+def change_instance_type(region, instance_id, instance_type, capacity_reservation=None):
     instance = get_client(region).Instance(instance_id)
-
     try:
         # Change instance type
         instance.modify_attribute(Attribute='instanceType', Value=instance_type)
+        # Handle capacity reservation if provided
+        if capacity_reservation is not None:
+            logging.info("using capacity reservation {}".format(capacity_reservation))
+            # Need to use the EC2 client for capacity reservation modification
+            ec2_client = boto3.client('ec2', region_name=region)
+            ec2_client.modify_instance_capacity_reservation_attributes(
+                InstanceId=instance_id,
+                CapacityReservationSpecification={
+                    'CapacityReservationPreference': 'capacity-reservations-only',
+                    'CapacityReservationTarget': {
+                        'CapacityReservationId': capacity_reservation
+                    }
+                }
+            )
     except Exception as e:
         raise YBOpsRuntimeError('error executing \"instance.modify_attribute\": {}'.format(repr(e)))
 

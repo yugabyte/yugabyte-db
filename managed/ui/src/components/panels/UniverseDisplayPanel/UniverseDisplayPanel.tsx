@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 import { Link } from 'react-router';
 import { Row, Col } from 'react-bootstrap';
@@ -6,6 +6,7 @@ import { UniverseCard } from './UniverseCard';
 import { useQuery } from 'react-query';
 
 import { CronToSystemdReminderBanner } from './CronToSystemdReminderBanner';
+import { OnboardingPanel } from './OnboardingPanel';
 import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { isDisabled, isNotHidden } from '../../../utils/LayoutUtils';
@@ -24,6 +25,7 @@ import { DEFAULT_RUNTIME_GLOBAL_SCOPE } from '../../../actions/customers';
 import { YBProvider } from '../../configRedesign/providerRedesign/types';
 import { getUniverseStatus, UniverseState } from '../../universes/helpers/universeHelpers';
 import { InstallNodeAgentReminderBanner } from '../../../redesign/features/NodeAgent/InstallNodeAgentReminderBanner';
+import { getIsKubernetesUniverse } from '@app/utils/UniverseUtils';
 
 import './UniverseDisplayPanel.scss';
 
@@ -89,7 +91,8 @@ export const UniverseDisplayPanel = ({
         });
     }
     const hasUniverseMissingNodeAgent = universeList.data.some(
-      (universe: Universe) => universe.universeDetails.nodeAgentMissing === true
+      (universe: Universe) =>
+        universe.universeDetails.nodeAgentMissing === true && !getIsKubernetesUniverse(universe)
     );
     const nodeAgentEnablerScanInterval =
       globalRuntimeConfigQuery.data?.configEntries?.find(
@@ -142,7 +145,18 @@ export const UniverseDisplayPanel = ({
       </div>
     );
   } else if (getPromiseState(providers).isEmpty()) {
-    return (
+    const isContinuousBackupsUiEnable =
+      globalRuntimeConfigQuery?.data?.configEntries?.find(
+        (runtimeConfig: any) =>
+          runtimeConfig.key === 'yb.ui.feature_flags.continuous_platform_backups'
+      )?.value === 'true';
+    if (globalRuntimeConfigQuery.isLoading) {
+      return <YBLoading />;
+    }
+
+    return isContinuousBackupsUiEnable ? (
+      <OnboardingPanel />
+    ) : (
       <div className="get-started-config">
         <span className="yb-data-name">
           Welcome to the <div>YugaByte Admin Console.</div>

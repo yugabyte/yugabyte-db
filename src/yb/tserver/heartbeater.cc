@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -101,39 +101,7 @@ using yb::rpc::RpcController;
 using std::shared_ptr;
 using std::vector;
 
-namespace yb {
-namespace tserver {
-
-class Heartbeater::Impl {
- public:
-  Impl(
-      const TabletServerOptions& opts, TabletServer& server,
-      std::vector<std::unique_ptr<HeartbeatDataProvider>>&& data_providers);
-  Impl(const Impl& other) = delete;
-  void operator=(const Impl& other) = delete;
-
-  Status Start();
-  Status Stop();
-  void TriggerASAP();
-
-  void set_master_addresses(server::MasterAddressesPtr master_addresses) {
-    VLOG_WITH_PREFIX(1) << "Setting master addresses to " << yb::ToString(master_addresses);
-    finder_.set_master_addresses(std::move(master_addresses));
-  }
-
-  HostPort get_master_leader_hostport() {
-    return finder_.get_master_leader_hostport();
-  }
-
- private:
-  const std::string& LogPrefix() const {
-    return server_.LogPrefix();
-  }
-
-  TabletServer& server_;
-  MasterLeaderFinder finder_;
-  MasterLeaderPollScheduler poll_scheduler_;
-};
+namespace yb::tserver {
 
 class HeartbeatPoller : public MasterLeaderPollerInterface {
  public:
@@ -172,6 +140,34 @@ class HeartbeatPoller : public MasterLeaderPollerInterface {
   std::vector<std::unique_ptr<HeartbeatDataProvider>> data_providers_;
 };
 
+class Heartbeater::Impl {
+ public:
+  Impl(
+      const TabletServerOptions& opts, TabletServer& server,
+      std::vector<std::unique_ptr<HeartbeatDataProvider>>&& data_providers);
+  Impl(const Impl& other) = delete;
+  void operator=(const Impl& other) = delete;
+
+  Status Start();
+  Status Stop();
+  void TriggerASAP();
+
+  void set_master_addresses(server::MasterAddressesPtr master_addresses) {
+    VLOG_WITH_PREFIX(1) << "Setting master addresses to " << yb::ToString(master_addresses);
+    finder_.set_master_addresses(std::move(master_addresses));
+  }
+
+  HostPort get_master_leader_hostport() { return finder_.get_master_leader_hostport(); }
+
+ private:
+  const std::string& LogPrefix() const { return server_.LogPrefix(); }
+
+  TabletServer& server_;
+  MasterLeaderFinder finder_;
+  std::unique_ptr<HeartbeatPoller> poller_;
+  MasterLeaderPollScheduler poll_scheduler_;
+};
+
 ////////////////////////////////////////////////////////////
 // Heartbeater
 ////////////////////////////////////////////////////////////
@@ -208,18 +204,15 @@ Heartbeater::Impl::Impl(
     std::vector<std::unique_ptr<HeartbeatDataProvider>>&& data_providers)
     : server_(server),
       finder_(server.messenger(), server.proxy_cache(), opts.GetMasterAddresses()),
-      poll_scheduler_(
-          finder_,
-          std::make_unique<HeartbeatPoller>(server_, finder_, std::move(data_providers))) {
+      poller_(std::make_unique<HeartbeatPoller>(server_, finder_, std::move(data_providers))),
+      poll_scheduler_(finder_, *poller_.get()) {
   auto master_addresses = CHECK_NOTNULL(finder_.get_master_addresses());
   CHECK(!master_addresses->empty());
   VLOG_WITH_PREFIX(1) << "Initializing heartbeater thread with master addresses: "
                       << AsString(master_addresses);
 }
 
-Status Heartbeater::Impl::Start() {
-  return poll_scheduler_.Start();
-}
+Status Heartbeater::Impl::Start() { return poll_scheduler_.Start(); }
 
 Status Heartbeater::Impl::Stop() {
   return poll_scheduler_.Stop();
@@ -631,5 +624,4 @@ MonoDelta HeartbeatPoller::GetMinimumHeartbeatMillis(int32_t consecutive_failure
              : MonoDelta::kZero;
 }
 
-} // namespace tserver
-} // namespace yb
+}  // namespace yb::tserver

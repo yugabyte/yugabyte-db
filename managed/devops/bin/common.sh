@@ -1,6 +1,6 @@
 #@IgnoreInspection BashAddShebang
 #
-# Copyright 2019 YugaByte, Inc. and Contributors
+# Copyright 2019 YugabyteDB, Inc. and Contributors
 #
 # Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
 # may not use this file except in compliance with the License. You
@@ -74,8 +74,10 @@ set_python_executable() {
 # -------------------------------------------------------------------------------------------------
 # Constants
 # -------------------------------------------------------------------------------------------------
-readonly PYTHON3_EXECUTABLES=('python3.11' 'python3' 'python3.10')
-readonly PYTHON3_VERSIONS=('python3.11' 'python3.10')
+# python3 must be the last executable in the list to ensure that if it is used, it is validated to
+# be the correct version.
+readonly PYTHON3_EXECUTABLES=('python3.10' 'python3.11' 'python3.12' 'python3.13' 'python3')
+readonly PYTHON3_VERSIONS=('python3.10' 'python3.11' 'python3.12' 'python3.13')
 readonly LINUX_PLATFORMS=('manylinux2014_x86_64-cp-310-cp310' 'manylinux2014_x86_64-cp-311-cp311')
 readonly MACOS_PLATFORMS=('macosx-10.10-x86_64-cp-310-cp310' 'macosx-10.10-x86_64-cp-311-cp311')
 DOCKER_PEX_IMAGE_NAME="yba-devops-pex-builder"

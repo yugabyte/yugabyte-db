@@ -95,7 +95,7 @@ import-data:
   table-list:
 ```
 
-| Comma-separated list of names of source database tables whose data is to be imported. Table names can also be glob patterns containing wildcard characters, such as an asterisk (*) (matches zero or more characters) or question mark (?) (matches one character). To use a glob pattern for table names, enclose the list in single quotes ('').<br> For example, `--table-list '"Products", order*'`.<br> This argument is unsupported for live migration. |
+| Comma-separated list of names of source database tables whose data is to be imported. Table names can also be glob patterns containing wildcard characters, such as an asterisk (\\*) (matches zero or more characters) or question mark (?) (matches one character). To use a glob pattern for table names, enclose the list in single quotes ('').<br> For example, `--table-list '"Products", order*'`.<br> This argument is unsupported for live migration. |
 | --exclude-table-list |
 
 ```yaml{.nocopy}
@@ -120,14 +120,14 @@ import-data:
 ```
 
 | Path of the file containing the list of names of source database tables (comma separated or line separated) to exclude while importing data of those exported tables. Table names follow the same convention as `--table-list`. |
-| --enable-adaptive-parallelism |
+| --adaptive-parallelism |
 
 ```yaml{.nocopy}
 import-data:
-  enable-adaptive-parallelism:
+  adaptive-parallelism:
 ```
 
-| Adapt parallelism based on the resource usage (CPU, memory) of the target YugabyteDB cluster. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| Adjust parallelism based on the resource usage (CPU, memory) of the target YugabyteDB cluster. Choose from the following modes: <ul><li> `balanced` (Default): Run with moderate thresholds. Recommended when other workloads are running on the cluster.</li><li>`aggressive`: Run with maximum CPU thresholds for better performance. Recommended when no other workloads are running on the cluster.</li><li> `disabled`: Disable adaptive parallelism. </ul> |
 | --adaptive-parallelism-max |
 
 ```yaml{.nocopy}
@@ -195,6 +195,15 @@ import-data:
 
 | Specifies how to handle errors when processing and importing rows to the target YugabyteDB database during the snapshot phase. Errors can arise from reading data from file, transforming rows, or ingesting them into YugabyteDB. <br> Accepted parameters: <ul><li> `abort` (Default) - Immediately aborts the process.</li><li> `stash-and-continue` - Stashes the errored rows to a file and continues the import.</li></ul> |
 
+| --max-retries-streaming |
+
+```yaml{.nocopy}
+import-data:
+  max-retries-streaming:
+```
+
+| Maximum number of retries for failed event batch during live migration. <br>Default: 15 |
+
 | -e, --export-dir |
 
 ```yaml{.nocopy}
@@ -209,6 +218,14 @@ send-diagnostics:
 ```
 
 | Enable or disable sending [diagnostics](../../../reference/diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
+
+| -l, --log-level |
+
+```yaml {.nocopy}
+log-level:
+```
+
+| Log level for yb-voyager. <br>Accepted values: trace, debug, info, warn, error, fatal, panic <br>Default: info |
 
 | --target-db-host |
 
@@ -301,6 +318,7 @@ target:
 | --start-clean | — | Starts a fresh import with data files present in the `data` directory.<br>If the target YugabyteDB database has non-empty tables, you are prompted to continue the import without truncating those tables; if you go ahead without truncating, then yb-voyager starts ingesting the data present in the data files in upsert mode.<br> **Note** that for cases where a table doesn't have a primary key, duplicate data may be inserted. You can avoid duplication by excluding the table using `--exclude-table-list`, or by truncating those tables manually before using the `start-clean` flag. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -h, --help | — | Command line help. |
 | -y, --yes | — | Answer yes to all prompts during the export schema operation. <br>Default: false |
+| -c, --config-file | — | Path to a [configuration file](../../configuration-file). |
 
 {{</table>}}
 
@@ -379,6 +397,8 @@ export-dir:
 |Path to the export directory. This directory is a workspace used to keep the exported schema, data, state, and logs.|
 | -h, --help | — |Command line help. |
 | -y, --yes | — |Answer yes to all prompts during the import data operation. <br>Default: false |
+| --output-format | — | Format for the status report. <br>Accepted parameters: <ul><li> `json`: Generate a JSON format output file.</li><li> `table` (Default): Output the report to the console.</li></ul> |
+| -c, --config-file | — | Path to a [configuration file](../../configuration-file). |
 
 {{</table>}}
 
@@ -425,6 +445,14 @@ export-dir:
 ```
 
 | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
+
+| -l, --log-level |
+
+```yaml {.nocopy}
+log-level:
+```
+
+| Log level for yb-voyager. <br>Accepted values: trace, debug, info, warn, error, fatal, panic <br>Default: info |
 | --source-db-password |
 
 ```yaml{.nocopy}
@@ -451,6 +479,8 @@ target:
 
 |Password to connect to the target YugabyteDB database. Alternatively, you can also specify the password by setting the environment variable `TARGET_DB_PASSWORD`. If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose the password in single quotes. |
 | -h, --help | — | Command line help. |
+| --output-format | — | Format for the status report. <br>Accepted parameters: <ul><li> `json`: Generate a JSON format output file.</li><li> `table` (Default): Output the report to the console.</li></ul> |
+| -c, --config-file | — | Path to a [configuration file](../../configuration-file). |
 
 {{</table>}}
 
@@ -507,6 +537,16 @@ import-data-to-source:
 ```
 
 |Number of parallel jobs to use while importing data. <br>Default: 16(Oracle) |
+
+| --max-retries-streaming |
+
+```yaml{.nocopy}
+import-data-to-source:
+  max-retries-streaming:
+```
+
+| Maximum number of retries for failed event batch during live migration. <br>Default: 15 |
+
 | -e, --export-dir |
 
 ```yaml{.nocopy}
@@ -522,6 +562,15 @@ send-diagnostics:
 ```
 
 |Enable or disable sending [diagnostics](../../../reference/diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
+
+| -l, --log-level |
+
+```yaml {.nocopy}
+log-level:
+```
+
+| Log level for yb-voyager. <br>Accepted values: trace, debug, info, warn, error, fatal, panic <br>Default: info |
+
 | --source-db-password |
 
 ```yaml{.nocopy}
@@ -533,6 +582,7 @@ source:
 | -h, --help | — |Command line help for import data to source. |
 | --start-clean | — |Starts a fresh import with exported data files present in the export-dir/data directory. <br> If any table on YugabyteDB database is non-empty, it prompts whether you want to continue the import without truncating those tables. <br>Note that for the cases where a table doesn't have a primary key, this may lead to insertion of duplicate data. To avoid this, exclude the table using the --exclude-file-list or truncate those tables manually before using the start-clean flag. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -y, --yes | — | Answer yes to all prompts during the migration. <br>Default: false |
+| -c, --config-file | — | Path to a [configuration file](../../configuration-file). |
 
 {{</table>}}
 
@@ -605,6 +655,16 @@ import-data-to-source-replica:
 ```
 
 | Truncate tables on target YugabyteDB database before importing data. This option is only valid if `--start-clean` is set to true. <br>Default: false |
+
+| --max-retries-streaming |
+
+```yaml{.nocopy}
+import-data-to-source-replica:
+  max-retries-streaming:
+```
+
+| Maximum number of retries for failed event batch during live migration. <br>Default: 15 |
+
 | -e, --export-dir |
 
 ```yaml {.nocopy}
@@ -619,6 +679,15 @@ send-diagnostics:
 ```
 
 | Enable or disable sending [diagnostics](../../../reference/diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
+
+| -l, --log-level |
+
+```yaml {.nocopy}
+log-level:
+```
+
+| Log level for yb-voyager. <br>Accepted values: trace, debug, info, warn, error, fatal, panic <br>Default: info |
+
 | --source-replica-db-host |
 
 ```yaml {.nocopy}
@@ -734,6 +803,7 @@ source-replica:
 | --start-clean | — | Starts a fresh import with data files present in the `data` directory.<br>If the target YugabyteDB database has any non-empty tables, you are prompted to continue the import without truncating those tables; if you proceed without truncating, then yb-voyager starts ingesting the data present in the data files in non-upsert mode.<br> **Note** that for cases where a table doesn't have a primary key, duplicate data may be inserted. You can avoid duplication by excluding the table using `--exclude-table-list`, or by truncating those tables manually before using the `start-clean` flag. <br>Default: false<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -h, --help | — | Command line help for import data to source-replica. |
 | -y, --yes | — | Answer yes to all prompts during the migration. <br>Default: false |
+| -c, --config-file | — | Path to a [configuration file](../../configuration-file). |
 
 {{</table>}}
 

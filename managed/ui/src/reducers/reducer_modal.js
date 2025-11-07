@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 import { OPEN_DIALOG, CLOSE_DIALOG } from '../actions/modal';
 

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -18,6 +18,7 @@
 #include <atomic>
 #include <algorithm>
 #include <mutex>
+#include <optional>
 #include <queue>
 #include <unordered_set>
 #include <vector>
@@ -75,6 +76,7 @@
 #include "yb/tserver/ts_local_lock_manager.h"
 #include "yb/tserver/ysql_advisory_lock_table.h"
 
+#include "yb/util/debug-util.h"
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
@@ -96,10 +98,19 @@ DEFINE_UNKNOWN_uint64(pg_client_session_expiration_ms, 60000,
 
 DECLARE_bool(pg_client_use_shared_memory);
 
-DEFINE_RUNTIME_int32(get_locks_status_max_retry_attempts, 2,
+DEFINE_RUNTIME_int32(get_locks_status_max_retry_attempts, 5,
                      "Maximum number of retries that will be performed for GetLockStatus "
                      "requests that fail in the validation phase due to unseen responses from "
                      "some of the involved tablets.");
+
+DEFINE_RUNTIME_int32(pg_locks_max_tablet_lookup_retries, 5,
+                     "Maximum number of retries when fetching tablet locations during "
+                     "pg_locks queries. Retries occur when tablets have no elected leader "
+                     "or when handling tablet splits.");
+
+DEFINE_RUNTIME_int32(pg_locks_retry_delay_ms, 200,
+                     "Delay in milliseconds between retries during pg_locks operations. "
+                     "Applied when  retrying tablet location lookups and GetLockStatus requests");
 
 DEFINE_test_flag(uint64, delay_before_get_old_transactions_heartbeat_intervals, 0,
                  "When non-zero, we sleep for set transaction heartbeat interval periods before "
@@ -142,6 +153,9 @@ DEFINE_NON_RUNTIME_int64(shmem_exchange_idle_timeout_ms, 2000 * yb::kTimeMultipl
 DEFINE_test_flag(bool, enable_ysql_operation_lease_expiry_check, true,
                  "Whether tservers should monitor their ysql op lease and kill their hosted pg "
                  "sessions when it expires. Only available as a flag for tests.");
+
+DEFINE_test_flag(bool, pause_get_lock_status, false,
+    "Whether tservers should pause before sending GetLockStatus requests.");
 
 DECLARE_uint64(cdc_intent_retention_ms);
 DECLARE_uint64(transaction_heartbeat_usec);
@@ -216,7 +230,7 @@ class LockablePgClientSession {
         lifetime_(lifetime), expiration_(NewExpiration()) {
   }
 
-  Status StartExchange(const std::string& instance_id, ThreadPool& thread_pool) {
+  Status StartExchange(const std::string& instance_id, YBThreadPool& thread_pool) {
     shared_mem_manager_ = VERIFY_RESULT(PgSessionSharedMemoryManager::Make(
         instance_id, id(), Create::kTrue));
     session_.SetupSharedObjectLocking(shared_mem_manager_.object_locking_data());
@@ -233,11 +247,11 @@ class LockablePgClientSession {
     return status;
   }
 
-  void StartShutdown() {
+  void StartShutdown(bool pg_service_shutting_down) {
     if (exchange_runnable_) {
       exchange_runnable_->StartShutdown();
     }
-    session_.StartShutdown();
+    session_.StartShutdown(pg_service_shutting_down);
   }
 
   bool ReadyToShutdown() const {
@@ -290,7 +304,7 @@ class LockablePgClientSession {
 
 using TransactionBuilder = std::function<
     client::YBTransactionPtr(
-        TxnAssignment* dest, IsDDL, client::ForceGlobalTransaction, CoarseTimePoint,
+        TxnAssignment* dest, IsDDL, TransactionFullLocality, CoarseTimePoint,
         client::ForceCreateTransaction)>;
 
 class SessionInfo {
@@ -352,6 +366,7 @@ class PgClientSessionLocker {
   std::unique_lock<std::mutex> lock_;
 };
 
+using LockInfoWithCounter = std::pair<ObjectLockInfoPB, size_t>;
 using SessionInfoPtr = std::shared_ptr<SessionInfo>;
 using RemoteTabletServerPtr = std::shared_ptr<client::internal::RemoteTabletServer>;
 using client::internal::RemoteTabletPtr;
@@ -368,8 +383,8 @@ using OldTxnMetadataVariant =
 using OldTxnMetadataPtrVariant =
     std::variant<OldSingleShardWaiterMetadataPBPtr, OldTransactionMetadataPBPtr>;
 
-void GetTablePartitionList(const client::YBTablePtr& table, PgTablePartitionsPB* partition_list) {
-  const auto table_partition_list = table->GetVersionedPartitions();
+void GetTablePartitionList(const client::YBTable& table, PgTablePartitionsPB* partition_list) {
+  const auto table_partition_list = table.GetVersionedPartitions();
   const auto& partition_keys = partition_list->mutable_keys();
   partition_keys->Clear();
   partition_keys->Reserve(narrow_cast<int>(table_partition_list->keys.size()));
@@ -394,9 +409,21 @@ struct OldTxnMetadataPtrVariantVisitor {
   }
 };
 
-auto MakeSharedOldTxnMetadataVariant(OldTxnMetadataVariant&& txn_meta_variant) {
+std::optional<OldTxnMetadataPtrVariant> MakeSharedOldTxnMetadataVariant(
+    OldTxnMetadataVariant&& txn_meta_variant,
+    const std::unordered_set<TransactionId>& object_lock_txn_ids) {
   OldTxnMetadataPtrVariant shared_txn_meta;
   if (auto txn_meta_pb_ptr = std::get_if<OldTransactionMetadataPB>(&txn_meta_variant)) {
+    if (txn_meta_pb_ptr->tablets().empty()) {
+      auto txn_id_or_status = FullyDecodeTransactionId(txn_meta_pb_ptr->transaction_id());
+      if (!txn_id_or_status.ok()) {
+        LOG(WARNING) << "Failed to decode txn id: " << txn_id_or_status.status();
+        return std::nullopt;
+      }
+      if (object_lock_txn_ids.find(*txn_id_or_status) == object_lock_txn_ids.end()) {
+        return std::nullopt;
+      }
+    }
     shared_txn_meta = std::make_shared<OldTransactionMetadataPB>(std::move(*txn_meta_pb_ptr));
   } else {
     auto meta_pb_ptr = std::get_if<OldSingleShardWaiterMetadataPB>(&txn_meta_variant);
@@ -451,17 +478,14 @@ class PerformQuery : public std::enable_shared_from_this<PerformQuery>, public r
         wait_state_ptr_(ash::WaitStateInfo::CurrentWaitState()) {
   }
 
-  void Ready() override {
+  void Ready(const PgTablesQueryResult& tables) override {
+    tables_ = tables;
     if (Thread::UniqueThreadId() == tid_) {
       Run();
     } else {
       retained_self_ = shared_from_this();
       provider_.Messenger().ThreadPool().Enqueue(this);
     }
-  }
-
-  PgTablesQueryResult& tables() {
-    return tables_;
   }
 
  private:
@@ -482,7 +506,7 @@ class PerformQuery : public std::enable_shared_from_this<PerformQuery>, public r
       Respond(session.status(), &resp(), &context);
       return;
     }
-    (*session)->Perform(req(), resp(), std::move(context), tables_);
+    (*session)->Perform(req(), resp(), std::move(context), *tables_);
   }
 
   void Done(const Status& status) override {
@@ -492,7 +516,7 @@ class PerformQuery : public std::enable_shared_from_this<PerformQuery>, public r
   SessionProvider& provider_;
   rpc::TypedPBRpcContextHolder<PgPerformRequestPB, PgPerformResponsePB> context_;
   const int64_t tid_;
-  PgTablesQueryResult tables_;
+  std::optional<PgTablesQueryResult> tables_;
   std::shared_ptr<PerformQuery> retained_self_;
 
   // kept here in case the task is scheduled in another thread.
@@ -506,25 +530,20 @@ class OpenTableQuery : public PgTablesQueryListener {
   explicit OpenTableQuery(ContextHolder&& context) : context_(std::move(context)) {
   }
 
-  PgTablesQueryResult& tables() {
-    return tables_;
-  }
-
-  void Ready() override {
-    auto res = tables_.GetInfo(context_.req().table_id());
+  void Ready(const PgTablesQueryResult& tables) override {
+    auto res = tables.GetInfo(context_.req().table_id());
     auto& resp = context_.resp();
     if (!res.ok()) {
       Respond(res.status(), &resp, &context_.context());
       return;
     }
     *resp.mutable_info() = *res->schema;
-    GetTablePartitionList(res->table, resp.mutable_partitions());
+    GetTablePartitionList(*res->table, resp.mutable_partitions());
     context_->RespondSuccess();
   }
 
  private:
   ContextHolder context_;
-  PgTablesQueryResult tables_;
 };
 
 }  // namespace
@@ -534,7 +553,9 @@ class PgClientServiceImpl::Impl : public SessionProvider {
   explicit Impl(
       std::reference_wrapper<const TabletServerIf> tablet_server,
       const std::shared_future<client::YBClient*>& client_future,
-      const scoped_refptr<ClockBase>& clock, TransactionPoolProvider transaction_pool_provider,
+      const scoped_refptr<ClockBase>& clock,
+      TransactionManagerProvider transaction_manager_provider,
+      TransactionPoolProvider transaction_pool_provider,
       rpc::Messenger* messenger, const TserverXClusterContextIf* xcluster_context,
       PgMutationCounter* pg_node_level_mutation_counter, MetricEntity* metric_entity,
       const MemTrackerPtr& parent_mem_tracker, const std::string& permanent_uuid,
@@ -542,6 +563,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
       : tablet_server_(tablet_server.get()),
         client_future_(client_future),
         clock_(clock),
+        transaction_manager_provider_(std::move(transaction_manager_provider)),
         transaction_pool_provider_(std::move(transaction_pool_provider)),
         messenger_(*messenger),
         table_cache_(client_future_),
@@ -571,7 +593,8 @@ class PgClientServiceImpl::Impl : public SessionProvider {
             .lock_owner_registry =
                 tablet_server_.ObjectLockSharedStateManager()
                     ? &tablet_server_.ObjectLockSharedStateManager()->registry()
-                    : nullptr},
+                    : nullptr,
+            .transaction_manager_provider = transaction_manager_provider_},
         cdc_state_table_(client_future_),
         txn_snapshot_manager_(
             instance_id_,
@@ -593,29 +616,44 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     shared_mem_pool_.Start(messenger->scheduler());
   }
 
-  ~Impl() override {
-    cdc_state_table_.reset();
+  void Shutdown() {
     std::vector<SessionInfoPtr> sessions;
     {
       std::lock_guard lock(mutex_);
+      if (shutting_down_) {
+        return;
+      }
+      shutting_down_ = true;
       sessions.reserve(sessions_.size());
       for (const auto& session : sessions_) {
         sessions.push_back(session);
       }
     }
+    cdc_state_table_.reset();
     for (const auto& session : sessions) {
-      session->session().StartShutdown();
+      session->session().StartShutdown(/* pg_service_shutting_down */ true);
     }
     for (const auto& session : sessions) {
       session->session().CompleteShutdown();
     }
     sessions.clear();
-    check_expired_sessions_.Shutdown();
-    check_object_id_allocators_.Shutdown();
-    check_ysql_lease_.Shutdown();
+    auto schedulers = {
+        std::reference_wrapper(check_expired_sessions_),
+        std::reference_wrapper(check_object_id_allocators_),
+        std::reference_wrapper(check_ysql_lease_)};
+    for (auto& task : schedulers) {
+      task.get().StartShutdown();
+    }
+    for (auto& task : schedulers) {
+      task.get().CompleteShutdown();
+    }
     if (exchange_thread_pool_) {
       exchange_thread_pool_->Shutdown();
     }
+  }
+
+  ~Impl() override {
+    Shutdown();
   }
 
   uint64_t lease_epoch() EXCLUDES(mutex_) {
@@ -642,12 +680,12 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     resp->set_session_id(session_id);
     if (FLAGS_pg_client_use_shared_memory) {
       std::call_once(exchange_thread_pool_once_flag_, [this] {
-        CHECK_OK(ThreadPoolBuilder("shmem_exchange")
-                     .set_min_threads(1)
-                     .unlimited_threads()
-                     .set_idle_timeout(FLAGS_shmem_exchange_idle_timeout_ms * 1ms)
-                     .set_max_queue_size(0)
-                     .Build(&exchange_thread_pool_));
+        exchange_thread_pool_ = std::make_unique<YBThreadPool>(ThreadPoolOptions {
+          .name = "shmem_exchange",
+          .max_workers = ThreadPoolOptions::kUnlimitedWorkersWithoutQueue,
+          .min_workers = 1,
+          .idle_timeout = MonoDelta::FromMilliseconds(FLAGS_shmem_exchange_idle_timeout_ms),
+        });
       });
       auto status = session_info->session().StartExchange(instance_id_, *exchange_thread_pool_);
       if (status.ok()) {
@@ -674,6 +712,9 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     });
 
     std::lock_guard lock(mutex_);
+    if (shutting_down_) {
+      return STATUS(ShutdownInProgress, "PG client service shutting down");
+    }
     auto it = sessions_.insert(std::move(session_info)).first;
     session_expiration_queue_.emplace((**it).session().expiration(), session_id);
     return Status::OK();
@@ -690,6 +731,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     if (it == sessions_.end()) {
       return;
     }
+    VLOG(2) << "Requesting session expiry for session " << session_id << " with pid " << pid;
     (**it).session().SetExpiration(now);
     session_expiration_queue_.emplace(now, session_id);
     ScheduleCheckExpiredSessions(now);
@@ -704,8 +746,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     };
     auto query = std::make_shared<OpenTableQuery>(
         MakeTypedPBRpcContextHolder(req, resp, std::move(context)));
-    table_cache_.GetTables(
-        std::span(&req.table_id(), 1), options, SharedField(query, &query->tables()), query);
+    table_cache_.GetTables(std::span(&req.table_id(), 1), query, options);
   }
 
   Status GetTablePartitionList(
@@ -713,7 +754,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
       PgGetTablePartitionListResponsePB* resp,
       rpc::RpcContext* context) {
     const auto table = VERIFY_RESULT(table_cache_.Get(req.table_id()));
-    tserver::GetTablePartitionList(table, resp->mutable_partitions());
+    tserver::GetTablePartitionList(*table, resp->mutable_partitions());
     return Status::OK();
   }
 
@@ -881,7 +922,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
       PgGetCatalogMasterVersionResponsePB* resp,
       rpc::RpcContext* context) {
     uint64_t version;
-    RETURN_NOT_OK(client().GetYsqlCatalogMasterVersion(&version));
+    RETURN_NOT_OK(client().DEPRECATED_GetYsqlCatalogMasterVersion(&version));
     resp->set_version(version);
     return Status::OK();
   }
@@ -994,7 +1035,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
   // retries the operation with split child tablet ids. On encountering further tablet split
   // errors, returns a bad status.
   Result<std::vector<RemoteTabletServerPtr>> ReplaceSplitTabletsAndGetLocations(
-      GetLockStatusRequestPB* req, bool is_within_retry = false) {
+      GetLockStatusRequestPB* req, int retry_attempt = 0) {
     std::vector<TabletId> tablet_ids;
     tablet_ids.reserve(req->transactions_by_tablet().size());
     for (const auto& [tablet_id, _] : req->transactions_by_tablet()) {
@@ -1026,15 +1067,35 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     }
     if (!resp.errors().empty()) {
       // Re-request location info of updated tablet set if not already in the retry context.
-      return is_within_retry ? combined_status : ReplaceSplitTabletsAndGetLocations(req, true);
+      if (retry_attempt > FLAGS_pg_locks_max_tablet_lookup_retries) {
+        return combined_status;
+      }
+      VLOG(1) << "Retrying tablet location lookup after handling splits "
+              << "(attempt " << retry_attempt + 1 << ")";
+      AtomicFlagSleepMs(&FLAGS_pg_locks_retry_delay_ms);
+      return ReplaceSplitTabletsAndGetLocations(req, ++retry_attempt);
     }
 
     std::unordered_set<std::string> tserver_uuids;
     for (const auto& tablet_location_pb : resp.tablet_locations()) {
+      bool has_leader = false;
       for (const auto& replica : tablet_location_pb.replicas()) {
         if (replica.role() == PeerRole::LEADER) {
           tserver_uuids.insert(replica.ts_info().permanent_uuid());
+          has_leader = true;
+          break;
         }
+      }
+      if (!has_leader) {
+        if (retry_attempt > FLAGS_pg_locks_max_tablet_lookup_retries) {
+          return STATUS(IllegalState, Format(
+                        "No leader found for tablet $0 after $1 attempts",
+                        tablet_location_pb.tablet_id(), retry_attempt));
+        }
+        LOG_WITH_FUNC(INFO) << "Tablet " << tablet_location_pb.tablet_id()
+                            << " have no leader, retrying (attempt " << retry_attempt + 1 << ")";
+        AtomicFlagSleepMs(&FLAGS_pg_locks_retry_delay_ms);
+        return ReplaceSplitTabletsAndGetLocations(req, ++retry_attempt);
       }
     }
     return tablet_server_.GetRemoteTabletServers(tserver_uuids);
@@ -1061,7 +1122,16 @@ class PgClientServiceImpl::Impl : public SessionProvider {
       lock_status_req.add_transaction_ids(req.transaction_id());
       return DoGetLockStatus(&lock_status_req, resp, context, remote_tservers);
     }
-    RETURN_NOT_OK(GetObjectLockStatus(remote_tservers, resp));
+
+    std::unordered_map<ObjectLockContext, LockInfoWithCounter> object_lock_info_map;
+    RETURN_NOT_OK(GetObjectLockStatus(remote_tservers, resp, &object_lock_info_map));
+    // Create a map to filter transactions from transaction coordinator for object locks
+    // The bool value indicates whether this txn_id can be exposed to pg_locks.
+    std::unordered_set<TransactionId> object_lock_txn_ids;
+    for (const auto& [context, _] : object_lock_info_map) {
+       object_lock_txn_ids.insert(context.txn_id);
+    }
+
     const auto& min_txn_age_ms = req.min_txn_age_ms();
     const auto& max_num_txns = req.max_num_txns();
     RSTATUS_DCHECK(max_num_txns > 0, InvalidArgument,
@@ -1089,7 +1159,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
             DoGetOldTransactionsForTablet(min_txn_age_ms, max_num_txns, remote_tserver, tablet));
         status_tablet_ids.insert(tablet);
       }
-      for (const auto& tablet : txn_status_tablets.placement_local_tablets) {
+      for (const auto& tablet : txn_status_tablets.region_local_tablets) {
         res_futures.push_back(
             DoGetOldTransactionsForTablet(min_txn_age_ms, max_num_txns, remote_tserver, tablet));
         status_tablet_ids.insert(tablet);
@@ -1131,8 +1201,12 @@ class PgClientServiceImpl::Impl : public SessionProvider {
 
         status_tablet_ids.erase(res->status_tablet_id);
         for (auto& old_txn : old_txns_resp->txn()) {
-          auto old_txn_ptr = MakeSharedOldTxnMetadataVariant(std::move(old_txn));
-          old_txns_pq.push(std::move(old_txn_ptr));
+          auto old_txn_ptr =
+              MakeSharedOldTxnMetadataVariant(std::move(old_txn), object_lock_txn_ids);
+          if (!old_txn_ptr) {
+            continue;
+          }
+          old_txns_pq.push(std::move(*old_txn_ptr));
           while (old_txns_pq.size() > max_num_txns) {
             VLOG(4) << "Dropping old transaction with metadata "
                     << std::visit([](auto&& arg) {
@@ -1160,6 +1234,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
 
     uint64_t max_single_shard_waiter_start_time = 0;
     bool include_single_shard_waiters = false;
+    std::unordered_set<TransactionId> allowed_txn_ids;
     while (!old_txns_pq.empty()) {
       auto& old_txn = old_txns_pq.top();
       std::visit(OldTxnMetadataPtrVariantVisitor {
@@ -1188,13 +1263,29 @@ class PgClientServiceImpl::Impl : public SessionProvider {
             transaction->set_id(txn_id);
             transaction->mutable_aborted()->Swap(arg->mutable_aborted_subtxn_set());
           }
+          auto decoded_txn_id_or_status = FullyDecodeTransactionId(txn_id);
+          if (!decoded_txn_id_or_status.ok()) {
+            LOG(WARNING) << "Failed to decode txn id: " << decoded_txn_id_or_status.status();
+            return;
+          }
+          allowed_txn_ids.insert(*decoded_txn_id_or_status);
         }
       }, old_txn);
       old_txns_pq.pop();
     }
+
+    // Populate the response with consolidated object locks info.
+    for (auto& [context, object_lock_info] : object_lock_info_map) {
+      if (allowed_txn_ids.contains(context.txn_id)) {
+        resp->add_object_lock_infos()->Swap(&object_lock_info.first);
+      }
+    }
+    VLOG(4) << "Added " << resp->object_lock_infos_size() << " object locks to response";
+
     if (include_single_shard_waiters) {
       lock_status_req.set_max_single_shard_waiter_start_time_us(max_single_shard_waiter_start_time);
     }
+    TEST_PAUSE_IF_FLAG(TEST_pause_get_lock_status);
     auto remote_tservers_with_locks = VERIFY_RESULT(
         ReplaceSplitTabletsAndGetLocations(&lock_status_req));
     return DoGetLockStatus(&lock_status_req, resp, context, remote_tservers_with_locks);
@@ -1223,13 +1314,11 @@ class PgClientServiceImpl::Impl : public SessionProvider {
   // or if any participant is missing, the global lock is treated as WAITING.
   Status GetObjectLockStatus(
       const std::vector<RemoteTabletServerPtr>& remote_tservers,
-      PgGetLockStatusResponsePB* resp) {
+      PgGetLockStatusResponsePB* resp,
+      std::unordered_map<ObjectLockContext, LockInfoWithCounter>* object_lock_info_map) {
     if (!FLAGS_enable_object_locking_for_table_locks) {
       return Status::OK();
     }
-
-    using LockInfoWithCounter = std::pair<ObjectLockInfoPB, size_t>;
-    std::unordered_map<ObjectLockContext, LockInfoWithCounter> object_lock_info_map;
 
     // Collect object lock infos from all tservers.
     GetObjectLockStatusRequestPB req;
@@ -1282,7 +1371,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
       for (int j = 0; j < node_resp->object_lock_infos_size(); j++) {
         auto* lock_infos = node_resp->mutable_object_lock_infos(j);
         auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(lock_infos->transaction_id()));
-        auto [it, inserted] = object_lock_info_map.try_emplace(
+        auto [it, inserted] = object_lock_info_map->try_emplace(
           ObjectLockContext{
             txn_id,
             lock_infos->subtransaction_id(),
@@ -1330,7 +1419,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     for (int i = 0; i < master_resp.object_lock_infos_size(); i++) {
       auto* lock_infos = master_resp.mutable_object_lock_infos(i);
       auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(lock_infos->transaction_id()));
-      auto [it, inserted] = object_lock_info_map.try_emplace(
+      auto [it, inserted] = object_lock_info_map->try_emplace(
         ObjectLockContext{
           txn_id,
           lock_infos->subtransaction_id(),
@@ -1353,13 +1442,6 @@ class PgClientServiceImpl::Impl : public SessionProvider {
       lock_infos->set_lock_state(ObjectLockState::WAITING);
       existing_lock_info.Swap(lock_infos);
     }
-
-    // Populate the response with consolidated lock info.
-    for (auto& [_, object_lock_info] : object_lock_info_map) {
-      resp->add_object_lock_infos()->Swap(&object_lock_info.first);
-    }
-
-    VLOG(4) << "Added " << resp->object_lock_infos_size() << " object locks to response";
 
     return Status::OK();
   }
@@ -1426,6 +1508,10 @@ class PgClientServiceImpl::Impl : public SessionProvider {
             IllegalState, "Expected to see involved tablet(s) $0 in PgGetLockStatusResponsePB",
             req->ShortDebugString());
       }
+      LOG_WITH_FUNC(INFO) << "Retrying DoGetLockStatus for remaining tablets "
+                          << "(attempt " << retry_attempt + 1 << "). Due to missing tablets: "
+                          << req->ShortDebugString();
+      AtomicFlagSleepMs(&FLAGS_pg_locks_retry_delay_ms);
       PgGetLockStatusResponsePB sub_resp;
       for (const auto& node_txn_pair : resp->transactions_by_node()) {
         sub_resp.mutable_transactions_by_node()->insert(node_txn_pair);
@@ -1833,7 +1919,9 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     for (const auto& index_id : req.index_ids()) {
       index_ids.emplace_back(PgObjectId::GetYbTableIdFromPB(index_id));
     }
-    return client().GetIndexBackfillProgress(index_ids, resp->mutable_rows_processed_entries());
+    return client().GetIndexBackfillProgress(index_ids,
+                                             resp->mutable_num_rows_read_from_table_for_backfill(),
+                                             resp->mutable_num_rows_backfilled_in_index());
   }
 
   Status ValidatePlacement(
@@ -1989,6 +2077,9 @@ class PgClientServiceImpl::Impl : public SessionProvider {
       GetRpcsWaitStates(req, ash::Component::kYCQL, resp->mutable_cql_wait_states(),
           sample_size, cql_samples_considered);
     }
+    AddWaitStatesToResponse(
+        ash::XClusterPollerTracker(), req.export_wait_state_code_as_string(),
+        resp->mutable_tserver_wait_states(), sample_size, tserver_samples_considered);
     float tserver_sample_weight =
         std::max(tserver_samples_considered, sample_size) * 1.0 / sample_size;
     float cql_sample_weight = std::max(cql_samples_considered, sample_size) * 1.0 / sample_size;
@@ -2059,6 +2150,18 @@ class PgClientServiceImpl::Impl : public SessionProvider {
         db_oid, is_breaking_change, new_catalog_version, message_list);
   }
 
+  Status TriggerRelcacheInitConnection(
+      const PgTriggerRelcacheInitConnectionRequestPB& req,
+      PgTriggerRelcacheInitConnectionResponsePB* resp,
+      rpc::RpcContext* context) {
+    TriggerRelcacheInitConnectionRequestPB request;
+    TriggerRelcacheInitConnectionResponsePB response;
+    const auto& database_name = req.database_name();
+    request.set_database_name(database_name);
+    return const_cast<TabletServerIf&>(tablet_server_).TriggerRelcacheInitConnection(
+        request, &response);
+  }
+
   Status IsObjectPartOfXRepl(
     const PgIsObjectPartOfXReplRequestPB& req, PgIsObjectPartOfXReplResponsePB* resp,
     rpc::RpcContext* context) {
@@ -2076,7 +2179,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     PreparePgTablesQuery(*req, table_ids);
     auto query = std::make_shared<PerformQuery>(
       *this, MakeTypedPBRpcContextHolder(*req, resp, std::move(*context)));
-    table_cache_.GetTables(table_ids, {}, SharedField(query, &query->tables()), query);
+    table_cache_.GetTables(table_ids, query);
   }
 
   void InvalidateTableCache() {
@@ -2188,7 +2291,8 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     }
     std::vector<SessionInfoPtr> not_ready_sessions;
     for (const auto& session : expired_sessions) {
-      session->session().StartShutdown();
+      VLOG(1) << "Starting shutdown for expired session ID: " << session->id();
+      session->session().StartShutdown(/* pg_service_shutting_donw= */ false);
       txn_snapshot_manager_.UnregisterAll(session->id());
     }
     AtomicFlagSleepMs(&FLAGS_TEST_delay_before_complete_expired_pg_sessions_shutdown_ms);
@@ -2214,14 +2318,8 @@ class PgClientServiceImpl::Impl : public SessionProvider {
         expired_session_ids.push_back(session->id());
       }
       expired_sessions.clear();
-      std::vector<uint64_t> cdc_expired_session_ids =
-          cdc_service->FilterVirtualWalSessions(expired_session_ids);
-      if (cdc_expired_session_ids.empty()) {
-        // Return early as we do not have any CDC session to destroy here.
-        return;
-      }
 
-      cdc_service->DestroyVirtualWALBatchForCDC(cdc_expired_session_ids);
+      cdc_service->DestroyVirtualWALBatchForCDC(expired_session_ids);
     }
   }
 
@@ -2357,8 +2455,13 @@ class PgClientServiceImpl::Impl : public SessionProvider {
   Status TabletsMetadata(
       const PgTabletsMetadataRequestPB& req, PgTabletsMetadataResponsePB* resp,
       rpc::RpcContext* context) {
-    const auto& result = VERIFY_RESULT(tablet_server_.GetLocalTabletsMetadata());
-    *resp->mutable_tablets() = {result.begin(), result.end()};
+    if (req.local_only()) {
+      const auto& result = VERIFY_RESULT(tablet_server_.GetLocalTabletsMetadata());
+      *resp->mutable_tablets() = {result.begin(), result.end()};
+    } else {
+      auto tablet_metadatas = VERIFY_RESULT(client().GetTabletsMetadata());
+      *resp->mutable_tablets() = {tablet_metadatas.begin(), tablet_metadatas.end()};
+    }
     return Status::OK();
   }
 
@@ -2507,7 +2610,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
   }
 
   Result<SessionInfoPtr> GetSessionInfo(uint64_t session_id) {
-    DCHECK_NE(session_id, 0);
+    RSTATUS_DCHECK_NE(session_id, static_cast<uint64_t>(0), InvalidArgument, "Bad session id");
     SharedLock lock(mutex_);
     auto it = sessions_.find(session_id);
     if (PREDICT_FALSE(it == sessions_.end())) {
@@ -2599,10 +2702,10 @@ class PgClientServiceImpl::Impl : public SessionProvider {
   }
 
   [[nodiscard]] client::YBTransactionPtr BuildTransaction(
-      TxnAssignment* dest, IsDDL is_ddl, client::ForceGlobalTransaction force_global,
+      TxnAssignment* dest, IsDDL is_ddl, TransactionFullLocality locality,
       CoarseTimePoint deadline, client::ForceCreateTransaction force_create_txn) {
     auto watcher = std::make_shared<client::YBTransactionPtr>(
-        transaction_pool_provider_().Take(force_global, deadline, force_create_txn));
+        transaction_pool_provider_().Take(locality, deadline, force_create_txn));
     dest->Assign(watcher, is_ddl);
     auto* txn = &**watcher;
     return {std::move(watcher), txn};
@@ -2656,6 +2759,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
   const TabletServerIf& tablet_server_;
   std::shared_future<client::YBClient*> client_future_;
   const scoped_refptr<ClockBase> clock_;
+  TransactionManagerProvider transaction_manager_provider_;
   TransactionPoolProvider transaction_pool_provider_;
   rpc::Messenger& messenger_;
   PgTableCache table_cache_;
@@ -2686,7 +2790,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
 
   std::atomic<int64_t> session_serial_no_{0};
 
-  rpc::ScheduledTaskTracker check_expired_sessions_ GUARDED_BY(mutex_);
+  rpc::ScheduledTaskTracker check_expired_sessions_;
   CoarseTimePoint check_expired_sessions_time_ GUARDED_BY(mutex_);
   rpc::ScheduledTaskTracker check_object_id_allocators_;
   rpc::ScheduledTaskTracker check_ysql_lease_;
@@ -2697,7 +2801,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
 
   const std::string instance_id_;
   std::once_flag exchange_thread_pool_once_flag_;
-  std::unique_ptr<ThreadPool> exchange_thread_pool_;
+  std::unique_ptr<YBThreadPool> exchange_thread_pool_;
 
   PgSharedMemoryPool shared_mem_pool_;
 
@@ -2726,12 +2830,14 @@ class PgClientServiceImpl::Impl : public SessionProvider {
   CoarseTimePoint lease_expiry_time_ GUARDED_BY(mutex_);
   bool ysql_lease_is_live_ GUARDED_BY(mutex_) {false};
   uint64_t lease_epoch_ GUARDED_BY(mutex_) = 0;
+  bool shutting_down_ GUARDED_BY(mutex_) = false;
 };
 
 PgClientServiceImpl::PgClientServiceImpl(
     std::reference_wrapper<const TabletServerIf> tablet_server,
     const std::shared_future<client::YBClient*>& client_future,
-    const scoped_refptr<ClockBase>& clock, TransactionPoolProvider transaction_pool_provider,
+    const scoped_refptr<ClockBase>& clock, TransactionManagerProvider transaction_manager_provider,
+    TransactionPoolProvider transaction_pool_provider,
     const std::shared_ptr<MemTracker>& parent_mem_tracker,
     const scoped_refptr<MetricEntity>& entity, rpc::Messenger* messenger,
     const std::string& permanent_uuid, const server::ServerBaseOptions& tablet_server_opts,
@@ -2739,7 +2845,8 @@ PgClientServiceImpl::PgClientServiceImpl(
     PgMutationCounter* pg_node_level_mutation_counter)
     : PgClientServiceIf(entity),
       impl_(new Impl(
-          tablet_server, client_future, clock, std::move(transaction_pool_provider), messenger,
+          tablet_server, client_future, clock, std::move(transaction_manager_provider),
+          std::move(transaction_pool_provider), messenger,
           xcluster_context, pg_node_level_mutation_counter, entity.get(), parent_mem_tracker,
           permanent_uuid, tablet_server_opts)) {}
 
@@ -2775,6 +2882,8 @@ YSQLLeaseInfo PgClientServiceImpl::GetYSQLLeaseInfo() const {
 }
 
 size_t PgClientServiceImpl::TEST_SessionsCount() { return impl_->TEST_SessionsCount(); }
+
+void PgClientServiceImpl::Shutdown() { impl_->Shutdown(); }
 
 #define YB_PG_CLIENT_METHOD_DEFINE(r, data, method) \
 void PgClientServiceImpl::method( \

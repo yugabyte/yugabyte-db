@@ -21,12 +21,45 @@ rightNav:
 
 ### 2025
 
+#### October 29, 2025
+
+##### Improvements
+
+- Improvements to network and peering infrastructure, to provide even more reliable scaling, and lower risk of disruptions, particularly when scaling across regions.
+
+##### Database
+
+- Early Access track updated to 2025.1.1.2.
+
+#### October 7, 2025
+
+##### New features
+
+- Support for [Roll back upgrades](../cloud-clusters/database-upgrade/#roll-back-an-upgrade) and [YSQL major upgrade](../cloud-clusters/database-upgrade/#ysql-major-upgrade) (PostgreSQL 15 upgrade). Ability to roll back a database upgrade in-place and restore the cluster to its state before the upgrade.
+- Support to set a list of default flags per account for new clusters.
+- Enhanced authentication security by removing local user access to YugabyteDB Aeon accounts, and enforcing [federated authentication](../managed-security/managed-authentication/) for _all_ account users.
+
+##### Database
+
+- Innovation track updated to 2024.2.5.0.
+
+#### August 25, 2025
+
+##### New features
+
+- {{<tags/feature/ea>}}Support for [remote backup replication](../cloud-clusters/backup-clusters/#remote-backup-replication). Automatically copy all cluster backups (scheduled, incremental, and on demand) to a storage bucket in the same cloud provider. If you want to try this feature, contact {{% support-cloud %}}. Currently, only clusters deployed on GCP are supported.
+- New GCP regions: Doha and Dammam.
+
+##### Database
+
+- Early Access track updated to 2025.1.0.1 (based on PostgreSQL 15).
+
 #### July 28, 2025
 
 ##### New features
 
 - {{<tags/feature/ea>}}Support for [point-in-time recovery](../cloud-clusters/aeon-pitr/) using database clones. Create a zero-copy, independent writable clone of your database at a point in time for recovery or testing.
-- {{<tags/feature/ea idea="1368">}}Support for built-in [YSQL Connection Pooling](../../explore/going-beyond-sql/connection-mgr-ysql/). Use built-in server-side connection pooling to support a larger number of connections from applications.
+- {{<tags/feature/ea idea="1368">}}Support for built-in [YSQL Connection Pooling](../../additional-features/connection-manager-ysql/). Use built-in server-side connection pooling to support a larger number of connections from applications.
 - {{<tags/feature/ea>}}[Disaster Recovery](../cloud-clusters/disaster-recovery/). A turnkey solution for business continuity and disaster recovery, allowing you to recover from an unplanned outage (failover) or to perform a planned switchover. If you want to try this feature, contact {{% support-cloud %}}. Note that currently, Disaster Recovery is not compatible with point-in-time recovery. Refer to the [Limitations](../cloud-clusters/disaster-recovery/#limitations).
 - [Exported metrics](../cloud-monitor/metrics-export/) are now tagged with the cluster name for enhanced downstream processing.
 
@@ -80,7 +113,7 @@ rightNav:
 
 - YugabyteDB v2.25.0.0 featuring support for PostgreSQL 15 is now available for testing on the Preview database track. To test it out, [create a Sandbox](../cloud-basics/create-clusters/create-clusters-free/) cluster with the Database version set to the Preview track.
   - [YugabyteDB v2.25.0.0 Release Notes](/preview/releases/ybdb-releases/v2.25/)
-  - [PostgreSQL 15 features](/preview/develop/pg15-features/)
+  - [PostgreSQL 15 features](/preview/api/ysql/pg15-features/)
   - [YugabyteDB Levels Up with PG15 Features](https://www.yugabyte.com/blog/postgresql-compatibility-new-yugabytedb-pg15-features/)
 - Support for configuring custom identity providers for [federated authentication](../managed-security/managed-authentication/federated-custom/), to provide single sign-on access for your account users.
 
@@ -611,7 +644,7 @@ rightNav:
 ##### New features
 
 - Self service [Virtual Private Cloud (VPC) networking](../cloud-basics/cloud-vpcs/). Use VPC networks to lower network latencies and make your application and database infrastructure more secure. Create VPCs in AWS or GCP and peer them with application VPCs in the same cloud provider. VPC networking is managed on the **VPC Network** tab of the **Networking** page.
-- Ability to [enable pre-bundled extensions](../cloud-clusters/add-extensions/) using the `CREATE EXTENSION` command. YugabyteDB includes [pre-bundled PostgreSQL extensions](../../explore/ysql-language-features/pg-extensions/) that are tested to work with YSQL. Admin users now have additional permissions to allow them to enable these extensions in databases. (If you need to install a database extension that is not pre-bundled, contact {{% support-cloud %}}
+- Ability to [enable pre-bundled extensions](../cloud-clusters/add-extensions/) using the `CREATE EXTENSION` command. YugabyteDB includes [pre-bundled PostgreSQL extensions](../../additional-features/pg-extensions/) that are tested to work with YSQL. Admin users now have additional permissions to allow them to enable these extensions in databases. (If you need to install a database extension that is not pre-bundled, contact {{% support-cloud %}}
 .)
 
 #### December 2, 2021

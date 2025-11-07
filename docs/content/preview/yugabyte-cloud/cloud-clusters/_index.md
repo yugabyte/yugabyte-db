@@ -19,7 +19,7 @@ YugabyteDB Aeon provides the following tools to manage clusters:
 | :--- | :--- |
 | [Scaling](configure-clusters/) | To ensure the cluster configuration matches its performance requirements, scale the cluster vertically or horizontally as your requirements change. |
 | [Read replicas](managed-read-replica/) | Add read replicas to lower read latencies in regions that are distant from your primary cluster. |
-| [Backups](backup-clusters/) | Configure a regular backup schedule, run manual backups, and review previous backups. |
+| [Backups](backup-clusters/) | Configure a regular backup schedule, run manual backups, restore from backups, and set up remote backup replication. |
 | [Point in time recovery](aeon-pitr/) | Create a database clone at a point in time for recovery or testing. |
 | [Maintenance windows](cloud-maintenance/) | Yugabyte only performs cluster maintenance, including database upgrades, during a weekly maintenance window that you configure. |
 | [PostgreSQL&nbsp;extensions](add-extensions/) | Extend the functionality of your cluster using PostgreSQL extensions. |
@@ -69,11 +69,11 @@ Keep in mind the following:
 
 ### Enhanced Postgres Compatibility
 
-If your cluster database version is v2024.1.0 or later, you can enable early access features for PostgreSQL compatibility on the cluster **Settings>Infrastructure** tab. For more information, refer to [Enhanced PostgreSQL Compatibility Mode](../../develop/postgresql-compatibility/).
+If your cluster database version is v2024.1.0 or later, you can enable early access features for PostgreSQL compatibility on the cluster **Settings>Infrastructure** tab. For more information, refer to [Enhanced PostgreSQL Compatibility Mode](../../reference/configuration/postgresql-compatibility/).
 
 ### Connection Pooling
 
-{{<tags/feature/ea>}}If your cluster database version is v2024.2.3 or later, you can enable built-in Connection Pooling on the cluster **Settings>Connection Pooling** tab. For more information and limitations, refer to [Built-in connection pooling](../../explore/going-beyond-sql/connection-mgr-ysql/).
+{{<tags/feature/ea>}}If your cluster database version is v2024.2.3 or later, you can enable built-in Connection Pooling on the cluster **Settings>Connection Pooling** tab. For more information and limitations, refer to [Built-in connection pooling](../../additional-features/connection-manager-ysql/).
 
 For Connection Pooling metrics, see [YSQL Ops metrics](../cloud-monitor/overview/#ysql-ops).
 
@@ -109,6 +109,12 @@ For Connection Pooling metrics, see [YSQL Ops metrics](../cloud-monitor/overview
     title="Maintenance windows"
     body="Set up maintenance windows and exclusion periods for cluster upgrades."
     href="cloud-maintenance/"
+    icon="/images/section_icons/manage/backup.png">}}
+
+  {{<index/item
+    title="Database upgrade"
+    body="Manage upgrades to the YugabyteDB software powering your cluster."
+    href="database-upgrade/"
     icon="/images/section_icons/manage/backup.png">}}
 
   {{<index/item

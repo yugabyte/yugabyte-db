@@ -4,11 +4,6 @@ headerTitle: Build multi-cloud applications
 linkTitle: Build multi-cloud applications
 description: Build applications that run on different clouds
 headcontent: Build applications that run on different clouds
-menu:
-  preview:
-    identifier: build-multicloud-apps
-    parent: develop
-    weight: 300
 type: indexpage
 showRightNav: true
 ---

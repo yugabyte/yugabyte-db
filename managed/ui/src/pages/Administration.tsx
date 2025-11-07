@@ -1,7 +1,7 @@
 /*
  * Created on May 25 2023
  *
- * Copyright 2023 YugaByte, Inc. and Contributors
+ * Copyright 2023 YugabyteDB, Inc. and Contributors
  */
 
 import { lazy, Suspense } from 'react';

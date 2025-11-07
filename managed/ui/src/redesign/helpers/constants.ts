@@ -84,8 +84,10 @@ export const RuntimeConfigKey = {
   HYPERDISKS_STORAGE_TYPE: 'yb.gcp.show_hyperdisks_storage_type',
   CIPHERTRUST_KMS_ENABLE: 'yb.kms.allow_ciphertrust',
   ENABLE_AUTO_NODE_AGENT_INSTALLATION: 'yb.node_agent.enabler.run_installer',
-  LOKI_TELEMETRY_ALLOW: "yb.telemetry.allow_loki",
-  ENABLE_EBS_VOLUME: 'yb.universe.allow_cloud_volume_encryption'
+  LOKI_TELEMETRY_ALLOW: 'yb.telemetry.allow_loki',
+  ENABLE_EBS_VOLUME: 'yb.universe.allow_cloud_volume_encryption',
+  CONTINUOUS_PLATFORM_BACKUPS_UI: 'yb.ui.feature_flags.continuous_platform_backups',
+  METRICS_EXPORT_FEATURE_FLAG: 'yb.universe.metrics_export_enabled'
 } as const;
 
 /**
@@ -218,6 +220,7 @@ export const GFLAG_GROUPS = {
   ENHANCED_POSTGRES_COMPATIBILITY: 'ENHANCED_POSTGRES_COMPATIBILITY'
 };
 
-export const I18N_DURATION_KEY_PREFIX = 'common.duration';
-
 export const DEFAULT_TIMEZONE = { value: 'Default', label: `${getBrowserTimezoneOffset()}` };
+
+export const I18N_DURATION_KEY_PREFIX = 'common.duration';
+export const I18N_ACCESSABILITY_ALT_TEXT_KEY_PREFIX = 'iconAltText';

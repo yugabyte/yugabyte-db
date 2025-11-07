@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -17,14 +17,18 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/clock.h"
 #include "yb/common/hybrid_time.h"
+#include "yb/common/pg_types.h"
 #include "yb/common/transaction.pb.h"
 
 #include "yb/rpc/rpc_fwd.h"
+
+#include "yb/util/metrics_fwd.h"
 
 namespace yb {
 namespace client {
@@ -48,7 +52,8 @@ class TransactionManager {
       uint64_t version,
       UpdateTransactionTablesVersionCallback callback = UpdateTransactionTablesVersionCallback());
 
-  void PickStatusTablet(PickStatusTabletCallback callback, TransactionLocality locality);
+  void PickStatusTablet(
+      PickStatusTabletCallback callback, TransactionFullLocality locality);
 
   rpc::Rpcs& rpcs();
   YBClient* client() const;
@@ -59,11 +64,29 @@ class TransactionManager {
 
   void UpdateClock(HybridTime time);
 
-  bool PlacementLocalTransactionsPossible();
+  bool RegionLocalTransactionsPossible();
+
+  bool TablespaceIsRegionLocal(PgTablespaceOid tablespace_oid);
+
+  bool TablespaceLocalTransactionsPossible(PgTablespaceOid tablespace_oid);
+
+  bool TablespaceContainsTablespace(PgTablespaceOid lhs, PgTablespaceOid rhs);
 
   uint64_t GetLoadedStatusTabletsVersion();
 
   void Shutdown();
+
+  bool IsClosing();
+
+  void SetClosing();
+
+  scoped_refptr<Counter> transaction_promotions_metric() const;
+
+  scoped_refptr<Counter> initially_global_transactions_metric() const;
+
+  scoped_refptr<Counter> initially_region_local_transactions_metric() const;
+
+  scoped_refptr<Counter> initially_tablespace_local_transactions_metric() const;
 
  private:
   class Impl;

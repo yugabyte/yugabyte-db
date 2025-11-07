@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.common;
 
@@ -170,10 +170,10 @@ public abstract class KubernetesManager {
   // Log a diff before applying helm upgrade.
   public void diff(Map<String, String> config, String inputYamlFilePath) {
     List<String> diffCommandList =
-        ImmutableList.of("kubectl", "diff", "--server-side=false", "-f ", inputYamlFilePath);
+        ImmutableList.of("kubectl", "diff", "--server-side=false", "-f", inputYamlFilePath);
     ShellResponse response = execCommand(config, diffCommandList);
     if (response != null && !response.isSuccess()) {
-      LOG.error("kubectl diff failed with response %s", response.toString());
+      LOG.error("kubectl diff failed with response {}", response.toString());
     }
   }
 
@@ -202,9 +202,7 @@ public abstract class KubernetesManager {
             getTimeout(universeUuid),
             "--is-upgrade",
             "--no-hooks",
-            "--skip-crds",
-            ">",
-            tempOutputPath);
+            "--skip-crds");
 
     ShellResponse response = execCommand(config, templateCommandList);
     if (response != null && !response.isSuccess()) {
@@ -214,10 +212,15 @@ public abstract class KubernetesManager {
       } catch (Exception ex) {
         LOG.error("Got exception in reading template output {}", ex.getMessage());
       }
-
       return null;
+    } else {
+      LOG.info("Writing template output to file: {}", tempOutputPath);
+      try (BufferedWriter writer = new BufferedWriter(new FileWriter(tempOutputPath))) {
+        writer.write(response.getMessage());
+      } catch (IOException e) {
+        LOG.error("Got exception in writing template output {}", e.getMessage());
+      }
     }
-
     // Success case return the output file path.
     return tempOutputPath;
   }
@@ -749,7 +752,7 @@ public abstract class KubernetesManager {
     if (!primary.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
       return null;
     } else {
-      PlacementInfo pi = universeDetails.getPrimaryCluster().placementInfo;
+      PlacementInfo pi = universeDetails.getPrimaryCluster().getOverallPlacement();
 
       boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
       Map<UUID, Map<String, String>> azToConfig = KubernetesUtil.getConfigPerAZ(pi);
@@ -1007,6 +1010,9 @@ public abstract class KubernetesManager {
 
   public abstract Map<ServerType, String> getServerTypeGflagsChecksumMap(
       String namespace, String helmReleaseName, Map<String, String> config, boolean newNamingStyle);
+
+  public abstract String getCertChecksum(
+      String namespace, String helmReleaseName, Map<String, String> config);
 
   public abstract void deleteNamespacedService(
       Map<String, String> config, String namespace, String universeName);

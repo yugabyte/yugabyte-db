@@ -18,7 +18,18 @@ allOf:
         type: integer
         format: int32
         default: 100
-      send_batch_timeout:
+      send_batch_timeout_seconds:
         description: Send batch timeout in seconds
-        type: string
-        default: 10s
+        type: integer
+        format: int32
+        default: 10
+      memory_limit_mib:
+        description: Memory limit in MiB for the OpenTelemetry Collector process in the config file.
+        type: integer
+        example: 2048
+        default: 2048
+      memory_limit_check_interval_seconds:
+        description: Check interval in seconds for the MemoryLimiterProcessor.
+        type: integer
+        example: 10
+        default: 10

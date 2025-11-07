@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -91,6 +91,12 @@ void ClientMasterRpcBase::Finished(const Status& status) {
   Status new_status = status;
   if (new_status.ok() &&
       mutable_retrier()->HandleResponse(this, &new_status, rpc::RetryWhenBusy::kFalse)) {
+    return;
+  }
+
+  if (client_data_->Closing()) {
+    auto retained_self = client_data_->rpcs_.Unregister(&retained_self_);
+    ProcessResponse(new_status);
     return;
   }
 

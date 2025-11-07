@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -111,8 +111,7 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
       const docdb::ReadOperationData& read_operation_data,
       const docdb::YbctidBounds& bounds,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
-      docdb::SkipSeek skip_seek,
-      docdb::UseVariableBloomFilter use_variable_bloom_filter) const override {
+      docdb::SkipSeek skip_seek) const override {
     LOG(FATAL) << "Postgresql virtual tables are not yet implemented";
     return nullptr;
   }

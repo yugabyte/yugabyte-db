@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -405,9 +405,9 @@ TEST_F_EX(
 // 3. backup
 // 4. restore, which will initially create [sic] 4 pre-split tablets then realize the partition
 //    boundaries differ
-TEST_F_EX(YBBackupTest,
-          YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLManualTabletSplit),
-          YBBackupTestNumTablets) {
+TEST_F_EX(
+    YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLManualTabletSplit),
+    YBBackupTestNumTablets) {
   const string table_name = "mytbl";
 
   // Create table.
@@ -461,7 +461,7 @@ TEST_F_EX(YBBackupTest,
 
   // Flush table because it is necessary for manual tablet split.
   auto table_id = ASSERT_RESULT(GetTableId(table_name, "pre-split"));
-  ASSERT_OK(client_->FlushTables({table_id}, false, 30, false));
+  ASSERT_OK(client_->FlushTables({table_id}));
 
   // Split it && Wait for split to complete.
   constexpr int num_tablets = 4;
@@ -739,7 +739,7 @@ TEST_F_EX(YBBackupTest,
 
   // Flush table so SST file size is accurate.
   auto table_id = ASSERT_RESULT(GetTableId(table_name, "pre-split"));
-  ASSERT_OK(client_->FlushTables({table_id}, false, 30, false));
+  ASSERT_OK(client_->FlushTables({table_id}));
 
   // Wait for automatic split to complete.
   ASSERT_OK(WaitFor(
@@ -801,7 +801,7 @@ TEST_F_EX(YBBackupTest,
 
   // Flush table
   auto table_id = ASSERT_RESULT(GetTableId(table_name, "pre-split"));
-  ASSERT_OK(client_->FlushTables({table_id}, false, 30, false));
+  ASSERT_OK(client_->FlushTables({table_id}));
 
   // Split at split depth 0
   // Choose the first tablet among tablets: "" --- "4a" and "4a" --- ""
@@ -893,7 +893,7 @@ TEST_F_EX(YBBackupTest,
 
   // Flush index
   auto index_id = ASSERT_RESULT(GetTableId(index_name, "pre-split"));
-  ASSERT_OK(client_->FlushTables({index_id}, false, 30, false));
+  ASSERT_OK(client_->FlushTables({index_id}));
 
   // Split the unique index into three tablets on its hidden column:
   // tablet-1 boundaries: [ "", (null, <ybctid-1>) )
@@ -984,9 +984,9 @@ TEST_F_EX(YBBackupTest,
 // 3. split the index on its hidden column into 3 tablets
 // 4. backup
 // 5. restore
-TEST_F_EX(YBBackupTest,
-          YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLTabletSplitRangeIndexOnHiddenColumn),
-          YBBackupTestNumTablets) {
+TEST_F_EX(
+    YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLTabletSplitRangeIndexOnHiddenColumn),
+    YBBackupTestNumTablets) {
   const string table_name = "mytbl";
   const string index_name = "myidx";
 
@@ -1007,7 +1007,7 @@ TEST_F_EX(YBBackupTest,
 
   // Flush index
   auto index_id = ASSERT_RESULT(GetTableId(index_name, "pre-split"));
-  ASSERT_OK(client_->FlushTables({index_id}, false, 30, false));
+  ASSERT_OK(client_->FlushTables({index_id}));
 
   // Split the index into three tablets on its hidden column:
   // tablet-1 boundaries: [ "", (200, <ybctid-1>) )
@@ -1111,7 +1111,7 @@ TEST_F_EX(YBBackupTest,
 
   // Flush index
   auto index_id = ASSERT_RESULT(GetTableId(index_name, "pre-split"));
-  ASSERT_OK(client_->FlushTables({index_id}, false, 30, false));
+  ASSERT_OK(client_->FlushTables({index_id}));
 
   // Split the GIN index into two tablets and wait for its split to complete.
   // The splits make GinNull become part of its tablets' partition bounds:
@@ -2186,7 +2186,7 @@ TEST_F_EX(
 
   // Flush table because it is necessary for manual tablet split.
   auto table_id = ASSERT_RESULT(GetTableId(table_name, "pre-split"));
-  ASSERT_OK(client_->FlushTables({table_id}, false, 30, false));
+  ASSERT_OK(client_->FlushTables({table_id}));
 
   ASSERT_OK(test_admin_client_->SplitTabletAndWait(
       default_db_, table_name, /* wait_for_parent_deletion */ false, tablets[0].tablet_id()));
@@ -2246,7 +2246,7 @@ TEST_F_EX(
   // Wait for intents and flush table because it is necessary for manual tablet split.
   ASSERT_OK(cluster_->WaitForAllIntentsApplied(10s));
   auto table_id = ASSERT_RESULT(GetTableId(table_name, "pre-split"));
-  ASSERT_OK(client_->FlushTables({table_id}, false, 30, false));
+  ASSERT_OK(client_->FlushTables({table_id}));
   constexpr bool kWaitForParentDeletion = false;
   ASSERT_OK(test_admin_client_->SplitTabletAndWait(
       default_db_, table_name, /* wait_for_parent_deletion */ kWaitForParentDeletion,
@@ -2550,6 +2550,7 @@ INSTANTIATE_TEST_CASE_P(
 
 class YBBackupCrossColocation : public YBBackupTestWithPackedRowsAndColocation {};
 
+// TODO(Yamen): Enable test in sasnitizers tracked by GH-29039.
 TEST_P(YBBackupCrossColocation, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLRestoreWithInvalidIndex)) {
   ASSERT_NO_FATALS(CreateTable("CREATE TABLE t1 (id INT NOT NULL, c1 INT, PRIMARY KEY (id))"));
   for (int i = 0; i < 3; ++i) {
@@ -2693,6 +2694,17 @@ INSTANTIATE_TEST_CASE_P(
 class YBDdlAtomicityBackupTest : public YBBackupTestBase, public pgwrapper::PgDdlAtomicityTestBase {
  public:
   Status RunDdlAtomicityTest(pgwrapper::DdlErrorInjection inject_error);
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    // Disable table locks to avoid issues during SuccessfulDdlAtomicityTest
+    // Test enables TEST_pause_ddl_rollback which may block table locks for ddl from
+    // being released. Hence blocking the following statements from failing to acquire locks.
+    AppendFlagToAllowedPreviewFlagsCsv(
+        options->extra_tserver_flags, "enable_object_locking_for_table_locks");
+    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
+    pgwrapper::PgDdlAtomicityTestBase::UpdateMiniClusterOptions(options);
+  }
+
 };
 
 Status YBDdlAtomicityBackupTest::RunDdlAtomicityTest(pgwrapper::DdlErrorInjection inject_error) {
@@ -2759,10 +2771,14 @@ Status YBDdlAtomicityBackupTest::RunDdlAtomicityTest(pgwrapper::DdlErrorInjectio
 }
 
 TEST_F(YBDdlAtomicityBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(SuccessfulDdlAtomicityTest)) {
+  // TODO(Yamen): Remove this skip once GH-28766 is fixed.
+  GTEST_SKIP() << "Temporarily disabled until GH-28766 is fixed";
   ASSERT_OK(RunDdlAtomicityTest(pgwrapper::DdlErrorInjection::kFalse));
 }
 
 TEST_F(YBDdlAtomicityBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(DdlRollbackAtomicityTest)) {
+  // TODO(Yamen): Remove this skip once GH-28766 is fixed.
+  GTEST_SKIP() << "Temporarily disabled until GH-28766 is fixed";
   ASSERT_OK(RunDdlAtomicityTest(pgwrapper::DdlErrorInjection::kTrue));
 }
 
@@ -3012,9 +3028,11 @@ TEST_P(YBBackupTestWithTableRewrite,
   ));
 }
 
+// TODO(Yamen): Enable test in sasnitizers tracked by GH-29039.
 // Test that backup and restore succeed after unsuccessful rewrite operations are executed
 // on tables, indexes and materialized views.
-TEST_P(YBBackupTestWithTableRewrite,
+TEST_P(
+    YBBackupTestWithTableRewrite,
     YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLBackupAndRestoreAfterFailedRewrite)) {
   ASSERT_OK(cluster_->SetFlagOnMasters("enable_transactional_ddl_gc", "false"));
   ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_ddl_rollback_enabled", "false"));

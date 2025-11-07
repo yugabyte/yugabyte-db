@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -109,6 +109,9 @@ using yb::consensus::ChangeConfigType;
 void AppendCsvFlagValue(
     std::vector<std::string>& flag_list, const std::string& flag_name,
     const std::string& value_to_add);
+
+void AppendFlagToAllowedPreviewFlagsCsv(
+    std::vector<std::string>& flag_list, const std::string& flag_to_add);
 
 struct ExternalClusterPGConnectionOptions {
   std::string db_name = "yugabyte";
@@ -217,8 +220,7 @@ struct ExternalMiniClusterOptions {
   // set to a non-zero value, this value is used instead.
   int transaction_table_num_tablets = 0;
 
-  // Specifies the replication factor for the cluster. If this is not set, default to the number
-  // of masters in the cluster.
+  // Specifies the replication factor for the cluster.
   int replication_factor = 0;
 
   bool allow_crashes_during_init_db = false;
@@ -408,6 +410,8 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   // Return all tablet servers.
   std::vector<ExternalTabletServer*> tserver_daemons() const;
+
+  bool WasUnsafeShutdown() const override;
 
   // Return all YBController servers.
   std::vector<scoped_refptr<ExternalYbController>> yb_controller_daemons() const override {
@@ -624,6 +628,9 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   // Get a LogWaiter that waits for the given log message across all masters.
   LogWaiter GetMasterLogWaiter(const std::string& log_message) const;
+
+  Result<tserver::GetObjectLockStatusResponsePB> GetObjectLockStatus(
+      const ExternalTabletServer& ts);
 
  protected:
   friend class UpgradeTestBase;
@@ -932,7 +939,7 @@ void StartSecure(
   std::unique_ptr<ExternalMiniCluster>* cluster,
   std::unique_ptr<rpc::SecureContext>* secure_context,
   std::unique_ptr<rpc::Messenger>* messenger,
-  bool enable_ysql);
+  const ExternalMiniClusterOptions& opts);
 
 Status WaitForTableIntentsApplied(
     ExternalMiniCluster* cluster, const TableId& table_id,

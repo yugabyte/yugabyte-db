@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -138,7 +138,12 @@ DECLARE_uint64(cdcsdk_update_restart_time_interval_secs);
 DECLARE_int32(retryable_request_timeout_secs);
 DECLARE_bool(save_index_into_wal_segments);
 DECLARE_bool(TEST_skip_process_apply);
-DECLARE_bool(TEST_ysql_yb_enable_implicit_dynamic_tables_logical_replication);
+DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
+DECLARE_int32(TEST_cdc_simulate_error_for_get_changes);
+DECLARE_bool(TEST_fail_cdc_setting_retention_barriers_on_apply);
+DECLARE_int32(update_min_cdc_indices_master_interval_secs);
+DECLARE_bool(cdcsdk_update_restart_time_when_nothing_to_stream);
+DECLARE_string(TEST_cdc_tablet_id_to_stall_state_table_updates);
 
 namespace yb {
 
@@ -653,6 +658,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
           "Tablets in cdc_state for the stream doesnt match the expected set");
 
   Result<int> GetStateTableRowCount();
+
+  Result<OpId> GetCheckpointFromStateTable(
+      const xrepl::StreamId& stream_id, const TabletId& tablet_id);
 
   Status VerifyStateTableAndStreamMetadataEntriesCount(
       const xrepl::StreamId& stream_id, const size_t& state_table_entries,

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc
+// Copyright (c) YugabyteDB, Inc
 
 package com.yugabyte.yw.commissioner;
 
@@ -46,6 +46,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.yb.client.YbcClient;
 import org.yb.ybc.ControllerStatus;
 import org.yb.ybc.ShutdownRequest;
@@ -303,10 +304,11 @@ public class YbcUpgrade {
 
   public boolean canUpgradeYBCOnK8s(Universe universe, String ybcVersion) {
     return universe.isYbcEnabled()
+        && !universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc()
         && !universe.getUniverseDetails().universePaused
         && (!universe.getUniverseDetails().updateInProgress
             || SAFE_TO_UPGRADE_YBC_TASKS.contains(universe.getUniverseDetails().updatingTask))
-        && !universe.getUniverseDetails().getYbcSoftwareVersion().equals(ybcVersion)
+        && !StringUtils.equals(universe.getUniverseDetails().getYbcSoftwareVersion(), ybcVersion)
         && !failedYBCUpgradeUniverseSetOnK8s.contains(universe.getUniverseUUID());
   }
 
@@ -357,12 +359,18 @@ public class YbcUpgrade {
       setYBCUpgradeProcessOnK8s(universeUUID);
     }
 
+    if (universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc()) {
+      log.debug("Skipping YBC upgrade for universe {} as it uses inbuilt YBC", universeUUID);
+      return;
+    }
+
     try {
       Set<NodeDetails> primaryTservers =
           new HashSet<NodeDetails>(universe.getTServersInPrimaryCluster());
       List<String> commandArgs =
           Arrays.asList("/bin/bash", "-c", "/home/yugabyte/tools/k8s_ybc_parent.py stop");
-      PlacementInfo primaryPI = universe.getUniverseDetails().getPrimaryCluster().placementInfo;
+      PlacementInfo primaryPI =
+          universe.getUniverseDetails().getPrimaryCluster().getOverallPlacement();
       Map<String, Map<String, String>> k8sConfigMap =
           KubernetesUtil.getKubernetesConfigPerPodName(primaryPI, primaryTservers);
       for (NodeDetails primaryTserver : primaryTservers) {
@@ -389,7 +397,7 @@ public class YbcUpgrade {
         Cluster readOnlyCluster = universe.getUniverseDetails().getReadOnlyClusters().get(0);
         Set<NodeDetails> readOnlyTservers =
             new HashSet<NodeDetails>(universe.getNodesInCluster(readOnlyCluster.uuid));
-        PlacementInfo readOnlyPI = readOnlyCluster.placementInfo;
+        PlacementInfo readOnlyPI = readOnlyCluster.getOverallPlacement();
         k8sConfigMap = KubernetesUtil.getKubernetesConfigPerPodName(readOnlyPI, readOnlyTservers);
         for (NodeDetails readOnlyTserver : readOnlyTservers) {
           try {

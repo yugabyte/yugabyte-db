@@ -654,9 +654,9 @@ RI_FKey_check(TriggerData *trigdata)
 
 		if (descr)
 		{
-			bool		found = false;
+			bool found = false;
 
-			HandleYBStatus(YBCForeignKeyReferenceExists(descr, &found));
+			HandleYBStatus(YBCForeignKeyReferenceExists(descr, YBCIsRegionLocal(fk_rel), &found));
 			pfree(descr);
 			if (!found)
 			{
@@ -2724,7 +2724,7 @@ ri_PerformCheck(const RI_ConstraintInfo *riinfo,
 	 * that SPI_execute_snapshot will register the snapshots, so we don't need
 	 * to bother here.
 	 */
-	if (!IsYBRelation(pk_rel) && IsolationUsesXactSnapshot() && detectNewRows)
+	if (IsolationUsesXactSnapshot() && detectNewRows)
 	{
 		CommandCounterIncrement();	/* be sure all my own work is visible */
 		test_snapshot = GetLatestSnapshot();

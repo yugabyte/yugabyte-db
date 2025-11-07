@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -17,6 +17,7 @@
 
 #include "yb/consensus/raft_consensus.h"
 
+#include "yb/dockv/key_entry_value.h"
 #include "yb/dockv/primitive_value.h"
 
 #include "yb/integration-tests/cql_test_base.h"
@@ -24,6 +25,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/master_ddl.proxy.h"
+#include "yb/master/master_types.pb.h"
 
 #include "yb/rocksdb/db.h"
 
@@ -1549,8 +1551,13 @@ TEST_F(CqlTest, RetainSchemaPacking) {
 
   ASSERT_OK(session.ExecuteQuery("ALTER TABLE t ADD extra INT"));
 
+  // Get the namespace ID for the "test" namespace
+  master::GetNamespaceInfoResponsePB namespace_resp;
+  ASSERT_OK(client_->GetNamespaceInfo("", "test", YQL_DATABASE_CQL, &namespace_resp));
+  auto namespace_id = namespace_resp.namespace_().id();
+
   auto snapshot_id = ASSERT_RESULT(snapshot_util.StartSnapshot(
-      client::YBTableName(YQLDatabase::YQL_DATABASE_CQL, "test", "t")));
+      client::YBTableName(YQLDatabase::YQL_DATABASE_CQL, namespace_id, "test", "t")));
   ASSERT_OK(cluster_->CompactTablets());
 
   ASSERT_OK(snapshot_util.WaitSnapshotDone(snapshot_id));

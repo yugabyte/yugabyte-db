@@ -567,7 +567,8 @@ class NodeChecker():
                  is_ybc_enabled, ybc_port, time_drift_wrn_threshold, time_drift_err_threshold,
                  otel_enabled, temp_output_file, ddl_atomicity_check, master_leader_url,
                  master_rpc_port, tserver_rpc_port, verbose, clock_service_required,
-                 enable_earlyoom, topk_other_processes, topk_mem_threshold_percent, check_thp):
+                 enable_earlyoom, topk_other_processes, topk_mem_threshold_percent, check_thp,
+                 ybdb_inbuilt_ybc):
         self.node = node
         self.node_name = node_name
         self.node_identifier = node_identifier
@@ -609,6 +610,7 @@ class NodeChecker():
         self.topk_other_processes = topk_other_processes
         self.topk_mem_threshold_percent = topk_mem_threshold_percent
         self.check_thp = check_thp
+        self.ybdb_inbuilt_ybc = ybdb_inbuilt_ybc
         self.prev_process_results = self._load_previous_per_process_results(temp_output_file)
         self.current_process_results = {}
 
@@ -1383,7 +1385,8 @@ class NodeChecker():
         return os.path.join(self.yb_home_dir, "tserver")
 
     def yb_controller_dir(self):
-        return os.path.join(self.ybc_dir, "controller")
+        dir = self.yb_home_dir if self.ybdb_inbuilt_ybc else self.ybc_dir
+        return os.path.join(dir, "controller")
 
     def check_cqlsh(self):
         logging.info("Checking cqlsh works for node {}".format(self.node))
@@ -2671,6 +2674,7 @@ class NodeInfo:
         self.topk_other_processes = data["topKOtherProcesses"]
         self.topk_mem_threshold_percent = data["topKMemThresholdPercent"]
         self.check_thp = data["checkTHP"]
+        self.ybdb_inbuilt_ybc = data["ybdbInbuiltYbc"]
 
 
 def main():
@@ -2694,6 +2698,8 @@ def main():
                         help='Master leader URL.')
     parser.add_argument('--verbose', type=bool, default=False, required=False,
                         help='Add verbose output')
+    parser.add_argument('--cronbased', default=False, required=False, action='store_true',
+                        help='Set to true if the node is cronbased instead of systemd')
 
     args = parser.parse_args()
 
@@ -2720,7 +2726,8 @@ def main():
         n.is_ybc_enabled, n.ybc_port, n.time_drift_wrn_threshold, n.time_drift_err_threshold,
         n.otel_enabled, args.temp_output_file, args.ddl_atomicity_check, args.master_leader_url,
         n.master_rpc_port, n.tserver_rpc_port, args.verbose, n.clockSyncServiceRequired,
-        n.enable_earlyoom, n.topk_other_processes, n.topk_mem_threshold_percent, n.check_thp)
+        n.enable_earlyoom, n.topk_other_processes, n.topk_mem_threshold_percent, n.check_thp,
+        n.ybdb_inbuilt_ybc)
 
     coordinator.add_precheck(checker, "check_openssl_availability")
     coordinator.add_check(checker, "check_earlyoom", n.enable_earlyoom)
@@ -2817,7 +2824,8 @@ def main():
     if not n.is_k8s:
         coordinator.add_check(checker, "check_oom_kills")
         coordinator.add_check(checker, "check_process_stats", NODE_EXPORTER)
-        coordinator.add_check(checker, "check_systemd_unit_preexec_present")
+        if not args.cronbased:
+            coordinator.add_check(checker, "check_systemd_unit_preexec_present")
 
     if n.otel_enabled:
         coordinator.add_check(checker, "check_process_stats", OTEL_COLLECTOR)

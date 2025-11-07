@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -221,7 +221,6 @@ TEST_F(AdminCliTest, TestChangeConfig) {
 
   std::vector<std::string> master_flags = {
     "--catalog_manager_wait_for_new_tablets_to_elect_leader=false"s,
-    "--replication_factor=2"s,
     "--use_create_table_leader_hint=false"s,
   };
   std::vector<std::string> ts_flags = {
@@ -316,7 +315,6 @@ TEST_F(AdminCliTest, TestDeleteTable) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 1;
 
   vector<string> ts_flags, master_flags;
-  master_flags.push_back("--replication_factor=1");
   BuildAndStart(ts_flags, master_flags);
   string master_address = ToString(cluster_->master()->bound_rpc_addr());
 
@@ -340,7 +338,6 @@ TEST_F(AdminCliTest, TestDeleteIndex) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 1;
 
   vector<string> ts_flags, master_flags;
-  master_flags.push_back("--replication_factor=1");
   ts_flags.push_back("--index_backfill_upperbound_for_user_enforced_txn_duration_ms=12000");
   BuildAndStart(ts_flags, master_flags);
   string master_address = ToString(cluster_->master()->bound_rpc_addr());
@@ -578,8 +575,10 @@ class AdminCliTestForTableLocks : public AdminCliTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->enable_ysql = true;
     options->extra_tserver_flags.push_back(
-        "--allowed_preview_flags_csv=enable_object_locking_for_table_locks");
+        Format("--allowed_preview_flags_csv=$0,$1",
+               "enable_object_locking_for_table_locks", "ysql_yb_ddl_transaction_block_enabled"));
     options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=true");
+    options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
   }
 
  protected:
@@ -646,6 +645,12 @@ TEST_F(AdminCliTestForTableLocks, ReleaseExclusiveLocksUsingTxnIdAndSubtxnId) {
 
   const std::string table_name = "test_table";
   ASSERT_OK(conn1.ExecuteFormat("CREATE TABLE $0 (id INT PRIMARY KEY, value TEXT)", table_name));
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return !VERIFY_RESULT(HasLocksMaster());
+      },
+      10s * kTimeMultiplier, "Wait for master to be release locks asynchronously"));
 
   ASSERT_OK(conn1.Execute("BEGIN"));
   ASSERT_FALSE(ASSERT_RESULT(HasLocksMaster()));
@@ -742,12 +747,17 @@ TEST_F(AdminCliTestForTableLocks, ReleaseSharedLocksThroughMaster) {
   const std::string table_name = "test_table";
   ASSERT_OK(conn1.ExecuteFormat("CREATE TABLE $0 (id INT PRIMARY KEY, value TEXT)", table_name));
 
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return !VERIFY_RESULT(HasLocksMaster());
+      },
+      10s * kTimeMultiplier, "Wait for master to be release locks asynchronously"));
+
   ASSERT_OK(conn1.Execute("BEGIN"));
   ASSERT_OK(conn1.ExecuteFormat("LOCK TABLE $0 IN ACCESS SHARE MODE", table_name));
   ASSERT_FALSE(ASSERT_RESULT(HasLocksMaster()));
   ASSERT_TRUE(ASSERT_RESULT(HasLocksTServer(kTServerIndex)));
-  std::string txn_id;
-  std::tie(txn_id, std::ignore) = ASSERT_RESULT(ExtractTxnAndSubtxnIdFromTServer(kTServerIndex));
+  std::string txn_id = ASSERT_RESULT(ExtractTxnAndSubtxnIdFromTServer(kTServerIndex)).first;
 
   // Having this test flag allows us to release locks for unknown transactions at the master.
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_allow_unknown_txn_release_request", "true"));
@@ -857,6 +867,166 @@ TEST_F(AdminCliTest, TestFollowersTableList) {
   }
 }
 
+class AdminCliTestWithYSQL : public AdminCliTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->enable_ysql = true;
+  }
+};
+
+// Test that partition ranges are displayed in correct format for both hash and range partitioning
+// (similar to the :9000/tablets endpoint format)
+TEST_F(AdminCliTestWithYSQL, TestPartitionRangeFormat) {
+  BuildAndStart();
+
+  // Test 1: Hash partitioned table (default CQL table)
+  string hash_table_out = ASSERT_RESULT(
+      CallAdmin("list_tablets", kTableName.namespace_name(), kTableName.table_name()));
+
+  LOG(INFO) << "Hash partitioned table output: " << hash_table_out;
+
+  // Verify hash partition format: hash_split: [0x0000, 0x3332]
+  ASSERT_NE(hash_table_out.find("hash_split:"), string::npos)
+      << "Expected hash_split format for hash table, got: " << hash_table_out;
+
+  ASSERT_NE(hash_table_out.find("0x"), string::npos)
+      << "Expected hex format ranges for hash table, got: " << hash_table_out;
+
+  // Verify that octal escape sequences are no longer present
+  ASSERT_EQ(hash_table_out.find("\\"), string::npos)
+      << "Expected no octal escape sequences in hash table, got: " << hash_table_out;
+
+  // Verify that all hex values follow the 0x0000 pattern (4 digits after 0x)
+  std::regex hex_pattern(R"(0x[0-9A-Fa-f]{4})");
+  size_t hex_count = 0;
+  std::string::const_iterator search_start(hash_table_out.cbegin());
+  std::smatch match;
+  while (std::regex_search(search_start, hash_table_out.cend(), match, hex_pattern)) {
+    hex_count++;
+    search_start = match.suffix().first;
+  }
+
+  // Should have at least 2 hex values (start and end for at least one tablet)
+  ASSERT_GE(hex_count, 2) << "Expected at least 2 hex values in 0x0000 format for hash table, got: "
+                          << hex_count;
+
+  // Test 2: Range partitioned table (YSQL table with range partitioning)
+  // Create a range partitioned table using YSQL
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte"));
+
+  // Create a range partitioned table with explicit splits (using ASC to force range partitioning)
+  ASSERT_OK(conn.Execute("DROP TABLE IF EXISTS range_test_table"));
+  ASSERT_OK(
+      conn.Execute("CREATE TABLE range_test_table (k int, v text, PRIMARY KEY (k ASC)) SPLIT AT "
+                   "VALUES ((10), (20), (30))"));
+
+  string range_table_out =
+      ASSERT_RESULT(CallAdmin("list_tablets", "ysql.yugabyte", "range_test_table"));
+
+  LOG(INFO) << "Range partitioned table output: " << range_table_out;
+
+  // Verify range partition format: range: [<start>, DocKey([], [20])) or range: [DocKey([], [20]),
+  // DocKey([], [40]))
+  ASSERT_NE(range_table_out.find("range:"), string::npos)
+      << "Expected range format for range table, got: " << range_table_out;
+
+  ASSERT_TRUE(
+      range_table_out.find("<start>") != string::npos ||
+      range_table_out.find("DocKey") != string::npos)
+      << "Expected <start> or DocKey format for range table, got: " << range_table_out;
+
+  ASSERT_TRUE(
+      range_table_out.find("<end>") != string::npos ||
+      range_table_out.find("DocKey") != string::npos)
+      << "Expected <end> or DocKey format for range table, got: " << range_table_out;
+
+  // Verify that range table doesn't have hex format (should have DocKey format instead)
+  ASSERT_EQ(range_table_out.find("0x"), string::npos)
+      << "Range table should not have hex format, got: " << range_table_out;
+
+  // Clean up
+  ASSERT_OK(conn.Execute("DROP TABLE range_test_table"));
+
+  // Test 3: YSQL index formatting
+  ASSERT_OK(conn.Execute("DROP TABLE IF EXISTS prf_ysql_idx_tbl"));
+  ASSERT_OK(
+      conn.Execute("CREATE TABLE prf_ysql_idx_tbl (k int, v text, PRIMARY KEY (k ASC)) SPLIT AT "
+                   "VALUES ((10), (20))"));
+  ASSERT_OK(conn.Execute("CREATE INDEX prf_ysql_idx ON prf_ysql_idx_tbl (v)"));
+
+  const string ysql_idx_out =
+      ASSERT_RESULT(CallAdmin("list_tablets", "ysql.yugabyte", "prf_ysql_idx"));
+  LOG(INFO) << "YSQL index partition output: " << ysql_idx_out;
+  const bool ysql_idx_has_hash = ysql_idx_out.find("hash_split:") != string::npos;
+  const bool ysql_idx_has_range = ysql_idx_out.find("range:") != string::npos;
+  ASSERT_TRUE(ysql_idx_has_hash || ysql_idx_has_range)
+      << "Expected either hash_split or range format for YSQL index, got: " << ysql_idx_out;
+  if (ysql_idx_has_hash) {
+    ASSERT_NE(ysql_idx_out.find("0x"), string::npos)
+        << "Expected hex ranges for hash partitioned YSQL index, got: " << ysql_idx_out;
+    ASSERT_EQ(ysql_idx_out.find("\\"), string::npos)
+        << "Expected no octal escapes for hash partitioned YSQL index, got: " << ysql_idx_out;
+  } else {
+    ASSERT_TRUE(
+        ysql_idx_out.find("<start>") != string::npos || ysql_idx_out.find("DocKey") != string::npos)
+        << "Expected <start>/<end> or DocKey for range partitioned YSQL index, got: "
+        << ysql_idx_out;
+    ASSERT_EQ(ysql_idx_out.find("0x"), string::npos)
+        << "Range partitioned YSQL index should not have hex ranges, got: " << ysql_idx_out;
+  }
+
+  // Cleanup YSQL objects
+  ASSERT_OK(conn.Execute("DROP TABLE prf_ysql_idx_tbl"));
+
+  // Test 3b: YSQL non-range table index formatting (default hash partitioned table)
+  ASSERT_OK(conn.Execute("DROP TABLE IF EXISTS prf_ysql_idx_tbl2"));
+  ASSERT_OK(conn.Execute("CREATE TABLE prf_ysql_idx_tbl2 (k int PRIMARY KEY, v int)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX prf_ysql_idx2 ON prf_ysql_idx_tbl2 (v)"));
+
+  const string ysql_idx2_out =
+      ASSERT_RESULT(CallAdmin("list_tablets", "ysql.yugabyte", "prf_ysql_idx2"));
+  LOG(INFO) << "YSQL non-range index partition output: " << ysql_idx2_out;
+  ASSERT_NE(ysql_idx2_out.find("hash_split:"), string::npos)
+      << "Expected hash_split for default-partitioned YSQL index, got: " << ysql_idx2_out;
+  ASSERT_NE(ysql_idx2_out.find("0x"), string::npos)
+      << "Expected hex ranges for default-partitioned YSQL index, got: " << ysql_idx2_out;
+  ASSERT_EQ(ysql_idx2_out.find("\\"), string::npos)
+      << "Expected no octal escapes for default-partitioned YSQL index, got: " << ysql_idx2_out;
+
+  ASSERT_OK(conn.Execute("DROP TABLE prf_ysql_idx_tbl2"));
+
+  // Test 4: YCQL table and YCQL secondary index formatting
+  auto session = ASSERT_RESULT(CqlConnect());
+  const std::string ks = "ks_prf";
+  ASSERT_OK(session.ExecuteQueryFormat("CREATE KEYSPACE IF NOT EXISTS $0", ks));
+  ASSERT_OK(session.ExecuteQueryFormat("USE $0", ks));
+
+  // Create YCQL table with 5 tablets using YB client API.
+  // Create YCQL table with transactions enabled via CQL (tablet count may be defaulted).
+  ASSERT_OK(
+      session.ExecuteQuery("CREATE TABLE IF NOT EXISTS t1 (k INT PRIMARY KEY, v TEXT) WITH "
+                           "transactions = { 'enabled' : true }"));
+  ASSERT_OK(session.ExecuteQuery("CREATE INDEX IF NOT EXISTS t1_idx ON t1 (v)"));
+
+  const string ycql_tbl_out = ASSERT_RESULT(CallAdmin("list_tablets", ks, "t1"));
+  LOG(INFO) << "YCQL table partition output: " << ycql_tbl_out;
+  ASSERT_NE(ycql_tbl_out.find("hash_split:"), string::npos)
+      << "Expected hash_split for YCQL table, got: " << ycql_tbl_out;
+  ASSERT_NE(ycql_tbl_out.find("0x"), string::npos)
+      << "Expected hex ranges for YCQL table, got: " << ycql_tbl_out;
+  ASSERT_EQ(ycql_tbl_out.find("\\"), string::npos)
+      << "Expected no octal escapes for YCQL table, got: " << ycql_tbl_out;
+
+  const string ycql_idx_out = ASSERT_RESULT(CallAdmin("list_tablets", ks, "t1_idx"));
+  LOG(INFO) << "YCQL index partition output: " << ycql_idx_out;
+  ASSERT_NE(ycql_idx_out.find("hash_split:"), string::npos)
+      << "Expected hash_split for YCQL index, got: " << ycql_idx_out;
+  ASSERT_NE(ycql_idx_out.find("0x"), string::npos)
+      << "Expected hex ranges for YCQL index, got: " << ycql_idx_out;
+  ASSERT_EQ(ycql_idx_out.find("\\"), string::npos)
+      << "Expected no octal escapes for YCQL index, got: " << ycql_idx_out;
+}
+
 TEST_F(AdminCliTest, TestGetClusterLoadBalancerState) {
   std::string output;
   std::vector<std::string> master_flags;
@@ -957,16 +1127,16 @@ TEST_F(AdminCliTest, TestModifyTablePlacementPolicy) {
       "c.r.z0,c.r.z1,c.r.z2", 3, random_placement_uuid));
 
   ASSERT_OK(client->OpenTable(extra_table, &table));
-  ASSERT_TRUE(table->replication_info().get().live_replicas().placement_uuid().empty());
+  ASSERT_TRUE(table->replication_info()->live_replicas().placement_uuid().empty());
 
   // Fetch the placement policy for the table and verify that it matches
   // the custom info set previously.
   ASSERT_OK(client->OpenTable(extra_table, &table));
   vector<bool> found_zones;
   found_zones.assign(3, false);
-  ASSERT_EQ(table->replication_info().get().live_replicas().placement_blocks_size(), 3);
+  ASSERT_EQ(table->replication_info()->live_replicas().placement_blocks_size(), 3);
   for (int ii = 0; ii < 3; ++ii) {
-    auto pb = table->replication_info().get().live_replicas().placement_blocks(ii).cloud_info();
+    auto pb = table->replication_info()->live_replicas().placement_blocks(ii).cloud_info();
     ASSERT_EQ(pb.placement_cloud(), "c");
     ASSERT_EQ(pb.placement_region(), "r");
     if (pb.placement_zone() == "z0") {
@@ -989,17 +1159,17 @@ TEST_F(AdminCliTest, TestModifyTablePlacementPolicy) {
 
   // Verify that changing the placement _uuid for a table fails if the
   // placement_uuid does not match the cluster live placement_uuid.
-  ASSERT_NOK(CallAdmin(
-      "modify_table_placement_info", table_id, "c.r.z1", 1, random_placement_uuid));
+  ASSERT_NOK(
+      CallAdmin("modify_table_placement_info", table_id, "c.r.z1", 1, random_placement_uuid));
 
   ASSERT_OK(client->OpenTable(extra_table, &table));
-  ASSERT_TRUE(table->replication_info().get().live_replicas().placement_uuid().empty());
+  ASSERT_TRUE(table->replication_info()->live_replicas().placement_uuid().empty());
 
   // Fetch the placement policy for the table and verify that it matches
   // the custom info set previously.
   ASSERT_OK(client->OpenTable(extra_table, &table));
-  ASSERT_EQ(table->replication_info().get().live_replicas().placement_blocks_size(), 1);
-  auto pb = table->replication_info().get().live_replicas().placement_blocks(0).cloud_info();
+  ASSERT_EQ(table->replication_info()->live_replicas().placement_blocks_size(), 1);
+  auto pb = table->replication_info()->live_replicas().placement_blocks(0).cloud_info();
   ASSERT_EQ(pb.placement_cloud(), "c");
   ASSERT_EQ(pb.placement_region(), "r");
   ASSERT_EQ(pb.placement_zone(), "z1");
@@ -1060,13 +1230,12 @@ TEST_F(AdminCliTest, TestCreateTransactionStatusTablesWithPlacements) {
   // Verify that the tables are all in transaction status tables in the right zone.
   std::shared_ptr<client::YBTable> table;
   for (int i = 0; i < 3; ++i) {
-    const auto table_name = YBTableName(YQLDatabase::YQL_DATABASE_CQL,
-                                        "system",
-                                        Substitute("transactions_z$0", i));
+    const auto table_name =
+        YBTableName(YQLDatabase::YQL_DATABASE_CQL, "system", Substitute("transactions_z$0", i));
     ASSERT_OK(client->OpenTable(table_name, &table));
     ASSERT_EQ(table->table_type(), YBTableType::TRANSACTION_STATUS_TABLE_TYPE);
-    ASSERT_EQ(table->replication_info().get().live_replicas().placement_blocks_size(), 1);
-    auto pb = table->replication_info().get().live_replicas().placement_blocks(0).cloud_info();
+    ASSERT_EQ(table->replication_info()->live_replicas().placement_blocks_size(), 1);
+    auto pb = table->replication_info()->live_replicas().placement_blocks(0).cloud_info();
     ASSERT_EQ(pb.placement_zone(), Substitute("z$0", i));
   }
 
@@ -1363,7 +1532,7 @@ TEST_F_EX(AdminCliTest, ListTabletDefaultTenTablets, AdminCliListTabletsTest) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 1;
 
-  ASSERT_NO_FATALS(BuildAndStart({}, {"--replication_factor=1"}));
+  ASSERT_NO_FATALS(BuildAndStart({}, {}));
 
   YBSchema schema;
   YBSchemaBuilder schema_builder;

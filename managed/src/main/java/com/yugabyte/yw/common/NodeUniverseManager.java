@@ -1,4 +1,4 @@
-// Copyright (c) Yugabyte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.common;
 
@@ -658,7 +658,7 @@ public class NodeUniverseManager extends DevopsBase {
     if (cloudType == CloudType.kubernetes) {
       Map<String, String> k8sConfig =
           KubernetesUtil.getKubernetesConfigPerPod(
-                  cluster.placementInfo,
+                  cluster.getOverallPlacement(),
                   universe.getUniverseDetails().getNodesInCluster(cluster.uuid))
               .get(node.cloudInfo.private_ip);
       if (k8sConfig == null) {
@@ -935,6 +935,13 @@ public class NodeUniverseManager extends DevopsBase {
       FileUtils.deleteQuietly(new File(localTempFilePath));
     }
     return nodeFilePathSizeMap;
+  }
+
+  public void postProcessInMemoryGFlags(
+      Map<String, String> gflags, Universe universe, NodeDetails nodeDetails) {
+    if (universe.getCluster(nodeDetails.placementUuid).userIntent.providerType == CloudType.local) {
+      localNodeUniverseManager.postProcessGFlagsMap(gflags, universe, nodeDetails);
+    }
   }
 
   public enum UniverseNodeAction {

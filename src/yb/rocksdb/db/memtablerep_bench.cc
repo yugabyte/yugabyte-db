@@ -3,9 +3,9 @@
 //  LICENSE file in the root directory of this source tree. An additional grant
 //  of patent rights can be found in the PATENTS file in the same directory.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -432,11 +432,12 @@ class Benchmark {
     uint64_t bytes_written = 0;
     uint64_t bytes_read = 0;
     uint64_t read_hits = 0;
-    StopWatchNano timer(Env::Default(), true);
-    RunThreads(&threads, &bytes_written, &bytes_read, true, &read_hits);
-    auto elapsed_time = static_cast<double>(timer.ElapsedNanos() / 1000);
-    std::cout << "Elapsed time: " << static_cast<int>(elapsed_time) << " us"
-              << std::endl;
+    uint64_t elapsed_micros;
+    {
+      StopWatchMicro timer(Env::Default(), &elapsed_micros);
+      RunThreads(&threads, &bytes_written, &bytes_read, true, &read_hits);
+    }
+    std::cout << "Elapsed time: " << elapsed_micros << " us" << std::endl;
 
     if (bytes_written > 0) {
       auto MiB_written = static_cast<double>(bytes_written) / (1 << 20);

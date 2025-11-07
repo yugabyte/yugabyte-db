@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -33,17 +33,14 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
 import play.mvc.Results;
 
+@Slf4j
 public class HAController extends AuthenticatedController {
-
-  public static final Logger LOG = LoggerFactory.getLogger(HAController.class);
-
   @Inject private PlatformReplicationManager replicationManager;
 
   @AuthzPath({
@@ -55,63 +52,35 @@ public class HAController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public synchronized Result createHAConfig(Http.Request request) {
-    try {
-      HAConfigFormData formData = parseJsonAndValidate(request, HAConfigFormData.class);
-
-      if (HighAvailabilityConfig.get().isPresent()) {
-        LOG.error("An HA Config already exists");
-        throw new PlatformServiceException(BAD_REQUEST, "An HA Config already exists");
-      }
-      HighAvailabilityConfig config =
-          HighAvailabilityConfig.create(formData.cluster_key, formData.accept_any_certificate);
-      auditService()
-          .createAuditEntryWithReqBody(
-              request,
-              Audit.TargetType.HAConfig,
-              Objects.toString(config.getUuid(), null),
-              Audit.ActionType.Create);
-      return PlatformResults.withData(config);
-    } catch (Exception e) {
-      LOG.error("Error creating HA config", e);
-      if (e instanceof PlatformServiceException) {
-        throw (PlatformServiceException) e;
-      }
-      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Error creating HA config");
+    if (HighAvailabilityConfig.get().isPresent()) {
+      log.error("An HA Config already exists");
+      throw new PlatformServiceException(BAD_REQUEST, "An HA Config already exists");
     }
+    HAConfigFormData formData = parseJsonAndValidate(request, HAConfigFormData.class);
+    HighAvailabilityConfig config =
+        HighAvailabilityConfig.create(formData.cluster_key, formData.accept_any_certificate);
+    auditService()
+        .createAuditEntryWithReqBody(
+            request,
+            Audit.TargetType.HAConfig,
+            Objects.toString(config.getUuid(), null),
+            Audit.ActionType.Create);
+    return PlatformResults.withData(config);
   }
 
   @ApiOperation(
       nickname = "getHAConfig",
       value = "Get high availability config",
       response = HAConfigGetResp.class)
-  @AuthzPath({
-    @RequiredPermissionOnResource(
-        requiredPermission =
-            @PermissionAttribute(
-                resourceType = ResourceType.OTHER,
-                action = Action.SUPER_ADMIN_ACTIONS),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
-  })
+  @AuthzPath
   public Result getHAConfig() {
-    try {
-      Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.get();
-
-      if (!config.isPresent()) {
-        LOG.debug("No HA config exists");
-
-        JsonNode jsonMsg = Json.newObject().put("error", "No HA config exists");
-        return Results.status(NOT_FOUND, jsonMsg);
-      }
-
-      HAConfigGetResp resp = new HAConfigGetResp(config.get());
-      return PlatformResults.withData(resp);
-    } catch (Exception e) {
-      LOG.error("Error retrieving HA config", e);
-      if (e instanceof PlatformServiceException) {
-        throw (PlatformServiceException) e;
-      }
-      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Error retrieving HA config");
+    Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.get();
+    if (!config.isPresent()) {
+      log.debug("No HA config exists");
+      JsonNode jsonMsg = Json.newObject().put("error", "No HA config exists");
+      return Results.status(NOT_FOUND, jsonMsg);
     }
+    return PlatformResults.withData(new HAConfigGetResp(config.get()));
   }
 
   @AuthzPath({
@@ -123,43 +92,36 @@ public class HAController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result editHAConfig(UUID configUUID, Http.Request request) {
-    try {
-      Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.maybeGet(configUUID);
-      if (!config.isPresent()) {
-        throw new PlatformServiceException(NOT_FOUND, "Invalid config UUID");
-      }
-
-      HAConfigFormData formData = parseJsonAndValidate(request, HAConfigFormData.class);
-
-      // Validate when changing from true to false
-      if (!formData.accept_any_certificate && config.get().getAcceptAnyCertificate()) {
-        List<PlatformInstance> remoteInstances = config.get().getRemoteInstances();
-        for (PlatformInstance follower : remoteInstances) {
-          if (!replicationManager.testConnection(
-              config.get(), follower.getAddress(), false /* acceptAnyCertificate */)) {
-            throw new PlatformServiceException(
-                INTERNAL_SERVER_ERROR,
-                "Error testing certificate connection to remote instance " + follower.getAddress());
-          }
+    HighAvailabilityConfig config =
+        HighAvailabilityConfig.maybeGet(configUUID)
+            .orElseThrow(() -> new PlatformServiceException(NOT_FOUND, "Invalid config UUID"));
+    HAConfigFormData formData = parseJsonAndValidate(request, HAConfigFormData.class);
+    // Validate when changing from true to false
+    if (!formData.accept_any_certificate && config.getAcceptAnyCertificate()) {
+      List<PlatformInstance> remoteInstances = config.getRemoteInstances();
+      for (PlatformInstance follower : remoteInstances) {
+        if (!replicationManager.testConnection(
+            config, follower.getAddress(), false /* acceptAnyCertificate */)) {
+          throw new PlatformServiceException(
+              INTERNAL_SERVER_ERROR,
+              "Error testing certificate connection to remote instance " + follower.getAddress());
         }
       }
-      replicationManager.stop();
-      HighAvailabilityConfig.update(
-          config.get(), formData.cluster_key, formData.accept_any_certificate);
-      // Save the local HA config before DB record is replaced in backup-restore during promotion.
-      replicationManager.saveLocalHighAvailabilityConfig(config.get());
-      replicationManager.start();
-      auditService()
-          .createAuditEntryWithReqBody(
-              request, Audit.TargetType.HAConfig, configUUID.toString(), Audit.ActionType.Edit);
-      return PlatformResults.withData(config);
-    } catch (Exception e) {
-      LOG.error("Error updating cluster key", e);
-      if (e instanceof PlatformServiceException) {
-        throw (PlatformServiceException) e;
-      }
-      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Error updating cluster key");
     }
+    replicationManager.stop();
+    try {
+      config =
+          HighAvailabilityConfig.update(
+              configUUID, formData.cluster_key, formData.accept_any_certificate);
+      // Save the local HA config before DB record is replaced in backup-restore during promotion.
+      replicationManager.saveLocalHighAvailabilityConfig(config);
+    } finally {
+      replicationManager.start();
+    }
+    auditService()
+        .createAuditEntryWithReqBody(
+            request, Audit.TargetType.HAConfig, configUUID.toString(), Audit.ActionType.Edit);
+    return PlatformResults.withData(config);
   }
 
   // TODO: (Daniel) - This could be a task
@@ -172,33 +134,22 @@ public class HAController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result deleteHAConfig(UUID configUUID, Http.Request request) {
-    try {
-      Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.maybeGet(configUUID);
-      if (!config.isPresent()) {
-        throw new PlatformServiceException(NOT_FOUND, "Invalid config UUID");
-      }
-
-      Optional<PlatformInstance> localInstance = config.get().getLocal();
-      if (localInstance.isPresent() && !localInstance.get().getIsLeader()) {
-        // Revert prometheus from federated mode.
-        replicationManager.switchPrometheusToStandalone();
-      }
-
-      // Stop the backup schedule.
-      replicationManager.stopAndDisable();
-      HighAvailabilityConfig.delete(configUUID);
-      replicationManager.deleteLocalHighAvailabilityConfig();
-      auditService()
-          .createAuditEntry(
-              request, Audit.TargetType.HAConfig, configUUID.toString(), Audit.ActionType.Delete);
-      return ok();
-    } catch (Exception e) {
-      LOG.error("Error deleting HA config", e);
-      if (e instanceof PlatformServiceException) {
-        throw (PlatformServiceException) e;
-      }
-      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Error deleting HA config");
+    HighAvailabilityConfig config =
+        HighAvailabilityConfig.maybeGet(configUUID)
+            .orElseThrow(() -> new PlatformServiceException(NOT_FOUND, "Invalid config UUID"));
+    Optional<PlatformInstance> localInstance = config.getLocal();
+    if (localInstance.isPresent() && !localInstance.get().getIsLeader()) {
+      // Revert prometheus from federated mode.
+      replicationManager.switchPrometheusToStandalone();
     }
+    // Stop the backup schedule.
+    replicationManager.stopAndDisable();
+    HighAvailabilityConfig.delete(configUUID);
+    replicationManager.deleteLocalHighAvailabilityConfig();
+    auditService()
+        .createAuditEntry(
+            request, Audit.TargetType.HAConfig, configUUID.toString(), Audit.ActionType.Delete);
+    return ok();
   }
 
   @AuthzPath({
@@ -210,15 +161,7 @@ public class HAController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result generateClusterKey() {
-    try {
-      String clusterKey = HighAvailabilityConfig.generateClusterKey();
-      return ok(Json.newObject().put("cluster_key", clusterKey));
-    } catch (Exception e) {
-      LOG.error("Error generating cluster key", e);
-      if (e instanceof PlatformServiceException) {
-        throw (PlatformServiceException) e;
-      }
-      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Error generating cluster key");
-    }
+    String clusterKey = HighAvailabilityConfig.generateClusterKey();
+    return ok(Json.newObject().put("cluster_key", clusterKey));
   }
 }

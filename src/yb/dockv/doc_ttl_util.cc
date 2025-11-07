@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -73,6 +73,20 @@ const MonoDelta ComputeTTL(const MonoDelta& value_ttl, const Schema& schema) {
   return ComputeTTL(value_ttl, TableTTL(schema));
 }
 
+HybridTime ComputeExpiration(HybridTime ht, MonoDelta ttl) {
+  // Calculate the expiration time based on table TTL only.
+  auto expiry = ht.AddDelta(ttl);
+
+  // Sanity check for overflow, return no expiration if overflow detected.
+  return (CompareHybridTimesToDelta(ht, expiry, ttl) == 0) ? expiry : kNoExpiration;
+}
+
+bool IsInvalidTTL(MonoDelta ttl) {
+  return !ttl.Initialized() ||
+    ttl.Equals(ValueControlFields::kMaxTtl) || (ttl.ToMilliseconds() == kResetTTL);
+}
+
+//
 const HybridTime FileExpirationFromValueTTL(
     const HybridTime& key_hybrid_time, const MonoDelta& value_ttl) {
   if (value_ttl.Equals(ValueControlFields::kMaxTtl)) {
@@ -80,12 +94,8 @@ const HybridTime FileExpirationFromValueTTL(
   } else if (value_ttl.Equals(ValueControlFields::kResetTtl)) {
     return kNoExpiration;
   }
-  auto exp_time = key_hybrid_time.AddDelta(value_ttl);
-  // Sanity check for overflow, return no expiration if detected.
-  if (CompareHybridTimesToDelta(key_hybrid_time, exp_time, value_ttl) != 0) {
-    return kNoExpiration;
-  }
-  return exp_time;
+
+  return ComputeExpiration(key_hybrid_time, value_ttl);
 }
 
 const HybridTime MaxExpirationFromValueAndTableTTL(const HybridTime& key_hybrid_time,
@@ -102,11 +112,11 @@ const HybridTime MaxExpirationFromValueAndTableTTL(const HybridTime& key_hybrid_
   }
 
   // Calculate the expiration time based on table TTL only.
-  auto table_expiry = key_hybrid_time.AddDelta(table_ttl);
-  // Sanity check for overflow, return no expiration if overflow detected.
-  if (CompareHybridTimesToDelta(key_hybrid_time, table_expiry, table_ttl) != 0) {
+  auto table_expiry = ComputeExpiration(key_hybrid_time, table_ttl);
+  if (table_expiry == kNoExpiration) {
     return kNoExpiration;
   }
+
   // Return the greater of the table expiration time and the value expiration time.
   return value_expiry >= table_expiry ? value_expiry : table_expiry;
 }

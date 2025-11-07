@@ -272,6 +272,15 @@ Introduced in version 2.21.1.0, this flag limits the number of Prometheus metric
 
 To override this flag on a per-scrape basis, you can adjust the URL parameter `max_metric_entries`.
 
+##### --export_intentdb_metrics
+
+{{% tags/wrap %}}
+
+Default: `true`
+{{% /tags/wrap %}}
+
+Whether to dump IntentsDB statistics to Prometheus metrics.
+
 ## PostgreSQL configuration parameters
 
 YugabyteDB uses [PostgreSQL server configuration parameters](https://www.postgresql.org/docs/15/config-setting.html) to apply server configuration settings to new server instances.
@@ -314,20 +323,6 @@ You can modify these parameters in the following ways:
 
     ```sql
     SET LOCAL temp_file_limit=-1;
-    ```
-
-- To specify the minimum age of a transaction (in seconds) before its locks are included in the results returned from querying the [pg_locks](../../../explore/observability/pg-locks/) view, use [yb_locks_min_txn_age](../../../explore/observability/pg-locks/#yb-locks-min-txn-age):
-
-    ```sql
-    --- To change the minimum transaction age to 5 seconds:
-    SET session yb_locks_min_txn_age = 5000;
-    ```
-
-- To set the maximum number of transactions for which lock information is displayed when you query the [pg_locks](../../../explore/observability/pg-locks/) view, use [yb_locks_max_transactions](../../../explore/observability/pg-locks/#yb-locks-max-transactions):
-
-    ```sql
-    --- To change the maximum number of transactions to display to 10:
-    SET session yb_locks_max_transactions = 10;
     ```
 
 For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/15/runtime-config.html) in the PostgreSQL documentation.
@@ -405,7 +400,7 @@ Enables or disables the query planner's use of bitmap scans for YugabyteDB relat
 | enable_bitmapscan | yb_enable_bitmapscan | Result |
 | :--- | :---  | :--- |
 | true | false | Default. Bitmap scans allowed only on temporary tables, if the planner believes the bitmap scan is most optimal. |
-| true | true  | Default for [Enhanced PostgreSQL Compatibility](../../../develop/postgresql-compatibility/). Bitmap scans are allowed on temporary tables and YugabyteDB relations, if the planner believes the bitmap scan is most optimal. |
+| true | true  | Default for [Enhanced PostgreSQL Compatibility](../postgresql-compatibility/). Bitmap scans are allowed on temporary tables and YugabyteDB relations, if the planner believes the bitmap scan is most optimal. |
 | false | false | Bitmap scans allowed only on temporary tables, but only if every other scan type is also disabled / not possible. |
 | false | true  | Bitmap scans allowed on temporary tables and YugabyteDB relations, but only if every other scan type is also disabled / not possible. |
 
@@ -602,6 +597,42 @@ Determines the sampling algorithm to use to select random rows from a table when
 
 - `full_table_scan`: Scans the whole table and picks random rows
 - `block_based_sampling`: Samples the table for a set of blocks, and then scans only those selected blocks to form a final rows sample.
+
+##### yb_locks_min_txn_age
+
+{{% tags/wrap %}}
+
+Default: `1`
+{{% /tags/wrap %}}
+
+Specifies the minimum age of a transaction (in seconds) before its locks are included in the results returned from querying the [pg_locks](../../../explore/observability/pg-locks/) view. Use this parameter to focus on older transactions that may be more relevant to performance tuning or deadlock resolution efforts.
+
+##### yb_locks_max_transactions
+
+{{% tags/wrap %}}
+
+Default: `16`
+{{% /tags/wrap %}}
+
+Sets the maximum number of transactions for which lock information is displayed when you query the [pg_locks](../../../explore/observability/pg-locks/) view. Limits output to the most relevant transactions, which is particularly beneficial in environments with high levels of concurrency and transactional activity.
+
+##### yb_locks_txn_locks_per_tablet
+
+{{% tags/wrap %}}
+
+Default: `200`
+{{% /tags/wrap %}}
+
+Sets the maximum number of rows per transaction per tablet to return in [pg_locks](../../../explore/observability/pg-locks/). Set to 0 to return all results.
+
+##### yb_default_copy_from_rows_per_transaction
+
+{{% tags/wrap %}}
+
+Default: `20000`
+{{% /tags/wrap %}}
+
+Sets the maximum batch size per transaction when using [COPY FROM](../../../api/ysql/the-sql-language/statements/cmd_copy/).
 
 ## Networking
 
@@ -997,7 +1028,7 @@ Default: `false`
 
 When enabled, all databases created in the cluster are colocated by default. If you enable the flag after creating a cluster, you need to restart the YB-Master and YB-TServer services.
 
-For more details, see [clusters in colocated tables](../../../explore/colocation/).
+For more details, see [clusters in colocated tables](../../../additional-features/colocation/).
 
 ##### tablet_replicas_per_core_limit
 
@@ -1071,7 +1102,7 @@ When the flag `ysql_ddl_transaction_wait_for_ddl_verification` is enabled, YSQL 
 
 ### Change data capture (CDC) flags
 
-To learn about CDC, see [Change data capture (CDC)](../../../develop/change-data-capture/).
+To learn about CDC, see [Change data capture (CDC)](../../../additional-features/change-data-capture/).
 
 ##### --yb_enable_cdc_consistent_snapshot_streams
 
@@ -1219,7 +1250,7 @@ Default: `CHANGE`
 
 The default replica identity to be assigned to user-defined tables at the time of creation. The flag is case sensitive and can take only one of the four possible values, `FULL`, `DEFAULT`, `NOTHING`, and `CHANGE`.
 
-For more information, refer to [Replica identity](../../../develop/change-data-capture/using-logical-replication/yugabytedb-connector/#replica-identity).
+For more information, refer to [Replica identity](../../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/#replica-identity).
 
 ##### --cdcsdk_enable_dynamic_table_support
 
@@ -1862,7 +1893,6 @@ Starting from version 2.18, the default is `-1`. Previously it was `4`.
 
 {{< /note >}}
 
-
 ##### --full_compaction_pool_max_threads
 
 {{% tags/wrap %}}
@@ -2009,7 +2039,7 @@ If `enable_wait_queues=true`, this controls the rate at which each tablet's wait
 
 ### DDL concurrency flags
 
-##### ysql_enable_db_catalog_version_mode
+##### --ysql_enable_db_catalog_version_mode
 
 {{% tags/wrap %}}
 
@@ -2059,7 +2089,7 @@ To re-enable the per database catalog version mode using the following steps:
 1. Shut down the cluster.
 1. Start the cluster with `--ysql_enable_db_catalog_version_mode=true`.
 
-##### enable_heartbeat_pg_catalog_versions_cache
+##### --enable_heartbeat_pg_catalog_versions_cache
 
 {{% tags/wrap %}}
 
@@ -2091,7 +2121,7 @@ Configure the YugabyteDB [cost-based optimizer](../../../architecture/query-laye
 
 See also the [yb_enable_cbo](#yb-enable-cbo) configuration parameter. If this flag is set, the parameter takes precedence.
 
-##### ysql_yb_enable_cbo
+##### --ysql_yb_enable_cbo
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
@@ -2106,7 +2136,7 @@ For information on using this parameter to configure CBO, refer to [Enable cost-
 
 ### Auto Analyze service flags
 
-Auto analyze is {{<tags/feature/ea idea="590">}}.
+{{<tags/feature/ea idea="590">}}To learn about the Auto Analyze service, see [Auto Analyze service](../../../additional-features/auto-analyze).
 
 {{< note title="Note" >}}
 
@@ -2114,18 +2144,20 @@ To fully enable the Auto Analyze service, you need to enable `ysql_enable_auto_a
 
 {{< /note >}}
 
-See also [Auto Analyze Service Master flags](../yb-master#auto-analyze-service-flags).
+See also [Auto Analyze Service Master flags](../yb-master/#auto-analyze-service-flags).
 
-##### ysql_enable_auto_analyze_service
+##### --ysql_enable_auto_analyze_service
 
 {{% tags/wrap %}}
 {{<tags/feature/ea idea="590">}}
+{{<tags/feature/t-server>}}
+{{<tags/feature/restart-needed>}}
 Default: `false`
 {{% /tags/wrap %}}
 
 Enable the Auto Analyze service, which automatically runs ANALYZE to update table statistics for tables that have changed more than a configurable threshold.
 
-##### ysql_enable_table_mutation_counter
+##### --ysql_enable_table_mutation_counter
 
 {{% tags/wrap %}}
 
@@ -2135,21 +2167,21 @@ Default: `false`
 
 Enable per table mutation (INSERT, UPDATE, DELETE) counting. The Auto Analyze service runs ANALYZE when the number of mutations of a table exceeds the threshold determined by the [ysql_auto_analyze_threshold](#ysql-auto-analyze-threshold) and [ysql_auto_analyze_scale_factor](#ysql-auto-analyze-scale-factor) settings.
 
-##### ysql_auto_analyze_threshold
+##### --ysql_auto_analyze_threshold
 
 {{% tags/wrap %}}
 
-
+{{<tags/feature/restart-needed>}}
 Default: `50`
 {{% /tags/wrap %}}
 
 The minimum number of mutations needed to run ANALYZE on a table.
 
-##### ysql_auto_analyze_scale_factor
+##### --ysql_auto_analyze_scale_factor
 
 {{% tags/wrap %}}
 
-
+{{<tags/feature/restart-needed>}}
 Default: `0.1`
 {{% /tags/wrap %}}
 
@@ -2157,51 +2189,51 @@ The fraction defining when sufficient mutations have been accumulated to run ANA
 
 ANALYZE runs when the mutation count exceeds `ysql_auto_analyze_scale_factor * <table_size> + ysql_auto_analyze_threshold`, where table_size is the value of the `reltuples` column in the `pg_class` catalog.
 
-##### ysql_auto_analyze_batch_size
+##### --ysql_auto_analyze_batch_size
 
 {{% tags/wrap %}}
 
-
+{{<tags/feature/restart-needed>}}
 Default: `10`
 {{% /tags/wrap %}}
 
 The maximum number of tables the Auto Analyze service tries to analyze in a single ANALYZE statement.
 
-##### ysql_cluster_level_mutation_persist_interval_ms
+##### --ysql_cluster_level_mutation_persist_interval_ms
 
 {{% tags/wrap %}}
 
-
+{{<tags/feature/restart-needed>}}
 Default: `10000`
 {{% /tags/wrap %}}
 
 Interval at which the reported node level table mutation counts are persisted to the underlying auto-analyze mutations table.
 
-##### ysql_cluster_level_mutation_persist_rpc_timeout_ms
+##### --ysql_cluster_level_mutation_persist_rpc_timeout_ms
 
 {{% tags/wrap %}}
 
-
+{{<tags/feature/restart-needed>}}
 Default: `10000`
 {{% /tags/wrap %}}
 
 Timeout for the RPCs used to persist mutation counts in the auto-analyze mutations table.
 
-##### ysql_node_level_mutation_reporting_interval_ms
+##### --ysql_node_level_mutation_reporting_interval_ms
 
 {{% tags/wrap %}}
 
-
+{{<tags/feature/restart-needed>}}
 Default: `5000`
 {{% /tags/wrap %}}
 
 Interval, in milliseconds, at which the node-level table mutation counts are sent to the Auto Analyze service, which tracks table mutation counts at the cluster level.
 
-##### ysql_node_level_mutation_reporting_timeout_ms
+##### --ysql_node_level_mutation_reporting_timeout_ms
 
 {{% tags/wrap %}}
 
-
+{{<tags/feature/restart-needed>}}
 Default: `5000`
 {{% /tags/wrap %}}
 
@@ -2209,9 +2241,9 @@ Timeout, in milliseconds, for the node-level mutation reporting RPC to the Auto 
 
 ### Advisory lock flags
 
-Support for advisory locks is {{<tags/feature/tp idea="812">}}.
+Support for advisory locks is {{<tags/feature/tp idea="812">}}. To use the flags, you must add them to [allowed_preview_flags_csv](#allowed-preview-flags-csv).
 
-To learn about advisory locks, see [Advisory locks](../../../explore/transactions/explicit-locking/#advisory-locks).
+To learn about advisory locks, see [Advisory locks](../../../architecture/transactions/concurrency-control/#advisory-locks).
 
 ##### --ysql_yb_enable_advisory_locks
 
@@ -2259,7 +2291,7 @@ Set this flag to `false` to enable online index backfill. When set to `false`, o
 
 For details on how online index backfill works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
 
-#### --num_concurrent_backfills_allowed
+##### --num_concurrent_backfills_allowed
 
 {{% tags/wrap %}}
 
@@ -2274,7 +2306,7 @@ Default: `-1` (automatic setting)
 
 Increasing the number of backfill jobs can allow the index creation to complete faster, however setting it to a higher number can impact foreground workload operations and also increase the chance of failures and retries of backfill jobs if CPU usage becomes too high.
 
-##### backfill_index_client_rpc_timeout_ms
+##### --backfill_index_client_rpc_timeout_ms
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
@@ -2283,7 +2315,8 @@ Default: `86400000` (1 day)
 
 Timeout (in milliseconds) for the backfill stage of a concurrent CREATE INDEX.
 
-##### backfill_index_timeout_grace_margin_ms
+##### --backfill_index_timeout_grace_margin_ms
+
 {{% tags/wrap %}}
 
 
@@ -2292,7 +2325,7 @@ Default: `-1`, where the system automatically calculates the value to be approxi
 
 The time to exclude from the YB-Master flag [ysql_index_backfill_rpc_timeout_ms](../yb-master/#ysql-index-backfill-rpc-timeout-ms) in order to return results to YB-Master in the specified deadline. Should be set to at least the amount of time each batch would require, and less than `ysql_index_backfill_rpc_timeout_ms`.
 
-##### backfill_index_write_batch_size
+##### --backfill_index_write_batch_size
 
 {{% tags/wrap %}}
 
@@ -2734,7 +2767,7 @@ Specifies the [severity level](https://www.postgresql.org/docs/15/runtime-config
 Default: `false`
 {{% /tags/wrap %}}
 
-Set this flag to true on all YB-Masters and YB-TServers to add the [pg_cron extension](../../../explore/ysql-language-features/pg-extensions/extension-pgcron/).
+Set this flag to true on all YB-Masters and YB-TServers to add the [pg_cron extension](../../../additional-features/pg-extensions/extension-pgcron/).
 
 ##### --ysql_cron_database_name
 
@@ -2746,7 +2779,7 @@ Default: `yugabyte`
 
 Specifies the database where pg_cron is to be installed. You can create the database after setting the flag.
 
-The [pg_cron extension](../../../explore/ysql-language-features/pg-extensions/extension-pgcron/) is installed on only one database (by default, `yugabyte`).
+The [pg_cron extension](../../../additional-features/pg-extensions/extension-pgcron/) is installed on only one database (by default, `yugabyte`).
 
 To change the database after the extension is created, you must first drop the extension and then change the flag value.
 

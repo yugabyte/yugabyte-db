@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -80,6 +80,14 @@ struct ObjectLockedBatchEntry;
 
 namespace {
 
+// Below are the two different scenarios where we fail requests with ShutdownInProgress in case
+// of the lock manager shutting down.
+// 1. upon ysql lease changes
+// 2. on shutdown of the tserver node
+//
+// Master leader retries failed lock requests with code ShutdownInProgress until either the retry
+// attempts are exhausted or the tserver looses it lease. This is the desired behavior as it
+// achieves resiliency for DDL lock requests amidst cluster membership changes.
 const Status kShuttingDownError = STATUS(
     ShutdownInProgress, "Object Lock Manager shutting down");
 
@@ -303,6 +311,8 @@ class ObjectLockManagerImpl {
 
   void DumpStatusHtml(std::ostream& out) EXCLUDES(global_mutex_);
 
+  void ConsumePendingSharedLockRequests() EXCLUDES(global_mutex_);
+
   size_t TEST_LocksSize(LocksMapType locks_map);
   size_t TEST_GrantedLocksSize();
   size_t TEST_WaitingLocksSize();
@@ -312,8 +322,9 @@ class ObjectLockManagerImpl {
  private:
   friend struct WaiterEntry;
 
-  void ConsumePendingSharedLockRequests() REQUIRES(global_mutex_);
-  void ConsumePendingSharedLockRequest(ObjectSharedLockRequest& request) REQUIRES(global_mutex_);
+  void ConsumePendingSharedLockRequestsUnlocked() REQUIRES(global_mutex_);
+  void ConsumePendingSharedLockRequestUnlocked(
+      ObjectSharedLockRequest& request) REQUIRES(global_mutex_);
   void AcquireExclusiveLockIntents(const LockData& data) EXCLUDES(global_mutex_);
   void ReleaseExclusiveLockIntents(const LockIntentCounts& lock_intents);
   void ReleaseExclusiveLockIntents(const LockData& data);
@@ -498,18 +509,19 @@ LockState TrackedTransactionLockEntry::GetLockStateForKeyUnlocked(
   return existing_states[object_id];
 }
 
-void ObjectLockManagerImpl::ConsumePendingSharedLockRequests() {
+void ObjectLockManagerImpl::ConsumePendingSharedLockRequestsUnlocked() {
   if (shared_manager_) {
     size_t consumed = shared_manager_->ConsumePendingSharedLockRequests(
         make_lw_function([this](ObjectSharedLockRequest request) NO_THREAD_SAFETY_ANALYSIS {
-          ConsumePendingSharedLockRequest(request);
+          ConsumePendingSharedLockRequestUnlocked(request);
         }));
     IncrementCounterBy(metric_num_acquires_, consumed);
     IncrementCounterBy(metric_num_fastpath_acquires_, consumed);
   }
 }
 
-void ObjectLockManagerImpl::ConsumePendingSharedLockRequest(ObjectSharedLockRequest& request) {
+void ObjectLockManagerImpl::ConsumePendingSharedLockRequestUnlocked(
+    ObjectSharedLockRequest& request) {
   auto& lock_entry = request.entry;
   auto transaction_entry = DoReserve({&lock_entry, 1}, request.owner);
   std::lock_guard lock(transaction_entry->mutex);
@@ -531,7 +543,7 @@ void ObjectLockManagerImpl::AcquireExclusiveLockIntents(const LockData& data) {
   std::lock_guard lock(global_mutex_);
   size_t consumed = shared_manager_->ConsumeAndAcquireExclusiveLockIntents(
       make_lw_function([this](ObjectSharedLockRequest request) NO_THREAD_SAFETY_ANALYSIS {
-        ConsumePendingSharedLockRequest(request);
+        ConsumePendingSharedLockRequestUnlocked(request);
       }),
       exclusive_locks);
   IncrementCounterBy(metric_num_acquires_, consumed);
@@ -769,7 +781,7 @@ void ObjectLockManagerImpl::Unlock(const ObjectLockOwner& object_lock_owner) {
   TrackedTxnLockEntryPtr txn_entry;
   {
     std::lock_guard lock(global_mutex_);
-    ConsumePendingSharedLockRequests();
+    ConsumePendingSharedLockRequestsUnlocked();
     auto txn_itr = txn_locks_.find(object_lock_owner.txn_id);
     if (txn_itr == txn_locks_.end()) {
       return;
@@ -1123,9 +1135,9 @@ void ObjectLockManagerImpl::RegisterWaiters(ObjectLockedBatchEntry* locked_batch
         WARN_NOT_OK(
             item->waiter_registration->Register(
                 item->txn_id(), -1 /* request id */, std::move(item->blockers),
-                item->status_tablet(), boost::none /* pg_session_req_version */),
-            Format("Failed to register blockers of waiter $0",
-                   AsString(item->object_lock_owner())));
+                item->status_tablet(), std::nullopt /* pg_session_req_version */),
+            Format(
+                "Failed to register blockers of waiter $0", AsString(item->object_lock_owner())));
       }
       item->blockers = nullptr;
     });
@@ -1136,7 +1148,7 @@ void ObjectLockManagerImpl::DumpStatusHtml(std::ostream& out) {
   out << "<table class='table table-striped'>\n";
   out << "<tr><th>Prefix</th><th>LockBatchEntry</th></tr>" << std::endl;
   std::lock_guard l(global_mutex_);
-  ConsumePendingSharedLockRequests();
+  ConsumePendingSharedLockRequestsUnlocked();
   for (const auto& [prefix, entry] : locks_) {
     auto key_str = AsString(prefix);
     out << "<tr>"
@@ -1148,6 +1160,11 @@ void ObjectLockManagerImpl::DumpStatusHtml(std::ostream& out) {
 
   DumpStoredObjectLocksMap(out, "Granted object locks", LocksMapType::kGranted);
   DumpStoredObjectLocksMap(out, "Waiting object locks", LocksMapType::kWaiting);
+}
+
+void ObjectLockManagerImpl::ConsumePendingSharedLockRequests() {
+  std::lock_guard l(global_mutex_);
+  ConsumePendingSharedLockRequestsUnlocked();
 }
 
 void ObjectLockManagerImpl::DumpStoredObjectLocksMap(
@@ -1179,7 +1196,7 @@ void ObjectLockManagerImpl::DumpStoredObjectLocksMap(
 
 size_t ObjectLockManagerImpl::TEST_LocksSize(LocksMapType locks_map) {
   std::lock_guard lock(global_mutex_);
-  ConsumePendingSharedLockRequests();
+  ConsumePendingSharedLockRequestsUnlocked();
   size_t size = 0;
   for (const auto& [txn, txn_entry] : txn_locks_) {
     UniqueLock txn_lock(txn_entry->mutex);
@@ -1246,6 +1263,10 @@ void ObjectLockManager::Shutdown() {
 
 void ObjectLockManager::DumpStatusHtml(std::ostream& out) {
   impl_->DumpStatusHtml(out);
+}
+
+void ObjectLockManager::ConsumePendingSharedLockRequests() {
+  impl_->ConsumePendingSharedLockRequests();
 }
 
 size_t ObjectLockManager::TEST_GrantedLocksSize() {

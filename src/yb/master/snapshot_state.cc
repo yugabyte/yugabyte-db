@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -297,6 +297,15 @@ size_t SnapshotState::ResetRunning() {
     Throttler().RemoveOutstandingTask();
   }
   return result;
+}
+
+bool SnapshotState::ShouldRemoveNamespaceAnchor() const {
+  auto state_result = AggregatedState();
+  if (!state_result.ok()) {
+    return false;
+  }
+  auto state = state_result.get();
+  return state == SysSnapshotEntryPB::FAILED || state == SysSnapshotEntryPB::CANCELLED;
 }
 
 ListSnapshotsDetailOptionsPB ListSnapshotsDetailOptionsFactory::CreateWithNoDetails() {

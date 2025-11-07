@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -62,7 +62,7 @@ class PgDmlRead : public PgDml {
 
   // Append a filter condition.
   // Supported expression kind is serialized Postgres expression.
-  Status AppendQual(PgExpr* qual, bool is_for_secondary_index);
+  Status AppendQual(PgExpr* qual, uint32_t serialization_version, bool is_for_secondary_index);
 
   // Allocate binds.
   virtual void PrepareBinds();
@@ -72,9 +72,6 @@ class PgDmlRead : public PgDml {
 
   // Set prefix length, in columns, of distinct index scans.
   void SetDistinctPrefixLength(int distinct_prefix_length);
-
-  // Set scan bounds
-  void SetHashBounds(uint16_t low_bound, uint16_t high_bound);
 
   // Bind a range column with a BETWEEN condition.
   Status BindColumnCondBetween(
@@ -94,6 +91,10 @@ class PgDmlRead : public PgDml {
   // remaining from the previous range scan.
   Status BindRange(
       Slice lower_bound, bool lower_bound_inclusive, Slice upper_bound, bool upper_bound_inclusive);
+
+  void BindBounds(
+      const Slice lower_bound, bool lower_bound_inclusive, const Slice upper_bound,
+      bool upper_bound_inclusive);
 
   // Add a lower bound to the scan. If a lower bound has already been added
   // this call will set the lower bound to the stricter of the two bounds.
@@ -117,6 +118,9 @@ class PgDmlRead : public PgDml {
 
   void SetCatalogCacheVersion(std::optional<PgOid> db_oid, uint64_t version) override {
     DoSetCatalogCacheVersion(read_req_.get(), db_oid, version);
+  }
+  void SetTablespaceOid(uint32_t tablespace_oid) override {
+    DoSetTablespaceOid(read_req_.get(), tablespace_oid);
   }
 
   void UpgradeDocOp(PgDocOp::SharedPtr doc_op);

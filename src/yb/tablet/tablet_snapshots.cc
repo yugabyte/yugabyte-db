@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -98,19 +98,19 @@ void CleanupLastSnapshotHybridTime(
   }
 }
 
-} // namespace
+}  // namespace
 
 struct TabletSnapshots::RestoreMetadata {
-  boost::optional<Schema> schema;
-  boost::optional<qlexpr::IndexMap> index_map;
+  std::optional<Schema> schema;
+  std::optional<qlexpr::IndexMap> index_map;
   uint32_t schema_version;
   bool hide;
   google::protobuf::RepeatedPtrField<ColocatedTableMetadata> colocated_tables_metadata;
 };
 
 struct TabletSnapshots::ColocatedTableMetadata {
-  boost::optional<Schema> schema;
-  boost::optional<qlexpr::IndexMap> index_map;
+  std::optional<Schema> schema;
+  std::optional<qlexpr::IndexMap> index_map;
   uint32_t schema_version;
   TableId table_id;
 };
@@ -376,8 +376,8 @@ Status TabletSnapshots::Restore(SnapshotOperation* operation) {
   RestoreMetadata restore_metadata;
   if (request.has_schema()) {
     restore_metadata.schema.emplace();
-    RETURN_NOT_OK(SchemaFromPB(
-        request.schema().ToGoogleProtobuf(), restore_metadata.schema.get_ptr()));
+    RETURN_NOT_OK(
+        SchemaFromPB(request.schema().ToGoogleProtobuf(), &restore_metadata.schema.value()));
     restore_metadata.index_map.emplace(ToRepeatedPtrField(request.indexes()));
     restore_metadata.schema_version = request.schema_version();
     restore_metadata.hide = request.hide();
@@ -387,14 +387,13 @@ Status TabletSnapshots::Restore(SnapshotOperation* operation) {
     auto* table_metadata = restore_metadata.colocated_tables_metadata.Add();
     table_metadata->schema_version = entry.schema_version();
     table_metadata->schema.emplace();
-    RETURN_NOT_OK(SchemaFromPB(
-        entry.schema().ToGoogleProtobuf(), table_metadata->schema.get_ptr()));
+    RETURN_NOT_OK(SchemaFromPB(entry.schema().ToGoogleProtobuf(), &table_metadata->schema.value()));
     table_metadata->index_map.emplace(ToRepeatedPtrField(entry.indexes()));
     table_metadata->table_id = entry.table_id().ToBuffer();
   }
   Status s = RestoreCheckpoint(
-      snapshot_dir, restore_at, restore_metadata, frontier,
-      !request.schedule_id().empty(), operation->op_id());
+      snapshot_dir, restore_at, restore_metadata, frontier, !request.schedule_id().empty(),
+      operation->op_id());
   VLOG_WITH_PREFIX(1) << "Complete checkpoint restoring with result " << s << " in folder: "
                       << metadata().rocksdb_dir();
   int32 delay_time_secs = GetAtomicFlag(&FLAGS_TEST_delay_tablet_split_metadata_restore_secs);

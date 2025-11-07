@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 YugaByte, Inc. and Contributors
+ * Copyright 2022 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -486,6 +486,30 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Allow the usage of Loki Exporter in Telemetry Provider.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> telemetryAllowS3 =
+      new ConfKeyInfo<>(
+          "yb.telemetry.allow_s3",
+          ScopeType.GLOBAL,
+          "Allow S3 Exporter in Telemetry Provider",
+          "Allow the usage of S3 Exporter in Telemetry Provider.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> telemetryAllowOTLP =
+      new ConfKeyInfo<>(
+          "yb.telemetry.allow_otlp",
+          ScopeType.GLOBAL,
+          "Allow OTLP Exporter in Telemetry Provider",
+          "Allow the usage of OTLP Exporter in Telemetry Provider.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> telemetrySkipConnectivityValidations =
+      new ConfKeyInfo<>(
+          "yb.telemetry.skip_connectivity_validations",
+          ScopeType.GLOBAL,
+          "Skip connectivity validations while creating Telemetry Provider",
+          "Skip connectivity and permission validations while creating Telemetry Provider.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> hcvTokenRenewPercent =
       new ConfKeyInfo<>(
           "yb.kms.hcv_token_renew_percent",
@@ -801,6 +825,16 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ScopeType.GLOBAL,
           "Allow universes to be detached/attached",
           "Allow universes to be detached from a source platform and attached to dest platform",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowAutoProviderToK8sPlatform =
+      new ConfKeyInfo<>(
+          "yb.attach_detach.allow_auto_provider_to_k8s_platform",
+          ScopeType.GLOBAL,
+          "Allow auto-provider K8s universes to attach to K8s-based YBA",
+          "Allow Kubernetes auto-provider universes to be attached to Kubernetes-based YBA. "
+              + "Note that you must only attach auto-provider universe to Kubernetes-based YBA "
+              + "if the destination and source YBA exist on the same Kubernetes cluster",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> transactionalXClusterEnabled =
@@ -1196,6 +1230,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable publishing thread dumps to GCS",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> ybcDiagSupportBundlesGCSEnabled =
+      new ConfKeyInfo<>(
+          "yb.diag.support_bundles.gcs.enabled",
+          ScopeType.GLOBAL,
+          "Enable publishing support bundles to GCS",
+          "Enable publishing support bundles to GCS",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> blockOperatorApiResources =
       new ConfKeyInfo<>(
           "yb.kubernetes.operator.block_api_operator_owned_resources",
@@ -1297,6 +1339,22 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ScopeType.GLOBAL,
           "Kubernetes provider validation",
           "Enable the Kubernetes provider quick validation",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableAwsProviderValidation =
+      new ConfKeyInfo<>(
+          "yb.provider.aws_provider_validation",
+          ScopeType.GLOBAL,
+          "AWS provider validation",
+          "Enable AWS Provider quick validation",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableOnPremProviderValidation =
+      new ConfKeyInfo<>(
+          "yb.provider.onprem_provider_validation",
+          ScopeType.GLOBAL,
+          "OnPrem provider validation",
+          "Enable OnPrem Provider quick validation",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> maxYbcUpgradePollResultTries =
@@ -1415,7 +1473,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "If this flag is enabled, user will be able to create telemetry providers and"
               + " enable/disable metrics export on universes.",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> allowConnectionPooling =
       new ConfKeyInfo<>(
           "yb.universe.allow_connection_pooling",
@@ -1646,14 +1704,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Skip YBA Minimum Version Check when adding a new YugabyteDB Release.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<Boolean> disableNodeAgentOnProviderCreation =
-      new ConfKeyInfo<>(
-          "yb.internal.disable_node_agent_on_provider_creation",
-          ScopeType.GLOBAL,
-          "Disable Node Agent on Provider Creation",
-          "Disable node agent on provider creation by setting the internal flag in the provider.",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> enablePathStyleAccess =
       new ConfKeyInfo<>(
           "yb.ui.feature_flags.enable_path_style_access",
@@ -1694,14 +1744,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ScopeType.GLOBAL,
           "Enable Node Agent Message Compression",
           "Enable compression for message sent over node agent channel.",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> nodeAgentDisableBgInstallPostMigration =
-      new ConfKeyInfo<>(
-          "yb.node_agent.disable_bg_install_post_migration",
-          ScopeType.GLOBAL,
-          "Disable Node Agent Background Installation After Migration",
-          "Install node agent synchronously during a task instead after migration if it is true.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableTaskRuntimeInfoOnRetry =
@@ -1777,7 +1819,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Allows enabling the volume encryption feature for new universes. Currently only"
               + " supported for AWS universes.",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableYbcBackgroundUpgrade =
       new ConfKeyInfo<>(
           "ybc.upgrade.enable_background_upgrade",
@@ -1786,4 +1828,101 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable background upgrade for YBC.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableSystemdDebugLogging =
+      new ConfKeyInfo<>(
+          "yb.ansible.systemd_debug",
+          ScopeType.GLOBAL,
+          "Enable Systemd Debug Logging",
+          "Enable systemd debug logging for systemctl service management commands.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> ansibleKeepRemoteFiles =
+      new ConfKeyInfo<>(
+          "yb.ansible.keep_remote_files",
+          ScopeType.GLOBAL,
+          "Keep Remote Files from an ansible run",
+          "Keep remote files after ansible run for debugging.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> skipRuntimeGflagValidation =
+      new ConfKeyInfo<>(
+          "yb.skip_runtime_gflag_validation",
+          ScopeType.GLOBAL,
+          "Skip Runtime GFlag validation before cluster operations.",
+          "Skip Runtime GFlag validation before cluster operations.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<List> capacityReservationOperationsAzure =
+      new ConfKeyInfo<>(
+          "yb.task.capacity_reservation_supported_operations_azure",
+          ScopeType.GLOBAL,
+          "Capacity reservations operations for azure",
+          "List of operations that use capacity reservation in azure",
+          ConfDataType.StringListType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> ybcSuccessMarkerDownloadTimeoutSecs =
+      new ConfKeyInfo<>(
+          "ybc.success_marker_download_timeout_secs",
+          ScopeType.GLOBAL,
+          "Timeout for backup success marker download",
+          "Timeout for backup success marker download from backup location",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<List> capacityReservationOperationsAws =
+      new ConfKeyInfo<>(
+          "yb.task.capacity_reservation_supported_operations_aws",
+          ScopeType.GLOBAL,
+          "Capacity reservations operations for aws",
+          "List of operations that use capacity reservation in aws",
+          ConfDataType.StringListType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> verifyGFlagsOnNodeDuringUpgrade =
+      new ConfKeyInfo<>(
+          "yb.task.verify_gflags_on_node",
+          ScopeType.GLOBAL,
+          "Verify actual gflags state on node before upgrade",
+          "Verify actual gflags state on node before upgrade",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableEditAutoRollback =
+      new ConfKeyInfo<>(
+          "yb.task.enable_edit_auto_rollback",
+          ScopeType.GLOBAL,
+          "Enable Performing Automatic Rollback of Edit Operation",
+          "Enable performing automatic rollback of edit operation (if possible)",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableContinuousPlatformBackups =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.continuous_platform_backups",
+          ScopeType.GLOBAL,
+          "Enable new YBA platform backup and restore UI",
+          "Exposes a new subtab on the platform administration page where users can enable"
+              + " automated platform backups.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableSigningRegion =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.enable_signing_region",
+          ScopeType.GLOBAL,
+          "Enable Signing Region",
+          "Enable AWS signing region for S3 access",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> capacityReservationMaxRetries =
+      new ConfKeyInfo<>(
+          "yb.task.capacity_reservation.max_retries",
+          ScopeType.GLOBAL,
+          "Max retries for capacity reservation",
+          "Max retries for capacity reservation",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> capacityReservationRetrySeconds =
+      new ConfKeyInfo<>(
+          "yb.task.capacity_reservation.retry_delay_seconds",
+          ScopeType.GLOBAL,
+          "Wait( in seconds ) between each retry for capacity reservation failures",
+          "Wait( in seconds ) between each retry for capacity reservation failures",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

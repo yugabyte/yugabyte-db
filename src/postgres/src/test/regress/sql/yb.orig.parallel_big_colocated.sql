@@ -51,15 +51,16 @@ SELECT pc_id, pc_address, pc_phone, pc_email FROM pcustomer WHERE pc_name like '
 reset enable_sort;
 
 -- forced parallel scan by PK
-set parallel_setup_cost=0;
-set parallel_tuple_cost=0;
 /*+ Parallel(pcustomer 2 hard) */
 EXPLAIN (costs off)
 SELECT * FROM pcustomer WHERE pc_id = 42;
 /*+ Parallel(pcustomer 2 hard) */
 SELECT * FROM pcustomer WHERE pc_id = 42;
-reset parallel_setup_cost;
-reset parallel_tuple_cost;
+EXPLAIN (costs off)
+/*+ Parallel(pcustomer 2 hard) */
+SELECT pc_id, pc_address, pc_phone, pc_email FROM pcustomer WHERE pc_id > 24 and pc_id < 42 order by pc_id;
+/*+ Parallel(pcustomer 2 hard) */
+SELECT pc_id, pc_address, pc_phone, pc_email FROM pcustomer WHERE pc_id > 24 and pc_id < 42 order by pc_id;
 
 DROP TABLE pcustomer;
 

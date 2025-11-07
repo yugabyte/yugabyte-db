@@ -1,0 +1,26 @@
+type: object
+description: Telemetry Provider Type Information
+x-yba-api-since: 2025.2.0.0
+x-yba-api-visibility: preview
+properties:
+  provider_type:
+    description: Provider type name
+    type: string
+    example: DATA_DOG
+    enum:
+      - DATA_DOG
+      - SPLUNK
+      - AWS_CLOUDWATCH
+      - GCP_CLOUD_MONITORING
+      - LOKI
+      - DYNATRACE
+      - S3
+      - OTLP
+  is_allowed_for_logs:
+    description: Whether this provider supports logs export
+    type: boolean
+    example: true
+  is_allowed_for_metrics:
+    description: Whether this provider supports metrics export
+    type: boolean
+    example: true

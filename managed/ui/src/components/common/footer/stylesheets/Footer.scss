@@ -1,4 +1,4 @@
-/* Copyright (c) YugaByte, Inc. */
+/* Copyright (c) YugabyteDB, Inc. */
 
 @use '../../../../_style/colors.scss';
 @use '../../../../_style/variables.scss';
@@ -55,7 +55,9 @@ footer {
     margin-bottom: 4px;
     margin-left: 4px;
   }
-
+  .docs-logo {
+    margin-bottom: 0;
+  }
   span.social-media-cta {
     border: 1px solid #cbcdd0;
     color: #202951;

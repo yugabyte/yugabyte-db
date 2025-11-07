@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -327,11 +327,9 @@ TEST_F(CreateTableITest, LegacyColocatedDBTableColocationRemoteBootstrapTest) {
   ts_flags.push_back("--follower_unavailable_considered_failed_sec=3");
   master_flags.push_back("--ysql_legacy_colocated_database_creation=true");
   ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, kNumReplicas));
-  ASSERT_OK(
-      client_->CreateNamespace("colocation_test", boost::none /* db */, "" /* creator */,
-                               "" /* ns_id */, "" /* src_ns_id */,
-                               boost::none /* next_pg_oid */, nullptr /* txn */,
-                               true /* colocated */));
+  ASSERT_OK(client_->CreateNamespace(
+      "colocation_test", std::nullopt /* db */, "" /* creator */, "" /* ns_id */,
+      "" /* src_ns_id */, std::nullopt /* next_pg_oid */, nullptr /* txn */, true /* colocated */));
 
   {
     string ns_id;
@@ -467,9 +465,9 @@ TEST_F(CreateTableITest, TablegroupRemoteBootstrapTest) {
   ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, kNumReplicas, 1 /* masters */,
                                 true /* enable_ysql (allows load balancing) */));
 
-  ASSERT_OK(client_->CreateNamespace(namespace_name, YQL_DATABASE_PGSQL, "" /* creator */,
-                                     "" /* ns_id */, "" /* src_ns_id */,
-                                     boost::none /* next_pg_oid */, nullptr /* txn */, false));
+  ASSERT_OK(client_->CreateNamespace(
+      namespace_name, YQL_DATABASE_PGSQL, "" /* creator */, "" /* ns_id */, "" /* src_ns_id */,
+      std::nullopt /* next_pg_oid */, nullptr /* txn */, false));
 
   {
     auto namespaces = ASSERT_RESULT(client_->ListNamespaces());
@@ -602,10 +600,16 @@ TEST_F(CreateTableITest, TestTransactionStatusTableCreation) {
   // Tell the Master leader to wait for 3 TS to join before creating the
   // transaction status table.
   vector<string> master_flags = {
-        "--txn_table_wait_min_ts_count=3"
+      "--txn_table_wait_min_ts_count=3"
+  };
+  vector<string> tserver_flags = {
+      // TODO(#27854): We get stuck with object locking when there is no system.transactions
+      // table. Disabling it for now until we fix the underlying issue.
+      "--enable_object_locking_for_table_locks=false",
+      "--allowed_preview_flags_csv=enable_object_locking_for_table_locks",
   };
   // We also need to enable ysql.
-  ASSERT_NO_FATALS(StartCluster({}, master_flags, 1, 1, true));
+  ASSERT_NO_FATALS(StartCluster(tserver_flags, master_flags, 1, 1, true));
 
   // Check that the transaction table hasn't been created yet.
   YQLDatabase db = YQL_DATABASE_CQL;
@@ -1075,8 +1079,7 @@ void CreateTableITest::TestLazySuperblockFlushPersistence(int num_tables, int it
     auto client = ASSERT_RESULT(cluster_->CreateClient());
     auto table_id =
         ASSERT_RESULT(GetTableIdByTableName(client.get(), database, table_prefix + "0"));
-    ASSERT_OK(client->FlushTables(
-        {table_id}, /* add_indexes = */ false, 30, /* is_compaction = */ false));
+    ASSERT_OK(client->FlushTables({table_id}));
 
     // Restart tservers.
     cluster_->Shutdown(ExternalMiniCluster::NodeSelectionMode::TS_ONLY);

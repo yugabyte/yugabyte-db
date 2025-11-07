@@ -1,8 +1,8 @@
 ---
-title: Cloud setup for deploying YugabyteDB Anywhere
+title: Cloud setup for deploying universe nodes on Kubernetes
 headerTitle: To deploy nodes
 linkTitle: To deploy nodes
-description: Prepare your cloud for deploying YugabyteDB universe nodes.
+description: Prepare your cloud for deploying universe nodes using a Kubernetes provider configuration.
 headContent: Prepare your cloud for deploying YugabyteDB universe nodes
 menu:
   v2.20_yugabyte-platform:
@@ -123,7 +123,7 @@ export YBA_NAMESPACE="yb-platform"
 
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-namespaced-admin.yaml \
   | sed "s/namespace: <SA_NAMESPACE>/namespace: ${YBA_NAMESPACE}"/g \
-  | kubectl apply -n ${YBA_NAMESPACE} -f -
+  | kubectl apply -n ${<target_namespace>} -f -
 ```
 
 If you have multiple target namespaces, then you have to apply the YAML in all of them.
@@ -137,7 +137,7 @@ export YBA_NAMESPACE="yb-platform"
 
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-namespaced.yaml \
   | sed "s/namespace: <SA_NAMESPACE>/namespace: ${YBA_NAMESPACE}"/g \
-  | kubectl apply -n ${YBA_NAMESPACE} -f -
+  | kubectl apply -n ${<target_namespace>} -f -
 ```
 
 ### Create a kubeconfig file

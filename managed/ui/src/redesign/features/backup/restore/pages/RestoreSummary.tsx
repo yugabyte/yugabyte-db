@@ -1,7 +1,7 @@
 /*
  * Created on Mon Aug 19 2024
  *
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License")
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
@@ -12,8 +12,8 @@ import clsx from 'clsx';
 import { useFormContext } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { makeStyles, Typography } from '@material-ui/core';
+import { formatBytes } from '@app/utils/Formatters';
 import { ybFormatDate } from '../../../../helpers/DateUtils';
-import { formatBytes } from '../../../../../components/xcluster/ReplicationUtils';
 import { Backup_Options_Type } from '../../../../../components/backupv2';
 import { RestoreFormModel } from '../models/RestoreFormModel';
 

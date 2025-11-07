@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks;
 
@@ -876,7 +876,8 @@ public class ImportUniverse extends UniverseTaskBase {
     UUID clusterUuid =
         StringUtils.isNotBlank(placementUuid) ? UUID.fromString(placementUuid) : UUID.randomUUID();
     Cluster cluster =
-        universeDetails.upsertCluster(userIntent, placementInfo, clusterUuid, ClusterType.PRIMARY);
+        universeDetails.upsertCluster(
+            userIntent, null, placementInfo, clusterUuid, ClusterType.PRIMARY);
     Set<NodeDetails> nodes = createNodeDetails(provider, cluster, regionInfos);
     createUniverse(customer, universeDetails, nodes);
   }

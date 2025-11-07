@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -3520,7 +3520,7 @@ TEST_F_EX(XClusterTest, CdcCheckpointPeerMove, XClusterTestNoParam) {
   LOG(INFO) << "Adding a new Peer " << new_follower->ToString();
 
   ASSERT_OK(itest::AddServer(
-      leader_ts, tablet_id, new_follower, consensus::PeerMemberType::PRE_VOTER, boost::none,
+      leader_ts, tablet_id, new_follower, consensus::PeerMemberType::PRE_VOTER, std::nullopt,
       kTimeout));
 
   int64_t min_expected_checkpoint = 1, max_found_checkpoint = -1;

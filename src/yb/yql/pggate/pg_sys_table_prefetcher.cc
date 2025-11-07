@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -51,6 +51,9 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_read_request_caching, true, "Enable read req
 DEFINE_NON_RUNTIME_uint32(
     pg_cache_response_renew_soft_lifetime_limit_ms, 3 * 60 * 1000,
     "Lifetime limit for response cache soft renewing process");
+DEFINE_NON_RUNTIME_uint32(
+    pg_cache_response_trust_auth_lifetime_limit_ms, 60 * 1000,
+    "Lifetime limit for response cache used for auth process when connection manager is used.");
 
 namespace yb::pggate {
 namespace {
@@ -280,6 +283,8 @@ class VersionInfoWriter {
 
 [[nodiscard]] std::optional<uint32_t> GetCacheLifetimeThreshold(PrefetchingCacheMode mode) {
   switch(mode) {
+    case PrefetchingCacheMode::TRUST_CACHE_AUTH:
+      return FLAGS_pg_cache_response_trust_auth_lifetime_limit_ms;
     case PrefetchingCacheMode::TRUST_CACHE:
       return std::nullopt;
     case PrefetchingCacheMode::RENEW_CACHE_SOFT:
@@ -321,7 +326,7 @@ Result<rpc::CallResponsePtr> Run(
           make_lw_function(MakeGenerator(ops)),
           BuildCacheOptions(arena, session->catalog_read_time(), ops, *options.caching_info))
       : session->RunAsync(make_lw_function(MakeGenerator(ops)), HybridTime())),
-      {TableType::SYSTEM, IsForWritePgDoc::kFalse});
+      {TableType::SYSTEM, IsForWritePgDoc::kFalse, IsOpBuffered::kFalse});
   return VERIFY_RESULT(response.Get(*session)).response;
 }
 
@@ -473,7 +478,7 @@ std::string PrefetcherOptions::ToString() const {
 class PgSysTablePrefetcher::Impl {
  public:
   explicit Impl(const PrefetcherOptions& options)
-      : arena_(SharedArena()), options_(options) {
+      : arena_(SharedThreadSafeArena()), options_(options) {
     VLOG(1) << "Starting prefetcher with " << options_.ToString();
   }
 
@@ -515,7 +520,9 @@ class PgSysTablePrefetcher::Impl {
     //   catalog version N.
     // - Reading missed data at same read time when catalog version N has been read guaranties that
     //   data will be consistent to catalog version N
-    return options_.caching_info && options_.caching_info->mode == PrefetchingCacheMode::TRUST_CACHE
+    return options_.caching_info &&
+           (options_.caching_info->mode == PrefetchingCacheMode::TRUST_CACHE ||
+            options_.caching_info->mode == PrefetchingCacheMode::TRUST_CACHE_AUTH)
         ?  std::optional(options_.caching_info->version_info.version_read_time) : std::nullopt;
   }
 

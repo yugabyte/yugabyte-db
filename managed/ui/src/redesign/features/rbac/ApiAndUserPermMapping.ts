@@ -211,6 +211,7 @@ export const ApiPermissionMap = {
         endpoint: '/cloud/$cloud<[^/]+>/buckets'
     },
     CREATE_CUSTOMER_CONFIG: { requestType: ApiRequestType.POST, endpoint: '/configs' },
+    ADD_CUSTOMER_CONFIG: { requestType: ApiRequestType.POST, endpoint: '/configs' },
     GET_CUSTOMER_CONFIGS: { requestType: ApiRequestType.GET, endpoint: '/configs' },
     EDIT_CUSTOMER_CONFIG: {
         requestType: ApiRequestType.PUT,
@@ -1083,6 +1084,30 @@ export const ApiPermissionMap = {
     UPLOAD_HA_INTERNAL: {
         requestType: ApiRequestType.POST,
         endpoint: '/settings/ha/internal/upload'
+    },
+    CREATE_CONTINUOUS_YBA_BACKUP: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/auto-yba-backups'
+    },
+    DELETE_CONTINUOUS_YBA_BACKUP: {
+        requestType: ApiRequestType.DELETE,
+        endpoint: '/auto-yba-backups/$bUUID<[^/]+>'
+    },
+    EDIT_CONTINUOUS_YBA_BACKUP: {
+        requestType: ApiRequestType.DELETE,
+        endpoint: '/auto-yba-backups/$bUUID<[^/]+>'
+    },
+    RESTORE_CONTINUOUS_YBA_BACKUP: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/auto-yba-backups/restore'
+    },
+    CREATE_ISOLATED_YBA_BACKUP: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/yba-backups'
+    },
+    RESTORE_ISOLATED_YBA_BACKUP: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/yba-backups/restore'
     },
     GET_UNIVERSE_PROXY: {
         requestType: ApiRequestType.GET,

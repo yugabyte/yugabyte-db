@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/qlexpr/ql_expr.h"
@@ -892,12 +892,13 @@ Status QLTableRow::GetValue(const ColumnId& col, QLValue *column) const {
   return GetValue(col.rep(), column);
 }
 
-boost::optional<const QLValuePB&> QLTableRow::GetValue(ColumnIdRep col_id) const {
+std::optional<std::reference_wrapper<const QLValuePB>> QLTableRow::GetValue(
+    ColumnIdRep col_id) const {
   const auto* column = FindColumn(col_id);
   if (column) {
     return column->value;
   }
-  return boost::none;
+  return std::nullopt;
 }
 
 bool QLTableRow::IsColumnSpecified(ColumnIdRep col_id) const {

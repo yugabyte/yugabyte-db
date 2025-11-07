@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 export { default as CustomerProfile } from './CustomerProfile';
 export { default as CustomerProfileContainer } from './CustomerProfileContainer';

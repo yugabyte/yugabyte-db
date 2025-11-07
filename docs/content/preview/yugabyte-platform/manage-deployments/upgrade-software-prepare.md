@@ -2,7 +2,7 @@
 title: Prepare to upgrade universes with a new version of YugabyteDB
 headerTitle: Prepare to upgrade a universe
 linkTitle: Prepare to upgrade
-description: Use YugabyteDB Anywhere to upgrade the YugabyteDB software on universes.
+description: Review changes that may affect your automation when upgrading universes.
 headcontent: Review changes that may affect your automation
 menu:
   preview_yugabyte-platform:
@@ -28,7 +28,7 @@ However, on-premises cron-based universes must be upgraded manually. To do this,
 
 YugabyteDB Anywhere v2025.2 (LTS release planned for end of 2025) and later require universes have node agent running on their nodes. Before you will be able to upgrade to v2025.2 or later, all your universes must be using node agent.
 
-YugabyteDB Anywhere will attempt to automatically update universes. If it is unable to update a universe, make sure the universe nodes satisfy the [prerequisites](../../prepare/server-nodes-software/) and re-try the install by navigating to the universe and clicking **Actions>More>Install Node Agent**.
+To upgrade a universe to node agent, first make sure the universe is not cron-based and if necessary [update the universe to systemd](#cron-based-universes). Then navigate to the universe and click **Actions>More>Install Node Agent**. If installation fails on a node, make sure the node satisfies the [prerequisites](../../prepare/server-nodes-software/) and re-try the install.
 
 ## Transparent hugepages
 
@@ -36,9 +36,16 @@ Transparent hugepages (THP) should be enabled on nodes for optimal performance. 
 
 ## Backups and point-in-time-restore
 
-After finalizing an upgrade, backups and snapshots from the previous version can no longer be used for PITR.
+- Backups
 
-Backups taken on a newer version cannot be restored to universes running a previous version. Backups taken before the upgrade can be used for restore.
+  - Backups taken on a newer version cannot be restored to universes running a previous version.
+  - Backups taken during the upgrade cannot be restored to universes running a previous version.
+  - Backups taken before the upgrade _can_ be used for restore to the new version.
+
+- [Point-in-time-restore](../../back-up-restore-universes/pitr/) (PITR)
+
+  - If you have PITR enabled, you must disable it before performing an upgrade. Re-enable it only after the upgrade is either finalized or rolled back.
+  - After the upgrade, PITR cannot be done to a time before the upgrade.
 
 ## Review major changes in previous YugabyteDB releases
 

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 import { Component } from 'react';
 import moment from 'moment';
@@ -42,7 +42,7 @@ export default class HighlightedStatsPanel extends Component {
       <YBFormattedNumber
         value={totalCost}
         maximumFractionDigits={2}
-        formattedNumberStyle="currency"
+        formatStyle="currency"
         currency="USD"
       />
     );

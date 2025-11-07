@@ -5,7 +5,7 @@ linkTitle: Compound statements
 description: Describes the syntax and semantics of the compound PL/pgSQL executable statements. [YSQL]
 image: /images/section_icons/api/subsection.png
 menu:
-  v2.20:
+  v2.20_api:
     identifier: compound-statements
     parent: executable-section
     weight: 20

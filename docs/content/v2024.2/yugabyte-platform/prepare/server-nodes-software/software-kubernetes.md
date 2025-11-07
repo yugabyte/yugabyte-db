@@ -1,8 +1,8 @@
 ---
-title: YugabyteDB Anywhere Kubernetes software requirements
+title: Prepare a Kubernetes cluster for YugabyteDB
 headerTitle: Software requirements for Kubernetes
 linkTitle: Kubernetes provider
-description: Software requirements for Kubernetes.
+description: Software requirements for Kubernetes provider cluster.
 headContent: Prepare a Kubernetes cluster for YugabyteDB deployments
 menu:
   v2024.2_yugabyte-platform:

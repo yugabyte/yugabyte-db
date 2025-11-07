@@ -75,11 +75,16 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${CC_FLAGS}")
 string(TOLOWER ${CMAKE_BUILD_TYPE} OD_VERSION_BUILD)
 add_definitions(-DOD_VERSION_BUILD="${OD_VERSION_BUILD}")
 
+add_definitions(-DYB_SUPPORT_FOUND)
+
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 find_package(Threads REQUIRED)
 
 add_custom_target(build_libs)
 set(od_libraries "rt")
+
+# YB: Add YugabyteDB utility libraries for tcmalloc profiling and other utilities
+list(APPEND od_libraries "yb_util")
 
 # debian build
 option(BUILD_DEBIAN "Enable Debian Build" OFF)

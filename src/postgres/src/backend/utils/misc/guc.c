@@ -118,7 +118,9 @@
 /* YB includes */
 #include "access/heaptoast.h"
 #include "access/yb_scan.h"
+#include "catalog/index.h"
 #include "commands/copy.h"
+#include "common/pg_yb_param_status_flags.h"
 #include "executor/ybModifyTable.h"
 #include "pg_yb_utils.h"
 #include "tcop/pquery.h"
@@ -296,6 +298,8 @@ static void assign_yb_enable_base_scans_cost_model(bool new_value, void *extra);
 static bool check_yb_enable_advisory_locks(bool *newval, void **extra, GucSource source);
 
 static void assign_yb_silence_advisory_locks_not_supported_error(bool newval, void *extra);
+
+static void assign_yb_enable_pg_stat_statements_rpc_stats(bool newval, void *extra);
 
 /* Private functions in guc-file.l that need to be called from guc.c */
 static ConfigVariable *ProcessConfigFileInternal(GucContext context,
@@ -677,6 +681,7 @@ static const struct config_enum_entry yb_cost_model_options[] = {
 	{"legacy_stats_mode", YB_COST_MODEL_LEGACY_STATS, false},
 	{"legacy_bnl_mode", YB_COST_MODEL_LEGACY_BNL, false},
 	{"legacy_stats_bnl_mode", YB_COST_MODEL_LEGACY_STATS_BNL, false},
+	{"legacy_ignore_stats_bnl_mode", YB_COST_MODEL_LEGACY_IGNORE_STATS_BNL, false},
 	{"true", YB_COST_MODEL_ON, true},
 	{"false", YB_COST_MODEL_OFF, true},
 	{"yes", YB_COST_MODEL_ON, true},
@@ -1361,17 +1366,6 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&yb_enable_batchednl,
 		true,
-		NULL, NULL, NULL
-	},
-	{
-		{"yb_enable_parallel_append", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enables the planner's use of parallel append plans "
-						 "if YB is enabled."),
-			NULL,
-			GUC_EXPLAIN
-		},
-		&yb_enable_parallel_append,
-		false,
 		NULL, NULL, NULL
 	},
 	{
@@ -2403,6 +2397,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_debug_log_snapshot_mgmt", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Log details about snapshot management such as pushing/popping a snapshot and picking a new snapshot."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_debug_log_snapshot_mgmt,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_create_with_table_oid", PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("Enables the ability to set table oids when creating tables or indexes."),
 			NULL,
@@ -2593,6 +2598,17 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_replica_identity,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"enable_object_locking_infra", PGC_SIGHUP, LOCK_MANAGEMENT,
+			gettext_noop("Allow enabling object-level locking for table locks."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&enable_object_locking_infra,
 		true,
 		NULL, NULL, NULL
 	},
@@ -2846,6 +2862,16 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_force_tablespace_locality", PGC_USERSET, UNGROUPED,
+			gettext_noop("Forces use of tablespace-based locality over region locality."),
+			NULL
+		},
+		&yb_force_tablespace_locality,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_disable_transactional_writes", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Sets the boolean flag to disable transaction writes."),
 			NULL
@@ -2980,7 +3006,7 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"yb_make_next_ddl_statement_nonincrementing", PGC_SUSET, CUSTOM_OPTIONS,
-			gettext_noop("When set, the next ddl statement will not cause "
+			gettext_noop("DEPRECATED - When set, the next ddl statement will not cause "
 						 "catalog version to increment. This only affects "
 						 "the next ddl statement and resets automatically."),
 			NULL
@@ -3062,6 +3088,21 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_update_reltuples_after_create_index", PGC_USERSET,
+			QUERY_TUNING_OTHER,
+			gettext_noop("Enables update of reltuples in pg_class for the base "
+						 "table and index after creating the index. When "
+						 "disabled, reltuples are not updated during "
+						 "concurrent index creation and only index reltuples "
+						 "are updated during non-concurrent index creation."),
+			NULL
+		},
+		&yb_enable_update_reltuples_after_create_index,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_add_column_missing_default", PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("Enable using the default value for existing rows"
 						 " after an ADD COLUMN ... DEFAULT operation."),
@@ -3105,7 +3146,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_ddl_transaction_block_enabled,
-		false,
+		kEnableDdlTransactionBlocks,
 		NULL, NULL, NULL
 	},
 
@@ -3520,6 +3561,117 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_whitelist_extra_stmts_for_pl_speculative_execution,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_test_slowdown_index_check", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Slows down yb_index_check() by sleeping for 1s after processing "
+						 "every row. Used in tests to simulate long running yb_index_check()."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_slowdown_index_check,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_allow_dockey_bounds", PGC_SUSET, CUSTOM_OPTIONS,
+			gettext_noop("If true, allow lower_bound/upper_bound fields of PgsqlReadRequestPB "
+						 "to be DocKeys. Only applicable for hash-sharded tables."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_allow_dockey_bounds,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_pg_stat_statements_rpc_stats", PGC_SUSET, STATS_MONITORING,
+			gettext_noop("If true, enable RPC execution time stats for pg_stat_statements."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_pg_stat_statements_rpc_stats,
+		false,
+		NULL, assign_yb_enable_pg_stat_statements_rpc_stats, NULL
+	},
+
+	{
+		{"yb_ignore_read_time_in_walsender", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("When set, walsender will fetch the publication as of current time if "
+						 "it encounters any failures while reading the catalog tables as of yb_read_time"),
+			gettext_noop("This GUC should be set carefully and only till the time "
+						 "the process of upgrading logical replication streams is "
+						 "complete (i.e till the yb_restart_time of all the streams "
+						 "crosses the time of upgrade completion). Moreover this GUC "
+						 "should be set only after ensuring that no more DDLs "
+						 "(including ALTER PUBLICATION) will be encountered by the "
+						 "walsender"),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_ignore_read_time_in_walsender,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_parallel_scan_colocated", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("When set, allows parallel scan of the colocated relations"),
+			NULL,
+			GUC_EXPLAIN
+		},
+		&yb_enable_parallel_scan_colocated,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_parallel_scan_hash_sharded", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("When set, allows parallel scan of the hash sharded relations"),
+			NULL,
+			GUC_EXPLAIN
+		},
+		&yb_enable_parallel_scan_hash_sharded,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_parallel_scan_range_sharded", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("When set, allows parallel scan of the range sharded relations"),
+			NULL,
+			GUC_EXPLAIN
+		},
+		&yb_enable_parallel_scan_range_sharded,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_parallel_scan_system", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("When set, allows parallel scan of the system relations"),
+			NULL,
+			GUC_EXPLAIN
+		},
+		&yb_enable_parallel_scan_system,
+		false,
+		NULL, NULL, NULL
+	},
+
+
+	{
+		{"yb_make_all_ddl_statements_incrementing", PGC_SIGHUP, CUSTOM_OPTIONS,
+			gettext_noop("When set, all DDL statements will cause the "
+						 "catalog version to increment. This mainly affects "
+						 "CREATE commands such as CREATE TABLE, CREATE VIEW, "
+						 "and CREATE SEQUENCE."),
+			NULL
+		},
+		&yb_make_all_ddl_statements_incrementing,
 		false,
 		NULL, NULL, NULL
 	},
@@ -5465,12 +5617,35 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"yb_test_index_check_num_batches_per_snapshot", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Used to test yb_index_check()"),
+			gettext_noop("If set to > 0, number of index rows processed per snapshot "
+						 "is equal to  yb_test_index_check_num_batches_per_snapshot*yb_bnl_batch_size "
+						 "If set to 0, yb_index_check() will execute in single snapshot mode."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_index_check_num_batches_per_snapshot,
+		-1,
+		-1,
+		INT_MAX,
+		NULL, NULL, NULL
+	},
+	{
 		{"yb_fk_references_cache_limit", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Sets the maximum size for the FK reference cache filled by the INSERT, SELECT ... FOR KEY SHARE or similar statmements"),
 			NULL
 		},
 		&yb_fk_references_cache_limit,
 		65535, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+		{
+		{"yb_test_reset_retry_counts", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Restricts the number of retries for transaction conflicts. For testing purposes."),
+			NULL
+		},
+		&yb_test_reset_retry_counts,
+		-1, -1, INT_MAX,
 		NULL, NULL, NULL
 	},
 
@@ -5482,6 +5657,17 @@ static struct config_int ConfigureNamesInt[] =
 
 static struct yb_config_oid ConfigureNamesOid[] =
 {
+	{
+		{"yb_force_tablespace_locality_oid", PGC_USERSET, UNGROUPED,
+			gettext_noop("Tablespace used for tablespace-based locality. Picked automatically "
+						 "if InvalidOid (default)."),
+			NULL
+		},
+		&yb_force_tablespace_locality_oid,
+		InvalidOid, 0, OID_MAX,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, 0, 0, NULL, NULL, NULL
@@ -5553,7 +5739,7 @@ static struct config_real ConfigureNamesReal[] =
 			GUC_EXPLAIN
 		},
 		&parallel_tuple_cost,
-		DEFAULT_PARALLEL_TUPLE_COST, 0, DBL_MAX,
+		YB_DEFAULT_PARALLEL_TUPLE_COST, 0, DBL_MAX,	/* YB: change default */
 		NULL, NULL, NULL
 	},
 	{
@@ -5564,7 +5750,7 @@ static struct config_real ConfigureNamesReal[] =
 			GUC_EXPLAIN
 		},
 		&parallel_setup_cost,
-		DEFAULT_PARALLEL_SETUP_COST, 0, DBL_MAX,
+		YB_DEFAULT_PARALLEL_SETUP_COST, 0, DBL_MAX,	/* YB: change default */
 		NULL, NULL, NULL
 	},
 	{
@@ -7103,11 +7289,7 @@ static struct config_enum ConfigureNamesEnum[] =
 			NULL
 		},
 		&Password_encryption,
-		/*
-		 * YB_TODO: Change encryption method back to 'scram-sha-256' from 'md5'.
-		 * Currently YSQL Connection Manager times out when using scram passwords for unknown reasons.
-		 */
-		PASSWORD_TYPE_MD5, password_encryption_options,
+		PASSWORD_TYPE_SCRAM_SHA_256, password_encryption_options,
 		NULL, NULL, NULL
 	},
 
@@ -7263,6 +7445,7 @@ static struct config_enum ConfigureNamesEnum[] =
 static const char *const map_old_guc_names[] = {
 	"sort_mem", "work_mem",
 	"vacuum_mem", "maintenance_work_mem",
+	"yb_enable_parallel_append", "enable_parallel_append",
 	NULL
 };
 
@@ -7279,6 +7462,7 @@ static const char *const YbDbAdminVariables[] = {
 	"yb_binary_restore",
 	"yb_speculatively_execute_pl_statements",
 	"yb_whitelist_extra_statements_for_pl_speculative_execution",
+	"yb_make_all_ddl_statements_incrementing",
 };
 
 
@@ -8463,6 +8647,13 @@ SelectConfigFiles(const char *userDoption, const char *progname)
 	return true;
 }
 
+static bool
+yb_should_report_guc(struct config_generic *record)
+{
+	/* TODO(arpit.saxena): Use narrower sending criteria for correctness */
+	return ((record->flags & GUC_REPORT) && !YbIsClientYsqlConnMgr()) ||
+		(YbIsClientYsqlConnMgr() && record->context > PGC_BACKEND);
+}
 
 /*
  * Reset all options to their saved default values (implements RESET ALL)
@@ -8570,8 +8761,7 @@ ResetAllOptions(void)
 		gconf->scontext = gconf->reset_scontext;
 		gconf->srole = gconf->reset_srole;
 
-		if ((gconf->flags & GUC_REPORT && !YbIsClientYsqlConnMgr()) ||
-			(YbIsClientYsqlConnMgr() && gconf->context > PGC_BACKEND))
+		if (yb_should_report_guc(gconf))
 		{
 			gconf->status |= GUC_NEEDS_REPORT;
 			report_needed = true;
@@ -8993,9 +9183,7 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 			pfree(stack);
 
 			/* Report new value if we changed it */
-			if (changed &&
-				((gconf->flags & GUC_REPORT && !YbIsClientYsqlConnMgr()) ||
-				 (YbIsClientYsqlConnMgr() && gconf->context > PGC_BACKEND)))
+			if (changed && yb_should_report_guc(gconf))
 			{
 				gconf->status |= GUC_NEEDS_REPORT;
 				report_needed = true;
@@ -9123,27 +9311,28 @@ ReportGUCOption(struct config_generic *record)
 	{
 		StringInfoData msgbuf;
 
-		/*
-		 * YB: Do not bombard the client with ParameterStatus packets.
-		 * Send a specialized ParameterStatus packet to instruct Connection
-		 * Manager to not forward the packet to the client.
-		 *
-		 * 1. If GUC_REPORT is not enabled for the variable.
-		 * 2. If GUC_REPORT is enabled, but the previous value is the
-		 * same as the current value.
-		 */
-		bool		guc_report_not_enabled = !(record->flags & GUC_REPORT);
-		bool		guc_report_enabled_same_value = (record->flags & GUC_REPORT) &&
-			record->last_reported &&
-			strcmp(val, record->last_reported) == 0;
+		if (YbIsClientYsqlConnMgr())
+		{
+			uint8		flags = 0;
 
-		if (YbIsClientYsqlConnMgr() && (guc_report_not_enabled || guc_report_enabled_same_value))
+			if (record->flags & GUC_REPORT)
+				flags |= YB_PARAM_STATUS_REPORT_ENABLED;
+
+			/* TODO(arpit.saxena): Populate other bits in flags */
+
 			pq_beginmessage(&msgbuf, 'r');
+			pq_sendstring(&msgbuf, record->name);
+			pq_sendstring(&msgbuf, val);
+			pq_sendbyte(&msgbuf, flags);
+			pq_endmessage(&msgbuf);
+		}
 		else
+		{
 			pq_beginmessage(&msgbuf, 'S');
-		pq_sendstring(&msgbuf, record->name);
-		pq_sendstring(&msgbuf, val);
-		pq_endmessage(&msgbuf);
+			pq_sendstring(&msgbuf, record->name);
+			pq_sendstring(&msgbuf, val);
+			pq_endmessage(&msgbuf);
+		}
 
 		/*
 		 * We need a long-lifespan copy.  If strdup() fails due to OOM, we'll
@@ -10903,11 +11092,8 @@ set_config_option_ext(const char *name, const char *value,
 			}
 	}
 
-	if (changeVal &&
-		((record->flags & GUC_REPORT && !YbIsClientYsqlConnMgr()) ||
-		 (YbIsClientYsqlConnMgr() &&
-		  record->context > PGC_BACKEND &&
-		  !(action & GUC_ACTION_LOCAL))))
+	if (changeVal && yb_should_report_guc(record) &&
+		!(YbIsClientYsqlConnMgr() && (action & GUC_ACTION_LOCAL)))
 	{
 		record->status |= GUC_NEEDS_REPORT;
 		report_needed = true;
@@ -15936,6 +16122,11 @@ assign_yb_enable_cbo(int new_value, void *extra)
 			yb_enable_optimizer_statistics = true;
 			yb_legacy_bnl_cost = true;
 			break;
+
+		case YB_COST_MODEL_LEGACY_IGNORE_STATS_BNL:
+			yb_legacy_bnl_cost = true;
+			yb_ignore_stats = true;
+			break;
 	}
 }
 
@@ -16165,6 +16356,12 @@ assign_yb_silence_advisory_locks_not_supported_error(bool newval, void *extra)
 						"without actually executing the lock request. It was added to avoid disruption for users who were "
 						"already using advisory locks but seeing success messages without the lock really being acquired.")));
 	}
+}
+
+static void
+assign_yb_enable_pg_stat_statements_rpc_stats(bool newval, void *extra)
+{
+	YbToggleSessionStatsTimer(newval);
 }
 
 #include "guc-file.c"

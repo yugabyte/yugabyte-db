@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -22,6 +22,8 @@
 #include <variant>
 #include <utility>
 #include <vector>
+
+#include <boost/logic/tribool.hpp>
 
 #include "yb/common/common.pb.h"
 #include "yb/common/common_flags.h"
@@ -76,18 +78,12 @@
 #include "yb/util/trace.h"
 #include "yb/util/yb_pg_errcodes.h"
 
-#include "yb/vector_index/vectorann.h"
+#include "yb/vector_index/vector_index_if.h"
 
 #include "yb/yql/pggate/util/pg_doc_data.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
 using namespace std::literals;
-
-using yb::vector_index::ANNPagingState;
-using yb::vector_index::DocKeyWithDistance;
-using yb::vector_index::IndexableVectorType;
-using yb::vector_index::DummyANNFactory;
-using yb::vector_index::VectorANN;
 
 DECLARE_bool(ysql_disable_index_backfill);
 
@@ -150,6 +146,7 @@ DECLARE_bool(vector_index_dump_stats);
 namespace yb::docdb {
 
 bool TEST_vector_index_filter_allowed = true;
+size_t TEST_vector_index_max_checked_entries = std::numeric_limits<size_t>::max();
 
 using dockv::DocKey;
 using dockv::DocPath;
@@ -259,18 +256,18 @@ class IntentInserter {
   explicit IntentInserter(LWKeyValueWriteBatchPB* out)
       : out_(*out) {}
 
-  void Add(Slice encoded_key, const IntentMode& mode) {
+  void Add(Slice encoded_key, bool pk_is_known, const IntentMode& mode) {
     if (mode.regular_read()) {
-      Add(encoded_key);
+      Add(encoded_key, pk_is_known);
     } else if (mode.key_only_read()) {
       auto& buf = buffer();
       buf.Clear();
       DocKeyColumnPathBuilder doc_key_builder(&buf, encoded_key);
-      Add(doc_key_builder.Build(dockv::SystemColumnIds::kLivenessColumn));
+      Add(doc_key_builder.Build(dockv::SystemColumnIds::kLivenessColumn), pk_is_known);
     }
 
     if (mode.row_lock()) {
-      Add(encoded_key, /*row_lock=*/ true);
+      Add(encoded_key, pk_is_known, /*row_lock=*/ true);
     }
   }
 
@@ -282,13 +279,14 @@ class IntentInserter {
     return *buffer_;
   }
 
-  void Add(Slice encoded_key, bool is_row_lock = false) {
+  void Add(Slice encoded_key, bool pk_is_known, bool is_row_lock = false) {
     auto& pair = *out_.add_read_pairs();
     pair.dup_key(encoded_key);
     pair.dup_value(Slice(
         is_row_lock ? &dockv::ValueEntryTypeAsChar::kRowLock
                     : &dockv::ValueEntryTypeAsChar::kNullLow,
         1));
+    pair.set_pk_is_known(pk_is_known);
   }
 
   std::optional<dockv::KeyBytes> buffer_;
@@ -315,6 +313,11 @@ class DocKeyAccessor {
   Result<DocKey&> GetDecoded(std::reference_wrapper<const yb::PgsqlWriteRequestPB> req) {
     RETURN_NOT_OK(Apply(req.get()));
     return Decoded();
+  }
+
+  // Should be invoked only after GetEncoded or GetDecoded
+  bool pk_is_known() {
+    return pk_is_known_;
   }
 
  private:
@@ -348,10 +351,14 @@ class DocKeyAccessor {
       return Apply(req.ybctid_column_value());
     }
 
-    auto hashed_components = VERIFY_RESULT(qlexpr::InitKeyColumnPrimitiveValues(
+    auto hashed_components = VERIFY_RESULT(qlexpr::InitKeyColumnValues(
         req.partition_column_values(), schema_, 0 /* start_idx */));
-    auto range_components = VERIFY_RESULT(qlexpr::InitKeyColumnPrimitiveValues(
+    auto range_components = VERIFY_RESULT(qlexpr::InitKeyColumnValues(
         req.range_column_values(), schema_, schema_.num_hash_key_columns()));
+    // A SELECT on the unique index column currently takes a strong lock on the top-level key at the
+    // serializable isolation level. TODO: Optimize with weak lock.
+    pk_is_known_ = schema_.num_hash_key_columns() == hashed_components.size() &&
+                   schema_.num_range_key_columns() == range_components.size();
     if (hashed_components.empty()) {
       source_.emplace<DocKey>(schema_, std::move(range_components));
     } else {
@@ -365,6 +372,7 @@ class DocKeyAccessor {
     const auto& value = ybctid.value().binary_value();
     SCHECK(!value.empty(), InternalError, "empty ybctid");
     source_.emplace<Slice>(value);
+    pk_is_known_ = true;
     return Status::OK();
   }
 
@@ -416,6 +424,9 @@ class DocKeyAccessor {
   const Schema& schema_;
   std::variant<std::nullopt_t, Slice, DocKey> source_;
   std::variant<std::nullopt_t, EncodedKey, DocKey> result_holder_;
+
+  // Whether the assoicated key includes a PK. It is valid only after GetEncoded or GetDecoded.
+  bool pk_is_known_ = false;
 };
 
 Result<YQLRowwiseIteratorIf::UniPtr> CreateIterator(
@@ -533,7 +544,7 @@ Result<std::unique_ptr<YQLRowwiseIteratorIf>> CreateYbctidIterator(
       SkipSeek skip_seek) {
   return data.ql_storage.GetIteratorForYbctid(
       data.request.stmt_id(), projection, read_context, data.txn_op_context,
-      data.read_operation_data, bounds, data.pending_op, skip_seek, UseVariableBloomFilter::kTrue);
+      data.read_operation_data, bounds, data.pending_op, skip_seek);
 }
 
 class FilteringIterator {
@@ -602,15 +613,19 @@ class FilteringIterator {
   }
 
   bool has_filter() const {
+    DCHECK(iterator_holder_ != nullptr);
     return filter_.has_value();
+  }
+
+  static bool NeedFilter(const PgsqlReadRequestPB& request) {
+    return !request.where_clauses().empty();
   }
 
  private:
   Status InitCommon(
       const PgsqlReadRequestPB& request, const Schema& schema,
       const dockv::ReaderProjection& projection) {
-    const auto& where_clauses = request.where_clauses();
-    if (where_clauses.empty()) {
+    if (!NeedFilter(request)) {
       return Status::OK();
     }
 
@@ -619,7 +634,7 @@ class FilteringIterator {
       : std::nullopt;
 
     DocPgExprExecutorBuilder builder(schema, projection);
-    for (const auto& exp : where_clauses) {
+    for (const auto& exp : request.where_clauses()) {
       RETURN_NOT_OK(builder.AddWhere(exp, version));
     }
     filter_.emplace(VERIFY_RESULT(builder.Build(request.col_refs())));
@@ -847,6 +862,9 @@ class VectorIndexKeyProvider {
 
   Slice FetchKey() {
     if (index_ >= result_entries_.size()) {
+      VLOG_WITH_FUNC(4) << vector_index_.ToString()
+                        << ", returned: " << response_.vector_index_distances().size()
+                        << " out of " << result_entries_.size();
       return Slice();
     }
     // TODO(vector_index) When row came from intents, we already have all necessary data,
@@ -898,6 +916,11 @@ class VectorIndexKeyProvider {
       result_entries_.erase(range.begin(), range.end());
     }
 
+    VLOG_WITH_FUNC(4) << vector_index_.ToString()
+                      << ", could_have_more_data_: " << could_have_more_data_
+                      << ", result_entries_.size(): " << result_entries_.size()
+                      << ", max_results_: " << max_results_
+                      << ", num_top_vectors_to_remove_: " << num_top_vectors_to_remove_;
     could_have_more_data_ = could_have_more_data_ || result_entries_.size() >= max_results_;
     if (result_entries_.size() > max_results_ || num_top_vectors_to_remove_ != 0) {
       std::ranges::sort(result_entries_, [](const auto& lhs, const auto& rhs) {
@@ -958,13 +981,14 @@ class PgsqlVectorFilter {
         << "VI_STATS: PgsqlVectorFilter, checked: " << num_checked_entries_ << ", accepted: "
         << num_accepted_entries_ << ", num removed: " << num_removed_
         << (iter_.has_filter() ? Format(", found: $0", num_found_entries_) : "");
+    DCHECK_LE(num_checked_entries_, TEST_vector_index_max_checked_entries);
   }
 
   Result<bool> Init(const PgsqlReadOperationData& data) {
     if (FLAGS_vector_index_skip_filter_check) {
       return false;
     }
-    if (!data.table_has_vector_deletion && !iter_.has_filter() &&
+    if (!data.table_has_vector_deletion && !FilteringIterator::NeedFilter(data.request) &&
         FLAGS_vector_index_no_deletions_skip_filter_check) {
       LOG_IF(INFO, FLAGS_vector_index_dump_stats)
           << "VI_STATS: PgsqlVectorFilter, "
@@ -1159,11 +1183,13 @@ Status PgsqlWriteOperation::Init(PgsqlResponsePB* response) {
     // other places.
     doc_key_ = dockv::DocKey(doc_read_context_->schema());
     encoded_doc_key_ = doc_key_.EncodeAsRefCntPrefix();
+    pk_is_known_ = true;
   } else {
     DocKeyAccessor accessor(doc_read_context_->schema());
     doc_key_ = std::move(VERIFY_RESULT_REF(accessor.GetDecoded(request_)));
     encoded_doc_key_ = doc_key_.EncodeAsRefCntPrefix(
         Slice(&dockv::KeyEntryTypeAsChar::kHighest, 1));
+    pk_is_known_ = accessor.pk_is_known();
   }
 
   encoded_doc_key_.Resize(encoded_doc_key_.size() - 1);
@@ -1300,6 +1326,7 @@ Result<HybridTime> PgsqlWriteOperation::FindOldestOverwrittenTimestamp(
 Status PgsqlWriteOperation::Apply(const DocOperationApplyData& data) {
   VLOG(4) << "Write, read time: " << data.read_time() << ", txn: " << txn_op_context_;
 
+  data.doc_write_batch->SetIncludesPk(pk_is_known_);
   RETURN_NOT_OK(VerifyNoColsMarkedForDeletion(doc_read_context_->schema(), request_));
 
   auto scope_exit = ScopeExit([this] {
@@ -2082,59 +2109,6 @@ class PgsqlReadRequestYbctidProvider {
   std::optional<int64> current_order_;
 };
 
-template<IndexableVectorType Vector>
-class ANNKeyProvider {
- public:
-  explicit ANNKeyProvider(
-      const DocReadContext& doc_read_context, PgsqlResponsePB& response, size_t prefetch_size,
-      const Vector& query_vec, VectorANN<Vector>* ann, const ANNPagingState& paging_state)
-      : response_(response), prefetch_size_(prefetch_size), query_vec_(query_vec), ann_(ann) {
-    next_batch_paging_state_ = paging_state;
-    CHECK_GT(prefetch_size_, 0);
-  }
-
-  bool RefillBatch() {
-    CHECK(key_batch_.empty());
-    auto batch = ann_->GetTopKVectors(
-        query_vec_, prefetch_size_, next_batch_paging_state_.distance(),
-        next_batch_paging_state_.main_key(), false);
-
-    std::sort(batch.begin(), batch.end(), std::less<DocKeyWithDistance>());
-    key_batch_.insert(key_batch_.end(), batch.begin(), batch.end());
-    if (key_batch_.empty()) {
-      return false;
-    }
-    next_batch_paging_state_ =
-        ANNPagingState(key_batch_.back().distance_, key_batch_.back().dockey_);
-    return true;
-  }
-
-  Slice FetchKey() {
-    if (key_batch_.empty() && !RefillBatch()) {
-      return Slice();
-    }
-
-    auto ret = key_batch_.front();
-    current_entry_ = ret;
-    key_batch_.pop_front();
-    return ret.dockey_;
-  }
-
-  ANNPagingState GetNextBatchPagingState() const { return next_batch_paging_state_; }
-
-  void AddedKeyToResultSet() { response_.add_vector_index_distances(current_entry_->distance_); }
-
- private:
-  PgsqlResponsePB& response_;
-  size_t prefetch_size_;
-  const FloatVector& query_vec_;
-  VectorANN<Vector>* ann_;
-  std::deque<DocKeyWithDistance> key_batch_;
-  ANNPagingState next_batch_paging_state_;
-
-  std::optional<DocKeyWithDistance> current_entry_;
-};
-
 Result<size_t> PgsqlReadOperation::Execute() {
   // Verify that this request references no columns marked for deletion.
   RETURN_NOT_OK(VerifyNoRefColsMarkedForDeletion(data_.doc_read_context.schema(), request_));
@@ -2172,9 +2146,6 @@ Result<size_t> PgsqlReadOperation::Execute() {
     } else {
       std::tie(fetched_rows, has_paging_state) = VERIFY_RESULT(ExecuteSample());
     }
-  } else if (request_.has_vector_idx_options()) {
-    std::tie(fetched_rows, has_paging_state) = VERIFY_RESULT(ExecuteVectorSearch(
-        data_.doc_read_context, request_.vector_idx_options()));
   } else if (request_.index_request().has_vector_idx_options()) {
     fetched_rows = VERIFY_RESULT(ExecuteVectorLSMSearch(
         request_.index_request().vector_idx_options()));
@@ -2647,91 +2618,6 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteSampleBlockBased() {
   return std::tuple<size_t, bool>{fetched_items, false};
 }
 
-Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteVectorSearch(
-     const DocReadContext& doc_read_context, const PgVectorReadOptionsPB& options) {
-  // Build the vectorann and then make an index_doc_read_context on the vectorann
-  // to get the index iterator. Then do ExecuteBatchKeys on the index iterator.
-  RSTATUS_DCHECK(options.has_vector(), InvalidArgument, "Query vector not provided");
-
-  auto query_vec = options.vector().binary_value();
-
-  auto ysql_query_vec = pointer_cast<const vector_index::YSQLVector*>(query_vec.data());
-
-  auto query_vec_ref = VERIFY_RESULT(
-      VectorANN<FloatVector>::GetVectorFromYSQLWire(*ysql_query_vec, query_vec.size()));
-
-  DummyANNFactory<FloatVector> ann_factory;
-  auto ann_store = ann_factory.Create(ysql_query_vec->dim);
-
-  dockv::ReaderProjection index_doc_projection;
-
-  auto key_col_id = doc_read_context.schema().column_id(0);
-
-  // Building the schema to extract the vector and key from the main DocDB store.
-  // Vector should be the first value after the key.
-  auto vector_col_id =
-      doc_read_context.schema().column_id(doc_read_context.schema().num_key_columns());
-  index_doc_projection.Init(doc_read_context.schema(), {key_col_id, vector_col_id});
-
-  FilteringIterator table_iter(&table_iter_);
-  RETURN_NOT_OK(table_iter.Init(data_, request_, index_doc_projection, doc_read_context));
-  dockv::PgTableRow row(index_doc_projection);
-  const auto& table_id = request_.table_id();
-
-  // Build the VectorANN.
-  for (;;) {
-    const auto fetch_result =
-        VERIFY_RESULT(FetchTableRow(table_id, &table_iter, nullptr /* index */, &row));
-    // If changing this code, see also PgsqlReadOperation::ExecuteBatchKeys.
-    if (fetch_result == FetchResult::NotFound) {
-      break;
-    }
-    ++scanned_table_rows_;
-    if (fetch_result == FetchResult::Found) {
-      auto vec_value = row.GetValueByColumnId(vector_col_id);
-      if (!vec_value.has_value()) {
-        continue;
-      }
-
-      // Add the vector to the ANN store
-      auto encoded = dockv::EncodedDocVectorValue::FromSlice(vec_value->binary_value());
-      auto vec = VERIFY_RESULT(VectorANN<FloatVector>::GetVectorFromYSQLWire(encoded.data));
-      auto doc_iter = down_cast<DocRowwiseIterator*>(table_iter_.get());
-      ann_store->Add(VERIFY_RESULT(encoded.DecodeId()), std::move(vec), doc_iter->GetTupleId());
-    }
-  }
-
-  // Check for paging state.
-  ANNPagingState ann_paging_state;
-  if (request_.has_paging_state()) {
-    ann_paging_state =
-        ANNPagingState{request_.paging_state().distance(), request_.paging_state().main_key()};
-  }
-
-  // All rows have been added to the ANN store, now we can create the iterator.
-  auto initial_prefetch_size = request_.vector_idx_options().prefetch_size();
-  initial_prefetch_size = std::max(initial_prefetch_size, 25);
-
-  ANNKeyProvider key_provider(
-      doc_read_context, response_, initial_prefetch_size, query_vec_ref, ann_store.get(),
-      ann_paging_state);
-  auto fetched_rows = VERIFY_RESULT(ExecuteBatchKeys(key_provider));
-
-  auto next_paging_state = key_provider.GetNextBatchPagingState();
-
-  // Set paging state.
-  bool has_paging_state = !next_paging_state.valid();
-  if (has_paging_state) {
-    auto* paging_state = response_.mutable_paging_state();
-    paging_state->set_distance(next_paging_state.distance());
-    paging_state->set_main_key(next_paging_state.main_key().ToBuffer());
-
-    BindReadTimeToPagingState(data_.read_operation_data.read_time);
-  }
-
-  return std::tuple<size_t, bool>{fetched_rows, has_paging_state};
-}
-
 Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOptionsPB& options) {
   RSTATUS_DCHECK(
       data_.vector_index, IllegalState, "Search vector when vector index is null: $0", request_);
@@ -2809,10 +2695,11 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteScalar() {
   // columns and key columns.
   auto doc_projection = CreateProjection(data_.doc_read_context.schema(), request_);
   FilteringIterator table_iter(&table_iter_);
-  RETURN_NOT_OK(table_iter.Init(data_, request_, doc_projection, data_.doc_read_context));
 
   std::optional<IndexState> index_state;
   if (data_.index_doc_read_context) {
+    RETURN_NOT_OK(table_iter.InitForYbctid(data_, doc_projection, data_.doc_read_context, {}));
+
     const auto& index_schema = data_.index_doc_read_context->schema();
     const auto idx = index_schema.find_column("ybidxbasectid");
     SCHECK_NE(idx, Schema::kColumnNotFound, Corruption, "ybidxbasectid not found in index schema");
@@ -2820,6 +2707,8 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteScalar() {
         index_schema, request_.index_request(), &index_iter_, index_schema.column_id(idx));
     RETURN_NOT_OK(index_state->iter.Init(
         data_, request_.index_request(), index_state->projection, *data_.index_doc_read_context));
+  } else {
+    RETURN_NOT_OK(table_iter.Init(data_, request_, doc_projection, data_.doc_read_context));
   }
 
   // Set scan end time. We want to iterate as long as we can, but stop before client timeout.
@@ -3171,19 +3060,24 @@ Status GetIntents(
 
   DocKeyAccessor accessor(schema);
   if (!(has_batch_arguments || request.has_ybctid_column_value())) {
-    inserter.Add(
-        VERIFY_RESULT(accessor.GetEncoded(request)), {level, row_mark, KeyOnlyRequested::kFalse});
+    auto slice = VERIFY_RESULT(accessor.GetEncoded(request));
+    bool inlcudes_pk = static_cast<bool>(accessor.pk_is_known());
+    inserter.Add(slice, inlcudes_pk, {level, row_mark, KeyOnlyRequested::kFalse});
     return Status::OK();
   }
 
   const IntentMode mode{
       level, row_mark, KeyOnlyRequested(IsOnlyKeyColumnsRequested(schema, request))};
   for (const auto& batch_argument : request.batch_arguments()) {
-    inserter.Add(VERIFY_RESULT(accessor.GetEncoded(batch_argument.ybctid())), mode);
+    auto slice = VERIFY_RESULT(accessor.GetEncoded(batch_argument.ybctid()));
+    bool inlcudes_pk = static_cast<bool>(accessor.pk_is_known());
+    inserter.Add(slice, inlcudes_pk, mode);
   }
   if (!has_batch_arguments) {
     DCHECK(request.has_ybctid_column_value());
-    inserter.Add(VERIFY_RESULT(accessor.GetEncoded(request.ybctid_column_value())), mode);
+    auto slice = VERIFY_RESULT(accessor.GetEncoded(request.ybctid_column_value()));
+    bool inlcudes_pk = static_cast<bool>(accessor.pk_is_known());
+    inserter.Add(slice, inlcudes_pk, mode);
   }
   return Status::OK();
 }
@@ -3200,17 +3094,12 @@ Status PgsqlLockOperation::Init(
 
   auto& schema = doc_read_context->schema();
 
-  dockv::KeyEntryValues hashed_components;
-  dockv::KeyEntryValues range_components;
-  RETURN_NOT_OK(QLKeyColumnValuesToPrimitiveValues(
+  auto hashed_components = VERIFY_RESULT(dockv::QLKeyColumnValuesToPrimitiveValues(
       request_.lock_id().lock_partition_column_values(), schema, 0,
-      schema.num_hash_key_columns(),
-      &hashed_components));
-  RETURN_NOT_OK(QLKeyColumnValuesToPrimitiveValues(
+      schema.num_hash_key_columns()));
+  auto range_components = VERIFY_RESULT(dockv::QLKeyColumnValuesToPrimitiveValues(
       request_.lock_id().lock_range_column_values(), schema,
-      schema.num_hash_key_columns(),
-      schema.num_range_key_columns(),
-      &range_components));
+      schema.num_hash_key_columns(), schema.num_range_key_columns()));
   SCHECK(!hashed_components.empty(), InvalidArgument, "No hashed column values provided");
   doc_key_ = DocKey(
       schema, request_.hash_code(), std::move(hashed_components), std::move(range_components));

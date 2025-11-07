@@ -22,6 +22,8 @@
 #include "yb/tablet/tablet_component.h"
 #include "yb/tablet/tablet_options.h"
 
+#include "yb/util/shutdown_controller.h"
+
 namespace yb {
 
 class ScopedRWOperation;
@@ -38,6 +40,7 @@ class VectorIndexList {
   void EnableAutoCompactions();
   void Compact();
   void Flush();
+  Status WaitForCompaction();
   Status WaitForFlush();
 
   std::string ToString() const;
@@ -59,10 +62,12 @@ class TabletVectorIndexes : public TabletComponent {
   TabletVectorIndexes(
       Tablet* tablet,
       const VectorIndexThreadPoolProvider& thread_pool_provider,
-      const VectorIndexPriorityThreadPoolProvider& priority_thread_pool_provider,
-      const hnsw::BlockCachePtr& block_cache);
+      const VectorIndexCompactionTokenProvider& compaction_token_provider,
+      const hnsw::BlockCachePtr& block_cache,
+      MetricRegistry* metric_registry);
 
   Status Open(const docdb::ConsensusFrontier* frontier);
+
   // Creates vector index for specified index and indexed tables.
   // bootstrap is set to true only during initial tablet bootstrap, so nobody should
   // hold external pointer to vector index list at this moment.
@@ -82,6 +87,7 @@ class TabletVectorIndexes : public TabletComponent {
   docdb::DocVectorIndexesPtr List() const EXCLUDES(vector_indexes_mutex_);
 
   void LaunchBackfillsIfNecessary();
+  void StartShutdown();
   void CompleteShutdown(std::vector<std::string>& out_paths);
   std::optional<google::protobuf::RepeatedPtrField<std::string>> FinishedBackfills();
 
@@ -124,16 +130,24 @@ class TabletVectorIndexes : public TabletComponent {
       REQUIRES(vector_indexes_mutex_);
 
   const VectorIndexThreadPoolProvider thread_pool_provider_;
-  const VectorIndexPriorityThreadPoolProvider priority_thread_pool_provider_;
+  const VectorIndexCompactionTokenProvider compaction_token_provider_;
   const hnsw::BlockCachePtr block_cache_;
   const MemTrackerPtr mem_tracker_;
+  MetricRegistry* metric_registry_ = nullptr;
 
   std::atomic<bool> has_vector_indexes_{false};
+  std::atomic<bool> has_vector_deletion_{false};
+
   mutable std::shared_mutex vector_indexes_mutex_;
   std::unordered_map<TableId, docdb::DocVectorIndexPtr> vector_indexes_map_
       GUARDED_BY(vector_indexes_mutex_);
   docdb::DocVectorIndexesPtr vector_indexes_list_ GUARDED_BY(vector_indexes_mutex_);
-  std::atomic<bool> has_vector_deletion_{false};
+
+  // Populated from vector_indexes_list_ on shutting down.
+  // The access is synchronized by shutdown_controller_ state.
+  docdb::DocVectorIndexesPtr vector_indexes_cleanup_list_;
+
+  ShutdownController shutdown_controller_;
 };
 
 }  // namespace yb::tablet

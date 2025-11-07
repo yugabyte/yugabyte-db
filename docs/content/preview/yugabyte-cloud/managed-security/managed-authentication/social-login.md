@@ -14,15 +14,15 @@ rightNav:
   hideH4: true
 ---
 
-The available social logins include Google, GitHub, and LinkedIn. All three are enabled by default.
+In addition to password login, you can use social logins, including Google, GitHub, and LinkedIn, to access your account.
 
 To manage the social logins available to your account users, do the following:
 
 1. Navigate to **Security > Access Control > Authentication**, and click **Edit Configuration** to display the **Login Methods** dialog.
 
-    ![Social Login methods](/images/yb-cloud/managed-authentication-social.png)
+    ![Login methods](/images/yb-cloud/managed-authentication-social.png)
 
-1. Enable the social logins you want to use.
+1. Enable the login methods you want to use.
 1. Click **Save Changes**.
 
 If you revoke a social login that is already in use, users using that social login can either [reset their password](../../manage-access/#reset-your-password) to configure email-based login, or sign in using a different social login. The social account must be associated with the same email address.

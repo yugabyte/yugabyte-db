@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -34,7 +34,8 @@ namespace yb::pggate {
 
 class PgSession;
 
-YB_DEFINE_ENUM(PrefetchingCacheMode, (TRUST_CACHE)(RENEW_CACHE_SOFT)(RENEW_CACHE_HARD));
+YB_DEFINE_ENUM(PrefetchingCacheMode,
+               (TRUST_CACHE_AUTH)(TRUST_CACHE)(RENEW_CACHE_SOFT)(RENEW_CACHE_HARD));
 
 using PrefetchedDataHolder =
     std::shared_ptr<const boost::container::small_vector<rpc::SidecarHolder, 8>>;

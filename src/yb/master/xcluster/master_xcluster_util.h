@@ -23,7 +23,8 @@ namespace yb::master {
 class TableInfo;
 
 // Should the table be automatically added to xCluster replication?
-bool IsTableEligibleForXClusterReplication(const master::TableInfo& table);
+bool IsTableEligibleForXClusterReplication(
+    const master::TableInfo& table, bool is_automatic_ddl_mode = false);
 
 // Get the table name along with the YSQL schema name if this is a YSQL table.
 std::string GetFullTableName(const TableInfo& table_info);
@@ -52,7 +53,7 @@ struct TableDesignator {
 
 Result<std::vector<TableDesignator>> GetTablesEligibleForXClusterReplication(
     const CatalogManager& catalog_manager, const NamespaceId& namespace_id,
-    bool include_sequences_data);
+    bool automatic_ddl_mode);
 
 bool IsDbScoped(const SysUniverseReplicationEntryPB& replication_info);
 

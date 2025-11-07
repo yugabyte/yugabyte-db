@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -35,7 +35,6 @@
 #include <string>
 #include <unordered_map>
 
-#include <boost/optional.hpp>
 #include <gtest/gtest.h>
 
 #include "yb/common/wire_protocol-test-util.h"
@@ -105,11 +104,11 @@ TEST_F(TabletReplacementITest, TestMasterTombstoneEvictedReplica) {
   ASSERT_OK(itest::WaitUntilCommittedOpIdIndexIs(1, leader_ts, tablet_id, timeout));
 
   // Remove a follower from the config.
-  ASSERT_OK(itest::RemoveServer(leader_ts, tablet_id, follower_ts, boost::none, timeout));
+  ASSERT_OK(itest::RemoveServer(leader_ts, tablet_id, follower_ts, std::nullopt, timeout));
 
   // Wait for the Master to tombstone the replica.
-  ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(kFollowerIndex, tablet_id, TABLET_DATA_TOMBSTONED,
-                                                 timeout));
+  ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(
+      kFollowerIndex, tablet_id, TABLET_DATA_TOMBSTONED, timeout));
 
   if (!AllowSlowTests()) {
     // The rest of this test has multi-second waits, so we do it in slow test mode.
@@ -126,12 +125,12 @@ TEST_F(TabletReplacementITest, TestMasterTombstoneEvictedReplica) {
     ASSERT_EQ(1, active_ts_map.erase(cluster_->tablet_server(i)->uuid()));
   }
   // This will time out, but should take effect.
-  Status s = itest::AddServer(leader_ts, tablet_id, follower_ts, PeerMemberType::PRE_VOTER,
-                              boost::none, MonoDelta::FromSeconds(5), NULL,
-                              false /* retry */);
+  Status s = itest::AddServer(
+      leader_ts, tablet_id, follower_ts, PeerMemberType::PRE_VOTER, std::nullopt,
+      MonoDelta::FromSeconds(5), NULL, false /* retry */);
   ASSERT_TRUE(s.IsTimedOut());
-  ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(kFollowerIndex, tablet_id, TABLET_DATA_READY,
-                                                 timeout));
+  ASSERT_OK(
+      inspect_->WaitForTabletDataStateOnTS(kFollowerIndex, tablet_id, TABLET_DATA_READY, timeout));
   ASSERT_OK(itest::WaitForServersToAgree(timeout, active_ts_map, tablet_id, 3));
 
   // Sleep for a few more seconds and check again to ensure that the Master
@@ -184,7 +183,7 @@ TEST_F(TabletReplacementITest, TestMasterTombstoneOldReplicaOnReport) {
 
   // Remove the follower from the config and wait for the Master to notice the
   // config change.
-  ASSERT_OK(itest::RemoveServer(leader_ts, tablet_id, follower_ts, boost::none, timeout));
+  ASSERT_OK(itest::RemoveServer(leader_ts, tablet_id, follower_ts, std::nullopt, timeout));
   ASSERT_OK(itest::WaitForNumVotersInConfigOnMaster(cluster_.get(), tablet_id, 2, timeout));
 
   // Shut down the remaining tablet servers and restart the dead one.
@@ -325,11 +324,11 @@ TEST_F(TabletReplacementITest, TestRemoteBoostrapWithPendingConfigChangeCommits)
   // Manually evict the server from the cluster, tombstone the replica, then
   // add the replica back to the cluster. Without the fix for KUDU-1233, this
   // will cause the replica to fail to start up.
-  ASSERT_OK(itest::RemoveServer(leader_ts, tablet_id, ts_to_remove, boost::none, timeout));
-  ASSERT_OK(itest::DeleteTablet(ts_to_remove, tablet_id, TABLET_DATA_TOMBSTONED,
-                                boost::none, timeout));
-  ASSERT_OK(itest::AddServer(leader_ts, tablet_id, ts_to_remove, PeerMemberType::PRE_VOTER,
-                             boost::none, timeout));
+  ASSERT_OK(itest::RemoveServer(leader_ts, tablet_id, ts_to_remove, std::nullopt, timeout));
+  ASSERT_OK(
+      itest::DeleteTablet(ts_to_remove, tablet_id, TABLET_DATA_TOMBSTONED, std::nullopt, timeout));
+  ASSERT_OK(itest::AddServer(
+      leader_ts, tablet_id, ts_to_remove, PeerMemberType::PRE_VOTER, std::nullopt, timeout));
   ASSERT_OK(itest::WaitUntilTabletRunning(ts_to_remove, tablet_id, timeout));
 
   ClusterVerifier cluster_verifier(cluster_.get());

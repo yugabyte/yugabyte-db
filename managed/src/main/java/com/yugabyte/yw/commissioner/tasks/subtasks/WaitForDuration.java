@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 YugaByte, Inc. and Contributors
+ * Copyright 2019 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -31,6 +31,7 @@ public class WaitForDuration extends UniverseTaskBase {
 
     // The wait time before returning from the subtask.
     public Duration waitTime;
+    public String infoMessage;
   }
 
   @Override
@@ -57,6 +58,10 @@ public class WaitForDuration extends UniverseTaskBase {
     if (taskParams().waitTime.compareTo(Duration.ZERO) <= 0) {
       log.info("wait time is less than or equal to 0; Skipping {}", getName());
       return;
+    }
+
+    if (taskParams().infoMessage != null) {
+      log.info("{}", taskParams().infoMessage);
     }
 
     try {

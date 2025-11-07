@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -16,6 +16,7 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_local_lock_manager.h"
+#include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/master/catalog_manager.h"
@@ -39,6 +40,7 @@
 
 DECLARE_bool(enable_object_lock_fastpath);
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(pg_client_use_shared_memory);
 DECLARE_bool(report_ysql_ddl_txn_status_to_master);
 DECLARE_bool(ysql_ddl_transaction_wait_for_ddl_verification);
@@ -56,6 +58,8 @@ DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 DECLARE_bool(TEST_tserver_enable_ysql_lease_refresh);
 DECLARE_int64(olm_poll_interval_ms);
 DECLARE_string(vmodule);
+DECLARE_bool(ysql_enable_auto_analyze);
+DECLARE_int32(pg_client_extra_timeout_ms);
 
 using namespace std::literals;
 
@@ -77,7 +81,9 @@ class PgObjectLocksTestRF1 : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_enable_ysql_lease_refresh) =
         kDefaultYSQLLeaseRefreshIntervalMilli;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_check_broadcast_address) = false;  // GH #26281
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
     PgMiniTestBase::SetUp();
     Init();
   }
@@ -125,12 +131,67 @@ class PgObjectLocksTestRF1 : public PgMiniTestBase {
     ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(1, 10), 0"));
   }
 
+  void TestAllBlockingPairs(bool test_pg_locks) {
+    static const std::vector<std::pair<std::string, std::string>> kBlockingPairs = {
+      {"ACCESS EXCLUSIVE", "ACCESS SHARE"},
+      {"ACCESS EXCLUSIVE", "ROW SHARE"},
+      {"ACCESS EXCLUSIVE", "ROW EXCLUSIVE"},
+      {"ACCESS EXCLUSIVE", "SHARE UPDATE EXCLUSIVE"},
+      {"ACCESS EXCLUSIVE", "SHARE"},
+      {"ACCESS EXCLUSIVE", "SHARE ROW EXCLUSIVE"},
+      {"ACCESS EXCLUSIVE", "EXCLUSIVE"},
+      {"ACCESS EXCLUSIVE", "ACCESS EXCLUSIVE"},
+      {"EXCLUSIVE", "ROW SHARE"},
+      {"EXCLUSIVE", "ROW EXCLUSIVE"},
+      {"EXCLUSIVE", "SHARE UPDATE EXCLUSIVE"},
+      {"EXCLUSIVE", "SHARE"},
+      {"EXCLUSIVE", "SHARE ROW EXCLUSIVE"},
+      {"EXCLUSIVE", "EXCLUSIVE"},
+      {"SHARE ROW EXCLUSIVE", "ROW EXCLUSIVE"},
+      {"SHARE ROW EXCLUSIVE", "SHARE UPDATE EXCLUSIVE"},
+      {"SHARE ROW EXCLUSIVE", "SHARE"},
+      {"SHARE ROW EXCLUSIVE", "SHARE ROW EXCLUSIVE"},
+      {"SHARE", "ROW EXCLUSIVE"},
+      {"SHARE", "SHARE UPDATE EXCLUSIVE"},
+      {"SHARE UPDATE EXCLUSIVE", "SHARE UPDATE EXCLUSIVE"},
+    };
+
+    CreateTestTable();
+    auto conn1 = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn1.ExecuteFormat("SET yb_locks_min_txn_age='0s'"));
+    auto conn2 = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn2.ExecuteFormat("SET yb_locks_min_txn_age='0s'"));
+    for (const auto& lock_types : kBlockingPairs) {
+      VerifyBlockingBehavior(conn1, conn2, lock_types.first, lock_types.second, test_pg_locks);
+      VerifyBlockingBehavior(conn1, conn2, lock_types.second, lock_types.first, test_pg_locks);
+    }
+  }
+
+  std::string ToMode(const std::string& table_lock_type_str) {
+    static const std::map<std::string, std::string> kLockModeMap = {
+      {"ACCESS SHARE", "AccessShareLock"},
+      {"ROW SHARE", "RowShareLock"},
+      {"ROW EXCLUSIVE", "RowExclusiveLock"},
+      {"SHARE UPDATE EXCLUSIVE", "ShareUpdateExclusiveLock"},
+      {"SHARE", "ShareLock"},
+      {"SHARE ROW EXCLUSIVE", "ShareRowExclusiveLock"},
+      {"EXCLUSIVE", "ExclusiveLock"},
+      {"ACCESS EXCLUSIVE", "AccessExclusiveLock"}
+    };
+    auto mode_it = kLockModeMap.find(table_lock_type_str);
+    if (mode_it == kLockModeMap.end()) {
+      return "UnknownLockMode";
+    }
+    return mode_it->second;
+  }
+
   void VerifyBlockingBehavior(
-      PGConn& conn1, PGConn& conn2, const std::string& lock_stmt_1,
-      const std::string& lock_stmt_2) {
-    LOG(INFO) << "Checking blocking behavior: " << lock_stmt_1 << " and " << lock_stmt_2;
+      PGConn& conn1, PGConn& conn2, const std::string& holder_lock_type,
+      const std::string& waiter_lock_type, bool test_pg_locks) {
+    LOG(INFO) << "Checking blocking behavior: " << holder_lock_type << " and " << waiter_lock_type;
+    static const std::string lock_query = "LOCK TABLE test IN $0 MODE";
     ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-    ASSERT_OK(conn1.Execute(lock_stmt_1));
+    ASSERT_OK(conn1.ExecuteFormat(lock_query, holder_lock_type));
 
     // In sync point ObjectLockManagerImpl::DoLockSingleEntry, the lock is in waiting state.
     SyncPoint::GetInstance()->LoadDependency(
@@ -140,7 +201,17 @@ class PgObjectLocksTestRF1 : public PgMiniTestBase {
 
     auto conn2_lock_future = std::async(std::launch::async, [&]() -> Status {
       RETURN_NOT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-      RETURN_NOT_OK(conn2.Execute(lock_stmt_2));
+      RETURN_NOT_OK(conn2.ExecuteFormat(lock_query, waiter_lock_type));
+
+      if (test_pg_locks) {
+        SleepFor(500ms * kTimeMultiplier);
+        auto granted_lock_mode = VERIFY_RESULT(conn2.FetchRow<std::string>(
+            "SELECT mode FROM pg_locks WHERE granted = true AND relation = 'test'::regclass"));
+        // The waiter should have acquired the lock at this point.
+        SCHECK_EQ(granted_lock_mode, ToMode(waiter_lock_type),
+            IllegalState, "Expected the waiter to be unblocked");
+      }
+
       RETURN_NOT_OK(conn2.Execute("INSERT INTO test (k, v) VALUES (11, 1)"));
       RETURN_NOT_OK(conn2.CommitTransaction());
       return Status::OK();
@@ -148,6 +219,17 @@ class PgObjectLocksTestRF1 : public PgMiniTestBase {
 
     // Ensure lock is in waiting state.
     DEBUG_ONLY_TEST_SYNC_POINT("WaitingLock");
+
+    if (test_pg_locks) {
+      SleepFor(500ms * kTimeMultiplier);
+      auto granted_lock_mode = ASSERT_RESULT(conn1.FetchRow<std::string>(
+          "SELECT mode FROM pg_locks WHERE granted = true AND relation = 'test'::regclass"));
+      ASSERT_EQ(granted_lock_mode, ToMode(holder_lock_type));
+      auto waiting_lock_mode = ASSERT_RESULT(conn1.FetchRow<std::string>(
+          "SELECT mode FROM pg_locks WHERE granted = false AND relation = 'test'::regclass"));
+      ASSERT_EQ(waiting_lock_mode, ToMode(waiter_lock_type));
+    }
+
     ASSERT_EQ(ASSERT_RESULT(conn1.FetchRow<PGUint64>("SELECT COUNT(*) FROM test WHERE v = 1")), 0);
 
     // After conn1 releases the lock, conn2 should be able to acquire it.
@@ -200,7 +282,6 @@ TEST_F(PgObjectLocksTestRF1, TestSanity) {
 
   // A DDL shouldn't leave behind any locks on the local TS (since it is RF1).
   ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
-  ASSERT_OK(AssertNumLocks(0 /* granted locks*/, 0 /* waiting locks */));
 
   // An auto commit distributed transaction shouldn't leave behind any locks.
   ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(1, 10), 0"));
@@ -247,39 +328,11 @@ TEST_F(PgObjectLocksTestRF1, TestWaitingOnConflictingLocks) {
 }
 
 TEST_F(PgObjectLocksTestRF1, VerifyTableLockBlockingBehavior) {
-  CreateTestTable();
-  auto conn1 = ASSERT_RESULT(Connect());
-  auto conn2 = ASSERT_RESULT(Connect());
-  const std::vector<std::pair<std::string, std::string>> blocking_pairs = {
-    {"ACCESS EXCLUSIVE", "ACCESS SHARE"},
-    {"ACCESS EXCLUSIVE", "ROW SHARE"},
-    {"ACCESS EXCLUSIVE", "ROW EXCLUSIVE"},
-    {"ACCESS EXCLUSIVE", "SHARE UPDATE EXCLUSIVE"},
-    {"ACCESS EXCLUSIVE", "SHARE"},
-    {"ACCESS EXCLUSIVE", "SHARE ROW EXCLUSIVE"},
-    {"ACCESS EXCLUSIVE", "EXCLUSIVE"},
-    {"ACCESS EXCLUSIVE", "ACCESS EXCLUSIVE"},
-    {"EXCLUSIVE", "ROW SHARE"},
-    {"EXCLUSIVE", "ROW EXCLUSIVE"},
-    {"EXCLUSIVE", "SHARE UPDATE EXCLUSIVE"},
-    {"EXCLUSIVE", "SHARE"},
-    {"EXCLUSIVE", "SHARE ROW EXCLUSIVE"},
-    {"EXCLUSIVE", "EXCLUSIVE"},
-    {"SHARE ROW EXCLUSIVE", "ROW EXCLUSIVE"},
-    {"SHARE ROW EXCLUSIVE", "SHARE UPDATE EXCLUSIVE"},
-    {"SHARE ROW EXCLUSIVE", "SHARE"},
-    {"SHARE ROW EXCLUSIVE", "SHARE ROW EXCLUSIVE"},
-    {"SHARE", "ROW EXCLUSIVE"},
-    {"SHARE", "SHARE UPDATE EXCLUSIVE"},
-    {"SHARE UPDATE EXCLUSIVE", "SHARE UPDATE EXCLUSIVE"},
-  };
+  TestAllBlockingPairs(/*test_pg_locks=*/false);
+}
 
-  for (const auto& pair : blocking_pairs) {
-    std::string lock_stmt_1 = "LOCK TABLE test IN " + pair.first + " MODE";
-    std::string lock_stmt_2 = "LOCK TABLE test IN " + pair.second + " MODE";
-    VerifyBlockingBehavior(conn1, conn2, lock_stmt_1, lock_stmt_2);
-    VerifyBlockingBehavior(conn1, conn2, lock_stmt_2, lock_stmt_1);
-  }
+TEST_F(PgObjectLocksTestRF1, TestPgLocks) {
+  TestAllBlockingPairs(/*test_pg_locks=*/true);
 }
 
 class PgObjectLocksTestRF1SessionExpiry : public PgObjectLocksTestRF1 {
@@ -485,13 +538,16 @@ class PgObjectLocksTest : public LibPqTestBase {
                    "ysql_yb_ddl_transaction_block_enabled"));
     opts->extra_tserver_flags.emplace_back(
         yb::Format("--enable_object_locking_for_table_locks=$0", EnableTableLocks()));
+    opts->extra_tserver_flags.emplace_back(
+        yb::Format("--ysql_yb_ddl_transaction_block_enabled=$0", EnableTableLocks()));
     opts->extra_tserver_flags.emplace_back("--enable_ysql_operation_lease=true");
     opts->extra_tserver_flags.emplace_back("--TEST_tserver_enable_ysql_lease_refresh=true");
     opts->extra_tserver_flags.emplace_back(
         Format("--ysql_lease_refresher_interval_ms=$0", kDefaultYSQLLeaseRefreshIntervalMilli));
+    // yb_user_ddls_preempt_auto_analyze works only if enable_object_locking_for_table_locks is off,
+    // so disable auto analyze in this test suite.
+    opts->extra_tserver_flags.emplace_back("--ysql_enable_auto_analyze=false");
 
-    opts->extra_master_flags.emplace_back(
-        yb::Format("--allowed_preview_flags_csv=ysql_yb_ddl_transaction_block_enabled"));
     opts->extra_master_flags.emplace_back("--enable_ysql_operation_lease=true");
     opts->extra_master_flags.emplace_back(
         Format("--master_ysql_operation_lease_ttl_ms=$0", kDefaultMasterYSQLLeaseTTLMilli));
@@ -586,49 +642,66 @@ class TestWithTransactionalDDLRF3: public PgObjectLocksTest {
     PgObjectLocksTest::UpdateMiniClusterOptions(opts);
     opts->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=true");
   }
+
+  void testConcurrentAlterSelect(bool fresh_catalog_cache) {
+    const auto ts1_idx = 0;
+    const auto ts2_idx = 1;
+    auto* ts1 = cluster_->tablet_server(ts1_idx);
+    auto* ts2 = cluster_->tablet_server(ts2_idx);
+
+    auto conn1 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    auto conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+
+    ASSERT_OK(conn1.Execute("CREATE TABLE t1(c1 INT, c2 INT)"));
+    ASSERT_OK(conn2.Execute("INSERT INTO t1 VALUES (1, 2)"));
+
+    if (fresh_catalog_cache) {
+      // Reset to new conns so we don't retain any catalog cache entries
+      conn1 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+      conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+    } else {
+      auto row1 = ASSERT_RESULT(conn2.FetchRowAsString("SELECT * FROM t1"));
+      LOG(INFO) << "Row was " << row1;
+    }
+    ASSERT_OK(cluster_->SetFlag(
+        ts2,
+        "TEST_tserver_disable_catalog_refresh_on_heartbeat",
+        "true"));
+
+    ASSERT_OK(conn1.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+    ASSERT_OK(conn2.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+    LOG(INFO) << "conn1: Acquiring exclusive lock on test table";
+    ASSERT_OK(conn1.Execute("ALTER TABLE t1 DROP COLUMN c2"));
+
+    TestThreadHolder thread_holder;
+    thread_holder.AddThreadFunctor([&conn2]() {
+      LOG(INFO) << "conn2: going to wait on conn1's table lock";
+      // without propagation of inval msgs on lock acquire, this statement would hit a
+      // schema mismatch error
+      auto row2 = ASSERT_RESULT(conn2.FetchRowAsString("SELECT * FROM t1"));
+      LOG(INFO) << "Row was " << row2;
+    });
+
+    ASSERT_OK(conn1.Execute("COMMIT"));
+    thread_holder.JoinAll();
+    ASSERT_OK(conn2.Execute("COMMIT"));
+
+    ASSERT_OK(cluster_->SetFlag(
+        ts2,
+        "TEST_tserver_disable_catalog_refresh_on_heartbeat",
+        "false"));
+    LOG(INFO) << "Verifying new conns go through";
+    auto conn4 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+    ASSERT_OK(conn4.Fetch("SELECT * FROM t1"));
+  }
 };
 
+TEST_F_EX(PgObjectLocksTest, ConcurrentAlterSelectFreshCache, TestWithTransactionalDDLRF3) {
+  testConcurrentAlterSelect(true);
+}
+
 TEST_F_EX(PgObjectLocksTest, ConcurrentAlterSelect, TestWithTransactionalDDLRF3) {
-  const auto ts1_idx = 0;
-  const auto ts2_idx = 1;
-  auto* ts1 = cluster_->tablet_server(ts1_idx);
-  auto* ts2 = cluster_->tablet_server(ts2_idx);
-
-  auto conn1 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
-  auto conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
-
-  ASSERT_OK(conn1.Execute("CREATE TABLE t1(c1 INT, c2 INT)"));
-  ASSERT_OK(conn2.Fetch("SELECT * FROM t1"));
-
-  ASSERT_OK(cluster_->SetFlag(
-      ts2,
-      "TEST_tserver_disable_catalog_refresh_on_heartbeat",
-      "true"));
-
-  ASSERT_OK(conn1.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
-  ASSERT_OK(conn2.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
-  LOG(INFO) << "conn1: Acquiring exclusive lock on test table";
-  ASSERT_OK(conn1.Execute("ALTER TABLE t1 ADD COLUMN c3 INT"));
-
-  TestThreadHolder thread_holder;
-  thread_holder.AddThreadFunctor([&conn2]() {
-    LOG(INFO) << "conn2: going to wait on conn1's table lock";
-    // without propagation of inval msgs on lock acquire, this statement would hit a
-    // schema mismatch error
-    ASSERT_OK(conn2.Fetch("SELECT * FROM t1"));
-  });
-
-  ASSERT_OK(conn1.Execute("COMMIT"));
-  thread_holder.JoinAll();
-  ASSERT_OK(conn2.Execute("COMMIT"));
-
-  ASSERT_OK(cluster_->SetFlag(
-      ts2,
-      "TEST_tserver_disable_catalog_refresh_on_heartbeat",
-      "false"));
-  LOG(INFO) << "Verifying new conns go through";
-  auto conn4 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
-  ASSERT_OK(conn4.Fetch("SELECT * FROM t1"));
+  testConcurrentAlterSelect(false);
 }
 
 TEST_F(PgObjectLocksTest, BackfillIndexSanityTest) {
@@ -715,24 +788,88 @@ TEST_F(PgObjectLocksTest, ReleaseExpiredLocksInvalidatesCatalogCache) {
   ASSERT_OK(ts1->Restart());
 }
 
+TEST_F(PgObjectLocksTest, RetryExclusiveLockOnTserverLeaseRefresh) {
+  const auto ts1_idx = 1;
+  const auto ts2_idx = 2;
+  auto* ts1 = cluster_->tablet_server(ts1_idx);
+  auto* ts2 = cluster_->tablet_server(ts2_idx);
+
+  auto conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_OK(conn2.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn2.Execute("INSERT INTO test SELECT generate_series(1,11), 0"));
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn2.Execute("LOCK TABLE test IN ACCESS SHARE MODE"));
+
+  auto conn1 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(cluster_->SetFlag(ts2, "vmodule", "object_lock_manager=1"));
+  LogWaiter log_waiter(ts2, "added to wait-queue");
+  auto status_future = std::async(std::launch::async, [&]() -> Status {
+    return conn1.Execute("LOCK TABLE test IN ACCESS EXCLUSIVE MODE");
+  });
+  ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 10)));
+
+  // The exclusive lock request should still go through and not error due to membership changes.
+  ts2->Shutdown(SafeShutdown::kTrue);
+  ASSERT_EQ(
+      status_future.wait_for(2s * kTimeMultiplier * kDefaultMasterYSQLLeaseTTLMilli),
+      std::future_status::ready);
+  ASSERT_OK(status_future.get());
+  ASSERT_OK(conn1.CommitTransaction());
+}
+
+TEST_F(PgObjectLocksTest, VerifyLockTimeout) {
+  constexpr int kLockTimeoutDurationMs = 3000;
+  constexpr int kExtraTimeoutMs = 1000;
+
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(setup_conn.Execute("INSERT INTO t VALUES (1, 1)"));
+
+  auto conn1 = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn1.Execute("LOCK TABLE t IN ACCESS EXCLUSIVE MODE;"));
+
+  ASSERT_OK(conn2.ExecuteFormat("SET lock_timeout='$0ms';", kLockTimeoutDurationMs));
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+
+  std::future<Status> conn2_lock_future = std::async(std::launch::async, [&]() -> Status {
+    return conn2.Execute("LOCK TABLE t IN ACCESS EXCLUSIVE MODE;");
+  });
+
+  // Wait briefly to confirm that conn2 is actually blocking on the lock.
+  ASSERT_EQ(conn2_lock_future.wait_for(
+      std::chrono::seconds(1)), std::future_status::timeout);
+
+  auto expected_timeout_ms =
+      kLockTimeoutDurationMs + FLAGS_pg_client_extra_timeout_ms + kExtraTimeoutMs;
+  ASSERT_EQ(conn2_lock_future.wait_for(
+      std::chrono::milliseconds(expected_timeout_ms * kTimeMultiplier)), std::future_status::ready);
+
+  // Verify the lock attempt fails with lock timeout error.
+  Status result = conn2_lock_future.get();
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.ToString(), "Timed out");
+
+  // Conn1 should still be able to commit
+  ASSERT_OK(conn1.CommitTransaction());
+}
+
 YB_STRONGLY_TYPED_BOOL(DoMasterFailover);
 YB_STRONGLY_TYPED_BOOL(UseExplicitLocksInsteadOfDdl);
-YB_STRONGLY_TYPED_BOOL(EnableYsqlDdlTxnBlock);
 class PgObjecLocksTestOutOfOrderMessageHandling
     : public PgObjectLocksTest,
       public ::testing::WithParamInterface<
-          std::tuple<DoMasterFailover, UseExplicitLocksInsteadOfDdl, EnableYsqlDdlTxnBlock>> {
+          std::tuple<DoMasterFailover, UseExplicitLocksInsteadOfDdl>> {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     PgObjectLocksTest::UpdateMiniClusterOptions(opts);
     opts->num_masters = (ShouldDoMasterFailover() ? 3 : 1);
     opts->extra_master_flags.emplace_back(
         yb::Format("--pg_client_extra_timeout_ms=$0", kPgClientExtraTimeoutMs));
-    opts->extra_master_flags.emplace_back(
-        yb::Format("--ysql_yb_ddl_transaction_block_enabled=$0", ShouldEnableYsqlDdlTxnBlock()));
     opts->extra_tserver_flags.emplace_back("--vmodule=ts_local_lock_manager=2");
-    opts->extra_tserver_flags.emplace_back(
-        yb::Format("--ysql_yb_ddl_transaction_block_enabled=$0", ShouldEnableYsqlDdlTxnBlock()));
   }
 
   DoMasterFailover ShouldDoMasterFailover() const {
@@ -741,10 +878,6 @@ class PgObjecLocksTestOutOfOrderMessageHandling
 
   UseExplicitLocksInsteadOfDdl ShouldUseExplicitLocksInsteadOfDdl() const {
     return std::get<1>(GetParam());
-  }
-
-  EnableYsqlDdlTxnBlock ShouldEnableYsqlDdlTxnBlock() const {
-    return std::get<2>(GetParam());
   }
 
   static constexpr auto kPgClientExtraTimeoutMs = 2000;
@@ -821,10 +954,8 @@ TEST_P(PgObjecLocksTestOutOfOrderMessageHandling, TestOutOfOrderMessageHandling)
       cluster_->SetFlag(ts2, "TEST_release_blocked_acquires_to_simulate_out_of_order", "true"));
   ASSERT_OK(log_waiter2.WaitFor(kTimeout));
 
-  auto get_locks_count_on_tserver = [&conn2]() -> Result<int64_t> {
-    return conn2.FetchRow<int64_t>(
-        "SELECT COUNT(relname) FROM pg_locks l, pg_class c "
-        "WHERE l.relation = c.oid AND relname = 'test_table';");
+  auto get_locks_count_on_tserver = [&ts2, this]() -> Result<int64_t> {
+    return VERIFY_RESULT(cluster_->GetObjectLockStatus(*ts2)).object_lock_infos_size();
   };
 
   auto kGracePeriod = MonoDelta::FromMilliseconds(500);
@@ -858,29 +989,18 @@ INSTANTIATE_TEST_SUITE_P(
     , PgObjecLocksTestOutOfOrderMessageHandling,
     ::testing::Values(
         std::make_tuple(
-            DoMasterFailover::kTrue, UseExplicitLocksInsteadOfDdl::kTrue,
-            EnableYsqlDdlTxnBlock::kFalse),
+            DoMasterFailover::kTrue, UseExplicitLocksInsteadOfDdl::kTrue),
         std::make_tuple(
-            DoMasterFailover::kFalse, UseExplicitLocksInsteadOfDdl::kTrue,
-            EnableYsqlDdlTxnBlock::kFalse),
+            DoMasterFailover::kFalse, UseExplicitLocksInsteadOfDdl::kTrue),
         std::make_tuple(
-            DoMasterFailover::kTrue, UseExplicitLocksInsteadOfDdl::kFalse,
-            EnableYsqlDdlTxnBlock::kFalse),
+            DoMasterFailover::kTrue, UseExplicitLocksInsteadOfDdl::kFalse),
         std::make_tuple(
-            DoMasterFailover::kFalse, UseExplicitLocksInsteadOfDdl::kFalse,
-            EnableYsqlDdlTxnBlock::kFalse),
-        std::make_tuple(
-            DoMasterFailover::kTrue, UseExplicitLocksInsteadOfDdl::kFalse,
-            EnableYsqlDdlTxnBlock::kTrue),
-        std::make_tuple(
-            DoMasterFailover::kFalse, UseExplicitLocksInsteadOfDdl::kFalse,
-            EnableYsqlDdlTxnBlock::kTrue)),
+            DoMasterFailover::kFalse, UseExplicitLocksInsteadOfDdl::kFalse)),
     [](const ::testing::TestParamInfo<
-        std::tuple<DoMasterFailover, UseExplicitLocksInsteadOfDdl, EnableYsqlDdlTxnBlock>>& info) {
-      return Format("$0_$1_$2",
+        std::tuple<DoMasterFailover, UseExplicitLocksInsteadOfDdl>>& info) {
+      return Format("$0_$1",
           (std::get<0>(info.param) ? "WithMasterFailover" : "NoMasterFailover"),
-          (std::get<1>(info.param) ? "UseExplicitLocks" : "UseDdlForLocks"),
-          (std::get<2>(info.param) ? "WithDdlTxnBlock" : "NoDdlTxnBlock"));
+          (std::get<1>(info.param) ? "UseExplicitLocks" : "UseDdlForLocks"));
     });
 
 // This test relies on the OLM poller to run frequently and timedout waiters, in order to

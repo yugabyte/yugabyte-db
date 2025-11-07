@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package task
 
@@ -78,8 +78,15 @@ func (h *ConfigureServerHandler) Handle(ctx context.Context) (*pb.DescribeTaskRe
 	// 2) determine yb_metric_dir
 	yb_metrics_dir := filepath.Join(h.param.GetRemoteTmp(), "yugabyte/metrics")
 	cmd := "systemctl show node_exporter | grep -oP '(?<=--collector.textfile.directory=)[^ ]+' | head -n1"
-	h.logOut.WriteLine("Determing the node_exporter textfile directory")
-	cmdInfo, err := module.RunShellCmd(ctx, h.username, h.String(), cmd, h.logOut)
+	h.logOut.WriteLine("Determining the node_exporter textfile directory")
+	cmdInfo, err := module.RunShellCmdWithRetry(
+		ctx,
+		module.SystemdBackOff,
+		h.username,
+		"ShowSystemd",
+		cmd,
+		h.logOut,
+	)
 	if err != nil {
 		util.FileLogger().Errorf(ctx, "Configure server failed in %v - %s", cmd, err.Error())
 		return nil, err
@@ -187,8 +194,14 @@ func (h *ConfigureServerHandler) enableSystemdServices(ctx context.Context) erro
 	// Link network-online.target if required
 	linkCmd := fmt.Sprintf("systemctl --user link %s/network-online.target", unitDir)
 	h.logOut.WriteLine("Running configure server phase: %s", linkCmd)
-	util.FileLogger().Infof(ctx, "Running command %v", linkCmd)
-	_, err = module.RunShellCmd(ctx, h.username, h.String(), linkCmd, h.logOut)
+	_, err = module.RunShellCmdWithRetry(
+		ctx,
+		module.SystemdBackOff,
+		h.username,
+		"LinkNetworkOnlineTarget",
+		linkCmd,
+		h.logOut,
+	)
 	if err != nil {
 		util.FileLogger().Errorf(ctx, "Configure server failed in %v - %s", linkCmd, err.Error())
 		return err

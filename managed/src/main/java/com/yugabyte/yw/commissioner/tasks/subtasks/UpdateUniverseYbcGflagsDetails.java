@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
@@ -30,15 +30,9 @@ public class UpdateUniverseYbcGflagsDetails extends UniverseTaskBase {
   }
 
   @Override
-  public String getName() {
-    return super.getName() + "(" + taskParams().getUniverseUUID() + ")";
-  }
-
-  @Override
   public void run() {
     try {
       log.info("Running {}", getName());
-      String errorString = null;
 
       // Create the update lambda.
       UniverseUpdater updater =
@@ -63,7 +57,7 @@ public class UpdateUniverseYbcGflagsDetails extends UniverseTaskBase {
       saveUniverseDetails(updater);
     } catch (Exception e) {
       String msg = getName() + " failed with exception " + e.getMessage();
-      log.warn(msg, e.getMessage());
+      log.error(msg, e.getMessage());
       throw new RuntimeException(msg, e);
     }
   }

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2019 YugaByte, Inc. and Contributors
+# Copyright 2019 YugabyteDB, Inc. and Contributors
 #
 # Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
 # may not use this file except in compliance with the License. You
@@ -846,6 +846,8 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument("--install_locales", action="store_true", default=False,
                                  help="If enabled YBA will install locale on the DB nodes")
         self.parser.add_argument("--install_otel_collector", action="store_true")
+        self.parser.add_argument("--otel_col_max_memory", default="2048",
+                                 help="Max memory for OpenTelemetry Collector process.")
         self.parser.add_argument('--otel_col_config_file', default=None,
                                  help="Path to OpenTelemetry Collector config file.")
         self.parser.add_argument('--otel_col_aws_access_key', default=None,
@@ -920,6 +922,8 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         self.extra_vars["lun_indexes"] = args.lun_indexes
         if args.install_otel_collector:
             self.extra_vars.update({"install_otel_collector": args.install_otel_collector})
+        if args.otel_col_max_memory:
+            self.extra_vars.update({"otel_col_max_memory": args.otel_col_max_memory})
         if args.otel_col_config_file:
             self.extra_vars.update({"otel_col_config_file_local": args.otel_col_config_file})
         if args.otel_col_aws_access_key:
@@ -1353,6 +1357,8 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                                  help="The maximum number of checking the clock skew before "
                                       "failing.")
         self.parser.add_argument("--install_otel_collector", action="store_true")
+        self.parser.add_argument("--otel_col_max_memory", default="2048",
+                                 help="Max memory for OpenTelemetry Collector process.")
         self.parser.add_argument('--otel_col_config_file', default=None,
                                  help="Path to OpenTelemetry Collector config file.")
         self.parser.add_argument('--otel_col_aws_access_key', default=None,
@@ -1681,6 +1687,8 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
 
         if args.install_otel_collector:
             self.extra_vars.update({"install_otel_collector": args.install_otel_collector})
+        if args.otel_col_max_memory:
+            self.extra_vars.update({"otel_col_max_memory": args.otel_col_max_memory})
         if args.otel_col_config_file:
             self.extra_vars.update({"otel_col_config_file_local": args.otel_col_config_file})
         if args.otel_col_aws_access_key:
@@ -2232,6 +2240,8 @@ class ManageOtelCollector(AbstractInstancesMethod):
         super(ManageOtelCollector, self).add_extra_args()
 
         self.parser.add_argument("--install_otel_collector", action="store_true")
+        self.parser.add_argument("--otel_col_max_memory", default="2048",
+                                 help="Max memory for OpenTelemetry Collector process.")
         self.parser.add_argument('--otel_col_config_file', default=None,
                                  help="Path to OpenTelemetry Collector config file.")
         self.parser.add_argument('--otel_col_aws_access_key', default=None,
@@ -2265,6 +2275,8 @@ class ManageOtelCollector(AbstractInstancesMethod):
             self.extra_vars.update({"local_package_path": args.local_package_path})
         if args.install_otel_collector:
             self.extra_vars.update({"install_otel_collector": args.install_otel_collector})
+        if args.otel_col_max_memory:
+            self.extra_vars.update({"otel_col_max_memory": args.otel_col_max_memory})
         if args.otel_col_config_file:
             self.extra_vars.update({"otel_col_config_file_local": args.otel_col_config_file})
         if args.otel_col_aws_access_key:

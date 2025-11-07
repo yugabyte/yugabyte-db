@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -34,8 +34,13 @@ class DocQLScanSpec : public qlexpr::QLScanSpec {
   // Scan for the specified doc_key. If the doc_key specify a full primary key, the scan spec will
   // not include any static column for the primary key. If the static columns are needed, a separate
   // scan spec can be used to read just those static columns.
-  DocQLScanSpec(const Schema& schema, const dockv::DocKey& doc_key, const rocksdb::QueryId query_id,
+  DocQLScanSpec(
+      const Schema& schema, const dockv::DocKey& doc_key, const rocksdb::QueryId query_id,
       const bool is_forward_scan = true, const size_t prefix_length = 0);
+
+  DocQLScanSpec(
+      const Schema& schema, dockv::KeyBytes&& encoded_doc_key, rocksdb::QueryId query_id,
+      bool is_forward_scan = true, size_t prefix_length = 0);
 
   // Scan for the given hash key and a condition. If a start_doc_key is specified, the scan spec
   // will not include any static column for the start key. If the static columns are needed, a
@@ -46,14 +51,15 @@ class DocQLScanSpec : public qlexpr::QLScanSpec {
   //
   // DocQLScanSpec spec(...{} /* hashed_components */,...);
 
-  DocQLScanSpec(const Schema& schema, boost::optional<int32_t> hash_code,
-                boost::optional<int32_t> max_hash_code,
-                std::reference_wrapper<const dockv::KeyEntryValues> hashed_components,
-                const QLConditionPB* req, const QLConditionPB* if_req,
-                rocksdb::QueryId query_id, bool is_forward_scan = true,
-                bool include_static_columns = false,
-                const dockv::DocKey& start_doc_key = DefaultStartDocKey(),
-                const size_t prefix_length = 0);
+  DocQLScanSpec(
+      const Schema& schema, std::optional<int32_t> hash_code, std::optional<int32_t> max_hash_code,
+      const ArenaPtr& arena,
+      const std::vector<Slice>& hashed_components,
+      const QLConditionPB* req, const QLConditionPB* if_req, rocksdb::QueryId query_id,
+      bool is_forward_scan = true, bool include_static_columns = false,
+      const dockv::DocKey& start_doc_key = DefaultStartDocKey(), const size_t prefix_length = 0);
+
+  DocQLScanSpec(const Schema& schema, const QLConditionPB* cond);
 
   const std::shared_ptr<std::vector<qlexpr::OptionList>>& options() const override {
     return options_;
@@ -79,23 +85,21 @@ class DocQLScanSpec : public qlexpr::QLScanSpec {
   void InitOptions(const QLConditionPB& condition);
 
   // Returns the lower/upper doc key based on the range components.
-  dockv::KeyBytes bound_key(const bool lower_bound) const;
+  dockv::KeyBytes BoundKey(
+      const std::vector<Slice>& hashed_components, qlexpr::BoundType bound_type) const;
 
   // Returns the lower/upper range components of the key.
   dockv::KeyEntryValues RangeComponents(
-      bool lower_bound,
+      qlexpr::BoundType bound_type,
       std::vector<bool>* inclusivities = nullptr) const override;
 
   // Hash code to scan at (interpreted as lower bound if hashed_components_ are empty)
   // hash values are positive int16_t.
-  const boost::optional<int32_t> hash_code_;
+  const std::optional<int32_t> hash_code_;
 
   // Max hash code to scan at (upper bound, only useful if hashed_components_ are empty)
   // hash values are positive int16_t.
-  const boost::optional<int32_t> max_hash_code_;
-
-  // The hashed_components are owned by the caller of QLScanSpec.
-  const dockv::KeyEntryValues* hashed_components_;
+  const std::optional<int32_t> max_hash_code_;
 
   // The range/hash value options if set (possibly more than one due to IN conditions).
   std::shared_ptr<std::vector<qlexpr::OptionList>> options_;

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.common.backuprestore.ybc;
 
@@ -172,6 +172,7 @@ public class YbcBackupNodeRetrieverTest extends FakeDBApplication {
     params.setYbcInstalled(true);
     params.upsertPrimaryCluster(
         mapper.readValue(multiRegionUserIntent, UserIntent.class),
+        null,
         mapper.readValue(multiRegionPlacementInfo, PlacementInfo.class));
     params.getPrimaryCluster().setUuid(params.nodeDetailsSet.iterator().next().placementUuid);
     mockUniverse = Universe.create(params, mockCustomer.getId());

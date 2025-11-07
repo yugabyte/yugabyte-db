@@ -13,6 +13,7 @@
 
 #include "yb/client/xcluster_client.h"
 
+#include "yb/ash/rpc_wait_state.h"
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/common/xcluster_util.h"
 #include "yb/client/client.h"
@@ -72,6 +73,7 @@ Status XClusterRemoteClientHolder::Init(const std::vector<HostPort>& remote_mast
         &messenger_builder));
   }
   messenger_ = VERIFY_RESULT(messenger_builder.Build());
+  messenger_->SetMetadataSerializerFactory(std::make_unique<ash::MetadataSerializerFactory>());
   yb_client_ = VERIFY_RESULT(YBClientBuilder()
                                  .set_client_name(kClientName)
                                  .add_master_server_addr(master_addrs)

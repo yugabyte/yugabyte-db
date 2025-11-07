@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -15,6 +15,7 @@
 
 #include "yb/common/ql_type.h"
 
+#include "yb/dockv/doc_key.h"
 #include "yb/dockv/value_type.h"
 
 #include "yb/util/logging.h"
@@ -77,6 +78,21 @@ DocReadContext::DocReadContext(const DocReadContext& rhs, SchemaVersion min_sche
       << min_schema_version;
 }
 
+std::optional<DocHybridTime> DocReadContext::table_tombstone_time() const {
+  boost::atomic_ref<DocHybridTime> ref(table_tombstone_time_);
+  auto doc_ht = ref.load(boost::memory_order_relaxed);
+  if (doc_ht == DocHybridTime::kMax) {
+    return std::nullopt; // Not yet cached.
+  }
+  return doc_ht;
+}
+
+void DocReadContext::set_table_tombstone_time(DocHybridTime table_tombstone_time) const {
+  DCHECK(schema_.has_colocation_id());
+  boost::atomic_ref<DocHybridTime> ref(table_tombstone_time_);
+  ref.store(table_tombstone_time, boost::memory_order_relaxed);
+}
+
 void DocReadContext::LogAfterLoad() {
   if (schema_packing_storage.SingleSchemaVersion() == 0) {
     return;
@@ -137,6 +153,17 @@ void DocReadContext::UpdateKeyPrefix() {
   } else {
     upperbound_buffer_[upperbound_len_++] = dockv::KeyEntryTypeAsChar::kHighest;
   }
+}
+
+Result<bool> DocReadContext::HaveEqualBloomFilterKey(Slice lhs, Slice rhs) const {
+  return dockv::HashedOrFirstRangeComponentsEqual(lhs, rhs);
+}
+
+size_t DocReadContext::NumColumnsUsedByBloomFilterKey() const {
+  // If there are hash columns, when we include hash code, otherwise bloom filter
+  // pick the first range component.
+  // So num columns used by bloom filter always num hash columns + 1.
+  return schema_.num_hash_key_columns() + 1;
 }
 
 DocReadContext DocReadContext::TEST_Create(const Schema& schema) {

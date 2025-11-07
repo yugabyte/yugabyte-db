@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -34,6 +34,13 @@ public class TestPgRegressProc extends BasePgRegressTest {
     Map<String, String> flagMap = super.getTServerFlags();
     // Setting the below flag stabilizes yb_lock_status tests.
     flagMap.put("TEST_delay_before_get_old_transactions_heartbeat_intervals", "2");
+    flagMap.put("skip_prefix_locks", "false");
+    // The schedule has a few pg_locks tests whose output varies when object locking is enabled,
+    // as the object locks on catalog tables don't seem very deterministic amidst DDLs. Hence
+    // disabling object locking for this tests (there are other tests where pg_locks is tested for
+    // with object locking enabled).
+    flagMap.put("allowed_preview_flags_csv", "enable_object_locking_for_table_locks");
+    flagMap.put("enable_object_locking_for_table_locks", "false");
     return flagMap;
   }
 

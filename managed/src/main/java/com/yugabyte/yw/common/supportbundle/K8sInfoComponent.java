@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 YugaByte, Inc. and Contributors
+ * Copyright 2022 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -326,7 +326,7 @@ class K8sInfoComponent implements SupportBundleComponent {
       //     Run the kubectl commands and get the output to a file.
       for (Cluster universeCluster : universeClusters) {
         Map<UUID, Map<String, String>> azToConfig =
-            KubernetesUtil.getConfigPerAZ(universeCluster.placementInfo);
+            KubernetesUtil.getConfigPerAZ(universeCluster.getOverallPlacement());
         Provider provider =
             Provider.getOrBadRequest(UUID.fromString(universeCluster.userIntent.provider));
         boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);

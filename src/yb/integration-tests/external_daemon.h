@@ -119,7 +119,7 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   // Return true if we have explicitly shut down the process.
   bool IsShutdown() const;
 
-  // Was SIGKILL used to shutdown the process?
+  // Did we try to do a graceful shutdown but were forced to use SIGKILL to shutdown the process?
   bool WasUnsafeShutdown() const;
 
   // Return true if the process is still running.  This may return false if the process crashed,

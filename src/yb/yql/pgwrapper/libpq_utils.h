@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -375,6 +375,7 @@ struct PGConnSettings {
   std::string password = {};
   std::string replication = {};
   size_t connect_timeout = 0;
+  bool yb_auto_analyze = false;
 };
 
 class PGConnBuilder {
@@ -408,10 +409,13 @@ class PGConnPerf {
 // authentication).
 PGConnBuilder CreateInternalPGConnBuilder(
     const HostPort& pgsql_proxy_bind_address, const std::string& database_name,
-    uint64_t postgres_auth_key, const std::optional<CoarseTimePoint>& deadline);
+    uint64_t postgres_auth_key, const std::optional<CoarseTimePoint>& deadline,
+    bool yb_auto_analyze = false);
 
 Result<std::string> ResultAsString(
     PGresult* res, const std::string& column_sep = DefaultColumnSeparator(),
     const std::string& row_sep = DefaultRowSeparator());
+
+void ReplaceAll(std::string* str, const std::string& from, const std::string& to);
 
 } // namespace yb::pgwrapper

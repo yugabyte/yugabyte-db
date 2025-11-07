@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 YugaByte, Inc. and Contributors
+ * Copyright 2022 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -237,7 +237,8 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "DB node metrics collection level."
               + "ALL - collect all metrics, "
               + "NORMAL - default value, which only limits some per-table metrics, "
-              + "MINIMAL - limits both node level and further limits table level "
+              + "TABLE_OFF - Disable table level metrics collection, "
+              + "MINIMAL - limits both node level and further limits table level"
               + "metrics we collect and "
               + "OFF to completely disable metric collection.",
           ConfDataType.StringType,
@@ -1192,8 +1193,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           new ConfKeyInfo<>(
               "yb.xcluster.db_scoped.failover.delete_replication_on_source_timeout",
               ScopeType.UNIVERSE,
-              "Maximum timeout for yb client RPC call to delete the outbound replication on the"
-                  + " source universe during failover task execution",
+              "Maximum timeout for delete replication RPC on source during failover",
               "If the source universe is down, this RPC call will time out during failover"
                   + " operation, increasing the failover task execution time; The lower the value,"
                   + " the less time the failover task will take to complete. If it is set to zero,"
@@ -1205,17 +1205,17 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
       new ConfKeyInfo<>(
           "yb.xcluster.db_scoped.creationEnabled",
           ScopeType.UNIVERSE,
-          "Flag to enable db scoped xCluster replication creation",
-          "If flag is enabled, allows DR creation with db scoped xCluster replication",
+          "Enable xCluster DR Semi-automatic Mode",
+          "When enabled, new xCluster DR configurations use Semi-automatic mode.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> XClusterDbScopedAutomaticDdlCreationEnabled =
       new ConfKeyInfo<>(
           "yb.xcluster.db_scoped.automatic_ddl.creationEnabled",
           ScopeType.UNIVERSE,
-          "Flag indicating if db scoped xCluster replication should have automatic DDL replication",
-          "If flag and yb.xcluster.db_scoped.creationEnabled are enabled, newly created DR configs"
-              + " will have automatic DDL replication",
+          "Enable xCluster DR Automatic Mode",
+          "When this and yb.xcluster.db_scoped.creationEnabled are both enabled, new xCluster DR"
+              + " configurations use Automatic mode.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> leaderlessTabletsCheckEnabled =
@@ -1539,6 +1539,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "If true, YBA will skip checking for Opentelemetry operator installation on the cluster.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> otelCollectorMaxMemory =
+      new ConfKeyInfo<>(
+          "yb.universe.otel_collector_max_memory",
+          ScopeType.UNIVERSE,
+          "Max memory for OpenTelemetry Collector process.",
+          "Hard memory limit for the OpenTelemetry Collector process in the systemd unit file.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> waitAttemptsForMajorCatalogUpgrade =
       new ConfKeyInfo<>(
           "yb.upgrade.wait_attempts_for_major_catalog_upgrade",
@@ -1744,4 +1752,28 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " upgrade operations",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> upgradeMasterStagePauseDurationMs =
+      new ConfKeyInfo<>(
+          "yb.upgrade.upgrade_master_stage_pause_duration_ms",
+          ScopeType.UNIVERSE,
+          "Upgrade Master Sleep Time Per AZ",
+          "Time to sleep after upgrading masters in each AZ",
+          ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> upgradeTServerStagePauseDurationMs =
+      new ConfKeyInfo<>(
+          "yb.upgrade.upgrade_tserver_stage_pause_duration_ms",
+          ScopeType.UNIVERSE,
+          "Upgrade TServer Sleep Time Per AZ",
+          "Time to sleep after upgrading tservers in each AZ",
+          ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> checkTablespacesBeforeEdit =
+      new ConfKeyInfo<>(
+          "yb.checks.tablespaces_before_edit.enabled",
+          ScopeType.UNIVERSE,
+          "Check if edit operation will affect existing tablespaces",
+          "Check if edit operation will affect existing tablespaces",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

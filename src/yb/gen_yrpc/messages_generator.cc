@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -725,6 +725,14 @@ class Message {
   }
 
   void Parse(YBPrinter printer) const {
+    const auto& options = message_->options().GetExtension(rpc::lightweight_message);
+    if (options.verify()) {
+      printer(
+          "using $message_lw_name$VerifyType = Status (*)(const $message_lw_name$& msg);\n"
+          "$message_lw_name$VerifyType $message_lw_name$Verify = nullptr;\n\n"
+      );
+    }
+
     printer(
         "Status $message_lw_name$::ParseFromCodedStream("
             "google::protobuf::io::CodedInputStream* input) {\n"
@@ -737,11 +745,33 @@ class Message {
     );
 
     ScopedIndent loop_indent(printer);
+    printer("auto p = input->ReadTagWithCutoffNoLastTag($cutoff$);\n");
+    if (options.dump_parse()) {
+      printer(
+          "LOG(INFO) << std::string(100 - input->RecursionBudget(), ' ') << "
+              "\"$message_lw_name$, tag: \" << p.first << '(' << "
+              "::google::protobuf::internal::WireFormatLite::GetTagFieldNumber(p.first) << \"), "
+              "\" << p.second;\n"
+      );
+    }
+    printer("if (!p.second && !p.first) {\n");
+    if (options.verify()) {
+      printer(
+           "  return $message_lw_name$Verify ? $message_lw_name$Verify(*this) : Status::OK();\n"
+      );
+    } else {
+      printer("  return Status::OK();\n");
+    }
     printer(
-        "auto p = input->ReadTagWithCutoffNoLastTag($cutoff$);\n"
-        "if (!p.second && !p.first) {\n"
-        "  return Status::OK();\n"
         "}\n"
+    );
+    if (options.dump_parse()) {
+      printer(
+          "const void* input_start;\n"
+          "int input_left_start;\n"
+          "input->GetDirectBufferPointerInline(&input_start, &input_left_start);\n");
+    }
+    printer(
         "switch(::google::protobuf::internal::WireFormatLite::GetTagFieldNumber(p.first)) {\n"
     );
 
@@ -831,6 +861,16 @@ class Message {
     case_indent.Reset("}\n");
 
     switch_indent.Reset("}\n");
+    if (options.dump_parse()) {
+      printer(
+          "const void* input_finish;\n"
+          "int input_left_finish;\n"
+          "input->GetDirectBufferPointerInline(&input_finish, &input_left_finish);\n"
+          "LOG(INFO) << std::string(100 - input->RecursionBudget(), ' ') << "
+              "\"$message_lw_name$ consumed: \" << Slice(pointer_cast<const char*>(input_start), "
+              "pointer_cast<const char*>(input_finish)).ToDebugHexString();\n"
+      );
+    }
     loop_indent.Reset("}\n");
     method_indent.Reset("}\n\n");
   }

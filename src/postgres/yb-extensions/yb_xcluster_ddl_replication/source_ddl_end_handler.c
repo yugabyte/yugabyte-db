@@ -59,10 +59,11 @@
 #include "utils/palloc.h"
 #include "utils/rel.h"
 
-#define DDL_END_OBJID_COLUMN_ID		  1
-#define DDL_END_COMMAND_TAG_COLUMN_ID 2
-#define DDL_END_SCHEMA_NAME_COLUMN_ID 3
-#define DDL_END_COMMAND_COLUMN_ID     4
+#define DDL_END_CLASSID_COLUMN_ID	  1
+#define DDL_END_OBJID_COLUMN_ID		  2
+#define DDL_END_COMMAND_TAG_COLUMN_ID 3
+#define DDL_END_SCHEMA_NAME_COLUMN_ID 4
+#define DDL_END_COMMAND_COLUMN_ID     5
 
 #define SQL_DROP_CLASS_ID_COLUMN_ID	     1
 #define SQL_DROP_IS_TEMP_COLUMN_ID	     2
@@ -110,6 +111,7 @@ static List *rewritten_table_oid_list = NIL;
 	X(CMDTAG_ALTER_DOMAIN) \
 	X(CMDTAG_ALTER_EXTENSION) \
 	X(CMDTAG_ALTER_FUNCTION) \
+	X(CMDTAG_ALTER_MATERIALIZED_VIEW) \
 	X(CMDTAG_ALTER_OPERATOR) \
 	X(CMDTAG_ALTER_OPERATOR_CLASS) \
 	X(CMDTAG_ALTER_OPERATOR_FAMILY) \
@@ -588,6 +590,7 @@ AddTypeInfo(Oid pg_type_oid, char *schema, List **type_info_list)
 
 typedef struct YbCommandInfo
 {
+	Oid			class_id;
 	Oid			oid;
 	char	   *command_tag_name;
 	char	   *schema;			/* may be NULL */
@@ -601,8 +604,8 @@ GetSourceEventTriggerDDLCommands(YbCommandInfo **info_array_out)
 
 	initStringInfo(&query_buf);
 	appendStringInfo(&query_buf,
-					 "SELECT objid, command_tag, schema_name, command FROM "
-					 "pg_catalog.pg_event_trigger_ddl_commands()");
+					 "SELECT classid, objid, command_tag, schema_name, command "
+					 "FROM pg_catalog.pg_event_trigger_ddl_commands()");
 	int			exec_res = SPI_execute(query_buf.data,
 									   true,	/* readonly */
 									   0);	/* tcount */
@@ -629,7 +632,13 @@ GetSourceEventTriggerDDLCommands(YbCommandInfo **info_array_out)
 		if (command_tag != CMDTAG_GRANT && command_tag != CMDTAG_REVOKE
 			&& command_tag != CMDTAG_ALTER_DEFAULT_PRIVILEGES)
 		{
+			info->class_id = SPI_GetOid(spi_tuple, DDL_END_CLASSID_COLUMN_ID);
 			info->oid = SPI_GetOid(spi_tuple, DDL_END_OBJID_COLUMN_ID);
+		}
+		else
+		{
+			info->class_id = InvalidOid;
+			info->oid = InvalidOid;
 		}
 		info->schema = SPI_GetText(spi_tuple, DDL_END_SCHEMA_NAME_COLUMN_ID);
 		info->command = GetCollectedCommand(spi_tuple, DDL_END_COMMAND_COLUMN_ID);
@@ -732,7 +741,6 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 	List	   *sequence_info_list = NIL;
 	List	   *type_info_list = NIL;
 	bool		found_temp = false;
-	bool		found_matview = false;
 
 	/*
 	 * As long as there is at least one command that needs to be replicated, we
@@ -748,16 +756,24 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 		CommandTag	command_tag = GetCommandTagEnum(info->command_tag_name);
 		char	   *schema = info->schema;
 
-		/*
-		 * The below works for objects with names but not nameless parts.
-		 * TODO(#25885): add code to handle nameless parts.
-		 */
 		bool		is_temporary_object = IsTempSchema(schema);
-
+		/*
+		 * The above works for most objects, but in a few cases Postgres does
+		 * not provide the schema; we thus have to handle those separately here.
+		 */
+		if (info->class_id == PolicyRelationId)
+			is_temporary_object = IsTemporaryPolicy(info->oid);
+		else if (info->class_id == TriggerRelationId)
+			is_temporary_object = IsTemporaryTrigger(info->oid);
+		else if (info->class_id == RewriteRelationId)
+			is_temporary_object = IsTemporaryRule(info->oid);
 		found_temp |= is_temporary_object;
 
 		if (command_tag == CMDTAG_CREATE_TABLE ||
-			command_tag == CMDTAG_CREATE_INDEX)
+			command_tag == CMDTAG_CREATE_INDEX ||
+			command_tag == CMDTAG_CREATE_TABLE_AS ||
+			command_tag == CMDTAG_SELECT_INTO ||
+			command_tag == CMDTAG_CREATE_MATERIALIZED_VIEW)
 		{
 			should_replicate_ddl |=
 				ShouldReplicateNewRelation(obj_id, &new_rel_list, /* is_table_rewrite */ false);
@@ -841,11 +857,15 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 			if (!is_temporary_object)
 				should_replicate_ddl |=
 					ShouldReplicateTruncatedRelation(obj_id, &new_rel_list);
-
 		}
-		else if (IsMatViewCommand(command_tag))
+		else if (command_tag == CMDTAG_REFRESH_MATERIALIZED_VIEW)
 		{
-			found_matview = true;
+			/* Refresh is a table rewrite. */
+			should_replicate_ddl |=
+				ShouldReplicateNewRelation(obj_id, &new_rel_list,
+										   /* is_table_rewrite= */ true);
+			const char *schema_name = info->schema;
+			ProcessRewrittenIndexes(obj_id, schema_name, &new_rel_list);
 		}
 		else if (IsPassThroughDdlSupported(command_tag_name))
 		{
@@ -858,19 +878,17 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 		}
 	}
 
-	if (should_replicate_ddl)
+	if (should_replicate_ddl && found_temp)
 	{
-		if (found_temp)
-			ereport(ERROR,
+		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				errmsg("unsupported mix of temporary and persisted objects in DDL command"),
-				errdetail("%s", kManualReplicationErrorMsg)));
-
-		if (found_matview)
-			ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				errmsg("unsupported mix of materialized view and other DDL commands"),
-				errdetail("%s", kManualReplicationErrorMsg)));
+				 errmsg("unsupported mix of temporary and permanent objects"),
+				 errdetail("This database is being replicated using xCluster "
+							 "automatic mode, which does not support DDLs "
+							 "that simultaneously use both temporary and "
+							 "permanent objects."),
+				 errhint("Using multiple commands, manipulate the temporary "
+						 "objects separately from the permanent ones.")));
 	}
 
 	ProcessNewRelationsList(state, &new_rel_list);
@@ -920,14 +938,8 @@ ProcessSourceEventTriggerTableRewrite()
 }
 
 bool
-ProcessSourceEventTriggerDroppedObjects(CommandTag	tag)
+ProcessSourceEventTriggerDroppedObjects(CommandTag tag)
 {
-	/*
-	 * Matview related DDLs are not replicated.
-	 */
-	if (IsMatViewCommand(tag))
-		return false;
-
 	StringInfoData query_buf;
 
 	initStringInfo(&query_buf);
@@ -940,12 +952,12 @@ ProcessSourceEventTriggerDroppedObjects(CommandTag	tag)
 	if (exec_res != SPI_OK_SELECT)
 		elog(ERROR, "SPI_exec failed (error %d): %s", exec_res, query_buf.data);
 
+	bool		found_temp = false;
 	/*
 	 * As long as there is at least one command that needs to be replicated, we
 	 * will set this to true and replicate the entire query string.
 	 */
 	bool		should_replicate_ddl = false;
-	bool		found_temp = false;
 
 	for (int row = 0; row < SPI_processed; row++)
 	{
@@ -964,6 +976,7 @@ ProcessSourceEventTriggerDroppedObjects(CommandTag	tag)
 		if (is_temp)
 		{
 			found_temp = true;
+			/* Postgres does not support temporary materialized views. */
 			continue;
 		}
 
@@ -1010,7 +1023,7 @@ ProcessSourceEventTriggerDroppedObjects(CommandTag	tag)
 														  SQL_DROP_OBJECT_NAME_COLUMN_ID);
 
 					elog(ERROR,
-						 "Unsupported Drop DDL for xCluster replicated DB: %s "
+						 "unsupported Drop DDL for xCluster replicated DB: %s "
 						 "(class_id: %d), object_name: %s.%s\n%s",
 						 object_type, class_id, schema_name, object_name,
 						 kManualReplicationErrorMsg);
@@ -1021,9 +1034,13 @@ ProcessSourceEventTriggerDroppedObjects(CommandTag	tag)
 	if (found_temp && should_replicate_ddl)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("unsupported DROP command, found mix of "
-						"temporary and persisted objects in DDL command"),
-				 errdetail("%s", kManualReplicationErrorMsg)));
+				 errmsg("cannot drop temporary and permanent objects in one command"),
+				 errdetail("This database is being replicated using xCluster "
+						   "automatic mode, which does not support DDLs "
+						   "that simultaneously drop both temporary and "
+						   "permanent objects."),
+				 errhint("Drop the temporary objects separately from the "
+						 "permanent ones using multiple commands.")));
 
 	return should_replicate_ddl;
 }

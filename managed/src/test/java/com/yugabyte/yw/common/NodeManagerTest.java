@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 package com.yugabyte.yw.common;
 
 import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.CONTROLLER;
@@ -590,6 +590,9 @@ public class NodeManagerTest extends FakeDBApplication {
     when(mockConfGetter.getConfForScope(
             any(Universe.class), eq(UniverseConfKeys.pitEnabledBackupsRetentionBufferTimeSecs)))
         .thenReturn(3600);
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.enableSystemdDebugLogging)))
+        .thenReturn(false);
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ansibleKeepRemoteFiles))).thenReturn(false);
   }
 
   private String getMountPoints(AnsibleConfigureServers.Params taskParam) {
@@ -699,7 +702,9 @@ public class NodeManagerTest extends FakeDBApplication {
       gflags.put("enable_ysql", "false");
     }
     if (configureParams.enableYCQL) {
-      gflags.put("start_cql_proxy", "true");
+      if (processType == null || ServerType.TSERVER.name().equals(processType)) {
+        gflags.put("start_cql_proxy", "true");
+      }
       gflags.put("cql_proxy_webserver_port", "12000");
       gflags.put(
           "cql_proxy_bind_address",
@@ -714,12 +719,13 @@ public class NodeManagerTest extends FakeDBApplication {
       } else {
         gflags.put("use_cassandra_authentication", "false");
       }
-    } else {
+    } else if (processType == null || ServerType.TSERVER.name().equals(processType)) {
       gflags.put("start_cql_proxy", "false");
     }
 
     gflags.put("cluster_uuid", String.valueOf(configureParams.getUniverseUUID()));
-    if (configureParams.isMaster) {
+
+    if (ServerType.MASTER.name().equals(processType)) {
       gflags.put("replication_factor", String.valueOf(userIntent.replicationFactor));
       gflags.put("load_balancer_initial_delay_secs", "480");
     }

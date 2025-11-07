@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -20,8 +20,7 @@
 
 #include "yb/tserver/tserver_admin.proxy.h"
 
-namespace yb {
-namespace master {
+namespace yb::master {
 
 using std::string;
 using std::vector;
@@ -30,22 +29,24 @@ using tserver::TabletServerErrorPB;
 ////////////////////////////////////////////////////////////
 // AsyncFlushTablets
 ////////////////////////////////////////////////////////////
-AsyncFlushTablets::AsyncFlushTablets(Master *master,
-                                     ThreadPool* callback_pool,
-                                     const TabletServerId& ts_uuid,
-                                     const scoped_refptr<TableInfo>& table,
-                                     const vector<TabletId>& tablet_ids,
-                                     const FlushRequestId& flush_id,
-                                     bool is_compaction,
-                                     bool regular_only,
-                                     LeaderEpoch epoch,
-                                     MonoTime deadline)
-    : RetrySpecificTSRpcTaskWithTable(master, callback_pool, ts_uuid, table, std::move(epoch),
-                                      /* async_task_throttler = */ nullptr),
-      tablet_ids_(tablet_ids),
-      flush_id_(flush_id),
-      is_compaction_(is_compaction),
-      regular_only_(regular_only) {
+AsyncFlushTablets::AsyncFlushTablets(
+      Master *master,
+      ThreadPool* callback_pool,
+      const TabletServerId& ts_uuid,
+      const scoped_refptr<TableInfo>& table,
+      const vector<TabletId>& tablet_ids,
+      const FlushRequestId& flush_id,
+      bool is_compaction,
+      tablet::FlushCompactFlags flags,
+      LeaderEpoch epoch,
+      MonoTime deadline)
+      : RetrySpecificTSRpcTaskWithTable(
+            master, callback_pool, ts_uuid, table, std::move(epoch),
+            /* async_task_throttler = */ nullptr),
+        tablet_ids_(tablet_ids),
+        flush_id_(flush_id),
+        is_compaction_(is_compaction),
+        flags_(flags) {
   // May not honor unresponsive deadline, refer to UnresponsiveDeadline().
   deadline_ = deadline != MonoTime::Max() ? deadline : UnresponsiveDeadline();
 }
@@ -109,11 +110,16 @@ bool AsyncFlushTablets::SendRequest(int attempt) {
   for (const TabletId& id : tablet_ids_) {
     req.add_tablet_ids(id);
   }
-  req.set_regular_only(regular_only_);
 
+  // If specified table is a vector index, do the operation for vector indexes only.
+  auto new_flags = flags_;
   if (table()->is_vector_index()) {
     req.add_vector_index_ids(table()->id());
+    new_flags = tablet::FLUSH_COMPACT_VECTOR_INDEX;
+    LOG_IF_WITH_PREFIX(INFO, flags_ != new_flags) <<
+        Format("Flush or compact flags changed from $0 to $1", flags_, new_flags);
   }
+  req.set_flags(new_flags);
 
   response_handling_ = false;
   ts_admin_proxy_->FlushTabletsAsync(req, &resp_, &rpc_, BindRpcCallback());
@@ -124,11 +130,10 @@ bool AsyncFlushTablets::SendRequest(int attempt) {
 }
 
 void AsyncFlushTablets::Finished(const Status& status) {
-  // Call explicit handling only if reponse is not handled in AsyncFlushTablets::HandleResponse.
+  // Call explicit handling only if response is not handled in AsyncFlushTablets::HandleResponse.
   if (!response_handling_) {
     master_->flush_manager()->HandleFlushTabletsRpcFinish(flush_id_, permanent_uuid_, status);
   }
 }
 
-} // namespace master
-} // namespace yb
+} // namespace yb::master

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -79,8 +79,11 @@ AggregatedClusterInfo ComputeAggregatedClusterInfo(
 }
 
 Status CanCreateTabletReplicas(
-    int num_tablets, const ReplicationInfoPB& replication_info,
+    std::vector<std::pair<ReplicationInfoPB, int>> replication_info_to_num_tablets,
     const TSDescriptorVector& ts_descs, const BlacklistSet& blacklist) {
+  if (replication_info_to_num_tablets.empty()) {
+    return Status::OK();
+  }
   if (!GetAtomicFlag(&FLAGS_enforce_tablet_replica_limits)) {
     return Status::OK();
   }
@@ -88,10 +91,14 @@ Status CanCreateTabletReplicas(
   if (!limits.per_gib && !limits.per_core) {
     return Status::OK();
   }
-  int64_t tablet_replicas_to_create =
-      num_tablets * GetNumReplicasOrGlobalReplicationFactor(replication_info.live_replicas());
+  int64_t tablet_replicas_to_create = 0;
+  for (const auto& [replication_info, num_tablets] : replication_info_to_num_tablets) {
+    tablet_replicas_to_create += num_tablets * GetNumReplicasOrGlobalReplicationFactor(
+        replication_info.live_replicas());
+  }
   auto cluster_info = ComputeAggregatedClusterInfo(
-      ts_descs, blacklist, replication_info.live_replicas().placement_uuid());
+      ts_descs, blacklist,
+      replication_info_to_num_tablets.front().first.live_replicas().placement_uuid());
   int64_t cluster_limit = ComputeTabletReplicaLimit(cluster_info, limits);
   int64_t new_tablet_count = cluster_info.total_live_replicas + tablet_replicas_to_create;
   if (new_tablet_count > cluster_limit) {
@@ -108,6 +115,12 @@ Status CanCreateTabletReplicas(
         << cluster_limit;
   }
   return Status::OK();
+}
+
+Status CanCreateTabletReplicas(
+    int num_tablets, const ReplicationInfoPB& replication_info,
+    const TSDescriptorVector& ts_descs, const BlacklistSet& blacklist) {
+  return CanCreateTabletReplicas({{replication_info, num_tablets}}, ts_descs, blacklist);
 }
 
 }  // namespace yb::master

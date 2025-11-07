@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.common.certmgmt;
 
@@ -798,7 +798,7 @@ public class CertificateHelper {
   public static KeyPair getKeyPairObject()
       throws NoSuchAlgorithmException, NoSuchProviderException {
     KeyPairGenerator keypairGen = KeyPairGenerator.getInstance("RSA");
-    keypairGen.initialize(2048);
+    keypairGen.initialize(3072);
     return keypairGen.generateKeyPair();
   }
 
@@ -1144,6 +1144,22 @@ public class CertificateHelper {
           certPath,
           e.getMessage());
       throw new RuntimeException("Failed to compute fingerprint", e);
+    }
+  }
+
+  public static UUID getTemporaryRootCAUUID(Universe universe) {
+    try {
+      CertificateInfo oldRootCert =
+          CertificateInfo.getOrBadRequest(universe.getUniverseDetails().rootCA);
+      CertificateInfo temporaryCert =
+          CertificateInfo.createCopy(
+              oldRootCert,
+              oldRootCert.getLabel() + EncryptionInTransitUtil.MULTI_ROOT_CERT_TMP_LABEL_SUFFIX,
+              new File(oldRootCert.getCertificate()).getAbsolutePath());
+      return temporaryCert.getUuid();
+    } catch (Exception e) {
+      log.error("Failed to create temporary multi cert", e);
+      throw new RuntimeException("Failed to create temporary multi cert", e);
     }
   }
 }

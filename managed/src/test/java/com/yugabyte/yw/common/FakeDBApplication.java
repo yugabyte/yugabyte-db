@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.common;
 
@@ -56,7 +56,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public ShellKubernetesManager mockKubernetesManager = mock(ShellKubernetesManager.class);
   public EncryptionAtRestManager mockEARManager = mock(EncryptionAtRestManager.class);
   public TelemetryProviderService mockTelemetryProviderService =
-      spy(TelemetryProviderService.class);
+      mock(TelemetryProviderService.class);
   public SetUniverseKey mockSetUniverseKey = mock(SetUniverseKey.class);
   public CallbackController mockCallbackController = mock(CallbackController.class);
   public PlayCacheSessionStore mockSessionStore = mock(PlayCacheSessionStore.class);
@@ -100,6 +100,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public ReleasesUtils mockReleasesUtils = mock(ReleasesUtils.class);
   public XClusterScheduler mockXClusterScheduler = mock(XClusterScheduler.class);
   public SoftwareUpgradeHelper mockSoftwareUpgradeHelper = mock(SoftwareUpgradeHelper.class);
+  public YsqlQueryExecutor mockYsqlQueryExecutor = mock(YsqlQueryExecutor.class);
 
   public MetricService metricService;
   public AlertService alertService;
@@ -179,6 +180,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
         .overrides(bind(FileHelperService.class).toInstance(mockFileHelperService))
         .overrides(bind(XClusterScheduler.class).toInstance(mockXClusterScheduler))
         .overrides(bind(SoftwareUpgradeHelper.class).toInstance(mockSoftwareUpgradeHelper))
+        .overrides(bind(YsqlQueryExecutor.class).toInstance(mockYsqlQueryExecutor))
         .build();
   }
 

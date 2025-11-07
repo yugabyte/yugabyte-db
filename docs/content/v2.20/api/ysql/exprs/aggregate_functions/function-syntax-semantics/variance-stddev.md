@@ -4,7 +4,7 @@ linkTitle: variance(), var_pop(), var_samp(), stddev(), stddev_pop(), stddev_sam
 headerTitle: variance(), var_pop(), var_samp(), stddev(), stddev_pop(), stddev_samp()
 description: Describes the functionality of the variance(), var_pop(), var_samp(), stddev(), stddev_pop(), and stddev_samp() YSQL aggregate functions
 menu:
-  v2.20:
+  v2.20_api:
     identifier: variance-stddev
     parent: aggregate-function-syntax-semantics
     weight: 40
@@ -181,7 +181,7 @@ real              double precision
 
 ## Example
 
-The example uses the function `normal_rand()`, brought by the [tablefunc](../../../../../../explore/ysql-language-features/pg-extensions/#tablefunc-example) extension, to populate the test table:
+The example uses the function `normal_rand()`, brought by the [tablefunc](../../../../../../additional-features/pg-extensions/#tablefunc-example) extension, to populate the test table:
 
 ```plpgsql
 drop table if exists t cascade;

@@ -4,7 +4,7 @@ headerTitle: SET ROLE
 linkTitle: SET ROLE
 description: Use the SET ROLE statement to set the current user of the current session to be the specified user.
 menu:
-  v2.20:
+  v2.20_api:
     identifier: dcl_set_role
     parent: statements
 type: docs

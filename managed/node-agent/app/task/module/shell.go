@@ -1,10 +1,12 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package module
 
 import (
 	"bufio"
 	"context"
+	"fmt"
+	"node-agent/backoff"
 	"node-agent/util"
 	"os"
 	"os/exec"
@@ -116,10 +118,11 @@ func RunSteps(
 			}
 			err := cmd.Run()
 			if err != nil {
+				errMsg := fmt.Sprintf("%s - %s", err.Error(), cmdInfo.StdErr.String())
 				util.FileLogger().
-					Errorf(ctx, "Failed to run step %s: %s", cmdInfo.Desc, err.Error())
+					Errorf(ctx, "Failed to run step %s: %s", cmdInfo.Desc, errMsg)
 				if logOut != nil {
-					logOut.WriteLine("Failed to run step %s: %s", cmdInfo.Desc, err.Error())
+					logOut.WriteLine("Failed to run step %s: %s", cmdInfo.Desc, errMsg)
 				}
 			}
 			return err
@@ -145,10 +148,11 @@ func RunShellCmd(
 	}
 	err := cmdInfo.RunCmd(ctx)
 	if err != nil {
+		errMsg := fmt.Sprintf("%s - %s", err.Error(), cmdInfo.StdErr.String())
 		util.FileLogger().
-			Errorf(ctx, "Failed to run shell command for %s: %s", desc, err.Error())
+			Errorf(ctx, "Failed to run shell command for %s: %s", desc, errMsg)
 		if logOut != nil {
-			logOut.WriteLine("Failed to run shell command for %s: %s", desc, err.Error())
+			logOut.WriteLine("Failed to run shell command for %s: %s", desc, errMsg)
 		}
 	}
 	return cmdInfo, err
@@ -205,6 +209,76 @@ func createCmd(
 	}
 	cmd.Dir = pwd
 	return cmd, nil
+}
+
+func RunShellCmdWithRetry(
+	ctx context.Context,
+	backOff backoff.BackOff,
+	user, desc, cmdStr string,
+	logOut util.Buffer,
+) (*CommandInfo, error) {
+	var cmdInfo *CommandInfo
+	var err error
+	if err = backoff.Do(ctx, backOff, func(attempt int) error {
+		util.FileLogger().Infof(ctx, "Running %s command: %s", desc, cmdStr)
+		if logOut != nil {
+			logOut.WriteLine("Running %s command: %s", desc, cmdStr)
+		}
+		cmdInfo, err = RunShellCmd(ctx, user, desc, cmdStr, logOut)
+		if err != nil {
+			util.FileLogger().Errorf(ctx, "Failed to run %s command: %s - %s", desc, cmdStr, err.Error())
+			if logOut != nil {
+				logOut.WriteLine("Failed to run %s command: %s - %s", desc, cmdStr, err.Error())
+			}
+			return err
+		}
+		util.FileLogger().Infof(ctx, "%s command %s succeeded in %d attempts", desc, cmdStr, attempt)
+		if logOut != nil {
+			logOut.WriteLine("%s command %s succeeded in %d attempts", desc, cmdStr, attempt)
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	return cmdInfo, nil
+}
+
+func RunShellStepsWithRetry(
+	ctx context.Context,
+	backOff backoff.BackOff,
+	user string,
+	steps []struct {
+		Desc string
+		Cmd  string
+	},
+	logOut util.Buffer,
+) ([]*CommandInfo, error) {
+	cmdInfos := make([]*CommandInfo, len(steps))
+	for i, step := range steps {
+		if err := backoff.Do(ctx, backOff, func(attempt int) error {
+			util.FileLogger().Infof(ctx, "Running %s command: %s", step.Desc, step.Cmd)
+			if logOut != nil {
+				logOut.WriteLine("Running %s command: %s", step.Desc, step.Cmd)
+			}
+			cmdInfo, err := RunShellCmd(ctx, user, step.Desc, step.Cmd, logOut)
+			if err != nil {
+				util.FileLogger().Errorf(ctx, "Failed to run %s command: %s - %s", step.Desc, step.Cmd, err.Error())
+				if logOut != nil {
+					logOut.WriteLine("Failed to run %s command: %s - %s", step.Desc, step.Cmd, err.Error())
+				}
+				return err
+			}
+			cmdInfos[i] = cmdInfo
+			util.FileLogger().Infof(ctx, "%s command %s succeeded in %d attempts", step.Desc, step.Cmd, attempt)
+			if logOut != nil {
+				logOut.WriteLine("%s command %s succeeded in %d attempts", step.Desc, step.Cmd, attempt)
+			}
+			return nil
+		}); err != nil {
+			return cmdInfos, err
+		}
+	}
+	return cmdInfos, nil
 }
 
 // createCmds creates commands from the command info list and passes them to the receiver.

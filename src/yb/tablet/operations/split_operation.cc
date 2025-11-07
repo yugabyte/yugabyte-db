@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -123,7 +123,7 @@ Status SplitOperation::DoAborted(const Status& status) {
 Status SplitOperation::DoReplicated(int64_t leader_term, Status* complete_status) {
   VLOG_WITH_PREFIX(2) << "Apply";
   return tablet_splitter().ApplyTabletSplit(
-      this, /* raft_log = */ nullptr, /* committed_raft_config = */ boost::none);
+      this, /* raft_log = */ nullptr, /* committed_raft_config = */ std::nullopt);
 }
 
 }  // namespace tablet

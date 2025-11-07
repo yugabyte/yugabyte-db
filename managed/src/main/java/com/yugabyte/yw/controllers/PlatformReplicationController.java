@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -11,6 +11,7 @@
 
 package com.yugabyte.yw.controllers;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
@@ -28,7 +29,6 @@ import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
 import com.yugabyte.yw.rbac.annotations.Resource;
 import com.yugabyte.yw.rbac.enums.SourceType;
 import java.io.File;
-import java.net.URL;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
@@ -36,14 +36,10 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import play.mvc.Http;
 import play.mvc.Result;
 
 public class PlatformReplicationController extends AuthenticatedController {
-
-  public static final Logger LOG = LoggerFactory.getLogger(PlatformReplicationController.class);
 
   @Inject private PlatformReplicationManager replicationManager;
 
@@ -56,37 +52,28 @@ public class PlatformReplicationController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result startPeriodicBackup(UUID configUUID, Http.Request request) {
-    try {
-      Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.maybeGet(configUUID);
-      if (!config.isPresent()) {
-        throw new PlatformServiceException(NOT_FOUND, "Invalid config UUID");
-      }
+    JsonNode result =
+        HighAvailabilityConfig.doWithLock(
+            configUUID,
+            config -> {
+              PlatformBackupFrequencyFormData formData =
+                  parseJsonAndValidate(request, PlatformBackupFrequencyFormData.class);
 
-      PlatformBackupFrequencyFormData formData =
-          parseJsonAndValidate(request, PlatformBackupFrequencyFormData.class);
-
-      if (!config.get().isLocalLeader()) {
-        throw new PlatformServiceException(BAD_REQUEST, "This platform instance is not a leader");
-      }
-
-      Duration frequency = Duration.ofMillis(formData.frequency_milliseconds);
-
-      // Restart the backup schedule with the new frequency.
-      auditService()
-          .createAuditEntry(
-              request,
-              Audit.TargetType.HABackup,
-              configUUID.toString(),
-              Audit.ActionType.StartPeriodicBackup);
-      return ok(replicationManager.setFrequencyStartAndEnable(frequency));
-    } catch (Exception e) {
-      LOG.error("Error starting backup schedule", e);
-      if (e instanceof PlatformServiceException) {
-        throw (PlatformServiceException) e;
-      }
-      throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "Error starting replication schedule");
-    }
+              if (!config.isLocalLeader()) {
+                throw new PlatformServiceException(
+                    BAD_REQUEST, "This platform instance is not a leader");
+              }
+              Duration frequency = Duration.ofMillis(formData.frequency_milliseconds);
+              // Restart the backup schedule with the new frequency.
+              return replicationManager.setFrequencyStartAndEnable(frequency);
+            });
+    auditService()
+        .createAuditEntry(
+            request,
+            Audit.TargetType.HABackup,
+            configUUID.toString(),
+            Audit.ActionType.StartPeriodicBackup);
+    return ok(result);
   }
 
   @AuthzPath({
@@ -98,92 +85,43 @@ public class PlatformReplicationController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result stopPeriodicBackup(UUID configUUID, Http.Request request) {
-    try {
-      Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.maybeGet(configUUID);
-      if (!config.isPresent()) {
-        throw new PlatformServiceException(NOT_FOUND, "Invalid config UUID");
-      }
-
-      return ok(replicationManager.stopAndDisable());
-    } catch (Exception e) {
-      LOG.error("Error cancelling backup schedule", e);
-      auditService()
-          .createAuditEntry(
-              request,
-              Audit.TargetType.HABackup,
-              configUUID.toString(),
-              Audit.ActionType.StopPeriodicBackup);
-      if (e instanceof PlatformServiceException) {
-        throw (PlatformServiceException) e;
-      }
-      throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "Error stopping replication schedule");
-    }
+    JsonNode result =
+        HighAvailabilityConfig.doWithLock(
+            configUUID, config -> replicationManager.stopAndDisable());
+    auditService()
+        .createAuditEntry(
+            request,
+            Audit.TargetType.HABackup,
+            configUUID.toString(),
+            Audit.ActionType.StopPeriodicBackup);
+    return ok(result);
   }
 
-  @AuthzPath({
-    @RequiredPermissionOnResource(
-        requiredPermission =
-            @PermissionAttribute(
-                resourceType = ResourceType.OTHER,
-                action = Action.SUPER_ADMIN_ACTIONS),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
-  })
+  @AuthzPath
   public Result getBackupInfo(UUID configUUID) {
-    try {
-      Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.maybeGet(configUUID);
-      if (!config.isPresent()) {
-        throw new PlatformServiceException(NOT_FOUND, "Invalid config UUID");
-      }
-
-      return ok(replicationManager.getBackupInfo());
-    } catch (Exception e) {
-      LOG.error("Error retrieving backup frequency", e);
-      if (e instanceof PlatformServiceException) {
-        throw (PlatformServiceException) e;
-      }
-      throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "Error retrieving replication frequency");
-    }
+    HighAvailabilityConfig.maybeGet(configUUID)
+        .orElseThrow(() -> new PlatformServiceException(NOT_FOUND, "Invalid config UUID"));
+    return ok(replicationManager.getBackupInfo());
   }
 
-  @AuthzPath({
-    @RequiredPermissionOnResource(
-        requiredPermission =
-            @PermissionAttribute(
-                resourceType = ResourceType.OTHER,
-                action = Action.SUPER_ADMIN_ACTIONS),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
-  })
+  @AuthzPath
   public Result listBackups(UUID configUUID, String leaderAddr) {
-    try {
-      if (StringUtils.isBlank(leaderAddr)) {
-        Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.maybeGet(configUUID);
-        if (!config.isPresent()) {
-          throw new PlatformServiceException(NOT_FOUND, "Invalid config UUID");
-        }
-
-        Optional<PlatformInstance> leaderInstance = config.get().getLeader();
-        if (!leaderInstance.isPresent()) {
-          throw new PlatformServiceException(
-              BAD_REQUEST, "Could not find leader platform instance");
-        }
-
-        leaderAddr = leaderInstance.get().getAddress();
+    HighAvailabilityConfig config =
+        HighAvailabilityConfig.maybeGet(configUUID)
+            .orElseThrow(() -> new PlatformServiceException(NOT_FOUND, "Invalid config UUID"));
+    String leader = leaderAddr;
+    if (StringUtils.isBlank(leader)) {
+      Optional<PlatformInstance> leaderInstance = config.getLeader();
+      if (!leaderInstance.isPresent()) {
+        throw new PlatformServiceException(BAD_REQUEST, "Could not find leader platform instance");
       }
-
-      List<String> backups =
-          replicationManager.listBackups(new URL(leaderAddr)).stream()
-              .map(File::getName)
-              .sorted(Collections.reverseOrder())
-              .collect(Collectors.toList());
-      return PlatformResults.withData(backups);
-    } catch (Exception e) {
-      LOG.error("Error listing backups", e);
-      if (e instanceof PlatformServiceException) {
-        throw (PlatformServiceException) e;
-      }
-      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Error listing backups");
+      leader = leaderInstance.get().getAddress();
     }
+    List<String> backups =
+        replicationManager.listBackups(Util.toURL(leader)).stream()
+            .map(File::getName)
+            .sorted(Collections.reverseOrder())
+            .collect(Collectors.toList());
+    return PlatformResults.withData(backups);
   }
 }

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #
-# Copyright (c) YugaByte, Inc.
+# Copyright (c) YugabyteDB, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 # in compliance with the License.  You may obtain a copy of the License at
@@ -127,7 +127,7 @@ fi
 cd "$BUILD_ROOT"
 
 # Only enable test core dumps for certain build types.
-if [[ ${BUILD_TYPE} != "asan" ]]; then
+if ! is_asan ; then
   # TODO: actually make this take effect. The issue is that we might not be able to set ulimit
   # unless the OS configuration enables us to.
   export YB_TEST_ULIMIT_CORE=unlimited
@@ -188,6 +188,14 @@ if [[ ${YB_COMPILE_ONLY} != "1" ]]; then
         run_tests_extra_args+=( "--test_conf" "${test_conf_path}" )
       fi
 
+      if [[ -n "${SPARK_IGNORE_FILE:-}" && -f "$SPARK_IGNORE_FILE" ]]; then
+        log "Using ignore list file: $SPARK_IGNORE_FILE"
+        run_tests_extra_args+=( "--ignore_list" "$SPARK_IGNORE_FILE" )
+      fi
+      if [[ -n "${SPARK_DISABLE_FILE:-}" && -f "$SPARK_DISABLE_FILE" ]]; then
+        log "Using disable list file: $SPARK_DISABLE_FILE"
+        run_tests_extra_args+=( "--disable_list" "$SPARK_DISABLE_FILE" )
+      fi
       run_tests_extra_args+=( "--send_archive_to_workers" )
 
       # Workers use /private path, which caused mis-match when check is done by yb_dist_tests that

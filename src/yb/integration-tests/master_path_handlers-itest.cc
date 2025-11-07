@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -781,8 +781,7 @@ TEST_F_EX(MasterPathHandlersItest, ShowDeletedTablets, TabletSplitMasterPathHand
         return !match.empty();
   };
 
-  ASSERT_OK(yb_admin_client_->FlushTables(
-      {table_name}, false /* add_indexes */, 30 /* timeout_secs */, false /* is_compaction */));
+  ASSERT_OK(yb_admin_client_->FlushTables({table_name}));
   ASSERT_OK(catalog_manager.TEST_SplitTablet(tablet, 1 /* split_hash_code */));
 
   ASSERT_OK(WaitFor(
@@ -822,8 +821,7 @@ TEST_F_EX(
   auto schedules = ASSERT_RESULT(snapshot_util->ListSchedules(schedule_id));
   ASSERT_EQ(schedules.size(), 1);
 
-  ASSERT_OK(yb_admin_client_->FlushTables(
-      {table_name}, false /* add_indexes */, 30 /* timeout_secs */, false /* is_compaction */));
+  ASSERT_OK(yb_admin_client_->FlushTables({table_name}));
   ASSERT_OK(catalog_manager.TEST_SplitTablet(tablet, 1 /* split_hash_code */));
 
   // The parent tablet should be retained because of the snapshot schedule.
@@ -854,8 +852,7 @@ TEST_F_EX(
   auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
   auto tablet = ASSERT_RESULT(catalog_manager.GetTableInfo(table->id())->GetTablets())[0];
 
-  ASSERT_OK(yb_admin_client_->FlushTables(
-      {table_name}, false /* add_indexes */, 30 /* timeout_secs */, false /* is_compaction */));
+  ASSERT_OK(yb_admin_client_->FlushTables({table_name}));
   ASSERT_OK(catalog_manager.TEST_SplitTablet(tablet, 1 /* split_hash_code */));
 
   SleepFor(kLeaderlessTabletAlertDelaySecs * yb::kTimeMultiplier * 1s);
@@ -902,7 +899,7 @@ TEST_F(MasterPathHandlersLeaderlessITest, TestRF1ChangedToRF3) {
       continue;
     }
     ASSERT_OK(itest::RemoveServer(
-        ts_map[leader_uuid].get(), tablet->id(), ts_map[uuid].get(), boost::none, 10s));
+        ts_map[leader_uuid].get(), tablet->id(), ts_map[uuid].get(), std::nullopt, 10s));
   }
   SleepFor(kLeaderlessTabletAlertDelaySecs * yb::kTimeMultiplier * 1s);
   string result = ASSERT_RESULT(GetLeaderlessTabletsString());
@@ -914,7 +911,7 @@ TEST_F(MasterPathHandlersLeaderlessITest, TestRF1ChangedToRF3) {
     }
     ASSERT_OK(itest::AddServer(
         ts_map[leader_uuid].get(), tablet->id(), ts_map[uuid].get(),
-        consensus::PeerMemberType::PRE_VOTER, boost::none, 10s));
+        consensus::PeerMemberType::PRE_VOTER, std::nullopt, 10s));
   }
   SleepFor(kLeaderlessTabletAlertDelaySecs * yb::kTimeMultiplier * 1s);
   result = ASSERT_RESULT(GetLeaderlessTabletsString());
@@ -947,8 +944,9 @@ class MasterPathHandlersExternalItest : public MasterPathHandlersBaseItest<Exter
     opts_.extra_tserver_flags.push_back("--placement_zone=z${index}");
     opts_.extra_tserver_flags.push_back("--placement_uuid=" + kLivePlacementUuid);
     opts_.extra_tserver_flags.push_back("--follower_unavailable_considered_failed_sec=10");
-    const auto rf = opts_.replication_factor > 0 ? opts_.replication_factor : 3;
-    opts_.extra_master_flags.push_back(Format("--replication_factor=$0", rf));
+    if (opts_.replication_factor <= 0) {
+      opts_.replication_factor = 3;
+    }
 
     MasterPathHandlersBaseItest<ExternalMiniCluster>::SetUp();
 
@@ -957,13 +955,13 @@ class MasterPathHandlersExternalItest : public MasterPathHandlersBaseItest<Exter
     ASSERT_OK(yb_admin_client_->Init());
 
     std::string placement_infos;
-    for (int i = 0; i < rf; i++) {
+    for (int i = 0; i < opts_.replication_factor; i++) {
       placement_infos += Format("c.r.z$0:1", i);
-      if (i < rf - 1) {
+      if (i < opts_.replication_factor - 1) {
         placement_infos += ",";
       }
     }
-    ASSERT_OK(yb_admin_client_->ModifyPlacementInfo(placement_infos, rf,
+    ASSERT_OK(yb_admin_client_->ModifyPlacementInfo(placement_infos, opts_.replication_factor,
         kLivePlacementUuid));
   }
 
@@ -1721,8 +1719,7 @@ TEST_F_EX(
   InsertRows(table, /* num_rows_to_insert = */ 500);
   auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
   auto tablet = ASSERT_RESULT(catalog_manager.GetTableInfo(table->id())->GetTablets())[0];
-  ASSERT_OK(yb_admin_client_->FlushTables(
-      {table_name}, false /* add_indexes */, 30 /* timeout_secs */, false /* is_compaction */));
+  ASSERT_OK(yb_admin_client_->FlushTables({table_name}));
   ASSERT_OK(catalog_manager.TEST_SplitTablet(tablet, 1 /* split_hash_code */));
   ASSERT_OK(WaitFor(
       [&]() { return tablet->LockForRead()->is_deleted(); }, 30s /* timeout */,
@@ -1757,8 +1754,7 @@ TEST_F_EX(
 
   // Split the first tablet, resulting in it becoming a split parent; 2 new children tablets are
   // created as part of this.
-  ASSERT_OK(yb_admin_client_->FlushTables(
-      {table_name}, false /* add_indexes */, 30 /* timeout_secs */, false /* is_compaction */));
+  ASSERT_OK(yb_admin_client_->FlushTables({table_name}));
   ASSERT_OK(catalog_manager.TEST_SplitTablet(tablet, 1 /* split_hash_code */));
   // The parent tablet should be retained because of the snapshot schedule.
   ASSERT_OK(WaitFor(
@@ -1939,7 +1935,7 @@ TEST_F(MasterPathHandlersItest, HeapProfile) {
 }
 
 TEST_F(MasterPathHandlersItest, TabletLimitsSkipDeadTServers) {
-  const std::string kTargetHeader = "Tablet Peer Limit";
+  const std::string kTargetHeader = "Tablet Peer Limit (Unenforced)";
   auto cols =
       ASSERT_RESULT(GetHtmlTableColumn("/tablet-servers", "universe_summary", kTargetHeader));
   ASSERT_FALSE(cols.empty());
@@ -1959,7 +1955,7 @@ TEST_F(MasterPathHandlersItest, TabletLimitsSkipDeadTServers) {
 }
 
 TEST_F(MasterPathHandlersItest, TabletLimitsSkipBlacklistedTServers) {
-  const std::string kTargetHeader = "Tablet Peer Limit";
+  const std::string kTargetHeader = "Tablet Peer Limit (Unenforced)";
   auto cols =
       ASSERT_RESULT(GetHtmlTableColumn("/tablet-servers", "universe_summary", kTargetHeader));
   ASSERT_FALSE(cols.empty());

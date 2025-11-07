@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -19,7 +19,6 @@
 
 #include <boost/algorithm/string.hpp>
 
-#include "yb/qlexpr/ql_rowblock.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
@@ -27,11 +26,10 @@
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/escaping.h"
 
-#include "yb/rpc/connection.h"
+#include "yb/qlexpr/ql_rowblock.h"
+
 #include "yb/rpc/messenger.h"
 
-#include "yb/util/crypt.h"
-#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
@@ -47,27 +45,31 @@ using namespace std::literals;
 
 METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_CQLServerService_GetProcessor,
-    "Time spent to get a processor for processing a CQL query request.",
+    "Time (microseconds) spent to get a processor for processing a CQL query request.",
     yb::MetricUnit::kMicroseconds,
-    "Time spent to get a processor for processing a CQL query request.", 60000000LU, 2);
+    "Time (microseconds) spent to get a processor for processing a CQL query request.", 60000000LU,
+    2);
 METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_CQLServerService_ProcessRequest,
-    "Time spent processing a CQL query request. From parsing till executing",
+    "Time (microseconds) spent processing a CQL query request. From parsing till executing",
     yb::MetricUnit::kMicroseconds,
-    "Time spent processing a CQL query request. From parsing till executing", 60000000LU, 2);
+    "Time (microseconds) spent processing a CQL query request. From parsing till executing",
+    60000000LU, 2);
 METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_CQLServerService_ParseRequest,
-    "Time spent parsing CQL query request", yb::MetricUnit::kMicroseconds,
-    "Time spent parsing CQL query request", 60000000LU, 2);
+    "Time (microseconds) spent parsing CQL query request", yb::MetricUnit::kMicroseconds,
+    "Time (microseconds) spent parsing CQL query request", 60000000LU, 2);
 METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_CQLServerService_QueueResponse,
-    "Time spent to queue the response for a CQL query request back on the network",
+    "Time (microseconds) spent to queue the response for a CQL query request back on the network",
     yb::MetricUnit::kMicroseconds,
-    "Time spent after computing the CQL response to queue it onto the connection.", 60000000LU, 2);
+    "Time (microseconds) spent after computing the CQL response to queue it onto the connection.",
+    60000000LU, 2);
 METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_CQLServerService_ExecuteRequest,
-    "Time spent executing the CQL query request in the handler", yb::MetricUnit::kMicroseconds,
-    "Time spent executing the CQL query request in the handler", 60000000LU, 2);
+    "Time (microseconds) spent executing the CQL query request in the handler",
+    yb::MetricUnit::kMicroseconds,
+    "Time (microseconds) spent executing the CQL query request in the handler", 60000000LU, 2);
 METRIC_DEFINE_counter(
     server, yb_cqlserver_CQLServerService_ParsingErrors, "Errors encountered when parsing ",
     yb::MetricUnit::kRequests, "Errors encountered when parsing ");
@@ -144,8 +146,7 @@ DEFINE_UNKNOWN_string(ycql_ldap_search_filter, "",
     "The search filter to use when doing search + bind "
     "authentication.");
 
-namespace yb {
-namespace cqlserver {
+namespace yb::cqlserver {
 
 constexpr const char* const kCassandraPasswordAuthenticator =
     "org.apache.cassandra.auth.PasswordAuthenticator";
@@ -432,7 +433,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const PrepareRequest& req) 
       query_id, req.query(), &ql_env_, IsPrepare::kTrue);
   PreparedResult::UniPtr result;
   Status s = stmt->Prepare(this, service_impl_->stmts_mem_tracker(),
-                           false /* internal */, &result);
+                           /*internal=*/false, &result);
 
   if (s.ok()) {
     auto pt_result = stmt->GetParseTree();
@@ -587,7 +588,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const AuthResponseRequest& 
   UpdateAshQueryId(ToString(std::to_underlying(
       ash::FixedQueryId::kQueryIdForYcqlAuthResponseRequest)));
   shared_ptr<Statement> stmt = service_impl_->GetAuthPreparedStatement();
-  if (!stmt->Prepare(this, nullptr /* memtracker */, true /* internal */).ok()) {
+  if (!stmt->Prepare(this, nullptr /* memtracker */, /*internal=*/true).ok()) {
     return make_unique<ErrorResponse>(
         req, ErrorResponse::Code::SERVER_ERROR,
         "Could not prepare statement for querying user " + params.username);
@@ -629,12 +630,11 @@ void CQLProcessor::StatementExecuted(const Status& s, const ExecutedResult::Shar
   PrepareAndSendResponse(response);
 }
 
-unique_ptr<CQLResponse> CQLProcessor::ProcessError(const Status& s,
-                                                   boost::optional<CQLMessage::QueryId> query_id) {
+unique_ptr<CQLResponse> CQLProcessor::ProcessError(
+    const Status& s, std::optional<CQLMessage::QueryId> query_id) {
   if (s.IsQLError()) {
     ErrorCode ql_errcode = GetErrorCode(s);
-    if (ql_errcode == ErrorCode::UNPREPARED_STATEMENT ||
-        ql_errcode == ErrorCode::STALE_METADATA) {
+    if (ql_errcode == ErrorCode::UNPREPARED_STATEMENT || ql_errcode == ErrorCode::STALE_METADATA) {
       // Delete all stale prepared statements from our cache. Since CQL protocol allows only one
       // unprepared query id to be returned, we will return just the last unprepared / stale one
       // we found.
@@ -703,7 +703,7 @@ struct LDAPMessageDeleter {
 };
 
 struct LDAPDeleter {
-  void operator()(LDAP* ptr) const { ldap_unbind_ext(ptr, NULL, NULL); }
+  void operator()(LDAP* ptr) const { ldap_unbind_ext(ptr, nullptr, nullptr); }
 };
 
 using LDAPHolder = unique_ptr<LDAP, LDAPDeleter>;
@@ -757,7 +757,7 @@ Result<LDAPHolder> InitializeLDAPConnection(const char *uris) {
   }
   VLOG(4) << "Successfully set protocol version option";
 
-  if (FLAGS_ycql_ldap_tls && ((r = ldap_start_tls_s(ldap_ptr, NULL, NULL)) != LDAP_SUCCESS)) {
+  if (FLAGS_ycql_ldap_tls && ((r = ldap_start_tls_s(ldap_ptr, nullptr, nullptr)) != LDAP_SUCCESS)) {
     return STATUS_FORMAT(InternalError, "could not start LDAP TLS session: $0", LDAPError(r, ldap));
   }
 
@@ -802,7 +802,7 @@ Result<bool> CheckLDAPAuth(const ql::AuthResponseRequest::AuthQueryParameters& p
     */
     char ldap_no_attrs[sizeof(LDAP_NO_ATTRS)+1];
     strncpy(ldap_no_attrs, LDAP_NO_ATTRS, sizeof(ldap_no_attrs));
-    char *attributes[] = {ldap_no_attrs, NULL};
+    char *attributes[] = {ldap_no_attrs, nullptr};
 
     /*
     * Disallow any characters that we would otherwise need to escape,
@@ -829,8 +829,8 @@ Result<bool> CheckLDAPAuth(const ql::AuthResponseRequest::AuthQueryParameters& p
     ber_str2bv(FLAGS_ycql_ldap_bind_passwd.c_str(), 0 /* len */, 0 /* duplicate */ , &cred);
     r = ldap_sasl_bind_s(ldap.get(), FLAGS_ycql_ldap_bind_dn.c_str(),
                          LDAP_SASL_SIMPLE, &cred,
-                         NULL /* serverctrls */, NULL /* clientctrls */,
-                         NULL /* servercredp */);
+                         nullptr /* serverctrls */, nullptr /* clientctrls */,
+                         nullptr /* servercredp */);
     if (r != LDAP_SUCCESS) {
       return STATUS_FORMAT(
         InvalidArgument,
@@ -848,9 +848,10 @@ Result<bool> CheckLDAPAuth(const ql::AuthResponseRequest::AuthQueryParameters& p
       filter = "(uid=" + params.username + ")";
     }
 
-    LDAPMessage *search_message;
-    r = ldap_search_ext_s(ldap.get(), FLAGS_ycql_ldap_base_dn.c_str(), LDAP_SCOPE_SUBTREE,
-                          filter.c_str(), attributes, 0, NULL, NULL, NULL, 0, &search_message);
+    LDAPMessage* search_message;
+    r = ldap_search_ext_s(
+        ldap.get(), FLAGS_ycql_ldap_base_dn.c_str(), LDAP_SCOPE_SUBTREE, filter.c_str(), attributes,
+        0, nullptr, nullptr, nullptr, 0, &search_message);
     LDAPMessageHolder search_message_holder{search_message};
 
     if (r != LDAP_SUCCESS) {
@@ -878,7 +879,7 @@ Result<bool> CheckLDAPAuth(const ql::AuthResponseRequest::AuthQueryParameters& p
     // search_message. Freeing search_message takes cares of it.
     auto *entry = ldap_first_entry(ldap.get(), search_message);
     char *dn = ldap_get_dn(ldap.get(), entry);
-    if (dn == NULL) {
+    if (dn == nullptr) {
       int error;
       ldap_get_option(ldap.get(), LDAP_OPT_ERROR_NUMBER, &error);
       return STATUS_FORMAT(
@@ -903,8 +904,8 @@ Result<bool> CheckLDAPAuth(const ql::AuthResponseRequest::AuthQueryParameters& p
   ber_str2bv(params.password.c_str(), 0 /* len */, 0 /* duplicate */, &cred);
   r = ldap_sasl_bind_s(ldap.get(), fulluser.c_str(),
                        LDAP_SASL_SIMPLE, &cred,
-                       NULL /* serverctrls */, NULL /* clientctrls */,
-                       NULL /* servercredp */);
+                       nullptr /* serverctrls */, nullptr /* clientctrls */,
+                       nullptr /* servercredp */);
   VLOG(4) << "ldap_sasl_bind_s return value =" << r;
 
   if (r != LDAP_SUCCESS) {
@@ -1099,5 +1100,4 @@ CoarseTimePoint CQLProcessor::GetDeadline() const {
                : CoarseMonoClock::now() + FLAGS_client_read_write_timeout_ms * 1ms;
 }
 
-}  // namespace cqlserver
-}  // namespace yb
+} // namespace yb::cqlserver

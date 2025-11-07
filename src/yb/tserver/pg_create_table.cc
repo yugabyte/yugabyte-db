@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -77,10 +77,10 @@ Status PgCreateTable::Prepare() {
   EnsureYBbasectidColumnCreated();
 
   if (!req_.split_bounds().empty()) {
-    if (hash_schema_.is_initialized()) {
+    if (hash_schema_.has_value()) {
       if (indexed_table_id_.IsValid()) {
-        return STATUS(InvalidArgument,
-                    "SPLIT AT option is not yet supported for hash partitioned indexes");
+        return STATUS(
+            InvalidArgument, "SPLIT AT option is not yet supported for hash partitioned indexes");
       } else {
         return STATUS(InvalidArgument,
                     "SPLIT AT option is not yet supported for hash partitioned tables");
@@ -93,7 +93,7 @@ Status PgCreateTable::Prepare() {
 
 Status PgCreateTable::Exec(
     client::YBClient* client, const TransactionMetadata* transaction_metadata,
-    CoarseTimePoint deadline) {
+    uint32_t sub_transaction_id, CoarseTimePoint deadline) {
   // Construct schema.
   client::YBSchema schema;
 
@@ -228,6 +228,13 @@ Status PgCreateTable::Exec(
 
   if (transaction_metadata) {
     table_creator->part_of_transaction(transaction_metadata);
+  }
+
+  // sub_transaction_id can be 0 when the CREATE INDEX statement is executed in separate DDL
+  // transactions even when transactional DDL is enabled. For separate DDL transactions, we do not
+  // support savepoints, so don't forward an invalid value of sub_transaction_id to yb-master.
+  if (sub_transaction_id >= kMinSubTransactionId) {
+    table_creator->part_of_sub_transaction(sub_transaction_id);
   }
 
   table_creator->timeout(deadline - CoarseMonoClock::now());

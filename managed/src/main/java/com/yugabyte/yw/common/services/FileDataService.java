@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 YugaByte, Inc. and Contributors
+ * Copyright 2023 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -129,7 +129,7 @@ public class FileDataService {
         // For all files only on disk, update them in the DB.
         for (String file : fileOnlyOnDisk) {
           log.info("Syncing file " + file + " to the DB");
-          FileData.writeFileToDB(storagePath + file, storagePath, confGetter);
+          FileData.writeFileToDB(storagePath + file, storagePath);
         }
         log.info("Successfully Written " + fileOnlyOnDisk.size() + " files to DB.");
       }

@@ -2,7 +2,7 @@
  *
  * nodeYbBitmapTablescan.h
  *
- * Copyright (c) 2024 Yugabyte, Inc
+ * Copyright (c) 2024 YugabyteDB, Inc
  *
  * src/include/executor/nodeYbBitmapTablescan.h
  *

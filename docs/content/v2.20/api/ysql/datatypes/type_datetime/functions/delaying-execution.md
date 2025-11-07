@@ -4,7 +4,7 @@ headerTitle: Functions for delaying execution
 linkTitle: Delaying execution
 description: The semantics of the functions for delaying execution. [YSQL]
 menu:
-  v2.20:
+  v2.20_api:
     identifier: delaying-execution
     parent: date-time-functions
     weight: 50

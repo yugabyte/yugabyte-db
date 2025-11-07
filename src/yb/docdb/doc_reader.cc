@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -215,13 +215,17 @@ Result<DocHybridTime> GetTableTombstoneTime(
     return DocHybridTime::kInvalid;
   }
 
-  auto group_end = dockv::KeyEntryTypeAsChar::kGroupEnd;
-  KeyBuffer table_id_buf(table_id, Slice(&group_end, 1));
-  table_id = table_id_buf.AsSlice();
+  std::array<char, 2> suffix = {
+    dockv::KeyEntryTypeAsChar::kGroupEnd,
+    dockv::KeyEntryTypeAsChar::kHighest,
+  };
+  KeyBuffer table_id_buf(table_id, Slice(suffix));
+  table_id = table_id_buf.AsSlice().WithoutSuffix(1);
 
   auto iter = CreateIntentAwareIterator(
       doc_db, BloomFilterOptions::Fixed(table_id), rocksdb::kDefaultQueryId, txn_op_context,
       read_operation_data.WithStatistics(nullptr));
+  IntentAwareIteratorUpperboundScope bound_scope(table_id_buf.AsSlice(), iter.get());
   iter->Seek(table_id, SeekFilter::kAll);
   const auto& entry_data = VERIFY_RESULT_REF(iter->Fetch());
   if (!entry_data || !entry_data.value.FirstByteIs(dockv::ValueEntryTypeAsChar::kTombstone) ||

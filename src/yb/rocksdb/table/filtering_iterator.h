@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -89,8 +89,8 @@ class FilteringIterator : public InternalIterator {
     return iterator_->GetProperty(std::move(prop_name), prop);
   }
 
-  void UpdateFilterKey(Slice user_key_for_filter) override {
-    iterator_->UpdateFilterKey(user_key_for_filter);
+  const KeyValueEntry& UpdateFilterKey(Slice user_key_for_filter, Slice seek_key) override {
+    return iterator_->UpdateFilterKey(user_key_for_filter, seek_key);
   }
 
   const KeyValueEntry& ApplyFilter(bool backward) {

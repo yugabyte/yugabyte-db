@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 import RegisterForm from './RegisterForm';
 import { register, registerResponse, 

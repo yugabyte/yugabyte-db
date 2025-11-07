@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -25,6 +25,7 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
 import static org.yb.AssertionWrappers.assertEquals;
@@ -33,6 +34,18 @@ import static org.yb.AssertionWrappers.assertTrue;
 @RunWith(value = YBTestRunner.class)
 public class TestPgDdlFaultTolerance extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgDdlFaultTolerance.class);
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flags = super.getTServerFlags();
+    // Enabling table locks causes the test to fail with a failure to take the table lock.
+    // The test looks for a specific error message. So let's just disble the table locks here.
+    flags.put("enable_object_locking_for_table_locks", "false");
+    flags.put("ysql_yb_ddl_transaction_block_enabled", "false");
+    flags.put("allowed_preview_flags_csv",
+              "enable_object_locking_for_table_locks,ysql_yb_ddl_transaction_block_enabled");
+    return flags;
+  }
 
   /*
    * Test failures caused by check/validation failures in the YSQL layer.

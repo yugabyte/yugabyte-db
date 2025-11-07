@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -82,7 +82,8 @@ TEST_F(FlushManagerTest, VerifyFlush) {
 
   auto baseline_table_op_id = ASSERT_RESULT(GetOpIdAtLeader(table->id()));
   auto baseline_index_op_id = ASSERT_RESULT(GetOpIdAtLeader(index->id()));
-  ASSERT_OK(client_->FlushTables({table->name()}, true, 30, false));
+  ASSERT_OK(client_->FlushTables(
+      {table->name()}, MonoDelta::FromSeconds(30), /* add_indexes = */ true));
   EXPECT_GT(ASSERT_RESULT(GetMaxOpId(table->id())), baseline_table_op_id);
   EXPECT_GT(ASSERT_RESULT(GetMaxOpId(index->id())), baseline_index_op_id);
 }
@@ -106,7 +107,8 @@ TEST_F(FlushManagerTest, TestRpcFailureSingleTserverDown) {
   LOG(INFO) << "TServer which will be shutdown = " << leader_mini_tserver->ToString();
   cluster_->mini_tablet_server(leader_idx)->Shutdown();
 
-  auto status = client_->FlushTables({table->id()}, true, 30, false);
+  auto status = client_->FlushTables(
+      {table->name()}, MonoDelta::FromSeconds(30), /* add_indexes = */ true);
   ASSERT_NOK(status);
   ASSERT_EQ(status.code(), Status::kInternalError);
 

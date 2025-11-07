@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -72,6 +72,7 @@ class TserverXClusterContextIf;
     (GetTablePartitionList) \
     (GetTserverCatalogMessageLists) \
     (SetTserverCatalogMessageList) \
+    (TriggerRelcacheInitConnection) \
     (GetTserverCatalogVersionInfo) \
     (GetXClusterRole) \
     (Heartbeat) \
@@ -120,7 +121,9 @@ class PgClientServiceImpl : public PgClientServiceIf {
   explicit PgClientServiceImpl(
       std::reference_wrapper<const TabletServerIf> tablet_server,
       const std::shared_future<client::YBClient*>& client_future,
-      const scoped_refptr<ClockBase>& clock, TransactionPoolProvider transaction_pool_provider,
+      const scoped_refptr<ClockBase>& clock,
+      TransactionManagerProvider transaction_manager_provider,
+      TransactionPoolProvider transaction_pool_provider,
       const std::shared_ptr<MemTracker>& parent_mem_tracker,
       const scoped_refptr<MetricEntity>& entity, rpc::Messenger* messenger,
       const std::string& permanent_uuid, const server::ServerBaseOptions& tablet_server_opts,
@@ -141,6 +144,8 @@ class PgClientServiceImpl : public PgClientServiceIf {
   YSQLLeaseInfo GetYSQLLeaseInfo() const;
 
   size_t TEST_SessionsCount();
+
+  void Shutdown() override;
 
 #define YB_PG_CLIENT_METHOD_DECLARE(r, data, method) \
   void method( \

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.models;
 
@@ -60,14 +60,19 @@ public class BackupTest extends FakeDBApplication {
 
   @Test
   public void testCreate() {
-    UUID universeUUID = UUID.randomUUID();
+    Universe defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId());
     Backup b =
         ModelFactory.createBackup(
-            defaultCustomer.getUuid(), universeUUID, s3StorageConfig.getConfigUUID());
+            defaultCustomer.getUuid(),
+            defaultUniverse.getUniverseUUID(),
+            s3StorageConfig.getConfigUUID());
     assertNotNull(b);
     String storageRegex =
         "s3://foo/univ-"
-            + universeUUID
+            + defaultUniverse.getName()
+            + "-"
+            + defaultUniverse.getUniverseUUID()
+            + "/foo"
             + "/backup-[a-zA-Z0-9]+?/full/"
             + timestampRegex
             + "/table-foo.bar-[a-zA-Z0-9]*";
@@ -78,16 +83,19 @@ public class BackupTest extends FakeDBApplication {
 
   @Test
   public void testCreateWithoutTableUUID() {
-    UUID universeUUID = UUID.randomUUID();
+    Universe defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId());
     BackupTableParams params = new BackupTableParams();
     params.storageConfigUUID = s3StorageConfig.getConfigUUID();
-    params.setUniverseUUID(universeUUID);
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
     params.setKeyspace("foo");
     params.setTableName("bar");
     Backup b = Backup.create(defaultCustomer.getUuid(), params);
     String storageRegex =
         "s3://foo/univ-"
-            + universeUUID
+            + defaultUniverse.getName()
+            + "-"
+            + defaultUniverse.getUniverseUUID()
+            + "/foo"
             + "/backup-[a-zA-Z0-9]+?/full/"
             + timestampRegex
             + "/table-foo.bar";
@@ -103,15 +111,22 @@ public class BackupTest extends FakeDBApplication {
             "{\"name\": \"NFS\", \"configName\": \"Test\", \"type\": \"STORAGE\", \"data\": {}}");
     CustomerConfig customerConfig =
         CustomerConfig.createWithFormData(defaultCustomer.getUuid(), formData);
-    UUID universeUUID = UUID.randomUUID();
+    Universe defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId());
     BackupTableParams params = new BackupTableParams();
     params.storageConfigUUID = customerConfig.getConfigUUID();
-    params.setUniverseUUID(universeUUID);
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
     params.setKeyspace("foo");
     params.setTableName("bar");
     Backup b = Backup.create(defaultCustomer.getUuid(), params);
     String storageRegex =
-        "univ-" + universeUUID + "/backup-[a-zA-Z0-9]+?/full/" + timestampRegex + "/table-foo.bar";
+        "univ-"
+            + defaultUniverse.getName()
+            + "-"
+            + defaultUniverse.getUniverseUUID()
+            + "/foo"
+            + "/backup-[a-zA-Z0-9]+?/full/"
+            + timestampRegex
+            + "/table-foo.bar";
     assertThat(b.getBackupInfo().storageLocation, RegexMatcher.matchesRegex(storageRegex));
     assertEquals(customerConfig.getConfigUUID(), b.getBackupInfo().storageConfigUUID);
     assertEquals(InProgress, b.getState());
@@ -422,7 +437,10 @@ public class BackupTest extends FakeDBApplication {
     assertEquals(increment1_identifier_2, baseIdentifier_2);
     String storageRegex =
         "s3://foo/univ-"
+            + defaultUniverse.getName()
+            + "-"
             + defaultUniverse.getUniverseUUID()
+            + "/foo"
             + "/ybc_backup-[a-zA-Z0-9]+?/incremental/"
             + timestampRegex
             + "/.+";

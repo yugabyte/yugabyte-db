@@ -1,5 +1,5 @@
 /*
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  */
 
 package earutil
@@ -48,37 +48,14 @@ func UpdateEARConfig(
 		logrus.Infof("The encryption at rest configuration %s (%s) has been updated\n",
 			formatter.Colorize(earName, formatter.GreenColor), earUUID)
 
-		earData, response, err := authAPI.ListKMSConfigs().Execute()
+		kmsConfigsList, err := authAPI.GetListOfKMSConfigs(
+			"EAR", "Update - Get KMS Configurations")
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, callSite, "Update - Fetch EAR")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		kmsConfigsCode := make([]util.KMSConfig, 0)
-		for _, k := range earData {
-			kmsConfig, err := util.ConvertToKMSConfig(k)
-			if err != nil {
-				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-			}
-			if strings.TrimSpace(earCode) != "" {
-				if strings.Compare(kmsConfig.KeyProvider, earCode) == 0 {
-					kmsConfigsCode = append(kmsConfigsCode, kmsConfig)
-				}
-			} else {
-				kmsConfigsCode = append(kmsConfigsCode, kmsConfig)
-			}
-		}
+		kmsConfigs := KMSConfigNameAndCodeFilter(earName, earCode, kmsConfigsList)
 
-		kmsConfigs := make([]util.KMSConfig, 0)
-		if strings.TrimSpace(earName) != "" {
-			for _, k := range kmsConfigsCode {
-				if strings.Compare(k.Name, earName) == 0 {
-					kmsConfigs = append(kmsConfigs, k)
-				}
-			}
-		} else {
-			kmsConfigs = kmsConfigsCode
-		}
 		earsCtx := formatter.Context{
 			Command: "update",
 			Output:  os.Stdout,

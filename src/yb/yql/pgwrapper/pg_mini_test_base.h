@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -30,6 +30,7 @@ namespace yb::pgwrapper {
 
 class PgMiniTestBase : public MiniClusterTestWithClient<MiniCluster> {
  protected:
+  // Use TS-0 IP for PG server. YBC process and PG auto analyze service use this IP.
   constexpr static size_t kPgTsIndex = 0;
 
   // This allows modifying flags before we start the postgres process in SetUp.
@@ -68,12 +69,6 @@ class PgMiniTestBase : public MiniClusterTestWithClient<MiniCluster> {
 
   Status RestartMaster();
 
-  void StopPostgres();
-
-  Status StartPostgres();
-
-  Status RestartPostgres();
-
   const HostPort& pg_host_port() const {
     return pg_host_port_;
   }
@@ -91,7 +86,16 @@ class PgMiniTestBase : public MiniClusterTestWithClient<MiniCluster> {
 
   virtual void StartPgSupervisor(uint16_t pg_port, const int pg_ts_idx);
 
-  Status SetupPGCallbacksAndStartPG(uint16_t pg_port, int pg_ts_idx, bool wait_for_pg = true);
+  Status SetupPGCallbacksAndStartPG(uint16_t pg_port, size_t pg_ts_idx, bool wait_for_pg = true);
+
+  void StopPostgres();
+  // Be careful using this method in your test. If you are just trying to restart postgres,
+  // the postmaster will not be respawned after calling this method if the ysql lease is enabled.
+  Status StartPostgres();
+
+  // Restarts the postmaster using the tserver callback.
+  // This should work smoothly with the ysql lease.
+  Status RestartPostgres();
 
   std::unique_ptr<PgSupervisor> pg_supervisor_;
 

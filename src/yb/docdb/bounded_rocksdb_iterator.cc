@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -96,8 +96,8 @@ void BoundedRocksDbIterator::UseFastNext(bool value) {
   iterator_->UseFastNext(value);
 }
 
-void BoundedRocksDbIterator::UpdateFilterKey(Slice user_key_for_filter) {
-  iterator_->UpdateFilterKey(user_key_for_filter);
+void BoundedRocksDbIterator::UpdateFilterKey(Slice user_key_for_filter, Slice seek_key) {
+  iterator_->UpdateFilterKey(user_key_for_filter, seek_key);
 }
 
 }  // namespace yb::docdb

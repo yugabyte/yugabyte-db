@@ -280,6 +280,7 @@ export const MetricTypesWithOperations = {
       'table_memory_rejections',
       'table_compaction',
       'table_block_cache_hit_miss',
+      'table_rocksdb_blooms_checked_and_useful',
       'table_mem_tracker_db_memtable',
       'ysql_catalog_cache_misses'
     ]
@@ -301,6 +302,7 @@ export const MetricTypesWithOperations = {
       'table_memory_rejections',
       'table_compaction',
       'table_block_cache_hit_miss',
+      'table_rocksdb_blooms_checked_and_useful',
       'table_mem_tracker_db_memtable'
     ]
   }

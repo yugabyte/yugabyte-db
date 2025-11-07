@@ -51,6 +51,12 @@ If your universe uses a custom Linux version and you want to upgrade to a new cu
 
 Before patching or upgrading the operating system, verify that the Linux version image that you intend to use can successfully run on a standalone virtual machine (VM) with the same instance type as the nodes you are patching. You can do this by creating a new VM with the same instance type as your universe and using the selected Linux version for the boot disk and verifying that the VM boots successfully.
 
+{{< warning title="Azure SSH user restriction" >}}
+
+For Azure deployments, changing the SSH user from the original image bundle is currently not supported and will cause VM image upgrade to fail. Ensure that the SSH user configured in your new image bundle matches the user of the existing image bundle in the Azure provider.
+
+{{< /warning >}}
+
 ## Upgrade Linux version
 
 To apply operating system patch or upgrade, do the following:

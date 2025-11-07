@@ -24,7 +24,7 @@
 #include "tcop/cmdtag.h"
 #include "utils/jsonb.h"
 
-bool		IsPassThroughDdlCommandSupported(CommandTag command_tag);
+extern bool IsPassThroughDdlCommandSupported(CommandTag command_tag);
 
 /*
  * Iterate over pg_catalog.pg_event_trigger_ddl_commands() and process each base
@@ -37,18 +37,18 @@ bool		IsPassThroughDdlCommandSupported(CommandTag command_tag);
  *    the DDL are temp) - This function returns false.
  * 3. The DDL is valid and should be replicated - This function returns true.
  */
-bool		ProcessSourceEventTriggerDDLCommands(JsonbParseState *state);
+extern bool ProcessSourceEventTriggerDDLCommands(JsonbParseState *state);
 
 /*
  * Same as above but for pg_catalog.pg_event_trigger_dropped_objects().
  */
-bool		ProcessSourceEventTriggerDroppedObjects(CommandTag	tag);
+extern bool ProcessSourceEventTriggerDroppedObjects(CommandTag tag);
 
 /*
  * Retrieve and store the OID of the table that is about to be rewritten.
  */
-void		ProcessSourceEventTriggerTableRewrite();
+extern void ProcessSourceEventTriggerTableRewrite();
 
-void		ClearRewrittenTableOidList();
+extern void ClearRewrittenTableOidList();
 
 #endif

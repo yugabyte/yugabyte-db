@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -34,6 +34,7 @@
 using std::string;
 
 DECLARE_bool(client_suppress_created_logs);
+DECLARE_bool(TEST_ysql_yb_enable_ddl_savepoint_support);
 DECLARE_uint32(change_metadata_backoff_max_jitter_ms);
 DECLARE_uint32(change_metadata_backoff_init_exponent);
 
@@ -162,6 +163,11 @@ YBTableCreator& YBTableCreator::schema(const YBSchema* schema) {
 
 YBTableCreator& YBTableCreator::part_of_transaction(const TransactionMetadata* txn) {
   txn_ = txn;
+  return *this;
+}
+
+YBTableCreator& YBTableCreator::part_of_sub_transaction(uint32_t sub_txn_id) {
+  sub_txn_id_ = sub_txn_id;
   return *this;
 }
 
@@ -353,6 +359,10 @@ Status YBTableCreator::Create() {
   if (txn_) {
     txn_->ToPB(req.mutable_transaction());
     req.set_ysql_yb_ddl_rollback_enabled(YsqlDdlRollbackEnabled());
+
+    if (FLAGS_TEST_ysql_yb_enable_ddl_savepoint_support) {
+      req.set_sub_transaction_id(sub_txn_id_);
+    }
   }
 
   // Setup the number splits (i.e. number of splits).

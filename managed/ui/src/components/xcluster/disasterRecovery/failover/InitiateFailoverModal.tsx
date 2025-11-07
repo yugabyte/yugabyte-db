@@ -13,10 +13,13 @@ import { handleServerError } from '../../../../utils/errorHandlingUtils';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import { isActionFrozen } from '../../../../redesign/helpers/utils';
 import { EstimatedDataLossLabel } from '../drConfig/EstimatedDataLossLabel';
-import { IStorageConfig as BackupStorageConfig } from '../../../backupv2';
+import { CustomerConfig as BackupStorageConfig } from '../../../backupv2';
 import { AllowedTasks } from '../../../../redesign/helpers/dtos';
 import { DrConfig } from '../dtos';
-import { UNIVERSE_TASKS } from '../../../../redesign/helpers/constants';
+import {
+  I18N_ACCESSABILITY_ALT_TEXT_KEY_PREFIX,
+  UNIVERSE_TASKS
+} from '../../../../redesign/helpers/constants';
 
 import toastStyles from '../../../../redesign/styles/toastStyles.module.scss';
 
@@ -273,7 +276,10 @@ export const InitiateFailoverModal = ({
           <div className={classes.propertyLabel}>
             <Typography variant="body1">{t('estimatedDataLoss.label')}</Typography>
             <YBTooltip title={t('estimatedDataLoss.tooltip')}>
-              <img src={InfoIcon} alt={t('infoIcon', { keyPrefix: 'imgAltText' })} />
+              <img
+                src={InfoIcon}
+                alt={t('infoIcon', { keyPrefix: I18N_ACCESSABILITY_ALT_TEXT_KEY_PREFIX })}
+              />
             </YBTooltip>
           </div>
           <div>

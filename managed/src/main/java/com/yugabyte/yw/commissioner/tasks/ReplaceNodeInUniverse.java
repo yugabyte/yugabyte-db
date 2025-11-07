@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks;
 
@@ -80,13 +80,13 @@ public class ReplaceNodeInUniverse extends EditUniverseTaskBase {
           universe.getUniverseUUID());
       Set<NodeDetails> addedMasters = getAddedMasters();
       Set<NodeDetails> removedMasters = getRemovedMasters();
-      boolean updateMasters = !addedMasters.isEmpty() || !removedMasters.isEmpty();
 
       // Update the cluster in memory.
       universe
           .getUniverseDetails()
           .upsertCluster(
               taskParamsCluster.userIntent,
+              taskParamsCluster.getPartitions(),
               taskParamsCluster.placementInfo,
               taskParamsCluster.uuid);
 
@@ -97,7 +97,6 @@ public class ReplaceNodeInUniverse extends EditUniverseTaskBase {
           taskParamsCluster,
           getNodesInCluster(taskParamsCluster.uuid, addedMasters),
           getNodesInCluster(taskParamsCluster.uuid, removedMasters),
-          updateMasters,
           true /* force */);
 
       createUpdateUniverseIntentTask(taskParamsCluster);
@@ -121,7 +120,7 @@ public class ReplaceNodeInUniverse extends EditUniverseTaskBase {
       releaseReservedNodes();
       // Mark the update of the universe as done. This will allow future edits/updates to the
       // universe to happen.
-      unlockUniverseForUpdate(errorString);
+      unlockUniverseForUpdate(taskParams().getUniverseUUID(), errorString);
       log.info("Finished {} task.", getName());
     }
   }

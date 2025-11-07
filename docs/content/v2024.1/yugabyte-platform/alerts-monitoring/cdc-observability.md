@@ -46,6 +46,6 @@ To view your universe's replication slots, navigate to your universe and select 
 
 ## Learn more
 
-- Explore [Change data capture](../../../develop/change-data-capture/)
+- Explore [Change data capture](../../../additional-features/change-data-capture/)
 - Change data capture [architecture](../../../architecture/docdb-replication/change-data-capture/)
-- [CDC Tutorials](/preview/tutorials/cdc-tutorials/)
+- [CDC Tutorials](/preview/develop/tutorials/cdc-tutorials/)

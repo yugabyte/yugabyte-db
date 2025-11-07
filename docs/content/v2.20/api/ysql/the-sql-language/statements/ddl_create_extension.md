@@ -5,7 +5,7 @@ linkTitle: CREATE EXTENSION
 summary: Load an extension into a database
 description: Use the CREATE EXTENSION statement to load an extension into a database.
 menu:
-  v2.20:
+  v2.20_api:
     identifier: ddl_create_extension
     parent: statements
 type: docs
@@ -47,5 +47,5 @@ CREATE EXTENSION
 
 ## See also
 
-- [PostgreSQL Extensions](../../../../../explore/ysql-language-features/pg-extensions/)
+- [PostgreSQL Extensions](../../../../../additional-features/pg-extensions/)
 - [DROP EXTENSION](../ddl_drop_extension)

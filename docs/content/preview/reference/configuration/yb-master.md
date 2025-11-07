@@ -206,7 +206,7 @@ Default: `true`
 
 ##### --enable_pg_cron
 
-Set this flag to true on all YB-Masters and YB-TServers to add the [pg_cron extension](../../../explore/ysql-language-features/pg-extensions/extension-pgcron/).
+Set this flag to true on all YB-Masters and YB-TServers to add the [pg_cron extension](../../../additional-features/pg-extensions/extension-pgcron/).
 
 Default: `false`
 
@@ -598,7 +598,7 @@ Clusters created using yugabyted always use a default value of `1`.
 
 When enabled, all databases created in the cluster are colocated by default. If you enable the flag after creating a cluster, you need to restart the YB-Master and YB-TServer services.
 
-For more details, see [clusters in colocated tables](../../../explore/colocation/).
+For more details, see [clusters in colocated tables](../../../additional-features/colocation/).
 
 Default: `false`
 
@@ -938,7 +938,7 @@ Default: `false`
 
 ##### --enable_tablet_split_of_replication_slot_streamed_tables
 
-Toggle automatic tablet splitting for tables under replication slot. Applicable only to CDC using the [PostgreSQL logical replication protocol](../../../develop/change-data-capture/using-logical-replication/).
+Toggle automatic tablet splitting for tables under replication slot. Applicable only to CDC using the [PostgreSQL logical replication protocol](../../../additional-features/change-data-capture/using-logical-replication/).
 
 Default: `false`
 
@@ -1042,7 +1042,7 @@ Default: `true`
 
 ## Auto Analyze service flags
 
-Auto analyze is {{<tags/feature/ea idea="590">}}.
+{{<tags/feature/ea idea="590">}}To learn about the Auto Analyze service, see [Auto Analyze service](../../../additional-features/auto-analyze).
 
 See also [Auto Analyze Service TServer flags](../yb-tserver/#auto-analyze-service-flags).
 
@@ -1056,7 +1056,7 @@ Default: false
 
 Support for advisory locks is {{<tags/feature/tp idea="812">}}.
 
-To learn about advisory locks, see [Advisory locks](../../../explore/transactions/explicit-locking/#advisory-locks).
+To learn about advisory locks, see [Advisory locks](../../../architecture/transactions/concurrency-control/#advisory-locks).
 
 ##### --ysql_yb_enable_advisory_locks
 

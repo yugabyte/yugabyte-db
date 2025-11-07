@@ -491,7 +491,7 @@ When there is significant connection churn, the warm up of catalog caches on eac
 
 To set up connection pooling, explore the following approaches:
 
-- [Client-side connection pooling](../../drivers-orms/smart-drivers/#connection-pooling) using smart drivers.
+- [Client-side connection pooling](/preview/develop/drivers-orms/smart-drivers/#connection-pooling) using smart drivers.
 - [Intermediate connection pooling](https://www.yugabyte.com/blog/database-connection-management/) through tools like PgBouncer and Odyssey.
 
 ### Preload additional system tables {#preload-additional-system-tables}
@@ -532,7 +532,7 @@ To enable TServer response cache, set the [YB-TServer flag](../../reference/conf
 
 To confirm that catalog cache misses are a cause of latency or load, use the following techniques:
 
-1. Run [EXPLAIN (ANALYZE, DIST) \<query\>](../../explore/query-1-performance/explain-analyze/#:~:text=Index%20Writes.-,Catalog%20Read%20Requests,-%3A%20Number%20of%20requests) on the first query on a new connection that shows a high number of Catalog Reads. A subsequent run of the same EXPLAIN (ANALYZE, DIST) typically shows a drop in the number of Catalog Reads.
+1. Run [EXPLAIN (ANALYZE, DIST) \<query\>](../../launch-and-manage/monitor-and-alert/query-tuning/explain-analyze/#:~:text=Index%20Writes.-,Catalog%20Read%20Requests,-%3A%20Number%20of%20requests) on the first query on a new connection that shows a high number of Catalog Reads. A subsequent run of the same EXPLAIN (ANALYZE, DIST) typically shows a drop in the number of Catalog Reads.
 
 2. Check metrics for a [high number](https://docs.yugabyte.com/images/yp/metrics114.png) of [Catalog Cache Misses](../../yugabyte-platform/alerts-monitoring/anywhere-metrics/#ysql-ops-and-latency:~:text=on%20other%20metrics.-,Catalog%20Cache%20Misses,-During%20YSQL%20query).
 
@@ -552,7 +552,7 @@ If there are still a significant number of misses to these tables after preloadi
 
 ## Manually collect logs for catalog reads {#manually-collecting-logs-for-catalog-reads}
 
-If the catalog reads can be traced to a specific query, set the following configuration parameters and run [EXPLAIN (ANALYZE, DIST) \<query\>](../../explore/query-1-performance/explain-analyze/#:~:text=Distributed%20Storage%20Counters):
+If the catalog reads can be traced to a specific query, set the following configuration parameters and run [EXPLAIN (ANALYZE, DIST) \<query\>](../../launch-and-manage/monitor-and-alert/query-tuning/explain-analyze/#:~:text=Distributed%20Storage%20Counters):
 
 ```sql
 SET yb_debug_log_catcache_events = 1;

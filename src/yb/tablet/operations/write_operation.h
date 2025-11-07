@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -36,11 +36,15 @@
 #include <string>
 #include <vector>
 
+#include <boost/function.hpp>
+
 #include "yb/tablet/operations/operation.h"
 #include "yb/tablet/operations.messages.h"
 
 namespace yb {
 namespace tablet {
+
+using AsyncWriteCallback = boost::function<void(Result<OpId>)>;
 
 // An operation for a batch of inserts/mutates. This class holds and
 // owns most everything related to a transaction, including the Replicate and Commit PB messages
@@ -66,6 +70,10 @@ class WriteOperation : public OperationBase<OperationType::kWrite, LWWritePB>  {
   bool use_mvcc() const override {
     return true;
   }
+
+  void SetAsyncWrite(AsyncWriteCallback callback);
+
+  void AddedAsPending(const TabletPtr& tablet) override;
 
  private:
   // Executes a Prepare for a write transaction
@@ -99,6 +107,10 @@ class WriteOperation : public OperationBase<OperationType::kWrite, LWWritePB>  {
   Status DoAborted(const Status& status) override;
 
   HybridTime WriteHybridTime() const override;
+
+  AsyncWriteCallback added_to_leader_callback_;
+
+  bool do_replicated_completed_ = false;
 };
 
 }  // namespace tablet

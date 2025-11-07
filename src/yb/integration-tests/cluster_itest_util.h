@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -51,8 +51,6 @@
 #include <type_traits>
 #include <unordered_map>
 #include <vector>
-
-#include <boost/optional/optional_fwd.hpp>
 
 #include "yb/client/client_fwd.h"
 
@@ -401,14 +399,10 @@ Status StartElection(
 // Request the given replica to vote. This is thin wrapper around
 // RequestConsensusVote(). See the definition of VoteRequestPB in
 // consensus.proto for parameter details.
-Status RequestVote(const TServerDetails* replica,
-                   const std::string& tablet_id,
-                   const std::string& candidate_uuid,
-                   int64_t candidate_term,
-                   const OpIdPB& last_logged_opid,
-                   boost::optional<bool> ignore_live_leader,
-                   boost::optional<bool> is_pre_election,
-                   const MonoDelta& timeout);
+Status RequestVote(
+    const TServerDetails* replica, const std::string& tablet_id, const std::string& candidate_uuid,
+    int64_t candidate_term, const OpIdPB& last_logged_opid, std::optional<bool> ignore_live_leader,
+    std::optional<bool> is_pre_election, const MonoDelta& timeout);
 
 // Cause a leader to step down on the specified server.
 // 'timeout' refers to the RPC timeout waiting synchronously for stepdown to
@@ -438,35 +432,29 @@ Status WriteSimpleTestRow(const TServerDetails* replica,
 
 // Run a ConfigChange to ADD_SERVER on 'replica_to_add'.
 // The RPC request is sent to 'leader'.
-Status AddServer(const TServerDetails* leader,
-                 const TabletId& tablet_id,
-                 const TServerDetails* replica_to_add,
-                 consensus::PeerMemberType member_type,
-                 const boost::optional<int64_t>& cas_config_opid_index,
-                 const MonoDelta& timeout,
-                 tserver::TabletServerErrorPB::Code* error_code = nullptr,
-                 bool retry = true);
+Status AddServer(
+    const TServerDetails* leader, const TabletId& tablet_id, const TServerDetails* replica_to_add,
+    consensus::PeerMemberType member_type, const std::optional<int64_t>& cas_config_opid_index,
+    const MonoDelta& timeout, tserver::TabletServerErrorPB::Code* error_code = nullptr,
+    bool retry = true);
 
 // Run a ConfigChange to REMOVE_SERVER on 'replica_to_remove'.
 // The RPC request is sent to 'leader'.
-Status RemoveServer(const TServerDetails* leader,
-                    const TabletId& tablet_id,
-                    const TServerDetails* replica_to_remove,
-                    const boost::optional<int64_t>& cas_config_opid_index,
-                    const MonoDelta& timeout,
-                    tserver::TabletServerErrorPB::Code* error_code = nullptr,
-                    bool retry = true);
+Status RemoveServer(
+    const TServerDetails* leader, const TabletId& tablet_id,
+    const TServerDetails* replica_to_remove, const std::optional<int64_t>& cas_config_opid_index,
+    const MonoDelta& timeout, tserver::TabletServerErrorPB::Code* error_code = nullptr,
+    bool retry = true);
 
 // Get the list of tablets from the remote server.
-Status ListTablets(const TServerDetails* ts,
-                   const MonoDelta& timeout,
-                   std::vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB>* tablets,
-                   bool user_tablets_only = true);
+Status ListTablets(
+    const TServerDetails* ts, const MonoDelta& timeout,
+    std::vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB>* tablets,
+    bool user_tablets_only = true);
 
 // Get the list of RUNNING tablet ids from the remote server.
-Status ListRunningTabletIds(const TServerDetails* ts,
-                            const MonoDelta& timeout,
-                            std::vector<TabletId>* tablet_ids);
+Status ListRunningTabletIds(
+    const TServerDetails* ts, const MonoDelta& timeout, std::vector<TabletId>* tablet_ids);
 
 // Get the set of tablet ids across the cluster
 std::set<TabletId> GetClusterTabletIds(MiniCluster* cluster);
@@ -553,18 +541,15 @@ Status WaitUntilAllTabletReplicasRunning(const std::vector<TServerDetails*>& tse
 Status DeleteTablet(const TServerDetails* ts,
                     const TabletId& tablet_id,
                     const tablet::TabletDataState delete_type,
-                    const boost::optional<int64_t>& cas_config_opid_index_less_or_equal,
+                    const std::optional<int64_t>& cas_config_opid_index_less_or_equal,
                     const MonoDelta& timeout,
                     tserver::TabletServerErrorPB::Code* error_code = nullptr);
 
 // Cause the remote to initiate remote bootstrap using the specified host as a
 // source.
-Status StartRemoteBootstrap(const TServerDetails* ts,
-                            const TabletId& tablet_id,
-                            const std::string& bootstrap_source_uuid,
-                            const HostPort& bootstrap_source_addr,
-                            int64_t caller_term,
-                            const MonoDelta& timeout);
+Status StartRemoteBootstrap(
+    const TServerDetails* ts, const TabletId& tablet_id, const std::string& bootstrap_source_uuid,
+    const HostPort& bootstrap_source_addr, int64_t caller_term, const MonoDelta& timeout);
 
 // Get the latest OpId for the given master replica proxy. Note that this works for tablet servers
 // also, though GetLastOpIdForReplica is customized for tablet server for now.

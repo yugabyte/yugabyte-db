@@ -1,5 +1,5 @@
 /*
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  */
 
 package xcluster
@@ -58,7 +58,7 @@ var resumeXClusterCmd = &cobra.Command{
 		rTask, response, err := authAPI.EditXClusterConfig(uuid).
 			XclusterReplicationEditFormData(req).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "XCluster", "Resume")
+			errMessage := util.ErrorFromHTTPResponse(response, err, "xCluster", "Resume")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
@@ -74,12 +74,12 @@ var resumeXClusterCmd = &cobra.Command{
 					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 				}
 			}
-			logrus.Infof("The xcluster %s has been resumeed\n",
+			logrus.Infof("The xcluster %s has been resumed\n",
 				formatter.Colorize(uuid, formatter.GreenColor))
 			rXCluster, response, err := authAPI.GetXClusterConfig(uuid).Execute()
 			if err != nil {
 				errMessage := util.ErrorFromHTTPResponse(
-					response, err, "XCluster", "Resume - Get XCluster")
+					response, err, "xCluster", "Resume - Get xCluster")
 				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 			}
 			r := make([]ybaclient.XClusterConfigGetResp, 0)

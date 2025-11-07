@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -33,6 +33,7 @@ namespace yb {
 
 static const char* const kXClusterMetricEntityName = "xcluster";
 static const char* const kCdcsdkMetricEntityName = "cdcsdk";
+static const char* const kVectorIndexMetricEntityName = "vector_index";
 
 static const char* const kServerLevelAggregationId = "server_level";
 

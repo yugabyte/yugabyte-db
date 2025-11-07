@@ -56,7 +56,7 @@ Find resources for getting started, migrating existing databases, using your dat
 : Real-world use cases for moving to a distributed database.
 
 **Video**: [Global Applications with YugabyteDB](https://www.youtube.com/watch?v=jqZxUydBaMQ)<br>
-**Documentation**: [Build Global Apps](../develop/build-global-apps/)
+**Documentation**: [Build Global Apps](/preview/develop/build-global-apps/)
 : Explore how to design and build global applications with YugabyteDB.
 
 **Blog**: [Unlocking the Power of Event Streaming with YugabyteDB](https://www.yugabyte.com/blog/companies-use-yugabytedb-event-streaming/)
@@ -126,17 +126,17 @@ Find resources for getting started, migrating existing databases, using your dat
 
 ## Develop
 
-**Documentation**: [Hello world](/preview/tutorials/build-apps/)
+**Documentation**: [Hello world](/preview/develop/tutorials/build-apps/)
 : Use your favorite programming language to build an application that uses YSQL or YCQL APIs.
 
 **Video**: [Distributed PostgreSQL Essentials for Developers: Hands-on Course](https://www.youtube.com/watch?v=rqJBFQ-4Hgk)<br>
-**Documentation**: [Build and learn the essential capabilities of YugabyteDB](/preview/tutorials/build-and-learn/)
+**Documentation**: [Build and learn the essential capabilities of YugabyteDB](/preview/develop/tutorials/build-and-learn/)
 : Build a scalable and fault-tolerant movie recommendation service.
 
-**Documentation**: [Best practices](../drivers-orms/)
+**Documentation**: [Best practices](../develop/best-practices-develop/)
 : Tips and tricks to build applications for high performance and availability.
 
-**Documentation**: [Drivers and ORMs](../drivers-orms/)
+**Documentation**: [Drivers and ORMs](/preview/develop/drivers-orms/)
 : Connect applications with your database.
 
 ### Connections
@@ -152,7 +152,7 @@ Find resources for getting started, migrating existing databases, using your dat
 **Article**: [Explain Analyze Dist](https://dev.to/franckpachot/explain-analyze-dist-4nlc)
 : YugabyteDB distributed execution plans.
 
-**Documentation**: [Query Tuning How To](../explore/query-1-performance/)
+**Documentation**: [Query Tuning How To](../launch-and-manage/monitor-and-alert/query-tuning/)
 : Query tuning in YugabyteDB.
 
 **Blog**: [YugabyteDB Memory Tuning for YSQL](https://www.yugabyte.com/blog/optimizing-yugabytedb-memory-tuning-for-ysql/)

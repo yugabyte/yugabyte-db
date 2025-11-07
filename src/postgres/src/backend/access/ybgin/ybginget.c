@@ -3,7 +3,7 @@
  * ybginget.c
  *	  fetch tuples from a Yugabyte GIN scan.
  *
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License.  You may obtain a copy
@@ -535,6 +535,7 @@ ybginDoFirstExec(IndexScanDesc scan, ScanDirection dir)
 		ybginSetupTargets(scan);
 
 	YbSetCatalogCacheVersion(ybso->handle, YbGetCatalogCacheVersion());
+	YbMaybeSetNonSystemTablespaceOid(ybso->handle, scan->indexRelation);
 
 	/* execute select */
 	ybginExecSelect(scan, dir);

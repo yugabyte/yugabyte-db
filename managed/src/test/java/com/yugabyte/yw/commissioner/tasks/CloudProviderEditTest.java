@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks;
 
@@ -26,7 +26,6 @@ import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.test.Helpers.contentAsString;
 
-import com.amazonaws.services.ec2.model.Image;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -78,9 +77,11 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.junit.Before;
 import org.junit.Test;
 import play.libs.Json;
 import play.mvc.Result;
+import software.amazon.awssdk.services.ec2.model.Image;
 
 @Slf4j
 public class CloudProviderEditTest extends CommissionerBaseTest {
@@ -162,9 +163,8 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
         regionJson);
   }
 
-  @Override
+  @Before
   public void setUp() {
-    super.setUp();
     user = ModelFactory.testSuperAdminUserNewRbac(defaultCustomer);
     factory.globalRuntimeConf().setValue(GlobalConfKeys.enableVMOSPatching.getKey(), "true");
     provider =
@@ -456,10 +456,12 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     provider.save();
     provider.setName("new name");
     provider.setAllAccessKeys(createTempAccesskeys());
-    Image image = new Image();
-    image.setArchitecture("x86_64");
-    image.setRootDeviceType("ebs");
-    image.setPlatformDetails("linux/UNIX");
+    Image image =
+        Image.builder()
+            .architecture("x86_64")
+            .rootDeviceType("ebs")
+            .platformDetails("linux/UNIX")
+            .build();
     when(mockAWSCloudImpl.describeImageOrBadRequest(any(), any(), anyString())).thenReturn(image);
     UUID taskUUID = doEditProvider(provider, true);
     TaskInfo taskInfo = waitForTask(taskUUID);

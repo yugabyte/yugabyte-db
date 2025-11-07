@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -19,8 +19,8 @@
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 
-DEFINE_test_flag(bool, mark_snasphot_as_failed, false,
-                 "Whether we should skip sending RESTORE_FINISHED to tablets.");
+DEFINE_test_flag(bool, mark_snapshot_as_failed, false,
+    "Whether we should mark snapshots as FAILED instead of their normal terminal state.");
 
 namespace yb::master {
 
@@ -36,9 +36,9 @@ const std::initializer_list<std::pair<SysSnapshotEntryPB::State, SysSnapshotEntr
 SysSnapshotEntryPB::State InitialStateToTerminalState(SysSnapshotEntryPB::State state) {
   for (const auto& initial_and_terminal_states : kStateTransitions) {
     if (state == initial_and_terminal_states.first) {
-      if (PREDICT_FALSE(FLAGS_TEST_mark_snasphot_as_failed)
-          && state == SysSnapshotEntryPB::RESTORING) {
-        LOG(INFO) << "TEST: Mark COMPETE snapshot as FAILED";
+      if (PREDICT_FALSE(FLAGS_TEST_mark_snapshot_as_failed)) {
+        LOG(INFO) << "TEST: Mark " << SysSnapshotEntryPB::State_Name(state)
+                  << " snapshot as FAILED";
         return SysSnapshotEntryPB::FAILED;
       }
       return initial_and_terminal_states.second;

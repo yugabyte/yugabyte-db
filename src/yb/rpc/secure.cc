@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -216,6 +216,7 @@ void ApplySecureContext(const SecureContext* context, MessengerBuilder* builder)
 
   auto secure_stream_factory = SecureStreamFactory(TcpStream::Factory(), buffer_tracker, context);
   builder->SetListenProtocol(SecureStreamProtocol());
+  builder->SetUncompressedProtocol(SecureStreamProtocol());
   builder->AddStreamFactory(SecureStreamProtocol(), secure_stream_factory);
   ApplyCompressedStream(builder, secure_stream_factory);
 }

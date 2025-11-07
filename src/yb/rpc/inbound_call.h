@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -33,8 +33,6 @@
 
 #include <string>
 #include <vector>
-
-#include <boost/optional/optional.hpp>
 
 #include "yb/ash/wait_state.h"
 
@@ -90,7 +88,7 @@ class InboundCallHandler {
 
   virtual void Failure(const InboundCallPtr& call, const Status& status) = 0;
 
-  virtual boost::optional<int64_t> CallQueued(int64_t rpc_queue_limit) = 0;
+  virtual std::optional<int64_t> CallQueued(int64_t rpc_queue_limit) = 0;
 
   virtual void CallDequeued() = 0;
 

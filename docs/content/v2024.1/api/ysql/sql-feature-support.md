@@ -123,7 +123,7 @@ YugabyteDB is a distributed SQL database that implements many [standard SQL](htt
 |                |                              Component                              |                                  Details                                   |
 | :------------: | :------------------------------------------------------------------ | :------------------------------------------------------------------------- |
 | {{<icon/yes>}} | FROM, WHERE, GROUP BY, HAVING, DISTINCT, LIMIT/OFFSET, WITH queries | [Group data](../../../explore/ysql-language-features/queries/#group-data)                                       |
-| {{<icon/yes>}} | EXPLAIN query plans                                                 | [Analyze queries with EXPLAIN](../../../explore/query-1-performance/explain-analyze/) |
+| {{<icon/yes>}} | EXPLAIN query plans                                                 | [Analyze queries with EXPLAIN](../../../launch-and-manage/monitor-and-alert/query-tuning/explain-analyze/) |
 | {{<icon/yes>}} | JOINs (INNER/OUTER, LEFT/RIGHT)                                     | [Join columns](../../../explore/ysql-language-features/queries/#join-columns)                                   |
 | {{<icon/yes>}} | Expressions and Operators                                           | [Expressions and operators](../../../explore/ysql-language-features/expressions-operators/)                     |
 | {{<icon/yes>}} | Common Table Expressions (CTE) and Recursive Queries                | [Recursive queries and CTEs](../../../explore/ysql-language-features/queries/#ctes)       |
@@ -147,6 +147,6 @@ YugabyteDB is a distributed SQL database that implements many [standard SQL](htt
 | {{<icon/yes>}} | Materialized views                                   | [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views)               |
 | {{<icon/yes>}} | Window functions                                     | [Window functions](../exprs/window_functions/)                      |
 | {{<icon/yes>}} | Common table expressions                             |                                                                                    |
-| {{<icon/yes>}} | Extensions                                           | [PostgreSQL extensions](../../../explore/ysql-language-features/pg-extensions/)                                         |
+| {{<icon/yes>}} | Extensions                                           | [PostgreSQL extensions](../../../additional-features/pg-extensions/)                                         |
 | {{<icon/yes>}} | Foreign data wrappers                                | [Foreign data wrappers](../../../explore/ysql-language-features/advanced-features/foreign-data-wrappers/)               |
 {.sno-1}

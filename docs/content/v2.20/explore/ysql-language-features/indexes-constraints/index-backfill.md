@@ -34,7 +34,7 @@ The following example demonstrates the possible phases (initializing, backfillin
 
 {{% explore-setup-single %}}
 
-1. From your local YugabyteDB installation directory, connect to the [YSQL](../../../../admin/ysqlsh/) shell, and create an index on an existing table as follows:
+1. From your local YugabyteDB installation directory, connect to the [YSQL](../../../../api/ysqlsh/) shell, and create an index on an existing table as follows:
 
     ```sql
     CREATE TABLE test(id int);
@@ -135,4 +135,4 @@ This should give you an output similar to the following when an index is being b
 
 - [Primary keys](../primary-key-ysql/)
 - [Secondary indexes](../secondary-indexes-ysql)
-- [Optimize query performance](../../../query-1-performance)
+- [Optimize query performance](../../../../launch-and-manage/monitor-and-alert/query-tuning)

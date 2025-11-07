@@ -3,7 +3,7 @@
  * yb_logical_client_version.c
  *	  utility functions related to the ysql logical client version table.
  *
- * Portions Copyright (c) YugaByte, Inc.
+ * Portions Copyright (c) YugabyteDB, Inc.
  *
  *-------------------------------------------------------------------------
  */
@@ -29,8 +29,8 @@
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
-#include "yb/yql/pggate/ybc_pggate.h"
 
 
 YbLogicalClientVersionType yb_logical_client_version_type = LOGICAL_CLIENT_VERSION_UNSET;

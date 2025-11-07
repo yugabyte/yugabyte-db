@@ -8,6 +8,7 @@ menu:
   v2.20:
     identifier: best-practices-operations
     parent: launch-and-manage
+    weight: 80
 type: indexpage
 ---
 

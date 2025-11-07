@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -311,18 +311,14 @@ Result<TabletPeerTablet> DoLookupTabletPeer(
 Result<TabletPeerTablet> LookupTabletPeer(
     TabletPeerLookupIf* tablet_manager,
     const TabletId& tablet_id) {
-  if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
-    wait_state->UpdateAuxInfo(ash::AshAuxInfo{.tablet_id = tablet_id});
-  }
+  ash::WaitStateInfo::UpdateCurrentTabletId(tablet_id);
   return DoLookupTabletPeer(tablet_manager, tablet_id);
 }
 
 Result<TabletPeerTablet> LookupTabletPeer(
     TabletPeerLookupIf* tablet_manager,
     const Slice& tablet_id) {
-  if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
-    wait_state->UpdateAuxInfo(ash::AshAuxInfo{.tablet_id = tablet_id.ToBuffer()});
-  }
+  ash::WaitStateInfo::UpdateCurrentTabletId(tablet_id.ToBuffer());
   return DoLookupTabletPeer(tablet_manager, tablet_id);
 }
 

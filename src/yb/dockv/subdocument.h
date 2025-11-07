@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -27,6 +27,7 @@
 
 #include "yb/bfql/tserver_opcodes.h"
 
+#include "yb/dockv/key_entry_value.h"
 #include "yb/dockv/primitive_value.h"
 
 #include "yb/gutil/int128.h"

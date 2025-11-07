@@ -1,5 +1,5 @@
 /**
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License.  You may obtain a copy of the License at
@@ -102,6 +102,16 @@ public class BaseMiniClusterTest extends BaseYBTest {
 
   protected int getInitialNumTServers() {
     return -1;
+  }
+
+  /** Subclasses can override this to set the initial YCQL number of tablets. */
+  protected int getYcqlNumTablets() {
+    return MiniYBClusterParameters.DEFAULT_NUM_TABLETS;
+  }
+
+  /** Subclasses can override this to set the initial YSQL number of tablets. */
+  protected int getYsqlNumTablets() {
+    return MiniYBClusterParameters.DEFAULT_NUM_TABLETS;
   }
 
   /** Subclasses can override this to set the number of shards per tablet server. */
@@ -293,6 +303,8 @@ public class BaseMiniClusterTest extends BaseYBTest {
                       .addMasterFlags(additionalMasterFlags)
                       .commonTServerFlags(getTServerFlags())
                       .addCommonTServerFlags(additionalTserverFlags)
+                      .ycqlNumTablets(getYcqlNumTablets())
+                      .ysqlNumTablets(getYsqlNumTablets())
                       .numShardsPerTServer(getNumShardsPerTServer())
                       .useIpWithCertificate(useIpWithCertificate)
                       .replicationFactor(replicationFactor)

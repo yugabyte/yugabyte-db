@@ -26,9 +26,11 @@
 #include "yb/util/env.h"
 #include "yb/util/kv_util.h"
 #include "yb/util/locks.h"
-
+#include "yb/util/shutdown_controller.h"
 #include "yb/util/status_callback.h"
+
 #include "yb/vector_index/vector_index_if.h"
+#include "yb/vector_index/vector_lsm_metrics.h"
 
 namespace yb::vector_index {
 
@@ -41,6 +43,10 @@ struct VectorLSMInsertEntry {
   Vector   vector;
 };
 
+struct VectorLSMInsertContext {
+  const rocksdb::UserFrontiers* frontiers = nullptr;
+};
+
 template<IndexableVectorType Vector,
          ValidDistanceResultType DistanceResult>
 struct VectorLSMOptions;
@@ -49,9 +55,9 @@ template<IndexableVectorType Vector,
          ValidDistanceResultType DistanceResult>
 class VectorLSMInsertRegistry;
 
-struct VectorLSMInsertContext {
-  const rocksdb::UserFrontiers* frontiers = nullptr;
-};
+template<IndexableVectorType Vector,
+         ValidDistanceResultType DistanceResult>
+class VectorLSMMergeRegistry;
 
 class VectorLSMMergeFilter {
  public:
@@ -64,7 +70,7 @@ template<IndexableVectorType Vector,
          ValidDistanceResultType DistanceResult>
 struct VectorLSMOptions {
   using VectorIndexFactory = vector_index::VectorIndexFactory<Vector, DistanceResult>;
-  using MergeFilterFactory = std::function<VectorLSMMergeFilterPtr()>;
+  using MergeFilterFactory = std::function<Result<VectorLSMMergeFilterPtr>()>;
   using FrontiersFactory   = std::function<rocksdb::UserFrontiersPtr()>;
 
   std::string log_prefix;
@@ -73,15 +79,12 @@ struct VectorLSMOptions {
   size_t vectors_per_chunk;
   rpc::ThreadPool* thread_pool;
   rpc::ThreadPool* insert_thread_pool;
-  PriorityThreadPool* compaction_thread_pool;
+  PriorityThreadPoolTokenPtr compaction_token;
   FrontiersFactory frontiers_factory;
   MergeFilterFactory vector_merge_filter_factory;
   std::string file_extension;
+  MetricEntityPtr metric_entity;
 };
-
-template<IndexableVectorType VectorType,
-         ValidDistanceResultType DistanceResultType>
-class VectorLSMInsertTask;
 
 template<IndexableVectorType VectorType,
          ValidDistanceResultType DistanceResultType>
@@ -96,7 +99,6 @@ class VectorLSM {
   using SearchResults = typename VectorIndex::SearchResult;
   using InsertEntry = VectorLSMInsertEntry<Vector>;
   using InsertEntries = std::vector<InsertEntry>;
-  using InsertRegistry = VectorLSMInsertRegistry<Vector, DistanceResult>;
 
   VectorLSM();
   ~VectorLSM();
@@ -124,6 +126,7 @@ class VectorLSM {
 
   // Force chunks compaction. Flush does not happen.
   Status Compact(bool wait = false);
+  Status WaitForCompaction();
 
   void StartShutdown();
   void CompleteShutdown();
@@ -138,7 +141,13 @@ class VectorLSM {
   bool TEST_ObsoleteFilesCleanupInProgress() const;
   size_t TEST_NextManifestFileNo() const EXCLUDES(mutex_);
 
+  // Test helper method to get the size of the latest chunk (highest serial number).
+  uint64_t TEST_LatestChunkSize() const;
+
   DistanceResult Distance(const Vector& lhs, const Vector& rhs) const;
+
+  // Utility method to correctly prepare Status instance in case of shutting down.
+  Status DoCheckRunning(const char* file_name, int line_number) const EXCLUDES(mutex_);
 
   const std::string& LogPrefix() const {
     return options_.log_prefix;
@@ -148,10 +157,17 @@ class VectorLSM {
     return options_.storage_dir;
   }
 
+  VectorLSMMetrics& metrics() const {
+    return *DCHECK_NOTNULL(metrics_.get());
+  }
+
   struct MutableChunk;
   using  MutableChunkPtr = std::shared_ptr<MutableChunk>;
 
  private:
+  using InsertRegistry = VectorLSMInsertRegistry<Vector, DistanceResult>;
+  using MergeRegistry = VectorLSMMergeRegistry<Vector, DistanceResult>;
+
   struct ImmutableChunk;
   using  ImmutableChunkPtr  = std::shared_ptr<ImmutableChunk>;
   using  ImmutableChunkPtrs = std::vector<ImmutableChunkPtr>;
@@ -161,11 +177,7 @@ class VectorLSM {
   class  CompactionTask;
   using  CompactionTaskPtr = std::unique_ptr<CompactionTask>;
 
-  friend class  VectorLSMInsertTask<Vector, DistanceResult>;
   friend struct MutableChunk;
-
-  // Utility method to correctly prepare Status instance in case of shutting down.
-  Status DoCheckRunning(const char* file_name, int line_number) const EXCLUDES(mutex_);
 
   // Saves the current mutable chunk to disk and creates a new one.
   Status RollChunk(size_t min_vectors) REQUIRES(mutex_);
@@ -272,6 +284,7 @@ class VectorLSM {
   ImmutableChunkPtrs immutable_chunks_ GUARDED_BY(mutex_);
 
   std::unique_ptr<InsertRegistry> insert_registry_;
+  std::unique_ptr<MergeRegistry> merge_registry_;
 
   // May be changed if new manifest file is created (due to absence or compaction).
   size_t next_manifest_file_no_ = 0;
@@ -280,7 +293,7 @@ class VectorLSM {
   bool writing_manifest_ GUARDED_BY(mutex_) = false;
   std::condition_variable_any writing_manifest_done_cv_;
 
-  bool stopping_ GUARDED_BY(mutex_) = false;
+  ShutdownController shutdown_controller_;
 
   // The map contains only chunks being saved, i.e. chunks in kInMemory and kOnDisk states -- this
   // invariant must be kept. The value of order_no is used as key in this map.
@@ -293,7 +306,7 @@ class VectorLSM {
   std::atomic<bool> auto_compactions_enabled_ = false;
 
   // Used to inform background compactions that there's a manual compaction task which is
-  // waiting for background
+  // waiting for background compactions completion and prevents new background compactions.
   bool has_pending_manual_compaction_ GUARDED_BY(compaction_tasks_mutex_) = false;
 
   // Currently this mutex is used only in DeleteObsoleteChunks, which are not allowed to run in
@@ -303,6 +316,8 @@ class VectorLSM {
   std::atomic<bool> obsolete_files_cleanup_in_progress_ = false;
 
   Status failed_status_ GUARDED_BY(mutex_);
+
+  std::unique_ptr<VectorLSMMetrics> metrics_;
 };
 
 template<template<class, class> class Factory, class VectorIndex>

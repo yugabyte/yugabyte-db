@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -28,6 +28,7 @@ namespace yb {
 
 namespace client {
 
+class TransactionManager;
 class TransactionPool;
 class YBPgsqlOp;
 
@@ -69,6 +70,7 @@ enum class TabletServerServiceRpcMethodIndexes;
 YB_STRONGLY_TYPED_BOOL(AllowSplitTablet);
 
 using TSLocalLockManagerPtr = std::shared_ptr<TSLocalLockManager>;
+using TransactionManagerProvider = std::function<client::TransactionManager&()>;
 using TransactionPoolProvider = std::function<client::TransactionPool&()>;
 
 template <typename, typename = std::void_t<>>

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.models.helpers;
 
@@ -62,6 +62,8 @@ public class NodeConfig {
 
     HOME_DIR_EXISTS("Home directory exists"),
 
+    HOME_DIR_MATCHES("Home directory matches"),
+
     RAM_SIZE("Total RAM size in MB"),
 
     INTERNET_CONNECTION("Internet connectivity"),
@@ -119,8 +121,6 @@ public class NodeConfig {
     ULIMIT_OPEN_FILES("Maximum number of open file descriptors"),
 
     ULIMIT_USER_PROCESSES("Maximum number of processes available to a single user"),
-
-    SYSTEMD_SUDOER_ENTRY("Systemd Sudoer entry"),
 
     SSH_ACCESS("Ability to ssh into node as yugabyte user with key supplied in provider"),
 

@@ -3,9 +3,9 @@
 //  LICENSE file in the root directory of this source tree. An additional grant
 //  of patent rights can be found in the PATENTS file in the same directory.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -40,7 +40,7 @@ void InstrumentedMutex::Lock() {
   uint64_t wait_time_micros = 0;
   if (ShouldReportToStats(env_, stats_)) {
     {
-      StopWatch sw(env_, nullptr, 0, &wait_time_micros);
+      StopWatchMicro sw(env_, &wait_time_micros);
       LockInternal();
     }
     RecordTick(stats_, stats_code_, wait_time_micros);
@@ -59,7 +59,7 @@ void InstrumentedCondVar::Wait() {
   uint64_t wait_time_micros = 0;
   if (ShouldReportToStats(env_, stats_)) {
     {
-      StopWatch sw(env_, nullptr, 0, &wait_time_micros);
+      StopWatchMicro sw(env_, &wait_time_micros);
       WaitInternal();
     }
     RecordTick(stats_, stats_code_, wait_time_micros);
@@ -79,7 +79,7 @@ bool InstrumentedCondVar::TimedWait(uint64_t abs_time_us) {
   bool result = false;
   if (ShouldReportToStats(env_, stats_)) {
     {
-      StopWatch sw(env_, nullptr, 0, &wait_time_micros);
+      StopWatchMicro sw(env_, &wait_time_micros);
       result = TimedWaitInternal(abs_time_us);
     }
     RecordTick(stats_, stats_code_, wait_time_micros);

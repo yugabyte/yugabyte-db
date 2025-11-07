@@ -48,6 +48,7 @@
       "expand": "Expand",
       "collapse": "Collapse",
       "formFieldRequired": "Required.",
+      "every": "Every",
       "duration": {
         "seconds": "Seconds",
         "minutes": "Minutes",
@@ -61,11 +62,34 @@
         "megabytesPerSecond": "MBps"
       }
     },
-    "imgAltText": {
-      "infoIcon": "Information Icon"
+    "iconAltText": {
+      "infoIcon": "Information icon",
+      "checkIcon": "Check mark icon",
+      "unavailableIcon": "Unavailable icon"
     },
     "task": {
       "viewDetails": "View Details"
+    },
+    "component": {
+      "backupStorageConfigSelect": {
+        "configurePrompt": {
+          "emptyMessage": "Current, you don't have a backup storage configured",
+          "initialCreateAction": "Configure Backup Storage"
+        },
+        "selectComponent": {
+          "noMatchingOptions": "No matches found",
+          "additionalCreateAction": "Create New Storage Configuration"
+        },
+        "redirectModal": {
+          "title": "You are about to leave this page",
+          "message": "To create a backup storage configuration, you will be redirected to <bold>Integrations / Backup</bold>. Are you sure you want to continue?",
+          "cancelButton": "Stay on this page",
+          "submitButton": "Continue"
+        },
+        "error": {
+          "failedToFetchStorageConfigs": "Failed to fetch customer storage configurations."
+        }
+      }
     },
     "queryError": {
       "failedToFetchUniverseList": "Error fetching universe list.",
@@ -85,6 +109,7 @@
       "failedToFetchDrPrimaryTables": "Unable to fetch tables for DR primary universe UUID: {{universeUuid}}",
       "failedToFetchXClusterConfig": "Unable to fetch xCluster config UUID: {{xClusterConfigUuid}}",
       "failedToFetchMetrics": "Failed to fetch metrics.",
+      "failedToFetchContinuousBackupConfig": "Failed to fetch automated platform backup details.",
       "failedToFetchAlertTemplates": "Failed to fetch alert templates.",
       "failedToFetchAlertConfigs": "Failed to fetch alert configurations.",
       "failedToFetchHostInfo": "Failed to fetch YBA host details."
@@ -114,6 +139,18 @@
       "useSystemdReminderBanner": {
         "primaryText": "Some of your universes use cron to manage nodes.",
         "additionalDetailText": "<paragraph>Cron-based universes will no longer be supported in YugabyteDB Anywhere v2025.2 and later. Before you can upgrade to v2025.2, you must upgrade cron-based universes to systemd.</paragraph><paragraph>To do this, navigate to the universe and choose <bold>Actions>Upgrade to Systemd</bold></paragraph>"
+      },
+      "onboardingPanel": {
+        "welcomeTo": "Weclome to",
+        "yugabyteDbAnywhere": "YugabyteDB Anywhere",
+        "newUserCard": {
+          "title": "I'm new to YugabyteDB Anywhere",
+          "buttonText": "Configure Cloud Provider"
+        },
+        "restoreBackupCard": {
+          "title": "I want to restore a previous backup of YugabyteDB Anywhere",
+          "buttonText": "Restore a Platform Backup"
+        }
       }
     },
     "universeActions": {
@@ -232,15 +269,18 @@
         "additionalStepInfo": "After the upgrade is completed, you'll need to manually finalize the upgrade to finish the process.",
         "configureUpgrade": "2. Configure upgrade details",
         "rolllingUpgradeLabel": "Rolling upgrade (upgrade nodes one at a time)",
+        "nonRollingWarning": "<strong>Non-rolling rollback will cause database downtime.</strong><br /> The database will be unavailable for the duration of the rollback.",
         "upgradeDelayLabel": "Upgrade delay between Nodes:",
         "numNodesToRollingUpgrade": "Max batch size: ",
         "rollingUpgradeMsg": "Refers to the number of nodes that can be unavailable during upgrade process across AZs. This can possibly affect the performance of the cluster till the upgrade is finished",
-        "footerMsg1": "Once the upgrade is finished, you can assess Universe performance and ",
-        "footerMsg2": "if any unusual behavior is detected.",
-        "footerMsg3": "We recommend you to take backup of your universe before upgrading.",
+        "footerMsg1": "After the upgrade is done, you can monitor performance and ",
+        "footerMsg2": "if you detect any problems.",
+        "footerMsg3": "Before upgrading, perform a full backup of your universe.",
         "rollbackPrevious": "roll back to the previous version",
         "avoidDisruption": "Avoid disruption to xCluster configuration",
-        "xclusterWarning": "This universe is part of one or more xCluster configurations. To minimize disruptions to these configurations during the upgrade process, you should, if possible, upgrade the target universe first.",
+        "pitrNotSupported": "If you have PITR configured, after the upgrade <b>you cannot restore</b> to a time prior to the upgrade",
+        "xClusterWarning2": "If you are using xCluster DR, you <b>cannot fail over</b> while upgrading the DR replica, <b>or switch over</b> while upgrading either the DR primary or replica.",
+        "xclusterWarning": "This universe is part of one or more xCluster configurations. To minimize disruption, upgrade the target universe first.",
         "rollbackUpgradeTite": "Roll Back Upgrade",
         "rollbackModalMsg": "Are you sure you wish to roll back to ",
         "rollbackOnenode": "Rollback one node at a time",
@@ -637,7 +677,10 @@
           "enableNodeToNodeTLS": "Enable Node-to-Node TLS",
           "enableNodeToNodeTLSHelper": "Enable Node-to-Node encryption to use TLS enabled connections for communication between different Universe nodes.",
           "rootCertificate": "Root Certificate",
-          "rootCertificatePlaceHolder": "Create New Certificate"
+          "clientToNodeCertificate": "Client-to-Node Certificate",
+          "rootCertificatePlaceHolder": "Create New Certificate",
+          "clientCAAndRootCASame": "Use the same certificate for “Node to Node” and “Client to Node” encryption",
+          "enableBothNodeAndClientTLS": "Enable “Node to Node” and “Client to Node” Encryption"
         },
         "placeholder": {
           "enterYSQLPassword": "Enter YSQL auth password",
@@ -652,17 +695,13 @@
         "tagName": "Tag Name",
         "tagValue": "Value"
       },
-      "resizeNodeModal": {
-        "confirmResizeCheckbox": "Confirm Resize Nodes",
-        "modalTitle": "Resize Nodes",
-        "cancelLabel": "Cancel",
-        "confirmLabel": "Confirm",
-        "modalDescription": "This operation will be performed without restart",
-        "timeDelayLabel": "Rolling Upgrade Delay Between Servers (secs)"
-      },
       "smartResizeModal": {
-        "modalDescription": "This operation will migrate this universe and all its data to a completely new set of nodes Or alternatively you could try smart resize (This will change VM image {{value}} for existing nodes)",
-        "buttonLabel": "Do Smart Resize"
+        "modalTitle": "Confirm Smart Resize Update",
+        "confirmResizeCheckbox": "Confirm Resize Nodes",
+        "timeDelayLabel": "Rolling Upgrade Delay Between Servers (secs)",
+        "modalDescription": "This operation {{value}} {{value2}} for existing nodes",
+        "modalDescriptionNonRestart": "This operation will be performed without restart",
+        "buttonLabel": "Proceed"
       },
       "placementModal": {
         "modalTitle": "Confirm Update",
@@ -1432,6 +1471,10 @@
               "targetTableMissing": {
                 "label_one": "<bold>{{count}}</bold> table missing on {{targetUniverseTerm}}",
                 "label_other": "<bold>{{count}}</bold> tables missing on {{targetUniverseTerm}}"
+              },
+              "drWithAutomaticDdlMode": {
+                "label_one": "<bold>{{count}}</bold> table under DR automatic DDL replication",
+                "label_other": "<bold>{{count}}</bold> tables under DR automatic DDL replication"
               }
             },
             "skipBootstrap": "Skip Creating Full Copy",
@@ -1863,6 +1906,17 @@
         "multiRegionSupport": "Multi-region support"
       }
     },
+    "telemetryProviderConfigSelect": {
+      "noMatchingMetricsTelemetryConfiguration": "No matches found",
+      "noMetricsTelemetryConfigurations": "You do not have any export configurations for metrics",
+      "createTelemetryConfiguration": "Create export configuration",
+      "redirectModal": {
+        "title": "You are about to leave this page",
+        "message": "To create an export configuration, you will be redirected to <bold>Integrations / Logs & Metrics Export</bold>. Are you sure you want to continue?",
+        "submitButton": "Continue",
+        "cancelButton": "Stay on this page"
+      }
+    },
     "customCACerts": {
       "listing": {
         "header": "Trusted CA Certificates",
@@ -1904,6 +1958,13 @@
         "createdAt": "Created at",
         "numberOfKeyspace": "Number of Keyspaces",
         "numberOfDatabase": "Number of Databases"
+      },
+      "rolesConfig": {
+        "title": " Restore Roles",
+        "checkboxTitle": "Restore global roles",
+        "checkboxHelpText": "<b>Note!</b> If selected, all the global roles in the target universe will be restored.",
+        "checkboxHelpText2": "<b>Note!</b> If selected, the restore will fail as the roleis already in the target database, else the role will not be restored.",
+        "checkboxTitle2": "Fail restore if role already exists in target database"
       },
       "prefetch": {
         "loadingText": "Fetching Incremental Backups..."
@@ -1975,7 +2036,7 @@
       },
       "tablespaces": {
         "checkboxTitle": "Restore tablespaces and data to their respective regions",
-        "checkboxHelpText": "<b>Note!</b> If you don't select this option, or the target universe doesn't have a matching topology, all data will be restored to the primary region.",
+        "checkboxHelpText": "<b>Note!</b> If not selected all the data will be restored to the primary region.",
         "unSupportedModal": {
           "title": "Unable to Restore Tablespaces",
           "warningText": "<b>Note!</b> You can proceed without restoring tablespaces, however none of the tablespaces are preserved and all their data is written to the primary region [location]. After the restore, you will have to re-add all the tablespaces. <a>Learn more</a>",
@@ -2226,6 +2287,11 @@
         "copyBackupLocation": "Copy backup location",
         "copied": "Copied",
         "restoreFailed": "Restore Failed"
+      },
+      "globalModal": {
+        "title": "Restoring Platform...",
+        "restoringPlatform": "Restoring Platform...",
+        "ybaWillBeAvailable": "YBA will become available after the restoration completes."
       }
     },
     "linuxVersion": {
@@ -2526,8 +2592,8 @@
         "backup": {
           "tabLabel": "Backup"
         },
-        "log": {
-          "tabLabel": "Log"
+        "exportTelemetry": {
+          "tabLabel": "Logs & Metrics Export"
         },
         "security": {
           "tabLabel": "Security"
@@ -2544,6 +2610,11 @@
       }
     },
     "ha": {
+      "tab": {
+        "replicationConfiguration": "Replication Configuration",
+        "instanceConfiguration": "Instance Configuration",
+        "metrics": "Metrics"
+      },
       "config": {
         "globalState": {
           "Unknown": "Unknown",
@@ -2565,6 +2636,144 @@
         "graphTitle": {
           "haBackupLag": "HA Backup Lag",
           "haLastBackupSize": "HA Last Backup Size"
+        }
+      }
+    },
+    "continuousBackup": {
+      "enableContinuousBackupPrompt": {
+        "featureDescription": "Back up your YugabyteDB Anywhere configuration and universe metadata.\nYou can use these backups to restore your YugabyteDB Anywhere instance in case of an outage.",
+        "actionButton": "Enable Automated Platform Backups",
+        "learnMore": "Learn more about automated platform backups",
+        "backupUniverseTip": "To back up universes, navigate to your universe and choose Backups."
+      },
+      "actionBar": {
+        "oneTimeBackup": "One-Time Platform Export",
+        "advancedRestore": "Advanced Restore"
+      },
+      "continuousBackupCard": {
+        "title": "Automated Platform Backups",
+        "metadata": {
+          "lastBackup": "Last Backup",
+          "backupInterval": "Backup Interval",
+          "storageLocation": "Storage Location"
+        },
+        "button": {
+          "remove": "Remove"
+        },
+        "backupIntervalValue": "Every {{backupFrequencyMinutes}} minutes",
+        "noRecentBackupError": "No backups have been created in the past 24 hours."
+      },
+      "configureContinuousBackupModal": {
+        "title": {
+          "create": "Enable Automated Platform Backups",
+          "edit": "Edit Automated Platform Backups"
+        },
+        "instruction": {
+          "selectStorageConfig": "Select the storage configuration for your automated platform backups",
+          "createSubfolder": "Create a subfolder (in the storage config) for the platform backups",
+          "setBackupFrequency": "Set backup frequency"
+        },
+        "label": {
+          "storageConfig": "Storage Config",
+          "folderName": "Folder Name"
+        },
+        "error": {
+          "backupFrequencyMustBePositiveInteger": "Please enter a positive integer.",
+          "backupFrequencyMustBeGreaterThanOrEqualTo2": "Minimum 2 minutes.",
+          "backupFrequencyMustBeLessThanOrEqualTo1440": "Maximum 1440 minutes (24 hours)."
+        },
+        "tip": {
+          "performanceImpact": "Platform backups don't significantly impact performance.",
+          "copiesRetained": "Only the 3 most recent copies are retained, as older backups are more likely to be inconsistent with the current state of your universes."
+        },
+        "whatWillBeBackedUpInfo": {
+          "header": "What will be backed up",
+          "platformMetadata": "Platform Metadata",
+          "yugabyteDbReleases": "YugabyteDB Releases",
+          "universeMetrics": "Universe Metrics",
+          "howToBackupThis": {
+            "label": "How to back up metrics?",
+            "tooltip": "Perform a one-time platform export from Platform HA and Backups to back up the Universe Metrics."
+          }
+        },
+        "submitButton": {
+          "create": "Enable Automated Platform Backups",
+          "edit": "Apply Changes"
+        },
+        "toast": {
+          "createSuccess": "Automated platform backup enabled. Next backup will begin shortly.",
+          "createFailedLabel": "Failed to enable automated platform backup",
+          "editSuccess": "Automated platform backup changes applied.",
+          "editFailedLabel": "Failed to apply changes to automated platform backup"
+        }
+      },
+      "restoreOverExistingUniversesWarningModal": {
+        "title": "Are you sure?",
+        "restoreOverExistingUniversesWarning": "Restoring from a backup can cause serious issues for your existing universes, including <bold>data loss</bold>, as the backup may not be consistent with the current state of the universes.",
+        "confirmationInstructions": "Type “Accept Risk” to continue",
+        "submitButton": "Accept Risk and Continue"
+      },
+      "deleteContinuousBackupModal": {
+        "title": "Disable Automated Platform Backups",
+        "deleteConfirmation": "Are you sure you want to disable automated platform backups? This will delete the automated platform backup configuration. To re-enable, you will need to to set up the confirguration again.",
+        "confirmationInstructions": "Enter \"DELETE\" to confirm.",
+        "submitButton": "Delete Configuration",
+        "toast": {
+          "deleteSuccess": "Automated platform backup configuration deleted. Automated backup disabled.",
+          "deleteFailedLabel:": "Automated platform backup configuration deletion failed."
+        }
+      },
+      "createYbaBackupModal": {
+        "title": "Export Platform",
+        "instructions": "Select the platform data that you want to export and restore to a new YBA instance.",
+        "component": {
+          "platformMetadata": "Platform Metadata",
+          "yugabyteDbReleases": "YugabyteDB Releases",
+          "universeMetrics": "Universe Metrics (Prometheus Data)"
+        },
+        "exportDestination": "Export Destination",
+        "exportDestinationPlaceholder": "Path to local directory. ex. /opt/yugabyte/yba_backups",
+        "submitButton": "Export",
+        "toast": {
+          "createBackupRequestSuccess": "Exporting platform...",
+          "createBackupRequestFailedLabel": "One-time platform export request failed",
+          "createBackupTaskSuccess": "One-time platform export created.",
+          "createBackupTaskFailed": "One-time platform export failed."
+        }
+      },
+      "restoreYbaBackupFormModal": {
+        "title": "Restore Platform Backup",
+        "instructions": "Choose how you want to restore your platform backup",
+        "option": {
+          "localBackup": "Local Backup",
+          "cloudBackup": "Cloud Backup"
+        },
+        "localBackup": {
+          "provideBackupFilePath": "Provide the backup file path",
+          "filePath": "File Path",
+          "filePathPlaceholder": "ex. /opt/yugabyte/yba_backups/<backupFileName>"
+        },
+        "cloudBackup": {
+          "configureBackupStorageConfigPrompt": {
+            "beforeYouStart": "Before you start...",
+            "configureBackupStorage": "To restore from a cloud backup, you need to first configure the backup storage.",
+            "configureBackupStorageButton": "Configure Backup Storage"
+          },
+          "selectStorageConfig": "Select the storage config that contains the backup",
+          "storageConfig": "Storage config",
+          "selectBackupFolder": "Specify the backup folder",
+          "folder": "Folder Name",
+          "backupFolderHelperText": "The most recent backup from this folder will be used for the restore."
+        },
+        "ybaRestartWarning": "<bold>Note!</bold> As part of the restore process, YugabyteDB Anywhere will restart itself automatically.",
+        "submitButton": "Restore",
+        "error": {
+          "backupTypeRequired": "Please select a backup type"
+        },
+        "toast": {
+          "restoreBackupTaskSuccess": "Restore platform backup completed",
+          "restoreBackupTaskFailed": "Restore platform backup failed",
+          "restoreBackupRequestFailedLabel": "Restore platform backup request failed"
         }
       }
     },
@@ -2618,7 +2827,7 @@
         "editAuditLog": "Edit Database Audit Logging",
         "confirmationDialogMsg": "{{typeVal}} database audit logging requires a <strong>rolling restart</strong> of a universe <strong>{{universeName}}</strong>. The universe will remain online and available throughout.",
         "leavePageModalTitle": "You are about to leave this page",
-        "leaveModalSubmit": "Navigate to Integrations > Log Export"
+        "leaveModalSubmit": "Navigate to Integrations > Logs & Metrics Export"
       },
       "tooltips": {
         "logCatalog": "Log statements for the PostgreSQL system catalog relations in pg_catalog. Disable this option to reduce noise in the log.",
@@ -2632,11 +2841,11 @@
         "logRow": "Include the rows retrieved or affected by a statement.",
         "exportLog": "Forward audit log to your preferred 3rd party log management tool such as Datadog, Splunk, AWS CloudWatch, or GCP Cloud Logging. The audit logs are always available for download using the API regardless of whether export is enabled or otherwise."
       },
-      "exportNavDialogMsg": "To create an export configuration for logs, navigate to <strong>Integrations > Log Export</strong>.",
-      "exportNavLink": "<strong>Note!</strong> To export database audit logs to a third party tool, you need an export configuration in <1>Integrations > Log export</1>."
+      "exportNavDialogMsg": "To create an export configuration for logs, navigate to <strong>Integrations > Logs & Metrics Export</strong>.",
+      "exportNavLink": "<strong>Note!</strong> To export database audit logs to a third party tool, you need an export configuration in <1>Integrations > Logs & Metrics Export</1>."
     },
-    "exportAuditLog": {
-      "exportConfigForLogs": "Export Configurations for Logs",
+    "exportTelemetry": {
+      "heading": "Export Configurations for Logs & Metrics",
       "createExport": "Create Export Configuration",
       "emptyMsg1": "Export logs and/or metrics to your preferred 3rd party monitoring tool.",
       "learnExport": "Learn more about <1>exporting logs</1>.",
@@ -2645,11 +2854,29 @@
       "deleteConfiguration": "Delete Configuration",
       "exportName": "Export Configuration name",
       "exportTo": "Export to",
-      "usageHeader": "Usage",
+      "logsExportUsage": "Logs Export",
+      "metricsExportUsage": "Metrics Export",
       "inUse": "In Use",
       "notInUse": "Not in Use",
       "assignedUniverses": "Assigned Universes",
-      "modalTitle": "Create Export Configuration for Logs",
+      "modalTitle": "Create Export Configuration",
+      "viewExportTelemetryProviderModalTitle": "Export Configuration",
+      "telemetryProviderOption": {
+        "label": {
+          "datadog": "Datadog",
+          "loki": "Loki",
+          "splunk": "Splunk",
+          "awsCloudWatch": "AWS CloudWatch",
+          "gcpCloudMonitoring": "GCP Cloud Logging",
+          "dynatrace": "Dynatrace",
+          "s3": "S3",
+          "otlp": "OTLP"
+        },
+        "exportSupport": {
+          "metrics": "Metrics",
+          "logs": "Logs"
+        }
+      },
       "submitLabel": "Validate and Create Configuration",
       "dataDogApiKey": "Datadog API Key",
       "dataDogURLPlaceholder": "Custom Datadog URL",
@@ -2678,11 +2905,41 @@
       "gcpProject": "Project (Optional)",
       "uploadGCPCredentails": "Upload GCP credentails",
       "gcpDescription": "Only JSON Files allowed. <br /><br />Find your GCP service account key under Service Accounts<br /> in Google Cloud console.",
+      "dynatrace": {
+        "endpointUrl": "Dynatrace Endpoint URL",
+        "endpointUrlTooltip": "Check the <bold>browser URL</bold> of your Dynatrace to see the endpoint URL.<br/><br/>Note: Your environment ID can also be found in Account Management > Settings > Environments, under the environment column.",
+        "endpointUrlValidationError": "Invalid endpoint format. Must be a valid URL.",
+        "apiToken": "Dynatrace Access Token",
+        "apiTokenTooltip": "Create an access token with <bold>ingest metrics</bold>,  <bold>ingest logs</bold>, <bold>ingest OpenTelemetry traces</bold> and <bold>read API tokens</bold> scope in Manage > Access Tokens in your Dynatrace.",
+        "apiTokenHelper": "The access policy token needs <bold>ingest metrics</bold>, <bold>ingest logs</bold>, <bold>ingest OpenTelemetry traces</bold> and <bold>read API tokens</bold> scope.",
+        "apiTokenValidationError": "The access token should start with 6-character prefix, followed by 24-character public identifier, and 64-character string secret portion."
+      },
       "deleteModalTitle": "Delete Export Configuration",
       "deleteModalMsg": "Are you sure you want to delete <strong>{{name}}</strong> ?",
       "deleteModalSubmitLabel": "Delete Export Configuration",
       "deleteConfirmMsg": "{{name}} export configuration got deleted succesfully",
-      "deleteConfig": "Delete Configuration"
+      "deleteConfig": "Delete Configuration",
+      "universeExportMetricModal": {
+        "title": "Export Metrics",
+        "exportMetricsToggle": {
+          "label": "Export Metrics from this Universe",
+          "infoText": "Export metrics to your preferred 3rd party monitoring tool."
+        },
+        "exportConfigSelect": {
+          "label": "Export Configuration"
+        },
+        "toast": {
+          "enableSuccess": "Metrics export successfully enabled.",
+          "disableSuccess": "Metrics export successfully disabled.",
+          "updateSuccess": "Metrics export successfully updated.",
+          "enableFailed": "Failed to enable metrics export.",
+          "disableFailed": "Failed to disable metrics export.",
+          "updateFailed": "Failed to update metrics export.",
+          "enableRequestFailed": "Metrics export enable request failed:",
+          "disableRequestFailed": "Metrics export disable request failed:",
+          "updateRequestFailed": "Metrics export update request failed:"
+        }
+      }
     },
     "userAuth": {
       "disableModal": {
@@ -3018,13 +3275,15 @@
           "optional": "(Optional)",
           "forceRenameHelpText": "<b>Note!</b> Renaming is required since the selected target universe contains keyspaces with identical names. You will be able to rename in step 3.",
           "restoreTablespaces": "Restore tablespaces and data to their respective regions",
-          "restoreTablespacesHelpText": "<b>Note!</b> If you don't select this option, or the target universe doesn't have a matching topology, all data will be restored to the primary region.",
+          "restoreTablespacesHelpText": "<b>Note!</b> If not selected all the data will be restored to the primary region.",
           "selectKMS": "Select KMS Configuration",
           "kmsConfig": "KMS Configurations",
           "kmsConfigHelpText": "<b>Note!</b> For a successful restore, the KMS configuration used for restore should be the same KMS configuration used during backup creation.",
           "activeKMS": "Active",
           "usedDuringBackup": "Used during backup",
-          "parallelThreads": "Parallel threads (Optional)"
+          "parallelThreads": "Parallel threads (Optional)",
+          "tablespacePlacementConflict": "<b>Tablespace Placement Conflict.</b> Some tablespaces in the backup have a placement policy that conflicts with the target universe. <a>View logs for details.</a><br/>If you proceed, the restore may fail. if it does, you can retry the restore without tablespaces. <a2>Learn more about restoring tablespaces.</a2>",
+          "tablespaceNameConflict": "<b>Tablespace Name Conflict.</b> The target universe has tablespaces with the same name as tablespaces in the backup. In cases where the placement policy differs between the target and backup tablespaces, <b>the target policy will be used.</b> <a>View logs for details</a>"
         },
         "validationErrMsg": {
           "keyspacesAlreadyExists": "Keyspace already exists in the target Universe",
@@ -3042,7 +3301,7 @@
       "starUsOn": "Star us on",
       "github": "GitHub",
       "freeTShirtAt": "Free t-shirt at",
-      "yugabyteInc": "Yugabyte, Inc."
+      "yugabyteInc": "YugabyteDB, Inc."
     },
     "createUniverseV2": {
       "title": "Create Universe",
@@ -3352,6 +3611,24 @@
         "totalStorage": "Total Storage",
         "universe": "Universe",
         "universeTotal": "Universe Total"
+      }
+    },
+    "geoPartition": {
+      "addGeoPartition": {
+        "title": "Add Geo Partition"
+      },
+      "GeoPartitionInfoModal": {
+        "title": "Before You Start...",
+        "description": "The <b>existing regions</b> in your cluster,  will be designated as your  \"<b>primary</b>\"  Geo-partition.",
+        "desc_ques": "What is a primary Geo-partition?",
+        "desc_ans": "A primary Geo-partition stores the tables that aren't assigned to a specific region or tablespace. <a>Learn more</a>"
+      },
+      "geoPartitionGeneralSettings": {
+        "title": "General Settings",
+        "displayName": "Display Name",
+        "addGeoPartition": "Add Geo Partition",
+        "tablespaceName": "Tablespace Name",
+        "tablespaceNameHelpText": "Tablespace name <b>CANNOT</b> be modified after geo partition creation."
       }
     }
   }

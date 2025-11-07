@@ -6,11 +6,6 @@ aliases:
   - /preview/develop/learn/data-modeling-ysql/
   - /preview/develop/learn/data-modeling-ycql/
   - /preview/develop/data-modeling-ysql/
-menu:
-  preview:
-    identifier: data-modeling
-    parent: develop
-    weight: 100
 type: indexpage
 ---
 

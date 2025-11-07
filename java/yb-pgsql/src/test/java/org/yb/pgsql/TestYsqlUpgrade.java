@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -65,6 +65,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.TestUtils;
 import org.yb.minicluster.MiniYBClusterBuilder;
+import org.yb.minicluster.MiniYBDaemon;
 import org.yb.minicluster.YsqlSnapshotVersion;
 import org.yb.util.BuildTypeUtil;
 import org.yb.util.CatchingThread;
@@ -1000,6 +1001,11 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
    */
   @Test
   public void upgradeIsIdempotentSingleConn() throws Exception {
+    MiniYBDaemon tserver = (MiniYBDaemon) miniCluster.getTabletServers().values().toArray()[0];
+    String value = tserver.getFlag("ysql_enable_auto_analyze");
+    LOG.info("ysql_enable_auto_analyze has value {}", value);
+    boolean auto_analyze_enabled = value.equals("true");
+
     recreateWithYsqlVersion(YsqlSnapshotVersion.PG15_12);
     createDbConnections();
 
@@ -1027,12 +1033,13 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
             totalNumConns += numConns;
           }
 
-          // We expect to have up to 3 other connections:
+          // We expect to have up to 3 or 4 other connections:
           // * BasePgSQLTest#connection (always active).
           // * An upgrade connection (picks an arbitrary tserver once, and connects/disconnects
           //   to it during work).
           // * Idempotency checking worker connection.
-          assertLessThanOrEqualTo(totalNumConns, 3L);
+          // * Auto analyze connection.
+          assertLessThanOrEqualTo(totalNumConns, auto_analyze_enabled ? 4L : 3L);
           Thread.sleep(500);
         }
       }
@@ -2008,21 +2015,28 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
         Row reinitdbRow = reinitdbRows.get(i);
         Row migratedRow = migratedRows.get(i);
         if (tableName.equals("pg_collation") &&
-            !reinitdbRow.getString(SysCatalogSnapshot.COLLNAME_COL_IDX).startsWith("en_US")) {
+            reinitdbRow.getString(SysCatalogSnapshot.COLLNAME_COL_IDX).startsWith("en_US")) {
           /*
            * Different flavors of Linux have different versions of libc,
            * which provides the en_US.utf8 collation.
            * We're comparing the current snapshot to one generated on an Alma8 machine,
            * so we might get a mismatch in the collversion column. Ignore it for now.
            */
-          reinitdbRow.elems.set(SysCatalogSnapshot.COLLVERSION_COL_IDX, null);
-          migratedRow.elems.set(SysCatalogSnapshot.COLLVERSION_COL_IDX, null);
+          String reinitdbCollVersion =
+              reinitdbRow.getString(SysCatalogSnapshot.COLLVERSION_COL_IDX);
+          String migratedCollVersion =
+              migratedRow.getString(SysCatalogSnapshot.COLLVERSION_COL_IDX);
+          if ("2.34".equals(reinitdbCollVersion) && "2.28".equals(migratedCollVersion)) {
+            reinitdbRow.elems.set(SysCatalogSnapshot.COLLVERSION_COL_IDX, null);
+            migratedRow.elems.set(SysCatalogSnapshot.COLLVERSION_COL_IDX, null);
+          }
         }
         // PG15 and PG11 initdb generate different default privileges for relacl of pg_class:
         // PG11: {=r/postgres,postgres=arwdDxt/postgres}
         // PG15: {postgres=arwdDxt/postgres,=r/postgres}
         // So we cannot simply compare the as strings.
         // Similar changes happen for initprivs column of table pg_init_privs.
+        // Also, pg_proc.prosqlbody can contain oids which can change on view creation.
         if (tableName.equals("pg_class")) {
           assertRow("Table '" + tableName + "': ",
                     excluded(reinitdbRow, "relacl"),
@@ -2033,6 +2047,18 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
                     excluded(reinitdbRow, "initprivs"),
                     excluded(migratedRow, "initprivs"));
           assertSameAcl(retained(reinitdbRow, "initprivs"), retained(migratedRow, "initprivs"));
+        } else if (tableName.equals("pg_proc")) {
+          assertRow("Table '" + tableName + "': ",
+                    excluded(reinitdbRow, "prosqlbody"),
+                    excluded(migratedRow, "prosqlbody"));
+        } else if (tableName.equals("pg_authid")) {
+          // Handle password format differences between fresh initdb (SCRAM-SHA-256)
+          // and migrated clusters (MD5). This is expected because migrations don't
+          // automatically convert existing passwords.
+          assertRow("Table '" + tableName + "': ",
+                    excluded(reinitdbRow, "rolpassword"),
+                    excluded(migratedRow, "rolpassword"));
+          // For now, skip password comparison since format conversion isn't automatic
         } else {
           assertRow("Table '" + tableName + "': ", reinitdbRow, migratedRow);
         }

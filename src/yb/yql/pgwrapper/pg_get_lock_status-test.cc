@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -18,6 +18,7 @@
 
 #include "yb/master/mini_master.h"
 #include "yb/tablet/tablet_peer.h"
+#include "yb/util/debug-util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/sync_point.h"
@@ -43,6 +44,7 @@ DECLARE_int32(tserver_unresponsive_timeout_ms);
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_int32(leader_lease_duration_ms);
+DECLARE_bool(TEST_pause_get_lock_status);
 
 using namespace std::literals;
 using std::string;
@@ -76,6 +78,8 @@ class PgGetLockStatusTest : public PgLocksTestBase {
  protected:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
     PgLocksTestBase::SetUp();
   }
 
@@ -908,6 +912,8 @@ TEST_F(PgGetLockStatusTest, TestLockStatusRespHasHostNodeSet) {
     auto conn = VERIFY_RESULT(Connect());
     return conn.ExecuteFormat("UPDATE $0 SET v=v+1 WHERE k=$1", table, key);
   });
+  // Sleep to ensure the transaction heartbeat has been propagated.
+  SleepFor(1s * kTimeMultiplier);
 
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.ExecuteFormat("SET yb_locks_min_txn_age='$0ms'", kMinTxnAgeMs));
@@ -917,18 +923,82 @@ TEST_F(PgGetLockStatusTest, TestLockStatusRespHasHostNodeSet) {
 
   // Try simulating GetLockStatus requests to tablets querying for fast path transactions alone.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_returning_old_transactions) = true;
-  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64>(kPgLocksQuery)), expected_lock_count);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64>(kPgLocksQuery)), 0);
 
   ASSERT_OK(session.conn->CommitTransaction());
   ASSERT_OK(status_future.get());
 }
 
-class PgGetLockStatusTestDisableObjectLocks : public PgGetLockStatusTest {
+TEST_F(PgGetLockStatusTest, TestPgLocksFiltersForObjectLocks) {
+  constexpr auto table = "foo";
+  constexpr int kWaitTimeSeconds = 3;
+
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.ExecuteFormat("CREATE TABLE $0(k INT PRIMARY KEY, v INT)", table));
+
+  auto exclusive_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(exclusive_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(exclusive_conn.ExecuteFormat("LOCK TABLE $0 IN ACCESS EXCLUSIVE MODE", table));
+
+  // Wait for 3 seconds to make the transaction older
+  SleepFor(kWaitTimeSeconds * 1s * kTimeMultiplier);
+
+  TestThreadHolder thread_holder;
+  CountDownLatch share_lock_started{1};
+  CountDownLatch test_complete{1};
+  thread_holder.AddThreadFunctor([this, &share_lock_started, &test_complete, table] {
+    auto share_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(share_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    share_lock_started.CountDown();
+    // This will block due to ACCESS EXCLUSIVE lock
+    ASSERT_OK(share_conn.ExecuteFormat("LOCK TABLE $0 IN ACCESS SHARE MODE", table));
+    ASSERT_TRUE(test_complete.WaitFor(30s * kTimeMultiplier));
+  });
+  ASSERT_TRUE(share_lock_started.WaitFor(5s * kTimeMultiplier));
+  // Give some time for the share lock to get queued/blocked
+  SleepFor(1s * kTimeMultiplier);
+
+  const auto pg_locks_query = Format(
+      "SELECT mode FROM pg_locks WHERE relation = '$0'::regclass", table);
+  // 1. Set yb_locks_min_txn_age first to higher than wait time
+  ASSERT_OK(setup_conn.ExecuteFormat("SET yb_locks_min_txn_age='$0s'", kWaitTimeSeconds + 1));
+  auto lock_modes = ASSERT_RESULT(setup_conn.FetchAllAsString(
+      pg_locks_query, /*column_sep = */ "", /*row_sep = */ " "));
+  ASSERT_EQ("AccessExclusiveLock", lock_modes);
+
+  // 2. Set yb_locks_min_txn_age='0s', should see both locks
+  ASSERT_OK(setup_conn.Execute("SET yb_locks_min_txn_age='0s'"));
+  lock_modes = ASSERT_RESULT(setup_conn.FetchAllAsString(
+      pg_locks_query, /*column_sep = */ "", /*row_sep = */ " "));
+  ASSERT_TRUE("AccessExclusiveLock AccessShareLock" == lock_modes ||
+              "AccessShareLock AccessExclusiveLock" == lock_modes);
+
+  // 3. Set yb_locks_max_transactions=1, should only see exclusive lock
+  ASSERT_OK(setup_conn.Execute("SET yb_locks_max_transactions=1"));
+  lock_modes = ASSERT_RESULT(setup_conn.FetchAllAsString(
+      pg_locks_query, /*column_sep = */ "", /*row_sep = */ " "));
+  ASSERT_EQ("AccessExclusiveLock", lock_modes);
+
+  // 4. Set yb_locks_max_transactions=2, should see both locks
+  ASSERT_OK(setup_conn.Execute("SET yb_locks_max_transactions=2"));
+  lock_modes = ASSERT_RESULT(setup_conn.FetchAllAsString(
+      pg_locks_query, /*column_sep = */ "", /*row_sep = */ " "));
+  ASSERT_TRUE("AccessExclusiveLock AccessShareLock" == lock_modes ||
+              "AccessShareLock AccessExclusiveLock" == lock_modes);
+
+  // Clean up
+  ASSERT_OK(exclusive_conn.Execute("COMMIT"));
+  test_complete.CountDown();
+  thread_holder.WaitAndStop(20s * kTimeMultiplier);
+}
+
+class PgGetLockStatusTestDisableObjectLocks : public PgLocksTestBase {
  protected:
   void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = false;
-    PgGetLockStatusTest::SetUp();
+    PgLocksTestBase::SetUp();
   }
 };
 
@@ -964,19 +1034,7 @@ class PgGetLockStatusTestRF3 : public PgGetLockStatusTest {
   }
 };
 
-class PgGetLockStatusTestRF3DisableObjectLocks : public PgGetLockStatusTestRF3 {
- protected:
-  void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = false;
-    PgGetLockStatusTestRF3::SetUp();
-  }
-};
-
-// TODO: Enable object locking and transactional ddl once #27851 is resolved.
-TEST_F_EX(
-    PgGetLockStatusTestRF3, TestPrioritizeLocksOfOlderTxns,
-    PgGetLockStatusTestRF3DisableObjectLocks) {
+TEST_F(PgGetLockStatusTestRF3, TestPrioritizeLocksOfOlderTxns) {
   constexpr auto table = "foo";
   constexpr auto key = "1";
   constexpr int kMinTxnAgeSeconds = 1;
@@ -1015,6 +1073,16 @@ TEST_F_EX(
   done.CountDown();
   thread_holder.WaitAndStop(20s * kTimeMultiplier);
 }
+
+class PgGetLockStatusTestRF3DisableObjectLocks : public PgGetLockStatusTestDisableObjectLocks {
+  size_t NumTabletServers() override {
+    return 3;
+  }
+
+  void OverrideMiniClusterOptions(MiniClusterOptions* options) override {
+    options->transaction_table_num_tablets = 4;
+  }
+};
 
 // TODO: Enable object locking and transactional ddl once #27865 is resolved.
 #ifndef NDEBUG
@@ -1094,6 +1162,50 @@ TEST_F_EX(
   thread_holder.WaitAndStop(5s * kTimeMultiplier);
 }
 #endif // NDEBUG
+
+TEST_F(PgGetLockStatusTestRF3, PgLocksDuringTabletLeaderStepdown) {
+  auto setup_conn = ASSERT_RESULT(Connect());
+  auto conn_pg_locks = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(setup_conn.Execute(
+      "CREATE TABLE test (k INT PRIMARY KEY, v INT) SPLIT INTO 10 TABLETS;"));
+  ASSERT_OK(setup_conn.Execute("INSERT INTO test VALUES (1, 1)"));
+  ASSERT_OK(setup_conn.StartTransaction(IsolationLevel::READ_COMMITTED));
+  ASSERT_OK(setup_conn.Execute("UPDATE test SET v = v + 1 WHERE k = 1"));
+
+  TestThreadHolder thread_holder;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_get_lock_status) = true;
+  const auto table_id = ASSERT_RESULT(GetTableIDFromTableName("test"));
+  auto leader_peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+  for (const auto& leader_peer : leader_peers) {
+    thread_holder.AddThreadFunctor([leader_peer, this] {
+      auto* leader_ts = cluster_->find_tablet_server(leader_peer->permanent_uuid());
+      size_t idx = 0;
+      for (; idx < cluster_->num_tablet_servers(); ++idx) {
+        if (leader_ts == cluster_->mini_tablet_server(idx)) {
+          break;
+        }
+      }
+      leader_ts = cluster_->mini_tablet_server((idx + 1) % cluster_->num_tablet_servers());
+      TEST_PAUSE_IF_FLAG(TEST_pause_get_lock_status);
+      LOG(INFO) << "Stepping down tablet " << leader_peer->tablet_id();
+      ASSERT_OK(StepDown(leader_peer, leader_ts->server()->permanent_uuid(), ForceStepDown::kTrue));
+      LOG(INFO) << "Stepdown completed for tablet " << leader_peer->tablet_id();
+    });
+  }
+
+  thread_holder.AddThreadFunctor([&conn_pg_locks] {
+    ASSERT_OK(conn_pg_locks.ExecuteFormat("SET yb_locks_min_txn_age='$0s'", 0));
+    auto lock_output = ASSERT_RESULT(conn_pg_locks.FetchAllAsString(
+        "SELECT * FROM pg_locks WHERE relation = 'test'::regclass"));
+  });
+
+  std::this_thread::sleep_for(1000ms * kTimeMultiplier);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_get_lock_status) = false;
+
+  thread_holder.WaitAndStop(10000ms * kTimeMultiplier);
+  ASSERT_OK(setup_conn.RollbackTransaction());
+}
 
 TEST_F(PgGetLockStatusTest, TestPgLocksOutputAfterTableRewrite) {
   const auto colo_db = "colo_db";
@@ -1249,21 +1361,20 @@ TEST_F(PgGetLockStatusTest, FetchLocksAmidstTransactionCommit) {
 }
 #endif // NDEBUG
 
-class PgGetLockStatusTestFastElection : public PgGetLockStatusTestRF3 {
+// TODO: Enable object locking and transactional ddl once #27850 is resolved.
+class PgGetLockStatusTestFastElection : public PgGetLockStatusTestRF3DisableObjectLocks {
  protected:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_failure_max_missed_heartbeat_periods) = 4;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_raft_heartbeat_interval_ms) = 100;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_lease_duration_ms) = 400;
-    // TODO: Enable object locking and transactional ddl once #27850 is resolved.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = false;
-    PgGetLockStatusTestRF3::SetUp();
+    PgGetLockStatusTestRF3DisableObjectLocks::SetUp();
   }
 };
 
 TEST_F_EX(
-    PgGetLockStatusTestRF3, YB_DISABLE_TEST_IN_TSAN(TestPgLocksAfterTserverShutdown),
+    PgGetLockStatusTestRF3DisableObjectLocks,
+    YB_DISABLE_TEST_IN_TSAN(TestPgLocksAfterTserverShutdown),
     PgGetLockStatusTestFastElection) {
   const auto kTable = "foo";
   const auto kTimeoutSecs = 25 * kTimeMultiplier;

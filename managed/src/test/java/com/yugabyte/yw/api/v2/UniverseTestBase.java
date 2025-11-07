@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 package com.yugabyte.yw.api.v2;
 
 import static com.yugabyte.yw.common.ModelFactory.newProvider;
@@ -28,6 +28,7 @@ import com.yugabyte.yba.v2.client.models.ClusterInfo;
 import com.yugabyte.yba.v2.client.models.ClusterNetworkingSpec;
 import com.yugabyte.yba.v2.client.models.ClusterNetworkingSpec.EnableExposingServiceEnum;
 import com.yugabyte.yba.v2.client.models.ClusterNodeSpec;
+import com.yugabyte.yba.v2.client.models.ClusterPartitionSpec;
 import com.yugabyte.yba.v2.client.models.ClusterPlacementSpec;
 import com.yugabyte.yba.v2.client.models.ClusterProviderEditSpec;
 import com.yugabyte.yba.v2.client.models.ClusterProviderSpec;
@@ -45,12 +46,14 @@ import com.yugabyte.yba.v2.client.models.NodeProxyConfig;
 import com.yugabyte.yba.v2.client.models.PlacementAZ;
 import com.yugabyte.yba.v2.client.models.PlacementCloud;
 import com.yugabyte.yba.v2.client.models.PlacementRegion;
+import com.yugabyte.yba.v2.client.models.QueryLogConfig;
 import com.yugabyte.yba.v2.client.models.UniverseCreateSpec;
 import com.yugabyte.yba.v2.client.models.UniverseCreateSpec.ArchEnum;
 import com.yugabyte.yba.v2.client.models.UniverseEditSpec;
 import com.yugabyte.yba.v2.client.models.UniverseInfo;
 import com.yugabyte.yba.v2.client.models.UniverseLogsExporterConfig;
 import com.yugabyte.yba.v2.client.models.UniverseNetworkingSpec;
+import com.yugabyte.yba.v2.client.models.UniverseQueryLogsExporterConfig;
 import com.yugabyte.yba.v2.client.models.UniverseResourceDetails;
 import com.yugabyte.yba.v2.client.models.UniverseSpec;
 import com.yugabyte.yba.v2.client.models.User;
@@ -60,6 +63,7 @@ import com.yugabyte.yba.v2.client.models.XClusterInfo;
 import com.yugabyte.yba.v2.client.models.YCQLAuditConfig;
 import com.yugabyte.yba.v2.client.models.YCQLSpec;
 import com.yugabyte.yba.v2.client.models.YSQLAuditConfig;
+import com.yugabyte.yba.v2.client.models.YSQLQueryLogConfig;
 import com.yugabyte.yba.v2.client.models.YSQLSpec;
 import com.yugabyte.yba.v2.client.models.YbSoftwareDetails;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
@@ -70,6 +74,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.AllowedTasks;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
@@ -100,17 +105,21 @@ import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.rules.TestName;
 
+@Slf4j
 public class UniverseTestBase extends UniverseControllerTestBase {
 
   protected UUID providerUuid;
@@ -248,6 +257,11 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     return auditLogConfig;
   }
 
+  protected QueryLogConfig createPrimaryQueryLogConfig() {
+    QueryLogConfig queryLogConfig = new QueryLogConfig();
+    return queryLogConfig;
+  }
+
   protected PlacementRegion getOrCreatePlacementRegion(
       PlacementCloud placementCloud, Region region) {
     PlacementRegion placementRegion = null;
@@ -298,10 +312,15 @@ public class UniverseTestBase extends UniverseControllerTestBase {
 
   // Place nodes evenly across zones of first region
   protected PlacementCloud placementFromProvider(int numNodesToPlace, int rfTotal) {
+    return placementFromProvider(0, numNodesToPlace, rfTotal);
+  }
+
+  // Place nodes evenly across zones of regionIdx region
+  protected PlacementCloud placementFromProvider(int regionIdx, int numNodesToPlace, int rfTotal) {
     Provider provider = Provider.get(customer.getUuid(), providerUuid);
     PlacementCloud placementCloud =
         new PlacementCloud().uuid(providerUuid).code(provider.getCode());
-    Region region = Region.getByProvider(providerUuid).get(0);
+    Region region = Region.getByProvider(providerUuid).get(regionIdx);
     PlacementRegion pr = getOrCreatePlacementRegion(placementCloud, region);
     int numPlacedNodes = 0;
     int rf = 0;
@@ -374,6 +393,12 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     PlacementCloud placementCloud =
         placementFromProvider(
             primaryClusterSpec.getNumNodes(), primaryClusterSpec.getReplicationFactor());
+    AtomicInteger prio = new AtomicInteger();
+    for (PlacementRegion placementRegion : placementCloud.getRegionList()) {
+      for (PlacementAZ placementAZ : placementRegion.getAzList()) {
+        placementAZ.setLeaderPreference(prio.incrementAndGet());
+      }
+    }
     primaryClusterSpec.setPlacementSpec(
         new ClusterPlacementSpec().cloudList(List.of(placementCloud)));
     ClusterProviderSpec providerSpec = new ClusterProviderSpec();
@@ -390,7 +415,29 @@ public class UniverseTestBase extends UniverseControllerTestBase {
             .proxyConfig(proxy));
     primaryClusterSpec.setGflags(createPrimaryClusterGFlags());
     primaryClusterSpec.setAuditLogConfig(createPrimaryAuditLogConfig());
+    primaryClusterSpec.setQueryLogConfig(createPrimaryQueryLogConfig());
     universeSpec.addClustersItem(primaryClusterSpec);
+    return universeCreateSpec;
+  }
+
+  protected UniverseCreateSpec getUniverseCreateSpecV2Geo() {
+    UniverseCreateSpec universeCreateSpec = getUniverseCreateSpecV2();
+    ClusterSpec clusterSpec = universeCreateSpec.getSpec().getClusters().get(0);
+    List<ClusterPartitionSpec> geoPartitionSpecList = new ArrayList<>();
+    int numNodes = 0;
+    for (int i = 0; i < 3; i++) {
+      ClusterPartitionSpec geoPartitionSpec = new ClusterPartitionSpec();
+      geoPartitionSpec.setName("geo" + i);
+      geoPartitionSpec.setDefaultPartition(i == 0);
+      int numNodesInGeo = 5 + i;
+      PlacementCloud placementCloud =
+          placementFromProvider(i, numNodesInGeo, i == 0 ? clusterSpec.getReplicationFactor() : 0);
+      geoPartitionSpec.setPlacement(new ClusterPlacementSpec().cloudList(List.of(placementCloud)));
+      numNodes += numNodesInGeo;
+      geoPartitionSpecList.add(geoPartitionSpec);
+    }
+    clusterSpec.setNumNodes(numNodes);
+    clusterSpec.setPartitionsSpec(geoPartitionSpecList);
     return universeCreateSpec;
   }
 
@@ -627,7 +674,11 @@ public class UniverseTestBase extends UniverseControllerTestBase {
       assertThat(v2Cluster.getUseSpotInstance(), is(dbCluster.userIntent.useSpotInstance));
     }
     validateProviderSpec(v2Cluster.getProviderSpec(), dbCluster);
-    validatePlacementSpec(v2Cluster.getPlacementSpec(), dbCluster.placementInfo);
+    if (v2Cluster.getPartitionsSpec() == null || v2Cluster.getPartitionsSpec().isEmpty()) {
+      validatePlacementSpec(v2Cluster.getPlacementSpec(), dbCluster.placementInfo);
+    } else {
+      validateGeoPartitions(v2Cluster, dbCluster);
+    }
     validateNetworkingSpec(
         v2Cluster.getNetworkingSpec(), dbCluster, v2PrimaryCluster.getNetworkingSpec());
     validateGFlags(
@@ -640,6 +691,53 @@ public class UniverseTestBase extends UniverseControllerTestBase {
         v2Cluster.getAuditLogConfig(),
         dbCluster.userIntent.auditLogConfig,
         v2PrimaryCluster.getAuditLogConfig());
+    validateQueryLogConfig(
+        v2Cluster.getQueryLogConfig(),
+        dbCluster.userIntent.queryLogConfig,
+        v2PrimaryCluster.getQueryLogConfig());
+  }
+
+  private void validateGeoPartitions(ClusterSpec v2Cluster, Cluster dbCluster) {
+    validateGeoPartitions(v2Cluster.getPartitionsSpec(), dbCluster);
+  }
+
+  private void validateGeoPartitions(List<ClusterPartitionSpec> geoPartitions, Cluster dbCluster) {
+    assertThat(dbCluster.getPartitions().size(), is(geoPartitions.size()));
+
+    int numNodes =
+        dbCluster.getPartitions().stream()
+            .flatMap(g -> g.getPlacement().azStream())
+            .mapToInt(az -> az.numNodesInAZ)
+            .sum();
+    assertThat(numNodes, is(dbCluster.userIntent.numNodes));
+
+    Map<UUID, Integer> countsByUUID = new HashMap<>();
+    for (ClusterPartitionSpec partitionSpec : geoPartitions) {
+      Optional<UniverseDefinitionTaskParams.PartitionInfo> geoPartitionInfo =
+          dbCluster.getPartitions().stream()
+              .filter(g -> partitionSpec.getName().equals(g.getName()))
+              .findFirst();
+      assertThat(geoPartitionInfo.isPresent(), is(true));
+      assertThat(
+          geoPartitionInfo.get().isDefaultPartition(), is(partitionSpec.getDefaultPartition()));
+
+      validatePlacementSpec(partitionSpec.getPlacement(), geoPartitionInfo.get().getPlacement());
+
+      Map<UUID, Integer> azMap =
+          geoPartitionInfo
+              .get()
+              .getPlacement()
+              .azStream()
+              .collect(Collectors.toMap(az -> az.uuid, az -> az.numNodesInAZ));
+
+      azMap.forEach(
+          (uuid, count) -> {
+            assertThat(countsByUUID.get(uuid), is(nullValue()));
+            countsByUUID.put(uuid, count);
+          });
+    }
+    assertThat(
+        countsByUUID, is(PlacementInfoUtil.getAzUuidToNumNodes(dbCluster.getOverallPlacement())));
   }
 
   private void validateClusterNodeSpec(
@@ -875,9 +973,58 @@ public class UniverseTestBase extends UniverseControllerTestBase {
         v2AuditLogConfig.getYcqlAuditConfig(), dbAuditLogConfig.getYcqlAuditConfig());
   }
 
+  private void validateQueryLogConfig(
+      QueryLogConfig v2QueryLogConfig,
+      com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig dbQueryLogConfig,
+      QueryLogConfig v2PrimaryQueryLogConfig) {
+    if (v2QueryLogConfig == null) {
+      v2QueryLogConfig = v2PrimaryQueryLogConfig;
+    }
+    if (v2QueryLogConfig == null) {
+      assertThat(dbQueryLogConfig, is(nullValue()));
+      return;
+    }
+    if (v2QueryLogConfig.getExportActive() == null) {
+      assertThat(dbQueryLogConfig.isExportActive(), is(true));
+    } else {
+      assertThat(v2QueryLogConfig.getExportActive(), is(dbQueryLogConfig.isExportActive()));
+    }
+    assertThat(
+        v2QueryLogConfig.getUniverseLogsExporterConfig().size(),
+        is(dbQueryLogConfig.getUniverseLogsExporterConfig().size()));
+    for (int i = 0; i < v2QueryLogConfig.getUniverseLogsExporterConfig().size(); i++) {
+      validateUniverseLogsExportedConfig(
+          v2QueryLogConfig.getUniverseLogsExporterConfig().get(i),
+          dbQueryLogConfig.getUniverseLogsExporterConfig().get(i));
+    }
+    validateYsqlQueryLogConfig(
+        v2QueryLogConfig.getYsqlQueryLogConfig(), dbQueryLogConfig.getYsqlQueryLogConfig());
+  }
+
   private void validateUniverseLogsExportedConfig(
       UniverseLogsExporterConfig v2UniverseLogsExporterConfig,
       com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig
+          dbUniverseLogsExporterConfig) {
+    if (v2UniverseLogsExporterConfig == null) {
+      assertThat(dbUniverseLogsExporterConfig, is(nullValue()));
+      return;
+    }
+    assertThat(
+        v2UniverseLogsExporterConfig.getExporterUuid(),
+        is(dbUniverseLogsExporterConfig.getExporterUuid()));
+    v2UniverseLogsExporterConfig
+        .getAdditionalTags()
+        .entrySet()
+        .forEach(
+            e ->
+                assertThat(
+                    dbUniverseLogsExporterConfig.getAdditionalTags(),
+                    hasEntry(e.getKey(), e.getValue())));
+  }
+
+  private void validateUniverseLogsExportedConfig(
+      UniverseQueryLogsExporterConfig v2UniverseLogsExporterConfig,
+      com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig
           dbUniverseLogsExporterConfig) {
     if (v2UniverseLogsExporterConfig == null) {
       assertThat(dbUniverseLogsExporterConfig, is(nullValue()));
@@ -924,6 +1071,52 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     assertThat(v2YsqlAuditConfig.getLogRows(), is(dbYsqlAuditConfig.isLogRows()));
     assertThat(v2YsqlAuditConfig.getLogStatement(), is(dbYsqlAuditConfig.isLogStatement()));
     assertThat(v2YsqlAuditConfig.getLogStatementOnce(), is(dbYsqlAuditConfig.isLogStatementOnce()));
+  }
+
+  private void validateYsqlQueryLogConfig(
+      YSQLQueryLogConfig v2YsqlQueryLogConfig,
+      com.yugabyte.yw.models.helpers.exporters.query.YSQLQueryLogConfig dbYsqlQueryLogConfig) {
+    if (v2YsqlQueryLogConfig == null) {
+      assertThat(dbYsqlQueryLogConfig, is(nullValue()));
+      return;
+    }
+    assertThat(v2YsqlQueryLogConfig.getEnabled(), is(dbYsqlQueryLogConfig.isEnabled()));
+    if (v2YsqlQueryLogConfig.getLogStatement() == null) {
+      assertThat(dbYsqlQueryLogConfig.getLogStatement().name(), is("NONE"));
+    } else {
+      assertThat(
+          v2YsqlQueryLogConfig.getLogStatement().getValue(),
+          is(dbYsqlQueryLogConfig.getLogStatement().name()));
+    }
+    if (v2YsqlQueryLogConfig.getLogMinErrorStatement() == null) {
+      assertThat(dbYsqlQueryLogConfig.getLogMinErrorStatement().name(), is("ERROR"));
+    } else {
+      assertThat(
+          v2YsqlQueryLogConfig.getLogMinErrorStatement().getValue(),
+          is(dbYsqlQueryLogConfig.getLogMinErrorStatement().name()));
+    }
+    if (v2YsqlQueryLogConfig.getLogErrorVerbosity() == null) {
+      assertThat(dbYsqlQueryLogConfig.getLogErrorVerbosity().name(), is("DEFAULT"));
+    } else {
+      assertThat(
+          v2YsqlQueryLogConfig.getLogErrorVerbosity().getValue(),
+          is(dbYsqlQueryLogConfig.getLogErrorVerbosity().name()));
+    }
+    assertThat(v2YsqlQueryLogConfig.getLogDuration(), is(dbYsqlQueryLogConfig.isLogDuration()));
+    assertThat(
+        v2YsqlQueryLogConfig.getDebugPrintPlan(), is(dbYsqlQueryLogConfig.isDebugPrintPlan()));
+    assertThat(
+        v2YsqlQueryLogConfig.getLogConnections(), is(dbYsqlQueryLogConfig.isLogConnections()));
+    assertThat(
+        v2YsqlQueryLogConfig.getLogDisconnections(),
+        is(dbYsqlQueryLogConfig.isLogDisconnections()));
+    if (v2YsqlQueryLogConfig.getLogMinDurationStatement() == null) {
+      assertThat(dbYsqlQueryLogConfig.getLogMinDurationStatement(), is(-1));
+    } else {
+      assertThat(
+          v2YsqlQueryLogConfig.getLogMinDurationStatement(),
+          is(dbYsqlQueryLogConfig.getLogMinDurationStatement()));
+    }
   }
 
   private void validateYcqlAuditConfig(
@@ -1140,9 +1333,12 @@ public class UniverseTestBase extends UniverseControllerTestBase {
       assertThat(v2Az.getLbName(), is(dbAz.lbName));
       assertThat(v2Az.getName(), is(dbAz.name));
       assertThat(v2Az.getNumNodesInAz(), is(dbAz.numNodesInAZ));
-      assertThat(v2Az.getReplicationFactor(), is(dbAz.replicationFactor));
+      int v2RF = Optional.ofNullable(v2Az.getReplicationFactor()).orElse(0);
+      assertThat(v2RF, is(dbAz.replicationFactor));
       assertThat(v2Az.getSecondarySubnet(), is(dbAz.secondarySubnet));
       assertThat(v2Az.getSubnet(), is(dbAz.subnet));
+      assertThat(
+          Optional.ofNullable(v2Az.getLeaderPreference()).orElse(0), is(dbAz.leaderPreference));
     }
   }
 
@@ -1342,6 +1538,9 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     }
     if (v2Cluster.getPlacementSpec() != null) {
       validatePlacementSpec(v2Cluster.getPlacementSpec(), dbCluster.placementInfo);
+    }
+    if (v2Cluster.getPartitionsSpec() != null && !v2Cluster.getPartitionsSpec().isEmpty()) {
+      validateGeoPartitions(v2Cluster.getPartitionsSpec(), dbCluster);
     }
     if (v2Cluster.getInstanceTags() != null) {
       Map<String, String> v2PrimaryInstanceTags =

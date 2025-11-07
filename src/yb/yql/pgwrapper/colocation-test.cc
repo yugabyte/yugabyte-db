@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -345,6 +345,13 @@ class ColocationConcurrencyTest : public ColocatedDBTest {
   void InsertDataIntoTable(yb::pgwrapper::PGConn* conn, std::string table_name, int num_rows = 50);
 
   void FKTestHelper(bool use_txn_block);
+
+  // Disable auto analyze to prevent query plan from changing.
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    ColocatedDBTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.emplace_back(
+        "--ysql_enable_auto_analyze=false");
+  }
 };
 
 void ColocationConcurrencyTest::CreateTables(yb::pgwrapper::PGConn* conn, const int num_tables) {

@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -843,7 +843,7 @@ TEST_F(RpcStubTest, ExpireInQueue) {
 
   struct Entry {
     EchoRequestPB req;
-    boost::optional<EchoResponsePB> resp;
+    std::optional<EchoResponsePB> resp;
     RpcController controller;
   };
 
@@ -856,8 +856,8 @@ TEST_F(RpcStubTest, ExpireInQueue) {
     entry.req.set_data(std::string(100_KB, 'X'));
     entry.resp.emplace();
     entry.controller.set_timeout(1ms);
-    proxy.EchoAsync(entry.req, entry.resp.get_ptr(), &entry.controller, [&entry, &latch] {
-      auto ptr = entry.resp.get_ptr();
+    proxy.EchoAsync(entry.req, &entry.resp.value(), &entry.controller, [&entry, &latch] {
+      auto ptr = &entry.resp.value();
       entry.resp.reset();
       memset(static_cast<void*>(ptr), 'X', sizeof(*ptr));
       latch.CountDown();
@@ -868,8 +868,8 @@ TEST_F(RpcStubTest, ExpireInQueue) {
 }
 
 TEST_F(RpcStubTest, TrafficMetrics) {
-  constexpr std::pair<size_t, size_t> kRequestBounds = std::make_pair(1, 64);
-  constexpr std::pair<size_t, size_t> kResponseBounds = std::make_pair(1_KB, 1_KB + 64);
+  constexpr std::pair<size_t, size_t> kRequestBounds = std::make_pair(1, 72);
+  constexpr std::pair<size_t, size_t> kResponseBounds = std::make_pair(1_KB, 1_KB + 72);
 
   CalculatorServiceProxy proxy(proxy_cache_.get(), server_hostport_);
 

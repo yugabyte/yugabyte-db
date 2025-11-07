@@ -1,4 +1,4 @@
-# Copyright 2023 Yugabyte, Inc. and Contributors
+# Copyright 2023 YugabyteDB, Inc. and Contributors
 #
 # Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
 # may not use this file except in compliance with the License. You
@@ -58,6 +58,8 @@ deployments:
             eks.amazonaws.com/sts-regional-endpoints: "true"
           storage: ${STORAGE_SIZE}
           storageClass: ${STORAGE_CLASS}
+          kubernetesOperatorEnabled: ${OPERATOR_ENABLED}
+          kubernetesOperatorNamespace: ${DEVSPACE_NAMESPACE}
       # -
 
 dev:
@@ -163,3 +165,6 @@ vars:
   YBA_ADDITIONAL_VALUES_FILE:
     source: env
     default: "/dev/null"
+  OPERATOR_ENABLED:
+    source: env
+    default: "false"

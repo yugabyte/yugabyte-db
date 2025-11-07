@@ -16,8 +16,6 @@
 #include <atomic>
 #include <vector>
 
-#include <glog/logging.h>
-
 #include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/locks.h"

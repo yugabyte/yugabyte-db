@@ -100,10 +100,7 @@ func (m *Manager) serviceOrder() []string {
 	}
 	order = append(order, "prometheus")
 	if viper.GetBool("perfAdvisor.enabled") {
-		order = append(order, "performance-advisor")
-		if viper.GetBool("perfAdvisor.withPlatform") {
-			order = append(order, "yb-platform")
-		}
+		order = append(order, "yb-perf-advisor")
 	} else {
 		order = append(order, "yb-platform")
 	}
@@ -128,6 +125,7 @@ type Service interface {
 	Initialize() error
 	Install() error
 	Uninstall(cleaData bool) error
+	PreUpgrade() error
 	Upgrade() error
 	Status() (common.Status, error)
 	Start() error

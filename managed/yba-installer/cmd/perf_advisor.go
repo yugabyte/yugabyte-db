@@ -3,7 +3,6 @@ package cmd
 import (
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -20,7 +19,6 @@ type perfAdvisorDirectories struct {
 	SystemdFileLocation string
 	templateFileName    string
 	PABin               string
-	ConfigLocation      string
 	PALogDir            string
 }
 
@@ -37,7 +35,6 @@ func newPerfAdvisorDirectories(version string) perfAdvisorDirectories {
 		templateFileName:    "yb-installer-perf-advisor.yml",
 		// GetSoftwareRoot returns /opt/yugabyte/software/
 		PABin:          common.GetSoftwareRoot() + "/perf-advisor/backend/bin",
-		ConfigLocation: common.GetSoftwareRoot() + "/perf-advisor/config/override.properties",
 		PALogDir:       common.GetBaseInstall() + "/data/logs",
 	}
 }
@@ -46,7 +43,7 @@ func newPerfAdvisorDirectories(version string) perfAdvisorDirectories {
 func NewPerfAdvisor(version string) PerfAdvisor {
 
 	return PerfAdvisor{
-		name:                   "performance-advisor",
+		name:                   "yb-perf-advisor",
 		version:                version,
 		perfAdvisorDirectories: newPerfAdvisorDirectories(version),
 	}
@@ -196,35 +193,19 @@ func (perf PerfAdvisor) createSoftwareDirectories() error {
 }
 
 func (perf PerfAdvisor) untarAndSetupPerfAdvisorPackages() error {
-	// Get the absolute path to the pa.tar.gz bundle
-	paPath := common.AbsoluteBundlePath("pa.tar.gz")
+	// Get the absolute path to the perf_advisor tarball with version in the filename
+	paTarball := fmt.Sprintf("perf_advisor-%s.tar.gz", perf.version)
+	paPath := common.AbsoluteBundlePath(paTarball)
 	targetDir := common.GetSoftwareRoot() + "/perf-advisor"
 
 	// Untar pa.tar.gz into perf-advisor
 	rExtract, err := os.Open(paPath)
 	if err != nil {
-		return fmt.Errorf("failed to open %s: %w", paPath, err)
+			return fmt.Errorf("failed to open %s: %w", paPath, err)
 	}
 	defer rExtract.Close()
 	if err := tar.Untar(rExtract, targetDir, tar.WithMaxUntarSize(-1)); err != nil {
-		return fmt.Errorf("failed to extract %s: %w", paPath, err)
-	}
-	// Look for a directory named "pa" inside targetDir
-	paDir := filepath.Join(targetDir, "pa")
-	subEntries, err := os.ReadDir(paDir)
-	if err != nil {
-		return fmt.Errorf("failed to read pa subdir: %w", err)
-	}
-	for _, entry := range subEntries {
-		oldPath := filepath.Join(paDir, entry.Name())
-		newPath := filepath.Join(targetDir, entry.Name())
-		log.Debug(fmt.Sprintf("Renaming %s to %s", oldPath, newPath))
-		if err := os.Rename(oldPath, newPath); err != nil {
-			return fmt.Errorf("failed to move %s to %s: %w", oldPath, newPath, err)
-		}
-	}
-	if err := os.Remove(paDir); err != nil {
-		return fmt.Errorf("failed to remove pa subdir: %w", err)
+			return fmt.Errorf("failed to extract %s: %w", paPath, err)
 	}
 
 	// Now check that backend and ui/frontend exist
@@ -232,27 +213,10 @@ func (perf PerfAdvisor) untarAndSetupPerfAdvisorPackages() error {
 	frontendDir := filepath.Join(targetDir, "ui")
 
 	if stat, err := os.Stat(backendDir); err != nil || !stat.IsDir() {
-		return fmt.Errorf("backend directory not found in %s after extraction", targetDir)
+			return fmt.Errorf("backend directory not found in %s after extraction", targetDir)
 	}
 	if stat, err := os.Stat(frontendDir); err != nil || !stat.IsDir() {
-		return fmt.Errorf("ui directory not found in %s after extraction", targetDir)
-	}
-
-	// Move override.properties into perf-advisor/config
-	overrideSrc := filepath.Join(targetDir, "override.properties")
-	overrideDst := filepath.Join(targetDir, "config", "override.properties")
-	input, err := os.Open(overrideSrc)
-	if err != nil {
-		return fmt.Errorf("failed to open %s: %w", overrideSrc, err)
-	}
-	defer input.Close()
-	output, err := os.Create(overrideDst)
-	if err != nil {
-		return fmt.Errorf("failed to create %s: %w", overrideDst, err)
-	}
-	defer output.Close()
-	if _, err := io.Copy(output, input); err != nil {
-		return fmt.Errorf("failed to copy override.properties: %w", err)
+			return fmt.Errorf("ui directory not found in %s after extraction", targetDir)
 	}
 
 	if common.HasSudoAccess() {
@@ -296,6 +260,7 @@ func (perf PerfAdvisor) Install() error {
 
 func (perf PerfAdvisor) MigrateFromReplicated() error   { return nil }
 func (perf PerfAdvisor) FinishReplicatedMigrate() error { return nil }
+func (perf PerfAdvisor) PreUpgrade() error              { return nil }
 
 // Upgrade will upgrade the perf advisor and install it into the alt install directory.
 // Upgrade will NOT restart the service, the old version is expected to still be running

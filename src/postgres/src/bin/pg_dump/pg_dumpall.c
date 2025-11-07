@@ -931,6 +931,9 @@ dumpRoles(PGconn *conn)
 		 * In Yugabyte major upgrade, there are additional roles already created
 		 * by initdb.
 		 * yb_superuser is created outside of initdb, so it needs to be included.
+		 * Note: If additional special roles with "yb_" prefix are added in the
+		 * future, they must also be excluded in the preflight check function
+		 * yb_check_yb_role_prefix() in check.c
 		 */
 		if (IsYugabyteEnabled && binary_upgrade &&
 			strncmp(rolename, "yb_", 3) == 0 &&
@@ -1491,7 +1494,7 @@ dumpUserConfig(PGconn *conn, const char *username)
 		resetPQExpBuffer(buf);
 		makeAlterConfigCommand(conn, PQgetvalue(res, i, 0),
 							   "ROLE", username, NULL, NULL,
-							   buf);
+							   yb_dump_role_checks, buf);
 		fprintf(OPF, "%s", buf->data);
 	}
 
@@ -2188,7 +2191,20 @@ dumpYbRoleProfiles(PGconn *conn)
 		appendPQExpBuffer(stmt,
 						  ");\n");
 
-		fprintf(OPF, "%s\n", stmt->data);
+		if (yb_dump_role_checks)
+		{
+			PQExpBuffer yb_source_sql = stmt;
+
+			stmt = createPQExpBuffer();
+			YBWwrapInRoleChecks(conn, yb_source_sql, "alter role",
+								role_name,	/* role1 */
+								NULL,	/* role2 */
+								NULL,	/* role3 */
+								stmt);
+			destroyPQExpBuffer(yb_source_sql);
+		}
+
+		fprintf(OPF, "%s%s", stmt->data, yb_dump_role_checks ? "" : "\n");
 		destroyPQExpBuffer(stmt);
 	}
 

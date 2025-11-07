@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -60,7 +60,11 @@ public enum KnownAlertLabels {
   TARGET_UNIVERSE_UUID,
   XCLUSTER_CONFIG_UUID,
   XCLUSTER_CONFIG_NAME,
-  XCLUSTER_REPLICATION_GROUP_NAME;
+  XCLUSTER_REPLICATION_GROUP_NAME,
+  CLOUD_TYPE,
+  OPERATION_STATUS,
+  OPERATION_TYPE,
+  REQUEST_UUID;
 
   public String labelName() {
     return name().toLowerCase();

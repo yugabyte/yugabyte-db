@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -12,6 +12,8 @@
 //
 
 #include "yb/dockv/intent.h"
+
+#include <boost/logic/tribool.hpp>
 
 #include "yb/util/logging.h"
 
@@ -304,12 +306,15 @@ inline bool IsEndOfSubKeys(const Slice& key) {
 //
 // The beginning of each intent key will also include any cotable_id or colocation_id,
 // if present.
+// 'skip_prefix' indicates whether we should skip the intermediate prefix and keep the top-level
+// key and full-doc keys only.
 template<class Functor>
 Status EnumerateWeakIntents(
     Slice key,
     const Functor& functor,
     KeyBytes* encoded_key_buffer,
-    PartialRangeKeyIntents partial_range_key_intents) {
+    PartialRangeKeyIntents partial_range_key_intents,
+    SkipPrefix skip_prefix) {
 
   encoded_key_buffer->Clear();
   if (key.empty()) {
@@ -355,8 +360,8 @@ Status EnumerateWeakIntents(
     }
   }
 
-  // For any non-empty key we already know that the empty key intent is weak.
-  RETURN_NOT_OK(functor(FullDocKey::kFalse, encoded_key_buffer));
+  // For any non-empty key we already know that the top level key intent is weak.
+  RETURN_NOT_OK(functor(FullDocKey::kFalse, encoded_key_buffer, IsTopLevelKey::kTrue));
 
   auto hashed_part_size = VERIFY_RESULT(DocKey::EncodedSize(key, DocKeyPart::kUpToHash));
 
@@ -381,7 +386,10 @@ Status EnumerateWeakIntents(
     }
 
     // Generate a weak intent that only includes the hash component.
-    RETURN_NOT_OK(functor(FullDocKey(key[0] == KeyEntryTypeAsChar::kGroupEnd), encoded_key_buffer));
+    FullDocKey full_doc_key(key[0] == KeyEntryTypeAsChar::kGroupEnd);
+    if (!skip_prefix || full_doc_key) {
+      RETURN_NOT_OK(functor(full_doc_key, encoded_key_buffer, IsTopLevelKey::kFalse));
+    }
 
     // Remove the kGroupEnd we added a bit earlier so we can append some range components.
     encoded_key_buffer->RemoveLastByte();
@@ -405,8 +413,8 @@ Status EnumerateWeakIntents(
       return Status::OK();
     }
     FullDocKey full_doc_key(key[0] == KeyEntryTypeAsChar::kGroupEnd);
-    if (partial_range_key_intents || full_doc_key) {
-      RETURN_NOT_OK(functor(full_doc_key, encoded_key_buffer));
+    if ((partial_range_key_intents && !skip_prefix) || full_doc_key) {
+      RETURN_NOT_OK(functor(full_doc_key, encoded_key_buffer, IsTopLevelKey::kFalse));
     }
     encoded_key_buffer->RemoveLastByte();
     range_key_start = key.cdata();
@@ -426,7 +434,7 @@ Status EnumerateWeakIntents(
       // This was the last subkey.
       return Status::OK();
     }
-    RETURN_NOT_OK(functor(FullDocKey::kTrue, encoded_key_buffer));
+    RETURN_NOT_OK(functor(FullDocKey::kTrue, encoded_key_buffer, IsTopLevelKey::kFalse));
     subkey_start = key.cdata();
   }
 
@@ -439,25 +447,32 @@ Status EnumerateWeakIntents(
 Status EnumerateIntents(
     Slice key, Slice intent_value, const EnumerateIntentsCallback& functor,
     KeyBytes* encoded_key_buffer, PartialRangeKeyIntents partial_range_key_intents,
-    LastKey last_key) {
+    LastKey last_key, SkipPrefix skip_prefix) {
   static const Slice kRowLockValue{&dockv::ValueEntryTypeAsChar::kRowLock, 1};
   const IsRowLock is_row_lock{intent_value == kRowLockValue};
+  bool has_seen_top_level_key = false;
   RETURN_NOT_OK(EnumerateWeakIntents(
       key,
-      [&functor, is_row_lock](FullDocKey full_doc_key, KeyBytes* encoded_key_buffer) {
+      [&functor, is_row_lock, &has_seen_top_level_key](
+          FullDocKey full_doc_key, KeyBytes* encoded_key_buffer, IsTopLevelKey is_top_level_key) {
+        has_seen_top_level_key |= is_top_level_key;
         return functor(
             AncestorDocKey::kTrue,
             full_doc_key,
             Slice() /* intent_value */,
             encoded_key_buffer,
             LastKey::kFalse,
-            is_row_lock);
+            is_row_lock,
+            is_top_level_key,
+            /*pk_is_known=*/ boost::indeterminate);
       },
       encoded_key_buffer,
-      partial_range_key_intents));
+      partial_range_key_intents,
+      skip_prefix));
   return functor(
       AncestorDocKey::kFalse, FullDocKey::kTrue, intent_value, encoded_key_buffer,
-      last_key, is_row_lock);
+      last_key, is_row_lock, has_seen_top_level_key ? IsTopLevelKey::kFalse : IsTopLevelKey::kTrue,
+      /*pk_is_known=*/ boost::indeterminate);
 }
 
 #define INTENT_KEY_SCHECK(lhs, op, rhs, msg) \

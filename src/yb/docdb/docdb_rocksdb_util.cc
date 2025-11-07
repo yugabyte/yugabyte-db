@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -26,6 +26,7 @@
 #include "yb/docdb/bounded_rocksdb_iterator.h"
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_ql_filefilter.h"
+#include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/docdb_filter_policy.h"
 #include "yb/docdb/docdb_statistics.h"
 #include "yb/docdb/intent_aware_iterator.h"
@@ -108,7 +109,7 @@ DEFINE_NON_RUNTIME_string(rocksdb_compact_flush_rate_limit_sharing_mode, "tserve
     "  none - rate limit is calculated independently for every RocksDB instance");
 DEFINE_UNKNOWN_uint64(rocksdb_compaction_size_threshold_bytes, 2ULL * 1024 * 1024 * 1024,
     "Threshold beyond which compaction is considered large.");
-DEFINE_UNKNOWN_uint64(rocksdb_max_file_size_for_compaction, 0,
+DEFINE_RUNTIME_uint64(rocksdb_max_file_size_for_compaction, 0,
     "Maximal allowed file size to participate in RocksDB compaction. 0 - unlimited.");
 
 // Use big enough default value for rocksdb_max_write_buffer_number, so behavior defined by
@@ -153,6 +154,12 @@ DEFINE_UNKNOWN_bool(use_docdb_aware_bloom_filter, true,
 
 DEFINE_UNKNOWN_bool(use_multi_level_index, true, "Whether to use multi-level data index.");
 
+DEFINE_RUNTIME_AUTO_bool(
+    allow_three_shared_parts_data_block_key_value_encoding, kExternal, false, true,
+    "Allow to use three_shared_parts for writing RocksDB data blocks.");
+
+// DEPRECATED: replaced by ycql_regular_tablets_data_block_key_value_encoding and
+// ysql_regular_tablets_data_block_key_value_encoding.
 // Using class kExternal as this change affects the format of data in the SST files which are sent
 // to xClusters during bootstrap.
 DEFINE_RUNTIME_AUTO_string_DO_NOT_USE(
@@ -184,7 +191,7 @@ DEFINE_UNKNOWN_int32(block_restart_interval, kDefaultDataBlockRestartInterval,
 DEFINE_UNKNOWN_int32(index_block_restart_interval, kDefaultIndexBlockRestartInterval,
     "Controls the number of data blocks to be indexed inside an index block.");
 
-DEFINE_UNKNOWN_bool(prioritize_tasks_by_disk, false,
+DEFINE_NON_RUNTIME_bool(prioritize_tasks_by_disk, false,
     "Consider disk load when considering compaction and flush priorities.");
 
 namespace yb {
@@ -218,15 +225,20 @@ Result<rocksdb::CompressionType> GetConfiguredCompressionType(const std::string&
 
 namespace docdb {
 
-  Result<rocksdb::KeyValueEncodingFormat> GetConfiguredKeyValueEncodingFormat(
-    const std::string& flag_value) {
-    for (const auto& encoding_format : rocksdb::KeyValueEncodingFormatList()) {
-      if (flag_value == KeyValueEncodingFormatToString(encoding_format)) {
-        return encoding_format;
-      }
+Result<rocksdb::KeyValueEncodingFormat> GetConfiguredKeyValueEncodingFormat(
+  const std::string& flag_value) {
+  for (const auto& encoding_format : rocksdb::KeyValueEncodingFormatList()) {
+    if (flag_value != KeyValueEncodingFormatToString(encoding_format)) {
+      continue;
     }
-    return STATUS_FORMAT(InvalidArgument, "Key-value encoding format $0 is not valid.", flag_value);
+    if (encoding_format == rocksdb::KeyValueEncodingFormat::kKeyDeltaEncodingThreeSharedParts &&
+        !FLAGS_allow_three_shared_parts_data_block_key_value_encoding) {
+      return rocksdb::KeyValueEncodingFormat::kKeyDeltaEncodingSharedPrefix;
+    }
+    return encoding_format;
   }
+  return STATUS_FORMAT(InvalidArgument, "Key-value encoding format $0 is not valid.", flag_value);
+}
 
 } // namespace docdb
 
@@ -326,7 +338,8 @@ unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
     const ReadOperationData& read_operation_data,
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter,
     const Slice* iterate_upper_bound,
-    const FastBackwardScan use_fast_backward_scan) {
+    const FastBackwardScan use_fast_backward_scan,
+    const AvoidUselessNextInsteadOfSeek avoid_useless_next_instead_of_seek) {
   // Current policy is to enable restart block keys caching only when fast backward scan is enabled.
   const auto cache_restart_block_keys = rocksdb::CacheRestartBlockKeys { use_fast_backward_scan };
 
@@ -335,7 +348,8 @@ unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
       doc_db.regular, bloom_filter, query_id, std::move(file_filter), iterate_upper_bound,
       cache_restart_block_keys, GetRegularDBStatistics(read_operation_data.statistics));
   return std::make_unique<IntentAwareIterator>(
-      doc_db, read_opts, read_operation_data, txn_op_context, use_fast_backward_scan);
+      doc_db, read_opts, read_operation_data, txn_op_context,
+      use_fast_backward_scan, avoid_useless_next_instead_of_seek);
 }
 
 BoundedRocksDbIterator CreateIntentsIteratorWithHybridTimeFilter(
@@ -443,7 +457,7 @@ void AutoInitFromRocksDBFlags(rocksdb::Options* options) {
   options->base_background_compactions = GetBaseBackgroundCompactions();
 }
 
-void AutoInitFromBlockBasedTableOptions(rocksdb::BlockBasedTableOptions* table_options) {
+void AutoInitBlockBasedTableOptionsFromFlags(rocksdb::BlockBasedTableOptions* table_options) {
   std::unique_lock<std::mutex> lock(rocksdb_flags_mutex);
 
   table_options->block_size = FLAGS_db_block_size_bytes;
@@ -585,7 +599,7 @@ rocksdb::Options TEST_AutoInitFromRocksDBFlags() {
 
 rocksdb::BlockBasedTableOptions TEST_AutoInitFromRocksDbTableFlags() {
   rocksdb::BlockBasedTableOptions blockBasedTableOptions;
-  AutoInitFromBlockBasedTableOptions(&blockBasedTableOptions);
+  AutoInitBlockBasedTableOptionsFromFlags(&blockBasedTableOptions);
   return blockBasedTableOptions;
 }
 
@@ -639,20 +653,14 @@ PriorityThreadPool* GetGlobalPriorityThreadPool() {
   return &priority_thread_pool_for_compactions_and_flushes;
 }
 
-void InitRocksDBOptions(
-    rocksdb::Options* options, const string& log_prefix,
-    const TabletId& tablet_id,
-    const shared_ptr<rocksdb::Statistics>& statistics,
-    const tablet::TabletOptions& tablet_options,
-    rocksdb::BlockBasedTableOptions table_options,
-    const uint64_t group_no) {
+void InitRocksDBBaseOptions(
+    rocksdb::Options* options, const string& log_prefix, const TabletId& tablet_id,
+    const tablet::TabletOptions& tablet_options, const uint64_t group_no) {
   AutoInitFromRocksDBFlags(options);
-  SetLogPrefix(options, log_prefix);
   options->tablet_id = tablet_id;
   options->create_if_missing = true;
   // We should always sync data to ensure we can recover rocksdb from crash.
   options->disableDataSync = false;
-  options->statistics = statistics;
   options->info_log_level = YBRocksDBLogger::ConvertToRocksDBLogLevel(FLAGS_minloglevel);
   options->initial_seqno = FLAGS_initial_seqno;
   options->boundary_extractor = DocBoundaryValuesExtractorInstance();
@@ -682,39 +690,6 @@ void InitRocksDBOptions(
   options->listeners.insert(
       options->listeners.end(), tablet_options.listeners.begin(),
       tablet_options.listeners.end()); // Append listeners
-
-  // Set block cache options.
-  if (tablet_options.block_cache) {
-    table_options.block_cache = tablet_options.block_cache;
-    // Cache the bloom filters in the block cache.
-    table_options.cache_index_and_filter_blocks = true;
-  } else {
-    table_options.no_block_cache = true;
-    table_options.cache_index_and_filter_blocks = false;
-  }
-
-  AutoInitFromBlockBasedTableOptions(&table_options);
-
-  // Set our custom bloom filter that is docdb aware.
-  if (FLAGS_use_docdb_aware_bloom_filter) {
-    const auto filter_block_size_bits = table_options.filter_block_size * 8;
-    table_options.filter_policy = std::make_shared<const DocDbAwareV3FilterPolicy>(
-        filter_block_size_bits, options->info_log.get());
-    table_options.supported_filter_policies =
-        std::make_shared<rocksdb::BlockBasedTableOptions::FilterPoliciesMap>();
-    AddSupportedFilterPolicy(std::make_shared<const DocDbAwareHashedComponentsFilterPolicy>(
-            filter_block_size_bits, options->info_log.get()), &table_options);
-    AddSupportedFilterPolicy(std::make_shared<const DocDbAwareV2FilterPolicy>(
-            filter_block_size_bits, options->info_log.get()), &table_options);
-  }
-
-  if (FLAGS_use_multi_level_index) {
-    table_options.index_type = rocksdb::IndexType::kMultiLevelBinarySearch;
-  } else {
-    table_options.index_type = rocksdb::IndexType::kBinarySearch;
-  }
-
-  options->table_factory.reset(rocksdb::NewBlockBasedTableFactory(table_options));
 
   // Compaction related options.
 
@@ -763,6 +738,56 @@ void InitRocksDBOptions(
   options->iterator_replacer = std::make_shared<rocksdb::IteratorReplacer>(&WrapIterator);
 
   options->priority_thread_pool_metrics = tablet_options.priority_thread_pool_metrics;
+}
+
+void InitRocksDBOptionsTableFactory(
+    rocksdb::Options* options, const tablet::TabletOptions& tablet_options,
+    rocksdb::BlockBasedTableOptions table_options) {
+  // Set block cache options.
+  if (tablet_options.block_cache) {
+    table_options.block_cache = tablet_options.block_cache;
+    // Cache the bloom filters in the block cache.
+    table_options.cache_index_and_filter_blocks = true;
+  } else {
+    table_options.no_block_cache = true;
+    table_options.cache_index_and_filter_blocks = false;
+  }
+
+  AutoInitBlockBasedTableOptionsFromFlags(&table_options);
+
+  // Set our custom bloom filter that is docdb aware.
+  if (FLAGS_use_docdb_aware_bloom_filter) {
+    const auto filter_block_size_bits = table_options.filter_block_size * 8;
+    table_options.filter_policy = std::make_shared<const DocDbAwareV3FilterPolicy>(
+        filter_block_size_bits, options->info_log.get());
+    table_options.supported_filter_policies =
+        std::make_shared<rocksdb::BlockBasedTableOptions::FilterPoliciesMap>();
+    AddSupportedFilterPolicy(std::make_shared<const DocDbAwareHashedComponentsFilterPolicy>(
+                                 filter_block_size_bits, options->info_log.get()), &table_options);
+    AddSupportedFilterPolicy(std::make_shared<const DocDbAwareV2FilterPolicy>(
+                                 filter_block_size_bits, options->info_log.get()), &table_options);
+  }
+
+  if (FLAGS_use_multi_level_index) {
+    table_options.index_type = rocksdb::IndexType::kMultiLevelBinarySearch;
+  } else {
+    table_options.index_type = rocksdb::IndexType::kBinarySearch;
+  }
+
+  options->table_factory.reset(rocksdb::NewBlockBasedTableFactory(table_options));
+}
+
+void InitRocksDBOptions(
+    rocksdb::Options* options, const string& log_prefix,
+    const TabletId& tablet_id,
+    const shared_ptr<rocksdb::Statistics>& statistics,
+    const tablet::TabletOptions& tablet_options,
+    rocksdb::BlockBasedTableOptions table_options,
+    const uint64_t group_no) {
+  InitRocksDBBaseOptions(options, log_prefix, tablet_id, tablet_options, group_no);
+  SetLogPrefix(options, log_prefix);
+  options->statistics = statistics;
+  InitRocksDBOptionsTableFactory(options, tablet_options, table_options);
 }
 
 void SetLogPrefix(rocksdb::Options* options, const std::string& log_prefix) {
@@ -1105,6 +1130,19 @@ std::shared_ptr<rocksdb::RateLimiter> CreateRocksDBRateLimiter() {
       rocksdb::NewGenericRateLimiter(FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec));
   }
   return nullptr;
+}
+
+Result<BloomFilterOptions> BloomFilterOptions::Make(
+    const DocReadContext& doc_read_context, Slice lower, Slice upper, bool allow_variable) {
+  const bool is_fixed_point_get =
+      !lower.empty() && VERIFY_RESULT(doc_read_context.HaveEqualBloomFilterKey(lower, upper));
+  if (is_fixed_point_get) {
+    return BloomFilterOptions::Fixed(lower);
+  }
+  if (allow_variable) {
+    return BloomFilterOptions::Variable();
+  }
+  return BloomFilterOptions::Inactive();
 }
 
 } // namespace docdb

@@ -5,7 +5,7 @@ linkTitle: Write-heavy workloads
 description: Write-heavy database workloads in YugabyteDB
 headcontent: Write-heavy workloads in YugabyteDB
 menu:
-  preview:
+  preview_develop:
     name: Write-heavy workloads
     identifier: develop-quality-of-service-write-heavy-workloads
     parent: develop-quality-of-service

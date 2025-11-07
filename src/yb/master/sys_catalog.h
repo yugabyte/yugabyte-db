@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -88,7 +88,7 @@ struct PgTableReadData {
   const Schema& schema() const;
   Result<ColumnId> ColumnByName(const std::string& name) const;
 
-  Result<std::unique_ptr<docdb::DocRowwiseIterator>> NewUninitializedIterator(
+  Result<docdb::DocRowwiseIteratorPtr> NewUninitializedIterator(
       const dockv::ReaderProjection& projection) const;
 
   Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> NewIterator(
@@ -286,6 +286,12 @@ class SysCatalogTable {
                                               const PgOid table_oid,
                                               const std::string& column_name,
                                               const ReadHybridTime& read_time = ReadHybridTime());
+
+  // Read 'column_name' (e.g. indisvalid/indisready/indislive) boolean value from the pg_index
+  // catalog table for the given index OID.
+  Result<bool> ReadPgIndexBoolColumn(
+      const PgOid database_oid, const PgOid index_oid, const std::string& column_name,
+      const ReadHybridTime& read_time = ReadHybridTime());
 
   // Read all nspname strings from the pg_namespace catalog table.
   // Return map: relnamespace oid -> nspname string.

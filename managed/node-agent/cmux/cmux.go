@@ -12,7 +12,7 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-// The file is modified for YugaByte, Inc.
+// The file is modified for YugabyteDB, Inc.
 
 package cmux
 

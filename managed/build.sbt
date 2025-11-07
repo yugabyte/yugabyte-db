@@ -177,25 +177,29 @@ libraryDependencies ++= Seq(
   "org.bouncycastle" % "bctls-fips" % "2.1.20",
   "org.mindrot" % "jbcrypt" % "0.4",
   "org.springframework.security" % "spring-security-core" % "5.8.16",
-  "com.amazonaws" % "aws-java-sdk-ec2" % "1.12.768",
-  "com.amazonaws" % "aws-java-sdk-kms" % "1.12.768",
-  "com.amazonaws" % "aws-java-sdk-iam" % "1.12.768",
-  "com.amazonaws" % "aws-java-sdk-sts" % "1.12.768",
-  "com.amazonaws" % "aws-java-sdk-s3" % "1.12.768",
-  "com.amazonaws" % "aws-java-sdk-elasticloadbalancingv2" % "1.12.327",
-  "com.amazonaws" % "aws-java-sdk-route53" % "1.12.400",
-  "com.amazonaws" % "aws-java-sdk-cloudtrail" % "1.12.498",
+  // AWS SDK 2.x dependencies
+  "software.amazon.awssdk" % "bom" % "2.33.10" pomOnly(),
+  "software.amazon.awssdk" % "core" % "2.33.10",
+  "software.amazon.awssdk" % "ec2" % "2.33.10",
+  "software.amazon.awssdk" % "kms" % "2.33.10",
+  "software.amazon.awssdk" % "iam" % "2.33.10",
+  "software.amazon.awssdk" % "sts" % "2.33.10",
+  "software.amazon.awssdk" % "s3" % "2.33.10",
+  "software.amazon.awssdk" % "elasticloadbalancingv2" % "2.33.10",
+  "software.amazon.awssdk" % "route53" % "2.33.10",
+  "software.amazon.awssdk" % "cloudtrail" % "2.33.10",
   "net.minidev" % "json-smart" % "2.5.2",
   "com.cronutils" % "cron-utils" % "9.1.6",
   // Be careful when changing azure library versions.
   // Make sure all itests and existing functionality works as expected.
   // Used below azure versions from azure-sdk-bom:1.2.6
-  "com.azure" % "azure-core" % "1.32.0",
-  "com.azure" % "azure-identity" % "1.6.0",
-  "com.azure" % "azure-security-keyvault-keys" % "4.5.0",
-  "com.azure" % "azure-storage-blob" % "12.19.1",
-  "com.azure" % "azure-storage-blob-batch" % "12.19.1",
-  "com.azure.resourcemanager" % "azure-resourcemanager" % "2.43.0",
+  "com.azure" % "azure-core-http-netty" % "1.16.2",
+  "com.azure" % "azure-core" % "1.57.0",
+  "com.azure" % "azure-identity" % "1.18.1",
+  "com.azure" % "azure-security-keyvault-keys" % "4.10.3",
+  "com.azure" % "azure-storage-blob" % "12.31.3",
+  "com.azure" % "azure-storage-blob-batch" % "12.27.3",
+  "com.azure.resourcemanager" % "azure-resourcemanager" % "2.55.0",
   "com.azure.resourcemanager" % "azure-resourcemanager-marketplaceordering" % "1.0.0",
   "jakarta.mail" % "jakarta.mail-api" % "2.1.2",
   "org.eclipse.angus" % "jakarta.mail" % "1.0.0",
@@ -211,7 +215,7 @@ libraryDependencies ++= Seq(
   "com.nimbusds" % "nimbus-jose-jwt" % "9.37.2",
   "com.nimbusds" % "oauth2-oidc-sdk" % "10.1",
   "org.playframework" %% "play-json" % "3.0.4",
-  "commons-validator" % "commons-validator" % "1.8.0",
+  "commons-validator" % "commons-validator" % "1.10.0",
   "org.apache.velocity" % "velocity-engine-core" % "2.4.1",
   "com.fasterxml.woodstox" % "woodstox-core" % "6.4.0",
   "com.jayway.jsonpath" % "json-path" % "2.9.0",
@@ -219,11 +223,11 @@ libraryDependencies ++= Seq(
   "commons-codec" % "commons-codec" % "1.16.0",
   "com.google.apis" % "google-api-services-compute" % "v1-rev20241008-2.0.0",
   "com.google.apis" % "google-api-services-iam" % "v1-rev20240918-2.0.0",
-  "com.google.cloud" % "google-cloud-compute" % "1.62.0",
-  "com.google.cloud" % "google-cloud-storage" % "2.43.2",
-  "com.google.cloud" % "google-cloud-kms" % "2.55.0",
-  "com.google.cloud" % "google-cloud-resourcemanager" % "1.54.0",
-  "com.google.cloud" % "google-cloud-logging" % "3.17.2",
+  "com.google.cloud" % "google-cloud-compute" % "1.87.0",
+  "com.google.cloud" % "google-cloud-storage" % "2.58.1",
+  "com.google.cloud" % "google-cloud-kms" % "2.79.0",
+  "com.google.cloud" % "google-cloud-resourcemanager" % "1.78.0",
+  "com.google.cloud" % "google-cloud-logging" % "3.23.6",
   "com.google.oauth-client" % "google-oauth-client" % "1.35.0",
   "org.projectlombok" % "lombok" % "1.18.26",
   "com.squareup.okhttp3" % "okhttp" % "4.12.0",
@@ -238,6 +242,7 @@ libraryDependencies ++= Seq(
   "io.fabric8" % "kubernetes-client" % "6.8.0",
   "io.fabric8" % "kubernetes-client-api" % "6.8.0",
   "io.fabric8" % "kubernetes-model" % "6.8.0",
+  "io.fabric8" % "kubernetes-server-mock" % "6.8.0",
   "org.modelmapper" % "modelmapper" % "2.4.4",
   "com.datadoghq" % "datadog-api-client" % "2.25.0" classifier "shaded-jar",
   "javax.xml.bind" % "jaxb-api" % "2.3.1",
@@ -464,7 +469,7 @@ generateCrdObjects / fileInputs += baseDirectory.value.toGlob /
 generateCrdObjects := {
   if (generateCrdObjects.inputFileChanges.hasChanges) {
     ybLog("Generating crd classes...")
-    val generatedSourcesDirectory = baseDirectory.value / "target/scala-2.13/"
+    val generatedSourcesDirectory = baseDirectory.value / "target/operatorCRD/"
     val command = s"mvn generate-sources -DoutputDirectory=$generatedSourcesDirectory"
     val status = Process(command, baseDirectory.value / "src/main/java/com/yugabyte/yw/common/operator/").!
     status
@@ -473,6 +478,7 @@ generateCrdObjects := {
     0
   }
 }
+Compile / unmanagedSourceDirectories += baseDirectory.value / "target/operatorCRD/"
 
 downloadThirdPartyDeps := {
   ybLog("Downloading third-party dependencies...")
@@ -935,8 +941,8 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.105-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.3-b4"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.108-SNAPSHOT"
+libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.3-b11"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b35"
 
 libraryDependencies ++= Seq(
@@ -954,7 +960,7 @@ dependencyOverrides += "org.reflections" % "reflections" % "0.10.2"
 // datadog-api-client library also needs them, but the newer versions
 // pulled by datadog-api-client are not compatible with the openapi java client. So
 // fixing these to older versions.
-val jerseyVersion = "2.30.1"
+val jerseyVersion = "2.41"
 dependencyOverrides += "org.glassfish.jersey.connectors" % "jersey-apache-connector" % jerseyVersion % Test
 dependencyOverrides += "org.glassfish.jersey.core" % "jersey-client" % jerseyVersion % Test
 dependencyOverrides += "org.glassfish.jersey.core" % "jersey-common" % jerseyVersion % Test
@@ -1006,6 +1012,7 @@ val jacksonLibs = Seq(
   "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor",
   "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml",
   "com.fasterxml.jackson.dataformat" % "jackson-dataformat-yaml",
+  "com.fasterxml.jackson.dataformat" % "jackson-dataformat-toml",
   "com.fasterxml.jackson.module"     % "jackson-module-parameter-names",
   "com.fasterxml.jackson.module"     %% "jackson-module-scala",
 )

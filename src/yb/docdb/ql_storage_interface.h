@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -117,8 +117,7 @@ class YQLStorageIf {
       const ReadOperationData& read_operation_data,
       const YbctidBounds& bounds,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
-      SkipSeek skip_seek = SkipSeek::kFalse,
-      UseVariableBloomFilter use_variable_bloom_filter = UseVariableBloomFilter::kFalse) const = 0;
+      SkipSeek skip_seek = SkipSeek::kFalse) const = 0;
 
   // Returns up to num_blocks_for_sample number of sample blocks boundaries.
   // Each boundary is an encoded doc key or its prefix.

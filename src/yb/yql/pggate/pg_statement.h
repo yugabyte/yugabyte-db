@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -63,7 +63,7 @@ YB_DEFINE_TYPED_ENUM(StmtOp, uint8_t,
 class PgStatement : public PgMemctx::Registrable {
  public:
   explicit PgStatement(const PgSession::ScopedRefPtr& pg_session)
-      : pg_session_(pg_session), arena_(SharedArena()) {
+      : pg_session_(pg_session), arena_(SharedThreadSafeArena()) {
   }
 
   virtual ~PgStatement() = default;

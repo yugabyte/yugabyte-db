@@ -1,8 +1,9 @@
 /*
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
  */
 package com.yugabyte.yw.common.operator;
 
+import com.yugabyte.yw.models.Provider.UsabilityState;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import java.nio.file.Path;
@@ -73,6 +74,11 @@ public interface OperatorStatusUpdater {
     // no-op implementation
   }
 
+  default void updateDrConfigStatus(
+      com.yugabyte.yw.models.DrConfig drConfig, String taskName, UUID taskUUID) {
+    // no-op implementation
+  }
+
   default void updateYBUniverseStatus(
       Universe universe,
       KubernetesResourceDetails universeName,
@@ -105,6 +111,14 @@ public interface OperatorStatusUpdater {
 
   default void updateBackupScheduleStatus(
       KubernetesResourceDetails scheduleDetails, Schedule schedule) {
+    // no-op implementation
+  }
+
+  default void updateProviderStatus(
+      KubernetesResourceDetails providerDetails,
+      UUID providerUUID,
+      UsabilityState state,
+      String message) {
     // no-op implementation
   }
 }

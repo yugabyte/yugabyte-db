@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -23,8 +23,6 @@
 #include <gtest/gtest.h>
 
 #include "yb/client/yb_table_name.h"
-#include "yb/integration-tests/xcluster/xcluster_test_utils.h"
-#include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
 
 #include "yb/common/common.pb.h"
 #include "yb/common/wire_protocol.h"
@@ -44,15 +42,18 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/xcluster/xcluster_test_base.h"
+#include "yb/integration-tests/xcluster/xcluster_test_utils.h"
+#include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
 
 #include "yb/master/catalog_manager_if.h"
+#include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_defaults.h"
-#include "yb/master/mini_master.h"
-#include "yb/master/master_client.pb.h"
 #include "yb/master/master_replication.proxy.h"
+#include "yb/master/mini_master.h"
 
 #include "yb/rpc/rpc_controller.h"
 #include "yb/tablet/tablet.h"
@@ -215,9 +216,7 @@ class XClusterYSqlTestConsistentTransactionsTest : public XClusterYsqlTest {
         commit_transaction = !commit_transaction;
         LOG(INFO) << "Wrote records: " << i + transaction_size;
         if (flush_tables_after_commit) {
-          EXPECT_OK(producer_cluster_.client_->FlushTables(
-              {producer_table->id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
-              /* is_compaction = */ false));
+          EXPECT_OK(producer_cluster_.client_->FlushTables({producer_table->id()}));
         }
       }
     });
@@ -240,9 +239,7 @@ class XClusterYSqlTestConsistentTransactionsTest : public XClusterYsqlTest {
         // Consumer side flush is in read-thread because flushes may fail if nothing
         // was replicated, so we have additional check to make sure we have records in the consumer.
         if (flush_tables_after_commit && num_read_records) {
-          EXPECT_OK(consumer_cluster_.client_->FlushTables(
-              {consumer_table->id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
-              /* is_compaction = */ false));
+          EXPECT_OK(consumer_cluster_.client_->FlushTables({consumer_table->id()}));
         }
       }
       ASSERT_EQ(num_read_records, total_committed_records);
@@ -1786,7 +1783,7 @@ TEST_F(XClusterYsqlTest, IsBootstrapRequiredNotFlushed) {
   std::vector<TabletId> tablet_ids;
   if (producer_tables_[0]) {
     ASSERT_OK(producer_cluster_.client_->GetTablets(
-        producer_tables_[0]->name(), (int32_t)3, &tablet_ids, NULL));
+        producer_tables_[0]->name(), (int32_t)3, &tablet_ids, nullptr));
     ASSERT_GT(tablet_ids.size(), 0);
   }
 
@@ -1873,7 +1870,8 @@ TEST_F(XClusterYsqlTest, IsBootstrapRequiredFlushed) {
         int64_t starting_op;
         return !tablet_peer->log()
                     ->GetLogReader()
-                    ->ReadReplicatesInRange(1, 2, 0, &replicates, &starting_op)
+                    ->ReadReplicatesInRange(
+                        1, 2, 0, log::ObeyMemoryLimit::kFalse, &replicates, &starting_op)
                     .ok();
       },
       MonoDelta::FromSeconds(30), "Logs cleaned"));
@@ -2481,8 +2479,8 @@ TEST_F(XClusterYsqlTest, DeletingDatabaseContainingReplicatedTable) {
   const string kNamespaceName2 = "test_namespace2";
 
   // Create the additional databases.
-  auto producer_db_2 = CreateDatabase(&producer_cluster_, kNamespaceName2, false);
-  auto consumer_db_2 = CreateDatabase(&consumer_cluster_, kNamespaceName2, false);
+  auto producer_db_2 = CreateDatabase(&producer_cluster_, kNamespaceName2, /*colocated=*/false);
+  auto consumer_db_2 = CreateDatabase(&consumer_cluster_, kNamespaceName2, /*colocated=*/false);
 
   std::vector<std::shared_ptr<client::YBTable>> producer_tables;
   std::vector<YBTableName> producer_table_names;
@@ -2494,7 +2492,7 @@ TEST_F(XClusterYsqlTest, DeletingDatabaseContainingReplicatedTable) {
     for (int i = 0; i < num_tables; i++) {
       auto table = ASSERT_RESULT(CreateYsqlTable(
           &cluster, namespace_name, Format("test_schema_$0", i), Format("test_table_$0", i),
-          boost::none /* tablegroup */, kNTabletsPerTable));
+          std::nullopt /* tablegroup */, kNTabletsPerTable));
       // For now, skip the first table and replicate the rest.
       if (is_replicated_producer && i > 0) {
         std::shared_ptr<client::YBTable> yb_table;
@@ -2595,7 +2593,7 @@ TEST_P(XClusterPgSchemaNameTest, SetupSameNameDifferentSchemaUniverseReplication
   for (int i = 0; i < kNumTables; i++) {
     auto t = ASSERT_RESULT(CreateYsqlTable(
         &producer_cluster_, namespace_name, schema_name(i), "test_table_1",
-        boost::none /* tablegroup */, kNTabletsPerTable));
+        std::nullopt /* tablegroup */, kNTabletsPerTable));
     // Need to set pgschema_name ourselves if it was not set due to flag.
     t.set_pgschema_name(schema_name(i));
     producer_table_names.push_back(t);
@@ -2614,7 +2612,7 @@ TEST_P(XClusterPgSchemaNameTest, SetupSameNameDifferentSchemaUniverseReplication
   for (int i = kNumTables - 1; i >= 0; i--) {
     auto t = ASSERT_RESULT(CreateYsqlTable(
         &consumer_cluster_, namespace_name, schema_name(i), "test_table_1",
-        boost::none /* tablegroup */, kNTabletsPerTable));
+        std::nullopt /* tablegroup */, kNTabletsPerTable));
     t.set_pgschema_name(schema_name(i));
     consumer_table_names.push_back(t);
 
@@ -2939,7 +2937,7 @@ Status XClusterYSqlTestConsistentTransactionsTest::RunInsertUpdateDeleteTransact
       [&]() -> Result<bool> {
         std::vector<TabletId> tablet_ids;
         RETURN_NOT_OK(producer_cluster_.client_->GetTablets(
-            producer_table_->name(), 0 /* max_tablets */, &tablet_ids, NULL));
+            producer_table_->name(), /*max_tablets=*/0, &tablet_ids, /*ranges=*/nullptr));
         return tablet_ids.size() == 2;
       },
       MonoDelta::FromSeconds(kRpcTimeout), "Wait for tablet to be split."));
@@ -3216,8 +3214,8 @@ TEST_F(XClusterYsqlTest, DropTableOnProducerOnly) {
   auto stream_id = ASSERT_RESULT(GetCDCStreamID(producer_table_->id()));
   std::vector<TabletId> tablet_ids;
   if (producer_tables_[0]) {
-    ASSERT_OK(
-        producer_client()->GetTablets(producer_tables_[0]->name(), (int32_t)1, &tablet_ids, NULL));
+    ASSERT_OK(producer_client()->GetTablets(
+        producer_tables_[0]->name(), /*max_tablets=*/(int32_t)1, &tablet_ids, /*ranges=*/nullptr));
     ASSERT_GT(tablet_ids.size(), 0);
   }
   auto& tablet_id = tablet_ids.front();
@@ -3276,7 +3274,7 @@ TEST_F(XClusterYsqlTest, TransactionalBidirectionalWithTwoDBs) {
     for (const auto& namespace_name : namespaces) {
       auto table_name = VERIFY_RESULT(CreateYsqlTable(
           cluster, namespace_name, "" /* schema_name */, "test_table",
-          /*tablegroup_name=*/boost::none,
+          /*tablegroup_name=*/std::nullopt,
           /*num_tablets=*/3));
       std::shared_ptr<client::YBTable> table;
       RETURN_NOT_OK(cluster->client_->OpenTable(table_name, &table));

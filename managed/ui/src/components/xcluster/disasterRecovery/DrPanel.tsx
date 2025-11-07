@@ -166,7 +166,8 @@ export const DrPanel = ({ currentUniverseUuid, drConfigUuid }: DrPanelProps) => 
       targetUniverseUuid: drConfigQuery.data?.drReplicaUniverseUuid,
       tableUuids: inConfigTableUuids,
       configType: drConfigQuery.data?.type,
-      includeDetails: true
+      includeDetails: true,
+      isUsedForDr: true
     }),
     () =>
       isBootstrapRequired(
@@ -174,7 +175,8 @@ export const DrPanel = ({ currentUniverseUuid, drConfigUuid }: DrPanelProps) => 
         drConfigQuery.data?.drReplicaUniverseUuid ?? '',
         inConfigTableUuids,
         drConfigQuery.data?.type ?? XClusterConfigType.TXN,
-        true
+        true /* includeDetails */,
+        true /* isUsedForDr */
       ),
     { enabled: !!drConfigQuery.data }
   );

@@ -4,7 +4,7 @@ linkTitle: ingest-the-data.sql
 headerTitle: ingest-the-data.sql
 description: One of a set of SQL scripts for analyzing the correlation between COVID-like symptoms and mask-wearing using data from Carnegie Mellon's COVIDcast
 menu:
-  v2.20:
+  v2.20_api:
     identifier: ingest-the-data-sql
     parent: ingest-scripts
     weight: 100

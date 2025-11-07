@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Function;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Test;
@@ -41,6 +42,14 @@ public class TestPgPushdown extends BasePgSQLTest {
   protected Integer getYsqlRequestLimit() {
     // This should be less than number of operations in some tests
     return 7;
+  }
+
+  // Disable auto analyze to prevent query plan change.
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flags = super.getTServerFlags();
+    flags.put("ysql_enable_auto_analyze", "false");
+    return flags;
   }
 
   @Test

@@ -5,11 +5,12 @@ import {
   SortOrder as ReactBSTableSortOrder,
   TableHeaderColumn
 } from 'react-bootstrap-table';
+import { formatBytes } from '@app/utils/Formatters';
 
 import { YBControlledSelect } from '../../../common/forms/fields';
 import YBPagination from '../../../tables/YBPagination/YBPagination';
 import { XClusterConfigAction, XClusterTableStatus } from '../../constants';
-import { formatBytes, tableSort } from '../../ReplicationUtils';
+import { tableSort } from '../../ReplicationUtils';
 import { XClusterTableStatusLabel } from '../../XClusterTableStatusLabel';
 import { SortOrder } from '../../../../redesign/helpers/constants';
 import { getTableName } from '../../../../utils/tableUtils';

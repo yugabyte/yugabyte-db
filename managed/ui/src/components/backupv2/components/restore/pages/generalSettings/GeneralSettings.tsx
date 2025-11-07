@@ -1,7 +1,7 @@
 /*
  * Created on Thu Jun 15 2023
  *
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License")
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
@@ -30,6 +30,7 @@ import { fetchTablesInUniverse } from '../../../../../../actions/xClusterReplica
 import { TableType } from '../../../../../../redesign/helpers/dtos';
 import { isDuplicateKeyspaceExistsinUniverse } from '../../RestoreUtils';
 import { IncrementalBackupProps } from '../../../BackupDetails';
+import { RolesConfig } from './RolesConfig';
 
 type ReactSelectOption = { label: string; value: string } | null;
 
@@ -43,6 +44,8 @@ export type IGeneralSettings = {
   useTablespaces: boolean;
   selectedKeyspace: ReactSelectOption;
   incrementalBackupProps: IncrementalBackupProps;
+  useRoles: boolean;
+  errorIfRoleExists: boolean;
 };
 
 const useStyles = makeStyles((theme) => ({
@@ -90,6 +93,7 @@ export const GeneralSettings = React.forwardRef<PageRef>((_, forwardRef) => {
     formData: { generalSettings, preflightResponse },
     backupDetails
   } = restoreContext;
+
 
   const { t } = useTranslation();
 
@@ -234,6 +238,9 @@ export const GeneralSettings = React.forwardRef<PageRef>((_, forwardRef) => {
           <section>
             <TablespaceConfig />
           </section>
+          {backupDetails?.useRoles && <section>
+            <RolesConfig />
+          </section>}
           {backupDetails?.category === 'YB_BACKUP_SCRIPT' && (
             <section>
               <ParallelThreadsConfig />

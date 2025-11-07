@@ -4,7 +4,7 @@ headerTitle: ALTER FOREIGN TABLE
 linkTitle: ALTER FOREIGN TABLE
 description: Use the ALTER FOREIGN TABLE statement to alter a foreign table.
 menu:
-  v2.20:
+  v2.20_api:
     identifier: ddl_alter_foreign_table
     parent: statements
 type: docs

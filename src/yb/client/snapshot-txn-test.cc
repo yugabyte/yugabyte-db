@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -18,7 +18,6 @@
 #include <utility>
 #include <vector>
 
-#include <boost/optional/optional_fwd.hpp>
 #include "gtest/gtest.h"
 
 #include "yb/client/session.h"
@@ -285,7 +284,7 @@ std::thread StrobeThread(MiniCluster* cluster, std::atomic<bool>* stop) {
 void SnapshotTxnTestBase::TestBankAccounts(
     BankAccountsOptions options, CoarseDuration duration, int minimal_updates_per_second,
     double select_update_probability) {
-  TransactionPool pool(transaction_manager_.get_ptr(), nullptr /* metric_entity */);
+  TransactionPool pool{&transaction_manager_.value(), nullptr /* metric_entity */};
   const int kAccounts = 20;
   const int kThreads = 5;
   const int kInitialAmount = 10000;
@@ -666,7 +665,7 @@ TEST_P(SnapshotTxnTest, HotRow) {
   constexpr int kKey = 42;
 
   MonoDelta block_time;
-  TransactionPool pool(transaction_manager_.get_ptr(), nullptr /* metric_entity */);
+  TransactionPool pool{&transaction_manager_.value(), nullptr /* metric_entity */};
   auto session = CreateSession();
   MonoTime start = MonoTime::Now();
   for (int i = 1; i <= kIterations; ++i) {
@@ -755,12 +754,12 @@ void SnapshotTxnTestBase::TestMultiWriteWithRestart() {
   });
 
   MPSCQueue<KeyToCheck> keys_to_check;
-  TransactionPool pool(transaction_manager_.get_ptr(), nullptr /* metric_entity */);
+  TransactionPool pool{&transaction_manager_.value(), nullptr /* metric_entity */};
   std::atomic<int> key(0);
   std::atomic<int> good_keys(0);
   for (int i = 0; i != 25; ++i) {
-    thread_holder.AddThreadFunctor(
-        [this, &stop = thread_holder.stop_flag(), &pool, &key, &keys_to_check, &good_keys] {
+    thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag(), &pool, &key,
+                                    &keys_to_check, &good_keys] {
       auto se = ScopeExit([] {
         LOG(INFO) << "Write done";
       });
@@ -975,7 +974,7 @@ TEST_F_EX(SnapshotTxnTest, ResolveIntents, SingleTabletSnapshotTxnTest) {
 
   SetIgnoreApplyingProbability(0.5);
 
-  TransactionPool pool(transaction_manager_.get_ptr(), nullptr /* metric_entity */);
+  TransactionPool pool{&transaction_manager_.value(), nullptr /* metric_entity */};
   auto session = CreateSession();
   auto prev_ht = clock_->Now();
   for (int i = 0; i != 4; ++i) {
@@ -1026,7 +1025,7 @@ void SnapshotTxnTestBase::TestDeleteOnLoad() {
 
   DisableApplyingIntents();
 
-  TransactionPool pool(transaction_manager_.get_ptr(), nullptr /* metric_entity */);
+  TransactionPool pool{&transaction_manager_.value(), nullptr /* metric_entity */};
   auto session = CreateSession();
   for (int i = 0; i != kTransactions; ++i) {
     WriteData(WriteOpType::INSERT, i);

@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -95,6 +95,7 @@
 
 using namespace std::literals;
 using namespace std::placeholders;
+
 using std::shared_ptr;
 using std::string;
 using std::vector;
@@ -135,15 +136,15 @@ METRIC_DEFINE_event_stats(table, op_prepare_queue_length, "Operation Prepare Que
                         "High queue lengths indicate that the server is unable to process "
                         "operations as fast as they are being written to the WAL.");
 
-METRIC_DEFINE_event_stats(table, op_prepare_queue_time, "Operation Prepare Queue Time",
-                        MetricUnit::kMicroseconds,
-                        "Time that operations spent waiting in the prepare queue before being "
-                        "processed. High queue times indicate that the server is unable to "
-                        "process operations as fast as they are being written to the WAL.");
+METRIC_DEFINE_event_stats(table, op_prepare_queue_time,
+    "Operation Prepare Queue Time", MetricUnit::kMicroseconds,
+    "Time (microseconds) that operations spent waiting in the prepare queue before being "
+    "processed. High queue times indicate that the server is unable to "
+    "process operations as fast as they are being written to the WAL.");
 
 METRIC_DEFINE_event_stats(table, op_prepare_run_time, "Operation Prepare Run Time",
                         MetricUnit::kMicroseconds,
-                        "Time that operations spent being prepared in the tablet. "
+                        "Time (microseconds) that operations spent being prepared in the tablet. "
                         "High values may indicate that the server is under-provisioned or "
                         "that operations are experiencing high contention with one another for "
                         "locks.");
@@ -411,12 +412,19 @@ Result<HybridTime> TabletPeer::PreparePeerRequest() {
   return tablet_->mvcc_manager()->SafeTime(ht_lease);
 }
 
-Status TabletPeer::MajorityReplicated() {
+Status TabletPeer::MajorityReplicated(const OpId& committed_op_id) {
   auto ht_lease = VERIFY_RESULT(HybridTimeLease(
       /* min_allowed= */ HybridTime::kMin, /* deadline */ CoarseTimePoint::max()));
 
   tablet_->mvcc_manager()->UpdatePropagatedSafeTimeOnLeader(ht_lease);
+
+  NotifyCommitedAsyncWrites(committed_op_id);
   return Status::OK();
+}
+
+void TabletPeer::BecomeReplica() {
+  FailAllAsyncWrites(
+      STATUS_FORMAT(Aborted, "Tablet $0 leader changed during async write", tablet_id()));
 }
 
 void TabletPeer::ChangeConfigReplicated(const RaftConfigPB& config) {
@@ -540,6 +548,8 @@ void TabletPeer::CompleteShutdown(
 
   VLOG_WITH_PREFIX(1) << "Shut down!";
 
+  FailAllAsyncWrites(STATUS(IllegalState, "Tablet peer is shutting down"));
+
   if (tablet_) {
     tablet_->CompleteShutdown(disable_flush_on_shutdown, abort_ops);
   }
@@ -604,14 +614,15 @@ void TabletPeer::WaitUntilShutdown() {
 
 Status TabletPeer::Shutdown(
     ShouldAbortActiveTransactions should_abort_active_txns,
-    DisableFlushOnShutdown disable_flush_on_shutdown) {
+    DisableFlushOnShutdown disable_flush_on_shutdown,
+    std::optional<TransactionId>&& exclude_aborting_txn_id) {
   auto is_shutdown_initiated = StartShutdown();
 
   if (should_abort_active_txns) {
     // Once raft group state enters QUIESCING state,
     // new queries cannot be processed from then onwards.
     // Aborting any remaining active transactions in the tablet.
-    AbortActiveTransactions();
+    AbortActiveTransactions(std::move(exclude_aborting_txn_id));
   }
 
   if (is_shutdown_initiated) {
@@ -622,14 +633,15 @@ Status TabletPeer::Shutdown(
   return Status::OK();
 }
 
-void TabletPeer::AbortActiveTransactions() const {
+void TabletPeer::AbortActiveTransactions(
+    std::optional<TransactionId>&& exclude_aborting_txn_id) const {
   if (!tablet_) {
     return;
   }
   auto deadline =
       CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(FLAGS_ysql_transaction_abort_timeout_ms);
   WARN_NOT_OK(
-      tablet_->AbortActiveTransactions(deadline),
+      tablet_->AbortActiveTransactions(deadline, std::move(exclude_aborting_txn_id)),
       "Cannot abort transactions for tablet " + tablet_->tablet_id());
 }
 
@@ -1229,7 +1241,11 @@ OpId TabletPeer::GetLatestCheckPoint() {
 Result<NamespaceId> TabletPeer::GetNamespaceId() {
   auto tablet = VERIFY_RESULT(shared_tablet());
   RETURN_NOT_OK(BackfillNamespaceIdIfNeeded(*tablet->metadata(), *client_future().get()));
-  return tablet->metadata()->namespace_id();
+  auto namespace_id = tablet->metadata()->namespace_id();
+  RSTATUS_DCHECK(
+      !namespace_id.empty(), IllegalState, "Namespace ID is empty for tablet $0",
+      tablet->tablet_id());
+  return namespace_id;
 }
 
 HybridTime TabletPeer::GetMinStartHTRunningTxnsOrLeaderSafeTime() {
@@ -1330,7 +1346,7 @@ Result<bool> TabletPeer::SetAllInitialCDCRetentionBarriers(
       MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms));
   return SetAllCDCRetentionBarriers(
       cdc_wal_index, cdc_sdk_intents_op_id, cdc_sdk_op_id_expiration, cdc_sdk_history_cutoff,
-      require_history_cutoff, true /* initial_retention_barrier */);
+      require_history_cutoff, /*initial_retention_barrier=*/true);
 }
 
 // Applies only to CDCSDK streams
@@ -1350,7 +1366,7 @@ Result<bool> TabletPeer::MoveForwardAllCDCRetentionBarriers(
 
   return SetAllCDCRetentionBarriers(
       cdc_wal_index, cdc_sdk_intents_op_id, cdc_sdk_op_id_expiration, cdc_sdk_history_cutoff,
-      require_history_cutoff, false /* initial_retention_barrier */);
+      require_history_cutoff, /*initial_retention_barrier=*/false);
 }
 
 std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::LWReplicateMsg* replicate_msg) {
@@ -1408,9 +1424,10 @@ std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::LWReplicateMsg
     case consensus::UNKNOWN_OP: FALLTHROUGH_INTENDED;
     case consensus::NO_OP: FALLTHROUGH_INTENDED;
     case consensus::CHANGE_CONFIG_OP:
-      FATAL_INVALID_ENUM_VALUE(consensus::OperationType, replicate_msg->op_type());
+      break;
   }
-  FATAL_INVALID_ENUM_VALUE(consensus::OperationType, replicate_msg->op_type());
+  LOG(DFATAL) << "Invalid replicate message: " << replicate_msg->ShortDebugString();
+  return nullptr;
 }
 
 Status TabletPeer::StartReplicaOperation(
@@ -1423,6 +1440,11 @@ Status TabletPeer::StartReplicaOperation(
   auto* replicate_msg = round->replicate_msg().get();
   DCHECK(replicate_msg->has_hybrid_time());
   auto operation = CreateOperation(replicate_msg);
+  if (!operation) {
+    auto status = STATUS_FORMAT(InvalidArgument, "Wrong operation: $0", round->ToString());
+    LOG(DFATAL) << status;
+    return status;
+  }
 
   // TODO(todd) Look at wiring the stuff below on the driver
   // It's imperative that we set the round here on any type of operation, as this
@@ -1765,7 +1787,7 @@ Status TabletPeer::ChangeRole(const std::string& requestor_uuid) {
         RaftPeerPB* peer = req.mutable_server();
         peer->set_permanent_uuid(requestor_uuid);
 
-        boost::optional<TabletServerErrorPB::Code> error_code;
+        std::optional<TabletServerErrorPB::Code> error_code;
         return consensus->ChangeConfig(req, &DoNothingStatusCB, &error_code);
       }
       case PeerMemberType::UNKNOWN_MEMBER_TYPE:
@@ -1868,6 +1890,110 @@ bool TabletPeer::HasSufficientDiskSpaceForWrite() {
   return true;
 }
 
+void TabletPeer::NotifyCommitedAsyncWrites(const OpId& committed_op_id) {
+  if (!committed_op_id) {
+    return;
+  }
+  LOG_IF(DFATAL, committed_op_id < last_known_committed_op_id_.load(std::memory_order_acquire))
+      << "Tablet " << tablet_id() << " committed op id: " << committed_op_id
+      << ", last known committed op id: " << last_known_committed_op_id_;
+  last_known_committed_op_id_.store(committed_op_id, std::memory_order_release);
+
+  std::vector<std::pair<StdStatusCallback, Status>> callbacks;
+  {
+    std::lock_guard lock(async_write_queries_mutex_);
+    auto it = in_flight_async_write_queries_.begin();
+    while (it != in_flight_async_write_queries_.end()) {
+      Status status;
+      if (it->first.term != committed_op_id.term) {
+        // Stale callback from previous term.
+        status = STATUS_FORMAT(
+            IllegalState, "Unexpected tablet $0 term change. New term: $1, expected term: $2",
+            tablet_id(), committed_op_id.term, it->first.term);
+      } else if (it->first.index > committed_op_id.index) {
+        break;
+      }
+
+      for (auto& callback : it->second) {
+        callbacks.emplace_back(std::move(callback), std::move(status));
+      }
+      it = in_flight_async_write_queries_.erase(it);
+    }
+  }
+
+  for (auto& [callback, status] : callbacks) {
+    callback(status);
+  }
+}
+
+void TabletPeer::FailAllAsyncWrites(const Status& status) {
+  std::vector<StdStatusCallback> callbacks;
+  {
+    std::lock_guard lock(async_write_queries_mutex_);
+    for (auto& [_, in_flight_callbacks] : in_flight_async_write_queries_) {
+      MoveCollection(&in_flight_callbacks, &callbacks);
+    }
+    in_flight_async_write_queries_.clear();
+  }
+
+  for (auto& callback : callbacks) {
+    callback(status);
+  }
+}
+
+void TabletPeer::RegisterAsyncWrite(const OpId& op_id) {
+  std::lock_guard lock(async_write_queries_mutex_);
+  DCHECK(
+      in_flight_async_write_queries_.empty() ||
+      in_flight_async_write_queries_.back().first < op_id);
+  in_flight_async_write_queries_.emplace_back(op_id, std::vector<StdStatusCallback>());
+}
+
+void TabletPeer::RegisterAsyncWriteCompletion(const OpId& op_id, StdStatusCallback&& callback) {
+  // If the write is still in flight, add the callback to the list.
+  {
+    std::lock_guard lock(async_write_queries_mutex_);
+    auto it = std::lower_bound(
+        in_flight_async_write_queries_.begin(), in_flight_async_write_queries_.end(), op_id,
+        [](const auto& pair, const OpId& op_id) { return pair.first < op_id; });
+    if (it != in_flight_async_write_queries_.end() && it->first == op_id) {
+      it->second.emplace_back(std::move(callback));
+      return;
+    }
+  }
+
+  // Write is not in progress. Check the term to make sure the write was received by the current
+  // peer.
+  // TODO(#28383): Handle graceful leader moves without failing user queries.
+  auto is_same_term = [this, &op_id]() -> Status {
+    auto committed_op_id = last_known_committed_op_id_.load(std::memory_order_acquire);
+    if (op_id.term == committed_op_id.term && op_id.index <= committed_op_id.index) {
+      return Status::OK();
+    }
+
+    auto consensus = VERIFY_RESULT(GetRaftConsensus());
+    const auto leader_term = consensus->LeaderTerm();
+    SCHECK_FORMAT(
+        leader_term != OpId::kUnknownTerm, Aborted,
+        "Tablet $0 leader changed during async write", tablet_id());
+
+    SCHECK_FORMAT(
+        leader_term == op_id.term, Aborted,
+        "Tablet $0 leader changed during async write. New term: $1, expected term: $2", tablet_id(),
+        leader_term, op_id.term);
+
+    return Status::OK();
+  }();
+
+  Status status;
+
+  if (!is_same_term.ok()) {
+    status = std::move(is_same_term);
+  }
+
+  callback(status);
+}
+
 Status BackfillNamespaceIdIfNeeded(
     tablet::RaftGroupMetadata& metadata, client::YBClient& client) {
   auto namespace_id = metadata.namespace_id();
@@ -1897,6 +2023,11 @@ Status BackfillNamespaceIdIfNeeded(
   SCHECK_FORMAT(
       !namespace_id.empty(), IllegalState, "Could not get namespace ID for $0", namespace_name);
   return metadata.set_namespace_id(namespace_id);
+}
+
+bool TabletPeer::IsRunning() const {
+  auto state = state_.load(std::memory_order_acquire);
+  return state == RaftGroupStatePB::RUNNING;
 }
 
 }  // namespace yb::tablet

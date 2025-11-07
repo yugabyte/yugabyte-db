@@ -1,8 +1,8 @@
 ---
-title: YSQL major upgrade
+title: YSQL major upgrade - manual
 headerTitle: YSQL major upgrade
 linkTitle: YSQL major upgrade
-description: Upgrade YugabyteDB to PostgreSQL 15
+description: Upgrade YugabyteDB to PostgreSQL 15 using manual installation
 headcontent: Upgrade YugabyteDB to a version that supports PG 15
 menu:
   stable:
@@ -12,9 +12,11 @@ menu:
 type: docs
 ---
 
-Upgrading YugabyteDB from a version based on PostgreSQL 11 (all versions prior to v2.25) to a version based on PostgreSQL 15 (v2.25.1 or later) requires additional steps. For instructions on upgrades within a major PostgreSQL version, refer to [Upgrade YugabyteDB](../upgrade-deployment/).
+Upgrading YugabyteDB from a version based on PostgreSQL 11 (all versions prior to v2.25) to a version based on PostgreSQL 15 (v2025.1 or later (stable) or v2.25 or later (preview)) requires additional steps. For instructions on upgrades within a major PostgreSQL version, refer to [Upgrade YugabyteDB](../upgrade-deployment/).
 
 The upgrade is fully online. While the upgrade is in progress, you have full and uninterrupted read and write access to your cluster.
+
+Performing a YSQL major upgrade on a universe with [CDC with logical replication](../../additional-features/change-data-capture/using-logical-replication/) requires additional steps.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
@@ -31,13 +33,16 @@ The upgrade is fully online. While the upgrade is in progress, you have full and
     </a>
   </li>
 
+  <li>
+    <a href="../ysql-major-upgrade-logical-replication/" class="nav-link">
+      <i class="icon-shell"></i>
+      Logical Replication
+    </a>
+  </li>
+
 </ul>
 
 ## Before you begin
-
-{{< warning >}}
-v2.25 is a preview release that is only meant for evaluation purposes and should not be used in production.
-{{< /warning >}}
 
 - All DDL statements, except ones related to Temporary table and Refresh Materialized View, are blocked for the duration of the upgrade. Consider executing all DDLs before the upgrade, and pause any jobs that might run DDLs. DMLs are allowed.
 - Upgrade client drivers.

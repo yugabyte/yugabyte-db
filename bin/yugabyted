@@ -435,17 +435,6 @@ METRICS_SNAPSHOT_LIST = [
     "handler_latency_yb_tserver_TabletServerService_Write_sum",
     "disk_usage", "cpu_usage", "node_up"
 ]
-PG_PARITY_FLAGS_LIST = [
-    "yb_enable_read_committed_isolation=true",
-    "ysql_enable_read_request_caching=true"
-]
-PG_PARITY_FLAGS_DICT = {
-"ysql_pg_conf_csv": "yb_enable_base_scans_cost_model=true,"
-                      "yb_enable_optimizer_statistics=true,"
-                      "yb_bnl_batch_size=1024,"
-                      "yb_use_hash_splitting_by_default=false,"
-                      "yb_enable_bitmapscan=true"
-                    }
 
 # YugaWare configs. These have their own separate subdirectory to preserve our itest flow.
 YUGAWARE_DIR = os.path.join(YUGABYTE_DIR, "ui")
@@ -3929,6 +3918,87 @@ class ControlScript(object):
             flags += ','
         return flags + f"{flag_name}={flag_value}"
 
+    # Parses a flagfile and returns a dictionary of flag names to values.
+    # Ignores comments (lines starting with #) and empty lines.
+    # Returns empty dict on error.
+    def parse_flagfile(self, flagfile_path):
+        flag_dict = {}
+        try:
+            with open(flagfile_path, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    # Skip comments and empty lines
+                    if not line or line.startswith('#'):
+                        continue
+                    # Parse flag=value format
+                    if '=' in line:
+                        # Remove leading -- if present
+                        if line.startswith('--'):
+                            line = line[2:]
+                        parts = line.split('=', 1)
+                        if len(parts) == 2:
+                            flag_name = parts[0].strip()
+                            flag_value = parts[1].strip()
+                            flag_dict[flag_name] = flag_value
+        except (IOError, OSError) as e:
+            Output.log("Warning: Failed to read flagfile {}: {}".format(flagfile_path, str(e)))
+        return flag_dict
+
+    # Extracts a simple flag value from flags_str or flagfile_dict.
+    # Direct flags in flags_str take precedence over flagfile_dict.
+    # Returns the flag value or None if not found.
+    def get_user_flag_value(self, flags_str, flagfile_dict, flag_name):
+        # First check direct flags (they take precedence)
+        if flags_str:
+            flags_list = flags_str.split(',')
+            for flag in flags_list:
+                flag = flag.strip()
+                if '=' in flag:
+                    key, value = flag.split('=', 1)
+                    if key.strip() == flag_name:
+                        return value.strip()
+
+        # If not in direct flags, check flagfile
+        if flagfile_dict and flag_name in flagfile_dict:
+            return flagfile_dict[flag_name]
+
+        return None
+
+    # Extracts a CSV flag value from flags_str or flagfile_dict.
+    # Direct flags in flags_str take precedence over flagfile_dict.
+    # For direct flags, CSV format is: csv_flag_name={key1=val1,key2=val2}
+    # For flagfile, CSV format is: csv_flag_name=key1=val1,key2=val2
+    # Returns the csv_key value or None if not found.
+    def get_user_csv_flag_value(self, flags_str, flagfile_dict, csv_flag_name, csv_key):
+        # First check direct flags (they take precedence)
+        # In direct flags, CSV flags are in format: flag_name={key1=val1,key2=val2}
+        if flags_str:
+            # Use regex to extract content between curly braces
+            pattern = r'{}=\{{([^}}]*)\}}'.format(re.escape(csv_flag_name))
+            match = re.search(pattern, flags_str)
+            if match:
+                csv_content = match.group(1)
+                # Parse CSV content
+                for item in csv_content.split(','):
+                    item = item.strip()
+                    if '=' in item:
+                        key, value = item.split('=', 1)
+                        if key.strip() == csv_key:
+                            return value.strip()
+
+        # If not in direct flags, check flagfile
+        # In flagfile, CSV flags are in format: flag_name=key1=val1,key2=val2
+        if flagfile_dict and csv_flag_name in flagfile_dict:
+            csv_content = flagfile_dict[csv_flag_name]
+            for item in csv_content.split(','):
+                item = item.strip()
+                if '=' in item:
+                    key, value = item.split('=', 1)
+                    if key.strip() == csv_key:
+                        return value.strip()
+
+        return None
+
     def config_time_source_clockbound(self, flags):
         # Configure tserver flag time_source=clockbound
         # when clockbound is installed and configured.
@@ -3986,25 +4056,24 @@ class ControlScript(object):
 
         master_flags = self.configs.saved_data.get("master_flags","")
 
-        if self.configs.temp_data.get("enable_pg_parity"):
-            # Process simple flags from PG_PARITY_FLAGS_LIST
-            existing_flags = {}
-            current_flags = master_flags.split(',')
-            for flag in current_flags:
-                if '=' in flag:
-                    key, value = flag.split('=', 1)
-                    existing_flags[key] = value
+        # Parse flagfile if specified
+        flagfile_dict = {}
+        flagfile_value = self.get_flag_value(master_flags, "flagfile")
+        if flagfile_value:
+            flagfile_dict = self.parse_flagfile(flagfile_value)
 
-            for flag in PG_PARITY_FLAGS_LIST:
-                key = flag.split('=')[0]
-                if existing_flags.get(key) is None:
-                    if master_flags and not master_flags.endswith(","):
-                        master_flags += ","
-                    # Add the missing flag to the master flags
-                    master_flags += flag
+        # Add yb_enable_read_committed_isolation flag
+        # Check if user has provided this flag (direct flags or flagfile)
+        user_read_committed_value = self.get_user_flag_value(
+            master_flags, flagfile_dict, "yb_enable_read_committed_isolation")
 
-            # Update the master_flags in self.configs.saved_data with pg_parity flags
-            self.configs.saved_data["master_flags"] = master_flags
+        if user_read_committed_value is None:
+            # User has not provided the flag, add default value
+            if master_flags and not master_flags.endswith(","):
+                master_flags += ","
+            master_flags += "yb_enable_read_committed_isolation=true"
+        # If user provided it, it's already in master_flags or will be read from flagfile
+        # No action needed as the existing flag processing will handle it
 
         master_flags = self.config_time_source_clockbound(master_flags)
         self.configs.saved_data["master_flags"] = master_flags
@@ -4081,85 +4150,51 @@ class ControlScript(object):
 
         tserver_flags = self.configs.saved_data.get("tserver_flags","")
 
-        if self.configs.temp_data.get("enable_pg_parity"):
-            # Process simple flags from PG_PARITY_FLAGS_LIST
-            existing_flags = {}
-            current_flags = tserver_flags.split(',')
-            for flag in current_flags:
-                if '=' in flag:
-                    key, value = flag.split('=', 1)
-                    existing_flags[key] = value
+        # Parse flagfile if specified
+        flagfile_dict = {}
+        flagfile_value = self.get_flag_value(tserver_flags, "flagfile")
+        if flagfile_value:
+            flagfile_dict = self.parse_flagfile(flagfile_value)
 
-            for flag in PG_PARITY_FLAGS_LIST:
-                key = flag.split('=')[0]
-                if existing_flags.get(key) is None:
-                    if tserver_flags and not tserver_flags.endswith(","):
-                        tserver_flags += ","
-                    # Add the missing flag to the tserver flags
-                    tserver_flags += flag
+        # Add yb_enable_read_committed_isolation flag
+        # Check if user has provided this flag (direct flags or flagfile)
+        user_read_committed_value = self.get_user_flag_value(
+            tserver_flags, flagfile_dict, "yb_enable_read_committed_isolation")
 
-            # Process CSV flags from PG_PARITY_FLAGS_DICT
-            for pg_parity_flag, pg_parity_flag_values in PG_PARITY_FLAGS_DICT.items():
-                # If pg_parity_flag present in tserver_flags
-                # Extract the value and append any default missing pg_parity_flag_values
-                pg_parity_flag_start_index = tserver_flags.find(pg_parity_flag)
-                tserver_pg_parity_flag_values = ""
-                if pg_parity_flag_start_index != -1:
-                    pg_parity_flag_end_index = \
-                        tserver_flags.find('}', pg_parity_flag_start_index) + 1
-                    tserver_pg_parity_flag = \
-                        tserver_flags[pg_parity_flag_start_index:pg_parity_flag_end_index]
-                    tserver_pg_parity_flag_values = \
-                        tserver_pg_parity_flag[tserver_pg_parity_flag.find("{")+1:-1]
+        if user_read_committed_value is None:
+            # User has not provided the flag, add default value
+            if tserver_flags and not tserver_flags.endswith(","):
+                tserver_flags += ","
+            tserver_flags += "yb_enable_read_committed_isolation=true"
+        # If user provided it, it's already in tserver_flags or will be read from flagfile
+        # No action needed as the existing flag processing will handle it
 
-                    # Parse the tserver_pg_parity_flag_values into a dictionary
-                    tserver_pg_parity_flag_values_dict = {}
-                    for item in tserver_pg_parity_flag_values.split(','):
-                        if '=' in item:
-                            key, value = item.split('=')
-                            tserver_pg_parity_flag_values_dict[key] = value
+        # Add ysql_pg_conf_csv with yb_enable_cbo
+        # Check if user has provided yb_enable_cbo within ysql_pg_conf_csv
+        user_cbo_value = self.get_user_csv_flag_value(
+            tserver_flags, flagfile_dict, "ysql_pg_conf_csv", "yb_enable_cbo")
 
-                    # Parse the PG_PARITY_FLAGS_DICT values into dictionary
-                    pg_parity_flag_values_dict = {}
-                    for item in pg_parity_flag_values.split(','):
-                        if '=' in item:
-                            key, value = item.split('=')
-                            pg_parity_flag_values_dict[key] = value
+        if user_cbo_value is None:
+            # User has not provided yb_enable_cbo, need to add it
+            # Use regex to check if ysql_pg_conf_csv already exists in tserver_flags
+            pattern = r'ysql_pg_conf_csv=\{([^}]*)\}'
+            match = re.search(pattern, tserver_flags)
 
-                    # Identify missing flags in tserver_pg_parity_flag_values
-                    missing_pg_parity_flag_values_dict = {}
-                    for key, value in pg_parity_flag_values_dict.items():
-                        if tserver_pg_parity_flag_values_dict.get(key) is None:
-                            missing_pg_parity_flag_values_dict[key] = value
-
-                    # If there are missing pg_parity_flag_values, append them to
-                    # tserver_pg_parity_flag_values
-                    if len(missing_pg_parity_flag_values_dict) > 0:
-                        missing_pg_parity_flag_values = ",".join("{}={}".format(k, v) \
-                                    for k, v in missing_pg_parity_flag_values_dict.items())
-                        if tserver_pg_parity_flag_values:
-                            updated_tserver_pg_parity_flag_values = tserver_pg_parity_flag_values \
-                                                            + "," + missing_pg_parity_flag_values
-                        else:
-                            updated_tserver_pg_parity_flag_values = missing_pg_parity_flag_values
-
-                        updated_tserver_pg_parity_flag = "{}={{{}}}".format(
-                                        pg_parity_flag, updated_tserver_pg_parity_flag_values)
-                        tserver_flags = tserver_flags[:pg_parity_flag_start_index] \
-                                        + updated_tserver_pg_parity_flag \
-                                        + tserver_flags[pg_parity_flag_end_index:]
-                    # No missing pg_parity_flag values found in tserver_flag
-                    else:
-                        pass
-                else:
-                    # If the pg_parity_flag is not present,
-                    # append the entire flag with its default values
-                    if tserver_flags and not tserver_flags.endswith(","):
-                        tserver_flags += ","
-                    tserver_flags += "{}={{{}}}".format(pg_parity_flag, pg_parity_flag_values)
-
-            # Update the tserver_flags in self.configs.saved_data with pg_parity flags
-            self.configs.saved_data["tserver_flags"] = tserver_flags
+            if match:
+                # ysql_pg_conf_csv exists, need to add yb_enable_cbo to it
+                existing_csv = match.group(1)
+                updated_csv = existing_csv + ",yb_enable_cbo=on" if existing_csv \
+                    else "yb_enable_cbo=on"
+                tserver_flags = re.sub(pattern,
+                                      'ysql_pg_conf_csv={' + updated_csv + '}',
+                                      tserver_flags)
+            else:
+                # ysql_pg_conf_csv doesn't exist, add it
+                if tserver_flags and not tserver_flags.endswith(","):
+                    tserver_flags += ","
+                tserver_flags += "ysql_pg_conf_csv={yb_enable_cbo=on}"
+        # If user provided it, it's already in tserver_flags or will be read from flagfile
+        # No action needed as the existing flag processing will handle it
 
         tserver_flags = self.config_time_source_clockbound(tserver_flags)
         self.configs.saved_data["tserver_flags"] = tserver_flags
@@ -8103,10 +8138,6 @@ class ControlScript(object):
 
                     self.configs.saved_data["ca_cert_file_path"] = os.path.join(args.certs_dir,
                                                                                     "ca.crt")
-            if args.enable_pg_parity_early_access:
-                self.configs.temp_data["enable_pg_parity"] = \
-                                args.enable_pg_parity_early_access
-
             args.background = self.parse_bool(args.background)
             if args.ui is not None:
                 args.ui = self.parse_bool(args.ui)
@@ -8177,7 +8208,7 @@ class ControlScript(object):
         common_parser.add_argument(
             "--data_dir", help=argparse.SUPPRESS)
         common_parser.add_argument(
-            "--base_dir", help="Directory under which {} will store data, conf and logs".format(
+            "--base_dir", help="Directory under which {0} will store data, conf and logs. It defaults to `~/var`. On nodes started with a non-default `--base_dir`, this flag must be specified on every command so that {0} can identify the correct node".format(
                 SCRIPT_NAME), metavar="")
         common_parser.add_argument(
             "--log_dir", help=argparse.SUPPRESS)
@@ -8382,7 +8413,7 @@ class ControlScript(object):
                 action="store_true", default=None
                 )
             cur_parser.add_argument(
-                "--retention", help="Specify the retention period of the snapshots.",
+                "--retention", help="Specify the retention period for snapshots in days (from the time they were created), after which they will be automatically deleted.",
                 metavar=""
                 )
             cur_parser.add_argument(
@@ -8765,9 +8796,6 @@ class ControlScript(object):
             "--config", help="{} user configuration file path".format(
                               SCRIPT_NAME), metavar="")
             cur_parser.add_argument(
-                "--enable_pg_parity_early_access", help="Enable PostgreSQL compatibility features."
-                " Default value is False.", action="store_true", default=False)
-            cur_parser.add_argument(
                 "--enhance_time_sync_via_clockbound",
                 help="Enable clock bound for the node. Default value is False.",
                 action="store_true", default=False)
@@ -8962,7 +8990,6 @@ class Configs(object):
             "hostnames": "",
             "enable_encrypt_at_rest": False,
             "disable_encrypt_at_rest": False,
-            "enable_pg_parity": False,
             "admin_command": "",
             "admin_operation_master_addresses":"",
             "rr_data_placement_constraint": "",

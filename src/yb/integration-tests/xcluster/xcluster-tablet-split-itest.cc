@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -1251,8 +1251,8 @@ class XClusterBootstrapTabletSplitITest : public XClusterTabletSplitITest {
     XClusterTabletSplitITest::SwitchToConsumer();
   }
 
-  boost::optional<client::TransactionManager> consumer_transaction_manager_;
-  boost::optional<client::TransactionManager> producer_transaction_manager_;
+  std::optional<client::TransactionManager> consumer_transaction_manager_;
+  std::optional<client::TransactionManager> producer_transaction_manager_;
 };
 
 // TODO(jhe) Re-enable this test. Currently disabled as we disable all splits when a table is being

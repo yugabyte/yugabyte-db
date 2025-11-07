@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -13,6 +13,7 @@
 #include "yb/ash/wait_state.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/debug.h"
 #include "yb/util/test_thread_holder.h"
 
 #include "yb/yql/pgwrapper/libpq_test_base.h"
@@ -72,12 +73,11 @@ class PgAshTest : public LibPqTestBase {
 class PgAshMasterMetadataSerializerTest : public PgAshTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=true");
     options->extra_tserver_flags.push_back(
-        "--allowed_preview_flags_csv=enable_object_locking_for_table_locks");
-    options->extra_master_flags.push_back("--enable_object_locking_for_table_locks=true");
-    options->extra_master_flags.push_back(
-        "--allowed_preview_flags_csv=enable_object_locking_for_table_locks");
+        Format("--allowed_preview_flags_csv=$0,$1",
+               "enable_object_locking_for_table_locks", "ysql_yb_ddl_transaction_block_enabled"));
+    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=true");
+    options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
     PgAshTest::UpdateMiniClusterOptions(options);
   }
 };
@@ -85,7 +85,7 @@ class PgAshMasterMetadataSerializerTest : public PgAshTest {
 class PgAshSingleNode : public PgAshTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_master_flags.push_back("--replication_factor=1");
+    options->replication_factor = 1;
     PgAshTest::UpdateMiniClusterOptions(options);
   }
 
@@ -138,13 +138,13 @@ class PgBgWorkersTest : public PgAshSingleNode {
     options->extra_tserver_flags.push_back("--enable_pg_cron=true");
     options->extra_tserver_flags.push_back(
         "--ysql_pg_conf_csv=cron.yb_job_list_refresh_interval=1");
-    options->extra_tserver_flags.push_back(
-    "--allowed_preview_flags_csv=ysql_yb_enable_query_diagnostics");
     options->extra_tserver_flags.push_back("--ysql_yb_enable_query_diagnostics=true");
     options->extra_tserver_flags.push_back(Format("--TEST_yb_ash_wait_code_to_sleep_at=$0",
         std::to_underlying(ash::WaitStateCode::kCatalogRead)));
     options->extra_tserver_flags.push_back(Format("--TEST_yb_ash_sleep_at_wait_state_ms=$0",
         2 * kSamplingIntervalMs));
+    // Disable auto analyze because it changes the query plan of test: ValidateBgWorkers.
+    options->extra_tserver_flags.push_back("--ysql_enable_auto_analyze=false");
     PgAshSingleNode::UpdateMiniClusterOptions(options);
   }
 };
@@ -626,6 +626,10 @@ TEST_F_EX(PgWaitEventAuxTest, PgCDCServiceRPCs, PgCDCWaitEventAux) {
   // wait for DestroyVirtualWALForCDC RPC to be called
   SleepFor(2s * kTimeMultiplier);
 
+  const auto walsender_samples = ASSERT_RESULT(conn_->FetchRow<PGUint64>(
+      "SELECT COUNT(*) FROM yb_active_session_history WHERE query_id = 11"));
+  ASSERT_GT(walsender_samples, 0);
+
   ASSERT_OK(CheckWaitEventAux());
 }
 
@@ -648,7 +652,7 @@ TEST_F(PgAshSingleNode, CheckWaitEventsDescription) {
 
   std::unordered_set<std::string> yb_events;
   for (const auto& code : ash::WaitStateCodeList()) {
-    if (code == ash::WaitStateCode::kUnused || code == ash::WaitStateCode::kYSQLReserved) {
+    if (code == ash::WaitStateCode::kYSQLReserved) {
       continue;
     }
     yb_events.insert(ToString(code).erase(0, 1)); // remove 'k' prefix
@@ -858,9 +862,8 @@ TEST_F(PgAshTest, TestTServerMetadataSerializer) {
   static constexpr auto kTableName = "test_table";
 
   ASSERT_OK(conn_->Execute(Format("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTableName)));
-  for (int i = 0; i < 1000; ++i) {
-    ASSERT_OK(conn_->Execute(Format("INSERT INTO $0 VALUES ($1, $1)", kTableName, i)));
-  }
+  ASSERT_OK(conn_->Execute(Format("INSERT INTO $0 SELECT i, i FROM generate_series($1, $2) AS i",
+      kTableName, 1, (kIsDebug ? 100000 : 10000000))));
 
   auto query_id = ASSERT_RESULT(conn_->FetchRow<int64_t>(
       "SELECT queryid FROM pg_stat_statements WHERE query LIKE 'INSERT INTO%'"));
@@ -904,4 +907,71 @@ TEST_F(PgAshMasterMetadataSerializerTest, TestMasterMetadataSerializer) {
   ASSERT_GT(count, 0);
 }
 
-}  // namespace yb::pgwrapper
+TEST_F(PgAshTest, TestUserIdConsistency) {
+  // Test: Check current userid and verify it matches between ASH and pg_user
+  static constexpr auto kTableName = "a";
+
+  // Create a table and insert data to generate ASH samples (following the blueprint)
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (k INT)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (generate_series(1, 100000))",
+                                 kTableName));
+
+  // Get current user ID from pg_authid (pg_user is a view on pg_authid)
+  auto current_user_id = ASSERT_RESULT(conn_->FetchRow<pgwrapper::PGOid>(
+      "SELECT oid FROM pg_authid WHERE rolname = current_user"));
+
+  // Query ASH to get distinct user IDs
+  auto user_ids = ASSERT_RESULT((conn_->FetchRows<pgwrapper::PGOid>(
+      "SELECT DISTINCT ysql_userid FROM yb_active_session_history "
+      "WHERE sample_time >= current_timestamp - interval '5 minutes' "
+      "ORDER BY ysql_userid")));
+
+  // Verify that we have some ASH samples
+  ASSERT_GT(user_ids.size(), 0) << "No ASH samples found";
+
+  // Verify that all user IDs in ASH match the current user ID
+  const auto non_zero_user_id = ASSERT_RESULT(conn_->FetchRow<pgwrapper::PGOid>(
+      "SELECT DISTINCT ysql_userid FROM yb_active_session_history "
+      "WHERE sample_time >= current_timestamp - interval '5 minutes' "
+      "AND ysql_userid != 0 ORDER BY ysql_userid"));
+
+  ASSERT_EQ(non_zero_user_id, current_user_id)
+      << "User ID in ASH does not match current user ID";
+}
+
+
+TEST_F(PgAshTest, TestUserIdChangeReflectedInAsh) {
+  const std::string kUser1 = "ash_user1";
+
+  ASSERT_OK(conn_->ExecuteFormat("CREATE ROLE $0", kUser1));
+
+  const auto orig_user_oid = ASSERT_RESULT(conn_->FetchRow<pgwrapper::PGOid>(
+      "SELECT oid FROM pg_authid WHERE rolname = current_user"));
+  const auto user1_oid = ASSERT_RESULT(conn_->FetchRow<pgwrapper::PGOid>(
+      Format("SELECT oid FROM pg_authid WHERE rolname = '$0'", kUser1)));
+
+  const std::string sleep_query = "SELECT pg_sleep(1)";
+
+  ASSERT_OK(conn_->Fetch(sleep_query));
+  const std::string ash_count_query =
+      "SELECT COUNT(*) FROM yb_active_session_history "
+      "WHERE ysql_userid = $0 AND sample_time >= current_timestamp - interval '5 minutes'";
+
+  const auto orig_user_ash_count = ASSERT_RESULT(
+      conn_->FetchRow<int64_t>(Format(ash_count_query, orig_user_oid)));
+  ASSERT_GT(orig_user_ash_count, 0);
+
+  ASSERT_OK(conn_->ExecuteFormat("SET SESSION AUTHORIZATION $0", kUser1));
+  ASSERT_OK(conn_->Fetch(sleep_query));
+  const auto user1_ash_count = ASSERT_RESULT(
+      conn_->FetchRow<int64_t>(Format(ash_count_query, user1_oid)));
+  ASSERT_GT(user1_ash_count, 0);
+
+  ASSERT_OK(conn_->Execute("RESET SESSION AUTHORIZATION"));
+  ASSERT_OK(conn_->Fetch(sleep_query));
+  const auto orig_user_ash_count_after_reset = ASSERT_RESULT(
+      conn_->FetchRow<int64_t>(Format(ash_count_query, orig_user_oid)));
+  ASSERT_GT(orig_user_ash_count_after_reset, 0);
+}
+
+} // namespace yb::pgwrapper

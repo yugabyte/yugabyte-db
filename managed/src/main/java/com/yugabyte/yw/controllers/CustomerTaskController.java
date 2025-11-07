@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.controllers;
 
@@ -152,11 +152,19 @@ public class CustomerTaskController extends AuthenticatedController {
         taskData.details = taskProgress.get("details");
       } else {
         ObjectNode details = Json.newObject();
-        // Add auditLogConfig from the task details if it is present.
+        // Add auditLogConfig, queryLogConfig and metricsExportConfig from the task details if it is
+        // present.
         // This info is useful to render the UI properly while task is in progress.
         if (taskInfo.getTaskParams().has("auditLogConfig")) {
           details.set("auditLogConfig", taskInfo.getTaskParams().get("auditLogConfig"));
         }
+        if (taskInfo.getTaskParams().has("queryLogConfig")) {
+          details.set("queryLogConfig", taskInfo.getTaskParams().get("queryLogConfig"));
+        }
+        if (taskInfo.getTaskParams().has("metricsExportConfig")) {
+          details.set("metricsExportConfig", taskInfo.getTaskParams().get("metricsExportConfig"));
+        }
+
         ObjectNode versionNumbers = commissioner.getVersionInfo(task, taskInfo);
         if (versionNumbers != null && !versionNumbers.isEmpty()) {
           details.set("versionNumbers", versionNumbers);
@@ -343,7 +351,7 @@ public class CustomerTaskController extends AuthenticatedController {
       query.between("create_time", filter.getDateRangeStart(), filter.getDateRangeEnd());
     }
     if (!CollectionUtils.isEmpty(filter.getStatus())) {
-      appendInClause(query, "status", filter.getStatus());
+      appendInClause(query, "taskInfo.taskState", filter.getStatus());
     }
     return query;
   }

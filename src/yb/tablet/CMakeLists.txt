@@ -15,9 +15,9 @@
 # specific language governing permissions and limitations
 # under the License.
 #
-# The following only applies to changes made to this file as part of YugaByte development.
+# The following only applies to changes made to this file as part of YugabyteDB development.
 #
-# Portions Copyright (c) YugaByte, Inc.
+# Portions Copyright (c) YugabyteDB, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 # in compliance with the License.  You may obtain a copy of the License at
@@ -154,7 +154,7 @@ target_link_libraries(tablet
 
 add_library(tablet_test_util
             local_tablet_writer.cc
-            tablet-harness.cc
+            tablet-test-harness.cc
             tablet-test-base.cc
             tablet-test-util.cc)
 target_link_libraries(tablet_test_util tablet yb_common yb_test_util yb_util)

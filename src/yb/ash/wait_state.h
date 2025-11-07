@@ -124,9 +124,6 @@ YB_DEFINE_TYPED_ENUM(Class, uint8_t,
 //
 // The wait event type is not directly encoded in our wait events.
 YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
-    // Don't change the value of kUnused
-    ((kUnused, 0xFFFFFFFFU))
-
     // Wait states related to postgres
     // Don't change the position of kYSQLReserved
     ((kYSQLReserved, YB_ASH_MAKE_EVENT(TServerWait)))
@@ -167,6 +164,7 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     (kSnapshot_WaitingForFlush)
     (kSnapshot_CleanupSnapshotDir)
     (kSnapshot_RestoreCheckpoint)
+    (kXCluster_WaitingForGetChanges)
 
     // Wait states related to consensus
     ((kRaft_WaitingForReplication, YB_ASH_MAKE_EVENT(Consensus)))
@@ -219,6 +217,7 @@ YB_DEFINE_TYPED_ENUM(FixedQueryId, uint8_t,
   ((kQueryIdForSnapshot, 9))
   ((kQueryIdForYcqlAuthResponseRequest, 10))
   ((kQueryIdForWalsender, 11))
+  ((kQueryIdForXCluster, 12))
 );
 
 YB_DEFINE_TYPED_ENUM(WaitStateType, uint8_t,
@@ -271,6 +270,7 @@ YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   (kGetTserverCatalogVersionInfo)
   (kGetTserverCatalogMessageLists)
   (kSetTserverCatalogMessageList)
+  (kTriggerRelcacheInitConnection)
   (kCancelTransaction)
   (kGetActiveTransactionList)
   (kGetTableKeyRanges)
@@ -309,12 +309,15 @@ struct WaitStatesDescription {
 
 WaitStateType GetWaitStateType(WaitStateCode code);
 
+const char* GetWaitStateAuxDescription(WaitStateCode code);
+
 struct AshMetadata {
   Uuid root_request_id = Uuid::Nil();
   Uuid top_level_node_id = Uuid::Nil();
   uint64_t query_id = 0;
   pid_t pid = 0;
   uint32_t database_id = 0;
+  uint32_t user_id = 0;
   int64_t rpc_request_id = 0;
   HostPort client_host_port{};
   uint8_t addr_family = AF_UNSPEC;
@@ -339,6 +342,9 @@ struct AshMetadata {
     }
     if (other.database_id != 0) {
       database_id = other.database_id;
+    }
+    if (other.user_id != 0) {
+      user_id = other.user_id;
     }
     if (other.rpc_request_id != 0) {
       rpc_request_id = other.rpc_request_id;
@@ -394,6 +400,11 @@ struct AshMetadata {
     } else {
       pb->clear_database_id();
     }
+    if (user_id != 0) {
+      pb->set_user_id(user_id);
+    } else {
+      pb->clear_user_id();
+    }
     if (rpc_request_id != 0) {
       pb->set_rpc_request_id(rpc_request_id);
     } else {
@@ -435,6 +446,7 @@ struct AshMetadata {
         pb.query_id(),                         // query_id
         pb.pid(),                              // pid
         pb.database_id(),                      // database_id
+        pb.user_id(),                          // user_id
         pb.rpc_request_id(),                   // rpc_request_id
         HostPortFromPB(pb.client_host_port()), // client_host_port
         static_cast<uint8_t>(pb.addr_family()) // addr_family
@@ -487,11 +499,12 @@ class WaitStateInfo {
 
   void UpdateMetadata(const AshMetadata& meta) EXCLUDES(mutex_);
   void UpdateAuxInfo(const AshAuxInfo& aux) EXCLUDES(mutex_);
+  void UpdateTabletId(const TabletId& tablet_id);
+  static void UpdateCurrentTabletId(const TabletId& tablet_id);
 
   template <class PB>
   static void UpdateCurrentMetadataFromPB(const PB& pb) {
-    const auto& wait_state = CurrentWaitState();
-    if (wait_state) {
+    if (const auto& wait_state = CurrentWaitState()) {
       wait_state->UpdateMetadataFromPB(pb);
     }
   }
@@ -561,7 +574,7 @@ class WaitStateInfo {
   void VTraceTo(Trace* trace, int level, GStringPiece data);
 
  private:
-  std::atomic<WaitStateCode> code_{WaitStateCode::kUnused};
+  std::atomic<WaitStateCode> code_{WaitStateCode::kIdle};
 
   mutable simple_spinlock mutex_;
   AshMetadata metadata_ GUARDED_BY(mutex_);
@@ -630,5 +643,6 @@ WaitStateTracker& FlushAndCompactionWaitStatesTracker();
 WaitStateTracker& RaftLogWaitStatesTracker();
 WaitStateTracker& SharedMemoryPgPerformTracker();
 WaitStateTracker& SharedMemoryPgAcquireObjectLockTracker();
+WaitStateTracker& XClusterPollerTracker();
 
 }  // namespace yb::ash

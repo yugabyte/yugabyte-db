@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -13,8 +13,6 @@
 #include "yb/docdb/transaction_status_cache.h"
 
 #include <future>
-
-#include <boost/optional/optional.hpp>
 
 #include "yb/ash/wait_state.h"
 
@@ -61,12 +59,12 @@ struct TransactionStatusCache::GetCommitDataResult {
 };
 
 // For locally committed transactions returns commit time if committed at specified time or
-// HybridTime::kMin otherwise. For other transactions returns boost::none.
-boost::optional<TransactionLocalState> TransactionStatusCache::GetLocalCommitData(
+// HybridTime::kMin otherwise. For other transactions returns std::nullopt.
+std::optional<TransactionLocalState> TransactionStatusCache::GetLocalCommitData(
     const TransactionId& transaction_id) {
   auto local_commit_data_opt = txn_context_opt_.txn_status_manager->LocalTxnData(transaction_id);
-  if (local_commit_data_opt == boost::none || !local_commit_data_opt->commit_ht.is_valid()) {
-    return boost::none;
+  if (local_commit_data_opt == std::nullopt || !local_commit_data_opt->commit_ht.is_valid()) {
+    return std::nullopt;
   }
 
   if (local_commit_data_opt->commit_ht > read_time_.global_limit) {
@@ -96,12 +94,12 @@ Result<TransactionLocalState> TransactionStatusCache::GetTransactionLocalState(
 Result<TransactionStatusCache::GetCommitDataResult> TransactionStatusCache::DoGetCommitData(
     const TransactionId& transaction_id) {
   auto local_commit_data_opt = GetLocalCommitData(transaction_id);
-  if (local_commit_data_opt != boost::none) {
-    return GetCommitDataResult {
-      .transaction_local_state = std::move(*local_commit_data_opt),
-      .source = CommitTimeSource::kLocalBefore,
-      .status_time = {},
-      .safe_time = {},
+  if (local_commit_data_opt != std::nullopt) {
+    return GetCommitDataResult{
+        .transaction_local_state = std::move(*local_commit_data_opt),
+        .source = CommitTimeSource::kLocalBefore,
+        .status_time = {},
+        .safe_time = {},
     };
   }
 
@@ -179,16 +177,16 @@ Result<TransactionStatusCache::GetCommitDataResult> TransactionStatusCache::DoGe
       // we would not have local commit time even for committed transaction.
       // Waiting for safe time to be sure that we APPLY was processed if present.
       // See https://github.com/YugaByte/yugabyte-db/issues/7729 for details.
-      safe_time = VERIFY_RESULT(txn_context_opt_.txn_status_manager->WaitForSafeTime(
-          txn_status.status_time, deadline_));
+      safe_time = VERIFY_RESULT(
+          txn_context_opt_.txn_status_manager->WaitForSafeTime(txn_status.status_time, deadline_));
     }
     local_commit_data_opt = GetLocalCommitData(transaction_id);
-    if (local_commit_data_opt != boost::none) {
-      return GetCommitDataResult {
-        .transaction_local_state = std::move(*local_commit_data_opt),
-        .source = CommitTimeSource::kLocalAfter,
-        .status_time = txn_status.status_time,
-        .safe_time = safe_time,
+    if (local_commit_data_opt != std::nullopt) {
+      return GetCommitDataResult{
+          .transaction_local_state = std::move(*local_commit_data_opt),
+          .source = CommitTimeSource::kLocalAfter,
+          .status_time = txn_status.status_time,
+          .safe_time = safe_time,
       };
     }
 

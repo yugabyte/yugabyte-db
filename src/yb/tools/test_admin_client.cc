@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -46,7 +46,7 @@ Status TestAdminClient::SplitTablet(const TabletId& tablet_id) {
 
 Status TestAdminClient::SplitTablet(
     const client::YBTableName& table, const std::optional<TabletId>& tablet_id) {
-  RETURN_NOT_OK(ybclient_->FlushTables({table}, false, 30, false));
+  RETURN_NOT_OK(ybclient_->FlushTables({table}));
   TabletId to_split;
   if (tablet_id) {
     to_split = *tablet_id;
@@ -105,16 +105,17 @@ Result<bool> TestAdminClient::IsTabletSplittingComplete(bool wait_for_parent_del
 }
 
 Result<std::vector<master::TabletLocationsPB>> TestAdminClient::GetTabletLocations(
-    const client::YBTableName& table) {
+    const client::YBTableName& table, master::IncludeInactive include_inactive) {
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  RETURN_NOT_OK(ybclient_->GetTablets(table, 0, &tablets, nullptr));
+  RETURN_NOT_OK(ybclient_->GetTablets(
+      table, 0, &tablets, nullptr, RequireTabletsRunning::kFalse, include_inactive));
   return std::vector<master::TabletLocationsPB>(tablets.begin(), tablets.end());
 }
 
 Result<std::vector<master::TabletLocationsPB>> TestAdminClient::GetTabletLocations(
-    const std::string& ns, const std::string& table) {
+    const std::string& ns, const std::string& table, master::IncludeInactive include_inactive) {
   auto tname = VERIFY_RESULT(GetTableName(ns, table));
-  return GetTabletLocations(tname);
+  return GetTabletLocations(tname, include_inactive);
 }
 
 Status TestAdminClient::WaitForTabletPostSplitCompacted(
@@ -136,7 +137,7 @@ Status TestAdminClient::WaitForTabletPostSplitCompacted(
 
 Status TestAdminClient::FlushTable(const std::string& ns, const std::string& table) {
   auto tname = VERIFY_RESULT(GetTableName(ns, table));
-  return ybclient_->FlushTables({tname}, false, 30, false);
+  return ybclient_->FlushTables({tname});
 }
 
 Status TestAdminClient::DeleteSnapshotAndWait(const TxnSnapshotId& snapshot_id) {

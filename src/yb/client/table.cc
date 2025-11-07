@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -104,16 +104,12 @@ const Schema& YBTable::InternalSchema() const {
   return internal::GetSchema(info_->schema);
 }
 
-const qlexpr::IndexMap& YBTable::index_map() const {
-  return info_->index_map;
-}
+const qlexpr::IndexMap& YBTable::index_map() const { return info_->index_map; }
 
-bool YBTable::IsIndex() const {
-  return info_->index_info != boost::none;
-}
+bool YBTable::IsIndex() const { return info_->index_info != std::nullopt; }
 
 bool YBTable::IsUniqueIndex() const {
-  return info_->index_info.is_initialized() && info_->index_info->is_unique();
+  return info_->index_info.has_value() && info_->index_info->is_unique();
 }
 
 const qlexpr::IndexInfo& YBTable::index_info() const {
@@ -128,7 +124,7 @@ bool YBTable::colocated() const {
   return info_->colocated;
 }
 
-const boost::optional<ReplicationInfoPB>& YBTable::replication_info() const {
+const std::optional<ReplicationInfoPB>& YBTable::replication_info() const {
   return info_->replication_info;
 }
 

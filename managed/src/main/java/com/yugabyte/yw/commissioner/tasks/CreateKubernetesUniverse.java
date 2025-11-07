@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 YugaByte, Inc. and Contributors
+ * Copyright 2019 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -149,7 +149,7 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       // Set all the in-memory node names first.
       setNodeNames(universe);
 
-      PlacementInfo pi = primaryCluster.placementInfo;
+      PlacementInfo pi = primaryCluster.getOverallPlacement();
 
       selectNumMastersAZ(pi);
 
@@ -203,7 +203,7 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
         throw new RuntimeException(msg);
       } else if (readClusters.size() == 1) {
         Cluster readCluster = readClusters.get(0);
-        PlacementInfo readClusterPI = readCluster.placementInfo;
+        PlacementInfo readClusterPI = readCluster.getOverallPlacement();
         Provider readClusterProvider =
             Provider.getOrBadRequest(UUID.fromString(readCluster.userIntent.provider));
         CloudType readClusterProviderType = readCluster.userIntent.providerType;
@@ -250,17 +250,21 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       // Install YBC on the pods
       String stableYbcVersion = confGetter.getGlobalConf(GlobalConfKeys.ybcStableVersion);
       if (taskParams().isEnableYbc()) {
-        installYbcOnThePods(
-            tserversAdded,
-            false,
-            stableYbcVersion,
-            taskParams().getPrimaryCluster().userIntent.ybcFlags);
-        if (readClusters.size() == 1) {
+        if (!universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc()) {
           installYbcOnThePods(
-              readOnlyTserversAdded,
-              true,
+              tserversAdded,
+              false,
               stableYbcVersion,
-              taskParams().getReadOnlyClusters().get(0).userIntent.ybcFlags);
+              taskParams().getPrimaryCluster().userIntent.ybcFlags);
+          if (readClusters.size() == 1) {
+            installYbcOnThePods(
+                readOnlyTserversAdded,
+                true,
+                stableYbcVersion,
+                taskParams().getReadOnlyClusters().get(0).userIntent.ybcFlags);
+          }
+        } else {
+          log.debug("Skipping configure YBC as 'useYBDBInbuiltYbc' is enabled");
         }
         createWaitForYbcServerTask(allTserversAdded);
         createUpdateYbcTask(stableYbcVersion)
@@ -271,8 +275,8 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       Runnable nonRestartMasterGflagUpgrade = null;
       if (KubernetesUtil.isNonRestartGflagsUpgradeSupported(
           primaryCluster.userIntent.ybSoftwareVersion)) {
-        KubernetesGflagsUpgradeCommonParams gflagsParams =
-            new KubernetesGflagsUpgradeCommonParams(universe, primaryCluster, confGetter);
+        KubernetesUpgradeCommonParams gflagsParams =
+            new KubernetesUpgradeCommonParams(universe, primaryCluster, confGetter);
         nonRestartMasterGflagUpgrade =
             () ->
                 upgradePodsNonRestart(

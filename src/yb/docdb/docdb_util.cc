@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -22,6 +22,7 @@
 #include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/intent_format.h"
 #include "yb/docdb/rocksdb_writer.h"
 
 #include "yb/dockv/doc_key.h"
@@ -171,7 +172,7 @@ Status DocDBRocksDBUtil::PopulateRocksDBWriteBatch(
     }
   }
 
-  if (current_txn_id_.is_initialized()) {
+  if (current_txn_id_.has_value()) {
     if (!increment_write_id) {
       return STATUS(
           InternalError, "For transactional write only increment_write_id=true is supported");
@@ -398,13 +399,11 @@ std::pair<dockv::KeyBytes, KeyBuffer> DocDBRocksDBUtil::ProcessExternalIntents(
       key_.AppendRawBytes(slice);
     }
 
-    void SetValue(const Slice& slice) override {
-      value_ = slice;
-    }
+    void SetValue(const Slice& slice) override { value_ = slice; }
 
-    boost::optional<std::pair<Slice, Slice>> Next() override {
+    std::optional<std::pair<Slice, Slice>> Next() override {
       if (next_idx_ >= intents_.size()) {
-        return boost::none;
+        return std::nullopt;
       }
 
       // It is ok to have inefficient code in tests.
@@ -527,10 +526,8 @@ Status DocDBRocksDBUtil::ReinitDBOptions(const TabletId& tablet_id) {
         return delete_marker_retention_time_;
       } ,
       this);
-  regular_db_options_.compaction_file_filter_factory =
-      compaction_file_filter_factory_;
-  regular_db_options_.max_file_size_for_compaction =
-      max_file_size_for_compaction_;
+  regular_db_options_.compaction_file_filter_factory = compaction_file_filter_factory_;
+  regular_db_options_.exclude_from_compaction = exclude_from_compaction_;
   if (!regular_db_) {
     return Status::OK();
   }

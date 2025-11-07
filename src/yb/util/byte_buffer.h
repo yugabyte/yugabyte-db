@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -233,6 +233,10 @@ class ByteBufferBase {
 
   Slice AsSlice() const {
     return Slice(ptr(), size_);
+  }
+
+  uint8_t* SuffixStart(size_t len) {
+    return mutable_data() + size_ - len;
   }
 
   const uint8_t* data() const {

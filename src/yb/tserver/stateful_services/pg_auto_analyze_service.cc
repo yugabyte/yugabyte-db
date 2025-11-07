@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -92,6 +92,9 @@ DEFINE_RUNTIME_uint32(ysql_auto_analyze_min_cooldown_per_table,
                        10000,
                        "The minimum cooldown time in milliseconds for the auto analyze service "
                        "to trigger an ANALYZE on a table again after it has been analyzed.");
+DEFINE_RUNTIME_uint32(ysql_auto_analyze_db_connect_timeout_ms, 5000,
+                      "The timeout when trying to connect to the local PG instance for the PG "
+                      "auto analyze service.");
 DEFINE_test_flag(uint64, ysql_auto_analyze_max_history_entries, 5,
                  "The maximum number of analyze history entries to keep for each table.");
 DECLARE_bool(ysql_enable_auto_analyze);
@@ -587,9 +590,9 @@ Result<std::pair<std::vector<TableId>, std::vector<TableId>>>
       if (batched_tables.size() == FLAGS_ysql_auto_analyze_batch_size
           || table_id == tables_to_analyze.back()) {
         auto table_names = TableNamesForAnalyzeCmd(batched_tables);
-        VLOG(1) << "In YSQL database: " << dbname
-                <<  ", run ANALYZE statement for tables in batch: "
-                << analyze_query << table_names;
+        LOG(INFO) << "In YSQL database: " << dbname
+                  <<  ", run ANALYZE statement for tables in batch: "
+                  << analyze_query << table_names;
         auto s = conn.Execute(analyze_query + table_names);
         if (s.ok()) {
           analyzed_tables.insert(analyzed_tables.end(), batched_tables.begin(),
@@ -758,7 +761,9 @@ Result<pgwrapper::PGConn> PgAutoAnalyzeService::EstablishDBConnection(
     bool* is_deleted_or_renamed) {
   // Connect to PG database.
   const auto& dbname = namespace_id_to_name_[namespace_id];
-  auto conn_result = connect_to_pg_func_(dbname, std::nullopt);
+  auto conn_result = connect_to_pg_func_(
+      dbname, CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(GetAtomicFlag(
+                                           &FLAGS_ysql_auto_analyze_db_connect_timeout_ms)));
   // If connection setup fails,  continue
   // doing ANALYZEs on tables in other databases.
   if (!conn_result) {

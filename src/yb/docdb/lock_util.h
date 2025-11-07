@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -19,12 +19,15 @@
 #include <utility>
 #include <vector>
 
+#include <boost/logic/tribool.hpp>
+
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/lock_manager_traits.h"
 #include "yb/docdb/object_lock_data.h"
 
 #include "yb/dockv/intent.h"
+#include "yb/dockv/key_bytes.h"
 #include "yb/dockv/value.h"
 
 #include "yb/util/ref_cnt_buffer.h"
@@ -161,5 +164,16 @@ std::span<const LockTypeEntry> GetEntriesForLockType(TableLockType lock);
 // ObjectLockManager to acquire locks against the required objects with the given lock type.
 Result<DetermineKeysToLockResult<ObjectLockManager>> DetermineObjectsToLock(
     const google::protobuf::RepeatedPtrField<ObjectLockPB>& objects_to_lock);
+
+// Weak lock modes are typically taken on the prefixes of the key being locked/ written. But if
+// skip_prefix_lock is enabled, for explicit row level locks or reads in serializable isolation
+// level transactions which don't specify the full pk but a prefix of it, we need to take the strong
+// lock modes on the top-level key to be able to lock all the PKs enclosed in the top-level key.
+Result<bool> ShouldTakeWeakLockForPrefix(dockv::AncestorDocKey ancestor_doc_key,
+                                         dockv::IsTopLevelKey is_top_level_key,
+                                         dockv::SkipPrefixLocks skip_prefix_locks,
+                                         IsolationLevel isolation_level,
+                                         boost::tribool pk_is_known,
+                                         const KeyBytes* const key);
 
 } // namespace yb::docdb

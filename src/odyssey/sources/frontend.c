@@ -895,13 +895,22 @@ static od_frontend_status_t od_frontend_remote_server(od_relay_t *relay,
 	int is_ready_for_query = 0;
 
 	int rc;
+	bool skip_forward_to_client = false;
 	switch (type) {
+	case YB_BE_PARSE_PREPARE_ERROR_RESPONSE:
+		// YB: Custom packet not required to be forwarded to client.
+		od_backend_evict_server_hashmap(server, "parse prepare error", data, size);
+		skip_forward_to_client = true;
+		break;
 	case KIWI_BE_ERROR_RESPONSE:
 		od_backend_error(server, "main", data, size);
 		break;
-	/* fallthrough */
-	case YB_CONN_MGR_PARAMETER_STATUS:
 	case KIWI_BE_PARAMETER_STATUS:
+		od_error(
+			&instance->logger, "main", client, server,
+			"Refusing to parse unexpected 'S' ParameterStatus message from Postgres");
+		break;
+	case YB_CONN_MGR_PARAMETER_STATUS:
 		rc = od_backend_update_parameter(server, "main", data, size, 0);
 		if (rc == -1)
 			return relay->error_read;
@@ -967,7 +976,7 @@ static od_frontend_status_t od_frontend_remote_server(od_relay_t *relay,
 		return YB_OD_DEPLOY_ERR;
 
 	/* discard replies during configuration deploy */
-	if (is_deploy)
+	if (is_deploy || skip_forward_to_client)
 		return OD_SKIP;
 
 	if (route->id.physical_rep || route->id.logical_rep) {
@@ -1872,10 +1881,11 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 
 			if (type == KIWI_FE_CLOSE_PREPARED_STATEMENT) {
 				retstatus = OD_SKIP;
-				od_debug(
+				od_log(
 					&instance->logger,
-					"ingore closing prepared statement, report its closed",
-					client, server, "statement: %.*s",
+					"close prepared statement",
+					client, server, "ignore closing prepared statement: %.*s, report it as closed "
+					"by returning a close complete message from connection manager",
 					name_len, name);
 
 				machine_msg_t *pmsg;
@@ -2947,7 +2957,6 @@ int yb_execute_on_control_connection(od_client_t *client,
 	 * skip requisitioning a physical backend to save time
 	 * (and avoid a "cascading timeout" situation).
 	 */
-	bool client_timed_out = false;
 	if (yb_machine_io_is_socket_closed(client->io.io)) {
 		od_debug(
 			&instance->logger, "control connection", client, NULL,

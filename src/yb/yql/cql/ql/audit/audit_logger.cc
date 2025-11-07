@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -15,7 +15,6 @@
 #include "yb/yql/cql/ql/audit/audit_logger.h"
 
 #include <boost/algorithm/string.hpp>
-#include <boost/optional/optional_io.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
 
 #include "yb/rpc/connection.h"
@@ -79,7 +78,7 @@ namespace yb {
 namespace ql {
 namespace audit {
 
-using boost::optional;
+using std::optional;
 
 //
 // Entities
@@ -698,9 +697,9 @@ Status AuditLogger::LogAuthResponse(const CQLResponse& response) {
       break;
     case CQLMessage::Opcode::ERROR: {
       const auto& error_respone = static_cast<const ErrorResponse&>(response);
-      entry.user          = boost::none;
-      entry.type          = &Type::LOGIN_ERROR;
-      entry.operation     = "LOGIN FAILURE";
+      entry.user = std::nullopt;
+      entry.type = &Type::LOGIN_ERROR;
+      entry.operation = "LOGIN FAILURE";
       entry.error_message = error_respone.message();
       break;
     }
@@ -794,6 +793,6 @@ Status AuditLogger::LogStatementError(const std::string& statement,
   return AddLogEntry(entry);
 }
 
-} // namespace audit
-} // namespace ql
-} // namespace yb
+}  // namespace audit
+}  // namespace ql
+}  // namespace yb

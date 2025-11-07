@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -106,6 +106,7 @@ using SingleMetricWatcher = MetricWatcher<SingleMetricDescriber>;
 [[nodiscard]] bool HasTransactionError(const Status& status);
 [[nodiscard]] bool IsRetryable(const Status& status);
 [[nodiscard]] bool IsSerializeAccessError(const Status& status);
+[[nodiscard]] bool IsAbortError(const Status& status);
 
 [[nodiscard]] std::string_view SerializeAccessErrorMessageSubstring();
 [[nodiscard]] std::string MaxQueryLayerRetriesConf(uint16_t max_retries);

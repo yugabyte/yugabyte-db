@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -56,6 +56,16 @@ const MonoTime& PGPostgresEpoch() {
   return result;
 }
 
+// Taken from <https://stackoverflow.com/a/24315631> by Gauthier Boaglio.
+void ReplaceAll(std::string* str, const std::string& from, const std::string& to) {
+  CHECK(str);
+  size_t start_pos = 0;
+  while ((start_pos = str->find(from, start_pos)) != std::string::npos) {
+    str->replace(start_pos, from.length(), to);
+    start_pos += to.length(); // Handles case where 'to' is a substring of 'from'
+  }
+}
+
 namespace {
 
 // Converts the given element of the ExecStatusType enum to a string.
@@ -111,16 +121,6 @@ YBPgErrorCode GetSqlState(PGresult* result) {
   return static_cast<YBPgErrorCode>(sqlstate);
 }
 
-// Taken from <https://stackoverflow.com/a/24315631> by Gauthier Boaglio.
-inline void ReplaceAll(std::string* str, const std::string& from, const std::string& to) {
-  CHECK(str);
-  size_t start_pos = 0;
-  while ((start_pos = str->find(from, start_pos)) != std::string::npos) {
-    str->replace(start_pos, from.length(), to);
-    start_pos += to.length(); // Handles case where 'to' is a substring of 'from'
-  }
-}
-
 std::string BuildConnectionString(const PGConnSettings& settings, bool mask_password = false) {
   std::string result;
   result.reserve(512);
@@ -139,6 +139,9 @@ std::string BuildConnectionString(const PGConnSettings& settings, bool mask_pass
   }
   if (!settings.replication.empty()) {
     result += Format(" replication=$0", PqEscapeLiteral(settings.replication));
+  }
+  if (settings.yb_auto_analyze) {
+    result += Format(" yb_auto_analyze=true");
   }
   return result;
 }
@@ -863,7 +866,8 @@ PGConnPerf::~PGConnPerf() {
 
 PGConnBuilder CreateInternalPGConnBuilder(
     const HostPort& pgsql_proxy_bind_address, const std::string& database_name,
-    uint64_t postgres_auth_key, const std::optional<CoarseTimePoint>& deadline) {
+    uint64_t postgres_auth_key, const std::optional<CoarseTimePoint>& deadline,
+    bool yb_auto_analyze) {
   size_t connect_timeout = 0;
   if (deadline && *deadline != CoarseTimePoint::max()) {
     // By default, connect_timeout is 0, meaning infinite. 1 is automatically converted to 2, so set
@@ -880,7 +884,8 @@ PGConnBuilder CreateInternalPGConnBuilder(
        .dbname = database_name,
        .user = "postgres",
        .password = UInt64ToString(postgres_auth_key),
-       .connect_timeout = connect_timeout});
+       .connect_timeout = connect_timeout,
+       .yb_auto_analyze = yb_auto_analyze});
 }
 
 namespace libpq_utils::internal {

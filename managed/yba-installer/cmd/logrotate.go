@@ -92,6 +92,7 @@ func (l LogRotate) Status() (common.Status, error) {
 		Service:    l.Name(),
 		ConfigLoc:  l.ConfFileLocation,
 		LogFileLoc: "", // logrotate itself does not have a log file, but you can set this if you want
+		BinaryLoc:  filepath.Dir(l.LogrotateScript),
 	}
 
 	status.ServiceFileLoc = l.SystemdTimerFileLocation
@@ -182,3 +183,4 @@ func (l LogRotate) Reconfigure() error {
 func (l LogRotate) Initialize() error {
 	return l.Start()
 }
+func (l LogRotate) PreUpgrade() error { return nil }

@@ -3,9 +3,9 @@
 //  LICENSE file in the root directory of this source tree. An additional grant
 //  of patent rights can be found in the PATENTS file in the same directory.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -31,7 +31,6 @@
 #include <string>
 #include <vector>
 
-#include <boost/optional.hpp>
 #include <gtest/gtest.h>
 
 #include "yb/rocksdb/db/dbformat.h"
@@ -2836,13 +2835,13 @@ TEST_P(IndexBlockRestartIntervalTest, IndexBlockRestartInterval) {
 
   int index_block_restart_interval = GetParam();
 
-  std::vector<boost::optional<KeyValueEncodingFormat>> formats_to_test;
+  std::vector<std::optional<KeyValueEncodingFormat>> formats_to_test;
   for (const auto& format : KeyValueEncodingFormatList()) {
     formats_to_test.push_back(format);
   }
   // Also test backward compatibility with SST files without
   // BlockBasedTablePropertyNames::kDataBlockKeyValueEncodingFormat property.
-  formats_to_test.push_back(boost::none);
+  formats_to_test.push_back(std::nullopt);
 
   for (const auto& format : formats_to_test) {
     Options options;
@@ -2853,7 +2852,7 @@ TEST_P(IndexBlockRestartIntervalTest, IndexBlockRestartInterval) {
     // be written with using KeyValueEncodingFormat::kKeyDeltaEncodingSharedPrefix, because there
     // were no other formats before we added this property.
     table_options.data_block_key_value_encoding_format =
-        format.get_value_or(KeyValueEncodingFormat::kKeyDeltaEncodingSharedPrefix);
+        format.value_or(KeyValueEncodingFormat::kKeyDeltaEncodingSharedPrefix);
     options.table_factory.reset(new BlockBasedTableFactory(table_options));
 
     TableConstructor c(BytewiseComparator());

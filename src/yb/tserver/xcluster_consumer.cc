@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -155,7 +155,8 @@ XClusterConsumer::XClusterConsumer(
       last_safe_time_published_at_(MonoTime::Now()),
       connect_to_pg_func_(std::move(connect_to_pg_func)),
       get_namespace_info_func_(std::move(get_namespace_info_func)),
-      xcluster_context_(xcluster_context) {
+      xcluster_context_(xcluster_context),
+      ts_uuid_(ts_uuid) {
   rate_limiter_ = std::unique_ptr<rocksdb::RateLimiter>(rocksdb::NewGenericRateLimiter(
       GetAtomicFlag(&FLAGS_apply_changes_max_send_rate_mbps) * 1_MB));
   rate_limiter_->EnableLoggingWithDescription("XCluster Output Client");
@@ -561,7 +562,7 @@ void XClusterConsumer::TriggerPollForNewTablets() {
                 producer_tablet_info.replication_group_id),
             thread_pool_.get(), rpcs_.get(), local_client_, remote_clients_[replication_group_id],
             this, leader_term, get_leader_term_func_, entry.automatic_ddl_mode,
-            entry.disable_stream);
+            entry.disable_stream, ts_uuid_);
 
         if (ddl_queue_streams_.contains(producer_tablet_info.stream_id)) {
           auto source_namespace_id = GetNamespaceIdFromYsqlTableId(producer_tablet_info.table_id);
@@ -757,6 +758,8 @@ Status XClusterConsumer::PublishXClusterSafeTimeInternal() {
     for (auto& [producer_info, poller] : pollers_map_) {
       if (xcluster_context_.SafeTimeComputationRequired(poller->GetConsumerNamespaceId())) {
         auto safe_time = poller->GetSafeTime();
+        VLOG_IF_WITH_FUNC(2, safe_time.is_special()) << Format(
+            "Found special safe time for producer tablet $0: $1", producer_info, safe_time);
         if (!safe_time.is_special()) {
           safe_time_map[producer_info] = safe_time;
         }

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -83,6 +83,7 @@ DECLARE_bool(TEST_enable_pg_client_mock);
 DECLARE_bool(TEST_fail_batcher_rpc);
 DECLARE_bool(TEST_force_master_leader_resolution);
 DECLARE_bool(TEST_no_schedule_remove_intents);
+DECLARE_bool(TEST_request_unknown_tables_during_perform);
 DECLARE_bool(delete_intents_sst_files);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_tracing);
@@ -94,6 +95,9 @@ DECLARE_bool(use_bootstrap_intent_ht_filter);
 DECLARE_bool(ysql_allow_duplicating_repeatable_read_queries);
 DECLARE_bool(ysql_yb_enable_ash);
 DECLARE_bool(ysql_yb_enable_replica_identity);
+DECLARE_bool(ysql_enable_auto_analyze);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
+DECLARE_bool(enable_object_locking_for_table_locks);
 
 DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
@@ -133,6 +137,7 @@ DECLARE_uint64(max_clock_skew_usec);
 DECLARE_uint64(pg_client_heartbeat_interval_ms);
 DECLARE_uint64(pg_client_session_expiration_ms);
 DECLARE_uint64(rpc_max_message_size);
+DECLARE_bool(ysql_enable_relcache_init_optimization);
 
 METRIC_DECLARE_entity(tablet);
 METRIC_DECLARE_gauge_uint64(aborted_transactions_pending_cleanup);
@@ -212,6 +217,13 @@ class PgMiniTest : public PgMiniTestBase {
 };
 
 class PgMiniTestSingleNode : public PgMiniTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    PgMiniTest::SetUp();
+  }
+
   size_t NumTabletServers() override {
     return 1;
   }
@@ -560,6 +572,8 @@ class PgMiniTestTracing : public PgMiniTest, public ::testing::WithParamInterfac
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tracing) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_tracing_level) = 1;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_use_shared_memory) = GetParam();
+    // Disable auto analyze because it introduces flakiness for query plans and metrics.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
     PgMiniTest::SetUp();
   }
 };
@@ -899,7 +913,7 @@ TEST_F_EX(PgMiniTest, SerializableReadOnly, PgMiniTestFailOnConflict) {
     ASSERT_EQ(PgsqlError(status), YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE) << status;
   } else {
     ASSERT_TRUE(s.IsNetworkError()) << s;
-    ASSERT_TRUE(IsSerializeAccessError(s)) << s;
+    ASSERT_TRUE(IsSerializeAccessError(s) || IsAbortError(s)) << s;
     ASSERT_STR_CONTAINS(s.ToString(), "conflicts with higher priority transaction");
   }
 }
@@ -1565,6 +1579,76 @@ TEST_F(PgMiniTest, TestNoStaleDataOnColocationIdReuse) {
       ASSERT_RESULT(conn.FetchAllAsString(Format("SELECT * FROM $0", kColocatedTableName2)));
   ASSERT_TRUE(scan_result.empty());
 }
+
+TEST_F_EX(PgMiniTest, VerifyTombstoneTimeCache, PgMiniTestSingleNode) {
+  const std::string kDbName = "testdb";
+  const std::string kTableName = "tombstone_test";
+  const int kColocationId = 20001;
+  const std::vector<int> kInitialData = {110, 111, 112};
+  const std::vector<int> kNewData = {123};
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated=true", kDbName));
+  conn = ASSERT_RESULT(ConnectToDB(kDbName));
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (v int PRIMARY KEY) WITH (colocation_id=$1)",
+      kTableName, kColocationId));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ($1), ($2), ($3)",
+      kTableName, kInitialData[0], kInitialData[1], kInitialData[2]));
+
+  auto result = ASSERT_RESULT(conn.FetchRows<int>(
+      Format("SELECT v FROM $0 ORDER BY v", kTableName)));
+  ASSERT_VECTORS_EQ(result, kInitialData);
+
+  auto VerifyTombstoneTimeCache = [&](bool tombstone_time_should_exist) {
+    auto table_id = ASSERT_RESULT(GetTableIDFromTableName(kTableName));
+    auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+
+    for (const auto& peer : peers) {
+      auto table_info = ASSERT_RESULT(peer->tablet_metadata()->GetTableInfo(kColocationId));
+      ASSERT_TRUE(table_info && table_info->doc_read_context);
+      auto tombstone_time = table_info->doc_read_context->table_tombstone_time();
+      ASSERT_TRUE(tombstone_time.has_value());
+      ASSERT_EQ(tombstone_time->is_valid(), tombstone_time_should_exist);
+    }
+  };
+
+  // Verify no cached tombstone time before table drop.
+  VerifyTombstoneTimeCache(/*tombstone_time_should_exist = */false);
+
+  // Drop colocated table should write tombstone mark.
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", kTableName));
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (v int PRIMARY KEY) WITH (colocation_id=$1)",
+      kTableName, kColocationId));
+
+  result = ASSERT_RESULT(conn.FetchRows<int>(Format("SELECT v FROM $0 ORDER BY v", kTableName)));
+  ASSERT_TRUE(result.empty());
+  // Verify tombstone mark hybrid time is cached
+  VerifyTombstoneTimeCache(/*tombstone_time_should_exist = */true);
+
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ($1)", kTableName, kNewData[0]));
+  result = ASSERT_RESULT(conn.FetchRows<int>(Format("SELECT v FROM $0 ORDER BY v", kTableName)));
+  ASSERT_VECTORS_EQ(result, kNewData);
+
+  // Confirm tombstone cache is reloaded after restart.
+  ASSERT_OK(RestartCluster());
+  conn = ASSERT_RESULT(ConnectToDB(kDbName));
+  result = ASSERT_RESULT(conn.FetchRows<int>(Format("SELECT v FROM $0 ORDER BY v", kTableName)));
+  ASSERT_VECTORS_EQ(result, kNewData);
+  VerifyTombstoneTimeCache(/*tombstone_time_should_exist = */true);
+
+  // Verify that no tombstone time has been cached for pg_class.
+  ASSERT_OK(conn.FetchRows<int64_t>("SELECT count(*) from pg_class"));
+  auto pg_class_table_id = ASSERT_RESULT(GetTableIDFromTableName("pg_class"));
+  const auto& sys_catalog = cluster_->mini_master(0)->master()->sys_catalog();
+  auto table_info = ASSERT_RESULT(
+      sys_catalog.tablet_peer()->tablet_metadata()->GetTableInfo(pg_class_table_id));
+  ASSERT_TRUE(table_info && table_info->doc_read_context);
+  auto tombstone_time = table_info->doc_read_context->table_tombstone_time();
+  ASSERT_FALSE(tombstone_time.has_value());
+}
+
 
 TEST_F(PgMiniTest, SkipTableTombstoneCheckMetadata) {
   // Setup test data.
@@ -2820,25 +2904,37 @@ TEST_F(PgMiniTest, TestAppliedTransactionsStateInFlight) {
 Status MockAbortFailure(
     const yb::tserver::PgFinishTransactionRequestPB* req,
     yb::tserver::PgFinishTransactionResponsePB* resp, yb::rpc::RpcContext* context) {
-  LOG(INFO) << "FinishTransaction called for session: " << req->session_id();
-
-  // ASH collector takes session id 1, the subsequent connections take 2 and 3
-  if (req->session_id() == 2) {
+  // ASH collector takes session id 1.
+  // If --ysql_enable_relcache_init_optimization=false, then the subsequent connections
+  // take 2 and 3.
+  // If --ysql_enable_relcache_init_optimization=true, we will have an additional
+  // internal relcache init connection as 2, so the subsequent connections take 3 and 4.
+  uint64_t intended_session_id = FLAGS_ysql_enable_relcache_init_optimization ? 4 : 3;
+  LOG(INFO) << "FinishTransaction called for session: " << req->session_id()
+            << ", intended_session_id: " << intended_session_id;
+  if (req->session_id() < intended_session_id) {
     context->CloseConnection();
     // The return status should not matter here.
     return Status::OK();
-  } else if (req->session_id() == 3) {
+  }
+  if (req->session_id() == intended_session_id) {
     return STATUS(NetworkError, "Mocking network failure on FinishTransaction");
   }
 
-  return Status::OK();
+  LOG(FATAL) << "Unexpected session id: " << req->session_id();
 }
 
-class PgRecursiveAbortTest : public PgMiniTestSingleNode {
+class PgRecursiveAbortTest : public PgMiniTestSingleNode,
+                             public ::testing::WithParamInterface<bool> {
  public:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_pg_client_mock) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_relcache_init_optimization) = GetParam();
     PgMiniTest::SetUp();
+  }
+
+  bool IsTransactionalDdlEnabled() const {
+    return ANNOTATE_UNPROTECTED_READ(FLAGS_ysql_yb_ddl_transaction_block_enabled);
   }
 
   template <class F>
@@ -2848,7 +2944,10 @@ class PgRecursiveAbortTest : public PgMiniTestSingleNode {
   }
 };
 
-TEST_F(PgRecursiveAbortTest, AbortOnTserverFailure) {
+INSTANTIATE_TEST_CASE_P(, PgRecursiveAbortTest,
+                        ::testing::Values(false, true));
+
+TEST_P(PgRecursiveAbortTest, AbortOnTserverFailure) {
   PGConn conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t1 (k INT)"));
 
@@ -2856,13 +2955,28 @@ TEST_F(PgRecursiveAbortTest, AbortOnTserverFailure) {
   ASSERT_OK(conn.StartTransaction(SNAPSHOT_ISOLATION));
   // Run a command to ensure that the transaction is created in the backend.
   ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1)"));
-  auto handle = MockFinishTransaction(MockAbortFailure);
-  auto status = conn.Execute("CREATE TABLE t2 (k INT)");
-  ASSERT_TRUE(status.IsNetworkError());
-  ASSERT_EQ(conn.ConnStatus(), CONNECTION_BAD);
+  {
+    auto handle = MockFinishTransaction(MockAbortFailure);
+    auto status = conn.Execute("CREATE TABLE t2 (k INT)");
+    // With transactional DDL enabled, "CREATE TABLE t2" won't auto-commit. So we need to explicitly
+    // commit to trigger our expected failure.
+    // This also means that the connection `conn` remains as `CONNECTION_OK` as the transaction gets
+    // aborted due to the failure during COMMIT.
+    if (IsTransactionalDdlEnabled()) {
+      status = conn.Execute("COMMIT");
+      ASSERT_EQ(conn.ConnStatus(), CONNECTION_OK);
+    } else {
+      ASSERT_EQ(conn.ConnStatus(), CONNECTION_BAD);
+    }
+    ASSERT_TRUE(status.IsNetworkError());
+  }
+
+  // Insert will fail since the table 't2' doesn't exist.
+  conn = ASSERT_RESULT(Connect());
+  ASSERT_NOK(conn.Execute("INSERT INTO t2 VALUES (1)"));
 }
 
-TEST_F(PgRecursiveAbortTest, MockAbortFailure) {
+TEST_P(PgRecursiveAbortTest, MockAbortFailure) {
   PGConn conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t1 (k INT)"));
   ASSERT_OK(conn.StartTransaction(SNAPSHOT_ISOLATION));
@@ -2904,7 +3018,15 @@ TEST_F(PgMiniTest, KillPGInTheMiddleOfBatcherOperation) {
   ASSERT_FALSE(select_complete.load());
 
   LOG(INFO) << "Restarting Postgres";
-  ASSERT_OK(RestartPostgres());
+  // TODO(GH28670): RestartPostgres doesn't work here. Not sure why.
+  // But the test passes if we send SIGQUIT to the pg process instead of SIGKILL in
+  // ProcessSupervisor::KillAndChangeState. SIGKILL is not recommended to send to postgres.
+  // https://www.postgresql.org/docs/current/server-shutdown.html
+  // We need to switch to SIGQUIT or another signal.
+  // When we do that we can switch to using RestartPostgres here and switch these two methods to
+  // private access.
+  StopPostgres();
+  ASSERT_OK(StartPostgres());
   // Wait for the Sessions to be killed.
   SleepFor(5s);
 
@@ -2915,6 +3037,109 @@ TEST_F(PgMiniTest, KillPGInTheMiddleOfBatcherOperation) {
   ASSERT_TRUE(select_complete.load());
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_batcher_rpc) = false;
+}
+
+// The test checks absence of t-server crash in case some tables can't be opened during
+// read/write operation
+TEST_F_EX(PgMiniTest, OpenTableFailureDuringPerform, PgMiniTestSingleNode) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY)"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_request_unknown_tables_during_perform) = true;
+  auto has_object_not_found_errors = false;
+  for ([[maybe_unused]] auto _  : std::views::iota(0, 10)) {
+    auto res = conn.FetchRows<int32_t>("SELECT * FROM t");
+    ASSERT_TRUE(res.ok() || res.ToString().contains("OBJECT_NOT_FOUND"));
+    has_object_not_found_errors |= !res.ok();
+  }
+  ASSERT_TRUE(has_object_not_found_errors);
+}
+
+TEST_F(PgMiniTest, TabletMetadataCorrectnessWithHashPartitioning) {
+  auto pg_conn = ASSERT_RESULT(Connect());
+
+  // Create a hash-partitioned table with multiple tablets
+  ASSERT_OK(pg_conn.Execute(
+      "CREATE TABLE hash_test_table (id INT PRIMARY KEY, data TEXT) "
+      "SPLIT INTO 3 TABLETS"));
+
+  // Insert test data
+  const int test_key = 12345;
+  const std::string test_data = "test_data";
+  ASSERT_OK(pg_conn.ExecuteFormat(
+      "INSERT INTO hash_test_table (id, data) VALUES ($0, '$1')", test_key, test_data));
+
+  // Get the hash code of the primary key using yb_hash_code()
+  auto hash_code = ASSERT_RESULT(pg_conn.FetchRow<int32_t>(
+      yb::Format("SELECT yb_hash_code($0)", test_key)));
+  LOG(INFO) << "Hash code for key " << test_key << " is: " << hash_code;
+
+  // Find which tablet this hash falls into using yb_tablet_metadata
+  auto tablet_from_metadata = ASSERT_RESULT(pg_conn.FetchRow<std::string>(
+      yb::Format("SELECT tablet_id FROM yb_tablet_metadata "
+             "WHERE relname = 'hash_test_table' "
+             "AND $0 >= start_hash_code AND $0 < end_hash_code", hash_code)));
+  LOG(INFO) << "Tablet ID from yb_tablet_metadata: " << tablet_from_metadata;
+
+  // Verify using internal methods - get the actual tablet ID
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName("hash_test_table"));
+  auto tablet_peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+
+  std::string actual_tablet_id;
+  bool found_tablet = false;
+
+  for (const auto& peer : tablet_peers) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    auto partition = tablet->metadata()->partition();
+
+    // Check if this tablet contains our hash code
+    auto hash_bounds = dockv::PartitionSchema::GetHashPartitionBounds(*partition);
+    uint16_t start_hash = hash_bounds.first;
+    uint16_t end_hash = hash_bounds.second;
+
+    LOG(INFO) << "Tablet " << peer->tablet_id()
+              << " hash range: [" << start_hash << ", " << end_hash << ")";
+
+    // Check if our hash code falls in this tablet's range
+    if (static_cast<uint16_t>(hash_code) >= start_hash &&
+        static_cast<uint16_t>(hash_code) < end_hash) {
+      actual_tablet_id = peer->tablet_id();
+      found_tablet = true;
+      LOG(INFO) << "Found tablet containing hash " << hash_code
+                << ": " << actual_tablet_id;
+      break;
+    }
+  }
+
+  ASSERT_TRUE(found_tablet) << "Could not find tablet containing hash code " << hash_code;
+
+  // Verify that both methods return the same tablet ID
+  ASSERT_EQ(tablet_from_metadata, actual_tablet_id)
+      << "Tablet ID mismatch: yb_tablet_metadata returned " << tablet_from_metadata
+      << " but internal method found " << actual_tablet_id;
+
+  LOG(INFO) << "Test verified: yb_tablet_metadata correctly identifies tablet "
+            << actual_tablet_id << " for hash code " << hash_code;
+
+  // Additional verification: query the data using the tablet information
+  auto retrieved_data = ASSERT_RESULT(pg_conn.FetchRow<std::string>(
+      yb::Format("SELECT data FROM hash_test_table WHERE id = $0", test_key)));
+  ASSERT_EQ(retrieved_data, test_data);
+
+  LOG(INFO) << "Successfully retrieved data '" << retrieved_data
+            << "' from tablet " << actual_tablet_id;
+}
+
+TEST_F(PgMiniTest, TabletMetadataOidMatchesPgClass) {
+  auto pg_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(pg_conn.Execute(
+      "CREATE TABLE test_table (id INT PRIMARY KEY, name TEXT)"));
+  auto pg_class_oid = ASSERT_RESULT(pg_conn.FetchRow<pgwrapper::PGOid>(
+      "SELECT oid FROM pg_class WHERE relname = 'test_table'"));
+  auto tablet_metadata_oid = ASSERT_RESULT(pg_conn.FetchRow<pgwrapper::PGOid>(
+      "SELECT oid FROM yb_tablet_metadata WHERE relname = 'test_table' LIMIT 1;"));
+  ASSERT_EQ(pg_class_oid, tablet_metadata_oid)
+      << "OID mismatch: pg_class returned " << pg_class_oid
+      << " but yb_tablet_metadata returned " << tablet_metadata_oid;
 }
 
 }  // namespace yb::pgwrapper

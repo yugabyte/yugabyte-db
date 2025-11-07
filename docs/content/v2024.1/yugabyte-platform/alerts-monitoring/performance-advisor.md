@@ -122,7 +122,7 @@ Review the sharding strategies for your primary and secondary indexes. Consisten
 
 ### Rejected connection recommendations
 
-Advisor monitors rejected YSQL connections. Advisor flags nodes that rejected one or more connections in the last hour. By default each YB-TServer can handle up to 300 simultaneous connections. This number can be configured using the [ysql-max-connections](../../../reference/configuration/yb-tserver/#ysql-max-connections) YB-Tserver flag.
+Advisor monitors rejected YSQL connections. Advisor flags nodes that rejected one or more connections in the last hour. By default each YB-TServer can handle up to 300 simultaneous connections. This number can be configured using the [ysql-max-connections](../../../reference/configuration/yb-tserver/#ysql-max-connections) YB-TServer flag.
 
 Rejected connections can be caused by:
 

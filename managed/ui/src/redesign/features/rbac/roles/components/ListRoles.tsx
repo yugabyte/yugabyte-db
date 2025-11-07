@@ -1,7 +1,7 @@
 /*
  * Created on Wed Jul 12 2023
  *
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License")
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
@@ -31,7 +31,7 @@ import { SortOrder } from '../../../../helpers/constants';
 
 import { Add, ArrowDropDown } from '@material-ui/icons';
 import { ReactComponent as Create } from '../../../../assets/edit_pen.svg';
-import { ReactComponent as Clone } from '../../../../assets/copy.svg';
+import { ReactComponent as Copy } from '../../../../assets/copy.svg';
 import { ReactComponent as Delete } from '../../../../assets/trashbin.svg';
 import { ReactComponent as User } from '../../../../assets/user.svg';
 
@@ -77,6 +77,9 @@ const useStyles = makeStyles((theme) => ({
     '& .search-input': {
       width: '380px'
     }
+  },
+  copyIcon: {
+    color: '#67666C'
   }
 }));
 
@@ -161,7 +164,7 @@ const ListRoles = () => {
 
     menuOptions.push({
       text: t('table.moreActions.cloneRole'),
-      icon: <Clone />,
+      icon: <Copy className={classes.copyIcon} />,
       callback: () => {
         setCurrentRole({
           ...role,

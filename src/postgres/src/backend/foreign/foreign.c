@@ -9,9 +9,9 @@
  *		  src/backend/foreign/foreign.c
  *
  * The following only applies to changes made to this file as part of
- * YugaByte development.
+ * YugabyteDB development.
  *
- * Portions Copyright (c) YugaByte, Inc.
+ * Portions Copyright (c) YugabyteDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you
  * may not use this file except in compliance with the License.
@@ -46,7 +46,6 @@
 #include "utils/syscache.h"
 
 /* YB includes */
-#include "executor/yb_fdw.h"
 #include "pg_yb_utils.h"
 
 
@@ -462,16 +461,10 @@ GetFdwRoutineForRelation(Relation relation, bool makecopy)
 
 	if (relation->rd_fdwroutine == NULL)
 	{
-		if (IsYBRelation(relation))
-		{
-			/* Get the custom YB FDW directly */
-			fdwroutine = (FdwRoutine *) yb_fdw_handler();
-		}
-		else
-		{
-			/* Get the info by consulting the catalogs and the FDW code */
-			fdwroutine = GetFdwRoutineByRelId(RelationGetRelid(relation));
-		}
+		Assert(!IsYBRelation(relation));
+
+		/* Get the info by consulting the catalogs and the FDW code */
+		fdwroutine = GetFdwRoutineByRelId(RelationGetRelid(relation));
 
 		/* Save the data for later reuse in CacheMemoryContext */
 		cfdwroutine = (FdwRoutine *) MemoryContextAlloc(CacheMemoryContext,

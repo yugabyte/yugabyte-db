@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 YugaByte, Inc. and Contributors
+ * Copyright 2019 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -21,6 +21,9 @@ import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudImageBundleSetup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudSetup;
 import com.yugabyte.yw.common.CloudProviderHelper;
+import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -48,15 +51,18 @@ public class CloudBootstrap extends CloudTaskBase {
 
   private CloudProviderHandler cloudProviderHandler;
   private CloudProviderHelper cloudProviderHelper;
+  private final OperatorStatusUpdater operatorStatusUpdater;
 
   @Inject
   protected CloudBootstrap(
       BaseTaskDependencies baseTaskDependencies,
       CloudProviderHandler cloudProviderHandler,
-      CloudProviderHelper cloudProviderHelper) {
+      CloudProviderHelper cloudProviderHelper,
+      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
     super(baseTaskDependencies);
     this.cloudProviderHandler = cloudProviderHandler;
     this.cloudProviderHelper = cloudProviderHelper;
+    this.operatorStatusUpdater = operatorStatusUpdaterFactory.create();
   }
 
   @ApiModel(value = "CloudBootstrapParams", description = "Cloud bootstrap parameters")
@@ -282,6 +288,9 @@ public class CloudBootstrap extends CloudTaskBase {
 
     // K8s provider specific params.
     public Provider reqProviderEbean;
+
+    // K8s operator specific params.
+    public KubernetesResourceDetails kubernetesResourceDetails;
   }
 
   @Override
@@ -336,13 +345,16 @@ public class CloudBootstrap extends CloudTaskBase {
       p = Provider.getOrBadRequest(taskParams().providerUUID);
       p.setUsabilityState(Provider.UsabilityState.READY);
       p.save();
-
       cloudProviderHelper.updatePrometheusConfig(p);
+      maybeUpdateKubernetesOperatorState(
+          Provider.UsabilityState.READY, "Provider created successfully");
+
     } catch (RuntimeException e) {
       log.error("Received exception during bootstrap", e);
       p = Provider.getOrBadRequest(taskParams().providerUUID);
       p.setUsabilityState(Provider.UsabilityState.ERROR);
       p.save();
+      maybeUpdateKubernetesOperatorState(Provider.UsabilityState.ERROR, e.getMessage());
       throw e;
     }
   }
@@ -369,5 +381,12 @@ public class CloudBootstrap extends CloudTaskBase {
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
+  }
+
+  private void maybeUpdateKubernetesOperatorState(Provider.UsabilityState state, String message) {
+    if (taskParams().kubernetesResourceDetails != null) {
+      operatorStatusUpdater.updateProviderStatus(
+          taskParams().kubernetesResourceDetails, taskParams().providerUUID, state, message);
+    }
   }
 }

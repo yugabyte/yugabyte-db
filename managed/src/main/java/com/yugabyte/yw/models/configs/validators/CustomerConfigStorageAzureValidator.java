@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.models.configs.validators;
 
@@ -88,12 +88,16 @@ public class CustomerConfigStorageAzureValidator extends CustomerConfigStorageVa
 
       String azUrl = "https://" + splitLocation[0];
       String container = splitLocation[1];
+      String cloudPath = "";
+      if (splitLength > 2) {
+        cloudPath = splitLocation[2];
+      }
 
       try {
         BlobContainerClient blobContainerClient =
             factory.createBlobContainerClient(azUrl, azSasToken, container);
         ((AZUtil) (storageUtilFactory.getCloudUtil(Util.AZ)))
-            .validateOnBlobContainerClient(blobContainerClient, permissions);
+            .validateOnBlobContainerClient(blobContainerClient, cloudPath, permissions);
       } catch (BlobStorageException e) {
         String exceptionMsg = e.getMessage();
         throwBeanConfigDataValidatorError(fieldName, exceptionMsg);

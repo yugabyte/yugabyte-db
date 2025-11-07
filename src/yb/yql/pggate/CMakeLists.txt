@@ -1,4 +1,4 @@
-# Copyright (c) YugaByte, Inc.
+# Copyright (c) YugabyteDB, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 # in compliance with the License.  You may obtain a copy of the License at
@@ -60,6 +60,7 @@ set(PGGATE_SRCS
     pg_txn_manager.cc
     pg_value.cc
     pg_ybctid_reader_provider.cc
+    ybc_gflags.cc
     ybc_pg_shared_mem.cc
     ybc_pggate.cc)
 

@@ -1,4 +1,4 @@
-// Copyright (c) Yugabyte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 package api.v2.handlers;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
@@ -8,6 +8,7 @@ import api.v2.mappers.UniverseDefinitionTaskParamsMapper;
 import api.v2.mappers.UniverseEditGFlagsMapper;
 import api.v2.mappers.UniverseEditKubernetesOverridesParamsMapper;
 import api.v2.mappers.UniverseMetricsExportConfigParamsMapper;
+import api.v2.mappers.UniverseQueryLogsExportMapper;
 import api.v2.mappers.UniverseRestartParamsMapper;
 import api.v2.mappers.UniverseRollbackUpgradeMapper;
 import api.v2.mappers.UniverseSoftwareFinalizeMapper;
@@ -50,6 +51,7 @@ import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.MetricsExportConfigParams;
+import com.yugabyte.yw.forms.QueryLogConfigParams;
 import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
@@ -62,6 +64,7 @@ import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Release;
+import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.extended.FinalizeUpgradeInfoResponse;
 import com.yugabyte.yw.models.extended.SoftwareUpgradeInfoRequest;
@@ -69,6 +72,7 @@ import com.yugabyte.yw.models.extended.SoftwareUpgradeInfoResponse;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
 import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig;
+import com.yugabyte.yw.models.helpers.telemetry.ProviderType;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -342,16 +346,17 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
     Customer customer = Customer.getOrBadRequest(cUUID);
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
     log.info("Configure query log for universe with v2 spec: {}", prettyPrint(req));
-    // modify params to v1 param model
-    // UUID taskUUID = commissioner.submit(taskType, v1Params);
-    // log.info(
-    //     "Submitted {} for {} : {}, task uuid = {}.",
-    //     taskType,
-    //     uniUUID,
-    //     dbUniverse.getName(),
-    //     taskUUID);
-    UUID taskUUID = UUID.randomUUID();
-    return new YBATask().resourceUuid(uniUUID).taskUuid(taskUUID);
+
+    QueryLogConfigParams v1Params =
+        UniverseDefinitionTaskParamsMapper.INSTANCE.toQueryLogConfigParams(
+            universe.getUniverseDetails(), request);
+    v1Params = UniverseQueryLogsExportMapper.INSTANCE.copyToV1QueryLogConfigParams(req, v1Params);
+
+    UUID taskUUID = v1Handler.modifyQueryLoggingConfig(v1Params, customer, universe);
+    YBATask ybaTask = new YBATask().taskUuid(taskUUID).resourceUuid(uniUUID);
+    log.info("Started query log configuration task {}", mapper.writeValueAsString(ybaTask));
+
+    return ybaTask;
   }
 
   public YBATask configureMetricsExport(
@@ -405,6 +410,19 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
               String.format(
                   "Exporter config UUID '%s' is invalid for universe '%s'.",
                   exporterUUID, universe.getUniverseUUID());
+          log.error(errorMessage);
+          throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+        }
+
+        // Verify if the exporter is allowed for metrics export.
+        TelemetryProvider telemetryProvider = telemetryProviderService.get(exporterUUID);
+        ProviderType providerType = telemetryProvider.getConfig().getType();
+        if (!providerType.isAllowedForMetrics) {
+          String errorMessage =
+              String.format(
+                  "Exporter config provider type '%s' is not allowed for metrics export on universe"
+                      + " '%s'.",
+                  providerType, universe.getUniverseUUID());
           log.error(errorMessage);
           throw new PlatformServiceException(BAD_REQUEST, errorMessage);
         }

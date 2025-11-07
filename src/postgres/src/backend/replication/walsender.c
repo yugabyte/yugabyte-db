@@ -100,6 +100,7 @@
 #include "pg_yb_utils.h"
 #include "replication/yb_virtual_wal_client.h"
 #include "yb/yql/pggate/util/ybc_guc.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 
 /*
  * Maximum data payload in a WAL data message.  Must be >= XLOG_BLCKSZ.
@@ -1352,7 +1353,14 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 				snapshot_name = pstrdup(yb_consistent_snapshot_time_string);
 
 				if (yb_is_pg_export_snapshot_enabled)
+				{
+					/*
+					 * Do the equivalent of PG logic for CRS_USE_SNAPSHOT (in the else branch below) i.e.,
+					 * ensure we have gotten a transaction snapshot before setting a read time for it.
+					 */
+					GetTransactionSnapshot();
 					YbUseSnapshotReadTime(yb_consistent_snapshot_time);
+				}
 			}
 
 			/*
@@ -3625,6 +3633,18 @@ void
 WalSndWakeup(void)
 {
 	int			i;
+
+	/*
+	 * YB: We do not rely on WalSndWakeup mechanism to wake up walsenders in YB's
+	 * logical replication. After every GetConsistentChanges call, walsender
+	 * sleeps for a fixed amount of time based on
+	 * yb_walsender_poll_sleep_duration_empty_ms /
+	 * yb_walsender_poll_sleep_duration_nonempty_ms. However, the PG
+	 * checkpointer process calls this function and failures to acquire spin
+	 * lock can lead to unnecessary core dumps. Hence we return early here.
+	 */
+	if (YBIsEnabledInPostgresEnvVar())
+		return;
 
 	for (i = 0; i < max_wal_senders; i++)
 	{

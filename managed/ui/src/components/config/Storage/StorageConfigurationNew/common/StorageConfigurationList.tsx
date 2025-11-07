@@ -1,7 +1,7 @@
 /*
  * Created on Thu Jul 21 2022
  *
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License")
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
@@ -16,7 +16,7 @@ import { useSelector } from 'react-redux';
 import { toast } from 'react-toastify';
 
 import { getPromiseState } from '../../../../../utils/PromiseUtils';
-import { IStorageConfig } from '../../../../backupv2';
+import { CustomerConfig } from '../../../../backupv2';
 import { AssociatedBackups } from '../../../../backupv2/components/AssociatedBackups';
 import { AssociatedUniverse } from '../../../../common/associatedUniverse/AssociatedUniverse';
 import YBInfoTip from '../../../../common/descriptors/YBInfoTip';
@@ -65,8 +65,8 @@ export const StorageConfigurationList: FC<StorageConfigurationListProps> = ({
 
   const configs:
     | {
-      data: IStorageConfig[];
-    }
+        data: CustomerConfig[];
+      }
     | undefined = useSelector((state: any) => state.customer.configs);
 
   if (getPromiseState(configs).isLoading()) {
@@ -158,18 +158,16 @@ export const StorageConfigurationList: FC<StorageConfigurationListProps> = ({
   };
 
   return (
-    <RbacValidator
-      accessRequiredOn={ApiPermissionMap.GET_CUSTOMER_CONFIGS}
-    >
+    <RbacValidator accessRequiredOn={ApiPermissionMap.GET_CUSTOMER_CONFIGS}>
       <>
         <h2 className="table-container-title pull-left">Backup List</h2>
         <FlexContainer className="pull-right" direction={'row'}>
           <FlexShrink className="" power={1}>
-            <RbacValidator
-              accessRequiredOn={ApiPermissionMap.CREATE_CUSTOMER_CONFIG}
-              isControl
-            >
-              <Button bsClass="btn btn-orange btn-config" onClick={() => showStorageConfigCreation()}>
+            <RbacValidator accessRequiredOn={ApiPermissionMap.CREATE_CUSTOMER_CONFIG} isControl>
+              <Button
+                bsClass="btn btn-orange btn-config"
+                onClick={() => showStorageConfigCreation()}
+              >
                 Create {type.toUpperCase()} Backup
               </Button>
             </RbacValidator>

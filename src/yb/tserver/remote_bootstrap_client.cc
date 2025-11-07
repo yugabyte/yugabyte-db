@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -51,7 +51,9 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
 
+#include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
+#include "yb/rpc/tcp_stream.h"
 
 #include "yb/tablet/tablet.pb.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
@@ -61,6 +63,7 @@
 #include "yb/tserver/remote_bootstrap.pb.h"
 #include "yb/tserver/remote_bootstrap.proxy.h"
 #include "yb/tserver/remote_bootstrap_snapshots.h"
+#include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/debug-util.h"
@@ -98,6 +101,10 @@ DEFINE_RUNTIME_double(rbs_data_size_to_disk_space_ratio_threshold, 0.9,
     "Normally the value must be a positive number within the range (0, 1]. O means disable disk "
     "space check.");
 TAG_FLAG(rbs_data_size_to_disk_space_ratio_threshold, hidden);
+
+DEFINE_RUNTIME_bool(remote_bootstrap_skip_sst_compression, true,
+    "Whether to skip compressing SST files (which are already compressed by Snappy when they are "
+    "written) during remote bootstrap.");
 
 DEFINE_test_flag(double, fault_crash_bootstrap_client_before_changing_role, 0.0,
                  "The remote bootstrap client will crash before closing the session with the "
@@ -188,8 +195,11 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
   start_time_micros_ = GetCurrentTimeMicros();
   bootstrap_source_uuid_ = bootstrap_peer_uuid;
 
-  // Set up an RPC proxy for the RemoteBootstrapService.
+  // Set up RPC proxies for the RemoteBootstrapService. The uncompressed proxy is used to download
+  // SST files (which are already Snappy compressed). The other files use the compressed proxy.
   proxy_.reset(new RemoteBootstrapServiceProxy(proxy_cache, bootstrap_peer_addr));
+  uncompressed_proxy_.reset(new RemoteBootstrapServiceProxy(
+      proxy_cache, bootstrap_peer_addr, &proxy_cache->GetContext()->UncompressedProtocol()));
 
   auto rbs_source_role = "LEADER";
   BeginRemoteBootstrapSessionRequestPB req;
@@ -270,11 +280,10 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
   const auto& table = *table_ptr;
 
   downloader_.Start(
-      [proxy = this->proxy_](
-          const FetchDataRequestPB& req, FetchDataResponsePB* resp,
-          rpc::RpcController* controller) {
-        return proxy->FetchData(req, resp, controller);},
-      resp.session_id(), MonoDelta::FromMilliseconds(resp.session_idle_timeout_millis()));
+      FetchDataFunctionCreator(proxy_),
+      resp.session_id(),
+      MonoDelta::FromMilliseconds(resp.session_idle_timeout_millis()),
+      FetchDataFunctionCreator(uncompressed_proxy_));
 
   superblock_.reset(resp.release_superblock());
 
@@ -644,11 +653,12 @@ Status RemoteBootstrapClient::DownloadRocksDBFiles() {
     auto start = MonoTime::Now();
     RETURN_NOT_OK(downloader_.DownloadFile(
         file_pb, rocksdb_dir, &data_id,
-        [&](size_t chunk_size) { status_listener_->IncrementSstDownloadProgress(chunk_size); }));
+        [&](size_t chunk_size) { status_listener_->IncrementSstDownloadProgress(chunk_size); },
+        FLAGS_remote_bootstrap_skip_sst_compression));
     auto elapsed = MonoTime::Now().GetDeltaSince(start);
     UpdateStatusMessage(Format(
-        "Downloaded file $0 of size $1 in $2 seconds", file_pb.name(), file_pb.size_bytes(),
-        elapsed.ToSeconds()));
+        "Downloaded file $0 of size $1 in $2 seconds (skip_compression: $3)", file_pb.name(),
+        file_pb.size_bytes(), elapsed.ToSeconds(), FLAGS_remote_bootstrap_skip_sst_compression));
   }
   // To avoid adding new file type to remote bootstrap we move intents as subdir of regular DB.
   auto& env = this->env();

@@ -34,7 +34,7 @@ This statement is enabled by setting the YB-TServer flag [`--use_cassandra_authe
 ### Grammar
 
 ```ebnf
-create_role ::= CREATE ROLE [ IF NOT EXISTS ] role_name 
+create_role ::= CREATE ROLE [ IF NOT EXISTS ] role_name
                 [ WITH role_property [ AND ... ] ]
 
 role_property ::=  PASSWORD = <Text Literal>

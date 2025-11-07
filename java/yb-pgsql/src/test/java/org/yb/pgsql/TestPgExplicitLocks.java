@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -24,6 +24,7 @@ import org.yb.YBTestRunner;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.Collections;
 import java.util.Map;
 
 import com.yugabyte.util.PSQLException;
@@ -37,6 +38,8 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("yb_enable_read_committed_isolation", "true");
+    flagMap.put("skip_prefix_locks", "false");
+    flagMap.put("allowed_preview_flags_csv", "skip_prefix_locks");
     // This test depends on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
     setFailOnConflictFlags(flagMap);
@@ -143,7 +146,8 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
   };
 
   private void runRangeKeyLocksTest(ParallelQueryRunner runner,
-                                    IsolationLevel pgIsolationLevel) throws SQLException {
+                                    IsolationLevel pgIsolationLevel,
+                                    boolean skip_prefix_locks) throws SQLException {
     QueryBuilder builder = new QueryBuilder("table_with_hash");
     // NOTE: for all examples below, the SELECT KEY SHARE statement will lock the whole predicate
     // for SERIALIZABLE isolation level and only matching rows in other isolation levels. The
@@ -230,9 +234,10 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
     runner.runWithoutConflict(
       builder.selectKeyShare("h = 1"),
       builder.delete("h = 2 AND r1 = 20 AND r2 = 200"));
-    runner.runWithoutConflict(
+    runner.run(
       builder.selectKeyShare("h = 1 AND r1 = 10"),
-      builder.delete("h = 1 AND r1 = 11 AND r2 = 101"));
+      builder.delete("h = 1 AND r1 = 11 AND r2 = 101"),
+      pgIsolationLevel == IsolationLevel.SERIALIZABLE && skip_prefix_locks);
     runner.runWithoutConflict(
       builder.selectKeyShare("h = 1 AND r1 in (10, 11) AND r2 = 102"),
       builder.delete("h = 2 AND r1 = 21 AND r2 = 201"));
@@ -265,15 +270,18 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
       builder.selectKeyShare("r2 = 10 AND r1 IN (1)"),
       builder.delete("r1 = 1 AND r2 = 10"));
 
-    runner.runWithoutConflict(
+    runner.run(
       builder.selectKeyShare("r1 = 1"),
-      builder.delete("r1 = 2 AND r2 = 20"));
+      builder.delete("r1 = 2 AND r2 = 20"),
+      pgIsolationLevel == IsolationLevel.SERIALIZABLE && skip_prefix_locks);
     runner.runWithoutConflict(
       builder.selectKeyShare("r2 = 10 AND r1 IN (1)"),
       builder.delete("r1 = 1 AND r2 = 11"));
   }
 
-  private void runFKLocksTest(ParallelQueryRunner runner) throws SQLException {
+  private void runFKLocksTest(ParallelQueryRunner runner,
+                              IsolationLevel pgIsolationLevel,
+                              boolean skip_prefix_locks) throws SQLException {
     QueryBuilder childBuilder = new QueryBuilder("child_with_hash");
     QueryBuilder parentBuilder = new QueryBuilder("parent_with_hash");
     runner.runWithConflict(
@@ -289,12 +297,14 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
     runner.runWithoutConflict(
       childBuilder.insert("(4, 1, 10, 100)"),
       parentBuilder.delete("h = 2"));
-    runner.runWithoutConflict(
+    runner.run(
       childBuilder.insert("(5, 1, 10, 100)"),
-      parentBuilder.delete("h = 1 AND r1 = 11"));
-    runner.runWithoutConflict(
+      parentBuilder.delete("h = 1 AND r1 = 11"),
+      pgIsolationLevel == IsolationLevel.SERIALIZABLE && skip_prefix_locks);
+    runner.run(
       childBuilder.insert("(6, 1, 10, 100)"),
-      parentBuilder.delete("h = 1 AND r1 = 10 AND r2 = 1000"));
+      parentBuilder.delete("h = 1 AND r1 = 10 AND r2 = 1000"),
+      pgIsolationLevel == IsolationLevel.SERIALIZABLE && skip_prefix_locks);
     Pair<Integer, Integer> result = runner.runWithoutConflict(
       parentBuilder.delete("h = 3 AND r1 = 1 AND r2 = 10"),
       parentBuilder.delete("h = 3 AND r1 = 1 AND r2 = 20"));
@@ -306,9 +316,10 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
     runner.runWithoutConflict(
       childBuilder.insert("(3, 1, 10)"),
       parentBuilder.delete("r1 = 2"));
-    runner.runWithoutConflict(
+    runner.run(
       childBuilder.insert("(4, 1, 10)"),
-      parentBuilder.delete("r1 = 1 AND r2 = 11"));
+      parentBuilder.delete("r1 = 1 AND r2 = 11"),
+      pgIsolationLevel == IsolationLevel.SERIALIZABLE && skip_prefix_locks);
 
     runner.runWithConflict(
       childBuilder.insert("(1, 1, 10)"),
@@ -322,7 +333,8 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
     assertEquals(new Pair<>(1, 1), result);
   }
 
-  private void testRangeKeyLocks(IsolationLevel pgIsolationLevel) throws Exception {
+  private void testRangeKeyLocks(IsolationLevel pgIsolationLevel,
+                                 boolean skip_prefix_locks) throws Exception {
     ConnectionBuilder builder = getConnectionBuilder().withIsolationLevel(pgIsolationLevel);
     try (Connection conn = builder.connect();
          Statement stmt = conn.createStatement();
@@ -338,11 +350,13 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
       stmt.execute("INSERT INTO table_without_hash VALUES " +
         "(1, 10), (1, 11), (1, 12), " +
         "(2, 10), (2, 11), (2, 20), (2, 21), (2, 22)");
-      runRangeKeyLocksTest(new ParallelQueryRunner(stmt, extraStmt), pgIsolationLevel);
+      runRangeKeyLocksTest(new ParallelQueryRunner(stmt, extraStmt), pgIsolationLevel,
+                           skip_prefix_locks);
     }
   }
 
-  private void testFKLocks(IsolationLevel pgIsolationLevel) throws Exception {
+  private void testFKLocks(IsolationLevel pgIsolationLevel,
+                           boolean skip_prefix_locks) throws Exception {
     ConnectionBuilder builder = getConnectionBuilder().withIsolationLevel(pgIsolationLevel);
     try (Connection conn = builder.connect();
          Statement stmt = conn.createStatement();
@@ -372,23 +386,42 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
       stmt.execute("CREATE INDEX ON child_with_hash(pH, pR1, pR2)");
       stmt.execute("CREATE INDEX ON child_without_hash(pR1, pR2)");
 
-      runFKLocksTest(new ParallelQueryRunner(stmt, extraStmt));
+      runFKLocksTest(new ParallelQueryRunner(stmt, extraStmt), pgIsolationLevel, skip_prefix_locks);
     }
   }
 
-  private void testLocksIsolationLevel(IsolationLevel pgIsolationLevel) throws Exception {
-    testRangeKeyLocks(pgIsolationLevel);
-    testFKLocks(pgIsolationLevel);
+  private void testLocksIsolationLevel(IsolationLevel pgIsolationLevel,
+                                       boolean skip_prefix_locks) throws Exception {
+    testRangeKeyLocks(pgIsolationLevel, skip_prefix_locks);
+    testFKLocks(pgIsolationLevel, skip_prefix_locks);
   }
 
   @Test
   public void testLocksSerializableIsolation() throws Exception {
-    testLocksIsolationLevel(IsolationLevel.SERIALIZABLE);
+    // skip prefilx lock is disabled
+    testLocksIsolationLevel(IsolationLevel.SERIALIZABLE, /*skip_prefix_locks=*/ false);
+
+    // skip prefilx lock is enabled
+    Map<String, String> flagMap = getTServerFlags();
+    flagMap.put("skip_prefix_locks", "true");
+    flagMap.put("allowed_preview_flags_csv", "skip_prefix_locks");
+    flagMap.put("ysql_enable_packed_row", "true");
+    restartClusterWithFlags(Collections.emptyMap(), flagMap);
+    testLocksIsolationLevel(IsolationLevel.SERIALIZABLE, /*skip_prefix_locks=*/ true);
   }
 
   @Test
   public void testLocksSnapshotIsolation() throws Exception {
-    testLocksIsolationLevel(IsolationLevel.REPEATABLE_READ);
+    // skip prefilx lock is disabled
+    testLocksIsolationLevel(IsolationLevel.REPEATABLE_READ, /*skip_prefix_locks=*/ false);
+
+    // skip prefilx lock is enabled
+    Map<String, String> flagMap = getTServerFlags();
+    flagMap.put("skip_prefix_locks", "true");
+    flagMap.put("allowed_preview_flags_csv", "skip_prefix_locks");
+    flagMap.put("ysql_enable_packed_row", "true");
+    restartClusterWithFlags(Collections.emptyMap(), flagMap);
+    testLocksIsolationLevel(IsolationLevel.REPEATABLE_READ, /*skip_prefix_locks=*/ true);
   }
 
   @Test

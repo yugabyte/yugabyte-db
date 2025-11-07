@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -283,6 +283,15 @@ public class TestUtils {
       throw new RuntimeException("Could not create " + testTmpDir + ", not enough permissions?");
     }
     return f.getAbsolutePath();
+  }
+
+  /**
+   * @return a subdirectory in the resources directory named using the class's name.  This assumes
+   * the convention that each test class gets its own corresponding resources directory.  Does not
+   * check for existence of the directory.
+   */
+  public static File getClassResourceDir(Class<?> testClass) {
+    return new File(testClass.getClassLoader().getResource(testClass.getSimpleName()).getFile());
   }
 
   /**

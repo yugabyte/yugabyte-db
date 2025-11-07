@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -247,7 +247,7 @@ class SharedExchange {
 using SharedExchangeListener = std::function<void(size_t)>;
 
 class SharedExchangeRunnable :
-    public Runnable, public std::enable_shared_from_this<SharedExchangeRunnable> {
+    public ThreadPoolTask, public std::enable_shared_from_this<SharedExchangeRunnable> {
  public:
   SharedExchangeRunnable(
       SharedExchange& exchange, uint64_t session_id, const SharedExchangeListener& listener);
@@ -258,22 +258,22 @@ class SharedExchangeRunnable :
     return exchange_;
   }
 
-  bool ReadyToShutdown() const {
-    return stop_latch_.count() == 0;
-  }
+  bool ReadyToShutdown() const;
 
-  Status Start(ThreadPool& thread_pool);
+  Status Start(YBThreadPool& thread_pool);
 
   void StartShutdown();
   void CompleteShutdown();
 
  private:
   void Run() override;
+  void Done(const Status& status) override;
 
   SharedExchange& exchange_;
   uint64_t session_id_;
   SharedExchangeListener listener_;
-  CountDownLatch stop_latch_{0};
+  std::promise<Status> stop_promise_;
+  std::shared_future<Status> stop_future_;
 };
 
 struct SharedExchangeMessage {

@@ -11,9 +11,9 @@
  *	  src/backend/commands/tablecmds.c
  *
  * The following only applies to changes made to this file as part of
- * YugaByte development.
+ * YugabyteDB development.
  *
- * Portions Copyright (c) YugaByte, Inc.
+ * Portions Copyright (c) YugabyteDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you
  * may not use this file except in compliance with the License.
@@ -138,10 +138,10 @@
 #include "commands/yb_tablegroup.h"
 #include "executor/ybModifyTable.h"
 #include "parser/analyze.h"
-#include "pg_yb_utils.h"
 #include "statistics/statistics.h"
 #include "utils/plancache.h"
 #include "utils/regproc.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 
 /*
  * ON COMMIT action list
@@ -1956,7 +1956,7 @@ ExecuteTruncate(TruncateStmt *stmt, bool yb_is_top_level, List **yb_relids)
 	List	   *relids = NIL;
 	List	   *relids_logged = NIL;
 	ListCell   *cell;
-	bool yb_only_temp_tables = true;
+	bool		yb_only_temp_tables = true;
 
 	/*
 	 * Open, exclusive-lock, and check all the explicitly-specified relations
@@ -3728,6 +3728,8 @@ SetRelationTableSpace(Relation rel,
 	otid = tuple->t_self;
 	rd_rel = (Form_pg_class) GETSTRUCT(tuple);
 
+	Oid			yb_old_reltablespace = rd_rel->reltablespace;
+
 	/* Update the pg_class row. */
 	rd_rel->reltablespace = (newTableSpaceId == MyDatabaseTableSpace) ?
 		InvalidOid : newTableSpaceId;
@@ -3739,13 +3741,87 @@ SetRelationTableSpace(Relation rel,
 	/*
 	 * Record dependency on tablespace.  This is only required for relations
 	 * that have no physical storage.
+	 *
+	 * YB: Also record the dependency for YB relations.
 	 */
-	if (!RELKIND_HAS_STORAGE(rel->rd_rel->relkind))
+	if (!RELKIND_HAS_STORAGE(rel->rd_rel->relkind) ||
+		IsYBRelation(rel))
 		changeDependencyOnTablespace(RelationRelationId, reloid,
 									 rd_rel->reltablespace);
 
+	if (IsYugaByteEnabled() && OidIsValid(MyDatabaseId))
+	{
+		/*
+		 * YB: Clear the old tablespace if needed.
+		 */
+		if (yb_old_reltablespace >= FirstNormalObjectId &&
+			rd_rel->reltablespace < FirstNormalObjectId)
+			YBCClearTablespaceOid(MyDatabaseId, reloid);
+
+		/*
+		 * YB: Record the new tablespace if needed.
+		 */
+		if (rd_rel->reltablespace >= FirstNormalObjectId)
+			YBCRecordTablespaceOid(MyDatabaseId, reloid, rd_rel->reltablespace);
+	}
+
 	heap_freetuple(tuple);
 	table_close(pg_class, RowExclusiveLock);
+
+	/*
+	 * YB: For YB relations, the PK index is the same as the base table.
+	 * Also update the primary key index's pg_class.reltablespace and
+	 * pg_shdepend entries.
+	 */
+	if (IsYBRelation(rel) &&
+		(rel->rd_rel->relkind == RELKIND_RELATION ||
+		 rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE))
+	{
+		List	   *indexIds = RelationGetIndexList(rel);
+		ListCell   *lc;
+		Oid			newPrimaryKeyTableSpaceId = (newTableSpaceId == MyDatabaseTableSpace) ?
+			InvalidOid : newTableSpaceId;
+
+		foreach(lc, indexIds)
+		{
+			Oid			idxOid = lfirst_oid(lc);
+			Relation	idxRel = RelationIdGetRelation(idxOid);
+			bool		isPrimaryIndex = (idxRel != NULL &&
+										  idxRel->rd_index &&
+										  idxRel->rd_index->indisprimary);
+
+			RelationClose(idxRel);
+
+			if (!isPrimaryIndex)
+				continue;
+
+			Relation	idx_pg_class = table_open(RelationRelationId,
+												  RowExclusiveLock);
+			HeapTuple	idx_tuple = SearchSysCacheCopy1(RELOID,
+														ObjectIdGetDatum(idxOid));
+
+			if (!HeapTupleIsValid(idx_tuple))
+				elog(ERROR, "cache lookup failed for relation %u", idxOid);
+			Form_pg_class idx_rd_rel = (Form_pg_class) GETSTRUCT(idx_tuple);
+
+			/* Update PK's pg_class entry */
+			idx_rd_rel->reltablespace = newPrimaryKeyTableSpaceId;
+			CatalogTupleUpdate(idx_pg_class, &idx_tuple->t_self, idx_tuple);
+			UnlockTuple(idx_pg_class, &idx_tuple->t_self, InplaceUpdateTupleLock);
+
+			/* Update PK's pg_shdepend entry */
+			changeDependencyOnTablespace(RelationRelationId, idxOid,
+										 newPrimaryKeyTableSpaceId);
+
+			heap_freetuple(idx_tuple);
+			table_close(idx_pg_class, RowExclusiveLock);
+
+			/* Only one primary key index per table */
+			break;
+		}
+
+		list_free(indexIds);
+	}
 }
 
 /*

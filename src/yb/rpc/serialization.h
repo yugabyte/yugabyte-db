@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -60,7 +60,7 @@ class Status;
 
 namespace rpc {
 
-Result<RefCntBuffer> SerializeRequest(
+Result<std::pair<RefCntBuffer, size_t>> SerializeResponse(
     size_t body_size, size_t additional_size, const google::protobuf::Message& header,
     AnyMessageConstPtr body);
 
@@ -76,8 +76,10 @@ struct ParsedRequestHeader {
   uint32_t timeout_ms = 0;
   boost::iterator_range<const uint32_t*> sidecar_offsets;
   Slice metadata;
+  std::optional<uint32_t> crc;
 
   std::string RemoteMethodAsString() const;
+  std::string ToString() const;
   void ToPB(RequestHeader* out) const;
 };
 
@@ -102,6 +104,9 @@ struct ParsedRemoteMethod {
 Result<ParsedRemoteMethod> ParseRemoteMethod(const Slice& buf);
 Status ParseMetadata(Slice buf, AnyMessagePtr out);
 Status ParseMetadataFromSharedMemory(uint8_t** input, size_t length, AnyMessagePtr out);
+
+void StoreCrc(
+    const RefCntBuffer& buffer, size_t header_size, size_t message_size, Sidecars* sidecars);
 
 }  // namespace rpc
 }  // namespace yb

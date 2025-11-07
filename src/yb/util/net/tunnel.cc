@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -16,7 +16,6 @@
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/strand.hpp>
 #include <boost/asio/write.hpp>
-#include <boost/optional.hpp>
 
 #include "yb/util/logging.h"
 #include "yb/util/size_literals.h"
@@ -209,7 +208,7 @@ class Tunnel::Impl {
       return;
     }
 
-    auto connection = std::make_shared<TunnelConnection>(&io_context_, socket_.get_ptr());
+    auto connection = std::make_shared<TunnelConnection>(&io_context_, &socket_.value());
     connection->Start(remote_);
     bool found = false;
     for (auto& weak_connection : connections_) {
@@ -247,8 +246,8 @@ class Tunnel::Impl {
   AddressChecker address_checker_;
   Endpoint local_;
   Endpoint remote_;
-  boost::optional<boost::asio::ip::tcp::acceptor> acceptor_;
-  boost::optional<boost::asio::ip::tcp::socket> socket_;
+  std::optional<boost::asio::ip::tcp::acceptor> acceptor_;
+  std::optional<boost::asio::ip::tcp::socket> socket_;
   std::vector<std::weak_ptr<TunnelConnection>> connections_;
   std::atomic<bool> closing_{false};
 };

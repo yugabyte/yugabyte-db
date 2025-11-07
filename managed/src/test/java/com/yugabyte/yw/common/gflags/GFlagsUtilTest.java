@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.common.gflags;
 
@@ -42,7 +42,7 @@ public class GFlagsUtilTest extends FakeDBApplication {
             PlatformServiceException.class,
             () -> GFlagsUtil.checkGflagsAndIntentConsistency(userIntent));
     assertEquals(
-        "G-Flag value 'true' for 'use_node_to_node_encryption' is not"
+        "Tserver G-Flag value 'true' for 'use_node_to_node_encryption' is not"
             + " compatible with intent value 'false'",
         exception.getLocalizedMessage());
   }
@@ -106,10 +106,10 @@ public class GFlagsUtilTest extends FakeDBApplication {
             PlatformServiceException.class,
             () ->
                 GFlagsUtil.checkConsistency(
-                    ImmutableMap.of("gflag1", "1", GFlagsUtil.START_CQL_PROXY, "true"),
-                    ImmutableMap.of(GFlagsUtil.START_CQL_PROXY, "false")));
+                    ImmutableMap.of("gflag1", "1", GFlagsUtil.USE_NODE_TO_NODE_ENCRYPTION, "true"),
+                    ImmutableMap.of(GFlagsUtil.USE_NODE_TO_NODE_ENCRYPTION, "false")));
     assertEquals(
-        "G-Flag value for 'start_cql_proxy' is inconsistent between "
+        "G-Flag value for 'use_node_to_node_encryption' is inconsistent between "
             + "master and tserver ('true' vs 'false')",
         exception.getLocalizedMessage());
   }
@@ -458,5 +458,17 @@ public class GFlagsUtilTest extends FakeDBApplication {
     // function, update this UT, and increase this count here. This is just so that we don't miss
     // combining the objects in the future when we add new child fields to this class.
     assertEquals(finalSpecificGFlags.getClass().getDeclaredFields().length, 4);
+  }
+
+  @Test
+  public void testConfigParsing() {
+    StringBuilder sb = new StringBuilder();
+    sb.append("#some comment\n")
+        .append("--key=true\n")
+        .append("--key2\n")
+        .append("some=rrr\n") // will be ignored
+        .append("--key3 = val3 #TODO");
+    Map<String, String> gflags = GFlagsUtil.parseConfigContents(sb.toString());
+    assertEquals(Map.of("key", "true", "key2", "", "key3", "val3"), gflags);
   }
 }

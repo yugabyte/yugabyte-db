@@ -1,5 +1,5 @@
 /*
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  */
 
 package common
@@ -12,6 +12,7 @@ type Component interface {
 	Name() string
 	Version() string
 	Uninstall(cleanData bool) error
+	PreUpgrade() error
 	Upgrade() error
 	Status() (Status, error)
 	Start() error

@@ -705,24 +705,6 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 
 					case TRANS_STMT_SAVEPOINT:
 						RequireTransactionBlock(isTopLevel, "SAVEPOINT");
-
-						/*
-						 * Disallow savepoint if the user has executed a DDL
-						 * within the transaction block.
-						 *
-						 * TODO(#26734): Remove once savepoint for DDL is
-						 * supported.
-						 */
-						if (IsYugaByteEnabled() &&
-							YBGetDdlUseRegularTransactionBlock())
-							ereport(ERROR,
-									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-									 errmsg("interleaving SAVEPOINT & DDL in "
-											"transaction block not supported by"
-											" YugaByte yet"),
-									 errhint("See https://github.com/yugabyte/yugabyte-db/issues/26734."
-											 " React with thumbs up to raise its priority.")));
-
 						DefineSavepoint(stmt->savepoint_name);
 						break;
 
@@ -1173,11 +1155,6 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 			break;
 	}
 
-	/*
-	 * YB: Account for stats collected during the execution of utility command
-	 */
-	YbRefreshSessionStatsDuringExecution();
-
 	free_parsestate(pstate);
 
 	/*
@@ -1186,6 +1163,47 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 	 * #15631).
 	 */
 	CommandCounterIncrement();
+}
+
+/*
+ * Disallow ALTER INDEX primary_key change owner because there
+ * is no separate index table for the primary key in Yugabyte.
+ */
+static void
+YbCheckAlterPrimaryIndex(const AlterTableStmt *atstmt, Oid relid)
+{
+	char *disallowed_type = NULL;
+	ListCell   *cell;
+	/*
+	 * Find the first disallowed command type, currently only AT_ChangeOwner.
+	 */
+	foreach(cell, atstmt->cmds)
+	{
+		AlterTableCmd *cmd = (AlterTableCmd *) lfirst(cell);
+
+		if (cmd->subtype == AT_ChangeOwner)
+		{
+			disallowed_type = " owner ";
+			break;
+		}
+	}
+
+	if (!disallowed_type)
+		return;
+
+	Relation rel = RelationIdGetRelation(relid);
+	if (!rel)
+		return;
+
+	bool is_primary_key = rel->rd_index && rel->rd_index->indisprimary;
+	bool is_temp = rel->rd_rel->relpersistence == RELPERSISTENCE_TEMP;
+	RelationClose(rel);
+	if (is_primary_key && !is_temp)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("cannot alter the primary key index \"%s\"%sdirectly",
+						atstmt->relation->relname, disallowed_type),
+				 errhint("Alter the table instead.")));
 }
 
 /*
@@ -1409,6 +1427,9 @@ ProcessUtilitySlow(ParseState *pstate,
 
 					if (OidIsValid(relid))
 					{
+						if (IsYugaByteEnabled() && !YBCIsInitDbModeEnvVarSet())
+							YbCheckAlterPrimaryIndex(atstmt, relid);
+
 						AlterTableUtilityContext atcontext;
 
 						/* Set up info needed for recursive callbacks ... */

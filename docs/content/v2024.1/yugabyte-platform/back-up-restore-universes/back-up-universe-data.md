@@ -114,7 +114,7 @@ YugabyteDB Anywhere universe backups are stored using the following folder struc
       /<backup-series-name>-<backup-series-uuid>
         /<backup-type>
           /<creation-time>
-            /<backup-name>_<backup-uuid>
+            /<backup-name>_<uuid>
 ```
 
 For example:
@@ -137,7 +137,7 @@ s3://user_bucket
 | Backup series name and UUID | The name of the backup series and YBA-generated UUID. The UUID ensures that YBA can correctly identify the appropriate folder. |
 | Backup type | `full` or `incremental`. Indicates whether the subfolders contain full or incremental backups. |
 | Creation time | The time the backup was started. |
-| Backup name and UUID | The name of the backup and YBA-generated UUID. This folder contains the backup files (metadata and success) and subfolders (tablet components). |
+| Backup name and UUID | The name of the backup and YBA-generated UUID that uniquely identifies the backup object. This folder contains the backup files (metadata and success) and subfolders (tablet components). |
 
 A backup set consists of a successful full backup, and (if incremental backups were taken) one or more consecutive successful incremental backups. The backup set can be used to restore a database at the point in time of the full and/or incremental backup, as long as the chain of good incremental backups is unbroken. Use the creation time to identify increments that occurred after a full backup.
 

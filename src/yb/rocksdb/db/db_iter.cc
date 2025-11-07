@@ -3,9 +3,9 @@
 //  LICENSE file in the root directory of this source tree. An additional grant
 //  of patent rights can be found in the PATENTS file in the same directory.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -316,15 +316,7 @@ class DBIter final : public Iterator {
 
   void RevalidateAfterUpperBoundChange() override {
     if (direction_ == kForward) {
-      const auto& entry = iter_->Entry();
-      if (entry) {
-        entry_.key = ExtractUserKey(entry.key);
-        SetValid(entry.value);
-        // To prevent ROCKSDB_CATCH_MISSING_VALID_CHECK failure when FindNextUserEntry calls
-        // SetValid.
-        DCHECK(Valid());
-        FindNextUserEntry(/* skipping= */ false);
-      }
+      UpdateEntryAfterRevalidation(iter_->Entry());
     }
   }
 
@@ -332,11 +324,35 @@ class DBIter final : public Iterator {
     fast_next_ = value;
   }
 
-  void UpdateFilterKey(Slice user_key_for_filter) override {
-    iter_->UpdateFilterKey(user_key_for_filter);
+  void UpdateFilterKey(Slice user_key_for_filter, Slice seek_key) override {
+    if (!seek_key.empty()) {
+      seek_key = PrepareKeyBuffer(seek_key, key_buffer_);
+    }
+    UpdateEntryAfterRevalidation(iter_->UpdateFilterKey(user_key_for_filter, seek_key));
   }
 
  private:
+  void UpdateEntryAfterRevalidation(const KeyValueEntry& entry) {
+    if (!entry) {
+      return;
+    }
+    entry_.key = ExtractUserKey(entry.key);
+    SetValid(entry.value);
+    // To prevent ROCKSDB_CATCH_MISSING_VALID_CHECK failure when FindNextUserEntry calls
+    // SetValid.
+    DCHECK(Valid());
+    FindNextUserEntry(/* skipping= */ false);
+  }
+
+  Slice PrepareKeyBuffer(Slice key, yb::ByteBuffer<kKeyBufferSize>& buffer) {
+    buffer.Clear();
+    auto target_size = key.size();
+    char* out = buffer.GrowByAtLeast(target_size + sizeof(uint64_t));
+    key.CopyTo(out);
+    EncodeFixed64(out + target_size, PackSequenceAndType(sequence_, kValueTypeForSeek));
+    return buffer.AsSlice();
+  }
+
   void ReverseToBackward();
   void PrevInternal();
   void FindParseableKey(ParsedInternalKey* ikey, Direction direction);
@@ -618,12 +634,10 @@ void DBIter::MergeValuesNewToOld() {
       // ignore corruption if there is any.
       const Slice val = iter_->value();
       {
-        StopWatchNano timer(env_, statistics_ != nullptr);
+        StopWatchNano timer(env_, statistics_, MERGE_OPERATION_TOTAL_TIME);
         PERF_TIMER_GUARD(merge_operator_time_nanos);
         user_merge_operator_->FullMerge(ikey.user_key, &val, operands,
                                         &saved_value_, logger_);
-        RecordTick(statistics_, MERGE_OPERATION_TOTAL_TIME,
-                   timer.ElapsedNanos());
       }
       // iter_ is positioned after put
       iter_->Next();
@@ -639,7 +653,7 @@ void DBIter::MergeValuesNewToOld() {
   }
 
   {
-    StopWatchNano timer(env_, statistics_ != nullptr);
+    StopWatchNano timer(env_, statistics_, MERGE_OPERATION_TOTAL_TIME);
     PERF_TIMER_GUARD(merge_operator_time_nanos);
     // we either exhausted all internal keys under this user key, or hit
     // a deletion marker.
@@ -647,7 +661,6 @@ void DBIter::MergeValuesNewToOld() {
     // client can differentiate this scenario and do things accordingly.
     user_merge_operator_->FullMerge(entry_.key, nullptr, operands,
                                     &saved_value_, logger_);
-    RecordTick(statistics_, MERGE_OPERATION_TOTAL_TIME, timer.ElapsedNanos());
   }
 }
 
@@ -796,25 +809,21 @@ bool DBIter::FindValueForCurrentKey() {
       return false;
     case kTypeMerge:
       if (last_not_merge_type == kTypeDeletion) {
-        StopWatchNano timer(env_, statistics_ != nullptr);
+        StopWatchNano timer(env_, statistics_, MERGE_OPERATION_TOTAL_TIME);
         PERF_TIMER_GUARD(merge_operator_time_nanos);
         user_merge_operator_->FullMerge(entry_.key, nullptr,
                                         merge_operands_, &saved_value_,
                                         logger_);
-        RecordTick(statistics_, MERGE_OPERATION_TOTAL_TIME,
-                   timer.ElapsedNanos());
       } else {
         assert(last_not_merge_type == kTypeValue);
         std::string last_put_value = saved_value_;
         Slice temp_slice(last_put_value);
         {
-          StopWatchNano timer(env_, statistics_ != nullptr);
+          StopWatchNano timer(env_, statistics_, MERGE_OPERATION_TOTAL_TIME);
           PERF_TIMER_GUARD(merge_operator_time_nanos);
           user_merge_operator_->FullMerge(entry_.key, &temp_slice,
                                           merge_operands_, &saved_value_,
                                           logger_);
-          RecordTick(statistics_, MERGE_OPERATION_TOTAL_TIME,
-                     timer.ElapsedNanos());
         }
       }
       break;
@@ -870,11 +879,10 @@ bool DBIter::FindValueForCurrentKeyUsingSeek() {
       !user_comparator_->Equal(ikey.user_key, entry_.key) ||
       ikey.type == kTypeDeletion || ikey.type == kTypeSingleDeletion) {
     {
-      StopWatchNano timer(env_, statistics_ != nullptr);
+      StopWatchNano timer(env_, statistics_, MERGE_OPERATION_TOTAL_TIME);
       PERF_TIMER_GUARD(merge_operator_time_nanos);
       user_merge_operator_->FullMerge(entry_.key, nullptr, operands,
                                       &saved_value_, logger_);
-      RecordTick(statistics_, MERGE_OPERATION_TOTAL_TIME, timer.ElapsedNanos());
     }
     // Make iter_ valid and point to saved_key_
     if (!iter_->Valid() ||
@@ -888,11 +896,9 @@ bool DBIter::FindValueForCurrentKeyUsingSeek() {
 
   const Slice& val = iter_->value();
   {
-    StopWatchNano timer(env_, statistics_ != nullptr);
+    StopWatchNano timer(env_, statistics_, MERGE_OPERATION_TOTAL_TIME);
     PERF_TIMER_GUARD(merge_operator_time_nanos);
-    user_merge_operator_->FullMerge(entry_.key, &val, operands,
-                                    &saved_value_, logger_);
-    RecordTick(statistics_, MERGE_OPERATION_TOTAL_TIME, timer.ElapsedNanos());
+    user_merge_operator_->FullMerge(entry_.key, &val, operands, &saved_value_, logger_);
   }
   SetValid();
   return true;
@@ -956,15 +962,9 @@ void DBIter::FindParseableKey(ParsedInternalKey* ikey, Direction direction) {
 }
 
 const KeyValueEntry& DBIter::Seek(Slice target) {
-  key_buffer_.Clear();
-  auto target_size = target.size();
-  char* out = key_buffer_.GrowByAtLeast(target_size + sizeof(uint64_t));
-  target.CopyTo(out);
-  EncodeFixed64(out + target_size, PackSequenceAndType(sequence_, kValueTypeForSeek));
-
   {
     PERF_TIMER_GUARD(seek_internal_seek_time);
-    iter_->Seek(key_buffer_.AsSlice());
+    iter_->Seek(PrepareKeyBuffer(target, key_buffer_));
   }
 
   if (iter_->Valid()) {
@@ -1108,8 +1108,8 @@ void ArenaWrappedDBIter::UseFastNext(bool value) {
   db_iter_->UseFastNext(value);
 }
 
-void ArenaWrappedDBIter::UpdateFilterKey(Slice user_key_for_filter) {
-  return db_iter_->UpdateFilterKey(user_key_for_filter);
+void ArenaWrappedDBIter::UpdateFilterKey(Slice user_key_for_filter, Slice seek_key) {
+  return db_iter_->UpdateFilterKey(user_key_for_filter, seek_key);
 }
 
 ArenaWrappedDBIter* NewArenaWrappedDbIterator(

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 import { ROOT_URL } from '../config';
 
 export function getProviderEndpoint(providerUUID) {

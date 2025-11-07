@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.forms;
 
@@ -55,6 +55,7 @@ public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
     Download,
     Install,
     CopyCerts,
+    ValidateGFlags,
     Round1GFlagsUpdate,
     Round2GFlagsUpdate,
     PackageReInstall,

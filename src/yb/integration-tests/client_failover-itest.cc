@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -33,8 +33,6 @@
 #include <memory>
 #include <set>
 #include <unordered_map>
-
-#include <boost/optional.hpp>
 
 #include "yb/client/client-test-util.h"
 #include "yb/client/table_handle.h"
@@ -149,8 +147,7 @@ TEST_F(ClientFailoverITest, TestDeleteLeaderWhileScanning) {
 
   // Delete the leader replica. This will cause the next scan to the same
   // leader to get a TABLET_NOT_FOUND error.
-  ASSERT_OK(itest::DeleteTablet(leader, tablet_id, TABLET_DATA_TOMBSTONED,
-                                boost::none, kTimeout));
+  ASSERT_OK(itest::DeleteTablet(leader, tablet_id, TABLET_DATA_TOMBSTONED, std::nullopt, kTimeout));
 
   ssize_t old_leader_index = leader_index;
   // old_leader - node that was leader before we started to elect a new leader
@@ -168,8 +165,8 @@ TEST_F(ClientFailoverITest, TestDeleteLeaderWhileScanning) {
       // Do a config change to remove the old replica and add a new one.
       // Cause the new replica to become leader, then do the scan again.
       // Since old_leader is not changed in loop we would not remove more than one node.
-      auto result = RemoveServer(leader, tablet_id, old_leader, boost::none, kTimeout, NULL,
-                                 false /* retry */);
+      auto result = RemoveServer(
+          leader, tablet_id, old_leader, std::nullopt, kTimeout, NULL, false /* retry */);
       if (result.ok()) {
         break;
       } else if (retries_left <= 0) {
@@ -206,8 +203,8 @@ TEST_F(ClientFailoverITest, TestDeleteLeaderWhileScanning) {
                                                      itest::CommittedEntryType::CONFIG));
 
   TServerDetails* to_add = ts_map_[cluster_->tablet_server(missing_replica_index)->uuid()].get();
-  ASSERT_OK(AddServer(leader, tablet_id, to_add, consensus::PeerMemberType::PRE_VOTER,
-                      boost::none, kTimeout));
+  ASSERT_OK(AddServer(
+      leader, tablet_id, to_add, consensus::PeerMemberType::PRE_VOTER, std::nullopt, kTimeout));
   HostPort hp = HostPortFromPB(leader->registration->common().private_rpc_addresses(0));
   ASSERT_OK(StartRemoteBootstrap(to_add, tablet_id, leader->uuid(), hp, 1, kTimeout));
 

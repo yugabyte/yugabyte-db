@@ -3,9 +3,9 @@
 //  LICENSE file in the root directory of this source tree. An additional grant
 //  of patent rights can be found in the PATENTS file in the same directory.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -69,8 +69,9 @@ Status RandomAccessFileReader::Read(uint64_t offset, size_t n, Slice* result,
   uint64_t elapsed = 0;
   auto* effective_statistics = statistics ? statistics : stats_;
   {
-    StopWatch sw(env_, effective_statistics, hist_type_,
-                 (effective_statistics != nullptr) ? &elapsed : nullptr);
+    StopWatchMicro sw(
+        env_, effective_statistics, hist_type_,
+        (effective_statistics != nullptr) ? &elapsed : nullptr);
     IOSTATS_TIMER_GUARD(read_nanos);
     s = file_->Read(offset, n, result, scratch);
     IOSTATS_ADD_IF_POSITIVE(bytes_read, result->size());
@@ -88,8 +89,9 @@ Status RandomAccessFileReader::ReadAndValidate(
   uint64_t elapsed = 0;
   auto* effective_statistics = statistics ? statistics : stats_;
   {
-    StopWatch sw(env_, effective_statistics, hist_type_,
-                 (effective_statistics != nullptr) ? &elapsed : nullptr);
+    StopWatchMicro sw(
+        env_, effective_statistics, hist_type_,
+        (effective_statistics != nullptr) ? &elapsed : nullptr);
     IOSTATS_TIMER_GUARD(read_nanos);
     constexpr auto kMaxReadAttempts = 2;
     for (size_t read_attempt = 1; read_attempt <= kMaxReadAttempts; ++read_attempt) {

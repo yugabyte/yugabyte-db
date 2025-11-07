@@ -5,3 +5,4 @@ test: yb.orig.user-managed-constraint
 test: yb.orig.fk-relationship
 test: yb.orig.check-constraint-locking
 test: yb.orig.advisory-locks-fail-on-conflict
+test: yb.orig.pg_stat_statements-retry

@@ -34,9 +34,9 @@ Usage: yb-voyager initiate cutover to target [ <arguments> ... ]
 
 During the `export data from target` phase, after `cutover to target` in the fall-forward/fall-back workflows, YugabyteDB Voyager exports changes from YugabyteDB. YugabyteDB provides two types of CDC (Change Data Capture) connectors:
 
-- [YugabyteDB gRPC Connector](../../../../develop/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/): Requires direct access to the cluster's internal ports-specifically, YB-TServer (9100) and YB-Master (7100). This connector is suitable for deployments where these ports are accessible.
+- [YugabyteDB gRPC Connector](../../../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/): Requires direct access to the cluster's internal ports-specifically, YB-TServer (9100) and YB-Master (7100). This connector is suitable for deployments where these ports are accessible.
 
-- [YugabyteDB Connector](../../../../develop/change-data-capture/using-logical-replication/yugabytedb-connector/): Does not require access to internal ports and is recommended for deployments where the gRPC connector cannot be used, for example, YugabyteDB Aeon. Supported in YugabyteDB versions 2024.1.1 or later. Note that currently there are is a known limitation with this connector. Refer to GitHub issue [27248](https://github.com/yugabyte/yugabyte-db/issues/27248) for more details.
+- [YugabyteDB Connector](../../../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/): Does not require access to internal ports and is recommended for deployments where the gRPC connector cannot be used, for example, YugabyteDB Aeon. Supported in YugabyteDB versions 2024.1.1 or later. Note that currently there are is a known limitation with this connector. Refer to GitHub issue [27248](https://github.com/yugabyte/yugabyte-db/issues/27248) for more details.
 
 Use the argument `--use-yb-grpc-connector` to select the YugabyteDB gRPC connector for the migration as described in the following table.
 
@@ -66,7 +66,7 @@ cutover-to-target:
 ```
 
 |
-Applicable to fall-forward or fall-back workflows where you export changes from YugabyteDB during [export data from target](../../../reference/data-migration/export-data/#export-data-from-target). If set to true, [YugabyteDB gRPC Connector](../../../../develop/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/) is used. Otherwise, [YugabyteDB Connector](../../../../develop/change-data-capture/using-logical-replication/yugabytedb-connector/) is used.<br> .<br>Accepted parameters: true, false, yes, no, 0, 1. |
+Applicable to fall-forward or fall-back workflows where you export changes from YugabyteDB during [export data from target](../../../reference/data-migration/export-data/#export-data-from-target). If set to true, [YugabyteDB gRPC Connector](../../../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/) is used. Otherwise, [YugabyteDB Connector](../../../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/) is used.<br> .<br>Accepted parameters: true, false, yes, no, 0, 1. |
 | -e, --export-dir |
 
 ```yaml{.nocopy}
@@ -74,11 +74,20 @@ export-dir:
 ```
 
 |Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
+
+| -l, --log-level |
+
+```yaml {.nocopy}
+log-level:
+```
+
+| Log level for yb-voyager. <br>Accepted values: trace, debug, info, warn, error, fatal, panic <br>Default: info |
 | -h, --help | — |Command line help for initiate cutover to target. |
+| -c, --config-file | — | Path to a [configuration file](../../configuration-file). |
 
 {{</table>}}
 
-<!--| --use-yb-grpc-connector | Use the [gRPC Replication Protocol](../../../../develop/change-data-capture/using-yugabytedb-grpc-replication/) for export. If set to false, [PostgreSQL Replication Protocol](../../../../develop/change-data-capture/using-logical-replication/) (supported in YugabyteDB v2024.1.1+) is used. For PostgreSQL Replication Protocol, ensure no ALTER TABLE commands causing table rewrites (for example, adding primary keys) are present in the schema during import.<br>Default: true<br>Accepted parameters: true, false, yes, no, 0, 1. | -->
+<!--| --use-yb-grpc-connector | Use the [gRPC Replication Protocol](../../../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/) for export. If set to false, [PostgreSQL Replication Protocol](../../../../additional-features/change-data-capture/using-logical-replication/) (supported in YugabyteDB v2024.1.1+) is used. For PostgreSQL Replication Protocol, ensure no ALTER TABLE commands causing table rewrites (for example, adding primary keys) are present in the schema during import.<br>Default: true<br>Accepted parameters: true, false, yes, no, 0, 1. | -->
 
 ### Example
 
@@ -121,7 +130,16 @@ export-dir:
 ```
 
 |Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
+
+| -l, --log-level |
+
+```yaml {.nocopy}
+log-level:
+```
+
+| Log level for yb-voyager. <br>Accepted values: trace, debug, info, warn, error, fatal, panic <br>Default: info |
 | -h, --help | — |Command line help for cutover. |
+| -c, --config-file | — | Path to a [configuration file](../../configuration-file). |
 
 {{</table>}}
 
@@ -165,9 +183,18 @@ When run at the same time, flags take precedence over configuration flag setting
 export-dir:
 ```
 
-|
-Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
+|Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
+
+| -l, --log-level |
+
+```yaml {.nocopy}
+log-level:
+```
+
+| Log level for yb-voyager. <br>Accepted values: trace, debug, info, warn, error, fatal, panic <br>Default: info |
+
 | -h, --help | — | Command line help for cutover. |
+| -c, --config-file | — | Path to a [configuration file](../../configuration-file). |
 
 {{</table>}}
 
@@ -213,6 +240,7 @@ export-dir:
 
 | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | — | Command line help for cutover status. |
+| -c, --config-file | — | Path to a [configuration file](../../configuration-file). |
 
 {{</table>}}
 

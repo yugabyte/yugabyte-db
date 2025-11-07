@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.common;
 
@@ -39,6 +39,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -70,6 +71,8 @@ public class KubernetesUtil {
   public static String MIN_VERSION_CUSTOM_ISSUER_SUPPORT_STABLE = "2024.2.2.0-b1";
   public static String MIN_VERSION_OTEL_SUPPORT_STABLE = "2025.1.0.0-b0";
   public static String MIN_VERSION_OTEL_SUPPORT_PREVIEW = "2.25.1.0-b133";
+  public static String MIN_VERSION_YBDB_INBUILT_YBC_SUPPORT_PREVIEW = "2.27.0.0-b999";
+  public static String MIN_VERSION_YBDB_INBUILT_YBC_SUPPORT_STABLE = "2025.2.0.0-b1";
 
   public static boolean isNonRestartGflagsUpgradeSupported(String universeSoftwareVersion) {
     return Util.compareYBVersions(
@@ -103,6 +106,15 @@ public class KubernetesUtil {
             universeSoftwareVersion,
             MIN_VERSION_OTEL_SUPPORT_STABLE,
             MIN_VERSION_OTEL_SUPPORT_PREVIEW,
+            true)
+        >= 0;
+  }
+
+  public static boolean isUseYbdbInbuiltYbcSupported(String universeSoftwareVersion) {
+    return Util.compareYBVersions(
+            universeSoftwareVersion,
+            MIN_VERSION_YBDB_INBUILT_YBC_SUPPORT_STABLE,
+            MIN_VERSION_YBDB_INBUILT_YBC_SUPPORT_PREVIEW,
             true)
         >= 0;
   }
@@ -479,6 +491,13 @@ public class KubernetesUtil {
     return podToConfig;
   }
 
+  public static Map<String, String> getKubernetesConfigPerPod(Universe universe, NodeDetails node) {
+    PlacementInfo placementInfo = Universe.getCluster(universe, node.nodeName).placementInfo;
+    Map<String, Map<String, String>> k8sConfigMap =
+        KubernetesUtil.getKubernetesConfigPerPodName(placementInfo, Collections.singleton(node));
+    return k8sConfigMap.get(node.nodeName);
+  }
+
   /**
    * Returns a set of namespaces for the pods of the universe. Newer kubernetes universes will
    * always have a single namespace for all of a universe's pods.
@@ -841,7 +860,7 @@ public class KubernetesUtil {
       throws IOException {
 
     Map<UUID, Map<String, Object>> result = new HashMap<>();
-    PlacementInfo placementInfo = cluster.placementInfo;
+    PlacementInfo placementInfo = cluster.getOverallPlacement();
     Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
 
     ObjectMapper mapper = new ObjectMapper();
@@ -956,7 +975,7 @@ public class KubernetesUtil {
           getFinalOverrides(cluster, universeOverridesStr, azsOverridesStr);
       // Safe to add all to map directly since read only clusters don't have independent overrides
       azUUIDFinalOverrides.putAll(finalOverrides);
-      PlacementInfo pi = cluster.placementInfo;
+      PlacementInfo pi = cluster.getOverallPlacement();
       boolean isReadOnlyCluster = cluster.clusterType == ClusterType.ASYNC;
       KubernetesPlacement placement = new KubernetesPlacement(pi, isReadOnlyCluster);
       Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));

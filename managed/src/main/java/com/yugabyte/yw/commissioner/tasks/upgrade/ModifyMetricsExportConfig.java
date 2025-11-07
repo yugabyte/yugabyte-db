@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
@@ -96,6 +96,7 @@ public class ModifyMetricsExportConfig extends UpgradeTaskBase {
         nodes,
         taskParams().installOtelCollector,
         universe.getUniverseDetails().getPrimaryCluster().userIntent.auditLogConfig,
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.queryLogConfig,
         taskParams().metricsExportConfig,
         nodeDetails -> Collections.emptyMap());
   }

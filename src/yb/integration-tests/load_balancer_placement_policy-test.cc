@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -41,6 +41,8 @@ using std::vector;
 using namespace std::literals;
 
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
+METRIC_DECLARE_entity(cluster);
+METRIC_DECLARE_gauge_uint32(total_table_load_difference);
 
 namespace yb {
 namespace integration_tests {
@@ -868,6 +870,36 @@ TEST_F(LoadBalancerReadReplicaPlacementPolicyTest, DefaultMinNumReplicas) {
   GetLoadOnTservers(table_name().table_name(), num_tservers, &counts_per_ts);
   vector<int> expected_counts_per_ts = {4, 4, 4, 4, 4};
   ASSERT_VECTORS_EQ(expected_counts_per_ts, counts_per_ts);
+}
+
+TEST_F(LoadBalancerReadReplicaPlacementPolicyTest, TotalTableLoadDifferenceMetric) {
+  // Disable load balancer adds.
+  ASSERT_OK(external_mini_cluster()->SetFlagOnMasters("load_balancer_max_concurrent_adds", "0"));
+  size_t num_tservers = num_tablet_servers();
+
+  // Add a tserver to z0 and a read replica to z0.
+  AddNewTserverToZone("z0", ++num_tservers);
+  AddNewTserverToZone("z0", ++num_tservers, kReadReplicaPlacementUuid);
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo(
+      "c.r.z0, c.r.z1, c.r.z2", 3 /* replication_factor */, ""));
+  ASSERT_OK(yb_admin_client_->AddReadReplicaPlacementInfo(
+      "c.r.z0", 1 /* replication_factor */, kReadReplicaPlacementUuid));
+
+  vector<int> counts_per_ts;
+  GetLoadOnTservers(table_name().table_name(), num_tservers, &counts_per_ts);
+  vector<int> expected_counts_per_ts = {4, 4, 4, 0, 0};
+  ASSERT_VECTORS_EQ(expected_counts_per_ts, counts_per_ts);
+
+  // Wait for the total table load difference metric to reflect the tablets that need to be moved.
+  // We expect 2 adds to the new live tserver (from the tserver in z0) and 4 adds to the new read
+  // replica.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto* master = external_mini_cluster()->GetLeaderMaster();
+    auto num_adds = VERIFY_RESULT(master->GetMetric<uint32_t>(
+        &METRIC_ENTITY_cluster, NULL, &METRIC_total_table_load_difference, "value"));
+    LOG(INFO) << "Number of adds: " << num_adds;
+    return num_adds == 6;
+  }, 10s, "Total table load difference metric should reflect the tablets that need to be moved."));
 }
 
 } // namespace integration_tests

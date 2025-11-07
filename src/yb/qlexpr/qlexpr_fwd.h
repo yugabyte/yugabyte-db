@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -21,7 +21,6 @@ namespace yb::qlexpr {
 
 class IndexInfo;
 class IndexMap;
-class PgsqlScanSpec;
 class QLExprExecutor;
 class QLTableRow;
 class QLResultSet;
@@ -32,6 +31,7 @@ class YQLScanSpec;
 
 struct IndexColumn;
 struct QLTableColumn;
+struct ScanBounds;
 
 template <class Val>
 class ExprResultWriter;

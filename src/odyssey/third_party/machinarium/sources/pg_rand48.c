@@ -2,7 +2,7 @@
  *
  * erand48.c
  *
- * This file supplies pg_erand48(), pg_lrand48(), and pg_srand48(), which
+ * This file supplies mm_pg_erand48(), mm_pg_lrand48(), and mm_pg_srand48(), which
  * are just like erand48(), lrand48(), and srand48() except that we use
  * our own implementation rather than the one provided by the operating
  * system.  We used to test for an operating system version rather than
@@ -27,6 +27,11 @@
  *	  src/port/erand48.c
  *
  *-------------------------------------------------------------------------
+ */
+
+/*
+ * YB: Functions here have been renamed due to conflict with functions provided
+ * by PG, see https://github.com/yandex/odyssey/issues/973
  */
 
 #include <math.h>
@@ -64,20 +69,20 @@ static void _dorand48(unsigned short xseed[3])
 	xseed[2] = (unsigned short)accu;
 }
 
-double pg_erand48(unsigned short xseed[3])
+double mm_pg_erand48(unsigned short xseed[3])
 {
 	_dorand48(xseed);
 	return ldexp((double)xseed[0], -48) + ldexp((double)xseed[1], -32) +
 	       ldexp((double)xseed[2], -16);
 }
 
-long int pg_lrand48(unsigned short *_rand48_seed)
+long int mm_pg_lrand48(unsigned short *_rand48_seed)
 {
 	_dorand48(_rand48_seed);
 	return ((long)_rand48_seed[2] << 15) + ((long)_rand48_seed[1] >> 1);
 }
 
-void pg_srand48(long seed, unsigned short *_rand48_seed)
+void mm_pg_srand48(long seed, unsigned short *_rand48_seed)
 {
 	_rand48_seed[0] = RAND48_SEED_0;
 	_rand48_seed[1] = (unsigned short)seed;

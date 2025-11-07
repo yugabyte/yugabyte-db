@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 YugaByte, Inc. and Contributors
+ * Copyright 2019 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -17,6 +17,7 @@ import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.utils.CapacityReservationUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -54,7 +55,7 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
     updateOnPremNodeUuidsOnTaskParams(false);
     Collection<Cluster> clusters = taskParams().getReadOnlyClusters();
     // Create preflight node check tasks for on-prem nodes.
-    createPreflightNodeCheckTasks(clusters);
+    createPreflightNodeCheckTasks(universe, clusters);
     createCheckCertificateConfigTask(universe, clusters);
   }
 
@@ -69,7 +70,8 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
     Cluster cluster = taskParams().getReadOnlyClusters().get(0);
     universe
         .getUniverseDetails()
-        .upsertCluster(cluster.userIntent, cluster.placementInfo, cluster.uuid);
+        .upsertCluster(
+            cluster.userIntent, cluster.getPartitions(), cluster.placementInfo, cluster.uuid);
     updateTaskDetailsInDB(taskParams());
   }
 
@@ -100,6 +102,13 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
         log.error(errMsg);
         throw new IllegalArgumentException(errMsg);
       }
+      boolean deleteCapacityReservation =
+          createCapacityReservationsIfNeeded(
+              nodesToProvision,
+              CapacityReservationUtil.OperationType.CREATE,
+              node ->
+                  node.state == NodeDetails.NodeState.ToBeAdded
+                      || node.state == NodeDetails.NodeState.Adding);
 
       // Provision the nodes.
       // State checking is enabled because the subtasks are not idempotent.
@@ -107,6 +116,7 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
           universe,
           nodesToProvision,
           false /* ignore node status check */,
+          true /* do validation of gflags */,
           setupServerParams -> {
             setupServerParams.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
             setupServerParams.rebootNodeAllowed = true;
@@ -120,6 +130,9 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
             gFlagsParams.resetMasterState = true;
             gFlagsParams.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
           });
+      if (deleteCapacityReservation) {
+        createDeleteCapacityReservationTask();
+      }
 
       // Set of processes to be started, note that in this case it is same as nodes provisioned.
       Set<NodeDetails> newTservers = PlacementInfoUtil.getTserversToProvision(readOnlyNodes);
@@ -163,6 +176,7 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
       getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+      clearCapacityReservationOnError(t, Universe.getOrBadRequest(universe.getUniverseUUID()));
       throw t;
     } finally {
       releaseReservedNodes();

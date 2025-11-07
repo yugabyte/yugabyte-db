@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 import { isValidObject } from './ObjectUtils';
 import { YBFormattedNumber } from '../components/common/descriptors';
 import { YBLoadingCircleIcon } from '../components/common/indicators';
@@ -29,7 +29,7 @@ export function backupConfigFormatter(row, configList) {
 }
 
 export function percentFormatter(cell) {
-  return <YBFormattedNumber value={cell / 100} formattedNumberStyle={'percent'} />;
+  return <YBFormattedNumber value={cell / 100} formatStyle={'percent'} />;
 }
 
 export function successStringFormatter(cell, row) {

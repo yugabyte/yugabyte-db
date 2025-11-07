@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -64,19 +64,6 @@ class CatalogManagerUtil {
   // running in that zone.
   static Status GetPerZoneTSDesc(const TSDescriptorVector& ts_descs,
                                          ZoneToDescMap* zone_to_ts);
-
-  // Checks whether two given cloud infos are identical.
-  static bool IsCloudInfoEqual(const CloudInfoPB& lhs, const CloudInfoPB& rhs);
-
-  // Checks whether the first cloud info contains the second cloud info.
-  static bool DoesCloudInfoContainCloudInfo(const CloudInfoPB& lhs, const CloudInfoPB& rhs);
-
-  // For the given placement info, checks whether a given cloud info is contained within it.
-  static bool DoesPlacementInfoContainCloudInfo(const PlacementInfoPB& placement_info,
-                                                const CloudInfoPB& cloud_info);
-
-  // Checks whether the given placement info spans more than one region.
-  static bool DoesPlacementInfoSpanMultipleRegions(const PlacementInfoPB& placement_info);
 
   // Called when registering a ts from raft, deduce a tservers placement from the peer's role
   // and cloud info.

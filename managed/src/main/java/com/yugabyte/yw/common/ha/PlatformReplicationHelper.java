@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -24,6 +24,7 @@ import com.yugabyte.yw.common.PrometheusConfigManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.SwamperHelper;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -46,7 +47,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
-import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -280,34 +281,35 @@ public class PlatformReplicationHelper {
       log.warn("Cannot perform demoteRemoteInstance action on a local instance");
       return false;
     }
+    boolean succeeded = false;
     HighAvailabilityConfig config = remoteInstance.getConfig();
     try (PlatformInstanceClient client =
         this.remoteClientFactory.getClient(
             config.getClusterKey(),
             remoteInstance.getAddress(),
             config.getAcceptAnyCertificateOverrides())) {
-      if (remoteInstance.getIsLeader()) {
+      succeeded =
+          config
+              .getLocal()
+              .map(
+                  localInstance -> {
+                    // Send step down request to remote instance.
+                    log.info(
+                        "Demoting remote instance {} in favor of {}",
+                        remoteInstance.getAddress(),
+                        localInstance.getAddress());
+                    return client.demoteInstance(
+                        localInstance.getAddress(), config.getLastFailover().getTime(), promote);
+                  })
+              .orElse(false);
+      if (succeeded && remoteInstance.getIsLeader()) {
         // Ensure all local records for remote instances are set to follower state.
         remoteInstance.demote();
       }
-      return config
-          .getLocal()
-          .map(
-              localInstance -> {
-                // Send step down request to remote instance.
-                log.info(
-                    "Demoting remote instance {} in favor of {}",
-                    remoteInstance.getAddress(),
-                    localInstance.getAddress());
-                client.demoteInstance(
-                    localInstance.getAddress(), config.getLastFailover().getTime(), promote);
-                return true;
-              })
-          .orElse(false);
     } catch (Exception e) {
       log.error("Error demoting remote platform instance {}", remoteInstance.getAddress(), e);
     }
-    return false;
+    return succeeded;
   }
 
   public void clearMetrics(HighAvailabilityConfig config, String remoteInstanceAddr) {
@@ -330,7 +332,6 @@ public class PlatformReplicationHelper {
       // Form payload to send to remote platform instance.
       List<PlatformInstance> instances = config.getInstances();
       JsonNode instancesJson = Json.toJson(instances);
-
       // Export the platform instances to the given remote platform instance.
       client.syncInstances(config.getLastFailover().getTime(), instancesJson);
       return true;
@@ -381,45 +382,54 @@ public class PlatformReplicationHelper {
     try {
       log.info("Switching prometheus to standalone.");
       File configFile = prometheusConfigHelper.getPrometheusConfigFile();
-      File configDir = configFile.getParentFile();
-      File previousConfigFile = new File(configDir, "previous_prometheus.yml");
-
-      if (!previousConfigFile.exists()) {
-        throw new RuntimeException("Previous prometheus config file could not be found");
+      File previousConfigFile = new File(configFile.getParentFile(), "previous_prometheus.yml");
+      if (previousConfigFile.exists()) {
+        FileUtils.moveFile(previousConfigFile.toPath(), configFile.toPath());
+        prometheusConfigHelper.reloadPrometheusConfig();
+        prometheusConfigManager.updateK8sScrapeConfigs();
+        log.info("Moved previous_prometheus.yml to prometheus.yml");
+      } else {
+        // Regular sync call to PlatformReplicationManager::ensurePrometheusConfig should fix it if
+        // there is an issue.
+        log.warn(
+            "Previous prometheus config file does not exist. It may already be running in"
+                + " standalone more");
       }
-
-      FileUtils.moveFile(previousConfigFile.toPath(), configFile.toPath());
-      prometheusConfigHelper.reloadPrometheusConfig();
-      prometheusConfigManager.updateK8sScrapeConfigs();
-      log.info("Moved previous_prometheus.yml to prometheus.yml");
     } catch (Exception e) {
       log.error("Error switching prometheus config to standalone", e);
     }
   }
 
+  // Invoked by MetricsScrapeIntervalStandbyListener event.
   public void ensurePrometheusConfig() {
-    HighAvailabilityConfig.get()
-        .ifPresent(
-            haConfig ->
-                haConfig
-                    .getLocal()
-                    .ifPresent(
-                        localInstance -> {
-                          if (!localInstance.getIsLeader()) {
-                            haConfig
-                                .getLeader()
-                                .ifPresent(
-                                    leaderInstance -> {
-                                      try {
-                                        this.switchPrometheusToFederated(
-                                            new URL(leaderInstance.getAddress()));
-                                      } catch (Exception ignored) {
-                                      }
-                                    });
-                          } else {
-                            this.switchPrometheusToStandalone();
-                          }
-                        }));
+    Optional<HighAvailabilityConfig> optional = HighAvailabilityConfig.get();
+    if (optional.isEmpty()) {
+      return;
+    }
+    // No outgoing remote call and this event must make the change.
+    HighAvailabilityConfig.doWithLock(
+        optional.get().getUuid(),
+        config -> {
+          config
+              .getLocal()
+              .ifPresent(
+                  localInstance -> {
+                    if (!localInstance.getIsLeader()) {
+                      config
+                          .getLeader()
+                          .ifPresent(
+                              leaderInstance -> {
+                                log.debug("Switching prometheus to federated mode");
+                                switchPrometheusToFederated(
+                                    Util.toURL(leaderInstance.getAddress()));
+                              });
+                    } else {
+                      log.debug("Switching prometheus to standalone mode");
+                      switchPrometheusToStandalone();
+                    }
+                  });
+          return null;
+        });
   }
 
   boolean exportBackups(
@@ -504,33 +514,41 @@ public class PlatformReplicationHelper {
   }
 
   boolean syncToRemoteInstance(PlatformInstance remoteInstance) {
-    HighAvailabilityConfig config = remoteInstance.getConfig();
     String remoteAddr = remoteInstance.getAddress();
     log.debug("Syncing data to {}...", remoteAddr);
-
-    // Ensure that the remote instance is demoted if this instance is the most current leader.
-    if (!this.demoteRemoteInstance(remoteInstance, false)) {
-      log.error("Error demoting remote instance {}", remoteAddr);
-      return false;
+    boolean succeeded =
+        HighAvailabilityConfig.doWithTryLock(
+                remoteInstance.getConfig().getUuid(),
+                config -> {
+                  // Ensure that the remote instance is demoted if this instance is the most current
+                  // leader.
+                  if (!demoteRemoteInstance(remoteInstance, false)) {
+                    log.warn("Syncer failed to demote remote instance {}", remoteAddr);
+                    return false;
+                  }
+                  // Sync the HA cluster metadata to the remote instance.
+                  return exportPlatformInstances(config, remoteAddr);
+                })
+            .orElse(false);
+    if (!succeeded) {
+      log.warn("Sync failed to demote remote instance {}", remoteAddr);
     }
-
-    // Sync the HA cluster metadata to the remote instance.
-    return this.exportPlatformInstances(config, remoteAddr);
+    return succeeded;
   }
 
   List<File> listBackups(URL leader) {
     try {
-      Path backupDir = this.getReplicationDirFor(leader.getHost());
+      Path backupDir = getReplicationDirFor(leader.getHost());
 
       if (!backupDir.toFile().exists() || !backupDir.toFile().isDirectory()) {
-        log.debug(String.format("%s directory does not exist", backupDir.toFile().getName()));
-        return new ArrayList<>(1);
+        log.debug("{} directory does not exist", backupDir.toFile().getName());
+        return Collections.emptyList();
       }
 
       return FileUtils.listFiles(backupDir, PlatformReplicationHelper.BACKUP_FILE_PATTERN);
     } catch (Exception e) {
       log.error("Error listing backups for platform instance {}", leader.getHost(), e);
-      return new ArrayList<>();
+      return Collections.emptyList();
     }
   }
 
@@ -584,8 +602,8 @@ public class PlatformReplicationHelper {
   }
 
   void cleanupReceivedBackups(URL leader, int numToRetain) {
-    List<File> backups = this.listBackups(leader);
-    this.cleanupBackups(backups, numToRetain);
+    List<File> backups = listBackups(leader);
+    cleanupBackups(backups, numToRetain);
   }
 
   public synchronized <T extends PlatformBackupParams> ShellResponse runCommand(T params) {

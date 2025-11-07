@@ -9,8 +9,6 @@
 -- First test, check and cascade
 --
 
-SET yb_explain_hide_non_deterministic_fields = true;
-
 CREATE TABLE ITABLE ( ptest1 int, ptest2 text );
 CREATE UNIQUE INDEX ITABLE_IDX ON ITABLE(ptest1);
 CREATE TABLE FKTABLE ( ftest1 int REFERENCES ITABLE(ptest1) MATCH FULL ON DELETE CASCADE ON UPDATE CASCADE, ftest2 int );
@@ -372,7 +370,7 @@ SELECT * FROM c ORDER BY k;
 
 -- check distributed storage counters in case of multiple foreign keys
 TRUNCATE c;
-EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
+EXPLAIN (ANALYZE ON, DIST ON, COMMIT ON, COSTS OFF)
 INSERT INTO c VALUES(1, 1, 1, 1, 1);
 
 CREATE TABLE parent(k INT PRIMARY KEY, v INT UNIQUE);
@@ -457,7 +455,7 @@ INSERT INTO fk VALUES (1);
 INSERT INTO fk VALUES (105);
 INSERT INTO fk VALUES (110); -- should fail
 INSERT INTO fk VALUES (200); -- should fail
-SELECT * FROM fk;
+SELECT * FROM fk ORDER BY id;
 
 DROP TABLE pk, fk;
 
@@ -472,7 +470,7 @@ INSERT INTO fk VALUES (1);
 INSERT INTO fk VALUES (105);
 INSERT INTO fk VALUES (110); -- should fail
 INSERT INTO fk VALUES (200); -- should fail
-SELECT * FROM fk;
+SELECT * FROM fk ORDER BY b;
 
 DROP TABLE pk, fk;
 
@@ -489,7 +487,7 @@ SELECT * FROM fk;
 
 CREATE TABLE fk2(a INT, c INT, FOREIGN KEY (a, c) REFERENCES pk(a, c) DEFERRABLE INITIALLY DEFERRED);
 INSERT INTO fk2 VALUES (1, 20), (1, 21);
-SELECT * FROM fk2;
+SELECT * FROM fk2 ORDER BY a, c;
 
 DROP TABLE pk, fk, fk2;
 

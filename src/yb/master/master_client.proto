@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -23,6 +23,7 @@ import "yb/common/wire_protocol.proto";
 import "yb/consensus/metadata.proto";
 import "yb/master/master_types.proto";
 import "yb/rpc/service.proto";
+import "yb/tablet/tablet.proto";
 import "yb/tablet/tablet_types.proto";
 
 // Info about a single tablet server, returned to the client as part
@@ -101,7 +102,9 @@ message GetIndexBackfillProgressResponsePB {
   optional MasterErrorPB error = 1;
   // The ordering of the indexes' results here is expected to be the same as the ordering in the
   // corresponding request PB (GetIndexBackfillProgressRequestPB).
-  repeated uint64 rows_processed_entries = 2;
+  repeated uint64 num_rows_read_from_table_for_backfill = 2;
+
+  repeated double num_rows_backfilled_in_index = 3;
 }
 
 message GetTabletLocationsRequestPB {
@@ -179,7 +182,17 @@ message GetTransactionStatusTabletsResponsePB {
   optional MasterErrorPB error = 1;
 
   repeated bytes global_tablet_id = 2;
-  repeated bytes placement_local_tablet_id = 3;
+
+  // This is used for the old status tablet selection algorithm only (transaction tablets in the
+  // same region as and containing the requestor's placement).
+  repeated bytes region_local_tablet_id = 3;
+
+  message TablespaceInfoPB {
+    optional uint32 tablespace_oid = 1;
+    optional PlacementInfoPB placement = 2;
+    repeated bytes tablet_id = 3;
+  }
+  repeated TablespaceInfoPB placement_local_tablespace = 4;
 }
 
 // Reserve Postgres OIDs
@@ -201,6 +214,7 @@ message ReservePgsqlOidsResponsePB {
 }
 
 message GetYsqlCatalogConfigRequestPB {
+  optional NamespaceIdentifierPB namespace = 1;
 }
 
 message GetYsqlCatalogConfigResponsePB {
@@ -247,6 +261,13 @@ message GetStatefulServiceLocationResponsePB {
   optional StatefulServiceInfoPB service_info = 2;
 }
 
+message GetTabletsMetadataRequestPB {}
+
+message GetTabletsMetadataResponsePB {
+  optional MasterErrorPB error = 1;
+  repeated tablet.TabletStatusPB tablet_metadatas = 2;
+}
+
 service MasterClient {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -257,6 +278,8 @@ service MasterClient {
 
   rpc GetTransactionStatusTablets(GetTransactionStatusTabletsRequestPB)
       returns (GetTransactionStatusTabletsResponsePB);
+
+  rpc GetTabletsMetadata(GetTabletsMetadataRequestPB) returns (GetTabletsMetadataResponsePB);
 
   // For Postgres:
   rpc ReservePgsqlOids(ReservePgsqlOidsRequestPB) returns (ReservePgsqlOidsResponsePB);

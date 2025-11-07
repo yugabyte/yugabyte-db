@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 YugaByte, Inc. and Contributors
+ * Copyright 2022 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -29,20 +29,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.Getter;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.pekko.stream.javadsl.FileIO;
 import org.apache.pekko.stream.javadsl.Source;
 import org.apache.pekko.util.ByteString;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import play.libs.Json;
 import play.mvc.Call;
 import play.mvc.Http;
 import v1.RoutesPrefix;
 
+@Slf4j
 public class PlatformInstanceClient implements AutoCloseable {
 
   public static final String YB_HA_WS_KEY = "yb.ha.ws";
-  private static final Logger LOG = LoggerFactory.getLogger(PlatformInstanceClient.class);
   private static final String HA_INSTANCE_VERSION_MISMATCH_NAME = "yba_ha_inst_version_mismatch";
   private static final String HA_INSTANCE_ADDR_LABEL = "instance_addr";
   private static final Gauge HA_YBA_VERSION_MISMATCH_GAUGE;
@@ -96,8 +95,7 @@ public class PlatformInstanceClient implements AutoCloseable {
     }
 
     if (response == null || response.get("error") != null) {
-      LOG.error("Error received from remote instance {}: {}", this.remoteAddress, response);
-
+      log.error("Error received from remote instance {}: {}", this.remoteAddress, response);
       throw new RuntimeException("Error received from remote instance " + this.remoteAddress);
     }
 
@@ -112,7 +110,6 @@ public class PlatformInstanceClient implements AutoCloseable {
    */
   public HighAvailabilityConfig getRemoteConfig() {
     JsonNode response = this.makeRequest(this.controller.getHAConfigByClusterKey(), null);
-
     return Json.fromJson(response, HighAvailabilityConfig.class);
   }
 
@@ -128,13 +125,22 @@ public class PlatformInstanceClient implements AutoCloseable {
 
   /**
    * calls {@link com.yugabyte.yw.controllers.InternalHAController#demoteLocalLeader(long timestamp,
-   * boolean promote)} on remote platform instance
+   * boolean promote)} on remote platform instance. Returns true if successful.
    */
-  public void demoteInstance(String localAddr, long timestamp, boolean promote) {
+  public boolean demoteInstance(String localAddr, long timestamp, boolean promote) {
+    boolean success = false;
     ObjectNode formData = Json.newObject().put("leader_address", localAddr);
-    final JsonNode response =
-        this.makeRequest(this.controller.demoteLocalLeader(timestamp, promote), formData);
-    maybeGenerateVersionMismatchEvent(response.get("ybaVersion"));
+    Call call = controller.demoteLocalLeader(timestamp, promote);
+    log.info("Making a remote call to {} to demote the instance", call.url());
+    final JsonNode response = this.makeRequest(call, formData);
+    success = response != null && response.isObject();
+    if (success) {
+      log.info("Successfully demoted remote instance at {}", call.url());
+      maybeGenerateVersionMismatchEvent(response.get("ybaVersion"));
+    } else {
+      log.warn("Failed to demote the remote instance at {}", call.url());
+    }
+    return success;
   }
 
   public boolean syncBackups(String leaderAddr, String senderAddr, File backupFile) {
@@ -148,7 +154,7 @@ public class PlatformInstanceClient implements AutoCloseable {
                     "leader", leaderAddr, "sender", senderAddr, "ybaversion", getYbaVersion())));
     // Manually close WS client as we are calling multipartRequest on apiHelper and not makeRequest
     if (response == null || response.get("error") != null) {
-      LOG.error("Error received from remote instance {}. Got {}", this.remoteAddress, response);
+      log.error("Error received from remote instance {}. Got {}", this.remoteAddress, response);
       return false;
     } else {
       return true;

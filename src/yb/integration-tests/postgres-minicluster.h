@@ -29,7 +29,7 @@ class PostgresMiniCluster {
   std::unique_ptr<client::YBClient> client_;
   std::unique_ptr<yb::pgwrapper::PgSupervisor> pg_supervisor_;
   HostPort pg_host_port_;
-  boost::optional<client::TransactionManager> txn_mgr_;
+  std::optional<client::TransactionManager> txn_mgr_;
   size_t pg_ts_idx_ = -1;
   uint16_t pg_port_ = -1;
 

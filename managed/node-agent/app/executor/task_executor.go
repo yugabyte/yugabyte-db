@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package executor
 
@@ -138,8 +138,8 @@ func (te *TaskExecutor) SubmitTask(
 				}
 			// Task level context.
 			case <-ctx.Done():
-				util.FileLogger().Errorf(ctx, "Task is cancelled")
 				if future.state.CompareAndSwap(TaskRunning, TaskAborted) {
+					util.FileLogger().Errorf(ctx, "Task is cancelled")
 					future.err = errors.New("Task is cancelled")
 					close(future.ch)
 				}

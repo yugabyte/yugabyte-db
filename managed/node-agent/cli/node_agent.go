@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package cli
 
@@ -34,13 +34,13 @@ func Execute() {
 	server.SetupServerCommand(rootCmd)
 	rootCmd.AddCommand(versionCmd)
 	if err := rootCmd.Execute(); err != nil {
-		util.ConsoleLogger().Errorf(srv.Context(), err.Error())
+		util.ConsoleLogger().Error(srv.Context(), err.Error())
 		os.Exit(1)
 	}
 }
 
 func versionCmdHandler(cmd *cobra.Command, args []string) error {
 	config := util.CurrentConfig()
-	util.ConsoleLogger().Infof(srv.Context(), config.String(util.PlatformVersionKey))
+	util.ConsoleLogger().Info(srv.Context(), config.String(util.PlatformVersionKey))
 	return nil
 }

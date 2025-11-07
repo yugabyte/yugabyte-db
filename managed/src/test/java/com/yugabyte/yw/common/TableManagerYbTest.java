@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.common;
 
@@ -116,7 +116,7 @@ public class TableManagerYbTest extends FakeDBApplication {
     if (enableTLS) {
       userIntent.enableNodeToNodeEncrypt = true;
     }
-    uniParams.upsertPrimaryCluster(userIntent, null);
+    uniParams.upsertPrimaryCluster(userIntent, null, null);
     testUniverse.setUniverseDetails(uniParams);
     testUniverse =
         Universe.saveDetails(

@@ -4,7 +4,7 @@ headerTitle: CREATE AGGREGATE
 linkTitle: CREATE AGGREGATE
 description: Use the CREATE AGGREGATE statement to create an aggregate function.
 menu:
-  v2.20:
+  v2.20_api:
     identifier: ddl_create_aggregate
     parent: statements
 type: docs

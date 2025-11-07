@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.common.backuprestore.ybc;
 
@@ -19,6 +19,7 @@ import com.yugabyte.yw.common.NFSUtil;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseManager;
+import com.yugabyte.yw.common.RetryTaskUntilCondition;
 import com.yugabyte.yw.common.StorageUtilFactory;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -38,6 +39,7 @@ import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.forms.YbcThrottleParameters;
 import com.yugabyte.yw.forms.YbcThrottleParametersResponse;
 import com.yugabyte.yw.forms.YbcThrottleParametersResponse.PresetThrottleValues;
+import com.yugabyte.yw.forms.ybc.YbcGflags;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
@@ -49,6 +51,7 @@ import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -65,6 +68,8 @@ import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Predicate;
+import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
@@ -218,52 +223,19 @@ public class YbcManager {
 
   public void setThrottleParams(UUID universeUUID, YbcThrottleParameters throttleParams) {
     try {
-      ControllerFlagsSetRequest.Builder controllerFlagsSetterBuilder =
-          ControllerFlagsSetRequest.newBuilder();
-      controllerFlagsSetterBuilder.setPersistAcrossReboots(true);
-
       Universe universe = Universe.getOrBadRequest(universeUUID);
+      Map<String, String> currentYbcFlagsMap =
+          new HashMap<>(universe.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags);
 
-      Map<UUID, Map<String, String>> clusterYbcFlagsMap = new HashMap<>();
-
-      // Stream through clusters to populate and set throttle param values.
+      ControllerFlagsSetRequest controllerFlagsSetRequest =
+          prepareFlagsSetRequest(universe, throttleParams, currentYbcFlagsMap);
+      // Stream through clusters to set throttle param values.
       universe.getUniverseDetails().clusters.stream()
           .forEach(
               c -> {
-                NonRestartSettableControllerFlags.Builder nonRestartSettableControllerFlagsBuilder =
-                    NonRestartSettableControllerFlags.newBuilder();
-                List<String> toRemove = new ArrayList<>();
-                Map<String, String> toAddModify = new HashMap<>();
-                Map<String, Long> paramsToSet = throttleParams.getThrottleFlagsMap();
-                List<NodeDetails> tsNodes =
-                    universe.getNodesInCluster(c.uuid).stream()
-                        .filter(nD -> nD.isTserver)
-                        .collect(Collectors.toList());
-                if (throttleParams.resetDefaults) {
-                  toRemove.addAll(new ArrayList<>(paramsToSet.keySet()));
-                }
-                // Populate the controller throttle params map with modified throttle param
-                // values.
-                populateControllerThrottleParamsMap(
-                    universe,
-                    tsNodes,
-                    toAddModify,
-                    c,
-                    nonRestartSettableControllerFlagsBuilder,
-                    paramsToSet,
-                    throttleParams.resetDefaults);
-                controllerFlagsSetterBuilder.setFlags(
-                    nonRestartSettableControllerFlagsBuilder.build());
-                ControllerFlagsSetRequest controllerFlagsSetRequest =
-                    controllerFlagsSetterBuilder.build();
-
+                List<NodeDetails> nodes = universe.getTserversInCluster(c.uuid);
                 // On node by node basis set the throttle params.
-                setThrottleParamsOnYbcServers(universe, tsNodes, c.uuid, controllerFlagsSetRequest);
-
-                Map<String, String> currentYbcFlagsMap = new HashMap<>(c.userIntent.ybcFlags);
-                currentYbcFlagsMap.putAll(toAddModify);
-                currentYbcFlagsMap.keySet().removeAll(toRemove);
-                clusterYbcFlagsMap.put(c.uuid, currentYbcFlagsMap);
+                setThrottleParamsOnYbcServers(universe, nodes, controllerFlagsSetRequest);
               });
 
       // Update universe details with modified values.
@@ -274,7 +246,7 @@ public class YbcManager {
               UniverseDefinitionTaskParams params = universe.getUniverseDetails();
               params.clusters.forEach(
                   c -> {
-                    c.userIntent.ybcFlags = clusterYbcFlagsMap.get(c.uuid);
+                    c.userIntent.ybcFlags = currentYbcFlagsMap;
                   });
               universe.setUniverseDetails(params);
             }
@@ -287,18 +259,60 @@ public class YbcManager {
     }
   }
 
-  @VisibleForTesting
-  protected void populateControllerThrottleParamsMap(
+  /**
+   * Prepare ControllerFlagsSetRequest and modify the currentYbcFlagsMap with modified gflags.
+   *
+   * @param universe
+   * @param throttleParams
+   * @param currentYbcFlagsMap will be modified
+   * @return
+   */
+  public ControllerFlagsSetRequest prepareFlagsSetRequest(
+      Universe universe,
+      YbcThrottleParameters throttleParams,
+      Map<String, String> currentYbcFlagsMap) {
+    ControllerFlagsSetRequest.Builder controllerFlagsSetterBuilder =
+        ControllerFlagsSetRequest.newBuilder();
+    controllerFlagsSetterBuilder.setPersistAcrossReboots(true);
+
+    NonRestartSettableControllerFlags.Builder nonRestartSettableControllerFlagsBuilder =
+        NonRestartSettableControllerFlags.newBuilder();
+    List<String> toRemove = new ArrayList<>();
+    Map<String, String> toAddModify = new HashMap<>();
+    Map<String, Long> paramsToSet = throttleParams.getThrottleFlagsMap();
+    List<NodeDetails> tsNodes = universe.getTServersInPrimaryCluster();
+    if (throttleParams.resetDefaults) {
+      toRemove.addAll(new ArrayList<>(paramsToSet.keySet()));
+    }
+    // Populate the controller throttle params map with modified throttle param
+    // values.
+    populateControllerThrottleParamsMap(
+        universe,
+        tsNodes,
+        toAddModify,
+        nonRestartSettableControllerFlagsBuilder,
+        paramsToSet,
+        throttleParams.resetDefaults);
+
+    controllerFlagsSetterBuilder.setFlags(nonRestartSettableControllerFlagsBuilder.build());
+
+    // In-place modify current YBC gflags map
+    currentYbcFlagsMap.putAll(toAddModify);
+    currentYbcFlagsMap.keySet().removeAll(toRemove);
+    return controllerFlagsSetterBuilder.build();
+  }
+
+  public void populateControllerThrottleParamsMap(
       Universe universe,
       List<NodeDetails> tsNodes,
       Map<String, String> toAddModify,
-      Cluster c,
       NonRestartSettableControllerFlags.Builder nonRestartSettableControllerFlagsBuilder,
       Map<String, Long> paramsToSet,
       boolean resetToDefaults) {
     Integer ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
     String certFile = universe.getCertificateNodetoNode();
-    UUID providerUUID = UUID.fromString(c.userIntent.provider);
+    Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+    UUID providerUUID = UUID.fromString(primaryCluster.userIntent.provider);
     List<String> tsIPs =
         tsNodes.stream().map(nD -> nD.cloudInfo.private_ip).collect(Collectors.toList());
 
@@ -322,8 +336,9 @@ public class YbcManager {
                   InstanceType.getOrBadRequest(providerUUID, tsNodes.get(0).cloudInfo.instance_type)
                       .getNumCores());
     } else {
-      if (c.userIntent.tserverK8SNodeResourceSpec != null) {
-        cInstanceTypeCores = (int) Math.ceil(c.userIntent.tserverK8SNodeResourceSpec.cpuCoreCount);
+      if (primaryCluster.userIntent.tserverK8SNodeResourceSpec != null) {
+        cInstanceTypeCores =
+            (int) Math.ceil(primaryCluster.userIntent.tserverK8SNodeResourceSpec.cpuCoreCount);
       } else {
         throw new RuntimeException("Could not determine number of cores based on resource spec");
       }
@@ -397,10 +412,9 @@ public class YbcManager {
   }
 
   // Iterate through each node and set throttle values.
-  private void setThrottleParamsOnYbcServers(
+  public void setThrottleParamsOnYbcServers(
       Universe universe,
       List<NodeDetails> tsNodes,
-      UUID clusterUUID,
       ControllerFlagsSetRequest controllerFlagsSetRequest) {
     Integer ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
     String certFile = universe.getCertificateNodetoNode();
@@ -704,21 +718,22 @@ public class YbcManager {
       BackupServiceTaskResultRequest downloadSuccessMarkerResultRequest =
           BackupServiceTaskResultRequest.newBuilder().setTaskId(taskID).build();
       BackupServiceTaskResultResponse downloadSuccessMarkerResultResponse = null;
-      int numRetries = 0;
-      while (numRetries < MAX_SHORT_RETRIES) {
-        downloadSuccessMarkerResultResponse =
-            ybcClient.backupServiceTaskResult(downloadSuccessMarkerResultRequest);
-        if (!(downloadSuccessMarkerResultResponse
-                .getTaskStatus()
-                .equals(ControllerStatus.IN_PROGRESS)
-            || downloadSuccessMarkerResultResponse
-                .getTaskStatus()
-                .equals(ControllerStatus.NOT_STARTED))) {
-          break;
-        }
-        Thread.sleep(WAIT_EACH_SHORT_ATTEMPT_MS);
-        numRetries++;
-      }
+      Integer timeoutSecs =
+          confGetter.getGlobalConf(GlobalConfKeys.ybcSuccessMarkerDownloadTimeoutSecs);
+      // RetryTaskUntilCondition
+      Supplier<BackupServiceTaskResultResponse> dsmResponseSupplier =
+          () -> ybcClient.backupServiceTaskResult(downloadSuccessMarkerResultRequest);
+      Predicate<BackupServiceTaskResultResponse> stopRetries =
+          (dsmResponse) ->
+              !(dsmResponse.getTaskStatus().equals(ControllerStatus.IN_PROGRESS)
+                  || dsmResponse.getTaskStatus().equals(ControllerStatus.NOT_STARTED));
+      RetryTaskUntilCondition<BackupServiceTaskResultResponse> pollSuccessMarkerDownloadProgress =
+          new RetryTaskUntilCondition<>(dsmResponseSupplier, stopRetries);
+      pollSuccessMarkerDownloadProgress.retryUntilCond(
+          WAIT_EACH_SHORT_ATTEMPT_MS / 1000, timeoutSecs);
+
+      downloadSuccessMarkerResultResponse =
+          ybcClient.backupServiceTaskResult(downloadSuccessMarkerResultRequest);
       if (!downloadSuccessMarkerResultResponse.getTaskStatus().equals(ControllerStatus.OK)) {
         throw new RuntimeException(
             String.format(
@@ -1312,5 +1327,25 @@ public class YbcManager {
     params.setProperty("processType", ServerType.CONTROLLER.toString());
     params.setProperty("taskSubType", subType.toString());
     return params;
+  }
+
+  public static Map<String, String> convertYbcFlagsToMap(YbcGflags ybcGflags)
+      throws IllegalAccessException {
+    Map<String, String> map = new HashMap<>();
+
+    Class<?> clazz = ybcGflags.getClass();
+    for (Field field : clazz.getDeclaredFields()) {
+      if (field.getName().equalsIgnoreCase("ybcGflagsMetadata")) {
+        continue;
+      }
+      field.setAccessible(true);
+      String fieldName = field.getName();
+      Object value = field.get(ybcGflags);
+
+      if (value != null) {
+        map.put(fieldName, value.toString());
+      }
+    }
+    return map;
   }
 }

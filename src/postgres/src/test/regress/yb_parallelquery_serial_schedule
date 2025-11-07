@@ -8,6 +8,8 @@ test: yb.depd.tenk1
 test: yb.depd.tenk2
 test: yb.depd.int4_tbl
 
+test: yb.orig.parallel_hashed
+test: yb.orig.parallel_ranged
 test: yb.orig.parallel_colocated
 test: yb.orig.select_parallel
 test: yb.orig.parallel_append

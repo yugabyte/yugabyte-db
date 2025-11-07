@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -24,6 +24,14 @@ class PgDropColumnSanityTest : public LibPqTestBase {
   void TestMarkColForDeletion();
 
  protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    // These tests disable ddl rollback (which holds back release of global object locks),
+    // and expect dmls to go through. This doesn't hold true with object locking enabled.
+    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
+    AppendFlagToAllowedPreviewFlagsCsv(
+        options->extra_tserver_flags, "enable_object_locking_for_table_locks");
+  }
+
   virtual void SetupTables();
 
   void SelectTests();

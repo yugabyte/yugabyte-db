@@ -1,5 +1,5 @@
 /*
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  */
 
 package schedule
@@ -34,19 +34,9 @@ func fetchStorageAndKMSConfigurationsForListing(
 		}
 	}
 
-	schedule.KMSConfigs = make([]util.KMSConfig, 0)
-	kmsConfigs, response, err := authAPI.ListKMSConfigs().Execute()
+	schedule.KMSConfigs, err = authAPI.GetListOfKMSConfigs(
+		"Backup Schedule", operation+" - Get KMS Configurations")
 	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(response, err,
-			"Backup Schedule", operation+" - Get KMS Configurations")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
-	}
-
-	for _, k := range kmsConfigs {
-		kmsConfig, err := util.ConvertToKMSConfig(k)
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		schedule.KMSConfigs = append(schedule.KMSConfigs, kmsConfig)
+		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 	}
 }

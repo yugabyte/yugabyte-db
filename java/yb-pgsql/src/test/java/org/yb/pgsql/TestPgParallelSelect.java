@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -54,7 +54,10 @@ public class TestPgParallelSelect extends BasePgSQLTest {
     flagMap.put("TEST_slowdown_pgsql_aggregate_read_ms",
         Integer.toString(kSlowdownPgsqlAggregateReadMs));
     flagMap.put("ysql_select_parallelism", Integer.toString(3 * kNumShardsPerTserver));
-
+    // Disable auto analyze because it increases latency for this test, and latency
+    // is one metric checked by the test.
+    flagMap.put("ysql_enable_auto_analyze_infra", "false");
+    flagMap.put("ysql_enable_auto_analyze", "false");
     return flagMap;
   }
 

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -85,8 +85,20 @@ Status DbServerBase::Start() {
 }
 
 void DbServerBase::Shutdown() {
-  client::TransactionManager* txn_manager;
-  txn_manager = transaction_manager_.load();
+  if (!shutting_down_.Set()) {
+    return;
+  }
+  auto* txn_manager = transaction_manager_.load();
+  if (txn_manager) {
+    txn_manager->SetClosing();
+  }
+  // Shut down the transaction pool before the txn manager because the txn manager holds the Rpcs
+  // object used to schedule transaction rpcs. We shut down RPC objects after we shut down their
+  // clients.
+  auto* transaction_pool = transaction_pool_.load();
+  if (transaction_pool) {
+    transaction_pool->Shutdown();
+  }
   if (txn_manager) {
     txn_manager->Shutdown();
   }

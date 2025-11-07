@@ -4,7 +4,7 @@ linkTitle: Scatter-plot for 21-Oct-2020
 headerTitle: Average COVID-like symptoms vs average mask-wearing by state scatter plot for 21-Oct-2020
 description: Average COVID-like symptoms vs average mask-wearing by state scatter plot for 21-Oct-2020
 menu:
-  v2.20:
+  v2.20_api:
     identifier: scatter-plot-for-21-Oct-2020
     parent: analyze-the-covidcast-data
     weight: 30
@@ -90,7 +90,7 @@ as $body$
 
 This code, and the remaining code below, needed to make the scatter-plot for synthetic data is included in [`synthetic-data.sql`](../analysis-scripts/synthetic-data-sql/).
 
-It uses the function `normal_rand()`, brought by the [tablefunc](../../../../../../../explore/ysql-language-features/pg-extensions/#tablefunc-example) extension to add pseudorandomly generated normally distributed noise the y-axis values produced by the _"y = m*x + c"_ formula for the straight line.
+It uses the function `normal_rand()`, brought by the [tablefunc](../../../../../../../additional-features/pg-extensions/#tablefunc-example) extension to add pseudorandomly generated normally distributed noise the y-axis values produced by the _"y = m*x + c"_ formula for the straight line.
 
 It was then invoked like this:
 

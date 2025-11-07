@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -398,7 +398,9 @@ void RemoteBootstrapServiceImpl::Shutdown() {
       LOG(INFO) << "Destroying remote bootstrap session " << session_id
                 << " due to service shutdown";
       RemoteBootstrapErrorPB::Code app_error;
-      CHECK_OK(DoEndRemoteBootstrapSession(session_id, false, &app_error));
+      WARN_NOT_OK(
+          DoEndRemoteBootstrapSession(session_id, false, &app_error),
+          "DoEndRemoteBootstrapSession failed with status: ");
     }
   }
 
@@ -414,7 +416,9 @@ void RemoteBootstrapServiceImpl::Shutdown() {
       LOG(INFO) << "Destroying Remote Bootstrap Log Anchor session " << session_id
                 << " due to service shutdown";
       RemoteBootstrapErrorPB::Code app_error;
-      CHECK_OK(DoEndLogAnchorSession(session_id, &app_error));
+      WARN_NOT_OK(
+          DoEndLogAnchorSession(session_id, &app_error),
+          "DoEndLogAnchorSession failed with status: ");
     }
   }
 }
@@ -799,7 +803,9 @@ void RemoteBootstrapServiceImpl::EndExpiredRemoteBootstrapSessions() {
   for (const string& session_id : expired_session_ids) {
     LOG(INFO) << "Remote bootstrap session " << session_id << " has expired. Terminating session.";
     RemoteBootstrapErrorPB::Code app_error;
-    CHECK_OK(DoEndRemoteBootstrapSession(session_id, false, &app_error));
+    WARN_NOT_OK(
+        DoEndRemoteBootstrapSession(session_id, false, &app_error),
+        "DoEndRemoteBootstrapSession failed with status: ");
     RemoveRemoteBootstrapSession(session_id);
   }
 }
@@ -818,7 +824,9 @@ void RemoteBootstrapServiceImpl::EndExpiredLogAnchorSessions() {
     LOG(INFO) << "Remote Bootstrap Log Anchor session " << session_id
               << " has expired. Terminating session.";
     RemoteBootstrapErrorPB::Code app_error;
-    CHECK_OK(DoEndLogAnchorSession(session_id, &app_error));
+    WARN_NOT_OK(
+        DoEndLogAnchorSession(session_id, &app_error),
+        "DoEndLogAnchorSession failed with status: ");
     RemoveLogAnchorSession(session_id);
   }
 }

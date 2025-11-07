@@ -1,14 +1,15 @@
 /*
  * Created on Thu Sep 01 2022
  *
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License")
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { Field, FormikProps } from 'formik';
 import { FC, useState } from 'react';
+import { useDispatch } from 'react-redux';
+import { Field, FormikProps } from 'formik';
 import { Col, Row } from 'react-bootstrap';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { get } from 'lodash';
@@ -20,7 +21,9 @@ import {
 import { YBModalForm } from '../../common/forms';
 import { YBButton, YBControlledNumericInput } from '../../common/forms/fields';
 import { YBLoading } from '../../common/indicators';
-import { ThrottleParameters } from '../common/IBackup';
+import { ThrottleParameters, ThrottleParamsVal } from '../common/IBackup';
+import { useRefetchTasks } from '@app/redesign/features/tasks/TaskUtils';
+import { fetchUniverseInfo, fetchUniverseInfoResponse } from '@app/actions/universe';
 import * as Yup from 'yup';
 
 import { toast } from 'react-toastify';
@@ -43,6 +46,15 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
   const [showRestoreDefaultModal, setShowRestoreDefaultModal] = useState(false);
 
   const queryClient = useQueryClient();
+  const dispatch = useDispatch();
+  const refetchTasks = useRefetchTasks();
+
+  const refreshCurrentUniverse = () => {
+    dispatch(fetchUniverseInfo(currentUniverseUUID) as any).then((response: any) => {
+      dispatch(fetchUniverseInfoResponse(response.payload));
+      refetchTasks();
+    });
+  };
 
   const { data: throttleParameters, isLoading } = useQuery(
     ['throttle_parameters', currentUniverseUUID],
@@ -56,13 +68,14 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
     }
   );
 
-  const configurehrottleParameters = useMutation(
+  const configureThrottleParameters = useMutation(
     (values: ThrottleParameters['throttleParamsMap']) =>
       setThrottleParameters(currentUniverseUUID, values),
     {
       onSuccess: () => {
-        toast.success(`Parameters updated successfully!.`);
+        toast.success(`Parameters are being updated!.`);
         queryClient.invalidateQueries(['throttle_parameters', currentUniverseUUID]);
+        refreshCurrentUniverse();
         onHide();
       },
       onError: (err: any) => {
@@ -73,14 +86,23 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
 
   const resetParameters = useMutation(() => resetThrottleParameterToDefaults(currentUniverseUUID), {
     onSuccess: () => {
-      toast.success(`Parameters restored to defaults`);
+      toast.success(`Parameters are being reset to their default values.`);
       queryClient.invalidateQueries(['throttle_parameters', currentUniverseUUID]);
+      refreshCurrentUniverse();
       onHide();
     },
     onError: (err: any) => {
       toast.error(createErrorMessage(err));
     }
   });
+
+  const convertBytesToMB = (bytes: number) => {
+    return (bytes / (1024 * 1024));
+  };
+
+  const convertMBToBytes = (mb: number) => {
+    return mb * 1024 * 1024;
+  };
 
   if (!visible) {
     return null;
@@ -91,7 +113,15 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
   }
 
   const initialValues: ThrottleParameters['throttleParamsMap'] = {
-    ...throttleParameters!.data.throttleParamsMap
+    ...throttleParameters!.data.throttleParamsMap,
+    disk_read_bytes_per_sec: {
+      ...throttleParameters!.data.throttleParamsMap.disk_read_bytes_per_sec,
+      currentValue: convertBytesToMB(throttleParameters!.data.throttleParamsMap.disk_read_bytes_per_sec.currentValue)
+    },
+    disk_write_bytes_per_sec: {
+      ...throttleParameters!.data.throttleParamsMap.disk_write_bytes_per_sec,
+      currentValue: convertBytesToMB(throttleParameters!.data.throttleParamsMap.disk_write_bytes_per_sec.currentValue)
+    }
   };
 
   const getPresetValues = (
@@ -154,6 +184,26 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
           getPresetValues('per_download_num_objects', 'max'),
           `Max limit is ${getPresetValues('per_download_num_objects', 'max')}`
         )
+    }),
+    disk_read_bytes_per_sec: Yup.object().shape({
+      currentValue: Yup.number()
+        .required('Required')
+        .typeError('Required')
+        .test(
+          'is-greater-than-zero',
+          `Must be 0 or greater than ${convertBytesToMB(getPresetValues('disk_read_bytes_per_sec', 'min'))} MB`,
+          (value) => value !== null && value !== undefined && (value === 0 || value >= convertBytesToMB(getPresetValues('disk_read_bytes_per_sec', 'min')))
+        )
+    }),
+    disk_write_bytes_per_sec: Yup.object().shape({
+      currentValue: Yup.number()
+        .required('Required')
+        .typeError('Required')
+        .test(
+          'is-greater-than-zero',
+          `Must be 0 or greater than ${convertBytesToMB(getPresetValues('disk_write_bytes_per_sec', 'min'))} MB`,
+          (value) => value !== null && value !== undefined && (value === 0 || value >= convertBytesToMB(getPresetValues('disk_write_bytes_per_sec', 'min')))
+        )
     })
   });
 
@@ -186,7 +236,19 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
         ) => {
           const { setSubmitting } = formik;
           setSubmitting(false);
-          configurehrottleParameters.mutateAsync(values);
+          const payload = {
+            ...values,
+            disk_read_bytes_per_sec: {
+              ...values.disk_read_bytes_per_sec,
+              currentValue: convertMBToBytes(values.disk_read_bytes_per_sec.currentValue)
+            },
+            disk_write_bytes_per_sec: {
+              ...values.disk_write_bytes_per_sec,
+              currentValue: convertMBToBytes(values.disk_write_bytes_per_sec.currentValue)
+            }
+          };
+
+          configureThrottleParameters.mutateAsync(payload);
         }}
         render={(formikProps: FormikProps<ThrottleParameters['throttleParamsMap']>) => {
           const { values, setFieldValue, errors } = formikProps;
@@ -209,6 +271,12 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
                     For <b>lower impact</b> on database performance, enter lower values.
                     <YBTag type={YBTag_Types.YB_GRAY}>
                       Min {getPresetValues('per_download_num_objects', 'min')}
+                    </YBTag>
+                  </div>
+                  <div>
+                    Use appropriate <b>disk throttling</b> values to throttle disk usage. 0 means use maximum available.
+                    <YBTag type={YBTag_Types.YB_GRAY}>
+                      Min {convertBytesToMB(getPresetValues('disk_read_bytes_per_sec', 'min')).toFixed(0)} MB/s
                     </YBTag>
                   </div>
                 </Col>
@@ -256,6 +324,29 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
                       {errors.per_upload_num_objects?.currentValue && (
                         <span className="err-msg">
                           {errors.per_upload_num_objects.currentValue}
+                        </span>
+                      )}
+                    </Col>
+                  </Row>
+                  <Row>
+                    <Col lg={12} className="no-padding">
+                      Disk read bytes per second to throttle disk usage during backups
+                      <span className="text-secondary">
+                        - Default {initialValues.disk_read_bytes_per_sec.presetValues.defaultValue}
+                      </span>
+                    </Col>
+                    <Col lg={5} className="no-padding">
+                      <Field
+                        name="disk_read_bytes_per_sec.currentValue"
+                        component={YBControlledNumericInput}
+                        val={values.disk_read_bytes_per_sec.currentValue}
+                        onInputChanged={(val: number) =>
+                          setFieldValue('disk_read_bytes_per_sec.currentValue', val)
+                        }
+                      />
+                      {errors.disk_read_bytes_per_sec?.currentValue && (
+                        <span className="err-msg">
+                          {errors.disk_read_bytes_per_sec.currentValue}
                         </span>
                       )}
                     </Col>
@@ -311,6 +402,29 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
                       )}
                     </Col>
                   </Row>
+                  <Row>
+                    <Col lg={12} className="no-padding">
+                      Disk write bytes per second to throttle disk usage during restore
+                      <span className="text-secondary">
+                        - Default {initialValues.disk_write_bytes_per_sec.presetValues.defaultValue}
+                      </span>
+                    </Col>
+                    <Col lg={5} className="no-padding">
+                      <Field
+                        name="disk_write_bytes_per_sec.currentValue"
+                        component={YBControlledNumericInput}
+                        val={values.disk_write_bytes_per_sec.currentValue}
+                        onInputChanged={(val: number) => {
+                          setFieldValue('disk_write_bytes_per_sec.currentValue', val);
+                        }}
+                      />
+                      {errors.disk_write_bytes_per_sec?.currentValue && (
+                        <span className="err-msg">
+                          {errors.disk_write_bytes_per_sec.currentValue}
+                        </span>
+                      )}
+                    </Col>
+                  </Row>
                 </Col>
               </Row>
             </>
@@ -336,6 +450,10 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
           Number of buffers per upload (per node) ={' '}
           <b>{initialValues.per_upload_num_objects.presetValues.defaultValue}</b>
         </div>
+        <div>
+          Disk read bytes per second to throttle disk usage during backups ={' '}
+          <b>{initialValues.disk_read_bytes_per_sec.presetValues.defaultValue}</b>
+        </div>
         <br />
         <h5>Restore</h5>
         <div>
@@ -345,6 +463,10 @@ export const BackupThrottleParameters: FC<BackupThrottleParametersProps> = ({
         <div>
           Number of buffers per download (per node) ={' '}
           <b>{initialValues.per_download_num_objects.presetValues.defaultValue}</b>
+        </div>
+        <div>
+          Disk write bytes per second to throttle disk usage during restores ={' '}
+          <b>{initialValues.disk_write_bytes_per_sec.presetValues.defaultValue}</b>
         </div>
       </YBConfirmModal>
     </>

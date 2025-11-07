@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -460,7 +460,8 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB> {
 
   bool is_running() const {
     // Historically, we have always treated PREPARING (tablets not yet ready) and RUNNING as the
-    // same. Changing it now will require all callers of this function to be aware of the new state.
+    // same, so preparing is also considered running even though the tablets are not all running.
+    // ALTERING tables are running.
     return pb.state() == SysTablesEntryPB::PREPARING || pb.state() == SysTablesEntryPB::RUNNING ||
            pb.state() == SysTablesEntryPB::ALTERING;
   }
@@ -529,25 +530,60 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB> {
     return pb.ysql_ddl_txn_verifier_state_size() > 0;
   }
 
-  auto ysql_ddl_txn_verifier_state() const {
-    // Currently DDL with savepoints is disabled, so this repeated field can have only 1 element.
-    DCHECK_EQ(pb.ysql_ddl_txn_verifier_state_size(), 1);
+  google::protobuf::RepeatedPtrField<YsqlDdlTxnVerifierStatePB> ysql_ddl_txn_verifier_state()
+      const {
+    DCHECK_GE(pb.ysql_ddl_txn_verifier_state_size(), 1);
+    return pb.ysql_ddl_txn_verifier_state();
+  }
+
+  YsqlDdlTxnVerifierStatePB ysql_ddl_txn_verifier_state_first() const {
+    DCHECK_GE(pb.ysql_ddl_txn_verifier_state_size(), 1);
     return pb.ysql_ddl_txn_verifier_state(0);
   }
 
+  YsqlDdlTxnVerifierStatePB ysql_ddl_txn_verifier_state_last() const {
+    DCHECK_GE(pb.ysql_ddl_txn_verifier_state_size(), 1);
+    return pb.ysql_ddl_txn_verifier_state(pb.ysql_ddl_txn_verifier_state_size() - 1);
+  }
+
+  // Find the **index** of ddl_state in ysql_ddl_txn_verifier_state with
+  // smallest sub-transaction id >= sub_txn_id.
+  // Entries of ysql_ddl_txn_verifier_state are sorted in increasing order of sub-transaction id.
+  // See comment in catalog_entity_info.proto for more details.
+  // Returns length of ysql_ddl_txn_verifier_state if no such state is found.
+  int ysql_first_ddl_state_at_or_after_sub_txn(SubTransactionId sub_txn) const {
+    const auto& ddl_states = ysql_ddl_txn_verifier_state();
+    auto it = std::lower_bound(
+        ddl_states.begin(), ddl_states.end(), sub_txn, [](const auto& ddl_state, uint32_t value) {
+          return ddl_state.sub_transaction_id() < value;
+        });
+
+    return static_cast<int>(std::distance(ddl_states.begin(), it));
+  }
+
   bool is_being_deleted_by_ysql_ddl_txn() const {
+    // If we consider all DDL statements that involve a particular DocDB table (unique DocDB id) in
+    // a transaction block, the deletion of the table can only happen in the last statement. So just
+    // check the last ysql_ddl_txn_verifier_state for drop table operation.
     return has_ysql_ddl_txn_verifier_state() &&
-      ysql_ddl_txn_verifier_state().contains_drop_table_op();
+      ysql_ddl_txn_verifier_state_last().contains_drop_table_op();
   }
 
   bool is_being_created_by_ysql_ddl_txn() const {
+    // If we consider all DDL statements that involve a particular DocDB table (unique DocDB id) in
+    // a transaction block, the creation of the table can only happen in the first statement.
+    // So just check the first ysql_ddl_txn_verifier_state for create table operation.
     return has_ysql_ddl_txn_verifier_state() &&
-      ysql_ddl_txn_verifier_state().contains_create_table_op();
+      ysql_ddl_txn_verifier_state_first().contains_create_table_op();
   }
 
   bool is_being_altered_by_ysql_ddl_txn() const {
-    return has_ysql_ddl_txn_verifier_state() &&
-      ysql_ddl_txn_verifier_state().contains_alter_table_op();
+    // A table can be altered by a transaction if it is being altered in at
+    // least one of the sub-transactions.
+    for (const auto& state : ysql_ddl_txn_verifier_state()) {
+      if (state.contains_alter_table_op()) return true;
+    }
+    return false;
   }
 
   std::vector<std::string> cols_marked_for_deletion() const {
@@ -716,6 +752,9 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   bool IsBeingDroppedDueToDdlTxn(const std::string& txn_id_pb, bool txn_success) const;
 
+  bool IsBeingDroppedDueToSubTxnRollback(
+      const std::string& txn_id_pb, const SubTransactionId sub_transaction_id) const;
+
   // Add a tablet to this table.
   Status AddTablet(const TabletInfoPtr& tablet);
 
@@ -877,6 +916,12 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   std::vector<TransactionId> EraseDdlTxnsWaitingForSchemaVersion(
       int schema_version) EXCLUDES(lock_);
 
+  void AddDdlTxnForRollbackToSubTxnWaitingForSchemaVersion(
+      int schema_version, const TransactionId& txn) EXCLUDES(lock_);
+
+  TransactionId EraseDdlTxnForRollbackToSubTxnWaitingForSchemaVersion(
+      int schema_version) EXCLUDES(lock_);
+
   bool IsUserCreated() const;
   bool IsUserTable() const;
   bool IsUserIndex() const;
@@ -947,6 +992,16 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // the DDL transactions waiting for schema version n and any k < n. The map is ordered by schema
   // version to easily figure out all the entries for schema version < n.
   std::map<int, TransactionId> ddl_txns_waiting_for_schema_version_ GUARDED_BY(lock_);
+
+  // Stores a map of schema version->TransactionId of the DDL transactions that initiated the
+  // change due to a rollback to sub-transaction operation. When a schema version n has propagated
+  // to all tablets, we use this map to signal such DDL transactions and mark the rollback to
+  // sub-transaction operation successful.
+  // Note that this map can be merged with the above ddl_txns_waiting_for_schema_version_ map but
+  // then we'd have to track why the DDL txn is waiting for the schema version - txn completion or
+  // rollback to sub-txn.
+  std::map<int, TransactionId> ddl_txns_for_subtxn_rollback_waiting_for_schema_version_
+      GUARDED_BY(lock_);
 
   DISALLOW_COPY_AND_ASSIGN(TableInfo);
 };
@@ -1082,7 +1137,7 @@ class ObjectLockInfo : public MetadataCowWrapper<PersistentObjectLockInfo> {
   // Return the user defined type's ID. Does not require synchronization.
   virtual const std::string& id() const override { return ts_uuid_; }
 
-  std::variant<ObjectLockInfo::WriteLock, SysObjectLockEntryPB::LeaseInfoPB>
+  Result<std::variant<ObjectLockInfo::WriteLock, SysObjectLockEntryPB::LeaseInfoPB>>
   RefreshYsqlOperationLease(const NodeInstancePB& instance, MonoDelta lease_ttl) EXCLUDES(mutex_);
 
   virtual void Load(const SysObjectLockEntryPB& metadata) override;

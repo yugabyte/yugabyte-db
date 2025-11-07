@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -22,6 +22,7 @@ import java.util.Collections;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
+import org.yb.minicluster.MiniYBClusterBuilder;
 
 /**
  * Runs the pg_regress test suite on YB code.
@@ -31,6 +32,15 @@ public class TestPgRegressCursor extends BasePgRegressTest {
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;
+  }
+
+  @Override
+  protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
+    super.customizeMiniClusterBuilder(builder);
+    // TODO(28543): Remove once transactional ddl is enabled by default.
+    builder.addCommonTServerFlag("ysql_yb_ddl_transaction_block_enabled", "true");
+    builder.addCommonTServerFlag(
+        "allowed_preview_flags_csv", "ysql_yb_ddl_transaction_block_enabled");
   }
 
   // Counting the rows of a query.

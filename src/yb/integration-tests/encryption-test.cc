@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -99,10 +99,10 @@ class EncryptionTest : public YBTableTestBase, public testing::WithParamInterfac
       PutKeyValue(Format("k_$0", i), s);
       auto num_keys_written = i - start + 1;
       if (num_keys_written % (total_num_keys / kNumFlushes) == 0) {
-        ASSERT_OK(client_->FlushTables({table_->id()}, false, 30, false));
+        ASSERT_OK(client_->FlushTables({table_->id()}));
       }
       if (num_keys_written % (total_num_keys / kNumCompactions) == 0) {
-        ASSERT_OK(client_->FlushTables({table_->id()}, false, 30, true));
+        ASSERT_OK(client_->CompactTables({table_->id()}));
       }
     }
   }
@@ -375,7 +375,7 @@ class WALReuseEncryptionTest : public EncryptionTest {
   void CustomizeExternalMiniCluster(ExternalMiniClusterOptions* opts) override {
     opts->extra_tserver_flags.push_back("--reuse_unclosed_segment_threshold_bytes=524288");
     opts->extra_master_flags.push_back("--reuse_unclosed_segment_threshold_bytes=524288");
-    opts->extra_master_flags.push_back("--replication_factor=1");
+    opts->replication_factor = 1;
   }
 
   void TestEncryptWALDataAfterWALReuse(bool rotate_key);
@@ -441,7 +441,7 @@ class WALRolloverTest : public EncryptionTest {
   void CustomizeExternalMiniCluster(ExternalMiniClusterOptions* opts) override {
     opts->extra_tserver_flags.push_back("--initial_log_segment_size_bytes=262144");
     opts->extra_tserver_flags.push_back("--save_index_into_wal_segments=true");
-    opts->extra_master_flags.push_back("--replication_factor=1");
+    opts->replication_factor = 1;
   }
 };
 

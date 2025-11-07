@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -78,6 +78,8 @@ class XClusterDDLQueueHandler {
       const std::string& log_prefix, TserverXClusterContextIf& xcluster_context,
       ConnectToPostgresFunc connect_to_pg_func, UpdateSafeTimeFunc update_safe_time_func);
   virtual ~XClusterDDLQueueHandler();
+
+  void Shutdown();
 
   // This function is called before the poller calls GetChanges. This will detect if we are in the
   // middle of a executing a DDL batch and complete it.

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -30,6 +30,8 @@
 #include "yb/tablet/tablet_fwd.h"
 
 #include "yb/tserver/backup.pb.h"
+
+#include "yb/util/monotime.h"
 
 namespace yb {
 namespace master {
@@ -90,6 +92,13 @@ class SnapshotCoordinatorContext {
   virtual ~SnapshotCoordinatorContext() = default;
 
   virtual PitrCount pitr_count() const = 0;
+
+  // Collect the same set of SysRowEntries as CollectEntries, but by reading sys.catalog as of
+  // a specified hybrid time instead of using in-memory maps. This should include namespaces,
+  // UD types (when requested), tables, and tablets in RUNNING state as of 'read_time'.
+  virtual Result<SysRowEntries> CollectEntriesAsOfTime(
+      const NamespaceId& namespace_id, CollectFlags flags, HybridTime read_time,
+      CoarseTimePoint deadline) = 0;
 };
 
 Result<dockv::KeyBytes> EncodedKey(

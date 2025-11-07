@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -91,4 +91,13 @@ enum FullCompactionState {
 
   // Indicates that we are are waiting for the next heartbeat.
   FULL_COMPACTION_STATE_UNKNOWN = 2;
+}
+
+// NB! FLUSH_COMPACT_REGULAR_FOR_TEST_ONLY is applicable for FLUSH operation only and is used
+// only in unit tests.
+enum FlushCompactFlags {
+  FLUSH_COMPACT_DEFAULT = 0;
+  FLUSH_COMPACT_REGULAR_FOR_TEST_ONLY = 1;
+  FLUSH_COMPACT_VECTOR_INDEX = 8;
+  FLUSH_COMPACT_ALL = 11;
 }

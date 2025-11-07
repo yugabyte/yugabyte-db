@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -55,13 +55,14 @@ class BufferableOperations {
 
 class PgOperationBuffer {
  public:
-  using Flusher = std::function<Result<FlushFuture>(BufferableOperations&&, bool)>;
+  using Flusher = std::function<Result<FlushFuture>(
+      BufferableOperations&&, bool, const YbcFlushDebugContext&)>;
 
   PgOperationBuffer(Flusher&& flusher, const BufferingSettings& buffering_settings);
   ~PgOperationBuffer();
   Status Add(const PgTableDesc& table, PgsqlWriteOpPtr op, bool transactional);
-  Status Flush();
-  Result<BufferableOperations> Take(bool transactional);
+  Status Flush(const YbcFlushDebugContext& debug_context);
+  Result<BufferableOperations> Take(bool transactional, const YbcFlushDebugContext& debug_context);
   bool IsEmpty() const;
   size_t Size() const;
   void Clear();

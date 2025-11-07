@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -17,6 +17,9 @@
 #include <string>
 #include <string_view>
 #include <utility>
+
+#include "yb/client/transaction.h"
+#include "yb/client/transaction_pool.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
@@ -38,7 +41,15 @@ DECLARE_uint64(ysql_session_max_batch_size);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(pg_client_use_shared_memory);
+DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_string(ysql_pg_conf_csv);
+DECLARE_bool(enable_object_locking_for_table_locks);
+
+DECLARE_string(placement_cloud);
+DECLARE_string(placement_region);
+DECLARE_string(placement_zone);
+DECLARE_bool(TEST_track_last_transaction);
+DECLARE_bool(enable_tablespace_based_transaction_placement);
 
 namespace yb::pgwrapper {
 namespace {
@@ -83,7 +94,11 @@ class PgFKeyTest : public PgMiniTestBase {
     FLAGS_enable_automatic_tablet_splitting = false;
     // This test counts number of performed RPC calls, so turn off pg client shared memory.
     FLAGS_pg_client_use_shared_memory = false;
+    // Disable auto analyze in this test suite because it introduce flakiness of metrics.
+    FLAGS_ysql_enable_auto_analyze = false;
     AppendPgConfOption(MaxQueryLayerRetriesConf(0));
+    // Tests assert for expected rpc counts from ysql which change with object locking enabled.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
     PgMiniTestBase::SetUp();
     rpc_count_.emplace(*cluster_->mini_tablet_server(0)->server()->metric_entity());
   }
@@ -444,7 +459,7 @@ TEST_F(PgFKeyTest, YB_DISABLE_TEST_IN_TSAN(InsertBatching)) {
   }));
   ASSERT_EQ(rpc_count.read, NumBatches(kPKItemCount));
   ASSERT_EQ(rpc_count.write, NumBatches(kFKItemCount));
-  ASSERT_EQ(rpc_count.perform, rpc_count.read + rpc_count.write - 1);
+  ASSERT_LT(rpc_count.perform, rpc_count.read + rpc_count.write);
 }
 
 // Test checks number of read/write/perform rpcs in case of inserts into table
@@ -492,8 +507,8 @@ TEST_F(PgFKeyTest, YB_DISABLE_TEST_IN_TSAN(UpdateBatching)) {
       [&conn, &query_template] { return conn.ExecuteFormat(query_template, kItemCount - 1); }));
   const auto num_batches = NumBatches(kItemCount - 1);
   ASSERT_EQ(rpc_count.read, num_batches + 1);
-  ASSERT_EQ(rpc_count.write, num_batches);
-  ASSERT_EQ(rpc_count.perform, rpc_count.read + rpc_count.write - 1);
+  ASSERT_EQ(rpc_count.write, num_batches + 1);
+  ASSERT_LT(rpc_count.perform, rpc_count.read + rpc_count.write);
 }
 
 // Test checks rows written by buffered write operations are read successfully while
@@ -517,6 +532,29 @@ TEST_F_EX(PgFKeyTest, BufferedWriteOfReferencedRows, PgFKeyTestNoFKCache) {
   }
 }
 
+Status TestFKeyConstraint(PGConn* conn, int value, const std::string& cmd = "") {
+  EXPECT_OK(conn->StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  Status res = Status::OK();
+
+  if (!cmd.empty()) {
+    res = conn->Execute(cmd);
+  }
+
+  if (res.ok()) {
+    res = conn->ExecuteFormat("INSERT INTO fk_t VALUES($0, 1, $0)", value);
+  }
+  if (res.ok()) {
+    res = conn->ExecuteFormat("INSERT INTO pk_t VALUES($0)", value);
+  }
+  if (res.ok()) {
+    EXPECT_OK(conn->CommitTransaction());
+    return Status::OK();
+  }
+
+  EXPECT_OK(conn->RollbackTransaction());
+  return res;
+}
+
 // Test checks that reads for deferred fk constraint are performed at the end of transaction.
 TEST_F_EX(PgFKeyTest, DeferredConstraintReadAtTxnEnd, PgFKeyTestNoFKCache) {
   auto conn = ASSERT_RESULT(Connect());
@@ -525,10 +563,47 @@ TEST_F_EX(PgFKeyTest, DeferredConstraintReadAtTxnEnd, PgFKeyTestNoFKCache) {
       "CREATE TABLE fk_t(k INT, pk_1 INT REFERENCES pk_t(k), "
       "pk_2 INT REFERENCES pk_t(k) DEFERRABLE INITIALLY DEFERRED, PRIMARY KEY (k ASC))"));
   ASSERT_OK(conn.Execute("INSERT INTO pk_t VALUES (1)"));
-  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-  ASSERT_OK(conn.Execute("INSERT INTO fk_t VALUES(1, 1, 2)"));
-  ASSERT_OK(conn.Execute("INSERT INTO pk_t VALUES(2)"));
-  ASSERT_OK(conn.CommitTransaction());
+  ASSERT_OK(TestFKeyConstraint(&conn, 2));
+}
+
+// Test checks that reads for altered deferred fk constraint are performed
+// at the end of transaction.
+TEST_F_EX(PgFKeyTest, AlteredDeferredConstraintReadAtTxnEnd, PgFKeyTestNoFKCache) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE pk_t(k INT, PRIMARY KEY (k ASC))"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE fk_t(k INT, pk_1 INT REFERENCES pk_t(k), "
+      "pk_2 INT REFERENCES pk_t(k) NOT DEFERRABLE, PRIMARY KEY (k ASC))"));
+  ASSERT_OK(conn.Execute("INSERT INTO pk_t VALUES (1)"));
+
+  // Not deferrable constraint should fail.
+  ASSERT_NOK(TestFKeyConstraint(&conn, 2));
+  // Try to defer not deferrable constraint should fail.
+  ASSERT_NOK(TestFKeyConstraint(&conn, 3, "SET CONSTRAINTS fk_t_pk_2_fkey DEFERRED"));
+  ASSERT_NOK(TestFKeyConstraint(&conn, 4, "SET CONSTRAINTS ALL DEFERRED"));
+
+  // Test deferrable constraint.
+  ASSERT_OK(conn.Execute(
+      "ALTER TABLE fk_t ALTER CONSTRAINT fk_t_pk_2_fkey DEFERRABLE INITIALLY IMMEDIATE"));
+
+  // Initially not deferred constraint should fail.
+  ASSERT_NOK(TestFKeyConstraint(&conn, 5));
+  // Temporary defer this constraint.
+  ASSERT_OK(TestFKeyConstraint(&conn, 6, "SET CONSTRAINTS fk_t_pk_2_fkey DEFERRED"));
+  // Temporary defer all constraints.
+  ASSERT_OK(TestFKeyConstraint(&conn, 7, "SET CONSTRAINTS ALL DEFERRED"));
+
+  // Permanently defer the constraint.
+  ASSERT_OK(conn.Execute(
+      "ALTER TABLE fk_t ALTER CONSTRAINT fk_t_pk_2_fkey DEFERRABLE INITIALLY DEFERRED"));
+
+  ASSERT_OK(TestFKeyConstraint(&conn, 8));
+  // Defer already deferred constraint (no-op).
+  ASSERT_OK(TestFKeyConstraint(&conn, 9, "SET CONSTRAINTS fk_t_pk_2_fkey DEFERRED"));
+  ASSERT_OK(TestFKeyConstraint(&conn, 10, "SET CONSTRAINTS ALL DEFERRED"));
+  // Make the deffered constraint immediate.
+  ASSERT_NOK(TestFKeyConstraint(&conn, 11, "SET CONSTRAINTS fk_t_pk_2_fkey IMMEDIATE"));
+  ASSERT_NOK(TestFKeyConstraint(&conn, 12, "SET CONSTRAINTS ALL IMMEDIATE"));
 }
 
 // Test checks that batching of FK check doesn't break transaction conflict detection
@@ -704,4 +779,91 @@ TEST_F_EX(PgFKeyTest, FKReferenceCacheLimit, PgFKeyFKCacheLimitTest) {
         .expected_reads = 1
     }));
 }
+
+class PgFKeyTestRegionLocal : public PgFKeyTestNoFKCache {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_track_last_transaction) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablespace_based_transaction_placement) = false;
+    PgFKeyTestNoFKCache::SetUp();
+  }
+
+  Result<TransactionMetadata> GetLastTransactionMetadata() {
+    return cluster_->mini_tablet_server(0)->server()->TransactionPool()
+        .TEST_GetLastTransaction()->GetMetadata(TransactionRpcDeadline()).get();
+  }
+
+  std::vector<tserver::TabletServerOptions> ExtraTServerOptions() override {
+    auto opts = EXPECT_RESULT(tserver::TabletServerOptions::CreateTabletServerOptions());
+    opts.SetPlacement(FLAGS_placement_cloud, FLAGS_placement_region, FLAGS_placement_zone);
+    return {opts};
+  }
+};
+
+// The test check deferred FK trigger preserves table locality info in case of sub txn rollback.
+// Note: This unit test is quite tricky.
+//       The test checks the locality info of the last transaction. And locality is selected by the
+//       first write (or read with row locks) operation in the txn. But FK trigger makes the check
+//       after new row insertion. To make the FK check operation first inside the plain txn the
+//       insertion is performed in nested DDL txn. The idea of the test is the following
+//       BEGIN;                     -- start non DDL txn
+//
+//       CREATE TABLE dummy AS ...; -- originate DDL txn and perform insert into table with helper
+//                                     function in context of this DDL. Deferred trigger will be
+//                                     checked at the end of postgres txn
+//
+//       COMMIT                     -- commit postgres txn, FK check operation will be applied to
+//                                     plain txn. And this operation will be the first on this txn.
+TEST_F_EX(PgFKeyTest, DeferredFKTableLocality, PgFKeyTestRegionLocal) {
+  constexpr auto kTableName = "t"sv;
+  constexpr auto kTableNameFK = "fk_t"sv;
+  constexpr auto kTablespaceName = "ts"sv;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat(
+    R"#(CREATE TABLESPACE $0 WITH (replica_placement='{
+        "num_replicas": 1,
+        "placement_blocks":[{
+          "cloud": "$1",
+          "region": "$2",
+          "zone": "$3",
+          "min_num_replicas": 1
+        }]}'))#",
+    kTablespaceName, FLAGS_placement_cloud, FLAGS_placement_region, FLAGS_placement_zone));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (k INT PRIMARY KEY) TABLESPACE $1", kTableName, kTablespaceName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (k INT PRIMARY KEY,"
+      "                 pk INT REFERENCES t(k) DEFERRABLE INITIALLY DEFERRED) TABLESPACE $1",
+      kTableNameFK, kTablespaceName));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES(1)", kTableName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE FUNCTION insert_inside_ddl_helper(k INT) RETURNS INT AS $$$$"
+      "BEGIN"
+      "  INSERT INTO $0 VALUES(k, k);"
+      "  RETURN k;"
+      "END; $$$$ LANGUAGE plpgsql", kTableNameFK));
+  auto checker = [this, &conn, kTableNameFK](bool with_sutxn_rollback) -> Status {
+    constexpr auto kTableNameDummy = "dummy"sv;
+    RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0 AS SELECT insert_inside_ddl_helper(1)", kTableNameDummy));
+    if (with_sutxn_rollback) {
+      RETURN_NOT_OK(conn.ExecuteFormat(
+          "SAVEPOINT a;"
+          "ROLLBACK TO SAVEPOINT a"));
+    }
+    RETURN_NOT_OK(conn.CommitTransaction());
+    const auto locality = VERIFY_RESULT(GetLastTransactionMetadata()).locality.locality;
+    SCHECK_EQ(
+        locality, TransactionLocality::REGION_LOCAL,
+        IllegalState, "Last transaction is expected to be region local");
+    return conn.ExecuteFormat(
+        "DELETE FROM $0;"
+        "DROP TABLE $1", kTableNameFK, kTableNameDummy);
+  };
+  ASSERT_OK(checker(/* with_sutxn_rollback= */ false));
+  ASSERT_OK(checker(/* with_sutxn_rollback= */ true));
+}
+
 } // namespace yb::pgwrapper

@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -15,9 +15,6 @@
 
 #include <shared_mutex>
 #include <thread>
-
-#include <boost/optional/optional.hpp>
-#include <boost/optional/optional_io.hpp>
 
 #include "yb/client/client-test-util.h"
 #include "yb/client/error.h"
@@ -113,7 +110,7 @@ DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
-DECLARE_string(regular_tablets_data_block_key_value_encoding);
+DECLARE_string(ycql_regular_tablets_data_block_key_value_encoding);
 DECLARE_bool(ycql_enable_packed_row);
 DECLARE_bool(ysql_enable_packed_row);
 
@@ -181,13 +178,13 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
         << op->response().error_message();
   }
 
-  boost::optional<int32_t> GetValue(
+  std::optional<int32_t> GetValue(
       const YBSessionPtr& session, int32_t key, const TableHandle& table) {
     const auto op = CreateReadOp(key, table);
     EXPECT_OK(session->TEST_ApplyAndFlush(op));
     auto rowblock = RowsResult(op.get()).GetRowBlock();
     if (rowblock->row_count() == 0) {
-      return boost::none;
+      return std::nullopt;
     }
     EXPECT_EQ(1, rowblock->row_count());
     const auto& value = rowblock->row(0).column(0);
@@ -260,7 +257,7 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
     auto session = CreateSession();
     for (int i = begin; i != end; ++i) {
       auto value = GetValue(session, i, table);
-      ASSERT_TRUE(value.is_initialized()) << "i: " << i << ", table: " << table->name().ToString();
+      ASSERT_TRUE(value.has_value()) << "i: " << i << ", table: " << table->name().ToString();
       ASSERT_EQ(ValueForKey(i), *value) << "i: " << i << ", table: " << table->name().ToString();
     }
   }
@@ -1257,7 +1254,7 @@ TEST_F(QLTabletTest, OperationMemTracking) {
     // We have overhead in both log cache and tablets.
     // So if value is double tracked then sum consumption will be higher than double value size.
     ASSERT_LE(operation_tracker_consumption + log_cache_consumption, kValueSize * 2)
-        << DumpMemoryUsage();
+        << [] { DumpMemoryUsage(); return ""; }();
     if (std::chrono::steady_clock::time_point() == deadline) { // operation did not finish yet
       if (future.wait_for(kWaitInterval) == std::future_status::ready) {
         LOG(INFO) << "Value written";
@@ -1785,7 +1782,7 @@ TEST_F_EX(QLTabletTest, DataBlockKeyValueEncoding, QLTabletRf1Test) {
       rocksdb::KeyValueEncodingFormat::kKeyDeltaEncodingThreeSharedParts;
 
   for (auto encoding : {kEncodingSharedPrefix, kEncodingThreeSharedParts}) {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_regular_tablets_data_block_key_value_encoding) =
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ycql_regular_tablets_data_block_key_value_encoding) =
         KeyValueEncodingFormatToString(encoding);
     const YBTableName table_name(
         YQL_DATABASE_CQL, "my_keyspace", Format("ql_client_test_table_$0", encoding));
@@ -1953,7 +1950,7 @@ TEST_F_EX(QLTabletTest, DeleteTableDuringLongRead, QLTabletRf1Test) {
   TestLongReadAbort([&]{
     return client_->DeleteTable(
         table1_.table()->id(), /* wait = */ true, /* txn = */ nullptr,
-        CoarseMonoClock::now() + 1s * kTimeMultiplier);
+        kMinSubTransactionId, CoarseMonoClock::now() + 1s * kTimeMultiplier);
   });
 }
 

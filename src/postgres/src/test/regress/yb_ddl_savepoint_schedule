@@ -1,0 +1,6 @@
+# src/test/regress/yb_ddl_savepoint_schedule
+#
+###############################################################################
+# This testsuite contains testcases related to DDL Savepoint support.
+###############################################################################
+test: yb.orig.ddl_savepoint

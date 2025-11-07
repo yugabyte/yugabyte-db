@@ -6,7 +6,7 @@ description: Learn how batch operations in YCQL send a set of operations as a si
 tags:
   other: ycql
 menu:
-  preview:
+  preview_develop:
     identifier: batch-operations-1-ycql
     parent: learn
     weight: 568
@@ -41,7 +41,6 @@ for (...) {
 
 // Execute the batch operation.
 ResultSet resultSet = client.execute(batch);
-
 ```
 
 ## Querying data
@@ -56,27 +55,27 @@ Consider a table which has a hash column `h` and two clustering columns `r1` and
 
 - Query a range of values for `r1` given `h`.
 
-```sql
-SELECT * FROM table WHERE h = '...' AND r1 < '<upper-bound>' AND r1 > '<lower-bound>';
-```
+    ```cql
+    SELECT * FROM table WHERE h = '...' AND r1 < '<upper-bound>' AND r1 > '<lower-bound>';
+    ```
 
 - Query a range of values for `r2` given `h` and `r1`.
 
-```sql
-SELECT * FROM table WHERE h = '...' AND r1 = '...' AND r2 < '<upper-bound>' AND r2 > '<lower-bound>';
-```
+    ```cql
+    SELECT * FROM table WHERE h = '...' AND r1 = '...' AND r2 < '<upper-bound>' AND r2 > '<lower-bound>';
+    ```
 
 - Query a range of values for `r2` given `h` - **may not be efficient**. This query will need to iterate through all the unique values of `r1` in order to fetch the result and would be less efficient if a key has a lot of values for the `r1` column.
 
-```sql
-SELECT * FROM table WHERE h = '...' AND r2 < '<upper-bound>' AND r2 > '<lower-bound>';
-```
+    ```cql
+    SELECT * FROM table WHERE h = '...' AND r2 < '<upper-bound>' AND r2 > '<lower-bound>';
+    ```
 
 - Query a range of values for `r1` without `h` being specified - **may not be efficient**. This query will perform a full scan of the table and would be less efficient if the table is large.
 
-```sql
-SELECT * FROM table WHERE r1 < '<upper-bound>' AND r1 > '<lower-bound>';
-```
+    ```cql
+    SELECT * FROM table WHERE r1 < '<upper-bound>' AND r1 > '<lower-bound>';
+    ```
 
 ### IN clause
 
@@ -86,21 +85,21 @@ Consider a table which has a hash column `h` and a clustering column `r`.
 
 - Query a set of values of `h` - this operation will perform the lookups for the various hash keys and return the response. The read queries are batched at a tablet level and executed in parallel. This query will be more efficient than performing each lookup from the application.
 
-```sql
-SELECT * FROM table WHERE h IN ('<value1>', '<value2>', ...);
-```
+    ```cql
+    SELECT * FROM table WHERE h IN ('<value1>', '<value2>', ...);
+    ```
 
 - Query a set of values for `r` given one value of `h` - this query is efficient and will seek to the various values of `r` for the given value of `h`.
 
-```sql
-SELECT * FROM table WHERE h = '...' AND r IN ('<value1>', '<value2>', ...);
-```
+    ```cql
+    SELECT * FROM table WHERE h = '...' AND r IN ('<value1>', '<value2>', ...);
+    ```
 
 - Query a set of values for `h` and a set of values for `r`. This query will do point lookups for each combination of the provided `h` and `r` values. For example, if the query specifies 3 values for `h` and 2 values for `r`, there will be 6 lookups performed internally and the result set could have up to 6 rows.
 
-```sql
-SELECT * FROM table WHERE h IN ('<value1>', '<value2>', ...) AND r IN ('<value1>', '<value2>', ...);
-```
+    ```cql
+    SELECT * FROM table WHERE h IN ('<value1>', '<value2>', ...) AND r IN ('<value1>', '<value2>', ...);
+    ```
 
 ## Sample Java application
 

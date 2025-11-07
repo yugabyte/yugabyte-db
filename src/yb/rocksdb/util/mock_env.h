@@ -3,9 +3,9 @@
 //  LICENSE file in the root directory of this source tree. An additional grant
 //  of patent rights can be found in the PATENTS file in the same directory.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -92,9 +92,10 @@ class MockEnv : public EnvWrapper {
   virtual Status GetTestDirectory(std::string* path) override;
 
   // Results of these can be affected by FakeSleepForMicroseconds()
-  virtual Status GetCurrentTime(int64_t* unix_time) override;
-  virtual uint64_t NowMicros() override;
-  virtual uint64_t NowNanos() override;
+  Status GetCurrentTime(int64_t* unix_time) override;
+  uint64_t NowMicros() override;
+  uint64_t NowNanos() override;
+  uint64_t NowCpuCycles() override;
 
   // Non-virtual functions, specific to MockEnv
   Status Truncate(const std::string& fname, size_t size);

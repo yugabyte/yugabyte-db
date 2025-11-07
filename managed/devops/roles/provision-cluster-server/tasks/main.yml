@@ -1,4 +1,4 @@
-# Copyright 2022 YugaByte, Inc. and Contributors
+# Copyright 2022 YugabyteDB, Inc. and Contributors
 #
 # Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
 # may not use this file except in compliance with the License. You
@@ -438,7 +438,7 @@
         NC='\033[0m' # No Color
 
         if [[ $- == *i* ]]
-            then export PS1="[\u@\h ~]\$ "
+            then export PS1="[\u@\h \W]\$ "
             if [ "$EUID" -eq 0 ]
                 then echo -e "Use ${ORANGE}'sudo systemctl'${NC} to manage YB software"
             fi

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -39,6 +39,11 @@ DEFINE_RUNTIME_int32(xcluster_ddl_queue_max_retries_per_ddl, 5,
 DEFINE_RUNTIME_uint32(xcluster_ddl_queue_statement_timeout_ms, 0,
     "Statement timeout to use for executing DDLs from the ddl_queue table. 0 means no timeout.");
 
+// Random default value to avoid collisions.
+DEFINE_RUNTIME_int64(xcluster_ddl_queue_advisory_lock_key, 8674896558949688690,
+    "Advisory lock key to use for DDL queue handler sessions. This ensures only one handler "
+    "processes the DDL queue at a time. A value of 0 means no advisory lock will be used.");
+
 DEFINE_test_flag(bool, xcluster_ddl_queue_handler_cache_connection, true,
     "Whether we should cache the ddl_queue handler's connection, or always recreate it.");
 
@@ -59,6 +64,8 @@ DEFINE_test_flag(bool, xcluster_ddl_queue_handler_fail_before_incremental_safe_t
 
 DEFINE_test_flag(bool, xcluster_ddl_queue_handler_fail_ddl, false,
     "Whether the ddl_queue handler should fail the ddl command that it executes.");
+
+DECLARE_bool(ysql_yb_enable_advisory_locks);
 
 #define VALIDATE_MEMBER(doc, member_name, expected_type) \
   SCHECK( \
@@ -111,11 +118,15 @@ const char* kSafeTimeBatchLastCommitTimeProcessed = "last_commit_time_processed"
 const std::unordered_set<std::string> kSupportedCommandTags {
     // Relations
     "CREATE TABLE",
+    "CREATE TABLE AS",
+    "SELECT INTO",
     "CREATE INDEX",
+    "CREATE MATERIALIZED VIEW",
     "CREATE TYPE",
     "CREATE SEQUENCE",
     "DROP TABLE",
     "DROP INDEX",
+    "DROP MATERIALIZED VIEW",
     "DROP TYPE",
     "DROP SEQUENCE",
     "ALTER TABLE",
@@ -123,6 +134,7 @@ const std::unordered_set<std::string> kSupportedCommandTags {
     "ALTER TYPE",
     "ALTER SEQUENCE",
     "TRUNCATE TABLE",
+    "REFRESH MATERIALIZED VIEW",
     // Pass thru DDLs
     "CREATE ACCESS METHOD",
     "CREATE AGGREGATE",
@@ -157,6 +169,7 @@ const std::unordered_set<std::string> kSupportedCommandTags {
     "ALTER DEFAULT PRIVILEGES",
     "ALTER DOMAIN",
     "ALTER FUNCTION",
+    "ALTER MATERIALIZED VIEW",
     "ALTER OPERATOR",
     "ALTER OPERATOR CLASS",
     "ALTER OPERATOR FAMILY",
@@ -300,6 +313,17 @@ XClusterDDLQueueHandler::XClusterDDLQueueHandler(
       update_safe_time_func_(std::move(update_safe_time_func)) {}
 
 XClusterDDLQueueHandler::~XClusterDDLQueueHandler() {}
+
+void XClusterDDLQueueHandler::Shutdown() {
+  if (pg_conn_ && FLAGS_ysql_yb_enable_advisory_locks &&
+      FLAGS_xcluster_ddl_queue_advisory_lock_key != 0) {
+    // Optimistically unlock the advisory lock so we don't have to wait for the connection to close.
+    auto s = pg_conn_->Execute(Format("SELECT pg_advisory_unlock_all()"));
+    // Alright if we fail here, log an error and wait for the connection to close normally.
+    WARN_NOT_OK(s, "Encountered error unlocking advisory lock for xCluster DDL queue handler");
+    pg_conn_.reset();
+  }
+}
 
 Status XClusterDDLQueueHandler::ExecuteCommittedDDLs() {
   SCHECK(safe_time_batch_, InternalError, "Safe time batch is not initialized");
@@ -562,7 +586,10 @@ Status XClusterDDLQueueHandler::RunDdlQueueHandlerPrepareQueries(pgwrapper::PGCo
 }
 
 Status XClusterDDLQueueHandler::InitPGConnection() {
-  if (pg_conn_ && FLAGS_TEST_xcluster_ddl_queue_handler_cache_connection) {
+  if (!FLAGS_TEST_xcluster_ddl_queue_handler_cache_connection) {
+    pg_conn_.reset();
+  }
+  if (pg_conn_) {
     return Status::OK();
   }
 
@@ -570,6 +597,15 @@ Status XClusterDDLQueueHandler::InitPGConnection() {
   CoarseTimePoint deadline = CoarseMonoClock::Now() + local_client_->default_rpc_timeout();
   auto pg_conn = std::make_unique<pgwrapper::PGConn>(
       VERIFY_RESULT(connect_to_pg_func_(namespace_name_, deadline)));
+
+  if (FLAGS_ysql_yb_enable_advisory_locks && FLAGS_xcluster_ddl_queue_advisory_lock_key != 0) {
+    // Acquire advisory lock to ensure only one handler processes the DDL queue at a time.
+    // Use non-blocking try_advisory_lock to fail fast if another handler is already running.
+    auto lock_acquired = VERIFY_RESULT(pg_conn->FetchRow<bool>(
+        Format("SELECT pg_try_advisory_lock($0)", FLAGS_xcluster_ddl_queue_advisory_lock_key)));
+    SCHECK(lock_acquired, IllegalState, "Failed to acquire advisory lock for DDL queue handler.");
+    TEST_SYNC_POINT("XClusterDDLQueueHandler::AdvisoryLockAcquired");
+  }
 
   RETURN_NOT_OK(RunDdlQueueHandlerPrepareQueries(pg_conn.get()));
 
@@ -596,9 +632,14 @@ XClusterDDLQueueHandler::GetRowsToProcess(const HybridTime& commit_time) {
       "SET ROLE NONE; SET yb_disable_catalog_version_check = 1; SET yb_read_time = $0",
       commit_time.GetPhysicalValueMicros()));
   auto rows = VERIFY_RESULT((pg_conn_->FetchRows<int64_t, int64_t, std::string>(Format(
-      "SELECT $0, $1, $2 FROM $3 "
-      "WHERE ($0, $1) NOT IN (SELECT $0, $1 FROM $4) "
-      "ORDER BY $0 ASC",
+      "/*+ MergeJoin(q r) */ "
+      "SELECT q.$0, q.$1, q.$2 FROM $3 AS q "
+      "WHERE NOT EXISTS ("
+      "  SELECT 1 "
+      "  FROM $4 AS r "
+      "  WHERE r.$0 = q.$0 AND r.$1 = q.$1 "
+      ") "
+      "ORDER BY q.$0 ASC;",
       xcluster::kDDLQueueDDLEndTimeColumn, xcluster::kDDLQueueQueryIdColumn,
       xcluster::kDDLQueueYbDataColumn, kDDLQueueFullTableName, kReplicatedDDLsFullTableName))));
   // DDLs are blocked when yb_read_time is non-zero, so reset.
@@ -794,6 +835,8 @@ Status XClusterDDLQueueHandler::ProcessPendingBatchIfExists() {
   //   could get a different apply_safe_time and lose DDLs).
   // If we have an incomplete batch, we will load it now, but skip processing it until we get a new
   //   apply_safe_time (from a future GetChanges call).
+  RETURN_NOT_OK(CheckForFailedQuery());
+
   RETURN_NOT_OK(InitPGConnection());
   RETURN_NOT_OK(ReloadSafeTimeBatchFromTableIfRequired());
   return ExecuteCommittedDDLs();

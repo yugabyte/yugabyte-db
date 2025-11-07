@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -85,8 +85,7 @@ class QLRocksDBStorage : public YQLStorageIf {
       const ReadOperationData& read_operation_data,
       const YbctidBounds& bounds,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
-      SkipSeek skip_seek,
-      UseVariableBloomFilter use_variable_bloom_filter) const override;
+      SkipSeek skip_seek) const override;
 
   Result<SampleBlocksReservoir> GetSampleBlocks(
       std::reference_wrapper<const DocReadContext> doc_read_context,

@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -37,9 +37,6 @@
 
 #include <gtest/gtest.h>
 
-#include "yb/common/common.pb.h"
-#include "yb/qlexpr/index.h"
-#include "yb/dockv/partition.h"
 #include "yb/common/schema.h"
 
 #include "yb/consensus/consensus.messages.h"
@@ -52,7 +49,6 @@
 #include "yb/fs/fs_manager.h"
 
 #include "yb/gutil/bits.h"
-#include "yb/gutil/sysinfo.h"
 
 #include "yb/master/master_heartbeat.pb.h"
 
@@ -60,7 +56,7 @@
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/rate_limiter.h"
 
-#include "yb/tablet/tablet-harness.h"
+#include "yb/tablet/tablet-test-harness.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
@@ -96,8 +92,7 @@ DECLARE_bool(allow_encryption_at_rest);
 DECLARE_int32(db_block_cache_num_shard_bits);
 DECLARE_int32(num_cpus);
 
-namespace yb {
-namespace tserver {
+namespace yb::tserver {
 
 using consensus::kInvalidOpIdIndex;
 using consensus::RaftConfigPB;
@@ -221,8 +216,8 @@ class TsTabletManagerTest : public YBTest {
   }
 
   Result<TSTabletManager::TabletPeers> GetPeers(
-      boost::optional<size_t> expected_count = boost::none) {
-    auto peers = tablet_manager_->GetTabletPeers(nullptr);
+      std::optional<size_t> expected_count = std::nullopt) {
+    auto peers = tablet_manager_->GetTabletPeers(/*tablet_ptrs=*/nullptr);
     if (expected_count.has_value()) {
       SCHECK_EQ(*expected_count, peers.size(), IllegalState, "Unexpected number of peers");
     }
@@ -380,14 +375,11 @@ TEST_F(TsTabletManagerTest, TestTombstonedTabletsAreUnregistered) {
   assert_tablet_assignment_count(kTabletId1, 1);
   assert_tablet_assignment_count(kTabletId2, 1);
 
-  boost::optional<int64_t> cas_config_opid_index_less_or_equal;
-  boost::optional<TabletServerErrorPB::Code> error_code;
-  ASSERT_OK(tablet_manager_->DeleteTablet(kTabletId1,
-      tablet::TABLET_DATA_TOMBSTONED,
-      tablet::ShouldAbortActiveTransactions::kFalse,
-      cas_config_opid_index_less_or_equal,
-      false /* hide_only */,
-      false /* keep_data */,
+  std::optional<int64_t> cas_config_opid_index_less_or_equal;
+  std::optional<TabletServerErrorPB::Code> error_code;
+  ASSERT_OK(tablet_manager_->DeleteTablet(
+      kTabletId1, tablet::TABLET_DATA_TOMBSTONED, tablet::ShouldAbortActiveTransactions::kFalse,
+      cas_config_opid_index_less_or_equal, false /* hide_only */, false /* keep_data */,
       &error_code));
 
   assert_tablet_assignment_count(kTabletId1, 0);
@@ -924,62 +916,98 @@ TEST_F(TsTabletManagerTest, FullCompactionCalculateNextCompaction) {
   auto compaction_manager = tablet_manager_->full_compaction_manager();
 
   std::vector<JitterToTest> jitter_to_test = {
-    // 0) Standard compaction frequency and jitter factor, with no last compaction time.
-    {kTabletId, kStandardFrequency, kStandardJitterFactor, kNoLastCompact,
-        kStandardMaxJitter /* expected_max_jitter */},
+      // 0) Standard compaction frequency and jitter factor, with no last compaction time.
+      {.tablet_id = kTabletId,
+       .compaction_frequency = kStandardFrequency,
+       .jitter_factor_percentage = kStandardJitterFactor,
+       .last_compact_time = kNoLastCompact,
+       .expected_max_jitter = kStandardMaxJitter},
 
-    // 1) Standard compaction frequency and jitter factor, with no last compaction time
-    //    (same tablet ID, same expected output as #0).
-    {kTabletId, kStandardFrequency, kStandardJitterFactor, kNoLastCompact,
-        kStandardMaxJitter /* expected_max_jitter */},
+      // 1) Standard compaction frequency and jitter factor, with no last compaction time
+      //    (same tablet ID, same expected output as #0).
+      {.tablet_id = kTabletId,
+       .compaction_frequency = kStandardFrequency,
+       .jitter_factor_percentage = kStandardJitterFactor,
+       .last_compact_time = kNoLastCompact,
+       .expected_max_jitter = kStandardMaxJitter},
 
-    // 2) Standard compaction frequency and jitter factor with no last compaction time,
-    //    using a different tablet id (different expected output as #0).
-    {TabletId("another-tablet-id"), kStandardFrequency, kStandardJitterFactor, kNoLastCompact,
-        kStandardMaxJitter /* expected_max_jitter */},
+      // 2) Standard compaction frequency and jitter factor with no last compaction time,
+      //    using a different tablet id (different expected output as #0).
+      {.tablet_id = TabletId("another-tablet-id"),
+       .compaction_frequency = kStandardFrequency,
+       .jitter_factor_percentage = kStandardJitterFactor,
+       .last_compact_time = kNoLastCompact,
+       .expected_max_jitter = kStandardMaxJitter},
 
-    // 3) Standard compaction frequency and jitter factor, with a recent compaction
-    //    (different expected output as #0).
-    {kTabletId, kStandardFrequency, kStandardJitterFactor, kRecentCompactionTime,
-        kStandardMaxJitter /* expected_max_jitter */},
+      // 3) Standard compaction frequency and jitter factor, with a recent compaction
+      //    (different expected output as #0).
+      {.tablet_id = kTabletId,
+       .compaction_frequency = kStandardFrequency,
+       .jitter_factor_percentage = kStandardJitterFactor,
+       .last_compact_time = kRecentCompactionTime,
+       .expected_max_jitter = kStandardMaxJitter},
 
-    // 4) Standard compaction frequency and jitter factor, with a recent compaction
-    //    (different tablet id, different expected output as #3).
-    {TabletId("another-tablet-id"), kStandardFrequency, kStandardJitterFactor,
-        kRecentCompactionTime, kStandardMaxJitter /* expected_max_jitter */},
+      // 4) Standard compaction frequency and jitter factor, with a recent compaction
+      //    (different tablet id, different expected output as #3).
+      {.tablet_id = TabletId("another-tablet-id"),
+       .compaction_frequency = kStandardFrequency,
+       .jitter_factor_percentage = kStandardJitterFactor,
+       .last_compact_time = kRecentCompactionTime,
+       .expected_max_jitter = kStandardMaxJitter},
 
-    // 5) Invalid jitter factor, will default to kDefaultJitterFactorPercentage
-    //    (same expected output as #3).
-    {kTabletId, kStandardFrequency, -1, kRecentCompactionTime,
-        kStandardMaxJitter /* expected_max_jitter */},
+      // 5) Invalid jitter factor, will default to kDefaultJitterFactorPercentage
+      //    (same expected output as #3).
+      {.tablet_id = kTabletId,
+       .compaction_frequency = kStandardFrequency,
+       .jitter_factor_percentage = -1,
+       .last_compact_time = kRecentCompactionTime,
+       .expected_max_jitter = kStandardMaxJitter},
 
-    // 6) Invalid jitter factor, will default to kDefaultJitterFactorPercentage
-    //    (same expected output as #3 and #5).
-    {kTabletId, kStandardFrequency, 200, kRecentCompactionTime,
-        kStandardMaxJitter /* expected_max_jitter */},
+      // 6) Invalid jitter factor, will default to kDefaultJitterFactorPercentage
+      //    (same expected output as #3 and #5).
+      {.tablet_id = kTabletId,
+       .compaction_frequency = kStandardFrequency,
+       .jitter_factor_percentage = 200,
+       .last_compact_time = kRecentCompactionTime,
+       .expected_max_jitter = kStandardMaxJitter},
 
-    // 7) Longer compaction frequency with recent compaction time and standard jitter.
-    {kTabletId, kStandardFrequency * 3, kStandardJitterFactor, kRecentCompactionTime,
-        kStandardMaxJitter * 3 /* expected_max_jitter */},
+      // 7) Longer compaction frequency with recent compaction time and standard jitter.
+      {.tablet_id = kTabletId,
+       .compaction_frequency = kStandardFrequency * 3,
+       .jitter_factor_percentage = kStandardJitterFactor,
+       .last_compact_time = kRecentCompactionTime,
+       .expected_max_jitter = kStandardMaxJitter * 3},
 
-    // 8) Standard compaction frequency with recent compaction time and no jitter
-    //    (expected jitter of 0).
-    {kTabletId, kStandardFrequency, 0, kRecentCompactionTime,
-        MonoDelta::FromNanoseconds(0) /* expected_max_jitter */},
+      // 8) Standard compaction frequency with recent compaction time and no jitter
+      //    (expected jitter of 0).
+      {.tablet_id = kTabletId,
+       .compaction_frequency = kStandardFrequency,
+       .jitter_factor_percentage = 0,
+       .last_compact_time = kRecentCompactionTime,
+       .expected_max_jitter = MonoDelta::FromNanoseconds(0)},
 
-    // 9) Standard compaction frequency with jitter factor of 10%.
-    {kTabletId, kStandardFrequency, 10, kRecentCompactionTime,
-        kStandardFrequency / 10 /* expected_max_jitter */},
+      // 9) Standard compaction frequency with jitter factor of 10%.
+      {.tablet_id = kTabletId,
+       .compaction_frequency = kStandardFrequency,
+       .jitter_factor_percentage = 10,
+       .last_compact_time = kRecentCompactionTime,
+       .expected_max_jitter = kStandardFrequency / 10},
 
-    // 10) Standard compaction frequency with jitter factor of 100%.
-    //     (expected jitter should be exactly 10X the expected jitter of #9).
-    {kTabletId, kStandardFrequency, 100, kRecentCompactionTime,
-        kStandardFrequency /* expected_max_jitter */},
+      // 10) Standard compaction frequency with jitter factor of 100%.
+      //     (expected jitter should be exactly 10X the expected jitter of #9).
+      {.tablet_id = kTabletId,
+       .compaction_frequency = kStandardFrequency,
+       .jitter_factor_percentage = 100,
+       .last_compact_time = kRecentCompactionTime,
+       .expected_max_jitter = kStandardFrequency},
 
-    // 11) Standard compaction frequency with jitter factor of 100% and no previous
-    //     full compaction time.
-    {kTabletId, kStandardFrequency, 100, kNoLastCompact,
-        kStandardFrequency /* expected_max_jitter */},
+      // 11) Standard compaction frequency with jitter factor of 100% and no previous
+      //     full compaction time.
+      {.tablet_id = kTabletId,
+       .compaction_frequency = kStandardFrequency,
+       .jitter_factor_percentage = 100,
+       .last_compact_time = kNoLastCompact,
+       .expected_max_jitter = kStandardFrequency},
   };
 
   std::vector<MonoDelta> jitter_results;
@@ -1101,15 +1129,10 @@ TEST_F(TsTabletManagerTest, FullCompactionManagerCleanup) {
   ASSERT_TRUE(compaction_manager->TEST_TabletIdInStatsWindowMap(kTabletId3));
 
   // Delete tablet 1 using TABLET_DATA_DELETED, so peer is removed completely from TsTabletManager.
-  boost::optional<int64_t> cas_config_opid_index_less_or_equal;
-  boost::optional<TabletServerErrorPB::Code> error_code;
-  ASSERT_OK(tablet_manager_->DeleteTablet(kTabletId1,
-      tablet::TABLET_DATA_DELETED,
-      tablet::ShouldAbortActiveTransactions::kFalse,
-      boost::optional<int64_t>{},
-      false /* hide_only */,
-      false /* keep_data */,
-      &error_code));
+  std::optional<TabletServerErrorPB::Code> error_code;
+  ASSERT_OK(tablet_manager_->DeleteTablet(
+      kTabletId1, tablet::TABLET_DATA_DELETED, tablet::ShouldAbortActiveTransactions::kFalse,
+      std::optional<int64_t>{}, false /* hide_only */, false /* keep_data */, &error_code));
 
   // Run ScheduleFullCompactions again. Cleanup will not be triggered in the stats window map
   // because we only execute cleanup every hour, and the number of extra tablet_ids don't meet the
@@ -1129,5 +1152,4 @@ TEST_F(TsTabletManagerTest, FullCompactionManagerCleanup) {
   ASSERT_TRUE(compaction_manager->TEST_TabletIdInStatsWindowMap(kTabletId3));
 }
 
-} // namespace tserver
-} // namespace yb
+} // namespace yb::tserver

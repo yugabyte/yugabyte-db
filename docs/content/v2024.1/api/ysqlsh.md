@@ -136,19 +136,15 @@ ysqlsh [ <option>...] [ <dbname> [ <username> ]]
 
 ### Default flags
 
-When you open ysqlsh, the following default flags (aka flags) are set so that the user doesn't have to specify them.
+When you open ysqlsh, the following defaults are set so that you don't have to specify them:
 
 - host: `-h 127.0.0.1`
 - port: `-p 5433`
 - user: `-U yugabyte`
 
-{{< note title="Note" >}}
+For manually deployed universes, or insecure universes deployed using yugabyted, the default password for the default user `yugabyte` is `yugabyte`. If YSQL authentication is enabled, then the `yugabyte` user is prompted for this password.
 
-Starting with v2.0.1, the default password for the default user `yugabyte` is `yugabyte`. If YSQL authentication is enabled, then the `yugabyte` user is prompted for this password.
-
-For v2.0.0 users, the default user `yugabyte` has no password. If you don't want any password to be prompted, don't enable YSQL authentication. If you want to enable YSQL authentication, then you must first set a password for the `yugabyte` user (in a cluster with YSQL authentication turned off).
-
-{{< /note >}}
+If you start a secure universe using yugabyted (using the `--secure` flag), the credentials for the universe, including password, are output to a credentials file. The location of the credentials file is output to the console.
 
 ## Flags
 

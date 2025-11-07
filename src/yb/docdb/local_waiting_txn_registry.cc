@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -16,7 +16,6 @@
 #include <algorithm>
 #include <memory>
 
-#include <boost/optional/optional.hpp>
 #include <glog/vlog_is_on.h>
 
 #include "yb/common/common_fwd.h"
@@ -72,7 +71,7 @@ struct WaitingTransactionData {
   std::shared_ptr<ConflictDataManager> blockers;
   StatusTabletDataPtr status_tablet_data;
   HybridTime wait_start_time;
-  boost::optional<PgSessionRequestVersion> pg_session_req_version;
+  std::optional<PgSessionRequestVersion> pg_session_req_version;
   rpc::Rpcs::Handle rpc_handle;
 };
 
@@ -273,11 +272,9 @@ class LocalWaitingTxnRegistry::Impl {
         : registry_(registry) {}
 
     Status Register(
-        const TransactionId& waiting,
-        int64_t request_id,
-        std::shared_ptr<ConflictDataManager> blockers,
-        const TabletId& status_tablet,
-        boost::optional<PgSessionRequestVersion> pg_session_req_version) override {
+        const TransactionId& waiting, int64_t request_id,
+        std::shared_ptr<ConflictDataManager> blockers, const TabletId& status_tablet,
+        std::optional<PgSessionRequestVersion> pg_session_req_version) override {
       return registry_->RegisterWaitingFor(
           waiting, request_id, std::move(blockers), status_tablet, pg_session_req_version, this);
     }
@@ -435,21 +432,20 @@ class LocalWaitingTxnRegistry::Impl {
 
   Status RegisterWaitingFor(
       const TransactionId& waiting, int64_t request_id,
-      std::shared_ptr<ConflictDataManager> blockers,
-      const TabletId& status_tablet_id,
-      boost::optional<PgSessionRequestVersion> pg_session_req_version,
+      std::shared_ptr<ConflictDataManager> blockers, const TabletId& status_tablet_id,
+      std::optional<PgSessionRequestVersion> pg_session_req_version,
       WaitingTransactionDataWrapper* wrapper) EXCLUDES(mutex_) {
     DCHECK(!status_tablet_id.empty());
     auto shared_tablet_data = VERIFY_RESULT(GetOrAdd(status_tablet_id));
 
-    auto blocked_data = std::make_shared<WaitingTransactionData>(WaitingTransactionData {
-      .id = waiting,
-      .request_id = request_id,
-      .blockers = std::move(blockers),
-      .status_tablet_data = shared_tablet_data,
-      .wait_start_time = clock_->Now(),
-      .pg_session_req_version = pg_session_req_version,
-      .rpc_handle = rpcs_.InvalidHandle(),
+    auto blocked_data = std::make_shared<WaitingTransactionData>(WaitingTransactionData{
+        .id = waiting,
+        .request_id = request_id,
+        .blockers = std::move(blockers),
+        .status_tablet_data = shared_tablet_data,
+        .wait_start_time = clock_->Now(),
+        .pg_session_req_version = pg_session_req_version,
+        .rpc_handle = rpcs_.InvalidHandle(),
     });
 
     // Waiting txn data needs to be attached before submitting a task of type SendPartialUpdateAsync

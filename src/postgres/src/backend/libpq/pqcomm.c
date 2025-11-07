@@ -87,7 +87,7 @@
 #include "access/xact.h"
 #include "common/pg_yb_common.h"
 #include "libpq/yb_pqcomm_extensions.h"
-#include "yb/yql/pggate/ybc_pggate.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 
 /*
  * Cope with the various platform-specific ways to spell TCP keepalive socket

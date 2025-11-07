@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.subtasks.check;
 
@@ -37,7 +37,6 @@ public class CheckXUniverseAutoFlagsTest extends CommissionerBaseTest {
 
   @Before
   public void setUp() {
-    super.setUp();
     defaultCustomer = ModelFactory.testCustomer();
     sourceUniverse = ModelFactory.createUniverse("source-universe");
     targetUniverse = ModelFactory.createUniverse("target-universe");

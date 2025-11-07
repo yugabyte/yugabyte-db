@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -206,6 +206,14 @@ DEFINE_RUNTIME_bool(cdc_enable_implicit_checkpointing, false,
 DEFINE_RUNTIME_uint32(cdc_max_virtual_wal_per_tserver, 5,
                       "Maximum VirtualWAL instances that can be present on a tserver at any time.");
 
+DEFINE_test_flag(int32, cdc_simulate_error_for_get_changes, -1,
+    "Based on the value of this flag, an error will be simulated by TEST_SimulateError() in "
+    "GetChanges().");
+
+DEFINE_test_flag(string, cdc_tablet_id_to_stall_state_table_updates, "",
+    "If set to a valid tablet id, UpdateCheckpointAndActiveTime() will NOT update the cdc_state "
+    "table entry for this tablet. Used in tests.");
+
 DECLARE_int32(log_min_seconds_to_retain);
 
 static bool ValidateMaxRefreshInterval(const char* flag_name, uint32 value) {
@@ -409,6 +417,30 @@ Result<std::shared_ptr<T>> GetOrCreateXreplTabletMetrics(
 
 }  // namespace
 
+namespace {
+
+Status TEST_SimulateError() {
+  if (FLAGS_TEST_cdc_simulate_error_for_get_changes < 0) {
+    return Status::OK();
+  }
+
+  TestSimulateErrorCode error_to_simulate =
+      static_cast<TestSimulateErrorCode>(FLAGS_TEST_cdc_simulate_error_for_get_changes);
+
+  switch (error_to_simulate) {
+#define TEST_SIMULATE_ERROR(name, value, status_code, message) \
+  case TestSimulateErrorCode::name: { \
+    return STATUS_FORMAT(status_code, "Simulated error: $0", message); \
+  }
+    TEST_SIMULATE_ALL_ERRORS
+#undef TEST_SIMULATE_ERROR
+    default:
+      return Status::OK();
+  }
+}
+
+}  // namespace
+
 class CDCServiceImpl::Impl {
  public:
   explicit Impl(CDCServiceContext* context, rw_spinlock* mutex) : mutex_(*mutex) {}
@@ -450,13 +482,13 @@ class CDCServiceImpl::Impl {
     return it->schema_details_map;
   }
 
-  boost::optional<OpId> GetLastStreamedOpId(const TabletStreamInfo& producer_tablet) {
+  std::optional<OpId> GetLastStreamedOpId(const TabletStreamInfo& producer_tablet) {
     SharedLock<rw_spinlock> lock(mutex_);
     auto it = cdc_state_metadata_.find(producer_tablet);
     if (it != cdc_state_metadata_.end()) {
       return it->last_streamed_op_id;
     }
-    return boost::none;
+    return std::nullopt;
   }
 
   void AddTabletCheckpoint(
@@ -488,7 +520,7 @@ class CDCServiceImpl::Impl {
     }
   }
 
-  boost::optional<int64_t> GetLastActiveTime(const TabletStreamInfo& producer_tablet) {
+  std::optional<int64_t> GetLastActiveTime(const TabletStreamInfo& producer_tablet) {
     SharedLock<rw_spinlock> lock(mutex_);
     auto it = tablet_checkpoints_.find(producer_tablet);
     if (it != tablet_checkpoints_.end()) {
@@ -514,7 +546,7 @@ class CDCServiceImpl::Impl {
               << producer_tablet.tablet_id << ", stream: " << producer_tablet.stream_id;
     }
 
-    return boost::none;
+    return std::nullopt;
   }
 
   Status EraseTabletAndStreamEntry(const TabletStreamInfo& info) {
@@ -528,7 +560,7 @@ class CDCServiceImpl::Impl {
     return Status::OK();
   }
 
-  boost::optional<OpId> GetLastCheckpoint(const TabletStreamInfo& producer_tablet) {
+  std::optional<OpId> GetLastCheckpoint(const TabletStreamInfo& producer_tablet) {
     SharedLock<rw_spinlock> lock(mutex_);
     auto it = tablet_checkpoints_.find(producer_tablet);
     if (it != tablet_checkpoints_.end()) {
@@ -539,7 +571,7 @@ class CDCServiceImpl::Impl {
         return it->cdc_state_checkpoint.op_id;
       }
     }
-    return boost::none;
+    return std::nullopt;
   }
 
   bool UpdateCheckpoint(
@@ -723,8 +755,8 @@ class CDCServiceImpl::Impl {
                        info.stream_id);
   }
 
-  boost::optional<OpId> MinOpId(const TabletId& tablet_id) {
-    boost::optional<OpId> result;
+  std::optional<OpId> MinOpId(const TabletId& tablet_id) {
+    std::optional<OpId> result;
     SharedLock<rw_spinlock> l(mutex_);
     // right => multimap where keys are tablet_ids and values are stream_ids.
     // left => multimap where keys are stream_ids and values are tablet_ids.
@@ -1571,6 +1603,12 @@ void CDCServiceImpl::GetChanges(
   YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 300, 5)
       << "Received GetChanges request " << req->ShortDebugString();
 
+  // Mocking the error set by the flag TEST_cdc_simulate_error_for_get_changes for testing purposes.
+  auto status = TEST_SimulateError();
+  if (!status.ok()) {
+    RPC_STATUS_RETURN_ERROR(status, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
+  }
+
   RPC_CHECK_AND_RETURN_ERROR(
       req->has_tablet_id(),
       STATUS(InvalidArgument, "Tablet ID is required to get CDC changes"),
@@ -1584,6 +1622,8 @@ void CDCServiceImpl::GetChanges(
       CDCErrorPB::INVALID_REQUEST,
       context);
 
+  ash::WaitStateInfo::UpdateCurrentTabletId(req->tablet_id());
+
   auto stream_id = RPC_VERIFY_STRING_TO_STREAM_ID(
       req->has_db_stream_id() ? req->db_stream_id() : req->stream_id());
 
@@ -1592,7 +1632,7 @@ void CDCServiceImpl::GetChanges(
   // Check that requested tablet_id is part of the CDC stream.
   TabletStreamInfo producer_tablet = {.stream_id = stream_id, .tablet_id = req->tablet_id()};
 
-  auto status = CheckTabletValidForStream(producer_tablet);
+  status = CheckTabletValidForStream(producer_tablet);
   if (!status.ok()) {
     RPC_STATUS_RETURN_ERROR(
         CheckTabletValidForStream(producer_tablet), resp->mutable_error(),
@@ -1823,7 +1863,7 @@ void CDCServiceImpl::GetChanges(
     auto namespace_name = tablet_ptr->metadata()->namespace_name();
     auto last_sent_checkpoint = impl_->GetLastStreamedOpId(producer_tablet);
     // If from_op_id is more than the last sent op_id, it indicates a potential stale schema entry.
-    if (last_sent_checkpoint == boost::none ||
+    if (last_sent_checkpoint == std::nullopt ||
         OpId::FromPB(cdc_sdk_from_op_id) != *last_sent_checkpoint) {
       VLOG(1) << "Stale entry in the cache, because last sent checkpoint: " << *last_sent_checkpoint
               << " less than from_op_id: " << OpId::FromPB(cdc_sdk_from_op_id)
@@ -2609,8 +2649,14 @@ void CDCServiceImpl::ProcessEntryForCdcsdk(
   HybridTime cdc_sdk_safe_time = HybridTime::kInvalid;
   // We will only populate the "cdc_sdk_safe_time" when before image is active or when we are in
   // taking the snapshot of any table.
+  // TODO(#26427): We will also set the cdc_sdk_safe_time for sys catalog tablet but this will not
+  // govern its history barriers. Instead the flag
+  // timestamp_syscatalog_history_retention_interval_sec will be used until all the streams have
+  // been upgraded to use sys catalog for implicitly reflecting the changes made to the
+  // publication's tables list.
   auto namespace_id = stream_metadata.GetNamespaceId();
-  if ((is_before_image_active || entry.snapshot_key.has_value())) {
+  if ((is_before_image_active || entry.snapshot_key.has_value() ||
+       tablet_peer->tablet_metadata()->IsSysCatalog())) {
     // For replication slot consumption we can set the cdc_sdk_safe_time to the minimum
     // acknowledged commit time among all the slots on the namespace.
     if (IsReplicationSlotStream(stream_metadata) &&
@@ -3376,10 +3422,11 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
   auto sleep_while_not_stopped = [this]() {
     int min_sleep_ms = std::min(100, GetAtomicFlag(&FLAGS_update_metrics_interval_ms));
     auto sleep_period = MonoDelta::FromMilliseconds(min_sleep_ms);
+    if (shutting_down_) {
+      return false;
+    }
     SleepFor(sleep_period);
-
-    SharedLock<decltype(mutex_)> l(mutex_);
-    return !cdc_service_stopped_;
+    return !shutting_down_;
   };
 
   do {
@@ -4120,15 +4167,14 @@ void CDCServiceImpl::BootstrapProducer(
 }
 
 void CDCServiceImpl::Shutdown() {
-  rpcs_.Shutdown();
-  {
-    std::lock_guard l(mutex_);
-    cdc_service_stopped_ = true;
+  if (!shutting_down_.Set()) {
+    return;
   }
+  cdc_state_table_->Shutdown();
   if (update_peers_and_metrics_thread_) {
     update_peers_and_metrics_thread_->Join();
   }
-
+  rpcs_.Shutdown();
   cdc_state_table_.reset();
   impl_->ClearCaches();
 }
@@ -4555,13 +4601,16 @@ Status CDCServiceImpl::UpdateCheckpointAndActiveTime(
       VLOG(2) << "Updating cdc state table with: checkpoint: " << commit_op_id.ToString()
               << ", last active time: " << last_active_time << safe_time
               << ", for tablet: " << producer_tablet.tablet_id
-              << ", and stream: " << producer_tablet.stream_id;
+              << ", and stream: " << producer_tablet.stream_id
+              << ", last replication time: " << entry.last_replication_time.value_or(0);
     }
 
-    if (!is_snapshot) {
-      RETURN_NOT_OK(cdc_state_table_->UpdateEntries({entry}, false, {"snapshot_key"}));
-    } else {
-      RETURN_NOT_OK(cdc_state_table_->UpdateEntries({entry}));
+    if (producer_tablet.tablet_id != FLAGS_TEST_cdc_tablet_id_to_stall_state_table_updates) {
+      if (!is_snapshot) {
+        RETURN_NOT_OK(cdc_state_table_->UpdateEntries({entry}, false, {"snapshot_key"}));
+      } else {
+        RETURN_NOT_OK(cdc_state_table_->UpdateEntries({entry}));
+      }
     }
   }
 
@@ -4671,7 +4720,8 @@ void CDCServiceImpl::RemoveXReplTabletMetrics(
   }
   auto tablet = tablet_peer->shared_tablet_maybe_null();
   if (tablet == nullptr) {
-    LOG_WITH_FUNC(WARNING) << "Could not find tablet for tablet peer: " << tablet_peer->tablet_id();
+    YB_LOG_EVERY_N_SECS_OR_VLOG(WARNING, 300, 4)
+        << "Could not find tablet for tablet peer: " << tablet_peer->tablet_id();
     return;
   }
 
@@ -4987,25 +5037,6 @@ Result<tablet::TabletPeerPtr> CDCServiceImpl::GetServingTablet(const TabletId& t
   return context_->GetServingTablet(tablet_id);
 }
 
-bool IsStreamInactiveError(Status status) {
-  if (!status.ok() && status.IsInternalError() &&
-      status.message().ToBuffer().find("expired for Tablet") != std::string::npos) {
-    return true;
-  }
-
-  return false;
-}
-
-bool IsIntentGCError(Status status) {
-  if (!status.ok() && status.IsInternalError() &&
-      status.message().ToBuffer().find("CDCSDK Trying to fetch already GCed intents") !=
-          std::string::npos) {
-    return true;
-  }
-
-  return false;
-}
-
 Status CDCServiceImpl::PersistActivePidInSlotEntry(
     const xrepl::StreamId& stream_id, uint64_t active_pid) {
   cdc::CDCStateTableEntry entry(kCDCSDKSlotEntryTabletId, stream_id);
@@ -5237,11 +5268,7 @@ void CDCServiceImpl::GetConsistentChanges(
         Format("GetConsistentChanges failed for stream_id: $0 with error: $1", stream_id, s);
     if (!s.IsTryAgain()) {
       LOG(WARNING) << msg;
-      // Propogate the error to the client only when the stream has expired or the intents have been
-      // garbage collected.
-      if (IsStreamInactiveError(s) || IsIntentGCError(s)) {
-        RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
-      }
+      RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
     } else {
       YB_LOG_EVERY_N_SECS(WARNING, 300) << msg;
     }
@@ -5301,43 +5328,28 @@ void CDCServiceImpl::DestroyVirtualWALForCDC(
   context.RespondSuccess();
 }
 
-std::vector<uint64_t> CDCServiceImpl::FilterVirtualWalSessions(
-    const std::vector<uint64_t>& session_ids) {
-  std::vector<uint64_t> vwal_sessions;
-
-  {
-    SharedLock l(mutex_);
-    for (const auto& session_id : session_ids) {
-      if (session_virtual_wal_.contains(session_id)) {
-        vwal_sessions.push_back(session_id);
-      }
-    }
-  }
-
-  return vwal_sessions;
-}
-
-void CDCServiceImpl::DestroyVirtualWALBatchForCDC(const std::vector<uint64_t>& session_ids) {
+void CDCServiceImpl::DestroyVirtualWALBatchForCDC(
+    const std::vector<uint64_t>& expired_session_ids) {
   // Return early without acquiring the mutex_ in case the walsender consumption feature is disabled
   // or there are no sessions to be cleaned up.
-  if (!FLAGS_ysql_yb_enable_replication_slot_consumption || session_ids.empty()) {
+  if (!FLAGS_ysql_yb_enable_replication_slot_consumption || expired_session_ids.empty()) {
     return;
   }
 
-  // The call to FilterVirtualWalSessions from pg_client_service will ensure that we are only
-  // receiving session_ids here which belong to a virtual WAL session and thus we will also
-  // ensure that we do not end up spewing the following log for every expired session.
-  LOG_WITH_FUNC(INFO) << "Received DestroyVirtualWALBatchForCDC request: " << AsString(session_ids);
+  VLOG_WITH_FUNC(2) << "Received expired session ids: " << AsString(expired_session_ids)
+                    << " for virtual WAL batch cleanup";
 
-  // Ideally, we should not depend on this mutex_ as this function gets called from the session
-  // cleanup bg thread from pg_client_service which is time sensitive.
-  // This seems fine for now only because there isn't a lot of contention on the mutex_ due to low
-  // number of walsenders (10 by default) and here we are just deleting from an in-memory map.
   {
     std::lock_guard l(mutex_);
-
-    for (auto it = session_ids.begin(); it != session_ids.end(); ++it) {
+    for (auto it = expired_session_ids.begin(); it != expired_session_ids.end(); ++it) {
+      if (!session_virtual_wal_.contains(*it)) {
+        VLOG_WITH_FUNC(2) << "Session id: " << *it
+                          << " does not have a virtual WAL associated with it";
+        continue;
+      }
       const auto& stream_id = session_virtual_wal_[*it]->GetStreamId();
+      LOG_WITH_FUNC(INFO) << "Received DestroyVirtualWALBatchForCDC request for session_id: " << *it
+                          << " and stream_id: " << stream_id;
       const auto& curr_status = PersistActivePidInSlotEntry(stream_id, 0ULL);
       stream_to_session_.erase(stream_id);
       if (!curr_status.ok()) {

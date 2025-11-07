@@ -10,7 +10,6 @@ menu:
     parent: explore-indexes-constraints-ysql
     weight: 210
 aliases:
-  - /preview/explore/ysql-language-features/indexes-1/
   - /preview/explore/indexes-constraints/secondary-indexes/
 type: docs
 ---
@@ -159,7 +158,7 @@ Now only one row is scanned to retrieve one row.
 
 ## Learn more
 
-- [Designing secondary indexes](../../../../develop/data-modeling/secondary-indexes-ysql)
+- [Designing secondary indexes](/preview/develop/data-modeling/secondary-indexes-ysql)
 - [Benefits of Index-only scan](https://www.yugabyte.com/blog/how-a-distributed-sql-database-boosts-secondary-index-queries-with-index-only-scan/)
 - Blog on [Pushdown #3: Filtering using index predicates](https://www.yugabyte.com/blog/5-query-pushdowns-for-distributed-sql-and-how-they-differ-from-a-traditional-rdbms/) discusses the performance boost of distributed SQL queries using indexes.
 - [How To Design Distributed Indexes for Optimal Query Performance](https://www.yugabyte.com/blog/design-indexes-query-performance-distributed-database/)

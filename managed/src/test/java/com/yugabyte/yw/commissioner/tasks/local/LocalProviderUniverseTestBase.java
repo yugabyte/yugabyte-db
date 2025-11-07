@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.local;
 
@@ -37,6 +37,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.RetryTaskUntilCondition;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TableSpaceStructures;
 import com.yugabyte.yw.common.UnrecoverableException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
@@ -60,7 +61,6 @@ import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseResp;
-import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -79,6 +79,7 @@ import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.provider.LocalCloudInfo;
 import com.yugabyte.yw.scheduler.JobScheduler;
@@ -101,6 +102,7 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -123,6 +125,7 @@ import org.junit.Rule;
 import org.junit.rules.TestWatcher;
 import org.junit.rules.Timeout;
 import org.junit.runner.Description;
+import org.yb.CommonNet;
 import org.yb.CommonNet.PlacementInfoPB;
 import org.yb.CommonNet.ReplicationInfoPB;
 import org.yb.CommonTypes.TableType;
@@ -159,7 +162,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
 
   private static final String YBC_BASE_S3_URL = "https://downloads.yugabyte.com/ybc/";
   private static final String YBC_BIN_ENV_KEY = "YBC_PATH";
-  private static boolean KEEP_FAILED_UNIVERSE = true;
+  private static final boolean KEEP_FAILED_UNIVERSE = true;
   private static final boolean KEEP_ALWAYS = false;
 
   public static Map<String, String> GFLAGS = new HashMap<>();
@@ -411,10 +414,6 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
     }
   }
 
-  private static String extractVersionFromFolder(String folder) {
-    return folder.substring(9); // yugabyte-2.18.3.0 for example
-  }
-
   private static String extractVersionFromBuild(String build) {
     return build.substring(0, build.indexOf("-"));
   }
@@ -440,7 +439,8 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
   }
 
   @Before
-  public void setUp() {
+  @Override
+  public void setUpBase() {
     injectDependencies();
 
     settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.releases.use_redesign", "false");
@@ -641,9 +641,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
       userIntent.enableClientToNodeEncrypt = true;
     }
     userIntent.specificGFlags =
-        SpecificGFlags.construct(
-            Map.of("transaction_table_num_tablets", "3"),
-            Map.of("transaction_table_num_tablets", "3"));
+        SpecificGFlags.construct(Map.of("transaction_table_num_tablets", "3"), Map.of());
     userIntent.deviceInfo.storageType = PublicCloudConstants.StorageType.Local;
     return userIntent;
   }
@@ -677,7 +675,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
       throws InterruptedException {
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.nodePrefix = "univConfCreate";
-    taskParams.upsertPrimaryCluster(userIntent, null);
+    taskParams.upsertPrimaryCluster(userIntent, null, null);
     PlacementInfoUtil.updateUniverseDefinition(
         taskParams, customer.getId(), taskParams.getPrimaryCluster().uuid, CREATE);
     taskParams.expectedUniverseVersion = -1;
@@ -708,13 +706,19 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
   }
 
   protected void initYSQL(Universe universe, String tableName) {
+    initYSQL(universe, tableName, null);
+  }
+
+  protected void initYSQL(Universe universe, String tableName, String tablespace) {
     initYSQL(
         universe,
         tableName,
+        tablespace,
         universe.getUniverseDetails().getPrimaryCluster().userIntent.isYSQLAuthEnabled());
   }
 
-  protected void initYSQL(Universe universe, String tableName, boolean authEnabled) {
+  protected void initYSQL(
+      Universe universe, String tableName, String tablespace, boolean authEnabled) {
     NodeDetails nodeDetails =
         universe.getUniverseDetails().nodeDetailsSet.stream()
             .filter(n -> n.state.equals(NodeDetails.NodeState.Live))
@@ -723,15 +727,19 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
     if (StringUtils.isBlank(tableName)) {
       tableName = "some_table";
     }
+    String createCommand;
+    if (tablespace != null) {
+      createCommand =
+          String.format(
+              "CREATE TABLE %s (id int, name text, age int) tablespace %s", tableName, tablespace);
+    } else {
+      createCommand =
+          String.format(
+              "CREATE TABLE %s (id int, name text, age int, PRIMARY KEY(id, name))", tableName);
+    }
     ShellResponse response =
         localNodeUniverseManager.runYsqlCommand(
-            nodeDetails,
-            universe,
-            YUGABYTE_DB,
-            String.format(
-                "CREATE TABLE %s (id int, name text, age int, PRIMARY KEY(id, name))", tableName),
-            10,
-            authEnabled);
+            nodeDetails, universe, YUGABYTE_DB, createCommand, 10, authEnabled);
     assertTrue(response.isSuccess());
     response =
         localNodeUniverseManager.runYsqlCommand(
@@ -929,6 +937,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
       UniverseDefinitionTaskParams.Cluster primaryCluster = universeDetails.getPrimaryCluster();
       ReplicationInfoPB replicationInfo = config.getReplicationInfo();
       PlacementInfoPB liveReplicas = replicationInfo.getLiveReplicas();
+      verifyAffinitized(primaryCluster, replicationInfo);
       verifyCluster(universe, primaryCluster, liveReplicas);
       verifyMasterAddresses(universe);
       if (!universeDetails.getReadOnlyClusters().isEmpty()) {
@@ -954,6 +963,53 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
       }
     } catch (Exception e) {
       throw new RuntimeException(e);
+    }
+  }
+
+  private void verifyAffinitized(Cluster cluster, ReplicationInfoPB replicationInfo) {
+    if (cluster.placementInfo.hasRankOrdering()) {
+      Map<Integer, List<PlacementInfo.PlacementAZ>> ranks = new HashMap<>();
+      cluster
+          .placementInfo
+          .azStream()
+          .forEach(
+              az -> {
+                List<PlacementInfo.PlacementAZ> lst =
+                    ranks.computeIfAbsent(az.leaderPreference, x -> new ArrayList<>());
+                lst.add(az);
+              });
+      assertEquals(ranks.size(), replicationInfo.getMultiAffinitizedLeadersCount());
+      Iterator<CommonNet.CloudInfoListPB> iterator =
+          replicationInfo.getMultiAffinitizedLeadersList().iterator();
+      ranks.keySet().stream()
+          .sorted()
+          .forEach(
+              ord -> {
+                Set<String> placementAZS =
+                    ranks.get(ord).stream()
+                        .map(az -> AvailabilityZone.getOrBadRequest(az.uuid).getCode())
+                        .collect(Collectors.toSet());
+                CommonNet.CloudInfoListPB lst = iterator.next();
+                Set<String> cloudAZs =
+                    lst.getZonesList().stream()
+                        .map(z -> z.getPlacementZone())
+                        .collect(Collectors.toSet());
+                assertEquals(placementAZS, cloudAZs);
+              });
+    } else {
+      Set<String> affinitized =
+          cluster
+              .placementInfo
+              .azStream()
+              .filter(az -> az.isAffinitized)
+              .map(az -> AvailabilityZone.getOrBadRequest(az.uuid).getCode())
+              .collect(Collectors.toSet());
+      assertEquals(affinitized.size(), replicationInfo.getAffinitizedLeadersCount());
+      Set<String> affinitizedPbs =
+          replicationInfo.getAffinitizedLeadersList().stream()
+              .map(z -> z.getPlacementZone())
+              .collect(Collectors.toSet());
+      assertEquals(affinitized, affinitizedPbs);
     }
   }
 
@@ -1001,19 +1057,8 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
 
   protected Map<String, String> getVarz(
       NodeDetails nodeDetails, Universe universe, UniverseTaskBase.ServerType serverType) {
-    UniverseTaskParams.CommunicationPorts ports = universe.getUniverseDetails().communicationPorts;
-    int port =
-        serverType == UniverseTaskBase.ServerType.MASTER
-            ? ports.masterHttpPort
-            : ports.tserverHttpPort;
-    JsonNode varz =
-        nodeUIApiHelper.getRequest(
-            "http://" + nodeDetails.cloudInfo.private_ip + ":" + port + "/api/v1/varz");
-    Map<String, String> result = new HashMap<>();
-    for (JsonNode flag : varz.get("flags")) {
-      result.put(flag.get("name").asText(), flag.get("value").asText());
-    }
-    return result;
+    return GFlagsUtil.getActualGFlags(
+        nodeDetails, serverType, universe, true, null, nodeUIApiHelper, false);
   }
 
   public Map<String, String> getDiskFlags(
@@ -1112,11 +1157,19 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
   }
 
   protected SpecificGFlags getGFlags(String... additional) {
-    Map<String, String> gflags = new HashMap<>(GFLAGS);
+    Map<String, String> masterGFlags = new HashMap<>(GFLAGS);
+    Map<String, String> tserverGFlags = new HashMap<>(GFLAGS);
     for (int i = 0; i < additional.length / 2; i++) {
-      gflags.put(additional[i], additional[i + 1]);
+      masterGFlags.put(additional[i], additional[i + 1]);
+      tserverGFlags.put(additional[i], additional[i + 1]);
     }
-    return SpecificGFlags.construct(gflags, gflags);
+    // Remove master-only flags from tserver
+    tserverGFlags.remove(GFlagsUtil.LOAD_BALANCER_INITIAL_DELAY_SECS);
+    tserverGFlags.remove("transaction_table_num_tablets");
+    tserverGFlags.remove("load_balancer_max_over_replicated_tablets");
+    tserverGFlags.remove("load_balancer_max_concurrent_adds");
+    tserverGFlags.remove("load_balancer_max_concurrent_removals");
+    return SpecificGFlags.construct(masterGFlags, tserverGFlags);
   }
 
   public static String getAllErrorsStr(TaskInfo taskInfo) {
@@ -1253,6 +1306,13 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
     throw new RuntimeException("Timed-out waiting for next task to start");
   }
 
+  protected void moveAZ(PlacementInfo placementInfo, UUID sourceUUID, UUID targetUUID) {
+    placementInfo
+        .azStream()
+        .filter(az -> az.uuid.equals(sourceUUID))
+        .forEach(az -> az.uuid = targetUUID);
+  }
+
   protected void verifyNodeModifications(Universe universe, int added, int removed) {
     assertEquals(
         added,
@@ -1302,6 +1362,29 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
         metaMasterHandler.getMasterLBState(customer.getUuid(), universe.getUniverseUUID());
     assertEquals(resp.isEnabled, isEnabled);
     assertEquals(resp.isIdle, isLoadBalancerIdle);
+  }
+
+  protected TableSpaceStructures.TableSpaceInfo initTablespace(
+      String name, Object... zonesAndCounts) {
+    TableSpaceStructures.TableSpaceInfo tableSpaceInfo = new TableSpaceStructures.TableSpaceInfo();
+    tableSpaceInfo.name = name;
+    tableSpaceInfo.placementBlocks = new ArrayList<>();
+    int rf = 0;
+    for (int i = 0; i < zonesAndCounts.length / 2; i++) {
+      UUID zoneUUID = (UUID) zonesAndCounts[i * 2];
+      Integer replicas = (Integer) zonesAndCounts[i * 2 + 1];
+      AvailabilityZone zone = AvailabilityZone.getOrBadRequest(zoneUUID);
+      TableSpaceStructures.PlacementBlock placementBlock =
+          new TableSpaceStructures.PlacementBlock();
+      placementBlock.zone = zone.getCode();
+      placementBlock.region = zone.getRegion().getCode();
+      placementBlock.cloud = zone.getRegion().getProviderCloudCode().name();
+      placementBlock.minNumReplicas = replicas;
+      tableSpaceInfo.placementBlocks.add(placementBlock);
+      rf += replicas;
+    }
+    tableSpaceInfo.numReplicas = rf;
+    return tableSpaceInfo;
   }
 
   private void verifyDNS(Universe universe) {

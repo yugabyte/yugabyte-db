@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package task
 
@@ -529,7 +529,7 @@ func UnmarshalResponse(ctx context.Context, successTarget any, res *http.Respons
 	res.Body.Close()
 	if err != nil {
 		err = errors.New("Error reading the response body - " + err.Error())
-		util.FileLogger().Errorf(ctx, err.Error())
+		util.FileLogger().Error(ctx, err.Error())
 		return nil, err
 	}
 	if res.StatusCode != 200 {
@@ -551,7 +551,7 @@ func UnmarshalResponse(ctx context.Context, successTarget any, res *http.Respons
 	err = json.Unmarshal(body, successTarget)
 	if err != nil {
 		err = errors.New("Error while unmarshaling the response body - " + err.Error())
-		util.FileLogger().Errorf(ctx, err.Error())
+		util.FileLogger().Error(ctx, err.Error())
 		return nil, err
 	}
 	return successTarget, nil

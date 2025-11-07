@@ -1,4 +1,4 @@
-# Copyright 2020 YugaByte, Inc. and Contributors
+# Copyright 2020 YugabyteDB, Inc. and Contributors
 #
 # Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
 # may not use this file except in compliance with the License. You
@@ -72,6 +72,8 @@ class AzureCreateInstancesMethod(CreateInstancesMethod):
                                  help="JSON of custom network interface options to merge.")
         self.parser.add_argument("--ignore_plan", action="store_true", default=False,
                                  help="Whether or not to skip passing in plan information.")
+        self.parser.add_argument("--capacity_reservation", default=None,
+                                 help="Capacity reservation group to use.")
 
     def preprocess_args(self, args):
         super(AzureCreateInstancesMethod, self).preprocess_args(args)
@@ -341,6 +343,8 @@ class AzureResumeInstancesMethod(AbstractInstancesMethod):
 
     def add_extra_args(self):
         super(AzureResumeInstancesMethod, self).add_extra_args()
+        self.parser.add_argument("--capacity_reservation", default=None,
+                                 help="Capacity reservation group to use.")
         self.parser.add_argument("--node_ip", default=None,
                                  help="The ip of the instance to resume.")
 
@@ -350,15 +354,21 @@ class AzureResumeInstancesMethod(AbstractInstancesMethod):
         host_info = self.cloud.get_host_info(args)
         if host_info is None:
             raise YBOpsRuntimeError("Could not find instance {}".format(args.search_pattern))
-        self.cloud.start_instance(host_info, server_ports)
+        self.cloud.start_instance(host_info, server_ports, args.capacity_reservation)
 
 
 class AzureChangeInstanceTypeMethod(ChangeInstanceTypeMethod):
     def __init__(self, base_command):
         super(AzureChangeInstanceTypeMethod, self).__init__(base_command)
 
+    def add_extra_args(self):
+        super(AzureChangeInstanceTypeMethod, self).add_extra_args()
+        self.parser.add_argument("--capacity_reservation", default=None,
+                                 help="Capacity reservation group to use.")
+
     def _change_instance_type(self, args, host_info):
-        self.cloud.change_instance_type(host_info, args.instance_type, args.cloud_instance_types)
+        self.cloud.change_instance_type(host_info, args.instance_type, args.capacity_reservation,
+                                        args.cloud_instance_types)
 
     def _host_info(self, args, host_info):
         return host_info
@@ -384,9 +394,9 @@ class AzureQueryDeviceNames(AbstractMethod):
     def add_extra_args(self):
         super(AzureQueryDeviceNames, self).add_extra_args()
         self.parser.add_argument("--volume_type",
-                            choices=["premium_lrs", "standardssd_lrs", "ultrassd_lrs",
-                                    "premiumv2_lrs"],
-                            default="premium_lrs", help="Volume type for Azure instances.")
+                                 choices=["premium_lrs", "standardssd_lrs", "ultrassd_lrs",
+                                          "premiumv2_lrs"],
+                                 default="premium_lrs", help="Volume type for Azure instances.")
         self.parser.add_argument("--instance_type",
                                  required=False,
                                  help="The instance type to act on")

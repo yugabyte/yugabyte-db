@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 package com.yugabyte.yw.models;
 
 import static com.yugabyte.yw.common.AlertTemplate.ALERT_CONFIG_WRITING_FAILED;

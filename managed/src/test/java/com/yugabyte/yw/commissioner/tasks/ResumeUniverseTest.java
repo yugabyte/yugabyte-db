@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks;
 
@@ -22,25 +22,36 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DoCapacityReservation;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.KmsConfig;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
@@ -56,14 +67,11 @@ import play.libs.Json;
 public class ResumeUniverseTest extends CommissionerBaseTest {
 
   private Universe defaultUniverse;
-  private EncryptionAtRestUtil encryptionUtil;
   private KmsConfig testKMSConfig;
   private int expectedUniverseVersion = 2;
 
-  @Override
   @Before
   public void setUp() {
-    super.setUp();
     YBClient mockClient = mock(YBClient.class);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
@@ -84,118 +92,83 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
             KeyProvider.AWS,
             Json.newObject().put("test_key", "test_val"),
             "some config name");
+    when(mockNodeAgentClient.isClientEnabled(any(), any())).thenReturn(true);
   }
 
   private void setupUniverse(boolean updateInProgress, int numOfNodes) {
-    Region r = Region.create(defaultProvider, "region-1", "PlacementRegion 1", "default-image");
+    setupUniverse(defaultProvider, updateInProgress, numOfNodes);
+  }
+
+  private void setupUniverse(Provider provider, boolean updateInProgress, int numOfNodes) {
+    Region r = Region.create(provider, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
+    String instanceType =
+        provider.getCloudCode() == Common.CloudType.azu ? "Standard_D4as_v4" : "c3.xlarge";
     InstanceType i =
         InstanceType.upsert(
-            defaultProvider.getUuid(),
-            "c3.xlarge",
-            10,
-            5.5,
-            new InstanceType.InstanceTypeDetails());
+            provider.getUuid(), instanceType, 10, 5.5, new InstanceType.InstanceTypeDetails());
     UniverseDefinitionTaskParams.UserIntent userIntent =
-        getTestUserIntent(r, defaultProvider, i, numOfNodes);
+        getTestUserIntent(r, provider, i, numOfNodes);
     userIntent.replicationFactor = numOfNodes;
     userIntent.masterGFlags = new HashMap<>();
     userIntent.tserverGFlags = new HashMap<>();
-    userIntent.universeName = "demo-universe";
+    userIntent.universeName = "universe-test";
 
-    defaultUniverse = createUniverse(defaultCustomer.getId());
+    defaultUniverse =
+        createUniverse(userIntent.universeName, defaultCustomer.getId(), provider.getCloudCode());
     String nodePrefix = "demo-universe";
-    Universe.saveDetails(
-        defaultUniverse.getUniverseUUID(),
-        ApiUtils.mockUniverseUpdater(
-            userIntent, nodePrefix, true /* setMasters */, updateInProgress));
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            ApiUtils.mockUniverseUpdater(
+                userIntent, nodePrefix, true /* setMasters */, updateInProgress));
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              u.getUniverseDetails()
+                  .nodeDetailsSet
+                  .forEach(n -> n.state = NodeDetails.NodeState.Stopped);
+            });
   }
 
-  private static final List<TaskType> RESUME_UNIVERSE_TASKS =
+  private static final List<Pair<TaskType, JsonNode>> RESUME_UNIVERSE_TASKS =
       ImmutableList.of(
-          TaskType.FreezeUniverse,
-          TaskType.ResumeServer,
-          TaskType.WaitForClockSync, // Ensure clock skew is low enough
-          TaskType.AnsibleClusterServerCtl,
-          TaskType.WaitForServer,
-          TaskType.WaitForServerReady,
-          TaskType.WaitForClockSync, // Ensure clock skew is low enough
-          TaskType.AnsibleClusterServerCtl,
-          TaskType.WaitForServer,
-          TaskType.WaitForServerReady,
-          TaskType.SetNodeState,
-          TaskType.ManageAlertDefinitions,
-          TaskType.SwamperTargetsFileUpdate,
-          TaskType.MarkSourceMetric,
-          TaskType.UpdateUniverseFields,
-          TaskType.UniverseUpdateSucceeded);
-
-  private static final List<TaskType> RESUME_ENCRYPTION_AT_REST_UNIVERSE_TASKS =
-      ImmutableList.of(
-          TaskType.FreezeUniverse,
-          TaskType.ResumeServer,
-          TaskType.WaitForClockSync, // Ensure clock skew is low enough
-          TaskType.AnsibleClusterServerCtl,
-          TaskType.WaitForServer,
-          TaskType.SetActiveUniverseKeys,
-          TaskType.WaitForServerReady,
-          TaskType.WaitForClockSync, // Ensure clock skew is low enough
-          TaskType.AnsibleClusterServerCtl,
-          TaskType.WaitForServer,
-          TaskType.WaitForServerReady,
-          TaskType.SetNodeState,
-          TaskType.ManageAlertDefinitions,
-          TaskType.SwamperTargetsFileUpdate,
-          TaskType.MarkSourceMetric,
-          TaskType.UpdateUniverseFields,
-          TaskType.UniverseUpdateSucceeded);
-
-  private static final List<JsonNode> RESUME_UNIVERSE_EXPECTED_RESULTS =
-      ImmutableList.of(
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of("process", "master", "command", "start")),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()));
-
-  private static final List<JsonNode> RESUME_ENCRYPTION_AT_REST_UNIVERSE_EXPECTED_RESULTS =
-      ImmutableList.of(
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of("process", "master", "command", "start")),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()));
+          new Pair<>(TaskType.FreezeUniverse, Json.toJson(ImmutableMap.of())),
+          new Pair<>(TaskType.ResumeServer, Json.toJson(ImmutableMap.of())),
+          new Pair<>(TaskType.InstallNodeAgent, Json.toJson(ImmutableMap.of())),
+          new Pair<>(TaskType.WaitForNodeAgent, Json.toJson(ImmutableMap.of())),
+          new Pair<>(TaskType.WaitForClockSync, Json.toJson(ImmutableMap.of())),
+          new Pair<>(
+              TaskType.AnsibleClusterServerCtl,
+              Json.toJson(ImmutableMap.of("process", "master", "command", "start"))),
+          new Pair<>(TaskType.WaitForServer, Json.toJson(ImmutableMap.of())),
+          new Pair<>(TaskType.SetActiveUniverseKeys, Json.toJson(ImmutableMap.of())),
+          new Pair<>(TaskType.WaitForServerReady, Json.toJson(ImmutableMap.of())),
+          new Pair<>(TaskType.WaitForClockSync, Json.toJson(ImmutableMap.of())),
+          new Pair<>(
+              TaskType.AnsibleClusterServerCtl,
+              Json.toJson(ImmutableMap.of("process", "tserver", "command", "start"))),
+          new Pair<>(TaskType.WaitForServer, Json.toJson(ImmutableMap.of())),
+          new Pair<>(TaskType.WaitForServerReady, Json.toJson(ImmutableMap.of())),
+          new Pair<>(TaskType.SetNodeState, Json.toJson(ImmutableMap.of())),
+          new Pair<>(TaskType.ManageAlertDefinitions, Json.toJson(ImmutableMap.of())),
+          new Pair<>(TaskType.SwamperTargetsFileUpdate, Json.toJson(ImmutableMap.of())),
+          new Pair<>(TaskType.MarkSourceMetric, Json.toJson(ImmutableMap.of())),
+          new Pair<>(TaskType.UpdateUniverseFields, Json.toJson(ImmutableMap.of())),
+          new Pair<>(TaskType.UniverseUpdateSucceeded, Json.toJson(ImmutableMap.of())));
 
   private void assertTaskSequence(
       Map<Integer, List<TaskInfo>> subTasksByPosition,
-      List<TaskType> expectedTaskSequence,
-      List<JsonNode> expectedResultsList) {
+      List<Pair<TaskType, JsonNode>> expectedTaskSequence,
+      Set<Integer> skipPositions) {
     int position = 0;
-    for (TaskType taskType : expectedTaskSequence) {
-      JsonNode expectedResults = expectedResultsList.get(position);
+    for (Pair<TaskType, JsonNode> pair : expectedTaskSequence) {
+      if (skipPositions.contains(position)) {
+        continue;
+      }
+      TaskType taskType = pair.getFirst();
+      JsonNode expectedResults = pair.getSecond();
       List<TaskInfo> tasks = subTasksByPosition.get(position);
       assertEquals(taskType, tasks.get(0).getTaskType());
       List<JsonNode> taskDetails =
@@ -227,9 +200,68 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    assertTaskSequence(subTasksByPosition, RESUME_UNIVERSE_TASKS, RESUME_UNIVERSE_EXPECTED_RESULTS);
+    assertTaskSequence(subTasksByPosition, RESUME_UNIVERSE_TASKS, ImmutableSet.of(2, 3, 7));
     assertEquals(Success, taskInfo.getTaskState());
     assertTrue(defaultCustomer.getUniverseUUIDs().contains(defaultUniverse.getUniverseUUID()));
+  }
+
+  @Test
+  public void testResumeUniverseWithCRAzureSuccess() {
+    RuntimeConfigEntry.upsertGlobal(
+        ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
+    setupUniverse(azuProvider, false, 3);
+    ResumeUniverse.Params taskParams = new ResumeUniverse.Params();
+    taskParams.customerUUID = defaultCustomer.getUuid();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+    Region region = Region.getByCode(azuProvider, "region-1");
+    verifyCapacityReservationAZU(
+        defaultUniverse.getUniverseUUID(),
+        AzureReservationGroup.of(
+            region,
+            Map.of(
+                defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
+                Map.of("1", Arrays.asList("host-n1", "host-n2", "host-n3")))));
+
+    verifyNodeInteractionsCapacityReservation(
+        12,
+        NodeManager.NodeCommandType.Resume,
+        params -> ((ResumeServer.Params) params).capacityReservation,
+        Map.of(
+            DoCapacityReservation.getCapacityReservationGroupName(
+                defaultUniverse.getUniverseUUID(), region.getCode()),
+            Arrays.asList("host-n1", "host-n2", "host-n3")));
+  }
+
+  @Test
+  public void testResumeUniverseWithCRAwsSuccess() {
+    RuntimeConfigEntry.upsertGlobal(ProviderConfKeys.enableCapacityReservationAws.getKey(), "true");
+    setupUniverse(defaultProvider, false, 3);
+    ResumeUniverse.Params taskParams = new ResumeUniverse.Params();
+    taskParams.customerUUID = defaultCustomer.getUuid();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+    Region.getByCode(defaultProvider, "region-1");
+    verifyCapacityReservationAws(
+        defaultUniverse.getUniverseUUID(),
+        Map.of(
+            defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
+            Map.of("1", new ZoneData("region-1", Arrays.asList("host-n1", "host-n2", "host-n3")))));
+
+    verifyNodeInteractionsCapacityReservation(
+        9,
+        NodeManager.NodeCommandType.Resume,
+        params -> ((ResumeServer.Params) params).capacityReservation,
+        Map.of(
+            DoCapacityReservation.getZoneInstanceCapacityReservationName(
+                defaultUniverse.getUniverseUUID(),
+                "az-1",
+                defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.instanceType),
+            Arrays.asList("host-n1", "host-n2", "host-n3")));
   }
 
   @Test
@@ -279,11 +311,11 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
   @Test
   public void testResumeUniverseWithEncyptionAtRestEnabled() {
     setupUniverse(false, 1);
-    encryptionUtil.addKeyRef(
+    EncryptionAtRestUtil.addKeyRef(
         defaultUniverse.getUniverseUUID(),
         testKMSConfig.getConfigUUID(),
         "some_key_ref".getBytes());
-    int numRotations = encryptionUtil.getNumUniverseKeys(defaultUniverse.getUniverseUUID());
+    int numRotations = EncryptionAtRestUtil.getNumUniverseKeys(defaultUniverse.getUniverseUUID());
     assertEquals(1, numRotations);
     ResumeUniverse.Params taskParams = new ResumeUniverse.Params();
     taskParams.customerUUID = defaultCustomer.getUuid();
@@ -292,10 +324,7 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    assertTaskSequence(
-        subTasksByPosition,
-        RESUME_ENCRYPTION_AT_REST_UNIVERSE_TASKS,
-        RESUME_ENCRYPTION_AT_REST_UNIVERSE_EXPECTED_RESULTS);
+    assertTaskSequence(subTasksByPosition, RESUME_UNIVERSE_TASKS, ImmutableSet.of(2, 3));
     assertEquals(Success, taskInfo.getTaskState());
     assertTrue(defaultCustomer.getUniverseUUIDs().contains(defaultUniverse.getUniverseUUID()));
   }
@@ -313,5 +342,23 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
         taskParams.getUniverseUUID(),
         TaskType.ResumeUniverse,
         taskParams);
+  }
+
+  @Test
+  public void testResumeUniverseWithNodeAgentInstallation() {
+    setupUniverse(false, 3);
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(), u -> u.getUniverseDetails().installNodeAgent = true);
+    ResumeUniverse.Params taskParams = new ResumeUniverse.Params();
+    taskParams.customerUUID = defaultCustomer.getUuid();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    TaskInfo taskInfo = submitTask(taskParams);
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
+    assertTaskSequence(subTasksByPosition, RESUME_UNIVERSE_TASKS, ImmutableSet.of(7));
+    assertEquals(Success, taskInfo.getTaskState());
+    assertTrue(defaultCustomer.getUniverseUUIDs().contains(defaultUniverse.getUniverseUUID()));
   }
 }

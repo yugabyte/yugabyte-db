@@ -4,7 +4,7 @@ headerTitle: SHOW
 linkTitle: SHOW
 description: Use the SHOW statement to display the value of a run-time parameter.
 menu:
-  v2.20:
+  v2.20_api:
     identifier: cmd_show
     parent: statements
 type: docs

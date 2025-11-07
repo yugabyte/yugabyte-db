@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -116,7 +116,7 @@ class MetacacheRefreshITest : public MiniClusterTestWithClient<ExternalMiniClust
     std::unique_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
     ASSERT_OK(client_->CreateNamespace(
         kPgsqlNamespaceName, YQL_DATABASE_PGSQL, "" /* creator */, "" /* ns_id */,
-        "" /* src_ns_id */, boost::none /* next_pg_oid */, nullptr /* txn */, false));
+        "" /* src_ns_id */, std::nullopt /* next_pg_oid */, nullptr /* txn */, false));
     std::string kNamespaceId;
     {
       auto namespaces = ASSERT_RESULT(client_->ListNamespaces());

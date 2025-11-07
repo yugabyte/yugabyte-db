@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -85,6 +85,10 @@ class TabletServerIf : public LocalTabletServer {
   virtual Status SetTserverCatalogMessageList(
       uint32_t db_oid, bool is_breaking_change, uint64_t new_catalog_version,
       const std::optional<std::string>& message_list) = 0;
+
+  virtual Status TriggerRelcacheInitConnection(
+      const tserver::TriggerRelcacheInitConnectionRequestPB& req,
+      tserver::TriggerRelcacheInitConnectionResponsePB *resp) = 0;
 
   virtual const scoped_refptr<MetricEntity>& MetricEnt() const = 0;
 

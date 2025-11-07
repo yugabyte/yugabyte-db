@@ -25,9 +25,13 @@ import {
 
 interface CertificateAuthorityProps {
   initialValues: EncryptionInTransitFormValues;
+  isItKubernetesUniverse: boolean;
 }
 
-export const CertificateAuthority: FC<CertificateAuthorityProps> = ({ initialValues }) => {
+export const CertificateAuthority: FC<CertificateAuthorityProps> = ({
+  initialValues,
+  isItKubernetesUniverse
+}) => {
   const { t } = useTranslation();
   const classes = useEITStyles();
   const { control, watch } = useFormContext<EncryptionInTransitFormValues>();
@@ -62,17 +66,19 @@ export const CertificateAuthority: FC<CertificateAuthorityProps> = ({ initialVal
 
   return (
     <>
-      <Box mt={3}>
-        <YBCheckboxField
-          control={control}
-          name={USE_SAME_CERTS_FIELD_NAME}
-          label={t('universeActions.encryptionInTransit.useSameCert')}
-          labelProps={{ className: classes.eitLabels }}
-          inputProps={{
-            'data-testid': 'UseSameCert-Checkbox'
-          }}
-        />
-      </Box>
+      {!isItKubernetesUniverse && (
+        <Box mt={3}>
+          <YBCheckboxField
+            control={control}
+            name={USE_SAME_CERTS_FIELD_NAME}
+            label={t('universeActions.encryptionInTransit.useSameCert')}
+            labelProps={{ className: classes.eitLabels }}
+            inputProps={{
+              'data-testid': 'UseSameCert-Checkbox'
+            }}
+          />
+        </Box>
+      )}
       <Box mt={1} display="flex" flexDirection="column" className={classes.container}>
         <Box className={classes.subContainer}>
           <Box display="flex" alignItems="center" justifyContent="space-between">

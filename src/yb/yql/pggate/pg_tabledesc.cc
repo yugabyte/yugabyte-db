@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -187,48 +187,6 @@ Result<size_t> PgTableDesc::FindPartitionIndex(const Slice& ybctid) const {
   // - Range Partition: ybctid == key -> partition index.
   string partition_key = VERIFY_RESULT(DecodeYbctid(ybctid));
   return client::FindPartitionStartIndex(table_partition_list_.keys, partition_key);
-}
-
-Result<bool> PgTableDesc::CheckScanBoundary(LWPgsqlReadRequestPB* req) {
-  if (req->has_lower_bound() && req->has_upper_bound() &&
-      ((req->lower_bound().key() > req->upper_bound().key()) ||
-       (req->lower_bound().key() == req->upper_bound().key() &&
-          !(req->lower_bound().is_inclusive() && req->upper_bound().is_inclusive())))) {
-    return false;
-  }
-  return true;
-}
-
-Result<bool> PgTableDesc::SetScanBoundary(LWPgsqlReadRequestPB* req,
-                                          const std::string& partition_lower_bound,
-                                          bool lower_bound_is_inclusive,
-                                          const std::string& partition_upper_bound,
-                                          bool upper_bound_is_inclusive) {
-  // Update lower boundary if necessary.
-  if (!partition_lower_bound.empty()) {
-    if (!req->has_lower_bound() ||
-        req->lower_bound().key() < partition_lower_bound) {
-      req->mutable_lower_bound()->dup_key(partition_lower_bound);
-      req->mutable_lower_bound()->set_is_inclusive(lower_bound_is_inclusive);
-    } else if (req->lower_bound().key() == partition_lower_bound &&
-               req->lower_bound().is_inclusive() && !lower_bound_is_inclusive) {
-      req->mutable_lower_bound()->set_is_inclusive(false);
-    }
-  }
-
-  // Update upper boundary if necessary.
-  if (!partition_upper_bound.empty()) {
-    if (!req->has_upper_bound() ||
-        req->upper_bound().key() > partition_upper_bound) {
-      req->mutable_upper_bound()->dup_key(partition_upper_bound);
-      req->mutable_upper_bound()->set_is_inclusive(upper_bound_is_inclusive);
-    } else if (req->upper_bound().key() == partition_upper_bound &&
-               req->upper_bound().is_inclusive() && !upper_bound_is_inclusive) {
-      req->mutable_upper_bound()->set_is_inclusive(false);
-    }
-  }
-
-  return CheckScanBoundary(req);
 }
 
 const client::YBTableName& PgTableDesc::table_name() const {

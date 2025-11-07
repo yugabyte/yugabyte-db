@@ -3,9 +3,9 @@
 // LICENSE file in the root directory of this source tree. An additional grant
 // of patent rights can be found in the PATENTS file in the same directory.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -249,6 +249,9 @@ enum Histograms : uint32_t {
   BYTES_PER_READ,
   BYTES_PER_WRITE,
   BYTES_PER_MULTIGET,
+  BLOOM_FILTER_TIME_NANOS,
+  GET_FIXED_SIZE_FILTER_BLOCK_HANDLE_NANOS,
+  GET_FILTER_BLOCK_FROM_CACHE_NANOS,
   HISTOGRAM_ENUM_MAX,  // TODO(ldemailly): enforce HistogramsNameMap match
 };
 
@@ -298,9 +301,7 @@ class Statistics {
   }
 
   // Override this function to disable particular histogram collection
-  virtual bool HistEnabledForType(uint32_t type) const {
-    return type < HISTOGRAM_ENUM_MAX;
-  }
+  virtual bool HistEnabledForType(uint32_t type) const;
 
   StatsLevel stats_level_ = kExceptTimeForMutex;
 };

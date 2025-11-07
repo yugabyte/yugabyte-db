@@ -3,7 +3,7 @@
  * yb_cmds.c
  *        YB commands for creating and altering table structures and settings
  *
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License.  You may obtain a copy of the License at
@@ -74,8 +74,8 @@
 #include "utils/rel.h"
 #include "utils/relcache.h"
 #include "utils/syscache.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
-#include "yb/yql/pggate/ybc_pggate.h"
 
 /* Utility function to calculate column sorting options */
 static void
@@ -907,6 +907,12 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 
 	CreateTableAddColumns(handle, desc, primary_key, is_colocated_via_database,
 						  is_tablegroup);
+
+	if (stmt->partspec != NULL)
+	{
+		/* Parent partitions do not hold data, so 1 tablet is sufficient */
+		HandleYBStatus(YBCPgCreateTableSetNumTablets(handle, 1));
+	}
 
 	/* Handle SPLIT statement, if present */
 	if (split_options)
@@ -1816,6 +1822,10 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 			*needsYBAlter = false;
 			break;
 
+		case AT_AlterConstraint:
+			*needsYBAlter = false;
+			break;
+
 		default:
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -2043,6 +2053,9 @@ YbBackfillIndex(YbBackfillIndexStmt *stmt, DestReceiver *dest)
 	Oid			save_userid;
 	int			save_sec_context;
 	int			save_nestlevel;
+	double		index_tuples;
+	Datum		values[2];
+	bool		nulls[2] = {0};
 
 	if (*YBCGetGFlags()->ysql_disable_index_backfill)
 		ereport(ERROR,
@@ -2100,12 +2113,12 @@ YbBackfillIndex(YbBackfillIndexStmt *stmt, DestReceiver *dest)
 	indexInfo->ii_BrokenHotChain = false;
 
 	out_param = YbCreateExecOutParam();
-	index_backfill(heapRel,
-				   indexRel,
-				   indexInfo,
-				   false,
-				   stmt->bfinfo,
-				   out_param);
+	index_tuples = yb_index_backfill(heapRel,
+									 indexRel,
+									 indexInfo,
+									 false,
+									 stmt->bfinfo,
+									 out_param);
 
 	index_close(indexRel, RowExclusiveLock);
 	table_close(heapRel, AccessShareLock);
@@ -2116,10 +2129,15 @@ YbBackfillIndex(YbBackfillIndexStmt *stmt, DestReceiver *dest)
 	/* Restore userid and security context */
 	SetUserIdAndSecContext(save_userid, save_sec_context);
 
-	/* output tuples */
+	/* output tuple */
 	tstate = begin_tup_output_tupdesc(dest, YbBackfillIndexResultDesc(stmt),
 									  &TTSOpsVirtual);
-	do_text_output_oneline(tstate, out_param->bfoutput->data);
+
+	values[0] = CStringGetTextDatum(out_param->bfoutput->data);
+	values[1] = Float8GetDatum(index_tuples);
+
+	/* send it to dest */
+	do_tup_output(tstate, values, nulls);
 	end_tup_output(tstate);
 }
 
@@ -2127,12 +2145,12 @@ TupleDesc
 YbBackfillIndexResultDesc(YbBackfillIndexStmt *stmt)
 {
 	TupleDesc	tupdesc;
-	Oid			result_type = TEXTOID;
 
-	/* Need a tuple descriptor representing a single TEXT or XML column */
-	tupdesc = CreateTemplateTupleDesc(1);
+	tupdesc = CreateTemplateTupleDesc(2);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "BACKFILL SPEC",
-					   result_type, -1, 0);
+					   TEXTOID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "ROWS INSERTED",
+					   FLOAT8OID, -1, 0);
 	return tupdesc;
 }
 

@@ -3,9 +3,9 @@
 //  LICENSE file in the root directory of this source tree. An additional grant
 //  of patent rights can be found in the PATENTS file in the same directory.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -511,6 +511,16 @@ class DBImpl : public DB {
 
   // Used in testing to make the old memtable immutable and start writing to a new one.
   void TEST_SwitchMemtable() override;
+
+  // Used in testing to replace current exclude_from_compaction functor. Returns current functor.
+  CompactionFileExcluderPtr TEST_SetExcludeFromCompaction(
+      ColumnFamilyHandle* column_family,
+      CompactionFileExcluderPtr exclude_from_compaction);
+
+  CompactionFileExcluderPtr TEST_SetExcludeFromCompaction(
+      CompactionFileExcluderPtr exclude_from_compaction) {
+    return TEST_SetExcludeFromCompaction(DefaultColumnFamily(), std::move(exclude_from_compaction));
+  }
 
  protected:
   Env* const env_;

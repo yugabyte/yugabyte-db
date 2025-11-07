@@ -35,6 +35,8 @@ export const YCQL_CONFIRM_PASSWORD_FIELD = 'instanceConfig.ycqlConfirmPassword';
 export const TIME_SYNC_FIELD = 'instanceConfig.useTimeSync';
 export const CLIENT_TO_NODE_ENCRYPT_FIELD = 'instanceConfig.enableClientToNodeEncrypt';
 export const ROOT_CERT_FIELD = 'instanceConfig.rootCA';
+export const CLIENT_CERT_FIELD = 'instanceConfig.clientRootCA';
+export const ROOT_CA_CLIENT_CA_SAME_FIELD = 'instanceConfig.rootAndClientRootCASame';
 export const NODE_TO_NODE_ENCRYPT_FIELD = 'instanceConfig.enableNodeToNodeEncrypt';
 export const EAR_FIELD = 'instanceConfig.enableEncryptionAtRest';
 export const KMS_CONFIG_FIELD = 'instanceConfig.kmsConfig';
@@ -105,6 +107,8 @@ export const PRIMARY_FIELDS = [
   EXPOSING_SERVICE_FIELD,
   NODE_TO_NODE_ENCRYPT_FIELD,
   ROOT_CERT_FIELD,
+  CLIENT_CERT_FIELD,
+  ROOT_CA_CLIENT_CA_SAME_FIELD,
   CLIENT_TO_NODE_ENCRYPT_FIELD,
   EAR_FIELD,
   KMS_CONFIG_FIELD,
@@ -146,6 +150,8 @@ export const ASYNC_FIELDS = [
   CLIENT_TO_NODE_ENCRYPT_FIELD,
   ACCESS_KEY_FIELD,
   ROOT_CERT_FIELD,
+  CLIENT_CERT_FIELD,
+  ROOT_CA_CLIENT_CA_SAME_FIELD,
   EAR_FIELD,
   MASTER_PLACEMENT_FIELD,
   USER_TAGS_FIELD,
@@ -171,6 +177,7 @@ export const INHERITED_FIELDS_FROM_PRIMARY = [
   NODE_TO_NODE_ENCRYPT_FIELD,
   CLIENT_TO_NODE_ENCRYPT_FIELD,
   ACCESS_KEY_FIELD,
+  ROOT_CERT_FIELD,
   ROOT_CERT_FIELD,
   EAR_FIELD,
   USER_TAGS_FIELD,

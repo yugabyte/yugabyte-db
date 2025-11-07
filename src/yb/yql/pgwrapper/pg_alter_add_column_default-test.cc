@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -77,11 +77,7 @@ TEST_P(PgAddColumnDefaultTest, AddColumnDefaultCompactionAfterUpdate) {
   const auto table_id = ASSERT_RESULT(GetTableIdByTableName(
       client.get(), kDatabaseName, kTableName));
   // Compact the table.
-  ASSERT_OK(client->FlushTables(
-      {table_id},
-      false /* add_indexes */,
-      3 /* deadline (seconds) */,
-      true /* is_compaction */));
+  ASSERT_OK(client->CompactTables({table_id}, MonoDelta::FromSeconds(3)));
   // Verify the data after compaction.
   auto rows = ASSERT_RESULT((conn_->FetchRows<int32_t, std::string, std::optional<int32_t>>(
       Format("SELECT * FROM $0 ORDER BY t", kTableName))));
@@ -141,11 +137,7 @@ TEST_P(PgAddColumnDefaultTest, AddColumnDefaultCopy) {
   const auto table_id = ASSERT_RESULT(GetTableIdByTableName(
       client.get(), kDatabaseName, kTableName));
   // Compact the table.
-  ASSERT_OK(client->FlushTables(
-      {table_id},
-      false /* add_indexes */,
-      3 /* deadline (seconds) */,
-      true /* is_compaction */));
+  ASSERT_OK(client->CompactTables({table_id}, MonoDelta::FromSeconds(3)));
   // Verify the data after compaction.
   ASSERT_OK(table_content_checker());
 }
@@ -161,6 +153,10 @@ class PgAddColumnDefaultConcurrencyTest : public PgAddColumnDefaultTest {
     PgAddColumnDefaultTest::UpdateMiniClusterOptions(opts);
     // This test verifies behavior without table-level locking and transactional DDL.
     // Both features are disabled to concurrent inserts during ALTER TABLE.
+    AppendCsvFlagValue(opts->extra_tserver_flags, "allowed_preview_flags_csv",
+                       "ysql_yb_ddl_transaction_block_enabled");
+    AppendCsvFlagValue(opts->extra_tserver_flags, "allowed_preview_flags_csv",
+                       "enable_object_locking_for_table_locks");
     opts->extra_tserver_flags.emplace_back("--enable_object_locking_for_table_locks=false");
     opts->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
   }
@@ -208,11 +204,7 @@ TEST_P(PgAddColumnDefaultConcurrencyTest, AddColumnDefaultConcurrency) {
   const auto table_id = ASSERT_RESULT(GetTableIdByTableName(
       client.get(), kDatabaseName, kTableName));
   // Compact the table.
-  ASSERT_OK(client->FlushTables(
-      {table_id},
-      false /* add_indexes */,
-      3 /* deadline (seconds) */,
-      true /* is_compaction */));
+  ASSERT_OK(client->CompactTables({table_id}, MonoDelta::FromSeconds(3)));
   // Verify that we can read the correct values for the new column after compaction.
   res = ASSERT_RESULT(conn_->FetchRow<PGUint64>(
       Format("SELECT count(*) FROM $0 WHERE c1 = 'default'", kTableName)));

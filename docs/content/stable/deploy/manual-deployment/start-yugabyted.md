@@ -46,7 +46,7 @@ If you are only using the YCQL API, you must turn off [YSQL memory optimization]
 
 ### YSQL Connection Manager
 
-If you want to use [YSQL Connection Manager](../../../explore/going-beyond-sql/connection-mgr-ysql/) for connection pooling, add the following to `--tserver_flags`:
+If you want to use [YSQL Connection Manager](../../../additional-features/connection-manager-ysql/) for connection pooling, add the following to `--tserver_flags`:
 
 ```sh
 --tserver_flags "enable_ysql_conn_mgr=true"
@@ -101,6 +101,8 @@ To create a secure multi-zone cluster:
 
     Set the `--backup_daemon` flag to true if you want to perform backup and restore operations.
 
+    For the second node, use the IP address of the first node in the `--join` flag:
+
     Add flags to `--tserver_flags` as required.
 
     ```sh
@@ -112,6 +114,8 @@ To create a secure multi-zone cluster:
         --tserver_flags="enable_ysql_conn_mgr=true"
     ```
 
+    For the third node, you can use the IP address of any currently running node in the universe (for example, the first or the second node) in the `--join` flag:
+
     ```sh
     ./bin/yugabyted start --secure --advertise_address=<IP_of_VM_3> \
         --join=<ip-address-first-yugabyted-node> \
@@ -120,6 +124,8 @@ To create a secure multi-zone cluster:
         --fault_tolerance=zone \
         --tserver_flags="enable_ysql_conn_mgr=true"
     ```
+
+The credentials for the universe, including password, are output to a credentials file, and the location of the credentials file is output to the console.
 
 For more information on the yugabyted start command, refer to [start](../../../reference/configuration/yugabyted/#start).
 

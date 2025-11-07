@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -34,7 +34,7 @@ Slice YQLRowwiseIteratorIf::GetRowKey() const {
   return Slice();
 }
 
-void YQLRowwiseIteratorIf::SeekTuple(Slice tuple_id) {
+void YQLRowwiseIteratorIf::SeekTuple(Slice tuple_id, UpdateFilterKey update_filter_key) {
   LOG(DFATAL) << "This iterator cannot seek by tuple id";
 }
 

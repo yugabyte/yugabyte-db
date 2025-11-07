@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc
+// Copyright (c) YugabyteDB, Inc
 
 package com.yugabyte.yw.commissioner;
 
@@ -278,16 +278,22 @@ public class XClusterScheduler {
           || targetUniverse.getUniverseDetails().universePaused) {
         return;
       }
-      XCLUSTER_CONFIG_LOCK.acquireLock(xClusterConfig.getUuid());
-      compareTablesAndSyncXClusterConfig(xClusterConfig);
+
+      // Try to acquire the lock without blocking
+      if (!XCLUSTER_CONFIG_LOCK.tryLock(xClusterConfig.getUuid())) {
+        log.info(
+            "Could not acquire lock for xCluster config {}, skipping sync, reporting stale data.",
+            xClusterConfig.getUuid());
+        return;
+      }
+
+      try {
+        compareTablesAndSyncXClusterConfig(xClusterConfig);
+      } finally {
+        XCLUSTER_CONFIG_LOCK.releaseLock(xClusterConfig.getUuid());
+      }
     } catch (Exception e) {
       log.error("Error syncing xCluster config:", e);
-    } finally {
-      try {
-        XCLUSTER_CONFIG_LOCK.releaseLock(xClusterConfig.getUuid());
-      } catch (Exception e) {
-        log.error("Error releasing lock for xCluster config:", e);
-      }
     }
   }
 

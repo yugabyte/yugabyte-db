@@ -1,11 +1,14 @@
 /*
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  */
 
 package client
 
 import (
+	"github.com/sirupsen/logrus"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
 // ListKMSConfigs fetches list of kms configs associated with the customer
@@ -39,4 +42,30 @@ func (a *AuthAPIClient) RefreshKMSConfig(
 	configUUID string,
 ) ybaclient.EncryptionAtRestApiApiRefreshKMSConfigRequest {
 	return a.APIClient.EncryptionAtRestApi.RefreshKMSConfig(a.ctx, a.CustomerUUID, configUUID)
+}
+
+// GetListOfKMSConfigs gets list of kms configs
+func (a *AuthAPIClient) GetListOfKMSConfigs(
+	parentCommand, operation string,
+) ([]util.KMSConfig, error) {
+	kmsConfigsMap, response, err := a.ListKMSConfigs().Execute()
+	if err != nil {
+		errMessage := util.ErrorFromHTTPResponse(response, err,
+			parentCommand, operation)
+		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+	}
+	kmsConfigs := make([]util.KMSConfig, 0)
+
+	if len(kmsConfigsMap) == 0 {
+		return kmsConfigs, nil
+	}
+
+	for _, k := range kmsConfigsMap {
+		kmsConfig, err := util.ConvertToKMSConfig(k)
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		kmsConfigs = append(kmsConfigs, kmsConfig)
+	}
+	return kmsConfigs, nil
 }

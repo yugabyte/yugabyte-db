@@ -4,7 +4,7 @@ linkTitle: do_report_results.sql
 headerTitle: do_report_results.sql
 description: do_report_results.sql - Create the function that creates the histogram output.
 menu:
-  v2.20:
+  v2.20_api:
     identifier: do-report-results
     parent: analyzing-a-normal-distribution
     weight: 150

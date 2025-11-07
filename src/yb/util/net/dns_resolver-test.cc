@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -33,8 +33,6 @@
 #include "yb/util/net/dns_resolver.h"
 
 #include <vector>
-
-#include <boost/optional/optional.hpp>
 
 #include <gtest/gtest.h>
 
@@ -83,7 +81,7 @@ class DnsResolverTest : public YBTest {
 
   ThreadPtr io_thread_;
   IoService io_service_;
-  boost::optional<IoService::work> work_{io_service_};
+  std::optional<IoService::work> work_{io_service_};
 
   DnsResolver resolver_{&io_service_, nullptr};
 };

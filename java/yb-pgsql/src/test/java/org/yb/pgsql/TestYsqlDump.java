@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -18,12 +18,15 @@ import static org.yb.AssertionWrappers.*;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.sql.Statement;
@@ -34,6 +37,7 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.yb.client.TestUtils;
 import org.yb.util.ProcessUtil;
 import org.yb.util.SideBySideDiff;
 import org.yb.util.StringUtil;
@@ -82,13 +86,16 @@ public class TestYsqlDump extends BasePgSQLTest {
     Map<String, String> flagMap = super.getTServerFlags();
     // Turn off sequence cache.
     flagMap.put("ysql_sequence_cache_minval", "0");
+    flagMap.put("ysql_enable_profile", "true");
     return flagMap;
   }
 
-  // The following logic is needed to remove the dependency on the exact version number from
-  // the ysql_dump output part that looks like this:
-  // -- Dumped from database version 11.2-YB-1.3.2.0-b0
-  // -- Dumped by ysql_dump version 11.2-YB-1.3.2.0-b0
+  /*
+   * The following logic is needed to remove the dependency on the exact version number from
+   * the ysql_dump output part that looks like this:
+   * -- Dumped from database version 11.2-YB-1.3.2.0-b0
+   * -- Dumped by ysql_dump version 11.2-YB-1.3.2.0-b0
+   */
 
   private static Pattern VERSION_NUMBER_PATTERN = Pattern.compile(
       " version [0-9]+[.][0-9]+-YB-([0-9]+[.]){3}[0-9]+-b[0-9]+");
@@ -99,8 +106,22 @@ public class TestYsqlDump extends BasePgSQLTest {
   private static String postprocessOutputLine(String s) {
     if (s == null)
       return null;
-    return StringUtil.expandTabsAndRemoveTrailingSpaces(
-      VERSION_NUMBER_PATTERN.matcher(s).replaceAll(VERSION_NUMBER_REPLACEMENT_STR));
+
+    // First handle version number replacement
+    String processed = VERSION_NUMBER_PATTERN.matcher(s).replaceAll(VERSION_NUMBER_REPLACEMENT_STR);
+
+    /*
+      Handle SCRAM password wildcards - replace specific SCRAM hashes with '*' to match expected
+      files.
+      SCRAM format: SCRAM-SHA-256$4096:salt$storedkey:serverkey
+      We replace the salt, storedkey, and serverkey parts with '*' to match the wildcard in
+      expected files
+     */
+    processed = processed.replaceAll(
+        "SCRAM-SHA-256\\$4096:[a-zA-Z0-9+/=]+\\$[a-zA-Z0-9+/=]+:[a-zA-Z0-9+/=]+",
+        "SCRAM-SHA-256\\$4096:*");
+
+    return StringUtil.expandTabsAndRemoveTrailingSpaces(processed);
   }
 
   @Test
@@ -110,8 +131,8 @@ public class TestYsqlDump extends BasePgSQLTest {
     ysqlDumpTester(
         "ysql_dump" /* binaryName */,
         "" /* dumpedDatabaseName */,
-        "sql/yb.orig.ysql_dump.sql" /* inputFileRelativePath */,
-        "data/yb_ysql_dump.data.sql" /* expectedDumpRelativePath */,
+        "yb.orig.ysql_dump.sql" /* inputFileRelativePath */,
+        "yb_ysql_dump.data.sql" /* expectedDumpRelativePath */,
         "results/yb.orig.ysql_dump.out" /* outputFileRelativePath */,
         IncludeYbMetadata.ON,
         NoTableSpaces.OFF);
@@ -124,8 +145,8 @@ public class TestYsqlDump extends BasePgSQLTest {
       true /* importDump */,
       "import_db" /* verifyDbName */,
       "results/yb.orig.ysql_dump.out" /* outputFileRelativePath */,
-      "sql/yb.orig.ysql_dump_describe.sql" /* inputDescribeFileRelativePath */,
-      "expected/yb.orig.ysql_dump_describe.out" /* expectedDescribeFileRelativePath */,
+      "yb.orig.ysql_dump_describe.sql" /* inputDescribeFileRelativePath */,
+      "yb.orig.ysql_dump_describe.out" /* expectedDescribeFileRelativePath */,
       "results/yb.orig.ysql_dump_describe.out" /* outputDescribeFileRelativePath */);
   }
 
@@ -136,8 +157,8 @@ public class TestYsqlDump extends BasePgSQLTest {
     ysqlDumpTester(
         "ysql_dump" /* binaryName */,
         "" /* dumpedDatabaseName */,
-        "sql/yb.orig.ysql_dump.sql" /* inputFileRelativePath */,
-        "data/yb_ysql_dump_with_dump_role_checks.data.sql" /* expectedDumpRelativePath */,
+        "yb.orig.ysql_dump.sql" /* inputFileRelativePath */,
+        "yb_ysql_dump_with_dump_role_checks.data.sql" /* expectedDumpRelativePath */,
         "results/yb.orig.ysql_dump.out" /* outputFileRelativePath */,
         IncludeYbMetadata.ON,
         NoTableSpaces.OFF,
@@ -151,19 +172,30 @@ public class TestYsqlDump extends BasePgSQLTest {
       true /* importDump */,
       "import_db" /* verifyDbName */,
       "results/yb.orig.ysql_dump.out" /* outputFileRelativePath */,
-      "sql/yb.orig.ysql_dump_describe.sql" /* inputDescribeFileRelativePath */,
-      "expected/yb.orig.ysql_dump_describe.out" /* expectedDescribeFileRelativePath */,
+      "yb.orig.ysql_dump_describe.sql" /* inputDescribeFileRelativePath */,
+      "yb.orig.ysql_dump_describe.out" /* expectedDescribeFileRelativePath */,
       "results/yb.orig.ysql_dump_describe.out" /* outputDescribeFileRelativePath */);
   }
 
   @Test
   public void ysqlDumpAllWithYbMetadata() throws Exception {
+    // Configure MD5 password encryption to maintain compatibility with expected output
+    restartClusterWithClusterBuilder(cb -> {
+      cb.addCommonTServerFlag("ysql_pg_conf_csv", "password_encryption=md5");
+    });
+
+    // Force yugabyte user to use MD5 password format (since default is now SCRAM)
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("SET password_encryption = 'md5'");
+      stmt.execute("ALTER ROLE yugabyte PASSWORD 'yugabyte'");
+    }
+
     // Note that we're using the same describe input as for regular ysql_dump!
     ysqlDumpTester(
         "ysql_dumpall" /* binaryName */,
         "" /* dumpedDatabaseName */,
-        "sql/yb.orig.ysql_dumpall.sql" /* inputFileRelativePath */,
-        "data/yb_ysql_dumpall.data.sql" /* expectedDumpRelativePath */,
+        "yb.orig.ysql_dumpall.sql" /* inputFileRelativePath */,
+        "yb_ysql_dumpall.data.sql" /* expectedDumpRelativePath */,
         "results/yb.orig.ysql_dumpall.out" /* outputFileRelativePath */,
         IncludeYbMetadata.ON,
         NoTableSpaces.OFF);
@@ -174,20 +206,30 @@ public class TestYsqlDump extends BasePgSQLTest {
       false /* importDump*/,
       "" /* verifyDbName */,
       "results/yb.orig.ysql_dumpall.out" /* outputFileRelativePath */,
-      "sql/yb.orig.ysql_dump_describe.sql" /* inputDescribeFileRelativePath */,
-      "expected/yb.orig.ysql_dumpall_describe.out" /* expectedDescribeFileRelativePath */,
+      "yb.orig.ysql_dump_describe.sql" /* inputDescribeFileRelativePath */,
+      "yb.orig.ysql_dumpall_describe.out" /* expectedDescribeFileRelativePath */,
       "results/yb.orig.ysql_dumpall_describe.out" /* outputDescribeFileRelativePath */
     );
   }
 
   @Test
   public void ysqlDumpAllWithDumpRoleChecks() throws Exception {
-    // Note that we're using the same describe input as for regular ysql_dump!
+    // Configure MD5 password encryption to maintain compatibility with expected output
+    restartClusterWithClusterBuilder(cb -> {
+      cb.addCommonTServerFlag("ysql_pg_conf_csv", "password_encryption=md5");
+    });
+
+    // Force yugabyte user to use MD5 password format (since default is now SCRAM)
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("SET password_encryption = 'md5'");
+      stmt.execute("ALTER ROLE yugabyte PASSWORD 'yugabyte'");
+    }
+
     ysqlDumpTester(
         "ysql_dumpall" /* binaryName */,
         "" /* dumpedDatabaseName */,
-        "sql/yb.orig.ysql_dumpall.sql" /* inputFileRelativePath */,
-        "data/yb_ysql_dumpall_with_dump_role_checks.data.sql" /* expectedDumpRelativePath */,
+        "yb.orig.ysql_dumpall.sql" /* inputFileRelativePath */,
+        "yb_ysql_dumpall_with_dump_role_checks.data.sql" /* expectedDumpRelativePath */,
         "results/yb.orig.ysql_dumpall.out" /* outputFileRelativePath */,
         IncludeYbMetadata.ON,
         NoTableSpaces.OFF,
@@ -199,16 +241,17 @@ public class TestYsqlDump extends BasePgSQLTest {
       false /* importDump*/,
       "" /* verifyDbName */,
       "results/yb.orig.ysql_dumpall.out" /* outputFileRelativePath */,
-      "sql/yb.orig.ysql_dump_describe.sql" /* inputDescribeFileRelativePath */,
-      "expected/yb.orig.ysql_dumpall_describe.out" /* expectedDescribeFileRelativePath */,
+      "yb.orig.ysql_dump_describe.sql" /* inputDescribeFileRelativePath */,
+      "yb.orig.ysql_dumpall_describe.out" /* expectedDescribeFileRelativePath */,
       "results/yb.orig.ysql_dumpall_describe.out" /* outputDescribeFileRelativePath */
     );
   }
 
   @Test
-  public void ysqlDumpAllRoleProfiles() throws Exception {
+  public void ysqlDumpAllRoleProfilesWithMD5Passwords() throws Exception {
     restartClusterWithClusterBuilder(cb -> {
       cb.addCommonFlag("ysql_enable_profile", "true");
+      cb.addCommonTServerFlag("ysql_pg_conf_csv", "password_encryption=md5");
       cb.addCommonTServerFlag("ysql_hba_conf_csv",
           "host all yugabyte_test 0.0.0.0/0 trust," +
           "host all yugabyte 0.0.0.0/0 trust," +
@@ -216,12 +259,18 @@ public class TestYsqlDump extends BasePgSQLTest {
     });
     LOG.info("created mini cluster");
 
+    // Force yugabyte user to use MD5 password format (since default is now SCRAM)
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("SET password_encryption = 'md5'");
+      stmt.execute("ALTER ROLE yugabyte PASSWORD 'yugabyte'");
+    }
+
     ysqlDumpTester(
         "ysql_dumpall" /* binaryName */,
         "" /* dumpedDatabaseName */,
-        "sql/yb.orig.ysql_dumpall_profile_and_role_profiles.sql"
+        "yb.orig.ysql_dumpall_profile_and_role_profiles.sql"
         /* inputFileRelativePath */,
-        "data/yb_ysql_dumpall_profile_and_role_profiles.data.sql"
+        "yb_ysql_dumpall_profile_and_role_profiles.data.sql"
         /* expectedDumpRelativePath */,
         "results/yb.orig.ysql_dumpall_profile_and_role_profiles.out"
         /* outputFileRelativePath */,
@@ -235,11 +284,57 @@ public class TestYsqlDump extends BasePgSQLTest {
       "" /* verifyDbName */,
       "results/yb.orig.ysql_dumpall_profile_and_role_profiles.out"
       /* outputFileRelativePath */,
-      "sql/yb.orig.ysql_dumpall_describe_profile_and_role_profiles.sql"
+      "yb.orig.ysql_dumpall_describe_profile_and_role_profiles.sql"
       /* inputDescribeFileRelativePath */,
-      "expected/yb.orig.ysql_dumpall_describe_profile_and_role_profiles.out"
+      "yb.orig.ysql_dumpall_describe_profile_and_role_profiles.out"
       /* expectedDescribeFileRelativePath */,
       "results/yb.orig.ysql_dumpall_describe_profile_and_role_profiles.out"
+      /* outputDescribeFileRelativePath */
+    );
+  }
+
+  @Test
+  public void ysqlDumpAllRoleProfilesWithSCRAMPasswords() throws Exception {
+    restartClusterWithClusterBuilder(cb -> {
+      cb.addCommonFlag("ysql_enable_profile", "true");
+      cb.addCommonTServerFlag("ysql_hba_conf_csv",
+          "host all yugabyte_test 0.0.0.0/0 trust," +
+          "host all yugabyte 0.0.0.0/0 trust," +
+          "host all all 0.0.0.0/0 scram-sha-256");
+    });
+    LOG.info("created mini cluster");
+
+    // Force yugabyte user to use SCRAM password format with fixed hash
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("ALTER ROLE yugabyte PASSWORD '" +
+          "SCRAM-SHA-256$4096:VLK4RMaQLCvNtQ==$6YtlR4t69SguDiwFvbVgVZtuz6gpJQQqUMZ7IQJK5yI=:" +
+          "ps75jrHeYU4lXCcXI4O8oIdJ3eO8o2jirjruw9phBTo='");
+    }
+
+    ysqlDumpTester(
+        "ysql_dumpall" /* binaryName */,
+        "" /* dumpedDatabaseName */,
+        "yb.orig.ysql_dumpall_profile_and_role_profiles_scram.sql"
+        /* inputFileRelativePath */,
+        "yb_ysql_dumpall_profile_and_role_profiles_scram.data.sql"
+        /* expectedDumpRelativePath */,
+        "results/yb.orig.ysql_dumpall_profile_and_role_profiles_scram.out"
+        /* outputFileRelativePath */,
+        IncludeYbMetadata.ON,
+        NoTableSpaces.ON);
+
+    // ysql_dumpall cannot be imported as it has DDL that cannot be repeated
+    // like CREATE ROLE postgres
+    verifyYsqlDump(
+      false /*importDump*/,
+      "" /* verifyDbName */,
+      "results/yb.orig.ysql_dumpall_profile_and_role_profiles_scram.out"
+      /* outputFileRelativePath */,
+      "yb.orig.ysql_dumpall_describe_profile_and_role_profiles.sql"
+      /* inputDescribeFileRelativePath */,
+      "yb.orig.ysql_dumpall_describe_profile_and_role_profiles.out"
+      /* expectedDescribeFileRelativePath */,
+      "results/yb.orig.ysql_dumpall_describe_profile_and_role_profiles_scram.out"
       /* outputDescribeFileRelativePath */
     );
   }
@@ -250,8 +345,8 @@ public class TestYsqlDump extends BasePgSQLTest {
     ysqlDumpTester(
         "ysql_dump" /* binaryName */,
         "" /* dumpedDatabaseName */,
-        "sql/yb.orig.ysql_dump_without_ybmetadata.sql" /* inputFileRelativePath */,
-        "data/yb_ysql_dump_without_ybmetadata.data.sql" /* expectedDumpRelativePath */,
+        "yb.orig.ysql_dump_without_ybmetadata.sql" /* inputFileRelativePath */,
+        "yb_ysql_dump_without_ybmetadata.data.sql" /* expectedDumpRelativePath */,
         "results/yb.orig.ysql_dump_without_ybmetadata.out" /* outputFileRelativePath */,
         IncludeYbMetadata.OFF,
         NoTableSpaces.OFF);
@@ -266,8 +361,8 @@ public class TestYsqlDump extends BasePgSQLTest {
       true /* importDump */,
       "import_db" /* verifyDbName */,
       "results/yb.orig.ysql_dump_without_ybmetadata.out" /* outputFileRelativePath */,
-      "sql/yb.orig.ysql_dump_without_ybmetadata_describe.sql" /* inputDescribeFileRelativePath */,
-      "expected/yb.orig.ysql_dump_without_ybmetadata_describe.out"
+      "yb.orig.ysql_dump_without_ybmetadata_describe.sql" /* inputDescribeFileRelativePath */,
+      "yb.orig.ysql_dump_without_ybmetadata_describe.out"
       /* expectedDescribeFileRelativePath */,
       "results/yb.orig.ysql_dump_without_ybmetadata_describe.out"
       /* outputDescribeFileRelativePath */);
@@ -275,12 +370,22 @@ public class TestYsqlDump extends BasePgSQLTest {
 
   @Test
   public void ysqlDumpAllWithoutYbMetadata() throws Exception {
-    // Note that we're using the same describe input as for regular ysql_dump!
+    // Configure MD5 password encryption to maintain compatibility with expected output
+    restartClusterWithClusterBuilder(cb -> {
+      cb.addCommonTServerFlag("ysql_pg_conf_csv", "password_encryption=md5");
+    });
+
+    // Force yugabyte user to use MD5 password format (since default is now SCRAM)
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("SET password_encryption = 'md5'");
+      stmt.execute("ALTER ROLE yugabyte PASSWORD 'yugabyte'");
+    }
+
     ysqlDumpTester(
         "ysql_dumpall" /* binaryName */,
         "" /* dumpedDatabaseName */,
-        "sql/yb.orig.ysql_dumpall.sql" /* inputFileRelativePath */,
-        "data/yb_ysql_dumpall_without_ybmetadata.data.sql" /* expectedDumpRelativePath */,
+        "yb.orig.ysql_dumpall.sql" /* inputFileRelativePath */,
+        "yb_ysql_dumpall_without_ybmetadata.data.sql" /* expectedDumpRelativePath */,
         "results/yb.orig.ysql_dumpall_without_ybmetadata.out" /* outputFileRelativePath */,
         IncludeYbMetadata.OFF,
         NoTableSpaces.OFF);
@@ -291,8 +396,8 @@ public class TestYsqlDump extends BasePgSQLTest {
       false /*importDump*/,
       "" /* verifyDbName */,
       "results/yb.orig.ysql_dumpall_without_ybmetadata.out" /* outputFileRelativePath */,
-      "sql/yb.orig.ysql_dump_describe.sql" /* inputDescribeFileRelativePath */,
-      "expected/yb.orig.ysql_dumpall_describe.out" /* expectedDescribeFileRelativePath */,
+      "yb.orig.ysql_dump_describe.sql" /* inputDescribeFileRelativePath */,
+      "yb.orig.ysql_dumpall_describe.out" /* expectedDescribeFileRelativePath */,
       "results/yb.orig.ysql_dumpall_without_ybmetadata_describe.out"
       /* outputDescribeFileRelativePath */);
   }
@@ -302,8 +407,8 @@ public class TestYsqlDump extends BasePgSQLTest {
     ysqlDumpTester(
         "ysql_dump" /* binaryName */,
         "colocated_db" /* dumpedDatabaseName */,
-        "sql/yb.orig.ysql_dump_colocated_database.sql" /* inputFileRelativePath */,
-        "data/yb_ysql_dump_colocated_database.data.sql" /* expectedDumpRelativePath */,
+        "yb.orig.ysql_dump_colocated_database.sql" /* inputFileRelativePath */,
+        "yb_ysql_dump_colocated_database.data.sql" /* expectedDumpRelativePath */,
         "results/yb.orig.ysql_dump_colocated_database.out" /* outputFileRelativePath */,
         IncludeYbMetadata.ON,
         NoTableSpaces.OFF);
@@ -319,8 +424,8 @@ public class TestYsqlDump extends BasePgSQLTest {
       true /*importDump*/,
       "colocated_db" /*verifyDbName*/,
       "results/yb.orig.ysql_dump_colocated_database.out" /* outputFileRelativePath */,
-      "sql/yb.orig.ysql_dump_describe_colocated_database.sql" /* inputDescribeFileRelativePath */,
-      "expected/yb.orig.ysql_dump_describe_colocated_database.out"
+      "yb.orig.ysql_dump_describe_colocated_database.sql" /* inputDescribeFileRelativePath */,
+      "yb.orig.ysql_dump_describe_colocated_database.out"
       /* expectedDescribeFileRelativePath */,
       "results/yb.orig.ysql_dump_describe_colocated_database.out"
       /* outputDescribeFileRelativePath */);
@@ -342,9 +447,9 @@ public class TestYsqlDump extends BasePgSQLTest {
     ysqlDumpTester(
         "ysql_dump" /* binaryName */,
         "colo_tables" /* dumpedDatabaseName */,
-        "sql/yb.orig.ysql_dump_colocated_tables_with_tablespaces.sql"
+        "yb.orig.ysql_dump_colocated_tables_with_tablespaces.sql"
         /* inputFileRelativePath */,
-        "data/yb_ysql_dump_colocated_tables_with_tablespaces.data.sql"
+        "yb_ysql_dump_colocated_tables_with_tablespaces.data.sql"
         /* expectedDumpRelativePath */,
         "results/yb.orig.ysql_dump_colocated_tables_with_tablespaces.out"
         /* outputFileRelativePath */,
@@ -358,9 +463,9 @@ public class TestYsqlDump extends BasePgSQLTest {
       "colo_tables" /* dumpedDatabaseName */,
       "results/yb.orig.ysql_dump_colocated_tables_with_tablespaces.out"
       /* outputFileRelativePath */,
-      "sql/yb.orig.ysql_dump_describe_colocated_tables_with_tablespaces.sql"
+      "yb.orig.ysql_dump_describe_colocated_tables_with_tablespaces.sql"
       /* inputDescribeFileRelativePath */,
-      "expected/yb.orig.ysql_dump_describe_colocated_tables_with_tablespaces.out"
+      "yb.orig.ysql_dump_describe_colocated_tables_with_tablespaces.out"
       /* expectedDescribeFileRelativePath */,
       "results/yb.orig.ysql_dump_describe_colocated_tables_with_tablespaces.out"
       /* outputDescribeFileRelativePath */
@@ -377,8 +482,8 @@ public class TestYsqlDump extends BasePgSQLTest {
     ysqlDumpTester(
         "ysql_dump" /* binaryName */,
         "colocated_db" /* dumpedDatabaseName */,
-        "sql/yb.orig.ysql_dump_colocated_database.sql" /* inputFileRelativePath */,
-        "data/yb_ysql_dump_legacy_colocated_database.data.sql" /* expectedDumpRelativePath */,
+        "yb.orig.ysql_dump_colocated_database.sql" /* inputFileRelativePath */,
+        "yb_ysql_dump_legacy_colocated_database.data.sql" /* expectedDumpRelativePath */,
         "results/yb.orig.ysql_dump_legacy_colocated_database.out" /* outputFileRelativePath */,
         IncludeYbMetadata.ON,
         NoTableSpaces.OFF);
@@ -398,9 +503,9 @@ public class TestYsqlDump extends BasePgSQLTest {
       "colocated_db" /* dumpedDatabaseName */,
       "results/yb.orig.ysql_dump_legacy_colocated_database.out"
       /* outputFileRelativePath */,
-      "sql/yb.orig.ysql_dump_describe_colocated_database.sql"
+      "yb.orig.ysql_dump_describe_colocated_database.sql"
       /* inputDescribeFileRelativePath */,
-      "expected/yb.orig.ysql_dump_describe_legacy_colocated_database.out"
+      "yb.orig.ysql_dump_describe_legacy_colocated_database.out"
       /* expectedDescribeFileRelativePath */,
       "results/yb.orig.ysql_dump_describe_legacy_colocated_database.out"
       /* outputDescribeFileRelativePath */
@@ -427,13 +532,12 @@ public class TestYsqlDump extends BasePgSQLTest {
                       final IncludeYbMetadata includeYbMetadata,
                       final NoTableSpaces noTableSpaces,
                       final DumpRoleChecks dumpRoleChecks) throws Exception {
-    // Location of Postgres regression tests
-    File pgRegressDir = PgRegressBuilder.PG_REGRESS_DIR;
+    File testDir = TestUtils.getClassResourceDir(getClass());
 
     // Create the data
     int tserverIndex = 0;
     File ysqlshExec = new File(pgBinDir, "ysqlsh");
-    File inputFile  = new File(pgRegressDir, inputFileRelativePath);
+    File inputFile  = new File(testDir, inputFileRelativePath);
     ProcessUtil.executeSimple(Arrays.asList(
       ysqlshExec.toString(),
       "-h", getPgHost(tserverIndex),
@@ -446,8 +550,8 @@ public class TestYsqlDump extends BasePgSQLTest {
     File pgBinDir     = PgRegressBuilder.getPgBinDir();
     File ysqlDumpExec = new File(pgBinDir, binaryName);
 
-    File expected = new File(pgRegressDir, expectedDumpRelativePath);
-    File actual   = new File(pgRegressDir, outputFileRelativePath);
+    File expected = new File(testDir, expectedDumpRelativePath);
+    File actual   = new File(testDir, outputFileRelativePath);
     actual.getParentFile().mkdirs();
 
     List<String> args = new ArrayList<>(Arrays.asList(
@@ -474,7 +578,6 @@ public class TestYsqlDump extends BasePgSQLTest {
 
     // Verify the dump matches what is expected
     assertOutputFile(expected, actual);
-
   }
 
   /** Compare the expected output and the actual output. */
@@ -512,15 +615,13 @@ public class TestYsqlDump extends BasePgSQLTest {
     final String inputDescribeFileRelativePath,
     final String expectedDescribeFileRelativePath,
     final String outputDescribeFileRelativePath) throws Exception {
-
-    // Location of Postgres regression tests
-    File pgRegressDir = PgRegressBuilder.PG_REGRESS_DIR;
+    File testDir = TestUtils.getClassResourceDir(getClass());
     int tserverIndex = 0;
     File ysqlshExec = new File(pgBinDir, "ysqlsh");
-    File actual   = new File(pgRegressDir, outputFileRelativePath);
-    File inputDesc    = new File(pgRegressDir, inputDescribeFileRelativePath);
-    File expectedDesc = new File(pgRegressDir, expectedDescribeFileRelativePath);
-    File actualDesc   = new File(pgRegressDir, outputDescribeFileRelativePath);
+    File actual   = new File(testDir, outputFileRelativePath);
+    File inputDesc    = new File(testDir, inputDescribeFileRelativePath);
+    File expectedDesc = new File(testDir, expectedDescribeFileRelativePath);
+    File actualDesc   = new File(testDir, outputDescribeFileRelativePath);
     actualDesc.getParentFile().mkdirs();
 
     if (importDump) {

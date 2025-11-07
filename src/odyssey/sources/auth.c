@@ -1096,31 +1096,17 @@ static inline int yb_od_relay_auth_server_to_client(od_server_t *server, machine
 	od_client_t *client, od_instance_t *instance, char *context)
 {
 	kiwi_be_type_t type;
-
-	if(msg == NULL) {
-		/* Waiting for server response */
-		msg = od_read(&server->io, UINT32_MAX);
-		if(msg == NULL) {
-			od_error(&instance->logger, context, NULL, server,
-				"read from server error: %s", od_io_error(&server->io));
-			machine_msg_free(msg);
-			return -1;
-
-		}
-	}
-
 	type = *(char *)machine_msg_data(msg);
 	od_debug(&instance->logger, context, NULL, server,
 		"received server packet type: %s",
 		kiwi_be_type_to_string(type));
 
 	int rc = od_write(&client->io, msg);
-		if (rc == -1) {
-			od_error(&instance->logger, context, client, NULL,
-				"write to client error: %s", od_io_error(&client->io));
-			machine_msg_free(msg);
-			return -1;
-		}
+	if (rc == -1) {
+		od_error(&instance->logger, context, client, NULL,
+			 "write to client error: %s", od_io_error(&client->io));
+		return -1;
+	}
 	od_debug(&instance->logger, context, client, server,
 		"Forwarded the server response to the client");
 	return 0;
@@ -1197,6 +1183,14 @@ int od_auth_backend(od_server_t *server, machine_msg_t *msg,
 		if(auth_type == OD_AUTH_SASL_FINAL) {
 			/* No client response expected for SASL Final */
 			return 0;
+		}
+
+		if (od_unlikely(instance->config.TEST_yb_auth_delay_ms > 0)) {
+			od_log(&instance->logger, "auth",
+				external_client, server,
+				"initiating delay of %d ms in od_auth_backend",
+				instance->config.TEST_yb_auth_delay_ms);
+			machine_sleep(instance->config.TEST_yb_auth_delay_ms);
 		}
 
 		rc = yb_od_relay_client_to_auth_server(server, external_client,

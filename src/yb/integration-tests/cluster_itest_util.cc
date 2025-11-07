@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -42,7 +42,6 @@
 #include <utility>
 #include <vector>
 
-#include <boost/optional.hpp>
 #include <glog/stl_logging.h>
 #include <gtest/gtest.h>
 
@@ -1039,14 +1038,10 @@ Status StartElection(const TServerDetails* replica,
   return Status::OK();
 }
 
-Status RequestVote(const TServerDetails* replica,
-                   const std::string& tablet_id,
-                   const std::string& candidate_uuid,
-                   int64_t candidate_term,
-                   const OpIdPB& last_logged_opid,
-                   boost::optional<bool> ignore_live_leader,
-                   boost::optional<bool> is_pre_election,
-                   const MonoDelta& timeout) {
+Status RequestVote(
+    const TServerDetails* replica, const std::string& tablet_id, const std::string& candidate_uuid,
+    int64_t candidate_term, const OpIdPB& last_logged_opid, std::optional<bool> ignore_live_leader,
+    std::optional<bool> is_pre_election, const MonoDelta& timeout) {
   RSTATUS_DCHECK(
       last_logged_opid.IsInitialized(), Uninitialized, "Last logged op id is uninitialized");
   consensus::VoteRequestPB req;
@@ -1131,43 +1126,40 @@ Status WriteSimpleTestRow(const TServerDetails* replica,
 }
 
 namespace {
-  Status SendAddRemoveServerRequest(const TServerDetails* leader,
-                                    const ChangeConfigRequestPB& req,
-                                    ChangeConfigResponsePB* resp,
-                                    RpcController* rpc,
-                                    const MonoDelta& timeout,
-                                    TabletServerErrorPB::Code* error_code,
-                                    bool retry) {
-    Status status = Status::OK();
-    MonoTime start = MonoTime::Now();
-    do {
-      RETURN_NOT_OK(leader->consensus_proxy->ChangeConfig(req, resp, rpc));
-      if (!resp->has_error()) {
-        status = Status::OK();
-        break;
-      }
-      if (error_code) *error_code = resp->error().code();
-      status = StatusFromPB(resp->error().status());
-      if (!retry) {
-        break;
-      }
-      if (resp->error().code() != TabletServerErrorPB::LEADER_NOT_READY_CHANGE_CONFIG) {
-        break;
-      }
-      rpc->Reset();
-    } while (MonoTime::Now().GetDeltaSince(start).LessThan(timeout));
-    return status;
-  }
-} // namespace
+Status SendAddRemoveServerRequest(const TServerDetails* leader,
+                                  const ChangeConfigRequestPB& req,
+                                  ChangeConfigResponsePB* resp,
+                                  RpcController* rpc,
+                                  const MonoDelta& timeout,
+                                  TabletServerErrorPB::Code* error_code,
+                                  bool retry) {
+  Status status = Status::OK();
+  MonoTime start = MonoTime::Now();
+  do {
+    RETURN_NOT_OK(leader->consensus_proxy->ChangeConfig(req, resp, rpc));
+    if (!resp->has_error()) {
+      status = Status::OK();
+      break;
+    }
+    if (error_code) *error_code = resp->error().code();
+    status = StatusFromPB(resp->error().status());
+    if (!retry) {
+      break;
+    }
+    if (resp->error().code() != TabletServerErrorPB::LEADER_NOT_READY_CHANGE_CONFIG) {
+      break;
+    }
+    rpc->Reset();
+  } while (MonoTime::Now().GetDeltaSince(start).LessThan(timeout));
+  return status;
+}
+}  // namespace
 
-Status AddServer(const TServerDetails* leader,
-                 const std::string& tablet_id,
-                 const TServerDetails* replica_to_add,
-                 consensus::PeerMemberType member_type,
-                 const boost::optional<int64_t>& cas_config_opid_index,
-                 const MonoDelta& timeout,
-                 TabletServerErrorPB::Code* error_code,
-                 bool retry) {
+Status AddServer(
+    const TServerDetails* leader, const std::string& tablet_id,
+    const TServerDetails* replica_to_add, consensus::PeerMemberType member_type,
+    const std::optional<int64_t>& cas_config_opid_index, const MonoDelta& timeout,
+    TabletServerErrorPB::Code* error_code, bool retry) {
   ChangeConfigRequestPB req;
   ChangeConfigResponsePB resp;
   RpcController rpc;
@@ -1190,7 +1182,7 @@ Status AddServer(const TServerDetails* leader,
 Status RemoveServer(const TServerDetails* leader,
                     const std::string& tablet_id,
                     const TServerDetails* replica_to_remove,
-                    const boost::optional<int64_t>& cas_config_opid_index,
+                    const std::optional<int64_t>& cas_config_opid_index,
                     const MonoDelta& timeout,
                     TabletServerErrorPB::Code* error_code,
                     bool retry) {
@@ -1513,7 +1505,7 @@ Status WaitUntilAllTabletReplicasRunning(const std::vector<TServerDetails*>& tse
 Status DeleteTablet(const TServerDetails* ts,
                     const std::string& tablet_id,
                     const tablet::TabletDataState delete_type,
-                    const boost::optional<int64_t>& cas_config_opid_index_less_or_equal,
+                    const std::optional<int64_t>& cas_config_opid_index_less_or_equal,
                     const MonoDelta& timeout,
                     tserver::TabletServerErrorPB::Code* error_code) {
   DeleteTabletRequestPB req;

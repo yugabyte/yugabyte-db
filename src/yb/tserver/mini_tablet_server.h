@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -175,6 +175,9 @@ class MiniTabletServer {
   void SetPgServerHandlers(
       std::function<Status(void)> start_pg, std::function<void(void)> shutdown_pg,
       std::function<pgwrapper::PGConnSettings(void)> get_pg_conn_settings);
+  void set_pgsql_proxy_bind_address(const std::string& pgsql_proxy_bind_address) {
+    pgsql_proxy_bind_address_ = pgsql_proxy_bind_address;
+  }
 
  private:
   bool started_;
@@ -187,6 +190,7 @@ class MiniTabletServer {
   std::function<Status(void)> start_pg_;
   std::function<void(void)> shutdown_pg_;
   std::function<pgwrapper::PGConnSettings(void)> get_pg_conn_settings_;
+  std::string pgsql_proxy_bind_address_;
 };
 
 }  // namespace tserver

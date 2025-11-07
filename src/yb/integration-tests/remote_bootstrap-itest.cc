@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -34,7 +34,6 @@
 #include <string>
 #include <unordered_map>
 
-#include <boost/optional.hpp>
 #include <gtest/gtest.h>
 
 #include "yb/client/client-test-util.h"
@@ -405,11 +404,12 @@ void RemoteBootstrapITest::CrashTestVerify(TabletDataState expected_data_state) 
 
   start_time = MonoTime::Now();
   do {
-    ASSERT_OK(FindTabletLeader(ts_map_, crash_test_tablet_id_, crash_test_timeout_,
-                               &crash_test_leader_ts_));
+    ASSERT_OK(FindTabletLeader(
+        ts_map_, crash_test_tablet_id_, crash_test_timeout_, &crash_test_leader_ts_));
 
-    Status s = RemoveServer(new_leader, crash_test_tablet_id_, dead_leader, boost::none,
-                            MonoDelta::FromSeconds(1), NULL, false /* retry */);
+    Status s = RemoveServer(
+        new_leader, crash_test_tablet_id_, dead_leader, std::nullopt, MonoDelta::FromSeconds(1),
+        NULL, false /* retry */);
     if (s.ok()) {
       break;
     }
@@ -606,7 +606,7 @@ void RemoteBootstrapITest::RejectRogueLeader(YBTableType table_type) {
 
   // Now kill the new leader and tombstone the replica on TS 0.
   cluster_->tablet_server(new_leader_index)->Shutdown();
-  ASSERT_OK(itest::DeleteTablet(ts, tablet_id, TABLET_DATA_TOMBSTONED, boost::none, timeout));
+  ASSERT_OK(itest::DeleteTablet(ts, tablet_id, TABLET_DATA_TOMBSTONED, std::nullopt, timeout));
 
   // Zombies!!! Resume the rogue zombie leader.
   // He should attempt to remote bootstrap TS 0 but fail.
@@ -701,14 +701,12 @@ void RemoteBootstrapITest::DeleteTabletDuringRemoteBootstrap(YBTableType table_t
   // Start up a RemoteBootstrapClient and open a remote bootstrap session.
   RemoteBootstrapClient rb_client(tablet_id, fs_manager.get());
   scoped_refptr<tablet::RaftGroupMetadata> meta;
-  ASSERT_OK(rb_client.Start(cluster_->tablet_server(kTsIndex)->uuid(),
-                            &cluster_->proxy_cache(),
-                            cluster_->tablet_server(kTsIndex)->bound_rpc_hostport(),
-                            ServerRegistrationPB(),
-                            &meta));
+  ASSERT_OK(rb_client.Start(
+      cluster_->tablet_server(kTsIndex)->uuid(), &cluster_->proxy_cache(),
+      cluster_->tablet_server(kTsIndex)->bound_rpc_hostport(), ServerRegistrationPB(), &meta));
 
   // Tombstone the tablet on the remote!
-  ASSERT_OK(itest::DeleteTablet(ts, tablet_id, TABLET_DATA_TOMBSTONED, boost::none, timeout));
+  ASSERT_OK(itest::DeleteTablet(ts, tablet_id, TABLET_DATA_TOMBSTONED, std::nullopt, timeout));
 
   // Now finish bootstrapping!
   tablet::TabletStatusListener listener(meta);
@@ -773,7 +771,7 @@ void RemoteBootstrapITest::LongBootstrapTestSetUpAndVerify(
     ASSERT_OK(cluster_->tablet_server(i)->Restart());
     LOG(INFO) << "Adding tserver with uuid " << new_ts_list[i]->uuid();
     ASSERT_OK(itest::AddServer(
-        leader_ts, tablet_id, new_ts_list[i], PeerMemberType::PRE_VOTER, boost::none,
+        leader_ts, tablet_id, new_ts_list[i], PeerMemberType::PRE_VOTER, std::nullopt,
         MonoDelta::FromSeconds(5)));
   }
 
@@ -856,12 +854,12 @@ TEST_F(RemoteBootstrapITest, IncompleteWALDownloadDoesntCauseCrash) {
   }
   LOG(INFO) << "All servers agree";
   // Now tombstone the follower.
-  ASSERT_OK(itest::DeleteTablet(follower_ts, tablet_ids[0], TABLET_DATA_TOMBSTONED, boost::none,
-                                timeout));
+  ASSERT_OK(itest::DeleteTablet(
+      follower_ts, tablet_ids[0], TABLET_DATA_TOMBSTONED, std::nullopt, timeout));
   LOG(INFO) << "Successfully sent delete request " << tablet_ids[0] << " on TS " << kFollowerIndex;
   // Wait until the tablet has been tombstoned on the follower.
-  ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(kFollowerIndex, tablet_ids[0],
-                                                 tablet::TABLET_DATA_TOMBSTONED, timeout));
+  ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(
+      kFollowerIndex, tablet_ids[0], tablet::TABLET_DATA_TOMBSTONED, timeout));
   LOG(INFO) << "Tablet state on TS " << kFollowerIndex << " is TABLET_DATA_TOMBSTONED";
   SleepFor(MonoDelta::FromMilliseconds(5000));  // Give a little time for a crash.
   ASSERT_TRUE(cluster_->tablet_server(kFollowerIndex)->IsProcessAlive());
@@ -970,12 +968,12 @@ void RemoteBootstrapITest::RemoteBootstrapFollowerWithHigherTerm(YBTableType tab
   ASSERT_EQ(2, term);
 
   // Now tombstone the follower.
-  ASSERT_OK(itest::DeleteTablet(follower_ts, tablet_id, TABLET_DATA_TOMBSTONED, boost::none,
-                                timeout));
+  ASSERT_OK(
+      itest::DeleteTablet(follower_ts, tablet_id, TABLET_DATA_TOMBSTONED, std::nullopt, timeout));
 
   // Wait until the tablet has been tombstoned on the follower.
-  ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(kFollowerIndex, tablet_id,
-                                                 tablet::TABLET_DATA_TOMBSTONED, timeout));
+  ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(
+      kFollowerIndex, tablet_id, tablet::TABLET_DATA_TOMBSTONED, timeout));
 
   // Now wake the leader. It should detect that the follower needs to be
   // remotely bootstrapped and proceed to bring it back up to date.
@@ -1101,8 +1099,8 @@ void RemoteBootstrapITest::ConcurrentRemoteBootstraps(YBTableType table_type) {
 
   for (const string& tablet_id : tablet_ids) {
     LOG(INFO) << "Tombstoning tablet " << tablet_id << " on TS " << target_ts->uuid();
-    ASSERT_OK(itest::DeleteTablet(target_ts, tablet_id, TABLET_DATA_TOMBSTONED, boost::none,
-                                  MonoDelta::FromSeconds(10)));
+    ASSERT_OK(itest::DeleteTablet(
+        target_ts, tablet_id, TABLET_DATA_TOMBSTONED, std::nullopt, MonoDelta::FromSeconds(10)));
   }
 
   // Unpause the leader TS and wait for it to remotely bootstrap the tombstoned
@@ -1265,8 +1263,8 @@ void RemoteBootstrapITest::DeleteLeaderDuringRemoteBootstrapStressTest(YBTableTy
 
     // Tombstone the follower.
     LOG(INFO) << "Tombstoning follower tablet " << tablet_id << " on TS " << follower_ts->uuid();
-    ASSERT_OK(itest::DeleteTablet(follower_ts, tablet_id, TABLET_DATA_TOMBSTONED, boost::none,
-                                  timeout));
+    ASSERT_OK(
+        itest::DeleteTablet(follower_ts, tablet_id, TABLET_DATA_TOMBSTONED, std::nullopt, timeout));
 
     // Wait for remote bootstrap to start.
     // ENG-81: There is a frequent race condition here: if the bootstrap happens too quickly, we can
@@ -1278,8 +1276,8 @@ void RemoteBootstrapITest::DeleteLeaderDuringRemoteBootstrapStressTest(YBTableTy
 
     // Tombstone the leader.
     LOG(INFO) << "Tombstoning leader tablet " << tablet_id << " on TS " << leader_ts->uuid();
-    ASSERT_OK(itest::DeleteTablet(leader_ts, tablet_id, TABLET_DATA_TOMBSTONED, boost::none,
-                                  timeout));
+    ASSERT_OK(
+        itest::DeleteTablet(leader_ts, tablet_id, TABLET_DATA_TOMBSTONED, std::nullopt, timeout));
 
     // Quiesce and rebuild to full strength. This involves electing a new
     // leader from the remaining three, which requires a unanimous vote, and
@@ -1375,8 +1373,8 @@ void RemoteBootstrapITest::DisableRemoteBootstrap_NoTightLoopWhenTabletDeleted(
   workload.WaitInserted(100);
 
   // Tombstone the tablet on one of the servers (TS 1)
-  ASSERT_OK(itest::DeleteTablet(replica_ts, tablet_id, TABLET_DATA_TOMBSTONED, boost::none,
-                                timeout));
+  ASSERT_OK(
+      itest::DeleteTablet(replica_ts, tablet_id, TABLET_DATA_TOMBSTONED, std::nullopt, timeout));
 
   // Ensure that, if we sleep for a second while still doing writes to the leader:
   // a) we don't spew logs on the leader side
@@ -1413,10 +1411,9 @@ void RemoteBootstrapITest::LeaderCrashesWhileFetchingData(YBTableType table_type
   ASSERT_OK(cluster_->tablet_server(crash_test_tserver_index_)->Restart());
   TServerDetails* ts = ts_map_[cluster_->tablet_server(0)->uuid()].get();
 
-  ASSERT_OK(itest::AddServer(crash_test_leader_ts_, crash_test_tablet_id_, ts,
-                             PeerMemberType::PRE_VOTER, boost::none, crash_test_timeout_,
-                             NULL /* error code */,
-                             true /* retry */));
+  ASSERT_OK(itest::AddServer(
+      crash_test_leader_ts_, crash_test_tablet_id_, ts, PeerMemberType::PRE_VOTER, std::nullopt,
+      crash_test_timeout_, NULL /* error code */, true /* retry */));
 
   ASSERT_OK(cluster_->WaitForTSToCrash(crash_test_leader_index_, kWaitForCrashTimeout_));
 
@@ -1439,8 +1436,9 @@ void RemoteBootstrapITest::LeaderCrashesBeforeChangeRole(YBTableType table_type)
   // Add our TS 0 to the config and wait for the leader to crash.
   ASSERT_OK(cluster_->tablet_server(crash_test_tserver_index_)->Restart());
   TServerDetails* ts = ts_map_[cluster_->tablet_server(0)->uuid()].get();
-  ASSERT_OK(itest::AddServer(crash_test_leader_ts_, crash_test_tablet_id_, ts,
-                             PeerMemberType::PRE_VOTER, boost::none, crash_test_timeout_));
+  ASSERT_OK(itest::AddServer(
+      crash_test_leader_ts_, crash_test_tablet_id_, ts, PeerMemberType::PRE_VOTER, std::nullopt,
+      crash_test_timeout_));
   ASSERT_OK(cluster_->WaitForTSToCrash(crash_test_leader_index_, kWaitForCrashTimeout_));
   CrashTestVerify();
 }
@@ -1461,8 +1459,9 @@ void RemoteBootstrapITest::LeaderCrashesAfterChangeRole(YBTableType table_type) 
   // Add our TS 0 to the config and wait for the leader to crash.
   ASSERT_OK(cluster_->tablet_server(crash_test_tserver_index_)->Restart());
   TServerDetails* ts = ts_map_[cluster_->tablet_server(0)->uuid()].get();
-  ASSERT_OK(itest::AddServer(crash_test_leader_ts_, crash_test_tablet_id_, ts,
-                             PeerMemberType::PRE_VOTER, boost::none, crash_test_timeout_));
+  ASSERT_OK(itest::AddServer(
+      crash_test_leader_ts_, crash_test_tablet_id_, ts, PeerMemberType::PRE_VOTER, std::nullopt,
+      crash_test_timeout_));
   ASSERT_OK(cluster_->WaitForTSToCrash(crash_test_leader_index_, kWaitForCrashTimeout_));
 
   CrashTestVerify();
@@ -1483,8 +1482,9 @@ void RemoteBootstrapITest::ClientCrashesBeforeChangeRole(YBTableType table_type)
                               "1.0"));
 
   TServerDetails* ts = ts_map_[cluster_->tablet_server(crash_test_tserver_index_)->uuid()].get();
-  ASSERT_OK(itest::AddServer(crash_test_leader_ts_, crash_test_tablet_id_, ts,
-                             PeerMemberType::PRE_VOTER, boost::none, crash_test_timeout_));
+  ASSERT_OK(itest::AddServer(
+      crash_test_leader_ts_, crash_test_tablet_id_, ts, PeerMemberType::PRE_VOTER, std::nullopt,
+      crash_test_timeout_));
 
   ASSERT_OK(cluster_->WaitForTSToCrash(crash_test_tserver_index_, kWaitForCrashTimeout_));
 
@@ -1664,20 +1664,20 @@ TEST_F(RemoteBootstrapITest, TestFollowerCrashDuringRemoteBootstrap) {
   ASSERT_OK(cluster_->tablet_server(crash_test_tserver_index_)->Restart());
   TServerDetails* ts = ts_map_[cluster_->tablet_server(crash_test_tserver_index_)->uuid()].get();
 
-  ASSERT_OK(itest::AddServer(crash_test_leader_ts_, crash_test_tablet_id_, ts,
-                             PeerMemberType::PRE_VOTER, boost::none, crash_test_timeout_,
-                             NULL /* error code */,
-                             true /* retry */));
+  ASSERT_OK(itest::AddServer(
+      crash_test_leader_ts_, crash_test_tablet_id_, ts, PeerMemberType::PRE_VOTER, std::nullopt,
+      crash_test_timeout_, NULL /* error code */, true /* retry */));
 
   // Try removing the ts-2/ts-3 that doesn't host the leader for crash_test_tablet_id_
   int remove_follower_index = crash_test_leader_index_ == 1 ? 2 : 1;
   TServerDetails* remove_follower_ts =
       ts_map_[cluster_->tablet_server(remove_follower_index)->uuid()].get();
-  ASSERT_OK(RemoveServer(crash_test_leader_ts_, crash_test_tablet_id_, remove_follower_ts,
-                         boost::none, MonoDelta::FromSeconds(5), NULL, true));
+  ASSERT_OK(RemoveServer(
+      crash_test_leader_ts_, crash_test_tablet_id_, remove_follower_ts, std::nullopt,
+      MonoDelta::FromSeconds(5), NULL, true));
 
-  ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(0, crash_test_tablet_id_,
-                                                TABLET_DATA_READY, crash_test_timeout_));
+  ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(
+      0, crash_test_tablet_id_, TABLET_DATA_READY, crash_test_timeout_));
 
   ASSERT_OK(WaitUntilCommittedConfigNumVotersIs(4, crash_test_leader_ts_, crash_test_tablet_id_,
                                                 crash_test_timeout_));
@@ -1886,8 +1886,7 @@ void RemoteBootstrapITest::RBSWithLazySuperblockFlush(int num_tables) {
   // Flush rocksdb (but not superblock) so that superblock flush trails rocksdb.
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), database, table_prefix + "0"));
-  ASSERT_OK(
-      client->FlushTables({table_id}, /* add_indexes = */ false, 30, /* is_compaction = */ false));
+  ASSERT_OK(client->FlushTables({table_id}));
 
   const auto ts_idx_to_bootstrap = 2;
 
@@ -1912,7 +1911,7 @@ void RemoteBootstrapITest::RBSWithLazySuperblockFlush(int num_tables) {
   ASSERT_OK(WaitFor(
       [&tablet_id, ts, timeout]() -> Result<bool> {
         const auto s = itest::DeleteTablet(
-            ts, tablet_id, tablet::TABLET_DATA_TOMBSTONED, boost::none, timeout);
+            ts, tablet_id, tablet::TABLET_DATA_TOMBSTONED, std::nullopt, timeout);
         if (s.ok()) {
           return true;
         }
@@ -2080,13 +2079,14 @@ void RemoteBootstrapITest::AddNewPeerWithDiskspaceCheck(const int num_tablet_ser
   // Find out who's leader.
   ASSERT_OK(FindTabletLeader(ts_map_, tablet_id, timeout, &leader_ts));
 
-  ASSERT_OK(cluster_->tablet_server(ts_to_add_peer)->Restart(
-      ExternalMiniClusterOptions::kDefaultStartCqlProxy,
-      {std::make_pair("rbs_data_size_to_disk_space_ratio_threshold", "0.9"),
-       std::make_pair("TEST_simulate_free_space_bytes", "0")}));
+  ASSERT_OK(cluster_->tablet_server(ts_to_add_peer)
+                ->Restart(
+                    ExternalMiniClusterOptions::kDefaultStartCqlProxy,
+                    {std::make_pair("rbs_data_size_to_disk_space_ratio_threshold", "0.9"),
+                     std::make_pair("TEST_simulate_free_space_bytes", "0")}));
   LOG(INFO) << "Adding tserver with uuid " << ts_to_add_peer_details->uuid();
   ASSERT_OK(itest::AddServer(
-      leader_ts, tablet_id, ts_to_add_peer_details, PeerMemberType::PRE_VOTER, boost::none,
+      leader_ts, tablet_id, ts_to_add_peer_details, PeerMemberType::PRE_VOTER, std::nullopt,
       MonoDelta::FromSeconds(5)));
 
   // After adding TS, the leader will detect that the new TS needs to be remote bootstrapped.
@@ -2153,15 +2153,16 @@ void RemoteBootstrapITest::ReplacePeerWithDiskspaceCheck(const int num_tablet_se
   // Find out who's leader.
   ASSERT_OK(FindTabletLeader(ts_map_, tablet_id, timeout, &leader_ts));
 
-  ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(ts_to_replace_peer),
-                              "TEST_simulate_free_space_bytes", "0"));
-  ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(ts_to_replace_peer),
-                              "rbs_data_size_to_disk_space_ratio_threshold", "0.9"));
+  ASSERT_OK(cluster_->SetFlag(
+      cluster_->tablet_server(ts_to_replace_peer), "TEST_simulate_free_space_bytes", "0"));
+  ASSERT_OK(cluster_->SetFlag(
+      cluster_->tablet_server(ts_to_replace_peer), "rbs_data_size_to_disk_space_ratio_threshold",
+      "0.9"));
   ASSERT_OK(itest::DeleteTablet(
-      ts_to_replace_peer_details, tablet_id, TABLET_DATA_TOMBSTONED, boost::none, timeout));
+      ts_to_replace_peer_details, tablet_id, TABLET_DATA_TOMBSTONED, std::nullopt, timeout));
 
-  ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(
-      ts_to_replace_peer, tablet_id, TABLET_DATA_TOMBSTONED));
+  ASSERT_OK(
+      inspect_->WaitForTabletDataStateOnTS(ts_to_replace_peer, tablet_id, TABLET_DATA_TOMBSTONED));
   LOG(INFO) << "Tablet " << tablet_id << " in TABLET_DATA_TOMBSTONED state in tablet server "
             << ts_to_replace_peer_details->uuid();
   SleepFor(3 * FLAGS_raft_heartbeat_interval_ms * 1ms);
@@ -2439,7 +2440,7 @@ class PersistRetryableRequestsRBSITest: public RemoteBootstrapMiniClusterITest {
 
     // Replicate to the new tserver.
     ASSERT_OK(itest::AddServer(
-        leader, tablet_id, ts_map_[new_ts_id].get(), peer_type, boost::none, 10s));
+        leader, tablet_id, ts_map_[new_ts_id].get(), peer_type, std::nullopt, 10s));
 
     // Wait for config change reported to master.
     ASSERT_OK(itest::WaitForTabletConfigChange(tablet, new_ts_id, consensus::ADD_SERVER));

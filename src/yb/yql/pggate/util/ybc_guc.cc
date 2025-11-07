@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License.  You may obtain a copy
@@ -24,6 +24,10 @@ bool yb_non_ddl_txn_for_sys_tables_allowed = false;
 bool yb_format_funcs_include_yb_metadata = false;
 
 bool yb_force_global_transaction = false;
+
+bool yb_force_tablespace_locality = false;
+
+uint32_t yb_force_tablespace_locality_oid = 0;
 
 bool suppress_nonpg_logs = false;
 
@@ -123,15 +127,23 @@ bool yb_mixed_mode_expression_pushdown = true;
 
 bool yb_debug_log_catcache_events = false;
 
+bool yb_debug_log_snapshot_mgmt = false;
+
 bool yb_mixed_mode_saop_pushdown = false;
 
 // Internal GUC to help a backend identify that the connection is from the Auto-Analyze service.
 bool yb_use_internal_auto_analyze_service_conn = false;
 
-bool yb_ddl_transaction_block_enabled = false;
+bool yb_ddl_transaction_block_enabled = kEnableDdlTransactionBlocks;
 
 bool yb_disable_ddl_transaction_block_for_read_committed = false;
 
 int yb_fk_references_cache_limit = 65535;
 
+bool yb_allow_dockey_bounds = true;
+
 bool yb_xcluster_target_ddl_bypass = false;
+
+bool yb_ignore_read_time_in_walsender = false;
+
+bool enable_object_locking_infra = true;

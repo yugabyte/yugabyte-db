@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -286,8 +286,8 @@ void TestWorkload::State::WriteThread(const TestWorkloadOptions& options) {
           auto req = update->mutable_request();
           QLAddInt32HashValue(req, 0);
           table.AddInt32ColumnValue(req, table.schema().columns()[1].name(), next_random());
-          if (options.ttl >= 0) {
-            req->set_ttl(options.ttl * MonoTime::kMillisecondsPerSecond);
+          if (options.ttl_sec >= 0) {
+            req->set_ttl(options.ttl_sec * MonoTime::kMillisecondsPerSecond);
           }
           ops.push_back(update);
           session->Apply(update);
@@ -311,8 +311,8 @@ void TestWorkload::State::WriteThread(const TestWorkloadOptions& options) {
       QLAddInt32HashValue(req, key);
       table.AddInt32ColumnValue(req, table.schema().columns()[1].name(), next_random());
       table.AddStringColumnValue(req, table.schema().columns()[2].name(), test_payload);
-      if (options.ttl >= 0) {
-        req->set_ttl(options.ttl);
+      if (options.ttl_sec >= 0) {
+        req->set_ttl(options.ttl_sec * MonoTime::kMillisecondsPerSecond);
       }
       ops.push_back(insert);
     }
@@ -478,8 +478,7 @@ void TestWorkload::State::Setup(YBTableType table_type, const TestWorkloadOption
     auto schema = GetSimpleTestSchema();
     schema.SetTransactional(options.is_transactional());
     if (options.has_table_ttl()) {
-      schema.SetDefaultTimeToLive(
-          options.table_ttl * MonoTime::kMillisecondsPerSecond);
+      schema.SetDefaultTimeToLive(options.table_ttl_sec * MonoTime::kMillisecondsPerSecond);
     }
     YBSchema client_schema(YBSchemaFromSchema(schema));
 

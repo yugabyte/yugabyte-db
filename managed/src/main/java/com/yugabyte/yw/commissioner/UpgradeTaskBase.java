@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner;
 
@@ -8,6 +8,7 @@ import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DoCapacityReservation;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageOtelCollector;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeState;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterUserIntent;
@@ -34,6 +35,7 @@ import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
+import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -261,6 +263,8 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     }
     checkUniverseVersion();
     lockAndFreezeUniverseForUpdate(taskParams().expectedUniverseVersion, firstRunTxnCallback);
+    boolean rollbackPerformed = false;
+    Throwable error = null;
     try {
       Set<NodeDetails> nodeList = fetchAllNodes(taskParams().upgradeOption);
 
@@ -281,9 +285,10 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {} with error: ", getName(), t);
-
+      error = t;
+      Universe universe = getUniverse();
+      clearCapacityReservationOnError(t, Universe.getOrBadRequest(universe.getUniverseUUID()));
       if (taskParams().getUniverseSoftwareUpgradeStateOnFailure() != null) {
-        Universe universe = getUniverse();
         if (!UniverseDefinitionTaskParams.IN_PROGRESS_UNIV_SOFTWARE_UPGRADE_STATES.contains(
             universe.getUniverseDetails().softwareUpgradeState)) {
           log.debug("Skipping universe upgrade state as actual task was not started.");
@@ -301,15 +306,24 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       // disabled, so we enable it again in case of errors.
       if (!isLoadBalancerOn) {
         setTaskQueueAndRun(
-            () -> {
-              createLoadBalancerStateChangeTask(true)
-                  .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-            });
+            () ->
+                createLoadBalancerStateChangeTask(true)
+                    .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse));
       }
       if (onFailureTask != null) {
         log.info("Running on failure upgrade task");
         onFailureTask.run();
         log.info("Finished on failure upgrade task");
+      }
+
+      boolean isCapacityFail =
+          t instanceof DoCapacityReservation.CapacityReservationException
+              || t.getCause() instanceof DoCapacityReservation.CapacityReservationException;
+      if (isCapacityFail && (isFirstTry() || universe.getUniverseDetails().autoRollbackPerformed)) {
+        // Capacity reservation is run as a first task, so if we fail we can easily do rollback.
+        // If current run is a retry - we need to check if previous run was rolled back
+        // (because in prev run execution could go much further)
+        rollbackPerformed = true;
       }
       throw t;
     } finally {
@@ -322,7 +336,10 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         try {
           unlockXClusterUniverses(lockedXClusterUniversesUuidSet, false /* ignoreErrors */);
         } finally {
-          unlockUniverseForUpdate();
+          unlockUniverseForUpdate(
+              taskParams().getUniverseUUID(),
+              error == null ? null : error.getMessage(),
+              rollbackPerformed);
         }
       }
     }
@@ -426,7 +443,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     RollMaxBatchSize result = new RollMaxBatchSize();
     for (UniverseDefinitionTaskParams.Cluster cluster : universe.getUniverseDetails().clusters) {
       Map<UUID, Integer> azUuidToNumNodes =
-          PlacementInfoUtil.getAzUuidToNumNodes(cluster.placementInfo);
+          PlacementInfoUtil.getAzUuidToNumNodes(cluster.getOverallPlacement());
       Integer resultPerCluster = Integer.MAX_VALUE;
 
       for (Map.Entry<UUID, Integer> entry : azUuidToNumNodes.entrySet()) {
@@ -532,10 +549,11 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       maxReplicasSafeToStop--;
     }
     maxReplicasSafeToStop = Math.max(1, maxReplicasSafeToStop);
-    int sumOfReplicas = cluster.placementInfo.azStream().mapToInt(az -> az.replicationFactor).sum();
+    int sumOfReplicas =
+        cluster.getOverallPlacement().azStream().mapToInt(az -> az.replicationFactor).sum();
     PlacementAZ placementAZ =
         cluster
-            .placementInfo
+            .getOverallPlacement()
             .azStream()
             .filter(az -> az.uuid.equals(azUUID))
             .findFirst()
@@ -1031,6 +1049,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       List<NodeDetails> nodes,
       boolean installOtelCollector,
       AuditLogConfig auditLogConfig,
+      QueryLogConfig queryLogConfig,
       MetricsExportConfig metricsExportConfig,
       Function<NodeDetails, Map<String, String>> nodeToGflags) {
     // If the node list is empty, we don't need to do anything.
@@ -1051,6 +1070,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       params.otelCollectorEnabled =
           installOtelCollector || getUniverse().getUniverseDetails().otelCollectorEnabled;
       params.auditLogConfig = auditLogConfig;
+      params.queryLogConfig = queryLogConfig;
       params.metricsExportConfig = metricsExportConfig;
       params.deviceInfo = userIntent.getDeviceInfoForNode(node);
       params.gflags = nodeToGflags.apply(node);
@@ -1076,7 +1096,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
 
     String errorMsg =
         GFlagsUtil.checkForbiddenToOverride(
-            node, params, userIntent, universe, newGFlags, config, confGetter);
+            node, params, userIntent, universe, newGFlags, confGetter);
     if (errorMsg != null) {
       throw new PlatformServiceException(
           BAD_REQUEST,
@@ -1184,7 +1204,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         .collect(Collectors.toList());
   }
 
-  private static List<UUID> sortAZs(
+  protected static List<UUID> sortAZs(
       UniverseDefinitionTaskParams.Cluster cluster, Universe universe) {
     List<UUID> result = new ArrayList<>();
     Map<UUID, Integer> indexByUUID = new HashMap<>();
@@ -1193,7 +1213,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         .forEach(n -> indexByUUID.putIfAbsent(n.getAzUuid(), n.getNodeIdx()));
 
     cluster
-        .placementInfo
+        .getOverallPlacement()
         .azStream()
         .sorted(
             Comparator.<PlacementAZ, Boolean>comparing(az -> !az.isAffinitized)
@@ -1275,5 +1295,6 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     Consumer<NodeDetails> postAction;
     YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState;
     UUID rootCAUUID;
+    Boolean useYBDBInbuiltYbc;
   }
 }

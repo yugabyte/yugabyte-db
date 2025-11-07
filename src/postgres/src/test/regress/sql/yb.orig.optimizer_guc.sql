@@ -19,7 +19,8 @@ declare
                          '{"(off, off, off)"}'::text[] || /* legacy ignore stats */
                          '{"(legacy_stats_mode, off, on)"}'::text[] ||
                          '{"(legacy_bnl_mode, off, off)"}'::text[] ||
-                         '{"(legacy_stats_bnl_mode, off, on)"}'::text[];
+                         '{"(legacy_stats_bnl_mode, off, on)"}'::text[] ||
+                         '{"(legacy_ignore_stats_bnl_mode, off, off)"}'::text[];
 begin
     execute 'show yb_enable_cbo' into cbo;
     execute 'show yb_enable_base_scans_cost_model' into bscm;
@@ -92,6 +93,24 @@ select check_optimizer_guc() "(cbo, bscm, stats)";
 set yb_enable_cbo = off;
 select check_optimizer_guc() "(cbo, bscm, stats)";
 
+set yb_enable_cbo = on;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+
+set yb_enable_cbo = legacy_stats_bnl_mode;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+
+set yb_enable_cbo = off;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+
+set yb_enable_cbo = on;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+
+set yb_enable_cbo = legacy_ignore_stats_bnl_mode;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+
+set yb_enable_cbo = off;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+
 
 --------------------------------
 -- turn on/off old parameters --
@@ -130,9 +149,9 @@ set yb_enable_base_scans_cost_model = off;
 select check_optimizer_guc() "(cbo, bscm, stats)";
 
 
---------------------------------------------------------------------
--- no legacy_(stats_)bnl_mode after changing either bscm or stats --
---------------------------------------------------------------------
+-----------------------------------------------------------------------------
+-- no legacy_((ignore_)stats_)bnl_mode after changing either bscm or stats --
+-----------------------------------------------------------------------------
 
 set yb_enable_cbo = legacy_bnl_mode;
 select check_optimizer_guc() "(cbo, bscm, stats)";
@@ -178,6 +197,31 @@ set yb_enable_optimizer_statistics = on;
 select check_optimizer_guc() "(cbo, bscm, stats)";
 
 set yb_enable_cbo = legacy_stats_bnl_mode;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+
+set yb_enable_optimizer_statistics = off;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+
+
+set yb_enable_cbo = legacy_ignore_stats_bnl_mode;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+
+set yb_enable_base_scans_cost_model = on;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+
+set yb_enable_cbo = legacy_ignore_stats_bnl_mode;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+
+set yb_enable_base_scans_cost_model = off;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+
+set yb_enable_cbo = legacy_ignore_stats_bnl_mode;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+
+set yb_enable_optimizer_statistics = on;
+select check_optimizer_guc() "(cbo, bscm, stats)";
+
+set yb_enable_cbo = legacy_ignore_stats_bnl_mode;
 select check_optimizer_guc() "(cbo, bscm, stats)";
 
 set yb_enable_optimizer_statistics = off;
@@ -209,6 +253,17 @@ show yb_enable_cbo;
 set yb_enable_cbo = oui;
 
 
+----------------------------------------------------------------
+-- yb_enable_parallel_append - enable_parallel_append mapping --
+----------------------------------------------------------------
+show yb_enable_parallel_append;
+show enable_parallel_append;
+set yb_enable_parallel_append = off;
+show enable_parallel_append;
+set enable_parallel_append = on;
+show yb_enable_parallel_append;
+
+
 ---------------------------
 -- test GUC_EXPLAIN flag --
 ---------------------------
@@ -236,10 +291,7 @@ set yb_pushdown_strict_inequality = off;
 set yb_pushdown_is_not_null = off;
 set yb_enable_distinct_pushdown = off;
 set yb_bypass_cond_recheck = off;
-set yb_enable_parallel_append = on;
 set yb_enable_bitmapscan = on;
-set yb_enable_base_scans_cost_model = on;
-set yb_enable_optimizer_statistics = on;
 set yb_bnl_batch_size = 1;
 set yb_fetch_row_limit = 0;
 set yb_fetch_size_limit = '2kB';

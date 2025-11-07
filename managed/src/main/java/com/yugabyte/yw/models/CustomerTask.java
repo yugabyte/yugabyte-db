@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.models;
 
@@ -368,6 +368,15 @@ public class CustomerTask extends Model {
     @EnumValue("UpgradeYbcGFlags")
     UpgradeYbcGFlags,
 
+    @EnumValue("UpgradeKubernetesYbcGFlags")
+    UpgradeKubernetesYbcGFlags,
+
+    @EnumValue("UpdateYbcThrottleFlags")
+    UpdateYbcThrottleFlags,
+
+    @EnumValue("UpdateK8sYbcThrottleFlags")
+    UpdateK8sYbcThrottleFlags,
+
     @EnumValue("ConfigureDBApis")
     ConfigureDBApis,
 
@@ -420,7 +429,13 @@ public class CustomerTask extends Model {
     ImportUniverse,
 
     @EnumValue("MigrateUniverse")
-    MigrateUniverse;
+    MigrateUniverse,
+
+    @EnumValue("KubernetesToggleImmutableYbc")
+    KubernetesToggleImmutableYbc,
+
+    @EnumValue("OperatorImportUniverse")
+    OperatorImportUniverse;
 
     public String toString(boolean completed) {
       switch (this) {
@@ -587,7 +602,11 @@ public class CustomerTask extends Model {
         case DisableYbc:
           return completed ? "Disabled Ybc" : "Disabling Ybc";
         case UpgradeYbcGFlags:
+        case UpgradeKubernetesYbcGFlags:
           return completed ? "Upgraded Ybc GFlags" : "Upgrading Ybc GFlags";
+        case UpdateYbcThrottleFlags:
+        case UpdateK8sYbcThrottleFlags:
+          return completed ? "Update YBC throttle params" : "Updating YBC throttle params";
         case ConfigureDBApisKubernetes:
         case ConfigureDBApis:
           return completed ? "Configured DB APIs" : "Configuring DB APIs";
@@ -621,6 +640,10 @@ public class CustomerTask extends Model {
           return completed ? "Imported universe" : "Importing universe";
         case MigrateUniverse:
           return completed ? "Migrated universe" : "Migrating universe";
+        case KubernetesToggleImmutableYbc:
+          return completed ? "Set Immutable Ybc on K8s" : "Setting Immutable Ybc on K8s";
+        case OperatorImportUniverse:
+          return completed ? "Imported universe to Operator" : "Importing universe to Operator";
         default:
           return null;
       }

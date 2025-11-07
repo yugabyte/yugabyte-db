@@ -34,21 +34,28 @@ fi
 # Determine the PLATFORM_ID
 platform_id=$(grep -oP '(?<=^PLATFORM_ID=).+' /etc/os-release | tr -d '"' || echo "unknown")
 
-if [[ "$platform_id" == "platform:el8" ]]; then
+if [[ "{{ os_family }}" == "RedHat" ]]; then
     # Check SELinux status
     SELINUX_STATUS=$(sestatus | grep 'SELinux status' | awk '{print $3}')
     if [[ "$SELINUX_STATUS" == "enabled" ]]; then
         # Configuring the correct SELinux context
         current_context=$(ls -Zd "{{ yb_home_dir }}" | awk '{print $1}' | cut -d: -f3)
         if [[ "$current_context" != "ssh_home_t" ]]; then
-            chcon -R -t ssh_home_t "{{ yb_home_dir }}"
+            if command -v semanage >/dev/null 2>&1; then
+                echo "semanage command found, using semanage"
+                semanage fcontext -a -t ssh_home_t "{{ yb_home_dir }}(/.*)?"
+                restorecon -ir "{{ yb_home_dir }}"
+            else
+                echo "semanage command not found, using chcon"
+                chcon -R -t ssh_home_t "{{ yb_home_dir }}"
+            fi
             echo "SELinux context for {{ yb_home_dir }} changed to ssh_home_t"
         else
             echo "SELinux context for {{ yb_home_dir }} is already set to ssh_home_t"
         fi
     fi
 else
-    echo "el8 not detected, skipping changing selinux context"
+    echo "RedHat not detected, skipping changing selinux context"
 fi
 
 {% if cloud_type is defined and cloud_type != '' %}
@@ -98,9 +105,6 @@ installer_dir="{{ ynp_dir }}/../../bin"
 # can read the binary in restricted environment.
 mkdir -p {{ yb_home_dir }}/.install
 cp "$installer_dir/node-agent-installer.sh" {{ yb_home_dir }}/.install
-cp "$installer_dir/configure_earlyoom_service.sh" {{ yb_home_dir }}/.install
-cp "$installer_dir/earlyoom-installer.sh" {{ yb_home_dir }}/.install
-cp "$installer_dir/earlyoom" {{ yb_home_dir }}/.install
 chown -R {{ yb_user }}:{{ yb_user }} {{ yb_home_dir }}/.install
 {% endif %}
 

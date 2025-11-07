@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -54,6 +54,7 @@
 #include "yb/rpc/sidecars.h"
 #include "yb/rpc/wait_state_if.h"
 
+#include "yb/util/crc.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -90,6 +91,9 @@ DEFINE_RUNTIME_int64(rpc_callback_max_cycles, 100 * 1000 * 1000 * yb::kTimeMulti
     " (Advanced debugging option)");
 TAG_FLAG(rpc_callback_max_cycles, advanced);
 DECLARE_bool(rpc_dump_all_traces);
+
+DEFINE_RUNTIME_bool(rpc_enable_crc, true,
+    "Whether to calculate and send CRC checksum in RPC requests");
 
 DEFINE_test_flag(double, outbound_call_skip_callback_probability, 0.0,
     "Test flag for skipping an OutboundCall callback, to simulate a bug with a stuck "
@@ -334,11 +338,14 @@ Status OutboundCall::SetRequestParam(
     metadata_size += 1; // add tag size of RequestHeader::kMetadataFieldNumber
   }
 
-  // We use manual encoding for header in protobuf format. So should add 1 byte for tag before
-  // each field.
-  // serialized_remote_method already contains tag byte, so don't add extra byte for it.
-  size_t header_pb_len = 1 + call_id_size + serialized_remote_method.size() + 1 +
-                         timeout_ms_size + metadata_size;
+  auto use_crc = FLAGS_rpc_enable_crc;
+  size_t header_pb_len = 1 + call_id_size + // int32 call_id = 1
+                         serialized_remote_method.size() + // RemoteMethodPB remote_method = 2
+                         1 + timeout_ms_size + // uint32 timeout_millis = 3
+                         metadata_size; // AshMetadataPB metadata = 5
+  if (use_crc) {
+    header_pb_len += 1 + sizeof(uint32_t); // fixed32 crc = 6;
+  }
   const google::protobuf::RepeatedField<uint32_t>* sidecar_offsets = nullptr;
   size_t encoded_sidecars_len = 0;
   if (sidecars_size) {
@@ -376,9 +383,17 @@ Status OutboundCall::SetRequestParam(
   }
 
   if (metadata_size > 0) {
-    dst = Output::WriteTagToArray((RequestHeader::kMetadataFieldNumber << 3) |
-        WireFormatLite::WIRETYPE_LENGTH_DELIMITED, dst);
+    dst = Output::WriteTagToArray(
+        (RequestHeader::kMetadataFieldNumber << 3) | WireFormatLite::WIRETYPE_LENGTH_DELIMITED,
+        dst);
     dst = metadata_serializer_->SerializeToArray(dst);
+  }
+
+  // CRC should be at the end of header, otherwise adjust CRC filling logic below.
+  if (use_crc) {
+    dst = Output::WriteTagToArray(
+        (RequestHeader::kCrcFieldNumber << 3) | WireFormatLite::WIRETYPE_FIXED32, dst);
+    dst += sizeof(uint32_t);
   }
 
   DCHECK_EQ(dst - buffer_.udata(), header_size);
@@ -387,6 +402,10 @@ Status OutboundCall::SetRequestParam(
     buffer_consumption_ = ScopedTrackedConsumption(mem_tracker, buffer_.size());
   }
   RETURN_NOT_OK(SerializeMessage(req, req_size, buffer_, sidecars_size, header_size));
+  if (use_crc) {
+    StoreCrc(buffer_, header_size, message_size, sidecars_.get());
+  }
+
   if (method_metrics_) {
     IncrementCounterBy(method_metrics_->request_bytes, buffer_.size());
   }

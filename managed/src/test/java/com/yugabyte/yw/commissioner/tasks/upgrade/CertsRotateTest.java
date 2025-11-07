@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
@@ -300,7 +300,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
               if (nodeToNode || clientToNode) {
                 universeDetails.allowInsecure = false;
               }
-              universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
+              universeDetails.upsertPrimaryCluster(userIntent, null, placementInfo);
               universe.setUniverseDetails(universeDetails);
             },
             false);

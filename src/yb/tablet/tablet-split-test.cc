@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -94,15 +94,15 @@ class TabletSplitTest : public YBTabletTest {
 
 namespace {
 
-boost::optional<docdb::DocKeyHash> PartitionKeyToHash(const std::string& partition_key) {
+std::optional<docdb::DocKeyHash> PartitionKeyToHash(const std::string& partition_key) {
   if (partition_key.empty()) {
-    return boost::none;
+    return std::nullopt;
   } else {
     return dockv::PartitionSchema::DecodeMultiColumnHashValue(partition_key);
   }
 }
 
-} // namespace
+}  // namespace
 
 TEST_F(TabletSplitTest, SplitTablet) {
   constexpr auto kNumRows = 10000;

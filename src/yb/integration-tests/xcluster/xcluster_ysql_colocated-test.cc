@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -58,7 +58,7 @@ class XClusterYsqlColocatedTest : public XClusterYsqlTestBase {
 
       for (uint32_t i = 0; i < num_tablets->size(); i++) {
         auto table_name = VERIFY_RESULT(CreateYsqlTable(
-            i, num_tablets->at(i), cluster, boost::none /* tablegroup */,
+            i, num_tablets->at(i), cluster, std::nullopt /* tablegroup */,
             /* colocated = */ true));
         std::shared_ptr<client::YBTable> table;
         RETURN_NOT_OK(cluster->client_->OpenTable(table_name, &table));
@@ -82,12 +82,12 @@ class XClusterYsqlColocatedTest : public XClusterYsqlTestBase {
     // Also create an additional non-colocated table in each database.
     auto non_colocated_table = VERIFY_RESULT(CreateYsqlTable(
         &producer_cluster_, namespace_name, "" /* schema_name */, "test_table_2",
-        boost::none /* tablegroup */, kNTabletsPerTable, false /* colocated */));
+        std::nullopt /* tablegroup */, kNTabletsPerTable, false /* colocated */));
     std::shared_ptr<client::YBTable> non_colocated_producer_table;
     RETURN_NOT_OK(producer_client()->OpenTable(non_colocated_table, &non_colocated_producer_table));
     non_colocated_table = VERIFY_RESULT(CreateYsqlTable(
         &consumer_cluster_, namespace_name, "" /* schema_name */, "test_table_2",
-        boost::none /* tablegroup */, kNTabletsPerTable, false /* colocated */));
+        std::nullopt /* tablegroup */, kNTabletsPerTable, false /* colocated */));
     std::shared_ptr<client::YBTable> non_colocated_consumer_table;
     RETURN_NOT_OK(consumer_client()->OpenTable(non_colocated_table, &non_colocated_consumer_table));
 
@@ -171,9 +171,9 @@ class XClusterYsqlColocatedTest : public XClusterYsqlTestBase {
     // Add a Colocated Table on the Producer for an existing Replication stream.
     uint32_t idx = static_cast<uint32_t>(tables_vector.size()) + 1;
     {
-      const int co_id = (idx) * 111111;
+      const int co_id = (idx)*111111;
       auto table = VERIFY_RESULT(CreateYsqlTable(
-          &producer_cluster_, namespace_name, "", Format("test_table_$0", idx), boost::none,
+          &producer_cluster_, namespace_name, "", Format("test_table_$0", idx), std::nullopt,
           kNTabletsPerColocatedTable, true, co_id));
       RETURN_NOT_OK(producer_client()->OpenTable(table, &new_colocated_producer_table));
     }
@@ -184,9 +184,9 @@ class XClusterYsqlColocatedTest : public XClusterYsqlTestBase {
 
     {
       // Matching schema to consumer should succeed.
-      const int co_id = (idx) * 111111;
+      const int co_id = (idx)*111111;
       auto table = VERIFY_RESULT(CreateYsqlTable(
-          &consumer_cluster_, namespace_name, "", Format("test_table_$0", idx), boost::none,
+          &consumer_cluster_, namespace_name, "", Format("test_table_$0", idx), std::nullopt,
           kNTabletsPerColocatedTable, true, co_id));
       RETURN_NOT_OK(consumer_client()->OpenTable(table, &new_colocated_consumer_table));
     }
@@ -342,11 +342,11 @@ TEST_F(XClusterYsqlColocatedTest, DifferentColocationIds) {
   auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
   auto table_info = ASSERT_RESULT(CreateYsqlTable(
       &producer_cluster_, namespace_name, "" /* schema_name */, "test_table_0",
-      boost::none /* tablegroup */, 1 /* num_tablets */, true /* colocated */,
+      std::nullopt /* tablegroup */, 1 /* num_tablets */, true /* colocated */,
       123456 /* colocation_id */));
   ASSERT_RESULT(CreateYsqlTable(
       &consumer_cluster_, namespace_name, "" /* schema_name */, "test_table_0",
-      boost::none /* tablegroup */, 1 /* num_tablets */, true /* colocated */,
+      std::nullopt /* tablegroup */, 1 /* num_tablets */, true /* colocated */,
       123457 /* colocation_id */));
   std::shared_ptr<client::YBTable> producer_table;
   ASSERT_OK(producer_client()->OpenTable(table_info, &producer_table));

@@ -16,7 +16,7 @@ import {
   YBSelectField,
   YBModal
 } from '../../../../../components';
-import { api, QUERY_KEY } from '../../../../../utils/api';
+import { api, telemetryProviderQueryKey } from '@app/redesign/helpers/api';
 import { constructFormPayload } from '../utils/helper';
 import { createErrorMessage } from '../../../universe-form/utils/helpers';
 import { fetchUniverseInfo, fetchUniverseInfoResponse } from '../../../../../../actions/universe';
@@ -31,8 +31,7 @@ import {
   YSQLAuditLogLevel,
   AuditLogConfig
 } from '../utils/types';
-import { ExportLogResponse } from '../../../../export-log/utils/types';
-import { TP_FRIENDLY_NAMES } from '../../../../export-log/utils/constants';
+import { TP_FRIENDLY_NAMES } from '../../../../export-telemetry/constants';
 import { YSQL_AUDIT_CLASSES, YSQL_LOG_LEVEL_OPTIONS } from '../utils/constants';
 //RBAC
 import { hasNecessaryPerm } from '../../../../rbac/common/RbacApiPermValidator';
@@ -45,6 +44,10 @@ import { auditLogStyles } from '../utils/AuditLogStyles';
 import TreeIcon from '../../../../../assets/tree.svg';
 import AddCircleIcon from '../.././../../../assets/add-circle.svg';
 import InfoMessageIcon from '../../../../../assets/info-message.svg';
+import {
+  getIsLogsExportSupported,
+  getIsMetricsExportSupported
+} from '@app/redesign/features/export-telemetry/utils';
 
 interface AuditLogSettingProps {
   open: boolean;
@@ -85,9 +88,8 @@ export const AuditLogSettings: FC<AuditLogSettingProps> = ({
 
   const defaultValues = constructFormPayload(auditLogInfo);
 
-  const { data: telemetryProviders, isLoading } = useQuery<ExportLogResponse[]>(
-    [QUERY_KEY.getAllTelemetryProviders],
-    () => api.getAllTelemetryProviders()
+  const { data: telemetryProviders, isLoading } = useQuery(telemetryProviderQueryKey.list(), () =>
+    api.fetchTelemetryProviderList()
   );
 
   const formMethods = useForm<AuditLogFormFields>({
@@ -358,7 +360,7 @@ export const AuditLogSettings: FC<AuditLogSettingProps> = ({
                         'data-testid': 'AuditLogSettings-ExportSelect'
                       }}
                     >
-                      {telemetryProviders?.map((tp) => {
+                      {telemetryProviders?.filter(getIsLogsExportSupported).map((tp) => {
                         return (
                           <MenuItem
                             className={classes.exportMenuItem}
@@ -488,7 +490,7 @@ export const ExportNavigateDialog: FC<ExportNavigateDialogProps> = ({ open, onCl
       submitLabel={t('dbAuitLog.settingsModal.leaveModalSubmit')}
       cancelLabel={t('common.back')}
       onSubmit={() => {
-        browserHistory.push('/config/log');
+        browserHistory.push('/config/exportTelemetry');
       }}
     >
       <Box pt={1} pl={1.5} pr={1.5}>

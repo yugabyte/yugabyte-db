@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -2695,11 +2695,11 @@ void Executor::Reset(ResetAsyncCalls* reset_async_calls) {
   num_flushes_ = 0;
   result_ = nullptr;
   cb_.Reset();
-  returns_status_batch_opt_ = boost::none;
+  returns_status_batch_opt_ = std::nullopt;
   reset_async_calls->Perform();
 }
 
-QLExpressionPB* CreateQLExpression(QLWriteRequestPB *req, const ColumnDesc& col_desc) {
+QLExpressionPB* CreateQLExpression(QLWriteRequestPB* req, const ColumnDesc& col_desc) {
   if (col_desc.is_hash()) {
     return req->add_hashed_column_values();
   } else if (col_desc.is_primary()) {

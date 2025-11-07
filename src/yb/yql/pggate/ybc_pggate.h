@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -47,7 +47,7 @@ typedef struct {
 // functions in this API are called.
 void YBCInitPgGate(
     YbcPgTypeEntities type_entities, const YbcPgCallbacks* pg_callbacks,
-    uint64_t *session_id, YbcPgAshConfig* ash_config);
+    const YbcPgInitPostgresInfo *init_postgres_info, YbcPgAshConfig* ash_config);
 
 void YBCDestroyPgGate();
 void YBCInterruptPgGate();
@@ -406,6 +406,10 @@ YbcStatus YBCPgSetCatalogCacheVersion(YbcPgStatement handle, uint64_t version);
 YbcStatus YBCPgSetDBCatalogCacheVersion(YbcPgStatement handle,
                                         YbcPgOid db_oid,
                                         uint64_t version);
+YbcStatus YBCPgSetTablespaceOid(YbcPgStatement handle, uint32_t tablespace_oid);
+#ifndef NDEBUG
+void YBCPgCheckTablespaceOid(uint32_t db_oid, uint32_t table_oid, uint32_t tablespace_oid);
+#endif
 
 YbcStatus YBCPgTableExists(const YbcPgOid database_oid,
                            const YbcPgOid table_relfilenode_oid,
@@ -498,7 +502,8 @@ YbcStatus YBCPgDmlAppendTarget(YbcPgStatement handle, YbcPgExpr target);
 // Only serialized Postgres expressions are allowed.
 // Multiple quals added to the same statement are implicitly AND'ed.
 YbcStatus YbPgDmlAppendQual(
-    YbcPgStatement handle, YbcPgExpr qual, bool is_for_secondary_index);
+    YbcPgStatement handle, YbcPgExpr qual, uint32_t serialization_version,
+    bool is_for_secondary_index);
 
 // Add column reference needed to evaluate serialized Postgres expression.
 // PgExpr's other than serialized Postgres expressions are inspected and if they contain any
@@ -557,6 +562,10 @@ YbcStatus YBCPgDmlBindHashCodes(
     YbcPgBoundType start_type, uint16_t start_value,
     YbcPgBoundType end_type, uint16_t end_value);
 
+YbcStatus YBCPgDmlBindBounds(
+    YbcPgStatement handle, uint64_t lower_bound_ybctid, bool lower_bound_inclusive,
+    uint64_t upper_bound_ybctid, bool upper_bound_inclusive);
+
 // For parallel scan only, limit fetch to specified range of ybctids
 YbcStatus YBCPgDmlBindRange(YbcPgStatement handle,
                             const char *lower_bound, size_t lower_bound_len,
@@ -608,7 +617,7 @@ YbcStatus YBCPgBuildYBTupleId(const YbcPgYBTupleIdDescriptor* data, uint64_t *yb
 YbcStatus YBCPgStartOperationsBuffering();
 YbcStatus YBCPgStopOperationsBuffering();
 void YBCPgResetOperationsBuffering();
-YbcStatus YBCPgFlushBufferedOperations();
+YbcStatus YBCPgFlushBufferedOperations(YbcFlushDebugContext *debug_context);
 YbcStatus YBCPgAdjustOperationsBuffering(int multiple);
 
 YbcStatus YBCPgNewSample(const YbcPgOid database_oid,
@@ -692,8 +701,6 @@ YbcStatus YBCPgSetForwardScan(YbcPgStatement handle, bool is_forward_scan);
 // Set prefix length for distinct index scans.
 YbcStatus YBCPgSetDistinctPrefixLength(YbcPgStatement handle, int distinct_prefix_length);
 
-YbcStatus YBCPgSetHashBounds(YbcPgStatement handle, uint16_t low_bound, uint16_t high_bound);
-
 YbcStatus YBCPgExecSelect(YbcPgStatement handle, const YbcPgExecParameters *exec_params);
 
 // Gets the ybctids from a request. Returns a vector of all the results.
@@ -751,6 +758,7 @@ YbcTxnPriorityRequirement YBCGetTransactionPriorityType();
 YbcStatus YBCPgGetSelfActiveTransaction(YbcPgUuid *txn_id, bool *is_null);
 YbcStatus YBCPgActiveTransactions(YbcPgSessionTxnInfo *infos, size_t num_infos);
 bool YBCPgIsDdlMode();
+bool YBCPgIsDdlModeWithRegularTransactionBlock();
 bool YBCCurrentTransactionUsesFastPath();
 
 // System validation -------------------------------------------------------------------------------
@@ -816,7 +824,8 @@ uint16_t YBCCompoundHash(const char *key, size_t length);
 void YBCPgDeleteFromForeignKeyReferenceCache(YbcPgOid table_relfilenode_oid, uint64_t ybctid);
 void YBCPgAddIntoForeignKeyReferenceCache(YbcPgOid table_relfilenode_oid, uint64_t ybctid);
 YbcStatus YBCPgForeignKeyReferenceCacheDelete(const YbcPgYBTupleIdDescriptor* descr);
-YbcStatus YBCForeignKeyReferenceExists(const YbcPgYBTupleIdDescriptor* descr, bool* res);
+YbcStatus YBCForeignKeyReferenceExists(
+    const YbcPgYBTupleIdDescriptor* descr, bool relation_is_region_local, bool* res);
 YbcStatus YBCAddForeignKeyReferenceIntent(
     const YbcPgYBTupleIdDescriptor* descr, bool relation_is_region_local,
     bool is_deferred_trigger);
@@ -842,12 +851,8 @@ void YBCPgClearInsertOnConflictCache(void* state);
 uint64_t YBCPgGetInsertOnConflictKeyCount(void* state);
 //--------------------------------------------------------------------------------------------------
 
-bool YBCIsInitDbModeEnvVarSet();
-
 // This is called by initdb. Used to customize some behavior.
 void YBCInitFlags();
-
-const YbcPgGFlagsAccessor* YBCGetGFlags();
 
 bool YBCPgIsYugaByteEnabled();
 
@@ -893,9 +898,9 @@ YbcStatus YBCNewGetLockStatusDataSRF(YbcPgFunction *handle);
 
 YbcStatus YBCGetTabletServerHosts(YbcServerDescriptor **tablet_servers, size_t* numservers);
 
-YbcStatus YBCGetIndexBackfillProgress(YbcPgOid* index_relfilenode_oids, YbcPgOid* database_oids,
-                                      uint64_t** backfill_statuses,
-                                      int num_indexes);
+YbcStatus YBCGetIndexBackfillProgress(YbcPgOid* index_oids, YbcPgOid* database_oids,
+                                      uint64_t* num_rows_read_from_table,
+                                      double* num_rows_backfilled, int num_indexes);
 
 void YBCStartSysTablePrefetchingNoCache();
 
@@ -990,7 +995,9 @@ void YBCStoreTServerAshSamples(
     YbcAshAcquireBufferLock acquire_cb_lock_fn, YbcAshGetNextCircularBufferSlot get_cb_slot_fn,
     uint64_t sample_time);
 
-YbcStatus YBCLocalTablets(YbcPgTabletsDescriptor** tablets, size_t* count);
+YbcStatus YBCLocalTablets(YbcPgLocalTabletsDescriptor** tablets, size_t* count);
+
+YbcStatus YBCTabletsMetadata(YbcPgGlobalTabletsDescriptor** tablets, size_t* count);
 
 YbcStatus YBCServersMetrics(YbcPgServerMetricsInfo** serverMetricsInfo, size_t* count);
 
@@ -1032,6 +1039,17 @@ YbcStatus YBCAcquireObjectLock(YbcObjectLockId lock_id, YbcObjectLockMode mode);
 // DevNote: Finalize is a multi-step process involving YsqlMajorCatalog Finalize, AutoFlag Finalize,
 // and YsqlUpgrade. This will return false after the AutoFlag Finalize step.
 bool YBCPgYsqlMajorVersionUpgradeInProgress();
+
+bool YBCIsBinaryUpgrade();
+void YBCSetBinaryUpgrade(bool value);
+
+void YBCRecordTablespaceOid(YbcPgOid db_oid, YbcPgOid table_oid, YbcPgOid tablespace_oid);
+void YBCClearTablespaceOid(YbcPgOid db_oid, YbcPgOid table_oid);
+
+YbcStatus YBCInitTransaction(const YbcPgInitTransactionData *data);
+YbcStatus YBCCommitTransactionIntermediate(const YbcPgInitTransactionData *data);
+
+YbcStatus YBCTriggerRelcacheInitConnection(const char* dbname);
 
 #ifdef __cplusplus
 }  // extern "C"

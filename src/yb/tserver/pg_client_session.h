@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -98,6 +98,7 @@ struct PgClientSessionContext {
   const EventStatsPtr& stats_exchange_response_size;
   const std::string& instance_uuid;
   docdb::ObjectLockOwnerRegistry* lock_owner_registry;
+  const TransactionManagerProvider transaction_manager_provider;
 };
 
 class PgClientSession final {
@@ -106,7 +107,7 @@ class PgClientSession final {
 
  public:
   using TransactionBuilder = std::function<client::YBTransactionPtr(
-      IsDDL, client::ForceGlobalTransaction, CoarseTimePoint, client::ForceCreateTransaction)>;
+      IsDDL, TransactionFullLocality, CoarseTimePoint, client::ForceCreateTransaction)>;
 
   PgClientSession(
       TransactionBuilder&& transaction_builder, SharedThisSource shared_this_source,
@@ -129,7 +130,7 @@ class PgClientSession final {
 
   std::pair<uint64_t, std::byte*> ObtainBigSharedMemorySegment(size_t size);
 
-  void StartShutdown();
+  void StartShutdown(bool pg_service_shutting_down);
   bool ReadyToShutdown() const;
   void CompleteShutdown();
 

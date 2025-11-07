@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2020 YugaByte, Inc. and Contributors
+# Copyright 2020 YugabyteDB, Inc. and Contributors
 
 set -euo pipefail
 
@@ -129,6 +129,8 @@ if [[ ! $# -gt 0 ]]; then
   show_usage
   exit 1
 fi
+
+ENABLE_EARLYOOM="false"
 
 while [[ $# -gt 0 ]]; do
   case $1 in

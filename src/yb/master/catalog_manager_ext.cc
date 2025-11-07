@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -11,6 +11,7 @@
 // under the License.
 
 #include <memory>
+#include <optional>
 #include <queue>
 #include <unordered_set>
 
@@ -40,6 +41,8 @@
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/doc_write_batch.h"
 
+#include "yb/dockv/reader_projection.h"
+
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/substitute.h"
 
@@ -68,6 +71,7 @@
 
 #include "yb/rpc/messenger.h"
 
+#include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_snapshots.h"
@@ -82,6 +86,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/std_util.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/tostring.h"
 #include "yb/util/trace.h"
 
@@ -102,6 +107,12 @@ DECLARE_int32(master_rpc_timeout_ms);
 DEPRECATE_FLAG(bool, enable_transaction_snapshots, "08_2024");
 
 DEPRECATE_FLAG(bool, allow_consecutive_restore, "10_2022");
+
+DEFINE_RUNTIME_bool(
+    enable_namespace_snapshot_workflow, true,
+    "Enable namespace-based snapshot creation based on namespace_id. Can be disabled to fallback "
+    "to the old snapshot creation workflow where client provides the set of tables to collect as "
+    "part of snapshot");
 
 DEFINE_test_flag(double, crash_during_sys_catalog_restoration, 0.0,
                  "Probability of crash during the RESTORE_SYS_CATALOG phase.");
@@ -143,59 +154,72 @@ using client::internal::RemoteTabletPtr;
 
 namespace master {
 
+Result<TableDescription> TableWithTabletsEntries::DescribeTable(
+    const TableId& table_id, const NamespaceInfoPtr& namespace_info) const {
+  TableDescription result;
+  result.table_info = make_scoped_refptr<TableInfo>(table_id, table_entry.colocated());
+  {
+    auto lock = result.table_info->LockForWrite();
+    lock.mutable_data()->pb.CopyFrom(table_entry);
+    lock.Commit();
+  }
+  result.namespace_info = namespace_info;
+
+  result.tablet_infos.reserve(tablets_entries.size());
+  for (const auto& [id, entry] : tablets_entries) {
+    auto& tablet_info =
+        result.tablet_infos.emplace_back(std::make_shared<TabletInfo>(result.table_info, id));
+    auto tablet_lock = tablet_info->LockForWrite();
+    tablet_lock.mutable_data()->pb.CopyFrom(entry);
+    tablet_lock.Commit();
+  }
+  return result;
+}
+
+void TableWithTabletsEntries::AddToBackupEntries(
+    const TableId& table_id, RepeatedPtrField<BackupRowEntryPB>& backup_entries) const {
+  BackupRowEntryPB* table_backup_entry = backup_entries.Add();
+  std::string output;
+  table_entry.AppendToString(&output);
+  *table_backup_entry->mutable_entry() =
+      TableWithTabletsEntries::ToSysRowEntry(table_id, SysRowEntryType::TABLE, std::move(output));
+  if (!table_entry.schema().deprecated_pgschema_name().empty()) {
+    table_backup_entry->set_pg_schema_name(table_entry.schema().deprecated_pgschema_name());
+  }
+  for (const auto& [tablet_id, tablet_entry] : tablets_entries) {
+    std::string output;
+    tablet_entry.AppendToString(&output);
+    *backup_entries.Add()->mutable_entry() = TableWithTabletsEntries::ToSysRowEntry(
+        tablet_id, SysRowEntryType::TABLET, std::move(output));
+  }
+}
+
+void TableWithTabletsEntries::OrderTabletsByPartitions() {
+  std::sort(
+      tablets_entries.begin(), tablets_entries.end(),
+      [](const TabletIdWithEntry& lhs, const TabletIdWithEntry& rhs) -> bool {
+        return lhs.second.partition().partition_key_start() <
+               rhs.second.partition().partition_key_start();
+      });
+}
+
 ////////////////////////////////////////////////////////////
 // CatalogManager
 ////////////////////////////////////////////////////////////
 
-using TabletIdWithEntry = std::pair<TabletId, SysTabletsEntryPB>;
-using SysTabletsEntriesWithIds = std::vector<TabletIdWithEntry>;
-struct TableWithTabletsEntries {
-  TableWithTabletsEntries(
-      const SysTablesEntryPB& table_entry, const SysTabletsEntriesWithIds& tablets_entries) {
-    this->table_entry = table_entry;
-    this->tablets_entries = tablets_entries;
-  }
-  TableWithTabletsEntries() {}
-
-  // Add the table with table_id and its tablets entries to a list of backup entries.
-  void AddToBackupEntries(
-      const TableId& table_id, RepeatedPtrField<BackupRowEntryPB>* backup_entries) {
-    BackupRowEntryPB* table_backup_entry = backup_entries->Add();
-    std::string output;
-    table_entry.AppendToString(&output);
-    *table_backup_entry->mutable_entry() =
-        ToSysRowEntry(table_id, SysRowEntryType::TABLE, std::move(output));
-    if (!table_entry.schema().deprecated_pgschema_name().empty()) {
-      table_backup_entry->set_pg_schema_name(table_entry.schema().deprecated_pgschema_name());
-    }
-    for (const auto& tablet_entry : tablets_entries) {
-      std::string output;
-      tablet_entry.second.AppendToString(&output);
-      *backup_entries->Add()->mutable_entry() =
-          ToSysRowEntry(tablet_entry.first, SysRowEntryType::TABLET, std::move(output));
+std::unordered_set<TableId> CatalogManager::GetSysCatalogTableIds() EXCLUDES(mutex_) {
+  std::unordered_set<TableId> table_ids;
+  table_ids.insert(kSysCatalogTableId);
+  {
+    SharedLock lock(mutex_);
+    for (const auto& table_info : tables_->GetAllTables()) {
+      if (table_info->is_system()) {
+        table_ids.insert(table_info->id());
+      }
     }
   }
-
-  void OrderTabletsByPartitions() {
-    std::sort(
-        tablets_entries.begin(), tablets_entries.end(),
-        [](const TabletIdWithEntry& lhs, const TabletIdWithEntry& rhs) -> bool {
-          return lhs.second.partition().partition_key_start() <
-                 rhs.second.partition().partition_key_start();
-        });
-  }
-
-  SysRowEntry ToSysRowEntry(const string& id, const SysRowEntryType& type, const string& data) {
-    SysRowEntry entry;
-    entry.set_id(id);
-    entry.set_type(type);
-    entry.set_data(data);
-    return entry;
-  }
-
-  SysTablesEntryPB table_entry;
-  SysTabletsEntriesWithIds tablets_entries;
-};
+  return table_ids;
+}
 
 Status CatalogManager::CreateSnapshot(const CreateSnapshotRequestPB* req,
                                       CreateSnapshotResponsePB* resp,
@@ -323,18 +347,40 @@ Status CatalogManager::AddTableAndTabletEntriesToPB(
   return Status::OK();
 }
 
-Result<SysRowEntries> CatalogManager::CollectEntries(
+Result<SysRowEntries> CatalogManager::CollectEntriesFromActiveSysCatalog(
     const google::protobuf::RepeatedPtrField<TableIdentifierPB>& table_identifiers,
     CollectFlags flags) {
   RETURN_NOT_OK(CheckIsLeaderAndReady());
-  SysRowEntries entries;
-  unordered_set<NamespaceId> namespaces;
+  std::unordered_set<NamespaceId> namespaces;
   auto tables = VERIFY_RESULT(CollectTables(table_identifiers, flags, &namespaces));
+  return CollectEntriesInternal(flags, tables, &namespaces);
+}
+
+Result<SysRowEntries> CatalogManager::CollectEntriesAsOfTime(
+    const NamespaceId& namespace_id, CollectFlags flags, HybridTime read_time,
+    CoarseTimePoint deadline) {
+  RETURN_NOT_OK(CheckIsLeaderAndReady());
+  std::unordered_set<NamespaceId> namespaces;
+
+  // CollectTables (used in CollectEntriesFromActiveSysCatalog) gets the set of tables from the
+  // in-memory maps while CollectTablesAsOfTime gets the tables from reading the sys.catalog as of
+  // read_time.
+  std::vector<TableDescription> tables =
+      VERIFY_RESULT(CollectTablesAsOfTime(namespace_id, flags, read_time, deadline));
+
+  return CollectEntriesInternal(flags, tables, &namespaces);
+}
+
+Result<SysRowEntries> CatalogManager::CollectEntriesInternal(
+    CollectFlags flags, const std::vector<TableDescription>& tables,
+    std::unordered_set<NamespaceId>* namespaces) {
+  SysRowEntries entries;
 
   // Note: the list of entries includes: (1) namespaces (2) UD types (3) tables (4) tablets.
-  RETURN_NOT_OK(AddNamespaceEntriesToPB(tables, entries.mutable_entries(), &namespaces));
+  RETURN_NOT_OK(AddNamespaceEntriesToPB(tables, entries.mutable_entries(), namespaces));
+  // TODO(mhaddad): GH-28401 Check whether this call is needed at all in YSQL databases.
   if (flags.Test(CollectFlag::kAddUDTypes)) {
-    RETURN_NOT_OK(AddUDTypeEntriesToPB(tables, entries.mutable_entries(), namespaces));
+    RETURN_NOT_OK(AddUDTypeEntriesToPB(tables, entries.mutable_entries(), *namespaces));
   }
   // TODO(txn_snapshot) use single lock to resolve all tables to tablets
   RETURN_NOT_OK(AddTableAndTabletEntriesToPB(tables, entries.mutable_entries()));
@@ -342,7 +388,7 @@ Result<SysRowEntries> CatalogManager::CollectEntries(
 }
 
 Result<SysRowEntries> CatalogManager::CollectEntriesForSequencesDataTable() {
-  auto sequence_entries_result = CollectEntries(
+  auto sequence_entries_result = CollectEntriesFromActiveSysCatalog(
       CatalogManagerUtil::SequenceDataFilter(),
       CollectFlags{CollectFlag::kSucceedIfCreateInProgress});
   // If there are no sequences yet, then we won't be able to find the table.
@@ -362,7 +408,7 @@ Result<SysRowEntries> CatalogManager::CollectEntriesForSnapshot(
       CollectFlag::kSucceedIfCreateInProgress};
   collect_flags.SetIf(CollectFlag::kIncludeHiddenTables, includeHiddenTables);
 
-  SysRowEntries entries = VERIFY_RESULT(CollectEntries(tables, collect_flags));
+  SysRowEntries entries = VERIFY_RESULT(CollectEntriesFromActiveSysCatalog(tables, collect_flags));
   // Include sequences_data table if the filter is on a ysql database.
   // For sequences, we have a special sequences_data (id=0000ffff00003000800000000000ffff)
   // table in the system_postgres database.
@@ -379,8 +425,132 @@ Result<SysRowEntries> CatalogManager::CollectEntriesForSnapshot(
   return entries;
 }
 
+Result<std::vector<TableDescription>> CatalogManager::CollectTablesAsOfTime(
+    const NamespaceId& namespace_id, CollectFlags flags, HybridTime read_time,
+    CoarseTimePoint deadline) {
+  LOG(INFO) << Format("Waiting for read_time = $0 to be safe time", read_time);
+  RETURN_NOT_OK(WaitForSafeTime(read_time, deadline));
+
+  auto tablet = VERIFY_RESULT(sys_catalog_->Tablet());
+  auto read_ht = ReadHybridTime::SingleTime(read_time);
+  dockv::ReaderProjection projection(*tablet->schema());
+
+  auto iter = VERIFY_RESULT(tablet->NewUninitializedDocRowIterator(
+      projection, read_ht, /* table_id= */ "", /* deadline */ CoarseTimePoint::max()));
+
+  // Get the set of sys.catalog table IDs (including pg catalog tables) to skip including them in
+  // the snapshot.
+  auto sys_catalog_table_ids = GetSysCatalogTableIds();
+
+  std::vector<TableDescription> all_tables;
+  std::unordered_set<TableId> parent_colocated_table_ids;
+  std::map<TableId, TableWithTabletsEntries> tables_to_tablets;
+
+  // It is ok to get the NamespaceInfo from in-memory maps as the namespace will be retained by
+  // an anchor before collecting the entries for the backup.
+  // TODO (mhaddad): GH-28290 Tracks the namespace anchoring issue.
+  auto namespace_info = VERIFY_RESULT(FindNamespaceById(namespace_id));
+  const bool ns_colocated = namespace_info->colocated();
+  std::optional<TableId> colocation_parent_table_id;
+
+  auto process_table = [&](const Slice& table_id_slice, const Slice& metadata_slice) -> Status {
+    auto table_id = table_id_slice.ToString();
+    SysTablesEntryPB table_pb =
+        VERIFY_RESULT(pb_util::ParseFromSlice<SysTablesEntryPB>(metadata_slice));
+
+    if (table_pb.namespace_id() != namespace_id) {
+      return Status::OK();
+    }
+
+    if (sys_catalog_table_ids.contains(table_id)) {
+      VLOG_WITH_PREFIX_AND_FUNC(2)
+          << "Rejected system table: " << table_id << " (name: " << table_pb.name() << ")";
+      return Status::OK();
+    }
+
+    if (table_pb.state() == SysTablesEntryPB::DELETING ||
+        table_pb.state() == SysTablesEntryPB::DELETED) {
+      VLOG_WITH_PREFIX_AND_FUNC(4) << "Rejected deleted table: " << table_id;
+      return Status::OK();
+    }
+
+    if (table_pb.has_hide_hybrid_time() &&
+        HybridTime::FromPB(table_pb.hide_hybrid_time()) <= read_time) {
+      VLOG_WITH_PREFIX_AND_FUNC(4) << "Rejected hidden table: " << table_id;
+      return Status::OK();
+    }
+    VLOG_WITH_FUNC(2) << Format(
+        "Selected table for collection: $0 (name: $1)", table_id, table_pb.name());
+    if (ns_colocated && IsColocationParentTableId(table_id)) {
+      colocation_parent_table_id = table_id;
+    }
+    // Tables and tablets will be added to all_tables at the end.
+    tables_to_tablets.insert(
+        std::make_pair(table_id, TableWithTabletsEntries(table_pb, SysTabletsEntriesWithIds())));
+
+    return Status::OK();
+  };
+  RETURN_NOT_OK(EnumerateSysCatalog(iter.get(), schema(), SysRowEntryType::TABLE, process_table));
+
+  auto process_tablet = [&tables_to_tablets, read_time, this](
+                            const Slice& tablet_id_slice, const Slice& metadata_slice) -> Status {
+    const auto tablet_id = tablet_id_slice.ToString();
+    SysTabletsEntryPB tablet_pb =
+        VERIFY_RESULT(pb_util::ParseFromSlice<SysTabletsEntryPB>(metadata_slice));
+    // TODO(Yamen): Handle split tablet issue GH-29059.
+    if (tablet_pb.state() == SysTabletsEntryPB::DELETED ||
+        tablet_pb.state() == SysTabletsEntryPB::REPLACED) {
+      return Status::OK();
+    }
+
+    if (tables_to_tablets.contains(tablet_pb.table_id()) &&
+        tablet_pb.split_tablet_ids_size() == 0) {
+      VLOG_WITH_PREFIX_AND_FUNC(2) << "Including tablet " << tablet_id << " for table "
+                                   << tablet_pb.table_id() << " as of time " << read_time;
+      tables_to_tablets[tablet_pb.table_id()].tablets_entries.push_back(
+          std::make_pair(tablet_id, tablet_pb));
+    }
+    return Status::OK();
+  };
+  auto tablets_iter = VERIFY_RESULT(tablet->NewUninitializedDocRowIterator(
+      projection, ReadHybridTime::SingleTime(read_time), /* table_id= */ "",
+      CoarseTimePoint::max()));
+  RETURN_NOT_OK(
+      EnumerateSysCatalog(tablets_iter.get(), schema(), SysRowEntryType::TABLET, process_tablet));
+
+  // Order SysTabletsEntries in each SysTableEntry by partition start_key as CreateTable relies
+  // on the order of tablets.
+  for (auto& [_, table_with_tablets] : tables_to_tablets) {
+    table_with_tablets.OrderTabletsByPartitions();
+  }
+
+  // Emit the parent colocation table first if we saw it during enumeration.
+  if (colocation_parent_table_id) {
+    auto it = tables_to_tablets.find(*colocation_parent_table_id);
+    if (it != tables_to_tablets.end()) {
+      all_tables.push_back(
+          VERIFY_RESULT(it->second.DescribeTable(*colocation_parent_table_id, namespace_info)));
+      tables_to_tablets.erase(it);
+    }
+  }
+
+  // Populate remaining tables.
+  for (auto& [table_id, tablets] : tables_to_tablets) {
+    all_tables.push_back(VERIFY_RESULT(tablets.DescribeTable(table_id, namespace_info)));
+  }
+  return all_tables;
+}
+
 server::Clock* CatalogManager::Clock() {
   return master_->clock();
+}
+
+Status CatalogManager::WaitForSafeTime(HybridTime target_time, CoarseTimePoint deadline) {
+  auto tablet_peer = sys_catalog_->tablet_peer();
+  SCHECK(tablet_peer, ServiceUnavailable, "Sys catalog tablet peer is not available");
+  auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet());
+  RETURN_NOT_OK(tablet->SafeTime(tablet::RequireLease::kTrue, target_time, deadline));
+  return Status::OK();
 }
 
 Status CatalogManager::CreateTransactionAwareSnapshot(
@@ -391,20 +561,35 @@ Status CatalogManager::CreateTransactionAwareSnapshot(
   }
   CollectFlags flags{CollectFlag::kIncludeParentColocatedTable};
   flags.SetIf(CollectFlag::kAddIndexes, req.add_indexes())
-       .SetIf(CollectFlag::kAddUDTypes, req.add_ud_types())
-       .SetIf(CollectFlag::kSucceedIfCreateInProgress, req.imported());
-  SysRowEntries entries = VERIFY_RESULT(CollectEntries(req.tables(), flags));
-
+      .SetIf(CollectFlag::kAddUDTypes, req.add_ud_types())
+      .SetIf(CollectFlag::kSucceedIfCreateInProgress, req.imported());
   // If client does not explicitly pass in a value then use a default
   // governed by gflag default_snapshot_retention_hours. Cases when this can happen:
   // 1. Client is on a version that does not have this feature.
   // 2. The user did not specify any Ttl value explicitly.
-  int32_t retention_duration_hours = req.has_retention_duration_hours() ?
-      req.retention_duration_hours() : GetAtomicFlag(&FLAGS_default_snapshot_retention_hours);
+  int32_t retention_duration_hours = req.has_retention_duration_hours()
+                                         ? req.retention_duration_hours()
+                                         : GetAtomicFlag(&FLAGS_default_snapshot_retention_hours);
+  TEST_SYNC_POINT("YBBackupTestWithColocationParam::CreateSnapshotReceived");
 
+  // When only the namespace_id is specified, the master snapshot coordinator collects the snapshot
+  // entries as of the snapshot_hybrid_time
+  if (GetAtomicFlag(&FLAGS_enable_namespace_snapshot_workflow) && req.tables_size() == 1) {
+    const auto& filter = req.tables(0);
+    if (filter.table_name().empty() && filter.table_id().empty() && filter.has_namespace_() &&
+        filter.namespace_().has_id() && filter.namespace_().database_type() == YQL_DATABASE_PGSQL) {
+      // New workflow: namespace-based snapshot creation
+      auto snapshot_id = VERIFY_RESULT(master_->snapshot_coordinator().Create(
+          req.tables(0).namespace_().id(), req.imported(), flags, leader_ready_term(), deadline,
+          retention_duration_hours));
+      resp->set_snapshot_id(snapshot_id.data(), snapshot_id.size());
+      return Status::OK();
+    }
+  }
+  // Old workflow: collect entries first, then create snapshot
+  SysRowEntries entries = VERIFY_RESULT(CollectEntriesFromActiveSysCatalog(req.tables(), flags));
   auto snapshot_id = VERIFY_RESULT(master_->snapshot_coordinator().Create(
-      entries, req.imported(), leader_ready_term(), deadline,
-      retention_duration_hours));
+      entries, req.imported(), leader_ready_term(), deadline, retention_duration_hours));
   resp->set_snapshot_id(snapshot_id.data(), snapshot_id.size());
   return Status::OK();
 }
@@ -447,15 +632,13 @@ Status CatalogManager::RepackSnapshotsForBackup(
 
     unordered_set<TableId> tables_to_skip;
     for (SysRowEntry& entry : *sys_entry.mutable_entries()) {
-      BackupRowEntryPB* const backup_entry = snapshot.add_backup_entries();
-
       // Setup BackupRowEntryPB fields.
       // Set BackupRowEntryPB::pg_schema_name for YSQL table to disambiguate in case tables
       // in different schema have same name.
+      std::optional<string> pg_schema_name_to_set;
       if (entry.type() == SysRowEntryType::TABLE) {
         // Skip repacking the special table sequences_data as sequences are backed up in ysql_dump
         if (entry.id() == kPgSequencesDataTableId) {
-          snapshot.mutable_backup_entries()->RemoveLast();
           // Keep track of table so we skip its tablets as well. Note, since tablets always
           // follow their table in sys_entry, we don't need to check previous tablet entries.
           tables_to_skip.insert(entry.id());
@@ -496,7 +679,6 @@ Status CatalogManager::RepackSnapshotsForBackup(
             if (res.status().IsNotFound() &&
                 MasterError(res.status()) == MasterErrorPB::DOCDB_TABLE_NOT_COMMITTED) {
               LOG(WARNING) << "Skipping backup of table " << table_info->id() << " : " << res;
-              snapshot.mutable_backup_entries()->RemoveLast();
               // Keep track of table so we skip its tablets as well. Note, since tablets
               // always follow their table in sys_entry, we don't need to check previous
               // tablet entries.
@@ -509,7 +691,22 @@ Status CatalogManager::RepackSnapshotsForBackup(
           }
           const string pg_schema_name = res.get();
           VLOG(1) << "PG Schema: " << pg_schema_name << " for table " << table_info->ToString();
-          backup_entry->set_pg_schema_name(pg_schema_name);
+          // If this DocDB table is an index, check pg_index.indisvalid as of the snapshot time and
+          // skip exporting invalid indexes.
+          if (table_info->is_index()) {
+            const auto oids = VERIFY_RESULT(table_info->GetPgTableAllOids());
+            const bool is_valid = VERIFY_RESULT(GetYsqlManager().GetPgIndexStatus(
+                oids.database_oid, oids.pg_table_oid, "indisvalid", snapshot_hybrid_time));
+            if (!is_valid) {
+              LOG(INFO) << "Skipping backup of invalid index table " << table_info->id();
+              // Keep track of table so we skip its tablets as well. Note, since tablets
+              // always follow their table in sys_entry, we don't need to check previous
+              // tablet entries.
+              tables_to_skip.insert(table_info->id());
+              continue;
+            }
+          }
+          pg_schema_name_to_set = pg_schema_name;
         }
       } else if (!tables_to_skip.empty() && entry.type() == SysRowEntryType::TABLET) {
         // Note: Ordering here is important, we expect tablet entries only after their table entry.
@@ -517,12 +714,14 @@ Status CatalogManager::RepackSnapshotsForBackup(
         if (tables_to_skip.contains(meta.table_id())) {
           LOG(WARNING) << "Skipping backup of tablet " << entry.id() << " since its table "
                        << meta.table_id() << " was skipped.";
-          snapshot.mutable_backup_entries()->RemoveLast();
           continue;
         }
       }
 
-      // Init BackupRowEntryPB::entry.
+      BackupRowEntryPB* const backup_entry = snapshot.add_backup_entries();
+      if (pg_schema_name_to_set.has_value()) {
+        backup_entry->set_pg_schema_name(*pg_schema_name_to_set);
+      }
       backup_entry->mutable_entry()->Swap(&entry);
     }
 
@@ -805,11 +1004,7 @@ Status CatalogManager::ImportSnapshotPreprocess(
               }
               const NamespaceId new_namespace_id = ns_it->second.new_namespace_id;
               bool legacy_colocated_database;
-              {
-                SharedLock lock(mutex_);
-                legacy_colocated_database = (colocated_db_tablets_map_.find(new_namespace_id)
-                                             != colocated_db_tablets_map_.end());
-              }
+              legacy_colocated_database = IsColocatedNamespace(new_namespace_id);
               if (!legacy_colocated_database) {
                 // Colocation migration.
                 // Check if the default tablegroup exists.
@@ -1263,10 +1458,20 @@ Result<RepeatedPtrField<BackupRowEntryPB>> CatalogManager::GetBackupEntriesAsOfT
       [&source_ns_id, &tables_to_tablets, &colocation_parent_table_id, &found_colocated_user_table](
           const Slice& id, const Slice& data) -> Status {
         auto pb = VERIFY_RESULT(pb_util::ParseFromSlice<SysTablesEntryPB>(data));
-        if (pb.namespace_id() == source_ns_id && pb.state() == SysTablesEntryPB::RUNNING &&
+        // Skip including tables in PREPARING state, even though they are normally considered
+        // running because their tablets are not all created, so they are not ready to be cloned.
+        // The table is also not committed in PG while it is still PREPARING.
+        if (pb.namespace_id() == source_ns_id &&
+            (pb.state() == SysTablesEntryPB::RUNNING || pb.state() == SysTablesEntryPB::ALTERING) &&
             pb.hide_state() == SysTablesEntryPB_HideState_VISIBLE &&
             !pb.schema().table_properties().is_ysql_catalog_table()) {
-          VLOG_WITH_FUNC(1) << "Found SysTablesEntryPB: " << pb.ShortDebugString();
+          if (pb.state() == SysTablesEntryPB::ALTERING) {
+            // This should be fixed after #28814.
+            return STATUS_FORMAT(
+                IllegalState, "Table $0 is in altering state (cloning to a time when a DDL is in "
+                "progress is not supported yet. See GitHub issue #28814.)", id.ToBuffer());
+          }
+          VLOG_WITH_FUNC(1) << "Included SysTablesEntryPB: " << pb.ShortDebugString();
           const auto id_str = id.ToBuffer();
           if (pb.colocated()) {
             if (IsColocationParentTableId(id_str)) {
@@ -1278,6 +1483,8 @@ Result<RepeatedPtrField<BackupRowEntryPB>> CatalogManager::GetBackupEntriesAsOfT
           // Tables and tablets will be added to backup entries at the end.
           tables_to_tablets.insert(std::make_pair(
               id_str, TableWithTabletsEntries(pb, SysTabletsEntriesWithIds())));
+        } else {
+          VLOG_WITH_FUNC(2) << "Skipped SysTablesEntryPB: " << pb.ShortDebugString();
         }
         return Status::OK();
       }));
@@ -1300,9 +1507,11 @@ Result<RepeatedPtrField<BackupRowEntryPB>> CatalogManager::GetBackupEntriesAsOfT
         // when running ImportSnapshot.
         if (tables_to_tablets.contains(pb.table_id()) && pb.split_tablet_ids_size() == 0 &&
             pb.state() != SysTabletsEntryPB::DELETED && pb.state() != SysTabletsEntryPB::REPLACED) {
-          VLOG_WITH_FUNC(1) << "Found SysTabletsEntryPB: " << pb.ShortDebugString();
+          VLOG_WITH_FUNC(1) << "Included SysTabletsEntryPB: " << pb.ShortDebugString();
           tables_to_tablets[pb.table_id()].tablets_entries.push_back(
               std::make_pair(id.ToBuffer(), pb));
+        } else {
+          VLOG_WITH_FUNC(2) << "Skipped SysTabletsEntryPB: " << pb.ShortDebugString();
         }
         return Status::OK();
       }));
@@ -1317,12 +1526,12 @@ Result<RepeatedPtrField<BackupRowEntryPB>> CatalogManager::GetBackupEntriesAsOfT
     // Only create the colocated parent table if there are colocated user tables.
     if (found_colocated_user_table) {
       tables_to_tablets[colocation_parent_table_id.value()].AddToBackupEntries(
-          colocation_parent_table_id.value(), &backup_entries);
+          colocation_parent_table_id.value(), backup_entries);
     }
     tables_to_tablets.erase(colocation_parent_table_id.value());
   }
   for (auto& sys_table_entry : tables_to_tablets) {
-    sys_table_entry.second.AddToBackupEntries(sys_table_entry.first, &backup_entries);
+    sys_table_entry.second.AddToBackupEntries(sys_table_entry.first, backup_entries);
   }
   return backup_entries;
 }
@@ -1382,16 +1591,10 @@ Status CatalogManager::ImportNamespaceEntry(
   TRACE("Looking up namespace");
   // First of all try to find the namespace by ID. It will work if we are restoring the backup
   // on the original cluster where the backup was created.
-  scoped_refptr<NamespaceInfo> ns;
-  {
-    SharedLock lock(mutex_);
-    ns = FindPtrOrNull(namespace_ids_map_, entry.id());
-  }
-
+  auto ns_result = FindNamespaceById(entry.id());
   bool is_clone = clone_target_namespace_name.has_value();
-  bool found_matching_ns_by_id = ns != nullptr &&
-                                 ns->name() == meta.name() &&
-                                 ns->state() == SysNamespaceEntryPB::RUNNING;
+  bool found_matching_ns_by_id = (ns_result.ok()) && (*ns_result)->name() == meta.name() &&
+                                 (*ns_result)->state() == SysNamespaceEntryPB::RUNNING;
   if (found_matching_ns_by_id && !is_clone) {
     ns_data.new_namespace_id = entry.id();
     return Status::OK();
@@ -1412,22 +1615,18 @@ Status CatalogManager::ImportNamespaceEntry(
     } else {
       new_namespace_name = meta.name();
     }
-    {
-      SharedLock lock(mutex_);
-      ns = FindPtrOrNull(namespace_names_mapper_[ns_data.db_type], new_namespace_name);
-    }
-    if (ns == nullptr) {
+    ns_result = FindNamespaceByName(ns_data.db_type, new_namespace_name);
+    if (!ns_result.ok()) {
       const string msg = Format("YSQL database must exist: $0", new_namespace_name);
       LOG_WITH_FUNC(WARNING) << msg;
       return STATUS(InvalidArgument, msg, MasterError(MasterErrorPB::NAMESPACE_NOT_FOUND));
     }
+    const auto& ns = *ns_result;
     if (ns->state() != SysNamespaceEntryPB::RUNNING) {
       const string msg = Format("Found YSQL database must be running: $0", new_namespace_name);
       LOG_WITH_FUNC(WARNING) << msg;
       return STATUS(InvalidArgument, msg, MasterError(MasterErrorPB::NAMESPACE_NOT_FOUND));
     }
-
-    auto ns_lock = ns->LockForRead();
     ns_data.new_namespace_id = ns->id();
   } else {
     CreateNamespaceRequestPB req;
@@ -1674,19 +1873,14 @@ Status CatalogManager::RecreateTable(const NamespaceId& new_namespace_id,
       req.set_indexed_table_id(it->second.new_table_id);
     }
 
-    scoped_refptr<TableInfo> indexed_table;
-    {
-      SharedLock lock(mutex_);
-      // Try to find the specified indexed table by id.
-      indexed_table = tables_->FindTableOrNull(req.indexed_table_id());
-    }
+    auto indexed_table_result = FindTableById(req.indexed_table_id());
 
-    if (indexed_table == nullptr) {
+    if (!indexed_table_result.ok()) {
       const string msg = Format("Indexed table not found by id: $0", req.indexed_table_id());
       LOG_WITH_FUNC(WARNING) << msg;
       return STATUS(InvalidArgument, msg, MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
     }
-
+    const auto& indexed_table = *indexed_table_result;
     LOG_WITH_FUNC(INFO) << "Found indexed table by id " << req.indexed_table_id();
 
     // Ensure the main table schema (including column ids) was not changed.
@@ -1763,6 +1957,9 @@ Status CatalogManager::RepartitionTable(const TableInfoPtr& table,
     // whole process. Consequently, we hold it through some steps that require mutex_, but since
     // taking mutex_ after TableInfo pb lock is prohibited for deadlock reasons, acquire mutex_
     // first, then release it when it is no longer needed, still holding table pb lock.
+    //
+    // todo(GH29185): This code holds `CatalogManager::mutex_` exclusively while acquiring COW write
+    // locks.
     TableInfo::WriteLock table_lock;
     {
       LockGuard lock(mutex_);
@@ -1916,7 +2113,7 @@ Status CatalogManager::RepartitionTable(const TableInfoPtr& table,
 //
 // table: internal table's info
 // snapshot_data: external table's snapshot data
-Result<bool> CatalogManager::CheckTableForImport(scoped_refptr<TableInfo> table,
+Result<bool> CatalogManager::CheckTableForImport(const scoped_refptr<TableInfo>& table,
                                                  ExternalTableSnapshotData* snapshot_data) {
   auto table_lock = table->LockForRead();
 
@@ -1999,11 +2196,8 @@ Status CatalogManager::ImportTableEntry(
     // Make sure the new_table_id corresponds to an existing DocDB table at restore side.
     // Return an error in case no table with new_table_id was found at restore side.
     TRACE("Looking up table");
-    {
-      SharedLock lock(mutex_);
-      table = tables_->FindTableOrNull(table_data->new_table_id);
-    }
-    if (!table) {
+    auto table_result = FindTableById(table_data->new_table_id);
+    if (!table_result.ok()) {
       LOG(WARNING) << Format(
           "Did not find a corresponding table at restore side for the table $0 from backup.",
           table_data->old_table_id);
@@ -2023,15 +2217,13 @@ Status CatalogManager::ImportTableEntry(
   }
   // The destination table should be found or created by now.
   TRACE("Looking up new table");
-  {
-    SharedLock lock(mutex_);
-    table = tables_->FindTableOrNull(table_data->new_table_id);
-  }
-  if (table == nullptr) {
+  auto table_result = FindTableById(table_data->new_table_id);
+  if (!table_result.ok()) {
     const string msg = Format("Created table not found: $0", table_data->new_table_id);
     LOG_WITH_FUNC(WARNING) << msg;
     return STATUS(InternalError, msg, MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
   }
+  table = std::move(*table_result);
 
   std::optional<int> schema_version;
 
@@ -2317,30 +2509,28 @@ Result<bool> CatalogManager::ImportTableEntryByName(
   bool is_parent_colocated_table = false;
   if (new_namespace_id == table_data->old_namespace_id) {
     TRACE("Looking up table");
-    {
-        SharedLock lock(mutex_);
-        table = tables_->FindTableOrNull(table_data->old_table_id);
-    }
+    auto table_result = FindTableById(table_data->old_table_id);
 
-    if (table != nullptr) {
-        VLOG_WITH_PREFIX(3) << "Begin first search";
-        // At this point, namespace id and table id match. Check other properties, like whether the
-        // table is active and whether table name matches.
-        SharedLock lock(mutex_);
-        if (VERIFY_RESULT(CheckTableForImport(table, table_data))) {
+    if (table_result.ok()) {
+      table = std::move(*table_result);
+      VLOG_WITH_PREFIX(3) << "Begin first search";
+      // At this point, namespace id and table id match. Check other properties, like whether the
+      // table is active and whether table name matches.
+      SharedLock lock(mutex_);
+      if (VERIFY_RESULT(CheckTableForImport(table, table_data))) {
         LOG_WITH_FUNC(INFO) << "Found existing table: '" << table->ToString() << "'";
         if (meta.colocated() && IsColocationParentTableId(table_data->old_table_id)) {
           // Parent colocated tables don't have partition info, so make sure to mark them.
           is_parent_colocated_table = true;
         }
-        } else {
+      } else {
         // A property did not match, so this search by ids failed.
         auto table_lock = table->LockForRead();
         LOG_WITH_FUNC(WARNING) << "Existing table " << table->ToString()
                                << " not suitable: " << table_lock->pb.ShortDebugString()
                                << ", name: " << table->name() << " vs " << meta.name();
         table.reset();
-        }
+      }
     }
   }
 
@@ -2466,9 +2656,7 @@ Result<TableId> CatalogManager::GetRestoreTargetParentTableForLegacyColocatedDb(
   // <namespace_id>.colocated.parent.uuid
   // Case 2: Restored DB uses the new colocation database format:
   // <tablegroup_id>.colocation.parent.uuid
-  SharedLock lock(mutex_);
-  bool legacy_colocated_database = colocated_db_tablets_map_.find(restore_target_namespace_id) !=
-                                   colocated_db_tablets_map_.end();
+  bool legacy_colocated_database = IsColocatedNamespace(restore_target_namespace_id);
   if (legacy_colocated_database) {
     return GetColocatedDbParentTableId(restore_target_namespace_id);
   } else {
@@ -2565,8 +2753,7 @@ Status CatalogManager::ImportTabletEntry(
   // Update tablets IDs map.
   if (table_data.new_table_id == table_data.old_table_id) {
     TRACE("Looking up tablet");
-    SharedLock lock(mutex_);
-    if (tablet_map_->contains(entry.id())) {
+    if (GetTabletInfo(entry.id()).ok()) {
       IdPairPB* const pair = table_data.table_meta->add_tablets_ids();
       pair->set_old_id(entry.id());
       pair->set_new_id(entry.id());

@@ -1,9 +1,10 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
+import java.math.BigInteger;
 import java.util.List;
 
 /** This class will be used by the API to generate entries on Queries tab */
@@ -17,7 +18,7 @@ public class LiveQueriesParams {
     public String query;
 
     // query_id and leader pid are only present on pg15 and above.
-    public long query_id = -1L;
+    public BigInteger query_id = null;
 
     public long leader_pid = -1L;
 

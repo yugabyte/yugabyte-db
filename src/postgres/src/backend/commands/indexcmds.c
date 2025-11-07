@@ -75,10 +75,10 @@
 #include "catalog/yb_catalog_version.h"
 #include "commands/progress.h"
 #include "commands/yb_tablegroup.h"
-#include "pg_yb_utils.h"
 #include "pgstat.h"
 #include "utils/guc.h"
 #include "utils/yb_inheritscache.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 #include <inttypes.h>
 
 
@@ -2200,11 +2200,7 @@ DefineIndex(Oid relationId,
 
 		StartTransactionCommand();
 
-		YbDdlMode	ddl_mode = (YBIsDdlTransactionBlockEnabled()) ?
-			YB_DDL_MODE_AUTONOMOUS_TRANSACTION_CHANGE_VERSION_INCREMENT :
-			YB_DDL_MODE_VERSION_INCREMENT;
-
-		YBIncrementDdlNestingLevel(ddl_mode);
+		YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
 
 		/* Wait for all backends to have up-to-date version. */
 		YbWaitForBackendsCatalogVersion();
@@ -2234,7 +2230,7 @@ DefineIndex(Oid relationId,
 										"concurrent index backfill");
 
 		StartTransactionCommand();
-		YBIncrementDdlNestingLevel(ddl_mode);
+		YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
 
 		/* Wait for all backends to have up-to-date version. */
 		YbWaitForBackendsCatalogVersion();
@@ -2265,6 +2261,40 @@ DefineIndex(Oid relationId,
 		 * table.
 		 */
 		HandleYBStatus(YBCPgBackfillIndex(databaseId, indexRelationId));
+
+		Relation	yb_baserel = table_open(relationId, NoLock);
+
+		if (yb_enable_update_reltuples_after_create_index)
+		{
+			Oid			index_oids[1] = {indexRelationId};
+			Oid			database_oids[1] = {databaseId};
+			uint64_t	num_rows_read_from_table;
+			double		num_rows_backfilled;
+
+			HandleYBStatus(YBCGetIndexBackfillProgress(index_oids, database_oids,
+													   &num_rows_read_from_table,
+													   &num_rows_backfilled,
+													   1));
+
+			/*
+			 * Ignore the update if there was an error getting backfill
+			 * progress.
+			 */
+			if (num_rows_backfilled != -1)
+			{
+				Relation	yb_indexrel = index_open(indexRelationId, NoLock);
+
+				yb_index_update_stats(yb_baserel,
+									  true,
+									  ((double) (num_rows_read_from_table)));
+				yb_index_update_stats(yb_indexrel,
+									  false,
+									  (num_rows_backfilled));
+				index_close(yb_indexrel, NoLock);
+			}
+		}
+
+		table_close(yb_baserel, NoLock);
 
 		YbTestGucFailIfStrEqual(yb_test_fail_index_state_change, "postbackfill");
 
@@ -3906,8 +3936,16 @@ ReindexMultipleInternal(List *relids, ReindexParams *params)
 {
 	ListCell   *l;
 
-	PopActiveSnapshot();
-	CommitTransactionCommand();
+	/*
+	 * YB: Handle the commit later while starting the new transaction. See the
+	 * call to YbCommitTransactionCommandIntermediate at the start of the loop
+	 * below.
+	 */
+	if (!IsYugaByteEnabled())
+	{
+		PopActiveSnapshot();
+		CommitTransactionCommand();
+	}
 
 	foreach(l, relids)
 	{
@@ -3915,7 +3953,14 @@ ReindexMultipleInternal(List *relids, ReindexParams *params)
 		char		relkind;
 		char		relpersistence;
 
-		StartTransactionCommand();
+		/*
+		 * YB: Commit the earlier transaction remembering the ddl state, start a
+		 * new one and set the stored ddl state.
+		 */
+		if (IsYugaByteEnabled())
+			YbCommitTransactionCommandIntermediate();
+		else
+			StartTransactionCommand();
 
 		/* functions in indexes may want a snapshot set */
 		PushActiveSnapshot(GetTransactionSnapshot());
@@ -3923,8 +3968,15 @@ ReindexMultipleInternal(List *relids, ReindexParams *params)
 		/* check if the relation still exists */
 		if (!SearchSysCacheExists1(RELOID, ObjectIdGetDatum(relid)))
 		{
-			PopActiveSnapshot();
-			CommitTransactionCommand();
+			/*
+			 * YbCommitTransactionCommandIntermediate call in the next iteration
+			 * or after the loop will take care of the pop & commit.
+			 */
+			if (!IsYugaByteEnabled())
+			{
+				PopActiveSnapshot();
+				CommitTransactionCommand();
+			}
 			continue;
 		}
 
@@ -3973,7 +4025,13 @@ ReindexMultipleInternal(List *relids, ReindexParams *params)
 			reindex_index(relid, false, relpersistence, &newparams,
 						  false /* is_yb_table_rewrite */ ,
 						  true /* yb_copy_split_options */ );
-			PopActiveSnapshot();
+
+			/*
+			 * YbCommitTransactionCommandIntermediate call in the next iteration
+			 * or after the loop will take care of the pop.
+			 */
+			if (!IsYugaByteEnabled())
+				PopActiveSnapshot();
 			/* reindex_index() does the verbose output */
 		}
 		else
@@ -3996,13 +4054,26 @@ ReindexMultipleInternal(List *relids, ReindexParams *params)
 								get_namespace_name(get_rel_namespace(relid)),
 								get_rel_name(relid))));
 
-			PopActiveSnapshot();
+			/*
+			 * YbCommitTransactionCommandIntermediate call in the next iteration
+			 * or after the loop will take care of the pop.
+			 */
+			if (!IsYugaByteEnabled())
+				PopActiveSnapshot();
 		}
 
-		CommitTransactionCommand();
+		/*
+		 * YbCommitTransactionCommandIntermediate call in the next iteration or
+		 * after the loop will take care of the commit.
+		 */
+		if (!IsYugaByteEnabled())
+			CommitTransactionCommand();
 	}
 
-	StartTransactionCommand();
+	if (IsYugaByteEnabled())
+		YbCommitTransactionCommandIntermediate();
+	else
+		StartTransactionCommand();
 }
 
 
@@ -5114,6 +5185,7 @@ YbWaitForBackendsCatalogVersion()
 								 " pg_stat_activity WHERE"
 								 " backend_type != 'walsender' AND"
 								 " backend_type != 'yb-conn-mgr walsender' AND"
+								 " backend_type != 'yb auto analyze backend' AND"
 								 " catalog_version < %" PRIu64
 								 " AND datid = %u;",
 								 catalog_version,

@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -43,7 +43,9 @@
 
 #include "yb/rpc/call_data.h"
 #include "yb/rpc/rpc_header.pb.h"
+#include "yb/rpc/sidecars.h"
 
+#include "yb/util/crc.h"
 #include "yb/util/faststring.h"
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/result.h"
@@ -56,8 +58,10 @@ using google::protobuf::MessageLite;
 using google::protobuf::io::CodedInputStream;
 using google::protobuf::io::CodedOutputStream;
 
-namespace yb {
-namespace rpc {
+namespace yb::rpc {
+
+// tag + 4 bytes values
+constexpr size_t kCrcFieldSize = 5;
 
 size_t SerializedMessageSize(size_t body_size, size_t additional_size) {
   auto full_size = body_size + additional_size;
@@ -132,7 +136,7 @@ Status SerializeHeader(const MessageLite& header,
   return Status::OK();
 }
 
-Result<RefCntBuffer> SerializeRequest(
+Result<std::pair<RefCntBuffer, size_t>> SerializeResponse(
     size_t body_size, size_t additional_size, const google::protobuf::Message& header,
     AnyMessageConstPtr body) {
   auto message_size = SerializedMessageSize(body_size, additional_size);
@@ -142,7 +146,7 @@ Result<RefCntBuffer> SerializeRequest(
       header, message_size + additional_size, &result, message_size, &header_size));
 
   RETURN_NOT_OK(SerializeMessage(body, body_size, result, additional_size, header_size));
-  return result;
+  return std::pair{result, header_size};
 }
 
 bool SkipField(uint8_t type, CodedInputStream* in) {
@@ -206,6 +210,14 @@ Status ParseHeader(
           in->Skip(length);
         }
         break;
+      case RequestHeader::kCrcFieldNumber: {
+          uint32_t crc;
+          if (!in->ReadLittleEndian32(&crc)) {
+            return STATUS(Corruption, "Unable to decode CRC field");
+          }
+          parsed_header->crc = crc;
+        }
+        break;
       case RequestHeader::kMetadataFieldNumber:
         parsed_header->metadata = VERIFY_RESULT(ParseString(buf, "metadata", in));
         break;
@@ -231,6 +243,17 @@ Status ParseHeader(Slice buf, CodedInputStream* in, MessageLite* parsed_header) 
 
 namespace {
 
+std::optional<uint32_t> GetCrc(const ParsedRequestHeader& header) {
+  return header.crc;
+}
+
+std::optional<uint32_t> GetCrc(const ResponseHeader& header) {
+  if (header.has_crc()) {
+    return header.crc();
+  }
+  return std::nullopt;
+}
+
 template <class Header>
 Result<Slice> ParseYBHeader(Slice buf, Header* parsed_header) {
   CodedInputStream in(buf.data(), narrow_cast<int>(buf.size()));
@@ -245,6 +268,18 @@ Result<Slice> ParseYBHeader(Slice buf, Header* parsed_header) {
   auto l = in.PushLimit(header_len);
   RETURN_NOT_OK(ParseHeader(buf, &in, parsed_header));
   in.PopLimit(l);
+
+  if (auto crc = GetCrc(*parsed_header)) {
+    crc::Crc32Accumulator msg_crc;
+    msg_crc.Feed(buf.Prefix(in.CurrentPosition() - kCrcFieldSize));
+    msg_crc.Feed(buf.WithoutPrefix(in.CurrentPosition()));
+    if (msg_crc.result() != *crc) {
+      auto status = STATUS_FORMAT(
+          Corruption, "Invalid CRC $0 for $1", msg_crc.result(), *parsed_header);
+      LOG(DFATAL) << status;
+      return status;
+    }
+  }
 
   uint32_t main_msg_len;
   if (PREDICT_FALSE(!in.ReadVarint32(&main_msg_len))) {
@@ -351,6 +386,14 @@ void ParsedRequestHeader::ToPB(RequestHeader* out) const {
     out->mutable_remote_method()->set_service_name(parsed_remote_method->service.ToBuffer());
     out->mutable_remote_method()->set_method_name(parsed_remote_method->method.ToBuffer());
   }
+  if (crc) {
+    out->set_crc(*crc);
+  }
+}
+
+std::string ParsedRequestHeader::ToString() const {
+  return YB_STRUCT_TO_STRING(
+      (remote_method, RemoteMethodAsString()), call_id, timeout_ms, sidecar_offsets, crc);
 }
 
 Status ParseMetadata(Slice buf, AnyMessagePtr out) {
@@ -372,5 +415,20 @@ Status ParseMetadataFromSharedMemory(
   return ParseMetadata(metadata, out);
 }
 
-}  // namespace rpc
-}  // namespace yb
+void StoreCrc(
+    const RefCntBuffer& buffer, size_t header_size, size_t message_size, Sidecars* sidecars) {
+  crc::Crc32Accumulator crc;
+  // 5 last bytes for CRC.
+  crc.Feed(
+      buffer.AsSlice().Prefix(header_size - kCrcFieldSize).WithoutPrefix(kMsgLengthPrefixLength));
+  crc.Feed(buffer.udata() + header_size, message_size);
+  if (sidecars) {
+    sidecars->buffer().IterateBlocks([&crc](Slice block) {
+      crc.Feed(block.data(), block.size());
+    });
+  }
+  // Expect CRC to be located at header end.
+  LittleEndian::Store32(buffer.udata() + header_size - 4, crc.result());
+}
+
+}  // namespace yb::rpc

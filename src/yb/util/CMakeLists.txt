@@ -15,9 +15,9 @@
 # specific language governing permissions and limitations
 # under the License.
 #
-# The following only applies to changes made to this file as part of YugaByte development.
+# The following only applies to changes made to this file as part of YugabyteDB development.
 #
-# Portions Copyright (c) YugaByte, Inc.
+# Portions Copyright (c) YugabyteDB, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 # in compliance with the License.  You may obtain a copy of the License at
@@ -181,7 +181,7 @@ set(UTIL_SRCS
   net/tunnel.cc
   ntp_clock.cc
   oid_generator.cc
-  once.cc
+  one_time_bool.cc
   operation_counter.cc
   os-util.cc
   path_util.cc
@@ -353,6 +353,7 @@ ADD_YB_TEST(callback_bind-test)
 ADD_YB_TEST(countdown_latch-test)
 ADD_YB_TEST(crash_point-test)
 ADD_YB_TEST(crc-test RUN_SERIAL true) # has a benchmark
+YB_TEST_TARGET_LINK_LIBRARIES(crc-test.cc rocksdb yb_ash)
 ADD_YB_TEST(crypt-test)
 ADD_YB_TEST(date_time-test)
 ADD_YB_TEST(debug-util-test)
@@ -395,7 +396,6 @@ ADD_YB_TEST(net/net_util-test)
 ADD_YB_TEST(net/rate_limiter-test)
 ADD_YB_TEST(numbered_deque-test)
 ADD_YB_TEST(object_pool-test)
-ADD_YB_TEST(once-test)
 ADD_YB_TEST(operation_counter-test)
 ADD_YB_TEST(os-util-test)
 ADD_YB_TEST(path_util-test)
@@ -412,7 +412,7 @@ ADD_YB_TEST(rolling_log-test)
 ADD_YB_TEST(rw_mutex-test)
 ADD_YB_TEST(rw_semaphore-test)
 ADD_YB_TEST(rwc_lock-test)
-if (NOT "${YB_BUILD_TYPE}" STREQUAL "asan")
+if (NOT IS_ASAN)
   # We disable this test when Undefined Behavior Sanitizer turned on (which is enabled in ASAN
   # builds). This test involves some integer overflows.
   ADD_YB_TEST(safe_math-test)

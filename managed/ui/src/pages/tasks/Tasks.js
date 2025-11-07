@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 import { Component, Suspense } from 'react';
 import { YBLoadingCircleIcon } from '../../components/common/indicators';
 

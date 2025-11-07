@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -667,7 +667,6 @@ class YBFailSnapshotTest: public YBBackupTest {
 
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     pgwrapper::PgCommandTestBase::UpdateMiniClusterOptions(options);
-    options->extra_master_flags.push_back("--TEST_mark_snasphot_as_failed=true");
   }
 };
 
@@ -686,6 +685,10 @@ TEST_F_EX(YBBackupTest,
 
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", keyspace, "create"}));
+
+  // Set the flag to mark snapshots as failed after creating the backup
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_mark_snapshot_as_failed", "true"));
+
   Status s = RunBackupCommand(
     {"--backup_location", backup_dir, "--keyspace", "new_" + keyspace, "restore"});
   ASSERT_NOK(s);

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
@@ -420,6 +420,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
 
     Map<String, Object> ybcOverrides = new HashMap<>();
     ybcOverrides.put("enabled", false);
+    ybcOverrides.put("useYBDBImage", defaultUserIntent.isUseYbdbInbuiltYbc());
     expectedOverrides.put("ybc", ybcOverrides);
 
     expectedOverrides.put("defaultServiceScope", "AZ");
@@ -648,7 +649,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     defaultUserIntent.ybSoftwareVersion = ybSoftwareVersion;
     defaultUserIntent.enableNodeToNodeEncrypt = true;
     defaultUserIntent.enableClientToNodeEncrypt = true;
-    details.upsertPrimaryCluster(defaultUserIntent, null);
+    details.upsertPrimaryCluster(defaultUserIntent, null, null);
     details.rootCA = defaultCert.getUuid();
     defaultUniverse.setUniverseDetails(details);
     defaultUniverse.save();
@@ -699,7 +700,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     defaultUserIntent.ybSoftwareVersion = ybSoftwareVersion;
     defaultUserIntent.enableNodeToNodeEncrypt = true;
     defaultUserIntent.enableClientToNodeEncrypt = false;
-    details.upsertPrimaryCluster(defaultUserIntent, null);
+    details.upsertPrimaryCluster(defaultUserIntent, null, null);
     details.rootCA = defaultCert.getUuid();
     defaultUniverse.setUniverseDetails(details);
     defaultUniverse.save();
@@ -749,7 +750,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     defaultUserIntent.ybSoftwareVersion = ybSoftwareVersion;
     defaultUserIntent.enableNodeToNodeEncrypt = false;
     defaultUserIntent.enableClientToNodeEncrypt = true;
-    details.upsertPrimaryCluster(defaultUserIntent, null);
+    details.upsertPrimaryCluster(defaultUserIntent, null, null);
     details.rootCA = defaultCert.getUuid();
     defaultUniverse.setUniverseDetails(details);
     defaultUniverse.save();

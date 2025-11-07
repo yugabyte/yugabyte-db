@@ -1461,12 +1461,24 @@ ParallelWorkerMain(Datum main_arg)
 	 * (b) we do not want parallel mode to cause these failures, because that
 	 * would make use of parallel query plans not transparent to applications.
 	 */
-	YbBackgroundWorkerInitializeConnectionByOid(fps->database_id,
-												fps->authenticated_user_id,
-												(fps->parallel_master_is_yb_session ?
-												 &fps->parallel_master_yb_session_state.session_id :
-												 NULL),
-												BGWORKER_BYPASS_ALLOWCONN);
+	if (fps->parallel_master_is_yb_session)
+	{
+		YbcPgInitPostgresInfo yb_init_info = {
+			.parallel_leader_session_id = &fps->parallel_master_yb_session_state.session_id,
+			.shared_data = &fps->parallel_leader_pgproc->yb_shared_data
+		};
+
+		YbBackgroundWorkerInitializeConnectionByOid(fps->database_id,
+													fps->authenticated_user_id,
+													BGWORKER_BYPASS_ALLOWCONN,
+													&yb_init_info);
+	}
+	else
+	{
+		BackgroundWorkerInitializeConnectionByOid(fps->database_id,
+												  fps->authenticated_user_id,
+												  BGWORKER_BYPASS_ALLOWCONN);
+	}
 
 	/*
 	 * Set the client encoding to the database encoding, since that is what

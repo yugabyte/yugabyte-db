@@ -1,4 +1,4 @@
-// Copyright (c) Yugabyte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.models;
 
@@ -58,13 +58,13 @@ public class ContinuousBackupConfig extends Model {
   private String storageLocation;
 
   @ApiModelProperty(value = "the last time a successful backup occurred")
-  private long lastBackup;
+  private Long lastBackup;
 
   @Transactional
   public static ContinuousBackupConfig create(
-      UUID uuid, long frequency, TimeUnit timeUnit, int numBackups, String backupDir) {
+      UUID storageConfigUUID, long frequency, TimeUnit timeUnit, int numBackups, String backupDir) {
     ContinuousBackupConfig cbConfig = new ContinuousBackupConfig();
-    cbConfig.storageConfigUUID = uuid;
+    cbConfig.storageConfigUUID = storageConfigUUID;
     cbConfig.frequency = frequency;
     cbConfig.frequencyTimeUnit = timeUnit;
     cbConfig.numBackupsToRetain = numBackups;
@@ -97,5 +97,29 @@ public class ContinuousBackupConfig extends Model {
   public void updateStorageLocation(String storageLocation) {
     this.storageLocation = storageLocation;
     this.update();
+  }
+
+  public long getFrequencyInMilliseconds() {
+    switch (this.getFrequencyTimeUnit()) {
+      case NANOSECONDS:
+        return this.getFrequency() / 100000;
+      case MICROSECONDS:
+        return this.getFrequency() / 1000;
+      case MILLISECONDS:
+        return this.getFrequency();
+      case SECONDS:
+        return this.getFrequency() * 1000;
+      case MINUTES:
+        return this.getFrequency() * 1000 * 60;
+      case HOURS:
+        return this.getFrequency() * 1000 * 60 * 60;
+      case DAYS:
+        return this.getFrequency() * 1000 * 60 * 60 * 24;
+      case MONTHS:
+        return this.getFrequency() * 1000 * 60 * 60 * 24 * 30;
+      case YEARS:
+        return this.getFrequency() * 1000 * 60 * 60 * 24 * 365;
+    }
+    return this.getFrequency();
   }
 }

@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -124,6 +124,7 @@ YB_STRONGLY_TYPED_BOOL(ResetSplit);
 struct AdminCompactionOptions {
   StdStatusCallback compaction_completion_callback;
   TableIdsPtr vector_index_ids;
+  VectorIndexOnly vector_index_only = VectorIndexOnly::kTrue;
   rocksdb::SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe =
       rocksdb::SkipCorruptDataBlocksUnsafe::kFalse;
 };
@@ -183,7 +184,8 @@ class Tablet : public AbstractTablet,
       const std::string& database_name,
       const uint64_t postgres_auth_key,
       bool is_xcluster_target,
-      size_t* number_of_rows_processed,
+      uint64_t* number_of_rows_processed,
+      std::unordered_map<TableId, double>& num_rows_backfilled_in_index,
       std::string* backfilled_until);
 
   Status VerifyIndexTableConsistencyForCQL(
@@ -255,7 +257,7 @@ class Tablet : public AbstractTablet,
       const std::string& backfill_from,
       const CoarseTimePoint deadline,
       const HybridTime read_time,
-      size_t* number_of_rows_processed,
+      uint64_t* number_of_rows_processed,
       std::string* backfilled_until,
       std::unordered_set<TableId>* failed_indexes);
 
@@ -328,6 +330,7 @@ class Tablet : public AbstractTablet,
 
   Status GetIntentsForCDC(
       const TransactionId& id,
+      const SubtxnSet& aborted,
       std::vector<docdb::IntentKeyValueForCDC>* keyValueIntents,
       docdb::ApplyTransactionState* stream_state);
 
@@ -422,7 +425,7 @@ class Tablet : public AbstractTablet,
   // Create a new row iterator which yields the rows as of the current MVCC
   // state of this tablet.
   // The returned iterator is not initialized and should be initialized by the caller before usage.
-  Result<std::unique_ptr<docdb::DocRowwiseIterator>> NewUninitializedDocRowIterator(
+  Result<docdb::DocRowwiseIteratorPtr> NewUninitializedDocRowIterator(
       const dockv::ReaderProjection& projection,
       const ReadHybridTime& read_hybrid_time = {},
       const TableId& table_id = "",
@@ -804,9 +807,9 @@ class Tablet : public AbstractTablet,
     return additional_metadata_.erase(key);
   }
 
-  void InitRocksDBOptions(
-      rocksdb::Options* options, const std::string& log_prefix,
-      rocksdb::BlockBasedTableOptions table_options = rocksdb::BlockBasedTableOptions());
+  void InitRocksDBBaseOptions(rocksdb::Options* options);
+
+  void InitRocksDBOptions(rocksdb::Options* options, const std::string& log_prefix);
 
   TabletRetentionPolicy* RetentionPolicy() override {
     return retention_policy_.get();
@@ -969,7 +972,8 @@ class Tablet : public AbstractTablet,
         max_key_length, std::move(callback), colocated_table_id);
   }
 
-  Status AbortActiveTransactions(CoarseTimePoint deadline) const;
+  Status AbortActiveTransactions(
+      CoarseTimePoint deadline, std::optional<TransactionId>&& exclude_txn_id = std::nullopt) const;
 
   // TODO: Move mutex to private section.
   // Lock used to serialize the creation of RocksDB checkpoints.
@@ -1011,14 +1015,12 @@ class Tablet : public AbstractTablet,
   void DocDBDebugDump(std::vector<std::string> *lines);
 
   Status WriteTransactionalBatch(
-      int64_t batch_idx, // index of this batch in its transaction
-      const docdb::LWKeyValueWriteBatchPB& put_batch,
-      HybridTime hybrid_time,
+      int64_t batch_idx,  // index of this batch in its transaction
+      const docdb::LWKeyValueWriteBatchPB& put_batch, HybridTime hybrid_time,
       const rocksdb::UserFrontiers& frontiers);
 
   Result<TransactionOperationContext> CreateTransactionOperationContext(
-      const boost::optional<TransactionId>& transaction_id,
-      bool is_ysql_catalog_table,
+      const std::optional<TransactionId>& transaction_id, bool is_ysql_catalog_table,
       const SubTransactionMetadataPB* subtransaction_metadata = nullptr) const;
 
   // Pause new read/write operations that are blocking/not blocking start of RocksDB shutdown and
@@ -1051,7 +1053,7 @@ class Tablet : public AbstractTablet,
     return TriggerManualCompactionSyncUnsafe(reason, rocksdb::SkipCorruptDataBlocksUnsafe::kFalse);
   }
 
-  void TriggerVectorIndexCompactionSync(const TableIds& vector_index_ids);
+  Status TriggerVectorIndexCompactionSync(const TableIds& vector_index_ids);
 
   Status ForceRocksDBCompact(
       const rocksdb::CompactRangeOptions& regular_options,

@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -35,7 +35,7 @@ class TransactionStatusCache {
  private:
   struct GetCommitDataResult;
 
-  boost::optional<TransactionLocalState> GetLocalCommitData(const TransactionId& transaction_id);
+  std::optional<TransactionLocalState> GetLocalCommitData(const TransactionId& transaction_id);
   Result<GetCommitDataResult> DoGetCommitData(const TransactionId& transaction_id);
 
   const TransactionOperationContext& txn_context_opt_;

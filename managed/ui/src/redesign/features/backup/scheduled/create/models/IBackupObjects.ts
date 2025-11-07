@@ -1,7 +1,7 @@
 /*
  * Created on Thu Jul 18 2024
  *
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License")
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
@@ -19,6 +19,7 @@ export interface BackupObjectsModel {
   } | null;
   // only for YSQL
   useTablespaces: IBackup['useTablespaces'];
+  useRoles: IBackup['useRoles'];
   // only for YCQL. select all or selected tables
   tableBackupType: Backup_Options_Type;
   // only for YCQL. selected tables

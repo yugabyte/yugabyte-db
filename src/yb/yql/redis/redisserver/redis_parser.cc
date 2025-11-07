@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -372,11 +372,9 @@ Status ParseRPush(YBRedisWriteOp *op, const RedisClientCommand& args) {
 }
 
 template <typename YBRedisOp, typename AddSubKey>
-Status ParseCollection(YBRedisOp *op,
-                       const RedisClientCommand& args,
-                       boost::optional<RedisDataType> type,
-                       AddSubKey add_sub_key,
-                       bool remove_duplicates = true) {
+Status ParseCollection(
+    YBRedisOp* op, const RedisClientCommand& args, std::optional<RedisDataType> type,
+    AddSubKey add_sub_key, bool remove_duplicates = true) {
   const auto& key = args[1];
   op->mutable_request()->mutable_key_value()->set_key(key.cdata(), key.size());
   if (type) {
@@ -527,7 +525,7 @@ Status ParseHGetLikeCommands(YBRedisReadOp* op, const RedisClientCommand& args,
                              RedisGetRequestPB_GetRequestType request_type,
                              bool remove_duplicates = false) {
   op->mutable_request()->mutable_get_request()->set_request_type(request_type);
-  return ParseCollection(op, args, boost::none, add_string_subkey, remove_duplicates);
+  return ParseCollection(op, args, std::nullopt, add_string_subkey, remove_duplicates);
 }
 
 // TODO: Support MGET

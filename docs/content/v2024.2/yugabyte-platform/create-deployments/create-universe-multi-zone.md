@@ -50,7 +50,7 @@ To create a universe:
 
 1. Click **Create** when you are done and wait for the configuration to complete.
 
-![Create Universe on GCP](/images/yp/create-uni-multi-zone-1-gcp.png)
+![Create Universe on GCP](/images/yp/create-uni-multi-zone.png)
 
 ## Universe settings
 
@@ -78,6 +78,7 @@ Specify the provider and geolocations for the nodes in the universe:
 
 Specify the instance to use for the universe nodes:
 
+- Choose the **CPU Architecture**, either x86 (Intel) or AArch6 (ARM).
 - Choose the **Linux version** to be provisioned on the nodes of the universe.
 
   This option only applies if you have selected an AWS, GCP, or Azure provider configuration. The available Linux versions are specified in the provider.
@@ -92,6 +93,11 @@ Specify the instance to use for the universe nodes:
 - Select the **Instance Type** to use for the nodes in the universe.
 
 - Specify the number and size of the storage volumes, and the storage type.
+
+#### Additional AWS fields
+
+- Choose the AWS **EBS Type** between IO1, GP2, and GP3.
+- Specify the **Provisioned IOPS** (IO1 and GP3 only) and **Provisioned Throughput** (GP3 only) for your disk in advance to ensure a consistent performance level.
 
 ### Security Configurations
 
@@ -135,10 +141,10 @@ Access key
 : The access key is the SSH key that is created in the provider. Usually, each provider has its own access key, but if you are reusing keys across providers, they are listed here.
 
 Instance Profile ARN
-: For AWS providers, you can assign an ARN to the nodes in the universe; this allow them to be seamlessly backed up without explicit credentials.
+: For AWS providers, you can assign an ARN to the nodes in the universe; this allows them to be seamlessly backed up without explicit credentials.
 
 Enhanced Postgres Compatibility
-: If database version is v2024.2 or later, you can enable early access features for PostgreSQL compatibility. For more information, refer to [Enhanced PostgreSQL Compatibility Mode](../../../develop/postgresql-compatibility/).
+: If database version is v2024.2 or later, you can enable early access features for PostgreSQL compatibility. For more information, refer to [Enhanced PostgreSQL Compatibility Mode](../../../reference/configuration/postgresql-compatibility/).
 
 Enable Connection Pooling
 : {{<tags/feature/ea idea="1368">}}If database version is v2024.2 or later, you can enable [Built-in connection pooling](../../../explore/going-beyond-sql/connection-mgr-ysql/).

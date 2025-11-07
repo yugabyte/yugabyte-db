@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -62,7 +62,8 @@ RunningTransaction::RunningTransaction(TransactionMetadata metadata,
       abort_handle_(context->rpcs_.InvalidHandle()),
       apply_intents_task_(&context->applier_, context, &apply_data_),
       abort_check_ht_(base_time_for_abort_check_ht_calculation.AddDelta(
-                          1ms * FLAGS_transaction_abort_check_interval_ms)) {
+                          1ms * FLAGS_transaction_abort_check_interval_ms)),
+      fast_mode_scope_(context->CreateFastModeTransactionScope(metadata_)) {
 }
 
 RunningTransaction::~RunningTransaction() {
@@ -229,7 +230,7 @@ void RunningTransaction::ScheduleRemoveIntents(
   }
 }
 
-boost::optional<TransactionStatus> RunningTransaction::GetStatusAt(
+std::optional<TransactionStatus> RunningTransaction::GetStatusAt(
     HybridTime time, HybridTime last_known_status_hybrid_time,
     TransactionStatus last_known_status) {
   switch (last_known_status) {
@@ -244,13 +245,13 @@ boost::optional<TransactionStatus> RunningTransaction::GetStatusAt(
       if (last_known_status_hybrid_time >= time) {
         return TransactionStatus::PENDING;
       }
-      return boost::none;
+      return std::nullopt;
     case TransactionStatus::CREATED: {
       // This can happen in case of transaction promotion. The first status request to the old
       // status tablet could have arrived and the transaction could have undergone promoted in
       // the interim. In that case, we just return the past known status (which could be CREATED
       // if this was the first ever txn status request).
-      return boost::none;
+      return std::nullopt;
     }
     default:
       FATAL_INVALID_ENUM_VALUE(TransactionStatus, last_known_status);
@@ -523,7 +524,7 @@ void RunningTransaction::NotifyWaiters(int64_t serial_no, HybridTime time_of_sta
               "last known: $2 at $3",
               waiter.read_ht, waiter.global_limit_ht, TransactionStatus_Name(transaction_status),
               time_of_status),
-          Slice(), PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_CONFLICT)));
+          Slice(), PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED)));
     }
   }
 }
@@ -662,7 +663,7 @@ const TabletId& RunningTransaction::status_tablet() const {
 void RunningTransaction::UpdateTransactionStatusLocation(const TabletId& new_status_tablet) {
   metadata_.old_status_tablet = std::move(metadata_.status_tablet);
   metadata_.status_tablet = new_status_tablet;
-  metadata_.locality = TransactionLocality::GLOBAL;
+  metadata_.locality = TransactionFullLocality::Global();
 }
 
 void RunningTransaction::UpdateAbortCheckHT(HybridTime now, UpdateAbortCheckHTMode mode) {

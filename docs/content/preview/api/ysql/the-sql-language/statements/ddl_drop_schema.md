@@ -14,7 +14,7 @@ type: docs
 
 ## Synopsis
 
-Use the `DROP SCHEMA` statement to remove a schema and all of its associated objects from the system. This is an irreversible statement. 
+Use the `DROP SCHEMA` statement to remove a schema and all of its associated objects from the system. This is an irreversible statement.
 
 ## Syntax
 

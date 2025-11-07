@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2019 YugaByte, Inc. and Contributors
+# Copyright 2019 YugabyteDB, Inc. and Contributors
 #
 # Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
 # may not use this file except in compliance with the License. You
@@ -79,6 +79,8 @@ class AwsCreateInstancesMethod(CreateInstancesMethod):
                                  help="desired iops for aws v4 instance volumes")
         self.parser.add_argument("--disk_throughput", type=int, default=125,
                                  help="desired throughput for aws gp3 instance volumes")
+        self.parser.add_argument("--capacity_reservation", default=None,
+                                 help="Capacity reservation to use.")
 
     def preprocess_args(self, args):
         super(AwsCreateInstancesMethod, self).preprocess_args(args)
@@ -109,6 +111,10 @@ class AwsCreateInstancesMethod(CreateInstancesMethod):
         if args.instance_tags is not None:
             self.extra_vars.update({
                 "instance_tags": args.instance_tags
+            })
+        if args.capacity_reservation is not None:
+            self.extra_vars.update({
+                "capacity_reservation": args.capacity_reservation
             })
 
         super(AwsCreateInstancesMethod, self).callback(args)
@@ -257,7 +263,9 @@ class AwsResumeInstancesMethod(AbstractInstancesMethod):
     def add_extra_args(self):
         super(AwsResumeInstancesMethod, self).add_extra_args()
         self.parser.add_argument("--node_ip", default=None,
-                                 help="The ip of the instance to resume.")
+                                 help="The ip of the' instance to resume.")
+        self.parser.add_argument("--capacity_reservation", default=None,
+                                 help="Capacity reservation to use.")
 
     def callback(self, args):
         host_info = self.cloud.get_host_info_specific_args(
@@ -277,7 +285,7 @@ class AwsResumeInstancesMethod(AbstractInstancesMethod):
                             f"got {host_info['instance_state']}")
         self.update_ansible_vars_with_args(args)
         server_ports = self.get_server_ports_to_check(args)
-        self.cloud.start_instance(host_info, server_ports)
+        self.cloud.start_instance(host_info, server_ports, args.capacity_reservation)
 
 
 class AwsHardRebootInstancesMethod(HardRebootInstancesMethod):
@@ -546,8 +554,13 @@ class AwsChangeInstanceTypeMethod(ChangeInstanceTypeMethod):
     def __init__(self, base_command):
         super(AwsChangeInstanceTypeMethod, self).__init__(base_command)
 
+    def add_extra_args(self):
+        super(AwsChangeInstanceTypeMethod, self).add_extra_args()
+        self.parser.add_argument("--capacity_reservation", default=None,
+                                 help="Capacity reservation to use.")
+
     def _change_instance_type(self, args, host_info):
-        self.cloud.change_instance_type(host_info, args.instance_type)
+        self.cloud.change_instance_type(host_info, args.instance_type, args.capacity_reservation)
 
     # We have to use this to uniform accessing host_info for AWS and GCP
     def _host_info(self, args, host_info):

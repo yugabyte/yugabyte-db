@@ -1,10 +1,11 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Universe;
+import java.util.Optional;
 import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -44,36 +45,42 @@ public class DeletePitrConfig extends UniverseTaskBase {
 
   @Override
   public void run() {
-    PitrConfig pitrConfig = PitrConfig.getOrBadRequest(taskParams().pitrConfigUuid);
+    Optional<PitrConfig> optionalPitrConfig = PitrConfig.maybeGet(taskParams().pitrConfigUuid);
 
-    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    try (YBClient client = ybService.getUniverseClient(universe)) {
-      ListSnapshotSchedulesResponse scheduleListResp = client.listSnapshotSchedules(null);
-      for (SnapshotScheduleInfo scheduleInfo : scheduleListResp.getSnapshotScheduleInfoList()) {
-        if (scheduleInfo.getSnapshotScheduleUUID().equals(pitrConfig.getUuid())) {
-          DeleteSnapshotScheduleResponse resp = client.deleteSnapshotSchedule(pitrConfig.getUuid());
-          if (resp.hasError()) {
-            String errorMsg = "Failed due to error: " + resp.errorMessage();
-            log.error(errorMsg);
-            throw new RuntimeException(errorMsg);
+    if (optionalPitrConfig.isPresent()) {
+      PitrConfig pitrConfig = optionalPitrConfig.get();
+      Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+      try (YBClient client = ybService.getUniverseClient(universe)) {
+        ListSnapshotSchedulesResponse scheduleListResp = client.listSnapshotSchedules(null);
+        for (SnapshotScheduleInfo scheduleInfo : scheduleListResp.getSnapshotScheduleInfoList()) {
+          if (scheduleInfo.getSnapshotScheduleUUID().equals(pitrConfig.getUuid())) {
+            DeleteSnapshotScheduleResponse resp =
+                client.deleteSnapshotSchedule(pitrConfig.getUuid());
+            if (resp.hasError()) {
+              String errorMsg = "Failed due to error: " + resp.errorMessage();
+              log.error(errorMsg);
+              throw new RuntimeException(errorMsg);
+            }
+            log.debug("Successfully deleted pitr config with uuid {}", pitrConfig.getUuid());
+            break;
           }
-          log.debug("Successfully deleted pitr config with uuid {}", pitrConfig.getUuid());
-          break;
         }
-      }
 
-      pitrConfig.delete();
-    } catch (Exception e) {
-      log.error("{} hit error : {}", getName(), e.getMessage());
-      if (taskParams().ignoreErrors) {
-        log.debug(
-            "Ignoring error deleting pitrConfig with uuid: {} as ignoreErrors is set to true."
-                + " Error: {}",
-            taskParams().pitrConfigUuid,
-            e.getMessage());
-        return;
+        pitrConfig.delete();
+      } catch (Exception e) {
+        log.error("{} hit error : {}", getName(), e.getMessage());
+        if (taskParams().ignoreErrors) {
+          log.debug(
+              "Ignoring error deleting pitrConfig with uuid: {} as ignoreErrors is set to true."
+                  + " Error: {}",
+              taskParams().pitrConfigUuid,
+              e.getMessage());
+          return;
+        }
+        throw new RuntimeException(e);
       }
-      throw new RuntimeException(e);
+    } else {
+      log.info("The pitr config with uuid {} is already deleted", taskParams().pitrConfigUuid);
     }
   }
 }

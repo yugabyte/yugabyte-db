@@ -1,5 +1,5 @@
 //
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -16,8 +16,6 @@
 #pragma once
 
 #include <functional>
-
-#include <boost/optional.hpp>
 
 #include "yb/cdc/cdc_service.pb.h"
 
@@ -118,17 +116,17 @@ bool CheckUuidMatchOrRespond(TabletPeerLookupIf* tablet_manager,
 }
 
 template <class RespType>
-void HandleErrorResponse(RespType* resp, rpc::RpcContext* context, const Status& s,
-    const boost::optional<TabletServerErrorPB::Code>& error_code = boost::none) {
+void HandleErrorResponse(
+    RespType* resp, rpc::RpcContext* context, const Status& s,
+    const std::optional<TabletServerErrorPB::Code>& error_code = std::nullopt) {
   resp->Clear();
-  SetupErrorAndRespond(resp->mutable_error(), s,
-      error_code.get_value_or(TabletServerErrorPB::UNKNOWN_ERROR), context);
+  SetupErrorAndRespond(
+      resp->mutable_error(), s, error_code.value_or(TabletServerErrorPB::UNKNOWN_ERROR), context);
 }
 
 template <class RespType>
-void HandleResponse(RespType* resp,
-                    const std::shared_ptr<rpc::RpcContext>& context,
-                    const Status& s) {
+void HandleResponse(
+    RespType* resp, const std::shared_ptr<rpc::RpcContext>& context, const Status& s) {
   if (PREDICT_FALSE(!s.ok())) {
     HandleErrorResponse(resp, context.get(), s);
     return;
@@ -319,7 +317,7 @@ Status CheckPeerIsLeader(const tablet::TabletPeer& tablet_peer);
 // allow_split_tablet specifies whether to reject requests to tablets which have been already
 // split.
 Status CheckPeerIsReady(
-    const tablet::TabletPeer& tablet_peer, AllowSplitTablet allow_split_tablet);
+  const tablet::TabletPeer& tablet_peer, AllowSplitTablet allow_split_tablet);
 
 Result<std::shared_ptr<tablet::AbstractTablet>> GetTablet(
     TabletPeerLookupIf* tablet_manager, const TabletId& tablet_id,
@@ -368,7 +366,7 @@ class CatalogVersionChecker {
   }
 
  private:
-  using DbOid = boost::optional<uint32_t>;
+  using DbOid = std::optional<uint32_t>;
 
   struct VersionInfo {
     DbOid db_oid;
@@ -380,15 +378,15 @@ class CatalogVersionChecker {
     friend bool operator==(const VersionInfo&, const VersionInfo&) = default;
   };
 
-  template<class PB>
+  template <class PB>
   Result<VersionInfo> FetchVersionInfo(const PB& request) const {
     if (request.has_ysql_catalog_version()) {
-      return VersionInfo(boost::none, request.ysql_catalog_version());
+      return VersionInfo(std::nullopt, request.ysql_catalog_version());
     }
     DCHECK(request.has_ysql_db_catalog_version());
-    SCHECK(FLAGS_ysql_enable_db_catalog_version_mode,
-           InvalidArgument,
-           "enable_db_catalog_version_mode is not enabled");
+    SCHECK(
+        FLAGS_ysql_enable_db_catalog_version_mode, InvalidArgument,
+        "enable_db_catalog_version_mode is not enabled");
     SCHECK(request.has_ysql_db_oid(), InvalidArgument, "ysql_db_oid is not specified");
     return VersionInfo(request.ysql_db_oid(), request.ysql_db_catalog_version());
   }
@@ -396,10 +394,10 @@ class CatalogVersionChecker {
   [[nodiscard]] uint64_t GetLastBreakingVersion(DbOid db_oid) const;
 
   TabletServerIf& tablet_server_;
-  boost::optional<VersionInfo> tserver_version_info_;
+  std::optional<VersionInfo> tserver_version_info_;
 };
 
-} // namespace yb::tserver
+}  // namespace yb::tserver
 
 // Macro helpers.
 

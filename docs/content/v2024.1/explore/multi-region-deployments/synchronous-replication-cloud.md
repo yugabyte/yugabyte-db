@@ -50,7 +50,7 @@ To create a multi-region cluster with synchronous replication, refer to [Replica
 - Set up a [peering connection](../../../yugabyte-cloud/cloud-basics/cloud-vpcs/cloud-add-peering/) to an application VPC where you can host the YB Workload Simulator application. If your cluster is deployed in AWS (that is, has a separate VPC for each region), peer the application VPC with each cluster VPC.
 - Copy the YB Workload Simulator application to the peered VPC and run it from there.
 
-YB Workload Simulator uses the YugabyteDB JDBC Smart Driver. You can run the application from your computer by [enabling Public Access](../../../yugabyte-cloud/cloud-secure-clusters/add-connections/#enabling-public-access) on the cluster, but to use the load balancing features of the driver, an application must be deployed in a VPC that has been peered with the cluster VPC. For more information, refer to [Using smart drivers with YugabyteDB Aeon](../../../drivers-orms/smart-drivers/#using-smart-drivers-with-yugabytedb-aeon).
+YB Workload Simulator uses the YugabyteDB JDBC Smart Driver. You can run the application from your computer by [enabling Public Access](/preview/yugabyte-cloud/cloud-secure-clusters/add-connections/#enabling-public-access) on the cluster, but to use the load balancing features of the driver, an application must be deployed in a VPC that has been peered with the cluster VPC. For more information, refer to [Using smart drivers with YugabyteDB Aeon](/preview/develop/drivers-orms/smart-drivers/#using-smart-drivers-with-yugabytedb-aeon).
 
 ## Start a workload
 
@@ -60,7 +60,7 @@ Follow the [setup instructions](../../#set-up-yb-workload-simulator) to install 
 
 The YugabyteDB JDBC Smart Driver performs uniform load balancing by default, meaning it uniformly distributes application connections across all the nodes in the cluster. However, in a multi-region cluster, it's more efficient to target regions closest to your application.
 
-If you are running the workload simulator from a peered VPC, you can configure the smart driver with [topology load balancing](../../../drivers-orms/smart-drivers/#topology-aware-load-balancing) to limit connections to the closest region.
+If you are running the workload simulator from a peered VPC, you can configure the smart driver with [topology load balancing](/preview/develop/drivers-orms/smart-drivers/#topology-aware-load-balancing) to limit connections to the closest region.
 
 To turn on topology load balancing, start the application as usual, adding the following flag:
 

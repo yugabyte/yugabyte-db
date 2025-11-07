@@ -1047,11 +1047,12 @@ YBGetPublicationOidsByNames(List *pubnames)
 
 	yb_publications = YBGetPublicationsByNames(pubnames, false /* missing_ok */ );
 
-	size_t table_idx = 0;
+	size_t		table_idx = 0;
 
-	foreach (lc, yb_publications)
+	foreach(lc, yb_publications)
 	{
 		Publication *pub = (Publication *) lfirst(lc);
+
 		result[table_idx++] = pub->oid;
 	}
 

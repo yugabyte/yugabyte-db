@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -36,8 +36,6 @@
 #include <optional>
 #include <string>
 #include <vector>
-
-#include <boost/optional/optional_fwd.hpp>
 
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/opid.h"
@@ -250,13 +248,13 @@ class Consensus {
                              VoteResponsePB* response) = 0;
 
   // Implement a ChangeConfig() request.
-  virtual Status ChangeConfig(const ChangeConfigRequestPB& req,
-                              const StdStatusCallback& client_cb,
-                              boost::optional<tserver::TabletServerErrorPB::Code>* error);
+  virtual Status ChangeConfig(
+      const ChangeConfigRequestPB& req, const StdStatusCallback& client_cb,
+      std::optional<tserver::TabletServerErrorPB::Code>* error);
 
   virtual Status UnsafeChangeConfig(
       const UnsafeChangeConfigRequestPB& req,
-      boost::optional<tserver::TabletServerErrorPB::Code>* error_code) = 0;
+      std::optional<tserver::TabletServerErrorPB::Code>* error_code) = 0;
 
   virtual std::vector<FollowerCommunicationTime> GetFollowerCommunicationTimes() = 0;
 

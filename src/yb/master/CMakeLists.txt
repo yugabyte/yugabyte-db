@@ -15,9 +15,9 @@
 # specific language governing permissions and limitations
 # under the License.
 #
-# The following only applies to changes made to this file as part of YugaByte development.
+# The following only applies to changes made to this file as part of YugabyteDB development.
 #
-# Portions Copyright (c) YugaByte, Inc.
+# Portions Copyright (c) YugabyteDB, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 # in compliance with the License.  You may obtain a copy of the License at
@@ -83,6 +83,7 @@ set(MASTER_SRCS
   catalog_manager_bg_tasks.cc
   catalog_manager_ext.cc
   catalog_manager_util.cc
+  cdcsdk_manager.cc
   clone/clone_state_entity.cc
   clone/clone_state_manager.cc
   clone/clone_tasks.cc

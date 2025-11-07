@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -66,7 +66,8 @@ void TabletServerIntegrationTestBase::AddExtraFlags(
 void TabletServerIntegrationTestBase::CreateCluster(
     const std::string& data_root_path,
     const std::vector<std::string>& non_default_ts_flags,
-    const std::vector<std::string>& non_default_master_flags) {
+    const std::vector<std::string>& non_default_master_flags,
+    bool enable_ysql) {
   LOG(INFO) << "Starting cluster with:";
   LOG(INFO) << "--------------";
   LOG(INFO) << FLAGS_num_tablet_servers << " tablet servers";
@@ -76,6 +77,8 @@ void TabletServerIntegrationTestBase::CreateCluster(
   ExternalMiniClusterOptions opts;
   opts.num_tablet_servers = FLAGS_num_tablet_servers;
   opts.data_root = GetTestPath(data_root_path);
+  opts.enable_ysql = enable_ysql;
+  opts.replication_factor = FLAGS_num_replicas;
 
   // If the caller passed no flags use the default ones, where we stress consensus by setting
   // low timeouts and frequent cache misses.
@@ -91,7 +94,6 @@ void TabletServerIntegrationTestBase::CreateCluster(
   // Disable load balancer for master by default for these tests. You can override this through
   // setting flags in the passed in non_default_master_flags argument.
   opts.extra_master_flags.push_back("--enable_load_balancing=false");
-  opts.extra_master_flags.push_back(yb::Format("--replication_factor=$0", FLAGS_num_replicas));
   for (const std::string& flag : non_default_master_flags) {
     opts.extra_master_flags.push_back(flag);
   }
@@ -157,7 +159,7 @@ void TabletServerIntegrationTestBase::WaitForReplicasAndUpdateLocations() {
 
   tablet_id_ = (*tablet_replicas_.begin()).first;
   CHECK_OK(WaitUntilAllTabletReplicasRunning(TServerDetailsVector(tablet_replicas_), tablet_id_,
-                                               10s * kTimeMultiplier));
+                                             30s * kTimeMultiplier));
 }
 
 // Returns the last committed leader of the consensus configuration. Tries to get it from master
@@ -426,8 +428,9 @@ void TabletServerIntegrationTestBase::CreateTable() {
 // flags to pass to the tablet servers.
 void TabletServerIntegrationTestBase::BuildAndStart(
     const std::vector<std::string>& ts_flags,
-    const std::vector<std::string>& master_flags) {
-  CreateCluster("raft_consensus-itest-cluster", ts_flags, master_flags);
+    const std::vector<std::string>& master_flags,
+    bool enable_ysql) {
+  CreateCluster("raft_consensus-itest-cluster", ts_flags, master_flags, enable_ysql);
   client_ = ASSERT_RESULT(CreateClient());
   ASSERT_NO_FATALS(CreateTable());
   WaitForTSAndReplicas();

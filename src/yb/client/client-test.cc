@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -423,7 +423,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     ASSERT_OK(client_->CreateNamespace(
         kPgsqlNamespaceName, YQL_DATABASE_PGSQL, "" /* creator */, "" /* ns_id */,
-        "" /* src_ns_id */, boost::none /* next_pg_oid */, nullptr /* txn */, false));
+        "" /* src_ns_id */, std::nullopt /* next_pg_oid */, nullptr /* txn */, false));
     std::string kNamespaceId;
     {
       auto namespaces = ASSERT_RESULT(client_->ListNamespaces());
@@ -2500,7 +2500,6 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
 
 TEST_F(ClientTest, FlushTable) {
   tablet::TabletPtr tablet;
-  constexpr int kTimeoutSecs = 30;
   int current_row = 0;
 
   {
@@ -2521,22 +2520,18 @@ TEST_F(ClientTest, FlushTable) {
     // Test flush table.
     InsertTestRows(client_table2_, 1, current_row++);
     ASSERT_EQ(tablet->GetCurrentVersionNumSSTFiles(), initial_num_sst_files);
-    ASSERT_OK(client_->FlushTables(
-        {table_id_or_name}, /* add_indexes */ false, kTimeoutSecs, false /* is_compaction */));
+    ASSERT_OK(client_->FlushTables({table_id_or_name}));
     ASSERT_EQ(tablet->GetCurrentVersionNumSSTFiles(), initial_num_sst_files + 1);
 
     // Insert and flush more rows.
     InsertTestRows(client_table2_, 1, current_row++);
-    ASSERT_OK(client_->FlushTables(
-        {table_id_or_name}, /* add_indexes */ false, kTimeoutSecs, false /* is_compaction */));
+    ASSERT_OK(client_->FlushTables({table_id_or_name}));
     InsertTestRows(client_table2_, 1, current_row++);
-    ASSERT_OK(client_->FlushTables(
-        {table_id_or_name}, /* add_indexes */ false, kTimeoutSecs, false /* is_compaction */));
+    ASSERT_OK(client_->FlushTables({table_id_or_name}));
 
     // Test compact table.
     ASSERT_EQ(tablet->GetCurrentVersionNumSSTFiles(), initial_num_sst_files + 3);
-    ASSERT_OK(client_->FlushTables(
-        {table_id_or_name}, /* add_indexes */ false, kTimeoutSecs, true /* is_compaction */));
+    ASSERT_OK(client_->CompactTables({table_id_or_name}));
     ASSERT_EQ(tablet->GetCurrentVersionNumSSTFiles(), 1);
   });
 
@@ -2545,11 +2540,9 @@ TEST_F(ClientTest, FlushTable) {
 
   auto test_bad_flush_and_compact = ([&]<class T>(T table_id_or_name) {
     // Test flush table.
-    ASSERT_NOK(client_->FlushTables(
-        {table_id_or_name}, /* add_indexes */ false, kTimeoutSecs, false /* is_compaction */));
+    ASSERT_NOK(client_->FlushTables({table_id_or_name}));
     // Test compact table.
-    ASSERT_NOK(client_->FlushTables(
-        {table_id_or_name}, /* add_indexes */ false, kTimeoutSecs, true /* is_compaction */));
+    ASSERT_NOK(client_->CompactTables({table_id_or_name}));
   });
 
   test_bad_flush_and_compact("bad table id");
@@ -2595,8 +2588,7 @@ TEST_F_EX(ClientTest, CompactionStatusWaitingForHeartbeats, CompactionClientTest
     tserver->FailHeartbeats();
   }
 
-  ASSERT_OK(client_->FlushTables(
-      {client_table2_->id()}, false /* add_indexes */, 30 /* timeout */, true /* is_compaction */));
+  ASSERT_OK(client_->CompactTables({client_table2_->id()}));
 
   ASSERT_OK(WaitForCompactionStatusSatisfying([&](const TableCompactionStatus& compaction_status) {
     // Expect request to have been made but no tablet to be compacting yet.
@@ -2621,8 +2613,7 @@ TEST_F_EX(ClientTest, CompactionStatusWaitingForHeartbeats, CompactionClientTest
 TEST_F_EX(ClientTest, CompactionStatus, CompactionClientTest) {
   InsertTestRows(client_table2_, 1 /* num_rows */);
 
-  ASSERT_OK(client_->FlushTables(
-      {client_table2_->id()}, false /* add_indexes */, 30 /* timeout */, true /* is_compaction */));
+  ASSERT_OK(client_->CompactTables({client_table2_->id()}));
 
   ASSERT_OK(
       WaitForCompactionStatusSatisfying([&](const TableCompactionStatus& table_compaction_status) {
@@ -2645,8 +2636,7 @@ TEST_F_EX(ClientTest, CompactionStatus, CompactionClientTest) {
   const auto prev_compaction_status =
       ASSERT_RESULT(client_->GetCompactionStatus(client_table2_.name(), true /* show_tablets*/));
   SleepFor(1s);
-  ASSERT_OK(client_->FlushTables(
-      {client_table2_->id()}, false /* add_indexes */, 30 /* timeout */, true /* is_compaction */));
+  ASSERT_OK(client_->CompactTables({client_table2_->id()}));
   ASSERT_OK(WaitForCompactionStatusSatisfying([&](const TableCompactionStatus& compaction_status) {
     // Expect compaction times to be later than the previous.
     if (prev_compaction_status.last_full_compaction_time >
@@ -2671,12 +2661,12 @@ TEST_F(ClientTest, GetNamespaceInfo) {
   // Setup.
   ASSERT_OK(client_->CreateNamespace(
       kPgsqlKeyspaceName, YQLDatabase::YQL_DATABASE_PGSQL, "" /* creator_role_name */,
-      "" /* namespace_id */, "" /* source_namespace_id */, boost::none /* next_pg_oid */,
+      "" /* namespace_id */, "" /* source_namespace_id */, std::nullopt /* next_pg_oid */,
       nullptr /* txn */, true /* colocated */));
 
   // CQL non-colocated.
-  ASSERT_OK(client_->GetNamespaceInfo(
-        "" /* namespace_id */, kKeyspaceName, YQL_DATABASE_CQL, &resp));
+  ASSERT_OK(
+      client_->GetNamespaceInfo("" /* namespace_id */, kKeyspaceName, YQL_DATABASE_CQL, &resp));
   ASSERT_EQ(resp.namespace_().name(), kKeyspaceName);
   ASSERT_EQ(resp.namespace_().database_type(), YQL_DATABASE_CQL);
   ASSERT_FALSE(resp.colocated());
@@ -2909,6 +2899,10 @@ TEST_F(ClientTest, TestMetacacheRefreshWhenSentToWrongLeader) {
   ASSERT_EQ(attempt_num, 2);
 }
 
+// Note: This class has custom initialization for postgres instead of using
+// MiniTabletServer::SetPgServerHandlers. Hence tests would not work if they restart the tserver
+// hosting the ysql connections, and try to create a new connection. Avoid inheriting this class
+// for other tests.
 class ColocationClientTest: public ClientTest {
  public:
   void SetUp() override {
@@ -2949,7 +2943,7 @@ class ColocationClientTest: public ClientTest {
 
   Status InitPostgres() {
     auto pg_ts = RandomElement(cluster_->mini_tablet_servers());
-    auto port = cluster_->AllocateFreePort();
+    auto port = pg_ts->server()->pgsql_proxy_bind_address().port();
     pgwrapper::PgProcessConf pg_process_conf =
         VERIFY_RESULT(pgwrapper::PgProcessConf::CreateValidateAndRunInitDb(
             AsString(Endpoint(pg_ts->bound_rpc_addr().address(), port)),
@@ -2962,9 +2956,11 @@ class ColocationClientTest: public ClientTest {
               << ":" << pg_process_conf.pg_port << ", data: " << pg_process_conf.data_dir
               << ", pgsql webserver port: " << FLAGS_pgsql_proxy_webserver_port;
     pg_supervisor_ = std::make_unique<pgwrapper::PgSupervisor>(pg_process_conf, pg_ts->server());
-    RETURN_NOT_OK(pg_supervisor_->Start());
+    RETURN_NOT_OK(pg_supervisor_->StartAndMaybePause());
 
     pg_host_port_ = HostPort(pg_process_conf.listen_addresses, pg_process_conf.pg_port);
+
+    RETURN_NOT_OK(pg_ts->server()->StartYSQLLeaseRefresher());
     return Status::OK();
   }
 
@@ -3036,7 +3032,7 @@ TEST_F(ClientTest, LegacyColocatedDBColocatedTablesLookupTablet) {
       /* creator_role_name =*/"",
       /* namespace_id =*/"",
       /* source_namespace_id =*/"",
-      /* next_pg_oid =*/boost::none,
+      /* next_pg_oid =*/std::nullopt,
       /* txn =*/nullptr,
       /* colocated =*/true));
 

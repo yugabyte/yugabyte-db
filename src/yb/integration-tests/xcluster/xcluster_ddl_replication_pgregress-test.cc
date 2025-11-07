@@ -278,6 +278,16 @@ class XClusterPgRegressDDLReplicationTest : public XClusterDDLReplicationTestBas
     return Status::OK();
   }
 
+  Status VerifyDataMatch() {
+    auto producer_data_dump = VERIFY_RESULT(RunYSQLDataOnlyDump(producer_cluster_));
+    auto consumer_data_dump = VERIFY_RESULT(RunYSQLDataOnlyDump(consumer_cluster_));
+
+    SCHECK_EQ(
+        producer_data_dump, consumer_data_dump, IllegalState,
+        "Data between the two clusters does not match");
+    return Status::OK();
+  }
+
   bool is_colocated_ = false;
 };
 
@@ -393,13 +403,10 @@ TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateDropTemp) {
 
   // Ensure no DDLs on temporary objects got replicated.  For this test, there should be no DDLs on
   // non-temporary objects so it suffices to check that the count of replicated DDLs is 0.
-  //
-  // TODO(#25885): When triggers are working and uncommented in the test, this will have to be
-  // adjusted to exclude DDLs for creating functions as they are non-temporary objects.
   auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
-  auto num_replicated_ddls = ASSERT_RESULT(
-      conn.FetchRowAsString("SELECT count(*) FROM yb_xcluster_ddl_replication.ddl_queue;", ","));
-  ASSERT_EQ(num_replicated_ddls, "0");
+  auto num_replicated_ddls = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGUint64>(
+      "SELECT count(*) FROM yb_xcluster_ddl_replication.ddl_queue;"));
+  ASSERT_EQ(num_replicated_ddls, 0);
 }
 
 TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateDropSequence) {
@@ -417,6 +424,15 @@ TEST_P(XClusterPgRegressDDLReplicationParamTest, PgRegressTruncateTable) {
       {"truncate_table1.sql", "truncate_table2.sql", "truncate_table3.sql"},
       /*pre_execution_sql_text=*/"",
       /*check_data_only=*/true));
+}
+
+TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateTableAs) {
+  ASSERT_OK(TestPgRegress({"create_table_as.sql"}));
+  ASSERT_OK(VerifyDataMatch());
+}
+
+TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressMaterializedViews) {
+  ASSERT_OK(TestPgRegress({"matview_create.sql", "matview_drop.sql"}));
 }
 
 }  // namespace yb

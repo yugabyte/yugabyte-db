@@ -1,0 +1,170 @@
+-- Rollback of CREATE TABLE
+BEGIN;
+SAVEPOINT a;
+CREATE TABLE test_table (a INT);
+ROLLBACK TO a;
+SELECT * FROM test_table;
+ERROR:  relation "test_table" does not exist
+LINE 1: SELECT * FROM test_table;
+                      ^
+ROLLBACK;
+SELECT * FROM test_table;
+ERROR:  relation "test_table" does not exist
+LINE 1: SELECT * FROM test_table;
+                      ^
+-- Rollback with ALTER TABLE (ADD and DROP COLUMN).
+BEGIN;
+CREATE TABLE test_table (a INT, b INT);
+SAVEPOINT a;
+ALTER TABLE test_table ADD COLUMN c TEXT;
+SAVEPOINT b;
+ALTER TABLE test_table ADD COLUMN d TEXT;
+ALTER TABLE test_table DROP COLUMN b;
+ROLLBACK TO b;
+\d test_table
+             Table "public.test_table"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+ b      | integer |           |          | 
+ c      | text    |           |          | 
+
+ROLLBACK TO a;
+\d test_table
+             Table "public.test_table"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+ b      | integer |           |          | 
+
+ROLLBACK;
+\d test_table
+-- Drop Table DDL + DML Rollback
+BEGIN;
+CREATE TABLE test_table (a INT, b INT);
+INSERT INTO test_table VALUES (1, 2);
+SAVEPOINT a;
+INSERT INTO test_table (a, b) VALUES (3, 4);
+DROP TABLE test_table;
+ROLLBACK TO a;
+\d test_table
+             Table "public.test_table"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ a      | integer |           |          | 
+ b      | integer |           |          | 
+
+ROLLBACK;
+-- Rollback of CREATE INDEX
+BEGIN;
+CREATE TABLE test_table (a INT, b INT);
+SAVEPOINT a;
+CREATE INDEX ON test_table(a);
+NOTICE:  making create index for table "test_table" nonconcurrent
+DETAIL:  Create index in transaction block cannot be concurrent.
+HINT:  Consider running it outside of a transaction block. See https://github.com/yugabyte/yugabyte-db/issues/6240.
+ROLLBACK TO a;
+\di
+          List of relations
+ Schema | Name | Type | Owner | Table 
+--------+------+------+-------+-------
+(0 rows)
+
+ROLLBACK;
+-- Rollback of DROP + CREATE TABLE with the same name works.
+BEGIN;
+CREATE TABLE test_table (a INT, b INT);
+SAVEPOINT svpt;
+DROP TABLE test_table;
+CREATE TABLE test_table (a INT, c INT, d INT);
+ROLLBACK TO SAVEPOINT svpt;
+SELECT * FROM test_table;
+ a | b 
+---+---
+(0 rows)
+
+ROLLBACK;
+-- Rollback of TRUNCATE
+BEGIN;
+CREATE TABLE test_table (a INT, b INT);
+INSERT INTO test_table VALUES (1, 1);
+INSERT INTO test_table VALUES (2, 2);
+INSERT INTO test_table VALUES (3, 3);
+SELECT * FROM test_table ORDER BY a;
+ a | b 
+---+---
+ 1 | 1
+ 2 | 2
+ 3 | 3
+(3 rows)
+
+SAVEPOINT svpt;
+TRUNCATE test_table;
+SELECT * FROM test_table ORDER BY a;
+ a | b 
+---+---
+(0 rows)
+
+ROLLBACK TO SAVEPOINT svpt;
+SELECT * FROM test_table ORDER BY a;
+ a | b 
+---+---
+ 1 | 1
+ 2 | 2
+ 3 | 3
+(3 rows)
+
+ROLLBACK;
+-- #28955: CREATE INDEX (separate DDL transaction) works when savepoint is enabled.
+CREATE TABLE employees(id INT PRIMARY KEY, code VARCHAR(20) UNIQUE, department VARCHAR(50));
+CREATE INDEX idx_department ON employees(department);
+DROP TABLE employees;
+-- #28956: Transaction doesn't self abort
+CREATE TABLE projects (id INT PRIMARY KEY, project_name VARCHAR(100));
+INSERT INTO projects (id, project_name) VALUES (101, 'Project Alpha');
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+UPDATE projects SET project_name = 'Project Phoenix' WHERE id = 101;
+SAVEPOINT sp_mixed;
+CREATE TABLE project_logs (log_id INT, entry TEXT);
+INSERT INTO project_logs VALUES (1, 'Initial log');
+-- This will drop table project_logs but shouldn't abort the entire transaction.
+ROLLBACK TO SAVEPOINT sp_mixed;
+SELECT project_name FROM projects WHERE id = 101;
+  project_name   
+-----------------
+ Project Phoenix
+(1 row)
+
+-- #28957: Rollback to savepoint of ALTER TABLE should complete and not run forever
+CREATE TABLE departments (
+    dept_id INT PRIMARY KEY,
+    dept_name VARCHAR(50)
+);
+CREATE TABLE employees (
+    emp_id INT PRIMARY KEY,
+    emp_name VARCHAR(50),
+    department_id INT,
+    FOREIGN KEY (department_id) REFERENCES departments(dept_id)
+);
+INSERT INTO departments VALUES (1, 'Engineering'), (2, 'Sales');
+INSERT INTO employees VALUES (101, 'Alice', 1), (102, 'Bob', 2);
+BEGIN;
+WARNING:  there is already a transaction in progress
+SAVEPOINT sp_initial_state;
+UPDATE employees SET department_id = 2 WHERE emp_name = 'Alice';
+CREATE INDEX idx_emp_dept ON employees(department_id);
+NOTICE:  making create index for table "employees" nonconcurrent
+DETAIL:  Create index in transaction block cannot be concurrent.
+HINT:  Consider running it outside of a transaction block. See https://github.com/yugabyte/yugabyte-db/issues/6240.
+SAVEPOINT sp_after_index;
+ALTER TABLE employees ADD COLUMN start_date DATE;
+INSERT INTO employees (emp_id, emp_name, department_id, start_date) VALUES (103, 'Charlie', 1, '2025-10-15');
+SAVEPOINT sp_after_alter;
+TRUNCATE TABLE departments; -- This will fail
+ERROR:  cannot truncate a table referenced in a foreign key constraint
+DETAIL:  Table "employees" references "departments".
+HINT:  Truncate table "employees" at the same time, or use TRUNCATE ... CASCADE.
+ROLLBACK TO SAVEPOINT sp_after_alter;
+ROLLBACK TO SAVEPOINT sp_after_index;
+ROLLBACK TO SAVEPOINT sp_initial_state;
+COMMIT;

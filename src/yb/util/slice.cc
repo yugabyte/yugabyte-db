@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// The following only applies to changes made to this file as part of YugaByte development.
+// The following only applies to changes made to this file as part of YugabyteDB development.
 //
-// Portions Copyright (c) YugaByte, Inc.
+// Portions Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -224,7 +224,7 @@ void Slice::AppendTo(faststring* out) const {
   out->append(cdata(), size());
 }
 
-bool Slice::Contains(const Slice& rhs) const {
+bool Slice::Contains(Slice rhs) const {
   return std::string_view(*this).find(rhs) != std::string::npos;
 }
 

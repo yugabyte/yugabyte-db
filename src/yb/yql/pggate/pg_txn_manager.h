@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -16,6 +16,7 @@
 #pragma once
 
 #include <mutex>
+#include <memory>
 #include <optional>
 #include <utility>
 
@@ -31,6 +32,7 @@
 #include "yb/tserver/tserver_fwd.h"
 
 #include "yb/util/enums.h"
+#include "yb/util/scope_exit.h"
 
 #include "yb/yql/pggate/pg_client.h"
 #include "yb/yql/pggate/pg_callbacks.h"
@@ -131,7 +133,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
       const YbcObjectLockId& lock_id, docdb::ObjectLockFastpathLockType lock_type);
 
   Status AcquireObjectLock(
-      SetupPerformOptionsAccessorTag tag, const YbcObjectLockId& lock_id, YbcObjectLockMode mode);
+      SetupPerformOptionsAccessorTag tag, const YbcObjectLockId& lock_id, YbcObjectLockMode mode,
+      std::optional<PgTablespaceOid> tablespace_oid);
   struct DdlState {
     bool has_docdb_schema_changes = false;
     bool force_catalog_modification = false;
@@ -145,16 +148,26 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   YbcTxnPriorityRequirement GetTxnPriorityRequirement(RowMarkType row_mark_type) const;
 
+  auto TemporaryDisableReadTimeHistoryCutoff() {
+    const auto original_value = is_read_time_history_cutoff_disabled_;
+    is_read_time_history_cutoff_disabled_ = true;
+    return ScopeExit(
+        [this, original_value] { is_read_time_history_cutoff_disabled_ = original_value; });
+  }
+
+  bool EnableTableLocking() const;
+
  private:
   class SerialNo {
    public:
     SerialNo();
     SerialNo(uint64_t txn_serial_no, uint64_t read_time_serial_no);
-    void IncTxn();
+    void IncTxn(bool preserve_read_time_history);
     void IncReadTime();
     Status RestoreReadTime(uint64_t read_time_serial_no);
     [[nodiscard]] uint64_t txn() const { return txn_; }
     [[nodiscard]] uint64_t read_time() const { return read_time_; }
+    [[nodiscard]] uint64_t min_read_time() const { return min_read_time_; }
 
    private:
     uint64_t txn_;
@@ -190,6 +203,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   Status ExitSeparateDdlTxnMode(const std::optional<PgDdlCommitInfo>& commit_info);
 
   Status CheckSnapshotTimeConflict() const;
+
   // ----------------------------------------------------------------------------------------------
 
   PgClient* client_;
@@ -240,11 +254,23 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   //                 The reverse is also true: a transaction can be marked as read-only and still
   //                 have writes (before it was marked as read-only). So, no conclusion can be drawn
   //                 about the transaction's read-only status based on the has_writes_ flag.
+  //                 This flag does not include writes made for object locking.
   bool has_writes_ = false;
 
   const bool enable_table_locking_;
 
   std::unordered_map<YbcReadPointHandle, uint64_t> explicit_snapshot_read_time_;
+  bool is_read_time_history_cutoff_disabled_{false};
+
+#ifndef NDEBUG
+ public:
+  void DEBUG_CheckOptionsForPerform(const tserver::PgPerformOptionsPB& options) const;
+ private:
+  struct DEBUG_TxnInfo;
+  friend DEBUG_TxnInfo;
+  void DEBUG_UpdateLastObjectLockingInfo();
+  std::unique_ptr<DEBUG_TxnInfo> debug_last_object_locking_txn_info_;
+#endif
 
   DISALLOW_COPY_AND_ASSIGN(PgTxnManager);
 };

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  */
 
 package common
@@ -249,8 +249,8 @@ func Uninstall(removeData bool) {
 	os.Remove("/usr/bin/" + GoBinaryName)
 }
 
-// Upgrade performs the upgrade procedures common to all services.
-func Upgrade(version string) error {
+// PreUpgrade performs the pre-upgrade procedures common to all services.
+func PreUpgrade(version string) error {
 
 	// Change into the dir we are in so that we can specify paths relative to ourselves
 	// TODO(minor): probably not a good idea in the long run
@@ -611,6 +611,9 @@ func RegenerateSelfSignedCerts() error {
 
 // WaitForYBAReady waits for a YBA to be running with specified version
 func WaitForYBAReady(version string) error {
+	if viper.GetBool("perfAdvisor.enabled") {
+		return nil
+	}
 	log.Info("Waiting for YBA ready.")
 
 	// Needed to access https URL without x509: certificate signed by unknown authority error

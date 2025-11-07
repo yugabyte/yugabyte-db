@@ -19,7 +19,7 @@ For information on how row-level explicit locking clauses behave with these conc
 
 ## Fail-on-Conflict
 
-This is the default concurrency control strategy and is applicable for `Repeatable Read` and `Serializable` isolation levels.
+This concurrency control strategy is applicable for `Repeatable Read` and `Serializable` isolation levels.
 
 In this mode, transactions are assigned random priorities with some exceptions as described in [Transaction Priorities](../transaction-priorities/). As an exception, all transactions in Read Committed isolation have the same priority set to the highest value (in other words, no transaction can preempt an active Read Committed isolation transaction).
 
@@ -308,7 +308,7 @@ Note that the retries will not be performed in case the amount of data to be sen
 
 ## Wait-on-Conflict
 
-This mode of concurrency control is applicable only for YSQL and provides the same semantics as PostgreSQL.
+This mode of concurrency control is applicable only for YSQL (where it is the default) and provides the same semantics as PostgreSQL.
 
 In this mode, transactions are not assigned priorities. If a conflict occurs when a transaction T1 tries to read, write, or lock a row in a conflicting mode with a few other concurrent transactions, T1 will **wait** until all conflicting transactions finish by either committing or rolling back. Once all conflicting transactions have finished, T1 will:
 
@@ -1252,8 +1252,8 @@ All metrics are per tablet.
 
 #### Histograms
 
-1. `wait_queue_pending_time_waiting` (ms): the amount of time a still-waiting transaction has been in the wait queue
-2. `wait_queue_finished_waiting_latency` (ms): the amount of time an unblocked transaction spent in the wait queue
+1. `wait_queue_pending_time_waiting`: the amount of time in microseconds a still-waiting transaction has been in the wait queue
+2. `wait_queue_finished_waiting_latency`: the amount of time in microseconds an unblocked transaction spent in the wait queue
 3. `wait_queue_blockers_per_waiter`: the number of blockers a waiter is stuck on in the wait queue
 
 #### Counters

@@ -263,6 +263,58 @@ FOR VALUES WITH (modulus 2, remainder 0)
 WITH (colocation_id='234567');
 SELECT * FROM yb_table_properties('table_partition'::regclass::oid);
 
+-- (new) Colocation test: Parent and child partitions are non-colocated
+CREATE TABLE partitioned_table_2 (
+    k1 INT,
+    v1 INT,
+    v2 TEXT,
+    PRIMARY KEY (k1 HASH)
+)
+PARTITION BY HASH (k1)
+WITH (colocation=false);
+
+CREATE TABLE partitioned_table_2_0 PARTITION OF partitioned_table_2
+FOR VALUES WITH (modulus 2, remainder 0) WITH (colocation=false);
+
+CREATE TABLE partitioned_table_2_1 PARTITION OF partitioned_table_2
+FOR VALUES WITH (modulus 2, remainder 1)  WITH (colocation=false);
+
+INSERT INTO partitioned_table_2 (SELECT * FROM generate_series(1,10));
+
+SELECT num_tablets, num_hash_key_columns, is_colocated FROM yb_table_properties('partitioned_table_2'::regclass::oid);
+SELECT num_tablets, num_hash_key_columns, is_colocated FROM yb_table_properties('partitioned_table_2_0'::regclass::oid);
+SELECT num_tablets, num_hash_key_columns, is_colocated FROM yb_table_properties('partitioned_table_2_1'::regclass::oid);
+SELECT relname, reloptions FROM pg_class WHERE relname LIKE '%partitioned_table_2%' ORDER BY relname;
+
+-- (new) Colocation test: Parent partitioned table is colocated
+-- child partitions can be colocated or non-colocated
+CREATE TABLE partitioned_table_3 (
+    k1 INT,
+    v1 INT,
+    v2 TEXT
+)
+PARTITION BY RANGE (k1);
+
+-- non-colocated hash partitioned child partition
+CREATE TABLE partitioned_table_3_0 PARTITION OF partitioned_table_3(k1, v1, v2, PRIMARY KEY(k1 HASH))
+FOR VALUES FROM (0) TO (10) WITH (colocation=false);
+
+-- colocated child partition using default db settings
+CREATE TABLE partitioned_table_3_1 PARTITION OF partitioned_table_3
+FOR VALUES FROM (11) TO (20);
+
+-- colocated range partitioned child partition
+CREATE TABLE partitioned_table_3_def PARTITION OF partitioned_table_3(k1, v1, v2, PRIMARY KEY(k1 ASC))
+DEFAULT WITH (colocation=true);
+
+INSERT INTO partitioned_table_3 (SELECT * FROM generate_series(1,10));
+
+SELECT num_tablets, num_hash_key_columns, is_colocated FROM yb_table_properties('partitioned_table_3'::regclass::oid);
+SELECT num_tablets, num_hash_key_columns, is_colocated FROM yb_table_properties('partitioned_table_3_0'::regclass::oid);
+SELECT num_tablets, num_hash_key_columns, is_colocated FROM yb_table_properties('partitioned_table_3_1'::regclass::oid);
+SELECT num_tablets, num_hash_key_columns, is_colocated FROM yb_table_properties('partitioned_table_3_def'::regclass::oid);
+SELECT relname, reloptions FROM pg_class WHERE relname LIKE '%partitioned_table_3%' ORDER BY relname;
+
 -- drop database
 \c yugabyte
 DROP DATABASE colocation_test;

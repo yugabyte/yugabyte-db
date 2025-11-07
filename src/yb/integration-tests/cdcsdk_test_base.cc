@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -137,7 +137,9 @@ Status CDCSDKTestBase::SetUpWithParams(
     // The 'pgsql_proxy_bind_address' flag must be set before starting the cluster. Each
     // tserver will store this address when it starts.
     pg_port = test_cluster_.mini_cluster_->AllocateFreePort();
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_bind_address) = Format("$0:$1", pg_addr, pg_port);
+    auto host_port = HostPort(pg_addr, pg_port);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_bind_address) = host_port.ToString();
+    test_cluster_.mini_cluster_->SetPgTServerSelected(pg_ts_idx, host_port);
   }
 
   RETURN_NOT_OK(test_cluster()->Start());
@@ -563,6 +565,7 @@ Result<GetChangesResponsePB> CDCSDKTestBase::GetChangesFromMaster(
   change_req.set_tablet_id(master::kSysCatalogTabletId);
   change_req.set_wal_segment_index(0);
   change_req.set_safe_hybrid_time(-1);
+  change_req.set_cdcsdk_request_source(CDCSDKRequestSource::WALSENDER);
 
   rpc::RpcController change_rpc;
   change_rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));

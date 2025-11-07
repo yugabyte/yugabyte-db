@@ -177,7 +177,7 @@ YugabyteDB Aeon sends a notification when memory use in the cluster exceeds the 
 
 If your cluster experiences frequent spikes in memory use, consider optimizing your workload.
 
-Unoptimized queries can lead to memory alerts. Use the [Slow Queries](../cloud-queries-slow/) and [Live Queries](../cloud-queries-live/) views to identify potentially problematic queries, then use the `EXPLAIN` statement to see the query execution plan and identify optimizations. Consider adding one or more indexes to improve query performance. For more information, refer to [Analyzing Queries with EXPLAIN](../../../explore/query-1-performance/explain-analyze/).
+Unoptimized queries can lead to memory alerts. Use the [Slow Queries](../cloud-queries-slow/) and [Live Queries](../cloud-queries-live/) views to identify potentially problematic queries, then use the `EXPLAIN` statement to see the query execution plan and identify optimizations. Consider adding one or more indexes to improve query performance. For more information, refer to [Analyzing Queries with EXPLAIN](../../../launch-and-manage/monitor-and-alert/query-tuning/explain-analyze/).
 
 If memory use is continuously higher than 80%, your workload may also exceed the capacity of your cluster. If the issue isn't a single query that consumes a lot of memory on a single tablet, consider scaling your cluster vertically by adding vCPUs to increase capacity per node, or horizontally by adding nodes to reduce the load per node. Refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
 
@@ -219,18 +219,29 @@ If your cluster generates this alert but isn't under a very large workload, cont
 
 #### Fix YSQL connection alerts
 
-YugabyteDB Aeon clusters support [15 simultaneous connections](../../cloud-basics/create-clusters-overview/#sizing) per vCPU. YugabyteDB Aeon sends a notification when the number of YSQL connections on any node in the cluster exceeds the threshold, as follows:
+YugabyteDB Aeon clusters support [15 simultaneous connections](../../cloud-basics/create-clusters-overview/#sizing) per vCPU. If built-in Connection Pooling is enabled, then clusters support 10 client connections per server connection.
+
+YugabyteDB Aeon sends a notification when the number of YSQL connections on any node in the cluster exceeds the threshold, as follows:
 
 - YSQL connections exceeds 60% of the limit (Warning).
-- YSQL connections exceeds 95% of the limit (Severe).
+- YSQL connections exceeds 85% of the limit (Severe).
+
+If Connection Pooling is enabled, the thresholds are as follows:
+
+- YSQL client connections exceeds 60% of the limit (Warning).
+- YSQL client connections exceeds 85% of the limit (Severe).
+- YSQL server connections exceeds 60% of the limit (Warning).
+- YSQL server connections exceeds 85% of the limit (Severe).
 
 If your cluster experiences frequent spikes in connections, consider optimizing your application's connection code.
 
 If connections are opened but never closed, your application will eventually exceed the connection limit.
 
-You may need to implement some form of connection pooling, such as enabling built-in [Connection Pooling](../../../explore/going-beyond-sql/connection-mgr-ysql/).
+You may need to implement some form of connection pooling, such as enabling built-in [Connection Pooling](../../../additional-features/connection-manager-ysql/).
 
 If the number of connections is continuously higher than 60%, your workload may also exceed the capacity of your cluster. Be sure to size your cluster with enough spare capacity to remain fault tolerant during maintenance events and outages. For example, during an outage or a rolling restart for maintenance, a 3 node cluster loses a third of its capacity. The remaining nodes need to be able to handle the traffic from the absent node.
+
+If the number of client connections consistently exceeds the limit, you may benefit from an increase to the limit, depending on your application usage pattern; contact {{% support-cloud %}}.
 
 To add connection capacity, scale your cluster by adding vCPUs or nodes. Refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
 
@@ -255,7 +266,7 @@ YugabyteDB Aeon sends a notification when CPU use on any node in the cluster exc
 
 If your cluster experiences frequent spikes in CPU use, consider optimizing your workload.
 
-Unoptimized queries can lead to CPU alerts. Use the [Slow Queries](../cloud-queries-slow/) and [Live Queries](../cloud-queries-live/) views to identify potentially problematic queries, then use the EXPLAIN statement to see the query execution plan and identify optimizations. Consider adding one or more indexes to improve query performance. For more information, refer to [Analyzing Queries with EXPLAIN](../../../explore/query-1-performance/explain-analyze/).
+Unoptimized queries can lead to CPU alerts. Use the [Slow Queries](../cloud-queries-slow/) and [Live Queries](../cloud-queries-live/) views to identify potentially problematic queries, then use the EXPLAIN statement to see the query execution plan and identify optimizations. Consider adding one or more indexes to improve query performance. For more information, refer to [Analyzing Queries with EXPLAIN](../../../launch-and-manage/monitor-and-alert/query-tuning/explain-analyze/).
 
 High CPU use could also indicate a problem and may require debugging by {{% support-cloud %}}.
 

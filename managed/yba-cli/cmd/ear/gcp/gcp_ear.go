@@ -1,5 +1,5 @@
 /*
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  */
 
 package gcp
@@ -35,6 +35,6 @@ func init() {
 	GCPEARCmd.PersistentFlags().StringP("name", "n", "",
 		fmt.Sprintf("[Optional] The name of the configuration for the action. %s",
 			formatter.Colorize(
-				"Required for create, delete, describe, update.",
+				"Required for create, delete, describe, update and refresh.",
 				formatter.GreenColor)))
 }

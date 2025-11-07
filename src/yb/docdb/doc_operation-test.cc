@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -14,13 +14,11 @@
 #include <thread>
 
 #include "yb/common/common.pb.h"
-#include "yb/qlexpr/index.h"
 #include "yb/common/ql_protocol_util.h"
-#include "yb/qlexpr/ql_resultset.h"
-#include "yb/qlexpr/ql_rowblock.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/transaction-test-util.h"
 
+#include "yb/docdb/bounded_rocksdb_iterator.h"
 #include "yb/docdb/cql_operation.h"
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
@@ -31,7 +29,13 @@
 #include "yb/docdb/ql_rocksdb_storage.h"
 #include "yb/docdb/redis_operation.h"
 
+#include "yb/dockv/reader_projection.h"
+
 #include "yb/gutil/casts.h"
+
+#include "yb/qlexpr/index.h"
+#include "yb/qlexpr/ql_resultset.h"
+#include "yb/qlexpr/ql_rowblock.h"
 
 #include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/internal_stats.h"
@@ -131,16 +135,12 @@ class DiscardUntilFileFilterFactory : public rocksdb::CompactionFileFilterFactor
 // MakeMaxFileSizeFunction will create a function that returns the
 // rocksdb_max_file_size_for_compaction flag if it is set to a positive number, and returns
 // the max uint64 otherwise. It does NOT take the schema's table TTL into consideration.
-auto MakeMaxFileSizeFunction() {
-  // Trick to get type of max_file_size_for_compaction field.
-  typedef typename decltype(
-      static_cast<rocksdb::Options*>(nullptr)->max_file_size_for_compaction)::element_type
-      MaxFileSizeFunction;
-  return std::make_shared<MaxFileSizeFunction>([]{
+auto MakeExcludeFromCompactionFunction() {
+  return std::make_shared<rocksdb::CompactionFileExcluder>([](const rocksdb::FileMetaData& file) {
     if (FLAGS_rocksdb_max_file_size_for_compaction > 0) {
-      return FLAGS_rocksdb_max_file_size_for_compaction;
+      return file.fd.GetTotalFileSize() > FLAGS_rocksdb_max_file_size_for_compaction;
     }
-    return std::numeric_limits<uint64_t>::max();
+    return false;
   });
 }
 
@@ -156,7 +156,7 @@ class DocOperationTest : public DocDBTestBase {
     SetMaxFileSizeForCompaction(0);
     // Make a function that will always use rocksdb_max_file_size_for_compaction.
     // Normally, max_file_size_for_compaction is only used for tables with TTL.
-    ANNOTATE_UNPROTECTED_WRITE(max_file_size_for_compaction_) = MakeMaxFileSizeFunction();
+    ANNOTATE_UNPROTECTED_WRITE(exclude_from_compaction_) = MakeExcludeFromCompactionFunction();
     DocDBTestBase::SetUp();
   }
 
@@ -397,8 +397,9 @@ TEST_F(DocOperationTest, TestRedisSetKVWithTTL) {
   // Read key from rocksdb.
   const auto doc_key = DocKey::FromRedisKey(123, "abc").Encode();
   rocksdb::ReadOptions read_opts;
-  auto iter = std::unique_ptr<rocksdb::Iterator>(db->NewIterator(read_opts));
-  ROCKSDB_SEEK(iter.get(), doc_key.AsSlice());
+  auto iter = OptimizedRocksDbIterator<BoundedRocksDbIterator>(
+      BoundedRocksDbIterator(db, read_opts, &KeyBounds::kNoBounds));
+  ROCKSDB_SEEK(iter, doc_key.AsSlice());
   ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
 
   // Verify correct ttl.
@@ -612,7 +613,7 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
   DocRowwiseIterator iter(
       projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
       ReadOperationData::FromReadTime(ReadHybridTime::FromUint64(3000)), pending_op);
-  iter.InitForTableType(YQL_TABLE_TYPE);
+  ASSERT_OK(iter.InitForTableType(YQL_TABLE_TYPE));
   ASSERT_FALSE(ASSERT_RESULT(iter.FetchNext(nullptr)));
 
   // Now verify row exists even with one valid column.
@@ -638,7 +639,10 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
       )#");
 
   KeyEntryValues hashed_components({KeyEntryValue::Int32(100)});
-  DocQLScanSpec ql_scan_spec(schema, kFixedHashCode, kFixedHashCode, hashed_components,
+  auto arena = SharedSmallArena();
+  DocQLScanSpec ql_scan_spec(
+      schema, kFixedHashCode, kFixedHashCode, arena,
+      dockv::TEST_KeyEntryValuesToSlices(*arena, hashed_components),
       /* req */ nullptr, /* if_req */ nullptr, rocksdb::kDefaultQueryId);
 
   DocRowwiseIterator ql_iter(
@@ -684,9 +688,9 @@ SubDocKey(DocKey(0x0000, [101], []), [ColumnId(3); HT{ physical: 0 logical: 3000
       )#");
 
   vector<KeyEntryValue> hashed_components_system({KeyEntryValue::Int32(101)});
-  DocQLScanSpec ql_scan_spec_system(schema, kFixedHashCode, kFixedHashCode,
-      hashed_components_system, /* req */ nullptr,  /* if_req */ nullptr,
-      rocksdb::kDefaultQueryId);
+  DocQLScanSpec ql_scan_spec_system(schema, kFixedHashCode, kFixedHashCode, arena,
+      dockv::TEST_KeyEntryValuesToSlices(*arena, hashed_components_system),
+      /* req */ nullptr,  /* if_req */ nullptr, rocksdb::kDefaultQueryId);
 
   DocRowwiseIterator ql_iter_system(
       projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
@@ -853,7 +857,7 @@ class DocOperationScanTest : public DocOperationTest {
         rows_.push_back(row);
 
         std::unique_ptr<TransactionOperationContext> txn_op_context;
-        boost::optional<TransactionId> txn_id;
+        std::optional<TransactionId> txn_id;
         if (txn_status_manager) {
           if (RandomActWithProbability(0.5, &rng_)) {
             txn_id = TransactionId::GenerateRandom();
@@ -888,8 +892,8 @@ class DocOperationScanTest : public DocOperationTest {
   void PerformScans(const bool is_forward_scan,
       const TransactionOperationContext& txn_op_context,
       boost::function<void(const size_t keys_in_scan_range)> after_scan_callback) {
-    std::vector <KeyEntryValue> hashed_components = {KeyEntryValue::Int32(h_key_)};
-    std::vector <QLOperator> operators = {
+    std::vector<KeyEntryValue> hashed_components = {KeyEntryValue::Int32(h_key_)};
+    std::vector<QLOperator> operators = {
         QL_OP_EQUAL,
         QL_OP_LESS_THAN_EQUAL,
         QL_OP_GREATER_THAN_EQUAL,
@@ -939,8 +943,10 @@ class DocOperationScanTest : public DocOperationTest {
               (range_column_sorting_type_ == SortingType::kDescending)) {
             std::reverse(expected_rows.begin(), expected_rows.end());
           }
+          auto arena = SharedSmallArena();
           DocQLScanSpec ql_scan_spec(
-              doc_read_context().schema(), kFixedHashCode, kFixedHashCode, hashed_components,
+              doc_read_context().schema(), kFixedHashCode, kFixedHashCode, arena,
+              dockv::TEST_KeyEntryValuesToSlices(*arena, hashed_components),
               &condition, nullptr /* if_ req */, rocksdb::kDefaultQueryId, is_forward_scan);
           dockv::ReaderProjection projection(doc_read_context().schema());
           auto pending_op = ScopedRWOperation::TEST_Create();

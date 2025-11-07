@@ -4,7 +4,7 @@
  * Utilities for YugaByte/PostgreSQL integration that have to be defined on the
  * PostgreSQL side.
  *
- * Copyright (c) YugaByte, Inc.
+ * Copyright (c) YugabyteDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License.  You may obtain a copy
@@ -29,13 +29,10 @@
 
 #define HEAPTUPLE_YBCTID(htup) ((htup)->t_ybctid)
 
+#define INDEXTUPLE_BASECTID(itup) ((itup)->t_ybidxbasectid)
+
 #define HEAPTUPLE_COPY_YBCTID(fromHtup, toHtup) \
 	COPY_YBCTID(HEAPTUPLE_YBCTID(fromHtup), HEAPTUPLE_YBCTID(toHtup))
-
-#define INDEXTUPLE_YBCTID(itup) ((itup)->t_ybctid)
-
-#define INDEXTUPLE_COPY_YBCTID(fromItup, toItup)			\
-	COPY_YBCTID(INDEXTUPLE_YBCTID(fromItup), INDEXTUPLE_YBCTID(toItup))
 
 #define TABLETUPLE_YBCTID(tslot) ((tslot)->tts_ybctid)
 

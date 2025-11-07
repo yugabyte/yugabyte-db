@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 
 package com.yugabyte.yw.commissioner.tasks;
 
@@ -28,7 +28,6 @@ public class DecommissionNodeInstanceTest extends CommissionerBaseTest {
 
   @Before
   public void setUp() {
-    super.setUp();
     provider = ModelFactory.awsProvider(ModelFactory.testCustomer());
     region = Region.create(provider, "region-1", "Region 1", "yb-image-1");
     zone = AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");

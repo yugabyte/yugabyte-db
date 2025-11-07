@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 YugaByte, Inc. and Contributors
+ * Copyright 2024 YugabyteDB, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -10,7 +10,6 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import static com.yugabyte.yw.common.Util.NULL_UUID;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.google.inject.Inject;
@@ -23,6 +22,7 @@ import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.StorageUtil;
 import com.yugabyte.yw.common.StorageUtilFactory;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ha.PlatformReplicationHelper;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.forms.AbstractTaskParams;
@@ -103,12 +103,11 @@ public class CreateContinuousBackup extends AbstractTaskBase {
     ScheduleTask.create(taskUUID, schedule.getScheduleUUID());
     CustomerTask.create(
         customer,
-        NULL_UUID,
+        Util.NULL_UUID,
         taskUUID,
         CustomerTask.TargetType.Yba,
         CustomerTask.TaskType.CreateYbaBackup,
-        // TODO: Actually get platform IP
-        "platform_ip");
+        Util.getYwHostnameOrIP());
     log.info("Submitted continuous yba backup creation with task uuid = {}.", taskUUID);
   }
 

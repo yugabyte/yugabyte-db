@@ -28,7 +28,12 @@ ADD_YB_LIBRARY(hnsw
     SRCS ${NHSW_SRCS}
     DEPS ${NHSW_LIBS})
 
+ADD_YB_TEST_LIBRARY(
+    hnsw_test_util
+    SRCS vector_index_test_base.cc
+    DEPS vector_index yb_common yb_util)
+
 set(YB_TEST_LINK_LIBS
-    hnsw yb_common_test_util ${YB_MIN_TEST_LIBS})
+    hnsw yb_common_test_util hnsw_test_util ${YB_MIN_TEST_LIBS})
 
 ADD_YB_TEST(hnsw-test)
