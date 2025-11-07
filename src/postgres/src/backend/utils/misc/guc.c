@@ -16122,6 +16122,37 @@ assign_yb_enable_cbo(int new_value, void *extra)
 			yb_ignore_stats = true;
 			break;
 	}
+
+	/*
+	 * When enabling CBO, also set:
+	 *  - yb_enable_bitmapscan to on
+	 *  - yb_parallel_range_rows to 10000
+	 *  - yb_enable_parallel_append to on
+	 */
+	if (new_value == YB_COST_MODEL_ON)
+	{
+		SetConfigOption("yb_enable_bitmapscan", "on",
+						PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
+		SetConfigOption("yb_parallel_range_rows", "10000",
+						PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
+		SetConfigOption("yb_enable_parallel_append", "on",
+						PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
+	}
+	/*
+	 * When disabling CBO, also reset:
+	 *  - yb_enable_bitmapscan
+	 *  - yb_parallel_range_rows
+	 *  - yb_enable_parallel_append
+	 */
+	else
+	{
+		SetConfigOption("yb_enable_bitmapscan", "off",
+						PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
+		SetConfigOption("yb_parallel_range_rows", "0",
+						PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
+		SetConfigOption("yb_enable_parallel_append", "off",
+						PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
+	}
 }
 
 static void
