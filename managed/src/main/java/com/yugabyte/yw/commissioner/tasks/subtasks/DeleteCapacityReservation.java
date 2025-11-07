@@ -65,8 +65,7 @@ public class DeleteCapacityReservation extends ServerSubTaskBase {
       for (UUID providerUUID : providers) {
         Provider provider = Provider.getOrBadRequest(providerUUID);
         UniverseDefinitionTaskParams.ReservationInfo reservationForProviderType =
-            CapacityReservationUtil.getReservationForProviderType(
-                capacityReservationState, provider.getCloudCode());
+            CapacityReservationUtil.getReservationForProvider(capacityReservationState, provider);
         if (reservationForProviderType == null) {
           log.debug("No reservation for cloud {}", provider.getCloudCode());
           continue;
@@ -133,7 +132,7 @@ public class DeleteCapacityReservation extends ServerSubTaskBase {
             }
             azureReservationInfo.getReservationsByRegionMap().remove(regionReservation.getRegion());
           }
-          capacityReservationState.setAzureReservationInfo(null);
+          capacityReservationState.getAzureReservationInfos().remove(providerUUID);
         } else if (reservationForProviderType
             instanceof UniverseDefinitionTaskParams.AwsReservationInfo awsReservationInfo) {
           CloudAPI cloudAPI = cloudAPIFactory.get(provider.getCloudCode().name());
@@ -169,7 +168,7 @@ public class DeleteCapacityReservation extends ServerSubTaskBase {
                     });
             awsReservationInfo.getReservationsByZoneMap().remove(zoneReservation.getZone());
           }
-          capacityReservationState.setAwsReservationInfo(null);
+          capacityReservationState.getAwsReservationInfos().remove(providerUUID);
         }
       }
       succeeded = true;

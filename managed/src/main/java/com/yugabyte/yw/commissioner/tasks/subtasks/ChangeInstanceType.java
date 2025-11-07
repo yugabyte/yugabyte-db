@@ -11,9 +11,11 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.utils.CapacityReservationUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.NodeAgent;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Optional;
+import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -64,10 +66,11 @@ public class ChangeInstanceType extends NodeTaskBase {
             .instance_type,
         taskParams().instanceType);
 
-    UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(taskParams().placementUuid);
+    UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(nodeDetails.placementUuid);
+    Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
     taskParams().capacityReservation =
         CapacityReservationUtil.getReservationIfPresent(
-            getTaskCache(), cluster.userIntent.providerType, taskParams().nodeName);
+            getTaskCache(), provider, taskParams().nodeName);
 
     getNodeManager()
         .nodeCommand(NodeManager.NodeCommandType.Change_Instance_Type, taskParams())

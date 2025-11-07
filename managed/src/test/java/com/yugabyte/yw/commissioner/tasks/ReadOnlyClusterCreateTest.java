@@ -259,7 +259,7 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
         params -> ((AnsibleCreateServer.Params) params).capacityReservation,
         Map.of(
             DoCapacityReservation.getCapacityReservationGroupName(
-                universe.getUniverseUUID(), region.getCode()),
+                universe.getUniverseUUID(), region.getProvider(), region.getCode()),
             Arrays.asList("host-readonly1-n1", "host-readonly1-n2")));
   }
 
@@ -315,7 +315,7 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
         params -> ((AnsibleCreateServer.Params) params).capacityReservation,
         Map.of(
             DoCapacityReservation.getZoneInstanceCapacityReservationName(
-                universe.getUniverseUUID(), "az-1", rrInstanceType),
+                universe.getUniverseUUID(), defaultProvider, "az-1", rrInstanceType),
             Arrays.asList("host-readonly1-n1", "host-readonly1-n2")));
   }
 

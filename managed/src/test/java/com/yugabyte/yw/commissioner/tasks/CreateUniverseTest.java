@@ -315,9 +315,11 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
         NodeManager.NodeCommandType.Create,
         param -> ((AnsibleCreateServer.Params) param).capacityReservation,
         Map.of(
-            DoCapacityReservation.getCapacityReservationGroupName(universeUUID, region1.getCode()),
+            DoCapacityReservation.getCapacityReservationGroupName(
+                universeUUID, region1.getProvider(), region1.getCode()),
             nodesByAZ.get(zone1.getUuid()),
-            DoCapacityReservation.getCapacityReservationGroupName(universeUUID, region2.getCode()),
+            DoCapacityReservation.getCapacityReservationGroupName(
+                universeUUID, region2.getProvider(), region2.getCode()),
             nonZ1Nodes));
   }
 
@@ -378,9 +380,11 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
         NodeManager.NodeCommandType.Create,
         param -> ((AnsibleCreateServer.Params) param).capacityReservation,
         Map.of(
-            DoCapacityReservation.getCapacityReservationGroupName(universeUUID, region1.getCode()),
+            DoCapacityReservation.getCapacityReservationGroupName(
+                universeUUID, defaultProvider, region1.getCode()),
             nodesByAZ.get(zone1.getUuid()),
-            DoCapacityReservation.getCapacityReservationGroupName(universeUUID, region2.getCode()),
+            DoCapacityReservation.getCapacityReservationGroupName(
+                universeUUID, defaultProvider, region2.getCode()),
             nodesByAZ.get(zone2.getUuid())));
   }
 
@@ -462,7 +466,8 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
                 Map.of("1", nodesByAZ.get(zone1.getUuid())))));
 
     String region2Group =
-        DoCapacityReservation.getCapacityReservationGroupName(universeUUID, region2.getCode());
+        DoCapacityReservation.getCapacityReservationGroupName(
+            universeUUID, region2.getProvider(), region2.getCode());
     verify(azuResourceGroupApiClient, times(0))
         .createCapacityReservation(
             Mockito.eq(region2Group),
@@ -478,7 +483,8 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
         NodeManager.NodeCommandType.Create,
         param -> ((AnsibleCreateServer.Params) param).capacityReservation,
         Map.of(
-            DoCapacityReservation.getCapacityReservationGroupName(universeUUID, region1.getCode()),
+            DoCapacityReservation.getCapacityReservationGroupName(
+                universeUUID, region1.getProvider(), region1.getCode()),
             nodesByAZ.get(zone1.getUuid())));
   }
 
@@ -546,16 +552,19 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
         Map.of(
             DoCapacityReservation.getZoneInstanceCapacityReservationName(
                 universe.getUniverseUUID(),
+                defaultProvider,
                 "az-1",
                 universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType),
             nodesByAZ.get(zone1.getUuid()),
             DoCapacityReservation.getZoneInstanceCapacityReservationName(
                 universe.getUniverseUUID(),
+                defaultProvider,
                 "az-4",
                 universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType),
             nodesByAZ.get(zone2.getUuid()),
             DoCapacityReservation.getZoneInstanceCapacityReservationName(
                 universe.getUniverseUUID(),
+                defaultProvider,
                 "az-5",
                 universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType),
             nodesByAZ.get(zone3.getUuid())));
@@ -629,9 +638,11 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
         NodeManager.NodeCommandType.Create,
         params -> ((AnsibleCreateServer.Params) params).capacityReservation,
         Map.of(
-            DoCapacityReservation.getCapacityReservationGroupName(universeUUID, region1.getCode()),
+            DoCapacityReservation.getCapacityReservationGroupName(
+                universeUUID, region1.getProvider(), region1.getCode()),
             Arrays.asList("host-n1", "host-n2", "host-n3"),
-            DoCapacityReservation.getCapacityReservationGroupName(universeUUID, region2.getCode()),
+            DoCapacityReservation.getCapacityReservationGroupName(
+                universeUUID, region2.getProvider(), region2.getCode()),
             Arrays.asList("host-readonly1-n1", "host-readonly1-n2", "host-readonly1-n3")));
   }
 
@@ -700,17 +711,18 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
         Map.of(
             DoCapacityReservation.getZoneInstanceCapacityReservationName(
                 universe.getUniverseUUID(),
+                defaultProvider,
                 "az-1",
                 universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType),
             Arrays.asList("host-n1", "host-n2", "host-n3"),
             DoCapacityReservation.getZoneInstanceCapacityReservationName(
-                universe.getUniverseUUID(), "az-4", rrInstanceType),
+                universe.getUniverseUUID(), defaultProvider, "az-4", rrInstanceType),
             Arrays.asList(readonlyNodes.get("4")),
             DoCapacityReservation.getZoneInstanceCapacityReservationName(
-                universe.getUniverseUUID(), "az-5", rrInstanceType),
+                universe.getUniverseUUID(), defaultProvider, "az-5", rrInstanceType),
             Arrays.asList(readonlyNodes.get("5")),
             DoCapacityReservation.getZoneInstanceCapacityReservationName(
-                universe.getUniverseUUID(), "az-6", rrInstanceType),
+                universe.getUniverseUUID(), defaultProvider, "az-6", rrInstanceType),
             Arrays.asList(readonlyNodes.get("6"))));
   }
 

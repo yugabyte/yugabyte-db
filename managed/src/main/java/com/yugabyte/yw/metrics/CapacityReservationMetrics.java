@@ -77,7 +77,6 @@ public class CapacityReservationMetrics {
                 universeUUID.toString(),
                 requestUUID.toString())
             .set(count);
-        log.debug("QQ {} {} {} - {}", cloudType, reservationAction, operationStatus, count);
       } catch (Exception e) {
         log.error("Failed to update counter", e);
       }
