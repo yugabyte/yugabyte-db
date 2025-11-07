@@ -1094,7 +1094,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       Region region,
       Map<String, Map<String, List<String>>> instanceTypeToZonesAndNodes) {
     String regionGroup =
-        DoCapacityReservation.getCapacityReservationGroupName(universeUUID, region.getCode());
+        DoCapacityReservation.getCapacityReservationGroupName(
+            universeUUID, region.getProvider(), region.getCode());
 
     Set<String> allZones =
         instanceTypeToZonesAndNodes.values().stream()
@@ -1220,6 +1221,13 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
 
   protected void verifyCapacityReservationAws(
       UUID universeUUID, Map<String, Map<String, ZoneData>>... instanceTypeToZonesAndNodesArray) {
+    verifyCapacityReservationAws(universeUUID, defaultProvider, instanceTypeToZonesAndNodesArray);
+  }
+
+  protected void verifyCapacityReservationAws(
+      UUID universeUUID,
+      Provider provider,
+      Map<String, Map<String, ZoneData>>... instanceTypeToZonesAndNodesArray) {
 
     List<Double> nodesCounts = new ArrayList<>();
     for (Map<String, Map<String, ZoneData>> instanceTypeToZonesAndNodes :
@@ -1230,7 +1238,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                 (zone, zoneData) -> {
                   String instanceTypeRes =
                       DoCapacityReservation.getZoneInstanceCapacityReservationName(
-                          universeUUID, "az-" + zone, instanceType);
+                          universeUUID, provider, "az-" + zone, instanceType);
                   verify(cloudAPI)
                       .createCapacityReservation(
                           Mockito.eq(defaultProvider),
@@ -1277,7 +1285,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       if (allValue == commandType) {
         NodeTaskParams nodeTaskParams = allParams.get(j);
         String reservation = capacityExtractor.apply(nodeTaskParams);
-        assertNotNull(reservation);
+        assertNotNull("Expected reservation in params " + Json.toJson(nodeTaskParams), reservation);
         assertTrue(reservationToNodes.get(reservation).contains(nodeTaskParams.nodeName));
       }
       j++;

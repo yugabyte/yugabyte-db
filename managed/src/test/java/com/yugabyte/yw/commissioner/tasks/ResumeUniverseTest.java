@@ -29,6 +29,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.DoCapacityReservation;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
@@ -46,6 +47,7 @@ import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -99,7 +101,7 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
     setupUniverse(defaultProvider, updateInProgress, numOfNodes);
   }
 
-  private void setupUniverse(Provider provider, boolean updateInProgress, int numOfNodes) {
+  private Pair<Region, InstanceType> setupProvider(Provider provider) {
     Region r = Region.create(provider, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
     String instanceType =
@@ -107,8 +109,14 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
     InstanceType i =
         InstanceType.upsert(
             provider.getUuid(), instanceType, 10, 5.5, new InstanceType.InstanceTypeDetails());
+    return new Pair<>(r, i);
+  }
+
+  private void setupUniverse(Provider provider, boolean updateInProgress, int numOfNodes) {
+    Pair<Region, InstanceType> s = setupProvider(provider);
+
     UniverseDefinitionTaskParams.UserIntent userIntent =
-        getTestUserIntent(r, provider, i, numOfNodes);
+        getTestUserIntent(s.getFirst(), provider, s.getSecond(), numOfNodes);
     userIntent.replicationFactor = numOfNodes;
     userIntent.masterGFlags = new HashMap<>();
     userIntent.tserverGFlags = new HashMap<>();
@@ -231,8 +239,84 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
         params -> ((ResumeServer.Params) params).capacityReservation,
         Map.of(
             DoCapacityReservation.getCapacityReservationGroupName(
-                defaultUniverse.getUniverseUUID(), region.getCode()),
+                defaultUniverse.getUniverseUUID(), region.getProvider(), region.getCode()),
             Arrays.asList("host-n1", "host-n2", "host-n3")));
+  }
+
+  @Test
+  public void testResumeUniverseWithCRAzureRRSuccess() {
+    RuntimeConfigEntry.upsertGlobal(
+        ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
+    setupUniverse(azuProvider, false, 3);
+
+    Provider azuProvider2 =
+        Provider.create(defaultCustomer.getUuid(), Common.CloudType.azu, "AzureForRR");
+    setupProvider(azuProvider2);
+
+    UniverseDefinitionTaskParams.UserIntent curIntent =
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent;
+    UniverseDefinitionTaskParams.UserIntent rrUserIntent = curIntent.clone();
+    rrUserIntent.provider = azuProvider2.getUuid().toString();
+    rrUserIntent.replicationFactor = 3;
+    AvailabilityZone az = AvailabilityZone.getByCode(azuProvider2, "az-1");
+
+    PlacementInfo pi = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(az.getUuid(), pi, 3, 3, false);
+
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            ApiUtils.mockUniverseUpdaterWithReadReplica(rrUserIntent, pi));
+
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            universe ->
+                universe
+                    .getNodes()
+                    .forEach(
+                        node -> {
+                          node.state = NodeDetails.NodeState.Stopped;
+                          if (!node.placementUuid.equals(
+                              universe.getUniverseDetails().getPrimaryCluster().uuid)) {
+                            node.nodeName += "-readonly";
+                          }
+                        }));
+
+    ResumeUniverse.Params taskParams = new ResumeUniverse.Params();
+    taskParams.customerUUID = defaultCustomer.getUuid();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+    Region region = Region.getByCode(azuProvider, "region-1");
+    Region region1 = Region.getByCode(azuProvider2, "region-1");
+    verifyCapacityReservationAZU(
+        defaultUniverse.getUniverseUUID(),
+        AzureReservationGroup.of(
+            region,
+            Map.of(
+                defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
+                Map.of("1", Arrays.asList("host-n1", "host-n2", "host-n3")))),
+        AzureReservationGroup.of(
+            region1,
+            Map.of(
+                defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.instanceType,
+                Map.of(
+                    "1",
+                    Arrays.asList("host-n4-readonly", "host-n5-readonly", "host-n6-readonly")))));
+
+    verifyNodeInteractionsCapacityReservation(
+        21,
+        NodeManager.NodeCommandType.Resume,
+        params -> ((ResumeServer.Params) params).capacityReservation,
+        Map.of(
+            DoCapacityReservation.getCapacityReservationGroupName(
+                defaultUniverse.getUniverseUUID(), region.getProvider(), region.getCode()),
+            Arrays.asList("host-n1", "host-n2", "host-n3"),
+            DoCapacityReservation.getCapacityReservationGroupName(
+                defaultUniverse.getUniverseUUID(), azuProvider2, region1.getCode()),
+            Arrays.asList("host-n4-readonly", "host-n5-readonly", "host-n6-readonly")));
   }
 
   @Test
@@ -259,6 +343,7 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
         Map.of(
             DoCapacityReservation.getZoneInstanceCapacityReservationName(
                 defaultUniverse.getUniverseUUID(),
+                defaultProvider,
                 "az-1",
                 defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.instanceType),
             Arrays.asList("host-n1", "host-n2", "host-n3")));

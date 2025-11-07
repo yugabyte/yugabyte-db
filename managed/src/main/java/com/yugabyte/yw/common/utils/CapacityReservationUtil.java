@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.common.utils;
 
-import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.common.config.ConfKeyInfo;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -109,7 +108,7 @@ public class CapacityReservationUtil {
   }
 
   public static String getReservationIfPresent(
-      TaskExecutor.TaskCache taskCache, Common.CloudType cloudType, String nodeName) {
+      TaskExecutor.TaskCache taskCache, Provider provider, String nodeName) {
     if (taskCache.get(CapacityReservationUtil.CAPACITY_RESERVATION_KEY) != null) {
       try {
         UniverseDefinitionTaskParams.CapacityReservationState capacityReservationState =
@@ -118,7 +117,7 @@ public class CapacityReservationUtil {
                 UniverseDefinitionTaskParams.CapacityReservationState.class);
         log.debug("Cap state {}", Json.toJson(capacityReservationState));
         UniverseDefinitionTaskParams.ReservationInfo reservationInfo =
-            getReservationForProviderType(capacityReservationState, cloudType);
+            getReservationForProvider(capacityReservationState, provider);
         if (reservationInfo instanceof UniverseDefinitionTaskParams.AzureReservationInfo) {
           for (UniverseDefinitionTaskParams.AzureRegionReservation regionReservation :
               ((UniverseDefinitionTaskParams.AzureReservationInfo) reservationInfo)
@@ -169,24 +168,32 @@ public class CapacityReservationUtil {
     RESUME
   }
 
-  public static <T> T getReservationForProviderType(
-      UniverseDefinitionTaskParams.CapacityReservationState state, Common.CloudType cloudType) {
-    switch (cloudType) {
+  public static <T extends UniverseDefinitionTaskParams.ReservationInfo>
+      T getReservationForProvider(
+          UniverseDefinitionTaskParams.CapacityReservationState state, Provider provider) {
+    switch (provider.getCloudCode()) {
       case azu:
-        return (T) state.getAzureReservationInfo();
+        return (T) state.getAzureReservationInfos().get(provider.getUuid());
       case aws:
-        return (T) state.getAwsReservationInfo();
+        return (T) state.getAwsReservationInfos().get(provider.getUuid());
     }
     return null;
   }
 
-  public static void initReservationForProviderType(
-      UniverseDefinitionTaskParams.CapacityReservationState state, Common.CloudType cloudType) {
-    switch (cloudType) {
+  public static void initReservationForProvider(
+      UniverseDefinitionTaskParams.CapacityReservationState state, Provider provider) {
+    switch (provider.getCloudCode()) {
       case azu:
-        state.setAzureReservationInfo(new UniverseDefinitionTaskParams.AzureReservationInfo());
+        state
+            .getAzureReservationInfos()
+            .putIfAbsent(
+                provider.getUuid(), new UniverseDefinitionTaskParams.AzureReservationInfo());
+        break;
       case aws:
-        state.setAwsReservationInfo(new UniverseDefinitionTaskParams.AwsReservationInfo());
+        state
+            .getAwsReservationInfos()
+            .putIfAbsent(provider.getUuid(), new UniverseDefinitionTaskParams.AwsReservationInfo());
+        break;
     }
   }
 
