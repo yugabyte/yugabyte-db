@@ -534,18 +534,12 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(Oid db_oid,
 		 */
 	}
 
-	YbcPgStatement update_stmt = NULL;
 	YbcPgTypeAttrs type_attrs = {0};
-	YbcPgExpr	yb_expr;
 
-	/* The table pg_yb_catalog_version is in template1. */
-	HandleYBStatus(YBCPgNewUpdate(Template1DbOid,
-								  YBCatalogVersionRelationId,
-								  false /* is_region_local */ ,
-								  &update_stmt,
-								  YB_TRANSACTIONAL));
+	Relation rel = RelationIdGetRelation(YBCatalogVersionRelationId);
 
-	Relation	rel = RelationIdGetRelation(YBCatalogVersionRelationId);
+	YbcPgStatement update_stmt = YbNewUpdate(rel, YB_TRANSACTIONAL);
+
 	Datum		ybctid = YbGetMasterCatalogVersionTableEntryYbctid(rel, db_oid);
 
 	/* Bind ybctid to identify the current row. */
@@ -585,8 +579,7 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(Oid db_oid,
 	YbcPgExpr	ybc_expr = YBCNewEvalExprCall(update_stmt, (Expr *) expr);
 
 	HandleYBStatus(YBCPgDmlAssignColumn(update_stmt, attnum, ybc_expr));
-	yb_expr = YBCNewColumnRef(update_stmt, attnum, INT8OID, InvalidOid,
-							  &type_attrs);
+	YbcPgExpr yb_expr = YBCNewColumnRef(update_stmt, attnum, INT8OID, InvalidOid, &type_attrs);
 	YbAppendPrimaryColumnRef(update_stmt, yb_expr);
 
 	/*
@@ -721,15 +714,10 @@ YbCreateMasterDBCatalogVersionTableEntry(Oid db_oid)
 	 * primary key and therefore only one insert statement is needed to insert
 	 * the row for db_oid.
 	 */
-	YbcPgStatement insert_stmt = NULL;
+	Relation rel = RelationIdGetRelation(YBCatalogVersionRelationId);
 
-	HandleYBStatus(YBCPgNewInsert(Template1DbOid,
-								  YBCatalogVersionRelationId,
-								  false /* is_region_local */ ,
-								  &insert_stmt,
-								  YB_SINGLE_SHARD_TRANSACTION));
+	YbcPgStatement insert_stmt = YbNewInsert(rel, YB_SINGLE_SHARD_TRANSACTION);
 
-	Relation	rel = RelationIdGetRelation(YBCatalogVersionRelationId);
 	Datum		ybctid = YbGetMasterCatalogVersionTableEntryYbctid(rel, db_oid);
 
 	YbcPgExpr	ybctid_expr = YBCNewConstant(insert_stmt, BYTEAOID, InvalidOid,
@@ -827,15 +815,11 @@ YbDeleteMasterDBCatalogVersionTableEntry(Oid db_oid)
 	 * primary key and therefore only one delete statement is needed to delete
 	 * the row for db_oid.
 	 */
-	YbcPgStatement delete_stmt = NULL;
 
-	HandleYBStatus(YBCPgNewDelete(Template1DbOid,
-								  YBCatalogVersionRelationId,
-								  false /* is_region_local */ ,
-								  &delete_stmt,
-								  YB_SINGLE_SHARD_TRANSACTION));
+	Relation rel = RelationIdGetRelation(YBCatalogVersionRelationId);
 
-	Relation	rel = RelationIdGetRelation(YBCatalogVersionRelationId);
+	YbcPgStatement delete_stmt = YbNewDelete(rel, YB_SINGLE_SHARD_TRANSACTION);
+
 	Datum		ybctid = YbGetMasterCatalogVersionTableEntryYbctid(rel, db_oid);
 
 	YbcPgExpr	ybctid_expr = YBCNewConstant(delete_stmt, BYTEAOID, InvalidOid,
@@ -921,7 +905,7 @@ YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version,
 	HandleYBStatus(YBCPgNewSelect(Template1DbOid,
 								  YBCatalogVersionRelationId,
 								  NULL /* prepare_params */ ,
-								  false /* is_region_local */ ,
+								  YbBuildSystemTableLocalityInfo(YBCatalogVersionRelationId),
 								  &ybc_stmt));
 
 	if (!(acquire_lock && yb_use_internal_auto_analyze_service_conn))

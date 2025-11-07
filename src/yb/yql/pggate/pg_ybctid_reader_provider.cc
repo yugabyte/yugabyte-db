@@ -25,9 +25,9 @@ namespace {
 
 struct PgsqlReadOpWithPgTable {
   PgsqlReadOpWithPgTable(
-      ThreadSafeArena* arena, const PgTableDescPtr& descr, bool is_region_local,
-      PgsqlMetricsCaptureType metrics_capture)
-      : table(descr), read_op(arena, *table, is_region_local, metrics_capture) {
+      ThreadSafeArena* arena, const PgTableDescPtr& descr,
+      const YbcPgTableLocalityInfo& locality_info, PgsqlMetricsCaptureType metrics_capture)
+      : table(descr), read_op(arena, *table, locality_info, metrics_capture) {
   }
   PgTable table;
   PgsqlReadOp read_op;
@@ -124,8 +124,7 @@ class PrecastRequestSender {
 } // namespace
 
 Result<std::span<LightweightTableYbctid>> YbctidReaderProvider::Reader::DoRead(
-    PgOid database_id, const OidSet& region_local_tables,
-    const TablespaceMap& tablespace_map,
+    PgOid database_id, const TableLocalityMap& tables_locality,
     const ExecParametersMutator& exec_params_mutator) {
   // Group the items by the table ID.
   std::sort(ybctids_.begin(), ybctids_.end(), [](const auto& a, const auto& b) {
@@ -148,17 +147,12 @@ Result<std::span<LightweightTableYbctid>> YbctidReaderProvider::Reader::DoRead(
   for (auto it = ybctids_.begin(), end = ybctids_.end(); it != end;) {
     const auto table_id = it->table_id;
     auto desc = VERIFY_RESULT(session_->LoadTable(PgObjectId(database_id, table_id)));
-    bool is_region_local = region_local_tables.find(table_id) != region_local_tables.end();
     auto metrics_capture = session_->metrics().metrics_capture();
     auto read_op_with_table = std::make_shared<PgsqlReadOpWithPgTable>(
-        arena.get(), desc, is_region_local, metrics_capture);
+        arena.get(), desc, tables_locality.Get(table_id), metrics_capture);
     auto read_op = SharedField(read_op_with_table, &read_op_with_table->read_op);
     auto* expr_pb = read_op->read_request().add_targets();
     expr_pb->set_column_id(std::to_underlying(PgSystemAttrNum::kYBTupleId));
-    auto tsp_it = tablespace_map.find(PgObjectId(database_id, table_id));
-    if (tsp_it != tablespace_map.end()) {
-      read_op->read_request().set_tablespace_oid(tsp_it->second);
-    }
     doc_ops.push_back(std::make_unique<PgDocReadOp>(
         session_, &read_op_with_table->table, std::move(read_op), request_sender));
     auto& doc_op = *doc_ops.back();

@@ -28,12 +28,12 @@
 namespace yb::pggate {
 
 ExplicitRowLockBuffer::ExplicitRowLockBuffer(
-    YbctidReaderProvider& reader_provider,
-    const TablespaceMap& tablespace_map)
-    : reader_provider_(reader_provider), tablespace_map_(tablespace_map) {}
+    YbctidReaderProvider& reader_provider)
+    : reader_provider_(reader_provider) {}
 
 Status ExplicitRowLockBuffer::Add(
-    const Info& info, const LightweightTableYbctid& key, bool is_region_local,
+    const Info& info, const LightweightTableYbctid& key,
+    const YbcPgTableLocalityInfo& locality_info,
     std::optional<ErrorStatusAdditionalInfo>& error_info) {
   if (info_ && *info_ != info) {
     RETURN_NOT_OK(DoFlush(error_info));
@@ -44,10 +44,7 @@ Status ExplicitRowLockBuffer::Add(
     return Status::OK();
   }
 
-  if (is_region_local) {
-    region_local_tables_.insert(key.table_id);
-  }
-  DCHECK(is_region_local || !region_local_tables_.contains(key.table_id));
+  table_locality_map_.Add(key.table_id, locality_info);
   intents_.emplace(key.table_id, key.ybctid);
   return narrow_cast<int>(intents_.size()) >= yb_explicit_row_locking_batch_size
       ? DoFlush(error_info) : Status::OK();
@@ -81,7 +78,7 @@ Status ExplicitRowLockBuffer::DoFlushImpl() {
     reader.Add(intent);
   }
   const auto existing_ybctids_count = VERIFY_RESULT(reader.Read(
-      info_->database_id, region_local_tables_, tablespace_map_,
+      info_->database_id, table_locality_map_,
       make_lw_function(
           [&info = *info_](YbcPgExecParameters& params) {
             params.rowmark = info.rowmark;
@@ -99,7 +96,7 @@ Status ExplicitRowLockBuffer::DoFlushImpl() {
 void ExplicitRowLockBuffer::Clear() {
   intents_.clear();
   info_.reset();
-  region_local_tables_.clear();
+  table_locality_map_.Clear();
 }
 
 bool ExplicitRowLockBuffer::IsEmpty() const {

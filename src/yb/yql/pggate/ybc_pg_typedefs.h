@@ -1053,6 +1053,11 @@ typedef struct {
   int32_t follower_read_staleness_ms;
 } YbcPgInitTransactionData;
 
+typedef struct {
+  bool is_region_local;
+  YbcPgOid tablespace_oid;
+} YbcPgTableLocalityInfo;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

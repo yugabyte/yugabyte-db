@@ -43,17 +43,15 @@ void Erase(Container& container, const Key& key) {
 
 class PgFKReferenceCache::Impl {
  public:
-  Impl(YbctidReaderProvider& reader_provider, const BufferingSettings& buffering_settings,
-       const TablespaceMap& tablespace_map)
-      : reader_provider_(reader_provider), buffering_settings_(buffering_settings),
-        tablespace_map_(tablespace_map) {
+  Impl(YbctidReaderProvider& reader_provider, const BufferingSettings& buffering_settings)
+      : reader_provider_(reader_provider), buffering_settings_(buffering_settings) {
   }
 
   void Clear() {
     references_.clear();
     regular_intents_.clear();
     deferred_intents_.clear();
-    region_local_tables_.clear();
+    table_locality_map_.Clear();
     intents_ = &regular_intents_;
     references_cache_limit_.reset();
   }
@@ -73,7 +71,7 @@ class PgFKReferenceCache::Impl {
   }
 
   Result<bool> IsReferenceExists(
-      PgOid database_id, const LightweightTableYbctid& key, bool is_region_local) {
+      PgOid database_id, const LightweightTableYbctid& key, YbcPgTableLocalityInfo locality_info) {
     if (references_.contains(key)) {
       return true;
     }
@@ -89,7 +87,7 @@ class PgFKReferenceCache::Impl {
       // In case of processing deferred intents absence of intent could be caused by
       // subtransaction rollback. In this case we have to make a read attempt.
       requested_key_intent_it = intents_->emplace(key.table_id, key.ybctid).first;
-      RegisterTableLocality(key.table_id, is_region_local);
+      table_locality_map_.Add(key.table_id, locality_info);
     }
     RETURN_NOT_OK(ReadBatch(database_id, requested_key_intent_it));
     return references_.contains(key);
@@ -104,7 +102,7 @@ class PgFKReferenceCache::Impl {
         return Status::OK();
     }
 
-    RegisterTableLocality(key.table_id, options.is_region_local);
+    table_locality_map_.Add(key.table_id, options.locality_info);
     if (!options.is_deferred) {
       regular_intents_.emplace(key.table_id, key.ybctid);
       if (intents_->size() >= buffering_settings_.max_batch_size) {
@@ -154,7 +152,7 @@ class PgFKReferenceCache::Impl {
           }
     });
     const auto ybctids = VERIFY_RESULT(reader.Read(
-        database_id, region_local_tables_, tablespace_map_,
+        database_id, table_locality_map_,
         make_lw_function([](YbcPgExecParameters& params) { params.rowmark = ROW_MARK_KEYSHARE; })));
     // In case all FK has been read successfully it is reasonable to move requested intents into
     // references instead of cleanup intents and create new elements in references.
@@ -178,30 +176,20 @@ class PgFKReferenceCache::Impl {
     return intents_ == &deferred_intents_;
   }
 
-  void RegisterTableLocality(PgOid table_id, bool is_region_local) {
-    if (is_region_local) {
-      region_local_tables_.insert(table_id);
-    }
-    LOG_IF(DFATAL, !is_region_local && region_local_tables_.contains(table_id))
-        << "The " << table_id << " table was previously reported as region local";
-  }
-
   YbctidReaderProvider& reader_provider_;
   const BufferingSettings& buffering_settings_;
-  const TablespaceMap& tablespace_map_;
   MemoryOptimizedTableYbctidSet references_;
   MemoryOptimizedTableYbctidSet regular_intents_;
   MemoryOptimizedTableYbctidSet deferred_intents_;
   MemoryOptimizedTableYbctidSet* intents_ = &regular_intents_;
-  OidSet region_local_tables_;
+  TableLocalityMap table_locality_map_;
   std::optional<size_t> references_cache_limit_;
 };
 
 PgFKReferenceCache::PgFKReferenceCache(
     YbctidReaderProvider& reader_provider,
-    std::reference_wrapper<const BufferingSettings> buffering_settings,
-    std::reference_wrapper<const TablespaceMap> tablespace_map)
-    : impl_(new Impl(reader_provider, buffering_settings, tablespace_map)) {}
+    std::reference_wrapper<const BufferingSettings> buffering_settings)
+    : impl_(new Impl(reader_provider, buffering_settings)) {}
 
 PgFKReferenceCache::~PgFKReferenceCache() = default;
 
@@ -218,8 +206,8 @@ void PgFKReferenceCache::AddReference(const LightweightTableYbctid& key) {
 }
 
 Result<bool> PgFKReferenceCache::IsReferenceExists(
-    PgOid database_id, const LightweightTableYbctid& key, bool is_region_local) {
-  return impl_->IsReferenceExists(database_id, key, is_region_local);
+    PgOid database_id, const LightweightTableYbctid& key, YbcPgTableLocalityInfo locality_info) {
+  return impl_->IsReferenceExists(database_id, key, locality_info);
 }
 
 Status PgFKReferenceCache::AddIntent(

@@ -44,11 +44,11 @@ class ExplicitRowLockBuffer {
     PgOid conflicting_table_id;
   };
 
-  explicit ExplicitRowLockBuffer(YbctidReaderProvider& reader_provider,
-                                 const TablespaceMap& tablespace_map);
+  explicit ExplicitRowLockBuffer(YbctidReaderProvider& reader_provider);
 
   Status Add(
-      const Info& info, const LightweightTableYbctid& key, bool is_region_local,
+      const Info& info, const LightweightTableYbctid& key,
+      const YbcPgTableLocalityInfo& locality_info,
       std::optional<ErrorStatusAdditionalInfo>& error_info);
   Status Flush(std::optional<ErrorStatusAdditionalInfo>& error_info);
   void Clear();
@@ -60,8 +60,7 @@ class ExplicitRowLockBuffer {
 
   YbctidReaderProvider& reader_provider_;
   MemoryOptimizedTableYbctidSet intents_;
-  OidSet region_local_tables_;
-  const TablespaceMap& tablespace_map_;
+  TableLocalityMap table_locality_map_;
   std::optional<Info> info_;
 };
 

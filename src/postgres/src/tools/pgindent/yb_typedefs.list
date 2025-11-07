@@ -283,6 +283,7 @@ YbcPgStatement
 YbcPgSysColumns
 YbcPgSysTablePrefetcherCacheMode
 YbcPgTableDesc
+YbcPgTableLocalityInfo
 YbcPgTabletsDescriptor
 YbcPgThreadLocalRegexpCache
 YbcPgThreadLocalRegexpCacheCleanup

@@ -293,21 +293,10 @@ std::optional<ReadTimeAction> MakeReadTimeActionForFlush(const PgTxnManager& txn
       ? ReadTimeAction::RESET : ReadTimeAction::ENSURE_IS_SET;
 }
 
-template<class Req>
-std::optional<PgTablespaceOid> DoFetchTablespaceOid(const Req& req) {
-  return req.has_tablespace_oid() ? std::optional(req.tablespace_oid()) : std::nullopt;
-}
-
-auto FetchTablespaceOid(const PgsqlOp& op) {
-  return op.is_read()
-      ? DoFetchTablespaceOid(down_cast<const PgsqlReadOp&>(op).read_request())
-      : DoFetchTablespaceOid(down_cast<const PgsqlWriteOp&>(op).write_request());
-}
-
 void Update(TablespaceCache& cache, const PgTableDesc& table, const PgsqlOp& op) {
-  const auto tablespace_oid = FetchTablespaceOid(op);
-  if (tablespace_oid) {
-    cache.Put(table.relfilenode_id(), *tablespace_oid);
+  const auto tablespace_oid = op.locality_info().tablespace_oid;
+  if (tablespace_oid != kInvalidOid) {
+    cache.Put(table.relfilenode_id(), tablespace_oid);
   }
 }
 
@@ -954,7 +943,7 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
   }
 
   options.set_is_all_region_local(std::ranges::all_of(
-      ops.operations(), [](const auto& op) { return op->is_region_local(); }));
+      ops.operations(), [](const auto& op) { return op->locality_info().is_region_local; }));
 
   // For DDLs, ysql_upgrades and PGCatalog accesses, we always use the default read-time
   // and effectively skip xcluster_database_consistency which enables reads as of xcluster safetime.

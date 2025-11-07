@@ -407,9 +407,6 @@ YbcStatus YBCPgSetDBCatalogCacheVersion(YbcPgStatement handle,
                                         YbcPgOid db_oid,
                                         uint64_t version);
 YbcStatus YBCPgSetTablespaceOid(YbcPgStatement handle, uint32_t tablespace_oid);
-#ifndef NDEBUG
-void YBCPgCheckTablespaceOid(uint32_t db_oid, uint32_t table_oid, uint32_t tablespace_oid);
-#endif
 
 YbcStatus YBCPgTableExists(const YbcPgOid database_oid,
                            const YbcPgOid table_relfilenode_oid,
@@ -622,7 +619,7 @@ YbcStatus YBCPgAdjustOperationsBuffering(int multiple);
 
 YbcStatus YBCPgNewSample(const YbcPgOid database_oid,
                          const YbcPgOid table_relfilenode_oid,
-                         bool is_region_local,
+                         YbcPgTableLocalityInfo locality_info,
                          int targrows,
                          double rstate_w,
                          uint64_t rand_state_s0,
@@ -641,13 +638,13 @@ YbcStatus YBCPgGetEstimatedRowCount(YbcPgStatement handle, double *liverows, dou
 YbcStatus YBCPgNewInsertBlock(
     YbcPgOid database_oid,
     YbcPgOid table_oid,
-    bool is_region_local,
+    YbcPgTableLocalityInfo locality_info,
     YbcPgTransactionSetting transaction_setting,
     YbcPgStatement *handle);
 
 YbcStatus YBCPgNewInsert(YbcPgOid database_oid,
                          YbcPgOid table_relfilenode_oid,
-                         bool is_region_local,
+                         YbcPgTableLocalityInfo locality_info,
                          YbcPgStatement *handle,
                          YbcPgTransactionSetting transaction_setting);
 
@@ -662,7 +659,7 @@ YbcStatus YBCPgInsertStmtSetIsBackfill(YbcPgStatement handle, const bool is_back
 // UPDATE ------------------------------------------------------------------------------------------
 YbcStatus YBCPgNewUpdate(YbcPgOid database_oid,
                          YbcPgOid table_relfilenode_oid,
-                         bool is_region_local,
+                         YbcPgTableLocalityInfo locality_info,
                          YbcPgStatement *handle,
                          YbcPgTransactionSetting transaction_setting);
 
@@ -671,7 +668,7 @@ YbcStatus YBCPgExecUpdate(YbcPgStatement handle);
 // DELETE ------------------------------------------------------------------------------------------
 YbcStatus YBCPgNewDelete(YbcPgOid database_oid,
                          YbcPgOid table_relfilenode_oid,
-                         bool is_region_local,
+                         YbcPgTableLocalityInfo locality_info,
                          YbcPgStatement *handle,
                          YbcPgTransactionSetting transaction_setting);
 
@@ -682,7 +679,7 @@ YbcStatus YBCPgDeleteStmtSetIsPersistNeeded(YbcPgStatement handle, const bool is
 // Colocated TRUNCATE ------------------------------------------------------------------------------
 YbcStatus YBCPgNewTruncateColocated(YbcPgOid database_oid,
                                     YbcPgOid table_relfilenode_oid,
-                                    bool is_region_local,
+                                    YbcPgTableLocalityInfo locality_info,
                                     YbcPgStatement *handle,
                                     YbcPgTransactionSetting transaction_setting);
 
@@ -692,7 +689,7 @@ YbcStatus YBCPgExecTruncateColocated(YbcPgStatement handle);
 YbcStatus YBCPgNewSelect(YbcPgOid database_oid,
                          YbcPgOid table_relfilenode_oid,
                          const YbcPgPrepareParameters *prepare_params,
-                         bool is_region_local,
+                         YbcPgTableLocalityInfo locality_info,
                          YbcPgStatement *handle);
 
 // Set forward/backward scan direction.
@@ -825,16 +822,16 @@ void YBCPgDeleteFromForeignKeyReferenceCache(YbcPgOid table_relfilenode_oid, uin
 void YBCPgAddIntoForeignKeyReferenceCache(YbcPgOid table_relfilenode_oid, uint64_t ybctid);
 YbcStatus YBCPgForeignKeyReferenceCacheDelete(const YbcPgYBTupleIdDescriptor* descr);
 YbcStatus YBCForeignKeyReferenceExists(
-    const YbcPgYBTupleIdDescriptor* descr, bool relation_is_region_local, bool* res);
+    const YbcPgYBTupleIdDescriptor* descr, YbcPgTableLocalityInfo locality_info, bool* res);
 YbcStatus YBCAddForeignKeyReferenceIntent(
-    const YbcPgYBTupleIdDescriptor* descr, bool relation_is_region_local,
+    const YbcPgYBTupleIdDescriptor* descr, YbcPgTableLocalityInfo locality_info,
     bool is_deferred_trigger);
 void YBCNotifyDeferredTriggersProcessingStarted();
 
 // Explicit Row-level Locking.
 YbcPgExplicitRowLockStatus YBCAddExplicitRowLockIntent(
     YbcPgOid table_relfilenode_oid, uint64_t ybctid, YbcPgOid database_oid,
-    const YbcPgExplicitRowLockParams *params, bool is_region_local);
+    const YbcPgExplicitRowLockParams *params, YbcPgTableLocalityInfo locality_info);
 YbcPgExplicitRowLockStatus YBCFlushExplicitRowLockIntents();
 
 // INSERT ... ON CONFLICT batching -----------------------------------------------------------------
@@ -1042,9 +1039,6 @@ bool YBCPgYsqlMajorVersionUpgradeInProgress();
 
 bool YBCIsBinaryUpgrade();
 void YBCSetBinaryUpgrade(bool value);
-
-void YBCRecordTablespaceOid(YbcPgOid db_oid, YbcPgOid table_oid, YbcPgOid tablespace_oid);
-void YBCClearTablespaceOid(YbcPgOid db_oid, YbcPgOid table_oid);
 
 YbcStatus YBCInitTransaction(const YbcPgInitTransactionData *data);
 YbcStatus YBCCommitTransactionIntermediate(const YbcPgInitTransactionData *data);
