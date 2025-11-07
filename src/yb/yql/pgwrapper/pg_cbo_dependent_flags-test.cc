@@ -89,6 +89,7 @@ TEST_F(PgCboDependentFlagsTest, TestCboDependentFlags) {
     // Validate CBO-dependent flags
     ASSERT_OK(ValidateGucValue(&conn, "yb_enable_bitmapscan", "on"));
     ASSERT_OK(ValidateGucValue(&conn, "yb_parallel_range_rows", "10000"));
+    ASSERT_OK(ValidateGucValue(&conn, "yb_enable_update_reltuples_after_create_index", "on"));
 
     // 2. Disable CBO dependent flags with ysql_yb_enable_cbo=off
     // Require that the CBO dependent flags are reset.
@@ -97,14 +98,16 @@ TEST_F(PgCboDependentFlagsTest, TestCboDependentFlags) {
     ASSERT_OK(ValidateGucValue(&conn, "yb_enable_cbo", "off"));
     ASSERT_OK(ValidateGucValue(&conn, "yb_enable_bitmapscan", "off"));
     ASSERT_OK(ValidateGucValue(&conn, "yb_parallel_range_rows", "0"));
+    ASSERT_OK(ValidateGucValue(&conn, "yb_enable_update_reltuples_after_create_index", "off"));
   }
 
   // 3. Set CBO dependent flags explicitly.
   // Require that the CBO dependent flags are not overriden when setting CBO.
   for (const auto& cbo_value : {"on", "off"}) {
     // Use both ysql_yb_parallel_range_rows and ysql_pg_conf_csv flags to set the value.
-    for (const auto& parallel_query_flag : {"ysql_yb_parallel_range_rows",
-                                            "ysql_pg_conf_csv=yb_parallel_range_rows"}) {
+    for (const auto& parallel_query_flag :
+         {"ysql_yb_parallel_range_rows",
+          "ysql_pg_conf_csv=yb_parallel_range_rows"}) {
       RestartClusterWithFlags({
         Format("--ysql_yb_enable_cbo=$0", cbo_value),
         "--allowed_preview_flags_csv=ysql_yb_parallel_range_rows",
@@ -121,13 +124,22 @@ TEST_F(PgCboDependentFlagsTest, TestCboDependentFlags) {
   RestartClusterWithFlags({"--ysql_pg_conf_csv=yb_parallel_range_rows=1024"});
   auto conn = ASSERT_RESULT(Connect());
   for (const auto& cbo_value : {"on", "off"}) {
-    auto bitmapscan_value = std::string(cbo_value) == "on" ? "off" : "on";
-    ASSERT_OK(SetGucAtRuntime(&conn, "yb_enable_bitmapscan", bitmapscan_value));
-    ASSERT_OK(ValidateGucValue(&conn, "yb_enable_bitmapscan", bitmapscan_value));
+    auto not_cbo_value = std::string(cbo_value) == "on" ? "off" : "on";
+    ASSERT_OK(SetGucAtRuntime(&conn, "yb_enable_bitmapscan", not_cbo_value));
+    ASSERT_OK(ValidateGucValue(&conn, "yb_enable_bitmapscan", not_cbo_value));
+    ASSERT_OK(SetGucAtRuntime(&conn,
+                               "yb_enable_update_reltuples_after_create_index",
+                              not_cbo_value));
+    ASSERT_OK(ValidateGucValue(&conn,
+                               "yb_enable_update_reltuples_after_create_index",
+                               not_cbo_value));
     ASSERT_OK(SetGucAtRuntime(&conn, "yb_enable_cbo", cbo_value));
     ASSERT_OK(ValidateGucValue(&conn, "yb_enable_cbo", cbo_value));
 
-    ASSERT_OK(ValidateGucValue(&conn, "yb_enable_bitmapscan", bitmapscan_value));
+    ASSERT_OK(ValidateGucValue(&conn, "yb_enable_bitmapscan", not_cbo_value));
+    ASSERT_OK(ValidateGucValue(&conn,
+                               "yb_enable_update_reltuples_after_create_index",
+                               not_cbo_value));
     ASSERT_OK(ValidateGucValue(&conn, "yb_parallel_range_rows", "1024"));
   }
 
@@ -141,6 +153,7 @@ TEST_F(PgCboDependentFlagsTest, TestCboDependentFlags) {
       if (set_before_cbo) {
         ASSERT_OK(SetGucAtRuntime(&conn, "yb_enable_bitmapscan", "on"));
         ASSERT_OK(SetGucAtRuntime(&conn, "yb_parallel_range_rows", "1024"));
+        ASSERT_OK(SetGucAtRuntime(&conn, "yb_enable_update_reltuples_after_create_index", "on"));
       }
 
       // Enable CBO
@@ -151,12 +164,14 @@ TEST_F(PgCboDependentFlagsTest, TestCboDependentFlags) {
       if (set_after_cbo) {
         ASSERT_OK(SetGucAtRuntime(&conn, "yb_enable_bitmapscan", "on"));
         ASSERT_OK(SetGucAtRuntime(&conn, "yb_parallel_range_rows", "1024"));
+        ASSERT_OK(SetGucAtRuntime(&conn, "yb_enable_update_reltuples_after_create_index", "on"));
       }
 
       // Determine expected values: if flags were set (before or after), they should be preserved
       const bool flags_were_set = set_before_cbo || set_after_cbo;
       auto expected_bitmapscan_value = flags_were_set ? "on" : "off";
       auto expected_parallel_range_rows_value = flags_were_set ? "1024" : "0";
+      auto expected_update_reltuples_after_create_index_value = flags_were_set ? "on" : "off";
 
       // Disable CBO
       ASSERT_OK(SetGucAtRuntime(&conn, "yb_enable_cbo", "off"));
@@ -166,6 +181,9 @@ TEST_F(PgCboDependentFlagsTest, TestCboDependentFlags) {
       ASSERT_OK(ValidateGucValue(&conn, "yb_enable_bitmapscan", expected_bitmapscan_value));
       ASSERT_OK(ValidateGucValue(
           &conn, "yb_parallel_range_rows", expected_parallel_range_rows_value));
+      ASSERT_OK(ValidateGucValue(
+          &conn, "yb_enable_update_reltuples_after_create_index",
+          expected_update_reltuples_after_create_index_value));
     }
   }
 }
