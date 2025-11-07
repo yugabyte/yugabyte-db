@@ -2912,9 +2912,12 @@ void TSTabletManager::HandleNonReadyTabletOnStartup(
     const RaftGroupMetadataPtr& meta,
     const scoped_refptr<TransitionInProgressDeleter>& deleter) {
   Status s = DoHandleNonReadyTabletOnStartup(meta.get(), deleter);
-  LOG_IF(FATAL, !s.ok())
-      << TabletLogPrefix(meta->raft_group_id())
-      << " Failed to handle non ready tablet on tserver startup: " << s;
+  if (s.IsShutdownInProgress()) {
+    LOG_WITH_PREFIX(WARNING) << s;
+  } else if (!s.ok()) {
+    LOG(FATAL) << TabletLogPrefix(meta->raft_group_id())
+               << " Failed to handle non ready tablet on tserver startup: " << s;
+  }
 }
 
 Status TSTabletManager::DoHandleNonReadyTabletOnStartup(
