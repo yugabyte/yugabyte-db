@@ -1150,7 +1150,7 @@ class PgClient::Impl : public BigDataFetcher {
         req, resp, PggateRPC::kGetIndexBackfillProgress));
     RETURN_NOT_OK(ResponseStatus(resp));
     uint64_t* backfill_status = *backfill_statuses;
-    for (const auto entry : resp.rows_processed_entries()) {
+    for (const auto entry : resp.num_rows_read_from_table_for_backfill()) {
       *backfill_status = entry;
       backfill_status++;
     }

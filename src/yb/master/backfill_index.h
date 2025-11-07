@@ -153,9 +153,7 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
 
   scoped_refptr<TableInfo> table() { return indexed_table_; }
 
-  Status UpdateRowsProcessedForIndexTable(const uint64_t number_rows_processed);
-
-  const uint64_t number_rows_processed() const { return number_rows_processed_; }
+  Status UpdateRowsProcessedForIndexTable(const uint64_t num_rows_read_from_table_for_backfill);
 
   const LeaderEpoch& epoch() const { return epoch_; }
 
@@ -209,7 +207,6 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   const scoped_refptr<TableInfo> indexed_table_;
   const std::vector<IndexInfoPB> index_infos_;
   int32_t schema_version_;
-  std::atomic<uint64> number_rows_processed_;
 
   std::atomic_bool done_{false};
   std::atomic_bool timestamp_chosen_{false};
@@ -263,7 +260,8 @@ class BackfillTablet : public std::enable_shared_from_this<BackfillTablet> {
   Status LaunchNextChunkOrDone();
   Status Done(
       const Status& status, const std::optional<std::string>& backfilled_until,
-      const uint64_t number_rows_processed, const std::unordered_set<TableId>& failed_indexes);
+      const uint64_t num_rows_read_from_table_for_backfill,
+      const std::unordered_set<TableId>& failed_indexes);
 
   Master* master() { return backfill_table_->master(); }
 
@@ -295,7 +293,7 @@ class BackfillTablet : public std::enable_shared_from_this<BackfillTablet> {
 
  private:
   Status UpdateBackfilledUntil(
-      const std::string& backfilled_until, const uint64_t number_rows_processed);
+      const std::string& backfilled_until, const uint64_t num_rows_read_from_table_for_backfill);
 
   std::shared_ptr<BackfillTable> backfill_table_;
   const TabletInfoPtr tablet_;
