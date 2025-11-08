@@ -3,22 +3,25 @@
 {{- $repeatedTabs := default false (.Get "repeatedTabs") -}}
 {{ $suffix := "" }}
 {{ $name := "" }}
+ {{$numname := "" }}
 {{ $numpanels := .Page.Scratch.Get "numpanels" }}
 {{ if $numpanels }}{{ $suffix = printf "-%d" $numpanels }}{{ end }}
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs{{- if $repeatedTabs }} repeated-tabs{{ end }}">
     {{if strings.Contains $tabs "local"}}
-    {{$name = printf "%s%s" "local" $suffix}}
+    {{$name = "local"}}
+    {{$numname = printf "%s%s" $name $suffix}}
     <li>
-        <a href="#{{$name}}" class="nav-link {{if (eq $active "local")}}active{{end}}" id="{{$name}}-tab" data-bs-toggle="tab" role="tab" aria-controls="{{$name}}" aria-selected="{{if (eq $active "local")}}true{{end}}">
+        <a href="#{{$numname}}" class="nav-link {{if (eq $active "local")}}active{{end}}" id="{{$name}}-tab" data-bs-toggle="tab" role="tab" aria-controls="{{$name}}" aria-selected="{{if (eq $active "local")}}true{{end}}">
         <img src="/icons/database.svg" alt="Local Cluster"/>
         Local
         </a>
     </li>
     {{end}}
     {{if strings.Contains $tabs "cloud"}}
-    {{$name = printf "%s%s" "cloud" $suffix}}
+    {{$name = "cloud" }}
+    {{$numname = printf "%s%s" $name $suffix}}
     <li>
-        <a href="#{{$name}}" class="nav-link {{if (eq $active "cloud")}}active{{end}}" id="{{$name}}-tab" data-bs-toggle="tab" role="tab" aria-controls="{{$name}}" aria-selected="{{if (eq $active "cloud")}}true{{end}}">
+        <a href="#{{$numname}}" class="nav-link {{if (eq $active "cloud")}}active{{end}}" id="{{$name}}-tab" data-bs-toggle="tab" role="tab" aria-controls="{{$name}}" aria-selected="{{if (eq $active "cloud")}}true{{end}}">
         <img src="/icons/cloud.svg" alt="Cloud Cluster"/>
         YugabyteDB Aeon
         </a>
@@ -26,8 +29,9 @@
     {{end}}
     {{if strings.Contains $tabs "anywhere"}}
     <li>
-        {{$name = printf "%s%s" "anywhere" $suffix}}
-        <a href="#{{$name}}" class="nav-link {{if (eq $active "anywhere")}}active{{end}}" id="{{$name}}-tab" data-bs-toggle="tab" role="tab" aria-controls="{{$name}}" aria-selected="{{if (eq $active "anywhere")}}true{{end}}">
+        {{$name = "anywhere"}}
+        {{$numname = printf "%s%s" $name $suffix}}
+        <a href="#{{$numname}}" class="nav-link {{if (eq $active "anywhere")}}active{{end}}" id="{{$name}}-tab" data-bs-toggle="tab" role="tab" aria-controls="{{$name}}" aria-selected="{{if (eq $active "anywhere")}}true{{end}}">
         <img src="/icons/server.svg" alt="Anywhere Cluster"/>
         YugabyteDB Anywhere
         </a>
