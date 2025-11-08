@@ -9623,6 +9623,71 @@
       ],
       "type" : "object"
     },
+    "HAConfigFormData" : {
+      "properties" : {
+        "accept_any_certificate" : {
+          "type" : "boolean"
+        },
+        "cluster_key" : {
+          "type" : "string"
+        }
+      },
+      "required" : [
+        "accept_any_certificate",
+        "cluster_key"
+      ],
+      "type" : "object"
+    },
+    "HAConfigGetResp" : {
+      "description" : "HA config response",
+      "properties" : {
+        "accept_any_certificate" : {
+          "description" : "HA accepts any certificate",
+          "readOnly" : true,
+          "type" : "boolean"
+        },
+        "cluster_key" : {
+          "description" : "HA config cluster key",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "global_state" : {
+          "description" : "HA config global state",
+          "enum" : [
+            "Unknown",
+            "NoReplicas",
+            "AwaitingReplicas",
+            "Operational",
+            "Error",
+            "Warning",
+            "StandbyConnected",
+            "StandbyDisconnected"
+          ],
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "instances" : {
+          "description" : "HA config platform instances",
+          "items" : {
+            "$ref" : "#/definitions/PlatformInstance"
+          },
+          "type" : "array"
+        },
+        "last_failover" : {
+          "description" : "HA last failover",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "uuid" : {
+          "description" : "HA config UUID",
+          "format" : "uuid",
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
     "HTTP Auth information" : {
       "discriminator" : "type",
       "properties" : {
@@ -9698,6 +9763,37 @@
         "mountPath",
         "role",
         "vaultAddr"
+      ],
+      "type" : "object"
+    },
+    "HighAvailabilityConfig" : {
+      "properties" : {
+        "accept_any_certificate" : {
+          "type" : "boolean"
+        },
+        "cluster_key" : {
+          "type" : "string"
+        },
+        "instances" : {
+          "items" : {
+            "$ref" : "#/definitions/PlatformInstance"
+          },
+          "type" : "array"
+        },
+        "last_failover" : {
+          "description" : "HA last failover",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "uuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        }
+      },
+      "required" : [
+        "instances",
+        "uuid"
       ],
       "type" : "object"
     },
@@ -15059,6 +15155,88 @@
       },
       "type" : "object"
     },
+    "PlatformBackupFrequencyFormData" : {
+      "properties" : {
+        "frequency_milliseconds" : {
+          "format" : "int64",
+          "type" : "integer"
+        }
+      },
+      "required" : [
+        "frequency_milliseconds"
+      ],
+      "type" : "object"
+    },
+    "PlatformInstance" : {
+      "properties" : {
+        "address" : {
+          "type" : "string"
+        },
+        "config_uuid" : {
+          "$ref" : "#/definitions/HighAvailabilityConfig"
+        },
+        "instance_state" : {
+          "enum" : [
+            "Awaiting Connection to Replicas",
+            "Connected",
+            "Disconnected"
+          ],
+          "type" : "string"
+        },
+        "is_leader" : {
+          "type" : "boolean"
+        },
+        "is_local" : {
+          "type" : "boolean"
+        },
+        "last_backup" : {
+          "description" : "Last backup time",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "uuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "ybaVersion" : {
+          "type" : "string"
+        }
+      },
+      "required" : [
+        "address",
+        "config_uuid",
+        "instance_state",
+        "is_leader",
+        "is_local",
+        "uuid",
+        "ybaVersion"
+      ],
+      "type" : "object"
+    },
+    "PlatformInstanceFormData" : {
+      "properties" : {
+        "address" : {
+          "type" : "string"
+        },
+        "cleanAddress" : {
+          "type" : "string"
+        },
+        "is_leader" : {
+          "type" : "boolean"
+        },
+        "is_local" : {
+          "type" : "boolean"
+        }
+      },
+      "required" : [
+        "address",
+        "cleanAddress",
+        "is_leader",
+        "is_local"
+      ],
+      "type" : "object"
+    },
     "PlatformLoggingConfig" : {
       "properties" : {
         "fileNamePrefix" : {
@@ -18339,6 +18517,17 @@
         "hasNext",
         "hasPrev",
         "totalCount"
+      ],
+      "type" : "object"
+    },
+    "RestorePlatformBackupFormData" : {
+      "properties" : {
+        "backup_file" : {
+          "type" : "string"
+        }
+      },
+      "required" : [
+        "backup_file"
       ],
       "type" : "object"
     },
@@ -49028,7 +49217,7 @@
     },
     "/api/v1/session_info" : {
       "get" : {
-        "description" : "",
+        "description" : "Available since YBA version 2.20.0.",
         "operationId" : "getSessionInfo",
         "parameters" : [
           {
@@ -49061,6 +49250,675 @@
         "summary" : "Get current user and customer uuid. This will not generate or return the API token, use /api_token API for that.",
         "tags" : [
           "Session management"
+        ]
+      }
+    },
+    "/api/v1/settings/ha/config" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "getHAConfig",
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/HAConfigGetResp"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/HAConfigGetResp"
+            }
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "summary" : "Get high availability config",
+        "tags" : [
+          "HA"
+        ]
+      },
+      "post" : {
+        "description" : "Available since YBA version 2.20.0.",
+        "operationId" : "createHAConfig",
+        "parameters" : [
+          {
+            "in" : "query",
+            "name" : "request",
+            "required" : false
+          },
+          {
+            "in" : "body",
+            "name" : "HAConfigFormRequest",
+            "required" : true,
+            "schema" : {
+              "$ref" : "#/definitions/HAConfigFormData"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/HighAvailabilityConfig"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/HighAvailabilityConfig"
+            }
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "summary" : "Create high availability config",
+        "tags" : [
+          "HA"
+        ]
+      }
+    },
+    "/api/v1/settings/ha/config/{cUUID}" : {
+      "delete" : {
+        "operationId" : "deleteHAConfig",
+        "parameters" : [
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "cUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "in" : "query",
+            "name" : "request",
+            "required" : false
+          }
+        ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "responsesObject" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "tags" : [
+          "HA"
+        ]
+      },
+      "put" : {
+        "operationId" : "editHAConfig",
+        "parameters" : [
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "cUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "in" : "query",
+            "name" : "request",
+            "required" : false
+          }
+        ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "responsesObject" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "tags" : [
+          "HA"
+        ]
+      }
+    },
+    "/api/v1/settings/ha/config/{cUUID}/backup/list" : {
+      "get" : {
+        "description" : "Available since YBA version 2.20.0.",
+        "operationId" : "listBackups",
+        "parameters" : [
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "cUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "default" : "null",
+            "in" : "query",
+            "name" : "leader",
+            "required" : false,
+            "type" : "string"
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "type" : "string"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "type" : "string"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "summary" : "List backups",
+        "tags" : [
+          "Platform Replication"
+        ]
+      }
+    },
+    "/api/v1/settings/ha/config/{cUUID}/instance" : {
+      "post" : {
+        "description" : "Available since YBA version 2.20.0.",
+        "operationId" : "createInstance",
+        "parameters" : [
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "cUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "in" : "query",
+            "name" : "request",
+            "required" : false
+          },
+          {
+            "in" : "body",
+            "name" : "PlatformInstanceFormRequest",
+            "required" : true,
+            "schema" : {
+              "$ref" : "#/definitions/PlatformInstanceFormData"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/PlatformInstance"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/PlatformInstance"
+            }
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "summary" : "Create platform instance",
+        "tags" : [
+          "Platform Instance"
+        ]
+      }
+    },
+    "/api/v1/settings/ha/config/{cUUID}/instance/local" : {
+      "get" : {
+        "operationId" : "getLocal",
+        "parameters" : [
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "cUUID",
+            "required" : true,
+            "type" : "string"
+          }
+        ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "responsesObject" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "tags" : [
+          "Platform Instance"
+        ]
+      }
+    },
+    "/api/v1/settings/ha/config/{cUUID}/instance/{iUUID}" : {
+      "delete" : {
+        "operationId" : "deleteInstance",
+        "parameters" : [
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "cUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "iUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "in" : "query",
+            "name" : "request",
+            "required" : false
+          }
+        ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "responsesObject" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "tags" : [
+          "Platform Instance"
+        ]
+      }
+    },
+    "/api/v1/settings/ha/config/{cUUID}/instance/{iUUID}/promote" : {
+      "post" : {
+        "description" : "Available since YBA version 2.20.0.",
+        "operationId" : "promoteInstance",
+        "parameters" : [
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "cUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "iUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "default" : "null",
+            "in" : "query",
+            "name" : "curLeader",
+            "required" : false,
+            "type" : "string"
+          },
+          {
+            "default" : true,
+            "in" : "query",
+            "name" : "isForcePromote",
+            "required" : false,
+            "type" : "boolean"
+          },
+          {
+            "in" : "query",
+            "name" : "request",
+            "required" : false
+          },
+          {
+            "in" : "body",
+            "name" : "PlatformBackupRestoreRequest",
+            "required" : true,
+            "schema" : {
+              "$ref" : "#/definitions/RestorePlatformBackupFormData"
+            }
+          }
+        ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "responsesObject" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "summary" : "Promote platform instance",
+        "tags" : [
+          "Platform Instance"
+        ]
+      }
+    },
+    "/api/v1/settings/ha/config/{cUUID}/replication_schedule" : {
+      "get" : {
+        "operationId" : "getBackupInfo",
+        "parameters" : [
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "cUUID",
+            "required" : true,
+            "type" : "string"
+          }
+        ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "responsesObject" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "tags" : [
+          "Platform Replication"
+        ]
+      }
+    },
+    "/api/v1/settings/ha/config/{cUUID}/replication_schedule/start" : {
+      "put" : {
+        "description" : "Available since YBA version 2.20.0.",
+        "operationId" : "startPeriodicBackup",
+        "parameters" : [
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "cUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "in" : "query",
+            "name" : "request",
+            "required" : false
+          },
+          {
+            "in" : "body",
+            "name" : "PlatformBackupFrequencyRequest",
+            "required" : true,
+            "schema" : {
+              "$ref" : "#/definitions/PlatformBackupFrequencyFormData"
+            }
+          }
+        ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "responsesObject" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "summary" : "Start periodic backup",
+        "tags" : [
+          "Platform Replication"
+        ]
+      }
+    },
+    "/api/v1/settings/ha/config/{cUUID}/replication_schedule/stop" : {
+      "put" : {
+        "operationId" : "stopPeriodicBackup",
+        "parameters" : [
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "cUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "in" : "query",
+            "name" : "request",
+            "required" : false
+          }
+        ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "responsesObject" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "tags" : [
+          "Platform Replication"
+        ]
+      }
+    },
+    "/api/v1/settings/ha/generate_key" : {
+      "get" : {
+        "description" : "Available since YBA version 2.20.0.",
+        "operationId" : "generateClusterKey",
+        "parameters" : [ ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "responsesObject" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "summary" : "Generate cluster key",
+        "tags" : [
+          "HA"
+        ]
+      }
+    },
+    "/api/v1/settings/ha/internal/config" : {
+      "get" : {
+        "operationId" : "getHAConfigByClusterKey",
+        "parameters" : [
+          {
+            "in" : "query",
+            "name" : "request",
+            "required" : false
+          }
+        ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "responsesObject" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "tags" : [
+          "Internal HA"
+        ]
+      }
+    },
+    "/api/v1/settings/ha/internal/config/demote/{timestamp}" : {
+      "put" : {
+        "description" : "Available since YBA version 2.20.0.",
+        "operationId" : "demoteLocalLeader",
+        "parameters" : [
+          {
+            "format" : "int64",
+            "in" : "path",
+            "name" : "timestamp",
+            "required" : true,
+            "type" : "integer"
+          },
+          {
+            "default" : false,
+            "in" : "query",
+            "name" : "promote",
+            "required" : false,
+            "type" : "boolean"
+          },
+          {
+            "in" : "query",
+            "name" : "request",
+            "required" : false
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/PlatformInstance"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/PlatformInstance"
+            }
+          }
+        },
+        "summary" : "Demote local leader",
+        "tags" : [
+          "Internal HA"
+        ]
+      }
+    },
+    "/api/v1/settings/ha/internal/config/sync/{timestamp}" : {
+      "put" : {
+        "operationId" : "syncInstances",
+        "parameters" : [
+          {
+            "format" : "int64",
+            "in" : "path",
+            "name" : "timestamp",
+            "required" : true,
+            "type" : "integer"
+          },
+          {
+            "in" : "query",
+            "name" : "request",
+            "required" : false
+          }
+        ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "responsesObject" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "tags" : [
+          "Internal HA"
+        ]
+      }
+    },
+    "/api/v1/settings/ha/internal/upload" : {
+      "post" : {
+        "operationId" : "syncBackups",
+        "parameters" : [
+          {
+            "in" : "query",
+            "name" : "request",
+            "required" : false
+          }
+        ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "responsesObject" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "tags" : [
+          "Internal HA"
         ]
       }
     },
@@ -49174,7 +50032,13 @@
       "name" : "Grafana Dashboard"
     },
     {
+      "name" : "HA"
+    },
+    {
       "name" : "Instance types"
+    },
+    {
+      "name" : "Internal HA"
     },
     {
       "name" : "KubernetesOverridesController"
@@ -49211,6 +50075,12 @@
     },
     {
       "name" : "Performance Advisor"
+    },
+    {
+      "name" : "Platform Instance"
+    },
+    {
+      "name" : "Platform Replication"
     },
     {
       "name" : "RBAC management"
