@@ -779,6 +779,7 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
               universe -> {
                 UniverseDefinitionTaskParams details = universe.getUniverseDetails();
                 details.rootCA = existingRootCA;
+                details.setClientRootCA(existingRootCA);
                 details.getPrimaryCluster().userIntent.enableClientToNodeEncrypt = true;
                 details.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt = true;
                 universe.setUniverseDetails(details);
@@ -788,6 +789,7 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
       params.setUniverseUUID(u.getUniverseUUID());
       params.clusters = u.getUniverseDetails().clusters;
       params.rootCA = existingRootCA; // Same rootCA
+      params.setClientRootCA(existingRootCA);
       params.selfSignedServerCertRotate = true;
       params.selfSignedClientCertRotate = true;
       params.rootAndClientRootCASame = true;
@@ -834,6 +836,7 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
             universe -> {
               UniverseDefinitionTaskParams details = universe.getUniverseDetails();
               details.rootCA = existingRootCA;
+              details.setClientRootCA(existingRootCA);
               details.getPrimaryCluster().userIntent.enableClientToNodeEncrypt = true;
               details.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt = true;
               universe.setUniverseDetails(details);
@@ -859,6 +862,7 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
     params.selfSignedClientCertRotate = false; // Only server cert rotation
     params.rootAndClientRootCASame = true;
     params.rootCA = existingRootCA;
+    params.setClientRootCA(existingRootCA);
 
     // Only server cert rotation
     PlatformServiceException exception =
