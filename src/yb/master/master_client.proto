@@ -103,6 +103,8 @@ message GetIndexBackfillProgressResponsePB {
   // The ordering of the indexes' results here is expected to be the same as the ordering in the
   // corresponding request PB (GetIndexBackfillProgressRequestPB).
   repeated uint64 num_rows_read_from_table_for_backfill = 2;
+
+  repeated double num_rows_backfilled_in_index = 3;
 }
 
 message GetTabletLocationsRequestPB {

@@ -295,6 +295,15 @@ message IndexInfoPB {
   optional uint64 num_rows_read_from_table_for_backfill = 34;
 
   optional PgVectorIdxOptionsPB vector_idx_options = 35;
+
+  // When the backfill job on this index is cleared, this field is set to the number of rows
+  // inserted in the index by the backfill job.
+  // This field is used to initialize pg_class.reltuples for the index after the index is created.
+  // However, this only counts the tuples that were inserted in the index in backfill. This value
+  // may be stale because rows can be inserted in the table during concurrent backfill, and those
+  // are not included in this count. Moreover, after backfill is completed, this field is no longer
+  // updated.
+  optional double num_rows_backfilled_in_index = 36;
 }
 
 // The possible order modes for clients.

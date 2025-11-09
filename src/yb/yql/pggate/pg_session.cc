@@ -1092,8 +1092,11 @@ Result<client::TabletServersInfo> PgSession::ListTabletServers() {
 }
 
 Status PgSession::GetIndexBackfillProgress(std::vector<PgObjectId> index_ids,
-                                           uint64_t** backfill_statuses) {
-  return pg_client_.GetIndexBackfillProgress(index_ids, backfill_statuses);
+                                           uint64_t* num_rows_read_from_table,
+                                           double* num_rows_backfilled) {
+  return pg_client_.GetIndexBackfillProgress(index_ids,
+                                             num_rows_read_from_table,
+                                             num_rows_backfilled);
 }
 
 void PgSession::SetTimeout(const int timeout_ms) {

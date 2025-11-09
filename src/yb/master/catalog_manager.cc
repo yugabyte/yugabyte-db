@@ -6533,30 +6533,17 @@ Status CatalogManager::GetIndexBackfillProgress(const GetIndexBackfillProgressRe
   // Note: the caller expects the ordering of the indexes in the response PB to be the
   // same as that in the request PB.
   for (const auto& index_id : req->index_ids()) {
-    // Retrieve the number of rows processed by the backfill job.
-    // When the backfill job is live, the num_rows_read_from_table_for_backfill field in the indexed
-    // table's BackfillJobPB would give us the desired information. For backfill jobs that haven't
-    // been created or have completed/failed (and been cleared) the
-    // num_rows_read_from_table_for_backfill field in the IndexInfoPB would give us the desired
-    // information.
-    // The following cases are possible:
-    // 1) The index or the indexed table is not found: the information can't be determined so
-    //    we set the num_rows_read_from_table_for_backfill to 0.
-    // 2) The backfill job hasn't been created: we use IndexInfoPB's
-    //    num_rows_read_from_table_for_backfill (in this case the value of this field is the default
-    //    value 0).
-    // 3) The backfill job is live: we use BackfillJobPB's num_rows_read_from_table_for_backfill.
-    // 4) The backfill job was successful/unsuccessful and cleared after completion:
-    //    we use IndexInfoPB's num_rows_read_from_table_for_backfill.
-    // Notes:
-    // a) We are safe from concurrency issues when reading the backfill state and
-    //    the index info's num_rows_read_from_table_for_backfill because the updation for these two
-    //    fields happenswithin the same LockForWrite in BackfillTable::MarkIndexesAsDesired.
+    // Retrieve the number of rows read from base table and the number of rows inserted in the index
+    // by the backfill job. For active jobs, we get these values from the BackfillJobPB. If an
+    // active job is not found, we get these values from the IndexInfoPB.
+    // We are safe from concurrency issues when reading the backfill state and
+    // the index info's num_rows_processed because the updation for these two fields happens
+    // within the same LockForWrite in BackfillTable::MarkIndexesAsDesired.
     auto index_table = GetTableInfo(index_id);
     if (index_table == nullptr) {
       LOG_WITH_FUNC(INFO) << "Requested Index " << index_id << " not found";
-      // No backfill job can be found for this index - set the rows processed to 0.
-      resp->add_num_rows_read_from_table_for_backfill(0);
+      resp->add_num_rows_read_from_table_for_backfill(UINT64_MAX);
+      resp->add_num_rows_backfilled_in_index(-1.0);
       continue;
     }
 
@@ -6564,8 +6551,8 @@ Status CatalogManager::GetIndexBackfillProgress(const GetIndexBackfillProgressRe
     auto indexed_table = GetTableInfo(index_table->indexed_table_id());
     if (indexed_table == nullptr) {
       LOG_WITH_FUNC(INFO) << "Indexed table for requested index " << index_id << " not found";
-      // No backfill job can be found for this index - set the rows processed to 0.
-      resp->add_num_rows_read_from_table_for_backfill(0);
+      resp->add_num_rows_read_from_table_for_backfill(UINT64_MAX);
+      resp->add_num_rows_backfilled_in_index(-1.0);
       continue;
     }
 
@@ -6581,14 +6568,28 @@ Status CatalogManager::GetIndexBackfillProgress(const GetIndexBackfillProgressRe
       if (backfill_job.backfill_state().find(index_id) != backfill_job.backfill_state().end()) {
         resp->add_num_rows_read_from_table_for_backfill(
             backfill_job.num_rows_read_from_table_for_backfill());
+        // If the index is part of this backfill job, get the desired information from the
+        // backfill job, else get it from the IndexInfoPB.
+        if (backfill_job.num_rows_backfilled_in_index().find(index_id) !=
+            backfill_job.num_rows_backfilled_in_index().end()) {
+          resp->add_num_rows_backfilled_in_index(
+            backfill_job.num_rows_backfilled_in_index().at(index_id));
+        } else {
+          // In case of rolling upgrade, an older tserver may not include
+          // num_rows_backfilled_in_index in its response. We report 0 in this case, so index
+          // reltuples may be inaccurate.
+          resp->add_num_rows_backfilled_in_index(0.0);
+        }
         continue;
       }
     }
+
     // Find the desired index's IndexInfoPB from the indexed table's TableInfo.
     for (const auto& index_info_pb : l->pb.indexes()) {
       if (index_info_pb.table_id() == index_id) {
         resp->add_num_rows_read_from_table_for_backfill(
             index_info_pb.num_rows_read_from_table_for_backfill());
+        resp->add_num_rows_backfilled_in_index(index_info_pb.num_rows_backfilled_in_index());
         break;
       }
     }

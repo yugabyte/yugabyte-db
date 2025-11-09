@@ -1138,7 +1138,8 @@ class PgClient::Impl : public BigDataFetcher {
   }
 
   Status GetIndexBackfillProgress(const std::vector<PgObjectId>& index_ids,
-                                uint64_t** backfill_statuses) {
+                                  uint64_t* num_rows_read_from_table,
+                                  double* num_rows_backfilled) {
     tserver::PgGetIndexBackfillProgressRequestPB req;
     tserver::PgGetIndexBackfillProgressResponsePB resp;
 
@@ -1149,10 +1150,11 @@ class PgClient::Impl : public BigDataFetcher {
     RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::GetIndexBackfillProgress,
         req, resp, PggateRPC::kGetIndexBackfillProgress));
     RETURN_NOT_OK(ResponseStatus(resp));
-    uint64_t* backfill_status = *backfill_statuses;
-    for (const auto entry : resp.num_rows_read_from_table_for_backfill()) {
-      *backfill_status = entry;
-      backfill_status++;
+    for (int i = 0; i < resp.num_rows_read_from_table_for_backfill_size(); ++i) {
+      num_rows_read_from_table[i] = resp.num_rows_read_from_table_for_backfill(i);
+      if (num_rows_backfilled) {
+        num_rows_backfilled[i] = resp.num_rows_backfilled_in_index(i);
+      }
     }
     return Status::OK();
   }
@@ -1873,8 +1875,11 @@ Status PgClient::BackfillIndex(
 
 Status PgClient::GetIndexBackfillProgress(
     const std::vector<PgObjectId>& index_ids,
-    uint64_t** backfill_statuses) {
-  return impl_->GetIndexBackfillProgress(index_ids, backfill_statuses);
+    uint64_t* num_rows_read_from_table,
+    double* num_rows_backfilled) {
+  return impl_->GetIndexBackfillProgress(index_ids,
+                                         num_rows_read_from_table,
+                                         num_rows_backfilled);
 }
 
 Result<yb::tserver::PgGetLockStatusResponsePB> PgClient::GetLockStatusData(

@@ -2277,14 +2277,31 @@ YbcStatus YBCGetTabletServerHosts(YbcServerDescriptor **servers, size_t *count) 
   return YBCStatusOK();
 }
 
+/*
+ * Get the index backfill progress.
+ *
+ * Returns the number of base table tuples scanned and index tuples inserted
+ * during the index backfill. If the backfill is in progress, it will report
+ * only the tuples scanned and inserted so far. After the backfill is completed,
+ * this function only returns the tuple scanned and inserted at the time of
+ * completion of the backfill, not the actual number of tuples in the base table
+ * and index currently.
+ *
+ * If an index is not found in the DocDB catalog, both return values are set to
+ * UINT64_MAX for this index.
+ *
+ * If num_rows_backfilled is NULL, it will not be populated.
+ */
 YbcStatus YBCGetIndexBackfillProgress(YbcPgOid* index_oids, YbcPgOid* database_oids,
-                                      uint64_t** backfill_statuses,
-                                      int num_indexes) {
+                                      uint64_t* num_rows_read_from_table,
+                                      double* num_rows_backfilled, int num_indexes) {
   std::vector<PgObjectId> index_ids;
   for (int i = 0; i < num_indexes; ++i) {
     index_ids.emplace_back(PgObjectId(database_oids[i], index_oids[i]));
   }
-  return ToYBCStatus(pgapi->GetIndexBackfillProgress(index_ids, backfill_statuses));
+  return ToYBCStatus(pgapi->GetIndexBackfillProgress(index_ids,
+                                                     num_rows_read_from_table,
+                                                     num_rows_backfilled));
 }
 
 //------------------------------------------------------------------------------------------------
