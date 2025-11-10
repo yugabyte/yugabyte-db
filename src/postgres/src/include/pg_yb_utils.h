@@ -1394,7 +1394,8 @@ extern void YbATCopyPrimaryKeyToCreateStmt(Relation rel,
 										   CreateStmt *create_stmt);
 
 extern void YbIndexSetNewRelfileNode(Relation indexRel, Oid relfileNodeId,
-									 bool yb_copy_split_options);
+									 bool yb_copy_split_options,
+									 YbOptSplit *preserved_index_split_options);
 
 /*
  * Returns the ordering type for a primary key. By default, the first element of
