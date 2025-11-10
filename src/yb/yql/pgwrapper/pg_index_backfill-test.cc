@@ -89,9 +89,6 @@ class PgIndexBackfillTest : public LibPqTestBase, public ::testing::WithParamInt
 
     const bool enable_table_locks = EnableTableLocks();
     options->extra_tserver_flags.push_back(
-        Format("--allowed_preview_flags_csv=$0,$1",
-                "enable_object_locking_for_table_locks", "ysql_yb_ddl_transaction_block_enabled"));
-    options->extra_tserver_flags.push_back(
         Format("--enable_object_locking_for_table_locks=$0", enable_table_locks));
     options->extra_tserver_flags.push_back(
         Format("--ysql_yb_ddl_transaction_block_enabled=$0", enable_table_locks));

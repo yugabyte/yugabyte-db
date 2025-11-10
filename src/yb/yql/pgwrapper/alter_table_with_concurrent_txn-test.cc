@@ -67,8 +67,6 @@ class AlterTableWithConcurrentTxnTestTableLocksDisabled : public AlterTableWithC
  protected:
   virtual void OverrideMiniClusterOptions(MiniClusterOptions* options) override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_allowed_preview_flags_csv) =
-        yb::Format("enable_object_locking_for_table_locks,%s", FLAGS_allowed_preview_flags_csv);
     AlterTableWithConcurrentTxnTest::OverrideMiniClusterOptions(options);
   }
 };

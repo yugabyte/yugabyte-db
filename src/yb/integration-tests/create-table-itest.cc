@@ -606,7 +606,6 @@ TEST_F(CreateTableITest, TestTransactionStatusTableCreation) {
       // TODO(#27854): We get stuck with object locking when there is no system.transactions
       // table. Disabling it for now until we fix the underlying issue.
       "--enable_object_locking_for_table_locks=false",
-      "--allowed_preview_flags_csv=enable_object_locking_for_table_locks",
   };
   // We also need to enable ysql.
   ASSERT_NO_FATALS(StartCluster(tserver_flags, master_flags, 1, 1, true));

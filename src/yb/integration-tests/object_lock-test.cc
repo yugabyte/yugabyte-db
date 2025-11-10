@@ -1691,8 +1691,6 @@ ExternalMiniClusterOptions ExternalObjectLockTest::MakeExternalMiniClusterOption
       "--enable_load_balancing=false",
       "--TEST_olm_skip_sending_wait_for_probes=false"};
   opts.extra_tserver_flags = {
-      Format("--allowed_preview_flags_csv=$0,$1",
-             "enable_object_locking_for_table_locks", "ysql_yb_ddl_transaction_block_enabled"),
       "--enable_object_locking_for_table_locks",
       "--ysql_yb_ddl_transaction_block_enabled",
       Format("--ysql_lease_refresher_interval_ms=$0", kDefaultYSQLLeaseRefreshIntervalMilli),
@@ -1745,8 +1743,6 @@ ExternalObjectLockTestOneTSWithoutLease::MakeExternalMiniClusterOptions() {
       Format("--object_lock_cleanup_interval_ms=$0", kDefaultMasterObjectLockCleanupIntervalMilli),
       "--enable_load_balancing=false"};
   opts.extra_tserver_flags = {
-      Format("--allowed_preview_flags_csv=$0,$1",
-             "enable_object_locking_for_table_locks", "ysql_yb_ddl_transaction_block_enabled"),
       "--enable_object_locking_for_table_locks",
       "--ysql_yb_ddl_transaction_block_enabled",
       Format("--ysql_lease_refresher_interval_ms=$0", kDefaultYSQLLeaseRefreshIntervalMilli),
@@ -1763,8 +1759,6 @@ ExternalMiniClusterOptions ExternalObjectLockTestLongLeaseTTL::MakeExternalMiniC
       Format("--master_ysql_operation_lease_ttl_ms=$0", 20 * 1000),
       "--enable_load_balancing=false"};
   opts.extra_tserver_flags = {
-      Format("--allowed_preview_flags_csv=$0,$1",
-             "enable_object_locking_for_table_locks", "ysql_yb_ddl_transaction_block_enabled"),
       "--enable_object_locking_for_table_locks",
       "--ysql_yb_ddl_transaction_block_enabled",
       Format("--ysql_lease_refresher_interval_ms=$0", kDefaultYSQLLeaseRefreshIntervalMilli)};

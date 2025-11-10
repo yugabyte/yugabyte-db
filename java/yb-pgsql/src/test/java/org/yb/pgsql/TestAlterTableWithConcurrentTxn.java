@@ -40,7 +40,6 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
     // The test suite asserts for DML failing when run in concurrent to ALTER,
     // and doesn't expect proper wait-on behavior for DML-DDL interaction.
     Map<String, String> flagMap = super.getTServerFlags();
-    flagMap.put("allowed_preview_flags_csv", "enable_object_locking_for_table_locks");
     flagMap.put("enable_object_locking_for_table_locks", "false");
     return flagMap;
   }

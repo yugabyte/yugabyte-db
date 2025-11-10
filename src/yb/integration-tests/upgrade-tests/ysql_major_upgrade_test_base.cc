@@ -50,10 +50,6 @@ void YsqlMajorUpgradeTestBase::SetUpOptions(ExternalMiniClusterOptions& opts) {
       opts.extra_master_flags, "enable_object_locking_for_table_locks", "false");
   AddUnDefOkAndSetFlag(
       opts.extra_tserver_flags, "enable_object_locking_for_table_locks", "false");
-  AppendFlagToAllowedPreviewFlagsCsv(
-      opts.extra_master_flags, "enable_object_locking_for_table_locks");
-  AppendFlagToAllowedPreviewFlagsCsv(
-      opts.extra_tserver_flags, "enable_object_locking_for_table_locks");
 }
 
 Status YsqlMajorUpgradeTestBase::ValidateUpgradeCompatibility(const std::string& user_name) {
