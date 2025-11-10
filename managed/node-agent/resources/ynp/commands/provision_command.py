@@ -265,6 +265,7 @@ class ProvisionCommand(Command):
                 os.makedirs(yugabyte_dir, exist_ok=True)
                 ynp_version_file = os.path.join(yugabyte_dir, 'ynp_version')
                 safely_write_file(ynp_version_file, current_ynp_version)
+                current_user_id = os.getuid()
                 yb_user = context.get('yb_user')
                 uid = pwd.getpwnam(yb_user).pw_uid
                 gid = grp.getgrnam(yb_user).gr_gid

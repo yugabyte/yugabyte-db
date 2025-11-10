@@ -208,9 +208,6 @@ else
 fi
 
 loginctl enable-linger {{ yb_user }}
-# install node_agent service
-su - {{ yb_user }} -c "\"$installer_dir/node-agent-installer.sh\" -c install_service \
-     --user {{ yb_user }}"
 if [ $? -eq 0 ]; then
   echo "Node agent service installation successful"
 else
