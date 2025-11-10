@@ -230,6 +230,8 @@ typedef struct AlteredTableInfo
 	List	   *changedConstraintDefs;	/* string definitions of same */
 	List	   *changedIndexOids;	/* OIDs of indexes to rebuild */
 	List	   *changedIndexDefs;	/* string definitions of same */
+	List	   *changedIndexNames; /* Names of indexs to rebuild */
+	List	   *changedIndexSplitOpts; /* Split option of same */
 	char	   *replicaIdentityIndex;	/* index to reset as REPLICA IDENTITY */
 	char	   *clusterOnIndex; /* index to use for CLUSTER */
 	List	   *changedStatisticsOids;	/* OIDs of statistics to rebuild */
@@ -2375,7 +2377,8 @@ ExecuteTruncateGuts(List *explicit_rels,
 			 * deletion at commit.
 			 */
 			RelationSetNewRelfilenode(rel, rel->rd_rel->relpersistence,
-									  false /* yb_copy_split_options */ );
+									  false /* yb_copy_split_options */ ,
+									  NULL  /* preserved_index_split_options */ );
 
 			heap_relid = RelationGetRelid(rel);
 
@@ -2390,7 +2393,8 @@ ExecuteTruncateGuts(List *explicit_rels,
 
 				RelationSetNewRelfilenode(toastrel,
 										  toastrel->rd_rel->relpersistence,
-										  false /* yb_copy_split_options */ );
+										  false /* yb_copy_split_options */ ,
+										  NULL  /* preserved_index_split_options */ );
 				table_close(toastrel, NoLock);
 			}
 
@@ -2400,7 +2404,9 @@ ExecuteTruncateGuts(List *explicit_rels,
 			reindex_relation(heap_relid, REINDEX_REL_PROCESS_TOAST,
 							 &reindex_params,
 							 true /* is_yb_table_rewrite */ ,
-							 false /* yb_copy_split_options */ );
+							 false /* yb_copy_split_options */ ,
+							 NIL /* changedIndexNames */ ,
+							 NIL /* changedIndexSplitOpts */ );
 		}
 
 		pgstat_count_truncate(rel);
@@ -6273,12 +6279,15 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 			{
 				RelationSetNewRelfilenode(OldHeap,
 										  OldHeap->rd_rel->relpersistence,
-										  !tab->yb_skip_copy_split_options);
+										  !tab->yb_skip_copy_split_options,
+										  NULL  /* preserved_index_split_options */ );
 				ReindexParams reindex_params = {0};
 
 				reindex_relation(RelationGetRelid(OldHeap), 0, &reindex_params,
 								 true /* is_yb_table_rewrite */ ,
-								 !tab->yb_skip_copy_split_options);
+								 !tab->yb_skip_copy_split_options,
+								 tab->changedIndexNames,
+								 tab->changedIndexSplitOpts);
 				table_close(OldHeap, NoLock);
 				continue;
 			}
@@ -6376,7 +6385,9 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 							 RecentXmin,
 							 ReadNextMultiXactId(),
 							 persistence,
-							 true /* yb_copy_split_options */ );
+							 true /* yb_copy_split_options */ ,
+							 tab->changedIndexNames,
+							 tab->changedIndexSplitOpts);
 
 			InvokeObjectPostAlterHook(RelationRelationId, tab->relid, 0);
 		}
@@ -14547,6 +14558,23 @@ RememberIndexForRebuilding(Oid indoid, AlteredTableInfo *tab)
 												indoid);
 			tab->changedIndexDefs = lappend(tab->changedIndexDefs,
 											defstring);
+
+			/*
+			 * Capture the index's existing split options:
+			 * During ALTER TYPE table rewrite on columns with dependent indexes, indexes are
+			 * rebuilt by dropping and recreating them. We skip DocDB index table creation during
+			 * rebuild phase and defer it to reindex phase. Since DocDB index don't exist during
+			 * reindex phase, split options must be retrieved beforehand and passed via these
+			 * parallel lists to restore correct split options.
+			 */
+			Relation	indexRel = index_open(indoid, AccessShareLock);
+			YbOptSplit *splitOpt = YbGetSplitOptions(indexRel);
+			if (splitOpt)
+				splitOpt->split_points = NIL;  /* Clear split points - incompatible with new type */
+			tab->changedIndexSplitOpts = lappend(tab->changedIndexSplitOpts, splitOpt);
+			tab->changedIndexNames = lappend(tab->changedIndexNames,
+											 pstrdup(RelationGetRelationName(indexRel)));
+			index_close(indexRel, AccessShareLock);
 
 			/*
 			 * Remember if this index is used for the table's replica identity
