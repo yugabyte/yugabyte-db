@@ -378,12 +378,7 @@ public class OperatorUtils {
     }
     JsonNode oldPlacementCloud = objectMapper.valueToTree(oldPlacementInfo.cloudList.get(0));
     JsonNode newPlacementCloud = objectMapper.valueToTree(ybUniverse.getSpec().getPlacementInfo());
-    if (oldPlacementCloud
-        .path("defaultRegion")
-        .asText()
-        .equals(newPlacementCloud.path("defaultRegion").asText())) {
-      return true;
-    }
+
     Map<String, JsonNode> oldRegions = mapByCode(oldPlacementCloud.path("regionList"));
     Map<String, JsonNode> newRegions = mapByCode(newPlacementCloud.path("regions"));
 
