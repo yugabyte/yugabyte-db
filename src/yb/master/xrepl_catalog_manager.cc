@@ -834,17 +834,15 @@ Status CatalogManager::CreateNewCDCStreamForNamespace(
     namespace_id = req.table_id();
   }
 
-  NamespaceInfoPtr ns;
-
   // TODO(#19211): Validate that if the ns type is PGSQL, it must have the replication slot name in
   // the request. This can only be done after we have ensured that YSQL is the only client
   // requesting to create CDC streams.
-
   std::vector<TableInfoPtr> tables;
   {
     SharedLock lock(mutex_);
-    ns = VERIFY_RESULT(FindNamespaceByIdUnlocked(namespace_id));
-    tables = FindAllTablesForCDCSDK(ns->id());
+    // Sanity check this id corresponds to a namespace.
+    VERIFY_RESULT(FindNamespaceByIdUnlocked(namespace_id));
+    tables = FindAllTablesForCDCSDK(namespace_id);
   }
 
   std::vector<TableId> table_ids;
@@ -867,7 +865,7 @@ Status CatalogManager::CreateNewCDCStreamForNamespace(
 
   VLOG_WITH_FUNC(1) << Format("Creating CDCSDK stream for $0 tables", table_ids.size());
 
-  return CreateNewCdcsdkStream(req, table_ids, ns->id(), resp, epoch, rpc);
+  return CreateNewCdcsdkStream(req, table_ids, namespace_id, resp, epoch, rpc);
 }
 
 xrepl::StreamId CatalogManager::GenerateNewXreplStreamId() {
@@ -2392,7 +2390,6 @@ Status CatalogManager::ProcessNewTablesForCDCSDKStreams(
         LockGuard lock(mutex_);
         cdcsdk_tables_to_stream_map_[table_id].insert(stream->StreamId());
       }
-
       stream_lock.Commit();
       LOG(INFO) << "Added tablets of table: " << table_id
                 << ", to cdc_state table for stream: " << stream->id();
@@ -2455,14 +2452,11 @@ Status CatalogManager::ProcessTablesToBeRemovedFromCDCSDKStreams(
       break;
     }
 
-    scoped_refptr<TableInfo> table;
-    {
-      SharedLock lock(mutex_);
-      table = tables_->FindTableOrNull(table_id);
-    }
-
+    auto table_result = FindTableById(table_id);
     std::unordered_set<xrepl::StreamId> streams_successfully_processed;
-    Status s = ValidateTableForRemovalFromCDCSDKStream(table, !non_eligible_table_cleanup);
+    Status s = table_result.ok() ? ValidateTableForRemovalFromCDCSDKStream(
+                                       *table_result, !non_eligible_table_cleanup)
+                                 : table_result.status();
     if (!s.ok()) {
       LOG(WARNING) << "Table " << table_id
                    << " not available for removal from CDC streams: " << s;
@@ -2507,8 +2501,8 @@ Status CatalogManager::ProcessTablesToBeRemovedFromCDCSDKStreams(
         // Explicitly remove the table from the set since we want to remove the tablet entries of
         // this table from the cdc state table.
         tables_in_stream_metadata.erase(table_id);
-        auto result =
-            UpdateCheckpointForTabletEntriesInCDCState(stream_id, tables_in_stream_metadata, table);
+        auto result = UpdateCheckpointForTabletEntriesInCDCState(
+            stream_id, tables_in_stream_metadata, *table_result);
 
         if (!result.ok()) {
           LOG(WARNING)
@@ -2654,19 +2648,13 @@ Result<std::vector<CDCStreamInfoPtr>> CatalogManager::FindXReplStreamsMarkedForD
 }
 
 Status CatalogManager::GetDroppedTablesFromCDCSDKStream(
-    const std::unordered_set<TableId>& table_ids,
-    std::set<TabletId>* tablets_with_streams, std::set<TableId>* dropped_tables) {
+    const std::unordered_set<TableId>& table_ids, std::set<TabletId>* tablets_with_streams,
+    std::set<TableId>* dropped_tables) {
   for (const auto& table_id : table_ids) {
     TabletInfos tablets;
-    scoped_refptr<TableInfo> table;
-    {
-      TRACE("Acquired catalog manager lock");
-      SharedLock lock(mutex_);
-      table = tables_->FindTableOrNull(table_id);
-    }
-    // GetTablets locks lock_ in shared mode.
-    if (table) {
-      tablets = VERIFY_RESULT(table->GetTabletsIncludeInactive());
+    auto table_result = FindTableById(table_id);
+    if (table_result.ok()) {
+      tablets = VERIFY_RESULT((*table_result)->GetTabletsIncludeInactive());
     }
 
     // For the table dropped, GetTablets() will be empty.
@@ -3021,15 +3009,15 @@ Status CatalogManager::GetCDCStream(
       auto replication_slot_name = ReplicationSlotName(req->cdcsdk_ysql_replication_slot_name());
       if (!cdcsdk_replication_slots_to_stream_map_.contains(replication_slot_name)) {
         LOG_WITH_FUNC(WARNING) << "Did not find replication_slot_name: " << replication_slot_name
-                     << " in cdcsdk_replication_slots_to_stream_map_.";
+                               << " in cdcsdk_replication_slots_to_stream_map_.";
         return STATUS(
-              NotFound, "Could not find CDC stream", req->ShortDebugString(),
+            NotFound, "Could not find CDC stream", req->ShortDebugString(),
             MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
       }
       stream_id = cdcsdk_replication_slots_to_stream_map_.at(replication_slot_name);
     }
 
-      stream = FindPtrOrNull(cdc_stream_map_, stream_id);
+    stream = FindPtrOrNull(cdc_stream_map_, stream_id);
   }
 
   if (stream == nullptr || stream->LockForRead()->is_deleting()) {

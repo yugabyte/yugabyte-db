@@ -2506,6 +2506,7 @@ Status CatalogManager::UpdateTransactionStatusTableTablespaces(
       if (tablespace_id && !tablespace_info.count(*tablespace_id)) {
         LOG(INFO) << "Found transaction status table for tablespace id " << *tablespace_id
                   << " which doesn't exist, clearing tablespace id and deleting";
+        // todo(GH29185): acquires a COW write lock while holding mutex_ exclusively.
         ClearTransactionStatusTableTablespace(table);
         RETURN_NOT_OK(ScheduleDeleteTable(table, epoch));
       }
@@ -2990,6 +2991,7 @@ Status CatalogManager::DoSplitTablet(
     // mutex_ -> table -> tablet is required to prevent deadlocks.
     // TODO: Pass the table and tablet locks in directly to the validation functions.
     SharedLock lock(mutex_);
+    // todo(GH29185): Acquiring a write lock while holding mutex_.
     auto source_table_lock = table->LockForWrite();
     TabletInfo::WriteLock source_tablet_lock;
     {
@@ -3168,6 +3170,11 @@ TabletInfos CatalogManager::GetTabletInfos(const std::vector<TabletId>& ids) {
     result.push_back(FindPtrOrNull(*tablet_map_, id));
   }
   return result;
+}
+
+bool CatalogManager::IsColocatedNamespace(const NamespaceId& ns_id) const {
+  SharedLock lock(mutex_);
+  return colocated_db_tablets_map_.contains(ns_id);
 }
 
 void CatalogManager::SplitTabletWithKey(
@@ -4058,10 +4065,9 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       namespace_id = ns->id();
       namespace_name = ns->name();
     }
-    SharedLock lock(mutex_);
     is_colocated_via_database =
         (IsColocatedDbParentTableId(req.table_id()) ||
-             colocated_db_tablets_map_.contains(namespace_id)) &&
+         IsColocatedNamespace(namespace_id)) &&
         // Opt out of colocation if the request says so.
         (!req.has_is_colocated_via_database() || req.is_colocated_via_database()) &&
         // Opt out of colocation if the indexed table opted out of colocation.
@@ -4938,6 +4944,7 @@ Status CatalogManager::AddTransactionStatusTablet(
   {
     LockGuard lock(mutex_);
     table = VERIFY_RESULT(FindTableByIdUnlocked(req->table_id()));
+    // todo(GH29185): acquires COW write lock while holding mutex_ exclusively.
     write_lock = table->LockForWrite();
 
     auto schema = VERIFY_RESULT(table->GetSchema());
@@ -5840,6 +5847,23 @@ Result<scoped_refptr<NamespaceInfo>> CatalogManager::FindNamespaceByIdUnlocked(
   return it->second;
 }
 
+Result<scoped_refptr<NamespaceInfo>> CatalogManager::FindNamespaceByName(
+    YQLDatabase db_type, const std::string& name) const {
+  SharedLock lock(mutex_);
+  return FindNamespaceByNameUnlocked(db_type, name);
+}
+
+Result<scoped_refptr<NamespaceInfo>> CatalogManager::FindNamespaceByNameUnlocked(
+    YQLDatabase db_type, const std::string& name) const {
+  auto it = namespace_names_mapper_[db_type].find(name);
+  if (it == namespace_names_mapper_[db_type].end()) {
+    return STATUS(
+        NotFound, Format("$0 keyspace name not found", ShortDatabaseType(db_type)), name,
+        MasterError(MasterErrorPB::NAMESPACE_NOT_FOUND));
+  }
+  return it->second;
+}
+
 Result<scoped_refptr<NamespaceInfo>> CatalogManager::FindNamespaceUnlocked(
     const NamespaceIdentifierPB& ns_identifier) const {
   if (ns_identifier.has_id()) {
@@ -5847,16 +5871,7 @@ Result<scoped_refptr<NamespaceInfo>> CatalogManager::FindNamespaceUnlocked(
   }
 
   if (ns_identifier.has_name()) {
-    auto db = GetDatabaseType(ns_identifier);
-    auto it = namespace_names_mapper_[db].find(ns_identifier.name());
-    if (it == namespace_names_mapper_[db].end()) {
-      return STATUS(
-          NotFound,
-          Format("$0 keyspace name not found", ShortDatabaseType(db)),
-          ns_identifier.name(),
-          MasterError(MasterErrorPB::NAMESPACE_NOT_FOUND));
-    }
-    return it->second;
+    return FindNamespaceByNameUnlocked(GetDatabaseType(ns_identifier), ns_identifier.name());
   }
 
   LOG(DFATAL) << __func__ << ": " << ns_identifier.ShortDebugString() << ", \n" << GetStackTrace();
@@ -6002,15 +6017,12 @@ Status CatalogManager::TruncateTable(const TableId& table_id,
                                      const LeaderEpoch& epoch) {
   // Lookup the table and verify if it exists.
   TRACE(Substitute("Looking up object by id $0", table_id));
-  scoped_refptr<TableInfo> table;
-  {
-    SharedLock lock(mutex_);
-    table = tables_->FindTableOrNull(table_id);
-    if (table == nullptr) {
-      Status s = STATUS_SUBSTITUTE(NotFound, "The object with id $0 does not exist", table_id);
-      return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
-    }
+  auto table_result = FindTableById(table_id);
+  if (!table_result.ok()) {
+    return SetupError(
+        resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, table_result.status());
   }
+  auto& table = *table_result;
 
   TRACE(Substitute("Locking object with id $0", table_id));
   RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(
@@ -6118,17 +6130,13 @@ Status CatalogManager::IsTruncateTableDone(const IsTruncateTableDoneRequestPB* r
 
   // Lookup the truncated table.
   TRACE("Looking up table $0", req->table_id());
-  scoped_refptr<TableInfo> table;
-  {
-    SharedLock lock(mutex_);
-    table = tables_->FindTableOrNull(req->table_id());
-  }
+  auto table_result = FindTableById(req->table_id());
 
-  if (table == nullptr) {
+  if (!table_result.ok()) {
     Status s = STATUS(NotFound, "The object does not exist: table with id", req->table_id());
     return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
   }
-
+  const auto& table = *table_result;
   TRACE("Locking table");
   RETURN_NOT_OK(
       CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(table->LockForRead(), resp));
@@ -6632,7 +6640,6 @@ Status CatalogManager::DeleteTable(
     DCHECK(req->transaction().has_transaction_id());
   }
 
-  scoped_refptr<TableInfo> indexed_table;
   if (req->is_index_table()) {
     TRACE("Looking up index");
     TableId table_id = table->id();
@@ -6646,24 +6653,20 @@ Status CatalogManager::DeleteTable(
       is_transactional = l->schema().table_properties().is_transactional();
       index_table_type = l->table_type();
     }
-    NamespaceInfoPtr ns_info;
-    {
-      SharedLock lock(mutex_);
-      indexed_table = GetTableInfoUnlocked(indexed_table_id);
-      ns_info = VERIFY_RESULT(FindNamespaceByIdUnlocked(indexed_table->namespace_id()));
-    }
-    const bool is_pg_table = indexed_table != nullptr &&
-                             indexed_table->GetTableType() == PGSQL_TABLE_TYPE;
-    if (!is_pg_table && IsIndexBackfillEnabled(index_table_type, is_transactional)) {
+    auto indexed_table = GetTableInfo(indexed_table_id);
+    bool is_pg_table =
+        indexed_table != nullptr && indexed_table->GetTableType() == PGSQL_TABLE_TYPE;
+    bool is_non_pg_table =
+        indexed_table != nullptr && indexed_table->GetTableType() != PGSQL_TABLE_TYPE;
+    if (is_non_pg_table && IsIndexBackfillEnabled(index_table_type, is_transactional)) {
       return MarkIndexInfoFromTableForDeletion(
           indexed_table_id, table_id, /*multi_stage=*/true, epoch, resp, /*data_map_ptr=*/nullptr,
-          ns_info);
-    }
-
-    // If DDL Rollback is enabled, we will not delete the index now, but merely mark it for
-    // deletion when the transaction commits. Thus set the response fields required by the client
-    // right away.
-    if (is_pg_table && req->ysql_yb_ddl_rollback_enabled()) {
+          VERIFY_RESULT(FindNamespaceById(indexed_table->namespace_id())));
+    } else if (is_pg_table && req->ysql_yb_ddl_rollback_enabled()) {
+      // If DDL Rollback is enabled, we will not delete the index now, but merely mark it for
+      // deletion when the transaction commits. Thus set the response fields required by the client
+      // right away.
+      auto ns_info = VERIFY_RESULT(FindNamespaceById(indexed_table->namespace_id()));
       auto* resp_indexed_table = resp->mutable_indexed_table();
       resp_indexed_table->mutable_namespace_()->set_name(ns_info->name());
       resp_indexed_table->mutable_namespace_()->set_id(ns_info->id());
@@ -6744,14 +6747,8 @@ Status CatalogManager::DeleteTable(
 Status CatalogManager::DeleteTableInternal(
     const DeleteTableRequestPB* req, DeleteTableResponsePB* resp, rpc::RpcContext* rpc,
     const LeaderEpoch& epoch) {
-  TableInfoPtr table;
-  NamespaceInfoPtr ns_info;
-  {
-    SharedLock lock(mutex_);
-    table = VERIFY_RESULT(FindTableUnlocked(req->table()));
-    ns_info = VERIFY_RESULT(FindNamespaceByIdUnlocked(table->namespace_id()));
-  }
-
+  auto table = VERIFY_RESULT(FindTable(req->table()));
+  auto ns_info = VERIFY_RESULT(FindNamespaceById(table->namespace_id()));
   if (table->IgnoreHideRequest()) {
     return Status::OK();
   }
@@ -7260,18 +7257,14 @@ Status CatalogManager::IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
                                          IsDeleteTableDoneResponsePB* resp) {
   // Lookup the deleted table.
   TRACE("Looking up table $0", req->table_id());
-  scoped_refptr<TableInfo> table;
-  {
-    SharedLock lock(mutex_);
-    table = tables_->FindTableOrNull(req->table_id());
-  }
-
-  if (table == nullptr) {
+  auto table_result = FindTableById(req->table_id());
+  if (!table_result.ok()) {
     LOG(INFO) << "Servicing IsDeleteTableDone request for table id "
               << req->table_id() << ": deleted (not found)";
     resp->set_done(true);
     return Status::OK();
   }
+  auto& table = (*table_result);
 
   TRACE("Locking table");
   bool deleted;
@@ -7586,6 +7579,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
         xcluster_manager_.get()->IsNamespaceInAutomaticDDLMode(table->namespace_id());
   }
 
+  // todo(GH29185): too much happens here under the cm mutex.
   UniqueLock lock(mutex_);
   VLOG_WITH_FUNC(3) << "Acquired the catalog manager lock";
 
@@ -8061,17 +8055,12 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
     }
   }
 
-  // Get namespace name by id.
-  SharedLock lock(mutex_);
-  TRACE("Looking up namespace");
-  const scoped_refptr<NamespaceInfo> ns = FindPtrOrNull(namespace_ids_map_, table->namespace_id());
-
-  if (ns == nullptr) {
-    Status s = STATUS_SUBSTITUTE(
-        NotFound, "Could not find namespace by namespace id $0 for request $1.",
-        table->namespace_id(), req->DebugString());
-    return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
+  auto ns_result = FindNamespaceById(table->namespace_id());
+  if (!ns_result.ok()) {
+    return SetupError(
+        resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, ns_result.status());
   }
+  auto& ns = *ns_result;
 
   resp->mutable_identifier()->mutable_namespace_()->set_name(ns->name());
 
@@ -8112,7 +8101,6 @@ Status CatalogManager::GetTablegroupSchema(const GetTablegroupSchemaRequestPB* r
   std::unordered_set<TableId> table_ids;
   {
     SharedLock lock(mutex_);
-
     const auto* tablegroup = tablegroup_manager_->Find(tablegroup_id);
     SCHECK(tablegroup, NotFound, Substitute("Tablegroup with ID $0 not found", tablegroup_id));
     table_ids = tablegroup->ChildTableIds();
@@ -8516,22 +8504,18 @@ Status CatalogManager::CreateTablegroup(
   // Use the tablegroup id as the prefix for the parent table id.
   TableId parent_table_id;
   TableName parent_table_name;
-  {
-    LockGuard lock(mutex_);
-    scoped_refptr<NamespaceInfo> ns = FindPtrOrNull(namespace_ids_map_, req->namespace_id());
-    if (ns == nullptr) {
-      Status s = STATUS_SUBSTITUTE(
-          NotFound, "Could not find namespace by namespace id $0 for request $1.",
-          req->namespace_id(), req->DebugString());
-      return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
-    }
-    if (ns->colocated()) {
-      parent_table_id = GetColocationParentTableId(req->id());
-      parent_table_name = GetColocationParentTableName(req->id());
-    } else {
-      parent_table_id = GetTablegroupParentTableId(req->id());
-      parent_table_name = GetTablegroupParentTableName(req->id());
-    }
+  auto ns_result = FindNamespaceById(req->namespace_id());
+  if (!ns_result.ok()) {
+    return SetupError(
+        resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, ns_result.status());
+  }
+  auto& ns = *ns_result;
+  if (ns->colocated()) {
+    parent_table_id = GetColocationParentTableId(req->id());
+    parent_table_name = GetColocationParentTableName(req->id());
+  } else {
+    parent_table_id = GetTablegroupParentTableId(req->id());
+    parent_table_name = GetTablegroupParentTableName(req->id());
   }
   if (req->has_transaction()) {
     ctreq.mutable_transaction()->CopyFrom(req->transaction());
@@ -9890,9 +9874,7 @@ Status CatalogManager::GetNamespaceInfo(const GetNamespaceInfoRequestPB* req,
   resp->mutable_namespace_()->set_database_type(ns->database_type());
   resp->set_colocated(ns->colocated());
   if (ns->colocated()) {
-    LockGuard lock(mutex_);
-    resp->set_legacy_colocated_database(colocated_db_tablets_map_.find(ns->id())
-                                        != colocated_db_tablets_map_.end());
+    resp->set_legacy_colocated_database(IsColocatedNamespace(ns->id()));
   }
   return Status::OK();
 }
@@ -12096,15 +12078,13 @@ Result<shared_ptr<tablet::AbstractTablet>> CatalogManager::GetSystemTablet(const
 
 Status CatalogManager::GetTabletLocations(
     const TabletId& tablet_id, TabletLocationsPB* locs_pb, IncludeHidden include_hidden) {
-  TabletInfoPtr tablet_info;
-  {
-    SharedLock lock(mutex_);
-    if (!FindCopy(*tablet_map_, tablet_id, &tablet_info)) {
-      return STATUS_SUBSTITUTE(NotFound, "Unknown tablet $0", tablet_id);
-    }
+  auto tablet_info_result = GetTabletInfo(tablet_id);
+  if (!tablet_info_result.ok()) {
+    // Some clients expect non-ok statuses to have a certain form.
+    return STATUS_FORMAT(NotFound, "Unknown tablet $0", tablet_id);
   }
+  const auto& tablet_info = *tablet_info_result;
   Status s = GetTabletLocations(tablet_info, locs_pb, include_hidden);
-
   auto num_replicas = GetNumTabletReplicas(tablet_info);
   if (num_replicas.ok() && *num_replicas > 0 &&
       implicit_cast<size_t>(locs_pb->replicas().size()) != *num_replicas) {
@@ -12501,14 +12481,13 @@ Result<size_t> CatalogManager::GetNumTabletReplicas(const TabletInfoPtr& tablet)
 
 Status CatalogManager::GetExpectedNumberOfReplicasForTablet(
     const TabletId& tablet_id, int* num_live_replicas, int* num_read_replicas) {
-  TabletInfoPtr tablet_info;
-  {
-    SharedLock lock(mutex_);
-    if (!FindCopy(*tablet_map_, tablet_id, &tablet_info)) {
-      return STATUS_SUBSTITUTE(NotFound, "Unknown tablet $0", tablet_id);
-    }
+  auto tablet_info_result = GetTabletInfo(tablet_id);
+  if (!tablet_info_result.ok()) {
+    // Some clients expect non-ok statuses to have a certain form.
+    return STATUS_FORMAT(NotFound, "Unknown tablet $0", tablet_id);
   }
-  GetExpectedNumberOfReplicasForTable(tablet_info->table(), num_live_replicas, num_read_replicas);
+  GetExpectedNumberOfReplicasForTable(
+      (*tablet_info_result)->table(), num_live_replicas, num_read_replicas);
   return Status::OK();
 }
 
@@ -13021,6 +13000,7 @@ Result<CMGlobalLoadState> CatalogManager::InitializeGlobalLoadState(
   }
 
   SharedLock l(mutex_);
+  // todo(zdrudi): replace this with a better index
   for (const auto& info : tables_->GetAllTables()) {
     // Ignore system, colocated and deleting/deleted tables.
     {
