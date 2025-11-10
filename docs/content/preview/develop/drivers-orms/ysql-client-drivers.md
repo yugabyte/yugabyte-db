@@ -38,7 +38,7 @@ If you encounter an issue or have an enhancement request, [file a GitHub issue](
 
 [libpq](https://www.postgresql.org/docs/15/libpq.html) is the C client library for connecting to and interacting with PostgreSQL databases. libpq is also the underlying engine used in other PostgreSQL application interfaces. The libpq client library supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
-For details and documentation, refer to [libpq - C Library](https://www.postgresql.org/docs/15/libpq.html) for PostgreSQL 11 (on which YugabyteDB is based).
+For details and documentation, refer to [libpq - C Library](https://www.postgresql.org/docs/15/libpq.html) for PostgreSQL 15 (on which YugabyteDB is based).
 
 For a tutorial on building a sample C application with libpq, refer to [Connect an application](../c/ysql/).
 
