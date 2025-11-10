@@ -15,7 +15,10 @@ const StyledNodesCount = styled('div')(({ theme }) => ({
   padding: theme.spacing(3),
   display: 'flex',
   flexDirection: 'column',
-  gap: theme.spacing(1)
+  gap: theme.spacing(1),
+  background: '#FBFCFD',
+  border: `1px solid ${theme.palette.grey[300]}`,
+  borderRadius: '8px'
 }));
 
 const NodesCount = styled(

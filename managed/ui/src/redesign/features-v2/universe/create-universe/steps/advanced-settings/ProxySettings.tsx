@@ -28,7 +28,7 @@ export const ProxySettings = forwardRef<StepsRef>((_, forwardRef) => {
     forwardRef,
     () => ({
       onNext: () => {
-        methods.handleSubmit((data) => {
+        return methods.handleSubmit((data) => {
           saveProxySettings(data);
           moveToNextPage();
         })();

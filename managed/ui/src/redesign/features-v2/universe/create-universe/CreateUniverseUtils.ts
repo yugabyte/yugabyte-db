@@ -9,7 +9,12 @@ import {
 } from './steps/resilence-regions/dtos';
 import { AvailabilityZone, ClusterType, Region } from '../../../helpers/dtos';
 import { OtherAdvancedProps } from './steps/advanced-settings/dtos';
-import { ClusterNodeSpec, CommunicationPortsSpec, PlacementRegion, UniverseCreateReqBody } from '../../../../v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import {
+  ClusterNodeSpec,
+  CommunicationPortsSpec,
+  PlacementRegion,
+  UniverseCreateReqBody
+} from '../../../../v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { CloudType, DeviceInfo } from '@app/redesign/features/universe/universe-form/utils/dto';
 
 export function getCreateUniverseSteps(t: TFunction, resilienceType?: ResilienceType) {

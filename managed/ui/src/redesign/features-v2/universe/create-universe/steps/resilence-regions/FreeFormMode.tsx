@@ -1,6 +1,6 @@
 import { useFormContext } from 'react-hook-form';
 import { Trans, useTranslation } from 'react-i18next';
-import { mui, YBWarning } from '@yugabyte-ui-library/core';
+import { mui, YBTag } from '@yugabyte-ui-library/core';
 import { Collapse, styled, Typography } from '@material-ui/core';
 import { ResilienceAndRegionsProps } from './dtos';
 import { ReplicationFactorField } from '../../fields/replication-factor/ReplicationFactorField';
@@ -56,9 +56,24 @@ export const FreeFormMode = () => {
       </Typography>
       <ReplicationFactorField />
       <Collapse in={replicationFactor === 1}>
-        <YBWarning chipText={t('guidedMode.faultToleranceNone.caution')}>
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: 'row',
+            gap: '8px',
+            alignItems: 'center',
+            color: '#4E5F6D'
+          }}
+        >
+          <YBTag
+            size="medium"
+            customSx={{ color: '#9D6C00', background: '#FFEEC8' }}
+            color="warning"
+          >
+            {t('guidedMode.faultToleranceNone.caution')}
+          </YBTag>
           {t('freeFormFaultToleranceMinMsg')}
-        </YBWarning>
+        </Box>
       </Collapse>
       <ResilienceTooltip
         open={showResilienceTooltip}
