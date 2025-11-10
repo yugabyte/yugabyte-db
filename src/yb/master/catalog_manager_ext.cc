@@ -987,11 +987,7 @@ Status CatalogManager::ImportSnapshotPreprocess(
               }
               const NamespaceId new_namespace_id = ns_it->second.new_namespace_id;
               bool legacy_colocated_database;
-              {
-                SharedLock lock(mutex_);
-                legacy_colocated_database = (colocated_db_tablets_map_.find(new_namespace_id)
-                                             != colocated_db_tablets_map_.end());
-              }
+              legacy_colocated_database = IsColocatedNamespace(new_namespace_id);
               if (!legacy_colocated_database) {
                 // Colocation migration.
                 // Check if the default tablegroup exists.
@@ -1578,16 +1574,10 @@ Status CatalogManager::ImportNamespaceEntry(
   TRACE("Looking up namespace");
   // First of all try to find the namespace by ID. It will work if we are restoring the backup
   // on the original cluster where the backup was created.
-  scoped_refptr<NamespaceInfo> ns;
-  {
-    SharedLock lock(mutex_);
-    ns = FindPtrOrNull(namespace_ids_map_, entry.id());
-  }
-
+  auto ns_result = FindNamespaceById(entry.id());
   bool is_clone = clone_target_namespace_name.has_value();
-  bool found_matching_ns_by_id = ns != nullptr &&
-                                 ns->name() == meta.name() &&
-                                 ns->state() == SysNamespaceEntryPB::RUNNING;
+  bool found_matching_ns_by_id = (ns_result.ok()) && (*ns_result)->name() == meta.name() &&
+                                 (*ns_result)->state() == SysNamespaceEntryPB::RUNNING;
   if (found_matching_ns_by_id && !is_clone) {
     ns_data.new_namespace_id = entry.id();
     return Status::OK();
@@ -1608,22 +1598,18 @@ Status CatalogManager::ImportNamespaceEntry(
     } else {
       new_namespace_name = meta.name();
     }
-    {
-      SharedLock lock(mutex_);
-      ns = FindPtrOrNull(namespace_names_mapper_[ns_data.db_type], new_namespace_name);
-    }
-    if (ns == nullptr) {
+    ns_result = FindNamespaceByName(ns_data.db_type, new_namespace_name);
+    if (!ns_result.ok()) {
       const string msg = Format("YSQL database must exist: $0", new_namespace_name);
       LOG_WITH_FUNC(WARNING) << msg;
       return STATUS(InvalidArgument, msg, MasterError(MasterErrorPB::NAMESPACE_NOT_FOUND));
     }
+    const auto& ns = *ns_result;
     if (ns->state() != SysNamespaceEntryPB::RUNNING) {
       const string msg = Format("Found YSQL database must be running: $0", new_namespace_name);
       LOG_WITH_FUNC(WARNING) << msg;
       return STATUS(InvalidArgument, msg, MasterError(MasterErrorPB::NAMESPACE_NOT_FOUND));
     }
-
-    auto ns_lock = ns->LockForRead();
     ns_data.new_namespace_id = ns->id();
   } else {
     CreateNamespaceRequestPB req;
@@ -1870,19 +1856,14 @@ Status CatalogManager::RecreateTable(const NamespaceId& new_namespace_id,
       req.set_indexed_table_id(it->second.new_table_id);
     }
 
-    scoped_refptr<TableInfo> indexed_table;
-    {
-      SharedLock lock(mutex_);
-      // Try to find the specified indexed table by id.
-      indexed_table = tables_->FindTableOrNull(req.indexed_table_id());
-    }
+    auto indexed_table_result = FindTableById(req.indexed_table_id());
 
-    if (indexed_table == nullptr) {
+    if (!indexed_table_result.ok()) {
       const string msg = Format("Indexed table not found by id: $0", req.indexed_table_id());
       LOG_WITH_FUNC(WARNING) << msg;
       return STATUS(InvalidArgument, msg, MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
     }
-
+    const auto& indexed_table = *indexed_table_result;
     LOG_WITH_FUNC(INFO) << "Found indexed table by id " << req.indexed_table_id();
 
     // Ensure the main table schema (including column ids) was not changed.
@@ -1959,6 +1940,9 @@ Status CatalogManager::RepartitionTable(const TableInfoPtr& table,
     // whole process. Consequently, we hold it through some steps that require mutex_, but since
     // taking mutex_ after TableInfo pb lock is prohibited for deadlock reasons, acquire mutex_
     // first, then release it when it is no longer needed, still holding table pb lock.
+    //
+    // todo(GH29185): This code holds `CatalogManager::mutex_` exclusively while acquiring COW write
+    // locks.
     TableInfo::WriteLock table_lock;
     {
       LockGuard lock(mutex_);
@@ -2112,7 +2096,7 @@ Status CatalogManager::RepartitionTable(const TableInfoPtr& table,
 //
 // table: internal table's info
 // snapshot_data: external table's snapshot data
-Result<bool> CatalogManager::CheckTableForImport(scoped_refptr<TableInfo> table,
+Result<bool> CatalogManager::CheckTableForImport(const scoped_refptr<TableInfo>& table,
                                                  ExternalTableSnapshotData* snapshot_data) {
   auto table_lock = table->LockForRead();
 
@@ -2195,11 +2179,8 @@ Status CatalogManager::ImportTableEntry(
     // Make sure the new_table_id corresponds to an existing DocDB table at restore side.
     // Return an error in case no table with new_table_id was found at restore side.
     TRACE("Looking up table");
-    {
-      SharedLock lock(mutex_);
-      table = tables_->FindTableOrNull(table_data->new_table_id);
-    }
-    if (!table) {
+    auto table_result = FindTableById(table_data->new_table_id);
+    if (!table_result.ok()) {
       LOG(WARNING) << Format(
           "Did not find a corresponding table at restore side for the table $0 from backup.",
           table_data->old_table_id);
@@ -2219,15 +2200,13 @@ Status CatalogManager::ImportTableEntry(
   }
   // The destination table should be found or created by now.
   TRACE("Looking up new table");
-  {
-    SharedLock lock(mutex_);
-    table = tables_->FindTableOrNull(table_data->new_table_id);
-  }
-  if (table == nullptr) {
+  auto table_result = FindTableById(table_data->new_table_id);
+  if (!table_result.ok()) {
     const string msg = Format("Created table not found: $0", table_data->new_table_id);
     LOG_WITH_FUNC(WARNING) << msg;
     return STATUS(InternalError, msg, MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
   }
+  table = std::move(*table_result);
 
   std::optional<int> schema_version;
 
@@ -2513,30 +2492,28 @@ Result<bool> CatalogManager::ImportTableEntryByName(
   bool is_parent_colocated_table = false;
   if (new_namespace_id == table_data->old_namespace_id) {
     TRACE("Looking up table");
-    {
-        SharedLock lock(mutex_);
-        table = tables_->FindTableOrNull(table_data->old_table_id);
-    }
+    auto table_result = FindTableById(table_data->old_table_id);
 
-    if (table != nullptr) {
-        VLOG_WITH_PREFIX(3) << "Begin first search";
-        // At this point, namespace id and table id match. Check other properties, like whether the
-        // table is active and whether table name matches.
-        SharedLock lock(mutex_);
-        if (VERIFY_RESULT(CheckTableForImport(table, table_data))) {
+    if (table_result.ok()) {
+      table = std::move(*table_result);
+      VLOG_WITH_PREFIX(3) << "Begin first search";
+      // At this point, namespace id and table id match. Check other properties, like whether the
+      // table is active and whether table name matches.
+      SharedLock lock(mutex_);
+      if (VERIFY_RESULT(CheckTableForImport(table, table_data))) {
         LOG_WITH_FUNC(INFO) << "Found existing table: '" << table->ToString() << "'";
         if (meta.colocated() && IsColocationParentTableId(table_data->old_table_id)) {
           // Parent colocated tables don't have partition info, so make sure to mark them.
           is_parent_colocated_table = true;
         }
-        } else {
+      } else {
         // A property did not match, so this search by ids failed.
         auto table_lock = table->LockForRead();
         LOG_WITH_FUNC(WARNING) << "Existing table " << table->ToString()
                                << " not suitable: " << table_lock->pb.ShortDebugString()
                                << ", name: " << table->name() << " vs " << meta.name();
         table.reset();
-        }
+      }
     }
   }
 
@@ -2662,9 +2639,7 @@ Result<TableId> CatalogManager::GetRestoreTargetParentTableForLegacyColocatedDb(
   // <namespace_id>.colocated.parent.uuid
   // Case 2: Restored DB uses the new colocation database format:
   // <tablegroup_id>.colocation.parent.uuid
-  SharedLock lock(mutex_);
-  bool legacy_colocated_database = colocated_db_tablets_map_.find(restore_target_namespace_id) !=
-                                   colocated_db_tablets_map_.end();
+  bool legacy_colocated_database = IsColocatedNamespace(restore_target_namespace_id);
   if (legacy_colocated_database) {
     return GetColocatedDbParentTableId(restore_target_namespace_id);
   } else {
@@ -2761,8 +2736,7 @@ Status CatalogManager::ImportTabletEntry(
   // Update tablets IDs map.
   if (table_data.new_table_id == table_data.old_table_id) {
     TRACE("Looking up tablet");
-    SharedLock lock(mutex_);
-    if (tablet_map_->contains(entry.id())) {
+    if (GetTabletInfo(entry.id()).ok()) {
       IdPairPB* const pair = table_data.table_meta->add_tablets_ids();
       pair->set_old_id(entry.id());
       pair->set_new_id(entry.id());
