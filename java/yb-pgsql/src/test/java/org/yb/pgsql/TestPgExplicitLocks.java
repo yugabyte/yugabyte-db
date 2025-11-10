@@ -85,7 +85,7 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
 
     ParallelQueryRunner(Statement s1, Statement s2) throws SQLException {
       stmts = new Statement[]{s1, s2};
-      runOnBoth("SET retry_max_backoff = 0");
+      runOnBoth("SET yb_max_query_layer_retries = 0");
       stmts[0].execute("SET yb_transaction_priority_lower_bound = 0.5");
       stmts[1].execute("SET yb_transaction_priority_upper_bound = 0.1");
     }
