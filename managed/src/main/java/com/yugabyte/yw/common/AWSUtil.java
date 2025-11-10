@@ -925,8 +925,7 @@ public class AWSUtil implements CloudUtil {
       if (globalFlag && (StringUtils.isBlank(endpoint) || isHostBaseS3Standard(endpoint))) {
         // Use global bucket access only for standard S3.
         builder.crossRegionAccessEnabled(true);
-      }
-      if (StringUtils.isNotBlank(endpoint)) {
+      } else if (StringUtils.isNotBlank(endpoint)) {
         URI uri = new URI(endpoint);
         if (uri.getScheme() == null) {
           uri = new URI(HTTPS_SCHEME + endpoint);
