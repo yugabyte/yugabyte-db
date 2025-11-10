@@ -5927,7 +5927,8 @@ RelationBuildLocalRelation(const char *relname,
  */
 void
 RelationSetNewRelfilenode(Relation relation, char persistence,
-						  bool yb_copy_split_options)
+						  bool yb_copy_split_options,
+						  YbOptSplit *preserved_index_split_options)
 {
 	Oid			newrelfilenode;
 	Relation	pg_class;
@@ -6003,7 +6004,7 @@ RelationSetNewRelfilenode(Relation relation, char persistence,
 			 * an implicit part of the base table.
 			 */
 			YbIndexSetNewRelfileNode(relation, newrelfilenode,
-									 yb_copy_split_options);
+									 yb_copy_split_options, preserved_index_split_options);
 		else if (relation->rd_rel->relkind == RELKIND_RELATION ||
 				 relation->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
 		{

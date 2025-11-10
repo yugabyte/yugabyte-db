@@ -94,7 +94,8 @@ extern Oid	index_create(Relation heapRelation,
 						 const bool skip_index_backfill,
 						 bool is_colocated,
 						 Oid tablegroupId,
-						 Oid colocationId);
+						 Oid colocationId,
+						 bool yb_skip_index_creation);
 
 #define	INDEX_CONSTR_CREATE_MARK_AS_PRIMARY	(1 << 0)
 #define	INDEX_CONSTR_CREATE_DEFERRABLE		(1 << 1)
@@ -176,7 +177,8 @@ extern Oid	IndexGetRelation(Oid indexId, bool missing_ok);
 
 extern void reindex_index(Oid indexId, bool skip_constraint_checks,
 						  char relpersistence, ReindexParams *params,
-						  bool is_yb_table_rewrite, bool yb_copy_split_options);
+						  bool is_yb_table_rewrite, bool yb_copy_split_options,
+						  YbOptSplit *preserved_index_split_options);
 
 /* Flag bits for reindex_relation(): */
 #define REINDEX_REL_PROCESS_TOAST			0x01
@@ -187,7 +189,9 @@ extern void reindex_index(Oid indexId, bool skip_constraint_checks,
 
 extern bool reindex_relation(Oid relid, int flags, ReindexParams *params,
 							 bool is_yb_table_rewrite,
-							 bool yb_copy_split_options);
+							 bool yb_copy_split_options,
+							 List *changedIndexNames,
+							 List *changedIndexSplitOpts);
 
 extern bool ReindexIsProcessingHeap(Oid heapOid);
 extern bool ReindexIsProcessingIndex(Oid indexOid);

@@ -394,13 +394,6 @@ CheckAlterColumnTypeDDL(Oid rel_oid, CollectedCommand *cmd, List **new_rel_list,
 
 			switch (subcmd->subtype)
 			{
-				case AT_AlterColumnType:
-				{
-					if (is_table_rewrite)
-						elog(ERROR, "Table Rewrite ALTER COLUMN TYPE is not "
-									"supported\n");
-					break;
-				}
 				case AT_AddIndex:
 				case AT_ReAddIndex:
 					{
@@ -793,17 +786,6 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 		else if (command_tag == CMDTAG_ALTER_TABLE &&
 				 list_member_oid(rewritten_table_oid_list, obj_id))
 		{
-			/*
-			 * Verify if the command is ALTER COLUMN TYPE, which is currently
-			 * unsupported.
-			 * TODO(yyan): Unblock ALTER COLUMN TYPE table rewrite after
-			 * resolving issue #24007.
-			 */
-			CollectedCommand *cmd = info->command;
-			CheckAlterColumnTypeDDL(obj_id, cmd, &new_rel_list,
-									/* is_table_rewrite */ true,
-									is_temporary_object);
-
 			rewritten_table_oid_list = list_delete_oid(rewritten_table_oid_list, obj_id);
 
 			/*
