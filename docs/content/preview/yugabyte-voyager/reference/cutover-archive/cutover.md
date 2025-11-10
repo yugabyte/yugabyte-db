@@ -34,7 +34,9 @@ Usage: yb-voyager initiate cutover to target [ <arguments> ... ]
 
 During the `export data from target` phase, after `cutover to target` in the fall-forward/fall-back workflows, YugabyteDB Voyager exports changes from YugabyteDB. YugabyteDB provides two types of CDC (Change Data Capture) connectors:
 
-- [YugabyteDB gRPC Connector](../../../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/): Requires direct access to the cluster's internal ports-specifically, YB-TServer (9100) and YB-Master (7100). This connector is suitable for deployments where these ports are accessible.
+- [YugabyteDB gRPC Connector](../../../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/): Requires direct access to the cluster's internal ports. Specifically, YB-TServer (9100) and YB-Master (7100). This connector is suitable for deployments where these ports are accessible.
+
+  Note: The following datatypes are unsupported when exporting from the target YugabyteDB using the gRPC connector: BOX, CIRCLE, LINE, LSEG, PATH, PG_LSN, POINT, POLYGON, TSQUERY, TSVECTOR, TXID_SNAPSHOT, GEOMETRY, GEOGRAPHY, RASTER, HSTORE.
 
 - [YugabyteDB Connector](../../../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/): Does not require access to internal ports and is recommended for deployments where the gRPC connector cannot be used, for example, YugabyteDB Aeon. Supported in YugabyteDB versions 2024.1.1 or later. Note that currently there are is a known limitation with this connector. Refer to GitHub issue [27248](https://github.com/yugabyte/yugabyte-db/issues/27248) for more details.
 
