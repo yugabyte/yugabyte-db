@@ -38,7 +38,7 @@ On Red Hat Enterprise Linux 8-based systems (Red Hat Enterprise Linux 8, Oracle 
 DefaultLimitNOFILE=1048576
 ```
 
-You must reboot the system for these two settings to take effect.
+_You must reboot the system for these two settings to take effect._
 
 #### Transparent hugepages
 
@@ -48,7 +48,7 @@ Transparent hugepages (THP) should be enabled for optimal performance. Download 
 
 - [install-yb-enable-transparent-huge-pages-service.sh](/files/install-yb-enable-transparent-huge-pages-service.sh)
 
-You must reboot the system for these settings to take effect.
+_You must reboot the system for these settings to take effect._
 
 <details>
   <summary>More information</summary>
