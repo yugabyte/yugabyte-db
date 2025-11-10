@@ -10,6 +10,7 @@ import static org.mockito.ArgumentMatchers.isNull;
 
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ValidatingFormFactory;
@@ -108,6 +109,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
   @Mock YBClientService ybClientService;
   @Mock KubernetesClientFactory kubernetesClientFactory;
   @Mock UniverseImporter universeImporter;
+  @Mock KubernetesManagerFactory mockKubernetesManagerFactory;
   MockedStatic<KubernetesEnvironmentVariables> envVars;
 
   YBUniverseReconciler ybUniverseReconciler;
@@ -146,7 +148,8 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
                 validatingFormFactory,
                 ybClientService,
                 kubernetesClientFactory,
-                universeImporter));
+                universeImporter,
+                mockKubernetesManagerFactory));
     // Mockito.when(confGetter.getGlobalConf(any())).thenReturn(true);
     Mockito.when(
             confGetterForOperatorUtils.getGlobalConf(GlobalConfKeys.KubernetesOperatorCustomerUUID))

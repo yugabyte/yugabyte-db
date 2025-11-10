@@ -321,6 +321,17 @@ public class Backup extends Model {
   @Column(name = "has_kms_history")
   private boolean hasKMSHistory;
 
+  // true iff created through a k8s CR and controlled by the
+  // Kubernetes Operator.
+  @Column(name = "is_kubernetes_operator_controlled")
+  @ApiModelProperty(hidden = true)
+  private boolean isKubernetesOperatorControlled = false;
+
+  public void setIsKubernetesOperatorControlled(boolean isKubernetesOperatorControlled) {
+    this.isKubernetesOperatorControlled = isKubernetesOperatorControlled;
+    this.save();
+  }
+
   public void updateExpiryTimeUnit(TimeUnit expiryTimeUnit) {
     setExpiryTimeUnit(expiryTimeUnit);
     save();

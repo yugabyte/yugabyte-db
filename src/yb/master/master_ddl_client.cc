@@ -115,4 +115,13 @@ Status MasterDDLClient::DeleteTable(const TableId& id, MonoDelta timeout) {
   return Status::OK();
 }
 
+Result<ListTablesResponsePB> MasterDDLClient::ListTables() {
+  ListTablesRequestPB req;
+  ListTablesResponsePB resp;
+  rpc::RpcController rpc;
+  RETURN_NOT_OK(proxy_.ListTables(req, &resp, &rpc));
+  RETURN_NOT_OK(ResponseStatus(resp));
+  return resp;
+}
+
 }  // namespace yb::master

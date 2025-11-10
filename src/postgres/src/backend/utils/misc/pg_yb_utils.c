@@ -6665,7 +6665,7 @@ YbTryRegisterCatalogVersionTableForPrefetching()
 		YbRegisterSysTableForPrefetching(YBCatalogVersionRelationId);
 }
 
-bool
+static bool
 YBCIsRegionLocal(Relation rel)
 {
 	double		cost = 0.0;
@@ -7131,18 +7131,20 @@ YbGetNonSystemTablespaceOid(Relation rel)
 	return rel->rd_rel->reltablespace;
 }
 
-void
-YbMaybeSetNonSystemTablespaceOid(YbcPgStatement handle, Relation rel)
+YbcPgTableLocalityInfo
+YbBuildTableLocalityInfo(Relation rel)
 {
-	Oid			tablespace_oid = YbGetNonSystemTablespaceOid(rel);
-
-	if (OidIsValid(tablespace_oid))
+	return (YbcPgTableLocalityInfo)
 	{
-		YBCPgSetTablespaceOid(handle, tablespace_oid);
-#ifndef NDEBUG
-		YBCPgCheckTablespaceOid(MyDatabaseId, rel->rd_id, tablespace_oid);
-#endif
-	}
+		.is_region_local = YBCIsRegionLocal(rel), .tablespace_oid = YbGetNonSystemTablespaceOid(rel)
+	};
+}
+
+YbcPgTableLocalityInfo
+YbBuildSystemTableLocalityInfo(Oid sys_rel_oid)
+{
+	Assert(IsCatalogRelationOid(sys_rel_oid));
+	return (YbcPgTableLocalityInfo){};
 }
 
 uint64_t
@@ -8427,4 +8429,102 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 
 	MemoryContextSwitchTo(oldcontext);
 	return (Datum) 0;
+}
+
+YbcPgStatement
+YbNewSample(Relation rel,
+			int targrows,
+			double rstate_w,
+			uint64_t rand_state_s0,
+			uint64_t rand_state_s1)
+{
+	YbcPgStatement result = NULL;
+	HandleYBStatus(YBCPgNewSample(YBCGetDatabaseOid(rel), YbGetRelfileNodeId(rel),
+								  YbBuildTableLocalityInfo(rel), targrows, rstate_w, rand_state_s0,
+								  rand_state_s1, &result));
+	return result;
+}
+
+YbcPgStatement
+YbNewSelect(Relation rel, const YbcPgPrepareParameters *prepare_params)
+{
+	YbcPgStatement result = NULL;
+	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(rel), YbGetRelfileNodeId(rel), prepare_params,
+								  YbBuildTableLocalityInfo(rel), &result));
+	return result;
+}
+
+YbcPgStatement
+YbNewUpdateForDb(Oid db_oid, Relation rel, YbcPgTransactionSetting transaction_setting)
+{
+	YbcPgStatement result = NULL;
+	HandleYBStatus(YBCPgNewUpdate(db_oid, YbGetRelfileNodeId(rel),
+								  YbBuildTableLocalityInfo(rel), &result, transaction_setting));
+	return result;
+}
+
+YbcPgStatement
+YbNewUpdate(Relation rel, YbcPgTransactionSetting transaction_setting)
+{
+	return YbNewUpdateForDb(YBCGetDatabaseOid(rel), rel, transaction_setting);
+}
+
+YbcPgStatement
+YbNewDelete(Relation rel, YbcPgTransactionSetting transaction_setting)
+{
+	YbcPgStatement result = NULL;
+	HandleYBStatus(YBCPgNewDelete(YBCGetDatabaseOid(rel), YbGetRelfileNodeId(rel),
+								  YbBuildTableLocalityInfo(rel), &result, transaction_setting));
+	return result;
+}
+
+YbcPgStatement
+YbNewInsertForDb(Oid db_oid, Relation rel, YbcPgTransactionSetting transaction_setting)
+{
+	YbcPgStatement result = NULL;
+	HandleYBStatus(YBCPgNewInsert(db_oid, YbGetRelfileNodeId(rel),
+								  YbBuildTableLocalityInfo(rel), &result, transaction_setting));
+	return result;
+}
+
+YbcPgStatement
+YbNewInsert(Relation rel, YbcPgTransactionSetting transaction_setting)
+{
+	return YbNewInsertForDb(YBCGetDatabaseOid(rel), rel, transaction_setting);
+}
+
+extern YbcPgStatement
+YbNewInsertBlock(Relation rel, YbcPgTransactionSetting transaction_setting)
+{
+	YbcPgStatement result = NULL;
+	HandleYBStatus(YBCPgNewInsertBlock(YBCGetDatabaseOid(rel), YbGetRelfileNodeId(rel),
+									   YbBuildTableLocalityInfo(rel), transaction_setting,
+									   &result));
+	return result;
+}
+
+static YbcStatus
+YbNewTruncateColocatedImpl(Relation rel, YbcPgTransactionSetting transaction_setting,
+						   YbcPgStatement *result)
+{
+	return YBCPgNewTruncateColocated(YBCGetDatabaseOid(rel), YbGetRelfileNodeId(rel),
+									 YbBuildTableLocalityInfo(rel), result, transaction_setting);
+}
+
+YbcPgStatement
+YbNewTruncateColocated(Relation rel, YbcPgTransactionSetting transaction_setting)
+{
+	YbcPgStatement result = NULL;
+	HandleYBStatus(YbNewTruncateColocatedImpl(rel, transaction_setting, &result));
+	return result;
+}
+
+YbcPgStatement
+YbNewTruncateColocatedIgnoreNotFound(Relation rel, YbcPgTransactionSetting transaction_setting)
+{
+	bool not_found = false;
+	YbcPgStatement result = NULL;
+	HandleYBStatusIgnoreNotFound(YbNewTruncateColocatedImpl(rel, transaction_setting, &result),
+								 &not_found);
+	return not_found ? NULL : result;
 }

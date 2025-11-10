@@ -297,11 +297,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     if (!uOpt.isPresent()) {
       log.info("Creating new universe {}", ybaUniverseName);
       // Allowing us to update the status of the ybUniverse
-      // Setting finalizer to prevent out-of-operator deletes of custom resources
-      // Check if provider is available before proceeding
       Provider provider = getProvider(ybUniverse, cust.getUuid());
       if (provider == null) {
-        // Provider not found, try to create auto-provider
         createAutoProvider(ybUniverse, cust.getUuid());
         log.info(
             "Provider not ready, waiting for next NO_OP action for universe {}", ybaUniverseName);
@@ -1695,7 +1692,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     return null;
   }
 
-  private String getUniverseName(YBUniverse ybUniverse) {
+  public static String getUniverseName(YBUniverse ybUniverse) {
     if (ybUniverse.getSpec().getUniverseName() != null) {
       return ybUniverse.getSpec().getUniverseName();
     }

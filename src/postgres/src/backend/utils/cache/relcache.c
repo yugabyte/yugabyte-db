@@ -267,9 +267,6 @@ do { \
 	} \
 	else \
 		hentry->reldesc = (RELATION); \
-	if (IsYugaByteEnabled() && OidIsValid(MyDatabaseId) && \
-		RELATION->rd_rel->reltablespace >= FirstNormalObjectId) \
-		YBCRecordTablespaceOid(MyDatabaseId, RELATION->rd_id, RELATION->rd_rel->reltablespace); \
 } while(0)
 
 #define RelationIdCacheLookup(ID, RELATION) \
@@ -293,9 +290,6 @@ do { \
 	if (hentry == NULL) \
 		elog(WARNING, "failed to delete relcache entry for OID %u", \
 			 (RELATION)->rd_id); \
-	if (IsYugaByteEnabled() && OidIsValid(MyDatabaseId) && \
-		RELATION->rd_rel->reltablespace >= FirstNormalObjectId) \
-		YBCClearTablespaceOid(MyDatabaseId, RELATION->rd_id); \
 } while(0)
 
 /*
@@ -433,7 +427,6 @@ do { \
 	} \
 	else \
 		hentry->reldesc = (RELATION); \
-		/* No need to call YBCRecordTablespaceOid on a system relation */ \
 	Assert(RELATION->rd_id < FirstNormalObjectId); \
 } while(0)
 

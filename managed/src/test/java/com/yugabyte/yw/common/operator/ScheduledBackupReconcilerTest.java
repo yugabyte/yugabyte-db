@@ -14,6 +14,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
@@ -80,6 +81,7 @@ public class ScheduledBackupReconcilerTest extends FakeDBApplication {
   private Provider testProvider;
   private Universe testUniverse;
   private KubernetesResourceDetails universeResource;
+  private KubernetesManagerFactory mockKubernetesManagerFactory;
 
   private final String namespace = "test-namespace";
 
@@ -91,6 +93,7 @@ public class ScheduledBackupReconcilerTest extends FakeDBApplication {
     mockYbClientService = Mockito.mock(YBClientService.class);
     mockKubernetesClientFactory = Mockito.mock(KubernetesClientFactory.class);
     mockUniverseImporter = Mockito.mock(UniverseImporter.class);
+    mockKubernetesManagerFactory = Mockito.mock(KubernetesManagerFactory.class);
     mockOperatorUtils =
         spy(
             new OperatorUtils(
@@ -100,7 +103,8 @@ public class ScheduledBackupReconcilerTest extends FakeDBApplication {
                 mockFormFactory,
                 mockYbClientService,
                 mockKubernetesClientFactory,
-                mockUniverseImporter));
+                mockUniverseImporter,
+                mockKubernetesManagerFactory));
     mockClient = Mockito.mock(KubernetesClient.class);
     when(mockKubernetesClientFactory.getKubernetesClientWithConfig(any())).thenReturn(mockClient);
     mockInformerFactory = Mockito.mock(YBInformerFactory.class);

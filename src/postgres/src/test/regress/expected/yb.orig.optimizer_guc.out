@@ -529,10 +529,10 @@ select * from pg_class;
 set yb_enable_cbo = on;
 explain (settings, costs off)
 select * from pg_class;
-                               QUERY PLAN                               
-------------------------------------------------------------------------
+                                                                                         QUERY PLAN                                                                                          
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Seq Scan on pg_class
- Settings: yb_enable_base_scans_cost_model = 'on', yb_enable_cbo = 'on'
+ Settings: yb_enable_base_scans_cost_model = 'on', yb_enable_bitmapscan = 'on', yb_enable_cbo = 'on', yb_enable_update_reltuples_after_create_index = 'on', yb_parallel_range_rows = '10000'
 (2 rows)
 
 set yb_enable_cbo = legacy_stats_mode;

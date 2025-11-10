@@ -429,10 +429,23 @@ public class UpgradeUniverseHandler {
       log.info(
           "Created rootCA: {} for universe {}", requestParams.rootCA, universe.getUniverseUUID());
     }
-    if (userIntent.enableClientToNodeEncrypt
-        && !userIntent.providerType.equals(CloudType.kubernetes)
-        && requestParams.getClientRootCA() == null) {
-      if (!requestParams.rootAndClientRootCASame) {
+
+    if (userIntent.enableClientToNodeEncrypt) {
+      boolean isKubernetes = userIntent.providerType.equals(CloudType.kubernetes);
+      // For Kubernetes, clientRootCA must be same as rootCA
+      // For non-Kubernetes, check rootAndClientRootCASame flag
+      boolean useSameAsRootCA =
+          isKubernetes || (requestParams.rootAndClientRootCASame && requestParams.rootCA != null);
+
+      if (useSameAsRootCA
+          && requestParams.rootCA != null
+          && requestParams.getRawClientRootCA() == null) {
+        requestParams.setClientRootCA(requestParams.rootCA);
+        log.info(
+            "Using clientRootCA is same as rootCA: {} for universe {}",
+            requestParams.getClientRootCA(),
+            universe.getUniverseUUID());
+      } else if (requestParams.getClientRootCA() == null) {
         requestParams.setClientRootCA(
             certificateHelper.createClientRootCA(
                 runtimeConfigFactory.staticApplicationConf(),
@@ -442,14 +455,21 @@ public class UpgradeUniverseHandler {
             "Created clientRootCA: {} for universe {}",
             requestParams.getClientRootCA(),
             universe.getUniverseUUID());
-      } else {
-        requestParams.setClientRootCA(requestParams.rootCA);
-        log.info(
-            "ClientRootCA is same as rootCA: {} for universe {}",
-            requestParams.getClientRootCA(),
-            universe.getUniverseUUID());
       }
     }
+
+    if (requestParams.rootCA == null && requestParams.getClientRootCA() != null) {
+      requestParams.rootCA = requestParams.getClientRootCA();
+    }
+
+    log.info(
+        "Rotating certs for universe {} with rootCA: {} and clientRootCA: {}",
+        universe.getUniverseUUID(),
+        requestParams.rootCA != null ? requestParams.rootCA.toString() : "NULL",
+        requestParams.getClientRootCA() != null
+            ? requestParams.getClientRootCA().toString()
+            : "NULL");
+
     // Temporary fix for PLAT-4791 until PLAT-4653 fixed.
     if (universe.getUniverseDetails().getReadOnlyClusters().size() > 0
         && requestParams.getReadOnlyClusters().size() == 0) {
@@ -461,11 +481,13 @@ public class UpgradeUniverseHandler {
     // Generate client certs if rootAndClientRootCASame is true and rootCA is self-signed.
     // This is there only for legacy support, no need if rootCA and clientRootCA are different.
     if (userIntent.enableClientToNodeEncrypt && requestParams.rootAndClientRootCASame) {
-      CertificateInfo rootCert = CertificateInfo.get(requestParams.rootCA);
+      CertificateInfo rootCert = CertificateInfo.get(requestParams.getClientRootCA());
       if (rootCert.getCertType() == CertConfigType.SelfSigned
           || rootCert.getCertType() == CertConfigType.HashicorpVault) {
         CertificateHelper.createClientCertificate(
-            runtimeConfigFactory.staticApplicationConf(), customer.getUuid(), requestParams.rootCA);
+            runtimeConfigFactory.staticApplicationConf(),
+            customer.getUuid(),
+            requestParams.getClientRootCA());
       }
     }
 
@@ -734,8 +756,6 @@ public class UpgradeUniverseHandler {
                     customer.getUuid()));
           }
         }
-      } else {
-        requestParams.setClientRootCA(universeDetails.getClientRootCA());
       }
 
       // Setting rootCA to ClientRootCA in case node to node encryption is disabled.

@@ -3241,12 +3241,8 @@ ybcBeginScan(Relation relation,
 	ybcSetupScanPlan(xs_want_itup, ybScan, &scan_plan);
 	ybcSetupScanKeys(ybScan, &scan_plan);
 
-	/* Create handle */
-	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(relation),
-								  YbGetRelfileNodeId(relation),
-								  &ybScan->prepare_params,
-								  YBCIsRegionLocal(relation),
-								  &ybScan->handle));
+	ybScan->handle = YbNewSelect(relation, &ybScan->prepare_params);
+
 	/* Set up binds */
 	if (!YbBindScanKeys(ybScan, &scan_plan, false /* is_for_precheck */ ) ||
 		!YbBindHashKeys(ybScan))
@@ -3287,7 +3283,6 @@ ybcBeginScan(Relation relation,
 	if (!(is_internal_scan && IsSystemRelation(relation)))
 		YbSetCatalogCacheVersion(ybScan->handle,
 								 YbGetCatalogCacheVersion());
-	YbMaybeSetNonSystemTablespaceOid(ybScan->handle, relation);
 
 	/* Set distinct prefix length. */
 	if (distinct_prefixlen > 0)
@@ -4141,22 +4136,15 @@ YbFetchRowData(YbcPgStatement ybc_stmt, Relation relation, Datum ybctid,
 bool
 YbFetchHeapTuple(Relation relation, Datum ybctid, HeapTuple *tuple)
 {
-	bool		has_data = false;
-	YbcPgStatement ybc_stmt;
-
 	TupleDesc	tupdesc = RelationGetDescr(relation);
 	Datum	   *values = (Datum *) palloc0(tupdesc->natts * sizeof(Datum));
 	bool	   *nulls = (bool *) palloc(tupdesc->natts * sizeof(bool));
 	YbcPgSysColumns syscols;
 
 	/* Read data */
-	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(relation),
-								  YbGetRelfileNodeId(relation),
-								  NULL /* prepare_params */ ,
-								  YBCIsRegionLocal(relation),
-								  &ybc_stmt));
-	has_data = YbFetchRowData(ybc_stmt, relation, ybctid, values, nulls,
-							  &syscols);
+	YbcPgStatement ybc_stmt = YbNewSelect(relation, NULL /* prepare_params */ );
+
+	const bool has_data = YbFetchRowData(ybc_stmt, relation, ybctid, values, nulls, &syscols);
 
 	/* Write into the given tuple */
 	if (has_data)
@@ -4263,18 +4251,12 @@ YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode,
 		HandleExplicitRowLockStatus(YBCAddExplicitRowLockIntent(relfile_oid,
 																ybctid, db_oid,
 																&lock_params,
-																YBCIsRegionLocal(relation)));
+																YbBuildTableLocalityInfo(relation)));
 		YBCPgAddIntoForeignKeyReferenceCache(relfile_oid, ybctid);
 		return TM_Ok;
 	}
 
-	YbcPgStatement ybc_stmt;
-
-	HandleYBStatus(YBCPgNewSelect(db_oid,
-								  relfile_oid,
-								  NULL /* prepare_params */ ,
-								  YBCIsRegionLocal(relation),
-								  &ybc_stmt));
+	YbcPgStatement ybc_stmt = YbNewSelect(relation, NULL /* prepare_params */ );
 
 	/* Bind ybctid to identify the current row. */
 	YbcPgExpr	ybctid_expr = YBCNewConstant(ybc_stmt, BYTEAOID, InvalidOid, ybctid, false);
@@ -4356,7 +4338,6 @@ YbSample
 ybBeginSample(Relation rel, int targrows)
 {
 	ReservoirStateData rstate;
-	Oid			dboid = YBCGetDatabaseOid(rel);
 	TupleDesc	tupdesc = RelationGetDescr(rel);
 	YbSample	ybSample = (YbSample) palloc0(sizeof(YbSampleData));
 
@@ -4371,14 +4352,7 @@ ybBeginSample(Relation rel, int targrows)
 	/*
 	 * Create new sampler command
 	 */
-	HandleYBStatus(YBCPgNewSample(dboid,
-								  YbGetRelfileNodeId(rel),
-								  YBCIsRegionLocal(rel),
-								  targrows,
-								  rstate.W,
-								  rstate.randstate.s0,
-								  rstate.randstate.s1,
-								  &ybSample->handle));
+	ybSample->handle = YbNewSample(rel, targrows, rstate.W, rstate.randstate.s0, rstate.randstate.s1);
 	for (AttrNumber attnum = 1; attnum <= tupdesc->natts; attnum++)
 	{
 		if (!TupleDescAttr(tupdesc, attnum - 1)->attisdropped)

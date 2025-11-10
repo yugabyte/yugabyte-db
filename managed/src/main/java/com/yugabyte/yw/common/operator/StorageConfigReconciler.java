@@ -177,6 +177,16 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
     try {
       JsonNode payload = getConfigPayloadFromCRD(sc);
       String configName = sc.getMetadata().getName();
+      if (sc.getSpec().getName() != null) {
+        configName = OperatorUtils.kubernetesCompatName(sc.getSpec().getName());
+      }
+      CustomerConfig existingConfig = CustomerConfig.get(UUID.fromString(cuuid), configName);
+      if (existingConfig != null) {
+        log.warn("Storage config {} already exists", configName);
+        updateStatus(
+            sc, true, existingConfig.getConfigUUID().toString(), "Storage Config already exists");
+        return;
+      }
       CustomerConfig cc =
           CustomerConfig.createStorageConfig(UUID.fromString(cuuid), name, configName, payload);
 

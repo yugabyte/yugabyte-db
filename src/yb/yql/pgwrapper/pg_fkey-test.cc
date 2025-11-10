@@ -50,6 +50,7 @@ DECLARE_string(placement_region);
 DECLARE_string(placement_zone);
 DECLARE_bool(TEST_track_last_transaction);
 DECLARE_bool(enable_tablespace_based_transaction_placement);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 
 namespace yb::pgwrapper {
 namespace {
@@ -785,6 +786,7 @@ class PgFKeyTestRegionLocal : public PgFKeyTestNoFKCache {
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_track_last_transaction) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablespace_based_transaction_placement) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = false;
     PgFKeyTestNoFKCache::SetUp();
   }
 

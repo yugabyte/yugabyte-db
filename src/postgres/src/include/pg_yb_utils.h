@@ -1138,10 +1138,11 @@ void		YbCheckUnsupportedSystemColumns(int attnum, const char *colname, RangeTblE
 void		YbRegisterSysTableForPrefetching(int sys_table_id);
 void		YbTryRegisterCatalogVersionTableForPrefetching();
 
-/*
- * Returns true if the relation is a non-system relation in the same region.
- */
-bool		YBCIsRegionLocal(Relation rel);
+YbcPgTableLocalityInfo
+YbBuildTableLocalityInfo(Relation rel);
+
+YbcPgTableLocalityInfo
+YbBuildSystemTableLocalityInfo(Oid sys_rel_oid);
 
 /*
  * Return NULL for all non-range-partitioned tables.
@@ -1221,8 +1222,6 @@ void		YbSetMetricsCaptureType(YbcPgMetricsCaptureType metrics_capture);
 extern void YBCheckServerAccessIsAllowed();
 
 void		YbSetCatalogCacheVersion(YbcPgStatement handle, uint64_t version);
-
-extern void YbMaybeSetNonSystemTablespaceOid(YbcPgStatement handle, Relation rel);
 
 uint64_t	YbGetSharedCatalogVersion();
 uint32_t	YbGetNumberOfDatabases();
@@ -1511,5 +1510,30 @@ extern bool yb_is_internal_connection;
 
 extern bool YbCatalogPreloadRequired();
 extern bool YbUseMinimalCatalogCachesPreload();
+
+extern YbcPgStatement YbNewSample(Relation rel, int targrows, double rstate_w,
+																	uint64_t rand_state_s0, uint64_t rand_state_s1);
+
+extern YbcPgStatement YbNewSelect(Relation rel, const YbcPgPrepareParameters *prepare_params);
+
+extern YbcPgStatement YbNewUpdateForDb(Oid db_oid, Relation rel,
+									  YbcPgTransactionSetting transaction_setting);
+
+extern YbcPgStatement YbNewUpdate(Relation rel, YbcPgTransactionSetting transaction_setting);
+
+extern YbcPgStatement YbNewDelete(Relation rel, YbcPgTransactionSetting transaction_setting);
+
+extern YbcPgStatement YbNewInsertForDb(Oid db_oid, Relation rel,
+									   YbcPgTransactionSetting transaction_setting);
+
+extern YbcPgStatement YbNewInsert(Relation rel, YbcPgTransactionSetting transaction_setting);
+
+extern YbcPgStatement YbNewInsertBlock(Relation rel, YbcPgTransactionSetting transaction_setting);
+
+extern YbcPgStatement YbNewTruncateColocated(Relation rel,
+											 YbcPgTransactionSetting transaction_setting);
+
+extern YbcPgStatement YbNewTruncateColocatedIgnoreNotFound(Relation rel,
+														   YbcPgTransactionSetting transaction_setting);
 
 #endif							/* PG_YB_UTILS_H */

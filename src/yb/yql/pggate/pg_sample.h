@@ -44,14 +44,15 @@ class PgSample final : public PgStatementLeafBase<PgDmlRead, StmtOp::kSample>  {
   EstimatedRowCount GetEstimatedRowCount();
 
   static Result<std::unique_ptr<PgSample>> Make(
-      const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id, bool is_region_local,
-      int targrows, const SampleRandomState& rand_state, HybridTime read_time);
+      const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id,
+      const YbcPgTableLocalityInfo& locality_info, int targrows,
+      const SampleRandomState& rand_state, HybridTime read_time);
 
  private:
   explicit PgSample(const PgSession::ScopedRefPtr& pg_session);
 
   Status Prepare(
-      const PgObjectId& table_id, bool is_region_local, int targrows,
+      const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info, int targrows,
       const SampleRandomState& rand_state, HybridTime read_time);
 
   std::unique_ptr<SampleRowsPickerIf> sample_rows_picker_;

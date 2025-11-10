@@ -2823,13 +2823,13 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
-            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "TablespaceValidationOnRemove"
+            "TablespaceValidationOnRemove",
+            "OperatorImportUniverse"
           ],
           "type" : "string"
         },
@@ -3159,6 +3159,9 @@
         "incrementalBackup" : {
           "type" : "boolean"
         },
+        "kubernetesOperatorControlled" : {
+          "type" : "boolean"
+        },
         "parentBackup" : {
           "type" : "boolean"
         },
@@ -3227,6 +3230,7 @@
       },
       "required" : [
         "incrementalBackup",
+        "kubernetesOperatorControlled",
         "parentBackup"
       ],
       "type" : "object"
@@ -5560,13 +5564,13 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
-            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "TablespaceValidationOnRemove"
+            "TablespaceValidationOnRemove",
+            "OperatorImportUniverse"
           ],
           "type" : "string"
         },
@@ -6813,6 +6817,9 @@
           "example" : "{\"AWS_ACCESS_KEY_ID\": \"AK****************ZD\"}",
           "type" : "object"
         },
+        "kubernetesOperatorControlled" : {
+          "type" : "boolean"
+        },
         "name" : {
           "description" : "Name",
           "example" : "S3",
@@ -6845,6 +6852,7 @@
         "configName",
         "customerUUID",
         "data",
+        "kubernetesOperatorControlled",
         "name",
         "type"
       ],
@@ -6883,6 +6891,9 @@
         "inUse" : {
           "description" : "True if there is an in use reference to the object",
           "readOnly" : true,
+          "type" : "boolean"
+        },
+        "kubernetesOperatorControlled" : {
           "type" : "boolean"
         },
         "name" : {
@@ -6925,6 +6936,7 @@
         "configName",
         "customerUUID",
         "data",
+        "kubernetesOperatorControlled",
         "name",
         "type"
       ],
@@ -8629,13 +8641,13 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
-            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "TablespaceValidationOnRemove"
+            "TablespaceValidationOnRemove",
+            "OperatorImportUniverse"
           ],
           "type" : "string"
         },
@@ -9433,13 +9445,13 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
-            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "TablespaceValidationOnRemove"
+            "TablespaceValidationOnRemove",
+            "OperatorImportUniverse"
           ],
           "type" : "string"
         },
@@ -10855,13 +10867,13 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
-            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "TablespaceValidationOnRemove"
+            "TablespaceValidationOnRemove",
+            "OperatorImportUniverse"
           ],
           "type" : "string"
         },
@@ -11588,13 +11600,13 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
-            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "TablespaceValidationOnRemove"
+            "TablespaceValidationOnRemove",
+            "OperatorImportUniverse"
           ],
           "type" : "string"
         },
@@ -15929,13 +15941,13 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
-            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "TablespaceValidationOnRemove"
+            "TablespaceValidationOnRemove",
+            "OperatorImportUniverse"
           ],
           "type" : "string"
         },
@@ -16973,13 +16985,13 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
-            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "TablespaceValidationOnRemove"
+            "TablespaceValidationOnRemove",
+            "OperatorImportUniverse"
           ],
           "type" : "string"
         },
@@ -17804,13 +17816,13 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
-            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "TablespaceValidationOnRemove"
+            "TablespaceValidationOnRemove",
+            "OperatorImportUniverse"
           ],
           "type" : "string"
         },
@@ -19324,13 +19336,13 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
-            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "TablespaceValidationOnRemove"
+            "TablespaceValidationOnRemove",
+            "OperatorImportUniverse"
           ],
           "type" : "string"
         },
@@ -19554,6 +19566,9 @@
         "incrementBacklogStatus" : {
           "description" : "Backlog status of schedule of incremental backups arose due to conflicts",
           "readOnly" : true,
+          "type" : "boolean"
+        },
+        "kubernetesOperatorControlled" : {
           "type" : "boolean"
         },
         "nextIncrementScheduleTaskTime" : {
@@ -19966,13 +19981,13 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
-            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "TablespaceValidationOnRemove"
+            "TablespaceValidationOnRemove",
+            "OperatorImportUniverse"
           ],
           "type" : "string"
         },
@@ -19986,6 +20001,9 @@
           "type" : "string"
         }
       },
+      "required" : [
+        "kubernetesOperatorControlled"
+      ],
       "type" : "object"
     },
     "ScheduleApiFilter" : {
@@ -20367,13 +20385,13 @@
               "ConfigureOOMServiceOnNode",
               "CheckSshConnection",
               "FetchServerConf",
-              "OperatorImportUniverse",
               "DoCapacityReservation",
               "DeleteCapacityReservation",
               "DisablePitrConfig",
               "EnablePitrConfig",
               "UpdateAndPersistKubernetesImmutableYbc",
-              "TablespaceValidationOnRemove"
+              "TablespaceValidationOnRemove",
+              "OperatorImportUniverse"
             ],
             "type" : "string"
           },
@@ -21193,13 +21211,13 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
-            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "TablespaceValidationOnRemove"
+            "TablespaceValidationOnRemove",
+            "OperatorImportUniverse"
           ],
           "type" : "string"
         },
@@ -22289,13 +22307,13 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
-            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "TablespaceValidationOnRemove"
+            "TablespaceValidationOnRemove",
+            "OperatorImportUniverse"
           ],
           "type" : "string"
         },
@@ -23609,13 +23627,13 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
-            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "TablespaceValidationOnRemove"
+            "TablespaceValidationOnRemove",
+            "OperatorImportUniverse"
           ],
           "type" : "string"
         },
@@ -24283,13 +24301,13 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
-            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "TablespaceValidationOnRemove"
+            "TablespaceValidationOnRemove",
+            "OperatorImportUniverse"
           ],
           "type" : "string"
         },
@@ -25212,13 +25230,13 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
-            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "TablespaceValidationOnRemove"
+            "TablespaceValidationOnRemove",
+            "OperatorImportUniverse"
           ],
           "type" : "string"
         },
@@ -25850,13 +25868,13 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
-            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "TablespaceValidationOnRemove"
+            "TablespaceValidationOnRemove",
+            "OperatorImportUniverse"
           ],
           "type" : "string"
         },
@@ -26488,13 +26506,13 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
-            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "TablespaceValidationOnRemove"
+            "TablespaceValidationOnRemove",
+            "OperatorImportUniverse"
           ],
           "type" : "string"
         },
@@ -27636,13 +27654,13 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
-            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "TablespaceValidationOnRemove"
+            "TablespaceValidationOnRemove",
+            "OperatorImportUniverse"
           ],
           "type" : "string"
         },
@@ -28836,13 +28854,13 @@
             "ConfigureOOMServiceOnNode",
             "CheckSshConnection",
             "FetchServerConf",
-            "OperatorImportUniverse",
             "DoCapacityReservation",
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "TablespaceValidationOnRemove"
+            "TablespaceValidationOnRemove",
+            "OperatorImportUniverse"
           ],
           "type" : "string"
         },

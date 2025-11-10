@@ -48,7 +48,7 @@ TEST_F(PggateTestSelectMultiTablets, TestSelectMultiTablets) {
                                        true /* is_colocated_via_database */,
                                        kInvalidOid /* tablegroup_id */,
                                        kColocationIdNotSet /* colocation_id */,
-                                       kInvalidOid /* tablespace_id */,
+                                       kDefaultTablespaceOid /* tablespace_id */,
                                        false /* is_matview */,
                                        kInvalidOid /* pg_table_oid */,
                                        kInvalidOid /* old_relfilenode_oid */,
@@ -71,8 +71,8 @@ TEST_F(PggateTestSelectMultiTablets, TestSelectMultiTablets) {
 
   // SELECT: Empty Table ---------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from empty table";
-  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */,
-                                  false /* is_region_local */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(
+      kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality, &pg_stmt));
 
   // Specify the selected expressions.
   YbcPgExpr colref;
@@ -109,7 +109,7 @@ TEST_F(PggateTestSelectMultiTablets, TestSelectMultiTablets) {
   // INSERT ----------------------------------------------------------------------------------------
   // Allocate new insert.
   CHECK_YBC_STATUS(YBCPgNewInsert(
-      kDefaultDatabaseOid, tab_oid, false /* is_region_local */, &pg_stmt,
+      kDefaultDatabaseOid, tab_oid, kDefaultTableLocality, &pg_stmt,
       YbcPgTransactionSetting::YB_TRANSACTIONAL));
 
   // Allocate constant expressions.
@@ -162,8 +162,8 @@ TEST_F(PggateTestSelectMultiTablets, TestSelectMultiTablets) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from partitioned table WITH specifying RANGE column";
-  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */,
-                                  false /* is_region_local */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(
+      kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality, &pg_stmt));
 
   // Specify the selected expressions.
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref));
@@ -236,8 +236,8 @@ TEST_F(PggateTestSelectMultiTablets, TestSelectMultiTablets) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from partitioned table WITHOUT specifying RANGE column";
-  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */,
-                                  false /* is_region_local */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(
+      kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality, &pg_stmt));
 
   // Specify the selected expressions.
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref));

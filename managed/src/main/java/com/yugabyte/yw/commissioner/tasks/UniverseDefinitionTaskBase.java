@@ -240,6 +240,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         universeDetails.setClientRootCA(null);
         if (EncryptionInTransitUtil.isRootCARequired(taskParams)) {
           universeDetails.rootCA = taskParams.rootCA;
+        } else if (taskParams.rootCA != null && taskParams.getClientRootCA() != null) {
+          // For backward compatibility: when rootAndClientRootCASame is true and rootCA
+          // is set to clientRootCA (even though node-to-node encryption is disabled),
+          // we need to preserve it as some parts of the codebase (e.g., kubernetes)
+          // use rootCA for Client to Node Encryption.
+          universeDetails.rootCA = taskParams.rootCA;
         }
         if (EncryptionInTransitUtil.isClientRootCARequired(taskParams)) {
           universeDetails.setClientRootCA(taskParams.getClientRootCA());

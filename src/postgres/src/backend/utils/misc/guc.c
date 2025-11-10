@@ -3095,7 +3095,8 @@ static struct config_bool ConfigureNamesBool[] =
 						 "disabled, reltuples are not updated during "
 						 "concurrent index creation and only index reltuples "
 						 "are updated during non-concurrent index creation."),
-			NULL
+			NULL,
+			GUC_EXPLAIN
 		},
 		&yb_enable_update_reltuples_after_create_index,
 		false,
@@ -16127,6 +16128,37 @@ assign_yb_enable_cbo(int new_value, void *extra)
 			yb_legacy_bnl_cost = true;
 			yb_ignore_stats = true;
 			break;
+	}
+
+	/*
+	 * When enabling CBO, also set:
+	 *  - yb_enable_bitmapscan to on
+	 *  - yb_parallel_range_rows to 10000
+	 *  - yb_enable_update_reltuples_after_create_index to on
+	 */
+	if (new_value == YB_COST_MODEL_ON)
+	{
+		SetConfigOption("yb_enable_bitmapscan", "on",
+						PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
+		SetConfigOption("yb_parallel_range_rows", "10000",
+						PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
+		SetConfigOption("yb_enable_update_reltuples_after_create_index", "on",
+						PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
+	}
+	/*
+	 * When disabling CBO, also reset:
+	 *  - yb_enable_bitmapscan
+	 *  - yb_parallel_range_rows
+	 *  - yb_enable_update_reltuples_after_create_index
+	 */
+	else
+	{
+		SetConfigOption("yb_enable_bitmapscan", "off",
+						PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
+		SetConfigOption("yb_parallel_range_rows", "0",
+						PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
+		SetConfigOption("yb_enable_update_reltuples_after_create_index", "off",
+						PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
 	}
 }
 
