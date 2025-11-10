@@ -1508,9 +1508,9 @@ YBCRollbackToSubTransaction(SubTransactionId id)
 }
 
 bool
-YBIsPgLockingEnabled()
+YBIsPgLockingEnabled(void)
 {
-	return !YBTransactionsEnabled();
+    return YBTransactionsEnabled();
 }
 
 static bool yb_connected_to_template_db = false;
