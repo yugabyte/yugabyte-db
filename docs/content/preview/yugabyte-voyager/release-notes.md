@@ -23,7 +23,7 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
 
 - Added an Object Usage column in the Performance optimization section of the assessment report to categorize objects involved in optimizations as FREQUENT, MODERATE, RARE, or UNUSED based on workload usage.
 
-- Optimized queries involved in startup (for export data from target) and post-processing (for import data to target) by combining queries and reducing database roundtrips.
+- Optimized per-table queries involved in startup (for export data from target) and post-processing (for import data to target), cutting database round trips from N (number of tables) to 1, reducing cutover-to-target time.
 
 - The [YugabyteDB Logical Replication Connector](../../additional-features/change-data-capture/using-logical-replication/) is now the default for cutover to target in fall-forward and fall-back workflows. Set `--use-yb-grpc-connector=true` to use the gRPC connector instead.
 
@@ -33,10 +33,14 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
 
 - Improved performance of sizing calculations in assess-migration.
 
-### Bug fix
+### Bug fixes
 
 - Fixed an issue where performance optimizations were being reported on both partitioned tables and their partitions, causing duplicate reports.
 - Fixed an issue where `assess-migration` was not fetching read IOPS for tables without an index or primary key.
+
+### Known issue
+
+- Parent partitioned tables are correctly excluded from colocation recommendations during assessment, but are incorrectly listed under "Colocated" in the schema optimization report. This behavior will be made consistent across reports in a future release. (Issue [3173](https://github.com/yugabyte/yb-voyager/issues/3173))
 
 ## v2025.10.2 - October 28, 2025
 
