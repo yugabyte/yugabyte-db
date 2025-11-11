@@ -296,8 +296,6 @@ JumbleRangeTable(JumbleState *jstate, List *rtable)
 		switch (rte->rtekind)
 		{
 			case RTE_RELATION:
-				if (IsYugaByteEnabled() && rte->relid >= FirstNormalObjectId)
-					APP_JUMB(MyDatabaseId);
 				APP_JUMB(rte->relid);
 				JumbleExpr(jstate, (Node *) rte->tablesample);
 				APP_JUMB(rte->inh);
