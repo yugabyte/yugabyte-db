@@ -580,6 +580,13 @@
     showSection = true
 
 [[preview_integrations]]
+  name = "Gen AI"
+  weight = 6
+  identifier = "ai-integration"
+  [preview_integrations.params]
+    showSection = true
+
+[[preview_integrations]]
   name = "Data integration"
   weight = 6
   identifier = "data-integration"
