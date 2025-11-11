@@ -987,6 +987,7 @@ func buildKMSConfigs(authAPI *ybaAuthClient.AuthAPIClient) string {
 		oldKMSUsed = false
 		earKMSConfigs := earutil.KMSConfigNameAndCodeFilter(earKMSConfigName, "", kmsConfigs)
 		if len(earKMSConfigs) == 1 {
+			opType = util.EnableOpType
 			kmsConfigUUID = earKMSConfigs[0].ConfigUUID
 			logrus.Info("Using kms config: ", fmt.Sprintf(
 				"%s %s",
