@@ -17,6 +17,31 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, where `YYYY` is the release year, `M` is the month, and `N` is the number of the release in that month.
 
+## v2025.11.1 - November 11, 2025
+
+### Enhancements
+
+- Added an Object Usage column in the Performance optimization section of the assessment report to categorize objects involved in optimizations as FREQUENT, MODERATE, RARE, or UNUSED based on workload usage.
+
+- Optimized per-table queries involved in startup (for export data from target) and post-processing (for import data to target), cutting database round trips from N (number of tables) to 1, reducing cutover-to-target time.
+
+- The [YugabyteDB Logical Replication Connector](../../additional-features/change-data-capture/using-logical-replication/) is now the default for cutover to target in fall-forward and fall-back workflows. Set `--use-yb-grpc-connector=true` to use the gRPC connector instead.
+
+- Removed unsupported datatype issues for hstore, tsvector, and array of enum datatypes from the assessment report, as these are now supported with the default YugabyteDB Logical Replication Connector.
+
+- Enhanced export schema console output with improved UI/UX, including color-coded messages.
+
+- Improved performance of sizing calculations in assess-migration.
+
+### Bug fixes
+
+- Fixed an issue where performance optimizations were being reported on both partitioned tables and their partitions, causing duplicate reports.
+- Fixed an issue where `assess-migration` was not fetching read IOPS for tables without an index or primary key.
+
+### Known issue
+
+- Parent partitioned tables are correctly excluded from colocation recommendations during assessment, but are incorrectly listed under "Colocated" in the schema optimization report. This behavior will be made consistent across reports in a future release. (Issue [3173](https://github.com/yugabyte/yb-voyager/issues/3173))
+
 ## v2025.10.2 - October 28, 2025
 
 ### Enhancements
@@ -27,7 +52,7 @@ Use the [skip-performance-recommendations](../reference/schema-migration/export-
 
 ### Bug fix
 
-- Fixed a bug where import-data fails if a table that has a sequence is part of the exclude-table-list, and is not created on the target YugabyteDB.
+- Fixed an issue where import-data fails if a table that has a sequence is part of the exclude-table-list, and is not created on the target YugabyteDB.
 
 ## v2025.10.1 - October 14, 2025
 
