@@ -1,6 +1,6 @@
 required: true
 content:
-  multipart/form-data:
+  application/json:
     schema:
       $ref: "../schemas/AttachUniverseSpec.yaml"
 x-yba-api-since: 2025.2.0.0

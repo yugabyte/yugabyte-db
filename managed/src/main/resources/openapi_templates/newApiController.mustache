@@ -32,7 +32,8 @@ import java.util.concurrent.CompletableFuture;
 {{/supportAsync}}
 
 {{#useBeanValidation}}
-import javax.validation.constraints.*;
+import {{javaxPackage}}.validation.constraints.*;
+import {{javaxPackage}}.validation.Valid;
 import com.typesafe.config.Config;
 {{/useBeanValidation}}
 
@@ -226,10 +227,10 @@ public class {{classname}}Controller extends {{#operations.operation}}{{#-first}
     }
     {{/collectionFormat}}
     {{^collectionFormat}}
-    String value{{paramName}} = (request.body().asMultipartFormData().asFormUrlEncoded().get("{{baseName}}"))[0];
+    String[] value{{paramName}} = (request.body().asMultipartFormData().asFormUrlEncoded().get("{{baseName}}"));
     {{{dataType}}} {{paramName}};
     if (value{{paramName}} != null) {
-      {{paramName}} = {{>conversionBegin}}value{{paramName}}{{>conversionEnd}};
+      {{paramName}} = {{>conversionBegin}}value{{paramName}}[0]{{>conversionEnd}};
     } else {
       {{#required}}
       throw new IllegalArgumentException("'{{baseName}}' parameter is required");
@@ -259,7 +260,7 @@ public class {{classname}}Controller extends {{#operations.operation}}{{#-first}
     }
     {{/collectionFormat}}
     {{^collectionFormat}}
-    String value{{paramName}} = request.header("{{baseName}}").get();
+    String value{{paramName}} = request.header("{{baseName}}").orElse(null);
     {{{dataType}}} {{paramName}};
     if (value{{paramName}} != null) {
       {{paramName}} = {{>conversionBegin}}value{{paramName}}{{>conversionEnd}};
