@@ -38,7 +38,7 @@ During the `export data from target` phase, after `cutover to target` in the fal
 
   Note: The following datatypes are unsupported when exporting from the target YugabyteDB using the gRPC connector: BOX, CIRCLE, LINE, LSEG, PATH, PG_LSN, POINT, POLYGON, TSQUERY, TSVECTOR, TXID_SNAPSHOT, GEOMETRY, GEOGRAPHY, RASTER, HSTORE.
 
-- [YugabyteDB Connector](../../../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/): Does not require access to internal ports and is recommended for deployments where the gRPC connector cannot be used, for example, YugabyteDB Aeon. Supported in YugabyteDB versions 2024.1.1 or later. Note that currently there are is a known limitation with this connector. Refer to GitHub issue [27248](https://github.com/yugabyte/yugabyte-db/issues/27248) for more details.
+- [YugabyteDB Connector](../../../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/): Does not require access to internal ports and is recommended for deployments where the gRPC connector cannot be used, for example, YugabyteDB Aeon. Supported in YugabyteDB versions 2024.2.4 or later. Note that currently there are is a known limitation with this connector. Refer to GitHub issue [27248](https://github.com/yugabyte/yugabyte-db/issues/27248) for more details.
 
 Use the argument `--use-yb-grpc-connector` to select the YugabyteDB gRPC connector for the migration as described in the following table.
 
