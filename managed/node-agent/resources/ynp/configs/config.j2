@@ -40,6 +40,7 @@ node_exporter_port = {{ ynp_config['ynp'].node_exporter_port|default(9300) }}
 mount_paths = {{ ynp_config['yba'].instance_type.mount_points | join(' ') }}
 {% endif %}
 configure_clockbound = {{ ynp_config['ynp'].is_configure_clockbound }}
+is_yb_prebuilt_image = {{ ynp_config['ynp'].is_yb_prebuilt_image | default('False') }}
 
 [Preprovision]
 
