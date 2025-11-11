@@ -35,13 +35,17 @@ export const YCQL_CONFIRM_PASSWORD_FIELD = 'instanceConfig.ycqlConfirmPassword';
 export const TIME_SYNC_FIELD = 'instanceConfig.useTimeSync';
 export const CLIENT_TO_NODE_ENCRYPT_FIELD = 'instanceConfig.enableClientToNodeEncrypt';
 export const ROOT_CERT_FIELD = 'instanceConfig.rootCA';
+export const CLIENT_CERT_FIELD = 'instanceConfig.clientRootCA';
+export const ROOT_CA_CLIENT_CA_SAME_FIELD = 'instanceConfig.rootAndClientRootCASame';
 export const NODE_TO_NODE_ENCRYPT_FIELD = 'instanceConfig.enableNodeToNodeEncrypt';
 export const EAR_FIELD = 'instanceConfig.enableEncryptionAtRest';
 export const KMS_CONFIG_FIELD = 'instanceConfig.kmsConfig';
 export const CPU_ARCHITECTURE_FIELD = 'instanceConfig.arch';
 export const LINUX_VERSION_FIELD = 'instanceConfig.imageBundleUUID';
-export const ENABLE_EBS_CONFIG_FIELD = 'instanceConfig.deviceInfo.cloudVolumeEncryption.enableVolumeEncryption';
+export const ENABLE_EBS_CONFIG_FIELD =
+  'instanceConfig.deviceInfo.cloudVolumeEncryption.enableVolumeEncryption';
 export const EBS_KMS_CONFIG_FIELD = 'instanceConfig.deviceInfo.cloudVolumeEncryption.kmsConfigUUID';
+export const K8S_ENCRYPTION_TYPE_FIELD = 'instanceConfig.k8sEncryptionType';
 
 //Advanced config
 export const SYSTEMD_FIELD = 'advancedConfig.useSystemd';
@@ -105,6 +109,8 @@ export const PRIMARY_FIELDS = [
   EXPOSING_SERVICE_FIELD,
   NODE_TO_NODE_ENCRYPT_FIELD,
   ROOT_CERT_FIELD,
+  CLIENT_CERT_FIELD,
+  ROOT_CA_CLIENT_CA_SAME_FIELD,
   CLIENT_TO_NODE_ENCRYPT_FIELD,
   EAR_FIELD,
   KMS_CONFIG_FIELD,
@@ -146,6 +152,8 @@ export const ASYNC_FIELDS = [
   CLIENT_TO_NODE_ENCRYPT_FIELD,
   ACCESS_KEY_FIELD,
   ROOT_CERT_FIELD,
+  CLIENT_CERT_FIELD,
+  ROOT_CA_CLIENT_CA_SAME_FIELD,
   EAR_FIELD,
   MASTER_PLACEMENT_FIELD,
   USER_TAGS_FIELD,

@@ -38,6 +38,12 @@ export enum MasterPlacementMode {
   DEDICATED = 'DEDICATED'
 }
 
+export enum K8sEncryptionOption {
+  ClienToNode = 'enableClientToNodeEncrypt',
+  NodeToNode = 'enableNodeToNodeEncrypt',
+  EnableBoth = 'EnableBoth'
+}
+
 export interface CommunicationPorts {
   masterHttpPort: number;
   masterRpcPort: number;
@@ -332,10 +338,10 @@ export interface DeviceInfo {
   storageClass: 'standard'; // hardcoded in DeviceInfo.java
   mountPoints: string | null;
   storageType: StorageType | null;
-  cloudVolumeEncryption? : {
+  cloudVolumeEncryption?: {
     enableVolumeEncryption: boolean;
     kmsConfigUUID: string;
-  }
+  };
 }
 
 export interface K8NodeSpec {
@@ -537,6 +543,8 @@ export interface InstanceConfigFormValue {
   enableClientToNodeEncrypt: boolean;
   enableNodeToNodeEncrypt: boolean;
   rootCA: string;
+  clientRootCA: string;
+  rootAndClientRootCASame: boolean;
   enableEncryptionAtRest: boolean;
   enableYSQL: boolean;
   enableYSQLAuth: boolean;
@@ -550,6 +558,7 @@ export interface InstanceConfigFormValue {
   kmsConfig: string | null;
   arch?: ArchitectureType | null;
   imageBundleUUID?: string | null;
+  k8sEncryptionType?: K8sEncryptionOption;
 }
 
 export interface AdvancedConfigFormValue {
@@ -639,6 +648,8 @@ export const DEFAULT_INSTANCE_CONFIG: InstanceConfigFormValue = {
   enableClientToNodeEncrypt: true,
   enableNodeToNodeEncrypt: true,
   rootCA: '',
+  clientRootCA: '',
+  rootAndClientRootCASame: true,
   enableEncryptionAtRest: false,
   enableYSQL: true,
   enableYSQLAuth: true,
@@ -651,7 +662,8 @@ export const DEFAULT_INSTANCE_CONFIG: InstanceConfigFormValue = {
   enableYEDIS: false,
   kmsConfig: null,
   arch: null,
-  imageBundleUUID: ''
+  imageBundleUUID: '',
+  k8sEncryptionType: K8sEncryptionOption.EnableBoth
 };
 
 export const DEFAULT_ADVANCED_CONFIG: AdvancedConfigFormValue = {
