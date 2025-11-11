@@ -680,8 +680,13 @@ class PgClient::Impl : public BigDataFetcher {
         CoarseMonoClock::Now() +
             MonoDelta::FromSeconds((FLAGS_ddl_verification_timeout_multiplier + 1) *
                                    FLAGS_yb_client_admin_operation_timeout_sec);
+
+    auto wait_event = commit ?
+        ash::WaitStateCode::kTransactionCommit :
+        ash::WaitStateCode::kTransactionTerminate;
+
     RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::FinishTransaction,
-        req, resp, PggateRPC::kFinishTransaction, deadline));
+        req, resp, wait_event, deadline));
 
     return ResponseStatus(resp);
   }
@@ -720,7 +725,7 @@ class PgClient::Impl : public BigDataFetcher {
     tserver::PgRollbackToSubTransactionResponsePB resp;
 
     RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::RollbackToSubTransaction,
-        req, resp, PggateRPC::kRollbackToSubTransaction));
+        req, resp, ash::WaitStateCode::kTransactionRollbackToSavepoint));
     return ResponseStatus(resp);
   }
 
@@ -1404,7 +1409,7 @@ class PgClient::Impl : public BigDataFetcher {
     req.set_transaction_id(transaction_id, kUuidSize);
     tserver::PgCancelTransactionResponsePB resp;
     RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::CancelTransaction,
-        req, resp, PggateRPC::kCancelTransaction));
+        req, resp, ash::WaitStateCode::kTransactionCancel));
     return ResponseStatus(resp);
   }
 
@@ -1694,7 +1699,7 @@ class PgClient::Impl : public BigDataFetcher {
   template <class Proxy, class Req, class Resp>
   Status DoSyncRPCImpl(
       Proxy& proxy, SyncRPCFunc<Proxy, Req, Resp> func, Req& req, Resp& resp,
-      PggateRPC rpc_enum, rpc::RpcController* controller) {
+      PggateRPC rpc_enum, rpc::RpcController* controller, ash::WaitStateCode wait_event) {
 
     const auto log_detail =
         yb_debug_log_docdb_requests &&
@@ -1704,7 +1709,7 @@ class PgClient::Impl : public BigDataFetcher {
       LOG(INFO) << "DoSyncRPC " << GetTypeName<Req>() << ":\n " << req.DebugString();
     }
 
-    auto watcher = wait_event_watcher_(ash::WaitStateCode::kWaitingOnTServer, rpc_enum);
+    auto watcher = wait_event_watcher_(wait_event, rpc_enum);
     const auto s = (proxy.*func)(req, &resp, controller);
 
     if (log_detail) {
@@ -1732,7 +1737,17 @@ class PgClient::Impl : public BigDataFetcher {
       Req& req, Resp& resp, PggateRPC rpc_enum, Args&&... args) {
     return DoSyncRPCImpl(
         *DCHECK_NOTNULL(GetProxy(static_cast<Proxy*>(nullptr))), func, req, resp, rpc_enum,
-        GetRpcController<Req>(std::forward<Args>(args)...));
+        GetRpcController<Req>(std::forward<Args>(args)...), ash::WaitStateCode::kWaitingOnTServer);
+  }
+
+  // Overload for when wait_event is specific enough and RPC name is not needed.
+  template <class Proxy, class Req, class Resp, class... Args>
+  Status DoSyncRPC(
+      SyncRPCFunc<Proxy, Req, Resp> func,
+      Req& req, Resp& resp, ash::WaitStateCode wait_event, Args&&... args) {
+    return DoSyncRPCImpl(
+        *DCHECK_NOTNULL(GetProxy(static_cast<Proxy*>(nullptr))), func, req, resp, PggateRPC::kNoRPC,
+        GetRpcController<Req>(std::forward<Args>(args)...), wait_event);
   }
 
   std::unique_ptr<PgClientServiceProxy> proxy_;
