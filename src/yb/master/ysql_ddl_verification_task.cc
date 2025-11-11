@@ -332,7 +332,10 @@ Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
     CHECK(FLAGS_TEST_yb_test_table_rewrite_keep_old_table &&
           l->is_being_altered_by_ysql_ddl_txn() &&
           table_rewritten)
-        << table->ToString() << " " << l->pb.ysql_ddl_txn_verifier_state(0).ShortDebugString();
+        << table->ToString() << ", table_rewritten: " << table_rewritten
+        << ", FLAGS_TEST_yb_test_table_rewrite_keep_old_table: "
+        << FLAGS_TEST_yb_test_table_rewrite_keep_old_table
+        << CollectionToString(l->ysql_ddl_txn_verifier_state());
     *result = true;
     return Status::OK();
   }
