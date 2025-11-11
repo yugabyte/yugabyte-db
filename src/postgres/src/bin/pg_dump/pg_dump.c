@@ -293,6 +293,10 @@ static bool binary_upgrade_set_type_oids_by_rel_oid(Archive *fout,
 static void binary_upgrade_set_pg_class_oids(Archive *fout,
 								 PQExpBuffer upgrade_buffer,
 								 Oid pg_class_oid, bool is_index);
+static void yb_binary_upgrade_preserve_index_tablegroup_oid(Archive *fout,
+														 PQExpBuffer buffer,
+														 const IndxInfo *indxinfo,
+														 const TableInfo *tbinfo);
 static void binary_upgrade_extension_member(PQExpBuffer upgrade_buffer,
 								DumpableObject *dobj,
 								const char *objtype,
@@ -322,6 +326,7 @@ static void getYbTablePropertiesAndReloptions(Archive *fout,
 						YbTableProperties properties,
 						PQExpBuffer reloptions_buf, Oid reloid, const char* relname,
 						char relkind);
+static void freeYbTablePropertiesIfRequired(YbTableProperties yb_properties);
 static void isDatabaseColocated(Archive *fout);
 static char *getYbSplitClause(Archive *fout, TableInfo *tbinfo);
 static void ybDumpUpdatePgExtensionCatalog(Archive *fout);
@@ -4627,6 +4632,53 @@ binary_upgrade_set_pg_class_oids(Archive *fout,
 
 	PQclear(upgrade_res);
 	destroyPQExpBuffer(upgrade_query);
+}
+
+/*
+ * For YB colocated databases with tablespaces, preserve the tablegroup OID
+ * for an index's implicit tablegroup during binary upgrade. This ensures that
+ * the index and its data are correctly restored to the same tablegroup.
+ */
+static void
+yb_binary_upgrade_preserve_index_tablegroup_oid(Archive *fout,
+											 PQExpBuffer buffer,
+											 const IndxInfo *indxinfo,
+											 const TableInfo *tbinfo)
+{
+	YbTableProperties yb_properties;
+	PQExpBuffer yb_reloptions;
+
+	/* Only applies to colocated databases (non-legacy) */
+	if (!is_colocated_database || is_legacy_colocated_database)
+		return;
+
+	yb_properties = (YbTableProperties) pg_malloc0(sizeof(YbTablePropertiesData));
+	yb_reloptions = createPQExpBuffer();
+
+	getYbTablePropertiesAndReloptions(fout, yb_properties,
+									  yb_reloptions,
+									  indxinfo->dobj.catId.oid,
+									  indxinfo->dobj.name,
+									  tbinfo->relkind);
+
+	if (yb_properties && yb_properties->is_colocated)
+	{
+		appendPQExpBufferStr(buffer,
+							 "\n-- For YB colocation backup, must preserve implicit tablegroup pg_yb_tablegroup oid\n");
+		appendPQExpBuffer(buffer,
+						  "SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('%u'::pg_catalog.oid);\n",
+						  yb_properties->tablegroup_oid);
+		if (strcmp(yb_properties->tablegroup_name, "default") == 0)
+		{
+			appendPQExpBufferStr(buffer,
+								 "\n-- For YB colocation backup without tablespace information, must preserve default tablegroup tables\n");
+			appendPQExpBuffer(buffer,
+							  "SELECT pg_catalog.binary_upgrade_set_next_tablegroup_default(true);\n");
+		}
+	}
+
+	destroyPQExpBuffer(yb_reloptions);
+	freeYbTablePropertiesIfRequired(yb_properties);
 }
 
 /*
@@ -17028,32 +17080,8 @@ dumpIndex(Archive *fout, IndxInfo *indxinfo)
 			binary_upgrade_set_pg_class_oids(fout, q,
 											 indxinfo->dobj.catId.oid, true);
 
-		if (is_colocated_database && !is_legacy_colocated_database)
-		{
-			YbTableProperties yb_properties;
-			yb_properties = (YbTableProperties) pg_malloc0(sizeof(YbTablePropertiesData));
-			PQExpBuffer yb_reloptions = createPQExpBuffer();
-			getYbTablePropertiesAndReloptions(fout, yb_properties, yb_reloptions,
-				indxinfo->dobj.catId.oid, indxinfo->dobj.name, tbinfo->relkind);
+		yb_binary_upgrade_preserve_index_tablegroup_oid(fout, q, indxinfo, tbinfo);
 
-			if(yb_properties && yb_properties->is_colocated){
-				appendPQExpBufferStr(q,
-								 "\n-- For YB colocation backup, must preserve implicit tablegroup pg_yb_tablegroup oid\n");
-				appendPQExpBuffer(q,
-								 "SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('%u'::pg_catalog.oid);\n",
-								 yb_properties->tablegroup_oid);
-				if(strcmp(yb_properties->tablegroup_name, "default") == 0)
-				{
-					appendPQExpBufferStr(q,
-									"\n-- For YB colocation backup without tablespace information, must preserve default tablegroup tables\n");
-					appendPQExpBuffer(q,
-						"SELECT pg_catalog.binary_upgrade_set_next_tablegroup_default(true);\n");
-				}
-			}
-			destroyPQExpBuffer(yb_reloptions);
-
-			freeYbTablePropertiesIfRequired(yb_properties);
-		}
 		/* Plain secondary index */
 		appendPQExpBuffer(q, "%s", indxinfo->indexdef);
 		appendPQExpBuffer(q, ";\n");
@@ -17304,7 +17332,14 @@ dumpConstraint(Archive *fout, ConstraintInfo *coninfo)
 			tbinfo->relkind != RELKIND_PARTITIONED_TABLE;
 		if (dump_index_for_constraint)
 		{
-			if (dopt->include_yb_metadata)
+			/*
+			 * YB: For colocated databases, we need to preserve the tablegroup OID
+			 * for the index's implicit tablegroup during binary upgrade.
+			 * This is similar to what's done in dumpIndex for non-constraint indexes.
+			 */
+			yb_binary_upgrade_preserve_index_tablegroup_oid(fout, q, indxinfo, tbinfo);
+
+			if (dopt->include_yb_metadata || dopt->binary_upgrade)
 			{
 				/*
 				 * In 'include_yb_metadata' mode all Indexes already have NONCONCURRENTLY flag.
