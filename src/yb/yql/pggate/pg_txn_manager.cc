@@ -232,7 +232,11 @@ void PgTxnManager::DEBUG_UpdateLastObjectLockingInfo() {
 
 void PgTxnManager::DEBUG_CheckOptionsForPerform(
     const tserver::PgPerformOptionsPB& options) const {
-  if (!enable_table_locking_ || options.ddl_mode() || options.use_catalog_session()) {
+  // Functions like YBCheckSharedCatalogCacheVersion, being executed outside scope of a
+  // transaction block seem to issue custom selects on pg_yb_catalog_version table using
+  // YBCPgNewSelect, skipping object locks. Skip the assertion for such cases for now.
+  if (!enable_table_locking_ || options.ddl_mode() || options.use_catalog_session() ||
+      options.yb_non_ddl_txn_for_sys_tables_allowed() || YBCIsInitDbModeEnvVarSet()) {
     return;
   }
 
@@ -240,7 +244,7 @@ void PgTxnManager::DEBUG_CheckOptionsForPerform(
 
   if (!debug_last_object_locking_txn_info_ ||
       *debug_last_object_locking_txn_info_ != active_txn_info) {
-    LOG(FATAL)
+    LOG(DFATAL)
         << "active txn info: " << AsString(active_txn_info)
         << " , last object locking txn info: " << AsString(debug_last_object_locking_txn_info_);
   }

@@ -64,17 +64,19 @@ export const RegionSelection = () => {
   const allowmultipleRegionsSelection =
     canSelectMultipleRegions(resilienceType) && faultToleranceType !== FaultToleranceType.NONE;
 
-
   const mapCoordinates = useCallback(() => {
-    const coordinates = regions?.map((region) => ([
-      region.latitude ?? [0],
-      region.longitude ?? [0]
-    ]));
+    const coordinates = regions?.map((region) => [region.latitude ?? [0], region.longitude ?? [0]]);
     if (coordinates?.length === 0) {
-      return [[0, 0], [0, 0]];
+      return [
+        [0, 0],
+        [0, 0]
+      ];
     }
     if (coordinates?.length === 1) {
-      return [[coordinates[0][0], coordinates[0][1]], [0, 0]];
+      return [
+        [coordinates[0][0], coordinates[0][1]],
+        [0, 0]
+      ];
     }
     return coordinates;
   }, [regions]);
@@ -121,8 +123,8 @@ export const RegionSelection = () => {
           allowmultipleRegionsSelection
             ? ((regions as unknown) as Record<string, string>[])
             : isEmpty(regions)
-              ? null
-              : ((regions[0] as unknown) as Record<string, string>)
+            ? null
+            : ((regions[0] as unknown) as Record<string, string>)
         }
       />
       {resilienceType === ResilienceType.SINGLE_NODE && (
@@ -156,7 +158,7 @@ export const RegionSelection = () => {
       )}
       <YBMaps
         mapHeight={345}
-        dataTestId='yb-maps-region-selection'
+        dataTestId="yb-maps-region-selection"
         coordinates={mapCoordinates()}
         initialBounds={[[37.3688, -122.0363]]}
         mapContainerProps={{
@@ -184,7 +186,11 @@ export const RegionSelection = () => {
               <YBMapMarker
                 key={region.code}
                 position={[region.latitude, region.longitude]}
-                type={regions.includes(region) ? MarkerType.REGION_SELECTED : MarkerType.REGION_NOT_SELECTED}
+                type={
+                  regions.includes(region)
+                    ? MarkerType.REGION_SELECTED
+                    : MarkerType.REGION_NOT_SELECTED
+                }
                 tooltip={<>{region.name}</>}
               />
             ))}
@@ -193,7 +199,9 @@ export const RegionSelection = () => {
           <MapLegend
             mapLegendItems={[<MapLegendItem icon={<>{icon.normal}</>} label={'Region'} />]}
           />
-        ) : <span />}
+        ) : (
+          <span />
+        )}
       </YBMaps>
     </div>
   );

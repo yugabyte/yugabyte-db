@@ -4,11 +4,16 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.common.ReleasesUtils;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.customer.config.CustomerConfigService;
+import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Release;
 import com.yugabyte.yw.models.ReleaseArtifact;
@@ -16,20 +21,30 @@ import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class OperatorImportResource extends UniverseTaskBase {
 
   private final OperatorUtils operatorUtils;
+  private final ReleasesUtils releasesUtils;
+  private final CustomerConfigService customerConfigService;
 
   @Inject
   public OperatorImportResource(
-      BaseTaskDependencies baseTaskDependencies, OperatorUtils operatorUtils) {
+      BaseTaskDependencies baseTaskDependencies,
+      OperatorUtils operatorUtils,
+      ReleasesUtils releasesUtils,
+      CustomerConfigService customerConfigService) {
     super(baseTaskDependencies);
     this.operatorUtils = operatorUtils;
+    this.releasesUtils = releasesUtils;
+    this.customerConfigService = customerConfigService;
   }
 
   public static class Params extends UniverseTaskParams {
@@ -112,7 +127,10 @@ public class OperatorImportResource extends UniverseTaskBase {
         break;
       case PROVIDER:
         if (taskParams().providerUUID == null) {
-          throw new IllegalArgumentException("Provider UUID must be provided");
+          throw new IllegalArgumentException("Provider UUID must be provided for provider import");
+        }
+        if (taskParams().universeUUID == null) {
+          throw new IllegalArgumentException("Universe UUID must be provided for provider import");
         }
         Provider.getOrBadRequest(taskParams().providerUUID);
         break;
@@ -208,10 +226,23 @@ public class OperatorImportResource extends UniverseTaskBase {
 
   private void importRelease() {
     log.info("Importing release version: {}", taskParams().releaseVersion);
+    Map<String, List<Universe>> versionUniverseMap = releasesUtils.versionUniversesMap();
+    if (versionUniverseMap.containsKey(taskParams().releaseVersion)) {
+      List<Universe> universes =
+          versionUniverseMap.get(taskParams().releaseVersion).stream()
+              .filter(u -> !u.getUniverseUUID().equals(taskParams().universeUUID))
+              .filter(u -> !u.getUniverseDetails().isKubernetesOperatorControlled)
+              .collect(Collectors.toList());
+      if (universes.size() > 0) {
+        log.info("Skipping release import as it is associated with non-operator-based universes");
+        log.debug("Non-operator-based universes: {}", universes);
+        return;
+      }
+    }
 
     Release release = Release.getByVersion(taskParams().releaseVersion);
     if (release == null) {
-      throw new RuntimeException("Release " + taskParams().releaseVersion + " not found");
+      throw new RuntimeException("Release not found");
     }
     ReleaseArtifact releaseArtifact = release.getKubernetesArtifact();
     if (releaseArtifact == null) {
@@ -228,6 +259,7 @@ public class OperatorImportResource extends UniverseTaskBase {
       log.error("Failed to create release: {}", taskParams().releaseVersion, e);
       throw new RuntimeException("Failed to create release", e);
     }
+    release.setIsKubernetesOperatorControlled(true);
     log.info("Release version {} imported successfully", taskParams().releaseVersion);
   }
 
@@ -245,20 +277,47 @@ public class OperatorImportResource extends UniverseTaskBase {
               + " is not a storage config. Found type: "
               + cfg.getType());
     }
+    Set<UUID> associatedUniverseUUIDs = customerConfigService.getAssociatedUniverseUUIDS(cfg);
+    Set<Universe> associatedUniverses =
+        associatedUniverseUUIDs.stream()
+            .map(Universe::getOrBadRequest)
+            .filter(u -> !u.getUniverseDetails().isKubernetesOperatorControlled)
+            .filter(u -> !u.getUniverseUUID().equals(taskParams().universeUUID))
+            .collect(Collectors.toSet());
+    if (associatedUniverses.size() > 0) {
+      log.info(
+          "Skipping storage config import as it is associated with non-operator-based universes");
+      log.debug("Non-operator-based universes: {}", associatedUniverses);
+      return;
+    }
+    log.info("Importing storage config: {}", taskParams().storageConfigUUID);
     try {
       operatorUtils.createStorageConfigCr(cfg, getNamespace(), taskParams().secretName);
     } catch (Exception e) {
       log.error("Failed to create storage config: {}", taskParams().storageConfigUUID, e);
       throw new RuntimeException("Failed to create storage config", e);
     }
+    cfg.setIsKubernetesOperatorControlled(true);
     log.info("Storage config {} imported successfully", taskParams().storageConfigUUID);
   }
 
   private void importProvider() {
-    log.info("Importing provider: {}", taskParams().providerUUID);
-
     Provider provider = Provider.getOrBadRequest(taskParams().providerUUID);
 
+    List<Universe> nonOperatorBasedUniverses =
+        Customer.get(provider.getCustomerUUID())
+            .getUniversesForProvider(provider.getUuid())
+            .stream()
+            .filter(u -> u.getUniverseUUID().equals(taskParams().universeUUID))
+            .filter(u -> !u.getUniverseDetails().isKubernetesOperatorControlled)
+            .collect(Collectors.toList());
+    if (nonOperatorBasedUniverses.size() > 0) {
+      log.info("Skipping provider import as it is associated with non-operator-based universes");
+      log.debug("Non-operator-based universes: {}", nonOperatorBasedUniverses);
+      return;
+    }
+
+    log.info("Importing provider: {}", taskParams().providerUUID);
     // For now, just log the provider info
     // In a real implementation, you might want to create a Provider CRD or similar
     log.info("Provider {} imported successfully", provider.getName());
@@ -278,6 +337,15 @@ public class OperatorImportResource extends UniverseTaskBase {
       log.error("Failed to create universe: {}", universe.getName(), e);
       throw new RuntimeException("Failed to create universe", e);
     }
+    Universe.UniverseUpdater updater =
+        u -> {
+          UniverseDefinitionTaskParams uDetails = u.getUniverseDetails();
+          uDetails.isKubernetesOperatorControlled = true;
+          uDetails.setKubernetesResourceDetails(
+              new KubernetesResourceDetails(u.getName(), getNamespace()));
+          u.setUniverseDetails(uDetails);
+        };
+    Universe.saveDetails(universe.getUniverseUUID(), updater);
     // For now, just log the universe info
     // In a real implementation, you might want to create a Universe CRD or similar
     log.info("Universe {} imported successfully", universe.getName());
@@ -295,6 +363,7 @@ public class OperatorImportResource extends UniverseTaskBase {
       log.error("Failed to create backup schedule: {}", schedule.getScheduleUUID(), e);
       throw new RuntimeException("Failed to create backup schedule", e);
     }
+    schedule.setIsKubernetesOperatorControlled(true);
     log.info("Backup schedule {} imported successfully", schedule.getScheduleUUID());
   }
 
@@ -304,11 +373,12 @@ public class OperatorImportResource extends UniverseTaskBase {
     Backup backup = Backup.getOrBadRequest(taskParams().customerUUID, taskParams().backupUUID);
 
     try {
-      operatorUtils.createBackupCr(backup);
+      operatorUtils.createBackupCr(backup, getNamespace());
     } catch (Exception e) {
       log.error("Failed to create backup: {}", backup.getBackupUUID(), e);
       throw new RuntimeException("Failed to create backup", e);
     }
+    backup.setIsKubernetesOperatorControlled(true);
     log.info("Backup {} imported successfully", backup.getBackupUUID());
   }
 

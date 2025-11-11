@@ -2262,6 +2262,40 @@ DefineIndex(Oid relationId,
 		 */
 		HandleYBStatus(YBCPgBackfillIndex(databaseId, indexRelationId));
 
+		Relation	yb_baserel = table_open(relationId, NoLock);
+
+		if (yb_enable_update_reltuples_after_create_index)
+		{
+			Oid			index_oids[1] = {indexRelationId};
+			Oid			database_oids[1] = {databaseId};
+			uint64_t	num_rows_read_from_table;
+			double		num_rows_backfilled;
+
+			HandleYBStatus(YBCGetIndexBackfillProgress(index_oids, database_oids,
+													   &num_rows_read_from_table,
+													   &num_rows_backfilled,
+													   1));
+
+			/*
+			 * Ignore the update if there was an error getting backfill
+			 * progress.
+			 */
+			if (num_rows_backfilled != -1)
+			{
+				Relation	yb_indexrel = index_open(indexRelationId, NoLock);
+
+				yb_index_update_stats(yb_baserel,
+									  true,
+									  ((double) (num_rows_read_from_table)));
+				yb_index_update_stats(yb_indexrel,
+									  false,
+									  (num_rows_backfilled));
+				index_close(yb_indexrel, NoLock);
+			}
+		}
+
+		table_close(yb_baserel, NoLock);
+
 		YbTestGucFailIfStrEqual(yb_test_fail_index_state_change, "postbackfill");
 
 		if (yb_test_block_index_phase[0] != '\0')

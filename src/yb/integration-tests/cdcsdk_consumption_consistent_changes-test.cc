@@ -1991,6 +1991,183 @@ TEST_F(
   CheckRecordCount(final_resp, total_dml_performed);
 }
 
+TEST_F(
+    CDCSDKConsumptionConsistentChangesTest,
+    TestChildTabletPolledFromLatestCheckpointOnVWALRestart) {
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* populate_safepoint_record */));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> p_tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &p_tablets, nullptr));
+  ASSERT_EQ(p_tablets.size(), 1);
+
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  // Table having key:value_1 column
+  ASSERT_OK(WriteRows(0 /* start */, 10 /* end */, &test_cluster_));
+
+  ASSERT_OK(WaitForFlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+  WaitUntilSplitIsSuccesful(p_tablets.Get(0).tablet_id(), table);
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_after_split;
+  ASSERT_OK(
+      test_client()->GetTablets(
+          table, 0, &tablets_after_split, nullptr, RequireTabletsRunning::kFalse,
+          master::IncludeInactive::kTrue));
+  // tablets_after_split should have 3 tablets - one parent & two childrens
+  ASSERT_EQ(tablets_after_split.size(), 3);
+
+  // Stalling the updates to cdc state table for one of the child tablets
+  for (const auto& tablet : tablets_after_split) {
+    if (tablet.tablet_id() != p_tablets.Get(0).tablet_id()) {
+      FLAGS_TEST_cdc_tablet_id_to_stall_state_table_updates = tablet.tablet_id();
+      break;
+    }
+  }
+
+  ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}));
+
+  // Doing 4 iterations of GetConsistentChanges:
+  // - 1st call will report the tablet split error to VWAL and VWAL will successfully replace parent
+  // tablet with its children tablets, creating tablet_queues for them.
+  // - 2nd call's response will return records > 0 from the children tablets.
+  // - 3rd and 4th calls are required to update the explicit checkpoint of tablet-stream entry in
+  // cdc state table for child tablet other than
+  // FLAGS_TEST_cdc_tablet_id_to_stall_state_table_updates.
+  for (int i = 1; i <= 4; i++) {
+    auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+    if (change_resp.cdc_sdk_proto_records_size() > 0) {
+      ASSERT_EQ(i, 2);  // Only 2nd call should return records.
+      auto last_record = change_resp.cdc_sdk_proto_records().rbegin();
+      auto last_lsn = last_record->row_message().pg_lsn();
+      ASSERT_OK(UpdateAndPersistLSN(stream_id, last_lsn, last_lsn));
+    }
+  }
+
+  // Restarting the VWAL. Although both the child tablets were already polled, however as we are
+  // simulating the situation where only one of the child tablet got polled (since the other
+  // child's tablet-stream entry in cdc state table is not updated to reflect that),
+  // VWAL on restart thinks that both the child tablets are not being polled yet and so create
+  // parent tablet's queue again.
+  ASSERT_OK(DestroyVirtualWAL());
+  ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}));
+
+  // Doing 2 iterations of GetConsistentChanges:
+  // - 1st one will still report the tablet split error on VWAL side (and returns zero records in
+  // response).
+  // - 2nd one's response shouldn't get any records as records for both child tablets were already
+  // polled before the restart.
+  for (int i = 1; i <= 2; i++) {
+    auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+    ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 0);
+  }
+}
+
+TEST_F(
+    CDCSDKConsumptionConsistentChangesTest, TestChildrenTabletsCheckpointMoveAheadOfParentTablet) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* populate_safepoint_record */));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> p_tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &p_tablets, nullptr));
+  ASSERT_EQ(p_tablets.size(), 1);
+
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}));
+
+  vector<uint64_t> commit_lsn;
+
+  // Performing some INSERT transactions and polling the records so as to populate VWAL's
+  // commit_meta_and_last_req_map_.
+  for (int i = 1; i <= 4; i++) {
+    ASSERT_OK(WriteRows(i /* start */, i + 1 /* end */, &test_cluster_));
+    auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+    ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 3);
+    auto record = change_resp.cdc_sdk_proto_records().Get(2);
+    ASSERT_EQ(record.row_message().op(), RowMessage::COMMIT);
+    commit_lsn.push_back(record.row_message().pg_lsn());
+  }
+
+  // Updating and persisting LSN only till 2nd txn's commit LSN.
+  ASSERT_OK(UpdateAndPersistLSN(stream_id, commit_lsn[1], commit_lsn[1] + 1));
+  auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 0);
+  auto checkpoint_1 = ASSERT_RESULT(
+      GetStreamCheckpointInCdcState(test_client(), stream_id, p_tablets[0].tablet_id()));
+  ASSERT_GT(checkpoint_1, OpId(1, 1));
+
+  // Splitting the tablet
+  ASSERT_OK(WaitForFlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+  WaitUntilSplitIsSuccesful(p_tablets.Get(0).tablet_id(), table);
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_after_split;
+  ASSERT_OK(
+      test_client()->GetTablets(
+          table, 0, &tablets_after_split, nullptr, RequireTabletsRunning::kFalse,
+          master::IncludeInactive::kTrue));
+  // tablets_after_split should have 3 tablets - one parent & two childrens
+  ASSERT_EQ(tablets_after_split.size(), 3);
+
+  // Next GetConsistentChanges() call will report the tablet split error with 0 records.
+  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 0);
+
+  // Updating and persisting LSN till 3rd txn's commit LSN. Note that this txn was streamed when
+  // parent tablet hadn't split.
+  ASSERT_OK(UpdateAndPersistLSN(stream_id, commit_lsn[2], commit_lsn[2] + 1));
+
+  ASSERT_OK(WriteRows(100 /* start */, 101 /* end */, &test_cluster_));
+  // Next 2 GetConsistentChanges() call will return records from each child tablet.
+  for (int i = 1; i <= 2; i++) {
+    change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+    if (change_resp.cdc_sdk_proto_records_size() > 0) {
+      ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 3);
+      auto record = change_resp.cdc_sdk_proto_records().Get(2);
+      ASSERT_EQ(record.row_message().op(), RowMessage::COMMIT);
+      commit_lsn.push_back(record.row_message().pg_lsn());
+    }
+  }
+
+  // - The parent tablet's checkpoint will not move ahead as it isn't polled for any records after
+  // the split.
+  // - The checkpoint of child tablets will also not move ahead of checkpoint_1 as VWAL's
+  // commit_meta_and_last_req_map_ will have empty last_sent_req_for_begin_map in its first element
+  // for child tablets. And so no explicit checkpoint was sent by VWAL in previous GetChanges() call
+  // for each child tablet.
+  for (const auto& tablet : tablets_after_split) {
+    auto checkpoint =
+        ASSERT_RESULT(GetStreamCheckpointInCdcState(test_client(), stream_id, tablet.tablet_id()));
+    ASSERT_EQ(checkpoint, checkpoint_1);
+  }
+
+  // Updating and persisting commit LSN of last txn.
+  ASSERT_OK(UpdateAndPersistLSN(stream_id, commit_lsn.back(), commit_lsn.back()));
+  // Next 2 GetConsistentChanges() call will poll each child tablet.
+  for (int i = 1; i <= 2; i++) {
+    change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+    ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 0);
+  }
+
+  // The child tablets checkpoint should have moved ahead of checkpoint_1.
+  for (const auto& tablet : tablets_after_split) {
+    if (tablet.tablet_id() == p_tablets[0].tablet_id()) {
+      continue;
+    }
+    auto checkpoint =
+        ASSERT_RESULT(GetStreamCheckpointInCdcState(test_client(), stream_id, tablet.tablet_id()));
+    ASSERT_GT(checkpoint, checkpoint_1);
+  }
+}
+
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestDynamicTablesAddition) {
   uint64_t publication_refresh_interval = 5;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 1_KB;

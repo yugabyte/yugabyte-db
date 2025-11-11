@@ -99,8 +99,7 @@ TAG_FLAG(db_block_cache_num_shard_bits, advanced);
 DEFINE_test_flag(bool, pretend_memory_exceeded_enforce_flush, false,
                   "Always pretend memory has been exceeded to enforce background flush.");
 
-// TODO(#29094): Turn back on limiting to 512 MiB once TryConsume bug is fixed.
-DEFINE_NON_RUNTIME_int64(read_wal_memory_bytes, /*512_MB*/-1,
+DEFINE_NON_RUNTIME_int64(read_wal_memory_bytes, 512_MB,
     "Limit on amount of memory used to hold WAL records temporarily read in from disk; -1 means "
     "no limit.");
 

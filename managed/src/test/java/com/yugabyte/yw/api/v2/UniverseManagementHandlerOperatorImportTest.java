@@ -32,11 +32,11 @@ public class UniverseManagementHandlerOperatorImportTest extends FakeDBApplicati
   private Universe defaultUniverse;
   private Customer defaultCustomer;
 
-  // Mock Dependencies
-  private RuntimeConfGetter mockConfGetter;
-
   // Handler we are testing
   @InjectMocks private UniverseManagementHandler handler;
+
+  // Mock Dependencies
+  private RuntimeConfGetter mockConfGetter;
 
   @Before
   public void setUp() {

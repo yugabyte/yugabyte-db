@@ -52,8 +52,6 @@ public class TestDropTableWithConcurrentTxn extends BasePgSQLTest {
     // TODO(29141): Fix the test with txn ddl and enable.
     flagMap.put("ysql_yb_ddl_transaction_block_enabled", "false");
     flagMap.put("enable_object_locking_for_table_locks", "false");
-    flagMap.put("allowed_preview_flags_csv",
-        "ysql_yb_ddl_transaction_block_enabled,enable_object_locking_for_table_locks");
     return flagMap;
   }
 

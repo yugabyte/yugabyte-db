@@ -43,10 +43,16 @@ spec:
               placementInfo:
                 description: Placement information for the universe.
                 type: object
+                x-kubernetes-validations:
+                  - message: defaultRegion cannot be removed once set.
+                    rule: has(self.defaultRegion) || !has(oldSelf.defaultRegion)
                 properties:
                   defaultRegion:
                     type: string
                     description: Default region for the universe.
+                    x-kubernetes-validations:
+                    - message: defaultRegion cannot be changed once set.
+                      rule: self == oldSelf
                   regions:
                     type: array
                     description: Regions for the universe.

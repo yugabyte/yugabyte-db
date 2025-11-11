@@ -535,7 +535,6 @@ ybginDoFirstExec(IndexScanDesc scan, ScanDirection dir)
 		ybginSetupTargets(scan);
 
 	YbSetCatalogCacheVersion(ybso->handle, YbGetCatalogCacheVersion());
-	YbMaybeSetNonSystemTablespaceOid(ybso->handle, scan->indexRelation);
 
 	/* execute select */
 	ybginExecSelect(scan, dir);

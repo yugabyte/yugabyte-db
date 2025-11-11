@@ -47,7 +47,7 @@ Using Kafka with PostgreSQL logical replication provides several benefits:
 
 The following example uses [pg_recvlogical](https://www.postgresql.org/docs/current/app-pgrecvlogical.html), a command-line tool provided by PostgreSQL for interacting with the logical replication feature. It is specifically used to receive changes from the database using logical replication slots.
 
-YugabyteDB provides the pg_recvlogical binary in the `<yugabyte-db-dir>/postgres/bin/` directory, which is inherited from and based on PostgreSQL 11.2. Although PostgreSQL also offers a pg_recvlogical binary, you should use the YugabyteDB version to avoid compatibility issues.
+YugabyteDB provides the pg_recvlogical binary in the `<yugabyte-db-dir>/postgres/bin/` directory, which is inherited from and based on PostgreSQL 15.2. Although PostgreSQL also offers a pg_recvlogical binary, you should use the YugabyteDB version to avoid compatibility issues.
 
 ### Set up pg_recvlogical
 

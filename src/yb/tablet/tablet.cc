@@ -3049,7 +3049,7 @@ string GenerateSerializedBackfillSpec(uint64_t batch_size, const string& next_ro
 }
 
 Result<PgsqlBackfillSpecPB> QueryPostgresToDoBackfill(
-    pgwrapper::PGConn* conn, const string& query) {
+    pgwrapper::PGConn* conn, const string& query, double* num_rows_backfilled_in_index) {
   auto result = conn->Fetch(query);
   if (!result.ok()) {
     const auto libpq_error_msg = AuxilaryMessage(result.status()).value();
@@ -3064,8 +3064,9 @@ Result<PgsqlBackfillSpecPB> QueryPostgresToDoBackfill(
   }
   auto& res = result.get();
   CHECK_EQ(PQntuples(res.get()), 1);
-  CHECK_EQ(PQnfields(res.get()), 1);
+  CHECK_EQ(PQnfields(res.get()), 2);
   const auto returned_spec = CHECK_RESULT(pgwrapper::GetValue<std::string>(res.get(), 0, 0));
+  *num_rows_backfilled_in_index = CHECK_RESULT(pgwrapper::GetValue<double>(res.get(), 0, 1));
   VLOG(4) << "Returned backfill spec (raw): " << returned_spec;
 
   PgsqlBackfillSpecPB spec;
@@ -3170,7 +3171,9 @@ Status Tablet::BackfillIndexesForYsql(
     const uint64_t postgres_auth_key,
     bool is_xcluster_target,
     uint64_t* number_of_rows_processed,
+    std::unordered_map<TableId, double>& num_rows_backfilled_in_index,
     std::string* backfilled_until) {
+  DCHECK_EQ(indexes.size(), 1) << "We don't support batching index backfill in YSQL yet";
   LOG(INFO) << "Begin " << __func__ << " of tablet " << tablet_id() << " at " << read_time
             << " from row \"" << strings::b2a_hex(backfill_from)
             << "\" for indexes " << AsString(indexes);
@@ -3223,18 +3226,28 @@ Status Tablet::BackfillIndexesForYsql(
       RETURN_NOT_OK(conn.Execute("SET yb_xcluster_consistency_level = tablet;"));
     }
 
-    const auto spec = VERIFY_RESULT(QueryPostgresToDoBackfill(&conn, query_str));
+    double num_rows_backfilled_in_index_in_batch = 0.0;
+    const auto spec = VERIFY_RESULT(QueryPostgresToDoBackfill(
+        &conn,
+        query_str,
+        &num_rows_backfilled_in_index_in_batch));
     *number_of_rows_processed += spec.count();
     *backfilled_until = spec.next_row_key();
+    if (num_rows_backfilled_in_index.find(indexes[0].table_id()) ==
+        num_rows_backfilled_in_index.end()) {
+      num_rows_backfilled_in_index.emplace(indexes[0].table_id(), 0);
+    }
+    num_rows_backfilled_in_index[indexes[0].table_id()] +=
+        num_rows_backfilled_in_index_in_batch;
 
-    VLOG(2) << "Backfilled " << *number_of_rows_processed << " rows so far in this chunk. "
-            << "Setting backfilled_until to \"" << b2a_hex(*backfilled_until) << "\"";
+    VLOG(2) << "Processed " << *number_of_rows_processed << " base table rows so far in this "
+            << "chunk. Setting backfilled_until to \"" << b2a_hex(*backfilled_until) << "\"";
 
     MaybeSleepToThrottleBackfill(backfill_params.start_time, *number_of_rows_processed);
   } while (CanProceedToBackfillMoreRows(
       backfill_params, *backfilled_until, *number_of_rows_processed));
 
-  VLOG(1) << "Backfilled " << *number_of_rows_processed << " rows in this chunk. "
+  VLOG(1) << "Processed " << *number_of_rows_processed << " base table rows in this chunk. "
           << "Set backfilled_until to \"" << b2a_hex(*backfilled_until) << "\"";
   return Status::OK();
 }

@@ -13,10 +13,14 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.Objects;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
@@ -80,6 +84,56 @@ public class CertsRotateParams extends UpgradeTaskParams {
     }
   }
 
+  private void verifyNonRestartUpgradeSupport(Universe universe) {
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    String softwareVersion = userIntent.ybSoftwareVersion;
+
+    // Check if YB version supports cert reload (>= 2.14.0.0-b1)
+    if (Util.compareYbVersions(softwareVersion, "2.14.0.0-b1", true) < 0) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST,
+          "Non-restart certificate rotation is not supported for universe with software version: "
+              + softwareVersion
+              + ". Minimum required version is 2.14.0.0-b1.");
+    }
+
+    // Check if cert reload feature flag is enabled
+    if (runtimeConfGetter == null) {
+      runtimeConfGetter = StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
+    }
+    boolean featureFlagEnabled = runtimeConfGetter.getGlobalConf(GlobalConfKeys.enableCertReload);
+    if (!featureFlagEnabled) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST,
+          "Non-restart certificate rotation requires the cert reload feature to be enabled. "
+              + "Please enable the feature flag 'yb.features.cert_reload.enabled' and retry.");
+    }
+
+    // Check if universe is configured for cert reload
+    boolean universeConfigured =
+        Boolean.parseBoolean(
+            universe
+                .getConfig()
+                .getOrDefault(Universe.KEY_CERT_HOT_RELOADABLE, Boolean.FALSE.toString()));
+    if (!universeConfigured) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST,
+          "Non-restart certificate rotation requires the universe to be configured for cert "
+              + "reload. The universe will be automatically configured during the first cert "
+              + "rotation, but for non-restart upgrades, it must be configured beforehand. "
+              + "Please perform a rolling cert rotation first to configure the universe.");
+    }
+
+    // Check if node-to-node certs are expired (non-restart upgrade cannot proceed if expired)
+    boolean n2nCertExpired = CertificateHelper.checkNode2NodeCertsExpiry(universe);
+    if (n2nCertExpired) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST,
+          "Non-restart certificate rotation cannot be performed when node-to-node certificates "
+              + "have expired. Please use rolling or non-rolling upgrade option instead.");
+    }
+  }
+
   private void commonValidation(Universe universe) {
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
@@ -112,8 +166,9 @@ public class CertsRotateParams extends UpgradeTaskParams {
     UUID currentRootCA = universeDetails.rootCA;
     UUID currentClientRootCA = universeDetails.clientRootCA;
 
+    // Validate non-restart upgrade option for non-Kubernetes universes
     if (upgradeOption == UpgradeOption.NON_RESTART_UPGRADE) {
-      throw new PlatformServiceException(Status.BAD_REQUEST, "Cert upgrade cannot be non restart.");
+      verifyNonRestartUpgradeSupport(universe);
     }
 
     // Make sure rootCA and clientRootCA respects the rootAndClientRootCASame property
@@ -225,6 +280,14 @@ public class CertsRotateParams extends UpgradeTaskParams {
         case HashicorpVault:
           rootCARotationType = CertRotationType.RootCert;
           break;
+        case K8SCertManager:
+          throw new PlatformServiceException(
+              Status.BAD_REQUEST,
+              "K8SCertManager certificates are not supported for VM/universe certificate"
+                  + " rotation.");
+        default:
+          throw new PlatformServiceException(
+              Status.BAD_REQUEST, "Unsupported certificate type: " + rootCert.getCertType());
       }
     } else {
       // Consider this case:
@@ -236,9 +299,13 @@ public class CertsRotateParams extends UpgradeTaskParams {
       rootCA = null;
       if (isRootCARequired) {
         rootCA = currentRootCA;
-        CertificateInfo rootCert = CertificateInfo.get(rootCA);
-        if (selfSignedServerCertRotate && rootCert.getCertType() == CertConfigType.SelfSigned) {
-          rootCARotationType = CertRotationType.ServerCert;
+        if (rootCA != null) {
+          CertificateInfo rootCert = CertificateInfo.get(rootCA);
+          if (rootCert != null
+              && selfSignedServerCertRotate
+              && rootCert.getCertType() == CertConfigType.SelfSigned) {
+            rootCARotationType = CertRotationType.ServerCert;
+          }
         }
       }
     }
@@ -249,7 +316,7 @@ public class CertsRotateParams extends UpgradeTaskParams {
       CertificateInfo clientRootCert = CertificateInfo.get(clientRootCA);
       if (clientRootCert == null) {
         throw new PlatformServiceException(
-            Status.BAD_REQUEST, "Certificate not present: " + rootCA);
+            Status.BAD_REQUEST, "Certificate not present: " + clientRootCA);
       }
 
       switch (clientRootCert.getCertType()) {
@@ -294,6 +361,14 @@ public class CertsRotateParams extends UpgradeTaskParams {
         case HashicorpVault:
           clientRootCARotationType = CertRotationType.RootCert;
           break;
+        case K8SCertManager:
+          throw new PlatformServiceException(
+              Status.BAD_REQUEST,
+              "K8SCertManager certificates are not supported for VM/universe certificate"
+                  + " rotation.");
+        default:
+          throw new PlatformServiceException(
+              Status.BAD_REQUEST, "Unsupported certificate type: " + clientRootCert.getCertType());
       }
     } else {
       // Consider this case:
@@ -305,10 +380,13 @@ public class CertsRotateParams extends UpgradeTaskParams {
       clientRootCA = null;
       if (isClientRootCARequired) {
         clientRootCA = currentClientRootCA;
-        CertificateInfo clientRootCert = CertificateInfo.get(clientRootCA);
-        if (selfSignedClientCertRotate
-            && clientRootCert.getCertType() == CertConfigType.SelfSigned) {
-          clientRootCARotationType = CertRotationType.ServerCert;
+        if (clientRootCA != null) {
+          CertificateInfo clientRootCert = CertificateInfo.get(clientRootCA);
+          if (clientRootCert != null
+              && selfSignedClientCertRotate
+              && clientRootCert.getCertType() == CertConfigType.SelfSigned) {
+            clientRootCARotationType = CertRotationType.ServerCert;
+          }
         }
       }
     }
@@ -327,14 +405,22 @@ public class CertsRotateParams extends UpgradeTaskParams {
   }
 
   private void verifyParamsForKubernetesUpgrade(Universe universe, boolean isFirstTry) {
-    if (rootCA == null) {
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    if (userIntent.enableNodeToNodeEncrypt && rootCA == null) {
       throw new PlatformServiceException(
           Status.BAD_REQUEST, "rootCA is null. Cannot perform any upgrade.");
     }
 
+    if (userIntent.enableClientToNodeEncrypt && rootCA == null && clientRootCA == null) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST,
+          "rootCA or clientRootCA is null. Cannot perform any upgrade when client to node"
+              + " encryption is enabled.");
+    }
+
     // clientRootCA will always be populated for 'hot cert reload' feature
     // just that it should not be different from rootCA in k8s universes
-    if (clientRootCA != null && !rootCA.equals(clientRootCA)) {
+    if (clientRootCA != null && rootCA != null && !rootCA.equals(clientRootCA)) {
       throw new PlatformServiceException(
           Status.BAD_REQUEST, "clientRootCA not applicable for Kubernetes certificate rotation.");
     }
@@ -344,8 +430,8 @@ public class CertsRotateParams extends UpgradeTaskParams {
           Status.BAD_REQUEST, "rootAndClientRootCASame cannot be false for Kubernetes universes.");
     }
 
-    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     UUID currentRootCA = universe.getUniverseDetails().rootCA;
+    UUID currentClientRootCA = universe.getUniverseDetails().clientRootCA;
 
     // Check if certs are managed through Kubernetes cert manager
     if (currentRootCA != null) {
@@ -358,9 +444,30 @@ public class CertsRotateParams extends UpgradeTaskParams {
       }
     }
 
+    if (currentClientRootCA != null) {
+      CertificateInfo certInfo = CertificateInfo.get(currentClientRootCA);
+      if (certInfo != null && certInfo.getCertType() == CertConfigType.K8SCertManager) {
+        throw new PlatformServiceException(
+            Status.BAD_REQUEST,
+            "Certificate rotation is not supported for Kubernetes cert manager managed"
+                + " certificates.");
+      }
+    }
+
     if (rootCA != null) {
       CertificateInfo newCertInfo = CertificateInfo.get(rootCA);
       if (newCertInfo != null && newCertInfo.getCertType() == CertConfigType.K8SCertManager) {
+        throw new PlatformServiceException(
+            Status.BAD_REQUEST,
+            "Certificate rotation is not supported for Kubernetes cert manager managed"
+                + " certificates.");
+      }
+    }
+
+    if (clientRootCA != null) {
+      CertificateInfo newClientCertInfo = CertificateInfo.get(clientRootCA);
+      if (newClientCertInfo != null
+          && newClientCertInfo.getCertType() == CertConfigType.K8SCertManager) {
         throw new PlatformServiceException(
             Status.BAD_REQUEST,
             "Certificate rotation is not supported for Kubernetes cert manager managed"
@@ -380,8 +487,13 @@ public class CertsRotateParams extends UpgradeTaskParams {
       }
     }
 
-    if (currentRootCA != null
-        && currentRootCA.equals(rootCA)
+    // Check if rootCA or clientRootCA has changed
+    boolean changeInRootCA = !Objects.equals(currentRootCA, rootCA);
+
+    boolean changeInClientRootCA = !Objects.equals(currentClientRootCA, clientRootCA);
+
+    if (!changeInRootCA
+        && !changeInClientRootCA
         && !selfSignedServerCertRotate
         && !selfSignedClientCertRotate) {
       throw new PlatformServiceException(
@@ -389,16 +501,32 @@ public class CertsRotateParams extends UpgradeTaskParams {
           "No changes in rootCA or server certificate rotation has been requested.");
     }
 
-    CertificateInfo rootCert = CertificateInfo.get(rootCA);
-    if (rootCert == null) {
-      throw new PlatformServiceException(Status.BAD_REQUEST, "Certificate not present: " + rootCA);
+    if (rootCA != null) {
+      CertificateInfo rootCert = CertificateInfo.get(rootCA);
+      if (rootCert == null) {
+        throw new PlatformServiceException(
+            Status.BAD_REQUEST, "Certificate not present: " + rootCA);
+      }
+      if (!(rootCert.getCertType() == CertConfigType.SelfSigned
+          || rootCert.getCertType() == CertConfigType.HashicorpVault)) {
+        throw new PlatformServiceException(
+            Status.BAD_REQUEST,
+            "Kubernetes universes supports only SelfSigned or HashicorpVault certificates.");
+      }
     }
 
-    if (!(rootCert.getCertType() == CertConfigType.SelfSigned
-        || rootCert.getCertType() == CertConfigType.HashicorpVault)) {
-      throw new PlatformServiceException(
-          Status.BAD_REQUEST,
-          "Kubernetes universes supports only SelfSigned or HashicorpVault certificates.");
+    if (clientRootCA != null) {
+      CertificateInfo clientRootCert = CertificateInfo.get(clientRootCA);
+      if (clientRootCert == null) {
+        throw new PlatformServiceException(
+            Status.BAD_REQUEST, "Certificate not present: " + clientRootCA);
+      }
+      if (!(clientRootCert.getCertType() == CertConfigType.SelfSigned
+          || clientRootCert.getCertType() == CertConfigType.HashicorpVault)) {
+        throw new PlatformServiceException(
+            Status.BAD_REQUEST,
+            "Kubernetes universes supports only SelfSigned or HashicorpVault certificates.");
+      }
     }
 
     if (isFirstTry) {
@@ -412,8 +540,9 @@ public class CertsRotateParams extends UpgradeTaskParams {
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
     UUID currentRootCA = universeDetails.rootCA;
-
-    if ((rootCA != null && !rootCA.equals(currentRootCA))) {
+    UUID currentClientRootCA = universeDetails.clientRootCA;
+    if ((rootCA != null && !rootCA.equals(currentRootCA))
+        || (clientRootCA != null && !clientRootCA.equals(currentClientRootCA))) {
       rootCARotationType = CertRotationType.RootCert;
     } else if (selfSignedServerCertRotate && selfSignedClientCertRotate) {
       rootCARotationType = CertRotationType.ServerCert;

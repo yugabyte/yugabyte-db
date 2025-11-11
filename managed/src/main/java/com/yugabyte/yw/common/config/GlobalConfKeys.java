@@ -1925,4 +1925,22 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Wait( in seconds ) between each retry for capacity reservation failures",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> allowYbaRestoreWithUniverses =
+      new ConfKeyInfo<>(
+          "yb.yba_backup.allow_restore_with_universes",
+          ScopeType.GLOBAL,
+          "Allow YBA Restore With Universes",
+          "Allow YBA restore from one time restore or continuous backup when existing universes are"
+              + " present",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowYbaRestoreWithOldBackup =
+      new ConfKeyInfo<>(
+          "yb.yba_backup.allow_restore_with_old_backup",
+          ScopeType.GLOBAL,
+          "Allow YBA Restore With Old Backup",
+          "Allow YBA restore from one time restore or continuous backup when backup file is more"
+              + " than 1 day old",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

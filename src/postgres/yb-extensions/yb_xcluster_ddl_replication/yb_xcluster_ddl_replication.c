@@ -493,12 +493,10 @@ HandleTargetDDLStart(EventTriggerData *trig_data)
 	}
 
 	/*
-	 * Allow DDLs related to materialized views.
 	 * Temp relations are bypassed in RecordTempRelationDDL.
 	 * DDLs that are not caught by the trigger (ex CREATE DATABASE) are bypassed
 	 * in XClusterProcessUtility.
 	 */
-	yb_xcluster_target_ddl_bypass = IsMatViewCommand(trig_data->tag);
 }
 
 static char *

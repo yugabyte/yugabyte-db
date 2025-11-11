@@ -11,6 +11,7 @@ export * from './EncryptionAtRestField/EncryptionAtRestField';
 export * from './GflagsField/GflagsField';
 export * from './HelmOverridesField/HelmOverridesField';
 export * from './InstanceTypeField/InstanceTypeField';
+export * from './K8EncryptionTypeField/K8EncryptionField';
 export * from './K8NodeSpecField/K8NodeSpecField';
 export * from './K8VolumeInfoField/K8VolumeInfoField';
 export * from './IPV6Field/IPV6Field';

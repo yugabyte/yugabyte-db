@@ -173,8 +173,8 @@ export type CreateUniverseContextMethods = [
   ReturnType<typeof createUniverseFormMethods>
 ];
 
-// Navigate berween pages
+// Navigate between pages
 export type StepsRef = {
-  onNext: () => void;
+  onNext: () => Promise<void>;
   onPrev: () => void;
 };

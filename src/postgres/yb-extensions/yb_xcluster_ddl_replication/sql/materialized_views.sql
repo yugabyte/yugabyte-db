@@ -12,9 +12,8 @@ CREATE MATERIALIZED VIEW product_summary AS
   FROM products
   GROUP BY category;
 
--- TODO(#28514): Uncomment this test case as part of new materialized view implementation
--- COMMENT ON MATERIALIZED VIEW product_summary
---   IS 'Stores the total count of products per category.';
+COMMENT ON MATERIALIZED VIEW product_summary
+  IS 'Stores the total count of products per category.';
 
 ALTER MATERIALIZED VIEW product_summary RENAME TO product_inventory;
 
@@ -38,6 +37,13 @@ SET ROLE drop_me_role;
 CREATE TEMP TABLE my_temp_object (id INT);
 CREATE MATERIALIZED VIEW my_mview AS SELECT 'hello' AS greeting;
 RESET ROLE;
-DROP OWNED BY drop_me_role;
+DROP OWNED BY drop_me_role; -- fail due to temp object
 
+SET ROLE drop_me_role;
+DROP TABLE my_temp_object;
+CREATE TABLE real_table (id INT);
+RESET ROLE;
+DROP OWNED BY drop_me_role; -- should succeed now
+
+SELECT yb_data FROM public.TEST_filtered_ddl_queue() ORDER BY ddl_end_time;
 select * from TEST_verify_replicated_ddls();

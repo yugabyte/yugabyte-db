@@ -39,7 +39,6 @@ public class TestPgRegressProc extends BasePgRegressTest {
     // as the object locks on catalog tables don't seem very deterministic amidst DDLs. Hence
     // disabling object locking for this tests (there are other tests where pg_locks is tested for
     // with object locking enabled).
-    flagMap.put("allowed_preview_flags_csv", "enable_object_locking_for_table_locks");
     flagMap.put("enable_object_locking_for_table_locks", "false");
     return flagMap;
   }

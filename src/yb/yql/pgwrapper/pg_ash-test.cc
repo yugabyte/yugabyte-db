@@ -73,9 +73,6 @@ class PgAshTest : public LibPqTestBase {
 class PgAshMasterMetadataSerializerTest : public PgAshTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_tserver_flags.push_back(
-        Format("--allowed_preview_flags_csv=$0,$1",
-               "enable_object_locking_for_table_locks", "ysql_yb_ddl_transaction_block_enabled"));
     options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=true");
     options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
     PgAshTest::UpdateMiniClusterOptions(options);
@@ -228,14 +225,6 @@ const Configuration kProfileRPCs{
     ash::PggateRPC::kCheckIfPitrActive},
   .tserver_flags = {"--ysql_enable_profile=true"}};
 
-// Test for RPCs which are fired with queries related to transactions
-const Configuration kTransactionRPCs{
-  .rpc_list = {
-    ash::PggateRPC::kFinishTransaction,
-    ash::PggateRPC::kRollbackToSubTransaction,
-    ash::PggateRPC::kCancelTransaction,
-    ash::PggateRPC::kGetActiveTransactionList}};
-
 // Test for RPCs which are fired with misc queries, these are mostly callable PG functions
 const Configuration kMiscRPCs{
   .rpc_list = {
@@ -312,7 +301,6 @@ using PgTablegroupWaitEventAux = ConfigurableTest<kTablegroupRPCs>;
 using PgTablespaceWaitEventAux = ConfigurableTest<kTablespaceRPCs>;
 using PgSequenceWaitEventAux = ConfigurableTest<kSequenceRPCs>;
 using PgProfileWaitEventAux = ConfigurableTest<kProfileRPCs>;
-using PgTransactionWaitEventAux = ConfigurableTest<kTransactionRPCs>;
 using PgMiscWaitEventAux = ConfigurableTest<kMiscRPCs>;
 using PgParallelWaitEventAux = ConfigurableTest<kParallelRPCs>;
 using PgTabletSplitWaitEventAux = ConfigurableTest<kTabletSplitRPCs>;
@@ -476,23 +464,6 @@ TEST_F_EX(PgWaitEventAuxTest, ProfileRPCs, PgProfileWaitEventAux) {
   ASSERT_OK(conn_->ExecuteFormat(
       "CREATE PROFILE $0 LIMIT FAILED_LOGIN_ATTEMPTS 1", kRoleName));
   ASSERT_OK(conn_->ExecuteFormat("DROP PROFILE $0", kRoleName));
-  ASSERT_OK(CheckWaitEventAux());
-}
-
-
-TEST_F_EX(PgWaitEventAuxTest, TransactionRPCs, PgTransactionWaitEventAux) {
-  static const std::string kTableName = "test";
-  static const std::string kSavepoint = "test_savepoint";
-  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (k INT)", kTableName));
-  ASSERT_OK(conn_->StartTransaction(IsolationLevel::READ_COMMITTED));
-  ASSERT_OK(conn_->ExecuteFormat("SAVEPOINT $0", kSavepoint));
-  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1)", kTableName));
-  ASSERT_OK(conn_->ExecuteFormat("ROLLBACK TO SAVEPOINT $0", kSavepoint));
-  // Call yb_cancel_transaction for a random txn id
-  ASSERT_OK(conn_->Fetch(
-      "SELECT yb_cancel_transaction('abcdabcd-abcd-abcd-abcd-abcd00000075')"));
-  ASSERT_OK(conn_->Fetch("SELECT yb_get_current_transaction()"));
-  ASSERT_OK(conn_->CommitTransaction());
   ASSERT_OK(CheckWaitEventAux());
 }
 
@@ -840,24 +811,6 @@ TEST_F(PgBgWorkersTest, TestBgWorkersQueryId) {
   ASSERT_GE(bgworker_query_id_cnt, 1);
 }
 
-TEST_F(PgAshSingleNode, TestFinishTransactionRPCs) {
-  constexpr auto kTableName = "test_table";
-
-  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTableName));
-
-  for (int i = 0; i < 1000; ++i) {
-    ASSERT_OK(conn_->StartTransaction(IsolationLevel::READ_COMMITTED));
-    ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES ($1, $1)", kTableName, i));
-    ASSERT_OK(conn_->CommitTransaction());
-  }
-
-  const auto finish_txn_cnt = ASSERT_RESULT(
-      conn_->FetchRow<int64_t>(Format("SELECT COUNT(*) FROM yb_active_session_history "
-          "WHERE wait_event = 'WaitingOnTServer' AND wait_event_aux = 'FinishTransaction' "
-          "AND query_id = 5")));
-  ASSERT_EQ(finish_txn_cnt, 0);
-}
-
 TEST_F(PgAshTest, TestTServerMetadataSerializer) {
   static constexpr auto kTableName = "test_table";
 
@@ -972,6 +925,89 @@ TEST_F(PgAshTest, TestUserIdChangeReflectedInAsh) {
   const auto orig_user_ash_count_after_reset = ASSERT_RESULT(
       conn_->FetchRow<int64_t>(Format(ash_count_query, orig_user_oid)));
   ASSERT_GT(orig_user_ash_count_after_reset, 0);
+}
+
+// Template test class for transaction wait events - parameterized by wait code
+template <ash::WaitStateCode WaitEvent>
+class PgTransactionWaitEventTest : public PgAshSingleNode {
+ public:
+  void SetUp() override {
+    PgAshSingleNode::SetUp();
+    ASSERT_OK(conn_->Execute("CREATE TABLE test_table (k INT PRIMARY KEY, v INT)"));
+  }
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    // Sleep for 4 * kSamplingIntervalMs to ensure ASH captures the wait events
+    options->extra_tserver_flags.push_back(Format("--TEST_yb_ash_sleep_at_wait_state_ms=$0",
+        4 * kTimeMultiplier * kSamplingIntervalMs));
+    // Set the specific wait code to sleep at
+    options->extra_tserver_flags.push_back(Format("--TEST_yb_ash_wait_code_to_sleep_at=$0",
+        std::to_underlying(WaitEvent)));
+    PgAshSingleNode::UpdateMiniClusterOptions(options);
+  }
+
+ protected:
+  static constexpr const char* kTableName = "test_table";
+
+  // Verify that the specified wait event is captured in ASH
+  Status VerifyWaitEventInASH(const std::string& wait_event_name) {
+    const auto count = VERIFY_RESULT(
+        conn_->FetchRow<PGUint64>(
+            Format("SELECT COUNT(*) FROM yb_active_session_history "
+                   "WHERE wait_event = '$0' "
+                   "AND sample_time >= current_timestamp - interval '5 minutes'",
+                   wait_event_name)));
+    SCHECK_GT(count, 0, IllegalState, Format("$0 wait event not found in ASH", wait_event_name));
+    return Status::OK();
+  }
+};
+
+using PgTransactionCommitTest =
+    PgTransactionWaitEventTest<ash::WaitStateCode::kTransactionCommit>;
+using PgTransactionTerminateTest =
+    PgTransactionWaitEventTest<ash::WaitStateCode::kTransactionTerminate>;
+using PgTransactionRollbackToSavepointTest =
+    PgTransactionWaitEventTest<ash::WaitStateCode::kTransactionRollbackToSavepoint>;
+using PgTransactionCancelTest =
+    PgTransactionWaitEventTest<ash::WaitStateCode::kTransactionCancel>;
+
+TEST_F(PgTransactionCommitTest, TestTransactionCommit) {
+  // Transaction Commit - Start transaction and commit
+  ASSERT_OK(conn_->StartTransaction(IsolationLevel::READ_COMMITTED));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", kTableName));
+  ASSERT_OK(conn_->CommitTransaction());
+  // Verify that transaction commit wait event is captured
+  ASSERT_OK(VerifyWaitEventInASH("TransactionCommit"));
+}
+
+TEST_F(PgTransactionTerminateTest, TestTransactionTerminate) {
+  // Transaction Terminate (Rollback) - Start transaction and rollback
+  ASSERT_OK(conn_->StartTransaction(IsolationLevel::READ_COMMITTED));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (2, 2)", kTableName));
+  ASSERT_OK(conn_->RollbackTransaction());
+  // Verify that transaction terminate wait event is captured
+  ASSERT_OK(VerifyWaitEventInASH("TransactionTerminate"));
+}
+
+TEST_F(PgTransactionRollbackToSavepointTest, TestTransactionRollbackToSavepoint) {
+  constexpr auto kSavepointName = "test_savepoint";
+  // Transaction RollbackToSavepoint - Create savepoint and rollback
+  ASSERT_OK(conn_->StartTransaction(IsolationLevel::READ_COMMITTED));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (3, 3)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("SAVEPOINT $0", kSavepointName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (4, 4)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("ROLLBACK TO SAVEPOINT $0", kSavepointName));
+  ASSERT_OK(conn_->CommitTransaction());
+  // Verify that rollbacktosavepoint wait event is captured
+  ASSERT_OK(VerifyWaitEventInASH("TransactionRollbackToSavepoint"));
+}
+
+TEST_F(PgTransactionCancelTest, TestTransactionCancel) {
+  // Transaction Cancel - Call yb_cancel_transaction with a dummy transaction ID
+  ASSERT_OK(conn_->Fetch(
+      "SELECT yb_cancel_transaction('aaaaaaaa-0000-4000-8000-000000000000'::uuid)"));
+  // Verify that cancel wait event is captured
+  ASSERT_OK(VerifyWaitEventInASH("TransactionCancel"));
 }
 
 } // namespace yb::pgwrapper

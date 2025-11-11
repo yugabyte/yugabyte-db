@@ -944,8 +944,7 @@ YBCDropTable(Relation relation)
 	 * safeguard against NotFound errors.
 	 */
 
-	YbcPgStatement handle = NULL;
-	Oid			databaseId = YBCGetDatabaseOid(relation);
+	bool not_found = false;
 
 	/*
 	 * Create table-level tombstone for colocated (via DB or tablegroup)
@@ -953,24 +952,15 @@ YBCDropTable(Relation relation)
 	 */
 	if (yb_props->is_colocated)
 	{
-		bool		not_found = false;
-
-		HandleYBStatusIgnoreNotFound(YBCPgNewTruncateColocated(databaseId,
-															   YbGetRelfileNodeId(relation),
-															   false, &handle,
-															   YB_TRANSACTIONAL),
-									 &not_found);
+		YbcPgStatement handle = YbNewTruncateColocatedIgnoreNotFound(relation, YB_TRANSACTIONAL);
 		/*
-		 * Since the creation of the handle could return a 'NotFound' error,
+		 * Since the creation of the handle could return a NULL in case of 'NotFound' error,
 		 * execute the statement only if the handle is valid.
 		 */
-		const bool	valid_handle = !not_found;
-
-		if (valid_handle)
+		if (handle)
 		{
 			HandleYBStatusIgnoreNotFound(YBCPgDmlBindTable(handle), &not_found);
-			int			rows_affected_count = 0;
-
+			int rows_affected_count = 0;
 			HandleYBStatusIgnoreNotFound(YBCPgDmlExecWriteOp(handle, &rows_affected_count),
 										 &not_found);
 		}
@@ -978,9 +968,9 @@ YBCDropTable(Relation relation)
 
 	/* Drop the table */
 	{
-		bool		not_found = false;
+		YbcPgStatement handle = NULL;
 
-		HandleYBStatusIgnoreNotFound(YBCPgNewDropTable(databaseId,
+		HandleYBStatusIgnoreNotFound(YBCPgNewDropTable(YBCGetDatabaseOid(relation),
 													   YbGetRelfileNodeId(relation),
 													   false /* if_exists */ ,
 													   &handle),
@@ -1071,22 +1061,13 @@ YbOnTruncateUpdateCatalog(Relation rel)
 void
 YbUnsafeTruncate(Relation rel)
 {
-	YbcPgStatement handle;
-	Oid			relfileNodeId = YbGetRelfileNodeId(rel);
-	Oid			databaseId = YBCGetDatabaseOid(rel);
-	bool		isRegionLocal = YBCIsRegionLocal(rel);
-
 	if (IsSystemRelation(rel) || YbGetTableProperties(rel)->is_colocated)
 	{
 		/*
 		 * Create table-level tombstone for colocated/tablegroup/syscatalog
 		 * relations.
 		 */
-		HandleYBStatus(YBCPgNewTruncateColocated(databaseId,
-												 relfileNodeId,
-												 isRegionLocal,
-												 &handle,
-												 YB_TRANSACTIONAL));
+		YbcPgStatement handle = YbNewTruncateColocated(rel, YB_TRANSACTIONAL);
 		HandleYBStatus(YBCPgDmlBindTable(handle));
 		int			rows_affected_count = 0;
 
@@ -1094,10 +1075,10 @@ YbUnsafeTruncate(Relation rel)
 	}
 	else
 	{
+		YbcPgStatement handle;
 		/* Send truncate table RPC to master for non-colocated relations */
-		HandleYBStatus(YBCPgNewTruncateTable(databaseId,
-											 relfileNodeId,
-											 &handle));
+		HandleYBStatus(YBCPgNewTruncateTable(YBCGetDatabaseOid(rel),
+											 YbGetRelfileNodeId(rel), &handle));
 		HandleYBStatus(YBCPgExecTruncateTable(handle));
 	}
 
@@ -1976,27 +1957,16 @@ YBCDropIndex(Relation index)
 	 * safeguard against NotFound errors.
 	 */
 
-	YbcPgStatement handle;
-	Oid			indexRelfileNodeId = YbGetRelfileNodeId(index);
-	Oid			databaseId = YBCGetDatabaseOid(index);
-
 	/*
 	 * Create table-level tombstone for colocated (via DB or tablegroup)
 	 * indexes
 	 */
+	bool not_found = false;
+
 	if (yb_props->is_colocated)
 	{
-		bool		not_found = false;
-
-		HandleYBStatusIgnoreNotFound(YBCPgNewTruncateColocated(databaseId,
-															   indexRelfileNodeId,
-															   false,
-															   &handle,
-															   YB_TRANSACTIONAL),
-									 &not_found);
-		const bool	valid_handle = !not_found;
-
-		if (valid_handle)
+		YbcPgStatement handle = YbNewTruncateColocatedIgnoreNotFound(index, YB_TRANSACTIONAL);
+		if (handle)
 		{
 			HandleYBStatusIgnoreNotFound(YBCPgDmlBindTable(handle), &not_found);
 			int			rows_affected_count = 0;
@@ -2008,12 +1978,12 @@ YBCDropIndex(Relation index)
 
 	/* Drop the index table */
 	{
-		bool		not_found = false;
+		YbcPgStatement handle;
 
-		HandleYBStatusIgnoreNotFound(YBCPgNewDropIndex(databaseId,
-													   indexRelfileNodeId,
+		HandleYBStatusIgnoreNotFound(YBCPgNewDropIndex(YBCGetDatabaseOid(index),
+													   YbGetRelfileNodeId(index),
 													   false,	/* if_exists */
-													   YbDdlRollbackEnabled(),	/* ddl_rollback_enabled */
+													   YbDdlRollbackEnabled(),
 													   &handle),
 									 &not_found);
 		if (not_found)
@@ -2053,6 +2023,9 @@ YbBackfillIndex(YbBackfillIndexStmt *stmt, DestReceiver *dest)
 	Oid			save_userid;
 	int			save_sec_context;
 	int			save_nestlevel;
+	double		index_tuples;
+	Datum		values[2];
+	bool		nulls[2] = {0};
 
 	if (*YBCGetGFlags()->ysql_disable_index_backfill)
 		ereport(ERROR,
@@ -2110,12 +2083,12 @@ YbBackfillIndex(YbBackfillIndexStmt *stmt, DestReceiver *dest)
 	indexInfo->ii_BrokenHotChain = false;
 
 	out_param = YbCreateExecOutParam();
-	index_backfill(heapRel,
-				   indexRel,
-				   indexInfo,
-				   false,
-				   stmt->bfinfo,
-				   out_param);
+	index_tuples = yb_index_backfill(heapRel,
+									 indexRel,
+									 indexInfo,
+									 false,
+									 stmt->bfinfo,
+									 out_param);
 
 	index_close(indexRel, RowExclusiveLock);
 	table_close(heapRel, AccessShareLock);
@@ -2126,10 +2099,15 @@ YbBackfillIndex(YbBackfillIndexStmt *stmt, DestReceiver *dest)
 	/* Restore userid and security context */
 	SetUserIdAndSecContext(save_userid, save_sec_context);
 
-	/* output tuples */
+	/* output tuple */
 	tstate = begin_tup_output_tupdesc(dest, YbBackfillIndexResultDesc(stmt),
 									  &TTSOpsVirtual);
-	do_text_output_oneline(tstate, out_param->bfoutput->data);
+
+	values[0] = CStringGetTextDatum(out_param->bfoutput->data);
+	values[1] = Float8GetDatum(index_tuples);
+
+	/* send it to dest */
+	do_tup_output(tstate, values, nulls);
 	end_tup_output(tstate);
 }
 
@@ -2137,12 +2115,12 @@ TupleDesc
 YbBackfillIndexResultDesc(YbBackfillIndexStmt *stmt)
 {
 	TupleDesc	tupdesc;
-	Oid			result_type = TEXTOID;
 
-	/* Need a tuple descriptor representing a single TEXT or XML column */
-	tupdesc = CreateTemplateTupleDesc(1);
+	tupdesc = CreateTemplateTupleDesc(2);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "BACKFILL SPEC",
-					   result_type, -1, 0);
+					   TEXTOID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "ROWS INSERTED",
+					   FLOAT8OID, -1, 0);
 	return tupdesc;
 }
 

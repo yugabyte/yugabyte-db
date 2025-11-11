@@ -3317,17 +3317,26 @@ index_build(Relation heapRelation,
 	if (IsYugaByteEnabled())
 		Assert(!indexInfo->ii_Concurrent);
 
-	/*
-	 * Update heap and index pg_class rows
-	 *
-	 * YB TODO(fizaa): Properly update reltuples for the indexed table
-	 * (see GH #16506). Currently, we don't compute this statistic during a
-	 * non-concurrent index build so we should not update it here.
-	 */
 
+	/*
+	 * #25394 enabled update of base table and index table reltuples after
+	 * `CREATE INDEX [CONCURRENTLY]`. In case of non-concurrent index creation,
+	 * the index reltuples were already being set here, but the base table
+	 * reltuples were being left unchanged for YB tables.
+	 *
+	 * We must maintain this old behavior for non-concurrent index creation, but
+	 * when `yb_enable_update_reltuples_after_create_index` is enabled, we
+	 * should update the base table reltuples as well to achieve consistent
+	 * behavior across both forms of index creation.
+	 *
+	 * When reltuples is passed as -1.0 to index_update_stats, the stats are not
+	 * updated, only relhasindex is updated.
+	 */
 	index_update_stats(heapRelation,
 					   true,
-					   IsYBRelation(heapRelation) ? -1 : stats->heap_tuples);
+					   ((IsYBRelation(heapRelation) &&
+						 !yb_enable_update_reltuples_after_create_index) ?
+						-1.0 : stats->heap_tuples));
 
 	index_update_stats(indexRelation,
 					   false,
@@ -3353,23 +3362,24 @@ index_build(Relation heapRelation,
 }
 
 /*
- * index_backfill - invoke access-method-specific index backfill procedure
+ * yb_index_backfill - invoke access-method-specific index backfill procedure
  *
  * This is mainly a copy of index_build.  index_build is used for
- * non-multi-stage index creation; index_backfill is used for multi-stage index
+ * non-multi-stage index creation; yb_index_backfill is used for multi-stage index
  * creation.
  */
-void
-index_backfill(Relation heapRelation,
-			   Relation indexRelation,
-			   IndexInfo *indexInfo,
-			   bool isprimary,
-			   YbBackfillInfo *bfinfo,
-			   YbPgExecOutParam *bfresult)
+double
+yb_index_backfill(Relation heapRelation,
+				  Relation indexRelation,
+				  IndexInfo *indexInfo,
+				  bool isprimary,
+				  YbBackfillInfo *bfinfo,
+				  YbPgExecOutParam *bfresult)
 {
 	Oid			save_userid;
 	int			save_sec_context;
 	int			save_nestlevel;
+	IndexBuildResult *result;
 
 	/*
 	 * sanity checks
@@ -3396,11 +3406,11 @@ index_backfill(Relation heapRelation,
 	/*
 	 * Call the access method's build procedure
 	 */
-	indexRelation->rd_indam->yb_ambackfill(heapRelation,
-										   indexRelation,
-										   indexInfo,
-										   bfinfo,
-										   bfresult);
+	result = indexRelation->rd_indam->yb_ambackfill(heapRelation,
+													indexRelation,
+													indexInfo,
+													bfinfo,
+													bfresult);
 
 	/*
 	 * I don't think we should be backfilling unlogged indexes.
@@ -3430,6 +3440,8 @@ index_backfill(Relation heapRelation,
 
 	/* Restore userid and security context */
 	SetUserIdAndSecContext(save_userid, save_sec_context);
+
+	return result->index_tuples;
 }
 
 double
@@ -4642,4 +4654,15 @@ RestoreReindexState(void *reindexstate)
 
 	/* Note the worker has its own transaction nesting level */
 	reindexingNestLevel = GetCurrentTransactionNestLevel();
+}
+
+/*
+ * YB Wrapper on index_update_stats to expose this static function.
+ */
+void
+yb_index_update_stats(Relation rel,
+					  bool hasindex,
+					  double reltuples)
+{
+	index_update_stats(rel, hasindex, reltuples);
 }

@@ -2999,10 +2999,6 @@ TEST_F(PgLibPqTest, LoadBalanceMultipleTablegroups) {
 class PgLibPqTestDisableObjectLocking : public PgLibPqTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_tserver_flags, "enable_object_locking_for_table_locks");
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_tserver_flags, "ysql_yb_ddl_transaction_block_enabled");
     options->extra_tserver_flags.emplace_back("--enable_object_locking_for_table_locks=false");
     options->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
   }
@@ -5075,11 +5071,7 @@ class PgLibPqTestTableLocksDisabled : public PgLibPqTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     // TODO(#28742): Fix interaction with ysql_yb_ddl_transaction_block_enabled here.
     // Enabling table locks+concurrent DDLs causes the ConcurrentAnalyzeWithDDL fail.
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_tserver_flags, "enable_object_locking_for_table_locks");
     options->extra_tserver_flags.emplace_back("--enable_object_locking_for_table_locks=false");
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_tserver_flags, "ysql_yb_ddl_transaction_block_enabled");
     options->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
     PgLibPqTest::UpdateMiniClusterOptions(options);
   }
@@ -5091,9 +5083,10 @@ class PgLibPqTestTableLocksDisabled : public PgLibPqTest {
 // StartTransactionCommand and CommitTransactionCommand are called internally by ANALYZE
 // for (1) the ANALYZE command itself and
 //     (2) analyzing each individual table selected by the ANALYZE.
-// In read committed isolation, we retry aborted DDL queries. An unclean retry of ANALYZE having
-// set SecurityRestrictionContext causes assertion failure in StartTransactionCommand, making
-// its connection FATAL.
+// In read committed isolation, we used to retry aborted ANALYZE queries.
+// An unclean retry of ANALYZE having set SecurityRestrictionContext, in_progress_list_len, or
+// other variables causes assertion failure in StartTransactionCommand, making
+// its connection FATAL. So, retries on `ANALYZE` are disabled.
 TEST_F_EX(PgLibPqTest, ConcurrentAnalyzeWithDDL, PgLibPqTestTableLocksDisabled) {
   auto conn = ASSERT_RESULT(Connect());
   auto conn2 = ASSERT_RESULT(Connect());
@@ -5114,11 +5107,10 @@ TEST_F_EX(PgLibPqTest, ConcurrentAnalyzeWithDDL, PgLibPqTestTableLocksDisabled) 
         // Setting yb_use_internal_auto_analyze_service_conn simulates ANALYZE command
         // as ANALYZE command run by auto analyze service -- auto-ANALYZE command has
         // a lower txn priority than regular DDLs, so that ANALYZE in this thread
-        // is always aborted by DROP TABLE and retries later on.
+        // is always aborted by DROP TABLE.
         ASSERT_OK(conn.Execute("SET yb_use_internal_auto_analyze_service_conn = TRUE"));
         ASSERT_OK(conn.Execute("SET yb_debug_log_internal_restarts=TRUE"));
         ASSERT_OK(conn.Execute("SET log_min_messages=DEBUG3"));
-        ASSERT_OK(conn.Execute("SET yb_max_query_layer_retries=300"));
         auto status = conn.Execute("ANALYZE");
     }
   });

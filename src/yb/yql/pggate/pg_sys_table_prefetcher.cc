@@ -374,10 +374,11 @@ class Loader {
         table->schema().table_properties().is_ysql_catalog_table(),
         InternalError,
         Format("$0 $1 is not a catalog table", item.table_id, table->table_name().table_name()));
-    // System tables are not region local.
+    // System tables has empty (default) table locality.
     op_info_.emplace_back(
-        ArenaMakeShared<PgsqlReadOp>(arena_, &*arena_, *table, false /* is_region_local */,
-                                     session_->metrics().metrics_capture()),
+        ArenaMakeShared<PgsqlReadOp>(
+            arena_, &*arena_, *table, YbcPgTableLocalityInfo{},
+            session_->metrics().metrics_capture()),
         table, index);
     auto& info = op_info_.back();
     auto& req = info.operation->read_request();

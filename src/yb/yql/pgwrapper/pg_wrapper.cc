@@ -268,6 +268,11 @@ DEFINE_RUNTIME_PG_FLAG(string, yb_enable_cbo, "legacy_mode",
     "'legacy_bnl_mode', 'legacy_stats_bnl_mode', 'legacy_ignore_stats_bnl_mode', "
     "'off', and 'on'");
 
+DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_update_reltuples_after_create_index, false,
+    "Enables update of reltuples in pg_class for the base table and index after creating the "
+    "index. When disabled, reltuples of the base table will remain unchanged and index reltuples "
+    "will be set to 0 after the index is created.");
+
 DEFINE_RUNTIME_PG_FLAG(uint64, yb_fetch_row_limit, 1024,
     "Maximum number of rows to fetch per scan.");
 

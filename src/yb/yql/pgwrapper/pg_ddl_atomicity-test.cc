@@ -80,12 +80,8 @@ class PgDdlAtomicityTest : public PgDdlAtomicityTestBase {
     options->extra_tserver_flags.push_back("--ysql_pg_conf_csv=log_statement=all");
     options->extra_tserver_flags.push_back(
         Format("--ysql_yb_ddl_transaction_block_enabled=$0", TransactionalDdlEnabled()));
-    AppendCsvFlagValue(options->extra_tserver_flags, "allowed_preview_flags_csv",
-                       "ysql_yb_ddl_transaction_block_enabled");
     options->extra_tserver_flags.push_back(
         Format("--enable_object_locking_for_table_locks=$0", TableLocksEnabled()));
-    AppendCsvFlagValue(options->extra_tserver_flags, "allowed_preview_flags_csv",
-                       "enable_object_locking_for_table_locks");
 
   }
 
@@ -1037,9 +1033,6 @@ class PgDdlAtomicitySanityTestWithTableLocks : public PgDdlAtomicitySanityTest,
         yb::Format("--enable_object_locking_for_table_locks=$0", TableLocksEnabled()));
     options->extra_tserver_flags.push_back(
         yb::Format("--ysql_yb_ddl_transaction_block_enabled=$0", TableLocksEnabled()));
-    AppendCsvFlagValue(
-        options->extra_tserver_flags, "allowed_preview_flags_csv",
-        "enable_object_locking_for_table_locks,ysql_yb_ddl_transaction_block_enabled");
   }
 
   bool TransactionalDdlEnabled() const override { return true; }

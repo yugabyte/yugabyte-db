@@ -317,10 +317,16 @@ Status CDCSDKVirtualWAL::GetTabletListAndCheckpoint(
   // parent_tablet_id will be non-empty in case of tablet split. Hence, add children tablet entries
   // in all relevant maps & then remove parent tablet's entry from all relevant maps.
   if (!parent_tablet_id.empty()) {
-    std::vector<TabletId> children_tablets;
+    std::vector<std::pair<TabletId, GetChangesRequestInfo>> children_tablet_to_next_req_info;
     for (const auto& tablet_checkpoint_pair : resp.tablet_checkpoint_pairs()) {
       auto tablet_id = tablet_checkpoint_pair.tablet_locations().tablet_id();
-      children_tablets.push_back(tablet_id);
+      auto checkpoint = tablet_checkpoint_pair.cdc_sdk_checkpoint();
+      GetChangesRequestInfo info;
+      info.from_op_id = OpId::FromPB(checkpoint);
+      info.write_id = checkpoint.write_id();
+      info.safe_hybrid_time = checkpoint.snapshot_time();
+      info.wal_segment_index = 0;
+      children_tablet_to_next_req_info.emplace_back(tablet_id, info);
     }
 
     RSTATUS_DCHECK(
@@ -338,7 +344,7 @@ Status CDCSDKVirtualWAL::GetTabletListAndCheckpoint(
     // happen that on the 1st GetChanges call on the parent tablet, we might get the split error and
     // so, we might not even add an entry for the parent tablet in the last_sent_req_map.
 
-    RETURN_NOT_OK(UpdateTabletMapsOnSplit(parent_tablet_id, children_tablets));
+    RETURN_NOT_OK(UpdateTabletMapsOnSplit(parent_tablet_id, children_tablet_to_next_req_info));
     return Status::OK();
   }
 
@@ -379,7 +385,9 @@ Status CDCSDKVirtualWAL::GetTabletListAndCheckpoint(
 }
 
 Status CDCSDKVirtualWAL::UpdateTabletMapsOnSplit(
-    const TabletId& parent_tablet_id, const std::vector<TabletId> children_tablets) {
+    const TabletId& parent_tablet_id,
+    const std::vector<std::pair<TabletId, GetChangesRequestInfo>>
+        children_tablet_to_next_req_info) {
   // First add children tablet entries in all relevant maps and initialise them with the values of
   // the parent tablet, then erase parent tablet's entry from these maps.
   const auto parent_tablet_table_id = tablet_id_to_table_id_map_.at(parent_tablet_id);
@@ -399,7 +407,7 @@ Status CDCSDKVirtualWAL::UpdateTabletMapsOnSplit(
     parent_last_sent_req_info.safe_hybrid_time = parent_next_req_info.safe_hybrid_time;
   }
 
-  for (const auto& child_tablet_id : children_tablets) {
+  for (const auto& [child_tablet_id, next_req_info] : children_tablet_to_next_req_info) {
     DCHECK(!tablet_id_to_table_id_map_.contains(child_tablet_id));
     tablet_id_to_table_id_map_[child_tablet_id] = parent_tablet_table_id;
     tablet_id_to_table_id_map_.erase(parent_tablet_id);
@@ -412,11 +420,6 @@ Status CDCSDKVirtualWAL::UpdateTabletMapsOnSplit(
       VLOG_WITH_PREFIX(4) << "Removed tablet queue for parent tablet_id: " << parent_tablet_id;
     }
 
-    DCHECK(!tablet_last_sent_req_map_.contains(child_tablet_id));
-    tablet_last_sent_req_map_[child_tablet_id] = parent_last_sent_req_info;
-    VLOG_WITH_PREFIX(4) << "Added entry in tablet_last_sent_req_map_ for child tablet_id: "
-                        << child_tablet_id
-                        << " with last_sent_request_info: " << parent_last_sent_req_info.ToString();
     if (tablet_last_sent_req_map_.contains(parent_tablet_id)) {
       tablet_last_sent_req_map_.erase(parent_tablet_id);
       VLOG_WITH_PREFIX(4) << "Removed entry in tablet_last_sent_req_map_ for parent tablet_id: "
@@ -425,9 +428,15 @@ Status CDCSDKVirtualWAL::UpdateTabletMapsOnSplit(
 
     DCHECK(!tablet_next_req_map_.contains(child_tablet_id));
     tablet_next_req_map_[child_tablet_id] = parent_next_req_info;
+    if (next_req_info.from_op_id > parent_next_req_info.from_op_id) {
+      tablet_next_req_map_[child_tablet_id].from_op_id = next_req_info.from_op_id;
+    }
+    if (next_req_info.safe_hybrid_time > parent_next_req_info.safe_hybrid_time) {
+      tablet_next_req_map_[child_tablet_id].safe_hybrid_time = next_req_info.safe_hybrid_time;
+    }
     VLOG_WITH_PREFIX(4) << "Added entry in tablet_next_req_map_ for child tablet_id: "
                         << child_tablet_id << " with next getchanges_request_info: "
-                        << parent_next_req_info.ToString();
+                        << tablet_next_req_map_[child_tablet_id].ToString();
     if (tablet_next_req_map_.contains(parent_tablet_id)) {
       tablet_next_req_map_.erase(parent_tablet_id);
       VLOG_WITH_PREFIX(4) << "Removed entry in tablet_next_req_map_ for parent tablet_id: "
@@ -438,27 +447,20 @@ Status CDCSDKVirtualWAL::UpdateTabletMapsOnSplit(
   for (auto& entry : commit_meta_and_last_req_map_) {
     auto& last_req_map = entry.second.last_sent_req_for_begin_map;
     if (last_req_map.contains(parent_tablet_id)) {
-      auto parent_tablet_req_info = last_req_map.at(parent_tablet_id);
-      for (const auto& child_tablet_id : children_tablets) {
-        DCHECK(!last_req_map.contains(child_tablet_id));
-        last_req_map[child_tablet_id] = parent_tablet_req_info;
-      }
       // Delete parent's tablet entry
       last_req_map.erase(parent_tablet_id);
-      VLOG_WITH_PREFIX(4)
-          << "Succesfully added entries in last_sent_req_for_begin_map corresponding to "
-             "commit_lsn: "
-          << entry.first << " for child tablets: " << children_tablets[0] << " &  "
-          << children_tablets[1] << " and removed entry for parent tablet_id: " << parent_tablet_id;
+      VLOG_WITH_PREFIX(4) << "Succesfully removed entry for parent tablet_id: " << parent_tablet_id
+                          << "from last_sent_req_for_begin_map corresponding to commit_lsn: "
+                          << entry.first;
     }
   }
 
-  LOG_WITH_PREFIX(INFO) << "Succesfully replaced parent tablet " << parent_tablet_id
-                        << "with children tablets " << AsString(children_tablets)
-                        << "with last sent GetChanges req "
-                        << tablet_last_sent_req_map_[children_tablets[0]].ToString()
-                        << "and next Getchanges req "
-                        << tablet_next_req_map_[children_tablets[0]].ToString();
+  LOG_WITH_PREFIX(INFO)
+      << "Succesfully replaced parent tablet " << parent_tablet_id << " with children tablets "
+      << children_tablet_to_next_req_info[0].first << " [next Getchanges req: "
+      << tablet_next_req_map_[children_tablet_to_next_req_info[0].first].ToString() << "] & "
+      << children_tablet_to_next_req_info[1].first << " [next Getchanges req: "
+      << tablet_next_req_map_[children_tablet_to_next_req_info[1].first].ToString() << "]";
 
   return Status::OK();
 }
@@ -926,7 +928,12 @@ Status CDCSDKVirtualWAL::PopulateGetChangesRequest(
   req->set_cdcsdk_request_source(CDCSDKRequestSource::WALSENDER);
   req->set_tablet_id(tablet_id);
   req->set_getchanges_resp_max_size_bytes(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes);
-  req->set_safe_hybrid_time(next_req_info.safe_hybrid_time);
+  // It is safe to set the safe_hybrid_time as the max of the next_req_info's safe_hybrid_time
+  // and last_persisted_record_id_commit_time_ because upon restart VWAL will always send records
+  // with commit time greater than restart time. When we have successive GetChanges calls (i.e VWAL
+  // running in steady state), next_req_info.safe_hybrid_time will always be >= restart_time.
+  req->set_safe_hybrid_time(
+      std::max(next_req_info.safe_hybrid_time, last_persisted_record_id_commit_time_.ToUint64()));
   req->set_wal_segment_index(next_req_info.wal_segment_index);
 
   // We dont set the snapshot_time in from_cdc_sdk_checkpoint object of GetChanges request since it
@@ -944,13 +951,13 @@ Status CDCSDKVirtualWAL::PopulateGetChangesRequest(
     return Status::OK();
   }
 
-  auto explicit_checkpoint = req->mutable_explicit_cdc_sdk_checkpoint();
   if (!commit_meta_and_last_req_map_.empty()) {
     const auto& last_sent_req_for_begin_map =
         commit_meta_and_last_req_map_.begin()->second.last_sent_req_for_begin_map;
     if (last_sent_req_for_begin_map.contains(tablet_id)) {
       const LastSentGetChangesRequestInfo& last_sent_req_info =
           last_sent_req_for_begin_map.at(tablet_id);
+      auto explicit_checkpoint = req->mutable_explicit_cdc_sdk_checkpoint();
       explicit_checkpoint->set_term(last_sent_req_info.from_op_id.term);
       explicit_checkpoint->set_index(last_sent_req_info.from_op_id.index);
       explicit_checkpoint->set_snapshot_time(last_sent_req_info.safe_hybrid_time);
@@ -971,6 +978,7 @@ Status CDCSDKVirtualWAL::PopulateGetChangesRequest(
     }
   } else {
     // Send the from_checkpoint as the explicit checkpoint.
+    auto explicit_checkpoint = req->mutable_explicit_cdc_sdk_checkpoint();
     explicit_checkpoint->set_term(next_req_info.from_op_id.term);
     explicit_checkpoint->set_index(next_req_info.from_op_id.index);
     explicit_checkpoint->set_snapshot_time(next_req_info.safe_hybrid_time);

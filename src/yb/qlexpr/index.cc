@@ -94,6 +94,7 @@ IndexInfo::IndexInfo(const IndexInfoPB& pb)
       index_permissions_(pb.index_permissions()),
       backfill_error_message_(pb.backfill_error_message()),
       num_rows_read_from_table_for_backfill_(pb.num_rows_read_from_table_for_backfill()),
+      num_rows_backfilled_in_index_(pb.num_rows_backfilled_in_index()),
       use_mangled_column_name_(pb.use_mangled_column_name()),
       where_predicate_spec_(pb.has_where_predicate_spec() ?
         std::make_shared<IndexInfoPB::WherePredicateSpecPB>(pb.where_predicate_spec()) : nullptr) {
@@ -143,6 +144,7 @@ void IndexInfo::ToPB(IndexInfoPB* pb) const {
   pb->set_index_permissions(index_permissions_);
   pb->set_backfill_error_message(backfill_error_message_);
   pb->set_num_rows_read_from_table_for_backfill(num_rows_read_from_table_for_backfill_);
+  pb->set_num_rows_backfilled_in_index(num_rows_backfilled_in_index_);
   pb->set_use_mangled_column_name(use_mangled_column_name_);
   if (where_predicate_spec_) {
     pb->mutable_where_predicate_spec()->CopyFrom(*where_predicate_spec_);

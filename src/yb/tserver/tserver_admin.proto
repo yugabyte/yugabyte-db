@@ -119,8 +119,11 @@ message BackfillIndexResponsePB {
   // In case of a partial error, list of indexes that failed.
   repeated bytes failed_index_ids = 4;
 
-  // Returns the number of rows backfilled in the request.
+  // Returns the number of base table rows processed during backfill in this batch.
   optional uint64 num_rows_read_from_table_for_backfill = 5;
+
+  // Returns the number of rows inserted in the index in this batch.
+  map<string, double> num_rows_backfilled_in_index = 6;
 }
 
 // A create tablet request.

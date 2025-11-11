@@ -371,6 +371,10 @@ public class Commissioner {
     if (taskInfo.getTaskParams().has("queryLogConfig")) {
       details.set("queryLogConfig", taskInfo.getTaskParams().get("queryLogConfig"));
     }
+    // Add metricsExportConfig from the task details if it is present.
+    if (taskInfo.getTaskParams().has("metricsExportConfig")) {
+      details.set("metricsExportConfig", taskInfo.getTaskParams().get("metricsExportConfig"));
+    }
 
     responseJson.set("details", details);
 

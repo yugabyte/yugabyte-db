@@ -43,6 +43,13 @@ message BackfillJobPB {
   // Number of rows processed for this backfill task (the same for all indexes)
   optional uint64 num_rows_read_from_table_for_backfill = 4 [ default = 0 ];
 
+  // Number of rows inserted for each index in this backfill task
+  // In case of rolling upgrade, an older tserver may not report rows inserted
+  // in the index for the tablets hosted on that node. This could lead to
+  // this value being inaccurate for backfills being carried out during
+  // upgrades.
+  map<string, double> num_rows_backfilled_in_index = 5;
+
   optional uint64 backfilling_timestamp = 3;
 }
 

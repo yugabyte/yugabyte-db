@@ -1,7 +1,7 @@
 import { useFormContext } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { styled, Typography } from '@material-ui/core';
-import { mui, YBTooltip, YBWarning } from '@yugabyte-ui-library/core';
+import { mui, YBTag } from '@yugabyte-ui-library/core';
 import { FaultToleranceTypeField } from '../../fields/fault-tolerance/FaultToleranceTypeField';
 import { FAULT_TOLERANCE_TYPE } from '../../fields/FieldNames';
 import { ReplicationFactorField } from '../../fields/replication-factor/ReplicationFactorField';
@@ -71,9 +71,24 @@ export const GuidedMode = () => {
         <ReplicationStatusAvailabilityStatus />
         <ReplicationStatusCard hideSubText />
         <Collapse in={faultToleranceType === FaultToleranceType.NONE}>
-          <YBWarning chipText={t('faultToleranceNone.caution')}>
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: 'row',
+              gap: '8px',
+              alignItems: 'center',
+              color: '#4E5F6D'
+            }}
+          >
+            <YBTag
+              size="medium"
+              customSx={{ color: '#9D6C00', background: '#FFEEC8' }}
+              color="warning"
+            >
+              {t('faultToleranceNone.caution')}
+            </YBTag>
             {t('faultToleranceNone.msg')}
-          </YBWarning>
+          </Box>
         </Collapse>
       </div>
       <ResilienceTooltip

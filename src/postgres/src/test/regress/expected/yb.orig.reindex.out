@@ -299,8 +299,9 @@ SELECT i FROM tmp WHERE j = -5;
 (1 row)
 
 -- Somehow, IndexScan hint plan fails to work at this point.  Force usage of
--- the index with enable_seqscan.
+-- the index by setting enable_seqscan and enable_bitmapscan to off.
 SET enable_seqscan TO off;
+SET enable_bitmapscan TO off;
 EXPLAIN (costs off)
 SELECT i FROM tmp WHERE j = -5;
             QUERY PLAN             
@@ -316,6 +317,7 @@ SELECT i FROM tmp WHERE j = -5;
 (1 row)
 
 RESET enable_seqscan;
+RESET enable_bitmapscan;
 -- 5. corruption (for YB indexes)
 --
 -- Now, test the YB-backed indexes.

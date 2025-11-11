@@ -77,9 +77,7 @@ void PgMiniTestBase::SetUp() {
   OverrideMiniClusterOptions(&mini_cluster_opt);
   cluster_ = std::make_unique<MiniCluster>(mini_cluster_opt);
 
-  // Use TS-0 IP for PG server. YBC process and PG auto analyze service use this IP.
-  const auto pg_ts_idx = 0;
-  const auto pg_addr = server::TEST_RpcAddress(pg_ts_idx + 1, server::Private::kTrue);
+  const auto pg_addr = server::TEST_RpcAddress(kPgTsIndex + 1, server::Private::kTrue);
   auto pg_port = cluster_->AllocateFreePort();
   auto host_port = HostPort(pg_addr, pg_port);
   // The 'pgsql_proxy_bind_address' flag must be set before starting the cluster. Each
@@ -87,11 +85,11 @@ void PgMiniTestBase::SetUp() {
   // is needed for tserver local PG connections.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_bind_address) = host_port.ToString();
 
-  cluster_->SetPgTServerSelected(pg_ts_idx, host_port);
+  cluster_->SetPgTServerSelected(kPgTsIndex, host_port);
 
   ASSERT_OK(cluster_->Start(ExtraTServerOptions()));
 
-  ASSERT_OK(SetupPGCallbacksAndStartPG(pg_port, pg_ts_idx, mini_cluster_opt.wait_for_pg));
+  ASSERT_OK(SetupPGCallbacksAndStartPG(pg_port, kPgTsIndex, mini_cluster_opt.wait_for_pg));
   DontVerifyClusterBeforeNextTearDown();
 
   ASSERT_OK(MiniClusterTestWithClient<MiniCluster>::CreateClient());
@@ -158,7 +156,7 @@ void PgMiniTestBase::StartPgSupervisor(uint16_t pg_port, const int pg_ts_idx) {
 }
 
 Status PgMiniTestBase::SetupPGCallbacksAndStartPG(
-    uint16_t pg_port, int pg_ts_idx, bool wait_for_pg) {
+    uint16_t pg_port, size_t pg_ts_idx, bool wait_for_pg) {
   RETURN_NOT_OK(WaitForInitDb(cluster_.get()));
 
   auto pg_process_conf = VERIFY_RESULT(CreatePgProcessConf(pg_port, pg_ts_idx));
@@ -210,9 +208,7 @@ Status PgMiniTestBase::StartPostgres() {
 }
 
 Status PgMiniTestBase::RestartPostgres() {
-  LOG(INFO) << "Restarting PostgreSQL server";
-  StopPostgres();
-  return StartPostgres();
+  return cluster_->mini_tablet_server(kPgTsIndex)->server()->RestartPG();
 }
 
 void PgMiniTestBase::OverrideMiniClusterOptions(MiniClusterOptions* options) {}

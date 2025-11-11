@@ -534,9 +534,6 @@ class PgObjectLocksTest : public LibPqTestBase {
     LibPqTestBase::UpdateMiniClusterOptions(opts);
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vmodule) = "libpq_utils=1";
     opts->extra_tserver_flags.emplace_back(
-        yb::Format("--allowed_preview_flags_csv=enable_object_locking_for_table_locks,"
-                   "ysql_yb_ddl_transaction_block_enabled"));
-    opts->extra_tserver_flags.emplace_back(
         yb::Format("--enable_object_locking_for_table_locks=$0", EnableTableLocks()));
     opts->extra_tserver_flags.emplace_back(
         yb::Format("--ysql_yb_ddl_transaction_block_enabled=$0", EnableTableLocks()));

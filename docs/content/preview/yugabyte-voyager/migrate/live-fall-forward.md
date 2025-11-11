@@ -1632,7 +1632,8 @@ DROP USER ybvoyager;
 
 In addition to the Live migration [limitations](../live-migrate/#limitations), the following additional limitations apply to the fall-forward feature:
 
-- For [YugabyteDB gRPC Connector](../../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/), fall-forward is unsupported with a YugabyteDB cluster running on [YugabyteDB Aeon](../../../yugabyte-cloud).
+- For [YugabyteDB gRPC Connector](../../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/), fall-forward is unsupported with a YugabyteDB cluster running on YugabyteDB Aeon.
 - For YugabyteDB gRPC Connector, [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity) is partially supported for export or streaming events from YugabyteDB during `export data from target`. Basic SSL and server authentication via root certificate is supported. Client authentication is not supported.
+- For YugabyteDB gRPC Connector, the following data types are unsupported when exporting from the target YugabyteDB: BOX, CIRCLE, LINE, LSEG, PATH, PG_LSN, POINT, POLYGON, TSQUERY, TSVECTOR, TXID_SNAPSHOT, GEOMETRY, GEOGRAPHY, RASTER, HSTORE.
 - Currently, the [YugabyteDB connector](../../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/) has a known limitation. Refer to GitHub issue [27248](https://github.com/yugabyte/yugabyte-db/issues/27248) for more details.
 - [Export data from target](../../reference/data-migration/export-data/#export-data-from-target) supports DECIMAL/NUMERIC datatypes for YugabyteDB versions 2.20.1.1 and later.

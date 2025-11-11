@@ -2,12 +2,14 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import static org.junit.Assert.assertEquals;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.ReleasesUtils;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -22,6 +24,7 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.HashMap;
 import java.util.List;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
@@ -40,7 +43,8 @@ public class OperatorImportUniverseTest extends CommissionerBaseTest {
   protected GuiceApplicationBuilder configureApplication(GuiceApplicationBuilder builder) {
     operatorUtils = mock(OperatorUtils.class);
     return super.configureApplication(builder)
-        .overrides(bind(OperatorUtils.class).toInstance(operatorUtils));
+        .overrides(bind(OperatorUtils.class).toInstance(operatorUtils))
+        .overrides(bind(ReleasesUtils.class).toInstance(mockReleasesUtils));
   }
 
   private TaskInfo submitTask(OperatorImportUniverse.Params taskParams) {
@@ -54,6 +58,7 @@ public class OperatorImportUniverseTest extends CommissionerBaseTest {
 
   @Test
   public void testImportUniverse() {
+    when(mockReleasesUtils.versionUniversesMap()).thenReturn(new HashMap<String, List<Universe>>());
     String version = "2025.2.0.0-b123";
     Customer customer = ModelFactory.testCustomer();
     Provider provider = ModelFactory.kubernetesProvider(customer);
@@ -169,6 +174,6 @@ public class OperatorImportUniverseTest extends CommissionerBaseTest {
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
-    assertEquals(12, subTasks.size());
+    assertEquals(17, subTasks.size());
   }
 }

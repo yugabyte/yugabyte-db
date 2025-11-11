@@ -966,7 +966,7 @@
           path: universes
           sourceType: endpoint
     x-yba-api-since: 2025.2.0.0
-    x-yba-api-visibility: internal
+    x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/attach':
   parameters:
     - name: cUUID
@@ -1013,7 +1013,7 @@
           sourceType: endpoint
     x-yba-api-multipart: true
     x-yba-api-since: 2025.2.0.0
-    x-yba-api-visibility: internal
+    x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/attach-detach-metadata':
   parameters:
     - name: cUUID
@@ -1057,7 +1057,7 @@
           path: universes
           sourceType: endpoint
     x-yba-api-since: 2025.2.0.0
-    x-yba-api-visibility: internal
+    x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/query-log-config':
   parameters:
     - name: cUUID

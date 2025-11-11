@@ -106,8 +106,6 @@ class PgCatalogVersionTest : public LibPqTestBase {
       cluster_->master(i)->mutable_flags()->push_back(db_catalog_version_gflag);
       if (!enabled) {
         cluster_->master(i)->mutable_flags()->push_back(
-            "--allowed_preview_flags_csv=enable_object_locking_for_table_locks");
-        cluster_->master(i)->mutable_flags()->push_back(
             "--enable_object_locking_for_table_locks=false");
       }
     }
@@ -117,8 +115,6 @@ class PgCatalogVersionTest : public LibPqTestBase {
         cluster_->tablet_server(i)->mutable_flags()->push_back(flag);
       }
       if (!enabled) {
-        cluster_->tablet_server(i)->mutable_flags()->push_back(
-            "--allowed_preview_flags_csv=enable_object_locking_for_table_locks");
         cluster_->tablet_server(i)->mutable_flags()->push_back(
             "--enable_object_locking_for_table_locks=false");
       }

@@ -58,8 +58,6 @@ class PgStatActivityTest : public LibPqTestBase {
     // Also, enabling table locks causes more backends to be tracked in
     // AllBackendsTransaction test than just the queries launched by the test.
     // So disable table locks for these tests.
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_tserver_flags, "enable_object_locking_for_table_locks");
     options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
     LibPqTestBase::UpdateMiniClusterOptions(options);
   }

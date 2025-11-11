@@ -30,6 +30,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.CheckClusterConsistency;
 import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.common.alerts.MaintenanceService;
 import com.yugabyte.yw.common.alerts.SmtpData;
+import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -849,21 +850,16 @@ public class HealthChecker {
                           GFlagsUtil.getCustomTmpDirectory(nodeDetails, params.universe))
                       : nodeInfo.getYbHomeDir());
         }
-        nodeInfo.setOtelCollectorEnabled(params.universe.getUniverseDetails().otelCollectorEnabled);
-        // Check if audit log export was ever enabled and disabled.
-        AuditLogConfig auditLogConfig = cluster.userIntent.auditLogConfig;
-        if (auditLogConfig != null) {
-          nodeInfo.setOtelCollectorEnabled(auditLogConfig.isExportActive());
-        }
-        // Check if query log export was ever enabled and disabled.
-        QueryLogConfig queryLogConfig = cluster.userIntent.queryLogConfig;
-        if (queryLogConfig != null && !nodeInfo.isOtelCollectorEnabled()) {
-          nodeInfo.setOtelCollectorEnabled(queryLogConfig.isExportActive());
-        }
-        // Check if metrics export was ever enabled and disabled.
-        MetricsExportConfig metricsExportConfig = cluster.userIntent.metricsExportConfig;
-        if (metricsExportConfig != null && !nodeInfo.isOtelCollectorEnabled()) {
-          nodeInfo.setOtelCollectorEnabled(metricsExportConfig.isExportActive());
+        // Check if any export is currently enabled in the universe.
+        if (params.universe.getUniverseDetails().otelCollectorEnabled) {
+          AuditLogConfig auditLogConfig = cluster.userIntent.auditLogConfig;
+          QueryLogConfig queryLogConfig = cluster.userIntent.queryLogConfig;
+          MetricsExportConfig metricsExportConfig = cluster.userIntent.metricsExportConfig;
+          if (OtelCollectorUtil.isAuditLogExportEnabledInUniverse(auditLogConfig)
+              || OtelCollectorUtil.isQueryLogExportEnabledInUniverse(queryLogConfig)
+              || OtelCollectorUtil.isMetricsExportEnabledInUniverse(metricsExportConfig)) {
+            nodeInfo.setOtelCollectorEnabled(true);
+          }
         }
         nodeInfo.setClockboundEnabled(
             params.universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseClockbound());
@@ -1342,7 +1338,7 @@ public class HealthChecker {
     private boolean enableYbc = false;
     private int ybcPort = 18018;
     private UUID universeUuid;
-    private boolean otelCollectorEnabled;
+    private boolean otelCollectorEnabled = false;
     private boolean clockSyncServiceRequired = true;
     private boolean clockboundEnabled = false;
 

@@ -388,11 +388,10 @@ Result<std::vector<TabletId>> GeoTransactionsTestBase::GetStatusTablets(
 
 Status GeoTransactionsTestBase::WarmupTablespaceCache(
     pgwrapper::PGConn& conn, std::string_view table) {
-  // Force tablespace information into cache. Since SERIALIZABLE replicates reads, this also
-  // serves to ensure transaction is not reused (for object locking enabled cases).
-  RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
-  RETURN_NOT_OK(conn.FetchFormat("SELECT * FROM $0 LIMIT 1", table));
-  return conn.RollbackTransaction();
+  // Force tablespace information into cache.
+  // The purpose of ROLLBACK is to to ensure that in case object locking is enabled YB txn
+  // will not be reused.
+  return conn.ExecuteFormat("BEGIN;SELECT * FROM $0 LIMIT 1;ROLLBACK", table);
 }
 
 } // namespace yb::client

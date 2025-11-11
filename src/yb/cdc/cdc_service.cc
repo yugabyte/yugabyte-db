@@ -210,6 +210,10 @@ DEFINE_test_flag(int32, cdc_simulate_error_for_get_changes, -1,
     "Based on the value of this flag, an error will be simulated by TEST_SimulateError() in "
     "GetChanges().");
 
+DEFINE_test_flag(string, cdc_tablet_id_to_stall_state_table_updates, "",
+    "If set to a valid tablet id, UpdateCheckpointAndActiveTime() will NOT update the cdc_state "
+    "table entry for this tablet. Used in tests.");
+
 DECLARE_int32(log_min_seconds_to_retain);
 
 static bool ValidateMaxRefreshInterval(const char* flag_name, uint32 value) {
@@ -4597,13 +4601,16 @@ Status CDCServiceImpl::UpdateCheckpointAndActiveTime(
       VLOG(2) << "Updating cdc state table with: checkpoint: " << commit_op_id.ToString()
               << ", last active time: " << last_active_time << safe_time
               << ", for tablet: " << producer_tablet.tablet_id
-              << ", and stream: " << producer_tablet.stream_id;
+              << ", and stream: " << producer_tablet.stream_id
+              << ", last replication time: " << entry.last_replication_time.value_or(0);
     }
 
-    if (!is_snapshot) {
-      RETURN_NOT_OK(cdc_state_table_->UpdateEntries({entry}, false, {"snapshot_key"}));
-    } else {
-      RETURN_NOT_OK(cdc_state_table_->UpdateEntries({entry}));
+    if (producer_tablet.tablet_id != FLAGS_TEST_cdc_tablet_id_to_stall_state_table_updates) {
+      if (!is_snapshot) {
+        RETURN_NOT_OK(cdc_state_table_->UpdateEntries({entry}, false, {"snapshot_key"}));
+      } else {
+        RETURN_NOT_OK(cdc_state_table_->UpdateEntries({entry}));
+      }
     }
   }
 

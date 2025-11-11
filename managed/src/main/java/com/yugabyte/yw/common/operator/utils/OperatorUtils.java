@@ -12,6 +12,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
 import com.yugabyte.yw.common.ValidatingFormFactory;
@@ -22,6 +23,8 @@ import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.YBUniverseReconciler;
 import com.yugabyte.yw.common.operator.helpers.KubernetesOverridesSerializer;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.utils.Pair;
@@ -85,10 +88,12 @@ import io.yugabyte.operator.v1alpha1.Release;
 import io.yugabyte.operator.v1alpha1.ReleaseSpec;
 import io.yugabyte.operator.v1alpha1.StorageConfig;
 import io.yugabyte.operator.v1alpha1.StorageConfigSpec;
+import io.yugabyte.operator.v1alpha1.StorageConfigStatus;
 import io.yugabyte.operator.v1alpha1.YBProvider;
 import io.yugabyte.operator.v1alpha1.YBProviderSpec;
 import io.yugabyte.operator.v1alpha1.YBUniverse;
 import io.yugabyte.operator.v1alpha1.YBUniverseSpec;
+import io.yugabyte.operator.v1alpha1.YBUniverseStatus;
 import io.yugabyte.operator.v1alpha1.releasespec.config.DownloadConfig;
 import io.yugabyte.operator.v1alpha1.releasespec.config.downloadconfig.Gcs;
 import io.yugabyte.operator.v1alpha1.releasespec.config.downloadconfig.Http;
@@ -103,6 +108,8 @@ import io.yugabyte.operator.v1alpha1.ybproviderspec.Regions;
 import io.yugabyte.operator.v1alpha1.ybproviderspec.regions.Zones;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YbcThrottleParameters;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.HashMap;
@@ -146,6 +153,7 @@ public class OperatorUtils {
   private final YBClientService ybService;
   private final KubernetesClientFactory kubernetesClientFactory;
   private final UniverseImporter universeImporter;
+  private final KubernetesManagerFactory kubernetesManagerFactory;
   private Config _k8sClientConfig;
   private ReleaseManager releaseManager;
   private ObjectMapper objectMapper;
@@ -158,10 +166,12 @@ public class OperatorUtils {
       ValidatingFormFactory validatingFormFactory,
       YBClientService ybService,
       KubernetesClientFactory kubernetesClientFactory,
-      UniverseImporter universeImporter) {
+      UniverseImporter universeImporter,
+      KubernetesManagerFactory kubernetesManagerFactory) {
     this.releaseManager = releaseManager;
     this.confGetter = confGetter;
     this.ybcManager = ybcManager;
+    this.kubernetesManagerFactory = kubernetesManagerFactory;
     namespace = confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorNamespace);
     this.validatingFormFactory = validatingFormFactory;
     this.kubernetesClientFactory = kubernetesClientFactory;
@@ -212,8 +222,9 @@ public class OperatorUtils {
     ybUniverseResourceDetails.name = universeName;
     ybUniverseResourceDetails.namespace = namespace;
     YBUniverse ybUniverse = getYBUniverse(ybUniverseResourceDetails);
-    Optional<Universe> universe =
-        Universe.maybeGetUniverseByName(customerId, getYbaResourceName(ybUniverse.getMetadata()));
+    String name = YBUniverseReconciler.getUniverseName(ybUniverse);
+    log.debug("Getting universe from name: {}", name);
+    Optional<Universe> universe = Universe.maybeGetUniverseByName(customerId, name);
     if (universe.isPresent()) {
       return universe.get();
     }
@@ -317,6 +328,13 @@ public class OperatorUtils {
     return name.concat("-").concat(Integer.toString(Math.abs(hashCode)));
   }
 
+  public static String kubernetesCompatName(String name) {
+    String newName = name.replace("_", "-");
+    newName = newName.replace(" ", "-");
+    newName = newName.toLowerCase();
+    return newName;
+  }
+
   /*--- YBUniverse related help methods ---*/
 
   public boolean shouldUpdateYbUniverse(
@@ -416,12 +434,7 @@ public class OperatorUtils {
     }
     JsonNode oldPlacementCloud = objectMapper.valueToTree(oldPlacementInfo.cloudList.get(0));
     JsonNode newPlacementCloud = objectMapper.valueToTree(ybUniverse.getSpec().getPlacementInfo());
-    if (oldPlacementCloud
-        .path("defaultRegion")
-        .asText()
-        .equals(newPlacementCloud.path("defaultRegion").asText())) {
-      return true;
-    }
+
     Map<String, JsonNode> oldRegions = mapByCode(oldPlacementCloud.path("regionList"));
     Map<String, JsonNode> newRegions = mapByCode(newPlacementCloud.path("regions"));
 
@@ -769,6 +782,12 @@ public class OperatorUtils {
           case GFlagsUtil.YBC_PER_UPLOAD_OBJECTS:
             if (value != specParams.getPerUploadNumObjects()) return true;
             break;
+          case GFlagsUtil.YBC_DISK_READ_BYTES_PER_SECOND:
+            if (value != specParams.getDiskReadBytesPerSec()) return true;
+            break;
+          case GFlagsUtil.YBC_DISK_WRITE_BYTES_PER_SECOND:
+            if (value != specParams.getDiskWriteBytesPerSec()) return true;
+            break;
           default:
             // This shoud only happen if a new throttle parameter is introduced and not added here.
             throw new RuntimeException("Unknown throttle parameter: " + key);
@@ -801,6 +820,9 @@ public class OperatorUtils {
         getBackupRequestFromCr(crParams, backupSchedule.getMetadata().getNamespace(), scInformer);
     backupRequestParams.baseBackupUUID = null;
     backupRequestParams.scheduleName = getYbaResourceName(backupSchedule.getMetadata());
+    if (backupSchedule.getSpec().getName() != null) {
+      backupRequestParams.scheduleName = kubernetesCompatName(backupSchedule.getSpec().getName());
+    }
     backupRequestParams.setKubernetesResourceDetails(
         KubernetesResourceDetails.fromResource(backupSchedule));
     return backupRequestParams;
@@ -903,8 +925,19 @@ public class OperatorUtils {
   }
 
   public void createBackupCr(com.yugabyte.yw.models.Backup backup) throws Exception {
+    createBackupCr(backup, null);
+  }
+
+  public void createBackupCr(com.yugabyte.yw.models.Backup backup, @Nullable String namespace)
+      throws Exception {
     UUID baseBackupUUID = backup.getBaseBackupUUID();
     BackupTableParams params = backup.getBackupInfo();
+
+    if (params.getKubernetesResourceDetails() == null) {
+      params.setKubernetesResourceDetails(
+          new KubernetesResourceDetails(
+              String.format("backup-%s", backup.getBackupUUID()), namespace));
+    }
 
     // Backup Spec
     BackupSpec crSpec = new BackupSpec();
@@ -1410,8 +1443,7 @@ public class OperatorUtils {
         http.getPaths().setX86_64_checksum(x86_64Artifact.getFormattedSha256());
         downloadConfig.setHttp(http);
       } else {
-        throw new Exception(
-            String.format("No download config found for release %s", ybRelease.getVersion()));
+        log.info("Release {} uses a local file", ybRelease.getVersion());
       }
       config.setDownloadConfig(downloadConfig);
 
@@ -1429,7 +1461,7 @@ public class OperatorUtils {
       if (kubernetesClient
               .resources(StorageConfig.class)
               .inNamespace(namespace)
-              .withName(cfg.getName())
+              .withName(cfg.getConfigName())
               .get()
           != null) {
         log.info("Storage config {} already exists, skipping creation", cfg.getName());
@@ -1437,8 +1469,12 @@ public class OperatorUtils {
       }
       StorageConfig storageConfig = new StorageConfig();
       storageConfig.setMetadata(
-          new ObjectMetaBuilder().withName(cfg.getConfigName()).withNamespace(namespace).build());
+          new ObjectMetaBuilder()
+              .withName(kubernetesCompatName(cfg.getConfigName()))
+              .withNamespace(namespace)
+              .build());
       StorageConfigSpec spec = new StorageConfigSpec();
+      spec.setName(cfg.getConfigName());
       CustomerConfigData data = cfg.getDataObject();
       Data specData = new Data();
       switch (cfg.getName()) {
@@ -1492,6 +1528,9 @@ public class OperatorUtils {
       }
       spec.setData(specData);
       storageConfig.setSpec(spec);
+      StorageConfigStatus status = new StorageConfigStatus();
+      status.setResourceUUID(cfg.getConfigUUID().toString());
+      storageConfig.setStatus(status);
       kubernetesClient
           .resources(StorageConfig.class)
           .inNamespace(namespace)
@@ -1598,7 +1637,11 @@ public class OperatorUtils {
       }
       YBUniverse ybUniverse = new YBUniverse();
       ybUniverse.setMetadata(
-          new ObjectMetaBuilder().withName(universe.getName()).withNamespace(namespace).build());
+          new ObjectMetaBuilder()
+              .withName(universe.getName())
+              .withNamespace(namespace)
+              .withFinalizers(YB_FINALIZER)
+              .build());
       YBUniverseSpec spec = new YBUniverseSpec();
 
       // Basics
@@ -1645,11 +1688,52 @@ public class OperatorUtils {
       universeImporter.setKubernetesOverridesSpecFromUniverse(spec, universe);
 
       ybUniverse.setSpec(spec);
+      YBUniverseStatus status = new YBUniverseStatus();
+      status.setCqlEndpoints(getYCQLEndpoints(universe));
+      status.setSqlEndpoints(getYSQLEndpoints(universe));
+      status.setResourceUUID(universe.getUniverseUUID().toString());
+      status.setUniverseState(OperatorStatusUpdater.UniverseState.READY.toString());
+      status.setActions(new ArrayList<>());
+      ybUniverse.setStatus(status);
       kubernetesClient
           .resources(YBUniverse.class)
           .inNamespace(namespace)
           .resource(ybUniverse)
           .create();
     }
+  }
+
+  private List<String> getYCQLEndpoints(Universe universe) {
+    List<String> endpoints = new ArrayList<>();
+    endpoints.addAll(Arrays.asList(universe.getYQLServerAddresses().split(",")));
+    try {
+      String cqlServiceEndpoints =
+          kubernetesManagerFactory
+              .getManager()
+              .getKubernetesServiceIPPort(ServerType.YQLSERVER, universe);
+      if (cqlServiceEndpoints != null) {
+        endpoints.addAll(Arrays.asList(cqlServiceEndpoints.split(",")));
+      }
+    } catch (Exception e) {
+      log.warn("Unable to get YCQL service endpoints", e);
+    }
+    return endpoints;
+  }
+
+  private List<String> getYSQLEndpoints(Universe universe) {
+    List<String> endpoints = new ArrayList<>();
+    endpoints.addAll(Arrays.asList(universe.getYSQLServerAddresses().split(",")));
+    try {
+      String sqlServiceEndpoints =
+          kubernetesManagerFactory
+              .getManager()
+              .getKubernetesServiceIPPort(ServerType.YSQLSERVER, universe);
+      if (sqlServiceEndpoints != null) {
+        endpoints.addAll(Arrays.asList(sqlServiceEndpoints.split(",")));
+      }
+    } catch (Exception e) {
+      log.warn("Unable to get YSQL service endpoints", e);
+    }
+    return endpoints;
   }
 }

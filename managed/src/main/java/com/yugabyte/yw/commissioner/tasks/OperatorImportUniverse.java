@@ -49,7 +49,7 @@ public class OperatorImportUniverse extends UniverseTaskBase {
 
   public static class Params extends UniverseTaskParams {
     // UniverseUUID is also required, but already defined in the base class.
-    String namespace;
+    public String namespace;
   }
 
   @Override
@@ -73,27 +73,31 @@ public class OperatorImportUniverse extends UniverseTaskBase {
 
   @Override
   public void run() {
-    log.info(
-        "Running OperatorImportUniverse task with universe UUID: {}",
-        taskParams().getUniverseUUID());
-    Universe universe = lockAndFreezeUniverseForUpdate(taskParams().getUniverseUUID(), -1, null);
+    try {
+      Universe universe =
+          lockAndFreezeUniverseForUpdate(
+              taskParams().getUniverseUUID(), -1, null /* Txn callback */);
 
-    for (ImportResourceTaskCreator creator : importResourceTaskCreators) {
-      log.trace("creating subtaskGroup with creator {}", creator);
-      List<SubTaskGroup> subTaskGroups = creator.createTask(universe);
-      if (subTaskGroups == null || subTaskGroups.isEmpty()) {
-        log.debug("no tasks needed for resource creator {}", creator);
-        continue;
+      for (ImportResourceTaskCreator creator : importResourceTaskCreators) {
+        log.trace("creating subtaskGroup with creator {}", creator);
+        List<SubTaskGroup> subTaskGroups = creator.createTask(universe);
+        if (subTaskGroups == null || subTaskGroups.isEmpty()) {
+          log.debug("no tasks needed for resource creator {}", creator);
+          continue;
+        }
+        log.trace(
+            "adding {} subtask(s) group for resource creator {}", subTaskGroups.size(), creator);
+        for (SubTaskGroup subTaskGroup : subTaskGroups) {
+          getRunnableTask().addSubTaskGroup(subTaskGroup);
+        }
       }
-      log.trace(
-          "adding {} subtask(s) group for resource creator {}", subTaskGroups.size(), creator);
-      for (SubTaskGroup subTaskGroup : subTaskGroups) {
-        getRunnableTask().addSubTaskGroup(subTaskGroup);
-      }
+
+      createMarkUniverseUpdateSuccessTasks();
+      // Now run all the subtasks
+      getRunnableTask().runSubTasks();
+    } finally {
+      unlockUniverseForUpdate();
     }
-
-    // Now run all the subtasks
-    getRunnableTask().runSubTasks();
   }
 
   private void createImportSecretSubtask(
@@ -111,24 +115,16 @@ public class OperatorImportUniverse extends UniverseTaskBase {
   }
 
   private void createImportStorageConfigSubtask(
-      UUID storageConfigUUID, SubTaskGroup storageCfgGroup, SubTaskGroup secretGroup) {
-    if (createStorageConfigs.contains(storageConfigUUID)) {
-      log.debug("Storage config {} already created, skipping", storageConfigUUID);
+      CustomerConfig storageConfig, SubTaskGroup storageCfgGroup, SubTaskGroup secretGroup) {
+    if (createStorageConfigs.contains(storageConfig.getConfigUUID())) {
+      log.debug("Storage config {} already created, skipping", storageConfig.getConfigUUID());
       return;
     }
-    createStorageConfigs.add(storageConfigUUID);
-    CustomerConfig storageConfig = CustomerConfig.get(storageConfigUUID);
-    if (storageConfig == null
-        || !storageConfig.getType().equals(CustomerConfig.ConfigType.STORAGE)) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          String.format(
-              "no storage config %s found or is not a storage config", storageConfigUUID));
-    }
+    createStorageConfigs.add(storageConfig.getConfigUUID());
 
     OperatorImportResource task = createTask(OperatorImportResource.class);
     OperatorImportResource.Params params = new OperatorImportResource.Params();
-    params.storageConfigUUID = storageConfigUUID;
+    params.storageConfigUUID = storageConfig.getConfigUUID();
     params.resourceType = OperatorImportResource.Params.ResourceType.STORAGE_CONFIG;
     params.namespace = taskParams().namespace;
 
@@ -138,7 +134,7 @@ public class OperatorImportUniverse extends UniverseTaskBase {
         CustomerConfigStorageS3Data s3Data =
             (CustomerConfigStorageS3Data) storageConfig.getDataObject();
         createImportSecretSubtask(
-            "awsSecretAccessKeySecret",
+            storageConfig.getConfigName() + "-aws-secret-access-key-secret",
             StorageConfigReconciler.AWS_SECRET_ACCESS_KEY_SECRET_KEY,
             s3Data.awsSecretAccessKey,
             secretGroup);
@@ -147,7 +143,7 @@ public class OperatorImportUniverse extends UniverseTaskBase {
         CustomerConfigStorageGCSData gcsData =
             (CustomerConfigStorageGCSData) storageConfig.getDataObject();
         createImportSecretSubtask(
-            "gcsCredentialsJsonSecret",
+            storageConfig.getConfigName() + "-gcs-credentials-json-secret",
             StorageConfigReconciler.GCS_CREDENTIALS_JSON_SECRET_KEY,
             gcsData.gcsCredentialsJson,
             secretGroup);
@@ -156,7 +152,7 @@ public class OperatorImportUniverse extends UniverseTaskBase {
         CustomerConfigStorageAzureData azData =
             (CustomerConfigStorageAzureData) storageConfig.getDataObject();
         createImportSecretSubtask(
-            "azureStorageSasTokenSecret",
+            storageConfig.getConfigName() + "-azure-storage-sas-token-secret",
             StorageConfigReconciler.AZURE_STORAGE_SAS_TOKEN_SECRET_KEY,
             azData.azureSasToken,
             secretGroup);
@@ -179,6 +175,7 @@ public class OperatorImportUniverse extends UniverseTaskBase {
     OperatorImportResource.Params params = new OperatorImportResource.Params();
     params.releaseVersion =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    params.universeUUID = universe.getUniverseUUID();
     params.resourceType = OperatorImportResource.Params.ResourceType.RELEASE;
     params.namespace = taskParams().namespace;
     initializeTask(group, task, params);
@@ -196,6 +193,7 @@ public class OperatorImportUniverse extends UniverseTaskBase {
     OperatorImportResource.Params params = new OperatorImportResource.Params();
     params.providerUUID =
         UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider);
+    params.universeUUID = universe.getUniverseUUID();
     params.resourceType = OperatorImportResource.Params.ResourceType.PROVIDER;
     params.namespace = taskParams().namespace;
     initializeTask(group, task, params);
@@ -237,8 +235,8 @@ public class OperatorImportUniverse extends UniverseTaskBase {
           // Create tasks for migrating storage configs
           BackupRequestParams backupParams =
               Json.mapper().convertValue(schedule.getTaskParams(), BackupRequestParams.class);
-          createImportStorageConfigSubtask(
-              backupParams.storageConfigUUID, storageCfgGroup, secretGroup);
+          CustomerConfig storageConfig = CustomerConfig.get(backupParams.storageConfigUUID);
+          createImportStorageConfigSubtask(storageConfig, storageCfgGroup, secretGroup);
 
           // Now migrate the actual schedule.
           OperatorImportResource task = createTask(OperatorImportResource.class);
@@ -246,6 +244,7 @@ public class OperatorImportUniverse extends UniverseTaskBase {
           params.backupScheduleUUID = schedule.getScheduleUUID();
           params.resourceType = OperatorImportResource.Params.ResourceType.BACKUP_SCHEDULE;
           params.namespace = taskParams().namespace;
+          params.storageConfigName = storageConfig.getConfigName();
 
           // Add any secrets from storage configs to this backup schedule's secret map
           // The storage config subtask will have populated the secret map
@@ -268,12 +267,21 @@ public class OperatorImportUniverse extends UniverseTaskBase {
         Backup.fetchByUniverseUUID(customer.getUuid(), universe.getUniverseUUID());
     backups.forEach(
         backup -> {
-          createImportStorageConfigSubtask(
-              backup.getStorageConfigUUID(), storageCfgGroup, secretGroup);
+          CustomerConfig storageConfig = CustomerConfig.get(backup.getStorageConfigUUID());
+          if (storageConfig == null
+              || !storageConfig.getType().equals(CustomerConfig.ConfigType.STORAGE)) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                String.format(
+                    "no storage config %s found or is not a storage config",
+                    storageConfig.getConfigUUID()));
+          }
+          createImportStorageConfigSubtask(storageConfig, storageCfgGroup, secretGroup);
 
           OperatorImportResource task = createTask(OperatorImportResource.class);
           OperatorImportResource.Params params = new OperatorImportResource.Params();
           params.backupUUID = backup.getBackupUUID();
+          params.customerUUID = customer.getUuid();
           params.resourceType = OperatorImportResource.Params.ResourceType.BACKUP;
           params.namespace = taskParams().namespace;
           params.customerUUID = customer.getUuid();
@@ -282,7 +290,7 @@ public class OperatorImportUniverse extends UniverseTaskBase {
           initializeTask(group, task, params);
           log.trace("initialized task for backup");
         });
-    return List.of(group);
+    return List.of(secretGroup, storageCfgGroup, group);
   }
 
   private List<SubTaskGroup> createImportCertificatesSubtasks(Universe universe) {

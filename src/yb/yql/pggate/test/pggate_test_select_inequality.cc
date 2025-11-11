@@ -48,7 +48,7 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
                                        true /* is_colocated_via_database */,
                                        kInvalidOid /* tablegroup_id */,
                                        kColocationIdNotSet /* colocation_id */,
-                                       kInvalidOid /* tablespace_id */,
+                                       kDefaultTablespaceOid,
                                        false /* is_matview */,
                                        kInvalidOid /* pg_table_oid */,
                                        kInvalidOid /* old_relfilenode_oid */,
@@ -67,7 +67,7 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
   // INSERT ----------------------------------------------------------------------------------------
   // Allocate new insert.
   CHECK_YBC_STATUS(YBCPgNewInsert(
-      kDefaultDatabaseOid, tab_oid, false /* is_region_local */, &pg_stmt,
+      kDefaultDatabaseOid, tab_oid, kDefaultTableLocality, &pg_stmt,
       YbcPgTransactionSetting::YB_TRANSACTIONAL));
 
   int h = 0, r = 0;
@@ -122,8 +122,8 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
 
   // SELECT --------------------------------- A <= r1 <= B -----------------------------------------
   LOG(INFO) << "Test SELECTing from table WITH RANGE values";
-  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */,
-                                  false /* is_region_local */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(
+      kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality, &pg_stmt));
 
   // Specify the selected expressions.
   YbcPgExpr colref;
@@ -192,11 +192,8 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
 
   // SELECT --------------------------------- A <= r1 ----------------------------------------------
   LOG(INFO) << "Test SELECTing from table WITH RANGE values: A <= r1";
-  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid,
-                                  tab_oid,
-                                  NULL /* prepare_params */,
-                                  false /* is_region_local */,
-                                  &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(
+      kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality, &pg_stmt));
 
   // Specify the selected expressions.
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::STRING, &colref));
@@ -262,11 +259,8 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
 
   // SELECT --------------------------------- r1 <= B ----------------------------------------------
   LOG(INFO) << "Test SELECTing from table WITH RANGE values: r1 <= B";
-  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid,
-                                  tab_oid,
-                                  NULL /* prepare_params */,
-                                  false /* is_region_local */,
-                                  &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(
+      kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality, &pg_stmt));
 
   // Specify the selected expressions.
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::STRING, &colref));
@@ -332,11 +326,8 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
 
   // SELECT -------------------------------- A <= r1 <= A ------------------------------------------
   LOG(INFO) << "Test SELECTing from table WITH RANGE values: A <= r1 <= A";
-  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid,
-                                  tab_oid,
-                                  NULL /* prepare_params */,
-                                  false /* is_region_local */,
-                                  &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(
+      kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality, &pg_stmt));
 
   // Specify the selected expressions.
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::STRING, &colref));

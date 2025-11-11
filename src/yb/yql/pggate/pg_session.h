@@ -221,7 +221,9 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
   // -------------
   Result<client::TabletServersInfo> ListTabletServers();
 
-  Status GetIndexBackfillProgress(std::vector<PgObjectId> index_ids, uint64_t** backfill_statuses);
+  Status GetIndexBackfillProgress(std::vector<PgObjectId> index_ids,
+                                  uint64_t* num_rows_read_from_table,
+                                  double* num_rows_backfilled);
 
   std::string GenerateNewYbrowid();
 

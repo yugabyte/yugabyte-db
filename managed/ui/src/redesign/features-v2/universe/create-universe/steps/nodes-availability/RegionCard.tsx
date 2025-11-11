@@ -2,7 +2,7 @@ import { FC, useContext } from 'react';
 import { useFormContext } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { styled, Typography } from '@material-ui/core';
-import { YBButton, YBTagv2 } from '@yugabyte-ui-library/core';
+import { YBButton, YBTag } from '@yugabyte-ui-library/core';
 import { Zone } from './Zone';
 import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
 import { FaultToleranceType } from '../resilence-regions/dtos';
@@ -17,11 +17,13 @@ interface RegionCardProps {
   index: number;
 }
 
-const StyledRegionCard = styled('div')(() => ({
+const StyledRegionCard = styled('div')(({ theme }) => ({
   background: '#FBFCFD',
   display: 'flex',
   flexDirection: 'column',
-  gap: '24px'
+  gap: '24px',
+  border: `1px solid ${theme.palette.grey[300]}`,
+  borderRadius: '8px'
 }));
 
 const StyledRegionName = styled('div')(({ theme }) => ({
@@ -42,7 +44,6 @@ export const RegionCard: FC<RegionCardProps> = ({ region, index }) => {
 
   const az = watch(`availabilityZones.${region.code}`);
   const nodesPerAz = watch('nodeCountPerAz');
-
   const addAvailabilityZone = () => {
     const azToAdd = region.zones.find((zone) => !az.find((a) => a.name === zone.name));
     if (!azToAdd) return;
@@ -59,7 +60,9 @@ export const RegionCard: FC<RegionCardProps> = ({ region, index }) => {
         <Typography color="textSecondary" variant="body1">
           {t('region', { region_count: index + 1 })}
         </Typography>
-        <YBTagv2 text={`${getFlagFromRegion(region.code)}  ${region.name} (${region.code})`} variant='primary' filled noGradient />
+        <YBTag size="medium">
+          {getFlagFromRegion(region.code)} {region.name} ({region.code})
+        </YBTag>
       </div>
       <div
         style={{

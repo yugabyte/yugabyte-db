@@ -195,6 +195,7 @@ public class ContinuousBackupHandler extends ApiControllerUtils {
         TimeUnit.valueOf(continuousBackupEditSpec.getFrequencyTimeUnit().name()));
     cbConfig.setNumBackupsToRetain(continuousBackupEditSpec.getNumBackups());
     cbConfig.setStorageLocation(storageLocation);
+    cbConfig.validate();
     cbConfig.update();
     CreateContinuousBackup.Params taskParams = new CreateContinuousBackup.Params();
     taskParams.cbConfig = cbConfig;

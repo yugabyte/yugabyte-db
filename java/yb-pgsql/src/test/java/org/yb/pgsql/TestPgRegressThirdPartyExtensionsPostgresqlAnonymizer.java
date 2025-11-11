@@ -47,8 +47,6 @@ public class TestPgRegressThirdPartyExtensionsPostgresqlAnonymizer extends BaseP
     // TODO(#26734): Enable transactional DDL once savepoint for DDLs are supported.
     flagMap.put("ysql_yb_ddl_transaction_block_enabled", "false");
     flagMap.put("enable_object_locking_for_table_locks","false");
-    flagMap.put("allowed_preview_flags_csv",
-      "ysql_yb_ddl_transaction_block_enabled,enable_object_locking_for_table_locks");
 
     // (Auto Analyze #28391) Restarting a DDL transaction not supported
     flagMap.put("ysql_enable_auto_analyze", "false");

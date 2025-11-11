@@ -233,6 +233,17 @@ public class Schedule extends Model {
       example = "2022-12-12T13:07:18Z")
   private Date nextScheduleTaskTime;
 
+  // true iff created through a k8s CR and controlled by the
+  // Kubernetes Operator.
+  @Column(name = "is_kubernetes_operator_controlled")
+  @ApiModelProperty(hidden = true)
+  private boolean isKubernetesOperatorControlled = false;
+
+  public void setIsKubernetesOperatorControlled(boolean isKubernetesOperatorControlled) {
+    this.isKubernetesOperatorControlled = isKubernetesOperatorControlled;
+    this.save();
+  }
+
   public void updateNextScheduleTaskTime(Date nextScheduleTime) {
     this.nextScheduleTaskTime = nextScheduleTime;
     save();

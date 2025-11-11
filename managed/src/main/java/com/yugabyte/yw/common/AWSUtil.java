@@ -41,6 +41,7 @@ import java.nio.file.Path;
 import java.security.KeyStore;
 import java.security.SecureRandom;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -692,6 +693,14 @@ public class AWSUtil implements CloudUtil {
         return null;
       }
 
+      // Validate backup file is less than 1 day old
+      if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.allowYbaRestoreWithOldBackup)) {
+        if (backup.lastModified().isBefore(Instant.now().minus(1, ChronoUnit.DAYS))) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "YBA restore is not allowed when backup file is more than 1 day old");
+        }
+      }
+
       // Construct full local filepath with same name as remote backup
       File localFile = localDir.resolve(match.group()).toFile();
 
@@ -916,8 +925,7 @@ public class AWSUtil implements CloudUtil {
       if (globalFlag && (StringUtils.isBlank(endpoint) || isHostBaseS3Standard(endpoint))) {
         // Use global bucket access only for standard S3.
         builder.crossRegionAccessEnabled(true);
-      }
-      if (StringUtils.isNotBlank(endpoint)) {
+      } else if (StringUtils.isNotBlank(endpoint)) {
         URI uri = new URI(endpoint);
         if (uri.getScheme() == null) {
           uri = new URI(HTTPS_SCHEME + endpoint);

@@ -1226,6 +1226,39 @@ TEST_F(PgAutoAnalyzeTest, PerTableCooldown) {
   }
 }
 
+// Make sure auto analyze retrys failed ANALYZE.
+TEST_F(PgAutoAnalyzeTest, AutoAnalyzeRetryAnalyze) {
+  // Remove cooldown and reduce auto analyze threshold to run ANALYZEs more frequently.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_min_cooldown_per_table) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_cooldown_per_table_scale_factor) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 500;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_scale_factor) = 0;
+
+  const std::string table_name = "test";
+  const std::string table2_name = "test2";
+  const std::string index_name = "idx";
+  const std::string table_creation_stmt = "CREATE TABLE $0 (k int PRIMARY KEY)";
+  const int num_rows = 1000;
+  auto conn = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat(table_creation_stmt, table_name));
+  ASSERT_OK(conn.ExecuteFormat(table_creation_stmt, table2_name));
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&conn2, &thread_holder, &table2_name, &index_name]() {
+    while (!thread_holder.stop_flag()) {
+      ASSERT_OK(conn2.ExecuteFormat("CREATE INDEX $0 on $1(k)", index_name, table2_name));
+      ASSERT_OK(conn2.ExecuteFormat("DROP INDEX $0", index_name));
+    }
+  });
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT generate_series(1, $1)",
+                               table_name, num_rows));
+  // Sleep for a few seconds to let auto analyze retry a few times due to concurrent DDLs.
+  std::this_thread::sleep_for(5s);
+  thread_holder.Stop();
+  // Verify auto analyze works as expected.
+  ASSERT_OK(WaitForTableReltuples(conn, table_name, num_rows));
+}
+
 class PgConcurrentDDLAnalyzeTest : public LibPqTestBase {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
@@ -1234,9 +1267,6 @@ class PgConcurrentDDLAnalyzeTest : public LibPqTestBase {
     options->extra_tserver_flags.push_back("--ysql_yb_user_ddls_preempt_auto_analyze=true");
     // The test verifies a long ANALYZE can be interrupted by another DDL. However, table lock
     // prevents this so we're disabling it to keep the test's original intent.
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_tserver_flags, "enable_object_locking_for_table_locks");
-
     options->extra_tserver_flags.emplace_back("--enable_object_locking_for_table_locks=false");
 
     // The test is specifically written for cases when txn ddl is disabled.

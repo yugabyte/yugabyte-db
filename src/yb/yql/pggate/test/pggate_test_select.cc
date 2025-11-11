@@ -68,7 +68,7 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
                                        true /* is_colocated_via_database */,
                                        kInvalidOid /* tablegroup_id */,
                                        kColocationIdNotSet /* colocation_id */,
-                                       kInvalidOid /* tablespace_id */,
+                                       kDefaultTablespaceOid,
                                        false /* is_matview */,
                                        kInvalidOid /* pg_table_oid */,
                                        kInvalidOid /* old_relfilenode_oid */,
@@ -96,7 +96,7 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   // INSERT ----------------------------------------------------------------------------------------
   // Allocate new insert.
   CHECK_YBC_STATUS(YBCPgNewInsert(
-      kDefaultDatabaseOid, tab_oid, false /* is_region_local */, &pg_stmt,
+      kDefaultDatabaseOid, tab_oid, kDefaultTableLocality, &pg_stmt,
       YbcPgTransactionSetting::YB_TRANSACTIONAL));
 
   // Allocate constant expressions.
@@ -153,8 +153,8 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table WITH RANGE values";
-  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */,
-                                  false /* is_region_local */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(
+      kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality, &pg_stmt));
 
   // Specify the selected expressions.
   YbcPgExpr colref;
@@ -236,8 +236,8 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table WITHOUT RANGE values";
-  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */,
-                                  false /* is_region_local */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(
+      kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality, &pg_stmt));
 
   // Specify the selected expressions.
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref));
@@ -455,12 +455,13 @@ Result<size_t> TestGetTableKeyRanges(
 }
 
 Result<std::unordered_set<int>> DockeyBoundsForHashPartitionedTablesHelper(
-    YbcPgOid db_oid, YbcPgOid table_oid, std::string bound, bool is_inclusive, bool is_lower) {
+    YbcPgOid db_oid, YbcPgOid table_oid, const std::string& bound, bool is_inclusive,
+    bool is_lower) {
   std::unordered_set<int> result;
   YbcPgStatement pg_stmt = nullptr;
 
   CHECK_YBC_STATUS(YBCPgNewSelect(
-      db_oid, table_oid, NULL /* prepare_params */, false /* is_region_local */, &pg_stmt));
+      db_oid, table_oid, NULL /* prepare_params */, PggateTest::kDefaultTableLocality, &pg_stmt));
   YbcPgExpr colref;
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::INT32, &colref));
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));

@@ -391,6 +391,7 @@ Status ProcessUsedReadTime(uint64_t session_id,
     // TODO(dmitry) This situation will be handled in context of #7964.
     catalog_read_time.global_limit = catalog_read_time.read;
     catalog_read_time.ToPB(resp->mutable_catalog_read_time());
+    VLOG(2) << "Got catalog_read_time: " << catalog_read_time.ToString();
   }
 
   if (used_read_time) {
@@ -1110,7 +1111,7 @@ class ReadPointHistory {
       read_point->SetMomento(i->second);
       result = true;
     }
-    VLOG_WITH_PREFIX(4) << "ReadTimeHistory::Restore read_time_serial_no=" << read_time_serial_no
+    VLOG_WITH_PREFIX(4) << "ReadPointHistory::Restore read_time_serial_no=" << read_time_serial_no
                         << " return " << result
                         << " read time is " << read_point->GetReadTime();
     return result;
@@ -3068,7 +3069,6 @@ class PgClientSession::Impl {
   Result<SetupSessionResult> SetupSession(
       const PgPerformOptionsPB& options, CoarseTimePoint deadline, HybridTime in_txn_limit = {},
       TransactionFullLocality locality = TransactionFullLocality::RegionLocal()) {
-    const auto txn_serial_no = options.txn_serial_no();
     const auto read_time_serial_no = options.read_time_serial_no();
     auto kind = PgClientSessionKind::kPlain;
     if (options.use_catalog_session()) {
@@ -3102,7 +3102,38 @@ class PgClientSession::Impl {
     auto& txn = session_data.transaction;
 
     VLOG_WITH_PREFIX_AND_FUNC(4) << options.ShortDebugString() << ", deadline: "
-                                << MonoDelta(deadline - CoarseMonoClock::now());
+        << MonoDelta(deadline - CoarseMonoClock::now());
+
+    RETURN_NOT_OK(UpdateReadTime(options, kind, deadline, in_txn_limit));
+
+    session.SetDeadline(deadline);
+
+    if (txn) {
+      RSTATUS_DCHECK_GE(
+          options.active_sub_transaction_id(), kMinSubTransactionId,
+          InvalidArgument,
+          Format("Expected active_sub_transaction_id to be >= $0", kMinSubTransactionId));
+      txn->SetActiveSubTransaction(options.active_sub_transaction_id());
+      if (const auto& pg_session_txn = Transaction(PgClientSessionKind::kPgSession);
+          pg_session_txn) {
+        pg_session_txn->SetBackgroundTransaction(txn);
+      }
+    }
+
+    return SetupSessionResult{
+        .session_data = session_data,
+        .is_plain = (kind == PgClientSessionKind::kPlain)};
+  }
+
+  Status UpdateReadTime(
+      const PgPerformOptionsPB& options, PgClientSessionKind kind, CoarseTimePoint deadline,
+      HybridTime in_txn_limit = {}) {
+    auto& session_data = GetSessionData(kind);
+    auto& session = *session_data.session;
+    auto& txn = session_data.transaction;
+
+    const auto txn_serial_no = options.txn_serial_no();
+    const auto read_time_serial_no = options.read_time_serial_no();
 
     if (options.restart_transaction()) {
       if (options.ddl_mode()) {
@@ -3179,24 +3210,7 @@ class PgClientSession::Impl {
           << " for read only txn/stmt";
       }
     }
-
-    session.SetDeadline(deadline);
-
-    if (txn) {
-      RSTATUS_DCHECK_GE(
-          options.active_sub_transaction_id(), kMinSubTransactionId,
-          InvalidArgument,
-          Format("Expected active_sub_transaction_id to be >= $0", kMinSubTransactionId));
-      txn->SetActiveSubTransaction(options.active_sub_transaction_id());
-      if (const auto& pg_session_txn = Transaction(PgClientSessionKind::kPgSession);
-          pg_session_txn) {
-        pg_session_txn->SetBackgroundTransaction(txn);
-      }
-    }
-
-    return SetupSessionResult{
-        .session_data = session_data,
-        .is_plain = (kind == PgClientSessionKind::kPlain)};
+    return Status::OK();
   }
 
   void ResetReadPoint(PgClientSessionKind kind) {
