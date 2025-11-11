@@ -8,7 +8,7 @@ menu:
     parent: explore-observability
     weight: 900
 aliases:
-- /preview/troubleshoot/nodes/check-logs/
+  - /preview/troubleshoot/nodes/check-logs/
 type: docs
 ---
 
