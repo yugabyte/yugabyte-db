@@ -150,15 +150,16 @@ class DataBlockAwareIndexInternalIterator : public InternalIterator {
   virtual yb::Result<std::pair<std::string, std::string>> GetCurrentDataBlockBounds() const = 0;
 };
 
-class Arena;
-
-// Return an empty iterator (yields nothing) allocated from arena if specified.
-extern InternalIterator* NewEmptyInternalIterator(Arena* arena = nullptr);
-
-// Return an empty iterator with the specified status, allocated arena if specified.
-extern InternalIterator* NewErrorInternalIterator(const Status& status, Arena* arena = nullptr);
+template <class IteratorType>
+extern IteratorType* NewEmptyIterator(Arena* arena = nullptr);
 
 template <class IteratorType>
 extern IteratorType* NewErrorIterator(const Status& status, Arena* arena = nullptr);
+
+// Return an empty iterator (yields nothing) allocated from arena if specified.
+InternalIterator* NewEmptyInternalIterator(Arena* arena = nullptr);
+
+// Return an empty iterator with the specified status, allocated arena if specified.
+InternalIterator* NewErrorInternalIterator(const Status& status, Arena* arena = nullptr);
 
 }  // namespace rocksdb

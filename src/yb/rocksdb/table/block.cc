@@ -37,6 +37,8 @@
 #include "yb/rocksdb/table/block_internal.h"
 #include "yb/rocksdb/table/block_prefix_index.h"
 #include "yb/rocksdb/table/format.h"
+#include "yb/rocksdb/table/internal_iterator.h"
+#include "yb/rocksdb/table/iterator_helpers_internal.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
 
@@ -601,7 +603,7 @@ Block::Block(BlockContents&& contents)
   }
 }
 
-InternalIterator* Block::NewIterator(
+BlockIter* Block::NewIterator(
     const Comparator* cmp, const KeyValueEncodingFormat key_value_encoding_format, BlockIter* iter,
     const bool total_order_seek, const size_t restart_block_cache_capacity) const {
   if (size_ < kMinBlockSize) {
@@ -609,7 +611,7 @@ InternalIterator* Block::NewIterator(
       iter->SetStatus(BadBlockContentsError());
       return iter;
     } else {
-      return NewErrorInternalIterator(BadBlockContentsError());
+      return NewErrorBlockIterator(BadBlockContentsError());
     }
   }
   const uint32_t num_restarts = NumRestarts();
@@ -618,7 +620,7 @@ InternalIterator* Block::NewIterator(
       iter->SetStatus(Status::OK());
       return iter;
     } else {
-      return NewEmptyInternalIterator();
+      return NewEmptyBlockIterator();
     }
   } else {
     BlockHashIndex* hash_index_ptr =
@@ -741,6 +743,36 @@ yb::Result<std::string> Block::GetMiddleKey(
   // Special case for single restart block.
   return VERIFY_RESULT(GetRestartBlockMiddleEntryKey(
       /* restart_idx = */ 0, cmp, key_value_encoding_format, middle_entry_policy));
+}
+
+class BlockIter::Empty : public BlockIter {
+ public:
+  explicit Empty(const Status& s) : status_(s) {}
+
+  const KeyValueEntry& Entry() const override { return KeyValueEntry::Invalid(); }
+  const KeyValueEntry& Seek(Slice target) override { return Entry(); }
+  const KeyValueEntry& SeekToFirst() override { return Entry(); }
+  const KeyValueEntry& SeekToLast() override { return Entry(); }
+  const KeyValueEntry& Next() override {
+    DCHECK(false) << "BlockIter::Empty::Next()";
+    return Entry();
+  }
+  const KeyValueEntry& Prev() override {
+    DCHECK(false) << "BlockIter::Empty::Prev()";
+    return Entry();
+  }
+  Status status() const override { return status_; }
+
+ private:
+  Status status_;
+};
+
+BlockIter* NewEmptyBlockIterator(Arena* arena) {
+  return NewEmptyIterator<BlockIter>(arena);
+}
+
+BlockIter* NewErrorBlockIterator(const Status& status, Arena* arena) {
+  return NewErrorIterator<BlockIter>(status, arena);
 }
 
 }  // namespace rocksdb

@@ -169,12 +169,12 @@ class NotMatchingFilterBlockReader : public FilterBlockReader {
   size_t ApproximateMemoryUsage() const override { return 0; }
 };
 
-InternalIterator* ReturnErrorIterator(const Status& status, BlockIter* input_iter) {
+BlockIter* ReturnErrorBlockIterator(const Status& status, BlockIter* input_iter) {
   if (input_iter != nullptr) {
     input_iter->SetStatus(status);
     return input_iter;
   } else {
-    return NewErrorInternalIterator(status);
+    return NewErrorBlockIterator(status);
   }
 }
 
@@ -319,12 +319,12 @@ struct BlockBasedTable::BlockRetrievalInfo {
 
 // BlockEntryIteratorState is used by TwoLevelIterator and MultiLevelIterator in order to check if
 // key prefix may match the filter of the SST file or to create a secondary iterator.
-class BlockBasedTable::BlockEntryIteratorState : public TwoLevelIteratorState {
+class BlockBasedTable::BlockEntryIteratorState : public TwoLevelBlockIteratorState {
  public:
   BlockEntryIteratorState(
       BlockBasedTable* table, const ReadOptions& read_options, bool skip_filters,
       BlockType block_type)
-      : TwoLevelIteratorState(table->rep_->ioptions.prefix_extractor != nullptr),
+      : TwoLevelBlockIteratorState(table->rep_->ioptions.prefix_extractor != nullptr),
         table_(table),
         read_options_(read_options),
         skip_filters_(skip_filters),
@@ -336,14 +336,14 @@ class BlockBasedTable::BlockEntryIteratorState : public TwoLevelIteratorState {
             : read_options.statistics ? read_options.statistics
                                       : table_->rep_->ioptions.statistics) {}
 
-  InternalIterator* NewSecondaryIterator(const Slice& index_value) override {
+  BlockIter* NewSecondaryIterator(const Slice& index_value) override {
     PERF_TIMER_GUARD(new_table_block_iter_nanos);
 
     BlockRetrievalInfo block_info;
     {
       auto status = table_->GetBlockRetrievalInfo(index_value, block_type_, &block_info);
       if (!status.ok()) {
-        return NewErrorInternalIterator(status);
+        return NewErrorBlockIterator(status);
       }
     }
     auto block_res = table_->GetBlockFromCache(read_options_, block_info);
@@ -419,7 +419,7 @@ class BlockBasedTable::BlockEntryIteratorState : public TwoLevelIteratorState {
     UpdateReadPattern(handle);
 
     if (!block_res.ok()) {
-      return NewErrorInternalIterator(block_res.status());
+      return NewErrorBlockIterator(block_res.status());
     }
 
     return table_->NewBlockIterator(
@@ -1368,7 +1368,7 @@ InternalIterator* BlockBasedTable::NewIndexIterator(
     const ReadOptions& read_options, BlockIter* input_iter) {
   const auto index_reader_result = GetIndexReader(read_options);
   if (!index_reader_result.ok()) {
-    return ReturnErrorIterator(index_reader_result.status(), input_iter);
+    return ReturnErrorBlockIterator(index_reader_result.status(), input_iter);
   }
 
   auto* new_iter = index_reader_result->value->NewIterator(
@@ -1523,12 +1523,12 @@ size_t GetRestartBlockCacheCapacity(
 
 } // namespace
 
-InternalIterator* BlockBasedTable::NewBlockIterator(
+BlockIter* BlockBasedTable::NewBlockIterator(
     const ReadOptions& read_options, BlockBasedTable::CachableEntry<Block>* block,
     BlockType block_type, BlockIter* input_iter) {
   const auto restart_block_cache_capacity =
       GetRestartBlockCacheCapacity(read_options, rep_->table_options, block_type);
-  InternalIterator* iter = block->value->NewIterator(
+  auto* iter = block->value->NewIterator(
       rep_->comparator.get(), GetKeyValueEncodingFormat(block_type), input_iter,
       /* total_order_seek = */ true, restart_block_cache_capacity);
   if (block->cache_handle) {
@@ -1540,13 +1540,13 @@ InternalIterator* BlockBasedTable::NewBlockIterator(
   return iter;
 }
 
-InternalIterator* BlockBasedTable::NewBlockIterator(
+BlockIter* BlockBasedTable::NewBlockIterator(
     const ReadOptions& ro, const Slice index_value, BlockType block_type, BlockIter* input_iter) {
   PERF_TIMER_GUARD(new_table_block_iter_nanos);
 
   auto block = RetrieveBlock(ro, index_value, block_type);
   if (!block.ok()) {
-    return ReturnErrorIterator(block.status(), input_iter);
+    return ReturnErrorBlockIterator(block.status(), input_iter);
   }
 
   return NewBlockIterator(ro, block.get_ptr(), block_type, input_iter);
