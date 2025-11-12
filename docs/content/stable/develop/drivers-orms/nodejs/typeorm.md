@@ -7,7 +7,7 @@ headcontent: Node.js ORM support for YugabyteDB
 aliases:
   - /integrations/typeorm/
 menu:
-  preview_develop:
+  stable_develop:
     identifier: node-orm-3-typeorm
     parent: nodejs-drivers
     weight: 600
@@ -182,18 +182,18 @@ To create a basic Node.js project and install the `typeorm` package, do the foll
 
     ```js
     import { Entity, PrimaryGeneratedColumn, Column } from "typeorm";
-    
+
     @Entity()
     export class User {
       @PrimaryGeneratedColumn()
       id!: number;
-      
+
       @Column()
       firstname!: string;
-      
+
       @Column()
       lastname!: string;
-      
+
       @Column()
       age!: number;
     }
@@ -204,9 +204,9 @@ To create a basic Node.js project and install the `typeorm` package, do the foll
     ```js
     import { AppDataSource } from "./data-source"
     import { User } from "./entity/User"
-    
+
     AppDataSource.initialize().then(async () => {
-      
+
       console.log("Inserting a new user into the database...")
       const user = new User()
       user.firstname = "Timber"
@@ -214,7 +214,7 @@ To create a basic Node.js project and install the `typeorm` package, do the foll
       user.age = 25
       await AppDataSource.manager.save(user)
       console.log("Saved a new user with id: " + user.id)
-      
+
       console.log("Loading users from the database...")
       const users = await AppDataSource.manager.find(User)
       console.log("Loaded users: ", users)

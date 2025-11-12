@@ -4,7 +4,7 @@ headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a C# application using YugabyteDB YCQL driver
 menu:
-  preview_develop:
+  stable_develop:
     identifier: csharp-3-driver-ycql
     parent: csharp-drivers
     weight: 500

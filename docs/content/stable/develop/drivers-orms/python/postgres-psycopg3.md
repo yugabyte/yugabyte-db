@@ -4,7 +4,7 @@ headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a Python application using PostgreSQL Psycopg3 Driver for YSQL
 menu:
-  preview_develop:
+  stable_develop:
     identifier: postgres-psycopg3-driver
     parent: python-drivers
     weight: 510
@@ -215,7 +215,7 @@ All employees ordered by salary:
 (2, 'Bob Smith', Decimal('70000'))
 (1, 'Alice Johnson', Decimal('95000'))
 (4, 'David Kim', Decimal('98000'))
->>> 
+>>>
 ```
 
 If there is no output or you get an error, verify the parameters included in the connection string.

@@ -7,7 +7,7 @@ headcontent: Go ORM support for YugabyteDB
 aliases:
   - /integrations/gorm/
 menu:
-  preview_develop:
+  stable_develop:
     identifier: go-orm
     parent: go-drivers
     weight: 600

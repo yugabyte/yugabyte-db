@@ -4,7 +4,7 @@ linkTitle: Maintenance windows
 description: Manage maintenance windows for clusters in YugabyteDB Aeon.
 headcontent: Manage cluster maintenance windows and set exclusion periods
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-cloud:
     identifier: cloud-maintenance
     parent: cloud-clusters
     weight: 300

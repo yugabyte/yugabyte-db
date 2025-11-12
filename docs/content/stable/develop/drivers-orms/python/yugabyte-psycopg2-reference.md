@@ -9,7 +9,7 @@ aliases:
   - /preview/reference/drivers/python/
   - /preview/reference/drivers/python/yugabyte-psycopg2-reference/
 menu:
-  preview_develop:
+  stable_develop:
     name: Python drivers
     identifier: ref-yugabyte-psycopg2-driver
     parent: python-drivers

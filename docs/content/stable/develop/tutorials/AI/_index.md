@@ -6,7 +6,7 @@ description: How to Develop Applications with AI and YugabyteDB
 image:
 headcontent: Add a scalable and highly-available database to your AI projects
 menu:
-  preview_develop:
+  stable_develop:
     parent: tutorials
     identifier: tutorials-ai
     weight: 30

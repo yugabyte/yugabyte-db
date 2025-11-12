@@ -4,7 +4,7 @@ linkTitle: Supported Versions
 description: Supported Versions for NodeJS Drivers, ORMs and AppDev Frameworks
 headcontent: Supported Versions for NodeJS Drivers, ORMs and AppDev Frameworks
 menu:
-  preview_develop:
+  stable_develop:
     identifier: nodejs-compatibility
     parent: nodejs-drivers
     weight: 800

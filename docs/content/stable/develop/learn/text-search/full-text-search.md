@@ -7,7 +7,7 @@ description: Learn how to do full-text search in YSQL
 tags:
   other: ysql
 menu:
-  preview_develop:
+  stable_develop:
     identifier: full-text-search-ysql
     parent: text-search
     weight: 300

@@ -6,7 +6,7 @@ headContent: "Client driver: libpqxx"
 aliases:
   - /preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-cpp/
 menu:
-  preview_develop:
+  stable_develop:
     parent: build-apps
     name: C++
     identifier: cloud-cpp

@@ -5,7 +5,7 @@ linkTitle: Set up private link
 description: Connect to a VPC in AWS using PrivateLink.
 headcontent: Connect your endpoints using PrivateLink
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-cloud:
     identifier: managed-endpoint-1-aws
     parent: cloud-add-endpoint
     weight: 50
@@ -235,7 +235,7 @@ Obtain the [subnet](https://docs.aws.amazon.com/vpc/latest/userguide/modify-subn
 ```sh
 aws ec2 describe-subnets \
     --filters "Name=vpc-id,Values=<application_vpc_id>" \
-    --query "Subnets[*].SubnetId" 
+    --query "Subnets[*].SubnetId"
 ```
 
 This command returns the subnet IDs of the application VPC (`subnet_ids` in the following command). Note that the interface endpoint can connect only from a subnet in the same availability zone as the PSE. If there isn't a subnet in the same zone, create one.
@@ -244,12 +244,12 @@ Create the interface VPC endpoint, as follows:
 
 ```sh
 aws ec2 create-vpc-endpoint \
-    --vpc-endpoint-type Interface \ 
+    --vpc-endpoint-type Interface \
     --vpc-id <application_vpc_id> \
     --service-name <pse_service_name> \
     --subnet-ids <subnet_ids> \
     --security-group-ids <endpoint_security_group_id> \
-    --private-dns-enabled 
+    --private-dns-enabled
 ```
 
 Replace values as follows:

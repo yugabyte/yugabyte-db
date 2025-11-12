@@ -7,7 +7,7 @@ headcontent: Stream data change events from a YugabyteDB Aeon cluster
 tags:
   feature: early-access
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-cloud:
     identifier: aeon-cdc
     parent: cloud-clusters
     weight: 400
@@ -72,7 +72,7 @@ The following example shows the required and common properties:
 ```json
 {
     "name": "ybconnector",
-    "config": 
+    "config":
     {
         "tasks.max": "1",
         "publication.autocreate.mode": "filtered",
@@ -216,7 +216,7 @@ yugabyte=> SELECT * FROM pg_replication_slots;
 ```
 
 ```output
-      slot_name      |  plugin  | slot_type | datoid | database | temporary | active | active_pid | xmin | catalog_xmin | restart_lsn | confirmed_flush_lsn |           yb_stream_id           | yb_restart_commit_ht 
+      slot_name      |  plugin  | slot_type | datoid | database | temporary | active | active_pid | xmin | catalog_xmin | restart_lsn | confirmed_flush_lsn |           yb_stream_id           | yb_restart_commit_ht
 ---------------------+----------+-----------+--------+----------+-----------+--------+------------+------+--------------+-------------+---------------------+----------------------------------+----------------------
  yb_replication_slot | yboutput | logical   |  13251 | yugabyte | f         | f      |            |    7 |            7 | 0/EA79      | 0/EA7A              | 0dc62aec28106aa8ba494b620769ec69 |  7072030957220536320
 (1 row)

@@ -5,7 +5,7 @@ linkTitle: Database upgrade
 description: Manage database upgrades for clusters in YugabyteDB Aeon.
 headcontent: Upgrade the YugabyteDB software on your cluster
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-cloud:
     identifier: database-upgrade
     parent: cloud-clusters
     weight: 310

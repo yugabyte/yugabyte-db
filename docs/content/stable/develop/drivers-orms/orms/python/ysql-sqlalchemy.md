@@ -4,7 +4,7 @@ headerTitle: Python ORM example application
 linkTitle: Python
 description: Python ORM example application that uses SQLAlchemy and YSQL.
 menu:
-  preview_develop:
+  stable_develop:
     identifier: python-sqlalchemy
     parent: orm-tutorials
     weight: 670

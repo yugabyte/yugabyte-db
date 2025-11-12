@@ -5,7 +5,7 @@ linkTitle: YSQL clients
 description: Tips and tricks for administering YSQL clients
 headcontent: Tips and tricks for administering YSQL clients
 menu:
-  preview_develop:
+  stable_develop:
     identifier: best-practices-ysql-clients
     parent: best-practices-develop
     weight: 20

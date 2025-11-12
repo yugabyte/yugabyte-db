@@ -4,7 +4,7 @@ headerTitle: Java ORM example application
 linkTitle: Java
 description: Java ORM example application with Hibernate ORM and use the YSQL API to connect to and interact with YugabyteDB.
 menu:
-  preview_develop:
+  stable_develop:
     identifier: java-hibernate
     parent: orm-tutorials
     weight: 620

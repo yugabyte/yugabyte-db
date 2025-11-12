@@ -8,7 +8,7 @@ tags:
 aliases:
   - /preview/reference/drivers/java/yugabyte-jdbc-reference/
 menu:
-  preview_develop:
+  stable_develop:
     name: JDBC Drivers
     identifier: ref-1-yugabyte-jdbc-driver
     parent: java-drivers

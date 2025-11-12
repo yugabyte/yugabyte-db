@@ -4,7 +4,7 @@ linkTitle: Plan your cluster
 description: Plan a cluster in YugabyteDB Aeon.
 headcontent: Before deploying a production cluster, consider the following factors
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-cloud:
     identifier: create-clusters-overview
     parent: cloud-basics
     weight: 10

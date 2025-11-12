@@ -6,7 +6,7 @@ description: Python SQLAlchemy ORM support for YugabyteDB
 aliases:
   - /integrations/sqlalchemy/
 menu:
-  preview_develop:
+  stable_develop:
     identifier: sqlalchemy-orm
     parent: python-drivers
     weight: 610

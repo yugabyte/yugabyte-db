@@ -10,7 +10,7 @@ aliases:
   - /preview/quick-start/build-apps/java/
   - /preview/integrations/jdbc-drivers/
 menu:
-  preview_develop:
+  stable_develop:
     identifier: java-drivers
     parent: drivers-orms
     weight: 500

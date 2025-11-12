@@ -3,7 +3,7 @@ title: Shared responsibility model
 linkTitle: Shared responsibility model
 description: Explore the security shared responsiblity model of the YugabyteDB Aeon database.
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-cloud:
     parent: cloud-security
     identifier: shared-responsibility
 weight: 20

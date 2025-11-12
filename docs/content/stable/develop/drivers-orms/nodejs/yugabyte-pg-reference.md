@@ -8,7 +8,7 @@ tags:
 aliases:
   - /preview/reference/drivers/nodejs/yugabyte-pg-reference/
 menu:
-  preview_develop:
+  stable_develop:
     name: Node.js Drivers
     identifier: ref-1-yugabyte-pg-driver
     parent: nodejs-drivers

@@ -5,7 +5,7 @@ linkTitle: Elixir
 description: Build a simple Elixir application using the Postgrex driver and YSQL API to connect to and interact with a YugabyteDB Aeon cluster.
 headContent: "Client driver: Postgrex"
 menu:
-  preview_develop:
+  stable_develop:
     parent: build-apps
     name: Elixir
     identifier: cloud-elixir

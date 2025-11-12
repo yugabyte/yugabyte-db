@@ -4,7 +4,7 @@ linkTitle: Replicate across regions
 description: Deploy multi-region synchronous clusters in YugabyteDB Aeon.
 headcontent: Deploy region-level fault tolerant clusters
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-cloud:
     identifier: create-clusters-multisync
     parent: create-clusters
     weight: 60

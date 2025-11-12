@@ -6,7 +6,7 @@ description: Connect a Ruby application using the Pg Gem Driver for YSQL
 aliases:
   - /preview/develop/drivers-orms/ruby/ysql-pg/
 menu:
-  preview_develop:
+  stable_develop:
     identifier: ruby-pg-driver-2
     parent: ruby-drivers
     weight: 410

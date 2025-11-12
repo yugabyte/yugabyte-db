@@ -5,7 +5,7 @@ linkTitle: Use an ORM
 description: Laravel ORM support for YugabyteDB
 headcontent: Laravel ORM support for YugabyteDB
 menu:
-  preview_develop:
+  stable_develop:
     identifier: laravel-orm
     parent: php-drivers
     weight: 500
@@ -144,7 +144,7 @@ class EmployeesSeeder extends Seeder
 
 ### Step 5: Apply the migrations and seed the table
 
-Laravel provides a way to apply the DDLs against the database using [Migrations](https://laravel.com/docs/10.x/migrations). The database migrations are generated in the `database\migrations` directory. 
+Laravel provides a way to apply the DDLs against the database using [Migrations](https://laravel.com/docs/10.x/migrations). The database migrations are generated in the `database\migrations` directory.
 
 Run the following command to create and seed the `Employees` table in YugabyteDB:
 
@@ -179,7 +179,7 @@ class EmployeesController extends Controller
     {
         return Employees::all();
     }
- 
+
     public function show($id)
     {
         return Employees::find($id);

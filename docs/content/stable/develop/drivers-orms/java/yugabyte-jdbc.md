@@ -6,7 +6,7 @@ description: Connect a Java application using YugabyteDB JDBC Smart Driver
 tags:
   other: ysql
 menu:
-  preview_develop:
+  stable_develop:
     identifier: java-driver-1-yugabyte-jdbc
     parent: java-drivers
     weight: 500

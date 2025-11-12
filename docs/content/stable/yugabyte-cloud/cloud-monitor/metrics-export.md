@@ -5,7 +5,7 @@ linkTitle: Export metrics
 description: Export cluster metrics to third-party tools.
 headcontent: Export cluster metrics to third-party tools
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-cloud:
     identifier: export-metrics
     parent: managed-integrations
     weight: 605

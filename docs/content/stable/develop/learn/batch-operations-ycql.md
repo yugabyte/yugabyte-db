@@ -6,7 +6,7 @@ description: Learn how batch operations in YCQL send a set of operations as a si
 tags:
   other: ycql
 menu:
-  preview_develop:
+  stable_develop:
     identifier: batch-operations-1-ycql
     parent: learn
     weight: 568

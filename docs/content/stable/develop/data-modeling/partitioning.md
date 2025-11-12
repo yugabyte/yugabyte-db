@@ -5,7 +5,7 @@ linkTitle: Partitioning tables
 tags:
   other: ysql
 menu:
-  preview_develop:
+  stable_develop:
     identifier: data-modeling-partitions
     parent: data-modeling
     weight: 500

@@ -4,7 +4,7 @@ linkTitle: Supported versions
 description: Supported versions for C# drivers, ORMs and AppDev frameworks
 headcontent: Supported versions for C# drivers, ORMs and AppDev frameworks
 menu:
-  preview_develop:
+  stable_develop:
     identifier: csharp-compatibility
     parent: csharp-drivers
     weight: 800

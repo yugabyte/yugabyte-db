@@ -8,7 +8,7 @@ aliases:
   - /preview/quick-start/build-apps/
   - /preview/develop/tutorials/build-apps/
 menu:
-  preview_develop:
+  stable_develop:
     parent: tutorials
     identifier: build-apps
     weight: 10

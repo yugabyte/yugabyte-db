@@ -3,7 +3,7 @@ title: YSQL Loader
 linkTitle: YSQL Loader
 description: YSQL Loader
 menu:
-  preview_integrations:
+  stable_integrations:
     identifier: ysql-loader
     parent: data-migration
     weight: 571

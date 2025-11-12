@@ -5,7 +5,7 @@ linkTitle: Create cluster example
 description: Tutorial for using YugabyteDB Aeon ybm CLI to create clusters.
 headcontent: Create and connect to a cluster from the command line
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-cloud:
     identifier: managed-cli-example-create
     parent: managed-cli
     weight: 60

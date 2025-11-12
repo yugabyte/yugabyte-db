@@ -4,7 +4,7 @@ linkTitle: Backup and restore
 description: Back up and restore clusters in YugabyteDB Aeon.
 headcontent: Configure your backup schedule and restore databases
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-cloud:
     identifier: backup-clusters
     parent: cloud-clusters
     weight: 200
@@ -158,7 +158,7 @@ The remote storage bucket must be on the same cloud provider as the cluster; for
 
     ```sh
     storage.objects.list
-    storage.objects.delete  
+    storage.objects.delete
     storage.objects.create
     storage.objects.get
     storage.buckets.get

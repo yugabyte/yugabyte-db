@@ -4,7 +4,7 @@ headerTitle: Node.js ORM example application
 linkTitle: Node.js
 description: Node.js ORM example application that uses Prisma and YSQL.
 menu:
-  preview_develop:
+  stable_develop:
     identifier: nodejs-prisma
     parent: orm-tutorials
     weight: 700

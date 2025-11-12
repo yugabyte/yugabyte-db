@@ -3,7 +3,7 @@ title: Mirantis Kubernetes Engine
 linkTitle: Mirantis MKE
 description: Mirantis
 menu:
-  preview_integrations:
+  stable_integrations:
     identifier: mirantis
     parent: integrations-other
     weight: 571

@@ -5,7 +5,7 @@ linkTitle: Redpanda
 description: Redpanda for Change Data Capture in YugabyteDB.
 headcontent: Use YugabyteDB CDC with Redpanda as message broker
 menu:
-  preview_develop:
+  stable_develop:
     parent: tutorials-kafka-stream
     identifier: cdc-redpanda
     weight: 40

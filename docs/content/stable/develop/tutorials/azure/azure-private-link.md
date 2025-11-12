@@ -6,7 +6,7 @@ description: Using a Node.js app to demonstrate, see how YugabyteDB enhances Azu
 image: /images/tutorials/azure/icons/Private-Link-Icon.svg
 headcontent: Secure connections between applications in Azure and YugabyteDB
 menu:
-  preview_develop:
+  stable_develop:
     identifier: tutorials-azure-private-link
     parent: tutorials-azure
     weight: 50

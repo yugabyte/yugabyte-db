@@ -6,7 +6,7 @@ description: Connect a Java application using YugabyteDB R2DBC Smart Driver for 
 tags:
   other: ysql
 menu:
-  preview_develop:
+  stable_develop:
     identifier: java-driver-2-r2dbc
     parent: java-drivers
     weight: 500

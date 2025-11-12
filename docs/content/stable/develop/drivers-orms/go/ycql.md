@@ -6,7 +6,7 @@ description: Connect a Go application using YugabyteDB Go driver for YCQL
 aliases:
   - /preview/develop/tutorials/build-apps/go/cloud-ycql-go/
 menu:
-  preview_develop:
+  stable_develop:
     identifier: go-4-yb-pgx-driver-ycql
     parent: go-drivers
     weight: 500

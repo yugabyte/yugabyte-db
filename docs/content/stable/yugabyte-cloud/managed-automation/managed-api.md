@@ -5,7 +5,7 @@ linkTitle: REST API
 description: REST API YugabyteDB Aeon.
 headcontent: Manage YugabyteDB Aeon accounts and deployments using the REST API
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-cloud:
     parent: managed-automation
     identifier: managed-api
     weight: 10

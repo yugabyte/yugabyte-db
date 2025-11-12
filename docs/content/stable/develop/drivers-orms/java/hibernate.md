@@ -5,7 +5,7 @@ linkTitle: Use an ORM
 description: Java Hibernate ORM support for YugabyteDB
 headcontent: Java ORM support for YugabyteDB
 menu:
-  preview_develop:
+  stable_develop:
     identifier: java-orm
     parent: java-drivers
     weight: 600

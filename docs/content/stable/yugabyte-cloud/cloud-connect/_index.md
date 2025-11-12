@@ -8,7 +8,7 @@ aliases:
   - /preview/yugabyte-cloud/connect-to-clusters/
   - /preview/yugabyte-cloud/cloud-basics/connect-to-clusters/
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-cloud:
     parent: yugabytedb-managed
     identifier: cloud-connect
     weight: 40

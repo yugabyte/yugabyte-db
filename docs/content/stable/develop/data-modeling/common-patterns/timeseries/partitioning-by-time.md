@@ -9,7 +9,7 @@ tags:
 aliases:
    - /preview/common-patterns/timeseries/partitioning-by-time/
 menu:
-  preview_develop:
+  stable_develop:
     identifier: timeseries-partition-by-time
     parent: common-patterns-timeseries
     weight: 400

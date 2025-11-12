@@ -5,7 +5,7 @@ linkTitle: Use an ORM
 description: MyBatis Persistence framework support for YugabyteDB
 headcontent: MyBatis Persistence framework support for YugabyteDB
 menu:
-  preview_develop:
+  stable_develop:
     identifier: java-orm-mybatis
     parent: java-drivers
     weight: 600

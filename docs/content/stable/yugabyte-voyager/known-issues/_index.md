@@ -10,7 +10,7 @@ aliases:
   - /preview/yugabyte-voyager/known-issues/general-issues/
   - /preview/yugabyte-voyager/known-issues/mysql-oracle/
 menu:
-  preview_yugabyte-voyager:
+  stable_yugabyte-voyager:
     identifier: known-issues
     parent: yugabytedb-voyager
     weight: 104
@@ -52,7 +52,7 @@ For example:
 
 ```output.sql
 --query stored in pg_stat_statements:
-SELECT $1 as binary; 
+SELECT $1 as binary;
 
 --actual query:
 SELECT 0b101010 as binary;
@@ -75,18 +75,18 @@ yugabyte=*# CREATE TABLE test(id int, val text);
 CREATE TABLE
 yugabyte=*# \d test
                 Table "public.test"
-Column |  Type   | Collation | Nullable | Default 
+Column |  Type   | Collation | Nullable | Default
 --------+---------+-----------+----------+---------
-id     | integer |           |          | 
-val    | text    |           |          | 
+id     | integer |           |          |
+val    | text    |           |          |
 yugabyte=*# ROLLBACK;
 ROLLBACK
 yugabyte=# \d test
                 Table "public.test"
-Column |  Type   | Collation | Nullable | Default 
+Column |  Type   | Collation | Nullable | Default
 --------+---------+-----------+----------+---------
-id     | integer |           |          | 
-val    | text    |           |          | 
+id     | integer |           |          |
+val    | text    |           |          |
 ```
 
 ### Determining the type during query processing
@@ -107,7 +107,7 @@ The internal [Golang PostgreSQL parser](https://github.com/pganalyze/pg_query_go
 For example:
 
 ```output.sql
-CREATE OR REPLACE FUNCTION example() 
+CREATE OR REPLACE FUNCTION example()
 RETURNS VOID AS $$
 DECLARE
     x TEXT; -- Adjust the type based on jsonb value type

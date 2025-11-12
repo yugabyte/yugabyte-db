@@ -5,7 +5,7 @@ linkTitle: Set up private link
 description: Connect to a VNet in Azure using Private Link.
 headcontent: Connect your endpoints using Private Link
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-cloud:
     identifier: managed-endpoint-1-azure
     parent: cloud-add-endpoint
     weight: 50

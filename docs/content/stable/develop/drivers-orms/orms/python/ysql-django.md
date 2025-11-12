@@ -4,7 +4,7 @@ headerTitle: Python ORM example application
 linkTitle: Python
 description: Python ORM example application with Django that uses YSQL.
 menu:
-  preview_develop:
+  stable_develop:
     identifier: python-django
     parent: orm-tutorials
     weight: 680

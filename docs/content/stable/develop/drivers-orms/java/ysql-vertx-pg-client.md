@@ -6,7 +6,7 @@ description: Connect a Java application using Vert.x PG driver
 tags:
   other: ysql
 menu:
-  preview_develop:
+  stable_develop:
     identifier: java-driver-4-vertx-pg-client
     parent: java-drivers
     weight: 500

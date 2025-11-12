@@ -4,7 +4,7 @@ headerTitle: Use an ORM
 linkTitle: Use an ORM
 description: Rust Diesel ORM support for YugabyteDB
 menu:
-  preview_develop:
+  stable_develop:
     identifier: diesel-orm
     parent: rust-drivers
     weight: 600

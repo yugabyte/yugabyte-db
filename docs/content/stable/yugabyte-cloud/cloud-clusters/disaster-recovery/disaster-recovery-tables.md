@@ -5,7 +5,7 @@ linkTitle: Tables and indexes
 description: Manage tables and indexes in clusters with disaster recovery in Aeon
 headContent: Add and remove tables and indexes in clusters with disaster recovery
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-cloud:
     parent: disaster-recovery-aeon
     identifier: disaster-recovery-tables-aeon
     weight: 50
@@ -33,7 +33,7 @@ Use the following guidance when managing tables and indexes in clusters with DR 
 
 All DDL operations must first be executed on the Source and then manually applied to the Target in the same order. For example, if you create a table on the Source, you must also create the same table on the Target before executing any subsequent DDL commands on the Source.
 
-For example, if you add a table on the Source as follows: 
+For example, if you add a table on the Source as follows:
 
 ```sql
 CREATE TABLE users (id UUID PRIMARY KEY, name TEXT);

@@ -4,7 +4,7 @@ headcontent: YugabyteDB Voyager configuration file reference
 linkTitle: Configuration file
 description: YugabyteDB Voyager configuration file reference.
 menu:
-  preview_yugabyte-voyager:
+  stable_yugabyte-voyager:
     identifier: voyager-configuration-file
     parent: reference-voyager
     weight: 101

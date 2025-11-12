@@ -5,7 +5,7 @@ linkTitle: Examples
 description: Quick examples for using YugabyteDB Aeon ybm CLI.
 headcontent: Quick examples for using ybm CLI
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-cloud:
     identifier: managed-cli-example-quick
     parent: managed-cli
     weight: 60

@@ -9,7 +9,7 @@ aliases:
   - /preview/reference/drivers/go/
   - /preview/reference/drivers/go/yb-pgx-reference/
 menu:
-  preview_develop:
+  stable_develop:
     name: Go Drivers
     identifier: ref-1-yb-pgx-go-driver
     parent: go-drivers

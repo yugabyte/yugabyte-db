@@ -5,7 +5,7 @@ linkTitle: Terraform Provider
 description: Terraform Provider for YugabyteDB Aeon.
 headcontent: Manage YugabyteDB Aeon accounts and deployments using the Terraform Provider
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-cloud:
     parent: managed-automation
     identifier: managed-terraform
     weight: 10

@@ -4,7 +4,7 @@ headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect an application using YugabyteDB Node.js smart driver for YSQL
 menu:
-  preview_develop:
+  stable_develop:
     identifier: node-driver-1-yugabyte
     parent: nodejs-drivers
     weight: 500

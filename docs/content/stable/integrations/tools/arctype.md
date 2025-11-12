@@ -4,7 +4,7 @@ headerTitle: Arctype
 linkTitle: Arctype
 description: Use Arctype to work with distributed SQL databases in YugabyteDB.
 menu:
-  preview_integrations:
+  stable_integrations:
     identifier: arctype
     parent: tools
     weight: 30

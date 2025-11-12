@@ -5,7 +5,7 @@ linkTitle: Java
 description: Build a simple Java application using the YugabyteDB JDBC Driver and using the YSQL API to connect to and interact with a YugabyteDB Aeon cluster.
 headContent: "Client driver: Yugabyte JDBC"
 menu:
-  preview_develop:
+  stable_develop:
     parent: build-apps
     name: Java
     identifier: cloud-java

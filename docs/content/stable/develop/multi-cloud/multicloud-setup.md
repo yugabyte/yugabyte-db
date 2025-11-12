@@ -5,7 +5,7 @@ linkTitle: Multi-cloud setup
 description: Set up a universe that spans different clouds
 headcontent: Set up a universe that spans different clouds
 menu:
-  preview_develop:
+  stable_develop:
     identifier: multicloud-universe-setup
     parent: build-multicloud-apps
     weight: 100

@@ -4,7 +4,7 @@ linkTitle: Start a free trial
 description: Start a free trial of YugabyteDB Aeon to conduct POCs and performance testing.
 headcontent: Explore all YugabyteDB Aeon features
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-cloud:
     identifier: managed-freetrial
     parent: yugabytedb-managed
     weight: 20

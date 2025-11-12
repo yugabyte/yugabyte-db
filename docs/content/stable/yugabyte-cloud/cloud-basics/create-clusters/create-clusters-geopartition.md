@@ -4,7 +4,7 @@ linkTitle: Partition by region
 description: Deploy geo-partitioned clusters in YugabyteDB Aeon.
 headcontent: Use geo-partitioning to pin data to regions
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-cloud:
     identifier: create-clusters-geopartition
     parent: create-clusters
     weight: 70

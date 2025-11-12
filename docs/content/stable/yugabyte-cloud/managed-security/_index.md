@@ -5,7 +5,7 @@ linkTitle: Account access
 description: Manage access to your YugabyteDB Aeon account.
 headcontent: Invite team members and assign roles
 menu:
-  preview_yugabyte-cloud:
+  stable_yugabyte-cloud:
     parent: yugabytedb-managed
     identifier: managed-security
     weight: 600

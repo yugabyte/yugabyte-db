@@ -4,7 +4,7 @@ headcontent: yb-voyager compare-performance
 linkTitle: Compare performance
 description: YugabyteDB Voyager compare performance reference
 menu:
-  preview_yugabyte-voyager:
+  stable_yugabyte-voyager:
     identifier: compare-performance-voyager
     parent: yb-voyager-cli
     weight: 101
