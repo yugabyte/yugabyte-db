@@ -681,23 +681,22 @@ class AwsCloud(AbstractCloud):
     def start_instance(self, host_info, server_ports, capacity_reservation=None):
         ec2 = boto3.resource('ec2', host_info["region"])
         try:
-            # Add capacity reservation logic here
-            if capacity_reservation:
-                # Use the EC2 client to modify instance attributes
-                ec2_client = boto3.client('ec2', region_name=host_info["region"])
-                ec2_client.modify_instance_capacity_reservation_attributes(
-                    InstanceId=host_info["id"],
-                    CapacityReservationSpecification={
-                        'CapacityReservationPreference': 'capacity-reservations-only',
-                        'CapacityReservationTarget': {
-                            'CapacityReservationId': capacity_reservation
-                        }
-                    }
-                )
-
             instance = ec2.Instance(id=host_info["id"])
             if instance.state['Name'] != 'running':
                 if instance.state['Name'] != 'pending':
+                    # Add capacity reservation logic here
+                    if capacity_reservation:
+                        # Use the EC2 client to modify instance attributes
+                        ec2_client = boto3.client('ec2', region_name=host_info["region"])
+                        ec2_client.modify_instance_capacity_reservation_attributes(
+                            InstanceId=host_info["id"],
+                            CapacityReservationSpecification={
+                                'CapacityReservationPreference': 'capacity-reservations-only',
+                                'CapacityReservationTarget': {
+                                    'CapacityReservationId': capacity_reservation
+                                }
+                            }
+                        )
                     instance.start()
                 # Increase wait timeout to 15 * 80 = 1200 seconds
                 # to work around failures in provisioning instances.
