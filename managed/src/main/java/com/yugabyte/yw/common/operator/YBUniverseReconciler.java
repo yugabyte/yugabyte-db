@@ -1137,17 +1137,22 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
   private PlacementInfo createPlacementInfo(
       YBUniverse ybUniverse, UUID customerUUID, boolean isReadOnlyCluster) {
     Provider provider = getProvider(ybUniverse, customerUUID);
-    PlacementInfo placementInfo =
-        OperatorPlacementInfoHelper.createPlacementInfo(
-            isReadOnlyCluster
-                ? ybUniverse.getSpec().getReadReplica().getPlacementInfo()
-                : ybUniverse.getSpec().getPlacementInfo(),
-            provider);
-    OperatorPlacementInfoHelper.verifyPlacementInfo(
-        placementInfo,
-        isReadOnlyCluster
-            ? ybUniverse.getSpec().getReadReplica().getNumNodes().intValue()
-            : ybUniverse.getSpec().getNumNodes().intValue());
+    PlacementInfo placementInfo;
+
+    if (isReadOnlyCluster) {
+      placementInfo =
+          OperatorPlacementInfoHelper.createPlacementInfo(
+              ybUniverse.getSpec().getReadReplica().getPlacementInfo(), provider);
+      OperatorPlacementInfoHelper.verifyPlacementInfo(
+          placementInfo, ybUniverse.getSpec().getReadReplica().getNumNodes().intValue());
+    } else {
+      placementInfo =
+          OperatorPlacementInfoHelper.createPlacementInfo(
+              ybUniverse.getSpec().getPlacementInfo(), provider);
+      OperatorPlacementInfoHelper.verifyPlacementInfo(
+          placementInfo, ybUniverse.getSpec().getNumNodes().intValue());
+    }
+
     return placementInfo;
   }
 
