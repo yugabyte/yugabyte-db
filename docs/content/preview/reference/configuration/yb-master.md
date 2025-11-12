@@ -216,6 +216,22 @@ Controls whether YSQL follower reads that specify a not-yet-safe read time shoul
 
 Default: `true`
 
+##### --master_ysql_operation_lease_ttl_ms
+
+Default: `5 * 60 * 1000` (5 minutes)
+
+Specifies base YSQL lease Time-To-Live (TTL). The YB-Master leader uses this value to determine the validity of a YB-TServer's YSQL lease.
+
+Refer to [YSQL lease mechanism](../../../architecture/transactions/concurrency-control/#master-ysql-operation-lease-ttl-ms) for more details.
+
+##### --ysql_operation_lease_ttl_client_buffer_ms
+
+Default: 2000 (2 seconds)
+
+Specifies a client-side buffer for the YSQL operation lease TTL.
+
+Refer to [YSQL lease mechanism](../../../architecture/transactions/concurrency-control/#ysql-operation-lease-ttl-client-buffer-ms) for more details.
+
 ## Logging flags
 
 ##### --colorlogtostderr
@@ -964,7 +980,7 @@ Default: `UINT32_MAX`
 
 ## Catalog flags
 
-Catalog cache flags are {{<tags/feature/ea idea="599">}}. For information on setting these flags, see [Customize preloading of YSQL catalog caches](../../../best-practices-operations/ysql-catalog-cache-tuning-guide/).
+For information on setting these flags, see [Customize preloading of YSQL catalog caches](../../../best-practices-operations/ysql-catalog-cache-tuning-guide/).
 
 ##### --ysql_enable_db_catalog_version_mode
 
@@ -1054,8 +1070,6 @@ Default: false
 
 ## Advisory lock flags
 
-Support for advisory locks is {{<tags/feature/tp idea="812">}}.
-
 To learn about advisory locks, see [Advisory locks](../../../architecture/transactions/concurrency-control/#advisory-locks).
 
 ##### --ysql_yb_enable_advisory_locks
@@ -1064,7 +1078,7 @@ Enables advisory locking.
 
 This value must match on all yb-master and yb-tserver configurations of a YugabyteDB cluster.
 
-Default: false
+Default: true
 
 ## Advanced flags
 

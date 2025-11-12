@@ -4,7 +4,7 @@ linkTitle: Query diagnostics
 headerTitle: Query diagnostics
 headcontent: Export diagnostic information for analysis
 tags:
-  feature: tech-preview
+  feature: early-access
 menu:
   preview:
     identifier: query-diagnostics
@@ -27,7 +27,7 @@ Query diagnostics collects the following information:
 
 ## Enable query diagnostics
 
-Query diagnostics is {{<tags/feature/tp idea="2078">}}. To use query diagnostics, enable and configure the following flags for each node of your cluster.
+{{<tags/feature/ea idea="1591">}}To use query diagnostics, enable and configure the following flags for each node of your cluster.
 
 | Flag | Description |
 | :--- | :---------- |
