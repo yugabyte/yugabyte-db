@@ -38,6 +38,7 @@ The following stable and preview releases are no longer supported:
 
 | Release series | Released | End of maintenance support | End of Life (EOL) |
 | :------------- | :------- | :------------------------- | :---------------- |
+| [v2.25](v2.25/) {{<tags/release/preview>}} | January 17, 2025  | n/a | n/a |
 | [v2.23](v2.23/) {{<tags/release/preview>}} | September 13, 2024  | n/a | n/a |
 | [v2.21](v2.21/) {{<tags/release/preview>}} | March 26, 2024 | n/a | n/a |
 | [v2.19](v2.19/) {{<tags/release/preview>}} | June 20, 2023 | n/a | n/a |
