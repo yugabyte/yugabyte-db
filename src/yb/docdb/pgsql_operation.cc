@@ -1219,7 +1219,7 @@ Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(const DocOperatio
 
 Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValueBackward(
     const DocOperationApplyData& data) {
-  VLOG(2) << "Looking for collision while going backward. Trying to insert " << doc_key_;
+  VLOG_WITH_FUNC(2) << "doc key: " << doc_key_;
 
   auto iter = CreateIntentAwareIterator(
       data.doc_write_batch->doc_db(),
@@ -1228,8 +1228,10 @@ Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValueBackward(
       txn_op_context_,
       data.read_operation_data.WithAlteredReadTime(ReadHybridTime::Max()));
 
+  VLOG_WITH_FUNC(4) << "whole row: " << doc_key_;
   HybridTime oldest_past_min_ht = VERIFY_RESULT(FindOldestOverwrittenTimestamp(
       iter.get(), SubDocKey(doc_key_), data.read_time().read));
+  VLOG_WITH_FUNC(4) << "liveness column: " << SubDocKey(doc_key_, KeyEntryValue::kLivenessColumn);
   const HybridTime oldest_past_min_ht_liveness =
       VERIFY_RESULT(FindOldestOverwrittenTimestamp(
           iter.get(),
@@ -1315,16 +1317,16 @@ Result<HybridTime> PgsqlWriteOperation::FindOldestOverwrittenTimestamp(
     const SubDocKey& sub_doc_key,
     HybridTime min_read_time) {
   HybridTime result;
-  VLOG(3) << "Doing iter->Seek " << doc_key_;
+  VLOG_WITH_FUNC(3) << doc_key_;
   iter->Seek(doc_key_);
   if (VERIFY_RESULT_REF(iter->Fetch())) {
     const auto bytes = sub_doc_key.EncodeWithoutHt();
     const Slice& sub_key_slice = bytes.AsSlice();
     result = VERIFY_RESULT(iter->FindOldestRecord(sub_key_slice, min_read_time));
-    VLOG(2) << "iter->FindOldestRecord returned " << result << " for "
-            << SubDocKey::DebugSliceToString(sub_key_slice);
+    VLOG_WITH_FUNC(2) << "iter->FindOldestRecord returned " << result << " for "
+                      << SubDocKey::DebugSliceToString(sub_key_slice);
   } else {
-    VLOG(3) << "iter->Seek " << doc_key_ << " turned out to be out of records";
+    VLOG_WITH_FUNC(3) << "iter->Seek " << doc_key_ << " turned out to be out of records";
   }
   return result;
 }
