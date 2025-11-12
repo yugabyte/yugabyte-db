@@ -260,6 +260,13 @@ class VersionEdit {
     return DebugString();
   }
 
+  bool IsForceFlushedFrontier() const {
+    // Set to kForce when we're resetting the flushed frontier to a potentially lower value. This
+    // is needed when restoring from a backup into a new Raft group with an unrelated sequence of
+    // OpIds.
+    return frontier_modification_mode_ == FrontierModificationMode::kForce;
+  }
+
  private:
   friend class VersionSet;
   friend class Version;
@@ -274,10 +281,7 @@ class VersionEdit {
   std::optional<uint32_t> max_column_family_;
   std::optional<SequenceNumber> last_sequence_;
   UserFrontierPtr flushed_frontier_;
-
-  // Used when we're resetting the flushed frontier to a potentially lower value. This is needed
-  // when restoring from a backup into a new Raft group with an unrelated sequence of OpIds.
-  bool force_flushed_frontier_ = false;
+  FrontierModificationMode frontier_modification_mode_ = FrontierModificationMode::kUpdate;
 
   DeletedFileSet deleted_files_;
   std::vector<std::pair<int, FileMetaData>> new_files_;

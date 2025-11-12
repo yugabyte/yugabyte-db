@@ -2399,8 +2399,7 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
         // Also, group commits across column families are not supported.
         break;
       }
-      FrontierModificationMode frontier_mode = FrontierModificationMode::kUpdate;
-      const bool force_flushed_frontier = writer->edit->force_flushed_frontier_;
+      const bool force_flushed_frontier = writer->edit->IsForceFlushedFrontier();
       if (force_flushed_frontier) {
         if (writer != &w) {
           // No group commit for edits that force a particular value of flushed frontier, either.
@@ -2588,7 +2587,7 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
     if (flushed_frontier_override) {
       flushed_frontier_ = flushed_frontier_override;
     } else if (edit->flushed_frontier_) {
-      UpdateFlushedFrontier(edit->flushed_frontier_);
+      UpdateFlushedFrontier(edit->flushed_frontier_, edit->frontier_modification_mode_);
     }
   } else {
     RLOG(InfoLogLevel::ERROR_LEVEL, db_options_->info_log,
@@ -2656,8 +2655,8 @@ void VersionSet::LogAndApplyHelper(
   edit->SetNextFile(next_file_number_.load());
   edit->SetLastSequence(LastSequence());
 
-  if (flushed_frontier_ && !edit->force_flushed_frontier_) {
-    edit->UpdateFlushedFrontier(flushed_frontier_);
+  if (flushed_frontier_ && !edit->IsForceFlushedFrontier()) {
+    edit->ModifyFlushedFrontier(flushed_frontier_, edit->frontier_modification_mode_);
   }
 
   builder->Apply(edit);
@@ -3509,8 +3508,10 @@ void VersionSet::SetLastSequenceNoSanityChecking(SequenceNumber s) {
 }
 
 // Set the last flushed op id / hybrid time / history cutoff to the specified set of values.
-void VersionSet::UpdateFlushedFrontier(UserFrontierPtr values) {
-  EnsureNonDecreasingFlushedFrontier(FlushedFrontier(), *values);
+void VersionSet::UpdateFlushedFrontier(UserFrontierPtr values, FrontierModificationMode mode) {
+  if (mode != FrontierModificationMode::kUpdateIgnoreBackwards) {
+    EnsureNonDecreasingFlushedFrontier(FlushedFrontier(), *values);
+  }
   UpdateFlushedFrontierNoSanityChecking(std::move(values));
 }
 
