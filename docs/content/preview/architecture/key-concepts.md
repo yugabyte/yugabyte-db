@@ -219,3 +219,4 @@ Fully-relational SQL API that is wire compatible with the SQL language in Postgr
 ## Zone
 
 Typically referred as Availability Zones or just AZ, a zone is a datacenter or a group of colocated datacenters. Zone is the default [fault domain](#fault-domain) in YugabyteDB.
+{{< contribute >}}
