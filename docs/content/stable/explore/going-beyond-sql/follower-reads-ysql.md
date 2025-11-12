@@ -208,7 +208,7 @@ Set the `yb_follower_read_staleness_ms` property to 5000 (5 seconds) and run the
 
 ```sql
 SET yb_follower_read_staleness_ms = 5000;
-SELECT * FROM t WHERE k = 'k1';  
+SELECT * FROM t WHERE k = 'k1';
 ```
 
 ```output
@@ -222,7 +222,7 @@ Next, set `yb_follower_read_staleness_ms` to 15000 (15 seconds) and run the quer
 
 ```sql
 SET yb_follower_read_staleness_ms = 15000;
-SELECT * FROM t WHERE k = 'k1';  
+SELECT * FROM t WHERE k = 'k1';
 ```
 
 ```output
@@ -236,7 +236,7 @@ Finally, set `yb_follower_read_staleness_ms` to 25000 (25 seconds) and run the q
 
 ```sql
 SET yb_follower_read_staleness_ms = 25000;
-SELECT * FROM t WHERE k = 'k1';   
+SELECT * FROM t WHERE k = 'k1';
 ```
 
 ```output

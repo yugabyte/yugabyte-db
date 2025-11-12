@@ -4,7 +4,10 @@ headerTitle: Install YugabyteDB Anywhere
 linkTitle: Install YBA software
 description: Install YugabyteDB Anywhere software using YBA Installer
 headContent: Install YBA software using YBA Installer
-
+aliases:
+  - /preview/yugabyte-platform/install-yugabyte-platform/install-software/
+  - /preview/yugabyte-platform/install-yugabyte-platform/install-software/default/
+  - /preview/yugabyte-platform/install-yugabyte-platform/migrate-replicated/
 menu:
   stable_yugabyte-platform:
     parent: install-yugabyte-platform

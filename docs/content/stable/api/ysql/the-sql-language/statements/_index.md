@@ -9,6 +9,8 @@ menu:
     identifier: statements
     parent: the-sql-language
     weight: 100
+aliases:
+  - /preview/api/ysql/commands/
 type: indexpage
 showRightNav: true
 ---

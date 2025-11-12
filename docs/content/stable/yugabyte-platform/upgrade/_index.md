@@ -3,6 +3,8 @@ title: Upgrade YugabyteDB Anywhere
 headerTitle: Upgrade YugabyteDB Anywhere
 linkTitle: Upgrade
 description: Upgrade YugabyteDB Anywhere.
+aliases:
+  - /preview/yugabyte-platform/upgrade/upgrade-yp-replicated/
 menu:
   stable_yugabyte-platform:
     parent: yugabytedb-anywhere

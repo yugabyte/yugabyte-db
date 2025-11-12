@@ -7,6 +7,8 @@ menu:
   stable_api:
     parent: api-cassandra
     weight: 1350
+aliases:
+  - /preview/api/cassandra/expr_fcall
 type: docs
 ---
 

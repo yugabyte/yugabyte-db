@@ -9,6 +9,8 @@ menu:
     parent: pg-extensions
     weight: 20
 type: docs
+aliases:
+  - /preview/explore/ysql-language-features/pg-extensions/extension-pgvector
 ---
 
 The [pgvector](https://github.com/pgvector/pgvector) PostgreSQL extension allows you to store and query vectors, for use in performing similarity searches.
@@ -214,7 +216,7 @@ A higher `ef_construction` value provides faster recall at the cost of index bui
 
 ## Learn more
 
-- Tutorial: [Build and Learn](/preview/develop/tutorials/build-and-learn/)
-- Tutorials: [Build scalable generative AI applications with YugabyteDB](/preview/develop/tutorials/ai/)
+- Tutorial: [Build and Learn](/stable/develop/tutorials/build-and-learn/)
+- Tutorials: [Build scalable generative AI applications with YugabyteDB](/stable/develop/tutorials/ai/)
 - [PostgreSQL pgvector: Getting Started and Scaling](https://www.yugabyte.com/blog/postgresql-pgvector-getting-started/)
 - [Multimodal Search with PostgreSQL pgvector](https://www.yugabyte.com/blog/postgresql-pgvector-multimodal-search/)

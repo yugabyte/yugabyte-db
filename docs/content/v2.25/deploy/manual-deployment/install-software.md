@@ -15,7 +15,7 @@ Installing YugabyteDB involves completing prerequisites and downloading the Yuga
 
 ## Prerequisites
 
-{{% readfile "/preview/quick-start/include-prerequisites-linux.md" %}}
+{{% readfile "/stable/quick-start/include-prerequisites-linux.md" %}}
 
 ### Using disk encryption software with YugabyteDB
 

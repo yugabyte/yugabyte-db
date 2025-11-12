@@ -7,6 +7,8 @@ menu:
   stable_api:
     identifier: perf_explain
     parent: statements
+aliases:
+  - /preview/api/ysql/commands/perf_explain/
 rightnav:
   hideH4: true
 type: docs

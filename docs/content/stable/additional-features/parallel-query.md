@@ -2,11 +2,15 @@
 title: Parallel queries
 linkTitle: Parallel queries
 description: Parallel queries in YSQL
+tags:
+  feature: early-access
 menu:
   stable:
     identifier: advanced-features-parallel-query
     parent: additional-features
     weight: 60
+aliases:
+  - /preview/explore/ysql-language-features/advanced-features/parallel-queries/
 type: docs
 ---
 

@@ -28,6 +28,7 @@ To enable Read Committed isolation, set the YB-TServer flag [yb_enable_read_comm
 Refer to [Usage](#usage) to start a Read Committed transaction after enabling the flag.
 {{< /tip >}}
 
+
 ## Implementation and semantics (as in PostgreSQL)
 
 The following two key semantics set apart Read Committed isolation from Repeatable Read in PostgreSQL (refer [Read Committed level](https://www.postgresql.org/docs/13/transaction-iso.html#XACT-READ-COMMITTED)):
@@ -1404,7 +1405,7 @@ commit;
 
 Read Committed interacts with the following feature:
 
-* [Follower reads](/preview/develop/build-global-apps/follower-reads/): When follower reads is enabled and the transaction block is explicitly marked `READ ONLY`, the read point for each statement in a read committed transaction is selected as `Now()` - `yb_follower_read_staleness_ms`.
+* [Follower reads](../../../develop/build-global-apps/follower-reads/): When follower reads is enabled and the transaction block is explicitly marked `READ ONLY`, the read point for each statement in a read committed transaction is selected as `Now()` - `yb_follower_read_staleness_ms`.
 
 ## Limitations
 

@@ -9,6 +9,8 @@ menu:
     identifier: aggregate-function-syntax-semantics
     parent: aggregate-functions
     weight: 90
+aliases:
+  - /preview/api/ysql/exprs/aggregate_functions
 type: indexpage
 showRightNav: true
 ---

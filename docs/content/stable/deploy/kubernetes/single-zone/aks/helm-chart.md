@@ -9,6 +9,10 @@ menu:
     name: Azure Kubernetes Service
     identifier: k8s-aks-1
     weight: 624
+aliases:
+  - /preview/deploy/kubernetes/aks/
+  - /preview/deploy/kubernetes/aks/helm-chart/
+  - /preview/deploy/kubernetes/single-zone/aks/
 type: docs
 ---
 

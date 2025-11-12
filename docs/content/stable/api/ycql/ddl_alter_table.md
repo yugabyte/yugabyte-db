@@ -7,6 +7,9 @@ menu:
   stable_api:
     parent: api-cassandra
     weight: 1220
+aliases:
+  - /preview/api/cassandra/ddl_alter_table
+  - /preview/api/ycql/ddl_alter_table
 type: docs
 ---
 

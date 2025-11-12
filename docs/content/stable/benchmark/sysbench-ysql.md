@@ -9,6 +9,8 @@ menu:
     identifier: sysbench-ysql
     parent: benchmark
     weight: 5
+aliases:
+  - /benchmark/sysbench/
 type: docs
 ---
 

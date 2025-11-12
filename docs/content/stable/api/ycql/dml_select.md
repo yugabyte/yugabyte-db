@@ -7,6 +7,9 @@ menu:
   stable_api:
     parent: api-cassandra
     weight: 1310
+aliases:
+  - /preview/api/cassandra/dml_select
+  - /preview/api/ycql/dml_select
 type: docs
 ---
 

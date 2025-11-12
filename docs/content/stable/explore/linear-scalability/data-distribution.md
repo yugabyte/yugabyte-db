@@ -4,6 +4,8 @@ headerTitle: Data distribution
 linkTitle: Data distribution
 description: Understand how a table is split into tablets and is moved seamlessly across nodes
 headcontent: Understand how a table is split into tablets and moved seamlessly across nodes
+aliases:
+  - /explore/linear-scalability/sharding-rebalancing
 menu:
   stable:
     identifier: scalability-data-distribution

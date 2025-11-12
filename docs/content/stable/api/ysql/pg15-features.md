@@ -4,6 +4,10 @@ headerTitle: PostgreSQL 15 features
 linkTitle: PG15 features
 description: Use PostgreSQL 15 features in your applications
 headContent: Use PostgreSQL 15 features in your applications
+tags:
+  feature: tech-preview
+aliases:
+  - /preview/develop/pg15-features/
 menu:
   stable_api:
     identifier: yb-postgresql-15
@@ -165,7 +169,7 @@ Currently, upgrades are only supported from v2024.2.2 or later to v2.25.1 or lat
 
 ### ysqlsh
 
-To ensure compatibility, make sure you are using the [latest ysqlsh client](/preview/releases/yugabyte-clients/) (v2.25) with YugabyteDB v2.25.
+To ensure compatibility, make sure you are using the [latest ysqlsh client](/stable/releases/yugabyte-clients/) (v2.25) with YugabyteDB v2.25.
 
 Due to the addition of the `--csv` option in psql (and hence [ysqlsh](../../ysqlsh/)), you can no longer use the `--c` (double-hyphen) flag in place of `--command`. Use either `-c` (single hyphen) or `--command` instead.
 

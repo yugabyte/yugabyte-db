@@ -4,6 +4,8 @@ headerTitle: Administer YugabyteDB Anywhere
 linkTitle: Administer
 description: Administer YugabyteDB Anywhere
 headcontent: Manage your YugabyteDB Anywhere installation
+aliases:
+  - /preview/yugabyte-platform/administer-yp
 menu:
   stable_yugabyte-platform:
     parent: yugabytedb-anywhere
