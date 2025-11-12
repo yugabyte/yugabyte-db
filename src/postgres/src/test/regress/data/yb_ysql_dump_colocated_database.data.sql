@@ -371,6 +371,12 @@ COPY public.tbl5 (k, v) FROM stdin;
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16419'::pg_catalog.oid);
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16419'::pg_catalog.oid);
 
+
+-- For YB colocation backup, must preserve implicit tablegroup pg_yb_tablegroup oid
+SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16387'::pg_catalog.oid);
+
+-- For YB colocation backup without tablespace information, must preserve default tablegroup tables
+SELECT pg_catalog.binary_upgrade_set_next_tablegroup_default(true);
 CREATE UNIQUE INDEX NONCONCURRENTLY tbl5_v_key ON public.tbl5 USING lsm (v ASC) WITH (colocation_id=20006);
 
 ALTER TABLE ONLY public.tbl5
@@ -505,4 +511,3 @@ END $$;
 --
 -- YSQL database dump complete
 --
-
