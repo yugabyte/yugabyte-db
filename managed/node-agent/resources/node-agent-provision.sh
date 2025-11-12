@@ -10,6 +10,7 @@
 set -euo pipefail
 
 PYTHON_VERSION="python3"
+VENV_SETUP_COMPLETION_MARKER=".yb_env_setup_complete"
 
 # Function to display usage information
 show_usage() {
@@ -130,10 +131,9 @@ install_pywheels() {
 
 # Function to setup the virtual env.
 setup_virtualenv() {
-    virtualenv_dir=$(pwd)
-    YB_VIRTUALENV_BASENAME="venv"
-    VENV_PATH="$virtualenv_dir/$YB_VIRTUALENV_BASENAME"
-
+    VIRTUAL_ENV_DIR=$(pwd)
+    YB_VIRTUALENV_PATH_SUFFIX=$(get_env_path_suffix)
+    VENV_PATH="$VIRTUAL_ENV_DIR/$YB_VIRTUALENV_PATH_SUFFIX"
     if [[ "$is_csp" == true && "$is_airgap" == false ]]; then
         # Check if venv is available
         if ! python3 -m ensurepip &>/dev/null; then
@@ -148,7 +148,11 @@ setup_virtualenv() {
             fi
         fi
     fi
-
+    VENV_SETUP_COMPLETION_MARKER_PATH="$VENV_PATH/$VENV_SETUP_COMPLETION_MARKER"
+    if [[ -d "$VENV_PATH" ]] && [ ! -f "$VENV_SETUP_COMPLETION_MARKER_PATH" ]; then
+        echo "Virtual environment exists but setup not completed. Recreating..."
+        rm -rf "$VENV_PATH"
+    fi
     if [ ! -d "$VENV_PATH" ]; then
         echo "Creating virtual environment at $VENV_PATH..."
         if ! python3 -m venv "$VENV_PATH"; then
@@ -157,7 +161,6 @@ setup_virtualenv() {
     else
         echo "Virtual environment already exists at $VENV_PATH."
     fi
-
     if source "$VENV_PATH/bin/activate"; then
         USER_NAME=$(logname 2>/dev/null || echo "$SUDO_USER" || whoami)
         chown -R $USER_NAME:$USER_NAME $VENV_PATH
@@ -184,6 +187,18 @@ setup_pip() {
     else
         echo "Upgrading pip for $PYTHON_VERSION_DETECTED..."
     fi
+}
+
+# Get the root path of the virtual environment when it is activated.
+get_activated_venv_path() {
+    PYTHON_CMD=$(command -v python3)
+    PYTHON_VENV_PATH=$($PYTHON_CMD -c "import sys; print(sys.prefix)")
+    echo "$PYTHON_VENV_PATH"
+}
+
+# User specific path suffix for the virtual environment.
+get_env_path_suffix() {
+    echo "venv/$(id -u -n)"
 }
 
 # Function to check for Python

@@ -45,9 +45,14 @@ done
 
 
 # Get the status of yb-node-agent Service
-status=$(su - {{ yb_user }} -c \
+if [ "$(id -u)" -eq 0 ]; then
+    status=$(su - {{ yb_user }} -c \
     "XDG_RUNTIME_DIR=/run/user/$(id -u {{ yb_user }}) systemctl --user show -p ActiveState \
     \"$service_name\" | grep ActiveState | awk -F= '/ActiveState/ {print \$2}'")
+else
+    status=$(XDG_RUNTIME_DIR=/run/user/$(id -u {{ yb_user }}) systemctl --user show -p \
+    ActiveState "$service_name" | grep ActiveState | awk -F= '/ActiveState/ {print $2}')
+fi
 if [ "$status" = "active" ]; then
     echo "\"$service_name\" is active"
     add_result "Service Status Check" "PASS" "$service_name is active"

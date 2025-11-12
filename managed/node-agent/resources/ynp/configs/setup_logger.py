@@ -69,8 +69,8 @@ def setup_logger(config):
     user_info = pwd.getpwnam(original_user)
     uid = user_info.pw_uid
     gid = user_info.pw_gid
-    os.chown(log_dir, uid, gid)
-    os.chown(log_path, uid, gid)
-
+    if uid == 0:
+        os.chown(log_dir, uid, gid)
+        os.chown(log_path, uid, gid)
     logger = logging.getLogger()
     logger.info("Logging setup complete in UTC timezone")
