@@ -763,6 +763,19 @@ public class Universe extends Model {
     return filteredServers;
   }
 
+  public List<NodeDetails> getRunningTserversinCluster(UUID clusterUUID) {
+    List<NodeDetails> servers = getTserversInCluster(clusterUUID);
+    List<NodeDetails> filteredServers =
+        servers.stream().filter(NodeDetails::isConsideredRunning).collect(Collectors.toList());
+
+    if (filteredServers.isEmpty()) {
+      LOG.trace(
+          "No Running nodes for getRunningTserversInPrimaryCluster in universe {}",
+          getUniverseUUID());
+    }
+    return filteredServers;
+  }
+
   /**
    * Return the list of YQL servers for this universe.
    *
