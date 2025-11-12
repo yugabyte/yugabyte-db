@@ -310,7 +310,8 @@ class ProvisionCommand(Command):
                 yb_user = context.get('yb_user')
                 uid = pwd.getpwnam(yb_user).pw_uid
                 gid = grp.getgrnam(yb_user).gr_gid
-                os.chown(ynp_version_file, uid, gid)
+                if uid == 0:
+                    os.chown(ynp_version_file, uid, gid)
             else:
                 logger.info("yb_home_dir or current_ynp_version is missing in the context")
 
