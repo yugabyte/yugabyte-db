@@ -892,11 +892,7 @@ class PgBackendsTestRf3TableLocksDisabled : public PgBackendsTestRf3 {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     PgBackendsTestRf3::UpdateMiniClusterOptions(options);
     options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_tserver_flags, "enable_object_locking_for_table_locks");
     options->extra_master_flags.push_back("--enable_object_locking_for_table_locks=false");
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_master_flags, "enable_object_locking_for_table_locks");
   }
 };
 

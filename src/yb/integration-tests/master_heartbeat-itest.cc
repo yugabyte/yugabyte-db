@@ -766,7 +766,6 @@ void GlobalTransactionTableCreationTest::SetUp() {
       // TODO(#27854): We get stuck with object locking when there is no system.transactions
       // table. Disabling it for now until we fix the underlying issue.
       "--enable_object_locking_for_table_locks=false",
-      "--allowed_preview_flags_csv=enable_object_locking_for_table_locks",
   };
   cluster_ = std::make_unique<ExternalMiniCluster>(opts);
   ASSERT_OK(cluster_->Start());

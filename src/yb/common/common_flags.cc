@@ -209,7 +209,7 @@ DEFINE_RUNTIME_uint64(refresh_waiter_timeout_ms, 30000,
 TAG_FLAG(refresh_waiter_timeout_ms, advanced);
 TAG_FLAG(refresh_waiter_timeout_ms, hidden);
 
-DEFINE_NON_RUNTIME_PREVIEW_bool(enable_object_locking_for_table_locks, false,
+DEFINE_NON_RUNTIME_bool(enable_object_locking_for_table_locks, false,
     "This flag enables the object lock APIs provided by tservers and masters - "
     "AcquireObject(Global)Lock, ReleaseObject(Global)Lock. These APIs are used to "
     "implement pg table locks.");

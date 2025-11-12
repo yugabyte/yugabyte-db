@@ -36,9 +36,6 @@ class PgPartmanTest : public MiniClusterTestWithClient<ExternalMiniCluster> {
     // TODO(#28726): Reenable once pg_partman supports transactional ddl.
     opts.extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=false");
     opts.extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
-    opts.extra_tserver_flags.push_back(
-        Format("--allowed_preview_flags_csv=$0,$1",
-                "enable_object_locking_for_table_locks", "ysql_yb_ddl_transaction_block_enabled"));
 
     cluster_.reset(new ExternalMiniCluster(opts));
     ASSERT_OK(cluster_->Start());

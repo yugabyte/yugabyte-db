@@ -31,8 +31,6 @@ public class TestPgRegressPgAuth extends BasePgRegressTestPorted {
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
-    flagMap.put("allowed_preview_flags_csv",
-                "enable_object_locking_for_table_locks,ysql_yb_ddl_transaction_block_enabled");
     flagMap.put("enable_object_locking_for_table_locks", "true");
     flagMap.put("ysql_yb_ddl_transaction_block_enabled", "true");
     flagMap.put("ysql_enable_reindex", "true");

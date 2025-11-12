@@ -35,8 +35,6 @@ class YsqlDdlWhitelistTest : public pgwrapper::PgMiniTestBase {
   void SetUp() override {
     // TODO(#28742): Fix interaction of ysql_yb_ddl_transaction_block_enabled with
     // yb_force_catalog_update_on_next_ddl. For now, disable table locks for this test.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_allowed_preview_flags_csv) =
-        "enable_object_locking_for_table_locks,ysql_yb_ddl_transaction_block_enabled";
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = false;
     pgwrapper::PgMiniTestBase::SetUp();

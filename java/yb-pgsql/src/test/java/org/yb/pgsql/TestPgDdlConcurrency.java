@@ -45,8 +45,6 @@ public class TestPgDdlConcurrency extends BasePgSQLTest {
     // TODO(#28745): Revisit this. Runs into a deadlock issue with table locks/txn-ddl enabled.
     flags.put("enable_object_locking_for_table_locks", "false");
     flags.put("ysql_yb_ddl_transaction_block_enabled", "false");
-    flags.put("allowed_preview_flags_csv",
-              "enable_object_locking_for_table_locks,ysql_yb_ddl_transaction_block_enabled");
     return flags;
   }
 
