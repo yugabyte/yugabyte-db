@@ -1346,6 +1346,233 @@ TEST_F(
   )#");
 }
 
+// Test backup/restore on a colocated database with tables having unique constraints.
+// Verify that unique indexes are properly restored and contain the expected data.
+TEST_F(
+    YBBackupTestColocatedTablesWithTablespaces,
+    YB_DISABLE_TEST_IN_SANITIZERS(TestBackupColocatedTablesWithUniqueConstraints)) {
+  const string& backup_db_name = "backup_db_unique";
+  const string& restore_db_name = "restore_db_unique";
+
+  SetupTablespaces();
+
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      Format("CREATE DATABASE $0 WITH COLOCATION=TRUE", backup_db_name), "CREATE DATABASE"));
+  SetDbName(backup_db_name);
+
+  // Create tables with unique constraints in different tablespaces
+  ASSERT_NO_FATALS(
+      CreateTable("CREATE TABLE t1 (a INT PRIMARY KEY, b INT UNIQUE, c TEXT) TABLESPACE tsp1"));
+  ASSERT_NO_FATALS(
+      CreateTable("CREATE TABLE t2 (a INT PRIMARY KEY, b INT, c TEXT UNIQUE) TABLESPACE tsp2"));
+  ASSERT_NO_FATALS(CreateTable(
+      "CREATE TABLE t3 (a INT PRIMARY KEY, b INT, c TEXT, UNIQUE(b, c)) TABLESPACE tsp3"));
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE t4 (a INT PRIMARY KEY, b INT UNIQUE, c TEXT)"));
+
+  // Insert data into tables
+  for (int i = 0; i < 5; ++i) {
+    ASSERT_NO_FATALS(
+        InsertOneRow(Format("INSERT INTO t1 VALUES ($0, $1, 'text$2')", i, i + 100, i)));
+  }
+
+  for (int i = 0; i < 5; ++i) {
+    ASSERT_NO_FATALS(
+        InsertOneRow(Format("INSERT INTO t2 VALUES ($0, $1, 'unique$2')", i, i + 200, i)));
+  }
+
+  for (int i = 0; i < 5; ++i) {
+    ASSERT_NO_FATALS(
+        InsertOneRow(Format("INSERT INTO t3 VALUES ($0, $1, 'combo$2')", i, i + 300, i)));
+  }
+
+  for (int i = 0; i < 5; ++i) {
+    ASSERT_NO_FATALS(
+        InsertOneRow(Format("INSERT INTO t4 VALUES ($0, $1, 'default$2')", i, i + 400, i)));
+  }
+
+  const string backup_dir = GetTempDir("backup_unique");
+  const auto backup_keyspace = Format("ysql.$0", backup_db_name);
+  const auto restore_keyspace = Format("ysql.$0", restore_db_name);
+
+  // Backup using the --use_tablespaces flag
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", backup_keyspace, "--use_tablespaces",
+       "create"}));
+
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", restore_keyspace, "--use_tablespaces",
+       "restore"}));
+
+  SetDbName(restore_db_name);
+
+  // Verify data is restored correctly
+  RunPsqlCommand(
+      "SELECT * FROM t1 ORDER BY a;",
+      "a |  b  |   c\n"
+      "---+-----+-------\n"
+      " 0 | 100 | text0\n"
+      " 1 | 101 | text1\n"
+      " 2 | 102 | text2\n"
+      " 3 | 103 | text3\n"
+      " 4 | 104 | text4\n"
+      "(5 rows)");
+
+  RunPsqlCommand(
+      "SELECT * FROM t2 ORDER BY a;",
+      "a |  b  |    c\n"
+      "---+-----+---------\n"
+      " 0 | 200 | unique0\n"
+      " 1 | 201 | unique1\n"
+      " 2 | 202 | unique2\n"
+      " 3 | 203 | unique3\n"
+      " 4 | 204 | unique4\n"
+      "(5 rows)");
+
+  RunPsqlCommand(
+      "SELECT * FROM t3 ORDER BY a;",
+      "a |  b  |   c\n"
+      "---+-----+--------\n"
+      " 0 | 300 | combo0\n"
+      " 1 | 301 | combo1\n"
+      " 2 | 302 | combo2\n"
+      " 3 | 303 | combo3\n"
+      " 4 | 304 | combo4\n"
+      "(5 rows)");
+
+  RunPsqlCommand(
+      "SELECT * FROM t4 ORDER BY a;",
+      "a |  b  |    c\n"
+      "---+-----+----------\n"
+      " 0 | 400 | default0\n"
+      " 1 | 401 | default1\n"
+      " 2 | 402 | default2\n"
+      " 3 | 403 | default3\n"
+      " 4 | 404 | default4\n"
+      "(5 rows)");
+
+  // Verify table structures with unique indexes
+  RunPsqlCommand(
+      " \\d t1",
+      R"#(
+                    Table "public.t1"
+   Column |  Type   | Collation | Nullable | Default
+  --------+---------+-----------+----------+---------
+   a      | integer |           | not null |
+   b      | integer |           |          |
+   c      | text    |           |          |
+  Indexes:
+      "t1_pkey" PRIMARY KEY, lsm (a ASC), tablespace "tsp1", colocation: true
+      "t1_b_key" UNIQUE CONSTRAINT, lsm (b ASC), colocation: true
+  Tablespace: "tsp1"
+  Colocation: true
+  )#");
+
+  RunPsqlCommand(
+      " \\d t2",
+      R"#(
+                    Table "public.t2"
+   Column |  Type   | Collation | Nullable | Default
+  --------+---------+-----------+----------+---------
+   a      | integer |           | not null |
+   b      | integer |           |          |
+   c      | text    |           |          |
+  Indexes:
+      "t2_pkey" PRIMARY KEY, lsm (a ASC), tablespace "tsp2", colocation: true
+      "t2_c_key" UNIQUE CONSTRAINT, lsm (c ASC), colocation: true
+  Tablespace: "tsp2"
+  Colocation: true
+  )#");
+
+  RunPsqlCommand(
+      " \\d t3",
+      R"#(
+                    Table "public.t3"
+   Column |  Type   | Collation | Nullable | Default
+  --------+---------+-----------+----------+---------
+   a      | integer |           | not null |
+   b      | integer |           |          |
+   c      | text    |           |          |
+  Indexes:
+      "t3_pkey" PRIMARY KEY, lsm (a ASC), tablespace "tsp3", colocation: true
+      "t3_b_c_key" UNIQUE CONSTRAINT, lsm (b ASC, c ASC), colocation: true
+  Tablespace: "tsp3"
+  Colocation: true
+  )#");
+
+  RunPsqlCommand(
+      " \\d t4",
+      R"#(
+                    Table "public.t4"
+   Column |  Type   | Collation | Nullable | Default
+  --------+---------+-----------+----------+---------
+   a      | integer |           | not null |
+   b      | integer |           |          |
+   c      | text    |           |          |
+  Indexes:
+      "t4_pkey" PRIMARY KEY, lsm (a ASC), colocation: true
+      "t4_b_key" UNIQUE CONSTRAINT, lsm (b ASC), colocation: true
+  Colocation: true
+  )#");
+
+  // Validate unique constraint indexes using yb_index_check
+  RunPsqlCommand(
+      "SELECT yb_index_check('t1_b_key'::regclass);",
+      "yb_index_check\n"
+      "----------------\n"
+      "\n"
+      "(1 row)");
+
+  RunPsqlCommand(
+      "SELECT yb_index_check('t2_c_key'::regclass);",
+      "yb_index_check\n"
+      "----------------\n"
+      "\n"
+      "(1 row)");
+
+  RunPsqlCommand(
+      "SELECT yb_index_check('t3_b_c_key'::regclass);",
+      "yb_index_check\n"
+      "----------------\n"
+      "\n"
+      "(1 row)");
+
+  RunPsqlCommand(
+      "SELECT yb_index_check('t4_b_key'::regclass);",
+      "yb_index_check\n"
+      "----------------\n"
+      "\n"
+      "(1 row)");
+
+  // Validate indexes by performing index-only scans
+  RunPsqlCommand(
+      "/*+ IndexOnlyScan(t1 t1_b_key) */ SELECT * FROM t1 WHERE b = 102;",
+      "a |  b  |   c\n"
+      "---+-----+-------\n"
+      " 2 | 102 | text2\n"
+      "(1 row)");
+
+  RunPsqlCommand(
+      "/*+ IndexOnlyScan(t2 t2_c_key) */ SELECT * FROM t2 WHERE c = 'unique3';",
+      "a |  b  |    c\n"
+      "---+-----+---------\n"
+      " 3 | 203 | unique3\n"
+      "(1 row)");
+
+  RunPsqlCommand(
+      "/*+ IndexOnlyScan(t3 t3_b_c_key) */ SELECT * FROM t3 WHERE b = 301 AND c = 'combo1';",
+      "a |  b  |   c\n"
+      "---+-----+--------\n"
+      " 1 | 301 | combo1\n"
+      "(1 row)");
+
+  RunPsqlCommand(
+      "/*+ IndexOnlyScan(t4 t4_b_key) */ SELECT * FROM t4 WHERE b = 403;",
+      "a |  b  |    c\n"
+      "---+-----+----------\n"
+      " 3 | 403 | default3\n"
+      "(1 row)");
+}
+
 // Test backup/restore of geo-partitioned colocated tables with tablespace information.
 TEST_F(
     YBBackupTestColocatedTablesWithTablespaces,
