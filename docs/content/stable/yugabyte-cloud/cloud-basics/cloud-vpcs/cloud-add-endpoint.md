@@ -54,7 +54,7 @@ Before you can create a PSE, you need to do the following:
 In addition, if you want to use [ybm CLI](../../../managed-automation/managed-cli/) to create PSEs, you need to do the following:
 
 - Create an API key. Refer to [API keys](../../../managed-automation/managed-apikeys/).
-- Install and configure ybm CLI. Refer to [Install and configure](../../../managed-automation/managed-cli/managed-cli-overview/).
+- Install and configure ybm CLI. Refer to [Install ybm](../../../managed-automation/managed-cli/#install-ybm).
 
 Note that, unlike VPC peering, when connected to an application VPC using a private link, you do not need to add an [IP allow list](../../../cloud-secure-clusters/add-connections/) to your cluster.
 
