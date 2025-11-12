@@ -738,6 +738,9 @@ class Tablet : public AbstractTablet,
   // Flushed intents db if necessary.
   void FlushIntentsDbIfNecessary(const yb::OpId& lastest_log_entry_op_id);
 
+  // May modify the flushed op_id of intents db.
+  Status MayModifyIntentsDbFlushedOpId();
+
   bool is_sys_catalog() const { return is_sys_catalog_; }
   bool IsTransactionalRequest(bool is_ysql_request) const override;
 

@@ -708,7 +708,7 @@ class VersionSet {
   // supplied values for each dimension. This will DFATAL in case the supplied frontier regresses
   // relative to the current frontier in any of its dimensions which have non-default (defined)
   // values.
-  void UpdateFlushedFrontier(UserFrontierPtr values);
+  void UpdateFlushedFrontier(UserFrontierPtr values, FrontierModificationMode mode);
 
   // Mark the specified file number as used.
   // REQUIRED: this is only called during single-threaded recovery
