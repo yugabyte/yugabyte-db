@@ -1369,6 +1369,10 @@ Result<bool> TabletPeer::MoveForwardAllCDCRetentionBarriers(
       require_history_cutoff, /*initial_retention_barrier=*/false);
 }
 
+std::string TabletPeer::AllCDCRetentionBarriersToString() const {
+  return tablet_metadata()->AllCDCRetentionBarriersToString();
+}
+
 std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::LWReplicateMsg* replicate_msg) {
   // TODO: handle cases where tablet is unset safely.
   auto tablet = CHECK_RESULT(shared_tablet());

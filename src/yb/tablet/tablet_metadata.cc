@@ -1727,6 +1727,18 @@ Result<bool> RaftGroupMetadata::SetAllCDCRetentionBarriers(
   return set_cdc_min_checkpoint_op_id_check;
 }
 
+std::string RaftGroupMetadata::AllCDCRetentionBarriersToString() const {
+  std::lock_guard lock(data_mutex_);
+
+  std::ostringstream oss;
+  oss << LogPrefix() << " CDC Retention Barriers: "
+      << "cdc_min_replicated_index: " << cdc_min_replicated_index_
+      << ", cdc_sdk_min_checkpoint_op_id: " << cdc_sdk_min_checkpoint_op_id_
+      << ", cdc_sdk_safe_time: " << cdc_sdk_safe_time_;
+
+  return oss.str();
+}
+
 Status RaftGroupMetadata::SetIsUnderXClusterReplicationAndFlush(
     bool is_under_xcluster_replication) {
   {

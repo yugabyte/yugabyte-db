@@ -463,6 +463,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   Result<bool> MoveForwardAllCDCRetentionBarriers(
       int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, MonoDelta cdc_sdk_op_id_expiration,
       HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff);
+
+  std::string AllCDCRetentionBarriersToString() const;
   //------------------------------------------------------------------------------------------------
 
   OpId GetLatestCheckPoint();
