@@ -50,6 +50,7 @@ import com.yugabyte.yw.forms.RestorePreflightParams;
 import com.yugabyte.yw.forms.RestorePreflightResponse;
 import com.yugabyte.yw.forms.UniverseBackupRequestParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.forms.backuprestore.AdvancedRestorePreflightParams;
 import com.yugabyte.yw.forms.backuprestore.KeyspaceTables;
@@ -1329,13 +1330,15 @@ public class BackupHelper {
     if (isSkipConfigBasedPreflightValidation(universe)) {
       return;
     }
-    List<NodeDetails> nodeDetailsList = universe.getRunningTserversInPrimaryCluster();
-    for (NodeDetails node : nodeDetailsList) {
-      ybcManager.validateCloudConfigIgnoreIfYbcUnavailable(
-          node.cloudInfo.private_ip,
-          universe,
-          ybcBackupUtil.getCloudStoreConfigWithBucketLocationsMap(
-              config, bucketLocationsMap, universe));
+    for (Cluster cluster : universe.getUniverseDetails().clusters) {
+      List<NodeDetails> nodesInCluster = universe.getRunningTserversinCluster(cluster.uuid);
+      for (NodeDetails node : nodesInCluster) {
+        ybcManager.validateCloudConfigIgnoreIfYbcUnavailable(
+            node.cloudInfo.private_ip,
+            universe,
+            ybcBackupUtil.getCloudStoreConfigWithBucketLocationsMap(
+                config, bucketLocationsMap, universe));
+      }
     }
   }
 
