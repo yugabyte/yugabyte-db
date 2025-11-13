@@ -31,6 +31,7 @@ import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data.RegionLoc
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -670,8 +671,8 @@ public class AWSUtil implements CloudUtil {
               .sorted((o1, o2) -> o2.lastModified().compareTo(o1.lastModified()))
               .collect(Collectors.toList());
       if (sortedBackups.isEmpty()) {
-        log.error("Could not find any backups to restore");
-        return null;
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Could not find YB Anywhere backup in S3 bucket");
       }
       // Iterate through until we find a backup
       S3Object backup = null;
@@ -687,15 +688,17 @@ public class AWSUtil implements CloudUtil {
       }
 
       if (backup == null) {
-        log.error("Could not find matching backup, aborting restore.");
-        return null;
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Could not find matching YB Anywhere backup in S3 bucket");
       }
 
       // Validate backup file is less than 1 day old
       if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.allowYbaRestoreWithOldBackup)) {
         if (backup.lastModified().isBefore(Instant.now().minus(1, ChronoUnit.DAYS))) {
           throw new PlatformServiceException(
-              BAD_REQUEST, "YBA restore is not allowed when backup file is more than 1 day old");
+              BAD_REQUEST,
+              "YB Anywhere restore is not allowed when backup file is more than 1 day old, enable"
+                  + " runtime flag yb.yba_backup.allow_restore_with_old_backup to continue");
         }
       }
 
@@ -718,29 +721,31 @@ public class AWSUtil implements CloudUtil {
         }
 
       } catch (Exception e) {
-        log.error("Error writing S3 object to file: {}", e.getMessage());
-        return null;
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR, "Error writing S3 object to file: " + e.getMessage());
       }
 
       if (!localFile.exists() || localFile.length() == 0) {
-        log.error("Local file does not exist or is empty, aborting restore.");
-        return null;
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR, "Local file does not exist or is empty, aborting restore.");
       }
 
       log.info("Downloaded file from S3 to {}", localFile.getCanonicalPath());
       return localFile;
     } catch (S3Exception e) {
-      log.error(
-          "Error occurred while getting object in S3: {}", e.awsErrorDetails().errorMessage());
-    } catch (Exception e) {
-      log.error("Unexpected exception while getting object in S3: {}", e.getMessage());
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR,
+          "AWS error downloading YB Anywhere backup: " + e.awsErrorDetails().errorMessage());
+    } catch (IOException e) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR,
+          "IO error occurred while downloading object from S3: " + e.getMessage());
     } finally {
       maybeEnableCertVerification();
       if (client != null) {
         client.close();
       }
     }
-    return null;
   }
 
   @Override

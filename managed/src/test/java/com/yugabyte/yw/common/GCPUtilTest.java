@@ -4,6 +4,7 @@ package com.yugabyte.yw.common;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
@@ -30,6 +31,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -58,8 +60,8 @@ public class GCPUtilTest extends FakeDBApplication {
     MockitoAnnotations.openMocks(this);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.numCloudYbaBackupsRetention)))
         .thenReturn(2);
-    // when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.enforceCertVerificationBackupRestore)))
-    //     .thenReturn(true);
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.allowYbaRestoreWithOldBackup)))
+        .thenReturn(false);
     Blob mockBlob = mock(Blob.class);
     when(mockStorageClient.create(any(BlobInfo.class), any(InputStream.class)))
         .thenReturn(mockBlob);
@@ -458,6 +460,112 @@ public class GCPUtilTest extends FakeDBApplication {
   }
 
   @Test
+  public void testDownloadYbaBackupOldFailure() throws Exception {
+    try (MockedStatic<GCPUtil> mockedStaticGCPUtil = mockStatic(GCPUtil.class)) {
+      mockedStaticGCPUtil
+          .when(() -> GCPUtil.getStorageService(any(CustomerConfigStorageGCSData.class)))
+          .thenReturn(mockStorageClient);
+      mockedStaticGCPUtil.when(() -> GCPUtil.getSplitLocationValue(any())).thenCallRealMethod();
+
+      CustomerConfigStorageGCSData gcsData = new CustomerConfigStorageGCSData();
+      gcsData.gcsCredentialsJson = "{}";
+      gcsData.backupLocation = "gs://test-bucket/backup/cloudPath";
+
+      Path tempBackupPath = Files.createTempDirectory("test-backup");
+      tempBackupPath.toFile().deleteOnExit();
+
+      Blob oldBackupBlob = mock(Blob.class);
+      when(oldBackupBlob.getName())
+          .thenReturn("backup/cloudPath/test-backup-dir/backup_2025-03-20_12-00-00.tgz");
+      when(oldBackupBlob.getUpdateTimeOffsetDateTime())
+          .thenReturn(OffsetDateTime.now().minusDays(2));
+
+      Page<Blob> mockPage = mock(Page.class);
+      List<Blob> blobs = Collections.singletonList(oldBackupBlob);
+      when(mockPage.iterateAll()).thenReturn(blobs);
+      when(mockPage.getValues()).thenReturn(blobs);
+      when(mockPage.hasNextPage()).thenReturn(false);
+      when(mockPage.getNextPage()).thenReturn(null);
+
+      when(mockStorageClient.list(any(String.class), any(Storage.BlobListOption.class)))
+          .thenReturn(mockPage);
+      when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.allowYbaRestoreWithOldBackup)))
+          .thenReturn(false);
+
+      assertThrows(
+          "YB Anywhere restore is not allowed when backup file is more than 1 day old, enable"
+              + " runtime flag yb.yba_backup.allow_restore_with_old_backup to continue",
+          PlatformServiceException.class,
+          () -> mockGCPUtil.downloadYbaBackup(gcsData, "test-backup-dir", tempBackupPath));
+    }
+  }
+
+  @Test
+  public void testDownloadYbaBackupNoBackupsFound() throws Exception {
+    try (MockedStatic<GCPUtil> mockedStaticGCPUtil = mockStatic(GCPUtil.class)) {
+      mockedStaticGCPUtil
+          .when(() -> GCPUtil.getStorageService(any(CustomerConfigStorageGCSData.class)))
+          .thenReturn(mockStorageClient);
+      mockedStaticGCPUtil.when(() -> GCPUtil.getSplitLocationValue(any())).thenCallRealMethod();
+
+      CustomerConfigStorageGCSData gcsData = new CustomerConfigStorageGCSData();
+      gcsData.gcsCredentialsJson = "{}";
+      gcsData.backupLocation = "gs://test-bucket/backup/cloudPath";
+
+      Path tempBackupPath = Files.createTempDirectory("test-backup");
+      tempBackupPath.toFile().deleteOnExit();
+
+      Page<Blob> mockPage = mock(Page.class);
+      List<Blob> emptyList = Collections.emptyList();
+      when(mockPage.iterateAll()).thenReturn(emptyList);
+      when(mockPage.getValues()).thenReturn(emptyList);
+      when(mockPage.hasNextPage()).thenReturn(false);
+      when(mockPage.getNextPage()).thenReturn(null);
+
+      when(mockStorageClient.list(any(String.class), any(Storage.BlobListOption.class)))
+          .thenReturn(mockPage);
+
+      assertThrows(
+          "Could not find YB Anywhere backup in GCS bucket",
+          PlatformServiceException.class,
+          () -> mockGCPUtil.downloadYbaBackup(gcsData, "test-backup-dir", tempBackupPath));
+    }
+  }
+
+  @Test
+  public void testDownloadYbaBackupNoMatchingBackup() throws Exception {
+    try (MockedStatic<GCPUtil> mockedStaticGCPUtil = mockStatic(GCPUtil.class)) {
+      mockedStaticGCPUtil
+          .when(() -> GCPUtil.getStorageService(any(CustomerConfigStorageGCSData.class)))
+          .thenReturn(mockStorageClient);
+      mockedStaticGCPUtil.when(() -> GCPUtil.getSplitLocationValue(any())).thenCallRealMethod();
+    }
+    CustomerConfigStorageGCSData gcsData = new CustomerConfigStorageGCSData();
+    gcsData.gcsCredentialsJson = "{}";
+    gcsData.backupLocation = "gs://test-bucket/backup/cloudPath";
+
+    Path tempBackupPath = Files.createTempDirectory("test-backup");
+    tempBackupPath.toFile().deleteOnExit();
+
+    Blob nonBackupBlob = mock(Blob.class);
+    when(nonBackupBlob.getName()).thenReturn("backup/cloudPath/test-backup-dir/readme.txt");
+
+    Page<Blob> mockPage = mock(Page.class);
+    when(mockPage.iterateAll()).thenReturn(Collections.singletonList(nonBackupBlob));
+    when(mockPage.getValues()).thenReturn(Collections.singletonList(nonBackupBlob));
+    when(mockPage.hasNextPage()).thenReturn(false);
+    when(mockPage.getNextPage()).thenReturn(null);
+
+    when(mockStorageClient.list(any(String.class), any(Storage.BlobListOption.class)))
+        .thenReturn(mockPage);
+
+    assertThrows(
+        "Could not find matching YB Anywhere backup in GCS bucket",
+        PlatformServiceException.class,
+        () -> mockGCPUtil.downloadYbaBackup(gcsData, "test-backup-dir", tempBackupPath));
+  }
+
+  @Test
   public void testDownloadYbaBackup() throws Exception {
     try (MockedStatic<GCPUtil> mockedStaticGCPUtil = mockStatic(GCPUtil.class)) {
       mockedStaticGCPUtil
@@ -479,9 +587,9 @@ public class GCPUtilTest extends FakeDBApplication {
 
       Blob backupBlob1 = mock(Blob.class);
       when(backupBlob1.getName())
-          .thenReturn("backup/cloudPath/test-backup-dir/backup_2025-03-26_12-00-00.tgz");
+          .thenReturn("backup/cloudPath/test-backup-dir/backup_2025-03-27_11-00-00.tgz");
       when(backupBlob1.getUpdateTimeOffsetDateTime())
-          .thenReturn(OffsetDateTime.of(2025, 3, 26, 12, 0, 0, 0, ZoneOffset.UTC));
+          .thenReturn(OffsetDateTime.now().minus(2, ChronoUnit.HOURS));
       doAnswer(
               invocation -> {
                 Path path = invocation.getArgument(0);
@@ -496,7 +604,7 @@ public class GCPUtilTest extends FakeDBApplication {
       when(backupBlob2.getName())
           .thenReturn("backup/cloudPath/test-backup-dir/backup_2025-03-27_12-00-00.tgz");
       when(backupBlob2.getUpdateTimeOffsetDateTime())
-          .thenReturn(OffsetDateTime.of(2025, 3, 27, 12, 0, 0, 0, ZoneOffset.UTC));
+          .thenReturn(OffsetDateTime.now().minus(1, ChronoUnit.HOURS));
       doAnswer(
               invocation -> {
                 Path path = invocation.getArgument(0);
