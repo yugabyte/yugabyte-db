@@ -621,16 +621,13 @@
   force = true
 
 [[redirects]]
-  from = "/v2.20/releases/*"
-  to = "/stable/releases/"
+  from = "/stable/releases/*"
+  to = "/stable/releases/:splat"
+  status = 200
   force = true
 [[redirects]]
-  from = "/v2024.1/releases/*"
-  to = "/stable/releases/"
-  force = true
-[[redirects]]
-  from = "/v2024.2/releases/*"
-  to = "/stable/releases/"
+  from = "/:version/releases/*"
+  to = "/stable/releases/:splat"
   force = true
 
 # Unversion drivers-orms
@@ -724,7 +721,12 @@
   force = true
 
 [[redirects]]
-  from = "/v:version/yugabyte-cloud/*"
+  from = "/stable/yugabyte-cloud/*"
+  to = "/stable/yugabyte-cloud/:splat"
+  status = 200
+  force = true
+[[redirects]]
+  from = "/:version/yugabyte-cloud/*"
   to = "/stable/yugabyte-cloud/:splat"
   force = true
 
@@ -1039,12 +1041,22 @@
   force = true
 
 [[redirects]]
-  from = "/v:version/contribute/*"
+  from = "/stable/contribute/*"
+  to = "/stable/contribute/:splat"
+  status = 200
+  force = true
+[[redirects]]
+  from = "/:version/contribute/*"
   to = "/stable/contribute/:splat"
   force = true
 
 [[redirects]]
-  from = "/v:version/faq/*"
+  from = "/stable/faq/*"
+  to = "/stable/faq/:splat"
+  status = 200
+  force = true
+[[redirects]]
+  from = "/:version/faq/*"
   to = "/stable/faq/:splat"
   force = true
 
@@ -1059,7 +1071,12 @@
   force = true
 
 [[redirects]]
-  from = "/v:version/integrations/*"
+  from = "/stable/integrations/*"
+  to = "/stable/integrations/:splat"
+  status = 200
+  force = true
+[[redirects]]
+  from = "/:version/integrations/*"
   to = "/stable/integrations/:splat"
   force = true
 
@@ -1070,22 +1087,37 @@
   force = true
 
 [[redirects]]
-  from = "/v:version/legal/*"
+  from = "/stable/legal/*"
+  to = "/stable/legal/:splat"
+  status = 200
+  force = true
+[[redirects]]
+  from = "/:version/legal/*"
   to = "/stable/legal/:splat"
   force = true
 
 [[redirects]]
-  from = "/v:version/tutorials/*"
+  from = "/:version/tutorials/*"
   to = "/stable/develop/tutorials/:splat"
   force = true
 
 [[redirects]]
-  from = "/v:version/develop/*"
+  from = "/stable/develop/*"
+  to = "/stable/develop/:splat"
+  status = 200
+  force = true
+[[redirects]]
+  from = "/:version/develop/*"
   to = "/stable/develop/:splat"
   force = true
 
 [[redirects]]
-  from = "/v:version/yedis/*"
+  from = "/stable/yedis/*"
+  to = "/stable/yedis/:splat"
+  status = 200
+  force = true
+[[redirects]]
+  from = "/:version/yedis/*"
   to = "/stable/yedis/"
   force = true
 
