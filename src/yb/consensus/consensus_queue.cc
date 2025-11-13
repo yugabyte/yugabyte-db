@@ -143,6 +143,10 @@ DEFINE_RUNTIME_uint32(cdcsdk_wal_reads_deadline_buffer_secs, 5,
     "This flag determines the buffer time from the deadline at which we must stop reading the WAL "
     "messages and start processing the records we have read till now.");
 
+DEFINE_test_flag(bool, cdc_hit_deadline_on_wal_read, false,
+    "When set, we will return from ReadReplicatedMessagesForConsistentCDC() without reading any "
+    "WAL message due to approaching deadline.");
+
 namespace yb {
 namespace consensus {
 
@@ -829,7 +833,9 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForConsistentCDC(
   do {
     // Return if we reach close to the deadline, providing time for cdc producer and virtual WAL
     // to process the records.
-    if (deadline - CoarseMonoClock::Now() <= FLAGS_cdcsdk_wal_reads_deadline_buffer_secs * 1s) {
+    if (deadline - CoarseMonoClock::Now() <= FLAGS_cdcsdk_wal_reads_deadline_buffer_secs * 1s ||
+        PREDICT_FALSE(FLAGS_TEST_cdc_hit_deadline_on_wal_read)) {
+      res.have_more_messages = HaveMoreMessages(true);
       return res;
     }
 
@@ -853,20 +859,16 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForConsistentCDC(
         continue;
       } else {
         // Nothing to read.
-        return ReadOpsResult{
-            .messages = ReplicateMsgs(),
-            .preceding_op = last_op_id,
-            .have_more_messages = HaveMoreMessages::kFalse};
+        return res;
       }
     }
 
     auto result = VERIFY_RESULT(
         ReadFromLogCacheForXRepl(last_op_id, committed_op_id_index, deadline, fetch_single_entry));
+    VLOG_WITH_FUNC(1) << "Read " << result.messages.size() << " messages from WAL";
 
     res.messages.insert(res.messages.end(), result.messages.begin(), result.messages.end());
     res.read_from_disk_size += result.read_from_disk_size;
-    pending_messages |= result.have_more_messages.get();
-    res.have_more_messages = HaveMoreMessages(pending_messages);
 
     if (res.messages.size() > 0) {
       auto msg = res.messages.back();

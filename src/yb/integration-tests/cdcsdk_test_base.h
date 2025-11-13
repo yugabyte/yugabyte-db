@@ -46,6 +46,8 @@ DECLARE_uint32(cdcsdk_retention_barrier_no_revision_interval_secs);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
 DECLARE_bool(TEST_stop_committed_op_id_updation);
+DECLARE_bool(TEST_cdc_hit_deadline_on_wal_read);
+DECLARE_uint64(initial_log_segment_size_bytes);
 
 namespace yb {
 using client::YBClient;
