@@ -38,10 +38,10 @@ The following stable and preview releases are no longer supported:
 
 | Release series | Released | End of maintenance support | End of Life (EOL) |
 | :------------- | :------- | :------------------------- | :---------------- |
-| [v2.25](v2.25/) {{<tags/release/preview>}} | January 17, 2025  | n/a | n/a |
-| [v2.23](v2.23/) {{<tags/release/preview>}} | September 13, 2024  | n/a | n/a |
-| [v2.21](v2.21/) {{<tags/release/preview>}} | March 26, 2024 | n/a | n/a |
-| [v2.19](v2.19/) {{<tags/release/preview>}} | June 20, 2023 | n/a | n/a |
+| [v2.25](end-of-life/v2.25/) {{<tags/release/preview>}} | January 17, 2025  | n/a | n/a |
+| [v2.23](end-of-life/v2.23/) {{<tags/release/preview>}} | September 13, 2024  | n/a | n/a |
+| [v2.21](end-of-life/v2.21/) {{<tags/release/preview>}} | March 26, 2024 | n/a | n/a |
+| [v2.19](end-of-life/v2.19/) {{<tags/release/preview>}} | June 20, 2023 | n/a | n/a |
 | [v2.18](end-of-life/v2.18/) {{<tags/release/sts>}} | May 16, 2023 | August 16, 2024 | February 16, 2025 |
 | [v2.17](end-of-life/v2.17/) {{<tags/release/preview>}} | December 8, 2022 | n/a | n/a |
 | [v2.16](end-of-life/v2.16/) {{<tags/release/sts>}} | December 14, 2022 | December 14, 2023 | June 14, 2024 |

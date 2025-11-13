@@ -66,7 +66,7 @@ For an RSS feed of all technical advisories, point your feed reader to the [RSS 
 | {{<ta 14696>}}
 |DDL Atomicity health check alert shows incorrect results in YugabyteDB Anywhere
 | {{<product "yba">}}
-| {{<release "2.20.8.1, 2024.1.3.1, 2024.2.0.0, 2.23.1.0">}}
+| {{<release "2.20.8.1, 2024.1.3.1, 2024.2.0.0">}}, [v2.23.1.0](/stable/releases/ybdb-releases/end-of-life/v2.23/#v2.23.1.0)
 | {{<nobreak "19 February 2025">}}
 |
 | {{<ta 25193>}}
@@ -108,7 +108,7 @@ For an RSS feed of all technical advisories, point your feed reader to the [RSS 
 | {{<ta 22057>}}
 |Risk of data loss when upgrading to or from version 2.20.3.0 or 2.21.0
 | {{<product "ysql">}}
-| {{<release "2.20.3.0, 2.21.0">}}
+| {{<release "2.20.3.0">}}, [v2.21.0](/stable/releases/ybdb-releases/end-of-life/v2.21/#v2.21.0.0)
 | {{<nobreak "06 May 2024">}}
 |
 | {{<ta REOL-24>}}
@@ -150,13 +150,13 @@ For an RSS feed of all technical advisories, point your feed reader to the [RSS 
 | {{<ta 20398>}}
 |Slow execution of copy command and multi-row inserts
 | {{<product "ysql">}}
-| {{<release "2.20.0.x, 2.19.1.x">}}
+| {{<release "2.20.0.x">}}, [v2.19.1.x](/stable/releases/ybdb-releases/end-of-life/v2.19/)
 | {{<nobreak "23 Jan 2024">}}
 |
 | {{<ta 20648>}}
 |Index update can be wrongly applied on batch writes
 | {{<product "ysql">}}
-| {{<release "2.20.x, 2.19.x">}}
+| {{<release "2.20.x">}}, [v2.19.x](/stable/releases/ybdb-releases/end-of-life/v2.19/)
 | {{<nobreak "23 Jan 2024">}}
 |
 {{%/table%}}

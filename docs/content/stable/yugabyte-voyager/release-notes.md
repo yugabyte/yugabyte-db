@@ -391,7 +391,7 @@ Use the [skip-performance-recommendations](../reference/schema-migration/export-
     - SQL Body in Create Function
     - Common table expressions (WITH queries) that have MATERIALIZED clause.
     - Non-decimal integer literals
-  - When running assess-migration/analyze-schema against YugabyteDB {{<release "2.25.0.0">}} and later, the following issues are no longer reported, as they are fixed:
+  - When running assess-migration/analyze-schema against YugabyteDB [v2.25.0.0](/stable/releases/ybdb-releases/end-of-life/v2.25/#v2.25.0.0) and later, the following issues are no longer reported, as they are fixed:
     - Stored generated columns
     - Before Row triggers on partitioned tables
     - Multi-range datatypes

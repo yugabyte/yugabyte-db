@@ -49,7 +49,7 @@ Source code
 
 ### How many major releases YugabyteDB has had so far?
 
-YugabyteDB released its first beta, [v0.9](https://www.yugabyte.com/blog/yugabyte-has-arrived/) in November 2017. Since then, several stable and preview versions have been released. The current stable version is {{<release "stable">}}, and the current preview version is {{<release "preview">}}.
+YugabyteDB released its first beta, [v0.9](https://www.yugabyte.com/blog/yugabyte-has-arrived/) in November 2017. Since then, several stable and preview versions have been released. The current stable version is {{<release "stable">}}, and the current preview version is [v2.25.2.0](/stable/releases/ybdb-releases/end-of-life/v2.25/#v2.25.2.0).
 
 {{<lead link="/stable/releases/ybdb-releases/">}}
 Releases

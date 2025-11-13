@@ -63,7 +63,7 @@ Results are written to the current `postgres*log` file.
 
 (Depending on the database and the work being performed, long-running queries don't necessarily need to be optimized. Ensure that the threshold is high enough so that you don't flood the `postgres*log` log files.)
 
-{{<lead link="/stable/troubleshoot/nodes/check-logs/#yb-tserver-logs">}}
+{{<lead link="/stable/explore/observability/logging/">}}
 Learn more about [YB-TServer logs](/stable/explore/observability/logging/).
 {{</lead>}}
 
