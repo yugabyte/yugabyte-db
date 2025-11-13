@@ -9898,7 +9898,8 @@ uint64_t CatalogManager::GetTransactionTablesVersion() {
 }
 
 Status CatalogManager::WaitForTransactionTableVersionUpdateToPropagate() {
-  auto ts_descriptors = master_->ts_manager()->GetAllDescriptors();
+  TSDescriptorVector ts_descriptors;
+  master_->ts_manager()->GetAllLiveDescriptors(&ts_descriptors);
   size_t num_descriptors = ts_descriptors.size();
 
   CountDownLatch latch(num_descriptors);
