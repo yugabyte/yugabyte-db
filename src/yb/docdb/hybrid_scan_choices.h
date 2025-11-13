@@ -205,6 +205,10 @@ class ScanTarget {
 
   void Append(const OptionRange& option);
 
+  size_t num_columns() const {
+    return columns_.size();
+  }
+
  private:
   void FixTail(bool add_inf);
   template <class Value>
@@ -309,7 +313,7 @@ class HybridScanChoices : public ScanChoices {
 
   // Updates the bloom filter key and the upper bound to the current scan target when using
   // variable bloom filter.
-  void UpdateUpperBound(IntentAwareIterator* iterator);
+  Status UpdateUpperBound(IntentAwareIterator* iterator);
 
   const bool is_forward_scan_;
   ScanTarget scan_target_;
