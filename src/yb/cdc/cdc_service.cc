@@ -2947,7 +2947,7 @@ Result<TabletCDCCheckpointInfo> CDCServiceImpl::PopulateCDCSDKTabletCheckPointIn
 
     auto get_stream_metadata = GetStream(stream_id, RefreshStreamMapOption::kIfInitiatedState);
     if (!get_stream_metadata.ok()) {
-      LOG(WARNING) << "Read invalid stream id: " << stream_id << " for tablet " << tablet_id << ": "
+      VLOG_WITH_FUNC(2) << "Read invalid stream id: " << stream_id << " for tablet " << tablet_id << ": "
                    << get_stream_metadata.status();
       break;
     }
@@ -4713,8 +4713,7 @@ void CDCServiceImpl::RemoveXReplTabletMetrics(
   }
   auto tablet = tablet_peer->shared_tablet_maybe_null();
   if (tablet == nullptr) {
-    YB_LOG_EVERY_N_SECS_OR_VLOG(WARNING, 300, 4)
-        << "Could not find tablet for tablet peer: " << tablet_peer->tablet_id();
+    VLOG_WITH_FUNC(2) << "Could not find tablet for tablet peer: " << tablet_peer->tablet_id();
     return;
   }
 
