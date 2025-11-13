@@ -429,6 +429,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
       int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, HybridTime cdc_sdk_history_cutoff,
       bool require_history_cutoff, bool initial_retention_barrier);
 
+  std::string AllCDCRetentionBarriersToString() const EXCLUDES(data_mutex_);
+
   Status SetIsUnderXClusterReplicationAndFlush(bool is_under_xcluster_replication);
 
   bool IsUnderXClusterReplication() const;
