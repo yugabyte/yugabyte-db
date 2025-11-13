@@ -2166,6 +2166,9 @@ public class NodeManager extends DevopsBase {
               commandArgs.add(StringUtils.join(node.cloudInfo.lun_indexes, ","));
             }
           }
+          if (taskParam.skipAnsiblePlaybook) {
+            commandArgs.add("--skip_ansible_playbook");
+          }
           break;
         }
       case Configure:

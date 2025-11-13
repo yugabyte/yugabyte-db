@@ -66,6 +66,8 @@ public class AnsibleSetupServer extends NodeTaskBase {
      3. VM Image Upgrade.
     */
     public boolean rebootNodeAllowed = false;
+    // Skip Ansible Playbook for the node
+    public boolean skipAnsiblePlaybook = false;
   }
 
   @Override

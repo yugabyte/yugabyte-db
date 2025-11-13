@@ -6,13 +6,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
-import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.FileHelperService;
+import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.Util;
@@ -39,7 +39,7 @@ import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
-public class YNPProvisioning extends AbstractTaskBase {
+public class YNPProvisioning extends NodeTaskBase {
   private final NodeUniverseManager nodeUniverseManager;
   private final RuntimeConfGetter confGetter;
   private final CloudQueryHelper queryHelper;
@@ -260,9 +260,27 @@ public class YNPProvisioning extends AbstractTaskBase {
     sb.append(" && chown -R $(id -u):$(id -g) ").append(nodeAgentHomePath);
     List<String> command = getCommand("/bin/bash", "-c", sb.toString());
     log.debug("Running YNP installation command: {}", command);
+
+    // But First, setup the dual NIC on YBM if needed.
+    AnsibleSetupServer.Params ansibleParams = buildDualNicSetupParams(universe, node, provider);
+    nodeManager
+        .nodeCommand(NodeManager.NodeCommandType.Provision, ansibleParams)
+        .processErrors("Dual NIC setup failed");
+
     nodeUniverseManager
         .runCommand(node, universe, command, shellContext)
         .processErrors("Installation failed");
+  }
+
+  private AnsibleSetupServer.Params buildDualNicSetupParams(
+      Universe universe, NodeDetails node, Provider provider) {
+    UserIntent userIntent = universe.getCluster(node.placementUuid).userIntent;
+    AnsibleSetupServer.Params ansibleParams = new AnsibleSetupServer.Params();
+    fillSetupParamsForNode(ansibleParams, userIntent, node);
+    ansibleParams.skipAnsiblePlaybook = true;
+    ansibleParams.sshUserOverride = node.sshUserOverride;
+    ansibleParams.sshPortOverride = node.sshPortOverride;
+    return ansibleParams;
   }
 
   private List<String> getCommand(String... args) {

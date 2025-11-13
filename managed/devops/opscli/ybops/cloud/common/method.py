@@ -858,6 +858,9 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
                                  help="Path to GCP credentials file used for logs export.")
         self.parser.add_argument('--ycql_audit_log_level', default=None,
                                  help="YCQL audit log level.")
+        self.parser.add_argument('--skip_ansible_playbook', action='store_true', default=False,
+                                 help='If set YBA will only setup the dual NIC for the'
+                                 'node but not run ansible setup server')
         self.parser.add_argument('--reboot_node_allowed', action='store_true', default=False,
                                  help='If set YBA will reboot the node for configuring the ulimits')
 
@@ -892,6 +895,9 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
             if args.boot_script:
                 # copy and run the script
                 self.cloud.execute_boot_script(args, self.extra_vars)
+        # Short Circuit for only setup dual NIC, used by YNP provisioning.
+        if args.skip_ansible_playbook:
+            return
 
         if args.air_gap:
             self.extra_vars.update({"air_gap": args.air_gap})

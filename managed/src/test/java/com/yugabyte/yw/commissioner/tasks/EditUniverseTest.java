@@ -374,7 +374,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
             Map.of("1", Arrays.asList("host-n4", "host-n5"))));
 
     verifyNodeInteractionsCapacityReservation(
-        37,
+        39,
         NodeManager.NodeCommandType.Create,
         params -> ((AnsibleCreateServer.Params) params).capacityReservation,
         Map.of(
@@ -402,7 +402,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
             Map.of("1", new ZoneData("region-1", Arrays.asList("host-n4", "host-n5")))));
 
     verifyNodeInteractionsCapacityReservation(
-        37,
+        39,
         NodeManager.NodeCommandType.Create,
         params -> ((AnsibleCreateServer.Params) params).capacityReservation,
         Map.of(
