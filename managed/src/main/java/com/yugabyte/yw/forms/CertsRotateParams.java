@@ -422,7 +422,8 @@ public class CertsRotateParams extends UpgradeTaskParams {
     // just that it should not be different from rootCA in k8s universes
     if (clientRootCA != null && rootCA != null && !rootCA.equals(clientRootCA)) {
       throw new PlatformServiceException(
-          Status.BAD_REQUEST, "clientRootCA not applicable for Kubernetes certificate rotation.");
+          Status.BAD_REQUEST,
+          "rootCA and clientRootCA cannot be different for Kubernetes certificate rotation.");
     }
 
     if (!rootAndClientRootCASame) {

@@ -973,7 +973,8 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
         assertThrows(PlatformServiceException.class, () -> handler.rotateCerts(params, c, u));
 
     assertEquals(
-        "clientRootCA not applicable for Kubernetes certificate rotation.", exception.getMessage());
+        "rootCA and clientRootCA cannot be different for Kubernetes certificate rotation.",
+        exception.getMessage());
   }
 
   @Test
