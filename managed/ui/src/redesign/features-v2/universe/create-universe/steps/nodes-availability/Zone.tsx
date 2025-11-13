@@ -1,6 +1,7 @@
 import { FC, useContext, useState } from 'react';
 import { Typography } from '@material-ui/core';
-import { Control, Controller } from 'react-hook-form';
+import { values } from 'lodash';
+import { Control, Controller, useWatch } from 'react-hook-form';
 import { YBInput, YBSelect, mui } from '@yugabyte-ui-library/core';
 import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
 import { Region } from '../../../../../features/universe/universe-form/utils/dto';
@@ -54,9 +55,21 @@ export const Zone: FC<ZoneProps> = ({ control, index, region, remove }) => {
 
   const [showPreferredInfoModal, setShowPreferredInfoModal] = useState(false);
 
+  const availabilityZones = useWatch({ name: 'availabilityZones', control });
+
+  const zonesCount = Object.keys(availabilityZones)?.reduce(
+    (a, b) => a + availabilityZones[b].length,
+    0
+  );
+
+  const maxPrefferedRankSelected = values(availabilityZones)
+    .map((az) => az.map((zone) => zone.preffered))
+    .flat()
+    .reduce((a, b) => Math.max(a, b), -1);
+
   const preferredMenuItems = isPrefferedAllowed
-    ? Array.from({ length: resilienceAndRegionsSettings?.replicationFactor ?? 0 }, (_, i) => (
-        <StyledPreferedMenuItem key={i} value={i}>
+    ? Array.from({ length: zonesCount }, (_, i) => (
+        <StyledPreferedMenuItem key={i} value={i} disabled={i > maxPrefferedRankSelected + 1}>
           <Typography variant="body1">{`Rank ${i + 1}`}</Typography>
           <Typography variant="subtitle1">
             {i === 0 ? 'Default Preferred Zone' : 'Preferred zone if higher-rank zones fail.'}
@@ -66,11 +79,16 @@ export const Zone: FC<ZoneProps> = ({ control, index, region, remove }) => {
     : null;
 
   preferredMenuItems?.unshift(
-    <StyledPreferedMenuItem key="false" value="false">
+    <StyledPreferedMenuItem key="no-option-selected" value={-1}>
       <Typography variant="body1">No</Typography>
       <Typography variant="subtitle1">Not Preferred</Typography>
     </StyledPreferedMenuItem>
   );
+
+  const zone = useWatch({
+    name: `availabilityZones.${region.code}.${index}`,
+    control
+  });
 
   return (
     <div style={{ display: 'flex', gap: '8px', alignItems: 'center', padding: '10px 24px' }}>
@@ -82,11 +100,11 @@ export const Zone: FC<ZoneProps> = ({ control, index, region, remove }) => {
           <YBSelect
             label="Availability Zone"
             sx={{ width: '300px' }}
-            value={field.value.name}
+            value={zone.name}
             onChange={(e) => {
               const selectedZone = region.zones.find((z) => z.name === e.target.value);
               if (selectedZone) {
-                field.onChange(selectedZone);
+                field.onChange({ ...field.value, ...selectedZone });
               }
             }}
             menuProps={menuProps}
@@ -130,7 +148,7 @@ export const Zone: FC<ZoneProps> = ({ control, index, region, remove }) => {
             <YBSelect
               label={
                 <>
-                  Preffered
+                  Preferred
                   <HelpOutline
                     onClick={() => {
                       setShowPreferredInfoModal(true);
@@ -146,7 +164,7 @@ export const Zone: FC<ZoneProps> = ({ control, index, region, remove }) => {
               }}
               menuProps={menuProps}
               renderValue={(value) => {
-                return value === 'false' ? 'No' : `Rank ${parseInt(value as string) + 1}`;
+                return value === -1 ? 'No' : `Rank ${parseInt(value as string) + 1}`;
               }}
               dataTestId="availability-zone-preferred-select"
             >
