@@ -12419,5 +12419,87 @@ TEST_F(CDCSDKYsqlTest, TestLargeTxnOnUnqualifiedColocatedTable) {
   ASSERT_NE(change_resp.cdc_sdk_checkpoint().write_id(), 0);
 }
 
+// This test verifies that we do not miss any records when LogCache::ReadOps() reads WAL Ops from
+// the active segment with combined size greater than FLAGS_consensus_max_batch_size_bytes (default
+// value 4 MB).
+TEST_F(CDCSDKYsqlTest, TestConsumptionFromActiveSegmentWithOpLargerThanBatchSize) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  // Set the flags to avoid WAL segment rollovers. This would ensure that we read from the active
+  // segment in this test.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_min_segment_size_bytes_to_rollover_at_flush) = 32_MB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_initial_log_segment_size_bytes) = 32_MB;
+
+  ASSERT_OK(SetUpWithParams(1 /* rf */, 1 /* num_masters*/));
+
+  // Create a table with single tablet.
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (a int primary key, b text) SPLIT INTO 1 TABLETS", kTableName));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  // Insert a row with 5 MB data (row size greater than FLAGS_consensus_max_batch_size_bytes).
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (1, repeat('a', 5242880))"));
+
+  // We should be able to correctly read the WAL Op and ship records corresponding to it.
+  // Response should contain BEGIN + DDL (synthetic) + INSERT + COMMIT.
+  auto change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 4);
+}
+
+// This test verifies that we do not miss any records when
+// PeerMessageQueue::ReadReplicatedMessagesForConsistentCDC() is called with an approaching
+// deadline.
+TEST_F(CDCSDKYsqlTest, TestNoLossFromActiveSegmentWithApproachingDeadline) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  // When this flag is set, ReadReplicatedMessagesForConsistentCDC() will behave as if deadline is
+  // approaching.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_hit_deadline_on_wal_read) = true;
+
+  ASSERT_OK(SetUpWithParams(1 /* rf */, 1 /* num_masters*/));
+
+  // Create a table with single tablet.
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (1,1)"));
+
+  // Wait for tablet leader safe time to move forward.
+  auto tablet_peer =
+      ASSERT_RESULT(test_cluster()->GetTabletManager(0)->GetServingTablet(tablets[0].tablet_id()));
+  auto leader_safe_time_before = ASSERT_RESULT(tablet_peer->LeaderSafeTime());
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto leader_safe_time = VERIFY_RESULT(tablet_peer->LeaderSafeTime());
+        return leader_safe_time.ToUint64() > leader_safe_time_before.ToUint64();
+      },
+      MonoDelta::FromSeconds(300), "Timed out waiting for leader safe time to increase"));
+
+  // Call GetChanges on the tablet after the safe time movement. Since
+  // FLAGS_TEST_cdc_hit_deadline_on_wal_read is set, we would receive an empty response. However, we
+  // should not move the safe_hybrid_time in this call to avoid missing records in the subsequent
+  // calls.
+  auto change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 0);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_hit_deadline_on_wal_read) = false;
+
+  // Since safe_hybrid_time is not moved when met with approaching deadline, we should successfully
+  // ship the record in the next GetChanges call.
+  // Response should contain BEGIN + DDL (synthetic) + INSERT + COMMIT.
+  change_resp = ASSERT_RESULT(
+      GetChangesFromCDC(stream_id, tablets, nullptr, 0, change_resp.safe_hybrid_time()));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 4);
+}
+
 }  // namespace cdc
 }  // namespace yb
