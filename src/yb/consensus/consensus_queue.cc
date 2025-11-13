@@ -133,6 +133,10 @@ DEFINE_RUNTIME_uint32(cdcsdk_wal_reads_deadline_buffer_secs, 5,
     "This flag determines the buffer time from the deadline at which we must stop reading the WAL "
     "messages and start processing the records we have read till now.");
 
+DEFINE_test_flag(bool, cdc_hit_deadline_on_wal_read, false,
+    "When set, we will return from ReadReplicatedMessagesForConsistentCDC() without reading any "
+    "WAL message due to approaching deadline.");
+
 namespace yb::consensus {
 
 using log::Log;
@@ -840,7 +844,9 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForConsistentCDC(
   do {
     // Return if we reach close to the deadline, providing time for cdc producer and virtual WAL
     // to process the records.
-    if (deadline - CoarseMonoClock::Now() <= FLAGS_cdcsdk_wal_reads_deadline_buffer_secs * 1s) {
+    if (deadline - CoarseMonoClock::Now() <= FLAGS_cdcsdk_wal_reads_deadline_buffer_secs * 1s ||
+        PREDICT_FALSE(FLAGS_TEST_cdc_hit_deadline_on_wal_read)) {
+      res.have_more_messages = HaveMoreMessages(true);
       return res;
     }
 
@@ -861,22 +867,18 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForConsistentCDC(
         continue;
       } else {
         // Nothing to read.
-        return ReadOpsResult{
-            .messages = ReplicateMsgs(),
-            .preceding_op = last_op_id,
-            .have_more_messages = HaveMoreMessages::kFalse};
+        return res;
       }
     }
 
-  // TODO(#28779): Switch this to obeying the memory limit.
+    // TODO(#28779): Switch this to obeying the memory limit.
     auto result = VERIFY_RESULT(ReadFromLogCacheForXRepl(
         last_op_id.index, committed_op_id_index, log::ObeyMemoryLimit::kFalse, deadline,
         fetch_single_entry));
+    VLOG_WITH_FUNC(1) << "Read " << result.messages.size() << " messages from WAL";
 
     res.messages.insert(res.messages.end(), result.messages.begin(), result.messages.end());
     res.read_from_disk_size += result.read_from_disk_size;
-    pending_messages |= result.have_more_messages.get();
-    res.have_more_messages = HaveMoreMessages(pending_messages);
 
     if (res.messages.size() > 0) {
       auto msg = res.messages.back();
@@ -944,10 +946,10 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesInSegmentForCDC(
 
     start_op_id_index = GetStartOpIdIndex(from_op_id.index);
 
-    VLOG(1) << "Will read Ops from a WAL segment for tablet: " << tablet_id_
-            << " start_op_id_index = " << start_op_id_index
-            << " committed_op_id_index = " << committed_op_id_index
-            << " last_replicated_op_id_index = " << last_replicated_op_id_index;
+    VLOG_WITH_FUNC(1) << "Will read Ops from a WAL segment for tablet: " << tablet_id_
+                      << " start_op_id_index = " << start_op_id_index
+                      << " committed_op_id_index = " << committed_op_id_index
+                      << " last_replicated_op_id_index = " << last_replicated_op_id_index;
 
     auto current_segment_num_result = log_cache_.LookupOpWalSegmentNumber(start_op_id_index);
     if (!current_segment_num_result.ok() ||
@@ -984,12 +986,12 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesInSegmentForCDC(
     *consistent_stream_safe_time_footer = consistent_stream_safe_time;
   }
 
-  VLOG(1) << "Reading a new WAL segment for tablet: " << tablet_id_ << " Segment info:"
-          << " current_segment_num = " << current_segment_num
-          << " active_segment_num = " << log_cache_.GetActiveSegmentNumber()
-          << " segment_last_index = " << segment_last_index
-          << " consistent_stream_safe_time = " << consistent_stream_safe_time
-          << " start_op_id_index = " << start_op_id_index;
+  VLOG_WITH_FUNC(1) << "Reading a new WAL segment for tablet: " << tablet_id_ << " Segment info:"
+                    << " current_segment_num = " << current_segment_num
+                    << " active_segment_num = " << log_cache_.GetActiveSegmentNumber()
+                    << " segment_last_index = " << segment_last_index
+                    << " consistent_stream_safe_time = " << consistent_stream_safe_time
+                    << " start_op_id_index = " << start_op_id_index;
 
   auto current_index = start_op_id_index;
 
@@ -999,6 +1001,7 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesInSegmentForCDC(
     auto result = VERIFY_RESULT(ReadFromLogCacheForXRepl(
         current_index, segment_last_index, log::ObeyMemoryLimit::kFalse, deadline,
         fetch_single_entry));
+    VLOG_WITH_FUNC(1) << "Read " << result.messages.size() << " messages from WAL";
 
     read_ops.read_from_disk_size += result.read_from_disk_size;
     read_ops.messages.insert(

@@ -1702,6 +1702,10 @@ void CDCServiceImpl::GetChanges(
       impl_->UpdateActiveTime(producer_tablet);
     }
 
+    if (record.GetSourceType() == CDCSDK) {
+      YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 300, 1) << tablet_peer->AllCDCRetentionBarriersToString();
+    }
+
     if (IsCDCSDKSnapshotDone(*req)) {
       // Remove 'kCDCSDKSnapshotKey' from the colocated snapshot row, to indicate that the snapshot
       // is done.
