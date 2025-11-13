@@ -621,7 +621,7 @@
   force = true
 
 [[redirects]]
-  from = "/v*/releases/*"
+  from = "/:version/releases/*"
   to = "/stable/releases/"
   force = true
 
@@ -662,7 +662,7 @@
 # Redirect for troubleshoot
 
 [[redirects]]
-  from = "/v*/troubleshoot/*"
+  from = "/:version/troubleshoot/*"
   to = "/stable/troubleshoot/:splat"
   force = true
 
@@ -711,7 +711,7 @@
   force = true
 
 [[redirects]]
-  from = "/v*/yugabyte-cloud/*"
+  from = "/:version/yugabyte-cloud/*"
   to = "/stable/yugabyte-cloud/:splat"
   force = true
 
@@ -1026,12 +1026,12 @@
   force = true
 
 [[redirects]]
-  from = "/v*/contribute/*"
+  from = "/:version/contribute/*"
   to = "/stable/contribute/:splat"
   force = true
 
 [[redirects]]
-  from = "/v*/faq/*"
+  from = "/:version/faq/*"
   to = "/stable/faq/:splat"
   force = true
 
@@ -1046,7 +1046,7 @@
   force = true
 
 [[redirects]]
-  from = "/v*/integrations/*"
+  from = "/:version/integrations/*"
   to = "/stable/integrations/:splat"
   force = true
 
@@ -1057,7 +1057,7 @@
   force = true
 
 [[redirects]]
-  from = "/v*/legal/*"
+  from = "/:version/legal/*"
   to = "/stable/legal/:splat"
   force = true
 
@@ -1067,12 +1067,12 @@
   force = true
 
 [[redirects]]
-  from = "/v*/develop/*"
+  from = "/:version/develop/*"
   to = "/stable/develop/:splat"
   force = true
 
 [[redirects]]
-  from = "/v*/yedis/*"
+  from = "/:version/yedis/*"
   to = "/stable/yedis/"
   force = true
 
