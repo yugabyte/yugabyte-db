@@ -621,7 +621,15 @@
   force = true
 
 [[redirects]]
-  from = "/v:version/releases/*"
+  from = "/v2.20/releases/*"
+  to = "/stable/releases/"
+  force = true
+[[redirects]]
+  from = "/v2024.1/releases/*"
+  to = "/stable/releases/"
+  force = true
+[[redirects]]
+  from = "/v2024.2/releases/*"
   to = "/stable/releases/"
   force = true
 
@@ -661,6 +669,11 @@
 
 # Redirect for troubleshoot
 
+[[redirects]]
+  from = "/stable/troubleshoot/*"
+  to = "/stable/troubleshoot/:splat"
+  status = 200
+  force = true
 [[redirects]]
   from = "/v:version/troubleshoot/*"
   to = "/stable/troubleshoot/:splat"
