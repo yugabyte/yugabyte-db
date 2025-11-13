@@ -1062,11 +1062,6 @@
   force = true
 
 [[redirects]]
-  from = "/:version/troubleshoot/*"
-  to = "/stable/troubleshoot/:splat"
-  force = true
-
-[[redirects]]
   from = "/:version/tutorials/*"
   to = "/stable/develop/tutorials/:splat"
   force = true
