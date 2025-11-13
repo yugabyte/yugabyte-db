@@ -37,19 +37,22 @@
 #include "yb/common/common_types.pb.h"
 #include "yb/common/hybrid_time.h"
 
-#include "yb/consensus/metadata.pb.h"
+#include "yb/consensus/metadata.fwd.h"
 
 namespace yb::consensus {
 
 const MicrosTime kInfiniteHybridTimeLeaseExpiration = HybridTime::kMax.GetPhysicalValueMicros();
 
-bool IsRaftConfigMember(const std::string& tserver_uuid, const RaftConfigPB& config);
+bool IsRaftConfigMember(std::string_view tserver_uuid, const RaftConfigPB& config);
+bool IsRaftConfigMember(std::string_view tserver_uuid, const LWRaftConfigPB& config);
 
-bool IsRaftConfigVoter(const std::string& tserver_uuid, const RaftConfigPB& config);
+bool IsRaftConfigVoter(std::string_view tserver_uuid, const RaftConfigPB& config);
+bool IsRaftConfigVoter(std::string_view tserver_uuid, const LWRaftConfigPB& config);
 
 // Determines the role that the peer with uuid 'uuid' plays in the Raft group.
 // If the peer uuid is not a voter in the configuration, this function will return
 // NON_PARTICIPANT, regardless of whether it is listed as leader in cstate.
-PeerRole GetConsensusRole(const std::string& permanent_uuid, const ConsensusStatePB& cstate);
+PeerRole GetConsensusRole(std::string_view permanent_uuid, const ConsensusStatePB& cstate);
+PeerRole GetConsensusRole(std::string_view permanent_uuid, const LWConsensusStatePB& cstate);
 
 } // namespace yb::consensus

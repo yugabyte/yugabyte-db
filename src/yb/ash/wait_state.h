@@ -503,8 +503,8 @@ class WaitStateInfo {
 
   void UpdateMetadata(const AshMetadata& meta) EXCLUDES(mutex_);
   void UpdateAuxInfo(const AshAuxInfo& aux) EXCLUDES(mutex_);
-  void UpdateTabletId(const TabletId& tablet_id);
-  static void UpdateCurrentTabletId(const TabletId& tablet_id);
+  void UpdateTabletId(TabletIdView tablet_id);
+  static void UpdateCurrentTabletId(TabletIdView tablet_id);
 
   template <class PB>
   static void UpdateCurrentMetadataFromPB(const PB& pb) {

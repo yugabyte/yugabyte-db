@@ -324,10 +324,10 @@ class RpcContext {
   bool responded_ = false;
 };
 
-template <class Req, class Resp>
+template <class Req, class Resp, template<class Rq, class Rsp> class Impl = RpcCallPBParamsImpl>
 class TypedPBRpcContextHolder {
  public:
-  using Params = RpcCallPBParamsImpl<Req, Resp>;
+  using Params = Impl<Req, Resp>;
 
   Req& req() {
     return down_cast<Params&>(context_.params()).request();
@@ -353,19 +353,26 @@ class TypedPBRpcContextHolder {
   explicit TypedPBRpcContextHolder(RpcContext&& context) : context_(std::move(context)) {}
 
   template <class TReq, class TResp>
-  friend TypedPBRpcContextHolder<TReq, TResp> MakeTypedPBRpcContextHolder(
+  friend auto MakeTypedPBRpcContextHolder(
       const TReq& req, TResp* resp, RpcContext&& context);
 
   RpcContext context_;
 };
 
 template <class TReq, class TResp>
-TypedPBRpcContextHolder<TReq, TResp> MakeTypedPBRpcContextHolder(
+auto MakeTypedPBRpcContextHolder(
     const TReq& req, TResp* resp, RpcContext&& context) {
-  auto result = TypedPBRpcContextHolder<TReq, TResp>(std::move(context));
-  DCHECK_EQ(&result.req(), &req);
-  DCHECK_EQ(&result.resp(), resp);
-  return result;
+  if constexpr (IsGoogleProtobuf<TReq>) {
+    auto result = TypedPBRpcContextHolder<TReq, TResp, RpcCallPBParamsImpl>(std::move(context));
+    DCHECK_EQ(&result.req(), &req);
+    DCHECK_EQ(&result.resp(), resp);
+    return result;
+  } else {
+    auto result = TypedPBRpcContextHolder<TReq, TResp, RpcCallLWParamsImpl>(std::move(context));
+    DCHECK_EQ(&result.req(), &req);
+    DCHECK_EQ(&result.resp(), resp);
+    return result;
+  }
 }
 
 void PanicRpc(RpcContext* context, const char* file, int line_number, const std::string& message);

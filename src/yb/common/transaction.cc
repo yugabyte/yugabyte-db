@@ -245,14 +245,24 @@ void SubTransactionMetadata::ToPB(SubTransactionMetadataPB* dest) const {
   aborted.ToPB(dest->mutable_aborted()->mutable_set());
 }
 
-Result<SubTransactionMetadata> SubTransactionMetadata::FromPB(
-    const SubTransactionMetadataPB& source) {
+template <class PB>
+Result<SubTransactionMetadata> SubTransactionMetadata::DoFromPB(const PB& source) {
   return SubTransactionMetadata {
     .subtransaction_id = source.has_subtransaction_id()
         ? source.subtransaction_id()
         : kMinSubTransactionId,
     .aborted = VERIFY_RESULT(SubtxnSet::FromPB(source.aborted().set())),
   };
+}
+
+Result<SubTransactionMetadata> SubTransactionMetadata::FromPB(
+    const SubTransactionMetadataPB& source) {
+  return DoFromPB(source);
+}
+
+Result<SubTransactionMetadata> SubTransactionMetadata::FromPB(
+    const LWSubTransactionMetadataPB& source) {
+  return DoFromPB(source);
 }
 
 bool SubTransactionMetadata::IsDefaultState() const {

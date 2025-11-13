@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <charconv>
 #include <cmath>
 #include <optional>
 
@@ -26,9 +27,12 @@
 namespace yb {
 
 Result<int64_t> CheckedStoll(Slice slice);
-Result<uint64_t> CheckedStoull(Slice slice);
+Result<uint64_t> CheckedStoull(Slice slice, int base = 10);
+Result<uint32_t> CheckedStoul(Slice slice, int base = 10);
+
 Result<int64_t> DoCheckedStol(Slice value, int64_t*);
 Result<uint64_t> DoCheckedStol(Slice value, uint64_t*);
+Result<uint64_t> DoCheckedStol(Slice value, uint32_t*);
 
 template <class T>
 Result<T> CheckedStol(Slice value) {

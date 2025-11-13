@@ -141,9 +141,9 @@ auto SharedField(std::shared_ptr<S> ptr, T* field) {
 
 template <class Container, class T>
 void AddIfMissing(Container& container, T&& value) {
-    if (std::ranges::find(container, value) == container.end()) {
-      InsertIntoContainer(container, std::move(value));
-    }
+  if (std::ranges::find(container, value) == container.end()) {
+    InsertIntoContainer(container, std::forward<T>(value));
+  }
 }
 
 } // namespace yb

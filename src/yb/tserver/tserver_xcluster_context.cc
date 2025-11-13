@@ -112,7 +112,8 @@ void TserverXClusterContext::PrepareCreateTableHelper(
     const PgCreateTableRequestPB& req, PgCreateTable& helper) const {
   SharedLock l(table_map_mutex_);
   auto create_table_info = FindOrNull(
-      create_table_info_map_, {req.database_name(), req.schema_name(), req.table_name()});
+      create_table_info_map_,
+      YsqlFullTableName{req.database_name(), req.schema_name(), req.table_name()});
   if (!create_table_info) {
     return;
   }

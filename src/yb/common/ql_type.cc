@@ -15,7 +15,7 @@
 
 #include <boost/preprocessor/seq/for_each.hpp>
 
-#include "yb/common/common.pb.h"
+#include "yb/common/common.messages.h"
 #include "yb/common/types.h"
 
 #include "yb/gutil/macros.h"
@@ -238,19 +238,17 @@ QLType::SharedPtr QLType::CreateTypeFrozen(SharedPtr value_type) {
 }
 
 QLType::SharedPtr QLType::CreateUDType(
-    std::string keyspace_name,
-    std::string type_name,
-    std::string type_id,
+    std::string_view keyspace_name,
+    std::string_view type_name,
+    std::string_view type_id,
     std::vector<std::string> field_names,
     Params field_types) {
   return Internals::Make<DataType::USER_DEFINED_TYPE>(
-      std::move(field_types), std::move(keyspace_name), std::move(type_name),
-      std::move(type_id), std::move(field_names));
+      std::move(field_types), keyspace_name, type_name, type_id, std::move(field_names));
 }
 
 //--------------------------------------------------------------------------------------------------
 // ToPB and FromPB.
-
 void QLType::ToQLTypePB(QLTypePB* pb_type) const {
   pb_type->set_main(ToPB(id_));
   for (const auto& param : params_) {
@@ -269,11 +267,32 @@ void QLType::ToQLTypePB(QLTypePB* pb_type) const {
   }
 }
 
-QLType::SharedPtr QLType::FromQLTypePB(const QLTypePB& pb_type) {
-  Params params;
+void QLType::ToQLTypePB(LWQLTypePB* pb_type) const {
+  pb_type->set_main(ToPB(id_));
+  for (const auto& param : params_) {
+    param->ToQLTypePB(pb_type->add_params());
+  }
+
+  if (IsUserDefined()) {
+    auto udtype_info = pb_type->mutable_udtype_info();
+    udtype_info->dup_keyspace_name(udtype_keyspace_name());
+    udtype_info->dup_name(udtype_name());
+    udtype_info->dup_id(udtype_id());
+
+    for (const auto &field_name : udtype_field_names()) {
+      udtype_info->add_dup_field_names(field_name);
+    }
+  }
+}
+
+namespace {
+
+template <class PB>
+QLType::SharedPtr DoFromQLTypePB(const PB& pb_type) {
+  QLType::Params params;
   params.reserve(pb_type.params().size());
   for (const auto& param : pb_type.params()) {
-    params.push_back(FromQLTypePB(param));
+    params.push_back(DoFromQLTypePB(param));
   }
 
   if (pb_type.main() == PersistentDataType::USER_DEFINED_TYPE) {
@@ -281,15 +300,25 @@ QLType::SharedPtr QLType::FromQLTypePB(const QLTypePB& pb_type) {
     std::vector<std::string> field_names;
     field_names.reserve(udt.field_names().size());
     for (const auto& field_name : udt.field_names()) {
-      field_names.push_back(field_name);
+      field_names.emplace_back(field_name);
     }
 
-    return CreateUDType(
+    return QLType::CreateUDType(
         udt.keyspace_name(), udt.name(), udt.id(), std::move(field_names), std::move(params));
   }
 
-  return params.empty() ? Create(ToLW(pb_type.main()))
-                        : Create(ToLW(pb_type.main()), std::move(params));
+  return params.empty() ? QLType::Create(ToLW(pb_type.main()))
+                        : QLType::Create(ToLW(pb_type.main()), std::move(params));
+}
+
+} // namespace
+
+QLType::SharedPtr QLType::FromQLTypePB(const QLTypePB& pb_type) {
+  return DoFromQLTypePB(pb_type);
+}
+
+QLType::SharedPtr QLType::FromQLTypePB(const LWQLTypePB& pb_type) {
+  return DoFromQLTypePB(pb_type);
 }
 
 const QLType::SharedPtr& QLType::keys_type() const {

@@ -80,6 +80,10 @@ void LightweightMessage::AppendToString(std::string* out) const {
   SerializeToArray(pointer_cast<uint8_t*>(out->data()) + old_size);
 }
 
+std::byte* LightweightMessage::SerializeToArray(std::byte* out) const {
+  return pointer_cast<std::byte*>(DoSerializeToArray(pointer_cast<uint8_t*>(out)));
+}
+
 std::string LightweightMessage::ShortDebugString() const {
   std::string result;
   AppendToDebugString(&result);

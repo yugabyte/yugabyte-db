@@ -21,6 +21,8 @@
 #include <boost/functional/hash.hpp>
 #include <boost/uuid/uuid.hpp>
 
+#include "yb/gutil/stl_util.h"
+
 #include "yb/util/cast.h"
 #include "yb/util/status_fwd.h"
 
@@ -178,6 +180,10 @@ class Uuid {
   friend bool operator<(const Uuid& lhs, const Uuid& rhs);
 
  private:
+  friend std::strong_ordering operator<=>(const Uuid& lhs, const Uuid& rhs) {
+    return NaiveCompare(lhs, rhs);
+  }
+
   boost::uuids::uuid boost_uuid_;
 
   // Encodes the MSB of the uuid into a timestamp based byte stream as follows.

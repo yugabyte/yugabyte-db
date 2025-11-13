@@ -332,6 +332,9 @@ struct SubTransactionMetadata {
   static Result<SubTransactionMetadata> FromPB(
       const SubTransactionMetadataPB& source);
 
+  static Result<SubTransactionMetadata> FromPB(
+      const LWSubTransactionMetadataPB& source);
+
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(subtransaction_id, aborted);
   }
@@ -347,6 +350,9 @@ struct SubTransactionMetadata {
   // TODO(savepoints) -- update behavior and comment to track default aborted subtransaction state
   // as well.
   bool IsDefaultState() const;
+ private:
+  template <class PB>
+  static Result<SubTransactionMetadata> DoFromPB(const PB& source);
 };
 
 std::ostream& operator<<(std::ostream& out, const SubTransactionMetadata& metadata);

@@ -377,11 +377,11 @@ void WaitStateInfo::UpdateAuxInfo(const AshAuxInfo &aux) {
   aux_info_.UpdateFrom(aux);
 }
 
-void WaitStateInfo::UpdateTabletId(const TabletId& tablet_id) {
-  UpdateAuxInfo({.tablet_id = tablet_id});
+void WaitStateInfo::UpdateTabletId(TabletIdView tablet_id) {
+  UpdateAuxInfo({.tablet_id = TabletId(tablet_id)});
 }
 
-void WaitStateInfo::UpdateCurrentTabletId(const TabletId& tablet_id) {
+void WaitStateInfo::UpdateCurrentTabletId(TabletIdView tablet_id) {
   if (const auto& wait_state = CurrentWaitState()) {
     wait_state->UpdateTabletId(tablet_id);
   }

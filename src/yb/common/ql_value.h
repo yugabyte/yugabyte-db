@@ -562,6 +562,9 @@ bool operator >=(const LWQLValuePB& lhs, const LWQLValuePB& rhs);
 bool operator ==(const LWQLValuePB& lhs, const LWQLValuePB& rhs);
 bool operator !=(const LWQLValuePB& lhs, const LWQLValuePB& rhs);
 
+bool operator ==(const QLValuePB& lhs, const LWQLValuePB& rhs);
+bool operator ==(const LWQLValuePB& lhs, const QLValuePB& rhs);
+
 InternalType type(const QLValuePB& v);
 
 bool IsNull(const QLValuePB& v);
@@ -577,16 +580,11 @@ inline void SetNull(QLValue* v) {
   SetNull(v->mutable_value());
 }
 
-bool EitherIsNull(const QLValuePB& lhs, const QLValuePB& rhs);
-bool BothNotNull(const QLValuePB& lhs, const QLValuePB& rhs);
-bool BothNull(const QLValuePB& lhs, const QLValuePB& rhs);
 bool Comparable(const QLValuePB& lhs, const QLValuePB& rhs);
 bool Comparable(const LWQLValuePB& lhs, const LWQLValuePB& rhs);
 int Compare(const QLValuePB& lhs, const QLValuePB& rhs);
-bool EitherIsNull(const QLValuePB& lhs, const QLValue& rhs);
+int Compare(const LWQLValuePB& lhs, const LWQLValuePB& rhs);
 bool Comparable(const QLValuePB& lhs, const QLValue& rhs);
-bool BothNotNull(const QLValuePB& lhs, const QLValue& rhs);
-bool BothNull(const QLValuePB& lhs, const QLValue& rhs);
 int Compare(const QLValuePB& lhs, const QLValue& rhs);
 int Compare(const QLSeqValuePB& lhs, const QLSeqValuePB& rhs);
 int Compare(const bool lhs, const bool rhs);

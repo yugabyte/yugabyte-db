@@ -13,7 +13,7 @@
 
 #include "yb/common/ql_protocol_util.h"
 
-#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_protocol.messages.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 
@@ -31,29 +31,53 @@ QLValuePB* QLPrepareColumn(QLWriteRequestPB* req, int column_id) {
   return column_value->mutable_expr()->mutable_value();
 }
 
+LWQLValuePB* QLPrepareColumn(LWQLWriteRequestPB* req, int column_id) {
+  auto column_value = req->add_column_values();
+  column_value->set_column_id(column_id);
+  return column_value->mutable_expr()->mutable_value();
+}
+
 QLValuePB* QLPrepareCondition(QLConditionPB* condition, int column_id, QLOperator op) {
   condition->add_operands()->set_column_id(column_id);
   condition->set_op(op);
   return condition->add_operands()->mutable_value();
 }
 
-#define QL_PROTOCOL_TYPE_DEFINITIONS_IMPL(name, lname, type) \
+LWQLValuePB* QLPrepareCondition(LWQLConditionPB* condition, int column_id, QLOperator op) {
+  condition->add_operands()->set_column_id(column_id);
+  condition->set_op(op);
+  return condition->add_operands()->mutable_value();
+}
+
+#define QL_PROTOCOL_TYPE_DEFINITIONS_IMPL(name, lname, type, pb_set, lw_set) \
 void PP_CAT3(QLAdd, name, ColumnValue)( \
     QLWriteRequestPB* req, int column_id, type value) { \
-  QLPrepareColumn(req, column_id)->PP_CAT3(set_, lname, _value)(value); \
+  QLPrepareColumn(req, column_id)->PP_CAT3(pb_set, lname, _value)(value); \
 } \
 \
 void PP_CAT3(QLSet, name, Expression)(QLExpressionPB* expr, type value) { \
-  expr->mutable_value()->PP_CAT3(set_, lname, _value)(value); \
+  expr->mutable_value()->PP_CAT3(pb_set, lname, _value)(value); \
+} \
+void PP_CAT3(QLSet, name, Expression)(LWQLExpressionPB* expr, type value) { \
+  expr->mutable_value()->PP_CAT3(lw_set, lname, _value)(value); \
 } \
 \
 void PP_CAT3(QLSet, name, Condition)( \
     QLConditionPB* condition, int column_id, QLOperator op, type value) { \
-  QLPrepareCondition(condition, column_id, op)->PP_CAT3(set_, lname, _value)(value); \
+  QLPrepareCondition(condition, column_id, op)->PP_CAT3(pb_set, lname, _value)(value); \
+} \
+void PP_CAT3(QLSet, name, Condition)( \
+    LWQLConditionPB* condition, int column_id, QLOperator op, type value) { \
+  QLPrepareCondition(condition, column_id, op)->PP_CAT3(lw_set, lname, _value)(value); \
 } \
 \
 void PP_CAT3(QLAdd, name, Condition)( \
     QLConditionPB* condition, int column_id, QLOperator op, type value) { \
+  PP_CAT3(QLSet, name, Condition)( \
+    condition->add_operands()->mutable_condition(), column_id, op, value); \
+} \
+void PP_CAT3(QLAdd, name, Condition)( \
+    LWQLConditionPB* condition, int column_id, QLOperator op, type value) { \
   PP_CAT3(QLSet, name, Condition)( \
     condition->add_operands()->mutable_condition(), column_id, op, value); \
 } \

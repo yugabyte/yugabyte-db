@@ -30,14 +30,17 @@ using RoleName = std::string;
 using PgSchemaName = std::string;
 
 using NamespaceId = std::string;
+using NamespaceIdView = std::string_view;
 using ObjectId = std::string;
 using TableId = std::string;
+using TableIdView = std::string_view;
 using UDTypeId = std::string;
 
 using PeerId = std::string;
 using SnapshotId = std::string;
 using TabletServerId = PeerId;
 using TabletId = std::string;
+using TabletIdView = std::string_view;
 using TablegroupId = std::string;
 using TablespaceId = std::string;
 

@@ -186,6 +186,10 @@ class CallResponse {
     return DynamicMemoryUsageOf(header_, response_data_, sidecars_);
   }
 
+  const RefCntBuffer& data_holder() const {
+    return response_data_.holder();
+  }
+
  private:
   // True once ParseFrom() is called.
   bool parsed_;

@@ -35,13 +35,13 @@ namespace yb {
 // Used internally in QLType and only set for user-defined types.
 class UDTypeInfo {
  public:
-  UDTypeInfo(std::string&& keyspace_name,
-             std::string&& name,
-             std::string&& id,
+  UDTypeInfo(std::string_view keyspace_name,
+             std::string_view name,
+             std::string_view id,
              std::vector<std::string>&& field_names)
-      : keyspace_name_(std::move(keyspace_name)),
-        name_(std::move(name)),
-        id_(std::move(id)),
+      : keyspace_name_(keyspace_name),
+        name_(name),
+        id_(id),
         field_names_(std::move(field_names)) {
   }
 
@@ -103,9 +103,9 @@ class QLType {
   static SharedPtr CreateTypeFrozen(SharedPtr value_type);
 
   static SharedPtr CreateUDType(
-      std::string keyspace_name,
-      std::string type_name,
-      std::string type_id,
+      std::string_view keyspace_name,
+      std::string_view type_name,
+      std::string_view type_id,
       std::vector<std::string> field_names,
       Params field_types);
 
@@ -113,7 +113,9 @@ class QLType {
   // Protobuf support.
 
   void ToQLTypePB(QLTypePB* pb_type) const;
+  void ToQLTypePB(LWQLTypePB* pb_type) const;
   static SharedPtr FromQLTypePB(const QLTypePB& pb_type);
+  static SharedPtr FromQLTypePB(const LWQLTypePB& pb_type);
 
   //------------------------------------------------------------------------------------------------
   // Access functions.

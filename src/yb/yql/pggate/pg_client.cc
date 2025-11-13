@@ -874,8 +874,8 @@ class PgClient::Impl : public BigDataFetcher {
     return ResponseStatus(resp);
   }
 
-  template <class Data, typename MethodPtr, class... Args>
-  ResultFuture<Data> PrepareAndSend(MethodPtr method, Args&&... args) {
+  template <class Data, class Method, class... Args>
+  ResultFuture<Data> PrepareAndSend(Method method, Args&&... args) {
     auto data = std::make_shared<Data>(std::forward<Args>(args)...);
     if (session_shared_mem_ && session_shared_mem_->exchange().ReadyToSend()) {
       ash::MetadataSerializer metadata(rpc::MetadataSerializationMode::kWriteOnZero);
@@ -909,8 +909,9 @@ class PgClient::Impl : public BigDataFetcher {
       }
     }
     data->controller.set_invoke_callback_mode(rpc::InvokeCallbackMode::kReactorThread);
-    (proxy_.get()->*method)(
-        data->req, &data->resp, SetupController<typename Data::RequestType>(&data->controller),
+    method(
+        proxy_.get(), data->req, &data->resp,
+        SetupController<typename Data::RequestType>(&data->controller),
         [data] {
           data->promise.set_value(MakeExchangeResult(*data, data->controller.CheckedResponse()));
         });
@@ -925,8 +926,10 @@ class PgClient::Impl : public BigDataFetcher {
     *req.mutable_options() = std::move(*options);
     req.set_serial_no(next_perform_op_serial_no_.fetch_add(1, std::memory_order_acq_rel));
     PrepareOperations(&req, operations);
-    return PrepareAndSend<PerformData>(
-        &tserver::PgClientServiceProxy::PerformAsync, req, &arena, std::move(operations), metrics);
+    auto method = [](auto* proxy, const auto& req, auto* resp, auto* controller, auto callback) {
+      proxy->PerformAsync(req, resp, controller, std::move(callback));
+    };
+    return PrepareAndSend<PerformData>(method, req, &arena, std::move(operations), metrics);
   }
 
   Status AcquireObjectLock(
@@ -945,10 +948,10 @@ class PgClient::Impl : public BigDataFetcher {
       lock_oid.set_tablespace_oid(*tablespace_oid);
     }
     req.set_lock_type(static_cast<tserver::ObjectLockMode>(mode));
-
-    auto result_future = PrepareAndSend<AcquireObjectLockData>(
-        &tserver::PgClientServiceProxy::AcquireObjectLockAsync, req, &object_locks_arena_);
-    return result_future.Get().status;
+    auto method = [](auto* proxy, const auto& req, auto* resp, auto* controller, auto callback) {
+      proxy->AcquireObjectLockAsync(req, resp, controller, std::move(callback));
+    };
+    return PrepareAndSend<AcquireObjectLockData>(method, req, &object_locks_arena_).Get().status;
   }
 
   bool TryAcquireObjectLockInSharedMemory(

@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include <memory>
 #include <vector>
 
 namespace yb {
@@ -46,5 +47,8 @@ template <class Entry>
 class ArenaList;
 template <class Object>
 using ArenaVector = std::vector<Object, ThreadSafeArenaAllocator<Object>>;
+
+using ArenaPtr = std::shared_ptr<Arena>;
+using ThreadSafeArenaPtr = std::shared_ptr<ThreadSafeArena>;
 
 } // namespace yb
