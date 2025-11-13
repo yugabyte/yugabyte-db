@@ -675,7 +675,7 @@
   status = 200
   force = true
 [[redirects]]
-  from = "/v:version/troubleshoot/*"
+  from = "/:version/troubleshoot/*"
   to = "/stable/troubleshoot/:splat"
   force = true
 
