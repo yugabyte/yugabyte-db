@@ -14,6 +14,7 @@
 
 #include "yb/client/client-test-util.h"
 
+#include "yb/common/pgsql_error.h"
 #include "yb/common/ql_type.h"
 
 #include "yb/master/catalog_manager_if.h"
@@ -21,6 +22,7 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/yb_pg_errcodes.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
@@ -79,13 +81,9 @@ class PgDdlTransactionTest : public LibPqTestBase {
     LibPqTestBase::UpdateMiniClusterOptions(opts);
     opts->extra_master_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
     opts->extra_master_flags.push_back("--yb_enable_read_committed_isolation=true");
-    opts->extra_master_flags.push_back(
-        "--allowed_preview_flags_csv=ysql_yb_ddl_transaction_block_enabled");
     opts->extra_tserver_flags.push_back("--ysql_pg_conf_csv=log_statement=all");
     opts->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
     opts->extra_tserver_flags.push_back("--yb_enable_read_committed_isolation=true");
-    opts->extra_tserver_flags.push_back(
-        "--allowed_preview_flags_csv=ysql_yb_ddl_transaction_block_enabled");
   }
 
   // ysql_yb_disable_ddl_transaction_block_for_read_committed is a non-runtime flag for now, so we
@@ -103,6 +101,14 @@ class PgDdlTransactionTest : public LibPqTestBase {
     ASSERT_OK(cluster_->Restart());
   }
 };
+
+TEST_F(PgDdlTransactionTest, TestDisallowsDisablingDdlAtomicityGUCs) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_NOK_PG_ERROR_CODE(conn.Execute("SET yb_ddl_rollback_enabled=false"),
+    YBPgErrorCode::YB_PG_INVALID_PARAMETER_VALUE);
+  ASSERT_NOK_PG_ERROR_CODE(conn.Execute("SET yb_enable_ddl_atomicity_infra=false"),
+    YBPgErrorCode::YB_PG_INVALID_PARAMETER_VALUE);
+}
 
 TEST_F(PgDdlTransactionTest, TestTableCreateDropSameTransaction) {
   auto conn = ASSERT_RESULT(Connect());
