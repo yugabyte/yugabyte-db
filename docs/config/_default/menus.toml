@@ -199,7 +199,7 @@
 [[main]]
   name = "YugabyteDB Aeon API"
   weight = 9
-  identifier = "yugabytedb-anaged-api"
+  identifier = "yugabytedb-managed-api"
   parent = "yugabyte-apis"
   url = "/yugabyte-cloud/managed-automation/managed-api/"
   [main.params]
