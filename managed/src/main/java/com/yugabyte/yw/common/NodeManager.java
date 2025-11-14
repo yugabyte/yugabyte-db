@@ -1866,7 +1866,6 @@ public class NodeManager extends DevopsBase {
         CreateRootVolumes.Params crvParams = (CreateRootVolumes.Params) nodeTaskParam;
         commandArgs.add("--num_disks");
         commandArgs.add(String.valueOf(crvParams.numVolumes));
-
         if (Common.CloudType.aws.equals(userIntent.providerType)) {
           commandArgs.add("--snapshot_creation_delay");
           commandArgs.add(
