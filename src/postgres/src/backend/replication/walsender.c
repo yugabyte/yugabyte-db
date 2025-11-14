@@ -1353,7 +1353,8 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 					 * Do the equivalent of PG logic for CRS_USE_SNAPSHOT (in the else branch below) i.e.,
 					 * ensure we have gotten a transaction snapshot before setting a read time for it.
 					 */
-					GetTransactionSnapshot();
+					if (!yb_disable_pg_snapshot_mgmt_in_repeatable_read)
+						GetTransactionSnapshot();
 					YbUseSnapshotReadTime(yb_consistent_snapshot_time);
 				}
 			}

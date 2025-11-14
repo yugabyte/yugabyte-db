@@ -7643,7 +7643,12 @@ YbIsDDLOrInitDBMode()
 bool
 YbIsReadCommittedTxn()
 {
-	return IsYBReadCommitted() && !YbIsDDLOrInitDBMode();
+	if (!yb_disable_pg_snapshot_mgmt_in_repeatable_read)
+		return IsYBReadCommitted() && !YbIsDDLOrInitDBMode();
+	else
+		return IsYBReadCommitted() &&
+				!((YBCPgIsDdlMode() && !YBIsDdlTransactionBlockEnabled()) ||
+				YBCIsInitDbModeEnvVarSet());
 }
 
 bool
@@ -7669,9 +7674,18 @@ YbMakeReadPointHandle(YbcReadPointHandle read_point)
 YbOptionalReadPointHandle
 YbBuildCurrentReadPointHandle()
 {
-	return !YbSkipPgSnapshotManagement()
-		? YbMakeReadPointHandle(YBCPgGetCurrentReadPoint())
-		: (YbOptionalReadPointHandle) {};
+	if (!yb_disable_pg_snapshot_mgmt_in_repeatable_read)
+	{
+		return !YbSkipPgSnapshotManagement()
+			? YbMakeReadPointHandle(YBCPgGetCurrentReadPoint())
+			: (YbOptionalReadPointHandle) {};
+	}
+	else
+	{
+		return YbIsReadCommittedTxn()
+			? YbMakeReadPointHandle(YBCPgGetCurrentReadPoint())
+			: (YbOptionalReadPointHandle) {};
+	}
 }
 
 void

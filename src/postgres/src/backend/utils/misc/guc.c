@@ -283,6 +283,8 @@ static bool check_yb_explicit_row_locking_batch_size(int *newval, void **extra, 
 static bool yb_check_no_txn(int *newval, void **extra, GucSource source);
 static bool yb_check_toast_catcache_threshold(int *newval, void **extra, GucSource source);
 static bool yb_disable_auto_analyze_check_hook(bool *newval, void **extra, GucSource source);
+static bool yb_disable_pg_snapshot_mgmt_in_repeatable_read_check_hook(bool *newval, void **extra,
+	GucSource source);
 static const char *show_tcmalloc_sample_period(void);
 static const char *yb_show_maxconnections(void);
 static void assign_tcmalloc_sample_period(int newval, void *extra);
@@ -811,6 +813,7 @@ static char *recovery_target_lsn_string;
 static char *restrict_nonsystem_relation_kind_string;
 
 bool		yb_enable_memory_tracking = true;
+bool		yb_disable_pg_snapshot_mgmt_in_repeatable_read = false;
 static char *yb_effective_transaction_isolation_level_string;
 static char *yb_xcluster_consistency_level_string;
 static char *yb_read_time_string;
@@ -3593,6 +3596,20 @@ static struct config_bool ConfigureNamesBool[] =
 		&yb_ignore_bool_cond_for_legacy_estimate,
 		false,
 		NULL, NULL, NULL
+  },
+
+  {
+		{"yb_disable_pg_snapshot_mgmt_in_repeatable_read", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("[Advanced GUC. Use only after consulting YugabyteDB support.] Various foreign "
+				"key action triggers require using a new snapshot instead of the transaction snapshot. Not "
+				"doing so can result in issues such as #26163. This GUC is a way to revert the fix for the "
+				"issue and fallback to using the transaction snapshot for all fk triggers."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_disable_pg_snapshot_mgmt_in_repeatable_read,
+		false,
+		yb_disable_pg_snapshot_mgmt_in_repeatable_read_check_hook, NULL, NULL
 	},
 
 	/* End-of-list marker */
@@ -16171,6 +16188,25 @@ yb_disable_auto_analyze_check_hook(bool *newval, void **extra, GucSource source)
 	return true;
 }
 
+bool
+yb_disable_pg_snapshot_mgmt_in_repeatable_read_check_hook(bool *newval, void **extra,
+	GucSource source)
+{
+	if (IsTransactionBlock())
+	{
+		ereport(ERROR,
+			(errmsg("can only be modified outside of a transaction block.")));
+	}
+
+	if (GetCurrentCommandId(false) != 0)
+	{
+		ereport(ERROR,
+			(errmsg("can only be modified when no command has been executed in the current transaction"
+					" yet.")));
+	}
+
+	return true;
+}
 
 static List *
 yb_neg_catcache_ids_to_list(const char *cache_ids_str)

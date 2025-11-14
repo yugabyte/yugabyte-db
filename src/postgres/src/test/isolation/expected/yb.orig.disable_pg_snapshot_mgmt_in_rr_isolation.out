@@ -1,0 +1,66 @@
+Parsed test spec with 2 sessions
+
+starting permutation: s1_begin_rr s2_begin_rr s2_select s1_ins_fk_rel s1_commit s2_del_from_pk_rel s2_commit s1_select_pk_rel s1_select_fk_rel
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_select: select count(*) from pk_rel;
+count
+-----
+    1
+(1 row)
+
+step s1_ins_fk_rel: insert into fk_rel values (1, 1);
+step s1_commit: COMMIT;
+step s2_del_from_pk_rel: delete from pk_rel where h=1;
+ERROR:  update or delete on table "pk_rel" violates foreign key constraint "fk_rel_v1_fkey" on table "fk_rel"
+step s2_commit: COMMIT;
+step s1_select_pk_rel: select * from pk_rel;
+h|v1
+-+--
+1| 1
+(1 row)
+
+step s1_select_fk_rel: select * from fk_rel;
+h|v1
+-+--
+1| 1
+(1 row)
+
+
+starting permutation: s1_begin_rr s2_disable_pg_snapshot_mgmt s2_begin_rr s2_select s2_sleep s1_ins_fk_rel s1_commit s2_del_from_pk_rel s2_commit s1_select_pk_rel s1_select_fk_rel
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_disable_pg_snapshot_mgmt: set yb_disable_pg_snapshot_mgmt_in_repeatable_read=true;
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_select: select count(*) from pk_rel;
+count
+-----
+    1
+(1 row)
+
+step s2_sleep: SELECT pg_sleep(1);
+pg_sleep
+--------
+        
+(1 row)
+
+step s1_ins_fk_rel: insert into fk_rel values (1, 1);
+step s1_commit: COMMIT;
+step s2_del_from_pk_rel: delete from pk_rel where h=1;
+step s2_commit: COMMIT;
+step s1_select_pk_rel: select * from pk_rel;
+h|v1
+-+--
+(0 rows)
+
+step s1_select_fk_rel: select * from fk_rel;
+h|v1
+-+--
+1| 1
+(1 row)
+
+
+starting permutation: s2_begin_rr s2_disable_pg_snapshot_mgmt s2_commit
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_disable_pg_snapshot_mgmt: set yb_disable_pg_snapshot_mgmt_in_repeatable_read=true;
+ERROR:  can only be modified outside of a transaction block.
+step s2_commit: COMMIT;
