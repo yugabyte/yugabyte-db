@@ -2442,7 +2442,9 @@ class PgClientSession::Impl {
     });
   }
 
-  Status DoHandleSharedExchangeQuery(PerformQueryDataPtr&& data, CoarseTimePoint deadline) {
+  Status DoHandleSharedExchangeQuery(
+      const RequestProcessingPreconditionWaiter& precondition_waiter, PerformQueryDataPtr&& data,
+      CoarseTimePoint deadline) {
     boost::container::small_vector<TableId, 4> table_ids;
     PreparePgTablesQuery(data->req, table_ids);
     if (PREDICT_FALSE(FLAGS_TEST_request_unknown_tables_during_perform)) {
@@ -2451,17 +2453,20 @@ class PgClientSession::Impl {
     }
     auto tables_future = GetTablesAsync(table_cache(), table_ids);
     RETURN_NOT_OK(Wait(tables_future, ToSteady(deadline)));
+    RETURN_NOT_OK(precondition_waiter(data->req.serial_no(), deadline));
     return DoPerform(tables_future.get(), data, deadline);
   }
 
-  Status DoHandleSharedExchangeQuery(ObjectLockQueryDataPtr&& data, CoarseTimePoint deadline) {
+  Status DoHandleSharedExchangeQuery(
+      const RequestProcessingPreconditionWaiter&, ObjectLockQueryDataPtr&& data,
+      CoarseTimePoint deadline) {
     return DoAcquireObjectLock(data, deadline);
   }
 
   template <QueryTraitsType T, class... Args>
   Status DoHandleSharedExchangeQuery(
-      SharedExchangeQuery<T>& query, uint8_t* input, size_t size, uint64_t session_id,
-      Args&&... args) {
+      const RequestProcessingPreconditionWaiter& precondition_waiter, SharedExchangeQuery<T>& query,
+      uint8_t* input, size_t size, uint64_t session_id, Args&&... args) {
     auto [data, deadline] = VERIFY_RESULT(
         query.ParseRequest(input, size, session_id, std::forward<Args>(args)...));
     auto wait_state = yb::ash::WaitStateInfo::CreateIfAshIsEnabled<yb::ash::WaitStateInfo>();
@@ -2470,34 +2475,37 @@ class PgClientSession::Impl {
     auto track_guard = wait_state
         ? TrackSharedMemoryPgMethodExecution<T>(wait_state, query.ash_metadata())
         : std::nullopt;
-    return DoHandleSharedExchangeQuery(std::move(data), deadline);
+    return DoHandleSharedExchangeQuery(precondition_waiter, std::move(data), deadline);
   }
 
   template <QueryTraitsType T, class... Args>
   void HandleSharedExchangeQuery(
+      const RequestProcessingPreconditionWaiter& precondition_waiter,
       SharedExchange& exchange, uint8_t* input, size_t size, Args&&... args) {
     auto query = SharedExchangeQuery<T>::MakeShared(
         SharedSessionFromThis(), exchange, stats_exchange_response_size());
-    const auto status =
-        DoHandleSharedExchangeQuery(*query, input, size, id(), std::forward<Args>(args)...);
+    const auto status = DoHandleSharedExchangeQuery(
+        precondition_waiter, *query, input, size, id(), std::forward<Args>(args)...);
     if (!status.ok()) {
       query->SendErrorResponse(status);
     }
   }
 
-  void ProcessSharedRequest(size_t size, SharedExchange* exchange) {
+  void ProcessSharedRequest(
+      size_t size, SharedExchange* exchange,
+      const RequestProcessingPreconditionWaiter& precondition_waiter) {
     auto input = to_uchar_ptr(exchange->Obtain(size));
     const auto req_type_id = *reinterpret_cast<const uint8_t *>(input);
     input += sizeof(req_type_id);
     size -= sizeof(req_type_id);
     auto req_type = static_cast<tserver::PgSharedExchangeReqType>(req_type_id);
     switch (req_type) {
-      case tserver::PgSharedExchangeReqType::PERFORM: {
-        return HandleSharedExchangeQuery<PerformQueryTraits>(*exchange, input, size, table_cache());
-      }
-      case tserver::PgSharedExchangeReqType::ACQUIRE_OBJECT_LOCK: {
-        return HandleSharedExchangeQuery<ObjectLockQueryTraits>(*exchange, input, size);
-      }
+      case tserver::PgSharedExchangeReqType::PERFORM:
+        return HandleSharedExchangeQuery<PerformQueryTraits>(
+            precondition_waiter, *exchange, input, size, table_cache());
+      case tserver::PgSharedExchangeReqType::ACQUIRE_OBJECT_LOCK:
+        return HandleSharedExchangeQuery<ObjectLockQueryTraits>(
+            precondition_waiter, *exchange, input, size);
       case tserver::PgSharedExchangeReqType_INT_MIN_SENTINEL_DO_NOT_USE_: [[fallthrough]];
       case tserver::PgSharedExchangeReqType_INT_MAX_SENTINEL_DO_NOT_USE_: break;
     }
@@ -3851,8 +3859,10 @@ void PgClientSession::Perform(
   impl_->Perform(req, resp, std::move(context), tables);
 }
 
-void PgClientSession::ProcessSharedRequest(size_t size, SharedExchange* exchange) {
-  impl_->ProcessSharedRequest(size, exchange);
+void PgClientSession::ProcessSharedRequest(
+    size_t size, SharedExchange* exchange,
+    const RequestProcessingPreconditionWaiter& precondition_waiter) {
+  impl_->ProcessSharedRequest(size, exchange, precondition_waiter);
 }
 
 size_t PgClientSession::SaveData(const RefCntBuffer& buffer, WriteBuffer&& sidecars) {
