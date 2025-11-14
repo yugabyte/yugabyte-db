@@ -255,6 +255,7 @@ YbcObjectLockMode
 YbcOrderingMode
 YbcPallocFn
 YbcPgAshConfig
+YbcPgAtomicUint64
 YbcPgAttrValueDescriptor
 YbcPgBoundType
 YbcPgCallbacks

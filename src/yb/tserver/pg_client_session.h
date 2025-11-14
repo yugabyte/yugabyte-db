@@ -38,6 +38,7 @@
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
+#include "yb/util/lw_function.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/strongly_typed_bool.h"
@@ -113,6 +114,8 @@ struct PgClientSessionContext {
   const TransactionManagerProvider transaction_manager_provider;
 };
 
+using RequestProcessingPreconditionWaiter = LWFunction<Status(size_t, CoarseTimePoint)>;
+
 class PgClientSession final {
  private:
   using SharedThisSource = std::shared_ptr<void>;
@@ -136,7 +139,9 @@ class PgClientSession final {
       PgPerformRequestPB& req, PgPerformResponsePB& resp, rpc::RpcContext&& context,
       const PgTablesQueryResult& tables);
 
-  void ProcessSharedRequest(size_t size, SharedExchange* exchange);
+  void ProcessSharedRequest(
+      size_t size, SharedExchange* exchange,
+      const RequestProcessingPreconditionWaiter& precondition_waiter);
 
   size_t SaveData(const RefCntBuffer& buffer, WriteBuffer&& sidecars);
 
