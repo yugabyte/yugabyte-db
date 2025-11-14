@@ -76,10 +76,6 @@ class PgSharedMemTest : public PgMiniTestBase {
     return result;
   }
 
-  void OverrideMiniClusterOptions(MiniClusterOptions* options) override {
-    options->wait_for_pg = false;
-  }
-
   void TestSimple();
 };
 

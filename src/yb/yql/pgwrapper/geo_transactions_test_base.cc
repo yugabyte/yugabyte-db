@@ -307,8 +307,7 @@ Status GeoTransactionsTestBase::StartShutdownTabletServers(
         // since opening a connection acquires few locks, which needs the capability of creating
         // YBTransaction(s), which in turn requires the existence of YB transaction table. Hence
         // dont't wait for pg connections here.
-        RETURN_NOT_OK(tserver->Start(
-            tserver::WaitTabletsBootstrapped::kFalse, tserver::WaitToAcceptPgConnections::kFalse));
+        RETURN_NOT_OK(tserver->Start(tserver::WaitTabletsBootstrapped::kFalse));
       }
     }
   }

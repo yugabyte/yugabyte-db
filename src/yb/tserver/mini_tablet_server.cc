@@ -129,8 +129,7 @@ Result<std::unique_ptr<MiniTabletServer>> MiniTabletServer::CreateMiniTabletServ
   return std::make_unique<MiniTabletServer>(fs_roots, fs_roots, rpc_port, *options_result, index);
 }
 
-Status MiniTabletServer::Start(
-    WaitTabletsBootstrapped wait_tablets_bootstrapped, WaitToAcceptPgConnections wait_for_pg) {
+Status MiniTabletServer::Start(WaitTabletsBootstrapped wait_tablets_bootstrapped) {
   CHECK(!started_);
   if (!pgsql_proxy_bind_address_.empty()) {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_bind_address) = pgsql_proxy_bind_address_;
@@ -138,7 +137,7 @@ Status MiniTabletServer::Start(
 
   TEST_SetThreadPrefixScoped prefix_se(ToString());
 
-  std::unique_ptr<TabletServer> server(new TabletServer(opts_));
+  std::unique_ptr<TabletServer> server = std::make_unique<TabletServer>(opts_);
   RETURN_NOT_OK(server->Init());
 
   RETURN_NOT_OK(server->Start());
@@ -152,23 +151,15 @@ Status MiniTabletServer::Start(
   if (wait_tablets_bootstrapped) {
     RETURN_NOT_OK(WaitStarted());
   }
-  return StartPgIfConfigured(wait_for_pg);
+  return StartPgIfConfigured();
 }
 
-Status MiniTabletServer::StartPgIfConfigured(WaitToAcceptPgConnections wait_for_pg) {
+Status MiniTabletServer::StartPgIfConfigured() {
   if (!start_pg_) {
     return Status::OK();
   }
   RETURN_NOT_OK(start_pg_());
   RETURN_NOT_OK(server_->StartYSQLLeaseRefresher());
-  if (!wait_for_pg) {
-    return Status::OK();
-  }
-  CHECK(get_pg_conn_settings_) << "Must set get_pg_conn_settings_ function when start_pg_ set";
-  auto settings = get_pg_conn_settings_();
-  settings.dbname = "yugabyte";
-  settings.connect_timeout = 20;
-  VERIFY_RESULT(pgwrapper::PGConnBuilder(settings).Connect());
   return Status::OK();
 }
 
@@ -297,10 +288,10 @@ Status MiniTabletServer::CleanTabletLogs() {
   return ForAllTablets(this, [](TabletPeer* tablet_peer) { return tablet_peer->RunLogGC(); });
 }
 
-Status MiniTabletServer::Restart(WaitToAcceptPgConnections wait_for_pg) {
+Status MiniTabletServer::Restart() {
   CHECK(started_);
   Shutdown();
-  return Start(WaitTabletsBootstrapped::kFalse, wait_for_pg);
+  return Start(WaitTabletsBootstrapped::kFalse);
 }
 
 Status MiniTabletServer::RestartStoppedServer() {
