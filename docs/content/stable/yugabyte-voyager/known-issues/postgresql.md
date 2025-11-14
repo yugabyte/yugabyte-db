@@ -1235,7 +1235,7 @@ $$;
 - [COMPRESSION clause](https://www.postgresql.org/docs/current/sql-createtable.html#SQL-CREATETABLE-PARMS-COMPRESSION) in TABLE Column for TOASTing method.
 - [CREATE DATABASE options](https://www.postgresql.org/docs/15/sql-createdatabase.html) (locale, collation, strategy, and OID related).
 
-In addition, if any of the following PostgreSQL features are present in the source schema, the import schema step on the target YugabyteDB will fail, unless you are importing to YugabyteDB [v2.25](/stable/releases/ybdb-releases/v2.25) or [v2025.1](/stable/releases/ybdb-releases/v2025.1) (which supports PG15).
+In addition, if any of the following PostgreSQL features are present in the source schema, the import schema step on the target YugabyteDB will fail, unless you are importing to YugabyteDB [v2.25](/stable/releases/ybdb-releases/end-of-life/v2.25) or [v2025.1](/stable/releases/ybdb-releases/v2025.1) (which supports PG15).
 
 - [Multirange datatypes](https://www.postgresql.org/docs/current/rangetypes.html#RANGETYPES-BUILTIN).
 - [UNIQUE NULLS NOT DISTINCT clause](https://www.postgresql.org/about/featurematrix/detail/392/) in constraint and index.

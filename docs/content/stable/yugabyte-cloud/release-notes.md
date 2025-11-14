@@ -112,7 +112,7 @@ rightNav:
 ##### New features
 
 - YugabyteDB v2.25.0.0 featuring support for PostgreSQL 15 is now available for testing on the Preview database track. To test it out, [create a Sandbox](../cloud-basics/create-clusters/create-clusters-free/) cluster with the Database version set to the Preview track.
-  - [YugabyteDB v2.25.0.0 Release Notes](/stable/releases/ybdb-releases/v2.25/)
+  - [YugabyteDB v2.25.0.0 Release Notes](/stable/releases/ybdb-releases/end-of-life/v2.25/)
   - [PostgreSQL 15 features](/stable/api/ysql/pg15-features/)
   - [YugabyteDB Levels Up with PG15 Features](https://www.yugabyte.com/blog/postgresql-compatibility-new-yugabytedb-pg15-features/)
 - Support for configuring custom identity providers for [federated authentication](../managed-security/managed-authentication/federated-custom/), to provide single sign-on access for your account users.
