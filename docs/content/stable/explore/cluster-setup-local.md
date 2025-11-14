@@ -43,7 +43,7 @@ Use the [yugabyted](../../reference/configuration/yugabyted/) utility to create 
 
 ### Single-node universe
 
-If a local universe is currently running, first [destroy it](../../reference/configuration/yugabyted/#destroy-a-local-cluster).
+If a local universe is currently running, first [destroy it](../../reference/configuration/yugabyted/#destroy-a-local-universe).
 
 You can create a single-node local universe with a replication factor (RF) of 1 by running the following command:
 

@@ -49,7 +49,7 @@ This deployment provides the following advantages:
 
 ## Create a synchronized multi-region universe
 
-This example simulates AWS regions on a local machine. To run it, first [destroy](../../../reference/configuration/yugabyted/#destroy-a-local-cluster) any running local universes.
+This example simulates AWS regions on a local machine. To run it, first [destroy](../../../reference/configuration/yugabyted/#destroy-a-local-universe) any running local universes.
 
 You can also use these steps to deploy universes in a public cloud, private data center, or in separate virtual machines. Simply replace the IP addresses in the commands with the corresponding IP addresses of your nodes/VMs.
 

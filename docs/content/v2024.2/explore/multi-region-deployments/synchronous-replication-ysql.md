@@ -40,7 +40,7 @@ This deployment provides the following advantages:
   </li>
 </ul>
 
-The example included in this document simulates AWS regions on a local machine. In order to use this example, you need to [destroy](../../../reference/configuration/yugabyted/#destroy-a-local-cluster) any running local universes.
+The example included in this document simulates AWS regions on a local machine. In order to use this example, you need to [destroy](../../../reference/configuration/yugabyted/#destroy-a-local-universe) any running local universes.
 
 You can also use the described steps for deploying universes in any public cloud, private data center, or in separate virtual machines. The following are the only differences:
 
