@@ -99,7 +99,6 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.experimental.Accessors;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import play.Environment;
@@ -285,15 +284,13 @@ public class HealthChecker {
   private void processMetrics(Customer c, Universe u, Details report) {
 
     boolean hasErrors = false;
-    // This is hacky, but health check data items only make sense if you know order.
-    boolean isMaster = true;
-    boolean isInstanceUp = false;
     try {
       List<Metric> metrics = new ArrayList<>();
       Map<PlatformMetrics, Integer> platformMetrics = new HashMap<>();
       Set<String> nodesWithError = new HashSet<>();
       boolean shouldCollectNodeMetrics = false;
       for (NodeData nodeData : report.getData()) {
+        boolean isMaster = false;
         String node = nodeData.getNode();
         String checkName = nodeData.getMessage();
         boolean checkResult = nodeData.getHasError();
@@ -310,11 +307,6 @@ public class HealthChecker {
         List<Details.Metric> nodeMetrics = nodeData.getMetrics();
         List<Metric> nodeCustomMetrics =
             new ArrayList<>(getNodeMetrics(c, u, nodeData, nodeMetrics));
-        if (checkName.equals(UPTIME_CHECK)) {
-          // No boot time metric means the instance or the whole node is down
-          // and this node shouldn't be counted in other error node count metrics.
-          isInstanceUp = CollectionUtils.isNotEmpty(nodeCustomMetrics);
-        }
         if (checkName.equals(NODE_EXPORTER_CHECK)) {
           shouldCollectNodeMetrics =
               nodeCustomMetrics.stream()
@@ -327,14 +319,7 @@ public class HealthChecker {
         // Get per-check error nodes count metric name.
         PlatformMetrics countMetric = getCountMetricByCheckName(checkName, isMaster);
 
-        // Only increase error nodes metric value in case it's instance up check
-        // or instance is actually up. Otherwise - most probably node is just down
-        // and ssh connection to the node failed during check.
-        boolean increaseNodeCount =
-            isInstanceUp
-                || PlatformMetrics.HEALTH_CHECK_MASTER_DOWN == countMetric
-                || PlatformMetrics.HEALTH_CHECK_TSERVER_DOWN == countMetric;
-        if (countMetric != null && increaseNodeCount) {
+        if (countMetric != null) {
           // checkResult == true -> error -> 1
           int toAppend = checkResult ? 1 : 0;
           platformMetrics.compute(countMetric, (k, v) -> v != null ? v + toAppend : toAppend);
