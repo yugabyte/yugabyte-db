@@ -17,7 +17,7 @@
 
 MODULE_big = age
 
-age_sql = age--1.5.0.sql
+age_sql = age--1.6.0.sql
 
 OBJS = src/backend/age.o \
        src/backend/catalog/ag_catalog.o \
