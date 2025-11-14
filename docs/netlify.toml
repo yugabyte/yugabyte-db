@@ -243,7 +243,7 @@
 
 [[redirects]]
   from = "/preview/architecture/concepts/docdb/persistence/"
-  to = "/stable/architecture/docdb/data-model"
+  to = "/stable/architecture/docdb/data-model/"
 
 [[redirects]]
   from = "/preview/architecture/concepts/docdb/sharding/"
@@ -266,11 +266,11 @@
   to = "/stable/architecture/query-layer/"
 
 [[redirects]]
-  from = "/preview/architecture/concepts"
-  to = "/stable/architecture/key-concepts"
+  from = "/preview/architecture/concepts/"
+  to = "/stable/architecture/key-concepts/"
 
 [[redirects]]
-  from = "/preview/explore/sql-nosql*"
+  from = "/preview/explore/sql-nosql/*"
   to = "/stable/faq/general/#how-is-yugabytedb-different-from-nosql-databases"
 
 # from 404 report (referrer: ycombinator)
@@ -557,8 +557,8 @@
   to = "/stable/yugabyte-platform/install-yugabyte-platform/install-software/installer/"
 
 [[redirects]]
-   from = "/preview/yugabyte-platform/install-yugabyte-platform/prerequisites/*"
-   to = "/stable/yugabyte-platform/prepare/server-yba/"
+  from = "/preview/yugabyte-platform/install-yugabyte-platform/prerequisites/*"
+  to = "/stable/yugabyte-platform/prepare/server-yba/"
 
 # [[redirects]]
 #    from = "/stable/yugabyte-platform/install-yugabyte-platform/prerequisites/*"
@@ -906,78 +906,6 @@
   to = "/stable/develop/tutorials/build-apps/rust/cloud-ysql-rust/"
   force = true
 
-# Manual import was in migrate, now in manage
-
-[[redirects]]
-  from = "/preview/migrate/manual-import/migrate-schema/"
-  to = "/stable/manage/data-migration/bulk-export-ysql/"
-  force = true
-
-[[redirects]]
-  from = "/preview/migrate/manual-import/migrate-application/"
-  to = "/stable/manage/data-migration/bulk-export-ysql/"
-  force = true
-
-[[redirects]]
-  from = "/preview/migrate/manual-import/export-data/"
-  to = "/stable/manage/data-migration/bulk-export-ysql/"
-  force = true
-
-[[redirects]]
-  from = "/preview/migrate/manual-import/prepare-cluster/"
-  to = "/stable/manage/data-migration/bulk-import-ysql/"
-  force = true
-
-[[redirects]]
-  from = "/preview/migrate/manual-import/import-data/"
-  to = "/stable/manage/data-migration/bulk-import-ysql/"
-  force = true
-
-[[redirects]]
-  from = "/preview/migrate/manual-import/verify-migration/"
-  to = "/stable/manage/data-migration/bulk-import-ysql/"
-  force = true
-
-[[redirects]]
-  from = "/preview/migrate/migrate-from-postgresql/"
-  to = "/stable/manage/data-migration/bulk-export-ysql/"
-  force = true
-
-[[redirects]]
-  from = "/stable/migrate/manual-import/migrate-schema/"
-  to = "/stable/manage/data-migration/bulk-export-ysql/"
-  force = true
-
-[[redirects]]
-  from = "/stable/migrate/manual-import/migrate-application/"
-  to = "/stable/manage/data-migration/bulk-export-ysql/"
-  force = true
-
-[[redirects]]
-  from = "/stable/migrate/manual-import/export-data/"
-  to = "/stable/manage/data-migration/bulk-export-ysql/"
-  force = true
-
-[[redirects]]
-  from = "/stable/migrate/manual-import/prepare-cluster/"
-  to = "/stable/manage/data-migration/bulk-import-ysql/"
-  force = true
-
-[[redirects]]
-  from = "/stable/migrate/manual-import/import-data/"
-  to = "/stable/manage/data-migration/bulk-import-ysql/"
-  force = true
-
-[[redirects]]
-  from = "/stable/migrate/manual-import/verify-migration/"
-  to = "/stable/manage/data-migration/bulk-import-ysql/"
-  force = true
-
-[[redirects]]
-  from = "/stable/migrate/migrate-from-postgresql/"
-  to = "/stable/manage/data-migration/bulk-export-ysql/"
-  force = true
-
 # Moving Drivers from reference to Develop
 [[redirects]]
   from = "/preview/reference/drivers/"
@@ -1148,35 +1076,35 @@
 # Foreign data wrappers from SQL features to Advanced features
 
 [[redirects]]
-   from = "/preview/explore/ysql-language-features/foreign-data-wrappers/"
-   to = "/stable/explore/ysql-language-features/advanced-features/foreign-data-wrappers/"
+  from = "/preview/explore/ysql-language-features/foreign-data-wrappers/"
+  to = "/stable/explore/ysql-language-features/advanced-features/foreign-data-wrappers/"
 
 # Fault tolerance redirects
 
 [[redirects]]
-   from = "/preview/explore/fault-tolerance/docker/"
-   to = "/stable/explore/fault-tolerance/macos/"
+  from = "/preview/explore/fault-tolerance/docker/"
+  to = "/stable/explore/fault-tolerance/macos/"
 [[redirects]]
-   from = "/preview/explore/fault-tolerance/linux/"
-   to = "/stable/explore/fault-tolerance/macos/"
+  from = "/preview/explore/fault-tolerance/linux/"
+  to = "/stable/explore/fault-tolerance/macos/"
 [[redirects]]
-   from = "/preview/explore/fault-tolerance/kubernetes/"
-   to = "/stable/explore/fault-tolerance/macos/"
+  from = "/preview/explore/fault-tolerance/kubernetes/"
+  to = "/stable/explore/fault-tolerance/macos/"
 
 # Prometheus integration redirects
 
 [[redirects]]
-   from = "/preview/explore/observability/prometheus-integration/macos/"
-   to = "/stable/explore/observability/prometheus-integration/"
+  from = "/preview/explore/observability/prometheus-integration/macos/"
+  to = "/stable/explore/observability/prometheus-integration/"
 [[redirects]]
-   from = "/preview/explore/observability/prometheus-integration/docker/"
-   to = "/stable/explore/observability/prometheus-integration/"
+  from = "/preview/explore/observability/prometheus-integration/docker/"
+  to = "/stable/explore/observability/prometheus-integration/"
 [[redirects]]
-   from = "/preview/explore/observability/prometheus-integration/linux/"
-   to = "/stable/explore/observability/prometheus-integration/"
+  from = "/preview/explore/observability/prometheus-integration/linux/"
+  to = "/stable/explore/observability/prometheus-integration/"
 [[redirects]]
-   from = "/preview/explore/observability/prometheus-integration/kubernetes/"
-   to = "/stable/explore/observability/prometheus-integration/"
+  from = "/preview/explore/observability/prometheus-integration/kubernetes/"
+  to = "/stable/explore/observability/prometheus-integration/"
 
 ##########################################################
 # Catch-all for old links to /latest (now called /stable)
