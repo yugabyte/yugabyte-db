@@ -66,6 +66,7 @@ module.exports = {
           })
         ];
         webpackConfig.optimization.nodeEnv = 'production';
+        webpackConfig.devtool = false;
       }
 
       webpackConfig.module.rules.unshift({
