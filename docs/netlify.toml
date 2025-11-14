@@ -621,11 +621,6 @@
   force = true
 
 [[redirects]]
-  from = "/stable/releases/*"
-  to = "/stable/releases/:splat"
-  status = 200
-  force = true
-[[redirects]]
   from = "/:version/releases/*"
   to = "/stable/releases/:splat"
   force = true
@@ -666,11 +661,6 @@
 
 # Redirect for troubleshoot
 
-[[redirects]]
-  from = "/stable/troubleshoot/*"
-  to = "/stable/troubleshoot/:splat"
-  status = 200
-  force = true
 [[redirects]]
   from = "/:version/troubleshoot/*"
   to = "/stable/troubleshoot/:splat"
@@ -720,11 +710,6 @@
   to = "/stable/yugabyte-cloud/cloud-quickstart/"
   force = true
 
-[[redirects]]
-  from = "/stable/yugabyte-cloud/*"
-  to = "/stable/yugabyte-cloud/:splat"
-  status = 200
-  force = true
 [[redirects]]
   from = "/:version/yugabyte-cloud/*"
   to = "/stable/yugabyte-cloud/:splat"
@@ -1041,20 +1026,10 @@
   force = true
 
 [[redirects]]
-  from = "/stable/contribute/*"
-  to = "/stable/contribute/:splat"
-  status = 200
-  force = true
-[[redirects]]
   from = "/:version/contribute/*"
   to = "/stable/contribute/:splat"
   force = true
 
-[[redirects]]
-  from = "/stable/faq/*"
-  to = "/stable/faq/:splat"
-  status = 200
-  force = true
 [[redirects]]
   from = "/:version/faq/*"
   to = "/stable/faq/:splat"
@@ -1071,11 +1046,6 @@
   force = true
 
 [[redirects]]
-  from = "/stable/integrations/*"
-  to = "/stable/integrations/:splat"
-  status = 200
-  force = true
-[[redirects]]
   from = "/:version/integrations/*"
   to = "/stable/integrations/:splat"
   force = true
@@ -1087,11 +1057,6 @@
   force = true
 
 [[redirects]]
-  from = "/stable/legal/*"
-  to = "/stable/legal/:splat"
-  status = 200
-  force = true
-[[redirects]]
   from = "/:version/legal/*"
   to = "/stable/legal/:splat"
   force = true
@@ -1102,20 +1067,10 @@
   force = true
 
 [[redirects]]
-  from = "/stable/develop/*"
-  to = "/stable/develop/:splat"
-  status = 200
-  force = true
-[[redirects]]
   from = "/:version/develop/*"
   to = "/stable/develop/:splat"
   force = true
 
-[[redirects]]
-  from = "/stable/yedis/*"
-  to = "/stable/yedis/:splat"
-  status = 200
-  force = true
 [[redirects]]
   from = "/:version/yedis/*"
   to = "/stable/yedis/"
