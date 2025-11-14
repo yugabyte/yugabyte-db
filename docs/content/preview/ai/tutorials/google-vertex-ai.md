@@ -8,9 +8,9 @@ headcontent: Use YugabyteDB as the database backend for Google Vertex AI applica
 aliases:
   - /tutorials/google/google-vertex-ai/
 menu:
-  preview_develop:
+  preview_ai:
     identifier: tutorials-google-vertex-ai
-    parent: tutorials-ai-rag
+    parent: ai-tutorials
     weight: 40
 type: docs
 ---
