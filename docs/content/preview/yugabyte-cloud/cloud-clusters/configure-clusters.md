@@ -42,7 +42,7 @@ The **Regions** section on the cluster **Settings > Infrastructure** tab summari
 - To avoid data loss, you can only increase disk size per node; once increased, you can't reduce it.
 - Currently, you can't change the cluster fault tolerance using the YugabyteDB Aeon UI; you can change it using the [API](../../managed-automation/managed-api/) or [CLI](../../managed-automation/managed-cli/).
 - You can't change vCPUs on clusters with fault tolerance of none, you can only increase disk size, or change IOPS (AWS only).
-- Changing disk size or IOPS on a cluster with fault tolerance of none results in downtime.
+- Changing IOPS on a cluster with fault tolerance of none results in downtime.
 - You can't scale Sandbox clusters.
 - If another [locking cluster operation](../#locking-operations) is already running, you must wait for it to finish.
 - Some scaling operations require a rolling restart or, in the case of clusters with a fault tolerance of none, downtime.
