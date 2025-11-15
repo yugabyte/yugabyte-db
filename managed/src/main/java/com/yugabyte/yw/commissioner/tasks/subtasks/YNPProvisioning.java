@@ -81,7 +81,7 @@ public class YNPProvisioning extends NodeTaskBase {
       Path nodeAgentHome) {
 
     ObjectMapper mapper = new ObjectMapper();
-    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    UserIntent userIntent = universe.getCluster(node.placementUuid).userIntent;
 
     try {
       ObjectNode rootNode = mapper.createObjectNode();
@@ -136,12 +136,7 @@ public class YNPProvisioning extends NodeTaskBase {
       if (taskParams().deviceInfo.mountPoints != null) {
         extraNode.put("mount_paths", taskParams().deviceInfo.mountPoints);
       } else {
-        int numVolumes =
-            universe
-                .getCluster(node.placementUuid)
-                .userIntent
-                .getDeviceInfoForNode(node)
-                .numVolumes;
+        int numVolumes = userIntent.getDeviceInfoForNode(node).numVolumes;
         StringBuilder volumePaths = new StringBuilder();
         for (int i = 0; i < numVolumes; i++) {
           if (i > 0) {
@@ -223,6 +218,7 @@ public class YNPProvisioning extends NodeTaskBase {
           StandardOpenOption.TRUNCATE_EXISTING);
     } catch (Exception e) {
       log.error("Failed generating JSON file: ", e);
+      throw new RuntimeException(e);
     }
   }
 
@@ -237,6 +233,17 @@ public class YNPProvisioning extends NodeTaskBase {
     Provider provider =
         Provider.getOrBadRequest(
             UUID.fromString(universe.getCluster(node.placementUuid).userIntent.provider));
+
+    /*
+     *  But First, setup the dual NIC on YBM if needed. Let's do that even before we run
+     *  YNP based provisioning because dual NIC setup will require a reboot which might
+     *  clean up the tmp directory where the YNP config is created.
+     */
+    AnsibleSetupServer.Params ansibleParams = buildDualNicSetupParams(universe, node, provider);
+    nodeManager
+        .nodeCommand(NodeManager.NodeCommandType.Provision, ansibleParams)
+        .processErrors("Dual NIC setup failed");
+
     String customTmpDirectory =
         confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
     String targetConfigPath =
@@ -260,12 +267,6 @@ public class YNPProvisioning extends NodeTaskBase {
     sb.append(" && chown -R $(id -u):$(id -g) ").append(nodeAgentHomePath);
     List<String> command = getCommand("/bin/bash", "-c", sb.toString());
     log.debug("Running YNP installation command: {}", command);
-
-    // But First, setup the dual NIC on YBM if needed.
-    AnsibleSetupServer.Params ansibleParams = buildDualNicSetupParams(universe, node, provider);
-    nodeManager
-        .nodeCommand(NodeManager.NodeCommandType.Provision, ansibleParams)
-        .processErrors("Dual NIC setup failed");
 
     nodeUniverseManager
         .runCommand(node, universe, command, shellContext)

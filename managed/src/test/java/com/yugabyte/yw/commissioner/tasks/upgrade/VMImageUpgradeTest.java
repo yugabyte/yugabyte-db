@@ -147,6 +147,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
             node.isTserver = true;
             node.cloudInfo = new CloudSpecificInfo();
             node.cloudInfo.private_ip = "10.0.0." + idx;
+            node.cloudInfo.cloud = "aws";
             node.cloudInfo.az = az4.getCode();
             node.azUuid = az4.getUuid();
             node.state = NodeDetails.NodeState.Live;
@@ -161,6 +162,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
           userIntent.providerType = CloudType.aws;
           userIntent.deviceInfo = new DeviceInfo();
           userIntent.deviceInfo.storageType = StorageType.Persistent;
+          userIntent.deviceInfo.numVolumes = 1;
         };
 
     defaultUniverse = Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater);
@@ -334,6 +336,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
             node.isTserver = true;
             node.cloudInfo = new CloudSpecificInfo();
             node.cloudInfo.private_ip = "10.0.0." + idx;
+            node.cloudInfo.cloud = "aws";
             node.cloudInfo.az = az4.getCode();
             node.cloudInfo.region = "region-2";
             node.cloudInfo.cloud = Common.CloudType.aws.toString();
@@ -350,6 +353,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
           userIntent.providerType = CloudType.aws;
           userIntent.deviceInfo = new DeviceInfo();
           userIntent.deviceInfo.storageType = StorageType.Persistent;
+          userIntent.deviceInfo.numVolumes = 1;
         };
 
     defaultUniverse = Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater);
@@ -518,6 +522,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
             node.isTserver = true;
             node.cloudInfo = new CloudSpecificInfo();
             node.cloudInfo.private_ip = "10.0.0." + idx;
+            node.cloudInfo.cloud = "aws";
             node.cloudInfo.az = az4.getCode();
             node.azUuid = az4.getUuid();
             node.state = NodeDetails.NodeState.Live;
@@ -532,6 +537,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
           userIntent.providerType = CloudType.aws;
           userIntent.deviceInfo = new DeviceInfo();
           userIntent.deviceInfo.storageType = StorageType.Persistent;
+          userIntent.deviceInfo.numVolumes = 1;
         };
 
     defaultUniverse = Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater);
