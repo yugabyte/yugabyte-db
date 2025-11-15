@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-For information on which versions of YugabyteDB are compatible with your version of YugabyteDB Anywhere, see [YugabyteDB Anywhere releases](/preview/releases/yba-releases/).
+For information on which versions of YugabyteDB are compatible with your version of YugabyteDB Anywhere, see [YugabyteDB Anywhere releases](/stable/releases/yba-releases/).
 
 For information on upgrading universes, refer to [Upgrade the YugabyteDB software](../../manage-deployments/upgrade-software/).
 

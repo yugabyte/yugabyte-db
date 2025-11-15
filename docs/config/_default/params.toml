@@ -55,9 +55,6 @@ version_menu_pagelinks = true
   url = "/stable"
   version = "v2025.1 (STS)"
 [[versions]]
-  url = "/preview"
-  version = "v2.25 (Preview)"
-[[versions]]
   url = "/v2024.2"
   version = "v2024.2 (LTS)"
 [[versions]]

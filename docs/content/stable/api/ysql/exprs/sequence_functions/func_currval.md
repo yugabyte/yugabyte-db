@@ -7,6 +7,8 @@ menu:
   stable_api:
     identifier: api-ysql-exprs-currval
     parent: sequence-functions
+aliases:
+  - /preview/api/ysql/exprs/func_currval
 type: docs
 ---
 

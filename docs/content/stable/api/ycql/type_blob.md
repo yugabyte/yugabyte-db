@@ -7,6 +7,9 @@ menu:
   stable_api:
     parent: api-cassandra
     weight: 1370
+aliases:
+  - /preview/api/cassandra/type_blob
+  - /preview/api/ycql/type_blob
 type: docs
 ---
 

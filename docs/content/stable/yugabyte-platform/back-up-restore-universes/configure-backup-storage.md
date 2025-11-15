@@ -4,6 +4,8 @@ headerTitle: Configure backup storage
 linkTitle: Configure backup storage
 description: Configure backup storage
 headContent: Store your backups in the cloud or on NFS
+aliases:
+  - /preview/yugabyte-platform/configure-yugabyte-platform/backup-target/
 menu:
   stable_yugabyte-platform:
     parent: back-up-restore-universes

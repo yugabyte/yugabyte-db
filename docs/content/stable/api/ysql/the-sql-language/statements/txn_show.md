@@ -8,6 +8,8 @@ menu:
   stable_api:
     identifier: txn_show
     parent: statements
+aliases:
+  - /preview/api/ysql/commands/txn_show/
 type: docs
 ---
 

@@ -7,6 +7,9 @@ menu:
   stable_api:
     parent: api-cassandra
     weight: 1250
+aliases:
+  - /preview/api/cassandra/ddl_create_type
+  - /preview/api/ycql/ddl_create_type
 type: docs
 ---
 

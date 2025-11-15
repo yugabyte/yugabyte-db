@@ -92,7 +92,7 @@ module "yugabyte-db-cluster" {
 
   # The number of nodes in the cluster, this cannot be lower than the replication factor.
   num_instances = "3"
-  
+
   # The AWS region for the cluster to be created
   region_name = "REGION_NAME_HERE"
 

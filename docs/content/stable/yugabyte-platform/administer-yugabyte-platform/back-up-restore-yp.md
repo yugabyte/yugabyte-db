@@ -37,6 +37,10 @@ YugabyteDB Anywhere installations include configuration settings, certificates a
 
 You can use the YugabyteDB Anywhere `yb_platform_backup.sh` script to back up an existing YugabyteDB Anywhere server and restore it, when needed, for disaster recovery or migrating to a new server.
 
+## Prerequisites
+
+To perform backups and restores in a Replicated environment, you must have a permission to run `docker` commands. This means that on systems with the default `docker` configuration, the `yb_platform_backup.sh` backup and restore script must be run using `sudo` or run as the `root` user (or another member of the `docker` group).
+
 ## Download the script
 
 Download the version of the backup script that corresponds to the version of YugabyteDB Anywhere that you are backing up and restoring.

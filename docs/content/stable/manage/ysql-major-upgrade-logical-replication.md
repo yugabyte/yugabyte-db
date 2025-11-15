@@ -62,7 +62,7 @@ Do not perform any DDLs on relevant tables or modify the publication(s) between 
     ```
 
     ```output
-        yb_restart_time     
+        yb_restart_time
     ------------------------
     2025-09-15 19:58:26+00
     (1 row)
@@ -85,8 +85,8 @@ After the upgrade is finalized and complete, do the following:
     If the connector is deployed without this configuration, you will see the following error:
 
     ```output
-    ERROR:  catalog version for database 16640 was not found.       
-    HINT:  Database might have been dropped by another user         
+    ERROR:  catalog version for database 16640 was not found.
+    HINT:  Database might have been dropped by another user
     STATEMENT:  START_REPLICATION SLOT "test_slot" LOGICAL 0/2D3B0 ("proto_version" '1', "publication_names" 'test_pub', "messages" 'true')
     ```
 

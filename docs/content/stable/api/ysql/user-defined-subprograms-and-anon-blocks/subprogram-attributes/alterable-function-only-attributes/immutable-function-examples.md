@@ -8,6 +8,7 @@ menu:
     identifier: immutable-function-examples
     parent: alterable-function-only-attributes
     weight: 10
+aliases:
 type: docs
 ---
 

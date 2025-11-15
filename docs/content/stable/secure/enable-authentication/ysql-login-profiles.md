@@ -146,7 +146,7 @@ SELECT * FROM pg_yb_profile;
 You should see output similar to the following:
 
 ```output
-  prfname  | prfmaxfailedloginattempts | prfpasswordlocktime 
+  prfname  | prfmaxfailedloginattempts | prfpasswordlocktime
 -----------+---------------------------+---------------------
  myprofile |                         3 |                   0
 (1 row)
@@ -173,9 +173,9 @@ SELECT * FROM pg_yb_role_profile;
 You should see output similar to the following:
 
 ```output
- rolprfrole | rolprfprofile | rolprfstatus | rolprffailedloginattempts | rolprflockeduntil 
+ rolprfrole | rolprfprofile | rolprfstatus | rolprffailedloginattempts | rolprflockeduntil
 ------------+---------------+--------------+---------------------------+-------------------
-      13287 |         16384 | o            |                         0 | 
+      13287 |         16384 | o            |                         0 |
 (1 row)
 ```
 

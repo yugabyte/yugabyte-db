@@ -25,7 +25,7 @@ You upgrade a universe in the following phases:
 <!-- (Roll back is available for universes being upgraded from YugabyteDB version 2.20.3 and later.) -->
 - Finalize - Depending on the changes included in the upgrade, you may need to finalize the upgrade to make the upgrade permanent. The system will tell you if this step is necessary. After finalizing, you can no longer roll back.
 
-For more information, refer to [Upgrade FAQ](/preview/faq/operations-faq/#upgrade).
+For more information, refer to [Upgrade FAQ](/stable/faq/operations-faq/#upgrade).
 
 ## Perform the upgrade
 

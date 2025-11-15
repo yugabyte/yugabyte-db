@@ -1,6 +1,6 @@
 ---
 title: Provision servers for cloud provider configuration database nodes
-headerTitle: Software requirements for cloud provider configuration database nodes 
+headerTitle: Software requirements for cloud provider configuration database nodes
 linkTitle: Cloud provider
 description: Prepare a VM for deploying universes using cloud provider configurations.
 headContent: Prepare a VM for deploying universes using a cloud provider configuration

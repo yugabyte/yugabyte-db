@@ -34,13 +34,26 @@
     {{- if or (eq $product "ybdb") (eq $product "yba") -}}
         {{- if eq "all" (lower $version) -}}
         {{- /* link to the main release page in case of All */ -}}
-        <a href="{{- printf "/preview/releases/%s-releases/" $product}}">{{- printf "%s" $orig -}}</a>
-        {{- else if eq $base $version -}}
+        <a href="{{- printf "/stable/releases/%s-releases/" $product}}">{{- printf "%s" $orig -}}</a>
+        {{- else -}}
+        {{- /* Check if the release exists in end-of-life directory */ -}}
+        {{- $eolPath := printf "/stable/releases/%s-releases/end-of-life/v%s" $product $base -}}
+        {{- $eolPage := $.Site.GetPage $eolPath -}}
+        {{- $releasePath := "" -}}
+        {{- if $eolPage -}}
+            {{- /* Release is in end-of-life directory */ -}}
+            {{- $releasePath = printf "/stable/releases/%s-releases/end-of-life/v%s" $product $base -}}
+        {{- else -}}
+            {{- /* Release is in regular directory */ -}}
+            {{- $releasePath = printf "/stable/releases/%s-releases/v%s" $product $base -}}
+        {{- end -}}
+        {{- if eq $base $version -}}
         {{- /* If the version is the base version point to the top of the page */ -}}
-        <a href="{{printf "/preview/releases/%s-releases/v%s" $product $base}}">{{- printf "v%s" $orig -}}</a>
+        <a href="{{$releasePath}}">{{- printf "v%s" $orig -}}</a>
         {{- else -}}
         {{- /* If it is a specific version add the anchor */ -}}
-        <a href="{{printf "/preview/releases/%s-releases/v%s#v%s" $product $base $version}}">{{- printf "v%s" $orig -}}</a>
+        <a href="{{printf "%s#v%s" $releasePath $version}}">{{- printf "v%s" $orig -}}</a>
+        {{- end -}}
         {{- end -}}
         {{- /* don't add a comma to the last version */ -}}
         {{- if ne $numversions $count -}}

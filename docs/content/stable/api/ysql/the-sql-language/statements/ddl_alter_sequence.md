@@ -7,6 +7,8 @@ menu:
   stable_api:
     identifier: ddl_alter_sequence
     parent: statements
+aliases:
+  - /preview/api/ysql/commands/ddl_alter_sequence/
 type: docs
 ---
 

@@ -7,6 +7,8 @@ menu:
   stable_api:
     identifier: dcl_create_policy
     parent: statements
+aliases:
+  - /preview/api/ysql/commands/dcl_create_policy/
 type: docs
 ---
 

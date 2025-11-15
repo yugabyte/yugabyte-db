@@ -9,6 +9,7 @@ menu:
     identifier: depends-on-extension-semantics
     parent: subprogram-attributes
     weight: 10
+aliases:
 type: docs
 ---
 

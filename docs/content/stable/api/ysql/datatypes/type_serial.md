@@ -7,6 +7,8 @@ menu:
   stable_api:
     identifier: api-ysql-datatypes-serial
     parent: api-ysql-datatypes
+aliases:
+  - /preview/api/ysql/datatypes/type_serial
 type: docs
 ---
 

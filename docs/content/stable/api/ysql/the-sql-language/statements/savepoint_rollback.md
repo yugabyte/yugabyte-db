@@ -7,6 +7,8 @@ menu:
   stable_api:
     identifier: savepoint_rollback
     parent: statements
+aliases:
+  - /preview/api/ysql/commands/savepoint_rollback/
 type: docs
 ---
 

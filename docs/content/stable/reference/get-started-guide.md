@@ -88,7 +88,7 @@ Find resources for getting started, migrating existing databases, using your dat
 [Get started using Docker](https://github.com/FranckPachot/yugabyted-Compose)
 : Use Docker compose to start YugabyteDB with [yugabyted](../../reference/configuration/yugabyted/).
 
-[Create Global Applications](/preview/yugabyte-cloud/managed-labs/)
+[Create Global Applications](/stable/yugabyte-cloud/managed-labs/)
 : Test YugabyteDB features using a demo application in real time.
 
 [Start a multi-node cluster with Yugabyted](../../reference/configuration/yugabyted/#create-a-local-multi-node-cluster)
@@ -118,16 +118,16 @@ Find resources for getting started, migrating existing databases, using your dat
 [Global Applications with YugabyteDB](https://www.youtube.com/watch?v=jqZxUydBaMQ)
 : Explore how to design and build global applications with YugabyteDB.
 
-[Hello world](/preview/develop/tutorials/build-apps/)
+[Hello world](/stable/develop/tutorials/build-apps/)
 : Use your favorite programming language to build an application that uses YSQL or YCQL APIs.
 
 [Distributed PostgreSQL Essentials for Developers: Hands-on Course](https://www.youtube.com/watch?v=rqJBFQ-4Hgk)
 : Build a scalable and fault-tolerant movie recommendation service.
 
-[Best practices](/preview/develop/best-practices-develop/)
+[Best practices](/stable/develop/best-practices-develop/)
 : Tips and tricks to build applications for high performance and availability.
 
-[Drivers and ORMs](/preview/develop/drivers-orms/)
+[Drivers and ORMs](/stable/develop/drivers-orms/)
 : Connect applications with your database.
 
 ### Hotspots
@@ -154,7 +154,7 @@ Find resources for getting started, migrating existing databases, using your dat
 [EXPLAIN (ANALYZE, DIST) YugabyteDB distributed execution plan](https://dev.to/franckpachot/explain-analyze-dist-4nlc)
 : Use EXPLAIN (ANALYZE, DIST) in YugabyteDB to analyze distributed execution plans.
 
-[Query Tuning How To](/preview/launch-and-manage/monitor-and-alert/query-tuning/)
+[Query Tuning How To](/stable/launch-and-manage/monitor-and-alert/query-tuning/)
 : Optimize query performance in YugabyteDB, using indexing, query tuning, and tools like EXPLAIN to analyze and improve distributed query execution.
 
 [YugabyteDB Memory Tuning for YSQL](https://www.yugabyte.com/blog/optimizing-yugabytedb-memory-tuning-for-ysql/)

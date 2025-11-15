@@ -7,6 +7,8 @@ menu:
   stable_api:
     identifier: dml_select
     parent: statements
+aliases:
+  - /preview/api/ysql/commands/dml_select/
 type: docs
 ---
 

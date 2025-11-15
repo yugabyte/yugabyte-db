@@ -7,6 +7,9 @@ menu:
   stable_api:
     identifier: api-ysql-datatypes-numeric
     parent: api-ysql-datatypes
+aliases:
+  - /preview/api/ysql/type_number/
+  - /preview/api/ysql/type_int/
 type: docs
 ---
 

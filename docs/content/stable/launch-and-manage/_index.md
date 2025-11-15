@@ -42,7 +42,7 @@ type: indexpage
   {{<index/item
     title="Troubleshoot"
     body="Diagnose and solve YugabyteDB cluster and node issues."
-    href="/preview/troubleshoot/"
+    href="/stable/troubleshoot/"
     icon="fa-thin fa-toolbox">}}
 
 {{</index/block>}}

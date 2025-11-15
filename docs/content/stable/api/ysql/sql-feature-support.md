@@ -8,6 +8,8 @@ menu:
     identifier: explore-ysql-language-feature-support
     parent: api-ysql
     weight: 120
+aliases:
+  - /preview/explore/ysql-language-features/sql-feature-support/
 type: docs
 ---
 

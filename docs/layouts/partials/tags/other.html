@@ -2,8 +2,8 @@
 {{- $tags := split (replaceRE ",+" "," $tags) "," -}}
 {{- /* map of tag to links + display */ -}}
 {{- $linkmap := dict
-  "ycql" (slice "/preview/api/ycql" "YCQL")
-  "ysql" (slice "/preview/api/ysql" "YSQL")
+  "ycql" (slice "/stable/api/ycql" "YCQL")
+  "ysql" (slice "/stable/api/ysql" "YSQL")
 -}}
 {{- $classmap := dict
   "ycql" "ycql"
