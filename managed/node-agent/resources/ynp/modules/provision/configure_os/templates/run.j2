@@ -77,7 +77,7 @@ if [[ "$is_cloud" == "True" ]]; then
   DUMP_DIR="{{ yb_home_dir }}/cores"
 
   # Ensure the cores directory exists with proper permissions
-  if [[ "$is_yb_prebuilt_image" == "True" ]] && [[ -L "$DUMP_DIR" ]]; then
+  if [[ -L "$DUMP_DIR" ]]; then
     echo "YB Prebuilt AMI detected, skipping creation of cores directory"
   else
     mkdir -p "$DUMP_DIR"
