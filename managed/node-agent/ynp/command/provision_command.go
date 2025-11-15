@@ -65,7 +65,7 @@ const (
 type ProvisionCommand struct {
 	ctx            context.Context
 	iniConfig      *config.INIConfig
-	args           config.Args
+	args           *config.Args
 	modules        map[string]config.Module
 	osVersion      string
 	osFamily       OSFamily
@@ -76,7 +76,7 @@ type ProvisionCommand struct {
 func NewProvisionCommand(
 	ctx context.Context,
 	iniConfig *config.INIConfig,
-	args config.Args,
+	args *config.Args,
 ) config.Command {
 	command := &ProvisionCommand{
 		ctx:       ctx,

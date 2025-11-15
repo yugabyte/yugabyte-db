@@ -75,7 +75,7 @@ public class YNPProvisioning extends AbstractTaskBase {
       Path nodeAgentHome) {
 
     ObjectMapper mapper = new ObjectMapper();
-    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    UserIntent userIntent = universe.getCluster(node.placementUuid).userIntent;
 
     try {
       ObjectNode rootNode = mapper.createObjectNode();
@@ -132,12 +132,7 @@ public class YNPProvisioning extends AbstractTaskBase {
       if (taskParams().deviceInfo.mountPoints != null) {
         extraNode.put("mount_paths", taskParams().deviceInfo.mountPoints);
       } else {
-        int numVolumes =
-            universe
-                .getCluster(node.placementUuid)
-                .userIntent
-                .getDeviceInfoForNode(node)
-                .numVolumes;
+        int numVolumes = userIntent.getDeviceInfoForNode(node).numVolumes;
         StringBuilder volumePaths = new StringBuilder();
         for (int i = 0; i < numVolumes; i++) {
           if (i > 0) {
@@ -220,6 +215,7 @@ public class YNPProvisioning extends AbstractTaskBase {
           StandardOpenOption.TRUNCATE_EXISTING);
     } catch (Exception e) {
       log.error("Failed generating JSON file: ", e);
+      throw new RuntimeException(e);
     }
   }
 

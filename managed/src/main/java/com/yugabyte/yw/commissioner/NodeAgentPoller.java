@@ -533,6 +533,11 @@ public class NodeAgentPoller {
                   try {
                     perm = Integer.parseInt(f.getPermission().trim(), 8);
                   } catch (NumberFormatException e) {
+                    log.warn(
+                        "Invalid permission {} for file {} - {}. Using default",
+                        f.getPermission(),
+                        f.getSourcePath(),
+                        e.getMessage());
                   }
                 }
                 nodeAgentClient.uploadFile(

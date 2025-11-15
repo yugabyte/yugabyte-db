@@ -106,7 +106,7 @@ func (r *RenderedTemplates) RenderedPhases() []string {
 }
 
 // CommandFactory is a factory function to create a Command.
-type CommandFactory func(context.Context, *INIConfig, Args) Command
+type CommandFactory func(context.Context, *INIConfig, *Args) Command
 
 // Command represents a command to be executed.
 type Command interface {
@@ -268,7 +268,7 @@ func processNestedConfigs(
 // Note: Booleans are printed as True or False string.
 func GenerateConfigINI(
 	ctx context.Context,
-	args Args,
+	args *Args,
 ) (*INIConfig, error) {
 	configTemplate := filepath.Join(args.YnpBasePath, "configs/config.j2")
 	configPath := filepath.Join(args.YnpBasePath, "configs/config.ini")
@@ -284,7 +284,11 @@ func GenerateConfigINI(
 	if err != nil {
 		return nil, err
 	}
-	iniConfig, err := ini.Load([]byte(renderedConfig))
+	// Keep track of same keys in the same section.
+	iniConfig, err := ini.LoadSources(
+		ini.LoadOptions{AllowShadows: true, AllowDuplicateShadowValues: true},
+		[]byte(renderedConfig),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to load INI content: %w", err)
 	}
@@ -295,10 +299,15 @@ func GenerateConfigINI(
 	for _, section := range iniConfig.Sections() {
 		sectionMap := make(map[string]any)
 		for _, key := range section.Keys() {
+			// Disallow duplicate keys in the same section to prevent undetected bugs.
+			if len(key.ValueWithShadows()) > 1 {
+				return nil, fmt.Errorf("Duplicate key %s in section %s", key.Name(), section.Name())
+			}
 			sectionMap[key.Name()] = key.Value()
 		}
 		configOutput.values[section.Name()] = sectionMap
 	}
+	// Note: Parser returns map[interface{}]interface{} for values.
 	configOutput.values = FixParsedConfigMap(configOutput.values)
 	return processNestedConfigs(configOutput)
 }
