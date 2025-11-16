@@ -16,7 +16,7 @@ rightNav:
 
 [Active Session History](../../../explore/observability/active-session-history/) (ASH) provides a powerful way to troubleshoot performance by giving you a real-time and historical view of your database's activity. ASH captures samples of active sessions and exposes them through a set of SQL views. By querying these views, you can analyze wait events, identify performance bottlenecks, and understand where your database is spending its time.
 
-ASH is currently available for YSQL, YCQL, and YB-TServer and records wait events like CPU, WaitOnCondition, RPCWait, and Disk IO.
+ASH is currently available for YSQL, YCQL, and YB-TServer, and records wait events like CPU, WaitOnCondition, RPCWait, and Disk IO.
 
 By analyzing this data, you can troubleshoot performance by answering questions like:
 
@@ -70,6 +70,62 @@ This view displays the class, type, name, and description of each wait event. Th
 | wait_event_type | text | Type of the wait event such as CPU, WaitOnCondition, RPCWait, Disk IO, and so on. |
 | wait_event | text | Name of the wait event. |
 | wait_event_description | text | Description of the wait event. |
+
+### Join with yb_servers()
+
+By joining ASH with `yb_servers()`, you can get additional information about the node's IP address, cloud, region, zone, and so on.
+
+The `yb_servers()` function returns a list of all the nodes in your cluster and their location. The `uuid` column in `yb_servers()` has the same IDs as the `top_level_node_id` column in the `yb_active_session_history` view.
+
+Note that because these columns have different datatypes, (`top_level_node_id` is type uuid, while the `uuid` column of `yb_servers()` is type text), you need to cast the text to uuid to perform the join.
+
+For example:
+
+```sql
+SELECT
+    SUBSTRING(query, 1, 50) AS query,
+    top_level_node_id,
+    host,
+    port,
+    cloud,
+    region,
+    zone,
+    COUNT(*)
+FROM
+    yb_active_session_history
+JOIN
+    pg_stat_statements
+ON
+    query_id = queryid
+JOIN
+    yb_servers()
+ON
+    top_level_node_id = uuid::uuid
+WHERE
+    sample_time >= current_timestamp - interval '20 minutes'
+GROUP BY
+    query,
+    top_level_node_id,
+    host,
+    port,
+    cloud,
+    region,
+    zone;
+```
+
+```output
+                       query                        |          top_level_node_id           |   host    | port | cloud | region  |    zone    | count 
+----------------------------------------------------+--------------------------------------+-----------+------+-------+---------+------------+-------
+ COMMIT                                             | 6b556919-0198-4617-a7bc-42b84c965ec4 | 127.0.0.1 | 5433 | aws   | us-west | us-west-2a |     2
+ ANALYZE "public"."postgresqlkeyvalue"              | 6b556919-0198-4617-a7bc-42b84c965ec4 | 127.0.0.1 | 5433 | aws   | us-west | us-west-2a |    44
+ SET extra_float_digits = 3                         | 6b556919-0198-4617-a7bc-42b84c965ec4 | 127.0.0.1 | 5433 | aws   | us-west | us-west-2a |     2
+ SHOW yb_disable_auto_analyze                       | 6b556919-0198-4617-a7bc-42b84c965ec4 | 127.0.0.1 | 5433 | aws   | us-west | us-west-2a |     1
+ SELECT k, v FROM postgresqlkeyvalue WHERE k = $1   | 6b556919-0198-4617-a7bc-42b84c965ec4 | 127.0.0.1 | 5433 | aws   | us-west | us-west-2a |  1450
+ BEGIN                                              | 6b556919-0198-4617-a7bc-42b84c965ec4 | 127.0.0.1 | 5433 | aws   | us-west | us-west-2a |     2
+ SET application_name = 'PostgreSQL JDBC Driver'    | 6b556919-0198-4617-a7bc-42b84c965ec4 | 127.0.0.1 | 5433 | aws   | us-west | us-west-2a |     1
+ SELECT reltuples FROM pg_class WHERE relfilenode = | 6b556919-0198-4617-a7bc-42b84c965ec4 | 127.0.0.1 | 5433 | aws   | us-west | us-west-2a |     2
+(8 rows)
+```
 
 ## Constant query identifiers
 
