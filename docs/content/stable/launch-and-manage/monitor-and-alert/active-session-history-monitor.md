@@ -73,11 +73,11 @@ This view displays the class, type, name, and description of each wait event. Th
 
 ### Join with yb_servers()
 
-By joining ASH with `yb_servers()`, you can get additional information about the node's IP address, cloud, region, zone, and so on.
+By joining ASH with [yb_servers()](../../../explore/going-beyond-sql/cluster-topology/), you can get additional information about the node's IP address, cloud, region, zone, and more.
 
-The `yb_servers()` function returns a list of all the nodes in your cluster and their location. The `uuid` column in `yb_servers()` has the same IDs as the `top_level_node_id` column in the `yb_active_session_history` view.
+The `yb_servers()` function returns a list of all the nodes in your cluster and their location, and includes a `uuid` column with the same IDs as the `top_level_node_id` column in the `yb_active_session_history` view.
 
-Note that because these columns have different datatypes, (`top_level_node_id` is type uuid, while the `uuid` column of `yb_servers()` is type text), you need to cast the text to uuid to perform the join.
+Note that because these columns have different data types, (`top_level_node_id` is type UUID, while the `uuid` column of `yb_servers()` is type text), you need to cast the text to UUID to perform the join.
 
 For example:
 
