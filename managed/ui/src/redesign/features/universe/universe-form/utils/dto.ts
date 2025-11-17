@@ -61,6 +61,7 @@ export interface CommunicationPorts {
 
 export enum StorageType {
   IO1 = 'IO1',
+  IO2 = 'IO2',
   GP2 = 'GP2',
   GP3 = 'GP3',
   Scratch = 'Scratch',
