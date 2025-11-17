@@ -161,7 +161,7 @@ If the preflight check fails, rebooting the node may solve some issues (for exam
 
 After running the script and rebooting the VM, you can verify that provisioning was successful and YugabyteDB Anywhere can communicate with the node by navigating to `https://<yugabytedbanywhere-host-ip>/nodeagent`, where `yugabytedbanywhere-host-ip` is the IP address hosting your YugabyteDB Anywhere instance.
 
-The page lists the node agents that have been activated.
+The page lists the node agents that have been activated and their status.
 
 #### Preflight check
 
