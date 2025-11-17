@@ -64,8 +64,8 @@ using OK = Status::OK;
 using client::YBTableName;
 
 void XClusterYsqlTestBase::SetUp() {
+  TEST_SETUP_SUPER(XClusterTestBase);
   YB_SKIP_TEST_IN_TSAN();
-  XClusterTestBase::SetUp();
 
   LOG(INFO) << "DB-scoped replication will use automatic mode: " << UseAutomaticMode();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_enable_ddl_replication) = UseAutomaticMode();

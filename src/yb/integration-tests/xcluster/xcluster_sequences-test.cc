@@ -637,7 +637,8 @@ TEST_F(XClusterSequenceDDLOrdering, LateCreateSequenceDdl) {
   // source.
   {
     auto conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
-    auto next_value = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT nextval('my_sequence')"));
+    auto next_value =
+        ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT last_value FROM my_sequence"));
     ASSERT_GE(next_value, 777777);
   }
 }
@@ -670,7 +671,8 @@ TEST_F(XClusterSequenceDDLOrdering, LateAlterSequenceDdl) {
   // it on the source.
   {
     auto conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
-    auto next_value = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT nextval('my_sequence1')"));
+    auto next_value =
+        ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT last_value FROM my_sequence1"));
     ASSERT_GE(next_value, 777777);
   }
 }
