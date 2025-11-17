@@ -466,10 +466,9 @@ public class NodeManager extends DevopsBase {
       subCommand.add(effectiveSshUser);
     } else if (type == NodeCommandType.Manage_Otel_Collector) {
       boolean useSudo =
-          (params instanceof ManageOtelCollector.Params
-                  && ((ManageOtelCollector.Params) params).installOtelCollector)
-              || (params instanceof ManageOtelCollector.Params
-                  && ((ManageOtelCollector.Params) params).useSudo);
+          params instanceof ManageOtelCollector.Params
+              && ((ManageOtelCollector.Params) params).useSudo
+              && !provider.isManualOnprem();
       // Override the effective user for the non-sudo special case.
       String computedUser =
           type == NodeCommandType.Manage_Otel_Collector && !useSudo

@@ -55,7 +55,7 @@ public class ManageOtelCollector extends NodeTaskBase {
             .isSuccess();
     if (!output) {
       // Install otel collector as root level systemd.
-      taskParams().useSudo = true;
+      taskParams().useSudo = taskParams().installOtelCollector;
     }
     log.info("Managing OpenTelemetry collector on instance {}", taskParams().nodeName);
     getNodeManager()
