@@ -3,7 +3,6 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.google.common.collect.ImmutableList;
-import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeAgentManager;
@@ -31,7 +30,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
-public class InstallNodeAgent extends AbstractTaskBase {
+public class InstallNodeAgent extends NodeTaskBase {
   public static final int DEFAULT_NODE_AGENT_PORT = 9070;
 
   private final NodeUniverseManager nodeUniverseManager;
