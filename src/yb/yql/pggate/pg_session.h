@@ -46,6 +46,8 @@
 
 namespace yb::pggate {
 
+class PgFlushDebugContext;
+
 YB_STRONGLY_TYPED_BOOL(OpBuffered);
 YB_STRONGLY_TYPED_BOOL(InvalidateOnPgClient);
 YB_STRONGLY_TYPED_BOOL(UseCatalogSession);
@@ -161,8 +163,7 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
 
   // Flush all pending buffered operations. Buffering mode remain unchanged.
   Result<SetupPerformOptionsAccessorTag> FlushBufferedOperations(
-      const YbcFlushDebugContext& debug_context);
-  Result<SetupPerformOptionsAccessorTag> FlushBufferedOperations(YbcFlushReason reason);
+      const PgFlushDebugContext& dbg_ctx);
   // Drop all pending buffered operations. Buffering mode remain unchanged.
   SetupPerformOptionsAccessorTag DropBufferedOperations();
 
@@ -314,8 +315,8 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
       const PgObjectId& table_id, bool fail_on_cache_hit,
       master::IncludeHidden include_hidden = master::IncludeHidden::kFalse);
   Result<FlushFuture> FlushOperations(
-      BufferableOperations&& ops, bool transactional, const YbcFlushDebugContext& debug_context);
-  std::string FlushReasonToString(const YbcFlushDebugContext& debug_context) const;
+      BufferableOperations&& ops, bool transactional, const PgFlushDebugContext& debug_context);
+  std::string FlushReasonToString(const PgFlushDebugContext& debug_context) const;
 
   const std::string LogPrefix() const;
 

@@ -62,6 +62,7 @@
 #include "yb/util/yb_partition.h"
 
 #include "yb/yql/pggate/pg_expr.h"
+#include "yb/yql/pggate/pg_flush_debug_context.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/pg_tools.h"
@@ -1529,8 +1530,8 @@ void YBCPgResetOperationsBuffering() {
   pgapi->ResetOperationsBuffering();
 }
 
-YbcStatus YBCPgFlushBufferedOperations(YbcFlushDebugContext *debug_context) {
-  return ToYBCStatus(pgapi->FlushBufferedOperations(*debug_context));
+YbcStatus YBCPgFlushBufferedOperations(const YbcFlushDebugContext *debug_context) {
+  return ToYBCStatus(pgapi->FlushBufferedOperations(PgFlushDebugContext::Make(*debug_context)));
 }
 
 YbcStatus YBCPgAdjustOperationsBuffering(int multiple) {
@@ -3172,6 +3173,46 @@ YbcStatus YBCCommitTransactionIntermediate(const YbcPgInitTransactionData *data)
 
 YbcStatus YBCTriggerRelcacheInitConnection(const char* dbname) {
   return ToYBCStatus(pgapi->TriggerRelcacheInitConnection(dbname));
+}
+
+YbcFlushDebugContext YBCMakeFlushDebugContextBeginSubTxn(uint32_t id, const char *name) {
+  return PgFlushDebugContext::YbcBeginSubTxn(id, name);
+}
+
+YbcFlushDebugContext YBCMakeFlushDebugContextEndSubTxn(uint32_t id) {
+  return PgFlushDebugContext::YbcEndSubTxn(id);
+}
+
+YbcFlushDebugContext YBCMakeFlushDebugContextGetTxnSnapshot() {
+  return PgFlushDebugContext::YbcGetTxnSnapshot(YBCPgGetCurrentReadPoint());
+}
+
+YbcFlushDebugContext YBCMakeFlushDebugContextUnbatchableStmtInSqlFunc(
+    uint64_t cmd, const char * func_name) {
+  return PgFlushDebugContext::YbcUnbatchableStmtInSqlFunc(cmd, func_name);
+}
+
+YbcFlushDebugContext YBCMakeFlushDebugContextUnbatchablePlStmt(
+    const char* stmt_name, const char* func_name) {
+  return PgFlushDebugContext::YbcUnbatchablePlStmt(stmt_name, func_name);
+}
+
+YbcFlushDebugContext YBCMakeFlushDebugContextUnbatchableStmtInPlFunc(
+    const char* cmd_name, const char* func_name) {
+  return PgFlushDebugContext::YbcUnbatchableStmtInPlFunc(cmd_name, func_name);
+}
+
+YbcFlushDebugContext YBCMakeFlushDebugContextCopyBatch(
+    uint64_t tuples_processed, const char *table_name) {
+  return PgFlushDebugContext::YbcCopyBatch(tuples_processed, table_name);
+}
+
+YbcFlushDebugContext YBCMakeFlushDebugContextSwithToDbCatalogVersionMode(YbcPgOid db_oid) {
+  return PgFlushDebugContext::YbcSwitchToDbCatalogVersionMode(db_oid);
+}
+
+YbcFlushDebugContext YBCMakeFlushDebugContextEndOfTopLevelStmt() {
+  return PgFlushDebugContext::YbcEndOfTopLevelStmt();
 }
 
 } // extern "C"

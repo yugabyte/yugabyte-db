@@ -725,11 +725,6 @@ YBIsDBCatalogVersionMode()
 	 */
 	if (YBCanEnableDBCatalogVersionMode())
 	{
-		YbcFlushDebugContext debug_context = {
-			.reason = YB_SWITCH_TO_DB_CATALOG_VERSION_MODE,
-			.oidarg = MyDatabaseId,
-		};
-
 		cached_is_db_catalog_version_mode = true;
 		/*
 		 * If MyDatabaseId is not resolved, the caller is going to set up the
@@ -778,7 +773,7 @@ YBIsDBCatalogVersionMode()
 		 * Mixing global and per-database catalog versions in a single RPC
 		 * triggers a tserver SCHECK failure.
 		 */
-		YBFlushBufferedOperations(&debug_context);
+		YBFlushBufferedOperations(YBCMakeFlushDebugContextSwithToDbCatalogVersionMode(MyDatabaseId));
 		return true;
 	}
 
@@ -4490,9 +4485,9 @@ YBResetOperationsBuffering()
 }
 
 void
-YBFlushBufferedOperations(YbcFlushDebugContext *debug_context)
+YBFlushBufferedOperations(YbcFlushDebugContext debug_context)
 {
-	HandleYBStatus(YBCPgFlushBufferedOperations(debug_context));
+	HandleYBStatus(YBCPgFlushBufferedOperations(&debug_context));
 }
 
 bool
@@ -7918,15 +7913,10 @@ YbResetTransactionReadPoint()
 	 */
 	if (!YBCIsRestartReadPointRequested())
 	{
-		YbcFlushDebugContext debug_context = {
-			.reason = YB_GET_TRANSACTION_SNAPSHOT,
-			.uintarg = YBCPgGetCurrentReadPoint(),
-		};
-
 		/*
 		 * Flush all earlier operations so that they complete on the previous snapshot.
 		 */
-		HandleYBStatus(YBCPgFlushBufferedOperations(&debug_context));
+		YBFlushBufferedOperations(YBCMakeFlushDebugContextGetTxnSnapshot());
 		HandleYBStatus(YBCPgResetTransactionReadPoint());
 	}
 

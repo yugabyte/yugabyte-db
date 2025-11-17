@@ -614,7 +614,7 @@ YbcStatus YBCPgBuildYBTupleId(const YbcPgYBTupleIdDescriptor* data, uint64_t *yb
 YbcStatus YBCPgStartOperationsBuffering();
 YbcStatus YBCPgStopOperationsBuffering();
 void YBCPgResetOperationsBuffering();
-YbcStatus YBCPgFlushBufferedOperations(YbcFlushDebugContext *debug_context);
+YbcStatus YBCPgFlushBufferedOperations(const YbcFlushDebugContext *debug_context);
 YbcStatus YBCPgAdjustOperationsBuffering(int multiple);
 
 YbcStatus YBCPgNewSample(const YbcPgOid database_oid,
@@ -1045,6 +1045,20 @@ YbcStatus YBCInitTransaction(const YbcPgInitTransactionData *data);
 YbcStatus YBCCommitTransactionIntermediate(const YbcPgInitTransactionData *data);
 
 YbcStatus YBCTriggerRelcacheInitConnection(const char* dbname);
+
+YbcFlushDebugContext YBCMakeFlushDebugContextBeginSubTxn(uint32_t id, const char *name);
+YbcFlushDebugContext YBCMakeFlushDebugContextEndSubTxn(uint32_t id);
+YbcFlushDebugContext YBCMakeFlushDebugContextGetTxnSnapshot();
+YbcFlushDebugContext YBCMakeFlushDebugContextUnbatchableStmtInSqlFunc(
+    uint64_t cmd, const char *func_name);
+YbcFlushDebugContext YBCMakeFlushDebugContextUnbatchablePlStmt(
+    const char *stmt_name, const char *func_name);
+YbcFlushDebugContext YBCMakeFlushDebugContextUnbatchableStmtInPlFunc(
+    const char *cmd_name, const char *func_name);
+YbcFlushDebugContext YBCMakeFlushDebugContextCopyBatch(
+    uint64_t tuples_processed, const char *table_name);
+YbcFlushDebugContext YBCMakeFlushDebugContextSwithToDbCatalogVersionMode(YbcPgOid db_oid);
+YbcFlushDebugContext YBCMakeFlushDebugContextEndOfTopLevelStmt();
 
 #ifdef __cplusplus
 }  // extern "C"

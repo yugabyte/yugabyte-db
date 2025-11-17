@@ -62,8 +62,10 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 
 namespace yb::pggate {
-class PgSession;
+
 class PgDmlRead;
+class PgFlushDebugContext;
+class PgSession;
 
 struct PgMemctxComparator {
   using is_transparent = void;
@@ -546,7 +548,7 @@ class PgApiImpl {
   Status StartOperationsBuffering();
   Status StopOperationsBuffering();
   void ResetOperationsBuffering();
-  Status FlushBufferedOperations(const YbcFlushDebugContext& debug_context);
+  Status FlushBufferedOperations(const PgFlushDebugContext& dbg_ctx);
   Status AdjustOperationsBuffering(int multiple = 1);
 
   //------------------------------------------------------------------------------------------------

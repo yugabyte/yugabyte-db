@@ -5006,19 +5006,13 @@ RollbackToSavepoint(const char *name)
 void
 BeginInternalSubTransaction(const char *name)
 {
-	YbcFlushDebugContext yb_debug_context = {
-		.reason = YB_BEGIN_SUBTRANSACTION,
-		.uintarg = CurrentTransactionState->subTransactionId,
-		.strarg1 = name,
-	};
-
 	/*
 	 * YB: The subtransaction corresponding to the buffered operations must be
 	 * current and in the INPROGRESS state for correct error handling.
 	 * An error thrown while/after switching over to a new subtransaction
 	 * would lead to a fatal error or unpredictable behavior.
 	 */
-	YBFlushBufferedOperations(&yb_debug_context);
+	YBFlushBufferedOperations(YBCMakeFlushDebugContextBeginSubTxn(CurrentTransactionState->subTransactionId, name));
 	TransactionState s = CurrentTransactionState;
 
 	/*
@@ -5095,13 +5089,7 @@ BeginInternalSubTransaction(const char *name)
 void
 YbBeginInternalSubTransactionForReadCommittedStatement()
 {
-	YbcFlushDebugContext debug_context = {
-		.reason = YB_BEGIN_SUBTRANSACTION,
-		.uintarg = CurrentTransactionState->subTransactionId,
-		.strarg1 = "read committed transaction",
-	};
-
-	YBFlushBufferedOperations(&debug_context);
+	YBFlushBufferedOperations(YBCMakeFlushDebugContextBeginSubTxn(CurrentTransactionState->subTransactionId, "read committed transaction"));
 	TransactionState s = CurrentTransactionState;
 
 	Assert(s->blockState == TBLOCK_SUBINPROGRESS ||
@@ -5157,18 +5145,13 @@ YBTransactionContainsNonReadCommittedSavepoint(void)
 void
 ReleaseCurrentSubTransaction(void)
 {
-	YbcFlushDebugContext yb_debug_context = {
-		.reason = YB_END_SUBTRANSACTION,
-		.uintarg = CurrentTransactionState->subTransactionId,
-	};
-
 	/*
 	 * YB: The subtransaction corresponding to the buffered operations must be
 	 * current and in the INPROGRESS state for correct error handling.
 	 * An error thrown while/after commiting/releasing it would lead to a
 	 * fatal error or unpredictable behavior.
 	 */
-	YBFlushBufferedOperations(&yb_debug_context);
+	YBFlushBufferedOperations(YBCMakeFlushDebugContextEndSubTxn(CurrentTransactionState->subTransactionId));
 	TransactionState s = CurrentTransactionState;
 
 	/*

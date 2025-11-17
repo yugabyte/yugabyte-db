@@ -222,7 +222,6 @@ YbcConstSliceSet
 YbcConstSliceVector
 YbcCstringToTextWithLenFn
 YbcFlushDebugContext
-YbcFlushReason
 YbcGetTableKeyRangesCallback
 YbcHeapSnapshotSample
 YbcLsnType
