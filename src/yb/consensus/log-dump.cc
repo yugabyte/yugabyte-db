@@ -35,6 +35,8 @@
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
 
+#include "yb/client/client.h"
+
 #include "yb/common/opid.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
@@ -50,14 +52,25 @@
 #include "yb/dockv/doc_key.h"
 #include "yb/docdb/kv_debug.h"
 
+#include "yb/encryption/encrypted_file_factory.h"
+#include "yb/encryption/header_manager_impl.h"
+#include "yb/encryption/universe_key_manager.h"
+
 #include "yb/gutil/strings/numbers.h"
+
+#include "yb/rpc/messenger.h"
+#include "yb/rpc/secure.h"
+#include "yb/rpc/secure_stream.h"
+#include "yb/rpc/rpc_fwd.h"
 
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/metric_entity.h"
+#include "yb/util/monotime.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/slice.h"
 #include "yb/util/status_format.h"
@@ -89,12 +102,23 @@ DEFINE_NON_RUNTIME_int64(max_op_index_to_omit, yb::OpId::Invalid().index,
 DEFINE_NON_RUNTIME_string(output_wal_dir, "",
              "WAL directory for the output of --filter_log_segment");
 
+DEFINE_NON_RUNTIME_string(master_addresses, "",
+              "Comma-separated list of YB Master server addresses, this is required for "
+              "printing encrypted logs as we need to get full universe key.");
+
+DEFINE_NON_RUNTIME_string(certs_dir_name, "",
+             "Directory with certificates to use for secure log dump client connection.");
+
+DEFINE_NON_RUNTIME_string(client_node_name, "", "Client node name.");
+
 namespace yb::log {
 
 using consensus::ReplicateMsg;
 using std::string;
 using std::cout;
 using std::endl;
+
+std::unique_ptr<encryption::UniverseKeyManager> universe_key_manager = nullptr;
 
 enum PrintEntryType {
   DONT_PRINT,
@@ -233,6 +257,41 @@ Status PrintDecodedTransactionStatePB(const string& indent,
   return Status::OK();
 }
 
+yb::Result<std::unique_ptr<yb::Env>> GetEnv() {
+  const std::string addrs = FLAGS_master_addresses;
+  if (addrs.empty()) {
+    return std::unique_ptr<yb::Env>(Env::Default());
+  }
+
+  yb::rpc::MessengerBuilder messenger_builder("log-dump");
+  std::unique_ptr<rpc::SecureContext> secure_context = nullptr;
+  if (!FLAGS_certs_dir_name.empty()) {
+    LOG(INFO) << "Built secure client using certs dir " << FLAGS_certs_dir_name;
+    const auto& cert_name = FLAGS_client_node_name;
+    secure_context = VERIFY_RESULT(rpc::CreateSecureContext(
+        FLAGS_certs_dir_name, rpc::UseClientCerts(!cert_name.empty()), cert_name));
+    rpc::ApplySecureContext(secure_context.get(), &messenger_builder);
+  }
+  auto messenger = VERIFY_RESULT(messenger_builder.Build());
+  auto se =
+      messenger ? MakeOptionalScopeExit([&messenger] { messenger->Shutdown(); }) : std::nullopt;
+  auto yb_client = VERIFY_RESULT(yb::client::YBClientBuilder()
+                                 .add_master_server_addr(addrs)
+                                 .default_admin_operation_timeout(yb::MonoDelta::FromSeconds(30))
+                                 .Build(messenger.get()));
+  auto universe_key_registry = yb_client->GetFullUniverseKeyRegistry();
+  if (!universe_key_registry.ok()) {
+    return STATUS_FORMAT(IllegalState,
+                         "Fail to get full universe key registry from master $0, error: $1",
+                         addrs, universe_key_registry.status());
+  }
+  LOG(INFO) << "GetFullUniverseKeyRegistry returned successefully";
+  universe_key_manager = std::make_unique<yb::encryption::UniverseKeyManager>();
+  universe_key_manager->SetUniverseKeyRegistry(*universe_key_registry);
+  return yb::encryption::NewEncryptedEnv(
+      yb::encryption::DefaultHeaderManager(universe_key_manager.get()));
+}
+
 Status PrintDecoded(const LogEntryPB& entry) {
   cout << "replicate {" << endl;
   PrintIdOnly(entry);
@@ -288,14 +347,14 @@ Status PrintSegment(const scoped_refptr<ReadableLogSegment>& segment) {
 }
 
 Status DumpLog(const string& tablet_id, const string& tablet_wal_path) {
-  Env *env = Env::Default();
+  std::unique_ptr<yb::Env> env = VERIFY_RESULT(GetEnv());
   FsManagerOpts fs_opts;
   fs_opts.read_only = true;
-  FsManager fs_manager(env, fs_opts);
+  FsManager fs_manager(env.get(), fs_opts);
 
   RETURN_NOT_OK(fs_manager.CheckAndOpenFileSystemRoots());
   std::unique_ptr<LogReader> reader;
-  RETURN_NOT_OK(LogReader::Open(env,
+  RETURN_NOT_OK(LogReader::Open(env.get(),
                                 scoped_refptr<LogIndex>(),
                                 "Log reader: ",
                                 tablet_wal_path,
@@ -315,16 +374,17 @@ Status DumpLog(const string& tablet_id, const string& tablet_wal_path) {
 }
 
 Status DumpSegment(const string& segment_path) {
-  Env* env = Env::Default();
+  std::unique_ptr<yb::Env> env = VERIFY_RESULT(GetEnv());
   auto segment =
-      VERIFY_RESULT(ReadableLogSegment::Open(env, segment_path, /*read_wal_mem_tracker=*/nullptr));
+      VERIFY_RESULT(ReadableLogSegment::Open(env.get(), segment_path,
+                                             /*read_wal_mem_tracker=*/nullptr));
   RETURN_NOT_OK(PrintSegment(segment));
 
   return Status::OK();
 }
 
 Status FilterLogSegment(const string& segment_path) {
-  Env *const env = Env::Default();
+  std::unique_ptr<yb::Env> env = VERIFY_RESULT(GetEnv());
 
   auto output_wal_dir = FLAGS_output_wal_dir;
   if (output_wal_dir.empty()) {
@@ -339,14 +399,15 @@ Status FilterLogSegment(const string& segment_path) {
   LOG(INFO) << "Created directory " << output_wal_dir;
 
   auto segment =
-      VERIFY_RESULT(ReadableLogSegment::Open(env, segment_path, /*read_wal_mem_tracker=*/nullptr));
+      VERIFY_RESULT(ReadableLogSegment::Open(env.get(), segment_path,
+                                             /*read_wal_mem_tracker=*/nullptr));
   Schema tablet_schema;
   const auto& segment_header = segment->header();
 
   RETURN_NOT_OK(SchemaFromPB(segment->header().deprecated_schema(), &tablet_schema));
 
   auto log_options = LogOptions();
-  log_options.env = env;
+  log_options.env = env.get();
 
   // We have to subtract one here because the Log implementation will add one for the new segment.
   log_options.initial_active_segment_sequence_number = segment_header.sequence_number() - 1;
@@ -457,8 +518,8 @@ int main(int argc, char **argv) {
     std::cerr << "usage: " << argv[0]
               << " --fs_data_dirs <dirs>"
               << " {<tablet_name> <log path>} | <log segment path>"
-              << " [--filter_log_segment --output_wal_dir <dest_dir>]"
-              << std::endl;
+              << " [--filter_log_segment --output_wal_dir <dest_dir>"
+              << " --master_addresses <comma-separated ddresses>]" << std::endl;
     return 1;
   }
 
@@ -485,5 +546,11 @@ int main(int argc, char **argv) {
     return 0;
   }
   std::cerr << "Error: " << status.ToString() << std::endl;
+
+  if (status.ToString().find("is encrypted") != std::string::npos) {
+    std::cerr << "\nTo dump the encrypted WAL file, add: "
+              << "--master_addresses <comma-separated addresses>" << std::endl;
+  }
+
   return 1;
 }

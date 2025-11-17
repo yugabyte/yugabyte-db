@@ -42,6 +42,8 @@
 #include "yb/consensus/log.messages.h"
 #include "yb/consensus/log_index.h"
 
+#include "yb/encryption/header_manager_impl.h"
+
 #include "yb/fs/fs_manager.h"
 
 #include "yb/gutil/casts.h"
@@ -517,6 +519,11 @@ Status ReadableLogSegment::ParseHeaderMagicAndHeaderLength(const Slice &data,
                    << " and will be treated as a blank segment.";
       *parsed_len = 0;
       return Status::OK();
+    }
+    // Check if file is encrypted
+    if (memcmp(yb::encryption::kEncryptionMagic, data.data(),
+               yb::encryption::kEncryptionMagicLen) == 0) {
+      return STATUS(IllegalState, Substitute("log segment file $0 is encrypted", path()));
     }
     // If no magic and not uninitialized, the file is considered corrupt.
     return STATUS(Corruption, Substitute("Invalid log segment file $0: Bad magic. $1",
