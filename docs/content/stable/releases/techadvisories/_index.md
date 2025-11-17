@@ -22,10 +22,10 @@ For an RSS feed of all technical advisories, point your feed reader to the [RSS 
 | Advisory&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Synopsis | Product | Affected Versions | Date |
 | :------------------------------- | :------- | :-----: | :---------------: | :--- |
 | {{<ta 28267>}}
-|Index Inconsistency During Concurrent Expression Index Creation
+|Index inconsistency during concurrent expression index creation
 | {{<product "ysql">}}
 | {{<release "2024.2.0">}} to {{<release "2024.2.6">}}, {{<release "2025.1.0, 2025.1.1">}}
-| {{<nobreak "5 November 2025">}}
+| {{<nobreak "17 November 2025">}}
 |
 | {{<ta 27177>}}
 |PostgreSQL logical replication breaks during v2025.1 upgrade
