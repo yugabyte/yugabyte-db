@@ -149,13 +149,19 @@ Run the script either as a root user, or via sudo as follows:
 sudo ./node-agent-provision.sh
 ```
 
-The script provisions the node and installs node agent, and then runs preflight checks to ensure the node is ready for use.
+The script provisions the node and installs node agent, and runs preflight checks to ensure the node is ready for provisioning.
 
 If specified, node agent also creates the on-premises provider configuration; or, if the provider configuration already exists, adds the instance to the provider.
 
 After the node is provisioned, reboot the node.
 
 If the preflight check fails, rebooting the node may solve some issues (for example, incorrect ulimit settings).
+
+#### Verify provisioning
+
+After running the script and rebooting the VM, you can verify that provisioning was successful and YugabyteDB Anywhere can communicate with the node by navigating to `https://<yugabytedbanywhere-host-ip>/nodeagent`, where `yugabytedbanywhere-host-ip` is the IP address hosting your YugabyteDB Anywhere instance.
+
+The page lists the node agents that have been activated.
 
 #### Preflight check
 
