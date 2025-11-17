@@ -18,6 +18,9 @@
 namespace yb {
 namespace encryption {
 
+inline constexpr const char* kEncryptionMagic = "encrypt!";
+inline constexpr size_t kEncryptionMagicLen = 8;
+
 class HeaderManager;
 class UniverseKeyManager;
 
