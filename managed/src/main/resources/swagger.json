@@ -48226,6 +48226,7 @@
               "items" : {
                 "enum" : [
                   "IO1",
+                  "IO2",
                   "GP2",
                   "GP3",
                   "Scratch",
@@ -48317,6 +48318,7 @@
               "items" : {
                 "enum" : [
                   "IO1",
+                  "IO2",
                   "GP2",
                   "GP3",
                   "Scratch",
