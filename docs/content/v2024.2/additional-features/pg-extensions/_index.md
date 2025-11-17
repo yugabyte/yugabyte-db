@@ -59,6 +59,6 @@ YugabyteDB supports the following additional extensions, some of which you must 
 | [pg_cron](extension-pgcron/) | Pre-bundled | Provides a cron-based job scheduler that runs inside the database. |
 | [pg_hint_plan](../../launch-and-manage/monitor-and-alert/query-tuning/pg-hint-plan/) | Pre-bundled | Tweak execution plans using "hints", which are descriptions in the form of SQL comments.<br/>For more information, see the [pg_hint_plan](https://github.com/ossc-db/pg_hint_plan/tree/master/docs) documentation. |
 | [pg_partman](extension-pgpartman/) | Pre-bundled | Creates and manages time-based and serial-based table partition sets.|
-| pg_stat_monitor | Pre-bundled | A PostgreSQL query performance monitoring tool, based on the PostgreSQL pg_stat_statements module.<br/>For more information, see the [pg_stat_monitor](https://docs.percona.com/pg-stat-monitor/index.html) documentation. |
+| pg_stat_monitor {{<tags/feature/tp>}} | Pre-bundled | A PostgreSQL query performance monitoring tool, based on the PostgreSQL pg_stat_statements module.<br/>For more information, see the [pg_stat_monitor](https://docs.percona.com/pg-stat-monitor/index.html) documentation. |
 | [pgvector](extension-pgvector) | Pre-bundled | Allows you to store and query vectors, for use in vector similarity searching. |
 | [postgresql-hll](extension-postgresql-hll) | Pre-bundled | Adds the data type `hll`, which is a HyperLogLog data structure. |
