@@ -64,7 +64,8 @@ public class ManageOtelCollector extends NodeTaskBase {
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     NodeDetails node = universe.getNodeOrBadRequest(taskParams().nodeName);
-    taskParams().useSudo = isTServerServiceSystemLevel(universe, node);
+    taskParams().useSudo =
+        isTServerServiceSystemLevel(universe, node) && taskParams().installOtelCollector;
 
     log.info(
         "Managing OpenTelemetry collector on instance {} with useSudo set to {}",
