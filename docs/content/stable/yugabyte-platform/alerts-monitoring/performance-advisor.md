@@ -153,6 +153,7 @@ If range sharding is used, analyze reads and writes and recreate the table with 
 
 ## Limitations
 
+- Currently, performance advisor is partially supported for YCQL-only universes. For details, {{% support-platform %}}.
 - Currently, you can't schedule periodic performance advisor runs.
 - Currently, you can only configure performance recommendation thresholds via the API.
 - Performance recommendations can only be marked resolved via the UI; this state is not persisted.
