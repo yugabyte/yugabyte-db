@@ -71,62 +71,6 @@ This view displays the class, type, name, and description of each wait event. Th
 | wait_event | text | Name of the wait event. |
 | wait_event_description | text | Description of the wait event. |
 
-### Augment ASH with topology information
-
-By joining ASH with [yb_servers()](../../../explore/going-beyond-sql/cluster-topology/), you can augment ASH views with information about the location of the nodes involved, including the IP address, cloud, region, and zone.
-
-The `yb_servers()` function returns a list of all the nodes in your cluster and their location, and includes a `uuid` column with the same IDs as the `top_level_node_id` column in the `yb_active_session_history` view.
-
-Note that because these columns have different data types, (`top_level_node_id` is type UUID, while the `uuid` column of `yb_servers()` is type text), you need to cast the text to UUID to perform the join.
-
-For example:
-
-```sql
-SELECT
-    SUBSTRING(query, 1, 50) AS query,
-    top_level_node_id,
-    host,
-    port,
-    cloud,
-    region,
-    zone,
-    COUNT(*)
-FROM
-    yb_active_session_history
-JOIN
-    pg_stat_statements
-ON
-    query_id = queryid
-JOIN
-    yb_servers()
-ON
-    top_level_node_id = uuid::uuid
-WHERE
-    sample_time >= current_timestamp - interval '20 minutes'
-GROUP BY
-    query,
-    top_level_node_id,
-    host,
-    port,
-    cloud,
-    region,
-    zone;
-```
-
-```output
-                       query                        |          top_level_node_id           |   host    | port | cloud | region  |    zone    | count 
-----------------------------------------------------+--------------------------------------+-----------+------+-------+---------+------------+-------
- COMMIT                                             | 6b556919-0198-4617-a7bc-42b84c965ec4 | 127.0.0.1 | 5433 | aws   | us-west | us-west-2a |     2
- ANALYZE "public"."postgresqlkeyvalue"              | 6b556919-0198-4617-a7bc-42b84c965ec4 | 127.0.0.1 | 5433 | aws   | us-west | us-west-2a |    44
- SET extra_float_digits = 3                         | 6b556919-0198-4617-a7bc-42b84c965ec4 | 127.0.0.1 | 5433 | aws   | us-west | us-west-2a |     2
- SHOW yb_disable_auto_analyze                       | 6b556919-0198-4617-a7bc-42b84c965ec4 | 127.0.0.1 | 5433 | aws   | us-west | us-west-2a |     1
- SELECT k, v FROM postgresqlkeyvalue WHERE k = $1   | 6b556919-0198-4617-a7bc-42b84c965ec4 | 127.0.0.1 | 5433 | aws   | us-west | us-west-2a |  1450
- BEGIN                                              | 6b556919-0198-4617-a7bc-42b84c965ec4 | 127.0.0.1 | 5433 | aws   | us-west | us-west-2a |     2
- SET application_name = 'PostgreSQL JDBC Driver'    | 6b556919-0198-4617-a7bc-42b84c965ec4 | 127.0.0.1 | 5433 | aws   | us-west | us-west-2a |     1
- SELECT reltuples FROM pg_class WHERE relfilenode = | 6b556919-0198-4617-a7bc-42b84c965ec4 | 127.0.0.1 | 5433 | aws   | us-west | us-west-2a |     2
-(8 rows)
-```
-
 ## Constant query identifiers
 
 These fixed constants are used to identify various YugabyteDB background activities. The query IDs of the fixed constants are described in the following table.
