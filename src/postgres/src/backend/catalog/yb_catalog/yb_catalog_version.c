@@ -212,6 +212,18 @@ YbCallSQLIncrementCatalogVersions(Oid functionId, bool is_breaking_change,
 	PG_END_TRY();
 }
 
+/*
+ * When transactional DDL is enabled, multiple DDLs could contribute to the
+ * catalog version increment. Hence, we need to be more explicit that we
+ * are only logging the last catalog version incrementing DDL and there may
+ * be more such DDLs that are not logged.
+ */
+static bool
+LastDdlInTransactionBlock()
+{
+	return YBIsDdlTransactionBlockEnabled() && IsTransactionBlock();
+}
+
 static void
 MaybeLogNewSQLIncrementCatalogVersion(bool success,
 									  Oid db_oid,
@@ -243,8 +255,10 @@ MaybeLogNewSQLIncrementCatalogVersion(bool success,
 						"(%sbreaking) with inval messages%s%s",
 						__func__, action, is_breaking_change ? "" : "non",
 						tmpbuf1, tmpbuf2),
-				 errdetail("Local version: %" PRIu64 ", node tag: %s.",
-						   YbGetCatalogCacheVersion(), command_tag ? command_tag : "n/a"),
+				 errdetail("Local version: %" PRIu64 ", %snode tag: %s.",
+						   YbGetCatalogCacheVersion(),
+						   LastDdlInTransactionBlock() ? "last ddl " : "",
+						   command_tag ? command_tag : "n/a"),
 				 errhidestmt(!log_ysql_catalog_versions),
 				 errhidecontext(!log_ysql_catalog_versions)));
 	}
@@ -611,8 +625,10 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(Oid db_oid,
 		ereport(LOG,
 				(errmsg("%s: incrementing master catalog version (%sbreaking)%s",
 						__func__, is_breaking_change ? "" : "non", tmpbuf),
-				 errdetail("Local version: %" PRIu64 ", node tag: %s.",
-						   YbGetCatalogCacheVersion(), command_tag ? command_tag : "n/a"),
+				 errdetail("Local version: %" PRIu64 ", %snode tag: %s.",
+						   YbGetCatalogCacheVersion(),
+						   LastDdlInTransactionBlock() ? "last ddl " : "",
+						   command_tag ? command_tag : "n/a"),
 				 errhidestmt(!log_ysql_catalog_versions),
 				 errhidecontext(!log_ysql_catalog_versions)));
 	}

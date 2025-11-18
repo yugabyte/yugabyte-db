@@ -1352,6 +1352,7 @@ typedef struct
 	bool		is_top_level_ddl_active;
 	NodeTag		current_stmt_node_tag;
 	CommandTag	current_stmt_ddl_command_tag;
+	CommandTag	last_stmt_ddl_command_tag;
 	Oid			database_oid;
 	int			num_committed_pg_txns;
 
@@ -3222,16 +3223,10 @@ YBCommitTransactionContainingDDL()
 		if (currentInvalMessages && log_min_messages <= DEBUG1)
 			YbLogInvalidationMessages(currentInvalMessages, nmsgs);
 
-		/*
-		 * Only log the command_tag_name if transactional DDL is disabled. When
-		 * transactional DDL is enabled, multiple DDLs could contribute to the
-		 * catalog version increment. Hence, it is misleading to only log the
-		 * last DDL as the contributing command.
-		 */
-		const char *command_tag_name =
-			(YBIsDdlTransactionBlockEnabled()) ?
-			NULL :
-			GetCommandTagName(ddl_transaction_state.current_stmt_ddl_command_tag);
+		CommandTag ddl_cmdtag = ddl_transaction_state.current_stmt_ddl_command_tag;
+		if (ddl_cmdtag == CMDTAG_UNKNOWN)
+			 ddl_cmdtag = ddl_transaction_state.last_stmt_ddl_command_tag;
+		const char *command_tag_name = GetCommandTagName(ddl_cmdtag);
 
 		is_breaking_change = mode & YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE;
 		bool		increment_for_conn_mgr_needed = false;
@@ -3500,6 +3495,9 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 		 * be incremented.
 		 */
 		ddl_transaction_state.current_stmt_node_tag = node_tag;
+		if (ddl_transaction_state.current_stmt_ddl_command_tag != CMDTAG_UNKNOWN)
+			ddl_transaction_state.last_stmt_ddl_command_tag =
+				ddl_transaction_state.current_stmt_ddl_command_tag;
 		ddl_transaction_state.current_stmt_ddl_command_tag =
 			CreateCommandTag(parsetree);
 		if (CheckIsAnalyzeDDL() && !ddl_transaction_state.userid_and_sec_context.is_set)
@@ -4139,6 +4137,8 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 		if (ddl_transaction_state.nesting_level == 0 &&
 			!ddl_transaction_state.use_regular_txn_block)
 			YBClearDdlTransactionState();
+		else
+			ddl_transaction_state.current_stmt_ddl_command_tag = CMDTAG_UNKNOWN;
 		return (YbDdlModeOptional)
 		{
 		};
@@ -4200,6 +4200,9 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 
 	*requires_autonomous_transaction = YBIsDdlTransactionBlockEnabled() &&
 		should_run_in_autonomous_transaction;
+
+	if (!is_version_increment)
+		ddl_transaction_state.current_stmt_ddl_command_tag = CMDTAG_UNKNOWN;
 
 	return (YbDdlModeOptional)
 	{
