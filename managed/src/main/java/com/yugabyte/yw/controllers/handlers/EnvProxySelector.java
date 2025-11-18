@@ -11,6 +11,8 @@
 package com.yugabyte.yw.controllers.handlers;
 
 import com.google.common.annotations.VisibleForTesting;
+import inet.ipaddr.IPAddress;
+import inet.ipaddr.IPAddressString;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Proxy;
@@ -37,7 +39,6 @@ public class EnvProxySelector extends ProxySelector {
   final Optional<URI> httpProxy;
   final Optional<URI> httpsProxy;
   final Set<String> noProxies = new HashSet<>();
-
   private final ProxySelector prevSelector = ProxySelector.getDefault();
 
   public EnvProxySelector() {
@@ -49,7 +50,7 @@ public class EnvProxySelector extends ProxySelector {
     super();
     this.envVarGetter = envVarGetter;
     String[] httpProxyStrs =
-        getEnvBothCase("http_proxy").map(s -> s.split(",")).orElse(new String[0]);
+        getEnvBothCase("http_proxy").map(s -> s.split("[, ]")).orElse(new String[0]);
 
     httpProxy = initHttpProxy(httpProxyStrs);
     httpsProxy = initHttpsProxy(httpProxyStrs);
@@ -58,7 +59,8 @@ public class EnvProxySelector extends ProxySelector {
   }
 
   private void initNoProxies() {
-    String[] noProxyStrs = getEnvBothCase("no_proxy").map(s -> s.split(",")).orElse(new String[0]);
+    String[] noProxyStrs =
+        getEnvBothCase("no_proxy").map(s -> s.split("[, ]")).orElse(new String[0]);
 
     Collections.addAll(noProxies, noProxyStrs);
 
@@ -114,7 +116,8 @@ public class EnvProxySelector extends ProxySelector {
     return Optional.ofNullable(ret);
   }
 
-  private static Proxy toProxy(URI proxyUri) {
+  @VisibleForTesting
+  static Proxy toProxy(URI proxyUri) {
     return new Proxy(Type.HTTP, new InetSocketAddress(proxyUri.getHost(), proxyUri.getPort()));
   }
 
@@ -148,11 +151,42 @@ public class EnvProxySelector extends ProxySelector {
             .orElse(Proxy.NO_PROXY));
   }
 
+  private String normalizeIpv6(String ip) {
+    if (ip == null) {
+      return null;
+    }
+    return ip.replaceFirst("^\\[", "").replaceFirst("\\]$", "");
+  }
+
   private boolean shouldUseProxy(URI uri) {
-    String host = uri.getHost();
-    // int port = uri.getPort(); TODO(sbapat) port match is a rare use case. punt/K.I.S.S.
-    // Do suffix match on host part
-    return noProxies.stream().noneMatch(host::endsWith);
+    String host = normalizeIpv6(uri.getHost());
+    IPAddress[] hostAddrs = new IPAddress[1];
+    try {
+      // Returns null if it is invalid.
+      hostAddrs[0] = new IPAddressString(host).getAddress();
+    } catch (RuntimeException e) {
+      log.warn("Invalid host IP {}. Ignoring as it can be a hostname", host);
+    }
+    return noProxies.stream()
+        .map(this::normalizeIpv6)
+        .noneMatch(
+            entry -> {
+              try {
+                if (entry.equals(host) || (entry.startsWith(".") && host.endsWith(entry))) {
+                  return true;
+                }
+                IPAddress entryAddr = null;
+                if (hostAddrs[0] != null
+                    && (entryAddr = new IPAddressString(entry).getAddress()) != null) {
+                  // It handles both IPv4 and IPv6.
+                  return entryAddr.contains(hostAddrs[0]);
+                }
+              } catch (RuntimeException e) {
+                // Ignore and continue to the next check.
+                log.warn("Failed to process no_proxy entry {} - {}", entry, e.getMessage());
+              }
+              return false;
+            });
   }
 
   @Override
