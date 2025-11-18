@@ -48,6 +48,9 @@ public class CertsRotateParams extends UpgradeTaskParams {
   @ApiModelProperty(hidden = true)
   public CertRotationType clientRootCARotationType = CertRotationType.None;
 
+  public boolean createNewRootCA = false;
+  public boolean createNewClientRootCA = false;
+
   public boolean isKubernetesUpgradeSupported() {
     return true;
   }

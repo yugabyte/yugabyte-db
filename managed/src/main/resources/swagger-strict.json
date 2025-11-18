@@ -4968,6 +4968,12 @@
           "$ref" : "#/definitions/CommunicationPorts",
           "description" : "Communication ports"
         },
+        "createNewClientRootCA" : {
+          "type" : "boolean"
+        },
+        "createNewRootCA" : {
+          "type" : "boolean"
+        },
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
@@ -5574,6 +5580,8 @@
       },
       "required" : [
         "clusters",
+        "createNewClientRootCA",
+        "createNewRootCA",
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
