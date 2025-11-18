@@ -7701,6 +7701,9 @@ RelationGetIndexPredicate(Relation relation)
  *
  * The returned result is palloc'd in the caller's memory context and should
  * be bms_free'd when not needed anymore.
+ *
+ * TODO(kramanathan): Cache the results of this computation at planning
+ * time to avoid repeated work. (#29126)
  */
 void
 YbComputeIndexExprOrPredicateAttrs(Bitmapset **indexattrs,
@@ -7715,9 +7718,12 @@ YbComputeIndexExprOrPredicateAttrs(Bitmapset **indexattrs,
 	if (isnull)
 		return;
 
-	Node	   *indexNode = stringToNode(TextDatumGetCString(datum));
+	char *datum_str = TextDatumGetCString(datum);
+	Node	   *indexNode = stringToNode(datum_str);
 
 	pull_varattnos_min_attr(indexNode, 1, indexattrs, attr_offset + 1);
+
+	pfree((void *) datum_str);
 }
 
 bool
