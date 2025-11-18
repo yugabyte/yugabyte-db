@@ -71,9 +71,9 @@ This view displays the class, type, name, and description of each wait event. Th
 | wait_event | text | Name of the wait event. |
 | wait_event_description | text | Description of the wait event. |
 
-### Join with yb_servers()
+### Augment ASH with topology information
 
-By joining ASH with [yb_servers()](../../../explore/going-beyond-sql/cluster-topology/), you can get additional information about the node's IP address, cloud, region, zone, and more.
+By joining ASH with [yb_servers()](../../../explore/going-beyond-sql/cluster-topology/), you can augment ASH views with information about the location of the nodes involved, including the IP address, cloud, region, and zone.
 
 The `yb_servers()` function returns a list of all the nodes in your cluster and their location, and includes a `uuid` column with the same IDs as the `top_level_node_id` column in the `yb_active_session_history` view.
 
