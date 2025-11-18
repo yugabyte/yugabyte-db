@@ -18,7 +18,7 @@ rightNav:
 
 [Active Session History](../../../explore/observability/active-session-history/) (ASH) provides a powerful way to troubleshoot performance by giving you a real-time and historical view of your database's activity. ASH captures samples of active sessions and exposes them through a set of SQL views. By querying these views, you can analyze wait events, identify performance bottlenecks, and understand where your database is spending its time.
 
-ASH is currently available for YSQL, YCQL, and YB-TServer and records wait events like CPU, WaitOnCondition, RPCWait, and Disk IO.
+ASH is currently available for YSQL, YCQL, and YB-TServer, and records wait events like CPU, WaitOnCondition, RPCWait, and Disk IO.
 
 By analyzing this data, you can troubleshoot performance by answering questions like:
 
