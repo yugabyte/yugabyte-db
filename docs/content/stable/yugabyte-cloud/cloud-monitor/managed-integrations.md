@@ -37,6 +37,7 @@ Currently, you can export data to the following tools.
 | [Prometheus](#prometheus) | | Yes |
 | [VictoriaMetrics](#victoriametrics) | | Yes |
 | [Google Cloud Storage](#google-cloud-storage) (GCS) | Database audit logs | |
+| [New Relic](#new-relic) | | Yes |
 <!--| [Dynatrace](#dynatrace) | | Yes |-->
 
 ## Manage integrations
@@ -217,6 +218,23 @@ To create an export configuration, do the following:
 1. On the **Integrations** page, click **Configure** for the **Google Cloud Storage** integration or, if a configuration is already available, **Add Configuration**.
 1. Enter a name for the configuration.
 1. Upload the JSON key file.
+1. Click **Test Configuration** to make sure your connection is working.
+1. Click **Create Configuration**.
+
+### New Relic
+
+The [New Relic](https://docs.newrelic.com/) integration requires the following:
+
+- New Relic [license key](https://docs.newrelic.com/docs/apis/intro-apis/new-relic-api-keys/)
+
+To create an export configuration, do the following:
+
+1. On the **Integrations** page, click **Configure** for the **New Relic** integration or, if a configuration is already available, **Add Configuration**.
+1. Enter a name for the configuration.
+1. Enter the URL for the [New Relic OTLP endpoint](https://docs.newrelic.com/docs/opentelemetry/best-practices/opentelemetry-otlp/) where you want to send your data (US or EU):
+    - US Endpoint: `https://otlp.nr-data.net`
+    - EU Endpoint: `https://otlp.eu01.nr-data.net`
+1. Enter the license key for the New Relic account you want to use for data ingest. Keys are available under **User menu > API Keys** in the New Relic platform.
 1. Click **Test Configuration** to make sure your connection is working.
 1. Click **Create Configuration**.
 
