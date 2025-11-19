@@ -30,6 +30,7 @@ import { fetchTablesInUniverse } from '../../../../../../actions/xClusterReplica
 import { TableType } from '../../../../../../redesign/helpers/dtos';
 import { isDuplicateKeyspaceExistsinUniverse } from '../../RestoreUtils';
 import { IncrementalBackupProps } from '../../../BackupDetails';
+import { RolesConfig } from './RolesConfig';
 
 type ReactSelectOption = { label: string; value: string } | null;
 
@@ -43,6 +44,8 @@ export type IGeneralSettings = {
   useTablespaces: boolean;
   selectedKeyspace: ReactSelectOption;
   incrementalBackupProps: IncrementalBackupProps;
+  useRoles: boolean;
+  errorIfRolesExists: boolean;
 };
 
 const useStyles = makeStyles((theme) => ({
@@ -90,6 +93,7 @@ export const GeneralSettings = React.forwardRef<PageRef>((_, forwardRef) => {
     formData: { generalSettings, preflightResponse },
     backupDetails
   } = restoreContext;
+
 
   const { t } = useTranslation();
 
@@ -234,6 +238,9 @@ export const GeneralSettings = React.forwardRef<PageRef>((_, forwardRef) => {
           <section>
             <TablespaceConfig />
           </section>
+          {backupDetails?.useRoles && <section>
+            <RolesConfig />
+          </section>}
           {backupDetails?.category === 'YB_BACKUP_SCRIPT' && (
             <section>
               <ParallelThreadsConfig />
