@@ -4,6 +4,7 @@ package com.yugabyte.yw.models.helpers;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.yugabyte.yw.common.utils.Pair;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
 import java.util.List;
@@ -110,6 +111,28 @@ public class PlacementInfo {
     return cloudList.stream()
         .flatMap(cloud -> cloud.regionList.stream())
         .flatMap(region -> region.azList.stream());
+  }
+
+  public static class PlacementAZInfo {
+    public final PlacementAZ placementAZ;
+    public final PlacementRegion region;
+    public final PlacementCloud cloud;
+
+    public PlacementAZInfo(PlacementAZ placementAZ, PlacementRegion region, PlacementCloud cloud) {
+      this.placementAZ = placementAZ;
+      this.region = region;
+      this.cloud = cloud;
+    }
+  }
+
+  @JsonIgnore
+  public Stream<PlacementAZInfo> azInfoStream() {
+    return cloudList.stream()
+        .flatMap(cloud -> cloud.regionList.stream().map(r -> new Pair<>(r, cloud)))
+        .flatMap(
+            r ->
+                r.getFirst().azList.stream()
+                    .map(az -> new PlacementAZInfo(az, r.getFirst(), r.getSecond())));
   }
 
   @JsonIgnore
