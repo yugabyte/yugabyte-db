@@ -4216,6 +4216,72 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
   }
 
   @Test
+  public void testChangeReplicasNum() {
+    Customer customer =
+        ModelFactory.testCustomer("customer", String.format("Test Customer %s", "customer"));
+    Provider provider = ModelFactory.newProvider(customer, aws);
+
+    Universe existing =
+        createFromConfig(provider, "Existing", "r1-z1r1-3-2;r1-z2r1-3-2;r1-z3r1-3-1");
+
+    UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
+    params.setUniverseUUID(existing.getUniverseUUID());
+    params.currentClusterType = ClusterType.PRIMARY;
+    params.clusters = existing.getUniverseDetails().clusters;
+    params.nodeDetailsSet = existing.getUniverseDetails().nodeDetailsSet;
+    params
+        .getPrimaryCluster()
+        .placementInfo
+        .azStream()
+        .forEach(
+            az -> {
+              if (az.name.equals("z1r1")) {
+                az.replicationFactor = 3;
+              } else {
+                az.replicationFactor = 1;
+              }
+            });
+    PlacementInfoUtil.updateUniverseDefinition(
+        params, customer.getId(), params.getPrimaryCluster().uuid, EDIT);
+    Set<UniverseDefinitionTaskParams.UpdateOptions> updateOptions =
+        UniverseCRUDHandler.getUpdateOptions(params, EDIT);
+    assertEquals(Collections.singleton(UPDATE), updateOptions);
+    // Verifying RF is unchanged.
+    params
+        .getPrimaryCluster()
+        .placementInfo
+        .azStream()
+        .forEach(
+            az -> {
+              if (az.name.equals("z1r1")) {
+                assertEquals(3, az.replicationFactor);
+              } else {
+                assertEquals(1, az.replicationFactor);
+              }
+            });
+    params
+        .getPrimaryCluster()
+        .placementInfo
+        .azStream()
+        .limit(1)
+        .forEach(az -> az.replicationFactor = 0);
+    // Now as RFs is incorrect, RF distribution will be rolled back to the original.
+    PlacementInfoUtil.updateUniverseDefinition(
+        params, customer.getId(), params.getPrimaryCluster().uuid, EDIT);
+    List<Integer> replicas =
+        params
+            .getPrimaryCluster()
+            .placementInfo
+            .azStream()
+            .map(az -> az.replicationFactor)
+            .sorted()
+            .collect(Collectors.toList());
+    assertEquals(Arrays.asList(1, 2, 2), replicas);
+    updateOptions = UniverseCRUDHandler.getUpdateOptions(params, EDIT);
+    assertEquals(Collections.emptySet(), updateOptions);
+  }
+
+  @Test
   public void testChaosConfigureEdit() {
     Customer customer =
         ModelFactory.testCustomer("customer", String.format("Test Customer %s", "customer"));

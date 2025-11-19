@@ -871,7 +871,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     if (customizer != null) {
       customizer.accept(main.getPlacement());
     }
-    PlacementInfoUtil.checkAndSetPerAZRF(main.getPlacement(), 3);
+    PlacementInfoUtil.checkAndSetPerAZRF(main.getPlacement(), 3, null, false);
     main.setReplicationFactor(3);
 
     UniverseDefinitionTaskParams.PartitionInfo secondary =
