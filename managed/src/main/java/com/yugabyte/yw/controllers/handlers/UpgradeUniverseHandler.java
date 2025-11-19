@@ -420,17 +420,38 @@ public class UpgradeUniverseHandler {
         "rotateCerts called with rootCA: {}",
         (requestParams.rootCA != null) ? requestParams.rootCA.toString() : "NULL");
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-    if (userIntent.enableNodeToNodeEncrypt && requestParams.rootCA == null) {
-      requestParams.rootCA =
-          certificateHelper.createRootCA(
-              runtimeConfigFactory.staticApplicationConf(),
-              universe.getUniverseDetails().nodePrefix,
-              customer.getUuid());
-      log.info(
-          "Created rootCA: {} for universe {}", requestParams.rootCA, universe.getUniverseUUID());
+
+    if (userIntent.enableNodeToNodeEncrypt) {
+      if (requestParams.rootCA != null && requestParams.createNewRootCA) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Cannot create new rootCA when rootCA is already provided.");
+      }
+      if (requestParams.rootCA == null && !requestParams.createNewRootCA) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Cannot use existing rootCA when createNewRootCA is false.");
+      }
+      if (requestParams.rootCA == null && requestParams.createNewRootCA) {
+        requestParams.rootCA =
+            certificateHelper.createRootCA(
+                runtimeConfigFactory.staticApplicationConf(),
+                universe.getUniverseDetails().nodePrefix,
+                customer.getUuid());
+        log.info(
+            "Created rootCA: {} for universe {}", requestParams.rootCA, universe.getUniverseUUID());
+      }
     }
 
     if (userIntent.enableClientToNodeEncrypt) {
+
+      if (requestParams.getRawClientRootCA() != null && requestParams.createNewClientRootCA) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Cannot create new clientRootCA when clientRootCA is already provided.");
+      }
+      if (requestParams.getClientRootCA() == null && !requestParams.createNewClientRootCA) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Cannot create new clientRootCA when createNewClientRootCA is false.");
+      }
+
       boolean isKubernetes = userIntent.providerType.equals(CloudType.kubernetes);
       // For Kubernetes, clientRootCA must be same as rootCA
       // For non-Kubernetes, check rootAndClientRootCASame flag
@@ -445,7 +466,8 @@ public class UpgradeUniverseHandler {
             "Using clientRootCA is same as rootCA: {} for universe {}",
             requestParams.getClientRootCA(),
             universe.getUniverseUUID());
-      } else if (requestParams.getClientRootCA() == null) {
+      } else if (requestParams.getRawClientRootCA() == null
+          && requestParams.createNewClientRootCA) {
         requestParams.setClientRootCA(
             certificateHelper.createClientRootCA(
                 runtimeConfigFactory.staticApplicationConf(),
