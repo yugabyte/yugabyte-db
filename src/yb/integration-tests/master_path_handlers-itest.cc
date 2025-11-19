@@ -775,7 +775,7 @@ TEST_F_EX(MasterPathHandlersItest, ShowDeletedTablets, TabletSplitMasterPathHand
         const auto webpage = result.ToString();
         std::smatch match;
         const std::regex regex(
-            "<tr>.*<td>Delete*d</td><td>0</td><td>Not serving tablet deleted upon request "
+            "<tr>[\\S\\s]*<td>Deleted</td><td>0</td><td>Not serving tablet deleted upon request "
             "at(.|\n)*</tr>");
         std::regex_search(webpage, match, regex);
         return !match.empty();

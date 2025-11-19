@@ -1868,8 +1868,18 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
   }
 
   *output << "<table class='table table-striped'>\n";
-  *output << "  <tr><th>Tablet ID</th><th>Partition</th><th>SplitDepth</th><th>State</th>"
-             "<th>Hidden</th><th>Message</th><th>RaftConfig</th></tr>\n";
+  *output << "  <tr><th>Tablet ID</th><th>Partition</th><th>SplitDepth</th><th>RaftConfig / "
+             "Replica info</th><th>State</th><th>Hidden</th><th>Message</th></tr>\n";
+
+  std::sort(tablets.begin(), tablets.end(), [](const TabletInfoPtr& t1, const TabletInfoPtr& t2) {
+    auto l1 = t1->LockForRead();
+    auto l2 = t2->LockForRead();
+    auto res = Slice(l1->pb.partition().partition_key_start())
+                   .compare(l2->pb.partition().partition_key_start());
+    // Parent tablet goes first in case of partition_key_start equality.
+    return res == 0 ? (l1->pb.split_depth() < l2->pb.split_depth()) : res < 0;
+  });
+
   for (const auto& tablet : tablets) {
     if (!show_deleted_tablets && tablet->LockForRead()->is_deleted()) {
       continue;
@@ -1888,10 +1898,10 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
         tablet->tablet_id(),
         EscapeForHtmlToString(partition_schema.PartitionDebugString(partition, schema)),
         l->pb.split_depth(),
+        ReplicaInfoToHtml(sorted_locations, tablet->tablet_id()),
         state,
         l->is_hidden(),
-        EscapeForHtmlToString(l->pb.state_msg()),
-        RaftConfigToHtml(sorted_locations, tablet->tablet_id()));
+        EscapeForHtmlToString(l->pb.state_msg()));
   }
   *output << "</table>\n";
 
@@ -3456,7 +3466,7 @@ Status MasterPathHandlers::Register(Webserver* server) {
   return Status::OK();
 }
 
-string MasterPathHandlers::RaftConfigToHtml(
+string MasterPathHandlers::ReplicaInfoToHtml(
     const std::vector<TsUuidAndTabletReplica>& locations, const std::string& tablet_id) const {
   stringstream html;
 
@@ -3494,7 +3504,12 @@ string MasterPathHandlers::RaftConfigToHtml(
       html << Format("  <li>$0: $1</li>\n",
                          PeerRole_Name(replica.role), location_html);
     }
-    html << Format("UUID: $0\n", ts_uuid);
+    html << Format("UUID: $0<br/>", ts_uuid);
+    html << Format(
+        "Active SSTs size: $0<br/>",
+        HumanReadableNumBytes::ToString(replica.drive_info.sst_files_size));
+    html << Format(
+        "WALs size: $0\n", HumanReadableNumBytes::ToString(replica.drive_info.wal_files_size));
   }
   html << "</ul>\n";
   return html.str();
