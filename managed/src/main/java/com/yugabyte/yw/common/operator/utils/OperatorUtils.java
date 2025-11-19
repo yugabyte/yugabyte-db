@@ -4,13 +4,10 @@ import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
-import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
@@ -23,21 +20,16 @@ import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.common.operator.helpers.KubernetesOverridesSerializer;
-import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupRequestParams.KeyspaceTable;
 import com.yugabyte.yw.forms.BackupTableParams;
-import com.yugabyte.yw.forms.DrConfigCreateForm;
-import com.yugabyte.yw.forms.DrConfigSetDatabasesForm;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams;
-import com.yugabyte.yw.forms.XClusterConfigRestartFormData.RestartBootstrapParams;
 import com.yugabyte.yw.forms.YbcThrottleParametersResponse;
 import com.yugabyte.yw.forms.YbcThrottleParametersResponse.ThrottleParamValue;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -70,7 +62,6 @@ import io.yugabyte.operator.v1alpha1.Backup;
 import io.yugabyte.operator.v1alpha1.BackupSchedule;
 import io.yugabyte.operator.v1alpha1.BackupSpec;
 import io.yugabyte.operator.v1alpha1.BackupStatus;
-import io.yugabyte.operator.v1alpha1.DrConfig;
 import io.yugabyte.operator.v1alpha1.Release;
 import io.yugabyte.operator.v1alpha1.StorageConfig;
 import io.yugabyte.operator.v1alpha1.YBProvider;
@@ -96,7 +87,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.yb.CommonTypes.TableType;
-import org.yb.client.YBClient;
 import play.libs.Json;
 
 @Slf4j
@@ -121,7 +111,6 @@ public class OperatorUtils {
   private final String namespace;
   private final YbcManager ybcManager;
   private final ValidatingFormFactory validatingFormFactory;
-  private final YBClientService ybService;
 
   private Config _k8sClientConfig;
   private ReleaseManager releaseManager;
@@ -132,15 +121,13 @@ public class OperatorUtils {
       RuntimeConfGetter confGetter,
       ReleaseManager releaseManager,
       YbcManager ybcManager,
-      ValidatingFormFactory validatingFormFactory,
-      YBClientService ybService) {
+      ValidatingFormFactory validatingFormFactory) {
     this.releaseManager = releaseManager;
     this.confGetter = confGetter;
     this.ybcManager = ybcManager;
     namespace = confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorNamespace);
     this.validatingFormFactory = validatingFormFactory;
     this.objectMapper = new ObjectMapper();
-    this.ybService = ybService;
   }
 
   private KubernetesClient createKubernetesClient() {
@@ -1146,130 +1133,5 @@ public class OperatorUtils {
       return "";
     }
     return Paths.get(kubeConfigPath).getFileName().toString();
-  }
-
-  public DrConfigCreateForm getDrConfigCreateFormFromCr(
-      DrConfig drConfig, SharedIndexInformer<StorageConfig> scInformer) throws Exception {
-    ObjectNode crParams = objectMapper.valueToTree(drConfig.getSpec());
-    DrConfigCreateForm drConfigCreateForm =
-        getDrConfigCreateFormFromCr(crParams, drConfig.getMetadata().getNamespace(), scInformer);
-    drConfigCreateForm.setKubernetesResourceDetails(
-        KubernetesResourceDetails.fromResource(drConfig));
-    return drConfigCreateForm;
-  }
-
-  @VisibleForTesting
-  DrConfigCreateForm getDrConfigCreateFormFromCr(
-      ObjectNode crParams, String namespace, SharedIndexInformer<StorageConfig> scInformer)
-      throws Exception {
-
-    Customer cust = getOperatorCustomer();
-    String crSourceUniverseName = crParams.get("sourceUniverse").asText();
-    Universe sourceUniverse =
-        getUniverseFromNameAndNamespace(cust.getId(), crSourceUniverseName, namespace);
-    if (sourceUniverse == null) {
-      throw new Exception("No universe found with name " + crSourceUniverseName);
-    }
-    UUID sourceUniverseUUID = sourceUniverse.getUniverseUUID();
-
-    String crTargetUniverseName = crParams.get("targetUniverse").asText();
-    Universe targetUniverse =
-        getUniverseFromNameAndNamespace(cust.getId(), crTargetUniverseName, namespace);
-    if (targetUniverse == null) {
-      throw new Exception("No universe found with name " + crTargetUniverseName);
-    }
-    UUID targetUniverseUUID = targetUniverse.getUniverseUUID();
-
-    String crStorageConfig = crParams.get("storageConfig").asText();
-    UUID storageConfigUUID = getStorageConfigUUIDFromName(crStorageConfig, scInformer);
-    if (storageConfigUUID == null) {
-      throw new Exception("No storage config found with name " + crStorageConfig);
-    }
-
-    String drConfigName = crParams.get("name").asText();
-
-    TableType tableType = TableType.PGSQL_TABLE_TYPE;
-    YBClient client = ybService.getUniverseClient(sourceUniverse);
-    Map<String, String> namespaceNameNamespaceIdMap =
-        UniverseTaskBase.getKeyspaceNameKeyspaceIdMap(client, tableType);
-    JsonNode databasesNode = crParams.get("databases");
-    ArrayNode dbsArray = JsonNodeFactory.instance.arrayNode();
-
-    if (databasesNode != null && databasesNode.isArray()) {
-      for (JsonNode dbNode : databasesNode) {
-        String namespaceName = dbNode.asText().trim();
-        String namespaceId = namespaceNameNamespaceIdMap.get(namespaceName);
-        if (namespaceId == null) {
-          throw new IllegalArgumentException(
-              String.format(
-                  "A namespace with name '%s' and table type '%s' could not be found",
-                  namespaceName, tableType.name()));
-        }
-        dbsArray.add(namespaceId);
-      }
-    }
-
-    crParams.put("sourceUniverseUUID", sourceUniverseUUID.toString());
-    crParams.put("targetUniverseUUID", targetUniverseUUID.toString());
-    crParams.put("storageConfigUUID", storageConfigUUID.toString());
-    crParams.put("name", drConfigName);
-    crParams.put("dbs", dbsArray);
-
-    DrConfigCreateForm createForm =
-        validatingFormFactory.getFormDataOrBadRequest(crParams, DrConfigCreateForm.class);
-    BootstrapParams.BootstrapBackupParams backupRequestParams =
-        new BootstrapParams.BootstrapBackupParams();
-    backupRequestParams.storageConfigUUID = storageConfigUUID;
-    createForm.bootstrapParams = new RestartBootstrapParams();
-    createForm.bootstrapParams.backupRequestParams = backupRequestParams;
-
-    return createForm;
-  }
-
-  public DrConfigSetDatabasesForm getDrConfigSetDatabasesFormFromCr(
-      DrConfig drConfig, SharedIndexInformer<StorageConfig> scInformer) throws Exception {
-    JsonNode crParams = objectMapper.valueToTree(drConfig.getSpec());
-    DrConfigSetDatabasesForm drConfigSetDatabasesForm =
-        getDrConfigSetDatabasesFormFromCr(
-            crParams, drConfig.getMetadata().getNamespace(), scInformer);
-    drConfigSetDatabasesForm.setKubernetesResourceDetails(
-        KubernetesResourceDetails.fromResource(drConfig));
-    return drConfigSetDatabasesForm;
-  }
-
-  @VisibleForTesting
-  DrConfigSetDatabasesForm getDrConfigSetDatabasesFormFromCr(
-      JsonNode crParams, String namespace, SharedIndexInformer<StorageConfig> scInformer)
-      throws Exception {
-    Customer cust = getOperatorCustomer();
-    String crSourceUniverseName = ((ObjectNode) crParams).get("sourceUniverse").asText();
-    Universe sourceUniverse =
-        getUniverseFromNameAndNamespace(cust.getId(), crSourceUniverseName, namespace);
-    if (sourceUniverse == null) {
-      throw new Exception("No universe found with name " + crSourceUniverseName);
-    }
-    TableType tableType = TableType.PGSQL_TABLE_TYPE;
-    YBClient client = ybService.getUniverseClient(sourceUniverse);
-    Map<String, String> namespaceNameNamespaceIdMap =
-        UniverseTaskBase.getKeyspaceNameKeyspaceIdMap(client, tableType);
-    JsonNode databasesNode = ((ObjectNode) crParams).get("databases");
-    ArrayNode dbsArray = JsonNodeFactory.instance.arrayNode();
-    if (databasesNode != null && databasesNode.isArray()) {
-      for (JsonNode dbNode : databasesNode) {
-        String namespaceName = dbNode.asText().trim();
-        String namespaceId = namespaceNameNamespaceIdMap.get(namespaceName);
-        if (namespaceId == null) {
-          throw new IllegalArgumentException(
-              String.format(
-                  "A namespace with name '%s' and table type '%s' could not be found",
-                  namespaceName, tableType.name()));
-        }
-        dbsArray.add(namespaceId);
-      }
-    }
-
-    ((ObjectNode) crParams).put("dbs", dbsArray);
-
-    return validatingFormFactory.getFormDataOrBadRequest(crParams, DrConfigSetDatabasesForm.class);
   }
 }

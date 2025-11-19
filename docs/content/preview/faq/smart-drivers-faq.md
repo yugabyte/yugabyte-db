@@ -11,6 +11,7 @@ menu:
     weight: 40
 type: docs
 unversioned: true
+showRightNav: false
 ---
 
 ### What is a smart driver?
@@ -27,11 +28,12 @@ YugabyteDB smart drivers for YSQL are currently available for the following lang
 
 - Java
 - Go
+- node.js
 - Python
-- Node.js
-- C#
-- Rust
-- Ruby
+
+{{<lead link="/preview/develop/drivers-orms/#choose-your-language">}}
+Choose your language
+{{</lead>}}
 
 ### Why do I need connection load balancing?
 
@@ -96,7 +98,6 @@ You can direct connections to specific clouds, regions, or AZs using topology ke
 - Go: `topology_keys`
 - Python: `topology_keys`
 - Rust: `topology_keys`
-- Ruby: `topology_keys`
 
 {{<lead link="/preview/develop/drivers-orms/smart-drivers/#topology-aware-load-balancing">}}
 Topology-aware connection load balancing

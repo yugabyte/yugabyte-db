@@ -154,7 +154,7 @@ Find resources for getting started, migrating existing databases, using your dat
 [EXPLAIN (ANALYZE, DIST) YugabyteDB distributed execution plan](https://dev.to/franckpachot/explain-analyze-dist-4nlc)
 : Use EXPLAIN (ANALYZE, DIST) in YugabyteDB to analyze distributed execution plans.
 
-[Query Tuning How To](/preview/launch-and-manage/monitor-and-alert/query-tuning/)
+[Query Tuning How To](/preview/explore/query-1-performance/)
 : Optimize query performance in YugabyteDB, using indexing, query tuning, and tools like EXPLAIN to analyze and improve distributed query execution.
 
 [YugabyteDB Memory Tuning for YSQL](https://www.yugabyte.com/blog/optimizing-yugabytedb-memory-tuning-for-ysql/)

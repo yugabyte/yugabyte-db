@@ -12,11 +12,9 @@ menu:
 type: docs
 ---
 
-Upgrading YugabyteDB from a version based on PostgreSQL 11 (all versions prior to v2.25) to a version based on PostgreSQL 15 (v2025.1 or later (stable) or v2.25 or later (preview)) requires additional steps. For instructions on upgrades within a major PostgreSQL version, refer to [Upgrade YugabyteDB](../upgrade-deployment/).
+Upgrading YugabyteDB from a version based on PostgreSQL 11 (all versions prior to v2.25) to a version based on PostgreSQL 15 (v2.25.1 or later) requires additional steps. For instructions on upgrades within a major PostgreSQL version, refer to [Upgrade YugabyteDB](../upgrade-deployment/).
 
 The upgrade is fully online. While the upgrade is in progress, you have full and uninterrupted read and write access to your cluster.
-
-Performing a YSQL major upgrade on a universe with [CDC with logical replication](../../additional-features/change-data-capture/using-logical-replication/) requires additional steps.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
@@ -30,13 +28,6 @@ Performing a YSQL major upgrade on a universe with [CDC with logical replication
     <a href="../ysql-major-upgrade-local/" class="nav-link">
       <i class="icon-shell"></i>
       Manual
-    </a>
-  </li>
-
-  <li>
-    <a href="../ysql-major-upgrade-logical-replication/" class="nav-link">
-      <i class="icon-shell"></i>
-      Logical Replication
     </a>
   </li>
 

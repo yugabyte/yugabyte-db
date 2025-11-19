@@ -32,7 +32,6 @@ from yugabyte.common_util import (
     get_build_type_from_build_root,
     get_compiler_type_from_build_root
 )
-from yugabyte.command_util import has_pigz
 from yugabyte.postgres_build_util import POSTGRES_BUILD_SUBDIR
 from yugabyte import artifact_upload
 from yugabyte.test_descriptor import TestDescriptor
@@ -329,8 +328,7 @@ def create_archive_for_workers() -> None:
         # TODO: use zip instead of tar/gz.
         tar_args = [
             'tar',
-        ] + (['-I', 'pigz'] if has_pigz() else ['-z']) + [
-            '-c',
+            'cz',
             '-f',
             tmp_dest_path
         ] + [

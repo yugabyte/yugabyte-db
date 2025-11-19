@@ -152,7 +152,7 @@ Find resources for getting started, migrating existing databases, using your dat
 **Article**: [Explain Analyze Dist](https://dev.to/franckpachot/explain-analyze-dist-4nlc)
 : YugabyteDB distributed execution plans.
 
-**Documentation**: [Query Tuning How To](../launch-and-manage/monitor-and-alert/query-tuning/)
+**Documentation**: [Query Tuning How To](../explore/query-1-performance/)
 : Query tuning in YugabyteDB.
 
 **Blog**: [YugabyteDB Memory Tuning for YSQL](https://www.yugabyte.com/blog/optimizing-yugabytedb-memory-tuning-for-ysql/)

@@ -35,8 +35,7 @@ import {
   ROOT_CERT_FIELD,
   CLIENT_CERT_FIELD,
   ROOT_CA_CLIENT_CA_SAME_FIELD,
-  K8S_ENCRYPTION_TYPE_FIELD,
-  ENABLE_TLS_FIELD
+  K8S_ENCRYPTION_TYPE_FIELD
 } from '../../../utils/constants';
 import { ClientCaAndRootCASameField } from '../../fields/RootCertificateField/ClientCAAndRootCASameField';
 import { RuntimeConfigKey } from '../../../../../../helpers/constants';
@@ -87,7 +86,6 @@ export const SecurityConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
   const nodeNodeTLSEnabled = useWatch({ name: NODE_TO_NODE_ENCRYPT_FIELD });
   const accessKey = useWatch({ name: ACCESS_KEY_FIELD });
   const k8EncryptionTypeValue = useWatch({ name: K8S_ENCRYPTION_TYPE_FIELD });
-  const k8EnableTLSVal = useWatch({ name: ENABLE_TLS_FIELD });
 
   const rootCaClientCaSame = useWatch({ name: ROOT_CA_CLIENT_CA_SAME_FIELD });
   //access key info
@@ -212,20 +210,18 @@ export const SecurityConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
                     <Box mt={3} ml={2}>
                       <K8EncryptionTypeField disabled={false} />
                     </Box>
-                    {k8EnableTLSVal && (
-                      <Box mt={2} ml={2}>
-                        <RootCertificateField
-                          disabled={!isCreatePrimary}
-                          isPrimary={isPrimary}
-                          isCreateMode={isCreateMode}
-                          fieldName={
-                            k8EncryptionTypeValue === K8sEncryptionOption.ClienToNode
-                              ? CLIENT_CERT_FIELD
-                              : ROOT_CERT_FIELD
-                          }
-                        />
-                      </Box>
-                    )}
+                    <Box mt={2} ml={2}>
+                      <RootCertificateField
+                        disabled={!isCreatePrimary}
+                        isPrimary={isPrimary}
+                        isCreateMode={isCreateMode}
+                        fieldName={
+                          k8EncryptionTypeValue === K8sEncryptionOption.ClienToNode
+                            ? CLIENT_CERT_FIELD
+                            : ROOT_CERT_FIELD
+                        }
+                      />
+                    </Box>
                   </>
                 )}
                 <Box className={helperClasses.settingsContainerDivider}></Box>

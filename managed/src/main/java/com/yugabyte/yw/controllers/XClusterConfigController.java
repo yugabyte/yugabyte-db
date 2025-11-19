@@ -534,7 +534,7 @@ public class XClusterConfigController extends AuthenticatedController {
     return new YBPTask(taskUUID, xClusterConfig.getUuid()).asResult();
   }
 
-  public static XClusterConfigTaskParams getSetDatabasesTaskParams(
+  static XClusterConfigTaskParams getSetDatabasesTaskParams(
       XClusterConfig xClusterConfig,
       Set<String> databaseIds,
       Set<String> databaseIdsToAdd,

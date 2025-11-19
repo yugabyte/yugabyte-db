@@ -83,7 +83,7 @@ log-level:
 
 | Log level for yb-voyager. <br>Accepted values: trace, debug, info, warn, error, fatal, panic <br>Default: info |
 | -h, --help | — |Command line help for initiate cutover to target. |
-| -c, --config-file | — | Path to a [configuration file](../../configuration-file). |
+| -c, --config-file | — | Path to a [configuration file](../configuration-file). |
 
 {{</table>}}
 
@@ -139,7 +139,7 @@ log-level:
 
 | Log level for yb-voyager. <br>Accepted values: trace, debug, info, warn, error, fatal, panic <br>Default: info |
 | -h, --help | — |Command line help for cutover. |
-| -c, --config-file | — | Path to a [configuration file](../../configuration-file). |
+| -c, --config-file | — | Path to a [configuration file](../configuration-file). |
 
 {{</table>}}
 
@@ -194,7 +194,7 @@ log-level:
 | Log level for yb-voyager. <br>Accepted values: trace, debug, info, warn, error, fatal, panic <br>Default: info |
 
 | -h, --help | — | Command line help for cutover. |
-| -c, --config-file | — | Path to a [configuration file](../../configuration-file). |
+| -c, --config-file | — | Path to a [configuration file](../configuration-file). |
 
 {{</table>}}
 
@@ -240,7 +240,7 @@ export-dir:
 
 | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | — | Command line help for cutover status. |
-| -c, --config-file | — | Path to a [configuration file](../../configuration-file). |
+| -c, --config-file | — | Path to a [configuration file](../configuration-file). |
 
 {{</table>}}
 

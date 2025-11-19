@@ -337,10 +337,7 @@ class GeoTransactionsTestTableLocksDisabled : public GeoTransactionsTest {
   }
 };
 
-// Fails when table-level locks are enabled due to #28317.
-TEST_F_EX(
-    GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionTabletSelection),
-    GeoTransactionsTestTableLocksDisabled) {
+TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionTabletSelection)) {
   constexpr int tables_per_region = 1;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = false;
@@ -518,10 +515,7 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestMultiRegionTransactionTa
       InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
 }
 
-// Fails when table-level locks are enabled due to #28317.
-TEST_F_EX(
-    GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestAutomaticLocalTransactionTableCreation),
-    GeoTransactionsTestTableLocksDisabled) {
+TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestAutomaticLocalTransactionTableCreation)) {
   constexpr int tables_per_region = 1;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = true;
@@ -991,9 +985,6 @@ class GeoTransactionsTablespaceLocalityTest : public GeoTransactionsTest {
   constexpr static auto kTableNameFK = "table_multi_region_fk";
 
   void SetUp() override {
-    // These tests are failing when table-level locks are enabled due to #28317.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = false;
     GeoTransactionsTest::SetUp();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_tablespace_based_transaction_placement) = true;
@@ -1385,8 +1376,7 @@ TEST_F(GeoTransactionsTablespaceLocalityTest, TestAlterSetTablespace) {
       ExpectedLocality::kGlobal);
 }
 
-// Fails when table-level locks are enabled due to #28317.
-class GeoTransactionsWildcardTest : public GeoTransactionsTestTableLocksDisabled {
+class GeoTransactionsWildcardTest : public GeoTransactionsTest {
  protected:
   void SetupTablespaces() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = true;

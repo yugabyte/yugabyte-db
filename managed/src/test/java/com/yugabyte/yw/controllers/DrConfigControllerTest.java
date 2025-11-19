@@ -38,7 +38,6 @@ import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
-import com.yugabyte.yw.common.dr.DrConfigHelper;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.DrConfigCreateForm;
@@ -104,7 +103,6 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
   private final Commissioner mockCommissioner = mock(Commissioner.class);
   private final MetricQueryHelper mockMetricQueryHelper = mock(MetricQueryHelper.class);
   private final BackupHelper mockBackupHelper = mock(BackupHelper.class);
-  private final DrConfigHelper mockDrConfigHelper = mock(DrConfigHelper.class);
   private final CustomerConfigService mockCustomerConfigService = mock(CustomerConfigService.class);
   private final YBClientService mockYBClientService = mock(YBClientService.class);
   private final XClusterUniverseService mockXClusterUniverseService =
@@ -217,7 +215,8 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
         new DrConfigController(
             mockCommissioner,
             mockMetricQueryHelper,
-            mockDrConfigHelper,
+            mockBackupHelper,
+            mockCustomerConfigService,
             mockYBClientService,
             null,
             mockXClusterUniverseService,

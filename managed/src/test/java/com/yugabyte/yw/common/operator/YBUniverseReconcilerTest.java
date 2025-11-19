@@ -21,7 +21,6 @@ import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
 import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.common.operator.utils.OperatorWorkQueue;
-import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseActionsHandler;
@@ -103,7 +102,6 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
   @Mock UniverseActionsHandler universeActionsHandler;
   @Mock YbcManager ybcManager;
   @Mock ValidatingFormFactory validatingFormFactory;
-  @Mock YBClientService ybClientService;
 
   MockedStatic<KubernetesEnvironmentVariables> envVars;
 
@@ -137,11 +135,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     operatorUtils =
         Mockito.spy(
             new OperatorUtils(
-                confGetterForOperatorUtils,
-                releaseManager,
-                ybcManager,
-                validatingFormFactory,
-                ybClientService));
+                confGetterForOperatorUtils, releaseManager, ybcManager, validatingFormFactory));
     // Mockito.when(confGetter.getGlobalConf(any())).thenReturn(true);
     Mockito.when(
             confGetterForOperatorUtils.getGlobalConf(GlobalConfKeys.KubernetesOperatorCustomerUUID))

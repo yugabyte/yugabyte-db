@@ -123,7 +123,7 @@ YugabyteDB is a distributed SQL database that implements many [standard SQL](htt
 |                |                              Component                              |                                  Details                                   |
 | :------------: | :------------------------------------------------------------------ | :------------------------------------------------------------------------- |
 | {{<icon/yes>}} | FROM, WHERE, GROUP BY, HAVING, DISTINCT, LIMIT/OFFSET, WITH queries | [Group data](../../../explore/ysql-language-features/queries/#group-data)                                       |
-| {{<icon/yes>}} | EXPLAIN query plans                                                 | [Analyze queries with EXPLAIN](../../../launch-and-manage/monitor-and-alert/query-tuning/explain-analyze/) |
+| {{<icon/yes>}} | EXPLAIN query plans                                                 | [Analyze queries with EXPLAIN](../../../explore/query-1-performance/explain-analyze/) |
 | {{<icon/yes>}} | JOINs (INNER/OUTER, LEFT/RIGHT)                                     | [Join columns](../../../explore/ysql-language-features/queries/#join-columns)                                   |
 | {{<icon/yes>}} | Expressions and Operators                                           | [Expressions and operators](../../../explore/ysql-language-features/expressions-operators/)                     |
 | {{<icon/yes>}} | Common Table Expressions (CTE) and Recursive Queries                | [Recursive queries and CTEs](../../../explore/ysql-language-features/queries/#ctes)       |

@@ -118,7 +118,7 @@ To use advisory locks, enable and configure the following flags for each node of
 | :--- | :---------- |
 | ysql_yb_enable_advisory_locks | Enables advisory locking. <br>Default: false. The flag must have the same value across all yb-master and yb-tserver nodes. |
 | num_advisory_locks_tablets | Number of tablets used for the advisory locks table. It must be set before `ysql_yb_enable_advisory_locks` is set to true on the cluster.<br>Default: 1 |
-| [allowed_preview_flags_csv](../../../reference/configuration/yb-tserver/#allowed-preview-flags-csv) | Set the value of this flag to include `ysql_yb_enable_advisory_locks`. |
+| [allowed_preview_flags_csv](../../../reference/configuration/yb-tserver/#allowed-preview-flags-csv) | Set the value of this flag to include `ysql_yb_enable_query_diagnostics`. |
 
 ### Using advisory locks
 

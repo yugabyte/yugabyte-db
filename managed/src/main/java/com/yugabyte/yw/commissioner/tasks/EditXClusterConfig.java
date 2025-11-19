@@ -10,7 +10,6 @@ import com.yugabyte.yw.common.DrConfigStates.SourceUniverseState;
 import com.yugabyte.yw.common.DrConfigStates.State;
 import com.yugabyte.yw.common.DrConfigStates.TargetUniverseState;
 import com.yugabyte.yw.common.XClusterUniverseService;
-import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.common.table.TableInfoUtil;
 import com.yugabyte.yw.forms.XClusterConfigEditFormData;
 import com.yugabyte.yw.models.PitrConfig;
@@ -44,10 +43,8 @@ public class EditXClusterConfig extends CreateXClusterConfig {
 
   @Inject
   protected EditXClusterConfig(
-      BaseTaskDependencies baseTaskDependencies,
-      XClusterUniverseService xClusterUniverseService,
-      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
-    super(baseTaskDependencies, xClusterUniverseService, operatorStatusUpdaterFactory);
+      BaseTaskDependencies baseTaskDependencies, XClusterUniverseService xClusterUniverseService) {
+    super(baseTaskDependencies, xClusterUniverseService);
   }
 
   @Override

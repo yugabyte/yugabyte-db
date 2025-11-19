@@ -109,10 +109,10 @@ PostgreSQL 15 support is in Tech Preview and included with the YugabyteDB 2.25 p
 | [Query ID](../../../architecture/query-layer/#query-id)
 | Unique query ID to track a query across pg_stat_activity, EXPLAIN VERBOSE, and pg_stat_statements. |
 
-| [Stats on planning times](../../../launch-and-manage/monitor-and-alert/query-tuning/pg-stat-statements/)
+| [Stats on planning times](../../../explore/query-1-performance/pg-stat-statements/)
 | pg_stat_statements can now track the planning time of statements. |
 
-| [Granular stats reset](../../../launch-and-manage/monitor-and-alert/query-tuning/pg-stat-statements/#reset-statistics)
+| [Granular stats reset](../../../explore/query-1-performance/pg-stat-statements/#reset-statistics)
 | Resetting statistics via `pg_stat_statements_reset` is now granular at user, database, and query levels. |
 
 | [Sampled logging](../../../explore/observability/logging/#log-management)

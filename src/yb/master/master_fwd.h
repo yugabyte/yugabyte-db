@@ -40,8 +40,8 @@ struct HostPortHash;
 namespace master {
 
 class TSDescriptor;
-using TSDescriptorPtr = std::shared_ptr<TSDescriptor>;
-using TSDescriptorVector = std::vector<TSDescriptorPtr>;
+typedef std::shared_ptr<TSDescriptor> TSDescriptorPtr;
+typedef std::vector<TSDescriptorPtr> TSDescriptorVector;
 
 class EncryptionManager;
 
@@ -52,8 +52,6 @@ class AsyncTryStepDown;
 class CatalogManager;
 class CatalogManagerIf;
 class CatalogManagerBgTasks;
-class CdcsdkManager;
-class CdcsdkManagerIf;
 class CloneStateManager;
 class XClusterRpcTasks;
 class ClusterConfigInfo;

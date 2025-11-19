@@ -16,8 +16,8 @@
 #pragma once
 
 #include "yb/rpc/rpc_fwd.h"
-
 #include "yb/util/net/net_fwd.h"
+
 #include "yb/util/status.h"
 
 namespace yb {
@@ -121,7 +121,7 @@ class ScheduledTaskTracker {
   ScheduledTaskTracker(const std::string& name, Scheduler* scheduler);
 
   void Bind(Scheduler* scheduler) {
-    scheduler_ = DCHECK_NOTNULL(scheduler);
+    scheduler_ = scheduler;
   }
 
   template <class F>
