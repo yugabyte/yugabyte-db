@@ -137,7 +137,7 @@ Installation depends on how you choose to prepare the nodes.
 
 #### Run the provisioning script
 
-After creating VMs and installing a supported Linux operating system and additional software (such as Python) (see [Software requirements for nodes](../../yugabyte-platform/prepare/server-nodes-software/)), you download the YugabyteDB Anywhere node agent package to the VM, modify the configuration file, and run the included script (node-agent-provision.sh) as root or via sudo.
+For [on-premises providers](../../yugabyte-platform/yba-overview/#provider-configurations), after creating VMs and installing a supported Linux operating system and additional software (such as Python) (see [Software requirements for nodes](../../yugabyte-platform/prepare/server-nodes-software/)), you download the YugabyteDB Anywhere node agent package to the VM, modify the configuration file, and run the included script (node-agent-provision.sh) as root or via sudo.
 
 This process prepares the node for YugabyteDB, including installation of node agent on the node.
 
@@ -149,7 +149,7 @@ Automatically provision on-premises nodes
 
 #### Legacy provisioning
 
-In addition, there are three legacy methods for preparing a node, depending on the level of access provided to YugabyteDB Anywhere, as follows:
+In addition, for on-premises providers, there are three legacy methods (now deprecated) for preparing a node, depending on the level of access provided to YugabyteDB Anywhere, as follows:
 
 - _Automatic provisioning_, where an SSH user with sudo access for the node is provided to YugabyteDB Anywhere (for example, the `ec2-user` for an AWS EC2 instance).
 
@@ -167,7 +167,7 @@ Legacy provisioning
 
 ### Why does YugabyteDB Anywhere prompt for SSH details if the node agent is installed manually and can replace SSH?
 
-When creating an on-premises provider, you are prompted to provide SSH credentials, which are used during legacy provisioning of automatically provisioned providers. After provisioning and adding the instances to the provider (including installing the node agent), YugabyteDB Anywhere no longer requires SSH or sudo access to nodes.
+When creating an on-premises provider, you are prompted to provide SSH credentials, which are used during legacy provisioning. After provisioning and adding the instances to the provider (including installing the node agent), YugabyteDB Anywhere no longer requires SSH or sudo access to nodes.
 
 If you are manually provisioning nodes, these credentials aren't needed to provision nodes.
 
