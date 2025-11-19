@@ -284,6 +284,9 @@ void EncodedDocHybridTime::Reset() {
 }
 
 std::string EncodedDocHybridTime::ToString() const {
+  if (empty()) {
+    return "<EMPTY>";
+  }
   return DocHybridTime::FullyDecodeFrom(AsSlice()).ToString();
 }
 

@@ -115,6 +115,7 @@
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/join.h"
+#include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/sysinfo.h"
 #include "yb/gutil/walltime.h"
@@ -212,6 +213,7 @@
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/stol_utils.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/string_case.h"
 #include "yb/util/string_util.h"
@@ -479,6 +481,10 @@ DEFINE_test_flag(bool, sequential_colocation_ids, false,
                  "When set, colocation IDs will be assigned sequentially (starting from 20001) "
                  "rather than at random. This is especially useful for making pg_regress "
                  "tests output consistent and predictable.");
+
+DEFINE_test_flag(string, colocation_ids, "",
+                 "Comma separated list of colocation ids that should be used for the first created "
+                 "tables.");
 
 DEFINE_RUNTIME_bool(disable_truncate_table, false,
     "When enabled, truncate table will be disallowed");
@@ -3365,6 +3371,16 @@ Result<ColocationId> ConceiveColocationId(
           .CloneAndAddErrorCode(MasterError(MasterErrorPB::INVALID_SCHEMA));
     }
     return req.colocation_id();
+  }
+
+  if (PREDICT_FALSE(!FLAGS_TEST_colocation_ids.empty())) {
+    auto ids = VERIFY_RESULT(ParseCommaSeparatedListOfNumbers<ColocationId>(
+        FLAGS_TEST_colocation_ids));
+    for (auto colocation_id : ids) {
+      if (!contains_colocation_id(colocation_id)) {
+        return colocation_id;
+      }
+    }
   }
 
   // Generate a random colocation ID unique within colocation group.
