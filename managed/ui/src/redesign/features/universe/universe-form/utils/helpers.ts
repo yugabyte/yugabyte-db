@@ -182,7 +182,13 @@ export const getFormData = (
   clusterType: ClusterType,
   providerConfig?: YBProvider
 ) => {
-  const { communicationPorts, encryptionAtRestConfig, rootCA, clientRootCA, rootAndClientRootCASame } = universeData;
+  const {
+    communicationPorts,
+    encryptionAtRestConfig,
+    rootCA,
+    clientRootCA,
+    rootAndClientRootCASame
+  } = universeData;
   const cluster = getClusterByType(universeData, clusterType);
 
   if (!cluster) return DEFAULT_FORM_DATA;
@@ -230,7 +236,7 @@ export const getFormData = (
       arch: universeData.arch,
       imageBundleUUID: userIntent.imageBundleUUID,
       rootCA,
-      clientRootCA : rootAndClientRootCASame ? '' : clientRootCA,
+      clientRootCA: rootAndClientRootCASame ? '' : clientRootCA,
       rootAndClientRootCASame: rootAndClientRootCASame
     },
     advancedConfig: {
@@ -310,7 +316,9 @@ export const getUserIntent = (
     deviceInfo: instanceConfig.deviceInfo,
     assignPublicIP: instanceConfig.assignPublicIP,
     enableNodeToNodeEncrypt: instanceConfig.enableNodeToNodeEncrypt,
-    enableClientToNodeEncrypt: instanceConfig.enableClientToNodeEncrypt,
+    enableClientToNodeEncrypt: instanceConfig.rootAndClientRootCASame
+      ? instanceConfig.enableNodeToNodeEncrypt
+      : instanceConfig.enableClientToNodeEncrypt,
     enableYSQL: instanceConfig.enableYSQL,
     enableYSQLAuth: instanceConfig.enableYSQLAuth,
     enableYCQL: instanceConfig.enableYCQL,
@@ -381,7 +389,10 @@ export const getUserIntent = (
   if (instanceConfig.enableYCQLAuth && instanceConfig.ycqlPassword)
     intent.ycqlPassword = instanceConfig.ycqlPassword;
 
-  if(!instanceConfig.deviceInfo?.cloudVolumeEncryption?.enableVolumeEncryption || !isDefinedNotNull(instanceConfig.deviceInfo?.cloudVolumeEncryption?.kmsConfigUUID)){
+  if (
+    !instanceConfig.deviceInfo?.cloudVolumeEncryption?.enableVolumeEncryption ||
+    !isDefinedNotNull(instanceConfig.deviceInfo?.cloudVolumeEncryption?.kmsConfigUUID)
+  ) {
     intent.deviceInfo = omit(intent.deviceInfo, 'cloudVolumeEncryption');
   }
 
