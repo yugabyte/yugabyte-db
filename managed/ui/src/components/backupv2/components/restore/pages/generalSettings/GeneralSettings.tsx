@@ -45,7 +45,7 @@ export type IGeneralSettings = {
   selectedKeyspace: ReactSelectOption;
   incrementalBackupProps: IncrementalBackupProps;
   useRoles: boolean;
-  errorIfRoleExists: boolean;
+  errorIfRolesExists: boolean;
 };
 
 const useStyles = makeStyles((theme) => ({
