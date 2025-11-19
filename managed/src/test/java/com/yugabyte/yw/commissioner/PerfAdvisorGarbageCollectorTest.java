@@ -3,13 +3,13 @@ package com.yugabyte.yw.commissioner;
 import static com.yugabyte.yw.commissioner.PerfAdvisorGarbageCollector.CUSTOMER_UUID_LABEL;
 import static com.yugabyte.yw.commissioner.PerfAdvisorGarbageCollector.NUM_REC_GC_ERRORS;
 import static com.yugabyte.yw.commissioner.PerfAdvisorGarbageCollector.NUM_REC_GC_RUNS;
-import static com.yugabyte.yw.commissioner.PerfAdvisorGarbageCollector.PA_RUN_METRIC_NAME;
 import static com.yugabyte.yw.commissioner.PerfAdvisorGarbageCollector.RECOMMENDATION_METRIC_NAME;
-import static io.prometheus.client.CollectorRegistry.defaultRegistry;
+import static com.yugabyte.yw.common.TestUtils.getMetricValue;
+import static com.yugabyte.yw.common.TestUtils.validateMetric;
+import static io.prometheus.metrics.model.registry.PrometheusRegistry.defaultRegistry;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
-import static org.junit.Assert.assertEquals;
 import static org.mockito.Mockito.spy;
 
 import com.yugabyte.yw.common.FakePerfAdvisorDBTest;
@@ -36,22 +36,18 @@ public class PerfAdvisorGarbageCollectorTest extends FakePerfAdvisorDBTest {
       Double expectedErrors,
       Double expectedPerfRecommendationGC,
       Double expectedPerfAdvisorRunGC) {
-    assertEquals(
-        expectedNumRuns, defaultRegistry.getSampleValue(getTotalCounterName(NUM_REC_GC_RUNS)));
-    assertEquals(
-        expectedErrors, defaultRegistry.getSampleValue(getTotalCounterName(NUM_REC_GC_ERRORS)));
-    assertEquals(
+    validateMetric(NUM_REC_GC_RUNS, expectedNumRuns);
+    validateMetric(NUM_REC_GC_ERRORS, expectedErrors);
+    validateMetric(
+        RECOMMENDATION_METRIC_NAME,
         expectedPerfRecommendationGC,
-        defaultRegistry.getSampleValue(
-            getTotalCounterName(RECOMMENDATION_METRIC_NAME),
-            new String[] {CUSTOMER_UUID_LABEL},
-            new String[] {customer.getUuid().toString()}));
-    assertEquals(
+        CUSTOMER_UUID_LABEL,
+        customer.getUuid().toString());
+    validateMetric(
+        RECOMMENDATION_METRIC_NAME,
         expectedPerfAdvisorRunGC,
-        defaultRegistry.getSampleValue(
-            getTotalCounterName(PA_RUN_METRIC_NAME),
-            new String[] {CUSTOMER_UUID_LABEL},
-            new String[] {customer.getUuid().toString()}));
+        CUSTOMER_UUID_LABEL,
+        customer.getUuid().toString());
   }
 
   private PerfAdvisorGarbageCollector recommendationGarbageCollector;
@@ -82,10 +78,8 @@ public class PerfAdvisorGarbageCollectorTest extends FakePerfAdvisorDBTest {
     recommendationGarbageCollector.start();
     for (int i = 0; i < 100; i++) {
       Double recommendationsGCed =
-          defaultRegistry.getSampleValue(
-              getTotalCounterName(RECOMMENDATION_METRIC_NAME),
-              new String[] {CUSTOMER_UUID_LABEL},
-              new String[] {customer.getUuid().toString()});
+          getMetricValue(
+              RECOMMENDATION_METRIC_NAME, CUSTOMER_UUID_LABEL, customer.getUuid().toString());
       if (recommendationsGCed != null && recommendationsGCed > 0) {
         // Wait while PA GC run happens for up to 10 seconds.
         break;
@@ -132,10 +126,6 @@ public class PerfAdvisorGarbageCollectorTest extends FakePerfAdvisorDBTest {
     recommendationGarbageCollector.checkCustomerAndPurgeRecs(customer);
 
     checkCounters(customer, 1.0, 1.0, null, null);
-  }
-
-  private String getTotalCounterName(String name) {
-    return name + "_total";
   }
 
   private PerformanceRecommendation createRecommendationToClean(boolean isStale) {

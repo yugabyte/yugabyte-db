@@ -6,8 +6,8 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.filters.MaintenanceWindowFilter;
-import io.prometheus.client.CollectorRegistry;
-import io.prometheus.client.Counter;
+import io.prometheus.metrics.core.metrics.Counter;
+import io.prometheus.metrics.model.registry.PrometheusRegistry;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -29,14 +29,20 @@ public class AlertsGarbageCollector {
 
   // Counters
   private static final Counter ALERT_GC_COUNTER =
-      Counter.build(ALERT_GC_COUNT, "Number of garbage collected alerts")
-          .register(CollectorRegistry.defaultRegistry);
+      Counter.builder()
+          .name(ALERT_GC_COUNT)
+          .help("Number of garbage collected alerts")
+          .register(PrometheusRegistry.defaultRegistry);
   private static final Counter MAINTENANCE_WINDOW_GC_COUNTER =
-      Counter.build(MAINTENANCE_WINDOW_GC_COUNT, "Number of garbage collected maintenance windows")
-          .register(CollectorRegistry.defaultRegistry);
+      Counter.builder()
+          .name(MAINTENANCE_WINDOW_GC_COUNT)
+          .help("Number of garbage collected maintenance windows")
+          .register(PrometheusRegistry.defaultRegistry);
   private static final Counter ALERT_GC_RUN_COUNTER =
-      Counter.build(ALERT_GC_RUN_COUNT, "Number of alert GC runs")
-          .register(CollectorRegistry.defaultRegistry);
+      Counter.builder()
+          .name(ALERT_GC_RUN_COUNT)
+          .help("Number of alert GC runs")
+          .register(PrometheusRegistry.defaultRegistry);
 
   // Config names
   @VisibleForTesting

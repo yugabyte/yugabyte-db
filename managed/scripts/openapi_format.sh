@@ -8,9 +8,9 @@ pushd ../src/main/resources/openapi
 file=$1
 echo "Formatting openapi file ${file}"
 
-yaml_files=$(find . -name "*.yaml" -print)
 mkdir -p tmp
-tmp_yml="tmp/tmp.yml"
+tmp_file_name=${file//\//_}
+tmp_yml="tmp/$tmp_file_name"
 rm -f $tmp_yml
 
 openapi_format_ver="1.17.1"

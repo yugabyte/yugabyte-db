@@ -101,7 +101,7 @@ public class CreateBackup extends UniverseTaskBase {
     Customer customer = Customer.get(universe.getCustomerId());
     MetricLabelsBuilder metricLabelsBuilder =
         MetricLabelsBuilder.create().fromUniverse(customer, universe);
-    BACKUP_ATTEMPT_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
+    BACKUP_ATTEMPT_COUNTER.labelValues(metricLabelsBuilder.getPrometheusValues()).inc();
     boolean isUniverseLocked = false;
     boolean isAbort = false;
     boolean ybcBackup =
@@ -179,7 +179,7 @@ public class CreateBackup extends UniverseTaskBase {
         getRunnableTask().runSubTasks(true);
         unlockUniverseForUpdate();
         isUniverseLocked = false;
-        BACKUP_SUCCESS_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
+        BACKUP_SUCCESS_COUNTER.labelValues(metricLabelsBuilder.getPrometheusValues()).inc();
         metricService.setOkStatusMetric(
             buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
       } catch (CancellationException ce) {
@@ -203,7 +203,7 @@ public class CreateBackup extends UniverseTaskBase {
         handleFailedBackupAndRestore(backupList, null, isAbort, params().alterLoadBalancer);
         if (!isAbort) {
           // If platform restart causes abort, the task is resumed, so no need to increment metric.
-          BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
+          BACKUP_FAILURE_COUNTER.labelValues(metricLabelsBuilder.getPrometheusValues()).inc();
           metricService.setFailureStatusMetric(
               buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
         }
@@ -246,7 +246,7 @@ public class CreateBackup extends UniverseTaskBase {
     }
     MetricLabelsBuilder metricLabelsBuilder =
         MetricLabelsBuilder.create().fromUniverse(customer, universe);
-    SCHEDULED_BACKUP_ATTEMPT_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
+    SCHEDULED_BACKUP_ATTEMPT_COUNTER.labelValues(metricLabelsBuilder.getPrometheusValues()).inc();
     Map<String, String> config = universe.getConfig();
     boolean shouldTakeBackup =
         !universe.getUniverseDetails().universePaused
@@ -261,7 +261,9 @@ public class CreateBackup extends UniverseTaskBase {
           log.debug(
               "Schedule {} increment backlog status is set to true", schedule.getScheduleUUID());
         }
-        SCHEDULED_BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
+        SCHEDULED_BACKUP_FAILURE_COUNTER
+            .labelValues(metricLabelsBuilder.getPrometheusValues())
+            .inc();
         metricService.setFailureStatusMetric(
             buildMetricTemplate(PlatformMetrics.SCHEDULE_BACKUP_STATUS, universe));
       }
@@ -317,7 +319,7 @@ public class CreateBackup extends UniverseTaskBase {
         taskUUID,
         taskParams.getUniverseUUID(),
         universe.getName());
-    SCHEDULED_BACKUP_SUCCESS_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
+    SCHEDULED_BACKUP_SUCCESS_COUNTER.labelValues(metricLabelsBuilder.getPrometheusValues()).inc();
     metricService.setOkStatusMetric(
         buildMetricTemplate(PlatformMetrics.SCHEDULE_BACKUP_STATUS, universe));
     // Update Kubernetes operator schedule status

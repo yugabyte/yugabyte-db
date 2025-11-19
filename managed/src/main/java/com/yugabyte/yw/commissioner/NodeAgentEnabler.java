@@ -24,8 +24,8 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-import io.prometheus.client.CollectorRegistry;
-import io.prometheus.client.Counter;
+import io.prometheus.metrics.core.metrics.Counter;
+import io.prometheus.metrics.model.registry.PrometheusRegistry;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -83,47 +83,53 @@ public class NodeAgentEnabler {
 
   // Counters.
   private static final Counter NODE_AGENT_INSTALL_RUN_COUNT =
-      Counter.build(NODE_AGENT_INSTALL_RUN, "Number of background node agent installation runs")
+      Counter.builder()
+          .name(NODE_AGENT_INSTALL_RUN)
+          .help("Number of background node agent installation runs")
           .labelNames(
               KnownAlertLabels.CUSTOMER_UUID.labelName(),
               KnownAlertLabels.UNIVERSE_UUID.labelName(),
               KnownAlertLabels.UNIVERSE_NAME.labelName(),
               KnownAlertLabels.NODE_ADDRESS.labelName())
-          .register(CollectorRegistry.defaultRegistry);
+          .register(PrometheusRegistry.defaultRegistry);
   private static Counter NODE_AGENT_INSTALL_FAILURE_COUNT =
-      Counter.build(
-              NODE_AGENT_INSTALL_FAILURE, "Number of failed background node agent installations")
+      Counter.builder()
+          .name(NODE_AGENT_INSTALL_FAILURE)
+          .help("Number of failed background node agent installations")
           .labelNames(
               KnownAlertLabels.CUSTOMER_UUID.labelName(),
               KnownAlertLabels.UNIVERSE_UUID.labelName(),
               KnownAlertLabels.UNIVERSE_NAME.labelName(),
               KnownAlertLabels.NODE_ADDRESS.labelName())
-          .register(CollectorRegistry.defaultRegistry);
+          .register(PrometheusRegistry.defaultRegistry);
   private static Counter NODE_AGENT_INSTALL_SUCCESS_COUNT =
-      Counter.build(
-              NODE_AGENT_INSTALL_SUCCESS,
-              "Number of successful background node agent installations")
+      Counter.builder()
+          .name(NODE_AGENT_INSTALL_SUCCESS)
+          .help("Number of successful background node agent installations")
           .labelNames(
               KnownAlertLabels.CUSTOMER_UUID.labelName(),
               KnownAlertLabels.UNIVERSE_UUID.labelName(),
               KnownAlertLabels.UNIVERSE_NAME.labelName(),
               KnownAlertLabels.NODE_ADDRESS.labelName())
-          .register(CollectorRegistry.defaultRegistry);
+          .register(PrometheusRegistry.defaultRegistry);
   private static Counter NODE_AGENT_MIGRATE_FAILURE_COUNT =
-      Counter.build(NODE_AGENT_MIGRATE_FAILURE, "Number of failed background node agent migrations")
+      Counter.builder()
+          .name(NODE_AGENT_MIGRATE_FAILURE)
+          .help("Number of failed background node agent migrations")
           .labelNames(
               KnownAlertLabels.CUSTOMER_UUID.labelName(),
               KnownAlertLabels.UNIVERSE_UUID.labelName(),
               KnownAlertLabels.UNIVERSE_NAME.labelName())
-          .register(CollectorRegistry.defaultRegistry);
+          .register(PrometheusRegistry.defaultRegistry);
   private static Counter NODE_AGENT_MIGRATE_SUCCESS_COUNT =
-      Counter.build(
-              NODE_AGENT_MIGRATE_SUCCESS, "Number of successful background node agent migrations")
+      Counter.builder()
+          .name(NODE_AGENT_MIGRATE_SUCCESS)
+          .help("Number of successful background node agent migrations")
           .labelNames(
               KnownAlertLabels.CUSTOMER_UUID.labelName(),
               KnownAlertLabels.UNIVERSE_UUID.labelName(),
               KnownAlertLabels.UNIVERSE_NAME.labelName())
-          .register(CollectorRegistry.defaultRegistry);
+          .register(PrometheusRegistry.defaultRegistry);
 
   private final RuntimeConfGetter confGetter;
   private final PlatformExecutorFactory platformExecutorFactory;
@@ -804,7 +810,7 @@ public class NodeAgentEnabler {
                   try {
                     String nodeIp = node.cloudInfo.private_ip;
                     NODE_AGENT_INSTALL_RUN_COUNT
-                        .labels(
+                        .labelValues(
                             getCustomerUuid().toString(),
                             getUniverseUuid().toString(),
                             getUniverseName(),
@@ -922,7 +928,7 @@ public class NodeAgentEnabler {
                       }
                       if (installSucceeded) {
                         NODE_AGENT_INSTALL_SUCCESS_COUNT
-                            .labels(
+                            .labelValues(
                                 getCustomerUuid().toString(),
                                 getUniverseUuid().toString(),
                                 getUniverseName(),
@@ -930,7 +936,7 @@ public class NodeAgentEnabler {
                             .inc();
                       } else {
                         NODE_AGENT_INSTALL_FAILURE_COUNT
-                            .labels(
+                            .labelValues(
                                 getCustomerUuid().toString(),
                                 getUniverseUuid().toString(),
                                 getUniverseName(),
@@ -953,12 +959,12 @@ public class NodeAgentEnabler {
           }
           if (migrateSucceeded) {
             NODE_AGENT_MIGRATE_SUCCESS_COUNT
-                .labels(
+                .labelValues(
                     getCustomerUuid().toString(), getUniverseUuid().toString(), getUniverseName())
                 .inc();
           } else {
             NODE_AGENT_MIGRATE_FAILURE_COUNT
-                .labels(
+                .labelValues(
                     getCustomerUuid().toString(), getUniverseUuid().toString(), getUniverseName())
                 .inc();
           }
