@@ -3,6 +3,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.forms.UpdatePitrConfigParams;
 import com.yugabyte.yw.models.PitrConfig;
@@ -18,6 +19,7 @@ import org.yb.client.YBClient;
 
 @Slf4j
 @Abortable
+@Retryable
 public class UpdatePitrConfig extends UniverseTaskBase {
 
   private static long MAX_WAIT_TIME_MS = TimeUnit.MINUTES.toMillis(2);
