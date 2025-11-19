@@ -920,9 +920,9 @@ Creates a snapshot of the specified YCQL tables and their indexes. Prior to v.2.
 
 {{< note title="Snapshots don't auto-expire" >}}
 
-Snapshots you create via `create_snapshot` persist on disk until you remove them using the [`delete_snapshot`](#delete-snapshot) command.
+Snapshots you create via `create_snapshot` persist on disk until you remove them using the [delete_snapshot](#delete-snapshot) command.
 
-Use the [`create_snapshot_schedule`](#create-snapshot-schedule) command to create snapshots that expire after a specified time interval.
+Use the [create_snapshot_schedule](#create-snapshot-schedule) command to create snapshots that expire after a specified time interval.
 
 {{</ note >}}
 
@@ -2240,7 +2240,7 @@ yb-admin \
 * *source_master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * *comma_separated_list_of_stream_ids*: Comma-separated list of stream IDs.
 * *timestamp*: The time to which to wait for replication to drain. If not provided, it will be set to current time in the YB-Master API.
-* *minus <interval>*: The `minus <interval>` is the same format as described in [Restore from a relative time](../../explore/cluster-management/point-in-time-recovery-ysql/#restore-from-a-relative-time), or see [`restore_snapshot_schedule`](#restore-snapshot-schedule).
+* *minus <interval>*: The `minus <interval>` is the same format as described in [Restore from a relative time](../../explore/cluster-management/point-in-time-recovery-ysql/#restore-from-a-relative-time), or see [restore_snapshot_schedule](#restore-snapshot-schedule).
 
 **Example**
 
