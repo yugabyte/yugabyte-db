@@ -19,6 +19,11 @@ object UIRunHook {
         // don't run "npm start" directly as it leaves zombie node.js child processes on termination
         // EXTEND_ESLINT is a CRA env variable. If true, it allows your project to extend the
         // default ESLint config with your own custom rules in .eslintrc.js or similar.
+        val checkServerStarted = Seq("bash", "-c",
+          "while ! curl -s -f http://localhost:9000/api/v1/prometheus_metrics </dev/null;" +
+            " do sleep 10; done")
+        checkServerStarted.!!
+
         val cracoCmd = "EXTEND_ESLINT=true exec node node_modules/@craco/craco/bin/craco.js start"
         val command = Seq("bash", "-c", cracoCmd)
         val pb = Process(command, base)

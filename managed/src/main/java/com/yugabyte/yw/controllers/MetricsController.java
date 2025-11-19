@@ -10,15 +10,22 @@ import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.filters.MetricFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
-import io.prometheus.client.Collector;
-import io.prometheus.client.Collector.MetricFamilySamples;
-import io.prometheus.client.CollectorRegistry;
-import io.prometheus.client.exporter.common.TextFormat;
+import io.prometheus.metrics.config.EscapingScheme;
+import io.prometheus.metrics.expositionformats.PrometheusTextFormatWriter;
+import io.prometheus.metrics.model.registry.PrometheusRegistry;
+import io.prometheus.metrics.model.snapshots.GaugeSnapshot;
+import io.prometheus.metrics.model.snapshots.GaugeSnapshot.GaugeDataPointSnapshot;
+import io.prometheus.metrics.model.snapshots.Labels;
+import io.prometheus.metrics.model.snapshots.MetricMetadata;
+import io.prometheus.metrics.model.snapshots.MetricSnapshot;
+import io.prometheus.metrics.model.snapshots.MetricSnapshots;
+import io.prometheus.metrics.model.snapshots.Unit;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.io.BufferedWriter;
 import java.io.ByteArrayOutputStream;
+import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
@@ -81,12 +88,15 @@ public class MetricsController extends Controller {
   private Result writeMetrics(ByteArrayOutputStream response, GZIPOutputStream gzipStream)
       throws Exception {
     boolean isGzip = gzipStream != null;
-    try (OutputStreamWriter osw = new OutputStreamWriter(isGzip ? gzipStream : response);
+    PrometheusTextFormatWriter promFormatWriter = PrometheusTextFormatWriter.create();
+    OutputStream stream = isGzip ? gzipStream : response;
+    // Write runtime metrics
+    promFormatWriter.write(
+        stream, PrometheusRegistry.defaultRegistry.scrape(), EscapingScheme.DEFAULT);
+    // Write persisted metrics
+    promFormatWriter.write(stream, getPrecalculatedMetrics(), EscapingScheme.DEFAULT);
+    try (OutputStreamWriter osw = new OutputStreamWriter(stream);
         BufferedWriter bw = new BufferedWriter(osw, 1 << 20)) {
-      // Write runtime metrics
-      TextFormat.write004(bw, CollectorRegistry.defaultRegistry.metricFamilySamples());
-      // Write persisted metrics
-      TextFormat.write004(bw, Collections.enumeration(getPrecalculatedMetrics()));
       // Write Kamon metrics
       bw.write(getKamonMetrics());
       bw.flush();
@@ -97,7 +107,7 @@ public class MetricsController extends Controller {
       response.flush();
       if (isGzip) {
         return Results.status(OK)
-            .sendBytes(response.toByteArray(), Optional.of("text/plain"))
+            .sendBytes(response.toByteArray(), Optional.of(PrometheusTextFormatWriter.CONTENT_TYPE))
             .withHeaders("Content-Encoding", "gzip");
       } else {
         return Results.status(OK, response.toString());
@@ -109,8 +119,8 @@ public class MetricsController extends Controller {
     return reporter.scrapeData();
   }
 
-  private List<Collector.MetricFamilySamples> getPrecalculatedMetrics() {
-    List<MetricFamilySamples> result = new ArrayList<>();
+  private MetricSnapshots getPrecalculatedMetrics() {
+    List<MetricSnapshot> snapshots = new ArrayList<>();
     List<Metric> allMetrics = metricService.list(MetricFilter.builder().expired(false).build());
 
     Map<String, List<Metric>> metricsByName =
@@ -136,19 +146,21 @@ public class MetricsController extends Controller {
         log.warn("Metric name {} should end with '{}'", metricName, "_" + unit);
         unit = StringUtils.EMPTY;
       }
-      Collector.Type type = metrics.get(0).getType().getPrometheusType();
 
-      List<Collector.MetricFamilySamples.Sample> samples =
+      MetricMetadata metadata =
+          new MetricMetadata(
+              metricName, help, StringUtils.isNoneEmpty(unit) ? new Unit(unit) : null);
+      List<GaugeDataPointSnapshot> samples =
           metrics.stream().map(this::convert).collect(Collectors.toList());
-      result.add(new Collector.MetricFamilySamples(metricName, unit, type, help, samples));
+      GaugeSnapshot snapshot = new GaugeSnapshot(metadata, samples);
+      snapshots.add(snapshot);
     }
-    return result;
+    return new MetricSnapshots(snapshots);
   }
 
-  private Collector.MetricFamilySamples.Sample convert(Metric metric) {
+  private GaugeDataPointSnapshot convert(Metric metric) {
     List<String> labelNames = new ArrayList<>(metric.getLabels().keySet());
     List<String> labelValues = new ArrayList<>(metric.getLabels().values());
-    return new Collector.MetricFamilySamples.Sample(
-        metric.getName(), labelNames, labelValues, metric.getValue());
+    return new GaugeDataPointSnapshot(metric.getValue(), Labels.of(labelNames, labelValues), null);
   }
 }

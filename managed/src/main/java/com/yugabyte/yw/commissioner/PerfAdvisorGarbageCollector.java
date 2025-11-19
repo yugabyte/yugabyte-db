@@ -11,8 +11,8 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.UniversePerfAdvisorRun;
-import io.prometheus.client.CollectorRegistry;
-import io.prometheus.client.Counter;
+import io.prometheus.metrics.core.metrics.Counter;
+import io.prometheus.metrics.model.registry.PrometheusRegistry;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Date;
@@ -63,21 +63,27 @@ public class PerfAdvisorGarbageCollector {
   @VisibleForTesting
   static void registerMetrics() {
     PURGED_PERF_RECOMMENDATION_COUNT =
-        Counter.build(
-                RECOMMENDATION_METRIC_NAME,
-                "Number of old completed perf-advisor recommendations purged for a customer")
+        Counter.builder()
+            .name(RECOMMENDATION_METRIC_NAME)
+            .help("Number of old completed perf-advisor recommendations purged for a customer")
             .labelNames(CUSTOMER_UUID_LABEL)
-            .register(CollectorRegistry.defaultRegistry);
+            .register(PrometheusRegistry.defaultRegistry);
     PURGED_PERF_ADVISOR_RUNS_COUNT =
-        Counter.build(PA_RUN_METRIC_NAME, "Number of old perf advisor runs purged for a customer")
+        Counter.builder()
+            .name(PA_RUN_METRIC_NAME)
+            .help("Number of old perf advisor runs purged for a customer")
             .labelNames(CUSTOMER_UUID_LABEL)
-            .register(CollectorRegistry.defaultRegistry);
+            .register(PrometheusRegistry.defaultRegistry);
     NUM_PA_GC_RUNS_COUNT =
-        Counter.build(NUM_REC_GC_RUNS, "Number of times perf advisor gc checks are run")
-            .register(CollectorRegistry.defaultRegistry);
+        Counter.builder()
+            .name(NUM_REC_GC_RUNS)
+            .help("Number of times perf advisor gc checks are run")
+            .register(PrometheusRegistry.defaultRegistry);
     NUM_PA_GC_ERRORS_COUNT =
-        Counter.build(NUM_REC_GC_ERRORS, "Number of failed perf advisor gc attempts")
-            .register(CollectorRegistry.defaultRegistry);
+        Counter.builder()
+            .name(NUM_REC_GC_ERRORS)
+            .help("Number of failed perf advisor gc attempts")
+            .register(PrometheusRegistry.defaultRegistry);
   }
 
   public void start() {
@@ -129,14 +135,14 @@ public class PerfAdvisorGarbageCollector {
 
       int numPerfRecommendationsDeleted = this.performanceRecommendationService.delete(filter);
       PURGED_PERF_RECOMMENDATION_COUNT
-          .labels(c.getUuid().toString())
+          .labelValues(c.getUuid().toString())
           .inc(numPerfRecommendationsDeleted);
       log.info("Garbage collected {} performance recommendations", numPerfRecommendationsDeleted);
 
       Instant scheduledInstantTimestamp = Instant.now().minus(perfAdvisorRunRetentionDuration(c));
       int numPaRunsDeleted =
           UniversePerfAdvisorRun.deleteOldRuns(c.getUuid(), Date.from(scheduledInstantTimestamp));
-      PURGED_PERF_ADVISOR_RUNS_COUNT.labels(c.getUuid().toString()).inc(numPaRunsDeleted);
+      PURGED_PERF_ADVISOR_RUNS_COUNT.labelValues(c.getUuid().toString()).inc(numPaRunsDeleted);
       log.info("Garbage collected {} performance advisor runs", numPaRunsDeleted);
     } catch (Exception e) {
       log.error("Error deleting rows", e);
