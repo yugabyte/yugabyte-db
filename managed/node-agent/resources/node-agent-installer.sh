@@ -789,9 +789,9 @@ API_TOKEN=$(echo "$API_TOKEN" | xargs)
 NODE_AGENT_DOWNLOAD_URL="$PLATFORM_URL/api/v1/node_agents/download"
 SESSION_INFO_URL="$PLATFORM_URL/api/v1/session_info"
 if [ "$OS" = "Linux" ]; then
-  set -e
-  SE_LINUX_STATUS=$(getenforce 2>/dev/null)
   set +e
+  SE_LINUX_STATUS=$(getenforce 2>/dev/null)
+  set -e
 fi
 
 main
