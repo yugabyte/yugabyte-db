@@ -36,10 +36,11 @@ Qualification tests for each new version of YugabyteDB Anywhere are run on the l
 
 ### Supported versions
 
-Every version of YugabyteDB Anywhere supports the same version and all earlier releases of YugabyteDB.
+Every version of YugabyteDB Anywhere supports the then concurrently-released YugabyteDB version and all earlier then-supported versions of YugabyteDB.
 
-For example, as of November 2024, YugabyteDB Anywhere v2024.2.x supports the following YugabyteDB release series:
+For example, as of November 2024, the just-released YugabyteDB Anywhere v2024.2.x supported the following YugabyteDB release series:
 
+- [v2024.2.x](../ybdb-releases/v2024.2/) (LTS)
 - [v2024.1.x](../ybdb-releases/v2024.1/) (STS)
 - [v2.20.x](../ybdb-releases/v2.20/) (LTS)
 
