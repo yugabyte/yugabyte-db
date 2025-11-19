@@ -33,8 +33,8 @@ import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
 import io.ebean.DB;
 import io.ebean.annotation.Transactional;
-import io.prometheus.client.CollectorRegistry;
-import io.prometheus.client.Gauge;
+import io.prometheus.metrics.core.metrics.Gauge;
+import io.prometheus.metrics.model.registry.PrometheusRegistry;
 import java.io.File;
 import java.io.IOException;
 import java.net.URL;
@@ -83,13 +83,17 @@ public class PlatformReplicationManager {
   private static final String INSTANCE_ADDRESS_LABEL = "instance_address";
 
   public static final Gauge HA_LAST_BACKUP_TIME =
-      Gauge.build("yba_ha_last_backup_seconds", "Last backup time for remote instances")
+      Gauge.builder()
+          .name("yba_ha_last_backup_seconds")
+          .help("Last backup time for remote instances")
           .labelNames(INSTANCE_ADDRESS_LABEL)
-          .register(CollectorRegistry.defaultRegistry);
+          .register(PrometheusRegistry.defaultRegistry);
 
   public static final Gauge HA_LAST_BACKUP_SIZE =
-      Gauge.build("yba_ha_last_backup_size_mb", "Last backup size for remote instances")
-          .register(CollectorRegistry.defaultRegistry);
+      Gauge.builder()
+          .name("yba_ha_last_backup_size_mb")
+          .help("Last backup size for remote instances")
+          .register(PrometheusRegistry.defaultRegistry);
 
   @Inject
   public PlatformReplicationManager(
@@ -585,7 +589,7 @@ public class PlatformReplicationManager {
                           instance -> {
                             if (instance.getLastBackup() != null) {
                               HA_LAST_BACKUP_TIME
-                                  .labels(instance.getAddress())
+                                  .labelValues(instance.getAddress())
                                   .set(instance.getLastBackup().toInstant().getEpochSecond());
                             }
                           });

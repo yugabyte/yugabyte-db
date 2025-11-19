@@ -119,10 +119,15 @@ import com.yugabyte.yw.models.YugawareProperty;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
-import io.prometheus.client.Collector;
-import io.prometheus.client.CollectorRegistry;
-import io.prometheus.client.Gauge;
-import io.prometheus.client.Histogram;
+import io.prometheus.metrics.core.metrics.Gauge;
+import io.prometheus.metrics.core.metrics.Histogram;
+import io.prometheus.metrics.model.registry.PrometheusRegistry;
+import io.prometheus.metrics.model.snapshots.GaugeSnapshot;
+import io.prometheus.metrics.model.snapshots.GaugeSnapshot.GaugeDataPointSnapshot;
+import io.prometheus.metrics.model.snapshots.HistogramSnapshot;
+import io.prometheus.metrics.model.snapshots.HistogramSnapshot.HistogramDataPointSnapshot;
+import io.prometheus.metrics.model.snapshots.Label;
+import io.prometheus.metrics.model.snapshots.Labels;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -295,7 +300,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     lenient().when(azuClientFactory.getClient(any())).thenReturn(azuResourceGroupApiClient);
     lenient().when(mockCloudAPIFactory.get(any())).thenReturn(cloudAPI);
 
-    CollectorRegistry collectorRegistry = new CollectorRegistry();
+    PrometheusRegistry collectorRegistry = new PrometheusRegistry();
     capacityReservationGauge = CapacityReservationMetrics.initReservationGauge(collectorRegistry);
     capacityReservationHistogram =
         CapacityReservationMetrics.initReservationTimeHistogram(collectorRegistry);
@@ -1156,18 +1161,17 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
         new HashSet<>(expectedActions);
     List<Double> batchesToRelease = new ArrayList<>(batches);
 
-    Collector.MetricFamilySamples metricFamilySamples =
-        capacityReservationGauge.collect().stream()
-            .filter(s -> s.name.equals(CapacityReservationMetrics.RESERVATION))
-            .findFirst()
-            .get();
+    GaugeSnapshot capacityReservationGaugeSnapshot =
+        (GaugeSnapshot)
+            capacityReservationGauge.collect(
+                name -> name.equals(CapacityReservationMetrics.RESERVATION));
 
     log.debug("Expected: {}", expectedActions);
     log.debug("Expected nodes {}", batches);
 
-    for (Collector.MetricFamilySamples.Sample sample : metricFamilySamples.samples) {
-      log.debug("Getting {}", Json.toJson(sample));
-      Map<String, String> lablesMap = getLablesMap(sample);
+    for (GaugeDataPointSnapshot dataPoint : capacityReservationGaugeSnapshot.getDataPoints()) {
+      log.debug("Getting {}", Json.toJson(dataPoint));
+      Map<String, String> lablesMap = toLabelMap(dataPoint.getLabels());
       assertEquals(cloudType.name(), lablesMap.get(KnownAlertLabels.CLOUD_TYPE.labelName()));
       assertEquals("success", lablesMap.get(KnownAlertLabels.OPERATION_STATUS.labelName()));
       CapacityReservationUtil.ReservationAction action =
@@ -1176,15 +1180,18 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       assertTrue(expectedActions.remove(action));
       switch (action) {
         case RESERVE:
-          assertTrue("Not found reserve of nodes " + sample.value, batches.remove(sample.value));
+          assertTrue(
+              "Not found reserve of nodes " + dataPoint.getValue(),
+              batches.remove(dataPoint.getValue()));
           break;
         case RELEASE:
           assertTrue(
-              "Not found release of nodes " + sample.value, batchesToRelease.remove(sample.value));
+              "Not found release of nodes " + dataPoint.getValue(),
+              batchesToRelease.remove(dataPoint.getValue()));
           break;
         case CREATE_GROUP:
         case DELETE_GROUP:
-          assertEquals(1d, sample.value, 0.000000001d);
+          assertEquals(1d, dataPoint.getValue(), 0.000000001d);
           break;
       }
     }
@@ -1192,15 +1199,14 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     assertEquals(0, batches.size());
     assertEquals(0, batchesToRelease.size());
 
-    Collector.MetricFamilySamples timings =
-        capacityReservationHistogram.collect().stream()
-            .filter(s -> s.name.equals(CapacityReservationMetrics.RESERVATION_TIME))
-            .findFirst()
-            .get();
+    HistogramSnapshot timingsGauge =
+        (HistogramSnapshot)
+            capacityReservationHistogram.collect(
+                name -> name.equals(CapacityReservationMetrics.RESERVATION_TIME));
 
     Set<CapacityReservationUtil.ReservationAction> histogramActions = new HashSet<>();
-    for (Collector.MetricFamilySamples.Sample sample : timings.samples) {
-      Map<String, String> lablesMap = getLablesMap(sample);
+    for (HistogramDataPointSnapshot dataPoint : timingsGauge.getDataPoints()) {
+      Map<String, String> lablesMap = toLabelMap(dataPoint.getLabels());
       assertTrue(lablesMap.containsKey(KnownAlertLabels.CLOUD_TYPE.labelName()));
       assertTrue(lablesMap.containsKey(KnownAlertLabels.OPERATION_STATUS.labelName()));
       histogramActions.add(
@@ -1209,14 +1215,6 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     }
     // Checking that all actions are included.
     assertEquals(expectedActionsSet, histogramActions);
-  }
-
-  private Map<String, String> getLablesMap(Collector.MetricFamilySamples.Sample sample) {
-    Map<String, String> result = new HashMap<>();
-    for (int i = 0; i < sample.labelNames.size(); i++) {
-      result.put(sample.labelNames.get(i), sample.labelValues.get(i));
-    }
-    return result;
   }
 
   protected void verifyCapacityReservationAws(
@@ -1300,5 +1298,9 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       this.region = region;
       this.nodes = nodes;
     }
+  }
+
+  Map<String, String> toLabelMap(Labels labels) {
+    return labels.stream().collect(Collectors.toMap(Label::getName, Label::getValue));
   }
 }

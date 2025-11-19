@@ -399,7 +399,6 @@ public class AlertManager {
         .setExpireTime(
             nowPlusWithoutMillis(MetricService.DEFAULT_METRIC_EXPIRY_SEC, ChronoUnit.SECONDS))
         .setCustomerUUID(channel.getCustomerUUID())
-        .setType(Metric.Type.GAUGE)
         .setName(metric.getMetricName())
         .setSourceUuid(channel.getUuid())
         .setLabels(MetricLabelsBuilder.create().fromChannel(customer, channel).getMetricLabels());
