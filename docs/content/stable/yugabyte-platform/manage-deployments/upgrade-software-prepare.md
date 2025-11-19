@@ -16,7 +16,7 @@ type: docs
 
 Make sure the universe nodes meet the software requirements for running the version of YugabyteDB you are installing.
 
-Refer to [Software requirements for database nodes](../../prepare/server-nodes-software/#additional-software).
+Refer to [Software requirements for database nodes](../../prepare/server-nodes-software/).
 
 ## Upgrade the operating system
 
