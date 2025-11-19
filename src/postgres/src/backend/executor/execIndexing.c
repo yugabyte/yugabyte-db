@@ -770,6 +770,7 @@ YbExecUpdateIndexTuples(ResultRelInfo *resultRelInfo,
 	int			numIndices;
 	RelationPtr relationDescs;
 	IndexInfo **indexInfoArray;
+	MemoryContext oldContext;
 	ExprContext *econtext;
 	TupleTableSlot *deleteSlot;
 	List	   *insertIndexes = NIL;	/* A list of indexes whose tuples need
@@ -810,6 +811,7 @@ YbExecUpdateIndexTuples(ResultRelInfo *resultRelInfo,
 		Relation	indexRelation = relationDescs[i];
 		IndexInfo  *indexInfo;
 		const AttrNumber offset = YBGetFirstLowInvalidAttributeNumber(resultRelInfo->ri_RelationDesc);
+		bool		hasExpressionOrPredicateIndex = false;
 
 		/*
 		 * For an update command check if we need to skip index.
@@ -898,12 +900,17 @@ YbExecUpdateIndexTuples(ResultRelInfo *resultRelInfo,
 				continue;
 			}
 
+			oldContext = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
 			if (CheckUpdateExprOrPred(updatedCols, indexRelation, Anum_pg_index_indpred, offset))
 			{
 				deleteIndexes = lappend_int(deleteIndexes, i);
 				insertIndexes = lappend_int(insertIndexes, i);
-				continue;
+				hasExpressionOrPredicateIndex = true;
 			}
+
+			MemoryContextSwitchTo(oldContext);
+			if (hasExpressionOrPredicateIndex)
+				continue;
 		}
 
 		/*
@@ -919,12 +926,16 @@ YbExecUpdateIndexTuples(ResultRelInfo *resultRelInfo,
 		 */
 		if (indexInfo->ii_Expressions != NIL)
 		{
+			oldContext = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
 			if (CheckUpdateExprOrPred(updatedCols, indexRelation, Anum_pg_index_indexprs, offset))
 			{
 				deleteIndexes = lappend_int(deleteIndexes, i);
 				insertIndexes = lappend_int(insertIndexes, i);
-				continue;
+				hasExpressionOrPredicateIndex = true;
 			}
+			MemoryContextSwitchTo(oldContext);
+			if (hasExpressionOrPredicateIndex)
+				continue;
 		}
 
 		if (!(is_inplace_update_enabled &&
@@ -1040,6 +1051,10 @@ YbExecUpdateIndexTuples(ResultRelInfo *resultRelInfo,
 
 	/* Drop the temporary slots */
 	ExecDropSingleTupleTableSlot(deleteSlot);
+
+	/* Drop the indexes marked for deletion and insertion */
+	list_free(deleteIndexes);
+	list_free(insertIndexes);
 
 	return result;
 }
