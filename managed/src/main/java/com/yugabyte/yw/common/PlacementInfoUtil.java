@@ -110,6 +110,15 @@ public class PlacementInfoUtil {
     return false;
   }
 
+  public static boolean areReplicasChanged(
+      PlacementInfo oldPlacementInfo, PlacementInfo newPlacementInfo) {
+    Map<UUID, Integer> replicaCountOld = new HashMap<>();
+    oldPlacementInfo.azStream().forEach(az -> replicaCountOld.put(az.uuid, az.replicationFactor));
+    Map<UUID, Integer> replicaCountNew = new HashMap<>();
+    newPlacementInfo.azStream().forEach(az -> replicaCountNew.put(az.uuid, az.replicationFactor));
+    return !replicaCountOld.equals(replicaCountNew);
+  }
+
   /**
    * Validates that leader priorities form positive contiguous sequence.
    *
@@ -532,7 +541,8 @@ public class PlacementInfoUtil {
     applyDedicatedModeChanges(universe, cluster, taskParams);
 
     LOG.info("Set of nodes after node configure: {}.", taskParams.nodeDetailsSet);
-    setPerAZRF(cluster.placementInfo, cluster.userIntent.replicationFactor, defaultRegionUUID);
+    checkAndSetPerAZRF(
+        cluster.placementInfo, cluster.userIntent.replicationFactor, defaultRegionUUID, false);
     LOG.info("Final Placement info: {}.", cluster.placementInfo);
     finalSanityCheckConfigure(cluster, taskParams.getNodesInCluster(cluster.uuid));
   }
@@ -850,6 +860,86 @@ public class PlacementInfoUtil {
             .findFirst()
             .isPresent();
     return dedicatedInNodes != cluster.userIntent.dedicatedNodes;
+  }
+
+  private static boolean checkReplicasDistributionIsCorrect(
+      PlacementInfo placementInfo, int rf, UUID defaultRegionUUID, boolean throwInIncorrect) {
+    AtomicInteger zoneCount = new AtomicInteger();
+    Set<String> zeroZones = new HashSet<>();
+    Set<String> incorrectlyPlacedReplicas = new HashSet<>();
+    AtomicInteger totalReplicas = new AtomicInteger();
+    placementInfo
+        .azInfoStream()
+        .forEach(
+            azInfo -> {
+              PlacementAZ az = azInfo.placementAZ;
+              zoneCount.incrementAndGet();
+              if (az.replicationFactor < 0) {
+                if (throwInIncorrect) {
+                  throw new IllegalArgumentException(
+                      "Cannot have negative number of replicas: " + az.replicationFactor);
+                } else {
+                  az.replicationFactor = 0;
+                }
+              }
+              if (az.replicationFactor == 0) {
+                zeroZones.add(az.name);
+              } else if (defaultRegionUUID != null
+                  && !azInfo.region.uuid.equals(defaultRegionUUID)) {
+                incorrectlyPlacedReplicas.add(az.name);
+              }
+              totalReplicas.addAndGet(az.replicationFactor);
+            });
+    // Allowing replicas only in default region (if exist)
+    if (!incorrectlyPlacedReplicas.isEmpty()) {
+      String message =
+          "Incorrectly placed replicas in zones: "
+              + incorrectlyPlacedReplicas
+              + ", should be in default region only";
+      LOG.debug(message);
+      if (throwInIncorrect) {
+        throw new IllegalStateException(message);
+      }
+      return false;
+    }
+    if (rf == 3 && zoneCount.get() == 2 && totalReplicas.get() == 2) {
+      LOG.debug("Special case when RF=3 and number of zones=2, allowing 1-1 distribution");
+      return true;
+    }
+    if (!zeroZones.isEmpty() && zoneCount.get() <= rf) {
+      String message = "Some zones " + zeroZones + " has zero replicas";
+      LOG.debug(message);
+      if (throwInIncorrect) {
+        throw new IllegalStateException(message);
+      }
+      return false;
+    }
+    if (totalReplicas.get() != rf) {
+      String message =
+          "Illegal number of replicas: current " + totalReplicas.get() + " but should be " + rf;
+      LOG.debug(message);
+      if (throwInIncorrect) {
+        throw new IllegalStateException(message);
+      }
+    }
+    return totalReplicas.get() == rf;
+  }
+
+  /**
+   * Checks if current placement has predefined number of replicas, if not or incorrect - setting RF
+   * by algorithm.
+   *
+   * @param placementInfo Placement information.
+   * @param rf Target replication factor.
+   * @param defaultRegionUUID Default region UUID (old geo partition approach).
+   * @param throwIfIncorrect Whether to throw exception if replicas placement is not correct.
+   */
+  public static void checkAndSetPerAZRF(
+      PlacementInfo placementInfo, int rf, UUID defaultRegionUUID, boolean throwIfIncorrect) {
+    if (!checkReplicasDistributionIsCorrect(
+        placementInfo, rf, defaultRegionUUID, throwIfIncorrect)) {
+      setPerAZRF(placementInfo, rf, defaultRegionUUID);
+    }
   }
 
   @VisibleForTesting
