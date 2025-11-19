@@ -17,6 +17,18 @@
 
 Release Notes for Apache AGE release 1.6.0 for PostgreSQL version 15
 
+#
+#  WARNING!
+#
+#  Since there are modifications to agtype gin operators, users who are
+#  upgrading will need to drop the gin indexes before running the upgrade
+#  script and recreate them afterwards.
+#
+#  As always, please backup your database prior to any upgrade.
+#
+#  WARNING!
+#
+
 Apache AGE 1.6.0 - Release Notes
 
      Fix issue 2205: left doesn't catch overflow (#2207)
