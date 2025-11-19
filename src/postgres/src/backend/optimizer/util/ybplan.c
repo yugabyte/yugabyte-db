@@ -571,7 +571,7 @@ YbLogUpdateMatrix(const YbUpdateAffectedEntities *affected_entities)
 	headers[0] = '-';
 	headers[1] = '\t';
 	prev_len = 2;				/* for '-\t' chars */
-	for (int j = 0; j < nentities; j++)
+	for (int j = 0; j < nfields; j++)
 	{
 		AttrNumber	attnum = affected_entities->col_info_list[j].attnum;
 
