@@ -7,6 +7,8 @@ menu:
   v2024.1_api:
     identifier: perf_explain
     parent: statements
+rightnav:
+  hideH4: true
 type: docs
 ---
 
@@ -51,7 +53,7 @@ Display additional runtime statistics related to the distributed storage layer a
 
 ### DEBUG
 
-Display low-level runtime statistics related to the distributed storage layer (default: `FALSE`).
+Display low-level runtime statistics related to the distributed storage layer (default: `FALSE`). When used with the DIST option, DEBUG provides both read and write metrics. These metrics are inlined within the query plan, that is, read metrics appear under read operations (for example, under "Storage Table Read Requests"), and write metrics appear under write operations (for example, under "Storage Table Write Requests" or "Storage Flush Requests").
 
 ### FORMAT
 
@@ -75,7 +77,7 @@ Insert some rows.
 yugabyte=# INSERT INTO sample(k1, k2, v1, v2) VALUES (1, 2.0, 3, 'a'), (2, 3.0, 4, 'b'), (3, 4.0, 5, 'c');
 ```
 
-Check the execution plan for simple select (condition will get pushed down).
+#### Simple select
 
 ```sql
 yugabyte=# EXPLAIN SELECT * FROM sample WHERE k1 = 1;
@@ -89,7 +91,7 @@ yugabyte=# EXPLAIN SELECT * FROM sample WHERE k1 = 1;
 (2 rows)
 ```
 
-- Check the execution plan for select with complex condition (second condition requires filtering).
+#### Select with complex condition
 
 ```sql
 yugabyte=# EXPLAIN SELECT * FROM sample WHERE k1 = 2 and floor(k2 + 1.5) = v1;
@@ -104,7 +106,7 @@ yugabyte=# EXPLAIN SELECT * FROM sample WHERE k1 = 2 and floor(k2 + 1.5) = v1;
 (3 rows)
 ```
 
-Check execution with `ANALYZE` option.
+#### Check execution with `ANALYZE` option.
 
 ```sql
 yugabyte=# EXPLAIN ANALYZE SELECT * FROM sample WHERE k1 = 2 and floor(k2 + 1.5) = v1;
@@ -121,6 +123,68 @@ yugabyte=# EXPLAIN ANALYZE SELECT * FROM sample WHERE k1 = 2 and floor(k2 + 1.5)
  Peak Memory Usage: 8 kB
 (6 rows)
 ```
+
+#### Write operations with DEBUG
+
+When using EXPLAIN with the DEBUG option on write operations (such as INSERT, UPDATE, or DELETE), write metrics are displayed inline under write-related fields. Read metrics continue to appear under read-related fields. The following example demonstrates this behavior:
+
+```sql
+CREATE TABLE a (k INT, v INT, PRIMARY KEY (k ASC)) SPLIT AT VALUES ((100));
+
+EXPLAIN (ANALYZE, DIST, DEBUG) WITH cte AS (INSERT INTO a VALUES (50, 50), (150, 150) RETURNING k) SELECT * FROM a, cte WHERE a.k = cte.k;
+```
+
+```output
+                                                     QUERY PLAN
+
+---------------------------------------------------------------------------------------------------------------------
+
+ YB Batched Nested Loop Join  (cost=0.03..4.30 rows=2 width=12) (actual time=4.758..4.773 rows=2 loops=1)
+   Join Filter: (a.k = cte.k)
+   CTE cte
+     ->  Insert on a a_1  (cost=0.00..0.03 rows=2 width=8) (actual time=0.277..0.322 rows=2 loops=1)
+           Storage Table Write Requests: 2
+           ->  Values Scan on "*VALUES*"  (cost=0.00..0.03 rows=2 width=8) (actual time=0.002..0.004 rows=2 loops=1)
+   ->  CTE Scan on cte  (cost=0.00..0.04 rows=2 width=4) (actual time=0.280..0.326 rows=2 loops=1)
+   ->  Index Scan using a_pkey on a  (cost=0.00..2.11 rows=1 width=8) (actual time=4.197..4.206 rows=2 loops=1)
+         Index Cond: (k = ANY (ARRAY[cte.k, $3, $4, ..., $1025]))
+         Storage Table Read Requests: 1
+         Storage Table Read Execution Time: 0.818 ms
+         Storage Table Rows Scanned: 2
+           Metric rocksdb_number_db_seek: 2.000
+           Metric docdb_keys_found: 2.000
+           Metric ql_read_latency: sum: 517.000, count: 2.000
+         Storage Flush Requests: 1
+         Storage Flush Execution Time: 2.829 ms
+           Metric rocksdb_number_db_seek: 2.000
+           Metric write_lock_latency: sum: 26.000, count: 2.000
+           Metric ql_write_latency: sum: 2254.000, count: 2.000
+ Planning Time: 25.192 ms
+ Execution Time: 6.073 ms
+ Storage Read Requests: 1
+ Storage Read Execution Time: 0.818 ms
+ Storage Rows Scanned: 2
+   Metric rocksdb_number_db_seek: 2
+   Metric docdb_keys_found: 2
+   Metric ql_read_latency: sum: 517, count: 2
+ Catalog Read Requests: 27
+ Catalog Read Execution Time: 25.895 ms
+ Catalog Write Requests: 0
+ Storage Write Requests: 2
+ Storage Flush Requests: 1
+ Storage Flush Execution Time: 2.829 ms
+   Metric rocksdb_number_db_seek: 2
+   Metric write_lock_latency: sum: 26, count: 2
+   Metric ql_write_latency: sum: 2254, count: 2
+ Storage Execution Time: 29.542 ms
+ Peak Memory Usage: 577 kB
+(39 rows)
+```
+
+In this example, you can see that:
+
+- Read metrics (such as `rocksdb_number_db_seek`, `docdb_keys_found`, and `ql_read_latency`) appear under read operations like "Storage Table Read Requests".
+- Write metrics (such as `write_lock_latency` and `ql_write_latency`) appear under write operations like "Storage Flush Requests".
 
 ## See also
 
