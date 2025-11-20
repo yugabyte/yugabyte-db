@@ -9,28 +9,28 @@ import (
 )
 
 // GetListOfCustomerConfig fetches list of configs associated with the customer
-func (a *AuthAPIClient) GetListOfCustomerConfig() ybaclient.CustomerConfigurationApiApiGetListOfCustomerConfigRequest {
-	return a.APIClient.CustomerConfigurationApi.GetListOfCustomerConfig(a.ctx, a.CustomerUUID)
+func (a *AuthAPIClient) GetListOfCustomerConfig() ybaclient.CustomerConfigurationAPIGetListOfCustomerConfigRequest {
+	return a.APIClient.CustomerConfigurationAPI.GetListOfCustomerConfig(a.ctx, a.CustomerUUID)
 }
 
 // DeleteCustomerConfig deletes configs associated with the customer
 func (a *AuthAPIClient) DeleteCustomerConfig(
 	configUUID string,
-) ybaclient.CustomerConfigurationApiApiDeleteCustomerConfigRequest {
-	return a.APIClient.CustomerConfigurationApi.DeleteCustomerConfig(
+) ybaclient.CustomerConfigurationAPIDeleteCustomerConfigRequest {
+	return a.APIClient.CustomerConfigurationAPI.DeleteCustomerConfig(
 		a.ctx, a.CustomerUUID, configUUID)
 }
 
 // CreateCustomerConfig creates configs associated with the customer
-func (a *AuthAPIClient) CreateCustomerConfig() ybaclient.CustomerConfigurationApiApiCreateCustomerConfigRequest {
-	return a.APIClient.CustomerConfigurationApi.CreateCustomerConfig(a.ctx, a.CustomerUUID)
+func (a *AuthAPIClient) CreateCustomerConfig() ybaclient.CustomerConfigurationAPICreateCustomerConfigRequest {
+	return a.APIClient.CustomerConfigurationAPI.CreateCustomerConfig(a.ctx, a.CustomerUUID)
 }
 
 // EditCustomerConfig edits configs associated with the customer
 func (a *AuthAPIClient) EditCustomerConfig(
 	configUUID string,
-) ybaclient.CustomerConfigurationApiApiEditCustomerConfigRequest {
-	return a.APIClient.CustomerConfigurationApi.EditCustomerConfig(
+) ybaclient.CustomerConfigurationAPIEditCustomerConfigRequest {
+	return a.APIClient.CustomerConfigurationAPI.EditCustomerConfig(
 		a.ctx,
 		a.CustomerUUID,
 		configUUID,

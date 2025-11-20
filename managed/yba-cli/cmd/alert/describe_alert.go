@@ -50,12 +50,14 @@ var describeAlertCmd = &cobra.Command{
 
 		rAlert, response, err := alertRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Alert", "Describe")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Alert", "Describe")
 		}
 
-		r := make([]ybaclient.Alert, 0)
-		r = append(r, rAlert)
+		r := util.CheckAndAppend(
+			make([]ybaclient.Alert, 0),
+			rAlert,
+			fmt.Sprintf("No alert with UUID: %s found", alertUUID),
+		)
 
 		if len(r) > 0 && util.IsOutputType(formatter.TableFormatKey) {
 			fullAlertContext := *alert.NewFullAlertContext()

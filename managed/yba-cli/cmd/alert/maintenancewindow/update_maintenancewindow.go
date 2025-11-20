@@ -5,6 +5,7 @@
 package maintenancewindow
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -30,7 +31,7 @@ var updateMaintenanceWindowCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(uuid)) == 0 {
+		if util.IsEmptyString(uuid) {
 			logrus.Fatal(
 				formatter.Colorize(
 					"No uuid specified to update maintenance window\n",
@@ -48,40 +49,48 @@ var updateMaintenanceWindowCmd = &cobra.Command{
 
 		existingMW, response, err := authAPI.GetMaintenanceWindow(uuid).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response, err, "Maintenance Window", "Update - Get Maintenance Window")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(
+				response,
+				err,
+				"Maintenance Window",
+				"Update - Get Maintenance Window",
+			)
 		}
+
+		existingMaintenanceWindow := util.CheckAndDereference(
+			existingMW,
+			fmt.Sprintf("No maintenance window with uuid: %s found", uuid),
+		)
 
 		name, err := cmd.Flags().GetString("name")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(name)) != 0 {
+		if !util.IsEmptyString(name) {
 			logrus.Info("Updating maintenance window name\n")
-			existingMW.SetName(name)
+			existingMaintenanceWindow.SetName(name)
 		}
 
 		description, err := cmd.Flags().GetString("description")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(description)) != 0 {
+		if !util.IsEmptyString(description) {
 			logrus.Info("Updating maintenance window description\n")
-			existingMW.SetDescription(description)
+			existingMaintenanceWindow.SetDescription(description)
 		}
 
 		startTimeString, err := cmd.Flags().GetString("start-time")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(startTimeString)) != 0 {
+		if !util.IsEmptyString(startTimeString) {
 			startTime, err := time.Parse(time.RFC3339, startTimeString)
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
 			logrus.Info("Updating maintenance window start time\n")
-			existingMW.SetStartTime(startTime)
+			existingMaintenanceWindow.SetStartTime(startTime)
 		}
 
 		endTimeString, err := cmd.Flags().GetString("end-time")
@@ -89,12 +98,12 @@ var updateMaintenanceWindowCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		if len(strings.TrimSpace(endTimeString)) != 0 {
+		if !util.IsEmptyString(endTimeString) {
 			endTime, err := time.Parse(time.RFC3339, endTimeString)
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
-			if endTime.Before(existingMW.GetStartTime()) {
+			if endTime.Before(existingMaintenanceWindow.GetStartTime()) {
 				logrus.Fatalf(
 					formatter.Colorize(
 						"End time cannot be before start time\n",
@@ -103,7 +112,7 @@ var updateMaintenanceWindowCmd = &cobra.Command{
 				)
 			}
 			logrus.Info("Updating maintenance window end time\n")
-			existingMW.SetEndTime(endTime)
+			existingMaintenanceWindow.SetEndTime(endTime)
 		}
 
 		if cmd.Flags().Changed("alert-target-uuids") {
@@ -111,20 +120,20 @@ var updateMaintenanceWindowCmd = &cobra.Command{
 			if err != nil {
 				logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
-			alertFilter := existingMW.GetAlertConfigurationFilter()
+			alertFilter := existingMaintenanceWindow.GetAlertConfigurationFilter()
 			target := alertFilter.GetTarget()
 			alertTargetUUIDs := make([]string, 0)
 			alertUseAllTargets := false
-			if len(strings.TrimSpace(alertTargetUUIDsString)) > 0 {
+			if !util.IsEmptyString(alertTargetUUIDsString) {
 				alertTargetUUIDs = strings.Split(alertTargetUUIDsString, ",")
 				alertUseAllTargets = false
 			} else {
 				alertUseAllTargets = true
 			}
-			target.Uuids = util.StringSliceFromString(alertTargetUUIDs)
+			target.Uuids = alertTargetUUIDs
 			target.All = util.GetBoolPointer(alertUseAllTargets)
 			alertFilter.SetTarget(target)
-			existingMW.SetAlertConfigurationFilter(alertFilter)
+			existingMaintenanceWindow.SetAlertConfigurationFilter(alertFilter)
 		}
 
 		if cmd.Flags().Changed("health-check-universe-uuids") {
@@ -134,16 +143,16 @@ var updateMaintenanceWindowCmd = &cobra.Command{
 			}
 			healthTargetUUIDs := make([]string, 0)
 			healthUseAllTargets := false
-			suppressHealth := existingMW.GetSuppressHealthCheckNotificationsConfig()
-			if len(strings.TrimSpace(healthTargetUUIDsString)) > 0 {
+			suppressHealth := existingMaintenanceWindow.GetSuppressHealthCheckNotificationsConfig()
+			if !util.IsEmptyString(healthTargetUUIDsString) {
 				healthTargetUUIDs = strings.Split(healthTargetUUIDsString, ",")
 				healthUseAllTargets = false
 			} else {
 				healthUseAllTargets = true
 			}
-			suppressHealth.UniverseUUIDSet = util.StringSliceFromString(healthTargetUUIDs)
+			suppressHealth.UniverseUUIDSet = healthTargetUUIDs
 			suppressHealth.SuppressAllUniverses = util.GetBoolPointer(healthUseAllTargets)
-			existingMW.SetSuppressHealthCheckNotificationsConfig(suppressHealth)
+			existingMaintenanceWindow.SetSuppressHealthCheckNotificationsConfig(suppressHealth)
 		}
 
 		markAsComplete, err := cmd.Flags().GetBool("mark-as-complete")
@@ -152,21 +161,25 @@ var updateMaintenanceWindowCmd = &cobra.Command{
 		}
 		if markAsComplete {
 			logrus.Info("Updating maintenance window to mark as complete\n")
-			existingMW.SetEndTime(time.Now())
+			existingMaintenanceWindow.SetEndTime(time.Now())
 		}
 
-		mw, response, err := authAPI.UpdateMaintenanceWindow(uuid).
-			UpdateMaintenanceWindowRequest(existingMW).
+		rMW, response, err := authAPI.UpdateMaintenanceWindow(uuid).
+			UpdateMaintenanceWindowRequest(existingMaintenanceWindow).
 			Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response, err, "Maintenance Window", "Update")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Maintenance Window", "Update")
 		}
-		r := []ybaclient.MaintenanceWindow{mw}
+
+		updatedMaintenanceWindow := util.CheckAndDereference(
+			rMW,
+			"An error occurred while updating maintenance window with uuid "+uuid,
+		)
+
+		r := []ybaclient.MaintenanceWindow{updatedMaintenanceWindow}
 
 		logrus.Infof("The maintenance window %s (%s) has been updated\n",
-			formatter.Colorize(name, formatter.GreenColor), mw.GetUuid())
+			formatter.Colorize(name, formatter.GreenColor), updatedMaintenanceWindow.GetUuid())
 
 		if len(r) > 0 && util.IsOutputType(formatter.TableFormatKey) {
 			fullMaintenanceWindowContext := *maintenancewindow.NewFullMaintenanceWindowContext()

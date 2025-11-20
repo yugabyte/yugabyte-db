@@ -50,9 +50,7 @@ var updateAzureProviderCmd = &cobra.Command{
 
 		r, response, err := providerListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err,
-				"Provider: Azure", "Update - Fetch Providers")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Provider: Azure", "Update - Fetch Providers")
 		}
 
 		if len(r) < 1 {
@@ -71,7 +69,7 @@ var updateAzureProviderCmd = &cobra.Command{
 			}
 		}
 
-		if len(strings.TrimSpace(provider.GetName())) == 0 {
+		if util.IsEmptyString(provider.GetName()) {
 			errMessage := fmt.Sprintf(
 				"No provider %s in cloud type %s.\n", providerName, providerCode)
 			logrus.Fatalf(formatter.Colorize(errMessage, formatter.RedColor))
@@ -282,8 +280,7 @@ var updateAzureProviderCmd = &cobra.Command{
 		rTask, response, err := authAPI.EditProvider(provider.GetUuid()).
 			EditProviderRequest(provider).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Provider: Azure", "Update")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Provider: Azure", "Update")
 		}
 
 		providerutil.WaitForUpdateProviderTask(

@@ -47,10 +47,7 @@ var addArchitectureReleaseCmd = &cobra.Command{
 
 		rList, response, err := releasesListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err, "Release Architecture", "Add - List Releases")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Release Architecture", "Add - List Releases")
 		}
 
 		requestedReleaseList := make([]ybaclient.ResponseRelease, 0)
@@ -88,7 +85,7 @@ var addArchitectureReleaseCmd = &cobra.Command{
 
 		var sha256 string
 
-		if len(strings.TrimSpace(fileID)) != 0 {
+		if !util.IsEmptyString(fileID) {
 			sha256, err = cmd.Flags().GetString("sha256")
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -123,15 +120,17 @@ var addArchitectureReleaseCmd = &cobra.Command{
 		rUpdate, response, err := authAPI.UpdateNewRelease(
 			requestedRelease.GetReleaseUuid()).Release(req).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Release Architecture",
-				"Add - Update Release")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Release Architecture", "Add - Update Release")
 		}
 
-		if !rUpdate.GetSuccess() {
+		updateResult := util.CheckAndDereference(
+			rUpdate,
+			fmt.Sprintf("An error occurred while updating YugabyteDB version %s (%s)",
+				version,
+				requestedRelease.GetReleaseUuid()),
+		)
+
+		if !updateResult.GetSuccess() {
 			logrus.Errorf(
 				formatter.Colorize(
 					fmt.Sprintf(
@@ -144,16 +143,11 @@ var addArchitectureReleaseCmd = &cobra.Command{
 
 		rGet, response, err := authAPI.GetNewRelease(requestedRelease.GetReleaseUuid()).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Release Architecture",
-				"Add - Get Release")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Release Architecture", "Add - Get Release")
 		}
 
 		r := make([]ybaclient.ResponseRelease, 0)
-		r = append(r, rGet)
+		r = append(r, *rGet)
 
 		releaseCtx := formatter.Context{
 			Command: "update",

@@ -56,9 +56,7 @@ var deleteRoleCmd = &cobra.Command{
 
 		rList, response, err := roleListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err,
-				"Role", "Delete - List Roles")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Role", "Delete - List Roles")
 		}
 
 		r := make([]ybaclient.Role, 0)
@@ -66,7 +64,7 @@ var deleteRoleCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(roleName)) > 0 {
+		if !util.IsEmptyString(roleName) {
 			for _, p := range rList {
 				if strings.Contains(strings.ToLower(p.GetName()), strings.ToLower(roleName)) {
 					r = append(r, p)
@@ -94,8 +92,7 @@ var deleteRoleCmd = &cobra.Command{
 		rDelete, response, err := deleteRoleRequest.Execute()
 		if err != nil {
 
-			errMessage := util.ErrorFromHTTPResponse(response, err, "RBAC: Role", "Delete")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "RBAC: Role", "Delete")
 		}
 
 		if rDelete.GetSuccess() {

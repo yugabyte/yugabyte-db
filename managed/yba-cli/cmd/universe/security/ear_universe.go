@@ -168,7 +168,7 @@ func earEnableRequest(
 		}
 	}
 
-	if len(strings.TrimSpace(configName)) == 0 {
+	if util.IsEmptyString(configName) {
 		logrus.Fatalf(
 			formatter.Colorize(
 				"Configuration name is required to enable encryption at rest "+
@@ -243,9 +243,7 @@ func earAPICall(
 	r, response, err := authAPI.SetUniverseKey(
 		universeUUID).SetUniverseKeyRequest(requestBody).Execute()
 	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(
-			response, err, "Universe", "Master Key Rotation")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, "Universe", "Master Key Rotation")
 	}
 
 	logrus.Info(
@@ -254,7 +252,7 @@ func earAPICall(
 			universeUUID,
 		))
 
-	universeutil.WaitForUpgradeUniverseTask(authAPI, universeName, ybaclient.YBPTask{
+	universeutil.WaitForUpgradeUniverseTask(authAPI, universeName, &ybaclient.YBPTask{
 		TaskUUID:     util.GetStringPointer(r.GetTaskUUID()),
 		ResourceUUID: util.GetStringPointer(universeUUID),
 	})

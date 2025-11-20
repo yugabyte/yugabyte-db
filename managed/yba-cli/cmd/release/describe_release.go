@@ -53,15 +53,14 @@ var describeReleaseCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(deploymentType)) != 0 {
+		if !util.IsEmptyString(deploymentType) {
 			releasesListRequest = releasesListRequest.DeploymentType(
 				strings.ToLower(deploymentType))
 		}
 
 		rList, response, err := releasesListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Release", "List")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Release", "List")
 		}
 
 		requestedRelease := make([]ybaclient.ResponseRelease, 0)
@@ -85,12 +84,14 @@ var describeReleaseCmd = &cobra.Command{
 
 		releaseResponse, response, err := authAPI.GetNewRelease(releaseUUID).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Release", "Describe")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Release", "Describe")
 		}
 
-		r := make([]ybaclient.ResponseRelease, 0)
-		r = append(r, releaseResponse)
+		r := util.CheckAndAppend(
+			make([]ybaclient.ResponseRelease, 0),
+			releaseResponse,
+			fmt.Sprintf("No YugabyteDB version: %s found", version),
+		)
 
 		if len(r) > 0 && util.IsOutputType(formatter.TableFormatKey) {
 			fullReleaseContext := *release.NewFullReleaseContext()

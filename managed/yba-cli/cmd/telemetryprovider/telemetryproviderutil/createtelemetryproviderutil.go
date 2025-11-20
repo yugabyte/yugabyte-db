@@ -7,7 +7,6 @@ package telemetryproviderutil
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -24,7 +23,7 @@ func CreateTelemetryProviderValidation(cmd *cobra.Command) {
 	if err != nil {
 		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 	}
-	if len(strings.TrimSpace(configNameFlag)) == 0 {
+	if util.IsEmptyString(configNameFlag) {
 		cmd.Help()
 		logrus.Fatalln(
 			formatter.Colorize(

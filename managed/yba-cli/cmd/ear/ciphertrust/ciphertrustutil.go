@@ -47,8 +47,7 @@ func runCreateCipherTrustEAR(cmd *cobra.Command) {
 	rTask, response, err := authAPI.CreateKMSConfig(util.CipherTrustEARType).
 		KMSConfig(requestBody).Execute()
 	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(response, err, "EAR: CipherTrust", "Create")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, "EAR: CipherTrust", "Create")
 	}
 
 	earutil.WaitForCreateEARTask(authAPI, configName, rTask, util.CipherTrustEARType)

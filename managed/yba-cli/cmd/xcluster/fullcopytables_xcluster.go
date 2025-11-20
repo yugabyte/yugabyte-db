@@ -37,7 +37,7 @@ var fullCopyXClusterCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(sourceUniName)) == 0 {
+		if util.IsEmptyString(sourceUniName) {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize("Missing source universe name\n", formatter.RedColor))
@@ -108,8 +108,7 @@ var fullCopyXClusterCmd = &cobra.Command{
 		r, response, err := authAPI.NeedBootstrapTable(sourceUniverseUUID).
 			XclusterNeedBootstrapFormData(req).IncludeDetails(true).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "xCluster", operation)
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "xCluster", operation)
 		}
 
 		xclusterNeedBootstrapCtx := formatter.Context{
@@ -120,7 +119,7 @@ var fullCopyXClusterCmd = &cobra.Command{
 
 		if len(r) < 1 {
 			if util.IsOutputType(formatter.TableFormatKey) {
-				if len(strings.TrimSpace(targetUniverseName)) > 0 {
+				if !util.IsEmptyString(targetUniverseName) {
 					logrus.Infof(
 						"No tables from source universe %s to target universe %s need full copy\n",
 						sourceUniverseName, targetUniverseName)

@@ -47,12 +47,7 @@ var updateUserCmd = &cobra.Command{
 
 		rUsers, response, err := userListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"User",
-				"Update - List Users")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "User", "Update - List Users")
 		}
 
 		r := make([]ybaclient.UserWithFeatures, 0)
@@ -86,12 +81,7 @@ var updateUserCmd = &cobra.Command{
 			Users(req).
 			Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"User",
-				"Update")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "User", "Update")
 		}
 
 		r = make([]ybaclient.UserWithFeatures, 0)

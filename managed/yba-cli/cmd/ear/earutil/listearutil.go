@@ -24,7 +24,7 @@ func ListEARUtil(cmd *cobra.Command, commandCall, earCode string) {
 
 	earCode = strings.ToUpper(earCode)
 	callSite := "EAR"
-	if len(strings.TrimSpace(commandCall)) != 0 {
+	if !util.IsEmptyString(commandCall) {
 		callSite = fmt.Sprintf("%s: %s", callSite, commandCall)
 	}
 

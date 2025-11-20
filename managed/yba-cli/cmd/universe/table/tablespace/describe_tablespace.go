@@ -59,11 +59,7 @@ var describeTablespaceCmd = &cobra.Command{
 
 		rUniverse, response, err := universeListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Table", "Describe - Fetch Universe")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Table", "Describe - Fetch Universe")
 		}
 
 		if len(rUniverse) < 1 {
@@ -83,9 +79,7 @@ var describeTablespaceCmd = &cobra.Command{
 
 		rTablespace, response, err := authAPI.GetAllTableSpaces(universeUUID).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err,
-				"Table", "Describe")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Table", "Describe")
 		}
 
 		r := make([]ybaclient.TableSpaceInfo, 0)

@@ -56,14 +56,14 @@ var createUniverseCmd = &cobra.Command{
 
 		universeName := v1.GetString("name")
 
-		if len(strings.TrimSpace(universeName)) == 0 {
+		if util.IsEmptyString(universeName) {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize("No universe name found to create\n", formatter.RedColor))
 		}
 
 		providerCode := v1.GetString("provider-code")
-		if len(strings.TrimSpace(providerCode)) == 0 {
+		if util.IsEmptyString(providerCode) {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize(
@@ -127,9 +127,7 @@ var createUniverseCmd = &cobra.Command{
 		communicationPorts := buildCommunicationPorts()
 		certs, response, err := authAPI.GetListOfCertificates().Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err,
-				"Universe", "Create - List Certificates")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Universe", "Create - List Certificates")
 		}
 
 		getProviderType()
@@ -182,7 +180,7 @@ var createUniverseCmd = &cobra.Command{
 		opType := buildKMSConfigs(authAPI)
 
 		cpuArch := v1.GetString("cpu-architecture")
-		if len(strings.TrimSpace(cpuArch)) == 0 {
+		if util.IsEmptyString(cpuArch) {
 			cpuArch = util.X86_64
 		}
 
@@ -213,9 +211,10 @@ var createUniverseCmd = &cobra.Command{
 		rTask, response, err := authAPI.CreateAllClusters().
 			UniverseConfigureTaskParams(requestBody).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Universe", "Create")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Universe", "Create")
 		}
+
+		util.CheckTaskAfterCreation(rTask)
 
 		universeUUID := rTask.GetResourceUUID()
 		taskUUID := rTask.GetTaskUUID()
@@ -239,9 +238,7 @@ var createUniverseCmd = &cobra.Command{
 
 			universeData, response, err = authAPI.ListUniverses().Name(universeName).Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(response, err,
-					"Universe", "Create - Fetch Universe")
-				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+				util.FatalHTTPError(response, err, "Universe", "Create - Fetch Universe")
 			}
 
 			universesCtx := formatter.Context{
@@ -259,7 +256,7 @@ var createUniverseCmd = &cobra.Command{
 			Output:  os.Stdout,
 			Format:  ybatask.NewTaskFormat(viper.GetString("output")),
 		}
-		ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
+		ybatask.Write(taskCtx, []ybaclient.YBPTask{*rTask})
 	},
 }
 
@@ -713,7 +710,7 @@ func init() {
 
 func initializeViper(config string) {
 	var err error
-	if len(strings.TrimSpace(config)) != 0 {
+	if !util.IsEmptyString(config) {
 		v1.SetConfigFile(config)
 		err = v1.ReadInConfig()
 		if err != nil {

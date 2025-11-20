@@ -7,7 +7,6 @@ package providerutil
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -36,18 +35,17 @@ func DescribeProviderUtil(cmd *cobra.Command, commandCall, providerCode string) 
 	}
 	providerListRequest = providerListRequest.Name(providerName)
 
-	if len(strings.TrimSpace(providerCode)) != 0 {
+	if !util.IsEmptyString(providerCode) {
 		providerListRequest = providerListRequest.ProviderCode(providerCode)
 	}
 
 	r, response, err := providerListRequest.Execute()
 	if err != nil {
 		callSite := "Provider"
-		if len(strings.TrimSpace(commandCall)) != 0 {
+		if !util.IsEmptyString(commandCall) {
 			callSite = fmt.Sprintf("%s: %s", callSite, commandCall)
 		}
-		errMessage := util.ErrorFromHTTPResponse(response, err, callSite, "Describe")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, callSite, "Describe")
 	}
 
 	if len(r) > 0 && util.IsOutputType(formatter.TableFormatKey) {
@@ -81,7 +79,7 @@ func DescribeProviderValidation(cmd *cobra.Command) {
 	if err != nil {
 		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 	}
-	if len(strings.TrimSpace(providerNameFlag)) == 0 {
+	if util.IsEmptyString(providerNameFlag) {
 		cmd.Help()
 		logrus.Fatalln(
 			formatter.Colorize("No provider name found to describe\n", formatter.RedColor))

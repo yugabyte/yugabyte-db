@@ -11,8 +11,8 @@ import (
 // ListPITRConfig for the listing of all pitr configs in the universe
 func (a *AuthAPIClient) ListPITRConfig(
 	uUUID string,
-) ybaclient.PITRManagementApiApiListOfPitrConfigsRequest {
-	return a.APIClient.PITRManagementApi.ListOfPitrConfigs(a.ctx, a.CustomerUUID, uUUID)
+) ybaclient.PITRManagementAPIListOfPitrConfigsRequest {
+	return a.APIClient.PITRManagementAPI.ListOfPitrConfigs(a.ctx, a.CustomerUUID, uUUID)
 }
 
 // CreatePITRConfig for the creation of a new pitr config in the universe
@@ -20,8 +20,8 @@ func (a *AuthAPIClient) CreatePITRConfig(
 	uUUID string,
 	tableType string,
 	keyspace string,
-) ybaclient.PITRManagementApiApiCreatePitrConfigRequest {
-	return a.APIClient.PITRManagementApi.CreatePitrConfig(
+) ybaclient.PITRManagementAPICreatePitrConfigRequest {
+	return a.APIClient.PITRManagementAPI.CreatePitrConfig(
 		a.ctx,
 		a.CustomerUUID,
 		uUUID,
@@ -34,19 +34,19 @@ func (a *AuthAPIClient) CreatePITRConfig(
 func (a *AuthAPIClient) UpdatePITRConfig(
 	uUUID string,
 	configUUID string,
-) ybaclient.PITRManagementApiApiUpdatePitrConfigRequest {
-	return a.APIClient.PITRManagementApi.UpdatePitrConfig(a.ctx, a.CustomerUUID, uUUID, configUUID)
+) ybaclient.PITRManagementAPIUpdatePitrConfigRequest {
+	return a.APIClient.PITRManagementAPI.UpdatePitrConfig(a.ctx, a.CustomerUUID, uUUID, configUUID)
 }
 
 // DeletePITRConfig for the deletion of a pitr config in the universe
 func (a *AuthAPIClient) DeletePITRConfig(
 	uUUID string,
 	configUUID string,
-) ybaclient.PITRManagementApiApiDeletePitrConfigRequest {
-	return a.APIClient.PITRManagementApi.DeletePitrConfig(a.ctx, a.CustomerUUID, uUUID, configUUID)
+) ybaclient.PITRManagementAPIDeletePitrConfigRequest {
+	return a.APIClient.PITRManagementAPI.DeletePitrConfig(a.ctx, a.CustomerUUID, uUUID, configUUID)
 }
 
 // PerformPITR for point in time recovery of the keyspace in the universe
-func (a *AuthAPIClient) PerformPITR(uUUID string) ybaclient.PITRManagementApiApiPerformPitrRequest {
-	return a.APIClient.PITRManagementApi.PerformPitr(a.ctx, a.CustomerUUID, uUUID)
+func (a *AuthAPIClient) PerformPITR(uUUID string) ybaclient.PITRManagementAPIPerformPitrRequest {
+	return a.APIClient.PITRManagementAPI.PerformPitr(a.ctx, a.CustomerUUID, uUUID)
 }

@@ -174,16 +174,16 @@ func getGroupList(
 		logrus.Fatalf("%s\n", formatter.Colorize(errMessage.Error(), formatter.RedColor))
 	}
 	// Return the full list if both name and code are empty
-	if len(strings.TrimSpace(groupMappingName)) == 0 &&
-		len(strings.TrimSpace(groupMappingCode)) == 0 {
+	if util.IsEmptyString(groupMappingName) &&
+		util.IsEmptyString(groupMappingCode) {
 		return rList
 	}
 	// Filter by name and/or by groupMapping code
 	var r []ybav2client.AuthGroupToRolesMapping
 	for _, groupMapping := range rList {
-		if (len(strings.TrimSpace(groupMappingName)) == 0 ||
+		if (util.IsEmptyString(groupMappingName) ||
 			strings.Compare(groupMapping.GetGroupIdentifier(), groupMappingName) == 0) &&
-			(len(strings.TrimSpace(groupMappingCode)) == 0 || strings.Compare(groupMapping.GetType(), groupMappingCode) == 0) {
+			(util.IsEmptyString(groupMappingCode) || strings.Compare(groupMapping.GetType(), groupMappingCode) == 0) {
 			r = append(r, groupMapping)
 		}
 	}

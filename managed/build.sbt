@@ -769,6 +769,7 @@ lazy val gogen = project.in(file("client/go"))
     openApiGenerateApiTests := SettingDisabled,
     openApiValidateSpec := SettingDisabled,
     openApiConfigFile := "client/go/openapi-go-config.json",
+    openApiTemplateDir := "client/go/templates",
     target := file("client/go/target/v1"),
   )
 
@@ -782,6 +783,7 @@ lazy val goGenV2Client = project.in(file("client/go"))
     openApiGenerateApiTests := SettingDisabled,
     openApiValidateSpec := SettingDisabled,
     openApiConfigFile := "client/go/openapi-go-config-v2.json",
+    openApiTemplateDir := "client/go/templates",
     target := file("client/go/target/v2"),
     openApiGlobalProperties += ("skipFormModel" -> "false"),
   )

@@ -24,7 +24,7 @@ func DeleteEITValidation(cmd *cobra.Command) {
 	if err != nil {
 		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 	}
-	if len(strings.TrimSpace(configNameFlag)) == 0 {
+	if util.IsEmptyString(configNameFlag) {
 		cmd.Help()
 		logrus.Fatalln(
 			formatter.Colorize(
@@ -60,16 +60,14 @@ func DeleteEITUtil(cmd *cobra.Command, commandCall, certType string) {
 	certs, response, err := authAPI.GetListOfCertificates().Execute()
 	if err != nil {
 		callSite := "EIT"
-		if len(strings.TrimSpace(commandCall)) != 0 {
+		if !util.IsEmptyString(commandCall) {
 			callSite = fmt.Sprintf("%s: %s", callSite, commandCall)
 		}
-		errMessage := util.ErrorFromHTTPResponse(
-			response, err, callSite, "Delete - Get Certificates")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, callSite, "Delete - Get Certificates")
 	}
 
 	var r []ybaclient.CertificateInfoExt
-	if strings.TrimSpace(eitName) != "" {
+	if !util.IsEmptyString(eitName) {
 		for _, c := range certs {
 			if strings.Compare(c.GetLabel(), eitName) == 0 {
 				if certType != "" {
@@ -86,7 +84,7 @@ func DeleteEITUtil(cmd *cobra.Command, commandCall, certType string) {
 
 	if len(r) < 1 {
 		errMessage := ""
-		if len(strings.TrimSpace(certType)) == 0 {
+		if util.IsEmptyString(certType) {
 			errMessage = fmt.Sprintf("No configurations with name: %s found\n", eitName)
 		} else {
 			errMessage = fmt.Sprintf(
@@ -103,11 +101,10 @@ func DeleteEITUtil(cmd *cobra.Command, commandCall, certType string) {
 	rDelete, response, err := authAPI.DeleteCertificate(eitUUID).Execute()
 	if err != nil {
 		callSite := "EIT"
-		if len(strings.TrimSpace(commandCall)) != 0 {
+		if !util.IsEmptyString(commandCall) {
 			callSite = fmt.Sprintf("%s: %s", callSite, commandCall)
 		}
-		errMessage := util.ErrorFromHTTPResponse(response, err, callSite, "Delete")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, callSite, "Delete")
 	}
 
 	if rDelete.GetSuccess() {

@@ -111,16 +111,19 @@ var certEncryptionInTransitCmd = &cobra.Command{
 
 		certs, response, err := authAPI.GetListOfCertificates().Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err,
-				"Universe", "Certificate Rotation - List Certificates")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(
+				response,
+				err,
+				"Universe",
+				"Certificate Rotation - List Certificates",
+			)
 		}
 
 		rootCAName, err := cmd.Flags().GetString("root-ca")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(rootCAName)) != 0 {
+		if !util.IsEmptyString(rootCAName) {
 			for _, cert := range certs {
 				if strings.Compare(cert.GetLabel(), rootCAName) == 0 {
 					rootCA := cert.GetUuid()
@@ -152,8 +155,8 @@ var certEncryptionInTransitCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if rootAndClientRootCASame {
-			if len(strings.TrimSpace(clientRootCAName)) != 0 &&
-				len(strings.TrimSpace(rootCAName)) != 0 &&
+			if !util.IsEmptyString(clientRootCAName) &&
+				!util.IsEmptyString(rootCAName) &&
 				strings.Compare(clientRootCAName, rootCAName) != 0 {
 				logrus.Fatalf(
 					formatter.Colorize(
@@ -165,7 +168,7 @@ var certEncryptionInTransitCmd = &cobra.Command{
 				requestBody.SetClientRootCA(requestBody.GetRootCA())
 			}
 		} else {
-			if len(strings.TrimSpace(clientRootCAName)) != 0 {
+			if !util.IsEmptyString(clientRootCAName) {
 				for _, cert := range certs {
 					if strings.Compare(cert.GetLabel(), clientRootCAName) == 0 {
 						clientRootCA := cert.GetUuid()
@@ -230,9 +233,7 @@ var certEncryptionInTransitCmd = &cobra.Command{
 		r, response, err := authAPI.UpgradeCerts(
 			universeUUID).CertsRotateParams(requestBody).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response, err, "Universe", "Certificate Rotation")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Universe", "Certificate Rotation")
 		}
 
 		logrus.Info(
@@ -241,7 +242,7 @@ var certEncryptionInTransitCmd = &cobra.Command{
 				universeUUID,
 			))
 
-		universeutil.WaitForUpgradeUniverseTask(authAPI, universeName, ybaclient.YBPTask{
+		universeutil.WaitForUpgradeUniverseTask(authAPI, universeName, &ybaclient.YBPTask{
 			TaskUUID:     util.GetStringPointer(r.GetTaskUUID()),
 			ResourceUUID: util.GetStringPointer(universeUUID),
 		})

@@ -70,12 +70,12 @@ var testAlertConfigurationAlertCmd = &cobra.Command{
 			// Execute alert list request
 			r, response, err := alertListRequest.Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(
+				util.FatalHTTPError(
 					response,
 					err,
 					"Alert Policy",
-					"Test Alert - List Alert Configurations")
-				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+					"Test Alert - List Alert Configurations",
+				)
 			}
 
 			if len(r.GetEntities()) < 1 {
@@ -113,8 +113,7 @@ var testAlertConfigurationAlertCmd = &cobra.Command{
 
 		rTest, response, err := alertRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Alert Policy", "Test Alert")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Alert Policy", "Test Alert")
 		}
 
 		if rTest.GetSuccess() {

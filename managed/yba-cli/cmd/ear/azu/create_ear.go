@@ -59,7 +59,7 @@ var createAzureEARCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(clientID)) == 0 {
+		if util.IsEmptyString(clientID) {
 			clientID, _, err = util.AzureClientIDFromEnv()
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -72,7 +72,7 @@ var createAzureEARCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(tenantID)) == 0 {
+		if util.IsEmptyString(tenantID) {
 			tenantID, _, err = util.AzureTenantIDFromEnv()
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -106,7 +106,7 @@ var createAzureEARCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(vaultURL)) != 0 {
+		if !util.IsEmptyString(vaultURL) {
 			requestBody[util.AzureVaultURLField] = vaultURL
 		}
 
@@ -114,7 +114,7 @@ var createAzureEARCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(keyName)) != 0 {
+		if !util.IsEmptyString(keyName) {
 			requestBody[util.AzureKeyNameField] = keyName
 		}
 
@@ -122,7 +122,7 @@ var createAzureEARCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(keyAlgorithm)) != 0 {
+		if !util.IsEmptyString(keyAlgorithm) {
 			requestBody[util.AzureKeyAlgorithmField] = strings.ToUpper(keyAlgorithm)
 		}
 
@@ -148,8 +148,7 @@ var createAzureEARCmd = &cobra.Command{
 		rTask, response, err := authAPI.CreateKMSConfig(util.AzureEARType).
 			KMSConfig(requestBody).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "EAR: Azure", "Create")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "EAR: Azure", "Create")
 		}
 
 		earutil.WaitForCreateEARTask(authAPI,

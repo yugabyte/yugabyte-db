@@ -35,7 +35,7 @@ var createBackupScheduleCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(scheduleName)) == 0 {
+		if util.IsEmptyString(scheduleName) {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize(
@@ -49,7 +49,7 @@ var createBackupScheduleCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(universeNameFlag)) == 0 {
+		if util.IsEmptyString(universeNameFlag) {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize(
@@ -63,7 +63,7 @@ var createBackupScheduleCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(storageConfigNameFlag)) == 0 {
+		if util.IsEmptyString(storageConfigNameFlag) {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize(
@@ -77,7 +77,7 @@ var createBackupScheduleCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(tableTypeFlag)) == 0 {
+		if util.IsEmptyString(tableTypeFlag) {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize(
@@ -106,9 +106,7 @@ var createBackupScheduleCmd = &cobra.Command{
 
 		r, response, err := universeListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response, err, "Backup Schedule", "Create - List Universes")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Backup Schedule", "Create - List Universes")
 		}
 
 		if len(r) < 1 {
@@ -136,9 +134,12 @@ var createBackupScheduleCmd = &cobra.Command{
 		storageConfigListRequest := authAPI.GetListOfCustomerConfig()
 		rList, response, err := storageConfigListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response, err, "Backup Schedule", "Create - Get Storage Configuration")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(
+				response,
+				err,
+				"Backup Schedule",
+				"Create - Get Storage Configuration",
+			)
 		}
 
 		storageConfigs := make([]ybaclient.CustomerConfigUI, 0)
@@ -216,7 +217,7 @@ var createBackupScheduleCmd = &cobra.Command{
 		}
 
 		var scheduleFrequencyInSecs int64
-		if len(strings.TrimSpace(cronExpression)) == 0 {
+		if util.IsEmptyString(cronExpression) {
 			var err error
 			scheduleFrequencyInSecs, err = cmd.Flags().GetInt64("schedule-frequency-in-secs")
 			if err != nil {
@@ -224,7 +225,7 @@ var createBackupScheduleCmd = &cobra.Command{
 			}
 		}
 
-		if scheduleFrequencyInSecs == 0 && len(strings.TrimSpace(cronExpression)) == 0 {
+		if scheduleFrequencyInSecs == 0 && util.IsEmptyString(cronExpression) {
 			logrus.Fatalln(
 				formatter.Colorize(
 					"Neither frequency of the schedule nor cron expression are provided",
@@ -258,7 +259,7 @@ var createBackupScheduleCmd = &cobra.Command{
 			ScheduleName:             util.GetStringPointer(scheduleName),
 			StorageConfigUUID:        storageUUID,
 			BackupType:               util.GetStringPointer(backupType),
-			KeyspaceTableList:        &keyspaceTableList,
+			KeyspaceTableList:        keyspaceTableList,
 			UseTablespaces:           util.GetBoolPointer(useTablespaces),
 			Sse:                      util.GetBoolPointer(sse),
 			TimeBeforeDelete:         util.GetInt64Pointer(timeBeforeDeleteInMs),
@@ -271,7 +272,7 @@ var createBackupScheduleCmd = &cobra.Command{
 			EnablePointInTimeRestore: util.GetBoolPointer(enablePitr),
 		}
 
-		if (len(strings.TrimSpace(cronExpression))) > 0 {
+		if !util.IsEmptyString(cronExpression) {
 			requestBody.SetCronExpression(cronExpression)
 		}
 
@@ -288,10 +289,10 @@ var createBackupScheduleCmd = &cobra.Command{
 
 		rTask, response, err := authAPI.CreateBackupSchedule().Backup(requestBody).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response, err, "Backup Schedule", "Create")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Backup Schedule", "Create")
 		}
+
+		task := util.CheckTaskAfterCreation(rTask)
 
 		taskUUID := rTask.GetTaskUUID()
 		msg := fmt.Sprintf("The backup schedule %s creation on universe %s (%s) is in progress",
@@ -386,7 +387,7 @@ var createBackupScheduleCmd = &cobra.Command{
 			Output:  os.Stdout,
 			Format:  ybatask.NewTaskFormat(viper.GetString("output")),
 		}
-		ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
+		ybatask.Write(taskCtx, []ybaclient.YBPTask{task})
 
 	},
 }
@@ -406,15 +407,15 @@ func buildKeyspaceTables(keyspaces []string) (res []ybaclient.KeyspaceTable) {
 			val := kvp[1]
 			switch key {
 			case "keyspace-name":
-				if len(strings.TrimSpace(val)) != 0 {
+				if !util.IsEmptyString(val) {
 					keyspace["keyspace-name"] = val
 				}
 			case "table-names":
-				if len(strings.TrimSpace(val)) != 0 {
+				if !util.IsEmptyString(val) {
 					keyspace["table-names"] = val
 				}
 			case "table-ids":
-				if len(strings.TrimSpace(val)) != 0 {
+				if !util.IsEmptyString(val) {
 					keyspace["table-ids"] = val
 				}
 			}
@@ -430,8 +431,8 @@ func buildKeyspaceTables(keyspaces []string) (res []ybaclient.KeyspaceTable) {
 		}
 		r := ybaclient.KeyspaceTable{
 			Keyspace:      util.GetStringPointer(keyspace["keyspace-name"]),
-			TableNameList: &tableNameList,
-			TableUUIDList: &tableIdList,
+			TableNameList: tableNameList,
+			TableUUIDList: tableIdList,
 		}
 		res = append(res, r)
 	}

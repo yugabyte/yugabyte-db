@@ -52,9 +52,7 @@ var deleteUserCmd = &cobra.Command{
 
 		r, response, err := userListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err,
-				"User", "Delete - List Users")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "User", "Delete - List Users")
 		}
 
 		if len(r) < 1 {
@@ -77,8 +75,7 @@ var deleteUserCmd = &cobra.Command{
 
 		rDelete, response, err := deleteUserRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "User", "Delete")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "User", "Delete")
 		}
 
 		if rDelete.GetSuccess() {

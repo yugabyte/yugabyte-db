@@ -25,7 +25,7 @@ func DescribeEITValidation(cmd *cobra.Command) {
 	if err != nil {
 		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 	}
-	if len(strings.TrimSpace(configNameFlag)) == 0 {
+	if util.IsEmptyString(configNameFlag) {
 		cmd.Help()
 		logrus.Fatalln(
 			formatter.Colorize(
@@ -53,15 +53,14 @@ func DescribeEITUtil(cmd *cobra.Command, commandCall, certType string) {
 	certs, response, err := authAPI.GetListOfCertificates().Execute()
 	if err != nil {
 		callSite := "EIT"
-		if len(strings.TrimSpace(commandCall)) != 0 {
+		if !util.IsEmptyString(commandCall) {
 			callSite = fmt.Sprintf("%s: %s", callSite, commandCall)
 		}
-		errMessage := util.ErrorFromHTTPResponse(response, err, callSite, "Describe")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, callSite, "Describe")
 	}
 
 	var r []ybaclient.CertificateInfoExt
-	if strings.TrimSpace(eitName) != "" {
+	if !util.IsEmptyString(eitName) {
 		for _, c := range certs {
 			if strings.Compare(c.GetLabel(), eitName) == 0 {
 				if certType != "" {

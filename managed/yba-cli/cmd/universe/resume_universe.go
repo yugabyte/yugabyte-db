@@ -55,9 +55,7 @@ var resumeUniverseCmd = &cobra.Command{
 
 		r, response, err := universeListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err,
-				"Universe", "Resume - List Universes")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Universe", "Resume - List Universes")
 		}
 
 		if len(r) < 1 {
@@ -75,9 +73,10 @@ var resumeUniverseCmd = &cobra.Command{
 
 		rTask, response, err := authAPI.ResumeUniverse(universeUUID).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Universe", "Resume")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Universe", "Resume")
 		}
+
+		util.CheckTaskAfterCreation(rTask)
 
 		msg := fmt.Sprintf("The universe %s (%s) is being resumed",
 			formatter.Colorize(universeName, formatter.GreenColor), universeUUID)
@@ -101,7 +100,7 @@ var resumeUniverseCmd = &cobra.Command{
 			Output:  os.Stdout,
 			Format:  ybatask.NewTaskFormat(viper.GetString("output")),
 		}
-		ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
+		ybatask.Write(taskCtx, []ybaclient.YBPTask{*rTask})
 	},
 }
 

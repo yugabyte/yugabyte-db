@@ -37,9 +37,7 @@ func RemoveInstanceTypeUtil(
 		ProviderCode(providerType)
 	r, response, err := providerListRequest.Execute()
 	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(
-			response, err, callSite, "Remove - Get Provider")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, callSite, "Remove - Get Provider")
 	}
 	if len(r) < 1 {
 		logrus.Fatalf(
@@ -63,8 +61,7 @@ func RemoveInstanceTypeUtil(
 	rDelete, response, err := authAPI.DeleteInstanceType(providerUUID, instanceTypeName).
 		Execute()
 	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(response, err, callSite, "Remove")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, callSite, "Remove")
 	}
 
 	if rDelete.GetSuccess() {
