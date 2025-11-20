@@ -212,7 +212,7 @@ The [Google Cloud Logging](https://docs.cloud.google.com/logging/docs) integrati
 - A service account that has been granted the `logging.logWriter` permission.
 - Service account credentials. These credentials are used to authorize access to the account. This is the key file (JSON) that you downloaded when creating credentials for the service account. For more information, refer to [Create credentials for a service account](https://developers.google.com/workspace/guides/create-credentials#create_credentials_for_a_service_account) in the Google documentation.
 
-To create an export configuration, do the following:
+To create an export configuration for Google Cloud Logging, do the following:
 
 1. On the **Integrations** page, click **Configure** for the **Google Cloud Storage** integration or, if a configuration is already available, **Add Configuration**.
 1. Enter a name for the configuration.
