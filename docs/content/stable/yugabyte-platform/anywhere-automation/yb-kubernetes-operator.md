@@ -283,8 +283,6 @@ The operator pod (with the YugabyteDB Anywhere instance) should have the IAM rol
 
 The IAM role used should be sufficient to access storage in S3.
 
-To enable IAM roles to access storage in S3, set the **Use S3 IAM roles attached to DB node for Backup/Restore** Universe Configuration option (config key `yb.backup.s3.use_db_nodes_iam_role_for_backup`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
-
 The storage config CR should have IAM as the credential source.
 
 ```yaml
