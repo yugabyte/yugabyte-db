@@ -456,7 +456,6 @@ class PostgresBuilder(YbBuildToolBase):
 
         additional_c_cxx_flags = [
             '-Wimplicit-function-declaration',
-            '-Wno-error=unused-function',
             '-DHAVE__BUILTIN_CONSTANT_P=1',
             '-Werror=implicit-function-declaration',
             '-Werror=int-conversion',
@@ -472,7 +471,6 @@ class PostgresBuilder(YbBuildToolBase):
             additional_c_cxx_flags += [
                 '-Wall',
                 '-Werror',
-                '-Wno-error=unused-function'
             ]
 
             if self.build_type in ['release', 'prof_gen', 'prof_use']:

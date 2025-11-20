@@ -256,10 +256,6 @@ bool YBCStatusIsUnknownSession(YbcStatus s) {
          FetchErrorCode(s) == YBPgErrorCode::YB_PG_CONNECTION_DOES_NOT_EXIST;
 }
 
-bool YBCStatusIsDuplicateKey(YbcStatus s) {
-  return StatusWrapper(s)->IsAlreadyPresent();
-}
-
 bool YBCStatusIsSnapshotTooOld(YbcStatus s) {
   return FetchErrorCode(s) == YBPgErrorCode::YB_PG_SNAPSHOT_TOO_OLD;
 }

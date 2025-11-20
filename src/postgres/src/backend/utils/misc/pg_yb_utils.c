@@ -193,15 +193,6 @@ YbCanTryInvalidateTableCacheEntry()
 		!yb_need_invalidate_all_table_cache;
 }
 
-uint64_t
-YbGetLastKnownCatalogCacheVersion()
-{
-	const uint64_t shared_catalog_version = YbGetSharedCatalogVersion();
-
-	return shared_catalog_version > yb_last_known_catalog_cache_version ?
-		shared_catalog_version : yb_last_known_catalog_cache_version;
-}
-
 YbcPgLastKnownCatalogVersionInfo
 YbGetCatalogCacheVersionForTablePrefetching()
 {
@@ -323,14 +314,6 @@ IsYugaByteEnabled()
 {
 	/* We do not support Init/Bootstrap processing modes yet. */
 	return YBCPgIsYugaByteEnabled();
-}
-
-void
-CheckIsYBSupportedRelation(Relation relation)
-{
-	const char	relkind = relation->rd_rel->relkind;
-
-	CheckIsYBSupportedRelationByKind(relkind);
 }
 
 void
@@ -583,15 +566,6 @@ YBRelHasOldRowTriggers(Relation rel, CmdType operation)
 			trigdesc->trig_update_before_row ||
 			trigdesc->trig_delete_after_row ||
 			trigdesc->trig_delete_before_row);
-}
-
-bool
-YbRelHasBRUpdateTrigger(Relation rel)
-{
-	Assert(IsYBRelation(rel));
-	TriggerDesc *trigdesc = rel->trigdesc;
-
-	return trigdesc ? trigdesc->trig_update_before_row : false;
 }
 
 bool
@@ -858,14 +832,6 @@ YbNeedAdditionalCatalogTables()
 {
 	return (*YBCGetGFlags()->ysql_catalog_preload_additional_tables ||
 			IS_NON_EMPTY_STR_FLAG(YBCGetGFlags()->ysql_catalog_preload_additional_table_list));
-}
-
-void
-YBReportFeatureUnsupported(const char *msg)
-{
-	ereport(ERROR,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("%s", msg)));
 }
 
 static const char *
@@ -2051,40 +2017,6 @@ YBShouldRestartAllChildrenIfOneCrashes()
 }
 
 const char *
-YBPgErrorLevelToString(int elevel)
-{
-	switch (elevel)
-	{
-		case DEBUG5:
-			return "DEBUG5";
-		case DEBUG4:
-			return "DEBUG4";
-		case DEBUG3:
-			return "DEBUG3";
-		case DEBUG2:
-			return "DEBUG2";
-		case DEBUG1:
-			return "DEBUG1";
-		case LOG:
-			return "LOG";
-		case LOG_SERVER_ONLY:
-			return "LOG_SERVER_ONLY";
-		case INFO:
-			return "INFO";
-		case WARNING:
-			return "WARNING";
-		case ERROR:
-			return "ERROR";
-		case FATAL:
-			return "FATAL";
-		case PANIC:
-			return "PANIC";
-		default:
-			return "UNKNOWN";
-	}
-}
-
-const char *
 YBCGetDatabaseName(Oid relid)
 {
 	/*
@@ -2139,12 +2071,6 @@ Oid
 YBCGetDatabaseOidFromShared(bool relisshared)
 {
 	return relisshared ? Template1DbOid : MyDatabaseId;
-}
-
-void
-YBRaiseNotSupported(const char *msg, int issue_no)
-{
-	YBRaiseNotSupportedSignal(msg, issue_no, YBUnsupportedFeatureSignalLevel());
 }
 
 void
@@ -2339,12 +2265,6 @@ YBDatumToString(Datum datum, Oid typid)
 }
 
 const char *
-YbHeapTupleToString(HeapTuple tuple, TupleDesc tupleDesc)
-{
-	return YbHeapTupleToStringWithIsOmitted(tuple, tupleDesc, NULL);
-}
-
-const char *
 YbHeapTupleToStringWithIsOmitted(HeapTuple tuple, TupleDesc tupleDesc,
 								 bool *is_omitted)
 {
@@ -2413,15 +2333,6 @@ YbSlotToStringWithIsOmitted(TupleTableSlot *slot, bool *is_omitted)
 	}
 	appendStringInfoChar(&buf, ')');
 	return buf.data;
-}
-
-const char *
-YbBitmapsetToString(Bitmapset *bms)
-{
-	StringInfo	str = makeStringInfo();
-
-	outBitmapset(str, bms);
-	return str->data;
 }
 
 bool
@@ -7293,25 +7204,6 @@ YbIsColumnPartOfKey(Relation rel, const char *column_name)
 		}
 	}
 	return false;
-}
-
-bool
-YbReturningListSubsetOfUpdatedCols(Relation rel, Bitmapset *updatedCols,
-								   List *returningList)
-{
-
-	ListCell   *lc;
-
-	foreach(lc, returningList)
-	{
-		TargetEntry *element = (TargetEntry *) lfirst(lc);
-
-		if (!bms_is_member(element->resorigcol -
-						   YBGetFirstLowInvalidAttributeNumber(rel),
-						   updatedCols))
-			return false;
-	}
-	return true;
 }
 
 /*
