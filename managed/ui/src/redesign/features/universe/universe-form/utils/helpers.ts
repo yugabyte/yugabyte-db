@@ -316,7 +316,9 @@ export const getUserIntent = (
     deviceInfo: instanceConfig.deviceInfo,
     assignPublicIP: instanceConfig.assignPublicIP,
     enableNodeToNodeEncrypt: instanceConfig.enableNodeToNodeEncrypt,
-    enableClientToNodeEncrypt: instanceConfig.enableClientToNodeEncrypt,
+    enableClientToNodeEncrypt: instanceConfig.rootAndClientRootCASame
+      ? instanceConfig.enableNodeToNodeEncrypt
+      : instanceConfig.enableClientToNodeEncrypt,
     enableYSQL: instanceConfig.enableYSQL,
     enableYSQLAuth: instanceConfig.enableYSQLAuth,
     enableYCQL: instanceConfig.enableYCQL,
