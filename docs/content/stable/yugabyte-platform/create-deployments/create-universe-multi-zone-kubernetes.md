@@ -252,6 +252,69 @@ tserver:
       effect: NoSchedule
 ```
 
+## Deploy immutable YB Contoller (YBC)
+
+{{<tags/feature/ea idea ="1264">}}By default, YugabyteDB Anywhere deploys YBC on Kubernetes universes by copying the YBC package from YugabyteDB Anywhere to the database pods and extracting it. While this approach ensures a stable YBC version, it has some limitations:
+
+- Does not follow Kubernetes standards for container processes
+- Performs package copy operations on running containers
+- If a Persistent Volume Claim (PVC) gets deleted or replaced, YBC may not be available until YugabyteDB Anywhere detects the issue and re-uploads YBC (for example, before a backup operation if YBC ping failures are detected)
+
+For deployments following strict Kubernetes practices, or when you want YBC to be automatically available even after PVC replacement, you can enable **Immutable YBC**. With this feature, YBC is baked into the YugabyteDB image and runs as a native process alongside `yb-master` and `yb-tserver`, similar to other database processes.
+
+**Important considerations**
+
+- When Immutable YBC is enabled, the YBC version is tied to the YugabyteDB version and is upgraded only when you perform a software upgrade. YBC will not automatically follow the latest stable YugabyteDB Anywhere version.
+- YBC flags are mounted on the TServer pod as a Kubernetes secret, instead of copying the flag file from YugabyteDB Anywhere to the database pods.
+
+### Enable YBC immutability
+
+**For new universes:**
+
+Set the `useYbdbInbuiltYbc` field in the `userIntent` object of the primary cluster when sending the Create Universe API request. An example API request is as follows:
+
+```sh
+curl --request POST \
+  --url https://<yugabyte-platform-url>/api/v1/customers/<customer-uuid>/universes \
+  --header 'Accept: application/json' \
+  --header 'Content-Type: application/json' \
+  --header 'X-AUTH-YW-API-TOKEN: <api-token>' \
+  -d '{
+    "clusters": [{
+      "userIntent": {
+        "universeName": "my-k8s-universe",
+        "provider": "<provider-uuid>",
+        "providerType": "kubernetes",
+        "useYbdbInbuiltYbc": true,
+        // ... other required fields
+      }
+    }]
+  }'
+```
+
+For more information, refer to the [Create Universe API documentation](https://api-docs.yugabyte.com/docs/yugabyte-platform/4548b5e5061a8-create-universe-clusters).
+
+**For existing universes:**
+
+Use the Kubernetes Toggle Immutability API to switch Immutable YBC on or off. To enable the feature, an example API request is as follows:
+
+```sh
+curl --request POST \
+  --url https://<yugabyte-platform-url>/api/v1/customers/<customer-uuid>/universes/<universe-uuid>/upgrade/k8s_immutable_ybc \
+  --header 'Accept: application/json' \
+  --header 'Content-Type: application/json' \
+  --header 'X-AUTH-YW-API-TOKEN: <api-token>' \
+  -d '{"useYbdbInbuiltYbc": true}'  # Set to false to disable Immutable YBC
+```
+
+Replace:
+- `<yugabyte-platform-url>` with your YugabyteDB Anywhere URL
+- `<customer-uuid>` with your customer UUID
+- `<universe-uuid>` with your universe UUID
+- `<api-token>` with your API token
+
+Set `useYbdbInbuiltYbc` to `true` to enable Immutable YBC, or `false` to disable it and revert to the package copy approach.
+
 ## Examine the universe and connect to nodes
 
 The universe view consists of several tabs that provide different information about this universe.
