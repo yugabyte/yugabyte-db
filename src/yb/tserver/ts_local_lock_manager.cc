@@ -448,6 +448,10 @@ class TSLocalLockManager::Impl {
     poller_.Shutdown();
     {
       yb::UniqueLock<LockType> lock(mutex_);
+      if (complete_shutdown_started_) {
+        return;
+      }
+      complete_shutdown_started_ = true;
       while (!txns_in_progress_.empty()) {
         WaitOnConditionVariableUntil(&cv_, &lock, CoarseMonoClock::Now() + 5s);
         LOG_WITH_FUNC(WARNING)
@@ -455,6 +459,11 @@ class TSLocalLockManager::Impl {
       }
     }
     object_lock_manager_.Shutdown();
+  }
+
+  void StartShutdown() {
+    shutdown_ = true;
+    poller_.Pause();
   }
 
   void UpdateLeaseEpochIfNecessary(const std::string& uuid, uint64_t lease_epoch) EXCLUDES(mutex_) {
@@ -582,6 +591,7 @@ class TSLocalLockManager::Impl {
   server::RpcServerBase& messenger_base_;
   docdb::ObjectLockManager object_lock_manager_;
   std::atomic<bool> shutdown_{false};
+  bool complete_shutdown_started_ GUARDED_BY(mutex_) {false};
   rpc::Poller poller_;
   std::shared_ptr<ObjectLockTracker> lock_tracker_;
 };
@@ -616,9 +626,9 @@ void TSLocalLockManager::Start(
   return impl_->Start(waiting_txn_registry);
 }
 
-void TSLocalLockManager::Shutdown() {
-  impl_->Shutdown();
-}
+void TSLocalLockManager::Shutdown() { impl_->Shutdown(); }
+
+void TSLocalLockManager::StartShutdown() { impl_->StartShutdown(); }
 
 bool TSLocalLockManager::IsShutdownInProgress() const {
   return !impl_->CheckShutdown().ok();

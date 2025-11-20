@@ -288,6 +288,7 @@ set(TSERVER_SRCS
   xcluster_output_client.cc
   xcluster_write_implementations.cc
   ysql_advisory_lock_table.cc
+  ysql_lease_manager.cc
   ysql_lease_poller.cc)
 
 set(TSERVER_DEPS
