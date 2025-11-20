@@ -800,7 +800,7 @@ extern bool	yb_enable_parallel_scan_system;
 /*
  * If set to true, all DDL statements will cause the catalog version to increment.
  */
-extern bool yb_make_all_ddl_statements_incrementing;
+extern bool yb_test_make_all_ddl_statements_incrementing;
 
 typedef struct YBUpdateOptimizationOptions
 {
