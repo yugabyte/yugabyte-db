@@ -948,6 +948,18 @@ Status PgWrapper::UpdateAndReloadConfig() {
   return ReloadConfig();
 }
 
+void PgWrapper::Shutdown() {
+  // We use PG's fast shutdown mode for stopping PG when the tserver shuts down.
+  // See https://www.postgresql.org/docs/current/server-shutdown.html
+  Kill(SIGINT);
+}
+
+void PgWrapper::ImmediateShutdown() {
+  // We use PG's immediate shutdown mode for stopping PG when losing the lease.
+  // See https://www.postgresql.org/docs/current/server-shutdown.html
+  Kill(SIGQUIT);
+}
+
 Status PgWrapper::InitDb(InitdbParams initdb_params) {
   const string initdb_program_path = GetInitDbExecutablePath();
   RETURN_NOT_OK(CheckExecutableValid(initdb_program_path));

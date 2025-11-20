@@ -23,6 +23,7 @@ import java.util.Properties;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.minicluster.MiniYBClusterBuilder;
+import org.yb.pgsql.ConnectionBuilder;
 
 @RunWith(value = YBTestRunnerYsqlConnMgr.class)
 public class TestAuthDelayHandling extends BaseYsqlConnMgr {
@@ -44,6 +45,11 @@ public class TestAuthDelayHandling extends BaseYsqlConnMgr {
   // 2 * 19 + 1 (1 successful login expected). Refer to the test explanation for
   // more details.
   private final int numThreads = 1 + 38;
+
+  @Override
+  public ConnectionBuilder connectionBuilderForVerification(ConnectionBuilder builder) {
+    return builder.withUser("yugabyte").withPassword("yugabyte");
+  }
 
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {

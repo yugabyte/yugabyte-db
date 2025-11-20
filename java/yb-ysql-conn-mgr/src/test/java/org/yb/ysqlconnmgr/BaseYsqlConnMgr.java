@@ -18,7 +18,6 @@ import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.assertNotNull;
-import static org.yb.AssertionWrappers.assertTrue;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -40,7 +39,6 @@ import org.slf4j.LoggerFactory;
 import org.yb.client.IsInitDbDoneResponse;
 import org.yb.client.TestUtils;
 import org.yb.minicluster.*;
-import org.yb.pgsql.BasePgSQLTest;
 import org.yb.pgsql.ConnectionBuilder;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -145,7 +143,7 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
     restartClusterWithAdditionalFlags(Collections.emptyMap(), myMap);
   }
 
-protected void enableVersionMatchingAndRestartCluster(boolean higher_version_matching)
+  protected void enableVersionMatchingAndRestartCluster(boolean higher_version_matching)
         throws Exception {
     Map<String, String> tsFlagMap = new HashMap<>();
     tsFlagMap.put("allowed_preview_flags_csv",
@@ -539,6 +537,24 @@ protected void enableVersionMatchingAndRestartCluster(boolean higher_version_mat
         },
         600000);
     LOG.info("initdb has completed successfully on master");
+    verifyClusterAcceptsPGConnections();
+  }
+
+  public ConnectionBuilder connectionBuilderForVerification(ConnectionBuilder builder) {
+    return builder;
+  }
+
+  public void verifyClusterAcceptsPGConnections() throws Exception {
+    LOG.info("Waiting for the cluster to accept pg connections");
+    TestUtils.waitFor(() -> {
+        try {
+          connectionBuilderForVerification(getConnectionBuilder()).connect().close();
+          return true;
+        } catch (Exception e) {
+          return false;
+        }
+      },
+      10000);
   }
 
   @AfterClass

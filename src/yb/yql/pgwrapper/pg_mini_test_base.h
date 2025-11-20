@@ -68,12 +68,6 @@ class PgMiniTestBase : public MiniClusterTestWithClient<MiniCluster> {
 
   Status RestartMaster();
 
-  void StopPostgres();
-
-  Status StartPostgres();
-
-  Status RestartPostgres();
-
   const HostPort& pg_host_port() const {
     return pg_host_port_;
   }
@@ -93,11 +87,15 @@ class PgMiniTestBase : public MiniClusterTestWithClient<MiniCluster> {
 
   Status SetupPGCallbacksAndStartPG(uint16_t pg_port, int pg_ts_idx, bool wait_for_pg = true);
 
+  Status RestartPostgres();
+
   std::unique_ptr<PgSupervisor> pg_supervisor_;
 
  private:
   Result<PgProcessConf> CreatePgProcessConf(uint16_t port, size_t ts_idx);
   Status RecreatePgSupervisor();
+  void StopPostgres();
+  Status StartPostgres();
 
   HostPort pg_host_port_;
 };
