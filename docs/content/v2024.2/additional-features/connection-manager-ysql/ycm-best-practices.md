@@ -5,7 +5,7 @@ linkTitle: Best practices
 description: Best practices
 headcontent: How to get the most from YSQL Connection Manager
 menu:
-  stable:
+  v2024.2:
     identifier: ycm-best-practices
     parent: connection-manager
     weight: 20
@@ -32,7 +32,7 @@ YugabyteDB YSQL [Smart Drivers](/stable/develop/drivers-orms/smart-drivers/) and
 
 A smart driver intelligently routes connections across nodes in a distributed YugabyteDB cluster, ensuring that application traffic is load-balanced efficiently, and can dynamically route queries to appropriate TServers.
 
-Connection Manager operates at the node level, handling pooling and management of server and client connections in each TServer. It ensures efficient usage of backend resources, reduces the cost of idle connections, and smooths out connection spikes.
+Connection Manager operates at the node level, handling pooling and management of server and client connections in each TServer. It ensures efficient usage of backend resources, reduces the cost of idle connections, and smoothes out connection spikes.
 
 By using a smart driver and Connection Manager together, you benefit from end-to-end optimization:
 

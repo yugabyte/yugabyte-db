@@ -5,7 +5,7 @@ linkTitle: Migrate
 description: Migrate to YSQL Connection Manager
 headcontent: How to migrate from your current pooling solution
 menu:
-  stable:
+  v2024.2:
     identifier: ycm-migrate
     parent: connection-manager
     weight: 50
