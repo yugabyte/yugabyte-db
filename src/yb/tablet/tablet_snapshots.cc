@@ -167,7 +167,11 @@ std::string TabletSnapshots::SnapshotsDirName(const std::string& rocksdb_dir) {
 }
 
 bool TabletSnapshots::IsTempSnapshotDir(const std::string& dir) {
-  return boost::ends_with(dir, kTempSnapshotDirSuffix);
+  return dir.ends_with(kTempSnapshotDirSuffix);
+}
+
+bool TabletSnapshots::IsLastSnapshotTimeFilePath(const std::string& dir) {
+  return dir.starts_with(kLastSnapshotPrefix);
 }
 
 Status TabletSnapshots::Prepare(SnapshotOperation* operation) {

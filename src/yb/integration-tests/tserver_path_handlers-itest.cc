@@ -14,14 +14,20 @@
 #include <string>
 
 #include "yb/integration-tests/mini_cluster.h"
+#include "yb/integration-tests/path_handlers_util.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
+
+#include "yb/client/client.h"
+#include "yb/client/schema.h"
+#include "yb/client/snapshot_test_util.h"
+#include "yb/client/table_handle.h"
+#include "yb/client/yb_table_name.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 
-#include "yb/util/curl_util.h"
 #include "yb/util/jsonreader.h"
 
-namespace yb {
+namespace yb::integration_tests {
 
 using std::string;
 
@@ -54,7 +60,7 @@ class TServerPathHandlersItest : public YBMiniClusterTestBase<MiniCluster> {
  protected:
   Result<string> FetchURL(const string& query_path) {
     faststring result;
-    RETURN_NOT_OK(EasyCurl().FetchURL(tserver_http_url_ + query_path, &result));
+    RETURN_NOT_OK(path_handlers_util::GetUrl(tserver_http_url_ + query_path, &result));
     return result.ToString();
   }
 
@@ -179,4 +185,36 @@ TEST_F(TServerPathHandlersItest, TestListMetaCache) {
   VerifyMetaCacheObjectIsValid(json_object, r);
 }
 
-}  // namespace yb
+TEST_F(TServerPathHandlersItest, TestSnapshotsEndpoint) {
+  client::SnapshotTestUtil snapshot_util;
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  snapshot_util.SetProxy(&client->proxy_cache());
+  snapshot_util.SetCluster(cluster_.get());
+
+  client::TableHandle table;
+  client::YBSchema schema;
+  client::YBSchemaBuilder builder;
+  builder.AddColumn("key")->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
+  ASSERT_OK(builder.Build(&schema));
+
+  const client::YBTableName kTableName(YQL_DATABASE_CQL, "my_keyspace", "my_table");
+  ASSERT_OK(client->CreateNamespaceIfNotExists(
+      kTableName.namespace_name(), kTableName.namespace_type()));
+  ASSERT_OK(table.Create(kTableName, 1 /* num_tablets */, schema, client.get()));
+
+  auto schedule_id = ASSERT_RESULT(snapshot_util.CreateSchedule(
+      table, YQL_DATABASE_CQL, kTableName.namespace_name(), client::WaitSnapshot::kTrue));
+
+  auto rows = ASSERT_RESULT(path_handlers_util::GetHtmlTableRows(
+      tserver_http_url_ + "/snapshots", "snapshots_" + kTableName.namespace_name()));
+  ASSERT_GE(rows.size(), 2);
+
+  ASSERT_EQ(rows[0][0], "Active RocksDB");
+  ASSERT_FALSE(rows[1][0].empty()); // snapshot id
+  ASSERT_FALSE(rows[1][1].empty()); // snapshot time
+  ASSERT_FALSE(rows[1][2].empty()); // cumulative size
+  ASSERT_FALSE(rows[1][3].empty()); // exclusive size
+  ASSERT_EQ(rows[1][4], schedule_id.ToString()); // schedule id
+}
+
+}  // namespace yb::integration_tests
