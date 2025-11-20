@@ -2253,7 +2253,7 @@ bool		yb_enable_parallel_scan_colocated = false;
 bool		yb_enable_parallel_scan_hash_sharded = false;
 bool		yb_enable_parallel_scan_range_sharded = false;
 bool		yb_enable_parallel_scan_system = false;
-bool        yb_make_all_ddl_statements_incrementing = false;
+bool        yb_test_make_all_ddl_statements_incrementing = false;
 
 /* DEPRECATED */
 bool		yb_enable_advisory_locks = true;
@@ -4151,10 +4151,10 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 	if (yb_make_next_ddl_statement_nonbreaking)
 		is_breaking_change = false;
 	/*
-	 * If yb_make_all_ddl_statements_incrementing is true, we should be incrementing
+	 * If yb_test_make_all_ddl_statements_incrementing is true, we should be incrementing
 	 * the catalog version for all DDL statements.
 	 */
-	if (yb_make_all_ddl_statements_incrementing)
+	if (yb_test_make_all_ddl_statements_incrementing)
 		is_version_increment = true;
 	/*
 	 * If yb_make_next_ddl_statement_nonincrementing is true, then no DDL statement

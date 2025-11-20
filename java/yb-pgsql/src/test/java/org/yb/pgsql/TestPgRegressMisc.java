@@ -89,7 +89,7 @@ public class TestPgRegressMisc extends BasePgRegressTest {
         Collections.emptyMap(),
         Collections.singletonMap(
             "ysql_pg_conf_csv",
-            "yb_make_all_ddl_statements_incrementing=true"
+            "yb_test_make_all_ddl_statements_incrementing=true"
         )
     );
     runPgRegressTest("yb_misc_catalog_version_increment_schedule");
