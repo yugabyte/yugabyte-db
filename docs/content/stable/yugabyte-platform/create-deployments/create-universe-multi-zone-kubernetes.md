@@ -208,7 +208,7 @@ tserver:
 
 #### ARM VMs
 
-{{<tags/feature/ea idea="1486">}}If you want to use ARM VMs, add the following overrides:
+If you want to use ARM VMs, add the following overrides:
 
 ```yaml
 # Point to the aarch64 image in case multi-arch is not available.
@@ -393,7 +393,7 @@ After the service YAML is applied, in this example you would access the universe
 
 ### Create a common load balancer service for YB-Masters/YB-TServers
 
-In v2.17 and later, newly created multi-zone universes are deployed in a single namespace by default. This can lead to duplication of load balancer services as a separate load balancer is created for each zone. To prevent creating extra load balancers, you can create a common load balancer service (currently {{<tags/feature/ea>}}) for YB-Masters and YB-TServers that spans all the zones in a namespace.
+In v2.17 and later, newly created multi-zone universes are deployed in a single namespace by default. This can lead to duplication of load balancer services as a separate load balancer is created for each zone. To prevent creating extra load balancers, you can create a common load balancer service for YB-Masters and YB-TServers that spans all the zones in a namespace.
 
 For scenarios involving multi-namespaces or clusters, a distinct service is created for each namespace, maintaining the flexibility needed for complex deployments while avoiding unnecessary resource allocation.
 
@@ -434,9 +434,7 @@ serviceEndpoints:
       tcp-ysql-port: "5433"
 ```
 
-For services without an explicitly defined scope in Helm overrides, the default service scope (Namespaced) is used, provided you set the **Default service scope for K8s universe** Global runtime configuration option (config key `yb.universe.default_service_scope_for_k8s`) to true. The configuration flag defines the default service scope for the universe if the scope is not explicitly defined in the service overrides.
-
-Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global runtime configuration settings, and you cannot modify this service scope during universe creation.
+For services without an explicitly defined scope in Helm overrides, the default service scope (Namespaced) is used.
 
 Keep in mind the following:
 
@@ -462,8 +460,6 @@ After creating a service scope, you can't change it directly. To migrate a servi
 ### Examples
 
 To create a universe with Namespaced scope services by default, do the following:
-
-1. Set the **Default service scope for K8s universe** Global runtime configuration option (config key `yb.universe.default_service_scope_for_k8s`) to true.
 
 1. When you [configure Helm overrides](#helm-overrides), use serviceEndpoint overrides without explicitly defining scope, or define scope as "Namespaced":
 
