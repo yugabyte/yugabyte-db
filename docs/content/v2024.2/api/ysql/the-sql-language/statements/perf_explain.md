@@ -53,7 +53,7 @@ Display additional runtime statistics related to the distributed storage layer a
 
 ### DEBUG
 
-Display low-level runtime metrics related to [Cache and storage subsystems](../../../../../launch-and-manage/monitor-and-alert/metrics/cache-storage/#cache-and-storage-subsystems) (default: `FALSE`). When used with the DIST option, DEBUG provides both read and write metrics. These metrics are inlined within the query plan, that is, read metrics appear under read operations (for example, under "Storage Table Read Requests"), and write metrics appear under write operations (for example, under "Storage Table Write Requests" or "Storage Flush Requests").
+Display low-level runtime metrics related to [Cache and storage subsystems](../../../../../launch-and-manage/monitor-and-alert/metrics/cache-storage/#cache-and-storage-subsystems) (default: `FALSE`). When used with the DIST option, DEBUG provides both read and write metrics. These metrics are inlined within the query plan - read metrics appear under read operations (for example, under "Storage Table Read Requests"), and write metrics appear under write operations (for example, under "Storage Table Write Requests" or "Storage Flush Requests").
 
 ### FORMAT
 
@@ -174,7 +174,12 @@ When using EXPLAIN with the DEBUG option on write operations (such as INSERT, UP
 ```sql
 CREATE TABLE a (k INT, v INT, PRIMARY KEY (k ASC)) SPLIT AT VALUES ((100));
 
-EXPLAIN (ANALYZE, DIST, DEBUG) WITH cte AS (INSERT INTO a VALUES (50, 50), (150, 150) RETURNING k) SELECT * FROM a, cte WHERE a.k = cte.k;
+EXPLAIN (ANALYZE, DIST, DEBUG)
+  WITH cte AS (
+    INSERT INTO a VALUES (50, 50), (150, 150)
+    RETURNING k
+  )
+  SELECT * FROM a, cte WHERE a.k = cte.k;
 ```
 
 ```yaml{.nocopy}
@@ -226,7 +231,7 @@ EXPLAIN (ANALYZE, DIST, DEBUG) WITH cte AS (INSERT INTO a VALUES (50, 50), (150,
 
 In this example, you can see that:
 
-- Read metrics (such as `rocksdb_number_db_seek`, `docdb_keys_found`, and `ql_read_latency`) appear under read operations like "Storage Table Read Requests".
+- Read metrics (such as `docdb_keys_found`, and `ql_read_latency`) appear under read operations like "Storage Table Read Requests".
 - Write metrics (such as `write_lock_latency` and `ql_write_latency`) appear under write operations like "Storage Flush Requests".
 
 ## See also

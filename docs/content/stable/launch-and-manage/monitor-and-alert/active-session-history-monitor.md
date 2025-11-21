@@ -75,7 +75,7 @@ This view displays the class, type, name, and description of each wait event. Th
 | wait_event | text | Name of the wait event. |
 | wait_event_code | bigint | Code of the wait event. |
 | wait_event_description | text | Description of the wait event. |
-| wait_event_aux_description | text | Description information about what type of auxiliary data is contained for the wait event. For example, if the wait event contains a tablet ID, table ID, or RPC name. |
+| wait_event_aux_description | text | Information about what type of auxiliary data the wait event contains. For example, if the wait event contains a tablet ID, table ID, or RPC name. |
 
 
 ## Constant query identifiers
