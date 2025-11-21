@@ -12,7 +12,7 @@
 [
 
 # For better version control conflict detection, list latest migration filename
-# here: V90.1__28565__add_userid_in_yb_ash.sql
-{ major => '90', minor => '1', name => '<baseline>', time_applied => '_null_' }
+# here: V90.2__29260__yb_binary_upgrade_set_next_colocation_id.sql
+{ major => '90', minor => '2', name => '<baseline>', time_applied => '_null_' }
 
 ]
