@@ -130,8 +130,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     Mockito.when(ybcManager.getThrottleParams(any())).thenReturn(throttleResponse);
 
     envVars = Mockito.mockStatic(KubernetesEnvironmentVariables.class);
-    envVars.when(KubernetesEnvironmentVariables::getServiceHost).thenReturn("host");
-    envVars.when(KubernetesEnvironmentVariables::getServicePort).thenReturn("1234");
+    envVars.when(KubernetesEnvironmentVariables::isYbaRunningInKubernetes).thenReturn(true);
     operatorUtils =
         Mockito.spy(
             new OperatorUtils(

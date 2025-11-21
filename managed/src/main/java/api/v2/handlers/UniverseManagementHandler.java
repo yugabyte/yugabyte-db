@@ -605,7 +605,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
 
   private void validateProviderCompatibility(Provider sourceProvider) {
     if (sourceProvider.getCloudCode() == Common.CloudType.kubernetes) {
-      if (!isYBARunningOnKubernetes()) {
+      if (!KubernetesEnvironmentVariables.isYbaRunningInKubernetes()) {
         throw new PlatformServiceException(
             BAD_REQUEST,
             "Cannot attach Kubernetes universe to this YBA. Kubernetes universes can only be"
@@ -627,12 +627,6 @@ public class UniverseManagementHandler extends ApiControllerUtils {
         }
       }
     }
-  }
-
-  private boolean isYBARunningOnKubernetes() {
-    String kubernetesServiceHost = KubernetesEnvironmentVariables.getServiceHost();
-    String kubernetesServicePort = KubernetesEnvironmentVariables.getServicePort();
-    return (kubernetesServiceHost != null && kubernetesServicePort != null);
   }
 
   // Determine if provider is auto-configured (k8s only). Auto providers automatically inherit their

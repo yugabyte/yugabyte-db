@@ -758,10 +758,13 @@ public class PlatformReplicationManager {
     // Where to input a previously taken platform backup from.
     private final File input;
     private final boolean k8sRestoreYbaDbOnRestart;
+    private final boolean skipOldFiles;
 
-    public RestorePlatformBackupParams(File input, boolean k8sRestoreYbaDbOnRestart) {
+    public RestorePlatformBackupParams(
+        File input, boolean k8sRestoreYbaDbOnRestart, boolean skipOldFiles) {
       this.input = input;
       this.k8sRestoreYbaDbOnRestart = k8sRestoreYbaDbOnRestart;
+      this.skipOldFiles = skipOldFiles;
     }
 
     @Override
@@ -781,6 +784,9 @@ public class PlatformReplicationManager {
       } else if (k8sRestoreYbaDbOnRestart
           && confGetter.getGlobalConf(GlobalConfKeys.k8sYbaRestoreSkipDumpFileDelete)) {
         commandArgs.add("--skip_dump_file_delete");
+      }
+      if (skipOldFiles) {
+        commandArgs.add("--skip_old_files");
       }
 
       return commandArgs;
@@ -805,17 +811,23 @@ public class PlatformReplicationManager {
     return response.code == 0;
   }
 
+  public boolean restoreBackup(File input, boolean k8sRestoreYbaDbOnRestart) {
+    return restoreBackup(input, k8sRestoreYbaDbOnRestart, false);
+  }
+
   /**
    * Restore a backup of the YugabyteDB Anywhere
    *
    * @param input is the path to the backup to be restored
+   * @param k8sRestoreYbaDbOnRestart restore Yba DB on restart in k8s
+   * @param skipOldFiles skip restoring old files
    * @return the output/results of running the script
    */
-  public boolean restoreBackup(File input, boolean k8sRestoreYbaDbOnRestart) {
+  public boolean restoreBackup(File input, boolean k8sRestoreYbaDbOnRestart, boolean skipOldFiles) {
     log.info("Restoring platform backup...");
     ShellResponse response =
         replicationHelper.runCommand(
-            new RestorePlatformBackupParams(input, k8sRestoreYbaDbOnRestart));
+            new RestorePlatformBackupParams(input, k8sRestoreYbaDbOnRestart, skipOldFiles));
     if (response.code != 0) {
       log.error("Restore failed: {}", response.message);
     } else {

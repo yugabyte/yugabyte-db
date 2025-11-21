@@ -1617,7 +1617,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
   private void createAutoProvider(YBUniverse ybUniverse, UUID customerUUID) {
     // Only create auto-provider if running in Kubernetes and no provider name specified
     if (StringUtils.isNotBlank(ybUniverse.getSpec().getProviderName())
-        || !isRunningInKubernetes()) {
+        || !KubernetesEnvironmentVariables.isYbaRunningInKubernetes()) {
       return;
     }
     String providerName =
@@ -1636,13 +1636,6 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       log.error("Unable to create auto-provider: {}", e.getMessage());
       throw new RuntimeException("Unable to create auto-provider", e);
     }
-  }
-
-  private boolean isRunningInKubernetes() {
-    String kubernetesServiceHost = KubernetesEnvironmentVariables.getServiceHost();
-    String kubernetesServicePort = KubernetesEnvironmentVariables.getServicePort();
-
-    return (kubernetesServiceHost != null && kubernetesServicePort != null);
   }
 
   private String getProviderName(String universeName) {
