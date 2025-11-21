@@ -225,7 +225,7 @@ To create an export configuration, do the following:
 
 The [New Relic](https://docs.newrelic.com/) integration requires the following:
 
-- New Relic account
+- New Relic [account](https://newrelic.com/signup)
 - New Relic [license key](https://docs.newrelic.com/docs/apis/intro-apis/new-relic-api-keys/)
 
 To create an export configuration, do the following:
