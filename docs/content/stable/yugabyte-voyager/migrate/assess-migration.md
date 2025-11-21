@@ -173,11 +173,6 @@ To be able to view the assessment report in the yugabyted UI, do the following:
           db-conn-string: postgresql://yugabyte:yugabyte@127.0.0.1:5433
         ```
 
-        {{< note title="Note" >}}
-
-Don't include the `dbname` parameter in the connection string; the default `yugabyte` database is used to store the meta information for showing the migration in the yugabyted UI.
-        {{< /note >}}
-
 ## Assess migration
 
 Assess your migration using the following steps:
