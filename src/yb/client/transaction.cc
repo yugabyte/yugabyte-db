@@ -1056,10 +1056,6 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   }
 
   Status RollbackToSubTransaction(SubTransactionId id, CoarseTimePoint deadline) EXCLUDES(mutex_) {
-    SCHECK(
-        subtransaction_.active(), InternalError,
-        "Attempted to rollback to savepoint before creating any savepoints.");
-
     // A heartbeat should be sent (& waited for) to the txn status tablet(s) as part of a rollback.
     // This is for updating the list of aborted sub-txns and ensures that other txns don't see false
     // conflicts with this txn.
