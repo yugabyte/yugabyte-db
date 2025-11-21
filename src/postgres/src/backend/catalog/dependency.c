@@ -202,7 +202,7 @@ static const Oid object_classes[] = {
 	/* YB items */
 	YbProfileRelationId,		/* OCLASS_YBPROFILE */
 	YbRoleProfileRelationId,	/* OCLASS_YBROLE_PROFILE */
-	YbTablegroupRelationId,		/* OCLASS_TBLGROUP */
+	YbTablegroupRelationId,		/* OCLASS_YBTBLGROUP */
 };
 
 
@@ -1601,7 +1601,7 @@ doDeletion(const ObjectAddress *object, int flags, bool ybOriginalObject)
 			DropObjectById(object);
 			break;
 
-		case OCLASS_TBLGROUP:
+		case OCLASS_YBTBLGROUP:
 			RemoveTablegroupById(object->objectId, false);
 			break;
 
@@ -3074,7 +3074,7 @@ getObjectClass(const ObjectAddress *object)
 			return OCLASS_YBROLE_PROFILE;
 
 		case YbTablegroupRelationId:
-			return OCLASS_TBLGROUP;
+			return OCLASS_YBTBLGROUP;
 	}
 
 	/* shouldn't get here */
