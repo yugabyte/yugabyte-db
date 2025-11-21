@@ -26,6 +26,12 @@ YugabyteDB uses [role-based access control](../../../secure/authorization/) (RBA
 
 (For information on managing access to your YugabyteDB Anywhere instance, refer to [Manage account users](../../administer-yugabyte-platform/anywhere-rbac/).)
 
+{{< note title="Use YugabyteDB Anywhere to make changes" >}}
+
+For universes deployed using YugabyteDB Anywhere, you can't exclusively [enable authentication using flags](../../../secure/enable-authentication/authentication-ysql/). You must enable and disable authentication using the YugabyteDB Anywhere UI.
+
+{{< /note >}}
+
 ## Enable database endpoints and authorization
 
 To enable the YSQL and YCQL endpoints and database authentication when [deploying a universe](../../create-deployments/create-universe-multi-zone/), on the **Create Universe > Primary Cluster** page, under **Security Configurations > Authentication Settings**, enable the endpoints and authorization for the APIs you want to use, as shown in the following illustration.
@@ -44,9 +50,7 @@ You can also enable and disable the endpoints and authorization, as well as rota
 
 To disable YSQL or YCQL authorization or rotate the password, you will need your `yugabyte` or `cassandra` database user password.
 
-For YCQL, you can modify the YCQL API and admin UI endpoint ports by selecting the **Override YCQL Default Ports** option.
-
-Note that for universes deployed using YugabyteDB Anywhere, you can't exclusively [enable authentication using flags](../../../secure/enable-authentication/authentication-ysql/). You must enable and disable authentication using the YugabyteDB Anywhere UI.
+For YCQL, you can also modify the YCQL API and admin UI endpoint ports by selecting the **Override YCQL Default Ports** option.
 
 ## Default roles and users
 
