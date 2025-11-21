@@ -18,12 +18,6 @@ Active Session History (ASH) provides a current and historical view of system ac
 
 ASH exposes session activity in the form of [SQL views](../../ysql-language-features/advanced-features/views/) so that you can run analytical queries, aggregations for analysis, and troubleshoot performance issues.
 
-To run ASH queries, you need to [enable YSQL](../../../reference/configuration/yb-tserver/#enable-ysql).
-
-Note that to run ASH queries, regardles of whether you are using YSQL or YCQL, the YSQL API must be enabled on your universe.
-
-If you have only YCQL enabled for a YugabyteDB Anywhere universe, to enable YSQL, refer to [Enable database authorization](../../../yugabyte-platform/security/authorization-platform/#enable-database-authorization).
-
 Currently, ASH is available for [YSQL](../../../api/ysql/), [YCQL](../../../api/ycql/), and [YB-TServer](../../../architecture/yb-tserver/). ASH facilitates analysis by recording wait events related to YSQL, YCQL, or YB-TServer requests while they are being executed. These wait events belong to the categories including but not limited to _CPU_, _WaitOnCondition_, _Network_, and _Disk IO_.
 
 Analyzing the wait events and wait event types lets you troubleshoot, answer the following questions, and subsequently tune performance:
@@ -31,6 +25,12 @@ Analyzing the wait events and wait event types lets you troubleshoot, answer the
 - Why is a query taking longer than usual to execute?
 - Why is a particular application slow?
 - What are the queries that are contributing significantly to database load and performance?
+
+{{< note title="YSQL must be enabled" >}}
+
+To run ASH queries, regardless of whether you are using YSQL or YCQL, the YSQL API must be enabled on your universe. For more information, refer to [Configure ASH](../../../launch-and-manage/monitor-and-alert/active-session-history-monitor/#configure-ash).
+
+{{< /note >}}
 
 ## Configuration and usage
 
