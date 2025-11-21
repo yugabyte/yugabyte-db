@@ -596,12 +596,22 @@ Configure the yugabyted UI as follows:
   1. To see the Voyager migration workflow details in the UI, set the following configuration parameters before starting the migration:
 
         ```yaml
+        ### *********** Control Plane Configuration ************
+        ### To see the Voyager migration workflow details in the UI, set the following parameters.
+
         ### Control plane type refers to the deployment type of YugabyteDB
+        ### Accepted values: yugabyted
+        ### Optional (if not set, no visualization will be available)
         control-plane-type: yugabyted
 
-        ### YSQL connection string
-        ### Provide the standard PostgreSQL connection parameters, including user name, host name, and port. For example, postgresql://yugabyte:yugabyte@127.0.0.1:5433
-        yugabyted-db-conn-string: postgresql://yugabyte:yugabyte@127.0.0.1:5433
+        ### Yugabyted Control Plane Configuration (for local yugabyted clusters)
+        ### Uncomment the section below if control-plane-type is 'yugabyted'
+        yugabyted-control-plane:
+          ### YSQL connection string to yugabyted database
+          ### Provide standard PostgreSQL connection parameters: user name, host name, and port
+          ### Example: postgresql://yugabyte:yugabyte@127.0.0.1:5433
+          ### Note: Don't include the dbname parameter; the default 'yugabyte' database is used for metadata
+          db-conn-string: postgresql://yugabyte:yugabyte@127.0.0.1:5433
         ```
 
         {{< note title="Note" >}}
