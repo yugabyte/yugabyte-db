@@ -46,6 +46,7 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -239,7 +240,9 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
         params -> ((ResumeServer.Params) params).capacityReservation,
         Map.of(
             DoCapacityReservation.getCapacityReservationGroupName(
-                defaultUniverse.getUniverseUUID(), region.getProvider(), region.getCode()),
+                defaultUniverse.getUniverseUUID(),
+                CommonUtils.getClusterType(region.getProvider(), defaultUniverse),
+                region.getCode()),
             Arrays.asList("host-n1", "host-n2", "host-n3")));
   }
 
@@ -312,10 +315,14 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
         params -> ((ResumeServer.Params) params).capacityReservation,
         Map.of(
             DoCapacityReservation.getCapacityReservationGroupName(
-                defaultUniverse.getUniverseUUID(), region.getProvider(), region.getCode()),
+                defaultUniverse.getUniverseUUID(),
+                UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+                region.getCode()),
             Arrays.asList("host-n1", "host-n2", "host-n3"),
             DoCapacityReservation.getCapacityReservationGroupName(
-                defaultUniverse.getUniverseUUID(), azuProvider2, region1.getCode()),
+                defaultUniverse.getUniverseUUID(),
+                UniverseDefinitionTaskParams.ClusterType.ASYNC,
+                region1.getCode()),
             Arrays.asList("host-n4-readonly", "host-n5-readonly", "host-n6-readonly")));
   }
 
@@ -343,7 +350,7 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
         Map.of(
             DoCapacityReservation.getZoneInstanceCapacityReservationName(
                 defaultUniverse.getUniverseUUID(),
-                defaultProvider,
+                UniverseDefinitionTaskParams.ClusterType.PRIMARY,
                 "az-1",
                 defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.instanceType),
             Arrays.asList("host-n1", "host-n2", "host-n3")));

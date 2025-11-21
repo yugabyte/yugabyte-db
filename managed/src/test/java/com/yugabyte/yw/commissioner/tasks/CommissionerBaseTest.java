@@ -116,6 +116,7 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.YugawareProperty;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -1093,9 +1094,11 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       UUID universeUUID,
       Region region,
       Map<String, Map<String, List<String>>> instanceTypeToZonesAndNodes) {
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Provider provider = region.getProvider();
     String regionGroup =
         DoCapacityReservation.getCapacityReservationGroupName(
-            universeUUID, region.getProvider(), region.getCode());
+            universeUUID, CommonUtils.getClusterType(provider, universe), region.getCode());
 
     Set<String> allZones =
         instanceTypeToZonesAndNodes.values().stream()
@@ -1228,6 +1231,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       UUID universeUUID,
       Provider provider,
       Map<String, Map<String, ZoneData>>... instanceTypeToZonesAndNodesArray) {
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    ClusterType clusterType = CommonUtils.getClusterType(provider, universe);
 
     List<Double> nodesCounts = new ArrayList<>();
     for (Map<String, Map<String, ZoneData>> instanceTypeToZonesAndNodes :
@@ -1238,7 +1243,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                 (zone, zoneData) -> {
                   String instanceTypeRes =
                       DoCapacityReservation.getZoneInstanceCapacityReservationName(
-                          universeUUID, provider, "az-" + zone, instanceType);
+                          universeUUID, clusterType, "az-" + zone, instanceType);
                   verify(cloudAPI)
                       .createCapacityReservation(
                           Mockito.eq(defaultProvider),
