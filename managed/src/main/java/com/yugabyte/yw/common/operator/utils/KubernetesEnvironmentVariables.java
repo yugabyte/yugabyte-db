@@ -11,4 +11,8 @@ public class KubernetesEnvironmentVariables {
   public static String getServicePort() {
     return System.getenv(KubernetesEnvironmentVariables.kubernetesServicePort);
   }
+
+  public static boolean isYbaRunningInKubernetes() {
+    return getServiceHost() != null && getServicePort() != null;
+  }
 }

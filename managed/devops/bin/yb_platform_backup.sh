@@ -510,8 +510,8 @@ create_backup() {
     run_sudo_cmd "rm -rf ${PROMETHEUS_DATA_DIR}/snapshots/${snapshot_dir}"
   FIND_OPTIONS+=( -o -path "**/${PROMETHEUS_SNAPSHOT_DIR}/**" )
   fi
-  # Close out paths in FIND_OPTIONS with a close-paren, and  add -exec
-  FIND_OPTIONS+=( \\\) -exec tar $TAR_OPTIONS \{} + )
+  # [PLAT-19026] exclude node-agent releases to prevent k8s overwrite
+  FIND_OPTIONS+=( \\\) -not -path \"**/node-agent/releases/**\" -exec tar $TAR_OPTIONS \{} + )
   echo "Creating platform backup package..."
   cd ${data_dir}
 
