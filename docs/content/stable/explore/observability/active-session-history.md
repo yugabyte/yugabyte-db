@@ -26,7 +26,11 @@ Analyzing the wait events and wait event types lets you troubleshoot, answer the
 - Why is a particular application slow?
 - What are the queries that are contributing significantly to database load and performance?
 
-Note that to run ASH queries, regardless of whether you are using YSQL or YCQL, the YSQL API must be enabled on your universe. For more information, refer to [Configure ASH](../../../launch-and-manage/monitor-and-alert/active-session-history-monitor/#configure-ash).
+{{< note title="YSQL must be enabled" >}}
+
+To run ASH queries, regardless of whether you are using YSQL or YCQL, the YSQL API must be enabled on your universe. For more information, refer to [Configure ASH](../../../launch-and-manage/monitor-and-alert/active-session-history-monitor/#configure-ash).
+
+{{< /note >}}
 
 ## Configuration and usage
 
