@@ -1390,6 +1390,16 @@ TEST_F(
         InsertOneRow(Format("INSERT INTO t4 VALUES ($0, $1, 'default$2')", i, i + 400, i)));
   }
 
+  // Create table with partition and add a unique constraint.
+  const std::string main_script = R"(
+CREATE TABLE employees_hash(id text, name text, age int) PARTITION BY RANGE (age);
+CREATE TABLE employees_hash_age_changes_25 PARTITION OF employees_hash FOR VALUES FROM (0) TO (25);
+INSERT INTO employees_hash(id, name, age) VALUES (1, 'Hermione', 15);
+ALTER TABLE employees_hash ADD CONSTRAINT employees_hash_unique_id UNIQUE (id, age);
+  )";
+
+  ASSERT_RESULT(RunPsqlCommand(main_script));
+
   const string backup_dir = GetTempDir("backup_unique");
   const auto backup_keyspace = Format("ysql.$0", backup_db_name);
   const auto restore_keyspace = Format("ysql.$0", restore_db_name);
@@ -1570,6 +1580,16 @@ TEST_F(
       "a |  b  |    c\n"
       "---+-----+----------\n"
       " 3 | 403 | default3\n"
+      "(1 row)");
+
+  auto query = R"(
+SELECT /*+ IndexOnlyScan(employees_hash_age_changes_25 employees_hash_age_changes_25_id_age_key) */
+COUNT(*) FROM employees_hash_age_changes_25;
+  )";
+  RunPsqlCommand(query,
+      " count  \n"
+      "-------\n"
+      "     1  \n"
       "(1 row)");
 }
 

@@ -970,5 +970,41 @@ TEST_F(YBBackupTest,
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
+TEST_F(YBBackupTest,
+       YB_DISABLE_TEST_IN_SANITIZERS(YBFailColocationTest)) {
+  ASSERT_RESULT(RunPsqlCommand("CREATE DATABASE db WITH colocation=true"));
+
+  const std::string main_script = R"(
+CREATE TABLE employees_hash(id text, name text, age int) PARTITION BY RANGE (age);
+CREATE TABLE employees_hash_age_changes_25 PARTITION OF employees_hash FOR VALUES FROM (0) TO (25);
+INSERT INTO employees_hash(id, name, age) VALUES (1, 'Hermione', 15);
+ALTER TABLE employees_hash ADD CONSTRAINT employees_hash_unique_id UNIQUE (id, age);
+  )";
+
+  SetDbName("db");
+
+  ASSERT_RESULT(RunPsqlCommand(main_script));
+
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.db", "create"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.db2", "restore"}));
+
+  SetDbName("db");
+  auto query = R"(
+SELECT /*+ IndexOnlyScan(employees_hash_age_changes_25 employees_hash_age_changes_25_id_age_key) */
+COUNT(*) FROM employees_hash_age_changes_25;
+  )";
+  Result<std::string> result{""};
+  ASSERT_NO_FATALS(result = RunPsqlCommand(query));
+  ASSERT_OK(result);
+  LOG(INFO) << "result: " << *result;
+
+  SetDbName("db2");
+  ASSERT_NO_FATALS(RunPsqlCommand(query, *result));
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
 }  // namespace tools
 }  // namespace yb

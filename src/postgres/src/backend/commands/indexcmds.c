@@ -78,6 +78,9 @@
 #include "pgstat.h"
 #include "utils/yb_inheritscache.h"
 
+/* Potentially set by pg_upgrade_support functions */
+Oid			yb_binary_upgrade_next_colocation_id = InvalidOid;
+
 /* non-export function prototypes */
 static void CheckPredicate(Expr *predicate);
 static void ComputeIndexAttrs(IndexInfo *indexInfo,
@@ -859,10 +862,26 @@ DefineIndex(Oid relationId,
 
 	Oid colocation_id = YbGetColocationIdFromRelOptions(stmt->options);
 
-	if (OidIsValid(colocation_id) && !is_colocated)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-				 errmsg("cannot set colocation_id for non-colocated index")));
+	if (OidIsValid(colocation_id))
+	{
+		if (!is_colocated)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("cannot set colocation_id for non-colocated index")));
+		if (OidIsValid(yb_binary_upgrade_next_colocation_id))
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("cannot set yb_binary_upgrade_next_colocation_id for colocated index")));
+	}
+	else if (OidIsValid(yb_binary_upgrade_next_colocation_id))
+	{
+		if (!is_colocated)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("cannot set colocation_id for non-colocated index")));
+		colocation_id = yb_binary_upgrade_next_colocation_id;
+		yb_binary_upgrade_next_colocation_id = InvalidOid;
+	}
 
 	/*
 	 * Fail if the index is colocated via tablegroup and tablespace
