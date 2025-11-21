@@ -92,7 +92,4 @@ For index tables, follow the steps in [Add index table](#add-index-table).
 
 New YSQL indexes are automatically added to xCluster replication if the YSQL table being indexed is bidirectionally replicated. Adding new indexes is supported even if the table being indexed contains data and is actively receiving writes on both the universes.
 
-To add an index table to a bidirectional replication, do the following:
-
-1. Create the index table on both universes.
-1. Add the newly created index tables to both replication configurations by following the steps in [Add a table to xCluster Replication](../xcluster-replication-ddl/#add-a-table-to-replication).
+To add an index table to a bidirectional replication, you must create the index table on both universes _at the same time_.
