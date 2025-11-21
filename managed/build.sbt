@@ -200,7 +200,7 @@ libraryDependencies ++= Seq(
   "com.azure" % "azure-storage-blob" % "12.31.3",
   "com.azure" % "azure-storage-blob-batch" % "12.27.3",
   "com.azure.resourcemanager" % "azure-resourcemanager" % "2.55.0",
-  "com.azure.resourcemanager" % "azure-resourcemanager-marketplaceordering" % "1.0.0-beta.2",
+  "com.azure.resourcemanager" % "azure-resourcemanager-marketplaceordering" % "1.0.0",
   "jakarta.mail" % "jakarta.mail-api" % "2.1.2",
   "org.eclipse.angus" % "jakarta.mail" % "1.0.0",
   "javax.validation" % "validation-api" % "2.0.1.Final",
