@@ -18,7 +18,7 @@ rightNav:
 
 [Active Session History](../../../explore/observability/active-session-history/) (ASH) provides a powerful way to troubleshoot performance by giving you a real-time and historical view of your database's activity. ASH captures samples of active sessions and exposes them through a set of SQL views. By querying these views, you can analyze wait events, identify performance bottlenecks, and understand where your database is spending its time.
 
-ASH is currently available for YSQL, YCQL, and YB-TServer and records wait events like CPU, WaitOnCondition, RPCWait, and Disk IO.
+ASH is currently available for YSQL, YCQL, and YB-TServer, and records wait events like CPU, WaitOnCondition, RPCWait, and Disk IO.
 
 By analyzing this data, you can troubleshoot performance by answering questions like:
 
@@ -27,6 +27,10 @@ By analyzing this data, you can troubleshoot performance by answering questions 
 - Which queries are causing the most database load?
 
 ## Configure ASH
+
+To run ASH queries, regardless of whether you are using YSQL or YCQL, the YSQL API must be enabled on your universe (the default).
+
+If YSQL is not enabled on your universe, you can enable it by setting the [enable_ysql](../../../reference/configuration/yb-tserver/#enable-ysql) flag to true on your Master and TServer servers. If you are using YugabyteDB Anywhere, to enable YSQL refer to [Enable database endpoints and authorization](../../../yugabyte-platform/security/authorization-platform/#enable-database-endpoints-and-authorization).
 
 To configure ASH, you can set the following YB-TServer flags for each node of your cluster.
 
