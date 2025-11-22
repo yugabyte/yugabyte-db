@@ -4066,6 +4066,9 @@ ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 					startup_cost, total_cost,
 					path->indexinfo->reltablespace);
 
+	/* SAOP merge index scans should not be possible in non-CBO mode. */
+	Assert(!path->yb_index_path_info.saop_merge_saop_cols);
+
 	if (!yb_enable_optimizer_statistics)
 	{
 		/*

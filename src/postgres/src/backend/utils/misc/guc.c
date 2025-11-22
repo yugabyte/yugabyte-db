@@ -122,6 +122,7 @@
 #include "commands/copy.h"
 #include "common/pg_yb_param_status_flags.h"
 #include "executor/ybModifyTable.h"
+#include "optimizer/yb_saop_merge.h"
 #include "pg_yb_utils.h"
 #include "tcop/pquery.h"
 #include "utils/syscache.h"
@@ -5683,6 +5684,25 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&yb_test_reset_retry_counts,
 		-1, -1, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		/* TODO(#29072): switch to PGC_USERSET when results become correct. */
+		{"yb_max_saop_merge_streams", PGC_SUSET, QUERY_TUNING_METHOD,
+			gettext_noop("Sets the maximum number of streams tolerated for "
+						 "scalar array operation merge."),
+			gettext_noop("For YB LSM index scans, when multiple "
+						 "SAOP-mergeable scalar array operations are "
+						 "involved, they are added to SAOP merge until their "
+						 "cartesian product's cardinality reaches this limit. "
+						 "Scalar array operation merge is per index scan, and "
+						 "the limit applies per index scan, not globally. Set "
+						 "to 0 to disable. WARNING(#29072): results are not "
+						 "sorted correctly."),
+		},
+		&yb_max_saop_merge_streams,
+		0, 0, 1024,
 		NULL, NULL, NULL
 	},
 
