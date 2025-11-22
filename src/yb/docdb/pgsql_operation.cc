@@ -124,6 +124,10 @@ DEFINE_UNKNOWN_uint64(
 DEFINE_RUNTIME_bool(ysql_enable_pack_full_row_update, false,
                     "Whether to enable packed row for full row update.");
 
+DEFINE_RUNTIME_bool(ysql_mark_update_packed_row, false,
+                    "Whether to mark packed rows created from UPDATE operations with a flag. "
+                    "This allows CDC to differentiate between INSERT and UPDATE packed rows."
+                    "Default is false.");
 DEFINE_RUNTIME_PREVIEW_bool(ysql_use_packed_row_v2, false,
                             "Whether to use packed row V2 when row packing is enabled.");
 
@@ -748,19 +752,19 @@ struct RowPackerData {
     };
   }
 
-  dockv::RowPackerVariant MakePacker() const {
+  dockv::RowPackerVariant MakePacker(bool is_update = false) const {
     if (FLAGS_ysql_use_packed_row_v2) {
-      return MakePackerHelper<dockv::RowPackerV2>();
+      return MakePackerHelper<dockv::RowPackerV2>(is_update);
     }
-    return MakePackerHelper<dockv::RowPackerV1>();
+    return MakePackerHelper<dockv::RowPackerV1>(is_update);
   }
 
  private:
   template <class T>
-  dockv::RowPackerVariant MakePackerHelper() const {
+  dockv::RowPackerVariant MakePackerHelper(bool is_update) const {
     return dockv::RowPackerVariant(
         std::in_place_type_t<T>(), schema_version, packing, FLAGS_ysql_packed_row_size_limit,
-        Slice());
+        Slice(), is_update);
   }
 };
 
@@ -1128,11 +1132,12 @@ class PgsqlWriteOperation::RowPackContext {
  public:
   RowPackContext(const PgsqlWriteRequestPB& request,
                  const DocOperationApplyData& data,
-                 const RowPackerData& packer_data)
+                 const RowPackerData& packer_data,
+                 bool is_update = false)
       : query_id_(request.stmt_id()),
         data_(data),
         write_id_(data.doc_write_batch->ReserveWriteId()),
-        packer_(packer_data.MakePacker()) {
+        packer_(packer_data.MakePacker(is_update)) {
   }
 
   template <class Value>
@@ -1631,7 +1636,8 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
         ShouldYsqlPackRow(schema.is_colocated()) &&
         make_unsigned(request_.column_new_values().size()) == num_non_key_columns) {
       RowPackContext pack_context(
-          request_, data, VERIFY_RESULT(RowPackerData::Create(request_, *doc_read_context_)));
+          request_, data, VERIFY_RESULT(RowPackerData::Create(request_, *doc_read_context_)),
+          FLAGS_ysql_mark_update_packed_row /* is_update */);
 
       auto column_id_extractor = [](const PgsqlColumnValuePB& column_value) {
         return column_value.column_id();

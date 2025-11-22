@@ -373,17 +373,19 @@ size_t PackedSizeLimit(size_t value) {
 
 RowPackerBase::RowPackerBase(
     std::reference_wrapper<const SchemaPacking> packing, size_t packed_size_limit,
-    const ValueControlFields& control_fields)
+    const ValueControlFields& control_fields, bool is_update)
     : packing_(packing),
-      packed_size_limit_(PackedSizeLimit(packed_size_limit)) {
+      packed_size_limit_(PackedSizeLimit(packed_size_limit)),
+      is_update_(is_update) {
   control_fields.AppendEncoded(&result_);
 }
 
 RowPackerBase::RowPackerBase(
     std::reference_wrapper<const SchemaPacking> packing, size_t packed_size_limit,
-    Slice control_fields)
+    Slice control_fields, bool is_update)
     : packing_(packing),
-      packed_size_limit_(PackedSizeLimit(packed_size_limit)) {
+      packed_size_limit_(PackedSizeLimit(packed_size_limit)),
+      is_update_(is_update) {
   result_.Append(control_fields);
 }
 
@@ -526,7 +528,11 @@ void RowPackerV2::Init(SchemaVersion version) {
   auto* data = pointer_cast<char*>(result_.mutable_data());
   *out++ = ValueEntryTypeAsChar::kPackedRowV2;
   out += FastEncodeUnsignedVarInt(version, out);
-  *out++ = 0; // flags
+  uint8_t flags = 0;
+  if (is_update_) {
+    flags |= kIsUpdateFlag;
+  }
+  *out++ = flags;
   var_header_start_ = out - data;
   memset(out, 0, null_mask_size);
   out += null_mask_size;
@@ -620,6 +626,20 @@ RowPackerBase& PackerBase(RowPackerVariant* packer_variant) {
     RowPackerBase* base = &packer;
     return base;
   }, *packer_variant);
+}
+
+Result<PackedRowV2Header> ParsePackedRowV2Header(Slice packed_row) {
+  SCHECK(!packed_row.empty(), InvalidArgument, "Packed row is empty");
+
+  const auto version = VERIFY_RESULT(FastDecodeUnsignedVarInt(&packed_row));
+
+  SCHECK(!packed_row.empty(), InvalidArgument, "Packed row too short to contain flags");
+  const uint8_t flags = packed_row.consume_byte();
+
+  return PackedRowV2Header{
+    .schema_version = static_cast<SchemaVersion>(version),
+    .flags = flags
+  };
 }
 
 } // namespace yb::dockv
