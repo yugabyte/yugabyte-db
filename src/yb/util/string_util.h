@@ -72,7 +72,8 @@ struct ToStringVectorHelper<Unpacker<T> > {
   }
 
   template<class... Args>
-  static void Append(std::vector<std::string>* dest, const Unpacker<T>& unpacker, const Args&... args) {
+  static void Append(
+      std::vector<std::string>* dest, const Unpacker<T>& unpacker, const Args&... args) {
     for(auto&& i : unpacker.container) {
       dest->push_back(ToString(i));
     }
@@ -122,8 +123,11 @@ inline std::string VectorToString(const std::vector<T>& vec) {
 // Examples:
 // - abcd == ABCD
 // - AbCd == aBCD
-bool EqualsIgnoreCase(const std::string &string1,
-                      const std::string &string2);
+bool EqualsIgnoreCase(Slice a, Slice b);
+inline bool EqualsIgnoreCase(
+    const std::string &string1, const std::string &string2) {
+  return EqualsIgnoreCase(Slice(string1), Slice(string2));
+}
 
 template <class T>
 std::string RightPadToWidth(const T& val, int width) {

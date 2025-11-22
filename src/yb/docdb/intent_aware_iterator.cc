@@ -1069,16 +1069,18 @@ Result<HybridTime> IntentAwareIterator::FindOldestRecord(
   RETURN_NOT_OK(status_);
 
   if (iter_.Valid()) {
+    VLOG_WITH_FUNC(4) << "Find prev: " << DebugDumpKeyToStr(iter_.key());
     SkipFutureRecords<Direction::kForward>(iter_.Prev());
   } else {
     HandleStatus(iter_.status());
     RETURN_NOT_OK(status_);
+    VLOG_WITH_FUNC(4) << "Seek to last";
     SkipFutureRecords<Direction::kForward>(iter_.SeekToLast());
   }
 
   if (regular_entry_) {
     auto regular_dht = VERIFY_RESULT(GetMatchingRegularRecordDocHybridTime(key_without_ht));
-    VLOG(4) << "Looking for Matching Regular Record found   =  " << regular_dht.ToString();
+    VLOG_WITH_FUNC(4) << "Looking for Matching Regular Record found = " << regular_dht.ToString();
     if (!regular_dht.empty()) {
       auto ht = VERIFY_RESULT(regular_dht.Decode()).hybrid_time();
       if (ht > min_hybrid_time) {
@@ -1086,9 +1088,9 @@ Result<HybridTime> IntentAwareIterator::FindOldestRecord(
       }
     }
   } else {
-    VLOG(4) << "regular_value_ is empty";
+    VLOG_WITH_FUNC(4) << "regular_value_ is empty";
   }
-  VLOG(4) << "Returning " << result;
+  VLOG_WITH_FUNC(4) << "Returning " << result;
   return result;
 }
 

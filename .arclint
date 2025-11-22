@@ -139,6 +139,7 @@
         "(^build/include_what_you_use$)": "disabled",
         "(^build/c[+][+]11$)": "disabled",
         "(^legal/copyright$)": "warning",
+        "(^build/boost_optional)": "warning",
         "(.*)": "error"
       }
     }

@@ -898,6 +898,33 @@ struct PointerHash {
 template <class Value>
 using UnorderedStringMap = std::unordered_map<std::string, Value, StringHash, std::equal_to<void>>;
 
+// Define a concept that ensures Container's value_type is T
+template<typename Container, typename T>
+concept ContainerOf = requires {
+  typename Container::value_type;
+} && std::same_as<typename Container::value_type, T>;
+
+// A unified way to insert values into supported containers
+
+// Overload for std::set
+template <class T, class... Args>
+void InsertIntoContainer(std::set<std::decay_t<T>, Args...>& container, T&& value) {
+  container.emplace(std::forward<T>(value));
+}
+
+// Overload for std::vector
+template <class T, class... Args>
+void InsertIntoContainer(std::vector<std::decay_t<T>, Args...>& container, T&& value) {
+  container.emplace_back(std::forward<T>(value));
+}
+
+// Fallback to generate a compile-time error for unsupported containers
+template <class T, class Container>
+void InsertIntoContainer(Container&, T&&) {
+  static_assert(sizeof(Container) == 0,
+                "InsertIntoContainer is not supported for this container type.");
+}
+
 } // namespace yb
 
 // For backward compatibility

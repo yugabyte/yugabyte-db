@@ -2735,4 +2735,32 @@ TEST_F(PgIndexBackfillReadBeforeConcurrentUpdate, PartialIndex) {
   ASSERT_OK(CheckIndexConsistency(kPartialIndex));
 }
 
+class PgIndexBackfillIgnoreApplyTest : public PgIndexBackfillTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillTest::UpdateMiniClusterOptions(options);
+
+    options->extra_master_flags.push_back("--TEST_colocation_ids=1000,3000,2000");
+
+    options->extra_tserver_flags.push_back("--TEST_transaction_ignore_applying_probability=1.0");
+  }
+};
+
+TEST_F(PgIndexBackfillIgnoreApplyTest, Backward) {
+  const std::string kDbName = "colodb";
+  ASSERT_OK(conn_->ExecuteFormat("CREATE DATABASE $0 with COLOCATION = true", kDbName));
+  auto conn = ASSERT_RESULT(ConnectToDB(kDbName));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t2 (k INT, PRIMARY KEY (k ASC))"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (k INT, v INT, PRIMARY KEY (k ASC))"));
+  ASSERT_OK(conn.Execute("INSERT INTO t2 VALUES (48)"));
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (11, 99)"));
+  ASSERT_OK(conn.CommitTransaction());
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE UNIQUE INDEX idx ON test (v ASC)"));
+}
+
 } // namespace yb::pgwrapper
