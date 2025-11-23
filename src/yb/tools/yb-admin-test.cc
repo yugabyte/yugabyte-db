@@ -168,6 +168,7 @@ const auto kRollbackAutoFlagsCmd = "rollback_auto_flags";
 const auto kPromoteAutoFlagsCmd = "promote_auto_flags";
 const auto kClusterConfigEntryTypeName =
     master::SysRowEntryType_Name(master::SysRowEntryType::CLUSTER_CONFIG);
+const auto kTableEntryTypeName = master::SysRowEntryType_Name(master::SysRowEntryType::TABLE);
 
 YB_STRONGLY_TYPED_BOOL(EmergencyRepairMode);
 
@@ -2048,6 +2049,64 @@ TEST_F(AdminCliTest, TestInsertDeleteSysCatalogEntry) {
   // would crash and fail to start.
   ASSERT_OK(RestartMaster(EmergencyRepairMode::kFalse));
   ASSERT_OK(cluster_->WaitForTabletServerCount(cluster_->num_tablet_servers(), 30s));
+}
+
+// Test insert and delete of TableEntry.
+TEST_F(AdminCliTest, TestInsertDeleteTableEntry) {
+  const auto new_table_name = "new_table";
+  const auto new_table_id = Uuid::Generate().ToString();
+  auto env = Env::Default();
+
+  BuildAndStart();
+  const auto tables =
+      ASSERT_RESULT(client_->ListTables(kTableName.table_name(), /* exclude_ysql */ true));
+  ASSERT_EQ(1, tables.size());
+  const auto& table_id = tables.front().table_id();
+
+  ASSERT_OK(RestartMaster(EmergencyRepairMode::kTrue));
+
+  const auto folder_path = *tmp_dir_;
+  const auto existing_table_file_path = tmp_dir_ / Format("$0-$1", kTableEntryTypeName, table_id);
+  const auto new_table_file_path = tmp_dir_ / Format("$0-$1", kTableEntryTypeName, new_table_id);
+  auto output = ASSERT_RESULT(
+      CallAdmin("dump_sys_catalog_entries", kTableEntryTypeName, folder_path, table_id));
+  ASSERT_STR_CONTAINS(output, existing_table_file_path);
+  auto file_contents = ASSERT_RESULT(ReadFileToString(existing_table_file_path));
+  boost::replace_all(file_contents, table_id, new_table_id);
+  boost::replace_all(file_contents, kTableName.table_name(), new_table_name);
+  ASSERT_OK(WriteStringToFileSync(env, file_contents, new_table_file_path));
+
+  ASSERT_OK(CallAdmin(
+      "write_sys_catalog_entry", "insert", kTableEntryTypeName, new_table_id, new_table_file_path,
+      "force"));
+
+  auto validate_dump_cluster_config = [&]() -> Status {
+    RETURN_NOT_OK(env->DeleteFile(new_table_file_path));
+    auto output = VERIFY_RESULT(
+        CallAdmin("dump_sys_catalog_entries", kTableEntryTypeName, folder_path, new_table_id));
+    SCHECK_STR_CONTAINS(output, new_table_file_path);
+    auto file_contents = VERIFY_RESULT(ReadFileToString(new_table_file_path));
+    SCHECK_STR_CONTAINS(file_contents, new_table_name);
+    return Status::OK();
+  };
+
+  // Dump the new entry to make sure it was inserted.
+  ASSERT_OK(validate_dump_cluster_config());
+
+  // Restart the master and dump the new entry to make sure it was persisted.
+  auto* leader_master = cluster_->GetLeaderMaster();
+  leader_master->Shutdown();
+  ASSERT_OK(leader_master->Restart());
+
+  ASSERT_OK(validate_dump_cluster_config());
+
+  // Delete the new table.
+  ASSERT_OK(CallAdmin(
+      "write_sys_catalog_entry", "delete", kTableEntryTypeName, new_table_id, "", "force"));
+
+  output = ASSERT_RESULT(
+      CallAdmin("dump_sys_catalog_entries", kTableEntryTypeName, *tmp_dir_, new_table_id));
+  ASSERT_STR_CONTAINS(output, "Found 0 entries of type TABLE");
 }
 
 // Update the ClusterConfig entry in the sys catalog and verify that the change is persisted across
