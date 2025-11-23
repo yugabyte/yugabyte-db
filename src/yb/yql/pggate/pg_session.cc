@@ -976,43 +976,37 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
     }
   }
 
-  // If all operations belong to the same database then set the namespace.
-  // System database template1 is ignored as we may read global system catalog like tablespaces
-  // in the same batch.
-  if (!ops.Empty()) {
-    auto database_oid = kPgInvalidOid;
-    for (const auto& relation : ops.relations()) {
-      if (relation.database_oid == kTemplate1Oid) {
-        continue;
-      }
-
-      if (PREDICT_FALSE(database_oid != kPgInvalidOid && database_oid != relation.database_oid)) {
-        // We do not expect this to be true. Adding a log to catch violation just in case.
-        YB_LOG_EVERY_N_SECS(WARNING, 60) << Format(
-            "Operations from multiple databases ('$0', '$1') found in a single Perform step",
-            database_oid, relation.database_oid);
-        database_oid = kPgInvalidOid;
-        break;
-      }
-
-      database_oid = relation.database_oid;
-    }
-
-    if (database_oid != kPgInvalidOid) {
-      options.set_namespace_id(GetPgsqlNamespaceId(database_oid));
-    }
+  // -----------------------------------------------------------------------
+  // NEW: Prevent partial replay for batches that may produce multiple resultsets
+  // -----------------------------------------------------------------------
+  //
+  // Problem: server-side transparent per-statement retry may replay only the
+  // failing statement within a batched request. If the client is iterating pages
+  // (getMoreResults) or expecting multiple resultsets, replaying only one
+  // statement can make earlier statements' results invisible -> missing rows.
+  //
+  // Fix: mark Perform RPCs that contain reads or multiple operations as
+  // non-retriable on the server-side. The tserver must honor
+  // `disable_retries_on_restarts` (proto + server change necessary).
+  //
+  // Heuristic: if the batch contains any read or has size > 1, mark it.
+  bool contains_read_or_multi = false;
+  try {
+    contains_read_or_multi = std::ranges::any_of(ops.operations(), [](const auto& op) {
+      return op->is_read();
+    }) || (std::distance(ops.operations().begin(), ops.operations().end()) > 1);
+  } catch (...) {
+    // Fallback: be conservative and mark as non-retriable if we cannot inspect ops.
+    contains_read_or_multi = true;
   }
-  options.set_trace_requested(pg_txn_manager_->ShouldEnableTracing());
 
-  if (ops_options.cache_options) {
-    auto& cache_options = *ops_options.cache_options;
-    auto& caching_info = *options.mutable_caching_info();
-    caching_info.set_key_group(cache_options.key_group);
-    caching_info.set_key_value(std::move(cache_options.key_value));
-    if (cache_options.lifetime_threshold_ms) {
-      caching_info.mutable_lifetime_threshold_ms()->set_value(*cache_options.lifetime_threshold_ms);
-    }
+  if (contains_read_or_multi) {
+    // NOTE: this field must be added to tserver::PgPerformOptionsPB proto:
+    // optional bool disable_retries_on_restarts = <NEXT_FIELD_NUMBER>;
+    // and tserver must respect it (see notes below).
+    options.set_disable_retries_on_restarts(true);
   }
+  // -----------------------------------------------------------------------
 
   // Workaround for index backfill case:
   //

@@ -2853,8 +2853,10 @@ PgClientServiceImpl::PgClientServiceImpl(
 PgClientServiceImpl::~PgClientServiceImpl() = default;
 
 void PgClientServiceImpl::Perform(
-    const PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext context) {
-  impl_->Perform(const_cast<PgPerformRequestPB*>(req), resp, &context);
+    const PgPerformRequestPB* req,
+    PgPerformResponsePB* resp,
+    rpc::RpcContext* context) {
+  impl_->Perform(const_cast<PgPerformRequestPB*>(req), resp, context);
 }
 
 void PgClientServiceImpl::InvalidateTableCache() {
