@@ -293,8 +293,7 @@ static void check_reserved_prefixes(const char *varName);
 static void assign_yb_enable_cbo(int new_value, void *extra);
 static void assign_yb_enable_optimizer_statistics(bool new_value, void *extra);
 static void assign_yb_enable_base_scans_cost_model(bool new_value, void *extra);
-static bool yb_enable_ddl_atomicity_check_hook(bool *newval, void **extra, GucSource source);
-static bool yb_enable_ddl_atomicity_infra_check_hook(bool *newval, void **extra, GucSource source);
+
 
 static bool check_yb_enable_advisory_locks(bool *newval, void **extra, GucSource source);
 
@@ -3135,7 +3134,7 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&yb_ddl_rollback_enabled,
 		true,
-		yb_enable_ddl_atomicity_check_hook, NULL, NULL
+		NULL, NULL, NULL
 	},
 
 	{
@@ -3147,7 +3146,7 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&yb_enable_ddl_atomicity_infra,
 		true,
-		yb_enable_ddl_atomicity_infra_check_hook, NULL, NULL
+		NULL, NULL, NULL
 	},
 
 	{
@@ -16431,30 +16430,6 @@ static void
 assign_yb_enable_pg_stat_statements_rpc_stats(bool newval, void *extra)
 {
 	YbToggleSessionStatsTimer(newval);
-}
-
-static bool
-disallow_disabling_ddl_atomicity_for_transactional_ddl(bool *atomicity_disabled, char *flagname)
-{
-	if (!*atomicity_disabled && yb_ddl_transaction_block_enabled)
-	{
-		GUC_check_errdetail("cannot set %s to false when Transactional DDL is enabled.", flagname);
-		return false;
-	}
-
-	return true;
-}
-
-static bool
-yb_enable_ddl_atomicity_check_hook(bool *newval, void **extra, GucSource source)
-{
-	return disallow_disabling_ddl_atomicity_for_transactional_ddl(newval, "yb_ddl_rollback_enabled");
-}
-
-static bool
-yb_enable_ddl_atomicity_infra_check_hook(bool *newval, void **extra, GucSource source)
-{
-	return disallow_disabling_ddl_atomicity_for_transactional_ddl(newval, "yb_enable_ddl_atomicity_infra");
 }
 
 #include "guc-file.c"
