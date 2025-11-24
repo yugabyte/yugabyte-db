@@ -57,6 +57,7 @@ DECLARE_bool(vector_index_use_yb_hnsw);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_bool(ysql_enable_auto_analyze_infra);
+DECLARE_bool(ysql_use_packed_row_v2);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(timestamp_history_retention_interval_sec);
@@ -101,11 +102,13 @@ const unum::usearch::byte_t* VectorToBytePtr(const FloatVector& vector) {
 }
 
 YB_DEFINE_ENUM(VectorIndexEngine, (kUsearch)(kYbHnsw)(kHnswlib));
+YB_DEFINE_ENUM(PackingMode, (kNone)(kV1)(kV2));
 
 class PgVectorIndexTestBase : public PgMiniTestBase {
  protected:
   virtual bool IsColocated() const = 0;
   virtual VectorIndexEngine Engine() const = 0;
+  virtual PackingMode GetPackingMode() const = 0;
 
   virtual int GetFileNumCompactionTrigger() {
     return 5;
@@ -116,6 +119,9 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
     FLAGS_TEST_usearch_exact = true;
     FLAGS_vector_index_enable_compactions = true;
     FLAGS_vector_index_num_compactions_limit = 0;
+    auto packing_mode = GetPackingMode();
+    FLAGS_ysql_enable_packed_row = packing_mode != PackingMode::kNone;
+    FLAGS_ysql_use_packed_row_v2 = packing_mode == PackingMode::kV2;
     switch (Engine()) {
       case VectorIndexEngine::kUsearch:
         FLAGS_vector_index_use_hnswlib = false;
@@ -450,7 +456,7 @@ void PgVectorIndexTestBase::VerifyRead(PGConn& conn, size_t limit, AddFilter add
   VerifyRows(conn, add_filter, ExpectedRows(limit));
 }
 
-using PgVectorIndexTestParams = std::tuple<bool, VectorIndexEngine>;
+using PgVectorIndexTestParams = std::tuple<bool, VectorIndexEngine, PackingMode>;
 
 bool IsColocated(const PgVectorIndexTestParams& params) {
   return std::get<0>(params);
@@ -460,12 +466,18 @@ VectorIndexEngine Engine(const PgVectorIndexTestParams& params) {
   return std::get<1>(params);
 }
 
+PackingMode GetPackingMode(const PgVectorIndexTestParams& params) {
+  return std::get<2>(params);
+}
+
 std::string TestParamToString(const testing::TestParamInfo<PgVectorIndexTestParams>& param_info) {
   auto engine = Engine(param_info.param);
+  auto packing_mode = GetPackingMode(param_info.param);
   return Format(
-      "$0$1",
+      "$0$1$2",
       IsColocated(param_info.param) ? "Colocated" : "Distributed",
-      engine == VectorIndexEngine::kUsearch ? "" : ToString(engine).substr(1));
+      engine == VectorIndexEngine::kUsearch ? "" : ToString(engine).substr(1),
+      packing_mode == PackingMode::kNone ? "" : "Packing" + ToString(packing_mode).substr(1));
 }
 
 template <typename TestClass> requires(std::is_base_of_v<PgVectorIndexTestBase, TestClass>)
@@ -480,12 +492,17 @@ class PgVectorIndexTestParamsDecorator
   VectorIndexEngine Engine() const override {
     return pgwrapper::Engine(GetParam());
   }
+
+  PackingMode GetPackingMode() const override {
+    return pgwrapper::GetPackingMode(GetParam());
+  }
 };
 
 #define MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(test_suite_name) \
         INSTANTIATE_TEST_SUITE_P(, \
             test_suite_name, \
-            testing::Combine(testing::Bool(), testing::ValuesIn(kVectorIndexEngineArray)), \
+            testing::Combine(testing::Bool(), testing::ValuesIn(kVectorIndexEngineArray), \
+                             testing::ValuesIn(kPackingModeArray)), \
             TestParamToString)
 
 class PgVectorIndexTest : public PgVectorIndexTestParamsDecorator<PgVectorIndexTestBase> {
@@ -1091,13 +1108,18 @@ TEST_P(PgVectorIndexTest, Options) {
       LOG(INFO) << "Query: " << query;
       ASSERT_OK(conn.Execute(query));
     }
-    auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
+    auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
+    std::unordered_map<TabletId, size_t> checked_tablets;
     for (const auto& peer : peers) {
       auto tablet = peer->shared_tablet_maybe_null();
       auto vector_indexes = tablet->vector_indexes().List();
       if (!vector_indexes) {
         continue;
       }
+      if (checked_tablets[peer->tablet_id()] != 0) {
+        continue;
+      }
+      LOG(INFO) << "Vector indexes: " << AsString(vector_indexes);
       auto& tablet_indexes = checked_indexes[peer->tablet_id()];
       size_t num_new_indexes = 0;
       for (const auto& vector_index : *vector_indexes) {
@@ -1113,7 +1135,10 @@ TEST_P(PgVectorIndexTest, Options) {
             << AsString(hnsw_options);
         ASSERT_EQ(AsString(hnsw_options), expected_options);
       }
-      ASSERT_EQ(num_new_indexes, 1);
+      checked_tablets[peer->tablet_id()] = num_new_indexes;
+    }
+    for (const auto& [tablet_id, num_new_indexes] : checked_tablets) {
+      ASSERT_EQ(num_new_indexes, 1) << "Wrong number of new indexes for: " << tablet_id;
     }
   }
 }
@@ -1334,7 +1359,9 @@ TEST_P(PgVectorIndexSingleServerTest, ReverseMappingCleanup) {
   auto* db_impl = down_cast<rocksdb::DBImpl*>(db);
 
   // Setup helpers.
-  auto flush_tablet_and_wait = [&tablet, db_impl](const std::string& description) -> Status {
+  auto flush_tablet_and_wait = [&tablet, db_impl, cluster = cluster_.get()](
+      const std::string& description) -> Status {
+    RETURN_NOT_OK(WaitForAllIntentsApplied(cluster, 10s));
     RETURN_NOT_OK(tablet->Flush(tablet::FlushMode::kSync, tablet::FlushFlags::kAllDbs));
 
     // Wait for the files are really being flushed.
@@ -1543,6 +1570,10 @@ class PgVectorIndexUtilTest : public PgVectorIndexSingleServerTestBase {
 
   size_t NumTabletServers() override {
     return 1;
+  }
+
+  PackingMode GetPackingMode() const override {
+    return PackingMode::kV1;
   }
 };
 
