@@ -28,6 +28,10 @@ By analyzing this data, you can troubleshoot performance by answering questions 
 
 ## Configure ASH
 
+To run ASH queries, regardless of whether you are using YSQL or YCQL, the YSQL API must be enabled on your universe (the default).
+
+If YSQL is not enabled on your universe, you can enable it by setting the [enable_ysql](../../../reference/configuration/yb-tserver/#enable-ysql) flag to true on your Master and TServer servers. If you are using YugabyteDB Anywhere, to enable YSQL refer to [Enable database endpoints and authorization](../../../yugabyte-platform/security/authorization-platform/#enable-database-endpoints-and-authorization).
+
 To configure ASH, you can set the following YB-TServer flags for each node of your cluster.
 
 | Flag | Description |
