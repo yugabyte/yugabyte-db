@@ -219,7 +219,7 @@ Don't include the `dbname` parameter in the connection string; the default `yuga
 
 ## Assess migration
 
-This step applies to PostgreSQL and Oracle migrations only.
+This applies to PostgreSQL and Oracle migrations only.
 
 Assess migration analyzes the source database, captures essential metadata, and generates a report with recommended migration strategies and cluster configurations for optimal performance with YugabyteDB.
 
