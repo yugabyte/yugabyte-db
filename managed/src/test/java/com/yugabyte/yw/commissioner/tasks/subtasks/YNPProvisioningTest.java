@@ -41,6 +41,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 import org.junit.Before;
@@ -136,6 +137,9 @@ public class YNPProvisioningTest extends FakeDBApplication {
     lenient()
         .when(confGetter.getGlobalConf(eq(GlobalConfKeys.nodeAgentDescribePollDeadline)))
         .thenReturn(Duration.ofSeconds(2));
+    lenient()
+        .when(confGetter.getGlobalConf(eq(GlobalConfKeys.accessLogExcludeRegex)))
+        .thenReturn(Collections.emptyList());
 
     // Mock getGlobalConf() without parameters - needed by QueryHelper
     // Create a real Config with the required value to avoid ClassCastException
