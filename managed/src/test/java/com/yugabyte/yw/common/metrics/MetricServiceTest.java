@@ -317,7 +317,6 @@ public class MetricServiceTest extends FakeDBApplication {
     assertThat(metric.getUpdateTime(), notNullValue());
     assertThat(metric.getExpireTime(), notNullValue());
     assertThat(metric.getCustomerUUID(), equalTo(customer.getUuid()));
-    assertThat(metric.getType(), equalTo(Metric.Type.GAUGE));
     assertThat(metric.getName(), equalTo(PlatformMetrics.ALERT_MANAGER_STATUS.getMetricName()));
     assertThat(metric.getValue(), equalTo(value));
     assertThat(metric.getLabelValue(KnownAlertLabels.SOURCE_TYPE), equalTo("universe"));

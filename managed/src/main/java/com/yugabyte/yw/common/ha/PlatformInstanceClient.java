@@ -20,15 +20,15 @@ import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ConfigHelper.ConfigType;
 import com.yugabyte.yw.controllers.HAAuthenticator;
-import com.yugabyte.yw.controllers.ReverseInternalHAController;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
-import io.prometheus.client.CollectorRegistry;
-import io.prometheus.client.Gauge;
+import io.prometheus.metrics.core.metrics.Gauge;
+import io.prometheus.metrics.model.registry.PrometheusRegistry;
 import java.io.File;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.Getter;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.pekko.stream.javadsl.FileIO;
 import org.apache.pekko.stream.javadsl.Source;
 import org.apache.pekko.util.ByteString;
@@ -37,8 +37,10 @@ import org.slf4j.LoggerFactory;
 import play.libs.Json;
 import play.mvc.Call;
 import play.mvc.Http;
+import play.mvc.Http.Request;
 import v1.RoutesPrefix;
 
+@Slf4j
 public class PlatformInstanceClient implements AutoCloseable {
 
   public static final String YB_HA_WS_KEY = "yb.ha.ws";
@@ -54,15 +56,15 @@ public class PlatformInstanceClient implements AutoCloseable {
 
   private final Map<String, String> requestHeader;
 
-  private final ReverseInternalHAController controller;
-
   private final ConfigHelper configHelper;
 
   static {
     HA_YBA_VERSION_MISMATCH_GAUGE =
-        Gauge.build(HA_INSTANCE_VERSION_MISMATCH_NAME, "Has Instance version mismatched")
+        Gauge.builder()
+            .name(HA_INSTANCE_VERSION_MISMATCH_NAME)
+            .help("Has Instance version mismatched")
             .labelNames(HA_INSTANCE_ADDR_LABEL)
-            .register(CollectorRegistry.defaultRegistry);
+            .register(PrometheusRegistry.defaultRegistry);
   }
 
   public PlatformInstanceClient(
@@ -70,7 +72,6 @@ public class PlatformInstanceClient implements AutoCloseable {
     this.apiHelper = apiHelper;
     this.remoteAddress = remoteAddress;
     this.requestHeader = ImmutableMap.of(HAAuthenticator.HA_CLUSTER_KEY_TOKEN_HEADER, clusterKey);
-    this.controller = new ReverseInternalHAController(this::getPrefix);
     this.configHelper = configHelper;
   }
 
@@ -105,42 +106,57 @@ public class PlatformInstanceClient implements AutoCloseable {
   }
 
   /**
-   * calls {@link com.yugabyte.yw.controllers.InternalHAController#getHAConfigByClusterKey()} on
-   * remote platform instance
+   * calls {@link com.yugabyte.yw.controllers.InternalHAController#getHAConfigByClusterKey(Request)}
+   * on remote platform instance
    *
    * @return a HighAvailabilityConfig model representing the remote platform instance's HA config
    */
   public HighAvailabilityConfig getRemoteConfig() {
-    JsonNode response = this.makeRequest(this.controller.getHAConfigByClusterKey(), null);
+    JsonNode response = apiHelper.getRequest(remoteAddress + "/api/settings/ha/internal/config");
 
     return Json.fromJson(response, HighAvailabilityConfig.class);
   }
 
   /**
-   * calls {@link com.yugabyte.yw.controllers.InternalHAController#syncInstances(long timestamp)} on
+   * calls {@link com.yugabyte.yw.controllers.InternalHAController#syncInstances(long, Request)} on
    * remote platform instance
    *
    * @param payload the JSON platform instance data
    */
   public void syncInstances(long timestamp, JsonNode payload) {
-    this.makeRequest(this.controller.syncInstances(timestamp), payload);
+    apiHelper.putRequest(
+        remoteAddress + "/api/settings/ha/internal/config/sync/" + timestamp, payload);
   }
 
   /**
-   * calls {@link com.yugabyte.yw.controllers.InternalHAController#demoteLocalLeader(long timestamp,
-   * boolean promote)} on remote platform instance
+   * calls {@link com.yugabyte.yw.controllers.InternalHAController#demoteLocalLeader(long, boolean,
+   * Request)} on remote platform instance. Returns true if successful.
    */
-  public void demoteInstance(String localAddr, long timestamp, boolean promote) {
+  public boolean demoteInstance(String localAddr, long timestamp, boolean promote) {
+    boolean success = false;
     ObjectNode formData = Json.newObject().put("leader_address", localAddr);
-    final JsonNode response =
-        this.makeRequest(this.controller.demoteLocalLeader(timestamp, promote), formData);
-    maybeGenerateVersionMismatchEvent(response.get("ybaVersion"));
+    String url =
+        remoteAddress
+            + "/api/settings/ha/internal/config/demote/"
+            + timestamp
+            + "?promote="
+            + promote;
+    log.info("Making a remote call to {} to demote the instance", url);
+    final JsonNode response = apiHelper.putRequest(url, formData);
+    success = response != null && response.isObject();
+    if (success) {
+      log.info("Successfully demoted remote instance at {}", url);
+      maybeGenerateVersionMismatchEvent(response.get("ybaVersion"));
+    } else {
+      log.warn("Failed to demote the remote instance at {}", url);
+    }
+    return success;
   }
 
   public boolean syncBackups(String leaderAddr, String senderAddr, File backupFile) {
     JsonNode response =
         this.apiHelper.multipartRequest(
-            this.controller.syncBackups().url(),
+            remoteAddress + "/api/settings/ha/internal/upload",
             this.requestHeader,
             buildPartsList(
                 backupFile,
@@ -157,7 +173,7 @@ public class PlatformInstanceClient implements AutoCloseable {
 
   public boolean testConnection() {
     try {
-      JsonNode response = this.makeRequest(this.controller.getHAConfigByClusterKey(), null);
+      JsonNode response = apiHelper.getRequest(remoteAddress + "/api/settings/ha/internal/config");
     } catch (Exception e) {
       return false;
     }
@@ -174,9 +190,9 @@ public class PlatformInstanceClient implements AutoCloseable {
     String remoteVersionStripped = remoteVersion.toString().replaceAll("^['\"]|['\"]$", "");
 
     if (!localVersion.equals(remoteVersionStripped)) {
-      HA_YBA_VERSION_MISMATCH_GAUGE.labels(remoteAddress).set(1);
+      HA_YBA_VERSION_MISMATCH_GAUGE.labelValues(remoteAddress).set(1);
     } else {
-      HA_YBA_VERSION_MISMATCH_GAUGE.labels(remoteAddress).set(0);
+      HA_YBA_VERSION_MISMATCH_GAUGE.labelValues(remoteAddress).set(0);
     }
   }
 

@@ -169,7 +169,6 @@ public class HealthCheckMetrics {
                   new Metric()
                       .setExpireTime(
                           nowPlusWithoutMillis(DEFAULT_METRIC_EXPIRY_SEC, ChronoUnit.SECONDS))
-                      .setType(Metric.Type.GAUGE)
                       .setName(metric.getName())
                       .setHelp(metric.getHelp())
                       .setUnit(metric.getUnit())
@@ -208,7 +207,6 @@ public class HealthCheckMetrics {
       Customer customer, Universe universe, String node, String checkName, Double value) {
     return new Metric()
         .setExpireTime(nowPlusWithoutMillis(DEFAULT_METRIC_EXPIRY_SEC, ChronoUnit.SECONDS))
-        .setType(Metric.Type.GAUGE)
         .setName(PlatformMetrics.YB_UNIV_HEALTH_STATUS.getMetricName())
         .setHelp("Boolean result of health checks")
         .setCustomerUUID(customer.getUuid())

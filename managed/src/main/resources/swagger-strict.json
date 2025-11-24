@@ -29783,7 +29783,11 @@
       "get" : {
         "description" : "Available since YBA version 2.8.0.0.",
         "operationId" : "MetricsDetail",
-        "parameters" : [ ],
+        "parameters" : [ {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        } ],
         "responses" : {
           "200" : {
             "description" : "successful operation",

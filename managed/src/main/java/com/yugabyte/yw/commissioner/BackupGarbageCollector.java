@@ -34,8 +34,8 @@ import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.TaskType;
-import io.prometheus.client.CollectorRegistry;
-import io.prometheus.client.Gauge;
+import io.prometheus.metrics.core.metrics.Gauge;
+import io.prometheus.metrics.model.registry.PrometheusRegistry;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -81,9 +81,11 @@ public class BackupGarbageCollector {
   private static final int BACKUP_DELETION_MAX_RETRIES_COUNT = 3;
 
   public static final Gauge DELETE_BACKUP_FAILURE =
-      Gauge.build("ybp_delete_backup_failure", "Count of failed delete backup attempt")
+      Gauge.builder()
+          .name("ybp_delete_backup_failure")
+          .help("Count of failed delete backup attempt")
           .labelNames(MetricLabelsBuilder.CUSTOMER_LABELS)
-          .register(CollectorRegistry.defaultRegistry);
+          .register(PrometheusRegistry.defaultRegistry);
 
   @Inject
   public BackupGarbageCollector(
@@ -176,7 +178,7 @@ public class BackupGarbageCollector {
         MetricLabelsBuilder metricLabelsBuilder =
             MetricLabelsBuilder.create().fromCustomer(customer);
         DELETE_BACKUP_FAILURE
-            .labels(metricLabelsBuilder.getPrometheusValues())
+            .labelValues(metricLabelsBuilder.getPrometheusValues())
             .set(failedToDeleteBackupCount);
       }
       // Create task to delete expired backups.
