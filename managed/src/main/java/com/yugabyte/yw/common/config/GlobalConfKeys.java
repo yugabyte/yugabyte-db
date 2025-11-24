@@ -1919,4 +1919,13 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " than 1 day old",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<List> accessLogExcludeRegex =
+      new ConfKeyInfo<>(
+          "yb.log.access.exclude_regex",
+          ScopeType.GLOBAL,
+          "List of 'METHOD uri' regexes to exclude from the access log",
+          "List of 'METHOD uri' regexes which we don't print in access log, like 'GET"
+              + " \\/some\\/path\\/.+",
+          ConfDataType.StringListType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }
