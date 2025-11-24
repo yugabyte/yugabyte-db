@@ -52,6 +52,17 @@ The columns of the pg_stat_statements view are described in the following table.
 | blk_read_time        | double precision | Not populated in YugabyteDB                                                                                    |
 | blk_write_time       | double precision | Not populated in YugabyteDB                                                                                    |
 | yb_latency_histogram | jsonb            | List of key value pairs where key is the latency range and value is the count of times a query was executed    |
+| docdb_read_rpcs      | bigint           | Number of roundtrips requests made to the local YB-TServer that includes only read operations                 |
+| docdb_write_rpcs     | bigint           | Number of roundtrips requests issued to the local YB-TServer that includes at least 1 write operation         |
+| catalog_wait_time   | bigint           | Wall clock wait time (in ms) for catalog requests, including the network latency                                |
+| docdb_read_operations | bigint         | Total number of read operations sent as part of RPC requests                                                   |
+| docdb_write_operations | bigint        | Total number of write operations sent as part of RPC requests                                                  |
+| docdb_wait_time     | double precision | Wall clock wait time (in ms) for storage requests in YSQL layer, including the network latency               |
+| docdb_rows_scanned  | bigint           | Rows scanned by DocDB                                                                                          |
+| docdb_rows_returned | bigint           | Rows returned by DocDB layer to YSQL layer                                                                     |
+| conflict_retries    | bigint           | Number of internal query retries caused by transaction conflicts between overlapping transactions              |
+| read_restart_retries | bigint          | Number of internal query retries for reads possibly because of a concurrent update                            |
+| total_retries       | bigint           | Total number of query retries of any type                                                                       |
 
 ## Configuration parameters
 
@@ -65,14 +76,20 @@ You can configure the following parameters in `postgresql.conf`:
 | `pg_stat_statements.track_utility` | boolean | on | Controls whether the module tracks utility commands. |
 | `pg_stat_statements.save` | boolean | on | Specifies whether to save statement statistics across server shutdowns. |
 | `pg_stat_statements.yb_hdr_bucket_factor` | integer | 16 | Changes the number of latency range buckets. |
+| `yb_enable_pg_stat_statements_rpc_stats` | boolean | false | Enables RPC execution time stats for pg_stat_statements. When enabled, populates the DocDB-related columns (docdb_read_rpcs, docdb_write_rpcs, docdb_wait_time, and others). This is a runtime flag that can be changed without restarting the server. |
 
 The module requires additional shared memory proportional to `pg_stat_statements.max`. Note that this memory is consumed whenever the module is loaded, even if `pg_stat_statements.track` is set to `none`.
+
+{{<note title="RPC statistics">}}
+To populate the DocDB-related columns (`docdb_read_rpcs`, `docdb_write_rpcs`, `docdb_wait_time`, `catalog_wait_time`, `docdb_read_operations`, `docdb_write_operations`, `docdb_rows_scanned`, `docdb_rows_returned`, `conflict_retries`, `read_restart_retries`, and `total_retries`), you must enable the `yb_enable_pg_stat_statements_rpc_stats` flag. This flag defaults to `false` and can be set at runtime.
+{{</note>}}
 
 ```sh
 pg_stat_statements.max = 10000
 pg_stat_statements.track = all
 pg_stat_statements.track_utility = off
 pg_stat_statements.save = on
+yb_enable_pg_stat_statements_rpc_stats = true
 ```
 
 To track IO elapsed time, turn on the `track_io_timing` parameter in `postgresql.conf`:
