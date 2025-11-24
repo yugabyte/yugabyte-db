@@ -210,11 +210,58 @@ You can perform the following steps with these scripts:
 
 1. On a machine which has access to the source database, copy the scripts and install dependencies psql and pg_dump version 14 or later. Alternatively, you can install yb-voyager on the machine to automatically get the dependencies.
 
-1. Run the `yb-voyager-pg-gather-assessment-metadata.sh` script by providing the source connection string, the schema names, path to a directory where metadata will be saved, and an optional argument of an interval to capture the IOPS metadata of the source (in seconds with a default value of 120). For example:
+1. Run the `yb-voyager-pg-gather-assessment-metadata.sh` script by providing the source connection string, the schema names, path to a directory where metadata will be saved, and additional optional arguments.
+
+    | <div style="width:150px">Argument</div> | Description/valid options |
+    | :------- | :------------------------ |
+    | pgss_enabled (required) | Whether pg_stat_statements is correctly installed and enabled. <br>Accepted parameters: true, false |
+    | iops_capture_interval (optional) |  Interval in seconds to capture IOPS metadata .<br>Default: 120|
+    | yes (optional) | Answer "yes" to interactive questions. <br>Default: false <br>Accepted parameters: true, false |
+    | source_node_name (optional) | Logical name of the node from which you are collecting data. If omitted, it defaults to primary. Use distinct values (for example, primary, replica1, replica2) when collecting from multiple nodes. |
+    | skip_checks (optional) | When true, skips pre-flight checks already performed by guardrails <br>Default: false <br>Accepted parameters: true, false |
+
+    For example, on a single-node PostgreSQL deployment:
 
     ```sh
-    /path/to/yb-voyager-pg-gather-assessment-metadata.sh 'postgresql://ybvoyager@host:port/dbname' 'schema1|schema2' '/path/to/assessment_metadata_dir' '60'
+      /path/to/yb-voyager-pg-gather-assessment-metadata.sh \
+        'postgresql://ybvoyager@host:port/dbname' \
+        'schema1|schema2' \
+        '/path/to/assessment_metadata_dir' \
+        'true' \
+        '120'\
     ```
+
+    **Note: For primary–replica setups and source_node_name option**<br/>
+    If you have read replicas, run the script once on each node that you want to include in the assessment, using the same directory, `assessment_metadata_dir` but a different `source_node_name` for each node. The primary node must use `source_node_name=primary` (or omit it to accept the default), and replicas should use unique names such as replica1, replica2, and so on. This ensures that Voyager tags and analyzes the collected metrics separately for each node. For example,
+
+    On the primary node:
+    ```sh
+      /path/to/yb-voyager-pg-gather-assessment-metadata.sh \
+        'postgresql://ybvoyager@primary-host:5432/dbname' \
+        'public|sales' \
+        '/path/to/assessment_metadata_dir' \
+        'true' \
+        '120' \
+        'false' \
+        'primary'
+    ```
+
+    On a read replica:
+
+    ```sh
+    /path/to/yb-voyager-pg-gather-assessment-metadata.sh \
+      'postgresql://ybvoyager@replica1-host:5432/dbname' \
+      'public|sales' \
+      '/path/to/assessment_metadata_dir' \
+      'true' \
+      '120' \
+      'false' \
+      'replica1'
+    ```
+
+
+
+
 
 1. Copy the metadata directory to the client machine on which voyager is installed, and run the `assess-migration` command by specifying the path to the metadata directory as follows:
 
