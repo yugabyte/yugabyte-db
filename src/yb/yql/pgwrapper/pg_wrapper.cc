@@ -1473,7 +1473,7 @@ std::shared_ptr<ProcessWrapper> PgSupervisor::CreateProcessWrapper() {
     if (FLAGS_enable_ysql_conn_mgr_stats)
       CHECK_OK(pgwrapper->SetYsqlConnManagerStatsShmKey(GetYsqlConnManagerStatsShmkey()));
   } else {
-    FLAGS_enable_ysql_conn_mgr_stats = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql_conn_mgr_stats) = false;
   }
 
   if (server_) {
