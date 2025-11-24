@@ -34,6 +34,7 @@
 #include "yb/docdb/docdb.h"
 
 #include "yb/dockv/doc_key.h"
+#include "yb/dockv/packed_row.h"
 #include "yb/dockv/packed_value.h"
 #include "yb/dockv/reader_projection.h"
 
@@ -116,6 +117,14 @@ using dockv::SchemaPackingStorage;
 
 namespace {
 YB_DEFINE_ENUM(OpType, (INSERT)(UPDATE)(DELETE));
+
+Result<bool> IsPackedRowUpdate(const dockv::ValueEntryType value_type, Slice value_slice) {
+  if (value_type != dockv::ValueEntryType::kPackedRowV2) {
+    return false;
+  }
+
+  return VERIFY_RESULT(dockv::ParsePackedRowV2Header(value_slice)).IsUpdate();
+}
 
 void SetOperation(RowMessage* row_message, OpType type, const Schema& schema) {
   switch (type) {
@@ -630,7 +639,9 @@ Result<size_t> DoPopulatePackedRows(
     RETURN_NOT_OK(AddColumnToMap(
         tablet_peer, col, pv, enum_oid_label_map, composite_atts_map, request_source,
         row_message->add_new_tuple(), nullptr));
-    row_message->add_old_tuple();
+      if (row_message->op() == RowMessage_Op_INSERT) {
+        row_message->add_old_tuple();
+      }
   }
 
   return packing.columns();
@@ -1073,7 +1084,8 @@ Status PopulateCDCSDKIntentRecord(
         }
       } else if (IsPackedRow(value_type)) {
         is_packed_row_record = true;
-        SetOperation(row_message, OpType::INSERT, schema);
+        const bool is_update = VERIFY_RESULT(IsPackedRowUpdate(value_type, value_slice));
+        SetOperation(row_message, is_update ? OpType::UPDATE : OpType::INSERT, schema);
         col_count = schema.num_key_columns();
       } else {
         if (column_id_opt && column_id_opt->type() == dockv::KeyEntryType::kSystemColumnId &&
@@ -1432,7 +1444,8 @@ Status PopulateCDCSDKWriteRecord(
       if (value_type == dockv::ValueEntryType::kTombstone && decoded_key.num_subkeys() == 0) {
         SetOperation(row_message, OpType::DELETE, schema);
       } else if (IsPackedRow(value_type)) {
-        SetOperation(row_message, OpType::INSERT, schema);
+        const bool is_update = VERIFY_RESULT(IsPackedRowUpdate(value_type, value_slice));
+        SetOperation(row_message, is_update ? OpType::UPDATE : OpType::INSERT, schema);
         is_packed_row_record = true;
       } else {
         dockv::KeyEntryValue column_id;

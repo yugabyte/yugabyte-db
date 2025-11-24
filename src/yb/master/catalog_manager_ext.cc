@@ -66,6 +66,7 @@
 #include "yb/master/tablet_split_manager.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/xcluster_consumer_registry_service.h"
+#include "yb/master/ysql_ddl_verification_task.h"
 #include "yb/master/ysql/ysql_manager_if.h"
 #include "yb/master/ysql_tablegroup_manager.h"
 
@@ -990,6 +991,12 @@ Status CatalogManager::ImportSnapshotPreprocess(
           if (data.old_table_id.empty()) {
             data.old_table_id = entry.id();
             data.table_entry_pb = VERIFY_RESULT(ParseFromSlice<SysTablesEntryPB>(entry.data()));
+            // Mark tables undergoing DDL at backup time to skip schema validation at import.
+            if (data.table_entry_pb.ysql_ddl_txn_verifier_state_size() > 0) {
+            data.validate_schema = false;
+            LOG_WITH_FUNC(INFO) << "Marking table " << data.old_table_id
+                                << " to skip schema validation due to DDL verifier state.";
+            }
             if (backup_entry.has_pg_schema_name()) {
               data.pg_schema_name = backup_entry.pg_schema_name();
             }
@@ -2264,9 +2271,10 @@ Status CatalogManager::ImportTableEntry(
     // Additionally, for indexes, we compare the column ids as we expect them to be
     // preserved.
     const vector<ColumnId>& column_ids = schema.column_ids();
-    if (!persisted_schema.Equals(schema, comparator)
-        || persisted_schema.column_ids().size() != column_ids.size()
-        || (table->is_index() && persisted_schema.column_ids() != column_ids)) {
+    if (table_data->validate_schema &&
+        (!persisted_schema.Equals(schema, comparator) ||
+         persisted_schema.column_ids().size() != column_ids.size() ||
+         (table->is_index() && persisted_schema.column_ids() != column_ids))) {
       const string msg = Format(
           "Invalid created $0 table '$1' in namespace id $2: schema={$3}, expected={$4}",
           TableType_Name(meta.table_type()), meta.name(), new_namespace_id,
@@ -2402,10 +2410,16 @@ Status CatalogManager::ImportTableEntry(
     // 1- Clone case: bump it to current schema version of source table + 1. This ensures that the
     // current schema version is greater than all schema versions that might exist in the snapshot
     // used for clone.
-    // 2- Restoring a backup case: bump the schema version to the schema version of SysTableEntryPB
-    // found in the snapshotInfo if the latter is greater. This is because it is guaranteed that the
-    // schema version found in snapshotInfo is the maximum schema version that can be found in the
-    // snapshot at backup creation time.
+    // 2- Restoring a backup case: bump the schema version to 1 + the schema version of
+    // SysTableEntryPB found in the SnapshotInfoPB if the latter is greater. This is because it is
+    // guaranteed that the schema version found in snapshotInfo is the maximum schema version that
+    // can be found in the snapshot at backup creation time. The one extra schema version bump is
+    // used to avoid any conflict with the snapshot's older schema packings at tserver side.
+    // The last version is used for the committed schema on the master of the restore side
+    // The semantics are as follows: At tserver, all schema packings coming from the snapshot
+    // will be used in tablet-meta and the last schema will have the correct committed schema
+    // created at restore side as part of executing the SQL dump. The last schema is send from the
+    // master to the tservers during ImportSnapshot.
     if (is_clone) {
       // The Source table should be found as we are cloning from it.
       TRACE("Looking up source table");
@@ -2421,8 +2435,8 @@ Status CatalogManager::ImportTableEntry(
       } else {
         schema_version = source_table_lock->pb.version() + 1;
       }
-    } else if (meta.version() > table->LockForRead()->pb.version()) {
-      schema_version = meta.version();
+    } else if (meta.version() >= table->LockForRead()->pb.version()) {
+      schema_version = meta.version() + 1;
     }
 
     if (schema_version) {

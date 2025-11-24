@@ -21,6 +21,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
+import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
@@ -84,7 +85,10 @@ public class RestoreYbaBackup extends AbstractTaskBase {
             BAD_REQUEST, "YBA restore is not allowed when backup file is more than 1 day old");
       }
     }
-    if (!replicationManager.restoreBackup(backupFile, true /* k8sRestoreYbaDbOnRestart */)) {
+    if (!replicationManager.restoreBackup(
+        backupFile,
+        true /* k8sRestoreYbaDbOnRestart */,
+        KubernetesEnvironmentVariables.isYbaRunningInKubernetes() /* skipOldFiles */)) {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "YBA restore failed.");
     }
 

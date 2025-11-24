@@ -454,8 +454,12 @@ void TabletVectorIndexes::ScheduleBackfill(
       [this, vector_index, backfill_ht, key = key.ToBuffer(), op_id, indexed_table,
        read_op = std::move(read_op)] {
     auto status = Backfill(vector_index, *indexed_table, key, backfill_ht, op_id);
-    LOG_IF_WITH_PREFIX(DFATAL, !status.ok())
-        << "Backfill " << AsString(vector_index) << " failed: " << status;
+    if (status.IsShutdownInProgress()) {
+      LOG_WITH_PREFIX(WARNING) << "Backfill " << AsString(vector_index) << " failed: " << status;
+    } else {
+      LOG_IF_WITH_PREFIX(DFATAL, !status.ok())
+          << "Backfill " << AsString(vector_index) << " failed: " << status;
+    }
   });
 }
 

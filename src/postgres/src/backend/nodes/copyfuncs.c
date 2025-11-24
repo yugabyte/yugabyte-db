@@ -6333,6 +6333,13 @@ copyObjectImpl(const void *from)
 			retval = _copyForeignKeyCacheInfo(from);
 			break;
 
+			/*
+			 * YB NODES
+			 */
+		case T_YbPartitionPruneStepFuncOp:
+			retval = _copyYbPartitionPruneStepFuncOp(from);
+			break;
+
 		case T_YbBackfillIndexStmt:
 			retval = _copyYbBackfillIndexStmt(from);
 			break;

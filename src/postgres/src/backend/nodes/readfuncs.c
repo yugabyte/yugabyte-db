@@ -3242,6 +3242,8 @@ parseNodeString(void)
 		return_value = _readPartitionBoundSpec();
 	else if (MATCH("PARTITIONRANGEDATUM", 19))
 		return_value = _readPartitionRangeDatum();
+	else if (MATCH("PARTITIONPRUNESTEPFUNCOP", 24))
+		return_value = _readYbPartitionPruneStepFuncOp();
 	else if (MATCH("YBEXPRCOLREFDESC", 16))
 		return_value = _readYbExprColrefDesc();
 	else if (MATCH("YBSKIPPABLEENTITIES", 19))

@@ -827,7 +827,7 @@ static const struct object_type_map
 	{
 		"database", OBJECT_DATABASE
 	},
-	/* OCLASS_TBLGROUP */
+	/* OCLASS_YBTBLGROUP */
 	{
 		"tablegroup", OBJECT_YBTABLEGROUP
 	},
@@ -3806,7 +3806,7 @@ getObjectDescription(const ObjectAddress *object, bool missing_ok)
 				break;
 			}
 
-		case OCLASS_TBLGROUP:
+		case OCLASS_YBTBLGROUP:
 			{
 				char	   *tblgroup;
 
@@ -4728,7 +4728,7 @@ getObjectTypeDescription(const ObjectAddress *object, bool missing_ok)
 			appendStringInfoString(&buffer, "database");
 			break;
 
-		case OCLASS_TBLGROUP:
+		case OCLASS_YBTBLGROUP:
 			appendStringInfoString(&buffer, "tablegroup");
 			break;
 
@@ -5697,7 +5697,7 @@ getObjectIdentityParts(const ObjectAddress *object,
 				break;
 			}
 
-		case OCLASS_TBLGROUP:
+		case OCLASS_YBTBLGROUP:
 			{
 				char	   *tblgroup;
 

@@ -16,21 +16,23 @@
 #include "yb/server/server_base_options.h"
 
 #include "yb/tserver/tserver_fwd.h"
+#include "yb/tserver/ysql_lease_manager.h"
 
 #include "yb/util/status_fwd.h"
 
-namespace yb {
-namespace tserver {
+namespace yb::tserver {
 
 class YsqlLeaseClient {
  public:
-  YsqlLeaseClient(TabletServer& server, server::MasterAddressesPtr master_addresses);
+  YsqlLeaseClient(
+      TabletServer& server, YSQLLeaseManager& lease_manager,
+      server::MasterAddressesPtr master_addresses);
   YsqlLeaseClient(const YsqlLeaseClient& other) = delete;
   void operator=(const YsqlLeaseClient& other) = delete;
 
   Status Start();
   Status Stop();
-  std::future<Status> RelinquishLease();
+  std::future<Status> RelinquishLease(MonoDelta timeout) const;
   void set_master_addresses(server::MasterAddressesPtr master_addresses);
 
   ~YsqlLeaseClient();
@@ -40,5 +42,4 @@ class YsqlLeaseClient {
   std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace tserver
-}  // namespace yb
+}  // namespace yb::tserver

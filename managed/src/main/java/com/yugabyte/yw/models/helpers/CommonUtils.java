@@ -22,6 +22,7 @@ import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.controllers.RequestContext;
 import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
@@ -851,6 +852,14 @@ public class CommonUtils {
           "No live or toBeRemoved TServers found for Universe UUID: " + universe.getUniverseUUID());
     }
     return randomLiveOrRemovedTServer;
+  }
+
+  public static UniverseDefinitionTaskParams.ClusterType getClusterType(
+      Provider provider, Universe universe) {
+    String primaryUUIDStr = universe.getUniverseDetails().getPrimaryCluster().userIntent.provider;
+    return provider.getUuid().toString().equals(primaryUUIDStr)
+        ? UniverseDefinitionTaskParams.ClusterType.PRIMARY
+        : UniverseDefinitionTaskParams.ClusterType.ASYNC;
   }
 
   private static NodeDetails getARandomLiveOrToBeRemovedTServer(Collection<NodeDetails> nodes) {

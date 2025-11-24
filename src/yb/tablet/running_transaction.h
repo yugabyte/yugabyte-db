@@ -39,7 +39,8 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
                      const TransactionalBatchData& last_batch_data,
                      OneWayBitmap&& replicated_batches,
                      HybridTime base_time_for_abort_check_ht_calculation,
-                     RunningTransactionContext* context);
+                     RunningTransactionContext* context,
+                     const AtomicGaugePtr<uint64_t>& metric_aborted_transactions_pending_cleanup);
 
   ~RunningTransaction();
 
@@ -203,6 +204,7 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
   TransactionalBatchData last_batch_data_;
   OneWayBitmap replicated_batches_;
   RunningTransactionContext& context_;
+  std::weak_ptr<void> weak_context_;
   RemoveIntentsTask remove_intents_task_;
   HybridTime local_commit_time_ = HybridTime::kInvalid;
 
@@ -245,6 +247,8 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
   bool has_retryable_requests_replicated_ = false;
 
   FastModeTransactionScope fast_mode_scope_;
+
+  AtomicGaugePtr<uint64_t> metric_aborted_transactions_pending_cleanup_;
 };
 
 Status MakeAbortedStatus(const TransactionId& id);

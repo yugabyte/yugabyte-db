@@ -206,8 +206,6 @@ static bool is_subquery_var(Var *node, RelOptInfo *foreignrel,
 static void get_relation_column_alias_ids(Var *node, RelOptInfo *foreignrel,
 										  int *relno, int *colno);
 
-static const char *yb_get_tuple_identifier_colname_from_min_attr(AttrNumber min_attr);
-
 
 /*
  * Examine each qual clause in input_conds, and classify them into two groups,

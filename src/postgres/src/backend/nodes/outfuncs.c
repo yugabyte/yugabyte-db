@@ -4818,6 +4818,9 @@ outNode(StringInfo str, const void *obj)
 			case T_PartitionRangeDatum:
 				_outPartitionRangeDatum(str, obj);
 				break;
+			case T_YbPartitionPruneStepFuncOp:
+				_outYbPartitionPruneStepFuncOp(str, obj);
+				break;
 			case T_YbExprColrefDesc:
 				_outYbExprColrefDesc(str, obj);
 				break;
