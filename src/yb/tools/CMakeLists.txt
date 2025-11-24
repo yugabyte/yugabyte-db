@@ -247,12 +247,17 @@ add_executable(clockbound_dump clockbound_dump.cc)
 target_link_libraries(clockbound_dump
   clockbound yb_common yb_util)
 
-configure_file(
-  ${CMAKE_SOURCE_DIR}/src/yb/tools/flamegraph.pl
-  ${CMAKE_BINARY_DIR}/bin/flamegraph.pl
-  COPYONLY)
+macro(yb_add_script SCRIPT_NAME)
+  add_custom_command(
+    OUTPUT ${CMAKE_BINARY_DIR}/bin/${SCRIPT_NAME}
+    COMMAND ${CMAKE_COMMAND} -E copy
+      ${CMAKE_CURRENT_SOURCE_DIR}/${SCRIPT_NAME}
+      ${CMAKE_BINARY_DIR}/bin/${SCRIPT_NAME}
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${SCRIPT_NAME}
+    COMMENT "Copying ${SCRIPT_NAME} to bin"
+  )
+  add_custom_target(${SCRIPT_NAME} ALL DEPENDS ${CMAKE_BINARY_DIR}/bin/${SCRIPT_NAME})
+endmacro()
 
-configure_file(
-  ${CMAKE_SOURCE_DIR}/src/yb/tools/stackcollapse-perf.pl
-  ${CMAKE_BINARY_DIR}/bin/stackcollapse-perf.pl
-  COPYONLY)
+yb_add_script(flamegraph.pl)
+yb_add_script(stackcollapse-perf.pl)
