@@ -2990,6 +2990,86 @@ TEST_P(PgRecursiveAbortTest, MockAbortFailure) {
   ASSERT_EQ(conn.ConnStatus(), CONNECTION_BAD);
 }
 
+class PgHeartbeatFailureTest : public PgMiniTestSingleNode {
+ public:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_pg_client_mock) = true;
+    PgMiniTest::SetUp();
+  }
+
+  template <class F>
+  tserver::PgClientServiceMockImpl::Handle MockHeartbeat(const F& mock) {
+    auto* client = cluster_->mini_tablet_server(0)->server()->TEST_GetPgClientServiceMock();
+    return client->MockHeartbeat(mock);
+  }
+
+  void UnsetHeartbeatMock() {
+    auto* client = cluster_->mini_tablet_server(0)->server()->TEST_GetPgClientServiceMock();
+    client->UnsetMock("Heartbeat");
+  }
+};
+
+static MonoDelta kHeartbeatFailureDuration = MonoDelta::FromSeconds(5);
+static CoarseTimePoint kFailureStart = CoarseTimePoint();
+
+Status MockHeartbeatFailure(
+    const yb::tserver::PgHeartbeatRequestPB* req,
+    yb::tserver::PgHeartbeatResponsePB* resp, yb::rpc::RpcContext* context) {
+  LOG(INFO) << "Heartbeat called for session: " << req->session_id();
+  if (kFailureStart == CoarseTimePoint()) {
+    kFailureStart = CoarseMonoClock::Now();
+  }
+
+  if (CoarseMonoClock::Now() - kFailureStart < kHeartbeatFailureDuration) {
+    return STATUS(NetworkError, "Mocking network failure on Heartbeat");
+  }
+
+  // Do not set the session ID. The client should create a new session.
+  return Status::OK();
+}
+
+TEST_F(PgHeartbeatFailureTest, MockTransientHeartbeatFailure) {
+  PGConn conn = ASSERT_RESULT(Connect());
+  auto _ = MockHeartbeat(MockHeartbeatFailure);
+
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([this] {
+    SleepFor(5s);
+    UnsetHeartbeatMock();
+  });
+
+  uint nfailures = 0;
+  ASSERT_OK(WaitFor([this, &nfailures]() {
+    auto result = ConnectToDB(std::string() /* dbname */, 1 /* timeout */ );
+    if (!result.ok()) {
+      nfailures++;
+      return false;
+    }
+
+    // Validate that once a heartbeat is successful, the connection can service
+    // queries.
+    PGConn conn2 = std::move(*result);
+    auto status = conn2.Execute("CREATE TABLE t1 (k INT)");
+    if (!status.ok()) {
+      nfailures++;
+      return false;
+    }
+
+    return true;
+  }, 10s, "Transient failure timeout", 1s));
+
+  thread_holder.JoinAll();
+  // Validate that at least one new connection experienced heartbeat failure.
+  ASSERT_GT(nfailures, 0);
+
+  // The old connection should still work as it received a valid session ID from
+  // the tserver before the mock was installed. Validate that it can service
+  // queries.
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1)"));
+  auto nrows = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT COUNT(*) FROM t1"));
+  ASSERT_EQ(nrows, 1);
+}
+
 TEST_F(PgMiniTest, KillPGInTheMiddleOfBatcherOperation) {
   const std::string kTableName = "test_table";
   const auto kQuery = Format("SELECT * FROM $0", kTableName);

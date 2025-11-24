@@ -1154,8 +1154,10 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 			.shared_data = &MyProc->yb_shared_data
 		};
 
-		YBCInitPgGate(YbGetTypeTable(), &callbacks,
-					  init_info ? init_info : &default_init_info, &ash_config);
+		HandleYBStatusAtErrorLevel(YBCInitPgGate(YbGetTypeTable(),
+												 &callbacks,
+												 init_info ? init_info : &default_init_info,
+												 &ash_config), FATAL);
 		YBCInstallTxnDdlHook();
 
 		/*
