@@ -5,11 +5,11 @@ linkTitle: YugabyteDB gRPC Connector
 description: YugabyteDB gRPC Connector is an open source distributed platform used to capture the changes in a database.
 aliases:
   - /stable/explore/change-data-capture/debezium-connector-yugabytedb-ysql
-  - /preview/explore/change-data-capture/debezium-connector
-  - /preview/explore/change-data-capture/debezium
-  - /preview/explore/change-data-capture/debezium-connector-postgresql
-  - /preview/explore/change-data-capture/debezium-connector-yugabytedb
-  - /preview/explore/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/
+  - /stable/explore/change-data-capture/debezium-connector
+  - /stable/explore/change-data-capture/debezium
+  - /stable/explore/change-data-capture/debezium-connector-postgresql
+  - /stable/explore/change-data-capture/debezium-connector-yugabytedb
+  - /stable/explore/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/
 menu:
   stable:
     parent: explore-change-data-capture-grpc-replication

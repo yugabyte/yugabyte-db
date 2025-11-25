@@ -6,8 +6,8 @@ headcontent: Learn about YugabyteDB features, with examples
 description: Explore the features of YugabyteDB on macOS, Linux, Docker, and Kubernetes.
 aliases:
   - /stable/explore/high-performance/
-  - /preview/explore/planet-scale/
-  - /preview/explore/cloud-native/orchestration-readiness/
+  - /stable/explore/planet-scale/
+  - /stable/explore/cloud-native/orchestration-readiness/
 type: indexpage
 showRightNav: true
 ---

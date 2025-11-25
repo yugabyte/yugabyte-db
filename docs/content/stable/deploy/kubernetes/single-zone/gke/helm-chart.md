@@ -11,7 +11,7 @@ menu:
     weight: 623
 aliases:
   - /stable/deploy/kubernetes/gke/helm-chart/
-  - /preview/deploy/kubernetes/single-zone/gke/
+  - /stable/deploy/kubernetes/single-zone/gke/
 type: docs
 ---
 

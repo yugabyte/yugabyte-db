@@ -5,7 +5,7 @@ linkTitle: Aggregations
 description: Learn how YugabyteDB YSQL supports standard aggregation functions.
 aliases:
   - /develop/learn/aggregations/
-  - /preview/develop/learn/aggregations/
+  - /stable/develop/learn/aggregations/
 menu:
   stable_develop:
     identifier: aggregations-2-ysql

@@ -9,7 +9,7 @@ menu:
     weight: 104
 aliases:
   - /stable/yugabyte-voyager/performance/
-  - /preview/yugabyte-voyager/monitor/performance/
+  - /stable/yugabyte-voyager/monitor/performance/
 type: docs
 ---
 

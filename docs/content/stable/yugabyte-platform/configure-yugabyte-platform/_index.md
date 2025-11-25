@@ -13,7 +13,7 @@ menu:
       hideLink: true
 aliases:
   - /stable/yugabyte-platform/overview/configure/
-  - /preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/
+  - /stable/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/
 type: indexpage
 ---
 

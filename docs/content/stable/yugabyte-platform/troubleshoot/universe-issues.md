@@ -5,7 +5,7 @@ linkTitle: Universe issues
 description: Troubleshoot universe issues
 aliases:
   - /troubleshoot/enterprise-edition/universes/
-  - /preview/troubleshoot/enterprise-edition/universes/
+  - /stable/troubleshoot/enterprise-edition/universes/
 menu:
   stable_yugabyte-platform:
     identifier: universe-issues

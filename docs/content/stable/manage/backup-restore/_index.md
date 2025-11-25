@@ -6,7 +6,7 @@ description: Back up and restore YugabyteDB
 headcontent: Create backups and restore your data
 aliases:
   - /manage/backup-restore/
-  - /preview/backup-restore/
+  - /stable/backup-restore/
 menu:
   stable:
     identifier: backup-restore

@@ -11,8 +11,8 @@ menu:
     weight: 624
 aliases:
   - /stable/deploy/kubernetes/aks/
-  - /preview/deploy/kubernetes/aks/helm-chart/
-  - /preview/deploy/kubernetes/single-zone/aks/
+  - /stable/deploy/kubernetes/aks/helm-chart/
+  - /stable/deploy/kubernetes/single-zone/aks/
 type: docs
 ---
 

@@ -7,7 +7,7 @@ tags:
   other: ysql
 aliases:
   - /stable/reference/drivers/go/
-  - /preview/reference/drivers/go/yb-pgx-reference/
+  - /stable/reference/drivers/go/yb-pgx-reference/
 menu:
   stable_develop:
     name: Go Drivers

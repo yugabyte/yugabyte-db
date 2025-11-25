@@ -6,8 +6,8 @@ description: Use YugabyteDB Anywhere to back up and restore YugabyteDB universe 
 headcontent: Use YugabyteDB Anywhere to back up and restore YugabyteDB universes and data
 aliases:
   - /stable/manage/enterprise-edition/backup-restore
-  - /preview/manage/enterprise-edition/back-up-restore-data
-  - /preview/yugabyte-platform/manage/backup-restore-data
+  - /stable/manage/enterprise-edition/back-up-restore-data
+  - /stable/yugabyte-platform/manage/backup-restore-data
 menu:
   stable_yugabyte-platform:
     parent: yugabytedb-anywhere

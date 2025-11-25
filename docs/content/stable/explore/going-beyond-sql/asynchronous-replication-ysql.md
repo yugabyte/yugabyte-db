@@ -6,10 +6,10 @@ description: Multi-region deployment using asynchronous replication across multi
 headContent: Asynchronous replication between independent YugabyteDB universes
 aliases:
   - /stable/explore/two-data-centers-linux/
-  - /preview/explore/two-data-centers/macos/
-  - /preview/explore/multi-region-deployments/asynchronous-replication-ysql/
-  - /preview/explore/going-beyond-sql/asynchronous-replication-ycql/
-  - /preview/explore/multi-region-deployments/asynchronous-replication-ycql/
+  - /stable/explore/two-data-centers/macos/
+  - /stable/explore/multi-region-deployments/asynchronous-replication-ysql/
+  - /stable/explore/going-beyond-sql/asynchronous-replication-ycql/
+  - /stable/explore/multi-region-deployments/asynchronous-replication-ycql/
 menu:
   stable:
     identifier: asynchronous-replication-ysql

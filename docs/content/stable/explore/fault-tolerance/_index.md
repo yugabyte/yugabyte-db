@@ -6,7 +6,7 @@ description: Simulate fault tolerance and resilience in a local YugabyteDB datab
 headcontent: Survive and recover from outages
 aliases:
   - /stable/explore/postgresql/fault-tolerance/
-  - /preview/explore/fault-tolerance-macos/
+  - /stable/explore/fault-tolerance-macos/
 menu:
   stable:
     identifier: fault-tolerance

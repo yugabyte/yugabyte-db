@@ -6,9 +6,9 @@ description: Global data distributed using synchronous replication across region
 headcontent: Distribute data synchronously across regions
 aliases:
   - /stable/explore/global-distribution-linux/
-  - /preview/explore/global-distribution/macos
-  - /preview/explore/global-distribution/linux
-  - /preview/explore/multi-region-deployments/synchronous-replication-ycql/
+  - /stable/explore/global-distribution/macos
+  - /stable/explore/global-distribution/linux
+  - /stable/explore/multi-region-deployments/synchronous-replication-ycql/
 menu:
   stable:
     identifier: explore-multi-region-deployments-sync-replication-1-ysql

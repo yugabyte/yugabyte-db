@@ -12,7 +12,7 @@ menu:
     weight: 500
 aliases:
   - /stable/yugabyte-cloud/cloud-develop/connect-ycql-application/
-  - /preview/yugabyte-cloud/cloud-examples/connect-ycql-application/
+  - /stable/yugabyte-cloud/cloud-examples/connect-ycql-application/
 type: docs
 ---
 

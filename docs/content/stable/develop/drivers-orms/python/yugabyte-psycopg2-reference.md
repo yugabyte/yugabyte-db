@@ -7,7 +7,7 @@ tags:
   other: ysql
 aliases:
   - /stable/reference/drivers/python/
-  - /preview/reference/drivers/python/yugabyte-psycopg2-reference/
+  - /stable/reference/drivers/python/yugabyte-psycopg2-reference/
 menu:
   stable_develop:
     name: Python drivers

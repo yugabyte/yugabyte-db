@@ -8,7 +8,7 @@ type: indexpage
 showRightNav: true
 aliases:
   - /stable/yugabyte-voyager/known-issues/general-issues/
-  - /preview/yugabyte-voyager/known-issues/mysql-oracle/
+  - /stable/yugabyte-voyager/known-issues/mysql-oracle/
 menu:
   stable_yugabyte-voyager:
     identifier: known-issues

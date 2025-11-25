@@ -5,7 +5,7 @@ linkTitle: Releases
 description: Release support policy, versioning, and feature availability for YugabyteDB.
 aliases:
   - /stable/releases/releases-overview/
-  - /preview/releases/whats-new/
+  - /stable/releases/whats-new/
 type: indexpage
 showRightNav: true
 cascade:

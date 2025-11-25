@@ -10,8 +10,8 @@ menu:
     weight: 622
 aliases:
   - /stable/deploy/kubernetes/eks/
-  - /preview/deploy/kubernetes/eks/helm-chart/
-  - /preview/deploy/kubernetes/single-zone/eks/
+  - /stable/deploy/kubernetes/eks/helm-chart/
+  - /stable/deploy/kubernetes/single-zone/eks/
 type: docs
 ---
 

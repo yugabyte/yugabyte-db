@@ -5,7 +5,7 @@ description: Connect applications to YugabyteDB Aeon clusters
 headcontent: Get the database connection parameters for your application
 aliases:
   - /stable/yugabyte-cloud/cloud-examples/
-  - /preview/yugabyte-cloud/cloud-examples/connect-application/
+  - /stable/yugabyte-cloud/cloud-examples/connect-application/
 menu:
   stable_yugabyte-cloud:
     identifier: connect-applications

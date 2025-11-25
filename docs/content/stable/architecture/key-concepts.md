@@ -6,8 +6,8 @@ description: Learn about the Key concepts in YugabyteDB
 headcontent: Glossary of key concepts
 aliases:
   - /stable/architecture/concepts/universe
-  - /preview/architecture/concepts/single-node/
-  - /preview/key-concepts/
+  - /stable/architecture/concepts/single-node/
+  - /stable/key-concepts/
 menu:
   stable:
     identifier: architecture-concepts-universe

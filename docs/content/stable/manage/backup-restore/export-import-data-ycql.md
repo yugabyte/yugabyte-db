@@ -5,7 +5,7 @@ linkTitle: Export and import
 description: Export and import for YCQL
 aliases:
   - /stable/manage/backup-restore/back-up-data-ycql/
-  - /preview/manage/backup-restore/restore-data-ycql/
+  - /stable/manage/backup-restore/restore-data-ycql/
 menu:
   stable:
     identifier: export-import-data-ycql

@@ -10,7 +10,7 @@ menu:
     weight: 13
 aliases:
   - /stable/benchmark/resilience/jepsen-testing-ysql/
-  - /preview/benchmark/resilience/jepsen-testing-ycql/
+  - /stable/benchmark/resilience/jepsen-testing-ycql/
 type: docs
 ---
 

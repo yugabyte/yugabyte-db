@@ -11,7 +11,7 @@ menu:
     weight: 20
 aliases:
   - /stable/yugabyte-platform/configure-yugabyte-platform/supported-os-and-arch/
-  - /preview/yugabyte-platform/install-yugabyte-platform/prepare-on-prem-nodes/
+  - /stable/yugabyte-platform/install-yugabyte-platform/prepare-on-prem-nodes/
 type: indexpage
 showRightNav: true
 ---

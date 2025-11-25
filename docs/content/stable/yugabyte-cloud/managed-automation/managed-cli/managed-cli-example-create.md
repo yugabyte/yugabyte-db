@@ -11,7 +11,7 @@ menu:
     weight: 60
 aliases:
   - /stable/yugabyte-cloud/managed-automation/managed-cli/managed-cli-examples/managed-cli-example-create/
-  - /preview/yugabyte-cloud/managed-automation/managed-cli/managed-cli-examples/
+  - /stable/yugabyte-cloud/managed-automation/managed-cli/managed-cli-examples/
 type: docs
 ---
 

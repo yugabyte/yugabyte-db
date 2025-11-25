@@ -5,7 +5,7 @@ linkTitle: Hasura Cloud
 description: Connect Hasura Cloud to YugabyteDB Aeon.
 aliases:
   - /stable/yugabyte-cloud/hasura-cloud/
-  - /preview/yugabyte-cloud/cloud-examples/hasura-cloud/
+  - /stable/yugabyte-cloud/cloud-examples/hasura-cloud/
 menu:
   stable_integrations:
     identifier: hasura-cloud

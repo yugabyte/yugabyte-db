@@ -5,7 +5,7 @@ description: Deploy dedicated single-region clusters in YugabyteDB Aeon.
 headcontent: Deploy availability zone- and node-level fault tolerant clusters
 aliases:
   - /stable/deploy/yugabyte-cloud/create-clusters/
-  - /preview/yugabyte-cloud/create-clusters/
+  - /stable/yugabyte-cloud/create-clusters/
 menu:
   stable_yugabyte-cloud:
     identifier: create-single-region

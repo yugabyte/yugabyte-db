@@ -7,7 +7,7 @@ tags:
   other: ysql
 aliases:
   - /stable/reference/drivers/csharp/
-  - /preview/reference/drivers/csharp/yb-npgsql-reference/
+  - /stable/reference/drivers/csharp/yb-npgsql-reference/
 menu:
   stable_develop:
     name: C# Drivers

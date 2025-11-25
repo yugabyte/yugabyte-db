@@ -11,7 +11,7 @@ menu:
     weight: 200
 aliases:
   - /stable/explore/ysql-language-features/constraints/
-  - /preview/explore/indexes-constraints/constraints/
+  - /stable/explore/indexes-constraints/constraints/
 type: docs
 ---
 

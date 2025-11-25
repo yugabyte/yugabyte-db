@@ -5,8 +5,8 @@ linkTitle: FAQ
 description: YugabyteDB FAQ — How does YugabyteDB work? When is YugabyteDB database a good fit? What APIs does YugabyteDB support? And other frequently asked questions.
 aliases:
   - /stable/faq/product/
-  - /preview/introduction/overview/
-  - /preview/introduction/benefits/
+  - /stable/introduction/overview/
+  - /stable/introduction/benefits/
 menu:
   stable_faq:
     identifier: faq-general

@@ -5,7 +5,7 @@ linkTitle: Data types
 description: Data types in YSQL
 aliases:
   - /stable/develop/learn/data-types-ysql/
-  - /preview/develop/learn/data-types/
+  - /stable/develop/learn/data-types/
 menu:
   stable:
     identifier: explore-ysql-language-features-data-types

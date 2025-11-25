@@ -5,8 +5,8 @@ linkTitle: Colocation
 description: Learn how colocated tables aggregate data into a single tablet.
 aliases:
   - /stable/architecture/docdb/colocated_tables/
-  - /preview/architecture/docdb-sharding/colocated-tables/
-  - /preview/explore/colocation/
+  - /stable/architecture/docdb-sharding/colocated-tables/
+  - /stable/explore/colocation/
 menu:
   stable:
     identifier: colocation

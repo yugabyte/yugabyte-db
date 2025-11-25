@@ -10,7 +10,7 @@ menu:
     weight: 60
 aliases:
   - /stable/yugabyte-voyager/reference/fall-forward/fall-forward-setup/
-  - /preview/yugabyte-voyager/reference/fall-forward/fall-forward-switchover/
+  - /stable/yugabyte-voyager/reference/fall-forward/fall-forward-switchover/
 type: docs
 rightNav:
   hideH4: true

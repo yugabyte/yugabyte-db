@@ -9,7 +9,7 @@ description: YugabyteDB Voyager is a powerful open-source data migration engine 
 type: indexpage
 aliases:
   - /stable/voyager/
-  - /preview/tools/voyager/
+  - /stable/tools/voyager/
 menu:
   stable_yugabyte-voyager:
     name: "Overview"
