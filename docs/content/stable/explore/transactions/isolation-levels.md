@@ -251,7 +251,7 @@ Next, connect to the universe using two independent ysqlsh instances, referred t
   <tr>
     <td>
 
-Begin a transaction in session #1 with the Serializable isolation level, meaning it will work against a snapshot of the database as of this point:
+Begin a transaction in session #1 with the Snapshot isolation level, meaning it will work against a snapshot of the database as of this point:
 
 ```sql
 BEGIN TRANSACTION ISOLATION LEVEL SNAPSHOT;
