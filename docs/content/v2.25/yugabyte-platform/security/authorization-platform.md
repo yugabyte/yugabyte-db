@@ -26,7 +26,7 @@ YugabyteDB uses [role-based access control](../../../secure/authorization/) (RBA
 
 (For information on managing access to your YugabyteDB Anywhere instance, refer to [Manage account users](../../administer-yugabyte-platform/anywhere-rbac/).)
 
-## Enable database authorization
+## Enable database endpoints and authorization
 
 You enable the YSQL and YCQL endpoints and database authentication when deploying a universe.
 

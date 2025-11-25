@@ -338,11 +338,13 @@ Status TableInfo::MergeSchemaPackings(
   // the latest schema.
   const dockv::SchemaPacking& latest_packing = VERIFY_RESULT(
       doc_read_context->schema_packing_storage.GetPacking(schema_version));
-  LOG_IF_WITH_PREFIX(DFATAL,
-                     !latest_packing.SchemaContainsPacking(table_type, doc_read_context->schema()))
-      << "After merging schema packings during restore, latest schema does not"
-      << " have the same packing as the corresponding latest packing for table "
-      << table_id;
+  LOG_IF_WITH_PREFIX(
+      DFATAL, !latest_packing.SchemaContainsPacking(table_type, doc_read_context->schema()))
+      << Format(
+             "After merging schema packings during restore, latest schema does not have the same"
+             "packing as the corresponding latest packing for table $0, latest packing: $1, "
+             "current schema: $2",
+             table_id, latest_packing.ToString(), doc_read_context->schema().ToString());
   return Status::OK();
 }
 

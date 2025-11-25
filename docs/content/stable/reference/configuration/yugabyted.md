@@ -5,7 +5,7 @@ linkTitle: yugabyted
 description: Use yugabyted to deploy YugabyteDB universes.
 headcontent: Utility for deploying and managing YugabyteDB
 aliases:
-  - /preview/deploy/docker/
+  - /stable/deploy/docker/
 menu:
   stable:
     identifier: yugabyted

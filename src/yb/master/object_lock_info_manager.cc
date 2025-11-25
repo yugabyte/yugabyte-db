@@ -271,6 +271,8 @@ class ObjectLockInfoManager::Impl {
 
   TSDescriptorVector GetAllTSDescriptorsWithALiveLease() const;
 
+  std::optional<uint64_t> GetLeaseEpoch(const std::string& ts_uuid) EXCLUDES(mutex_);
+
  private:
   std::shared_ptr<tserver::TSLocalLockManager> ts_local_lock_manager_during_catalog_loading()
       EXCLUDES(mutex_) {
@@ -278,8 +280,6 @@ class ObjectLockInfoManager::Impl {
     LockGuard lock(mutex_);
     return local_lock_manager_;
   }
-
-  std::optional<uint64_t> GetLeaseEpoch(const std::string& ts_uuid) EXCLUDES(mutex_);
 
   // Called by the poller to mark leases as expired and clean up locks held by expired lease epochs.
   // This should only be called by the poller as it accesses cleanup task state without
@@ -321,6 +321,7 @@ class UpdateAll {
   virtual const Req& request() const = 0;
   virtual CoarseTimePoint GetClientDeadline() const = 0;
   virtual bool TabletServerHasLiveLease(const std::string& uuid) = 0;
+  virtual std::optional<uint64_t> GetLeaseEpoch(const std::string& uuid) = 0;
   virtual std::string LogPrefix() const = 0;
   virtual const ash::WaitStateInfoPtr& wait_state() const = 0;
 };
@@ -353,6 +354,10 @@ class UpdateAllTServers : public std::enable_shared_from_this<UpdateAllTServers<
 
   bool TabletServerHasLiveLease(const std::string& uuid) override {
     return object_lock_info_manager_.TabletServerHasLiveLease(uuid);
+  }
+
+  std::optional<uint64_t> GetLeaseEpoch(const std::string& uuid) override {
+    return object_lock_info_manager_.GetLeaseEpoch(uuid);
   }
 
   Trace *trace() const {
@@ -421,7 +426,7 @@ class UpdateTServer : public RetrySpecificTSRpcTask {
  protected:
   void Finished(const Status& status) override;
 
-  const Req& request() const { return shared_all_tservers_->request(); }
+  Req request() const;
 
   bool RetryTaskAfterRPCFailure(const Status& status) override;
 
@@ -1682,6 +1687,22 @@ template <class Req, class Resp>
 void UpdateTServer<Req, Resp>::Finished(const Status& status) {
   VLOG_WITH_PREFIX(3) << __func__ << " (" << status << ")";
   callback_(status);
+}
+
+template <class Req>
+Req AddRecipientLeaseEpoch(const Req& req, uint64_t recipient_lease_epoch) {
+  auto decorated_req = req;
+  decorated_req.set_recipient_lease_epoch(recipient_lease_epoch);
+  return decorated_req;
+}
+
+template <class Req, class Resp>
+Req UpdateTServer<Req, Resp>::request() const {
+  auto recipient_lease_epoch = shared_all_tservers_->GetLeaseEpoch(permanent_uuid_);
+  if (recipient_lease_epoch.has_value()) {
+    return AddRecipientLeaseEpoch(shared_all_tservers_->request(), *recipient_lease_epoch);
+  }
+  return shared_all_tservers_->request();
 }
 
 template <class Req, class Resp>

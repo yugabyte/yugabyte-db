@@ -7,8 +7,8 @@ menu:
     parent: api-yedis
     weight: 2550
 aliases:
-  - /preview/api/redis/pubsub
-  - /preview/api/yedis/pubsub
+  - /stable/api/redis/pubsub
+  - /stable/api/yedis/pubsub
 type: docs
 ---
 

@@ -5,8 +5,8 @@ linkTitle: Explore distributed SQL APIs
 description: Explore Yugabyte Cloud QL (YCQL), a semi-relational distributed SQL API
 aliases:
   - /quick-start/test-cassandra/
-  - /preview/quick-start/test-cassandra/
-  - /preview/quick-start/test-ycql/
+  - /stable/quick-start/test-cassandra/
+  - /stable/quick-start/test-ycql/
 menu:
   stable:
     parent: quick-start

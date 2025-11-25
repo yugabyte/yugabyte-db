@@ -7,7 +7,7 @@ headcontent: Capture changes made to data in the database
 tags:
   feature: early-access
 aliases:
-  - /preview/develop/change-data-capture/
+  - /stable/develop/change-data-capture/
 menu:
   stable:
     identifier: explore-change-data-capture

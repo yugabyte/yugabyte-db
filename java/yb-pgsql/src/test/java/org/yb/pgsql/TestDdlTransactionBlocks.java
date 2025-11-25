@@ -12,6 +12,8 @@
 //
 package org.yb.pgsql;
 
+import java.util.Map;
+
 import org.yb.minicluster.MiniYBClusterBuilder;
 
 import org.junit.Test;
@@ -26,6 +28,13 @@ public class TestDdlTransactionBlocks extends BasePgRegressTest {
   @Override
   public int getTestMethodTimeoutSec() {
     return getPerfMaxRuntime(500, 1000, 1200, 1200, 1200);
+  }
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("TEST_hide_details_for_pg_regress", "false");
+    return flagMap;
   }
 
   @Override

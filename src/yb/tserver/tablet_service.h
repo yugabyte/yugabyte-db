@@ -273,6 +273,8 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
                                                UpdateTransactionStatusLocationResponsePB* resp,
                                                std::shared_ptr<rpc::RpcContext> context);
 
+  Status CheckLocalLeaseEpoch(std::optional<uint64_t> recipient_lease_epoch);
+
   TabletServerIf *const server_;
 };
 
@@ -468,6 +470,7 @@ class ConsensusServiceImpl : public consensus::ConsensusServiceIf {
  private:
   void CompleteUpdateConsensusResponse(std::shared_ptr<tablet::TabletPeer> tablet_peer,
                                        consensus::LWConsensusResponsePB* resp);
+
   TabletPeerLookupIf* tablet_manager_;
 };
 

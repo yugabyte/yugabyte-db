@@ -1640,10 +1640,14 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         params -> ((ChangeInstanceType.Params) params).capacityReservation,
         Map.of(
             DoCapacityReservation.getCapacityReservationGroupName(
-                defaultUniverse.getUniverseUUID(), region1.getProvider(), region1.getCode()),
+                defaultUniverse.getUniverseUUID(),
+                UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+                region1.getCode()),
             Arrays.asList(nodesByAZ.get("1"), rrNodesByAZ.get("1")),
             DoCapacityReservation.getCapacityReservationGroupName(
-                defaultUniverse.getUniverseUUID(), region2.getProvider(), region2.getCode()),
+                defaultUniverse.getUniverseUUID(),
+                UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+                region2.getCode()),
             Arrays.asList(nodesByAZ.get("2"), nodesByAZ.get("3"), rrNodesByAZ.get("4"))));
   }
 
@@ -1779,16 +1783,28 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         params -> ((ChangeInstanceType.Params) params).capacityReservation,
         Map.of(
             DoCapacityReservation.getZoneInstanceCapacityReservationName(
-                defaultUniverse.getUniverseUUID(), defaultProvider, "az-1", NEW_INSTANCE_TYPE),
+                defaultUniverse.getUniverseUUID(),
+                UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+                "az-1",
+                NEW_INSTANCE_TYPE),
             Arrays.asList(nodesByAZ.get("az-1"), rrNodesByAZ.get("az-1")),
             DoCapacityReservation.getZoneInstanceCapacityReservationName(
-                defaultUniverse.getUniverseUUID(), defaultProvider, "az-4", NEW_INSTANCE_TYPE),
+                defaultUniverse.getUniverseUUID(),
+                UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+                "az-4",
+                NEW_INSTANCE_TYPE),
             Arrays.asList(nodesByAZ.get("az-4")),
             DoCapacityReservation.getZoneInstanceCapacityReservationName(
-                defaultUniverse.getUniverseUUID(), defaultProvider, "az-5", NEW_INSTANCE_TYPE),
+                defaultUniverse.getUniverseUUID(),
+                UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+                "az-5",
+                NEW_INSTANCE_TYPE),
             Arrays.asList(nodesByAZ.get("az-5")),
             DoCapacityReservation.getZoneInstanceCapacityReservationName(
-                defaultUniverse.getUniverseUUID(), defaultProvider, "az-6", NEW_INSTANCE_TYPE),
+                defaultUniverse.getUniverseUUID(),
+                UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+                "az-6",
+                NEW_INSTANCE_TYPE),
             Arrays.asList(rrNodesByAZ.get("az-6"))));
   }
 

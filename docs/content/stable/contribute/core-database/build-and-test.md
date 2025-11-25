@@ -5,7 +5,7 @@ linkTitle: Build and test
 description: Build and test
 headcontent: Building and testing with yb_build.sh.
 aliases:
-  - /preview/contribute/core-database/run-unit-tests/
+  - /stable/contribute/core-database/run-unit-tests/
 menu:
   stable:
     identifier: build-and-test

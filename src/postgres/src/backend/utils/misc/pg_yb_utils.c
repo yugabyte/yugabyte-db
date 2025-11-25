@@ -193,15 +193,6 @@ YbCanTryInvalidateTableCacheEntry()
 		!yb_need_invalidate_all_table_cache;
 }
 
-uint64_t
-YbGetLastKnownCatalogCacheVersion()
-{
-	const uint64_t shared_catalog_version = YbGetSharedCatalogVersion();
-
-	return shared_catalog_version > yb_last_known_catalog_cache_version ?
-		shared_catalog_version : yb_last_known_catalog_cache_version;
-}
-
 YbcPgLastKnownCatalogVersionInfo
 YbGetCatalogCacheVersionForTablePrefetching()
 {
@@ -323,14 +314,6 @@ IsYugaByteEnabled()
 {
 	/* We do not support Init/Bootstrap processing modes yet. */
 	return YBCPgIsYugaByteEnabled();
-}
-
-void
-CheckIsYBSupportedRelation(Relation relation)
-{
-	const char	relkind = relation->rd_rel->relkind;
-
-	CheckIsYBSupportedRelationByKind(relkind);
 }
 
 void
@@ -583,15 +566,6 @@ YBRelHasOldRowTriggers(Relation rel, CmdType operation)
 			trigdesc->trig_update_before_row ||
 			trigdesc->trig_delete_after_row ||
 			trigdesc->trig_delete_before_row);
-}
-
-bool
-YbRelHasBRUpdateTrigger(Relation rel)
-{
-	Assert(IsYBRelation(rel));
-	TriggerDesc *trigdesc = rel->trigdesc;
-
-	return trigdesc ? trigdesc->trig_update_before_row : false;
 }
 
 bool
@@ -858,14 +832,6 @@ YbNeedAdditionalCatalogTables()
 {
 	return (*YBCGetGFlags()->ysql_catalog_preload_additional_tables ||
 			IS_NON_EMPTY_STR_FLAG(YBCGetGFlags()->ysql_catalog_preload_additional_table_list));
-}
-
-void
-YBReportFeatureUnsupported(const char *msg)
-{
-	ereport(ERROR,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("%s", msg)));
 }
 
 static const char *
@@ -1188,8 +1154,10 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 			.shared_data = &MyProc->yb_shared_data
 		};
 
-		YBCInitPgGate(YbGetTypeTable(), &callbacks,
-					  init_info ? init_info : &default_init_info, &ash_config);
+		HandleYBStatusAtErrorLevel(YBCInitPgGate(YbGetTypeTable(),
+												 &callbacks,
+												 init_info ? init_info : &default_init_info,
+												 &ash_config), FATAL);
 		YBCInstallTxnDdlHook();
 
 		/*
@@ -1349,6 +1317,7 @@ typedef struct
 	bool		is_top_level_ddl_active;
 	NodeTag		current_stmt_node_tag;
 	CommandTag	current_stmt_ddl_command_tag;
+	CommandTag	last_stmt_ddl_command_tag;
 	Oid			database_oid;
 	int			num_committed_pg_txns;
 
@@ -2050,40 +2019,6 @@ YBShouldRestartAllChildrenIfOneCrashes()
 }
 
 const char *
-YBPgErrorLevelToString(int elevel)
-{
-	switch (elevel)
-	{
-		case DEBUG5:
-			return "DEBUG5";
-		case DEBUG4:
-			return "DEBUG4";
-		case DEBUG3:
-			return "DEBUG3";
-		case DEBUG2:
-			return "DEBUG2";
-		case DEBUG1:
-			return "DEBUG1";
-		case LOG:
-			return "LOG";
-		case LOG_SERVER_ONLY:
-			return "LOG_SERVER_ONLY";
-		case INFO:
-			return "INFO";
-		case WARNING:
-			return "WARNING";
-		case ERROR:
-			return "ERROR";
-		case FATAL:
-			return "FATAL";
-		case PANIC:
-			return "PANIC";
-		default:
-			return "UNKNOWN";
-	}
-}
-
-const char *
 YBCGetDatabaseName(Oid relid)
 {
 	/*
@@ -2138,12 +2073,6 @@ Oid
 YBCGetDatabaseOidFromShared(bool relisshared)
 {
 	return relisshared ? Template1DbOid : MyDatabaseId;
-}
-
-void
-YBRaiseNotSupported(const char *msg, int issue_no)
-{
-	YBRaiseNotSupportedSignal(msg, issue_no, YBUnsupportedFeatureSignalLevel());
 }
 
 void
@@ -2249,7 +2178,7 @@ bool		yb_enable_parallel_scan_colocated = true;
 bool		yb_enable_parallel_scan_hash_sharded = false;
 bool		yb_enable_parallel_scan_range_sharded = false;
 bool		yb_enable_parallel_scan_system = false;
-bool        yb_make_all_ddl_statements_incrementing = false;
+bool        yb_test_make_all_ddl_statements_incrementing = false;
 
 /* DEPRECATED */
 bool		yb_enable_advisory_locks = true;
@@ -2338,12 +2267,6 @@ YBDatumToString(Datum datum, Oid typid)
 }
 
 const char *
-YbHeapTupleToString(HeapTuple tuple, TupleDesc tupleDesc)
-{
-	return YbHeapTupleToStringWithIsOmitted(tuple, tupleDesc, NULL);
-}
-
-const char *
 YbHeapTupleToStringWithIsOmitted(HeapTuple tuple, TupleDesc tupleDesc,
 								 bool *is_omitted)
 {
@@ -2412,15 +2335,6 @@ YbSlotToStringWithIsOmitted(TupleTableSlot *slot, bool *is_omitted)
 	}
 	appendStringInfoChar(&buf, ')');
 	return buf.data;
-}
-
-const char *
-YbBitmapsetToString(Bitmapset *bms)
-{
-	StringInfo	str = makeStringInfo();
-
-	outBitmapset(str, bms);
-	return str->data;
 }
 
 bool
@@ -3219,16 +3133,10 @@ YBCommitTransactionContainingDDL()
 		if (currentInvalMessages && log_min_messages <= DEBUG1)
 			YbLogInvalidationMessages(currentInvalMessages, nmsgs);
 
-		/*
-		 * Only log the command_tag_name if transactional DDL is disabled. When
-		 * transactional DDL is enabled, multiple DDLs could contribute to the
-		 * catalog version increment. Hence, it is misleading to only log the
-		 * last DDL as the contributing command.
-		 */
-		const char *command_tag_name =
-			(YBIsDdlTransactionBlockEnabled()) ?
-			NULL :
-			GetCommandTagName(ddl_transaction_state.current_stmt_ddl_command_tag);
+		CommandTag ddl_cmdtag = ddl_transaction_state.current_stmt_ddl_command_tag;
+		if (ddl_cmdtag == CMDTAG_UNKNOWN)
+			 ddl_cmdtag = ddl_transaction_state.last_stmt_ddl_command_tag;
+		const char *command_tag_name = GetCommandTagName(ddl_cmdtag);
 
 		is_breaking_change = mode & YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE;
 		bool		increment_for_conn_mgr_needed = false;
@@ -3497,6 +3405,9 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 		 * be incremented.
 		 */
 		ddl_transaction_state.current_stmt_node_tag = node_tag;
+		if (ddl_transaction_state.current_stmt_ddl_command_tag != CMDTAG_UNKNOWN)
+			ddl_transaction_state.last_stmt_ddl_command_tag =
+				ddl_transaction_state.current_stmt_ddl_command_tag;
 		ddl_transaction_state.current_stmt_ddl_command_tag =
 			CreateCommandTag(parsetree);
 		if (CheckIsAnalyzeDDL() && !ddl_transaction_state.userid_and_sec_context.is_set)
@@ -4136,6 +4047,8 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 		if (ddl_transaction_state.nesting_level == 0 &&
 			!ddl_transaction_state.use_regular_txn_block)
 			YBClearDdlTransactionState();
+		else
+			ddl_transaction_state.current_stmt_ddl_command_tag = CMDTAG_UNKNOWN;
 		return (YbDdlModeOptional)
 		{
 		};
@@ -4148,10 +4061,10 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 	if (yb_make_next_ddl_statement_nonbreaking)
 		is_breaking_change = false;
 	/*
-	 * If yb_make_all_ddl_statements_incrementing is true, we should be incrementing
+	 * If yb_test_make_all_ddl_statements_incrementing is true, we should be incrementing
 	 * the catalog version for all DDL statements.
 	 */
-	if (yb_make_all_ddl_statements_incrementing)
+	if (yb_test_make_all_ddl_statements_incrementing)
 		is_version_increment = true;
 	/*
 	 * If yb_make_next_ddl_statement_nonincrementing is true, then no DDL statement
@@ -4197,6 +4110,9 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 
 	*requires_autonomous_transaction = YBIsDdlTransactionBlockEnabled() &&
 		should_run_in_autonomous_transaction;
+
+	if (!is_version_increment)
+		ddl_transaction_state.current_stmt_ddl_command_tag = CMDTAG_UNKNOWN;
 
 	return (YbDdlModeOptional)
 	{
@@ -7290,25 +7206,6 @@ YbIsColumnPartOfKey(Relation rel, const char *column_name)
 		}
 	}
 	return false;
-}
-
-bool
-YbReturningListSubsetOfUpdatedCols(Relation rel, Bitmapset *updatedCols,
-								   List *returningList)
-{
-
-	ListCell   *lc;
-
-	foreach(lc, returningList)
-	{
-		TargetEntry *element = (TargetEntry *) lfirst(lc);
-
-		if (!bms_is_member(element->resorigcol -
-						   YBGetFirstLowInvalidAttributeNumber(rel),
-						   updatedCols))
-			return false;
-	}
-	return true;
 }
 
 /*

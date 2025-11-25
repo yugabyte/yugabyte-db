@@ -3,7 +3,6 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.google.common.collect.ImmutableList;
-import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeAgentManager;
@@ -21,16 +20,13 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
-public class SetupYNP extends AbstractTaskBase {
-  public static final int DEFAULT_NODE_AGENT_PORT = 9070;
-
+public class SetupYNP extends NodeTaskBase {
   private final NodeUniverseManager nodeUniverseManager;
   private final NodeAgentManager nodeAgentManager;
   private final ShellProcessContext defaultShellContext =
@@ -63,10 +59,7 @@ public class SetupYNP extends AbstractTaskBase {
 
   void removeNodeAgentDirectory(
       NodeDetails node, Universe universe, ShellProcessContext shellContext, String nodeAgentHome) {
-    StringBuilder sb = new StringBuilder();
-    sb.append("rm -rf ");
-    sb.append(nodeAgentHome);
-    List<String> command = getCommand("/bin/bash", "-c", sb.toString());
+    List<String> command = getCommand("/bin/bash", "-c", "rm -rf", nodeAgentHome);
     log.info("Clearing node-agent directory: {}", command);
     nodeUniverseManager.runCommand(node, universe, command, shellContext).isSuccess();
   }
@@ -109,13 +102,7 @@ public class SetupYNP extends AbstractTaskBase {
     Path nodeAgentHomePath = Paths.get(taskParams().nodeAgentInstallDir, NodeAgent.NODE_AGENT_DIR);
 
     // Clean up the previous stale data.
-    Optional<NodeAgent> optional = NodeAgent.maybeGetByIp(node.cloudInfo.private_ip);
-    if (optional.isPresent()) {
-      NodeAgent nodeAgent = optional.get();
-      if (nodeAgent != null) {
-        nodeAgentManager.purge(nodeAgent);
-      }
-    }
+    NodeAgent.maybeGetByIp(node.cloudInfo.private_ip).ifPresent(nodeAgentManager::purge);
     removeNodeAgentDirectory(node, universe, shellContext, nodeAgentHomePath.toString());
     Path packagePath = getNodeAgentPackagePath(universe, node, shellContext);
     // Clean and create the staging path where the node agent release will be uploaded.
@@ -166,13 +153,9 @@ public class SetupYNP extends AbstractTaskBase {
     sb.append(" && chown -R $(id -u):$(id -g) ").append(nodeAgentHomePath);
     sb.append(" && chmod 755 ").append(nodeAgentHomePath);
     command = getCommand("/bin/bash", "-c", sb.toString());
-    try {
-      nodeUniverseManager
-          .runCommand(node, universe, command, shellContext)
-          .processErrors("Extracting node-agent failed");
-    } catch (RuntimeException e) {
-      throw e;
-    }
+    nodeUniverseManager
+        .runCommand(node, universe, command, shellContext)
+        .processErrors("Extracting node-agent failed");
   }
 
   private List<String> getCommand(String... args) {

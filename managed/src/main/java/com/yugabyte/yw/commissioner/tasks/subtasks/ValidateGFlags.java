@@ -433,7 +433,13 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
       }
 
       command.add("--" + flagName);
-      command.add(flagValue);
+      // Kubectl command that is used for validation seems to add '<gflag value>' single quotes on
+      // its own, hence not adding it again here.
+      if (provider.getCloudCode() == CloudType.kubernetes) {
+        command.add(flagValue);
+      } else {
+        command.add("'" + flagValue + "'");
+      }
     }
 
     log.debug(

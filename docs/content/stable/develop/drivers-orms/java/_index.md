@@ -5,10 +5,10 @@ linkTitle: Java
 description: Java drivers and ORMs support for YugabyteDB.
 aliases:
   - /develop/client-drivers/java/
-  - /preview/develop/client-drivers/java/
-  - /preview/develop/build-apps/java/
-  - /preview/quick-start/build-apps/java/
-  - /preview/integrations/jdbc-drivers/
+  - /stable/develop/client-drivers/java/
+  - /stable/develop/build-apps/java/
+  - /stable/quick-start/build-apps/java/
+  - /stable/integrations/jdbc-drivers/
 menu:
   stable_develop:
     identifier: java-drivers

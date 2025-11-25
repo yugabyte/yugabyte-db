@@ -5,7 +5,7 @@ linkTitle: Legacy provisioning
 description: How to provision on-premises provider nodes using legacy manual method.
 headContent: Prepare a VM for deploying universes on-premises
 aliases:
-    - /preview/yugabyteplatform/prepare/server-nodes-software/software-on-premmanual/
+    - /stable/yugabyteplatform/prepare/server-nodes-software/software-on-premmanual/
 menu:
   stable_yugabyte-platform:
     identifier: software-on-prem-4-manual

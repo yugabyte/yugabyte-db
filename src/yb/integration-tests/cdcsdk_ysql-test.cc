@@ -33,6 +33,9 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/tostring.h"
 
+DECLARE_bool(ysql_use_packed_row_v2);
+DECLARE_bool(ysql_mark_update_packed_row);
+
 namespace yb {
 
 using client::YBTableName;
@@ -12419,6 +12422,66 @@ TEST_F(CDCSDKYsqlTest, TestLargeTxnOnUnqualifiedColocatedTable) {
   ASSERT_NE(change_resp.cdc_sdk_checkpoint().write_id(), 0);
 }
 
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestPackedRowUpdateFlag)) {
+  // Enable packed rows and the new update flag
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_use_packed_row_v2) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_pack_full_row_update) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_mark_update_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  xrepl::StreamId stream_id =
+      ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT, CDCRecordType::PG_FULL));
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(set_resp.has_error());
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  // Test 1: INSERT a row (should show as INSERT in CDC)
+  LOG(INFO) << "Test 1: INSERT - should show as INSERT";
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0($1, $2) VALUES (1, 100)", kTableName, kKeyColumnName, kValueColumnName));
+
+  // Test 2: UPDATE all columns (should show as UPDATE with flag enabled)
+  LOG(INFO) << "Test 2: UPDATE all columns - should show as UPDATE with flag enabled";
+  ASSERT_OK(conn.ExecuteFormat(
+      "BEGIN; UPDATE $0 SET $1 = 200 WHERE $2 = 1; COMMIT;", kTableName, kValueColumnName,
+      kKeyColumnName));
+
+  // Get CDC changes and verify UPDATE operation
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+
+  uint32_t insert_count = 0;
+  uint32_t update_count = 0;
+
+  for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage::BEGIN ||
+        record.row_message().op() == RowMessage::COMMIT ||
+        record.row_message().op() == RowMessage::DDL) {
+      continue;
+    }
+
+    if (record.row_message().op() == RowMessage::INSERT) {
+      insert_count++;
+      LOG(INFO) << "Found INSERT record";
+    } else if (record.row_message().op() == RowMessage::UPDATE) {
+      update_count++;
+      LOG(INFO) << "Found UPDATE record";
+    }
+  }
+
+  // With FLAGS_ysql_mark_update_packed_row enabled:
+  // - INSERT should be INSERT (1)
+  // - UPDATE should be UPDATE (1)
+  LOG(INFO) << "With update flag enabled: Inserts=" << insert_count << ", Updates=" << update_count;
+  ASSERT_EQ(insert_count, 1);
+  ASSERT_EQ(update_count, 1);
+}
 // This test verifies that we do not miss any records when LogCache::ReadOps() reads WAL Ops from
 // the active segment with combined size greater than FLAGS_consensus_max_batch_size_bytes (default
 // value 4 MB).

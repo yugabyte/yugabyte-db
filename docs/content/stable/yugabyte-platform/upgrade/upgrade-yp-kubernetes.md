@@ -4,7 +4,7 @@ headerTitle: Upgrade YugabyteDB Anywhere
 linkTitle: Upgrade installation
 description: Upgrade YugabyteDB Anywhere installation on Kubernetes
 aliases:
-  - /preview/yugabyte-platform/manage-deployments/migrate-to-helm3/
+  - /stable/yugabyte-platform/manage-deployments/migrate-to-helm3/
 menu:
   stable_yugabyte-platform:
     identifier: upgrade-yp-3-kubernetes

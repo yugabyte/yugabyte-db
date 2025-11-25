@@ -870,7 +870,8 @@ Status ApplyIntentsContext::ProcessVectorIndexesForPackedRow(
     auto ybctid = key.WithoutPrefix(table_key_prefix.size());
     if (ApplyToVectorIndex(i)) {
       vector_index_batches_[i].push_back(DocVectorIndexInsertEntry {
-        .value = ValueBuffer(column_value->WithoutPrefix(1)),
+        .value = ValueBuffer(column_value->WithoutPrefix(
+            std::is_same_v<Decoder, dockv::PackedRowDecoderV2> ? 0 : 1)),
       });
     }
 

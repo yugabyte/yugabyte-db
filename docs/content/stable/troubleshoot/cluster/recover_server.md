@@ -4,7 +4,7 @@ linkTitle: Recover YB-TServer and YB-Master
 description: Recover YB-TServer and YB-Master
 aliases:
   - /troubleshoot/cluster/recover-server/
-  - /preview/troubleshoot/cluster/recover-server/
+  - /stable/troubleshoot/cluster/recover-server/
 menu:
   stable:
     parent: troubleshoot-cluster

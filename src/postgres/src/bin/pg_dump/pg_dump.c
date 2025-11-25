@@ -362,10 +362,6 @@ static bool forcePartitionRootLoad(const TableInfo *tbinfo);
 
 /* YB functions */
 static void dumpTablegroup(Archive *fout, const YbTablegroupInfo *tginfo);
-static void YbAppendReloptions2(PQExpBuffer buffer, bool newline_before,
-								const char *reloptions1, const char *reloptions1_prefix,
-								const char *reloptions2, const char *reloptions2_prefix,
-								Archive *fout);
 static void YbAppendReloptions3(PQExpBuffer buffer, bool newline_before,
 								const char *reloptions1, const char *reloptions1_prefix,
 								const char *reloptions2, const char *reloptions2_prefix,
@@ -19846,19 +19842,6 @@ nonemptyReloptions(const char *reloptions)
 {
 	/* Don't want to print it if it's just "{}" */
 	return (reloptions != NULL && strlen(reloptions) > 2);
-}
-
-static void
-YbAppendReloptions2(PQExpBuffer buffer, bool newline_before,
-					const char *reloptions1, const char *reloptions1_prefix,
-					const char *reloptions2, const char *reloptions2_prefix,
-					Archive *fout)
-{
-	YbAppendReloptions3(buffer, newline_before,
-						reloptions1, reloptions1_prefix,
-						reloptions2, reloptions2_prefix,
-						NULL, NULL,
-						fout);
 }
 
 static void

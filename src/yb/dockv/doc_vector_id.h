@@ -15,6 +15,7 @@
 
 #include "yb/dockv/dockv_fwd.h"
 #include "yb/dockv/key_bytes.h"
+#include "yb/dockv/packed_row.h"
 
 #include "yb/util/uuid.h"
 
@@ -32,16 +33,21 @@ struct EncodedDocVectorValue final {
   static EncodedDocVectorValue FromSlice(Slice encoded);
 };
 
-class DocVectorValue final {
+class DocVectorValue final : public PackableValue {
  public:
-  explicit DocVectorValue(const QLValuePB& value, const vector_index::VectorId& id)
+  DocVectorValue(const QLValuePB& value, const vector_index::VectorId& id)
       : value_(value), id_(id)
   {}
 
-  void EncodeTo(std::string* out) const;
-  void EncodeTo(ValueBuffer* out) const;
+  bool IsNull() const override;
 
-  size_t EncodedSize() const;
+  void EncodeTo(std::string* out) const;
+
+  size_t PackedSizeV1() const override;
+  void PackToV1(ValueBuffer* result) const override;
+
+  size_t PackedSizeV2() const override;
+  void PackToV2(ValueBuffer* result) const override;
 
   const QLValuePB& value() const {
     return value_;
@@ -49,11 +55,11 @@ class DocVectorValue final {
 
   static Slice SanitizeValue(Slice encoded);
 
-  std::string ToString() const;
+  std::string ToString() const override;
 
  private:
-  template <typename Buffer>
-  void DoEncodeTo(Buffer* buffer) const;
+  template <class Buffer>
+  void AppendVectorId(Buffer* buffer) const;
 
   const QLValuePB& value_;
   vector_index::VectorId id_;

@@ -8,7 +8,7 @@ menu:
     identifier: cmd_show
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/cmd_show/
+  - /stable/api/ysql/commands/cmd_show/
 type: docs
 ---
 

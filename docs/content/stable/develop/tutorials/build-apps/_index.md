@@ -5,8 +5,8 @@ linkTitle: Hello world
 description: Build an application using your favorite programming language.
 headcontent: Use your favorite programming language to build an application that uses YSQL or YCQL APIs
 aliases:
-  - /preview/quick-start/build-apps/
-  - /preview/develop/tutorials/build-apps/
+  - /stable/quick-start/build-apps/
+  - /stable/develop/tutorials/build-apps/
 menu:
   stable_develop:
     parent: tutorials

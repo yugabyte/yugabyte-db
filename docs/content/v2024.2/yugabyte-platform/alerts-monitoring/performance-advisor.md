@@ -153,6 +153,7 @@ If range sharding is used, analyze reads and writes and recreate the table with 
 
 ## Limitations
 
+- Currently, performance advisor is only partially supported for YCQL-only universes. To access all features, turn on the YSQL API. See [Enable database endpoints and authorization](../../security/authorization-platform/#enable-database-endpoints-and-authorization).
 - Currently, you can't schedule periodic performance advisor runs.
 - Currently, you can only configure performance recommendation thresholds via the API.
 - Performance recommendations can only be marked resolved via the UI; this state is not persisted.

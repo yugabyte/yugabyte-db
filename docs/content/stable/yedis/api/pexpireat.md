@@ -7,8 +7,8 @@ menu:
     parent: api-yedis
     weight: 2234
 aliases:
-  - /preview/api/redis/pexpireat
-  - /preview/api/yedis/pexpireat
+  - /stable/api/redis/pexpireat
+  - /stable/api/yedis/pexpireat
 type: docs
 ---
 

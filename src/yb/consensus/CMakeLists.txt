@@ -185,5 +185,7 @@ add_executable(log-dump log-dump.cc)
 target_link_libraries(log-dump
   log
   yb_docdb
+  encryption
+  yb_tools_util
   ${YB_BASE_LIBS})
 add_dependencies(log-dump gen_src_yb_rpc_any_proto)

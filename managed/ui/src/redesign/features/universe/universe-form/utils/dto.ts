@@ -559,6 +559,7 @@ export interface InstanceConfigFormValue {
   arch?: ArchitectureType | null;
   imageBundleUUID?: string | null;
   k8sEncryptionType?: K8sEncryptionOption;
+  enableTLS?: boolean;
 }
 
 export interface AdvancedConfigFormValue {
@@ -663,7 +664,8 @@ export const DEFAULT_INSTANCE_CONFIG: InstanceConfigFormValue = {
   kmsConfig: null,
   arch: null,
   imageBundleUUID: '',
-  k8sEncryptionType: K8sEncryptionOption.EnableBoth
+  k8sEncryptionType: K8sEncryptionOption.EnableBoth,
+  enableTLS: false
 };
 
 export const DEFAULT_ADVANCED_CONFIG: AdvancedConfigFormValue = {
