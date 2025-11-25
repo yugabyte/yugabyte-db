@@ -329,12 +329,21 @@ public class NodeUniverseManager extends DevopsBase {
 
   public ShellResponse runCommand(
       NodeDetails node, Universe universe, List<String> command, ShellProcessContext context) {
+    return runCommand(node, universe, command, context, true /* use bash */);
+  }
+
+  public ShellResponse runCommand(
+      NodeDetails node,
+      Universe universe,
+      List<String> command,
+      ShellProcessContext context,
+      boolean useBash) {
     Optional<NodeAgent> optional =
         context.isUseSshConnectionOnly()
             ? Optional.empty()
             : maybeGetNodeAgent(universe, node, true /*check feature flag*/);
     if (optional.isPresent()) {
-      return nodeActionRunner.runCommand(optional.get(), command, context);
+      return nodeActionRunner.runCommand(optional.get(), command, context, useBash);
     }
     List<String> actionArgs = new ArrayList<>();
     if (MapUtils.isNotEmpty(context.getRedactedVals())) {
