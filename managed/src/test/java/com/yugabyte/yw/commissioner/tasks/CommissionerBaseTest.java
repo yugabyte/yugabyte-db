@@ -324,6 +324,9 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     lenient()
         .when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
         .thenReturn(response);
+    lenient()
+        .when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any(), anyBoolean()))
+        .thenReturn(response);
     lenient().when(mockNodeAgentManager.getSoftwareVersion()).thenReturn("2.25.1.0-PRE_RELEASE");
     NodeAgentManager.InstallerFiles.InstallerFilesBuilder builder =
         NodeAgentManager.InstallerFiles.builder();
