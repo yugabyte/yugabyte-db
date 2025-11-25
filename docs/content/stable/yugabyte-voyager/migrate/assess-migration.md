@@ -152,21 +152,26 @@ To be able to view the assessment report in the yugabyted UI, do the following:
   After a migration assessment, if you choose to migrate using the open source YugabyteDB, you will be using this same local cluster as your [target database](../../introduction/#target-database).
       {{< /note >}}
 
-  1. Set the following configuration parameters before starting the migration:
+  1. Set the Control Plane configuration parameters before starting the migration:
 
         ```yaml
+        ### *********** Control Plane Configuration ************
+        ### To see the Voyager migration workflow details in the UI, set the following parameters.
+
         ### Control plane type refers to the deployment type of YugabyteDB
+        ### Accepted values: yugabyted
+        ### Optional (if not set, no visualization will be available)
         control-plane-type: yugabyted
 
-        ### YSQL connection string
-        ### Provide the standard PostgreSQL connection parameters, including user name, host name, and port. For example, postgresql://yugabyte:yugabyte@127.0.0.1:5433
-        yugabyted-db-conn-string: postgresql://yugabyte:yugabyte@127.0.0.1:5433
+        ### Yugabyted Control Plane Configuration (for local yugabyted clusters)
+        ### Uncomment the section below if control-plane-type is 'yugabyted'
+        yugabyted-control-plane:
+          ### YSQL connection string to yugabyted database
+          ### Provide standard PostgreSQL connection parameters: user name, host name, and port
+          ### Example: postgresql://yugabyte:yugabyte@127.0.0.1:5433
+          ### Note: Don't include the dbname parameter; the default 'yugabyte' database is used for metadata
+          db-conn-string: postgresql://yugabyte:yugabyte@127.0.0.1:5433
         ```
-
-        {{< note title="Note" >}}
-
-Don't include the `dbname` parameter in the connection string; the default `yugabyte` database is used to store the meta information for showing the migration in the yugabyted UI.
-        {{< /note >}}
 
 ## Assess migration
 
@@ -205,10 +210,53 @@ You can perform the following steps with these scripts:
 
 1. On a machine which has access to the source database, copy the scripts and install dependencies psql and pg_dump version 14 or later. Alternatively, you can install yb-voyager on the machine to automatically get the dependencies.
 
-1. Run the `yb-voyager-pg-gather-assessment-metadata.sh` script by providing the source connection string, the schema names, path to a directory where metadata will be saved, and an optional argument of an interval to capture the IOPS metadata of the source (in seconds with a default value of 120). For example:
+1. Run the `yb-voyager-pg-gather-assessment-metadata.sh` script by providing the source connection string, the schema names, path to a directory where metadata will be saved, and additional optional arguments.
+
+    | <div style="width:150px">Argument</div> | Description/valid options |
+    | :------- | :------------------------ |
+    | pgss_enabled (required) | Whether pg_stat_statements is correctly installed and enabled. <br>Accepted parameters: true, false |
+    | iops_capture_interval (optional) |  Interval in seconds to capture IOPS metadata.<br>Default: 120 |
+    | yes (optional) | Overrides all interactive prompts with "Yes" (Y). If set to false or omitted, the default reply is "No" (N). <br>Default: false <br>Accepted parameters: true, false
+    | source_node_name (optional) | Logical name of the node from which you are collecting data. Use distinct values (for example, primary, replica1, replica2) when collecting from multiple nodes. <br>Default: primary |
+    | skip_checks (optional) | When true, skips checks run by the script before collecting metadata. <br>Default: false <br>Accepted parameters: true, false |
+
+    For example, on a single-node PostgreSQL deployment:
 
     ```sh
-    /path/to/yb-voyager-pg-gather-assessment-metadata.sh 'postgresql://ybvoyager@host:port/dbname' 'schema1|schema2' '/path/to/assessment_metadata_dir' '60'
+      /path/to/yb-voyager-pg-gather-assessment-metadata.sh \
+        'postgresql://ybvoyager@host:port/dbname' \
+        'schema1|schema2' \
+        '/path/to/assessment_metadata_dir' \
+        'true' \
+        '100'
+    ```
+
+    **Note: For primary–replica setups and source_node_name option**<br/>
+    If you have read replicas, run the script once on each node that you want to include in the assessment, using the same directory, `assessment_metadata_dir` but a different `source_node_name` for each node. The primary node must use `source_node_name=primary` (or omit it to accept the default), and replicas should use unique names such as replica1, replica2, and so on. This ensures that Voyager tags and analyzes the collected metrics separately for each node.
+
+    For example, on the primary node:
+    ```sh
+      /path/to/yb-voyager-pg-gather-assessment-metadata.sh \
+        'postgresql://ybvoyager@primary-host:5432/dbname' \
+        'public|sales' \
+        '/path/to/assessment_metadata_dir' \
+        'true' \
+        '100' \
+        'false' \
+        'primary'
+    ```
+
+    On a read replica:
+
+    ```sh
+    /path/to/yb-voyager-pg-gather-assessment-metadata.sh \
+      'postgresql://ybvoyager@replica1-host:5432/dbname' \
+      'public|sales' \
+      '/path/to/assessment_metadata_dir' \
+      'true' \
+      '120' \
+      'false' \
+      'replica1'
     ```
 
 1. Copy the metadata directory to the client machine on which voyager is installed, and run the `assess-migration` command by specifying the path to the metadata directory as follows:
@@ -255,6 +303,72 @@ Depending on the recommendations in the assessment report, do the following when
     - [Live migration](../../migrate/live-migrate/)
     - [Live migration with fall-forward](../../migrate/live-fall-forward/)
     - [Live migration with fall-back](../../migrate/live-fall-back/)
+
+## Assess with read replicas (PostgreSQL only)
+
+Voyager can collect assessment metadata from [read replicas](/stable/architecture/docdb-replication/read-replicas/) in addition to the primary node, providing a comprehensive view of your workload distribution.
+
+You can use read replicas by explicitly providing the read replica endpoints.
+
+Run the command as follows:
+
+{{< tabpane text=true >}}
+  {{% tab header="CLI" lang="cli" %}}
+
+  ```sh
+  yb-voyager assess-migration --source-db-type postgresql \
+      --source-db-host primary-host \
+      --source-db-user ybvoyager \
+      --source-db-password password \
+      --source-db-name dbname \
+      --source-read-replica-endpoints "replica1:5432,replica2:5432" \
+      --export-dir /path/to/export/dir
+  ```
+
+  {{% /tab %}}
+  {{% tab header="Config file" lang="config" %}}
+
+```sh
+yb-voyager assess-migration --config-file <path-to-config-file>
+```
+
+A sample source database configuration is as follows:
+
+```yaml
+source:
+  host: primary-host
+  port: 5432
+  user: ybvoyager
+  password: password
+  db-name: dbname
+  read-replica-endpoints: "replica1:5432,replica2:5432"
+```
+
+  {{% /tab %}}
+{{< /tabpane >}}
+
+  Ensure that all provided endpoints are accessible as they are strictly validated.
+
+<!--
+Add during next release or when it is supported
+-  Automatic discovery (Default)
+
+    By default, Voyager attempts to discover replicas via [pg_stat_replication](/stable/additional-features/change-data-capture/using-logical-replication/monitor/#pg-stat-replication) and validate them by connecting to the primary as follows:
+
+    ```sh
+    yb-voyager assess-migration --source-db-type postgresql \
+        --source-db-host primary-host \
+        --source-db-user ybvoyager \
+        --source-db-password password \
+        --source-db-name dbname \
+        --export-dir /path/to/export/dir
+    ```
+
+    Voyager discovers replicas from the primary, attempts best-effort validation, and prompts you to include them. If validation fails (common in RDS, Aurora, Kubernetes, or when using internal IPs), you can either continue with primary-only assessment or manually specify replica endpoints.
+
+    - Manual specification.
+    Explicitly provide the read replica endpoints when automatic discovery fails, or if you want precise control.
+    -->
 
 ## Assess a fleet of databases (Oracle only)
 
@@ -331,3 +445,4 @@ After the bulk assessment is completed, the top-level directory specified using 
 
 - [Assess migration CLI](../../reference/assess-migration/)
 - [Compare performance](../../reference/compare-performance/)
+
