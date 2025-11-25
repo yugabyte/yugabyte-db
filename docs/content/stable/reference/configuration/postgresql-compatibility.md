@@ -18,7 +18,11 @@ rightNav:
 
 YugabyteDB is a [PostgreSQL-compatible](https://www.yugabyte.com/tech/postgres-compatibility/) distributed database that supports the majority of PostgreSQL syntax. YugabyteDB is methodically expanding its features to deliver PostgreSQL-compatible performance that can substantially improve your application's efficiency.
 
-To test and take advantage of features developed for enhanced PostgreSQL compatibility in YugabyteDB that are currently in {{<tags/feature/ea>}}, you can enable Enhanced PostgreSQL Compatibility Mode (EPCM). When this mode is turned on, YugabyteDB is configured to use all the latest features developed for feature and performance parity. EPCM is available in [v2024.1](/stable/releases/ybdb-releases/v2024.1/) and later. The following features are part of EPCM.
+To test and take advantage of features developed for enhanced PostgreSQL compatibility in YugabyteDB that are in {{<tags/feature/ea>}}, you can enable Enhanced PostgreSQL Compatibility Mode (EPCM). When this mode is turned on, YugabyteDB is configured to use all the latest features developed for feature and performance parity. EPCM is available in [v2024.1](/stable/releases/ybdb-releases/v2024.1/) and later.
+
+Note that from v2025.2, all the features in EPCM are enabled by default in new universes. Use individual flags to set features.
+
+The following features are part of EPCM.
 
 | Feature | Flag/Configuration Parameter | EA | GA |
 | :--- | :--- | :--- | :--- |
@@ -37,11 +41,23 @@ After turning this mode on, as you upgrade universes, YugabyteDB will automatica
 
 As features included in the PostgreSQL compatibility mode transition from {{<tags/feature/ea>}} to {{<tags/feature/ga>}} in subsequent versions of YugabyteDB, they become enabled by default on new universes, and are no longer managed under EPCM on your existing universes after the upgrade.
 
+From v2025.2, all the features in EPCM are enabled by default in new universes. Use individual flags to set features.
+
 {{<note title="Note">}}
 If you have set these features independent of EPCM, you cannot use EPCM.
 
 Conversely, if you are using EPCM on a universe, you cannot set any of the features independently.
 {{</note>}}
+
+### Upgrading
+
+If you upgrade a universe with EPCM to v2025.2 or later, YugabyteDB will automatically enable all EPCM features. Going forward, use individual flags to set features.
+
+When upgrading a universe that does not have EPCM, YugabyteDB does not enable features automatically. If the universe has the [cost based optimizer](#cost-based-optimizer) enabled, however, YugabyteDB will enable the following features:
+
+- Auto Analyze: ysql_enable_auto_analyze is set to true.
+- Bitmap scans: yb_enable_bitmapscan is set to true.
+- Parallel append: yb_enable_parallel_append is set to true.
 
 ## Released features
 
@@ -130,6 +146,10 @@ To learn about parallel queries, see [Parallel queries](../../../additional-feat
 {{</lead>}}
 
 ## Enable EPCM
+
+From v2025.2, all the features in EPCM are enabled by default in new universes. Use individual flags to set features.
+
+For versions prior to v2025.2, you can enable EPCM as follows.
 
 ### YugabyteDB
 
