@@ -207,6 +207,8 @@ class PgClientServiceMockImpl : public PgClientServiceIf {
     return STATUS(NotSupported, "Mocking PollVectorIndexReady is not supported");
   }
 
+  void UnsetMock(const std::string& method);
+
  private:
   PgClientServiceIf* impl_;
   std::unordered_map<std::string, SharedFunctor::weak_type> mocks_;
