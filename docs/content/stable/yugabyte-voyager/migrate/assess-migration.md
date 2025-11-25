@@ -259,10 +259,6 @@ You can perform the following steps with these scripts:
       'replica1'
     ```
 
-
-
-
-
 1. Copy the metadata directory to the client machine on which voyager is installed, and run the `assess-migration` command by specifying the path to the metadata directory as follows:
 
     ```sh

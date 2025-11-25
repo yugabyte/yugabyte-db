@@ -749,7 +749,7 @@ source-replica:
 
 Refer to the [live-migration-with-fall-forward.yaml](https://github.com/yugabyte/yb-voyager/blob/{{< yb-voyager-release >}}/yb-voyager/config-templates/live-migration-with-fall-forward.yaml) template for more information on the available global, source, and target configuration parameters supported by Voyager.
 
-## Configure yugabyted UI
+### Configure yugabyted UI
 
 You can use [yugabyted UI](/stable/reference/configuration/yugabyted/) to view the migration assessment report, and to visualize and review the database migration workflow performed by YugabyteDB Voyager.
 
