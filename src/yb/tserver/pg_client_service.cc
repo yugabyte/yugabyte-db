@@ -2926,6 +2926,18 @@ PgClientServiceMockImpl::Handle PgClientServiceMockImpl::SetMock(
   return Handle{std::move(mock)};
 }
 
+void PgClientServiceMockImpl::UnsetMock(const std::string& method) {
+  std::lock_guard lock(mutex_);
+  auto it = mocks_.find(method);
+  if (it == mocks_.end()) {
+    LOG(WARNING) << "No mock found for method: " << method;
+    return;
+  }
+
+  LOG(INFO) << "Resetting mock for method: " << method;
+  mocks_.erase(it);
+}
+
 Result<bool> PgClientServiceMockImpl::DispatchMock(
     const std::string& method, const void* req, void* resp, rpc::RpcContext* context) {
   SharedFunctor mock;
