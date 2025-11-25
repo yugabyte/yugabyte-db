@@ -433,13 +433,7 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
       }
 
       command.add("--" + flagName);
-      // Kubectl command that is used for validation seems to add '<gflag value>' single quotes on
-      // its own, hence not adding it again here.
-      if (provider.getCloudCode() == CloudType.kubernetes) {
-        command.add(flagValue);
-      } else {
-        command.add("'" + flagValue + "'");
-      }
+      command.add(flagValue);
     }
 
     log.debug(
@@ -448,8 +442,10 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
             command.toString(), taskParams().ybSoftwareVersion, gFlagsValidation));
 
     try {
+      // Not using bash since some gflag values may have complicated escaping needed for bash case
       ShellResponse response =
-          nodeUniverseManager.runCommand(node, universe, command, shellContext);
+          nodeUniverseManager.runCommand(
+              node, universe, command, shellContext, false /* use bash */);
       if (response.code != 0) {
         log.warn(
             "Shell response returned with non-zero exit code with message: {}",
