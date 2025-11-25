@@ -11,7 +11,7 @@ menu:
     parent: java-drivers
     weight: 500
 aliases:
-  - /preview/yugabyte-cloud/cloud-develop/connect-ycql-application/
+  - /stable/yugabyte-cloud/cloud-develop/connect-ycql-application/
   - /preview/yugabyte-cloud/cloud-examples/connect-ycql-application/
 type: docs
 ---

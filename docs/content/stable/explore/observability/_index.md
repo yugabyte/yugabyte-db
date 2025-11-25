@@ -5,7 +5,7 @@ linkTitle: Observability
 description: Observability in YugabyteDB.
 headcontent: Monitoring, alerting, and analyzing metrics
 aliases:
-  - /preview/explore/observability-docker/macos
+  - /stable/explore/observability-docker/macos
   - /preview/explore/observability-docker/linux
   - /preview/explore/observability-docker/docker
 menu:

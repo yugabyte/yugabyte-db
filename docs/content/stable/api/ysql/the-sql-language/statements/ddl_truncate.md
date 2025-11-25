@@ -8,7 +8,7 @@ menu:
     identifier: ddl_truncate
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/ddl_truncate/
+  - /stable/api/ysql/commands/ddl_truncate/
 type: docs
 ---
 

@@ -5,7 +5,7 @@ linkTitle: Quick start
 headcontent: Get started in less than 5 minutes in the cloud or on your desktop
 description: Get started using YugabyteDB in less than five minutes on macOS.
 aliases:
-  - /preview/quick-start/create-local-cluster/
+  - /stable/quick-start/create-local-cluster/
   - /preview/quick-start/install/
   - /preview/quick-start/
   - /preview/develop/tutorials/quick-start/macos/

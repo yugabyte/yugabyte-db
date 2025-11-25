@@ -7,7 +7,7 @@ menu:
     parent: api-yedis
     weight: 2510
 aliases:
-  - /preview/api/redis/zcard
+  - /stable/api/redis/zcard
   - /preview/api/yedis/zcard
 type: docs
 ---

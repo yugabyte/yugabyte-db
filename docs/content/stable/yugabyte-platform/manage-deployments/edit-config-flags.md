@@ -5,7 +5,7 @@ linkTitle: Edit configuration flags
 description: Use YugabyteDB Anywhere to edit configuration flags.
 headcontent: Customize the database server configuration
 aliases:
-  - /preview/manage/enterprise-edition/edit-flags/
+  - /stable/manage/enterprise-edition/edit-flags/
   - /preview/manage/enterprise-edition/edit-config-flags/
 menu:
   stable_yugabyte-platform:

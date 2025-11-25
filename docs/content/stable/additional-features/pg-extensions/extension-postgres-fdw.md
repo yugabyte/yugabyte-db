@@ -10,7 +10,7 @@ menu:
     weight: 20
 type: docs
 aliases:
-  - /preview/explore/ysql-language-features/pg-extensions/extension-postgres-fdw
+  - /stable/explore/ysql-language-features/pg-extensions/extension-postgres-fdw
 ---
 
 {{< warning title="Not currently compatible with v2.25" >}}

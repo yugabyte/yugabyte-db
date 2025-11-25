@@ -9,7 +9,7 @@ menu:
     parent: data-migration
     weight: 60
 aliases:
-  - /preview/yugabyte-voyager/reference/fall-forward/fall-forward-setup/
+  - /stable/yugabyte-voyager/reference/fall-forward/fall-forward-setup/
   - /preview/yugabyte-voyager/reference/fall-forward/fall-forward-switchover/
 type: docs
 rightNav:

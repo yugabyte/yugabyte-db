@@ -5,7 +5,7 @@ linkTitle: VPC network
 description: Configure VPC networking in YugabyteDB Aeon.
 headcontent: Set up VPC networking so that your clusters can communicate privately with applications
 aliases:
-  - /preview/yugabyte-cloud/cloud-network/vpc-peers/
+  - /stable/yugabyte-cloud/cloud-network/vpc-peers/
   - /preview/yugabyte-cloud/cloud-secure-clusters/cloud-vpcs/
 menu:
   stable_yugabyte-cloud:

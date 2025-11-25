@@ -5,7 +5,7 @@ linkTitle: xCluster - Asynchronous replication
 description: Multi-region deployment using asynchronous replication across multiple data centers.
 headContent: Asynchronous replication between independent YugabyteDB universes
 aliases:
-  - /preview/explore/two-data-centers-linux/
+  - /stable/explore/two-data-centers-linux/
   - /preview/explore/two-data-centers/macos/
   - /preview/explore/multi-region-deployments/asynchronous-replication-ysql/
   - /preview/explore/going-beyond-sql/asynchronous-replication-ycql/

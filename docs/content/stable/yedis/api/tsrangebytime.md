@@ -7,7 +7,7 @@ menu:
     parent: api-yedis
     weight: 2440
 aliases:
-  - /preview/api/redis/tsrangebytime
+  - /stable/api/redis/tsrangebytime
   - /preview/api/yedis/tsrangebytime
 type: docs
 ---

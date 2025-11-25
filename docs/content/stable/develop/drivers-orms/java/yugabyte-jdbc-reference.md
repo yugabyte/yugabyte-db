@@ -6,7 +6,7 @@ description: YugabyteDB JDBC Smart Driver for YSQL reference
 tags:
   other: ysql
 aliases:
-  - /preview/reference/drivers/java/yugabyte-jdbc-reference/
+  - /stable/reference/drivers/java/yugabyte-jdbc-reference/
 menu:
   stable_develop:
     name: JDBC Drivers

@@ -5,7 +5,7 @@ linkTitle: Offline migration
 headcontent: Steps for an offline migration using YugabyteDB Voyager
 description: Run the steps to ensure a successful offline migration using YugabyteDB Voyager.
 aliases:
-  - /preview/yugabyte-voyager/migrate-steps/
+  - /stable/yugabyte-voyager/migrate-steps/
 menu:
   stable_yugabyte-voyager:
     identifier: migrate-offline

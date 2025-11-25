@@ -4,7 +4,7 @@ headerTitle: Build a PHP application
 description: Build a small PHP application using the php-pgsql driver and using the YSQL API to connect to and interact with a YugabyteDB Aeon cluster.
 headContent: "Client driver: php-pgsql"
 aliases:
-  - /preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-php/
+  - /stable/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-php/
 menu:
   stable_develop:
     parent: build-apps

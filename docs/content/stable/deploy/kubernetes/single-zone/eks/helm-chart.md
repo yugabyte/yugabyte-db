@@ -9,7 +9,7 @@ menu:
     identifier: k8s-eks-1
     weight: 622
 aliases:
-  - /preview/deploy/kubernetes/eks/
+  - /stable/deploy/kubernetes/eks/
   - /preview/deploy/kubernetes/eks/helm-chart/
   - /preview/deploy/kubernetes/single-zone/eks/
 type: docs

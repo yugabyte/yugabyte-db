@@ -7,7 +7,7 @@ menu:
     parent: api-yedis
     weight: 2210
 aliases:
-  - /preview/api/redis/incr
+  - /stable/api/redis/incr
   - /preview/api/yedis/incr
 type: docs
 ---

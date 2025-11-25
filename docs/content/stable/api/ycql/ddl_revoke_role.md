@@ -8,7 +8,7 @@ menu:
     parent: api-cassandra
     weight: 1284
 aliases:
-  - /preview/api/cassandra/ddl_revoke_role
+  - /stable/api/cassandra/ddl_revoke_role
   - /preview/api/ycql/ddl_revoke_role
 type: docs
 ---

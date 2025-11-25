@@ -5,7 +5,7 @@ linkTitle: Key concepts
 description: Learn about the Key concepts in YugabyteDB
 headcontent: Glossary of key concepts
 aliases:
-  - /preview/architecture/concepts/universe
+  - /stable/architecture/concepts/universe
   - /preview/architecture/concepts/single-node/
   - /preview/key-concepts/
 menu:

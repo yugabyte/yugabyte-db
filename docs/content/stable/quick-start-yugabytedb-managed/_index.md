@@ -5,7 +5,7 @@ linkTitle: Quick start
 headcontent: Get started in less than 5 minutes in the cloud or on your desktop
 description: Get started using YugabyteDB in less than five minutes in the cloud on Aeon.
 aliases:
-  - /preview/quick-start-yugabytedb-managed/
+  - /stable/quick-start-yugabytedb-managed/
 layout: single
 type: docs
 rightNav:

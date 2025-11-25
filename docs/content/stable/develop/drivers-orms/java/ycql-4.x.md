@@ -11,7 +11,7 @@ menu:
     parent: java-drivers
     weight: 500
 aliases:
-  - /preview/develop/drivers-orms/java/ycql-4.6/
+  - /stable/develop/drivers-orms/java/ycql-4.6/
   - /preview/develop/tutorials/build-apps/java/ycql-4.6/
 type: docs
 ---

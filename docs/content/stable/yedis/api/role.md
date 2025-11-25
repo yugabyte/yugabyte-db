@@ -7,7 +7,7 @@ menu:
     parent: api-yedis
     weight: 2240
 aliases:
-  - /preview/api/redis/role
+  - /stable/api/redis/role
   - /preview/api/yedis/role
 type: docs
 ---

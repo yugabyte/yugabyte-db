@@ -5,7 +5,7 @@ linkTitle: Resiliency
 description: Simulate fault tolerance and resilience in a local YugabyteDB database universe.
 headcontent: Survive and recover from outages
 aliases:
-  - /preview/explore/postgresql/fault-tolerance/
+  - /stable/explore/postgresql/fault-tolerance/
   - /preview/explore/fault-tolerance-macos/
 menu:
   stable:

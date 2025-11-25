@@ -8,7 +8,7 @@ menu:
     parent: api-cassandra
     weight: 1320
 aliases:
-  - /preview/api/cassandra/dml_update/
+  - /stable/api/cassandra/dml_update/
   - /preview/api/ycql/dml_update/
   - /preview/api/ysql/dml_update/
 type: docs

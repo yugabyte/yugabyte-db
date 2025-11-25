@@ -8,7 +8,7 @@ menu:
     identifier: dcl_alter_user
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/dcl_alter_user/
+  - /stable/api/ysql/commands/dcl_alter_user/
 type: docs
 ---
 

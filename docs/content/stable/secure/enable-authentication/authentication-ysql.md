@@ -9,7 +9,7 @@ menu:
     parent: enable-authentication
     weight: 715
 aliases:
-  - /preview/secure/enable-authentication/ysql/
+  - /stable/secure/enable-authentication/ysql/
 type: docs
 ---
 

@@ -4,7 +4,7 @@ linkTitle: Connect to clusters
 description: Connect to clusters in YugabyteDB Aeon.
 headcontent: Connect using Cloud Shell, a client shell, and from applications
 aliases:
-  - /preview/deploy/yugabyte-cloud/connect-to-clusters/
+  - /stable/deploy/yugabyte-cloud/connect-to-clusters/
   - /preview/yugabyte-cloud/connect-to-clusters/
   - /preview/yugabyte-cloud/cloud-basics/connect-to-clusters/
 menu:

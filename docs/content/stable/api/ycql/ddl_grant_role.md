@@ -8,7 +8,7 @@ menu:
     parent: api-cassandra
     weight: 1282
 aliases:
-  - /preview/api/cassandra/ddl_grant_role
+  - /stable/api/cassandra/ddl_grant_role
   - /preview/api/ycql/ddl_grant_role
 type: docs
 ---

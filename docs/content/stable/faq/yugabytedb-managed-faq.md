@@ -3,7 +3,7 @@ title: YugabyteDB Aeon FAQ
 linkTitle: YugabyteDB Aeon FAQ
 description: YugabyteDB Aeon frequently asked questions.
 aliases:
-  - /preview/yugabyte-cloud/cloud-faq/
+  - /stable/yugabyte-cloud/cloud-faq/
 menu:
   stable_faq:
     identifier: yugabytedb-managed-faq

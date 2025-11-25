@@ -5,7 +5,7 @@ linkTitle: Troubleshoot and manage nodes
 description: Use YugabyteDB Anywhere to eliminate an unresponsive node.
 headcontent: Start, stop, delete, and eliminate unresponsive nodes
 aliases:
-  - /preview/manage/enterprise-edition/create-universe-multi-region
+  - /stable/manage/enterprise-edition/create-universe-multi-region
   - /preview/yugabyte-platform/add-nodes
   - /preview/yugabyte-platform/start-stop-processes
 menu:

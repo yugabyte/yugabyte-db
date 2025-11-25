@@ -5,7 +5,7 @@ linkTitle: Kubernetes
 description: Configure the Kubernetes provider configuration
 headContent: For deploying universes on Kubernetes
 aliases:
-  - /preview/deploy/enterprise-edition/configure-cloud-providers/kubernetes
+  - /stable/deploy/enterprise-edition/configure-cloud-providers/kubernetes
 menu:
   stable_yugabyte-platform:
     identifier: set-up-kubernetes-provider-1

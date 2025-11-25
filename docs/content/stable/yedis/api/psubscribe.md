@@ -7,7 +7,7 @@ menu:
     parent: api-yedis
     weight: 2554
 aliases:
-  - /preview/api/redis/psubscribe
+  - /stable/api/redis/psubscribe
   - /preview/api/yedis/psubscribe
 type: docs
 ---

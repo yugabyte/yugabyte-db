@@ -10,7 +10,7 @@ menu:
     weight: 20
 type: docs
 aliases:
-  - /preview/explore/ysql-language-features/pg-extensions/extension-passwordcheck
+  - /stable/explore/ysql-language-features/pg-extensions/extension-passwordcheck
 ---
 
 The [passwordcheck](https://www.postgresql.org/docs/15/passwordcheck.html) PostgreSQL module provides a means to check user passwords whenever they are set with CREATE ROLE or ALTER ROLE. If a password is considered too weak, it will be rejected and the command will terminate with an error.

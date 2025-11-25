@@ -7,7 +7,7 @@ menu:
     parent: api-yedis
     weight: 2520
 aliases:
-  - /preview/api/redis/zrangebyscore
+  - /stable/api/redis/zrangebyscore
   - /preview/api/yedis/zrangebyscore
 type: docs
 ---

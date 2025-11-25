@@ -4,7 +4,7 @@ headerTitle: Transactions in YSQL
 linkTitle: Transactions
 description: Learn how to use Transactions in YSQL on YugabyteDB.
 aliases:
-  - /preview/explore/transactional/acid-transactions/
+  - /stable/explore/transactional/acid-transactions/
   - /preview/develop/learn/acid-transactions/
   - /preview/develop/learn/acid-transactions-ysql/
 menu:

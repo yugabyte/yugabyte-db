@@ -5,7 +5,7 @@ linkTitle: Data model
 description: Understand how DocDB stores table rows as keys and values
 headcontent: Understand how DocDB stores table rows as keys and values
 aliases:
-  - /preview/architecture/docdb/persistence/
+  - /stable/architecture/docdb/persistence/
 menu:
   stable:
     identifier: docdb-data-model

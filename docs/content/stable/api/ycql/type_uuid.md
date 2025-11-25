@@ -9,7 +9,7 @@ menu:
     parent: api-cassandra
     weight: 1460
 aliases:
-  - /preview/api/cassandra/type_uuid
+  - /stable/api/cassandra/type_uuid
   - /preview/api/ycql/type_uuid
 type: docs
 ---

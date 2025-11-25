@@ -7,7 +7,7 @@ menu:
     parent: api-yedis
     weight: 2010
 aliases:
-  - /preview/api/redis/append
+  - /stable/api/redis/append
   - /preview/api/yedis/append
 type: docs
 ---

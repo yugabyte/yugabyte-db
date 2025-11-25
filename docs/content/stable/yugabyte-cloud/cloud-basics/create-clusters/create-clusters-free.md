@@ -4,7 +4,7 @@ linkTitle: Sandbox
 description: Create Sandbox clusters in YugabyteDB Aeon.
 headcontent: Free forever
 aliases:
-  - /preview/yugabyte-cloud/cloud-basics/create-clusters-free/
+  - /stable/yugabyte-cloud/cloud-basics/create-clusters-free/
   - /preview/yugabyte-cloud/free-tier/
 menu:
   stable_yugabyte-cloud:

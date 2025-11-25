@@ -4,7 +4,7 @@ headerTitle: Benchmark YugabyteDB
 linkTitle: Benchmark
 description: Benchmark YugabyteDB using TPC-C, sysbench, YCSB and more.
 aliases:
-  - /preview/benchmark/performance/
+  - /stable/benchmark/performance/
 type: indexpage
 ---
 

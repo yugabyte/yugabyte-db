@@ -4,7 +4,7 @@ headerTitle: Deploy a GraphQL application
 linkTitle: Deploy a GraphQL application
 description: Deploy the Realtime Poll GraphQL application for Hasura Cloud and YugabyteDB Aeon.
 aliases:
-  - /preview/yugabyte-cloud/hasura-sample-app/
+  - /stable/yugabyte-cloud/hasura-sample-app/
   - /preview/yugabyte-cloud/cloud-examples/hasura-sample-app/
 menu:
   stable_integrations:

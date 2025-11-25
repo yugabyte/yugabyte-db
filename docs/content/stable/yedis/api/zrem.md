@@ -7,7 +7,7 @@ menu:
     parent: api-yedis
     weight: 2530
 aliases:
-  - /preview/api/redis/zrem
+  - /stable/api/redis/zrem
   - /preview/api/yedis/zrem
 type: docs
 ---

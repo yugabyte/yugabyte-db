@@ -5,7 +5,7 @@ linkTitle: Synchronous (3+ regions)
 description: Global data distributed using synchronous replication across regions.
 headcontent: Distribute data synchronously across regions
 aliases:
-  - /preview/explore/global-distribution-linux/
+  - /stable/explore/global-distribution-linux/
   - /preview/explore/global-distribution/macos
   - /preview/explore/global-distribution/linux
   - /preview/explore/multi-region-deployments/synchronous-replication-ycql/

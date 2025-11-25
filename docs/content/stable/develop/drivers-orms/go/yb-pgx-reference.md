@@ -6,7 +6,7 @@ description: Go PGX Smart Driver for YSQL
 tags:
   other: ysql
 aliases:
-  - /preview/reference/drivers/go/
+  - /stable/reference/drivers/go/
   - /preview/reference/drivers/go/yb-pgx-reference/
 menu:
   stable_develop:

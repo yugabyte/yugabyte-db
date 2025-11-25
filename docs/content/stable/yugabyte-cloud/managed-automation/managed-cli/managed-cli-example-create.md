@@ -10,7 +10,7 @@ menu:
     parent: managed-cli
     weight: 60
 aliases:
-  - /preview/yugabyte-cloud/managed-automation/managed-cli/managed-cli-examples/managed-cli-example-create/
+  - /stable/yugabyte-cloud/managed-automation/managed-cli/managed-cli-examples/managed-cli-example-create/
   - /preview/yugabyte-cloud/managed-automation/managed-cli/managed-cli-examples/
 type: docs
 ---

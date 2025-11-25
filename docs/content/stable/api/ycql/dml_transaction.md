@@ -8,7 +8,7 @@ menu:
     parent: api-cassandra
     weight: 1330
 aliases:
-  - /preview/api/cassandra/dml_transaction
+  - /stable/api/cassandra/dml_transaction
   - /preview/api/ycql/dml_transaction
 type: docs
 ---

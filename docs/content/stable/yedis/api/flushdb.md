@@ -7,7 +7,7 @@ menu:
     parent: api-yedis
     weight: 2065
 aliases:
-  - /preview/api/redis/flushdb
+  - /stable/api/redis/flushdb
   - /preview/api/yedis/flushdb
 type: docs
 ---

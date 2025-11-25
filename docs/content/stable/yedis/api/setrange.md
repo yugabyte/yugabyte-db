@@ -7,7 +7,7 @@ menu:
     parent: api-yedis
     weight: 2280
 aliases:
-  - /preview/api/redis/setrange
+  - /stable/api/redis/setrange
   - /preview/api/yedis/setrange
 type: docs
 ---

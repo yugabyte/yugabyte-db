@@ -7,7 +7,7 @@ menu:
     parent: api-yedis
     weight: 2420
 aliases:
-  - /preview/api/redis/tscard
+  - /stable/api/redis/tscard
   - /preview/api/yedis/tscard
 type: docs
 ---

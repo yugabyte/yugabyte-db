@@ -8,7 +8,7 @@ menu:
     identifier: ddl_drop_function
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/ddl_drop_function/
+  - /stable/api/ysql/commands/ddl_drop_function/
 type: docs
 ---
 

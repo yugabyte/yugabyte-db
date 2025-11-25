@@ -10,7 +10,7 @@ menu:
     identifier: k8s-mz-gke-1
     weight: 628
 aliases:
-  - /preview/deploy/kubernetes/multi-zone/gke
+  - /stable/deploy/kubernetes/multi-zone/gke
 type: docs
 ---
 

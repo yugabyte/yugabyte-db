@@ -6,7 +6,7 @@ description: Java JDBC Driver for YSQL
 tags:
   other: ysql
 aliases:
-  - /preview/reference/drivers/java/postgres-jdbc-reference/
+  - /stable/reference/drivers/java/postgres-jdbc-reference/
 menu:
   stable_develop:
     name: JDBC Drivers
