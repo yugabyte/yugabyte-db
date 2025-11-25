@@ -45,7 +45,7 @@ typedef struct {
 
 // This must be called exactly once to initialize the YB/PostgreSQL gateway API before any other
 // functions in this API are called.
-void YBCInitPgGate(
+YbcStatus YBCInitPgGate(
     YbcPgTypeEntities type_entities, const YbcPgCallbacks* pg_callbacks,
     uint64_t *session_id, const YbcPgAshConfig* ash_config);
 

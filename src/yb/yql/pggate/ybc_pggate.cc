@@ -291,7 +291,7 @@ inline std::optional<Bound> MakeBound(YbcPgBoundType type, uint16_t value) {
   return Bound{.value = value, .is_inclusive = (type == YB_YQL_BOUND_VALID_INCLUSIVE)};
 }
 
-void InitPgGateImpl(
+Status InitPgGateImpl(
     YbcPgTypeEntities type_entities, const YbcPgCallbacks& pg_callbacks,
     const YbcPgAshConfig& ash_config, std::optional<uint64_t> session_id) {
   // TODO: We should get rid of hybrid clock usage in YSQL backend processes (see #16034).
@@ -312,8 +312,10 @@ void InitPgGateImpl(
 
   pgapi_shutdown_done.exchange(false);
   pgapi = new PgApiImpl(type_entities, pg_callbacks, session_id, ash_config);
+  RETURN_NOT_OK(pgapi->StartPgApi(session_id));
 
   VLOG(1) << "PgGate open";
+  return Status::OK();
 }
 
 Status PgInitSessionImpl(YbcPgExecStatsState& session_stats, bool is_binary_upgrade) {
@@ -581,14 +583,13 @@ Status YBCCommitTransactionIntermediateImpl(const YbcPgInitTransactionData& data
 
 extern "C" {
 
-void YBCInitPgGate(
+YbcStatus YBCInitPgGate(
     YbcPgTypeEntities type_entities, const YbcPgCallbacks *pg_callbacks, uint64_t *session_id,
     const YbcPgAshConfig *ash_config) {
-  CHECK_OK(WithMaskedYsqlSignals([&type_entities, pg_callbacks,  session_id, ash_config] {
-    InitPgGateImpl(
-        type_entities, *pg_callbacks, *ash_config,
-        session_id ? std::optional(*session_id) : std::nullopt);
-    return static_cast<Status>(Status::OK());
+  return ToYBCStatus(WithMaskedYsqlSignals([&type_entities, pg_callbacks, session_id, ash_config] {
+      return InitPgGateImpl(
+          type_entities, *pg_callbacks, *ash_config,
+          session_id ? std::optional(*session_id) : std::nullopt);
   }));
 }
 

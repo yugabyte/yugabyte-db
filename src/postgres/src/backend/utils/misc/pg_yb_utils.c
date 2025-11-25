@@ -1098,7 +1098,10 @@ YBInitPostgresBackend(const char *program_name, uint64_t *session_id)
 		};
 
 		IpAddressToBytes(&ash_config);
-		YBCInitPgGate(YbGetTypeTable(), &callbacks, session_id, &ash_config);
+		HandleYBStatusAtErrorLevel(YBCInitPgGate(YbGetTypeTable(),
+												 &callbacks,
+												 session_id,
+												 &ash_config), FATAL);
 		YBCInstallTxnDdlHook();
 
 		/*

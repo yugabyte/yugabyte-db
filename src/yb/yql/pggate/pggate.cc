@@ -600,13 +600,17 @@ PgApiImpl::PgApiImpl(
   // This is an RCU object, but there are no concurrent updates on PG side, only on tserver, so
   // it's safe to just save the pointer.
   tserver_shared_object_ = PgSharedMemoryManager().SharedData().get();
+}
 
-  CHECK_OK(interrupter_->Start());
-  CHECK_OK(clock_->Init());
+Status PgApiImpl::StartPgApi(std::optional<uint64_t> session_id) {
+  RETURN_NOT_OK(interrupter_->Start());
+  RETURN_NOT_OK(clock_->Init());
 
-  CHECK_OK(pg_client_.Start(
+  RETURN_NOT_OK(pg_client_.Start(
       proxy_cache_.get(), &messenger_holder_.messenger->scheduler(),
       *tserver_shared_object_, session_id));
+
+  return Status::OK();
 }
 
 PgApiImpl::~PgApiImpl() {
