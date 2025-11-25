@@ -8,7 +8,7 @@ menu:
     weight: 2520
 aliases:
   - /stable/api/redis/zrangebyscore
-  - /preview/api/yedis/zrangebyscore
+  - /stable/api/yedis/zrangebyscore
 type: docs
 ---
 

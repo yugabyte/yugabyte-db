@@ -8,7 +8,7 @@ menu:
     weight: 2135
 aliases:
   - /stable/api/redis/hincrby
-  - /preview/api/yedis/hincrby
+  - /stable/api/yedis/hincrby
 type: docs
 ---
 

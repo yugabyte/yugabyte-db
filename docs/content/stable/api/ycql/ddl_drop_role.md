@@ -9,7 +9,7 @@ menu:
     weight: 1265
 aliases:
   - /stable/api/cassandra/ddl_drop_role
-  - /preview/api/ycql/ddl_drop_role
+  - /stable/api/ycql/ddl_drop_role
 type: docs
 ---
 

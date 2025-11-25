@@ -8,7 +8,7 @@ menu:
     weight: 2170
 aliases:
   - /stable/api/redis/hmset
-  - /preview/api/yedis/hmset
+  - /stable/api/yedis/hmset
 type: docs
 ---
 

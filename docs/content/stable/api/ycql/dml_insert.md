@@ -9,7 +9,7 @@ menu:
     weight: 1300
 aliases:
   - /stable/api/cassandra/dml_insert
-  - /preview/api/ycql/dml_insert
+  - /stable/api/ycql/dml_insert
 type: docs
 ---
 

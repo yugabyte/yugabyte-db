@@ -9,7 +9,7 @@ menu:
     weight: 1235
 aliases:
   - /stable/api/cassandra/ddl_create_role
-  - /preview/api/ycql/ddl_create_role
+  - /stable/api/ycql/ddl_create_role
 type: docs
 ---
 

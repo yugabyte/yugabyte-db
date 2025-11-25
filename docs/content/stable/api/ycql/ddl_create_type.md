@@ -9,7 +9,7 @@ menu:
     weight: 1250
 aliases:
   - /stable/api/cassandra/ddl_create_type
-  - /preview/api/ycql/ddl_create_type
+  - /stable/api/ycql/ddl_create_type
 type: docs
 ---
 

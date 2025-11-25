@@ -8,7 +8,7 @@ menu:
     weight: 2250
 aliases:
   - /stable/api/redis/sadd
-  - /preview/api/yedis/sadd
+  - /stable/api/yedis/sadd
 type: docs
 ---
 ## Synopsis

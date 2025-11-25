@@ -9,7 +9,7 @@ menu:
     weight: 1330
 aliases:
   - /stable/api/cassandra/dml_truncate
-  - /preview/api/ycql/dml_truncate
+  - /stable/api/ycql/dml_truncate
 type: docs
 ---
 

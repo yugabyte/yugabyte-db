@@ -8,7 +8,7 @@ menu:
     weight: 2064
 aliases:
   - /stable/api/redis/flushall
-  - /preview/api/yedis/flushall
+  - /stable/api/yedis/flushall
 type: docs
 ---
 

@@ -8,7 +8,7 @@ menu:
     weight: 2271
 aliases:
   - /stable/api/redis/setex
-  - /preview/api/yedis/setex
+  - /stable/api/yedis/setex
 type: docs
 ---
 

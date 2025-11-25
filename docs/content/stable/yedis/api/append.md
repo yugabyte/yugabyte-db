@@ -8,7 +8,7 @@ menu:
     weight: 2010
 aliases:
   - /stable/api/redis/append
-  - /preview/api/yedis/append
+  - /stable/api/yedis/append
 type: docs
 ---
 

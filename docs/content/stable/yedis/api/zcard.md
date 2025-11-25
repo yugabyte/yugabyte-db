@@ -8,7 +8,7 @@ menu:
     weight: 2510
 aliases:
   - /stable/api/redis/zcard
-  - /preview/api/yedis/zcard
+  - /stable/api/yedis/zcard
 type: docs
 ---
 

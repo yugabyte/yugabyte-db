@@ -8,7 +8,7 @@ menu:
     weight: 2300
 aliases:
   - /stable/api/redis/smembers
-  - /preview/api/yedis/smembers
+  - /stable/api/yedis/smembers
 type: docs
 ---
 

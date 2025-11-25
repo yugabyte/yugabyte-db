@@ -9,7 +9,7 @@ menu:
     weight: 1220
 aliases:
   - /stable/api/cassandra/ddl_alter_table
-  - /preview/api/ycql/ddl_alter_table
+  - /stable/api/ycql/ddl_alter_table
 type: docs
 ---
 

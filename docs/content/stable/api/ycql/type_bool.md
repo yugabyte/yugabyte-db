@@ -9,7 +9,7 @@ menu:
     weight: 1380
 aliases:
   - /stable/api/cassandra/type_bool
-  - /preview/api/ycql/type_bool
+  - /stable/api/ycql/type_bool
 type: docs
 ---
 

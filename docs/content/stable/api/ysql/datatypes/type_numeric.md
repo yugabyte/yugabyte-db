@@ -9,7 +9,7 @@ menu:
     parent: api-ysql-datatypes
 aliases:
   - /stable/api/ysql/type_number/
-  - /preview/api/ysql/type_int/
+  - /stable/api/ysql/type_int/
 type: docs
 ---
 

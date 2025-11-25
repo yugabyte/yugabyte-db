@@ -8,7 +8,7 @@ menu:
     weight: 2233
 aliases:
   - /stable/api/redis/pexpire
-  - /preview/api/yedis/pexpire
+  - /stable/api/yedis/pexpire
 type: docs
 ---
 

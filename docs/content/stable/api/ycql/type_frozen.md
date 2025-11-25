@@ -9,7 +9,7 @@ menu:
     weight: 1401
 aliases:
   - /stable/api/cassandra/type_frozen
-  - /preview/api/ycql/type_frozen
+  - /stable/api/ycql/type_frozen
 type: docs
 ---
 

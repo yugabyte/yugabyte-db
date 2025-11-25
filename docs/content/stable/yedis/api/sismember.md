@@ -8,7 +8,7 @@ menu:
     weight: 2290
 aliases:
   - /stable/api/redis/sismember
-  - /preview/api/yedis/sismember
+  - /stable/api/yedis/sismember
 type: docs
 ---
 

@@ -8,7 +8,7 @@ menu:
     weight: 2555
 aliases:
   - /stable/api/redis/punsubscribe
-  - /preview/api/yedis/punsubscribe
+  - /stable/api/yedis/punsubscribe
 type: docs
 ---
 

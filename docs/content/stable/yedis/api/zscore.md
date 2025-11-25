@@ -8,7 +8,7 @@ menu:
     weight: 2545
 aliases:
   - /stable/api/redis/zscore
-  - /preview/api/yedis/zscore
+  - /stable/api/yedis/zscore
 type: docs
 ---
 

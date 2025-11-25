@@ -8,7 +8,7 @@ menu:
     weight: 2061
 aliases:
   - /stable/api/redis/expire
-  - /preview/api/yedis/expire
+  - /stable/api/yedis/expire
 type: docs
 ---
 

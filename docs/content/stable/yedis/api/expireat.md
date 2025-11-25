@@ -8,7 +8,7 @@ menu:
     weight: 2062
 aliases:
   - /stable/api/redis/expireat
-  - /preview/api/yedis/expireat
+  - /stable/api/yedis/expireat
 type: docs
 ---
 

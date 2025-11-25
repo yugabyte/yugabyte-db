@@ -8,7 +8,7 @@ menu:
     weight: 2400
 aliases:
   - /stable/api/redis/tsadd
-  - /preview/api/yedis/tsadd
+  - /stable/api/yedis/tsadd
 type: docs
 ---
 

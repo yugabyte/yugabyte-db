@@ -8,7 +8,7 @@ menu:
     weight: 2120
 aliases:
   - /stable/api/redis/hget
-  - /preview/api/yedis/hget
+  - /stable/api/yedis/hget
 type: docs
 ---
 

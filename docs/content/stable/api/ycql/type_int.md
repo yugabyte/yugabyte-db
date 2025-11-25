@@ -9,7 +9,7 @@ menu:
     weight: 1420
 aliases:
   - /stable/api/cassandra/type_int
-  - /preview/api/ycql/type_int
+  - /stable/api/ycql/type_int
 type: docs
 ---
 

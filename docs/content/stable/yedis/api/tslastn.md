@@ -8,7 +8,7 @@ menu:
     weight: 2430
 aliases:
   - /stable/api/redis/tslastn
-  - /preview/api/yedis/tslastn
+  - /stable/api/yedis/tslastn
 type: docs
 ---
 

@@ -8,7 +8,7 @@ menu:
     weight: 2110
 aliases:
   - /stable/api/redis/hexists
-  - /preview/api/yedis/hexists
+  - /stable/api/yedis/hexists
 type: docs
 ---
 

@@ -9,7 +9,7 @@ menu:
     weight: 1330
 aliases:
   - /stable/api/cassandra/dml_transaction
-  - /preview/api/ycql/dml_transaction
+  - /stable/api/ycql/dml_transaction
 type: docs
 ---
 

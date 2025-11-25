@@ -8,7 +8,7 @@ menu:
     weight: 2217
 aliases:
   - /stable/api/redis/keys
-  - /preview/api/yedis/keys
+  - /stable/api/yedis/keys
 type: docs
 ---
 

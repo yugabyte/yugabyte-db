@@ -9,7 +9,7 @@ menu:
     weight: 1283
 aliases:
   - /stable/api/cassandra/ddl_revoke_permission
-  - /preview/api/ycql/ddl_revoke_permission
+  - /stable/api/ycql/ddl_revoke_permission
 type: docs
 ---
 

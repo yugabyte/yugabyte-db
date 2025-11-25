@@ -8,7 +8,7 @@ menu:
     weight: 2420
 aliases:
   - /stable/api/redis/tscard
-  - /preview/api/yedis/tscard
+  - /stable/api/yedis/tscard
 type: docs
 ---
 

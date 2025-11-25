@@ -9,8 +9,8 @@ menu:
     weight: 1320
 aliases:
   - /stable/api/cassandra/dml_update/
-  - /preview/api/ycql/dml_update/
-  - /preview/api/ysql/dml_update/
+  - /stable/api/ycql/dml_update/
+  - /stable/api/ysql/dml_update/
 type: docs
 ---
 

@@ -8,7 +8,7 @@ menu:
     weight: 2215
 aliases:
   - /stable/api/redis/incrby
-  - /preview/api/yedis/incrby
+  - /stable/api/yedis/incrby
 type: docs
 ---
 

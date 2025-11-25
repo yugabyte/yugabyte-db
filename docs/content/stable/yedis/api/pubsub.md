@@ -8,7 +8,7 @@ menu:
     weight: 2550
 aliases:
   - /stable/api/redis/pubsub
-  - /preview/api/yedis/pubsub
+  - /stable/api/yedis/pubsub
 type: docs
 ---
 

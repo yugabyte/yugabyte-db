@@ -8,7 +8,7 @@ menu:
     weight: 2260
 aliases:
   - /stable/api/redis/scard
-  - /preview/api/yedis/scard
+  - /stable/api/yedis/scard
 type: docs
 ---
 

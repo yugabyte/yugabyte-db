@@ -8,7 +8,7 @@ menu:
     weight: 2060
 aliases:
   - /stable/api/redis/exist
-  - /preview/api/yedis/exist
+  - /stable/api/yedis/exist
 type: docs
 ---
 Single-key request only. Requests with multiple keys are not yet supported.

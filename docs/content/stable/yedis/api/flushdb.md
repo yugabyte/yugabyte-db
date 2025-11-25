@@ -8,7 +8,7 @@ menu:
     weight: 2065
 aliases:
   - /stable/api/redis/flushdb
-  - /preview/api/yedis/flushdb
+  - /stable/api/yedis/flushdb
 type: docs
 ---
 

@@ -8,7 +8,7 @@ menu:
     weight: 2554
 aliases:
   - /stable/api/redis/psubscribe
-  - /preview/api/yedis/psubscribe
+  - /stable/api/yedis/psubscribe
 type: docs
 ---
 

@@ -8,7 +8,7 @@ menu:
     weight: 2272
 aliases:
   - /stable/api/redis/psetex
-  - /preview/api/yedis/psetex
+  - /stable/api/yedis/psetex
 type: docs
 ---
 

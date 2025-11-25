@@ -9,7 +9,7 @@ menu:
     weight: 1282
 aliases:
   - /stable/api/cassandra/ddl_grant_role
-  - /preview/api/ycql/ddl_grant_role
+  - /stable/api/ycql/ddl_grant_role
 type: docs
 ---
 

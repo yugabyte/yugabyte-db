@@ -8,7 +8,7 @@ menu:
     weight: 2210
 aliases:
   - /stable/api/redis/incr
-  - /preview/api/yedis/incr
+  - /stable/api/yedis/incr
 type: docs
 ---
 

@@ -8,7 +8,7 @@ menu:
     weight: 2080
 aliases:
   - /stable/api/redis/getrange
-  - /preview/api/yedis/getrange
+  - /stable/api/yedis/getrange
 type: docs
 ---
 

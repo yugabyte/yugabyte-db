@@ -8,7 +8,7 @@ menu:
     weight: 2040
 aliases:
   - /stable/api/redis/del
-  - /preview/api/yedis/del
+  - /stable/api/yedis/del
 type: docs
 ---
 

@@ -9,7 +9,7 @@ menu:
     weight: 1390
 aliases:
   - /stable/api/cassandra/type_collection
-  - /preview/api/ycql/type_collection
+  - /stable/api/ycql/type_collection
 type: docs
 ---
 

@@ -8,7 +8,7 @@ menu:
     weight: 2310
 aliases:
   - /stable/api/redis/srem
-  - /preview/api/yedis/srem
+  - /stable/api/yedis/srem
 type: docs
 ---
 

@@ -10,7 +10,7 @@ menu:
     weight: 1460
 aliases:
   - /stable/api/cassandra/type_uuid
-  - /preview/api/ycql/type_uuid
+  - /stable/api/ycql/type_uuid
 type: docs
 ---
 

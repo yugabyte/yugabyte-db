@@ -8,7 +8,7 @@ menu:
     weight: 2234
 aliases:
   - /stable/api/redis/pexpireat
-  - /preview/api/yedis/pexpireat
+  - /stable/api/yedis/pexpireat
 type: docs
 ---
 

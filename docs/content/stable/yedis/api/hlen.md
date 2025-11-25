@@ -8,7 +8,7 @@ menu:
     weight: 2150
 aliases:
   - /stable/api/redis/hlen
-  - /preview/api/yedis/hlen
+  - /stable/api/yedis/hlen
 type: docs
 ---
 

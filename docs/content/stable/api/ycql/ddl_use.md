@@ -9,7 +9,7 @@ menu:
     weight: 1290
 aliases:
   - /stable/api/cassandra/ddl_use
-  - /preview/api/ycql/ddl_use
+  - /stable/api/ycql/ddl_use
 type: docs
 ---
 

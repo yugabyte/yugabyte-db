@@ -9,7 +9,7 @@ menu:
     weight: 1330
 aliases:
   - /stable/api/cassandra/ddl_delete
-  - /preview/api/ycql/ddl_delete
+  - /stable/api/ycql/ddl_delete
 type: docs
 ---
 

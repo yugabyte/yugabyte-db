@@ -9,7 +9,7 @@ menu:
     weight: 1255
 aliases:
   - /stable/api/cassandra/ddl_drop_index
-  - /preview/api/ycql/ddl_drop_index
+  - /stable/api/ycql/ddl_drop_index
 type: docs
 ---
 

@@ -8,7 +8,7 @@ menu:
     weight: 2420
 aliases:
   - /stable/api/redis/tsget
-  - /preview/api/yedis/tsget
+  - /stable/api/yedis/tsget
 type: docs
 ---
 

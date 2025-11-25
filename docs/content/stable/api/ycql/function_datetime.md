@@ -9,7 +9,7 @@ menu:
     weight: 1560
 aliases:
   - /stable/api/cassandra/function_datetime
-  - /preview/api/ycql/function_datetime
+  - /stable/api/ycql/function_datetime
 type: docs
 ---
 

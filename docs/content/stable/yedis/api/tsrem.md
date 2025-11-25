@@ -8,7 +8,7 @@ menu:
     weight: 2450
 aliases:
   - /stable/api/redis/tsrem
-  - /preview/api/yedis/tsrem
+  - /stable/api/yedis/tsrem
 type: docs
 ---
 

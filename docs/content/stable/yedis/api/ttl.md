@@ -8,7 +8,7 @@ menu:
     weight: 2470
 aliases:
   - /stable/api/redis/ttl
-  - /preview/api/yedis/ttl
+  - /stable/api/yedis/ttl
 type: docs
 ---
 

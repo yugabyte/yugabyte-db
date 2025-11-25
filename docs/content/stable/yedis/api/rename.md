@@ -8,7 +8,7 @@ menu:
     weight: 2265
 aliases:
   - /stable/api/redis/rename
-  - /preview/api/yedis/rename
+  - /stable/api/yedis/rename
 type: docs
 ---
 
