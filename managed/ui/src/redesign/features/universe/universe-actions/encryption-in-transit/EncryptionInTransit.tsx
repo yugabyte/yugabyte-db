@@ -21,7 +21,8 @@ import {
   UpgradeOptions,
   isSelfSignedCert,
   getInitialFormValues,
-  useEITStyles
+  useEITStyles,
+  K8sEncryptionOption
 } from './EncryptionInTransitUtils';
 import { api, QUERY_KEY } from '../../../../utils/api';
 import { Certificate } from '../../universe-form/utils/dto';
@@ -197,6 +198,19 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({
     if (values.rootAndClientRootCASame) {
       if (values.enableNodeToNodeEncrypt && values.enableClientToNodeEncrypt) {
         payload['clientRootCA'] = values.rootCA;
+        payload['createNewClientRootCA'] = false;
+      }
+    }
+
+    if (isItKubernetesUniverse && values.k8sEncryptionType === K8sEncryptionOption.EnableBoth) {
+      if (!values['rootCA']) {
+        payload['rootCA'] = null;
+        payload['createNewRootCA'] = true;
+        payload['clientRootCA'] = null;
+        payload['createNewClientRootCA'] = true;
+      } else {
+        payload['clientRootCA'] = values.rootCA;
+        payload['createNewRootCA'] = false;
         payload['createNewClientRootCA'] = false;
       }
     }
