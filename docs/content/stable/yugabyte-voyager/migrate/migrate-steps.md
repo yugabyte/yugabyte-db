@@ -201,7 +201,7 @@ Configure the yugabyted UI as follows:
 
   1. Start a local YugabyteDB cluster. Refer to the steps described in [Use a local cluster](/stable/quick-start/macos/). Skip this step if you already have a local YugabyteDB cluster as your [target database](#prepare-the-target-database).
 
-  1. To see the Voyager migration workflow details in the UI, set the following configuration parameters before starting the migration:
+  1. Set the Control Plane configuration parameters:
 
         ```yaml
         ### *********** Control Plane Configuration ************

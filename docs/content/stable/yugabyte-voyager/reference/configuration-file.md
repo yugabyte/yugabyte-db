@@ -121,7 +121,7 @@ source:
 
   # Comma-separated list of read replica endpoints.
   # Default port: 5432
-  # Example: "host1:5432, host2:5433"
+  # Example: "host1, host2:5433"
   # Note - Valid only for PostgreSQL
   read-replica-endpoints: host:port
 
