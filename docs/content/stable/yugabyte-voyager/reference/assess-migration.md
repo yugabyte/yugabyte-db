@@ -207,7 +207,7 @@ source:
 source:
       read-replica-endpoints:
 ```
-| (PostgreSQL only) Comma-separated list of read replica endpoints. Each endpoint format is host:port. <br/>Default port: 5432 <br/>Example: "host1:5432, host2:5433". |
+| (PostgreSQL only) Comma-separated list of read replica endpoints. Format endpoints as `host:port`. For example, `host1:5432, host2:5433`. <br/>Default port: 5432 |
 | -e, --export-dir |
 
 ```yaml{.nocopy}

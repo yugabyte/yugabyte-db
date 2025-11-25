@@ -152,7 +152,7 @@ To be able to view the assessment report in the yugabyted UI, do the following:
   After a migration assessment, if you choose to migrate using the open source YugabyteDB, you will be using this same local cluster as your [target database](../../introduction/#target-database).
       {{< /note >}}
 
-  1. Set the following configuration parameters before starting the migration:
+  1. Set the Control Plane configuration parameters before starting the migration:
 
         ```yaml
         ### *********** Control Plane Configuration ************
@@ -215,10 +215,10 @@ You can perform the following steps with these scripts:
     | <div style="width:150px">Argument</div> | Description/valid options |
     | :------- | :------------------------ |
     | pgss_enabled (required) | Whether pg_stat_statements is correctly installed and enabled. <br>Accepted parameters: true, false |
-    | iops_capture_interval (optional) |  Interval in seconds to capture IOPS metadata .<br>Default: 120|
+    | iops_capture_interval (optional) |  Interval in seconds to capture IOPS metadata.<br>Default: 120 |
     | yes (optional) | Answer "yes" to interactive questions. <br>Default: false <br>Accepted parameters: true, false |
     | source_node_name (optional) | Logical name of the node from which you are collecting data. If omitted, it defaults to primary. Use distinct values (for example, primary, replica1, replica2) when collecting from multiple nodes. |
-    | skip_checks (optional) | When true, skips pre-flight checks already performed by guardrails <br>Default: false <br>Accepted parameters: true, false |
+    | skip_checks (optional) | When true, skips pre-flight checks already performed by guardrails. <br>Default: false <br>Accepted parameters: true, false |
 
     For example, on a single-node PostgreSQL deployment:
 
@@ -228,20 +228,20 @@ You can perform the following steps with these scripts:
         'schema1|schema2' \
         '/path/to/assessment_metadata_dir' \
         'true' \
-        '120'\
+        '100'
     ```
 
     **Note: For primary–replica setups and source_node_name option**<br/>
-    If you have read replicas, run the script once on each node that you want to include in the assessment, using the same directory, `assessment_metadata_dir` but a different `source_node_name` for each node. The primary node must use `source_node_name=primary` (or omit it to accept the default), and replicas should use unique names such as replica1, replica2, and so on. This ensures that Voyager tags and analyzes the collected metrics separately for each node. For example,
+    If you have read replicas, run the script once on each node that you want to include in the assessment, using the same directory, `assessment_metadata_dir` but a different `source_node_name` for each node. The primary node must use `source_node_name=primary` (or omit it to accept the default), and replicas should use unique names such as replica1, replica2, and so on. This ensures that Voyager tags and analyzes the collected metrics separately for each node.
 
-    On the primary node:
+    For example, on the primary node:
     ```sh
       /path/to/yb-voyager-pg-gather-assessment-metadata.sh \
         'postgresql://ybvoyager@primary-host:5432/dbname' \
         'public|sales' \
         '/path/to/assessment_metadata_dir' \
         'true' \
-        '120' \
+        '100' \
         'false' \
         'primary'
     ```
@@ -314,7 +314,9 @@ Voyager can collect assessment metadata from [read replicas](/stable/architectur
 
 Two ways to use read replicas:
 
--  Automatic discovery (Default): By default, Voyager attempts to discover replicas via [pg_stat_replication](/stable/additional-features/change-data-capture/using-logical-replication/monitor/#pg-stat-replication) and validate them by connecting to the primary as follows:
+-  Automatic discovery (Default)
+
+    By default, Voyager attempts to discover replicas via [pg_stat_replication](/stable/additional-features/change-data-capture/using-logical-replication/monitor/#pg-stat-replication) and validate them by connecting to the primary as follows:
 
     ```sh
     yb-voyager assess-migration --source-db-type postgresql \
@@ -327,7 +329,9 @@ Two ways to use read replicas:
 
     Voyager discovers replicas from the primary, attempts best-effort validation, and prompts you to include them. If validation fails (common in RDS, Aurora, Kubernetes, or when using internal IPs), you can either continue with primary-only assessment or manually specify replica endpoints.
 
-- Manual specification: Explicitly provide the read replica endpoints when automatic discovery fails, or if you want precise control.
+- Manual specification.
+
+    Explicitly provide the read replica endpoints when automatic discovery fails, or if you want precise control.
 
     Run the command as follows:
 
