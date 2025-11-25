@@ -123,7 +123,7 @@ These are the wait events introduced by YugabyteDB. Some of the following [wait 
 
 #### TServerWait class
 
-| Wait Event | Type | Aux | Description |
+| Wait Event | Type | <div style="width:100px">Aux</div> | Description |
 | :--------- | :--- |:--- | :---------- |
 | TableRead | RPCWait |  | A YSQL backend is waiting for a table read from DocDB. |
 | CatalogRead | RPCWait |   | A YSQL backend is waiting for a catalog read from master. |
@@ -132,7 +132,7 @@ These are the wait events introduced by YugabyteDB. Some of the following [wait 
 | TableWrite  | RPCWait |  | A YSQL backend is waiting for a table write from DocDB. |
 | CatalogWrite  | RPCWait |  | A YSQL backend is waiting for a catalog write from master. |
 | IndexWrite | RPCWait |   | A YSQL backend is waiting for a secondary index write from DocDB.  |
-| WaitingOnTServer | RPCWait | RPC&nbsp;name | A YSQL backend is waiting on TServer for an RPC. The RPC name is present on the wait event aux column.|
+| WaitingOnTServer | RPCWait | RPC name | A YSQL backend is waiting on TServer for an RPC. The RPC name is present on the wait event aux column.|
 | TransactionCommit | RPCWait | | A YSQL backend is committing a transaction. |
 | TransactionTerminate | RPCWait | | A YSQL backend is terminating/rolling back a transaction. |
 | TransactionRollbackToSavepoint | RPCWait | | A YSQL backend is rolling back to a savepoint. |
@@ -166,7 +166,7 @@ These are the wait events introduced by YugabyteDB. Some of the following [wait 
 
 #### TabletWait class
 
-| Wait Event | Type | Aux | Description |
+| Wait Event | Type | <div style="width:100px">Aux</div> | Description |
 | :--------- | :--- | :-- | :---------- |
 | MVCC_WaitForSafeTime | WaitOnCondition | | A read/write RPC is waiting for the safe time to be at least the desired read-time. |
 | LockedBatchEntry_Lock | WaitOnCondition | | A read/write RPC is waiting for a DocDB row-level lock. |
@@ -180,8 +180,8 @@ These are the wait events introduced by YugabyteDB. Some of the following [wait 
 | ConflictResolution_ResolveConficts | RPCWait | | A read/write RPC is waiting to identify conflicting transactions. |
 | ConflictResolution_WaitOnConflictingTxns | WaitOnCondition | | A read/write RPC is waiting for conflicting transactions to complete. |
 | WaitForReadTime | WaitOnCondition | | A read/write RPC is waiting for the current time to catch up to [read time](../../../architecture/transactions/single-row-transactions/#safe-timestamp-assignment-for-a-read-request). |
-| XCluster_WaitingForGetChanges | RPCWait | | An xCluster poller on the target universe is waiting for changes from the source universe. |
-| RemoteBootstrap_StartRemoteSession | RPCWait | Tablet&nbsp;ID | A remote bootstrap client is waiting for a remote session to be started on the remote bootstrap server. |
+| XCluster_WaitingForGetChanges | RPCWait | Target Tablet ID| An xCluster poller on the target universe is waiting for changes from the source universe. |
+| RemoteBootstrap_StartRemoteSession | RPCWait | Tablet ID | A remote bootstrap client is waiting for a remote session to be started on the remote bootstrap server. |
 | RemoteBootstrap_FetchData | RPCWait | Tablet ID | A remote bootstrap client is fetching data from a remote bootstrap server. |
 | RemoteBootstrap_ReadDataFromFile | DiskIO | Tablet ID | A remote bootstrap server is reading data from a file. |
 | RemoteBootstrap_RateLimiter | WaitOnCondition | Tablet ID | A remote bootstrap client is slowing down due to rate limiter throttling network access to remote bootstrap server. |
@@ -192,9 +192,9 @@ These are the wait events introduced by YugabyteDB. Some of the following [wait 
 
 #### Consensus class
 
-| Wait Event | Type | Aux | Description |
+| Wait Event | Type | <div style="width:100px">Aux</div> | Description |
 | :--------- | :--- |:--- | :---------- |
-| WAL_Append | DiskIO | Tablet&nbsp;ID | A write RPC is persisting WAL edits. |
+| WAL_Append | DiskIO | Tablet ID | A write RPC is persisting WAL edits. |
 | WAL_Sync | DiskIO | Tablet ID | A write RPC is synchronizing WAL edits. |
 | Raft_WaitingForReplication | RPCWait | Tablet ID | A write RPC is waiting for Raft replication. |
 | Raft_ApplyingEdits | WaitOnCondition/CPU | Tablet ID | A write RPC is applying Raft edits locally. |
@@ -221,10 +221,10 @@ These are the wait events introduced by YugabyteDB. Some of the following [wait 
 
 #### YCQLQuery class
 
-| Wait Event | Type | Aux | Description |
+| Wait Event | Type | <div style="width:100px">Aux</div> | Description |
 | :--------- | :--- |:--- | :---------- |
 | YCQL_Parse | CPU  | | YCQL is parsing a query. |
-| YCQL_Read | CPU | Table&nbsp;ID | YCQL is processing a read query.|
+| YCQL_Read | CPU | Table ID | YCQL is processing a read query.|
 | YCQL_Write | CPU | Table ID | YCQL is processing a write query.  |
 | YCQL_Analyze | CPU |  | YCQL is analyzing a query. |
 | YCQL_Execute | CPU |  | YCQL is executing a query. |
