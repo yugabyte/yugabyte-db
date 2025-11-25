@@ -431,7 +431,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v1 = jsonb_set(v1, '{b}
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v2 = jsonb_set(v2, '{b}', to_jsonb(k + 110)) WHERE k = 1;
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v1 = jsonb_set(v1, '{b}', to_jsonb(k + 120)), v2 = jsonb_set(v2, '{b}', to_jsonb(k + 120)) WHERE k = 2;
 
-SELECT * FROM json_table WHERE k IN (1, 2);
+SELECT * FROM json_table WHERE k IN (1, 2) ORDER BY k;
 
 CREATE UNIQUE INDEX NONCONCURRENTLY ON json_table (CAST((v1->>'c') AS INT), CAST((v1->>'d') AS INT));
 CREATE INDEX NONCONCURRENTLY ON json_table (CAST((v1->>'c') AS INT), CAST((v2->>'c') AS INT));
@@ -441,13 +441,13 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v1 = jsonb_set(v1, '{d}
 -- Updating any subkey should update the corresponding indexes.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v1 = jsonb_set(v1, '{c}', to_jsonb(k + 210)) WHERE k = 3;
 
-SELECT * FROM json_table WHERE k IN (3, 4);
+SELECT * FROM json_table WHERE k IN (3, 4) ORDER BY k;
 
 -- Multi-row updates.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v1 = jsonb_set(v1, '{c}', to_jsonb(v1->>'c')) WHERE k < 10;
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v2 = jsonb_set(v2, '{c}', to_jsonb((v2->>'c')::INT + 1)) WHERE k < 10;
 
-SELECT * FROM json_table;
+SELECT * FROM json_table ORDER BY k;
 
 CREATE TABLE staircase (k INT, PRIMARY KEY (k ASC));
 INSERT INTO staircase (SELECT i FROM generate_series(1, 100) AS i);
