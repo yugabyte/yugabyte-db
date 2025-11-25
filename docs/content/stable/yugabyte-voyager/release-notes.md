@@ -21,7 +21,7 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
 
 ### New feature
 
-- Assess migration now supports fetching metadata from PostgreSQL read replicas in addition to the primary source database. This provides a more comprehensive and accurate workload assessment by aggregating metrics across both primary and replica nodes.
+- Assess migration now supports fetching metadata from PostgreSQL read replicas in addition to the primary source database using the replica endpoints passed in the `--source-read-replica-endpoints` argument. This provides a more comprehensive and accurate workload assessment by aggregating metrics across both primary and replica nodes.
 
 ### Enhancement
 

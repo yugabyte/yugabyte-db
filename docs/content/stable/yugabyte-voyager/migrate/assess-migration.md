@@ -216,9 +216,9 @@ You can perform the following steps with these scripts:
     | :------- | :------------------------ |
     | pgss_enabled (required) | Whether pg_stat_statements is correctly installed and enabled. <br>Accepted parameters: true, false |
     | iops_capture_interval (optional) |  Interval in seconds to capture IOPS metadata.<br>Default: 120 |
-    | yes (optional) | Answer "yes" to interactive questions. <br>Default: false <br>Accepted parameters: true, false |
+    | yes (optional) | Overrides all interactive prompts with "Yes" (Y). If set to false or omitted, the default reply is "No" (N). <br>Default: false <br>Accepted parameters: true, false
     | source_node_name (optional) | Logical name of the node from which you are collecting data. If omitted, it defaults to primary. Use distinct values (for example, primary, replica1, replica2) when collecting from multiple nodes. |
-    | skip_checks (optional) | When true, skips pre-flight checks already performed by guardrails. <br>Default: false <br>Accepted parameters: true, false |
+    | skip_checks (optional) | When true, skips checks run by the script before collecting metadata. <br>Default: false <br>Accepted parameters: true, false |
 
     For example, on a single-node PostgreSQL deployment:
 
@@ -308,30 +308,11 @@ Depending on the recommendations in the assessment report, do the following when
 
 Voyager can collect assessment metadata from [read replicas](/stable/architecture/docdb-replication/read-replicas/) in addition to the primary node, providing a comprehensive view of your workload distribution.
 
-Two ways to use read replicas:
+You can use read replicas by explicitly providing the read replica endpoints.
 
--  Automatic discovery (Default)
+Run the command as follows:
 
-    By default, Voyager attempts to discover replicas via [pg_stat_replication](/stable/additional-features/change-data-capture/using-logical-replication/monitor/#pg-stat-replication) and validate them by connecting to the primary as follows:
-
-    ```sh
-    yb-voyager assess-migration --source-db-type postgresql \
-        --source-db-host primary-host \
-        --source-db-user ybvoyager \
-        --source-db-password password \
-        --source-db-name dbname \
-        --export-dir /path/to/export/dir
-    ```
-
-    Voyager discovers replicas from the primary, attempts best-effort validation, and prompts you to include them. If validation fails (common in RDS, Aurora, Kubernetes, or when using internal IPs), you can either continue with primary-only assessment or manually specify replica endpoints.
-
-- Manual specification.
-
-    Explicitly provide the read replica endpoints when automatic discovery fails, or if you want precise control.
-
-    Run the command as follows:
-
-    {{< tabpane text=true >}}
+{{< tabpane text=true >}}
   {{% tab header="CLI" lang="cli" %}}
 
   ```sh
@@ -364,9 +345,30 @@ source:
 ```
 
   {{% /tab %}}
-    {{< /tabpane >}}
+{{< /tabpane >}}
 
   Ensure that all provided endpoints are accessible as they are strictly validated.
+
+<!--
+Add during next release or when it is supported
+-  Automatic discovery (Default)
+
+    By default, Voyager attempts to discover replicas via [pg_stat_replication](/stable/additional-features/change-data-capture/using-logical-replication/monitor/#pg-stat-replication) and validate them by connecting to the primary as follows:
+
+    ```sh
+    yb-voyager assess-migration --source-db-type postgresql \
+        --source-db-host primary-host \
+        --source-db-user ybvoyager \
+        --source-db-password password \
+        --source-db-name dbname \
+        --export-dir /path/to/export/dir
+    ```
+
+    Voyager discovers replicas from the primary, attempts best-effort validation, and prompts you to include them. If validation fails (common in RDS, Aurora, Kubernetes, or when using internal IPs), you can either continue with primary-only assessment or manually specify replica endpoints.
+
+    - Manual specification.
+    Explicitly provide the read replica endpoints when automatic discovery fails, or if you want precise control.
+    -->
 
 ## Assess a fleet of databases (Oracle only)
 
