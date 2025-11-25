@@ -1066,7 +1066,9 @@ See also [Auto Analyze Service TServer flags](../yb-tserver/#auto-analyze-servic
 
 {{<tags/feature/ea idea="590">}}Enable the Auto Analyze service, which automatically runs ANALYZE to update table statistics for tables that have changed more than a configurable threshold.
 
-Default: true
+In v2025.2 and later, Auto Analyze is enabled by default in new universes when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon.
+
+Default: false
 
 ## Advisory lock flags
 

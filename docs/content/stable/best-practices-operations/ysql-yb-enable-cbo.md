@@ -26,7 +26,19 @@ You configure CBO using the [yb_enable_cbo](../../reference/configuration/yb-tse
 
 ## New deployments
 
-For new YSQL deployments, or when migrating from another system, CBO is enabled by default.
+For new universes running v2025.2 or later, CBO is enabled by default when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon.
+
+For older YSQL deployments, or when deploying manually, to enable CBO, add the parameter to [ysql_pg_conf_csv](../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) as follows:
+
+```sh
+--ysql_pg_conf_csv=yb_enable_cbo=on
+```
+
+Alternatively, set the following YB-TServer flag:
+
+```sh
+--ysql_yb_enable_cbo=on
+```
 
 ## Existing deployments
 

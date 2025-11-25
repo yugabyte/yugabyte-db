@@ -37,15 +37,15 @@ YugabyteDB supports three isolation levels in the transactional layer:
 - Snapshot
 - Read committed
 
-The default isolation level for the YSQL API on new universes in v2025.2 and later is Read Committed.
+The default isolation level for the YSQL API is effectively Snapshot (that is, the same as PostgreSQL's `REPEATABLE READ`) because, by default, Read committed, which is the YSQL API and PostgreSQL _syntactic_ default, maps to Snapshot isolation.
 
-To enable Read committed, the YB-TServer flag `yb_enable_read_committed_isolation` must be set to `true` (the default on new universes in v2025.2 and later).
+However, for new universes running v2025.2 or later, Read Committed is enabled by default when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon.
 
-In versions of YugabyteDB prior to v2025.2, `yb_enable_read_committed_isolation` is `false` by default; in this case, the Read Committed isolation level of YugabyteDB's transactional layer falls back to the stricter Snapshot isolation, making the default isolation level for the YSQL API essentially Snapshot because Read Committed, which is the YSQL API and PostgreSQL syntactic default, maps to Snapshot isolation.
+In versions of YugabyteDB prior to v2025.2, or for manually deployed universes, to enable Read committed, you must set the YB-TServer flag `yb_enable_read_committed_isolation` to `true`. By default this flag is `false` , and the Read Committed isolation level of YugabyteDB's transactional layer falls back to the stricter Snapshot isolation. This makes the default isolation level for the YSQL API effectively Snapshot because Read Committed, which is the YSQL API and PostgreSQL syntactic default, maps to Snapshot isolation.
 
 {{< tip title="Tip" >}}
 
-To avoid serializable errors on universes earlier than v2025.2 (that is, to run applications with no retry logic), keep the default `READ COMMITTED` isolation (`--ysql_default_transaction_isolation`), and set the YB-TServer `--yb_enable_read_committed_isolation` flag to true. This enables read committed isolation.
+To avoid serializable errors (that is, to run applications with no retry logic), keep the default `READ COMMITTED` isolation (`--ysql_default_transaction_isolation`), and set the YB-TServer `--yb_enable_read_committed_isolation` flag to true. This enables read committed isolation.
 
 {{< /tip >}}
 
@@ -377,7 +377,7 @@ Connect to the universe using two independent ysqlsh instances, referred to as s
   <tr>
     <td>
 
-Begin a transaction in session #1 (Read Committed is the default isolation level).
+Begin a transaction in session #1. (Note that because the universe was deployed using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon, Read Committed is the default isolation level.)
 
 ```sql
 BEGIN TRANSACTION;

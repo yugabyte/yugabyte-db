@@ -392,11 +392,15 @@ Bitmap scans are only supported for LSM indexes.
 
 {{% tags/wrap %}}
 
-Default: `true`
+Default: `false`
 
 {{% /tags/wrap %}}
 
-Enables or disables the query planner's use of bitmap scans for YugabyteDB relations. Both [enable_bitmapscan](#enable-bitmapscan) and `yb_enable_bitmapscan` must be set to true for a YugabyteDB relation to use a bitmap scan. If `yb_enable_bitmapscan` is false, the planner never uses a YugabyteDB bitmap scan.
+Enables or disables the query planner's use of bitmap scans for YugabyteDB relations.
+
+In v2025.2 and later, bitmap scan is enabled by default in new universes when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon.
+
+Both [enable_bitmapscan](#enable-bitmapscan) and `yb_enable_bitmapscan` must be set to true for a YugabyteDB relation to use a bitmap scan. If `yb_enable_bitmapscan` is false, the planner never uses a YugabyteDB bitmap scan.
 
 | enable_bitmapscan | yb_enable_bitmapscan | Result |
 | :--- | :---  | :--- |
@@ -2126,10 +2130,12 @@ See also the [yb_enable_cbo](#yb-enable-cbo) configuration parameter. If this fl
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-Default: `on`
+Default: `legacy_mode`
 {{% /tags/wrap %}}
 
 Enables the YugabyteDB [cost-based optimizer](../../../architecture/query-layer/planner-optimizer/) (CBO). Options are `on`, `off`, `legacy_mode`, and `legacy_stats_mode`.
+
+In v2025.2 and later, CBO is enabled ('on') by default in new universes when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon.
 
 When enabling CBO, you must run ANALYZE on user tables to maintain up-to-date statistics.
 
@@ -2153,10 +2159,12 @@ See also [Auto Analyze Service Master flags](../yb-master/#auto-analyze-service-
 {{<tags/feature/ea idea="590">}}
 {{<tags/feature/t-server>}}
 {{<tags/feature/restart-needed>}}
-Default: `true`
+Default: `false`
 {{% /tags/wrap %}}
 
 Enable the Auto Analyze service, which automatically runs ANALYZE to update table statistics for tables that have changed more than a configurable threshold.
+
+In v2025.2 and later, Auto Analyze is enabled by default in new universes when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon.
 
 ##### --ysql_enable_table_mutation_counter
 
@@ -2649,7 +2657,9 @@ Specifies the default transaction isolation level.
 
 Valid values: `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED`, and `READ UNCOMMITTED`.
 
-[Read Committed Isolation](../../../explore/transactions/isolation-levels/) is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true` (the default).
+[Read Committed Isolation](../../../explore/transactions/isolation-levels/) is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`.
+
+For new universes running v2025.2 or later, `yb_enable_read_committed_isolation` is set to `true` by default when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon.
 
 If `yb_enable_read_committed_isolation` is `false`, the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
 
@@ -2657,12 +2667,14 @@ If `yb_enable_read_committed_isolation` is `false`, the Read Committed isolation
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-Default: `true`
+Default: `false`
 {{% /tags/wrap %}}
 
 Enables Read Committed Isolation.
 
-When set to false, `READ COMMITTED` (and `READ UNCOMMITTED`) isolation level of YSQL fall back to the stricter [Snapshot Isolation](../../../explore/transactions/isolation-levels/). See [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag for more details.
+For new universes running v2025.2 or later, `yb_enable_read_committed_isolation` is set to `true` by default when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon.
+
+When set to false, `READ COMMITTED` (and `READ UNCOMMITTED`) isolation level of YSQL fall back to the stricter [Snapshot Isolation](../../../explore/transactions/isolation-levels/). See also the [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag.
 
 ##### --pg_client_use_shared_memory
 
