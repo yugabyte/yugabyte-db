@@ -22,7 +22,7 @@ To enable and configure parallel queries, set the following configuration parame
 
 | Parameter | Description | Default |
 | :--- | :--- | :--- |
-| yb_enable_parallel_append | Enables the planner's use of parallel append plans. To enable parallel query, set this to true. | false |
+| yb_enable_parallel_append | Enables the planner's use of parallel append plans. To enable parallel query, set this to true. | true |
 | yb_parallel_range_rows | The number of rows to plan per parallel worker. To enable parallel query, set this to a value other than 0. (Recommended: 10000) | 0 |
 | yb_parallel_range_size | Approximate size of parallel range for DocDB relation scans. | 1MB |
 

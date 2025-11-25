@@ -392,7 +392,7 @@ Bitmap scans are only supported for LSM indexes.
 
 {{% tags/wrap %}}
 
-Default: `false`
+Default: `true`
 
 {{% /tags/wrap %}}
 
@@ -431,7 +431,7 @@ Enable or disable the query planner's use of batched nested loop join.
 
 {{% tags/wrap %}}
 
-Default: `legacy_mode`
+Default: `on`
 {{% /tags/wrap %}}
 
 Enables the YugabyteDB [cost-based optimizer](../../../architecture/query-layer/planner-optimizer/) (CBO). Options are `on`, `off`, `legacy_mode`, and `legacy_stats_mode`.
@@ -2126,7 +2126,7 @@ See also the [yb_enable_cbo](#yb-enable-cbo) configuration parameter. If this fl
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-Default: `legacy_mode`
+Default: `on`
 {{% /tags/wrap %}}
 
 Enables the YugabyteDB [cost-based optimizer](../../../architecture/query-layer/planner-optimizer/) (CBO). Options are `on`, `off`, `legacy_mode`, and `legacy_stats_mode`.
@@ -2153,7 +2153,7 @@ See also [Auto Analyze Service Master flags](../yb-master/#auto-analyze-service-
 {{<tags/feature/ea idea="590">}}
 {{<tags/feature/t-server>}}
 {{<tags/feature/restart-needed>}}
-Default: `false`
+Default: `true`
 {{% /tags/wrap %}}
 
 Enable the Auto Analyze service, which automatically runs ANALYZE to update table statistics for tables that have changed more than a configurable threshold.
@@ -2649,16 +2649,20 @@ Specifies the default transaction isolation level.
 
 Valid values: `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED`, and `READ UNCOMMITTED`.
 
-[Read Committed Isolation](../../../explore/transactions/isolation-levels/) is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
+[Read Committed Isolation](../../../explore/transactions/isolation-levels/) is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true` (the default).
+
+If `yb_enable_read_committed_isolation` is `false`, the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
 
 ##### --yb_enable_read_committed_isolation
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-Default: `false`
+Default: `true`
 {{% /tags/wrap %}}
 
-Enables Read Committed Isolation. By default this flag is false and in this case `READ COMMITTED` (and `READ UNCOMMITTED`) isolation level of YSQL fall back to the stricter [Snapshot Isolation](../../../explore/transactions/isolation-levels/). See [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag for more details.
+Enables Read Committed Isolation.
+
+When set to false, `READ COMMITTED` (and `READ UNCOMMITTED`) isolation level of YSQL fall back to the stricter [Snapshot Isolation](../../../explore/transactions/isolation-levels/). See [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag for more details.
 
 ##### --pg_client_use_shared_memory
 

@@ -82,10 +82,10 @@ To learn how YugabyteDB decides which transactions should be aborted in case of 
 
 ## Read committed
 
-Read Committed is the isolation level in which, clients do not need to retry or handle serialization errors (40001) in application logic.
+Read Committed is the isolation level in which clients do not need to retry or handle serialization errors (40001) in application logic.
 
 {{<lead link="read-committed/">}}
-To understand how Read committed is implement and how to use it, see [Read committed](read-committed/).
+To understand how Read committed is implemented and how to use it, see [Read committed](read-committed/).
 {{</lead>}}
 
 ## Read restart error

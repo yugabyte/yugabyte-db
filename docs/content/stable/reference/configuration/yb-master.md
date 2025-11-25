@@ -1066,7 +1066,7 @@ See also [Auto Analyze Service TServer flags](../yb-tserver/#auto-analyze-servic
 
 {{<tags/feature/ea idea="590">}}Enable the Auto Analyze service, which automatically runs ANALYZE to update table statistics for tables that have changed more than a configurable threshold.
 
-Default: false
+Default: true
 
 ## Advisory lock flags
 
