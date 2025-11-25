@@ -217,7 +217,7 @@ You can perform the following steps with these scripts:
     | pgss_enabled (required) | Whether pg_stat_statements is correctly installed and enabled. <br>Accepted parameters: true, false |
     | iops_capture_interval (optional) |  Interval in seconds to capture IOPS metadata.<br>Default: 120 |
     | yes (optional) | Overrides all interactive prompts with "Yes" (Y). If set to false or omitted, the default reply is "No" (N). <br>Default: false <br>Accepted parameters: true, false
-    | source_node_name (optional) | Logical name of the node from which you are collecting data. If omitted, it defaults to primary. Use distinct values (for example, primary, replica1, replica2) when collecting from multiple nodes. <br>Default: primary |
+    | source_node_name (optional) | Logical name of the node from which you are collecting data. Use distinct values (for example, primary, replica1, replica2) when collecting from multiple nodes. <br>Default: primary |
     | skip_checks (optional) | When true, skips checks run by the script before collecting metadata. <br>Default: false <br>Accepted parameters: true, false |
 
     For example, on a single-node PostgreSQL deployment:
