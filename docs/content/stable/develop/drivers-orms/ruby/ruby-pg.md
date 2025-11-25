@@ -4,7 +4,7 @@ headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a Ruby application using the Pg Gem Driver for YSQL
 aliases:
-  - /preview/develop/drivers-orms/ruby/ysql-pg/
+  - /stable/develop/drivers-orms/ruby/ysql-pg/
 menu:
   stable_develop:
     identifier: ruby-pg-driver-2

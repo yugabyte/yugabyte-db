@@ -4,7 +4,7 @@ headerTitle: YugabyteDB Aeon
 linkTitle: YugabyteDB Aeon
 headcontent: Fully managed YugabyteDB-as-a-Service
 aliases:
-  - /preview/deploy/yugabyte-cloud/
+  - /stable/deploy/yugabyte-cloud/
 menu:
   stable_yugabyte-cloud:
     name: "Overview"

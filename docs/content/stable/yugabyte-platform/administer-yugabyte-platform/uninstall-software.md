@@ -4,7 +4,7 @@ headerTitle: Uninstall the YugabyteDB Anywhere software
 linkTitle: Uninstall software
 description: Uninstall the YugabyteDB Anywhere software.
 aliases:
-  - /preview/yugabyte-platform/install-yugabyte-platform/uninstall-software/
+  - /stable/yugabyte-platform/install-yugabyte-platform/uninstall-software/
 menu:
   stable_yugabyte-platform:
     identifier: uninstall-software

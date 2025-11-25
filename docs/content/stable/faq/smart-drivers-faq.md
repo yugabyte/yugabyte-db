@@ -3,7 +3,7 @@ title: Smart driver FAQ
 linkTitle: Smart driver FAQ
 description: YugabyteDB smart drivers frequently asked questions
 aliases:
-  - /preview/develop/drivers-orms/smart-drivers-faq/
+  - /stable/develop/drivers-orms/smart-drivers-faq/
 menu:
   stable_faq:
     identifier: smart-drivers-faq

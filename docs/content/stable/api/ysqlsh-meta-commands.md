@@ -5,7 +5,7 @@ linkTitle: Meta-commands
 description: YSQL shell meta-commands.
 headcontent: Run commands without querying the database
 aliases:
-  - /preview/admin/ysqlsh-meta-commands/
+  - /stable/admin/ysqlsh-meta-commands/
 menu:
   stable_api:
     identifier: ysqlsh-meta-commands

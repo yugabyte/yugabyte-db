@@ -8,7 +8,7 @@ menu:
     parent: api-cassandra
     weight: 1320
 aliases:
-  - /preview/api/ycql/explain/
+  - /stable/api/ycql/explain/
 type: docs
 ---
 

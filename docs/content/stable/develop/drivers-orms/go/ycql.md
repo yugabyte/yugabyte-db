@@ -4,7 +4,7 @@ headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a Go application using YugabyteDB Go driver for YCQL
 aliases:
-  - /preview/develop/tutorials/build-apps/go/cloud-ycql-go/
+  - /stable/develop/tutorials/build-apps/go/cloud-ycql-go/
 menu:
   stable_develop:
     identifier: go-4-yb-pgx-driver-ycql

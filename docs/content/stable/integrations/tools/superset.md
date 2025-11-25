@@ -9,7 +9,7 @@ menu:
     parent: tools
     weight: 20
 aliases:
-  - /preview/tools/superset/
+  - /stable/tools/superset/
 type: docs
 ---
 

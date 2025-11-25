@@ -5,9 +5,9 @@ linkTitle: Security
 description: Secure YugabyteDB Anywhere and YugabyteDB universes.
 headcontent: Secure YugabyteDB Anywhere and your YugabyteDB universes
 aliases:
-  - /preview/yugabyte-platform/security/network-security/
-  - /preview/yugabyte-platform/security/customize-ports/
-  - /preview/yugabyte-platform/security/security-checklist-yp/
+  - /stable/yugabyte-platform/security/network-security/
+  - /stable/yugabyte-platform/security/customize-ports/
+  - /stable/yugabyte-platform/security/security-checklist-yp/
 menu:
   stable_yugabyte-platform:
     parent: yugabytedb-anywhere

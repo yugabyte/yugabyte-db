@@ -10,7 +10,7 @@ menu:
     identifier: k8s-aks-2
     weight: 624
 aliases:
-  - /preview/deploy/kubernetes/aks/statefulset-yaml/
+  - /stable/deploy/kubernetes/aks/statefulset-yaml/
 type: docs
 ---
 

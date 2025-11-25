@@ -4,7 +4,7 @@ linkTitle: Array comparison
 headerTitle: Operators for comparing two arrays
 description: Operators for comparing two arrays
 aliases:
-  - /preview/compare/ysql/
+  - /stable/compare/ysql/
 menu:
   stable_api:
     identifier: array-comparison

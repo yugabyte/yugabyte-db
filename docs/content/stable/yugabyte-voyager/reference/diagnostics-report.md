@@ -8,7 +8,7 @@ menu:
     parent: reference-voyager
     weight: 105
 aliases:
-  - /preview/yugabyte-voyager/diagnostics-report/
+  - /stable/yugabyte-voyager/diagnostics-report/
 type: docs
 ---
 

@@ -7,7 +7,7 @@ headContent: Asynchronous replication of data changes (inserts, updates, and del
 tags:
   feature: early-access
 aliases:
-  - /preview/explore/logical-replication/
+  - /stable/explore/logical-replication/
 menu:
   stable:
     parent: architecture-docdb-replication

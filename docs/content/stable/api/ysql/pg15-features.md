@@ -7,7 +7,7 @@ headContent: Use PostgreSQL 15 features in your applications
 tags:
   feature: tech-preview
 aliases:
-  - /preview/develop/pg15-features/
+  - /stable/develop/pg15-features/
 menu:
   stable_api:
     identifier: yb-postgresql-15

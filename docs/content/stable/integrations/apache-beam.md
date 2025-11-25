@@ -8,7 +8,7 @@ menu:
     parent: data-integration
     weight: 571
 alises:
-  - /preview/integrations/apache-spark/
+  - /stable/integrations/apache-spark/
 type: docs
 ---
 

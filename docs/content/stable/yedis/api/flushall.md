@@ -7,8 +7,8 @@ menu:
     parent: api-yedis
     weight: 2064
 aliases:
-  - /preview/api/redis/flushall
-  - /preview/api/yedis/flushall
+  - /stable/api/redis/flushall
+  - /stable/api/yedis/flushall
 type: docs
 ---
 

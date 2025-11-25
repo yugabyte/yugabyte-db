@@ -7,8 +7,8 @@ menu:
     parent: api-yedis
     weight: 2430
 aliases:
-  - /preview/api/redis/tslastn
-  - /preview/api/yedis/tslastn
+  - /stable/api/redis/tslastn
+  - /stable/api/yedis/tslastn
 type: docs
 ---
 

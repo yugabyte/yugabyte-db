@@ -8,7 +8,7 @@ menu:
     identifier: api-ysql-datatypes-character
     parent: api-ysql-datatypes
 aliases:
-  - /preview/api/ysql/type_text/
+  - /stable/api/ysql/type_text/
 type: docs
 ---
 
