@@ -6,6 +6,8 @@ description: An overview of YugabyteDB releases, including preview and current s
 type: indexpage
 aliases:
   - /stable/releases/release-notes/
+  - /stable/releases/release-notes/stable-release/
+  - /stable/releases/whats-new/stable-release/
 showRightNav: true
 cascade:
   unversioned: true
