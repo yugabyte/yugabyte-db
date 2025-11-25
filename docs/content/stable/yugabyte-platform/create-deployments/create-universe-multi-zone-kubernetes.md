@@ -260,12 +260,9 @@ tserver:
 
 For deployments following strict Kubernetes practices, or when you want YBC to be automatically available even after PVC replacement, you can enable **Immutable YBC**. With this feature, YBC is baked into the YugabyteDB image and runs as a native process alongside `yb-master` and `yb-tserver`, similar to other database processes.
 
-{{< note title="Important considerations" >}}
+{{< note title="Important" >}}
 
-When immutable YBC is enabled:
-
-- The YBC version is tied to the YugabyteDB version and is upgraded only when you perform a [software upgrade](../../manage-deployments/upgrade-software/). YBC will not automatically follow the latest stable YugabyteDB Anywhere version.
-- YBC flags are mounted on the TServer pod as a Kubernetes secret, instead of copying the flag file from YugabyteDB Anywhere to the database pods.
+When immutable YBC is enabled, the YBC version is tied to the YugabyteDB version and is upgraded only when you perform a [software upgrade](../../manage-deployments/upgrade-software/). YBC will not automatically follow the latest stable YugabyteDB Anywhere version.
 
 {{< /note >}}
 
