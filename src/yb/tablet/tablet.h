@@ -333,7 +333,6 @@ class Tablet : public AbstractTablet,
 
   Status GetIntents(
       const TransactionId& id,
-      const SubtxnSet& aborted,
       std::vector<docdb::IntentKeyValueForCDC>* keyValueIntents,
       docdb::ApplyTransactionState* stream_state);
 
