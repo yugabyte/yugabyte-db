@@ -234,14 +234,6 @@ ExecuteQuery(ExecuteStmt *stmt, IntoClause *intoClause,
 	if (!entry->plansource->fixed_result)
 		elog(ERROR, "EXECUTE does not support variable-result cached plans");
 
-	/*
-	 * If the planner found a pg relation in this plan, set the appropriate
-	 * flag for the execution txn.
-	 */
-	if (entry->plansource->usesPostgresRel) {
-		YbSetTxnWithPgOps(YB_TXN_USES_TEMPORARY_RELATIONS);
-	}
-
 	/* Evaluate parameters, if any */
 	if (entry->plansource->num_params > 0)
 	{

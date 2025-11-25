@@ -431,7 +431,8 @@ CompleteCachedPlan(CachedPlanSource *plansource,
 	plansource->resultDesc = PlanCacheComputeResultDesc(querytree_list);
 
 	/* If the planner txn uses a pg relation, so will the execution txn */
-	plansource->usesPostgresRel = YbGetPgOpsInCurrentTxn() & YB_TXN_USES_TEMPORARY_RELATIONS;
+	plansource->yb_plan_references_pg_rel =
+		YbGetPgOpsInCurrentTxn() & YB_TXN_USES_TEMPORARY_RELATIONS;
 
 	MemoryContextSwitchTo(oldcxt);
 
@@ -1210,6 +1211,13 @@ GetCachedPlan(CachedPlanSource *plansource, ParamListInfo boundParams,
 
 	/* Make sure the querytree list is valid and we have parse-time locks */
 	qlist = RevalidateCachedQuery(plansource, queryEnv);
+
+	/*
+	 * YB: If the planner found a pg relation in this plan, set the appropriate
+	 * flag for the execution txn.
+	 */
+	if (plansource->yb_plan_references_pg_rel)
+		YbSetTxnWithPgOps(YB_TXN_USES_TEMPORARY_RELATIONS);
 
 	/* Decide whether to use a custom plan */
 	customplan = choose_custom_plan(plansource, boundParams);

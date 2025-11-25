@@ -4185,7 +4185,7 @@ exec_stmt_execsql(PLpgSQL_execstate *estate,
 			 */
 			if (!stmt->yb_flush_before_stmt)
 				stmt->yb_flush_before_stmt =
-					plansource->usesPostgresRel ||
+					plansource->yb_plan_references_pg_rel ||
 					(plansource->commandTag &&
 					 YbIsFlushRequiredForCommandTag(plansource->commandTag));
 

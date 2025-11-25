@@ -127,7 +127,7 @@ typedef struct CachedPlanSource
 	double		generic_cost;	/* cost of generic plan, or -1 if not known */
 	double		total_custom_cost;	/* total cost of custom plans so far */
 	int			num_custom_plans;	/* number of plans included in total */
-	bool 		usesPostgresRel; /* Does this plan use pg relations */
+	bool 		yb_plan_references_pg_rel; /* Does this plan use pg relations */
 	int			yb_generic_num_referenced_rels; /* Num rels referenced by
 												 * generic plan */
 	int			yb_custom_max_num_referenced_rels; /* Max number of relations
