@@ -9,8 +9,8 @@ tags:
 menu:
   stable_yugabyte-platform:
     identifier: universe-logging
-    parent: alerts-monitoring
-    weight: 70
+    parent: anywhere-export-configurations
+    weight: 20
 type: docs
 ---
 
@@ -18,7 +18,7 @@ Export YSQL database logs to third-party tools for security monitoring, to build
 
 - Database audit logging. Using the [PostgreSQL Audit Extension](https://www.pgaudit.org/#) ([pgaudit](https://github.com/pgaudit/pgaudit/blob/1.7.0/README.md)), the audit log provides the exact database transactions, which is a compliance requirement for government, financial, or ISO certifications.
 
-Note that YugabyteDB v2.25 is based on PostgreSQL 15 and uses pgaudit v1.7.0; earlier versions are based on PostgreSQL 11 and use pgaudit v1.3.2.
+Note that YugabyteDB v2025.1 and later are based on PostgreSQL 15 and use pgaudit v1.7.0; earlier versions are based on PostgreSQL 11 and use pgaudit v1.3.2.
 
 ## Prerequisites
 

@@ -14,6 +14,12 @@ type: docs
 
 Monitor performance metrics for your universe to ensure the universe configuration matches its performance requirements using the universe **Metrics** page.
 
+{{< tip title="Export metrics" >}}
+
+You can export universe metrics to third-party tools for analysis and customization. Refer to [Export metrics](../anywhere-metrics-export/).
+
+{{< /tip >}}
+
 The **Metrics** page displays graphs representing information on operations, latency, and other parameters accumulated over time. By examining specific metrics, you can diagnose and troubleshoot issues.
 
 You access metrics by navigating to **Universes > Universe-Name > Metrics**, as shown in the following illustration:
