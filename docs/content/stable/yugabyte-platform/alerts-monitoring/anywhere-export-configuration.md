@@ -4,8 +4,6 @@ headerTitle: Manage export configurations
 linkTitle: Log and metrics export
 description: Set up links to third-party tools in YugabyteDB Anywhere.
 headcontent: Set up links to third-party tools
-tags:
-  feature: early-access
 menu:
   stable_yugabyte-platform:
     identifier: anywhere-export-configurations
@@ -39,13 +37,9 @@ Currently, you can export data to the following tools:
 | [Google Cloud Logging](https://cloud.google.com/logging/) | Database audit logs | |
 | [Dynatrace](#dynatrace) | | Yes |
 
-## Prerequisites
-
-Export configuration is {{<tags/feature/ea idea="792">}}. To enable export configuration management, set the **Enable DB Audit Logging** Global Configuration option (config key `yb.universe.audit_logging_enabled`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings. The flag can't be turned off if audit logging is enabled on a universe.
-
 ## Best practices
 
-- To limit performance impact and control costs, locate export configurations in a region close to your universe(s).
+To limit performance impact and control costs, locate export configurations in a region close to your universe(s).
 
 ## Configure integrations
 
