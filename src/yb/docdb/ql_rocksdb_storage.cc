@@ -15,8 +15,8 @@
 
 #include <utility>
 
-#include "yb/common/pgsql_protocol.pb.h"
-#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_protocol.messages.h"
+#include "yb/common/pgsql_protocol.messages.h"
 
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/partition.h"
@@ -112,8 +112,8 @@ Status QLRocksDBStorage::BuildYQLScanSpec(
   // Construct the scan spec basing on the WHERE condition.
   *spec = std::make_unique<DocQLScanSpec>(
       schema, hash_code, max_hash_code, arena, hashed_components,
-      request.has_where_expr() ? &request.where_expr().condition() : nullptr,
-      request.has_if_expr() ? &request.if_expr().condition() : nullptr,
+      QLConditionPBPtr(request.has_where_expr() ? &request.where_expr().condition() : nullptr),
+      QLConditionPBPtr(request.has_if_expr() ? &request.if_expr().condition() : nullptr),
       request.query_id(), request.is_forward_scan(),
       request.is_forward_scan() && include_static_columns, start_sub_doc_key.doc_key());
   return Status::OK();
@@ -247,7 +247,8 @@ Status QLRocksDBStorage::GetIterator(
           arena,
           hashed_components,
           range_components,
-          request.has_condition_expr() ? &request.condition_expr().condition() : nullptr,
+          PgsqlConditionPBPtr(
+                request.has_condition_expr() ? &request.condition_expr().condition() : nullptr),
           request.hash_code(),
           request.has_max_hash_code() ? std::make_optional<int32_t>(request.max_hash_code())
                                       : std::nullopt,

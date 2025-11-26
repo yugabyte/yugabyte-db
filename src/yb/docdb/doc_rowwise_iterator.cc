@@ -170,7 +170,8 @@ Status DocRowwiseIterator::Init(
   CheckInitOnce();
   is_forward_scan_ = doc_spec.is_forward_scan();
 
-  VLOG(2) << "Initializing iterator direction: " << (is_forward_scan_ ? "FORWARD" : "BACKWARD");
+  VLOG(2) << "Initializing iterator direction: " << (is_forward_scan_ ? "FORWARD" : "BACKWARD")
+          << ", read operation data: " << read_operation_data_.ToString();
 
   auto bounds = doc_spec.bounds();
   VLOG(2) << "DocKey Bounds " << DocKey::DebugSliceToString(bounds.lower.AsSlice()) << ", "

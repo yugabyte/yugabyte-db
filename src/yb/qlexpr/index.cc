@@ -313,7 +313,7 @@ void IndexMap::ToPB(google::protobuf::RepeatedPtrField<IndexInfoPB>* indexes) co
   }
 }
 
-Result<const IndexInfo*> IndexMap::FindIndex(const TableId& index_id) const {
+Result<const IndexInfo*> IndexMap::FindIndex(TableIdView index_id) const {
   const auto itr = find(index_id);
   if (itr == end()) {
     return STATUS(NotFound, Format("Index id $0 not found", index_id));
@@ -323,7 +323,7 @@ Result<const IndexInfo*> IndexMap::FindIndex(const TableId& index_id) const {
 
 bool IndexMap::TEST_Equals(const IndexMap& lhs, const IndexMap& rhs) {
   // We can't use std::unordered_map's == because IndexInfo does not define ==.
-  using MapType = std::unordered_map<TableId, IndexInfo>;
+  using MapType = UnorderedStringMap<IndexInfo>;
   return util::MapsEqual(static_cast<const MapType&>(lhs),
                          static_cast<const MapType&>(rhs),
                          &IndexInfo::TEST_Equals);

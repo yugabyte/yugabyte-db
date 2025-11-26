@@ -3019,15 +3019,13 @@ Status PgsqlReadOperation::PopulateResultSet(const dockv::PgTableRow& table_row,
   return Status::OK();
 }
 
-Status PgsqlReadOperation::GetSpecialColumn(ColumnIdRep column_id, QLValuePB* result) {
+Result<Slice> PgsqlReadOperation::GetSpecialColumn(ColumnIdRep column_id) {
   // Get row key and save to QLValue.
   // TODO(neil) Check if we need to append a table_id and other info to TupleID. For example, we
   // might need info to make sure the TupleId by itself is a valid reference to a specific row of
   // a valid table.
   if (column_id == static_cast<int>(PgSystemAttrNum::kYBTupleId)) {
-    const Slice tuple_id = table_iter_->GetTupleId();
-    result->set_binary_value(tuple_id.data(), tuple_id.size());
-    return Status::OK();
+    return table_iter_->GetTupleId();
   }
 
   return STATUS_SUBSTITUTE(InvalidArgument, "Invalid column ID: $0", column_id);
