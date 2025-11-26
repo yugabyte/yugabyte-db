@@ -131,6 +131,12 @@ export const getInitialFormValues = (
   isItKubernetesUniverse: boolean
 ) => {
   const cluster = getPrimaryCluster(universeDetails.clusters);
+  const isRootClientCASameforK8s =
+    cluster?.userIntent?.enableNodeToNodeEncrypt &&
+    cluster?.userIntent.enableClientToNodeEncrypt &&
+    universeDetails.rootCA === universeDetails.clientRootCA
+      ? true
+      : false;
   return {
     enableUniverseEncryption: !!(
       cluster?.userIntent?.enableNodeToNodeEncrypt || cluster?.userIntent.enableClientToNodeEncrypt
@@ -145,7 +151,9 @@ export const getInitialFormValues = (
       : null,
     createNewRootCA: false,
     createNewClientRootCA: false,
-    rootAndClientRootCASame: !!universeDetails?.rootAndClientRootCASame,
+    rootAndClientRootCASame: isItKubernetesUniverse
+      ? isRootClientCASameforK8s
+      : !!universeDetails?.rootAndClientRootCASame,
     rollingUpgrade: true,
     upgradeDelay: 240,
     upgradeOption: UpgradeOptions.NonRestart,
