@@ -55,6 +55,14 @@ When upgrading a deployment to a version of YugabyteDB that supports the `yb_ena
 
 You should migrate existing deployments from using `legacy_mode` or `legacy_stats_mode` to either `on` (recommended) or, if you do not want to use CBO, `off`.
 
+Note that when upgrading a deployment to v2025.2 or later, if the universe has the cost-based optimizer enabled (`on`), YugabyteDB will enable the following features:
+
+- Auto Analyze: ysql_enable_auto_analyze_service is set to true.
+- Bitmap scans: yb_enable_bitmapscan is set to true.
+- Parallel append: yb_enable_parallel_append is set to true.
+
+For more information on these features, see [Enhanced PostgreSQL Compatibility](../../reference/configuration/postgresql-compatibility/).
+
 <!--## Recommended settings
 
 | Scenario | Tables analyzed | Setting |
