@@ -130,11 +130,6 @@ ADD_YB_LIBRARY(
 # tablet code, so tserver proto generation has to happen before compiling this library.
 add_dependencies(tablet gen_src_yb_tserver_tserver_proto)
 
-ADD_YB_LIBRARY(
-  tablet_error
-  SRCS tablet_error.cc
-  DEPS tablet_proto yb_util)
-
 target_link_libraries(tablet
   tablet_proto
   yb_common
@@ -149,8 +144,7 @@ target_link_libraries(tablet
   tablet_metadata
   yb_docdb
   yb_client
-  yb_pggate_util
-  tablet_error)
+  yb_pggate_util)
 
 add_library(tablet_test_util
             local_tablet_writer.cc

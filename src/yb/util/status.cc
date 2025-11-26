@@ -31,6 +31,8 @@
 #include "yb/util/slice.h"
 #include "yb/util/status_ec.h"
 
+using namespace std::literals;
+
 namespace yb {
 
 namespace {
@@ -57,12 +59,12 @@ struct StatusCategories {
     bool first = true;
     for (size_t i = 0; i < categories.size(); ++i) {
       const auto& category = categories[i];
-      if (category.name != nullptr) {
+      if (!category.name.empty()) {
         if (!first) {
           ss << ", ";
         }
         first = false;
-        ss << i << "=" << *category.name;
+        ss << i << "=" << category.name;
       }
     }
     return ss.str();
@@ -79,24 +81,23 @@ struct StatusCategories {
   }
 
   void Register(const StatusCategoryDescription& description) {
-    CHECK(!categories[description.id].name);
-    categories[description.id] = description;
+    auto& category = categories[description.id];
+    CHECK(category.name.empty())
+        << "Conflict on " << static_cast<uint32_t>(description.id)
+        << " between '" << category.name << "' and '" << description.name << "'";
+    category = description;
   }
 
-  const std::string& CategoryName(uint8_t category) {
+  std::string_view CategoryName(uint8_t category) {
     const auto& description = categories[category];
-    if (!description.name) {
-      static std::string kUnknownCategory("unknown error category");
-      return kUnknownCategory;
-    }
-    return *description.name;
+    return description.name.empty() ? "unknown error category"sv : description.name;
   }
 
   // Returns data slice w/o category for error code starting with start.
   Slice GetSlice(const uint8_t* start) {
-    const uint8_t category_id = *start;
+    const auto category_id = *start;
     const auto& description = categories[category_id];
-    if (description.name == nullptr) {
+    if (description.name.empty()) {
       if (category_id > 0)
         ReportMissingCategory(category_id, __func__);
       return Slice();
@@ -105,9 +106,9 @@ struct StatusCategories {
   }
 
   std::string ToString(Slice encoded_err_code) {
-    const uint8_t category_id = *encoded_err_code.data();
+    const auto category_id = *encoded_err_code.data();
     const auto& description = categories[category_id];
-    if (description.name == nullptr) {
+    if (description.name.empty()) {
       if (category_id > 0)
         ReportMissingCategory(category_id, __func__);
       return std::string();
@@ -641,12 +642,8 @@ void Status::RegisterCategory(const StatusCategoryDescription& description) {
   status_categories().Register(description);
 }
 
-const std::string& Status::CategoryName(uint8_t category) {
+std::string_view Status::CategoryName(uint8_t category) {
   return status_categories().CategoryName(category);
-}
-
-StatusCategoryRegisterer::StatusCategoryRegisterer(const StatusCategoryDescription& description) {
-  Status::RegisterCategory(description);
 }
 
 std::string StringVectorBackedErrorTag::DecodeToString(const uint8_t* source) {

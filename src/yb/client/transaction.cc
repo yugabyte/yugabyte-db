@@ -2203,12 +2203,13 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         }
         return;
       }
-      if (status.IsTryAgain() && status.ErrorData(AdvisoryLocksErrorTag::kCategory)) {
-        auto new_pg_session_req_version = AdvisoryLocksError(status).value();
+      if (const auto new_pg_session_req_version =
+          status.IsTryAgain() ? AdvisoryLocksError::ValueFromStatus(status) : std::nullopt;
+        new_pg_session_req_version) {
         LOG_WITH_PREFIX(INFO)
             << "PgSessionRequestVersion changed from " << pg_session_req_version_
-            << " to " << new_pg_session_req_version;
-        pg_session_req_version_ = new_pg_session_req_version;
+            << " to " << *new_pg_session_req_version;
+        pg_session_req_version_ = *new_pg_session_req_version;
       }
       // Other errors could have different causes, but we should just retry sending heartbeat
       // in this case.
