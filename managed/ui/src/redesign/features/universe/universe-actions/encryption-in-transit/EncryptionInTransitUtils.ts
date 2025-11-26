@@ -145,7 +145,9 @@ export const getInitialFormValues = (
       : null,
     createNewRootCA: false,
     createNewClientRootCA: false,
-    rootAndClientRootCASame: !!universeDetails?.rootAndClientRootCASame,
+    rootAndClientRootCASame: isItKubernetesUniverse
+      ? false
+      : !!universeDetails?.rootAndClientRootCASame,
     rollingUpgrade: true,
     upgradeDelay: 240,
     upgradeOption: UpgradeOptions.NonRestart,
