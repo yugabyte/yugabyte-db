@@ -1008,7 +1008,11 @@ YBInitPostgresBackend(
 		ash_config.metadata = &MyProc->yb_ash_metadata;
 		ash_config.yb_enable_ash = &yb_enable_ash;
 		IpAddressToBytes(&ash_config);
-		YBCInitPgGate(type_table, count, callbacks, session_id, &ash_config);
+		HandleYBStatusAtErrorLevel(YBCInitPgGate(type_table,
+												 count,
+												 callbacks,
+												 session_id,
+												 &ash_config), FATAL);
 		YBCInstallTxnDdlHook();
 
 		/*

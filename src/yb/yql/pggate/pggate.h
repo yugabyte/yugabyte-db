@@ -123,9 +123,8 @@ struct PgApiContext {
 // Implements support for CAPI.
 class PgApiImpl {
  public:
-  PgApiImpl(PgApiContext context, const YBCPgTypeEntity *YBCDataTypeTable, int count,
-            YBCPgCallbacks pg_callbacks, std::optional<uint64_t> session_id,
-            const YBCPgAshConfig& ash_config);
+  PgApiImpl(
+      PgApiContext context, YBCPgCallbacks pg_callbacks, const YBCPgAshConfig& ash_config);
   ~PgApiImpl();
 
   const YBCPgCallbacks* pg_callbacks() {
@@ -137,6 +136,9 @@ class PgApiImpl {
   // Interrupt aborts all pending RPCs immediately to unblock main thread.
   void Interrupt();
   void ResetCatalogReadTime();
+
+  Status StartPgApi(
+      const YBCPgTypeEntity *YBCDataTypeTable, int count, std::optional<uint64_t> session_id);
 
   // Initialize a session to process statements that come from the same client connection.
   void InitSession(YBCPgExecStatsState& session_stats);

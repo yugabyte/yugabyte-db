@@ -277,15 +277,30 @@ inline std::optional<Bound> MakeBound(YBCPgBoundType type, uint16_t value) {
 Status InitPgGateImpl(const YBCPgTypeEntity* data_type_table,
                       int count,
                       const PgCallbacks& pg_callbacks,
-                      uint64_t *session_id,
+                      std::optional<uint64_t> session_id,
                       const YBCPgAshConfig* ash_config) {
-  auto opt_session_id = session_id ? std::optional(*session_id) : std::nullopt;
-  return WithMaskedYsqlSignals(
-    [data_type_table, count, &pg_callbacks, opt_session_id, &ash_config] {
-    YBCInitPgGateEx(
-        data_type_table, count, pg_callbacks, nullptr /* context */, opt_session_id, ash_config);
-    return static_cast<Status>(Status::OK());
-  });
+  // TODO: We should get rid of hybrid clock usage in YSQL backend processes (see #16034).
+  // However, this is added to allow simulating and testing of some known bugs until we remove
+  // HybridClock usage.
+  server::SkewedClock::Register();
+  server::RegisterClockboundClockProvider();
+
+  InitThreading();
+
+  CHECK(pgapi == nullptr) << ": " << __PRETTY_FUNCTION__ << " can only be called once";
+
+  YBCInitFlags();
+
+#ifndef NDEBUG
+  HybridTime::TEST_SetPrettyToString(true);
+#endif
+
+  pgapi_shutdown_done.exchange(false);
+  pgapi = new pggate::PgApiImpl(PgApiContext(), pg_callbacks, *ash_config);
+  RETURN_NOT_OK(pgapi->StartPgApi(data_type_table, count, session_id));
+
+  VLOG(1) << "PgGate open";
+  return Status::OK();
 }
 
 Status PgInitSessionImpl(YBCPgExecStatsState& session_stats) {
@@ -536,42 +551,17 @@ inline YBCPgExplicitRowLockStatus MakePgExplicitRowLockStatus() {
 // C API.
 //--------------------------------------------------------------------------------------------------
 
-void YBCInitPgGateEx(const YBCPgTypeEntity *data_type_table, int count, PgCallbacks pg_callbacks,
-                     PgApiContext* context, std::optional<uint64_t> session_id,
-                     const YBCPgAshConfig* ash_config) {
-  // TODO: We should get rid of hybrid clock usage in YSQL backend processes (see #16034).
-  // However, this is added to allow simulating and testing of some known bugs until we remove
-  // HybridClock usage.
-  server::SkewedClock::Register();
-  server::RegisterClockboundClockProvider();
-
-  InitThreading();
-
-  CHECK(pgapi == nullptr) << ": " << __PRETTY_FUNCTION__ << " can only be called once";
-
-  YBCInitFlags();
-
-#ifndef NDEBUG
-  HybridTime::TEST_SetPrettyToString(true);
-#endif
-
-  pgapi_shutdown_done.exchange(false);
-  if (context) {
-    pgapi = new pggate::PgApiImpl(
-        std::move(*context), data_type_table, count, pg_callbacks, session_id, *ash_config);
-  } else {
-    pgapi = new pggate::PgApiImpl(
-        PgApiContext(), data_type_table, count, pg_callbacks, session_id, *ash_config);
-  }
-
-  VLOG(1) << "PgGate open";
-}
-
 extern "C" {
 
-void YBCInitPgGate(const YBCPgTypeEntity *data_type_table, int count, PgCallbacks pg_callbacks,
-                   uint64_t *session_id, const YBCPgAshConfig* ash_config) {
-  CHECK_OK(InitPgGateImpl(data_type_table, count, pg_callbacks, session_id, ash_config));
+YBCStatus YBCInitPgGate(const YBCPgTypeEntity *data_type_table, int count, PgCallbacks pg_callbacks,
+                        uint64_t *session_id, const YBCPgAshConfig* ash_config) {
+  return ToYBCStatus(WithMaskedYsqlSignals(
+      [data_type_table, count, pg_callbacks, session_id, ash_config] {
+      return InitPgGateImpl(
+          data_type_table, count, pg_callbacks,
+          session_id ? std::optional(*session_id) : std::nullopt,
+          ash_config);
+  }));
 }
 
 void YBCDestroyPgGate() {

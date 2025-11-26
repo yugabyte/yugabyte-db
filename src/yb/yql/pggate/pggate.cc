@@ -335,9 +335,7 @@ Result<dockv::KeyBytes> PgApiImpl::TupleIdBuilder::Build(
 //--------------------------------------------------------------------------------------------------
 
 PgApiImpl::PgApiImpl(
-    PgApiContext context, const YBCPgTypeEntity *YBCDataTypeArray, int count,
-    YBCPgCallbacks callbacks, std::optional<uint64_t> session_id,
-    const YBCPgAshConfig& ash_config)
+    PgApiContext context, YBCPgCallbacks callbacks, const YBCPgAshConfig& ash_config)
     : metric_registry_(std::move(context.metric_registry)),
       metric_entity_(std::move(context.metric_entity)),
       mem_tracker_(std::move(context.mem_tracker)),
@@ -357,8 +355,12 @@ PgApiImpl::PgApiImpl(
       ybctid_reader_provider_(pg_session_),
       fk_reference_cache_(ybctid_reader_provider_, buffering_settings_),
       explicit_row_lock_buffer_(ybctid_reader_provider_) {
-  CHECK_OK(interrupter_->Start());
-  CHECK_OK(clock_->Init());
+}
+
+Status PgApiImpl::StartPgApi(const YBCPgTypeEntity *YBCDataTypeArray, int count,
+                             std::optional<uint64_t> session_id) {
+  RETURN_NOT_OK(interrupter_->Start());
+  RETURN_NOT_OK(clock_->Init());
 
   // Setup type mapping.
   for (int idx = 0; idx < count; idx++) {
@@ -366,9 +368,11 @@ PgApiImpl::PgApiImpl(
     type_map_[type_entity->type_oid] = type_entity;
   }
 
-  CHECK_OK(pg_client_.Start(
+  RETURN_NOT_OK(pg_client_.Start(
       proxy_cache_.get(), &messenger_holder_.messenger->scheduler(),
       tserver_shared_object_, session_id));
+
+  return Status::OK();
 }
 
 PgApiImpl::~PgApiImpl() {

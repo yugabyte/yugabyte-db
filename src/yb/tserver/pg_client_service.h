@@ -179,6 +179,8 @@ class PgClientServiceMockImpl : public PgClientServiceIf {
   BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_METHOD_DECLARE, ~, YB_PG_CLIENT_MOCKABLE_METHODS);
   BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_MOCK_METHOD_SETTER_DECLARE, ~, YB_PG_CLIENT_MOCKABLE_METHODS);
 
+  void UnsetMock(const std::string& method);
+
  private:
   PgClientServiceIf* impl_;
   std::unordered_map<std::string, SharedFunctor::weak_type> mocks_;

@@ -42,9 +42,9 @@ typedef struct PgExplicitRowLockStatus {
 
 // This must be called exactly once to initialize the YB/PostgreSQL gateway API before any other
 // functions in this API are called.
-void YBCInitPgGate(const YBCPgTypeEntity *YBCDataTypeTable, int count,
-                   YBCPgCallbacks pg_callbacks, uint64_t *session_id,
-                   const YBCPgAshConfig* ash_config);
+YBCStatus YBCInitPgGate(const YBCPgTypeEntity *YBCDataTypeTable, int count,
+                        YBCPgCallbacks pg_callbacks, uint64_t *session_id,
+                        const YBCPgAshConfig* ash_config);
 void YBCDestroyPgGate();
 void YBCInterruptPgGate();
 
@@ -977,21 +977,4 @@ void YBCPgClearExportedTxnSnapshots();
 
 #ifdef __cplusplus
 }  // extern "C"
-#endif
-
-#ifdef __cplusplus
-#include <optional>
-
-namespace yb {
-namespace pggate {
-
-struct PgApiContext;
-
-void YBCInitPgGateEx(
-    const YBCPgTypeEntity *data_type_table, int count, YBCPgCallbacks pg_callbacks,
-    PgApiContext *context, std::optional<uint64_t> session_id,
-    const YBCPgAshConfig* ash_config);
-
-} // namespace pggate
-} // namespace yb
 #endif
