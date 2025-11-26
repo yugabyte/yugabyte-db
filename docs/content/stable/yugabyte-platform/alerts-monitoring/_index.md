@@ -25,7 +25,7 @@ YugabyteDB Anywhere provides preconfigured alerts to notify you of potential pro
 
 Use the Live Queries and Slow Queries dashboards to monitor and display current running queries and analyze statistics of past queries on your YugabyteDB universes.
 
-Integrate with third-party tools such as Datadog, Dynatrace, and Splunk to export database metrics and database audit logs for analysis.
+Integrate with third-party tools such as Datadog, Dynatrace, and Splunk to export database metrics and audit logs for analysis.
 
 {{<index/block>}}
 
