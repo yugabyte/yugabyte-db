@@ -58,8 +58,8 @@ Use the Live Queries and Slow Queries dashboards to monitor and display current 
     icon="/images/section_icons/introduction/benefits.png">}}
 
   {{<index/item
-    title="CDC Observability"
-    body="Use CDC to capture and emit database change events."
+    title="CDC observability"
+    body="Monitor replication slots used for CDC."
     href="cdc-observability/"
     icon="fa-regular fa-arrows-spin">}}
 
