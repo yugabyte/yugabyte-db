@@ -58,7 +58,6 @@ import org.yb.client.TestUtils;
 import org.yb.util.Pair;
 
 import com.google.common.base.Strings;
-import com.google.common.util.concurrent.ExecutionError;
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
 import com.nimbusds.jose.JWSSigner;
@@ -835,6 +834,7 @@ public class TestJWTAuth extends BasePgSQLTest {
   @Test
   public void invalidJWTAudiencesConfiguration() throws Exception {
     // Empty Audiences.
+    disablePGConnectionCheck();
     assertClusterRestartFailure(ALLOWED_ISSUERS, Arrays.asList(), jwksPath,
         /* matchingClaimKey */ "",
         /* mapName */ "", /* identFileContents */ "");
@@ -843,6 +843,7 @@ public class TestJWTAuth extends BasePgSQLTest {
   @Test
   public void invalidJWTIssuersConfiguration() throws Exception {
     // Empty Issuers.
+    disablePGConnectionCheck();
     assertClusterRestartFailure(Arrays.asList(), ALLOWED_AUDIENCES, jwksPath,
         /* matchingClaimKey */ "",
         /* mapName */ "", /* identFileContents */ "");
