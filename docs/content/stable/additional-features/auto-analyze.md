@@ -35,24 +35,13 @@ For example, to create a single-node [yugabyted](../../reference/configuration/y
 
 ## Configure Auto Analyze
 
-You can control how frequently the service updates table statistics using the following YB-TServer flags:
+The auto analyze service counts the number of mutations (INSERT, UPDATE, and DELETE) to a table and triggers ANALYZE on the table automatically when certain thresholds are reached. This behavior is determined by the following knobs.
 
-- `ysql_auto_analyze_threshold` - the minimum number of mutations (INSERT, UPDATE, and DELETE) needed to run ANALYZE on a table. Default is 50.
-- `ysql_auto_analyze_scale_factor` - a fraction that determines when enough mutations have been accumulated to run ANALYZE for a table. Default is 0.1.
+A table needs to accumulate a minimum number of mutations before it is considered for ANALYZE. This minimum is the sum of
+    * A fraction of the table size - this is controlled by [ysql_auto_analyze_scale_factor](../reference/configuration/yb-tserver/#ysql-auto-analyze-scale-factor). This setting defaults to 0.1, which translates to 10% of the current table size. Current table size is determined by the [`reltuples`].(https://www.postgresql.org/docs/15/catalog-pg-class.html#:~:text=CREATE%20INDEX.-,reltuples,-float4) column value stored in the `pg_class` catalog entry for that table.
+    * A static count of [ysql_auto_analyze_threshold](../reference/configuration/yb-tserver/#ysql-auto-analyze-threshold) (default 50) mutations. This setting ensures that small tables are not aggressively ANALYZED because the scale factor requirement is easily met.
 
-Increasing either of these flags reduces the frequency of statistics updates.
-
-If the total number of mutations for a table is greater than its analyze threshold, then the service runs ANALYZE on the table. The analyze threshold of a table is calculated as follows:
-
-```sh
-analyze_threshold = ysql_auto_analyze_threshold + (ysql_auto_analyze_scale_factor * <table_size>)
-```
-
-where `<table_size>` is the current `reltuples` column value stored in the `pg_class` catalog.
-
-`ysql_auto_analyze_threshold` is important for small tables. With default settings, if a table has 100 rows and 20 are mutated, ANALYZE won't run as the threshold is not met, even though 20% of the rows are mutated.
-
-On the other hand, `ysql_auto_analyze_scale_factor` is especially important for big tables. If a table has 1,000,000,000 rows, 10% (100,000,000 rows) would have to be mutated before ANALYZE runs. Set the scale factor to a lower value to allow for more frequent statistics collection for such large tables.
+Separately, auto analyze also considers cooldown settings for a table so as to not trigger ANALYZE aggressively. After every run of ANALYZE on a table, a cooldown period is enforced before the next run of ANALYZE on that table, even if the mutation thresholds are met. The cooldown period starts from ysql_auto_analyze_min_cooldown_per_table (default: 10 secs) and exponentially increases to ysql_auto_analyze_max_cooldown_per_table (default: 24 hrs). Cooldown settings do not reset - so in most cases, it is expected that a table that changes frequently only gets ANALYZE'd once every ysql_auto_analyze_max_cooldown_per_table (default: 24 hrs).
 
 For more information on flags used to configure the Auto Analyze service, refer to [Auto Analyze service flags](../../reference/configuration/yb-tserver/#auto-analyze-service-flags).
 
@@ -91,4 +80,4 @@ SELECT reltuples FROM pg_class WHERE relname = 'test';
 
 ## Limitations
 
-Because ANALYZE is a DDL statement, it can cause DDL conflicts when run concurrently with other DDL statements. As Auto Analyze runs ANALYZE in the background, you should turn off Auto Analyze if you want to execute DDL statements. You can do this by setting `ysql_enable_auto_analyze_service` to false on all YB-TServers at runtime.
+ANALYZE is a technically considered a DDL statement (schema change) and normally conflicts with other [concurrent DDLs](../best-practices-operations/administration/#concurrent-ddl-during-a-ddl-operation). However, when run via the auto analyze service, ANALYZE can run concurrently with other DDL. In this case, ANALYZE is pre-empted by concurrent DDL and will be retried at a later point. However, when [transactional DDL](../explore/transactions/transactional-ddl/) is enabled (off by default), certain kinds of transactions that contain DDL may face a `kConflict` error when a background ANALYZE from the auto analyze service interrupts this transaction. In such cases, it is recommended to disable the auto analyze service explicitly and trigger ANAYZE manually.
