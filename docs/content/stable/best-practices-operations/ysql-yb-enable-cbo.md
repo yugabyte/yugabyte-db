@@ -57,7 +57,7 @@ You should migrate existing deployments from using `legacy_mode` or `legacy_stat
 
 Note that when upgrading a deployment to v2025.2 or later, if the universe has the cost-based optimizer enabled (`on`), YugabyteDB will enable the following features:
 
-- Auto Analyze: ysql_enable_auto_analyze_service is set to true.
+- Auto Analyze: ysql_enable_auto_analyze is set to true.
 - Bitmap scans: yb_enable_bitmapscan is set to true.
 - Parallel append: yb_enable_parallel_append is set to true.
 

@@ -55,7 +55,7 @@ If you upgrade a universe with EPCM to v2025.2 or later, YugabyteDB will automat
 
 When upgrading a universe that does not have EPCM, YugabyteDB does not enable features automatically. If the universe has the [cost based optimizer](#cost-based-optimizer) enabled, however, YugabyteDB will enable the following features:
 
-- Auto Analyze: ysql_enable_auto_analyze_service is set to true.
+- Auto Analyze: ysql_enable_auto_analyze is set to true.
 - Bitmap scans: yb_enable_bitmapscan is set to true.
 - Parallel append: yb_enable_parallel_append is set to true.
 
