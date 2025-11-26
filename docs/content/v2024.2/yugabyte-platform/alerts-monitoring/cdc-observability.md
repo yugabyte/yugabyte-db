@@ -7,7 +7,7 @@ headcontent: Monitor replication slots used for CDC
 tags:
   feature: early-access
 menu:
-  v2024.1_yugabyte-platform:
+  v2024.2_yugabyte-platform:
     parent: alerts-monitoring
     identifier: change-data-capture
     weight: 70
