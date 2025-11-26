@@ -22,17 +22,16 @@ Similar to [PostgreSQL autovacuum](https://www.postgresql.org/docs/current/routi
 
 ## Enable Auto Analyze
 
-Before you can use the feature, you must enable it by setting `ysql_enable_auto_analyze_service` to true on all YB-Masters, and both `ysql_enable_auto_analyze_service` and `ysql_enable_table_mutation_counter` to true on all YB-TServers.
+Auto analyze is automatically enabled on YugabyteDB clusters when CBO is enabled (CBO is automatically enabled when a YugabyteDB cluster is created with version >= 2025.2 through YugabyteDB Aeon, YugabyteDB Anywhere or yugabyted). If needed, you can explicitly enable or disable auto analyze by setting `ysql_enable_auto_analyze` on both yb-master and yb-tserver.  
 
-For example, to create a single-node [yugabyted](../../reference/configuration/yugabyted/) cluster with Auto Analyze enabled, use the following command:
+For example, to create a single-node [yugabyted](../../reference/configuration/yugabyted/) cluster with Auto Analyze explicitly enabled, use the following command:
 
 ```sh
 ./bin/yugabyted start \
-    --master_flags "ysql_enable_auto_analyze_service=true" \
-    --tserver_flags "ysql_enable_auto_analyze_service=true,ysql_enable_table_mutation_counter=true"
+    --master_flags "ysql_enable_auto_analyze=true" \
+    --tserver_flags "ysql_enable_auto_analyze=true"
 ```
 
-Enabling Auto Analyze on an existing cluster requires a rolling restart to set `ysql_enable_auto_analyze_service` and `ysql_enable_table_mutation_counter` to true.
 
 ## Configure Auto Analyze
 
@@ -54,8 +53,6 @@ where `<table_size>` is the current `reltuples` column value stored in the `pg_c
 `ysql_auto_analyze_threshold` is important for small tables. With default settings, if a table has 100 rows and 20 are mutated, ANALYZE won't run as the threshold is not met, even though 20% of the rows are mutated.
 
 On the other hand, `ysql_auto_analyze_scale_factor` is especially important for big tables. If a table has 1,000,000,000 rows, 10% (100,000,000 rows) would have to be mutated before ANALYZE runs. Set the scale factor to a lower value to allow for more frequent statistics collection for such large tables.
-
-In addition, `ysql_auto_analyze_batch_size` controls the maximum number of tables the Auto Analyze service tries to analyze in a single ANALYZE statement. The default is 10. Setting this flag to a larger value can potentially reduce the number of YSQL catalog cache refreshes if Auto Analyze decides to ANALYZE many tables in the same database at the same time.
 
 For more information on flags used to configure the Auto Analyze service, refer to [Auto Analyze service flags](../../reference/configuration/yb-tserver/#auto-analyze-service-flags).
 
