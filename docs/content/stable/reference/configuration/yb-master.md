@@ -1062,7 +1062,13 @@ Default: `true`
 
 See also [Auto Analyze Service TServer flags](../yb-tserver/#auto-analyze-service-flags).
 
-##### ysql_enable_auto_analyze_service
+Auto analyze is automatically enabled by default when the [cost-based optimizer](../../../architecture/query-layer/planner-optimizer/) (CBO) is enabled through gflags. To explicitly control the service, you can set the flag [ysql_enable_auto_analyze].
+
+##### ysql_enable_auto_analyze
+
+{{<tags/feature/ea idea="590">}}Enable the Auto Analyze service, which automatically runs ANALYZE to update table statistics for tables that have changed more than a configurable threshold.
+
+##### ysql_enable_auto_analyze_service (deprecated)
 
 {{<tags/feature/ea idea="590">}}Enable the Auto Analyze service, which automatically runs ANALYZE to update table statistics for tables that have changed more than a configurable threshold.
 
