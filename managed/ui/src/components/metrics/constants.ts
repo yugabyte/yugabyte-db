@@ -109,6 +109,7 @@ export const MetricTypesWithOperations = {
     metrics: [
       'tserver_rpcs_per_sec_per_node',
       'tserver_ops_latency',
+      'tserver_ops_latency_p99',
       'tserver_handler_latency',
       'tserver_threads_running',
       'tserver_threads_started',
@@ -266,6 +267,8 @@ export const MetricTypesWithOperations = {
   outlier_tables: {
     title: 'Outlier Tables',
     metrics: [
+      'table_rocksdb_total_sst_per_node',
+      'table_wal_size',
       'table_read_latency',
       'table_read_rps',
       'table_write_latency',
@@ -274,11 +277,17 @@ export const MetricTypesWithOperations = {
       'table_log_ops_second',
       'table_log_bytes_written',
       'table_write_lock_latency',
+      'table_rocksdb_latencies_seek',
       'table_seek_next_prev',
       'table_ops_in_flight',
       'table_write_rejections',
       'table_memory_rejections',
       'table_compaction',
+      'table_rocksdb_compaction_time',
+      'table_rocksdb_compaction_numfiles',
+      'table_rocksdb_stalls',
+      'table_rocksdb_flush_size',
+      'table_docdb_transaction',
       'table_block_cache_hit_miss',
       'table_rocksdb_blooms_checked_and_useful',
       'table_mem_tracker_db_memtable',
@@ -296,14 +305,22 @@ export const MetricTypesWithOperations = {
       'table_log_ops_second',
       'table_log_bytes_written',
       'table_write_lock_latency',
+      'table_rocksdb_latencies_seek',
       'table_seek_next_prev',
       'table_ops_in_flight',
       'table_write_rejections',
       'table_memory_rejections',
       'table_compaction',
+      'table_rocksdb_compaction_time',
+      'table_rocksdb_compaction_numfiles',
+      'table_rocksdb_stalls',
+      'table_rocksdb_flush_size',
+      'table_docdb_transaction',
+      'table_rocksdb_total_sst_per_node',
       'table_block_cache_hit_miss',
       'table_rocksdb_blooms_checked_and_useful',
-      'table_mem_tracker_db_memtable'
+      'table_mem_tracker_db_memtable',
+      // TODO: add after https://github.com/yugabyte/yugabyte-db/issues/29491 'ysql_catalog_cache_misses'
     ]
   }
 } as const;
