@@ -25,6 +25,8 @@ To export either metrics or logs from a universe:
 
     While the connection is active, metrics or logs are automatically streamed to the tool.
 
+To be able to export logs on Kubernetes, ensure the OpenTelemetry Operator is installed. Refer to [OpenTelemetry Operator for Kubernetes](https://opentelemetry.io/docs/platforms/kubernetes/operator/#getting-started) in the OpenTelemetry documentation. Metrics export is not supported on Kubernetes.
+
 ## Available integrations
 
 Currently, you can export data to the following tools:
