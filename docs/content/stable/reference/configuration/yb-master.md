@@ -1058,7 +1058,7 @@ Default: `true`
 
 ## Auto Analyze service flags
 
-{{<tags/feature/ea idea="590">}}To learn about the Auto Analyze service, see [Auto Analyze service](../../../additional-features/auto-analyze).
+To learn about the Auto Analyze service, see [Auto Analyze service](../../../additional-features/auto-analyze).
 
 See also [Auto Analyze Service TServer flags](../yb-tserver/#auto-analyze-service-flags).
 
@@ -1066,11 +1066,11 @@ Auto analyze is automatically enabled by default when the [cost-based optimizer]
 
 ##### ysql_enable_auto_analyze
 
-{{<tags/feature/ea idea="590">}}Enable the Auto Analyze service, which automatically runs ANALYZE to update table statistics for tables that have changed more than a configurable threshold.
+Enable the Auto Analyze service, which automatically runs ANALYZE to update table statistics for tables that have changed more than a configurable threshold.
 
 ##### ysql_enable_auto_analyze_service (deprecated)
 
-{{<tags/feature/ea idea="590">}}Enable the Auto Analyze service, which automatically runs ANALYZE to update table statistics for tables that have changed more than a configurable threshold.
+Use ysql_enable_auto_analyze instead.
 
 Default: false
 

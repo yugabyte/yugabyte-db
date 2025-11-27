@@ -4,8 +4,6 @@ headerTitle: Auto Analyze service
 linkTitle: Auto Analyze
 description: Use the Auto Analyze service to keep table statistics up to date
 headcontent: Keep table statistics up to date automatically
-tags:
-  feature: early-access
 menu:
   stable:
     identifier: auto-analyze
@@ -22,7 +20,11 @@ Similar to [PostgreSQL autovacuum](https://www.postgresql.org/docs/current/routi
 
 ## Enable Auto Analyze
 
-Auto analyze is automatically enabled on YugabyteDB clusters when CBO is enabled (CBO is automatically enabled when a YugabyteDB cluster is created with version >= 2025.2 through YugabyteDB Aeon, YugabyteDB Anywhere or yugabyted). If needed, you can explicitly enable or disable auto analyze by setting `ysql_enable_auto_analyze` on both yb-master and yb-tserver.  
+For new universes running v2025.2 or later, Auto Analyze is enabled by default when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon.
+
+In addition, when upgrading a deployment to v2025.2 or later, if the universe has the cost-based optimizer enabled (`on`), YugabyteDB will enable Auto Analyze.
+
+You can explicitly enable or disable auto analyze by setting `ysql_enable_auto_analyze` on both yb-master and yb-tserver.
 
 For example, to create a single-node [yugabyted](../../reference/configuration/yugabyted/) cluster with Auto Analyze explicitly enabled, use the following command:
 
@@ -32,16 +34,16 @@ For example, to create a single-node [yugabyted](../../reference/configuration/y
     --tserver_flags "ysql_enable_auto_analyze=true"
 ```
 
-
 ## Configure Auto Analyze
 
-The auto analyze service counts the number of mutations (INSERT, UPDATE, and DELETE) to a table and triggers ANALYZE on the table automatically when certain thresholds are reached. This behavior is determined by the following knobs.
+The auto analyze service counts the number of mutations (INSERT, UPDATE, and DELETE) to a table and triggers ANALYZE on the table automatically when certain thresholds are reached. You can configure this behavior using the following settings.
 
-A table needs to accumulate a minimum number of mutations before it is considered for ANALYZE. This minimum is the sum of
-    * A fraction of the table size - this is controlled by [ysql_auto_analyze_scale_factor](../reference/configuration/yb-tserver/#ysql-auto-analyze-scale-factor). This setting defaults to 0.1, which translates to 10% of the current table size. Current table size is determined by the [`reltuples`].(https://www.postgresql.org/docs/15/catalog-pg-class.html#:~:text=CREATE%20INDEX.-,reltuples,-float4) column value stored in the `pg_class` catalog entry for that table.
-    * A static count of [ysql_auto_analyze_threshold](../reference/configuration/yb-tserver/#ysql-auto-analyze-threshold) (default 50) mutations. This setting ensures that small tables are not aggressively ANALYZED because the scale factor requirement is easily met.
+A table needs to accumulate a minimum number of mutations before it is considered for ANALYZE. This minimum is the sum of:
 
-Separately, auto analyze also considers cooldown settings for a table so as to not trigger ANALYZE aggressively. After every run of ANALYZE on a table, a cooldown period is enforced before the next run of ANALYZE on that table, even if the mutation thresholds are met. The cooldown period starts from [ysql_auto_analyze_min_cooldown_per_table](../reference/configuration/yb-tserver/#ysql_auto_analyze_min_cooldown_per_table) (default: 10 secs) and exponentially increases to  [ysql_auto_analyze_max_cooldown_per_table](../reference/configuration/yb-tserver/#ysql_auto_analyze_max_cooldown_per_table) (default: 24 hrs). Cooldown values for a table do not reset - so in most cases, it is expected that, after a while, a frequently updated table only gets ANALYZE'd once every ysql_auto_analyze_max_cooldown_per_table period (default: 24 hrs).
+- A fraction of the table size. This is controlled by [ysql_auto_analyze_scale_factor](../../reference/configuration/yb-tserver/#ysql-auto-analyze-scale-factor). This setting defaults to 0.1, which translates to 10% of the current table size. Current table size is determined by the [reltuples](https://www.postgresql.org/docs/15/catalog-pg-class.html#:~:text=CREATE%20INDEX.-,reltuples,-float4) column value stored in the `pg_class` catalog entry for that table.
+- A static count of [ysql_auto_analyze_threshold](../../reference/configuration/yb-tserver/#ysql-auto-analyze-threshold) (default 50) mutations. This setting ensures that small tables are not aggressively ANALYZED because the scale factor requirement is easily met.
+
+Separately, Auto Analyze also considers cooldown settings for a table so as to not trigger ANALYZE aggressively. After every run of ANALYZE on a table, a cooldown period is enforced before the next run of ANALYZE on that table, even if the mutation thresholds are met. The cooldown period starts from [ysql_auto_analyze_min_cooldown_per_table](../../reference/configuration/yb-tserver/#ysql_auto_analyze_min_cooldown_per_table) (default: 10 seconds) and exponentially increases to  [ysql_auto_analyze_max_cooldown_per_table](../../reference/configuration/yb-tserver/#ysql_auto_analyze_max_cooldown_per_table) (default: 24 hours). Cooldown values for a table do not reset. This means that in most cases, it is expected that, after a while, a frequently updated table is only analyzed once every `ysql_auto_analyze_max_cooldown_per_table` period.
 
 For more information on flags used to configure the Auto Analyze service, refer to [Auto Analyze service flags](../../reference/configuration/yb-tserver/#auto-analyze-service-flags).
 
