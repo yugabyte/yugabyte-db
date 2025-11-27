@@ -22,7 +22,7 @@ For an RSS feed of all technical advisories, point your feed reader to the [RSS 
 | Advisory&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Synopsis | Product | Affected Versions | Date |
 | :------------------------------- | :------- | :-----: | :---------------: | :--- |
 | {{<ta 29060>}}
-|Large rows can cause CDC to miss WAL records
+| Rows larger than 4MB can cause CDC to miss WAL records
 | {{<product "cdc">}}
 | {{<release "2.20.7">}} to {{<release "2.20.12">}}, {{<release "2024.1.3">}}+, {{<release "2024.2.0">}} to {{<release "2024.2.6">}}, {{<release "2025.1.0">}} to {{<release "2025.1.2">}}
 | {{<nobreak "24 November 2025">}}
