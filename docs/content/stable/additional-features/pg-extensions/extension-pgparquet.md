@@ -13,7 +13,7 @@ menu:
 type: docs
 ---
 
-The [pg_parquet](https://www.crunchydata.com/blog/pg_parquet-an-extension-to-connect-postgres-and-parquet) extension allows you to read and write [Parquet](https://parquet.apache.org/) files, which are located in S3, Azure Blob Storage, Google Cloud Storage, http(s) endpoints or file system, from PostgreSQL via COPY TO/FROM commands. It depends on [Apache Arrow](https://arrow.apache.org/rust/arrow/) project to read and write Parquet files and [pgrx](https://github.com/pgcentralfoundation/pgrx) project to extend PostgreSQL's COPY command.
+The [pg_parquet](https://www.crunchydata.com/blog/pg_parquet-an-extension-to-connect-postgres-and-parquet) extension allows you to read from and write to [Parquet](https://parquet.apache.org/) files by extending the PostgreSQL COPY command. Files can be located in S3, Azure Blob Storage, Google Cloud Storage, http(s) endpoints, or on a file system.
 
 ## Enable pg_parquet
 
@@ -41,9 +41,9 @@ You can use pg_parquet to do the following:
 - Ingest data from Parquet files to tables.
 - Inspect the schema and metadata of Parquet files.
 
-### COPY to/from Parquet files from/to YSQL tables
+### Copy to and from Parquet files
 
-You can use COPY command to read and write from/to Parquet files. An example of how to write a YSQL table, with complex types, into a Parquet file and then to read the Parquet file content back to the same table is as follows:
+To read and write Parquet files, you use the COPY command. The following example shows how to write a YSQL table, with complex types, into a Parquet file, and then read the Parquet file content back to the same table:
 
 ```sql
 -- create composite types
@@ -83,7 +83,7 @@ SELECT * FROM product_example;
 
 ### Inspect Parquet schema
 
-Use the following SELECT query to discover the schema of the Parquet file at a given URI:
+The following SELECT query outputs the schema of the Parquet file at a given URI:
 
 ```sql
 SELECT * FROM parquet.schema('/tmp/product_example.parquet') LIMIT 10;
@@ -144,7 +144,7 @@ SELECT * FROM parquet.file_metadata('/tmp/product_example.parquet')
 (1 row)
 ```
 
-Use the following SELECT query to get custom key-value metadata of the Parquet file at a given uri:
+Use the following SELECT query to get custom key-value metadata of the Parquet file at a given URI:
 
 ```sql
 SELECT uri, encode(key, 'escape') as key, encode(value, 'escape') as value FROM parquet.kv_metadata('/tmp/product_example.parquet');
@@ -186,14 +186,12 @@ SELECT * FROM parquet.column_stats('/tmp/product_example.parquet');
 
 ## Object Store support
 
-pg_parquet supports reading and writing Parquet files from/to S3, Azure Blob Storage, http(s) and Google Cloud Storage object stores.
+pg_parquet supports reading and writing Parquet files in S3, Azure Blob Storage, http(s), and Google Cloud Storage object stores.
 
-{{< note title="Required roles" >}}
 
-To write into an object store location, you need to grant `parquet_object_store_write` role to your current postgres user. Similarly, to read from an object store location, you need to grant `parquet_object_store_read` role to your current postgres user.
+To write to an object store location, you need to grant the `parquet_object_store_write` role to your current user. Similarly, to read from an object store location, you need to grant the `parquet_object_store_read` role to your current user.
 For information on how to grant roles, refer to [GRANT](../../../api/ysql/the-sql-language/statements/dcl_grant/).
 
-{{< /note >}}
 
 ### S3 Storage
 
