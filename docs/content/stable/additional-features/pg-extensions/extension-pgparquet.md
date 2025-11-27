@@ -43,43 +43,53 @@ You can use pg_parquet to do the following:
 
 ### Copy to and from Parquet files
 
-To read and write Parquet files, you use the COPY command. The following example shows how to write a YSQL table, with complex types, into a Parquet file, and then read the Parquet file content back to the same table:
+To read and write Parquet files, you use the COPY command. The following example shows how to write a YSQL table, with complex types, into a Parquet file, and then read the Parquet file content back to the same table.
 
-```sql
--- create composite types
-CREATE TYPE product_item AS (id INT, name TEXT, price float4);
-CREATE TYPE product AS (id INT, name TEXT, items product_item[]);
+1. Create composite types that will be used in the table:
 
--- create a table with complex types
-CREATE TABLE product_example (
-    id int,
-    product product,
-    products product[],
-    created_at TIMESTAMP,
-    updated_at TIMESTAMPTZ
-);
+    ```sql
+    CREATE TYPE product_item AS (id INT, name TEXT, price float4);
+    CREATE TYPE product AS (id INT, name TEXT, items product_item[]);
 
--- insert some rows into the table
-INSERT INTO product_example VALUES (
-    1,
-    ROW(1, 'product 1', ARRAY[ROW(1, 'item 1', 1.0), ROW(2, 'item 2', 2.0), NULL]::product_item[])::product,
-    ARRAY[ROW(1, NULL, NULL)::product, NULL],
-    now(),
-    '2022-05-01 12:00:00-04'
-);
+1. Create a table that uses the composite types, including arrays and timestamp columns:
 
--- copy the table to a parquet file
-COPY product_example TO '/tmp/product_example.parquet' (format 'parquet', compression 'gzip');
+    ```sql
+    CREATE TABLE product_example (
+        id int,
+        product product,
+        products product[],
+        created_at TIMESTAMP,
+        updated_at TIMESTAMPTZ
+    );
+    ```
 
--- show table
-SELECT * FROM product_example;
+1. Insert some rows into the table:
 
--- copy the parquet file to the table
-COPY product_example FROM '/tmp/product_example.parquet';
+    ```sql
+    INSERT INTO product_example VALUES (
+        1,
+        ROW(1, 'product 1', ARRAY[ROW(1, 'item 1', 1.0), ROW(2, 'item 2', 2.0), NULL]::product_item[])::product,
+        ARRAY[ROW(1, NULL, NULL)::product, NULL],
+        now(),
+        '2022-05-01 12:00:00-04'
+    );
+    ```
 
--- show table
-SELECT * FROM product_example;
-```
+1. Export the table data to a Parquet file using COPY TO with gzip compression:
+
+    ```sql
+    COPY product_example TO '/tmp/product_example.parquet' (format 'parquet', compression 'gzip');
+    -- show table
+    SELECT * FROM product_example;
+    ```
+
+1. Import the Parquet file data back to the table using COPY FROM to verify the round-trip export and import:
+
+    ```sql
+    COPY product_example FROM '/tmp/product_example.parquet';
+    -- show table
+    SELECT * FROM product_example;
+    ```
 
 ### Inspect Parquet schema
 
