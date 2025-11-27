@@ -144,7 +144,7 @@ Collects the `/var/log/messages` log files from all database nodes that fall wit
 
 #### YBA Metadata
 
-This component collects a fingerprint of the YBA data. The metadata is collected at a customer level, rather than a global level (like [PG_dump](https://support.yugabyte.com/hc/en-us/articles/4412743193741-How-to-create-a-credential-free-dump-of-YugabyteDB-Anywhere-Database)) to ensure multi-tenancy is respected going forward.
+This component collects a fingerprint of the YBA data. The metadata is collected at a customer level, rather than a global level (like [pg_dump](https://support.yugabyte.com/hc/en-us/articles/4412743193741-How-to-create-a-credential-free-dump-of-YugabyteDB-Anywhere-Database)) to ensure multi-tenancy is respected going forward.
 
 This metadata includes the following:
 
