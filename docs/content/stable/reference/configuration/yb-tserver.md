@@ -400,6 +400,8 @@ Enables or disables the query planner's use of bitmap scans for YugabyteDB relat
 
 In v2025.2 and later, bitmap scan is enabled by default in new universes when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon.
 
+In addition, when upgrading a deployment to v2025.2 or later, if the universe has the cost-based optimizer enabled (`on`), YugabyteDB will enable bitmap scan.
+
 Both [enable_bitmapscan](#enable-bitmapscan) and `yb_enable_bitmapscan` must be set to true for a YugabyteDB relation to use a bitmap scan. If `yb_enable_bitmapscan` is false, the planner never uses a YugabyteDB bitmap scan.
 
 | enable_bitmapscan | yb_enable_bitmapscan | Result |
@@ -435,10 +437,12 @@ Enable or disable the query planner's use of batched nested loop join.
 
 {{% tags/wrap %}}
 
-Default: `on`
+Default: `legacy_mode`
 {{% /tags/wrap %}}
 
 Enables the YugabyteDB [cost-based optimizer](../../../architecture/query-layer/planner-optimizer/) (CBO). Options are `on`, `off`, `legacy_mode`, and `legacy_stats_mode`.
+
+In v2025.2 and later, CBO is enabled by default (`on`) in new universes when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon.
 
 This parameter replaces the [yb_enable_base_scans_cost_model](#yb-enable-base-scans-cost-model) and [yb_enable_optimizer_statistics](#yb-enable-optimizer-statistics) parameters.
 
