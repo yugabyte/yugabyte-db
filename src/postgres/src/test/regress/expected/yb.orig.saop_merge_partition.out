@@ -125,7 +125,7 @@
          Output: parent.n, parent.r3, parent.p1, parent.r1, parent.r2, parent.p2
          Sort Key: parent.r2, parent.r3, parent.p1, parent.p2, parent.n
          Presorted Key: parent.r2, parent.r3, parent.p1, parent.p2
-         Full-sort Groups: 1  Sort Method: quicksort  Average Memory: 25kB  Peak Memory: 25kB
+         Full-sort Groups: 1  Sort Method: quicksort
          ->  Merge Append (actual rows=6 loops=1)
                Sort Key: parent.r2, parent.r3, parent.p1, parent.p2
                ->  Index Scan using child1a_pkey on public.child1a parent_1 (actual rows=3 loops=1)
@@ -234,7 +234,7 @@
          Output: parent.n, parent.r3, parent.p1, parent.r1, parent.r2, parent.p2
          Sort Key: parent.r2 DESC, parent.r3 DESC, parent.p1 DESC, parent.p2 DESC, parent.n
          Presorted Key: parent.r2, parent.r3, parent.p1, parent.p2
-         Full-sort Groups: 1  Sort Method: quicksort  Average Memory: 25kB  Peak Memory: 25kB
+         Full-sort Groups: 1  Sort Method: quicksort
          ->  Merge Append (actual rows=6 loops=1)
                Sort Key: parent.r2 DESC, parent.r3 DESC, parent.p1 DESC, parent.p2 DESC
                ->  Index Scan Backward using child1a_pkey on public.child1a parent_1 (actual rows=2 loops=1)
@@ -383,7 +383,7 @@ CREATE INDEX ON parent (p2 ASC, r2, p1, r3, r1);
          Output: parent.n, parent.r3, parent.p1, parent.r1, parent.r2, parent.p2
          Sort Key: parent.r2, parent.p1, parent.r3, parent.r1, parent.n
          Presorted Key: parent.r2, parent.p1, parent.r3, parent.r1
-         Full-sort Groups: 1  Sort Method: quicksort  Average Memory: 25kB  Peak Memory: 25kB
+         Full-sort Groups: 1  Sort Method: quicksort
          ->  Merge Append (actual rows=6 loops=1)
                Sort Key: parent.r2, parent.p1, parent.r3, parent.r1
                ->  Index Scan using child1a_p2_r2_p1_r3_r1_idx on public.child1a parent_1 (actual rows=6 loops=1)
@@ -485,7 +485,7 @@ CREATE INDEX ON parent (p2 ASC, r2, p1, r3, r1);
          Output: parent.n, parent.r3, parent.p1, parent.r1, parent.r2, parent.p2
          Sort Key: parent.r2 DESC, parent.p1 DESC, parent.r3 DESC, parent.r1 DESC, parent.n
          Presorted Key: parent.r2, parent.p1, parent.r3, parent.r1
-         Full-sort Groups: 1  Sort Method: quicksort  Average Memory: 25kB  Peak Memory: 25kB
+         Full-sort Groups: 1  Sort Method: quicksort
          ->  Merge Append (actual rows=6 loops=1)
                Sort Key: parent.r2 DESC, parent.p1 DESC, parent.r3 DESC, parent.r1 DESC
                ->  Index Scan Backward using child1a_p2_r2_p1_r3_r1_idx on public.child1a parent_1 (actual rows=1 loops=1)
