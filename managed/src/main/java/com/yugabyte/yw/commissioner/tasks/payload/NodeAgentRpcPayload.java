@@ -465,6 +465,7 @@ public class NodeAgentRpcPayload {
     Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
     String customTmpDirectory =
         confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
+    Map<String, String> gflags = new HashMap<>();
     AuditLogConfig config = null;
     QueryLogConfig queryLogConfig = null;
     MetricsExportConfig metricsExportConfig = null;
@@ -473,18 +474,19 @@ public class NodeAgentRpcPayload {
       config = params.auditLogConfig;
       queryLogConfig = params.queryLogConfig;
       metricsExportConfig = params.metricsExportConfig;
+      gflags = params.gflags;
     } else if (taskParams instanceof AnsibleConfigureServers.Params) {
       AnsibleConfigureServers.Params params = (AnsibleConfigureServers.Params) taskParams;
       config = params.auditLogConfig;
       queryLogConfig = params.queryLogConfig;
       metricsExportConfig = params.metricsExportConfig;
+      gflags =
+          GFlagsUtil.getGFlagsForAZ(
+              taskParams.azUuid,
+              UniverseTaskBase.ServerType.TSERVER,
+              cluster,
+              universe.getUniverseDetails().clusters);
     }
-    Map<String, String> gflags =
-        GFlagsUtil.getGFlagsForAZ(
-            taskParams.azUuid,
-            UniverseTaskBase.ServerType.TSERVER,
-            cluster,
-            universe.getUniverseDetails().clusters);
 
     installOtelCollectorInputBuilder.setRemoteTmp(customTmpDirectory);
     installOtelCollectorInputBuilder.setYbHomeDir(provider.getYbHome());
