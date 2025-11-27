@@ -8,7 +8,7 @@ menu:
     parent: advanced-features
     weight: 800
 aliases:
-  - /preview/explore/ysql-language-features/views/
+  - /stable/explore/ysql-language-features/views/
 type: docs
 ---
 

@@ -32,8 +32,9 @@ namespace ql {
 //--------------------------------------------------------------------------------------------------
 
 Status Executor::PTExprToPB(const PTExpr::SharedPtr& expr, QLExpressionPB *expr_pb) {
-  if (expr == nullptr)
+  if (expr == nullptr) {
     return Status::OK();
+  }
 
   // When selecting from INDEX table, expression's value might be stored in a column.
   const ColumnDesc *index_desc = expr->index_desc();

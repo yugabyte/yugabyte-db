@@ -348,6 +348,7 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d"; HT{ physica
   static constexpr int kNumSubKeysForCollectionsWithTTL = 3;
 
   void SetUpCollectionWithTTL(DocKey collection_key, UseIntermediateFlushes intermediate_flushes) {
+    auto arena = SharedThreadSafeArena();
     {
       QLValuePB map_value;
       for (int i = 0; i < kNumSubKeysForCollectionsWithTTL; i++) {

@@ -1198,7 +1198,10 @@ def skip_disabled_tests(test_descriptors: List[yb_dist_tests.TestDescriptor],
         for line in input_file:
             line = line.strip()
             if line:
-                disabled_tests.append(SimpleTestDescriptor.parse(line))
+                try:
+                    disabled_tests.append(SimpleTestDescriptor.parse(line))
+                except Exception:
+                    logging.exception("Could not parse disabled test line: '%s'", line)
     logging.info("Loaded %d disabled tests from %s", len(disabled_tests), disable_list_path)
 
     enabled = []

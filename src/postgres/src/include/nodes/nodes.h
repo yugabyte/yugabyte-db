@@ -561,6 +561,9 @@ typedef enum NodeTag
 	T_YbTIDBitmap,
 	T_YbSkippableEntities,
 	T_YbUpdateAffectedEntities,
+	T_YbSaopMergeInfo,
+	T_YbSaopMergeSaopColInfo,
+	T_YbSortInfo,
 
 } NodeTag;
 

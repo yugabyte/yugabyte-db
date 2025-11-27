@@ -274,6 +274,46 @@ else
           done
     fi
   fi
+
+  # This time, run with --ignore-space-change.
+  diff_result=$("${BASH_SOURCE%/*}"/diff_file_with_upstream.py "$1" \
+                --ignore-space-change)
+  exit_code=$?
+  if [ $exit_code -ne 0 ]; then
+    if [ $exit_code -eq 2 ]; then
+      echo "Unexpected exit code 2"
+    fi
+    # The following messages are not emitted to stderr because those messages
+    # may be buried under a large python stacktrace also emitted to stderr.
+    if [ -z "$diff_result" ]; then
+      echo "Unexpected failure, exit code $exit_code"
+    else
+      echo "$diff_result"
+    fi
+    exit 1
+  fi
+
+  # Find YB-side hunks.
+  while read -r line_ranges; do
+    if sed -n "$line_ranges"p "$1" \
+         | grep -Eq 'YB|Yb|yb|YSQL|Ysql|ysql|Yuga|yuga'; then
+      continue
+    fi
+    lineno=${line_ranges%%,*}
+    echo 'warning:missing_yb_marker_for_yb_changes:'\
+'YB changes to upstream owned files should have "yb", "ysql", or "yuga".'\
+' In case the YB changes are legitimate, prioritize resolving this by'\
+' renaming YB-introduced variables/functions/types with YB prefix; if there'\
+' are no such objects, add a YB comment. If the YB changes are not legitimate'\
+' (for example, uncalled for whitespace changes), revert the changes back to'\
+' the way they look like in upstream. This lint rule expects YB markers on a'\
+' hunk basis, not line basis. To see the hunks, try running'\
+' src/lint/diff_file_with_upstream.py '"$1"' -b, and find hunks with lines'\
+' starting with <:'\
+"$lineno:$(sed -n "$lineno"p "$1")"
+  done < <(grep -E '^(< |[0-9])' <<<"$diff_result" \
+           | grep -B1 '^<' \
+           | grep -Eo '^[0-9]+(,[0-9]+)?')
 fi
 
 if [[ "$1" == src/postgres/third-party-extensions/* ]]; then

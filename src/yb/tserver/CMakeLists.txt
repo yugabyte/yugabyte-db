@@ -216,8 +216,7 @@ set(TSERVER_SHARED_SRCS
 set(TSERVER_SHARED_LIBS
   yb_docdb_shared
   yb_util
-  yb_util_shmem
-  consensus_error)
+  yb_util_shmem)
 ADD_YB_LIBRARY(tserver_shared
   SRCS ${TSERVER_SHARED_SRCS}
   DEPS ${TSERVER_SHARED_LIBS})
@@ -288,6 +287,7 @@ set(TSERVER_SRCS
   xcluster_output_client.cc
   xcluster_write_implementations.cc
   ysql_advisory_lock_table.cc
+  ysql_lease_manager.cc
   ysql_lease_poller.cc)
 
 set(TSERVER_DEPS

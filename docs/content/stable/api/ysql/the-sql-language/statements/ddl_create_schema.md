@@ -8,7 +8,7 @@ menu:
     identifier: ddl_create_schema
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/ddl_create_schema/
+  - /stable/api/ysql/commands/ddl_create_schema/
 type: docs
 ---
 

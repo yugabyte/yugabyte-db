@@ -6,7 +6,7 @@ description: Connect your applications with supported drivers and ORMs
 headcontent: Connect applications with your database
 aliases:
   - /develop/client-drivers/
-  - /preview/develop/client-drivers/
+  - /stable/develop/client-drivers/
 type: indexpage
 cascade:
   unversioned: true

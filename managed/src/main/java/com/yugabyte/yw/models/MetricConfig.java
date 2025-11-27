@@ -19,12 +19,14 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 
 @ApiModel(description = "Metric configuration key and value for Prometheus")
 @Entity
 @Data
 @EqualsAndHashCode(callSuper = false)
+@Slf4j
 public class MetricConfig extends Model {
 
   public static final String METRICS_CONFIG_PATH = "metric/metrics.yml";
@@ -87,5 +89,6 @@ public class MetricConfig extends Model {
         metricConfig.save();
       }
     }
+    log.info("Loaded {} metric configs", configs.size());
   }
 }

@@ -9,7 +9,7 @@ menu:
     parent: tools
     weight: 50
 aliases:
-  - /preview/tools/dbeaver-ycql/
+  - /stable/tools/dbeaver-ycql/
 type: docs
 ---
 

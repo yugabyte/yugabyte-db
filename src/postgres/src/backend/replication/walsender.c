@@ -1026,19 +1026,6 @@ reportErrorIfLsnTypeNotEnabled()
 }
 
 /*
- * YB: Throw an error if replication slot doesn't allow ordering modes.
- */
-static void
-reportErrorIfOrderingModeNotEnabled()
-{
-	if (!yb_allow_replication_slot_ordering_modes)
-		ereport(ERROR,
-				(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("ordering mode parameter not allowed when "
-						"ysql_yb_allow_replication_slot_ordering_modes is disabled")));
-}
-
-/*
  * Process extra options given to CREATE_REPLICATION_SLOT.
  */
 static void

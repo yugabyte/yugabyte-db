@@ -8,7 +8,7 @@ menu:
     identifier: ddl_alter_schema
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/ddl_alter_schema/
+  - /stable/api/ysql/commands/ddl_alter_schema/
 type: docs
 ---
 

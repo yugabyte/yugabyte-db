@@ -16,7 +16,6 @@
 #include <sys/wait.h>
 
 #include <atomic>
-#include <algorithm>
 #include <mutex>
 #include <optional>
 #include <queue>
@@ -50,7 +49,6 @@
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_client.pb.h"
-#include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/sys_catalog_constants.h"
@@ -150,10 +148,6 @@ TAG_FLAG(check_pg_object_id_allocators_interval_secs, advanced);
 
 DEFINE_NON_RUNTIME_int64(shmem_exchange_idle_timeout_ms, 2000 * yb::kTimeMultiplier,
     "Idle timeout interval in milliseconds used by shared memory exchange thread pool.");
-
-DEFINE_test_flag(bool, enable_ysql_operation_lease_expiry_check, true,
-                 "Whether tservers should monitor their ysql op lease and kill their hosted pg "
-                 "sessions when it expires. Only available as a flag for tests.");
 
 DEFINE_test_flag(bool, pause_get_lock_status, false,
     "Whether tservers should pause before sending GetLockStatus requests.");
@@ -791,7 +785,6 @@ class PgClientServiceImpl::Impl : public SessionProvider {
         table_cache_(client_future_),
         check_expired_sessions_("check_expired_sessions", &messenger->scheduler()),
         check_object_id_allocators_("check_object_id_allocators", &messenger->scheduler()),
-        check_ysql_lease_("check_ysql_lease_liveness", &messenger->scheduler()),
         response_cache_(parent_mem_tracker, metric_entity),
         instance_id_(permanent_uuid),
         shared_mem_pool_(parent_mem_tracker, instance_id_),
@@ -830,7 +823,6 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     DCHECK(!permanent_uuid.empty());
     ScheduleCheckExpiredSessions(CoarseMonoClock::now());
     ScheduleCheckObjectIdAllocators();
-    ScheduleCheckYsqlLeaseWithNoLease();
     if (FLAGS_pg_client_use_shared_memory) {
       WARN_NOT_OK(PgSessionSharedMemoryManager::Cleanup(instance_id_),
                   "Cleanup shared memory failed");
@@ -878,9 +870,12 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     Shutdown();
   }
 
-  uint64_t lease_epoch() EXCLUDES(mutex_) {
-    std::lock_guard lock(mutex_);
-    return lease_epoch_;
+  uint64_t lease_epoch() {
+    auto maybe_lease_info = tablet_server_.GetYSQLLeaseInfo();
+    if (maybe_lease_info.ok()) {
+      return maybe_lease_info->lease_epoch;
+    }
+    return 0;
   }
 
   Status Heartbeat(
@@ -2414,98 +2409,6 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     table_cache_.InvalidateDbTables(db_oids_updated, db_oids_deleted);
   }
 
-  void ProcessLeaseUpdate(const master::RefreshYsqlLeaseInfoPB& lease_refresh_info) {
-    {
-      std::lock_guard lock(mutex_);
-      lease_expiry_time_ =
-          CoarseTimePoint{std::chrono::milliseconds(lease_refresh_info.lease_expiry_time_ms())};
-      if (lease_expiry_time_ < CoarseMonoClock::Now()) {
-        // This function is passed the timestamp from before the RefreshYsqlLeaseRpc is sent.  So it
-        // is possible the RPC takes longer than the lease TTL the master gave us, in which case
-        // this tserver still does not have a live lease.
-        return;
-      }
-      bool had_live_lease = ysql_lease_is_live_;
-      ysql_lease_is_live_ = true;
-      if (lease_refresh_info.new_lease() || lease_epoch_ != lease_refresh_info.lease_epoch()) {
-        LOG(INFO) << Format(
-            "Received new lease epoch $0 from the master leader. Clearing all pg sessions.",
-            lease_refresh_info.lease_epoch());
-        lease_epoch_ = lease_refresh_info.lease_epoch();
-      } else if (!had_live_lease) {
-        LOG(INFO) << Format(
-            "Master leader refreshed our lease for epoch $0. We thought this lease had "
-            "expired but it hadn't. Restarting pg.",
-            lease_epoch_);
-      } else {
-        // Lease was live and is live after this update. The epoch didn't change. Nothing left to
-        // do.
-        return;
-      }
-    }
-    // No need to hold lock while restarting the pg process.
-    WARN_NOT_OK(tablet_server_.RestartPG(), "Failed to restart PG postmaster.");
-  }
-
-  YSQLLeaseInfo GetYSQLLeaseInfo() {
-    SharedLock lock(mutex_);
-    YSQLLeaseInfo lease_info;
-    lease_info.is_live = ysql_lease_is_live_;
-    if (lease_info.is_live) {
-      lease_info.lease_epoch = lease_epoch_;
-    }
-    return lease_info;
-  }
-
-  void ScheduleCheckYsqlLeaseWithNoLease() {
-    ScheduleCheckYsqlLease(CoarseMonoClock::now() + 1s);
-  }
-
-  void ScheduleCheckYsqlLease(CoarseTimePoint next_check_time) {
-    check_ysql_lease_.Schedule(
-        [this, next_check_time](const Status& status) {
-          if (!status.ok()) {
-            return;
-          }
-          if (CoarseMonoClock::now() < next_check_time) {
-            ScheduleCheckYsqlLease(next_check_time);
-            return;
-          }
-          CheckYsqlLeaseStatus();
-        },
-        next_check_time - CoarseMonoClock::now());
-  }
-
-  std::optional<CoarseTimePoint> CheckYsqlLeaseStatusInner() {
-    {
-      std::lock_guard lock(mutex_);
-      if (!ysql_lease_is_live_) {
-        return {};
-      }
-      if (CoarseMonoClock::now() < lease_expiry_time_) {
-        return lease_expiry_time_;
-      }
-      ysql_lease_is_live_ = false;
-      LOG(INFO) << "Lease has expired, killing pg sessions.";
-    }
-    // todo(zdrudi): make this a fatal?
-    WARN_NOT_OK(tablet_server_.KillPg(), "Couldn't stop PG");
-    return {};
-  }
-
-  void CheckYsqlLeaseStatus() {
-    if (PREDICT_FALSE(!FLAGS_TEST_enable_ysql_operation_lease_expiry_check)) {
-      ScheduleCheckYsqlLeaseWithNoLease();
-      return;
-    }
-    auto lease_expiry = CheckYsqlLeaseStatusInner();
-    if (lease_expiry) {
-      ScheduleCheckYsqlLease(*lease_expiry);
-    } else {
-      ScheduleCheckYsqlLeaseWithNoLease();
-    }
-  }
-
   void CleanupSessions(
       std::vector<SessionInfoPtr>&& expired_sessions, CoarseTimePoint time) {
     if (expired_sessions.empty()) {
@@ -3056,9 +2959,6 @@ class PgClientServiceImpl::Impl : public SessionProvider {
   std::optional<cdc::CDCStateTable> cdc_state_table_;
   PgTxnSnapshotManager txn_snapshot_manager_;
 
-  CoarseTimePoint lease_expiry_time_ GUARDED_BY(mutex_);
-  bool ysql_lease_is_live_ GUARDED_BY(mutex_) {false};
-  uint64_t lease_epoch_ GUARDED_BY(mutex_) = 0;
   bool shutting_down_ GUARDED_BY(mutex_) = false;
 };
 
@@ -3099,15 +2999,6 @@ void PgClientServiceImpl::InvalidateTableCache(
 Result<PgTxnSnapshot> PgClientServiceImpl::GetLocalPgTxnSnapshot(
     const PgTxnSnapshotLocalId& snapshot_id) {
   return impl_->GetLocalPgTxnSnapshot(snapshot_id);
-}
-
-void PgClientServiceImpl::ProcessLeaseUpdate(
-    const master::RefreshYsqlLeaseInfoPB& lease_refresh_info) {
-  impl_->ProcessLeaseUpdate(lease_refresh_info);
-}
-
-YSQLLeaseInfo PgClientServiceImpl::GetYSQLLeaseInfo() const {
-  return impl_->GetYSQLLeaseInfo();
 }
 
 size_t PgClientServiceImpl::TEST_SessionsCount() { return impl_->TEST_SessionsCount(); }
@@ -3153,6 +3044,18 @@ PgClientServiceMockImpl::Handle PgClientServiceMockImpl::SetMock(
   }
 
   return Handle{std::move(mock)};
+}
+
+void PgClientServiceMockImpl::UnsetMock(const std::string& method) {
+  std::lock_guard lock(mutex_);
+  auto it = mocks_.find(method);
+  if (it == mocks_.end()) {
+    LOG(WARNING) << "No mock found for method: " << method;
+    return;
+  }
+
+  LOG(INFO) << "Resetting mock for method: " << method;
+  mocks_.erase(it);
 }
 
 Result<bool> PgClientServiceMockImpl::DispatchMock(

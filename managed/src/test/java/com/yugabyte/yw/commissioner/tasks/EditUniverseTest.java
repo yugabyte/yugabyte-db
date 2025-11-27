@@ -380,7 +380,9 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         params -> ((AnsibleCreateServer.Params) params).capacityReservation,
         Map.of(
             DoCapacityReservation.getCapacityReservationGroupName(
-                universe.getUniverseUUID(), region.getProvider(), region.getCode()),
+                universe.getUniverseUUID(),
+                UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+                region.getCode()),
             Arrays.asList("host-n4", "host-n5")));
   }
 
@@ -409,7 +411,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         Map.of(
             DoCapacityReservation.getZoneInstanceCapacityReservationName(
                 universe.getUniverseUUID(),
-                defaultProvider,
+                UniverseDefinitionTaskParams.ClusterType.PRIMARY,
                 "1",
                 universe.getUniverseDetails().getPrimaryCluster().userIntent.instanceType),
             Arrays.asList("host-n4", "host-n5")));

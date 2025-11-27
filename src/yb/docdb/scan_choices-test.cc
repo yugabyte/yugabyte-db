@@ -223,8 +223,9 @@ void ScanChoicesTest::InitializeScanChoicesInstance(
   current_schema_ = &schema;
   dockv::KeyEntryValues empty_components;
   DocPgsqlScanSpec spec(
-      schema, rocksdb::kDefaultQueryId, nullptr, {}, empty_components, &cond,
-      std::nullopt /* hash_code */, std::nullopt /* max_hash_code */, DocKey(), true);
+      schema, rocksdb::kDefaultQueryId, nullptr, {}, empty_components,
+      PgsqlConditionPBPtr(&cond), std::nullopt /* hash_code */, std::nullopt /* max_hash_code */,
+      DocKey(), true);
   const auto& bounds = spec.bounds();
   choices_ = down_pointer_cast<HybridScanChoices>(CHECK_RESULT(ScanChoices::Create(
       doc_read_context, spec, bounds, {}, AllowVariableBloomFilter::kFalse)));

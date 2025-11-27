@@ -6,7 +6,7 @@ description: Lists the client drivers that you can use to connect to and interac
 tags:
   other: ysql
 aliases:
-  - /preview/reference/drivers/ysql-client-drivers/
+  - /stable/reference/drivers/ysql-client-drivers/
 menu:
   stable_develop:
     identifier: ysql-client-libraries

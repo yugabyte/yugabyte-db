@@ -688,15 +688,19 @@ PgApiImpl::PgApiImpl(
   std::memcpy(ash_config.top_level_node_id, tserver_shared_object_->tserver_uuid(), kUuidSize);
   wait_state_ = ash::WaitStateInfo::CreateIfAshIsEnabled<ash::PgWaitStateInfo>(ash_config);
   ash::WaitStateInfo::SetCurrentWaitState(wait_state_);
+}
 
-  CHECK_OK(interrupter_->Start());
-  CHECK_OK(clock_->Init());
+Status PgApiImpl::StartPgApi(const YbcPgInitPostgresInfo& init_postgres_info) {
+  RETURN_NOT_OK(interrupter_->Start());
+  RETURN_NOT_OK(clock_->Init());
 
-  CHECK_OK(pg_client_.Start(
+  RETURN_NOT_OK(pg_client_.Start(
       proxy_cache_.get(), &messenger_holder_.messenger->scheduler(),
       *tserver_shared_object_,
       init_postgres_info.parallel_leader_session_id
           ? std::optional(*init_postgres_info.parallel_leader_session_id) : std::nullopt));
+
+  return Status::OK();
 }
 
 PgApiImpl::~PgApiImpl() {

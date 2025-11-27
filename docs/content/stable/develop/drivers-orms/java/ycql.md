@@ -6,7 +6,7 @@ description: Connect a Java application using YCQL 3.10 driver
 tags:
   other: ycql
 aliases:
-  - /preview/develop/tutorials/build-apps/java/ycql
+  - /stable/develop/tutorials/build-apps/java/ycql
 menu:
   stable_develop:
     identifier: ycql-java-driver

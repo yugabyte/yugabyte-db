@@ -8,7 +8,7 @@ menu:
     identifier: ddl_drop_publication
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/ddl_drop_publication/
+  - /stable/api/ysql/commands/ddl_drop_publication/
 type: docs
 ---
 

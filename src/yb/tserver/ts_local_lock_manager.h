@@ -101,6 +101,7 @@ class TSLocalLockManager {
   void Start(docdb::LocalWaitingTxnRegistry* waiting_txn_registry);
 
   void Shutdown();
+  void StartShutdown();
 
   void DumpLocksToHtml(std::ostream& out);
 

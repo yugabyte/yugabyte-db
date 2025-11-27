@@ -29,7 +29,6 @@
 
 #include "yb/tserver/pg_client.service.h"
 #include "yb/tserver/pg_txn_snapshot_manager.h"
-#include "yb/tserver/ysql_lease.h"
 
 namespace yb {
 
@@ -140,9 +139,6 @@ class PgClientServiceImpl : public PgClientServiceIf {
                             const std::unordered_set<uint32_t>& db_oids_deleted);
   Result<PgTxnSnapshot> GetLocalPgTxnSnapshot(const PgTxnSnapshotLocalId& snapshot_id);
 
-  void ProcessLeaseUpdate(const master::RefreshYsqlLeaseInfoPB& lease_refresh_info);
-  YSQLLeaseInfo GetYSQLLeaseInfo() const;
-
   size_t TEST_SessionsCount();
 
   void Shutdown() override;
@@ -206,6 +202,8 @@ class PgClientServiceMockImpl : public PgClientServiceIf {
       const PgPollVectorIndexReadyRequestPB& req, CoarseTimePoint deadline) override {
     return STATUS(NotSupported, "Mocking PollVectorIndexReady is not supported");
   }
+
+  void UnsetMock(const std::string& method);
 
  private:
   PgClientServiceIf* impl_;

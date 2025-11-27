@@ -229,11 +229,6 @@ bool IsHomogeneousErrors(const client::CollectedErrors& errors) {
   return true;
 }
 
-std::optional<YBPgErrorCode> PsqlErrorCode(const Status& status) {
-  const auto* err_data = status.ErrorData(PgsqlErrorTag::kCategory);
-  return err_data ? std::optional(PgsqlErrorTag::Decode(err_data)) : std::nullopt;
-}
-
 // Get a common Postgres error code from the status and all errors, and append it to a previous
 // Status.
 // If any of those have different conflicting error codes, previous result is returned as-is.
@@ -241,7 +236,7 @@ Status AppendPsqlErrorCode(
     const Status& status, const client::CollectedErrors& errors) {
   std::optional<YBPgErrorCode> common_psql_error;
   for(const auto& error : errors) {
-    const auto psql_error = PsqlErrorCode(error->status());
+    const auto psql_error = PgsqlError::ValueFromStatus(error->status());
     if (!common_psql_error) {
       common_psql_error = psql_error;
     } else if (psql_error && common_psql_error != psql_error) {
@@ -1989,11 +1984,17 @@ class PgClientSession::Impl {
     const auto deadline = context->GetClientDeadline();
     RETURN_NOT_OK(transaction->RollbackToSubTransaction(subtxn_id, deadline));
 
-    if (req.has_options() && req.options().ddl_mode() &&
+    if (FLAGS_TEST_ysql_yb_enable_ddl_savepoint_support &&
+        req.has_options() && req.options().ddl_mode() &&
         req.options().ddl_use_regular_transaction_block() &&
-        FLAGS_TEST_ysql_yb_enable_ddl_savepoint_support) {
+        // Ensure that we have executed a DDL in this transaction block.
+        // We can arrive here in case a transaction aborts due to a failure
+        // during processing a DDL. In that case, ddl_mode in the request will
+        // be true since we start the ddl_mode upon receiving a DDL statement.
+        !ddl_txn_metadata_.transaction_id.IsNil()) {
       RSTATUS_DCHECK(ddl_txn_metadata_.transaction_id == transaction->id(), IllegalState,
-                    "Unexpected DDL transaction metadata found");
+                     Format("Unexpected DDL transaction metadata found. Expected: $0, found: $1",
+                            transaction->id(), ddl_txn_metadata_.transaction_id));
       RETURN_NOT_OK(client_.RollbackDocdbSchemaToSubtxn(ddl_txn_metadata_, subtxn_id));
       RETURN_NOT_OK(
           client_.WaitForRollbackDocdbSchemaToSubtxnToFinish(ddl_txn_metadata_, subtxn_id));
@@ -2030,10 +2031,18 @@ class PgClientSession::Impl {
       VLOG_WITH_PREFIX_AND_FUNC(1) << "Consuming re-usable kPlain txn " << txn->id();
     }
 
+    // If this transaction executed a DDL statement, then cleanup the ddl_txn_metadata_ post
+    // finishing. This is applicable to both separate DDL transactions or regular transactions with
+    // txn ddl enabled.
+    bool requires_ddl_txn_metadata_cleanup = ddl_txn_metadata_.transaction_id == txn->id();
     client::YBTransactionPtr txn_value;
     txn.swap(txn_value);
     Session(kind)->SetTransaction(nullptr);
-    return DoFinishTransaction(req, deadline, txn_value, kind);
+    auto s = DoFinishTransaction(req, deadline, txn_value, kind);
+    if (requires_ddl_txn_metadata_cleanup) {
+      ddl_txn_metadata_ = TransactionMetadata();
+    }
+    return s;
   }
 
   Status CleanupObjectLocks() {

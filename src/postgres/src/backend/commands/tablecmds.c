@@ -230,6 +230,8 @@ typedef struct AlteredTableInfo
 	List	   *changedConstraintDefs;	/* string definitions of same */
 	List	   *changedIndexOids;	/* OIDs of indexes to rebuild */
 	List	   *changedIndexDefs;	/* string definitions of same */
+	List	   *changedIndexNames; /* Names of indexs to rebuild */
+	List	   *changedIndexSplitOpts; /* Split option of same */
 	char	   *replicaIdentityIndex;	/* index to reset as REPLICA IDENTITY */
 	char	   *clusterOnIndex; /* index to use for CLUSTER */
 	List	   *changedStatisticsOids;	/* OIDs of statistics to rebuild */
@@ -446,7 +448,7 @@ static void ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 					  AlterTableUtilityContext *context);
 static void ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 							  AlterTableUtilityContext *context,
-							  List **rollbackHandles);
+							  List **yb_rollback_handles);
 static void ATExecCmd(List **wqueue, AlteredTableInfo *tab,
 					  AlterTableCmd *cmd, LOCKMODE lockmode, int cur_pass,
 					  AlterTableUtilityContext *context);
@@ -599,7 +601,7 @@ static void GetForeignKeyCheckTriggers(Relation trigrel,
 									   Oid conoid, Oid confrelid, Oid conrelid,
 									   Oid *insertTriggerOid,
 									   Oid *updateTriggerOid);
-static void ATExecDropConstraint(List **yb_wqueue, AlteredTableInfo *tab, Relation *mutable_rel,
+static void ATExecDropConstraint(List **yb_wqueue, AlteredTableInfo *tab, Relation *yb_mutable_rel,
 								 const char *constrName,
 								 DropBehavior behavior,
 								 bool recurse, bool recursing,
@@ -744,7 +746,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 {
 	char		relname[NAMEDATALEN];
 	Oid			namespaceId;
-	Oid			relationId = InvalidOid;
+	Oid			relationId = InvalidOid;	/* YB: initialize */
 	Oid			tablespaceId;
 	Relation	rel;
 	TupleDesc	descriptor;
@@ -766,7 +768,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	/* YB variables. */
 	Oid			rowTypeId = InvalidOid;
 	bool		relisshared = false;
-	bool		use_initdb_acl = false;
+	bool		yb_use_initdb_acl = false;
 	ListCell   *opt_cell;
 
 	/*
@@ -981,10 +983,10 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("cannot use tablegroups in a colocated database")));
 
-	Oid			tablegroupId = (stmt->tablegroupname ?
-								get_tablegroup_oid(stmt->tablegroupname,
-												   false) :
-								InvalidOid);
+	Oid			ybTablegroupId = (stmt->tablegroupname ?
+								  get_tablegroup_oid(stmt->tablegroupname,
+													 false) :
+								  InvalidOid);
 
 	if (IsYugaByteEnabled())
 	{
@@ -999,7 +1001,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 			if (strcmp(def->defname, "colocated") == 0 ||
 				strcmp(def->defname, "colocation") == 0)
 			{
-				if (OidIsValid(tablegroupId))
+				if (OidIsValid(ybTablegroupId))
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 							 errmsg("cannot use \'colocation=true/false\' with tablegroup")));
@@ -1012,14 +1014,16 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	 * tablegroup, a user must either be a superuser, the owner of the
 	 * tablegroup, or have create perms on it.
 	 */
-	if (OidIsValid(tablegroupId) && !pg_tablegroup_ownercheck(tablegroupId, GetUserId()))
+	if (OidIsValid(ybTablegroupId) &&
+		!pg_tablegroup_ownercheck(ybTablegroupId, GetUserId()))
 	{
 		AclResult	aclresult;
 
-		aclresult = pg_tablegroup_aclcheck(tablegroupId, GetUserId(), ACL_CREATE);
+		aclresult = pg_tablegroup_aclcheck(ybTablegroupId, GetUserId(),
+										   ACL_CREATE);
 		if (aclresult != ACLCHECK_OK)
 			aclcheck_error(aclresult, OBJECT_YBTABLEGROUP,
-						   get_tablegroup_name(tablegroupId));
+						   get_tablegroup_name(ybTablegroupId));
 	}
 
 
@@ -1182,13 +1186,13 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 
 		if (relkind == RELKIND_RELATION)
 		{
-			use_initdb_acl = IsYsqlUpgrade && IsCatalogNamespace(namespaceId);
+			yb_use_initdb_acl = IsYsqlUpgrade && IsCatalogNamespace(namespaceId);
 		}
 		else
 		{
 			/* Handles WITH (use_initdb_acl = x). */
-			use_initdb_acl = YbGetUseInitdbAclFromRelOptions(stmt->options);
-			if (use_initdb_acl && !(IsYsqlUpgrade && IsCatalogNamespace(namespaceId)))
+			yb_use_initdb_acl = YbGetUseInitdbAclFromRelOptions(stmt->options);
+			if (yb_use_initdb_acl && !(IsYsqlUpgrade && IsCatalogNamespace(namespaceId)))
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -1210,7 +1214,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	relationId = heap_create_with_catalog(relname,
 										  namespaceId,
 										  tablespaceId,
-										  tablegroupId,
+										  ybTablegroupId,
 										  relationId,
 										  rowTypeId,
 										  ofTypeId,
@@ -1221,7 +1225,9 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 													  old_constraints),
 										  relkind,
 										  stmt->relation->relpersistence,
-										  relisshared,
+										  relisshared,	/* YB: allow shared
+														 * relation create for
+														 * upgrade */
 										  false,
 										  stmt->oncommit,
 										  reloptions,
@@ -1230,7 +1236,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 										  false,
 										  InvalidOid,
 										  typaddress,
-										  use_initdb_acl);
+										  yb_use_initdb_acl);
 
 	/*
 	 * We must bump the command counter to make the newly-created relation
@@ -1251,7 +1257,8 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 		CheckIsYBSupportedRelationByKind(relkind);
 		YBCCreateTable(stmt, relname, relkind, descriptor,
 					   relationId,
-					   namespaceId, tablegroupId, colocation_id, tablespaceId,
+					   namespaceId, ybTablegroupId, colocation_id,
+					   tablespaceId,
 					   YbGetRelfileNodeId(rel),
 					   InvalidOid /* oldRelfileNodeId */ ,
 					   false /* isTruncate */ );
@@ -1683,7 +1690,7 @@ RemoveRelations(DropStmt *drop)
 	/* Lock and validate each relation; build a list of object addresses */
 	objects = new_object_addresses();
 
-	bool		only_temp_tables = IsYugaByteEnabled() && relkind == RELKIND_RELATION;
+	bool		yb_only_temp_tables = IsYugaByteEnabled() && relkind == RELKIND_RELATION;
 
 	foreach(cell, drop->objects)
 	{
@@ -1764,8 +1771,8 @@ RemoveRelations(DropStmt *drop)
 									   state.heap_lockmode,
 									   NULL);
 
-		only_temp_tables = (only_temp_tables &&
-							get_rel_persistence(relOid) == RELPERSISTENCE_TEMP);
+		yb_only_temp_tables = (yb_only_temp_tables &&
+							   get_rel_persistence(relOid) == RELPERSISTENCE_TEMP);
 
 		/* OK, we're ready to delete this one */
 		obj.classId = RelationRelationId;
@@ -1775,7 +1782,7 @@ RemoveRelations(DropStmt *drop)
 		add_exact_object_address(&obj, objects);
 	}
 
-	if (only_temp_tables)
+	if (yb_only_temp_tables)
 		YBCRecordTempRelationDDL();
 
 	performMultipleDeletions(objects, drop->behavior, flags);
@@ -2370,7 +2377,8 @@ ExecuteTruncateGuts(List *explicit_rels,
 			 * deletion at commit.
 			 */
 			RelationSetNewRelfilenode(rel, rel->rd_rel->relpersistence,
-									  false /* yb_copy_split_options */ );
+									  false /* yb_copy_split_options */ ,
+									  NULL  /* preserved_index_split_options */ );
 
 			heap_relid = RelationGetRelid(rel);
 
@@ -2385,7 +2393,8 @@ ExecuteTruncateGuts(List *explicit_rels,
 
 				RelationSetNewRelfilenode(toastrel,
 										  toastrel->rd_rel->relpersistence,
-										  false /* yb_copy_split_options */ );
+										  false /* yb_copy_split_options */ ,
+										  NULL  /* preserved_index_split_options */ );
 				table_close(toastrel, NoLock);
 			}
 
@@ -2395,7 +2404,9 @@ ExecuteTruncateGuts(List *explicit_rels,
 			reindex_relation(heap_relid, REINDEX_REL_PROCESS_TOAST,
 							 &reindex_params,
 							 true /* is_yb_table_rewrite */ ,
-							 false /* yb_copy_split_options */ );
+							 false /* yb_copy_split_options */ ,
+							 NIL /* changedIndexNames */ ,
+							 NIL /* changedIndexSplitOpts */ );
 		}
 
 		pgstat_count_truncate(rel);
@@ -4164,7 +4175,7 @@ rename_constraint_internal(Oid myrelid,
 		&& (con->contype == CONSTRAINT_PRIMARY
 			|| con->contype == CONSTRAINT_UNIQUE
 			|| con->contype == CONSTRAINT_EXCLUSION))
-	{
+	{							/* YB */
 		/* rename the index; this renames the constraint as well */
 		RenameRelationInternal(con->conindid, newconname, false, true);
 		/* in YB, rename the DocDB table for the index */
@@ -4947,7 +4958,7 @@ ATController(AlterTableStmt *parsetree,
 	List	   *wqueue = NIL;
 	ListCell   *lcmd;
 
-	List	   *rollbackHandles = NIL;
+	List	   *yb_rollback_handles = NIL;
 
 	/* Phase 1: preliminary examination of commands, create work queue */
 	foreach(lcmd, cmds)
@@ -4966,10 +4977,10 @@ ATController(AlterTableStmt *parsetree,
 	{
 		/*
 		 * ATRewriteCatalogs also executes changes to DocDB.
-		 * If Phase 3 fails, rollbackHandle will specify how to rollback the
+		 * If Phase 3 fails, yb_rollback_handle will specify how to rollback the
 		 * changes done to DocDB.
 		 */
-		ATRewriteCatalogs(&wqueue, lockmode, context, &rollbackHandles);
+		ATRewriteCatalogs(&wqueue, lockmode, context, &yb_rollback_handles);
 	}
 	PG_CATCH();
 	{
@@ -5002,7 +5013,7 @@ ATController(AlterTableStmt *parsetree,
 			 */
 			ListCell   *lc = NULL;
 
-			foreach(lc, rollbackHandles)
+			foreach(lc, yb_rollback_handles)
 			{
 				YbcPgStatement handle = (YbcPgStatement) lfirst(lc);
 
@@ -5430,7 +5441,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 static void
 ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 				  AlterTableUtilityContext *context,
-				  List **rollbackHandles)
+				  List **yb_rollback_handles)
 {
 	int			pass;
 	ListCell   *ltab;
@@ -5446,15 +5457,15 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 	 */
 	AlteredTableInfo *info = (AlteredTableInfo *) linitial(*wqueue);
 	Oid			main_relid = info->relid;
-	YbcPgStatement rollbackHandle = NULL;
+	YbcPgStatement yb_rollback_handle = NULL;
 	List	   *handles = YBCPrepareAlterTable(info->subcmds,
 											   AT_NUM_PASSES,
 											   main_relid,
-											   &rollbackHandle,
+											   &yb_rollback_handle,
 											   false /* isPartitionOfAlteredTable */ );
 
-	if (rollbackHandle)
-		*rollbackHandles = lappend(*rollbackHandles, rollbackHandle);
+	if (yb_rollback_handle)
+		*yb_rollback_handles = lappend(*yb_rollback_handles, yb_rollback_handle);
 
 	/*
 	 * If this is a partitioned table, prepare alter table handles for all
@@ -5473,11 +5484,11 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 		 */
 		if (childrelid == main_relid)
 			continue;
-		YbcPgStatement childRollbackHandle = NULL;
+		YbcPgStatement yb_child_rollback_handle = NULL;
 		List	   *child_handles = YBCPrepareAlterTable(info->subcmds,
 														 AT_NUM_PASSES,
 														 childrelid,
-														 &childRollbackHandle,
+														 &yb_child_rollback_handle,
 														 true /* isPartitionOfAlteredTable */ );
 		ListCell   *listcell = NULL;
 
@@ -5487,8 +5498,8 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 
 			handles = lappend(handles, child);
 		}
-		if (childRollbackHandle)
-			*rollbackHandles = lappend(*rollbackHandles, childRollbackHandle);
+		if (yb_child_rollback_handle)
+			*yb_rollback_handles = lappend(*yb_rollback_handles, yb_child_rollback_handle);
 	}
 
 	bool		yb_table_cloned = false;
@@ -5500,11 +5511,11 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 	 * re-adding of the foreign key constraint to the other table).  Work can
 	 * only be propagated into later passes, however.
 	 */
-	ListCell   *lc = NULL;
-
 	for (pass = 0; pass < AT_NUM_PASSES; pass++)
 	{
 		Oid			relfilenode_id;
+
+		ListCell   *yb_lc = NULL;
 
 		/*
 		 * Execute the YB alter table (if needed).
@@ -5517,9 +5528,9 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 		 */
 		if (pass == AT_PASS_ADD_INDEX)
 		{
-			foreach(lc, handles)
+			foreach(yb_lc, handles)
 			{
-				YbcPgStatement handle = (YbcPgStatement) lfirst(lc);
+				YbcPgStatement handle = (YbcPgStatement) lfirst(yb_lc);
 
 				YBCExecAlterTable(handle, main_relid);
 			}
@@ -5543,7 +5554,7 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 			tab->rel = relation_open(tab->relid, NoLock);
 
 			foreach(lcmd, subcmds)
-			{
+			{					/* YB */
 				ATExecCmd(wqueue, tab,
 						  lfirst_node(AlterTableCmd, lcmd),
 						  lockmode, pass, context);
@@ -5592,9 +5603,9 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 		 */
 		if (yb_table_cloned)
 		{
-			foreach(lc, handles)
+			foreach(yb_lc, handles)
 			{
-				YbcPgStatement handle = (YbcPgStatement) lfirst(lc);
+				YbcPgStatement handle = (YbcPgStatement) lfirst(yb_lc);
 
 				YBCPgAlterTableSetTableId(handle,
 										  YBCGetDatabaseOidByRelid(main_relid),
@@ -5638,7 +5649,7 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab,
 {
 	ObjectAddress address = InvalidObjectAddress;
 	Relation	rel = tab->rel;
-	Relation   *mutable_rel = &tab->rel;
+	Relation   *yb_mutable_rel = &tab->rel;
 
 	switch (cmd->subtype)
 	{
@@ -5703,24 +5714,24 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab,
 										   lockmode);
 			break;
 		case AT_DropColumn:		/* DROP COLUMN */
-			address = ATExecDropColumn(wqueue, tab, rel, cmd->name,
+			address = ATExecDropColumn(wqueue, tab /* yb_tab */ , rel, cmd->name,
 									   cmd->behavior, false, false,
 									   cmd->missing_ok, lockmode,
 									   NULL);
 			break;
 		case AT_DropColumnRecurse:	/* DROP COLUMN with recursion */
-			address = ATExecDropColumn(wqueue, tab, rel, cmd->name,
+			address = ATExecDropColumn(wqueue, tab /* yb_tab */ , rel, cmd->name,
 									   cmd->behavior, true, false,
 									   cmd->missing_ok, lockmode,
 									   NULL);
 			break;
 		case AT_AddIndex:		/* ADD INDEX */
-			address = ATExecAddIndex(wqueue, tab, mutable_rel,
+			address = ATExecAddIndex(wqueue, tab, yb_mutable_rel,
 									 (IndexStmt *) cmd->def, false,
 									 lockmode);
 			break;
 		case AT_ReAddIndex:		/* ADD INDEX */
-			address = ATExecAddIndex(wqueue, tab, mutable_rel, (IndexStmt *) cmd->def, true,
+			address = ATExecAddIndex(wqueue, tab, yb_mutable_rel, (IndexStmt *) cmd->def, true,
 									 lockmode);
 			break;
 		case AT_ReAddStatistics:	/* ADD STATISTICS */
@@ -5770,7 +5781,7 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab,
 			break;
 		case AT_AddIndexConstraint: /* ADD CONSTRAINT USING INDEX */
 			address = ATExecAddIndexConstraint(tab, rel, (IndexStmt *) cmd->def,
-											   lockmode, wqueue);
+											   lockmode, wqueue /* yb_wqueue */ );
 			break;
 		case AT_AlterConstraint:	/* ALTER CONSTRAINT */
 			address = ATExecAlterConstraint(rel, cmd, false, false, lockmode);
@@ -5785,18 +5796,18 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab,
 											   false, lockmode);
 			break;
 		case AT_DropConstraint: /* DROP CONSTRAINT */
-			ATExecDropConstraint(wqueue, tab, mutable_rel, cmd->name, cmd->behavior,
+			ATExecDropConstraint(wqueue, tab, yb_mutable_rel, cmd->name, cmd->behavior,
 								 false, false,
 								 cmd->missing_ok, lockmode);
 			break;
 		case AT_DropConstraintRecurse:	/* DROP CONSTRAINT with recursion */
-			ATExecDropConstraint(wqueue, tab, mutable_rel, cmd->name, cmd->behavior,
+			ATExecDropConstraint(wqueue, tab, yb_mutable_rel, cmd->name, cmd->behavior,
 								 true, false,
 								 cmd->missing_ok, lockmode);
 			break;
 		case AT_AlterColumnType:	/* ALTER COLUMN TYPE */
 			/* parse transformation was done earlier */
-			address = ATExecAlterColumnType(tab, mutable_rel, cmd, lockmode);
+			address = ATExecAlterColumnType(tab, yb_mutable_rel, cmd, lockmode);
 			break;
 		case AT_AlterColumnGenericOptions:	/* ALTER COLUMN OPTIONS */
 			address =
@@ -6170,7 +6181,7 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 				EventTriggerTableRewrite((Node *) parsetree, tab->relid,
 										 tab->rewrite);
 			continue;
-		}
+		}						/* YB */
 
 		/*
 		 * If we change column data types, the operation has to be propagated
@@ -6268,12 +6279,15 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 			{
 				RelationSetNewRelfilenode(OldHeap,
 										  OldHeap->rd_rel->relpersistence,
-										  !tab->yb_skip_copy_split_options);
+										  !tab->yb_skip_copy_split_options,
+										  NULL  /* preserved_index_split_options */ );
 				ReindexParams reindex_params = {0};
 
 				reindex_relation(RelationGetRelid(OldHeap), 0, &reindex_params,
 								 true /* is_yb_table_rewrite */ ,
-								 !tab->yb_skip_copy_split_options);
+								 !tab->yb_skip_copy_split_options,
+								 tab->changedIndexNames,
+								 tab->changedIndexSplitOpts);
 				table_close(OldHeap, NoLock);
 				continue;
 			}
@@ -6371,7 +6385,9 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 							 RecentXmin,
 							 ReadNextMultiXactId(),
 							 persistence,
-							 true /* yb_copy_split_options */ );
+							 true /* yb_copy_split_options */ ,
+							 tab->changedIndexNames,
+							 tab->changedIndexSplitOpts);
 
 			InvokeObjectPostAlterHook(RelationRelationId, tab->relid, 0);
 		}
@@ -6692,8 +6708,8 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 		 * Scan through the rows, generating a new row if needed and then
 		 * checking all the constraints.
 		 *
-		 * TODO(#29269): Integrate this new snapshot logic with the pggate read
-		 * time logic.
+		 * YB: TODO(#29269): Integrate this new snapshot logic with the pggate
+		 * read time logic.
 		 */
 		snapshot = RegisterSnapshot(GetLatestSnapshot());
 		/*
@@ -6863,7 +6879,7 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 				else
 					table_tuple_insert(newrel, insertslot, mycid,
 									   ti_options, bistate);
-			}
+			}					/* YB */
 
 			ResetExprContext(econtext);
 
@@ -7750,7 +7766,7 @@ ATExecAddColumn(List **wqueue, AlteredTableInfo *tab, Relation rel,
 
 	InsertPgAttributeTuples(attrdesc, tupdesc, myrelid, NULL, NULL,
 							(((Form_pg_class) GETSTRUCT(reltup))->relisshared &&
-							 !IsBootstrapProcessingMode()));
+							 !IsBootstrapProcessingMode()) /* yb_relisshared */ );
 
 
 	table_close(attrdesc, RowExclusiveLock);
@@ -9549,7 +9565,7 @@ ATExecDropColumn(List **wqueue, AlteredTableInfo *yb_tab, Relation rel,
  * YB NOTE: Will replace passed relation with another one in case it was re-created.
  */
 static ObjectAddress
-ATExecAddIndex(List **yb_wqueue, AlteredTableInfo *tab, Relation *mutable_rel,
+ATExecAddIndex(List **yb_wqueue, AlteredTableInfo *tab, Relation *yb_mutable_rel,
 			   IndexStmt *stmt, bool is_rebuild, LOCKMODE lockmode)
 {
 	bool		check_rights;
@@ -9577,7 +9593,7 @@ ATExecAddIndex(List **yb_wqueue, AlteredTableInfo *tab, Relation *mutable_rel,
 	 * all necessary checks - columns existence and types, absence of nulls,
 	 * etc.
 	 */
-	address = DefineIndex(RelationGetRelid(*mutable_rel),
+	address = DefineIndex(RelationGetRelid(*yb_mutable_rel),
 						  stmt,
 						  InvalidOid,	/* no predefined OID */
 						  InvalidOid,	/* no parent index */
@@ -9587,7 +9603,7 @@ ATExecAddIndex(List **yb_wqueue, AlteredTableInfo *tab, Relation *mutable_rel,
 						  false,	/* check_not_in_use - we did it already */
 						  skip_build,
 						  quiet);
-	if (IsYBRelation(*mutable_rel) && stmt->primary)
+	if (IsYBRelation(*yb_mutable_rel) && stmt->primary)
 	{
 		/*
 		 * Use old rewrite approach for ADD/DROP PRIMARY KEY if
@@ -9596,21 +9612,21 @@ ATExecAddIndex(List **yb_wqueue, AlteredTableInfo *tab, Relation *mutable_rel,
 		if (!skip_build && !yb_enable_alter_table_rewrite)
 		{
 			/* Table will be re-created, along with the dummy PK index. */
-			*mutable_rel =
-				YbATCloneRelationSetPrimaryKey(*mutable_rel, stmt, &address);
+			*yb_mutable_rel =
+				YbATCloneRelationSetPrimaryKey(*yb_mutable_rel, stmt, &address);
 			/*
 			 * Update the table relid so that further passes will operate on
 			 * the new table.
 			 */
-			tab->relid = (*mutable_rel)->rd_id;
+			tab->relid = (*yb_mutable_rel)->rd_id;
 		}
 		else
 		{
-			YbGetTableProperties(*mutable_rel);
+			YbGetTableProperties(*yb_mutable_rel);
 			/* Don't copy split options if we are creating a range key. */
 			bool		skip_copy_split_options = YbATIsRangePk(linitial_node(IndexElem, stmt->indexParams)->ordering,
-																(*mutable_rel)->yb_table_properties->is_colocated,
-																OidIsValid((*mutable_rel)->yb_table_properties->tablegroup_oid));
+																(*yb_mutable_rel)->yb_table_properties->is_colocated,
+																OidIsValid((*yb_mutable_rel)->yb_table_properties->tablegroup_oid));
 
 			if (!skip_build)
 			{
@@ -9619,7 +9635,7 @@ ATExecAddIndex(List **yb_wqueue, AlteredTableInfo *tab, Relation *mutable_rel,
 				 * rewrite. So if this is partitioned table, we need to add
 				 * its children to the work queue as well.
 				 */
-				if ((*mutable_rel)->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
+				if ((*yb_mutable_rel)->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
 					YbATSetPKRewriteChildPartitions(yb_wqueue, tab,
 													skip_copy_split_options);
 				tab->rewrite |= YB_AT_REWRITE_ALTER_PRIMARY_KEY;
@@ -10302,7 +10318,7 @@ ATAddForeignKeyConstraint(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		 * strategy number is equality.  (Is it reasonable to insist that
 		 * every such index AM use btree's number for equality?)
 		 */
-		if (amid != BTREE_AM_OID && amid != LSM_AM_OID)
+		if (amid != BTREE_AM_OID && amid != LSM_AM_OID) /* YB */
 			elog(ERROR, "only b-tree and lsm indexes are supported for foreign keys");
 		eqstrategy = BTEqualStrategyNumber;
 
@@ -12917,16 +12933,16 @@ validateForeignKeyConstraint(char *conname,
 										  "validateForeignKeyConstraint",
 										  ALLOCSET_SMALL_SIZES);
 
-	YbFKTriggerScanDesc fk_scan = YbFKTriggerScanBegin(scan,
-													   ForwardScanDirection,
-													   &trig,
-													   rel,
-													   *YBCGetGFlags()->ysql_session_max_batch_size,
-													   perTupCxt);
+	YbFKTriggerScanDesc yb_fk_scan = YbFKTriggerScanBegin(scan,
+														  ForwardScanDirection,
+														  &trig,
+														  rel,
+														  *YBCGetGFlags()->ysql_session_max_batch_size,
+														  perTupCxt);
 
 	oldcxt = MemoryContextSwitchTo(perTupCxt);
 
-	while ((ybSlot = YbFKTriggerScanGetNext(fk_scan, slot)) != NULL)
+	while ((ybSlot = YbFKTriggerScanGetNext(yb_fk_scan, slot)) != NULL)
 	{
 		LOCAL_FCINFO(fcinfo, 0);
 		TriggerData trigdata = {0};
@@ -12949,7 +12965,7 @@ validateForeignKeyConstraint(char *conname,
 		trigdata.tg_trigtuple = ExecFetchSlotHeapTuple(ybSlot, false, NULL);
 		trigdata.tg_trigslot = ybSlot;
 		trigdata.tg_trigger = &trig;
-		trigdata.estate = fk_scan->estate;
+		trigdata.estate = yb_fk_scan->estate;
 
 		fcinfo->context = (Node *) &trigdata;
 
@@ -12964,7 +12980,7 @@ validateForeignKeyConstraint(char *conname,
 	MemoryContextSwitchTo(oldcxt);
 	MemoryContextDelete(perTupCxt);
 	table_endscan(scan);
-	YbFKTriggerScanEnd(fk_scan);
+	YbFKTriggerScanEnd(yb_fk_scan);
 	UnregisterSnapshot(snapshot);
 	if (!IsYBRelation(rel))
 		ExecDropSingleTupleTableSlot(slot);
@@ -13197,7 +13213,7 @@ createForeignKeyCheckTriggers(Oid myRelOid, Oid refRelOid,
  */
 static void
 ATExecDropConstraint(List **yb_wqueue, AlteredTableInfo *tab,
-					 Relation *mutable_rel,
+					 Relation *yb_mutable_rel,
 					 const char *constrName, DropBehavior behavior,
 					 bool recurse, bool recursing,
 					 bool missing_ok, LOCKMODE lockmode)
@@ -13218,7 +13234,7 @@ ATExecDropConstraint(List **yb_wqueue, AlteredTableInfo *tab,
 
 	/* At top level, permission check was done in ATPrepCmd, else do it */
 	if (recursing)
-		ATSimplePermissions(AT_DropConstraint, *mutable_rel, ATT_TABLE | ATT_FOREIGN_TABLE);
+		ATSimplePermissions(AT_DropConstraint, *yb_mutable_rel, ATT_TABLE | ATT_FOREIGN_TABLE);
 
 	conrel = table_open(ConstraintRelationId, RowExclusiveLock);
 
@@ -13228,7 +13244,7 @@ ATExecDropConstraint(List **yb_wqueue, AlteredTableInfo *tab,
 	ScanKeyInit(&skey[0],
 				Anum_pg_constraint_conrelid,
 				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(RelationGetRelid(*mutable_rel)));
+				ObjectIdGetDatum(RelationGetRelid(*yb_mutable_rel)));
 	ScanKeyInit(&skey[1],
 				Anum_pg_constraint_contypid,
 				BTEqualStrategyNumber, F_OIDEQ,
@@ -13252,7 +13268,7 @@ ATExecDropConstraint(List **yb_wqueue, AlteredTableInfo *tab,
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 					 errmsg("cannot drop inherited constraint \"%s\" of relation \"%s\"",
-							constrName, RelationGetRelationName(*mutable_rel))));
+							constrName, RelationGetRelationName(*yb_mutable_rel))));
 
 		is_no_inherit_constraint = con->connoinherit;
 		contype = con->contype;
@@ -13265,7 +13281,7 @@ ATExecDropConstraint(List **yb_wqueue, AlteredTableInfo *tab,
 		 * self-referential case.
 		 */
 		if (contype == CONSTRAINT_FOREIGN &&
-			con->confrelid != RelationGetRelid(*mutable_rel))
+			con->confrelid != RelationGetRelid(*yb_mutable_rel))
 		{
 			Relation	frel;
 
@@ -13296,33 +13312,33 @@ ATExecDropConstraint(List **yb_wqueue, AlteredTableInfo *tab,
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
 					 errmsg("constraint \"%s\" of relation \"%s\" does not exist",
-							constrName, RelationGetRelationName(*mutable_rel))));
+							constrName, RelationGetRelationName(*yb_mutable_rel))));
 		}
 		else
 		{
 			ereport(NOTICE,
 					(errmsg("constraint \"%s\" of relation \"%s\" does not exist, skipping",
-							constrName, RelationGetRelationName(*mutable_rel))));
+							constrName, RelationGetRelationName(*yb_mutable_rel))));
 			table_close(conrel, RowExclusiveLock);
 			return;
 		}
 	}
 
-	if (IsYBRelation(*mutable_rel) && contype == CONSTRAINT_PRIMARY)
+	if (IsYBRelation(*yb_mutable_rel) && contype == CONSTRAINT_PRIMARY)
 	{
 		if (!yb_enable_alter_table_rewrite)
 		{
 			/* Table will be re-created without a dummy PK index. */
-			*mutable_rel = YbATCloneRelationSetPrimaryKey(*mutable_rel,
-														  NULL /* stmt */ ,
-														  NULL /* result */ );
+			*yb_mutable_rel = YbATCloneRelationSetPrimaryKey(*yb_mutable_rel,
+															 NULL /* stmt */ ,
+															 NULL /* result */ );
 
 			/*
 			 * Update the table relid so that further passes will operate on
 			 * the new table.
 			 */
 			if (tab)
-				tab->relid = RelationGetRelid(*mutable_rel);
+				tab->relid = RelationGetRelid(*yb_mutable_rel);
 		}
 		else
 		{
@@ -13331,7 +13347,7 @@ ATExecDropConstraint(List **yb_wqueue, AlteredTableInfo *tab,
 			 * rewrite. So if this is partitioned table, we need to add
 			 * its children to the work queue as well.
 			 */
-			if ((*mutable_rel)->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
+			if ((*yb_mutable_rel)->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
 				YbATSetPKRewriteChildPartitions(yb_wqueue,
 												tab, false /* skip_copy_split_options */ );
 			tab->rewrite |= YB_AT_REWRITE_ALTER_PRIMARY_KEY;
@@ -13343,7 +13359,7 @@ ATExecDropConstraint(List **yb_wqueue, AlteredTableInfo *tab,
 	 * the dependency mechanism, so we're done here.
 	 */
 	if (contype != CONSTRAINT_CHECK &&
-		(*mutable_rel)->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
+		(*yb_mutable_rel)->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
 	{
 		table_close(conrel, RowExclusiveLock);
 		return;
@@ -13355,7 +13371,7 @@ ATExecDropConstraint(List **yb_wqueue, AlteredTableInfo *tab,
 	 * use find_all_inheritors to do it in one pass.
 	 */
 	if (!is_no_inherit_constraint)
-		children = find_inheritance_children(RelationGetRelid(*mutable_rel), lockmode);
+		children = find_inheritance_children(RelationGetRelid(*yb_mutable_rel), lockmode);
 	else
 		children = NIL;
 
@@ -13364,7 +13380,7 @@ ATExecDropConstraint(List **yb_wqueue, AlteredTableInfo *tab,
 	 * recurse, it's a user error.  It doesn't make sense to have a constraint
 	 * be defined only on the parent, especially if it's a partitioned table.
 	 */
-	if ((*mutable_rel)->rd_rel->relkind == RELKIND_PARTITIONED_TABLE &&
+	if ((*yb_mutable_rel)->rd_rel->relkind == RELKIND_PARTITIONED_TABLE &&
 		children != NIL && !recurse)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
@@ -13641,7 +13657,7 @@ ATPrepAlterColumnType(List **wqueue,
 
 		tab->newvals = lappend(tab->newvals, newval);
 		if (ATColumnChangeRequiresRewrite(transform, attnum))
-		{
+		{						/* YB */
 			tab->rewrite |= AT_REWRITE_COLUMN_REWRITE;
 			if (IsYBRelation(rel) && yb_enable_alter_table_rewrite)
 			{
@@ -14168,7 +14184,7 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation *yb_mutable_rel,
 			case OCLASS_TSCONFIG:
 			case OCLASS_ROLE:
 			case OCLASS_DATABASE:
-			case OCLASS_TBLGROUP:
+			case OCLASS_YBTBLGROUP:
 			case OCLASS_TBLSPACE:
 			case OCLASS_FDW:
 			case OCLASS_FOREIGN_SERVER:
@@ -14241,7 +14257,7 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation *yb_mutable_rel,
 			elog(ERROR, "found unexpected dependency for column: %s",
 				 getObjectDescription(&foundObject, false));
 
-		CatalogTupleDelete(depRel, depTup);
+		CatalogTupleDelete(depRel, depTup /* yb_tup */ );
 	}
 
 	systable_endscan(scan);
@@ -14353,7 +14369,7 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation *yb_mutable_rel,
 		attTup->attalign = tform->typalign;
 		attTup->attstorage = tform->typstorage;
 		attTup->attcompression = InvalidCompressionMethod;
-	}
+	}							/* YB */
 
 	ReleaseSysCache(typeTuple);
 
@@ -14378,7 +14394,7 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation *yb_mutable_rel,
 		 * Drop any pg_statistic entry for the column, since it's now wrong type
 		 */
 		RemoveStatistics(RelationGetRelid(rel), attnum);
-	}
+	}							/* YB */
 
 	InvokeObjectPostAlterHook(RelationRelationId,
 							  RelationGetRelid(*yb_mutable_rel), attnum);
@@ -14542,6 +14558,23 @@ RememberIndexForRebuilding(Oid indoid, AlteredTableInfo *tab)
 												indoid);
 			tab->changedIndexDefs = lappend(tab->changedIndexDefs,
 											defstring);
+
+			/*
+			 * Capture the index's existing split options:
+			 * During ALTER TYPE table rewrite on columns with dependent indexes, indexes are
+			 * rebuilt by dropping and recreating them. We skip DocDB index table creation during
+			 * rebuild phase and defer it to reindex phase. Since DocDB index don't exist during
+			 * reindex phase, split options must be retrieved beforehand and passed via these
+			 * parallel lists to restore correct split options.
+			 */
+			Relation	indexRel = index_open(indoid, AccessShareLock);
+			YbOptSplit *splitOpt = YbGetSplitOptions(indexRel);
+			if (splitOpt)
+				splitOpt->split_points = NIL;  /* Clear split points - incompatible with new type */
+			tab->changedIndexSplitOpts = lappend(tab->changedIndexSplitOpts, splitOpt);
+			tab->changedIndexNames = lappend(tab->changedIndexNames,
+											 pstrdup(RelationGetRelationName(indexRel)));
+			index_close(indexRel, AccessShareLock);
 
 			/*
 			 * Remember if this index is used for the table's replica identity
@@ -16315,16 +16348,16 @@ AlterTableMoveAll(AlterTableMoveAllStmt *stmt)
 		/*
 		 * If CASCADE is not specified, only move the object type requested.
 		 */
-		if (!yb_cascade &&
-			((stmt->objtype == OBJECT_TABLE &&
-			  relForm->relkind != RELKIND_RELATION &&
-			  relForm->relkind != RELKIND_PARTITIONED_TABLE) ||
-			 (stmt->objtype == OBJECT_INDEX &&
-			  relForm->relkind != RELKIND_INDEX &&
-			  relForm->relkind != RELKIND_PARTITIONED_INDEX) ||
-			 (stmt->objtype == OBJECT_MATVIEW &&
-			  relForm->relkind != RELKIND_MATVIEW)))
-			continue;
+		if ((stmt->objtype == OBJECT_TABLE &&
+			 relForm->relkind != RELKIND_RELATION &&
+			 relForm->relkind != RELKIND_PARTITIONED_TABLE) ||
+			(stmt->objtype == OBJECT_INDEX &&
+			 relForm->relkind != RELKIND_INDEX &&
+			 relForm->relkind != RELKIND_PARTITIONED_INDEX) ||
+			(stmt->objtype == OBJECT_MATVIEW &&
+			 relForm->relkind != RELKIND_MATVIEW))
+			if (!yb_cascade)
+				continue;
 
 		/* Check if we are only moving objects owned by certain roles */
 		if (role_oids != NIL && !list_member_oid(role_oids, relForm->relowner))
@@ -16351,7 +16384,7 @@ AlterTableMoveAll(AlterTableMoveAllStmt *stmt)
 		else
 			LockRelationOid(relOid, AccessExclusiveLock);
 
-		/* Update the pg_shdepend tables */
+		/* YB: Update the pg_shdepend tables */
 		changeDependencyOnTablespace(RelationRelationId, relOid,
 									 new_tablespaceoid);
 
@@ -16363,7 +16396,7 @@ AlterTableMoveAll(AlterTableMoveAllStmt *stmt)
 	table_close(rel, AccessShareLock);
 
 	if (relations == NIL)
-	{
+	{							/* YB */
 		ereport(NOTICE,
 				(errcode(ERRCODE_NO_DATA_FOUND),
 				 errmsg("no matching relations in tablespace \"%s\" found",
@@ -17391,7 +17424,7 @@ drop_parent_dependency(Oid relid, Oid refclassid, Oid refobjid,
 			dep->refobjid == refobjid &&
 			dep->refobjsubid == 0 &&
 			dep->deptype == deptype)
-			CatalogTupleDelete(catalogRelation, depTuple);
+			CatalogTupleDelete(catalogRelation, depTuple /* yb_tup */ );
 	}
 
 	systable_endscan(scan);
@@ -19621,7 +19654,7 @@ ATExecAttachPartition(List **wqueue, Relation rel, PartitionCmd *cmd,
 	StorePartitionBound(attachrel, rel, cmd->bound);
 
 	/* Ensure there exists a correct set of indexes in the partition. */
-	AttachPartitionEnsureIndexes(rel, attachrel, wqueue);
+	AttachPartitionEnsureIndexes(rel, attachrel, wqueue /* yb_wqueue */ );
 
 	/* and triggers */
 	CloneRowTriggersToPartition(rel, attachrel);
@@ -20210,7 +20243,7 @@ ATExecDetachPartition(List **wqueue, AlteredTableInfo *tab, Relation rel,
 			CommitTransactionCommand();
 
 			StartTransactionCommand();
-		}
+		}						/* YB */
 
 		/*
 		 * Now wait.  This ensures that all queries that were planned
@@ -20627,9 +20660,6 @@ DetachAddConstraintIfNeeded(List **wqueue, Relation partRel)
 
 	constraintExpr = RelationGetPartitionQual(partRel);
 	constraintExpr = (List *) eval_const_expressions(NULL, (Node *) constraintExpr);
-
-	/* Drop any triggers that were cloned on creation/attach. */
-	DropClonedTriggersFromPartition(RelationGetRelid(partRel));
 
 	/*
 	 * Avoid adding a new constraint if the needed constraint is implied by an

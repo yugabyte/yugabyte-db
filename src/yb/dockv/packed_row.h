@@ -32,8 +32,6 @@
 
 namespace yb::dockv {
 
-class DocVectorValue;
-
 // The packed row V1 is encoded in the following format.
 // Row packing/unpacking is accompanied by SchemaPacking class that is built from schema.
 //
@@ -92,13 +90,14 @@ class PackableValue {
 class RowPackerBase {
  public:
   // packed_size_limit - don't pack column if packed row will be over limit after it.
+  // is_update - flag to indicate if this packed row is from an UPDATE operation.
   RowPackerBase(
       std::reference_wrapper<const SchemaPacking> packing, size_t packed_size_limit,
-      const ValueControlFields& row_control_fields);
+      const ValueControlFields& row_control_fields, bool is_update = false);
 
   RowPackerBase(
       std::reference_wrapper<const SchemaPacking> packing, size_t packed_size_limit,
-      Slice control_fields);
+      Slice control_fields, bool is_update = false);
 
   RowPackerBase(const RowPackerBase&) = delete;
   void operator=(const RowPackerBase&) = delete;
@@ -111,6 +110,10 @@ class RowPackerBase {
 
   const SchemaPacking& packing() const {
     return packing_;
+  }
+
+  bool is_update() const {
+    return is_update_;
   }
 
   ColumnId NextColumnId() const;
@@ -134,6 +137,9 @@ class RowPackerBase {
 
   // The end prefix, i.e., beginning of column values.
   size_t prefix_end_;
+
+  // Flag indicating whether this packed row is from an UPDATE operation.
+  bool is_update_;
 
   // Resulting buffer.
   ValueBuffer result_;
@@ -162,8 +168,8 @@ class RowPackerV1 : public RowPackerBase {
   Result<bool> AddValue(ColumnId column_id, const QLValuePB& value, ssize_t tail_size = 0);
   Result<bool> AddValue(ColumnId column_id, const LWQLValuePB& value);
   Result<bool> AddValue(ColumnId column_id, Slice control_fields, const QLValuePB& value);
+  Result<bool> AddValue(ColumnId column_id, Slice control_fields, const LWQLValuePB& value);
   Result<bool> AddValue(ColumnId column_id, const PackableValue& value);
-  Result<bool> AddValue(ColumnId column_id, const DocVectorValue& value);
 
   Result<Slice> Complete();
 
@@ -189,6 +195,8 @@ class RowPackerV2 : public RowPackerBase {
   // Flat to mark whether packed row has nulls or not.
   // When row does not contain nulls, then we don't store null mask in it.
   static constexpr uint8_t kHasNullsFlag = 1;
+  // Flag to mark whether packed row was created from an UPDATE/UPSERT operation.
+  static constexpr uint8_t kIsUpdateFlag = 2;
 
   template <class... Args>
   RowPackerV2(SchemaVersion version, Args&&... args) : RowPackerBase(std::forward<Args>(args)...) {
@@ -206,7 +214,6 @@ class RowPackerV2 : public RowPackerBase {
   Result<bool> AddValue(ColumnId column_id, const QLValuePB& value, ssize_t tail_size = 0);
   Result<bool> AddValue(ColumnId column_id, const LWQLValuePB& value);
   Result<bool> AddValue(ColumnId column_id, const PackableValue& value);
-  Result<bool> AddValue(ColumnId column_id, const DocVectorValue& value);
 
   Result<Slice> Complete();
 
@@ -223,5 +230,19 @@ using RowPackerVariant = std::variant<RowPackerV1, RowPackerV2>;
 
 RowPackerBase& PackerBase(RowPackerVariant* packer_variant);
 size_t PackedSizeLimit(size_t value);
+
+struct PackedRowV2Header {
+  SchemaVersion schema_version;
+  uint8_t flags;
+
+  // Returns true if the packed row is from an UPDATE operation.
+  bool IsUpdate() const {
+    return (flags & RowPackerV2::kIsUpdateFlag) != 0;
+  }
+};
+
+// Parses the header from a packed row V2.
+// The packed_row slice should start after the value type byte.
+Result<PackedRowV2Header> ParsePackedRowV2Header(Slice packed_row);
 
 } // namespace yb::dockv

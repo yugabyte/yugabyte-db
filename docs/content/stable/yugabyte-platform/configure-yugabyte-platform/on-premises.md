@@ -5,7 +5,7 @@ linkTitle: On-premises
 description: Configure the on-premises provider configuration.
 headContent: For deploying universes on your private cloud
 aliases:
-  - /preview/deploy/enterprise-edition/configure-cloud-providers/onprem
+  - /stable/deploy/enterprise-edition/configure-cloud-providers/onprem
 menu:
   stable_yugabyte-platform:
     identifier: set-up-on-premises

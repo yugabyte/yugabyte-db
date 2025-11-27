@@ -921,7 +921,21 @@ Status PgTableRow::SetValue(ColumnId column_id, const QLValuePB& value) {
   return SetValueByColumnIdx(idx, value);
 }
 
+Status PgTableRow::SetValue(ColumnId column_id, const LWQLValuePB& value) {
+  const size_t idx = projection_->ColumnIdxById(column_id);
+  return SetValueByColumnIdx(idx, value);
+}
+
 Status PgTableRow::SetValueByColumnIdx(size_t idx, const QLValuePB& value) {
+  return DoSetValueByColumnIdx(idx, value);
+}
+
+Status PgTableRow::SetValueByColumnIdx(size_t idx, const LWQLValuePB& value) {
+  return DoSetValueByColumnIdx(idx, value);
+}
+
+template <class Value>
+Status PgTableRow::DoSetValueByColumnIdx(size_t idx, const Value& value) {
   if (yb::IsNull(value)) {
     is_null_[idx] = true;
     return Status::OK();

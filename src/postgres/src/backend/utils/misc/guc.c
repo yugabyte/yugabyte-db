@@ -122,6 +122,7 @@
 #include "commands/copy.h"
 #include "common/pg_yb_param_status_flags.h"
 #include "executor/ybModifyTable.h"
+#include "optimizer/yb_saop_merge.h"
 #include "pg_yb_utils.h"
 #include "tcop/pquery.h"
 #include "utils/syscache.h"
@@ -293,8 +294,7 @@ static void check_reserved_prefixes(const char *varName);
 static void assign_yb_enable_cbo(int new_value, void *extra);
 static void assign_yb_enable_optimizer_statistics(bool new_value, void *extra);
 static void assign_yb_enable_base_scans_cost_model(bool new_value, void *extra);
-static bool yb_enable_ddl_atomicity_check_hook(bool *newval, void **extra, GucSource source);
-static bool yb_enable_ddl_atomicity_infra_check_hook(bool *newval, void **extra, GucSource source);
+
 
 static bool check_yb_enable_advisory_locks(bool *newval, void **extra, GucSource source);
 
@@ -3135,7 +3135,7 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&yb_ddl_rollback_enabled,
 		true,
-		yb_enable_ddl_atomicity_check_hook, NULL, NULL
+		NULL, NULL, NULL
 	},
 
 	{
@@ -3147,7 +3147,7 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&yb_enable_ddl_atomicity_infra,
 		true,
-		yb_enable_ddl_atomicity_infra_check_hook, NULL, NULL
+		NULL, NULL, NULL
 	},
 
 	{
@@ -3676,14 +3676,14 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"yb_make_all_ddl_statements_incrementing", PGC_SIGHUP, CUSTOM_OPTIONS,
+		{"yb_test_make_all_ddl_statements_incrementing", PGC_SIGHUP, DEVELOPER_OPTIONS,
 			gettext_noop("When set, all DDL statements will cause the "
 						 "catalog version to increment. This mainly affects "
 						 "CREATE commands such as CREATE TABLE, CREATE VIEW, "
 						 "and CREATE SEQUENCE."),
 			NULL
 		},
-		&yb_make_all_ddl_statements_incrementing,
+		&yb_test_make_all_ddl_statements_incrementing,
 		false,
 		NULL, NULL, NULL
 	},
@@ -5687,6 +5687,25 @@ static struct config_int ConfigureNamesInt[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		/* TODO(#29072): switch to PGC_USERSET when results become correct. */
+		{"yb_max_saop_merge_streams", PGC_SUSET, QUERY_TUNING_METHOD,
+			gettext_noop("Sets the maximum number of streams tolerated for "
+						 "scalar array operation merge."),
+			gettext_noop("For YB LSM index scans, when multiple "
+						 "SAOP-mergeable scalar array operations are "
+						 "involved, they are added to SAOP merge until their "
+						 "cartesian product's cardinality reaches this limit. "
+						 "Scalar array operation merge is per index scan, and "
+						 "the limit applies per index scan, not globally. Set "
+						 "to 0 to disable. WARNING(#29072): results are not "
+						 "sorted correctly."),
+		},
+		&yb_max_saop_merge_streams,
+		0, 0, 1024,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, 0, 0, NULL, NULL, NULL
@@ -7500,7 +7519,7 @@ static const char *const YbDbAdminVariables[] = {
 	"yb_binary_restore",
 	"yb_speculatively_execute_pl_statements",
 	"yb_whitelist_extra_statements_for_pl_speculative_execution",
-	"yb_make_all_ddl_statements_incrementing",
+	"yb_test_make_all_ddl_statements_incrementing",
 };
 
 
@@ -16431,30 +16450,6 @@ static void
 assign_yb_enable_pg_stat_statements_rpc_stats(bool newval, void *extra)
 {
 	YbToggleSessionStatsTimer(newval);
-}
-
-static bool
-disallow_disabling_ddl_atomicity_for_transactional_ddl(bool *atomicity_disabled, char *flagname)
-{
-	if (!*atomicity_disabled && yb_ddl_transaction_block_enabled)
-	{
-		GUC_check_errdetail("cannot set %s to false when Transactional DDL is enabled.", flagname);
-		return false;
-	}
-
-	return true;
-}
-
-static bool
-yb_enable_ddl_atomicity_check_hook(bool *newval, void **extra, GucSource source)
-{
-	return disallow_disabling_ddl_atomicity_for_transactional_ddl(newval, "yb_ddl_rollback_enabled");
-}
-
-static bool
-yb_enable_ddl_atomicity_infra_check_hook(bool *newval, void **extra, GucSource source)
-{
-	return disallow_disabling_ddl_atomicity_for_transactional_ddl(newval, "yb_enable_ddl_atomicity_infra");
 }
 
 #include "guc-file.c"

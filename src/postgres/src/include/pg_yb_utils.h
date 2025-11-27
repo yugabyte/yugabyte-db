@@ -114,8 +114,6 @@ extern void SendLogicalClientCacheVersionToFrontend();
 
 extern void YbResetCatalogCacheVersion();
 
-extern uint64_t YbGetLastKnownCatalogCacheVersion();
-
 extern YbcPgLastKnownCatalogVersionInfo YbGetCatalogCacheVersionForTablePrefetching();
 
 extern void YbUpdateLastKnownCatalogCacheVersion(uint64_t catalog_cache_version);
@@ -172,10 +170,9 @@ extern int32_t yb_follower_read_staleness_ms;
 	}
 
 /*
- * Given a relation, checks whether the relation is supported in YugaByte mode.
+ * Given a relation kind, checks whether the relation is supported in YugaByte
+ * mode.
  */
-extern void CheckIsYBSupportedRelation(Relation relation);
-
 extern void CheckIsYBSupportedRelationByKind(char relkind);
 
 /*
@@ -213,8 +210,6 @@ extern bool IsRealYBColumn(Relation rel, int attrNum);
  * Returns whether a relation's attribute is a YB system column.
  */
 extern bool IsYBSystemColumn(int attrNum);
-
-extern void YBReportFeatureUnsupported(const char *err_msg);
 
 extern AttrNumber YBGetFirstLowInvalidAttributeNumber(Relation relation);
 
@@ -418,12 +413,6 @@ void		YbSetConnectedToTemplateDb();
 bool		YbIsConnectedToTemplateDb();
 
 /*
- * Converts the PostgreSQL error level as listed in elog.h to a string. Always
- * returns a static const char string.
- */
-const char *YBPgErrorLevelToString(int elevel);
-
-/*
  * Get the database name for a relation id (accounts for system databases and
  * shared relations)
  */
@@ -446,7 +435,6 @@ Oid			YBCGetDatabaseOidFromShared(bool relisshared);
  * Raise an unsupported feature error with the given message and
  * linking to the referenced issue (if any).
  */
-void		YBRaiseNotSupported(const char *msg, int issue_no);
 void		YBRaiseNotSupportedSignal(const char *msg, int issue_no, int signal_level);
 
 /*
@@ -458,12 +446,6 @@ extern double PowerWithUpperLimit(double base, int exponent, double upper_limit)
  * Return whether to use wholerow junk attribute for YB relations.
  */
 extern bool YbWholeRowAttrRequired(Relation relation, CmdType operation);
-
-/*
- * Return whether the returning list for an UPDATE statement is a subset of the columns being
- * updated by the UPDATE query.
- */
-bool		YbReturningListSubsetOfUpdatedCols(Relation rel, Bitmapset *updatedCols, List *returningList);
 
 /* ------------------------------------------------------------------------------ */
 /* YB GUC variables. */
@@ -800,7 +782,7 @@ extern bool	yb_enable_parallel_scan_system;
 /*
  * If set to true, all DDL statements will cause the catalog version to increment.
  */
-extern bool yb_make_all_ddl_statements_incrementing;
+extern bool yb_test_make_all_ddl_statements_incrementing;
 
 typedef struct YBUpdateOptimizationOptions
 {
@@ -849,18 +831,11 @@ extern bool yb_enable_pg_stat_statements_rpc_stats;
 extern const char *YBDatumToString(Datum datum, Oid typid);
 
 /*
- * Get a string representation of a tuple (row) given its tuple description (schema).
- */
-extern const char *YbHeapTupleToString(HeapTuple tuple, TupleDesc tupleDesc);
-
-/*
  * Get a string representation of a tuple (row) given its tuple description
  * (schema) and is_omitted values.
  *
- * Logical Replication specific version of the general utility function
- * YbHeapTupleToString. This function also logs the is_omitted values which
- * indicates attributes which were omitted due to the value of the replica
- * identity.
+ * This function also logs the is_omitted values which indicates attributes
+ * which were omitted due to the value of the replica identity.
  */
 extern const char *YbHeapTupleToStringWithIsOmitted(HeapTuple tuple,
 													TupleDesc tupleDesc,
@@ -871,9 +846,6 @@ extern const char *YbSlotToString(TupleTableSlot *slot);
 
 extern const char *YbSlotToStringWithIsOmitted(TupleTableSlot *slot,
 											   bool *is_omitted);
-
-/* Get a string representation of a bitmapset (for debug purposes only!) */
-extern const char *YbBitmapsetToString(Bitmapset *bms);
 
 /*
  * Checks if the master thinks initdb has already been done.
@@ -1393,7 +1365,8 @@ extern void YbATCopyPrimaryKeyToCreateStmt(Relation rel,
 										   CreateStmt *create_stmt);
 
 extern void YbIndexSetNewRelfileNode(Relation indexRel, Oid relfileNodeId,
-									 bool yb_copy_split_options);
+									 bool yb_copy_split_options,
+									 YbOptSplit *preserved_index_split_options);
 
 /*
  * Returns the ordering type for a primary key. By default, the first element of

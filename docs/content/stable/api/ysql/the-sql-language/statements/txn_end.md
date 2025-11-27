@@ -8,7 +8,7 @@ menu:
     identifier: txn_end
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/txn_end/
+  - /stable/api/ysql/commands/txn_end/
 type: docs
 ---
 

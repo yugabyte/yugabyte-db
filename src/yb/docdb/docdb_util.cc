@@ -357,6 +357,18 @@ Status DocDBRocksDBUtil::SetPrimitive(
 }
 
 Status DocDBRocksDBUtil::SetPrimitive(
+    const dockv::DocPath& doc_path,
+    const dockv::ValueControlFields& control_fields,
+    const QLValuePB& value,
+    HybridTime hybrid_time,
+    const ReadHybridTime& read_ht) {
+  return SetPrimitive(
+      doc_path, control_fields,
+      ValueRef(value),
+      hybrid_time, read_ht);
+}
+
+Status DocDBRocksDBUtil::SetPrimitive(
     const DocPath& doc_path,
     const QLValuePB& value,
     const HybridTime hybrid_time,
@@ -491,6 +503,21 @@ Status DocDBRocksDBUtil::ReplaceInList(
   return WriteToRocksDB(dwb, hybrid_time);
 }
 
+Status DocDBRocksDBUtil::ReplaceInList(
+    const DocPath &doc_path,
+    const int target_cql_index,
+    const QLValuePB& value,
+    const ReadHybridTime& read_ht,
+    const HybridTime& hybrid_time,
+    const rocksdb::QueryId query_id,
+    MonoDelta default_ttl,
+    MonoDelta ttl,
+    UserTimeMicros user_timestamp) {
+  return ReplaceInList(
+      doc_path, target_cql_index, ValueRef(value), read_ht, hybrid_time, query_id,
+      default_ttl, ttl, user_timestamp);
+}
+
 Status DocDBRocksDBUtil::DeleteSubDoc(
     const DocPath& doc_path,
     HybridTime hybrid_time,
@@ -613,6 +640,12 @@ Status MoveChildren(Env& env, const std::string& db_dir, IncludeIntents include_
     }
   }
   return Status::OK();
+}
+
+std::shared_ptr<LWQLValuePB> DocDBRocksDBUtil::MakeLWValue(const QLValuePB& value) {
+  auto arena = SharedThreadSafeArena();
+  auto lw = arena->NewArenaObject<LWQLValuePB>(value);
+  return SharedField(std::move(arena), lw);
 }
 
 }  // namespace yb::docdb

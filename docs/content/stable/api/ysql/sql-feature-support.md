@@ -9,7 +9,7 @@ menu:
     parent: api-ysql
     weight: 120
 aliases:
-  - /preview/explore/ysql-language-features/sql-feature-support/
+  - /stable/explore/ysql-language-features/sql-feature-support/
 type: docs
 ---
 

@@ -6,15 +6,15 @@ description: Horizontal scalability in YugabyteDB.
 headcontent: Handle larger workloads by adding nodes to your cluster
 aliases:
   - /explore/linear-scalability/
-  - /preview/explore/postgresql/linear-scalability/
-  - /preview/explore/linear-scalability-macos/
-  - /preview/explore/linear-scalability/linux/
-  - /preview/explore/linear-scalability/docker/
-  - /preview/explore/linear-scalability/kubernetes/
-  - /preview/explore/auto-sharding/macos/
-  - /preview/explore/auto-sharding/linux/
-  - /preview/explore/auto-sharding/docker/
-  - /preview/explore/auto-sharding/kubernetes/
+  - /stable/explore/postgresql/linear-scalability/
+  - /stable/explore/linear-scalability-macos/
+  - /stable/explore/linear-scalability/linux/
+  - /stable/explore/linear-scalability/docker/
+  - /stable/explore/linear-scalability/kubernetes/
+  - /stable/explore/auto-sharding/macos/
+  - /stable/explore/auto-sharding/linux/
+  - /stable/explore/auto-sharding/docker/
+  - /stable/explore/auto-sharding/kubernetes/
 menu:
   stable:
     identifier: explore-scalability

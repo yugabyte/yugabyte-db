@@ -10,7 +10,7 @@ menu:
     parent: managed-automation
     weight: 50
 aliases:
-  - /preview/yugabyte-cloud/managed-automation/managed-cli/managed-cli-overview/
+  - /stable/yugabyte-cloud/managed-automation/managed-cli/managed-cli-overview/
 type: indexpage
 showRightNav: true
 rightNav:

@@ -8,7 +8,7 @@ menu:
     identifier: dcl_drop_policy
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/dcl_drop_policy/
+  - /stable/api/ysql/commands/dcl_drop_policy/
 type: docs
 ---
 

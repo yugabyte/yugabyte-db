@@ -8,10 +8,10 @@ menu:
     parent: api-cassandra
     weight: 1450
 aliases:
-  - /preview/api/cassandra/type_datetime
-  - /preview/api/cassandra/type_timestamp
-  - /preview/api/ycql/type_datetime
-  - /preview/api/ycql/type_timestamp
+  - /stable/api/cassandra/type_datetime
+  - /stable/api/cassandra/type_timestamp
+  - /stable/api/ycql/type_datetime
+  - /stable/api/ycql/type_timestamp
 type: docs
 ---
 

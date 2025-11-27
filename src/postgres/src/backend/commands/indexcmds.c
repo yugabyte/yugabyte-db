@@ -597,6 +597,7 @@ DefineIndex(Oid relationId,
 	Oid			tablegroupId = InvalidOid;
 	Oid			colocation_id = InvalidOid;
 	bool		is_colocated = false;
+	bool		yb_skip_index_creation;
 
 	root_save_nestlevel = NewGUCNestLevel();
 
@@ -1628,6 +1629,8 @@ DefineIndex(Oid relationId,
 		rel->rd_rel->relpersistence == RELPERSISTENCE_TEMP)
 		YBCRecordTempRelationDDL();
 
+	yb_skip_index_creation = skip_build && is_alter_table;
+
 	indexRelationId =
 		index_create(rel, indexRelationName, indexRelationId, parentIndexId,
 					 parentConstraintId,
@@ -1638,7 +1641,8 @@ DefineIndex(Oid relationId,
 					 flags, constr_flags,
 					 allowSystemTableMods, !check_rights,
 					 &createdConstraintId, stmt->split_options,
-					 !concurrent, is_colocated, tablegroupId, colocation_id);
+					 !concurrent, is_colocated, tablegroupId, colocation_id,
+					 yb_skip_index_creation);
 
 	ObjectAddressSet(address, RelationRelationId, indexRelationId);
 
@@ -3470,7 +3474,8 @@ ReindexIndex(RangeVar *indexRelation, ReindexParams *params, bool isTopLevel)
 		newparams.options |= REINDEXOPT_REPORT_PROGRESS;
 		reindex_index(indOid, false, persistence, &newparams,
 					  false /* is_yb_table_rewrite */ ,
-					  true /* yb_copy_split_options */ );
+					  true /* yb_copy_split_options */ ,
+					  NULL  /* preserved_index_split_options */ );
 	}
 }
 
@@ -3591,7 +3596,9 @@ ReindexTable(RangeVar *relation, ReindexParams *params, bool isTopLevel)
 								  REINDEX_REL_CHECK_CONSTRAINTS,
 								  &newparams,
 								  false /* is_yb_table_rewrite */ ,
-								  true /* yb_copy_split_options */ );
+								  true /* yb_copy_split_options */ ,
+								  NIL /* changedIndexNames */ ,
+								  NIL /* changedIndexSplitOpts */ );
 		if (!result)
 			ereport(NOTICE,
 					(errmsg("table \"%s\" has no indexes to reindex",
@@ -4024,7 +4031,8 @@ ReindexMultipleInternal(List *relids, ReindexParams *params)
 				REINDEXOPT_REPORT_PROGRESS | REINDEXOPT_MISSING_OK;
 			reindex_index(relid, false, relpersistence, &newparams,
 						  false /* is_yb_table_rewrite */ ,
-						  true /* yb_copy_split_options */ );
+						  true /* yb_copy_split_options */ ,
+						  NULL /* preserved_index_split_options */ );
 
 			/*
 			 * YbCommitTransactionCommandIntermediate call in the next iteration
@@ -4046,7 +4054,9 @@ ReindexMultipleInternal(List *relids, ReindexParams *params)
 									  REINDEX_REL_CHECK_CONSTRAINTS,
 									  &newparams,
 									  false /* is_yb_table_rewrite */ ,
-									  true /* yb_copy_split_options */ );
+									  true /* yb_copy_split_options */ ,
+									  NIL /* changedIndexNames */ ,
+									  NIL /* changedIndexSplitOpts */ );
 
 			if (result && (params->options & REINDEXOPT_VERBOSE) != 0)
 				ereport(INFO,

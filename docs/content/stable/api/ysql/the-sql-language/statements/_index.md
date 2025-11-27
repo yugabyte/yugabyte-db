@@ -10,7 +10,7 @@ menu:
     parent: the-sql-language
     weight: 100
 aliases:
-  - /preview/api/ysql/commands/
+  - /stable/api/ysql/commands/
 type: indexpage
 showRightNav: true
 ---

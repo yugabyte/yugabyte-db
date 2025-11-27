@@ -10,7 +10,7 @@ menu:
     identifier: api-ysql-datatypes-json
     parent: api-ysql-datatypes
 aliases:
-  - /preview/api/ysql/datatypes/type_json
+  - /stable/api/ysql/datatypes/type_json
 type: indexpage
 showRightNav: true
 ---

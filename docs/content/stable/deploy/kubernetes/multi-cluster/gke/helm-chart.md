@@ -10,7 +10,7 @@ menu:
     identifier: k8s-mc-gke-1
     weight: 628
 aliases:
-  - /preview/deploy/kubernetes/multi-cluster/gke
+  - /stable/deploy/kubernetes/multi-cluster/gke
 type: docs
 ---
 

@@ -28,6 +28,31 @@
 #include "nodes/ybbitmatrix.h"
 
 
+/*
+ * YB: info used by YbSaopMergeInfo.
+ */
+typedef struct
+{
+	NodeTag		type;
+	int			numCols;		/* number of sort-key columns */
+	AttrNumber *sortColIdx;		/* their indexes in the target list */
+	Oid		   *sortOperators;	/* OIDs of operators to sort them by */
+	Oid		   *collations;		/* OIDs of collations */
+	bool	   *nullsFirst;		/* NULLS FIRST/LAST directions */
+} YbSortInfo;
+
+/*
+ * YB: info used by IndexScan and IndexOnlyScan nodes.
+ *
+ * Holds info used for scalar array operation merge index [only] scans.
+ */
+typedef struct
+{
+	NodeTag		type;
+	List	   *saop_cols;		/* List of YbSaopMergeSaopColInfo */
+	YbSortInfo *sort_cols;
+} YbSaopMergeInfo;
+
 /* ----------------------------------------------------------------
  *						node definitions
  * ----------------------------------------------------------------
@@ -609,6 +634,7 @@ typedef struct IndexScan
 	YbPushdownExprs yb_rel_pushdown;
 	YbPlanInfo	yb_plan_info;
 	int			yb_distinct_prefixlen;	/* distinct index scan prefix */
+	YbSaopMergeInfo *yb_saop_merge_info;
 	YbLockMechanism yb_lock_mechanism;	/* locks possible as part of the scan */
 } IndexScan;
 
@@ -657,6 +683,7 @@ typedef struct IndexOnlyScan
 	YbPushdownExprs yb_pushdown;
 	YbPlanInfo	yb_plan_info;
 	int			yb_distinct_prefixlen;	/* distinct index scan prefix */
+	YbSaopMergeInfo *yb_saop_merge_info;
 } IndexOnlyScan;
 
 /* ----------------
