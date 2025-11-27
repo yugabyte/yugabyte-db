@@ -55,10 +55,7 @@
 using yb::rpc::Messenger;
 using std::string;
 
-DEFINE_UNKNOWN_string(rpc_bind_addresses, "0.0.0.0",
-              "Comma-separated list of addresses to bind to for RPC connections. "
-              "Currently, ephemeral ports (i.e. port 0) are not allowed.");
-TAG_FLAG(rpc_bind_addresses, stable);
+DECLARE_string(rpc_bind_addresses);
 
 DEFINE_UNKNOWN_bool(rpc_server_allow_ephemeral_ports, false,
             "Allow binding to ephemeral ports. This can cause problems, so currently "

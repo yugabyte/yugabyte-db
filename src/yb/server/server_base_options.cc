@@ -67,6 +67,8 @@ DECLARE_string(placement_cloud);
 DECLARE_string(placement_region);
 DECLARE_string(placement_zone);
 
+DECLARE_string(server_broadcast_addresses);
+
 namespace yb {
 namespace server {
 
@@ -91,7 +93,6 @@ DEFINE_UNKNOWN_int32(metrics_log_interval_ms, 0,
              "value, then metrics logging will be disabled.");
 TAG_FLAG(metrics_log_interval_ms, advanced);
 
-DEFINE_UNKNOWN_string(server_broadcast_addresses, "", "Broadcast addresses for this server.");
 
 ServerBaseOptions::ServerBaseOptions(int default_port)
     : env(Env::Default()),

@@ -169,6 +169,13 @@ DEFINE_test_flag(bool, check_catalog_version_overflow, false,
 DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_invalidation_messages, true,
     "True to enable invalidation messages");
 
+DEFINE_UNKNOWN_string(rpc_bind_addresses, "0.0.0.0",
+              "Comma-separated list of addresses to bind to for RPC connections. "
+              "Currently, ephemeral ports (i.e. port 0) are not allowed.");
+TAG_FLAG(rpc_bind_addresses, stable);
+
+DEFINE_UNKNOWN_string(server_broadcast_addresses, "", "Broadcast addresses for this server.");
+
 // Keep in sync with the same definition in ybc_guc.h
 #ifdef NDEBUG
 constexpr bool kEnableDdlTransactionBlocks = true;
