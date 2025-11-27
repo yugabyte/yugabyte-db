@@ -47,6 +47,10 @@ void ProcessWrapper::Kill(int signal) {
   }
 }
 
+void ProcessWrapper::Shutdown() { Kill(); }
+
+void ProcessWrapper::ImmediateShutdown() { Shutdown(); }
+
 // ------------------------------------------------------------------------------------------------
 // ProcessWrapper: managing one instance of a child process
 // ------------------------------------------------------------------------------------------------
@@ -141,11 +145,11 @@ Status ProcessSupervisor::InitializeProcessWrapperUnlocked() {
 }
 
 Status ProcessSupervisor::Restart() {
-  return KillAndChangeState(YbSubProcessState::kRunning);
+  return StopProcessAndChangeState(YbSubProcessState::kRunning);
 }
 
 Status ProcessSupervisor::Pause() {
-  return KillAndChangeState(YbSubProcessState::kPaused);
+  return StopProcessAndChangeState(YbSubProcessState::kPaused);
 }
 
 void ProcessSupervisor::Stop() {
@@ -155,7 +159,7 @@ void ProcessSupervisor::Stop() {
     state_ = YbSubProcessState::kStopping;
     PrepareForStop();
     if (process_wrapper_) {
-      process_wrapper_->Kill();
+      process_wrapper_->Shutdown();
     }
     if (!supervisor_thread_) {
       return;
@@ -184,7 +188,7 @@ void ProcessSupervisor::Stop() {
   supervisor_thread_->Join();
 }
 
-Status ProcessSupervisor::KillAndChangeState(YbSubProcessState new_state) {
+Status ProcessSupervisor::StopProcessAndChangeState(YbSubProcessState new_state) {
   {
     std::lock_guard lock(mtx_);
     if (state_ != YbSubProcessState::kPaused && state_ != YbSubProcessState::kRunning) {
@@ -192,7 +196,7 @@ Status ProcessSupervisor::KillAndChangeState(YbSubProcessState new_state) {
           IllegalState, "State must be either paused or running, state is $0", state_);
     }
     if (process_wrapper_) {
-      process_wrapper_->Kill(SIGKILL);
+      process_wrapper_->ImmediateShutdown();
     }
     state_ = new_state;
   }

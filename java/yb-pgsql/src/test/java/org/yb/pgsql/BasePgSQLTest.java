@@ -106,6 +106,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   /** Matches Postgres' FirstNormalObjectId */
   protected final long FIRST_NORMAL_OID = 16384;
 
+  protected final long WAIT_FOR_PG_AFTER_CLUSTER_START_TIMEOUT_MS = 10000;
+
+  private boolean pg_connection_check_after_startup = true;
+
   // Postgres settings.
   // TODO(janand) GH #17899 Deduplicate DEFAULT_PG_DATABASE and TEST_PG_USER (present in
   // BasePgSQLTest and ConnectionBuilder)
@@ -437,6 +441,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       connection = null;
     }
 
+    verifyClusterAcceptsPGConnections(
+                    WAIT_FOR_PG_AFTER_CLUSTER_START_TIMEOUT_MS *
+                    BuildTypeUtil.nonSanitizerVsSanitizer(1, 3));
+
     connection = createTestRole();
     allowSchemaPublic();
     pgInitialized = true;
@@ -451,6 +459,32 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
 
     return getConnectionBuilder().connect();
+  }
+
+  public void verifyClusterAcceptsPGConnections(long timeoutMs) throws Exception {
+    if (!pg_connection_check_after_startup) {
+      return;
+    }
+    LOG.info("Waiting for cluster to accept pg connections");
+    TestUtils.waitFor(() -> {
+        try {
+          ConnectionBuilder cbuilder = getConnectionBuilder().withUser(DEFAULT_PG_USER);
+          if (getTServerFlags()
+              .getOrDefault("ysql_enable_auth", "false")
+              .equalsIgnoreCase("true")) {
+            cbuilder = cbuilder.withPassword(DEFAULT_PG_PASS);
+          }
+          cbuilder.connect().close();
+          return true;
+        } catch (Exception e) {
+          return false;
+        }
+      }, timeoutMs);
+    LOG.info("done Waiting for cluster to accept pg connections");
+  }
+
+  protected void disablePGConnectionCheck() {
+    pg_connection_check_after_startup = false;
   }
 
   private void allowSchemaPublic() throws Exception {
