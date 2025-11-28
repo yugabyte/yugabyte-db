@@ -297,6 +297,16 @@ class CDCServiceImpl : public CDCServiceIf {
 
   static bool IsCDCSDKSnapshotBootstrapRequest(const CDCSDKCheckpointPB& req_checkpoint);
 
+  // Returns a list of catalog tables which gets streamed. (Currently 'pg_publication_rel' &
+  // 'pg_class' are the only catalog tables which gets streamed).
+  // 'namespace_id' is the id of namespace on which stream was created.
+  static Result<std::vector<TableId>> GetStreamableCatalogTables(const NamespaceId& namespace_id);
+
+  // Returns true if the given table is one of the catalog table which gets streamed.
+  // 'namespace_id' is the id of namespace on which stream was created.
+  static Result<bool> IsStreamableCatalogTable(
+      const TableId& table_id, const NamespaceId& namespace_id);
+
   // Sets paused producer XCluster streams.
   void SetPausedXClusterProducerStreams(
       const ::google::protobuf::Map<std::string, bool>& paused_producer_stream_ids,
