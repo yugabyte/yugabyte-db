@@ -1066,6 +1066,8 @@ Usage: yugabyted version [flags]
 
 ### xcluster
 
+xCluster support in yugabyted is {{<tags/feature/ea>}}.
+
 Use the `yugabyted xcluster` command to set up or delete [xCluster replication](../../../architecture/docdb-replication/async-replication/) between two universes.
 
 #### Syntax
