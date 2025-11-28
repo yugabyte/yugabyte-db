@@ -95,6 +95,8 @@ A support bundle is an archive generated at a universe level. It contains all th
 - Consensus meta files containing consensus metadata information from the YB-Master and YB-TServer.
 - Tablet meta files containing the tablet metadata from the YB-Master and YB-TServer.
 
+Each component of the support bundle is scanned using a [redacting service](https://github.com/yugabyte/yugabyte-db/blob/master/managed/src/main/java/com/yugabyte/yw/common/RedactingService.java) function to detect and redact passwords, keys, and other secrets before the bundle is generated.
+
 The diagnostic information can be analyzed locally or the bundle can be forwarded to the Yugabyte Support team.
 
 You can create a support bundle as follows:
