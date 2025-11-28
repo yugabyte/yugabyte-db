@@ -23,6 +23,7 @@ setup(name='ybops',
           'ybops/cloud/gcp',
           'ybops/cloud/onprem',
           'ybops/cloud/azure',
+          'ybops/cloud/kubernetes',
           'ybops/common',
           'ybops/node_agent',
           'ybops/utils'
