@@ -108,6 +108,7 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
           TaskType.CheckLocale,
           TaskType.CheckGlibc,
           TaskType.AnsibleConfigureServers,
+          TaskType.ValidateGFlags,
           TaskType.AnsibleConfigureServers,
           TaskType.SetNodeStatus,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
@@ -121,6 +122,7 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
 
   private static final List<JsonNode> CLUSTER_CREATE_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -177,6 +179,7 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
     userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
     userIntent.universeName = defaultUniverse.getName();
     userIntent.provider = defaultProvider.getUuid().toString();
+    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
     taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
     Cluster asyncCluster = new Cluster(ClusterType.ASYNC, userIntent);
     taskParams.clusters.add(asyncCluster);
@@ -224,6 +227,7 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
     userIntent.instanceType = rrInstanceType;
     userIntent.universeName = universe.getName();
     userIntent.provider = azuProvider.getUuid().toString();
+    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
     taskParams.clusters.add(universe.getUniverseDetails().getPrimaryCluster());
     Cluster asyncCluster = new Cluster(ClusterType.ASYNC, userIntent);
     taskParams.clusters.add(asyncCluster);
@@ -280,6 +284,7 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
     userIntent.instanceType = rrInstanceType;
     userIntent.universeName = universe.getName();
     userIntent.provider = defaultProvider.getUuid().toString();
+    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
     taskParams.clusters.add(universe.getUniverseDetails().getPrimaryCluster());
     Cluster asyncCluster = new Cluster(ClusterType.ASYNC, userIntent);
     taskParams.clusters.add(asyncCluster);
@@ -350,6 +355,7 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
     userIntent.providerType = Common.CloudType.onprem;
     userIntent.provider = onPremProvider.getUuid().toString();
     userIntent.universeName = onPremUniverse.getName();
+    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
     taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
     Cluster asyncCluster = new Cluster(ClusterType.ASYNC, userIntent);
     taskParams.clusters.add(asyncCluster);
@@ -394,6 +400,7 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
     userIntent.providerType = Common.CloudType.onprem;
     userIntent.provider = onPremProvider.getUuid().toString();
     userIntent.universeName = onPremUniverse.getName();
+    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
     taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
     Cluster asyncCluster = new Cluster(ClusterType.ASYNC, userIntent);
     taskParams.clusters.add(asyncCluster);
@@ -428,6 +435,7 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
     userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
     userIntent.universeName = defaultUniverse.getName();
     userIntent.provider = defaultProvider.getUuid().toString();
+    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
     taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
     Cluster asyncCluster = new Cluster(ClusterType.ASYNC, userIntent);
     taskParams.clusters.add(asyncCluster);
