@@ -77,9 +77,9 @@ The following S3 IAM permissions are required:
 "s3:GetBucketLocation"
 ```
 
-### Specifying signing region
+### Specify signing region
 
-If you are backing up an on-premises universe using a backup configuration for an S3 storage bucket in a region that is different than the region where your YugabyteDB Anywhere instance is running, or YBA is not running on AWS, and encounter an error similar to `Cannot list objects in backup location`, you may need to specify a signing region for the S3 backup configuration.
+If you are backing up an on-premises universe using a backup configuration for an S3 storage bucket located in a region that is different than the region where your YugabyteDB Anywhere instance is running, or YugabyteDB Anywhere is not running on AWS, and encounter an error similar to `Cannot list objects in backup location`, you may need to specify a signing region for the S3 backup configuration.
 
 The signing region option is not available by default. To make it available, set the **Enable Signing Region** Global Runtime Configuration option (config key `yb.ui.feature_flags.enable_signing_region`) to true. Refer to [Manage runtime configuration settings](../../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
 
