@@ -182,6 +182,7 @@ struct TableInfo {
     return cotable_id.IsNil();
   }
 
+  bool IsVectorIndex() const;
   bool NeedVectorIndex() const;
 
   // Should account for every field in TableInfo.
@@ -567,6 +568,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // Returns a list of all tables colocated on this tablet.
   std::vector<TableId> GetAllColocatedTables() const;
   std::vector<TableInfoPtr> GetAllColocatedTableInfos() const;
+  std::vector<TableInfoPtr> GetAllColocatedVectorIndexes() const;
 
   // Returns the number of tables colocated on this tablet, returns 1 for non-colocated case.
   size_t GetColocatedTablesCount() const EXCLUDES(data_mutex_);

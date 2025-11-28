@@ -232,6 +232,17 @@ Status ForAllTablets(
 
 }  // namespace
 
+Status MiniTabletServer::DeleteTablet(
+    const TabletId& tablet_id, tablet::TabletDataState delete_state, bool keep_on_disk) {
+  std::optional<int64_t> cas_config_opid_index_less_or_equal;
+  std::optional<tserver::TabletServerErrorPB::Code> error_code;
+  RETURN_NOT_OK(server()->tablet_manager()->DeleteTablet(
+      tablet_id, delete_state, tablet::ShouldAbortActiveTransactions::kFalse,
+      cas_config_opid_index_less_or_equal, /* hide_only = */ false, keep_on_disk, &error_code));
+  LOG(INFO) << "Tablet " << tablet_id << " deleted as " << TabletDataState_Name(delete_state);
+  return Status::OK();
+}
+
 Status MiniTabletServer::FlushTablets(tablet::FlushMode mode, tablet::FlushFlags flags) {
   if (!server_) {
     return Status::OK();

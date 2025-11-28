@@ -38,6 +38,7 @@
 #include "yb/tools/yb-backup/yb-backup-test_base.h"
 
 #include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/tablet_server.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/test_thread_holder.h"
@@ -1615,6 +1616,47 @@ TEST_F(PgVectorIndexUtilTest, SstDump) {
           ybctid_4_vector_2 -> ybctid_4
       )#",
       output);
+}
+
+TEST_F(PgVectorIndexUtilTest, DeleteTabletDirs) {
+  constexpr size_t kNumRows = 10;
+  num_pre_split_tablets_ = 2; // To have test both types of delete_state.
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  ASSERT_OK(cluster_->FlushTablets());
+  ASSERT_NO_FATALS(VerifyRead(conn, kNumRows, AddFilter::kFalse));
+
+  auto tablet_peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(tablet_peers.size(), 2);
+
+  for (auto delete_state : { tablet::TABLET_DATA_DELETED, tablet::TABLET_DATA_TOMBSTONED }) {
+    ASSERT_FALSE(tablet_peers.empty());
+    auto tablet = ASSERT_RESULT(tablet_peers.back()->shared_tablet());
+    auto vector_indexes = tablet->vector_indexes().List();
+    ASSERT_EQ(vector_indexes->size(), 1);
+
+    const auto vector_index_dir = vector_indexes->front()->path();
+    const auto table_dir = DirName(vector_index_dir);
+    const auto tablet_id = tablet->tablet_id();
+
+    // Sanity check to make sure table dir contains vector index.
+    ASSERT_TRUE(vector_index_dir.starts_with(table_dir));
+
+    auto content = ASSERT_RESULT(Env::Default()->GetChildren(table_dir, ExcludeDots::kTrue));
+    LOG(INFO) << Format("Table dirs before tablet $0 deletion: $1", tablet_id, AsString(content));
+
+    ASSERT_OK(cluster_->mini_tablet_server(0)->DeleteTablet(tablet_id, delete_state));
+
+    // Make sure all tablet directories have been deleted (including vector index dir).
+    content = ASSERT_RESULT(Env::Default()->GetChildren(table_dir, ExcludeDots::kTrue));
+    LOG(INFO) << Format("Table dirs after tablet $0 deletion: $1", tablet_id, AsString(content));
+    const auto num_tablet_dirs = std::ranges::count_if(
+          content, [&tablet_id](const std::string& subdir) { return subdir.contains(tablet_id); });
+    ASSERT_EQ(num_tablet_dirs, 0);
+
+    tablet_peers.pop_back();
+  }
 }
 
 }  // namespace yb::pgwrapper
