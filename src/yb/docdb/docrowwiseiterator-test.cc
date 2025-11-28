@@ -570,8 +570,8 @@ void DocRowwiseIteratorTest::TestClusteredFilterRange() {
 
   DocQLScanSpec spec(
       test_range_schema, kFixedHashCode, kFixedHashCode, arena,
-      dockv::TEST_KeyEntryValuesToSlices(*arena, hashed_components), &cond, nullptr,
-      rocksdb::kDefaultQueryId);
+      dockv::TEST_KeyEntryValuesToSlices(*arena, hashed_components), QLConditionPBPtr(&cond),
+      nullptr, rocksdb::kDefaultQueryId);
 
   CreateIteratorAndValidate(
       test_range_schema, ReadHybridTime::FromMicros(2000), spec,
@@ -660,8 +660,9 @@ void DocRowwiseIteratorTest::TestClusteredFilterRangeWithTableTombstoneReverseSc
   std::optional<int32_t> empty_hash_code;
   static const DocKey default_doc_key;
   DocPgsqlScanSpec spec(
-      test_schema, rocksdb::kDefaultQueryId, nullptr, {}, empty_key_components, &cond,
-      empty_hash_code, empty_hash_code, default_doc_key, /* is_forward_scan */ false);
+      test_schema, rocksdb::kDefaultQueryId, nullptr, {}, empty_key_components,
+      PgsqlConditionPBPtr(&cond), empty_hash_code, empty_hash_code, default_doc_key,
+      /* is_forward_scan */ false);
 
   CreateIteratorAndValidate(
       test_schema, ReadHybridTime::FromMicros(2000), spec,
@@ -697,8 +698,8 @@ void DocRowwiseIteratorTest::TestClusteredFilterHybridScan() {
   auto arena = SharedSmallArena();
   DocQLScanSpec spec(
       population_schema, kFixedHashCode, kFixedHashCode, arena,
-      TEST_KeyEntryValuesToSlices(*arena, hashed_components), &cond, nullptr,
-      rocksdb::kDefaultQueryId);
+      TEST_KeyEntryValuesToSlices(*arena, hashed_components), QLConditionPBPtr(&cond),
+      nullptr, rocksdb::kDefaultQueryId);
 
   CreateIteratorAndValidate(
       population_schema, ReadHybridTime::FromMicros(2000), spec,
@@ -732,8 +733,8 @@ void DocRowwiseIteratorTest::TestClusteredFilterSubsetCol() {
   auto arena = SharedSmallArena();
   DocQLScanSpec spec(
       population_schema, kFixedHashCode, kFixedHashCode, arena,
-      dockv::TEST_KeyEntryValuesToSlices(*arena, hashed_components), &cond, nullptr,
-      rocksdb::kDefaultQueryId);
+      dockv::TEST_KeyEntryValuesToSlices(*arena, hashed_components), QLConditionPBPtr(&cond),
+      nullptr, rocksdb::kDefaultQueryId);
 
   CreateIteratorAndValidate(
       population_schema, ReadHybridTime::FromMicros(2000), spec,
@@ -769,8 +770,8 @@ void DocRowwiseIteratorTest::TestClusteredFilterSubsetCol2() {
   auto arena = SharedSmallArena();
   DocQLScanSpec spec(
       population_schema, kFixedHashCode, kFixedHashCode, arena,
-      dockv::TEST_KeyEntryValuesToSlices(*arena, hashed_components), &cond, nullptr,
-      rocksdb::kDefaultQueryId);
+      dockv::TEST_KeyEntryValuesToSlices(*arena, hashed_components), QLConditionPBPtr(&cond),
+      nullptr, rocksdb::kDefaultQueryId);
 
   CreateIteratorAndValidate(
       population_schema, ReadHybridTime::FromMicros(2000), spec,
@@ -812,8 +813,8 @@ void DocRowwiseIteratorTest::TestClusteredFilterMultiIn() {
   auto arena = SharedSmallArena();
   DocQLScanSpec spec(
       population_schema, kFixedHashCode, kFixedHashCode, arena,
-      dockv::TEST_KeyEntryValuesToSlices(*arena, hashed_components), &cond, nullptr,
-      rocksdb::kDefaultQueryId);
+      dockv::TEST_KeyEntryValuesToSlices(*arena, hashed_components), QLConditionPBPtr(&cond),
+      nullptr, rocksdb::kDefaultQueryId);
 
   CreateIteratorAndValidate(
       population_schema, ReadHybridTime::FromMicros(2000), spec,
@@ -849,8 +850,8 @@ void DocRowwiseIteratorTest::TestClusteredFilterEmptyIn() {
   auto arena = SharedSmallArena();
   DocQLScanSpec spec(
       population_schema, kFixedHashCode, kFixedHashCode, arena,
-      dockv::TEST_KeyEntryValuesToSlices(*arena, hashed_components), &cond, nullptr,
-      rocksdb::kDefaultQueryId);
+      dockv::TEST_KeyEntryValuesToSlices(*arena, hashed_components), QLConditionPBPtr(&cond),
+      nullptr, rocksdb::kDefaultQueryId);
 
   // No rows match the index scan => no rows should be seen by max_seen_ht.
   CreateIteratorAndValidate(

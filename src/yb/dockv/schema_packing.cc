@@ -14,7 +14,7 @@
 #include "yb/dockv/schema_packing.h"
 
 #include "yb/common/column_id.h"
-#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_protocol.messages.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
 
@@ -583,7 +583,16 @@ void SchemaPacking::ToPB(SchemaPackingPB* out) const {
 
 bool SchemaPacking::CouldPack(
     const google::protobuf::RepeatedPtrField<QLColumnValuePB>& values) const {
-  if (make_unsigned(values.size()) != column_to_idx_.size()) {
+  return DoCouldPack(values);
+}
+
+bool SchemaPacking::CouldPack(const ArenaList<LWQLColumnValuePB>& values) const {
+  return DoCouldPack(values);
+}
+
+template <class Col>
+bool SchemaPacking::DoCouldPack(const Col& values) const {
+  if (static_cast<size_t>(values.size()) != column_to_idx_.size()) {
     return false;
   }
   for (const auto& value : values) {

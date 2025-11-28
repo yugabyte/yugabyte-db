@@ -1195,6 +1195,10 @@ void AppendEncodedValue(const LWQLValuePB& value, ValueBuffer* out) {
   DoAppendEncodedValue(value, out);
 }
 
+void AppendEncodedValue(const LWQLValuePB& value, std::string* out) {
+  DoAppendEncodedValue(value, out);
+}
+
 size_t EncodedValueSize(const QLValuePB& value) {
   SizeCounter counter;
   DoAppendEncodedValue(value, &counter);

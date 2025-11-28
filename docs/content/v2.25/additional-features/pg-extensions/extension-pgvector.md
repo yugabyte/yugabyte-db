@@ -211,6 +211,7 @@ A higher `ef_construction` value provides faster recall at the cost of index bui
 
 - Concurrent index creation is not supported yet.
 - Partial indexes on vector columns are not supported yet.
+- Vector indexes are not supported for [xCluster replication](../../../architecture/docdb-replication/async-replication/).
 
 ## Learn more
 

@@ -58,6 +58,12 @@ Use the Live Queries and Slow Queries dashboards to monitor and display current 
     icon="/images/section_icons/introduction/benefits.png">}}
 
   {{<index/item
+    title="CDC Observability"
+    body="Monitor replication slots used for CDC."
+    href="cdc-observability/"
+    icon="fa-thin fa-arrows-spin">}}
+
+  {{<index/item
     title="Export YSQL audit logs"
     body="Export universe audit logs to third-party logging tools."
     href="universe-logging/"
@@ -74,11 +80,5 @@ Use the Live Queries and Slow Queries dashboards to monitor and display current 
     body="Use your own Prometheus server to scrape metrics."
     href="prometheus-custom/"
     icon="/images/section_icons/introduction/benefits.png">}}
-
-  {{<index/item
-    title="CDC Observability"
-    body="Use CDC to capture and emit database change events."
-    href="cdc-observability/"
-    icon="fa-thin fa-arrows-spin">}}
 
 {{</index/block>}}

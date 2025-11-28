@@ -44,7 +44,8 @@ namespace {
 
 using PackedValueWithPrefixV1 = std::pair<Slice, PackedValueV1>;
 using PackedValueWithPrefixV2 = std::pair<Slice, PackedValueV2>;
-using ValuePair = std::pair<Slice, const QLValuePB&>;
+template <class Value>
+using ValuePair = std::pair<Slice, const Value&>;
 
 std::string ValueToString(const QLValuePB& value) {
   return value.ShortDebugString();
@@ -54,7 +55,8 @@ std::string ValueToString(const LWQLValuePB& value) {
   return value.ShortDebugString();
 }
 
-std::string ValueToString(const ValuePair& value) {
+template <class Value>
+std::string ValueToString(const ValuePair<Value>& value) {
   auto result = value.second.ShortDebugString();
   if (!value.first.empty()) {
     Slice control_fields_slice = value.first;
@@ -439,7 +441,12 @@ Result<bool> RowPackerV1::AddValue(ColumnId column_id, const LWQLValuePB& value)
 
 Result<bool> RowPackerV1::AddValue(
     ColumnId column_id, Slice control_fields, const QLValuePB& value) {
-  return DoAddValue(column_id, ValuePair(control_fields, value), /* tail_size= */ 0);
+  return DoAddValue(column_id, ValuePair<QLValuePB>(control_fields, value), /* tail_size= */ 0);
+}
+
+Result<bool> RowPackerV1::AddValue(
+    ColumnId column_id, Slice control_fields, const LWQLValuePB& value) {
+  return DoAddValue(column_id, ValuePair<LWQLValuePB>(control_fields, value), /* tail_size= */ 0);
 }
 
 Result<bool> RowPackerV1::AddValue(ColumnId column_id, PackedValueV1 value, ssize_t tail_size) {

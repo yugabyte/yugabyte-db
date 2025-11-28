@@ -206,7 +206,7 @@ class PgsqlReadOperation : public DocExprExecutor {
   //     SELECT ... WHERE ybctid IN (y1, y2, y3)
   Result<size_t> Execute();
 
-  Status GetSpecialColumn(ColumnIdRep column_id, QLValuePB* result);
+  Result<Slice> GetSpecialColumn(ColumnIdRep column_id);
 
  private:
   // Execute a READ operator for a given scalar argument.

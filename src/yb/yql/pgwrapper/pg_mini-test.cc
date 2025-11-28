@@ -15,6 +15,7 @@
 #include <fstream>
 #include <optional>
 #include <thread>
+#include <string_view>
 
 #include <boost/preprocessor/seq/for_each.hpp>
 
@@ -73,6 +74,8 @@
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
+
+#include "yb/common/advisory_locks_error.h"
 
 using std::string;
 

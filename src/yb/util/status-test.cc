@@ -35,6 +35,7 @@
 
 #include <array>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "yb/util/logging.h"
@@ -51,9 +52,23 @@ using namespace std::literals;
 
 namespace yb {
 
+constexpr uint8_t kMinTestError = 202;
+constexpr uint8_t kMaxTestError = 210;
+
+constexpr std::array<std::string_view, kMaxTestError - kMinTestError + 1> kCategoryNames{
+    "test error 202"sv,
+    "test error 203"sv,
+    "test error 204"sv,
+    "test error 205"sv,
+    "test error 206"sv,
+    "test error 207"sv,
+    "test error 208"sv,
+    "test error 209"sv,
+    "test error 210"sv};
+
 template <uint8_t category>
 struct TestErrorTag : IntegralErrorTag<int64_t> {
-  static constexpr uint8_t kCategory = category;
+  static constexpr CategoryDescriptor kCategory{category, kCategoryNames[category - kMinTestError]};
 
   static std::string ToMessage(Value value) {
     return std::to_string(value);
@@ -83,19 +98,11 @@ class TestErrorDescriptorImpl : public TestErrorDescriptor {
   }
 };
 
-constexpr uint8_t kMinTestError = 202;
-constexpr uint8_t kMaxTestError = 210;
-
 std::array<std::unique_ptr<TestErrorDescriptor>, kMaxTestError + 1> kTestErrorDescriptors;
 
 template <uint8_t category>
-StatusCategoryRegisterer& RegisterTestError() {
-  static const std::string kTestErrorCategoryName = "test error " + std::to_string(category);
-
-  static StatusCategoryRegisterer test_error_category_registerer(
-      StatusCategoryDescription::Make<TestErrorTag<category>>(&kTestErrorCategoryName));
+void RegisterTestError() {
   kTestErrorDescriptors[category] = std::make_unique<TestErrorDescriptorImpl<category>>();
-  return test_error_category_registerer;
 }
 
 template <uint8_t category>
@@ -135,35 +142,25 @@ class ErrorDelayTraits {
 
 class ErrorDelayTag : public IntegralBackedErrorTag<ErrorDelayTraits> {
  public:
-  static constexpr uint8_t kCategory = kMaxTestError + 1;
+  static constexpr CategoryDescriptor kCategory{kMaxTestError + 1, "error delay"sv};
 
   static std::string ToMessage(MonoDelta value) {
     return value.ToString();
   }
 };
 
-typedef StatusErrorCodeImpl<ErrorDelayTag> ErrorDelay;
-
-const std::string kErrorDelayCategoryName = "error delay";
-
-static StatusCategoryRegisterer error_delay_category_registerer(
-    StatusCategoryDescription::Make<ErrorDelayTag>(&kErrorDelayCategoryName));
+using ErrorDelay = StatusErrorCodeImpl<ErrorDelayTag>;
 
 class StringVectorErrorTag : public StringVectorBackedErrorTag {
  public:
-  static constexpr uint8_t kCategory = kMaxTestError + 2;
+  static constexpr CategoryDescriptor kCategory{kMaxTestError + 2, "string vector error"sv};
 
   static std::string ToMessage(Value value) {
     return AsString(value);
   }
 };
 
-typedef StatusErrorCodeImpl<StringVectorErrorTag> StringVectorError;
-
-const std::string kStringVectorErrorCategoryName = "string vector error";
-
-static StatusCategoryRegisterer string_vector_error_category_registerer(
-    StatusCategoryDescription::Make<StringVectorErrorTag>(&kStringVectorErrorCategoryName));
+using StringVectorError = StatusErrorCodeImpl<StringVectorErrorTag>;
 
 TEST(StatusTest, TestPosixCode) {
   Status ok = Status::OK();

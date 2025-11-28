@@ -92,6 +92,10 @@ QLScanRange::QLScanRange(const Schema& schema, const QLConditionPB& condition) {
   Init(schema, condition);
 }
 
+QLScanRange::QLScanRange(const Schema& schema, const LWQLConditionPB& condition) {
+  Init(schema, condition);
+}
+
 QLScanRange::QLScanRange(const Schema& schema, const PgsqlConditionPB& condition) {
   Init(schema, condition);
 }
@@ -602,8 +606,8 @@ QLScanSpec::QLScanSpec(
     std::unique_ptr<const QLScanRange> range_bounds, size_t prefix_length,
     QLExprExecutorPtr executor, const ArenaPtr& arena)
     : QLScanSpec(
-          schema, is_forward_scan, query_id, std::move(range_bounds), prefix_length, nullptr,
-          nullptr, std::move(executor), arena) {}
+          schema, is_forward_scan, query_id, std::move(range_bounds), prefix_length,
+          nullptr, nullptr, std::move(executor), arena) {}
 
 QLScanSpec::QLScanSpec(
     const Schema& schema,
@@ -611,8 +615,8 @@ QLScanSpec::QLScanSpec(
     rocksdb::QueryId query_id,
     std::unique_ptr<const QLScanRange> range_bounds,
     size_t prefix_length,
-    const QLConditionPB* condition,
-    const QLConditionPB* if_condition,
+    QLConditionPBPtr condition,
+    QLConditionPBPtr if_condition,
     QLExprExecutorPtr executor,
     const ArenaPtr& arena)
     : YQLScanSpec(
@@ -628,27 +632,23 @@ QLScanSpec::QLScanSpec(
 
 // Evaluate the WHERE condition for the given row.
 Status QLScanSpec::Match(const QLTableRow& table_row, bool* match) const {
-  bool cond = true;
-  bool if_cond = true;
-  if (condition_ != nullptr) {
-    VLOG_WITH_FUNC(4) << "condition: " << AsString(*condition_);
-    RETURN_NOT_OK(executor_->EvalCondition(*condition_, table_row, &cond));
-  }
-  if (if_condition_ != nullptr) {
-    VLOG_WITH_FUNC(4) << "if_condition: " << AsString(*if_condition_);
-    RETURN_NOT_OK(executor_->EvalCondition(*if_condition_, table_row, &if_cond));
-  }
-  *match = cond && if_cond;
+  VLOG_IF_WITH_FUNC(4, condition_ != nullptr) << "Condition: " << AsString(condition_);
+  VLOG_IF_WITH_FUNC(4, if_condition_ != nullptr) << "If condition: " << AsString(if_condition_);
+  *match = VERIFY_RESULT(executor_->EvalCondition(condition_, table_row)) &&
+           VERIFY_RESULT(executor_->EvalCondition(if_condition_, table_row));
   return Status::OK();
 }
 
 //-------------------------------------- QL scan spec ---------------------------------------
 
-std::vector<const QLValuePB*> GetTuplesSortedByOrdering(
-    const QLSeqValuePB& options, const Schema& schema, bool is_forward_scan,
+namespace {
+
+template <class SeqValuePB>
+auto DoGetTuplesSortedByOrdering(
+    const SeqValuePB& options, const Schema& schema, bool is_forward_scan,
     const ColumnListVector& col_idxs) {
-  std::vector<const QLValuePB*> options_elems;
-  options_elems.reserve(options.elems_size());
+  std::vector<decltype(&*options.elems().begin())> options_elems;
+  options_elems.reserve(options.elems().size());
   for (const auto& value : options.elems()) {
     options_elems.push_back(&value);
   }
@@ -662,7 +662,7 @@ std::vector<const QLValuePB*> GetTuplesSortedByOrdering(
         DCHECK(tuple1.elems().size() == tuple2.elems().size());
         auto li = tuple1.elems().begin();
         auto ri = tuple2.elems().begin();
-        int i = 0;
+        decltype(tuple1.elems().size()) i = 0;
         int cmp = 0;
         for (i = 0; i < tuple1.elems().size(); ++i, ++li, ++ri) {
           if (IsNull(*li)) {
@@ -698,10 +698,24 @@ std::vector<const QLValuePB*> GetTuplesSortedByOrdering(
   return options_elems;
 }
 
+} // namespace
+
 std::string ScanBounds::ToString() const {
   return YB_STRUCT_TO_STRING((lower, dockv::DocKey::DebugSliceToString(lower.AsSlice())),
                              (upper, dockv::DocKey::DebugSliceToString(upper.AsSlice())),
                              trivial);
+}
+
+std::vector<const QLValuePB*> GetTuplesSortedByOrdering(
+    const QLSeqValuePB& options, const Schema& schema, bool is_forward_scan,
+    const ColumnListVector& col_idxs) {
+  return DoGetTuplesSortedByOrdering(options, schema, is_forward_scan, col_idxs);
+}
+
+std::vector<const LWQLValuePB*> GetTuplesSortedByOrdering(
+    const LWQLSeqValuePB& options, const Schema& schema, bool is_forward_scan,
+    const ColumnListVector& col_idxs) {
+  return DoGetTuplesSortedByOrdering(options, schema, is_forward_scan, col_idxs);
 }
 
 }  // namespace yb::qlexpr

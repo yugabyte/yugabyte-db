@@ -15,13 +15,11 @@
 
 #include <memory>
 
+#include "yb/common/pgsql_protocol.fwd.h"
+
 #include "yb/rocksdb/util/statistics.h"
 
-namespace yb {
-
-class PgsqlResponsePB;
-
-namespace docdb {
+namespace yb::docdb {
 
 class DocDBStatistics {
  public:
@@ -36,12 +34,14 @@ class DocDBStatistics {
   size_t Dump(std::stringstream* out) const;
 
   void CopyToPgsqlResponse(PgsqlResponsePB* response) const;
+  void CopyToPgsqlResponse(LWPgsqlResponsePB* response) const;
 
  private:
+  template<class PB>
+  void DoCopyToPgsqlResponse(PB* response) const;
+
   rocksdb::ScopedStatistics regulardb_statistics_;
   rocksdb::ScopedStatistics intentsdb_statistics_;
 };
 
-} // namespace docdb
-
-} // namespace yb
+} // namespace yb::docdb

@@ -905,6 +905,14 @@ using UnorderedStringMap = std::unordered_map<std::string, Value, StringHash, st
 
 using UnorderedStringSet = std::unordered_set<std::string, StringHash, std::equal_to<void>>;
 
+template <class Map, class K>
+auto& MappedValue(Map& map, K&& key) {
+  return map.emplace(
+      std::piecewise_construct,
+      std::forward_as_tuple(std::forward<K>(key)),
+      std::forward_as_tuple()).first->second;
+}
+
 // Define a concept that ensures Container's value_type is T
 template<typename Container, typename T>
 concept ContainerOf = requires {

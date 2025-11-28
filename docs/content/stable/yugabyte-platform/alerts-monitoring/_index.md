@@ -66,6 +66,12 @@ Integrate with third-party tools such as Datadog, Dynatrace, and Splunk to expor
     icon="fa-thin fa-chart-simple">}}
 
   {{<index/item
+    title="CDC observability"
+    body="Monitor replication slots used for CDC."
+    href="cdc-observability/"
+    icon="fa-regular fa-arrows-spin">}}
+
+  {{<index/item
     title="Export metrics and logs"
     body="Export audit logs and node-level metrics to third-party tools."
     href="anywhere-export-configuration/"

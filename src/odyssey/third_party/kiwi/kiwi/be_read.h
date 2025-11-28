@@ -30,6 +30,22 @@ static inline void kiwi_be_startup_init(kiwi_be_startup_t *su)
 	kiwi_var_init(&su->replication, NULL, 0);
 }
 
+/*
+ * YB: PG limits names to NAMEDATALEN size, which is set to 64 in code. Database
+ * and user names longer than that are truncated to first 63 characters followed by
+ * a null terminator
+ */
+#define YB_MAX_PG_NAME_LEN 64
+
+static inline void yb_kiwi_be_truncate_and_set_var(kiwi_var_t *var, char *value,
+						   uint32_t value_len)
+{
+	if (value_len > YB_MAX_PG_NAME_LEN)
+		value_len = YB_MAX_PG_NAME_LEN;
+	yb_kiwi_var_set(var, value, value_len);
+	var->value[value_len - 1] = '\0';
+}
+
 static inline int kiwi_be_read_options(kiwi_be_startup_t *su, char *pos,
 				       uint32_t pos_size, kiwi_vars_t *vars)
 {
@@ -53,11 +69,14 @@ static inline int kiwi_be_read_options(kiwi_be_startup_t *su, char *pos,
 		value_size = pos - value;
 
 		/* set common params */
+		/* YB: Truncate user and database value lengths if longer than 64 */
 #ifndef YB_GUC_SUPPORT_VIA_SHMEM
 		if (name_size == 5 && !memcmp(name, "user", 5))
-			yb_kiwi_var_set(&su->user, value, value_size);
+			yb_kiwi_be_truncate_and_set_var(&su->user, value,
+							value_size);
 		else if (name_size == 9 && !memcmp(name, "database", 9))
-			yb_kiwi_var_set(&su->database, value, value_size);
+			yb_kiwi_be_truncate_and_set_var(&su->database, value,
+							value_size);
 		else if (name_size == 12 && !memcmp(name, "replication", 12))
 			yb_kiwi_var_set(&su->replication, value, value_size);
 #else

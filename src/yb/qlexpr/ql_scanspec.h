@@ -43,6 +43,8 @@ namespace yb::qlexpr {
 using Option = dockv::KeyEntryValue;            // an option in an IN/EQ clause
 using OptionList = std::vector<Slice>;          // all the options in an IN/EQ clause
 
+using QLConditionPBPtr = rpc::AnyMessagePtrBase<const QLConditionPB*, const LWQLConditionPB*>;
+
 YB_DEFINE_ENUM(BoundType, (kLower)(kUpper));
 
 // Bound of a range specification
@@ -120,8 +122,21 @@ class QLScanRange {
   };
 
   QLScanRange(const Schema& schema, const QLConditionPB& condition);
+  QLScanRange(const Schema& schema, const LWQLConditionPB& condition);
   QLScanRange(const Schema& schema, const PgsqlConditionPB& condition);
   QLScanRange(const Schema& schema, const LWPgsqlConditionPB& condition);
+
+  template <class ConditionPtr>
+  static std::unique_ptr<QLScanRange> Create(
+      const Schema& schema, ConditionPtr condition) {
+    if (!condition) {
+      return nullptr;
+    }
+    if (condition.is_lightweight()) {
+      return std::make_unique<QLScanRange>(schema, *condition.lightweight());
+    }
+    return std::make_unique<QLScanRange>(schema, *condition.protobuf());
+  }
 
   QLRange RangeFor(ColumnId col_id) const {
     const auto& iter = ranges_.find(col_id);
@@ -311,8 +326,8 @@ class QLScanSpec : public YQLScanSpec {
       rocksdb::QueryId query_id,
       std::unique_ptr<const QLScanRange> range_bounds,
       size_t prefix_length,
-      const QLConditionPB* condition,
-      const QLConditionPB* if_condition,
+      QLConditionPBPtr condition,
+      QLConditionPBPtr if_condition,
       QLExprExecutorPtr executor = nullptr,
       const ArenaPtr& arena = nullptr);
 
@@ -323,8 +338,8 @@ class QLScanSpec : public YQLScanSpec {
   virtual Status Match(const QLTableRow& table_row, bool* match) const;
 
  protected:
-  const QLConditionPB* condition_;
-  const QLConditionPB* if_condition_;
+  QLConditionPBPtr condition_;
+  QLConditionPBPtr if_condition_;
   QLExprExecutorPtr executor_;
 };
 
@@ -332,6 +347,10 @@ using ColumnListVector = std::vector<int>;
 
 std::vector<const QLValuePB*> GetTuplesSortedByOrdering(
     const QLSeqValuePB& options, const Schema& schema, bool is_forward_scan,
+    const ColumnListVector& col_idxs);
+
+std::vector<const LWQLValuePB*> GetTuplesSortedByOrdering(
+    const LWQLSeqValuePB& options, const Schema& schema, bool is_forward_scan,
     const ColumnListVector& col_idxs);
 
 }  // namespace yb::qlexpr

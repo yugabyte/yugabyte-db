@@ -69,11 +69,6 @@ void ErrnoToCString(int err, char *buf, size_t buf_len) {
 #endif
 }
 
-static const std::string kErrnoCategoryName = "system error";
-
-static StatusCategoryRegisterer errno_category_registerer(
-    StatusCategoryDescription::Make<ErrnoTag>(&kErrnoCategoryName));
-
 namespace internal {
 
 #if defined(__APPLE__)

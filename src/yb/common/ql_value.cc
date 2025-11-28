@@ -1244,4 +1244,12 @@ void ConcatStrings(const Slice& lhs, const Slice& rhs, LWQLValuePB* result) {
   result->ref_string_value(Slice(data, lhs.size() + rhs.size()));
 }
 
+void SetStringValue(QLValuePB& key, std::string_view value) {
+  key.set_string_value(value.data(), value.size());
+}
+
+void SetStringValue(LWQLValuePB& key, std::string_view value) {
+  key.dup_string_value(value);
+}
+
 } // namespace yb

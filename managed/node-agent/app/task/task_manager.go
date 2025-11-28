@@ -13,6 +13,9 @@ import (
 	"node-agent/util"
 	"sync"
 	"time"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 const (
@@ -216,7 +219,11 @@ func (m *TaskManager) Subscribe(
 		case <-ctx.Done():
 			m.updateTime(taskID)
 			// Client is cancelled or deadline exceeded.
-			return nil
+			// Return the right error code for the client to retry.
+			if ctx.Err() == context.DeadlineExceeded {
+				return status.New(codes.DeadlineExceeded, "Client deadline exceeded").Err()
+			}
+			return status.New(codes.Canceled, "Client cancelled request").Err()
 		case <-tInfo.future.Done():
 			// Task is completed.
 			size := 0

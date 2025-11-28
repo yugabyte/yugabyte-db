@@ -76,7 +76,6 @@ ADD_YB_LIBRARY(yb_common_base
   DEPS ${COMMON_BASE_LIBS})
 
 set(COMMON_SRCS
-  advisory_locks_error.cc
   clock.cc
   colocated_util.cc
   common_consensus_util.cc
@@ -93,7 +92,6 @@ set(COMMON_SRCS
   key_encoder.cc
   object_lock_tracker.cc
   opid.cc
-  pgsql_error.cc
   pg_types.cc
   ql_protocol_util.cc
   retryable_request.cc
@@ -107,7 +105,6 @@ set(COMMON_SRCS
   tablespace_parser.cc
   termination_monitor.cc
   transaction.cc
-  transaction_error.cc
   wire_protocol.cc
   llvm_profile_dumper.cc
   version_info.cc

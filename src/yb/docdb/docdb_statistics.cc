@@ -16,7 +16,7 @@
 #include <span>
 #include <tuple>
 
-#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/pgsql_protocol.messages.h"
 #include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/util/statistics.h"
 #include "yb/util/atomic.h"
@@ -317,11 +317,12 @@ constexpr std::pair<uint32_t, uint32_t> kIntentsDBEventStats[] = {
       rocksdb::GET_FILTER_BLOCK_FROM_CACHE_NANOS},
 };
 
+template <class PB>
 void CopyRocksDBStatisticsToPgsqlResponse(
     const rocksdb::Statistics& statistics,
     std::span<const std::pair<uint32_t, uint32_t>> tickers,
     std::span<const std::pair<uint32_t, uint32_t>> event_stats,
-    PgsqlRequestMetricsPB* metrics) {
+    PB* metrics) {
   for (const auto& [pggate_index, rocksdb_index] : tickers) {
     auto ticker = statistics.getTickerCount(rocksdb_index);
     // Don't send unchanged statistics.
@@ -408,6 +409,15 @@ size_t DocDBStatistics::Dump(std::stringstream* out) const {
 }
 
 void DocDBStatistics::CopyToPgsqlResponse(PgsqlResponsePB* response) const {
+  DoCopyToPgsqlResponse(response);
+}
+
+void DocDBStatistics::CopyToPgsqlResponse(LWPgsqlResponsePB* response) const {
+  DoCopyToPgsqlResponse(response);
+}
+
+template <class PB>
+void DocDBStatistics::DoCopyToPgsqlResponse(PB* response) const {
   auto* metrics = response->mutable_metrics();
   CopyRocksDBStatisticsToPgsqlResponse(
       regulardb_statistics_, std::span{kRegularDBTickers}, std::span{kRegularDBEventStats},

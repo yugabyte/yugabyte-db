@@ -33,12 +33,15 @@ public class PublicCloudConstants {
   public static final String VOLUME_API_NAME_GP2 = "gp2";
   public static final String VOLUME_API_NAME_GP3 = "gp3";
   public static final String VOLUME_API_NAME_IO1 = "io1";
+  public static final String VOLUME_API_NAME_IO2 = "io2";
 
   public static final String GROUP_EBS_IOPS = "EBS IOPS";
   public static final String GROUP_EBS_THROUGHPUT = "EBS Throughput";
 
   public static final String IO1_SIZE = "io1.size";
   public static final String IO1_PIOPS = "io1.piops";
+  public static final String IO2_SIZE = "io2.size";
+  public static final String IO2_PIOPS = "io2.piops";
   public static final String GP2_SIZE = "gp2.size";
   public static final String GP3_SIZE = "gp3.size";
   public static final String GP3_PIOPS = "gp3.piops";
@@ -112,6 +115,7 @@ public class PublicCloudConstants {
    */
   public enum StorageType {
     IO1(Common.CloudType.aws, new Pair<>(100, 64000)),
+    IO2(Common.CloudType.aws, new Pair<>(100, 256000)),
     GP2(Common.CloudType.aws),
     GP3(Common.CloudType.aws, new Pair<>(3000, 16000), new Pair<>(125, 1000)),
     Scratch(Common.CloudType.gcp),

@@ -88,12 +88,8 @@ Result<PGConn> LibPqTestBase::ConnectToDBWithReplication(const std::string& db_n
 }
 
 bool LibPqTestBase::TransactionalFailure(const Status& status) {
-  const uint8_t* pgerr = status.ErrorData(PgsqlErrorTag::kCategory);
-  if (pgerr == nullptr) {
-    return false;
-  }
-  YBPgErrorCode code = PgsqlErrorTag::Decode(pgerr);
-  return code == YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE;
+  const auto pgerr = PgsqlError::ValueFromStatus(status);
+  return pgerr && *pgerr == YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE;
 }
 
 Result<PgOid> GetDatabaseOid(PGConn* conn, const std::string& db_name) {

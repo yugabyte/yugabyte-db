@@ -32,6 +32,7 @@
 #include "yb/dockv/dockv.fwd.h"
 #include "yb/dockv/value_type.h"
 
+#include "yb/util/memory/arena_list.h"
 #include "yb/util/slice.h"
 #include "yb/util/strongly_typed_bool.h"
 
@@ -117,6 +118,7 @@ class SchemaPacking {
   void ToPB(SchemaPackingPB* out) const;
 
   bool CouldPack(const google::protobuf::RepeatedPtrField<QLColumnValuePB>& values) const;
+  bool CouldPack(const ArenaList<LWQLColumnValuePB>& values) const;
 
   std::string ToString() const;
 
@@ -128,6 +130,9 @@ class SchemaPacking {
   }
 
  private:
+  template <class Col>
+  bool DoCouldPack(const Col& values) const;
+
   std::vector<ColumnPackingData> columns_;
   IdMapping column_to_idx_;
   size_t varlen_columns_count_;

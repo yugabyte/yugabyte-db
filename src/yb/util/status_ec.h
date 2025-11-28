@@ -15,38 +15,51 @@
 
 #pragma once
 
+#include <concepts>
+#include <optional>
+#include <string_view>
+#include <utility>
+#include <vector>
+
 #include "yb/gutil/endian.h"
 
 #include "yb/util/status.h"
 
 namespace yb {
 
+struct CategoryDescriptor {
+  uint8_t id;
+  std::string_view name;
+};
+
+template <class T>
+concept CategoryTag = std::same_as<decltype(T::kCategory), const CategoryDescriptor>;
+
 // Base class for all error tags that use integral representation.
 // For instance time duration.
 template <class Traits>
 class IntegralBackedErrorTag {
+  using RepresentationType = typename Traits::RepresentationType;
  public:
-  typedef typename Traits::ValueType Value;
+  using Value = typename Traits::ValueType;
 
   static Value Decode(const uint8_t* source) {
-    if (!source) {
-      return Value();
-    }
-    return Traits::FromRepresentation(
-        Load<typename Traits::RepresentationType, LittleEndian>(source));
+    return source
+        ? Traits::FromRepresentation(Load<RepresentationType, LittleEndian>(source))
+        : Value();
   }
 
   static size_t DecodeSize(const uint8_t* source) {
-    return sizeof(typename Traits::RepresentationType);
+    return sizeof(RepresentationType);
   }
 
   static size_t EncodedSize(Value value) {
-    return sizeof(typename Traits::RepresentationType);
+    return sizeof(RepresentationType);
   }
 
   static uint8_t* Encode(Value value, uint8_t* out) {
-    Store<typename Traits::RepresentationType, LittleEndian>(out, Traits::ToRepresentation(value));
-    return out + sizeof(typename Traits::RepresentationType);
+    Store<RepresentationType, LittleEndian>(out, Traits::ToRepresentation(value));
+    return out + sizeof(RepresentationType);
   }
 
   static std::string DecodeToString(const uint8_t* source) {
@@ -56,8 +69,8 @@ class IntegralBackedErrorTag {
 
 class StringBackedErrorTag {
  public:
-  typedef typename std::string Value;
-  typedef uint64_t SizeType;
+  using Value = typename std::string;
+  using SizeType = uint64_t;
 
   static Value Decode(const uint8_t* source);
 
@@ -76,8 +89,8 @@ class StringBackedErrorTag {
 
 class StringVectorBackedErrorTag {
  public:
-  typedef typename std::vector<std::string> Value;
-  typedef uint64_t SizeType;
+  using Value = typename std::vector<std::string>;
+  using SizeType = uint64_t;
 
   static Value Decode(const uint8_t* source);
 
@@ -92,24 +105,21 @@ class StringVectorBackedErrorTag {
   static std::string DecodeToString(const uint8_t* source);
 };
 
-template <class Enum>
-typename std::enable_if<std::is_enum<Enum>::value, std::string>::type
-IntegralToString(Enum e) {
-  return std::to_string(static_cast<typename std::underlying_type<Enum>::type>(e));
-}
-
 template <class Value>
-typename std::enable_if<!std::is_enum<Value>::value, std::string>::type
-IntegralToString(Value value) {
-  return std::to_string(value);
+std::string IntegralToString(Value value) {
+  if constexpr(std::is_enum_v<Value>) {
+    return std::to_string(std::to_underlying(value));
+  } else {
+    return std::to_string(value);
+  }
 }
 
 // Base class for error tags that have integral value type.
 template <class Value>
 class PlainIntegralTraits {
  public:
-  typedef Value ValueType;
-  typedef ValueType RepresentationType;
+  using ValueType = Value;
+  using RepresentationType = ValueType;
 
   static ValueType FromRepresentation(RepresentationType source) {
     return source;
@@ -125,8 +135,7 @@ class PlainIntegralTraits {
 };
 
 template <class ValueType>
-struct IntegralErrorTag : public IntegralBackedErrorTag<PlainIntegralTraits<ValueType>> {
-};
+using IntegralErrorTag = IntegralBackedErrorTag<PlainIntegralTraits<ValueType>>;
 
 // Extra error code assigned to status.
 class StatusErrorCode {
@@ -141,120 +150,102 @@ class StatusErrorCode {
   virtual ~StatusErrorCode() = default;
 };
 
-template <class Tag>
+namespace status_ec::internal {
+
+template <CategoryTag Tag>
 class StatusErrorCodeImpl : public StatusErrorCode {
  public:
-  typedef typename Tag::Value Value;
+  using Value = typename Tag::Value;
   // Category is a part of the wire protocol.
   // So it should not be changed after first release containing this category.
   // All used categories could be listed with the following command:
-  // git grep -h -F "uint8_t kCategory" | awk '{ print $6 }' | sort -n
-  static constexpr uint8_t kCategory = Tag::kCategory;
+  // git grep -h -F "CategoryDescriptor kCategory" | awk -F'[ {,]' '{print $7}' | sort -n
+  static constexpr auto kCategory = Tag::kCategory.id;
 
   explicit StatusErrorCodeImpl(const Value& value) : value_(value) {}
+
   explicit StatusErrorCodeImpl(Value&& value) : value_(std::move(value)) {}
 
-  explicit StatusErrorCodeImpl(const Status& status);
-
-  static std::optional<StatusErrorCodeImpl> FromStatus(const Status& status);
-
-  static std::optional<Value> ValueFromStatus(const Status& status);
+  explicit StatusErrorCodeImpl(const Status& status) : value_(Tag::Decode(Data(status))) {}
 
   uint8_t Category() const override { return kCategory; }
 
-  size_t EncodedSize() const override {
-    return Tag::EncodedSize(value_);
+  size_t EncodedSize() const override { return Tag::EncodedSize(value_); }
+
+  uint8_t* Encode(uint8_t* out) const override { return Tag::Encode(value_, out); }
+
+  std::string Message() const override { return Tag::ToMessage(value_); }
+
+  const Value& value() const { return value_; }
+
+  static std::optional<StatusErrorCodeImpl> FromStatus(const Status& status) {
+    return DecodeOptional<StatusErrorCodeImpl>(status);
   }
 
-  uint8_t* Encode(uint8_t* out) const override {
-    return Tag::Encode(value_, out);
-  }
-
-  const Value& value() const {
-    return value_;
-  }
-
-  std::string Message() const override {
-    return Tag::ToMessage(value_);
+  static std::optional<Value> ValueFromStatus(const Status& status) {
+    return DecodeOptional(status);
   }
 
  private:
+  static auto* Data(const Status& status) { return status.ErrorData(kCategory); }
+
+  template <class T = Value>
+  static std::optional<T> DecodeOptional(const Status& status) {
+    const auto* data = status.ErrorData(kCategory);
+    return data ? std::optional<T>(Tag::Decode(data)) : std::nullopt;
+  }
+
   Value value_;
 };
 
-template <class Tag>
-bool operator==(const StatusErrorCodeImpl<Tag>& lhs, const StatusErrorCodeImpl<Tag>& rhs) {
-  return lhs.value() == rhs.value();
-}
+template <CategoryTag Tag>
+auto IsStatusErrorCodeImplHelper(const StatusErrorCodeImpl<Tag>&) { return true; }
 
-template <class Tag>
-bool operator==(const StatusErrorCodeImpl<Tag>& lhs, const typename Tag::Value& rhs) {
-  return lhs.value() == rhs;
-}
+template <class T>
+concept IsStatusErrorCodeImpl = requires (T t) { IsStatusErrorCodeImplHelper(t); };
 
-template <class Tag>
-bool operator==(const typename Tag::Value& lhs, const StatusErrorCodeImpl<Tag>& rhs) {
-  return lhs == rhs.value();
-}
-
-template <class Tag>
-bool operator!=(const StatusErrorCodeImpl<Tag>& lhs, const StatusErrorCodeImpl<Tag>& rhs) {
-  return lhs.value() != rhs.value();
-}
-
-template <class Tag>
-bool operator!=(const StatusErrorCodeImpl<Tag>& lhs, const typename Tag::Value& rhs) {
-  return lhs.value() != rhs;
-}
-
-template <class Tag>
-bool operator!=(const typename Tag::Value& lhs, const StatusErrorCodeImpl<Tag>& rhs) {
-  return lhs != rhs.value();
-}
-
-struct StatusCategoryDescription {
-  uint8_t id = 0;
-  const std::string* name = nullptr;
-  std::function<size_t(const uint8_t*)> decode_size;
-  std::function<std::string(const uint8_t*)> to_string;
-
-  template <class Tag>
-  static StatusCategoryDescription Make(const std::string* name_) {
-    return StatusCategoryDescription {
-      .id = Tag::kCategory,
-      .name = name_,
-      .decode_size = &Tag::DecodeSize,
-      .to_string = &Tag::DecodeToString
-    };
+template <class T>
+const auto& FetchValue(const T& t) {
+  if constexpr (IsStatusErrorCodeImpl<T>) {
+    return t.value();
+  } else {
+    return t;
   }
+}
+
+template <class T>
+using ValueType = decltype(FetchValue(std::declval<T>()));
+
+template <class T1, class T2>
+concept IsValidComparisionPair =
+    (IsStatusErrorCodeImpl<T1> || IsStatusErrorCodeImpl<T2>) &&
+    std::same_as<ValueType<T1>, ValueType<T2>>;
+
+template <class T1, class T2>
+requires(IsValidComparisionPair<T1, T2>)
+bool operator==(const T1& lhs, const T2& rhs) { return FetchValue(lhs) == FetchValue(rhs); }
+
+template <class T1, class T2>
+requires(IsValidComparisionPair<T1, T2>)
+bool operator!=(const T1& lhs, const T2& rhs) { return FetchValue(lhs) != FetchValue(rhs); }
+
+} // namespace status_ec::internal
+
+template <CategoryTag Tag>
+struct StatusCategoryRegisterer {
+  using Type = status_ec::internal::StatusErrorCodeImpl<Tag>;
+
+ private:
+  inline static const auto kRegistration = [] {
+    Status::RegisterCategory(
+        {Tag::kCategory.id, Tag::kCategory.name, &Tag::DecodeSize, &Tag::DecodeToString });
+    return true;
+  }();
+
+  static_assert(!std::same_as<decltype([] { return kRegistration; }()), void>);
 };
 
-class StatusCategoryRegisterer {
- public:
-  explicit StatusCategoryRegisterer(const StatusCategoryDescription& description);
-};
-
-template <class Tag>
-StatusErrorCodeImpl<Tag>::StatusErrorCodeImpl(const Status& status)
-    : value_(Tag::Decode(status.ErrorData(Tag::kCategory))) {}
-
-template <class Tag>
-std::optional<StatusErrorCodeImpl<Tag>> StatusErrorCodeImpl<Tag>::FromStatus(const Status& status) {
-  const auto* error_data = status.ErrorData(Tag::kCategory);
-  if (!error_data) {
-    return std::nullopt;
-  }
-  return StatusErrorCodeImpl<Tag>(Tag::Decode(error_data));
-}
-
-template <class Tag>
-std::optional<typename StatusErrorCodeImpl<Tag>::Value> StatusErrorCodeImpl<Tag>::ValueFromStatus(
-    const Status& status) {
-  const auto* error_data = status.ErrorData(Tag::kCategory);
-  if (!error_data) {
-    return std::nullopt;
-  }
-  return Tag::Decode(error_data);
-}
+template <CategoryTag Tag>
+using StatusErrorCodeImpl = StatusCategoryRegisterer<Tag>::Type;
 
 }  // namespace yb

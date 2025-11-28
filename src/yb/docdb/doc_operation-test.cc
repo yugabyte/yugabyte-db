@@ -947,7 +947,8 @@ class DocOperationScanTest : public DocOperationTest {
           DocQLScanSpec ql_scan_spec(
               doc_read_context().schema(), kFixedHashCode, kFixedHashCode, arena,
               dockv::TEST_KeyEntryValuesToSlices(*arena, hashed_components),
-              &condition, nullptr /* if_ req */, rocksdb::kDefaultQueryId, is_forward_scan);
+              QLConditionPBPtr(&condition), nullptr /* if_ req */,
+              rocksdb::kDefaultQueryId, is_forward_scan);
           dockv::ReaderProjection projection(doc_read_context().schema());
           auto pending_op = ScopedRWOperation::TEST_Create();
           DocRowwiseIterator ql_iter(

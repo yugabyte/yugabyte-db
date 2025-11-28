@@ -88,8 +88,10 @@ Status YQLVirtualTable::BuildYQLScanSpec(
   }
   spec->reset(new docdb::DocQLScanSpec(
       schema, /* hash_code = */ std::nullopt, /* max_hash_code = */ std::nullopt, nullptr, {},
-      request.has_where_expr() ? &request.where_expr().condition() : nullptr,
-      request.has_if_expr() ? &request.if_expr().condition() : nullptr, rocksdb::kDefaultQueryId,
+      qlexpr::QLConditionPBPtr(
+          request.has_where_expr() ? &request.where_expr().condition() : nullptr),
+      qlexpr::QLConditionPBPtr(request.has_if_expr() ? &request.if_expr().condition() : nullptr),
+      rocksdb::kDefaultQueryId,
       request.is_forward_scan()));
   return Status::OK();
 }
