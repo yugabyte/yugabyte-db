@@ -183,6 +183,8 @@ set(UTIL_SRCS
   oid_generator.cc
   once.cc
   operation_counter.cc
+  otel_tracing.cc
+  otel_http_exporter.cc
   os-util.cc
   path_util.cc
   pb_util-internal.cc
@@ -264,6 +266,65 @@ set(UTIL_LIBS
   zlib
   ${OPENSSL_CRYPTO_LIBRARY}
   ${OPENSSL_SSL_LIBRARY})
+
+# Add OpenTelemetry static libraries
+# OpenTelemetry must be built from source with static libraries.
+# See build-support/build_opentelemetry.sh for the build script.
+# Look for OpenTelemetry in standard locations
+# First check thirdparty/installed (default for build_opentelemetry.sh)
+set(OTEL_SEARCH_PATHS
+  "${YB_SRC_ROOT}/thirdparty/installed/opentelemetry"
+  "/usr/local/opentelemetry"
+  "/opt/opentelemetry"
+  "$ENV{HOME}/.local/opentelemetry")
+
+foreach(SEARCH_PATH ${OTEL_SEARCH_PATHS})
+  if(EXISTS "${SEARCH_PATH}/include/opentelemetry/version.h")
+    set(OTEL_ROOT "${SEARCH_PATH}")
+    break()
+  endif()
+endforeach()
+
+if(OTEL_ROOT)
+  message(STATUS "Found OpenTelemetry at ${OTEL_ROOT}")
+  include_directories(SYSTEM "${OTEL_ROOT}/include")
+
+  # Find required static libraries (using ostream exporter for simplicity)
+  find_library(OTEL_TRACE_LIB
+    NAMES libopentelemetry_trace.a
+    PATHS "${OTEL_ROOT}/lib"
+    NO_DEFAULT_PATH)
+  find_library(OTEL_COMMON_LIB
+    NAMES libopentelemetry_common.a
+    PATHS "${OTEL_ROOT}/lib"
+    NO_DEFAULT_PATH)
+  find_library(OTEL_RESOURCES_LIB
+    NAMES libopentelemetry_resources.a
+    PATHS "${OTEL_ROOT}/lib"
+    NO_DEFAULT_PATH)
+  find_library(OTEL_EXPORTER_OSTREAM_LIB
+    NAMES libopentelemetry_exporter_ostream_span.a
+    PATHS "${OTEL_ROOT}/lib"
+    NO_DEFAULT_PATH)
+
+  if(OTEL_TRACE_LIB AND OTEL_COMMON_LIB AND OTEL_EXPORTER_OSTREAM_LIB)
+    message(STATUS "OpenTelemetry static libraries found - OTEL support enabled")
+
+    # Use ostream exporter (logs spans to stderr) to avoid complex dependencies
+    # This is a simple, reliable exporter with no external dependencies
+    list(APPEND UTIL_LIBS
+      ${OTEL_EXPORTER_OSTREAM_LIB}
+      ${OTEL_TRACE_LIB}
+      ${OTEL_RESOURCES_LIB}
+      ${OTEL_COMMON_LIB})
+  else()
+    message(STATUS "OpenTelemetry static libraries not found - OTEL support disabled")
+    message(STATUS "  To enable OTEL: run build-support/build_opentelemetry.sh")
+  endif()
+else()
+  message(STATUS "OpenTelemetry not found - OTEL support disabled")
+  message(STATUS "  To enable OTEL: run build-support/build_opentelemetry.sh")
+endif()
 
 if(NOT APPLE)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DROCKSDB_FALLOCATE_PRESENT")

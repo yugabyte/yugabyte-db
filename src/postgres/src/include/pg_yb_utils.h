@@ -352,6 +352,25 @@ extern void YBCRollbackToSubTransaction(SubTransactionId id);
 extern bool YBIsPgLockingEnabled();
 
 /*
+ * Parse and store the traceparent from a SQL query comment.
+ * Expected format: comment with traceparent:00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01
+ * This should be called at the start of query execution.
+ */
+extern void YbSetTraceparentFromQuery(const char *query_string);
+
+/*
+ * Get the current traceparent string (may be empty if none was set).
+ * Returns a pointer to an internal buffer that is valid until the next call to
+ * YbSetTraceparentFromQuery or YbClearTraceparent.
+ */
+extern const char *YbGetCurrentTraceparent(void);
+
+/*
+ * Clear the current traceparent.
+ */
+extern void YbClearTraceparent(void);
+
+/*
  * Get the type ID of a real or virtual attribute (column).
  * Returns InvalidOid if the attribute number is invalid.
  */

@@ -692,6 +692,7 @@ pg_parse_query(const char *query_string)
 	List	   *raw_parsetree_list;
 
 	TRACE_POSTGRESQL_QUERY_PARSE_START(query_string);
+	YBCOtelParseStart();
 
 	if (log_parser_stats)
 		ResetUsage();
@@ -720,6 +721,7 @@ pg_parse_query(const char *query_string)
 	 * here.
 	 */
 
+	YBCOtelParseDone();
 	TRACE_POSTGRESQL_QUERY_PARSE_DONE(query_string);
 
 	return raw_parsetree_list;
@@ -994,6 +996,7 @@ pg_plan_query(Query *querytree, const char *query_string, int cursorOptions,
 	Assert(ActiveSnapshotSet());
 
 	TRACE_POSTGRESQL_QUERY_PLAN_START();
+	YBCOtelPlanStart();
 
 	if (log_planner_stats)
 		ResetUsage();
@@ -1053,6 +1056,7 @@ pg_plan_query(Query *querytree, const char *query_string, int cursorOptions,
 	if (Debug_print_plan)
 		elog_node_display(LOG, "plan", plan, Debug_pretty_print);
 
+	YBCOtelPlanDone();
 	TRACE_POSTGRESQL_QUERY_PLAN_DONE();
 
 	return plan;
@@ -1127,12 +1131,16 @@ exec_simple_query(const char *query_string)
 	 */
 	debug_query_string = query_string;
 
+	/* Parse traceparent from query comment for OTEL tracing */
+	YbSetTraceparentFromQuery(query_string);
+
 	/* Use YbParseCommandTag to suppress error warnings. */
 	command_tag = YbParseCommandTag(query_string);
 	redacted_query_string = YbRedactPasswordIfExists(query_string, command_tag);
 	pgstat_report_activity(STATE_RUNNING, redacted_query_string);
 
 	TRACE_POSTGRESQL_QUERY_START(query_string);
+	YBCOtelQueryStart(query_string);
 
 	/*
 	 * We use save_log_statement_stats so ShowUsage doesn't report incorrect
@@ -1479,6 +1487,7 @@ exec_simple_query(const char *query_string)
 	if (save_log_statement_stats)
 		ShowUsage("QUERY STATISTICS");
 
+	YBCOtelQueryDone();
 	TRACE_POSTGRESQL_QUERY_DONE(query_string);
 
 	debug_query_string = NULL;

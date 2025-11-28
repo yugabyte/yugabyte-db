@@ -51,6 +51,7 @@
 #include "yb/util/curl_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/jwt_util.h"
+#include "yb/util/otel_tracing.h"
 #include "yb/util/result.h"
 #include "yb/util/signal_util.h"
 #include "yb/util/slice.h"
@@ -72,6 +73,12 @@
 #include "yb/yql/pggate/util/ybc-internal.h"
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+
+// Forward declarations for Postgres C functions
+extern "C" {
+  const char* YbGetCurrentTraceparent(void);
+  void YbClearTraceparent(void);
+}
 
 DEFINE_UNKNOWN_int32(pggate_num_connections_to_server, 1,
              "Number of underlying connections to each server from a PostgreSQL backend process. "
@@ -592,6 +599,131 @@ void YBCInterruptPgGate() {
 
 const YbcPgCallbacks *YBCGetPgCallbacks() {
   return pgapi->pg_callbacks();
+}
+
+void YBCInitOtelTracing(const char* service_name) {
+  LOG(INFO) << "[OTEL DEBUG] YBCInitOtelTracing called for: " << service_name;
+  auto status = OtelTracing::InitFromEnv(service_name);
+  if (!status.ok()) {
+    LOG(ERROR) << "[OTEL DEBUG] Failed to initialize OTEL in postgres backend: " << status;
+  } else {
+    LOG(INFO) << "[OTEL DEBUG] OTEL initialized successfully in postgres backend";
+  }
+}
+
+const char* YBCGetCurrentTraceparent() {
+  const char* traceparent = YbGetCurrentTraceparent();
+  // Only log when we actually have a traceparent to reduce noise
+  if (traceparent && traceparent[0]) {
+    LOG(INFO) << "[OTEL DEBUG] YBCGetCurrentTraceparent called, value: '" << traceparent << "'";
+  }
+  return traceparent;
+}
+
+void YBCResetTraceparent() {
+  LOG(INFO) << "[OTEL DEBUG] YBCResetTraceparent called";
+  YbClearTraceparent();
+}
+
+// Thread-local storage for OTEL query-level spans
+namespace {
+thread_local std::unique_ptr<yb::ScopedOtelSpan> g_query_span;
+thread_local std::unique_ptr<yb::ScopedOtelSpan> g_parse_span;
+thread_local std::unique_ptr<yb::ScopedOtelSpan> g_plan_span;
+thread_local std::unique_ptr<yb::ScopedOtelSpan> g_execute_span;
+}  // namespace
+
+void YBCOtelQueryStart(const char* query_string) {
+  if (!yb::OtelTracing::IsEnabled()) {
+    return;
+  }
+  
+  // Get traceparent - it should have been parsed from the query already
+  const char* traceparent = YbGetCurrentTraceparent();
+  
+  if (!traceparent || traceparent[0] == '\0') {
+    // No traceparent, no tracing for this query
+    return;
+  }
+  
+  LOG(INFO) << "[OTEL DEBUG] YBCOtelQueryStart: traceparent='" << traceparent 
+            << "', query='" << (query_string ? query_string : "(null)") << "'";
+  
+  auto span = yb::OtelTracing::StartSpanFromTraceparent("ysql.query", traceparent);
+  if (span.IsActive()) {
+    // Set the db.statement attribute with the query string
+    if (query_string) {
+      span.SetAttribute("db.statement", std::string(query_string));
+    }
+    span.SetAttribute("db.system", "yugabytedb");
+    
+    g_query_span = std::make_unique<yb::ScopedOtelSpan>(std::move(span));
+    LOG(INFO) << "[OTEL DEBUG] YBCOtelQueryStart: Created query span";
+  }
+}
+
+void YBCOtelQueryDone() {
+  if (g_query_span) {
+    LOG(INFO) << "[OTEL DEBUG] YBCOtelQueryDone: Ending query span";
+    g_query_span.reset();
+  }
+}
+
+void YBCOtelParseStart() {
+  if (!g_query_span || !yb::OtelTracing::HasActiveContext()) {
+    return;
+  }
+  
+  auto span = yb::OtelTracing::StartSpan("ysql.parse");
+  if (span.IsActive()) {
+    g_parse_span = std::make_unique<yb::ScopedOtelSpan>(std::move(span));
+    LOG(INFO) << "[OTEL DEBUG] YBCOtelParseStart: Created parse span";
+  }
+}
+
+void YBCOtelParseDone() {
+  if (g_parse_span) {
+    LOG(INFO) << "[OTEL DEBUG] YBCOtelParseDone: Ending parse span";
+    g_parse_span.reset();
+  }
+}
+
+void YBCOtelPlanStart() {
+  if (!g_query_span || !yb::OtelTracing::HasActiveContext()) {
+    return;
+  }
+  
+  auto span = yb::OtelTracing::StartSpan("ysql.plan");
+  if (span.IsActive()) {
+    g_plan_span = std::make_unique<yb::ScopedOtelSpan>(std::move(span));
+    LOG(INFO) << "[OTEL DEBUG] YBCOtelPlanStart: Created plan span";
+  }
+}
+
+void YBCOtelPlanDone() {
+  if (g_plan_span) {
+    LOG(INFO) << "[OTEL DEBUG] YBCOtelPlanDone: Ending plan span";
+    g_plan_span.reset();
+  }
+}
+
+void YBCOtelExecuteStart() {
+  if (!g_query_span || !yb::OtelTracing::HasActiveContext()) {
+    return;
+  }
+  
+  auto span = yb::OtelTracing::StartSpan("ysql.execute");
+  if (span.IsActive()) {
+    g_execute_span = std::make_unique<yb::ScopedOtelSpan>(std::move(span));
+    LOG(INFO) << "[OTEL DEBUG] YBCOtelExecuteStart: Created execute span";
+  }
+}
+
+void YBCOtelExecuteDone() {
+  if (g_execute_span) {
+    LOG(INFO) << "[OTEL DEBUG] YBCOtelExecuteDone: Ending execute span";
+    g_execute_span.reset();
+  }
 }
 
 YbcStatus YBCValidateJWT(const char *token, const YbcPgJwtAuthOptions *options) {

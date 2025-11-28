@@ -58,6 +58,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/metrics.h"
+#include "yb/util/otel_tracing.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
@@ -241,6 +242,26 @@ OutboundCall::OutboundCall(const RemoteMethod& remote_method,
 
   IncrementCounter(rpc_metrics_->outbound_calls_created);
   IncrementGauge(rpc_metrics_->outbound_calls_alive);
+
+  // Start an OpenTelemetry span for this RPC call
+  // Only create spans when there's an active parent context to reduce noise
+  if (OtelTracing::HasActiveContext()) {
+    otel_span_ = OtelTracing::StartSpan(Format("rpc.client $0", remote_method_.ToString()));
+    if (otel_span_.IsActive()) {
+      LOG(INFO) << "[OTEL DEBUG] Created RPC span (child) for call_id=" << call_id_ 
+                << " method=" << remote_method_.ToString();
+      otel_span_.SetAttribute("rpc.system", "yugabytedb");
+      otel_span_.SetAttribute("rpc.service", remote_method_.service_name());
+      otel_span_.SetAttribute("rpc.method", remote_method_.method_name());
+      otel_span_.SetAttribute("rpc.call_id", static_cast<int64_t>(call_id_));
+      if (controller_->timeout().Initialized()) {
+        otel_span_.SetAttribute("rpc.timeout_ms", 
+                                static_cast<int64_t>(controller_->timeout().ToMilliseconds()));
+      }
+    }
+  } else {
+    VLOG(3) << "[OTEL DEBUG] No active context, skipping RPC span creation for call_id=" << call_id_;
+  }
 }
 
 OutboundCall::~OutboundCall() {
@@ -598,6 +619,12 @@ void OutboundCall::SetFinished() {
     outbound_call_metrics_->time_to_response->Increment(
         MicrosecondsSinceStart(CoarseMonoClock::Now()));
   }
+  
+  // End the OpenTelemetry span with success status
+  if (otel_span_.IsActive()) {
+    otel_span_.SetStatus(true, "OK");
+  }
+  
   if (SetState(RpcCallState::FINISHED_SUCCESS)) {
     InvokeCallback();
   }
@@ -605,6 +632,13 @@ void OutboundCall::SetFinished() {
 
 void OutboundCall::SetFailed(const Status &status, std::unique_ptr<ErrorStatusPB> err_pb) {
   TRACE_TO(trace_, "Call Failed.");
+  
+  // End the OpenTelemetry span with error status
+  if (otel_span_.IsActive()) {
+    otel_span_.SetStatus(false, status.ToString());
+    otel_span_.SetAttribute("rpc.error", status.CodeAsString());
+  }
+  
   bool invoke_callback;
   {
     std::lock_guard l(mtx_);
@@ -636,6 +670,13 @@ void OutboundCall::SetFailed(const Status &status, std::unique_ptr<ErrorStatusPB
 
 void OutboundCall::SetTimedOut() {
   TRACE_TO(trace_, "Call TimedOut.");
+  
+  // End the OpenTelemetry span with timeout status
+  if (otel_span_.IsActive()) {
+    otel_span_.SetStatus(false, "Timeout");
+    otel_span_.SetAttribute("rpc.error", "TimedOut");
+  }
+  
   bool invoke_callback;
   {
     auto status = STATUS_FORMAT(
