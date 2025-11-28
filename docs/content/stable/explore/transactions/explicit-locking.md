@@ -118,7 +118,7 @@ For more information on using the locks, refer to [Advisory locks](../../../arch
 
 ## Table-level locks
 
-{{<tags/feature/tp idea="1114">}} Table-level locks are available in {{<release "2025.1.1.0">}} and later.
+{{<tags/feature/ea idea="1114">}} Table-level locks are available in {{<release "2025.1.1.0">}} and later.
 
 YugabyteDB's YSQL supports table-level locks (also known as object locks) to coordinate between DML and DDL operations. This feature ensures that DDLs wait for in-progress DMLs to finish before making schema changes, and gates new DMLs behind any waiting DDLs, providing concurrency handling that closely matches PostgreSQL behavior.
 

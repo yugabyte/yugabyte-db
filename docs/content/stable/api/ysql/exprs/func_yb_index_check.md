@@ -3,8 +3,6 @@ title: yb_index_check() function [YSQL]
 headerTitle: yb_index_check()
 linkTitle: yb_index_check()
 description: Checks if the given index is consistent with its base relation.
-tags:
-  feature: early-access
 menu:
   stable_api:
     identifier: api-ysql-exprs-yb_index_check
