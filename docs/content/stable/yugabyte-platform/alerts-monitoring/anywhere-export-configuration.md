@@ -25,7 +25,7 @@ To export either metrics or logs from a universe:
 
     While the connection is active, metrics or logs are automatically streamed to the tool.
 
-To be able to export logs on Kubernetes, ensure the OpenTelemetry Operator is installed. Refer to [OpenTelemetry Operator for Kubernetes](https://opentelemetry.io/docs/platforms/kubernetes/operator/#getting-started) in the OpenTelemetry documentation. Metrics export is not supported on Kubernetes.
+To be able to export logs from Kubernetes universes, ensure the OpenTelemetry Operator is installed. Refer to [OpenTelemetry Operator for Kubernetes](https://opentelemetry.io/docs/platforms/kubernetes/operator/#getting-started) in the OpenTelemetry documentation. Metrics export is not supported on Kubernetes.
 
 ## Available integrations
 
@@ -43,21 +43,28 @@ Currently, you can export data to the following tools:
 
 To limit performance impact and control costs, locate export configurations in a region close to your universe(s).
 
+## Manage integrations
+
+Create and manage export configurations on the **Integrations > Logs and Metrics Export** page.
+
+The page lists the configured third-party integrations.
+
+To view details for a configuration, select it in the list.
+
+To delete a configuration, click the three dots, and choose **Delete configuration**. You can't delete a configuration that is assigned to a universe.
+
+Note that you can't modify an existing configuration. If you need to change an configuration (for example, to replace or update an API key) for a particular tool, do the following:
+
+1. Create a new configuration for the integration with the updated information.
+1. Assign the new configuration to your universes.
+1. Unassign the old configuration from universes.
+1. Delete the old configuration.
+
 ## Configure integrations
-
-Create and manage export configurations on the **Integrations > Log** page.
-
-<!--![Export configurations](/images/yp/export-configurations.png)-->
-
-The page lists the configured and available third-party integrations.
-
-### Manage integrations
 
 You can add and delete export configurations for the following tools. You can't delete a configuration that is in use by a universe.
 
-{{< tabpane text=true >}}
-
-  {{% tab header="Datadog" lang="datadog" %}}
+### Datadog
 
 The Datadog export configuration requires the following:
 
@@ -73,9 +80,7 @@ To create an export configuration, do the following:
 1. Choose the Datadog site to connect to, or choose Self-hosted and enter your URL.
 1. Click **Create Configuration**.
 
-  {{% /tab %}}
-
-  {{% tab header="Splunk" lang="splunk" %}}
+### Splunk
 
 The Splunk export configuration requires the following:
 
@@ -92,9 +97,7 @@ To create an export configuration, do the following:
 1. Optionally, enter the Source, Source Type, and Index.
 1. Click **Validate and Create Configuration**.
 
-  {{% /tab %}}
-
-  {{% tab header="AWS" lang="aws" %}}
+### AWS
 
 The AWS CloudWatch export configuration requires the following:
 
@@ -114,9 +117,7 @@ To create an export configuration, do the following:
 1. Optionally, provide an endpoint URL.
 1. Click **Validate and Create Configuration**.
 
-  {{% /tab %}}
-
-  {{% tab header="GCP" lang="gcp" %}}
+### Google Cloud Logging
 
 The Google Cloud Logging export configuration requires the following:
 
@@ -132,9 +133,7 @@ To create an export configuration, do the following:
 1. Upload the JSON file containing your Google Cloud credentials.
 1. Click **Validate and Create Configuration**.
 
-  {{% /tab %}}
-
-  {{% tab header="Dynatrace" lang="dynatrace" %}}
+### Dynatrace
 
 The [Dynatrace](https://www.dynatrace.com) integration requires the following:
 
@@ -149,21 +148,6 @@ To create an export configuration, do the following:
 1. Enter the Dynatrace Endpoint URL.
 1. Enter your Dynatrace Access Token.
 1. Click **Validate and Create Configuration**.
-
-  {{% /tab %}}
-
-{{< /tabpane >}}
-
-To view configuration details, select the configuration.
-
-To delete a configuration, click **Actions** and choose **Delete**.
-
-You can't modify an existing configuration. If you need to change the configuration (for example, to replace or update an API key) for a particular tool, do the following:
-
-1. Create a new configuration for the provider with the updated information.
-1. Assign the new configuration to your universes.
-1. Unassign the old configuration from universes.
-1. Delete the old configuration.
 
 ## Next steps
 
