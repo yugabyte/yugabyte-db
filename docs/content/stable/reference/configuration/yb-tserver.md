@@ -108,7 +108,7 @@ Specifies the queue size for the tablet server to serve reads and writes from ap
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-{{<tags/feature/tp idea="1807">}}
+{{<tags/feature/ea idea="1807">}}
 Default: `""`
 {{% /tags/wrap %}}
 
