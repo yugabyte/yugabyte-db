@@ -35,6 +35,4 @@ To enable or modify metrics export for a universe, do the following:
 1. Select the [export configuration](../anywhere-export-configuration/) for the tool you want to export to.
 1. Click **Apply Changes**.
 
-To pause or resume metrics export from a cluster, on the cluster **Settings** tab, select **Edit Metrics Export Configuration** and choose **Pause Metrics Export** or **Resume Metrics Export**.
-
-To remove metrics export from a cluster, on the cluster **Settings** tab, select **Edit Metrics Export Configuration** and choose **Disable Metrics Export**.
+To remove metrics export from a universe, disable the **Export Metrics from this Universe** option.
