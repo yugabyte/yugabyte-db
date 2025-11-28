@@ -52,16 +52,16 @@ The columns of the pg_stat_statements view are described in the following table.
 | blk_read_time        | double precision | Not populated in YugabyteDB                                                                                    |
 | blk_write_time       | double precision | Not populated in YugabyteDB                                                                                    |
 | yb_latency_histogram | jsonb            | List of key value pairs where key is the latency range and value is the count of times a query was executed    |
-| docdb_read_rpcs      | bigint           | Number of roundtrips requests made to the local YB-TServer that includes only read operations                 |
-| docdb_write_rpcs     | bigint           | Number of roundtrips requests issued to the local YB-TServer that includes at least 1 write operation         |
+| docdb_read_rpcs      | bigint           | Number of roundtrip requests made to the local YB-TServer that include only read operations.                 |
+| docdb_write_rpcs     | bigint           | Number of roundtrip requests issued to the local YB-TServer that include at least 1 write operation         |
 | catalog_wait_time   | bigint           | Wall clock wait time (in ms) for catalog requests, including the network latency                                |
 | docdb_read_operations | bigint         | Total number of read operations sent as part of RPC requests                                                   |
 | docdb_write_operations | bigint        | Total number of write operations sent as part of RPC requests                                                  |
-| docdb_wait_time     | double precision | Wall clock wait time (in ms) for storage requests in YSQL layer, including the network latency               |
+| docdb_wait_time     | double precision | Wall clock wait time (in ms) for storage requests in the YSQL layer, including the network latency               |
 | docdb_rows_scanned  | bigint           | Rows scanned by DocDB                                                                                          |
-| docdb_rows_returned | bigint           | Rows returned by DocDB layer to YSQL layer                                                                     |
+| docdb_rows_returned | bigint           | Rows returned by DocDB layer to the YSQL layer                                                                     |
 | conflict_retries    | bigint           | Number of internal query retries caused by transaction conflicts between overlapping transactions              |
-| read_restart_retries | bigint          | Number of internal query retries for reads possibly because of a concurrent update                            |
+| read_restart_retries | bigint          | Number of internal query retries for reads (possibly because of a concurrent update)                            |
 | total_retries       | bigint           | Total number of query retries of any type                                                                       |
 
 ## Configuration parameters

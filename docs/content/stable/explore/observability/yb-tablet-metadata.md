@@ -33,8 +33,8 @@ The columns of the `yb_tablet_metadata` view are described in the following tabl
 | relname | text | Name of table/index whose data is stored on the tablet. |
 | oid | oid | The object identifier (OID) for the table/index that the tablet belongs to. |
 | db_name | text | Name of the database this relation belongs to. |
-| start_hash_code | int | Starting hash code (inclusive) for the tablet. (NULL in case of range-sharded table) |
-| end_hash_code | int | Ending hash code (exclusive) for the tablet. (NULL in case of range-sharded table) |
+| start_hash_code | int | Starting hash code (inclusive) for the tablet. (NULL for range-sharded tables.) |
+| end_hash_code | int | Ending hash code (exclusive) for the tablet. (NULL for range-sharded tables.) |
 | replicas | text[] | A list of replica IP addresses and port (includes leader) associated with the tablet. |
 | leader | text | IP address, port of the leader node for the tablet. |
 
@@ -42,7 +42,7 @@ The columns of the `yb_tablet_metadata` view are described in the following tabl
 
 {{% explore-setup-single-new %}}
 
-Note that as this view is accessible via YSQL, run your examples using [ysqlsh](../../../api/ysqlsh/#starting-ysqlsh).
+Because this view is accessible via YSQL, run your examples using [ysqlsh](../../../api/ysqlsh/#starting-ysqlsh).
 
 ### Select nodes for a particular table
 
@@ -104,11 +104,11 @@ ORDER BY ytm.start_hash_code;
 +----------------------------------+-------+----------+------------+-----------------+---------------+-----------+------+--------+-------------+-------+----------------------------------+--------------------------------------+
 ```
 
-### Hash partitioned tables - Use yb_hash_code() to find a tablet for a given key
+### Find a tablet for a given key
 
-The [`yb_hash_code()`](../../../api/ysql/exprs/func_yb_hash_code/) function can be used to find the `tablet_id` and leader node for a given key.
+Use the [yb_hash_code()](../../../api/ysql/exprs/func_yb_hash_code/) function to find the `tablet_id` and leader node for a given key in hash-partioned tables.
 
-1. First, check the table structure:
+1. Check the table structure:
 
     ```sql
     \d test_table
@@ -166,7 +166,6 @@ The [`yb_hash_code()`](../../../api/ysql/exprs/func_yb_hash_code/) function can 
     ```
 
 1. To find the `tablet_id` for all rows of the table, use the following query:
-:
 
     ```sql
     SELECT
@@ -197,8 +196,8 @@ The [`yb_hash_code()`](../../../api/ysql/exprs/func_yb_hash_code/) function can 
     +----------------------------------+------+-------+-----------+----------------------------------+-----------------+---------------+----------------+
     ```
 
-{{<tip>}}
-As YSQL has [`yb_hash_code()`](../../../api/ysql/exprs/func_yb_hash_code/) function to dump hash codes, similarly YCQL has `partition_hash()` function which also dumps hash codes. The `partition_hash()` function can be used in YCQL to link rows with their tablets.
+{{<tip title="Get hash codes in YCQL">}}
+To obtain hash codes in YCQL, you can use the `partition_hash()` function, which, similar to `yb_hash_code()`, also dumps hash codes. You can use the `partition_hash()` function in YCQL to link rows with their tablets.
 {{</tip>}}
 
 ### Join with Active Session History
