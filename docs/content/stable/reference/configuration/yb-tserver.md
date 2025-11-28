@@ -2131,42 +2131,31 @@ Default: `legacy_mode`
 
 Enables the YugabyteDB [cost-based optimizer](../../../architecture/query-layer/planner-optimizer/) (CBO). Options are `on`, `off`, `legacy_mode`, and `legacy_stats_mode`.
 
-When enabling CBO, you must run ANALYZE on user tables to maintain up-to-date statistics.
+When CBO is enabled (set to `on`), [auto analyze](#auto-analyze-service-flags) is also enabled automatically. If you disable auto analyze explicitly, you are responsible for periodically running ANALYZE on user tables to maintain up-to-date statistics.
 
 For information on using this parameter to configure CBO, refer to [Enable cost-based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/).
 
 ### Auto Analyze service flags
 
-{{<tags/feature/ea idea="590">}}To learn about the Auto Analyze service, see [Auto Analyze service](../../../additional-features/auto-analyze).
+To learn about the Auto Analyze service, see [Auto Analyze service](../../../additional-features/auto-analyze).
 
-{{< note title="Note" >}}
+Auto analyze is automatically enabled when the [cost-based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/) (CBO) is enabled ([yb_enable_cbo](#yb_enable_cbo) is set to `on`).
 
-To fully enable the Auto Analyze service, you need to enable `ysql_enable_auto_analyze_service` on all YB-Masters and YB-TServers, and `ysql_enable_table_mutation_counter` on all YB-TServers.
+In v2025.2 and later, CBO and Auto Analyze are enabled by default in new universes when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon. In addition, when upgrading a deployment to v2025.2 or later, if the universe has the cost-based optimizer enabled (`on`), YugabyteDB will enable Auto Analyze.
 
-{{< /note >}}
+To explicitly control the service, you can set the `ysql_enable_auto_analyze` flag.
 
 See also [Auto Analyze Service Master flags](../yb-master/#auto-analyze-service-flags).
 
-##### --ysql_enable_auto_analyze_service
+##### --ysql_enable_auto_analyze
 
 {{% tags/wrap %}}
-{{<tags/feature/ea idea="590">}}
-{{<tags/feature/t-server>}}
 {{<tags/feature/restart-needed>}}
+{{<tags/feature/t-server>}}
 Default: `false`
 {{% /tags/wrap %}}
 
 Enable the Auto Analyze service, which automatically runs ANALYZE to update table statistics for tables that have changed more than a configurable threshold.
-
-##### --ysql_enable_table_mutation_counter
-
-{{% tags/wrap %}}
-
-
-Default: `false`
-{{% /tags/wrap %}}
-
-Enable per table mutation (INSERT, UPDATE, DELETE) counting. The Auto Analyze service runs ANALYZE when the number of mutations of a table exceeds the threshold determined by the [ysql_auto_analyze_threshold](#ysql-auto-analyze-threshold) and [ysql_auto_analyze_scale_factor](#ysql-auto-analyze-scale-factor) settings.
 
 ##### --ysql_auto_analyze_threshold
 
@@ -2176,7 +2165,7 @@ Enable per table mutation (INSERT, UPDATE, DELETE) counting. The Auto Analyze se
 Default: `50`
 {{% /tags/wrap %}}
 
-The minimum number of mutations needed to run ANALYZE on a table.
+The minimum number of mutations needed to run ANALYZE on a table. For more details, see [Auto Analyze service](../../../additional-features/auto-analyze).
 
 ##### --ysql_auto_analyze_scale_factor
 
@@ -2186,9 +2175,27 @@ The minimum number of mutations needed to run ANALYZE on a table.
 Default: `0.1`
 {{% /tags/wrap %}}
 
-The fraction defining when sufficient mutations have been accumulated to run ANALYZE for a table.
+The fraction defining when sufficient mutations have been accumulated to run ANALYZE for a table. For more details, see [Auto Analyze service](../../../additional-features/auto-analyze).
 
-ANALYZE runs when the mutation count exceeds `ysql_auto_analyze_scale_factor * <table_size> + ysql_auto_analyze_threshold`, where table_size is the value of the `reltuples` column in the `pg_class` catalog.
+##### --ysql_auto_analyze_min_cooldown_per_table
+
+{{% tags/wrap %}}
+
+{{<tags/feature/restart-needed>}}
+Default: `10000` (10 seconds)
+{{% /tags/wrap %}}
+
+The minimum duration (in milliseconds) for the cooldown period between successive runs of ANALYZE on a specific table by the auto analyze service. For more details, see [Auto Analyze service](../../../additional-features/auto-analyze).
+
+##### --ysql_auto_analyze_max_cooldown_per_table
+
+{{% tags/wrap %}}
+
+{{<tags/feature/restart-needed>}}
+Default: `86400000` (24 hours)
+{{% /tags/wrap %}}
+
+The maximum duration (in milliseconds) for the cooldown period between successive runs of ANALYZE on a specific table by the auto analyze service. For more details, see [Auto Analyze service](../../../additional-features/auto-analyze).
 
 ##### --ysql_auto_analyze_batch_size
 
@@ -2239,6 +2246,26 @@ Default: `5000`
 {{% /tags/wrap %}}
 
 Timeout, in milliseconds, for the node-level mutation reporting RPC to the Auto Analyze service.
+
+##### --ysql_enable_auto_analyze_service (deprecated)
+
+{{% tags/wrap %}}
+{{<tags/feature/t-server>}}
+{{<tags/feature/restart-needed>}}
+Default: `false`
+{{% /tags/wrap %}}
+
+Enable the Auto Analyze service, which automatically runs ANALYZE to update table statistics for tables that have changed more than a configurable threshold.
+
+##### --ysql_enable_table_mutation_counter (deprecated)
+
+{{% tags/wrap %}}
+
+
+Default: `false`
+{{% /tags/wrap %}}
+
+Enable per table mutation (INSERT, UPDATE, DELETE) counting. The Auto Analyze service runs ANALYZE when the number of mutations of a table exceeds the threshold determined by the [ysql_auto_analyze_threshold](#ysql-auto-analyze-threshold) and [ysql_auto_analyze_scale_factor](#ysql-auto-analyze-scale-factor) settings.
 
 ### Advisory lock flags
 
