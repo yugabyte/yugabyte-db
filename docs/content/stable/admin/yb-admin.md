@@ -1211,12 +1211,12 @@ The filter expression is a list of acceptable objects, which can be either raw t
 
 **Example**
 
-Take a snapshot of the YSQL database `yugabyte` once per minute, and retain each snapshot for 10 minutes:
+Take a snapshot of the YSQL database `yugabyte` once an hour, and retain each snapshot for 2 hours:
 
 ```sh
 ./bin/yb-admin \
     --master_addresses ip1:7100,ip2:7100,ip3:7100 \
-    create_snapshot_schedule 1 10 ysql.yugabyte
+    create_snapshot_schedule 60 120 ysql.yugabyte
 ```
 
 The equivalent command for the YCQL keyspace `yugabyte` would be the following:
@@ -1224,7 +1224,7 @@ The equivalent command for the YCQL keyspace `yugabyte` would be the following:
 ```sh
 ./bin/yb-admin \
     --master_addresses ip1:7100,ip2:7100,ip3:7100 \
-    create_snapshot_schedule 1 10 yugabyte
+    create_snapshot_schedule 60 120 yugabyte
 ```
 
 ```output.json
@@ -1305,28 +1305,24 @@ Edits a snapshot schedule. A schedule consists of a list of objects to be includ
 yb-admin \
     --master_addresses <master-addresses> \
     edit_snapshot_schedule <schedule-id> \
-    <snapshot-interval> \
-    <retention-time> \
-    <filter-expression>
+    [ interval <snapshot-interval> ] \
+    [ retention <retention-time> ] \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
 * *schedule-id*: The identifier (ID) of the schedule to be edited.
 * *snapshot-interval*: The frequency at which to take snapshots, in minutes.
 * *retention-time*: The number of minutes to keep a snapshot before deleting it.
-* *filter-expression*: The set of objects to include in the snapshot.
-
-The filter expression is a list of acceptable objects, which can be either raw tables, keyspaces (YCQL) in the format `keyspace_name`, or databases (YSQL) in the format `ysql.database_name`. For proper consistency guarantees, set this up _per-keyspace_ (YCQL) or _per-database_ (YSQL).
 
 **Example**
 
-Edit a snapshot schedule to take a snapshot of the YSQL database `yugabyte` once per minute, and retain each snapshot for 20 minutes:
+Edit a snapshot schedule to take a snapshot once every 90 minutes, and retain each snapshot for 3 hours:
 
 ```sh
 ./bin/yb-admin \
     --master_addresses ip1:7100,ip2:7100,ip3:7100 \
     edit_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
-    1 20 ysql.yugabyte
+    interval 90 retention 180
 ```
 
 #### restore_snapshot_schedule
