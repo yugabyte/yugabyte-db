@@ -268,6 +268,8 @@ class ClusterAdminClient {
 
   Status FlushSysCatalog();
 
+  Status ClearCache(MonoDelta timeout = MonoDelta::FromSeconds(30));
+
   Status CompactSysCatalog();
 
   Status ModifyTablePlacementInfo(const client::YBTableName& table_name,
