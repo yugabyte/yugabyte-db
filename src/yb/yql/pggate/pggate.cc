@@ -90,9 +90,12 @@ using namespace std::literals;
 DECLARE_bool(use_node_to_node_encryption);
 DECLARE_string(certs_dir);
 DECLARE_bool(node_to_node_encryption_use_client_certificates);
+DECLARE_string(cert_node_filename);
 DECLARE_int32(backfill_index_client_rpc_timeout_ms);
 DECLARE_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms);
 DECLARE_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms);
+DECLARE_string(server_broadcast_addresses);
+DECLARE_string(rpc_bind_addresses);
 
 DEFINE_RUNTIME_PREVIEW_bool(ysql_pack_inserted_value, false,
      "Enabled packing inserted columns into a single packed value in postgres layer.");
@@ -124,10 +127,28 @@ Result<PgApiImpl::MessengerHolder> BuildMessenger(
     const scoped_refptr<MetricEntity>& metric_entity,
     const std::shared_ptr<MemTracker>& parent_mem_tracker) {
   std::unique_ptr<rpc::SecureContext> secure_context;
+
   if (FLAGS_use_node_to_node_encryption) {
+
+	auto& node_name = FLAGS_cert_node_filename;
+
+	if (node_name.empty()) {
+      if (!FLAGS_server_broadcast_addresses.empty()) {
+        std::vector<HostPort> host_ports;
+        RETURN_NOT_OK(HostPort::ParseStrings(FLAGS_server_broadcast_addresses, 0, &host_ports));
+        node_name = host_ports[0].host();
+      } else if (!FLAGS_rpc_bind_addresses.empty()) {
+        std::vector<HostPort> host_ports;
+        RETURN_NOT_OK(HostPort::ParseStrings(FLAGS_rpc_bind_addresses, 0, &host_ports));
+        node_name = host_ports[0].host();
+      }
+    }
+
     secure_context = VERIFY_RESULT(rpc::CreateSecureContext(
-        FLAGS_certs_dir,
-        rpc::UseClientCerts(FLAGS_node_to_node_encryption_use_client_certificates)));
+      FLAGS_certs_dir,
+      rpc::UseClientCerts(FLAGS_node_to_node_encryption_use_client_certificates),
+      node_name
+    ));
   }
   return PgApiImpl::MessengerHolder{
       std::move(secure_context),
