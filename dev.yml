@@ -1,0 +1,44 @@
+name: yugabyte-db
+
+up:
+  - packages:
+      - llvm@16
+      - cmake
+  - go: 1.24.6
+  - python: 3.12.7
+
+  - custom:
+      name: Verify Clang 16
+      met?: /opt/homebrew/opt/llvm@16/bin/clang --version | grep -q "clang version 16"
+      meet: echo "Clang 16 installed via llvm@16"
+  
+#  - custom:
+#      name: Verify CMake >= 3.31
+#      met?: cmake --version | grep -E "cmake version (3\.3[1-9]|3\.[4-9][0-9]|[4-9]\.[0-9]+)"
+#      meet: echo "CMake version check passed"
+
+  # Setup Yugabyte build dir
+  - custom:
+      name: Setup build directory
+      met?: test -d /opt/yb-build && [ "$(stat -f '%Su' /opt/yb-build 2>/dev/null || echo '')" = "$USER" ]
+      meet: sudo mkdir -p /opt/yb-build && sudo chown "$USER" /opt/yb-build
+
+env:
+  # Point to Clang 16
+  CC: /opt/homebrew/opt/llvm@16/bin/clang
+  CXX: /opt/homebrew/opt/llvm@16/bin/clang++
+  LDFLAGS: "-L/opt/homebrew/opt/llvm@16/lib"
+  CPPFLAGS: "-I/opt/homebrew/opt/llvm@16/include"
+
+commands:
+  build:
+    desc: Build Yugabyte 
+    run: ./yb_build.sh release
+  
+#  test:
+#    desc: Run tests
+#    run: ./build/your-test-binary
+  
+#  clean:
+#    desc: Clean build artifacts
+#    run: rm -rf build
