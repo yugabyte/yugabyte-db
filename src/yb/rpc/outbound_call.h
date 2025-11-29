@@ -70,6 +70,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/object_pool.h"
+#include "yb/util/otel_tracing.h"
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/slice.h"
@@ -339,6 +340,12 @@ class OutboundCall : public RpcCall {
   void SetConnectionId(const ConnectionId& value, const std::string* hostname) {
     conn_id_ = value;
     hostname_ = hostname;
+    
+    // Set peer address on the OTEL span if active
+    if (otel_span_.IsActive()) {
+      otel_span_.SetAttribute("net.peer.name", *hostname);
+      otel_span_.SetAttribute("net.peer.address", yb::ToString(value.remote()));
+    }
   }
 
   void SetThreadPoolFailure(const Status& status) EXCLUDES(mtx_) {
@@ -582,6 +589,9 @@ class OutboundCall : public RpcCall {
 
   // Set and hold a weak reference to the connection for the remaining lifetime of the call.
   WriteOnceWeakPtr<Connection> connection_weak_;
+
+  // OpenTelemetry span for distributed tracing. Created when the call starts, ended when complete.
+  OtelSpanHandle otel_span_;
 
   // InvokeCallbackTask should be able to call InvokeCallbackSync and we don't want other that
   // method to be public.

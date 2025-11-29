@@ -32,6 +32,7 @@
 #include "executor/ybModifyTable.h"
 #include "optimizer/ybplan.h"
 #include "pg_yb_utils.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 
 /*
@@ -713,6 +714,8 @@ PortalRun(Portal portal, long count, bool isTopLevel, bool run_once,
 	AssertArg(PortalIsValid(portal));
 
 	TRACE_POSTGRESQL_QUERY_EXECUTE_START();
+	/* Note: YBCOtelExecuteStart() is called in PortalRunMulti for plannable queries
+	 * to avoid duplicate nested execute spans */
 
 	/* Initialize empty completion data */
 	if (qc)
@@ -865,6 +868,7 @@ PortalRun(Portal portal, long count, bool isTopLevel, bool run_once,
 	if (log_executor_stats && portal->strategy != PORTAL_MULTI_QUERY)
 		ShowUsage("EXECUTOR STATISTICS");
 
+	/* Note: YBCOtelExecuteDone() is called in PortalRunMulti for plannable queries */
 	TRACE_POSTGRESQL_QUERY_EXECUTE_DONE();
 
 	return result;
@@ -1254,6 +1258,7 @@ PortalRunMulti(Portal portal,
 			 * process a plannable query.
 			 */
 			TRACE_POSTGRESQL_QUERY_EXECUTE_START();
+			YBCOtelExecuteStart();
 
 			if (log_executor_stats)
 				ResetUsage();
@@ -1318,6 +1323,7 @@ PortalRunMulti(Portal portal,
 			if (log_executor_stats)
 				ShowUsage("EXECUTOR STATISTICS");
 
+			YBCOtelExecuteDone();
 			TRACE_POSTGRESQL_QUERY_EXECUTE_DONE();
 		}
 		else
