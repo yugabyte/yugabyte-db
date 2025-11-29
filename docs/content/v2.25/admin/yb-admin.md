@@ -1211,12 +1211,12 @@ The filter expression is a list of acceptable objects, which can be either raw t
 
 **Example**
 
-Take a snapshot of the YSQL database `yugabyte` once per minute, and retain each snapshot for 10 minutes:
+Take a snapshot of the YSQL database `yugabyte` once an hour, and retain each snapshot for 2 hours:
 
 ```sh
 ./bin/yb-admin \
     --master_addresses ip1:7100,ip2:7100,ip3:7100 \
-    create_snapshot_schedule 1 10 ysql.yugabyte
+    create_snapshot_schedule 60 120 ysql.yugabyte
 ```
 
 The equivalent command for the YCQL keyspace `yugabyte` would be the following:
@@ -1224,7 +1224,7 @@ The equivalent command for the YCQL keyspace `yugabyte` would be the following:
 ```sh
 ./bin/yb-admin \
     --master_addresses ip1:7100,ip2:7100,ip3:7100 \
-    create_snapshot_schedule 1 10 yugabyte
+    create_snapshot_schedule 60 120 yugabyte
 ```
 
 ```output.json
@@ -1316,7 +1316,7 @@ yb-admin \
 
 **Example**
 
-Edit a snapshot schedule to take a snapshot once per minute, and retain each snapshot for 20 minutes:
+Edit a snapshot schedule to take a snapshot once every 90 minutes, and retain each snapshot for 3 hours:
 
 ```sh
 ./bin/yb-admin \
