@@ -88,13 +88,13 @@ The following code creates an Employees model to store and retrieve employee inf
 - The actual table is created by calling the `Employee.sync()` API in the `createTableAndInsert()` function. This also inserts the data for three employees into the table using the `Employee.create()` API.
 - Finally, you can retrieve the information of all employees using `Employee.findAll()`.
 
-#### Using the YugabyteDB Smart Driver
+#### Using the YugabyteDB node-postgres smart driver
 
-You can also use the YugabyteDB smart driver (`@yugabytedb/pg`) which provides connection load balancing feature that spreads connections uniformly across the nodes in the entire cluster or in specific placements (zones or regions).
+You can also use the [YugabyteDB node-postgres smart driver](/stable/develop/drivers-orms/nodejs/yugabyte-node-driver/) (`@yugabytedb/pg`), which includes connection load balancing features, to distribute connections uniformly across the nodes in the entire cluster or in specific placements (zones or regions).
 
-Read more on the smart driver features [here](../../smart-drivers/#using-yugabytedb-smart-drivers).
+For more information on the smart driver features, refer to [Using YugabyteDB smart drivers](../../smart-drivers/#using-yugabytedb-smart-drivers).
 
-To use the YugabyteDB smart driver instead of the vanilla PG driver, add the following to your application's `package.json` dependencies:
+To use the YugabyteDB node-postgres smart driver instead of the vanilla pg driver, add the following dependencies to your application's `package.json` file, to override the default PostgreSQL driver with the YugabyteDB smart driver:
 
 ```json
 {
@@ -105,9 +105,7 @@ To use the YugabyteDB smart driver instead of the vanilla PG driver, add the fol
 }
 ```
 
-This overrides the default PostgreSQL driver with the YugabyteDB smart driver.
-
-To provide the load-balance specific properties, use either the environment variables or connection parameters. See the examples below for more details.
+To configure load balancing properties, use either environment variables or connection parameters. See [Specify load balance properties](#specify-load-balance-properties) for examples and more details.
 
 For a complete working example, refer to the [Sequelize ORM example application](https://github.com/YugabyteDB-Samples/orm-examples/tree/master/node/sequelize).
 
@@ -212,9 +210,17 @@ Employees Details:
 ]
 ```
 
-#### Specifying load balance properties
+#### Specify load balance properties
 
-You can enable these features by specifying the properties either as the environment variables or via connection parameters.
+The following table summarizes all environment variables available for configuring the YugabyteDB node-postgres smart driver:
+
+| Environment variable | Description | Default value | Valid values/format |
+| :--- | :--- | :--- | :--- |
+| `PGLOADBALANCE` | Enables cluster-aware or node type-aware load balancing | `false` (disabled) | `any`, `prefer-primary`, `prefer-rr`, `only-primary`, `only-rr`, `true` (alias for `any`), `false` |
+| `PGTOPOLOGYKEYS` | Enables topology-aware load balancing by specifying comma-separated geo-locations | Empty (disabled) | Format: `cloud.region.zone` (e.g., `aws.us-east-1.us-east-1a`). Multiple zones: comma-separated. Wildcard: `cloud.region.*` for all zones in a region. Fallback priority: `cloud.region.zone:n` where `n` is priority number |
+| `PGYBSERVERSREFRESHINTERVAL` | The interval (in seconds) to refresh the servers list | `300` (5 minutes) | Positive integer (in seconds) |
+
+**Note:** These environment variables are only effective when using the YugabyteDB smart driver (`@yugabytedb/pg`). They are ignored when using the standard PostgreSQL driver.
 
 ##### Environment variables
 
@@ -234,6 +240,8 @@ const sequelize = new Sequelize('yugabyte', 'yugabyte', 'yugabyte', {
    dialect: 'postgres'
 })
 ```
+
+For information on all load balance modes, see [Node type-aware load balancing](../../smart-drivers/#node-type-aware-load-balancing).
 
 You can also set these in your shell or in a `.env` file:
 
