@@ -12333,7 +12333,7 @@ Status CatalogManager::PeerStateDump(const vector<RaftPeerPB>& peers,
 }
 
 void CatalogManager::ReportMetrics() {
-  // Report metrics on load balancer state.
+  // Report metrics on cluster balancer state.
   load_balance_policy_->ReportMetrics();
 
   // Report metrics on how many tservers are alive.
@@ -12997,7 +12997,7 @@ Status CatalogManager::InitializeTableLoadState(
   return CatalogManagerUtil::FillTableLoadState(table_info, state);
 }
 
-// TODO: consider unifying this code with the load balancer.
+// TODO: consider unifying this code with the cluster balancer.
 Result<CMGlobalLoadState> CatalogManager::InitializeGlobalLoadState(
     const TSDescriptorVector& ts_descs) {
   CMGlobalLoadState state;

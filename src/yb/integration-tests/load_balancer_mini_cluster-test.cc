@@ -271,7 +271,7 @@ TEST_F(LoadBalancerMiniClusterRf3Test, DurationMetric) {
 TEST_F(LoadBalancerMiniClusterTest, TaskTracker) {
   auto kTimeout = 30s;
   auto load_balancer = ASSERT_RESULT(
-      mini_cluster()->GetLeaderMiniMaster())->master()->catalog_manager()->load_balancer();
+      mini_cluster()->GetLeaderMiniMaster())->master()->catalog_manager()->cluster_balancer();
   ASSERT_TRUE(load_balancer->GetLatestActivityInfo().IsIdle());
 
   // Add a tablet server. The load balancer should start an add server task.
@@ -548,8 +548,8 @@ TEST_F(LoadBalancerMiniClusterTest, NoLBOnDeletedTables) {
         }
         const auto tables = (*leader_mini_master)
                                 ->catalog_manager()
-                                .load_balancer()
-                                ->GetAllTablesLoadBalancerSkipped();
+                                .cluster_balancer()
+                                ->GetAllTablesClusterBalancerSkipped();
         for (const auto& table : tables) {
           if (table->name() == table_name().table_name() &&
               table->namespace_name() == table_name().namespace_name()) {

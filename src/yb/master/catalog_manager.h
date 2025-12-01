@@ -863,7 +863,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Tablet peer for the sys catalog tablet's peer.
   std::shared_ptr<tablet::TabletPeer> tablet_peer() const override;
 
-  ClusterLoadBalancer* load_balancer() override { return load_balance_policy_.get(); }
+  ClusterLoadBalancer* cluster_balancer() override { return load_balance_policy_.get(); }
 
   // This never returns nullptr.
   XClusterManagerIf* GetXClusterManager() override;

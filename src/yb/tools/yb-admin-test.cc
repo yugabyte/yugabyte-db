@@ -518,12 +518,13 @@ TEST_F(AdminCliTest, GetIsLoadBalancerIdle) {
       .add_master_server_addr(master_address)
       .Build());
 
-  // Load balancer IsIdle() logic has been changed to the following - unless a task was explicitly
-  // triggered by the load balancer (AsyncAddServerTask / AsyncRemoveServerTask / AsyncTryStepDown)
-  // then the task does not count towards determining whether the load balancer is active. If no
-  // pending LB tasks of the aforementioned types exist, the load balancer will report idle.
+  // Cluster balancer IsIdle() logic has been changed to the following - unless a task was
+  // explicitly triggered by the cluster balancer (AsyncAddServerTask / AsyncRemoveServerTask /
+  // AsyncTryStepDown) then the task does not count towards determining whether the cluster balancer
+  // is active. If no pending cluster balancer tasks of the aforementioned types exist, the cluster
+  // balancer will report idle.
 
-  // Delete table should not activate the load balancer.
+  // Delete table should not activate the cluster balancer.
   ASSERT_OK(client->DeleteTable(kTableName, false /* wait */));
   // This should timeout.
   Status s = WaitFor(
@@ -532,7 +533,7 @@ TEST_F(AdminCliTest, GetIsLoadBalancerIdle) {
         return output.compare("Idle = 0\n") == 0;
       },
       kWaitTime,
-      "wait for load balancer to stay idle");
+      "wait for cluster balancer to stay idle");
 
   ASSERT_FALSE(s.ok());
 }
@@ -1042,7 +1043,7 @@ TEST_F(AdminCliTest, TestGetClusterLoadBalancerState) {
 
   output = ASSERT_RESULT(CallAdmin("set_load_balancer_enabled", "0"));
 
-  ASSERT_EQ(output.find("Unable to change load balancer state"), std::string::npos);
+  ASSERT_EQ(output.find("Unable to change cluster balancer state"), std::string::npos);
 
   output = ASSERT_RESULT(CallAdmin("get_load_balancer_state"));
 
@@ -1050,7 +1051,7 @@ TEST_F(AdminCliTest, TestGetClusterLoadBalancerState) {
 
   output = ASSERT_RESULT(CallAdmin("set_load_balancer_enabled", "1"));
 
-  ASSERT_EQ(output.find("Unable to change load balancer state"), std::string::npos);
+  ASSERT_EQ(output.find("Unable to change cluster balancer state"), std::string::npos);
 
   output = ASSERT_RESULT(CallAdmin("get_load_balancer_state"));
 

@@ -165,7 +165,8 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
 
   virtual bool IsLoadBalancerEnabled() = 0;
 
-  // API to check if all the live tservers have similar tablet workload.
+  // This API is badly named. It actually checks whether the cluster balancer is idle, which may
+  // be possible even if cluster load is not balanced.
   virtual Status IsLoadBalanced(
       const IsLoadBalancedRequestPB* req, IsLoadBalancedResponsePB* resp) = 0;
 
@@ -279,7 +280,7 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
 
   virtual int64_t leader_ready_term() const = 0;
 
-  virtual ClusterLoadBalancer* load_balancer() = 0;
+  virtual ClusterLoadBalancer* cluster_balancer() = 0;
 
   virtual XClusterManagerIf* GetXClusterManager() = 0;
 
