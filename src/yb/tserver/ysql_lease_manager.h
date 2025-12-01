@@ -13,32 +13,37 @@
 
 #pragma once
 
+#include "yb/master/master_ddl.pb.h"
+
+#include "yb/rpc/rpc_context.h"
+
 #include "yb/server/server_base_options.h"
 
+#include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_fwd.h"
-#include "yb/tserver/ysql_lease_manager.h"
-
-#include "yb/util/status_fwd.h"
+#include "yb/tserver/tserver_service.pb.h"
+#include "yb/tserver/ysql_lease.h"
 
 namespace yb::tserver {
 
-class YsqlLeaseClient {
+class YSQLLeaseManager {
  public:
-  YsqlLeaseClient(
-      TabletServer& server, YSQLLeaseManager& lease_manager,
-      server::MasterAddressesPtr master_addresses);
-  YsqlLeaseClient(const YsqlLeaseClient& other) = delete;
-  void operator=(const YsqlLeaseClient& other) = delete;
+  YSQLLeaseManager(TabletServer& server, server::MasterAddressesPtr master_addresses);
+  ~YSQLLeaseManager();
 
-  Status Start();
+  YSQLLeaseInfo GetYSQLLeaseInfo() const;
+  Status ProcessLeaseUpdate(const master::RefreshYsqlLeaseInfoPB& lease_refresh_info);
+  void UpdateMasterAddresses(const server::MasterAddressesPtr& master_addresses);
+  Status StartYSQLLeaseRefresher();
+  void StartTSLocalLockManager();
   Status Stop();
   std::future<Status> RelinquishLease(MonoDelta timeout) const;
-  void set_master_addresses(server::MasterAddressesPtr master_addresses);
 
-  ~YsqlLeaseClient();
+  TSLocalLockManagerPtr ts_local_lock_manager() const;
 
  private:
   class Impl;
+
   std::unique_ptr<Impl> impl_;
 };
 
