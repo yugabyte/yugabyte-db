@@ -5043,9 +5043,9 @@ create_bitmap_subplan(PlannerInfo *root, Path *bitmapqual,
 		/* then convert to a bitmap indexscan */
 		if (ipath->indexinfo->rel->is_yb_relation)
 		{
-			YbPlanInfo	bitmap_idx_info = iscan->yb_plan_info;
-
-			bitmap_idx_info.estimated_docdb_result_width = ipath->ybctid_width;
+			Assert(!iscan->yb_saop_merge_info);
+			iscan->yb_plan_info.estimated_docdb_result_width =
+				ipath->ybctid_width;
 
 			plan = (Plan *) make_yb_bitmap_indexscan(iscan->scan.scanrelid,
 													 iscan->indexid,
@@ -5053,7 +5053,7 @@ create_bitmap_subplan(PlannerInfo *root, Path *bitmapqual,
 													 iscan->indexqualorig,
 													 iscan->indextlist,
 													 iscan->yb_idx_pushdown,
-													 bitmap_idx_info);
+													 iscan->yb_plan_info);
 		}
 		else
 			plan = (Plan *) make_bitmap_indexscan(iscan->scan.scanrelid,

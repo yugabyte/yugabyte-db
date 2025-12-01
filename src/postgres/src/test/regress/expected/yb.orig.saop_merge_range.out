@@ -1185,14 +1185,14 @@
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=6 loops=1)
                Output: r1, r3, r4, r5, n, r2
                Index Cond: ((r5n.r1 = 7) AND (r5n.r2 = ANY ('{1,2,3,4}'::bigint[])) AND (r5n.r2 = ANY ('{0,2,4,6,8}'::bigint[])))
-               Rows Removed by Index Recheck: 50
+               Rows Removed by Index Recheck: 49
                Merge Sort Key: r5n.r3, r5n.r4, r5n.r5
                Merge Stream Key: r5n.r2
                Merge Streams: 4
                Merge Cond: (r5n.r2 = ANY ('{1,2,3,4}'::bigint[]))
                Storage Table Read Requests: 2
                Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 247
+               Storage Table Rows Scanned: 195
 (18 rows)
 
  r1 | r3 | r4 | r5 |   n   | r2 
@@ -3227,8 +3227,7 @@
 ----+----+----+---+----+----
 (0 rows)
 
--- Choose best IN (see DIST)
--- TODO(#29071): this should properly pin the right IN.
+-- Choose lowest cardinality IN
 -- TODO(#20899): this test needs to be reconsidered when fixing this issue.
 \set query 'SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5, 6) AND r1 IN (3, 4, 5, 6, 7) AND r1 IN (5, 6, 7, 8, 9, 10) ORDER BY r2, r3, r4, r5, n LIMIT 5'
 :explain2run2
@@ -3261,6 +3260,7 @@
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=6 loops=1)
                Output: r2, r3, r4, r5, n, r1
                Index Cond: ((r5n.r1 = ANY ('{1,2,3,4,5,6}'::integer[])) AND (r5n.r1 = ANY ('{3,4,5,6,7}'::integer[])) AND (r5n.r1 = ANY ('{5,6,7,8,9,10}'::integer[])))
+               Rows Removed by Index Recheck: 1011
                Merge Sort Key: r5n.r2, r5n.r3, r5n.r4, r5n.r5
                Merge Stream Key: r5n.r1
                Merge Streams: 5
@@ -3268,7 +3268,7 @@
                Storage Table Read Requests: 2
                Storage Table Read Ops: 2
                Storage Table Rows Scanned: 1029
-(17 rows)
+(18 rows)
 
  r2 | r3 | r4 | r5 |   n   | r1 
 ----+----+----+----+-------+----
