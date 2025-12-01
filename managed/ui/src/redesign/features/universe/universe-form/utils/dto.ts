@@ -665,7 +665,7 @@ export const DEFAULT_INSTANCE_CONFIG: InstanceConfigFormValue = {
   arch: null,
   imageBundleUUID: '',
   k8sEncryptionType: K8sEncryptionOption.EnableBoth,
-  enableTLS: false
+  enableTLS: true
 };
 
 export const DEFAULT_ADVANCED_CONFIG: AdvancedConfigFormValue = {
