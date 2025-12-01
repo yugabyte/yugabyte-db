@@ -25,18 +25,18 @@ The `yb_tablet_metadata` view is useful for:
 
 Note that the view returns tablet information for YSQL objects and the system transaction table only.
 
-The columns of the `yb_tablet_metadata` view are described in the following table.
+The following table describes the columns of the `yb_tablet_metadata` view.
 
 | Column | Type | Description |
 | :----- | :--- | :---------- |
 | tablet_id | text | A unique identifier (UUID) representing the tablet. |
-| relname | text | Name of table/index whose data is stored on the tablet. |
 | oid | oid | The object identifier (OID) for the table/index that the tablet belongs to. |
 | db_name | text | Name of the database this relation belongs to. |
+| relname | text | Name of table/index whose data is stored on the tablet. |
 | start_hash_code | int | Starting hash code (inclusive) for the tablet. (NULL for range-sharded tables.) |
 | end_hash_code | int | Ending hash code (exclusive) for the tablet. (NULL for range-sharded tables.) |
-| replicas | text[] | A list of replica IP addresses and port (includes leader) associated with the tablet. |
 | leader | text | IP address, port of the leader node for the tablet. |
+| replicas | text[] | A list of replica IP addresses and port (includes leader) associated with the tablet. |
 
 ## Examples
 
