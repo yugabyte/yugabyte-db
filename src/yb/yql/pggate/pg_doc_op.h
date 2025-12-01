@@ -143,6 +143,8 @@ class PgsqlResultStream {
 
   StreamFetchStatus FetchStatus() const;
 
+  void Detach();
+
  private:
   // Returns nullptr if nothing is available. May invalidate previously returned data.
   Result<PgDocResult*> GetNextDocResult();
@@ -172,6 +174,9 @@ class PgDocResultStream {
   explicit PgDocResultStream(PgDocFetchCallback fetch_func);
 
   virtual ~PgDocResultStream() = default;
+
+  // Reset the stream, but keep the accumulated responses to serve data from.
+  virtual void ResetOps() = 0;
 
   // Reset the stream and set up new batch of PgsqlOps to read results from.
   virtual void ResetOps(const std::vector<PgsqlOpPtr> &ops) = 0;
@@ -237,6 +242,8 @@ class ParallelPgDocResultStream : public PgDocResultStream {
 
   virtual ~ParallelPgDocResultStream() = default;
 
+  virtual void ResetOps() override;
+
   virtual void ResetOps(const std::vector<PgsqlOpPtr> &ops) override;
 
  protected:
@@ -255,6 +262,8 @@ class CachedPgDocResultStream : public PgDocResultStream {
   explicit CachedPgDocResultStream(std::list<PgDocResult>&& results);
 
   virtual ~CachedPgDocResultStream() = default;
+
+  virtual void ResetOps() override {}
 
   virtual void ResetOps(const std::vector<PgsqlOpPtr> &ops) override;
 
@@ -288,6 +297,8 @@ class MergingPgDocResultStream : public PgDocResultStream {
       std::function<T(PgsqlResultStream*)> get_order_fn);
 
   virtual ~MergingPgDocResultStream() = default;
+
+  virtual void ResetOps() override;
 
   virtual void ResetOps(const std::vector<PgsqlOpPtr> &ops) override;
 
@@ -551,8 +562,11 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   // - Sort the operators in "pgsql_ops_" to move "inactive" operators to the end of the list.
   void MoveInactiveOpsOutside();
 
-  // If there is a result stream, reset it with currently set up operations.
+  // If there is a result stream, reset it.
   void ResetResultStream();
+
+  // If there is a result stream, add current operations to it.
+  void AddOpsToResultStream();
 
   // Session control.
   PgSession::ScopedRefPtr pg_session_;
@@ -646,7 +660,95 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
 };
 
 //--------------------------------------------------------------------------------------------------
+// Classes to facilitate IN clause permutations.
+// The input is one or more expressions of following supported types:
+// 1. Single value representing an equality condition
+// 2. A tuple of values representing IN clause condition
+// 3. A tuple of tuples, where the first inner tuple contains column references, and remaining
+//    tuples contain values, representing ROW(<columns>) IN (ROW(values1), ... ROW(valuesN))
+// The facility is initialized by the InPermutationBuilder class. The participating expressions are
+// added to the builder using AddExpression method. Since expressions of type 1. and 2. do not
+// contain column information, the caller must provide the index of the associated column. If the
+// expression is of type 3., the indexes are retrieved from the expression and the index passed in
+// is ignored. The participating expressions may only refer table's key columns, must refer all the
+// hash column and must not refer any column more than once.
+// After all participating expressions are added to the builder, the Build() method initializes and
+// returns the permutations state. Call to Build() invalidates the builder.
+// The InPermutationGenerator class is the core of the permutations state. It tracks the current
+// permutation and provides it as a vector of pointers to the values in the respective expressions.
+// Not referenced indexes in the permutation contain null pointers.
+// The InExpressionWrapper keeps current position in one participating expression and configured to
+// efficiently retrieve current value(s) into the permutation.
+class InExpressionWrapper {
+ public:
+  static InExpressionWrapper Make(
+      const PgTable& table, size_t idx, const LWPgsqlExpressionPB* expr);
 
+  const std::vector<size_t>& Targets() const { return targets_; }
+  size_t Size() const { return values_.size(); }
+
+  bool Next();
+  void GetValues(std::vector<const LWQLValuePB*>* permutation);
+
+ private:
+  InExpressionWrapper(
+      std::vector<size_t>&& targets, std::vector<const LWPgsqlExpressionPB*>&& values,
+      void (InExpressionWrapper::*fn)(std::vector<const LWQLValuePB*>*))
+      : pos_(0),
+        targets_(std::move(targets)),
+        values_(std::move(values)),
+        GetValuesFn_(fn) {}
+
+  // GetValues implementations for supported expression types
+  void GetSingleValue(std::vector<const LWQLValuePB*>* permutation);
+  void GetInValue(std::vector<const LWQLValuePB*>* permutation);
+  void GetRowInValues(std::vector<const LWQLValuePB*>* permutation);
+
+  size_t pos_;
+  const std::vector<size_t> targets_;
+  const std::vector<const LWPgsqlExpressionPB*> values_;
+  void (InExpressionWrapper::*GetValuesFn_)(std::vector<const LWQLValuePB*>*);
+};
+
+class InPermutationGenerator {
+ public:
+  InPermutationGenerator(InPermutationGenerator&& other) = default;
+
+  const std::vector<size_t>& Targets() const { return all_targets_; }
+  size_t Size();
+
+  bool HasPermutation() { return !done_; }
+  const std::vector<const LWQLValuePB*>& NextPermutation();
+
+ private:
+  friend class InPermutationBuilder;
+  InPermutationGenerator(
+      PgTable& table,
+      std::vector<InExpressionWrapper>&& source_exprs,
+      std::vector<size_t>&& targets);
+  void Next();
+
+  const std::vector<size_t> all_targets_;
+  std::vector<InExpressionWrapper> source_exprs_;
+  std::vector<const LWQLValuePB*> current_permutation_;
+  bool done_ = false;
+  DISALLOW_COPY_AND_ASSIGN(InPermutationGenerator);
+};
+
+class InPermutationBuilder {
+ public:
+  explicit InPermutationBuilder(PgTable& table) : table_(table) {}
+
+  void AddExpression(size_t idx, const LWPgsqlExpressionPB* expr);
+  InPermutationGenerator Build();
+
+ private:
+  bool TargetsAreValid(const std::vector<size_t>& all_targets);
+  PgTable& table_;
+  std::vector<InExpressionWrapper> source_exprs_;
+};
+
+//--------------------------------------------------------------------------------------------------
 class PgDocReadOp : public PgDocOp {
  public:
   PgDocReadOp(const PgSession::ScopedRefPtr& pg_session, PgTable* table, PgsqlReadOpPtr read_op);
@@ -712,8 +814,6 @@ class PgDocReadOp : public PgDocOp {
 
   bool IsBatchFlushRequired() const;
 
-  void ResetHashBatches();
-
   // Create operators by partition arguments.
   // - Optimization for statement:
   //     SELECT ... WHERE <hash-columns> IN <value-lists>
@@ -725,55 +825,23 @@ class PgDocReadOp : public PgDocOp {
   Result<bool> PopulateNextHashPermutationOps();
   void InitializeHashPermutationStates();
 
-  // Binds the given hash and range values to the given read request.
-  // hashed_values and range_values have the same descriptions as in BindExprsToBatch.
+  // Binds the given values to the given read request.
+  // Hash column values are bound to partition_column_values, range column values are added as
+  // equality conditions to the condition_expr.
   void BindExprsRegular(
-      LWPgsqlReadRequestPB* read_req,
-      const std::vector<const LWPgsqlExpressionPB*>& hashed_values,
-      const std::vector<const LWPgsqlExpressionPB*>& range_values);
+      LWPgsqlReadRequestPB* read_req, const std::vector<const LWQLValuePB*>& values);
 
-  // Helper functions for when we are batching hash permutations where
-  // we are creating an IN condition of the form
-  // (yb_hash_code(hashkeys), h1, h2, ..., hn) IN (tuple_1, tuple_2, tuple_3, ...)
+  Result<LWPgsqlExpressionPB*> PrepareInitialHashConditionList(size_t partition);
 
-  // This operates by creating one such IN condition for each partition we are sending
-  // our query to and buidling each of them up in hash_in_conds_[partition_idx]. We make sure
-  // that each permutation value goes into the correct partition's condition. We then
-  // make one read op clone per partition and for each one we bind their respective condition
-  // from hash_in_conds_[partition_idx].
-
-  // This prepares the LHS of the hash IN condition for a particular partition.
-  void PrepareInitialHashConditionList(size_t partition);
-
-  // Binds the given hash and range values to whatever partition in hash_in_conds_
-  // the hashed values suggest. The range_values vector is expected to be a
-  // vector of size num_range_keys where a range_values[i] == nullptr iff
-  // the ith range column is not relevant to the IN condition we are building
-  // up.
-  void BindExprsToBatch(
-      const std::vector<const LWPgsqlExpressionPB*>& hashed_values,
-      const std::vector<const LWPgsqlExpressionPB*>& range_values);
-
-  // These functions are used to iterate over each partition batch and bind them to a request.
-
-  Result<bool> BindBatchesToRequests();
-
-  // Returns false if we are done iterating over our partition batches.
-  bool HasNextBatch();
-
-  // Binds the next partition batch available to the given request's condition expression.
-  Result<bool> BindNextBatchToRequest(LWPgsqlReadRequestPB* read_req);
+  // Binds the given values to the partition defined by hash column values.
+  // The hash_in_conds_ conveniently holds references to initialized RHSs of the batched IN
+  // expression. The hash_in_conds_ elements are lazily initialized when the partition is first
+  // referenced.
+  Status BindExprsToBatch(const std::vector<const LWQLValuePB*>& values);
 
   // Helper functions for PopulateNextHashPermutationOps
   // Prepares a new read request from the pool of inactive operators.
   LWPgsqlReadRequestPB* PrepareReadReq();
-  // True if the next call to GetNextPermutation will not fail.
-  bool HasNextPermutation() const;
-  // Gets the next possible permutation of partition_exprs.
-  bool GetNextPermutation(std::vector<const LWPgsqlExpressionPB*>* exprs);
-  // Binds a given permutation of partition expressions to the given read request.
-  void BindPermutation(const std::vector<const LWPgsqlExpressionPB*>& exprs,
-                       LWPgsqlReadRequestPB* read_op);
 
   // Create operators by partitions.
   // - Optimization for aggregating or filtering requests.
@@ -807,64 +875,37 @@ class PgDocReadOp : public PgDocOp {
 
   //----------------------------------- Data Members -----------------------------------------------
 
-  // Whether or not we are using hash permutation batching for this op.
-  std::optional<bool> is_hash_batched_;
-
-  // Pointer to the per tablet hash component condition expression. For each hash key
-  // combination, once we identify the partition at which it should be executed, we enqueue
-  // it into this vector among the other hash keys that are to be executed in that tablet.
-  // This vector contains a reference to the vector that contains the list of hash keys
-  // that are supposed to be executed in each tablet.
-
-  // This is a vector of IN condition expressions for each partition. In each partition's
-  // condition expression the LHS is a tuple of the hash code and hash keys and the RHS
-  // is built up to eventually be a list of all the hash key permutations
-  // that belong to that partition. These conditions are eventually bound
-  // to a read op's condition expression.
-  std::vector<LWPgsqlExpressionPB*> hash_in_conds_;
-
-  // Sometimes in the final hash IN condition's LHS, range columns may be involved.
-  // For example, if we get a filter of the form (h1, h2, r2) IN (t2, t2, t3), commonly found
-  // in the case of batched nested loop joins. These should be sorted.
-  std::vector<size_t> permutation_range_column_indexes_;
-
-  // Used when iterating over the partition batches in hash_in_conds_.
-  size_t next_batch_partition_ = 0;
-
-  // Used to store temporary objects formed during op creation. Relevant
-  // when cloning ops for hash permutations.
-  std::unique_ptr<ThreadSafeArena> hash_key_arena_;
-
-  // Arena for operations fetching from the main table by keys retrieved from the secondary index.
-  // Those can take billions of keys to fetch, and we want to be able to periodically release
-  // their memory, without harming the template operation and stuff, hence separate arena.
-  std::shared_ptr<ThreadSafeArena> pgsql_op_arena_;
-
   // Template operation, used to fill in pgsql_ops_ by either assigning or cloning.
   PgsqlReadOpPtr read_op_;
 
-  // Used internally for PopulateNextHashPermutationOps to keep track of which permutation should
-  // be used to construct the next read_op.
-  // Is valid as long as request_population_completed_ is false.
-  //
-  // Example:
-  // For a query clause "h1 = 1 AND h2 IN (2,3) AND h3 IN (4,5,6) AND h4 = 7",
-  // there are 1*2*3*1 = 6 possible permutation.
-  // As such, this field will take on values 0 through 5.
-  size_t total_permutation_count_ = 0;
-  size_t next_permutation_idx_ = 0;
+  // Arena for pgsql operations. In some cases PgGate may need to create too many pgsql operations
+  // to keep everything in memory. In such cases pgsql_op_arena_ is created and pgsql operations
+  // are allocated on that arena. When all pgsql operations are out of active state the arena is
+  // reset and operations are recreated to start the next batch from the scratch.
+  std::shared_ptr<ThreadSafeArena> pgsql_op_arena_;
 
-  // Used internally for PopulateNextHashPermutationOps to holds all partition expressions.
-  // Elements correspond to a hash columns, in the same order as they were defined
-  // in CREATE TABLE statement.
-  // This is somewhat similar to what hash_values_options_ in CQL is used for.
+  // Support for hash permutations. Allows IN conditions on hash columns.
+  // For example, if the query clause is "h1 = 1 AND h2 IN (2,3) AND h3 IN (4,5,6) AND h4 = 7",
+  // it is transformed into the following set of values for ROW(h1, h2, h3, h4):
+  //   (1, 2, 4, 7)
+  //   (1, 3, 4, 7)
+  //   (1, 2, 5, 7)
+  //   (1, 3, 5, 7)
+  //   (1, 2, 6, 7)
+  //   (1, 3, 6, 7)
+  // Each element is a complete set of hash column values, so DocDB can calculate the hash code and
+  // locate keys by the prefix.
   //
-  // Example:
-  // For a query clause "h1 = 1 AND h2 IN (2,3) AND h3 IN (4,5,6) AND h4 = 7",
-  // this will be initialized to [[1], [2, 3], [4, 5, 6], [7]]
-  // For a query clause "(h1,h3) IN ((1,5),(2,3)) AND h2 IN (2,4)"
-  // the will be initialized to [[(1,5), (2,3)], [(2,4)], []]
-  std::vector<std::vector<const LWPgsqlExpressionPB*>> partition_exprs_;
+  // hash_permutations_ contains the permutation state, which allows to generate desired number of
+  // permutations at a time and work in batches.
+  // is_hash_batched_ indicates if multiple permutations can be batched into one request as part of
+  // the condition_expr condition instead of making one request per permutation with updated
+  // partition_column_values. PgGate makes one batch per tablet.
+  // hash_in_conds_ is used in batch mode, and contains direct pointers to the IN conditions
+  // of respective partition requests where permutations are placed.
+  std::optional<InPermutationGenerator> hash_permutations_;
+  std::optional<bool> is_hash_batched_;
+  std::vector<LWPgsqlExpressionPB*> hash_in_conds_;
 };
 
 //--------------------------------------------------------------------------------------------------

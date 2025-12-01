@@ -82,14 +82,14 @@ SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a + 1 WHERE t1.a <= 100 AND t2.a <= 
   10 | 10 | 0010 |  9 |  9 | 0009
   70 | 20 | 0070 | 69 | 19 | 0069
   88 | 13 | 0088 | 87 | 12 | 0087
-  58 |  8 | 0058 | 57 |  7 | 0057
  100 |  0 | 0100 | 99 | 24 | 0099
+  58 |  8 | 0058 | 57 |  7 | 0057
   64 | 14 | 0064 | 63 | 13 | 0063
   76 |  1 | 0076 | 75 |  0 | 0075
-  94 | 19 | 0094 | 93 | 18 | 0093
   28 |  3 | 0028 | 27 |  2 | 0027
-  40 | 15 | 0040 | 39 | 14 | 0039
+  94 | 19 | 0094 | 93 | 18 | 0093
   34 |  9 | 0034 | 33 |  8 | 0033
+  40 | 15 | 0040 | 39 | 14 | 0039
    4 |  4 | 0004 |  3 |  3 | 0003
 (17 rows)
 
@@ -235,17 +235,17 @@ select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a 
   6 |  6 | 0006 |  5 | 5 | 0055
  12 | 12 | 0012 |    |   | 
  16 | 16 | 0016 |    |   | 
- 10 | 10 | 0010 |  9 | 9 | 0099
   4 |  4 | 0004 |  3 | 3 | 0033
+ 10 | 10 | 0010 |  9 | 9 | 0099
  18 | 18 | 0018 |    |   | 
- 30 |  5 | 0030 | 29 | 4 | 0294
   2 |  2 | 0002 |  1 | 1 | 0011
+ 30 |  5 | 0030 | 29 | 4 | 0294
   0 |  0 | 0000 |    |   | 
   8 |  8 | 0008 |  7 | 7 | 0077
  14 | 14 | 0014 |    |   | 
  22 | 22 | 0022 |    |   | 
- 28 |  3 | 0028 | 27 | 2 | 0272
  26 |  1 | 0026 | 25 | 0 | 0250
+ 28 |  3 | 0028 | 27 | 2 | 0272
  24 | 24 | 0024 |    |   | 
  20 | 20 | 0020 |    |   | 
 (16 rows)
@@ -267,8 +267,8 @@ select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a 
   6 |  6 | 0006 |  5 | 5 | 0055
  12 | 12 | 0012 |    |   | 
  16 | 16 | 0016 |    |   | 
- 10 | 10 | 0010 |  9 | 9 | 0099
   4 |  4 | 0004 |  3 | 3 | 0033
+ 10 | 10 | 0010 |  9 | 9 | 0099
  18 | 18 | 0018 |    |   | 
   2 |  2 | 0002 |  1 | 1 | 0011
  30 |  5 | 0030 | 29 | 4 | 0294
@@ -816,8 +816,8 @@ SELECT * FROM p1 t1 WHERE EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.b) AND t1.
  22 | 22 | 0022
  20 | 20 | 0020
  10 | 10 | 0010
- 18 | 18 | 0018
   2 |  2 | 0002
+ 18 | 18 | 0018
  16 | 16 | 0016
   6 |  6 | 0006
  12 | 12 | 0012
@@ -1622,16 +1622,16 @@ EXPLAIN (COSTS OFF) SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b
 SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1nulls.a ASC LIMIT 10;
  a | b 
 ---+---
+ 0 | 4
  0 | 5
- 0 | 6
+ 0 | 9
+ 0 | 9
+ 0 | 4
+ 0 | 7
+ 0 | 7
  0 | 8
  0 | 8
  0 | 5
- 0 | 7
- 0 | 7
- 0 | 9
- 0 | 9
- 0 | 6
 (10 rows)
 
 EXPLAIN (COSTS OFF) SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1nulls.a ASC NULLS FIRST LIMIT 10;
@@ -1649,16 +1649,16 @@ EXPLAIN (COSTS OFF) SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b
 SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1nulls.a ASC NULLS FIRST LIMIT 10;
  a | b 
 ---+---
+   | 8
+   | 8
+   | 8
+   | 8
    | 9
    | 9
-   | 8
-   | 8
-   | 8
-   | 8
  0 | 7
  0 | 7
- 0 | 9
- 0 | 9
+ 0 | 8
+ 0 | 8
 (10 rows)
 
 EXPLAIN (COSTS OFF) SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1nulls.a ASC NULLS FIRST, q1nulls.b DESC LIMIT 10;
@@ -1890,10 +1890,10 @@ insert into g2 values (2,4), (6,8);
 /*+Leading((g1 (g2 main))) Set(enable_hashjoin off) Set(enable_mergejoin off) Set(yb_bnl_batch_size 3) Set(enable_material off) Set(enable_seqscan on)*/ select main.* from g1,g2,main where main.h1 = g1.h and main.h2 = g2.h and main.r2 = g1.r and main.r1 = g2.r;
  h1 | h2 | r1 | r2 
 ----+----+----+----
-  5 |  6 |  8 |  7
-  5 |  2 |  4 |  7
   1 |  6 |  8 |  3
   1 |  2 |  4 |  3
+  5 |  6 |  8 |  7
+  5 |  2 |  4 |  7
 (4 rows)
 
 drop table g1;

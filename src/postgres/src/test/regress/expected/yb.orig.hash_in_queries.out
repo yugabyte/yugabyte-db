@@ -116,7 +116,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_m
 --------------------------------------------------------------------------
  Index Scan using test_method_pkey on test_method (actual rows=4 loops=1)
    Index Cond: (h1 = ANY ('{1,2,3,4}'::integer[]))
-   Storage Table Read Requests: 3
+   Storage Table Read Requests: 1
    Storage Table Read Ops: 3
    Storage Table Rows Scanned: 4
 (5 rows)
@@ -125,9 +125,9 @@ SELECT * FROM test_method where h1 IN (1, 2, 3, 4);
  h1 | a | b | c | d | e  
 ----+---+---+---+---+----
   1 | 1 | 1 | 1 | 1 | 11
-  4 | 2 | 1 | 1 | 5 | 15
   2 | 1 | 1 | 2 | 2 | 12
   3 | 1 | 2 | 2 | 4 | 14
+  4 | 2 | 1 | 1 | 5 | 15
 (4 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND a = 1;
@@ -136,7 +136,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_m
  Index Scan using test_method_pkey on test_method (actual rows=3 loops=1)
    Index Cond: (h1 = ANY ('{1,2,3,4}'::integer[]))
    Storage Filter: (a = 1)
-   Storage Table Read Requests: 3
+   Storage Table Read Requests: 1
    Storage Table Read Ops: 3
    Storage Table Rows Scanned: 4
 (6 rows)
@@ -406,7 +406,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_m
 -----------------------------------------------------------------------------------------
  Index Scan using test_method_pkey on test_method (actual rows=4 loops=1)
    Index Cond: ((h1 = ANY ('{1,2,3,4}'::integer[])) AND (h2 = ANY ('{1,2}'::integer[])))
-   Storage Table Read Requests: 2
+   Storage Table Read Requests: 1
    Storage Table Read Ops: 2
    Storage Table Rows Scanned: 4
 (5 rows)
@@ -414,10 +414,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_m
 SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND h2 IN (1, 2);
  h1 | h2 | a | b | v1 | v2 
 ----+----+---+---+----+----
-  4 |  2 | 1 | 1 |  5 | 15
   3 |  1 | 2 | 2 |  4 | 14
   2 |  1 | 1 | 2 |  2 | 12
   1 |  1 | 1 | 1 |  1 | 11
+  4 |  2 | 1 | 1 |  5 | 15
 (4 rows)
 
 DROP TABLE test_method;
@@ -852,7 +852,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_m
 -----------------------------------------------------------------------------------------
  Index Scan using test_method_pkey on test_method (actual rows=10 loops=1)
    Index Cond: ((h1 = ANY ('{1,2,3,4}'::integer[])) AND (h2 = ANY ('{1,2}'::integer[])))
-   Storage Table Read Requests: 2
+   Storage Table Read Requests: 1
    Storage Table Read Ops: 2
    Storage Table Rows Scanned: 10
 (5 rows)
@@ -877,7 +877,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_m
 ------------------------------------------------------------------------------------------------------
  Index Scan using test_method_pkey on test_method (actual rows=5 loops=1)
    Index Cond: ((h1 = ANY ('{1,2,3,4}'::integer[])) AND (h2 = ANY ('{1,2}'::integer[])) AND (r1 = 1))
-   Storage Table Read Requests: 2
+   Storage Table Read Requests: 1
    Storage Table Read Ops: 2
    Storage Table Rows Scanned: 5
 (5 rows)
@@ -897,7 +897,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_m
 -------------------------------------------------------------------------------------------------------------------
  Index Scan using test_method_pkey on test_method (actual rows=3 loops=1)
    Index Cond: ((h1 = ANY ('{1,2,3,4}'::integer[])) AND (h2 = ANY ('{1,2}'::integer[])) AND (r1 = 1) AND (r2 = 2))
-   Storage Table Read Requests: 2
+   Storage Table Read Requests: 1
    Storage Table Read Ops: 2
    Storage Table Rows Scanned: 3
 (5 rows)
@@ -915,7 +915,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_m
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Index Scan using test_method_pkey on test_method (actual rows=9 loops=1)
    Index Cond: ((h1 = ANY ('{1,2,3,4}'::integer[])) AND (h2 = ANY ('{1,2}'::integer[])) AND (r1 = ANY ('{1,2,3,4}'::integer[])) AND (r2 = ANY ('{1,2,3,4}'::integer[])))
-   Storage Table Read Requests: 2
+   Storage Table Read Requests: 1
    Storage Table Read Ops: 2
    Storage Table Rows Scanned: 9
 (5 rows)
@@ -945,7 +945,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_m
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Index Scan using test_method_pkey on test_method (actual rows=18 loops=1)
    Index Cond: ((h1 = ANY ('{1,2,3,4,5,6,7,8,9,0}'::integer[])) AND (h2 = ANY ('{1,2,3,4,5,6,7,8,9,0}'::integer[])) AND (h3 = ANY ('{1,2,3,4,5,6,7,8,9,0}'::integer[])) AND (h4 = ANY ('{1,2,3,4,5,6,7,8,9,0}'::integer[])))
-   Storage Table Read Requests: 3
+   Storage Table Read Requests: 1
    Storage Table Read Ops: 3
    Storage Table Rows Scanned: 18
 (5 rows)
@@ -958,8 +958,8 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_m
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Index Scan using test_method_pkey on test_method (actual rows=18 loops=1)
    Index Cond: ((h1 = ANY ('{1,2,3,4,5,6,7,8,9,0}'::integer[])) AND (h2 = ANY ('{1,2,3,4,5,6,7,8,9,0}'::integer[])) AND (h3 = ANY ('{1,2,3,4,5,6,7,8,9,0}'::integer[])) AND (h4 = ANY ('{1,2,3,4,5,6,7,8,9,0}'::integer[])))
-   Storage Table Read Requests: 228
-   Storage Table Read Ops: 228
+   Storage Table Read Requests: 122
+   Storage Table Read Ops: 366
    Storage Table Rows Scanned: 18
 (5 rows)
 
