@@ -558,7 +558,7 @@ UnsafeStatus DecodeColumnValueV2(
     // to call any getter until any setter would have been called. But it should be safe to not
     // trigger SetNull() for the given index if we're in kSkipProjectionColumn strategy, because
     // the row has been updated already.
-    if constexpr (kStrategy != ColumnStrategy::kSkipProjectionColumn) {
+    if constexpr (kStrategy == ColumnStrategy::kRegular) {
       row->SetNull(projection_index);
     }
     return CallNextDecoderV2<kCheckNull, kLast, kIncrementProjectionIndex>(
