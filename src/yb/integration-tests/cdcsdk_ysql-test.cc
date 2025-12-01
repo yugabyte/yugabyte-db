@@ -12501,5 +12501,39 @@ TEST_F(CDCSDKYsqlTest, TestNoLossFromActiveSegmentWithApproachingDeadline) {
   ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 4);
 }
 
+TEST_F(CDCSDKYsqlTest, TestUPAMMovesRetentionBarriersForCatalogTablet) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_master_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 5000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
+      true;
+
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* cdc_populate_safepoint_record */));
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, 1 /* num_tablets */));
+
+  // Call GetChanges on Master a few times to keep the stream active. The UpdatePeersAndMetrics
+  // running on master should not expire the tablet checkpoint.
+  GetChangesResponsePB change_resp;
+  const CDCSDKCheckpointPB* explicit_checkpoint = &CDCSDKCheckpointPB::default_instance();
+  for (int i = 0; i < 5; i++) {
+    change_resp = ASSERT_RESULT(GetChangesFromMaster(stream_id, explicit_checkpoint));
+    ASSERT_FALSE(change_resp.has_error());
+    explicit_checkpoint = &change_resp.cdc_sdk_checkpoint();
+
+    SleepFor(MonoDelta::FromSeconds(2));
+  }
+
+  auto tablet_peer_ptr = ASSERT_NOTNULL(test_cluster_.mini_cluster_->mini_master()->tablet_peer());
+  // Checking that UpdatePeersAndMetrics has not expired the tablet checkpoint.
+  ASSERT_NE(tablet_peer_ptr->GetLatestCheckPoint(), OpId::Max());
+}
+
 }  // namespace cdc
 }  // namespace yb
