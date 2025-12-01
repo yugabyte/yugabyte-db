@@ -1780,6 +1780,18 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 	return needs_recheck;
 }
 
+static Datum
+YbGetArrayConst(ScanKey *keys)
+{
+	/*
+	 * Get array from keys.  See skey.h and ybExtractScanKeys for layout
+	 * details.
+	 */
+	if (YbIsRowHeader(*keys))
+		return (*(++keys))->sk_argument;
+	return (*keys)->sk_argument;
+}
+
 /*
  * Given an array, cull it by removing unsatisfiable and duplicate elements.
  *
@@ -2011,16 +2023,7 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 	if (is_for_precheck)
 		return;
 
-	/*
-	 * Get array from keys.  See skey.h and ybExtractScanKeys for layout
-	 * details.
-	 */
-	if (is_row)
-		arrayval =
-			DatumGetArrayTypeP((ybScan->keys[skey_index + 1])->sk_argument);
-	else
-		arrayval = DatumGetArrayTypeP(key->sk_argument);
-
+	arrayval = DatumGetArrayTypeP(YbGetArrayConst(&ybScan->keys[skey_index]));
 	Assert(key->sk_subtype == ARR_ELEMTYPE(arrayval));
 	if (!YbCullArray(arrayval,
 					 key,
@@ -2061,7 +2064,8 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
  * TODO(jason): do a proper cleanup.
  */
 static bool
-YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, bool is_for_precheck)
+YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *scan,
+			   bool is_for_precheck)
 {
 	Relation	relation = scan_plan->target_relation;
 
@@ -2149,6 +2153,60 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, bool is_for_precheck)
 	{
 		length_of_key = YbGetLengthOfKey(&ybScan->keys[i]);
 		ScanKey		key = ybScan->keys[i];
+
+		/* Prioritize binding SAOPs that are pinned by SAOP merge. */
+		if (YbIsSearchArray(key))
+		{
+			Datum		this_array_const;
+			ListCell   *lc;
+			YbSaopMergeInfo *yb_saop_merge_info = NULL;
+
+			this_array_const = YbGetArrayConst(&ybScan->keys[i]);
+
+			if (scan)
+			{
+				if (IsA(scan, IndexScan))
+					yb_saop_merge_info =
+						((IndexScan *) scan)->yb_saop_merge_info;
+				else if (IsA(scan, IndexOnlyScan))
+					yb_saop_merge_info =
+						((IndexOnlyScan *) scan)->yb_saop_merge_info;
+			}
+
+			if (yb_saop_merge_info)
+			{
+				foreach(lc, yb_saop_merge_info->saop_cols)
+				{
+					ScalarArrayOpExpr *pinned_saop =
+						((YbSaopMergeSaopColInfo *) lfirst(lc))->saop;
+					Datum		pinned_array_const =
+						((Const *) lsecond(pinned_saop->args))->constvalue;
+
+					/*
+					 * Direct datum comparison (compared to datumIsEqual) is
+					 * safe because yb_match_in_index_clause and
+					 * ExecIndexBuildScanKeys set pinned_array_const and
+					 * this_array_const, respectively, to the same field in
+					 * memory.
+					 */
+					if (this_array_const == pinned_array_const)
+					{
+						bool		bail_out = false;
+
+						/* YbBindSearchArray updates is_column_bound. */
+						YbBindSearchArray(ybScan, scan_plan, i,
+										  is_for_precheck,
+										  is_column_bound,
+										  &bail_out);
+
+						if (bail_out)
+							return false;
+
+						continue;
+					}
+				}
+			}
+		}
 
 		/* Check if this is full key row comparison expression */
 		if (YbIsRowHeader(key) &&
@@ -2496,7 +2554,8 @@ YbMayFailPreliminaryCheck(YbScanDesc ybScan)
  * TODO(jason): there may be room for further cleanup/optimization.
  */
 bool
-YbPredetermineNeedsRecheck(Relation relation,
+YbPredetermineNeedsRecheck(Scan *scan,
+						   Relation relation,
 						   Relation index,
 						   bool xs_want_itup,
 						   ScanKey keys,
@@ -2524,7 +2583,7 @@ YbPredetermineNeedsRecheck(Relation relation,
 	ybcSetupScanPlan(xs_want_itup, &ybscan, &scan_plan);
 	ybcSetupScanKeys(&ybscan, &scan_plan);
 
-	YbBindScanKeys(&ybscan, &scan_plan, true /* is_for_precheck */ );
+	YbBindScanKeys(&ybscan, &scan_plan, scan, true /* is_for_precheck */ );
 
 	/*
 	 * Finally, ybscan has everything needed to determine recheck.  Do it now.
@@ -3244,7 +3303,8 @@ ybcBeginScan(Relation relation,
 	ybScan->handle = YbNewSelect(relation, &ybScan->prepare_params);
 
 	/* Set up binds */
-	if (!YbBindScanKeys(ybScan, &scan_plan, false /* is_for_precheck */ ) ||
+	if (!YbBindScanKeys(ybScan, &scan_plan, pg_scan_plan,
+						false /* is_for_precheck */ ) ||
 		!YbBindHashKeys(ybScan))
 	{
 		ybScan->quit_scan = true;

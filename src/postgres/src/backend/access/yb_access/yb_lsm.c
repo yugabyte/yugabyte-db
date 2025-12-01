@@ -424,10 +424,10 @@ ybcincanreturn(Relation index, int attno)
 }
 
 static bool
-ybcinmightrecheck(Relation heap, Relation index, bool xs_want_itup,
+ybcinmightrecheck(Scan *scan, Relation heap, Relation index, bool xs_want_itup,
 				  ScanKey keys, int nkeys)
 {
-	return YbPredetermineNeedsRecheck(heap, index, xs_want_itup, keys, nkeys);
+	return YbPredetermineNeedsRecheck(scan, heap, index, xs_want_itup, keys, nkeys);
 }
 
 static int64

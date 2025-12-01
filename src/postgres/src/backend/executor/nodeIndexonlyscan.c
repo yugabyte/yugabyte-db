@@ -727,7 +727,8 @@ ExecInitIndexOnlyScan(IndexOnlyScan *node, EState *estate, int eflags)
 		(eflags & EXEC_FLAG_YB_AGG_PARENT))
 	{
 		indexstate->yb_ioss_might_recheck =
-			yb_index_might_recheck(currentRelation,
+			yb_index_might_recheck((Scan *) node,
+								   currentRelation,
 								   indexstate->ioss_RelationDesc,
 								   true /* xs_want_itup */ ,
 								   indexstate->ioss_ScanKeys,
