@@ -121,11 +121,14 @@ func (handler *ServerGflagsHandler) Handle(
 				}
 			}
 			if len(toDeletePaths) > 0 {
+				rmArgs := make([]string, 0, len(toDeletePaths)+1)
+				rmArgs = append(rmArgs, "-rf")
+				rmArgs = append(rmArgs, toDeletePaths...)
 				cmdInfo := &module.CommandInfo{
 					User: handler.username,
 					Desc: "DeleteMasterState",
 					Cmd:  "rm",
-					Args: []string{"-rf", strings.Join(toDeletePaths, " ")},
+					Args: rmArgs,
 				}
 				err := cmdInfo.RunCmd(ctx)
 				if err != nil {
