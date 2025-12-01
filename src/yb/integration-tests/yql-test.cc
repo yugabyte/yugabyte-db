@@ -56,11 +56,12 @@ class YqlTest : public pgwrapper::PgMiniTestBase {
   }
 
   // Clean up resources
-  void Cleanup() {
+  void DoTearDown() override {
     if (ycql_server_) {
       ycql_server_->Shutdown();
-      ycql_server_.reset();
     }
+
+    YBMiniClusterTestBase::DoTearDown();
   }
 
   std::unique_ptr<cqlserver::CQLServer> ycql_server_;
