@@ -1322,7 +1322,7 @@ Edit a snapshot schedule to take a snapshot once every 90 minutes, and retain ea
 ./bin/yb-admin \
     --master_addresses ip1:7100,ip2:7100,ip3:7100 \
     edit_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
-    interval 1 retention 20
+    interval 90 retention 180
 ```
 
 #### restore_snapshot_schedule
