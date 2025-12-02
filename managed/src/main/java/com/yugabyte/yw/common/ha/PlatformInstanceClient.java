@@ -35,7 +35,6 @@ import org.apache.pekko.util.ByteString;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
-import play.mvc.Call;
 import play.mvc.Http;
 import play.mvc.Http.Request;
 import v1.RoutesPrefix;
@@ -80,20 +79,20 @@ public class PlatformInstanceClient implements AutoCloseable {
   }
 
   // Map a Call object to a request.
-  private JsonNode makeRequest(Call call, JsonNode payload) {
+  private JsonNode makeRequest(String method, String url, JsonNode payload) {
     JsonNode response;
-    switch (call.method()) {
+    switch (method) {
       case "GET":
-        response = this.apiHelper.getRequest(call.url(), this.requestHeader);
+        response = this.apiHelper.getRequest(url, this.requestHeader);
         break;
       case "PUT":
-        response = this.apiHelper.putRequest(call.url(), payload, this.requestHeader);
+        response = this.apiHelper.putRequest(url, payload, this.requestHeader);
         break;
       case "POST":
-        response = this.apiHelper.postRequest(call.url(), payload, this.requestHeader);
+        response = this.apiHelper.postRequest(url, payload, this.requestHeader);
         break;
       default:
-        throw new RuntimeException("Unsupported operation: " + call.method());
+        throw new RuntimeException("Unsupported operation: " + method);
     }
 
     if (response == null || response.get("error") != null) {
@@ -112,8 +111,8 @@ public class PlatformInstanceClient implements AutoCloseable {
    * @return a HighAvailabilityConfig model representing the remote platform instance's HA config
    */
   public HighAvailabilityConfig getRemoteConfig() {
-    JsonNode response = apiHelper.getRequest(remoteAddress + "/api/settings/ha/internal/config");
-
+    JsonNode response =
+        makeRequest("GET", remoteAddress + "/api/settings/ha/internal/config", null);
     return Json.fromJson(response, HighAvailabilityConfig.class);
   }
 
@@ -124,8 +123,8 @@ public class PlatformInstanceClient implements AutoCloseable {
    * @param payload the JSON platform instance data
    */
   public void syncInstances(long timestamp, JsonNode payload) {
-    apiHelper.putRequest(
-        remoteAddress + "/api/settings/ha/internal/config/sync/" + timestamp, payload);
+    makeRequest(
+        "PUT", remoteAddress + "/api/settings/ha/internal/config/sync/" + timestamp, payload);
   }
 
   /**
@@ -142,7 +141,7 @@ public class PlatformInstanceClient implements AutoCloseable {
             + "?promote="
             + promote;
     log.info("Making a remote call to {} to demote the instance", url);
-    final JsonNode response = apiHelper.putRequest(url, formData);
+    final JsonNode response = makeRequest("PUT", url, formData);
     success = response != null && response.isObject();
     if (success) {
       log.info("Successfully demoted remote instance at {}", url);
@@ -173,7 +172,8 @@ public class PlatformInstanceClient implements AutoCloseable {
 
   public boolean testConnection() {
     try {
-      JsonNode response = apiHelper.getRequest(remoteAddress + "/api/settings/ha/internal/config");
+      JsonNode response =
+          makeRequest("GET", remoteAddress + "/api/settings/ha/internal/config", null);
     } catch (Exception e) {
       return false;
     }
