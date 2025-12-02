@@ -122,24 +122,28 @@ While leader rebalancing is fast, data rebalancing can take anywhere from second
 <div class="tab-content">
   <div id="yugabyted" class="tab-pane fade show active" role="tabpanel" aria-labelledby="yugabyted-tab">
 
-The YB-Master UI (found on port 7000, by default) contains two helpful views for monitoring cluster balancer progress.
+With yugabyted, you can access the YB-Master UI at <http://localhost:7000> to access two views to monitor the cluster balancer progress.
 
 #### Tablet Servers view
 
-The "Tablet Servers" view is accessed by clicking on "Tablet Servers" on the left-side of the page. This view contains information about how many peers and leaders are hosted on each tablet server, as well as whether each tablet server is currently data or leader blacklisted.
+The "Tablet Servers" view contains information about how many peers and leaders are hosted on each tablet server, as well as whether each tablet server is currently data or leader blacklisted.
+
+To access the view, click **Tablet Servers** on your YB-Master UI.
 
 #### Cluster Balancer view
 
-The "Cluster Balancer" view is accessed by clicking on **Utilities → Load Balancer**. This page displays information about:
+The Cluster Banalcer view displays information about:
 
-- Ongoing cluster balancing tasks (for example, tablet leadership movement, tablets being added or removed)
-- Any warnings during cluster balancing (for example, a placement policy being unsatisfiable because there are no tservers in the requested zone)
-- Ongoing remote bootstraps from one tablet server to another, including the speed of data transfer
+- Ongoing cluster balancing tasks (for example, tablet leadership movement, tablets being added or removed).
+- Any warnings during cluster balancing (for example, a placement policy being unsatisfiable because there are no TServers in the requested zone)
+- Ongoing remote bootstraps from one tablet server to another, including the speed of data transfer.
+
+To access the view, click **Utilities > Load Balancer** on your YB-Master UI.
 
   </div>
   <div id="yba" class="tab-pane fade" role="tabpanel" aria-labelledby="yba-tab">
 
-The YugabyteDB Anywhere [Metrics](../../../yugabyte-platform/alerts-monitoring/anywhere-metrics/) page has helpful graphs for monitoring cluster balancing progress.
+The YugabyteDB Anywhere [Metrics](../../../yugabyte-platform/alerts-monitoring/anywhere-metrics/) page has graphs to monitoring cluster balancing progress.
 
 You access metrics by navigating to **Universes > Universe-Name > Metrics**.
 
@@ -174,7 +178,7 @@ The metric `estimated_data_to_balance_bytes` tracks how much data (in bytes) mus
 
 ## Configuration and tuning
 
-Starting in {{<release "2025.1.1">}} and later, you only need to set the flag, [`remote_bootstrap_rate_limit_bytes_per_sec`](#remote-bootstrap-rate-limit-bytes-per-sec), which controls how much data each node will send or receive each second. This flag should be set according to your network and disk provisioning limits. You should take into account the requirements of your workload.
+Starting in {{<release "2025.1.1">}} and later, you only need to set the flag, [remote_bootstrap_rate_limit_bytes_per_sec](#current-flags), which controls how much data each node will send or receive each second. This flag should be set according to your network and disk provisioning limits. You should take into account the requirements of your workload.
 
 For example, if you provisioned your network and disk to 1 GiB/s, and your workload typically uses 500 MiB/s of network and disk, you might want to set `remote_bootstrap_rate_limit_bytes_per_sec` to 300 MiB/s to leave some headroom (200 MiB/s) for workload spikes. Alternatively, you could set it to 500 MiB/s to minimize the time taken for node recovery and cluster scaling operations (at the cost of some workload impact).
 
