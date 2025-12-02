@@ -70,3 +70,4 @@ Now that you have successfully added a node and scaled your cluster, application
 
 - Try it out: [Scale out a universe](../scaling-universe/)
 - [Smart drivers](/stable/develop/drivers-orms/smart-drivers/)
+- [Cluster balancing](../../../architecture/docdb-sharding/cluster-balancing/#approaches-to-tablet-splitting)

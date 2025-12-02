@@ -471,6 +471,8 @@ For information on YB-Master load balancing, see [Tablet assignments](../../../a
 
 For load balancing commands in yb-admin, see [Rebalancing commands (yb-admin)](../../../admin/yb-admin/#rebalancing-commands).
 
+For detailed information on cluster balancing scenarios, monitoring, and configuration, see [Cluster balancing](../../../architecture/docdb-sharding/cluster-balancing/).
+
 ##### --enable_load_balancing
 
 Enables or disables the load balancing algorithm, to move tablets around.

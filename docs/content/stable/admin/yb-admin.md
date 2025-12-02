@@ -2673,6 +2673,8 @@ For information on YB-Master load balancing, see [Data placement and load balanc
 
 For YB-Master load balancing flags, see [Load balancing flags](../../reference/configuration/yb-master/#load-balancing-flags).
 
+For detailed information on automatic cluster balancing scenarios, monitoring, and configuration, see [Cluster balancing](../../architecture/docdb-sharding/cluster-balancing/). Note that YugabyteDB automatically balances the cluster; these manual commands are for advanced use cases.
+
 #### set_load_balancer_enabled
 
 Enables or disables the load balancer.
