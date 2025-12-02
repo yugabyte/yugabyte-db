@@ -2149,101 +2149,68 @@ See also [Auto Analyze Service Master flags](../yb-master/#auto-analyze-service-
 
 ##### --ysql_enable_auto_analyze
 
-{{% tags/wrap %}}
-{{<tags/feature/restart-needed>}}
-{{<tags/feature/t-server>}}
 Default: `false`
-{{% /tags/wrap %}}
 
 Enable the Auto Analyze service, which automatically runs ANALYZE to update table statistics for tables that have changed more than a configurable threshold.
 
 ##### --ysql_auto_analyze_threshold
 
-{{% tags/wrap %}}
-
-{{<tags/feature/restart-needed>}}
 Default: `50`
-{{% /tags/wrap %}}
 
 The minimum number of mutations needed to run ANALYZE on a table. For more details, see [Auto Analyze service](../../../additional-features/auto-analyze).
 
 ##### --ysql_auto_analyze_scale_factor
 
-{{% tags/wrap %}}
-
-{{<tags/feature/restart-needed>}}
 Default: `0.1`
-{{% /tags/wrap %}}
 
 The fraction defining when sufficient mutations have been accumulated to run ANALYZE for a table. For more details, see [Auto Analyze service](../../../additional-features/auto-analyze).
 
 ##### --ysql_auto_analyze_min_cooldown_per_table
 
-{{% tags/wrap %}}
 
-{{<tags/feature/restart-needed>}}
 Default: `10000` (10 seconds)
-{{% /tags/wrap %}}
 
 The minimum duration (in milliseconds) for the cooldown period between successive runs of ANALYZE on a specific table by the auto analyze service. For more details, see [Auto Analyze service](../../../additional-features/auto-analyze).
 
 ##### --ysql_auto_analyze_max_cooldown_per_table
 
-{{% tags/wrap %}}
-
-{{<tags/feature/restart-needed>}}
 Default: `86400000` (24 hours)
-{{% /tags/wrap %}}
 
 The maximum duration (in milliseconds) for the cooldown period between successive runs of ANALYZE on a specific table by the auto analyze service. For more details, see [Auto Analyze service](../../../additional-features/auto-analyze).
 
+##### --ysql_auto_analyze_cooldown_per_table_scale_factor
+
+Default: `2`
+
+The exponential factor by which the per table cooldown period is scaled up each time from the value ysql_auto_analyze_min_cooldown_per_table to the value ysql_auto_analyze_max_cooldown_per_table. For more details, see [Auto Analyze service](../../../additional-features/auto-analyze). 
+
 ##### --ysql_auto_analyze_batch_size
 
-{{% tags/wrap %}}
-
-{{<tags/feature/restart-needed>}}
 Default: `10`
-{{% /tags/wrap %}}
 
 The maximum number of tables the Auto Analyze service tries to analyze in a single ANALYZE statement.
 
 ##### --ysql_cluster_level_mutation_persist_interval_ms
 
-{{% tags/wrap %}}
-
-{{<tags/feature/restart-needed>}}
 Default: `10000`
-{{% /tags/wrap %}}
 
 Interval at which the reported node level table mutation counts are persisted to the underlying auto-analyze mutations table.
 
 ##### --ysql_cluster_level_mutation_persist_rpc_timeout_ms
 
-{{% tags/wrap %}}
-
-{{<tags/feature/restart-needed>}}
 Default: `10000`
-{{% /tags/wrap %}}
 
 Timeout for the RPCs used to persist mutation counts in the auto-analyze mutations table.
 
 ##### --ysql_node_level_mutation_reporting_interval_ms
 
-{{% tags/wrap %}}
-
-{{<tags/feature/restart-needed>}}
 Default: `5000`
-{{% /tags/wrap %}}
 
 Interval, in milliseconds, at which the node-level table mutation counts are sent to the Auto Analyze service, which tracks table mutation counts at the cluster level.
 
 ##### --ysql_node_level_mutation_reporting_timeout_ms
 
-{{% tags/wrap %}}
-
-{{<tags/feature/restart-needed>}}
 Default: `5000`
-{{% /tags/wrap %}}
 
 Timeout, in milliseconds, for the node-level mutation reporting RPC to the Auto Analyze service.
 
