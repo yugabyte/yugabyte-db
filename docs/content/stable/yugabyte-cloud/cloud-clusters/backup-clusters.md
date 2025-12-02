@@ -120,7 +120,7 @@ To restore a backup of a cluster:
 
 ## Remote backup replication
 
-Use remote backup replication to copy all your cluster backups (scheduled, incremental, and on demand) to a storage bucket in the same cloud provider.
+{{<tags/feature/ea>}}Use remote backup replication to copy all your cluster backups (scheduled, incremental, and on demand) to a storage bucket in the same cloud provider.
 
 Only new backups (that is, backups created after backup replication has been enabled on the cluster) are transferred. Backups are transferred to the bucket once a day.
 
@@ -183,3 +183,5 @@ To enable or modify remote backup replication, do the following:
 To disable remote backup replication, on the **Backups** tab, click **Disable Remote Backup Replication**.
 
 Disabling backup replication does not immediately stop transfers. To ensure no data is lost, the transfer job remains active for a few additional days so that any backups created before disabling replication are fully replicated. Because Google Cloud does not provide a SLA on transfer completion time or on how many transfer operations may be needed, you should keep destination buckets available for at least 7 days after disabling backup replication or after changing remote backup regions. This ensures that all in-progress and pending transfers complete successfully.
+
+If backup replication fails, YugabyteDB Aeon displays an alert and also sends a notification email. After you have addressed the issue (by for example, fixing permissions on the bucket or setting up a new bucket), click the alert in YugabyteDB Aeon and try the connection again, either with the current bucket or new bucket, as appropriate.
