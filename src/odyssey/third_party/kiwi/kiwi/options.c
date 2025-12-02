@@ -139,8 +139,12 @@ int kiwi_parse_options_and_update_vars(kiwi_vars_t *vars, char *pgoptions,
 		memcpy(optval_buf, pgoptions + optval_pos, optval_len);
 		optval_buf[optval_len] = 0;
 
+		/*
+		 * Connection Manager parses options only in the case of auth passthrough, so we can
+		 * just go ahead and lowercase variable names here.
+		 */
 		kiwi_vars_update(vars, optarg_buf, optarg_len + 1, optval_buf,
-				 optval_len + 1);
+				 optval_len + 1, true);
 		i = j + 1;
 	}
 
