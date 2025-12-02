@@ -106,7 +106,6 @@ The following table shows the mapping between environment variables and their co
 | `PGTOPOLOGYKEYS` | `topologyKeys` |
 | `PGYBSERVERSREFRESHINTERVAL` | `ybServersRefreshInterval` |
 
-**Note:** `PGLOADBALANCE`, `PGTOPOLOGYKEYS`, and `PGYBSERVERSREFRESHINTERVAL` are only available when using the `@yugabytedb/pg` package.
 
 ##### Set environment variables in code
 
