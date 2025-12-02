@@ -212,7 +212,7 @@ Employees Details:
 
 #### Specify load balance properties
 
-The following table summarizes all environment variables available for configuring the YugabyteDB node-postgres smart driver:
+The following table summarizes some environment variables available for configuring the YugabyteDB node-postgres smart driver:
 
 | Environment variable | Description | Default value | Valid values/format |
 | :--- | :--- | :--- | :--- |
