@@ -216,8 +216,8 @@ For more information on alerting in YugabyteDB Anywhere, refer to [Alerts](../..
 
 On the DR replica, create a database with the same name as that on the DR primary.
 
-- In [Manual mode](../#manual-mode), you don't need to create objects on the DR replica; DR performs a full copy of the data to be replicated on the DR primary, and automatically creates tables and objects, and restores data on the DR replica from the DR primary.
 - In [Semi-automatic mode](../#semi-automatic-mode), you need to create all objects (tables, indexes, and so on) on the DR replica exactly as they are on the DR primary _prior_ to setting up xCluster DR.
+- In [Manual mode](../#manual-mode), you don't need to create objects on the DR replica; DR performs a full copy of the data to be replicated on the DR primary, and automatically creates tables and objects, and restores data on the DR replica from the DR primary.
 
 To add a database to DR, do the following:
 
@@ -238,6 +238,39 @@ To add a database to DR, do the following:
 1. Click **Apply Changes**.
 
 YugabyteDB Anywhere proceeds to copy the database to the DR replica. How long this takes depends mainly on the amount of data that needs to be copied.
+
+### Perform DDL operations
+
+Depending on the mode, perform DDL changes on databases in replication for xCluster disaster recovery (DR) (such as creating, altering, or dropping tables or partitions) as follows.
+
+{{<tabpane text=true >}}
+
+  {{% tab header="Semi-automatic mode" lang="semi-automatic-mode" %}}
+
+For each DDL statement:
+
+1. Execute the DDL on the DR primary, waiting for it to complete.
+1. Execute the DDL on the DR replica, waiting for it to complete.
+
+After both steps are complete, the YugabyteDB Anywhere UI should reflect any added/removed tables in the Tables listing for this DR configuration.
+
+In addition, keep in mind the following:
+
+- If you are using Colocated tables, you CREATE TABLE on DR primary, then CREATE TABLE on DR replica making sure that you force the Colocation ID to be identical to that on DR primary.
+- If you try to make a DDL change on DR primary and it fails, you must also make the same attempt on DR replica and get the same failure.
+- TRUNCATE TABLE is not supported. To truncate a table, pause replication, truncate the table on both primary and standby, and resume replication.
+
+  {{% /tab %}}
+
+  {{% tab header="Manual mode" lang="manual-mode" %}}
+
+In Manual mode, you must perform these actions in a specific order, depending on whether performing a CREATE, DROP, ALTER, and so forth.
+
+Refer to [Tables and indexes in Manual mode](../disaster-recovery-tables/).
+
+  {{% /tab %}}
+
+{{</tabpane >}}
 
 ### Change the DR replica
 
