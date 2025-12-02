@@ -120,11 +120,7 @@ To restore a backup of a cluster:
 
 ## Remote backup replication
 
-{{<tags/feature/ea>}}Use remote backup replication to copy all your cluster backups (scheduled, incremental, and on demand) to a storage bucket in the same cloud provider.
-
-{{<tip title="Early Access">}}
-This feature is Early Access; to try it, contact {{% support-cloud %}}.
-{{</tip>}}
+Use remote backup replication to copy all your cluster backups (scheduled, incremental, and on demand) to a storage bucket in the same cloud provider.
 
 Only new backups (that is, backups created after backup replication has been enabled on the cluster) are transferred. Backups are transferred to the bucket once a day.
 
@@ -173,16 +169,16 @@ For more information, see [IAM roles for Cloud Storage](https://cloud.google.com
 
 ### Manage remote backup replication
 
-To enable or modify remote backup repliction, do the following:
+To enable or modify remote backup replication, do the following:
 
-1. On the **Backups** tab, click **Remote Backup Replication**. If backup replication is enabled, click **Edit Settings**.
+1. On the **Backups** tab, click **Enable Remote Backup Replication**. If backup replication is enabled, click **Edit Settings**.
 1. Enter the address of the bucket.
 
     For Replicate across regions clusters, provide the bucket address. To reduce transfer costs, use a bucket in the same region as the current backup region (the region selected by Aeon to store cluster backups). See [Location of backups](#location-of-backups) for more information.
 
     For Partition by region clusters, provide a bucket address for each region. To reduce transfer costs and for compliance, use buckets located in the same regions.
 
-1. Click **Apply Changes**.
+1. Click **Enable** or, if you are modifying settings, **Apply Changes**.
 
 To disable remote backup replication, on the **Backups** tab, click **Disable Remote Backup Replication**.
 
