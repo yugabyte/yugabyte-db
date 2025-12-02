@@ -95,9 +95,7 @@ export enum K8sEncryptionOption {
 export interface EncryptionInTransitFormValues {
   enableUniverseEncryption: boolean;
   rootCA?: string | null;
-  createNewRootCA?: boolean;
   clientRootCA?: string | null;
-  createNewClientRootCA?: boolean;
   enableNodeToNodeEncrypt: boolean;
   enableClientToNodeEncrypt: boolean;
   rootAndClientRootCASame: boolean;
@@ -120,9 +118,7 @@ export const FORM_RESET_VALUES = {
   enableClientToNodeEncrypt: false,
   enableNodeToNodeEncrypt: false,
   rootCA: null,
-  createNewRootCA: false,
   clientRootCA: null,
-  createNewClientRootCA: false,
   rootAndClientRootCASame: false
 };
 
@@ -149,8 +145,6 @@ export const getInitialFormValues = (
       : universeDetails?.rootAndClientRootCASame
       ? universeDetails.rootCA
       : null,
-    createNewRootCA: false,
-    createNewClientRootCA: false,
     rootAndClientRootCASame: isItKubernetesUniverse
       ? isRootClientCASameforK8s
       : !!universeDetails?.rootAndClientRootCASame,
