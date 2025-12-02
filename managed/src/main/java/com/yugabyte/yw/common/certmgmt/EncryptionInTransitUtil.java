@@ -298,4 +298,9 @@ public class EncryptionInTransitUtil {
       boolean rootAndClientRootCASame) {
     return enableClientToNodeEncrypt;
   }
+
+  public static boolean isEitherNodeToNodeOrClientToNodeEncryptRequired(
+      UniverseSetTlsParams.Params taskParams) {
+    return isRootCARequired(taskParams) || isClientRootCARequired(taskParams);
+  }
 }

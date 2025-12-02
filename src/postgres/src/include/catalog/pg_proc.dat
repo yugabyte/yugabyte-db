@@ -11177,6 +11177,10 @@
   proname => 'yb_binary_upgrade_set_next_pg_enum_sortorder', provolatile => 'v',
   proparallel => 'r', prorettype => 'void', proargtypes => 'float4',
   prosrc => 'yb_binary_upgrade_set_next_pg_enum_sortorder' },
+{ oid => '8100', descr => 'for use by pg_upgrade',
+  proname => 'yb_binary_upgrade_set_next_colocation_id', provolatile => 'v',
+  proparallel => 'u', prorettype => 'void', proargtypes => 'oid',
+  prosrc => 'yb_binary_upgrade_set_next_colocation_id' },
 
 # conversion functions
 { oid => '4302',

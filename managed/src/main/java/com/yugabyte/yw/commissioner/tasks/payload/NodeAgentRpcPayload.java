@@ -593,6 +593,7 @@ public class NodeAgentRpcPayload {
     TelemetryProvider telemetryProvider = telemetryProviderService.get(exporterUUID);
     switch (telemetryProvider.getConfig().getType()) {
       case AWS_CLOUDWATCH -> {
+        log.info("Setting AWS credentials in builder for exporter UUID: {}", exporterUUID);
         AWSCloudWatchConfig awsCloudWatchConfig =
             (AWSCloudWatchConfig) telemetryProvider.getConfig();
         setAwsCredentialsInBuilder(
@@ -601,11 +602,13 @@ public class NodeAgentRpcPayload {
             installOtelCollectorInputBuilder);
       }
       case S3 -> {
+        log.info("Setting AWS credentials in builder for exporter UUID: {}", exporterUUID);
         S3Config s3Config = (S3Config) telemetryProvider.getConfig();
         setAwsCredentialsInBuilder(
             s3Config.getAccessKey(), s3Config.getSecretKey(), installOtelCollectorInputBuilder);
       }
       case GCP_CLOUD_MONITORING -> {
+        log.info("Setting GCP credentials in builder for exporter UUID: {}", exporterUUID);
         GCPCloudMonitoringConfig gcpCloudMonitoringConfig =
             (GCPCloudMonitoringConfig) telemetryProvider.getConfig();
         if (gcpCloudMonitoringConfig.getCredentials() != null) {

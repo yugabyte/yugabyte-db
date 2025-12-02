@@ -4202,7 +4202,8 @@ show_incremental_sort_group_info(IncrementalSortGroupInfo *groupInfo,
 				appendStringInfoString(es->str, ", ");
 		}
 
-		if (groupInfo->maxMemorySpaceUsed > 0)
+		if (groupInfo->maxMemorySpaceUsed > 0 &&
+			!yb_explain_hide_non_deterministic_fields)
 		{
 			int64		avgSpace = groupInfo->totalMemorySpaceUsed / groupInfo->groupCount;
 			const char *spaceTypeName;
@@ -4213,7 +4214,8 @@ show_incremental_sort_group_info(IncrementalSortGroupInfo *groupInfo,
 							 spaceTypeName, groupInfo->maxMemorySpaceUsed);
 		}
 
-		if (groupInfo->maxDiskSpaceUsed > 0)
+		if (groupInfo->maxDiskSpaceUsed > 0 &&
+			!yb_explain_hide_non_deterministic_fields)
 		{
 			int64		avgSpace = groupInfo->totalDiskSpaceUsed / groupInfo->groupCount;
 
@@ -4236,7 +4238,8 @@ show_incremental_sort_group_info(IncrementalSortGroupInfo *groupInfo,
 
 		ExplainPropertyList("Sort Methods Used", methodNames, es);
 
-		if (groupInfo->maxMemorySpaceUsed > 0)
+		if (groupInfo->maxMemorySpaceUsed > 0 &&
+			!yb_explain_hide_non_deterministic_fields)
 		{
 			int64		avgSpace = groupInfo->totalMemorySpaceUsed / groupInfo->groupCount;
 			const char *spaceTypeName;
@@ -4253,7 +4256,8 @@ show_incremental_sort_group_info(IncrementalSortGroupInfo *groupInfo,
 
 			ExplainCloseGroup("Sort Space", memoryName.data, true, es);
 		}
-		if (groupInfo->maxDiskSpaceUsed > 0)
+		if (groupInfo->maxDiskSpaceUsed > 0 &&
+			!yb_explain_hide_non_deterministic_fields)
 		{
 			int64		avgSpace = groupInfo->totalDiskSpaceUsed / groupInfo->groupCount;
 			const char *spaceTypeName;
@@ -4529,7 +4533,7 @@ show_memoize_info(MemoizeState *mstate, List *ancestors, ExplainState *es)
 
 	pfree(keystr.data);
 
-	if (!es->analyze)
+	if (!es->analyze || yb_explain_hide_non_deterministic_fields)
 		return;
 
 	if (mstate->stats.cache_misses > 0)
@@ -4645,7 +4649,8 @@ show_hashagg_info(AggState *aggstate, ExplainState *es)
 		 * detect this by checking how much memory it used.  If we find it
 		 * didn't do any work then we don't show its properties.
 		 */
-		if (es->analyze && aggstate->hash_mem_peak > 0)
+		if (es->analyze && aggstate->hash_mem_peak > 0 &&
+			!yb_explain_hide_non_deterministic_fields)
 		{
 			ExplainPropertyInteger("HashAgg Batches", NULL,
 								   aggstate->hash_batches_used, es);
@@ -4671,7 +4676,8 @@ show_hashagg_info(AggState *aggstate, ExplainState *es)
 		 * detect this by checking how much memory it used.  If we find it
 		 * didn't do any work then we don't show its properties.
 		 */
-		if (es->analyze && aggstate->hash_mem_peak > 0)
+		if (es->analyze && aggstate->hash_mem_peak > 0 &&
+			!yb_explain_hide_non_deterministic_fields)
 		{
 			if (!gotone)
 				ExplainIndentText(es);
@@ -4695,7 +4701,8 @@ show_hashagg_info(AggState *aggstate, ExplainState *es)
 	}
 
 	/* Display stats for each parallel worker */
-	if (es->analyze && aggstate->shared_info != NULL)
+	if (es->analyze && aggstate->shared_info != NULL &&
+		!yb_explain_hide_non_deterministic_fields)
 	{
 		for (int n = 0; n < aggstate->shared_info->num_workers; n++)
 		{

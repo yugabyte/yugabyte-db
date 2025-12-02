@@ -114,6 +114,7 @@ namespace bi = boost::intrusive;
 namespace {
 
 YB_DEFINE_ENUM(ImmutableChunkState, (kInMemory)(kOnDisk)(kInManifest));
+YB_DEFINE_ENUM(CompactionState, (kNone)(kCompacting)(kCompacted));
 YB_DEFINE_ENUM(CompactionType, (kBackground)(kManual));
 YB_DEFINE_ENUM(ManifestUpdateType, (kFull)(kActual));
 
@@ -600,7 +601,7 @@ struct VectorLSM<Vector, DistanceResult>::ImmutableChunk {
   // Must be accessed under LSM::mutex_ lock to guarantee thread-safety.
   std::promise<Status>* flush_promise = nullptr;
 
-  std::atomic<bool> under_compaction = { false };
+  std::atomic<CompactionState> compaction_state = { CompactionState::kNone };
 
  public:
   ImmutableChunk(
@@ -663,33 +664,38 @@ struct VectorLSM<Vector, DistanceResult>::ImmutableChunk {
   }
 
   void MarkObsolete() {
-    DCHECK(!IsUnderCompaction());
+    // Sanity check. The expectation is to obsolete only compacted chunks.
+    // However, obsoleting of non-compacted chunks could become a valid case in future.
+    CHECK_EQ(CompactionState::kCompacted, compaction_state.load(std::memory_order::acquire));
     if (file) {
       file->MarkObsolete();
     }
   }
 
-  bool IsUnderCompaction() const {
-    return under_compaction.load(std::memory_order::acquire);
-  }
-
   bool TryLockForCompaction() {
-    return TrySetUnderCompaction(true);
+    auto state = CompactionState::kNone;
+    return compaction_state.compare_exchange_strong(state, CompactionState::kCompacting);
   }
 
-  void UnlockForCompaction() {
-    [[maybe_unused]] bool success = TrySetUnderCompaction(false);
-    DCHECK(success);
+  bool UnlockForCompaction() {
+    // A chunk can be "unlocked for compaction" if it is being compacted now or still non-compacted.
+    auto state = CompactionState::kCompacting;
+    return compaction_state.compare_exchange_strong(state, CompactionState::kNone) ||
+           state == CompactionState::kNone;
   }
 
   void Compacted() {
-    UnlockForCompaction();
+    // A chunk must fall into all stages before being marked as compacted:
+    // kNone => kCompaction => kCompacted.
+    auto state = CompactionState::kCompacting;
+    CHECK(compaction_state.compare_exchange_strong(state, CompactionState::kCompacted));
     MarkObsolete();
   }
 
   // Must be triggered under LSM::mutex_ lock to guarantee thread-safety.
   bool ReadyForCompaction() const {
-    return !IsUnderCompaction() && IsInManifest();
+    return compaction_state.load(std::memory_order::acquire) == CompactionState::kNone &&
+           IsInManifest();
   }
 
   std::string ToString() const {
@@ -697,18 +703,13 @@ struct VectorLSM<Vector, DistanceResult>::ImmutableChunk {
     return YB_STRUCT_TO_STRING(
         order_no, state, file, user_frontiers,
         (index, AsString(static_cast<void*>(index.get()))),
-        (under_compaction, std::to_string(IsUnderCompaction())));
+        compaction_state);
   }
 
   std::string ToShortString() const {
     return Format(
         "{order_no: $0, serial_no: $1, file_size: $2}",
         order_no, serial_no(), file_size());
-  }
-
- private:
-  bool TrySetUnderCompaction(bool value) {
-    return under_compaction.exchange(value) != value;
   }
 };
 
@@ -769,7 +770,8 @@ class VectorLSM<Vector, DistanceResult>::CompactionScope {
 
   void Unlock() {
     for (auto& chunk : chunks_) {
-      chunk->UnlockForCompaction();
+      // Something went wrong: compacted chunks must be excluded from chunks_ collection.
+      CHECK(chunk->UnlockForCompaction());
     }
   }
 
@@ -996,6 +998,8 @@ void VectorLSM<Vector, DistanceResult>::StartShutdown() {
     LOG_IF_WITH_PREFIX(DFATAL, !scope.status().IsShutdownInProgress()) << scope.status();
     return;
   }
+
+  LOG_WITH_PREFIX(INFO) << "VectorLSM shutdown started";
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -1062,6 +1066,8 @@ void VectorLSM<Vector, DistanceResult>::CompleteShutdown() {
     std::lock_guard lock(cleanup_mutex_);
     obsolete_files_.clear();
   }
+
+  LOG_WITH_PREFIX(INFO) << "VectorLSM shutdown completed";
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -2645,9 +2651,7 @@ void VectorLSM<Vector, DistanceResult>::ScheduleBackgroundCompaction() {
 
     num_manifested_chunks_on_disk = std::ranges::count_if(
         immutable_chunks_,
-        [](auto&& chunk) {
-          return !chunk->IsUnderCompaction() && chunk->IsInManifest() && chunk->file;
-        });
+        [](auto&& chunk) { return chunk->ReadyForCompaction() && chunk->file; });
   }
   if (num_manifested_chunks_on_disk < FilesNumberCompactionTrigger()) {
     VLOG_WITH_PREFIX(2) << Format(

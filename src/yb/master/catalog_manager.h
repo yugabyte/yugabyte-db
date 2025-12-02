@@ -2949,6 +2949,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   std::unordered_set<xrepl::StreamId> GetCDCSDKStreamsForTable(const TableId& table_id) const
       REQUIRES_SHARED(mutex_);
 
+  std::unordered_set<xrepl::StreamId> GetAllCDCSDKStreamsForNamespace(
+      const NamespaceId& ns_id) const REQUIRES_SHARED(mutex_);
+
   // Reads the slot entries for all the stream_ids provided and returns the minimum restart time
   // across them.
   Result<HybridTime> GetMinRestartTimeAcrossSlots(
@@ -3077,6 +3080,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Status RemoveTableFromCDCStreamMetadataAndMaps(
       const CDCStreamInfoPtr stream, const TableId table_id, const LeaderEpoch& epoch);
+
+  void WarnIfTableNotPresentInAllCDCSDKStreams(const TableId& table_id);
 
   Result<ColocationId> ObtainColocationId(
       const CreateTableRequestPB& req, const TablegroupInfo* tablegroup,

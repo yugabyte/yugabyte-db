@@ -48,8 +48,13 @@ public class CertsRotateParams extends UpgradeTaskParams {
   @ApiModelProperty(hidden = true)
   public CertRotationType clientRootCARotationType = CertRotationType.None;
 
-  public boolean createNewRootCA = false;
-  public boolean createNewClientRootCA = false;
+  // Transient fields to track if rootCA/clientRootCA were explicitly set to null in the request
+  // These are used to preserve null values during binding/merging
+  @com.fasterxml.jackson.annotation.JsonIgnore
+  public transient boolean rootCAExplicitlyNull = false;
+
+  @com.fasterxml.jackson.annotation.JsonIgnore
+  public transient boolean clientRootCAExplicitlyNull = false;
 
   public boolean isKubernetesUpgradeSupported() {
     return true;

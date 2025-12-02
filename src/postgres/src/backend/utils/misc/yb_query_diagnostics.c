@@ -1220,15 +1220,18 @@ AccumulateExplain(QueryDesc *queryDesc, YbQueryDiagnosticsEntry *entry, bool exp
 	es->buffers = es->analyze;
 	es->timing = es->analyze;
 	es->summary = es->analyze;
-	es->format = EXPLAIN_FORMAT_TEXT;
+	es->format = EXPLAIN_FORMAT_JSON;
 	es->rpc = (es->analyze && explain_dist);
 
-	/* Note: this part of code comes from auto_explain.c */
+	/* Produce JSON-formatted explain output */
+	ExplainBeginOutput(es);
 	ExplainPrintPlan(es, queryDesc);
 	if (es->analyze)
 		ExplainPrintTriggers(es, queryDesc);
 	if (es->costs)
 		ExplainPrintJITSummary(es, queryDesc);
+	ExplainPropertyFloat("Execution Time", "ms", totaltime_ms, 3, es);
+	ExplainEndOutput(es);
 
 	/*
 	 * Removes the trailing newline that might be introduced by
@@ -1237,6 +1240,10 @@ AccumulateExplain(QueryDesc *queryDesc, YbQueryDiagnosticsEntry *entry, bool exp
 	if (es->str->len > 0 && es->str->data[es->str->len - 1] == '\n')
 		es->str->data[--es->str->len] = '\0';
 
+	/* Fix JSON to output an object */
+	es->str->data[0] = '{';
+	es->str->data[es->str->len - 1] = '}';
+
 	SpinLockAcquire(&entry->mutex);
 
 	/* TODO(GH#23720): Add support for handling oversized explain plans */
@@ -1244,7 +1251,7 @@ AccumulateExplain(QueryDesc *queryDesc, YbQueryDiagnosticsEntry *entry, bool exp
 
 	if (remaining_space > 0)
 		snprintf(entry->explain_plan + strlen(entry->explain_plan), remaining_space,
-				 "duration: %.3f ms\nplan:\n%s\n\n", totaltime_ms, es->str->data);
+				"%s\n", es->str->data);
 
 	SpinLockRelease(&entry->mutex);
 
