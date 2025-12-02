@@ -220,7 +220,7 @@ The following table summarizes some environment variables available for configur
 | `PGTOPOLOGYKEYS` | Enables topology-aware load balancing by specifying comma-separated geo-locations | Empty (disabled) | Format: `cloud.region.zone` (e.g., `aws.us-east-1.us-east-1a`). Multiple zones: comma-separated. Wildcard: `cloud.region.*` for all zones in a region. Fallback priority: `cloud.region.zone:n` where `n` is priority number |
 | `PGYBSERVERSREFRESHINTERVAL` | The interval (in seconds) to refresh the servers list | `300` (5 minutes) | Positive integer (in seconds) |
 
-**Note:** These environment variables are only effective when using the YugabyteDB smart driver (`@yugabytedb/pg`). They are ignored when using the standard PostgreSQL driver.
+**Note:** These environment variables are only effective when using the YugabyteDB smart driver (`@yugabytedb/pg`). For a complete list of all available environment variables, refer to [Environment variables](../yugabyte-node-driver/#environment-variables).
 
 ##### Environment variables
 

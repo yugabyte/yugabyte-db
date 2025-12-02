@@ -93,19 +93,6 @@ After the driver establishes the initial connection, it fetches the list of avai
 
 #### Environment variables
 
-The following table summarizes all environment variables available for configuring the YugabyteDB node-postgres smart driver:
-
-| Environment variable | Description | Default value | Valid values/format |
-| :--- | :--- | :--- | :--- |
-| `PGHOST` | Host name of the YugabyteDB instance | `localhost` | Any valid hostname or IP address |
-| `PGPORT` | Listen port for YSQL | `5432` | Valid port number |
-| `PGDATABASE` | Database name | `yugabyte` | Any valid database name |
-| `PGUSER` | Database user | Current OS user | Any valid username |
-| `PGPASSWORD` | User password | - | User password |
-| `PGLOADBALANCE` | Enables cluster-aware or node type-aware load balancing | `false` (disabled) | `any`, `prefer-primary`, `prefer-rr`, `only-primary`, `only-rr`, `true` (alias for `any`), `false` |
-| `PGTOPOLOGYKEYS` | Enables topology-aware load balancing by specifying comma-separated geo-locations | Empty (disabled) | Format: `cloud.region.zone` (e.g., `aws.us-east-1.us-east-1a`). Multiple zones: comma-separated. Wildcard: `cloud.region.*` for all zones in a region. Fallback priority: `cloud.region.zone:n` where `n` is priority number |
-| `PGYBSERVERSREFRESHINTERVAL` | The interval (in seconds) to refresh the servers list | `300` (5 minutes) | Positive integer (in seconds) |
-
 The following table shows the mapping between environment variables and their corresponding connection parameters:
 
 | Environment variable | Connection parameter |
@@ -119,7 +106,7 @@ The following table shows the mapping between environment variables and their co
 | `PGTOPOLOGYKEYS` | `topologyKeys` |
 | `PGYBSERVERSREFRESHINTERVAL` | `ybServersRefreshInterval` |
 
-**Note:** Environment variables `PGLOADBALANCE`, `PGTOPOLOGYKEYS`, and `PGYBSERVERSREFRESHINTERVAL` are specific to the YugabyteDB smart driver (`@yugabytedb/pg`) and are ignored when using the standard PostgreSQL driver.
+**Note:** `PGLOADBALANCE`, `PGTOPOLOGYKEYS`, and `PGYBSERVERSREFRESHINTERVAL` are only available when using the `@yugabytedb/pg` package.
 
 ##### Set environment variables in code
 
