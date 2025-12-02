@@ -179,6 +179,8 @@ To enable the GKE service account service at the provider level, refer to [Overr
 
 In AWS, you can attach a service account to database pods; the account can then be used to access storage. The service account used for the database pods should have annotations for the IAM role. The service account to be used can be applied to the DB pods as helm override with provider/universe level overrides. The IAM role used should be sufficient to access S3 storage.
 
+To enable IAM roles for S3, set the **Use S3 IAM roles attached to DB node for Backup/Restore** Universe Configuration option (config key `yb.backup.s3.use_db_nodes_iam_role_for_backup`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
+
 For more information, refer to [Enable IAM roles for service accounts](https://docs.aws.amazon.com/eks/latest/userguide/enable-iam-roles-for-service-accounts.html) in the AWS documentation.
 
 If you want to enable EKS service account-based IAM for backup and restore using S3 at the universe level, add the following overrides:
