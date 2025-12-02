@@ -608,17 +608,13 @@ class PgClient::Impl : public BigDataFetcher {
   Result<PgTableDescPtr> OpenTable(
       const PgObjectId& table_id, bool reopen, uint64_t min_ysql_catalog_version,
       master::IncludeHidden include_hidden) {
-    // OTEL: Create wrapper span for OpenTable with table identification
     OtelSpanHandle open_table_span;
     std::unique_ptr<ScopedOtelSpan> scoped_span;
     if (OtelTracing::HasActiveContext()) {
       open_table_span = OtelTracing::StartSpan("pggate.open_table");
       if (open_table_span.IsActive()) {
-        // Set table identifiers before the RPC
-        open_table_span.SetAttribute("db.table_oid",
-            static_cast<int64_t>(table_id.object_oid));
-        open_table_span.SetAttribute("db.database_oid",
-            static_cast<int64_t>(table_id.database_oid));
+        open_table_span.SetAttribute("db.table_oid", static_cast<int64_t>(table_id.object_oid));
+        open_table_span.SetAttribute("db.database_oid", static_cast<int64_t>(table_id.database_oid));
         scoped_span = std::make_unique<ScopedOtelSpan>(std::move(open_table_span));
       }
     }
@@ -640,7 +636,6 @@ class PgClient::Impl : public BigDataFetcher {
         table_id, resp.info(), BuildTablePartitionList(resp.partitions(), table_id));
     RETURN_NOT_OK(result->Init());
 
-    // OTEL: Add table name now that we have it from the response
     if (scoped_span && scoped_span->span().IsActive()) {
       scoped_span->span().SetAttribute("db.table", result->table_name().table_name());
     }

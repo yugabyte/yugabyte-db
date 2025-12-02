@@ -602,26 +602,17 @@ const YbcPgCallbacks *YBCGetPgCallbacks() {
 }
 
 void YBCInitOtelTracing(const char* service_name) {
-  LOG(INFO) << "[OTEL DEBUG] YBCInitOtelTracing called for: " << service_name;
   auto status = OtelTracing::InitFromEnv(service_name);
   if (!status.ok()) {
-    LOG(ERROR) << "[OTEL DEBUG] Failed to initialize OTEL in postgres backend: " << status;
-  } else {
-    LOG(INFO) << "[OTEL DEBUG] OTEL initialized successfully in postgres backend";
+    LOG(ERROR) << "[OTEL] Failed to initialize OTEL in postgres backend: " << status;
   }
 }
 
 const char* YBCGetCurrentTraceparent() {
-  const char* traceparent = YbGetCurrentTraceparent();
-  // Only log when we actually have a traceparent to reduce noise
-  if (traceparent && traceparent[0]) {
-    LOG(INFO) << "[OTEL DEBUG] YBCGetCurrentTraceparent called, value: '" << traceparent << "'";
-  }
-  return traceparent;
+  return YbGetCurrentTraceparent();
 }
 
 void YBCResetTraceparent() {
-  LOG(INFO) << "[OTEL DEBUG] YBCResetTraceparent called";
   YbClearTraceparent();
 }
 
@@ -708,7 +699,12 @@ void YBCOtelPlanDone() {
 }
 
 void YBCOtelExecuteStart() {
+  LOG(INFO) << "[OTEL DEBUG] YBCOtelExecuteStart called: g_query_span="
+            << (g_query_span ? "set" : "null")
+            << ", HasActiveContext=" << yb::OtelTracing::HasActiveContext();
+  
   if (!g_query_span || !yb::OtelTracing::HasActiveContext()) {
+    LOG(INFO) << "[OTEL DEBUG] YBCOtelExecuteStart: skipping, condition failed";
     return;
   }
   

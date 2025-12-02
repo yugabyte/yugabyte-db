@@ -76,18 +76,16 @@ namespace yb {
 
 namespace otel_internal {
 
-// Internal span context - holds the actual OpenTelemetry span and metadata for HTTP export
 struct SpanContext {
   bool active = false;
   nostd::shared_ptr<trace_api::Span> span;
   nostd::shared_ptr<trace_api::Scope> scope;
 
-  // Metadata for HTTP export (stored at span creation time)
   std::string name;
-  std::string parent_span_id;  // 16-char hex or empty
+  std::string parent_span_id;
   int64_t start_time_ns = 0;
-  int span_kind = 1;  // 1=internal, 2=server, 3=client
-  int status_code = 0;  // 0=unset, 1=ok, 2=error
+  int span_kind = 1;
+  int status_code = 0;
   std::string status_message;
   std::vector<std::pair<std::string, std::string> > string_attributes;
   std::vector<std::pair<std::string, int64_t> > int_attributes;
@@ -133,46 +131,37 @@ int64_t GetCurrentTimeNanos() {
 
 }  // anonymous namespace
 
-// OtelSpanHandle implementation
-
 OtelSpanHandle::OtelSpanHandle() : context_(nullptr) {}
 
 OtelSpanHandle::OtelSpanHandle(std::unique_ptr<otel_internal::SpanContext> context)
     : context_(std::move(context)) {}
 
 OtelSpanHandle::~OtelSpanHandle() {
-  if (context_ && context_->active && context_->span) {
-    // Export via HTTP before ending the span
-    if (GetGlobalOtlpSender().IsEnabled()) {
-      SimpleSpanData span_data;
-
-      // Extract trace_id and span_id from the OTEL span
-      auto span_context = context_->span->GetContext();
-      span_data.trace_id = TraceIdToHex(span_context.trace_id());
-      span_data.span_id = SpanIdToHex(span_context.span_id());
-      span_data.parent_span_id = context_->parent_span_id;
-
-      span_data.name = context_->name;
-      span_data.start_time_ns = context_->start_time_ns;
-      span_data.end_time_ns = GetCurrentTimeNanos();
-      span_data.kind = context_->span_kind;
-      span_data.status_code = context_->status_code;
-      span_data.status_message = context_->status_message;
-      span_data.string_attributes = context_->string_attributes;
-      span_data.int_attributes = context_->int_attributes;
-
-      LOG(INFO) << "[OTEL] Exporting span via HTTP: " << span_data.name
-                << " trace_id=" << span_data.trace_id
-                << " span_id=" << span_data.span_id;
-
-      bool sent = GetGlobalOtlpSender().SendSpan(span_data);
-      if (!sent) {
-        LOG(WARNING) << "[OTEL] Failed to send span via HTTP: " << span_data.name;
-      }
-    }
-
-    context_->span->End();
+  if (!context_ || !context_->active || !context_->span) {
+    return;
   }
+
+  if (GetGlobalOtlpSender().IsEnabled()) {
+    SimpleSpanData span_data;
+    auto span_context = context_->span->GetContext();
+    span_data.trace_id = TraceIdToHex(span_context.trace_id());
+    span_data.span_id = SpanIdToHex(span_context.span_id());
+    span_data.parent_span_id = context_->parent_span_id;
+    span_data.name = context_->name;
+    span_data.start_time_ns = context_->start_time_ns;
+    span_data.end_time_ns = GetCurrentTimeNanos();
+    span_data.kind = context_->span_kind;
+    span_data.status_code = context_->status_code;
+    span_data.status_message = context_->status_message;
+    span_data.string_attributes = context_->string_attributes;
+    span_data.int_attributes = context_->int_attributes;
+
+    if (!GetGlobalOtlpSender().SendSpan(span_data)) {
+      LOG(WARNING) << "[OTEL] Failed to send span via HTTP: " << span_data.name;
+    }
+  }
+
+  context_->span->End();
 }
 
 OtelSpanHandle::OtelSpanHandle(OtelSpanHandle&& other) noexcept
@@ -188,7 +177,6 @@ OtelSpanHandle& OtelSpanHandle::operator=(OtelSpanHandle&& other) noexcept {
 void OtelSpanHandle::SetStatus(bool ok, const std::string& description) {
   if (!context_ || !context_->active) return;
 
-  // Store for HTTP export
   context_->status_code = ok ? 1 : 2;
   context_->status_message = description;
 
@@ -204,7 +192,6 @@ void OtelSpanHandle::SetStatus(bool ok, const std::string& description) {
 void OtelSpanHandle::SetAttribute(const std::string& key, const std::string& value) {
   if (!context_ || !context_->active) return;
 
-  // Store for HTTP export
   context_->string_attributes.push_back(std::make_pair(key, value));
 
   if (context_->span) {
@@ -215,7 +202,6 @@ void OtelSpanHandle::SetAttribute(const std::string& key, const std::string& val
 void OtelSpanHandle::SetAttribute(const std::string& key, int64_t value) {
   if (!context_ || !context_->active) return;
 
-  // Store for HTTP export
   context_->int_attributes.push_back(std::make_pair(key, value));
 
   if (context_->span) {
@@ -225,7 +211,6 @@ void OtelSpanHandle::SetAttribute(const std::string& key, int64_t value) {
 
 void OtelSpanHandle::SetAttribute(const std::string& key, double value) {
   if (!context_ || !context_->active) return;
-  // Note: double attributes not stored for HTTP export yet (could add if needed)
   if (context_->span) {
     context_->span->SetAttribute(key, value);
   }
@@ -233,7 +218,6 @@ void OtelSpanHandle::SetAttribute(const std::string& key, double value) {
 
 void OtelSpanHandle::SetAttribute(const std::string& key, bool value) {
   if (!context_ || !context_->active) return;
-  // Note: bool attributes not stored for HTTP export yet (could add if needed)
   if (context_->span) {
     context_->span->SetAttribute(key, value);
   }
@@ -243,88 +227,66 @@ bool OtelSpanHandle::IsActive() const {
   return context_ && context_->active;
 }
 
-// OtelTracing implementation
-
 Status OtelTracing::InitFromEnv(const std::string& default_service_name) {
   std::lock_guard<std::mutex> lock(g_init_mutex);
 
-  LOG(INFO) << "[OTEL DEBUG] InitFromEnv called with service name: " << default_service_name;
-
   g_service_name = default_service_name;
 
-  // Initialize the HTTP exporter from environment, passing the service name
-  InitGlobalOtlpSenderFromEnv(g_service_name);
+  const char* debug_env = std::getenv("OTEL_EXPORTER_DEBUG");
+  bool use_debug_exporter = debug_env && (std::string(debug_env) == "true" || 
+                                           std::string(debug_env) == "1" ||
+                                           std::string(debug_env) == "TRUE");
 
-  LOG(INFO) << "[OTEL DEBUG] Initializing OpenTelemetry tracing (ostream exporter). "
-            << "Service: " << g_service_name;
+  if (use_debug_exporter) {
+    LOG(INFO) << "[OTEL] Debug mode enabled (OTEL_EXPORTER_DEBUG=true), using OStream exporter";
+  } else {
+    InitGlobalOtlpSenderFromEnv(g_service_name);
+  }
 
   try {
-    LOG(INFO) << "[OTEL DEBUG] Creating ostream exporter...";
-    // Create ostream exporter (outputs to stdout for debugging)
     auto exporter = ostream_exporter::OStreamSpanExporterFactory::Create();
     if (!exporter) {
-      LOG(ERROR) << "[OTEL DEBUG] Failed to create ostream exporter";
       return STATUS(RuntimeError, "Failed to create ostream exporter");
     }
-    LOG(INFO) << "[OTEL DEBUG] Ostream exporter created";
 
-    LOG(INFO) << "[OTEL DEBUG] Creating span processor...";
-    // Create simple span processor
     auto processor = trace_sdk::SimpleSpanProcessorFactory::Create(std::move(exporter));
     if (!processor) {
-      LOG(ERROR) << "[OTEL DEBUG] Failed to create span processor";
       return STATUS(RuntimeError, "Failed to create span processor");
     }
-    LOG(INFO) << "[OTEL DEBUG] Span processor created";
 
-    LOG(INFO) << "[OTEL DEBUG] Creating tracer provider...";
-    // Create tracer provider
     auto provider = trace_sdk::TracerProviderFactory::Create(std::move(processor));
     if (!provider) {
-      LOG(ERROR) << "[OTEL DEBUG] Failed to create tracer provider";
       return STATUS(RuntimeError, "Failed to create tracer provider");
     }
-    LOG(INFO) << "[OTEL DEBUG] Tracer provider created";
 
     g_tracer_provider = nostd::shared_ptr<trace_api::TracerProvider>(provider.release());
-
-    LOG(INFO) << "[OTEL DEBUG] Setting global tracer provider...";
-    // Set as global provider
     trace_api::Provider::SetTracerProvider(g_tracer_provider);
 
-    LOG(INFO) << "[OTEL DEBUG] Getting tracer...";
-    // Get tracer
     g_tracer = g_tracer_provider->GetTracer(g_service_name, "1.0.0");
     if (!g_tracer) {
-      LOG(ERROR) << "[OTEL DEBUG] Failed to get tracer";
       return STATUS(RuntimeError, "Failed to get tracer");
     }
-    LOG(INFO) << "[OTEL DEBUG] Tracer obtained successfully";
 
-    // Set up the global propagator for W3C trace context
-    LOG(INFO) << "[OTEL DEBUG] Setting up global W3C trace context propagator...";
     auto propagator = nostd::shared_ptr<opentelemetry::context::propagation::TextMapPropagator>(
         new opentelemetry::trace::propagation::HttpTraceContext());
     opentelemetry::context::propagation::GlobalTextMapPropagator::SetGlobalPropagator(propagator);
-    LOG(INFO) << "[OTEL DEBUG] Global propagator set";
 
     g_otel_enabled.store(true, std::memory_order_release);
-    LOG(INFO) << "[OTEL DEBUG] g_otel_enabled set to TRUE";
 
-    if (GetGlobalOtlpSender().IsEnabled()) {
-      LOG(INFO) << "[OTEL DEBUG] HTTP exporter is enabled, spans will be sent via HTTP";
+    if (use_debug_exporter) {
+      LOG(INFO) << "[OTEL] Using OStream exporter (debug mode) - spans will be written to stdout";
+    } else if (GetGlobalOtlpSender().IsEnabled()) {
+      LOG(INFO) << "[OTEL] HTTP exporter is enabled, spans will be sent via HTTP";
     } else {
-      LOG(INFO) << "[OTEL DEBUG] HTTP exporter not configured (set OTEL_EXPORTER_OTLP_ENDPOINT)";
+      LOG(INFO) << "[OTEL] HTTP exporter not configured (set OTEL_EXPORTER_OTLP_ENDPOINT)";
     }
 
-    LOG(INFO) << "[OTEL DEBUG] OpenTelemetry tracing initialized successfully";
+    LOG(INFO) << "[OTEL] OpenTelemetry tracing initialized successfully";
 
   } catch (const std::exception& e) {
-    LOG(ERROR) << "[OTEL DEBUG] Exception during OTEL initialization: " << e.what();
     return STATUS_FORMAT(RuntimeError, "Failed to initialize OpenTelemetry: $0", e.what());
   }
 
-  LOG(INFO) << "[OTEL DEBUG] InitFromEnv returning OK";
   return Status::OK();
 }
 
@@ -334,12 +296,8 @@ void OtelTracing::Shutdown() {
   if (g_otel_enabled.load(std::memory_order_acquire)) {
     LOG(INFO) << "Shutting down OpenTelemetry tracing";
     if (g_tracer_provider) {
-      // Flush any pending spans
       auto* raw_provider = g_tracer_provider.get();
       if (auto* sdk_provider = dynamic_cast<trace_sdk::TracerProvider*>(raw_provider)) {
-        // Some OpenTelemetry C++ versions / build configurations may not provide a
-        // concrete Shutdown implementation on TracerProvider, so just force-flush
-        // and rely on process teardown for cleanup.
         sdk_provider->ForceFlush();
       }
     }
@@ -365,14 +323,11 @@ OtelSpanHandle OtelTracing::StartSpan(const std::string& name) {
   context->span_kind = 1;  // internal
 
   if (g_tracer) {
-    // Capture parent span ID immediately before any state changes
     auto current_span = trace_api::Tracer::GetCurrentSpan();
     if (current_span && current_span->GetContext().IsValid()) {
       context->parent_span_id = SpanIdToHex(current_span->GetContext().span_id());
     }
-    
     context->span = g_tracer->StartSpan(name);
-    VLOG(2) << "Started OTEL span: " << name;
   }
 
   return OtelSpanHandle(std::move(context));
@@ -381,48 +336,26 @@ OtelSpanHandle OtelTracing::StartSpan(const std::string& name) {
 OtelSpanHandle OtelTracing::StartSpanFromTraceparent(
     const std::string& name,
     const std::string& traceparent) {
-  LOG(INFO) << "[OTEL DEBUG] StartSpanFromTraceparent called: name='" << name
-            << "', traceparent='" << traceparent << "', IsEnabled=" << IsEnabled();
-
-  if (!IsEnabled()) {
-    LOG(INFO) << "[OTEL DEBUG] OTEL is not enabled, returning inactive span";
+  if (!IsEnabled() || traceparent.empty()) {
     return OtelSpanHandle();
   }
 
-  if (traceparent.empty()) {
-    LOG(INFO) << "[OTEL DEBUG] traceparent is empty, returning inactive span";
-    return OtelSpanHandle();
-  }
-
-  // Parse W3C traceparent format: "version-trace_id-span_id-trace_flags"
-  // Example: "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
-
-  LOG(INFO) << "[OTEL DEBUG] Validating traceparent format, length=" << traceparent.length();
-
-  // Simple validation
   if (traceparent.length() < 55 || traceparent[2] != '-' || traceparent[35] != '-' ||
       traceparent[52] != '-') {
-    LOG(WARNING) << "[OTEL DEBUG] Invalid traceparent format: " << traceparent
-                 << " (length=" << traceparent.length() << ")";
+    LOG(WARNING) << "[OTEL] Invalid traceparent format: " << traceparent;
     return OtelSpanHandle();
   }
 
-  // Extract parent span ID from traceparent (positions 36-51)
   std::string parent_span_id = traceparent.substr(36, 16);
-
-  LOG(INFO) << "[OTEL DEBUG] Traceparent validation passed, creating span context";
 
   auto context = std::make_unique<otel_internal::SpanContext>();
   context->active = true;
   context->name = name;
   context->parent_span_id = parent_span_id;
   context->start_time_ns = GetCurrentTimeNanos();
-  context->span_kind = 2;  // server (receiving a remote call)
+  context->span_kind = 2;
 
   if (g_tracer) {
-    LOG(INFO) << "[OTEL DEBUG] g_tracer exists, using global propagator to parse traceparent";
-
-    // Create a carrier that holds the traceparent header
     class TraceparentCarrier : public opentelemetry::context::propagation::TextMapCarrier {
      public:
       explicit TraceparentCarrier(const std::string& traceparent_value)
@@ -446,63 +379,41 @@ OtelSpanHandle OtelTracing::StartSpanFromTraceparent(
     };
 
     TraceparentCarrier carrier(traceparent);
-
-    // Use the global propagator to extract the context from the traceparent
     auto propagator = opentelemetry::context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
     auto current_ctx = opentelemetry::context::RuntimeContext::GetCurrent();
     auto new_ctx = propagator->Extract(carrier, current_ctx);
 
-    LOG(INFO) << "[OTEL DEBUG] Extracted context from traceparent using global propagator";
-
-    // Get the remote span from the extracted context
     auto remote_span = opentelemetry::trace::GetSpan(new_ctx);
     auto remote_context = remote_span->GetContext();
 
     if (remote_context.IsValid()) {
-      LOG(INFO) << "[OTEL DEBUG] Remote context is valid, creating span with remote parent";
-
-      // Create StartSpanOptions with the remote parent context
       trace_api::StartSpanOptions options;
       options.parent = remote_context;
       options.kind = trace_api::SpanKind::kServer;
-
-      // Start the span with the remote parent context
       context->span = g_tracer->StartSpan(name, options);
-
-      if (context->span) {
-        LOG(INFO) << "[OTEL DEBUG] Span created successfully with remote parent: " << name;
-      }
     } else {
-      LOG(WARNING) << "[OTEL DEBUG] Remote context is not valid, creating regular span";
       context->span = g_tracer->StartSpan(name);
     }
-  } else {
-    LOG(WARNING) << "[OTEL DEBUG] g_tracer is null!";
   }
 
   return OtelSpanHandle(std::move(context));
 }
 
 void OtelTracing::AdoptSpan(const OtelSpanHandle& span) {
-  if (!span.IsActive()) return;
-
-  if (span.context_ && span.context_->span) {
-    // Create a scope to make this span active on the current thread
-    span.context_->scope = nostd::shared_ptr<trace_api::Scope>(
-        new trace_api::Scope(span.context_->span));
+  if (!span.IsActive() || !span.context_ || !span.context_->span) {
+    return;
   }
+  span.context_->scope = nostd::shared_ptr<trace_api::Scope>(
+      new trace_api::Scope(span.context_->span));
 }
 
 void OtelTracing::EndCurrentSpan() {
-  // The scope will be destroyed automatically when the ScopedOtelSpan goes out of scope
 }
 
 bool OtelTracing::HasActiveContext() {
   if (!IsEnabled()) {
     return false;
   }
-
-  // Check if there's an active span in the current context
   auto current_span = trace_api::Tracer::GetCurrentSpan();
   return current_span && current_span->GetContext().IsValid();
 }

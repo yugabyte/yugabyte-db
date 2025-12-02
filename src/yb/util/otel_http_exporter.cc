@@ -32,7 +32,10 @@ SimpleOtlpHttpSender g_otlp_sender;
 }  // namespace
 
 SimpleOtlpHttpSender::SimpleOtlpHttpSender()
-    : service_name_("yugabyte"), enabled_(false) {}
+    : enabled_(false) {
+  const char* service_name_env = std::getenv("OTEL_SERVICE_NAME");
+  service_name_ = (service_name_env && service_name_env[0] != '\0') ? service_name_env : "yugabyte";
+}
 
 SimpleOtlpHttpSender::~SimpleOtlpHttpSender() = default;
 
@@ -56,13 +59,8 @@ bool SimpleOtlpHttpSender::SendSpan(const SimpleSpanData& span) {
 }
 
 bool SimpleOtlpHttpSender::SendSpans(const std::vector<SimpleSpanData>& spans) {
-  if (!IsEnabled()) {
-    VLOG(2) << "[OTEL] HTTP sender not enabled, skipping export";
+  if (!IsEnabled() || spans.empty()) {
     return true;
-  }
-
-  if (spans.empty()) {
-    return true;  // Nothing to do
   }
 
   std::string json_payload = SpansToJson(spans);
@@ -124,7 +122,6 @@ std::string SimpleOtlpHttpSender::JsonEscape(const std::string& str) {
 std::string SimpleOtlpHttpSender::SpansToJson(const std::vector<SimpleSpanData>& spans) const {
   std::ostringstream json;
 
-  // OTLP JSON structure
   json << R"({"resourceSpans":[{"resource":{"attributes":[)";
   json << R"({"key":"service.name","value":{"stringValue":")" << JsonEscape(service_name_) << R"("}},)";
   json << R"({"key":"telemetry.sdk.language","value":{"stringValue":"cpp"}},)";
@@ -153,7 +150,6 @@ std::string SimpleOtlpHttpSender::SpansToJson(const std::vector<SimpleSpanData>&
     json << R"("startTimeUnixNano":")" << span.start_time_ns << R"(",)";
     json << R"("endTimeUnixNano":")" << span.end_time_ns << R"(",)";
 
-    // Attributes
     json << R"("attributes":[)";
     bool first_attr = true;
     for (size_t j = 0; j < span.string_attributes.size(); ++j) {
@@ -170,7 +166,6 @@ std::string SimpleOtlpHttpSender::SpansToJson(const std::vector<SimpleSpanData>&
     }
     json << "],";
 
-    // Status
     json << R"("status":{"code":)" << span.status_code;
     if (!span.status_message.empty()) {
       json << R"(,"message":")" << JsonEscape(span.status_message) << R"(")";
@@ -187,33 +182,29 @@ SimpleOtlpHttpSender& GetGlobalOtlpSender() {
 }
 
 void InitGlobalOtlpSenderFromEnv(const std::string& service_name) {
-  // Read endpoint from OTEL_EXPORTER_OTLP_ENDPOINT environment variable
   std::string endpoint;
   const char* endpoint_env = std::getenv("OTEL_EXPORTER_OTLP_ENDPOINT");
-  
+
   if (endpoint_env && endpoint_env[0] != '\0') {
-    // Per OTLP spec, OTEL_EXPORTER_OTLP_ENDPOINT is the base URL
-    // Append /v1/traces for the traces signal
     endpoint = endpoint_env;
-    // Only append /v1/traces if it's not already part of the URL
     if (endpoint.find("/v1/traces") == std::string::npos) {
-      // Remove trailing slash if present before appending
       if (!endpoint.empty() && endpoint.back() == '/') {
         endpoint.pop_back();
       }
       endpoint += "/v1/traces";
     }
   } else {
-    // Default endpoint for local development
     endpoint = "http://localhost:4318/v1/traces";
   }
-  
+
   g_otlp_sender.SetEndpoint(endpoint);
   LOG(INFO) << "[OTEL] HTTP exporter endpoint: " << endpoint;
 
-  // Set the service name (already resolved by caller)
-  g_otlp_sender.SetServiceName(service_name);
-  LOG(INFO) << "[OTEL] HTTP exporter service name: " << service_name;
+  const char* service_name_env = std::getenv("OTEL_SERVICE_NAME");
+  std::string resolved_service_name = (service_name_env && service_name_env[0] != '\0')
+      ? service_name_env : "yugabyte";
+  g_otlp_sender.SetServiceName(resolved_service_name);
+  LOG(INFO) << "[OTEL] HTTP exporter service name: " << resolved_service_name;
 }
 
 }  // namespace yb

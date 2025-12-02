@@ -797,11 +797,7 @@ Result<FlushFuture> PgSession::FlushOperations(BufferableOperations&& ops, bool 
 
 Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOptions&& ops_options) {
   DCHECK(!ops.Empty());
-  
-  // NOTE: Query-level OTEL spans are now created at the PostgreSQL layer
-  // (in postgres.c at the DTrace probe points). RPC spans created here
-  // will automatically be children of the active query span.
-  
+
   tserver::PgPerformOptionsPB options;
   if (ops_options.use_catalog_session) {
     if (catalog_read_time_) {
@@ -1117,27 +1113,23 @@ Result<PerformFuture> PgSession::DoRunAsync(
   RunHelper runner(
       this, group_session_type, in_txn_limit, force_non_bufferable);
   const auto ddl_force_catalog_mod_opt = pg_txn_manager_->GetDdlForceCatalogModification();
-  
-  // OTEL: Create span for this batch with rich metadata
-  // Only create if there's an active context (i.e., we're inside a traced query)
+
   OtelSpanHandle batch_span;
   std::unique_ptr<ScopedOtelSpan> scoped_batch_span;
-  
-  // Counters for OTEL attributes
   int64_t catalog_read_count = 0;
   int64_t catalog_write_count = 0;
   int64_t user_read_count = 0;
   int64_t user_write_count = 0;
-  std::string table_names;  // Comma-separated list of unique table names
+  std::string table_names;
   std::set<std::string> seen_tables;
-  
+
   if (OtelTracing::HasActiveContext()) {
     batch_span = OtelTracing::StartSpan("pggate.batch");
     if (batch_span.IsActive()) {
       scoped_batch_span = std::make_unique<ScopedOtelSpan>(std::move(batch_span));
     }
   }
-  
+
   auto processor =
       [this,
        is_ddl = ddl_force_catalog_mod_opt.has_value(),
@@ -1167,8 +1159,7 @@ Result<PerformFuture> PgSession::DoRunAsync(
         has_catalog_write_ops_in_ddl_mode_ =
             has_catalog_write_ops_in_ddl_mode_ ||
             (is_ddl && op->is_write() && is_ysql_catalog_table);
-        
-        // OTEL: Collect table metadata for span attributes
+
         if (is_ysql_catalog_table) {
           if (op->is_read()) {
             catalog_read_count++;
@@ -1182,7 +1173,6 @@ Result<PerformFuture> PgSession::DoRunAsync(
             user_write_count++;
           }
         }
-        // Collect unique table names
         const auto& tbl_name = table.table_name().table_name();
         if (seen_tables.find(tbl_name) == seen_tables.end()) {
           seen_tables.insert(tbl_name);
@@ -1191,17 +1181,15 @@ Result<PerformFuture> PgSession::DoRunAsync(
           }
           table_names += tbl_name;
         }
-        
+
         return runner.Apply(table, op);
     };
   RETURN_NOT_OK(processor(first_table_op));
   for (; !table_op.IsEmpty(); table_op = generator()) {
     RETURN_NOT_OK(processor(table_op));
   }
-  
-  // OTEL: Set collected attributes on the span before it ends
+
   if (scoped_batch_span && scoped_batch_span->span().IsActive()) {
-    // Set session type
     std::string session_type_str;
     switch (group_session_type) {
       case SessionType::kCatalog: session_type_str = "catalog"; break;
