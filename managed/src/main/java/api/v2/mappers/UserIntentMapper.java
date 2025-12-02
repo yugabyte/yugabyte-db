@@ -135,6 +135,7 @@ public interface UserIntentMapper {
     @ValueMapping(target = "PREMIUMV2_LRS", source = "PremiumV2_LRS"),
     @ValueMapping(target = "ULTRASSD_LRS", source = "UltraSSD_LRS"),
     @ValueMapping(target = "LOCAL", source = "Local"),
+    @ValueMapping(target = "IO2", source = "IO2"),
   })
   StorageTypeEnum mapStorageType(StorageType storageType);
 

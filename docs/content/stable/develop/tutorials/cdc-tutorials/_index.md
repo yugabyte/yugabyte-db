@@ -6,7 +6,7 @@ description: Use YugabyteDB CDC to stream data with different Kafka environments
 headcontent: Use YugabyteDB CDC to stream data with different Kafka environments
 image: /images/section_icons/develop/ecosystem/apache-kafka-icon.png
 aliases:
-  - /preview/integrations/apache-kafka/
+  - /stable/integrations/apache-kafka/
 tags:
   feature: early-access
 menu:

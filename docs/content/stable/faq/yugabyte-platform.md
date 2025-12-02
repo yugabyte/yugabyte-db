@@ -4,7 +4,7 @@ headerTitle: YugabyteDB Anywhere FAQ
 linkTitle: YugabyteDB Anywhere FAQ
 description: Answers to common questions about YugabyteDB Anywhere.
 aliases:
-  - /preview/faq/enterprise-edition/
+  - /stable/faq/enterprise-edition/
 menu:
   stable_faq:
     identifier: faq-yugabyte-platform

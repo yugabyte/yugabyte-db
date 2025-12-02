@@ -2949,6 +2949,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   std::unordered_set<xrepl::StreamId> GetCDCSDKStreamsForTable(const TableId& table_id) const
       REQUIRES_SHARED(mutex_);
 
+  std::unordered_set<xrepl::StreamId> GetAllCDCSDKStreamsForNamespace(
+      const NamespaceId& ns_id) const REQUIRES_SHARED(mutex_);
+
   // Reads the slot entries for all the stream_ids provided and returns the minimum restart time
   // across them.
   Result<HybridTime> GetMinRestartTimeAcrossSlots(
@@ -3078,6 +3081,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status RemoveTableFromCDCStreamMetadataAndMaps(
       const CDCStreamInfoPtr stream, const TableId table_id, const LeaderEpoch& epoch);
 
+  void WarnIfTableNotPresentInAllCDCSDKStreams(const TableId& table_id);
+
   Result<ColocationId> ObtainColocationId(
       const CreateTableRequestPB& req, const TablegroupInfo* tablegroup,
       bool is_colocated_via_database, const NamespaceId& namespace_id,
@@ -3133,6 +3138,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
     // The table info objects of the tables affected by this rollback to sub-transaction operation.
     std::vector<TableInfoPtr> tables;
+    // Set of index tables whose deletion due to rollback to sub-transaction operation was skipped
+    // since its base table.
+    std::unordered_set<TableId> indexes_skipped_due_to_base_table_deletion;
   };
 
   // This map stores the transaction ids of all the DDL transactions undergoing verification.

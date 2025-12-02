@@ -4,9 +4,9 @@ headerTitle: Point-in-time recovery
 linkTitle: Point-in-time recovery
 description: Restore data to a specific point in time in YugabyteDB
 aliases:
-  - /preview/manage/backup-restore/point-in-time-restore
-  - /preview/manage/backup-restore/point-in-time-restore-ycql
-  - /preview/yugabyte-platform/back-up-restore-universes/point-in-time
+  - /stable/manage/backup-restore/point-in-time-restore
+  - /stable/manage/backup-restore/point-in-time-restore-ycql
+  - /stable/yugabyte-platform/back-up-restore-universes/point-in-time
 menu:
   stable:
     identifier: point-in-time-recovery
@@ -276,5 +276,4 @@ YugabyteDB Anywhere [supports PITR](../../../yugabyte-platform/back-up-restore-u
 ### Other limitations
 
 - PITR works only with _in-cluster_ distributed snapshots. PITR support for off-cluster backups is under consideration for the future. Tracking issue: [8847](https://github.com/yugabyte/yugabyte-db/issues/8847).
-- You can't modify a snapshot schedule once it's created. If you need to change the interval or the retention period, delete the snapshot and recreate it with the new parameters. Tracking issue: [8417](https://github.com/yugabyte/yugabyte-db/issues/8417).
 - Issuing DDLs against a database while it is being restored is not recommended.

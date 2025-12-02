@@ -462,8 +462,7 @@ SELECT a, b, c, d FROM range_key_table;
 CREATE TABLE test1 (c1 varchar, c2 varchar) SPLIT INTO 5 TABLETS;
 CREATE INDEX idx1 ON test1(c1) SPLIT INTO 5 TABLETS;
 CREATE INDEX idx2 ON test1(c1 HASH, c2 ASC) SPLIT INTO 5 TABLETS;
-CREATE INDEX idx3 ON test1(c2 ASC) INCLUDE(c1)
-    SPLIT AT VALUES ((E'test123\"\"''\\\\\\u0068\\u0069'));
+CREATE INDEX idx3 ON test1(c2 HASH) INCLUDE(c1) SPLIT INTO 5 TABLETS;
 CREATE INDEX idx4 ON test1(c1 ASC) SPLIT AT VALUES (('h'));
 ALTER TABLE test1 ALTER c1 TYPE int USING length(c1);
 -- verify hash split options on the table are preserved.
@@ -471,9 +470,7 @@ SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('test1'::regcl
 -- verify hash split options on the indexes are preserved.
 SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('idx1'::regclass);
 SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('idx2'::regclass);
--- verify range split options on the indexes are only preserved when the altered column is not a
--- part of the index key.
-SELECT yb_get_range_split_clause('idx3'::regclass);
+SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('idx3'::regclass);
 SELECT yb_get_range_split_clause('idx4'::regclass);
 CREATE TABLE test2 (c1 varchar, c2 varchar, PRIMARY KEY(c1 ASC, c2 DESC))
     SPLIT AT VALUES (('h', 20));

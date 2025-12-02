@@ -558,7 +558,7 @@ Result<std::string> CDCSDKTestBase::HybridTimeToReadableString(uint64_t hybrid_t
 }
 
 Result<GetChangesResponsePB> CDCSDKTestBase::GetChangesFromMaster(
-    const xrepl::StreamId& stream_id) {
+    const xrepl::StreamId& stream_id, const CDCSDKCheckpointPB* explicit_checkpoint) {
   GetChangesRequestPB change_req;
   GetChangesResponsePB change_resp;
   change_req.set_stream_id(stream_id.ToString());
@@ -569,6 +569,15 @@ Result<GetChangesResponsePB> CDCSDKTestBase::GetChangesFromMaster(
 
   rpc::RpcController change_rpc;
   change_rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
+
+  if (explicit_checkpoint != nullptr) {
+    change_req.mutable_explicit_cdc_sdk_checkpoint()->set_term(explicit_checkpoint->term());
+    change_req.mutable_explicit_cdc_sdk_checkpoint()->set_index(explicit_checkpoint->index());
+    change_req.mutable_explicit_cdc_sdk_checkpoint()->set_key(explicit_checkpoint->key());
+    change_req.mutable_explicit_cdc_sdk_checkpoint()->set_write_id(explicit_checkpoint->write_id());
+    change_req.mutable_explicit_cdc_sdk_checkpoint()->set_snapshot_time(
+        explicit_checkpoint->snapshot_time());
+  }
 
   // Create CDC service proxy to master.
   CDCServiceProxy master_proxy(

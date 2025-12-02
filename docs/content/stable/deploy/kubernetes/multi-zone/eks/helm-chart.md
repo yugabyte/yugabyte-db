@@ -10,7 +10,7 @@ menu:
     identifier: k8s-mz-eks-1
     weight: 627
 aliases:
-  - /preview/deploy/kubernetes/multi-zone/eks
+  - /stable/deploy/kubernetes/multi-zone/eks
 type: docs
 ---
 

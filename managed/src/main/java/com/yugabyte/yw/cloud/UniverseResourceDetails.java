@@ -16,6 +16,8 @@ import static com.yugabyte.yw.cloud.PublicCloudConstants.GP3_SIZE;
 import static com.yugabyte.yw.cloud.PublicCloudConstants.GP3_THROUGHPUT;
 import static com.yugabyte.yw.cloud.PublicCloudConstants.IO1_PIOPS;
 import static com.yugabyte.yw.cloud.PublicCloudConstants.IO1_SIZE;
+import static com.yugabyte.yw.cloud.PublicCloudConstants.IO2_PIOPS;
+import static com.yugabyte.yw.cloud.PublicCloudConstants.IO2_SIZE;
 
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
@@ -177,6 +179,11 @@ public class UniverseResourceDetails {
           case IO1:
             piopsPrice = PriceComponent.get(provider.getUuid(), region.getCode(), IO1_PIOPS);
             sizePrice = PriceComponent.get(provider.getUuid(), region.getCode(), IO1_SIZE);
+            billedDiskIops = diskIops;
+            break;
+          case IO2:
+            piopsPrice = PriceComponent.get(provider.getUuid(), region.getCode(), IO2_PIOPS);
+            sizePrice = PriceComponent.get(provider.getUuid(), region.getCode(), IO2_SIZE);
             billedDiskIops = diskIops;
             break;
           case GP2:

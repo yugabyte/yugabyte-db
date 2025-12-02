@@ -7,8 +7,8 @@ headcontent: Capture changes made to data in the database
 tags:
   feature: early-access
 aliases:
-  - /preview/explore/change-data-capture/cdc-overview/
-  - /preview/explore/change-data-capture/using-yugabytedb-grpc-replication/
+  - /stable/explore/change-data-capture/cdc-overview/
+  - /stable/explore/change-data-capture/using-yugabytedb-grpc-replication/
 menu:
   stable:
     identifier: explore-change-data-capture-grpc-replication

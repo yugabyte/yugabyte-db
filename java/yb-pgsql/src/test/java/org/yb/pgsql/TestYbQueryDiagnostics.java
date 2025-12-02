@@ -802,7 +802,6 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
         assertEquals("Output does not match expected output while validating against file",
                      expectedOutput.trim(), actualData.trim());
-
     }
 
     private void setUpComplexTable() throws Exception {
@@ -890,22 +889,11 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         String explainPlan = new String(Files.readAllBytes(explainPlanPath),
                                         StandardCharsets.UTF_8);
 
-        /* Filter out the duration line from the explain plan */
+        /* Filter out volatile timing fields from the explain plan (JSON format) */
         String filteredExplainPlan = Arrays.stream(explainPlan.split("\n"))
-                .filter(line -> !line.contains("duration"))
-                // Remove everything after "actual time=" until the end of line or next
-                // parenthesis
-                .map(line -> {
-                    int actualTimeIndex = line.indexOf("actual time=");
-                    if (actualTimeIndex != -1) {
-                        int endIndex = line.indexOf(")", actualTimeIndex);
-                        if (endIndex != -1) {
-                            return line.substring(0, actualTimeIndex) +
-                                    line.substring(endIndex);
-                        }
-                    }
-                    return line;
-                })
+                .filter(line -> !line.contains("Execution Time")
+                        && !line.contains("Actual Startup Time")
+                        && !line.contains("Actual Total Time"))
                 .collect(Collectors.joining("\n"));
 
         validateAgainstFile(expectedFilename, filteredExplainPlan);

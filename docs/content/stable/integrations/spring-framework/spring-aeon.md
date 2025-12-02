@@ -4,7 +4,7 @@ linkTitle: Spring Data Aeon
 description: Connect a Spring Spring Data YugabyteDB application to YugabyteDB Aeon.
 headcontent:
 aliases:
-  - /preview/yugabyte-cloud/cloud-examples/connect-application/
+  - /stable/yugabyte-cloud/cloud-examples/connect-application/
 menu:
   stable:
     identifier: spring-aeon

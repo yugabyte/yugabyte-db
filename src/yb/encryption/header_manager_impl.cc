@@ -29,8 +29,6 @@
 
 using std::string;
 
-static const string kEncryptionMagic = "encrypt!";
-
 namespace yb {
 namespace encryption {
 
@@ -73,7 +71,7 @@ class HeaderManagerImpl : public HeaderManager {
     char header_size[sizeof(uint32_t)];
     BigEndian::Store32(header_size, narrow_cast<uint32_t>(metadata_str.size()));
 
-    return kEncryptionMagic + string(header_size, sizeof(header_size)) + metadata_str;
+    return string(kEncryptionMagic) + string(header_size, sizeof(header_size)) + metadata_str;
   }
 
   Result<EncryptionParamsPtr>
@@ -118,15 +116,15 @@ class HeaderManagerImpl : public HeaderManager {
   }
 
   uint32_t GetEncryptionMetadataStartIndex() override {
-    return narrow_cast<uint32_t>(kEncryptionMagic.size() + sizeof(uint32_t));
+    return narrow_cast<uint32_t>(kEncryptionMagicLen + sizeof(uint32_t));
   }
 
   Result<FileEncryptionStatus> GetFileEncryptionStatusFromPrefix(
       const Slice& s) override {
     FileEncryptionStatus status;
-    status.is_encrypted = s.compare_prefix(Slice(kEncryptionMagic)) == 0;
+    status.is_encrypted = s.compare_prefix(Slice(kEncryptionMagic, kEncryptionMagicLen)) == 0;
     if (status.is_encrypted) {
-      status.header_size = BigEndian::Load32(s.data() + kEncryptionMagic.size());
+      status.header_size = BigEndian::Load32(s.data() + kEncryptionMagicLen);
     }
     return status;
   }

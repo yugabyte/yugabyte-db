@@ -463,7 +463,6 @@ class PostgresBuilder(YbBuildToolBase):
 
         if self.is_clang():
             additional_c_cxx_flags += [
-                '-Wno-builtin-requires-header',
                 '-Wno-shorten-64-to-32',
             ]
 
@@ -472,15 +471,6 @@ class PostgresBuilder(YbBuildToolBase):
                 '-Wall',
                 '-Werror',
             ]
-
-            if self.build_type in ['release', 'prof_gen', 'prof_use']:
-                if self.is_clang():
-                    additional_c_cxx_flags += [
-                        '-Wno-error=array-bounds',
-                        '-Wno-error=gnu-designator',
-                    ]
-                if self.is_gcc():
-                    additional_c_cxx_flags += ['-Wno-error=strict-overflow']
 
             if self.build_type in ['asan', 'asan_release']:
                 additional_c_cxx_flags += [
@@ -496,9 +486,6 @@ class PostgresBuilder(YbBuildToolBase):
             for build_path in get_absolute_path_aliases(self.pg_build_root)
             for source_path in get_absolute_path_aliases(self.postgres_src_dir)
         ]
-
-        if self.is_gcc():
-            additional_c_cxx_flags.append('-Wno-error=maybe-uninitialized')
 
         for var_name in COMPILER_AND_LINKER_FLAG_ENV_VAR_NAMES:
             os.environ[var_name] = adjust_compiler_or_linker_flags(

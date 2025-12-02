@@ -38,11 +38,11 @@ Status Executor::PTExprToPB(const PTBcall *bcall_pt, QLExpressionPB *expr_pb) {
 
 Status Executor::BFCallToPB(const PTBcall *bcall_pt, QLExpressionPB *expr_pb) {
   if (bcall_pt->result_cast_op() != BFOPCODE_NOOP) {
-      QLBCallPB *cast_pb = expr_pb->mutable_bfcall();
-      cast_pb->set_opcode(static_cast<int32_t>(bcall_pt->result_cast_op()));
+    QLBCallPB *cast_pb = expr_pb->mutable_bfcall();
+    cast_pb->set_opcode(static_cast<int32_t>(bcall_pt->result_cast_op()));
 
-      // Result of the bcall_pt is the input of this CAST.
-      expr_pb = cast_pb->add_operands();
+    // Result of the bcall_pt is the input of this CAST.
+    expr_pb = cast_pb->add_operands();
   }
 
   QLBCallPB *bcall_pb = expr_pb->mutable_bfcall();

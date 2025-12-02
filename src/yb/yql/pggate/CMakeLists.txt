@@ -70,7 +70,6 @@ ADD_YB_LIBRARY(yb_pggate_flags
                DEPS yb_ash yb_util)
 
 set(PGGATE_LIBS
-    consensus_error
     cdc_service_proto
     server_common
     yb_ash
@@ -80,7 +79,6 @@ set(PGGATE_LIBS
     tserver_shared
     yb_pggate_util
     yb_pggate_flags
-    tablet_error
     pg_client_proto)
 
 ADD_YB_LIBRARY(yb_pggate

@@ -1973,11 +1973,10 @@ void CDCServiceImpl::GetChanges(
     LogGetChangesLagForCDCSDK(stream_id, *resp);
   }
 
-  const auto* error_data = status.ErrorData(CDCErrorTag::kCategory);
   RPC_STATUS_RETURN_ERROR(
       status,
       resp->mutable_error(),
-      error_data ? CDCErrorTag::Decode(error_data) : CDCErrorPB::UNKNOWN_ERROR,
+      CDCError::ValueFromStatus(status).value_or(CDCErrorPB::UNKNOWN_ERROR),
       context);
   tablet_peer = context_->LookupTablet(req->tablet_id());
 
@@ -2825,14 +2824,26 @@ Result<bool> CDCServiceImpl::CheckBeforeImageActive(
   bool is_before_image_active = false;
   if (FLAGS_ysql_yb_enable_replica_identity && IsReplicationSlotStream(stream_metadata)) {
     auto replica_identity_map = stream_metadata.GetReplicaIdentities();
+    bool is_colocated_tablet = tablet_peer->tablet_metadata()->colocated();
+    bool is_sys_catalog_tablet = tablet_peer->tablet_metadata()->IsSysCatalog();
+
     // If the tablet is colocated, we check the replica identities of all the tables residing in it.
-    // If before image is active for any one of the tables then we should return true
-    if (tablet_peer->tablet_metadata()->colocated()) {
+    // If the tablet is sys catalog, we check the replica identities of only tables
+    // 'pg_publication_rel' & 'pg_class' residing in it (This is because currently only these sys
+    // catalog tables are part of publication's table list).
+    // If before image is active for any such tables then we should return true.
+    if (is_colocated_tablet || is_sys_catalog_tablet) {
       auto table_ids = tablet_peer->tablet_metadata()->GetAllColocatedTables();
       for (auto table_id : table_ids) {
         auto table_name = tablet_peer->tablet_metadata()->table_name(table_id);
-        if ((boost::ends_with(table_name, kTablegroupParentTableNameSuffix) ||
+        if (is_colocated_tablet &&
+            (boost::ends_with(table_name, kTablegroupParentTableNameSuffix) ||
              boost::ends_with(table_name, kColocationParentTableNameSuffix))) {
+          continue;
+        }
+
+        if (is_sys_catalog_tablet &&
+            !VERIFY_RESULT(IsStreamableCatalogTable(table_id, stream_metadata.GetNamespaceId()))) {
           continue;
         }
 
@@ -4530,6 +4541,21 @@ bool CDCServiceImpl::IsCDCSDKSnapshotRequest(const CDCSDKCheckpointPB& req_check
 
 bool CDCServiceImpl::IsCDCSDKSnapshotBootstrapRequest(const CDCSDKCheckpointPB& req_checkpoint) {
   return req_checkpoint.write_id() == -1 && req_checkpoint.key().empty();
+}
+
+Result<std::vector<TableId>> CDCServiceImpl::GetStreamableCatalogTables(
+    const NamespaceId& namespace_id) {
+  std::vector<TableId> table_ids;
+  auto pg_database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
+  table_ids.push_back(GetPgsqlTableId(pg_database_oid, kPgClassTableOid));
+  table_ids.push_back(GetPgsqlTableId(pg_database_oid, kPgPublicationRelOid));
+  return table_ids;
+}
+
+Result<bool> CDCServiceImpl::IsStreamableCatalogTable(
+    const TableId& table_id, const NamespaceId& namespace_id) {
+  auto catalog_tables = VERIFY_RESULT(GetStreamableCatalogTables(namespace_id));
+  return std::find(catalog_tables.begin(), catalog_tables.end(), table_id) != catalog_tables.end();
 }
 
 Status CDCServiceImpl::InsertRowForColocatedTableInCDCStateTable(

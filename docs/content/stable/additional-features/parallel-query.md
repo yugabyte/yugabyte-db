@@ -10,7 +10,7 @@ menu:
     parent: additional-features
     weight: 60
 aliases:
-  - /preview/explore/ysql-language-features/advanced-features/parallel-queries/
+  - /stable/explore/ysql-language-features/advanced-features/parallel-queries/
 type: docs
 ---
 

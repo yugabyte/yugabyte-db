@@ -7,7 +7,7 @@ menu:
     parent: api-yedis
     weight: 2218
 aliases:
-  - /preview/api/yedis/monitor
+  - /stable/api/yedis/monitor
 type: docs
 ---
 `MONITOR` is a debugging tool to see all requests that are being processed by a Yugabyte YEDIS API server.

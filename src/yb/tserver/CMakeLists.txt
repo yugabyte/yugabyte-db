@@ -216,8 +216,7 @@ set(TSERVER_SHARED_SRCS
 set(TSERVER_SHARED_LIBS
   yb_docdb_shared
   yb_util
-  yb_util_shmem
-  consensus_error)
+  yb_util_shmem)
 ADD_YB_LIBRARY(tserver_shared
   SRCS ${TSERVER_SHARED_SRCS}
   DEPS ${TSERVER_SHARED_LIBS})

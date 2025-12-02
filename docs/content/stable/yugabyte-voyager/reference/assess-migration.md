@@ -201,6 +201,13 @@ source:
 ```
 
 | Path of the file containing source SSL Root Certificate. |
+| --source-read-replica-endpoints |
+
+```yaml{.nocopy}
+source:
+      read-replica-endpoints:
+```
+| (PostgreSQL only) Comma-separated list of read replica endpoints. Format endpoints as `host:port`. For example, `host1:5432, host2:5433`. <br/>Default port: 5432 |
 | -e, --export-dir |
 
 ```yaml{.nocopy}

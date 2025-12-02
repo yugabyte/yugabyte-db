@@ -525,16 +525,20 @@ public class TlsToggleTest extends UpgradeTaskTest {
     verify(mockNodeManager, times(expectedValues.getSecond())).nodeCommand(any(), any());
 
     Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
-    if (EncryptionInTransitUtil.isRootCARequired(
-        nodeToNode, clientToNode, rootAndClientRootCASame)) {
-      assertEquals(taskParams.rootCA, universe.getUniverseDetails().rootCA);
+
+    if (nodeToNode || clientToNode) {
+      if (rootAndClientRootCASame) {
+        UUID expectedRootCA = taskParams.rootCA != null ? taskParams.rootCA : clientRootCA;
+        UUID expectedClientRootCA =
+            taskParams.getClientRootCA() != null ? taskParams.getClientRootCA() : rootCA;
+        assertEquals(expectedRootCA, universe.getUniverseDetails().rootCA);
+        assertEquals(expectedClientRootCA, universe.getUniverseDetails().getClientRootCA());
+      } else {
+        assertEquals(taskParams.rootCA, universe.getUniverseDetails().rootCA);
+        assertEquals(taskParams.getClientRootCA(), universe.getUniverseDetails().getClientRootCA());
+      }
     } else {
       assertNull(universe.getUniverseDetails().rootCA);
-    }
-    if (EncryptionInTransitUtil.isClientRootCARequired(
-        nodeToNode, clientToNode, rootAndClientRootCASame)) {
-      assertEquals(taskParams.getClientRootCA(), universe.getUniverseDetails().getClientRootCA());
-    } else {
       assertNull(universe.getUniverseDetails().getClientRootCA());
     }
     assertEquals(

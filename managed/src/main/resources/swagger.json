@@ -5010,12 +5010,6 @@
           "$ref" : "#/definitions/CommunicationPorts",
           "description" : "Communication ports"
         },
-        "createNewClientRootCA" : {
-          "type" : "boolean"
-        },
-        "createNewRootCA" : {
-          "type" : "boolean"
-        },
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
@@ -5626,8 +5620,6 @@
       },
       "required" : [
         "clusters",
-        "createNewClientRootCA",
-        "createNewRootCA",
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
@@ -7378,6 +7370,7 @@
           "description" : "Storage type used for this instance",
           "enum" : [
             "IO1",
+            "IO2",
             "GP2",
             "GP3",
             "Scratch",
@@ -48639,6 +48632,7 @@
               "items" : {
                 "enum" : [
                   "IO1",
+                  "IO2",
                   "GP2",
                   "GP3",
                   "Scratch",
@@ -48664,6 +48658,7 @@
               "items" : {
                 "enum" : [
                   "IO1",
+                  "IO2",
                   "GP2",
                   "GP3",
                   "Scratch",
@@ -48705,6 +48700,7 @@
               "items" : {
                 "enum" : [
                   "IO1",
+                  "IO2",
                   "GP2",
                   "GP3",
                   "Scratch",
@@ -48730,6 +48726,7 @@
               "items" : {
                 "enum" : [
                   "IO1",
+                  "IO2",
                   "GP2",
                   "GP3",
                   "Scratch",
@@ -48771,6 +48768,7 @@
               "items" : {
                 "enum" : [
                   "IO1",
+                  "IO2",
                   "GP2",
                   "GP3",
                   "Scratch",
@@ -48796,6 +48794,7 @@
               "items" : {
                 "enum" : [
                   "IO1",
+                  "IO2",
                   "GP2",
                   "GP3",
                   "Scratch",

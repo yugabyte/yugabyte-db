@@ -1369,7 +1369,8 @@ create_index_path(PlannerInfo *root,
 				  bool indexonly,
 				  Relids required_outer,
 				  double loop_count,
-				  bool partial_path)
+				  bool partial_path,
+				  List *yb_saop_merge_saop_cols)
 {
 	IndexPath  *pathnode = makeNode(IndexPath);
 	RelOptInfo *rel = index->rel;
@@ -1392,6 +1393,9 @@ create_index_path(PlannerInfo *root,
 	pathnode->indexorderbycols = indexorderbycols;
 	pathnode->indexscandir = rel->is_yb_relation && pathkeys == NIL ?
 		NoMovementScanDirection : indexscandir;
+
+	pathnode->yb_index_path_info.saop_merge_saop_cols =
+		yb_saop_merge_saop_cols;
 
 	if (IsYugaByteEnabled() &&
 		yb_enable_base_scans_cost_model &&

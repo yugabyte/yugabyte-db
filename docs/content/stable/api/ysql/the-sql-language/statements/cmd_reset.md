@@ -4,8 +4,8 @@ headerTitle: RESET
 linkTitle: RESET
 description: Use the RESET statement to restore the value of a run-time parameter to the default value.
 aliases:
-  - /preview/api/ysql/the-sql-language/cmd_reset
-  - /preview/api/ysql/commands/cmd_reset/
+  - /stable/api/ysql/the-sql-language/cmd_reset
+  - /stable/api/ysql/commands/cmd_reset/
 menu:
   stable_api:
     identifier: cmd_reset

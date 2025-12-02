@@ -3566,6 +3566,10 @@ Status CatalogManager::UpdateCDCProducerOnTabletSplit(
       streams = GetXReplStreamsForTable(producer_table_id, stream_type);
     }
 
+    if (stream_type == cdc::CDCSDK) {
+      WarnIfTableNotPresentInAllCDCSDKStreams(producer_table_id);
+    }
+
     TEST_SYNC_POINT("UpdateCDCProducerOnTabletSplit::FindStreamsForAddingChildEntriesComplete");
 
     for (const auto& stream : streams) {
@@ -4667,11 +4671,24 @@ bool CatalogManager::IsTablePartOfCDCSDK(
 std::unordered_set<xrepl::StreamId> CatalogManager::GetCDCSDKStreamsForTable(
     const TableId& table_id) const {
   DCHECK(xrepl_maps_loaded_);
-  auto table_ids = FindOrNull(cdcsdk_tables_to_stream_map_, table_id);
-  if (!table_ids) {
+  auto stream_ids = FindOrNull(cdcsdk_tables_to_stream_map_, table_id);
+  if (!stream_ids) {
     return {};
   }
-  return *table_ids;
+  return *stream_ids;
+}
+
+std::unordered_set<xrepl::StreamId> CatalogManager::GetAllCDCSDKStreamsForNamespace(
+    const NamespaceId& ns_id) const {
+  std::unordered_set<xrepl::StreamId> stream_ids;
+  for (const auto& entry : cdc_stream_map_) {
+    auto ltm = entry.second->LockForRead();
+
+    if (!ltm->started_deleting() && !ltm->namespace_id().empty() && ltm->namespace_id() == ns_id) {
+      stream_ids.insert(entry.first);
+    }
+  }
+  return stream_ids;
 }
 
 Result<HybridTime> CatalogManager::GetMinRestartTimeAcrossSlots(
@@ -5459,6 +5476,32 @@ Status CatalogManager::RemoveTableFromCDCStreamMetadataAndMaps(
   }
 
   return Status::OK();
+}
+
+void CatalogManager::WarnIfTableNotPresentInAllCDCSDKStreams(const TableId& table_id) {
+  std::unordered_set<xrepl::StreamId> cdc_stream_ids_for_table;
+  std::unordered_set<xrepl::StreamId> all_cdc_stream_ids_in_namespace;
+  std::vector<xrepl::StreamId> cdc_stream_ids_for_table_not_in_metadata;
+  {
+    SharedLock lock(mutex_);
+    cdc_stream_ids_for_table = GetCDCSDKStreamsForTable(table_id);
+
+    const auto table_info = GetTableInfoUnlocked(table_id);
+    if (table_info && !table_info->namespace_id().empty()) {
+      all_cdc_stream_ids_in_namespace = GetAllCDCSDKStreamsForNamespace(table_info->namespace_id());
+    }
+  }
+
+  for (const auto& stream_id : all_cdc_stream_ids_in_namespace) {
+    if (!cdc_stream_ids_for_table.contains(stream_id)) {
+      cdc_stream_ids_for_table_not_in_metadata.push_back(stream_id);
+    }
+  }
+
+  if (!cdc_stream_ids_for_table_not_in_metadata.empty()) {
+    LOG_WITH_FUNC(INFO) << "Streams " << AsString(cdc_stream_ids_for_table_not_in_metadata)
+                        << " DO NOT contain the table " << table_id << " in their metadata.";
+  }
 }
 
 void CatalogManager::InsertNewUniverseReplication(UniverseReplicationInfo& replication_group) {

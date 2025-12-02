@@ -291,8 +291,8 @@ class DocKey {
   }
 
   // Converts a redis string key to a doc key
-  static DocKey FromRedisKey(uint16_t hash, const std::string& key);
-  static KeyBytes EncodedFromRedisKey(uint16_t hash, const std::string &key);
+  static DocKey FromRedisKey(uint16_t hash, std::string_view key);
+  static KeyBytes EncodedFromRedisKey(uint16_t hash, std::string_view key);
 
  private:
   class DecodeFromCallback;

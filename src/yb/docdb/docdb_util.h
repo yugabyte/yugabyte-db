@@ -35,6 +35,7 @@ class Env;
 namespace yb::docdb {
 
 extern const std::string kIntentsDirName;
+extern const std::string kSnapshotsDirName;
 
 Status SetValueFromQLBinaryWrapper(
     QLValuePB ql_value,
@@ -128,6 +129,8 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
 
   void DocDBDebugDumpToContainer(std::unordered_set<std::string>* out);
 
+  static std::shared_ptr<LWQLValuePB> MakeLWValue(const QLValuePB& value);
+
   // ----------------------------------------------------------------------------------------------
   // SetPrimitive taking a Value
 
@@ -143,6 +146,13 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
       const dockv::DocPath& doc_path,
       const dockv::ValueControlFields& control_fields,
       const ValueRef& value,
+      HybridTime hybrid_time,
+      const ReadHybridTime& read_ht = ReadHybridTime::Max());
+
+  Status SetPrimitive(
+      const dockv::DocPath& doc_path,
+      const dockv::ValueControlFields& control_fields,
+      const QLValuePB& value,
       HybridTime hybrid_time,
       const ReadHybridTime& read_ht = ReadHybridTime::Max());
 
@@ -170,12 +180,32 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
       MonoDelta ttl = dockv::ValueControlFields::kMaxTtl,
       const ReadHybridTime& read_ht = ReadHybridTime::Max());
 
+  Status InsertSubDocument(
+      const dockv::DocPath& doc_path,
+      const QLValuePB& value,
+      HybridTime hybrid_time,
+      MonoDelta ttl = dockv::ValueControlFields::kMaxTtl,
+      const ReadHybridTime& read_ht = ReadHybridTime::Max()) {
+    return InsertSubDocument(
+        doc_path, ValueRef(value), hybrid_time, ttl, read_ht);
+  }
+
   Status ExtendSubDocument(
       const dockv::DocPath& doc_path,
       const ValueRef& value,
       HybridTime hybrid_time,
       MonoDelta ttl = dockv::ValueControlFields::kMaxTtl,
       const ReadHybridTime& read_ht = ReadHybridTime::Max());
+
+  Status ExtendSubDocument(
+      const dockv::DocPath& doc_path,
+      const QLValuePB& value,
+      HybridTime hybrid_time,
+      MonoDelta ttl = dockv::ValueControlFields::kMaxTtl,
+      const ReadHybridTime& read_ht = ReadHybridTime::Max()) {
+    return ExtendSubDocument(
+        doc_path, ValueRef(value), hybrid_time, ttl, read_ht);
+  }
 
   Status ExtendList(
       const dockv::DocPath& doc_path,
@@ -187,6 +217,17 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
       const dockv::DocPath &doc_path,
       const int target_cql_index,
       const ValueRef& value,
+      const ReadHybridTime& read_ht,
+      const HybridTime& hybrid_time,
+      const rocksdb::QueryId query_id,
+      MonoDelta default_ttl = dockv::ValueControlFields::kMaxTtl,
+      MonoDelta ttl = dockv::ValueControlFields::kMaxTtl,
+      UserTimeMicros user_timestamp = dockv::ValueControlFields::kInvalidTimestamp);
+
+  Status ReplaceInList(
+      const dockv::DocPath &doc_path,
+      const int target_cql_index,
+      const QLValuePB& value,
       const ReadHybridTime& read_ht,
       const HybridTime& hybrid_time,
       const rocksdb::QueryId query_id,
@@ -286,6 +327,8 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
 
 std::string GetStorageDir(const std::string& data_dir, const std::string& storage);
 std::string GetStorageCheckpointDir(const std::string& data_dir, const std::string& storage);
+std::string GetVectorIndexStorageName(const PgVectorIdxOptionsPB& options);
+
 Status MoveChild(Env& env, const std::string& data_dir, const std::string& child);
 Status MoveChildren(Env& env, const std::string& db_dir, IncludeIntents include_intents);
 

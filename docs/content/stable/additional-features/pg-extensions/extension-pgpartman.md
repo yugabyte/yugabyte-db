@@ -12,7 +12,7 @@ menu:
     weight: 20
 type: docs
 aliases:
-  - /preview/explore/ysql-language-features/pg-extensions/extension-pgpartman
+  - /stable/explore/ysql-language-features/pg-extensions/extension-pgpartman
 ---
 
 PostgreSQL Partition Manager (pg_partman) is an extension to create and manage both time-based and serial-based table partition sets. pg_partman simplifies managing table partitions based on time or serial IDs, automating their creation and maintenance. While it includes many options, only a few are typically needed, making it user-friendly.
@@ -179,14 +179,6 @@ The following example shows an unsupported operation using non-native partitioni
 
 ```sql
 CREATE SCHEMA partman;
-
-CREATE EXTENSION pg_partman WITH SCHEMA partman;
-
-CREATE TABLE orders (
-  order_id SERIAL,
-  order_date DATE NOT NULL,
-  customer_id INT
-) PARTITION BY RANGE (order_date);
 
 CREATE EXTENSION pg_partman WITH SCHEMA partman;
 

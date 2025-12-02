@@ -201,7 +201,7 @@ class CDCStateTable {
 
   std::shared_ptr<client::TableHandle> cdc_table_ GUARDED_BY(mutex_);
   bool created_ GUARDED_BY(mutex_) = false;
-  ShutDownState shutdown_;
+  std::shared_ptr<ShutDownState> shutdown_;
 };
 
 class CdcStateTableIterator : public client::TableIterator {

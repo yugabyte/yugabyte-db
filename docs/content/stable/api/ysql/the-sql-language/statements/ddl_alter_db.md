@@ -8,7 +8,7 @@ menu:
     identifier: ddl_alter_db
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/ddl_alter_db/
+  - /stable/api/ysql/commands/ddl_alter_db/
 type: docs
 ---
 

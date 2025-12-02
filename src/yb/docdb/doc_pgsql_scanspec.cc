@@ -16,7 +16,7 @@
 #include <algorithm>
 #include <limits>
 
-#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/pgsql_protocol.messages.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
@@ -93,7 +93,7 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
     const ArenaPtr& arena,
     const std::vector<Slice>& encoded_hashed_components,
     std::reference_wrapper<const dockv::KeyEntryValues> range_components,
-    const PgsqlConditionPB* condition,
+    PgsqlConditionPBPtr condition,
     const std::optional<int32_t> hash_code,
     const std::optional<int32_t> max_hash_code,
     const DocKey& start_doc_key,
@@ -103,7 +103,7 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
     const size_t prefix_length)
     : YQLScanSpec(
           YQL_CLIENT_PGSQL, schema, is_forward_scan, query_id,
-          condition ? std::make_unique<qlexpr::QLScanRange>(schema, *condition) : nullptr,
+          qlexpr::QLScanRange::Create(schema, condition),
           prefix_length, arena ? arena : SharedSmallArena()),
       range_components_(&range_components.get()),
       options_groups_(schema.num_dockey_components()),
@@ -143,10 +143,15 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
   const auto rangebounds = range_bounds();
   if (rangebounds &&
       (rangebounds->has_in_range_options() || rangebounds->has_in_hash_options())) {
-    DCHECK(condition);
-    if (options_ == nullptr)
+    if (options_ == nullptr) {
       options_ = std::make_shared<std::vector<qlexpr::OptionList>>(schema.num_dockey_components());
-    InitOptions(*condition);
+    }
+    DCHECK(condition);
+    if (condition.is_lightweight()) {
+      InitOptions(*condition.lightweight());
+    } else {
+      InitOptions(*condition.protobuf());
+    }
   }
 
   auto calculated_bounds = CalculateBounds(encoded_hashed_components, schema);
@@ -164,9 +169,10 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
 
 DocPgsqlScanSpec::DocPgsqlScanSpec(const Schema& schema, const PgsqlConditionPB* condition)
     : DocPgsqlScanSpec(schema, rocksdb::kDefaultQueryId, nullptr, {}, kEmptyKeyComponents,
-                       condition, std::nullopt, std::nullopt) {}
+                       PgsqlConditionPBPtr(condition), std::nullopt, std::nullopt) {}
 
-void DocPgsqlScanSpec::InitOptions(const PgsqlConditionPB& condition) {
+template <class ConditionPB>
+void DocPgsqlScanSpec::InitOptions(const ConditionPB& condition) {
   switch (condition.op()) {
     case QLOperator::QL_OP_AND:
       for (const auto& operand : condition.operands()) {
@@ -181,8 +187,9 @@ void DocPgsqlScanSpec::InitOptions(const PgsqlConditionPB& condition) {
       // Skip any condition where LHS is not a column (e.g. subscript columns: 'map[k] = v')
       // operands(0) always contains the column id.
       // operands(1) contains the corresponding value or a list values.
-      const auto& lhs = condition.operands(0);
-      const auto& rhs = condition.operands(1);
+      auto it = condition.operands().begin();
+      const auto& lhs = *it;
+      const auto& rhs = *++it;
       if (lhs.expr_case() != PgsqlExpressionPB::kColumnId &&
           lhs.expr_case() != PgsqlExpressionPB::kTuple) {
         return;
@@ -221,22 +228,27 @@ void DocPgsqlScanSpec::InitOptions(const PgsqlConditionPB& condition) {
         options_groups_.AddToLatestGroup(key_idx);
 
         if (condition.op() == QL_OP_EQUAL) {
+          auto op_it = condition.operands().begin();
           (*options_)[key_idx].push_back(dockv::EncodedKeyEntryValue(
-              arena(), condition.operands(1).value(), sorting_type));
+              arena(), (++op_it)->value(), sorting_type));
         } else { // QL_OP_IN
           DCHECK_EQ(condition.op(), QL_OP_IN);
           DCHECK(rhs.value().has_list_value());
           const auto &options = rhs.value().list_value();
-          int opt_size = options.elems_size();
+          size_t opt_size = options.elems().size();
           (*options_)[key_idx].reserve(opt_size);
 
           // IN arguments should have been de-duplicated and ordered ascendingly by the executor.
           bool is_reverse_order = get_scan_direction(col_idx);
-          for (int i = 0; i < opt_size; i++) {
-            int elem_idx = is_reverse_order ? opt_size - i - 1 : i;
-            const auto &elem = options.elems(elem_idx);
+          auto elem_it = is_reverse_order ? --options.elems().end() : options.elems().begin();
+          for (size_t i = 0; i < opt_size; i++) {
             (*options_)[key_idx].push_back(dockv::EncodedKeyEntryValue(
-                arena(), elem, sorting_type));
+                arena(), *elem_it, sorting_type));
+            if (is_reverse_order) {
+              --elem_it;
+            } else {
+              ++elem_it;
+            }
           }
         }
       } else if (lhs.has_tuple()) {
@@ -282,11 +294,12 @@ void DocPgsqlScanSpec::InitOptions(const PgsqlConditionPB& condition) {
           DCHECK(rhs.value().has_list_value());
           const auto& value = rhs.value().list_value();
           DCHECK_EQ(total_cols, value.elems_size());
+          auto elem_it = std::next(value.elems().begin(), start_range_col_idx);
           for (size_t i = start_range_col_idx; i < total_cols; i++) {
             // hash codes are always sorted ascending.
             auto options_idx = schema().get_dockey_component_idx(col_idxs[i]);
             (*options_)[options_idx].push_back(dockv::EncodedKeyEntryValue(
-                arena(), value.elems(narrow_cast<int>(i)), get_sorting_type(col_idxs[i])));
+                arena(), *elem_it, get_sorting_type(col_idxs[i])));
           }
         } else if (condition.op() == QL_OP_IN) {
           // There should be no range columns before start_range_col_idx in col_idxs
@@ -325,22 +338,22 @@ void DocPgsqlScanSpec::InitOptions(const PgsqlConditionPB& condition) {
           // perform seeks and nexts.
           // options_ array indexes into every key column. Here we append to every key column the
           // list of target elements that needs to be scanned.
-          int num_options = options.elems_size();
-          for (int i = 0; i < num_options; i++) {
+          size_t num_options = options.elems().size();
+          for (size_t i = 0; i < num_options; i++) {
             const auto& elem = sorted_options[i];
             DCHECK(elem->has_tuple_value());
             const auto& value = elem->tuple_value();
             DCHECK_EQ(total_cols, value.elems_size());
 
-            for (size_t j = 0; j < total_cols; j++) {
+            auto elem_it = value.elems().begin();
+            for (size_t j = 0; j < total_cols; ++j, ++elem_it) {
               const auto sorting_type = get_sorting_type(col_idxs[j]);
 
               // For hash tuples, the first element always contains the yb_hash_code
               auto options_idx = schema().get_dockey_component_idx(col_idxs[j]);
-              const auto& value_elem = value.elems(narrow_cast<int>(j));
               auto value_slice = j == 0 && col_idxs[j] == kYbHashCodeColId
-                  ? dockv::EncodedHashCode(arena(), value_elem.int32_value())
-                  : dockv::EncodedKeyEntryValue(arena(), value_elem, sorting_type);
+                  ? dockv::EncodedHashCode(arena(), elem_it->int32_value())
+                  : dockv::EncodedKeyEntryValue(arena(), *elem_it, sorting_type);
               (*options_)[options_idx].push_back(value_slice);
             }
           }

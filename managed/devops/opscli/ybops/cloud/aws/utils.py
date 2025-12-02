@@ -1000,7 +1000,7 @@ def create_instance(args):
         "VolumeSize": root_volume_size,
         "VolumeType": args.volume_type
     }
-    if args.volume_type == "io1" or args.volume_type == "gp3":
+    if args.volume_type == "io1" or args.volume_type == "io2" or args.volume_type == "gp3":
         ebs["Iops"] = args.disk_iops
     if args.volume_type == "gp3":
         ebs["Throughput"] = args.disk_throughput
@@ -1037,7 +1037,7 @@ def create_instance(args):
             if args.cmk_res_name is not None:
                 ebs["Encrypted"] = True
                 ebs["KmsKeyId"] = args.cmk_res_name
-            if args.volume_type == "io1" or args.volume_type == "gp3":
+            if args.volume_type == "io1" or args.volume_type == "io2" or args.volume_type == "gp3":
                 ebs["Iops"] = args.disk_iops
             if args.volume_type == "gp3":
                 ebs["Throughput"] = args.disk_throughput

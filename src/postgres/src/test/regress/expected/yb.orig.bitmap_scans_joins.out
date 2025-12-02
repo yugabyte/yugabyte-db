@@ -1052,12 +1052,11 @@ SELECT c.relname FROM pg_class c, pg_namespace ns WHERE ns.oid = c.relnamespace 
    ->  Memoize (actual rows=1 loops=1)
          Cache Key: c.relnamespace
          Cache Mode: logical
-         Hits: 0  Misses: 1  Evictions: 0  Overflows: 0  Memory Usage: 1kB
          ->  YB Bitmap Table Scan on pg_namespace ns (actual rows=1 loops=1)
                Storage Recheck Cond: (oid = c.relnamespace)
                ->  Bitmap Index Scan on pg_namespace_oid_index (actual rows=1 loops=1)
                      Index Cond: (oid = c.relnamespace)
-(11 rows)
+(10 rows)
 
 /*+ NestLoop(c ns) SeqScan(c) BitmapScan(ns) */
 SELECT c.relname FROM pg_class c, pg_namespace ns WHERE ns.oid = c.relnamespace AND c.relname = 'pg_class';

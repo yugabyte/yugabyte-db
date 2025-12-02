@@ -218,7 +218,8 @@ extern Path *get_cheapest_fractional_path_for_pathkeys(List *paths,
 													   double fraction);
 extern Path *get_cheapest_parallel_safe_total_inner(List *paths);
 extern List *build_index_pathkeys(PlannerInfo *root, IndexOptInfo *index,
-								  ScanDirection scandir, int *yb_distinct_nkeys);
+								  ScanDirection scandir, int *yb_distinct_nkeys,
+								  List **yb_saop_merge_saop_cols);
 extern List *build_partition_pathkeys(PlannerInfo *root, RelOptInfo *partrel,
 									  ScanDirection scandir, bool *partialkeys);
 extern List *build_expression_pathkey(PlannerInfo *root, Expr *expr,

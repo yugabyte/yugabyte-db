@@ -27,6 +27,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
@@ -211,6 +212,9 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
       }
     }
 
+    masterGFlagsForAZ = filterUndefokFlags(masterGFlagsForAZ);
+    tserverGFlagsForAZ = filterUndefokFlags(tserverGFlagsForAZ);
+
     if (taskParams().useCLIBinary) {
       if (!masterGFlagsForAZ.isEmpty()) {
         masterGFlagsValidationErrors.putAll(
@@ -370,6 +374,23 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
     return gflags;
   }
 
+  private Map<String, String> filterUndefokFlags(Map<String, String> gflags) {
+    Set<String> undefokFlags = GFlagsUtil.extractUndefokFlags(gflags);
+
+    if (undefokFlags.isEmpty()) {
+      return gflags;
+    }
+
+    Map<String, String> filteredGFlags = new HashMap<>(gflags);
+    for (String undefokFlag : undefokFlags) {
+      if (filteredGFlags.containsKey(undefokFlag)) {
+        filteredGFlags.remove(undefokFlag);
+      }
+    }
+
+    return filteredGFlags;
+  }
+
   private Map<String, String> validateGFlagsWithYBClient(
       Map<String, String> gflags, Universe universe, ServerType serverType) {
     Map<String, String> serverGFlagsValidationErrors = new HashMap<String, String>();
@@ -433,13 +454,7 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
       }
 
       command.add("--" + flagName);
-      // Kubectl command that is used for validation seems to add '<gflag value>' single quotes on
-      // its own, hence not adding it again here.
-      if (provider.getCloudCode() == CloudType.kubernetes) {
-        command.add(flagValue);
-      } else {
-        command.add("'" + flagValue + "'");
-      }
+      command.add(flagValue);
     }
 
     log.debug(
@@ -448,8 +463,10 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
             command.toString(), taskParams().ybSoftwareVersion, gFlagsValidation));
 
     try {
+      // Not using bash since some gflag values may have complicated escaping needed for bash case
       ShellResponse response =
-          nodeUniverseManager.runCommand(node, universe, command, shellContext);
+          nodeUniverseManager.runCommand(
+              node, universe, command, shellContext, false /* use bash */);
       if (response.code != 0) {
         log.warn(
             "Shell response returned with non-zero exit code with message: {}",

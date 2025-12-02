@@ -307,6 +307,49 @@ To add a database to DR, do the following:
 
 YugabyteDB Anywhere proceeds to copy the database to the DR replica. How long this takes depends mainly on the amount of data that needs to be copied.
 
+### Perform DDL operations
+
+Depending on the mode, perform DDL changes on databases in replication for xCluster disaster recovery (DR) (such as creating, altering, or dropping tables or partitions) as follows.
+
+{{<tabpane text=true >}}
+
+  {{% tab header="Automatic mode" lang="automatic-mode" %}}
+
+Perform DDL operations on the DR primary universe only. All schema changes are automatically replicated to the DR replica universe.
+
+  {{% /tab %}}
+
+  {{% tab header="Semi-automatic mode" lang="semi-automatic-mode" %}}
+
+For each DDL statement:
+
+1. Execute the DDL on the DR primary, waiting for it to complete.
+1. Execute the DDL on the DR replica, waiting for it to complete.
+
+After both steps are complete, the YugabyteDB Anywhere UI should reflect any added/removed tables in the Tables listing for this DR configuration.
+
+In addition, keep in mind the following:
+
+- If you are using Colocated tables, you CREATE TABLE on DR primary, then CREATE TABLE on DR replica making sure that you force the Colocation ID to be identical to that on DR primary.
+- If you try to make a DDL change on DR primary and it fails, you must also make the same attempt on DR replica and get the same failure.
+- TRUNCATE TABLE is not supported. To truncate a table, pause replication, truncate the table on both primary and standby, and resume replication.
+
+  {{% /tab %}}
+
+  {{% tab header="Manual mode" lang="manual-mode" %}}
+
+{{< warning title="Warning" >}}
+Fully Manual xCluster replication is deprecated and not recommended due to the operational complexity involved.
+{{< /warning >}}
+
+In Manual mode, you must perform these actions in a specific order, depending on whether performing a CREATE, DROP, ALTER, and so forth.
+
+Refer to [Tables and indexes in Manual mode](../disaster-recovery-tables/).
+
+  {{% /tab %}}
+
+{{</tabpane >}}
+
 ### Change the DR replica
 
 You can assign a different universe to act as the DR replica.

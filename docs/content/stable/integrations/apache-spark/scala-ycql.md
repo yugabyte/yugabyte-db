@@ -4,7 +4,7 @@ headerTitle: Build a Scala application using Apache Spark and YugabyteDB
 linkTitle: YCQL
 description: Learn how to build a Scala application using Apache Spark and YugabyteDB YCQL
 aliases:
-  - /preview/integrations/apache-spark/scala/
+  - /stable/integrations/apache-spark/scala/
 menu:
   stable_integrations:
     identifier: apache-spark-1-scala-ycql

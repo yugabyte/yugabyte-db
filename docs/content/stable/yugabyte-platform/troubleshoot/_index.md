@@ -6,8 +6,8 @@ headcontent: Troubleshoot issues in YugabyteDB Anywhere
 description: Diagnose and troubleshoot issues that arise from YugabyteDB universes and YugabyteDB Anywhere
 aliases:
   - /troubleshoot/enterprise-edition/
-  - /preview/troubleshoot/enterprise-edition/
-  - /preview/troubleshoot/yugabyte-platform/
+  - /stable/troubleshoot/enterprise-edition/
+  - /stable/troubleshoot/yugabyte-platform/
 menu:
   stable_yugabyte-platform:
     parent: yugabytedb-anywhere

@@ -1019,7 +1019,8 @@ Status CatalogManager::YsqlRollbackDocdbSchemaToSubTxn(const std::string& pb_txn
         txn, YsqlDdlSubTransactionRollbackMetadata{
                                 sub_txn_id,
                                 YsqlDdlSubTransactionRollbackState::kDdlSubTxnRollbackInProgress,
-                                {} /* tables */});
+                                {} /* tables */,
+                                {} /* indexes_skipped_due_to_base_table_deletion */});
 
     tables = verifier_state->tables;
   }
@@ -1042,6 +1043,7 @@ Status CatalogManager::YsqlRollbackDocdbSchemaToSubTxn(const std::string& pb_txn
       return Status::OK();
     }
 
+    bool is_table_index = false;
     if (table->is_index()) {
       // This is an index. If the indexed table is being deleted or marked for deletion due to the
       // sub-transaction rollback, then skip doing anything as the deletion of the table will delete
@@ -1050,15 +1052,21 @@ Status CatalogManager::YsqlRollbackDocdbSchemaToSubTxn(const std::string& pb_txn
       auto indexed_table = VERIFY_RESULT(FindTableById(indexed_table_id));
       if (table->IsBeingDroppedDueToSubTxnRollback(pb_txn_id, sub_txn_id) &&
           indexed_table->IsBeingDroppedDueToSubTxnRollback(pb_txn_id, sub_txn_id)) {
-        LOG(INFO) << "Skipping rollback to sub-transaction for index " << table->ToString()
+        LOG(INFO) << "Will skip rollback to sub-transaction for index " << table->ToString()
                   << " as the indexed table " << indexed_table->ToString()
                   << " is also being dropped";
-        continue;
+        is_table_index = true;
       }
     }
 
     {
       LockGuard lock(ddl_txn_verifier_mutex_);
+      if (is_table_index) {
+        ysql_ddl_txn_undergoing_subtransaction_rollback_map_[txn]
+            .indexes_skipped_due_to_base_table_deletion.insert(table->id());
+        continue;
+      }
+
       ysql_ddl_txn_undergoing_subtransaction_rollback_map_[txn].tables.push_back(table);
     }
 
@@ -1234,14 +1242,30 @@ bool CatalogManager::IsTableDeletionDueToRollbackToSubTxn(
     txn_id = *txn_id_res;
   }
 
+  VLOG_WITH_FUNC(4) << "The transaction modifying the table: " << table->ToString()
+                    << " is " << txn_id;
+
   SubTransactionId rolled_back_sub_transaction_id;
   {
     LockGuard lock(ddl_txn_verifier_mutex_);
     const auto rollback_to_subtxn_state =
         FindOrNull(ysql_ddl_txn_undergoing_subtransaction_rollback_map_, txn_id);
     if (rollback_to_subtxn_state == nullptr) {
-      // No rollback to sub-txn operation is in progress for this transaction.
+      VLOG_WITH_FUNC(4) << "No rollback to sub-transaction in progress for transaction: " << txn_id;
       return false;
+    }
+
+    // For an index, we skip the deletion of index directly via rollback to sub-transaction
+    // operation when the main table is also getting deleted. See the
+    // YsqlRollbackDocdbSchemaToSubTxn function above.
+    // So, in such a case, we need to check in indexes_skipped_due_to_base_table_deletion.
+    if (table->is_index() &&
+        rollback_to_subtxn_state->indexes_skipped_due_to_base_table_deletion.contains(
+            table->id())) {
+      VLOG_WITH_FUNC(4) << "Table: " << table->ToString()
+                        << " is an index whose base table is also getting deleted due to rollback "
+                           "to sub-transaction operation.";
+      return true;
     }
 
     auto tables_itr = std::find_if(
@@ -1251,6 +1275,8 @@ bool CatalogManager::IsTableDeletionDueToRollbackToSubTxn(
     if (tables_itr == rollback_to_subtxn_state->tables.end()) {
       // This table is not undergoing rollback to sub-transaction operation.
       // Either it has already completed or it wasn't affected.
+      VLOG_WITH_FUNC(4) << "No rollback to sub-transaction in progress for table: "
+                        << table->ToString();
       return false;
     }
 

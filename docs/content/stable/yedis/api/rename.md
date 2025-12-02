@@ -7,8 +7,8 @@ menu:
     parent: api-yedis
     weight: 2265
 aliases:
-  - /preview/api/redis/rename
-  - /preview/api/yedis/rename
+  - /stable/api/redis/rename
+  - /stable/api/yedis/rename
 type: docs
 ---
 

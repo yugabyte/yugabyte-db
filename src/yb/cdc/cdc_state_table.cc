@@ -396,7 +396,7 @@ class FlushCallbackState {
 }  // namespace
 
 CDCStateTable::CDCStateTable(std::shared_future<client::YBClient*> client_future)
-    : client_future_(std::move(client_future)) {
+    : client_future_(std::move(client_future)), shutdown_(std::make_shared<ShutDownState>()) {
   CHECK(client_future_.valid());
 }
 
@@ -721,10 +721,11 @@ Result<std::optional<CDCStateTableEntry>> CDCStateTable::TryFetchEntry(
   cdc_table->AddColumns(columns, req_read);
   session->Apply(read_op);
   auto callback_state = FlushCallbackState::Create();
-  session->FlushAsync([this, callback_state](client::FlushStatus* flush_status) {
-    callback_state->CallbackDone(std::move(*flush_status), shutdown_);
-  });
-  RETURN_NOT_OK(callback_state->WaitForCallbackOrShutdown(shutdown_));
+  session->FlushAsync(
+      [callback_state, local_shutdown = shutdown_](client::FlushStatus* flush_status) {
+        callback_state->CallbackDone(std::move(*flush_status), *local_shutdown);
+      });
+  RETURN_NOT_OK(callback_state->WaitForCallbackOrShutdown(*shutdown_));
   RETURN_NOT_OK(callback_state->GetStatus());
   auto row_block = ql::RowsResult(read_op.get()).GetRowBlock();
   if (row_block->row_count() == 0) {
@@ -744,7 +745,7 @@ Result<std::optional<CDCStateTableEntry>> CDCStateTable::TryFetchEntry(
 }
 
 void CDCStateTable::Shutdown() {
-  shutdown_.SetShuttingDown();
+  shutdown_->SetShuttingDown();
 }
 
 bool ShutDownState::SetShuttingDown() {

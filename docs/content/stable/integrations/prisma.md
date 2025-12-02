@@ -8,7 +8,7 @@ menu:
     parent: schema-migration
     weight: 571
 aliases:
-  - /preview/develop/graphql/prisma/
+  - /stable/develop/graphql/prisma/
 type: docs
 ---
 

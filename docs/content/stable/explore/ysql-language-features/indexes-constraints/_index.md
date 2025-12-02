@@ -10,7 +10,7 @@ menu:
     parent: explore-ysql-language-features
     weight: 700
 aliases:
-  - /preview/explore/ysql-language-features/indexes-1/
+  - /stable/explore/ysql-language-features/indexes-1/
 type: indexpage
 ---
 

@@ -10,7 +10,7 @@ menu:
     parent: best-practices-operations
     weight: 10
 aliases:
-  - /preview/develop/best-practices/administration/
+  - /stable/develop/best-practices/administration/
 type: docs
 ---
 

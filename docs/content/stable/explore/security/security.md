@@ -5,7 +5,7 @@ linkTitle: Security
 description: Overview of security in YugabyteDB.
 headcontent: Secure your YugabyteDB universes
 aliases:
-  - /preview/explore/security/
+  - /stable/explore/security/
 menu:
   stable:
     identifier: explore-security

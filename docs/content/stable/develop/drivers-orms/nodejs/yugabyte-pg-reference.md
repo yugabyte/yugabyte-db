@@ -6,7 +6,7 @@ description: YugabyteDB node-postgres smart driver for YSQL
 tags:
   other: ysql
 aliases:
-  - /preview/reference/drivers/nodejs/yugabyte-pg-reference/
+  - /stable/reference/drivers/nodejs/yugabyte-pg-reference/
 menu:
   stable_develop:
     name: Node.js Drivers

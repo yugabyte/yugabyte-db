@@ -5,7 +5,9 @@ linkTitle: YugabyteDB Releases
 description: An overview of YugabyteDB releases, including preview and current stable releases.
 type: indexpage
 aliases:
-  - /preview/releases/release-notes/
+  - /stable/releases/release-notes/
+  - /stable/releases/release-notes/stable-release/
+  - /stable/releases/whats-new/stable-release/
 showRightNav: true
 cascade:
   unversioned: true
