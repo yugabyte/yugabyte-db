@@ -2145,8 +2145,6 @@ In v2025.2 and later, CBO and Auto Analyze are enabled by default in new univers
 
 To explicitly control the service, you can set the `ysql_enable_auto_analyze` flag.
 
-See also [Auto Analyze Service Master flags](../yb-master/#auto-analyze-service-flags).
-
 ##### --ysql_enable_auto_analyze
 
 Default: `false`
