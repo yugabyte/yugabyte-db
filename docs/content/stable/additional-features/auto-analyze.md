@@ -24,13 +24,12 @@ For new universes running v2025.2 or later, Auto Analyze is enabled by default w
 
 In addition, when upgrading a deployment to v2025.2 or later, if the universe has the cost-based optimizer enabled (`on`), YugabyteDB will enable Auto Analyze.
 
-You can explicitly enable or disable auto analyze by setting `ysql_enable_auto_analyze` on both yb-master and yb-tserver.
+You can explicitly enable or disable auto analyze by setting `ysql_enable_auto_analyze` on all yb-tservers.
 
 For example, to create a single-node [yugabyted](../../reference/configuration/yugabyted/) cluster with Auto Analyze explicitly enabled, use the following command:
 
 ```sh
 ./bin/yugabyted start \
-    --master_flags "ysql_enable_auto_analyze=true" \
     --tserver_flags "ysql_enable_auto_analyze=true"
 ```
 
