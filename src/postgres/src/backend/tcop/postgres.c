@@ -6748,7 +6748,13 @@ PostgresMain(const char *dbname, const char *username)
 													  yb_is_dml_command(query_string),
 													  &need_retry);
 						MemoryContextSwitchTo(errorcontext);
-						if (YbIsClientYsqlConnMgr())
+						/*
+						 * YB: Report parse error with the prepared statement name to connection
+						 * manager. This is done so that connection manager can evict the entry
+						 * from the server hashmap as parse has failed. Conn mgr does not record
+						 * any entry for unnamed prepared statement in it's server hashmap.
+						 */
+						if (YbIsClientYsqlConnMgr() && stmt_name[0] != '\0')
 						{
 							pq_puttextmessage('4', stmt_name);
 							pq_flush();
