@@ -122,6 +122,10 @@ To restore a backup of a cluster:
 
 {{<tags/feature/ea>}}Use remote backup replication to copy all your cluster backups (scheduled, incremental, and on demand) to a storage bucket in the same cloud provider.
 
+{{<tip title="Early Access">}}
+This feature is Early Access; to try it, contact {{% support-cloud %}}.
+{{</tip>}}
+
 Only new backups (that is, backups created after backup replication has been enabled on the cluster) are transferred. Backups are transferred to the bucket once a day.
 
 Remote backup replication counts against your data transfer allowance. This may incur additional costs for network transfer, especially for cross-region transfers, if usage exceeds your cluster allowance. To avoid cross-region data transfer costs, use a bucket in the same region as the cluster.
