@@ -9,6 +9,8 @@ menu:
     identifier: back-up-restore-1-yba
     parent: administer-yugabyte-platform
     weight: 30
+aliases:
+  - /stable/yugabyte-platform/administer-yugabyte-platform/back-up-restore-yp/
 type: docs
 ---
 
@@ -37,9 +39,9 @@ YugabyteDB Anywhere installations include configuration settings, certificates a
 
 You can perform regularly scheduled backups of your YugabyteDB Anywhere installation to external storage. You can also perform ad hoc manual backups.
 
-Before you can back up to external storage, you need to [configure a storage location](../../back-up-restore-universes/configure-backup-storage/) for your backups.
-
 ## Set up automatic backups
+
+Before you can set up automatic backups of YugabyteDB Anywhere, you need to [configure a storage location](../../back-up-restore-universes/configure-backup-storage/) for the backups.
 
 To configure automatic backups of your YugabyteDB Anywhere installation, do the following:
 
@@ -75,9 +77,9 @@ To create a one-time backup:
 1. Click **One-Time Platform Export**.
 1. Select the data you want to back up.
 
-    - **Platform Metadata**: YugabyteDB Anywhere installation settings and metadata.
+    - **Platform Metadata**: YugabyteDB Anywhere instance settings and metadata.
     - **YugabyteDB Releases**: Imported [YugabyteDB releases](../../manage-deployments/ybdb-releases/).
-    - **Universe Metrics (Prometheus)** — Prometheus metrics data for your universes.
+    - **Universe Metrics (Prometheus Data)**: Prometheus metrics data for your universes.
 
 1. Specify the destination for the backup, as a full path. For example, `/opt/yugabyte/yba_backups` or `/tmp/yba_export`.
 
