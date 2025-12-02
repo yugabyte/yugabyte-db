@@ -30,15 +30,16 @@
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
-DECLARE_int32(replication_factor);
-DECLARE_bool(skip_prefix_locks);
-DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(TEST_docdb_log_write_batches);
-DECLARE_bool(ysql_yb_enable_advisory_locks);
 DECLARE_bool(TEST_no_schedule_remove_intents);
-DECLARE_bool(cleanup_intents_sst_files);
 DECLARE_bool(TEST_skip_prefix_locks_invariance_check);
 DECLARE_bool(TEST_skip_prefix_locks_skip_fast_mode_removal);
+DECLARE_bool(cleanup_intents_sst_files);
+DECLARE_bool(skip_prefix_locks);
+DECLARE_bool(ysql_enable_packed_row);
+DECLARE_bool(ysql_use_packed_row_v2);
+DECLARE_bool(ysql_yb_enable_advisory_locks);
+DECLARE_int32(replication_factor);
 DECLARE_uint64(TEST_wait_inactive_transaction_cleanup_sleep_ms);
 
 METRIC_DECLARE_counter(fast_mode_si_transactions);
@@ -49,9 +50,15 @@ using namespace std::literals;
 
 namespace yb::pgwrapper {
 
-using LockPairVector = std::vector<std::pair<std::string, std::string>>;
+YB_DEFINE_ENUM(PackingMode, (kV1)(kV2));
+using PgSkipPrefixLockTestParams = std::tuple<PackingMode>;
 
-class PgSkipPrefixLockTest : public PgMiniTestBase {
+PackingMode GetPackingMode(const PgSkipPrefixLockTestParams& params) {
+  return std::get<0>(params);
+}
+
+class PgSkipPrefixLockTest : public PgMiniTestBase,
+                             public testing::WithParamInterface<PgSkipPrefixLockTestParams> {
  public:
 
   void EnableSkipPrefixLock() {
@@ -117,6 +124,8 @@ class PgSkipPrefixLockTest : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_docdb_log_write_batches) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_prefix_locks_invariance_check) = true;
+    auto packing_mode = GetPackingMode(GetParam());
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_use_packed_row_v2) = packing_mode == PackingMode::kV2;
 
     PgMiniTestBase::SetUp();
   }
@@ -269,7 +278,7 @@ class PgSkipPrefixLockTest : public PgMiniTestBase {
   }
 
   void RestartTServer(const std::vector<size_t>& idxs = {0, 1, 2}, bool restart = true) {
-    LOG(INFO) << "restart tservers with indices: " << yb::ToString(idxs);
+    LOG(INFO) << "restart tservers with indices: " << AsString(idxs);
     for (size_t idx : idxs) {
       ASSERT_LT(idx, cluster_->mini_tablet_servers().size())
           << "TServer index " << idx << " is out of range";
@@ -358,30 +367,40 @@ class PgSkipPrefixLockTest : public PgMiniTestBase {
   int num_tablets_ = 1;
 };
 
-TEST_F(PgSkipPrefixLockTest, Insert) {
+std::string TestParamToString(
+    const testing::TestParamInfo<PgSkipPrefixLockTestParams>& param_info) {
+  return ToString(GetPackingMode(param_info.param)).substr(1);
+}
+
+INSTANTIATE_TEST_SUITE_P(, \
+    PgSkipPrefixLockTest, \
+    testing::Combine(testing::ValuesIn(kPackingModeArray)), \
+    TestParamToString);
+
+TEST_P(PgSkipPrefixLockTest, Insert) {
   const std::string query = "insert into test values ('1', '2', '3', '4', 'a', 'b')";
   RunTest(query, /*insert_row=*/ false);
 }
 
-TEST_F(PgSkipPrefixLockTest, Delete) {
+TEST_P(PgSkipPrefixLockTest, Delete) {
   const std::string query =
       "delete from test where h1 = '1' and h2 = '2' and r1 = '3' and r2 = '4'";
   RunTest(query);
 }
 
-TEST_F(PgSkipPrefixLockTest, Update) {
+TEST_P(PgSkipPrefixLockTest, Update) {
   const std::string query =
       "update test set v1='b' where h1 = '1' and h2 = '2' and r1 = '3' and r2 = '4'";
   RunTest(query);
 }
 
-TEST_F(PgSkipPrefixLockTest, SelectForUpdate) {
+TEST_P(PgSkipPrefixLockTest, SelectForUpdate) {
   const std::string query =
       "select * from test where h1 = '1' and h2 = '2' and r1 = '3' and r2 = '4' for update";
   RunTest(query);
 }
 
-TEST_F(PgSkipPrefixLockTest, AdvisoryLock) {
+TEST_P(PgSkipPrefixLockTest, AdvisoryLock) {
   auto conn = ASSERT_RESULT(PrepareTable("test"));
   // Enable advisory locks
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_advisory_locks) = true;
@@ -397,13 +416,13 @@ TEST_F(PgSkipPrefixLockTest, AdvisoryLock) {
   TestOperation(conn, IsolationLevel::READ_COMMITTED, query, false, /*transaction_op*/ false);
 }
 
-TEST_F(PgSkipPrefixLockTest, InsertWithIndex) {
+TEST_P(PgSkipPrefixLockTest, InsertWithIndex) {
   const std::string query = "insert into test values ('1', '2', '3', '4', 'a', 'b')";
   RunTest(query, /*insert_row=*/ false, /*create_index=*/ true);
 }
 
 // For truncate colocated table, the implicit isolation level is always snapshot.
-TEST_F(PgSkipPrefixLockTest, TruncateColocatedTable) {
+TEST_P(PgSkipPrefixLockTest, TruncateColocatedTable) {
   auto conn = ASSERT_RESULT(PrepareColocatedTable("test"));
   const std::string query = "truncate table test";
 
@@ -417,18 +436,18 @@ TEST_F(PgSkipPrefixLockTest, TruncateColocatedTable) {
 }
 
 // Test enable/disable skip prefix lock during loading.
-TEST_F(PgSkipPrefixLockTest, YB_LINUX_RELEASE_ONLY_TEST(EnableDisableWithTxnLoad)) {
+TEST_P(PgSkipPrefixLockTest, YB_LINUX_RELEASE_ONLY_TEST(EnableDisableWithTxnLoad)) {
   TestEnableDisableWithTxnLoad(/*initial_skip_prefix_lock=*/ false);
   TestEnableDisableWithTxnLoad(/*initial_skip_prefix_lock=*/ true);
 }
 
-TEST_F(PgSkipPrefixLockTest, SelectForKeyShare) {
+TEST_P(PgSkipPrefixLockTest, SelectForKeyShare) {
   const std::string query =
       "select * from test where h1 = '1' and h2 = '2' and r1 = '3' and r2 = '4' for key share";
   RunTest(query);
 }
 
-TEST_F(PgSkipPrefixLockTest, FastPathInsert) {
+TEST_P(PgSkipPrefixLockTest, FastPathInsert) {
   auto conn = ASSERT_RESULT(PrepareTable("test", /*create_index=*/ false, /*insert_row=*/ false));
   const std::string query = "insert into test values ('1', '2', '3', '4', 'a', 'b')";
 
