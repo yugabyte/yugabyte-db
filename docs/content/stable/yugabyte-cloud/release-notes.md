@@ -23,7 +23,7 @@ rightNav:
 
 #### December 2, 2025
 
-##### New features
+##### Improvements
 
 - Improved usability of [remote backup replication](../cloud-clusters/backup-clusters/#remote-backup-replication). Automatically copy all cluster backups (scheduled, incremental, and on demand) to a storage bucket in the same cloud provider. Currently, only clusters deployed on GCP are supported. This feature is in early access; if you want to try it out, contact {{% support-cloud %}}.
 
