@@ -26,12 +26,15 @@
 
 #include "yb/common/hybrid_time.h"
 
+#include "yb/dockv/key_bytes.h"
+
 #include "yb/gutil/macros.h"
 
 #include "yb/util/concepts.h"
 #include "yb/util/locks.h"
 #include "yb/util/lw_function.h"
 #include "yb/util/ref_cnt_buffer.h"
+#include "yb/util/slice.h"
 
 #include "yb/yql/pggate/pg_doc_metrics.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
@@ -948,14 +951,13 @@ PgDocOp::SharedPtr MakeDocReadOpWithData(
     const PgSession::ScopedRefPtr& pg_session, PrefetchedDataHolder data);
 
 
-bool ApplyBounds(LWPgsqlReadRequestPB& req,
-                 const Slice lower_bound,
-                 bool lower_bound_is_inclusive,
-                 const Slice upper_bound,
-                 bool upper_bound_is_inclusive);
-void ApplyLowerBound(LWPgsqlReadRequestPB& req, const Slice lower_bound, bool is_inclusive);
-void ApplyUpperBound(LWPgsqlReadRequestPB& req, const Slice upper_bound, bool is_inclusive);
-dockv::DocKey HashCodeToDocKeyBound(
+bool ApplyBounds(
+    LWPgsqlReadRequestPB& req,
+    Slice lower_bound, bool lower_bound_is_inclusive,
+    Slice upper_bound, bool upper_bound_is_inclusive);
+void ApplyLowerBound(LWPgsqlReadRequestPB& req, Slice lower_bound, bool is_inclusive);
+void ApplyUpperBound(LWPgsqlReadRequestPB& req, Slice upper_bound, bool is_inclusive);
+dockv::KeyBytes HashCodeToDocKeyBound(
     const Schema& schema, uint16_t hash, bool is_inclusive, bool is_lower);
 
 }  // namespace yb::pggate
