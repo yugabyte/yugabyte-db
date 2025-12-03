@@ -254,7 +254,7 @@ tserver:
 
 ## Deploy immutable YB Contoller (YBC)
 
-{{<tags/feature/ea idea ="1264">}}By default, YugabyteDB Anywhere deploys YBC on Kubernetes universes by copying the YBC package from YugabyteDB Anywhere to the database pods and extracting it. While this approach ensures a stable YBC version, it has some limitations:
+{{<tags/feature/ea idea="1264">}}By default, YugabyteDB Anywhere deploys YBC on Kubernetes universes by copying the YBC package from YugabyteDB Anywhere to the database pods and extracting it. While this approach ensures a stable YBC version, it has some limitations:
 
 - Does not follow Kubernetes standards for container processes
 - Performs package copy operations on running containers
@@ -264,7 +264,7 @@ For deployments following strict Kubernetes practices, or when you want YBC to b
 
 {{< note title="Important" >}}
 
-When immutable YBC is enabled, the YBC version is tied to the YugabyteDB version and is upgraded only when you perform a [software upgrade](../../manage-deployments/upgrade-software/). YBC will not automatically follow the latest stable YugabyteDB Anywhere version.
+When immutable YBC is enabled, the YBC version is tied to the YugabyteDB version used by the universe, and is upgraded only when you [upgrade the universe](../../manage-deployments/upgrade-software/). YBC will not automatically update when upgrading YugabyteDB Anywhere.
 
 {{< /note >}}
 
