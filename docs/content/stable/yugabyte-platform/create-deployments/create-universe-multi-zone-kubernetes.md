@@ -256,9 +256,9 @@ tserver:
 
 {{<tags/feature/ea idea="1264">}}By default, YugabyteDB Anywhere deploys YBC on Kubernetes universes by copying the YBC package from YugabyteDB Anywhere to the database pods and extracting it. While this approach ensures a stable YBC version, it has some limitations:
 
-- Does not follow Kubernetes standards for container processes
-- Performs package copy operations on running containers
-- If a Persistent Volume Claim (PVC) gets deleted or replaced, YBC may not be available until YugabyteDB Anywhere detects the issue and re-uploads YBC (for example, before a backup operation if YBC ping failures are detected)
+- Does not follow Kubernetes standards for container processes.
+- Performs package copy operations on running containers.
+- If a Persistent Volume Claim (PVC) gets deleted or replaced, YBC may not be available until YugabyteDB Anywhere detects the issue and re-uploads YBC (for example, before a backup operation if YBC ping failures are detected).
 
 For deployments following strict Kubernetes practices, or when you want YBC to be automatically available even after PVC replacement, you can enable **Immutable YBC**. With this feature, YBC is baked into the YugabyteDB image and runs as a native process alongside `yb-master` and `yb-tserver`, similar to other database processes.
 

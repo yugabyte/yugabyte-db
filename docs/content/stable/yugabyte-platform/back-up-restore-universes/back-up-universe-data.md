@@ -123,7 +123,7 @@ For example:
 ```output
 s3://user_bucket
   /some/sub/folders
-    /univ-univ_name-a85b5b01-6e0b-4a24-b088-478dafff94e4
+    /universe-name_a85b5b01-6e0b-4a24-b088-478dafff94e4
      /database1_name
       /ybc_backup-92317948b8e444ba150616bf182a061
         /incremental
