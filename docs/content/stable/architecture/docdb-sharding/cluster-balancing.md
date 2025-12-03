@@ -61,7 +61,9 @@ When scaling out (adding nodes), the cluster balancer will gracefully move [tabl
 
 #### Scaling in
 
-When scaling in, [YugabyteDB Anywhere](../../../yugabyte-platform/) marks the nodes being removed as "blacklisted". This signals to the cluster balancer that it should:
+Applicable only to [YugabyteDB Anywhere](../../../yugabyte-platform/) and [YugabyteDB Aeon](/stable/yugabyte-cloud/).
+
+When scaling in, nodes being removed are marked as "blacklisted". This signals to the cluster balancer that it should:
 
 - Gracefully transfer [leader](../../key-concepts/#tablet-leader)ship off of the node being removed.
 - Re-replicate the data that was on the node to other nodes in the same region.
@@ -74,8 +76,8 @@ On an unplanned node outage, cluster balancing occurs twice: when the node goes 
 
 #### When the node goes down
 
-- [Tablet leader](../../key-concepts/#tablet-leader)ship is automatically transferred to healthy nodes in 3 seconds.
-- If the node is down for a prolonged time (15 minutes, by default) the cluster balancer starts creating new replicas of the data on the failed node on other nodes in the same region (if any exist).
+- [Tablet leadership](../../key-concepts/#tablet-leader) is automatically transferred to healthy nodes in 3 seconds.
+- If the node is down for a prolonged time (according to [follower_unavailable_considered_failed_sec](../../configuration/yb-master/#follower-unavailable-considered-failed-sec), which is 15 minutes by default) the cluster balancer starts creating new replicas of the data on the failed node on other nodes in the same region (if any exist).
 - Queries will succeed as soon as [tablet leaders](../../key-concepts/#tablet-leader) move off of the failed node. The data balancing phase does not impact the availability of the database.
 
 #### When the failed node recovers
@@ -94,7 +96,7 @@ Operations that create or delete tablets may also trigger cluster balancing. Som
 
 {{< note title="Version availability" >}}
 
-Some of the views below are only available in YugabyteDB {{<release "2024.2.6">}} and later, {{<release "2025.1.1">}} and later.
+Some of the views below are only available in YugabyteDB {{<release "2024.2.6">}} and later, and {{<release "2025.1.1">}} and later.
 
 {{< /note >}}
 
@@ -178,7 +180,7 @@ The metric `estimated_data_to_balance_bytes` tracks how much data (in bytes) mus
 
 ## Configuration and tuning
 
-Starting in {{<release "2025.1.1">}} and later, you only need to set the flag, [remote_bootstrap_rate_limit_bytes_per_sec](#current-flags), which controls how much data each node will send or receive each second. This flag should be set according to your network and disk provisioning limits. You should take into account the requirements of your workload.
+Starting in {{<release "2025.1.1">}} and later, you only need to set the flag, [remote_bootstrap_rate_limit_bytes_per_sec](#current-flags), which controls how much data each node sends or receives each second. Set this flag according to your network and disk provisioning limits, and also based on the requirements of your workload.
 
 For example, if you provisioned your network and disk to 1 GiB/s, and your workload typically uses 500 MiB/s of network and disk, you might want to set `remote_bootstrap_rate_limit_bytes_per_sec` to 300 MiB/s to leave some headroom (200 MiB/s) for workload spikes. Alternatively, you could set it to 500 MiB/s to minimize the time taken for node recovery and cluster scaling operations (at the cost of some workload impact).
 
@@ -194,7 +196,7 @@ For versions prior to {{<release "2025.1.1">}}, there are many more flags availa
 
 ### Current flags
 
-The following flags are recommended for use in {{<release "2025.1.1">}} and later.
+The following flags are recommended to use in {{<release "2025.1.1">}} and later.
 
 | Flag | Description |
 | :--- | :---------- |
