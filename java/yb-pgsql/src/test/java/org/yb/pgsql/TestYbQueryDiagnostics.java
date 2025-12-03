@@ -121,7 +121,6 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
     private Map<String, String> queryDiagnosticsFlags() {
         Map<String, String> flagMap = super.getTServerFlags();
-        flagMap.put("allowed_preview_flags_csv", "ysql_yb_enable_query_diagnostics");
         flagMap.put("ysql_yb_enable_query_diagnostics", "true");
         flagMap.put("ysql_beta_features", "true");
         flagMap.put("ysql_yb_ash_sampling_interval_ms", String.valueOf(ASH_SAMPLING_INTERVAL_MS));
