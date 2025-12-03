@@ -81,6 +81,7 @@ void DoToPB(const TransactionMetadata& source, PB* dest) {
   DupStatusTablet(source.status_tablet, dest);
   dest->set_priority(source.priority);
   dest->set_start_hybrid_time(source.start_time.ToUint64());
+  dest->set_using_table_locks(source.using_table_locks);
   dest->set_locality(source.locality.locality);
   if (source.locality.locality == TransactionLocality::TABLESPACE_LOCAL) {
     dest->set_locality_tablespace_oid(source.locality.tablespace_oid);
@@ -105,6 +106,7 @@ std::string TransactionMetadata::ToString() const {
       status_tablet,
       priority,
       start_time,
+      using_table_locks,
       locality,
       old_status_tablet,
       skip_prefix_locks);
@@ -122,6 +124,7 @@ Result<TransactionMetadata> TransactionMetadata::DoFromPB(const PB& source) {
     result.status_tablet.assign(string_view.data(), string_view.size());
     result.priority = source.priority();
     result.start_time = HybridTime(source.start_hybrid_time());
+    result.using_table_locks = source.using_table_locks();
     result.skip_prefix_locks = source.skip_prefix_locks();
   }
 

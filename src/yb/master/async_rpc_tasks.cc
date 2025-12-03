@@ -616,6 +616,11 @@ bool AsyncAlterTable::SendRequest(int attempt) {
     }
     req.set_first_provisional_column_id(first_provisional_column_id);
 
+    if (l->pb.has_transaction() && l->pb.transaction().has_using_table_locks() &&
+        l->pb.transaction().using_table_locks()) {
+      req.set_only_abort_txns_not_using_table_locks(true);
+    }
+
     if (table_type() == TableType::PGSQL_TABLE_TYPE && !transaction_id_.IsNil()) {
       VLOG_WITH_PREFIX(1) << "Transaction ID is provided for tablet " << tablet_->tablet_id()
                           << " with ID " << transaction_id_.ToString()

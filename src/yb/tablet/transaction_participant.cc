@@ -1389,7 +1389,8 @@ class TransactionParticipant::Impl
   }
 
   Status StopActiveTxnsPriorTo(
-      HybridTime cutoff, CoarseTimePoint deadline, TransactionId* exclude_txn_id) {
+      OnlyAbortTxnsNotUsingTableLocks only_abort_txns_not_using_table_locks, HybridTime cutoff,
+      CoarseTimePoint deadline, TransactionId* exclude_txn_id) {
     vector<TransactionId> ids_to_abort;
     {
       std::lock_guard lock(mutex_);
@@ -1397,6 +1398,12 @@ class TransactionParticipant::Impl
         if (txn->start_ht() > cutoff ||
             (exclude_txn_id != nullptr && txn->id() == *exclude_txn_id)) {
           break;
+        }
+        if (only_abort_txns_not_using_table_locks && txn->metadata().using_table_locks) {
+          VLOG_WITH_PREFIX(2) << "Skipping transaction " << txn->id()
+                              << " because it is using table locks and we are only aborting txns "
+                                 "that are not using table locks";
+          continue;
         }
         if (!txn->WasAborted()) {
           ids_to_abort.push_back(txn->id());
@@ -3040,8 +3047,10 @@ std::string TransactionParticipant::DumpTransactions() const {
 }
 
 Status TransactionParticipant::StopActiveTxnsPriorTo(
-    HybridTime cutoff, CoarseTimePoint deadline, TransactionId* exclude_txn_id) {
-  return impl_->StopActiveTxnsPriorTo(cutoff, deadline, exclude_txn_id);
+    OnlyAbortTxnsNotUsingTableLocks only_abort_txns_not_using_table_locks, HybridTime cutoff,
+    CoarseTimePoint deadline, TransactionId* exclude_txn_id) {
+  return impl_->StopActiveTxnsPriorTo(
+      only_abort_txns_not_using_table_locks, cutoff, deadline, exclude_txn_id);
 }
 
 Result<HybridTime> TransactionParticipant::WaitForSafeTime(

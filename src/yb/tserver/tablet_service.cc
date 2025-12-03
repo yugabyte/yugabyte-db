@@ -349,12 +349,13 @@ using std::vector;
 using strings::Substitute;
 using tablet::ChangeMetadataOperation;
 using tablet::CloneTabletRequestPB;
+using tablet::OnlyAbortTxnsNotUsingTableLocks;
+using tablet::OperationCompletionCallback;
 using tablet::Tablet;
 using tablet::TabletPeer;
 using tablet::TabletPeerPtr;
 using tablet::TabletStatusPB;
 using tablet::TruncateOperation;
-using tablet::OperationCompletionCallback;
 
 namespace {
 
@@ -748,7 +749,13 @@ void TabletServiceAdminImpl::GetSafeTime(
       VLOG(2) << "Finally MinRunningHybridTime is " << min_running_ht;
       if (min_running_ht < min_hybrid_time) {
         VLOG(2) << "Aborting Txns that started prior to " << min_hybrid_time;
-        auto s = txn_particpant->StopActiveTxnsPriorTo(min_hybrid_time, deadline);
+        OnlyAbortTxnsNotUsingTableLocks only_abort_txns_not_using_table_locks =
+            req->has_only_abort_txns_not_using_table_locks() &&
+                    req->only_abort_txns_not_using_table_locks()
+                ? OnlyAbortTxnsNotUsingTableLocks::kTrue
+                : OnlyAbortTxnsNotUsingTableLocks::kFalse;
+        auto s = txn_particpant->StopActiveTxnsPriorTo(
+            only_abort_txns_not_using_table_locks, min_hybrid_time, deadline);
         if (!s.ok()) {
           SetupErrorAndRespond(resp->mutable_error(), s, &context);
           return;
@@ -1154,14 +1161,20 @@ void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* 
           CoarseMonoClock::Now() +
           MonoDelta::FromMilliseconds(FLAGS_ysql_transaction_abort_timeout_ms);
       TransactionId txn_id = CHECK_RESULT(TransactionId::FromString(req->transaction_id()));
-      LOG(INFO) << "Aborting transactions that started prior to " << max_cutoff
-                << " for tablet id " << req->tablet_id()
+      OnlyAbortTxnsNotUsingTableLocks only_abort_txns_not_using_table_locks =
+          req->has_only_abort_txns_not_using_table_locks() &&
+                  req->only_abort_txns_not_using_table_locks()
+              ? OnlyAbortTxnsNotUsingTableLocks::kTrue
+              : OnlyAbortTxnsNotUsingTableLocks::kFalse;
+      LOG(INFO) << "Aborting transactions "
+                << (only_abort_txns_not_using_table_locks ? "not using table locks " : "")
+                << "that started prior to " << max_cutoff << " for tablet id " << req->tablet_id()
                 << " excluding transaction with id " << txn_id;
       // There could be a chance where a transaction does not appear by transaction_participant
       // but has already begun replicating through Raft. Such transactions might succeed rather
       // than get aborted. This race codnition is dismissable for this intermediate solution.
       Status status = tablet.tablet->transaction_participant()->StopActiveTxnsPriorTo(
-            max_cutoff, deadline, &txn_id);
+          only_abort_txns_not_using_table_locks, max_cutoff, deadline, &txn_id);
       if (!status.ok() || PREDICT_FALSE(FLAGS_TEST_fail_alter_schema_after_abort_transactions)) {
         auto status = STATUS(TryAgain, "Transaction abort failed for tablet " + req->tablet_id());
         LOG(WARNING) << status;
@@ -3805,27 +3818,20 @@ void TabletServiceImpl::ClearMetacache(
 void TabletServiceImpl::AcquireObjectLocks(
     const AcquireObjectLockRequestPB* req, AcquireObjectLockResponsePB* resp,
     rpc::RpcContext context) {
-  if (!FLAGS_ysql_enable_object_locking_infra) {
-    return SetupErrorAndRespond(
-        resp->mutable_error(),
-        STATUS(NotSupported,
-               "Object locking is not available until the cluster upgrade is finalized."),
-        &context);
-  }
-  if (!FLAGS_enable_object_locking_for_table_locks) {
-    return SetupErrorAndRespond(
-        resp->mutable_error(),
-        STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"), &context);
-  }
   TRACE("Start AcquireObjectLocks");
   VLOG(2) << "Received AcquireObjectLocks RPC: " << req->DebugString();
-
+  if (!FLAGS_enable_object_locking_for_table_locks) {
+    LOG_WITH_FUNC(INFO)
+        << "Flag enable_object_locking_for_table_locks disabled. Ignoring acquire request.";
+    return context.RespondSuccess();
+  }
   if (auto s = CheckLocalLeaseEpoch(GetRecipientLeaseEpoch(*req)); !s.ok()) {
     return SetupErrorAndRespond(
         resp->mutable_error(), s, TabletServerErrorPB::INVALID_YSQL_LEASE, &context);
   }
   auto ts_local_lock_manager = server_->ts_local_lock_manager();
   if (!ts_local_lock_manager) {
+    VLOG_WITH_FUNC(1) << "TSLocalLockManager not found...";
     return SetupErrorAndRespond(
         resp->mutable_error(), STATUS(IllegalState, "TSLocalLockManager not found..."), &context);
   }
@@ -3840,6 +3846,11 @@ void TabletServiceImpl::ReleaseObjectLocks(
     rpc::RpcContext context) {
   TRACE("Start ReleaseObjectLocks");
   VLOG(2) << "Received ReleaseObjectLocks RPC: " << req->DebugString();
+  if (!FLAGS_enable_object_locking_for_table_locks) {
+    LOG_WITH_FUNC(INFO)
+        << "Flag enable_object_locking_for_table_locks disabled. Ignoring release request.";
+    return context.RespondSuccess();
+  }
 
   if (auto s = CheckLocalLeaseEpoch(GetRecipientLeaseEpoch(*req)); !s.ok()) {
     return SetupErrorAndRespond(
@@ -3847,6 +3858,7 @@ void TabletServiceImpl::ReleaseObjectLocks(
   }
   auto ts_local_lock_manager = server_->ts_local_lock_manager();
   if (!ts_local_lock_manager) {
+    VLOG_WITH_FUNC(1) << "TSLocalLockManager not found...";
     resp->set_propagated_hybrid_time(server_->Clock()->Now().ToUint64());
     SetupErrorAndRespond(
         resp->mutable_error(), STATUS(IllegalState, "TSLocalLockManager not found..."), &context);

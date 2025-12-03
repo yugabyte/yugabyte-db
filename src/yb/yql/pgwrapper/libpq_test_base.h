@@ -51,6 +51,7 @@ class LibPqTestBase : public PgWrapperTestBase {
       const std::string& user,
       bool simple_query_protocol = false);
   Result<PGConn> ConnectToTs(const ExternalTabletServer& pg_ts);
+  Result<PGConn> ConnectToTsForDB(const ExternalTabletServer& pg_ts, const std::string& db_name);
   Result<PGConn> ConnectToTsAsUser(
       const ExternalTabletServer& pg_ts,
       const std::string& user);

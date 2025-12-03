@@ -1419,7 +1419,7 @@ Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperati
     const PgTablesQueryResult& tables, VectorIndexQueryPtr& vector_index_query,
     bool has_distributed_txn,
     const LWFunction<Result<TransactionMetadata>()>& object_locking_txn_meta_provider,
-    bool is_object_locking_enabled) {
+    bool txn_using_table_locks) {
   auto write_time = HybridTime::FromPB(req->write_time());
   std::pair<PgClientSessionOperations, VectorIndexQueryPtr> result;
   auto& ops = result.first;
@@ -1480,7 +1480,7 @@ Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperati
   for (const auto& pg_client_session_operation : ops) {
     session->Apply(pg_client_session_operation.op);
   }
-  if (has_write_ops && !has_distributed_txn && is_object_locking_enabled) {
+  if (has_write_ops && !has_distributed_txn && txn_using_table_locks) {
     session->SetObjectLockingTxnMeta(VERIFY_RESULT(object_locking_txn_meta_provider()));
   }
 
@@ -1686,7 +1686,8 @@ class PgClientSession::Impl {
     RETURN_NOT_OK(SetupSessionForDdl(
         req.use_regular_transaction_block(), req.options(), context->GetClientDeadline()));
     const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(
-        req.use_transaction(), req.use_regular_transaction_block(), context->GetClientDeadline()));
+        req.use_transaction(), req.use_regular_transaction_block(), context->GetClientDeadline(),
+        req.options().is_using_table_locks()));
     RETURN_NOT_OK(helper.Exec(
         &client_, metadata, req.options().active_sub_transaction_id(),
         context->GetClientDeadline()));
@@ -1725,7 +1726,7 @@ class PgClientSession::Impl {
         req.next_oid(),
         VERIFY_RESULT(GetDdlTransactionMetadata(
             req.use_transaction(), req.use_regular_transaction_block(),
-            context->GetClientDeadline())),
+            context->GetClientDeadline(), req.options().is_using_table_locks())),
         req.colocated(), context->GetClientDeadline(), yb_clone_info);
   }
 
@@ -1746,7 +1747,7 @@ class PgClientSession::Impl {
       req.use_regular_transaction_block(), req.options(), context->GetClientDeadline()));
     const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(
         true /* use_transaction */, req.use_regular_transaction_block(),
-        context->GetClientDeadline()));
+        context->GetClientDeadline(), req.options().is_using_table_locks()));
     // If ddl rollback is enabled, the table will not be deleted now, so we cannot wait for the
     // table/index deletion to complete. The table will be deleted in the background only after the
     // transaction has been determined to be a success.
@@ -1786,7 +1787,8 @@ class PgClientSession::Impl {
     RETURN_NOT_OK(SetupSessionForDdl(
       req.use_regular_transaction_block(), req.options(), context->GetClientDeadline()));
     const auto txn = VERIFY_RESULT(GetDdlTransactionMetadata(
-        req.use_transaction(), req.use_regular_transaction_block(), context->GetClientDeadline()));
+        req.use_transaction(), req.use_regular_transaction_block(), context->GetClientDeadline(),
+        req.options().is_using_table_locks()));
     if (txn) {
       alterer->part_of_transaction(txn);
     }
@@ -1973,7 +1975,7 @@ class PgClientSession::Impl {
       req.use_regular_transaction_block(), req.options(), context->GetClientDeadline()));
     const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(
         true /* use_transaction */, req.use_regular_transaction_block(),
-        context->GetClientDeadline()));
+        context->GetClientDeadline(), req.options().is_using_table_locks()));
     const auto s = client_.CreateTablegroup(
         req.database_name(), GetPgsqlNamespaceId(id.database_oid), id.GetYbTablegroupId(),
         tablespace_id.IsValid() ? tablespace_id.GetYbTablespaceId() : "", metadata,
@@ -1998,7 +2000,7 @@ class PgClientSession::Impl {
       req.use_regular_transaction_block(), req.options(), context->GetClientDeadline()));
     const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(
         true /* use_transaction */, req.use_regular_transaction_block(),
-        context->GetClientDeadline()));
+        context->GetClientDeadline(), req.options().is_using_table_locks()));
     const auto status =
         client_.DeleteTablegroup(GetPgsqlTablegroupId(id.database_oid, id.object_oid), metadata,
         req.options().active_sub_transaction_id());
@@ -2760,9 +2762,9 @@ class PgClientSession::Impl {
   }
 
   Status DoAcquireObjectLock(const ObjectLockQueryDataPtr& data, CoarseTimePoint deadline) {
-    RSTATUS_DCHECK(IsObjectLockingEnabled(), IllegalState, "Table Locking feature not enabled.");
-
     const auto& options = data->req.options();
+    RSTATUS_DCHECK(
+        options.is_using_table_locks(), IllegalState, "Table Locking feature not enabled.");
     auto setup_session_result = VERIFY_RESULT(SetupSession(
         options, deadline, GetInTxnLimit(options, clock().get())));
     RSTATUS_DCHECK(
@@ -2778,10 +2780,10 @@ class PgClientSession::Impl {
         : NextObjectLockingTxnMeta(locality, deadline);
     RETURN_NOT_OK(txn_meta_res);
     const auto lock_type = static_cast<TableLockType>(data->req.lock_type());
-    VLOG_WITH_PREFIX_AND_FUNC(1)
-        << "txn_id " << txn_meta_res->transaction_id
-        << " lock_type: " << AsString(lock_type)
-        << " req: " << data->req.ShortDebugString();
+    VLOG_WITH_PREFIX_AND_FUNC(1) << "txn_id " << txn_meta_res->transaction_id << " subtxn_id "
+                                 << options.active_sub_transaction_id()
+                                 << " lock_type: " << AsString(lock_type)
+                                 << " req: " << data->req.ShortDebugString();
     DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK(
         "PgClientSession::Impl::DoAcquireObjectLock", &txn_meta_res->transaction_id);
 
@@ -3097,7 +3099,7 @@ class PgClientSession::Impl {
         make_lw_function([this, locality, deadline] {
           return NextObjectLockingTxnMeta(locality, deadline);
         }),
-        IsObjectLockingEnabled()));
+        options.is_using_table_locks()));
     session->FlushAsync([this, data, trace, trace_created_locally,
                          start_time](client::FlushStatus* flush_status) {
       ADOPT_TRACE(trace.get());
@@ -3219,7 +3221,9 @@ class PgClientSession::Impl {
       txn->InitPgSessionRequestVersion();
       // Set the start time before initializing the transaction to allow start time to be
       // propagated to txn coordinator.
-      RETURN_NOT_OK(txn->SetPgTxnStart(MonoTime::Now().ToUint64()));
+      // Session level txns is only used for advisory locks. These would not touch regular tables.
+      RETURN_NOT_OK(
+          txn->SetPgTxnStart(MonoTime::Now().ToUint64(), /* is_using_table_locks */ false));
       // Isolation level doesn't matter but we need to set it for conflict resolution to not treat
       // it as a single shard/fast-path transaction.
       RETURN_NOT_OK(txn->Init(IsolationLevel::READ_COMMITTED));
@@ -3243,7 +3247,7 @@ class PgClientSession::Impl {
       EnsureSession(kind, deadline);
       RETURN_NOT_OK(GetDdlTransactionMetadata(
           true /* use_transaction */, false /* use_regular_transaction_block */, deadline,
-          options.priority(), options.pg_txn_start_us()));
+          options.priority(), options.pg_txn_start_us(), options.is_using_table_locks()));
     } else {
       DCHECK(kind == PgClientSessionKind::kPlain);
       auto& session = EnsureSession(kind, deadline);
@@ -3453,9 +3457,13 @@ class PgClientSession::Impl {
     if (global_required) {
       locality = TransactionFullLocality::Global();
     }
+    // Amit: Is it possible that we'd be enabling table locks for one type of session (say plain)
+    // but have it disabled for another type (say kDDl) ? Would that cause a problem?
+    // should only go from off -> on. Not the other way around.
+    // The txn should be marked correctly?
     txn = transaction_provider_.Take<kSessionKind>(locality, deadline);
     txn->SetLogPrefixTag(kTxnLogPrefixTag, id_);
-    RETURN_NOT_OK(txn->SetPgTxnStart(options.pg_txn_start_us()));
+    RETURN_NOT_OK(txn->SetPgTxnStart(options.pg_txn_start_us(), options.is_using_table_locks()));
     auto* read_point = session->read_point();
     if ((isolation == IsolationLevel::SNAPSHOT_ISOLATION ||
          isolation == IsolationLevel::READ_COMMITTED) &&
@@ -3507,8 +3515,8 @@ class PgClientSession::Impl {
   // All DDLs use kHighestPriority unless specified otherwise.
   Result<const TransactionMetadata*> GetDdlTransactionMetadata(
       bool use_transaction, bool use_regular_transaction_block, CoarseTimePoint deadline,
-      uint64_t priority = kHighPriTxnUpperBound,
-      uint64_t pg_txn_start_us = 0) {
+      uint64_t priority = kHighPriTxnUpperBound, uint64_t pg_txn_start_us = 0,
+      bool txn_using_table_locks = false) {
     if (!use_transaction) {
       return nullptr;
     }
@@ -3537,7 +3545,7 @@ class PgClientSession::Impl {
           ? IsolationLevel::SERIALIZABLE_ISOLATION : IsolationLevel::SNAPSHOT_ISOLATION;
       txn = transaction_provider_.Take<PgClientSessionKind::kDdl>(deadline);
       RETURN_NOT_OK(txn->SetPgTxnStart(
-          pg_txn_start_us ? pg_txn_start_us : MonoTime::Now().ToUint64()));
+          pg_txn_start_us ? pg_txn_start_us : MonoTime::Now().ToUint64(), txn_using_table_locks));
       RETURN_NOT_OK(txn->Init(isolation));
       txn->SetPriority(priority);
       txn->SetLogPrefixTag(kTxnLogPrefixTag, id_);

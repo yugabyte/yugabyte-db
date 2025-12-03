@@ -785,6 +785,8 @@ message PgPerformOptionsPB {
   bool xcluster_target_ddl_bypass = 26;
 
   uint32 xrepl_origin_id = 31;
+
+  bool is_using_table_locks = 32;
 }
 
 message PgPerformRequestPB {

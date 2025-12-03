@@ -3719,6 +3719,10 @@ Status CatalogManager::CompleteCreateYsqlSysTable(
   } else {
     add_table = change_meta_req->mutable_add_table();
   }
+  if (data.req.has_transaction() && data.req.transaction().has_using_table_locks() &&
+      data.req.transaction().using_table_locks()) {
+    change_meta_req->set_only_abort_txns_not_using_table_locks(true);
+  }
   CatalogManagerUtil::FillTableInfoPB(
       data.req.table_id(), data.req.name(), TableType::PGSQL_TABLE_TYPE, data.schema,
       /* schema_version */ 0, data.partition_schema, add_table);
