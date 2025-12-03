@@ -26,6 +26,7 @@ struct ReadOperationData {
   CoarseTimePoint deadline = CoarseTimePoint::max();
   ReadHybridTime read_time = ReadHybridTime::Max();
   DocDBStatistics* statistics = nullptr;
+  bool use_ht_file_filter = true;
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(deadline, read_time);
