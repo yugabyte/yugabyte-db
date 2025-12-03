@@ -105,6 +105,10 @@ const unum::usearch::byte_t* VectorToBytePtr(const FloatVector& vector) {
 YB_DEFINE_ENUM(VectorIndexEngine, (kUsearch)(kYbHnsw)(kHnswlib));
 YB_DEFINE_ENUM(PackingMode, (kNone)(kV1)(kV2));
 
+////////////////////////////////////////////////////////
+// PgVectorIndexTestBase
+////////////////////////////////////////////////////////
+
 class PgVectorIndexTestBase : public PgMiniTestBase {
  protected:
   virtual bool IsColocated() const = 0;
@@ -457,54 +461,102 @@ void PgVectorIndexTestBase::VerifyRead(PGConn& conn, size_t limit, AddFilter add
   VerifyRows(conn, add_filter, ExpectedRows(limit));
 }
 
-using PgVectorIndexTestParams = std::tuple<bool, VectorIndexEngine, PackingMode>;
+////////////////////////////////////////////////////////
+// PgVectorIndexTestParamsDecorator
+////////////////////////////////////////////////////////
 
-bool IsColocated(const PgVectorIndexTestParams& params) {
-  return std::get<0>(params);
-}
+template <typename TestParam>
+struct TestParamTraits {
+  // Expected interface of specializations:
+  using ParamType = TestParam;
+  static bool IsColocated(const ParamType& param);
+  static VectorIndexEngine Engine(const ParamType& param);
+  static PackingMode GetPackingMode(const ParamType& param);
+  static auto TestParamGenerator();
+  static auto TestParamNameGenerator();
 
-VectorIndexEngine Engine(const PgVectorIndexTestParams& params) {
-  return std::get<1>(params);
-}
+  // To prevent accidental creation.
+  TestParamTraits() = delete;
+};
 
-PackingMode GetPackingMode(const PgVectorIndexTestParams& params) {
-  return std::get<2>(params);
-}
-
-std::string TestParamToString(const testing::TestParamInfo<PgVectorIndexTestParams>& param_info) {
-  auto engine = Engine(param_info.param);
-  auto packing_mode = GetPackingMode(param_info.param);
-  return Format(
-      "$0$1$2",
-      IsColocated(param_info.param) ? "Colocated" : "Distributed",
-      engine == VectorIndexEngine::kUsearch ? "" : ToString(engine).substr(1),
-      packing_mode == PackingMode::kNone ? "" : "Packing" + ToString(packing_mode).substr(1));
-}
-
-template <typename TestClass> requires(std::is_base_of_v<PgVectorIndexTestBase, TestClass>)
-class PgVectorIndexTestParamsDecorator
+template <typename TestClass, typename TestParam>
+requires(std::is_base_of_v<PgVectorIndexTestBase, TestClass>)
+class PgVectorIndexTestParamsDecoratorBase
     : public TestClass,
-      public testing::WithParamInterface<PgVectorIndexTestParams> {
+      public testing::WithParamInterface<TestParam> {
+ public:
+  using ParamTraits = TestParamTraits<TestParam>;
+
  protected:
   bool IsColocated() const override {
-    return pgwrapper::IsColocated(GetParam());
+    return ParamTraits::IsColocated(this->GetParam());
   }
 
   VectorIndexEngine Engine() const override {
-    return pgwrapper::Engine(GetParam());
+    return ParamTraits::Engine(this->GetParam());
   }
 
   PackingMode GetPackingMode() const override {
-    return pgwrapper::GetPackingMode(GetParam());
+    return ParamTraits::GetPackingMode(this->GetParam());
   }
 };
 
 #define MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(test_suite_name) \
         INSTANTIATE_TEST_SUITE_P(, \
             test_suite_name, \
-            testing::Combine(testing::Bool(), testing::ValuesIn(kVectorIndexEngineArray), \
-                             testing::ValuesIn(kPackingModeArray)), \
-            TestParamToString)
+            test_suite_name::ParamTraits::TestParamGenerator(), \
+            test_suite_name::ParamTraits::TestParamNameGenerator())
+
+std::string ParamsToString(
+    std::optional<bool> is_colocated, VectorIndexEngine engine, PackingMode packing_mode) {
+  return Format(
+      "$0$1$2",
+      !is_colocated.has_value() ? "" : *is_colocated ? "Colocated" : "Distributed",
+      engine == VectorIndexEngine::kUsearch ? "" : ToString(engine).substr(1),
+      packing_mode == PackingMode::kNone ? "" : "Packing" + ToString(packing_mode).substr(1));
+}
+
+////////////////////////////////////////////////////////
+// PgVectorIndexTest
+////////////////////////////////////////////////////////
+
+using PgVectorIndexTestParam = std::tuple<bool, VectorIndexEngine, PackingMode>;
+
+template <>
+struct TestParamTraits<PgVectorIndexTestParam> {
+  using ParamType = PgVectorIndexTestParam;
+
+  static bool IsColocated(const ParamType& param) {
+    return std::get<0>(param);
+  }
+
+  static VectorIndexEngine Engine(const ParamType& param) {
+    return std::get<1>(param);
+  }
+
+  static PackingMode GetPackingMode(const ParamType& param) {
+    return std::get<2>(param);
+  }
+
+  static auto TestParamGenerator() {
+    return testing::Combine(
+        testing::Bool(),
+        testing::ValuesIn(kVectorIndexEngineArray),
+        testing::ValuesIn(kPackingModeArray));
+  }
+
+  static auto TestParamNameGenerator() {
+    return [](const testing::TestParamInfo<ParamType>& param_info) -> std::string {
+      auto engine = Engine(param_info.param);
+      auto packing_mode = GetPackingMode(param_info.param);
+      return ParamsToString(IsColocated(param_info.param), engine, packing_mode);
+    };
+  }
+};
+
+template <typename TestClass>
+using PgVectorIndexTestParamsDecorator =
+    PgVectorIndexTestParamsDecoratorBase<TestClass, PgVectorIndexTestParam>;
 
 class PgVectorIndexTest : public PgVectorIndexTestParamsDecorator<PgVectorIndexTestBase> {
  protected:
@@ -1167,6 +1219,91 @@ TEST_P(PgVectorIndexTest, Backup) {
   VerifyRead(restore_conn, 10, AddFilter::kFalse);
 }
 
+////////////////////////////////////////////////////////
+// PgDistributedVectorIndexTest
+////////////////////////////////////////////////////////
+
+using PgDistributedVectorIndexTestParam = std::tuple<VectorIndexEngine, PackingMode>;
+
+template <>
+struct TestParamTraits<PgDistributedVectorIndexTestParam> {
+  using ParamType = PgDistributedVectorIndexTestParam;
+
+  static bool IsColocated(const ParamType& param) {
+    return false;
+  }
+
+  static VectorIndexEngine Engine(const ParamType& param) {
+    return std::get<0>(param);
+  }
+
+  static PackingMode GetPackingMode(const ParamType& param) {
+    return std::get<1>(param);
+  }
+
+  static auto TestParamGenerator() {
+    return testing::Combine(
+        testing::ValuesIn(kVectorIndexEngineArray),
+        testing::ValuesIn(kPackingModeArray));
+  }
+
+  static auto TestParamNameGenerator() {
+    return [](const testing::TestParamInfo<ParamType>& param_info) -> std::string {
+      auto engine = Engine(param_info.param);
+      auto packing_mode = GetPackingMode(param_info.param);
+      if (engine == VectorIndexEngine::kUsearch && packing_mode == PackingMode::kNone) {
+        return "None";
+      }
+      return ParamsToString(std::nullopt, engine, packing_mode);
+    };
+  }
+};
+
+template <typename TestClass>
+using PgDistributedVectorIndexTestParamsDecorator =
+    PgVectorIndexTestParamsDecoratorBase<TestClass, PgDistributedVectorIndexTestParam>;
+
+class PgDistributedVectorIndexTest
+    : public PgDistributedVectorIndexTestParamsDecorator<PgVectorIndexTestBase> {
+};
+
+MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgDistributedVectorIndexTest);
+
+TEST_P(PgDistributedVectorIndexTest, BaseTableManualSplitSimple) {
+  constexpr size_t kNumRows = 20;
+
+  num_pre_split_tablets_ = 1;
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+
+  // Wait for all intents are applied and flush tablets.
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  // Trigger tablet split.
+  auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 1);
+  ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(
+      cluster_.get(), peers.front()->tablet_id()));
+
+  // Create vector index.
+  ASSERT_OK(CreateIndex(conn));
+
+  // Select some data from the lowest tablet only.
+  // TODO: extend to select from both tablets, refer to GH29445.
+  auto result = ASSERT_RESULT(conn.FetchAllAsString(
+      "SELECT * FROM test" + IndexQuerySuffix("[3.0, 4.0, 5.0]", 1)));
+  ASSERT_EQ(result, Format("3, $0", VectorAsString(3)));
+
+  // Make sure drop table works fine.
+  ASSERT_OK(conn.Execute("DROP TABLE test"));
+}
+
+////////////////////////////////////////////////////////
+// PgVectorIndexSingleServerTestBase
+////////////////////////////////////////////////////////
+
 class PgVectorIndexSingleServerTestBase : public PgVectorIndexTestBase {
  public:
   PgVectorIndexSingleServerTestBase() {
@@ -1178,6 +1315,10 @@ class PgVectorIndexSingleServerTestBase : public PgVectorIndexTestBase {
     return 1;
   }
 };
+
+////////////////////////////////////////////////////////
+// PgVectorIndexSingleServerTest
+////////////////////////////////////////////////////////
 
 class PgVectorIndexSingleServerTest
     : public PgVectorIndexTestParamsDecorator<PgVectorIndexSingleServerTestBase> {

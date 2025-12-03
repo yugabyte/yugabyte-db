@@ -4321,8 +4321,14 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         }
       } else {
         // Adding a table to an existing colocation tablet.
+        std::optional<uint32_t> current_partition_list_version;
         if (is_vector_index) {
           tablets = VERIFY_RESULT(indexed_table->GetTablets(GetTabletsMode::kOrderByTabletId));
+
+          // Since the vector index table shares the same tablets with the indexable table,
+          // it is necessary to propagate the actual partition list version. It is safe to read
+          // the partition list version here because the indexable table holds the write lock.
+          current_partition_list_version = indexed_table.lock->pb.partition_list_version();
         } else {
           auto tablet = tablegroup ?
               tablegroup->tablet() :
@@ -4352,6 +4358,11 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
         CHECK_NE(colocation_id, kColocationIdNotSet);
         table_pb.mutable_schema()->mutable_colocated_table_id()->set_colocation_id(colocation_id);
+
+        if (current_partition_list_version.has_value()) {
+          table_pb.set_partition_list_version(*current_partition_list_version);
+          LOG(INFO) << "Partition list version is set to " << table_pb.partition_list_version();
+        }
 
         // TODO(zdrudi): In principle if the hosted_tables_mapped_by_parent_id field is set we could
         // avoid writing the tablets and even avoid any tablet mutations here at all. However
