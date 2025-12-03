@@ -61,9 +61,7 @@ When scaling out (adding nodes), the cluster balancer will gracefully move [tabl
 
 #### Scaling in
 
-Applicable only to [YugabyteDB Anywhere](../../../yugabyte-platform/) and [YugabyteDB Aeon](/stable/yugabyte-cloud/).
-
-When scaling in, nodes being removed are marked as "blacklisted". This signals to the cluster balancer that it should:
+When scaling in, nodes being removed are marked as "blacklisted" (Applicable only to [YugabyteDB Anywhere](../../../yugabyte-platform/) and [YugabyteDB Aeon](/stable/yugabyte-cloud/)). This signals to the cluster balancer that it should:
 
 - Gracefully transfer [leader](../../key-concepts/#tablet-leader)ship off of the node being removed.
 - Re-replicate the data that was on the node to other nodes in the same region.
@@ -96,7 +94,7 @@ Operations that create or delete tablets may also trigger cluster balancing. Som
 
 {{< note title="Version availability" >}}
 
-Some of the views below are only available in YugabyteDB {{<release "2024.2.6">}} and later, and {{<release "2025.1.1">}} and later.
+The following views are available in YugabyteDB {{<release "2024.2.6">}} and later, and {{<release "2025.1.1">}} and later.
 
 {{< /note >}}
 
