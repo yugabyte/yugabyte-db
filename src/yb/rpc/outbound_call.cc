@@ -243,14 +243,18 @@ OutboundCall::OutboundCall(const RemoteMethod& remote_method,
   IncrementCounter(rpc_metrics_->outbound_calls_created);
   IncrementGauge(rpc_metrics_->outbound_calls_alive);
 
-  const auto& traceparent = controller_->traceparent();
-  if (!traceparent.empty()) {
-    otel_span_ = OtelTracing::StartSpanFromTraceparent(
-        Format("rpc.client $0", remote_method_.ToString()), traceparent);
+  // Create RPC span inheriting from current context (e.g., pggate.batch)
+  if (OtelTracing::HasActiveContext()) {
+    otel_span_ = OtelTracing::StartSpan(
+        Format("rpc.client $0", remote_method_.ToString()));
     if (otel_span_.IsActive()) {
-      otel_span_.SetAttribute("rpc.system", "yugabytedb");
       otel_span_.SetAttribute("rpc.service", remote_method_.service_name());
       otel_span_.SetAttribute("rpc.method", remote_method_.method_name());
+      const auto& remote = conn_id_.remote();
+      otel_span_.SetAttribute("net.peer.name", remote.address().to_string());
+      otel_span_.SetAttribute(
+          "net.peer.address",
+          Format("$0:$1", remote.address().to_string(), remote.port()));
       otel_span_.SetAttribute("rpc.call_id", static_cast<int64_t>(call_id_));
       if (controller_->timeout().Initialized()) {
         otel_span_.SetAttribute("rpc.timeout_ms", controller_->timeout().ToMilliseconds());
