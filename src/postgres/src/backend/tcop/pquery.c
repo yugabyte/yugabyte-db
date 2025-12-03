@@ -1257,7 +1257,6 @@ PortalRunMulti(Portal portal,
 			 * process a plannable query.
 			 */
 			TRACE_POSTGRESQL_QUERY_EXECUTE_START();
-			YBCOtelExecuteStart();
 
 			if (log_executor_stats)
 				ResetUsage();
@@ -1322,7 +1321,6 @@ PortalRunMulti(Portal portal,
 			if (log_executor_stats)
 				ShowUsage("EXECUTOR STATISTICS");
 
-			YBCOtelExecuteDone();
 			TRACE_POSTGRESQL_QUERY_EXECUTE_DONE();
 		}
 		else

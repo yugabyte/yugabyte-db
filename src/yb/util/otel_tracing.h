@@ -65,6 +65,7 @@ class OtelTracing {
   static void AdoptSpan(const OtelSpanHandle& span);
   static void EndCurrentSpan();
   static bool HasActiveContext();
+  static std::string GetCurrentTraceparent();
 
  private:
   OtelTracing() = delete;

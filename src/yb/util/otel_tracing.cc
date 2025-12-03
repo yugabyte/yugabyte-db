@@ -418,4 +418,21 @@ bool OtelTracing::HasActiveContext() {
   return current_span && current_span->GetContext().IsValid();
 }
 
+std::string OtelTracing::GetCurrentTraceparent() {
+  if (!IsEnabled()) {
+    return "";
+  }
+  auto current_span = trace_api::Tracer::GetCurrentSpan();
+  if (!current_span || !current_span->GetContext().IsValid()) {
+    return "";
+  }
+
+  auto span_context = current_span->GetContext();
+  std::string trace_id = TraceIdToHex(span_context.trace_id());
+  std::string span_id = SpanIdToHex(span_context.span_id());
+  std::string flags = span_context.IsSampled() ? "01" : "00";
+
+  return "00-" + trace_id + "-" + span_id + "-" + flags;
+}
+
 }  // namespace yb

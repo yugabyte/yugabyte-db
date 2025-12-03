@@ -1656,6 +1656,7 @@ class PgClient::Impl : public BigDataFetcher {
     } else {
       controller->set_timeout(timeout_);
     }
+    controller->set_traceparent(OtelTracing::GetCurrentTraceparent());
     return controller;
   }
 
