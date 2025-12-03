@@ -622,6 +622,7 @@ void OutboundCall::SetFinished() {
   // End the OpenTelemetry span with success status
   if (otel_span_.IsActive()) {
     otel_span_.SetStatus(true, "OK");
+    otel_span_ = OtelSpanHandle();  // End span now by triggering destructor
   }
   
   if (SetState(RpcCallState::FINISHED_SUCCESS)) {
@@ -636,6 +637,7 @@ void OutboundCall::SetFailed(const Status &status, std::unique_ptr<ErrorStatusPB
   if (otel_span_.IsActive()) {
     otel_span_.SetStatus(false, status.ToString());
     otel_span_.SetAttribute("rpc.error", status.CodeAsString());
+    otel_span_ = OtelSpanHandle();  // End span now by triggering destructor
   }
   
   bool invoke_callback;
@@ -674,6 +676,7 @@ void OutboundCall::SetTimedOut() {
   if (otel_span_.IsActive()) {
     otel_span_.SetStatus(false, "Timeout");
     otel_span_.SetAttribute("rpc.error", "TimedOut");
+    otel_span_ = OtelSpanHandle();  // End span now by triggering destructor
   }
   
   bool invoke_callback;
