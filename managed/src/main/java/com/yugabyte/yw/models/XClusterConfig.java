@@ -224,7 +224,7 @@ public class XClusterConfig extends Model {
   @JsonProperty
   public Boolean isAutomaticDdlMode() {
     if (this.type != ConfigType.Db) {
-      return null; // Only db scoped xCluster configs can have automatic DDL mode.
+      return false;
     }
     return automaticDdlMode;
   }
