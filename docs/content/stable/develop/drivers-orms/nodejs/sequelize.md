@@ -212,17 +212,21 @@ Employees Details:
 
 #### Specify load balance properties
 
-The following table summarizes some environment variables available for configuring the YugabyteDB node-postgres smart driver:
+You can specify load balance properties using environment variables or connection parameters.
 
-| Environment variable | Description | Default value | Valid values/format |
-| :--- | :--- | :--- | :--- |
-| `PGLOADBALANCE` | Enables cluster-aware or node type-aware load balancing | `false` (disabled) | `any`, `prefer-primary`, `prefer-rr`, `only-primary`, `only-rr`, `true` (alias for `any`), `false` |
-| `PGTOPOLOGYKEYS` | Enables topology-aware load balancing by specifying comma-separated geo-locations | Empty (disabled) | Format: `cloud.region.zone` (e.g., `aws.us-east-1.us-east-1a`). Multiple zones: comma-separated. Wildcard: `cloud.region.*` for all zones in a region. Fallback priority: `cloud.region.zone:n` where `n` is priority number |
-| `PGYBSERVERSREFRESHINTERVAL` | The interval (in seconds) to refresh the servers list | `300` (5 minutes) | Positive integer (in seconds) |
-
-**Note:** These environment variables are only effective when using the YugabyteDB smart driver (`@yugabytedb/pg`). For a complete list of all available environment variables, refer to [Environment variables](../yugabyte-node-driver/#environment-variables).
+For information on all load balance modes, see [Node type-aware load balancing](../../smart-drivers/#node-type-aware-load-balancing).
 
 ##### Environment variables
+
+The following table summarizes some environment variables available for configuring the YugabyteDB node-postgres smart driver:
+
+| Environment variable | Description | Default |
+| :--- | :--- | :--- |
+| PGLOADBALANCE | Enables cluster-aware or node type-aware load balancing.<br>Valid values are `any`, `prefer-primary`, `prefer-rr`, `only-primary`, `only-rr`, `true` (alias for `any`), and `false` (disabled). | `false` |
+| PGTOPOLOGYKEYS | Enables topology-aware load balancing by specifying comma-separated geo-locations. Provide locations in the form `cloud.region.zone` (for example, `aws.us-east-1.us-east-1a`). Specify multiple zones by separating values using commas. You can use a wildcard to specify all zones in a region (`cloud.region.*`). Indicate fallback priority using `cloud.region.zone:n`, where `n` is priority number. | Empty (disabled) |
+| PGYBSERVERSREFRESHINTERVAL | The interval (in seconds) to refresh the servers list | `300` (5 minutes) |
+
+These environment variables are only effective when using the YugabyteDB smart driver (`@yugabytedb/pg`). For a complete list of all available environment variables, refer to [Environment variables](../yugabyte-node-driver/#environment-variables).
 
 ```js
 const { Sequelize, DataTypes } = require('sequelize-yugabytedb')
@@ -240,8 +244,6 @@ const sequelize = new Sequelize('yugabyte', 'yugabyte', 'yugabyte', {
    dialect: 'postgres'
 })
 ```
-
-For information on all load balance modes, see [Node type-aware load balancing](../../smart-drivers/#node-type-aware-load-balancing).
 
 You can also set these in your shell or in a `.env` file:
 
@@ -273,9 +275,9 @@ const sequelize = new Sequelize(connectionString, {
 });
 ```
 
-## Specifying SSL configuration
+## Specify SSL configuration
 
-This configuration can be used while connecting to a YugabyteDB Aeon cluster or a local YB cluster with SSL enabled.
+This configuration can be used while connecting to a YugabyteDB Aeon cluster or a local YugabyteDB cluster with SSL enabled.
 
 1. Install the `fs` package to read the SSL certificate:
 

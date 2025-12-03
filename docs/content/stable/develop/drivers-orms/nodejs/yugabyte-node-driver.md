@@ -93,21 +93,20 @@ After the driver establishes the initial connection, it fetches the list of avai
 
 #### Environment variables
 
-The following table shows the mapping between environment variables and their corresponding connection parameters:
+You can also specify load balance properties using environment variables. The following table shows the mapping between environment variables and their corresponding connection parameters.
 
 | Environment variable | Connection parameter |
 | :--- | :--- |
-| `PGHOST` | `host` |
-| `PGPORT` | `port` |
-| `PGDATABASE` | `database` |
-| `PGUSER` | `user` |
-| `PGPASSWORD` | `password` |
-| `PGLOADBALANCE` | `loadBalance` |
-| `PGTOPOLOGYKEYS` | `topologyKeys` |
-| `PGYBSERVERSREFRESHINTERVAL` | `ybServersRefreshInterval` |
+| PGHOST | host |
+| PGPORT | port |
+| PGDATABASE | database |
+| PGUSER | user |
+| PGPASSWORD | password |
+| PGLOADBALANCE | loadBalance |
+| PGTOPOLOGYKEYS | topologyKeys |
+| PGYBSERVERSREFRESHINTERVAL | ybServersRefreshInterval |
 
-
-##### Set environment variables in code
+The following is an example of how you can set up the connection using environment variables.
 
 ```js
 const pg = require('@yugabytedb/pg');
@@ -128,15 +127,15 @@ const client = new pg.Client({
 });
 ```
 
-For information on all load balance modes, see [Node type-aware load balancing](../../smart-drivers/#node-type-aware-load-balancing).
-
-You can also set these in your shell or in a `.env` file:
+You can also set these variables in your shell or in a `.env` file:
 
 ```sh
 export PGLOADBALANCE=any
 export PGTOPOLOGYKEYS=aws.us-east-2.us-east-2a
 export PGYBSERVERSREFRESHINTERVAL=5
 ```
+
+For information on all load balance modes, see [Node type-aware load balancing](../../smart-drivers/#node-type-aware-load-balancing).
 
 #### Use SSL
 
