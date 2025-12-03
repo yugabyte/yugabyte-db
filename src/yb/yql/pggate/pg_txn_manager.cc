@@ -208,26 +208,8 @@ Status PgTxnManager::SerialNo::RestoreReadTime(uint64_t read_time_serial_no) {
 }
 
 #ifndef NDEBUG
-struct PgTxnManager::DEBUG_TxnInfo {
-  uint64_t txn_serial_no;
-  uint64_t subtxn_id;
-
-  explicit DEBUG_TxnInfo(const PgTxnManager& manager)
-      : txn_serial_no(manager.serial_no_.txn()), subtxn_id(manager.active_sub_transaction_id_) {}
-
-  bool operator==(const DEBUG_TxnInfo&) const = default;
-
-  std::string ToString() const {
-    return YB_STRUCT_TO_STRING(txn_serial_no, subtxn_id);
-  }
-};
-
 void PgTxnManager::DEBUG_UpdateLastObjectLockingInfo() {
-  if (!debug_last_object_locking_txn_info_) {
-    debug_last_object_locking_txn_info_ = std::make_unique<DEBUG_TxnInfo>(*this);
-  } else {
-    *debug_last_object_locking_txn_info_ = DEBUG_TxnInfo(*this);
-  }
+  debug_last_object_locking_txn_serial_ = serial_no_.txn();
 }
 
 void PgTxnManager::DEBUG_CheckOptionsForPerform(
@@ -239,15 +221,10 @@ void PgTxnManager::DEBUG_CheckOptionsForPerform(
       options.yb_non_ddl_txn_for_sys_tables_allowed() || YBCIsInitDbModeEnvVarSet()) {
     return;
   }
-
-  const DEBUG_TxnInfo active_txn_info{*this};
-
-  if (!debug_last_object_locking_txn_info_ ||
-      *debug_last_object_locking_txn_info_ != active_txn_info) {
-    LOG(DFATAL)
-        << "active txn info: " << AsString(active_txn_info)
-        << " , last object locking txn info: " << AsString(debug_last_object_locking_txn_info_);
-  }
+  LOG_IF(DFATAL, debug_last_object_locking_txn_serial_ != serial_no_.txn())
+      << "txn state: " << TxnStateDebugStr()
+      << ", last object locking txn serial: " << debug_last_object_locking_txn_serial_
+      << ", query: {" << ::yb::pggate::GetDebugQueryString(pg_callbacks_) << "}";
 }
 #endif
 
@@ -719,6 +696,7 @@ std::string PgTxnManager::TxnStateDebugStr() const {
       read_only,
       deferrable,
       txn_in_progress,
+      serial_no,
       pg_isolation_level,
       isolation_level);
 }
