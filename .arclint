@@ -90,6 +90,7 @@
         "(^[.]fossa[.]yml$)",
         "(^managed/.*[.]conf)",
         "(^src/postgres/)",
+        "(^src/yb/integration-tests/.*[.]out$)",
         "(^[.]gitignore$)",
         "(^.*[.]svg$)",
         "(^.*[.]md$)",

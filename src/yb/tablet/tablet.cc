@@ -5388,8 +5388,12 @@ Status Tablet::AbortActiveTransactions(
   HybridTime max_cutoff = HybridTime::kMax;
   LOG(INFO) << "Aborting transactions that started prior to " << max_cutoff << " for tablet id "
             << tablet_id();
+  // This codepath is generally called during tablet deletion and during initdb.
+  // We want to abort all active transactions (except the one requested to be excluded), regardless
+  // of whether they are using table locks or not.
   return transaction_participant()->StopActiveTxnsPriorTo(
-      max_cutoff, deadline, exclude_txn_id.has_value() ? &*exclude_txn_id : nullptr);
+      OnlyAbortTxnsNotUsingTableLocks::kFalse, max_cutoff, deadline,
+      exclude_txn_id.has_value() ? &*exclude_txn_id : nullptr);
 }
 
 Status Tablet::GetTabletKeyRanges(

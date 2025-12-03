@@ -63,6 +63,15 @@ Result<PGConn> LibPqTestBase::ConnectToTs(const ExternalTabletServer& pg_ts) {
   }).Connect();
 }
 
+Result<PGConn> LibPqTestBase::ConnectToTsForDB(
+    const ExternalTabletServer& pg_ts, const std::string& db_name) {
+  return PGConnBuilder({
+    .host = pg_ts.bind_host(),
+    .port = pg_ts.ysql_port(),
+    .dbname = db_name,
+  }).Connect();
+}
+
 Result<PGConn> LibPqTestBase::ConnectToTsAsUser(
     const ExternalTabletServer& pg_ts, const string& user) {
   return PGConnBuilder({

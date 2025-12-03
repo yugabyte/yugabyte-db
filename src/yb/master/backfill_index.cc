@@ -757,6 +757,13 @@ Status BackfillTable::LaunchComputeSafeTimeForRead() {
     return SetSafeTimeAndStartBackfill(*opt_xcluster_backfill_time);
   }
 
+  {
+    auto l = indexed_table_->LockForRead();
+    if (l.data().pb.has_transaction() && l.data().pb.transaction().has_using_table_locks() &&
+        l.data().pb.transaction().using_table_locks()) {
+      using_table_locks_ = true;
+    }
+  }
   auto tablets = VERIFY_RESULT(indexed_table_->GetTablets());
   num_tablets_.store(tablets.size(), std::memory_order_release);
   tablets_pending_.store(tablets.size(), std::memory_order_release);
@@ -1385,6 +1392,7 @@ bool GetSafeTimeForTablet::SendRequest(int attempt) {
   auto now = backfill_table_->master()->clock()->Now().ToUint64();
   req.set_min_hybrid_time_for_backfill(min_cutoff_.ToUint64());
   req.set_propagated_hybrid_time(now);
+  req.set_only_abort_txns_not_using_table_locks(backfill_table_->using_table_locks());
 
   ts_admin_proxy_->GetSafeTimeAsync(req, &resp_, &rpc_, BindRpcCallback());
   VLOG(1) << "Send " << description() << " to " << permanent_uuid()

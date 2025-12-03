@@ -107,6 +107,8 @@ struct TransactionalBatchData {
 
 class FastModeTransactionScope;
 
+YB_STRONGLY_TYPED_BOOL(OnlyAbortTxnsNotUsingTableLocks);
+
 // TransactionParticipant manages running transactions, i.e. transactions that have intents in
 // appropriate tablet. Since this class manages transactions of tablet there is separate class
 // instance per tablet.
@@ -214,7 +216,8 @@ class TransactionParticipant : public TransactionStatusManager {
   // After this call, there should be no active (non-aborted/committed) txn that
   // started before cutoff which is active on this tablet.
   Status StopActiveTxnsPriorTo(
-      HybridTime cutoff, CoarseTimePoint deadline, TransactionId* exclude_txn_id = nullptr);
+      OnlyAbortTxnsNotUsingTableLocks only_abort_txns_not_using_table_locks, HybridTime cutoff,
+      CoarseTimePoint deadline, TransactionId* exclude_txn_id = nullptr);
 
   void IgnoreAllTransactionsStartedBefore(HybridTime limit);
 

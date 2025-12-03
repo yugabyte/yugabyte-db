@@ -164,6 +164,8 @@ message ChangeMetadataRequestPB {
   //
   // If missing, then all existing columns may safely be treated as non-provisional.
   optional int32 first_provisional_column_id = 21;
+
+  optional bool only_abort_txns_not_using_table_locks = 22;
 }
 
 message SplitTabletRequestPB {

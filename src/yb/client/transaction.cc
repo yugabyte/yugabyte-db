@@ -1020,7 +1020,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     return subtxn_metadata_pb;
   }
 
-  Status SetPgTxnStart(int64_t pg_txn_start_us) {
+  Status SetPgTxnStart(int64_t pg_txn_start_us, bool using_table_locks) {
     VLOG_WITH_PREFIX(4) << "set pg_txn_start_us_=" << pg_txn_start_us;
     RSTATUS_DCHECK(
         !metadata_.pg_txn_start_us,
@@ -1028,6 +1028,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         Format("Tried to set pg_txn_start_us (= $0) to new value (= $1)",
                metadata_.pg_txn_start_us, pg_txn_start_us));
     metadata_.pg_txn_start_us = pg_txn_start_us;
+    metadata_.using_table_locks = using_table_locks;
     return Status::OK();
   }
 
@@ -2814,8 +2815,8 @@ bool YBTransaction::HasSubTransaction(SubTransactionId id) {
   return impl_->HasSubTransaction(id);
 }
 
-Status YBTransaction::SetPgTxnStart(int64_t pg_txn_start_us) {
-  return impl_->SetPgTxnStart(pg_txn_start_us);
+Status YBTransaction::SetPgTxnStart(int64_t pg_txn_start_us, bool using_table_locks) {
+  return impl_->SetPgTxnStart(pg_txn_start_us, using_table_locks);
 }
 
 void YBTransaction::IncreaseMutationCounts(

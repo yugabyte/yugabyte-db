@@ -34,7 +34,7 @@ SubDocKey(DocKey(0xad65, ["a"], ["b", null]), [])
 
 intent_write:
 Wrote 9 key/value pairs to kIntents RocksDB:
- 1. PutCF: TXN META ********-****-****-****-************ => { transaction_id: ********-****-****-****-************ isolation: SNAPSHOT_ISOLATION status_tablet: 0 priority: 0 start_time: { physical: 0 } locality: GLOBAL old_status_tablet:  skip_prefix_locks: 0 }
+ 1. PutCF: TXN META ********-****-****-****-************ => { transaction_id: ********-****-****-****-************ isolation: SNAPSHOT_ISOLATION status_tablet: 0 priority: 0 start_time: { physical: 0 } using_table_locks: 1 locality: GLOBAL old_status_tablet:  skip_prefix_locks: 0 }
  2. PutCF: SubDocKey(DocKey(0xad65, ["a"], ["b", null]), []) [kStrongRead, kStrongWrite] HT{ days: 0 time: 0 } => TransactionId(********-****-****-****-************) WriteId(0) { 3: "G\xbd\xdaS1\x00\x00S2\x00\x00!S3\x00\x00S4\x00\x00!" }
  4. PutCF: SubDocKey(DocKey(0xad65, ["a"], []), []) [kWeakRead, kWeakWrite] HT{ days: 0 time: 0 } => TransactionId(********-****-****-****-************) none
  6. PutCF: SubDocKey(DocKey(0xad65, ["a"], ["b"]), []) [kWeakRead, kWeakWrite] HT{ days: 0 time: 0 } => TransactionId(********-****-****-****-************) none
@@ -43,7 +43,7 @@ Wrote 9 key/value pairs to kIntents RocksDB:
 
 intent_write:
 Wrote 9 key/value pairs to kIntents RocksDB:
- 1. PutCF: TXN META ********-****-****-****-************ => { transaction_id: ********-****-****-****-************ isolation: SNAPSHOT_ISOLATION status_tablet: 0 priority: 0 start_time: { physical: 0 } locality: GLOBAL old_status_tablet:  skip_prefix_locks: 0 }
+ 1. PutCF: TXN META ********-****-****-****-************ => { transaction_id: ********-****-****-****-************ isolation: SNAPSHOT_ISOLATION status_tablet: 0 priority: 0 start_time: { physical: 0 } using_table_locks: 1 locality: GLOBAL old_status_tablet:  skip_prefix_locks: 0 }
  2. PutCF: SubDocKey(DocKey(0xbdda, ["1", "2"], ["3", "4"]), []) [kStrongRead, kStrongWrite] HT{ days: 0 time: 0 } => TransactionId(********-****-****-****-************) WriteId(0) { 4: "a" 5: "b" }
  4. PutCF: SubDocKey(DocKey(0xbdda, ["1", "2"], ["3"]), []) [kWeakRead, kWeakWrite] HT{ days: 0 time: 0 } => TransactionId(********-****-****-****-************) none
  6. PutCF: SubDocKey(DocKey(0xbdda, ["1", "2"], []), []) [kWeakRead, kWeakWrite] HT{ days: 0 time: 0 } => TransactionId(********-****-****-****-************) none

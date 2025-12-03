@@ -159,6 +159,8 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
 
   const LeaderEpoch& epoch() const { return epoch_; }
 
+  bool using_table_locks() const { return using_table_locks_.load(std::memory_order_acquire); }
+
   static bool GetIndexTableRetainsDeleteMarkers(const PersistentTableInfo& index_table);
 
   static void UnsetIndexTableRetainsDeleteMarkers(PersistentTableInfo* index_table);
@@ -214,6 +216,7 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   std::atomic_bool timestamp_chosen_{false};
   std::atomic<size_t> tablets_pending_;
   std::atomic<size_t> num_tablets_;
+  std::atomic_bool using_table_locks_{false};
   std::shared_ptr<BackfillTableJob> backfill_job_;
   mutable simple_spinlock mutex_;
   HybridTime read_time_for_backfill_ GUARDED_BY(mutex_){HybridTime::kMin};
