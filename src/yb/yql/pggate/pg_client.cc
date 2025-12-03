@@ -52,6 +52,11 @@
 
 #include "yb/util/otel_tracing.h"
 
+// Forward declarations for Postgres C functions to access traceparent
+extern "C" {
+  const char* YbGetCurrentTraceparent(void);
+}
+
 DECLARE_bool(enable_object_lock_fastpath);
 DECLARE_bool(use_node_hostname_for_local_tserver);
 DECLARE_int32(backfill_index_client_rpc_timeout_ms);
@@ -608,17 +613,13 @@ class PgClient::Impl : public BigDataFetcher {
   Result<PgTableDescPtr> OpenTable(
       const PgObjectId& table_id, bool reopen, uint64_t min_ysql_catalog_version,
       master::IncludeHidden include_hidden) {
-    // OTEL: Create wrapper span for OpenTable with table identification
     OtelSpanHandle open_table_span;
     std::unique_ptr<ScopedOtelSpan> scoped_span;
     if (OtelTracing::HasActiveContext()) {
       open_table_span = OtelTracing::StartSpan("pggate.open_table");
       if (open_table_span.IsActive()) {
-        // Set table identifiers before the RPC
-        open_table_span.SetAttribute("db.table_oid",
-            static_cast<int64_t>(table_id.object_oid));
-        open_table_span.SetAttribute("db.database_oid",
-            static_cast<int64_t>(table_id.database_oid));
+        open_table_span.SetAttribute("db.table_oid", static_cast<int64_t>(table_id.object_oid));
+        open_table_span.SetAttribute("db.database_oid", static_cast<int64_t>(table_id.database_oid));
         scoped_span = std::make_unique<ScopedOtelSpan>(std::move(open_table_span));
       }
     }
@@ -640,7 +641,6 @@ class PgClient::Impl : public BigDataFetcher {
         table_id, resp.info(), BuildTablePartitionList(resp.partitions(), table_id));
     RETURN_NOT_OK(result->Init());
 
-    // OTEL: Add table name now that we have it from the response
     if (scoped_span && scoped_span->span().IsActive()) {
       scoped_span->span().SetAttribute("db.table", result->table_name().table_name());
     }
@@ -1661,6 +1661,11 @@ class PgClient::Impl : public BigDataFetcher {
     } else {
       controller->set_timeout(timeout_);
     }
+    const char* c_traceparent = YbGetCurrentTraceparent();
+    if (c_traceparent && c_traceparent[0] != '\0') {
+      controller->set_traceparent(c_traceparent);
+    }
+    
     return controller;
   }
 

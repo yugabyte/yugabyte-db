@@ -243,24 +243,19 @@ OutboundCall::OutboundCall(const RemoteMethod& remote_method,
   IncrementCounter(rpc_metrics_->outbound_calls_created);
   IncrementGauge(rpc_metrics_->outbound_calls_alive);
 
-  // Start an OpenTelemetry span for this RPC call
-  // Only create spans when there's an active parent context to reduce noise
-  if (OtelTracing::HasActiveContext()) {
-    otel_span_ = OtelTracing::StartSpan(Format("rpc.client $0", remote_method_.ToString()));
+  const auto& traceparent = controller_->traceparent();
+  if (!traceparent.empty()) {
+    otel_span_ = OtelTracing::StartSpanFromTraceparent(
+        Format("rpc.client $0", remote_method_.ToString()), traceparent);
     if (otel_span_.IsActive()) {
-      LOG(INFO) << "[OTEL DEBUG] Created RPC span (child) for call_id=" << call_id_ 
-                << " method=" << remote_method_.ToString();
       otel_span_.SetAttribute("rpc.system", "yugabytedb");
       otel_span_.SetAttribute("rpc.service", remote_method_.service_name());
       otel_span_.SetAttribute("rpc.method", remote_method_.method_name());
       otel_span_.SetAttribute("rpc.call_id", static_cast<int64_t>(call_id_));
       if (controller_->timeout().Initialized()) {
-        otel_span_.SetAttribute("rpc.timeout_ms", 
-                                static_cast<int64_t>(controller_->timeout().ToMilliseconds()));
+        otel_span_.SetAttribute("rpc.timeout_ms", controller_->timeout().ToMilliseconds());
       }
     }
-  } else {
-    VLOG(3) << "[OTEL DEBUG] No active context, skipping RPC span creation for call_id=" << call_id_;
   }
 }
 

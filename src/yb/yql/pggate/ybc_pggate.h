@@ -137,6 +137,8 @@ void YBCOtelQueryDone(void);
 // Query phase child spans
 void YBCOtelParseStart(void);
 void YBCOtelParseDone(void);
+void YBCOtelRewriteStart(void);
+void YBCOtelRewriteDone(void);
 void YBCOtelPlanStart(void);
 void YBCOtelPlanDone(void);
 void YBCOtelExecuteStart(void);

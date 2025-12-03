@@ -32,6 +32,7 @@
 #pragma once
 
 #include <memory>
+#include <string>
 
 #include "yb/util/logging.h"
 
@@ -139,6 +140,11 @@ class RpcController {
 
   InvokeCallbackMode invoke_callback_mode() { return invoke_callback_mode_; }
 
+  // Set the traceparent for distributed tracing. If set, the RPC will create
+  // a child span under this traceparent. If not set, no tracing span is created.
+  void set_traceparent(const std::string& traceparent) { traceparent_ = traceparent; }
+  const std::string& traceparent() const { return traceparent_; }
+
   // Return the configured timeout.
   MonoDelta timeout() const;
 
@@ -183,6 +189,7 @@ class RpcController {
 
   std::unique_ptr<Sidecars> outbound_sidecars_;
   bool TEST_disable_outbound_call_response_processing = false;
+  std::string traceparent_;
 
   DISALLOW_COPY_AND_ASSIGN(RpcController);
 };
