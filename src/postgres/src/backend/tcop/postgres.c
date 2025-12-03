@@ -768,6 +768,7 @@ pg_analyze_and_rewrite_fixedparams(RawStmt *parsetree,
 	List	   *querytree_list;
 
 	TRACE_POSTGRESQL_QUERY_REWRITE_START(query_string);
+	YBCOtelRewriteStart();
 
 	/*
 	 * (1) Perform parse analysis.
@@ -786,6 +787,7 @@ pg_analyze_and_rewrite_fixedparams(RawStmt *parsetree,
 	 */
 	querytree_list = pg_rewrite_query(query);
 
+	YBCOtelRewriteDone();
 	TRACE_POSTGRESQL_QUERY_REWRITE_DONE(query_string);
 
 	return querytree_list;
@@ -807,6 +809,7 @@ pg_analyze_and_rewrite_varparams(RawStmt *parsetree,
 	List	   *querytree_list;
 
 	TRACE_POSTGRESQL_QUERY_REWRITE_START(query_string);
+	YBCOtelRewriteStart();
 
 	/*
 	 * (1) Perform parse analysis.
@@ -839,6 +842,7 @@ pg_analyze_and_rewrite_varparams(RawStmt *parsetree,
 	 */
 	querytree_list = pg_rewrite_query(query);
 
+	YBCOtelRewriteDone();
 	TRACE_POSTGRESQL_QUERY_REWRITE_DONE(query_string);
 
 	return querytree_list;
@@ -861,6 +865,7 @@ pg_analyze_and_rewrite_withcb(RawStmt *parsetree,
 	List	   *querytree_list;
 
 	TRACE_POSTGRESQL_QUERY_REWRITE_START(query_string);
+	YBCOtelRewriteStart();
 
 	/*
 	 * (1) Perform parse analysis.
@@ -879,6 +884,7 @@ pg_analyze_and_rewrite_withcb(RawStmt *parsetree,
 	 */
 	querytree_list = pg_rewrite_query(query);
 
+	YBCOtelRewriteDone();
 	TRACE_POSTGRESQL_QUERY_REWRITE_DONE(query_string);
 
 	return querytree_list;

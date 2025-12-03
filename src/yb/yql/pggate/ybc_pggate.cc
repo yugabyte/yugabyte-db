@@ -620,6 +620,7 @@ void YBCResetTraceparent() {
 namespace {
 thread_local std::unique_ptr<yb::ScopedOtelSpan> g_query_span;
 thread_local std::unique_ptr<yb::ScopedOtelSpan> g_parse_span;
+thread_local std::unique_ptr<yb::ScopedOtelSpan> g_rewrite_span;
 thread_local std::unique_ptr<yb::ScopedOtelSpan> g_plan_span;
 thread_local std::unique_ptr<yb::ScopedOtelSpan> g_execute_span;
 }  // namespace
@@ -676,6 +677,25 @@ void YBCOtelParseDone() {
   if (g_parse_span) {
     LOG(INFO) << "[OTEL DEBUG] YBCOtelParseDone: Ending parse span";
     g_parse_span.reset();
+  }
+}
+
+void YBCOtelRewriteStart() {
+  if (!g_query_span || !yb::OtelTracing::HasActiveContext()) {
+    return;
+  }
+  
+  auto span = yb::OtelTracing::StartSpan("ysql.rewrite");
+  if (span.IsActive()) {
+    g_rewrite_span = std::make_unique<yb::ScopedOtelSpan>(std::move(span));
+    LOG(INFO) << "[OTEL DEBUG] YBCOtelRewriteStart: Created rewrite span";
+  }
+}
+
+void YBCOtelRewriteDone() {
+  if (g_rewrite_span) {
+    LOG(INFO) << "[OTEL DEBUG] YBCOtelRewriteDone: Ending rewrite span";
+    g_rewrite_span.reset();
   }
 }
 
