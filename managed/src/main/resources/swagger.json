@@ -15028,7 +15028,8 @@
           "type" : "string"
         },
         "config_uuid" : {
-          "$ref" : "#/definitions/HighAvailabilityConfig"
+          "format" : "uuid",
+          "type" : "string"
         },
         "instance_state" : {
           "enum" : [
@@ -15060,7 +15061,6 @@
       },
       "required" : [
         "address",
-        "config_uuid",
         "instance_state",
         "is_leader",
         "is_local",
