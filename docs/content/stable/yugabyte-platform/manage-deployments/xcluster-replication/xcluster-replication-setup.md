@@ -35,6 +35,10 @@ Ensure the universes have the following characteristics:
 
 - They have network connectivity; see [Networking for xCluster](../../../prepare/networking/#networking-for-xcluster). If the source and target universe Master and TServer nodes use DNS addresses, those addresses must be resolvable on all nodes.
 
+    Before starting xCluster, YugabyteDB Anywhere verifies network connectivity from every node in the target universe to every node in the source universe to rule out VPC misconfigurations or other network issues.
+
+    If your network policy blocks ping packets and you want to skip this precheck, you can disable it by setting **Enable network connectivity check for xCluster** Global Runtime Configuration option (config key `yb.xcluster.network_connectivity_check.enabled`) to `false`. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
+
 ## Best practices
 
 - Monitor CPU use and keep it at 65% or less.
@@ -293,11 +297,13 @@ You can opt to ignore errors and force delete the replication, but this is not r
 
 Use the same version of YugabyteDB on both the source and target.
 
-When [upgrading universes](../../../manage-deployments/upgrade-software-install/) in xCluster Replication, you should upgrade and finalize the target universe before upgrading and finalizing the source universe.
+When [upgrading universes](../../upgrade-software-install/) in xCluster Replication, you should upgrade and finalize the target universe before upgrading and finalizing the source universe.
 
 If you upgrade and finalize the source universe first, replication may be paused automatically until both universes are finalized to the same software version.
 
 If you have bidirectional xCluster replication, then you should upgrade and finalize both clusters at the same time. Perform the upgrade steps for each cluster individually and monitor both of them. If you encounter any issues, roll back both clusters. If everything appears to be in good condition, finalize both clusters with as little delay as possible.
+
+Refer to [Upgrades with xCluster and xCluster DR](../../upgrade-software-install/#upgrades-with-xcluster-and-xcluster-dr).
 
 ### Rotating CA certificates
 
