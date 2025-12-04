@@ -144,6 +144,12 @@ void YBCOtelPlanDone(void);
 void YBCOtelExecuteStart(void);
 void YBCOtelExecuteDone(void);
 
+// Transaction phase spans
+void YBCOtelCommitStart(void);
+void YBCOtelCommitDone(void);
+void YBCOtelAbortStart(void);
+void YBCOtelAbortDone(void);
+
 int64_t YBCGetPgggateCurrentAllocatedBytes();
 
 int64_t YBCGetActualHeapSizeBytes();

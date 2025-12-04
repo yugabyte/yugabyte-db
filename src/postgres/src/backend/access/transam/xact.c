@@ -2450,6 +2450,7 @@ CommitTransaction(void)
 		 * Postgres transaction can be aborted at this point without an issue
 		 * in case of YBCCommitTransaction failure.
 		 */
+		YBCOtelCommitStart();
 		YBCCommitTransaction();
 		if (increment_pg_txns)
 			YbIncrementPgTxnsCommitted();
@@ -2486,6 +2487,7 @@ CommitTransaction(void)
 	}
 
 	TRACE_POSTGRESQL_TRANSACTION_COMMIT(MyProc->lxid);
+	YBCOtelCommitDone();
 
 	/*
 	 * Let others know about no transaction in progress by me. Note that this
@@ -3044,6 +3046,7 @@ AbortTransaction(void)
 		XLogSetAsyncXactLSN(XactLastRecEnd);
 	}
 
+	YBCOtelAbortStart();
 	TRACE_POSTGRESQL_TRANSACTION_ABORT(MyProc->lxid);
 
 	/*
@@ -3095,6 +3098,7 @@ AbortTransaction(void)
 	}
 
 	YBCAbortTransaction();
+	YBCOtelAbortDone();
 
 	/* Reset the value of the sticky connection */
 	s->ybUncommittedStickyObjectCount = 0;

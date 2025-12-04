@@ -623,6 +623,8 @@ thread_local std::unique_ptr<yb::ScopedOtelSpan> g_parse_span;
 thread_local std::unique_ptr<yb::ScopedOtelSpan> g_rewrite_span;
 thread_local std::unique_ptr<yb::ScopedOtelSpan> g_plan_span;
 thread_local std::vector<std::unique_ptr<yb::ScopedOtelSpan>> g_execute_span_stack;
+thread_local std::unique_ptr<yb::ScopedOtelSpan> g_commit_span;
+thread_local std::unique_ptr<yb::ScopedOtelSpan> g_abort_span;
 }  // namespace
 
 void YBCOtelQueryStart(const char* query_string) {
@@ -742,6 +744,40 @@ void YBCOtelExecuteDone() {
     LOG(INFO) << "[OTEL DEBUG] YBCOtelExecuteDone: Ending execute span at depth " 
               << g_execute_span_stack.size();
     g_execute_span_stack.pop_back();
+  }
+}
+
+void YBCOtelCommitStart() {
+  if (!g_query_span || !yb::OtelTracing::HasActiveContext()) {
+    return;
+  }
+  
+  auto span = yb::OtelTracing::StartSpan("ysql.commit");
+  if (span.IsActive()) {
+    g_commit_span = std::make_unique<yb::ScopedOtelSpan>(std::move(span));
+  }
+}
+
+void YBCOtelCommitDone() {
+  if (g_commit_span) {
+    g_commit_span.reset();
+  }
+}
+
+void YBCOtelAbortStart() {
+  if (!g_query_span || !yb::OtelTracing::HasActiveContext()) {
+    return;
+  }
+  
+  auto span = yb::OtelTracing::StartSpan("ysql.abort");
+  if (span.IsActive()) {
+    g_abort_span = std::make_unique<yb::ScopedOtelSpan>(std::move(span));
+  }
+}
+
+void YBCOtelAbortDone() {
+  if (g_abort_span) {
+    g_abort_span.reset();
   }
 }
 
