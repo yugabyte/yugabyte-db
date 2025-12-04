@@ -178,25 +178,34 @@ public class NodeAgentClient {
     this.confGetter = confGetter;
     this.nodeAgentEnablerProvider = nodeAgentEnablerProvider;
     this.channelFactory = channelFactory;
-    this.cachedChannels =
+    CacheBuilder<Object, Object> cacheBuilder =
         CacheBuilder.newBuilder()
             .removalListener(
                 n -> {
                   ManagedChannel channel = (ManagedChannel) n.getValue();
-                  log.debug("Channel for {} expired", n.getKey());
+                  log.debug(
+                      "Channel for {} expired. Current size: {}", n.getKey(), getClientCacheSize());
                   if (!channel.isShutdown() && !channel.isTerminated()) {
                     channel.shutdown();
                   }
                 })
-            .expireAfterAccess(10, TimeUnit.MINUTES)
-            .maximumSize(confGetter.getGlobalConf(GlobalConfKeys.nodeAgentConnectionCacheSize))
-            .build(
-                new CacheLoader<ChannelConfig, ManagedChannel>() {
-                  @Override
-                  public ManagedChannel load(ChannelConfig config) {
-                    return NodeAgentClient.this.channelFactory.get(config);
-                  }
-                });
+            .expireAfterAccess(10, TimeUnit.MINUTES);
+    if (confGetter.getGlobalConf(GlobalConfKeys.nodeAgentIgnoreConnectionCacheSize)) {
+      // Only LRU is effective.
+      log.debug("Ignoring max cache size for node agent client connections");
+    } else {
+      int maxClients = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentConnectionCacheSize);
+      log.debug("Setting max cache size for node agent client connections to {}", maxClients);
+      cacheBuilder = cacheBuilder.maximumSize(maxClients);
+    }
+    this.cachedChannels =
+        cacheBuilder.build(
+            new CacheLoader<ChannelConfig, ManagedChannel>() {
+              @Override
+              public ManagedChannel load(ChannelConfig config) {
+                return NodeAgentClient.this.channelFactory.get(config);
+              }
+            });
   }
 
   @Builder
@@ -1153,5 +1162,9 @@ public class NodeAgentClient {
             .map(part -> part.contains(" ") ? "'" + part + "'" : part)
             .collect(Collectors.joining(" ")));
     return shellCommand;
+  }
+
+  private long getClientCacheSize() {
+    return cachedChannels.size();
   }
 }
