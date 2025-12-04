@@ -40,10 +40,21 @@ force_kill() {
     fi
 }
 
+force_kill_on_exit() {
+    local pid=$1
+    # Check if the process is still running and kill it.
+    if ps -fp $pid | grep "http.server" > /dev/null; then
+        kill -9 $pid 2>/dev/null
+    fi
+}
+
 # Iterate through the list of ports, start server, check port, and stop server
 for port in "${ports[@]}"; do
     # Start the server and get its PID
     server_pid=$(start_server $port)
+    if [ -n "$server_pid" ]; then
+        trap "force_kill_on_exit $server_pid" EXIT
+    fi
 
     # Give the server a moment to start
     sleep 2
